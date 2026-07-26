@@ -28,8 +28,7 @@ def _constant_fn(value):
 
 
 class TensorAccessSequence(abc.MutableSequence, abc.Iterable):
-    """
-    TensorAccessSequence is a MutableSequence and an Iterable. Generally, it is a thin wrapper around a list[TensorAccessPattern].
+    """TensorAccessSequence is a MutableSequence and an Iterable. Generally, it is a thin wrapper around a list[TensorAccessPattern].
 
     The TensorAccessSequence is useful as a container of TensorAccessPatterns so that a grouping of patterns may be
     accessed in a particular order, or visualized or animated in sequence.
@@ -141,8 +140,7 @@ class TensorAccessSequence(abc.MutableSequence, abc.Iterable):
 
     @classmethod
     def from_taps(cls, taps: Sequence[TensorAccessPattern]) -> TensorAccessSequence:
-        """
-        This alternative constructor creates a TensorAccessSequence from a sequence of TensorAccessPatterns.
+        """This alternative constructor creates a TensorAccessSequence from a sequence of TensorAccessPatterns.
         This is an alternative to the traditional constructor, and is useful for patterns that are difficult
         to express using the sizes/strides/offset functions.
 
@@ -178,8 +176,7 @@ class TensorAccessSequence(abc.MutableSequence, abc.Iterable):
         return tas
 
     def accesses(self) -> tuple[np.ndarray, np.ndarray]:
-        """
-        Returns the access_order and access_count arrays of the TensorAccessPatterns in
+        """Returns the access_order and access_count arrays of the TensorAccessPatterns in
         the sequence applied sequentially to the tensor.
 
         The access_order ndarray sequentially counts access to elements in the
@@ -194,8 +191,7 @@ class TensorAccessSequence(abc.MutableSequence, abc.Iterable):
         return self._calc_accesses(True, True)
 
     def access_order(self) -> np.ndarray:
-        """
-        The access_order ndarray sequentially counts access to elements in the
+        """The access_order ndarray sequentially counts access to elements in the
         tensor. If an element is accessed more than once, only the last count is reflected.
 
         The TensorAccessPatterns in the sequence are applied sequentially.
@@ -207,8 +203,7 @@ class TensorAccessSequence(abc.MutableSequence, abc.Iterable):
         return access_order
 
     def access_count(self) -> np.ndarray:
-        """
-        The access_count ndarray contains the number of times each element is
+        """The access_count ndarray contains the number of times each element is
         accessed by the tensor access pattern.
 
         The TensorAccessPatterns in the sequence are applied sequentially.
@@ -264,8 +259,7 @@ class TensorAccessSequence(abc.MutableSequence, abc.Iterable):
     def animate(
         self, title: str | None = None, animate_access_count: bool = False
     ) -> "FuncAnimation":
-        """
-        Creates and returns a handle to a TensorAccessSequence animation. Each frame
+        """Creates and returns a handle to a TensorAccessSequence animation. Each frame
         in the animation represents one TensorAccessPattern in the sequence.
 
         Args:
@@ -360,8 +354,7 @@ class TensorAccessSequence(abc.MutableSequence, abc.Iterable):
         )
 
     def compare_access_orders(self, other: TensorAccessSequence) -> bool:
-        """
-        This function creates an alternative way to compare access pattern sequences.
+        """This function creates an alternative way to compare access pattern sequences.
         Sometimes access patterns with different sizes/strides are functionally equivalent;
         to detect functional equivalency, this function uses iterators produced by
         access_generator() to compare the access patterns. This is more performant than

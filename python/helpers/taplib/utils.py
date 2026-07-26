@@ -13,8 +13,7 @@ def validate_and_clean_sizes_strides(
     allow_none: bool = False,
     expected_dims: int | None = None,
 ) -> tuple[Sequence[int] | None, Sequence[int] | None]:
-    """
-    This is a helper function to validate sizes, strides and remove any
+    """This is a helper function to validate sizes, strides and remove any
     unused values from upper dimensions if possible.
 
     Args:
@@ -97,8 +96,7 @@ def validate_and_clean_sizes_strides(
 def validate_tensor_dims(
     tensor_dims: Sequence[int], expected_dims: int | None = None
 ) -> Sequence[int]:
-    """
-    This is a helper function used to validate dimensions of tensors, namely
+    """This is a helper function used to validate dimensions of tensors, namely
     be ensuring each dimension is > 0 and the dimensionality is as expected.
 
     Args:
@@ -140,8 +138,7 @@ def validate_tensor_dims(
 
 
 def validate_offset(offset: int, tensor_dims: Sequence[int] | None) -> int:
-    """
-    This is a helper function to validate an offset into the tensor.
+    """This is a helper function to validate an offset into the tensor.
     It primarily checks to see if the offset is a valid index to the tensor.
 
     Args:

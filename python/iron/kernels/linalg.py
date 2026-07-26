@@ -260,7 +260,7 @@ def cascade_mm(
     output_dtype: type = np.int16,
     use_chess: bool = False,
 ) -> ExternalFunction:
-    """Cascade matrix-multiply kernel for multi-core accumulation.
+    r"""Cascade matrix-multiply kernel for multi-core accumulation.
 
     cascade_mm.cc emits all three cascade variants (``get_only``,
     ``put_only``, ``put_get``) plus a ``zero`` companion in one .o.  The

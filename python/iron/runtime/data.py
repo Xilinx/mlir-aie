@@ -20,7 +20,7 @@ from ...helpers.util import (
 
 
 class RuntimeData:
-    """A handle to I/O data in the Runtime"""
+    """A handle to I/O data in the Runtime."""
 
     def __init__(self, arr_type: type[np.ndarray]):
         """Construct a handle to a Runtime buffer.
@@ -33,12 +33,12 @@ class RuntimeData:
 
     @property
     def shape(self) -> Sequence[int]:
-        """The shape of the buffer"""
+        """The shape of the buffer."""
         return np_ndarray_type_get_shape(self._arr_type)
 
     @property
     def dtype(self) -> NpuDType:
-        """The per-element datatype of the buffer"""
+        """The per-element datatype of the buffer."""
         return np_ndarray_type_get_dtype(self._arr_type)
 
     @property

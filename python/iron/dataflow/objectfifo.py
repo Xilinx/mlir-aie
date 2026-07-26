@@ -177,17 +177,17 @@ class ObjectFifo(Resolvable):
 
     @property
     def shape(self) -> Sequence[int]:
-        """The shape of each buffer belonging to the ObjectFifo"""
+        """The shape of each buffer belonging to the ObjectFifo."""
         return np_ndarray_type_get_shape(self._obj_type)
 
     @property
     def dtype(self) -> NpuDType:
-        """The per-element data type of each element in each buffer belonging to the ObjectFifo"""
+        """The per-element data type of each element in each buffer belonging to the ObjectFifo."""
         return np_ndarray_type_get_dtype(self._obj_type)
 
     @property
     def obj_type(self) -> type[np.ndarray]:
-        """The tensor type of each buffer belonging to the ObjectFifo"""
+        """The tensor type of each buffer belonging to the ObjectFifo."""
         return self._obj_type
 
     def set_iter_count(self, iter_count: int):
@@ -289,7 +289,7 @@ class ObjectFifo(Resolvable):
         return self._cons[-1]
 
     def tiles(self, cons_only: bool = False) -> list[Tile]:
-        """The list of placement tiles corresponding to the endpoints of all handles of this ObjectFifo
+        """The list of placement tiles corresponding to the endpoints of all handles of this ObjectFifo.
 
         Raises:
             ValueError: A producer handle must be constructed.
@@ -475,7 +475,7 @@ class ObjectFifoHandle(Resolvable):
         dims_from_stream: StreamDims | None = None,
         channel: int | None = None,
     ):
-        """Construct an ObjectFifoHandle
+        """Construct an ObjectFifoHandle.
 
         Args:
             of (ObjectFifo): The ObjectFifo to construct the handle for.
@@ -554,7 +554,7 @@ class ObjectFifoHandle(Resolvable):
 
     @property
     def name(self) -> str:
-        """The name of the ObjectFifo"""
+        """The name of the ObjectFifo."""
         return self._object_fifo.name
 
     @property
@@ -568,17 +568,17 @@ class ObjectFifoHandle(Resolvable):
 
     @property
     def obj_type(self) -> type[np.ndarray]:
-        """The per-buffer type of the ObjectFifo"""
+        """The per-buffer type of the ObjectFifo."""
         return self._object_fifo.obj_type
 
     @property
     def shape(self) -> Sequence[int]:
-        """The per-buffer shape of the ObjectFifo"""
+        """The per-buffer shape of the ObjectFifo."""
         return self._object_fifo.shape
 
     @property
     def dtype(self) -> NpuDType:
-        """The per-element datatype of the ObjectFifo"""
+        """The per-element datatype of the ObjectFifo."""
         return self._object_fifo.dtype
 
     @property
@@ -590,19 +590,19 @@ class ObjectFifoHandle(Resolvable):
 
     @property
     def depth(self) -> int:
-        """The depth of this ObjectFifoHandle"""
+        """The depth of this ObjectFifoHandle."""
         return self._depth
 
     @property
     def dims_from_stream(self) -> StreamDims | None:
-        """The dimensions from stream of a consumer ObjectFifoHandle"""
+        """The dimensions from stream of a consumer ObjectFifoHandle."""
         if self._is_prod:
             raise ValueError("prod ObjectFifoHandles cannot have dims_from_stream")
         return self._dims_from_stream
 
     @property
     def endpoint(self) -> ObjectFifoEndpoint | None:
-        """The endpoint of this ObjectFifoHandle"""
+        """The endpoint of this ObjectFifoHandle."""
         return self._endpoint
 
     def __str__(self) -> str:
@@ -622,7 +622,7 @@ class ObjectFifoHandle(Resolvable):
         self._endpoint = endpoint
 
     def all_of_endpoints(self) -> list[ObjectFifoEndpoint]:
-        """All endpoints belonging to an ObjectFifo"""
+        """All endpoints belonging to an ObjectFifo."""
         return self._object_fifo._get_endpoint(
             is_prod=True
         ) + self._object_fifo._get_endpoint(is_prod=False)

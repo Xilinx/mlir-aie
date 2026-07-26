@@ -105,7 +105,7 @@ class Buffer(Resolvable):
 
     @property
     def shape(self) -> Sequence[int]:
-        """The shape of the buffer"""
+        """The shape of the buffer."""
         return np_ndarray_type_get_shape(self._arr_type)
 
     @property

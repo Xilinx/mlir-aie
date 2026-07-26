@@ -5,7 +5,8 @@
 #
 """Logging setup for the ``aie`` namespace, imported first (for its side
 effect) by :mod:`aie.utils` so the level is configured before any
-``aie.utils`` submodule import can itself emit a log record."""
+``aie.utils`` submodule import can itself emit a log record.
+"""
 
 import logging
 import os

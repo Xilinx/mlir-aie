@@ -13,8 +13,7 @@ from .utils import validate_and_clean_sizes_strides, validate_tensor_dims
 
 
 class TensorTiler2D:
-    """
-    This is a generator (similar to factory pattern) class which produces TensorAccessSequences
+    """This is a generator (similar to factory pattern) class which produces TensorAccessSequences
     for common 2-dimensional tiling patterns.
     """
 
@@ -155,7 +154,6 @@ class TensorTiler2D:
             TensorAccessSequence: A TensorAccessSequence with one tile grouping per TensorAccessPattern,
                 where the tile grouping may or may not be contiguous.
         """
-
         # Validate dimensions
         if tile_group_steps is None:
             tile_group_steps = (1,) * cls._NUM_DIMS

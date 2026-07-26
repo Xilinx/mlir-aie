@@ -106,12 +106,14 @@ class Runtime(Resolvable):
     def add_flow(self, flow) -> None:
         """Register an explicit [`Flow`][iron.Flow] (or
         [`PacketFlow`][iron.PacketFlow]) so the Program resolves it alongside
-        the ObjectFifos."""
+        the ObjectFifos.
+        """
         self._flows.append(flow)
 
     def add_lock(self, lock) -> None:
         """Register an explicit [`Lock`][iron.Lock] shared between a Worker and
-        a [`TileDma`][iron.TileDma]."""
+        a [`TileDma`][iron.TileDma].
+        """
         self._locks.append(lock)
 
     def add_tile_dma(self, tile_dma) -> None:
@@ -445,12 +447,12 @@ class Runtime(Resolvable):
 
     @property
     def workers(self) -> list[Worker]:
-        """The workers associated with the Runtime by calls to start()"""
+        """The workers associated with the Runtime by calls to start()."""
         return self._workers.copy()
 
     @property
     def fifos(self) -> list[ObjectFifoHandle]:
-        """The ObjectFifoHandles associated with the Runtime by calls to fill() and drain()"""
+        """The ObjectFifoHandles associated with the Runtime by calls to fill() and drain()."""
         return list(self._fifos)
 
     def resolve(

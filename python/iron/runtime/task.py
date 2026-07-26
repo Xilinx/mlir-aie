@@ -44,7 +44,7 @@ class FinishTaskGroupTask(RuntimeTask):
 
 
 class RuntimeStartTask(RuntimeTask):
-    """A StartTask is a placeholder to indicated that a Worker should be started"""
+    """A StartTask is a placeholder to indicated that a Worker should be started."""
 
     def __init__(self, worker: Worker, task_group: RuntimeTaskGroup | None = None):
         self._worker = worker
@@ -52,13 +52,14 @@ class RuntimeStartTask(RuntimeTask):
 
     @property
     def worker(self) -> Worker:
-        """The worker associated with this RuntimeStartTask"""
+        """The worker associated with this RuntimeStartTask."""
         return self._worker
 
 
 class InlineOpRuntimeTask(RuntimeTask):
     """An InlineOpRuntimeTask is a way of submitting arbitrary operations to a runtime that are defined
-    in a lower-level style of IRON. This can be especially useful for tracing."""
+    in a lower-level style of IRON. This can be especially useful for tracing.
+    """
 
     def __init__(
         self, fn: Callable, args: list, task_group: RuntimeTaskGroup | None = None

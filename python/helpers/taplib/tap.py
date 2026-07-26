@@ -17,8 +17,7 @@ from .utils import (
 
 
 class TensorAccessPattern:
-    """
-    A TensorAccessPattern represents a data access pattern applied to a tensor
+    """A TensorAccessPattern represents a data access pattern applied to a tensor
     of a specific dimension. This is a base class meant to generically represent
     such as transformation using sizes, strides, and an offset.
     """
@@ -32,8 +31,7 @@ class TensorAccessPattern:
         sizes: Sequence[int],
         strides: Sequence[int],
     ):
-        """
-        An object representing an access pattern applied to a tensor.
+        """An object representing an access pattern applied to a tensor.
 
         Args:
             tensor_dims (Sequence[int]): Dimensions of the tensor
@@ -52,8 +50,7 @@ class TensorAccessPattern:
 
     @property
     def tensor_dims(self) -> Sequence[int]:
-        """
-        A copy of the dimensions of the tensor
+        """A copy of the dimensions of the tensor.
 
         Returns:
             Sequence[int]: Tensor dimensions
@@ -63,8 +60,7 @@ class TensorAccessPattern:
 
     @property
     def offset(self) -> int:
-        """
-        Returns the offset into the tensor
+        """Returns the offset into the tensor.
 
         Returns:
             int: offset
@@ -73,8 +69,7 @@ class TensorAccessPattern:
 
     @property
     def sizes(self) -> Sequence[int]:
-        """
-        A copy of the access pattern sizes
+        """A copy of the access pattern sizes.
 
         Returns:
             Sequence[int]: Transformation sizes
@@ -84,8 +79,7 @@ class TensorAccessPattern:
 
     @property
     def strides(self) -> Sequence[int]:
-        """
-        A copy of the access pattern strides
+        """A copy of the access pattern strides.
 
         Returns:
             Sequence[int]: Trsnformation strides
@@ -95,8 +89,7 @@ class TensorAccessPattern:
 
     @property
     def transformation_dims(self) -> Sequence[tuple[int, int]]:
-        """
-        The access pattern represented as a sequence of (size, stride) tuples
+        """The access pattern represented as a sequence of (size, stride) tuples.
 
         Returns:
             Sequence[tuple[int, int]]: Transformation dimensions
@@ -104,8 +97,7 @@ class TensorAccessPattern:
         return list(zip(self._sizes, self._strides))
 
     def accesses(self) -> tuple[np.ndarray, np.ndarray]:
-        """
-        Returns the access_order and access_count arrays.
+        """Returns the access_order and access_count arrays.
 
         The access_order ndarray sequentially counts access to elements in the
         tensor. If an element is accessed more than once, only the last count is reflected.
@@ -119,8 +111,7 @@ class TensorAccessPattern:
         return self._calculate_accesses(calc_order=True, calc_count=True)
 
     def access_order(self) -> np.ndarray:
-        """
-        The access_order ndarray sequentially counts access to elements in the
+        """The access_order ndarray sequentially counts access to elements in the
         tensor. If an element is accessed more than once, only the last count is reflected.
 
         Returns:
@@ -132,8 +123,7 @@ class TensorAccessPattern:
         return access_order_tensor
 
     def access_count(self) -> np.ndarray:
-        """
-        The access_count ndarray contains the number of times each element is
+        """The access_count ndarray contains the number of times each element is
         accessed by the tensor access pattern.
 
         Returns:
@@ -196,8 +186,7 @@ class TensorAccessPattern:
             ) % total_elems
 
     def compare_access_orders(self, other: TensorAccessPattern) -> bool:
-        """
-        This function creates an alternative way to compare access patterns.
+        """This function creates an alternative way to compare access patterns.
         Sometimes access patterns with different sizes/strides are functionally equivalent;
         to detect functional equivalency, this function uses iterators produced by
         access_generator() to compare the access patterns. This is more performant than

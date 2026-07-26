@@ -59,7 +59,7 @@ def count_mismatches(
     atol: float | None = None,
     stop_at_nonfinite: bool = True,
 ) -> tuple[int, int]:
-    """Count tolerance violations between ``actual`` and ``ref``.
+    r"""Count tolerance violations between ``actual`` and ``ref``.
 
     Returns ``(errors, n_checked)`` where ``n_checked`` is the number of
     samples that were actually compared (less than ``len(ref)`` when

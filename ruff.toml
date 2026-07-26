@@ -72,7 +72,23 @@ extend-exclude = [
 #     getattr (regdb.py/parse.py) because pyright can't see attributes on the
 #     compiled bindings module -- renaming those to lowercase would make
 #     `isinstance(x, device_op)`-style checks read as instance access.
-select = ["E", "F", "I", "N802", "N816"]
+# D: pydocstyle, convention="google" below -- matches this codebase's existing
+# Args:/Returns:/Raises: docstring format (name (type): description). D100-
+# D107 (missing-docstring-at-all, on modules/classes/functions/methods/
+# __init__/magic methods) are dropped: requiring a docstring to EXIST
+# everywhere is a separate, much larger policy decision than enforcing the
+# STYLE of docstrings that already exist, and this codebase has plenty of
+# intentionally-undocumented private/trivial helpers. D401 (imperative mood,
+# e.g. "Returns X" -> "Return X") is kept -- verified low false-positive rate
+# here even on __init__/class docstrings, but must be listed explicitly: the
+# "google" convention excludes it by default even though "D" is selected.
+# Scoped to python/ only (see per-file-ignores below) -- not yet extended to
+# programming_examples/.
+select = ["E", "F", "I", "N802", "N816", "D", "D401"]
+ignore = ["D100", "D101", "D102", "D103", "D104", "D105", "D106", "D107"]
+
+[lint.pydocstyle]
+convention = "google"
 
 [lint.per-file-ignores]
 # Markdown-formatted module docstring (headers, tables, code fences); wrapping
@@ -83,3 +99,6 @@ select = ["E", "F", "I", "N802", "N816"]
 # network spec 1:1 -- same rationale as the N803/N806 drop above, just at
 # module scope instead of function/argument scope.
 "programming_examples/ml/mobilenet/**/*.py" = ["N816"]
+# D (docstring style) is enforced in python/ only for now, not in the example
+# scripts -- see the "D" comment above.
+"programming_examples/**/*.py" = ["D"]

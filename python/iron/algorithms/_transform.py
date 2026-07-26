@@ -30,8 +30,7 @@ def _check_num_channels(num_channels: int) -> None:
 
 
 def _transform_gen(func, inputs: list, output, *params, tile_size=16, trace_size=0):
-    """
-    General tiled transform to apply a function on inputs and obtain a single output.
+    """General tiled transform to apply a function on inputs and obtain a single output.
     Assumes all input and output shapes are the same.
 
     Args:
@@ -213,8 +212,7 @@ def _transform_parallel_gen(
     num_channels=1,
     pass_size_to_kernel=True,
 ):
-    """
-    General parallel transform to apply a function on inputs and obtain a single output.
+    """General parallel transform to apply a function on inputs and obtain a single output.
     Distributes work across multiple AIE tiles for parallel execution.
 
     With ``num_channels=2`` (and no extra ``*params``), the design also drives

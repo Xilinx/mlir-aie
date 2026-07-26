@@ -51,7 +51,8 @@ def create_ctrl_pkt(
 
 def get_kernel_code(test: dict, solutions_path: Optional[str] = None) -> Optional[str]:
     """Fetch the kernel code from the provided solution path, if none provided default
-    to canonical solution."""
+    to canonical solution.
+    """
     if not solutions_path:
         return test["prompt"] + test["canonical_solution"]
 

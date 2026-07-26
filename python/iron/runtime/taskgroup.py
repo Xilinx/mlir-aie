@@ -10,7 +10,7 @@ class RuntimeTaskGroup:
     """A RuntimeTaskGroup is a structured tag to indicate groupings of RuntimeTasks."""
 
     def __init__(self, id: int):
-        """Construct a RuntimeTaskGroup
+        """Construct a RuntimeTaskGroup.
 
         Args:
             id (int): The id of the task group. The id should be unique to tasks groups within a Runtime.

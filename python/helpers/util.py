@@ -25,8 +25,7 @@ from ..ir import (  # pyright: ignore[reportMissingImports]
 
 # Custom types
 class v8bfp16ebs8(np.generic):
-    """
-    Custom type to be used in IRON that is translated to a generic blockFloatType.
+    """Custom type to be used in IRON that is translated to a generic blockFloatType.
     Represents a vector of 8 scalar elements that share exponent with a total
     bitwidth of 16 bits for each element (8 bits for the exponent and 8 bits for the mantissa).
     """
@@ -37,8 +36,7 @@ class v8bfp16ebs8(np.generic):
 
 
 class v16bfp16ebs16(np.generic):
-    """
-    Custom type to be used in IRON that is translated to a generic blockFloatType
+    """Custom type to be used in IRON that is translated to a generic blockFloatType
     Represents a vector of 16 scalar elements that share exponent with a total
     bitwidth of 16 bits for each element (8 bits for the exponent and 8 bits for the mantissa).
     """
@@ -227,7 +225,7 @@ _E = TypeVar("_E")
 
 
 def single_elem_or_list_to_list(val: "list[_E] | _E") -> "list[_E]":
-    """does not work for list of lists but still useful"""
+    """Does not work for list of lists but still useful."""
     if not isinstance(val, list):
         return [val]
     return val
@@ -263,7 +261,8 @@ def fold_constant_operand(operand):
     Returns the int, or None if the operand is not an arith.constant (e.g. a
     block argument or a runtime-sequence value); callers decide whether that is
     an error in their context. This is the Python analog of the AIEX dialect's
-    getConstantIntOperand."""
+    getConstantIntOperand.
+    """
     defining = operand.owner
     if defining is None:
         return None

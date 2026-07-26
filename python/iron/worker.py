@@ -50,7 +50,7 @@ class Worker(ObjectFifoEndpoint):
         trace_events: list | None = None,
         dynamic_objfifo_lowering: bool | None = None,
     ):
-        """Construct a Worker
+        """Construct a Worker.
 
         Args:
             core_fn (Callable | None): The task to run on a core. If None, a busy-loop (`while(true): pass`) core will be generated.
@@ -268,8 +268,7 @@ class WorkerRuntimeBarrier:
         self.worker_locks = []
 
     def wait_for_value(self, value: int):
-        """
-        Should be called from inside a core function.
+        """Should be called from inside a core function.
         Wait for the barrier to be set to `value`.
 
         Args:
@@ -294,8 +293,7 @@ class WorkerRuntimeBarrier:
             set_lock_value(worker_lock, value)
 
     def release_with_value(self, value: int):
-        """
-        Release and decrement the barrier by `value` inside the core.
+        """Release and decrement the barrier by `value` inside the core.
 
         Args:
             value (int): The value to decrement by in Release.

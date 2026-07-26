@@ -23,7 +23,8 @@ logger = logging.getLogger(__name__)
 
 def _is_contiguous_row_major(mr):
     """True iff ``mr`` is fully-static row-major contiguous at offset 0;
-    required before ``memref.collapse_shape`` (UB on non-contiguous dims)."""
+    required before ``memref.collapse_shape`` (UB on non-contiguous dims).
+    """
     if any(d < 0 for d in mr.shape):
         return False
     try:
@@ -48,7 +49,8 @@ def _maybe_collapse_to_match(arg, expected_ty):
     flat 1-D args; without this adapter MLIR rejects the call even though
     bytes line up. Aliases storage — no copy emitted. Returns ``arg``
     unchanged for any case that isn't safely collapsible, so real bugs
-    still surface in MLIR verification."""
+    still surface in MLIR verification.
+    """
     if not isinstance(arg, ir.Value):
         return arg
     arg_ty = arg.type
@@ -91,10 +93,9 @@ class BaseKernel(Resolvable):
         name: str,
         arg_types: list[type[np.ndarray] | np.dtype] | None = None,
     ):
-        """
-        Args:
-            name: Symbol name of the function.
-            arg_types: Type signature of the function arguments.  Defaults to None (empty list).
+        """Args:
+        name: Symbol name of the function.
+        arg_types: Type signature of the function arguments.  Defaults to None (empty list).
         """
         if not name:
             raise ValueError("Kernel name cannot be empty.")
@@ -234,13 +235,12 @@ class Kernel(BaseKernel):
         object_file_name: str,
         arg_types: list[type[np.ndarray] | np.dtype] | None = None,
     ) -> None:
-        """
-        Args:
-            name: Symbol name of the function as it appears in the object file.
-            object_file_name: Filename of the pre-compiled object file
-                (e.g. ``"add_one.o"``).  Must be on the linker search path
-                at compile time.
-            arg_types: Type signature of the function arguments.  Defaults to None (empty list).
+        """Args:
+        name: Symbol name of the function as it appears in the object file.
+        object_file_name: Filename of the pre-compiled object file
+            (e.g. ``"add_one.o"``).  Must be on the linker search path
+            at compile time.
+        arg_types: Type signature of the function arguments.  Defaults to None (empty list).
         """
         super().__init__(name, arg_types)
         self._object_file_name = object_file_name
@@ -298,34 +298,33 @@ class ExternalFunction(Kernel):
         symbol_prefix: str | None = None,
         use_chess: bool = False,
     ) -> None:
-        """
-        Args:
-            name: Symbol name of the function as it will appear in the object
-                file.
-            object_file_name: Output object file name.  Defaults to
-                ``<effective_name>.o``.
-            source_file: Path to a C/C++ source file on disk.  Mutually
-                exclusive with ``source_string``.
-            source_string: Inline C/C++ source code.  Mutually exclusive with
-                ``source_file``.
-            arg_types: Type signature of the function arguments.  Defaults to
-                None (empty list).
-            include_dirs: Additional ``-I`` directories passed to the chosen
-                compiler (Peano by default; xchesscc when ``use_chess=True``).
-                Defaults to None (empty list).
-            compile_flags: Additional flags passed verbatim to the chosen
-                compiler.  Defaults to None (empty list).
-            symbol_prefix: Optional prefix for the exported symbol name.  When
-                set, the effective symbol name becomes ``<symbol_prefix>_<name>``
-                and the object file is named accordingly.  The original name is
-                preserved in ``_original_name`` for source file naming.
-            use_chess: When ``True``, this ExternalFunction's source is
-                compiled with ``xchesscc_wrapper`` instead of Peano's
-                ``clang++``.  The JIT compile orchestration auto-detects the
-                design-level toolchain from the registered EFs and switches
-                aiecc's front-end accordingly; mixing chess + peano EFs in
-                one design is rejected loudly because aiecc only invokes one
-                front-end per compile.
+        """Args:
+        name: Symbol name of the function as it will appear in the object
+            file.
+        object_file_name: Output object file name.  Defaults to
+            ``<effective_name>.o``.
+        source_file: Path to a C/C++ source file on disk.  Mutually
+            exclusive with ``source_string``.
+        source_string: Inline C/C++ source code.  Mutually exclusive with
+            ``source_file``.
+        arg_types: Type signature of the function arguments.  Defaults to
+            None (empty list).
+        include_dirs: Additional ``-I`` directories passed to the chosen
+            compiler (Peano by default; xchesscc when ``use_chess=True``).
+            Defaults to None (empty list).
+        compile_flags: Additional flags passed verbatim to the chosen
+            compiler.  Defaults to None (empty list).
+        symbol_prefix: Optional prefix for the exported symbol name.  When
+            set, the effective symbol name becomes ``<symbol_prefix>_<name>``
+            and the object file is named accordingly.  The original name is
+            preserved in ``_original_name`` for source file naming.
+        use_chess: When ``True``, this ExternalFunction's source is
+            compiled with ``xchesscc_wrapper`` instead of Peano's
+            ``clang++``.  The JIT compile orchestration auto-detects the
+            design-level toolchain from the registered EFs and switches
+            aiecc's front-end accordingly; mixing chess + peano EFs in
+            one design is rejected loudly because aiecc only invokes one
+            front-end per compile.
         """
         self._original_name = name
         self._symbol_prefix = symbol_prefix

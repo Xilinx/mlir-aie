@@ -14,7 +14,8 @@ Almost every basic/ design's ``main()`` is the same skeleton:
             print(design.specialize(**_compile_kwargs(opts)).as_mlir()); return
         if opts.xclbin_path:
             _compile_only(opts)
-            return
+
+Return:
         _run_and_verify(opts)
 
 …where ``_compile_only`` always does the same ``--insts-path`` check +

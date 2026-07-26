@@ -1,8 +1,7 @@
 # Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-"""
-Trace utilities
+"""Trace utilities.
 
 These utilities configure AIE hardware tracing and parse the resulting trace
 data. Tracing is expressed declaratively: you describe *what* to trace with

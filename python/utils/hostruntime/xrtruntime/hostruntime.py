@@ -1,9 +1,7 @@
 # Copyright (C) 2025-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-"""
-XRT-based implementation of the HostRuntime
-"""
+"""XRT-based implementation of the HostRuntime."""
 
 import atexit
 import gc
@@ -32,9 +30,7 @@ logger = logging.getLogger(__name__)
 
 # XRTKernelHandle(kernel, xclbin, context, insts_path)
 class XRTKernelHandle(KernelHandle):
-    """
-    Handle for a loaded XRT kernel.
-    """
+    """Handle for a loaded XRT kernel."""
 
     def __init__(
         self,
@@ -46,8 +42,7 @@ class XRTKernelHandle(KernelHandle):
         name=None,
         is_full_elf=False,
     ):
-        """
-        Initialize the XRTKernelHandle.
+        """Initialize the XRTKernelHandle.
 
         Args:
             kernel: The XRT kernel object.
@@ -73,7 +68,7 @@ class XRTKernelHandle(KernelHandle):
 
 
 class XRTKernelResult(KernelResult):
-    """A wrapper around data produced as the result of running a kernel with the PyXRT runtime"""
+    """A wrapper around data produced as the result of running a kernel with the PyXRT runtime."""
 
     def __init__(
         self,
@@ -101,9 +96,7 @@ class XRTHostRuntime(HostRuntime):
     _tensor_class = XRTTensor
 
     def __init__(self):
-        """
-        Initialize the XRTHostRuntime.
-        """
+        """Initialize the XRTHostRuntime."""
         # Retry logic for device acquisition to handle transient failures
         max_retries = 5
         for attempt in range(max_retries):
@@ -164,8 +157,7 @@ class XRTHostRuntime(HostRuntime):
 
     @classmethod
     def read_insts(cls, insts_path: Path):
-        """
-        Reads instructions from the given file, with XRT-specific handling for ELF files.
+        """Reads instructions from the given file, with XRT-specific handling for ELF files.
 
         Args:
             insts_path (Path): Path to the instruction file.
@@ -186,8 +178,7 @@ class XRTHostRuntime(HostRuntime):
         npu_kernel,
         **kwargs,
     ) -> XRTKernelHandle:
-        """
-        Load an NPU kernel into the XRT runtime.
+        """Load an NPU kernel into the XRT runtime.
 
         Args:
             npu_kernel: The NPU kernel to load.
@@ -279,8 +270,7 @@ class XRTHostRuntime(HostRuntime):
         only_if_loaded: bool = False,
         **kwargs,
     ) -> XRTKernelResult:
-        """
-        Run a loaded XRT kernel.
+        """Run a loaded XRT kernel.
 
         Args:
             kernel_handle (XRTKernelHandle): The handle to the loaded kernel.
@@ -400,8 +390,7 @@ class XRTHostRuntime(HostRuntime):
         return XRTKernelResult(r, stop - start)
 
     def device(self) -> "Device":
-        """
-        Get the device associated with this runtime.
+        """Get the device associated with this runtime.
 
         Returns:
             Device: The device object (NPU1 or NPU2).
@@ -425,9 +414,7 @@ class XRTHostRuntime(HostRuntime):
 
 
 class CachedXRTKernelHandle(XRTKernelHandle):
-    """
-    A cached handle for a loaded XRT kernel.
-    """
+    """A cached handle for a loaded XRT kernel."""
 
     def __init__(
         self,
@@ -439,8 +426,7 @@ class CachedXRTKernelHandle(XRTKernelHandle):
         name=None,
         is_full_elf=False,
     ):
-        """
-        Initialize the CachedXRTKernelHandle.
+        """Initialize the CachedXRTKernelHandle.
 
         Args:
             kernel: The XRT kernel object.
@@ -458,9 +444,7 @@ class CachedXRTKernelHandle(XRTKernelHandle):
         self._is_valid = True
 
     def invalidate(self):
-        """
-        Invalidate the handle and release resources in dependency order.
-        """
+        """Invalidate the handle and release resources in dependency order."""
         self._is_valid = False
         # Instruction BOs and kernels depend on the hardware context. Those must
         # be released before dropping the handle's context reference.
@@ -477,8 +461,7 @@ class CachedXRTKernelHandle(XRTKernelHandle):
 
 
 class CachedXRTRuntime(XRTHostRuntime):
-    """
-    A cached version of XRTHostRuntime that caches up to n contexts,
+    """A cached version of XRTHostRuntime that caches up to n contexts,
     depending on the type of NPU.
     It reuses contexts for the same xclbin (identified by path and mtime).
     """
@@ -497,9 +480,7 @@ class CachedXRTRuntime(XRTHostRuntime):
     }
 
     def __init__(self):
-        """
-        Initialize the CachedXRTRuntime.
-        """
+        """Initialize the CachedXRTRuntime."""
         super().__init__()
         # We use OrderedDict so that we can use Fifo behavior for LRU eviction policies
         self._context_cache = OrderedDict()
@@ -530,9 +511,7 @@ class CachedXRTRuntime(XRTHostRuntime):
         atexit.register(self.cleanup)
 
     def cleanup(self):
-        """
-        Clean up cached XRT resources in dependency order.
-        """
+        """Clean up cached XRT resources in dependency order."""
         while self._insts_cache:
             self._evict_insts()
         while self._context_cache:
@@ -542,7 +521,8 @@ class CachedXRTRuntime(XRTHostRuntime):
 
     def evict_context(self, xclbin_path: Path) -> None:
         """Evict a stale cached hw_context (after an IOCTL EINVAL) so the next
-        load rebuilds a fresh one keyed by the same xclbin."""
+        load rebuilds a fresh one keyed by the same xclbin.
+        """
         try:
             resolved = str(Path(xclbin_path).resolve())
             mtime = Path(xclbin_path).stat().st_mtime
@@ -631,8 +611,7 @@ class CachedXRTRuntime(XRTHostRuntime):
         only_if_loaded: bool = False,
         **kwargs,
     ) -> XRTKernelResult:
-        """
-        Run a loaded XRT kernel.
+        """Run a loaded XRT kernel.
 
         Args:
             kernel_handle (XRTKernelHandle): The handle to the loaded kernel.
@@ -692,7 +671,8 @@ class CachedXRTRuntime(XRTHostRuntime):
         """Drain the full context + insts caches.  Mirrors the
         partial-eviction workaround at the top of ``load()`` — see comment
         on ``NPU_CONTEXT_CACHE_SIZE`` for why a single-entry evict isn't
-        enough on Phoenix."""
+        enough on Phoenix.
+        """
         while self._context_cache:
             self._evict()
         while self._insts_cache:
@@ -787,8 +767,7 @@ class CachedXRTRuntime(XRTHostRuntime):
         retry: bool = True,
         **kwargs,
     ) -> XRTKernelHandle:
-        """
-        Load an NPU kernel into the cached XRT runtime.
+        """Load an NPU kernel into the cached XRT runtime.
 
         Args:
             npu_kernel: The NPU kernel to load.

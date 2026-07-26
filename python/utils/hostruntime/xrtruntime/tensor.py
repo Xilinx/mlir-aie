@@ -12,8 +12,7 @@ from ..tensor_class import Tensor
 
 
 class XRTTensor(Tensor):
-    """
-    Tensor object backed by memory accessble from the 'npu' and 'cpu' devices, managed using PyXRT.
+    """Tensor object backed by memory accessble from the 'npu' and 'cpu' devices, managed using PyXRT.
 
     The class provides common tensor operations such as creation,
     filling with values, and accessing data.
@@ -29,8 +28,7 @@ class XRTTensor(Tensor):
         group_id=0,
         xrt_device=None,
     ):
-        """
-        Initialize the XRTTensor.
+        """Initialize the XRTTensor.
 
         Args:
             shape_or_data (tuple or array-like):
@@ -90,8 +88,7 @@ class XRTTensor(Tensor):
 
     @property
     def data(self):
-        """
-        Get the underlying numpy array.
+        """Get the underlying numpy array.
 
         Returns:
             np.ndarray: The underlying data.
@@ -100,8 +97,7 @@ class XRTTensor(Tensor):
 
     @property
     def shape(self):
-        """
-        Get the shape of the tensor.
+        """Get the shape of the tensor.
 
         Returns:
             tuple: The shape of the tensor.
@@ -109,22 +105,17 @@ class XRTTensor(Tensor):
         return self._shape
 
     def _sync_to_device(self):
-        """
-        Syncs the tensor data from the host to the device memory.
-        """
+        """Syncs the tensor data from the host to the device memory."""
         assert self._bo is not None
         return self._bo.sync(xrt.xclBOSyncDirection.XCL_BO_SYNC_BO_TO_DEVICE)
 
     def _sync_from_device(self):
-        """
-        Syncs the tensor data from the device to the host memory.
-        """
+        """Syncs the tensor data from the device to the host memory."""
         assert self._bo is not None
         return self._bo.sync(xrt.xclBOSyncDirection.XCL_BO_SYNC_BO_FROM_DEVICE)
 
     def __del__(self):
-        """
-        Destructor for Tensor.
+        """Destructor for Tensor.
 
         Releases associated device memory (e.g., XRT buffer object).
         """
@@ -133,8 +124,7 @@ class XRTTensor(Tensor):
             self._bo = None
 
     def buffer_object(self):
-        """
-        Returns the XRT buffer object associated with this tensor.
+        """Returns the XRT buffer object associated with this tensor.
 
         Returns:
             buffer_object: The XRT buffer object associated with this tensor.

@@ -144,7 +144,8 @@ class TileDma(Resolvable):
 
     def all_buffers_and_locks(self):
         """Iterate every Buffer + Lock this program touches — Program uses
-        this to make sure they're all resolved before us."""
+        this to make sure they're all resolved before us.
+        """
         seen_buffers: list[Buffer] = []
         seen_locks: list[Lock] = []
         for ch in self._channels:

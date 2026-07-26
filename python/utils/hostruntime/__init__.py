@@ -19,8 +19,7 @@ _CURRENT_DEVICE = None
 
 
 def set_current_device(device: "Device"):
-    """
-    Set the current device.
+    """Set the current device.
 
     Args:
         device (Device): The device to set as current.
@@ -30,8 +29,7 @@ def set_current_device(device: "Device"):
 
 
 def bfloat16_safe_allclose(dtype, arr1, arr2):
-    """
-    Check if two arrays are element-wise equal within a tolerance, handling bfloat16 safely.
+    """Check if two arrays are element-wise equal within a tolerance, handling bfloat16 safely.
 
     Args:
         dtype: The data type of the arrays.
