@@ -229,6 +229,82 @@ class _CoherenceMap:
         return merged
 
 
+class NpuBuffer(ABC):
+    """One allocation, and the coherence of the memory in it.
+
+    A buffer owns bytes and knows how to reconcile them between host and device.
+    It has no shape and no dtype: those are interpretations, and they belong to
+    the :class:`NpuTensor` views layered over it. Many tensors may share one
+    buffer, which is why the coherence state lives here -- it describes the
+    memory, so storing it per tensor would let two names for the same bytes
+    disagree.
+
+    Compare :class:`torch.Storage`, which draws the same line for the same
+    reason, and is where ``storage_offset`` comes from.
+    """
+
+    def __init__(self, nbytes, device):
+        self.nbytes = nbytes
+        self.coherence = _CoherenceMap(nbytes, device)
+
+    @abstractmethod
+    def sync_to_device(self, offset, nbytes):
+        """Make the host's writes to ``[offset, offset+nbytes)`` visible to the device."""
+
+    @abstractmethod
+    def sync_from_device(self, offset, nbytes):
+        """Make the device's writes to ``[offset, offset+nbytes)`` visible to the host."""
+
+    def binding_handle(self, offset, nbytes):
+        """A handle a runtime can bind for this region, if the backend has one."""
+        return None
+
+
+class _TensorBackedBuffer(NpuBuffer):
+    """Compatibility buffer for a backend that still owns its own storage.
+
+    Delegates reconciliation to the tensor's transfer methods, whole-extent,
+    which is what those backends did before buffers existed. It lets a backend
+    adopt the split when it is ready rather than being restructured by this
+    change, without opting out of per-region coherence.
+    """
+
+    def __init__(self, tensor):
+        super().__init__(tensor.nbytes, tensor._initial_device)
+        self._tensor = tensor
+
+    def sync_to_device(self, offset, nbytes):
+        self._tensor._sync_to_device()
+
+    def sync_from_device(self, offset, nbytes):
+        self._tensor._sync_from_device()
+
+    def binding_handle(self, offset, nbytes):
+        return getattr(self._tensor, "_bo", None)
+
+    @property
+    def host_bytes(self):
+        return self._tensor._data.reshape(-1).view(np.uint8)
+
+
+class CPUBuffer(NpuBuffer):
+    """A host allocation. Reconciliation is a no-op: there is only one agent."""
+
+    def __init__(self, nbytes, device):
+        super().__init__(nbytes, device)
+        self._host = np.zeros(nbytes, dtype=np.uint8)
+
+    @property
+    def host_bytes(self):
+        return self._host
+
+    def sync_to_device(self, offset, nbytes):
+        pass
+
+    def sync_from_device(self, offset, nbytes):
+        pass
+
+
 class NpuTensor(ABC):
     """
     A host-mapped, device-resident buffer of fixed shape and dtype.
@@ -291,13 +367,21 @@ class NpuTensor(ABC):
         """The buffer that owns the storage (this one, if it owns it)."""
         return self.base or self
 
-    def _coherence(self):
-        owner = self._owner
-        existing = owner.__dict__.get("_coherence_map")
+    @property
+    def buffer(self) -> "NpuBuffer":
+        """The allocation this tensor is a view of.
+
+        Backends that own their storage directly are wrapped on first use, so
+        every tensor has one whether or not its backend has adopted the split.
+        """
+        existing = self.__dict__.get("_buffer")
         if existing is None:
-            existing = _CoherenceMap(owner.nbytes, owner._initial_device)
-            owner.__dict__["_coherence_map"] = existing
+            existing = _TensorBackedBuffer(self)
+            self.__dict__["_buffer"] = existing
         return existing
+
+    def _coherence(self):
+        return self.buffer.coherence
 
     @property
     def _extent(self):
@@ -1090,6 +1174,13 @@ class CPUOnlyTensor(NpuTensor):
         else:
             self._data = np.zeros(shape_or_data, dtype=dtype)
         self._shape = self._data.shape
+        # Re-home the bytes in a buffer so views share one allocation and one
+        # coherence map, then keep a typed view of the whole of it.
+        source = self._data
+        self._buffer = CPUBuffer(source.nbytes, self._initial_device)
+        self._offset_bytes = 0
+        self._data = self._buffer.host_bytes.view(source.dtype).reshape(self._shape)
+        np.copyto(self._data, source)
 
     @property
     def data(self):
@@ -1138,11 +1229,14 @@ class CPUOnlyTensor(NpuTensor):
         NpuTensor.__init__(view, shape, dtype=dtype, device=self.device)
         view._storage = self  # keep parent alive; shared storage
         view._shape = tuple(shape)
-        view._offset_bytes = self.storage_offset + offset_bytes
+        view._buffer = self._buffer
+        absolute = self.storage_offset + offset_bytes
+        view._offset_bytes = absolute
         # A numpy view over the same bytes (zero-copy) so writes are shared.
-        flat = self._data.reshape(-1).view(np.uint8)
         view._data = (
-            flat[offset_bytes : offset_bytes + nbytes].view(dtype).reshape(view._shape)
+            self._buffer.host_bytes[absolute : absolute + nbytes]
+            .view(dtype)
+            .reshape(view._shape)
         )
         return view
 

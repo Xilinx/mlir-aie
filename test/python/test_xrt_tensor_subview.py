@@ -40,13 +40,19 @@ class FakeBo:
     def map(self):
         return memoryview(self.storage)[self.offset : self.offset + self.size]
 
+    def sync(self, direction):
+        pass
+
 
 @pytest.fixture
 def fake_xrt(monkeypatch):
     """Record every sub-buffer derivation instead of allocating one."""
     calls = []
 
-    def fake_bo(parent, size, offset):
+    def fake_bo(*args):
+        if len(args) == 4:  # allocation: (device, nbytes, flags, group_id)
+            return FakeBo(bytearray(args[1]), args[1], 0)
+        parent, size, offset = args  # derivation from an existing allocation
         calls.append({"parent": parent, "size": size, "offset": offset})
         return FakeBo(parent.storage, size, offset, parent=parent)
 
@@ -61,8 +67,10 @@ def make_root(nbytes, dtype=np.uint8):
     NpuTensor.__init__(root, shape, dtype=dtype, device="npu")
     root.xrt_device = object()
     root._shape = shape
-    root._bo = FakeBo(bytearray(nbytes), nbytes, 0)
-    root._data = np.frombuffer(root._bo.map(), dtype=dtype).reshape(shape)
+    root._buffer = xrt_tensor_module.XRTBuffer(root.xrt_device, nbytes, None, 0, "npu")
+    root._offset_bytes = 0
+    root._bo = root._buffer.binding_handle(0, nbytes)
+    root._data = root._buffer.host_bytes.view(dtype).reshape(shape)
     return root
 
 
@@ -71,7 +79,7 @@ def test_subview_derives_from_the_parent_at_a_byte_offset(fake_xrt):
     view = root.subview(GRANULE, (GRANULE,))
 
     assert len(fake_xrt) == 1
-    assert fake_xrt[0]["parent"] is root._bo
+    assert fake_xrt[0]["parent"] is root._buffer._bo
     assert fake_xrt[0]["offset"] == GRANULE
     assert fake_xrt[0]["size"] == GRANULE
     assert view.storage_offset == GRANULE
@@ -92,7 +100,7 @@ def test_nested_subview_derives_from_the_root_at_an_accumulated_offset(fake_xrt)
     outer = root.subview(2 * GRANULE, (4 * GRANULE,))
     inner = outer.subview(GRANULE, (GRANULE,))
 
-    assert fake_xrt[-1]["parent"] is root._bo  # not outer._bo
+    assert fake_xrt[-1]["parent"] is root._buffer._bo  # not the intermediate view
     assert fake_xrt[-1]["offset"] == 3 * GRANULE  # 2 + 1 granules, from the root
     assert inner.storage_offset == 3 * GRANULE
     assert inner.base is root
@@ -104,7 +112,7 @@ def test_nested_subview_addresses_the_same_bytes_the_host_sees(fake_xrt):
     inner = root.subview(2 * GRANULE, (4 * GRANULE,)).subview(GRANULE, (GRANULE,))
 
     inner.data[:] = 0xC7
-    written = np.nonzero(np.frombuffer(root._bo.storage, dtype=np.uint8))[0]
+    written = np.nonzero(root._buffer.host_bytes)[0]
     assert written.min() == inner.storage_offset
     assert written.max() == inner.storage_offset + GRANULE - 1
 

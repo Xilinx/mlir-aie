@@ -4,13 +4,58 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 
-from typing import cast
-
 import numpy as np
 import pyxrt as xrt  # pyright: ignore[reportMissingImports]
 from aie.helpers.util import np_ndarray_type_get_shape
 
-from ..tensor_class import NpuTensor
+from ..tensor_class import NpuBuffer, NpuTensor
+
+
+class XRTBuffer(NpuBuffer):
+    """An XRT allocation, and the coherence of the memory in it.
+
+    Sub-buffer handles are derived from this allocation and cached, so a view
+    binds the same handle every dispatch and the whole chain stays alive for as
+    long as the buffer does.
+
+    Every handle is derived from the root rather than from another sub-buffer.
+    A sub-buffer of a sub-buffer does not compose: XRT takes the host pointer
+    from the parent, so it picks up the parent's offset, but the device address
+    from the underlying allocation, so it picks up only the innermost one.
+    Nesting that way leaves the host reading one region while the device writes
+    another.
+    """
+
+    def __init__(self, xrt_device, nbytes, flags, group_id, device):
+        super().__init__(nbytes, device)
+        self.xrt_device = xrt_device
+        self._bo = xrt.bo(xrt_device, nbytes, flags, group_id)
+        self._host = np.frombuffer(self._bo.map(), dtype=np.uint8)
+        self._handles = {}
+
+    @property
+    def host_bytes(self):
+        return self._host
+
+    def binding_handle(self, offset, nbytes):
+        if offset == 0 and nbytes == self.nbytes:
+            return self._bo
+        key = (offset, nbytes)
+        handle = self._handles.get(key)
+        if handle is None:
+            handle = xrt.bo(self._bo, nbytes, offset)
+            self._handles[key] = handle
+        return handle
+
+    def sync_to_device(self, offset, nbytes):
+        self.binding_handle(offset, nbytes).sync(
+            xrt.xclBOSyncDirection.XCL_BO_SYNC_BO_TO_DEVICE
+        )
+
+    def sync_from_device(self, offset, nbytes):
+        self.binding_handle(offset, nbytes).sync(
+            xrt.xclBOSyncDirection.XCL_BO_SYNC_BO_FROM_DEVICE
+        )
 
 
 class XRTTensor(NpuTensor):
@@ -71,15 +116,13 @@ class XRTTensor(NpuTensor):
 
         # Eventually, xrt:ext::bo uses the 0 magic number that shall be fixed in the future, so that is used as a default.
         # https://github.com/Xilinx/XRT/blob/9b114f18c4fcf4e3558291aa2d78f6d97c406365/src/runtime_src/core/common/api/xrt_bo.cpp#L1626
-        self._bo = xrt.bo(
-            self.xrt_device,
-            int(np.prod(self._shape) * np.dtype(self.dtype).itemsize),
-            flags,
-            group_id,
+        nbytes = int(np.prod(self._shape) * np.dtype(self.dtype).itemsize)
+        self._buffer = XRTBuffer(
+            self.xrt_device, nbytes, flags, group_id, self._initial_device
         )
-
-        ptr = self._bo.map()
-        self._data = np.frombuffer(ptr, dtype=self.dtype).reshape(self._shape)
+        self._offset_bytes = 0
+        self._bo = self._buffer.binding_handle(0, nbytes)
+        self._data = self._buffer.host_bytes.view(self.dtype).reshape(self._shape)
 
         if not isinstance(shape_or_data, tuple):
             assert np_data is not None
@@ -118,15 +161,15 @@ class XRTTensor(NpuTensor):
         """
         Syncs the tensor data from the host to the device memory.
         """
-        assert self._bo is not None
-        return self._bo.sync(xrt.xclBOSyncDirection.XCL_BO_SYNC_BO_TO_DEVICE)
+        start, end = self._extent
+        return self._buffer.sync_to_device(start, end - start)
 
     def _sync_from_device(self):
         """
         Syncs the tensor data from the device to the host memory.
         """
-        assert self._bo is not None
-        return self._bo.sync(xrt.xclBOSyncDirection.XCL_BO_SYNC_BO_FROM_DEVICE)
+        start, end = self._extent
+        return self._buffer.sync_from_device(start, end - start)
 
     def __del__(self):
         """
@@ -155,22 +198,16 @@ class XRTTensor(NpuTensor):
         view.xrt_device = self.xrt_device
         view._storage = self  # keep parent alive; shared storage
         view._shape = tuple(shape)
-        # Derive from the buffer that owns the storage, at the offset accumulated
-        # from the root, rather than from the immediate parent.
-        #
-        # A sub-buffer of a sub-buffer does not compose the way it appears to:
-        # the host pointer is taken from the parent and so picks up the parent's
-        # offset, but the device address is taken from the underlying allocation
-        # and picks up only the innermost offset. Nesting that way leaves the
-        # host reading one region while the device writes another, silently.
-        # Deriving every view from the root keeps the two in agreement, whatever
-        # depth the caller nests to.
-        # A view is always built as type(self), so the buffer that owns the
-        # storage is always this backend; the base class cannot say so.
-        root = cast("XRTTensor", self.base or self)
+        # Same allocation, further along: the buffer holds the bytes and their
+        # coherence, so a view carries nothing but where it starts and what the
+        # bytes mean there.
+        view._buffer = self._buffer
         absolute_offset = self.storage_offset + offset_bytes
         view._offset_bytes = absolute_offset
-        view._bo = xrt.bo(root._bo, nbytes, absolute_offset)
-        ptr = view._bo.map()
-        view._data = np.frombuffer(ptr, dtype=dtype).reshape(view._shape)
+        view._bo = self._buffer.binding_handle(absolute_offset, nbytes)
+        view._data = (
+            self._buffer.host_bytes[absolute_offset : absolute_offset + nbytes]
+            .view(dtype)
+            .reshape(view._shape)
+        )
         return view
