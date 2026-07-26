@@ -76,7 +76,7 @@ def _run_and_verify(opts):
     out_t = iron.zeros(tensor_size, dtype=np.int8, device="npu")
     third_t = iron.zeros(tensor_size, dtype=np.int8, device="npu")
 
-    vision_passthrough(in_t, third_t, out_t, **_compile_kwargs(opts))  # fmt: skip # pyright: ignore[reportArgumentType]
+    vision_passthrough(in_t, third_t, out_t, **_compile_kwargs(opts))
 
     assert_pass(out_t.numpy(), in_np, fail_msg="output does not match input")
 

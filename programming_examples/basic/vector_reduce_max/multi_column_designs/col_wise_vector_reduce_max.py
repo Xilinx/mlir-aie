@@ -229,9 +229,7 @@ def _run_and_verify(opts):
     in_t = iron.tensor(in_np, dtype=dtype, device="npu")
     out_t = iron.zeros(out_num_elements, dtype=dtype, device="npu")
 
-    vector_reduce_max(
-        in_t, out_t, **_compile_kwargs(opts)  # pyright: ignore[reportArgumentType]
-    )
+    vector_reduce_max(in_t, out_t, **_compile_kwargs(opts))
 
     expected_max = in_np.max()
     actual_max = out_t.numpy()[0]

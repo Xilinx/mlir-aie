@@ -225,10 +225,12 @@ def _design_for(opts):
     """
     if not opts.placer:
         return color_detect
-    flags = list(color_detect.compilable.aiecc_flags) + [f"--placer={opts.placer}"]  # fmt: skip # pyright: ignore[reportFunctionMemberAccess]
+    flags = list(color_detect.compilable.aiecc_flags) + [f"--placer={opts.placer}"]
     if opts.sa_seed is not None:
         flags.append(f"--sa-seed={opts.sa_seed}")
-    return iron.jit(aiecc_flags=flags)(color_detect.compilable.mlir_generator)  # fmt: skip # pyright: ignore[reportFunctionMemberAccess]
+    mlir_generator = color_detect.compilable.mlir_generator
+    assert callable(mlir_generator)
+    return iron.jit(aiecc_flags=flags)(mlir_generator)
 
 
 def _rgba2hue_ref(rgba_uint8):
@@ -303,7 +305,7 @@ def _run_and_verify(opts):
     b_t = iron.zeros(16 * 16, dtype=np.int32, device="npu")
     out_t = iron.zeros(tensor_size, dtype=np.int8, device="npu")
 
-    _design_for(opts)(in_t, b_t, out_t, **_compile_kwargs(opts))  # fmt: skip # pyright: ignore[reportArgumentType]
+    _design_for(opts)(in_t, b_t, out_t, **_compile_kwargs(opts))
 
     in_uint8 = in_np.view(np.uint8)
     expected_uint8 = _color_detect_ref(in_uint8)

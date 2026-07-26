@@ -117,9 +117,7 @@ def aot_compile(opts):
         # No --dev given: bind whatever device the runtime detects, so the
         # generator (which needs an active NPU device) can lower.
         iron.ensure_current_device()
-    spec = vector_scalar_add.specialize(  # pyright: ignore[reportAttributeAccessIssue]
-        **_compile_kwargs(opts)
-    )
+    spec = vector_scalar_add.specialize(**_compile_kwargs(opts))
     spec.compile(
         xclbin_path=xclbin_path,
         inst_path=inst_path,

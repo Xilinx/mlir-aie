@@ -327,7 +327,7 @@ def _run_and_verify(opts):
     b_t = iron.zeros(16 * 16, dtype=np.int32, device="npu")
     out_t = iron.zeros(tensor_size, dtype=np.int8, device="npu")
 
-    edge_detect(in_t, b_t, out_t, **_compile_kwargs(opts))  # fmt: skip # pyright: ignore[reportArgumentType]
+    edge_detect(in_t, b_t, out_t, **_compile_kwargs(opts))
 
     in_uint8 = in_np.view(np.uint8)
     expected_uint8 = _edge_detect_ref(in_uint8, opts.height, opts.width)

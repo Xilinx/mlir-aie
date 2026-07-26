@@ -165,11 +165,9 @@ def matrix_multiplication_single_core(
 
 def aot_compile(M: int, K: int, N: int, element_type) -> None:
     """Pre-compile the JIT design for one shape and print the artifact paths."""
-    xclbin, insts = (
-        matrix_multiplication_single_core.specialize(  # pyright: ignore[reportAttributeAccessIssue]
-            M=M, K=K, N=N, element_type=element_type
-        ).compile()
-    )
+    xclbin, insts = matrix_multiplication_single_core.specialize(
+        M=M, K=K, N=N, element_type=element_type
+    ).compile()
     print(f"  AOT compiled matmul {M}x{K}x{N} {np.dtype(element_type).name}")
     print(f"    xclbin: {xclbin}")
     print(f"    insts:  {insts}")

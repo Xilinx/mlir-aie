@@ -47,7 +47,7 @@ from __future__ import annotations
 
 import functools
 import inspect as _inspect
-from typing import Callable
+from typing import Callable, overload
 
 from aie.utils.callabledesign import CallableDesign as _CallableDesign
 from aie.utils.compile.jit.compilabledesign import config_param_names
@@ -59,7 +59,15 @@ from aie.utils.compile.jit.compilabledesign import config_param_names
 _JIT_CONFIG_KEYS = config_param_names(_CallableDesign)
 
 
-def jit(mlir_generator: Callable | None = None, **kwargs):
+@overload
+def jit(mlir_generator: Callable, **kwargs) -> _CallableDesign: ...
+@overload
+def jit(
+    mlir_generator: None = None, **kwargs
+) -> Callable[[Callable], _CallableDesign]: ...
+def jit(
+    mlir_generator: Callable | None = None, **kwargs
+) -> _CallableDesign | Callable[[Callable], _CallableDesign]:
     """Decorator for JIT compilation and NPU execution.
 
     Standard configuration kwargs (``use_cache``, ``source_files``,

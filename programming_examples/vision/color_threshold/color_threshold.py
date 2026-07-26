@@ -168,7 +168,7 @@ def _run_and_verify(opts):
     unused_t = iron.zeros(32, dtype=np.int32, device="npu")
     out_t = iron.zeros(tensor_size, dtype=np.int8, device="npu")
 
-    color_threshold(in_t, unused_t, out_t, **_compile_kwargs(opts))  # fmt: skip # pyright: ignore[reportArgumentType]
+    color_threshold(in_t, unused_t, out_t, **_compile_kwargs(opts))
 
     # The kernel sees uint8 bytes; reinterpret the int8 host buffer.
     in_uint8 = in_np.view(np.uint8)
