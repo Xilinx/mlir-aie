@@ -42,6 +42,19 @@ LitConfigHelper.setup_standard_environment(
 if "MLIR_AIE_INSTALL_DIR" in os.environ:
     llvm_config.with_system_environment("MLIR_AIE_INSTALL_DIR")
 
+# HRX discovery runs during lit configuration, but dispatch runs in test
+# subprocesses. Keep both in the same provisioned runtime environment.
+llvm_config.with_system_environment(
+    [
+        "AIE_XCLBINUTIL",
+        "CMAKE_PREFIX_PATH",
+        "HRX_DIR",
+        "HRX_LIBHRX",
+        "LIBHRX_DIR",
+        "LD_LIBRARY_PATH",
+    ]
+)
+
 # Basic substitutions
 config.substitutions.append(("%PYTHON", config.python_executable))
 config.substitutions.append(("%extraAieCcFlags%", config.extraAieCcFlags))
