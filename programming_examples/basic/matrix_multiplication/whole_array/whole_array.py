@@ -295,7 +295,7 @@ def _build_design(
         A,
         B,
         C,
-    ):  # pyright: ignore[reportGeneralTypeIssues]
+    ):
         rt.start(*[w for row in workers for w in row])
 
         tg = rt.task_group()

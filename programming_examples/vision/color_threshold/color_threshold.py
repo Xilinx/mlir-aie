@@ -119,7 +119,7 @@ def color_threshold(
     ]
 
     rt = Runtime()
-    with rt.sequence(tensor_ty, unused_ty, tensor_ty) as (i_in, _b, o_out):  # fmt: skip # pyright: ignore[reportGeneralTypeIssues]
+    with rt.sequence(tensor_ty, unused_ty, tensor_ty) as (i_in, _b, o_out):
 
         def set_rtps(*args):
             for rtp in args:

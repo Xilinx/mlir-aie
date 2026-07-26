@@ -186,7 +186,7 @@ def conv2dk14(
         inp,
         wts,
         outp,
-    ):  # pyright: ignore[reportGeneralTypeIssues]
+    ):
         rt.start(worker)
         rt.fill(of_act_l3l2.prod(), inp)
         rt.fill(of_wts_l3l2.prod(), wts)
@@ -350,7 +350,7 @@ def conv2dk14_multi(
         inp,
         wts,
         outp,
-    ):  # pyright: ignore[reportGeneralTypeIssues]
+    ):
         rt.start(*[w for row in workers for w in row])
         row_chunk = tensor_in_size // n_rows
         wts_chunk = tensor_wts_size // n_cols

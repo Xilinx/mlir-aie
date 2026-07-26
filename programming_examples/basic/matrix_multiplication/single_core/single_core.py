@@ -164,7 +164,7 @@ def single_core(
         a_rt,
         b_rt,
         c_rt,
-    ):  # pyright: ignore[reportGeneralTypeIssues]
+    ):
         if trace_config:
             rt.enable_trace(trace_config.trace_size, workers=[worker])
         rt.start(worker)

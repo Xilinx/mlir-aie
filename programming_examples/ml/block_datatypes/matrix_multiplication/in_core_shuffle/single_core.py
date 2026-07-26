@@ -90,7 +90,7 @@ def in_core_shuffle(
     C_ty = np.ndarray[(M * N // 8,), np.dtype[v8bfp16ebs8]]
 
     rt = Runtime()
-    with rt.sequence(A_ty, C_ty) as (a, c):  # pyright: ignore[reportGeneralTypeIssues]
+    with rt.sequence(A_ty, C_ty) as (a, c):
         rt.start(worker)
         rt.fill(inA.prod(), a)
         rt.drain(outC.cons(), c, wait=True)

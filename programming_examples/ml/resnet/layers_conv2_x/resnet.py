@@ -452,7 +452,7 @@ def resnet_conv2_x(
         inputFromL3,
         weightsFromL3,
         outputToL3,
-    ):  # pyright: ignore[reportGeneralTypeIssues]
+    ):
         rt.start(*workers)
 
         rt.fill(act1_fifos[0].prod(), inputFromL3, tile=Tile(0, 0))

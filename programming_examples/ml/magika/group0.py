@@ -163,7 +163,7 @@ def group0(
         A,
         C,
         _,
-    ):  # pyright: ignore[reportGeneralTypeIssues]
+    ):
         if trace_size > 0:
             rt.enable_trace(trace_size)
         rt.start(group0a_worker, group0b_worker)

@@ -184,7 +184,7 @@ def color_detect(
     )
 
     rt = Runtime()
-    with rt.sequence(tensor_ty, tensor_16x16_ty, tensor_ty) as (i_in, _b, o_out):  # fmt: skip # pyright: ignore[reportGeneralTypeIssues]
+    with rt.sequence(tensor_ty, tensor_16x16_ty, tensor_ty) as (i_in, _b, o_out):
         rt.start(worker2, worker3, worker4, worker5)
         rt.fill(in_of_l3l2.prod(), i_in)
         rt.drain(out_of_l2l3.cons(), o_out, wait=True)

@@ -118,7 +118,7 @@ def matrix_vector(
         a_in,
         b_in,
         c_out,
-    ):  # pyright: ignore[reportGeneralTypeIssues]
+    ):
         rt.start(*workers)
         rt.fill(B_fifo.prod(), b_in, b_tap)
         for i, (a_tap, c_tap) in enumerate(zip(A_taps, C_taps)):

@@ -178,7 +178,7 @@ def _chain_iron(mode, data_dir, scales_json):
             inp,
             all_wts,
             out,
-        ):  # pyright: ignore[reportGeneralTypeIssues]
+        ):
             rt.start(*workers)
             tg = rt.task_group()
             rt.fill(
@@ -209,7 +209,7 @@ def _chain_iron(mode, data_dir, scales_json):
         with rt.sequence(in_ty, out_ty) as (
             inp,
             out,
-        ):  # pyright: ignore[reportGeneralTypeIssues]
+        ):
             rt.start(*workers)
             tg = rt.task_group()
             rt.fill(

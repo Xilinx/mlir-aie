@@ -233,7 +233,7 @@ def per_block_iron(block_name, data_dir=None, scales_json=None):
             wl1,
             wl3,
             out,
-        ):  # pyright: ignore[reportGeneralTypeIssues]
+        ):
             rt.start(*workers)
             tg = rt.task_group()
             rt.fill(
@@ -266,7 +266,7 @@ def per_block_iron(block_name, data_dir=None, scales_json=None):
         with rt.sequence(in_ty, out_ty) as (
             inp,
             out,
-        ):  # pyright: ignore[reportGeneralTypeIssues]
+        ):
             rt.start(*workers)
             tg = rt.task_group()
             rt.fill(

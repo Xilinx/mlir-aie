@@ -310,7 +310,7 @@ def cascade(
         a_rt,
         b_rt,
         c_rt,
-    ):  # pyright: ignore[reportGeneralTypeIssues]
+    ):
         rt.start(*flat_workers)  # pyright: ignore[reportArgumentType]
 
         c_index = 0

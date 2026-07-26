@@ -273,7 +273,7 @@ def bottleneck(
         inp,
         wts,
         outp,
-    ):  # pyright: ignore[reportGeneralTypeIssues]
+    ):
         rt.start(*workers)
         rt.fill(of_act_l3l2.prod(), inp)
         rt.fill(of_wts_l3l2.prod(), wts)

@@ -48,7 +48,7 @@ def vision_passthrough(
     worker = Worker(passthrough_fn, [of_in.cons(), of_out.prod(), pass_through_line])
 
     rt = Runtime()
-    with rt.sequence(tensor_ty, tensor_ty, tensor_ty) as (a, _, b):  # fmt: skip # pyright: ignore[reportGeneralTypeIssues]
+    with rt.sequence(tensor_ty, tensor_ty, tensor_ty) as (a, _, b):
         rt.start(worker)
         rt.fill(of_in.prod(), a)
         rt.drain(of_out.cons(), b, wait=True)

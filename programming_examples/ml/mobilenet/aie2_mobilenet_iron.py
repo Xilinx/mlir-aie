@@ -173,7 +173,7 @@ def make_mobilenet_iron(use_placement: bool = True):
             inp_h,
             cascade_wts_h,
             out_h,
-        ):  # pyright: ignore[reportGeneralTypeIssues]
+        ):
             rt.start(*all_workers)
 
             # ---- Group 1: input + weights + avgpool drain ----

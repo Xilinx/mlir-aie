@@ -87,7 +87,7 @@ def swiglu(
         a,
         w,
         b,
-    ):  # pyright: ignore[reportGeneralTypeIssues]
+    ):
         rt.start(*workers)
         tg = rt.task_group()
         for i in range(num_columns):

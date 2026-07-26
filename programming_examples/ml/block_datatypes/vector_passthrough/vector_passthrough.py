@@ -59,7 +59,7 @@ def vector_passthrough(a_in: In, b_out: Out):
     with rt.sequence(_TENSOR_TY, _TENSOR_TY) as (
         A,
         B,
-    ):  # pyright: ignore[reportGeneralTypeIssues]
+    ):
         rt.start(worker)
         rt.fill(of_in.prod(), A)
         rt.drain(of_out.cons(), B, wait=True)

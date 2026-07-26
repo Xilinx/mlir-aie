@@ -163,7 +163,7 @@ def scale_shift(
         B,
         C,
         D,
-    ):  # pyright: ignore[reportGeneralTypeIssues]
+    ):
         rt.start(*workers)
 
         # Phase 1: multiply (rtp=1).

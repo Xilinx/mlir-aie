@@ -128,7 +128,7 @@ def single_core_mixed(
         a,
         b,
         c,
-    ):  # pyright: ignore[reportGeneralTypeIssues]
+    ):
         rt.start(worker)
         tgs = []
         for tile_row_block in range(iron.ceildiv(M_div_m, rows_per_block)):

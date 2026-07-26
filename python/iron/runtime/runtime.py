@@ -10,8 +10,8 @@ from __future__ import annotations
 import itertools
 import logging
 from collections import defaultdict
-from contextlib import contextmanager
-from typing import Callable, Iterator
+from contextlib import AbstractContextManager, contextmanager
+from typing import Callable, Iterator, overload
 
 import numpy as np
 
@@ -130,6 +130,14 @@ class Runtime(Resolvable):
     def tile_dmas(self):
         return list(self._tile_dmas)
 
+    @overload
+    def sequence(
+        self, t1: type[np.ndarray], /
+    ) -> AbstractContextManager[RuntimeData]: ...
+    @overload
+    def sequence(
+        self, t1: type[np.ndarray], t2: type[np.ndarray], /, *rest: type[np.ndarray]
+    ) -> AbstractContextManager[tuple[RuntimeData, ...]]: ...
     @contextmanager
     def sequence(
         self, *input_types: type[np.ndarray]

@@ -108,7 +108,7 @@ def single_core_no_tiling_mixed(
         a,
         b,
         c,
-    ):  # pyright: ignore[reportGeneralTypeIssues]
+    ):
         rt.start(worker)
         rt.fill(inA.prod(), a)
         rt.fill(inB.prod(), b)

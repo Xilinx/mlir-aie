@@ -171,7 +171,7 @@ def vector_reduce_max(
     with rt.sequence(in_ty, out_ty) as (
         a_in,
         c_out,
-    ):  # pyright: ignore[reportGeneralTypeIssues]
+    ):
         rt.start(*workers)
         rt.fill(of_in.prod(), a_in)
         rt.drain(out_fifos[0].cons(), c_out, wait=True)

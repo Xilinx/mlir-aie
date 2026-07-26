@@ -82,7 +82,7 @@ def saxpy(
         a_x,
         a_y,
         c_z,
-    ):  # pyright: ignore[reportGeneralTypeIssues]
+    ):
         rt.start(worker)
         rt.fill(of_x.prod(), a_x)
         rt.fill(of_y.prod(), a_y)

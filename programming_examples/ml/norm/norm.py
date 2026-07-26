@@ -103,7 +103,7 @@ def norm(
     with rt.sequence(tensor_ty, tensor_ty) as (
         a,
         c,
-    ):  # pyright: ignore[reportGeneralTypeIssues]
+    ):
         rt.start(*workers)
         for i in range(n_cores):
             rt.fill(of_ins[i].prod(), a, taps[i])

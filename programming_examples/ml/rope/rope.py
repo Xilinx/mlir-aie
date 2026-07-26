@@ -107,7 +107,7 @@ def rope(
         a,
         lut,
         c,
-    ):  # pyright: ignore[reportGeneralTypeIssues]
+    ):
         rt.start(*workers)
         for i in range(n_cores):
             rt.fill(of_ins[i].prod(), a, taps[i])

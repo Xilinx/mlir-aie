@@ -208,7 +208,7 @@ def n32_core_gemm(
         a,
         b,
         c,
-    ):  # pyright: ignore[reportGeneralTypeIssues]
+    ):
         rt.start(*[w for row in workers for w in row])
         # 4-slot rotating task-group pipeline. Each slot is one
         # iteration's (4 A-fills + 8 B-fills + 8 C-drains). A/B fills are

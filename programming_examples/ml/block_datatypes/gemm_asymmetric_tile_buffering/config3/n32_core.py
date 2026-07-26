@@ -178,7 +178,7 @@ def n32_core_gemm(
         a,
         b,
         c,
-    ):  # pyright: ignore[reportGeneralTypeIssues]
+    ):
         rt.start(*[w for row in workers for w in row])
         slots: list[RuntimeTaskGroup | None] = [None] * tb_max_n_rows
 

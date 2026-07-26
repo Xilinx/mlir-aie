@@ -142,7 +142,7 @@ def matrix_multiplication_single_core(
         A,
         B,
         C,
-    ):  # pyright: ignore[reportGeneralTypeIssues]
+    ):
         rt.start(worker)
         for tile_row in range(M // m):
             task_group = rt.task_group()

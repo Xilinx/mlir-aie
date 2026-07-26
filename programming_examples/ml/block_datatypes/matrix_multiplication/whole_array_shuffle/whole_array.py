@@ -202,7 +202,7 @@ def whole_array_shuffle(
         a,
         b,
         c,
-    ):  # pyright: ignore[reportGeneralTypeIssues]
+    ):
         rt.start(*[w for row in workers for w in row])
         tg = rt.task_group()
         for tb in range(iron.ceildiv(M // m // n_aie_rows, tb_max_n_rows)):

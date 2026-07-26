@@ -105,7 +105,7 @@ def bfp_conversion(a_in: In, b_in: In, c_out: Out):
         A,
         B,
         C,
-    ):  # pyright: ignore[reportGeneralTypeIssues]
+    ):
         rt.start(*workers)
         rt.fill(of_in1.prod(), A)
         # Aligning dot products with bfp blocks requires transposing the second
