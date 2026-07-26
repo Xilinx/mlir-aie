@@ -110,13 +110,35 @@ def _array_to_torch(array: np.ndarray):
     return torch.from_numpy(array.view(uint_dtype)).view(torch_dtype)
 
 
-class Tensor(ABC):
+class NpuTensor(ABC):
     """
-    Tensor object backed by NPU or CPU memory.
+    A host-mapped, device-resident buffer of fixed shape and dtype.
 
-    The class provides common tensor operations such as creation,
-    filling with values, and accessing data.
+    This is a buffer with a residency state machine, not a general array. Its
+    invariant is host/device coherence: the host and the device each hold a view
+    of the same storage, and the two are reconciled only at the points this class
+    defines. Everything else it offers (indexing, filling, the numpy and torch
+    bridges, :meth:`subview`) exists to keep that reconciliation correct while
+    still letting callers treat the buffer as data.
 
+    The invariant in full:
+
+    * Writes through the declared paths (:meth:`__setitem__`, :meth:`fill_`, and
+      the factories) resynchronize. A write through the raw ``data`` array does
+      not, and is the one way to leave host and device disagreeing.
+    * :meth:`to` moves residency and is a no-op when the buffer is already on the
+      target device, so a caller that has written through a declared path never
+      pays for a redundant transfer, and a caller that has bypassed one gets no
+      transfer at all.
+    * Reconciliation is not byte-granular. It acts on whole cache lines, which is
+      why :meth:`subview` requires its regions to be granule-aligned.
+
+    Subclasses supply the storage and the two transfer primitives; the invariant
+    itself lives here so every backend states it the same way.
+
+    Named for the role rather than the mechanism: ``XRTTensor`` and ``HRXTensor``
+    name what implements the buffer, ``NpuTensor`` names what it is. ``Tensor``
+    remains as an alias for existing callers.
     """
 
     DEVICES = ["cpu", "npu"]
@@ -323,7 +345,7 @@ class Tensor(ABC):
                 Defaults to this tensor's dtype.
 
         Returns:
-            Tensor: A view sharing this tensor's storage.
+            NpuTensor: A view sharing this tensor's storage.
 
         Raises:
             ValueError: If the region falls outside this tensor's buffer, or is
@@ -393,13 +415,13 @@ class Tensor(ABC):
 
         Args:
             *size: Shape of the tensor.
-            out (Tensor, optional): Output tensor to check.
+            out (NpuTensor, optional): Output tensor to check.
             dtype (np.dtype, optional): Data type.
             device (str, optional): Device.
             **kwargs: Additional arguments for tensor creation.
 
         Returns:
-            Tensor: The checked or created tensor.
+            NpuTensor: The checked or created tensor.
 
         Raises:
             ValueError: If `out` tensor does not match shape, dtype, or device.
@@ -484,7 +506,7 @@ class Tensor(ABC):
             **kwargs: Additional arguments for tensor creation.
 
         Returns:
-            Tensor: A new tensor containing the data from the torch tensor.
+            NpuTensor: A new tensor containing the data from the torch tensor.
 
         Raises:
             ImportError: If torch is not installed.
@@ -544,13 +566,13 @@ class Tensor(ABC):
 
         Args:
             *size (int...): Shape of the tensor, passed as separate ints or a single tuple/list.
-            out (Tensor, optional): Optional output tensor to write into.
+            out (NpuTensor, optional): Optional output tensor to write into.
             dtype (np.dtype, optional): Desired dtype. Defaults to np.float32.
             device (str, optional): Target device. Defaults to 'npu'.
             **kwargs: Additional keyword args.
 
         Returns:
-            Tensor: A one-filled tensor.
+            NpuTensor: A one-filled tensor.
         """
         t = cls.__check_or_create(*size, out=out, dtype=dtype, device=device, **kwargs)
         t.fill_(1)
@@ -563,13 +585,13 @@ class Tensor(ABC):
 
         Args:
             *size (int...): Shape of the tensor, passed as separate ints or a single tuple/list.
-            out (Tensor, optional): Optional output tensor to write into.
+            out (NpuTensor, optional): Optional output tensor to write into.
             dtype (np.dtype, optional): Desired dtype. Defaults to np.float32.
             device (str, optional): Target device. Defaults to 'npu'.
             **kwargs: Additional keyword args.
 
         Returns:
-            Tensor: A zero-filled tensor.
+            NpuTensor: A zero-filled tensor.
         """
         t = cls.__check_or_create(*size, out=out, dtype=dtype, device=device, **kwargs)
         t.fill_(0)
@@ -583,13 +605,13 @@ class Tensor(ABC):
         Args:
             size (int or tuple/list of int): Shape of the returned tensor.
             fill_value (scalar): Value to fill the tensor with.
-            out (Tensor, optional): Optional output tensor to write into.
+            out (NpuTensor, optional): Optional output tensor to write into.
             dtype (np.dtype, optional): Desired dtype. Defaults to np.float32.
             device (str, optional): Target device. Defaults to 'npu'.
             **kwargs: Additional keyword args.
 
         Returns:
-            Tensor: A tensor filled with `fill_value`.
+            NpuTensor: A tensor filled with `fill_value`.
         """
         t = cls.__check_or_create(size, out=out, dtype=dtype, device=device, **kwargs)
         t.fill_(fill_value)
@@ -615,7 +637,7 @@ class Tensor(ABC):
             low (int): Lowest integer to be drawn (inclusive).
             high (int): One above the highest integer to be drawn (exclusive).
             size (tuple): Shape of the returned tensor.
-            out (Tensor, optional): Optional tensor to write the result into.
+            out (NpuTensor, optional): Optional tensor to write the result into.
             dtype (np.dtype, optional): Data type. Defaults to np.int64.
             device (str, optional): Target device. Defaults to 'npu'.
             generator (np.random.Generator, optional): Source RNG for reproducibility.
@@ -623,7 +645,7 @@ class Tensor(ABC):
             **kwargs: Additional arguments passed to the constructor.
 
         Returns:
-            Tensor: A tensor with random integers.
+            NpuTensor: A tensor with random integers.
         """
         dtype = dtype or np.int64
         device = device or cls.DEFAULT_DEVICE
@@ -648,7 +670,7 @@ class Tensor(ABC):
 
         Args:
             *size (int...): Variable number of integers or a single tuple defining the shape.
-            out (Tensor, optional): Output tensor to write into.
+            out (NpuTensor, optional): Output tensor to write into.
             dtype (np.dtype, optional): Desired data type. Defaults to np.float32.
             device (str, optional): Target device. Defaults to 'npu'.
             generator (np.random.Generator, optional): Source RNG for reproducibility.
@@ -656,7 +678,7 @@ class Tensor(ABC):
             **kwargs: Additional arguments passed to constructor.
 
         Returns:
-            Tensor: A tensor with random values in [0, 1).
+            NpuTensor: A tensor with random values in [0, 1).
         """
         if not size:
             raise ValueError("rand() received no arguments")
@@ -713,11 +735,11 @@ class Tensor(ABC):
             shape (tuple, optional): If given, reshape the 1-D sequence to this shape.
                 `prod(shape)` must equal the length of the generated range.
             dtype (np.dtype, optional): Desired output data type. Inferred if not provided.
-            out (Tensor, optional): Optional tensor to write output to (must match shape and dtype).
+            out (NpuTensor, optional): Optional tensor to write output to (must match shape and dtype).
             device (str, optional): Target device. Defaults to 'npu'.
 
         Returns:
-            Tensor: Tensor containing the sequence (1-D by default, or `shape` if given).
+            NpuTensor: A tensor containing the sequence (1-D by default, or `shape` if given).
         """
 
         if end is None:
@@ -766,13 +788,13 @@ class Tensor(ABC):
         Creates a new tensor with the same shape as `other`, filled with zeros.
 
         Args:
-            other (Tensor): The reference tensor to copy shape from.
+            other (NpuTensor): The reference tensor to copy shape from.
             dtype (np.dtype, optional): Data type of the new tensor. Defaults to other's dtype.
             device (str, optional): Target device. Defaults to other's device.
             **kwargs: Additional keyword arguments forwarded to the constructor.
 
         Returns:
-            Tensor: A new zero-filled tensor with the same shape.
+            NpuTensor: A new zero-filled tensor with the same shape.
         """
         dtype = dtype or other.dtype
         device = device or other.device
@@ -785,7 +807,7 @@ class Tensor(ABC):
         return t
 
 
-class CPUOnlyTensor(Tensor):
+class CPUOnlyTensor(NpuTensor):
     """
     This class exists primarily for testing purposes, to test tensor operations without assuming
     access to a host runtime (e.g., xrt).
@@ -851,8 +873,8 @@ class CPUOnlyTensor(Tensor):
     def _subview(self, offset_bytes, shape, dtype):
         nbytes = int(np.prod(shape)) * np.dtype(dtype).itemsize
         view = CPUOnlyTensor.__new__(CPUOnlyTensor)
-        # Set the Tensor contract fields without allocating a new array.
-        Tensor.__init__(view, shape, dtype=dtype, device=self.device)
+        # Set the NpuTensor contract fields without allocating a new array.
+        NpuTensor.__init__(view, shape, dtype=dtype, device=self.device)
         view._storage = self  # keep parent alive; shared storage
         view._shape = tuple(shape)
         # A numpy view over the same bytes (zero-copy) so writes are shared.
@@ -861,3 +883,8 @@ class CPUOnlyTensor(Tensor):
             flat[offset_bytes : offset_bytes + nbytes].view(dtype).reshape(view._shape)
         )
         return view
+
+
+# The former name of NpuTensor, kept so existing callers and subclasses outside
+# this repository keep working. New code should use NpuTensor.
+Tensor = NpuTensor

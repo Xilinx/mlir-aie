@@ -8,10 +8,10 @@ import numpy as np
 import pyxrt as xrt  # pyright: ignore[reportMissingImports]
 from aie.helpers.util import np_ndarray_type_get_shape
 
-from ..tensor_class import Tensor
+from ..tensor_class import NpuTensor
 
 
-class XRTTensor(Tensor):
+class XRTTensor(NpuTensor):
     """
     Tensor object backed by memory accessble from the 'npu' and 'cpu' devices, managed using PyXRT.
 
@@ -124,7 +124,7 @@ class XRTTensor(Tensor):
 
     def __del__(self):
         """
-        Destructor for Tensor.
+        Destructor for NpuTensor.
 
         Releases associated device memory (e.g., XRT buffer object).
         """
@@ -144,8 +144,8 @@ class XRTTensor(Tensor):
     def _subview(self, offset_bytes, shape, dtype):
         nbytes = int(np.prod(shape)) * np.dtype(dtype).itemsize
         view = XRTTensor.__new__(XRTTensor)
-        # Set the Tensor contract fields without allocating a new buffer.
-        Tensor.__init__(view, shape, dtype=dtype, device=self.device)
+        # Set the NpuTensor contract fields without allocating a new buffer.
+        NpuTensor.__init__(view, shape, dtype=dtype, device=self.device)
         view.xrt_device = self.xrt_device
         view._storage = self  # keep parent alive; shared storage
         view._shape = tuple(shape)
