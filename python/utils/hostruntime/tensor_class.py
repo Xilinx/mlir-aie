@@ -185,6 +185,10 @@ class _CoherenceMap:
 
     def __init__(self, nbytes, state):
         self._spans = [[0, nbytes, state]]
+        # The whole allocation in one state, or None when it is mixed. Kept as a
+        # field because it answers most queries outright, and the queries are on
+        # the path a dispatch takes for every argument.
+        self.uniform = state
 
     def set(self, start, end, state):
         if start >= end:
@@ -201,20 +205,21 @@ class _CoherenceMap:
         out.append([start, end, state])
         out.sort()
         self._spans = self._coalesce(out)
+        self.uniform = self._spans[0][2] if len(self._spans) == 1 else None
 
     def get(self, start, end):
         """The state of ``[start, end)``, or None if it is not uniform."""
-        spans = self._spans
-        if len(spans) == 1:  # whole allocation in one state: the usual case
-            return spans[0][2]
-        seen = {v for lo, hi, v in spans if lo < end and hi > start}
+        if self.uniform is not None:
+            return self.uniform
+        seen = {v for lo, hi, v in self._spans if lo < end and hi > start}
         return seen.pop() if len(seen) == 1 else None
 
     def any_host_written(self, start, end):
-        spans = self._spans
-        if len(spans) == 1:
-            return spans[0][2] == self.HOST
-        return any(v == self.HOST for lo, hi, v in spans if lo < end and hi > start)
+        if self.uniform is not None:
+            return self.uniform == self.HOST
+        return any(
+            v == self.HOST for lo, hi, v in self._spans if lo < end and hi > start
+        )
 
     def ranges(self, start, end, state):
         """The sub-ranges of ``[start, end)`` currently in ``state``."""
@@ -358,6 +363,10 @@ class NpuTensor(ABC):
     # a backend implements against, and the type checker can see them.
     _storage: "NpuTensor | None" = None
     _offset_bytes: int = 0
+    # Bound on first use. Held directly rather than reached through the buffer
+    # because the residency query is on the path a dispatch takes for every
+    # argument, and an attribute read is the whole fast path.
+    _coherence_ref: "_CoherenceMap | None" = None
 
     @classmethod
     def _resolve_coherence_granule(cls):
@@ -386,8 +395,12 @@ class NpuTensor(ABC):
             self.__dict__["_buffer"] = existing
         return existing
 
-    def _coherence(self):
-        return self.buffer.coherence
+    def _coherence(self) -> "_CoherenceMap":
+        coherence = self._coherence_ref
+        if coherence is None:
+            coherence = self.buffer.coherence
+            self._coherence_ref = coherence
+        return coherence
 
     @property
     def _extent(self):
@@ -415,11 +428,14 @@ class NpuTensor(ABC):
         while any part of it still needs flushing, since that is the answer that
         keeps a caller's reconcile from being skipped.
         """
-        start, end = self._extent
-        coherence = self._coherence()
-        uniform = coherence.get(start, end)
+        coherence = self._coherence_ref or self._coherence()
+        uniform = coherence.uniform
         if uniform is not None:
             return uniform
+        start, end = self._extent
+        mixed = coherence.get(start, end)
+        if mixed is not None:
+            return mixed
         return "cpu" if coherence.any_host_written(start, end) else "npu"
 
     @device.setter
@@ -607,8 +623,10 @@ class NpuTensor(ABC):
         Returns:
            The tensor object on the target device.
         """
+        coherence = self._coherence_ref or self._coherence()
+        if coherence.uniform == target_device:
+            return self
         start, end = self._extent
-        coherence = self._coherence()
         if coherence.get(start, end) == target_device:
             # Already wholly where it is wanted: nothing to transfer and nothing
             # to record. A dispatch takes this path for every argument it does
