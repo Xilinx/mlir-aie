@@ -117,15 +117,14 @@ class Program:
             # For dynamically created device classes, the constructor takes no arguments
             self._device = device_type()  # pyright: ignore[reportCallIssue]
 
-            # Resolve parameters at module scope (before the aie.device).
-            # aiex.scratchpad_parameter ops are global across all devices because the
-            # scratchpad is a single hardware resource shared by all PDIs.
+            # Resolve parameters known up front (Worker fn_args) at module
+            # scope now. aiex.scratchpad_parameter ops are global across all
+            # devices because the scratchpad is a single hardware resource
+            # shared by all PDIs.
             for w in self._workers:
                 for arg in w.flat_fn_args:
                     if isinstance(arg, ScratchpadParameter):
                         arg.resolve()
-            for p in self._rt._scratchpad_parameters:
-                p.resolve()
 
             @device(self._device.resolve(), sym_name=device_name)
             def device_body():
@@ -262,6 +261,15 @@ class Program:
                     egress_shim_col=self._egress_shim_col,
                     load_pdi_device_ref=load_pdi_device_ref,
                 )
+
+            # Resolve parameters only discoverable once the sequence body has
+            # traced (offset_parameter= passed directly to fill()/drain(),
+            # rather than declared up front via Worker fn_args). device_body's
+            # own insertion point is scoped to its @device region, so by now
+            # the ambient insertion point is back to module scope -- the same
+            # place the fn_args-declared parameters above were resolved.
+            for p in self._rt._scratchpad_parameters:
+                p.resolve()
 
             self._print_verify(ctx)
             return ctx.module
