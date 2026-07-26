@@ -143,15 +143,26 @@ class XRTTensor(NpuTensor):
 
     def _subview(self, offset_bytes, shape, dtype):
         nbytes = int(np.prod(shape)) * np.dtype(dtype).itemsize
-        view = XRTTensor.__new__(XRTTensor)
+        view = type(self).__new__(type(self))
         # Set the NpuTensor contract fields without allocating a new buffer.
         NpuTensor.__init__(view, shape, dtype=dtype, device=self.device)
         view.xrt_device = self.xrt_device
         view._storage = self  # keep parent alive; shared storage
         view._shape = tuple(shape)
-        # xrt.bo(parent_bo, size, offset) aliases the parent's memory; its
-        # sync() is slice-scoped (transfers only [offset, offset+size)).
-        view._bo = xrt.bo(self._bo, nbytes, offset_bytes)
+        # Derive from the buffer that owns the storage, at the offset accumulated
+        # from the root, rather than from the immediate parent.
+        #
+        # A sub-buffer of a sub-buffer does not compose the way it appears to:
+        # the host pointer is taken from the parent and so picks up the parent's
+        # offset, but the device address is taken from the underlying allocation
+        # and picks up only the innermost offset. Nesting that way leaves the
+        # host reading one region while the device writes another, silently.
+        # Deriving every view from the root keeps the two in agreement, whatever
+        # depth the caller nests to.
+        root = self.base or self
+        absolute_offset = self.storage_offset + offset_bytes
+        view._offset_bytes = absolute_offset
+        view._bo = xrt.bo(root._bo, nbytes, absolute_offset)
         ptr = view._bo.map()
         view._data = np.frombuffer(ptr, dtype=dtype).reshape(view._shape)
         return view

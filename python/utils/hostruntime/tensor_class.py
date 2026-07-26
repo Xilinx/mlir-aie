@@ -3,6 +3,8 @@
 # Copyright (C) 2025-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
+import math
+import operator
 import os
 from abc import ABC, abstractmethod
 from functools import cached_property
@@ -11,32 +13,89 @@ import numpy as np
 import numpy.typing as npt
 
 
-# Smallest unit of host/device cache coherence, in bytes.
-#
-# Host<->device synchronization is not byte-granular: on a non-cache-coherent
-# part the shim maintains whole cache lines (it walks
-# ``sysconf(_SC_LEVEL1_DCACHE_LINESIZE)``-sized steps and the CPU flushes the
+def _as_shape(shape):
+    """Normalize and validate a shape, rejecting what would silently misbehave.
+
+    A bare integer is accepted as a length, matching the factories in this
+    module. Every extent must be a true non-negative integer: a negative one
+    would pass the byte-count checks (it makes the region look smaller than it
+    is) and then be read as a Python negative index by the backends, producing a
+    view of the wrong size at the wrong place.
+    """
+    if isinstance(shape, (str, bytes)):
+        raise TypeError(f"shape must be an integer or a sequence, got {shape!r}")
+    try:
+        extents = (operator.index(shape),)
+    except TypeError:
+        try:
+            extents = tuple(operator.index(extent) for extent in shape)
+        except TypeError:
+            raise TypeError(
+                f"shape must be an integer or a sequence of integers, got {shape!r}"
+            ) from None
+    for extent in extents:
+        if extent < 0:
+            raise ValueError(f"shape extents must not be negative, got {extents}")
+    return extents
+
+
+# Host<->device synchronization is not byte-granular: on a part that is not
+# cache-coherent the runtime maintains whole cache lines (it walks
+# ``sysconf(_SC_LEVEL1_DCACHE_LINESIZE)``-sized steps and the CPU acts on the
 # entire line containing an address), so a sync for one region unavoidably acts
-# on every byte sharing its first and last line.  Sub-region views must
-# therefore not share a line, or one view's sync can write a neighbor's stale
-# host copy over data the device just produced.
-#
-# Detected once, floored at 64 so a bogus or missing report cannot weaken the
-# check.  This mirrors what the runtime actually does rather than the page size:
-# pages are the unit of address translation and protection, lines are the unit
-# of coherence.
+# on every byte sharing its first and last line. Sub-region views must therefore
+# not share a line, or one view's sync can write a neighbor's stale host copy
+# over data the device just produced. Lines, not pages: pages are the unit of
+# address translation and protection, lines are the unit of coherence.
+_SYSFS_CACHE_DIR = "/sys/devices/system/cpu/cpu0/cache"
+
+
+def _read_sysfs_line_size(cache_dir=_SYSFS_CACHE_DIR):
+    """Line size of the first level-1 *data* cache, or None.
+
+    Cache indices are not ordered by level or type, so select on both rather
+    than assuming index0 is L1d: on a machine that enumerates the instruction
+    cache first, that assumption reads the wrong line size.
+    """
+    for index in range(8):
+        base = f"{cache_dir}/index{index}"
+        try:
+            with open(f"{base}/level") as fp:
+                level = int(fp.read().strip())
+            with open(f"{base}/type") as fp:
+                kind = fp.read().strip()
+            if level != 1 or kind not in ("Data", "Unified"):
+                continue
+            with open(f"{base}/coherency_line_size") as fp:
+                return int(fp.read().strip())
+        except (OSError, ValueError):
+            continue
+    return None
+
+
 def _detect_coherence_granule(default=64):
+    """Largest plausible coherence granule for this host, never below ``default``.
+
+    ``sysconf`` first because it is the portable spelling and is what the
+    runtime's own flush loop uses; the sysfs scan is a fallback for platforms
+    that do not report it. Rounded up to a power of two so the value can be used
+    as an alignment, and floored so a missing or nonsensical report can only ever
+    make the check stricter, never weaker. Absent both sources (notably Windows,
+    where ``os.sysconf`` does not exist) the floor is what is used, which is the
+    line size of every architecture this runs on today.
+    """
+    reported = None
     try:
-        with open(
-            "/sys/devices/system/cpu/cpu0/cache/index0/coherency_line_size"
-        ) as fp:
-            return max(int(fp.read().strip()), default)
-    except (OSError, ValueError):
-        pass
-    try:
-        return max(os.sysconf("SC_LEVEL1_DCACHE_LINESIZE"), default)
+        reported = os.sysconf("SC_LEVEL1_DCACHE_LINESIZE")
     except (ValueError, OSError, AttributeError):
-        return default
+        pass
+    if not reported or reported < 0:
+        reported = _read_sysfs_line_size()
+    granule = max(reported or 0, default)
+    # Round up to a power of two: alignment arithmetic assumes it, and a cache
+    # line is one on every architecture, but nothing in the reporting path
+    # promises it.
+    return 1 << (granule - 1).bit_length()
 
 
 COHERENCE_GRANULE = _detect_coherence_granule()
@@ -146,10 +205,54 @@ class NpuTensor(ABC):
     DEFAULT_INT_DTYPE = np.int64  # torch has default int64
     DEFAULT_FLOAT_DTYPE = np.float32  # torch has default float32
 
-    # Alignment :meth:`subview` requires of a sub-region, in bytes. A backend
-    # whose host/device reconciliation has a different granularity may override
-    # it; see :data:`COHERENCE_GRANULE`.
-    _coherence_granule = COHERENCE_GRANULE
+    # Alignment :meth:`subview` requires of a sub-region, in bytes. Left unset
+    # so the module-level default is resolved per call rather than frozen into
+    # the class at import; a backend whose host/device reconciliation has a
+    # different granularity sets its own. See :data:`COHERENCE_GRANULE`.
+    _coherence_granule = None
+
+    @classmethod
+    def _resolve_coherence_granule(cls):
+        """Alignment :meth:`subview` enforces for this backend, in bytes."""
+        return (
+            COHERENCE_GRANULE
+            if cls._coherence_granule is None
+            else cls._coherence_granule
+        )
+
+    @property
+    def base(self):
+        """The buffer that owns this one's storage, or None if it owns it itself.
+
+        Mirrors :attr:`numpy.ndarray.base`, including collapsing a chain of
+        views: the base of a view of a view is the buffer that actually owns the
+        storage, not the intermediate view. The intermediate is still referenced
+        internally, so the whole chain stays alive for as long as any view of it
+        does.
+        """
+        owner = getattr(self, "_storage", None)
+        while owner is not None:
+            parent = getattr(owner, "_storage", None)
+            if parent is None:
+                return owner
+            owner = parent
+        return None
+
+    @property
+    def is_view(self):
+        """Whether this buffer shares another buffer's storage."""
+        return self.base is not None
+
+    @property
+    def storage_offset(self):
+        """Where this buffer starts within :attr:`base`'s storage, in bytes.
+
+        Zero for a buffer that owns its storage. Accumulated through nesting, so
+        it is always measured from the owner rather than from the view this one
+        was carved out of. Compare :meth:`torch.Tensor.storage_offset`, which is
+        in elements; this is in bytes because a view may reinterpret the dtype.
+        """
+        return getattr(self, "_offset_bytes", 0)
 
     def __init__(self, shape_or_data, dtype: npt.DTypeLike = np.uint32, device="npu"):
         """
@@ -351,15 +454,32 @@ class NpuTensor(ABC):
             ValueError: If the region falls outside this tensor's buffer, or is
                 not aligned to :data:`COHERENCE_GRANULE`.
         """
+        if type(self)._subview is NpuTensor._subview:
+            # Answer the capability question before complaining about a region
+            # this backend could not have produced whatever its shape.
+            raise NotImplementedError(
+                f"{type(self).__name__} does not support subview()"
+            )
         view_dtype = np.dtype(dtype) if dtype is not None else np.dtype(self.dtype)
-        offset_bytes = int(offset) * np.dtype(self.dtype).itemsize
-        nbytes = int(np.prod(shape)) * view_dtype.itemsize
+        shape = _as_shape(shape)
+        try:
+            offset = operator.index(offset)
+        except TypeError:
+            raise TypeError(
+                f"subview() offset must be an integer, got {offset!r}. It counts "
+                f"elements of this buffer's dtype ({np.dtype(self.dtype)}), not bytes."
+            ) from None
+        offset_bytes = offset * np.dtype(self.dtype).itemsize
+        # math.prod over validated ints: np.prod would accumulate in int64 and
+        # wrap silently, which defeats the bounds check below rather than
+        # tripping it.
+        nbytes = math.prod(shape) * view_dtype.itemsize
         if offset_bytes < 0 or offset_bytes + nbytes > self.nbytes:
             raise ValueError(
-                f"subview(offset={offset}, shape={tuple(shape)}, dtype={view_dtype}) "
+                f"subview(offset={offset}, shape={shape}, dtype={view_dtype}) "
                 f"is out of bounds for a buffer of {self.nbytes} bytes"
             )
-        granule = self._coherence_granule
+        granule = self._resolve_coherence_granule()
         ends_at_parent_end = offset_bytes + nbytes == self.nbytes
         if offset_bytes % granule or (nbytes % granule and not ends_at_parent_end):
             raise ValueError(
@@ -872,11 +992,12 @@ class CPUOnlyTensor(NpuTensor):
 
     def _subview(self, offset_bytes, shape, dtype):
         nbytes = int(np.prod(shape)) * np.dtype(dtype).itemsize
-        view = CPUOnlyTensor.__new__(CPUOnlyTensor)
+        view = type(self).__new__(type(self))
         # Set the NpuTensor contract fields without allocating a new array.
         NpuTensor.__init__(view, shape, dtype=dtype, device=self.device)
         view._storage = self  # keep parent alive; shared storage
         view._shape = tuple(shape)
+        view._offset_bytes = self.storage_offset + offset_bytes
         # A numpy view over the same bytes (zero-copy) so writes are shared.
         flat = self._data.reshape(-1).view(np.uint8)
         view._data = (

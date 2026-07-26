@@ -29,14 +29,15 @@ Abstract runtime types that concrete backends (for example XRT) implement.
 
 ## Tensor and device utilities
 
-Device selection, the abstract `Tensor` type, and numerical helpers used when
-comparing host results.
+Device selection, the `NpuTensor` buffer type, and numerical helpers used when
+comparing host results. `NpuTensor` was previously called `Tensor`, which
+remains available as an alias.
 
 ::: utils.hostruntime
     options:
       show_root_heading: false
       members:
-        - Tensor
+        - NpuTensor
         - set_current_device
         - bfloat16_safe_allclose
       docstring_options:
@@ -46,7 +47,7 @@ comparing host results.
     options:
       show_root_heading: false
       members:
-        - Tensor
+        - NpuTensor
       docstring_options:
         warn_missing_types: false
 

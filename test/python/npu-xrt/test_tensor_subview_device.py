@@ -26,6 +26,8 @@ The neighbour test is the regression test for that guard: it fails on a build
 where the alignment rule is dropped.
 """
 
+import gc
+
 import numpy as np
 import pytest
 
@@ -157,6 +159,45 @@ def test_subview_sync_does_not_disturb_neighbours(source, expected):
     np.testing.assert_array_equal(view.numpy(), expected)
     np.testing.assert_array_equal(left.data, left_pattern)
     np.testing.assert_array_equal(right.data, right_pattern)
+
+
+def test_view_outlives_the_caller_s_reference_to_its_parent(source, expected):
+    """The view owns the storage's lifetime, not the caller's variable.
+
+    On this backend the parent holds the XRT buffer object the view's sub-buffer
+    is derived from, so a view that failed to keep it alive would be reading
+    freed device memory rather than merely getting a wrong answer.
+    """
+    parent = XRTTensor((_PAD + _N + _PAD,), dtype=np.int32, device="npu")
+    parent.fill_(0)
+    view = parent.subview(_PAD, (_N,))
+    add_const(source, view)
+    view.to("cpu")
+
+    assert view.base is parent
+    del parent
+    gc.collect()
+
+    np.testing.assert_array_equal(view.numpy(), expected)
+
+
+def test_nested_subviews_address_the_root_buffer(source, expected):
+    """A view of a view must resolve against the original allocation."""
+    parent = XRTTensor((2 * _PAD + 2 * _N,), dtype=np.int32, device="npu")
+    parent.fill_(0)
+    outer = parent.subview(_PAD, (_N + _PAD,))
+    inner = outer.subview(0, (_N,))
+    assert inner.base is parent
+
+    add_const(source, inner)
+    inner.to("cpu")
+
+    np.testing.assert_array_equal(inner.numpy(), expected)
+    parent.device = "npu"
+    parent.to("cpu")
+    # The write landed at the root offset the nesting implies, not at 0.
+    np.testing.assert_array_equal(parent.numpy()[_PAD : _PAD + _N], expected)
+    np.testing.assert_array_equal(parent.numpy()[:_PAD], np.zeros(_PAD, np.int32))
 
 
 def test_adjacent_subviews_are_independent(source, expected):
