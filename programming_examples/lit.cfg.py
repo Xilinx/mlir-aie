@@ -6,14 +6,22 @@
 
 import os
 import sys
+from typing import TYPE_CHECKING, Any
 
 # Add shared AIE lit utilities to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "python"))
 
-import lit.formats
+import lit.formats  # pyright: ignore[reportMissingImports]
+from aie_lit_utils import LitConfigHelper  # pyright: ignore[reportMissingImports]
+from lit.llvm import llvm_config  # pyright: ignore[reportMissingImports]
 
-from lit.llvm import llvm_config
-from aie_lit_utils import LitConfigHelper
+# ``config`` and ``lit_config`` are injected into this file's namespace by the
+# lit test runner at execution time; bind them for the type checker only so it
+# does not flag every reference as undefined.  Guarded by TYPE_CHECKING so the
+# real runtime-injected globals are used unchanged.
+if TYPE_CHECKING:
+    config: Any = None
+    lit_config: Any = None
 
 # Configuration file for the 'lit' test runner.
 

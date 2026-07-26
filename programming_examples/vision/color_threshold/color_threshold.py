@@ -14,9 +14,11 @@ sequence's ``set_rtps()`` before reading.
 
 import argparse
 
-import numpy as np
-
 import aie.iron as iron
+import numpy as np
+from aie.extras import types as T
+from aie.extras.dialects import arith
+from aie.helpers.util import np_ndarray_type_get_shape
 from aie.iron import (
     Buffer,
     CompileTime,
@@ -29,12 +31,7 @@ from aie.iron import (
     WorkerRuntimeBarrier,
     kernels,
 )
-from aie.utils.hostruntime.argparse import device_from_args
-from aie.extras.dialects import arith
-from aie.helpers.util import np_ndarray_type_get_shape
-from aie.dialects.aie import T
-
-from aie.utils.hostruntime.argparse import add_compile_args
+from aie.utils.hostruntime.argparse import add_compile_args, device_from_args
 from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
 
@@ -60,7 +57,9 @@ def color_threshold(
     threshold_line = kernels.threshold(line_width=line_width, dtype=np.uint8)
 
     in_oob_l3l2 = ObjectFifo(line_channels_ty, name="inOOB_L3L2")
-    of_offsets = [np.prod(np_ndarray_type_get_shape(line_ty)) * i for i in range(4)]
+    of_offsets = [
+        int(np.prod(np_ndarray_type_get_shape(line_ty))) * i for i in range(4)
+    ]
     in_oob_l2l1s = in_oob_l3l2.cons().split(
         of_offsets,
         obj_types=[line_ty] * 4,
@@ -120,7 +119,7 @@ def color_threshold(
     ]
 
     rt = Runtime()
-    with rt.sequence(tensor_ty, unused_ty, tensor_ty) as (i_in, _b, o_out):
+    with rt.sequence(tensor_ty, unused_ty, tensor_ty) as (i_in, _b, o_out):  # fmt: skip # pyright: ignore[reportGeneralTypeIssues]
 
         def set_rtps(*args):
             for rtp in args:
@@ -137,7 +136,7 @@ def color_threshold(
         rt.fill(in_oob_l3l2.prod(), i_in)
         rt.drain(out_oob_l2l3.cons(), o_out, wait=True)
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    return Program(iron.get_current_device(), rt).resolve_program()  # fmt: skip # pyright: ignore[reportArgumentType]
 
 
 def _make_argparser():
@@ -169,7 +168,7 @@ def _run_and_verify(opts):
     unused_t = iron.zeros(32, dtype=np.int32, device="npu")
     out_t = iron.zeros(tensor_size, dtype=np.int8, device="npu")
 
-    color_threshold(in_t, unused_t, out_t, **_compile_kwargs(opts))
+    color_threshold(in_t, unused_t, out_t, **_compile_kwargs(opts))  # fmt: skip # pyright: ignore[reportArgumentType]
 
     # The kernel sees uint8 bytes; reinterpret the int8 host buffer.
     in_uint8 = in_np.view(np.uint8)

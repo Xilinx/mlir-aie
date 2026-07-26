@@ -10,13 +10,12 @@ shim --> rgba2hue --> (threshold-upper, threshold-lower in parallel) -->
 
 import argparse
 
-import numpy as np
-
 import aie.iron as iron
+import numpy as np
 from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker, kernels
 from aie.utils.hostruntime.argparse import (
-    device_from_args,
     add_compile_args,
+    device_from_args,
 )
 from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
@@ -185,12 +184,12 @@ def color_detect(
     )
 
     rt = Runtime()
-    with rt.sequence(tensor_ty, tensor_16x16_ty, tensor_ty) as (i_in, _b, o_out):
+    with rt.sequence(tensor_ty, tensor_16x16_ty, tensor_ty) as (i_in, _b, o_out):  # fmt: skip # pyright: ignore[reportGeneralTypeIssues]
         rt.start(worker2, worker3, worker4, worker5)
         rt.fill(in_of_l3l2.prod(), i_in)
         rt.drain(out_of_l2l3.cons(), o_out, wait=True)
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    return Program(iron.get_current_device(), rt).resolve_program()  # fmt: skip # pyright: ignore[reportArgumentType]
 
 
 def _make_argparser():
@@ -226,10 +225,10 @@ def _design_for(opts):
     """
     if not opts.placer:
         return color_detect
-    flags = list(color_detect.compilable.aiecc_flags) + [f"--placer={opts.placer}"]
+    flags = list(color_detect.compilable.aiecc_flags) + [f"--placer={opts.placer}"]  # fmt: skip # pyright: ignore[reportFunctionMemberAccess]
     if opts.sa_seed is not None:
         flags.append(f"--sa-seed={opts.sa_seed}")
-    return iron.jit(aiecc_flags=flags)(color_detect.compilable.mlir_generator)
+    return iron.jit(aiecc_flags=flags)(color_detect.compilable.mlir_generator)  # fmt: skip # pyright: ignore[reportFunctionMemberAccess]
 
 
 def _rgba2hue_ref(rgba_uint8):
@@ -304,7 +303,7 @@ def _run_and_verify(opts):
     b_t = iron.zeros(16 * 16, dtype=np.int32, device="npu")
     out_t = iron.zeros(tensor_size, dtype=np.int8, device="npu")
 
-    _design_for(opts)(in_t, b_t, out_t, **_compile_kwargs(opts))
+    _design_for(opts)(in_t, b_t, out_t, **_compile_kwargs(opts))  # fmt: skip # pyright: ignore[reportArgumentType]
 
     in_uint8 = in_np.view(np.uint8)
     expected_uint8 = _color_detect_ref(in_uint8)

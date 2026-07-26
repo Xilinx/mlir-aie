@@ -12,9 +12,8 @@ time via ``passThroughLine`` (``-DBIT_WIDTH=8`` from
 
 import argparse
 
-import numpy as np
-
 import aie.iron as iron
+import numpy as np
 from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker, kernels
 from aie.utils.hostruntime.argparse import add_compile_args
 from aie.utils.hostruntime.cli import run_design_cli
@@ -49,12 +48,12 @@ def vision_passthrough(
     worker = Worker(passthrough_fn, [of_in.cons(), of_out.prod(), pass_through_line])
 
     rt = Runtime()
-    with rt.sequence(tensor_ty, tensor_ty, tensor_ty) as (a, _, b):
+    with rt.sequence(tensor_ty, tensor_ty, tensor_ty) as (a, _, b):  # fmt: skip # pyright: ignore[reportGeneralTypeIssues]
         rt.start(worker)
         rt.fill(of_in.prod(), a)
         rt.drain(of_out.cons(), b, wait=True)
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    return Program(iron.get_current_device(), rt).resolve_program()  # fmt: skip # pyright: ignore[reportArgumentType]
 
 
 def _make_argparser():
@@ -77,7 +76,7 @@ def _run_and_verify(opts):
     out_t = iron.zeros(tensor_size, dtype=np.int8, device="npu")
     third_t = iron.zeros(tensor_size, dtype=np.int8, device="npu")
 
-    vision_passthrough(in_t, third_t, out_t, **_compile_kwargs(opts))
+    vision_passthrough(in_t, third_t, out_t, **_compile_kwargs(opts))  # fmt: skip # pyright: ignore[reportArgumentType]
 
     assert_pass(out_t.numpy(), in_np, fail_msg="output does not match input")
 
