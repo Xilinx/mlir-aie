@@ -20,9 +20,9 @@ The script has two modes:
 import argparse
 import sys
 
-import numpy as np
-
 import aie.iron as iron
+import numpy as np
+from aie.helpers.taplib import TensorAccessSequence, TensorTiler2D
 from aie.iron import (
     CompileTime,
     In,
@@ -36,7 +36,6 @@ from aie.iron import (
 )
 from aie.iron.controlflow import range_
 from aie.iron.device import NPU2, from_name
-from aie.helpers.taplib import TensorAccessSequence, TensorTiler2D
 from aie.utils.benchmark import run_iters
 from aie.utils.hostruntime.argparse import add_benchmark_args, add_compile_args
 from aie.utils.hostruntime.cli import run_design_cli
@@ -142,18 +141,18 @@ def _build_design(
     B_l1_ty = np.ndarray[(k, n), np.dtype[dtype_in]]
     C_l1_ty = np.ndarray[(m, n), np.dtype[dtype_out]]
 
-    tiles = [[(col, row) for col in range(0, n_aie_cols)] for row in range(0, 6)]
-    core_tiles = tiles[2:]
-
-    A_l3l2_fifos = [None] * n_shim_mem_A
-    A_l2l1_fifos = [None] * n_aie_rows
-    B_l3l2_fifos = [None] * n_aie_cols
-    B_l2l1_fifos = [None] * n_aie_cols
-    C_l1l2_fifos = [[None] * n_aie_cols for _ in range(n_aie_rows)]
-    C_l2l3_fifos = [None] * n_aie_cols
+    A_l3l2_fifos: list[ObjectFifo | None] = [None] * n_shim_mem_A
+    A_l2l1_fifos: list[ObjectFifo | None] = [None] * n_aie_rows
+    B_l3l2_fifos: list[ObjectFifo | None] = [None] * n_aie_cols
+    B_l2l1_fifos: list[ObjectFifo | None] = [None] * n_aie_cols
+    C_l1l2_fifos: list[list[ObjectFifo | None]] = [
+        [None] * n_aie_cols for _ in range(n_aie_rows)
+    ]
+    C_l2l3_fifos: list[ObjectFifo | None] = [None] * n_aie_cols
 
     for i in range(n_shim_mem_A):
-        A_l3l2_fifos[i] = ObjectFifo(A_l2_ty, name=f"A_L3L2_{i}", depth=fifo_depth)
+        a_l3l2_fifo = ObjectFifo(A_l2_ty, name=f"A_L3L2_{i}", depth=fifo_depth)
+        A_l3l2_fifos[i] = a_l3l2_fifo
         start_row = i * n_A_tiles_per_shim
         stop_row = start_row + n_A_tiles_per_shim
         of_offsets = [m * k * j for j in range(stop_row - start_row)]
@@ -165,36 +164,29 @@ def _build_design(
                 (s, 1),
             ]
         ] * (stop_row - start_row)
-        a_tmp_fifos = (
-            A_l3l2_fifos[i]
-            .cons()
-            .split(
-                of_offsets,
-                obj_types=[A_l1_ty] * (stop_row - start_row),
-                names=[f"A_L2L1_{row}" for row in range(start_row, stop_row)],
-                dims_to_stream=dims_to_stream,
-            )
+        a_tmp_fifos = a_l3l2_fifo.cons().split(
+            of_offsets,
+            obj_types=[A_l1_ty] * (stop_row - start_row),
+            names=[f"A_L2L1_{row}" for row in range(start_row, stop_row)],
+            dims_to_stream=dims_to_stream,
         )
         for j in range(stop_row - start_row):
             A_l2l1_fifos[j + start_row] = a_tmp_fifos[j]
 
     for col in range(n_aie_cols):
-        B_l3l2_fifos[col] = ObjectFifo(B_l2_ty, name=f"B_L3L2_{col}", depth=fifo_depth)
+        b_l3l2_fifo = ObjectFifo(B_l2_ty, name=f"B_L3L2_{col}", depth=fifo_depth)
+        B_l3l2_fifos[col] = b_l3l2_fifo
         if b_col_maj:
             dims_to_stream = [(n // t, t * k), (k // s, s), (t, k), (s, 1)]
         else:
             dims_to_stream = [(k // s, s * n), (n // t, t), (s, n), (t, 1)]
-        B_l2l1_fifos[col] = (
-            B_l3l2_fifos[col]
-            .cons()
-            .forward(
-                obj_type=B_l1_ty,
-                name=f"B_L2L1_{col}",
-                dims_to_stream=dims_to_stream,
-            )
+        B_l2l1_fifos[col] = b_l3l2_fifo.cons().forward(
+            obj_type=B_l1_ty,
+            name=f"B_L2L1_{col}",
+            dims_to_stream=dims_to_stream,
         )
 
-        C_l2l3_fifos[col] = ObjectFifo(
+        c_l2l3_fifo = ObjectFifo(
             C_l2_ty,
             name=f"C_L2L3_{col}",
             depth=fifo_depth,
@@ -204,17 +196,14 @@ def _build_design(
                 else [(n // t, t * m), (t, r), (m // r, r * t), (r, 1)]
             ),
         )
+        C_l2l3_fifos[col] = c_l2l3_fifo
         of_offsets = [m * n * i for i in range(n_aie_rows)]
 
-        c_tmp_fifos = (
-            C_l2l3_fifos[col]
-            .prod()
-            .join(
-                of_offsets,
-                obj_types=[C_l1_ty] * n_aie_rows,
-                names=[f"C_L1L2_{col}_{row}" for row in range(n_aie_rows)],
-                depths=[fifo_depth] * n_aie_rows,
-            )
+        c_tmp_fifos = c_l2l3_fifo.prod().join(
+            of_offsets,
+            obj_types=[C_l1_ty] * n_aie_rows,
+            names=[f"C_L1L2_{col}_{row}" for row in range(n_aie_rows)],
+            depths=[fifo_depth] * n_aie_rows,
         )
         for j in range(n_aie_rows):
             C_l1l2_fifos[j][col] = c_tmp_fifos[j]
@@ -241,9 +230,11 @@ def _build_design(
         lambda row, col: Worker(
             core_fn,
             [
-                A_l2l1_fifos[row].cons(),
-                B_l2l1_fifos[col].cons(),
-                C_l1l2_fifos[row][col].prod(),
+                A_l2l1_fifos[row].cons(),  # pyright: ignore[reportOptionalMemberAccess]
+                B_l2l1_fifos[col].cons(),  # pyright: ignore[reportOptionalMemberAccess]
+                C_l1l2_fifos[row][
+                    col
+                ].prod(),  # pyright: ignore[reportOptionalMemberAccess]
                 zero_kernel,
                 matmul_kernel,
             ],
@@ -300,7 +291,11 @@ def _build_design(
     c_index = 0
 
     rt = Runtime()
-    with rt.sequence(A_ty, B_ty, C_ty) as (A, B, C):
+    with rt.sequence(A_ty, B_ty, C_ty) as (
+        A,
+        B,
+        C,
+    ):  # pyright: ignore[reportGeneralTypeIssues]
         rt.start(*[w for row in workers for w in row])
 
         tg = rt.task_group()
@@ -317,7 +312,9 @@ def _build_design(
                 for col in range(n_aie_cols):
                     C_taps.append(C_tiles[c_index])
                     rt.drain(
-                        C_l2l3_fifos[col].cons(),
+                        C_l2l3_fifos[
+                            col
+                        ].cons(),  # pyright: ignore[reportOptionalMemberAccess]
                         C,
                         tap=C_tiles[c_index],
                         wait=True,
@@ -331,13 +328,17 @@ def _build_design(
                         ) % len(A_tiles)
                         if col < n_aie_rows:
                             rt.fill(
-                                A_l3l2_fifos[col].prod(),
+                                A_l3l2_fifos[
+                                    col
+                                ].prod(),  # pyright: ignore[reportOptionalMemberAccess]
                                 A,
                                 tap=A_tiles[tile_offset],
                                 task_group=tg,
                             )
                         rt.fill(
-                            B_l3l2_fifos[col].prod(),
+                            B_l3l2_fifos[
+                                col
+                            ].prod(),  # pyright: ignore[reportOptionalMemberAccess]
                             B,
                             tap=B_tiles[col],
                             task_group=tg,
@@ -417,7 +418,7 @@ def generate_taps(
 ):
     """Return ``(A_taps, B_taps, C_taps)`` for the visualization notebook."""
     dev_obj = _device_for(dev, n_aie_cols)
-    set_current_device(dev_obj)
+    iron.set_current_device(dev_obj)
     return _build_design(
         dev_obj,
         M,

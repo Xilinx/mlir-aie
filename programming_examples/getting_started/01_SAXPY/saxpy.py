@@ -4,14 +4,21 @@
 
 from pathlib import Path
 
-import numpy as np
-from ml_dtypes import bfloat16
-
 import aie.iron as iron
-from aie.iron import CompileTime, ExternalFunction, In, Out
-from aie.iron import ObjectFifo, Program, Runtime, Worker
+import numpy as np
+from aie.iron import (
+    CompileTime,
+    ExternalFunction,
+    In,
+    ObjectFifo,
+    Out,
+    Program,
+    Runtime,
+    Worker,
+)
 from aie.utils.config import cxx_header_path
 from aie.utils.verify import assert_pass
+from ml_dtypes import bfloat16
 
 
 # JIT decorator for IRON
@@ -71,7 +78,11 @@ def saxpy(
     # --------------------------------------------------------------------------
 
     rt = Runtime()
-    with rt.sequence(in_ty, in_ty, out_ty) as (a_x, a_y, c_z):
+    with rt.sequence(in_ty, in_ty, out_ty) as (
+        a_x,
+        a_y,
+        c_z,
+    ):  # pyright: ignore[reportGeneralTypeIssues]
         rt.start(worker)
         rt.fill(of_x.prod(), a_x)
         rt.fill(of_y.prod(), a_y)
@@ -81,7 +92,10 @@ def saxpy(
     # Place and generate MLIR program
     # --------------------------------------------------------------------------
 
-    my_program = Program(iron.get_current_device(), rt)
+    my_program = Program(
+        iron.get_current_device(),  # pyright: ignore[reportArgumentType]
+        rt,
+    )
     return my_program.resolve_program()
 
 

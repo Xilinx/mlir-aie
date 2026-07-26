@@ -17,9 +17,9 @@ The script has two modes (matching whole_array.py):
 
 import argparse
 
-import numpy as np
-
 import aie.iron as iron
+import numpy as np
+from aie.helpers.taplib import TensorTiler2D
 from aie.iron import (
     CompileTime,
     In,
@@ -32,7 +32,6 @@ from aie.iron import (
     str_to_dtype,
 )
 from aie.iron.controlflow import range_
-from aie.helpers.taplib import TensorTiler2D
 from aie.utils.benchmark import run_iters
 from aie.utils.hostruntime.argparse import (
     add_benchmark_args,
@@ -161,7 +160,11 @@ def single_core(
     c_index = 0
 
     rt = Runtime()
-    with rt.sequence(A_ty, B_ty, C_ty) as (A, B, C):
+    with rt.sequence(A_ty, B_ty, C_ty) as (
+        a_rt,
+        b_rt,
+        c_rt,
+    ):  # pyright: ignore[reportGeneralTypeIssues]
         if trace_config:
             rt.enable_trace(trace_config.trace_size, workers=[worker])
         rt.start(worker)
@@ -178,10 +181,16 @@ def single_core(
                 tgs.append(rt.task_group())
                 for tile_row in range(num_tile_rows):
                     tile_offset = (row_base + tile_row) % len(A_tiles)
-                    rt.fill(inA.prod(), A, tap=A_tiles[tile_offset], task_group=tgs[-1])
-                    rt.fill(inB.prod(), B, tap=b_tap, task_group=tgs[-1])
+                    rt.fill(
+                        inA.prod(), a_rt, tap=A_tiles[tile_offset], task_group=tgs[-1]
+                    )
+                    rt.fill(inB.prod(), b_rt, tap=b_tap, task_group=tgs[-1])
                 rt.drain(
-                    outC.cons(), C, tap=C_tiles[c_index], task_group=tgs[-1], wait=True
+                    outC.cons(),
+                    c_rt,
+                    tap=C_tiles[c_index],
+                    task_group=tgs[-1],
+                    wait=True,
                 )
                 c_index += 1
                 if tile_row_block > 0 or (tile_row_block == 0 and pingpong > 0):
@@ -190,7 +199,10 @@ def single_core(
         rt.finish_task_group(tgs[-1])
         del tgs[-1]
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    return Program(
+        iron.get_current_device(),  # pyright: ignore[reportArgumentType]
+        rt,
+    ).resolve_program()
 
 
 def _make_argparser():
