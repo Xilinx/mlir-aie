@@ -32,20 +32,16 @@ def _gemm_gen():
     return gemm
 
 
-def test_generated_cache_tracks_active_device(monkeypatch):
+def test_generated_cache_tracks_active_device():
     """MLIR generation cache entries are keyed by the active IRON device."""
+    from aie.utils import get_current_device
+
+    generated_for = []
 
     def gen():
-        pass
+        generated_for.append(type(get_current_device(probe_runtime=False)).__name__)
 
     cd = CompilableDesign(gen)
-    calls = []
-
-    def fake_generate_uncached(self):
-        calls.append(self._generation_cache_key())
-        return (f"mlir-{len(calls)}", [])
-
-    monkeypatch.setattr(CompilableDesign, "_generate_uncached", fake_generate_uncached)
 
     set_current_device(NPU1Col1())
     first_aie2 = cd._generated
@@ -57,10 +53,14 @@ def test_generated_cache_tracks_active_device(monkeypatch):
 
     set_current_device(None)
 
-    assert first_aie2 == second_aie2
-    assert first_aie2p == second_aie2p
-    assert first_aie2 != first_aie2p
-    assert len(calls) == 2
+    # Real generation runs once per distinct device, then serves from cache.
+    assert generated_for == ["NPU1Col1", "NPU2Col1"]
+    assert first_aie2 is second_aie2
+    assert first_aie2p is second_aie2p
+    # One cache entry per device, keyed by device identity.
+    assert len(cd._generated_cache) == 2
+    keyed_devices = {key[2].rsplit(".", 1)[-1] for key in cd._generated_cache}
+    assert keyed_devices == {"NPU1Col1", "NPU2Col1"}
 
 
 def test_uncached_generation_clears_context_bound_external_functions():
@@ -84,30 +84,32 @@ def test_generated_root_binds_runtime_device_before_cache_key(monkeypatch):
         def device(self):
             return NPU2Col1()
 
-    def gen():
-        pass
-
     set_current_device(None)
     monkeypatch.setattr(utils, "_get_default_npu_runtime", lambda: FakeRuntime())
 
+    generated_for = []
+
+    def gen():
+        generated_for.append(
+            type(utils.get_current_device(probe_runtime=False)).__name__
+        )
+
     cd = CompilableDesign(gen)
 
-    def fake_generate_uncached(self):
-        assert (
-            type(utils.get_current_device(probe_runtime=False)).__name__ == "NPU2Col1"
-        )
-        return ("mlir", [])
-
-    monkeypatch.setattr(CompilableDesign, "_generate_uncached", fake_generate_uncached)
-
     try:
-        assert cd._generated == ("mlir", [])
+        # No device explicitly set: generation must probe the runtime and bind
+        # its device before generating, so the generator body sees NPU2Col1.
+        mlir_text, external_kernels = cd._generated
     finally:
         set_current_device(None)
 
+    assert generated_for == ["NPU2Col1"]
+    assert "module" in mlir_text
+    assert external_kernels == []
+
     keys = list(cd._generated_cache)
     assert len(keys) == 1
-    assert "NPU2Col1" in keys[0][1]
+    assert "NPU2Col1" in keys[0][2]
 
 
 def test_cache_hit_refreshes_tensor_metadata_for_the_selected_artifact(
