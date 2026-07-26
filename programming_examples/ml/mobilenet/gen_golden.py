@@ -2,31 +2,31 @@
 # Copyright (C) 2024 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-import sys
-import onnx
-import torchvision
-from torchvision.io import read_image
-from torchvision.models import resnet50, ResNet50_Weights
-import torch
-from torchvision import transforms
-from PIL import Image
-import torch.nn as nn
-import sys
+import json
 import math
-from aie.utils.ml import DataShaper
-import time
 import os
-import numpy as np
 
-import torch.utils.data as data_utils
-from brevitas.nn import QuantConv2d, QuantIdentity, QuantReLU
-from brevitas.quant.fixed_point import (
+import numpy as np
+import torch  # pyright: ignore[reportMissingImports]
+import torch.nn as nn  # pyright: ignore[reportMissingImports]
+import torch.nn.functional as F  # pyright: ignore[reportMissingImports]
+import torch.utils.data as data_utils  # pyright: ignore[reportMissingImports]
+import torchvision  # pyright: ignore[reportMissingImports]
+from aie.utils.ml import DataShaper
+from brevitas.nn import (  # pyright: ignore[reportMissingImports]
+    QuantConv2d,
+    QuantIdentity,
+    QuantReLU,
+)
+from brevitas.quant.fixed_point import (  # pyright: ignore[reportMissingImports]
     Int8ActPerTensorFixedPoint,
     Int8WeightPerTensorFixedPoint,
     Uint8ActPerTensorFixedPoint,
 )
-import torch.nn.functional as F
-from brevitas_examples.imagenet_classification.ptq.ptq_common import calibrate
+from brevitas_examples.imagenet_classification.ptq.ptq_common import (  # pyright: ignore[reportMissingImports]
+    calibrate,
+)
+from torchvision import transforms  # pyright: ignore[reportMissingImports]
 
 
 def chunk_weights_depth_cascade(int_weight, InC, WeightChunks):
@@ -77,9 +77,6 @@ def convert_to_numpy(array):
 
 torch.use_deterministic_algorithms(True)
 torch.manual_seed(0)
-
-
-import json
 
 
 def pad_tensor(tensor, target_shape):
@@ -440,7 +437,7 @@ def main():
     dtype_in = np.dtype("int8")
     dtype_wts = np.dtype("int8")
     dtype_out = np.dtype("uint8")
-    dtype_out_aie = np.dtype("uint16")
+    np.dtype("uint16")
     # dtype_out = np.dtype("int8")
 
     shape_total_wts = (
@@ -462,9 +459,6 @@ def main():
     )
 
     print("total weights:::", shape_total_wts)
-    shape_in_act = (tensorInH, InC_vec, tensorInW, vectorSize)  #'YCXC8' , 'CYX'
-    shape_out = (tensorOutH, OutC_vec, tensorOutW, vectorSize)  # HCWC8
-    shape_out_final = (OutC_vec * vectorSize, tensorOutH, tensorOutW)  # CHW
 
     class QuantMobilenet(nn.Module):
         def __init__(
@@ -686,8 +680,10 @@ def main():
             #     return_quant_tensor=True,
             # )
             # # force alignment between scales going into add
-            # self.bn2_quant_id.act_quant.fused_activation_quant_proxy.tensor_quant.scaling_impl = self.bn1_quant_id_2.act_quant.fused_activation_quant_proxy.tensor_quant.scaling_impl
-            # self.bn2_quant_id.act_quant.fused_activation_quant_proxy.tensor_quant.int_scaling_impl = self.bn1_quant_id_2.act_quant.fused_activation_quant_proxy.tensor_quant.int_scaling_impl
+            # self.bn2_quant_id.act_quant.fused_activation_quant_proxy.tensor_quant.scaling_impl
+            #   = self.bn1_quant_id_2.act_quant.fused_activation_quant_proxy.tensor_quant.scaling_impl
+            # self.bn2_quant_id.act_quant.fused_activation_quant_proxy.tensor_quant.int_scaling_impl
+            #   = self.bn1_quant_id_2.act_quant.fused_activation_quant_proxy.tensor_quant.int_scaling_impl
 
             # bn3
             self.bn3_quant_conv1 = QuantConv2d(
@@ -1154,8 +1150,10 @@ def main():
             )
             # bn12
             # # force alignment between scales going into add
-            #             self.bn10_quant_id_2.act_quant.fused_activation_quant_proxy.tensor_quant.scaling_impl = self.bn11_quant_id_2.act_quant.fused_activation_quant_proxy.tensor_quant.scaling_impl
-            #             self.bn10_quant_id_2.act_quant.fused_activation_quant_proxy.tensor_quant.int_scaling_impl = self.bn11_quant_id_2.act_quant.fused_activation_quant_proxy.tensor_quant.int_scaling_impl
+            #             self.bn10_quant_id_2.act_quant.fused_activation_quant_proxy.tensor_quant.scaling_impl
+            #   = self.bn11_quant_id_2.act_quant.fused_activation_quant_proxy.tensor_quant.scaling_impl
+            #             self.bn10_quant_id_2.act_quant.fused_activation_quant_proxy.tensor_quant.int_scaling_impl
+            #   = self.bn11_quant_id_2.act_quant.fused_activation_quant_proxy.tensor_quant.int_scaling_impl
 
             self.bn12_quant_conv1 = QuantConv2d(
                 bn11_project,
@@ -1558,10 +1556,6 @@ def main():
         post_conv2=post_L2_OutC,
     )
     from mb_utils import ExpandChannels
-    from brevitas_examples.imagenet_classification.ptq.ptq_common import calibrate
-    import torchvision
-    import torch.utils.data as data_utils
-    from torchvision import transforms
 
     # # Define the image preprocessing pipeline
     transform = transforms.Compose(
@@ -1600,20 +1594,24 @@ def main():
     for batch in calib_loader:
         images, labels = batch
         input = images[0].unsqueeze(0)  # Get the first image from the batch
-        input_label = labels[0]  # Get the corresponding label
+        labels[0]  # Get the corresponding label
         break
 
     # input = torch.randn(1, tensorInC, tensorInH, tensorInW)
 
-    q_bottleneck_out = quant_model(input)
+    q_bottleneck_out = quant_model(
+        input  # pyright: ignore[reportPossiblyUnboundVariable]
+    )
     golden_output = (
         q_bottleneck_out.int(float_datatype=True).data.numpy().astype(dtype_out)
     )
-    padded_golden_output = pad_tensor(golden_output, target_shape)
-    q_inp = quant_model.quant_id_1(input)
+    pad_tensor(golden_output, target_shape)
+    q_inp = quant_model.quant_id_1(
+        input  # pyright: ignore[reportPossiblyUnboundVariable]
+    )
     int_inp = q_inp.int(float_datatype=True)
     print(int_inp)
-    print(input.shape)
+    print(input.shape)  # pyright: ignore[reportPossiblyUnboundVariable]
 
     inp_scale = quant_model.quant_id_1.act_quant.scale()
 
@@ -2048,7 +2046,7 @@ def main():
         block_13_skip_add / block_14_skip_add
     )  # After addition | clip -128-->127
 
-    atol = block_14_skip_add.item()
+    block_14_skip_add.item()
     print("********************BN13*******************************")
     print("combined_scale after conv1x1:", block_13_combined_scale1.item())
     print("combined_scale after conv3x3:", block_13_combined_scale2.item())
@@ -2448,9 +2446,7 @@ def main():
     bn11_total_wts = np.concatenate((bn11_wts1, bn11_wts2, bn11_wts3), axis=None)
     bn12_total_wts = np.concatenate((bn12_wts1, bn12_wts2, bn12_wts3), axis=None)
     bn12_wts2_3 = np.concatenate((bn12_wts2, bn12_wts3), axis=None)
-    b_block_total_wts = np.concatenate(
-        (bn10_total_wts, bn11_total_wts, bn12_total_wts), axis=None
-    )
+    np.concatenate((bn10_total_wts, bn11_total_wts, bn12_total_wts), axis=None)
 
     # **************************** bn13 ****************************
     # bn13_wts1 = ds.reorder_mat(
@@ -2561,7 +2557,7 @@ def main():
 
     # Split weights for 4 cores
     O_total = padded_post_layer2_conv1_int_weight.shape[0]
-    I_total = padded_post_layer2_conv1_int_weight.shape[1]
+    padded_post_layer2_conv1_int_weight.shape[1]
 
     post_layer2_conv1_weights_splits = [
         padded_post_layer2_conv1_int_weight[

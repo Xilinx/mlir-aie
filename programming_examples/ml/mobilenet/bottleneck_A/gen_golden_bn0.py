@@ -3,21 +3,20 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 
-import torch
-import torch.nn as nn
-import sys
 import math
-from aie.utils.ml import DataShaper
-import time
 import os
 from pathlib import Path
+
 import numpy as np
-import aie.iron as iron
-from aie.utils import DefaultNPURuntime
-from aie.utils import TraceConfig, HostRuntime, NPUKernel, DefaultNPURuntime
-import aie.utils.test as test_utils
-from brevitas.nn import QuantConv2d, QuantIdentity, QuantReLU
-from brevitas.quant.fixed_point import (
+import torch  # pyright: ignore[reportMissingImports]
+import torch.nn as nn  # pyright: ignore[reportMissingImports]
+from aie.utils.ml import DataShaper
+from brevitas.nn import (  # pyright: ignore[reportMissingImports]
+    QuantConv2d,
+    QuantIdentity,
+    QuantReLU,
+)
+from brevitas.quant.fixed_point import (  # pyright: ignore[reportMissingImports]
     Int8ActPerTensorFixedPoint,
     Int8WeightPerTensorFixedPoint,
     Uint8ActPerTensorFixedPoint,
@@ -27,8 +26,6 @@ torch.use_deterministic_algorithms(True)
 torch.manual_seed(0)
 vectorSize = 8
 
-
-from .. import mb_utils
 
 log_dir = str(Path(__file__).parent / "log") + "/"
 data_dir = str(Path(__file__).parent / "data") + "/"
@@ -67,20 +64,6 @@ def main():
     dtype_in = np.dtype("int8")
     dtype_wts = np.dtype("int8")
     dtype_out = np.dtype("int8")
-
-    shape_total_wts = (3 * 3 * bneck_0_OutC2 + bneck_0_OutC2 * bneck_0_OutC3, 1)
-    shape_in_act = (
-        bneck_0_InH2,
-        bneck_0_InC2_vec,
-        bneck_0_InW2,
-        vectorSize,
-    )  #'YCXC8' , 'CYX'
-    shape_out = (bneck_0_InH3, bneck_0_OutC3_vec, bneck_0_InW3, vectorSize)  # HCWC8
-    shape_out_final = (
-        bneck_0_OutC3_vec * vectorSize,
-        bneck_0_InH3,
-        bneck_0_InW3,
-    )  # CHW
 
     # ------------------------------------------------------
     # Initialize activation, weights, scaling factor for int8 model
@@ -162,11 +145,13 @@ def main():
     )
 
     # import pathlib
+    import torch.utils.data as data_utils  # pyright: ignore[reportMissingImports]
+    import torchvision  # pyright: ignore[reportMissingImports]
+    from brevitas_examples.imagenet_classification.ptq.ptq_common import (  # pyright: ignore[reportMissingImports]
+        calibrate,
+    )
     from mb_utils import ExpandChannels
-    from brevitas_examples.imagenet_classification.ptq.ptq_common import calibrate
-    import torchvision
-    import torch.utils.data as data_utils
-    from torchvision import transforms
+    from torchvision import transforms  # pyright: ignore[reportMissingImports]
 
     # Define the image preprocessing pipeline
     transform = transforms.Compose(

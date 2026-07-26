@@ -27,26 +27,27 @@ import argparse
 import os
 import sys
 
-import numpy as np
-
 import aie.iron as iron
-from aie.iron import In, ObjectFifo, Out, Program, Runtime
-from aie.utils.hostruntime.argparse import device_from_args
+import numpy as np
 from aie.helpers.taplib import TensorAccessPattern
-from aie.utils.hostruntime import set_current_device
-from aie.utils.hostruntime.argparse import add_compile_args
+from aie.iron import In, ObjectFifo, Out, Program, Runtime
+from aie.utils.hostruntime.argparse import add_compile_args, device_from_args
 from aie.utils.hostruntime.cli import run_design_cli
+
+from . import mb_utils
+from .bottleneck.cascade import cascade_bottlenecks
 
 # Sibling imports below resolve via the script's parent dir (auto-added
 # to sys.path[0] when invoked as ``python3 .../aie2_mobilenet_iron.py``).
 from .bottleneck.init import init_conv
-from .bottleneck.regular import regular_bottlenecks
 from .bottleneck.pipeline import pipeline_bottlenecks
-from .bottleneck.cascade import cascade_bottlenecks
 from .bottleneck.post_l1 import post_l1
 from .bottleneck.post_l2 import post_l2
+from .bottleneck.regular import regular_bottlenecks
 from .network_spec import block as nsblock
-from . import mb_utils
+
+# Physical tile placement lives in placement.py (algorithm/mapping split).
+from .placement import PLACEMENT
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -65,10 +66,6 @@ tensorInW, tensorInH, tensorInC = nsblock("init").layers[0].in_shape
 post_L1_OutW, post_L1_OutH, _ = nsblock("post_l1").layers[0].out_shape
 post_L2_InC = nsblock("post_l2").layers[0].in_shape[2]
 post_L2_OutC = nsblock("post_l2").layers[-1].out_shape[2]
-
-
-# Physical tile placement lives in placement.py (algorithm/mapping split).
-from .placement import PLACEMENT
 
 
 # ---------------------------------------------------------------------------
@@ -172,7 +169,11 @@ def make_mobilenet_iron(use_placement: bool = True):
         # (act_in, weights, FC fills) — otherwise their BD IDs would be
         # deallocated while their DMAs were potentially still in flight.
         rt = Runtime()
-        with rt.sequence(in_ty, cascade_wts_ty, out_ty) as (inp, cascade_wts, out):
+        with rt.sequence(in_ty, cascade_wts_ty, out_ty) as (
+            inp_h,
+            cascade_wts_h,
+            out_h,
+        ):  # pyright: ignore[reportGeneralTypeIssues]
             rt.start(*all_workers)
 
             # ---- Group 1: input + weights + avgpool drain ----
@@ -184,7 +185,7 @@ def make_mobilenet_iron(use_placement: bool = True):
             tg1 = rt.task_group()
             rt.fill(
                 act_in.prod(depth=1),
-                inp,
+                inp_h,
                 tile=shim.get("input"),
                 task_group=tg1,
             )
@@ -195,7 +196,7 @@ def make_mobilenet_iron(use_placement: bool = True):
             ):
                 rt.fill(
                     fifo.prod(),
-                    cascade_wts,
+                    cascade_wts_h,
                     _wts_tap(off, sz),
                     tile=s,
                     task_group=tg1,
@@ -218,7 +219,7 @@ def make_mobilenet_iron(use_placement: bool = True):
             )
             rt.drain(
                 act_out_post_avgpool_shim.cons(),
-                inp,
+                inp_h,
                 tap=_post_l1_scratch_tap,
                 wait=True,
                 task_group=tg1,
@@ -234,7 +235,7 @@ def make_mobilenet_iron(use_placement: bool = True):
             tg2 = rt.task_group()
             rt.fill(
                 act_out_post_shim_FC.prod(),
-                inp,
+                inp_h,
                 tap=_post_l1_scratch_tap,
                 task_group=tg2,
                 tile=shim.get("fc_fill"),
@@ -247,7 +248,7 @@ def make_mobilenet_iron(use_placement: bool = True):
             )
             rt.drain(
                 act_out_of.cons(),
-                inp,
+                inp_h,
                 tap=_post_fc_out_tap,
                 wait=True,
                 task_group=tg2,
@@ -259,14 +260,14 @@ def make_mobilenet_iron(use_placement: bool = True):
             tg3 = rt.task_group()
             rt.fill(
                 act_out_post_shim_FC.prod(),
-                inp,
+                inp_h,
                 tap=_post_fc_out_tap,
                 task_group=tg3,
                 tile=shim.get("fc_fill"),
             )
             rt.drain(
                 act_out_of.cons(),
-                out,
+                out_h,
                 wait=True,
                 task_group=tg3,
                 tile=shim.get("fc_drain"),
@@ -276,7 +277,9 @@ def make_mobilenet_iron(use_placement: bool = True):
         # ------------------------------------------------------------------
         # Generate MLIR
         # ------------------------------------------------------------------
-        return Program(iron.get_current_device(), rt).resolve_program()
+        return Program(
+            iron.get_current_device(), rt  # pyright: ignore[reportArgumentType]
+        ).resolve_program()
 
     return mobilenet_iron
 

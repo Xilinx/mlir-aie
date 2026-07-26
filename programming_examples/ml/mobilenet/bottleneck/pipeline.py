@@ -12,21 +12,34 @@ Two module-level builders, dispatched by network_spec.NETWORK:
                           (bn12 only — combines L2 + L3 into one buffer)
 """
 
+from typing import cast
+
 import numpy as np
+from aie.extras.dialects.memref import view as memref_view
 from aie.iron import Buffer, ObjectFifo, Worker, kernels
 from aie.iron.algorithms import row_at_a_time, row_at_a_time_with_skip, sliding_3row
 from aie.iron.controlflow import range_
-from aie.extras.dialects.memref import view as memref_view
+from aie.iron.device import Tile
 
+from ..network_spec import block as nsblock
 from ._common import (
     i8 as _i8,
-    u8 as _u8,
-    load_wts as _load_weights,
+)
+from ._common import (
     layer_sf as _layer_sf,
+)
+from ._common import (
+    load_wts as _load_weights,
+)
+from ._common import (
     skip_sf as _skip_sf,
+)
+from ._common import (
+    u8 as _u8,
+)
+from ._common import (
     wts_buffer as _wts_buf,
 )
-from ..network_spec import block as nsblock
 
 
 # ---------------------------------------------------------------------------
@@ -59,7 +72,7 @@ def build_3tile_pipeline(blk, act_in, sf, *, data_dir, tiles=None, skip_in=None)
     l2_wts = _wts_buf(data_dir, f"{name}_2_chain.txt", l2_wts_sz)
     l3_wts = _wts_buf(data_dir, f"{name}_3_chain.txt", l3_wts_sz)
 
-    in_ty = _i8((in_w, 1, in_c))
+    _i8((in_w, 1, in_c))
     l1_out_ty = _u8((in_w, 1, l1_out_c))
     l2_out_ty = _u8((in_w, 1, l2_out_c))
     out_ty = _i8((in_w, 1, l3_out_c))
@@ -107,7 +120,7 @@ def build_3tile_pipeline(blk, act_in, sf, *, data_dir, tiles=None, skip_in=None)
 
     if has_skip:
 
-        def l3_fn(of_23, skip_h, out_f, wts, k):
+        def l3_fn(of_23, skip_h, out_f, wts, k):  # pyright: ignore[reportRedeclaration]
             def call(r_in, r_out, r_skip, _):
                 k(r_in, wts, r_out, r_skip, in_w, l2_out_c, l3_out_c, s3, scale_add)
 
@@ -128,7 +141,10 @@ def build_3tile_pipeline(blk, act_in, sf, *, data_dir, tiles=None, skip_in=None)
     if has_skip:
         l3_args.append(skip_in.cons())
     l3_args += [out_fifo.prod(), l3_wts, k_l3]
-    t = tiles.get if tiles else lambda k: None
+
+    def t(k) -> Tile:
+        return cast(Tile, tiles.get(k) if tiles else None)
+
     workers = [
         Worker(l1_fn, [l1_in_h, of_12.prod(), l1_wts, k_l1], tile=t("l1")),
         Worker(l2_fn, [of_12.cons(), of_23.prod(), l2_wts, k_l2], tile=t("l2")),
@@ -169,7 +185,7 @@ def build_bn12_2tile(blk, act_in, sf, *, data_dir, tiles=None):
     bn12_l1_wts = _wts_buf(data_dir, "bn12_1_chain.txt", bn12_l1_wts_sz)
     bn12_l23_wts = Buffer(_i8((bn12_l23_wts_sz,)), initial_value=bn12_l23_data)
 
-    bn12_in_ty = _i8((in_w, 1, in_c))
+    _i8((in_w, 1, in_c))
     bn12_l1_ty = _u8((in_w, 1, l1_c))
     bn12_dw_ty = _u8((out_w, 1, l1_c))
     bn12_out_ty = _i8((out_w, 1, out_c))
@@ -282,7 +298,9 @@ def build_bn12_2tile(blk, act_in, sf, *, data_dir, tiles=None):
         dw_tmp_prod.release(1)
         _pw()
 
-    t = tiles.get if tiles else lambda k: None
+    def t(k) -> Tile:
+        return cast(Tile, tiles.get(k) if tiles else None)
+
     workers = [
         Worker(
             bn12_l1_fn,
@@ -333,7 +351,7 @@ def pipeline_bottlenecks(
         skip_in = None
         if has_skip:
             skip_in = act.cons(depth=6).forward(
-                depth=2, tile=tiles.get("mem_skip") if tiles else None
+                depth=2, tile=cast(Tile, tiles.get("mem_skip") if tiles else None)
             )
             # Strip mem_skip so only l1/l2/l3 are passed to the builder.
             if tiles is not None:

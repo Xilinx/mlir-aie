@@ -25,20 +25,20 @@ import argparse
 import json
 import os
 
-import numpy as np
-
 import aie.iron as iron
+import numpy as np
 from aie.iron import ObjectFifo, Program, Runtime
 from aie.iron.device import Tile
-from aie.utils.hostruntime.argparse import device_from_args
 from aie.utils.hostruntime import set_current_device
-from aie.utils.hostruntime.argparse import add_compile_args
+from aie.utils.hostruntime.argparse import add_compile_args, device_from_args
 
-from .network_spec import block as nsblock, CASCADE_NAMES
-from .bottleneck._common import i8 as _i8, u8 as _u8
-from .bottleneck.regular import build_2layer_skip, build_3layer, build_fused_pair
-from .bottleneck.pipeline import build_3tile_pipeline, build_bn12_2tile
+from .bottleneck._common import i8 as _i8
+from .bottleneck._common import u8 as _u8
 from .bottleneck.cascade import build_cascade
+from .bottleneck.pipeline import build_3tile_pipeline, build_bn12_2tile
+from .bottleneck.regular import build_2layer_skip, build_3layer, build_fused_pair
+from .network_spec import CASCADE_NAMES
+from .network_spec import block as nsblock
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data") + "/"
 SCALE_FACTORS = None  # Lazy-loaded in per_block_iron from --scales-json or default.
@@ -228,7 +228,12 @@ def per_block_iron(block_name, data_dir=None, scales_json=None):
         # Cascade: input + 2 weight buffers + output.
         BN_WTS_SZ = 80 * 960  # 76800 bytes per L1/L3 weight chunk for bn13/bn14
         wts_ty = np.ndarray[(BN_WTS_SZ // 4,), np.dtype[np.int32]]
-        with rt.sequence(in_ty, wts_ty, wts_ty, out_ty) as (inp, wl1, wl3, out):
+        with rt.sequence(in_ty, wts_ty, wts_ty, out_ty) as (
+            inp,
+            wl1,
+            wl3,
+            out,
+        ):  # pyright: ignore[reportGeneralTypeIssues]
             rt.start(*workers)
             tg = rt.task_group()
             rt.fill(
@@ -258,7 +263,10 @@ def per_block_iron(block_name, data_dir=None, scales_json=None):
             )
             rt.finish_task_group(tg)
     else:
-        with rt.sequence(in_ty, out_ty) as (inp, out):
+        with rt.sequence(in_ty, out_ty) as (
+            inp,
+            out,
+        ):  # pyright: ignore[reportGeneralTypeIssues]
             rt.start(*workers)
             tg = rt.task_group()
             rt.fill(
@@ -276,7 +284,9 @@ def per_block_iron(block_name, data_dir=None, scales_json=None):
             )
             rt.finish_task_group(tg)
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    return Program(
+        iron.get_current_device(), rt  # pyright: ignore[reportArgumentType]
+    ).resolve_program()
 
 
 def _make_argparser():
@@ -300,7 +310,9 @@ def _make_argparser():
 
 def main():
     opts = _make_argparser().parse_args()
-    set_current_device(device_from_args(opts, n_cols=None))
+    set_current_device(
+        device_from_args(opts, n_cols=None)  # pyright: ignore[reportArgumentType]
+    )
     print(
         per_block_iron(opts.block, data_dir=opts.data_dir, scales_json=opts.scales_json)
     )

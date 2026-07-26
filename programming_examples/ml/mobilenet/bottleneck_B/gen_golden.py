@@ -3,30 +3,32 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 
-import torch
-import torch.nn as nn
-import sys
 import math
-from aie.utils.ml import DataShaper
-import time
 import os
 from pathlib import Path
-import numpy as np
 
-from brevitas.nn import QuantConv2d, QuantIdentity, QuantReLU
-from brevitas.quant.fixed_point import (
+import numpy as np
+import torch  # pyright: ignore[reportMissingImports]
+import torch.nn as nn  # pyright: ignore[reportMissingImports]
+from aie.utils.ml import DataShaper
+from brevitas.nn import (  # pyright: ignore[reportMissingImports]
+    QuantConv2d,
+    QuantIdentity,
+    QuantReLU,
+)
+from brevitas.quant.fixed_point import (  # pyright: ignore[reportMissingImports]
     Int8ActPerTensorFixedPoint,
     Int8WeightPerTensorFixedPoint,
     Uint8ActPerTensorFixedPoint,
 )
+from brevitas_examples.imagenet_classification.ptq.ptq_common import (  # pyright: ignore[reportMissingImports]
+    calibrate,
+)
 
-from brevitas_examples.imagenet_classification.ptq.ptq_common import calibrate
+from .. import mb_utils
 
 torch.use_deterministic_algorithms(True)
 torch.manual_seed(0)
-
-
-from .. import mb_utils
 
 log_dir = str(Path(__file__).parent / "log") + "/"
 data_dir = str(Path(__file__).parent / "data") + "/"
@@ -103,10 +105,6 @@ def main():
     dtype_wts = np.dtype("int8")
     dtype_out = np.dtype("int8")
 
-    shape_total_wts = (wts_size, 1)
-    shape_in_act = (bneck_10_InH1, InC_vec, bneck_10_InW1, vectorSize)  #'YCXC8' , 'CYX'
-    shape_out = (OutH, OutC_vec, OutW, vectorSize)  # bneck_12_OutC3/8
-    shape_out_final = (OutC_vec * vectorSize, OutH, OutW)  # bneck_12_OutC3/8
     # ------------------------------------------------------
     # Initialize activation, weights, scaling factor for int8 model
     # ------------------------------------------------------
@@ -242,8 +240,10 @@ def main():
             )
             # bn12
             # # force alignment between scales going into add
-            #             self.bn10_quant_id_2.act_quant.fused_activation_quant_proxy.tensor_quant.scaling_impl = self.bn11_quant_id_2.act_quant.fused_activation_quant_proxy.tensor_quant.scaling_impl
-            #             self.bn10_quant_id_2.act_quant.fused_activation_quant_proxy.tensor_quant.int_scaling_impl = self.bn11_quant_id_2.act_quant.fused_activation_quant_proxy.tensor_quant.int_scaling_impl
+            #             self.bn10_quant_id_2.act_quant.fused_activation_quant_proxy.tensor_quant.scaling_impl
+            #   = self.bn11_quant_id_2.act_quant.fused_activation_quant_proxy.tensor_quant.scaling_impl
+            #             self.bn10_quant_id_2.act_quant.fused_activation_quant_proxy.tensor_quant.int_scaling_impl
+            #   = self.bn11_quant_id_2.act_quant.fused_activation_quant_proxy.tensor_quant.int_scaling_impl
 
             self.bn12_quant_conv1 = QuantConv2d(
                 bn11_project,
@@ -333,10 +333,9 @@ def main():
     )
     quant_bottleneck_model.eval()
 
-    from brevitas_examples.imagenet_classification.ptq.ptq_common import calibrate
-    import torchvision
-    import torch.utils.data as data_utils
-    from torchvision import transforms
+    import torch.utils.data as data_utils  # pyright: ignore[reportMissingImports]
+    import torchvision  # pyright: ignore[reportMissingImports]
+    from torchvision import transforms  # pyright: ignore[reportMissingImports]
 
     # Define the image preprocessing pipeline
     transform = transforms.Compose(
@@ -350,7 +349,6 @@ def main():
             ),  # Expand to 80 channels
         ]
     )
-    data_dir = "data"
 
     # test_dataset = torchvision.datasets.ImageNet(
     #     root=data_dir, train=False, transform=transform, download=True)
@@ -372,7 +370,6 @@ def main():
     for name, param in quant_bottleneck_model.named_parameters():
         if name.endswith(".bias"):
             param.data.fill_(0)
-    from brevitas.fx import brevitas_symbolic_trace
 
     # model = brevitas_symbolic_trace(quant_bottleneck_model)
     # print(model.graph)
@@ -416,7 +413,7 @@ def main():
     block_11_relu_1 = quant_bottleneck_model.bn11_quant_relu1.act_quant.scale()
     block_11_relu_2 = quant_bottleneck_model.bn11_quant_relu2.act_quant.scale()
     block_11_skip_add = quant_bottleneck_model.bn11_add.act_quant.scale()
-    block_11_final_scale = quant_bottleneck_model.bn11_quant_id_2.act_quant.scale()
+    quant_bottleneck_model.bn11_quant_id_2.act_quant.scale()
 
     block_11_weight_scale1 = (
         quant_bottleneck_model.bn11_quant_conv1.weight_quant.scale()
@@ -465,7 +462,7 @@ def main():
         block_12_relu_2 * block_12_weight_scale3 / block_12_final_scale
     )
 
-    atol = block_12_final_scale.item()
+    block_12_final_scale.item()
 
     print("********************BN10*******************************")
     print("combined_scale after conv1x1:", block_10_combined_scale1.item())
@@ -535,7 +532,7 @@ def main():
     before_input = int_inp.squeeze().data.numpy().astype(dtype_in)  # JL
     print("Writing input txt file.")
     before_input.tofile(log_dir + "/before_ifm_mem_fmt_1x1.txt", sep=",", format="%d")
-    ifm_mem_fmt = ds.reorder_mat(before_input, "YCXC8", "CYX")
+    ds.reorder_mat(before_input, "YCXC8", "CYX")
 
     # **************************** bn10 ****************************
     bn10_wts1 = ds.reorder_mat(
@@ -588,9 +585,7 @@ def main():
     bn10_total_wts = np.concatenate((bn10_wts1, bn10_wts2, bn10_wts3), axis=None)
     bn11_total_wts = np.concatenate((bn11_wts1, bn11_wts2, bn11_wts3), axis=None)
     bn12_total_wts = np.concatenate((bn12_wts1, bn12_wts2, bn12_wts3), axis=None)
-    total_wts = np.concatenate(
-        (bn10_total_wts, bn11_total_wts, bn12_total_wts), axis=None
-    )
+    np.concatenate((bn10_total_wts, bn11_total_wts, bn12_total_wts), axis=None)
 
     print("Done.")
 

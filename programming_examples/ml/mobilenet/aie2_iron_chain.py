@@ -26,21 +26,20 @@ Usage:
 import argparse
 import json
 
-import numpy as np
-
 import aie.iron as iron
+import numpy as np
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import ObjectFifo, Program, Runtime
 from aie.iron.device import Tile
-from aie.utils.hostruntime.argparse import device_from_args
 from aie.utils.hostruntime import set_current_device
-from aie.utils.hostruntime.argparse import add_compile_args
-from aie.helpers.taplib import TensorAccessPattern
+from aie.utils.hostruntime.argparse import add_compile_args, device_from_args
 
-from .network_spec import block as nsblock
-from .bottleneck._common import i8 as _i8, u8 as _u8
-from .bottleneck.regular import regular_bottlenecks
-from .bottleneck.pipeline import pipeline_bottlenecks
+from .bottleneck._common import i8 as _i8
+from .bottleneck._common import u8 as _u8
 from .bottleneck.cascade import cascade_bottlenecks
+from .bottleneck.pipeline import pipeline_bottlenecks
+from .bottleneck.regular import regular_bottlenecks
+from .network_spec import block as nsblock
 
 T = Tile
 
@@ -175,7 +174,11 @@ def _chain_iron(mode, data_dir, scales_json):
                 strides=[0, 0, 0, 1],
             )
 
-        with rt.sequence(in_ty, wts_ty, out_ty) as (inp, all_wts, out):
+        with rt.sequence(in_ty, wts_ty, out_ty) as (
+            inp,
+            all_wts,
+            out,
+        ):  # pyright: ignore[reportGeneralTypeIssues]
             rt.start(*workers)
             tg = rt.task_group()
             rt.fill(
@@ -203,7 +206,10 @@ def _chain_iron(mode, data_dir, scales_json):
             )
             rt.finish_task_group(tg)
     else:
-        with rt.sequence(in_ty, out_ty) as (inp, out):
+        with rt.sequence(in_ty, out_ty) as (
+            inp,
+            out,
+        ):  # pyright: ignore[reportGeneralTypeIssues]
             rt.start(*workers)
             tg = rt.task_group()
             rt.fill(
@@ -221,7 +227,9 @@ def _chain_iron(mode, data_dir, scales_json):
             )
             rt.finish_task_group(tg)
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    return Program(
+        iron.get_current_device(), rt  # pyright: ignore[reportArgumentType]
+    ).resolve_program()
 
 
 def _make_argparser():
@@ -235,7 +243,9 @@ def _make_argparser():
 
 def main():
     opts = _make_argparser().parse_args()
-    set_current_device(device_from_args(opts, n_cols=None))
+    set_current_device(
+        device_from_args(opts, n_cols=None)  # pyright: ignore[reportArgumentType]
+    )
     print(_chain_iron(opts.mode, opts.data_dir, opts.scales_json))
 
 
