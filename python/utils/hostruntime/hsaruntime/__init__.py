@@ -21,7 +21,6 @@ HSA_STATUS_SUCCESS = 0
 HSA_STATUS_INFO_BREAK = 0x1
 
 HSA_DEVICE_TYPE_CPU = 0
-HSA_DEVICE_TYPE_GPU = 1
 HSA_DEVICE_TYPE_AIE = 3  # from hsa_device_type_t (CPU=0, GPU=1, DSP=2, AIE=3)
 
 HSA_AGENT_INFO_DEVICE = 17
@@ -29,7 +28,6 @@ HSA_AGENT_INFO_QUEUE_MIN_SIZE = 13
 HSA_AGENT_INFO_NAME = 0
 
 HSA_REGION_INFO_SEGMENT = 0
-HSA_REGION_INFO_GLOBAL_FLAGS = 1
 HSA_REGION_INFO_RUNTIME_ALLOC_ALLOWED = 5
 HSA_REGION_SEGMENT_GLOBAL = 0
 
@@ -57,6 +55,16 @@ HSA_AMD_AIE_PACKET_OPCODE_KMQ = 0
 
 HSA_SIGNAL_CONDITION_EQ = 0
 HSA_WAIT_STATE_BLOCKED = 0
+
+# AQL packet header: READY type with system-scope acquire/release fences. All
+# operands are constants, so build it once at import instead of per dispatch.
+_DISPATCH_HEADER = (
+    (HSA_AMD_AIE_PACKET_TYPE_READY << HSA_PACKET_HEADER_TYPE)
+    | (HSA_FENCE_SCOPE_SYSTEM << HSA_PACKET_HEADER_SCACQUIRE_FENCE_SCOPE)
+    | (HSA_FENCE_SCOPE_SYSTEM << HSA_PACKET_HEADER_SCRELEASE_FENCE_SCOPE)
+)
+# Block indefinitely (UINT64_MAX timeout) in hsa_signal_wait_scacquire.
+_HSA_WAIT_FOREVER = 0xFFFFFFFFFFFFFFFF
 
 # Opaque handle-carrying structs are all {uint64_t handle}.
 hsa_agent_t = ctypes.c_uint64
@@ -290,6 +298,14 @@ class HSAContext:
             "hsa_queue_create",
         )
         self.queue = qptr
+        # Fixed for the life of the queue; cache instead of dereferencing
+        # q.contents.* (and re-casting base_address) on every dispatch.
+        self.queue_size = qptr.contents.size
+        self.queue_doorbell = qptr.contents.doorbell_signal
+        self.queue_packets = ctypes.cast(
+            qptr.contents.base_address,
+            ctypes.POINTER(HsaAieKernelDispatchPacket),
+        )
 
     @classmethod
     def get(cls):
@@ -462,11 +478,7 @@ class HSAContext:
     # -- dispatch ----------------------------------------------------------
     def dispatch(self, pdi_ptr, insts_ptr, insts_size, kernarg_ptr, num_kernargs, signal):
         pkt = HsaAieKernelDispatchPacket()
-        pkt.header = (
-            (HSA_AMD_AIE_PACKET_TYPE_READY << HSA_PACKET_HEADER_TYPE)
-            | (HSA_FENCE_SCOPE_SYSTEM << HSA_PACKET_HEADER_SCACQUIRE_FENCE_SCOPE)
-            | (HSA_FENCE_SCOPE_SYSTEM << HSA_PACKET_HEADER_SCRELEASE_FENCE_SCOPE)
-        )
+        pkt.header = _DISPATCH_HEADER
         pkt.opcode = HSA_AMD_AIE_PACKET_OPCODE_KMQ
         pkt.count = 24
         pkt.completion_signal = signal
@@ -478,19 +490,15 @@ class HSAContext:
         pkt.pdi_addr = pdi_ptr
 
         q = self.queue
+        qsize = self.queue_size
         wr_idx = _hsa_queue_add_write_index_relaxed(q, 1)  # noqa: F821
-        qsize = q.contents.size
         while wr_idx - _hsa_queue_load_read_index_scacquire(q) >= qsize:  # noqa: F821
             pass
-        base = ctypes.cast(
-            q.contents.base_address,
-            ctypes.POINTER(HsaAieKernelDispatchPacket),
-        )
-        base[wr_idx % qsize] = pkt
-        _hsa_signal_store_screlease(q.contents.doorbell_signal, wr_idx)  # noqa: F821
+        self.queue_packets[wr_idx % qsize] = pkt
+        _hsa_signal_store_screlease(self.queue_doorbell, wr_idx)  # noqa: F821
 
     def wait(self, signal):
         _hsa_signal_wait_scacquire(  # noqa: F821
-            signal, HSA_SIGNAL_CONDITION_EQ, 0, ctypes.c_uint64(-1).value,
+            signal, HSA_SIGNAL_CONDITION_EQ, 0, _HSA_WAIT_FOREVER,
             HSA_WAIT_STATE_BLOCKED,
         )
