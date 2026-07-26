@@ -204,19 +204,25 @@ class _CoherenceMap:
 
     def get(self, start, end):
         """The state of ``[start, end)``, or None if it is not uniform."""
-        seen = {v for lo, hi, v in self._spans if lo < end and hi > start}
+        spans = self._spans
+        if len(spans) == 1:  # whole allocation in one state: the usual case
+            return spans[0][2]
+        seen = {v for lo, hi, v in spans if lo < end and hi > start}
         return seen.pop() if len(seen) == 1 else None
 
     def any_host_written(self, start, end):
-        return any(
-            v == self.HOST for lo, hi, v in self._spans if lo < end and hi > start
-        )
+        spans = self._spans
+        if len(spans) == 1:
+            return spans[0][2] == self.HOST
+        return any(v == self.HOST for lo, hi, v in spans if lo < end and hi > start)
 
     def ranges(self, start, end, state):
         """The sub-ranges of ``[start, end)`` currently in ``state``."""
-        for lo, hi, value in self._spans:
-            if value == state and lo < end and hi > start:
-                yield max(lo, start), min(hi, end)
+        return [
+            (max(lo, start), min(hi, end))
+            for lo, hi, value in self._spans
+            if value == state and lo < end and hi > start
+        ]
 
     @staticmethod
     def _coalesce(spans):
@@ -385,11 +391,20 @@ class NpuTensor(ABC):
 
     @property
     def _extent(self):
-        # Computed rather than read from the cached nbytes: this runs during
-        # construction, before the cache is warm.
+        """Byte range this tensor covers in its buffer.
+
+        Cached: shape, dtype and offset are fixed once the tensor exists, and
+        this is read on every residency query, which a dispatch does per
+        argument.
+        """
+        cached = self.__dict__.get("_extent_cache")
+        if cached is not None:
+            return cached
         start = self.storage_offset
         size = int(np.prod(self.shape)) * np.dtype(self.dtype).itemsize
-        return start, start + size
+        extent = (start, start + size)
+        self.__dict__["_extent_cache"] = extent
+        return extent
 
     @property
     def device(self):
@@ -594,14 +609,21 @@ class NpuTensor(ABC):
         """
         start, end = self._extent
         coherence = self._coherence()
+        if coherence.get(start, end) == target_device:
+            # Already wholly where it is wanted: nothing to transfer and nothing
+            # to record. A dispatch takes this path for every argument it does
+            # not have to move, so it stays off the map entirely.
+            return self
         if target_device == "npu":
-            # Flush only if some part of this extent was written by the host.
-            if coherence.any_host_written(start, end):
-                self._sync_to_device()
+            # Send the dirty ranges, not the whole extent. Ranges are coalesced,
+            # so a buffer written end to end costs one transfer and a buffer
+            # with a few dirty windows costs those windows.
+            for lo, hi in coherence.ranges(start, end, _CoherenceMap.HOST):
+                self.buffer.sync_to_device(lo, hi - lo)
             coherence.set(start, end, "npu")
         elif target_device == "cpu":
-            if coherence.get(start, end) != "cpu":
-                self._sync_from_device()
+            for lo, hi in coherence.ranges(start, end, _CoherenceMap.DEVICE):
+                self.buffer.sync_from_device(lo, hi - lo)
             coherence.set(start, end, "cpu")
         else:
             raise ValueError(f"Unknown device '{target_device}'")
