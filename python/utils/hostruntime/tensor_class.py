@@ -4,7 +4,6 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 import bisect
-import contextlib
 import math
 import operator
 import os
@@ -382,6 +381,41 @@ class CPUBuffer(NpuBuffer):
         pass
 
 
+class _WriteBorrow:
+    """The array a write scope hands out, and the record it leaves behind.
+
+    A class rather than a generator: this is entered once per region written, so
+    a buffer filled window by window pays for it as many times as it has
+    windows, and the generator machinery costs more than the work it wraps.
+    """
+
+    __slots__ = ("_tensor", "_array", "_reconcile")
+
+    # Bound on entry rather than in the constructor, so leaving the scope
+    # without having entered it raises instead of quietly recording a write
+    # that never happened.
+    _array: np.ndarray
+
+    def __init__(self, tensor, reconcile):
+        self._tensor = tensor
+        self._reconcile = reconcile
+
+    def __enter__(self):
+        tensor = self._tensor
+        if self._reconcile:
+            tensor.to("cpu")
+        array = tensor.data[...]
+        self._array = array
+        return array
+
+    def __exit__(self, *exc_info):
+        self._array.flags.writeable = False
+        tensor = self._tensor
+        start, end = tensor._extent
+        tensor._coherence().set(start, end, "cpu")
+        return False
+
+
 class NpuTensor(ABC):
     """
     A host-mapped, device-resident buffer of fixed shape and dtype.
@@ -713,7 +747,6 @@ class NpuTensor(ABC):
             raise ValueError(f"Unknown device '{target_device}'")
         return self
 
-    @contextlib.contextmanager
     def mutate(self):
         """Borrow this buffer's bytes for a host write.
 
@@ -729,11 +762,8 @@ class NpuTensor(ABC):
             with tensor.mutate() as buf:
                 buf[:] = values
         """
-        self.to("cpu")
-        with self._borrowed_for_writing() as borrowed:
-            yield borrowed
+        return _WriteBorrow(self, reconcile=True)
 
-    @contextlib.contextmanager
     def overwrite(self):
         """Borrow for a write that replaces every byte of this tensor.
 
@@ -745,21 +775,9 @@ class NpuTensor(ABC):
         keep whatever the host last had there and are sent to the device with
         the rest, so use :meth:`mutate` for a partial update. This is the one
         promise here that cannot be checked; it is still narrower than reaching
-        for ``data``, which makes the same promise and does not record the
-        write.
+        for ``data``, which makes the same promise and does not record the write.
         """
-        with self._borrowed_for_writing() as borrowed:
-            yield borrowed
-
-    @contextlib.contextmanager
-    def _borrowed_for_writing(self):
-        borrowed = self.data[...]
-        try:
-            yield borrowed
-        finally:
-            borrowed.flags.writeable = False
-            start, end = self._extent
-            self._coherence().set(start, end, "cpu")
+        return _WriteBorrow(self, reconcile=False)
 
     def subview(self, offset, shape, dtype=None):
         """
