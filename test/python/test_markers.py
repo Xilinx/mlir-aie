@@ -12,12 +12,12 @@ from typing import Annotated, get_args, get_origin
 
 import pytest
 
-from aie.utils.compile.jit.markers import CompileTime, In, InOut, Out
-from aie.utils.compile.jit.compilabledesign import (
+from aie.utils.compile.jit._introspect import (
     _is_compile_param,
     _is_tensor_param,
     split_params,
 )
+from aie.utils.compile.jit.markers import CompileTime, In, InOut, Out
 
 # ---------------------------------------------------------------------------
 # CompileTime[T] — Annotated[T, ...] parameterisation
