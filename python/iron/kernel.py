@@ -375,8 +375,8 @@ class ExternalFunction(Kernel):
         self._compiled = False
         self._cached_digest: str | None = None
 
-        # Two same-name EFs with default object_file_name would collide on
-        # the same .o path. Auto-suffix defaulted names with a content digest;
+        # Two same-name EFs with default object_file_name would collide on the
+        # same artifact path. Auto-suffix defaulted names with a content digest;
         # raise on explicit names so silent renames don't surprise the caller.
         for existing in ExternalFunction._instances:
             if (
@@ -394,7 +394,12 @@ class ExternalFunction(Kernel):
                         f"`name=...`."
                     )
                 suffix = self._content_digest()[:8]
-                object_file_name = f"{effective_name}_{suffix}.o"
+                output_path = Path(object_file_name)
+                object_file_name = str(
+                    output_path.with_name(
+                        f"{output_path.stem}_{suffix}{output_path.suffix}"
+                    )
+                )
                 self._object_file_name = object_file_name
                 break
         ExternalFunction._instances.add(self)

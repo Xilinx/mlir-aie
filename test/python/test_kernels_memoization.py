@@ -105,10 +105,6 @@ def test_external_function_collision_check_fires():
         )
 
 
-@pytest.mark.xfail(
-    reason="inline collision disambiguation hardcodes .o instead of retaining .ll",
-    strict=False,
-)
 def test_inline_collision_disambiguation_preserves_ir_extension():
     """Digest-renamed inline artifacts must remain recognizable as LLVM IR."""
     name = "sentinel_inline_collision"
