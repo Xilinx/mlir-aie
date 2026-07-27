@@ -40,9 +40,10 @@ PadDims: TypeAlias = list[Sequence[int]]
 
 
 class ObjectFifo(Resolvable):
-    """A synchronized, explicit dataflow channel between IRON program
-    components such as [`Worker`][iron.Worker]s and the [`Runtime`][iron.Runtime].
+    """A synchronized, explicit dataflow channel between IRON program components.
 
+    Connects components such as [`Worker`][iron.Worker]s and the
+    [`Runtime`][iron.Runtime].
     Internally, an ObjectFifo is a circular buffer with a given depth and
     element type. Its users are explicitly either a *producer* or a
     *consumer*, and each user holds an [`ObjectFifoHandle`][iron.dataflow.objectfifo.ObjectFifoHandle]
@@ -91,6 +92,10 @@ class ObjectFifo(Resolvable):
                 stream, described as pairs of (size, stride) from highest to lowest
                 dimension. Defaults to None.
             plio (bool, optional): Whether the ObjectFifo uses PLIO connections. Defaults to False.
+            pad_dimensions (PadDims | None, optional): Per-dimension zero-padding applied to the
+                buffer, described as ``(pad_before, pad_after)`` pairs from highest to lowest
+                dimension. Lowers to the ``padDimensions`` attribute on the underlying
+                ``aie.objectfifo`` op. Defaults to None.
             disable_synchronization (bool, optional): When True, disables lock-based
                 synchronization on the ObjectFifo. Defaults to False.
             repeat_count (int | None, optional): If set, causes the MemTile DMA to replay the
@@ -105,6 +110,10 @@ class ObjectFifo(Resolvable):
                 location, not a producer- or consumer-side concept; the underlying op verifier
                 rejects this if either endpoint cannot share memory with the delegate.
                 Defaults to None.
+            via_DMA (bool, optional): When True, force the ObjectFifo to route through DMA
+                even when producer and consumer share memory (where a lock-only path would
+                otherwise be used). Lowers to the ``via_DMA`` attribute on the underlying
+                ``aie.objectfifo`` op. Defaults to False.
             init_values (list[np.ndarray] | None, optional): Per-buffer static initial values
                 for the producer endpoint. One ndarray per producer-side buffer; the producer
                 tile must be able to hold static data at design startup (e.g. a MemTile).
@@ -218,8 +227,10 @@ class ObjectFifo(Resolvable):
     def prod(
         self, depth: int | None = None, channel: int | None = None
     ) -> ObjectFifoHandle:
-        """Returns an ObjectFifoHandle of type producer. Each ObjectFifo may have only one producer
-        handle, so if one already exists, a new reference to this handle will be returned.
+        """Return an ObjectFifoHandle of type producer.
+
+        Each ObjectFifo may have only one producer handle, so if one already
+        exists, a new reference to this handle will be returned.
 
         Args:
             depth (int | None, optional): The depth of the buffers at the endpoint corresponding to the producer handle. Defaults to None.
@@ -255,8 +266,10 @@ class ObjectFifo(Resolvable):
         dims_from_stream: StreamDims | None = None,
         channel: int | None = None,
     ) -> ObjectFifoHandle:
-        """Returns an ObjectFifoHandle of type consumer. Each ObjectFifo may have multiple consumers, so this
-        will return a new consumer handle every time it is called.
+        """Return an ObjectFifoHandle of type consumer.
+
+        Each ObjectFifo may have multiple consumers, so this will return a new
+        consumer handle every time it is called.
 
         Args:
             depth (int | None, optional): The depth of the buffers at the endpoint corresponding to this consumer handle. Defaults to None.
@@ -289,7 +302,7 @@ class ObjectFifo(Resolvable):
         return self._cons[-1]
 
     def tiles(self, cons_only: bool = False) -> list[Tile]:
-        """The list of placement tiles corresponding to the endpoints of all handles of this ObjectFifo.
+        """Return the placement tiles corresponding to the endpoints of all handles of this ObjectFifo.
 
         Raises:
             ValueError: A producer handle must be constructed.
@@ -640,6 +653,7 @@ class ObjectFifoHandle(Resolvable):
         repeat_counts: list[int | None] | None = None,
     ) -> list[ObjectFifo]:
         """Construct multiple ObjectFifos which feed data into a ObjectFifoHandle.
+
         Note that this function is only valid for producer ObjectFifoHandles.
 
         Args:
@@ -732,6 +746,7 @@ class ObjectFifoHandle(Resolvable):
         repeat_counts: list[int | None] | None = None,
     ) -> list[ObjectFifo]:
         """Split the data from an ObjectFifoConsumer handle by sending it to producers in N newly constructed ObjectFifos.
+
         Note this operation is only valid for ObjectFifoHandles of type consumer.
 
         Args:
@@ -819,7 +834,9 @@ class ObjectFifoHandle(Resolvable):
         plio: bool = False,
         repeat_count: int | None = None,
     ) -> ObjectFifo:
-        """This is a special case of the split() operation where an ObjectFifoHandle of type consumer
+        """Forward an ObjectFifoHandle of type consumer to a newly-constructed ObjectFifo.
+
+        This is a special case of the split() operation where the consumer handle
         is forwarded to the producer of a newly-constructed ObjectFifo.
 
         Args:

@@ -57,8 +57,10 @@ class RuntimeStartTask(RuntimeTask):
 
 
 class InlineOpRuntimeTask(RuntimeTask):
-    """An InlineOpRuntimeTask is a way of submitting arbitrary operations to a runtime that are defined
-    in a lower-level style of IRON. This can be especially useful for tracing.
+    """A way of submitting arbitrary operations to a runtime.
+
+    The operations are defined in a lower-level style of IRON. This can be
+    especially useful for tracing.
     """
 
     def __init__(

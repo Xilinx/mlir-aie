@@ -45,7 +45,7 @@ def _bitwise_kernel(
 
 
 def rgba2hue(line_width: int = 1920, use_chess: bool = False) -> ExternalFunction:
-    """Converts a line of RGBA pixels to hue values."""
+    """Convert a line of RGBA pixels to hue values."""
     return _color_convert_kernel(
         "rgba2hueLine", "rgba2hue.cc", line_width * 4, line_width, use_chess=use_chess
     )
@@ -54,7 +54,7 @@ def rgba2hue(line_width: int = 1920, use_chess: bool = False) -> ExternalFunctio
 def threshold(
     line_width: int = 1920, dtype: type = np.uint8, use_chess: bool = False
 ) -> ExternalFunction:
-    """Applies a threshold operation to a line of pixels.
+    """Apply a threshold operation to a line of pixels.
 
     Args:
         line_width: Number of elements per line.
@@ -92,21 +92,21 @@ def bitwise_and(
 
 
 def gray2rgba(line_width: int = 1920, use_chess: bool = False) -> ExternalFunction:
-    """Converts a grayscale line to RGBA."""
+    """Convert a grayscale line to RGBA."""
     return _color_convert_kernel(
         "gray2rgbaLine", "gray2rgba.cc", line_width, line_width * 4, use_chess=use_chess
     )
 
 
 def rgba2gray(line_width: int = 1920, use_chess: bool = False) -> ExternalFunction:
-    """Converts an RGBA line to grayscale."""
+    """Convert an RGBA line to grayscale."""
     return _color_convert_kernel(
         "rgba2grayLine", "rgba2gray.cc", line_width * 4, line_width, use_chess=use_chess
     )
 
 
 def filter2d(line_width: int = 1920, use_chess: bool = False) -> ExternalFunction:
-    """Applies a 3x3 2D convolution filter across three input lines."""
+    """Apply a 3x3 2D convolution filter across three input lines."""
     line_ty = np.ndarray[(line_width,), np.dtype[np.uint8]]
     kernel_ty = np.ndarray[(3, 3), np.dtype[np.int16]]
     return _make_extern(

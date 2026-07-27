@@ -22,6 +22,7 @@ class Resolvable(Protocol):
         ip: ir.InsertionPoint | None = None,
     ) -> None:
         """Resolve the current object into one or more MLIR operations.
+
         Should only be called within an MLIR context.
 
         Args:
@@ -42,8 +43,10 @@ class Resolvable(Protocol):
 
 
 class NotResolvedError(Exception):
-    """Raised when a property or operation is accessed on a `Resolvable` object
-    before `resolve` has been called.
+    """Raised when a property or operation is accessed before ``resolve``.
+
+    Raised when accessed on a `Resolvable` object before `resolve` has been
+    called.
     """
 
     def __init__(self, message="Cannot get operation; class not resolved."):

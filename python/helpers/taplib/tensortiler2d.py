@@ -13,8 +13,9 @@ from .utils import validate_and_clean_sizes_strides, validate_tensor_dims
 
 
 class TensorTiler2D:
-    """This is a generator (similar to factory pattern) class which produces TensorAccessSequences
-    for common 2-dimensional tiling patterns.
+    """A generator (similar to factory pattern) class for 2-dimensional tiling patterns.
+
+    Produces TensorAccessSequences for common 2-dimensional tiling patterns.
     """
 
     _DTYPE = np.int32
@@ -35,8 +36,9 @@ class TensorTiler2D:
         pattern_repeat: int = 1,
         prune_step: bool = True,
     ) -> TensorAccessSequence:
-        """The simple_tiler is a special case of the group_tiler. The simple_tiler produces a TensorAccessSequence
-        with one TensorAccessPattern per tile.
+        """Produce a TensorAccessSequence with one TensorAccessPattern per tile.
+
+        The simple_tiler is a special case of the group_tiler.
 
         Args:
             tensor_dims (Sequence[int]): The dimensions of the tensor to tile.
@@ -74,8 +76,9 @@ class TensorTiler2D:
         allow_partial: bool = False,
         prune_step: bool = True,
     ) -> TensorAccessSequence:
-        """The group_tiler is a special case of the step_tiler. The group_tiler produces a TensorAccessSequence
-        with a group of tiles per TensorAccesspattern in the sequence.
+        """Produce a TensorAccessSequence with a group of tiles per TensorAccessPattern in the sequence.
+
+        The group_tiler is a special case of the step_tiler.
 
         Args:
             tensor_dims (Sequence[int]): The dimensions of the tensor to tile.

@@ -17,9 +17,10 @@ from .utils import (
 
 
 class TensorAccessPattern:
-    """A TensorAccessPattern represents a data access pattern applied to a tensor
-    of a specific dimension. This is a base class meant to generically represent
-    such as transformation using sizes, strides, and an offset.
+    """A TensorAccessPattern represents a data access pattern applied to a tensor of a specific dimension.
+
+    This is a base class meant to generically represent such as transformation using sizes, strides,
+    and an offset.
     """
 
     _DTYPE = np.int32
@@ -38,7 +39,7 @@ class TensorAccessPattern:
             offset (int): Offset into the tensor to begin the transformation
             sizes (Sequence[int]): Transformation sizes
             strides (Sequence[int]): Transformation strides
-        """
+        """  # noqa: D401
         self._tensor_dims = validate_tensor_dims(tensor_dims)
         self._offset = validate_offset(offset, tensor_dims)
         cleaned_sizes, cleaned_strides = validate_and_clean_sizes_strides(
@@ -97,7 +98,7 @@ class TensorAccessPattern:
         return list(zip(self._sizes, self._strides))
 
     def accesses(self) -> tuple[np.ndarray, np.ndarray]:
-        """Returns the access_order and access_count arrays.
+        """Return the access_order and access_count arrays.
 
         The access_order ndarray sequentially counts access to elements in the
         tensor. If an element is accessed more than once, only the last count is reflected.
@@ -111,8 +112,9 @@ class TensorAccessPattern:
         return self._calculate_accesses(calc_order=True, calc_count=True)
 
     def access_order(self) -> np.ndarray:
-        """The access_order ndarray sequentially counts access to elements in the
-        tensor. If an element is accessed more than once, only the last count is reflected.
+        """Return the access_order ndarray, which sequentially counts access to elements in the tensor.
+
+        If an element is accessed more than once, only the last count is reflected.
 
         Returns:
             np.ndarray: access_order
@@ -123,8 +125,7 @@ class TensorAccessPattern:
         return access_order_tensor
 
     def access_count(self) -> np.ndarray:
-        """The access_count ndarray contains the number of times each element is
-        accessed by the tensor access pattern.
+        """Return the access_count ndarray, which contains the number of times each element is accessed.
 
         Returns:
             np.ndarray: access_count
@@ -170,9 +171,9 @@ class TensorAccessPattern:
         return access_order_tensor, access_count_tensor
 
     def access_generator(self) -> Generator[int, None, None]:
-        """This function returns an iterator that returns the access index
-        into the flattened tensor that this access pattern represents. This can
-        be used to calculate the access count or to enumerate accesses.
+        """Return an iterator over the access indices into the flattened tensor that this access pattern represents.
+
+        This can be used to calculate the access count or to enumerate accesses.
 
         Yields:
             int: The next access index
@@ -186,7 +187,8 @@ class TensorAccessPattern:
             ) % total_elems
 
     def compare_access_orders(self, other: TensorAccessPattern) -> bool:
-        """This function creates an alternative way to compare access patterns.
+        """Compare access patterns for functional equivalency.
+
         Sometimes access patterns with different sizes/strides are functionally equivalent;
         to detect functional equivalency, this function uses iterators produced by
         access_generator() to compare the access patterns. This is more performant than

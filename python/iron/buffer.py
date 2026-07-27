@@ -26,6 +26,7 @@ if TYPE_CHECKING:
 
 class Buffer(Resolvable):
     """A buffer that is available both to Workers and to the Runtime for operations.
+
     This is often used for Runtime Parameters.
     """
 
@@ -41,8 +42,9 @@ class Buffer(Resolvable):
         use_write_rtp: bool = False,
         address: int | None = None,
     ):
-        """A Buffer is a memory region declared at the top-level of the design, allowing it to
-        be accessed by both Workers and the Runtime.
+        """Declare a memory region at the top-level of the design.
+
+        The buffer is accessible by both Workers and the Runtime.
 
         Args:
             type (type[np.ndarray] | None, optional): The type of the buffer. Defaults to None.

@@ -238,7 +238,7 @@ class HostRuntime(ABC):
     # instruction buffer for the xrt.kernel call
     @classmethod
     def read_insts_binary(cls, insts_path: Path):
-        """Reads instructions from a binary file.
+        """Read instructions from a binary file.
 
         Args:
             insts_path (Path): Path to the binary instruction file.
@@ -253,7 +253,7 @@ class HostRuntime(ABC):
 
     @classmethod
     def read_insts(cls, insts_path: Path):
-        """Reads instructions from the given file.
+        """Read instructions from the given file.
 
         If the file extension is .bin, uses binary read.
         If the file extension is .txt, uses sequence (text) read.

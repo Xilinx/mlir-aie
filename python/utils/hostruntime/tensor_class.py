@@ -157,7 +157,7 @@ class Tensor(ABC):
         return self.data
 
     def __getitem__(self, index):
-        """Retrieves the value at a specific index in the tensor.
+        """Retrieve the value at a specific index in the tensor.
 
         Args:
             index (int): The index of the value to retrieve.
@@ -173,7 +173,7 @@ class Tensor(ABC):
         return self.data[index]
 
     def __setitem__(self, index, value):
-        """Sets the value at a specific index in the tensor.
+        """Set the value at a specific index in the tensor.
 
         Args:
             index (int): The index of the value to set.
@@ -213,7 +213,7 @@ class Tensor(ABC):
         return np.dtype(self.dtype).itemsize
 
     def to(self, target_device: str):
-        """Moves the tensor to a specified target device.
+        """Move the tensor to a specified target device.
 
         Args:
             target_device (str): The target device.
@@ -236,7 +236,7 @@ class Tensor(ABC):
 
     @abstractmethod
     def _sync_to_device(self):
-        """Syncs the tensor data from the host to the device memory.
+        """Sync the tensor data from the host to the device memory.
 
         This method should be implemented by subclasses to handle device-specific synchronization.
         """
@@ -244,7 +244,7 @@ class Tensor(ABC):
 
     @abstractmethod
     def _sync_from_device(self):
-        """Syncs the tensor data from the device to the host memory.
+        """Sync the tensor data from the device to the host memory.
 
         This method should be implemented by subclasses to handle device-specific synchronization.
         """
@@ -252,7 +252,7 @@ class Tensor(ABC):
 
     @classmethod
     def __check_or_create(cls, *size, out=None, dtype=None, device=None, **kwargs):
-        """Internal helper to check an output tensor or create a new one.
+        """Check an output tensor or create a new one (internal helper).
 
         Args:
             *size: Shape of the tensor.
@@ -288,7 +288,7 @@ class Tensor(ABC):
         return t
 
     def numpy(self):
-        """Returns a NumPy view of the tensor data on host memory.
+        """Return a NumPy view of the tensor data on host memory.
 
         This method ensures that data is first synchronized from the device
         (e.g., NPU) to the host before returning the array.
@@ -304,7 +304,7 @@ class Tensor(ABC):
         return self.data
 
     def to_torch(self):
-        """Returns a torch tensor sharing the data in this tensor if possible.
+        """Return a torch tensor sharing the data in this tensor if possible.
 
         Syncs from device first if the tensor is on the NPU.
 
@@ -317,7 +317,7 @@ class Tensor(ABC):
         return _array_to_torch(self.numpy())
 
     def torch_view(self):
-        """Returns a torch tensor sharing this buffer's host memory without syncing from device.
+        """Return a torch tensor sharing this buffer's host memory without syncing from device.
 
         Unlike to_torch(), this does NOT sync from the NPU first. Marks the buffer as
         CPU-resident so that a subsequent .to("npu") call (or the NPU operator's implicit
@@ -335,7 +335,7 @@ class Tensor(ABC):
 
     @classmethod
     def from_torch(cls, torch_tensor, device=None, **kwargs):
-        """Returns a tensor with a copy of the data in the torch_tensor.
+        """Return a tensor with a copy of the data in the torch_tensor.
 
         Args:
             torch_tensor (torch.Tensor): The source torch tensor.
@@ -375,7 +375,7 @@ class Tensor(ABC):
         )
 
     def fill_(self, value):
-        """Fills the tensor with a scalar value (in-place operation).
+        """Fill the tensor with a scalar value (in-place operation).
 
         Args:
             value: The scalar value to fill the tensor with.
@@ -387,7 +387,7 @@ class Tensor(ABC):
             self._sync_to_device()
 
     def numel(self):
-        """Calculates the number of elements in the tensor.
+        """Calculate the number of elements in the tensor.
 
         Returns:
             int: The total number of elements in the tensor.
@@ -396,7 +396,7 @@ class Tensor(ABC):
 
     @classmethod
     def ones(cls, *size, out=None, dtype=None, device=None, **kwargs):
-        """Returns a tensor filled with ones, with shape defined by size.
+        """Return a tensor filled with ones, with shape defined by size.
 
         Args:
             *size (int...): Shape of the tensor, passed as separate ints or a single tuple/list.
@@ -414,7 +414,7 @@ class Tensor(ABC):
 
     @classmethod
     def zeros(cls, *size, out=None, dtype=None, device=None, **kwargs):
-        """Returns a tensor filled with zeros, with shape defined by size.
+        """Return a tensor filled with zeros, with shape defined by size.
 
         Args:
             *size (int...): Shape of the tensor, passed as separate ints or a single tuple/list.
@@ -432,7 +432,7 @@ class Tensor(ABC):
 
     @classmethod
     def full(cls, size, fill_value, *, out=None, dtype=None, device=None, **kwargs):
-        """Returns a tensor of shape `size` filled with `fill_value`.
+        """Return a tensor of shape `size` filled with `fill_value`.
 
         Args:
             size (int or tuple/list of int): Shape of the returned tensor.
@@ -462,7 +462,7 @@ class Tensor(ABC):
         generator=None,
         **kwargs,
     ):
-        """Returns a tensor filled with random integers uniformly sampled from [low, high).
+        """Return a tensor filled with random integers uniformly sampled from [low, high).
 
         Args:
             low (int): Lowest integer to be drawn (inclusive).
@@ -496,7 +496,7 @@ class Tensor(ABC):
 
     @classmethod
     def rand(cls, *size, out=None, dtype=None, device=None, generator=None, **kwargs):
-        """Returns a tensor filled with random numbers from a uniform distribution on [0, 1).
+        """Return a tensor filled with random numbers from a uniform distribution on [0, 1).
 
         Args:
             *size (int...): Variable number of integers or a single tuple defining the shape.
@@ -555,7 +555,7 @@ class Tensor(ABC):
         device=None,
         **kwargs,
     ):
-        """Returns a tensor with values from the interval [start, end) with spacing `step`.
+        """Return a tensor with values from the interval [start, end) with spacing `step`.
 
         Args:
             start (number): Start of interval. Defaults to 0.
@@ -566,6 +566,7 @@ class Tensor(ABC):
             dtype (np.dtype, optional): Desired output data type. Inferred if not provided.
             out (Tensor, optional): Optional tensor to write output to (must match shape and dtype).
             device (str, optional): Target device. Defaults to 'npu'.
+            **kwargs: Additional keyword arguments forwarded to the constructor.
 
         Returns:
             Tensor: Tensor containing the sequence (1-D by default, or `shape` if given).
@@ -612,7 +613,7 @@ class Tensor(ABC):
 
     @classmethod
     def zeros_like(cls, other, dtype=None, device=None, **kwargs):
-        """Creates a new tensor with the same shape as `other`, filled with zeros.
+        """Create a new tensor with the same shape as `other`, filled with zeros.
 
         Args:
             other (Tensor): The reference tensor to copy shape from.
@@ -635,8 +636,10 @@ class Tensor(ABC):
 
 
 class CPUOnlyTensor(Tensor):
-    """This class exists primarily for testing purposes, to test tensor operations without assuming
-    access to a host runtime (e.g., xrt).
+    """Tensor backed only by host memory, for testing without a host runtime.
+
+    This class exists primarily for testing purposes, to test tensor
+    operations without assuming access to a host runtime (e.g., xrt).
     """
 
     DEVICES = ["cpu"]
@@ -678,14 +681,16 @@ class CPUOnlyTensor(Tensor):
         return self._shape
 
     def _sync_to_device(self):
-        """Syncs the tensor data from the host to the device memory.
+        """Sync the tensor data from the host to the device memory.
+
         For CPUOnlyTensor, this is a no-op.
         """
         # Nothing to do for CPU only
         pass
 
     def _sync_from_device(self):
-        """Syncs the tensor data from the device to the host memory.
+        """Sync the tensor data from the device to the host memory.
+
         For CPUOnlyTensor, this is a no-op.
         """
         # Nothing to do for CPU only

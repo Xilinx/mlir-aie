@@ -121,9 +121,10 @@ class DmaChannel:
 
 
 class TileDma(Resolvable):
-    """Per-tile DMA program — lowers to an `aie.mem` (compute tile),
-    `aie.memtile_dma` (memtile), or `aie.shim_dma` (shim tile) region
-    based on the tile's type.
+    """Per-tile DMA program.
+
+    Lowers to an `aie.mem` (compute tile), `aie.memtile_dma` (memtile), or
+    `aie.shim_dma` (shim tile) region based on the tile's type.
 
     Args:
         tile: the tile whose DMA hardware this program targets.
@@ -143,8 +144,9 @@ class TileDma(Resolvable):
         return [self._tile]
 
     def all_buffers_and_locks(self):
-        """Iterate every Buffer + Lock this program touches — Program uses
-        this to make sure they're all resolved before us.
+        """Iterate every Buffer + Lock this program touches.
+
+        Program uses this to make sure they're all resolved before us.
         """
         seen_buffers: list[Buffer] = []
         seen_locks: list[Lock] = []

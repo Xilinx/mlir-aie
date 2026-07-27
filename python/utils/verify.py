@@ -36,7 +36,8 @@ def nearly_equal(
     produce ``False`` (matching IEEE and the C++ semantics).
 
     Args:
-        a, b: Array-likes to compare.
+        a: First array-like to compare.
+        b: Second array-like to compare.
         rtol: Relative tolerance (default 0.128 — matches C++ test_utils).
         atol: Absolute floor.  Defaults to ``np.finfo(np.float32).tiny``.
     """
@@ -97,13 +98,16 @@ def assert_pass(
     """Verify ``actual`` matches ``expected``; print ``PASS!`` on success.
 
     Args:
-        actual, expected: Array-likes (numpy arrays, scalars, lists).
-        rtol, atol: Tolerance bounds for the bf16/LUT-style comparator
-            (see :func:`count_mismatches`).  When both are ``None``
-            (the default), use ``np.array_equal`` for an exact compare
-            — the right choice for integer and bit-exact pipelines.
+        actual: Array-like produced by the kernel under test.
+        expected: Reference array-like (numpy arrays, scalars, lists).
+        rtol: Relative tolerance for the bf16/LUT-style comparator
+            (see :func:`count_mismatches`).  When both ``rtol`` and ``atol``
+            are ``None`` (the default), use ``np.array_equal`` for an exact
+            compare — the right choice for integer and bit-exact pipelines.
             Pass ``rtol=`` (and/or ``atol=``) to opt into the
             tolerance comparator.
+        atol: Absolute tolerance floor for the tolerance comparator.
+            See ``rtol`` for the default-exact-compare behaviour.
         fail_msg: Optional context appended to the ``FAIL!`` line that
             ``sys.exit()`` raises on mismatch.
         print_pass: When ``True`` (default), print ``PASS!`` on success.
@@ -151,7 +155,8 @@ def assert_close_with_benchmark(
     compare with ``rtol=float_rtol`` / ``atol=float_atol``.
 
     Args:
-        actual, expected: Array-likes; ``expected.dtype`` selects the
+        actual: Array-like produced by the kernel under test.
+        expected: Reference array-like; ``expected.dtype`` selects the
             comparator branch.
         bench: A :class:`~aie.utils.benchmark.BenchmarkResult` (typically
             from :func:`~aie.utils.benchmark.run_iters`).
@@ -162,7 +167,9 @@ def assert_close_with_benchmark(
         gflops_fmt: Format spec for the GFLOPS number (default ``".2f"``;
             matrix_vector uses ``".4f"`` for finer resolution at low
             GFLOPS).
-        float_rtol, float_atol: Tolerance bounds for the float branch.
+        float_rtol: Relative tolerance for the float branch.
+            Defaults match the C++ matmul harness's get_*_tol.
+        float_atol: Absolute tolerance for the float branch.
             Defaults match the C++ matmul harness's get_*_tol.
         fail_msg: Optional context appended to the ``FAIL!`` line on
             mismatch.

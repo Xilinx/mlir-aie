@@ -112,6 +112,7 @@ class NPUKernel:
     # Blocking call.
     def __call__(self, *args, **kwargs):
         """Run the kernel with the given arguments.
+
         This is a blocking call.
 
         Args:

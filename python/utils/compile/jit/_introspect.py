@@ -3,10 +3,11 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""Annotation introspection helpers used to classify generator parameters
-into ``CompileTime[T]`` / tensor / scalar buckets.
+"""Annotation introspection helpers for classifying generator parameters.
 
-Carved out of ``compilabledesign.py`` to keep the main file focused on the
+Classifies generator parameters into ``CompileTime[T]`` / tensor / scalar
+buckets. Carved out of ``compilabledesign.py`` to keep the main file focused on
+the
 ``CompilableDesign`` class itself.  The public surface is
 :func:`split_params`; the rest is implementation detail behind
 :func:`_introspect_generator`'s ``lru_cache``.

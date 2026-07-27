@@ -26,6 +26,7 @@ from ..ir import (  # pyright: ignore[reportMissingImports]
 # Custom types
 class v8bfp16ebs8(np.generic):
     """Custom type to be used in IRON that is translated to a generic blockFloatType.
+
     Represents a vector of 8 scalar elements that share exponent with a total
     bitwidth of 16 bits for each element (8 bits for the exponent and 8 bits for the mantissa).
     """
@@ -36,7 +37,8 @@ class v8bfp16ebs8(np.generic):
 
 
 class v16bfp16ebs16(np.generic):
-    """Custom type to be used in IRON that is translated to a generic blockFloatType
+    """Custom type to be used in IRON that is translated to a generic blockFloatType.
+
     Represents a vector of 16 scalar elements that share exponent with a total
     bitwidth of 16 bits for each element (8 bits for the exponent and 8 bits for the mantissa).
     """
@@ -134,6 +136,8 @@ def infer_mlir_type(
 
     Args:
       py_val: Python value that's either a numerical value or numpy array.
+      memref: If True, map a numpy array to a MemRefType. Defaults to False.
+      vector: If True, map a numpy array to a VectorType. Defaults to False.
 
     Returns:
       MLIR type corresponding to py_val.
@@ -225,7 +229,10 @@ _E = TypeVar("_E")
 
 
 def single_elem_or_list_to_list(val: "list[_E] | _E") -> "list[_E]":
-    """Does not work for list of lists but still useful."""
+    """Wrap a single element in a list, returning existing lists unchanged.
+
+    Does not work for a list of lists but still useful.
+    """
     if not isinstance(val, list):
         return [val]
     return val

@@ -3,9 +3,9 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""Host-side runtime for writing named parameters to AIE cores via the
-scratchpad mechanism.
+"""Host-side runtime for writing named parameters to AIE cores.
 
+Writes named parameters to AIE cores via the scratchpad mechanism.
 Thin Python wrapper around the C++ ``test_utils::ParameterScratchpad``
 class (exposed via pybind11).
 

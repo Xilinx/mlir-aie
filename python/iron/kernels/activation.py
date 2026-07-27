@@ -163,9 +163,9 @@ def silu_ref(x):
 
 
 def gelu_ref(x):
-    """Numpy reference for [`gelu`][iron.kernels.activation.gelu] — tanh approximation
-    ``0.5 * x * (1 + tanh(sqrt(2/pi) * (x + 0.044715 * x^3)))``.
+    """Numpy reference for [`gelu`][iron.kernels.activation.gelu].
 
+    Tanh approximation ``0.5 * x * (1 + tanh(sqrt(2/pi) * (x + 0.044715 * x^3)))``.
     Matches the C++ kernel's tanh-GELU formula; pair with ``rtol=0.128,
     atol=0.05`` when verifying.
     """

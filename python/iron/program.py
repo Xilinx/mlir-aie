@@ -25,7 +25,7 @@ class Program:
         device: Device,
         rt: Runtime,
     ):
-        """A Program represents all design information needed to run the design on a device.
+        """Construct a Program with all design information needed to run the design on a device.
 
         !!! note
             MLIR verification (`ctx.module.operation.verify()`) is performed inside
@@ -39,7 +39,7 @@ class Program:
         self._rt = rt
 
     def resolve_program(self, device_name="main"):
-        """This method resolves the program components in order to generate MLIR.
+        """Resolve the program components in order to generate MLIR.
 
         Tiles are emitted as aie.logical_tile ops. The --aie-place-tiles pass
         in the compilation pipeline converts them to aie.tile ops.

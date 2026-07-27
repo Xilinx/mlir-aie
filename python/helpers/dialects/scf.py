@@ -36,12 +36,13 @@ def _for(
     loc=None,
     ip=None,
 ):
-    """This is nearly identical to the convenience wrapper in scf, but with the added insert_yield parameter.
+    """Emit an scf.for loop, like the convenience wrapper in scf but with an added insert_yield parameter.
+
     The insert_yield parameter defaults to True; if left as True, the user no longer needs to manually insert
     yield operations (```yield_([])```). If the user wishes to specify yield directly (such as if there is
     a return value from the loop body), insert_yield should be set to False.
 
-    I also added some handling of numpy data types for the loop variable
+    Also handles numpy data types for the loop variable.
     """
     if not (
         isinstance(start, int)

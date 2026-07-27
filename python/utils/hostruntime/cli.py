@@ -97,7 +97,7 @@ def run_design_cli(
     emit_mlir: Callable[[Any], None] | None = None,
     validate: Callable[[Any], None] | None = None,
 ) -> None:
-    """Standard 3-mode CLI dispatcher for basic/ designs.
+    """Dispatch the standard 3-mode CLI for basic/ designs.
 
     The standard branch tree (in order):
 

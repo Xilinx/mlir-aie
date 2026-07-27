@@ -47,7 +47,7 @@ class RuntimeData:
         return self._arr_type
 
     def default_tap(self) -> TensorAccessPattern:
-        """A default access pattern for a linear transfer of the buffer."""
+        """Return a default access pattern for a linear transfer of the buffer."""
         # TODO: what if not two dimensional?
         return TensorTiler2D.simple_tiler(self.shape)[0]
 

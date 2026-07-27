@@ -63,9 +63,9 @@ class IronRuntimeError(Exception):
 
 
 class Runtime(Resolvable):
-    """The host-side sequence of data-movement and worker-start operations that
-    execute an IRON design.
+    """The host-side sequence of data-movement and worker-start operations.
 
+    Executes an IRON design.
     A Runtime describes what the host does at runtime: filling input
     [`ObjectFifo`][iron.ObjectFifo]s with data, starting
     [`Worker`][iron.Worker]s, and draining results back to host buffers.
@@ -104,15 +104,17 @@ class Runtime(Resolvable):
         self._egress_shim_col = 0
 
     def add_flow(self, flow) -> None:
-        """Register an explicit [`Flow`][iron.Flow] (or
-        [`PacketFlow`][iron.PacketFlow]) so the Program resolves it alongside
-        the ObjectFifos.
+        """Register an explicit Flow so the Program resolves it alongside the ObjectFifos.
+
+        Accepts a [`Flow`][iron.Flow] or [`PacketFlow`][iron.PacketFlow].
         """
         self._flows.append(flow)
 
     def add_lock(self, lock) -> None:
-        """Register an explicit [`Lock`][iron.Lock] shared between a Worker and
-        a [`TileDma`][iron.TileDma].
+        """Register an explicit Lock shared between a Worker and a TileDma.
+
+        Accepts a [`Lock`][iron.Lock] shared between a
+        [`Worker`][iron.Worker] and a [`TileDma`][iron.TileDma].
         """
         self._locks.append(lock)
 
@@ -144,7 +146,9 @@ class Runtime(Resolvable):
     def sequence(
         self, *input_types: type[np.ndarray]
     ) -> Iterator[RuntimeData | tuple[RuntimeData, ...]]:
-        """A RuntimeSequence is a sequence of operations that are performed in
+        """Open a runtime sequence context for host-side operations.
+
+        A RuntimeSequence is a sequence of operations that are performed in
         support of a program. Common operations include input and output data movement.
 
         Raises:
@@ -191,6 +195,7 @@ class Runtime(Resolvable):
 
     def task_group(self) -> RuntimeTaskGroup:
         """Generate a handle to a RuntimeTaskGroup.
+
         This should be called within a Runtime.sequence() context.
 
         Returns:
@@ -202,6 +207,7 @@ class Runtime(Resolvable):
 
     def finish_task_group(self, task_group: RuntimeTaskGroup):
         """Close out a RuntimeTaskGroup.
+
         This should be called within a Runtime.sequence() context.
 
         Args:
@@ -222,6 +228,7 @@ class Runtime(Resolvable):
         offset_parameter: "ScratchpadParameter | str | None" = None,
     ) -> None:
         """Conceptually fill an ObjectFifoHandle (of type producer) with data from a runtime buffer.
+
         This should be called within a Runtime.sequence() context.
 
         Args:
@@ -288,6 +295,7 @@ class Runtime(Resolvable):
         offset_parameter: "ScratchpadParameter | str | None" = None,
     ) -> None:
         """Conceptually drain an ObjectFifoHandle (of type consumer): read data from the ObjectFifo and write it to a runtime buffer.
+
         This should be called within a Runtime.sequence() context.
 
         Args:
@@ -343,8 +351,11 @@ class Runtime(Resolvable):
         )
 
     def start(self, *args: Worker):
-        """A placeholder operation to indicate that one or more Worker should be started on the device.
-        This should be called within a Runtime.sequence() context.
+        """Start one or more Workers on the device.
+
+        A placeholder operation to indicate that one or more Worker should be
+        started on the device. This should be called within a
+        Runtime.sequence() context.
 
         Args:
             *args: One or more Workers. If more than one is given, they will be started in order.
@@ -360,7 +371,8 @@ class Runtime(Resolvable):
 
     def inline_ops(self, inline_func: Callable, inline_args: list):
         """Insert an InlineOpRuntimeTask into the runtime.
-         This should be called within a Runtime.sequence() context.
+
+        This should be called within a Runtime.sequence() context.
 
         Args:
             inline_func (Callable): The function to execute within an MLIR context.
@@ -428,6 +440,7 @@ class Runtime(Resolvable):
 
     def set_barrier(self, barrier: WorkerRuntimeBarrier, value: int):
         """Set the value of a worker barrier.
+
         This should be called within a Runtime.sequence() context.
 
         Args:

@@ -105,12 +105,12 @@ class XRTTensor(Tensor):
         return self._shape
 
     def _sync_to_device(self):
-        """Syncs the tensor data from the host to the device memory."""
+        """Sync the tensor data from the host to the device memory."""
         assert self._bo is not None
         return self._bo.sync(xrt.xclBOSyncDirection.XCL_BO_SYNC_BO_TO_DEVICE)
 
     def _sync_from_device(self):
-        """Syncs the tensor data from the device to the host memory."""
+        """Sync the tensor data from the device to the host memory."""
         assert self._bo is not None
         return self._bo.sync(xrt.xclBOSyncDirection.XCL_BO_SYNC_BO_FROM_DEVICE)
 
@@ -124,7 +124,7 @@ class XRTTensor(Tensor):
             self._bo = None
 
     def buffer_object(self):
-        """Returns the XRT buffer object associated with this tensor.
+        """Return the XRT buffer object associated with this tensor.
 
         Returns:
             buffer_object: The XRT buffer object associated with this tensor.

@@ -101,10 +101,11 @@ class GenericEvent:
         self.code: _AnyEvent = code  # pyright: ignore[reportInvalidTypeForm]
 
     def get_register_writes(self):
-        """Sub-classes for specific events that require writing to a specific
-        register should overwrite this method to return a dicitionary
-        address -> register value.
+        """Return the register writes required for this event as ``address -> value``.
 
+        Sub-classes for specific events that require writing to a specific
+        register should overwrite this method to return a dictionary
+        address -> register value.
         Note that if multiple event(-types) request writing to the same
         register, their writes will be ORed together. (This makes sense if
         configuration requires only writing some bits of the whole register.)

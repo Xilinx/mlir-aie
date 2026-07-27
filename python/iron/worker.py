@@ -268,8 +268,9 @@ class WorkerRuntimeBarrier:
         self.worker_locks = []
 
     def wait_for_value(self, value: int):
-        """Should be called from inside a core function.
-        Wait for the barrier to be set to `value`.
+        """Wait for the barrier to be set to `value`.
+
+        Should be called from inside a core function.
 
         Args:
             value (int): The value to wait for.

@@ -157,7 +157,7 @@ class XRTHostRuntime(HostRuntime):
 
     @classmethod
     def read_insts(cls, insts_path: Path):
-        """Reads instructions from the given file, with XRT-specific handling for ELF files.
+        """Read instructions from the given file, with XRT-specific handling for ELF files.
 
         Args:
             insts_path (Path): Path to the instruction file.
@@ -461,9 +461,10 @@ class CachedXRTKernelHandle(XRTKernelHandle):
 
 
 class CachedXRTRuntime(XRTHostRuntime):
-    """A cached version of XRTHostRuntime that caches up to n contexts,
-    depending on the type of NPU.
-    It reuses contexts for the same xclbin (identified by path and mtime).
+    """A cached version of XRTHostRuntime that caches up to n contexts.
+
+    The number of cached contexts depends on the type of NPU. It reuses
+    contexts for the same xclbin (identified by path and mtime).
     """
 
     # I got these values through experimentation on two machines
@@ -520,8 +521,9 @@ class CachedXRTRuntime(XRTHostRuntime):
         gc.collect()  # Make sure contexts are garbage collected.
 
     def evict_context(self, xclbin_path: Path) -> None:
-        """Evict a stale cached hw_context (after an IOCTL EINVAL) so the next
-        load rebuilds a fresh one keyed by the same xclbin.
+        """Evict a stale cached hw_context (after an IOCTL EINVAL).
+
+        Ensures the next load rebuilds a fresh one keyed by the same xclbin.
         """
         try:
             resolved = str(Path(xclbin_path).resolve())
@@ -637,8 +639,9 @@ class CachedXRTRuntime(XRTHostRuntime):
         return super().run(kernel_handle, args, trace_config, fail_on_error, **kwargs)
 
     def load_and_run(self, npu_kernel, run_args, **kwargs):
-        """Wrapper around the base implementation that papers over a Phoenix
-        firmware-state quirk: a trace-on run leaves the amdxdna firmware in
+        """Wrap the base implementation to paper over a Phoenix firmware-state quirk.
+
+        A trace-on run leaves the amdxdna firmware in
         a state where the next submit on a *different* cached context fails
         with ``DRM_IOCTL_AMDXDNA_EXEC_CMD IOCTL failed (err=2): No such file
         or directory`` (EXEC_CMD ENOENT) — even if we evict the failing
@@ -668,9 +671,10 @@ class CachedXRTRuntime(XRTHostRuntime):
         return handle, ret
 
     def _drain_for_phoenix_trace_quirk(self):
-        """Drain the full context + insts caches.  Mirrors the
-        partial-eviction workaround at the top of ``load()`` — see comment
-        on ``NPU_CONTEXT_CACHE_SIZE`` for why a single-entry evict isn't
+        """Drain the full context + insts caches.
+
+        Mirrors the partial-eviction workaround at the top of ``load()`` — see
+        comment on ``NPU_CONTEXT_CACHE_SIZE`` for why a single-entry evict isn't
         enough on Phoenix.
         """
         while self._context_cache:
@@ -682,7 +686,7 @@ class CachedXRTRuntime(XRTHostRuntime):
     def _load_full_elf_cached(
         self, npu_kernel, retry: bool = True
     ) -> CachedXRTKernelHandle:
-        """Cached full-ELF load: reuse a hw_context keyed on ``(elf_path, mtime)``.
+        """Load a full ELF, reusing a cached hw_context keyed on ``(elf_path, mtime)``.
 
         Full ELFs carry their own PDIs + control code, so the context is built
         from ``pyxrt.elf`` (no xclbin, no instruction BO cache).  Context reuse

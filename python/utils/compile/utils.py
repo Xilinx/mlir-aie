@@ -59,8 +59,9 @@ def compile_cxx_core_function(
     cwd: str | None = None,
     use_chess: bool = False,
 ):
-    """Compile a C++ core function via either Peano (default) or the Chess
-    compiler (``use_chess=True``).
+    """Compile a C++ core function via Peano or the Chess compiler.
+
+    Uses Peano by default, or the Chess compiler when ``use_chess=True``.
 
     Parameters:
         source_path (str): Path to C++ source.

@@ -181,7 +181,7 @@ class CompilableDesign:
     # ------------------------------------------------------------------
 
     def _config(self) -> dict[str, Any]:
-        """Current values of every configuration parameter, keyed by name.
+        """Return the current values of every configuration parameter, keyed by name.
 
         Read back from the stored attributes (which share the constructor
         parameter names), so a new config parameter is carried by ``specialize``

@@ -43,8 +43,9 @@ T = TypeVar("T")
 
 
 class _CompileTimeTag:
-    """Runtime tag embedded in ``Annotated[T, _CompileTimeTag()]`` so
-    ``_introspect.py`` can recognize a ``CompileTime[T]`` annotation without
+    """Runtime tag embedded in ``Annotated[T, _CompileTimeTag()]``.
+
+    Lets ``_introspect.py`` recognize a ``CompileTime[T]`` annotation without
     pyright treating the parameter's type as anything other than ``T``.
     """
 

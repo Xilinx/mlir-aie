@@ -3,9 +3,10 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-"""HRX-backed Tensor: a device-visible, host-coherent buffer mapped once and
-kept mapped (persistent), with explicit flush/invalidate for coherence.
+"""HRX-backed Tensor: a device-visible, host-coherent, persistent buffer.
 
+The buffer is mapped once and kept mapped (persistent), with explicit
+flush/invalidate for coherence.
 The buffer is an HRX persistent mapping: the engine reads/writes the mapping
 directly, so there is no host staging copy. Coherence around device work is
 maintained with cheap cache ops:
