@@ -19,10 +19,16 @@ void layer_norm(const T *restrict input, T *restrict output, int32_t cols) {
 
   ::aie::vector<T, N> gamma_v = ::aie::broadcast<T, N>(gamma);
   ::aie::vector<T, N> beta_v = ::aie::broadcast<T, N>(beta);
-  ::aie::vector<T, N> sum_acc = ::aie::zeros<T, N>();
-  ::aie::vector<float, N> sum_sq_acc = ::aie::zeros<float, N>();
 
   int vector_chunks = cols / N;
+
+  // Reduce the row sum in an f32 accumulator, not a bf16 vector: a bf16 running
+  // sum drops low-order bits as the reduction length grows (embedding_dim is
+  // typically thousands), so the mean -- and every quantity derived from it --
+  // is already lossy before the variance is computed. The sum of squares is
+  // already reduced in f32.
+  ::aie::accum<accfloat, N> sum_acc = ::aie::zeros<accfloat, N>();
+  ::aie::vector<float, N> sum_sq_acc = ::aie::zeros<float, N>();
   for (int i = 0; i < vector_chunks; i++) {
     ::aie::vector<T, N> reg_a = ::aie::load_v<N>(input + i * N);
     sum_acc = ::aie::add(sum_acc, reg_a);
@@ -30,16 +36,13 @@ void layer_norm(const T *restrict input, T *restrict output, int32_t cols) {
     sum_sq_acc = ::aie::add(sum_sq_acc, sq_acc);
   }
 
-  float sum_of_vals = ::aie::reduce_add(sum_acc);
-  float sum_of_sq_vals = ::aie::reduce_add(sum_sq_acc);
-
-  float mean = sum_of_vals / float(cols);
-  float mean_sq = mean * mean;
-  float variance = (sum_of_sq_vals / float(cols)) - mean_sq;
+  float mean =
+      ::aie::reduce_add(sum_acc.template to_vector<float>()) / float(cols);
+  float variance = ::aie::reduce_add(sum_sq_acc) / float(cols) - mean * mean;
   float inv_std = aie::invsqrt(variance + epsilon);
 
-  ::aie::vector<T, N> mean_v = ::aie::broadcast<T, N>(mean);
-  ::aie::vector<T, N> inv_std_v = ::aie::broadcast<T, N>(inv_std);
+  ::aie::vector<T, N> mean_v = ::aie::broadcast<T, N>((T)mean);
+  ::aie::vector<T, N> inv_std_v = ::aie::broadcast<T, N>((T)inv_std);
 
   for (int i = 0; i < vector_chunks; i++) {
     ::aie::vector<T, N> reg_a = ::aie::load_v<N>(input + i * N);
