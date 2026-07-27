@@ -15,8 +15,10 @@
 #include "mlir/Pass/Pass.h"
 #include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "llvm/ADT/SmallBitVector.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/Support/Debug.h"
+#include "llvm/Support/MathExtras.h"
 
 #include <cstdint>
 
@@ -272,133 +274,203 @@ namespace {
 struct CoverCube {
   int mask;
   int value;
-  uint32_t cov; // bitmask of the onset ids this cube matches
+  // cov[i] is set iff this cube matches match id i.
+  llvm::SmallBitVector cov;
 };
-
-// 5-bit packet-id space; kept local (mirrors getMaxPacketId()) since these
-// helpers take no target model.
-constexpr int ID_BITS = 5;
-constexpr int NUM_IDS = 1 << ID_BITS;
-constexpr int ID_MASK = NUM_IDS - 1;
 } // namespace
 
-static void bnbMinCover(ArrayRef<CoverCube> cubes, uint32_t uncovered,
+// Minimum set cover by branch-and-bound: find the fewest `cubes` whose coverage
+// (cube.cov) unions to every match id still set in `uncovered`. `sel` is the
+// current partial pick; `bestSel`/`bestSize` hold the smallest full cover so
+// far and are updated in place.
+static void bnbMinCover(ArrayRef<CoverCube> cubes,
+                        const llvm::SmallBitVector &uncovered,
                         SmallVectorImpl<int> &sel, int &bestSize,
                         SmallVectorImpl<int> &bestSel) {
-  if (uncovered == 0) {
-    if ((int)sel.size() < bestSize) {
-      bestSize = (int)sel.size();
+
+  // base case
+  if (uncovered.none()) {
+    if (static_cast<int>(sel.size()) < bestSize) {
+      bestSize = static_cast<int>(sel.size());
       bestSel.assign(sel.begin(), sel.end());
     }
     return;
   }
-  if ((int)sel.size() + 1 >= bestSize)
+
+  // bound: adding a cube would only tie the best
+  if (static_cast<int>(sel.size()) + 1 >= bestSize) {
     return;
-  int pick = -1, pickCount = (int)cubes.size() + 1;
-  for (int id = 0; id < NUM_IDS; ++id) {
-    if (!((uncovered >> id) & 1))
-      continue;
+  }
+
+  // most constrained variable: find the least-covered, uncovered matchId
+  int pick = -1;
+  int pickCount = static_cast<int>(cubes.size()) + 1;
+
+  for (int id = uncovered.find_first(); id != -1;
+       id = uncovered.find_next(id)) {
     int c = 0;
-    for (const CoverCube &cb : cubes)
-      if ((cb.cov >> id) & 1)
-        ++c;
+
+    for (const CoverCube &cb : cubes) {
+      if (cb.cov.test(id)) {
+        c++;
+      }
+    }
+
     if (c < pickCount) {
       pickCount = c;
       pick = id;
     }
   }
-  for (int i = 0; i < (int)cubes.size(); ++i) {
-    if (!((cubes[i].cov >> pick) & 1))
+
+  // branch: try each cube that covers the chosen id, recursing on the rest.
+  for (int i = 0; i < static_cast<int>(cubes.size()); ++i) {
+    if (!cubes[i].cov.test(pick)) {
       continue;
+    }
+
     sel.push_back(i);
-    bnbMinCover(cubes, uncovered & ~cubes[i].cov, sel, bestSize, bestSel);
+    llvm::SmallBitVector next = uncovered;
+    next.reset(cubes[i].cov); // next &= ~cov
+    bnbMinCover(cubes, next, sel, bestSize, bestSel);
     sel.pop_back();
   }
 }
 
-// Cover `onset` (a group's packet ids) with the fewest (mask, value) rules that
-// match every onset id and no `offset` id (other ids on the same slave port).
-// Ids on neither set are don't-cares, free to over-claim.
-// Based on Quine-McCluskey: enumerate prime implicants -> minimum cover
-// (branch-and-bound) -> tighten.
-// Note: the old common-bits packing is the one-cube degenerate case.
+// Cover `matchIds` (a group's packet ids) with the fewest (mask, value) rules
+// that match every specified id and no `avoidIds` (other ids on the same slave
+// port). A rule matches id x iff (x & mask) == value; ids in neither set are
+// don't-cares, free to over-claim.
+//
+// Based on Quine-McCluskey:
+//   1. Enumerate prime implicants: maximal cubes (a cube is one (mask, value))
+//      that match >=1 matchIds and no avoidIds.
+//   2. Pick the fewest of those cubes that cover all match ids (bnbMinCover).
+//   3. Tighten each chosen cube to the smallest enclosing cube of the ids it
+//      took, so it claims no more don't-cares than necessary; the one-cube case
+//      reduces to the old common-bits mask.
 static SmallVector<std::pair<int, int>>
-computeSubcubeCover(const SmallVector<int, 4> &onset,
-                    const llvm::SmallSet<int, 8> &offset) {
-  auto hitsOffset = [&](int mask, int value) {
-    for (int o : offset)
-      if ((o & mask) == value)
+computeSubcubeCover(const SmallVector<int, 4> &matchIds,
+                    const llvm::SmallSet<int, 8> &avoidIds, int idBits) {
+
+  // id space and full mask, sized from the target's packet-id width.
+  const int numIds = 1 << idBits;
+  const int idMask = numIds - 1;
+
+  auto hitsAvoid = [&](int mask, int value) {
+    for (int o : avoidIds) {
+      if ((o & mask) == value) {
         return true;
+      }
+    }
     return false;
   };
 
-  uint32_t onsetMask = 0;
-  for (int id : onset)
-    onsetMask |= (1u << id);
+  llvm::SmallBitVector matchMask(numIds);
+  for (int id : matchIds) {
+    matchMask.set(id);
+  }
 
-  // 5-bit id space (3^5 cubes), so enumerate prime implicants by brute force.
+  // phase 1: enumerate prime implicants. small (3^idBits), so brute force.
   SmallVector<CoverCube> primes;
-  for (int mask = 0; mask < NUM_IDS; ++mask) {
-    for (int value = 0; value < NUM_IDS; ++value) {
-      if ((value & mask) != value)
+  for (int mask = 0; mask < numIds; ++mask) {
+    for (int value = 0; value < numIds; ++value) {
+      // valid cube := value covered by mask, avoids properly
+      if ((value & mask) != value) {
         continue;
-      if (hitsOffset(mask, value))
+      }
+      if (hitsAvoid(mask, value)) {
         continue;
-      uint32_t cov = 0;
-      for (int id : onset)
-        if ((id & mask) == value)
-          cov |= (1u << id);
-      if (cov == 0)
+      }
+
+      // record covering
+      llvm::SmallBitVector cov(numIds);
+      for (int id : matchIds) {
+        if ((id & mask) == value) {
+          cov.set(id);
+        }
+      }
+
+      if (cov.none()) {
         continue;
+      }
+
+      // prime = maximal, i.e., no checked mask bit can be dropped without
+      // covering an avoidId.
       bool isPrime = true;
-      for (int b = 0; b < ID_BITS; ++b) {
-        if (!((mask >> b) & 1))
+      for (int b = 0; b < idBits; ++b) {
+        if (!((mask >> b) & 1)) {
           continue;
-        if (!hitsOffset(mask & ~(1 << b), value & ~(1 << b))) {
+        }
+
+        if (!hitsAvoid(mask & ~(1 << b), value & ~(1 << b))) {
           isPrime = false;
           break;
         }
       }
-      if (isPrime)
-        primes.push_back({mask, value, cov});
+
+      if (isPrime) {
+        primes.push_back({mask, value, std::move(cov)});
+      }
     }
   }
 
+  // phase 2: pick the fewest primes that cover every match id (bnb).
   SmallVector<int> sel, bestSel;
-  int bestSize = (int)onset.size() + 1;
-  bnbMinCover(primes, onsetMask, sel, bestSize, bestSel);
+  int bestSize = static_cast<int>(matchIds.size()) + 1;
+
+  bnbMinCover(primes, matchMask, sel, bestSize, bestSel);
 
   SmallVector<std::pair<int, int>> chosen;
-  for (int i : bestSel)
+  for (int i : bestSel) {
     chosen.push_back({primes[i].mask, primes[i].value});
-  if (chosen.empty()) // unreachable: a single-id cube always covers
-    for (int id : onset)
-      chosen.push_back({ID_MASK, id});
+  }
 
-  // Tighten each cube to the bounding cube of its ids; only shrinks, so still
-  // off-set-avoiding, and the one-cube case matches the old common-bits mask.
+  if (chosen.empty()) {
+    // unreachable: a single-id cube always covers
+    for (int id : matchIds) {
+      chosen.push_back({idMask, id});
+    }
+  }
+
+  // phase 3: tighten each chosen cube to match only the ids it took.
+  // maximal -> over-claim don't-cares -> more mask bits narrow the cube.
+  //
+  // e.g., {2,4} avoid {0}:
+  //   prime (mask 00010, value 00010): 2 & 00010 = 00010 == value -> hit
+  //                                    6 & 00010 = 00010 == value -> also hit
+  //   tight (mask 11111, value 00010): 2 & 11111 = 00010 == value -> hit
+  //                                    6 & 11111 = 00110 != value -> dropped
+  //                                    0 & 11111 = 00000 != value -> avoided
+
   SmallVector<SmallVector<int, 4>, 4> assigned(chosen.size());
-  for (int id : onset)
-    for (int c = 0; c < (int)chosen.size(); ++c)
+  for (int id : matchIds) {
+    for (int c = 0; c < static_cast<int>(chosen.size()); ++c) {
       if ((id & chosen[c].first) == chosen[c].second) {
         assigned[c].push_back(id);
         break;
       }
+    }
+  }
+
   SmallVector<std::pair<int, int>> cover;
   for (const SmallVector<int, 4> &ids : assigned) {
-    if (ids.empty())
+    if (ids.empty()) {
       continue;
-    int mask = ID_MASK;
-    for (int i = 0; i < ID_BITS; ++i) {
+    }
+
+    int mask = idMask;
+    for (int i = 0; i < idBits; ++i) {
       int bit = (ids.front() >> i) & 1;
-      for (int id : ids)
+      for (int id : ids) {
         if (((id >> i) & 1) != bit) {
           mask &= ~(1 << i);
           break;
         }
+      }
     }
     cover.push_back({mask, ids.front() & mask});
   }
+
   return cover;
 }
 
@@ -897,8 +969,7 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
     }
   }
 
-  // Ids on each slave port; a group covers its own and avoids the rest
-  // (off-set).
+  // Ids on each slave port; a group covers its own and avoids the rest.
   std::map<PhysPort, llvm::SmallSet<int, 8>> idsOnPort;
   for (const auto &group : slaveGroups)
     for (auto member : group)
@@ -996,30 +1067,32 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
       int channel = port.second.channel;
       auto slave = port.second;
 
-      SmallVector<int, 4> onset;
+      SmallVector<int, 4> matchIds;
       for (auto member : group)
-        onset.push_back(member.second);
+        matchIds.push_back(member.second);
 
       uint32_t maxPacketId = device.getTargetModel().getMaxPacketId();
-      for (int id : onset)
-        if (id > (int)maxPacketId)
+      for (int id : matchIds)
+        if (id > static_cast<int>(maxPacketId)) {
           return mlir::emitError(tileLoc)
                  << "packet id " << id << " exceeds the maximum of "
                  << maxPacketId;
+        }
 
-      llvm::SmallSet<int, 8> offset = idsOnPort[port];
-      for (int id : onset)
-        offset.erase(id);
+      int idBits = llvm::Log2_32_Ceil(maxPacketId + 1);
+      llvm::SmallSet<int, 8> avoidIds = idsOnPort[port];
+      for (int id : matchIds)
+        avoidIds.erase(id);
       SmallVector<std::pair<int, int>> cover =
-          computeSubcubeCover(onset, offset);
+          computeSubcubeCover(matchIds, avoidIds, idBits);
 
       LLVM_DEBUG({
         llvm::dbgs() << "packet cover " << stringifyWireBundle(bundle)
-                     << channel << ": onset {";
-        for (int id : onset)
+                     << channel << ": matchIds {";
+        for (int id : matchIds)
           llvm::dbgs() << ' ' << id;
-        llvm::dbgs() << " } offset {";
-        for (int id : offset)
+        llvm::dbgs() << " } avoidIds {";
+        for (int id : avoidIds)
           llvm::dbgs() << ' ' << id;
         llvm::dbgs() << " } ->";
         for (auto [m, v] : cover)
@@ -1027,18 +1100,18 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
         llvm::dbgs() << '\n';
       });
 
-      for (int id : onset)
+      for (int id : matchIds)
         assert(llvm::any_of(cover,
                             [&](std::pair<int, int> c) {
                               return (id & c.first) == c.second;
                             }) &&
-               "subcube cover misses an onset id");
-      for (int id : offset)
+               "subcube cover misses a match id");
+      for (int id : avoidIds)
         assert(llvm::none_of(cover,
                              [&](std::pair<int, int> c) {
                                return (id & c.first) == c.second;
                              }) &&
-               "subcube cover over-claims an offset id");
+               "subcube cover over-claims an avoid id");
 
       Value amsel = amselOps[slaveAMSels[group.front()]];
 
@@ -1076,12 +1149,12 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
         return failure();
       }
 
-      // The cover avoids this port's off-set by construction; this catches a
+      // The cover avoids this port's avoidIds by construction; this catches a
       // conflict only against rules from another source (e.g. hand-authored).
       for (auto rule : rules.getOps<PacketRuleOp>()) {
         auto verifyMask = rule.maskInt();
         auto verifyValue = rule.valueInt();
-        for (int id : onset)
+        for (int id : matchIds)
           if ((id & verifyMask) == verifyValue) {
             rule->emitOpError("can lead to false packet id match for id ")
                 << id << ", which is not supposed to pass through this port.";
