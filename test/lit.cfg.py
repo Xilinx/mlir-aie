@@ -200,6 +200,13 @@ lit_config.parallelism_groups["concurrency"] = 1
 # NPU XRT tests should run serially to avoid resource contention
 lit_config.parallelism_groups["npu-xrt"] = 1
 
+# A converted chess test leaves the capacity-1 npu-xrt group in the compile
+# phase, so it needs its own bound: chess peak RSS OOMs the runner under
+# parallel compiles. Capacity 1 matches the atb_chess precedent in
+# programming_examples/lit.cfg.py, so chess compiles stay exactly as serialized
+# as they are today; the split only stops them waiting behind the device lock.
+lit_config.parallelism_groups["npu-split-chess-compile"] = 1
+
 # Compile/execute split (opt-in, OFF by default). AIE_NPU_SPLIT selects which
 # half of a *converted* npu-xrt test runs:
 #   "compile" -> run the build lines (%npu_build%), skip the device run (%npu_run%)
