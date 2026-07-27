@@ -131,7 +131,7 @@ def design(dev):
             out_task.await_()
             result.free()
 
-    rt = Runtime(ping_pong, [in_ty, out_ty], fn_args=[of_in.prod(), of_out.cons()])
+    rt = Runtime(ping_pong, [in_ty, out_ty, of_in.prod(), of_out.cons()])
 
     return Program(dev, rt, workers=[worker]).resolve_program()
 

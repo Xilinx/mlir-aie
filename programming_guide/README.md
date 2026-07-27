@@ -51,8 +51,7 @@ def my_design(a_in: In, b_out: Out):
 
     rt = Runtime(
         sequence,
-        [*[np.ndarray[(1024,), np.dtype[np.int32]]] * 2],
-        fn_args=[of_in.prod(), of_out.cons()],
+        [*[np.ndarray[(1024,), np.dtype[np.int32]]] * 2, of_in.prod(), of_out.cons()],
     )
 
     return Program(iron.get_current_device(), rt, workers=[w]).resolve_program()

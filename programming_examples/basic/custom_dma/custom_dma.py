@@ -234,7 +234,7 @@ def custom_dma_design(dev):
         set_lock_value(scatter._mem_cons_lock, 3)
         tg.finish()
 
-    rt = Runtime(sequence, [out_type, out_type, out_type], fn_args=[of_out.cons()])
+    rt = Runtime(sequence, [out_type, out_type, out_type, of_out.cons()])
 
     return Program(dev, rt, workers=[worker]).resolve_program()
 

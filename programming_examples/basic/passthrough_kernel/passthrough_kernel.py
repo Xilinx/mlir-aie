@@ -66,8 +66,7 @@ def my_passthrough_kernel(
 
     rt = Runtime(
         sequence,
-        [vector_type, vector_type],
-        fn_args=[of_in.prod(), of_out.cons()],
+        [vector_type, vector_type, of_in.prod(), of_out.cons()],
     )
     prog = Program(iron.get_current_device(), rt, workers=[worker])
     if trace_config:

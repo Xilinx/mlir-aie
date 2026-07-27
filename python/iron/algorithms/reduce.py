@@ -73,7 +73,7 @@ def _reduce_gen(func, input_desc, output_desc, *, trace_size=0):
         in_h.fill(a_in)
         out_h.drain(c_out, wait=True)
 
-    rt = Runtime(sequence, [in_ty, out_ty], fn_args=[of_in.prod(), of_out.cons()])
+    rt = Runtime(sequence, [in_ty, out_ty, of_in.prod(), of_out.cons()])
 
     device = iron.get_current_device()
     if device is None:

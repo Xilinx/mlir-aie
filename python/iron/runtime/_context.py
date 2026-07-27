@@ -32,7 +32,7 @@ def active_sequence() -> "ActiveSequence":
     Raises:
         RuntimeError: If called outside a runtime sequence body (e.g. a
             ``fill``/``drain`` verb invoked outside the function passed to
-            ``Runtime(seq, inputs, fn_args)``).
+            ``Runtime(seq, fn_args)``).
     """
     seq = _active_sequence.get()
     if seq is None:

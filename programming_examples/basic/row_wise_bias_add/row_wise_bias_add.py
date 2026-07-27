@@ -94,8 +94,7 @@ def row_wise_bias_add(
 
     rt = Runtime(
         sequence,
-        [in_ty, bias_full_ty, in_ty],
-        fn_args=[in_fifo.prod(), bias_fifo.prod(), out_fifo.cons()],
+        [in_ty, bias_full_ty, in_ty, in_fifo.prod(), bias_fifo.prod(), out_fifo.cons()],
     )
 
     return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()

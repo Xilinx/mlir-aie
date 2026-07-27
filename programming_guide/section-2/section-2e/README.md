@@ -110,8 +110,7 @@ def sequence(a_in, b_out, c, in_h, out_h):
 
 rt = Runtime(
     sequence,
-    [data_ty, data_ty, data_ty],
-    fn_args=[of_in.prod(), of_out.cons()],
+    [data_ty, data_ty, data_ty, of_in.prod(), of_out.cons()],
 )
 # ... Program(dev, rt, workers=[my_worker])
 ```
@@ -124,8 +123,7 @@ def sequence(a_in, b_out, c, in_h, out_h):
 
 rt = Runtime(
     sequence,
-    [data_ty, data_ty, data_ty],
-    fn_args=[of_in.prod(), of_out.cons()],
+    [data_ty, data_ty, data_ty, of_in.prod(), of_out.cons()],
 )
 # ... Program(dev, rt, workers=workers)
 ```

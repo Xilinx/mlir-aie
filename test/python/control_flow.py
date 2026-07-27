@@ -52,8 +52,7 @@ def custom_loop_type(loop_dtype):
 
     rt = Runtime(
         sequence,
-        [vector_type, vector_type, vector_type],
-        fn_args=[of_in.prod(), of_out.cons()],
+        [vector_type, vector_type, vector_type, of_in.prod(), of_out.cons()],
     )
 
     # Create the program from the device type and runtime

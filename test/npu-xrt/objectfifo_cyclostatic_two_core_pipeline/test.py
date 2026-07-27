@@ -81,9 +81,7 @@ def cyclostatic_two_core_pipeline(in_tensor: In, out_tensor: Out):
         in_h.fill(a_in)
         out_h.drain(c_out, wait=True)
 
-    rt = Runtime(
-        sequence, [in_ty, out_ty], fn_args=[of_in_l3l2.prod(), of_out_l2l3.cons()]
-    )
+    rt = Runtime(sequence, [in_ty, out_ty, of_in_l3l2.prod(), of_out_l2l3.cons()])
 
     return Program(
         iron.get_current_device(), rt, workers=[worker_a, worker_b]

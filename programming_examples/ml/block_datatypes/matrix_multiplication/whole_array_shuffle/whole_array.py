@@ -241,8 +241,10 @@ def whole_array_shuffle(
 
     rt = Runtime(
         sequence,
-        [A_ty, B_ty, C_ty],
-        fn_args=[
+        [
+            A_ty,
+            B_ty,
+            C_ty,
             [f.prod() for f in A_l3l2_fifos],
             [f.prod() for f in B_l3l2_fifos],
             [f.cons() for f in C_l2l3_fifos],

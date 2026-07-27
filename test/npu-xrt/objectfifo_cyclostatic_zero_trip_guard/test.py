@@ -95,8 +95,11 @@ def cyclostatic_normal(
 
     rt = Runtime(
         sequence,
-        [in_ty, trip_ty, out_ty, done_ty],
-        fn_args=[
+        [
+            in_ty,
+            trip_ty,
+            out_ty,
+            done_ty,
             of_in_l3l2.prod(),
             of_trip.prod(),
             of_out_l2l3.cons(),

@@ -55,8 +55,7 @@ def design(
 
     rt = Runtime(
         sequence,
-        [a_type, c_type],
-        fn_args=[of_in.prod(), of_out.cons()],
+        [a_type, c_type, of_in.prod(), of_out.cons()],
     )
     prog = Program(iron.get_current_device(), rt, workers=[worker])
     if trace_config:

@@ -179,7 +179,7 @@ More on the ObjectFifo data movement patterns in [Section 2b](../section-2/secti
 
 ## Runtime Sequence
 
-The IRON runtime sequence is a plain Python function passed to `Runtime(sequence, inputs, fn_args=...)`. Its `inputs` describe buffers that will be available on the host side, and its body contains commands which describe how those buffers are moved into the AIE-array through `ObjectFifos`. The `ObjectFifoHandle`s the body fills/drains are passed via `fn_args` and received as trailing parameters. `Worker`s are handed to the `Program` directly.
+The IRON runtime sequence is a plain Python function passed to `Runtime(sequence, fn_args)`. Leading `fn_args` entries describe buffers that will be available on the host side, and the body contains commands which describe how those buffers are moved into the AIE-array through `ObjectFifos`. The `ObjectFifoHandle`s the body fills/drains are passed as the trailing `fn_args` entries. `Worker`s are handed to the `Program` directly.
 
 ```python
 data_size = 256
@@ -195,8 +195,7 @@ def sequence(a_in, c_out, in_h, out_h):
 
 rt = Runtime(
     sequence,
-    [tile_ty, tile_ty],
-    fn_args=[of_in.prod(), of_out.cons()],
+    [tile_ty, tile_ty, of_in.prod(), of_out.cons()],
 )
 
 Program(device, rt, workers=[my_worker]).resolve_program()
@@ -340,8 +339,7 @@ def sequence(a_in, c_out, in_h, out_h):
 
 rt = Runtime(
     sequence,
-    [data_ty, data_ty],
-    fn_args=[of_in.prod(), of_out.cons()],
+    [data_ty, data_ty, of_in.prod(), of_out.cons()],
 )
 
 Program(device, rt, workers=[my_worker]).resolve_program()

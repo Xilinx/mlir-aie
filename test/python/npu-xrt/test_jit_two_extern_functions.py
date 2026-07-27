@@ -68,8 +68,7 @@ def add_then_scale(
 
     rt = Runtime(
         sequence,
-        [tensor_ty, tensor_ty],
-        fn_args=[of_in.prod(), of_out.cons()],
+        [tensor_ty, tensor_ty, of_in.prod(), of_out.cons()],
     )
 
     return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()

@@ -77,8 +77,7 @@ def saxpy(
 
     rt = Runtime(
         sequence,
-        [in_ty, in_ty, out_ty],
-        fn_args=[of_x.prod(), of_y.prod(), of_z.cons()],
+        [in_ty, in_ty, out_ty, of_x.prod(), of_y.prod(), of_z.cons()],
     )
 
     # --------------------------------------------------------------------------

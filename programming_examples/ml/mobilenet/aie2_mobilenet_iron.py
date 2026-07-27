@@ -259,8 +259,10 @@ def make_mobilenet_iron(use_placement: bool = True):
 
         rt = Runtime(
             sequence,
-            [in_ty, cascade_wts_ty, out_ty],
-            fn_args=[
+            [
+                in_ty,
+                cascade_wts_ty,
+                out_ty,
                 act_in.prod(depth=1, tile=shim.get("input")),
                 [fifo.prod(tile=s) for fifo, s in zip(wts_fifos, wts_shims)],
                 act_out_post_avgpool_shim.cons(tile=shim.get("scratch_drain")),

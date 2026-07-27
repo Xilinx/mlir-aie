@@ -88,8 +88,14 @@ def vector_scalar_mul(a_in: In, f_in: In, c_out: Out):
 
     rt = Runtime(
         sequence,
-        [tensor_ty, scalar_ty, tensor_ty],
-        fn_args=[of_in.prod(), of_factor.prod(), of_out.cons()],
+        [
+            tensor_ty,
+            scalar_ty,
+            tensor_ty,
+            of_in.prod(),
+            of_factor.prod(),
+            of_out.cons(),
+        ],
     )
 
     return Program(iron.get_current_device(), rt, workers=[my_worker]).resolve_program()

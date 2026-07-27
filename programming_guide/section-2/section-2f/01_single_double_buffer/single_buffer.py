@@ -53,7 +53,7 @@ def single_buffer(c_out: Out):
     def sequence(c, out_h):
         out_h.drain(c, wait=True)
 
-    rt = Runtime(sequence, [data_ty], fn_args=[of_out.cons()])
+    rt = Runtime(sequence, [data_ty, of_out.cons()])
 
     return Program(iron.get_current_device(), rt, workers=[w1, w2]).resolve_program()
 

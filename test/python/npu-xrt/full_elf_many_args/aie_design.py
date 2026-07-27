@@ -50,8 +50,7 @@ def design():
 
     rt = Runtime(
         sequence,
-        [out_ty] * N_BUFFERS,
-        fn_args=[fifos[i].cons() for i in range(N_BUFFERS)],
+        [out_ty] * N_BUFFERS + [fifos[i].cons() for i in range(N_BUFFERS)],
     )
 
     return str(

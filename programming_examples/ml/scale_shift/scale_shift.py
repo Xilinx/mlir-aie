@@ -174,8 +174,15 @@ def scale_shift(
 
     rt = Runtime(
         sequence,
-        [tensor_ty, tensor_ty, tensor_ty, tensor_ty],
-        fn_args=[inA.prod(), inB.prod(), outC.cons()],
+        [
+            tensor_ty,
+            tensor_ty,
+            tensor_ty,
+            tensor_ty,
+            inA.prod(),
+            inB.prod(),
+            outC.cons(),
+        ],
     )
 
     return Program(device, rt, workers=workers).resolve_program()

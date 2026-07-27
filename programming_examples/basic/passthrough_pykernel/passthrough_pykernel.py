@@ -68,8 +68,7 @@ def passthrough_pykernel(a_in: In, b_out: Out):
 
     rt = Runtime(
         sequence,
-        [_VECTOR_TY, _VECTOR_TY],
-        fn_args=[of_in.prod(), of_out.cons()],
+        [_VECTOR_TY, _VECTOR_TY, of_in.prod(), of_out.cons()],
     )
 
     return Program(iron.get_current_device(), rt, workers=[my_worker]).resolve_program()

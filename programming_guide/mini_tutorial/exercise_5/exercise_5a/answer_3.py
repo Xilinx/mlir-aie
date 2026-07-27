@@ -46,7 +46,7 @@ def exercise_5a(
         in_h.fill(a_in)
         out_h.drain(c_out, wait=True)
 
-    rt = Runtime(sequence, [data_ty, data_ty], fn_args=[of_in.prod(), of_out.cons()])
+    rt = Runtime(sequence, [data_ty, data_ty, of_in.prod(), of_out.cons()])
 
     # Create the program from the device type and runtime
     my_program = Program(iron.get_current_device(), rt, workers=[my_worker])

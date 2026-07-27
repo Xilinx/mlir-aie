@@ -72,8 +72,7 @@ def matrix_scalar_add(
 
     rt = Runtime(
         sequence,
-        [matrix_ty, matrix_ty],
-        fn_args=[of_in.prod(), of_out.cons()],
+        [matrix_ty, matrix_ty, of_in.prod(), of_out.cons()],
     )
 
     return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()

@@ -49,8 +49,7 @@ def aie_trace(A: In, F: In, C: Out, *, tensor_size: CompileTime[int] = 4096, ...
 
     rt = Runtime(
         sequence,
-        [tensor_ty, scalar_ty, tensor_ty],
-        fn_args=[of_in.prod(), of_factor.prod(), of_out.cons()],
+        [tensor_ty, scalar_ty, tensor_ty, of_in.prod(), of_factor.prod(), of_out.cons()],
     )
 
     prog = Program(iron.get_current_device(), rt, workers=[worker])

@@ -69,8 +69,7 @@ def vector_exp(
 
     rt = Runtime(
         sequence,
-        [tensor_ty, tensor_ty],
-        fn_args=[A_fifo.prod(), C_fifo.cons()],
+        [tensor_ty, tensor_ty, A_fifo.prod(), C_fifo.cons()],
     )
 
     return Program(iron.get_current_device(), rt, workers=workers).resolve_program()

@@ -111,8 +111,7 @@ def memcpy(
 
     rt = Runtime(
         sequence,
-        [transfer_type, transfer_type],
-        fn_args=[in_prods, out_conses],
+        [transfer_type, transfer_type, in_prods, out_conses],
     )
 
     return Program(iron.get_current_device(), rt, workers=my_workers).resolve_program()

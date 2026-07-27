@@ -20,7 +20,7 @@
 
 IRON provides a `Runtime` class whose *sequence body* — a plain Python function — describes how host-side buffers are moved into and out of the AIE-array while one or more `Worker`s run. All IRON constructs introduced in this section are available [here](../../../python/iron/runtime/).
 
-A `Runtime` is created from its sequence body and the inputs that body takes, mirroring how a `Worker` is created from a `core_fn` and its `fn_args`:
+A `Runtime` is created from its sequence body and `fn_args`, mirroring how a `Worker` is created from a `core_fn` and its `fn_args`:
 ```python
 # To/from AIE-array runtime data movement
 def sequence(a, b, c):
@@ -29,11 +29,11 @@ def sequence(a, b, c):
 
 rt = Runtime(sequence, [data_ty_a, data_ty_b, data_ty_c])
 ```
-The `inputs` list (`[data_ty_a, ...]`) describes the host-side buffers; the body receives one argument per input and describes how those buffers move into the AIE-array. The body runs later, inside the lowered `aie.runtime_sequence`, so it executes with a live MLIR context — meaning native `range_`/`if_` control flow and data-movement verbs work directly inside it.
+Here every `fn_args` entry (`data_ty_a`, ...) is a **type**, which declares a host-side buffer: the body receives one argument per entry and describes how those buffers move into the AIE-array. The body runs later, inside the lowered `aie.runtime_sequence`, so it executes with a live MLIR context — meaning native `range_`/`if_` control flow and data-movement verbs work directly inside it.
 
 #### **Passing ObjectFifos to the body: `fn_args`**
 
-The body moves data by calling `fill`/`drain` on `ObjectFifoHandle`s. Those handles are passed to the `Runtime` via `fn_args` — exactly like a `Worker`'s `fn_args` — and are received as trailing parameters of the body, after the inputs:
+The body moves data by calling `fill`/`drain` on `ObjectFifoHandle`s. Those handles are passed to the `Runtime` as trailing `fn_args` entries — exactly like a `Worker`'s `fn_args` — and are received as trailing parameters of the body, after the type-declared buffers:
 ```python
 def sequence(a, b, c, in_h, out_h):
     in_h.fill(a)
@@ -41,8 +41,7 @@ def sequence(a, b, c, in_h, out_h):
 
 rt = Runtime(
     sequence,
-    [data_ty_a, data_ty_b, data_ty_c],
-    fn_args=[of_in.prod(), of_out.cons()],
+    [data_ty_a, data_ty_b, data_ty_c, of_in.prod(), of_out.cons()],
 )
 ```
 Passing the handles through `fn_args` (rather than capturing them by closure) lets the `Runtime` bind each ObjectFifo's shim endpoint up front, so the design resolves cleanly regardless of where the body appears.
@@ -82,7 +81,7 @@ The code snippet below shows how data from a source runtime buffer `a_in` is sen
 def sequence(a_in, in_h):
     in_h.fill(a_in)
 
-rt = Runtime(sequence, [data_ty], fn_args=[of_in.prod()])
+rt = Runtime(sequence, [data_ty, of_in.prod()])
 ```
 
 The `drain()` operation is a method on a *consumer* `ObjectFifoHandle` that reads its data and writes it to a `dest` runtime buffer. It is defined in [objectfifo.py](../../../python/iron/dataflow/objectfifo.py):
@@ -103,12 +102,12 @@ The code snippet below shows how data from a consumer `ObjectFifoHandle` of `of_
 def sequence(c_out, out_h):
     out_h.drain(c_out, wait=True)
 
-rt = Runtime(sequence, [data_ty], fn_args=[of_out.cons()])
+rt = Runtime(sequence, [data_ty, of_out.cons()])
 ```
 
 To pin the Shim tile a handle's host-side DMA uses, pass `tile=` to `prod()`/`cons()` where the handle is created (not to `fill`/`drain`):
 ```python
-rt = Runtime(sequence, [data_ty], fn_args=[of_in.prod(tile=Tile(0, 0))])
+rt = Runtime(sequence, [data_ty, of_in.prod(tile=Tile(0, 0))])
 ```
 
 The `fill()`/`drain()` methods return a `Task` handle. For the common case you can ignore it, but it enables software-pipelined data movement: pass a `Task` as a `range_` `iter_arg` to carry an in-flight transfer across loop iterations, and call `.free()` / `.await_()` on it to manage its lifetime by hand (see [dmataskhandle.py](../../../python/iron/runtime/dmataskhandle.py)).
@@ -205,8 +204,7 @@ def sequence(a_in, b, c_out, in_h, out_h):
 
 rt = Runtime(
     sequence,
-    [data_ty, data_ty, data_ty],
-    fn_args=[of_in.prod(), of_out.cons()],
+    [data_ty, data_ty, data_ty, of_in.prod(), of_out.cons()],
 )
 ```
 

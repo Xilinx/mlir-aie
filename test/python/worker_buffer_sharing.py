@@ -74,7 +74,7 @@ def test_shared_buffer_resolves_to_cross_core_access():
     def sequence(out, out_h):
         out_h.drain(out, wait=True)
 
-    rt = Runtime(sequence, [buf_ty], fn_args=[of_out.cons()])
+    rt = Runtime(sequence, [buf_ty, of_out.cons()])
     print(Program(NPU2Col1(), rt, workers=[producer, consumer]).resolve_program())
 
 
@@ -103,7 +103,7 @@ def test_unpinned_consumer_is_steered_to_owner_neighbor():
     def sequence(out, out_h):
         out_h.drain(out, wait=True)
 
-    rt = Runtime(sequence, [buf_ty], fn_args=[of_out.cons()])
+    rt = Runtime(sequence, [buf_ty, of_out.cons()])
     module = Program(NPU2Col1(), rt, workers=[producer, consumer]).resolve_program()
     pm = PassManager.parse(
         "builtin.module(aie.device(aie-place-tiles))", context=module.context

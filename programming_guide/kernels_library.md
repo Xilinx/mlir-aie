@@ -53,7 +53,7 @@ def passthrough_design(a: In, b: Out, *, N: CompileTime[int]):
         in_h.fill(a_in)
         out_h.drain(b_out, wait=True)
 
-    rt = Runtime(sequence, [line_ty, line_ty], fn_args=[of_in.prod(), of_out.cons()])
+    rt = Runtime(sequence, [line_ty, line_ty, of_in.prod(), of_out.cons()])
     return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 ```
 

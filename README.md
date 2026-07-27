@@ -47,7 +47,7 @@ def vector_add_one(a_in, b_out):
         in_h.fill(a)
         out_h.drain(b, wait=True)
 
-    rt = Runtime(sequence, [data_ty, data_ty], fn_args=[of_in.prod(), of_out.cons()])
+    rt = Runtime(sequence, [data_ty, data_ty, of_in.prod(), of_out.cons()])
     return Program(iron.get_current_device(), rt, workers=[w]).resolve_program()
 
 a = iron.arange(1024, dtype=np.int32, device="npu")

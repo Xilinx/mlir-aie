@@ -122,8 +122,14 @@ def conv2d(
 
     rt = Runtime(
         sequence,
-        [tensor_in_ty, weights_ty, tensor_out_ty],
-        fn_args=[of_act_l3l2.prod(), of_wts_l3l2.prod(), of_out_l3.cons()],
+        [
+            tensor_in_ty,
+            weights_ty,
+            tensor_out_ty,
+            of_act_l3l2.prod(),
+            of_wts_l3l2.prod(),
+            of_out_l3.cons(),
+        ],
     )
 
     return Program(device, rt, workers=[worker]).resolve_program()

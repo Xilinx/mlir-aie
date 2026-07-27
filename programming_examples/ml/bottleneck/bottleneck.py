@@ -277,8 +277,14 @@ def bottleneck(
 
     rt = Runtime(
         sequence,
-        [act_in_l3_ty, wts_in_l3_ty, act_in_l3_ty],
-        fn_args=[of_act_l3l2.prod(), of_wts_l3l2.prod(), of_out_l2l3.cons()],
+        [
+            act_in_l3_ty,
+            wts_in_l3_ty,
+            act_in_l3_ty,
+            of_act_l3l2.prod(),
+            of_wts_l3l2.prod(),
+            of_out_l2l3.cons(),
+        ],
     )
 
     return Program(device, rt, workers=workers).resolve_program()

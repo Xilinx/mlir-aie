@@ -238,8 +238,11 @@ def per_block_iron(block_name, data_dir=None, scales_json=None):
 
         rt = Runtime(
             sequence,
-            [in_ty, wts_ty, wts_ty, out_ty],
-            fn_args=[
+            [
+                in_ty,
+                wts_ty,
+                wts_ty,
+                out_ty,
                 act_in.prod(tile=TEST_PLACEMENT["shim_input"]),
                 wts_fifos[0].prod(tile=TEST_PLACEMENT["shim_wts_l1"]),
                 wts_fifos[1].prod(tile=TEST_PLACEMENT["shim_wts_l3"]),
@@ -256,8 +259,9 @@ def per_block_iron(block_name, data_dir=None, scales_json=None):
 
         rt = Runtime(
             sequence,
-            [in_ty, out_ty],
-            fn_args=[
+            [
+                in_ty,
+                out_ty,
                 act_in.prod(tile=TEST_PLACEMENT["shim_input"]),
                 out_fifo.cons(tile=TEST_PLACEMENT["shim_output"]),
             ],

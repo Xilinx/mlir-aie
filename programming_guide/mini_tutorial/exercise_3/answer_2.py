@@ -51,8 +51,7 @@ def exercise_3(
 
     rt = Runtime(
         sequence,
-        [data_ty, data_ty, data_ty],
-        fn_args=[of_in_A.prod(), of_in_B.prod(), of_out.cons()],
+        [data_ty, data_ty, data_ty, of_in_A.prod(), of_in_B.prod(), of_out.cons()],
     )
 
     # Create the program from the device type and runtime

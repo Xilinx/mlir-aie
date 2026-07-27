@@ -275,8 +275,7 @@ def _transform(input_tensor: In, output_tensor: Out, *, kernel_fn: CompileTime[o
 
     rt = Runtime(
         sequence,
-        [_tensor_ty, _tensor_ty],
-        fn_args=[of_in.prod(), of_out.cons()],
+        [_tensor_ty, _tensor_ty, of_in.prod(), of_out.cons()],
     )
     return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 

@@ -172,8 +172,7 @@ def vector_reduce_max(
 
     rt = Runtime(
         sequence,
-        [in_tensor_ty, out_tensor_ty],
-        fn_args=[in_prods, out_cons],
+        [in_tensor_ty, out_tensor_ty, in_prods, out_cons],
     )
     prog = Program(iron.get_current_device(), rt, workers=my_workers)
     if enable_trace:

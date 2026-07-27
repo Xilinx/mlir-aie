@@ -192,8 +192,8 @@ def _transform_gen(func, inputs: list, output, *params, tile_size=16, trace_size
 
     rt = Runtime(
         sequence,
-        all_types,
-        fn_args=[
+        [
+            *all_types,
             *[of_in.prod() for of_in in of_inputs],
             of_out.cons(),
             *[p.prod() for p in param_of_list],
@@ -499,8 +499,7 @@ def _transform_parallel_gen(
 
     rt = Runtime(
         sequence,
-        all_types,
-        fn_args=[in_prods, out_conses, param_prods],
+        [*all_types, in_prods, out_conses, param_prods],
     )
 
     # Place program components and generate an MLIR module

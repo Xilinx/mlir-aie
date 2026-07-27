@@ -68,7 +68,7 @@ def design():
         # Output DMA
         out_h.drain(out_tensor, wait=True)
 
-    rt = Runtime(sequence, [in_ty, out_ty], fn_args=[of_in.prod(), of_out.cons()])
+    rt = Runtime(sequence, [in_ty, out_ty, of_in.prod(), of_out.cons()])
 
     module = Program(NPU2Col1(), rt, workers=[worker]).resolve_program(
         device_name=device_name

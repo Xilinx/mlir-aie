@@ -19,7 +19,7 @@ from __future__ import annotations
 import itertools
 import logging
 import numpy as np
-from typing import Callable, Sequence
+from typing import Callable, Sequence, get_origin
 
 logger = logging.getLogger(__name__)
 
@@ -170,45 +170,60 @@ class Runtime(Resolvable):
     def __init__(
         self,
         seq_fn: Callable,
-        inputs: Sequence,
         fn_args: "Sequence | None" = None,
         *,
         strict_task_groups: bool = True,
     ) -> None:
-        """Create a runtime from its sequence body, declared inputs, and fn_args.
+        """Create a runtime from its sequence body and fn_args.
 
         Mirrors [`Worker`][iron.Worker]``(core_fn, fn_args)``: ``seq_fn`` runs
         inside ``@runtime_sequence`` at resolve time, called as
-        ``seq_fn(*inputs, *fn_args)``, and can use native ``range_``/``if_`` and
-        ``fifo.fill``/``fifo.drain``. ``fn_args`` (ObjectFifoHandles, Buffers, ...)
-        are registered eagerly at construction -- fifo shim endpoints bind now
-        (from ``prod(tile=)``/``cons(tile=)``) so the Program resolves fifos and
-        cores before the body emits, letting body verbs read resolved worker state
-        (e.g. ``barrier.set``).
+        ``seq_fn(*fn_args)``, and can use native ``range_``/``if_`` and
+        ``fifo.fill``/``fifo.drain``. Objects in ``fn_args`` (ObjectFifoHandles,
+        Buffers, ...) are registered eagerly at construction -- fifo shim
+        endpoints bind now (from ``prod(tile=)``/``cons(tile=)``) so the Program
+        resolves fifos and cores before the body emits, letting body verbs read
+        resolved worker state (e.g. ``barrier.set``).
 
-        Each ``inputs`` entry is either a **type** or a concrete **int value**:
-        a tensor type becomes a ``RuntimeData``; a scalar type (``np.int32``)
-        becomes a runtime SSA scalar (``scf`` survives to the dynamic EmitC path);
-        an int becomes a folded ``arith.constant`` (constant-bound ``range_``/``if_``
-        unrolls to the static binary path). One body thus serves both lowerings.
+        Each ``fn_args`` entry is one of:
+
+        * a **type** (a tensor type or a scalar type like ``np.int32``): declares
+          a runtime input and is replaced with a live SSA value bound to a new
+          ``runtime_sequence`` block arg -- a tensor type becomes a
+          ``RuntimeData`` (``fill``/``drain`` target), a scalar type becomes the
+          bare SSA value (``scf`` survives to the dynamic EmitC path).
+        * a concrete **int value**: also declares a runtime input, but is folded
+          into an ``arith.constant`` instead of a block arg (constant-bound
+          ``range_``/``if_`` unrolls to the static binary path). One body thus
+          serves both lowerings depending on whether the caller passes a type or
+          an int here.
+        * any other object (ObjectFifoHandle, Buffer, Kernel, ScratchpadParameter,
+          WorkerRuntimeBarrier, ...): passed through to the body unchanged, as
+          with ``Worker.fn_args``.
 
         Args:
-            seq_fn (Callable): The sequence body; params bound to ``inputs`` then ``fn_args``.
-            inputs (Sequence): One per leading body param -- a type (runtime) or int (constant).
-            fn_args (Sequence | None): Shared objects bound to the trailing body params. Defaults to None.
+            seq_fn (Callable): The sequence body; params bound to ``fn_args`` in order.
+            fn_args (Sequence | None): Types/ints (runtime inputs) and shared objects,
+                in the order ``seq_fn`` expects them. Defaults to None (empty list).
             strict_task_groups (bool): Disallow mixing the default and explicit task groups. Defaults to True.
         """
         self._seq_fn: Callable = seq_fn
-        # A concrete int input is a folded constant; anything else is a type.
-        self._const_inputs = [
+        self._fn_args = list(fn_args) if fn_args is not None else []
+        # A concrete int entry is a folded constant; a type/generic-alias entry
+        # is a runtime input; anything else passes through as an object fn_arg.
+        self._const_inputs: list[int | None] = [
             v if isinstance(v, (int, np.integer)) and not isinstance(v, bool) else None
-            for v in inputs
+            for v in self._fn_args
         ]
         self._rt_data: list["RuntimeData | None"] = [
-            None if c is not None else RuntimeData(t)
-            for c, t in zip(self._const_inputs, inputs)
+            (
+                RuntimeData(arg)
+                if c is None
+                and (isinstance(arg, type) or get_origin(arg) is np.ndarray)
+                else None
+            )
+            for c, arg in zip(self._const_inputs, self._fn_args)
         ]
-        self._fn_args = list(fn_args) if fn_args is not None else []
         self._fifos: set[ObjectFifoHandle] = set()
         self._register_fn_args()
         # Lower-level explicit-routing primitives (peers of ObjectFifo for
@@ -327,28 +342,26 @@ class Runtime(Resolvable):
                     egress_shim_col=egress_shim_col,
                 )
 
-            # Build the body's positional args, one per declared input:
-            #   * folded-constant input -> an arith.constant of that value;
-            #   * scalar type input     -> its live SSA value (used in arithmetic
+            # Build the body's positional args, one per fn_args entry, in order:
+            #   * folded-constant entry -> an arith.constant of that value;
+            #   * scalar type entry     -> its live SSA value (used in arithmetic
             #                              and range_/if_ bounds);
-            #   * tensor type input     -> its RuntimeData handle (fill/drain).
+            #   * tensor type entry     -> its RuntimeData handle (fill/drain);
+            #   * anything else         -> passed through unchanged (fifos, etc).
             body_args = []
-            for const_val, rt_data in zip(self._const_inputs, self._rt_data):
+            for arg, const_val, rt_data in zip(
+                self._fn_args, self._const_inputs, self._rt_data
+            ):
                 if const_val is not None:
                     # i32 to mirror the dynamic np.int32 scalar path, so the same
                     # body's arithmetic (extsi to i64, etc.) lowers identically.
                     body_args.append(
                         constant(int(const_val), np_dtype_to_mlir_type(np.int32))
                     )
+                elif rt_data is not None:
+                    body_args.append(rt_data.op if rt_data.is_scalar else rt_data)
                 else:
-                    assert rt_data is not None  # invariant: const_val or rt_data
-                    if rt_data.is_scalar:
-                        body_args.append(rt_data.op)
-                    else:
-                        body_args.append(rt_data)
-
-            # fn_args (fifos, buffers, ...) follow the inputs, as declared.
-            body_args.extend(self._fn_args)
+                    body_args.append(arg)
 
             with active_sequence_scope(active):
                 self._seq_fn(*body_args)

@@ -157,8 +157,7 @@ def single_core_matmul(
 
     rt = Runtime(
         sequence,
-        [A_ty, B_ty, C_ty],
-        fn_args=[inA.prod(), inB.prod(), outC.cons()],
+        [A_ty, B_ty, C_ty, inA.prod(), inB.prod(), outC.cons()],
     )
 
     return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()

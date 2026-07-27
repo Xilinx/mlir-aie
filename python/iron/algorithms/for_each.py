@@ -208,8 +208,12 @@ def _for_each_real(func, tensor, *params, tile_size=16):
 
     rt = Runtime(
         sequence,
-        all_types,
-        fn_args=[of_in.prod(), of_out.cons(), *[p.prod() for p in param_of_list]],
+        [
+            *all_types,
+            of_in.prod(),
+            of_out.cons(),
+            *[p.prod() for p in param_of_list],
+        ],
     )
 
     # Place program components and generate an MLIR module

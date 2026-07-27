@@ -80,8 +80,7 @@ def sequence(A, B, C, a_prod, b_prod, c_cons):
 
 rt = Runtime(
     sequence,
-    [A_ty, B_ty, C_ty],
-    fn_args=[fifo_A_L3L2.prod(), fifo_B_L3L2.prod(), fifo_C_L2L3.cons()],
+    [A_ty, B_ty, C_ty, fifo_A_L3L2.prod(), fifo_B_L3L2.prod(), fifo_C_L2L3.cons()],
 )
 # The Worker is launched by the Program, not from inside the sequence body:
 Program(dev, rt, workers=[worker]).resolve_program()

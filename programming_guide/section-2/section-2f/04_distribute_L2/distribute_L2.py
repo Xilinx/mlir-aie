@@ -52,7 +52,7 @@ def distribute_L2(a_in: In):
     def sequence(a, in_h):
         in_h.fill(a)
 
-    rt = Runtime(sequence, [data_ty], fn_args=[of_in.prod()])
+    rt = Runtime(sequence, [data_ty, of_in.prod()])
 
     return Program(iron.get_current_device(), rt, workers=workers).resolve_program()
 

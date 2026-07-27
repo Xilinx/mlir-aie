@@ -146,8 +146,13 @@ def group0(
 
     rt = Runtime(
         sequence,
-        [transfer_in_ty, transfer_out_ty, scalar_ty],
-        fn_args=[of_din_L3L2.prod(), of_dout_L2L3.cons()],
+        [
+            transfer_in_ty,
+            transfer_out_ty,
+            scalar_ty,
+            of_din_L3L2.prod(),
+            of_dout_L2L3.cons(),
+        ],
     )
     prog = Program(
         iron.get_current_device(),

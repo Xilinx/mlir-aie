@@ -134,8 +134,10 @@ def cyclostatic_two_core_mutual(seed_a: In, seed_b: In, out_tensor: Out):
 
     rt = Runtime(
         sequence,
-        [seed_ty, seed_ty, out_ty],
-        fn_args=[
+        [
+            seed_ty,
+            seed_ty,
+            out_ty,
             of_seed_a_l3l2.prod(),
             of_seed_b_l3l2.prod(),
             of_a_out_l2l3.cons(),

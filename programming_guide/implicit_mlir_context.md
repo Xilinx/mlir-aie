@@ -43,7 +43,7 @@ def passthrough(a_in: In, b_out: Out):
         in_h.fill(a)
         out_h.drain(b, wait=True)
 
-    rt = Runtime(sequence, [line_ty, line_ty], fn_args=[of.prod(), of_out.cons()])
+    rt = Runtime(sequence, [line_ty, line_ty, of.prod(), of_out.cons()])
 
     return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 ```
@@ -160,7 +160,7 @@ touch the implicit context.  They are registered with it later, when
 `Program.resolve_program()` walks the design.
 
 * `Worker(core_fn, fn_args, tile=...)`
-* `Runtime(sequence, inputs, fn_args=...)`
+* `Runtime(sequence, fn_args)`
 * `Program(device, rt, workers=...)`
 * `ObjectFifo(obj_type, depth, name=...)`
 

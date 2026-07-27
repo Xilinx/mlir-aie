@@ -50,8 +50,13 @@ def passthrough_dmas(
 
     rt = Runtime(
         sequence,
-        [vector_ty, vector_ty, vector_ty],
-        fn_args=[of_in.prod(tile=AnyShimTile), of_out.cons(tile=AnyShimTile)],
+        [
+            vector_ty,
+            vector_ty,
+            vector_ty,
+            of_in.prod(tile=AnyShimTile),
+            of_out.cons(tile=AnyShimTile),
+        ],
     )
 
     return Program(iron.get_current_device(), rt).resolve_program()

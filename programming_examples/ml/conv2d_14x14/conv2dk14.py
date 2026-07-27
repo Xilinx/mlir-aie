@@ -189,8 +189,14 @@ def conv2dk14(
 
     rt = Runtime(
         sequence,
-        [tensor_in_ty, tensor_wts_ty, tensor_out_ty],
-        fn_args=[of_act_l3l2.prod(), of_wts_l3l2.prod(), of_out_l3.cons()],
+        [
+            tensor_in_ty,
+            tensor_wts_ty,
+            tensor_out_ty,
+            of_act_l3l2.prod(),
+            of_wts_l3l2.prod(),
+            of_out_l3.cons(),
+        ],
     )
 
     return Program(device, rt, workers=[worker]).resolve_program()
@@ -379,8 +385,10 @@ def conv2dk14_multi(
 
     rt = Runtime(
         sequence,
-        [tensor_in_ty, tensor_wts_ty, tensor_out_ty],
-        fn_args=[
+        [
+            tensor_in_ty,
+            tensor_wts_ty,
+            tensor_out_ty,
             [of_act_l3l2[j].prod() for j in range(n_rows)],
             [of_wts[i].prod() for i in range(n_cols)],
             [of_out_l2l3[i].cons() for i in range(n_cols)],

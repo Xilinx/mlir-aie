@@ -70,7 +70,7 @@ def init_values_design(out: Out):
     def sequence(a, out_h):
         out_h.drain(a, wait=True)
 
-    rt = Runtime(sequence, [out_ty], fn_args=[of_out.cons()])
+    rt = Runtime(sequence, [out_ty, of_out.cons()])
 
     return Program(dev, rt, workers=[worker]).resolve_program()
 

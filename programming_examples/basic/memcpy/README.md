@@ -94,8 +94,7 @@ In this exercise, you'll use the `memcpy` design to measure memory bandwidth acr
 	
 	rt = Runtime(
 	    sequence,
-	    [transfer_type, transfer_type],
-	    fn_args=[in_prods, out_conses],
+	    [transfer_type, transfer_type, in_prods, out_conses],
 	)
 	# Workers (if not bypassing) are launched via the Program, not the body:
 	Program(dev, rt, workers=my_workers).resolve_program()

@@ -52,7 +52,7 @@ def join_L2(c_out: Out):
     def sequence(c, out_h):
         out_h.drain(c, wait=True)
 
-    rt = Runtime(sequence, [data_ty], fn_args=[of_out.cons()])
+    rt = Runtime(sequence, [data_ty, of_out.cons()])
 
     return Program(iron.get_current_device(), rt, workers=workers).resolve_program()
 

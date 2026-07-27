@@ -68,8 +68,7 @@ def tile_group(
 
     rt = Runtime(
         sequence,
-        [flattened_tensor],
-        fn_args=[of_out.cons()],
+        [flattened_tensor, of_out.cons()],
     )
 
     return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()

@@ -300,7 +300,7 @@ def _build_regdump():
         )
         out_h.drain(c_out, wait=True)
 
-    rt = Runtime(sequence, [vec_ty, vec_ty], fn_args=[of_out.cons()])
+    rt = Runtime(sequence, [vec_ty, vec_ty, of_out.cons()])
     return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 
 
@@ -385,7 +385,7 @@ def dma_compression(
             in_h.fill(a_in)
             out_h.drain(c_out, tap=out_tap_rt, wait=True)
 
-        rt = Runtime(sequence, [vec_ty, vec_ty], fn_args=[of_a.prod(), of_c.cons()])
+        rt = Runtime(sequence, [vec_ty, vec_ty, of_a.prod(), of_c.cons()])
         return Program(
             iron.get_current_device(), rt, workers=[ct_worker]
         ).resolve_program()
@@ -490,6 +490,6 @@ def dma_compression(
         in_h.fill(a_in, tap=in_tap)
         out_h.drain(c_out, tap=out_tap, wait=True)
 
-    rt = Runtime(sequence, [vec_ty, vec_ty], fn_args=[of_in.prod(), of_out.cons()])
+    rt = Runtime(sequence, [vec_ty, vec_ty, of_in.prod(), of_out.cons()])
     workers = [core_worker] if core_worker is not None else []
     return Program(iron.get_current_device(), rt, workers=workers).resolve_program()

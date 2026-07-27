@@ -63,8 +63,7 @@ def vector_passthrough(a_in: In, b_out: Out):
 
     rt = Runtime(
         sequence,
-        [_TENSOR_TY, _TENSOR_TY],
-        fn_args=[of_in.prod(), of_out.cons()],
+        [_TENSOR_TY, _TENSOR_TY, of_in.prod(), of_out.cons()],
     )
 
     return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()

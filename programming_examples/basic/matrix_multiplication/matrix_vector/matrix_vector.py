@@ -122,8 +122,7 @@ def matrix_vector(
 
     rt = Runtime(
         sequence,
-        [A_ty, B_ty, C_ty],
-        fn_args=[B_fifo.prod(), memA_prods, outC_cons],
+        [A_ty, B_ty, C_ty, B_fifo.prod(), memA_prods, outC_cons],
     )
 
     return Program(iron.get_current_device(), rt, workers=workers).resolve_program()

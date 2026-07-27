@@ -113,8 +113,14 @@ def bfp_conversion(a_in: In, b_in: In, c_out: Out):
 
     rt = Runtime(
         sequence,
-        [_TENSOR_BF16_TY, _TENSOR_BF16_TY, _TENSOR_BFP16_TY],
-        fn_args=[of_in1.prod(), of_in2.prod(), of_out.cons()],
+        [
+            _TENSOR_BF16_TY,
+            _TENSOR_BF16_TY,
+            _TENSOR_BFP16_TY,
+            of_in1.prod(),
+            of_in2.prod(),
+            of_out.cons(),
+        ],
     )
 
     return Program(iron.get_current_device(), rt, workers=workers).resolve_program()

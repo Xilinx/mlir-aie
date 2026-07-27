@@ -67,9 +67,7 @@ def _add_const_design(input_buf, output_buf, N, add_value):
         in_h.fill(a)
         out_h.drain(b, wait=True)
 
-    rt = Runtime(
-        sequence, [tensor_ty, tensor_ty], fn_args=[of_in.prod(), of_out.cons()]
-    )
+    rt = Runtime(sequence, [tensor_ty, tensor_ty, of_in.prod(), of_out.cons()])
     return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 
 
@@ -173,9 +171,7 @@ def add_const_full_elf_trace(
         in_h.fill(a)
         out_h.drain(b, wait=True)
 
-    rt = Runtime(
-        sequence, [tensor_ty, tensor_ty], fn_args=[of_in.prod(), of_out.cons()]
-    )
+    rt = Runtime(sequence, [tensor_ty, tensor_ty, of_in.prod(), of_out.cons()])
     prog = Program(iron.get_current_device(), rt, workers=[worker])
     if trace_config:
         prog.enable_trace(trace_config.trace_size, workers=[worker])

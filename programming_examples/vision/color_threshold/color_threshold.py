@@ -133,8 +133,7 @@ def color_threshold(
 
     rt = Runtime(
         sequence,
-        [tensor_ty, unused_ty, tensor_ty],
-        fn_args=[in_oob_l3l2.prod(), out_oob_l2l3.cons()],
+        [tensor_ty, unused_ty, tensor_ty, in_oob_l3l2.prod(), out_oob_l2l3.cons()],
     )
 
     return Program(iron.get_current_device(), rt, workers=workers).resolve_program()

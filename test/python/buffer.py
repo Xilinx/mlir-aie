@@ -65,8 +65,7 @@ def passthrough_local_buff():
 
     rt = Runtime(
         sequence,
-        [vector_type, vector_type, vector_type],
-        fn_args=[of_in.prod(), of_out.cons()],
+        [vector_type, vector_type, vector_type, of_in.prod(), of_out.cons()],
     )
 
     # Place components (assign them resources on the device) and generate an MLIR module

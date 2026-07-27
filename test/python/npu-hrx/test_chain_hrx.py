@@ -67,9 +67,7 @@ def _add_one_design(input_buf: In, output_buf: Out, N: CompileTime[int]):
         in_h.fill(a)
         out_h.drain(b, wait=True)
 
-    rt = Runtime(
-        sequence, [tensor_ty, tensor_ty], fn_args=[of_in.prod(), of_out.cons()]
-    )
+    rt = Runtime(sequence, [tensor_ty, tensor_ty, of_in.prod(), of_out.cons()])
     return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 
 

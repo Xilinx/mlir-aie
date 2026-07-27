@@ -77,8 +77,14 @@ def cyclostatic_both_outer_inner(w_tensor: In, x_tensor: In, out_tensor: Out):
 
     rt = Runtime(
         sequence,
-        [w_in_ty, x_in_ty, out_ty],
-        fn_args=[of_w_l3l2.prod(), of_x_l3l2.prod(), of_out_l2l3.cons()],
+        [
+            w_in_ty,
+            x_in_ty,
+            out_ty,
+            of_w_l3l2.prod(),
+            of_x_l3l2.prod(),
+            of_out_l2l3.cons(),
+        ],
     )
 
     return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()

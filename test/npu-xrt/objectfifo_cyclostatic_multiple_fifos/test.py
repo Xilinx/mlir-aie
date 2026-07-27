@@ -70,8 +70,14 @@ def cyclostatic_multiple_fifos(x_tensor: In, y_tensor: In, out_tensor: Out):
 
     rt = Runtime(
         sequence,
-        [x_in_ty, y_in_ty, out_ty],
-        fn_args=[of_x_l3l2.prod(), of_y_l3l2.prod(), of_out_l2l3.cons()],
+        [
+            x_in_ty,
+            y_in_ty,
+            out_ty,
+            of_x_l3l2.prod(),
+            of_y_l3l2.prod(),
+            of_out_l2l3.cons(),
+        ],
     )
 
     return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()

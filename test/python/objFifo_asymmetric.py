@@ -50,7 +50,7 @@ def test_objectfifo_asymmetric():
     def sequence(a, out_h):
         out_h.drain(a, wait=True)
 
-    rt = Runtime(sequence, [tensor_ty], fn_args=[of_out.cons()])
+    rt = Runtime(sequence, [tensor_ty, of_out.cons()])
 
     module = Program(dev, rt, workers=[cons]).resolve_program()
     print(module)

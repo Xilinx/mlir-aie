@@ -83,8 +83,7 @@ def transform_with_internal_func_with_options(
 
     rt = Runtime(
         sequence,
-        [tensor_ty, tensor_ty],
-        fn_args=[of_in.prod(), of_out.cons()],
+        [tensor_ty, tensor_ty, of_in.prod(), of_out.cons()],
     )
 
     # Place program components and generate an MLIR module
@@ -163,8 +162,7 @@ def transform_with_internal_func_from_file(
 
     rt = Runtime(
         sequence,
-        [tensor_ty, tensor_ty],
-        fn_args=[of_in.prod(), of_out.cons()],
+        [tensor_ty, tensor_ty, of_in.prod(), of_out.cons()],
     )
 
     # Place program components and generate an MLIR module
@@ -238,8 +236,7 @@ def transform_with_internal_func(
 
     rt = Runtime(
         sequence,
-        [tensor_ty, tensor_ty],
-        fn_args=[of_in.prod(), of_out.cons()],
+        [tensor_ty, tensor_ty, of_in.prod(), of_out.cons()],
     )
 
     # Place program components and generate an MLIR module

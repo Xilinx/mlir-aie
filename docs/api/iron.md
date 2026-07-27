@@ -43,7 +43,7 @@ The objects most designs are built from.
 ### Runtime
 
 The host-side orchestration entry point. Its `fill` / `drain` operations
-are declared in the sequence body passed to `Runtime(seq, inputs, fn_args)`;
+are declared in the sequence body passed to `Runtime(seq, fn_args)`;
 Workers are passed to `Program(workers=...)` rather than started from the body.
 
 ::: iron.runtime.runtime

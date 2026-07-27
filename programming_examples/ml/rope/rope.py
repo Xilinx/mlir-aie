@@ -107,8 +107,10 @@ def rope(
 
     rt = Runtime(
         sequence,
-        [tensor_ty, tensor_ty, tensor_ty],
-        fn_args=[
+        [
+            tensor_ty,
+            tensor_ty,
+            tensor_ty,
             [of_ins[i].prod() for i in range(n_cores)],
             [of_luts[i].prod() for i in range(n_cores)],
             [of_outs[i].cons() for i in range(n_cores)],

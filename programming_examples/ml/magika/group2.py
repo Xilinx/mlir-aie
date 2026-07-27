@@ -141,8 +141,10 @@ def group2(
 
     rt = Runtime(
         sequence,
-        [din_ty, scalar_ty, dout_ty],
-        fn_args=[
+        [
+            din_ty,
+            scalar_ty,
+            dout_ty,
             of_din_L3L2.prod(tile=shim_tile),
             of_dout_L1L3.cons(tile=shim_tile),
         ],

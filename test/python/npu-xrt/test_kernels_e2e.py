@@ -63,8 +63,7 @@ def test_passthrough_int32_e2e():
 
         rt = Runtime(
             sequence,
-            [vec_ty, vec_ty],
-            fn_args=[of_in.prod(), of_out.cons()],
+            [vec_ty, vec_ty, of_in.prod(), of_out.cons()],
         )
 
         return Program(
@@ -122,8 +121,7 @@ def test_reduce_max_bfloat16_output_alignment_e2e():
 
         rt = Runtime(
             sequence,
-            [in_ty, out_ty],
-            fn_args=[of_in.prod(), of_out.cons()],
+            [in_ty, out_ty, of_in.prod(), of_out.cons()],
         )
 
         return Program(

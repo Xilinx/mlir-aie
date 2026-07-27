@@ -38,7 +38,7 @@ def design():
         npu_load_pdi(device_ref=device_name)
         out_h.drain(out_tensor, wait=True)
 
-    rt = Runtime(sequence, [out_ty], fn_args=[of_out.cons()])
+    rt = Runtime(sequence, [out_ty, of_out.cons()])
 
     mlir = Program(NPU2Col1(), rt, workers=[worker]).resolve_program(
         device_name=device_name

@@ -337,8 +337,7 @@ def cascade(
 
     rt = Runtime(
         sequence,
-        [A_ty, B_ty, C_ty],
-        fn_args=[A_prods, B_prods, C_conses],
+        [A_ty, B_ty, C_ty, A_prods, B_prods, C_conses],
     )
 
     return Program(

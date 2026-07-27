@@ -40,8 +40,7 @@ def task_group_drain_sequence(module):
 
     rt = Runtime(
         sequence,
-        [n_ty, n_ty, n_ty],
-        fn_args=[of_0.prod(), of_1.cons(), of_2.cons()],
+        [n_ty, n_ty, n_ty, of_0.prod(), of_1.cons(), of_2.cons()],
     )
     module = Program(NPU2(), rt, workers=[worker]).resolve_program()
     return module
@@ -76,8 +75,7 @@ def default_rt_drain_sequence(module):
 
     rt = Runtime(
         sequence,
-        [n_ty, n_ty, n_ty],
-        fn_args=[of_0.prod(), of_1.cons(), of_2.cons()],
+        [n_ty, n_ty, n_ty, of_0.prod(), of_1.cons(), of_2.cons()],
     )
     module = Program(NPU2(), rt, workers=[worker]).resolve_program()
     return module
@@ -108,8 +106,7 @@ def default_rt_basic_sequence(module):
 
     rt = Runtime(
         sequence,
-        [n_ty, n_ty, n_ty],
-        fn_args=[of_0.prod(), of_1.cons()],
+        [n_ty, n_ty, n_ty, of_0.prod(), of_1.cons()],
     )
     module = Program(NPU2(), rt, workers=[worker]).resolve_program()
     return module
@@ -144,8 +141,7 @@ def default_rt_fill_sequence(module):
 
     rt = Runtime(
         sequence,
-        [n_ty, n_ty, n_ty],
-        fn_args=[of_0.prod(), of_1.prod(), of_2.cons()],
+        [n_ty, n_ty, n_ty, of_0.prod(), of_1.prod(), of_2.cons()],
     )
     module = Program(NPU2(), rt, workers=[worker]).resolve_program()
     return module
@@ -180,8 +176,7 @@ def rt_drain_then_fill_sequence(module):
 
     rt = Runtime(
         sequence,
-        [n_ty, n_ty, n_ty],
-        fn_args=[of_0.prod(), of_1.prod(), of_2.cons()],
+        [n_ty, n_ty, n_ty, of_0.prod(), of_1.prod(), of_2.cons()],
     )
     module = Program(NPU2(), rt, workers=[worker]).resolve_program()
     return module
@@ -213,8 +208,7 @@ def rt_strict_mixed_sequence(module):
 
     rt = Runtime(
         sequence,
-        [n_ty, n_ty, n_ty],
-        fn_args=[of_0.prod(), of_1.prod(), of_2.cons()],
+        [n_ty, n_ty, n_ty, of_0.prod(), of_1.prod(), of_2.cons()],
     )
     try:
         Program(NPU2(), rt, workers=[worker]).resolve_program()
@@ -254,8 +248,7 @@ def rt_not_strict_mixed_sequence(module):
 
     rt = Runtime(
         sequence,
-        [n_ty, n_ty, n_ty],
-        fn_args=[of_0.prod(), of_1.prod(), of_2.cons()],
+        [n_ty, n_ty, n_ty, of_0.prod(), of_1.prod(), of_2.cons()],
         strict_task_groups=False,
     )
     module = Program(NPU2(), rt, workers=[worker]).resolve_program()
@@ -295,8 +288,7 @@ def rt_two_task_group_sequence(module):
 
     rt = Runtime(
         sequence,
-        [n_ty, n_ty, n_ty],
-        fn_args=[of_0.prod(), of_1.prod(), of_2.cons()],
+        [n_ty, n_ty, n_ty, of_0.prod(), of_1.prod(), of_2.cons()],
     )
     module = Program(NPU2(), rt, workers=[worker]).resolve_program()
     return module

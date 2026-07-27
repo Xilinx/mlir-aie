@@ -37,8 +37,7 @@ def objectfifo_order(module):
 
     rt = Runtime(
         sequence,
-        [n_ty, n_ty, n_ty],
-        fn_args=[of_in_A.prod(), of_in_B.prod(), of_out_C.cons()],
+        [n_ty, n_ty, n_ty, of_in_A.prod(), of_in_B.prod(), of_out_C.cons()],
     )
     module = Program(NPU2(), rt, workers=[my_worker]).resolve_program()
     return module
@@ -74,8 +73,7 @@ def shim_three_in(module):
 
     rt = Runtime(
         sequence,
-        [n_ty, n_ty, n_ty],
-        fn_args=[of_ins[0].prod(), of_ins[1].prod(), of_ins[2].prod()],
+        [n_ty, n_ty, n_ty, of_ins[0].prod(), of_ins[1].prod(), of_ins[2].prod()],
     )
     module = Program(NPU2(), rt, workers=workers).resolve_program()
     return module
@@ -108,8 +106,7 @@ def shim_two_in_one_out(module):
 
     rt = Runtime(
         sequence,
-        [n_ty, n_ty, n_ty],
-        fn_args=[of_in_A.prod(), of_in_B.prod(), of_out_C.cons()],
+        [n_ty, n_ty, n_ty, of_in_A.prod(), of_in_B.prod(), of_out_C.cons()],
     )
     module = Program(NPU2(), rt, workers=[my_worker]).resolve_program()
     return module
@@ -140,8 +137,7 @@ def compute_three_in(module):
 
     rt = Runtime(
         sequence,
-        [n_ty, n_ty, n_ty],
-        fn_args=[of_0.prod(), of_1.prod(), of_2.prod()],
+        [n_ty, n_ty, n_ty, of_0.prod(), of_1.prod(), of_2.prod()],
     )
     module = Program(NPU2(), rt, workers=[worker]).resolve_program()
     return module
@@ -177,8 +173,12 @@ def compute_one_in_two_links(module):
 
     rt = Runtime(
         sequence,
-        [n_ty, n_ty, n_ty, n_ty, n_ty],
-        fn_args=[
+        [
+            n_ty,
+            n_ty,
+            n_ty,
+            n_ty,
+            n_ty,
             of_0.prod(),
             of_in1.prod(),
             of_in2.prod(),
@@ -220,8 +220,12 @@ def compute_partial_placement(module):
 
     rt = Runtime(
         sequence,
-        [n_ty, n_ty, n_ty, n_ty, n_ty],
-        fn_args=[
+        [
+            n_ty,
+            n_ty,
+            n_ty,
+            n_ty,
+            n_ty,
             of_0.prod(),
             of_in1.prod(),
             of_in2.prod(),
@@ -277,8 +281,7 @@ def mem_eight_in_three_out(module):
 
     rt = Runtime(
         sequence,
-        [N_ty, n_ty, n_ty],
-        fn_args=[of_out_A.cons(), of_out_B.cons(), of_out_C.cons()],
+        [N_ty, n_ty, n_ty, of_out_A.cons(), of_out_B.cons(), of_out_C.cons()],
     )
     module = Program(NPU2(), rt, workers=workers).resolve_program()
     return module
@@ -315,8 +318,7 @@ def compute_three_in_col_lim(module):
 
     rt = Runtime(
         sequence,
-        [n_ty, n_ty, n_ty],
-        fn_args=[of_0.prod(), of_1.prod(), of_2.prod()],
+        [n_ty, n_ty, n_ty, of_0.prod(), of_1.prod(), of_2.prod()],
     )
     module = Program(NPU2(), rt, workers=workers).resolve_program()
     return module

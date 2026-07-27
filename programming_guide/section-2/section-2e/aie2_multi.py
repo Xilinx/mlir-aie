@@ -68,7 +68,7 @@ def section_2e_multi(a_in: In, b_out: Out):
         in_h.fill(a)
         out_h.drain(b, wait=True)
 
-    rt = Runtime(sequence, [data_ty, data_ty], fn_args=[of_in.prod(), of_out.cons()])
+    rt = Runtime(sequence, [data_ty, data_ty, of_in.prod(), of_out.cons()])
 
     return Program(iron.get_current_device(), rt, workers=workers).resolve_program()
 

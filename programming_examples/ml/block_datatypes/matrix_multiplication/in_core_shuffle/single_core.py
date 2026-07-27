@@ -91,8 +91,7 @@ def in_core_shuffle(
 
     rt = Runtime(
         sequence,
-        [A_ty, C_ty],
-        fn_args=[inA.prod(), outC.cons()],
+        [A_ty, C_ty, inA.prod(), outC.cons()],
     )
 
     return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()

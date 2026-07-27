@@ -29,7 +29,7 @@ Enabling trace support can be done with the following steps:
 
 Enabling tracing means configuring the trace units for a given tile and then routing the generated event packets through the stream switches to the shim DMA where we can write them to a buffer in DDR for post-runtime processing. For IRON, we abstract these steps into a single method `enable_trace`, called on the `Program` after it is constructed (it configures both the traced Workers' tiles and the Runtime's trace-buffer sequencing), as shown below:
 ```python
-rt = Runtime(sequence, [tensor_ty, scalar_ty, tensor_ty], fn_args=[...])
+rt = Runtime(sequence, [tensor_ty, scalar_ty, tensor_ty, ...])
 prog = Program(iron.get_current_device(), rt, workers=[my_worker])
 prog.enable_trace(trace_size, workers=[my_worker])
 ```
@@ -43,7 +43,7 @@ worker = Worker(
     trace=1,
 )
 ...
-rt = Runtime(sequence, [tensor_ty, scalar_ty, tensor_ty], fn_args=[...])
+rt = Runtime(sequence, [tensor_ty, scalar_ty, tensor_ty, ...])
 prog = Program(iron.get_current_device(), rt, workers=[worker])
 prog.enable_trace(trace_size)
 ```
@@ -66,7 +66,7 @@ The trace configuration chooses helpful default settings so you can trace your d
 
     ```python
     ...
-    rt = Runtime(sequence, [tensor_ty, scalar_ty, tensor_ty], fn_args=[...])
+    rt = Runtime(sequence, [tensor_ty, scalar_ty, tensor_ty, ...])
     prog = Program(iron.get_current_device(), rt, workers=[my_worker])
     prog.enable_trace(
         trace_size = trace_size,
@@ -347,7 +347,7 @@ def passthrough_with_trace(
         in_h.fill(a_in)
         out_h.drain(b_out, wait=True)
 
-    rt = Runtime(sequence, [tensor_ty, tensor_ty], fn_args=[of_in.prod(), of_out.cons()])
+    rt = Runtime(sequence, [tensor_ty, tensor_ty, of_in.prod(), of_out.cons()])
     prog = Program(iron.get_current_device(), rt, workers=[worker])
     if trace_config:
         prog.enable_trace(trace_config.trace_size, workers=[worker])

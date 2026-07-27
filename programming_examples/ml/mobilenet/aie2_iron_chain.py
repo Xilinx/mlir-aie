@@ -184,8 +184,10 @@ def _chain_iron(mode, data_dir, scales_json):
 
         rt = Runtime(
             sequence,
-            [in_ty, wts_ty, out_ty],
-            fn_args=[
+            [
+                in_ty,
+                wts_ty,
+                out_ty,
                 act_in.prod(depth=1, tile=CHAIN_PLACEMENT["shim_input"]),
                 [
                     fifo.prod(tile=shim)
@@ -204,8 +206,9 @@ def _chain_iron(mode, data_dir, scales_json):
 
         rt = Runtime(
             sequence,
-            [in_ty, out_ty],
-            fn_args=[
+            [
+                in_ty,
+                out_ty,
                 act_in.prod(depth=1, tile=CHAIN_PLACEMENT["shim_input"]),
                 act_out.cons(tile=CHAIN_PLACEMENT["shim_output"]),
             ],

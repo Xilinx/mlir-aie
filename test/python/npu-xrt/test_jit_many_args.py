@@ -89,8 +89,7 @@ def design(
 
     rt = Runtime(
         sequence,
-        [tile_ty] * (3 * NUM_LANES),
-        fn_args=fifo_args,
+        [tile_ty] * (3 * NUM_LANES) + fifo_args,
     )
     return Program(iron.get_current_device(), rt, workers=workers).resolve_program()
 

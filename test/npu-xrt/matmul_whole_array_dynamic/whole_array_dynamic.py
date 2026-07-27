@@ -286,8 +286,7 @@ def _build_design(
     C_conses = [f.cons() for f in C_l2l3]
     rt = Runtime(
         seq,
-        [A_ty, B_ty, C_ty, *mkn],
-        fn_args=[A_prods, B_prods, C_conses],
+        [A_ty, B_ty, C_ty, *mkn, A_prods, B_prods, C_conses],
     )
 
     return Program(dev, rt, workers=workers).resolve_program()

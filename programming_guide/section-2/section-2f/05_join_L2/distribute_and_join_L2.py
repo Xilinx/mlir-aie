@@ -67,7 +67,7 @@ def distribute_and_join_L2(a_in: In, c_out: Out):
         in_h.fill(a)
         out_h.drain(c, wait=True)
 
-    rt = Runtime(sequence, [data_ty, data_ty], fn_args=[of_in.prod(), of_out.cons()])
+    rt = Runtime(sequence, [data_ty, data_ty, of_in.prod(), of_out.cons()])
 
     return Program(iron.get_current_device(), rt, workers=workers).resolve_program()
 

@@ -33,8 +33,13 @@ def test_objectfifo_bd_chain_scenarios():
 
     rt = Runtime(
         sequence,
-        [vector_ty, vector_ty, vector_ty],
-        fn_args=[of_shim_to_mem.prod(), of_mem_to_compute.cons()],
+        [
+            vector_ty,
+            vector_ty,
+            vector_ty,
+            of_shim_to_mem.prod(),
+            of_mem_to_compute.cons(),
+        ],
     )
 
     my_program = Program(dev, rt)

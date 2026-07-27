@@ -62,7 +62,7 @@ def sequence(inp, out, in_h, out_h):
     out_h.drain(out, wait=True)
 
 
-rt = Runtime(sequence, [data_ty, data_ty], fn_args=[of_in.prod(), of_out.cons()])
+rt = Runtime(sequence, [data_ty, data_ty, of_in.prod(), of_out.cons()])
 
 module = Program(NPU1Col1(), rt, workers=[worker]).resolve_program()
 print(module)
@@ -115,8 +115,13 @@ def sequence2(i0, i1, i2, o0, o1, o2, in_hs, out_hs):
 
 rt2 = Runtime(
     sequence2,
-    [data_ty, data_ty, data_ty, data_ty, data_ty, data_ty],
-    fn_args=[
+    [
+        data_ty,
+        data_ty,
+        data_ty,
+        data_ty,
+        data_ty,
+        data_ty,
         [of_ins[i].prod() for i in range(n_workers)],
         [of_outs[i].cons() for i in range(n_workers)],
     ],
@@ -161,7 +166,7 @@ def sequence3(inp3, out3, in_h, out_h):
     out_h.drain(out3, wait=True)
 
 
-rt3 = Runtime(sequence3, [data_ty, data_ty], fn_args=[of_in3.prod(), of_out3.cons()])
+rt3 = Runtime(sequence3, [data_ty, data_ty, of_in3.prod(), of_out3.cons()])
 
 try:
     Program(NPU1Col1(), rt3, workers=[worker3]).resolve_program()

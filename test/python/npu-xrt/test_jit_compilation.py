@@ -59,8 +59,7 @@ def vector_vector_add(
 
     rt = Runtime(
         sequence,
-        [tensor_ty, tensor_ty, tensor_ty],
-        fn_args=[of_in1.prod(), of_in2.prod(), of_out.cons()],
+        [tensor_ty, tensor_ty, tensor_ty, of_in1.prod(), of_in2.prod(), of_out.cons()],
     )
 
     # Place program components (assign them resources on the device) and generate an MLIR module

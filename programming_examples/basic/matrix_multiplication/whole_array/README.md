@@ -229,7 +229,7 @@ Both `zero_kernel` and `matmul_kernel` come from the library — `kernels.mm(dim
 
 ### 5. Defining External Data Transfer Sequences
 
-`Runtime(sequence, [A_ty, B_ty, C_ty], fn_args=[...])` wires a host-side `sequence` function whose parameters (`A`, `B`, `C`) stand in for the three external buffers on the AIE's shim tiles, followed by the ObjectFifo handles passed through `fn_args`.  Inside the body, `handle.fill(buffer, tap=tap)` on a producer handle and `handle.drain(buffer, tap=tap)` on a consumer handle describe the per-shim DMA transfers — `tap` is a `TensorAccessPattern` that encodes the wraps/strides for tiling `M`&times;`K`, `K`&times;`N`, and `M`&times;`N` into the sub-matrices the in-array FIFOs expect.
+`Runtime(sequence, [A_ty, B_ty, C_ty, ...])` wires a host-side `sequence` function whose parameters (`A`, `B`, `C`) stand in for the three external buffers on the AIE's shim tiles, followed by the ObjectFifo handles passed as the trailing entries.  Inside the body, `handle.fill(buffer, tap=tap)` on a producer handle and `handle.drain(buffer, tap=tap)` on a consumer handle describe the per-shim DMA transfers — `tap` is a `TensorAccessPattern` that encodes the wraps/strides for tiling `M`&times;`K`, `K`&times;`N`, and `M`&times;`N` into the sub-matrices the in-array FIFOs expect.
 
 The full set of TAPs is produced once via `TensorTiler2D`:
 
@@ -273,12 +273,11 @@ def sequence(A, B, C, A_hs, B_hs, C_hs):
 
 rt = Runtime(
     sequence,
-    [A_ty, B_ty, C_ty],
-    fn_args=[A_prods, B_prods, C_conses],
+    [A_ty, B_ty, C_ty, A_prods, B_prods, C_conses],
 )
 ```
 
-The two-phase `TaskGroup` open/finish dance is the IRON equivalent of the old "ping/pong" buffer-descriptor split: while half the shim DMA BDs are still running, the other half are being reconfigured for the next set of tiles.  This overlap is what keeps the array fed.  The handles in `A_hs` / `B_hs` / `C_hs` are the `.prod()` / `.cons()` endpoints passed through the `Runtime`'s `fn_args`; the shim tile each uses is chosen by the compiler.
+The two-phase `TaskGroup` open/finish dance is the IRON equivalent of the old "ping/pong" buffer-descriptor split: while half the shim DMA BDs are still running, the other half are being reconfigured for the next set of tiles.  This overlap is what keeps the array fed.  The handles in `A_hs` / `B_hs` / `C_hs` are the `.prod()` / `.cons()` endpoints passed as trailing entries in the `Runtime`'s arg list; the shim tile each uses is chosen by the compiler.
 
 `tb_max_n_rows` controls how many tile-rows live in one ping-pong half; `tb_n_rows = tb_max_n_rows // 2` is the number of A row-blocks per half.  Setting either parameter too low starves the cores; too high overflows the shim DMA BD pool.
 

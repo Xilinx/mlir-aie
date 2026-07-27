@@ -130,7 +130,7 @@ def test_workers_cannot_share_tile():
         p1.fill(A)
         p2.fill(B)
 
-    rt = Runtime(sequence, [n_ty, n_ty], fn_args=[of1.prod(), of2.prod()])
+    rt = Runtime(sequence, [n_ty, n_ty, of1.prod(), of2.prod()])
     with pytest.raises(MLIRError, match="already has a core"):
         Program(NPU2(), rt, workers=[w1, w2]).resolve_program()
 
@@ -153,7 +153,7 @@ def test_workers_cannot_share_tile_by_coordinates():
         p1.fill(A)
         p2.fill(B)
 
-    rt = Runtime(sequence, [n_ty, n_ty], fn_args=[of1.prod(), of2.prod()])
+    rt = Runtime(sequence, [n_ty, n_ty, of1.prod(), of2.prod()])
     with pytest.raises(MLIRError, match="already has a core"):
         Program(NPU2(), rt, workers=[w1, w2]).resolve_program()
 
@@ -218,5 +218,5 @@ def test_fill_twice_same_handle_allowed():
         prod.fill(A)
         prod.fill(A)  # second fill on the same handle — no error
 
-    rt = Runtime(sequence, [n_ty, n_ty], fn_args=[of.prod()])
+    rt = Runtime(sequence, [n_ty, n_ty, of.prod()])
     Program(NPU1Col1(), rt, workers=[Worker(None, [of.cons()])]).resolve_program()

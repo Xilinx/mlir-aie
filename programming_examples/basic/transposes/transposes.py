@@ -90,8 +90,7 @@ def _transpose_dma(
 
     rt = Runtime(
         sequence,
-        [tensor_ty, tensor_ty],
-        fn_args=[of_in.prod(), of_out.cons()],
+        [tensor_ty, tensor_ty, of_in.prod(), of_out.cons()],
     )
     return Program(iron.get_current_device(), rt).resolve_program()
 
@@ -122,8 +121,7 @@ def _transpose_dma_packet(
 
     rt = Runtime(
         sequence,
-        [tensor_ty, tensor_ty],
-        fn_args=[of_in.prod(), of_out.cons()],
+        [tensor_ty, tensor_ty, of_in.prod(), of_out.cons()],
     )
     return Program(iron.get_current_device(), rt).resolve_program()
 
@@ -174,8 +172,7 @@ def _transpose_shuffle(
 
     rt = Runtime(
         sequence,
-        [tile_ty, tile_ty],
-        fn_args=[in_fifo.prod(), out_fifo.cons()],
+        [tile_ty, tile_ty, in_fifo.prod(), out_fifo.cons()],
     )
     return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 
@@ -275,8 +272,7 @@ def _transpose_combined(
 
     rt = Runtime(
         sequence,
-        [matrix_ty, matrix_ty],
-        fn_args=[in_L3L2_fifo.prod(), out_fifo.cons()],
+        [matrix_ty, matrix_ty, in_L3L2_fifo.prod(), out_fifo.cons()],
     )
     return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 

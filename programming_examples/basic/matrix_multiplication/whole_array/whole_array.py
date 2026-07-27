@@ -352,8 +352,7 @@ def _build_design(
 
     rt = Runtime(
         sequence,
-        [A_ty, B_ty, C_ty],
-        fn_args=[A_prods, B_prods, C_conses],
+        [A_ty, B_ty, C_ty, A_prods, B_prods, C_conses],
     )
 
     # resolve_program() runs the sequence body, which populates the closure

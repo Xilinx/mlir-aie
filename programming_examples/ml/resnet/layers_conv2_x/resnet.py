@@ -485,8 +485,10 @@ def resnet_conv2_x(
 
     rt = Runtime(
         sequence,
-        [activationsInL3_ty, weightsInL3_ty_complete, activationsOutL3_ty],
-        fn_args=[
+        [
+            activationsInL3_ty,
+            weightsInL3_ty_complete,
+            activationsOutL3_ty,
             act1_fifos[0].prod(tile=Tile(0, 0)),
             wts_fifos[0].prod(tile=Tile(0, 0)),
             wts_fifos[1].prod(tile=Tile(1, 0)),

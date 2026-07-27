@@ -238,8 +238,7 @@ def edge_detect(
 
     rt = Runtime(
         sequence,
-        [tensor_ty, tensor_16x16_ty, tensor_ty],
-        fn_args=[in_of_l3l2.prod(), out_of_l2l3.cons()],
+        [tensor_ty, tensor_16x16_ty, tensor_ty, in_of_l3l2.prod(), out_of_l2l3.cons()],
     )
 
     return Program(iron.get_current_device(), rt, workers=workers).resolve_program()

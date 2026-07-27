@@ -187,8 +187,7 @@ def single_core(
 
     rt = Runtime(
         sequence,
-        [A_ty, B_ty, C_ty],
-        fn_args=[inA.prod(), inB.prod(), outC.cons()],
+        [A_ty, B_ty, C_ty, inA.prod(), inB.prod(), outC.cons()],
     )
     prog = Program(iron.get_current_device(), rt, workers=[worker])
     if trace_config:

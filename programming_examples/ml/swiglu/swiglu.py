@@ -104,8 +104,10 @@ def swiglu(
 
     rt = Runtime(
         sequence,
-        [transfer_type, transfer_type_wts, transfer_type],
-        fn_args=[
+        [
+            transfer_type,
+            transfer_type_wts,
+            transfer_type,
             [of_ins[i].prod() for i in range(num_columns)],
             [of_wts[i].prod() for i in range(num_columns)],
             [of_outs[i].cons() for i in range(num_columns)],

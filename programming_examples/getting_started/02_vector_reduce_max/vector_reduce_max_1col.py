@@ -165,8 +165,7 @@ def vector_reduce_max(
 
     rt = Runtime(
         sequence,
-        [in_ty, out_ty],
-        fn_args=[of_in.prod(), out_fifos[0].cons()],
+        [in_ty, out_ty, of_in.prod(), out_fifos[0].cons()],
     )
 
     # --------------------------------------------------------------------------

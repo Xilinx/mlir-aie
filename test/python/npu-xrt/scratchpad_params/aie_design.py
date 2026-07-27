@@ -57,7 +57,7 @@ def design():
         sync_parameters()
         out_h.drain(out_tensor, wait=True)
 
-    rt = Runtime(sequence, [out_ty], fn_args=[of_out.cons()])
+    rt = Runtime(sequence, [out_ty, of_out.cons()])
 
     module = Program(NPU2Col1(), rt, workers=[worker]).resolve_program(
         device_name=device_name
