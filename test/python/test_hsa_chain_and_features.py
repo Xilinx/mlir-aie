@@ -92,6 +92,67 @@ def test_cached_runtime_has_lru_cache(monkeypatch):
     assert hasattr(rt, "_exe_cache")
 
 
+def test_run_leaks_signal_and_kernargs_on_timeout(monkeypatch):
+    """On HSATimeoutError from wait(), run() must NOT free the signal/kernargs
+    (the device still owns them); on a normal run it must free them as usual."""
+    from aie.utils.hostruntime.hsaruntime import hostruntime as hrt
+    from aie.utils.hostruntime.hsaruntime._bindings import HSATimeoutError
+
+    class _FakeCtx:
+        device_gen = "npu2"
+
+        def __init__(self, timeout_on_wait):
+            self._timeout_on_wait = timeout_on_wait
+            self.destroy_signal_calls = []
+            self.vmem_free_calls = []
+
+        def create_signal(self, initial):
+            return 42  # fake signal handle
+
+        def destroy_signal(self, sig):
+            self.destroy_signal_calls.append(sig)
+
+        def vmem_alloc(self, size):
+            return 0xCAFE, 0xF00D, size  # fake (handle, va, size)
+
+        def vmem_free(self, handle, va, size):
+            self.vmem_free_calls.append((handle, va, size))
+
+        def free_region(self, ptr):
+            pass
+
+        def dispatch(self, pdi_ptr, insts_ptr, insts_size, ka_va, n, signal):
+            pass
+
+        def wait(self, signal):
+            if self._timeout_on_wait:
+                raise HSATimeoutError("simulated IRON_HSA_TIMEOUT")
+
+    monkeypatch.setattr(
+        hrt.HSAContext, "get", classmethod(lambda cls: _FakeCtx(timeout_on_wait=True))
+    )
+    rt = hrt.HSAHostRuntime()
+    handle = hrt.HSAKernelHandle(
+        pdi_ptr=0x1, insts_ptr=0x2, insts_size=4, kernel_name="MLIR_AIE"
+    )
+
+    with pytest.raises(HSATimeoutError):
+        rt.run(handle, [])
+
+    assert rt._ctx.destroy_signal_calls == [], "signal must be leaked on timeout"
+    assert rt._ctx.vmem_free_calls == [], "kernargs must be leaked on timeout"
+
+    # Non-timeout run: cleanup must still happen as before.
+    monkeypatch.setattr(
+        hrt.HSAContext, "get", classmethod(lambda cls: _FakeCtx(timeout_on_wait=False))
+    )
+    rt2 = hrt.HSAHostRuntime()
+    result = rt2.run(handle, [])
+    assert result.is_success()
+    assert rt2._ctx.destroy_signal_calls == [42]
+    assert len(rt2._ctx.vmem_free_calls) == 1
+
+
 def test_load_and_run_rejects_trace_before_touching_args(monkeypatch):
     """A trace_config must be rejected before base load_and_run mutates run_args."""
     from aie.utils.hostruntime.hsaruntime import hostruntime as hrt

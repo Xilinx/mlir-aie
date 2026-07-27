@@ -87,6 +87,18 @@ class HSAError(RuntimeError):
     """Raised when an hsa_* call returns a non-success status."""
 
 
+class HSATimeoutError(HSAError):
+    """Raised when a signal wait exceeds IRON_HSA_TIMEOUT.
+
+    The underlying hsa_signal_wait cannot be cancelled, so the dispatch is still
+    pending on the device when this is raised. The device retains ownership of
+    the completion signal and any in-flight buffers, so callers must NOT free
+    those on this path (doing so is a use-after-free / destroys a signal another
+    thread still waits on) -- they are intentionally leaked until the device is
+    recovered (e.g. driver reload / process teardown).
+    """
+
+
 class HsaAmdMemoryAccessDesc(ctypes.Structure):
     _fields_ = [
         ("permissions", ctypes.c_int),      # hsa_access_permission_t
