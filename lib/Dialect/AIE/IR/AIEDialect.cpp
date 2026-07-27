@@ -3155,6 +3155,66 @@ ShimDMAAllocationOp ShimDMAAllocationOp::getForSymbol(DeviceOp device,
 }
 
 //===----------------------------------------------------------------------===//
+// ObjectFifoRearmBindingOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult ObjectFifoRearmBindingOp::verify() {
+  if (getChannelDirs().size() != getChannelTiles().size())
+    return emitOpError("expected one channel_dirs entry per channel tile (")
+           << getChannelTiles().size() << " tiles, " << getChannelDirs().size()
+           << " dirs)";
+  if (getChannelIndices().size() != getChannelTiles().size())
+    return emitOpError("expected one channel_indices entry per channel tile (")
+           << getChannelTiles().size() << " tiles, "
+           << getChannelIndices().size() << " indices)";
+  if (getLockInits().size() != getLocks().size())
+    return emitOpError("expected one lock_inits entry per lock (")
+           << getLocks().size() << " locks, " << getLockInits().size()
+           << " inits)";
+  // head_bd_ids / repeat_counts are optional (populated by
+  // --aie-assign-bd-ids), but if present they are one-per-channel and travel as
+  // a pair: the re-push needs both, so a binding carrying one without the other
+  // is malformed.
+  if (getHeadBdIds().has_value() != getRepeatCounts().has_value())
+    return emitOpError("head_bd_ids and repeat_counts must both be set or both "
+                       "be absent");
+  if (getHeadBdIds().has_value() &&
+      getHeadBdIds()->size() != getChannelTiles().size())
+    return emitOpError("expected one head_bd_ids entry per channel tile (")
+           << getChannelTiles().size() << " tiles, " << getHeadBdIds()->size()
+           << " ids)";
+  if (getRepeatCounts().has_value() &&
+      getRepeatCounts()->size() != getChannelTiles().size())
+    return emitOpError("expected one repeat_counts entry per channel tile (")
+           << getChannelTiles().size() << " tiles, "
+           << getRepeatCounts()->size() << " counts)";
+  for (int32_t dir : getChannelDirs())
+    if (dir != 0 && dir != 1)
+      return emitOpError("channel_dirs entries must be 0 (S2MM) or 1 (MM2S), "
+                         "got ")
+             << dir;
+  // The lowering resolves each operand to its aie.tile / aie.lock, so reject a
+  // binding whose operands are not those (otherwise the lowering would cast a
+  // non-lock/non-tile operand and abort).
+  for (Value tile : getChannelTiles()) {
+    auto tileOp = tile.getDefiningOp<TileOp>();
+    if (!tileOp)
+      return emitOpError("channel_tiles operands must be aie.tile values");
+    // A shim DMA endpoint is host-managed: the host re-pushes its BD program
+    // and re-arms its locks. Re-arming it here would fight the host, so a
+    // re-arm binding only ever records non-shim channels -- reject a shim tile
+    // even in a hand-authored binding.
+    if (tileOp.isShimTile())
+      return emitOpError("channel_tiles must be non-shim tiles; a shim DMA "
+                         "endpoint is host-managed and is not re-armed here");
+  }
+  for (Value lock : getLocks())
+    if (!lock.getDefiningOp<LockOp>())
+      return emitOpError("locks operands must be aie.lock values");
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // RuntimeSequenceOp
 //===----------------------------------------------------------------------===//
 
@@ -3289,13 +3349,14 @@ LogicalResult RuntimeSequenceOp::verifyBeforeMaterialization() {
               !llvm::isa<DeviceOp>(symbolDefOp) &&
               !llvm::isa<RuntimeSequenceOp>(symbolDefOp) &&
               !llvm::isa<BufferOp>(symbolDefOp) &&
+              !llvm::isa<ObjectFifoRearmBindingOp>(symbolDefOp) &&
               !llvm::isa<memref::GlobalOp>(symbolDefOp)) {
             op->emitOpError()
                 << "references symbol '"
                 << symbolRef.getRootReference().getValue()
                 << "' which must be either a ShimDMAAllocationOp, DeviceOp, "
-                   "RuntimeSequenceOp, BufferOp, or GlobalOp, "
-                   "but got: "
+                   "RuntimeSequenceOp, BufferOp, ObjectFifoRearmBindingOp, or "
+                   "GlobalOp, but got: "
                 << symbolDefOp->getName().getStringRef();
             return WalkResult::interrupt();
           }
