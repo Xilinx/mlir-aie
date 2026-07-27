@@ -28,6 +28,7 @@ from typing import TYPE_CHECKING
 from ..hostruntime import HostRuntime, HostRuntimeError, KernelHandle, KernelResult
 from .tensor import HSATensor
 from .context import HSAContext
+from ._bindings import HSATimeoutError
 
 if TYPE_CHECKING:
     from aie.iron.device import Device
@@ -158,6 +159,10 @@ class HSAHostRuntime(HostRuntime):
 
     def run(self, kernel_handle, args, trace_config=None, fail_on_error=True,
             only_if_loaded=False, **kwargs) -> HSAKernelResult:
+        """``fail_on_error`` is accepted for API compatibility but not honored:
+        HSA always raises on failure via the context's ``_check`` (see the
+        HSATimeoutError leak-on-timeout note below for the one path where
+        cleanup is intentionally skipped rather than run unconditionally)."""
         assert isinstance(kernel_handle, HSAKernelHandle)
         if trace_config is not None:
             raise HostRuntimeError(_TRACE_UNSUPPORTED_MSG)
@@ -165,20 +170,27 @@ class HSAHostRuntime(HostRuntime):
 
         kept = self._validate_args(args)
         ka_handle, ka_va, ka_size, n = self._build_kernargs(kept)
+        timed_out = False
+        signal = self._ctx.create_signal(1)
         try:
-            signal = self._ctx.create_signal(1)
+            start = time.time_ns()
+            self._ctx.dispatch(
+                kernel_handle.pdi_ptr, kernel_handle.insts_ptr,
+                kernel_handle.insts_size, ka_va, n, signal,
+            )
             try:
-                start = time.time_ns()
-                self._ctx.dispatch(
-                    kernel_handle.pdi_ptr, kernel_handle.insts_ptr,
-                    kernel_handle.insts_size, ka_va, n, signal,
-                )
                 self._ctx.wait(signal)
-                stop = time.time_ns()
-            finally:
-                self._ctx.destroy_signal(signal)
+            except HSATimeoutError:
+                timed_out = True
+                raise
+            stop = time.time_ns()
         finally:
-            self._ctx.vmem_free(ka_handle, ka_va, ka_size)
+            # On a timeout, hsa_signal_wait is still pending on the device: the
+            # device retains ownership of the signal and kernarg buffers, so we
+            # must leak them rather than free (see HSATimeoutError docstring).
+            if not timed_out:
+                self._ctx.destroy_signal(signal)
+                self._ctx.vmem_free(ka_handle, ka_va, ka_size)
 
         return HSAKernelResult(stop - start, success=True)
 
@@ -195,6 +207,9 @@ class HSAHostRuntime(HostRuntime):
 
         All per-run kernarg buffers are allocated up front and freed after the
         wait (they must stay alive while the device reads them).
+
+        ``fail_on_error`` is accepted for API compatibility but not honored:
+        HSA always raises on failure via the context's ``_check``.
         """
         self.check_device_consistency()
         runs = list(runs)
@@ -203,6 +218,7 @@ class HSAHostRuntime(HostRuntime):
 
         kernargs = []  # (ka_handle, ka_va, ka_size)
         items = []     # (pdi_ptr, insts_ptr, insts_size, ka_va, n)
+        timed_out = False
         signal = self._ctx.create_signal(len(runs))
         try:
             for kernel_handle, args in runs:
@@ -217,12 +233,20 @@ class HSAHostRuntime(HostRuntime):
 
             start = time.time_ns()
             self._ctx.dispatch_chain(items, signal)
-            self._ctx.wait(signal)
+            try:
+                self._ctx.wait(signal)
+            except HSATimeoutError:
+                timed_out = True
+                raise
             stop = time.time_ns()
         finally:
-            self._ctx.destroy_signal(signal)
-            for ka_handle, ka_va, ka_size in kernargs:
-                self._ctx.vmem_free(ka_handle, ka_va, ka_size)
+            # On a timeout, hsa_signal_wait is still pending on the device: the
+            # device retains ownership of the signal and kernarg buffers, so we
+            # must leak them rather than free (see HSATimeoutError docstring).
+            if not timed_out:
+                self._ctx.destroy_signal(signal)
+                for ka_handle, ka_va, ka_size in kernargs:
+                    self._ctx.vmem_free(ka_handle, ka_va, ka_size)
 
         return HSAKernelResult(stop - start, success=True)
 

@@ -40,6 +40,7 @@ from ._bindings import (
     HSA_WAIT_STATE_BLOCKED,
     MEMORY_TYPE_PINNED,
     HSAError,
+    HSATimeoutError,
     HsaAieKernelDispatchPacket,
     HsaAmdMemoryAccessDesc,
     HsaQueue,
@@ -57,7 +58,12 @@ from ._bindings import (
 
 
 class HSAContext:
-    """Process-wide singleton owning the HSA AIE device, memory, and queue."""
+    """Process-wide singleton owning the HSA AIE device, memory, and queue.
+
+    The single in-order AIE queue + doorbell is NOT safe for concurrent
+    dispatch from multiple threads; callers must serialize dispatches (same
+    constraint HRX documents).
+    """
 
     _instance = None
     _lock = threading.Lock()
@@ -360,7 +366,7 @@ class HSAContext:
         t.start()
         t.join(timeout)
         if t.is_alive():
-            raise HSAError(
+            raise HSATimeoutError(
                 f"hsa_signal_wait did not complete within IRON_HSA_TIMEOUT="
                 f"{timeout:g}s. The dispatch may be wedged; the underlying wait "
                 f"cannot be cancelled and is still pending. Recover the device "

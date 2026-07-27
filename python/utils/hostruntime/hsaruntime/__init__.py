@@ -20,7 +20,7 @@ Importing this package is side-effect-free (no ``dlopen``, no device init); the
 library is bound lazily on first :class:`~.context.HSAContext` creation.
 """
 
-from ._bindings import HSAError, _hsa_sync_timeout_s
+from ._bindings import HSAError, HSATimeoutError, _hsa_sync_timeout_s
 from .context import HSAContext
 
-__all__ = ["HSAContext", "HSAError"]
+__all__ = ["HSAContext", "HSAError", "HSATimeoutError"]
