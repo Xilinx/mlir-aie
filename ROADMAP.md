@@ -35,7 +35,8 @@ Ideas we want to pursue eventually. Not yet scheduled.
 
 Want to help or suggest something?
 
-- Check items labeled [`good first issue`](https://github.com/Xilinx/mlir-aie/labels/good%20first%20issue).
+- New to the project? Check items labeled [`good first issue`](https://github.com/Xilinx/mlir-aie/labels/good%20first%20issue).
+- Already familiar with the codebase? Look for [`help wanted`](https://github.com/Xilinx/mlir-aie/labels/help%20wanted) or [`needs more 👀 (eyes)`](https://github.com/Xilinx/mlir-aie/labels/needs%20more%20%F0%9F%91%80%20(eyes)).
 - Propose new ideas by [opening an issue](https://github.com/Xilinx/mlir-aie/issues/new).
 - Questions and discussion go in [Discussions](https://github.com/Xilinx/mlir-aie/discussions).
 
