@@ -71,10 +71,6 @@ LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
     }
   }
 
-  // Sort ctrlPktFlows into a deterministic order; concat ctrlPktFlows to flows
-  pathfinder->sortFlows(device.getTargetModel().columns(),
-                        device.getTargetModel().rows());
-
   // Add circuit flows.
   for (FlowOp flowOp : device.getOps<FlowOp>()) {
     TileOp srcTile = cast<TileOp>(flowOp.getSource().getDefiningOp());
@@ -92,6 +88,9 @@ LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
     pathfinder->addFlow(srcCoords, srcPort, dstCoords, dstPort,
                         /*isPktFlow*/ false, /*isPriorityFlow*/ false);
   }
+
+  // Canonicalize all flows after both packet and circuit flows are collected.
+  pathfinder->sortFlows();
 
   // add existing connections so Pathfinder knows which resources are
   // available search all existing SwitchBoxOps for exising connections
@@ -352,31 +351,31 @@ void Pathfinder::addFlow(TileID srcCoords, Port srcPort, TileID dstCoords,
 
 // Sort flows to (1) get deterministic routing, and (2) perform routings on
 // prioritized flows before others, for routing consistency on those flows.
-void Pathfinder::sortFlows(const int maxCol, const int maxRow) {
-  std::vector<Flow> priorityFlows;
-  std::vector<Flow> normalFlows;
-  for (auto f : flows) {
-    if (f.isPriorityFlow)
-      priorityFlows.push_back(f);
-    else
-      normalFlows.push_back(f);
-  }
-  std::sort(priorityFlows.begin(), priorityFlows.end(),
-            [](const auto &lhs, const auto &rhs) {
-              // Compare tuple of properties in priority order:
-              // (col, row, bundle, channel)
-              auto lhsKey =
-                  std::make_tuple(lhs.src.coords.col, lhs.src.coords.row,
-                                  getWireBundleAsInt(lhs.src.port.bundle),
-                                  lhs.src.port.channel);
-              auto rhsKey =
-                  std::make_tuple(rhs.src.coords.col, rhs.src.coords.row,
-                                  getWireBundleAsInt(rhs.src.port.bundle),
-                                  rhs.src.port.channel);
-              return lhsKey < rhsKey;
-            });
-  flows = priorityFlows;
-  flows.insert(flows.end(), normalFlows.begin(), normalFlows.end());
+void Pathfinder::sortFlows() {
+  auto endpointLess = [](const PathEndPoint &lhs, const PathEndPoint &rhs) {
+    return std::make_tuple(lhs.coords.col, lhs.coords.row,
+                           getWireBundleAsInt(lhs.port.bundle),
+                           lhs.port.channel) <
+           std::make_tuple(rhs.coords.col, rhs.coords.row,
+                           getWireBundleAsInt(rhs.port.bundle),
+                           rhs.port.channel);
+  };
+
+  for (auto &flow : flows)
+    std::sort(flow.dsts.begin(), flow.dsts.end(), endpointLess);
+
+  auto flowRank = [](const Flow &flow) {
+    if (flow.isPriorityFlow)
+      return 0;
+    if (flow.packetGroupId >= 0)
+      return 1;
+    return 2;
+  };
+  std::sort(flows.begin(), flows.end(), [&](const Flow &lhs, const Flow &rhs) {
+    if (flowRank(lhs) != flowRank(rhs))
+      return flowRank(lhs) < flowRank(rhs);
+    return endpointLess(lhs.src, rhs.src);
+  });
 }
 
 // Keep track of connections already used in the AIE; Pathfinder algorithm

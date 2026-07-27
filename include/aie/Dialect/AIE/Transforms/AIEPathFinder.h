@@ -188,7 +188,7 @@ public:
   virtual void addFlow(TileID srcCoords, Port srcPort, TileID dstCoords,
                        Port dstPort, bool isPacketFlow,
                        bool isPriorityFlow) = 0;
-  virtual void sortFlows(const int maxCol, const int maxRow) = 0;
+  virtual void sortFlows() = 0;
   virtual bool addFixedConnection(SwitchboxOp switchboxOp) = 0;
   virtual std::optional<std::map<PathEndPoint, SwitchSettings>>
   findPaths(int maxIterations) = 0;
@@ -201,7 +201,7 @@ public:
                   const AIETargetModel &targetModel) override;
   void addFlow(TileID srcCoords, Port srcPort, TileID dstCoords, Port dstPort,
                bool isPacketFlow, bool isPriorityFlow) override;
-  void sortFlows(const int maxCol, const int maxRow) override;
+  void sortFlows() override;
   bool addFixedConnection(SwitchboxOp switchboxOp) override;
   std::optional<std::map<PathEndPoint, SwitchSettings>>
   findPaths(int maxIterations) override;
