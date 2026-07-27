@@ -65,9 +65,6 @@ def build_3layer(blk, act_in, sf, *, data_dir, tile=None):
 
     wts_buf = _wts_buffer(data_dir, f"{name}_chain.txt", wts_sz)
 
-    _i8((in_w, 1, in_c))
-    _u8((in_w, 1, dw_ch))
-    _u8((out_w, 1, dw_ch))
     l3_out_ty = _i8((out_w, 1, out_c))
 
     k_1x1_relu = kernels.bn_conv2dk1_relu(
@@ -296,7 +293,6 @@ def build_2layer_skip(blk, act_in, sf, *, data_dir, tile=None):
 
     wts_buf = _wts_buffer(data_dir, f"{name}_chain.txt", wts_sz)
 
-    _u8((in_w, 1, in_c))
     dw_out_ty = _u8((in_w, 1, dw_ch))
     out_ty = _i8((in_w, 1, out_c))
 

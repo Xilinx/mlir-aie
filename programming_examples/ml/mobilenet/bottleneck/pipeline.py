@@ -70,7 +70,6 @@ def build_3tile_pipeline(blk, act_in, sf, *, data_dir, tiles=None, skip_in=None)
     l2_wts = _wts_buf(data_dir, f"{name}_2_chain.txt", l2_wts_sz)
     l3_wts = _wts_buf(data_dir, f"{name}_3_chain.txt", l3_wts_sz)
 
-    _i8((in_w, 1, in_c))
     l1_out_ty = _u8((in_w, 1, l1_out_c))
     l2_out_ty = _u8((in_w, 1, l2_out_c))
     out_ty = _i8((in_w, 1, l3_out_c))
@@ -183,7 +182,6 @@ def build_bn12_2tile(blk, act_in, sf, *, data_dir, tiles=None):
     bn12_l1_wts = _wts_buf(data_dir, "bn12_1_chain.txt", bn12_l1_wts_sz)
     bn12_l23_wts = Buffer(_i8((bn12_l23_wts_sz,)), initial_value=bn12_l23_data)
 
-    _i8((in_w, 1, in_c))
     bn12_l1_ty = _u8((in_w, 1, l1_c))
     bn12_dw_ty = _u8((out_w, 1, l1_c))
     bn12_out_ty = _i8((out_w, 1, out_c))

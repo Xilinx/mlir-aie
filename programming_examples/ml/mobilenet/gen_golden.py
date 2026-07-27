@@ -437,7 +437,6 @@ def main():
     dtype_in = np.dtype("int8")
     dtype_wts = np.dtype("int8")
     dtype_out = np.dtype("uint8")
-    np.dtype("uint16")
     # dtype_out = np.dtype("int8")
 
     shape_total_wts = (
@@ -1594,7 +1593,6 @@ def main():
     for batch in calib_loader:
         images, labels = batch
         input = images[0].unsqueeze(0)  # Get the first image from the batch
-        labels[0]  # Get the corresponding label
         break
 
     # input = torch.randn(1, tensorInC, tensorInH, tensorInW)
@@ -1605,7 +1603,6 @@ def main():
     golden_output = (
         q_bottleneck_out.int(float_datatype=True).data.numpy().astype(dtype_out)
     )
-    pad_tensor(golden_output, target_shape)
     q_inp = quant_model.quant_id_1(
         input  # pyright: ignore[reportPossiblyUnboundVariable]
     )
@@ -2442,11 +2439,7 @@ def main():
     bn12_wts3 = ds.reorder_mat(
         block_12_int_weight_3.data.numpy().astype(dtype_wts), "OIYXI8O8", "OIYX"
     )
-    bn10_total_wts = np.concatenate((bn10_wts1, bn10_wts2, bn10_wts3), axis=None)
-    bn11_total_wts = np.concatenate((bn11_wts1, bn11_wts2, bn11_wts3), axis=None)
-    bn12_total_wts = np.concatenate((bn12_wts1, bn12_wts2, bn12_wts3), axis=None)
     bn12_wts2_3 = np.concatenate((bn12_wts2, bn12_wts3), axis=None)
-    np.concatenate((bn10_total_wts, bn11_total_wts, bn12_total_wts), axis=None)
 
     # **************************** bn13 ****************************
     # bn13_wts1 = ds.reorder_mat(
@@ -2557,7 +2550,6 @@ def main():
 
     # Split weights for 4 cores
     O_total = padded_post_layer2_conv1_int_weight.shape[0]
-    padded_post_layer2_conv1_int_weight.shape[1]
 
     post_layer2_conv1_weights_splits = [
         padded_post_layer2_conv1_int_weight[

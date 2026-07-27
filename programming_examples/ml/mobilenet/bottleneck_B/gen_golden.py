@@ -532,7 +532,6 @@ def main():
     before_input = int_inp.squeeze().data.numpy().astype(dtype_in)  # JL
     print("Writing input txt file.")
     before_input.tofile(log_dir + "/before_ifm_mem_fmt_1x1.txt", sep=",", format="%d")
-    ds.reorder_mat(before_input, "YCXC8", "CYX")
 
     # **************************** bn10 ****************************
     bn10_wts1 = ds.reorder_mat(
@@ -581,11 +580,6 @@ def main():
     bn12_wts2.tofile(log_dir + "/bn12_2_chain.txt", sep=",", format="%d")
     bn12_wts3.tofile(log_dir + "/bn12_3_chain.txt", sep=",", format="%d")
     bn12_wts2_3.tofile(log_dir + "/bn12_2_3_chain.txt", sep=",", format="%d")
-
-    bn10_total_wts = np.concatenate((bn10_wts1, bn10_wts2, bn10_wts3), axis=None)
-    bn11_total_wts = np.concatenate((bn11_wts1, bn11_wts2, bn11_wts3), axis=None)
-    bn12_total_wts = np.concatenate((bn12_wts1, bn12_wts2, bn12_wts3), axis=None)
-    np.concatenate((bn10_total_wts, bn11_total_wts, bn12_total_wts), axis=None)
 
     print("Done.")
 

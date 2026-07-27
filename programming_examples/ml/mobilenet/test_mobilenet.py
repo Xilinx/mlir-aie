@@ -376,7 +376,6 @@ def main(opts):
     # ------------------------------------------------------
     dtype_in = np.dtype("int8")
     dtype_wts = np.dtype("int8")
-    np.dtype("uint8")
     dtype_out_aie = np.dtype("uint16")
     # dtype_out = np.dtype("int8")
 
@@ -451,7 +450,6 @@ def main(opts):
     # bn12_wts2_3 = np.loadtxt(data_dir + "bn12_2_3_chain.txt", delimiter=",", dtype="int32")
 
     bn13_wts1 = np.loadtxt(data_dir + "bn13_1_chain.txt", delimiter=",", dtype="int32")
-    np.loadtxt(data_dir + "bn13_2_chain.txt", delimiter=",", dtype="int32")
     bn13_wts3_put = np.loadtxt(
         data_dir + "bn13_3_put_chain.txt", delimiter=",", dtype="int32"
     )
@@ -459,7 +457,6 @@ def main(opts):
         data_dir + "bn13_3_get_chain.txt", delimiter=",", dtype="int32"
     )
     bn14_wts1 = np.loadtxt(data_dir + "bn14_1_chain.txt", delimiter=",", dtype="int32")
-    np.loadtxt(data_dir + "bn14_2_chain.txt", delimiter=",", dtype="int32")
     bn14_wts3_put = np.loadtxt(
         data_dir + "bn14_3_put_chain.txt", delimiter=",", dtype="int32"
     )
@@ -538,13 +535,6 @@ def main(opts):
         np.abs((golden.astype(int)) - (ofm_mem_fmt_out.astype(int)))
     )
     print("max_difference:", max_difference)
-    # Find the indices where the mismatch happens
-    # Find the indices where the mismatch happens
-    mismatch_indices = np.where(golden != ofm_mem_fmt_out)
-
-    # Extract mismatch values
-    golden[mismatch_indices]
-    ofm_mem_fmt_out[mismatch_indices]
 
     # Print mismatch indices and corresponding values
     print("golden shape: ", golden.shape)

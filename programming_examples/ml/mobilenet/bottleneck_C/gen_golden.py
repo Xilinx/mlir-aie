@@ -302,7 +302,6 @@ def main():
     for batch in calib_loader:
         images, labels = batch
         input = images[0].unsqueeze(0)  # Get the first image from the batch
-        labels[0]  # Get the corresponding label
         break
 
     q_bottleneck_out = quant_bottleneck_model(input)
