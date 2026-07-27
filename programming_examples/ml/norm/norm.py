@@ -142,9 +142,10 @@ def _layer_norm_reference(x_np):
     return ((x32 - mean) * inv_std * gamma + beta).astype(bfloat16)
 
 
+# per op: (reference fn, elementwise atol, mean per-row rel-L2 ceiling or None)
 _VERIFY_CFG = {
-    "rms": (_rms_norm_reference, 0.05),
-    "layer": (_layer_norm_reference, 0.1),
+    "rms": (_rms_norm_reference, 0.05, None),
+    "layer": (_layer_norm_reference, 0.05, 0.01),
 }
 
 
@@ -157,13 +158,23 @@ def _run_and_verify(opts):
 
     norm(a_t, c_t, **_compile_kwargs(opts))
 
-    ref_fn, atol = _VERIFY_CFG[opts.op]
-    assert_pass(
-        c_t.numpy().reshape(rows, cols),
-        ref_fn(a_np),
-        atol=atol,
-        fail_msg=f"{opts.op}norm output mismatch",
-    )
+    ref_fn, atol, rel_l2_max = _VERIFY_CFG[opts.op]
+    out = c_t.numpy().reshape(rows, cols)
+    ref = ref_fn(a_np)
+    assert_pass(out, ref, atol=atol, fail_msg=f"{opts.op}norm output mismatch")
+
+    # Aggregate regression guard. The elementwise atol above is bounded by bf16
+    # output quantization and barely moves when the reduction loses precision,
+    # so it cannot catch an accumulation regression on its own; the mean per-row
+    # rel-L2 can (f32 sum accumulation ~0.6%, a bf16 sum ~1.1-1.9%).
+    if rel_l2_max is not None:
+        o = out.astype(np.float32)
+        r = ref.astype(np.float32)
+        rel_l2 = np.sqrt(((o - r) ** 2).sum(axis=1) / (r**2).sum(axis=1)).mean()
+        assert rel_l2 <= rel_l2_max, (
+            f"{opts.op}norm mean per-row rel-L2 {rel_l2:.4f} exceeds "
+            f"{rel_l2_max} (accumulation-precision regression?)"
+        )
 
 
 def main():
