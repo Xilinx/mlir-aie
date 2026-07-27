@@ -368,7 +368,7 @@ class LitConfigHelper:
         if expected_npu and f"ryzen_ai_{expected_npu}" not in config.features:
             llvm_config.lit_config.fatal(
                 f"AIE_EXPECTED_NPU={expected_npu}, but the matching hardware "
-                "feature was not enabled"
+                "feature was not found!"
             )
 
         config.substitutions["%run_on_npu1%"] = run_on_npu1
