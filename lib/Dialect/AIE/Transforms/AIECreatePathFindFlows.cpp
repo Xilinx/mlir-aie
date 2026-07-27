@@ -15,6 +15,7 @@
 #include "mlir/Pass/Pass.h"
 #include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/Support/Debug.h"
 
 using namespace mlir;
@@ -1093,8 +1094,24 @@ void AIEPathfinderPass::runOnOperation() {
     return;
   }
 
-  // Populate wires between switchboxes and tiles.
+  // Populate wires between switchboxes and tiles. Re-running the pass on
+  // already-routed IR must not duplicate the wires a previous run emitted, so
+  // key the wires already present and emit only the missing ones.
   builder.setInsertionPoint(d.getBody()->getTerminator());
+  llvm::DenseSet<std::tuple<Value, int, Value, int>> existingWires;
+  for (auto wire : d.getOps<WireOp>())
+    existingWires.insert({wire.getSource(),
+                          static_cast<int>(wire.getSourceBundle()),
+                          wire.getDest(),
+                          static_cast<int>(wire.getDestBundle())});
+  auto wire = [&](Location loc, Value source, WireBundle sourceBundle,
+                  Value dest, WireBundle destBundle) {
+    if (existingWires
+            .insert({source, static_cast<int>(sourceBundle), dest,
+                     static_cast<int>(destBundle)})
+            .second)
+      WireOp::create(builder, loc, source, sourceBundle, dest, destBundle);
+  };
   for (int col = 0; col <= analyzer.getMaxCol(); col++) {
     for (int row = 0; row <= analyzer.getMaxRow(); row++) {
       TileOp tile;
@@ -1112,50 +1129,42 @@ void AIEPathfinderPass::runOnOperation() {
         // connections east-west between stream switches
         if (analyzer.coordToSwitchbox.count({col - 1, row})) {
           auto westsw = analyzer.coordToSwitchbox[{col - 1, row}];
-          WireOp::create(builder, loc, westsw, WireBundle::East, sw,
-                         WireBundle::West);
+          wire(loc, westsw, WireBundle::East, sw, WireBundle::West);
         }
       }
       if (row > 0) {
         // connections between abstract 'core' of tile
-        WireOp::create(builder, loc, tile, WireBundle::Core, sw,
-                       WireBundle::Core);
+        wire(loc, tile, WireBundle::Core, sw, WireBundle::Core);
         // connections between abstract 'dma' of tile
-        WireOp::create(builder, loc, tile, WireBundle::DMA, sw,
-                       WireBundle::DMA);
+        wire(loc, tile, WireBundle::DMA, sw, WireBundle::DMA);
         // connections north-south inside array ( including connection to shim
         // row)
         if (analyzer.coordToSwitchbox.count({col, row - 1})) {
           auto southsw = analyzer.coordToSwitchbox[{col, row - 1}];
-          WireOp::create(builder, loc, southsw, WireBundle::North, sw,
-                         WireBundle::South);
+          wire(loc, southsw, WireBundle::North, sw, WireBundle::South);
         }
       } else if (row == 0) {
         if (tile.isShimNOCTile()) {
           if (analyzer.coordToShimMux.count({col, 0})) {
             auto shimsw = analyzer.coordToShimMux[{col, 0}];
-            WireOp::create(
-                builder, loc, shimsw,
-                WireBundle::North, // Changed to connect into the north
-                sw, WireBundle::South);
+            wire(loc, shimsw,
+                 WireBundle::North, // Changed to connect into the north
+                 sw, WireBundle::South);
             // PLIO is attached to shim mux
             if (analyzer.coordToPLIO.count(col)) {
               auto plio = analyzer.coordToPLIO[col];
-              WireOp::create(builder, loc, plio, WireBundle::North, shimsw,
-                             WireBundle::South);
+              wire(loc, plio, WireBundle::North, shimsw, WireBundle::South);
             }
 
             // abstract 'DMA' connection on tile is attached to shim mux ( in
             // row 0 )
-            WireOp::create(builder, loc, tile, WireBundle::DMA, shimsw,
-                           WireBundle::DMA);
+            wire(loc, tile, WireBundle::DMA, shimsw, WireBundle::DMA);
           }
         } else if (tile.isShimPLTile()) {
           // PLIO is attached directly to switch
           if (analyzer.coordToPLIO.count(col)) {
             auto plio = analyzer.coordToPLIO[col];
-            WireOp::create(builder, loc, plio, WireBundle::North, sw,
-                           WireBundle::South);
+            wire(loc, plio, WireBundle::North, sw, WireBundle::South);
           }
         }
       }
