@@ -4,8 +4,8 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 
-# RUN: %run_on_npu2% env NPU_RUNTIME=hrx %pytest %s
-# REQUIRES: hrx_python_bindings
+# RUN: env NPU_RUNTIME=hrx %pytest %s
+# REQUIRES: hrx_python_bindings, hrx_npu2
 
 """Cached vs. uncached HRX runtime behavior.
 
@@ -17,7 +17,7 @@ Covers the two HRX runtimes:
 The design under test is a plain IRON ObjectFifo ``out = in + 1`` kernel built
 through the normal ``@compileconfig`` path; only the runtime wiring is
 backend-specific. Loading an executable requires the amdxdna device, so this is
-an on-hardware test (gated by ``hrx_python_bindings`` + ``run_on_npu2``).
+an on-hardware test (gated by ``hrx_python_bindings`` + ``hrx_npu2``).
 """
 
 import os
