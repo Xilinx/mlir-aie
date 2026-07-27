@@ -105,6 +105,32 @@ def test_external_function_collision_check_fires():
         )
 
 
+@pytest.mark.xfail(
+    reason="inline collision disambiguation hardcodes .o instead of retaining .ll",
+    strict=False,
+)
+def test_inline_collision_disambiguation_preserves_ir_extension():
+    """Digest-renamed inline artifacts must remain recognizable as LLVM IR."""
+    name = "sentinel_inline_collision"
+    first = ExternalFunction(
+        name=name,
+        source_string='extern "C" void sentinel_inline_collision() {}',
+        inline=True,
+    )
+    second = ExternalFunction(
+        name=name,
+        source_string=(
+            'extern "C" void sentinel_inline_collision() { '
+            "volatile int distinguish_source = 1; }"
+        ),
+        inline=True,
+    )
+
+    assert first.object_file_name == f"{name}.ll"
+    assert second.object_file_name != first.object_file_name
+    assert second.object_file_name.endswith(".ll")
+
+
 def test_external_function_collision_check_allows_identical_redeclaration():
     """Defense B: re-registering an EXACT duplicate is fine (set semantics).
 
