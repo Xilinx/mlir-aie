@@ -104,11 +104,7 @@ def single_core_no_tiling(
     C_ty = np.ndarray[(M * N // 8,), np.dtype[v8bfp16ebs8]]
 
     rt = Runtime()
-    with rt.sequence(A_ty, B_ty, C_ty) as (
-        a,
-        b,
-        c,
-    ):
+    with rt.sequence(A_ty, B_ty, C_ty) as (a, b, c):
         rt.start(worker)
         rt.fill(inA.prod(), a)
         rt.fill(inB.prod(), b)

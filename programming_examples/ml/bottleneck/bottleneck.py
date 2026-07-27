@@ -269,11 +269,7 @@ def bottleneck(
     )
 
     rt = Runtime()
-    with rt.sequence(act_in_l3_ty, wts_in_l3_ty, act_in_l3_ty) as (
-        inp,
-        wts,
-        outp,
-    ):
+    with rt.sequence(act_in_l3_ty, wts_in_l3_ty, act_in_l3_ty) as (inp, wts, outp):
         rt.start(*workers)
         rt.fill(of_act_l3l2.prod(), inp)
         rt.fill(of_wts_l3l2.prod(), wts)

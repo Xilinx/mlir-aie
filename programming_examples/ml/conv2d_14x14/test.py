@@ -209,8 +209,6 @@ def main(opts):
             last_tensor_dtype=out.dtype,
         )
         HostRuntime.prepare_args_for_trace(buffers, trace_config)
-    data_buffer = out.numpy()
-    scaled_data_buffer = data_buffer * int8_scale
     for i in range(num_iter):
 
         trace_buffer = None
@@ -221,9 +219,10 @@ def main(opts):
             trace_buffer = trace_buffer.view(np.uint32)
             trace_config.write_trace(trace_buffer)
 
-        data_buffer = out.numpy()
-        scaled_data_buffer = data_buffer * int8_scale
         npu_time_total = npu_time_total + ret.npu_time
+
+    data_buffer = out.numpy()
+    scaled_data_buffer = data_buffer * int8_scale
 
     # ------------------------------------------------------
     # Reorder output data-layout

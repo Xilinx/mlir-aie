@@ -168,11 +168,7 @@ def n32_core_gemm(
     num_groups = num_row_tile * num_col_tile
 
     rt = Runtime()
-    with rt.sequence(A_ty, B_ty, C_ty) as (
-        a,
-        b,
-        c,
-    ):
+    with rt.sequence(A_ty, B_ty, C_ty) as (a, b, c):
         rt.start(*[w for row in workers for w in row])
         slots: list[RuntimeTaskGroup | None] = [None] * tb_max_n_rows
 

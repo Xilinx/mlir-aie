@@ -448,11 +448,7 @@ def resnet_conv2_x(
     rt = Runtime()
     with rt.sequence(
         activationsInL3_ty, weightsInL3_ty_complete, activationsOutL3_ty
-    ) as (
-        inputFromL3,
-        weightsFromL3,
-        outputToL3,
-    ):
+    ) as (inputFromL3, weightsFromL3, outputToL3):
         rt.start(*workers)
 
         rt.fill(act1_fifos[0].prod(), inputFromL3, tile=Tile(0, 0))

@@ -204,11 +204,7 @@ def n32_core_gemm(
     tb_max_n_rows = 4
 
     rt = Runtime()
-    with rt.sequence(A_ty, B_ty, C_ty) as (
-        a,
-        b,
-        c,
-    ):
+    with rt.sequence(A_ty, B_ty, C_ty) as (a, b, c):
         rt.start(*[w for row in workers for w in row])
         # 4-slot rotating task-group pipeline. Each slot is one
         # iteration's (4 A-fills + 8 B-fills + 8 C-drains). A/B fills are

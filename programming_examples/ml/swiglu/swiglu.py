@@ -83,11 +83,7 @@ def swiglu(
     taps_wts = TensorTiler2D.simple_tiler((1, 2 * size), (1, 2 * chunk))
 
     rt = Runtime()
-    with rt.sequence(transfer_type, transfer_type_wts, transfer_type) as (
-        a,
-        w,
-        b,
-    ):
+    with rt.sequence(transfer_type, transfer_type_wts, transfer_type) as (a, w, b):
         rt.start(*workers)
         tg = rt.task_group()
         for i in range(num_columns):

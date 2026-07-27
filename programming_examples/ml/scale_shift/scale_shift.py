@@ -158,12 +158,7 @@ def scale_shift(
         return _impl
 
     rt = Runtime()
-    with rt.sequence(tensor_ty, tensor_ty, tensor_ty, tensor_ty) as (
-        A,
-        B,
-        C,
-        D,
-    ):
+    with rt.sequence(tensor_ty, tensor_ty, tensor_ty, tensor_ty) as (A, B, C, D):
         rt.start(*workers)
 
         # Phase 1: multiply (rtp=1).

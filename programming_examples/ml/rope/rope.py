@@ -103,11 +103,7 @@ def rope(
     )
 
     rt = Runtime()
-    with rt.sequence(tensor_ty, tensor_ty, tensor_ty) as (
-        a,
-        lut,
-        c,
-    ):
+    with rt.sequence(tensor_ty, tensor_ty, tensor_ty) as (a, lut, c):
         rt.start(*workers)
         for i in range(n_cores):
             rt.fill(of_ins[i].prod(), a, taps[i])

@@ -56,10 +56,7 @@ def vector_passthrough(a_in: In, b_out: Out):
     worker = Worker(core_fn, [of_in.cons(), of_out.prod(), passthrough_func])
 
     rt = Runtime()
-    with rt.sequence(_TENSOR_TY, _TENSOR_TY) as (
-        A,
-        B,
-    ):
+    with rt.sequence(_TENSOR_TY, _TENSOR_TY) as (A, B):
         rt.start(worker)
         rt.fill(of_in.prod(), A)
         rt.drain(of_out.cons(), B, wait=True)

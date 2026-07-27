@@ -114,19 +114,9 @@ def group0(
     def group0a_body(of_di, of_do, lut, kernel):
         di = of_di.acquire(1)
         for xid in range_(4):
-            xid_i32 = arith.index_cast(
-                xid,  # pyright: ignore[reportArgumentType]
-                to=np_dtype_to_mlir_type(
-                    np.int32
-                ),  # pyright: ignore[reportArgumentType]
-            )
+            xid_i32 = arith.index_cast(xid, to=np_dtype_to_mlir_type(np.int32))  # fmt: skip # pyright: ignore[reportArgumentType]
             for cid in range_(8):  # 64 / 8
-                cid_i32 = arith.index_cast(
-                    cid,  # pyright: ignore[reportArgumentType]
-                    to=np_dtype_to_mlir_type(
-                        np.int32
-                    ),  # pyright: ignore[reportArgumentType]
-                )
+                cid_i32 = arith.index_cast(cid, to=np_dtype_to_mlir_type(np.int32))  # fmt: skip # pyright: ignore[reportArgumentType]
                 do = of_do.acquire(1)
                 kernel(di, do, lut, xid_i32, cid_i32)
                 of_do.release(1)
@@ -159,11 +149,7 @@ def group0(
 
     # ----- Runtime ----------------------------------------------------------
     rt = Runtime()
-    with rt.sequence(transfer_in_ty, transfer_out_ty, scalar_ty) as (
-        A,
-        C,
-        _,
-    ):
+    with rt.sequence(transfer_in_ty, transfer_out_ty, scalar_ty) as (A, C, _):
         if trace_size > 0:
             rt.enable_trace(trace_size)
         rt.start(group0a_worker, group0b_worker)

@@ -182,11 +182,7 @@ def conv2dk14(
     )
 
     rt = Runtime()
-    with rt.sequence(tensor_in_ty, tensor_wts_ty, tensor_out_ty) as (
-        inp,
-        wts,
-        outp,
-    ):
+    with rt.sequence(tensor_in_ty, tensor_wts_ty, tensor_out_ty) as (inp, wts, outp):
         rt.start(worker)
         rt.fill(of_act_l3l2.prod(), inp)
         rt.fill(of_wts_l3l2.prod(), wts)
@@ -257,8 +253,8 @@ def conv2dk14_multi(
     conv_fn = _conv2dk14_extern(act_in_ty, weights_ty, out_ty)
 
     # Activations: per-row shim -> per-row memtile -> broadcast to 8 cores
-    of_act_l3l2: list[ObjectFifo | None] = [None] * n_rows
-    of_act_l2l1: list[ObjectFifo | None] = [None] * n_rows
+    of_act_l3l2: list[ObjectFifo] = []
+    of_act_l2l1: list[ObjectFifo] = []
     for j in range(n_rows):
         act_l3l2 = ObjectFifo(
             buf_in_ty,
@@ -269,27 +265,27 @@ def conv2dk14_multi(
                 (_KERNEL_SIZE * _IN_CHANNELS, 1),
             ],
         )
-        of_act_l3l2[j] = act_l3l2
-        of_act_l2l1[j] = act_l3l2.cons().forward(
-            obj_type=act_in_ty,
-            name=f"of_act_L2L1_{j}",
-            dims_to_stream=[
-                (2, _KERNEL_SIZE * _KERNEL_SIZE * _IN_CHANNELS * 8),
-                (_KERNEL_SIZE * _KERNEL_SIZE // 2, 2 * _IN_CHANNELS),
-                (8, _KERNEL_SIZE * _KERNEL_SIZE * _IN_CHANNELS),
-                (2 * _IN_CHANNELS, 1),
-            ],
-            tile=Tile(j, 1),
+        of_act_l3l2.append(act_l3l2)
+        of_act_l2l1.append(
+            act_l3l2.cons().forward(
+                obj_type=act_in_ty,
+                name=f"of_act_L2L1_{j}",
+                dims_to_stream=[
+                    (2, _KERNEL_SIZE * _KERNEL_SIZE * _IN_CHANNELS * 8),
+                    (_KERNEL_SIZE * _KERNEL_SIZE // 2, 2 * _IN_CHANNELS),
+                    (8, _KERNEL_SIZE * _KERNEL_SIZE * _IN_CHANNELS),
+                    (2 * _IN_CHANNELS, 1),
+                ],
+                tile=Tile(j, 1),
+            )
         )
 
     # Weights: per-col shim -> broadcast directly to 4 row-cores in that col (no memtile)
     of_wts = [ObjectFifo(weights_ty, name=f"of_wts_L3L1_{i}") for i in range(n_cols)]
 
     # Outputs: per-col join across 4 rows in memtile, then to per-col shim
-    of_out_l2l3: list[ObjectFifo | None] = [None] * n_cols
-    of_out_l1l2: list[list[ObjectFifo | None]] = [
-        [None] * n_cols for _ in range(n_rows)
-    ]
+    of_out_l2l3: list[ObjectFifo] = []
+    of_out_l1l2: list[list[ObjectFifo]] = [[] for _ in range(n_rows)]
     out_offsets = [act_out * 4 * 16 * j for j in range(n_rows)]
     for i in range(n_cols):
         out_l2l3 = ObjectFifo(
@@ -297,7 +293,7 @@ def conv2dk14_multi(
             name=f"of_out_L2L3_{i}",
             dims_to_stream=[(64, 256), (16, 8), (2, 128), (8, 1)],
         )
-        of_out_l2l3[i] = out_l2l3
+        of_out_l2l3.append(out_l2l3)
         col_fifos = out_l2l3.prod().join(
             out_offsets,
             obj_types=[out_ty] * n_rows,
@@ -305,7 +301,7 @@ def conv2dk14_multi(
             tile=Tile(i, 1),
         )
         for j in range(n_rows):
-            of_out_l1l2[j][i] = col_fifos[j]
+            of_out_l1l2[j].append(col_fifos[j])
 
     def core_fn(of_wts_in, of_act, of_out, kernel):
         y_dim = height // (_KERNEL_SIZE * n_rows)
@@ -336,8 +332,8 @@ def conv2dk14_multi(
             core_fn,
             [
                 of_wts[i].cons(),
-                of_act_l2l1[j].cons(),  # pyright: ignore[reportOptionalMemberAccess]
-                of_out_l1l2[j][i].prod(),  # pyright: ignore[reportOptionalMemberAccess]
+                of_act_l2l1[j].cons(),
+                of_out_l1l2[j][i].prod(),
                 conv_fn,
             ],
             tile=Tile(i, 2 + j),
@@ -346,11 +342,7 @@ def conv2dk14_multi(
     )
 
     rt = Runtime()
-    with rt.sequence(tensor_in_ty, tensor_wts_ty, tensor_out_ty) as (
-        inp,
-        wts,
-        outp,
-    ):
+    with rt.sequence(tensor_in_ty, tensor_wts_ty, tensor_out_ty) as (inp, wts, outp):
         rt.start(*[w for row in workers for w in row])
         row_chunk = tensor_in_size // n_rows
         wts_chunk = tensor_wts_size // n_cols
@@ -362,11 +354,7 @@ def conv2dk14_multi(
                 [act_repeat, 1, 1, row_chunk],
                 [0, 0, 0, 1],
             )
-            rt.fill(
-                of_act_l3l2[j].prod(),  # pyright: ignore[reportOptionalMemberAccess]
-                inp,
-                tap,
-            )
+            rt.fill(of_act_l3l2[j].prod(), inp, tap)
         for i in range(n_cols):
             wts_tap = TensorAccessPattern(
                 (1, tensor_wts_size),
@@ -381,12 +369,7 @@ def conv2dk14_multi(
                 [0, 0, 0, 1],
             )
             rt.fill(of_wts[i].prod(), wts, wts_tap)
-            rt.drain(
-                of_out_l2l3[i].cons(),  # pyright: ignore[reportOptionalMemberAccess]
-                outp,
-                out_tap,
-                wait=True,
-            )
+            rt.drain(of_out_l2l3[i].cons(), outp, out_tap, wait=True)
 
     return Program(device, rt).resolve_program()
 

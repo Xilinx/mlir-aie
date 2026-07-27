@@ -137,11 +137,7 @@ def group2(
     )
 
     rt = Runtime()
-    with rt.sequence(din_ty, scalar_ty, dout_ty) as (
-        a,
-        _b,
-        c,
-    ):
+    with rt.sequence(din_ty, scalar_ty, dout_ty) as (a, _b, c):
         if trace_size > 0:
             rt.enable_trace(trace_size)
         rt.start(worker)

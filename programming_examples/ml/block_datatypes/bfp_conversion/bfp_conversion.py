@@ -101,11 +101,7 @@ def bfp_conversion(a_in: In, b_in: In, c_out: Out):
     ]
 
     rt = Runtime()
-    with rt.sequence(_TENSOR_BF16_TY, _TENSOR_BF16_TY, _TENSOR_BFP16_TY) as (
-        A,
-        B,
-        C,
-    ):
+    with rt.sequence(_TENSOR_BF16_TY, _TENSOR_BF16_TY, _TENSOR_BFP16_TY) as (A, B, C):
         rt.start(*workers)
         rt.fill(of_in1.prod(), A)
         # Aligning dot products with bfp blocks requires transposing the second

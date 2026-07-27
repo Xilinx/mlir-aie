@@ -129,11 +129,7 @@ def single_core_matmul(
     c_index = 0
 
     rt = Runtime()
-    with rt.sequence(A_ty, B_ty, C_ty) as (
-        a,
-        b,
-        c,
-    ):
+    with rt.sequence(A_ty, B_ty, C_ty) as (a, b, c):
         rt.start(worker)
         tgs = []
         for tile_row_block in range(iron.ceildiv(M_div_m, rows_per_block)):

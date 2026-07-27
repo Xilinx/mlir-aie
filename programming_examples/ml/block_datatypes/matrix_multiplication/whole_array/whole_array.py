@@ -191,11 +191,7 @@ def whole_array_matmul(
     c_index = 0
 
     rt = Runtime()
-    with rt.sequence(A_ty, B_ty, C_ty) as (
-        a,
-        b,
-        c,
-    ):
+    with rt.sequence(A_ty, B_ty, C_ty) as (a, b, c):
         rt.start(*[w for row in workers for w in row])
         tg = rt.task_group()
         for tb in range(iron.ceildiv(M // m // n_aie_rows, tb_max_n_rows)):

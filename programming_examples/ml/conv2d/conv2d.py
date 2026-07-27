@@ -116,11 +116,7 @@ def conv2d(
     )
 
     rt = Runtime()
-    with rt.sequence(tensor_in_ty, weights_ty, tensor_out_ty) as (
-        inp,
-        wts,
-        outp,
-    ):
+    with rt.sequence(tensor_in_ty, weights_ty, tensor_out_ty) as (inp, wts, outp):
         rt.start(worker)
         rt.fill(of_act_l3l2.prod(), inp)
         rt.fill(of_wts_l3l2.prod(), wts)

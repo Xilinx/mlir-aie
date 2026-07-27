@@ -99,7 +99,6 @@ def main(opts):
     # ------------------------------------------------------
     # Main run loop
     # ------------------------------------------------------
-    aie_output = np.empty(0, dtype=out.dtype)
     for i in range(num_iter):
         start = time.time_ns()
         DefaultNPURuntime.run(kernel_handle, buffers)
@@ -110,14 +109,14 @@ def main(opts):
             trace_buffer = trace_buffer.view(np.uint32)
             trace_config.write_trace(trace_buffer)
 
-        out_tensor = out.numpy()
-        if not isinstance(out_tensor, np.ndarray):
-            out_tensor = out_tensor.numpy()
-        aie_output = out_tensor
-        print(f"aie_output size: {aie_output.size}")
-
         npu_time = stop - start
         npu_time_total = npu_time_total + npu_time
+
+    out_tensor = out.numpy()
+    if not isinstance(out_tensor, np.ndarray):
+        out_tensor = out_tensor.numpy()
+    aie_output = out_tensor
+    print(f"aie_output size: {aie_output.size}")
 
     # ------------------------------------------------------
     # Reorder output data-layout
