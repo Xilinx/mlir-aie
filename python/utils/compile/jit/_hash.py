@@ -173,6 +173,22 @@ def _compute_artifact_hash(
         except (FileNotFoundError, OSError):
             pass
 
+    # The active backend's DDR-patch ABI changes the emitted insts.bin bytes
+    # (XRT folds the AIE DDR aperture offset for args >= 5; HRX emits raw offsets
+    # and adds the aperture at runtime), so it must key the cache -- otherwise an
+    # HRX run could reuse an XRT-populated entry (or vice versa) and dispatch a
+    # mis-translated instruction stream.
+    try:
+        from aie.utils import npu_runtime_folds_ddr_addr_offset
+
+        h.update(f"fold_ddr_addr_offset={npu_runtime_folds_ddr_addr_offset()}".encode())
+    except (ImportError, AttributeError) as exc:
+        logger.warning(
+            "_compute_artifact_hash: DDR-patch ABI unresolved (%s); assuming folded",
+            exc,
+        )
+        h.update(b"fold_ddr_addr_offset=True")
+
     # Static .mlir is target-agnostic; compiled kernels need a device identifier.
     # Missing components collapse to a constant + WARNING log so cross-target
     # cache collisions surface instead of silently aliasing.

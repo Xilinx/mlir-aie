@@ -15,8 +15,13 @@ import pytest
 #
 # Two libhrx DDR-patch bugs that previously required skips here are now fixed and
 # no longer skipped:
-#   * >5-host-arg DDR double-offset: the AIE aperture offset is now added only
-#     for the firmware-pre-translated first 5 args (test_jit_many_args).
+#   * >5-host-arg DDR double-offset: the HRX path now uses a producer-independent
+#     patch-table ABI -- aiecc emits the insts.bin unfolded
+#     (--fold-ddr-addr-offset=false when NPU_RUNTIME=hrx) and libhrx adds the AIE
+#     DDR aperture offset for every arg exactly once, independent of the
+#     firmware's first-5-args translation cutoff (test_jit_many_args). XRT keeps
+#     the folded firmware ABI; the JIT cache keys on the fold state so the two
+#     never share a compiled insts.bin.
 #   * sub-buffer offset double-count: BDs that address a sub-range of a buffer
 #     (e.g. transform_parallel's per-column/per-channel split) carry the
 #     intra-buffer offset in both the compiler-baked BD address and the
