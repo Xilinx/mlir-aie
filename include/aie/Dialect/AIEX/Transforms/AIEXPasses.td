@@ -28,6 +28,36 @@ def AIEXToStandard : Pass<"aiex-standard-lowering", "mlir::ModuleOp"> {
   ];
 }
 
+def AIEDecomposeLargeDmaBd
+    : Pass<"aie-decompose-large-dma-bd", "AIE::DeviceOp"> {
+  let summary = "Decompose oversized non-contiguous ND DMA transfers";
+  let description = [{
+    Splits `aiex.npu.dma_memcpy_nd` ops and task-path `aie.dma_bd` ops (inside
+    `aiex.dma_configure_task` / `aiex.dma_configure_task_for`) whose constant
+    ND wrap/stride encoding exceeds the hardware buffer-descriptor field limits
+    (and that cannot be linearized because the access is non-contiguous) into
+    one or more hardware-legal ND transfers that move exactly the same data.
+
+    On the task path, multiple sub-patterns are linked with `aie.next_bd`
+    blocks inside the configure region; `bd_id` / `next_bd_id` are left for
+    later passes to assign.
+
+    Two techniques are used: dimension factoring (split an oversized dimension
+    of size N=a*b across a free dimension slot) is preferred, falling back to
+    slicing an oversized dimension into ceil(N/limit) sub-transfers with
+    adjusted offsets. Contiguous oversized patterns are left untouched; they are
+    handled by canonicalization to linear mode.
+  }];
+
+  let constructor = "xilinx::AIEX::createAIEDecomposeLargeDmaBdPass()";
+  let dependentDialects = [
+    "mlir::arith::ArithDialect",
+    "mlir::memref::MemRefDialect",
+    "xilinx::AIE::AIEDialect",
+    "xilinx::AIEX::AIEXDialect",
+  ];
+}
+
 def AIESCFToControlFlow : Pass<"aie-scf-to-control-flow", "mlir::ModuleOp"> {
   let summary = "Lower scf to cf everywhere except inside runtime sequences";
   let description = [{
@@ -360,6 +390,27 @@ def AIELowerDmaChannelReset : Pass<"aie-lower-dma-channel-reset", "AIE::DeviceOp
   let constructor = "xilinx::AIEX::createAIELowerDmaChannelResetPass()";
   let dependentDialects = [
     "mlir::arith::ArithDialect",
+    "xilinx::AIE::AIEDialect",
+    "xilinx::AIEX::AIEXDialect",
+  ];
+}
+
+def AIELowerCoreReset : Pass<"aie-lower-core-reset", "AIE::DeviceOp"> {
+  let summary = "Lowers all aiex.core_reset operations to npu.maskwrite32";
+  let constructor = "xilinx::AIEX::createAIELowerCoreResetPass()";
+  let dependentDialects = [
+    "mlir::arith::ArithDialect",
+    "xilinx::AIE::AIEDialect",
+    "xilinx::AIEX::AIEXDialect",
+  ];
+}
+
+def AIEVerifyRuntimeRearm : Pass<"aie-verify-runtime-rearm", "AIE::DeviceOp"> {
+  let summary = "Experimental, opt-in: reject an aiex.dma_channel_reset whose "
+                "objectFIFO lock is never re-armed (a necessary, not sufficient, "
+                "condition for a safe reset)";
+  let constructor = "xilinx::AIEX::createAIEVerifyRuntimeRearmPass()";
+  let dependentDialects = [
     "xilinx::AIE::AIEDialect",
     "xilinx::AIEX::AIEXDialect",
   ];

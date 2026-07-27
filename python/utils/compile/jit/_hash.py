@@ -48,12 +48,17 @@ def _compute_recipe_hash(
     compile_kwargs: Mapping[str, Any],
     aiecc_flags: list[str] | tuple[str, ...],
     compile_flags: list[str] | tuple[str, ...],
+    full_elf: bool = False,
 ) -> str:
     """Hash of the "recipe": generator bytecode + CompileTime[T] kwargs + flags.
 
     Captures the target-independent generator and compile configuration. It
     omits device identity, so equal recipe hashes can produce different
     target-specialized MLIR.
+
+    ``full_elf`` is part of the recipe: full-ELF and xclbin+insts builds emit
+    different MLIR (the former injects ``npu.load_pdi``) and different
+    artifacts, so they must not share a cache entry.
     """
     h = hashlib.sha256()
 
@@ -99,6 +104,7 @@ def _compute_recipe_hash(
 
     h.update(repr(sorted(aiecc_flags)).encode())
     h.update(repr(sorted(compile_flags)).encode())
+    h.update(f"full_elf={full_elf}".encode())
 
     return h.hexdigest()
 
@@ -175,13 +181,19 @@ def _compute_artifact_hash(
                 peano_mtime = "absent"
 
         try:
-            import shutil as _shutil
+            from aie.utils import config as _config
 
-            _aiecc_path = _shutil.which("aiecc")
-            aiecc_mtime = (
-                str(Path(_aiecc_path).stat().st_mtime) if _aiecc_path else "absent"
-            )
-        except (FileNotFoundError, OSError) as exc:
+            # Resolve aiecc the way the compile does.  Probing PATH instead
+            # misses the bundled bin/aiecc that _run_aiecc actually invokes,
+            # and then every aiecc aliases onto the constant below.
+            aiecc_mtime = str(Path(_config.aiecc_path()).stat().st_mtime)
+        except (
+            ImportError,
+            AttributeError,
+            FileNotFoundError,
+            OSError,
+            RuntimeError,
+        ) as exc:
             logger.warning("_compute_artifact_hash: aiecc absent (%s)", exc)
             aiecc_mtime = "absent"
 
@@ -200,8 +212,11 @@ def _compute_hash(
     object_files: list[Path] | tuple[Path, ...],
     aiecc_flags: list[str] | tuple[str, ...],
     compile_flags: list[str] | tuple[str, ...],
+    full_elf: bool = False,
 ) -> str:
     """Stable 24-hex SHA-256 cache key combining recipe + artifact hashes."""
-    recipe = _compute_recipe_hash(generator, compile_kwargs, aiecc_flags, compile_flags)
+    recipe = _compute_recipe_hash(
+        generator, compile_kwargs, aiecc_flags, compile_flags, full_elf
+    )
     artifact = _compute_artifact_hash(generator, source_files, object_files)
     return hashlib.sha256(f"{recipe}|{artifact}".encode()).hexdigest()[:24]

@@ -56,8 +56,6 @@ int main(int argc, const char *argv[]) {
   // TODO Remove trace for now?
   size_t OUT_SIZE = INOUT1_SIZE + trace_size;
 
-  srand(time(NULL));
-
   // Load instruction sequence
   std::vector<uint32_t> instr_v =
       test_utils::load_instr_binary(vm["instr"].as<std::string>());
@@ -94,8 +92,10 @@ int main(int argc, const char *argv[]) {
   // Initialize Inout buffer 0
   INOUT0_DATATYPE *bufInOut0 = bo_inout0.map<INOUT0_DATATYPE *>();
   std::int32_t reducedSum = (std::int32_t)0;
+  const int input_shift = INOUT0_VOLUME / 3;
   for (int i = 0; i < INOUT0_VOLUME; i++) {
-    std::int32_t next = test_utils::random_int32_t(100000);
+    std::int32_t next =
+        (i + INOUT0_VOLUME - input_shift) % INOUT0_VOLUME - INOUT0_VOLUME / 2;
     reducedSum += next;
     bufInOut0[i] = next;
   }

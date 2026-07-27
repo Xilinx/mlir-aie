@@ -26,6 +26,8 @@ createAIELowerMulticastPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIEBroadcastPacketPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>> createAIEDmaToNpuPass();
+std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
+createAIEDecomposeLargeDmaBdPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> createAIENpuToCertPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>> createAIECertPagesPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> createAIEXToStandardPass();
@@ -53,8 +55,11 @@ std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>> createAIELowerSetLockPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIELowerDmaChannelResetPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
+createAIELowerCoreResetPass();
+std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
+createAIEVerifyRuntimeRearmPass();
+std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIETransformBfpTypesPass();
-std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>> createAIELowerSetLockPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIETxnToControlPacketPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>

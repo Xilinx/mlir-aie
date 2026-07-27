@@ -42,6 +42,19 @@ LitConfigHelper.setup_standard_environment(
 if "MLIR_AIE_INSTALL_DIR" in os.environ:
     llvm_config.with_system_environment("MLIR_AIE_INSTALL_DIR")
 
+# HRX discovery runs during lit configuration, but dispatch runs in test
+# subprocesses. Keep both in the same provisioned runtime environment.
+llvm_config.with_system_environment(
+    [
+        "AIE_XCLBINUTIL",
+        "CMAKE_PREFIX_PATH",
+        "HRX_DIR",
+        "HRX_LIBHRX",
+        "LIBHRX_DIR",
+        "LD_LIBRARY_PATH",
+    ]
+)
+
 # Basic substitutions
 config.substitutions.append(("%PYTHON", config.python_executable))
 config.substitutions.append(("%extraAieCcFlags%", config.extraAieCcFlags))
@@ -191,6 +204,31 @@ lit_config.parallelism_groups["npu-xrt"] = 1
 # via PATHEXT) so the feature gate fires correctly on every OS.
 if shutil.which("aie-lsp-server", path=config.llvm_tools_dir) is not None:
     config.available_features.add("aie-lsp-server")
+
+# The bundled XRT-free hrx-xclbinutil (-DAIE_BUILD_HRXXCLBINUTIL=ON) installs a
+# `xclbinutil` into the AIE tools dir. Gate the packaging section-check test on
+# its presence so the test only runs when that tool was actually built (and so
+# the bare `xclbinutil` it invokes resolves to the bundled copy).
+if shutil.which("xclbinutil", path=config.aie_tools_dir) is not None:
+    config.available_features.add("hrxxclbinutil")
+
+# HRX Python runtime: gate the HRX-only Python tests (test/python/npu-hrx) on
+# libhrx being locatable, so they only run where the HRX backend can load. This
+# checks a runtime value (aie.utils.has_hrx), not just importability.
+if LitConfigHelper.python_expr_is_true(
+    config, config.python_executable, "__import__('aie.utils').utils.has_hrx"
+):
+    config.available_features.add("hrx_python_bindings")
+
+# The pure-HRX hardware job has no XRT probe. Its explicit NPU declaration
+# enables only HRX hardware tests; XRT tests remain unsupported.
+hrx_npu = os.environ.get("AIE_HRX_NPU")
+if hrx_npu:
+    if hrx_npu not in {"npu1", "npu2"}:
+        lit_config.fatal(f"AIE_HRX_NPU must be 'npu1' or 'npu2', got {hrx_npu!r}")
+    config.available_features.add(f"hrx_{hrx_npu}")
+    if hrx_npu == "npu2":
+        llvm_config.with_environment("NPU2", "1")
 
 if config.xrt_python_bindings and LitConfigHelper.can_import_python_module(
     config, config.python_executable, "pyxrt"

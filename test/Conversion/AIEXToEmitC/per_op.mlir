@@ -161,3 +161,54 @@ module {
     }
   }
 }
+
+// -----
+
+// An scf.if nested inside an scf.for: the converter recurses into both regions
+// and converts the innermost npu op; convert-scf-to-emitc later produces nested
+// emitc.for / emitc.if. A loop is present, so the header uses the runtime
+// __opcount.
+// CHECK-LABEL: emitc.func @generate_txn_main_seq_if_in_for
+// CHECK: for
+// CHECK: if %{{.*}} {
+// CHECK: call_opaque "aie_runtime::txn_append_write32"
+module {
+  aie.device(npu1_1col) {
+    aie.runtime_sequence @seq_if_in_for(%arg0: memref<8xi32>, %n: index, %cond: i1) {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      scf.for %i = %c0 to %n step %c1 {
+        scf.if %cond {
+          %addr = arith.constant 100 : i32
+          %val = arith.constant 7 : i32
+          aiex.npu.write32(%addr, %val) : i32, i32
+        }
+      }
+    }
+  }
+}
+
+// -----
+
+// scf.if with an else branch: each branch converts its own npu op to an
+// emitc.if / else with the write32 call in each arm.
+// CHECK-LABEL: emitc.func @generate_txn_main_seq_if_else
+// CHECK: if %{{.*}} {
+// CHECK: call_opaque "aie_runtime::txn_append_write32"
+// CHECK: } else {
+// CHECK: call_opaque "aie_runtime::txn_append_write32"
+module {
+  aie.device(npu1_1col) {
+    aie.runtime_sequence @seq_if_else(%arg0: memref<8xi32>, %cond: i1) {
+      scf.if %cond {
+        %a0 = arith.constant 100 : i32
+        %v0 = arith.constant 7 : i32
+        aiex.npu.write32(%a0, %v0) : i32, i32
+      } else {
+        %a1 = arith.constant 104 : i32
+        %v1 = arith.constant 9 : i32
+        aiex.npu.write32(%a1, %v1) : i32, i32
+      }
+    }
+  }
+}

@@ -29,6 +29,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass, field
 
@@ -191,6 +192,12 @@ class LitConfigHelper:
         if vitis_components is None:
             vitis_components = []
 
+        expected_npu = os.environ.get("AIE_EXPECTED_NPU")
+        if expected_npu and expected_npu not in LitConfigHelper.NPU_MODELS:
+            llvm_config.lit_config.fatal(
+                "AIE_EXPECTED_NPU must be 'npu1' or 'npu2', " f"got {expected_npu!r}"
+            )
+
         config = HardwareConfig()
         run_on_npu1 = "echo"
         run_on_npu2 = "echo"
@@ -199,6 +206,12 @@ class LitConfigHelper:
             logger.info("xrt not found")
             config.flags = ""
             config.substitutions["%xrt_flags"] = ""
+
+            if expected_npu:
+                llvm_config.lit_config.fatal(
+                    f"AIE_EXPECTED_NPU={expected_npu}, but XRT is unavailable"
+                )
+
             config.substitutions["%run_on_npu1%"] = run_on_npu1
             config.substitutions["%run_on_npu2%"] = run_on_npu2
             return config
@@ -237,13 +250,49 @@ class LitConfigHelper:
                     probe_env[key] = value
 
             print(f"Using xrt-smi: {xrtsmi}")
-            result = subprocess.run(
-                [xrtsmi, "examine"],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                env=probe_env,
-                timeout=10,
-            )
+            attempts = 3 if expected_npu else 1
+            result = None
+            for attempt in range(1, attempts + 1):
+                try:
+                    result = subprocess.run(
+                        [xrtsmi, "examine"],
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        env=probe_env,
+                        timeout=10,
+                    )
+                except subprocess.TimeoutExpired:
+                    if attempt == attempts:
+                        raise
+                else:
+                    if not expected_npu:
+                        break
+                    probe_output = result.stdout.decode(
+                        "utf-8", errors="ignore"
+                    ) + result.stderr.decode("utf-8", errors="ignore")
+                    if result.returncode == 0 and any(
+                        model in probe_output
+                        for model in LitConfigHelper.NPU_MODELS[expected_npu]
+                    ):
+                        break
+
+                if attempt < attempts:
+                    delay = attempt * 3
+                    logger.warning(
+                        "Expected %s was not visible to xrt-smi on attempt %d/%d; "
+                        "retrying in %ds",
+                        expected_npu.upper(),
+                        attempt,
+                        attempts,
+                        delay,
+                    )
+                    time.sleep(delay)
+
+            if result is None:
+                raise RuntimeError("xrt-smi did not complete")
+            if expected_npu and result.returncode != 0:
+                raise subprocess.CalledProcessError(result.returncode, result.args)
+
             output = (
                 result.stdout.decode("utf-8", errors="ignore")
                 + "\n"
@@ -315,6 +364,12 @@ class LitConfigHelper:
             logger.warning("Failed to run xrt-smi (not found)")
         except Exception as e:
             logger.warning("Failed to run xrt-smi: %s", e)
+
+        if expected_npu and f"ryzen_ai_{expected_npu}" not in config.features:
+            llvm_config.lit_config.fatal(
+                f"AIE_EXPECTED_NPU={expected_npu}, but the matching hardware "
+                "feature was not found!"
+            )
 
         config.substitutions["%run_on_npu1%"] = run_on_npu1
         config.substitutions["%run_on_npu2%"] = run_on_npu2
@@ -689,6 +744,40 @@ class LitConfigHelper:
                 stderr=subprocess.PIPE,
                 env=probe_env,
                 timeout=10,
+            )
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            return False
+        except Exception:
+            return False
+
+        return result.returncode == 0
+
+    @staticmethod
+    def python_expr_is_true(config_obj, python_executable: str, expr: str) -> bool:
+        """Return whether ``bool(eval(expr))`` is True in lit's test Python.
+
+        Probes the same environment lit uses for tests (so PATH/LD_LIBRARY_PATH
+        additions are honored) and exits 0 only when the expression is truthy.
+        Used to gate features on a runtime *value* (e.g. libhrx being locatable)
+        rather than mere module importability.
+        """
+        probe_env = os.environ.copy()
+        for key, value in config_obj.environment.items():
+            if key in LitConfigHelper.PATH_ENV_VARS:
+                probe_env[key] = LitConfigHelper._prepend_env_paths(
+                    probe_env.get(key, ""), value
+                )
+            else:
+                probe_env[key] = value
+
+        probe = f"import sys; sys.exit(0 if bool({expr}) else 1)"
+        try:
+            result = subprocess.run(
+                [python_executable, "-c", probe],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=probe_env,
+                timeout=30,
             )
         except (FileNotFoundError, subprocess.TimeoutExpired):
             return False

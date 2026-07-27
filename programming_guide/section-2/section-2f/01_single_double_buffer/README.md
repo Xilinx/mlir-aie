@@ -7,7 +7,7 @@
 
 # Single / Double Buffer
 
-The design in [single_buffer.py](./single_buffer.py) uses an ObjectFifo `of_in` to transfer the output of `my_worker` to `my_worker2` and an ObjectFifo `of_out` to transfer the output of `my_worker2` to external memory. `of_in` has a depth of `1` which describes a single buffer between the two Workers as shown in the figure below. 
+The design in [single_buffer.py](./single_buffer.py) uses an ObjectFifo `of_in` to transfer the output of `my_worker` to `my_worker2` and an ObjectFifo `of_out` to transfer the output of `my_worker2` to external memory. `of_in` has a depth of `1` which describes a single buffer between the two Workers as shown in the figure below.
 
 <img src="../../../assets/SingleBuffer.svg" height=200 width="500">
 
@@ -28,8 +28,8 @@ All examples available in the [programming_examples](../../../../programming_exa
 
 The design is wrapped in `@iron.jit`, so a single command JIT-compiles and runs it on the attached NPU:
 ```bash
-make run                              # builds + runs on the NPU (devicename={npu,npu2})
-make emit-mlir                        # writes the lowered MLIR to build/aie.mlir without touching the NPU
+python3 single_buffer.py
+python3 single_buffer.py --dev npu --emit-mlir > aie.mlir
 ```
 
 -----

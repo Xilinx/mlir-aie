@@ -1,0 +1,9 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// REQUIRES: ryzen_ai_npu1, peano
+//
+// Exercise each standalone single-column design with the same bf16 domain as the native-host tests.
+// RUN: %run_on_npu1% %python %S/vector_reduce_max_shared.py -d npu --dtype bf16
+// RUN: %run_on_npu1% %python %S/vector_reduce_max_chained.py -d npu --dtype bf16
+// RUN: %run_on_npu1% %python %S/vector_reduce_max_memtile.py -d npu --dtype bf16

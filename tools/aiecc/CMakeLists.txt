@@ -4,7 +4,7 @@
 llvm_map_components_to_libnames(llvm_libs support core irreader)
 
 # Build aiecc compiler driver
-add_llvm_executable(aiecc aiecc.cpp aiecc_aiesim.cpp)
+add_llvm_executable(aiecc aiecc.cpp)
 llvm_update_compile_flags(aiecc)
 
 # Refresh AIECCVersion.h each build so --version reflects the current SHA.

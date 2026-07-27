@@ -100,28 +100,32 @@ ComputeTile4 = Tile(0, 5)
 python3 aie2.py --dev npu --emit-mlir
 ```
 
-The Makefile also exposes `make emit-mlir` which redirects the output to `build/aie.mlir`.
+Redirect the output when you want to keep it for inspection:
+
+```shell
+python3 aie2.py --dev npu --emit-mlir > aie.mlir
+```
 
 ## <u>Exercises</u>
 
-1. Run `make` (the default target runs the design on the NPU) — you should see `PASS!`. Then run `make emit-mlir` and inspect `build/aie.mlir`.
+1. Run `python3 aie2.py` — the attached NPU is detected automatically, and you should see `PASS!`. Then run `python3 aie2.py --dev npu --emit-mlir > aie.mlir` and inspect `aie.mlir`.
 
-2. Run `make clean`. In the worker's body, replace `range_` with `range` (no underscore). What changes in `build/aie.mlir`?
+2. In the worker's body, replace `range_` with `range` (no underscore), regenerate `aie.mlir`, and inspect the result. What changes?
     <details markdown="1"><summary>Show answer</summary>
     The generated MLIR contains no `scf.for` loop; the same `memref.store` instructions are emitted many times in a row.
     </details>
 
-3. Run `make clean`. Introduce an error in the Python source — e.g., misspell `sequence` as `sequenc`. What message do you see?
+3. Introduce an error in the Python source — e.g., misspell `sequence` as `sequenc` — and rerun the script. What message do you see?
     <details markdown="1"><summary>Show answer</summary>
     A Python `AttributeError`, raised before any MLIR is produced.
     </details>
 
-4. Run `make clean`. Restore the spelling, then change the Worker's tile to `Tile(-1, 3)` (an invalid location). What message do you see?
+4. Restore the spelling, then change the Worker's tile to `Tile(-1, 3)` (an invalid location) and rerun the script. What message do you see?
     <details markdown="1"><summary>Show answer</summary>
     A placement / tile-coordinate constraint error.
     </details>
 
-5. Run `make clean`. Restore the Worker tile to `(0, 2)`. Remove the `while_true=False` argument and run `make emit-mlir`. What changed in the MLIR?
+5. Restore the Worker tile to `(0, 2)`. Remove the `while_true=False` argument, regenerate `aie.mlir`, and inspect it. What changed in the MLIR?
     <details markdown="1"><summary>Show answer</summary>
     The core body is now nested inside an `scf.for` that bounds to `sys.maxsize` — the simulated while-true wrapper.
     </details>

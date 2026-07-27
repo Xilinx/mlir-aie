@@ -69,3 +69,14 @@ to *both* the static and dynamic sequences, keeping them structurally identical
 apart from the runtime argument. Remember the `aie.dma_bd` length is the product
 of the lowest three dimension sizes — the highest dimension is the BD repeat
 count, not part of the transfer length.
+
+## Adding a conditional (scf.if)
+
+A rolled `scf.if` over a runtime `i1` is proven against TWO static oracles: the
+taken branch (the transfer, through the static allocator) and the not-taken
+branch (an empty sequence). `rolled_if.mlir` compiles all three and the
+comparator (`Inputs/rolled_if_compare.cpp`) asserts
+`generate_txn_*_rolled_if(true)` equals the taken oracle and
+`...rolled_if(false)` the not-taken one. The byte-identical guarantee holds only
+when the runtime predicate equals the baked constant AND the pool's pop order
+matches the static allocation, so keep these single-BD.

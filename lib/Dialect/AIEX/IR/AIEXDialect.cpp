@@ -8,6 +8,7 @@
 
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Utils/BdLowering.h"
+#include "aie/Dialect/AIEX/Utils/DmaDecomposition.h"
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -671,9 +672,22 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
         isLinearTransferWithoutTransformation() ||
         (targetModel.isShimNOCTile(col, row) &&
          AIEX::isContiguousTransfer(inputSizes, inputStrides));
-    if (failed(verifyStridesWraps(*this, buffer, col, row, inputSizes,
-                                  inputStrides, hardwareSizes, hardwareStrides,
-                                  skipTransformationChecks))) {
+    // An oversized non-contiguous pattern that aie-decompose-large-dma-bd can
+    // split into hardware-legal sub-transfers is also allowed to verify: the
+    // pass rewrites it before BD lowering. Truly undecomposable patterns (e.g.
+    // oversized strides) still fail below. isDecomposableNdDmaPattern
+    // suppresses its own diagnostics, so no stray error is emitted for the
+    // accepted case.
+    llvm::SmallVector<int64_t, 4> inputOffsets = llvm::map_to_vector(
+        llvm::reverse(getMixedOffsets()),
+        [](OpFoldResult s) { return getConstantIntValue(s).value(); });
+    if (AIEX::isDecomposableNdDmaPattern(getOperation(), buffer, targetModel,
+                                         col, row, inputOffsets, inputSizes,
+                                         inputStrides)) {
+      // ok: will be decomposed before lowering
+    } else if (failed(verifyStridesWraps(
+                   *this, buffer, col, row, inputSizes, inputStrides,
+                   hardwareSizes, hardwareStrides, skipTransformationChecks))) {
       return failure();
     }
   }
@@ -1315,6 +1329,38 @@ LogicalResult AIEX::DmaChannelResetOp::verify() {
                          << " out of range for this tile and direction (tile "
                             "has "
                          << numChannels << " DMA channel(s) in this direction)";
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// CoreResetOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult AIEX::CoreResetOp::verify() {
+  const auto &targetModel = AIE::getTargetModel(*this);
+
+  // The op lowers to an NPU control-packet write; the runtime sequence has no
+  // meaning on AIE1. Reject it explicitly, as SetLockOp does.
+  if (targetModel.getTargetArch() == AIE::AIEArch::AIE1)
+    return emitOpError("aiex.core_reset is not supported on AIE1.");
+
+  auto tile = dyn_cast_or_null<AIE::TileOp>(getTile().getDefiningOp());
+  if (!tile)
+    return emitOpError() << "tile operand must be produced by an aie.tile op";
+  int col = tile.getCol();
+  int row = tile.getRow();
+  // The tile coordinates are bounded by aie.tile's own verifier, so this op
+  // does not re-check them for range.
+
+  // Only core tiles have a CORE_CONTROL register with a reset bit. Mem and shim
+  // tiles have no compute core, so there is nothing valid to lower to. This
+  // matches aie-rt's XAie_CoreReset, which errors on any tile that is not an
+  // AIE (core) tile.
+  if (!targetModel.isCoreTile(col, row))
+    return emitOpError() << "tile (" << col << ", " << row
+                         << ") has no core to reset (only core tiles have a "
+                            "CORE_CONTROL register)";
 
   return success();
 }

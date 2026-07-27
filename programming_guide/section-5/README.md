@@ -13,10 +13,9 @@ The [programming examples](../../programming_examples) are a number of sample de
 
 #### Passthrough
 
-The [passthrough](../../programming_examples/basic/passthrough_kernel/) example is the simplest "getting started" example.  It copies 4096 bytes from the input to output using vectorized loads and stores.  The design example shows a typical project organization which is easy to reproduce with other examples.  There are only really 3 important files here.
+The [passthrough](../../programming_examples/basic/passthrough_kernel/) example is the simplest "getting started" example.  It copies 4096 bytes from the input to output using vectorized loads and stores.  The design example shows a typical project organization which is easy to reproduce with other examples.  There are only two important source files here.
 1. [`passthrough_kernel.py`](../../programming_examples/basic/passthrough_kernel/passthrough_kernel.py) The IRON structural design plus the host-side test driver. Decorated with `@iron.jit` so the first call compiles the design and runs it on the NPU, then verifies the result against the input. Also shows a simple use of the ObjectFifos described in [section 2](../section-2).
 1. [`passThrough.cc`](../../aie_kernels/generic/passThrough.cc)  This is a C++ file which performs the vectorized copy operation.
-1. [`Makefile`](../../programming_examples/basic/passthrough_kernel/Makefile) A Makefile documenting (and implementing) the build process for the various artifacts.
 
 The [passthrough DMAs](../../programming_examples/basic/passthrough_dmas/) example shows an alternate method of performing a copy without involving the cores, and instead performing a loopback.
 
@@ -52,7 +51,7 @@ The [passthrough DMAs](../../programming_examples/basic/passthrough_dmas/) examp
 
 1. Can you modify the [passthrough](../../programming_examples/basic/passthrough_kernel/) design to copy more (or less) data?
     <details markdown="1"><summary>Show answer</summary>
-    Check the `Makefile` — `in1_size` and `out_size`.
+    Pass `--in1_size` to `passthrough_kernel.py`; the output size follows the input size.
     </details>
 
 1. Take a look at the host driver in our [Vector Exp](../../programming_examples/basic/vector_exp/) example [vector_exp.py](../../programming_examples/basic/vector_exp/vector_exp.py). Take note of the data type and the size of the test vector. What do you notice?
