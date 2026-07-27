@@ -26,17 +26,23 @@ def test_hsa_sync_timeout_parsing(monkeypatch, value, expected):
 
 def test_hsa_context_get_is_thread_safe(monkeypatch):
     """Concurrent first-touch builds exactly one HSAContext."""
+    import time
     import threading
     from aie.utils.hostruntime.hsaruntime import context as ctx_mod
 
     builds = []
 
-    class _Fake:
-        def __init__(self):
-            builds.append(1)
+    # A small delay inside the fake __init__ widens the check-then-set window so
+    # an unlocked get() would reliably build more than once; with the lock in
+    # place exactly one build happens. Without the delay the fake __init__
+    # finishes within a single GIL time-slice and the race is almost never hit,
+    # making the test a poor negative control.
+    def _fake_init(self):
+        time.sleep(0.01)
+        builds.append(1)
 
     monkeypatch.setattr(ctx_mod.HSAContext, "_instance", None, raising=False)
-    monkeypatch.setattr(ctx_mod.HSAContext, "__init__", lambda self: builds.append(1))
+    monkeypatch.setattr(ctx_mod.HSAContext, "__init__", _fake_init)
 
     results = []
     barrier = threading.Barrier(8)
