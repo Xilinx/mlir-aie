@@ -43,9 +43,7 @@ def passthrough_dmas(
     of_out = of_in.cons().forward()
 
     rt = Runtime()
-    with rt.sequence(vector_ty, vector_ty, vector_ty) as seq_args:
-        assert isinstance(seq_args, tuple)
-        a, _, c = seq_args
+    with rt.sequence(vector_ty, vector_ty, vector_ty) as (a, _, c):
         rt.fill(of_in.prod(), a, tile=AnyShimTile)
         rt.drain(of_out.cons(), c, tile=AnyShimTile, wait=True)
 

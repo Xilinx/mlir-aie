@@ -223,9 +223,7 @@ def vector_vector_add(
         rt.add_lock(lk)
     rt.add_tile_dma(compute_dma)
 
-    with rt.sequence(tensor_ty, tensor_ty) as seq_args:
-        assert isinstance(seq_args, tuple)
-        a_seq, c_seq = seq_args
+    with rt.sequence(tensor_ty, tensor_ty) as (a_seq, c_seq):
         rt.start(worker)
         rt.inline_ops(emit_seq, [a_seq, c_seq])
 

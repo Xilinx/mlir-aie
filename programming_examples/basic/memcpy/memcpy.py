@@ -91,9 +91,7 @@ def memcpy(
     taps = TensorTiler2D.simple_tiler((1, size), (1, chunk))
 
     rt = Runtime()
-    with rt.sequence(transfer_type, transfer_type) as seq_args:
-        assert isinstance(seq_args, tuple)
-        a, b = seq_args
+    with rt.sequence(transfer_type, transfer_type) as (a, b):
         if my_workers:
             rt.start(*my_workers)
         for i in range(num_columns):

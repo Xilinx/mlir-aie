@@ -83,9 +83,7 @@ def _transpose_dma(
     of_in = ObjectFifo(tensor_ty)
     of_out = of_in.cons().forward(AnyComputeTile)
     rt = Runtime()
-    with rt.sequence(tensor_ty, tensor_ty) as seq_args:
-        assert isinstance(seq_args, tuple)
-        a, c = seq_args
+    with rt.sequence(tensor_ty, tensor_ty) as (a, c):
         rt.fill(of_in.prod(), a, tap_in)
         rt.drain(of_out.cons(), c, wait=True)
     device = iron.get_current_device()
@@ -113,9 +111,7 @@ def _transpose_dma_packet(
     of_in = ObjectFifo(tensor_ty, name="in")
     of_out = of_in.cons().forward()
     rt = Runtime()
-    with rt.sequence(tensor_ty, tensor_ty) as seq_args:
-        assert isinstance(seq_args, tuple)
-        a, c = seq_args
+    with rt.sequence(tensor_ty, tensor_ty) as (a, c):
         rt.fill(of_in.prod(), a, tap_in)
         rt.drain(of_out.cons(), c, wait=True)
     device = iron.get_current_device()
@@ -164,9 +160,7 @@ def _transpose_shuffle(
     worker = Worker(core_fn, fn_args=[in_fifo.cons(), out_fifo.prod(), kernel_func])
 
     rt = Runtime()
-    with rt.sequence(tile_ty, tile_ty) as seq_args:
-        assert isinstance(seq_args, tuple)
-        a, c = seq_args
+    with rt.sequence(tile_ty, tile_ty) as (a, c):
         rt.start(worker)
         rt.fill(in_fifo.prod(), a)
         rt.drain(out_fifo.cons(), c, wait=True)
@@ -265,9 +259,7 @@ def _transpose_combined(
     )
 
     rt = Runtime()
-    with rt.sequence(matrix_ty, matrix_ty) as seq_args:
-        assert isinstance(seq_args, tuple)
-        a, c = seq_args
+    with rt.sequence(matrix_ty, matrix_ty) as (a, c):
         rt.start(worker)
         rt.fill(in_L3L2_fifo.prod(), a, tap_in_L3L2)
         rt.drain(out_fifo.cons(), c, tap_out_L1L3, wait=True)

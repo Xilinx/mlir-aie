@@ -434,9 +434,7 @@ def packet_switch(
     for td in (c02_dma, c03_dma, mem_dma):
         rt.add_tile_dma(td)
 
-    with rt.sequence(vector_ty, vector_ty) as seq_args:
-        assert isinstance(seq_args, tuple)
-        a_seq, b_seq = seq_args
+    with rt.sequence(vector_ty, vector_ty) as (a_seq, b_seq):
         rt.start(c02_worker, c03_worker)
         rt.inline_ops(emit_seq, [a_seq, b_seq])
 

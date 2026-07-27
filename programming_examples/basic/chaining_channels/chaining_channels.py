@@ -282,9 +282,7 @@ def chaining_channels(
     rt.add_tile_dma(memtile_dma)
     rt.add_tile_dma(compute_dma)
 
-    with rt.sequence(vector_ty, vector_ty_read) as seq_args:
-        assert isinstance(seq_args, tuple)
-        a, b = seq_args
+    with rt.sequence(vector_ty, vector_ty_read) as (a, b):
         if trace_size > 0:
             rt.enable_trace(
                 trace_size,

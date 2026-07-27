@@ -61,9 +61,7 @@ def passthrough_pykernel(a_in: In, b_out: Out):
     my_worker = Worker(core_fn, [of_in.cons(), of_out.prod(), passthrough_fn])
 
     rt = Runtime()
-    with rt.sequence(_VECTOR_TY, _VECTOR_TY) as seq_args:
-        assert isinstance(seq_args, tuple)
-        a, b = seq_args
+    with rt.sequence(_VECTOR_TY, _VECTOR_TY) as (a, b):
         rt.start(my_worker)
         rt.fill(of_in.prod(), a)
         rt.drain(of_out.cons(), b, wait=True)

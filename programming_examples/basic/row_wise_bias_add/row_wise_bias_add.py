@@ -86,9 +86,7 @@ def row_wise_bias_add(
     bias_tap = TensorTiler2D.group_tiler((1, N), (1, n), (1, N // n))[0]
 
     rt = Runtime()
-    with rt.sequence(in_ty, bias_full_ty, in_ty) as seq_args:
-        assert isinstance(seq_args, tuple)
-        a, b, c = seq_args
+    with rt.sequence(in_ty, bias_full_ty, in_ty) as (a, b, c):
         rt.start(worker)
         rt.fill(in_fifo.prod(), a, tap)
         rt.fill(bias_fifo.prod(), b, bias_tap)

@@ -237,9 +237,7 @@ def custom_dma_design(dev):
         set_lock_value(scatter_obj._mem_cons_lock, 3)
 
     rt = Runtime()
-    with rt.sequence(out_type, out_type, out_type) as seq_args:
-        assert isinstance(seq_args, tuple)
-        _, b_out, _ = seq_args
+    with rt.sequence(out_type, out_type, out_type) as (_, b_out, _):
         rt.start(worker)
         tg = rt.task_group()
         rt.drain(of_out.cons(), b_out, wait=True, task_group=tg)

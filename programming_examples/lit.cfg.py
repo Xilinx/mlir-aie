@@ -16,9 +16,8 @@ from aie_lit_utils import LitConfigHelper  # pyright: ignore[reportMissingImport
 from lit.llvm import llvm_config  # pyright: ignore[reportMissingImports]
 
 # ``config`` and ``lit_config`` are injected into this file's namespace by the
-# lit test runner at execution time; bind them for the type checker only so it
-# does not flag every reference as undefined.  Guarded by TYPE_CHECKING so the
-# real runtime-injected globals are used unchanged.
+# lit runner at execution time; declare them under TYPE_CHECKING only so the
+# type checker doesn't flag every reference as undefined.
 if TYPE_CHECKING:
     config: Any = None
     lit_config: Any = None

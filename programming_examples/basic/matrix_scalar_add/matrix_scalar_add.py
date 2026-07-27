@@ -65,9 +65,7 @@ def matrix_scalar_add(
     tap = TensorTiler2D.simple_tiler(matrix_shape, tile_shape)[0]
 
     rt = Runtime()
-    with rt.sequence(matrix_ty, matrix_ty) as seq_args:
-        assert isinstance(seq_args, tuple)
-        in_tensor, out_tensor = seq_args
+    with rt.sequence(matrix_ty, matrix_ty) as (in_tensor, out_tensor):
         rt.start(worker)
         rt.fill(of_in.prod(), in_tensor, tap)
         rt.drain(of_out.cons(), out_tensor, tap, wait=True)

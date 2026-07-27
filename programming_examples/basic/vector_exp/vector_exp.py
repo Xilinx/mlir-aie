@@ -63,9 +63,7 @@ def vector_exp(
     ]
 
     rt = Runtime()
-    with rt.sequence(tensor_ty, tensor_ty) as seq_args:
-        assert isinstance(seq_args, tuple)
-        a_in, c_out = seq_args
+    with rt.sequence(tensor_ty, tensor_ty) as (a_in, c_out):
         rt.start(*workers)
         rt.fill(A_fifo.prod(), a_in)
         rt.drain(C_fifo.cons(), c_out, wait=True)

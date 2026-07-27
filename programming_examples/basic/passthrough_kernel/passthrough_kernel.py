@@ -60,9 +60,7 @@ def my_passthrough_kernel(
     )
 
     rt = Runtime()
-    with rt.sequence(vector_type, vector_type) as seq_args:
-        assert isinstance(seq_args, tuple)
-        a_in, b_out = seq_args
+    with rt.sequence(vector_type, vector_type) as (a_in, b_out):
         if trace_config:
             rt.enable_trace(trace_config.trace_size, workers=[worker])
         rt.start(worker)

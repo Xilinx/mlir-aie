@@ -182,9 +182,7 @@ def vector_reduce_max(
             )
 
     rt = Runtime()
-    with rt.sequence(in_ty, out_ty) as seq_args:
-        assert isinstance(seq_args, tuple)
-        a, c = seq_args
+    with rt.sequence(in_ty, out_ty) as (a, c):
         if trace_size > 0:
             rt.enable_trace(trace_size)
         rt.start(*workers)

@@ -66,10 +66,9 @@ def tile_group(
     worker = Worker(access_order, [of_out.prod()])
 
     rt = Runtime()
-    with rt.sequence(flattened_tensor) as seq_arg:
-        assert not isinstance(seq_arg, tuple)
+    with rt.sequence(flattened_tensor) as out_tensor:
         rt.start(worker)
-        rt.drain(of_out.cons(), seq_arg, tap, wait=True)
+        rt.drain(of_out.cons(), out_tensor, tap, wait=True)
 
     device = iron.get_current_device()
     assert device is not None

@@ -86,9 +86,7 @@ def aie_trace(
     )
 
     rt = Runtime()
-    with rt.sequence(tensor_ty, scalar_ty, tensor_ty) as seq_args:
-        assert isinstance(seq_args, tuple)
-        a_in, f_in, c_out = seq_args
+    with rt.sequence(tensor_ty, scalar_ty, tensor_ty) as (a_in, f_in, c_out):
         # Custom per-tile-class event lists, forwarded by IRON's Runtime
         # to the same configure_trace() the dialect-level example used.
         rt.enable_trace(

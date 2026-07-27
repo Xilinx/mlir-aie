@@ -324,9 +324,7 @@ def manual_switchbox(a_in: In, c_out: Out, *, col: CompileTime[int] = 0):
         )
         npu_sync(column=col, row=0, direction=1, channel=0, column_num=1, row_num=1)
 
-    with rt.sequence(vec_ty, vec_ty) as seq_args:
-        assert isinstance(seq_args, tuple)
-        a, c = seq_args
+    with rt.sequence(vec_ty, vec_ty) as (a, c):
         rt.start(worker)
         rt.inline_ops(host_bd_writes, [a, c])
 

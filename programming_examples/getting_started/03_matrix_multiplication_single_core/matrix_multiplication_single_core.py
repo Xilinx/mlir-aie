@@ -104,7 +104,7 @@ def matrix_multiplication_single_core(
         strides=[r * n, t, r * t, 1],
     )
     fifo_C_L2L3 = fifo_C_L1L2.cons().forward(
-        dims_to_stream=tap_C_L1L2.transformation_dims,  # pyright: ignore[reportArgumentType]
+        dims_to_stream=list(tap_C_L1L2.transformation_dims),
         name="C_L2L3",
     )
 

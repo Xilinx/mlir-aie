@@ -165,9 +165,7 @@ def vector_reduce_max(
     taps = TensorTiler2D.simple_tiler((1, in_num_elements), (1, chunk))
 
     rt = Runtime()
-    with rt.sequence(in_tensor_ty, out_tensor_ty) as seq_args:
-        assert isinstance(seq_args, tuple)
-        a, c = seq_args
+    with rt.sequence(in_tensor_ty, out_tensor_ty) as (a, c):
         if enable_trace:
             rt.enable_trace(trace_size)
         rt.start(*my_workers)

@@ -63,11 +63,10 @@ def per_tile(
     worker = Worker(access_order, [of_out.prod(), access_counter])
 
     rt = Runtime()
-    with rt.sequence(flattened_tensor) as seq_arg:
-        assert not isinstance(seq_arg, tuple)
+    with rt.sequence(flattened_tensor) as out_tensor:
         rt.start(worker)
         for t in tiler:
-            rt.drain(of_out.cons(), seq_arg, t, wait=True)
+            rt.drain(of_out.cons(), out_tensor, t, wait=True)
 
     device = iron.get_current_device()
     assert device is not None

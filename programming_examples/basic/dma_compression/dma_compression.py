@@ -294,9 +294,7 @@ def _build_regdump():
     worker = Worker(regdump_core, [of_out.prod(), dump_fn], tile=compute_tile)
 
     rt = Runtime()
-    with rt.sequence(vec_ty, vec_ty) as seq_args:
-        assert isinstance(seq_args, tuple)
-        a_in, c_out = seq_args
+    with rt.sequence(vec_ty, vec_ty) as (a_in, c_out):
 
         def enable_processor_bus():
             npu_maskwrite32(
@@ -385,9 +383,7 @@ def dma_compression(
         )
 
         rt = Runtime()
-        with rt.sequence(vec_ty, vec_ty) as seq_args:
-            assert isinstance(seq_args, tuple)
-            a_in, c_out = seq_args
+        with rt.sequence(vec_ty, vec_ty) as (a_in, c_out):
 
             def configure_compression_roundtrip():
                 if engage_compress:
@@ -490,9 +486,7 @@ def dma_compression(
     base_config = config in ("base", "memtile_base")
 
     rt = Runtime()
-    with rt.sequence(vec_ty, vec_ty) as seq_args:
-        assert isinstance(seq_args, tuple)
-        a_in, c_out = seq_args
+    with rt.sequence(vec_ty, vec_ty) as (a_in, c_out):
         if is_host_compression and not base_config:
 
             def configure_compression_host():
