@@ -387,6 +387,8 @@ class CompilableDesign:
                     if not func._compiled:
                         compile_external_kernel(func, kernel_dir, target_arch)
 
+                from aie.utils import npu_runtime_folds_ddr_addr_offset
+
                 compile_mlir_module(
                     mlir_module=mlir_module,
                     insts_path=inst_path,
@@ -396,6 +398,7 @@ class CompilableDesign:
                     work_dir=kernel_dir,
                     use_chess=use_chess,
                     options=list(self.aiecc_flags) if self.aiecc_flags else None,
+                    fold_ddr_addr_offset=npu_runtime_folds_ddr_addr_offset(),
                 )
 
                 # aiecc may exit 0 even when xclbin generation fails silently

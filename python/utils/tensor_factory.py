@@ -110,6 +110,28 @@ if _NPU_RUNTIME == "hrx" and not _probe_hrx():
 if _NPU_RUNTIME == "auto":
     _NPU_RUNTIME = "xrt" if _probe_xrt() else "cpu"
 
+
+def npu_runtime_kind() -> str:
+    """Active host-runtime backend after 'auto' resolution: 'xrt'|'hrx'|'cpu'.
+
+    Used by the JIT compile path to pick the DDR-patch ABI: the HRX backend
+    consumes a producer-independent (unfolded) insts.bin, XRT the folded one.
+    """
+    return _NPU_RUNTIME
+
+
+def npu_runtime_folds_ddr_addr_offset() -> bool:
+    """Whether the active backend expects the DDR aperture offset folded in.
+
+    True for the XRT / instruction-buffer firmware ABI (and the CPU default);
+    False for HRX, whose runtime adds the aperture offset for every arg, so the
+    compiler must emit raw offsets (aiecc --fold-ddr-addr-offset=false). The JIT
+    cache keys on this fold state so the two backends never share a compiled
+    insts.bin (see compile/jit/_hash.py).
+    """
+    return _NPU_RUNTIME != "hrx"
+
+
 if _NPU_RUNTIME == "hrx":
     from .hostruntime.hrxruntime.tensor import HRXTensor
 

@@ -1131,11 +1131,15 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
         if (mlir::failed(getControlPacketDmaPipeline(&context)->run(*clone)))
           return mlir::failure();
         // The control-packet DMA sequence only ever pairs with the xclbin /
-        // instruction-buffer runtime (full ELF is rejected up front), which
-        // folds the DDR-aperture offset into the TXN.
+        // instruction-buffer runtime (full ELF is rejected up front). It folds
+        // the DDR-aperture offset into the TXN for the XRT firmware ABI, but
+        // not for the producer-independent HRX ABI
+        // (--fold-ddr-addr-offset=false), where the runtime adds the aperture
+        // offset for all args itself.
         return xilinx::AIE::AIETranslateNpuToBinary(
             clone.get(), words, item.key, "",
-            /*locmap=*/nullptr, /*foldDDRAddrOffset=*/true);
+            /*locmap=*/nullptr,
+            /*foldDDRAddrOffset=*/foldDDRAddrOffsetOpt.getValue());
       }));
 
   // Partial ELF containing the DMA sequence and the control packet data;
@@ -1369,8 +1373,9 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
   //   * npuProgramFullElf (not folded, built just below the full-ELF section)
   //     drives the combined full ELF, whose runtime assigns host-buffer
   //     addresses itself.
-  auto &npuProgram = buildNpuProgramSubgraph(perSeq, "npu_program_{0}.bin",
-                                             /*foldDDRAddrOffset=*/true);
+  auto &npuProgram = buildNpuProgramSubgraph(
+      perSeq, "npu_program_{0}.bin",
+      /*foldDDRAddrOffset=*/foldDDRAddrOffsetOpt.getValue());
 
   auto &npuInsts = npuProgram.map<std::vector<char>>(
       npuInstsName.getValue(), [](const NpuProgram &p) { return p.insts; });
