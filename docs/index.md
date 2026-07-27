@@ -41,6 +41,12 @@ with full control over tile placement, data movement, and vectorized compute.
 <span class="iron-card-desc">Five short exercises — a working NPU design in minutes.</span>
 </a>
 
+<a class="iron-card" href="skills/agentic_programming/" markdown>
+<span class="iron-card-icon">🤖</span>
+<span class="iron-card-title">Agentic Programming</span>
+<span class="iron-card-desc">Agent Skills that teach a coding agent to port and optimize IRON designs.</span>
+</a>
+
 </div>
 
 ---
