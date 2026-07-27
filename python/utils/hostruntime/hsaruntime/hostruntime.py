@@ -135,10 +135,16 @@ class HSAHostRuntime(HostRuntime):
         Returns (ka_handle, ka_va, ka_size, n)."""
         n = len(kept)
         ka_handle, ka_va, ka_size = self._ctx.vmem_alloc(2 * n * 8)
-        ka = (ctypes.c_uint64 * (2 * n)).from_address(ka_va)
-        for i, t in enumerate(kept):
-            ka[i] = t.buffer_object()
-            ka[n + i] = t.nbytes  # logical size (matches dispatch.cc)
+        # Free the buffer if filling raises, so the allocation isn't leaked
+        # before a caller's try/finally takes ownership of the returned handle.
+        try:
+            ka = (ctypes.c_uint64 * (2 * n)).from_address(ka_va)
+            for i, t in enumerate(kept):
+                ka[i] = t.buffer_object()
+                ka[n + i] = t.nbytes  # logical size (matches dispatch.cc)
+        except BaseException:
+            self._ctx.vmem_free(ka_handle, ka_va, ka_size)
+            raise
         return ka_handle, ka_va, ka_size, n
 
     def _validate_args(self, args):
