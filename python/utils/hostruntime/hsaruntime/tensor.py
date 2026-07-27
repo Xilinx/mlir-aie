@@ -16,7 +16,7 @@ import numpy as np
 
 from ..tensor_class import Tensor
 from aie.helpers.util import np_ndarray_type_get_shape
-from . import HSAContext
+from .context import HSAContext
 
 
 class HSATensor(Tensor):
