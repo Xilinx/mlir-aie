@@ -43,7 +43,7 @@ class TaskGroup:
             if active is None:
                 raise RuntimeError(
                     "TaskGroup() must be constructed within the function passed "
-                    "to Runtime.sequence()."
+                    "to Runtime(seq_fn, fn_args)."
                 )
             id = next(active._runtime._task_group_index)
         self._group_id = id

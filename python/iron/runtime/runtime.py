@@ -211,7 +211,7 @@ class Runtime(Resolvable):
         self._fn_args = list(fn_args) if fn_args is not None else []
         # A concrete int entry is a folded constant; a type/generic-alias entry
         # is a runtime input; anything else passes through as an object fn_arg.
-        self._const_inputs: list[int | None] = [
+        self._const_inputs: list[int | np.integer | None] = [
             v if isinstance(v, (int, np.integer)) and not isinstance(v, bool) else None
             for v in self._fn_args
         ]

@@ -32,13 +32,13 @@ def active_sequence() -> "ActiveSequence":
     Raises:
         RuntimeError: If called outside a runtime sequence body (e.g. a
             ``fill``/``drain`` verb invoked outside the function passed to
-            ``Runtime(seq, fn_args)``).
+            ``Runtime(seq_fn, fn_args)``).
     """
     seq = _active_sequence.get()
     if seq is None:
         raise RuntimeError(
             "No active runtime sequence: fill()/drain() and TaskGroup() must be "
-            "called from within the function passed to Runtime.sequence()."
+            "called from within the function passed to Runtime(seq_fn, fn_args)."
         )
     return seq
 
