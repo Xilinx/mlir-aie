@@ -4,8 +4,8 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 
-# RUN: %run_on_npu2% %pytest %s
-# REQUIRES: hrx_python_bindings
+# RUN: env NPU_RUNTIME=hrx %pytest %s
+# REQUIRES: hrx_python_bindings, hrx_npu2
 
 """Multi-process HRX dispatch (review comment r3623840141).
 

@@ -45,15 +45,20 @@ env:
 jobs:
 
   build-and-test-from-source:
-    name: Run Tests and Examples on Ryzen AI (Built from Source)
+    name: Run Tests and Examples on Ryzen AI (Built from Source) (${{ matrix.runner_type }})
     # The goal for this job is to run the full test suite, including programming guide and examples, on a freshly built-from-source MLIR-AIE.
     # This also exercises the build-mlir-aie-from-wheels.sh script, which is the most common developer-facing way to rebuild MLIR-AIE from source.
     runs-on: ${{ matrix.runner_type }}
     strategy:
       fail-fast: false
       matrix:
-        runner_type: [ aie2-4col, aie2p-8col ]
+        include:
+          - runner_type: aie2-4col
+            expected_npu: npu1
+          - runner_type: aie2p-8col
+            expected_npu: npu2
     env:
+      AIE_EXPECTED_NPU: ${{ matrix.expected_npu }}
       NPU_CACHE_HOME: ${{ github.workspace }}/iron-cache-${{ matrix.runner_type }}-${{ github.run_id }}
       PIP_CACHE_DIR: ${{ github.workspace }}/.pip-cache-${{ matrix.runner_type }}-${{ github.run_id }}
     steps:
@@ -241,7 +246,6 @@ jobs:
           fi
 
           popd
-
       - name: Cleanup NPU_CACHE_HOME
         if: always()
         run: |
@@ -332,7 +336,7 @@ jobs:
           #         (run_chain) backend test, cached/uncached runtime behavior,
           #         and the multi-process dispatch/isolation test -- self-building
           #         via @iron.jit / @compileconfig, gated on the
-          #         hrx_python_bindings lit feature and run_on_npu2;
+          #         hrx_python_bindings and hrx_npu2 lit features;
           #       * host-side (test_hrx_runtime_selection): the runtime-selection
           #         contract + lazy-init thread-safety tests, which need no NPU
           #         but are exercised here in the real HRX-present / XRT-absent
@@ -342,7 +346,8 @@ jobs:
           echo "===== lit: HRX python tests (npu-hrx + selection) ====="
           export AIE_XCLBINUTIL="$PWD/install/bin/xclbinutil"
           pushd build
-          LIT_FILTER='npu-hrx|test_hrx_runtime_selection' ninja check-aie
+          AIE_HRX_NPU=npu2 \
+            LIT_FILTER='npu-hrx|test_hrx_runtime_selection' ninja check-aie
           popd
 
           # 2) end-to-end on hardware: package with the bundled tool (NPU_RUNTIME=hrx)

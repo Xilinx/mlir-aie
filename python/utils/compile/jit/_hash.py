@@ -181,13 +181,19 @@ def _compute_artifact_hash(
                 peano_mtime = "absent"
 
         try:
-            import shutil as _shutil
+            from aie.utils import config as _config
 
-            _aiecc_path = _shutil.which("aiecc")
-            aiecc_mtime = (
-                str(Path(_aiecc_path).stat().st_mtime) if _aiecc_path else "absent"
-            )
-        except (FileNotFoundError, OSError) as exc:
+            # Resolve aiecc the way the compile does.  Probing PATH instead
+            # misses the bundled bin/aiecc that _run_aiecc actually invokes,
+            # and then every aiecc aliases onto the constant below.
+            aiecc_mtime = str(Path(_config.aiecc_path()).stat().st_mtime)
+        except (
+            ImportError,
+            AttributeError,
+            FileNotFoundError,
+            OSError,
+            RuntimeError,
+        ) as exc:
             logger.warning("_compute_artifact_hash: aiecc absent (%s)", exc)
             aiecc_mtime = "absent"
 

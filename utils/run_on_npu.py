@@ -17,7 +17,6 @@ TAIL_LINES = 200
 
 
 # Logging and diagnostics helpers
-# TODO: update or disable for a future Windows NPU runner.
 def log(message: str) -> None:
     print(f"[run_on_npu.py] {message}", file=sys.stderr, flush=True)
 
@@ -37,9 +36,28 @@ def find_xrt_smi(xrt_dir: str) -> str | None:
     if xrt_smi is not None:
         return xrt_smi
 
-    candidate = os.path.join(os.environ.get("XILINX_XRT") or xrt_dir, "bin", "xrt-smi")
-    if os.path.isfile(candidate):
-        return candidate
+    xrt_root = os.environ.get("XILINX_XRT") or xrt_dir
+    candidates = [
+        os.path.join(xrt_root, "xrt-smi"),
+        os.path.join(xrt_root, "bin", "xrt-smi"),
+    ]
+    if os.name == "nt":
+        candidates.extend(
+            [
+                os.path.join(xrt_root, "xrt-smi.exe"),
+                os.path.join(xrt_root, "bin", "xrt-smi.exe"),
+                os.path.join(
+                    os.environ.get("SystemRoot", r"C:\Windows"),
+                    "System32",
+                    "AMD",
+                    "xrt-smi.exe",
+                ),
+            ]
+        )
+
+    for candidate in candidates:
+        if os.path.isfile(candidate):
+            return candidate
 
     return None
 
@@ -47,15 +65,16 @@ def find_xrt_smi(xrt_dir: str) -> str | None:
 def emit_failure_diagnostics(xrt_dir: str, attempt: int) -> None:
     log(f"Device-enumeration failure on attempt {attempt}/{MAX_ATTEMPTS}.")
 
-    device_node = "/dev/accel/accel0"
-    if os.path.exists(device_node):
-        log(f"{device_node} exists")
-        try:
-            log(f"stat: {os.stat(device_node)}")
-        except OSError as error:
-            log(f"stat({device_node}) failed: {error}")
-    else:
-        log(f"{device_node} does not exist")
+    if sys.platform.startswith("linux"):
+        device_node = "/dev/accel/accel0"
+        if os.path.exists(device_node):
+            log(f"{device_node} exists")
+            try:
+                log(f"stat: {os.stat(device_node)}")
+            except OSError as error:
+                log(f"stat({device_node}) failed: {error}")
+        else:
+            log(f"{device_node} does not exist")
 
     xrt_smi = find_xrt_smi(xrt_dir)
     if xrt_smi is None:
