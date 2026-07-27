@@ -66,6 +66,12 @@ from ._serialization import _TensorPlaceholder, _decode_kwarg, _encode_kwarg
 from .context import compile_context
 from .markers import CompileTime, In, InOut, Out
 
+# A waiter on this lock is waiting out someone else's *compile*, not just an
+# acquisition, so the bound has to exceed a full build rather than a handshake.
+# file_lock's own 60s default is well under the AIE compiles this guards -- CI
+# budgets individual tests 600-1200s for exactly that reason.
+_COMPILE_LOCK_TIMEOUT_SECONDS = 1800
+
 logger = logging.getLogger(__name__)
 
 
@@ -317,7 +323,7 @@ class CompilableDesign:
             xclbin_path = kernel_dir / "final.xclbin"
             inst_path = kernel_dir / "insts.bin"
 
-        with file_lock(lock_file_path):
+        with file_lock(lock_file_path, timeout_seconds=_COMPILE_LOCK_TIMEOUT_SECONDS):
             os.makedirs(kernel_dir, exist_ok=True)
 
             xclbin_exists = xclbin_path.exists()
@@ -429,7 +435,7 @@ class CompilableDesign:
             elf_path = kernel_dir / "design.elf"
         lock_file_path = kernel_dir / ".lock"
 
-        with file_lock(lock_file_path):
+        with file_lock(lock_file_path, timeout_seconds=_COMPILE_LOCK_TIMEOUT_SECONDS):
             os.makedirs(kernel_dir, exist_ok=True)
 
             if not explicit_path and self.use_cache and elf_path.exists():
