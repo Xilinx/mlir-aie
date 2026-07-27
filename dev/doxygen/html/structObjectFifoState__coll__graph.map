@@ -1,0 +1,15 @@
+<map id="ObjectFifoState" name="ObjectFifoState">
+<area shape="rect" id="Node000001" title="Struct to hold per&#45;device state for the objectFifo transformation." alt="" coords="428,197,551,222"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="9,5,227,45"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="241,39,325,62,367,80,406,102,432,124,454,149,484,195,479,198,450,153,428,127,402,106,364,85,323,68,240,44"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="5,70,231,125"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="245,118,325,137,405,163,468,194,466,199,403,168,323,142,243,123"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="11,149,225,189"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="239,179,404,197,428,200,428,205,404,203,239,185"/>
+<area shape="rect" id="Node000005" title=" " alt="" coords="9,213,227,283"/>
+<area shape="poly" id="edge4_Node000001_Node000005" title=" " alt="" coords="241,233,427,213,428,218,241,238"/>
+<area shape="rect" id="Node000006" title=" " alt="" coords="19,307,217,347"/>
+<area shape="poly" id="edge5_Node000001_Node000006" title=" " alt="" coords="231,302,316,280,403,251,466,220,468,225,405,256,317,285,232,307"/>
+<area shape="rect" id="Node000007" title=" " alt="" coords="8,371,228,397"/>
+<area shape="poly" id="edge6_Node000001_Node000007" title=" " alt="" coords="241,372,324,352,365,337,403,316,429,295,451,268,480,221,484,224,455,271,433,298,405,321,367,342,325,358,242,377"/>
+</map>
