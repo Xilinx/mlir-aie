@@ -13,10 +13,7 @@ from .utils import validate_and_clean_sizes_strides, validate_tensor_dims
 
 
 class TensorTiler2D:
-    """A generator (similar to factory pattern) class for 2-dimensional tiling patterns.
-
-    Produces TensorAccessSequences for common 2-dimensional tiling patterns.
-    """
+    """A generator (similar to factory pattern) class which produces TensorAccessSequences for common 2-dimensional tiling patterns."""
 
     _DTYPE = np.int32
     _NUM_DIMS = 2

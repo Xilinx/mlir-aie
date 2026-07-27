@@ -40,10 +40,8 @@ PadDims: TypeAlias = list[Sequence[int]]
 
 
 class ObjectFifo(Resolvable):
-    """A synchronized, explicit dataflow channel between IRON program components.
+    """A synchronized, explicit dataflow channel between IRON program components such as [`Worker`][iron.Worker]s and the [`Runtime`][iron.Runtime].
 
-    Connects components such as [`Worker`][iron.Worker]s and the
-    [`Runtime`][iron.Runtime].
     Internally, an ObjectFifo is a circular buffer with a given depth and
     element type. Its users are explicitly either a *producer* or a
     *consumer*, and each user holds an [`ObjectFifoHandle`][iron.dataflow.objectfifo.ObjectFifoHandle]
