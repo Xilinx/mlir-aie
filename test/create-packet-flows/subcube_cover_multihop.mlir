@@ -7,13 +7,14 @@
 
 // RUN: aie-opt --aie-create-pathfinder-flows %s | FileCheck %s
 
-// ids 26,28,29 from one source: 28 drops at tile(0,2) while {26,29} forward via
-// rules that avoid 28 (the common-bits mask (24,24) would false-match it).
+// ids 26,28,29 from one source: 28 is delivered to TileControl at tile(0,2)
+// while {26,29} forward past it via rules that avoid 28 (the common-bits mask
+// (24,24) would false-match it).
 
 // CHECK-LABEL: aie.device(npu1_1col) {
 // CHECK:         aie.switchbox({{.*}}) {
 // CHECK:           aie.packet_rules(South : 1) {
-// CHECK-DAG:         aie.rule(31, 28, %[[DROP:.*]])
+// CHECK-DAG:         aie.rule(31, 28, %[[DEST:.*]])
 // CHECK-DAG:         aie.rule(31, 26, %[[FWD:.*]])
 // CHECK-DAG:         aie.rule(31, 29, %[[FWD]])
 // CHECK:           }
