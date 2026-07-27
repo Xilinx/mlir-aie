@@ -28,7 +28,7 @@
 // The captured frontier IR is the pre-routing module holding the unroutable flow.
 // MLIR: aie.packet_flow(20)
 
-// from test/create-packet-flows/subcube_cover_overbudget.mlir
+// based on test/create-packet-flows/subcube_cover_overbudget.mlir (IDs may differ)
 aie.device(xcvc1902) {
   %11 = aie.tile(1, 1)
   aie.packet_flow(20) { aie.packet_source<%11, West : 0>  aie.packet_dest<%11, Core : 0> }
