@@ -641,7 +641,7 @@ class ObjectFifoHandle(Resolvable):
     def join(
         self,
         offsets: list[int],
-        tile: Tile = AnyMemTile,
+        tile: Tile | None = AnyMemTile,
         depths: list[int] | None = None,
         obj_types: list[type[np.ndarray]] | None = None,
         names: list[str] | None = None,
@@ -656,7 +656,7 @@ class ObjectFifoHandle(Resolvable):
 
         Args:
             offsets (list[int]): Offsets into the current producer, each corresponding to a new consumer.
-            tile (Tile, optional): The tile where the Join operation occurs. Defaults to AnyMemTile.
+            tile (Tile, optional): The tile where the Join operation occurs. Also accepts None (treated as AnyMemTile). Defaults to AnyMemTile.
             depths (list[int] | None, optional): The depth of each new ObjectFifo. Defaults to None.
             obj_types (list[type[np.ndarray]], optional): The type of the buffers corresponding to each new ObjectFifo. Defaults to None.
             names (list[str] | None, optional): The name of each new ObjectFifo. If not given, unique names will be generated. Defaults to None.
@@ -734,7 +734,7 @@ class ObjectFifoHandle(Resolvable):
     def split(
         self,
         offsets: list[int],
-        tile: Tile = AnyMemTile,
+        tile: Tile | None = AnyMemTile,
         depths: list[int] | None = None,
         obj_types: list[type[np.ndarray]] | None = None,
         names: list[str] | None = None,
@@ -749,7 +749,7 @@ class ObjectFifoHandle(Resolvable):
 
         Args:
             offsets (list[int]): The offset into the current consumer for each new ObjectFifo producer.
-            tile (Tile, optional): The tile where the Split operation takes place. Defaults to AnyMemTile.
+            tile (Tile, optional): The tile where the Split operation takes place. Also accepts None (treated as AnyMemTile). Defaults to AnyMemTile.
             depths (list[int] | None, optional): The depth of each new ObjectFifo. Defaults to None.
             obj_types (list[type[np.ndarray]], optional): The buffer type of each new ObjectFifo. Defaults to None.
             names (list[str] | None, optional): The name of each new ObjectFifo. If not given, a unique name will be generated. Defaults to None.
@@ -823,7 +823,7 @@ class ObjectFifoHandle(Resolvable):
 
     def forward(
         self,
-        tile: Tile = AnyMemTile,
+        tile: Tile | None = AnyMemTile,
         obj_type: type[np.ndarray] | None = None,
         depth: int | None = None,
         name: str | None = None,
@@ -838,7 +838,7 @@ class ObjectFifoHandle(Resolvable):
         is forwarded to the producer of a newly-constructed ObjectFifo.
 
         Args:
-            tile (Tile, optional): The tile for the Forward operation. Defaults to AnyMemTile.
+            tile (Tile, optional): The tile for the Forward operation. Also accepts None (treated as AnyMemTile). Defaults to AnyMemTile.
             obj_type (type[np.ndarray] | None, optional): The object type of the new ObjectFifo. Defaults to None.
             depth (int | None, optional): The depth of the new ObjectFifo. Defaults to None.
             name (str | None, optional): The name of the new ObjectFifo. If None is given, a unique name will be generated. Defaults to None.
@@ -889,7 +889,7 @@ class ObjectFifoLink(ObjectFifoEndpoint, Resolvable):
         self,
         srcs: list[ObjectFifoHandle] | ObjectFifoHandle,
         dsts: list[ObjectFifoHandle] | ObjectFifoHandle,
-        tile: Tile = AnyMemTile,
+        tile: Tile | None = AnyMemTile,
         src_offsets: list[int] | None = None,
         dst_offsets: list[int] | None = None,
     ):

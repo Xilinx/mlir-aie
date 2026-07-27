@@ -24,8 +24,6 @@ Tile placement is either passed explicitly via the placement dict
 (placement=None) to let the SA placer assign tiles at compile time.
 """
 
-from typing import cast
-
 import numpy as np
 from aie.iron import Buffer, ObjectFifo, Worker, kernels
 from aie.iron.controlflow import range_
@@ -343,8 +341,8 @@ def build_cascade(blk, act_in, skip_in, sf, *, data_dir, tiles=None):
     )
 
     # Streaming weight fifos (Shim → MemTile → split → put/get tiles)
-    def t(k) -> Tile:
-        return cast(Tile, tiles.get(k) if tiles else None)
+    def t(k) -> Tile | None:
+        return tiles.get(k) if tiles else None
 
     wts_l1_full = ObjectFifo(_ty_l1_full_wts, depth=1)
     wts_l1_put_h, wts_l1_get_h = wts_l1_full.cons().split(

@@ -12,8 +12,6 @@ Two module-level builders, dispatched by network_spec.NETWORK:
                           (bn12 only — combines L2 + L3 into one buffer)
 """
 
-from typing import cast
-
 import numpy as np
 from aie.extras.dialects.memref import view as memref_view
 from aie.iron import Buffer, ObjectFifo, Worker, kernels
@@ -142,8 +140,8 @@ def build_3tile_pipeline(blk, act_in, sf, *, data_dir, tiles=None, skip_in=None)
         l3_args.append(skip_in.cons())
     l3_args += [out_fifo.prod(), l3_wts, k_l3]
 
-    def t(k) -> Tile:
-        return cast(Tile, tiles.get(k) if tiles else None)
+    def t(k) -> Tile | None:
+        return tiles.get(k) if tiles else None
 
     workers = [
         Worker(l1_fn, [l1_in_h, of_12.prod(), l1_wts, k_l1], tile=t("l1")),
@@ -298,8 +296,8 @@ def build_bn12_2tile(blk, act_in, sf, *, data_dir, tiles=None):
         dw_tmp_prod.release(1)
         _pw()
 
-    def t(k) -> Tile:
-        return cast(Tile, tiles.get(k) if tiles else None)
+    def t(k) -> Tile | None:
+        return tiles.get(k) if tiles else None
 
     workers = [
         Worker(
@@ -351,7 +349,7 @@ def pipeline_bottlenecks(
         skip_in = None
         if has_skip:
             skip_in = act.cons(depth=6).forward(
-                depth=2, tile=cast(Tile, tiles.get("mem_skip") if tiles else None)
+                depth=2, tile=tiles.get("mem_skip") if tiles else None
             )
             # Strip mem_skip so only l1/l2/l3 are passed to the builder.
             if tiles is not None:

@@ -13,13 +13,11 @@ trip through L3) before re-broadcasting to PostL2 — see the comment near
 Input:  (7,1,80) int8   Output: (1,1,1280) uint16 (post_L2_InC wide)
 """
 
-from typing import cast
-
 import numpy as np
 from aie.iron import ObjectFifo, Worker, kernels
 from aie.iron.controlflow import range_
 from aie.iron.dataflow.endpoint import ObjectFifoEndpoint
-from aie.iron.device import AnyMemTile, Tile
+from aie.iron.device import AnyMemTile
 
 from ..network_spec import block as nsblock
 from ._common import i8, load_wts
@@ -147,7 +145,7 @@ def post_l1(act_in, sf, *, tiles=None, data_dir):
         # loop intact with 1 call site). The dynamic lowering uses runtime
         # modulo indexing, preserving the loop structure.
         dynamic_objfifo_lowering=True,
-        tile=cast(Tile, tiles["compute"] if tiles else None),
+        tile=tiles["compute"] if tiles else None,
     )
 
     return [w_post_l1], act_out_post_avgpool_shim

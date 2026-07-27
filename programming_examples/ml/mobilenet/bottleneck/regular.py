@@ -17,13 +17,10 @@ The thin `regular_bottlenecks` orchestrator at the bottom just reads the
 NETWORK and dispatches to the right builder per block.
 """
 
-from typing import cast
-
 import numpy as np
 from aie.extras.dialects.memref import view as memref_view
 from aie.iron import ObjectFifo, Worker, kernels
 from aie.iron.controlflow import range_
-from aie.iron.device import Tile
 
 from ..network_spec import block as nsblock
 from ._common import (
@@ -271,7 +268,7 @@ def build_3layer(blk, act_in, sf, *, data_dir, tile=None):
             k_l3,
         ],
         while_true=False,
-        tile=cast(Tile, tile),
+        tile=tile,
     )
     return out_fifo, worker
 
@@ -389,7 +386,7 @@ def build_2layer_skip(blk, act_in, sf, *, data_dir, tile=None):
             k_skip,
         ],
         while_true=False,
-        tile=cast(Tile, tile),
+        tile=tile,
     )
     return out_fifo, worker
 
@@ -664,7 +661,7 @@ def build_fused_pair(
             kb_skip,
         ],
         while_true=False,
-        tile=cast(Tile, compute_tile),
+        tile=compute_tile,
     )
     return out_fifo, worker
 

@@ -42,7 +42,7 @@ class Worker(ObjectFifoEndpoint):
         self,
         core_fn: Callable | None,
         fn_args: list | None = None,
-        tile: Tile = AnyComputeTile,
+        tile: Tile | None = AnyComputeTile,
         while_true: bool = True,
         stack_size: int | None = None,
         allocation_scheme: str | None = None,

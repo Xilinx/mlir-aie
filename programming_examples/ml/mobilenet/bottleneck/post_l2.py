@@ -12,8 +12,6 @@ single uint16 output fifo via MemTile.
 Input:  (1,1,1280) uint16  Output: (1,1,1280) uint16 (4 tiles, joined)
 """
 
-from typing import cast
-
 import numpy as np
 from aie.iron import ObjectFifo, Worker, kernels
 from aie.iron.controlflow import range_
@@ -73,8 +71,8 @@ def post_l2(act_in, sf, *, tiles=None, data_dir):
     # `co` = channels per ObjectFifo element (one WeightIndex iteration's output slice).
     co = post_L2_OutC // (PostOutputSplitL2 * n_fc_tiles)  # = 8
 
-    def t(k) -> Tile:
-        return cast(Tile, tiles.get(k) if tiles else None)
+    def t(k) -> Tile | None:
+        return tiles.get(k) if tiles else None
 
     # Split the output fifo into 4 channel-segments, one per FC tile.
     act_post_l2_tiles = act_out_of.prod().join(
@@ -157,7 +155,7 @@ def post_l2(act_in, sf, *, tiles=None, data_dir):
                 post_fc1_sf,
                 post_fc2_sf,
             ],
-            tile=cast(Tile, tiles["compute"][i] if tiles else None),
+            tile=tiles["compute"][i] if tiles else None,
         )
         post_l2_workers.append(w)
 

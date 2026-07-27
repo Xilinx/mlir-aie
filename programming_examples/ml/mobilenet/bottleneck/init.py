@@ -12,12 +12,9 @@ input activations and is exposed so the runtime sequence's `rt.fill`
 can address it.
 """
 
-from typing import cast
-
 import numpy as np
 from aie.iron import ObjectFifo, Worker, kernels
 from aie.iron.controlflow import range_
-from aie.iron.device import Tile
 
 from ..network_spec import block as nsblock
 from ._common import wts_buffer
@@ -112,7 +109,7 @@ def init_conv(sf, *, tile=None, data_dir):
             init_OutC,
             init_scaleFactor,
         ],
-        tile=cast(Tile, tile),
+        tile=tile,
     )
 
     return [w_init], act_in, act_init_out
