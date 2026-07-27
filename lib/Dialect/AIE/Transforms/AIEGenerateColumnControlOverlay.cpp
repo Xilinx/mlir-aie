@@ -167,6 +167,16 @@ struct AIEGenerateColumnControlOverlayPass
         }
         continue;
       }
+      // A device that already carries a control overlay -- e.g. a physically
+      // routed design recompiled through aiecc -- must not receive a second
+      // one, or the regenerated control flows would double-drive its shim
+      // control ports during routing.
+      if (deviceHasControlOverlay(dev)) {
+        if (clEmitStandaloneOverlay) {
+          dev->setAttr("has_ctrl_pkt_overlay", builder.getBoolAttr(true));
+        }
+        continue;
+      }
       participating.push_back(dev);
     }
 
@@ -352,6 +362,18 @@ struct AIEGenerateColumnControlOverlayPass
   static bool deviceOptedOut(DeviceOp device) {
     auto attr = device->getAttrOfType<BoolAttr>("needs_ctrl_pkt_overlay");
     return attr && !attr.getValue();
+  }
+
+  // Return true when `device` already contains a control-packet overlay,
+  // identified by the `is_ctrl_pkt_overlay` marker the overlay's routed
+  // switchbox configuration carries.
+  static bool deviceHasControlOverlay(DeviceOp device) {
+    return device
+        .walk([](Operation *op) {
+          return op->hasAttr("is_ctrl_pkt_overlay") ? WalkResult::interrupt()
+                                                    : WalkResult::advance();
+        })
+        .wasInterrupted();
   }
 
   AIE::PacketFlowOp createPacketFlowOp(OpBuilder &builder, Location loc,
