@@ -299,6 +299,21 @@ def test_hash_for_existing_source_file_includes_mtime(tmp_path):
     assert h1 != hash(d2)
 
 
+def test_hash_keys_on_the_aiecc_the_compile_uses(monkeypatch):
+    """aiecc must be resolved as compilation resolves it, not via PATH."""
+    import aie.utils.config as config
+
+    seen = []
+
+    def fake_aiecc_path():
+        seen.append(True)
+        return config.__file__  # any real file; only its mtime is consumed
+
+    monkeypatch.setattr(config, "aiecc_path", fake_aiecc_path)
+    CompilableDesign(_gemm_gen())._compute_cache_hash()
+    assert seen, "artifact hash did not consult config.aiecc_path()"
+
+
 def test_hash_is_24_hex_chars():
     d = CompilableDesign(_gemm_gen())
     hex_str = d._compute_cache_hash()

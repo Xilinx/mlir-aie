@@ -1,6 +1,6 @@
 ---
 name: aie-kernel-opt
-description: Standalone guide to optimizing AIE / Peano-compiled kernels (INT8 conv, matmul, attention, elementwise). Covers the measure-first methodology (baseline, bit-exact gate, ablation, verify-in-.o) AND the catalog of concrete levers in priority order — loop hints, compile-time constants, killing __divsi3, branch-splitting, vectorized epilogue, operand-layout pre-pack, explicit wide packing, wider mmul, DMA layout offload — each with the constraints to respect and a measured delta.
+description: Standalone guide to optimizing AIE / Peano-compiled kernels (INT8 conv, matmul, attention, elementwise). Covers the measure-first methodology (baseline, bit-exact gate, ablation, verify-in-.o) and the catalog of concrete levers in priority order — loop hints, compile-time constants, killing __divsi3, branch-splitting, vectorized epilogue, operand-layout pre-pack, explicit wide packing, wider mmul, DMA layout offload — each with the constraints to respect and a measured delta.
 license: Apache-2.0 WITH LLVM-exception
 ---
 
@@ -10,6 +10,18 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 -->
 
 # AIE kernel optimization (the "what to change" menu)
+
+Fourth of four porting phases, alongside `aie-dataflow-opt` (see
+`aie-model-baseline` for the numeric oracle, `aie-dataflow-presim` for
+pre-hardware validation, `aie-hw-bringup` for getting to a correct
+baseline on real hardware — this skill assumes that baseline already
+exists and is correct). **This skill is micro; `aie-dataflow-opt` is
+macro** — this skill answers "how do I make this one compiled kernel
+faster"; `aie-dataflow-opt` answers "which op should run on which tile,
+how should data move between them, and is a kernel even the right thing
+to be optimizing." Use this once a kernel is confirmed to be on the
+critical path (see `aie-dataflow-opt` lever #1, NOOP ablation, if that
+hasn't been confirmed yet).
 
 This is a catalog of the levers that actually move AIE/Peano kernels —
 in rough priority order, each with the constraint to respect so it pays
@@ -62,8 +74,8 @@ inspection, not a cycle count in your head.
    compute), re-time, and look at the delta. A kernel contributing 99 ms
    is 20× more worth your time than one contributing 4 ms. HW packet
    tracing is more difficult to interpret; prefer ablation for attribution.
-4. **One change at a time.** If you edit the C source AND the build flags
-   AND the dataflow at once, you can't tell which moved the needle.
+4. **One change at a time.** If you edit the C source and the build flags
+   and the dataflow at once, you can't tell which moved the needle.
 5. **Verify the mechanism in the `.o` before believing your cycle-model.**
    In practice, *both* "obvious" explanations for a given regression
    (register spill; doubled scalar gather) have turned out wrong on
@@ -115,7 +127,7 @@ wins live there.
 ### 1. Loop hints — cheapest, often biggest
 
 Include `aie_kernel_utils.h`. Decorate every non-trivial for-loop. **The
-macro goes BEFORE the `for` statement, never inside the parens** (it's a
+macro goes before the `for` statement, never inside the parens** (it's a
 clang pragma, not the chess attribute form).
 
 - `AIE_PREPARE_FOR_PIPELINING` on the loop you want software-pipelined
@@ -317,8 +329,8 @@ re-laid-out (e.g. `...I8O8` → `...I16O8`), which isn't free.
   with a kx·ky·channels reduction): usually a direct win** — halving the
   outer call count cuts a large per-output workload, swamping any extra
   operand-gather cost.
-- **When the per-output work is tiny (1x1 conv / GEMV-ish) AND the operand
-  is built by scalar gather: it can REGRESS.** `mmul<M,8,8>` does `M×8`
+- **When the per-output work is tiny (1x1 conv / GEMV-ish) and the operand
+  is built by scalar gather: it can regress.** `mmul<M,8,8>` does `M×8`
   byte copies per reduction step; going M=4→8 doubles the gather while
   only halving an already-small call count. **Verified: a 1x1 kernel went
   3.34 → 3.58 ms (+7%, reverted).** Vectorize the operand gather (lever
@@ -347,7 +359,7 @@ Related DMA layout wins:
   instead of a strided scalar gather (e.g. split a stride-2 input into
   even/odd halves per row). **Verified +12% fps** on a strided-input conv.
 - A layout transform can live on the **shim tap**, the **compute
-  toStream/fromStream**, OR the **memtile forward** — pick the cheapest
+  toStream/fromStream**, or the **memtile forward** — pick the cheapest
   for your dataflow, it's not memtile-only.
 
 **Constraints to respect when forwarding (otherwise expect wrong or zero
@@ -359,6 +371,16 @@ data):**
 - In a multi-kernel chain, pin the forward to a specific column memtile
   (`.forward(tile=Tile(col, 1))`) so the ObjectFifoLink has a shared tile;
   a placement that works standalone can otherwise fail in the chain.
+
+**Decision rule: pure-DMA offload needs ≥4-byte elements.** Shim DMA's
+minimum stride-1 access granularity is 4 bytes, so a pure-DMA
+rearrangement (no compute core) only works when the element size is ≥4
+bytes (int32/uint32); sub-4-byte types (int8/int16) can't be expressed as
+a DMA-only stride pattern and need a hybrid instead — a coarse DMA
+reshuffle plus a small kernel (e.g. `VSHUFFLE`) doing the fine-grained
+rearrangement in place. `programming_examples/basic/transposes/`
+(`--strategy dma` vs `--strategy combined`) is a worked example of both
+ends of this tradeoff.
 
 ---
 
@@ -372,6 +394,18 @@ matter for deployment. When adding explicit unroll to a kernel with 4+
 simultaneous accumulators, count in-loop spill stores/loads (`vst`/`vld`
 of accumulator-state registers) in the disasm before adopting: spill
 inside a hot loop is a power tax even when wall time is flat.
+
+The same mechanism isn't always throughput-neutral, though: on a kernel
+that *is* on the critical path, adding unroll to a loop that already keeps
+several accumulators live can regress wall time directly — each unrolled
+iteration wants its own accumulator, and once the live set exceeds the
+register file the compiler spills, and the spilled `vst`/`vld` traffic
+lands inside the hot loop where every extra instruction is pure added
+latency, not just a power cost. Symptom: you add unroll expecting a
+speedup and measure a slowdown instead. Diagnosis is the same disasm check
+— compare spill-instruction counts with and without the unroll — before
+deciding whether to revert, reduce the unroll factor, or restructure to
+use fewer live accumulators.
 
 ---
 
