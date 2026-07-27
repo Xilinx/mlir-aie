@@ -45,7 +45,7 @@ env:
 jobs:
 
   build-and-test-from-source:
-    name: Run Tests and Examples on Ryzen AI (Built from Source)
+    name: Run Tests and Examples on Ryzen AI (Built from Source) (${{ matrix.runner_type }})
     # The goal for this job is to run the full test suite, including programming guide and examples, on a freshly built-from-source MLIR-AIE.
     # This also exercises the build-mlir-aie-from-wheels.sh script, which is the most common developer-facing way to rebuild MLIR-AIE from source.
     runs-on: ${{ matrix.runner_type }}
