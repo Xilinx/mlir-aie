@@ -6,11 +6,15 @@
 """HSA/ROCR implementation of the HostRuntime.
 
 Consumes the aiecc artifacts ``insts.bin`` + ``main.pdi`` (the xclbin is
-ignored on this path) and dispatches them as one AIE AQL packet:
+ignored on this path) and dispatches them as AIE AQL packets:
 
     insts.bin + main.pdi -> HSA region allocations (hsa_memory_allocate)
     I/O tensors          -> kernarg buffer of 2*N uint64 (VAs then sizes)
-    fill AQL packet, ring doorbell, wait on completion signal
+    fill AQL packet(s), ring doorbell, wait on completion signal
+
+A single ``run`` issues one packet; ``run_chain`` issues N packets that share
+one completion signal on the in-order AIE queue (producer -> consumer ordering
+via the queue order plus the packets' system-scope fences).
 """
 
 import atexit
@@ -23,7 +27,7 @@ from typing import TYPE_CHECKING
 
 from ..hostruntime import HostRuntime, HostRuntimeError, KernelHandle, KernelResult
 from .tensor import HSATensor
-from . import HSAContext
+from .context import HSAContext
 
 if TYPE_CHECKING:
     from aie.iron.device import Device
@@ -57,14 +61,22 @@ class HSAKernelResult(KernelResult):
 
 
 class HSAHostRuntime(HostRuntime):
-    """HostRuntime that dispatches IRON designs through HSA/ROCR."""
+    """Uncached HostRuntime that dispatches IRON designs through HSA/ROCR.
+
+    Every :meth:`load` copies the design's insts + PDI into fresh HSA region
+    allocations and never reuses them across calls -- the analogue of
+    :class:`XRTHostRuntime` / :class:`HRXHostRuntime`. Allocations are tracked
+    so :meth:`cleanup` frees them; :class:`CachedHSAHostRuntime` layers an LRU
+    cache on top for the common single-process case.
+    """
 
     _tensor_class = HSATensor
 
     def __init__(self):
         self._ctx = HSAContext.get()
-        self._exe_cache = OrderedDict()
-        self._cache_size = int(os.environ.get("HSA_EXE_CACHE_SIZE", "32"))
+        # Handles created by load(), retained so cleanup() frees their region
+        # allocations (this uncached runtime never reuses one across loads).
+        self._handles = []
 
     def _find_pdi(self, xclbin_path: Path) -> Path:
         kernel_dir = xclbin_path.parent
@@ -79,25 +91,19 @@ class HSAHostRuntime(HostRuntime):
             f"PDI; ensure aiecc emitted one alongside the xclbin."
         )
 
-    def load(self, npu_kernel, **kwargs) -> HSAKernelHandle:
+    def _resolve_kernel(self, npu_kernel):
+        """Resolve + validate an npu_kernel to (insts_path, pdi_path, name)."""
         self.check_device_consistency()
         xclbin_path = Path(npu_kernel.xclbin_path).resolve()
         insts_path = Path(npu_kernel.insts_path).resolve()
         kernel_name = npu_kernel.kernel_name or "MLIR_AIE"
-
         if not insts_path.exists() or not insts_path.is_file():
             raise HostRuntimeError(f"insts {insts_path} does not exist or is not a file.")
         pdi_path = self._find_pdi(xclbin_path)
+        return insts_path, pdi_path, kernel_name
 
-        key = (
-            str(insts_path), insts_path.stat().st_mtime,
-            str(pdi_path), pdi_path.stat().st_mtime,
-            kernel_name,
-        )
-        if key in self._exe_cache:
-            self._exe_cache.move_to_end(key)
-            return self._exe_cache[key]
-
+    def _build_handle(self, insts_path, pdi_path, kernel_name) -> HSAKernelHandle:
+        """Copy insts + PDI into fresh region allocations and wrap in a handle."""
         insts_bytes = insts_path.read_bytes()
         if len(insts_bytes) % 4 != 0:
             raise HostRuntimeError("insts.bin length is not a multiple of 4 bytes")
@@ -111,17 +117,38 @@ class HSAHostRuntime(HostRuntime):
         except BaseException:
             self._ctx.free_region(insts_ptr)
             raise
+        return HSAKernelHandle(pdi_ptr, insts_ptr, len(insts_bytes), kernel_name)
 
-        handle = HSAKernelHandle(
-            pdi_ptr, insts_ptr, len(insts_bytes), kernel_name
-        )
+    def _free_handle(self, handle) -> None:
+        self._ctx.free_region(handle.pdi_ptr)
+        self._ctx.free_region(handle.insts_ptr)
 
-        if self._cache_size > 0 and len(self._exe_cache) >= self._cache_size:
-            _, old = self._exe_cache.popitem(last=False)
-            self._ctx.free_region(old.pdi_ptr)
-            self._ctx.free_region(old.insts_ptr)
-        self._exe_cache[key] = handle
+    def load(self, npu_kernel, **kwargs) -> HSAKernelHandle:
+        insts_path, pdi_path, kernel_name = self._resolve_kernel(npu_kernel)
+        handle = self._build_handle(insts_path, pdi_path, kernel_name)
+        self._handles.append(handle)
         return handle
+
+    def _build_kernargs(self, kept):
+        """Allocate + fill a kernarg vmem buffer (2*N uint64: N VAs then N sizes).
+
+        Returns (ka_handle, ka_va, ka_size, n)."""
+        n = len(kept)
+        ka_handle, ka_va, ka_size = self._ctx.vmem_alloc(2 * n * 8)
+        ka = (ctypes.c_uint64 * (2 * n)).from_address(ka_va)
+        for i, t in enumerate(kept):
+            ka[i] = t.buffer_object()
+            ka[n + i] = t.nbytes  # logical size (matches dispatch.cc)
+        return ka_handle, ka_va, ka_size, n
+
+    def _validate_args(self, args):
+        kept = [a for a in args if not callable(a)]
+        if not all(isinstance(a, self._tensor_class) for a in kept):
+            raise HostRuntimeError(
+                f"The {self.__class__.__name__} can only take "
+                f"{self._tensor_class.__name__} as arguments, but got: {kept}"
+            )
+        return kept
 
     def run(self, kernel_handle, args, trace_config=None, fail_on_error=True,
             only_if_loaded=False, **kwargs) -> HSAKernelResult:
@@ -130,23 +157,9 @@ class HSAHostRuntime(HostRuntime):
             raise HostRuntimeError(_TRACE_UNSUPPORTED_MSG)
         self.check_device_consistency()
 
-        kept = [a for a in args if not callable(a)]
-        if not all(isinstance(a, self._tensor_class) for a in kept):
-            raise HostRuntimeError(
-                f"The {self.__class__.__name__} can only take "
-                f"{self._tensor_class.__name__} as arguments, but got: {kept}"
-            )
-        n = len(kept)
-
-        # kernarg buffer: 2*N uint64 (N VAs then N sizes)
-        ka_handle, ka_va, ka_size = self._ctx.vmem_alloc(2 * n * 8)
+        kept = self._validate_args(args)
+        ka_handle, ka_va, ka_size, n = self._build_kernargs(kept)
         try:
-            ka = (ctypes.c_uint64 * (2 * n)).from_address(ka_va)
-            for i, t in enumerate(kept):
-                ka[i] = t.buffer_object()
-                # Logical byte size (matching dispatch.cc), not the padded/granule-rounded alloc size.
-                ka[n + i] = t.nbytes
-
             signal = self._ctx.create_signal(1)
             try:
                 start = time.time_ns()
@@ -163,24 +176,114 @@ class HSAHostRuntime(HostRuntime):
 
         return HSAKernelResult(stop - start, success=True)
 
+    def run_chain(self, runs, fail_on_error: bool = True) -> HSAKernelResult:
+        """Execute a chain of dispatches sharing one completion signal.
+
+        ``runs`` is a sequence of ``(kernel_handle, args)`` entries recorded, in
+        order, onto the single in-order AIE queue. One completion signal is
+        initialized to ``len(runs)``; each completed packet decrements it, so a
+        single wait covers the whole chain. Ordering (producer -> consumer) is
+        guaranteed by the in-order queue plus the system-scope acquire/release
+        fences in every packet header. Chains longer than the queue capacity
+        auto-batch (wrap-around).
+
+        All per-run kernarg buffers are allocated up front and freed after the
+        wait (they must stay alive while the device reads them).
+        """
+        self.check_device_consistency()
+        runs = list(runs)
+        if not runs:
+            return HSAKernelResult(0, success=True)
+
+        kernargs = []  # (ka_handle, ka_va, ka_size)
+        items = []     # (pdi_ptr, insts_ptr, insts_size, ka_va, n)
+        signal = self._ctx.create_signal(len(runs))
+        try:
+            for kernel_handle, args in runs:
+                assert isinstance(kernel_handle, HSAKernelHandle)
+                kept = self._validate_args(args)
+                ka_handle, ka_va, ka_size, n = self._build_kernargs(kept)
+                kernargs.append((ka_handle, ka_va, ka_size))
+                items.append(
+                    (kernel_handle.pdi_ptr, kernel_handle.insts_ptr,
+                     kernel_handle.insts_size, ka_va, n)
+                )
+
+            start = time.time_ns()
+            self._ctx.dispatch_chain(items, signal)
+            self._ctx.wait(signal)
+            stop = time.time_ns()
+        finally:
+            self._ctx.destroy_signal(signal)
+            for ka_handle, ka_va, ka_size in kernargs:
+                self._ctx.vmem_free(ka_handle, ka_va, ka_size)
+
+        return HSAKernelResult(stop - start, success=True)
+
+    def load_and_run(self, npu_kernel, run_args, **kwargs):
+        """Reject trace up front, then defer to the base load/run pipeline.
+
+        The base ``load_and_run`` mutates ``run_args`` (appends a trace buffer
+        via ``prepare_args_for_trace``) *before* calling ``run``. HSA cannot
+        honor trace, so fail here -- before touching the args -- keeping the
+        caller's ``run_args`` untouched on the error path (mirrors HRX).
+        """
+        if getattr(npu_kernel, "trace_config", None) is not None:
+            raise HostRuntimeError(_TRACE_UNSUPPORTED_MSG)
+        return super().load_and_run(npu_kernel, run_args, **kwargs)
+
     def device(self) -> "Device":
         from aie.iron.device import from_name
 
         return from_name(self._ctx.device_gen, n_cols=None)
 
     def cleanup(self) -> None:
-        cache = getattr(self, "_exe_cache", None)
-        if not cache:
+        """Free the region allocations this runtime created."""
+        handles = getattr(self, "_handles", None)
+        if not handles:
             return
-        while cache:
-            _, handle = cache.popitem(last=False)
-            self._ctx.free_region(handle.pdi_ptr)
-            self._ctx.free_region(handle.insts_ptr)
+        while handles:
+            self._free_handle(handles.pop())
 
 
 class CachedHSAHostRuntime(HSAHostRuntime):
-    """Cache-by-default entry point matching CachedXRTRuntime naming."""
+    """HSA runtime that caches loaded kernels (analogue of CachedXRTRuntime).
+
+    Reuses a handle's region allocations across :meth:`load` calls for the same
+    artifacts, evicting the least-recently-used entry once ``HSA_EXE_CACHE_SIZE``
+    (default 32) is exceeded. Registers an ``atexit`` cleanup so cached
+    allocations are freed at interpreter shutdown.
+    """
 
     def __init__(self):
         super().__init__()
+        self._exe_cache = OrderedDict()
+        self._cache_size = int(os.environ.get("HSA_EXE_CACHE_SIZE", "32"))
         atexit.register(self.cleanup)
+
+    def load(self, npu_kernel, **kwargs) -> HSAKernelHandle:
+        insts_path, pdi_path, kernel_name = self._resolve_kernel(npu_kernel)
+        key = (
+            str(insts_path), insts_path.stat().st_mtime,
+            str(pdi_path), pdi_path.stat().st_mtime,
+            kernel_name,
+        )
+        if key in self._exe_cache:
+            self._exe_cache.move_to_end(key)
+            return self._exe_cache[key]
+
+        handle = self._build_handle(insts_path, pdi_path, kernel_name)
+        if self._cache_size > 0 and len(self._exe_cache) >= self._cache_size:
+            _, old = self._exe_cache.popitem(last=False)
+            self._free_handle(old)
+        self._exe_cache[key] = handle
+        return handle
+
+    def cleanup(self) -> None:
+        """Free cached handles, then any tracked by the base runtime."""
+        cache = getattr(self, "_exe_cache", None)
+        if cache:
+            while cache:
+                _, handle = cache.popitem(last=False)
+                self._free_handle(handle)
+        super().cleanup()
