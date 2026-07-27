@@ -276,7 +276,7 @@ class HSAContext:
             lib.hsa_signal_destroy(hsa_signal_t(sig))
 
     # -- dispatch ----------------------------------------------------------
-    def dispatch(self, pdi_ptr, insts_ptr, insts_size, kernarg_ptr, num_kernargs, signal):
+    def _fill_packet(self, pdi_ptr, insts_ptr, insts_size, kernarg_ptr, num_kernargs, signal):
         pkt = HsaAieKernelDispatchPacket()
         pkt.header = _DISPATCH_HEADER
         pkt.opcode = HSA_AMD_AIE_PACKET_OPCODE_KMQ
@@ -288,14 +288,48 @@ class HSAContext:
         pkt.kernarg_address = kernarg_ptr
         pkt.insts_size = insts_size
         pkt.pdi_addr = pdi_ptr
+        return pkt
 
+    def enqueue(self, pdi_ptr, insts_ptr, insts_size, kernarg_ptr, num_kernargs, signal):
+        """Write one packet at the next queue slot (no doorbell). Returns its wr_idx.
+
+        Spins while the queue is full so an in-flight batch drains (wrap-around)."""
+        pkt = self._fill_packet(pdi_ptr, insts_ptr, insts_size, kernarg_ptr, num_kernargs, signal)
         q = self.queue
         qsize = self.queue_size
         wr_idx = lib.hsa_queue_add_write_index_relaxed(q, 1)
         while wr_idx - lib.hsa_queue_load_read_index_scacquire(q) >= qsize:
             pass
         self.queue_packets[wr_idx % qsize] = pkt
+        return wr_idx
+
+    def ring(self, wr_idx):
         lib.hsa_signal_store_screlease(self.queue_doorbell, wr_idx)
+
+    def dispatch(self, pdi_ptr, insts_ptr, insts_size, kernarg_ptr, num_kernargs, signal):
+        """Single dispatch: enqueue one packet and ring the doorbell."""
+        wr_idx = self.enqueue(pdi_ptr, insts_ptr, insts_size, kernarg_ptr, num_kernargs, signal)
+        self.ring(wr_idx)
+
+    def dispatch_chain(self, items, signal):
+        """Enqueue a sequence of dispatches sharing one completion signal.
+
+        ``items`` is a sequence of
+        ``(pdi_ptr, insts_ptr, insts_size, kernarg_ptr, num_kernargs)`` tuples.
+        All packets carry the same ``signal`` (initialized by the caller to
+        ``len(items)``); each completed packet decrements it, so a single
+        ``wait(signal)`` covers the whole chain. Ordering is guaranteed by the
+        single in-order AIE queue plus the system-scope acquire/release fences in
+        every packet header, so a later dispatch observes an earlier one's device
+        writes (producer -> consumer). Chains longer than the queue capacity
+        auto-batch: ``enqueue`` spins while the queue is full, ringing the doorbell
+        after each packet so completed slots drain and wrap around.
+        """
+        for pdi_ptr, insts_ptr, insts_size, kernarg_ptr, num_kernargs in items:
+            wr_idx = self.enqueue(pdi_ptr, insts_ptr, insts_size, kernarg_ptr, num_kernargs, signal)
+            # Ring per packet so the packet processor drains slots, letting a chain
+            # longer than the queue wrap around without deadlocking on a full queue.
+            self.ring(wr_idx)
 
     def wait(self, signal):
         timeout = _hsa_sync_timeout_s()
