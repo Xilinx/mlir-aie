@@ -1013,6 +1013,20 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
       SmallVector<std::pair<int, int>> cover =
           computeSubcubeCover(onset, offset);
 
+      LLVM_DEBUG({
+        llvm::dbgs() << "packet cover " << stringifyWireBundle(bundle)
+                     << channel << ": onset {";
+        for (int id : onset)
+          llvm::dbgs() << ' ' << id;
+        llvm::dbgs() << " } offset {";
+        for (int id : offset)
+          llvm::dbgs() << ' ' << id;
+        llvm::dbgs() << " } ->";
+        for (auto [m, v] : cover)
+          llvm::dbgs() << " rule(" << m << ", " << v << ")";
+        llvm::dbgs() << '\n';
+      });
+
       for (int id : onset)
         assert(llvm::any_of(cover,
                             [&](std::pair<int, int> c) {
