@@ -59,3 +59,54 @@ def test_hsa_context_get_is_thread_safe(monkeypatch):
 
     assert len(builds) == 1, f"HSAContext built {len(builds)}x, expected 1"
     assert len({id(r) for r in results}) == 1, "threads saw >1 HSAContext instance"
+
+
+def test_uncached_runtime_tracks_and_frees_without_cache(monkeypatch):
+    """HSAHostRuntime (uncached) allocates a fresh handle per load and frees all in cleanup."""
+    from aie.utils.hostruntime.hsaruntime import hostruntime as hrt
+
+    freed = []
+
+    class _FakeCtx:
+        device_gen = "npu2"
+        def alloc_region(self, n):
+            return 0x1000 + n  # unique-ish fake pointer
+        def free_region(self, ptr):
+            freed.append(ptr)
+
+    monkeypatch.setattr(hrt.HSAContext, "get", classmethod(lambda cls: _FakeCtx()))
+
+    rt = hrt.HSAHostRuntime()
+    assert not hasattr(rt, "_exe_cache")  # uncached has no LRU cache
+    assert hasattr(rt, "_handles")  # but tracks handles for cleanup
+
+
+def test_cached_runtime_has_lru_cache(monkeypatch):
+    from aie.utils.hostruntime.hsaruntime import hostruntime as hrt
+
+    class _FakeCtx:
+        device_gen = "npu2"
+
+    monkeypatch.setattr(hrt.HSAContext, "get", classmethod(lambda cls: _FakeCtx()))
+    rt = hrt.CachedHSAHostRuntime()
+    assert hasattr(rt, "_exe_cache")
+
+
+def test_load_and_run_rejects_trace_before_touching_args(monkeypatch):
+    """A trace_config must be rejected before base load_and_run mutates run_args."""
+    from aie.utils.hostruntime.hsaruntime import hostruntime as hrt
+    from aie.utils.hostruntime.hostruntime import HostRuntimeError
+
+    class _FakeCtx:
+        device_gen = "npu2"
+
+    monkeypatch.setattr(hrt.HSAContext, "get", classmethod(lambda cls: _FakeCtx()))
+    rt = hrt.CachedHSAHostRuntime()
+
+    class _K:
+        trace_config = object()
+
+    run_args = [1, 2, 3]
+    with pytest.raises(HostRuntimeError):
+        rt.load_and_run(_K(), run_args)
+    assert run_args == [1, 2, 3]  # untouched on the error path
