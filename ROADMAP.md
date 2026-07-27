@@ -23,6 +23,7 @@ Planned for the near future.
 
 - [ ] Make ObjectFIFO lowering fully dynamic — replace the pass's custom static unrolling/analysis with always-dynamic bookkeeping plus a general-purpose unrolling pass that folds constants back where possible, so arbitrary control flow around object FIFOs is supported instead of rejected ([#3298](https://github.com/Xilinx/mlir-aie/pull/3298))
 - [ ] Consolidate reusable aie2p kernels — upstream generic transformer/conv kernels (transpose, depthwise conv, higher-precision activations, fused matmul epilogues) authored for an external inference engine into `aie_kernels/aie2p/` ([#3412](https://github.com/Xilinx/mlir-aie/discussions/3412))
+- [ ] Improve agentic workflows for IRON programming — mature the initial skill chain for porting models to AIE/NPU with an LLM coding agent (baseline → dataflow → kernel optimization → validation); still experimental and untested beyond single-dispatch designs ([#3426](https://github.com/Xilinx/mlir-aie/issues/3426))
 
 ## Later
 Ideas we want to pursue eventually. Not yet scheduled.
