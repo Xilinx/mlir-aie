@@ -7,6 +7,8 @@
 
 import hashlib
 import logging
+from pathlib import Path
+
 import numpy as np
 
 logger = logging.getLogger(__name__)
@@ -302,8 +304,10 @@ class ExternalFunction(Kernel):
         Args:
             name: Symbol name of the function as it will appear in the object
                 file.
-            object_file_name: Output object file name.  Defaults to
-                ``<effective_name>.o``.
+            object_file_name: Output artifact name. Defaults to
+                ``<effective_name>.o``, or ``<effective_name>.ll`` with
+                ``inline=True``. Inline names with another suffix are normalized
+                to ``.ll``; an explicit ``.bc`` emits binary LLVM IR.
             source_file: Path to a C/C++ source file on disk.  Mutually
                 exclusive with ``source_string``.
             source_string: Inline C/C++ source code.  Mutually exclusive with
@@ -332,12 +336,25 @@ class ExternalFunction(Kernel):
                 the ``func.call`` boundary and the separate object. Peano path
                 only (the Chess/xchesscc toolchain cannot llvm-link).
         """
+        if inline and use_chess:
+            raise ValueError(
+                f"ExternalFunction '{name}': inline=True requires the Peano "
+                "toolchain and cannot be combined with use_chess=True."
+            )
+
         self._original_name = name
         self._symbol_prefix = symbol_prefix
         self._inline = inline
         effective_name = f"{symbol_prefix}_{name}" if symbol_prefix else name
         object_file_name_explicit = object_file_name is not None
-        if not object_file_name:
+        if inline and object_file_name:
+            output_path = Path(object_file_name)
+            if output_path.suffix.lower() not in (".ll", ".bc"):
+                output_path = output_path.with_suffix(".ll")
+            elif output_path.suffix not in (".ll", ".bc"):
+                output_path = output_path.with_suffix(output_path.suffix.lower())
+            object_file_name = str(output_path)
+        elif not object_file_name:
             object_file_name = (
                 f"{effective_name}.ll" if inline else f"{effective_name}.o"
             )

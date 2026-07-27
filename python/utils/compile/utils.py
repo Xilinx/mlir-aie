@@ -82,12 +82,12 @@ def compile_cxx_core_function(
     source_path: str,
     target_arch: str,
     output_path: str,
-    symbol_name: str | None = None,
     include_dirs: list[str] | None = None,
     compile_args: list[str] | None = None,
     cwd: str | None = None,
     use_chess: bool = False,
     inline: bool = False,
+    symbol_name: str | None = None,
 ):
     """
     Compile a C++ core function via either Peano (default) or the Chess
@@ -97,12 +97,7 @@ def compile_cxx_core_function(
         source_path (str): Path to C++ source.
         target_arch (str): Target architecture, e.g., aie2.
         output_path (str): Output object file path (``.o``), or LLVM IR file
-            (``.ll``) when ``inline`` is True.
-        symbol_name (str, optional): Required when ``inline`` is True; names the
-            LLVM ``define`` for the kernel that ``_make_ir_inlinable`` rewrites
-            to ``alwaysinline`` / ``linkonce_odr``.  Must match the symbol as it
-            appears in the freshly emitted ``.ll`` (i.e. the name the source
-            defines the function under).
+            (textual ``.ll`` or binary ``.bc``) when ``inline`` is True.
         include_dirs (list[str], optional): List of include directories to add with -I.
         compile_args (list[str], optional): Additional compile arguments
             forwarded verbatim to the chosen compiler.
@@ -115,7 +110,30 @@ def compile_cxx_core_function(
             for the AIE-tools include directory; the standard mlir-aie
             include path is added explicitly here so it doesn't depend on
             the Chess wrapper's include search.
+        inline (bool): When True, emit inlinable LLVM IR instead of an object.
+        symbol_name (str, optional): Required when ``inline`` is True; names the
+            LLVM ``define`` for the kernel that ``_make_ir_inlinable`` rewrites
+            to ``alwaysinline`` / ``linkonce_odr``. Must match the symbol as it
+            appears in the freshly emitted IR.
     """
+    if inline and use_chess:
+        raise ValueError(
+            "inline=True requires the Peano toolchain and cannot be combined "
+            "with use_chess=True"
+        )
+    if inline and not symbol_name:
+        raise ValueError("symbol_name is required when inline=True")
+
+    ir_suffix = Path(output_path).suffix
+    if inline and ir_suffix not in (".ll", ".bc"):
+        raise ValueError(
+            "inline=True output_path must use .ll for textual LLVM IR or .bc "
+            f"for binary LLVM IR; got {output_path!r}"
+        )
+
+    # Inline IR is first emitted as text so its kernel definition can be marked
+    # alwaysinline/linkonce_odr. A requested .bc is assembled afterward.
+
     # ``-c`` (object) by default; ``-S -emit-llvm`` (textual IR) for inline.
     emit_flags = ["-S", "-emit-llvm"] if inline else ["-c"]
     if use_chess:
@@ -184,9 +202,29 @@ def compile_cxx_core_function(
         raise RuntimeError(f"[{tool}] compilation failed")
 
     if inline:
-        if not symbol_name:
-            raise ValueError("symbol_name is required when inline=True")
+        assert symbol_name is not None
         _make_ir_inlinable(output_path, symbol_name)
+        if ir_suffix == ".bc":
+            textual_ir = Path(output_path).read_bytes()
+            llvm_as = Path(config.peano_cxx_path()).with_name(
+                "llvm-as.exe" if os.name == "nt" else "llvm-as"
+            )
+            if not llvm_as.is_file():
+                raise RuntimeError(f"Peano llvm-as not found in {llvm_as}")
+            assemble = subprocess.run(
+                [str(llvm_as), "-o", output_path],
+                input=textual_ir,
+                cwd=cwd,
+                check=False,
+                capture_output=True,
+            )
+            if assemble.returncode != 0:
+                detail = (
+                    f":\n{assemble.stderr.decode()}" if assemble.stderr else ""
+                )
+                raise RuntimeError(
+                    f"[Peano] LLVM bitcode assembly failed{detail}"
+                )
 
 
 def _run_aiecc(mlir_file: str, args: list[str]):

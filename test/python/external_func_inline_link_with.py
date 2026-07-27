@@ -61,3 +61,26 @@ def default_declares_o_link_with():
         ef.resolve()
         tile(0, 2)
         end()
+
+
+# An explicit object-style filename is normalized because inline artifacts must
+# be routed through aiecc's LLVM-IR merge path, which recognizes .ll/.bc.
+# CHECK-LABEL: TEST: inline_explicit_o_normalizes_to_ll
+# CHECK: func.func private @add_one_named({{.*}}) attributes {link_with = "custom_name.ll"}
+@construct_and_print_module
+def inline_explicit_o_normalizes_to_ll():
+    ExternalFunction._instances.clear()
+    dev = Device(AIEDevice.npu1_1col)
+    dev_block = Block.create_at_start(dev.body_region)
+    with InsertionPoint(dev_block):
+        ef = ExternalFunction(
+            "add_one_named",
+            object_file_name="custom_name.o",
+            source_string=_SRC.format(name="add_one_named"),
+            arg_types=_ARGS,
+            inline=True,
+        )
+        assert ef.object_file_name == "custom_name.ll", ef.object_file_name
+        ef.resolve()
+        tile(0, 2)
+        end()

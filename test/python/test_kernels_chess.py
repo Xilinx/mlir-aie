@@ -21,7 +21,7 @@ import pytest
 from ml_dtypes import bfloat16
 
 from aie.iron import kernels
-from aie.iron.kernel import Kernel
+from aie.iron.kernel import ExternalFunction, Kernel
 from aie.utils.compile.jit.compilabledesign import _compute_hash
 
 # ---------------------------------------------------------------------------
@@ -67,6 +67,17 @@ def test_kernels_mm_default_use_chess_is_false():
         dim_m=64, dim_k=64, dim_n=32, input_dtype=np.int16, output_dtype=np.int16
     )
     assert ef._use_chess is False
+
+
+def test_external_function_rejects_inline_with_chess():
+    """Inline IR is a Peano-only path, so reject Chess before compilation."""
+    with pytest.raises(ValueError, match="inline=True requires the Peano toolchain"):
+        ExternalFunction(
+            "inline_chess",
+            source_string='extern "C" void inline_chess() {}',
+            inline=True,
+            use_chess=True,
+        )
 
 
 def test_kernels_mm_chess_distinct_digest_from_peano():
