@@ -13,6 +13,7 @@ issues/waits on AIE kernel-dispatch packets.
 
 import ctypes
 import os
+import threading
 
 from ._bindings import (
     HSA_ACCESS_PERMISSION_RW,
@@ -44,6 +45,7 @@ from ._bindings import (
     HsaQueue,
     _check,
     _DISPATCH_HEADER,
+    _hsa_sync_timeout_s,
     _HSA_WAIT_FOREVER,
     hsa_agent_t,
     hsa_amd_memory_pool_t,
@@ -58,6 +60,7 @@ class HSAContext:
     """Process-wide singleton owning the HSA AIE device, memory, and queue."""
 
     _instance = None
+    _lock = threading.Lock()
 
     def __init__(self):
         lib._ensure()
@@ -103,9 +106,11 @@ class HSAContext:
         )
 
     @classmethod
-    def get(cls):
+    def get(cls) -> "HSAContext":
         if cls._instance is None:
-            cls._instance = HSAContext()
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = HSAContext()
         return cls._instance
 
     # -- discovery ---------------------------------------------------------
@@ -293,7 +298,39 @@ class HSAContext:
         lib.hsa_signal_store_screlease(self.queue_doorbell, wr_idx)
 
     def wait(self, signal):
-        lib.hsa_signal_wait_scacquire(
-            signal, HSA_SIGNAL_CONDITION_EQ, 0, _HSA_WAIT_FOREVER,
-            HSA_WAIT_STATE_BLOCKED,
-        )
+        timeout = _hsa_sync_timeout_s()
+        if timeout <= 0:
+            # Default: block until the signal reaches 0 (unchanged behavior).
+            lib.hsa_signal_wait_scacquire(
+                signal, HSA_SIGNAL_CONDITION_EQ, 0, _HSA_WAIT_FOREVER,
+                HSA_WAIT_STATE_BLOCKED,
+            )
+            return
+        # Best-effort watchdog: run the blocking wait on a daemon thread and bound
+        # the *wait* with a timeout. The underlying hsa_signal_wait cannot be
+        # cancelled, so on expiry the device work keeps running -- this raises a
+        # diagnosable error instead of hanging forever.
+        result = {}
+
+        def _worker():
+            try:
+                lib.hsa_signal_wait_scacquire(
+                    signal, HSA_SIGNAL_CONDITION_EQ, 0, _HSA_WAIT_FOREVER,
+                    HSA_WAIT_STATE_BLOCKED,
+                )
+                result["ok"] = True
+            except BaseException as e:
+                result["err"] = e
+
+        t = threading.Thread(target=_worker, daemon=True)
+        t.start()
+        t.join(timeout)
+        if t.is_alive():
+            raise HSAError(
+                f"hsa_signal_wait did not complete within IRON_HSA_TIMEOUT="
+                f"{timeout:g}s. The dispatch may be wedged; the underlying wait "
+                f"cannot be cancelled and is still pending. Recover the device "
+                f"(e.g. reload the amdxdna driver) if this persists."
+            )
+        if "err" in result:
+            raise result["err"]
