@@ -4066,7 +4066,20 @@ into MLIR operations.</p>
 <h3 id="-aie-lower-core-reset"><code>-aie-lower-core-reset</code><a class="headerlink" href="#-aie-lower-core-reset" title="Permanent link">&para;</a></h3>
 <p><em>Lowers all aiex.core_reset operations to npu.maskwrite32</em></p>
 <h3 id="-aie-lower-dma-channel-reset"><code>-aie-lower-dma-channel-reset</code><a class="headerlink" href="#-aie-lower-dma-channel-reset" title="Permanent link">&para;</a></h3>
-<p><em>Lowers all aiex.dma_channel_reset operations to npu.maskwrite32</em></p>
+<p><em>Lowers aiex.dma_channel_reset(_for) to npu.maskwrite32 + re-arm</em></p>
+<p>Two concerns, one pass (kept together like the other reset lowerings):</p>
+<ul>
+<li>Each <code>aiex.dma_channel_reset_for @fifo</code> is first expanded, via the fifo's
+  <code>aie.objectfifo_rearm_binding</code>, into the resident re-arm of its non-shim
+  channels: an <code>aiex.dma_channel_reset</code> per channel, an <code>aiex.set_lock</code> per
+  producer/consumer lock, and an <code>aiex.npu.push_queue</code> START_QUEUE re-push
+  per channel (head BD id + repeat read straight off the binding, populated
+  by <code>--aie-assign-bd-ids</code>).</li>
+<li>Every <code>aiex.dma_channel_reset</code> -- standalone or just emitted above -- is
+  then lowered to the <code>aiex.npu.maskwrite32</code> reset pulse.</li>
+</ul>
+<p>The emitted <code>set_lock</code> / <code>push_queue</code> are lowered later by
+<code>--aie-lower-set-lock</code> / <code>--aie-dma-to-npu</code>, so run this before them.</p>
 <h3 id="-aie-lower-dynamic-bd-pool"><code>-aie-lower-dynamic-bd-pool</code><a class="headerlink" href="#-aie-lower-dynamic-bd-pool" title="Permanent link">&para;</a></h3>
 <p><em>Lower runtime-bound DMA task allocation to a runtime BD free-list pool</em></p>
 <p>The dynamic counterpart to <code>aie-assign-runtime-sequence-bd-ids</code>. That pass
