@@ -92,9 +92,16 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
     TileID srcSbId = {srcCoords.col, srcCoords.row};
     PathEndPoint srcPoint = {srcSbId, srcPort};
     if (analyzer.processedFlows[srcPoint]) {
+      // This FlowOp is a broadcast sibling of a flow whose route was already
+      // materialized (the analyzer merges all destinations sharing a source
+      // into one net, so the first sibling emitted connections for every
+      // destination). Erase it and report success so the erase is committed;
+      // returning failure() here would roll the erase back and leave a stale
+      // aie.flow in the routed IR, breaking idempotency (re-running the pass
+      // would try to re-route an already-routed net and fail).
       LLVM_DEBUG(llvm::dbgs() << "Flow already processed!\n");
       rewriter.eraseOp(Op);
-      return failure();
+      return success();
     }
     // std::map<TileID, SwitchSetting>
     SwitchSettings settings = analyzer.flowSolutions[srcPoint];
@@ -1072,7 +1079,14 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
     }
   }
 
+  // Remove the packet_flow ops now that they have been lowered into
+  // masterset/amsel/packet_rules on the switchboxes. Leaving them in the IR
+  // would break idempotency: re-running this pass on its own routed output
+  // would re-lower them and emit duplicate masterset/packet_rules (illegal
+  // double-drivers on ports already claimed by the first lowering).
+  target.addIllegalOp<PacketFlowOp>();
   RewritePatternSet patterns(&getContext());
+  patterns.insert<AIEOpRemoval<PacketFlowOp>>(device.getContext());
 
   if (failed(applyPartialConversion(device, target, std::move(patterns))))
     return failure();

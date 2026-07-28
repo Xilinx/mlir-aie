@@ -16,15 +16,17 @@
 // CHECK1:    %[[TILE_0_4:.*]] = aie.tile(0, 4)
 // CHECK1:    %[[TILE_0_5:.*]] = aie.tile(0, 5)
 // CHECK1:    %[[TILE_1_0:.*]] = aie.tile(1, 0)
-// CHECK1:    aie.packet_flow(0) {
-// CHECK1:      aie.packet_source<%[[TILE_0_5]], DMA : 1>
-// CHECK1:      aie.packet_dest<%[[TILE_0_1]], DMA : 4>
-// CHECK1:    }
+// The pathfinder now removes the lowered flows; --aie-find-flows re-derives
+// them from the switchbox routing, emitting circuit flows before packet flows.
 // CHECK1:    aie.flow(%[[TILE_0_1]], DMA : 0, %[[TILE_0_0]], DMA : 0)
 // CHECK1:    aie.flow(%[[TILE_0_2]], DMA : 0, %[[TILE_0_1]], DMA : 0)
 // CHECK1:    aie.flow(%[[TILE_0_3]], DMA : 0, %[[TILE_0_1]], DMA : 1)
 // CHECK1:    aie.flow(%[[TILE_0_4]], DMA : 0, %[[TILE_0_1]], DMA : 2)
 // CHECK1:    aie.flow(%[[TILE_0_5]], DMA : 0, %[[TILE_0_1]], DMA : 3)
+// CHECK1:    aie.packet_flow(0) {
+// CHECK1:      aie.packet_source<%[[TILE_0_5]], DMA : 1>
+// CHECK1:      aie.packet_dest<%[[TILE_0_1]], DMA : 4>
+// CHECK1:    }
 
 // CHECK2: "total_path_length": 19
 

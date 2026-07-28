@@ -14,13 +14,16 @@
 // CHECK1:    %[[VAL_2:.*]] = aie.tile(0, 3)
 // CHECK1:    %[[VAL_3:.*]] = aie.tile(0, 4)
 // CHECK1:    %[[VAL_4:.*]] = aie.tile(0, 5)
-// CHECK1:    aie.packet_flow(0) {
-// CHECK1:      aie.packet_source<%[[VAL_1:.*]], DMA : 0>
-// CHECK1:      aie.packet_dest<%[[VAL_0:.*]], DMA : 0>
-// CHECK1:    }
+// The pathfinder now removes the lowered packet flows; --aie-find-flows
+// re-derives them from the switchbox routing, emitting the two fan-out
+// destinations of tile(0,2) DMA:0 in discovery order (flow 4 before flow 0).
 // CHECK1:    aie.packet_flow(4) {
 // CHECK1:      aie.packet_source<%[[VAL_1:.*]], DMA : 0>
 // CHECK1:      aie.packet_dest<%[[VAL_0:.*]], DMA : 4>
+// CHECK1:    }
+// CHECK1:    aie.packet_flow(0) {
+// CHECK1:      aie.packet_source<%[[VAL_1:.*]], DMA : 0>
+// CHECK1:      aie.packet_dest<%[[VAL_0:.*]], DMA : 0>
 // CHECK1:    }
 // CHECK1:    aie.packet_flow(1) {
 // CHECK1:      aie.packet_source<%[[VAL_2:.*]], DMA : 0>
