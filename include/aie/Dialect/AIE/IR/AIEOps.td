@@ -377,7 +377,14 @@ def AIE_CoreOp: AIE_Op<"core", [
     OptionalAttr<StrAttr>:$link_with,
     // Populated by aie-assign-core-link-files; consumed by BCF/ldscript emitters
     // and the aiecc driver.  Specifying both link_with and link_files is an error.
+    // These artifacts are ordinary inputs to the core's final link.
     OptionalAttr<StrArrayAttr>:$link_files,
+    // Populated by aie-assign-core-link-files from func.func declarations that
+    // carry `link_with_mode = "merge"`.  These artifacts are merged into the
+    // core's LLVM module (llvm-link) before codegen instead of being handed to
+    // the final link.  May coexist with link_files, but a given path must not
+    // appear in both.
+    OptionalAttr<StrArrayAttr>:$link_merge_files,
     OptionalAttr<StrAttr>:$elf_file,
     OptionalAttr<BoolAttr>:$dynamic_objfifo_lowering,
     // If set to false, suppresses automatic insertion of the parameter-sync
@@ -408,17 +415,41 @@ def AIE_CoreOp: AIE_Op<"core", [
     This op has an optional `dynamic_objfifo_lowering` attribute, to finely control whether the
     objectfifos in this core should be lowered using the dynamic runtime lowering.
 
-    **External object files.**  The preferred mechanism is to attach a `link_with`
-    string attribute to each `func.func` declaration for an externally-defined
-    function, then run the `aie-assign-core-link-files` pass.  That pass traces
-    direct `func.call` edges from each core and writes the aggregated, de-duplicated
-    list of object file paths into the `link_files` attribute on this op.  The
-    BCF/ldscript emitters and the aiecc driver consume `link_files`.
+    **External link artifacts.**  The preferred mechanism is to attach a
+    `link_with` string attribute to each `func.func` declaration for an
+    externally-defined function, then run the `aie-assign-core-link-files` pass.
+    That pass traces direct `func.call` edges from each core and writes the
+    aggregated, de-duplicated list of artifact paths into the `link_files` and
+    `link_merge_files` attributes on this op.  The BCF/ldscript emitters and the
+    aiecc driver consume both.
+
+    How an artifact is linked is a property of the metadata, never of the file
+    name: nothing here or downstream inspects the file extension.  A `func.func`
+    declaration may carry an optional `link_with_mode` string attribute
+    alongside `link_with`:
+
+      * absent -- the artifact is an ordinary input to the core's final link,
+        and the pass records it in `link_files`;
+      * `"merge"` -- the artifact is an LLVM IR module (as emitted by
+        `ExternalFunction(inline=True)`) that must be merged into the core's
+        LLVM module with llvm-link before codegen, so that the callee can be
+        inlined and no separate object is linked.  The pass records it in
+        `link_merge_files`.
+
+    `"merge"` is currently the only accepted `link_with_mode` value, and
+    `link_with_mode` without `link_with` is an error.  Both lists may be present
+    on the same core, but a given path must not appear in both -- an artifact is
+    either merged or linked, not both.  Because the aiecc "unified" flow builds
+    one LLVM module for all cores of a device, the pass additionally rejects a
+    path that is merged by one core and object-linked by another core of the
+    same device.
 
     The core-level `link_with` attribute is deprecated and kept only for
-    backward compatibility.  It is migrated by `aie-assign-core-link-files`
-    (its value is folded into `link_files` and then removed).  Specifying both
-    `link_with` and `link_files` on the same CoreOp is a verifier error.
+    backward compatibility.  It always means an ordinary final-link input;
+    there is no core-level way to request merging.  It is migrated by
+    `aie-assign-core-link-files` (its value is folded into `link_files` and then
+    removed).  Specifying both `link_with` and either `link_files` or
+    `link_merge_files` on the same CoreOp is a verifier error.
 
     Examples:
     ```
