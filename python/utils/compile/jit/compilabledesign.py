@@ -41,7 +41,7 @@ from aie.extras.context import mlir_mod_ctx  # pyright: ignore[reportMissingImpo
 from aie.ir import (  # pyright: ignore[reportMissingImports]
     Module as _Module,  # pyright: ignore[reportAttributeAccessIssue]
 )
-from aie.ir import (
+from aie.ir import (  # pyright: ignore[reportMissingImports]
     StringAttr,  # pyright: ignore[reportAttributeAccessIssue]
 )
 from aie.utils.compile import (
