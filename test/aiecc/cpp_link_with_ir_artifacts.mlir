@@ -5,35 +5,37 @@
 //
 //===----------------------------------------------------------------------===//
 
-// LLVM IR link artifacts (.ll/.bc) -- what ExternalFunction(inline=True)
-// emits -- are merged into the core's LLVM module by aiecc via llvm-link and
-// inlined, not object-linked.  So the ldscript and BCF emitters must leave
-// them out of INPUT() / `_include _file`; emitting them there would ask the
-// linker to consume LLVM IR as an object, and (once llvm-link has already
-// merged them) would define the same symbols twice.
+// How a link artifact reaches the core is decided by metadata, not by the file
+// name.  `link_with_mode = "merge"` -- what ExternalFunction(inline=True)
+// emits -- routes the artifact into `link_merge_files`, which aiecc llvm-links
+// into the core's LLVM module and inlines; the ldscript and BCF emitters must
+// leave those out of INPUT() / `_include _file`, or (once llvm-link has merged
+// them) the same symbols would be defined twice.  Everything else lands in
+// `link_files` and is an ordinary final-link input whatever its suffix -- a
+// .bc included, since lld accepts bitcode as an LTO input.
 //
-// aie-assign-core-link-files itself does not filter: link_files carries every
-// artifact, and routing is the emitters' job.  Both halves are checked here.
+// Both halves are checked here: the pass's routing, and the emitters' output.
 
 // RUN: aie-opt --verify-diagnostics --aie-assign-core-link-files %s | FileCheck %s --check-prefix=OPT
 // RUN: aie-opt --verify-diagnostics --aie-assign-core-link-files %s | aie-translate --aie-generate-ldscript --tilecol=0 --tilerow=2 | FileCheck %s --check-prefix=LDSCRIPT
 // RUN: aie-opt --verify-diagnostics --aie-assign-core-link-files %s | aie-translate --aie-generate-bcf --tilecol=0 --tilerow=2 | FileCheck %s --check-prefix=BCF
 
-// The pass records all three, unfiltered.
-// OPT: link_files = ["kernel_obj.o", "kernel_ir.ll", "kernel_ir.bc"]
+// The pass splits by mode, not by suffix: the .bc stays an ordinary link
+// input, and only the merge-mode artifact moves to link_merge_files.
+// OPT:      link_files = ["kernel_obj.o", "kernel_ir.bc"]
+// OPT-SAME: link_merge_files = ["kernel_merge.ll"]
 
-// Only the object is handed to the linker.
-// LDSCRIPT-NOT: kernel_ir.ll
-// LDSCRIPT-NOT: kernel_ir.bc
-// LDSCRIPT: INPUT(kernel_obj.o)
-// LDSCRIPT-NOT: kernel_ir.ll
-// LDSCRIPT-NOT: kernel_ir.bc
+// Every link_files entry is handed to the linker verbatim; the merge-mode
+// artifact appears nowhere.
+// LDSCRIPT-NOT:  kernel_merge.ll
+// LDSCRIPT:      INPUT(kernel_obj.o)
+// LDSCRIPT-NEXT: INPUT(kernel_ir.bc)
+// LDSCRIPT-NOT:  kernel_merge.ll
 
-// BCF-NOT: kernel_ir.ll
-// BCF-NOT: kernel_ir.bc
-// BCF: _include _file kernel_obj.o
-// BCF-NOT: kernel_ir.ll
-// BCF-NOT: kernel_ir.bc
+// BCF-NOT:  kernel_merge.ll
+// BCF:      _include _file kernel_obj.o
+// BCF-NEXT: _include _file kernel_ir.bc
+// BCF-NOT:  kernel_merge.ll
 
 module {
   aie.device(npu1_1col) {
@@ -43,11 +45,12 @@ module {
     aie.objectfifo @of_in(%tile_0_0, {%tile_0_2}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
     aie.objectfifo @of_out(%tile_0_2, {%tile_0_0}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
 
-    // Object-linked kernel (default ExternalFunction path).
+    // Ordinary link inputs (default ExternalFunction path): an object, and a
+    // bitcode module that is object-linked because it asks for no other mode.
     func.func private @obj_kernel(memref<16xi32>, memref<16xi32>) attributes {link_with = "kernel_obj.o"}
-    // Inlined kernels: textual and bitcode LLVM IR.
-    func.func private @ll_kernel(memref<16xi32>, memref<16xi32>) attributes {link_with = "kernel_ir.ll"}
     func.func private @bc_kernel(memref<16xi32>, memref<16xi32>) attributes {link_with = "kernel_ir.bc"}
+    // Inlined kernel: ExternalFunction(inline=True) marks the mode explicitly.
+    func.func private @merge_kernel(memref<16xi32>, memref<16xi32>) attributes {link_with = "kernel_merge.ll", link_with_mode = "merge"}
 
     %core_0_2 = aie.core(%tile_0_2) {
       %subview_in = aie.objectfifo.acquire @of_in(Consume, 1) : !aie.objectfifosubview<memref<16xi32>>
@@ -57,8 +60,8 @@ module {
       %elem_out = aie.objectfifo.subview.access %subview_out[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
 
       func.call @obj_kernel(%elem_in, %elem_out) : (memref<16xi32>, memref<16xi32>) -> ()
-      func.call @ll_kernel(%elem_in, %elem_out) : (memref<16xi32>, memref<16xi32>) -> ()
       func.call @bc_kernel(%elem_in, %elem_out) : (memref<16xi32>, memref<16xi32>) -> ()
+      func.call @merge_kernel(%elem_in, %elem_out) : (memref<16xi32>, memref<16xi32>) -> ()
 
       aie.objectfifo.release @of_in(Consume, 1)
       aie.objectfifo.release @of_out(Produce, 1)

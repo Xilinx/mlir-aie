@@ -13,10 +13,24 @@ overhead accumulates (see [issue #3396](https://github.com/Xilinx/mlir-aie/issue
 (`.ll`) instead of an object file. `aiecc` `llvm-link`s that IR into the core's
 LLVM module before `opt`/`llc` and the always-inliner folds the body in, so there
 is **no surviving `func.call`** and **no separately object-linked kernel `.o`**.
-The `.ll`/`.bc` link artifacts are routed to this IR-merge path and excluded from
-object linking (linker script `INPUT()` / BCF `_include`), so each symbol is
-merged exactly once. This is the Peano path only — the Chess front-end cannot
-`llvm-link`.
+This is the Peano path only — the Chess front-end cannot `llvm-link`.
+
+Routing is explicit metadata, not a filename convention. `inline=True` declares
+the kernel with `link_with_mode = "merge"`:
+
+```mlir
+func.func private @add_one(...) attributes {
+  link_with = "add_one.ll",
+  link_with_mode = "merge"    // llvm-link me into the core module
+}
+```
+
+`aie-assign-core-link-files` sorts each core's artifacts into `link_files`
+(object-linked) and `link_merge_files` (IR-merged), and only the former reaches
+the linker script `INPUT()` / BCF `_include`, so each symbol is merged exactly
+once. Without the mode an artifact is object-linked **whatever its suffix** — a
+`.bc` is a perfectly good LTO input to `lld`. The file extension only selects the
+emitted format: `.ll` for textual IR, `.bc` for bitcode.
 
 Usage is a single keyword:
 
@@ -67,3 +81,5 @@ inline build has **zero** surviving calls and no separate `add_one.o`.
 - Peano front-end only (not `use_chess=True`).
 - `inline=True` is incompatible with `symbol_prefix` (an inline kernel is emitted
   as LLVM IR and cannot be symbol-renamed); combining them raises a clear error.
+- With `inline=True`, an explicit `object_file_name` must end in `.ll` or `.bc`.
+  The name is never silently rewritten.

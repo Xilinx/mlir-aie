@@ -84,10 +84,11 @@ using xilinx::AIE::DeviceOp;
 // peano path; the `xchesscc` command-line flag selects which output edge is
 // returned.
 //
-// `irLinkFiles` carries, per key, the LLVM IR (.ll/.bc) kernel artifacts to
-// llvm-link into that key's module before codegen. Keys with an empty list get
-// the plain compile flow. Only the peano path can merge them; the chess path
-// consumes the same edge solely to reject a non-empty list with a diagnostic.
+// `irLinkFiles` carries, per key, the merge-mode kernel artifacts (the core's
+// `link_merge_files`, i.e. `link_with_mode = "merge"`) to llvm-link into that
+// key's module before codegen. Keys with an empty list get the plain compile
+// flow. Only the peano path can merge them; the chess path consumes the same
+// edge solely to reject a non-empty list with a diagnostic.
 EdgeWithTypedOutput<Directory> &
 buildObjectSubgraph(EdgeWithTypedOutput<ModRef> &lowered,
                     EdgeWithTypedOutput<std::string> &arches,
@@ -112,25 +113,26 @@ buildObjectSubgraph(EdgeWithTypedOutput<ModRef> &lowered,
                                   const Item<std::string> &archItem,
                                   const Item<std::vector<std::string>> &irLinks,
                                   Item<File> &out) -> mlir::LogicalResult {
-                       // The chess front-end cannot llvm-link, so IR kernel
-                       // artifacts have no route into the core on this path --
-                       // and the BCF emitter deliberately leaves them out of
-                       // `_include _file` because they are not object files.
-                       // Reject them here, where the cause is still known,
-                       // rather than let it surface as an undefined symbol
-                       // from the chess linker.
+                       // The chess front-end cannot llvm-link, so merge-mode
+                       // kernel artifacts have no route into the core on this
+                       // path -- and the BCF emitter deliberately leaves
+                       // `link_merge_files` out of `_include _file`. Reject
+                       // them here, where the cause is still known, rather
+                       // than let it surface as an undefined symbol from the
+                       // chess linker.
                        if (!irLinks.get().empty()) {
                          llvm::errs()
-                             << "aiecc: --xchesscc cannot consume LLVM IR link "
-                                "artifacts (.ll/.bc): the Chess front-end "
-                                "cannot llvm-link them into the core. "
-                                "Offending link_with entries:\n";
+                             << "aiecc: --xchesscc cannot consume merge-mode "
+                                "link artifacts (link_with_mode = \"merge\"): "
+                                "the Chess front-end cannot llvm-link them "
+                                "into the core. Offending link_with entries:\n";
                          for (const auto &f : irLinks.get())
                            llvm::errs() << "  " << f << "\n";
                          llvm::errs()
-                             << "Compile these kernels to objects (.o) "
-                                "instead, or build with the Peano front-end "
-                                "(drop --xchesscc).\n";
+                             << "Drop link_with_mode = \"merge\" and compile "
+                                "these kernels to objects (.o) instead, or "
+                                "build with the Peano front-end (drop "
+                                "--xchesscc).\n";
                          return mlir::failure();
                        }
                        llvm::StringRef arch = archItem.get();
@@ -168,7 +170,7 @@ buildObjectSubgraph(EdgeWithTypedOutput<ModRef> &lowered,
                                        .output("-o"))
           .threadSafe();
 
-  // Peano path: downgrade -> (llvm-link IR kernels) -> opt -> llc.
+  // Peano path: downgrade -> (llvm-link merge-mode kernels) -> opt -> llc.
   unsigned optPassLevel = std::min<unsigned>(optLevel, 1u);
   ShellCommand optCmd{"opt"};
   if (optLevel >= 3)
@@ -180,14 +182,15 @@ buildObjectSubgraph(EdgeWithTypedOutput<ModRef> &lowered,
       .output("-o");
   auto &peanoCompat =
       llvmIR.map<std::string>("peano-compat_{0}.ll", downgradeIRForPeano);
-  // Merge any LLVM IR link artifacts (.ll/.bc) into the downgraded core IR via
+  // Merge the core's merge-mode link artifacts into the downgraded core IR via
   // llvm-link before opt. With the kernel marked alwaysinline this inlines the
   // kernel body into the core -- no surviving func.call and no separately
   // object-linked kernel object. The kernel IR is already peano-flavored (it is
   // emitted by the peano toolchain), so only the core IR needs downgrading;
-  // llvm-link then merges the two. IR artifacts are excluded from ld-script
-  // INPUT()/BCF _include (see AIETranslateToLdScript / AIETranslateToBCF), so
-  // each symbol is merged exactly once. Keys with no IR link files pass the
+  // llvm-link then merges the two. These artifacts come from the core's
+  // `link_merge_files`, which the ld-script/BCF emitters never emit (they emit
+  // `link_files` only, see AIETranslateToLdScript / AIETranslateToBCF), so each
+  // symbol is merged exactly once. Keys with no merge-mode link files pass the
   // downgraded IR straight through (no llvm-link is run). Peano only: the chess
   // front-end cannot llvm-link.
   ShellCommand llvmLinkCmd{"llvm-link"};
@@ -708,13 +711,19 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
         return loweringPipeline(item.get().module.get(), d.getSymName(), -1, -1,
                                 out);
       });
-  // IR link artifacts (.ll/.bc) for the device's whole core set, deduplicated
+  // Merge-mode link artifacts for the device's whole core set, deduplicated
   // (the shared unified module is llvm-linked once). See buildObjectSubgraph.
   auto &perDeviceIRLinkFiles = physicalPerDevice.map<std::vector<std::string>>(
       "perDeviceIRLinkFiles_{0}.txt",
-      [inputFile, workDirStr](const OpInModule<DeviceOp> &dev) {
-        return collectDeviceIRLinkFiles(DeviceOp(dev.op), inputFile,
-                                        workDirStr);
+      [inputFile,
+       workDirStr](const Item<OpInModule<DeviceOp>> &dev,
+                   Item<std::vector<std::string>> &out) -> mlir::LogicalResult {
+        std::vector<std::string> files;
+        if (mlir::failed(collectDeviceIRLinkFiles(
+                DeviceOp(dev.get().op), inputFile, workDirStr, files)))
+          return mlir::failure();
+        out.value = std::move(files);
+        return mlir::success();
       });
   auto &unifiedObjects =
       buildObjectSubgraph(unifiedLowered, perDeviceArches, perDeviceIRLinkFiles,
@@ -738,7 +747,7 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
                                 core->getParentOfType<DeviceOp>().getSymName(),
                                 tile.getCol(), tile.getRow(), out);
       });
-  // IR link artifacts (.ll/.bc) for this core, llvm-linked into its own module.
+  // Merge-mode link artifacts for this core, llvm-linked into its own module.
   auto &perCoreIRLinkFiles = perCore.map<std::vector<std::string>>(
       "perCoreIRLinkFiles_{0}.txt",
       [inputFile, workDirStr](const OpInModule<CoreOp> &core) {
@@ -757,6 +766,41 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
                               Item<std::string> &out) -> mlir::LogicalResult {
         CoreOp op = item.get().op;
         auto tile = mlir::cast<TileOp>(op.getTile().getDefiningOp());
+        // Peano-only guard. `link_files` entries become INPUT() directives, and
+        // lld falls back to parsing a non-object INPUT() as a linker script: a
+        // textual .ll dies with the useless `ld.lld: error: <file>:1: malformed
+        // number`. Bitcode is fine -- lld accepts a .bc as an LTO input -- so
+        // only .ll is rejected, and only here: the chess linker consumes the
+        // BCF emitter's output instead and has its own rules.
+        if (!xbridge) {
+          auto isTextualIR =
+              [&](llvm::StringRef f) {
+                if (!f.ends_with(".ll"))
+                  return false;
+                llvm::errs()
+                    << "aiecc: link file '" << f << "' on core ("
+                    << tile.getCol() << ", " << tile.getRow()
+                    << ") is textual LLVM IR, which ld.lld cannot link (it "
+                       "reads unrecognized inputs as linker scripts and fails "
+                       "with \"malformed number\"). Add link_with_mode = "
+                       "\"merge\" to the kernel declaration so aiecc "
+                       "llvm-links it into the core, or assemble it to "
+                       "bitcode (.bc) or an object (.o).\n";
+                return true;
+              };
+          // Mirror the emitter's precedence exactly (see
+          // AIETranslateToLdScript): when link_files is present the deprecated
+          // core-level link_with is not emitted, so it must not be diagnosed
+          // either.
+          if (auto filesAttr = op.getLinkFiles()) {
+            for (auto f : filesAttr->getAsRange<mlir::StringAttr>())
+              if (isTextualIR(f.getValue()))
+                return mlir::failure();
+          } else if (auto fileAttr = op.getLinkWith()) {
+            if (isTextualIR(fileAttr.value()))
+              return mlir::failure();
+          }
+        }
         auto rewritten =
             absolutizeLinkFiles(item.get().module.get(), tile.getCol(),
                                 tile.getRow(), inputFile, workDirStr);

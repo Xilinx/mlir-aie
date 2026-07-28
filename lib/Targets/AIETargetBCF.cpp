@@ -140,22 +140,23 @@ LogicalResult AIETranslateToBCF(ModuleOp module, raw_ostream &output,
              << " // And everything else the core can't see\n";
 
       if (auto coreOp = tile.getCoreOp()) {
-        // LLVM IR (.ll/.bc) link artifacts are merged into the core module
-        // via llvm-link (aiecc), not object-linked here, so they are skipped.
-        auto isIRLinkFile = [](llvm::StringRef v) {
-          return v.ends_with(".ll") || v.ends_with(".bc");
-        };
+        // `link_files` holds the ordinary final-link inputs: every entry is
+        // emitted verbatim, whatever its suffix. Routing is decided by which
+        // list an artifact lands in, not by its file format.
+        // `link_merge_files` is deliberately never emitted here: those
+        // artifacts are llvm-linked into the core module by aiecc before
+        // codegen, so object-linking them too would define the same symbols
+        // twice.
         if (auto filesAttr = coreOp.getLinkFiles()) {
           // Canonical path: link_files populated by aie-assign-core-link-files.
           for (auto f : filesAttr->getAsRange<mlir::StringAttr>())
-            if (!isIRLinkFile(f.getValue()))
-              output << "_include _file " << f.getValue() << "\n";
+            output << "_include _file " << f.getValue() << "\n";
         } else if (coreOp.getLinkWith()) {
           // Deprecated fallback: core-level link_with was not migrated by
-          // aie-assign-core-link-files (e.g., the pass was not run).
-          if (!isIRLinkFile(coreOp.getLinkWith().value()))
-            output << "_include _file " << coreOp.getLinkWith().value().str()
-                   << "\n";
+          // aie-assign-core-link-files (e.g., the pass was not run). It carries
+          // no mode, so it is always an ordinary link input.
+          output << "_include _file " << coreOp.getLinkWith().value().str()
+                 << "\n";
         }
       }
       output << "_resolve _main core_" << tile.getCol() << "_" << tile.getRow()

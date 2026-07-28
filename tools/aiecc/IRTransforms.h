@@ -159,49 +159,71 @@ absolutizeLinkFiles(mlir::ModuleOp src, int col, int row,
   return cloned;
 }
 
-// Collect the LLVM IR (.ll/.bc) link artifacts declared on `coreOp`, resolved
-// to absolute paths. Unlike object link files, these are merged into the
-// core's LLVM module via llvm-link (see buildObjectSubgraph's peano path) and
-// inlined -- eliminating the func.call boundary and the separately
-// object-linked kernel object -- so aiecc routes them separately here. This
-// mirrors the .ll/.bc filtering in AIETranslateToLdScript / AIETranslateToBCF,
-// which skip the same entries so each symbol is merged exactly once.
+// Collect `coreOp`'s merge-mode link artifacts -- the entries of
+// `link_merge_files`, populated by aie-assign-core-link-files from
+// `link_with_mode = "merge"` on the func.func declaration -- resolved to
+// absolute paths. These are llvm-linked into the core's LLVM module before
+// codegen (see buildObjectSubgraph's peano path) and inlined, eliminating the
+// func.call boundary and the separately object-linked kernel object. Routing
+// is decided purely by this attribute, never by file suffix: an artifact in
+// the sibling `link_files` list is an ordinary final-link input whatever its
+// format. The ldscript/BCF emitters emit `link_files` only, so an artifact
+// merged here is never also object-linked and each symbol is defined once.
+//
+// The deprecated core-level `link_with` has nowhere to carry a mode, so it can
+// never request merging and is not consulted here.
 inline std::vector<std::string>
 collectCoreIRLinkFiles(xilinx::AIE::CoreOp coreOp, llvm::StringRef inputFile,
                        llvm::StringRef workDir) {
-  auto isIRLinkFile = [](llvm::StringRef v) {
-    return v.ends_with(".ll") || v.ends_with(".bc");
-  };
   std::vector<std::string> files;
-  if (auto filesAttr = coreOp.getLinkFiles()) {
-    // Canonical path: link_files populated by aie-assign-core-link-files.
-    for (auto f : filesAttr->getAsRange<mlir::StringAttr>())
-      if (isIRLinkFile(f.getValue()))
-        files.push_back(resolveExternalPath(f.getValue(), inputFile, workDir));
-  } else if (auto linkWith = coreOp.getLinkWith()) {
-    // Deprecated fallback: core-level link_with was not migrated by the pass.
-    if (isIRLinkFile(linkWith.value()))
-      files.push_back(
-          resolveExternalPath(linkWith.value(), inputFile, workDir));
-  }
+  if (auto mergeAttr = coreOp.getLinkMergeFiles())
+    for (auto f : mergeAttr->getAsRange<mlir::StringAttr>())
+      files.push_back(resolveExternalPath(f.getValue(), inputFile, workDir));
   return files;
 }
 
-// Collect the deduplicated IR link artifacts across every core of `deviceOp`,
-// for the unified-object path where the device's cores share one LLVM module
-// that is llvm-linked once. Duplicate references across cores merge cleanly
-// (the kernels are linkonce_odr) and each is inlined into its caller.
-inline std::vector<std::string>
+// Collect the deduplicated merge-mode link artifacts across every core of
+// `deviceOp`, for the unified-object path where the device's cores share one
+// LLVM module that is llvm-linked once. Duplicate references across cores
+// merge cleanly (the kernels are linkonce_odr) and each is inlined into its
+// caller.
+//
+// Fails if any path is merge-mode on one core and an ordinary link input on
+// another core of the same device: with one shared module the merged copy and
+// the object-linked copy would both define the kernel's symbols. The pass that
+// builds these lists normally diagnoses that, but aiecc can also be handed
+// pre-populated IR, so the check is repeated here.
+inline mlir::LogicalResult
 collectDeviceIRLinkFiles(xilinx::AIE::DeviceOp deviceOp,
-                         llvm::StringRef inputFile, llvm::StringRef workDir) {
-  std::vector<std::string> files;
-  llvm::StringSet<> seen;
+                         llvm::StringRef inputFile, llvm::StringRef workDir,
+                         std::vector<std::string> &files) {
+  files.clear();
+  llvm::StringSet<> merged;
   deviceOp.walk([&](xilinx::AIE::CoreOp coreOp) {
     for (auto &f : collectCoreIRLinkFiles(coreOp, inputFile, workDir))
-      if (seen.insert(f).second)
+      if (merged.insert(f).second)
         files.push_back(std::move(f));
   });
-  return files;
+
+  mlir::LogicalResult result = mlir::success();
+  deviceOp.walk([&](xilinx::AIE::CoreOp coreOp) {
+    auto filesAttr = coreOp.getLinkFiles();
+    if (!filesAttr)
+      return;
+    for (auto f : filesAttr->getAsRange<mlir::StringAttr>()) {
+      if (!merged.contains(
+              resolveExternalPath(f.getValue(), inputFile, workDir)))
+        continue;
+      coreOp.emitError() << "link artifact '" << f.getValue()
+                         << "' is listed in link_files here but requested with "
+                            "link_with_mode = \"merge\" elsewhere in this "
+                            "device; a path cannot be both llvm-linked into "
+                            "the shared core module and object-linked, or its "
+                            "symbols are defined twice";
+      result = mlir::failure();
+    }
+  });
+  return result;
 }
 
 // Clone `src` and replace each matched CoreOp with a stub that carries

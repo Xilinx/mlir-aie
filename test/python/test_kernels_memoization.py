@@ -106,7 +106,12 @@ def test_external_function_collision_check_fires():
 
 
 def test_inline_collision_disambiguation_preserves_ir_extension():
-    """Digest-renamed inline artifacts must remain recognizable as LLVM IR."""
+    """Digest-renamed inline artifacts keep their .ll/.bc suffix.
+
+    The suffix no longer decides how the artifact is linked (that is
+    ``link_with_mode``), but it still selects the emitted format in
+    ``compile_cxx_core_function``, so the rename must not drop it.
+    """
     name = "sentinel_inline_collision"
     first = ExternalFunction(
         name=name,
@@ -125,6 +130,54 @@ def test_inline_collision_disambiguation_preserves_ir_extension():
     assert first.object_file_name == f"{name}.ll"
     assert second.object_file_name != first.object_file_name
     assert second.object_file_name.endswith(".ll")
+
+
+def test_inline_defaults_to_ll_artifact_with_merge_mode():
+    """inline=True defaults to a .ll and declares the merge link policy."""
+    ef = ExternalFunction(
+        name="sentinel_inline_default_name",
+        source_string='extern "C" void sentinel_inline_default_name() {}',
+        inline=True,
+    )
+    assert ef.object_file_name == "sentinel_inline_default_name.ll"
+    assert ef.link_with_mode == "merge"
+
+
+def test_object_path_declares_no_link_with_mode():
+    """The default object-linked path emits no mode, so existing IR is
+    byte-identical to what it was before link_with_mode existed."""
+    ef = ExternalFunction(
+        name="sentinel_object_default_name",
+        source_string='extern "C" void sentinel_object_default_name() {}',
+    )
+    assert ef.object_file_name == "sentinel_object_default_name.o"
+    assert ef.link_with_mode is None
+
+
+def test_inline_explicit_ir_object_file_name_is_not_rewritten():
+    """An explicit .ll/.bc name is honored verbatim -- the caller's artifact
+    name is never silently rewritten, and .bc still means bitcode."""
+    ef = ExternalFunction(
+        name="sentinel_inline_explicit_bc",
+        object_file_name="sentinel_inline_explicit.bc",
+        source_string='extern "C" void sentinel_inline_explicit_bc() {}',
+        inline=True,
+    )
+    assert ef.object_file_name == "sentinel_inline_explicit.bc"
+    assert ef.link_with_mode == "merge"
+
+
+def test_inline_explicit_non_ir_object_file_name_rejected():
+    """A non-IR explicit name used to be silently rewritten to .ll so aiecc
+    would route it by suffix; routing is explicit metadata now, so the wrong
+    suffix is simply rejected."""
+    with pytest.raises(ValueError, match=r"must end in '\.ll'"):
+        ExternalFunction(
+            name="sentinel_inline_explicit_o",
+            object_file_name="sentinel_inline_explicit.o",
+            source_string='extern "C" void sentinel_inline_explicit_o() {}',
+            inline=True,
+        )
 
 
 def test_external_function_collision_check_allows_identical_redeclaration():
