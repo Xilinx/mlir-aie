@@ -85,8 +85,9 @@ using xilinx::AIE::DeviceOp;
 // returned.
 //
 // `irLinkFiles` carries, per key, the LLVM IR (.ll/.bc) kernel artifacts to
-// llvm-link into that key's module before codegen (peano path only). Keys with
-// an empty list get the plain compile flow.
+// llvm-link into that key's module before codegen. Keys with an empty list get
+// the plain compile flow. Only the peano path can merge them; the chess path
+// consumes the same edge solely to reject a non-empty list with a diagnostic.
 EdgeWithTypedOutput<Directory> &
 buildObjectSubgraph(EdgeWithTypedOutput<ModRef> &lowered,
                     EdgeWithTypedOutput<std::string> &arches,
@@ -104,12 +105,34 @@ buildObjectSubgraph(EdgeWithTypedOutput<ModRef> &lowered,
       llvmIR.map<std::string>("chess-compat_{0}.ll", downgradeIRForChess)
           .threadSafe();
   auto &chessLinked =
-      bundle(chessCompat.out, arches.out)
+      bundle(chessCompat.out, arches.out, irLinkFiles.out)
           .map<File>("chesslinked_{0}.ll",
                      [aietoolsRoot,
                       installDir](const Item<std::string> &ir,
                                   const Item<std::string> &archItem,
+                                  const Item<std::vector<std::string>> &irLinks,
                                   Item<File> &out) -> mlir::LogicalResult {
+                       // The chess front-end cannot llvm-link, so IR kernel
+                       // artifacts have no route into the core on this path --
+                       // and the BCF emitter deliberately leaves them out of
+                       // `_include _file` because they are not object files.
+                       // Reject them here, where the cause is still known,
+                       // rather than let it surface as an undefined symbol
+                       // from the chess linker.
+                       if (!irLinks.get().empty()) {
+                         llvm::errs()
+                             << "aiecc: --xchesscc cannot consume LLVM IR link "
+                                "artifacts (.ll/.bc): the Chess front-end "
+                                "cannot llvm-link them into the core. "
+                                "Offending link_with entries:\n";
+                         for (const auto &f : irLinks.get())
+                           llvm::errs() << "  " << f << "\n";
+                         llvm::errs()
+                             << "Compile these kernels to objects (.o) "
+                                "instead, or build with the Peano front-end "
+                                "(drop --xchesscc).\n";
+                         return mlir::failure();
+                       }
                        llvm::StringRef arch = archItem.get();
                        std::string linkTool =
                            getChessLLVMLinkPath(arch, aietoolsRoot);
