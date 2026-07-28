@@ -116,7 +116,10 @@ def get_commit_date(commit_hash, repo="llvm/llvm-project"):
             COMMIT_DATE_CACHE[commit_hash] = dt
             return dt
     except Exception as e:
-        print(f"Error fetching commit date for {commit_hash}: {e}", file=sys.stderr)
+        print(
+            f"Error fetching commit date for {commit_hash} in {repo}: {e}",
+            file=sys.stderr,
+        )
         return None
 
 
@@ -255,8 +258,11 @@ def find_closest_eudsl_version(target_llvm_hash, target_llvm_date, target_major=
                 min_diff_any = diff
                 best_any = (llvm_hash, llvm_date, full_version)
 
-            if target_major is not None:
-                if get_llvm_major(llvm_hash) == target_major and diff < min_diff_major:
+            # Check the cheap date comparison before get_llvm_major()'s network
+            # fetch, so we only look up LLVMVersion.cmake for candidates that
+            # could actually become the best major-matched pick.
+            if target_major is not None and diff < min_diff_major:
+                if get_llvm_major(llvm_hash) == target_major:
                     min_diff_major = diff
                     best_major = (llvm_hash, llvm_date, full_version)
 

@@ -17,10 +17,9 @@ on:
         required: false
         type: string
   schedule:
-    # Run every other Monday at 6:00 UTC (approx biweekly)
-    # Note: GitHub Actions cron doesn't support "every 2 weeks" directly.
-    # Running weekly is usually fine, or 1st and 15th.
-    # Using 1st and 15th of every month.
+    # Run on the 1st and 15th of every month at 6:00 UTC (approx biweekly).
+    # GitHub Actions cron can't express "every 2 weeks" directly, so we use
+    # fixed days of the month rather than a weekday cadence.
     - cron: '0 6 1,15 * *'
 
 permissions:
