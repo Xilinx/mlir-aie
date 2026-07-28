@@ -2438,7 +2438,8 @@ LogicalResult DMABDOp::verify() {
   if (auto packetInfo = getPacket()) {
     if (packetInfo->getPktType() > 7)
       return emitOpError("Packet type field can only hold 3 bits.");
-    if (packetInfo->getPktId() > 31)
+    if (packetInfo->getPktId() >
+        getTargetModel(getOperation()).getMaxPacketId())
       return emitOpError("Packet ID field can only hold 5 bits.");
   }
 
