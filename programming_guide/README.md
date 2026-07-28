@@ -143,7 +143,7 @@ The vocabulary IRON and this documentation use, grouped by topic. Where a term m
 | [**TensorAccessPattern (TAP)**](../docs/api/taplib.md) | A description of how a tensor is sliced and streamed to/from the NPU across multiple DMA transfers. Passed as `tap=` to `fifo.fill()` / `fifo.drain()`. |
 | [**Flow**](../docs/api/iron.md#iron.dataflow.flow.Flow) / [**PacketFlow**](../docs/api/iron.md#iron.dataflow.flow.PacketFlow) | Lower-level explicit-routing primitives: `Flow` for circuit-switched routes, `PacketFlow` for packet-switched routes with caller-controlled packet IDs. |
 | [**TileDma**](../docs/api/iron.md#iron.dataflow.tile_dma.TileDma) | A lower-level explicit per-tile DMA program, used when the ObjectFifo abstraction hides too much. |
-| [**Runtime sequence**](../docs/api/iron.md#iron.runtime.runtime.Runtime.sequence) | The sequence body passed to `Runtime(seq, inputs, fn_args)` in which `fill` / `drain` operations are declared. |
+| [**Runtime sequence**](../docs/api/iron.md#iron.runtime.runtime.Runtime) | The sequence body passed to `Runtime(seq, inputs, fn_args)` in which `fill` / `drain` operations are declared. |
 
 ### Compilation
 

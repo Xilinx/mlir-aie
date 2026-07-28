@@ -52,9 +52,14 @@ class DMATask(RuntimeTask):
                 downstream packet-switched routing (e.g. ObjectFifos
                 lowered with `--packet-sw-objFifos` or an explicit
                 [`PacketFlow`][iron.PacketFlow]). Defaults to None.
-            sizes/strides/offset/transfer_len (optional): Explicit access-pattern
-                operands whose entries may be runtime SSA values. Used instead of
+            sizes (optional): Explicit access-pattern sizes whose entries may be
+                runtime SSA values. Used instead of ``tap`` for the dynamic path.
+            strides (optional): Explicit access-pattern strides, paired with
+                ``sizes``. Used instead of ``tap`` for the dynamic path.
+            offset (optional): Explicit access-pattern offset. Used instead of
                 ``tap`` for the dynamic path.
+            transfer_len (optional): Explicit access-pattern transfer length.
+                Used instead of ``tap`` for the dynamic path.
         """
         if tap is not None and any(
             v is not None for v in (sizes, strides, offset, transfer_len)
