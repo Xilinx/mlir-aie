@@ -352,14 +352,33 @@ def compile_cxx_core_function(
         assert symbol_name is not None
         _make_ir_inlinable(output_path, symbol_name)
         if ir_suffix == ".bc":
+            # Assemble the rewritten text with clang++, not llvm-as: the
+            # llvm-aie wheel ships clang++/llvm-link/opt/llc but no llvm-as, so
+            # depending on it breaks every wheel-based install.  clang++ is
+            # already a hard requirement of this function.
+            #
+            # -disable-llvm-passes keeps this a pure text->bitcode conversion.
+            # clang normalizes `alwaysinline` into the function's attribute
+            # group rather than leaving it on the `define`; llvm-link and the
+            # always-inliner honor both spellings identically.
+            #
+            # The IR is piped in because the input and output are the same path.
             textual_ir = Path(output_path).read_bytes()
-            llvm_as = Path(config.peano_cxx_path()).with_name(
-                "llvm-as.exe" if os.name == "nt" else "llvm-as"
-            )
-            if not llvm_as.is_file():
-                raise RuntimeError(f"Peano llvm-as not found in {llvm_as}")
             assemble = subprocess.run(
-                [str(llvm_as), "-o", output_path],
+                [
+                    config.peano_cxx_path(),
+                    "-x",
+                    "ir",
+                    "-",
+                    "-c",
+                    "-emit-llvm",
+                    "-O0",
+                    "-Xclang",
+                    "-disable-llvm-passes",
+                    f"--target={target_arch}-none-unknown-elf",
+                    "-o",
+                    output_path,
+                ],
                 input=textual_ir,
                 cwd=cwd,
                 check=False,
