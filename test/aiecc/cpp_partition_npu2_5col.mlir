@@ -1,18 +1,19 @@
-//===- cpp_partition_npu1_1col.mlir ------------------------------*- MLIR -*-===//
+//===- cpp_partition_npu2_5col.mlir ---------------------------------*- MLIR -*-===//
 //
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
-// Tests that partition JSON has column_width=1 for npu1_1col.
+// Tests the legal start columns for a 5-column partition of the 8-column NPU2
+// array. A 5-wide partition fits at every offset up to 8 - 5.
 
 // REQUIRES: peano
 
 // RUN: aiecc --no-xchesscc --no-xbridge --get-xclbin %s
-// RUN: FileCheck %s --input-file=cpp_partition_npu1_1col.mlir.prj/partition_main.json
+// RUN: FileCheck %s --input-file=cpp_partition_npu2_5col.mlir.prj/partition_main.json
 
-// CHECK: "column_width": 1
+// CHECK: "column_width": 5
 // CHECK: "start_columns": [
 // CHECK-NEXT: 0
 // CHECK-NEXT: 1
@@ -21,7 +22,7 @@
 // CHECK-NEXT: ]
 
 module {
-  aie.device(npu1_1col) {
+  aie.device(npu2_5col) {
     %tile_0_0 = aie.tile(0, 0)
     %tile_0_2 = aie.tile(0, 2)
     aie.objectfifo @of(%tile_0_0, {%tile_0_2}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
