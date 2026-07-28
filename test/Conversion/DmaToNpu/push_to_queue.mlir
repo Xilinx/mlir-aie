@@ -44,3 +44,23 @@ module {
     }
   }
 }
+
+// -----
+
+// A mem tile has a 6-bit START_BD_ID field (48 BDs), so a head bd_id >= 16 must
+// survive the push: the command word keeps bd_id 20 (0x14); a flat 4-bit mask
+// would give 20 & 0xF = 4. (The bd_id operand and the command word are both the
+// constant 20; match the second, which feeds the write32.)
+// CHECK-LABEL: @mem_tile_bd_id
+// CHECK: arith.constant 20 : i32
+// CHECK: %[[CMD:.*]] = arith.constant 20 : i32
+// CHECK: aiex.npu.write32(%{{.*}}, %[[CMD]])
+module {
+  aie.device(npu1) {
+    aie.runtime_sequence @mem_tile_bd_id() {
+      %rc = arith.constant 0 : i32
+      %bd = arith.constant 20 : i32
+      aiex.npu.push_queue (0, 1, S2MM:0) bd_id %bd repeat %rc {issue_token = false} : i32, i32
+    }
+  }
+}
