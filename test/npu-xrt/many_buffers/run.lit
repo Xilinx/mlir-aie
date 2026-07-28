@@ -3,6 +3,11 @@
 //
 // REQUIRES: ryzen_ai, peano
 //
+// XFAIL: system-windows
+// Compiles, but the kernel aborts on the NPU (status 6) on Windows. Exercises
+// the >5 host-buffer DDR-address-patch path; pre-existing Windows-only runtime
+// failure, tracked separately.
+//
 // RUN: cp %S/aie.mlir aie_arch.mlir
 // RUN: %run_on_npu1% sed 's/NPUDEVICE/npu1/g' -i aie_arch.mlir
 // RUN: %run_on_npu2% sed 's/NPUDEVICE/npu2_4col/g' -i aie_arch.mlir

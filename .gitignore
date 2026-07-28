@@ -5,6 +5,7 @@
 build*
 _build*
 *.exe
+!.github/workflows/*.yml
 /install*
 /my_install*
 /sandbox*

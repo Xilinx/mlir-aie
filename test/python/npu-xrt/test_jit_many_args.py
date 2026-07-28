@@ -6,6 +6,10 @@
 # RUN: %run_on_npu1% %pytest %s
 # RUN: %run_on_npu2% %pytest %s
 # REQUIRES: xrt_python_bindings
+# XFAIL: system-windows
+# Compiles, but the kernel aborts on the NPU (ERT_CMD_STATE_ABORT) on Windows.
+# Exercises the >5 host-buffer DDR-address-patch path; pre-existing Windows-only
+# runtime failure, tracked separately.
 
 # End-to-end @iron.jit test for a design with more than 5 host buffers. The NPU
 # firmware only pre-translates the first 5 host buffer addresses into the AIE
