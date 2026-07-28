@@ -21,7 +21,7 @@
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
 
-constexpr int SIZE = 8;
+constexpr int BUF_SIZE = 8;
 constexpr int DISPATCHES = 8;
 
 int main(int argc, const char *argv[]) {
@@ -42,8 +42,8 @@ int main(int argc, const char *argv[]) {
 
   auto bo_instr = xrt::bo(device, instr_v.size() * sizeof(int),
                           XCL_BO_FLAGS_CACHEABLE, kernel.group_id(1));
-  auto bo_out = xrt::bo(device, SIZE * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
-                        kernel.group_id(3));
+  auto bo_out = xrt::bo(device, BUF_SIZE * sizeof(int32_t),
+                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
   memcpy(bo_instr.map<void *>(), instr_v.data(), instr_v.size() * sizeof(int));
   bo_instr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
@@ -52,7 +52,7 @@ int main(int argc, const char *argv[]) {
     // Sentinel-fill the output so a hung or partial transfer reads as garbage
     // rather than as a valid (possibly stale-correct) result.
     uint32_t *out = bo_out.map<uint32_t *>();
-    for (int i = 0; i < SIZE; i++)
+    for (int i = 0; i < BUF_SIZE; i++)
       out[i] = 0xdeadbeef;
     bo_out.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
@@ -62,7 +62,7 @@ int main(int argc, const char *argv[]) {
       return 1;
     }
     bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
-    for (int i = 0; i < SIZE; i++) {
+    for (int i = 0; i < BUF_SIZE; i++) {
       uint32_t want = 100 + i;
       if (out[i] != want) {
         std::cout << "dispatch " << d << " out[" << i << "] = " << out[i]

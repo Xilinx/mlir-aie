@@ -30,7 +30,7 @@
 // RUN: aie-translate --aie-npu-to-cpp %t.lowered.mlir > %t.gen.h
 //
 // RUN: %host_clang %S/test.cpp -o %t.exe -std=c++17 -Wall \
-// RUN:   -DGEN_HDR='"%t.gen.h"' -DXCLBIN='std::string("%t.xclbin")' \
+// RUN:   -DGEN_HDR='"%t.gen.h"' -DXCLBIN='std::string("%/t.xclbin")' \
 // RUN:   -I%S/../../../include %xrt_flags %host_link_flags %test_utils_flags
 //
 // argv: [n] [do_copy]. Exercise the taken branch (do_copy=1) at a couple of tile

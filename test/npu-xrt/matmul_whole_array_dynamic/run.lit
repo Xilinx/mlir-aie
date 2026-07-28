@@ -53,10 +53,10 @@
 // RUN:   %t.1.prj/input_with_addresses.mlir -o %t.1.lowered.mlir
 // RUN: aie-translate --aie-npu-to-cpp %t.1.lowered.mlir > %t.1.gen.h
 // RUN: %host_clang %S/test.cpp -o %t.1.exe -std=c++23 -Wall \
-// RUN:   -DGEN_HDR='"%t.1.gen.h"' -DXCLBIN='std::string("%t.1.xclbin")' \
+// RUN:   -DGEN_HDR='"%t.1.gen.h"' -DXCLBIN='std::string("%/t.1.xclbin")' \
 // RUN:   -I%S/../../../include \
 // RUN:   -I%S/../../../programming_examples/basic/matrix_multiplication \
-// RUN:   %xrt_flags %host_link_flags %test_utils_flags -lm
+// RUN:   %xrt_flags %host_link_flags %test_utils_flags
 // RUN: %run_on_npu2% %t.1.exe 512 512 512
 // RUN: %run_on_npu2% %t.1.exe 256 512 1024
 //
@@ -76,10 +76,10 @@
 // RUN:   %t.2.prj/input_with_addresses.mlir -o %t.2.lowered.mlir
 // RUN: aie-translate --aie-npu-to-cpp %t.2.lowered.mlir > %t.2.gen.h
 // RUN: %host_clang %S/test.cpp -o %t.2.exe -std=c++23 -Wall \
-// RUN:   -DGEN_HDR='"%t.2.gen.h"' -DXCLBIN='std::string("%t.2.xclbin")' \
+// RUN:   -DGEN_HDR='"%t.2.gen.h"' -DXCLBIN='std::string("%/t.2.xclbin")' \
 // RUN:   -I%S/../../../include \
 // RUN:   -I%S/../../../programming_examples/basic/matrix_multiplication \
-// RUN:   %xrt_flags %host_link_flags %test_utils_flags -lm
+// RUN:   %xrt_flags %host_link_flags %test_utils_flags
 // RUN: %run_on_npu2% %t.2.exe 512 512 512
 // RUN: %run_on_npu2% %t.2.exe 256 512 1024
 //
@@ -99,9 +99,9 @@
 // RUN:   %t.4.prj/input_with_addresses.mlir -o %t.4.lowered.mlir
 // RUN: aie-translate --aie-npu-to-cpp %t.4.lowered.mlir > %t.4.gen.h
 // RUN: %host_clang %S/test.cpp -o %t.4.exe -std=c++23 -Wall \
-// RUN:   -DGEN_HDR='"%t.4.gen.h"' -DXCLBIN='std::string("%t.4.xclbin")' \
+// RUN:   -DGEN_HDR='"%t.4.gen.h"' -DXCLBIN='std::string("%/t.4.xclbin")' \
 // RUN:   -I%S/../../../include \
 // RUN:   -I%S/../../../programming_examples/basic/matrix_multiplication \
-// RUN:   %xrt_flags %host_link_flags %test_utils_flags -lm
+// RUN:   %xrt_flags %host_link_flags %test_utils_flags
 // RUN: %run_on_npu2% %t.4.exe 512 512 512
 // RUN: %run_on_npu2% %t.4.exe 768 512 768
