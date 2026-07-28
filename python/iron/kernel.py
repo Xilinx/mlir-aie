@@ -348,6 +348,14 @@ class ExternalFunction(Kernel):
                 "symbol-renamed). Use inline without a symbol_prefix, or drop inline for "
                 "this kernel."
             )
+
+        # Must precede the collision scan below: it registers this instance in
+        # `_instances`, whose hash/eq run `_content_digest()` -- which reads
+        # `_inline`.  `_original_name` / `_symbol_prefix` are likewise read by
+        # compile_external_kernel (source naming and the objcopy symbol rename).
+        self._original_name = name
+        self._symbol_prefix = symbol_prefix
+        self._inline = inline
         effective_name = f"{symbol_prefix}_{name}" if symbol_prefix else name
         object_file_name_explicit = object_file_name is not None
         if inline and object_file_name:
