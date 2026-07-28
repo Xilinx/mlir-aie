@@ -740,8 +740,7 @@ class ObjectFifoHandle(Resolvable):
         """Fill this producer ObjectFifo with data from the ``source`` runtime buffer.
 
         Call from within a [`Runtime`][iron.Runtime] sequence body on a producer
-        handle. See [`_emit_transfer`][iron.dataflow.objectfifo.ObjectFifoHandle._emit_transfer]
-        for the shared arguments; returns a
+        handle. See ``_emit_transfer`` for the shared arguments; returns a
         [`Task`][iron.runtime.dmataskhandle.Task] handle to the transfer.
         """
         if not self._is_prod:
@@ -778,8 +777,7 @@ class ObjectFifoHandle(Resolvable):
         """Drain this consumer ObjectFifo, writing data to the ``dest`` runtime buffer.
 
         Call from within a [`Runtime`][iron.Runtime] sequence body on a consumer
-        handle. See [`_emit_transfer`][iron.dataflow.objectfifo.ObjectFifoHandle._emit_transfer]
-        for the shared arguments; returns a
+        handle. See ``_emit_transfer`` for the shared arguments; returns a
         [`Task`][iron.runtime.dmataskhandle.Task] handle to the transfer.
         """
         if self._is_prod:
