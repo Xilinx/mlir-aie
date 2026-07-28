@@ -153,6 +153,37 @@ def test_run_leaks_signal_and_kernargs_on_timeout(monkeypatch):
     assert len(rt2._ctx.vmem_free_calls) == 1
 
 
+def test_enqueue_times_out_when_queue_never_drains(monkeypatch):
+    """A full queue that never drains raises HSATimeoutError under IRON_HSA_TIMEOUT.
+
+    Exercises the real HSAContext.enqueue spin (not a fake dispatch): the fake
+    lib reports the queue permanently full (read index stuck behind the write
+    index by >= queue_size), so the bounded spin must give up at the deadline
+    instead of hanging forever.
+    """
+    from aie.utils.hostruntime.hsaruntime import context as ctx_mod
+    from aie.utils.hostruntime.hsaruntime._bindings import HSATimeoutError
+
+    class _FakeLib:
+        def hsa_queue_add_write_index_relaxed(self, q, n):
+            return 64  # our reserved write index
+
+        def hsa_queue_load_read_index_scacquire(self, q):
+            return 0  # never advances -> wr_idx - 0 >= qsize stays true
+
+    monkeypatch.setattr(ctx_mod, "lib", _FakeLib())
+    monkeypatch.setenv("IRON_HSA_TIMEOUT", "0.05")
+
+    # Build a bare context without touching hardware; set only what enqueue reads.
+    ctx = object.__new__(ctx_mod.HSAContext)
+    ctx.queue = object()
+    ctx.queue_size = 16  # wr_idx(64) - read(0) = 64 >= 16 -> always "full"
+    ctx.queue_packets = None  # never reached (we time out before the write)
+
+    with pytest.raises(HSATimeoutError):
+        ctx.enqueue(0x1, 0x2, 4, 0x3, 0, 42)
+
+
 def test_load_and_run_rejects_trace_before_touching_args(monkeypatch):
     """A trace_config must be rejected before base load_and_run mutates run_args."""
     from aie.utils.hostruntime.hsaruntime import hostruntime as hrt
