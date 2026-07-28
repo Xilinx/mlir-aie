@@ -68,14 +68,14 @@ def exercise_2(
         )
 
     # To/from AIE-array runtime data movement
-    rt = Runtime()
-    with rt.sequence(data_ty, data_ty) as (a_in, c_out):
-        rt.start(*workers)
-        rt.fill(of_in.prod(), a_in)
-        rt.drain(of_out.cons(), c_out, wait=True)
+    def sequence(a_in, c_out, in_h, out_h):
+        in_h.fill(a_in)
+        out_h.drain(c_out, wait=True)
+
+    rt = Runtime(sequence, [data_ty, data_ty, of_in.prod(), of_out.cons()])
 
     # Create the program from the device type and runtime
-    my_program = Program(iron.get_current_device(), rt)
+    my_program = Program(iron.get_current_device(), rt, workers=workers)
 
     # Place components (assign them resources on the device) and generate an MLIR module
     return my_program.resolve_program()

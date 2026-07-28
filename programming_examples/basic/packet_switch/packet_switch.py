@@ -381,12 +381,12 @@ def packet_switch(
     # --op).  This per-task packet stamping needs the dialect-level
     # shim_dma_bd(packet=...) primitive, so use rt.inline_ops as the
     # escape hatch.
-    def emit_seq(A_data, B_data):
+    def sequence(A, B):
         in_task = dma_configure_task(shim.op, DMAChannelDir.MM2S, 0)
         with bds(in_task) as bd:
             with bd[0]:
                 shim_dma_bd(
-                    A_data.op,
+                    A.op,
                     offset=0,
                     sizes=[1, 1, 1, in_out_size],
                     strides=[0, 0, 0, 1],
@@ -397,7 +397,7 @@ def packet_switch(
         with bds(out_task) as bd:
             with bd[0]:
                 shim_dma_bd(
-                    B_data.op,
+                    B.op,
                     offset=0,
                     sizes=[1, 1, 1, in_out_size],
                     strides=[0, 0, 0, 1],
@@ -406,7 +406,7 @@ def packet_switch(
         dma_start_task(in_task, out_task)
         dma_await_task(out_task)
 
-    rt = Runtime()
+    rt = Runtime(sequence, [vector_ty, vector_ty])
     for f in (
         flow_shim_to_mem_pkt0,
         flow_shim_to_mem_pkt1,
@@ -435,11 +435,7 @@ def packet_switch(
     for td in (c02_dma, c03_dma, mem_dma):
         rt.add_tile_dma(td)
 
-    with rt.sequence(vector_ty, vector_ty) as (A, B):
-        rt.start(c02_worker, c03_worker)
-        rt.inline_ops(emit_seq, [A, B])
-
-    return Program(dev, rt).resolve_program()
+    return Program(dev, rt, workers=[c02_worker, c03_worker]).resolve_program()
 
 
 def _make_argparser():

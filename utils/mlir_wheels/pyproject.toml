@@ -7,7 +7,7 @@ requires = [
     "wheel",
     "ninja",
     # i have no clue why but 3.28 will cause cmake to segfault when detecting ABI compatibility
-    "cmake==4.3.4",
+    "cmake==4.4.0",
     "pybind11[global]>=3.0.4",
     "numpy",
     "dataclasses",

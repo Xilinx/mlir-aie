@@ -42,10 +42,11 @@ def emit_strided_bd():
         ],
     )
 
-    rt = Runtime()
-    rt.add_tile_dma(tile_dma)
-    with rt.sequence(vector_ty) as _:
+    def sequence(_):
         pass
+
+    rt = Runtime(sequence, [vector_ty])
+    rt.add_tile_dma(tile_dma)
 
     return Program(NPU2Col1(), rt).resolve_program()
 

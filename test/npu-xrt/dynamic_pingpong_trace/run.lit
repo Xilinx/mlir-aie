@@ -29,7 +29,7 @@
 // RUN: aie-translate --aie-npu-to-cpp %t.lowered.mlir > %t.gen.h
 //
 // RUN: %host_clang %S/test.cpp -o %t.exe -std=c++17 -Wall \
-// RUN:   -DGEN_HDR='"%t.gen.h"' -DXCLBIN='std::string("%t.xclbin")' \
+// RUN:   -DGEN_HDR='"%t.gen.h"' -DXCLBIN='std::string("%/t.xclbin")' \
 // RUN:   -I%S/../../../include %xrt_flags %host_link_flags %test_utils_flags
 //
 // The runtime tile count is the host argument; exercise a couple of values.

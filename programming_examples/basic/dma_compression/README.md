@@ -8,9 +8,8 @@ A silicon-level probe for compute-tile and memtile DMA
 Halo / Krackan npu2), written as an IRON design. Single-tile passthrough
 (shim → compute(0,2) → shim) and two-tile chains, with per-BD and
 per-channel compression registers flipped from the host runtime sequence
-via `aiex.npu.npu_maskwrite32` (surfaced through IRON's
-`Runtime.inline_ops` escape hatch) or from inside the core via peano's
-`write_tm` intrinsic.
+via `aiex.npu.npu_maskwrite32` (written directly in the runtime sequence
+body) or from inside the core via peano's `write_tm` intrinsic.
 
 What this probe establishes about the AIE compute-tile compression hardware:
 
@@ -28,7 +27,8 @@ What this probe establishes about the AIE compute-tile compression hardware:
 
 - `dma_compression.py` — IRON design. `dma_compression(in_tensor, out_tensor,
   config=...)` returns an MLIR module per config. Most configs use
-  `ObjectFifo.forward(tile=...)` + `Runtime.inline_ops`; `multi_cmp_only`
+  `ObjectFifo.forward(tile=...)` + raw ops written directly in the runtime
+  sequence body; `multi_cmp_only`
   drops to low-level `aie.mem` / `aie.dma_start` for per-side BD sizing,
   and `regdump` uses an output-only Worker that calls the kernel.
 - `kernel.cc` — peano core-side kernel used by the `core_*` and `regdump`

@@ -152,8 +152,10 @@ static int run_mode(const cxxopts::ParseResult &vm,
   }
 
   if (mode == "stale-io-bos") {
-    auto io_device = xrt::device(0);
-    auto buffers = make_buffers(device, io_device, *kernel, instr_v);
+    // Isolate BO lifetime from cross-handle ownership: every object belongs to
+    // the same XRT device, while the I/O BOs deliberately outlive the kernel
+    // and hardware context.
+    auto buffers = make_buffers(device, device, *kernel, instr_v);
     initialize_buffers(buffers, instr_v);
 
     int result = run_and_check(*kernel, buffers, instr_v.size());

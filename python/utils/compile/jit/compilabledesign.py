@@ -41,6 +41,9 @@ from aie.extras.context import mlir_mod_ctx  # pyright: ignore[reportMissingImpo
 from aie.ir import (  # pyright: ignore[reportMissingImports]
     Module as _Module,  # pyright: ignore[reportAttributeAccessIssue]
 )
+from aie.ir import (
+    StringAttr,  # pyright: ignore[reportAttributeAccessIssue]
+)
 from aie.iron.kernel import ExternalFunction
 from aie.utils.compile import (
     NPU_CACHE_HOME,
@@ -517,8 +520,6 @@ class CompilableDesign:
         generated module for the first ``aie.device`` and its first
         ``aie.runtime_sequence``.
         """
-        from aie.ir import StringAttr  # pyright: ignore[reportMissingImports]
-
         module = self._generate_mlir(ExternalFunction)
         for op in module.body.operations:
             if op.operation.name != "aie.device":

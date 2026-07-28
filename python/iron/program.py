@@ -24,6 +24,7 @@ class Program:
         self,
         device: Device,
         rt: Runtime,
+        workers: "list | None" = None,
     ):
         """A Program represents all design information needed to run the design on a device.
 
@@ -34,9 +35,70 @@ class Program:
         Args:
             device (Device): The device used to generate the final MLIR for the design.
             rt (Runtime): The runtime object for the design.
+            workers (list[Worker] | None, optional): The Workers to run on the
+                device. Defaults to None (no workers). Workers are passed here
+                explicitly rather than started from within the runtime sequence.
         """
         self._device = device
         self._rt = rt
+        self._workers = list(workers) if workers is not None else []
+        self._trace_size = None
+        self._trace_workers = None
+        self._reuse_output_buffer = False
+        self._egress_shim_col = 0
+        self._coretile_events = None
+        self._coremem_events = None
+        self._memtile_events = None
+        self._shimtile_events = None
+
+    def enable_trace(
+        self,
+        trace_size: int | None = None,
+        workers: list | None = None,
+        reuse_output_buffer: bool = False,
+        coretile_events: list | None = None,
+        coremem_events: list | None = None,
+        memtile_events: list | None = None,
+        shimtile_events: list | None = None,
+        egress_shim_col: int = 0,
+    ):
+        """Enable hardware tracing for this program.
+
+        Configures the AIE trace units and routes trace packets to DDR via the shim DMA.
+        Lives on Program (not Runtime) because it configures both the traced
+        Workers' tiles and the Runtime's trace-buffer sequencing.
+
+        Args:
+            trace_size (int): Size of the trace buffer in bytes.
+            workers (list[Worker] | None, optional): Specific workers to trace. If None,
+                all workers with ``trace`` set will be traced. Defaults to None.
+            reuse_output_buffer (bool, optional): When False (default), trace
+                lowering appends a dedicated trace-buffer argument to the
+                runtime_sequence; it lands at the tail so enabling trace never
+                perturbs the data arguments' indices. When True, trace data is
+                written into the tail of the last output buffer, saving a host
+                buffer. Defaults to False.
+            coretile_events (list | None, optional): List of up to 8 core tile trace events.
+                See [the AIEX dialect reference](../AIEXDialect.md) for available
+                events under (type)EventAIE such as CoreEventAIE.
+                Defaults to None (uses hardware defaults).
+            coremem_events (list | None, optional): List of up to 8 core memory trace events.
+                Defaults to None (uses hardware defaults).
+            memtile_events (list | None, optional): List of up to 8 mem tile trace events.
+                Defaults to None (uses hardware defaults).
+            shimtile_events (list | None, optional): List of up to 8 shim tile trace events.
+                Defaults to None (uses hardware defaults).
+            egress_shim_col (int, optional): Column of the shim tile used to
+                egress trace packets to DDR. Defaults to 0.
+        """
+        self._trace_size = trace_size
+        self._trace_workers = workers
+        self._reuse_output_buffer = reuse_output_buffer
+        self._coretile_events = coretile_events
+        self._coremem_events = coremem_events
+        self._memtile_events = memtile_events
+        self._shimtile_events = shimtile_events
+        self._egress_shim_col = egress_shim_col
 
     def resolve_program(self, device_name="main"):
         """This method resolves the program components in order to generate MLIR.
@@ -54,22 +116,26 @@ class Program:
             # For dynamically created device classes, the constructor takes no arguments
             self._device = device_type()  # pyright: ignore[reportCallIssue]
 
-            # Resolve parameters at module scope (before the aie.device).
-            # aiex.scratchpad_parameter ops are global across all devices because the
-            # scratchpad is a single hardware resource shared by all PDIs.
-            for w in self._rt.workers:
-                for arg in w.fn_args:
+            # Resolve parameters known up front (Worker fn_args) at module
+            # scope now. aiex.scratchpad_parameter ops are global across all
+            # devices because the scratchpad is a single hardware resource
+            # shared by all PDIs.
+            for w in self._workers:
+                for arg in w.flat_fn_args:
                     if isinstance(arg, ScratchpadParameter):
                         arg.resolve()
-            for p in self._rt._scratchpad_parameters:
-                p.resolve()
 
             @device(self._device.resolve(), sym_name=device_name)
             def device_body():
-                # Collect all fifos
+                # Collect all fifos. Runtime-driven fifos already have their shim
+                # endpoints bound (Runtime registered its fn_args at construction),
+                # so they resolve here with both ends known -- the sequence body
+                # itself is emitted LAST (self._rt.resolve() below), after workers,
+                # so body verbs that read worker-side state (barrier locks, worker
+                # Buffer placement) see it resolved.
                 all_fifos = set()
                 all_fifos.update(self._rt.fifos)
-                for w in self._rt.workers:
+                for w in self._workers:
                     all_fifos.update(w.fifos)
 
                 # Sort fifos for deterministic resolve
@@ -79,11 +145,11 @@ class Program:
                 # tile (pinned or after placement) is caught by the aie.device
                 # verifier's one-core-per-tile check, so no Python-side guard.
                 all_tiles = []
-                for w in self._rt.workers:
+                for w in self._workers:
                     all_tiles.append(w.tile)
                     # Generic: any user-side Resolvable in fn_args may declare
                     # additional tile dependencies via tiles(). Default is [].
-                    for arg in w.fn_args:
+                    for arg in w.flat_fn_args:
                         if isinstance(arg, Resolvable):
                             all_tiles.extend(arg.tiles())
                 for f in all_fifos:
@@ -130,20 +196,20 @@ class Program:
                         b.resolve()
 
                 # generate functions - this may call resolve() more than once on the same fifo, but that's ok
-                for w in self._rt.workers:
-                    for arg in w.fn_args:
+                for w in self._workers:
+                    for arg in w.flat_fn_args:
                         if isinstance(arg, FuncBase):
                             arg.emit()
                         elif isinstance(arg, Resolvable):
                             arg.resolve()
 
                 # Generate core programs
-                for w in self._rt.workers:
+                for w in self._workers:
                     w.resolve()
 
                 # Emit aie.cascade_flow ops for each Worker's outgoing edges.
                 # Must run after worker.resolve() so both tiles are placed.
-                for w in self._rt.workers:
+                for w in self._workers:
                     for cf in w._outgoing_cascades:
                         cf.resolve()
 
@@ -159,30 +225,50 @@ class Program:
 
                 # Scan workers and build list of tiles to trace
                 tiles_to_trace = []
-                if self._rt._trace_workers is not None:
-                    for w in self._rt._trace_workers:
+                if self._trace_workers is not None:
+                    for w in self._trace_workers:
                         tiles_to_trace.append(w.tile.op)
                 else:
-                    for w in self._rt._workers:
+                    for w in self._workers:
                         if w.trace is not None:
                             tiles_to_trace.append(w.tile.op)
-                if self._rt._trace_size is not None and self._rt._trace_size > 0:
+                if self._trace_size is not None and self._trace_size > 0:
                     trace_utils.configure_trace(
                         tiles_to_trace,
-                        coretile_events=self._rt._coretile_events,
-                        coremem_events=self._rt._coremem_events,
-                        memtile_events=self._rt._memtile_events,
-                        shimtile_events=self._rt._shimtile_events,
+                        coretile_events=self._coretile_events,
+                        coremem_events=self._coremem_events,
+                        memtile_events=self._memtile_events,
+                        shimtile_events=self._shimtile_events,
                     )
 
-                # In/Out Sequence.  On the full-ELF path the runtime sequence
-                # must load its own PDI (no xclbin configures the device), so
-                # pass the device symbol as the load_pdi reference.  The flag is
-                # injected into the compile context by CompilableDesign.
+                # Emit the runtime sequence body LAST: workers, their locks, and
+                # worker Buffers are now resolved, so body verbs that read that
+                # state (barrier.set, inline_ops over a worker Buffer) are valid.
+                # Its shim DMAs reference fifos by symbol name (forward ref), so
+                # emitting after the fifo ops is fine.
+                #
+                # On the full-ELF path the runtime sequence must load its own
+                # PDI (no xclbin configures the device), so pass the device
+                # symbol as the load_pdi reference. The flag is injected into
+                # the compile context by CompilableDesign.
                 load_pdi_device_ref = (
                     device_name if get_compile_arg("_iron_full_elf") else None
                 )
-                self._rt.resolve(load_pdi_device_ref=load_pdi_device_ref)
+                self._rt.resolve(
+                    trace_size=self._trace_size,
+                    reuse_output_buffer=self._reuse_output_buffer,
+                    egress_shim_col=self._egress_shim_col,
+                    load_pdi_device_ref=load_pdi_device_ref,
+                )
+
+            # Resolve parameters only discoverable once the sequence body has
+            # traced (offset_parameter= passed directly to fill()/drain(),
+            # rather than declared up front via Worker fn_args). device_body's
+            # own insertion point is scoped to its @device region, so by now
+            # the ambient insertion point is back to module scope -- the same
+            # place the fn_args-declared parameters above were resolved.
+            for p in self._rt._scratchpad_parameters:
+                p.resolve()
 
             self._print_verify(ctx)
             return ctx.module

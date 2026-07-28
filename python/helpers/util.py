@@ -73,10 +73,13 @@ _np_dtype_to_mlir_type_ctor = defaultdict(
         # Index Types
         # Not strictly correct, but numpy casts Python scalars to these types by
         # default, so we map them to index type to support passing lists of ints.
-        np.longlong: T.index,
         np.uintp: T.index,
     },
 )
+
+# np.longlong aliases np.int64 on Windows. Keep the explicit i64 mapping
+# authoritative there while preserving the distinct index mapping elsewhere.
+_np_dtype_to_mlir_type_ctor.setdefault(np.longlong, T.index)
 
 NpuDType = (
     np.int8
@@ -231,6 +234,21 @@ def single_elem_or_list_to_list(val: "list[_E] | _E") -> "list[_E]":
     if not isinstance(val, list):
         return [val]
     return val
+
+
+def flatten_fn_args(args):
+    """Yield each leaf of ``args``, recursing into nested lists/tuples.
+
+    Worker and Runtime accept fn_args that may nest lists (e.g. one fifo handle
+    per column). The body receives the structured arguments, but registration and
+    resolution iterate the flattened leaves through this helper so a nested list
+    is handled the same as a flat one.
+    """
+    for arg in args:
+        if isinstance(arg, (list, tuple)):
+            yield from flatten_fn_args(arg)
+        else:
+            yield arg
 
 
 def get_arg_types(objs: Sequence[int | float | Value | OpView]):

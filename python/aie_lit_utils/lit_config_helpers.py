@@ -595,9 +595,10 @@ class LitConfigHelper:
     def setup_host_link_substitution(config_obj) -> None:
         """Add host linker flags for tests that build XRT host executables.
 
-        Linux-hosted tests need librt/libstdc++. Windows-hosted tests link
-        against CMake-built dynamic MSVC libraries, matching CMake's default
-        /MD runtime selection.
+        Linux-hosted tests link librt, libstdc++, and libm explicitly because
+        the host compiler substitution resolves to clang rather than clang++.
+        Windows-hosted tests link against CMake-built dynamic MSVC libraries,
+        matching CMake's default /MD runtime selection.
         """
         if os.name == "nt":
             host_link_flags = " ".join(
@@ -610,7 +611,7 @@ class LitConfigHelper:
                 ]
             )
         else:
-            host_link_flags = "-lrt -lstdc++"
+            host_link_flags = "-lrt -lstdc++ -lm"
         config_obj.substitutions.append(("%host_link_flags", host_link_flags))
 
     @staticmethod

@@ -82,7 +82,7 @@ from .dtype import dtype_to_str, str_to_dtype
 from .kernel import ExternalFunction, Kernel
 from .lock import Lock
 from .program import Program
-from .runtime import Runtime
+from .runtime import Runtime, RuntimeData, Task, TaskGroup, sync_parameters
 from .scratchpad_parameter import ScratchpadParameter
 from .worker import Worker, WorkerRuntimeBarrier
 
@@ -95,6 +95,10 @@ __all__ = [
     "Worker",
     "WorkerRuntimeBarrier",
     "Runtime",
+    "TaskGroup",
+    "RuntimeData",
+    "Task",
+    "sync_parameters",
     "ObjectFifo",
     "PadDims",
     "StreamDims",
