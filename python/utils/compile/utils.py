@@ -141,6 +141,7 @@ def _make_ir_inlinable(ir_path: str, symbol_name: str) -> None:
 
     symbol_re = re.compile(r"@" + re.escape(symbol_name) + r"\b\s*\(")
     define_idx = -1
+    params_at = -1
     for i, text in enumerate(lines):
         if not text.startswith("define"):
             continue
