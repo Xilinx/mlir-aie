@@ -246,6 +246,14 @@ nav:
       - Compilation Stages: programming_guide/compilation_stages.md
       - Implicit MLIR Context: programming_guide/implicit_mlir_context.md
       - Kernel Library: programming_guide/kernels_library.md
+  - Agentic Programming:
+    - Introduction: skills/agentic_programming.md
+    - Agent Skills Overview: skills/README.md
+    - "Phase 1: Model Baseline": skills/aie-model-baseline/SKILL.md
+    - "Phase 2: Dataflow Pre-Sim": skills/aie-dataflow-presim/SKILL.md
+    - "Phase 3: HW Bring-up": skills/aie-hw-bringup/SKILL.md
+    - "Phase 4: Kernel Optimization": skills/aie-kernel-opt/SKILL.md
+    - "Phase 4: Dataflow Optimization": skills/aie-dataflow-opt/SKILL.md
   - API & Internals:
     - Overview: api/index.md
     - Python API:
