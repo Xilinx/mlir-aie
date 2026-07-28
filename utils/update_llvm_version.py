@@ -24,6 +24,9 @@ ROCM_LLVM_LATEST_COMMIT_URL = (
     f"https://api.github.com/repos/{ROCM_LLVM_REPO}/commits/{ROCM_LLVM_BRANCH}"
 )
 LLVM_PROJECT_COMMIT_URL = "https://api.github.com/repos/{repo}/commits/{sha}"
+LLVM_VERSION_FILE_URL = (
+    "https://raw.githubusercontent.com/{repo}/{ref}/cmake/Modules/LLVMVersion.cmake"
+)
 EUDSL_INDEX_URL = "https://llvm.github.io/eudsl/"
 EUDSL_SUBMODULE_URL = (
     "https://api.github.com/repos/llvm/eudsl/contents/third_party/llvm-project?ref={}"
@@ -117,6 +120,31 @@ def get_commit_date(commit_hash, repo="llvm/llvm-project"):
         return None
 
 
+def get_llvm_major(commit_hash, repo="llvm/llvm-project"):
+    """Read LLVM_VERSION_MAJOR from cmake/Modules/LLVMVersion.cmake at a commit.
+
+    Used to keep the eudsl pick on the same LLVM major as the target. Since we
+    now track amd-staging, which advances across major bumps, a purely
+    date-based eudsl match can land an off-major build near a boundary; matching
+    the major first avoids that. Returns None if it can't be determined.
+    """
+    if not commit_hash:
+        return None
+    url = LLVM_VERSION_FILE_URL.format(repo=repo, ref=commit_hash)
+    try:
+        with get_request_simple(url) as response:
+            text = response.read().decode("utf-8")
+        match = re.search(r"LLVM_VERSION_MAJOR\s+(\d+)", text)
+        if match:
+            return int(match.group(1))
+    except Exception as e:
+        print(
+            f"Error fetching LLVM major for {commit_hash[:8]} in {repo}: {e}",
+            file=sys.stderr,
+        )
+    return None
+
+
 def get_current_llvm_commit():
     if not CLONE_LLVM_SH.exists():
         print(f"Error: {CLONE_LLVM_SH} does not exist.", file=sys.stderr)
@@ -182,9 +210,12 @@ def get_eudsl_candidates(target_date, window_days=14):
     return candidates
 
 
-def find_closest_eudsl_version(target_llvm_hash, target_llvm_date):
+def find_closest_eudsl_version(target_llvm_hash, target_llvm_date, target_major=None):
     print(
-        f"Looking for eudsl version with LLVM date close to {target_llvm_hash[:8]} ({target_llvm_date})..."
+        f"Looking for eudsl version with LLVM date close to {target_llvm_hash[:8]} "
+        f"({target_llvm_date})"
+        + (f", LLVM major {target_major}" if target_major else "")
+        + "..."
     )
 
     # 1. Populate cache with commits around target date
@@ -196,8 +227,13 @@ def find_closest_eudsl_version(target_llvm_hash, target_llvm_date):
     candidates = get_eudsl_candidates(target_llvm_date, window_days=7)
     print(f"Found {len(candidates)} eudsl candidates within date range.")
 
-    best_candidate = None
-    min_diff = timedelta.max
+    # Track the closest candidate that matches the target's LLVM major, and the
+    # closest overall as a fallback if none match (e.g. eudsl hasn't published a
+    # build for that major yet).
+    best_major = None
+    best_any = None
+    min_diff_major = timedelta.max
+    min_diff_any = timedelta.max
 
     for ver_date, eudsl_hash, full_version in candidates:
         # Get LLVM hash for this eudsl version
@@ -207,24 +243,33 @@ def find_closest_eudsl_version(target_llvm_hash, target_llvm_date):
                 data = json.loads(response.read().decode("utf-8"))
                 llvm_hash = data["sha"]
 
-                # Get date of this LLVM hash
-                llvm_date = get_commit_date(llvm_hash)
-                if not llvm_date:
-                    continue
+            # Get date of this LLVM hash (eudsl tracks upstream llvm/llvm-project)
+            llvm_date = get_commit_date(llvm_hash)
+            if not llvm_date:
+                continue
 
-                # Compare with target_llvm_date
-                diff = abs(llvm_date - target_llvm_date)
+            # Compare with target_llvm_date
+            diff = abs(llvm_date - target_llvm_date)
 
-                # print(f"  Checked {full_version}: LLVM {llvm_hash[:8]} ({llvm_date}), diff: {diff}")
+            if diff < min_diff_any:
+                min_diff_any = diff
+                best_any = (llvm_hash, llvm_date, full_version)
 
-                if diff < min_diff:
-                    min_diff = diff
-                    best_candidate = (llvm_hash, llvm_date, full_version)
+            if target_major is not None:
+                if get_llvm_major(llvm_hash) == target_major and diff < min_diff_major:
+                    min_diff_major = diff
+                    best_major = (llvm_hash, llvm_date, full_version)
 
         except Exception as e:
             print(f"Error checking eudsl candidate {eudsl_hash}: {e}", file=sys.stderr)
 
-    return best_candidate
+    if target_major is not None and best_major is None and best_any is not None:
+        print(
+            f"Warning: no eudsl candidate matched LLVM major {target_major}; "
+            f"falling back to closest-by-date {best_any[2]}.",
+            file=sys.stderr,
+        )
+    return best_major if best_major is not None else best_any
 
 
 MLIR_DISTRO_RELEASE_URL = (
@@ -424,8 +469,9 @@ def main():
                 f.write(f"bump_reason={reason}\n")
         return
 
-    # 4. Find closest eudsl version
-    result = find_closest_eudsl_version(target_commit, target_date)
+    # 4. Find closest eudsl version (matching the target's LLVM major)
+    target_major = get_llvm_major(target_commit, repo=ROCM_LLVM_REPO)
+    result = find_closest_eudsl_version(target_commit, target_date, target_major)
 
     if not result:
         print("Could not find a suitable eudsl version.")
