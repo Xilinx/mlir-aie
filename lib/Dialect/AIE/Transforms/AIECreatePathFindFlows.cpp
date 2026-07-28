@@ -286,6 +286,9 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
   std::map<std::pair<PhysPort, int>, SmallVector<PhysPort, 4>> ctrlPacketFlows;
   SmallVector<std::pair<PhysPort, int>, 4> slavePorts;
   DenseMap<std::pair<PhysPort, int>, int> slaveAMSels;
+  // Explicit packet-rule masks pinned per flow ID by aie.packet_flow's mask
+  // attribute; flows without one have their mask derived automatically.
+  DenseMap<int, int> explicitMasks;
   // Flag to keep packet header at packet flow destination
   DenseMap<PhysPort, BoolAttr> keepPktHeaderAttr;
   // Map from tileID and master ports to flags labelling control packet flows
@@ -305,6 +308,8 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
     Region &r = pktFlowOp.getPorts();
     Block &b = r.front();
     int flowID = pktFlowOp.IDInt();
+    if (auto m = pktFlowOp.getMask())
+      explicitMasks[flowID] = static_cast<int>(*m);
     SmallVector<std::pair<TileID, Port>, 4> sources;
 
     // Pass 1: collect all sources (order-independent; supports fan-in).
@@ -770,28 +775,40 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
 
   std::map<std::pair<PhysPort, int>, int> slaveMasks;
   for (const auto &group : slaveGroups) {
-    // Iterate over all the ID values in a group
-    // If bit n-th (n <= 5) of an ID value differs from bit n-th of another ID
-    // value, the bit position should be "don't care", and we will set the
-    // mask bit of that position to 0
-    int mask[5] = {-1, -1, -1, -1, -1};
-    for (auto port : group) {
-      int ID = port.second;
-      for (int i = 0; i < 5; i++) {
-        if (mask[i] == -1)
-          mask[i] = ID >> i & 0x1;
-        else if (mask[i] != (ID >> i & 0x1))
-          mask[i] = 2; // found bit difference --> mark as "don't care"
-      }
-    }
+    // An explicit mask on any flow in the group pins the group's mask; without
+    // one, derive it from the IDs.
+    std::optional<int> pinnedMask;
+    for (auto port : group)
+      if (auto it = explicitMasks.find(port.second); it != explicitMasks.end())
+        pinnedMask = it->second;
 
-    int maskValue = 0;
-    for (int i = 4; i >= 0; i--) {
-      if (mask[i] == 2) // don't care
-        mask[i] = 0;
-      else
-        mask[i] = 1;
-      maskValue = (maskValue << 1) + mask[i];
+    int maskValue;
+    if (pinnedMask) {
+      maskValue = *pinnedMask;
+    } else {
+      // Iterate over all the ID values in a group
+      // If bit n-th (n <= 5) of an ID value differs from bit n-th of another ID
+      // value, the bit position should be "don't care", and we will set the
+      // mask bit of that position to 0
+      int mask[5] = {-1, -1, -1, -1, -1};
+      for (auto port : group) {
+        int ID = port.second;
+        for (int i = 0; i < 5; i++) {
+          if (mask[i] == -1)
+            mask[i] = ID >> i & 0x1;
+          else if (mask[i] != (ID >> i & 0x1))
+            mask[i] = 2; // found bit difference --> mark as "don't care"
+        }
+      }
+
+      maskValue = 0;
+      for (int i = 4; i >= 0; i--) {
+        if (mask[i] == 2) // don't care
+          mask[i] = 0;
+        else
+          mask[i] = 1;
+        maskValue = (maskValue << 1) + mask[i];
+      }
     }
     for (auto port : group)
       slaveMasks[port] = maskValue;

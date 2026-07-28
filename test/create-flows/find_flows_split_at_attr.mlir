@@ -24,11 +24,11 @@
 // CHECK:   }
 // CHECK: }
 // The flow lifts on both sides of the attributed switchbox.
-// CHECK: aie.packet_flow(0) {
+// CHECK: aie.packet_flow(0 mask 31) {
 // CHECK:   aie.packet_source<%{{.*}}, DMA : 0>
 // CHECK:   aie.packet_dest<%[[T03]], South : 3>
 // CHECK: } via (
-// CHECK: aie.packet_flow(0) {
+// CHECK: aie.packet_flow(0 mask 31) {
 // CHECK:   aie.packet_source<%[[T03]], North : 0>
 // CHECK:   aie.packet_dest<%{{.*}}, DMA : 0>
 // CHECK: } via (

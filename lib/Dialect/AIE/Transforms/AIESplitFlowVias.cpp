@@ -250,7 +250,7 @@ struct AIESplitFlowViasPass
     for (PacketFlowOp pf : pktFlowsWithVias) {
       Location loc = pf.getLoc();
       int id = pf.IDInt();
-      int mask = pf.getViaMask() ? static_cast<int>(*pf.getViaMask()) : 0x1f;
+      int mask = pf.getMask() ? static_cast<int>(*pf.getMask()) : 0x1f;
       ArrayRef<int32_t> inB = pf.getViaIngressBundlesAttr().asArrayRef();
       ArrayRef<int32_t> inC = pf.getViaIngressChannelsAttr().asArrayRef();
       ArrayRef<int32_t> egB = pf.getViaEgressBundlesAttr().asArrayRef();

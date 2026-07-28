@@ -22,7 +22,7 @@
 // CHECK: }
 // CHECK-NOT: aie.flow(
 // The live packet route lifts with its via chain.
-// CHECK: aie.packet_flow(0) {
+// CHECK: aie.packet_flow(0 mask 31) {
 // CHECK:   aie.packet_source<%{{.*}}, DMA : 0>
 // CHECK:   aie.packet_dest<%{{.*}}, DMA : 0>
 // CHECK: } via (

@@ -787,10 +787,16 @@ def AIE_PacketFlowOp: AIE_Op<"packet_flow", [SingleBlockImplicitTerminator<"EndO
     so that they always get allocated with the same master, slave
     ports, arbiters and master selects (msel).
 
+    The optional attribute mask, written directly after the ID in the
+    parentheses, pins the packet-rule mask for the flow. A packet is
+    accepted at a slave port when (incoming ID & mask) == (ID & mask),
+    so the flow matches every ID sharing the unmasked bits of ID. When
+    omitted, the mask is derived automatically during routing.
+
     Example:
     ```
       %01 = aie.tile(0, 1)
-      aie.packet_flow(0x10) {
+      aie.packet_flow(0x10 mask 0x1f) {
         aie.packet_source<%01, "Core" : 0>
         aie.packet_dest<%01, "Core" : 0>
       }
@@ -799,18 +805,18 @@ def AIE_PacketFlowOp: AIE_Op<"packet_flow", [SingleBlockImplicitTerminator<"EndO
 
   let arguments = (
     ins AIEI8Attr:$ID,
+        OptionalAttr<AIEI8Attr>:$mask,
         OptionalAttr<BoolAttr>:$keep_pkt_header,
         OptionalAttr<BoolAttr>:$priority_route,
         Variadic<Index>:$vias,
         OptionalAttr<DenseI32ArrayAttr>:$via_ingress_bundles,
         OptionalAttr<DenseI32ArrayAttr>:$via_ingress_channels,
         OptionalAttr<DenseI32ArrayAttr>:$via_egress_bundles,
-        OptionalAttr<DenseI32ArrayAttr>:$via_egress_channels,
-        OptionalAttr<AIEI8Attr>:$via_mask
+        OptionalAttr<DenseI32ArrayAttr>:$via_egress_channels
   );
   let regions = (region AnyRegion:$ports);
 
-  let assemblyFormat = [{ `(` $ID `)` regions
+  let assemblyFormat = [{ `(` $ID (`mask` $mask^)? `)` regions
     custom<FlowVias>($vias, $via_ingress_bundles, $via_ingress_channels, $via_egress_bundles, $via_egress_channels)
     attr-dict }];
   let hasVerifier = 1;
@@ -818,13 +824,13 @@ def AIE_PacketFlowOp: AIE_Op<"packet_flow", [SingleBlockImplicitTerminator<"EndO
   let builders = [
     OpBuilder<(ins "uint8_t":$ID, "mlir::BoolAttr":$keep_pkt_header,
                    "mlir::BoolAttr":$priority_route), [{
-      build($_builder, $_state, ID, keep_pkt_header, priority_route,
-            mlir::ValueRange{}, nullptr, nullptr, nullptr, nullptr, nullptr);
+      build($_builder, $_state, ID, nullptr, keep_pkt_header, priority_route,
+            mlir::ValueRange{}, nullptr, nullptr, nullptr, nullptr);
     }]>,
     OpBuilder<(ins "mlir::IntegerAttr":$ID, "mlir::BoolAttr":$keep_pkt_header,
                    "mlir::BoolAttr":$priority_route), [{
-      build($_builder, $_state, ID, keep_pkt_header, priority_route,
-            mlir::ValueRange{}, nullptr, nullptr, nullptr, nullptr, nullptr);
+      build($_builder, $_state, ID, nullptr, keep_pkt_header, priority_route,
+            mlir::ValueRange{}, nullptr, nullptr, nullptr, nullptr);
     }]>
   ];
 

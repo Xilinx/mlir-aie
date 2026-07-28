@@ -536,8 +536,8 @@ static void emitFlows(OpBuilder &rewriter, Location loc, Value srcTile,
             keepPktHeader = ms.getKeepPktHeaderAttr();
       auto flowOp = PacketFlowOp::create(
           rewriter, loc, rewriter.getI8IntegerAttr(maskValue.value),
-          keepPktHeader, BoolAttr(), viaTiles, ib, ic, eb, ec,
-          rewriter.getI8IntegerAttr(maskValue.mask));
+          rewriter.getI8IntegerAttr(maskValue.mask), keepPktHeader, BoolAttr(),
+          viaTiles, ib, ic, eb, ec);
       PacketFlowOp::ensureTerminator(flowOp.getPorts(), rewriter, loc);
       OpBuilder::InsertPoint ip = rewriter.saveInsertionPoint();
       rewriter.setInsertionPoint(flowOp.getPorts().front().getTerminator());
