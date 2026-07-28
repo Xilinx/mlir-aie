@@ -49,33 +49,179 @@ def resolve_target_arch(device=None) -> str:
     )
 
 
+# Linkage keywords that may appear immediately after ``define``.  Used to tell
+# "this function already declares a linkage" from "the next token is a
+# preemption specifier / visibility / cconv / return type"; emitting a second
+# linkage keyword is a parse error.
+_LLVM_LINKAGE_KEYWORDS = frozenset(
+    {
+        "private",
+        "internal",
+        "available_externally",
+        "linkonce",
+        "weak",
+        "common",
+        "appending",
+        "extern_weak",
+        "linkonce_odr",
+        "weak_odr",
+        "external",
+    }
+)
+
+# The optional tokens the grammar allows between a function's parameter list
+# and its attribute list.
+_UNNAMED_ADDR_RE = re.compile(r"\s*(?:local_)?unnamed_addr\b")
+_ADDRSPACE_RE = re.compile(r"\s*addrspace\(\d+\)")
+
+# Attributes that cannot coexist with ``alwaysinline`` (the LLVM verifier
+# rejects the combination).  clang emits both at ``-O0``, which a caller can
+# reach by passing ``-O0`` in ``compile_flags``.
+_NO_INLINE_ATTRS_RE = re.compile(r"\s*\b(?:noinline|optnone)\b")
+
+_ATTR_GROUP_DEF_RE = re.compile(r"^attributes\s+#(\d+)\s*=\s*\{(.*)\}\s*$")
+
+_ATTR_GROUP_REF_RE = re.compile(r"#(\d+)\b")
+
+
+def _end_of_parameter_list(line: str, open_paren: int) -> int:
+    """Return the index just past the ``)`` closing a function's parameter list.
+
+    Parameter attributes nest parentheses (``byval(%struct.S)``,
+    ``sret({ i32 })``, ``align(4)``) and quoted attribute strings may contain
+    unbalanced ones, so the closing paren has to be scanned for rather than
+    found with ``str.find``.  Returns -1 if the list does not close on `line`.
+    """
+    depth = 0
+    in_string = False
+    i = open_paren
+    while i < len(line):
+        c = line[i]
+        if in_string:
+            if c == "\\":
+                i += 2
+                continue
+            if c == '"':
+                in_string = False
+        elif c == '"':
+            in_string = True
+        elif c == "(":
+            depth += 1
+        elif c == ")":
+            depth -= 1
+            if depth == 0:
+                return i + 1
+        i += 1
+    return -1
+
+
 def _make_ir_inlinable(ir_path: str, symbol_name: str) -> None:
     """Rewrite an emitted LLVM IR kernel so aiecc inlines it into the core.
 
     Gives the kernel ``define`` ``alwaysinline`` (so aiecc's conservative
     ``-inline-threshold`` still inlines it after the llvm-link merge) and
     ``linkonce_odr`` linkage (so the now-dead definition is DCE'd post-inline
-    instead of being codegen'd). Linkage precedes the ``dso_local`` preemption
-    specifier and function attributes follow ``local_unnamed_addr`` in the
-    LLVM IR grammar, so the insertions below are well-formed.
+    instead of being codegen'd).
+
+    Both edits have to respect the ``define`` grammar::
+
+        define [linkage] [preemption] [visibility] [dll] [cconv] [ret attrs]
+               <ty> @<name>(<params>) [unnamed_addr] [addrspace(N)] [fn attrs]
+               [section] [partition] [comdat] [align] [gc] [prefix] [prologue]
+               [personality] (!name !N)* { ...
+
+    so ``alwaysinline`` is inserted right after the parameter list (and any
+    ``unnamed_addr`` / ``addrspace``), not next to the opening brace: placing a
+    function attribute after a ``personality`` clause or a ``!dbg`` attachment
+    -- the latter appears as soon as the caller passes ``-g`` -- is a parse
+    error.  ``linkonce_odr`` is inserted only when the define does not already
+    carry a linkage keyword.
     """
-    with open(ir_path) as f:
-        lines = f.read().splitlines()
-    define_re = re.compile(r"@" + re.escape(symbol_name) + r"\b\s*\(")
-    out = []
-    for line in lines:
-        if line.startswith("define") and define_re.search(line):
-            if "linkonce_odr" not in line:
-                line = re.sub(r"^define\s+", "define linkonce_odr ", line, count=1)
-            if not re.search(r"\balwaysinline\b", line):
-                line = re.sub(
-                    r"(\s)(#\d+\s+)?\{\s*$",
-                    lambda m: m.group(1) + "alwaysinline " + (m.group(2) or "") + "{",
-                    line,
-                )
-        out.append(line)
-    with open(ir_path, "w") as f:
-        f.write("\n".join(out) + "\n")
+    lines = Path(ir_path).read_text().splitlines()
+
+    symbol_re = re.compile(r"@" + re.escape(symbol_name) + r"\b\s*\(")
+    define_idx = -1
+    for i, text in enumerate(lines):
+        if not text.startswith("define"):
+            continue
+        match = symbol_re.search(text)
+        if match:
+            define_idx = i
+            params_at = match.end() - 1
+            break
+    if define_idx < 0:
+        raise RuntimeError(
+            f"inline=True: no `define` for symbol '{symbol_name}' in "
+            f"{ir_path}. The kernel must be defined in this translation unit "
+            f'and exported under that exact name (declare it `extern "C"` so '
+            f"C++ name mangling does not rename it)."
+        )
+
+    line = lines[define_idx]
+    params_end = _end_of_parameter_list(line, params_at)
+    brace = line.rfind("{")
+    if params_end < 0 or brace < params_end:
+        raise RuntimeError(
+            f"inline=True: could not parse the `define` for '{symbol_name}' in "
+            f"{ir_path}: {line!r}"
+        )
+
+    # Start of the [fn attrs] slot: after the parameter list and the optional
+    # unnamed_addr / addrspace tokens that precede it.
+    attrs_at = params_end
+    for pattern in (_UNNAMED_ADDR_RE, _ADDRSPACE_RE):
+        token = pattern.match(line, attrs_at)
+        if token:
+            attrs_at = token.end()
+
+    region = line[attrs_at:brace]
+
+    # `alwaysinline` is incompatible with `noinline` / `optnone`.  Those
+    # normally arrive through a shared `attributes #N = { ... }` group, so
+    # repoint this define at a private copy with them dropped rather than
+    # editing a group that other functions in the module also reference.
+    groups = {
+        int(m.group(1)): m.group(2)
+        for m in (_ATTR_GROUP_DEF_RE.match(t) for t in lines)
+        if m
+    }
+    referenced = {int(m.group(1)) for m in _ATTR_GROUP_REF_RE.finditer(region)}
+    conflicting = sorted(
+        gid
+        for gid in referenced
+        if gid in groups and _NO_INLINE_ATTRS_RE.search(groups[gid])
+    )
+    if conflicting:
+        next_id = max(groups) + 1
+        remap = {}
+        for gid in conflicting:
+            cleaned = _NO_INLINE_ATTRS_RE.sub("", groups[gid]).strip()
+            remap[gid] = next_id
+            lines.append(f"attributes #{next_id} = {{ {cleaned} }}")
+            next_id += 1
+        region = _ATTR_GROUP_REF_RE.sub(
+            lambda m: f"#{remap.get(int(m.group(1)), int(m.group(1)))}", region
+        )
+    # ... and drop them if they were spelled out on the define itself.
+    region = _NO_INLINE_ATTRS_RE.sub("", region)
+
+    if not re.search(r"\balwaysinline\b", region):
+        region = " alwaysinline" + region
+    line = line[:attrs_at] + region + line[brace:]
+
+    head = re.match(r"define\s+([A-Za-z_][A-Za-z0-9_]*)", line)
+    linkage = head.group(1) if head else None
+    if linkage == "external":
+        # Strong definition: swap it for a discardable one.
+        line = re.sub(r"^define\s+external\b", "define linkonce_odr", line, count=1)
+    elif linkage not in _LLVM_LINKAGE_KEYWORDS:
+        # No linkage keyword at all (the common case: `define dso_local ...`).
+        line = re.sub(r"^define\s+", "define linkonce_odr ", line, count=1)
+    # Any other linkage (internal, weak_odr, ...) already allows the definition
+    # to be discarded once every call site has been inlined; leave it alone.
+
+    lines[define_idx] = line
+    Path(ir_path).write_text("\n".join(lines) + "\n")
 
 
 def compile_cxx_core_function(
@@ -219,12 +365,8 @@ def compile_cxx_core_function(
                 capture_output=True,
             )
             if assemble.returncode != 0:
-                detail = (
-                    f":\n{assemble.stderr.decode()}" if assemble.stderr else ""
-                )
-                raise RuntimeError(
-                    f"[Peano] LLVM bitcode assembly failed{detail}"
-                )
+                detail = f":\n{assemble.stderr.decode()}" if assemble.stderr else ""
+                raise RuntimeError(f"[Peano] LLVM bitcode assembly failed{detail}")
 
 
 def _run_aiecc(mlir_file: str, args: list[str]):
