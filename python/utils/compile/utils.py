@@ -270,7 +270,7 @@ def compile_cxx_core_function(
     if inline and not symbol_name:
         raise ValueError("symbol_name is required when inline=True")
 
-    ir_suffix = Path(output_path).suffix
+    ir_suffix = Path(output_path).suffix.lower()
     if inline and ir_suffix not in (".ll", ".bc"):
         raise ValueError(
             "inline=True output_path must use .ll for textual LLVM IR or .bc "

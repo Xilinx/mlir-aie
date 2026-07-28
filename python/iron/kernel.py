@@ -341,10 +341,13 @@ class ExternalFunction(Kernel):
                 f"ExternalFunction '{name}': inline=True requires the Peano "
                 "toolchain and cannot be combined with use_chess=True."
             )
-
-        self._original_name = name
-        self._symbol_prefix = symbol_prefix
-        self._inline = inline
+        if inline and symbol_prefix:
+            raise NotImplementedError(
+                f"ExternalFunction '{name}': inline=True combined with symbol_prefix is "
+                "not supported (an inline kernel is emitted as LLVM IR and cannot be "
+                "symbol-renamed). Use inline without a symbol_prefix, or drop inline for "
+                "this kernel."
+            )
         effective_name = f"{symbol_prefix}_{name}" if symbol_prefix else name
         object_file_name_explicit = object_file_name is not None
         if inline and object_file_name:
