@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform="packet-sw-objFifos dynamic-objFifos=false" %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="packet-sw-objFifos dynamic-objFifos=false" --aie-assign-lock-ids %s | FileCheck %s
 
 // CHECK: module @shim_dma_alloc {
 // CHECK:   aie.device(xcve2302) {

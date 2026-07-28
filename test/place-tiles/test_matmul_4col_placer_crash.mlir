@@ -14,7 +14,7 @@
 // whole_array_iron.py --n-aie-cols 4 --dev npu2 after stripping every
 // `tile=Tile(...)` argument from the IRON Python source.
 
-// RUN: aie-opt --aie-place-tiles --aie-objectFifo-stateful-transform="dynamic-objFifos=false" %s 2>&1 | FileCheck %s
+// RUN: aie-opt --aie-place-tiles --aie-objectFifo-stateful-transform="dynamic-objFifos=false" --aie-assign-lock-ids %s 2>&1 | FileCheck %s
 
 // CHECK-NOT: error
 // CHECK-NOT: PLEASE submit a bug report

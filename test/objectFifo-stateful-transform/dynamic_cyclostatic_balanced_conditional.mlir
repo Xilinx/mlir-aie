@@ -18,7 +18,7 @@
 // acq/rel on the same fifo tripped a hard error even though the program is
 // well-formed.
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=true" %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=true" --aie-assign-lock-ids %s | FileCheck %s
 
 // CHECK: aie.core
 // The loop is preserved as-is (no peeled iter-0 cloned before it).

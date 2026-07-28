@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=false" -split-input-file --verify-diagnostics %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=false" --aie-assign-lock-ids -split-input-file --verify-diagnostics %s
 
 aie.device(npu1) {
    %tile12 = aie.tile(1, 2)

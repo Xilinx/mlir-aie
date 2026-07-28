@@ -9,7 +9,7 @@
 // honored under dynamic lowering (the aiecc driver default): the producer
 // acquire/release reflect the repeat count, and the consumer loop is preserved.
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=true" %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=true" --aie-assign-lock-ids %s | FileCheck %s
 
 // CHECK:      %[[C12:.*]] = arith.constant 12 : index
 // CHECK:      scf.for %{{.*}} = %{{.*}} to %[[C12]] step %{{.*}} {

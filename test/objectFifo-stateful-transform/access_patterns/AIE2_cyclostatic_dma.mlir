@@ -8,7 +8,7 @@
 // In this test, data is exchanged the same as in AIE2_cyclostatic_l1, but
 // tiles are farther apart and have to use the network/DMAs to communicate.
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=false" %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=false" --aie-assign-lock-ids %s | FileCheck %s
 // CHECK: module @aie2_cyclostatic_dma {
 // CHECK:   aie.device(xcve2302) {
 // CHECK:     %[[t0:.*]] = aie.tile(2, 2)

@@ -14,7 +14,7 @@
 // is ever to be changed, this test can easily be adapted to make sure
 // semantics are preserved.
 
-// RUN: aie-opt --verify-diagnostics --aie-objectFifo-stateful-transform="dynamic-objFifos=false" %s
+// RUN: aie-opt --verify-diagnostics --aie-objectFifo-stateful-transform="dynamic-objFifos=false" --aie-assign-lock-ids %s
 
 module @AIE2_delayed_release {
     aie.device(xcve2302) {
