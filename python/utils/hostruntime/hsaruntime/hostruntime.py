@@ -174,24 +174,21 @@ class HSAHostRuntime(HostRuntime):
         signal = self._ctx.create_signal(1)
         try:
             start = time.time_ns()
-            # dispatch() (via enqueue) and wait() can both raise HSATimeoutError
-            # on a wedged device; once any packet is rung it is in-flight and the
-            # device owns its buffers, so treat any timeout as leak-not-free.
-            try:
-                self._ctx.dispatch(
-                    kernel_handle.pdi_ptr, kernel_handle.insts_ptr,
-                    kernel_handle.insts_size, ka_va, n, signal,
-                )
-                self._ctx.wait(signal)
-            except HSATimeoutError:
-                timed_out = True
-                raise
+            self._ctx.dispatch(
+                kernel_handle.pdi_ptr, kernel_handle.insts_ptr,
+                kernel_handle.insts_size, ka_va, n, signal,
+            )
+            self._ctx.wait(signal)
             stop = time.time_ns()
+        except HSATimeoutError:
+            timed_out = True
+            raise
         finally:
             # On a timeout the dispatch is wedged on the device (a full queue
-            # never drained, or the completion signal never fired): the device
-            # retains ownership of the signal and kernarg buffers, so we must
-            # leak them rather than free (see HSATimeoutError docstring).
+            # never drained, or the completion signal never fired) with the
+            # packet in-flight: the device retains ownership of the signal and
+            # kernarg buffers, so we must leak them rather than free (see
+            # HSATimeoutError docstring).
             if not timed_out:
                 self._ctx.destroy_signal(signal)
                 self._ctx.vmem_free(ka_handle, ka_va, ka_size)
@@ -236,17 +233,12 @@ class HSAHostRuntime(HostRuntime):
                 )
 
             start = time.time_ns()
-            # dispatch_chain (via enqueue) and wait() can both raise
-            # HSATimeoutError on a wedged device; a long chain may time out mid-
-            # ring with earlier packets already in-flight, so treat any timeout
-            # as leak-not-free (the device owns the in-flight buffers).
-            try:
-                self._ctx.dispatch_chain(items, signal)
-                self._ctx.wait(signal)
-            except HSATimeoutError:
-                timed_out = True
-                raise
+            self._ctx.dispatch_chain(items, signal)
+            self._ctx.wait(signal)
             stop = time.time_ns()
+        except HSATimeoutError:
+            timed_out = True
+            raise
         finally:
             # On a timeout the chain is wedged on the device (a full queue never
             # drained mid-ring, or the shared signal never fired) with packets
