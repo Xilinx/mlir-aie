@@ -183,11 +183,16 @@ public:
     // the offset of the task queue register in the tile
     uint32_t queue_offset = ctrl_offset + 0x4;
 
-    // Command word: bd_id [3:0], repeat_count [23:16], issue-token bit [31].
+    // Command word: bd_id in the START_BD_ID field, repeat_count [23:16],
+    // issue-token bit [31]. START_BD_ID is 6 bits on a mem tile (48 BDs) and 4
+    // bits on core/shim tiles, so mask to the tile class instead of a flat 0xF
+    // (a flat 0xF silently truncates a mem-tile head bd_id >= 16).
     // bd_id and repeat_count may be runtime SSA; all-constant folds to one
     // constant (byte-identical to the static path), else built with arith.
     Location loc = op->getLoc();
     auto i32ty = rewriter.getIntegerType(32);
+    uint32_t bdIdMask =
+        tm.isMemTile(op.getColumn(), op.getRow()) ? 0x3Fu : 0xFu;
     std::optional<uint32_t> bd_id = getConstantIntOperand(op.getBdId());
     std::optional<uint32_t> repeat_cnt =
         getConstantIntOperand(op.getRepeatCount());
@@ -196,15 +201,15 @@ public:
     Value cmdVal;
     if (bd_id && repeat_cnt) {
       cmdVal = createConstantI32(rewriter, loc,
-                                 (*bd_id & 0xF) | ((*repeat_cnt & 0xFF) << 16) |
-                                     issueBit);
+                                 (*bd_id & bdIdMask) |
+                                     ((*repeat_cnt & 0xFF) << 16) | issueBit);
     } else {
-      // (bd_id & 0xF) | ((repeat & 0xFF) << 16) | issueBit, as arith over the
-      // runtime operands (a constant field folds to its constant contribution).
+      // (bd_id & bdIdMask) | ((repeat & 0xFF) << 16) | issueBit, as arith over
+      // the runtime operands (a constant field folds to its contribution).
       Value cmd = createConstantI32(rewriter, loc, issueBit);
       Value bdField = arith::AndIOp::create(
           rewriter, loc, getAsValue(rewriter, loc, op.getBdId(), i32ty),
-          createConstantI32(rewriter, loc, 0xF));
+          createConstantI32(rewriter, loc, bdIdMask));
       cmd = arith::OrIOp::create(rewriter, loc, cmd, bdField);
       Value masked =
           arith::AndIOp::create(rewriter, loc, op.getRepeatCount(),

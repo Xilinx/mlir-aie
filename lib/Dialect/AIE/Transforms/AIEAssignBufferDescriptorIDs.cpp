@@ -53,6 +53,83 @@ bool BdIdGenerator::bdIdAlreadyAssigned(uint32_t bdId) {
 
 void BdIdGenerator::freeBdId(uint32_t bdId) { alreadyAssigned.erase(bdId); }
 
+// Read the head buffer-descriptor id and (biased) START_QUEUE repeat count of
+// the resident DMA channel (dir, channel) on `tile`, off the placed
+// aie.mem / aie.memtile_dma chain, exactly as the load-time start-queue push
+// does. Returns false if there is no such resident channel or its head BD id is
+// not yet assigned. Only the block form (aie.dma_start) is scanned; the
+// objectFIFO transform always emits that form.
+static bool resolveResidentChannel(DeviceOp device, TileOp tile,
+                                   DMAChannelDir dir, int channel,
+                                   uint32_t &headBdId, int32_t &repeatCount) {
+  auto scanRegion = [&](Region &region) -> bool {
+    for (Block &block : region)
+      for (DMAStartOp startOp : block.getOps<DMAStartOp>()) {
+        if (startOp.getChannelDir() != dir ||
+            startOp.getChannelIndex() != channel)
+          continue;
+        Block *dest = startOp.getDest();
+        if (!dest)
+          return false;
+        auto bds = dest->getOps<DMABDOp>();
+        if (bds.empty())
+          return false;
+        DMABDOp head = *bds.begin();
+        if (!head.getBdId().has_value())
+          return false;
+        headBdId = head.getBdId().value();
+        repeatCount = startOp.getRepeatCount();
+        return true;
+      }
+    return false;
+  };
+  for (MemOp mem : device.getOps<MemOp>())
+    if (mem.getTile() == tile.getResult())
+      return scanRegion(mem->getRegion(0));
+  for (MemTileDMAOp mem : device.getOps<MemTileDMAOp>())
+    if (mem.getTile() == tile.getResult())
+      return scanRegion(mem->getRegion(0));
+  return false;
+}
+
+// Populate each objectFIFO re-arm binding's head_bd_ids / repeat_counts now
+// that BD ids are assigned, so the later aiex.dma_channel_reset_for lowering
+// reads them straight off the binding instead of re-scanning the emitted chain.
+// A binding that already carries them (hand-authored) is left untouched; one
+// whose endpoints cannot all be resolved is left unpopulated for the lowering
+// to diagnose.
+static void populateRearmBindings(DeviceOp device) {
+  for (auto binding : device.getOps<ObjectFifoRearmBindingOp>()) {
+    if (binding.getHeadBdIds().has_value() ||
+        binding.getRepeatCounts().has_value())
+      continue;
+    ValueRange tiles = binding.getChannelTiles();
+    ArrayRef<int32_t> dirs = binding.getChannelDirs();
+    ArrayRef<int32_t> chans = binding.getChannelIndices();
+    SmallVector<int32_t> headBdIds, repeatCounts;
+    bool resolvedAll = true;
+    for (unsigned i = 0; i < tiles.size(); ++i) {
+      auto tileOp = tiles[i].getDefiningOp<TileOp>();
+      DMAChannelDir dir =
+          dirs[i] == 0 ? DMAChannelDir::S2MM : DMAChannelDir::MM2S;
+      uint32_t headBdId = 0;
+      int32_t repeatCount = 0;
+      if (!tileOp || !resolveResidentChannel(device, tileOp, dir, chans[i],
+                                             headBdId, repeatCount)) {
+        resolvedAll = false;
+        break;
+      }
+      headBdIds.push_back(static_cast<int32_t>(headBdId));
+      repeatCounts.push_back(repeatCount);
+    }
+    if (!resolvedAll)
+      continue;
+    OpBuilder b(binding);
+    binding.setHeadBdIdsAttr(b.getDenseI32ArrayAttr(headBdIds));
+    binding.setRepeatCountsAttr(b.getDenseI32ArrayAttr(repeatCounts));
+  }
+}
+
 struct AIEAssignBufferDescriptorIDsPass
     : xilinx::AIE::impl::AIEAssignBufferDescriptorIDsBase<
           AIEAssignBufferDescriptorIDsPass> {
@@ -197,6 +274,8 @@ struct AIEAssignBufferDescriptorIDsPass
         }
       }
     }
+
+    populateRearmBindings(targetOp);
   }
 };
 
