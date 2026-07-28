@@ -13,13 +13,17 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 # Constants
-TRITON_LLVM_HASH_URL = (
-    "https://raw.githubusercontent.com/triton-lang/triton/main/cmake/llvm-hash.txt"
+# ROCm/llvm-project is the fork mlir-aie builds against (since PR #3326).
+# eudsl-python-extras itself still tracks upstream llvm/llvm-project, so its
+# submodule-pinned commit dates are looked up against upstream (the default
+# `repo` below), while our own current/target commits are ROCm-fork commits
+# and must be looked up against the fork.
+ROCM_LLVM_REPO = "ROCm/llvm-project"
+ROCM_LLVM_BRANCH = "amd-staging"
+ROCM_LLVM_LATEST_COMMIT_URL = (
+    f"https://api.github.com/repos/{ROCM_LLVM_REPO}/commits/{ROCM_LLVM_BRANCH}"
 )
-TORCH_MLIR_SUBMODULE_URL = (
-    "https://api.github.com/repos/llvm/torch-mlir/contents/externals/llvm-project"
-)
-LLVM_PROJECT_COMMIT_URL = "https://api.github.com/repos/llvm/llvm-project/commits/{}"
+LLVM_PROJECT_COMMIT_URL = "https://api.github.com/repos/{repo}/commits/{sha}"
 EUDSL_INDEX_URL = "https://llvm.github.io/eudsl/"
 EUDSL_SUBMODULE_URL = (
     "https://api.github.com/repos/llvm/eudsl/contents/third_party/llvm-project?ref={}"
@@ -94,13 +98,13 @@ def parse_utc_date(date_str):
     )
 
 
-def get_commit_date(commit_hash):
+def get_commit_date(commit_hash, repo="llvm/llvm-project"):
     if not commit_hash:
         return None
     if commit_hash in COMMIT_DATE_CACHE:
         return COMMIT_DATE_CACHE[commit_hash]
 
-    url = LLVM_PROJECT_COMMIT_URL.format(commit_hash)
+    url = LLVM_PROJECT_COMMIT_URL.format(repo=repo, sha=commit_hash)
     try:
         with get_request_simple(url) as response:
             data = json.loads(response.read().decode("utf-8"))
@@ -124,25 +128,25 @@ def get_current_llvm_commit():
     return None
 
 
-def get_triton_llvm_commit():
-    try:
-        with get_request_simple(TRITON_LLVM_HASH_URL) as response:
-            content = response.read().decode("utf-8").strip()
-            if re.match(r"^[a-f0-9]+$", content):
-                return content
-    except Exception as e:
-        print(f"Error fetching Triton LLVM commit: {e}", file=sys.stderr)
-    return None
+def get_latest_rocm_llvm_commit():
+    """Fetch the HEAD commit of ROCm/llvm-project@amd-staging.
 
-
-def get_torch_mlir_llvm_commit():
+    This is the branch mlirDistro.yml builds wheels from, so it's the natural
+    target for this script post-migration (replaces the old triton/torch-mlir
+    pin comparisons, which compared upstream pins against a fork commit and
+    no longer mean anything).
+    """
     try:
-        with get_request_simple(TORCH_MLIR_SUBMODULE_URL) as response:
+        with get_request_simple(ROCM_LLVM_LATEST_COMMIT_URL) as response:
             data = json.loads(response.read().decode("utf-8"))
-            return data["sha"]
+            sha = data["sha"]
+            date_str = data["commit"]["committer"]["date"]
+            date = parse_utc_date(date_str)
+            COMMIT_DATE_CACHE[sha] = date
+            return sha, date
     except Exception as e:
-        print(f"Error fetching Torch-MLIR LLVM commit: {e}", file=sys.stderr)
-    return None
+        print(f"Error fetching ROCm/llvm-project HEAD commit: {e}", file=sys.stderr)
+    return None, None
 
 
 def get_eudsl_candidates(target_date, window_days=14):
@@ -361,7 +365,7 @@ def main():
         print("Could not determine current LLVM commit. Aborting.", file=sys.stderr)
         sys.exit(1)
 
-    current_date = get_commit_date(current_commit)
+    current_date = get_commit_date(current_commit, repo=ROCM_LLVM_REPO)
     if not current_date:
         print("Could not determine date of current LLVM commit. Assuming very old.")
         current_date = datetime.min.replace(tzinfo=timezone.utc)
@@ -375,43 +379,32 @@ def main():
     if args.llvm_hash:
         print(f"Using provided LLVM hash: {args.llvm_hash}")
         target_commit = args.llvm_hash
-        target_date = get_commit_date(target_commit)
+        target_date = get_commit_date(target_commit, repo=ROCM_LLVM_REPO)
         if not target_date:
             print("Could not get date for provided hash. Aborting.")
             sys.exit(1)
         reason = "Manual update via --llvm-hash"
     else:
-        # 2. Get upstream info
-        triton_commit = get_triton_llvm_commit()
-        triton_date = get_commit_date(triton_commit)
-        if triton_commit:
-            print(f"Triton LLVM commit:     {triton_commit[:8]} ({triton_date})")
-        else:
-            print("Failed to fetch Triton LLVM commit.")
-
-        torch_commit = get_torch_mlir_llvm_commit()
-        torch_date = get_commit_date(torch_commit)
-        if torch_commit:
-            print(f"Torch-MLIR LLVM commit: {torch_commit[:8]} ({torch_date})")
-        else:
-            print("Failed to fetch Torch-MLIR LLVM commit.")
+        # 2. Get latest commit on the ROCm/llvm-project fork branch that
+        # mlirDistro.yml builds wheels from.
+        target_commit, target_date = get_latest_rocm_llvm_commit()
+        if not target_commit:
+            print("Failed to fetch latest ROCm/llvm-project commit. Aborting.")
+            sys.exit(1)
+        print(
+            f"Latest {ROCM_LLVM_REPO}@{ROCM_LLVM_BRANCH}: "
+            f"{target_commit[:8]} ({target_date})"
+        )
 
         # 3. Determine target
-        potential_targets = []
-        if triton_date and triton_date > current_date:
-            potential_targets.append((triton_date, triton_commit, "Triton"))
-        if torch_date and torch_date > current_date:
-            potential_targets.append((torch_date, torch_commit, "Torch-MLIR"))
-
-        if not potential_targets:
-            print("No newer LLVM commits found in Triton or Torch-MLIR.")
+        if target_date <= current_date:
+            print(f"No newer commits found on {ROCM_LLVM_BRANCH}.")
             return
 
-        # Sort by date descending (newest first)
-        potential_targets.sort(key=lambda x: x[0], reverse=True)
-        target_date, target_commit, source = potential_targets[0]
-
-        reason = f"Bump to match {source} LLVM {target_commit[:8]} ({target_date})"
+        reason = (
+            f"Bump to latest {ROCM_LLVM_REPO}@{ROCM_LLVM_BRANCH} "
+            f"{target_commit[:8]} ({target_date})"
+        )
         print(f"Found update! {reason}")
 
     if args.identify_only:
