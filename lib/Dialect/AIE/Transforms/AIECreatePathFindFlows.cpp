@@ -1142,10 +1142,7 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
       if (existingSlots + cover.size() > slotLimit) {
         packetrules->emitOpError("slave port packet rules exceed the ")
             << slotLimit << "-slot limit (" << existingSlots << " + "
-            << cover.size()
-            << " for this fan-out); the distribute exceeds a single port's "
-               "slot "
-               "budget and needs channel-level restructuring.";
+            << cover.size() << ").";
         return failure();
       }
 
