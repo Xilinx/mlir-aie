@@ -217,14 +217,31 @@ lit_config.parallelism_groups["npu-split-chess-compile"] = 1
 # compile phase runs them in parallel (see test/npu-xrt/lit.local.cfg); only the
 # device run stays in the capacity-1 npu-xrt group, which serializes the global
 # XRT hw_context pool that #2737 added the group to protect.
-# CONSTRAINT for converting a test: a line tagged with %npu_build%/%npu_run%
-# must be a single simple command with NO redirect (>), pipe (|), &&/;, or a
-# trailing FileCheck -- the ":" skip only neutralises a plain command; a redirect
-# would still truncate its target and a pipe would still run the downstream stage
-# on empty input. Redirect/pipe/FileCheck tests must stay whole-test (unconverted).
+# CONSTRAINT 1 (line shape) for converting a test: a line tagged with
+# %npu_build%/%npu_run% must be a single simple command with NO redirect (>), pipe
+# (|), &&/;, or a trailing FileCheck -- the ":" skip only neutralises a plain
+# command; a redirect would still truncate its target and a pipe would still run the
+# downstream stage on empty input. Redirect/pipe/FileCheck tests must stay
+# whole-test (unconverted).
+# CONSTRAINT 2 (artifact ownership): a converted test must not write a bare relative
+# artifact name that any OTHER test in its directory also writes. lit's cwd is the
+# directory (dirname(test.getExecPath())) but %t is per test FILE
+# (<execdir>/Output/<name>.tmp), so bare names like aie.xclbin are directory-scoped
+# while test identity is file-scoped. A whole-test run survives that because build
+# and run are adjacent lines and this group is capacity-1; the split is not -- it
+# moves produce->consume into a separate lit invocation and compiles ungrouped, so
+# two tests sharing a name would race in the compile phase and the execute phase
+# could run one test against the other's xclbin. Sibling tests count even when
+# unconverted: with no markers they run whole in BOTH passes. Directories whose
+# tests share names (xrt_handle_lifetime, reconfigure_loadpdi{,_persistent_memtile},
+# matmul_whole_array_dynamic) are therefore left unconverted; scoping their
+# artifacts to %t, as matmul_whole_array_dynamic already does for its xclbin/prj,
+# would make them convertible.
 _npu_split = os.environ.get("AIE_NPU_SPLIT", "")
 _npu_skip = ":"  # shell no-op; consumes the rest of a redirect/pipe-free line
-config.substitutions.append(("%npu_build%", _npu_skip if _npu_split == "execute" else ""))
+config.substitutions.append(
+    ("%npu_build%", _npu_skip if _npu_split == "execute" else "")
+)
 config.substitutions.append(("%npu_run%", _npu_skip if _npu_split == "compile" else ""))
 
 # shutil.which picks up the platform's executable suffix (.exe on Windows

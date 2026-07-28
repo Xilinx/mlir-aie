@@ -1,3 +1,6 @@
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
 # TEMPORARY EXPERIMENT WORKFLOW -- DO NOT MERGE. Removed before any split/cache PR
 # is finalized. Two INDEPENDENT arms on real Ryzen AI hardware, each proving
 # correctness INCLUDING its deliberate-failure paths so a silent regression is loud:

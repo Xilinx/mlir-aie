@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+#
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
 # EXPERIMENT (TEMPORARY -- removed before the split PR is finalized).
 #
 # Proves the compile/execute split on real Ryzen AI hardware and collects the numbers for the
@@ -79,12 +83,14 @@ assert_coverage(){ # $1 report.json  $2 label
   [ "${#missing[@]}" -eq 0 ] || bad "$2: ${#missing[@]}/${#T[@]} enumerated tests missing from report (silent coverage loss): ${missing[*]}"
 }
 
-# every enumerated test must exist under $BUILD, else lit silently drops it.
-P=(); miss_build=()
-for t in "${T[@]}"; do
-  if [ -d "$BUILD/test/npu-xrt/$t" ]; then P+=("$BUILD/test/npu-xrt/$t"); else miss_build+=("$t"); fi
-done
-[ "${#miss_build[@]}" -eq 0 ] || bad "enumerated tests missing under \$BUILD (build lags source): ${miss_build[*]}"
+# Feed lit BUILD-tree paths: it resolves each one through test_exec_root back to the source tree.
+# The per-test build dir need NOT exist first -- CMake never creates test/npu-xrt/<t> (test/
+# CMakeLists.txt only configures build/test/lit.site.cfg.py); lit makes it on the test's first run.
+# So the only real precondition is a CONFIGURED build. A test that silently resolves to nothing is
+# caught downstream by assert_coverage against the JSON report, which is the guard that matters.
+[ -f "$BUILD/test/lit.site.cfg.py" ] \
+  || { bad "no configured build at \$BUILD ($BUILD/test/lit.site.cfg.py missing)"; echo "::error::experiment aborted"; exit 1; }
+P=(); for t in "${T[@]}"; do P+=("$BUILD/test/npu-xrt/$t"); done
 
 run_mode(){ # $1 label  $2 AIE_NPU_SPLIT  $3 jobs  $4 outfile
   local t0 t1; t0=$(date +%s.%N)
@@ -159,7 +165,7 @@ else note "canary OK: 0/$ct converted tests passed execute-only on a wiped root 
 echo "##################### [3/4] no-masking fault injection ########"
 inject(){ # $1 test  $2 kernel  $3 sed-good  $4 sed-bad
   local KF="$NPU_XRT_SRC/$1/$2" BP="$BUILD/test/npu-xrt/$1"
-  [ -d "$BP" ] || { bad "inject $1: $BP not present under \$BUILD"; return; }
+  [ -f "$KF" ] || { bad "inject $1: kernel $KF not found (test renamed/moved?)"; return; }
   _MUT="$KF"; _BAK="$OUT/.inj_backup"; cp -f "$KF" "$_BAK"
   sed -i "s|$3|$4|g" "$KF"
   cmp -s "$_BAK" "$KF" && { bad "inject $1: mutation was a no-op (sed matched nothing -- source reformatted?)"; restore_mut; return; }

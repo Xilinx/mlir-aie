@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+#
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
 # EXPERIMENT (TEMPORARY -- removed before any cache PR is finalized).
 #
 # SEPARATE ARM from split_experiment.sh (untouched, independently readable). Proves a
@@ -115,7 +119,10 @@ wipe_one(){ [ -d "$BUILD/test/npu-xrt/$1" ] && find "$BUILD/test/npu-xrt/$1" \
      -o -name 'aie_arch.mlir' -o -name '*.prj' -o -name 'ctrlpkt*.bin' \) -prune -exec rm -rf {} + 2>/dev/null; true; }
 
 # cache_save: ATOMIC (temp dir + rename) so an interrupted copy never leaves a partial slot.
-cache_save(){ local s tmp; s="$(slot "$1")"; tmp="${s}.tmp.$$"
+# An UNSUPPORTED test never executes, so lit never creates its exec dir -- nothing to cache, not an
+# error (realhits, not hits, is what the reuse claim is gated on).
+cache_save(){ local s tmp; [ -d "$BUILD/test/npu-xrt/$1" ] || return 1
+  s="$(slot "$1")"; tmp="${s}.tmp.$$"
   rm -rf "$tmp"; mkdir -p "$tmp"
   if cp -a "$BUILD/test/npu-xrt/$1/." "$tmp/"; then rm -rf "$s"; mv "$tmp" "$s"
   else rm -rf "$tmp"; return 1; fi; }
@@ -133,13 +140,13 @@ mapfile -t T < <(cd "$NPU_XRT_SRC" && grep -rl '%npu_run%' . --include=run.lit \
                    | sed 's|^\./||;s|/run\.lit$||' | sort)
 note "converted npu-xrt tests: ${#T[@]}"
 [ "${#T[@]}" -gt 0 ] || { bad "0 converted tests discovered"; echo "::error::experiment aborted"; exit 1; }
-# every enumerated test must exist under $BUILD, else lit silently drops it and the count-based
-# guards below would pass on a smaller, unnoticed population.
-P=(); miss_build=()
-for t in "${T[@]}"; do
-  if [ -d "$BUILD/test/npu-xrt/$t" ]; then P+=("$BUILD/test/npu-xrt/$t"); else miss_build+=("$t"); fi
-done
-[ "${#miss_build[@]}" -eq 0 ] || bad "enumerated tests missing under \$BUILD (build lags source): ${miss_build[*]}"
+# Feed lit BUILD-tree paths: it resolves each one through test_exec_root back to the source tree,
+# so the per-test build dir need NOT exist first (CMake never creates test/npu-xrt/<t>; lit makes it
+# on the test's first run). Only a CONFIGURED build is a real precondition; a test that silently
+# resolves to nothing is caught downstream by assert_coverage against the JSON report.
+[ -f "$BUILD/test/lit.site.cfg.py" ] \
+  || { bad "no configured build at \$BUILD ($BUILD/test/lit.site.cfg.py missing)"; echo "::error::experiment aborted"; exit 1; }
+P=(); for t in "${T[@]}"; do P+=("$BUILD/test/npu-xrt/$t"); done
 
 echo "##################### [A] cold vs warm (INTRA-RUN reuse) #####################"
 prehit=0; for t in "${T[@]}"; do [ -d "$(slot "$t")" ] && prehit=$((prehit+1)); done
@@ -202,7 +209,7 @@ PY
 
 echo "##################### [C] invalidation self-test (row 4) #####################"
 INV_T="add_one_func_link_with_peano"; KF="$NPU_XRT_SRC/$INV_T/add_one_kernel.cc"; BP="$BUILD/test/npu-xrt/$INV_T"
-[ -d "$BP" ] || bad "row4: $INV_T not present under \$BUILD"
+[ -f "$KF" ] || bad "row4: kernel $KF not found (test renamed/moved?)"
 # GOOD baseline: compile cleanly + cache + execute PASS.
 wipe_one "$INV_T"; run_lit compile "$OUT/inv_good_c.log" "$BP"
 [ "$(verdict_of "$OUT/inv_good_c.log.json" "$INV_T")" = PASS ] || bad "row4: good $INV_T did not COMPILE"
