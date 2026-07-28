@@ -304,4 +304,32 @@
          <loc>https://xilinx.github.io/mlir-aie/dev/programming_guide/section-6/</loc>
          <lastmod>2026-07-28</lastmod>
     </url>
+    <url>
+         <loc>https://xilinx.github.io/mlir-aie/dev/skills/</loc>
+         <lastmod>2026-07-28</lastmod>
+    </url>
+    <url>
+         <loc>https://xilinx.github.io/mlir-aie/dev/skills/agentic_programming/</loc>
+         <lastmod>2026-07-28</lastmod>
+    </url>
+    <url>
+         <loc>https://xilinx.github.io/mlir-aie/dev/skills/aie-dataflow-opt/SKILL/</loc>
+         <lastmod>2026-07-28</lastmod>
+    </url>
+    <url>
+         <loc>https://xilinx.github.io/mlir-aie/dev/skills/aie-dataflow-presim/SKILL/</loc>
+         <lastmod>2026-07-28</lastmod>
+    </url>
+    <url>
+         <loc>https://xilinx.github.io/mlir-aie/dev/skills/aie-hw-bringup/SKILL/</loc>
+         <lastmod>2026-07-28</lastmod>
+    </url>
+    <url>
+         <loc>https://xilinx.github.io/mlir-aie/dev/skills/aie-kernel-opt/SKILL/</loc>
+         <lastmod>2026-07-28</lastmod>
+    </url>
+    <url>
+         <loc>https://xilinx.github.io/mlir-aie/dev/skills/aie-model-baseline/SKILL/</loc>
+         <lastmod>2026-07-28</lastmod>
+    </url>
 </urlset>
