@@ -72,10 +72,13 @@ _np_dtype_to_mlir_type_ctor = defaultdict(
         # Index Types
         # Not strictly correct, but numpy casts Python scalars to these types by
         # default, so we map them to index type to support passing lists of ints.
-        np.longlong: T.index,
         np.uintp: T.index,
     },
 )
+
+# np.longlong aliases np.int64 on Windows. Keep the explicit i64 mapping
+# authoritative there while preserving the distinct index mapping elsewhere.
+_np_dtype_to_mlir_type_ctor.setdefault(np.longlong, T.index)
 
 NpuDType = (
     np.int8
