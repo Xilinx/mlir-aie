@@ -22,19 +22,22 @@ compute -- two ways and reports each variant's host-visible latency:
   * object-linked : ``ExternalFunction("add_one")``               -> a call per tile
   * inlined       : ``ExternalFunction("add_one", inline=True)``   -> body folded in
 
-Both are validated for numerical equality, so this doubles as a correctness
-check of the inline path.
+Both variants run over the same input and are compared for exact equality, so
+this doubles as a correctness check of the inline path.
 
-Caveat: this measures end-to-end host latency (launch + DMA + compute), not
-isolated on-core cycles.  For cycle-accurate call overhead, bracket the kernel
-loop with the AIE trace (event0/event1).  This example targets a quick, portable
-A/B signal that the inline path is wired up and faster on a call-bound workload.
+Timing comes from ``aie.utils.benchmark.run_iters``, which reports on-NPU time
+(captured around ``kernel.wait()``) separately from end-to-end host latency.
+The NPU figure is the one quoted below: it excludes launch overhead, so the
+remaining delta between the two variants is dominated by the per-tile calls.
+It is still not a cycle count -- both variants move identical data, so the DMA
+cost cancels in the *difference* but is present in each number.  For
+cycle-accurate call overhead, bracket the kernel loop with the AIE trace
+(event0/event1).
 """
 
 from __future__ import annotations
 
 import argparse
-import time
 
 import numpy as np
 
@@ -42,6 +45,8 @@ import aie.iron as iron
 from aie.iron import CompileTime, ExternalFunction, In, Out, jit
 from aie.iron import ObjectFifo, Worker, Runtime, Program
 from aie.iron.controlflow import range_
+from aie.utils.benchmark import run_iters
+from aie.utils.verify import assert_pass
 
 _SRC = """extern "C" {
     void add_one(int* input, int* output, int tile_size) {
@@ -101,55 +106,67 @@ def _add_one(inline: bool) -> ExternalFunction:
     )
 
 
-def _bench(label: str, inline: bool, num_elements: int, iters: int) -> float:
+def _bench(label: str, inline: bool, x, num_elements: int, iters: int):
+    """Build one variant and time it. Returns (timings, output)."""
     # Independent build per variant.
     transform._kernel_cache.clear()
     ExternalFunction._instances.clear()
 
-    x = iron.randint(0, 100, (num_elements,), dtype=np.int32, device="npu")
     y = iron.zeros((num_elements,), dtype=np.int32, device="npu")
-    expected = x.numpy() + 1
 
-    func = _add_one(inline=inline)
-    transform(x, y, func=func, num_elements=num_elements)  # warm up / compile
-    np.testing.assert_array_equal(y.numpy(), expected)
+    # warmup=1 absorbs the JIT compile and cache population.
+    bench = run_iters(
+        transform,
+        x,
+        y,
+        func=_add_one(inline=inline),
+        num_elements=num_elements,
+        warmup=1,
+        iters=iters,
+    )
 
-    start = time.perf_counter()
-    for _ in range(iters):
-        transform(x, y, func=func, num_elements=num_elements)
-    per_iter = (time.perf_counter() - start) / iters
+    # Prefer on-NPU time: it excludes host launch overhead, which is what makes
+    # the per-call delta legible.  e2e is the fallback if the runtime did not
+    # report npu_time.
+    stats = bench.npu if bench.npu is not None else bench.e2e
+    scope = "NPU" if bench.npu is not None else "e2e"
+    print(
+        f"  {label:<13} {scope} (avg/min/max us): "
+        f"{stats.avg_us:.1f} / {stats.min_us:.1f} / {stats.max_us:.1f}"
+    )
+    return stats, y.numpy()
 
-    calls = num_elements // 16
-    print(f"  {label:<13} {per_iter * 1e3:8.3f} ms/iter   ({calls} calls/iter)")
-    return per_iter
 
-
-def main() -> int:
+def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--num-elements", type=int, default=16384)
     parser.add_argument("--iters", type=int, default=50)
     args = parser.parse_args()
 
+    calls = args.num_elements // 16
     print(
         f"add_one microbench: {args.num_elements} elems, tile=16, "
-        f"{args.iters} timed iters"
+        f"{calls} calls/iter, {args.iters} timed iters"
     )
-    try:
-        obj = _bench("object-link", False, args.num_elements, args.iters)
-        inl = _bench("inline", True, args.num_elements, args.iters)
-        if inl > 0.0:
-            print(f"  speedup (object/inline): {obj / inl:.3f}x")
-        print("PASS!")
-        return 0
-    except Exception as exc:  # noqa: BLE001 - example-level reporting
-        import traceback
 
-        traceback.print_exc()
-        print(f"FAILED: {exc}")
-        return 1
+    # One input for both variants, so the outputs are directly comparable.
+    x = iron.randint(0, 100, (args.num_elements,), dtype=np.int32, device="npu")
+
+    obj, obj_out = _bench("object-link", False, x, args.num_elements, args.iters)
+    inl, inl_out = _bench("inline", True, x, args.num_elements, args.iters)
+    if inl.avg_us > 0.0:
+        print(f"  speedup (object/inline): {obj.avg_us / inl.avg_us:.3f}x")
+
+    assert_pass(
+        obj_out,
+        x.numpy() + 1,
+        fail_msg="object-linked output mismatch",
+        print_pass=False,
+    )
+    # The example's actual claim: inlining the kernel changes nothing but speed.
+    # This is the PASS! that run.lit / run_strix.lit FileCheck for.
+    assert_pass(inl_out, obj_out, fail_msg="inline output differs from object-linked")
 
 
 if __name__ == "__main__":
-    import sys
-
-    sys.exit(main())
+    main()

@@ -48,21 +48,32 @@ add_one = ExternalFunction(
 ## Microbenchmark
 
 `inline_kernel.py` runs a deliberately call-heavy design (a 16-element `add_one`
-invoked once per tile over a large tensor) both object-linked and inlined, checks
-the results are identical, and prints the host-visible latency of each:
+invoked once per tile over a large tensor) both object-linked and inlined over
+the same input, checks the two outputs are identical, and reports the cost of
+each:
 
 ```bash
 python inline_kernel.py --num-elements 16384 --iters 50
 ```
 
-It reports end-to-end host latency (launch + DMA + compute), not isolated on-core
-cycles. Both variants move identical data, so the object−inline *delta* isolates
-the on-core cost of the `func.call`s (DMA cancels). For cycle-accurate call
-overhead, bracket the kernel loop with the AIE trace (`event0`/`event1`).
+Timing uses `aie.utils.benchmark.run_iters`, the shared benchmarking helper (see
+`programming_examples/getting_started/00_memcpy` for the canonical usage). It
+reports **on-NPU time**, captured around `kernel.wait()`, separately from
+end-to-end host latency; the example quotes the NPU figure because excluding
+launch overhead is what makes the per-call delta legible. `warmup=1` absorbs the
+JIT compile.
+
+This is still not a cycle count. Both variants move identical data, so the DMA
+cost cancels in the object−inline *difference* but is present in each absolute
+number. For cycle-accurate call overhead, bracket the kernel loop with the AIE
+trace (`event0`/`event1`).
 
 ### Measured (Strix Halo, aie2p / npu2)
 
-`add_one` over a 16-element tile, one call per tile, best of 3 runs (iters=200):
+`add_one` over a 16-element tile, one call per tile, best of 3 runs (iters=200).
+These were taken with an earlier revision that timed **end-to-end host latency**
+in milliseconds; the script now prints on-NPU microseconds, so its absolute
+numbers will be smaller than the table. The speedup column is the durable part.
 
 | calls / iter | object-link | inline    | speedup |
 |-------------:|------------:|----------:|--------:|
