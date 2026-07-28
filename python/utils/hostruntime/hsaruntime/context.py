@@ -14,6 +14,7 @@ issues/waits on AIE kernel-dispatch packets.
 import ctypes
 import os
 import threading
+import time
 
 from ._bindings import (
     HSA_ACCESS_PERMISSION_RW,
@@ -299,13 +300,28 @@ class HSAContext:
     def enqueue(self, pdi_ptr, insts_ptr, insts_size, kernarg_ptr, num_kernargs, signal):
         """Write one packet at the next queue slot (no doorbell). Returns its wr_idx.
 
-        Spins while the queue is full so an in-flight batch drains (wrap-around)."""
+        Spins while the queue is full so an in-flight batch drains (wrap-around).
+        The spin yields the GIL each iteration (so it doesn't peg a core) and,
+        when ``IRON_HSA_TIMEOUT`` is set, is bounded by that timeout: a wedged
+        device during a long chain (``len(runs) > queue_size``) raises
+        :class:`HSATimeoutError` here rather than hanging forever, mirroring
+        :meth:`wait`. On timeout the reserved write index is abandoned (the
+        packet was never made visible), so the caller must treat the dispatch as
+        wedged and recover the device."""
         pkt = self._fill_packet(pdi_ptr, insts_ptr, insts_size, kernarg_ptr, num_kernargs, signal)
         q = self.queue
         qsize = self.queue_size
         wr_idx = lib.hsa_queue_add_write_index_relaxed(q, 1)
+        timeout = _hsa_sync_timeout_s()
+        deadline = time.monotonic() + timeout if timeout > 0 else None
         while wr_idx - lib.hsa_queue_load_read_index_scacquire(q) >= qsize:
-            pass
+            if deadline is not None and time.monotonic() >= deadline:
+                raise HSATimeoutError(
+                    f"queue did not drain within IRON_HSA_TIMEOUT={timeout:g}s "
+                    f"while enqueuing a dispatch. The device may be wedged; "
+                    f"recover it (e.g. reload the amdxdna driver) if this persists."
+                )
+            time.sleep(0)  # yield so a full-queue spin doesn't peg a core
         self.queue_packets[wr_idx % qsize] = pkt
         return wr_idx
 
