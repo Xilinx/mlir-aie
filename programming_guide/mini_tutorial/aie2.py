@@ -61,14 +61,14 @@ def aie2p(input0: In, output: Out):
     # Note: The task to start the workers currently only registers the workers as part of the Program, but
     # does not launch the Workers themselves. This means that this task can be added in the sequence at
     # any point and does not need to be the first one.
-    rt = Runtime()
-    with rt.sequence(tile_ty, tile_ty) as (a_in, c_out):
-        rt.start(my_worker)
-        rt.fill(of_in.prod(), a_in)
-        rt.drain(of_out.cons(), c_out, wait=True)
+    def sequence(a_in, c_out, in_h, out_h):
+        in_h.fill(a_in)
+        out_h.drain(c_out, wait=True)
+
+    rt = Runtime(sequence, [tile_ty, tile_ty, of_in.prod(), of_out.cons()])
 
     # Create the program from the device type and runtime
-    my_program = Program(iron.get_current_device(), rt)
+    my_program = Program(iron.get_current_device(), rt, workers=[my_worker])
 
     # Place components (assign them resources on the device) and generate an MLIR module
     # The placer will use available information, such as the ObjectFifoHandles, to place the components.

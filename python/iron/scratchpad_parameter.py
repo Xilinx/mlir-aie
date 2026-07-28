@@ -37,10 +37,11 @@ class ScratchpadParameter(Resolvable):
 
         worker = Worker(core_body, [seq_len])
 
-        rt = Runtime()
-        with rt.sequence(output_type) as out:
+        def sequence(out):
             # The compiler automatically inserts the parameter-sync preamble.
             ...
+
+        rt = Runtime(sequence, [output_type])
         ```
     """
 

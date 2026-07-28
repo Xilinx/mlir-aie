@@ -47,6 +47,7 @@ from aie.utils.compile.utils import _cleanup_failed_compilation
 from aie.extras.context import mlir_mod_ctx  # pyright: ignore[reportMissingImports]
 from aie.ir import (  # pyright: ignore[reportMissingImports]
     Module as _Module,  # pyright: ignore[reportAttributeAccessIssue]
+    StringAttr,  # pyright: ignore[reportAttributeAccessIssue]
 )
 
 from ._dma_size_parser import parse_dma_sizes
@@ -520,8 +521,6 @@ class CompilableDesign:
         generated module for the first ``aie.device`` and its first
         ``aie.runtime_sequence``.
         """
-        from aie.ir import StringAttr  # pyright: ignore[reportMissingImports]
-
         module = self._generate_mlir(ExternalFunction)
         for op in module.body.operations:
             if op.operation.name != "aie.device":

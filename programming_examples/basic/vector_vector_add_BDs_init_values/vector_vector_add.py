@@ -201,16 +201,16 @@ def vector_vector_add(
         tile=compute_tile,
     )
 
-    def emit_seq(A_data, C_data):
-        in1_task = shim_dma_single_bd_task("of_in1", A_data.op, sizes=[1, 1, 1, N])
+    def sequence(A, C):
+        in1_task = shim_dma_single_bd_task("of_in1", A.op, sizes=[1, 1, 1, N])
         out_task = shim_dma_single_bd_task(
-            "of_out", C_data.op, sizes=[1, 1, 1, N], issue_token=True
+            "of_out", C.op, sizes=[1, 1, 1, N], issue_token=True
         )
         dma_start_task(in1_task, out_task)
         dma_await_task(out_task)
         dma_free_task(in1_task)
 
-    rt = Runtime()
+    rt = Runtime(sequence, [tensor_ty, tensor_ty])
     rt.add_flow(in_flow)
     rt.add_flow(out_flow)
     for lk in (
@@ -224,11 +224,7 @@ def vector_vector_add(
         rt.add_lock(lk)
     rt.add_tile_dma(compute_dma)
 
-    with rt.sequence(tensor_ty, tensor_ty) as (A, C):
-        rt.start(worker)
-        rt.inline_ops(emit_seq, [A, C])
-
-    return Program(dev, rt).resolve_program()
+    return Program(dev, rt, workers=[worker]).resolve_program()
 
 
 def _make_argparser():

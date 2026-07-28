@@ -42,11 +42,12 @@ def section_one(b_out: Out):
 
     my_worker = Worker(core_fn, [buf], tile=Tile(0, 2), while_true=False)
 
-    rt = Runtime()
-    with rt.sequence(data_ty) as _:
-        rt.start(my_worker)
+    def sequence(_):
+        pass
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    rt = Runtime(sequence, [data_ty])
+
+    return Program(iron.get_current_device(), rt, workers=[my_worker]).resolve_program()
 
 
 def _run_and_verify(opts):

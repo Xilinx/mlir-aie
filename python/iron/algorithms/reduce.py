@@ -69,15 +69,11 @@ def _reduce_gen(func, input_desc, output_desc, *, trace_size=0):
         trace=(1 if trace_size > 0 else 0),
     )
 
-    rt = Runtime()
-    with rt.sequence(in_ty, out_ty) as seq_args:
-        assert isinstance(seq_args, tuple)
-        a_in, c_out = seq_args
-        if trace_size > 0:
-            rt.enable_trace(trace_size)
-        rt.start(worker)
-        rt.fill(of_in.prod(), a_in)
-        rt.drain(of_out.cons(), c_out, wait=True)
+    def sequence(a_in, c_out, in_h, out_h):
+        in_h.fill(a_in)
+        out_h.drain(c_out, wait=True)
+
+    rt = Runtime(sequence, [in_ty, out_ty, of_in.prod(), of_out.cons()])
 
     device = iron.get_current_device()
     if device is None:
@@ -86,7 +82,10 @@ def _reduce_gen(func, input_desc, output_desc, *, trace_size=0):
             "Call iron.set_current_device() or ensure DefaultNPURuntime is "
             "initialized before calling reduce functions."
         )
-    return Program(device, rt).resolve_program()
+    prog = Program(device, rt, workers=[worker])
+    if trace_size > 0:
+        prog.enable_trace(trace_size)
+    return prog.resolve_program()
 
 
 def reduce(func, input_ty, output_ty, *, trace_size=0):

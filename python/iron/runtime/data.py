@@ -5,7 +5,7 @@
 #
 
 import numpy as np
-from typing import Sequence
+from typing import get_origin, Sequence
 
 from ...extras.dialects.memref import (  # pyright: ignore[reportMissingImports]
     MemRefValue,
@@ -44,6 +44,17 @@ class RuntimeData:
     def arr_type(self) -> type[np.ndarray]:
         """The tensor type of the buffer."""
         return self._arr_type
+
+    @property
+    def is_scalar(self) -> bool:
+        """Whether this runtime argument is a scalar (no shape) rather than a
+        tensor. Scalar runtime args (e.g. a runtime ``M``/``K``/``N``) are passed
+        to the sequence body as their live SSA value, since they are used in
+        arithmetic and ``range_``/``if_`` bounds, not as fill/drain buffers."""
+        if get_origin(self._arr_type) is not np.ndarray:
+            # Not an np.ndarray[...] generic alias at all (e.g. bare np.int32).
+            return True
+        return len(np_ndarray_type_get_shape(self._arr_type)) == 0
 
     def default_tap(self) -> TensorAccessPattern:
         """A default access pattern for a linear transfer of the buffer."""

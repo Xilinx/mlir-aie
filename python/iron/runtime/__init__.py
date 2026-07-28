@@ -5,4 +5,7 @@
 #
 """Runtime: host-side data movement and worker execution orchestration."""
 
-from .runtime import Runtime
+from .runtime import Runtime, sync_parameters
+from .taskgroup import TaskGroup
+from .data import RuntimeData
+from .dmataskhandle import Task

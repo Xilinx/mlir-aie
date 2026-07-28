@@ -74,7 +74,7 @@ def _for(
     iter_args = tuple(for_op.inner_iter_args)
     with InsertionPoint(for_op.body):
         if len(iter_args) > 1:
-            yield iv, iter_args, for_op.results
+            yield iv, iter_args, tuple(for_op.results)
         elif len(iter_args) == 1:
             yield iv, iter_args[0], for_op.results[0]
         else:
