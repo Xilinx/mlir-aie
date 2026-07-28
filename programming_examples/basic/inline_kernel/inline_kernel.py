@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
+# inline_kernel/inline_kernel.py -*- Python -*-
+#
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-
-# REQUIRES: ryzen_ai
 #
-# RUN: %run_on_npu1% %python %s --iters 50 | FileCheck %s
-# RUN: %run_on_npu2% %python %s --iters 50 | FileCheck %s
-# CHECK: PASS!
+# Test invocation lives in run.lit (npu1) / run_strix.lit (npu2); lit only
+# collects `.lit` files under programming_examples/.
 
 """Microbenchmark: object-linked ``func.call`` vs inlined kernel (issue #3396).
 
