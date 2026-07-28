@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import aie.utils.config as config
+from aie.utils.kernel import ExternalFunction
 
 if TYPE_CHECKING:
     from aie.ir import (  # pyright: ignore[reportMissingImports]
@@ -256,10 +257,6 @@ def compile_mlir_module(
     # the loop in compilabledesign.py but for callers (e.g. low-level
     # designs using rt.inline_ops) that didn't go through @iron.jit.
     if work_dir and device is not None:
-        # Deferred: aie.iron's __init__ imports back into aie.utils.compile.jit,
-        # so a module-level import here deadlocks on a cold aie.utils.compile entry.
-        from aie.iron.kernel import ExternalFunction
-
         target_arch = resolve_target_arch(device)
         for func in list(ExternalFunction._instances):
             if not func._compiled and getattr(func, "_source_file", None):

@@ -44,7 +44,6 @@ from aie.ir import (  # pyright: ignore[reportMissingImports]
 from aie.ir import (
     StringAttr,  # pyright: ignore[reportAttributeAccessIssue]
 )
-from aie.iron.kernel import ExternalFunction
 from aie.utils.compile import (
     NPU_CACHE_HOME,
     compile_external_kernel,
@@ -52,6 +51,7 @@ from aie.utils.compile import (
 )
 from aie.utils.compile.cache.utils import file_lock
 from aie.utils.compile.utils import _cleanup_failed_compilation
+from aie.utils.kernel import ExternalFunction, Kernel
 
 from ._dma_size_parser import parse_dma_sizes
 from ._hash import (
@@ -602,8 +602,6 @@ class CompilableDesign:
         Returns:
             ``(tensor_args, scalar_kwargs)``
         """
-        from aie.iron.kernel import Kernel
-
         if not callable(self.mlir_generator):
             # Static .mlir file: pass everything through as tensors,
             # but still filter compile-time-only kernel objects.
