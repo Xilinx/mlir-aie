@@ -239,7 +239,11 @@ const AIETargetModel &xilinx::AIE::getTargetModel(AIEDevice device) {
   case AIEDevice::npu2_7col:
     return NPU2model7col;
   }
-  return VC1902model;
+  // No default: label above, so -Wswitch still reports a newly added device.
+  // This handles values that are not enumerators at all, which
+  // aieGetTargetModel admits by casting an unchecked uint32_t.
+  llvm::report_fatal_error("getTargetModel: unknown AIEDevice value " +
+                           llvm::Twine(static_cast<uint32_t>(device)));
 }
 
 // Walk the operation hierarchy until we find a containing TileElement.
