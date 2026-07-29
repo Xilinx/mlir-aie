@@ -32,12 +32,16 @@ FailureOr<uint32_t> AIEX::encodeRegisterField(const RegField &field,
   // from mask makes that class of bug unrepresentable instead of merely
   // asserted against.
   //
-  // llvm::isShiftedMask_32 catches the other half of a malformed constant: a
-  // non-contiguous mask (e.g. 0x5). This is debug-only, same as the rest of
-  // this file's build-time invariants: it protects a RegField the developer
-  // wrote, not a value a caller passes at runtime.
-  assert(llvm::isShiftedMask_32(field.mask) &&
-         "RegField.mask must be a single contiguous run of set bits");
+  // The other half of a malformed constant is a non-contiguous mask (e.g.
+  // 0x5), whose popcount would describe a width the field does not have.
+  // Reject it rather than assert, for the same reason the lsb is derived
+  // above: an assert both aborts instead of reaching createMaskWriteField's
+  // diagnostic path, and disappears entirely in an assertions-off build --
+  // buildAndTestMulti builds that arm of its matrix -- which would leave a bad
+  // constant silently encoding against the wrong width.
+  if (!llvm::isShiftedMask_32(field.mask))
+    return failure(); // non-contiguous mask
+
   unsigned lsb = static_cast<unsigned>(llvm::countr_zero(field.mask));
   unsigned width = llvm::popcount(field.mask);
   uint64_t maxValue = (uint64_t{1} << width) - 1;
@@ -56,6 +60,9 @@ AIEX::createMaskWriteField(RewriterBase &rewriter, Location loc,
   if (failed(data)) {
     if (field.mask == 0) {
       diagOp->emitOpError() << "unknown register field '" << field.name << "'";
+    } else if (!llvm::isShiftedMask_32(field.mask)) {
+      diagOp->emitOpError()
+          << "register field '" << field.name << "' has a non-contiguous mask";
     } else {
       unsigned width = llvm::popcount(field.mask);
       diagOp->emitOpError() << "value " << value << " does not fit in the "

@@ -53,6 +53,12 @@ constexpr RegField kDmaControllerIdField = {"DMA_CTRL.CONTROLLER_ID", 0x1DE00,
 // for a field that was never looked up -- the "unknown field" negative case.
 constexpr RegField kUnknownField = {};
 
+// A malformed constant: a mask whose set bits are not contiguous. No real
+// aie-rt bitfield looks like this -- it stands in for a hand-written or
+// copy-pasted RegField with a typo'd mask, whose popcount would otherwise
+// describe a 2-bit width the field does not have.
+constexpr RegField kNonContiguousField = {"BAD.MASK", 0x1DE00, 0x5};
+
 int expectOk(const RegField &field, uint32_t value, uint32_t expectedData,
              const char *label) {
   mlir::FailureOr<uint32_t> data = encodeRegisterField(field, value);
@@ -121,6 +127,12 @@ int main() {
   // implementation could wrongly accept.
   failures += expectFail(kUnknownField, /*value=*/0, "unknown field, value=0");
   failures += expectFail(kUnknownField, /*value=*/1, "unknown field, value=1");
+
+  // Negative case: a non-contiguous mask is rejected rather than encoded
+  // against a popcount-derived width that does not describe the field. This
+  // must hold in a build with assertions compiled out, which is how CI builds.
+  failures +=
+      expectFail(kNonContiguousField, /*value=*/1, "non-contiguous mask");
 
   if (failures > 0) {
     std::printf("register field encoding: %d failure(s)\n", failures);
