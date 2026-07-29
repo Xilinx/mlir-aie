@@ -209,13 +209,7 @@ SECTIONS
       // them inside SECTIONS is invalid linker script syntax.
       output << "}\n";
       if (auto coreOp = tile.getCoreOp()) {
-        // `link_files` holds the ordinary final-link inputs: every entry is
-        // emitted verbatim, whatever its suffix (lld also accepts bitcode as
-        // an LTO input). Routing is decided by which list an artifact lands in,
-        // not by its file format. `link_merge_files` is deliberately never
-        // emitted here: those artifacts are llvm-linked into the core module by
-        // aiecc before codegen, so object-linking them too would define the
-        // same symbols twice.
+        // `link_files` holds the ordinary final-link inputs (object files)
         if (auto filesAttr = coreOp.getLinkFiles()) {
           // Canonical path: link_files populated by aie-assign-core-link-files.
           for (auto f : filesAttr->getAsRange<mlir::StringAttr>())

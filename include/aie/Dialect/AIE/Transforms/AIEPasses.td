@@ -19,15 +19,10 @@ def AIEAssignCoreLinkFiles : Pass<"aie-assign-core-link-files", "DeviceOp"> {
     tracing direct func.call edges to func.func declarations that carry a
     "link_with" string attribute.
 
-    Each artifact is routed by its declaration's optional "link_with_mode"
-    attribute, never by its file name:
+    Each artifact is routed by its optional "link_with_mode" attribute:
 
-      * no "link_with_mode"      -> the CoreOp's "link_files" (object-linked
-                                    by the final link, whatever the suffix --
-                                    a .bc is a valid LTO input)
+      * no "link_with_mode"      -> the CoreOp's "link_files"
       * "link_with_mode" = "merge" -> the CoreOp's "link_merge_files"
-                                    (llvm-linked into the core's LLVM module
-                                    before codegen)
 
     Both attributes are StrArrayAttrs and may coexist on one core.  "merge"
     is currently the only supported mode; any other value, or a
@@ -46,7 +41,7 @@ def AIEAssignCoreLinkFiles : Pass<"aie-assign-core-link-files", "DeviceOp"> {
     any core emit a warning; their artifacts will not appear in any core's
     list.
 
-    Finally, the pass rejects a device in which one artifact is merged by
+    The pass rejects a device in which one artifact is merged by
     one core and object-linked by another.  aiecc's unified mode compiles
     all cores of a device from a single llvm-linked module, so such an
     artifact would have its symbols defined twice.

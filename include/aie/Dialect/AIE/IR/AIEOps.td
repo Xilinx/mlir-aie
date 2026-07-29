@@ -424,13 +424,12 @@ def AIE_CoreOp: AIE_Op<"core", [
     aiecc driver consume both.
 
     How an artifact is linked is a property of the metadata, never of the file
-    name: nothing here or downstream inspects the file extension.  A `func.func`
-    declaration may carry an optional `link_with_mode` string attribute
-    alongside `link_with`:
+    or file extension.  A `func.func` declaration may carry an optional
+    `link_with_mode` string attribute alongside `link_with`:
 
       * absent -- the artifact is an ordinary input to the core's final link,
         and the pass records it in `link_files`;
-      * `"merge"` -- the artifact is an LLVM IR module (as emitted by
+      * `"merge"` -- the artifact is an LLVM IR module (e.g. as emitted by
         `ExternalFunction(inline=True)`) that must be merged into the core's
         LLVM module with llvm-link before codegen, so that the callee can be
         inlined and no separate object is linked.  The pass records it in
