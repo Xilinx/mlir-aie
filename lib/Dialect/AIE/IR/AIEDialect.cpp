@@ -239,11 +239,9 @@ const AIETargetModel &xilinx::AIE::getTargetModel(AIEDevice device) {
   case AIEDevice::npu2_7col:
     return NPU2model7col;
   }
-  // The switch above is exhaustive over AIEDevice, so no default: -- that keeps
-  // -Wswitch reporting a newly added device. A value outside the enum can still
-  // arrive through the C API, which casts an unchecked uint32_t
-  // (aieGetTargetModel), so fail loudly rather than silently answering with an
-  // unrelated device family.
+  // No default: label above, so -Wswitch still reports a newly added device.
+  // This handles values that are not enumerators at all, which
+  // aieGetTargetModel admits by casting an unchecked uint32_t.
   llvm::report_fatal_error("getTargetModel: unknown AIEDevice value " +
                            llvm::Twine(static_cast<uint32_t>(device)));
 }

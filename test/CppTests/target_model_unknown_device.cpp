@@ -5,16 +5,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-// getTargetModel() used to fall out of its switch and return the VC1902 model
-// for any value outside AIEDevice, so a bad device silently answered with an
-// unrelated device family instead of failing. aieGetTargetModel() casts an
-// unchecked uint32_t, so such a value is reachable from the C API and from the
-// Python get_target_model() binding built on it.
+// getTargetModel(AIEDevice) used to answer an out-of-range device with the
+// VC1902 model instead of failing. Reachable from Python, since
+// aieGetTargetModel() casts an unchecked uint32_t.
 //
-// report_fatal_error would abort the process, which CTest reports as a failure
-// regardless of PASS_REGULAR_EXPRESSION, so intercept it with a fatal-error
-// handler and check the message in-process. That keeps this a plain exit-status
-// test like its siblings here, and keeps it portable to MSVC.
+// Checked through a fatal-error handler, not CTest's PASS_REGULAR_EXPRESSION,
+// which does not override the failure CTest reports for a signal-aborted child.
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/IR/AIETargetModel.h"
@@ -27,23 +23,17 @@
 using namespace xilinx;
 
 static void expectUnknownDevice(void *, const char *reason, bool) {
-  // Exit from the handler: returning from it lets report_fatal_error abort.
-  std::exit(llvm::StringRef(reason).contains("unknown AIEDevice value 16") ? 0
-                                                                          : 1);
+  bool named = llvm::StringRef(reason).contains("unknown AIEDevice value 0");
+  // Returning from the handler would let report_fatal_error abort.
+  std::exit(named ? 0 : 1);
 }
 
 int main() {
   llvm::install_fatal_error_handler(expectUnknownDevice);
 
-  // One past the last enumerator (npu2_7col). Deriving the value from the
-  // enumerator keeps the test out of range as devices are added. Zero is out of
-  // range too -- the cases start at 1 -- so a default-initialized device value
-  // reaches this path as well.
-  auto bad = static_cast<AIE::AIEDevice>(
-      static_cast<int>(AIE::AIEDevice::npu2_7col) + 1);
-  AIE::getTargetModel(bad);
+  // 0 stays out of range whatever devices are added: the enumerators start
+  // at 1. It is also what a default-initialized device carries.
+  AIE::getTargetModel(static_cast<AIE::AIEDevice>(0));
 
-  // Only reached if getTargetModel returned a model for an unknown device,
-  // which is the regression under test.
-  return 1;
+  return 1; // Only reached if an unknown device resolved to a model.
 }
