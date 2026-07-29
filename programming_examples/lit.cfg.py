@@ -34,6 +34,7 @@ LitConfigHelper.setup_standard_environment(
 )
 
 LitConfigHelper.add_makefile_examples_feature(config)
+LitConfigHelper.add_cmake_examples_feature(config)
 
 # Basic substitutions
 config.substitutions.append(("%extraAieCcFlags%", config.extraAieCcFlags))

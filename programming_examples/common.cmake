@@ -23,8 +23,8 @@ endif()
 # -----------------------------------------------------------------------------
 # Resolve MLIR-AIE root directory
 # -----------------------------------------------------------------------------
-# In WSL, CMake runs on Windows via `powershell.exe cmake`. Therefore, we must
-# prefer deterministic repo-root detection. Fall back to Python only if needed.
+# Prefer deterministic repo-root detection from this file's location; fall back
+# to a Python probe only if the expected layout isn't found.
 
 get_filename_component(_mlir_aie_repo_root "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)
 if(EXISTS "${_mlir_aie_repo_root}/runtime_lib/test_lib/xrt_test_wrapper.h")
@@ -97,23 +97,15 @@ if(NOT DEFINED XRT_INC_DIR OR NOT DEFINED XRT_LIB_DIR)
         endif()
     endif()
 
-    # Fall back to legacy/default paths if still unset
-    if(NOT DEFINED XRT_INC_DIR OR NOT DEFINED XRT_LIB_DIR)
-        find_program(WSL NAMES powershell.exe)
-        if(NOT WSL)
-            if(NOT DEFINED XRT_INC_DIR)
-                set(XRT_INC_DIR /opt/xilinx/xrt/include CACHE STRING "Path to XRT headers")
-            endif()
-            if(NOT DEFINED XRT_LIB_DIR)
-                set(XRT_LIB_DIR /opt/xilinx/xrt/lib CACHE STRING "Path to XRT libraries")
-            endif()
-        else()
-            if(NOT DEFINED XRT_INC_DIR)
-                set(XRT_INC_DIR C:/Technical/XRT/src/runtime_src/core/include CACHE STRING "Path to XRT headers")
-            endif()
-            if(NOT DEFINED XRT_LIB_DIR)
-                set(XRT_LIB_DIR C:/Technical/xrtNPUfromDLL CACHE STRING "Path to XRT libraries")
-            endif()
+    # Fall back to default Linux paths if still unset. On Windows, XRT must be
+    # supplied via find_package(XRT) above or -DXRT_INC_DIR/-DXRT_LIB_DIR; there
+    # is no hardcoded default.
+    if(NOT WIN32 AND (NOT DEFINED XRT_INC_DIR OR NOT DEFINED XRT_LIB_DIR))
+        if(NOT DEFINED XRT_INC_DIR)
+            set(XRT_INC_DIR /opt/xilinx/xrt/include CACHE STRING "Path to XRT headers")
+        endif()
+        if(NOT DEFINED XRT_LIB_DIR)
+            set(XRT_LIB_DIR /opt/xilinx/xrt/lib CACHE STRING "Path to XRT libraries")
         endif()
     endif()
 endif()
@@ -204,4 +196,73 @@ function(target_link_test_utils target_name)
   endif()
 
   target_link_libraries(${target_name} PUBLIC test_utils)
+endfunction()
+
+# -----------------------------------------------------------------------------
+# Make-free NPU design build + run helpers
+# -----------------------------------------------------------------------------
+# These let an example build its xclbin/insts and run on the NPU entirely
+# through cmake + ctest, with no GNU make and no shell (the process is launched
+# directly, so no powershell/wslpath wrapping is needed on any host). They are
+# the CMake equivalents of makefile-common's jit_xclbin (design build) and the
+# per-example `run:` target.
+
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+
+# add_aie_design(TARGET <t> PY <design.py> DEVICE <npu|npu2> [ELF] [ARGS ...])
+#   JIT-compiles the design .py into ${CMAKE_CURRENT_BINARY_DIR}/final.xclbin and
+#   insts.bin (and final.elf with ELF), mirroring makefile-common's jit_xclbin.
+#   Creates target <t>_xclbin so the host exe can depend on it.
+function(add_aie_design)
+  cmake_parse_arguments(D "ELF" "TARGET;PY;DEVICE" "ARGS" ${ARGN})
+  set(_out "${CMAKE_CURRENT_BINARY_DIR}")
+  set(_xclbin "${_out}/final.xclbin")
+  set(_insts "${_out}/insts.bin")
+  set(_outs ${_xclbin} ${_insts})
+  set(_elfarg "")
+  if(D_ELF)
+    list(APPEND _outs "${_out}/final.elf")
+    set(_elfarg "--elf-path=${_out}/final.elf")
+  endif()
+  add_custom_command(
+    OUTPUT ${_outs}
+    COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/${D_PY}"
+            -d ${D_DEVICE} ${D_ARGS}
+            "--xclbin-path=${_xclbin}" "--insts-path=${_insts}" ${_elfarg}
+    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/${D_PY}"
+    WORKING_DIRECTORY "${_out}"
+    COMMENT "JIT-compiling ${D_PY} for ${D_DEVICE}"
+    VERBATIM)
+  add_custom_target(${D_TARGET}_xclbin ALL DEPENDS ${_outs})
+endfunction()
+
+# add_aie_run_test(NAME <t> DEVICE <npu|npu2> [EXE <host_target>] [PY <design.py>]
+#                  [KERNEL <name>])
+#   Registers a ctest that runs on the NPU via utils/run_on_npu.py (which handles
+#   XRT setup/retries). EXE => run the built host binary against final.xclbin;
+#   PY => run the design script directly (pure-Python examples).
+function(add_aie_run_test)
+  cmake_parse_arguments(R "" "NAME;DEVICE;EXE;PY;KERNEL" "" ${ARGN})
+  enable_testing()
+  if(R_DEVICE STREQUAL "npu2")
+    set(_kind npu2)
+  else()
+    set(_kind npu1)
+  endif()
+  set(_k MLIR_AIE)
+  if(R_KERNEL)
+    set(_k ${R_KERNEL})
+  endif()
+  if(R_EXE)
+    add_test(NAME ${R_NAME}
+      COMMAND ${Python3_EXECUTABLE} "${MLIR_AIE_DIR}/utils/run_on_npu.py" ${_kind}
+              $<TARGET_FILE:${R_EXE}>
+              -x "${CMAKE_CURRENT_BINARY_DIR}/final.xclbin"
+              -i "${CMAKE_CURRENT_BINARY_DIR}/insts.bin"
+              -k ${_k})
+  else()
+    add_test(NAME ${R_NAME}
+      COMMAND ${Python3_EXECUTABLE} "${MLIR_AIE_DIR}/utils/run_on_npu.py" ${_kind}
+              ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/${R_PY}")
+  endif()
 endfunction()

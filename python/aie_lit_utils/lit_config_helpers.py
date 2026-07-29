@@ -111,6 +111,16 @@ class LitConfigHelper:
             config_obj.available_features.add("makefile_examples")
 
     @staticmethod
+    def add_cmake_examples_feature(config_obj) -> None:
+        """Enable CMake-based example tests when cmake is available.
+
+        Unlike the Make path, this works on Windows too — it is how example
+        designs build+run without GNU make (see add_aie_design/add_aie_run_test
+        in programming_examples/common.cmake)."""
+        if shutil.which("cmake"):
+            config_obj.available_features.add("cmake_examples")
+
+    @staticmethod
     def _find_xrt_smi(xrt_bin_dir: str) -> Optional[str]:
         """Find xrt-smi without assuming it exists under XRT_ROOT."""
         candidates = []
