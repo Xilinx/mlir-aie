@@ -200,9 +200,7 @@ class _HsaLib:
             setattr(self, fn, f)
 
         decl("hsa_init", ctypes.c_int, [])
-        decl(
-            "hsa_system_get_info", ctypes.c_int, [ctypes.c_int, ctypes.c_void_p]
-        )
+        decl("hsa_system_get_info", ctypes.c_int, [ctypes.c_int, ctypes.c_void_p])
         decl("hsa_shut_down", ctypes.c_int, [])
         decl(
             "hsa_iterate_agents",
