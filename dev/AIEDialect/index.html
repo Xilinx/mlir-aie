@@ -10722,16 +10722,38 @@ are always stored in the local core memory, to avoid conflicts with static data 
 in other cores.</p>
 <p>This op has an optional <code>dynamic_objfifo_lowering</code> attribute, to finely control whether the
 objectfifos in this core should be lowered using the dynamic runtime lowering.</p>
-<p><strong>External object files.</strong>  The preferred mechanism is to attach a <code>link_with</code>
-string attribute to each <code>func.func</code> declaration for an externally-defined
-function, then run the <code>aie-assign-core-link-files</code> pass.  That pass traces
-direct <code>func.call</code> edges from each core and writes the aggregated, de-duplicated
-list of object file paths into the <code>link_files</code> attribute on this op.  The
-BCF/ldscript emitters and the aiecc driver consume <code>link_files</code>.</p>
+<p><strong>External link artifacts.</strong>  The preferred mechanism is to attach a
+<code>link_with</code> string attribute to each <code>func.func</code> declaration for an
+externally-defined function, then run the <code>aie-assign-core-link-files</code> pass.
+That pass traces direct <code>func.call</code> edges from each core and writes the
+aggregated, de-duplicated list of artifact paths into the <code>link_files</code> and
+<code>link_merge_files</code> attributes on this op.  The BCF/ldscript emitters and the
+aiecc driver consume both.</p>
+<p>How an artifact is linked is a property of the metadata, never of the file
+or file extension.  A <code>func.func</code> declaration may carry an optional
+<code>link_with_mode</code> string attribute alongside <code>link_with</code>:</p>
+<ul>
+<li>absent -- the artifact is an ordinary input to the core's final link,
+    and the pass records it in <code>link_files</code>;</li>
+<li><code>"merge"</code> -- the artifact is an LLVM IR module (e.g. as emitted by
+    <code>ExternalFunction(inline=True)</code>) that must be merged into the core's
+    LLVM module with llvm-link before codegen, so that the callee can be
+    inlined and no separate object is linked.  The pass records it in
+    <code>link_merge_files</code>.</li>
+</ul>
+<p><code>"merge"</code> is currently the only accepted <code>link_with_mode</code> value, and
+<code>link_with_mode</code> without <code>link_with</code> is an error.  Both lists may be present
+on the same core, but a given path must not appear in both -- an artifact is
+either merged or linked, not both.  Because the aiecc "unified" flow builds
+one LLVM module for all cores of a device, the pass additionally rejects a
+path that is merged by one core and object-linked by another core of the
+same device.</p>
 <p>The core-level <code>link_with</code> attribute is deprecated and kept only for
-backward compatibility.  It is migrated by <code>aie-assign-core-link-files</code>
-(its value is folded into <code>link_files</code> and then removed).  Specifying both
-<code>link_with</code> and <code>link_files</code> on the same CoreOp is a verifier error.</p>
+backward compatibility.  It always means an ordinary final-link input;
+there is no core-level way to request merging.  It is migrated by
+<code>aie-assign-core-link-files</code> (its value is folded into <code>link_files</code> and then
+removed).  Specifying both <code>link_with</code> and either <code>link_files</code> or
+<code>link_merge_files</code> on the same CoreOp is a verifier error.</p>
 <p>Examples:
 <div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>%tile = aie.tile(1, 1)
 <a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>%lock11_8 = aie.lock(%tile, 8)
@@ -10754,6 +10776,7 @@ backward compatibility.  It is migrated by <code>aie-assign-core-link-files</cod
 <tr><td><code>stack_size</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 <tr><td><code>link_with</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
 <tr><td><code>link_files</code></td><td>::mlir::ArrayAttr</td><td>string array attribute</td></tr>
+<tr><td><code>link_merge_files</code></td><td>::mlir::ArrayAttr</td><td>string array attribute</td></tr>
 <tr><td><code>elf_file</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
 <tr><td><code>dynamic_objfifo_lowering</code></td><td>::mlir::BoolAttr</td><td>bool attribute</td></tr>
 <tr><td><code>emit_parameter_sync_preamble</code></td><td>::mlir::BoolAttr</td><td>bool attribute</td></tr>

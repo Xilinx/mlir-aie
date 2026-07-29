@@ -4294,20 +4294,32 @@ consistent view of the memory map of a system.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>-alloc-scheme : Select allocation scheme: basic-sequential or bank-aware. Default is bank-aware, falling back to basic-sequential if it fails.
 </code></pre></div>
 <h3 id="-aie-assign-core-link-files"><code>-aie-assign-core-link-files</code><a class="headerlink" href="#-aie-assign-core-link-files" title="Permanent link">&para;</a></h3>
-<p><em>Infer per-core link_files from func-level link_with attributes</em></p>
-<p>Walks each aie.core and collects the set of external object files it needs
-by tracing direct func.call edges to func.func declarations that carry a
-"link_with" string attribute.  The result is stored in the CoreOp's
-"link_files" StrArrayAttr.</p>
+<p><em>Infer per-core link_files/link_merge_files from func-level link_with</em></p>
+<p>Walks each aie.core and collects the external artifacts it needs by
+tracing direct func.call edges to func.func declarations that carry a
+"link_with" string attribute.</p>
+<p>Each artifact is routed by its optional "link_with_mode" attribute:</p>
+<ul>
+<li>no "link_with_mode"      -&gt; the CoreOp's "link_files"</li>
+<li>"link_with_mode" = "merge" -&gt; the CoreOp's "link_merge_files"</li>
+</ul>
+<p>Both attributes are StrArrayAttrs and may coexist on one core.  "merge"
+is currently the only supported mode; any other value, or a
+"link_with_mode" without a "link_with", is an error.</p>
 <p>Only direct calls (func.call) are resolved.  Indirect calls
 (func.call_indirect) inside a core body emit a warning and are not
 resolved; add a direct func.call to the required func.func declaration
 so the pass can trace the dependency.</p>
 <p>Core-level "link_with" (deprecated) is also migrated: its value is
-folded into the set and the attribute is removed from the CoreOp.</p>
+folded into "link_files" -- it has no way to request a mode -- and the
+attribute is removed from the CoreOp.</p>
 <p>func.func declarations that carry "link_with" but are never called from
-any core emit a warning; their object files will not appear in any
-core's link_files.</p>
+any core emit a warning; their artifacts will not appear in any core's
+list.</p>
+<p>The pass rejects a device in which one artifact is merged by
+one core and object-linked by another.  aiecc's unified mode compiles
+all cores of a device from a single llvm-linked module, so such an
+artifact would have its symbols defined twice.</p>
 <h3 id="-aie-assign-lock-ids"><code>-aie-assign-lock-ids</code><a class="headerlink" href="#-aie-assign-lock-ids" title="Permanent link">&para;</a></h3>
 <p><em>Assigns the lockIDs of locks that do not have IDs.</em></p>
 <p>Assigns the lockIDs of locks that do not have IDs.</p>
