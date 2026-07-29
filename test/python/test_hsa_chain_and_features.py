@@ -69,9 +69,9 @@ def test_uncached_runtime_tracks_and_frees_without_cache(monkeypatch):
 
     class _FakeCtx:
         device_gen = "npu2"
-        def alloc_region(self, n):
+        def alloc_dev(self, n):
             return 0x1000 + n  # unique-ish fake pointer
-        def free_region(self, ptr):
+        def free_dev(self, ptr):
             freed.append(ptr)
 
     monkeypatch.setattr(hrt.HSAContext, "get", classmethod(lambda cls: _FakeCtx()))
@@ -118,7 +118,7 @@ def test_run_leaks_signal_and_kernargs_on_timeout(monkeypatch):
         def vmem_free(self, handle, va, size):
             self.vmem_free_calls.append((handle, va, size))
 
-        def free_region(self, ptr):
+        def free_dev(self, ptr):
             pass
 
         def dispatch(self, pdi_ptr, insts_ptr, insts_size, ka_va, n, signal):

@@ -36,10 +36,6 @@ HSA_AGENT_INFO_DEVICE = 17
 HSA_AGENT_INFO_QUEUE_MIN_SIZE = 13
 HSA_AGENT_INFO_NAME = 0
 
-HSA_REGION_INFO_SEGMENT = 0
-HSA_REGION_INFO_RUNTIME_ALLOC_ALLOWED = 5
-HSA_REGION_SEGMENT_GLOBAL = 0
-
 HSA_AMD_SEGMENT_GLOBAL = 0
 HSA_AMD_MEMORY_POOL_INFO_SEGMENT = 0
 HSA_AMD_MEMORY_POOL_INFO_GLOBAL_FLAGS = 1
@@ -77,7 +73,6 @@ _HSA_WAIT_FOREVER = 0xFFFFFFFFFFFFFFFF
 
 # Opaque handle-carrying structs are all {uint64_t handle}.
 hsa_agent_t = ctypes.c_uint64
-hsa_region_t = ctypes.c_uint64
 hsa_amd_memory_pool_t = ctypes.c_uint64
 hsa_signal_t = ctypes.c_int64  # signal handle is a 64-bit value
 hsa_amd_vmem_alloc_handle_t = ctypes.c_uint64
@@ -208,21 +203,6 @@ class _HsaLib:
             [hsa_agent_t, ctypes.c_int, ctypes.c_void_p],
         )
         decl(
-            "hsa_agent_iterate_regions", ctypes.c_int,
-            [hsa_agent_t, ctypes.CFUNCTYPE(ctypes.c_int, hsa_region_t, ctypes.c_void_p),
-             ctypes.c_void_p],
-        )
-        decl(
-            "hsa_region_get_info", ctypes.c_int,
-            [hsa_region_t, ctypes.c_int, ctypes.c_void_p],
-        )
-        decl(
-            "hsa_memory_allocate", ctypes.c_int,
-            [hsa_region_t, ctypes.c_size_t, ctypes.POINTER(ctypes.c_void_p)],
-        )
-        decl("hsa_memory_free", ctypes.c_int, [ctypes.c_void_p])
-
-        decl(
             "hsa_amd_agent_iterate_memory_pools", ctypes.c_int,
             [hsa_agent_t,
              ctypes.CFUNCTYPE(ctypes.c_int, hsa_amd_memory_pool_t, ctypes.c_void_p),
@@ -232,6 +212,12 @@ class _HsaLib:
             "hsa_amd_memory_pool_get_info", ctypes.c_int,
             [hsa_amd_memory_pool_t, ctypes.c_int, ctypes.c_void_p],
         )
+        decl(
+            "hsa_amd_memory_pool_allocate", ctypes.c_int,
+            [hsa_amd_memory_pool_t, ctypes.c_size_t, ctypes.c_uint32,
+             ctypes.POINTER(ctypes.c_void_p)],
+        )
+        decl("hsa_amd_memory_pool_free", ctypes.c_int, [ctypes.c_void_p])
         decl(
             "hsa_amd_vmem_handle_create", ctypes.c_int,
             [hsa_amd_memory_pool_t, ctypes.c_size_t, ctypes.c_int, ctypes.c_uint64,

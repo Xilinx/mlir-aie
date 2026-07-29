@@ -8,7 +8,7 @@
 Consumes the aiecc artifacts ``insts.bin`` + ``main.pdi`` (the xclbin is
 ignored on this path) and dispatches them as AIE AQL packets:
 
-    insts.bin + main.pdi -> HSA region allocations (hsa_memory_allocate)
+    insts.bin + main.pdi -> HSA device heap (hsa_amd_memory_pool_allocate)
     I/O tensors          -> kernarg buffer of 2*N uint64 (VAs then sizes)
     fill AQL packet(s), ring doorbell, wait on completion signal
 
@@ -104,25 +104,25 @@ class HSAHostRuntime(HostRuntime):
         return insts_path, pdi_path, kernel_name
 
     def _build_handle(self, insts_path, pdi_path, kernel_name) -> HSAKernelHandle:
-        """Copy insts + PDI into fresh region allocations and wrap in a handle."""
+        """Copy insts + PDI into fresh device-heap allocations and wrap in a handle."""
         insts_bytes = insts_path.read_bytes()
         if len(insts_bytes) % 4 != 0:
             raise HostRuntimeError("insts.bin length is not a multiple of 4 bytes")
         pdi_bytes = pdi_path.read_bytes()
 
-        insts_ptr = self._ctx.alloc_region(len(insts_bytes))
+        insts_ptr = self._ctx.alloc_dev(len(insts_bytes))
         ctypes.memmove(insts_ptr, insts_bytes, len(insts_bytes))
         try:
-            pdi_ptr = self._ctx.alloc_region(len(pdi_bytes))
+            pdi_ptr = self._ctx.alloc_dev(len(pdi_bytes))
             ctypes.memmove(pdi_ptr, pdi_bytes, len(pdi_bytes))
         except BaseException:
-            self._ctx.free_region(insts_ptr)
+            self._ctx.free_dev(insts_ptr)
             raise
         return HSAKernelHandle(pdi_ptr, insts_ptr, len(insts_bytes), kernel_name)
 
     def _free_handle(self, handle) -> None:
-        self._ctx.free_region(handle.pdi_ptr)
-        self._ctx.free_region(handle.insts_ptr)
+        self._ctx.free_dev(handle.pdi_ptr)
+        self._ctx.free_dev(handle.insts_ptr)
 
     def load(self, npu_kernel, **kwargs) -> HSAKernelHandle:
         insts_path, pdi_path, kernel_name = self._resolve_kernel(npu_kernel)
