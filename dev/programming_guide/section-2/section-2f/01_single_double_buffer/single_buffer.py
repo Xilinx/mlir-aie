@@ -50,13 +50,12 @@ def single_buffer(c_out: Out):
     w1 = Worker(producer, [of_in.prod()])
     w2 = Worker(copier, [of_in.cons(), of_out.prod()])
 
-    rt = Runtime()
-    with rt.sequence(data_ty) as c:
-        rt.start(w1)
-        rt.start(w2)
-        rt.drain(of_out.cons(), c, wait=True)
+    def sequence(c, out_h):
+        out_h.drain(c, wait=True)
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    rt = Runtime(sequence, [data_ty, of_out.cons()])
+
+    return Program(iron.get_current_device(), rt, workers=[w1, w2]).resolve_program()
 
 
 def _run_and_verify(opts):

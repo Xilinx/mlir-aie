@@ -3556,29 +3556,43 @@
 
 <!-- Copyright (C) 2026 Advanced Micro Devices, Inc. -->
 <!-- SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
+<!-- Editors: cite at most one durable anchor per item (a tracking discussion,
+     an open umbrella issue, or a label) — never an individual implementation
+     PR or a closed "fixed #N" issue, both of which go stale as soon as they
+     merge/close. -->
 <h1 id="roadmap">Roadmap<a class="headerlink" href="#roadmap" title="Permanent link">&para;</a></h1>
 <p>This roadmap outlines where the project is headed. It reflects current
 priorities, not firm commitments — plans may change as the project evolves.</p>
-<p><em>Last updated: 2026-07-14</em></p>
+<p><em>Last updated: 2026-07-28</em></p>
 <h2 id="now">Now<a class="headerlink" href="#now" title="Permanent link">&para;</a></h2>
 <p>Things actively being worked on.</p>
 <ul>
-<li>[ ] Dynamic runtime sequences — compile an <code>aie.runtime_sequence</code> once and run it at many problem sizes, via standalone TXN encoding and EmitC C++ generation (<a href="https://github.com/Xilinx/mlir-aie/discussions/3222">#3222</a>)</li>
+<li>[ ] Dynamic runtime sequences — compile an <code>aie.runtime_sequence</code> once and run it at many problem sizes. The core milestone (standalone TXN encoding, AIEX→EmitC codegen, SSA-operand control ops, dynamic BD allocation, multi-column GEMM, dynamic trace) is merged; what remains is reworking the IRON <code>Runtime</code> Python API into an eager callback body so the control flow this milestone introduces can be expressed without hacks, plus a handful of optional EmitC coverage-gap ops (<a href="https://github.com/Xilinx/mlir-aie/discussions/3222">#3222</a>)</li>
+<li>[ ] Mature native Windows support — broaden example and CI coverage, close feature-parity gaps with Linux, and improve the CMake infrastructure and guidance for building native host C++ programs on Windows (builds on the <a href="../buildHostWinNative/">native Windows guide</a>)</li>
+<li>[ ] Unify DMA buffer-descriptor validation and legalization — close gaps where hardware-illegal access patterns are silently truncated or rejected outright instead of caught or legalized, tracked under the <a href="https://github.com/Xilinx/mlir-aie/labels/dma-programming"><code>dma-programming</code></a> label; broader layout-transformation checks remain open in <a href="https://github.com/Xilinx/mlir-aie/issues/2566">#2566</a></li>
+<li>[ ] Pursue a 10/10 developer/maintainer experience — CI improvements, linting, typing, validation, code coverage, reduction of duplicated/stale code, and efforts to document the roadmap, tools, and expectations for contributors</li>
+<li>[ ] Improve robustness of existing features, including ObjectFIFO, JIT cache, etc.</li>
 </ul>
 <h2 id="next">Next<a class="headerlink" href="#next" title="Permanent link">&para;</a></h2>
 <p>Planned for the near future.</p>
 <ul>
-<li>[ ] Mature native Windows support — broaden example and CI coverage, and close feature-parity gaps with Linux (builds on the <a href="../buildHostWinNative/">native Windows guide</a>)</li>
+<li>[ ] Consolidate reusable aie2p kernels — upstream generic transformer/conv kernels (transpose, depthwise conv, higher-precision activations, fused matmul epilogues) authored for an external inference engine into <code>aie_kernels/aie2p/</code> (<a href="https://github.com/Xilinx/mlir-aie/discussions/3412">#3412</a>)</li>
+<li>[ ] Improve agentic workflows for IRON programming — mature the initial skill chain for porting models to AIE/NPU with an LLM coding agent (baseline → dataflow → kernel optimization → validation); still experimental and untested beyond single-dispatch designs (<a href="https://github.com/Xilinx/mlir-aie/issues/3426">#3426</a>)</li>
+<li>[ ] Explore repo boundaries and ecosystem health from a cross-repo, contract-first perspective (<a href="https://github.com/Xilinx/mlir-aie/discussions/3390">#3390</a>)</li>
 </ul>
 <h2 id="later">Later<a class="headerlink" href="#later" title="Permanent link">&para;</a></h2>
 <p>Ideas we want to pursue eventually. Not yet scheduled.</p>
 <ul>
 <li>[ ] Express access patterns in the compiler — move DMA tiling from Python <code>taplib</code> into MLIR (affine maps + structured control flow) so one program lowers to both static and dynamic data movement (<a href="https://github.com/Xilinx/mlir-aie/discussions/3239">#3239</a>)</li>
+<li>[ ] Tracing mode-1 (EVENT_PC) support — a community-contributed decoder for mode-1 trace streams has been validated against hardware capture; wiring it into the existing trace pipeline's conventions is still being discussed (<a href="https://github.com/Xilinx/mlir-aie/discussions/3365">#3365</a>)</li>
+<li>[ ] Reduce the project's dependency on Chess/Vitis — migrate tests to Peano where possible (<a href="https://github.com/Xilinx/mlir-aie/discussions/3414">#3414</a>)</li>
+<li>[ ] Support for VEK385</li>
 </ul>
 <h2 id="how-to-contribute">How to contribute<a class="headerlink" href="#how-to-contribute" title="Permanent link">&para;</a></h2>
 <p>Want to help or suggest something?</p>
 <ul>
-<li>Check items labeled <a href="https://github.com/Xilinx/mlir-aie/labels/good%20first%20issue"><code>good first issue</code></a>.</li>
+<li>New to the project? Check items labeled <a href="https://github.com/Xilinx/mlir-aie/labels/good%20first%20issue"><code>good first issue</code></a>.</li>
+<li>Already familiar with the codebase? Look for <a href="https://github.com/Xilinx/mlir-aie/labels/help%20wanted"><code>help wanted</code></a> or <a href="https://github.com/Xilinx/mlir-aie/labels/needs%20more%20%F0%9F%91%80%20(eyes)"><code>needs more 👀 (eyes)</code></a>.</li>
 <li>Propose new ideas by <a href="https://github.com/Xilinx/mlir-aie/issues/new">opening an issue</a>.</li>
 <li>Questions and discussion go in <a href="https://github.com/Xilinx/mlir-aie/discussions">Discussions</a>.</li>
 </ul>

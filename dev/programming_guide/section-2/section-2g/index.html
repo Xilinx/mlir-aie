@@ -3855,31 +3855,34 @@ transfer this BD emits — pair it with a <code>PacketFlow</code> carrying the s
 <p>Three registrations on the <code>Runtime</code> object pull the structural
 primitives into the resolved program.  All three accept one object per
 call:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">rt</span> <span class="o">=</span> <span class="n">Runtime</span><span class="p">()</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="n">rt</span><span class="o">.</span><span class="n">add_flow</span><span class="p">(</span><span class="n">my_flow</span><span class="p">)</span>        <span class="c1"># one call per Flow / PacketFlow</span>
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="n">rt</span><span class="o">.</span><span class="n">add_lock</span><span class="p">(</span><span class="n">my_lock</span><span class="p">)</span>        <span class="c1"># one call per Lock</span>
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="n">rt</span><span class="o">.</span><span class="n">add_tile_dma</span><span class="p">(</span><span class="n">my_dma</span><span class="p">)</span>     <span class="c1"># one call per TileDma program</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">sequence</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">):</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="o">...</span>                     <span class="c1"># host-side data movement (or raw npu_* ops)</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="n">rt</span> <span class="o">=</span> <span class="n">Runtime</span><span class="p">(</span><span class="n">sequence</span><span class="p">,</span> <span class="p">[</span><span class="n">in_ty</span><span class="p">,</span> <span class="n">out_ty</span><span class="p">])</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="n">rt</span><span class="o">.</span><span class="n">add_flow</span><span class="p">(</span><span class="n">my_flow</span><span class="p">)</span>        <span class="c1"># one call per Flow / PacketFlow</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="n">rt</span><span class="o">.</span><span class="n">add_lock</span><span class="p">(</span><span class="n">my_lock</span><span class="p">)</span>        <span class="c1"># one call per Lock</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="n">rt</span><span class="o">.</span><span class="n">add_tile_dma</span><span class="p">(</span><span class="n">my_dma</span><span class="p">)</span>     <span class="c1"># one call per TileDma program</span>
 </code></pre></div>
-<p>Inside <code>rt.sequence(...)</code>, if even the BD-level abstraction is too
+<p>Inside the sequence body, if even the BD-level abstraction is too
 high — typically because you're driving BD writes from the host
 runtime sequence rather than from the tile DMA program — drop into
 raw <code>npu_*</code> ops (<code>npu_writebd</code>, <code>npu_address_patch</code>, <code>npu_push_queue</code>,
-<code>npu_sync</code>, <code>npu_write32</code>) via:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">manual_bd_writes</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">):</span>
+<code>npu_sync</code>, <code>npu_write32</code>) directly:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">sequence</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">):</span>
 <a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>    <span class="n">npu_write32</span><span class="p">(</span><span class="n">column</span><span class="o">=</span><span class="n">col</span><span class="p">,</span> <span class="n">row</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">address</span><span class="o">=</span><span class="mh">0xC0000</span><span class="p">,</span> <span class="n">value</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
 <a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>    <span class="n">npu_writebd</span><span class="p">(</span><span class="n">bd_id</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">buffer_length</span><span class="o">=...</span><span class="p">,</span> <span class="n">column</span><span class="o">=</span><span class="n">col</span><span class="p">,</span> <span class="n">row</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="o">...</span><span class="p">)</span>
 <a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>    <span class="n">npu_address_patch</span><span class="p">(</span><span class="o">...</span><span class="p">)</span>
 <a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>    <span class="n">npu_push_queue</span><span class="p">(</span><span class="o">...</span><span class="p">)</span>
 <a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>    <span class="n">npu_sync</span><span class="p">(</span><span class="n">column</span><span class="o">=</span><span class="n">col</span><span class="p">,</span> <span class="n">row</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="o">...</span><span class="p">)</span>
 <a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>
-<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="k">with</span> <span class="n">rt</span><span class="o">.</span><span class="n">sequence</span><span class="p">(</span><span class="n">in_ty</span><span class="p">,</span> <span class="n">out_ty</span><span class="p">)</span> <span class="k">as</span> <span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">):</span>
-<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>    <span class="n">rt</span><span class="o">.</span><span class="n">start</span><span class="p">(</span><span class="n">worker</span><span class="p">)</span>
-<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>    <span class="n">rt</span><span class="o">.</span><span class="n">inline_ops</span><span class="p">(</span><span class="n">manual_bd_writes</span><span class="p">,</span> <span class="p">[</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">])</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="n">rt</span> <span class="o">=</span> <span class="n">Runtime</span><span class="p">(</span><span class="n">sequence</span><span class="p">,</span> <span class="p">[</span><span class="n">in_ty</span><span class="p">,</span> <span class="n">out_ty</span><span class="p">])</span>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="n">Program</span><span class="p">(</span><span class="n">device</span><span class="p">,</span> <span class="n">rt</span><span class="p">,</span> <span class="n">workers</span><span class="o">=</span><span class="p">[</span><span class="n">worker</span><span class="p">])</span><span class="o">.</span><span class="n">resolve_program</span><span class="p">()</span>
 </code></pre></div>
-<p><code>rt.inline_ops(fn, [args])</code> calls <code>fn(*args)</code> inside the runtime
-sequence's MLIR region with the host-side tensor handles already in
-scope — exactly what <code>rt.fill</code> / <code>rt.drain</code> are built on top of, but
-with no protocol assumptions baked in.</p>
+<p>The sequence body runs inside the runtime sequence's MLIR region with
+the host-side tensor handles already in scope — writing raw <code>npu_*</code> ops
+directly is exactly what <code>fill</code> / <code>drain</code> are built on top of, but with
+no protocol assumptions baked in.</p>
 <h3 id="worked-example-tile-to-tile-copy">Worked example: tile-to-tile copy<a class="headerlink" href="#worked-example-tile-to-tile-copy" title="Permanent link">&para;</a></h3>
 <p>The dialect example we will mirror has <code>tile_a</code> (compute) streaming
 256 <code>int32</code>s to <code>tile_b</code> (compute) on <code>tile_a</code>'s output channel 0 →
@@ -3936,12 +3939,15 @@ with no protocol assumptions baked in.</p>
 <a id="__codelineno-2-50" name="__codelineno-2-50" href="#__codelineno-2-50"></a>    <span class="p">),</span>
 <a id="__codelineno-2-51" name="__codelineno-2-51" href="#__codelineno-2-51"></a><span class="p">])</span>
 <a id="__codelineno-2-52" name="__codelineno-2-52" href="#__codelineno-2-52"></a>
-<a id="__codelineno-2-53" name="__codelineno-2-53" href="#__codelineno-2-53"></a><span class="n">rt</span> <span class="o">=</span> <span class="n">Runtime</span><span class="p">()</span>
-<a id="__codelineno-2-54" name="__codelineno-2-54" href="#__codelineno-2-54"></a><span class="k">for</span> <span class="n">lk</span> <span class="ow">in</span> <span class="p">(</span><span class="n">prod_lock_a</span><span class="p">,</span> <span class="n">cons_lock_a</span><span class="p">,</span> <span class="n">prod_lock_b</span><span class="p">,</span> <span class="n">cons_lock_b</span><span class="p">):</span>
-<a id="__codelineno-2-55" name="__codelineno-2-55" href="#__codelineno-2-55"></a>    <span class="n">rt</span><span class="o">.</span><span class="n">add_lock</span><span class="p">(</span><span class="n">lk</span><span class="p">)</span>
-<a id="__codelineno-2-56" name="__codelineno-2-56" href="#__codelineno-2-56"></a><span class="n">rt</span><span class="o">.</span><span class="n">add_flow</span><span class="p">(</span><span class="n">a_to_b</span><span class="p">)</span>
-<a id="__codelineno-2-57" name="__codelineno-2-57" href="#__codelineno-2-57"></a><span class="n">rt</span><span class="o">.</span><span class="n">add_tile_dma</span><span class="p">(</span><span class="n">dma_a</span><span class="p">)</span>
-<a id="__codelineno-2-58" name="__codelineno-2-58" href="#__codelineno-2-58"></a><span class="n">rt</span><span class="o">.</span><span class="n">add_tile_dma</span><span class="p">(</span><span class="n">dma_b</span><span class="p">)</span>
+<a id="__codelineno-2-53" name="__codelineno-2-53" href="#__codelineno-2-53"></a><span class="k">def</span><span class="w"> </span><span class="nf">sequence</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">):</span>
+<a id="__codelineno-2-54" name="__codelineno-2-54" href="#__codelineno-2-54"></a>    <span class="k">pass</span>  <span class="c1"># data flow is driven entirely by the tile DMA programs below</span>
+<a id="__codelineno-2-55" name="__codelineno-2-55" href="#__codelineno-2-55"></a>
+<a id="__codelineno-2-56" name="__codelineno-2-56" href="#__codelineno-2-56"></a><span class="n">rt</span> <span class="o">=</span> <span class="n">Runtime</span><span class="p">(</span><span class="n">sequence</span><span class="p">,</span> <span class="p">[</span><span class="n">vec_ty</span><span class="p">,</span> <span class="n">vec_ty</span><span class="p">])</span>
+<a id="__codelineno-2-57" name="__codelineno-2-57" href="#__codelineno-2-57"></a><span class="k">for</span> <span class="n">lk</span> <span class="ow">in</span> <span class="p">(</span><span class="n">prod_lock_a</span><span class="p">,</span> <span class="n">cons_lock_a</span><span class="p">,</span> <span class="n">prod_lock_b</span><span class="p">,</span> <span class="n">cons_lock_b</span><span class="p">):</span>
+<a id="__codelineno-2-58" name="__codelineno-2-58" href="#__codelineno-2-58"></a>    <span class="n">rt</span><span class="o">.</span><span class="n">add_lock</span><span class="p">(</span><span class="n">lk</span><span class="p">)</span>
+<a id="__codelineno-2-59" name="__codelineno-2-59" href="#__codelineno-2-59"></a><span class="n">rt</span><span class="o">.</span><span class="n">add_flow</span><span class="p">(</span><span class="n">a_to_b</span><span class="p">)</span>
+<a id="__codelineno-2-60" name="__codelineno-2-60" href="#__codelineno-2-60"></a><span class="n">rt</span><span class="o">.</span><span class="n">add_tile_dma</span><span class="p">(</span><span class="n">dma_a</span><span class="p">)</span>
+<a id="__codelineno-2-61" name="__codelineno-2-61" href="#__codelineno-2-61"></a><span class="n">rt</span><span class="o">.</span><span class="n">add_tile_dma</span><span class="p">(</span><span class="n">dma_b</span><span class="p">)</span>
 </code></pre></div>
 <p>The locks follow AIE-ML semantics: each <code>Lock</code> starts at <code>init</code>, an
 <code>Acquire</code> waits until the value is <code>&gt;= value</code> (default 1) and
@@ -3991,11 +3997,10 @@ tile S2MM with:</p>
   acquire/release lock-protocol pairs;</li>
 <li>a <code>Worker</code> running a tiny lock-flipping spinner on the compute
   tile;</li>
-<li>a runtime sequence that opens the data flow with <code>npu_writebd</code> /
-  <code>npu_address_patch</code> / <code>npu_push_queue</code> / <code>npu_sync</code> inside an
-  <code>rt.inline_ops(...)</code> block — the <em>teaching point</em> of the example,
-  because the manual BD writes are exactly what <code>rt.fill</code> / <code>rt.drain</code>
-  normally hide.</li>
+<li>a runtime sequence whose body opens the data flow with <code>npu_writebd</code> /
+  <code>npu_address_patch</code> / <code>npu_push_queue</code> / <code>npu_sync</code> written directly
+  — the <em>teaching point</em> of the example, because the manual BD writes
+  are exactly what <code>fill</code> / <code>drain</code> normally hide.</li>
 </ul>
 <p>That design is the right starting place when copying this pattern.</p>
 <h2 id="lowered-equivalent-dialect-aie-dialect-python"><u>Lowered-equivalent dialect (AIE dialect Python)</u><a class="headerlink" href="#lowered-equivalent-dialect-aie-dialect-python" title="Permanent link">&para;</a></h2>

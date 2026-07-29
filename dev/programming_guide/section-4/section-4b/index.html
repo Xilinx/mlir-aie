@@ -3957,11 +3957,10 @@
 <li><a href="#additional-debug-hints">Additional Debug Hints</a></li>
 </ol>
 <h2 id="1-enable-and-configure-aie-trace"><u>1. Enable and configure AIE trace</u><a class="headerlink" href="#1-enable-and-configure-aie-trace" title="Permanent link">&para;</a></h2>
-<p>Enabling tracing means configuring the trace units for a given tile and then routing the generated event packets through the stream switches to the shim DMA where we can write them to a buffer in DDR for post-runtime processing. For IRON, we abstract these steps into a single runtime function <code>enable_trace</code> within the larger runtime sequence as shown below:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">rt</span> <span class="o">=</span> <span class="n">Runtime</span><span class="p">()</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="k">with</span> <span class="n">rt</span><span class="o">.</span><span class="n">sequence</span><span class="p">(</span><span class="n">tensor_ty</span><span class="p">,</span> <span class="n">scalar_ty</span><span class="p">,</span> <span class="n">tensor_ty</span><span class="p">)</span> <span class="k">as</span> <span class="p">(</span><span class="n">a_in</span><span class="p">,</span> <span class="n">f_in</span><span class="p">,</span> <span class="n">c_out</span><span class="p">):</span>
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">rt</span><span class="o">.</span><span class="n">enable_trace</span><span class="p">(</span><span class="n">trace_size</span><span class="p">,</span> <span class="n">workers</span><span class="o">=</span><span class="p">[</span><span class="n">my_worker</span><span class="p">])</span>
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="o">...</span>
+<p>Enabling tracing means configuring the trace units for a given tile and then routing the generated event packets through the stream switches to the shim DMA where we can write them to a buffer in DDR for post-runtime processing. For IRON, we abstract these steps into a single method <code>enable_trace</code>, called on the <code>Program</code> after it is constructed (it configures both the traced Workers' tiles and the Runtime's trace-buffer sequencing), as shown below:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">rt</span> <span class="o">=</span> <span class="n">Runtime</span><span class="p">(</span><span class="n">sequence</span><span class="p">,</span> <span class="p">[</span><span class="n">tensor_ty</span><span class="p">,</span> <span class="n">scalar_ty</span><span class="p">,</span> <span class="n">tensor_ty</span><span class="p">,</span> <span class="o">...</span><span class="p">])</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="n">prog</span> <span class="o">=</span> <span class="n">Program</span><span class="p">(</span><span class="n">iron</span><span class="o">.</span><span class="n">get_current_device</span><span class="p">(),</span> <span class="n">rt</span><span class="p">,</span> <span class="n">workers</span><span class="o">=</span><span class="p">[</span><span class="n">my_worker</span><span class="p">])</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="n">prog</span><span class="o">.</span><span class="n">enable_trace</span><span class="p">(</span><span class="n">trace_size</span><span class="p">,</span> <span class="n">workers</span><span class="o">=</span><span class="p">[</span><span class="n">my_worker</span><span class="p">])</span>
 </code></pre></div></p>
 <p>An alternative is to add a <code>trace</code> parameter to the worker declaration:</p>
 <p><div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">worker</span> <span class="o">=</span> <span class="n">Worker</span><span class="p">(</span>
@@ -3970,14 +3969,13 @@
 <a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>    <span class="n">trace</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
 <a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="p">)</span>
 <a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="o">...</span>
-<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="n">rt</span> <span class="o">=</span> <span class="n">Runtime</span><span class="p">()</span>
-<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="k">with</span> <span class="n">rt</span><span class="o">.</span><span class="n">sequence</span><span class="p">(</span><span class="n">tensor_ty</span><span class="p">,</span> <span class="n">scalar_ty</span><span class="p">,</span> <span class="n">tensor_ty</span><span class="p">)</span> <span class="k">as</span> <span class="p">(</span><span class="n">a_in</span><span class="p">,</span> <span class="n">f_in</span><span class="p">,</span> <span class="n">c_out</span><span class="p">):</span>
-<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>    <span class="n">rt</span><span class="o">.</span><span class="n">enable_trace</span><span class="p">(</span><span class="n">trace_size</span><span class="p">)</span>
-<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>    <span class="o">...</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="n">rt</span> <span class="o">=</span> <span class="n">Runtime</span><span class="p">(</span><span class="n">sequence</span><span class="p">,</span> <span class="p">[</span><span class="n">tensor_ty</span><span class="p">,</span> <span class="n">scalar_ty</span><span class="p">,</span> <span class="n">tensor_ty</span><span class="p">,</span> <span class="o">...</span><span class="p">])</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="n">prog</span> <span class="o">=</span> <span class="n">Program</span><span class="p">(</span><span class="n">iron</span><span class="o">.</span><span class="n">get_current_device</span><span class="p">(),</span> <span class="n">rt</span><span class="p">,</span> <span class="n">workers</span><span class="o">=</span><span class="p">[</span><span class="n">worker</span><span class="p">])</span>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="n">prog</span><span class="o">.</span><span class="n">enable_trace</span><span class="p">(</span><span class="n">trace_size</span><span class="p">)</span>
 </code></pre></div>
-Here, we add <code>trace=1</code> to indicate that worker should be traced. And we can omit the <code>workers</code> argument from the <code>enable_trace</code> call in the runtime sequence.</p>
+Here, we add <code>trace=1</code> to indicate that worker should be traced. And we can omit the <code>workers</code> argument from the <code>enable_trace</code> call.</p>
 <blockquote>
-<p><strong>NOTE</strong>: The <code>workers</code> argument in the runtime sequence <code>enable_trace</code> always takes precedence over the <code>trace=1</code> argument of the worker. So if you define both, we will go with the definition of the <code>enable_trace</code> argument.</p>
+<p><strong>NOTE</strong>: The <code>workers</code> argument to <code>enable_trace</code> always takes precedence over the <code>trace=1</code> argument of the worker. So if you define both, we will go with the definition of the <code>enable_trace</code> argument.</p>
 </blockquote>
 <p>Configuring the trace unit in each core tile and routing the trace packets to a valid shim tile is then done automatically.</p>
 <p>The <code>workers=[...]</code> argument picks the core tiles to trace.  To trace <strong>mem tiles</strong> or <strong>shim tiles</strong>, pass <code>memtile_events=[...]</code> / <code>shimtile_events=[...]</code> — those event lists apply to the matching tiles in the design without needing to enumerate Workers (the design's mem/shim tiles are implicit in the data movement).  Full event vocabularies are listed in the <a href="#customizing-trace-behavior">Customizing Trace Behavior</a> subsection below.</p>
@@ -3990,20 +3988,20 @@ Here, we add <code>trace=1</code> to indicate that worker should be traced. And 
 * <code>shimtile_events</code> - which 8 events do we use for all shimtiles in array. Search under <a href="https://xilinx.github.io/mlir-aie/AIEXDialect.html">AIEXDialect</a> for ShimTileEvent for the target device: <a href="https://xilinx.github.io/mlir-aie/AIEXDialect.html#shimtileeventaie">aie1</a> &middot; <a href="https://xilinx.github.io/mlir-aie/AIEXDialect.html#shimtileeventaie2">aie2</a> &middot; <a href="https://xilinx.github.io/mlir-aie/AIEXDialect.html#shimtileeventaie2p">aie2p</a>.</p>
 <div class="highlight"><pre><span></span><code>```python
 ...
-rt = Runtime()
-with rt.sequence(tensor_ty, scalar_ty, tensor_ty) as (a_in, f_in, c_out):
-    rt.enable_trace(
-        trace_size = trace_size,
-        coretile_events = [
-                trace_utils.CoreEvent.INSTR_EVENT_0,
-                trace_utils.CoreEvent.INSTR_EVENT_1,
-                trace_utils.CoreEvent.INSTR_VECTOR,
-                trace_utils.CoreEvent.MEMORY_STALL,
-                trace_utils.CoreEvent.STREAM_STALL,
-                trace_utils.CoreEvent.LOCK_STALL,
-                trace_utils.CoreEvent.ACTIVE,
-                trace_utils.CoreEvent.DISABLED]
-    )
+rt = Runtime(sequence, [tensor_ty, scalar_ty, tensor_ty, ...])
+prog = Program(iron.get_current_device(), rt, workers=[my_worker])
+prog.enable_trace(
+    trace_size = trace_size,
+    coretile_events = [
+            trace_utils.CoreEvent.INSTR_EVENT_0,
+            trace_utils.CoreEvent.INSTR_EVENT_1,
+            trace_utils.CoreEvent.INSTR_VECTOR,
+            trace_utils.CoreEvent.MEMORY_STALL,
+            trace_utils.CoreEvent.STREAM_STALL,
+            trace_utils.CoreEvent.LOCK_STALL,
+            trace_utils.CoreEvent.ACTIVE,
+            trace_utils.CoreEvent.DISABLED]
+)
 ```
 </code></pre></div>
 <h4 id="common-core-tile-trace-event-ids">Common core-tile trace event IDs<a class="headerlink" href="#common-core-tile-trace-event-ids" title="Permanent link">&para;</a></h4>
@@ -4339,15 +4337,17 @@ of the host:</p>
 <a id="__codelineno-13-28" name="__codelineno-13-28" href="#__codelineno-13-28"></a>        <span class="n">trace</span><span class="o">=</span><span class="mi">1</span> <span class="k">if</span> <span class="n">trace_config</span> <span class="k">else</span> <span class="mi">0</span><span class="p">,</span>
 <a id="__codelineno-13-29" name="__codelineno-13-29" href="#__codelineno-13-29"></a>    <span class="p">)</span>
 <a id="__codelineno-13-30" name="__codelineno-13-30" href="#__codelineno-13-30"></a>
-<a id="__codelineno-13-31" name="__codelineno-13-31" href="#__codelineno-13-31"></a>    <span class="n">rt</span> <span class="o">=</span> <span class="n">Runtime</span><span class="p">()</span>
-<a id="__codelineno-13-32" name="__codelineno-13-32" href="#__codelineno-13-32"></a>    <span class="n">tensor_ty</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[(</span><span class="n">N</span><span class="p">,),</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">uint8</span><span class="p">]]</span>
-<a id="__codelineno-13-33" name="__codelineno-13-33" href="#__codelineno-13-33"></a>    <span class="k">with</span> <span class="n">rt</span><span class="o">.</span><span class="n">sequence</span><span class="p">(</span><span class="n">tensor_ty</span><span class="p">,</span> <span class="n">tensor_ty</span><span class="p">)</span> <span class="k">as</span> <span class="p">(</span><span class="n">a_in</span><span class="p">,</span> <span class="n">b_out</span><span class="p">):</span>
-<a id="__codelineno-13-34" name="__codelineno-13-34" href="#__codelineno-13-34"></a>        <span class="k">if</span> <span class="n">trace_config</span><span class="p">:</span>
-<a id="__codelineno-13-35" name="__codelineno-13-35" href="#__codelineno-13-35"></a>            <span class="n">rt</span><span class="o">.</span><span class="n">enable_trace</span><span class="p">(</span><span class="n">trace_config</span><span class="o">.</span><span class="n">trace_size</span><span class="p">,</span> <span class="n">workers</span><span class="o">=</span><span class="p">[</span><span class="n">worker</span><span class="p">])</span>
-<a id="__codelineno-13-36" name="__codelineno-13-36" href="#__codelineno-13-36"></a>        <span class="n">rt</span><span class="o">.</span><span class="n">start</span><span class="p">(</span><span class="n">worker</span><span class="p">)</span>
-<a id="__codelineno-13-37" name="__codelineno-13-37" href="#__codelineno-13-37"></a>        <span class="n">rt</span><span class="o">.</span><span class="n">fill</span><span class="p">(</span><span class="n">of_in</span><span class="o">.</span><span class="n">prod</span><span class="p">(),</span> <span class="n">a_in</span><span class="p">)</span>
-<a id="__codelineno-13-38" name="__codelineno-13-38" href="#__codelineno-13-38"></a>        <span class="n">rt</span><span class="o">.</span><span class="n">drain</span><span class="p">(</span><span class="n">of_out</span><span class="o">.</span><span class="n">cons</span><span class="p">(),</span> <span class="n">b_out</span><span class="p">,</span> <span class="n">wait</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-<a id="__codelineno-13-39" name="__codelineno-13-39" href="#__codelineno-13-39"></a>    <span class="k">return</span> <span class="n">Program</span><span class="p">(</span><span class="n">iron</span><span class="o">.</span><span class="n">get_current_device</span><span class="p">(),</span> <span class="n">rt</span><span class="p">)</span><span class="o">.</span><span class="n">resolve_program</span><span class="p">()</span>
+<a id="__codelineno-13-31" name="__codelineno-13-31" href="#__codelineno-13-31"></a>    <span class="n">tensor_ty</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[(</span><span class="n">N</span><span class="p">,),</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">uint8</span><span class="p">]]</span>
+<a id="__codelineno-13-32" name="__codelineno-13-32" href="#__codelineno-13-32"></a>
+<a id="__codelineno-13-33" name="__codelineno-13-33" href="#__codelineno-13-33"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">sequence</span><span class="p">(</span><span class="n">a_in</span><span class="p">,</span> <span class="n">b_out</span><span class="p">,</span> <span class="n">in_h</span><span class="p">,</span> <span class="n">out_h</span><span class="p">):</span>
+<a id="__codelineno-13-34" name="__codelineno-13-34" href="#__codelineno-13-34"></a>        <span class="n">in_h</span><span class="o">.</span><span class="n">fill</span><span class="p">(</span><span class="n">a_in</span><span class="p">)</span>
+<a id="__codelineno-13-35" name="__codelineno-13-35" href="#__codelineno-13-35"></a>        <span class="n">out_h</span><span class="o">.</span><span class="n">drain</span><span class="p">(</span><span class="n">b_out</span><span class="p">,</span> <span class="n">wait</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-13-36" name="__codelineno-13-36" href="#__codelineno-13-36"></a>
+<a id="__codelineno-13-37" name="__codelineno-13-37" href="#__codelineno-13-37"></a>    <span class="n">rt</span> <span class="o">=</span> <span class="n">Runtime</span><span class="p">(</span><span class="n">sequence</span><span class="p">,</span> <span class="p">[</span><span class="n">tensor_ty</span><span class="p">,</span> <span class="n">tensor_ty</span><span class="p">,</span> <span class="n">of_in</span><span class="o">.</span><span class="n">prod</span><span class="p">(),</span> <span class="n">of_out</span><span class="o">.</span><span class="n">cons</span><span class="p">()])</span>
+<a id="__codelineno-13-38" name="__codelineno-13-38" href="#__codelineno-13-38"></a>    <span class="n">prog</span> <span class="o">=</span> <span class="n">Program</span><span class="p">(</span><span class="n">iron</span><span class="o">.</span><span class="n">get_current_device</span><span class="p">(),</span> <span class="n">rt</span><span class="p">,</span> <span class="n">workers</span><span class="o">=</span><span class="p">[</span><span class="n">worker</span><span class="p">])</span>
+<a id="__codelineno-13-39" name="__codelineno-13-39" href="#__codelineno-13-39"></a>    <span class="k">if</span> <span class="n">trace_config</span><span class="p">:</span>
+<a id="__codelineno-13-40" name="__codelineno-13-40" href="#__codelineno-13-40"></a>        <span class="n">prog</span><span class="o">.</span><span class="n">enable_trace</span><span class="p">(</span><span class="n">trace_config</span><span class="o">.</span><span class="n">trace_size</span><span class="p">,</span> <span class="n">workers</span><span class="o">=</span><span class="p">[</span><span class="n">worker</span><span class="p">])</span>
+<a id="__codelineno-13-41" name="__codelineno-13-41" href="#__codelineno-13-41"></a>    <span class="k">return</span> <span class="n">prog</span><span class="o">.</span><span class="n">resolve_program</span><span class="p">()</span>
 </code></pre></div>
 <p>Two equivalent ways to drive it from the caller:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="c1"># No trace — trace_config defaults to None, so trace plumbing is omitted</span>

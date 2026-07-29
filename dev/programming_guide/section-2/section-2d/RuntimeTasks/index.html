@@ -1521,6 +1521,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#passing-objectfifos-to-the-body-fn_args" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Passing ObjectFifos to the body: fn_args
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#runtime-tasks" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1532,10 +1543,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#inline-operations-into-a-runtimes-sequence" class="md-nav__link">
+  <a href="#setting-runtime-parameters-in-the-body" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Inline Operations into a Runtime's Sequence
+        Setting Runtime Parameters in the Body
       
     </span>
   </a>
@@ -3445,6 +3456,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#passing-objectfifos-to-the-body-fn_args" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Passing ObjectFifos to the body: fn_args
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#runtime-tasks" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3456,10 +3478,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#inline-operations-into-a-runtimes-sequence" class="md-nav__link">
+  <a href="#setting-runtime-parameters-in-the-body" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Inline Operations into a Runtime's Sequence
+        Setting Runtime Parameters in the Body
       
     </span>
   </a>
@@ -3602,73 +3624,79 @@
 </li>
 </ul>
 <hr />
-<p>IRON provides a <code>Runtime</code> class with a <code>sequence()</code> function which can be programmed with <code>RuntimeTasks</code> that will launch one or more <code>Worker</code>s and fill and drain ObjectFifos with data from/to external memory. All IRON constructs introduced in this section are available <a href="https://github.com/Xilinx/mlir-aie/tree/main/python/iron/runtime">here</a>.</p>
-<p>To create a <code>Runtime</code> <code>sequence</code> users can write:
+<p>IRON provides a <code>Runtime</code> class whose <em>sequence body</em> — a plain Python function — describes how host-side buffers are moved into and out of the AIE-array while one or more <code>Worker</code>s run. All IRON constructs introduced in this section are available <a href="https://github.com/Xilinx/mlir-aie/tree/main/python/iron/runtime">here</a>.</p>
+<p>A <code>Runtime</code> is created from its sequence body and <code>fn_args</code>, mirroring how a <code>Worker</code> is created from a <code>core_fn</code> and its <code>fn_args</code>:
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="c1"># To/from AIE-array runtime data movement</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="n">rt</span> <span class="o">=</span> <span class="n">Runtime</span><span class="p">()</span>
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="k">with</span> <span class="n">rt</span><span class="o">.</span><span class="n">sequence</span><span class="p">(</span><span class="n">data_ty_a</span><span class="p">,</span> <span class="n">data_ty_b</span><span class="p">,</span> <span class="n">data_ty_c</span><span class="p">)</span> <span class="k">as</span> <span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">,</span> <span class="n">c</span><span class="p">):</span>
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="c1"># runtime tasks</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="k">def</span><span class="w"> </span><span class="nf">sequence</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">,</span> <span class="n">c</span><span class="p">):</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="c1"># runtime tasks</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="o">...</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="n">rt</span> <span class="o">=</span> <span class="n">Runtime</span><span class="p">(</span><span class="n">sequence</span><span class="p">,</span> <span class="p">[</span><span class="n">data_ty_a</span><span class="p">,</span> <span class="n">data_ty_b</span><span class="p">,</span> <span class="n">data_ty_c</span><span class="p">])</span>
 </code></pre></div>
-The arguments to this function describe buffers that will be available on the host side; the body of the function describes how those buffers are moved into the AIE-array.</p>
+Here every <code>fn_args</code> entry (<code>data_ty_a</code>, ...) is a <strong>type</strong>, which declares a host-side buffer: the body receives one argument per entry and describes how those buffers move into the AIE-array. The body runs later, inside the lowered <code>aie.runtime_sequence</code>, so it executes with a live MLIR context — meaning native <code>range_</code>/<code>if_</code> control flow and data-movement verbs work directly inside it.</p>
+<h4 id="passing-objectfifos-to-the-body-fn_args"><strong>Passing ObjectFifos to the body: <code>fn_args</code></strong><a class="headerlink" href="#passing-objectfifos-to-the-body-fn_args" title="Permanent link">&para;</a></h4>
+<p>The body moves data by calling <code>fill</code>/<code>drain</code> on <code>ObjectFifoHandle</code>s. Those handles are passed to the <code>Runtime</code> as trailing <code>fn_args</code> entries — exactly like a <code>Worker</code>'s <code>fn_args</code> — and are received as trailing parameters of the body, after the type-declared buffers:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">sequence</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span> <span class="n">in_h</span><span class="p">,</span> <span class="n">out_h</span><span class="p">):</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>    <span class="n">in_h</span><span class="o">.</span><span class="n">fill</span><span class="p">(</span><span class="n">a</span><span class="p">)</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>    <span class="n">out_h</span><span class="o">.</span><span class="n">drain</span><span class="p">(</span><span class="n">c</span><span class="p">,</span> <span class="n">wait</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="n">rt</span> <span class="o">=</span> <span class="n">Runtime</span><span class="p">(</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>    <span class="n">sequence</span><span class="p">,</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>    <span class="p">[</span><span class="n">data_ty_a</span><span class="p">,</span> <span class="n">data_ty_b</span><span class="p">,</span> <span class="n">data_ty_c</span><span class="p">,</span> <span class="n">of_in</span><span class="o">.</span><span class="n">prod</span><span class="p">(),</span> <span class="n">of_out</span><span class="o">.</span><span class="n">cons</span><span class="p">()],</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="p">)</span>
+</code></pre></div>
+Passing the handles through <code>fn_args</code> (rather than capturing them by closure) lets the <code>Runtime</code> bind each ObjectFifo's shim endpoint up front, so the design resolves cleanly regardless of where the body appears.</p>
 <h4 id="runtime-tasks"><strong>Runtime Tasks</strong><a class="headerlink" href="#runtime-tasks" title="Permanent link">&para;</a></h4>
-<p><code>Runtime</code> tasks are performed during runtime and they may be synchronous or asynchronous. Tasks can be added to the <code>Runtime</code>'s <code>sequence</code> during the creation of the IRON design, and they can also be queued during runtime.</p>
-<p>The <code>start()</code> operation is used to start one or multiple <code>Worker</code>s that were declared in the IRON design. It is shown below and defined in <a href="https://github.com/Xilinx/mlir-aie/blob/main/python/iron/runtime/runtime.py">runtime.py</a>:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">start</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">:</span> <span class="n">Worker</span><span class="p">)</span>
-</code></pre></div>
-If more than one <code>Worker</code> is given as input, they will be started in order.</p>
-<p>The code snippet below shows how one <code>Worker</code>, <code>my_worker</code>, is started:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">rt</span> <span class="o">=</span> <span class="n">Runtime</span><span class="p">()</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="k">with</span> <span class="n">rt</span><span class="o">.</span><span class="n">sequence</span><span class="p">(</span><span class="n">data_ty</span><span class="p">,</span> <span class="n">data_ty</span><span class="p">,</span> <span class="n">data_ty</span><span class="p">)</span> <span class="k">as</span> <span class="p">(</span><span class="n">_</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">_</span><span class="p">):</span>
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>    <span class="n">rt</span><span class="o">.</span><span class="n">start</span><span class="p">(</span><span class="n">my_worker</span><span class="p">)</span>
+<p><code>Runtime</code> tasks are the data-movement operations performed at runtime; they may be synchronous or asynchronous.</p>
+<p><code>Worker</code>s are <strong>not</strong> started from inside the sequence — they are handed to the <code>Program</code> directly:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">Program</span><span class="p">(</span><span class="n">device</span><span class="p">,</span> <span class="n">rt</span><span class="p">,</span> <span class="n">workers</span><span class="o">=</span><span class="p">[</span><span class="n">my_worker</span><span class="p">])</span><span class="o">.</span><span class="n">resolve_program</span><span class="p">()</span>
 </code></pre></div></p>
-<p>To start multiple <code>Worker</code>s with a single use of this operation users can write:
+<p>To run multiple <code>Worker</code>s, pass them all:
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">workers</span> <span class="o">=</span> <span class="p">[]</span>
 <a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="c1"># create and append Workers to the &quot;workers&quot; array</span>
 <a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="n">rt</span> <span class="o">=</span> <span class="n">Runtime</span><span class="p">()</span>
-<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="k">with</span> <span class="n">rt</span><span class="o">.</span><span class="n">sequence</span><span class="p">(</span><span class="n">data_ty</span><span class="p">,</span> <span class="n">data_ty</span><span class="p">,</span> <span class="n">data_ty</span><span class="p">)</span> <span class="k">as</span> <span class="p">(</span><span class="n">_</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">_</span><span class="p">):</span>
-<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>    <span class="n">rt</span><span class="o">.</span><span class="n">start</span><span class="p">(</span><span class="o">*</span><span class="n">workers</span><span class="p">)</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="n">Program</span><span class="p">(</span><span class="n">device</span><span class="p">,</span> <span class="n">rt</span><span class="p">,</span> <span class="n">workers</span><span class="o">=</span><span class="n">workers</span><span class="p">)</span><span class="o">.</span><span class="n">resolve_program</span><span class="p">()</span>
 </code></pre></div></p>
-<p>The <code>fill()</code> operation is used to fill an <code>in_fifo</code> <code>ObjectFifoHandle</code> of type producer with data from a <code>source</code> runtime buffer. It is shown below and defined in <a href="https://github.com/Xilinx/mlir-aie/blob/main/python/iron/runtime/runtime.py">runtime.py</a>:
+<p>The <code>fill()</code> operation is a method on a <em>producer</em> <code>ObjectFifoHandle</code> that fills it with data from a <code>source</code> runtime buffer. It is defined in <a href="https://github.com/Xilinx/mlir-aie/blob/main/python/iron/dataflow/objectfifo.py">objectfifo.py</a>:
 <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">fill</span><span class="p">(</span>
 <a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>        <span class="bp">self</span><span class="p">,</span>
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>        <span class="n">in_fifo</span><span class="p">:</span> <span class="n">ObjectFifoHandle</span><span class="p">,</span>
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>        <span class="n">source</span><span class="p">:</span> <span class="n">RuntimeData</span><span class="p">,</span>
-<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>        <span class="n">tap</span><span class="p">:</span> <span class="n">TensorAccessPattern</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>        <span class="n">task_group</span><span class="p">:</span> <span class="n">RuntimeTaskGroup</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>        <span class="n">wait</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
-<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>        <span class="n">tile</span><span class="p">:</span> <span class="n">Tile</span> <span class="o">=</span> <span class="n">AnyShimTile</span><span class="p">,</span>
-<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>    <span class="p">)</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>        <span class="n">source</span><span class="p">,</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>        <span class="n">tap</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>        <span class="n">wait</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>        <span class="n">group</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>        <span class="o">...</span>
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>    <span class="p">)</span>
 </code></pre></div>
-When the <code>wait</code> input is set to <code>True</code> this operation will be waited upon, i.e., a token will be produced when the operation is finished that a controller is waiting on. A <code>tile</code> (Shim tile) can also be explicitly specified, otherwise the compiler will choose one. The <code>task_group</code> is explained further in this section.</p>
+When the <code>wait</code> input is set to <code>True</code> this operation will be waited upon, i.e., a token will be produced when the operation is finished that a controller is waiting on. The <code>group</code> is explained further in this section. The Shim tile is chosen by the compiler, or pinned via <code>prod(tile=...)</code> on the handle (see below).</p>
 <p>The code snippet below shows how data from a source runtime buffer <code>a_in</code> is sent to the producer <code>ObjectFifoHandle</code> of <code>of_in</code>. This data could then be read via a consumer <code>ObjectFifoHandle</code> of the same ObjectFifo.
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">rt</span> <span class="o">=</span> <span class="n">Runtime</span><span class="p">()</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="k">with</span> <span class="n">rt</span><span class="o">.</span><span class="n">sequence</span><span class="p">(</span><span class="n">data_ty</span><span class="p">,</span> <span class="n">data_ty</span><span class="p">,</span> <span class="n">data_ty</span><span class="p">)</span> <span class="k">as</span> <span class="p">(</span><span class="n">a_in</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">_</span><span class="p">):</span>
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>    <span class="n">rt</span><span class="o">.</span><span class="n">fill</span><span class="p">(</span><span class="n">of_in</span><span class="o">.</span><span class="n">prod</span><span class="p">(),</span> <span class="n">a_in</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">sequence</span><span class="p">(</span><span class="n">a_in</span><span class="p">,</span> <span class="n">in_h</span><span class="p">):</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>    <span class="n">in_h</span><span class="o">.</span><span class="n">fill</span><span class="p">(</span><span class="n">a_in</span><span class="p">)</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="n">rt</span> <span class="o">=</span> <span class="n">Runtime</span><span class="p">(</span><span class="n">sequence</span><span class="p">,</span> <span class="p">[</span><span class="n">data_ty</span><span class="p">,</span> <span class="n">of_in</span><span class="o">.</span><span class="n">prod</span><span class="p">()])</span>
 </code></pre></div></p>
-<p>The <code>drain()</code> operation is used to fill an <code>out_fifo</code> <code>ObjectFifoHandle</code> of type consumer of data and write that data to a <code>dest</code> runtime buffer. It is shown below and defined in <a href="https://github.com/Xilinx/mlir-aie/blob/main/python/iron/runtime/runtime.py">runtime.py</a>:
+<p>The <code>drain()</code> operation is a method on a <em>consumer</em> <code>ObjectFifoHandle</code> that reads its data and writes it to a <code>dest</code> runtime buffer. It is defined in <a href="https://github.com/Xilinx/mlir-aie/blob/main/python/iron/dataflow/objectfifo.py">objectfifo.py</a>:
 <div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">drain</span><span class="p">(</span>
 <a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>    <span class="bp">self</span><span class="p">,</span>
-<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>    <span class="n">out_fifo</span><span class="p">:</span> <span class="n">ObjectFifoHandle</span><span class="p">,</span>
-<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>    <span class="n">dest</span><span class="p">:</span> <span class="n">RuntimeData</span><span class="p">,</span>
-<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>    <span class="n">tap</span><span class="p">:</span> <span class="n">TensorAccessPattern</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>    <span class="n">task_group</span><span class="p">:</span> <span class="n">RuntimeTaskGroup</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>    <span class="n">wait</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
-<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a>    <span class="n">tile</span><span class="p">:</span> <span class="n">Tile</span> <span class="o">=</span> <span class="n">AnyShimTile</span><span class="p">,</span>
-<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="p">)</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>    <span class="n">dest</span><span class="p">,</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>    <span class="n">tap</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>    <span class="n">wait</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>    <span class="n">group</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>    <span class="o">...</span>
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="p">)</span>
 </code></pre></div>
-When the <code>wait</code> input is set to <code>True</code> this operation will be waited upon, i.e., a token will be produced when the operation is finished that a controller is waiting on. A <code>tile</code> (Shim tile) can also be explicitly specified, otherwise the compiler will choose one. The <code>task_group</code> is explained further in this section.</p>
+When the <code>wait</code> input is set to <code>True</code> this operation will be waited upon, i.e., a token will be produced when the operation is finished that a controller is waiting on. The <code>group</code> is explained further in this section.</p>
 <p>The code snippet below shows how data from a consumer <code>ObjectFifoHandle</code> of <code>of_out</code> is drained into a destination runtime buffer <code>c_out</code>. Data could be produced into <code>of_out</code> via its producer <code>ObjectFifoHandle</code>. Additionally, the <code>wait</code> input of the <code>drain()</code> task is set meaning that this task will be waited on until completion, i.e., until the <code>c_out</code> runtime buffer had received enough data as described by the <code>data_ty</code>.
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="n">rt</span> <span class="o">=</span> <span class="n">Runtime</span><span class="p">()</span>
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="k">with</span> <span class="n">rt</span><span class="o">.</span><span class="n">sequence</span><span class="p">(</span><span class="n">data_ty</span><span class="p">,</span> <span class="n">data_ty</span><span class="p">,</span> <span class="n">data_ty</span><span class="p">)</span> <span class="k">as</span> <span class="p">(</span><span class="n">_</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">c_out</span><span class="p">):</span>
-<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>    <span class="n">rt</span><span class="o">.</span><span class="n">drain</span><span class="p">(</span><span class="n">of_out</span><span class="o">.</span><span class="n">cons</span><span class="p">(),</span> <span class="n">c_out</span><span class="p">,</span> <span class="n">wait</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">sequence</span><span class="p">(</span><span class="n">c_out</span><span class="p">,</span> <span class="n">out_h</span><span class="p">):</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>    <span class="n">out_h</span><span class="o">.</span><span class="n">drain</span><span class="p">(</span><span class="n">c_out</span><span class="p">,</span> <span class="n">wait</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="n">rt</span> <span class="o">=</span> <span class="n">Runtime</span><span class="p">(</span><span class="n">sequence</span><span class="p">,</span> <span class="p">[</span><span class="n">data_ty</span><span class="p">,</span> <span class="n">of_out</span><span class="o">.</span><span class="n">cons</span><span class="p">()])</span>
 </code></pre></div></p>
-<h4 id="inline-operations-into-a-runtimes-sequence"><strong>Inline Operations into a <code>Runtime</code>'s <code>Sequence</code></strong><a class="headerlink" href="#inline-operations-into-a-runtimes-sequence" title="Permanent link">&para;</a></h4>
-<p>In some cases it may be desirable to insert a Python function that generates arbitrary MLIR operations into the <code>Runtime</code>'s <code>sequence</code>. One such example is when users want to set runtime parameters, which will be loaded into the local memory modules of the Workers at runtime.</p>
-<p>To inline operations into a <code>Runtime</code>'s <code>sequence</code>, users can use the <code>inline_ops()</code> operation. It is shown below and defined in <a href="https://github.com/Xilinx/mlir-aie/blob/main/python/iron/runtime/runtime.py">runtime.py</a>:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">inline_ops</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">inline_func</span><span class="p">:</span> <span class="n">Callable</span><span class="p">,</span> <span class="n">inline_args</span><span class="p">:</span> <span class="nb">list</span><span class="p">)</span>
-</code></pre></div>
-The <code>inline_func</code> is the function to execute within an MLIR context and the <code>inline_args</code> are state the function needs to execute.</p>
+<p>To pin the Shim tile a handle's host-side DMA uses, pass <code>tile=</code> to <code>prod()</code>/<code>cons()</code> where the handle is created (not to <code>fill</code>/<code>drain</code>):
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="n">rt</span> <span class="o">=</span> <span class="n">Runtime</span><span class="p">(</span><span class="n">sequence</span><span class="p">,</span> <span class="p">[</span><span class="n">data_ty</span><span class="p">,</span> <span class="n">of_in</span><span class="o">.</span><span class="n">prod</span><span class="p">(</span><span class="n">tile</span><span class="o">=</span><span class="n">Tile</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">))])</span>
+</code></pre></div></p>
+<p>The <code>fill()</code>/<code>drain()</code> methods return a <code>Task</code> handle. For the common case you can ignore it, but it enables software-pipelined data movement: pass a <code>Task</code> as a <code>range_</code> <code>iter_arg</code> to carry an in-flight transfer across loop iterations, and call <code>.free()</code> / <code>.await_()</code> on it to manage its lifetime by hand (see <a href="https://github.com/Xilinx/mlir-aie/blob/main/python/iron/runtime/dmataskhandle.py">dmataskhandle.py</a>).</p>
+<h4 id="setting-runtime-parameters-in-the-body"><strong>Setting Runtime Parameters in the Body</strong><a class="headerlink" href="#setting-runtime-parameters-in-the-body" title="Permanent link">&para;</a></h4>
+<p>Because the sequence body runs inside a live MLIR context, you can write operations directly in it — there is no separate escape hatch. A common example is setting runtime parameters, which are loaded into the local memory modules of the Workers at runtime.</p>
 <p>In the following code snippet, an array of <code>Buffer</code>s are created where each of the buffers will hold a runtime parameter of type <code>16xi32</code>. A <a href="https://github.com/Xilinx/mlir-aie/blob/main/python/iron/buffer.py"><code>Buffer</code></a> is a memory region declared at the top-level of the IRON design that is available both to the <code>Worker</code>s and to the runtime for operations. When <code>use_write_rtp</code> is set, runtime parameter specific operations will be generated within the <code>Runtime</code>'s <code>sequence</code> at lower-levels of compiler abstraction.
 <div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="c1"># Runtime parameters</span>
 <a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="n">rtps</span> <span class="o">=</span> <span class="p">[]</span>
@@ -3681,24 +3709,21 @@ The <code>inline_func</code> is the function to execute within an MLIR context a
 <a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a>        <span class="p">)</span>
 <a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a>    <span class="p">)</span>
 </code></pre></div>
-The actual values of the runtime parameters will be loaded into each of the buffers at runtime:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="n">rt</span> <span class="o">=</span> <span class="n">Runtime</span><span class="p">()</span>
-<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="k">with</span> <span class="n">rt</span><span class="o">.</span><span class="n">sequence</span><span class="p">(</span><span class="n">data_ty</span><span class="p">,</span> <span class="n">data_ty</span><span class="p">,</span> <span class="n">data_ty</span><span class="p">)</span> <span class="k">as</span> <span class="p">(</span><span class="n">_</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">_</span><span class="p">):</span>
-<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>
-<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>    <span class="c1"># Set runtime parameters</span>
-<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">set_rtps</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">):</span>
-<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>        <span class="k">for</span> <span class="n">rtp</span> <span class="ow">in</span> <span class="n">args</span><span class="p">:</span>
-<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a>            <span class="n">rtp</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="mi">50</span>
-<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a>            <span class="n">rtp</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="mi">255</span>
-<a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a>            <span class="n">rtp</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
-<a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a>
-<a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a>    <span class="n">rt</span><span class="o">.</span><span class="n">inline_ops</span><span class="p">(</span><span class="n">set_rtps</span><span class="p">,</span> <span class="n">rtps</span><span class="p">)</span>
+The values are written to each buffer by indexing it directly in the body. The body runs after the <code>Worker</code>s (and the <code>Buffer</code>s they own) are placed, so these writes resolve correctly:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">sequence</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">,</span> <span class="n">c</span><span class="p">):</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>    <span class="c1"># Set runtime parameters</span>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>    <span class="k">for</span> <span class="n">rtp</span> <span class="ow">in</span> <span class="n">rtps</span><span class="p">:</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>        <span class="n">rtp</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="mi">50</span>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>        <span class="n">rtp</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="mi">255</span>
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>        <span class="n">rtp</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
+<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a>
+<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a><span class="n">rt</span> <span class="o">=</span> <span class="n">Runtime</span><span class="p">(</span><span class="n">sequence</span><span class="p">,</span> <span class="p">[</span><span class="n">data_ty</span><span class="p">,</span> <span class="n">data_ty</span><span class="p">,</span> <span class="n">data_ty</span><span class="p">])</span>
 </code></pre></div>
 The propagation of data to these global buffers is not instantaneous and may lead to workers reading runtime parameters before they are available. To solve this, it is possible to instantiate <code>WorkerRuntimeBarrier</code>s defined in <a href="https://github.com/Xilinx/mlir-aie/blob/main/python/iron/worker.py">worker.py</a>:
 <div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">WorkerRuntimeBarrier</span><span class="p">:</span>
 <a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">initial_value</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">)</span>
 </code></pre></div></p>
-<p>These barriers allow individual workers to synchronize with the <code>Runtime</code>'s <code>sequence</code> at runtime:
+<p>These barriers allow individual workers to synchronize with the <code>Runtime</code>'s <code>sequence</code> at runtime. A barrier is set from the body with <code>barrier.set(value)</code>:
 <div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="n">workerBarriers</span> <span class="o">=</span> <span class="p">[]</span>
 <a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">4</span><span class="p">):</span>
 <a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>    <span class="n">workerBarriers</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">WorkerRuntimeBarrier</span><span class="p">())</span>
@@ -3711,15 +3736,15 @@ The propagation of data to these global buffers is not instantaneous and may lea
 <a id="__codelineno-12-10" name="__codelineno-12-10" href="#__codelineno-12-10"></a>
 <a id="__codelineno-12-11" name="__codelineno-12-11" href="#__codelineno-12-11"></a><span class="o">...</span>
 <a id="__codelineno-12-12" name="__codelineno-12-12" href="#__codelineno-12-12"></a>
-<a id="__codelineno-12-13" name="__codelineno-12-13" href="#__codelineno-12-13"></a><span class="n">rt</span> <span class="o">=</span> <span class="n">Runtime</span><span class="p">()</span>
-<a id="__codelineno-12-14" name="__codelineno-12-14" href="#__codelineno-12-14"></a><span class="k">with</span> <span class="n">rt</span><span class="o">.</span><span class="n">sequence</span><span class="p">(</span><span class="n">data_ty</span><span class="p">,</span> <span class="n">data_ty</span><span class="p">,</span> <span class="n">data_ty</span><span class="p">)</span> <span class="k">as</span> <span class="p">(</span><span class="n">_</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">_</span><span class="p">):</span>
-<a id="__codelineno-12-15" name="__codelineno-12-15" href="#__codelineno-12-15"></a>
-<a id="__codelineno-12-16" name="__codelineno-12-16" href="#__codelineno-12-16"></a>    <span class="o">...</span>
+<a id="__codelineno-12-13" name="__codelineno-12-13" href="#__codelineno-12-13"></a><span class="k">def</span><span class="w"> </span><span class="nf">sequence</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">,</span> <span class="n">c</span><span class="p">):</span>
+<a id="__codelineno-12-14" name="__codelineno-12-14" href="#__codelineno-12-14"></a>    <span class="c1"># Set runtime parameters, then release the barriers.</span>
+<a id="__codelineno-12-15" name="__codelineno-12-15" href="#__codelineno-12-15"></a>    <span class="k">for</span> <span class="n">rtp</span> <span class="ow">in</span> <span class="n">rtps</span><span class="p">:</span>
+<a id="__codelineno-12-16" name="__codelineno-12-16" href="#__codelineno-12-16"></a>        <span class="n">rtp</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="mi">50</span>
 <a id="__codelineno-12-17" name="__codelineno-12-17" href="#__codelineno-12-17"></a>
-<a id="__codelineno-12-18" name="__codelineno-12-18" href="#__codelineno-12-18"></a>    <span class="n">rt</span><span class="o">.</span><span class="n">inline_ops</span><span class="p">(</span><span class="n">set_rtps</span><span class="p">,</span> <span class="n">rtps</span><span class="p">)</span>
-<a id="__codelineno-12-19" name="__codelineno-12-19" href="#__codelineno-12-19"></a>
-<a id="__codelineno-12-20" name="__codelineno-12-20" href="#__codelineno-12-20"></a>    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">4</span><span class="p">):</span>
-<a id="__codelineno-12-21" name="__codelineno-12-21" href="#__codelineno-12-21"></a>        <span class="n">rt</span><span class="o">.</span><span class="n">set_barrier</span><span class="p">(</span><span class="n">workerBarriers</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="mi">1</span><span class="p">)</span>
+<a id="__codelineno-12-18" name="__codelineno-12-18" href="#__codelineno-12-18"></a>    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">4</span><span class="p">):</span>
+<a id="__codelineno-12-19" name="__codelineno-12-19" href="#__codelineno-12-19"></a>        <span class="n">workerBarriers</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+<a id="__codelineno-12-20" name="__codelineno-12-20" href="#__codelineno-12-20"></a>
+<a id="__codelineno-12-21" name="__codelineno-12-21" href="#__codelineno-12-21"></a><span class="n">rt</span> <span class="o">=</span> <span class="n">Runtime</span><span class="p">(</span><span class="n">sequence</span><span class="p">,</span> <span class="p">[</span><span class="n">data_ty</span><span class="p">,</span> <span class="n">data_ty</span><span class="p">,</span> <span class="n">data_ty</span><span class="p">])</span>
 </code></pre></div>
 Currently, a <code>WorkerRuntimeBarrier</code> may take any value between 0 and 63. This is due to the fact that these barriers leverage the lock mechansim of the architecture under-the-hood.</p>
 <blockquote>
@@ -3727,28 +3752,30 @@ Currently, a <code>WorkerRuntimeBarrier</code> may take any value between 0 and 
 </blockquote>
 <h4 id="runtime-task-groups"><strong>Runtime Task Groups</strong><a class="headerlink" href="#runtime-task-groups" title="Permanent link">&para;</a></h4>
 <p>It may be desirable to reconfigure a <code>Runtime</code>'s <code>sequence</code> and reuse some of the resources from a previous configuration, especially given that some of these resources, like the BDs in a DMA task queue, are limited.</p>
-<p>To facilitate this reconfiguration step, IRON introduces <code>RuntimeTaskGroup</code>s which can be created using the <code>task_group()</code> function as defined in <a href="https://github.com/Xilinx/mlir-aie/blob/main/python/iron/runtime/runtime.py">runtime.py</a>.</p>
-<p><code>RuntimeTask</code>s can be added to a task group by specifying their <code>task_group</code> input. Tasks in the same group will be appended to the runtime sequence and executed in order. The <code>finish_task_group()</code> operation is used to mark the end of a task group. This call waits for tasks in the group annotated with <code>wait=True</code> to complete, and then frees <em>all</em> resources used by the task.
-If a <code>RuntimeTask</code> group is not explicitly defined for DMA tasks defined in a <code>Runtime</code>'s <code>sequence</code>, then a single default task group is used.</p>
+<p>To facilitate this reconfiguration step, IRON introduces <code>TaskGroup</code>s, created with the <code>TaskGroup()</code> constructor as defined in <a href="https://github.com/Xilinx/mlir-aie/blob/main/python/iron/runtime/taskgroup.py">taskgroup.py</a>.</p>
+<p>A task is added to a group by passing <code>group=</code> to <code>fill</code>/<code>drain</code>. Tasks in the same group are appended to the runtime sequence and executed in order. The <code>finish()</code> method marks the end of a task group: it waits for tasks in the group annotated with <code>wait=True</code> to complete, then frees <em>all</em> resources used by the group.
+If no group is specified for the DMA tasks in a body, a single default task group is used.</p>
 <blockquote>
-<p><strong>NOTE:</strong>  A call to  <code>finish_task_group()</code> blocks the runtime sequence until all of the group's tasks annotated with <code>wait=True</code>  ("awaited tasks") have completed. After waiting, all resources of the task group -- including those <em>not</em> annotated with <code>wait=True</code> ("unawaited tasks") -- will be freed and reused for subsequent tasks. </p>
+<p><strong>NOTE:</strong>  A call to  <code>finish()</code> blocks the runtime sequence until all of the group's tasks annotated with <code>wait=True</code>  ("awaited tasks") have completed. After waiting, all resources of the task group -- including those <em>not</em> annotated with <code>wait=True</code> ("unawaited tasks") -- will be freed and reused for subsequent tasks. </p>
 <p>To avoid race conditions, any unawaited tasks in the group should form a dependency of an awaited task.
 It is only safe to remove a <code>wait=True</code> if you can reason that another, awaited task in the same group can only complete if the awaited task also completed.
 For example, you may choose to set <code>wait=False</code> on an input fill if you can guarantee that a later (awaited) output drain depends on the input and completes only if the input fill completed as well.</p>
 <p>If you suspect a race condition, the safest (but possibly slower) solution is to annotated <em>all</em> tasks (including inputs) with <code>wait=True</code>.</p>
 </blockquote>
-<p>The <code>Runtime</code> <code>sequence</code> in the code snippet below has two task groups. We can observe that the creation of the second task group happens at the end of execution of the first task group.
-<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="n">rt</span> <span class="o">=</span> <span class="n">Runtime</span><span class="p">()</span>
-<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="k">with</span> <span class="n">rt</span><span class="o">.</span><span class="n">sequence</span><span class="p">(</span><span class="n">data_ty</span><span class="p">,</span> <span class="n">data_ty</span><span class="p">,</span> <span class="n">data_ty</span><span class="p">)</span> <span class="k">as</span> <span class="p">(</span><span class="n">a_in</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">c_out</span><span class="p">):</span>
-<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>    <span class="n">rt</span><span class="o">.</span><span class="n">start</span><span class="p">(</span><span class="o">*</span><span class="n">workers</span><span class="p">)</span>
-<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a>
-<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a>    <span class="n">tg</span> <span class="o">=</span> <span class="n">rt</span><span class="o">.</span><span class="n">task_group</span><span class="p">()</span> <span class="c1"># start first task group</span>
-<a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a>    <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">]:</span>
-<a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a>        <span class="n">rt</span><span class="o">.</span><span class="n">fill</span><span class="p">(</span><span class="n">of_in</span><span class="o">.</span><span class="n">prod</span><span class="p">(),</span> <span class="n">a_in</span><span class="p">,</span> <span class="n">task_group</span><span class="o">=</span><span class="n">tg</span><span class="p">)</span>
-<a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a>        <span class="n">rt</span><span class="o">.</span><span class="n">drain</span><span class="p">(</span><span class="n">of_out</span><span class="o">.</span><span class="n">cons</span><span class="p">(),</span> <span class="n">c_out</span><span class="p">,</span> <span class="n">task_group</span><span class="o">=</span><span class="n">tg</span><span class="p">,</span> <span class="n">wait</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-<a id="__codelineno-13-9" name="__codelineno-13-9" href="#__codelineno-13-9"></a>        <span class="n">rt</span><span class="o">.</span><span class="n">finish_task_group</span><span class="p">(</span><span class="n">tg</span><span class="p">)</span>
-<a id="__codelineno-13-10" name="__codelineno-13-10" href="#__codelineno-13-10"></a>        <span class="n">tg</span> <span class="o">=</span> <span class="n">rt</span><span class="o">.</span><span class="n">task_group</span><span class="p">()</span> <span class="c1"># start second task group</span>
-<a id="__codelineno-13-11" name="__codelineno-13-11" href="#__codelineno-13-11"></a>    <span class="n">rt</span><span class="o">.</span><span class="n">finish_task_group</span><span class="p">(</span><span class="n">tg</span><span class="p">)</span>
+<p>The body in the code snippet below has two task groups. We can observe that the creation of the second task group happens at the end of execution of the first task group.
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">sequence</span><span class="p">(</span><span class="n">a_in</span><span class="p">,</span> <span class="n">b</span><span class="p">,</span> <span class="n">c_out</span><span class="p">,</span> <span class="n">in_h</span><span class="p">,</span> <span class="n">out_h</span><span class="p">):</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>    <span class="n">tg</span> <span class="o">=</span> <span class="n">TaskGroup</span><span class="p">()</span>  <span class="c1"># start first task group</span>
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>    <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">]:</span>
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a>        <span class="n">in_h</span><span class="o">.</span><span class="n">fill</span><span class="p">(</span><span class="n">a_in</span><span class="p">,</span> <span class="n">group</span><span class="o">=</span><span class="n">tg</span><span class="p">)</span>
+<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a>        <span class="n">out_h</span><span class="o">.</span><span class="n">drain</span><span class="p">(</span><span class="n">c_out</span><span class="p">,</span> <span class="n">group</span><span class="o">=</span><span class="n">tg</span><span class="p">,</span> <span class="n">wait</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a>        <span class="n">tg</span><span class="o">.</span><span class="n">finish</span><span class="p">()</span>
+<a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a>        <span class="n">tg</span> <span class="o">=</span> <span class="n">TaskGroup</span><span class="p">()</span>  <span class="c1"># start second task group</span>
+<a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a>    <span class="n">tg</span><span class="o">.</span><span class="n">finish</span><span class="p">()</span>
+<a id="__codelineno-13-9" name="__codelineno-13-9" href="#__codelineno-13-9"></a>
+<a id="__codelineno-13-10" name="__codelineno-13-10" href="#__codelineno-13-10"></a><span class="n">rt</span> <span class="o">=</span> <span class="n">Runtime</span><span class="p">(</span>
+<a id="__codelineno-13-11" name="__codelineno-13-11" href="#__codelineno-13-11"></a>    <span class="n">sequence</span><span class="p">,</span>
+<a id="__codelineno-13-12" name="__codelineno-13-12" href="#__codelineno-13-12"></a>    <span class="p">[</span><span class="n">data_ty</span><span class="p">,</span> <span class="n">data_ty</span><span class="p">,</span> <span class="n">data_ty</span><span class="p">,</span> <span class="n">of_in</span><span class="o">.</span><span class="n">prod</span><span class="p">(),</span> <span class="n">of_out</span><span class="o">.</span><span class="n">cons</span><span class="p">()],</span>
+<a id="__codelineno-13-13" name="__codelineno-13-13" href="#__codelineno-13-13"></a><span class="p">)</span>
 </code></pre></div></p>
 <hr />
 <p><a href="../">Up</a></p>
