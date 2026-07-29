@@ -239,7 +239,13 @@ const AIETargetModel &xilinx::AIE::getTargetModel(AIEDevice device) {
   case AIEDevice::npu2_7col:
     return NPU2model7col;
   }
-  return VC1902model;
+  // The switch above is exhaustive over AIEDevice, so no default: -- that keeps
+  // -Wswitch reporting a newly added device. A value outside the enum can still
+  // arrive through the C API, which casts an unchecked uint32_t
+  // (aieGetTargetModel), so fail loudly rather than silently answering with an
+  // unrelated device family.
+  llvm::report_fatal_error("getTargetModel: unknown AIEDevice value " +
+                           llvm::Twine(static_cast<uint32_t>(device)));
 }
 
 // Walk the operation hierarchy until we find a containing TileElement.
