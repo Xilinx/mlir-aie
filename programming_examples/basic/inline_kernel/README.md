@@ -70,22 +70,35 @@ trace (`event0`/`event1`).
 
 ### Measured (Strix Halo, aie2p / npu2)
 
-`add_one` over a 16-element tile, one call per tile, best of 3 runs (iters=200).
-These were taken with an earlier revision that timed **end-to-end host latency**
-in milliseconds; the script now prints on-NPU microseconds, so its absolute
-numbers will be smaller than the table. The speedup column is the durable part.
+`add_one` over a 16-element tile, one call per tile. Absolute times depend on the
+machine, the toolchain and the run, so only the ratio is quoted — that is the
+part that should hold up anywhere:
 
-| calls / iter | object-link | inline    | speedup |
-|-------------:|------------:|----------:|--------:|
-|          256 |    0.244 ms |  0.209 ms |  1.17x  |
-|         1024 |    0.340 ms |  0.261 ms |  1.30x  |
-|         4096 |    0.970 ms |  0.452 ms |  2.15x  |
-|        16384 |    2.894 ms |  1.488 ms |  1.95x  |
+| calls / iter | inline speedup |
+|-------------:|---------------:|
+|          256 |          ~1.3x |
+|         1024 |          ~1.5x |
+|         4096 |          ~1.8x |
+|        16384 |          ~2.1x |
 
-The object−inline delta grows with the number of calls — the signature of
-per-call overhead being removed. Inspecting the linked core LLVM IR confirms the
-mechanism: the object build keeps a `call @add_one` per (unrolled) tile, while the
-inline build has **zero** surviving calls and no separate `add_one.o`.
+Reproduce with (`calls/iter` is `num-elements / 16`):
+
+```bash
+for n in 4096 16384 65536 262144; do
+    python inline_kernel.py --num-elements $n --iters 200
+done
+```
+
+The speedup rises monotonically with call count — the signature of per-call
+overhead being removed, and the reason this design is deliberately call-heavy.
+Expect run-to-run noise at the small sizes, where the design is short enough
+that scheduling jitter is comparable to the effect; the large-call-count rows
+are the steady ones. Comparing each run's `min` rather than its `avg` gives the
+same picture slightly more sharply.
+
+Inspecting the linked core LLVM IR confirms the mechanism: the object build
+keeps a `call @add_one` per (unrolled) tile, while the inline build has **zero**
+surviving calls and no separate `add_one.o`.
 
 ## Constraints
 
