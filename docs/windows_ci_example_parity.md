@@ -5,21 +5,19 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
 
 Status: exploration / pre-PR. Branch `explore/windows-ci-parity` off `main`.
 
-**Relationship to #3453** (Deprecate WSL-based Windows setup): that issue owns
-the *policy/docs* deprecation (mark `buildHostWin.md` deprecated, update README,
-set a timeline — no code/CI changes). This work owns the *code* side: the WSL
-example-scaffolding branches #3453 lists for removal (its step 3) are deleted
-here, atomically with the CMake-native path that replaces them — since no CI
-covers WSL, they can't be safely removed until that replacement lands. #3453 =
-intent; this PR = executes the removal.
+**Scope:** this work migrates the example build/run flow to **CMake-native**.
+The WSL deprecation (#3453 — removing the `find_program(WSL)` /
+`powershell.exe`/`wslpath` / `C:/Technical` branches in the example scaffolding)
+is a **separate follow-up PR**, done after the CMake path lands, so each PR
+carries a single concern.
 
 **TL;DR:** ~126 `programming_examples`/`programming_guide` tests are skipped on
 Windows because they run via GNU `make`. Recommended direction: converge the
 example build/run flow on **CMake+Ninja** (idiomatic on both OSes; the host
-build is already CMake), retire the `make` orchestrator and the WSL shims, and
-keep the Makefiles as thin CMake-delegating wrappers so they stay tested.
-Reachable parity: 112 of 126 (14 are Chess/Vitis, never portable to native
-Windows). Installing `make` is documented as an interim stopgap only.
+build is already CMake), retire the `make` orchestrator, and keep the Makefiles
+as thin CMake-delegating wrappers so they stay tested. Reachable parity: 112 of
+126 (14 are Chess/Vitis, never portable to native Windows). Installing `make` is
+documented as an interim stopgap only. WSL removal follows in #3453.
 
 ## Problem
 
@@ -94,13 +92,14 @@ through CMake today** (`build_host_exe` calls `cmake --build`). Aligning the
 whole example flow on CMake removes the make/bash dependency entirely and gives
 one build system both OSes exercise natively.
 
-## Recommendation: CMake-native example builds, deprecate make **and** WSL on Windows
+## Recommendation: CMake-native example builds (deprecate the make orchestrator)
 
 Align the example build/run flow on **CMake + Ninja** so a design builds and
-runs end-to-end with no `make`, no bash, and no WSL — the idiomatic native
-experience on both Windows and Linux. This is a larger change than "install
-make," but it is the durable direction and removes two shims at once (make-as-
-orchestrator and the WSL `powershell`/`wslpath` hack).
+runs end-to-end with no `make` — the idiomatic native experience on both Windows
+and Linux. This is a larger change than "install make," but it is the durable
+direction. (Removing the separate WSL `powershell`/`wslpath` shims is a related
+but **separate** follow-up, #3453 — kept out of this work so each PR carries one
+concern.)
 
 ### What already exists vs. the gap
 - **Host C++ build: already CMake.** `build_host_exe` runs `cmake --build`
@@ -119,8 +118,10 @@ orchestrator and the WSL `powershell`/`wslpath` hack).
    target, and registers a `ctest` test that runs the host exe through
    `run_on_npu.py`. This makes each example fully buildable+runnable via
    `cmake --build` + `ctest` alone.
-2. **Strip the WSL branches** (implements step 3 of issue #3453). Remove the
-   WSL-detection forks across the example scaffolding:
+2. **(Follow-up, #3453) Strip the WSL branches** across the example scaffolding
+   — `find_program(WSL NAMES powershell.exe)`, the `C:/Technical` XRT/OpenCV
+   fallbacks, and `makefile-common`'s `powershell`/`getwslpath`/`wslpath -w`.
+   Deferred to a separate PR so this one stays a clean CMake migration. Details:
    - `programming_examples/mlir_aie_init.cmake:32` — `find_program(WSL NAMES powershell.exe)`
    - `programming_examples/common.cmake:26,102-103` — WSL XRT path fallback + `powershell.exe cmake` comment
    - `programming_examples/makefile-common:36-43, 81, 135-137` — `powershell`/`getwslpath`/`wslpath -w`
