@@ -671,8 +671,21 @@ jobs:
           mkdir "%NPU_CACHE_HOME%"
           set XRT_CONTEXT_CACHE_SIZE=2
 
+          REM TEMP diagnostics: confirm iron_env.cmd activated the venv.
+          echo ----- iron_env.cmd -----
+          type iron_env.cmd
+          echo ------------------------
+          echo VIRTUAL_ENV=%VIRTUAL_ENV%
+          echo PEANO_INSTALL_DIR=%PEANO_INSTALL_DIR%
+          echo XRT_ROOT=%XRT_ROOT%
+          echo NPU2=%NPU2%
+          where python
+
           REM Make-free @iron.jit example (Windows has no make on PATH).
-          python utils\run_on_npu.py npu2 python programming_examples\basic\passthrough_kernel\passthrough_kernel.py --in1_size 4096
+          REM Use the venv interpreter explicitly: bare "python" picked up the
+          REM system 3.13, which has no numpy.
+          set "IRON_PY=%CD%\ironenv\Scripts\python.exe"
+          "%IRON_PY%" utils\run_on_npu.py npu2 "%IRON_PY%" programming_examples\basic\passthrough_kernel\passthrough_kernel.py --in1_size 4096
           if errorlevel 1 exit /b 1
 
       - name: Cleanup NPU_CACHE_HOME
