@@ -3,12 +3,15 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 
-# REQUIRES: ryzen_ai_npu1, valid_xchess_license
+# REQUIRES: ryzen_ai_npu1, peano
 #
-# RUN: xchesscc_wrapper aie2 -I %aietools/include -c %S/kernel.cc -o ./kernel.o
+# RUN: %PEANO_INSTALL_DIR/bin/clang++ --target=aie2-none-unknown-elf -O2 \
+# RUN:   -std=c++20 -DNDEBUG -D__AIE_API_AIE_ADF_HPP__ \
+# RUN:   -I%S/../../../../include -I%S/../../../../third_party/aie_api/include \
+# RUN:   -c %S/kernel.cc -o ./kernel.o
 # RUN: %host_clang %S/test.cpp -o test.exe -std=c++17 -Wall %xrt_flags %host_link_flags %test_utils_flags
 # RUN: %python %S/aie2.py > ./aie2.mlir
-# RUN: %aiecc --xchesscc --xbridge --get-npu-insts --get-xclbin --xclbin-name=final.xclbin --npu-insts-name=insts.bin ./aie2.mlir
+# RUN: %aiecc --no-xchesscc --no-xbridge --get-npu-insts --get-xclbin --xclbin-name=final.xclbin --npu-insts-name=insts.bin ./aie2.mlir
 # RUN: %run_on_npu1% ./test.exe
 
 import numpy as np
