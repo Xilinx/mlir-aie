@@ -12,6 +12,10 @@ import pytest
 from aie.utils.hostruntime.hsaruntime import _bindings
 
 
+class HSAErrorForTest(Exception):
+    """Stand-in for a non-timeout failure raised from enqueue."""
+
+
 @pytest.mark.parametrize(
     "value,expected",
     [(None, 0.0), ("", 0.0), ("0", 0.0), ("1.5", 1.5), ("-3", 0.0), ("abc", 0.0)],
@@ -226,6 +230,94 @@ def test_run_chain_arms_shared_signal_to_chain_length(monkeypatch):
     assert rt._ctx.discard_calls == 0
 
 
+def test_enqueue_does_not_consume_an_index_it_cannot_fill(monkeypatch):
+    """A failed enqueue must leave the queue write index untouched.
+
+    Reserving an index and then failing to store a packet at it leaves the queue
+    permanently inconsistent (read index behind write index with an unwritten slot
+    between), and the next doorbell submits that garbage slot -- on hardware this
+    killed the context for the rest of the process with "Could not submit packets".
+    """
+    from aie.utils.hostruntime.hsaruntime import context as ctx_mod
+
+    reserved = []
+
+    class _FakeLib:
+        def hsa_queue_load_write_index_relaxed(self, q):
+            return 0
+
+        def hsa_queue_load_read_index_scacquire(self, q):
+            return 0  # queue empty: the wait loop never runs
+
+        def hsa_queue_add_write_index_relaxed(self, q, n):
+            reserved.append(n)
+            return 0
+
+    monkeypatch.setattr(ctx_mod, "lib", _FakeLib())
+    ctx = object.__new__(ctx_mod.HSAContext)
+    ctx.queue = object()
+    ctx.queue_size = 64
+
+    # A non-integer argument address fails conversion; that must happen before
+    # the write index is reserved.
+    with pytest.raises((TypeError, ValueError)):
+        ctx.enqueue(0x1, 0x2, 4, [("not-an-address", 4096)], 42)
+    assert reserved == [], "write index must not be consumed by a failed enqueue"
+
+
+def test_dispatch_chain_flushes_pending_packets_on_failure(monkeypatch):
+    """A mid-chain failure must not leave written-but-unrung packets queued.
+
+    They are valid packets; if left, the next unrelated dispatch's doorbell would
+    submit them too. The device is healthy in this path, so ring them.
+    """
+    from aie.utils.hostruntime.hsaruntime import context as ctx_mod
+
+    rings = []
+    seq = iter(range(1000))
+
+    def flaky_enqueue(*a):
+        i = next(seq)
+        if i == 3:
+            raise HSAErrorForTest("packet build failed")
+        return i, None
+
+    ctx = object.__new__(ctx_mod.HSAContext)
+    ctx.queue_size = 64
+    ctx.enqueue = flaky_enqueue
+    ctx.ring = rings.append
+
+    items = [(0x1, 0x2, 4, []) for _ in range(10)]
+    with pytest.raises(HSAErrorForTest):
+        ctx_mod.HSAContext.dispatch_chain(ctx, items, 42)
+    assert rings == [2], "the three packets written before the failure are rung"
+
+
+def test_dispatch_chain_does_not_ring_a_wedged_queue(monkeypatch):
+    """On a timeout the device is not draining, so ringing would block: don't."""
+    from aie.utils.hostruntime.hsaruntime import context as ctx_mod
+    from aie.utils.hostruntime.hsaruntime._bindings import HSATimeoutError
+
+    rings = []
+    seq = iter(range(1000))
+
+    def timing_out_enqueue(*a):
+        i = next(seq)
+        if i == 3:
+            raise HSATimeoutError("queue never drained")
+        return i, None
+
+    ctx = object.__new__(ctx_mod.HSAContext)
+    ctx.queue_size = 64
+    ctx.enqueue = timing_out_enqueue
+    ctx.ring = rings.append
+
+    items = [(0x1, 0x2, 4, []) for _ in range(10)]
+    with pytest.raises(HSATimeoutError):
+        ctx_mod.HSAContext.dispatch_chain(ctx, items, 42)
+    assert rings == [], "must not ring a queue the device is not draining"
+
+
 def test_doorbell_batch_stays_within_both_ceilings():
     """The batch must clear the firmware chain limit and the queue capacity.
 
@@ -289,9 +381,10 @@ def test_write_kernargs_layout():
     from aie.utils.hostruntime.hsaruntime.context import HSAContext
 
     buf = (ctypes.c_uint64 * 6)()
-    args = [(0x1000, 16), (0x2000, 32), (0x3000, 48)]
-    # Pure ctypes writes; does not touch self, so no device/context is needed.
-    HSAContext._write_kernargs(None, ctypes.addressof(buf), args)
+    # Pure ctypes writes over pre-converted ints; no device/context needed.
+    HSAContext._write_kernargs(
+        ctypes.addressof(buf), [0x1000, 0x2000, 0x3000], [16, 32, 48]
+    )
     assert list(buf) == [0x1000, 0x2000, 0x3000, 16, 32, 48]
 
 
@@ -318,8 +411,11 @@ def test_enqueue_times_out_when_queue_never_drains(monkeypatch):
     from aie.utils.hostruntime.hsaruntime._bindings import HSATimeoutError
 
     class _FakeLib:
+        def hsa_queue_load_write_index_relaxed(self, q):
+            return 64  # index we would reserve, peeked before the wait
+
         def hsa_queue_add_write_index_relaxed(self, q, n):
-            return 64  # our reserved write index
+            raise AssertionError("must not reserve an index it cannot fill")
 
         def hsa_queue_load_read_index_scacquire(self, q):
             return 0  # never advances -> wr_idx - 0 >= qsize stays true

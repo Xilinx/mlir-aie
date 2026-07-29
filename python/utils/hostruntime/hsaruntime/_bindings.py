@@ -307,6 +307,11 @@ class _HsaLib:
         )
         decl("hsa_queue_destroy", ctypes.c_int, [ctypes.POINTER(HsaQueue)])
         decl(
+            "hsa_queue_load_write_index_relaxed",
+            ctypes.c_uint64,
+            [ctypes.POINTER(HsaQueue)],
+        )
+        decl(
             "hsa_queue_add_write_index_relaxed",
             ctypes.c_uint64,
             [ctypes.POINTER(HsaQueue), ctypes.c_uint64],

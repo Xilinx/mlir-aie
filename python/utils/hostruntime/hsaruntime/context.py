@@ -409,13 +409,18 @@ class HSAContext:
         pkt.pdi_addr = pdi_ptr
         return pkt
 
-    def _write_kernargs(self, va, args):
-        """Write the 2*N uint64 kernarg block: N addresses, then N byte sizes."""
-        n = len(args)
+    @staticmethod
+    def _write_kernargs(va, addrs, sizes):
+        """Write the 2*N uint64 kernarg block: N addresses, then N byte sizes.
+
+        Takes pre-converted ints so that this cannot raise -- it runs after the
+        queue write index has been reserved, where a failure would be unrecoverable
+        (see :meth:`enqueue`)."""
+        n = len(addrs)
         ka = (ctypes.c_uint64 * (2 * n)).from_address(va)
-        for i, (arg_va, nbytes) in enumerate(args):
-            ka[i] = arg_va
-            ka[n + i] = nbytes
+        for i in range(n):
+            ka[i] = addrs[i]
+            ka[n + i] = sizes[i]
 
     def enqueue(self, pdi_ptr, insts_ptr, insts_size, args, signal):
         """Write one packet at the next queue slot (no doorbell).
@@ -430,14 +435,33 @@ class HSAContext:
         ``_MAX_POOLED_KERNARGS`` do not fit a slot and fall back to a per-dispatch
         allocation.
 
+        This is all-or-nothing with respect to the queue: everything that can fail
+        (argument conversion, the overflow allocation, waiting for a free slot)
+        happens *before* the write index is reserved. Reserving an index and then
+        failing to store a packet at it would leave the queue permanently
+        inconsistent -- read index behind write index with an unwritten slot
+        between them -- and the next doorbell would submit that garbage slot,
+        killing the context for the rest of the process.
+
         Spins while the queue is full so an in-flight batch drains (wrap-around),
         yielding each iteration so it doesn't peg a core. When ``IRON_HSA_TIMEOUT``
         is set, the spin is bounded by that timeout and raises
-        :class:`HSATimeoutError` (mirroring :meth:`wait`); the reserved write
-        index is then abandoned since the packet was never made visible."""
+        :class:`HSATimeoutError` (mirroring :meth:`wait`)."""
+        # -- fallible section: nothing here has touched the queue yet ----------
+        n = len(args)
+        addrs = [int(va) for va, _ in args]
+        sizes = [int(nbytes) for _, nbytes in args]
+        pdi_ptr = int(pdi_ptr)
+        insts_ptr = int(insts_ptr)
+        insts_size = int(insts_size)
+        signal = int(signal)
+
         q = self.queue
         qsize = self.queue_size
-        wr_idx = lib.hsa_queue_add_write_index_relaxed(q, 1)
+        # Single-producer by contract (callers serialize dispatches), so peeking
+        # the write index and reserving it after the wait is race-free -- and it
+        # keeps a timed-out wait from consuming an index it will never fill.
+        wr_idx = lib.hsa_queue_load_write_index_relaxed(q)
         # The queue is normally not full, so the loop body never runs; read the
         # timeout / compute the deadline lazily on first spin to keep the common
         # path free of a per-dispatch os.environ read.
@@ -454,23 +478,17 @@ class HSAContext:
                 )
             time.sleep(0)  # yield so a full-queue spin doesn't peg a core
 
+        overflow = self.vmem_alloc(2 * n * 8) if n > _MAX_POOLED_KERNARGS else None
+
+        # -- committed section: reserve the index, then only plain stores ------
+        wr_idx = lib.hsa_queue_add_write_index_relaxed(q, 1)
         # Only now that the ring slot is ours may its kernarg slot be reused: the
         # device has finished reading whatever the previous occupant wrote.
         slot = wr_idx % qsize
-        n = len(args)
-        overflow = None
-        if n <= _MAX_POOLED_KERNARGS:
-            ka_va = self._kernarg_va + slot * self.kernarg_slot_size
-        else:
-            overflow = self.vmem_alloc(2 * n * 8)
-            ka_va = overflow[1]
-        try:
-            self._write_kernargs(ka_va, args)
-        except BaseException:
-            if overflow is not None:
-                self.vmem_free(*overflow)
-            raise
-
+        ka_va = overflow[1] if overflow is not None else (
+            self._kernarg_va + slot * self.kernarg_slot_size
+        )
+        self._write_kernargs(ka_va, addrs, sizes)
         self.queue_packets[slot] = self._fill_packet(
             pdi_ptr, insts_ptr, insts_size, ka_va if n else None, n, signal
         )
@@ -514,20 +532,33 @@ class HSAContext:
         batch = min(_MAX_DOORBELL_BATCH, self.queue_size)
         pending = 0
         wr_idx = None
-        for pdi_ptr, insts_ptr, insts_size, args in items:
-            wr_idx, overflow = self.enqueue(
-                pdi_ptr, insts_ptr, insts_size, args, signal
-            )
-            if overflow is not None:
-                overflows.append(overflow)
-            pending += 1
-            # Ring every `batch` packets rather than every packet: ROCR chains the
-            # whole pending group into one submission, and ringing also drains
-            # slots so a chain longer than the queue wraps around instead of
-            # deadlocking on a full queue.
-            if pending == batch:
+        try:
+            for pdi_ptr, insts_ptr, insts_size, args in items:
+                wr_idx, overflow = self.enqueue(
+                    pdi_ptr, insts_ptr, insts_size, args, signal
+                )
+                if overflow is not None:
+                    overflows.append(overflow)
+                pending += 1
+                # Ring every `batch` packets rather than every packet: ROCR chains
+                # the whole pending group into one submission, and ringing also
+                # drains slots so a chain longer than the queue wraps around
+                # instead of deadlocking on a full queue.
+                if pending == batch:
+                    self.ring(wr_idx)
+                    pending = 0
+        except HSATimeoutError:
+            # The device is not draining the queue; ringing would block in the
+            # synchronous submit, so leave the pending packets for whatever
+            # recovers the device.
+            raise
+        except BaseException:
+            # A packet failed to build, but the ones already written are valid and
+            # the device is healthy. Ring them so the queue is not left carrying
+            # un-rung packets that a later, unrelated dispatch would submit.
+            if pending:
                 self.ring(wr_idx)
-                pending = 0
+            raise
         if pending:
             self.ring(wr_idx)
         return overflows
