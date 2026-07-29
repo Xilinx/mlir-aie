@@ -23,8 +23,8 @@ endif()
 # -----------------------------------------------------------------------------
 # Resolve MLIR-AIE root directory
 # -----------------------------------------------------------------------------
-# Prefer deterministic repo-root detection from this file's location; fall back
-# to a Python probe only if the expected layout isn't found.
+# In WSL, CMake runs on Windows via `powershell.exe cmake`. Therefore, we must
+# prefer deterministic repo-root detection. Fall back to Python only if needed.
 
 get_filename_component(_mlir_aie_repo_root "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)
 if(EXISTS "${_mlir_aie_repo_root}/runtime_lib/test_lib/xrt_test_wrapper.h")
@@ -97,15 +97,23 @@ if(NOT DEFINED XRT_INC_DIR OR NOT DEFINED XRT_LIB_DIR)
         endif()
     endif()
 
-    # Fall back to default Linux paths if still unset. On Windows, XRT must be
-    # supplied via find_package(XRT) above or -DXRT_INC_DIR/-DXRT_LIB_DIR; there
-    # is no hardcoded default.
-    if(NOT WIN32 AND (NOT DEFINED XRT_INC_DIR OR NOT DEFINED XRT_LIB_DIR))
-        if(NOT DEFINED XRT_INC_DIR)
-            set(XRT_INC_DIR /opt/xilinx/xrt/include CACHE STRING "Path to XRT headers")
-        endif()
-        if(NOT DEFINED XRT_LIB_DIR)
-            set(XRT_LIB_DIR /opt/xilinx/xrt/lib CACHE STRING "Path to XRT libraries")
+    # Fall back to legacy/default paths if still unset
+    if(NOT DEFINED XRT_INC_DIR OR NOT DEFINED XRT_LIB_DIR)
+        find_program(WSL NAMES powershell.exe)
+        if(NOT WSL)
+            if(NOT DEFINED XRT_INC_DIR)
+                set(XRT_INC_DIR /opt/xilinx/xrt/include CACHE STRING "Path to XRT headers")
+            endif()
+            if(NOT DEFINED XRT_LIB_DIR)
+                set(XRT_LIB_DIR /opt/xilinx/xrt/lib CACHE STRING "Path to XRT libraries")
+            endif()
+        else()
+            if(NOT DEFINED XRT_INC_DIR)
+                set(XRT_INC_DIR C:/Technical/XRT/src/runtime_src/core/include CACHE STRING "Path to XRT headers")
+            endif()
+            if(NOT DEFINED XRT_LIB_DIR)
+                set(XRT_LIB_DIR C:/Technical/xrtNPUfromDLL CACHE STRING "Path to XRT libraries")
+            endif()
         endif()
     endif()
 endif()
