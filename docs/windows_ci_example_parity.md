@@ -72,6 +72,29 @@ dirs.
   ~5-6 vision/resnet examples also need OpenCV. Centralized in
   `programming_examples/common.cmake` (`target_link_test_utils`). No cxxopts.
 
+## Sweep shape: most make-lits are parameter sweeps
+
+Measured on the current tree:
+
+- **126** make-gated lits across **59** example dirs — i.e. many lits per dir.
+- **98 of 126 are parameterized sweeps**: they drive one shared `Makefile` with
+  different env vars, e.g.
+  `env n_aie_cols=1 make -f %S/../Makefile` vs `n_aie_cols=4`
+  (`basic/matrix_multiplication/whole_array/tests/` alone has 19 such lits).
+  Only **28** are plain, unparameterized invocations.
+- `jit_xclbin` is used by 39 Makefiles, `build_host_exe` by 31 (of 60 total).
+- Design args vary widely: `-d`, `-m/-k/-n`, `--n-aie-cols`, `--b-col-maj`,
+  `-W/-H`, `-ic/-oc`, `--tile-height/width`, `--dtype`, …
+
+**Implication for the CMake migration.** `add_aie_design` is evaluated at
+*configure* time, so each parameterization needs its own configure directory
+(`cmake -B <dir> -D<param>=<value>`), and each example's `CMakeLists.txt` must
+expose its sweep parameters as cache variables. That is expressible — the pilot
+`run_cmake.lit` already configures into `%t.cmake` — but it means the conversion
+is **not a uniform mechanical edit**: parameterized examples need per-example
+attention to decide which knobs become cache vars. Plan the sweep in buckets
+(plain first, then per-family parameterized) rather than as one bulk rewrite.
+
 ## Options considered
 
 | # | Option | Effort | Native Windows? | Verdict |
