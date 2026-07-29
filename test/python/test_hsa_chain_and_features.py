@@ -246,6 +246,92 @@ def test_enqueue_times_out_when_queue_never_drains(monkeypatch):
         ctx.enqueue(0x1, 0x2, 4, [], 42)
 
 
+def _bare_ctx_for_wait(monkeypatch, wait_returns):
+    """A hardware-free HSAContext exposing only what wait() reads.
+
+    `wait_returns` is called per native wait and yields the observed signal value.
+    """
+    from aie.utils.hostruntime.hsaruntime import context as ctx_mod
+
+    calls = []
+
+    class _FakeLib:
+        def hsa_signal_wait_scacquire(self, sig, cond, cmp_val, ticks, state):
+            calls.append(ticks)
+            return wait_returns()
+
+    monkeypatch.setattr(ctx_mod, "lib", _FakeLib())
+    ctx = object.__new__(ctx_mod.HSAContext)
+    ctx.timestamp_freq = 1_000_000  # 1 MHz -> 1 tick == 1us
+    ctx.signal_max_wait = 0  # unclamped
+    return ctx, calls
+
+
+def test_wait_uses_native_timeout_without_a_watchdog_thread(monkeypatch):
+    """A bounded wait must not spawn a thread; it bounds hsa_signal_wait itself.
+
+    Guards the perf property: the old implementation ran every bounded wait on a
+    fresh daemon thread, which cost ~80us per dispatch.
+    """
+    import threading
+
+    ctx, calls = _bare_ctx_for_wait(monkeypatch, wait_returns=lambda: 0)
+    monkeypatch.setenv("IRON_HSA_TIMEOUT", "5")
+
+    before = threading.active_count()
+    ctx.wait(42)
+    assert threading.active_count() == before, "bounded wait must not spawn a thread"
+    # 5s at 1MHz, passed as a real tick-unit hint rather than "wait forever".
+    assert calls == [5_000_000]
+
+
+def test_wait_times_out_when_signal_never_fires(monkeypatch):
+    """A signal stuck above 0 must raise HSATimeoutError at the wall-clock deadline."""
+    from aie.utils.hostruntime.hsaruntime._bindings import HSATimeoutError
+
+    ctx, calls = _bare_ctx_for_wait(monkeypatch, wait_returns=lambda: 1)
+    monkeypatch.setenv("IRON_HSA_TIMEOUT", "0.05")
+
+    with pytest.raises(HSATimeoutError):
+        ctx.wait(42)
+    assert calls, "the native wait must actually have been attempted"
+
+
+def test_wait_retries_on_spurious_wakeup(monkeypatch):
+    """hsa_signal_wait may resume early with the condition unmet; wait() must retry.
+
+    The timeout is documented as a hint and the returned value need not satisfy
+    the condition, so a single call is not sufficient.
+    """
+    values = iter([1, 1, 0])  # two spurious wakeups, then the real completion
+    ctx, calls = _bare_ctx_for_wait(monkeypatch, wait_returns=lambda: next(values))
+    monkeypatch.setenv("IRON_HSA_TIMEOUT", "30")
+
+    ctx.wait(42)  # must not raise
+    assert len(calls) == 3
+
+
+def test_wait_clamps_hint_to_signal_max_wait(monkeypatch):
+    """The per-attempt hint is clamped to SIGNAL_MAX_WAIT, not the raw timeout."""
+    ctx, calls = _bare_ctx_for_wait(monkeypatch, wait_returns=lambda: 0)
+    ctx.signal_max_wait = 1000
+    monkeypatch.setenv("IRON_HSA_TIMEOUT", "5")  # 5_000_000 ticks, clamped to 1000
+
+    ctx.wait(42)
+    assert calls == [1000]
+
+
+def test_unbounded_wait_blocks_forever_by_default(monkeypatch):
+    """With no IRON_HSA_TIMEOUT the wait passes the wait-forever sentinel."""
+    from aie.utils.hostruntime.hsaruntime._bindings import _HSA_WAIT_FOREVER
+
+    ctx, calls = _bare_ctx_for_wait(monkeypatch, wait_returns=lambda: 0)
+    monkeypatch.delenv("IRON_HSA_TIMEOUT", raising=False)
+
+    ctx.wait(42)
+    assert calls == [_HSA_WAIT_FOREVER]
+
+
 def test_load_and_run_rejects_trace_before_touching_args(monkeypatch):
     """A trace_config must be rejected before base load_and_run mutates run_args."""
     from aie.utils.hostruntime.hsaruntime import hostruntime as hrt
