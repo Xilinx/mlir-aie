@@ -127,6 +127,10 @@ def _make_fake_ctx_cls(overflows):
         def dispatch(self, pdi_ptr, insts_ptr, insts_size, arg_pairs, signal):
             return list(overflows)
 
+        def dispatch_chain(self, items, signal):
+            self.chained = len(items)
+            return list(overflows)
+
         def wait(self, signal):
             if self._timeout_on_wait:
                 raise HSATimeoutError("simulated IRON_HSA_TIMEOUT")
@@ -207,24 +211,8 @@ def test_run_chain_arms_shared_signal_to_chain_length(monkeypatch):
     Each completed packet decrements it, so a single wait suffices; arming to
     anything else would either return early or hang.
     """
-    from aie.utils.hostruntime.hsaruntime import hostruntime as hrt
-
-    cls = _make_fake_ctx_cls([])
-
-    class _ChainCtx(cls):
-        def dispatch_chain(self, items, signal):
-            self.chained = len(items)
-            return []
-
-    monkeypatch.setattr(
-        hrt.HSAContext, "get", classmethod(lambda c: _ChainCtx(timeout_on_wait=False))
-    )
-    rt = hrt.HSAHostRuntime()
-    handle = hrt.HSAKernelHandle(
-        pdi_ptr=0x1, insts_ptr=0x2, insts_size=4, kernel_name="MLIR_AIE"
-    )
-    runs = [(handle, []), (handle, []), (handle, [])]
-    assert rt.run_chain(runs).is_success()
+    rt, handle = _run_with_fake_ctx(monkeypatch, overflows=[], timeout_on_wait=False)
+    assert rt.run_chain([(handle, []), (handle, []), (handle, [])]).is_success()
     assert rt._ctx.armed == [3]
     assert rt._ctx.chained == 3
     assert rt._ctx.discard_calls == 0
@@ -265,7 +253,20 @@ def test_enqueue_does_not_consume_an_index_it_cannot_fill(monkeypatch):
     assert reserved == [], "write index must not be consumed by a failed enqueue"
 
 
-def test_dispatch_chain_flushes_pending_packets_on_failure(monkeypatch):
+def _raise_at(index, exc):
+    """Enqueue stub that succeeds until `index`, then raises `exc`."""
+    seq = iter(range(1000))
+
+    def enqueue(*a):
+        i = next(seq)
+        if i == index:
+            raise exc
+        return i, None
+
+    return enqueue
+
+
+def test_dispatch_chain_flushes_pending_packets_on_failure():
     """A mid-chain failure must not leave written-but-unrung packets queued.
 
     They are valid packets; if left, the next unrelated dispatch's doorbell would
@@ -273,58 +274,49 @@ def test_dispatch_chain_flushes_pending_packets_on_failure(monkeypatch):
     """
     from aie.utils.hostruntime.hsaruntime import context as ctx_mod
 
-    rings = []
-    seq = iter(range(1000))
-
-    def flaky_enqueue(*a):
-        i = next(seq)
-        if i == 3:
-            raise HSAErrorForTest("packet build failed")
-        return i, None
-
-    ctx = object.__new__(ctx_mod.HSAContext)
-    ctx.queue_size = 64
-    ctx.enqueue = flaky_enqueue
-    ctx.ring = rings.append
-
+    ctx, rings = _chain_ctx(_raise_at(3, HSAErrorForTest("packet build failed")))
     items = [(0x1, 0x2, 4, []) for _ in range(10)]
     with pytest.raises(HSAErrorForTest):
         ctx_mod.HSAContext.dispatch_chain(ctx, items, 42)
     assert rings == [2], "the three packets written before the failure are rung"
 
 
-def test_dispatch_chain_does_not_ring_a_wedged_queue(monkeypatch):
+def test_dispatch_chain_does_not_ring_a_wedged_queue():
     """On a timeout the device is not draining, so ringing would block: don't."""
     from aie.utils.hostruntime.hsaruntime import context as ctx_mod
     from aie.utils.hostruntime.hsaruntime._bindings import HSATimeoutError
 
-    rings = []
-    seq = iter(range(1000))
-
-    def timing_out_enqueue(*a):
-        i = next(seq)
-        if i == 3:
-            raise HSATimeoutError("queue never drained")
-        return i, None
-
-    ctx = object.__new__(ctx_mod.HSAContext)
-    ctx.queue_size = 64
-    ctx.enqueue = timing_out_enqueue
-    ctx.ring = rings.append
-
+    ctx, rings = _chain_ctx(_raise_at(3, HSATimeoutError("queue never drained")))
     items = [(0x1, 0x2, 4, []) for _ in range(10)]
     with pytest.raises(HSATimeoutError):
         ctx_mod.HSAContext.dispatch_chain(ctx, items, 42)
     assert rings == [], "must not ring a queue the device is not draining"
 
 
-def test_doorbell_batch_stays_within_both_ceilings():
-    """The batch must clear the firmware chain limit and the queue capacity.
+def _chain_ctx(enqueue=None):
+    """A hardware-free HSAContext exposing only what dispatch_chain reads.
 
-    Overshooting the firmware's maximum chain length aborts the process inside
-    ROCR on an assert (not a catchable error), and exceeding the queue capacity
-    deadlocks enqueue, so this constant is load-bearing for correctness, not just
-    for speed.
+    Returns (ctx, rings); `rings` records the write index of every doorbell.
+    """
+    from aie.utils.hostruntime.hsaruntime import context as ctx_mod
+
+    ctx = object.__new__(ctx_mod.HSAContext)
+    ctx.queue_size = 64
+    ctx.doorbell_batch = min(ctx_mod._MAX_DOORBELL_BATCH, ctx.queue_size)
+    rings = []
+    seq = iter(range(1000))
+    ctx.enqueue = enqueue or (lambda *a: (next(seq), None))
+    ctx.ring = rings.append
+    return ctx, rings
+
+
+def test_doorbell_batch_stays_within_firmware_chain_limit():
+    """The batch must clear the firmware's maximum chain length.
+
+    Overshooting it aborts the process inside ROCR on an assert (not a catchable
+    error), so this constant is load-bearing for correctness, not just for speed.
+    The other ceiling, queue capacity, is enforced at runtime by doorbell_batch's
+    min() rather than here.
     """
     from aie.utils.hostruntime.hsaruntime import context as ctx_mod
 
@@ -332,43 +324,29 @@ def test_doorbell_batch_stays_within_both_ceilings():
     assert ctx_mod._MAX_DOORBELL_BATCH <= 40
 
 
-def test_dispatch_chain_rings_in_batches(monkeypatch):
-    """dispatch_chain rings every _MAX_DOORBELL_BATCH packets, plus a remainder.
+def test_dispatch_chain_rings_in_batches():
+    """dispatch_chain rings every doorbell_batch packets, plus a remainder.
 
     Ringing per packet (the old behavior) makes every ROCR command chain length
     1, which costs ~2x; ringing only at the end deadlocks past queue capacity.
     """
     from aie.utils.hostruntime.hsaruntime import context as ctx_mod
 
-    ctx = object.__new__(ctx_mod.HSAContext)
-    ctx.queue_size = 64
-    # Deterministic write-index sequence + ring recorder.
-    rings = []
-    seq = iter(range(1000))
-    ctx.enqueue = lambda *a: (next(seq), None)
-    ctx.ring = rings.append
-
-    batch = min(ctx_mod._MAX_DOORBELL_BATCH, ctx.queue_size)
+    ctx, rings = _chain_ctx()
+    batch = ctx.doorbell_batch
     n = batch * 2 + 3  # two full batches and a partial remainder
     items = [(0x1, 0x2, 4, []) for _ in range(n)]
     assert ctx_mod.HSAContext.dispatch_chain(ctx, items, 42) == []
 
-    assert len(rings) == 3, "two full batches plus one remainder ring"
     # Each ring carries the write index of the last packet in its group.
     assert rings == [batch - 1, 2 * batch - 1, n - 1]
 
 
-def test_dispatch_chain_rings_once_when_shorter_than_a_batch(monkeypatch):
+def test_dispatch_chain_rings_once_when_shorter_than_a_batch():
     """A chain shorter than one batch is submitted as a single command chain."""
     from aie.utils.hostruntime.hsaruntime import context as ctx_mod
 
-    ctx = object.__new__(ctx_mod.HSAContext)
-    ctx.queue_size = 64
-    seq = iter(range(1000))
-    rings = []
-    ctx.enqueue = lambda *a: (next(seq), None)
-    ctx.ring = rings.append
-
+    ctx, rings = _chain_ctx()
     items = [(0x1, 0x2, 4, []) for _ in range(3)]
     ctx_mod.HSAContext.dispatch_chain(ctx, items, 42)
     assert rings == [2], "one ring carrying the last write index"

@@ -9,7 +9,7 @@ Consumes the aiecc artifacts ``insts.bin`` + ``main.pdi`` (the xclbin is
 ignored on this path) and dispatches them as AIE AQL packets:
 
     insts.bin + main.pdi -> HSA device heap (hsa_amd_memory_pool_allocate)
-    I/O tensors          -> kernarg buffer of 2*N uint64 (VAs then sizes)
+    I/O tensors          -> pooled kernarg slot of 2*N uint64 (VAs then sizes)
     fill AQL packet(s), ring doorbell, wait on completion signal
 
 A single ``run`` issues one packet; ``run_chain`` issues N packets that share
@@ -140,6 +140,21 @@ class HSAHostRuntime(HostRuntime):
         the kernarg block must carry, matching ROCR's dispatch.cc."""
         return [(t.buffer_object(), t.nbytes) for t in kept]
 
+    def _release_dispatch(self, timed_out, overflows):
+        """Release what a completed dispatch owns; leak what a wedged one still does.
+
+        The steady-state path frees nothing: kernargs come from the context's
+        fixed slot pool and the completion signal is reused. Only an
+        over-capacity argument list allocates. On a timeout the packets are still
+        in flight, so the device may yet decrement the shared signal and read the
+        overflow buffers -- replace the signal rather than reuse it, and leak the
+        buffers rather than free them (see HSATimeoutError)."""
+        if timed_out:
+            self._ctx.discard_signal()
+        else:
+            for overflow in overflows:
+                self._ctx.vmem_free(*overflow)
+
     def _validate_args(self, args):
         kept = [a for a in args if not callable(a)]
         if not all(isinstance(a, self._tensor_class) for a in kept):
@@ -186,19 +201,7 @@ class HSAHostRuntime(HostRuntime):
             timed_out = True
             raise
         finally:
-            # Kernargs normally live in the context's fixed slot pool and the
-            # completion signal is reused across dispatches, so the success path
-            # frees nothing; only an over-capacity argument list allocates. On a
-            # timeout the dispatch is wedged on the device with the packet
-            # in-flight, so the device still owns the shared signal (it may
-            # decrement it later) and any overflow buffer: replace the signal
-            # rather than reuse it, and leak the buffer rather than free it (see
-            # HSATimeoutError docstring).
-            if timed_out:
-                self._ctx.discard_signal()
-            else:
-                for overflow in overflows:
-                    self._ctx.vmem_free(*overflow)
+            self._release_dispatch(timed_out, overflows)
 
         return HSAKernelResult(stop - start, success=True)
 
@@ -225,7 +228,7 @@ class HSAHostRuntime(HostRuntime):
         if not runs:
             return HSAKernelResult(0, success=True)
 
-        items = []  # (pdi_ptr, insts_ptr, insts_size, arg_pairs)
+        items = []
         timed_out = False
         overflows = []
         signal = self._ctx.arm_signal(len(runs))
@@ -250,18 +253,7 @@ class HSAHostRuntime(HostRuntime):
             timed_out = True
             raise
         finally:
-            # Kernargs normally come from the context's fixed slot pool, written
-            # per packet as its ring slot is reserved, and the completion signal is
-            # reused across dispatches; only over-capacity argument lists allocate.
-            # On a timeout the chain is wedged on the device with packets
-            # in-flight -- and a partly-enqueued chain leaves the shared signal
-            # stuck above 0 -- so replace the signal rather than reuse it, and leak
-            # any overflow buffers (see HSATimeoutError docstring).
-            if timed_out:
-                self._ctx.discard_signal()
-            else:
-                for overflow in overflows:
-                    self._ctx.vmem_free(*overflow)
+            self._release_dispatch(timed_out, overflows)
 
         return HSAKernelResult(stop - start, success=True)
 

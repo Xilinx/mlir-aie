@@ -33,10 +33,10 @@ from ._bindings import (
     HSA_DEVICE_TYPE_CPU,
     HSA_QUEUE_TYPE_SINGLE,
     HSA_SIGNAL_CONDITION_EQ,
-    HSA_SYSTEM_INFO_SIGNAL_MAX_WAIT,
-    HSA_SYSTEM_INFO_TIMESTAMP_FREQUENCY,
     HSA_STATUS_INFO_BREAK,
     HSA_STATUS_SUCCESS,
+    HSA_SYSTEM_INFO_SIGNAL_MAX_WAIT,
+    HSA_SYSTEM_INFO_TIMESTAMP_FREQUENCY,
     HSA_WAIT_STATE_BLOCKED,
     MEMORY_TYPE_PINNED,
     HSAError,
@@ -61,6 +61,7 @@ from ._bindings import (
 # allocation is this * 16B * queue_size, i.e. 16KB for a 64-slot queue. Argument
 # lists longer than this still work, via a per-dispatch fallback allocation.
 _MAX_POOLED_KERNARGS = 16
+_KERNARG_SLOT_SIZE = _MAX_POOLED_KERNARGS * 2 * 8
 
 # Packets to enqueue before ringing the doorbell. ROCR submits every packet
 # pending at the ring as ONE ERT command chain, so batching the doorbell is what
@@ -149,12 +150,11 @@ class HSAContext:
         # safe for free: `enqueue` only writes ring slot i once the device has
         # consumed the previous packet there, and that is exactly when the device
         # is done reading slot i's kernargs.
-        self.kernarg_slot_size = _MAX_POOLED_KERNARGS * 2 * 8
-        (
-            self._kernarg_handle,
-            self._kernarg_va,
-            self._kernarg_alloc_size,
-        ) = self.vmem_alloc(self.kernarg_slot_size * self.queue_size)
+        # Never freed: the context is a process-global singleton with no teardown.
+        _, self._kernarg_va, _ = self.vmem_alloc(_KERNARG_SLOT_SIZE * self.queue_size)
+
+        # Fixed for the life of the queue, like the caches above.
+        self.doorbell_batch = min(_MAX_DOORBELL_BATCH, self.queue_size)
 
         # One completion signal reused by every dispatch, armed per dispatch
         # rather than created and destroyed each time. Safe for the same reason
@@ -370,16 +370,12 @@ class HSAContext:
         )
         return sig.value
 
-    def destroy_signal(self, sig):
-        if sig:
-            lib.hsa_signal_destroy(hsa_signal_t(sig))
-
     def arm_signal(self, value):
         """Arm the shared completion signal to ``value`` and return it.
 
         ``value`` is the number of packets that will decrement it (1 for a single
         dispatch, len(chain) for a chain), so a single wait covers the batch."""
-        lib.hsa_signal_store_screlease(hsa_signal_t(self._signal), value)
+        lib.hsa_signal_store_screlease(self._signal, value)
         return self._signal
 
     def discard_signal(self):
@@ -485,8 +481,10 @@ class HSAContext:
         # Only now that the ring slot is ours may its kernarg slot be reused: the
         # device has finished reading whatever the previous occupant wrote.
         slot = wr_idx % qsize
-        ka_va = overflow[1] if overflow is not None else (
-            self._kernarg_va + slot * self.kernarg_slot_size
+        ka_va = (
+            overflow[1]
+            if overflow is not None
+            else self._kernarg_va + slot * _KERNARG_SLOT_SIZE
         )
         self._write_kernargs(ka_va, addrs, sizes)
         self.queue_packets[slot] = self._fill_packet(
@@ -529,7 +527,6 @@ class HSAContext:
         Returns the list of one-off kernarg allocations to free after the wait.
         """
         overflows = []
-        batch = min(_MAX_DOORBELL_BATCH, self.queue_size)
         pending = 0
         wr_idx = None
         try:
@@ -544,7 +541,7 @@ class HSAContext:
                 # the whole pending group into one submission, and ringing also
                 # drains slots so a chain longer than the queue wraps around
                 # instead of deadlocking on a full queue.
-                if pending == batch:
+                if pending == self.doorbell_batch:
                     self.ring(wr_idx)
                     pending = 0
         except HSATimeoutError:
