@@ -5,11 +5,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-// CoreOp verifier rules for the two canonical link lists:
+// CoreOp verifier rules introduced with 'link_merge_files':
 //   * a path may not appear in both 'link_files' and 'link_merge_files';
-//   * the deprecated core-level 'link_with' conflicts with either list.
+//   * the deprecated core-level 'link_with' conflicts with the new list too.
 // The deprecated attribute has no way to request merging -- it always means an
 // ordinary final-link input.
+//
+// The pre-existing 'link_with' vs 'link_files' conflict is covered by
+// cpp_link_with_both_attrs.mlir and is deliberately not repeated here.
 
 // RUN: aie-opt --verify-diagnostics --split-input-file %s
 
@@ -22,20 +25,6 @@ module {
     %core_0_2 = aie.core(%tile_0_2) {
       aie.end
     } {link_files = ["a.o", "dup.o"], link_merge_files = ["dup.o", "b.o"]}
-  }
-}
-
-// -----
-
-// Deprecated core-level link_with conflicts with link_files.
-module {
-  aie.device(npu1_1col) {
-    %tile_0_2 = aie.tile(0, 2)
-
-    // expected-error@+1 {{cannot specify both 'link_with' (deprecated) and 'link_files'}}
-    %core_0_2 = aie.core(%tile_0_2) {
-      aie.end
-    } {link_with = "a.o", link_files = ["b.o"]}
   }
 }
 

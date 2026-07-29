@@ -14,19 +14,16 @@
 // `link_files` and is an ordinary final-link input whatever its suffix -- a
 // .bc included, since lld accepts bitcode as an LTO input.
 //
-// Both halves are checked here: the pass's routing, and the emitters' output.
+// This file owns the emitters' half of the contract.  The pass's routing --
+// which artifact lands in which list -- is pinned by
+// cpp_link_with_mode_merge.mlir and is deliberately not re-asserted here.
 
-// RUN: aie-opt --verify-diagnostics --aie-assign-core-link-files %s | FileCheck %s --check-prefix=OPT
 // RUN: aie-opt --verify-diagnostics --aie-assign-core-link-files %s | aie-translate --aie-generate-ldscript --tilecol=0 --tilerow=2 | FileCheck %s --check-prefix=LDSCRIPT
 // RUN: aie-opt --verify-diagnostics --aie-assign-core-link-files %s | aie-translate --aie-generate-bcf --tilecol=0 --tilerow=2 | FileCheck %s --check-prefix=BCF
 
-// The pass splits by mode, not by suffix: the .bc stays an ordinary link
-// input, and only the merge-mode artifact moves to link_merge_files.
-// OPT:      link_files = ["kernel_obj.o", "kernel_ir.bc"]
-// OPT-SAME: link_merge_files = ["kernel_merge.ll"]
-
-// Every link_files entry is handed to the linker verbatim; the merge-mode
-// artifact appears nowhere.
+// Every link_files entry is handed to the linker verbatim -- including the
+// .bc, which lld takes as an LTO input -- and the merge-mode artifact appears
+// nowhere.
 // LDSCRIPT-NOT:  kernel_merge.ll
 // LDSCRIPT:      INPUT(kernel_obj.o)
 // LDSCRIPT-NEXT: INPUT(kernel_ir.bc)
