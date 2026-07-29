@@ -413,6 +413,28 @@ bool Pathfinder::addFixedConnection(SwitchboxOp switchboxOp) {
       return false;
     reserved.emplace_back(srcIdx, dstIdx);
   }
+  // A pre-placed packet-switched output (an aie.masterset, e.g. materialized
+  // from a `via`-pinned aie.packet_flow) also monopolizes its destination port:
+  // that stream-switch output is already configured for packet switching, so no
+  // circuit stream may drive it, and the router cannot emit a second masterset
+  // on the same port for another packet flow. Reserve those output ports too;
+  // otherwise the circuit pathfinder, blind to packet ops, may route a flow
+  // onto an output the masterset already owns, producing an illegal
+  // double-driver (two ops targeting the same dest) at materialization.
+  llvm::SmallVector<int, 8> reservedMasterDsts;
+  for (MasterSetOp masterSetOp : switchboxOp.getOps<MasterSetOp>()) {
+    int dstIdx = -1;
+    for (size_t j = 0; j < sb.dstPorts.size(); j++)
+      if (sb.dstPorts[j] == masterSetOp.destPort()) {
+        dstIdx = static_cast<int>(j);
+        break;
+      }
+    // Reject an output port absent from the switchbox model or already driven
+    // by a circuit connect or another masterset.
+    if (dstIdx < 0 || !claimedDsts.insert(dstIdx).second)
+      return false;
+    reservedMasterDsts.push_back(dstIdx);
+  }
   // A circuit-switched ConnectOp monopolizes both its source port (the stream
   // switch input) and its destination port (the output): no other stream may
   // inject on that input, and the output can carry only this one stream.
@@ -424,6 +446,12 @@ bool Pathfinder::addFixedConnection(SwitchboxOp switchboxOp) {
     for (size_t i = 0; i < sb.srcPorts.size(); i++)
       sb.connectivity[i][dstIdx] = Connectivity::INVALID;
   }
+  // A masterset only fixes its output port (its inputs arrive through arbiters
+  // shared among packet flows), so reserve just that destination column and
+  // leave source rows free.
+  for (int dstIdx : reservedMasterDsts)
+    for (size_t i = 0; i < sb.srcPorts.size(); i++)
+      sb.connectivity[i][dstIdx] = Connectivity::INVALID;
   return true;
 }
 
