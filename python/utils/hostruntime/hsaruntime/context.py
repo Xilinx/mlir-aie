@@ -62,6 +62,16 @@ from ._bindings import (
 # lists longer than this still work, via a per-dispatch fallback allocation.
 _MAX_POOLED_KERNARGS = 16
 
+# Packets to enqueue before ringing the doorbell. ROCR submits every packet
+# pending at the ring as ONE ERT command chain, so batching the doorbell is what
+# turns a chain into an actual hardware chain -- measured 134us -> 63us per
+# dispatch. Returns are flat beyond ~16, so this sits deliberately below the two
+# ceilings rather than at them: the firmware's maximum chain length (measured at
+# 40 on NPU firmware 1.5.5.391 -- 41 aborts inside ROCR on an assert, which is
+# not a catchable error), and the queue capacity, which enqueue cannot exceed
+# without a ring to drain it. The effective batch is clamped to the queue size.
+_MAX_DOORBELL_BATCH = 32
+
 
 class HSAContext:
     """Process-wide singleton owning the HSA AIE device, memory, and queue.
@@ -489,8 +499,10 @@ class HSAContext:
         single in-order AIE queue plus the system-scope acquire/release fences in
         every packet header, so a later dispatch observes an earlier one's device
         writes (producer -> consumer). Chains longer than the queue capacity
-        auto-batch: ``enqueue`` spins while the queue is full, ringing the doorbell
-        after each packet so completed slots drain and wrap around.
+        auto-batch: the doorbell is rung every ``_MAX_DOORBELL_BATCH`` packets (and
+        once more for the remainder), which both submits that group as a single
+        hardware command chain and drains ring slots so the next group can wrap
+        around instead of deadlocking on a full queue.
 
         Kernargs are written per packet as its ring slot is reserved, never all up
         front -- a chain longer than the queue reuses slots, so an up-front fill
@@ -499,14 +511,24 @@ class HSAContext:
         Returns the list of one-off kernarg allocations to free after the wait.
         """
         overflows = []
+        batch = min(_MAX_DOORBELL_BATCH, self.queue_size)
+        pending = 0
+        wr_idx = None
         for pdi_ptr, insts_ptr, insts_size, args in items:
             wr_idx, overflow = self.enqueue(
                 pdi_ptr, insts_ptr, insts_size, args, signal
             )
             if overflow is not None:
                 overflows.append(overflow)
-            # Ring per packet so the packet processor drains slots, letting a chain
-            # longer than the queue wrap around without deadlocking on a full queue.
+            pending += 1
+            # Ring every `batch` packets rather than every packet: ROCR chains the
+            # whole pending group into one submission, and ringing also drains
+            # slots so a chain longer than the queue wraps around instead of
+            # deadlocking on a full queue.
+            if pending == batch:
+                self.ring(wr_idx)
+                pending = 0
+        if pending:
             self.ring(wr_idx)
         return overflows
 

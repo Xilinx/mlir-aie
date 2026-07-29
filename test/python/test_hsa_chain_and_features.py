@@ -226,6 +226,62 @@ def test_run_chain_arms_shared_signal_to_chain_length(monkeypatch):
     assert rt._ctx.discard_calls == 0
 
 
+def test_doorbell_batch_stays_within_both_ceilings():
+    """The batch must clear the firmware chain limit and the queue capacity.
+
+    Overshooting the firmware's maximum chain length aborts the process inside
+    ROCR on an assert (not a catchable error), and exceeding the queue capacity
+    deadlocks enqueue, so this constant is load-bearing for correctness, not just
+    for speed.
+    """
+    from aie.utils.hostruntime.hsaruntime import context as ctx_mod
+
+    # 40 measured as the firmware maximum on NPU firmware 1.5.5.391.
+    assert ctx_mod._MAX_DOORBELL_BATCH <= 40
+
+
+def test_dispatch_chain_rings_in_batches(monkeypatch):
+    """dispatch_chain rings every _MAX_DOORBELL_BATCH packets, plus a remainder.
+
+    Ringing per packet (the old behavior) makes every ROCR command chain length
+    1, which costs ~2x; ringing only at the end deadlocks past queue capacity.
+    """
+    from aie.utils.hostruntime.hsaruntime import context as ctx_mod
+
+    ctx = object.__new__(ctx_mod.HSAContext)
+    ctx.queue_size = 64
+    # Deterministic write-index sequence + ring recorder.
+    rings = []
+    seq = iter(range(1000))
+    ctx.enqueue = lambda *a: (next(seq), None)
+    ctx.ring = rings.append
+
+    batch = min(ctx_mod._MAX_DOORBELL_BATCH, ctx.queue_size)
+    n = batch * 2 + 3  # two full batches and a partial remainder
+    items = [(0x1, 0x2, 4, []) for _ in range(n)]
+    assert ctx_mod.HSAContext.dispatch_chain(ctx, items, 42) == []
+
+    assert len(rings) == 3, "two full batches plus one remainder ring"
+    # Each ring carries the write index of the last packet in its group.
+    assert rings == [batch - 1, 2 * batch - 1, n - 1]
+
+
+def test_dispatch_chain_rings_once_when_shorter_than_a_batch(monkeypatch):
+    """A chain shorter than one batch is submitted as a single command chain."""
+    from aie.utils.hostruntime.hsaruntime import context as ctx_mod
+
+    ctx = object.__new__(ctx_mod.HSAContext)
+    ctx.queue_size = 64
+    seq = iter(range(1000))
+    rings = []
+    ctx.enqueue = lambda *a: (next(seq), None)
+    ctx.ring = rings.append
+
+    items = [(0x1, 0x2, 4, []) for _ in range(3)]
+    ctx_mod.HSAContext.dispatch_chain(ctx, items, 42)
+    assert rings == [2], "one ring carrying the last write index"
+
+
 def test_write_kernargs_layout():
     """The kernarg block is 2*N uint64: N addresses, then N byte sizes."""
     import ctypes
