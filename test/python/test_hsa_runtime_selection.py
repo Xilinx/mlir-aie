@@ -5,14 +5,20 @@
 #
 # RUN: %pytest %s
 
-"""Host-side selection/contract tests for the HSA runtime. No NPU dispatch."""
+"""Host-side selection/contract tests for the HSA runtime. No NPU dispatch.
+
+The HSA backend is selected via the shared ``NPU_RUNTIME`` env var (xrt|hrx|hsa|
+auto). These tests cover the negative-behavior contract: an invalid value is a
+hard error, HSA is opt-in (``auto`` never selects it), and ``NPU_RUNTIME=hsa``
+without libhsa raises.
+"""
 
 import os
 import subprocess
 import sys
 
 
-def _run_import(env_overrides):
+def _run_import(env_overrides, body="import aie.utils"):
     env = dict(os.environ)
     for k, v in env_overrides.items():
         if v is None:
@@ -20,42 +26,51 @@ def _run_import(env_overrides):
         else:
             env[k] = v
     return subprocess.run(
-        [sys.executable, "-c", "import aie.utils"],
-        env=env, capture_output=True, text=True,
+        [sys.executable, "-c", body],
+        env=env,
+        capture_output=True,
+        text=True,
     )
 
 
-def test_invalid_iron_runtime_is_hard_error():
-    res = _run_import({"IRON_RUNTIME": "bogus"})
+def test_invalid_npu_runtime_is_hard_error():
+    """An explicitly invalid NPU_RUNTIME must fail the import loudly."""
+    res = _run_import({"NPU_RUNTIME": "bogus"})
     assert res.returncode != 0, res.stdout + res.stderr
-    assert "Invalid IRON_RUNTIME" in res.stderr, res.stderr
+    assert "Invalid NPU_RUNTIME" in res.stderr, res.stderr
 
 
-def test_unset_iron_runtime_imports_cleanly():
-    res = _run_import({"IRON_RUNTIME": None})
+def test_unset_npu_runtime_imports_cleanly():
+    """Unset NPU_RUNTIME defaults to 'auto' and must import fine."""
+    res = _run_import({"NPU_RUNTIME": None})
     assert res.returncode == 0, res.stdout + res.stderr
 
 
 def test_auto_never_selects_hsa():
+    """auto must resolve to XRT or CPU, never HSA (opt-in only)."""
     res = _run_import(
-        {
-            "IRON_RUNTIME": "auto",
-            "IRON_PRINT_BACKEND": "1",
-        }
+        {"NPU_RUNTIME": "auto"},
+        body="import aie.utils as u; print(u.DEFAULT_TENSOR_CLASS.__name__)",
     )
     assert res.returncode == 0, res.stdout + res.stderr
-    assert "hsa" not in res.stdout.lower(), res.stdout
+    assert "HSATensor" not in res.stdout, res.stdout
 
 
-def test_iron_runtime_hsa_without_libhsa_raises():
+def test_npu_runtime_hsa_without_libhsa_raises():
+    """NPU_RUNTIME=hsa with no libhsa must raise ImportError.
+
+    Only meaningful when HSA is not discoverable on this host; if it is, the
+    contract can't be exercised, so skip.
+    """
     import aie.utils as u
 
     if u.has_hsa:
         import pytest
+
         pytest.skip("HSA is discoverable on this host; missing-HSA path untestable")
     res = _run_import(
         {
-            "IRON_RUNTIME": "hsa",
+            "NPU_RUNTIME": "hsa",
             "HSA_RUNTIME_LIB": None,
             "HSA_RUNTIME_DIR": None,
             "ROCM_PATH": None,

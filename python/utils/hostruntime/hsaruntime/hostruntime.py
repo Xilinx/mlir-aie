@@ -35,7 +35,7 @@ if TYPE_CHECKING:
 
 _TRACE_UNSUPPORTED_MSG = (
     "Trace capture is not supported on the HSA backend. Re-run without a "
-    "trace_config, or use the XRT backend (IRON_RUNTIME=xrt) for trace-enabled "
+    "trace_config, or use the XRT backend (NPU_RUNTIME=xrt) for trace-enabled "
     "designs."
 )
 
