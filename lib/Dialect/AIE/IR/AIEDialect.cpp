@@ -1811,6 +1811,24 @@ LogicalResult CoreOp::verify() {
     return emitOpError(
         "cannot specify both 'link_with' (deprecated) and 'link_files' "
         "on the same core; run aie-assign-core-link-files to migrate");
+  if (getLinkWith() && getLinkMergeFiles())
+    return emitOpError(
+        "cannot specify both 'link_with' (deprecated) and 'link_merge_files' "
+        "on the same core; run aie-assign-core-link-files to migrate");
+  // An artifact is either merged into the core's LLVM module or handed to the
+  // final link, never both: doing both would define its symbols twice.
+  if (auto linkFiles = getLinkFiles())
+    if (auto mergeFiles = getLinkMergeFiles()) {
+      llvm::SmallSet<StringRef, 8> linked;
+      for (auto f : linkFiles->getAsRange<StringAttr>())
+        linked.insert(f.getValue());
+      for (auto f : mergeFiles->getAsRange<StringAttr>())
+        if (linked.count(f.getValue()))
+          return emitOpError("artifact '")
+                 << f.getValue()
+                 << "' appears in both 'link_files' and 'link_merge_files'; an "
+                    "artifact must be either merged or linked, not both";
+    }
   return success();
 }
 

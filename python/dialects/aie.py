@@ -192,16 +192,42 @@ class external_func(FuncOp):
         inputs: List of input types (numpy dtypes or MLIR types).
         outputs: List of output types.  Defaults to [].
         visibility: MLIR symbol visibility.  Defaults to ``"private"``.
-        link_with: Optional path to the object file (``.o``) that implements
-            this function.  Sets the ``link_with`` string attribute on the
-            generated ``func.func`` op; the ``aie-assign-core-link-files`` pass
-            reads this attribute and propagates it into the CoreOp's
-            ``link_files`` attribute for the linker.
+        link_with: Optional name of the artifact that implements this function
+            -- an object file, an archive, or an LLVM IR file (``.ll``/``.bc``).
+            Sets the ``link_with`` string attribute on the generated
+            ``func.func`` op; the ``aie-assign-core-link-files`` pass reads this
+            attribute and propagates it into the CoreOp's ``link_files``
+            attribute.  How the artifact is consumed is decided by
+            ``link_with_mode``, not by the file suffix.
+        link_with_mode: Optional link policy for ``link_with``.  The only
+            currently-valid value is ``"merge"``: aiecc merges the artifact into
+            the core's LLVM module with ``llvm-link`` before codegen instead of
+            object-linking it.  Requires ``link_with``.  When omitted, the
+            artifact is object-linked, whatever its suffix.
     """
 
     def __init__(
-        self, name: str, inputs, outputs=None, visibility="private", link_with=None
+        self,
+        name: str,
+        inputs,
+        outputs=None,
+        visibility="private",
+        link_with=None,
+        link_with_mode=None,
     ):
+        # Validate before building the op so a rejected declaration never lands
+        # in the IR at the current insertion point.
+        if link_with_mode is not None:
+            if link_with is None:
+                raise ValueError(
+                    f"external_func '{name}': link_with_mode requires link_with "
+                    "to be set."
+                )
+            if link_with_mode != "merge":
+                raise ValueError(
+                    f"external_func '{name}': invalid link_with_mode "
+                    f"'{link_with_mode}'; the only supported value is 'merge'."
+                )
         if outputs is None:
             outputs = []
         for i, ty in enumerate(inputs):
@@ -217,6 +243,8 @@ class external_func(FuncOp):
         )
         if link_with is not None:
             self.operation.attributes["link_with"] = StringAttr.get(link_with)
+        if link_with_mode is not None:
+            self.operation.attributes["link_with_mode"] = StringAttr.get(link_with_mode)
 
     def __call__(self, *call_args):
         return call(self, call_args)
