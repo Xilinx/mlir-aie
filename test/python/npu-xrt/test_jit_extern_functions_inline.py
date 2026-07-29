@@ -55,13 +55,13 @@ def transform(
 
     worker = Worker(core_body, fn_args=[of_in.cons(), of_out.prod(), func])
 
-    rt = Runtime()
-    with rt.sequence(tensor_ty, tensor_ty) as (A, B):
-        rt.start(worker)
-        rt.fill(of_in.prod(), A)
-        rt.drain(of_out.cons(), B, wait=True)
+    def sequence(a, b, in_h, out_h):
+        in_h.fill(a)
+        out_h.drain(b, wait=True)
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    rt = Runtime(sequence, [tensor_ty, tensor_ty, of_in.prod(), of_out.cons()])
+
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 
 
 @pytest.fixture(autouse=True)
