@@ -94,10 +94,8 @@ def test_cached_runtime_has_lru_cache(monkeypatch):
     assert hasattr(rt, "_exe_cache")
 
 
-def test_run_leaks_signal_and_kernargs_on_timeout(monkeypatch):
-    """On HSATimeoutError from wait(), run() must NOT free the signal/kernargs
-    (the device still owns them); on a normal run it must free them as usual."""
-    from aie.utils.hostruntime.hsaruntime import hostruntime as hrt
+def _make_fake_ctx_cls(overflows):
+    """Fake HSAContext whose dispatch reports `overflows` to free after the wait."""
     from aie.utils.hostruntime.hsaruntime._bindings import HSATimeoutError
 
     class _FakeCtx:
@@ -114,45 +112,107 @@ def test_run_leaks_signal_and_kernargs_on_timeout(monkeypatch):
         def destroy_signal(self, sig):
             self.destroy_signal_calls.append(sig)
 
-        def vmem_alloc(self, size):
-            return 0xCAFE, 0xF00D, size  # fake (handle, va, size)
-
         def vmem_free(self, handle, va, size):
             self.vmem_free_calls.append((handle, va, size))
 
         def free_dev(self, ptr):
             pass
 
-        def dispatch(self, pdi_ptr, insts_ptr, insts_size, ka_va, n, signal):
-            pass
+        def dispatch(self, pdi_ptr, insts_ptr, insts_size, arg_pairs, signal):
+            return list(overflows)
 
         def wait(self, signal):
             if self._timeout_on_wait:
                 raise HSATimeoutError("simulated IRON_HSA_TIMEOUT")
 
+    return _FakeCtx
+
+
+def _run_with_fake_ctx(monkeypatch, overflows, timeout_on_wait):
+    from aie.utils.hostruntime.hsaruntime import hostruntime as hrt
+
+    cls = _make_fake_ctx_cls(overflows)
     monkeypatch.setattr(
-        hrt.HSAContext, "get", classmethod(lambda cls: _FakeCtx(timeout_on_wait=True))
+        hrt.HSAContext, "get", classmethod(lambda c: cls(timeout_on_wait))
     )
     rt = hrt.HSAHostRuntime()
     handle = hrt.HSAKernelHandle(
         pdi_ptr=0x1, insts_ptr=0x2, insts_size=4, kernel_name="MLIR_AIE"
     )
+    return rt, handle
 
+
+def test_pooled_run_frees_no_kernargs(monkeypatch):
+    """A pooled dispatch allocates no kernargs, so a normal run frees none.
+
+    Kernargs live in the context's fixed slot pool; only the signal is per-run.
+    """
+    rt, handle = _run_with_fake_ctx(monkeypatch, overflows=[], timeout_on_wait=False)
+    assert rt.run(handle, []).is_success()
+    assert rt._ctx.destroy_signal_calls == [42]
+    assert rt._ctx.vmem_free_calls == []
+
+
+def test_run_leaks_signal_on_timeout(monkeypatch):
+    """On HSATimeoutError from wait(), run() must NOT free the signal.
+
+    The dispatch is still in flight, so the device owns it.
+    """
+    from aie.utils.hostruntime.hsaruntime._bindings import HSATimeoutError
+
+    rt, handle = _run_with_fake_ctx(monkeypatch, overflows=[], timeout_on_wait=True)
     with pytest.raises(HSATimeoutError):
         rt.run(handle, [])
-
     assert rt._ctx.destroy_signal_calls == [], "signal must be leaked on timeout"
-    assert rt._ctx.vmem_free_calls == [], "kernargs must be leaked on timeout"
+    assert rt._ctx.vmem_free_calls == []
 
-    # Non-timeout run: cleanup must still happen as before.
-    monkeypatch.setattr(
-        hrt.HSAContext, "get", classmethod(lambda cls: _FakeCtx(timeout_on_wait=False))
+
+def test_overflow_kernargs_freed_on_success_and_leaked_on_timeout(monkeypatch):
+    """An over-capacity argument list falls back to a per-dispatch allocation.
+
+    That buffer must be freed after a normal wait, and leaked on a timeout (the
+    device still owns it), exactly like the signal.
+    """
+    from aie.utils.hostruntime.hsaruntime._bindings import HSATimeoutError
+
+    overflow = (0xCAFE, 0xF00D, 4096)
+
+    rt, handle = _run_with_fake_ctx(
+        monkeypatch, overflows=[overflow], timeout_on_wait=False
     )
-    rt2 = hrt.HSAHostRuntime()
-    result = rt2.run(handle, [])
-    assert result.is_success()
-    assert rt2._ctx.destroy_signal_calls == [42]
-    assert len(rt2._ctx.vmem_free_calls) == 1
+    assert rt.run(handle, []).is_success()
+    assert rt._ctx.vmem_free_calls == [overflow]
+
+    rt2, handle2 = _run_with_fake_ctx(
+        monkeypatch, overflows=[overflow], timeout_on_wait=True
+    )
+    with pytest.raises(HSATimeoutError):
+        rt2.run(handle2, [])
+    assert rt2._ctx.vmem_free_calls == [], "overflow kernargs must leak on timeout"
+
+
+def test_write_kernargs_layout():
+    """The kernarg block is 2*N uint64: N addresses, then N byte sizes."""
+    import ctypes
+
+    from aie.utils.hostruntime.hsaruntime.context import HSAContext
+
+    buf = (ctypes.c_uint64 * 6)()
+    args = [(0x1000, 16), (0x2000, 32), (0x3000, 48)]
+    # Pure ctypes writes; does not touch self, so no device/context is needed.
+    HSAContext._write_kernargs(None, ctypes.addressof(buf), args)
+    assert list(buf) == [0x1000, 0x2000, 0x3000, 16, 32, 48]
+
+
+def test_kernarg_pool_sizing_covers_real_designs():
+    """The pooled slot must hold more args than in-tree designs actually use.
+
+    test_jit_many_args deliberately runs 9 tensor arguments; a slot capacity at
+    or below that would push a real design onto the allocating fallback path.
+    """
+    from aie.utils.hostruntime.hsaruntime import context as ctx_mod
+
+    assert ctx_mod._MAX_POOLED_KERNARGS >= 9
 
 
 def test_enqueue_times_out_when_queue_never_drains(monkeypatch):
@@ -183,7 +243,7 @@ def test_enqueue_times_out_when_queue_never_drains(monkeypatch):
     ctx.queue_packets = None  # never reached (we time out before the write)
 
     with pytest.raises(HSATimeoutError):
-        ctx.enqueue(0x1, 0x2, 4, 0x3, 0, 42)
+        ctx.enqueue(0x1, 0x2, 4, [], 42)
 
 
 def test_load_and_run_rejects_trace_before_touching_args(monkeypatch):

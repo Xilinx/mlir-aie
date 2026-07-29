@@ -53,6 +53,13 @@ from ._bindings import (
     lib,
 )
 
+# Tensor arguments a pooled kernarg slot holds (as 2*N uint64: N addresses then
+# N sizes). Sized to cover real designs with headroom -- IRON designs in-tree go
+# up to 9 tensor arguments -- while keeping the whole pool small: the backing
+# allocation is this * 16B * queue_size, i.e. 16KB for a 64-slot queue. Argument
+# lists longer than this still work, via a per-dispatch fallback allocation.
+_MAX_POOLED_KERNARGS = 16
+
 
 class HSAContext:
     """Process-wide singleton owning the HSA AIE device, memory, and queue.
@@ -114,6 +121,19 @@ class HSAContext:
             qptr.contents.base_address,
             ctypes.POINTER(HsaAieKernelDispatchPacket),
         )
+
+        # Fixed-slot kernarg pool: one backing allocation carved into a slot per
+        # queue ring slot, so the dispatch path writes kernargs with plain stores
+        # and makes no HSA call. Slot i belongs to ring slot i, which makes reuse
+        # safe for free: `enqueue` only writes ring slot i once the device has
+        # consumed the previous packet there, and that is exactly when the device
+        # is done reading slot i's kernargs.
+        self.kernarg_slot_size = _MAX_POOLED_KERNARGS * 2 * 8
+        (
+            self._kernarg_handle,
+            self._kernarg_va,
+            self._kernarg_alloc_size,
+        ) = self.vmem_alloc(self.kernarg_slot_size * self.queue_size)
 
     @classmethod
     def get(cls) -> "HSAContext":
@@ -336,19 +356,32 @@ class HSAContext:
         pkt.pdi_addr = pdi_ptr
         return pkt
 
-    def enqueue(
-        self, pdi_ptr, insts_ptr, insts_size, kernarg_ptr, num_kernargs, signal
-    ):
-        """Write one packet at the next queue slot (no doorbell). Returns its wr_idx.
+    def _write_kernargs(self, va, args):
+        """Write the 2*N uint64 kernarg block: N addresses, then N byte sizes."""
+        n = len(args)
+        ka = (ctypes.c_uint64 * (2 * n)).from_address(va)
+        for i, (arg_va, nbytes) in enumerate(args):
+            ka[i] = arg_va
+            ka[n + i] = nbytes
+
+    def enqueue(self, pdi_ptr, insts_ptr, insts_size, args, signal):
+        """Write one packet at the next queue slot (no doorbell).
+
+        ``args`` is a sequence of ``(device_va, nbytes)`` pairs, one per tensor
+        argument. Returns ``(wr_idx, overflow)``, where ``overflow`` is ``None``
+        for the common pooled case, or the ``(handle, va, size)`` of a one-off
+        kernarg allocation the caller must free once the dispatch has completed.
+
+        Kernargs are written into this ring slot's preallocated pool slot, so the
+        hot path performs no HSA allocation. Argument lists longer than
+        ``_MAX_POOLED_KERNARGS`` do not fit a slot and fall back to a per-dispatch
+        allocation.
 
         Spins while the queue is full so an in-flight batch drains (wrap-around),
         yielding each iteration so it doesn't peg a core. When ``IRON_HSA_TIMEOUT``
         is set, the spin is bounded by that timeout and raises
         :class:`HSATimeoutError` (mirroring :meth:`wait`); the reserved write
         index is then abandoned since the packet was never made visible."""
-        pkt = self._fill_packet(
-            pdi_ptr, insts_ptr, insts_size, kernarg_ptr, num_kernargs, signal
-        )
         q = self.queue
         qsize = self.queue_size
         wr_idx = lib.hsa_queue_add_write_index_relaxed(q, 1)
@@ -367,27 +400,49 @@ class HSAContext:
                     f"recover it (e.g. reload the amdxdna driver) if this persists."
                 )
             time.sleep(0)  # yield so a full-queue spin doesn't peg a core
-        self.queue_packets[wr_idx % qsize] = pkt
-        return wr_idx
+
+        # Only now that the ring slot is ours may its kernarg slot be reused: the
+        # device has finished reading whatever the previous occupant wrote.
+        slot = wr_idx % qsize
+        n = len(args)
+        overflow = None
+        if n <= _MAX_POOLED_KERNARGS:
+            ka_va = self._kernarg_va + slot * self.kernarg_slot_size
+        else:
+            overflow = self.vmem_alloc(2 * n * 8)
+            ka_va = overflow[1]
+        try:
+            self._write_kernargs(ka_va, args)
+        except BaseException:
+            if overflow is not None:
+                self.vmem_free(*overflow)
+            raise
+
+        self.queue_packets[slot] = self._fill_packet(
+            pdi_ptr, insts_ptr, insts_size, ka_va if n else None, n, signal
+        )
+        return wr_idx, overflow
 
     def ring(self, wr_idx):
         lib.hsa_signal_store_screlease(self.queue_doorbell, wr_idx)
 
-    def dispatch(
-        self, pdi_ptr, insts_ptr, insts_size, kernarg_ptr, num_kernargs, signal
-    ):
-        """Single dispatch: enqueue one packet and ring the doorbell."""
-        wr_idx = self.enqueue(
-            pdi_ptr, insts_ptr, insts_size, kernarg_ptr, num_kernargs, signal
+    def dispatch(self, pdi_ptr, insts_ptr, insts_size, args, signal):
+        """Single dispatch: enqueue one packet and ring the doorbell.
+
+        Returns the list of one-off kernarg allocations to free after the wait
+        (empty in the common pooled case)."""
+        wr_idx, overflow = self.enqueue(
+            pdi_ptr, insts_ptr, insts_size, args, signal
         )
         self.ring(wr_idx)
+        return [overflow] if overflow is not None else []
 
     def dispatch_chain(self, items, signal):
         """Enqueue a sequence of dispatches sharing one completion signal.
 
-        ``items`` is a sequence of
-        ``(pdi_ptr, insts_ptr, insts_size, kernarg_ptr, num_kernargs)`` tuples.
-        All packets carry the same ``signal`` (initialized by the caller to
+        ``items`` is a sequence of ``(pdi_ptr, insts_ptr, insts_size, args)``
+        tuples, where ``args`` is that dispatch's list of ``(device_va, nbytes)``
+        pairs. All packets carry the same ``signal`` (initialized by the caller to
         ``len(items)``); each completed packet decrements it, so a single
         ``wait(signal)`` covers the whole chain. Ordering is guaranteed by the
         single in-order AIE queue plus the system-scope acquire/release fences in
@@ -395,14 +450,24 @@ class HSAContext:
         writes (producer -> consumer). Chains longer than the queue capacity
         auto-batch: ``enqueue`` spins while the queue is full, ringing the doorbell
         after each packet so completed slots drain and wrap around.
+
+        Kernargs are written per packet as its ring slot is reserved, never all up
+        front -- a chain longer than the queue reuses slots, so an up-front fill
+        would be overwritten before the device read it.
+
+        Returns the list of one-off kernarg allocations to free after the wait.
         """
-        for pdi_ptr, insts_ptr, insts_size, kernarg_ptr, num_kernargs in items:
-            wr_idx = self.enqueue(
-                pdi_ptr, insts_ptr, insts_size, kernarg_ptr, num_kernargs, signal
+        overflows = []
+        for pdi_ptr, insts_ptr, insts_size, args in items:
+            wr_idx, overflow = self.enqueue(
+                pdi_ptr, insts_ptr, insts_size, args, signal
             )
+            if overflow is not None:
+                overflows.append(overflow)
             # Ring per packet so the packet processor drains slots, letting a chain
             # longer than the queue wrap around without deadlocking on a full queue.
             self.ring(wr_idx)
+        return overflows
 
     def wait(self, signal):
         timeout = _hsa_sync_timeout_s()
