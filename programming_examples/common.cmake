@@ -244,13 +244,17 @@ function(add_aie_design)
   add_custom_target(${D_TARGET}_xclbin ALL DEPENDS ${_outs})
 endfunction()
 
-# add_aie_run_test(NAME <t> DEVICE <npu|npu2> [EXE <host_target>] [PY <design.py>]
-#                  [KERNEL <name>])
+# add_aie_run_test(NAME <t> DEVICE <npu|npu2> [EXE <host_target>] [PY <test.py>]
+#                  [KERNEL <name>] [PY_STANDALONE])
 #   Registers a ctest that runs on the NPU via utils/run_on_npu.py (which handles
-#   XRT setup/retries). EXE => run the built host binary against final.xclbin;
-#   PY => run the design script directly (pure-Python examples).
+#   XRT setup/retries).
+#     EXE            => run the built host binary against final.xclbin/insts.bin
+#     PY             => run a Python host test against final.xclbin/insts.bin
+#                       (the `run_py` flow: test.py --xclbin ... --instr ... -k)
+#     PY_STANDALONE  => run the script with no artifact args (@iron.jit designs
+#                       that build and run themselves)
 function(add_aie_run_test)
-  cmake_parse_arguments(R "" "NAME;DEVICE;EXE;PY;KERNEL" "" ${ARGN})
+  cmake_parse_arguments(R "PY_STANDALONE" "NAME;DEVICE;EXE;PY;KERNEL" "" ${ARGN})
   enable_testing()
   if(R_DEVICE STREQUAL "npu2")
     set(_kind npu2)
@@ -268,9 +272,17 @@ function(add_aie_run_test)
               -x "${CMAKE_CURRENT_BINARY_DIR}/final.xclbin"
               -i "${CMAKE_CURRENT_BINARY_DIR}/insts.bin"
               -k ${_k})
-  else()
+  elseif(R_PY_STANDALONE)
     add_test(NAME ${R_NAME}
       COMMAND ${Python3_EXECUTABLE} "${MLIR_AIE_DIR}/utils/run_on_npu.py" ${_kind}
               ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/${R_PY}")
+  else()
+    # `run_py` flow: a Python host test driven against the built artifacts.
+    add_test(NAME ${R_NAME}
+      COMMAND ${Python3_EXECUTABLE} "${MLIR_AIE_DIR}/utils/run_on_npu.py" ${_kind}
+              ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/${R_PY}"
+              --xclbin "${CMAKE_CURRENT_BINARY_DIR}/final.xclbin"
+              --instr "${CMAKE_CURRENT_BINARY_DIR}/insts.bin"
+              -k ${_k})
   endif()
 endfunction()
