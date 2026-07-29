@@ -204,6 +204,26 @@ is M–L, not the XL it would be if the host build weren't already CMake.
 5. **Enable in the Windows workflow**; triage the first run — 14 Chess tests
    stay unsupported; watch OpenCV (vision/resnet) and `run_on_npu.py` quoting.
 
+## Gotcha: converting a CMakeLists also changes the `make` flow
+
+`makefile-common`'s `build_host_exe` invokes the example's **own**
+`CMakeLists.txt` (`cmake <srcdir>` + `cmake --build`). So appending
+`add_aie_design(... ALL ...)` to a CMakeLists does **not** only affect the new
+`run_cmake.lit` path — it also makes the design JIT run during the existing
+`make` build.
+
+This was hit for real on `ml/block_datatypes/{bfp_conversion,vector_passthrough}`:
+their `run_strix_makefile.lit` had been passing, and adding the helpers made them
+fail with a Peano kernel compile error (`bfp16ebs8` / `block_vector` /
+`v128bfp16ebs8` unknown), because the BFP kernels got compiled in a context that
+doesn't support them. Both conversions were reverted.
+
+**Implication for the remaining sweep:** either (a) attach the design target so it
+is *not* built by `ALL` (drive it only from the ctest/`run_cmake.lit` path), or
+(b) convert an example and its Makefile together, rather than appending to a
+CMakeLists that `make` still consumes. Verify each conversion doesn't regress the
+example's existing `run_makefile*.lit`.
+
 ## Open questions
 - `run_on_npu.py` invocation from `ctest` on Windows — confirm quoting.
 - Vision/resnet OpenCV dependency on the Windows runner
