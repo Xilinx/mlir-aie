@@ -7,7 +7,7 @@
 
 This is the mid-level layer between the raw C ABI (:mod:`._bindings`) and the
 IRON ``HostRuntime`` (:mod:`.hostruntime`): :class:`HSAContext` owns the single
-AIE + CPU agents, the allocatable memory region/pool, and a dispatch queue, and
+AIE + CPU agents, the data and device-heap memory pools, and a dispatch queue, and
 issues/waits on AIE kernel-dispatch packets.
 """
 
@@ -32,9 +32,6 @@ from ._bindings import (
     HSA_DEVICE_TYPE_AIE,
     HSA_DEVICE_TYPE_CPU,
     HSA_QUEUE_TYPE_SINGLE,
-    HSA_REGION_INFO_RUNTIME_ALLOC_ALLOWED,
-    HSA_REGION_INFO_SEGMENT,
-    HSA_REGION_SEGMENT_GLOBAL,
     HSA_SIGNAL_CONDITION_EQ,
     HSA_STATUS_INFO_BREAK,
     HSA_STATUS_SUCCESS,
@@ -52,7 +49,6 @@ from ._bindings import (
     hsa_agent_t,
     hsa_amd_memory_pool_t,
     hsa_amd_vmem_alloc_handle_t,
-    hsa_region_t,
     hsa_signal_t,
     lib,
 )
@@ -80,8 +76,8 @@ class HSAContext:
         if self.cpu_agent == 0:
             raise HSAError("No HSA CPU agent found")
 
-        self.region = self._find_region(self.aie_agent)
-        self.pool = self._find_pool(self.aie_agent)
+        self.pool = self._find_pool(self.aie_agent, dev_heap=False)
+        self.dev_pool = self._find_pool(self.aie_agent, dev_heap=True)
         # Fixed for the life of the singleton; query once instead of per vmem_alloc.
         self.pool_granule = self._pool_granule()
         self.device_gen = self._detect_device_gen()
@@ -140,32 +136,17 @@ class HSAContext:
             raise HSAError(f"hsa_iterate_agents failed (hsa status {status})")
         return found.value
 
-    def _find_region(self, agent):
-        found = ctypes.c_uint64(0)
+    def _find_pool(self, agent, dev_heap):
+        """Find the AIE agent's device heap (``dev_heap``) or data pool.
 
-        @ctypes.CFUNCTYPE(ctypes.c_int, hsa_region_t, ctypes.c_void_p)
-        def cb(region, _data):
-            seg = ctypes.c_int()
-            if lib.hsa_region_get_info(region, HSA_REGION_INFO_SEGMENT, ctypes.byref(seg)) != HSA_STATUS_SUCCESS:
-                return HSA_STATUS_SUCCESS
-            if seg.value != HSA_REGION_SEGMENT_GLOBAL:
-                return HSA_STATUS_SUCCESS
-            allowed = ctypes.c_bool()
-            if lib.hsa_region_get_info(region, HSA_REGION_INFO_RUNTIME_ALLOC_ALLOWED, ctypes.byref(allowed)) != HSA_STATUS_SUCCESS:
-                return HSA_STATUS_SUCCESS
-            if not allowed.value:
-                return HSA_STATUS_SUCCESS
-            found.value = region
-            return HSA_STATUS_INFO_BREAK
-
-        status = lib.hsa_agent_iterate_regions(agent, cb, None)
-        if status not in (HSA_STATUS_SUCCESS, HSA_STATUS_INFO_BREAK):
-            raise HSAError(f"hsa_agent_iterate_regions failed (hsa status {status})")
-        if found.value == 0:
-            raise HSAError("No allocatable global HSA region found on AIE agent")
-        return found.value
-
-    def _find_pool(self, agent):
+        ROCR distinguishes the two by the recommended allocation granule: the
+        device heap is reported with a REC_GRANULE of 0, every ordinary pool
+        with a nonzero one (see ``AieAgent::InitRegionList``). Allocations out
+        of the device heap become ``AMDXDNA_BO_DEV`` buffer objects, which is
+        the only BO type the driver's ``aie2_config_cu`` accepts for a PDI;
+        anything else is an ``AMDXDNA_BO_SHARE`` and the submit ioctl fails
+        with EIO.
+        """
         found = ctypes.c_uint64(0)
 
         @ctypes.CFUNCTYPE(ctypes.c_int, hsa_amd_memory_pool_t, ctypes.c_void_p)
@@ -183,7 +164,7 @@ class HSAContext:
             rec = ctypes.c_size_t()
             if lib.hsa_amd_memory_pool_get_info(pool, HSA_AMD_MEMORY_POOL_INFO_RUNTIME_ALLOC_REC_GRANULE, ctypes.byref(rec)) != HSA_STATUS_SUCCESS:
                 return HSA_STATUS_SUCCESS
-            if rec.value == 0:  # allocatable pools have a nonzero rec granule
+            if (rec.value == 0) != dev_heap:
                 return HSA_STATUS_SUCCESS
             found.value = pool
             return HSA_STATUS_INFO_BREAK
@@ -192,19 +173,39 @@ class HSAContext:
         if status not in (HSA_STATUS_SUCCESS, HSA_STATUS_INFO_BREAK):
             raise HSAError(f"hsa_amd_agent_iterate_memory_pools failed (hsa status {status})")
         if found.value == 0:
-            raise HSAError("No allocatable coarse-grained pool found on AIE agent")
+            kind = "device heap" if dev_heap else "data"
+            raise HSAError(f"No coarse-grained {kind} pool found on AIE agent")
         return found.value
 
     def _detect_device_gen(self):
+        """Map the HSA AIE agent to an IRON device generation.
+
+        ROCR names the agent after its ISA rather than its marketing name:
+        ``aie2`` on Phoenix (npu1) and ``aie2p`` on Strix (npu2), see
+        ``XdnaDriver`` ``XDNADeviceType::Phx``/``Stx``. Test the ``aie2p``
+        prefix first, since ``aie2p``/``aie2ps`` also start with ``aie2``.
+
+        Guessing wrong here is expensive: the design compiles for the wrong
+        architecture and the dispatch wedges the NPU until the driver's
+        timeout detection fires, so an unrecognized agent raises instead of
+        falling back to a default.
+        """
         env = os.environ.get("IRON_HSA_DEVICE")
         if env:
             return env
         name = (ctypes.c_char * 64)()
-        if lib.hsa_agent_get_info(self.aie_agent, HSA_AGENT_INFO_NAME, name) == HSA_STATUS_SUCCESS:
-            text = name.value.decode("utf-8", "replace").lower()
-            if "phoenix" in text or "npu1" in text:
-                return "npu1"
-        return "npu2"
+        status = lib.hsa_agent_get_info(self.aie_agent, HSA_AGENT_INFO_NAME, name)
+        if status != HSA_STATUS_SUCCESS:
+            raise HSAError(f"hsa_agent_get_info(NAME) failed (hsa status {status})")
+        text = name.value.decode("utf-8", "replace").lower()
+        if "aie2p" in text or "strix" in text or "krackan" in text or "npu2" in text:
+            return "npu2"
+        if "aie2" in text or "phoenix" in text or "npu1" in text:
+            return "npu1"
+        raise HSAError(
+            f"Cannot map HSA AIE agent name {text!r} to a device generation; "
+            f"set IRON_HSA_DEVICE=npu1|npu2 to override."
+        )
 
     def _pool_granule(self):
         gran = ctypes.c_size_t()
@@ -217,18 +218,19 @@ class HSAContext:
         )
         return gran.value
 
-    # -- region memory (PDI/insts) ----------------------------------------
-    def alloc_region(self, size):
+    # -- device heap memory (PDI/insts) -----------------------------------
+    def alloc_dev(self, size):
+        """Allocate from the device heap, where PDI and insts must live."""
         ptr = ctypes.c_void_p()
         _check(
-            lib.hsa_memory_allocate(self.region, size, ctypes.byref(ptr)),
-            "hsa_memory_allocate",
+            lib.hsa_amd_memory_pool_allocate(self.dev_pool, size, 0, ctypes.byref(ptr)),
+            "hsa_amd_memory_pool_allocate",
         )
         return ptr.value
 
-    def free_region(self, ptr):
+    def free_dev(self, ptr):
         if ptr:
-            lib.hsa_memory_free(ctypes.c_void_p(ptr))
+            lib.hsa_amd_memory_pool_free(ctypes.c_void_p(ptr))
 
     # -- vmem memory (I/O + kernargs) -------------------------------------
     def vmem_alloc(self, size):
