@@ -146,6 +146,11 @@ class HSAContext:
             self._kernarg_alloc_size,
         ) = self.vmem_alloc(self.kernarg_slot_size * self.queue_size)
 
+        # One completion signal reused by every dispatch, armed per dispatch
+        # rather than created and destroyed each time. Safe for the same reason
+        # the single queue is: callers must serialize dispatches.
+        self._signal = self.create_signal(0)
+
     @classmethod
     def get(cls) -> "HSAContext":
         if cls._instance is None:
@@ -358,6 +363,24 @@ class HSAContext:
     def destroy_signal(self, sig):
         if sig:
             lib.hsa_signal_destroy(hsa_signal_t(sig))
+
+    def arm_signal(self, value):
+        """Arm the shared completion signal to ``value`` and return it.
+
+        ``value`` is the number of packets that will decrement it (1 for a single
+        dispatch, len(chain) for a chain), so a single wait covers the batch."""
+        lib.hsa_signal_store_screlease(hsa_signal_t(self._signal), value)
+        return self._signal
+
+    def discard_signal(self):
+        """Abandon the shared signal and install a fresh one.
+
+        Called when a dispatch is left in flight (a timeout): the device may still
+        decrement the old signal at any point, which would corrupt the count of
+        whatever dispatch armed it next, so it must never be reused. The old
+        signal is deliberately leaked rather than destroyed -- the device still
+        owns it (see HSATimeoutError)."""
+        self._signal = self.create_signal(0)
 
     # -- dispatch ----------------------------------------------------------
     def _fill_packet(

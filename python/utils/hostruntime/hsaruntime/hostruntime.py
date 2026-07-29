@@ -170,7 +170,7 @@ class HSAHostRuntime(HostRuntime):
         kept = self._validate_args(args)
         timed_out = False
         overflows = []
-        signal = self._ctx.create_signal(1)
+        signal = self._ctx.arm_signal(1)
         try:
             start = time.time_ns()
             overflows = self._ctx.dispatch(
@@ -186,14 +186,17 @@ class HSAHostRuntime(HostRuntime):
             timed_out = True
             raise
         finally:
-            # Kernargs normally live in the context's fixed slot pool and are
-            # never freed per dispatch; only an over-capacity argument list
-            # allocates, and only that needs releasing here. On a timeout the
-            # dispatch is wedged on the device with the packet in-flight, so the
-            # device retains ownership of the signal and any overflow buffer and
-            # we leak rather than free (see HSATimeoutError docstring).
-            if not timed_out:
-                self._ctx.destroy_signal(signal)
+            # Kernargs normally live in the context's fixed slot pool and the
+            # completion signal is reused across dispatches, so the success path
+            # frees nothing; only an over-capacity argument list allocates. On a
+            # timeout the dispatch is wedged on the device with the packet
+            # in-flight, so the device still owns the shared signal (it may
+            # decrement it later) and any overflow buffer: replace the signal
+            # rather than reuse it, and leak the buffer rather than free it (see
+            # HSATimeoutError docstring).
+            if timed_out:
+                self._ctx.discard_signal()
+            else:
                 for overflow in overflows:
                     self._ctx.vmem_free(*overflow)
 
@@ -225,7 +228,7 @@ class HSAHostRuntime(HostRuntime):
         items = []  # (pdi_ptr, insts_ptr, insts_size, arg_pairs)
         timed_out = False
         overflows = []
-        signal = self._ctx.create_signal(len(runs))
+        signal = self._ctx.arm_signal(len(runs))
         try:
             for kernel_handle, args in runs:
                 assert isinstance(kernel_handle, HSAKernelHandle)
@@ -248,13 +251,15 @@ class HSAHostRuntime(HostRuntime):
             raise
         finally:
             # Kernargs normally come from the context's fixed slot pool, written
-            # per packet as its ring slot is reserved; only over-capacity argument
-            # lists allocate. On a timeout the chain is wedged on the device with
-            # packets in-flight, so the device retains ownership of the signal and
-            # any overflow buffers and we leak rather than free (see
-            # HSATimeoutError docstring).
-            if not timed_out:
-                self._ctx.destroy_signal(signal)
+            # per packet as its ring slot is reserved, and the completion signal is
+            # reused across dispatches; only over-capacity argument lists allocate.
+            # On a timeout the chain is wedged on the device with packets
+            # in-flight -- and a partly-enqueued chain leaves the shared signal
+            # stuck above 0 -- so replace the signal rather than reuse it, and leak
+            # any overflow buffers (see HSATimeoutError docstring).
+            if timed_out:
+                self._ctx.discard_signal()
+            else:
                 for overflow in overflows:
                     self._ctx.vmem_free(*overflow)
 
