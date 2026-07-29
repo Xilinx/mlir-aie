@@ -69,8 +69,10 @@ def test_uncached_runtime_tracks_and_frees_without_cache(monkeypatch):
 
     class _FakeCtx:
         device_gen = "npu2"
+
         def alloc_dev(self, n):
             return 0x1000 + n  # unique-ish fake pointer
+
         def free_dev(self, ptr):
             freed.append(ptr)
 
