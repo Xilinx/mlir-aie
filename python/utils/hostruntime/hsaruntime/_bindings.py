@@ -71,6 +71,12 @@ _DISPATCH_HEADER = (
 # Block indefinitely (UINT64_MAX timeout) in hsa_signal_wait_scacquire.
 _HSA_WAIT_FOREVER = 0xFFFFFFFFFFFFFFFF
 
+# hsa_system_info_t. TIMESTAMP_FREQUENCY converts a wall-clock timeout into the
+# tick unit hsa_signal_wait expects; SIGNAL_MAX_WAIT is the longest a single
+# wait may be asked to block.
+HSA_SYSTEM_INFO_TIMESTAMP_FREQUENCY = 3
+HSA_SYSTEM_INFO_SIGNAL_MAX_WAIT = 4
+
 # Opaque handle-carrying structs are all {uint64_t handle}.
 hsa_agent_t = ctypes.c_uint64
 hsa_amd_memory_pool_t = ctypes.c_uint64
@@ -194,6 +200,9 @@ class _HsaLib:
             setattr(self, fn, f)
 
         decl("hsa_init", ctypes.c_int, [])
+        decl(
+            "hsa_system_get_info", ctypes.c_int, [ctypes.c_int, ctypes.c_void_p]
+        )
         decl("hsa_shut_down", ctypes.c_int, [])
         decl(
             "hsa_iterate_agents",

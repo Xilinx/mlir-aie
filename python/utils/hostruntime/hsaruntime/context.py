@@ -33,6 +33,8 @@ from ._bindings import (
     HSA_DEVICE_TYPE_CPU,
     HSA_QUEUE_TYPE_SINGLE,
     HSA_SIGNAL_CONDITION_EQ,
+    HSA_SYSTEM_INFO_SIGNAL_MAX_WAIT,
+    HSA_SYSTEM_INFO_TIMESTAMP_FREQUENCY,
     HSA_STATUS_INFO_BREAK,
     HSA_STATUS_SUCCESS,
     HSA_WAIT_STATE_BLOCKED,
@@ -75,6 +77,15 @@ class HSAContext:
     def __init__(self):
         lib._ensure()
         _check(lib.hsa_init(), "hsa_init")
+
+        # Tick conversion for the bounded wait in wait(); fixed for the
+        # process, so query once rather than per wait.
+        self.timestamp_freq = self._system_info_u64(
+            HSA_SYSTEM_INFO_TIMESTAMP_FREQUENCY, "TIMESTAMP_FREQUENCY"
+        )
+        self.signal_max_wait = self._system_info_u64(
+            HSA_SYSTEM_INFO_SIGNAL_MAX_WAIT, "SIGNAL_MAX_WAIT"
+        )
 
         self.aie_agent = self._find_agent(HSA_DEVICE_TYPE_AIE)
         if self.aie_agent == 0:
@@ -252,6 +263,15 @@ class HSAContext:
             f"Cannot map HSA AIE agent name {text!r} to a device generation; "
             f"set IRON_HSA_DEVICE=npu1|npu2 to override."
         )
+
+    @staticmethod
+    def _system_info_u64(attribute, what):
+        value = ctypes.c_uint64()
+        _check(
+            lib.hsa_system_get_info(attribute, ctypes.byref(value)),
+            f"hsa_system_get_info({what})",
+        )
+        return value.value
 
     def _pool_granule(self):
         gran = ctypes.c_size_t()
@@ -468,6 +488,16 @@ class HSAContext:
         return overflows
 
     def wait(self, signal):
+        """Block until ``signal`` reaches 0, optionally bounded by IRON_HSA_TIMEOUT.
+
+        The bounded form uses ``hsa_signal_wait``'s own tick-unit timeout rather
+        than a watchdog thread, so arming the timeout costs nothing per dispatch.
+        The timeout is only a *hint* and the wait may resume spuriously with the
+        condition unmet, so the native wait is retried until either the signal is
+        observed at 0 or the wall-clock deadline passes. As before, an expired
+        wait cannot cancel the dispatch -- the device work keeps running and this
+        raises a diagnosable error instead of hanging forever.
+        """
         timeout = _hsa_sync_timeout_s()
         if timeout <= 0:
             # Default: block until the signal reaches 0 (unchanged behavior).
@@ -479,34 +509,29 @@ class HSAContext:
                 HSA_WAIT_STATE_BLOCKED,
             )
             return
-        # Best-effort watchdog: run the blocking wait on a daemon thread and bound
-        # the *wait* with a timeout. The underlying hsa_signal_wait cannot be
-        # cancelled, so on expiry the device work keeps running -- this raises a
-        # diagnosable error instead of hanging forever.
-        result = {}
 
-        def _worker():
-            try:
+        # Clamp the per-attempt hint to the longest wait the system supports; the
+        # wall-clock deadline below, not the hint, is what bounds the total.
+        ticks = int(timeout * self.timestamp_freq)
+        if self.signal_max_wait and ticks > self.signal_max_wait:
+            ticks = self.signal_max_wait
+        deadline = time.monotonic() + timeout
+        while True:
+            if (
                 lib.hsa_signal_wait_scacquire(
                     signal,
                     HSA_SIGNAL_CONDITION_EQ,
                     0,
-                    _HSA_WAIT_FOREVER,
+                    ticks,
                     HSA_WAIT_STATE_BLOCKED,
                 )
-                result["ok"] = True
-            except BaseException as e:
-                result["err"] = e
-
-        t = threading.Thread(target=_worker, daemon=True)
-        t.start()
-        t.join(timeout)
-        if t.is_alive():
-            raise HSATimeoutError(
-                f"hsa_signal_wait did not complete within IRON_HSA_TIMEOUT="
-                f"{timeout:g}s. The dispatch may be wedged; the underlying wait "
-                f"cannot be cancelled and is still pending. Recover the device "
-                f"(e.g. reload the amdxdna driver) if this persists."
-            )
-        if "err" in result:
-            raise result["err"]
+                == 0
+            ):
+                return
+            if time.monotonic() >= deadline:
+                raise HSATimeoutError(
+                    f"hsa_signal_wait did not complete within IRON_HSA_TIMEOUT="
+                    f"{timeout:g}s. The dispatch may be wedged; the underlying wait "
+                    f"cannot be cancelled and is still pending. Recover the device "
+                    f"(e.g. reload the amdxdna driver) if this persists."
+                )
