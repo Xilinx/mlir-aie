@@ -132,23 +132,13 @@ class HSAHostRuntime(HostRuntime):
         self._handles.append(handle)
         return handle
 
-    def _build_kernargs(self, kept):
-        """Allocate + fill a kernarg vmem buffer (2*N uint64: N VAs then N sizes).
+    @staticmethod
+    def _arg_pairs(kept):
+        """(device_va, logical byte size) per tensor, in dispatch order.
 
-        Returns (ka_handle, ka_va, ka_size, n)."""
-        n = len(kept)
-        ka_handle, ka_va, ka_size = self._ctx.vmem_alloc(2 * n * 8)
-        # Free the buffer if filling raises, so the allocation isn't leaked
-        # before a caller's try/finally takes ownership of the returned handle.
-        try:
-            ka = (ctypes.c_uint64 * (2 * n)).from_address(ka_va)
-            for i, t in enumerate(kept):
-                ka[i] = t.buffer_object()
-                ka[n + i] = t.nbytes  # logical size (matches dispatch.cc)
-        except BaseException:
-            self._ctx.vmem_free(ka_handle, ka_va, ka_size)
-            raise
-        return ka_handle, ka_va, ka_size, n
+        The logical ``nbytes`` (not the granule-rounded allocation size) is what
+        the kernarg block must carry, matching ROCR's dispatch.cc."""
+        return [(t.buffer_object(), t.nbytes) for t in kept]
 
     def _validate_args(self, args):
         kept = [a for a in args if not callable(a)]
@@ -178,17 +168,16 @@ class HSAHostRuntime(HostRuntime):
         self.check_device_consistency()
 
         kept = self._validate_args(args)
-        ka_handle, ka_va, ka_size, n = self._build_kernargs(kept)
         timed_out = False
+        overflows = []
         signal = self._ctx.create_signal(1)
         try:
             start = time.time_ns()
-            self._ctx.dispatch(
+            overflows = self._ctx.dispatch(
                 kernel_handle.pdi_ptr,
                 kernel_handle.insts_ptr,
                 kernel_handle.insts_size,
-                ka_va,
-                n,
+                self._arg_pairs(kept),
                 signal,
             )
             self._ctx.wait(signal)
@@ -197,14 +186,16 @@ class HSAHostRuntime(HostRuntime):
             timed_out = True
             raise
         finally:
-            # On a timeout the dispatch is wedged on the device (a full queue
-            # never drained, or the completion signal never fired) with the
-            # packet in-flight: the device retains ownership of the signal and
-            # kernarg buffers, so we must leak them rather than free (see
-            # HSATimeoutError docstring).
+            # Kernargs normally live in the context's fixed slot pool and are
+            # never freed per dispatch; only an over-capacity argument list
+            # allocates, and only that needs releasing here. On a timeout the
+            # dispatch is wedged on the device with the packet in-flight, so the
+            # device retains ownership of the signal and any overflow buffer and
+            # we leak rather than free (see HSATimeoutError docstring).
             if not timed_out:
                 self._ctx.destroy_signal(signal)
-                self._ctx.vmem_free(ka_handle, ka_va, ka_size)
+                for overflow in overflows:
+                    self._ctx.vmem_free(*overflow)
 
         return HSAKernelResult(stop - start, success=True)
 
@@ -219,8 +210,9 @@ class HSAHostRuntime(HostRuntime):
         fences in every packet header. Chains longer than the queue capacity
         auto-batch (wrap-around).
 
-        All per-run kernarg buffers are allocated up front and freed after the
-        wait (they must stay alive while the device reads them).
+        Kernargs are written into the context's fixed slot pool as each packet's
+        ring slot is reserved -- never all up front, since a chain longer than
+        the queue reuses slots.
 
         ``fail_on_error`` is accepted for API compatibility but not honored:
         HSA always raises on failure via the context's ``_check``.
@@ -230,43 +222,41 @@ class HSAHostRuntime(HostRuntime):
         if not runs:
             return HSAKernelResult(0, success=True)
 
-        kernargs = []  # (ka_handle, ka_va, ka_size)
-        items = []  # (pdi_ptr, insts_ptr, insts_size, ka_va, n)
+        items = []  # (pdi_ptr, insts_ptr, insts_size, arg_pairs)
         timed_out = False
+        overflows = []
         signal = self._ctx.create_signal(len(runs))
         try:
             for kernel_handle, args in runs:
                 assert isinstance(kernel_handle, HSAKernelHandle)
                 kept = self._validate_args(args)
-                ka_handle, ka_va, ka_size, n = self._build_kernargs(kept)
-                kernargs.append((ka_handle, ka_va, ka_size))
                 items.append(
                     (
                         kernel_handle.pdi_ptr,
                         kernel_handle.insts_ptr,
                         kernel_handle.insts_size,
-                        ka_va,
-                        n,
+                        self._arg_pairs(kept),
                     )
                 )
 
             start = time.time_ns()
-            self._ctx.dispatch_chain(items, signal)
+            overflows = self._ctx.dispatch_chain(items, signal)
             self._ctx.wait(signal)
             stop = time.time_ns()
         except HSATimeoutError:
             timed_out = True
             raise
         finally:
-            # On a timeout the chain is wedged on the device (a full queue never
-            # drained mid-ring, or the shared signal never fired) with packets
-            # in-flight: the device retains ownership of the signal and kernarg
-            # buffers, so we must leak them rather than free (see HSATimeoutError
-            # docstring).
+            # Kernargs normally come from the context's fixed slot pool, written
+            # per packet as its ring slot is reserved; only over-capacity argument
+            # lists allocate. On a timeout the chain is wedged on the device with
+            # packets in-flight, so the device retains ownership of the signal and
+            # any overflow buffers and we leak rather than free (see
+            # HSATimeoutError docstring).
             if not timed_out:
                 self._ctx.destroy_signal(signal)
-                for ka_handle, ka_va, ka_size in kernargs:
-                    self._ctx.vmem_free(ka_handle, ka_va, ka_size)
+                for overflow in overflows:
+                    self._ctx.vmem_free(*overflow)
 
         return HSAKernelResult(stop - start, success=True)
 
