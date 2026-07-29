@@ -99,7 +99,9 @@ class HSAHostRuntime(HostRuntime):
         insts_path = Path(npu_kernel.insts_path).resolve()
         kernel_name = npu_kernel.kernel_name or "MLIR_AIE"
         if not insts_path.exists() or not insts_path.is_file():
-            raise HostRuntimeError(f"insts {insts_path} does not exist or is not a file.")
+            raise HostRuntimeError(
+                f"insts {insts_path} does not exist or is not a file."
+            )
         pdi_path = self._find_pdi(xclbin_path)
         return insts_path, pdi_path, kernel_name
 
@@ -157,8 +159,15 @@ class HSAHostRuntime(HostRuntime):
             )
         return kept
 
-    def run(self, kernel_handle, args, trace_config=None, fail_on_error=True,
-            only_if_loaded=False, **kwargs) -> HSAKernelResult:
+    def run(
+        self,
+        kernel_handle,
+        args,
+        trace_config=None,
+        fail_on_error=True,
+        only_if_loaded=False,
+        **kwargs,
+    ) -> HSAKernelResult:
         """``fail_on_error`` is accepted for API compatibility but not honored:
         HSA always raises on failure via the context's ``_check`` (see the
         HSATimeoutError leak-on-timeout note below for the one path where
@@ -175,8 +184,12 @@ class HSAHostRuntime(HostRuntime):
         try:
             start = time.time_ns()
             self._ctx.dispatch(
-                kernel_handle.pdi_ptr, kernel_handle.insts_ptr,
-                kernel_handle.insts_size, ka_va, n, signal,
+                kernel_handle.pdi_ptr,
+                kernel_handle.insts_ptr,
+                kernel_handle.insts_size,
+                ka_va,
+                n,
+                signal,
             )
             self._ctx.wait(signal)
             stop = time.time_ns()
@@ -218,7 +231,7 @@ class HSAHostRuntime(HostRuntime):
             return HSAKernelResult(0, success=True)
 
         kernargs = []  # (ka_handle, ka_va, ka_size)
-        items = []     # (pdi_ptr, insts_ptr, insts_size, ka_va, n)
+        items = []  # (pdi_ptr, insts_ptr, insts_size, ka_va, n)
         timed_out = False
         signal = self._ctx.create_signal(len(runs))
         try:
@@ -228,8 +241,13 @@ class HSAHostRuntime(HostRuntime):
                 ka_handle, ka_va, ka_size, n = self._build_kernargs(kept)
                 kernargs.append((ka_handle, ka_va, ka_size))
                 items.append(
-                    (kernel_handle.pdi_ptr, kernel_handle.insts_ptr,
-                     kernel_handle.insts_size, ka_va, n)
+                    (
+                        kernel_handle.pdi_ptr,
+                        kernel_handle.insts_ptr,
+                        kernel_handle.insts_size,
+                        ka_va,
+                        n,
+                    )
                 )
 
             start = time.time_ns()
@@ -296,8 +314,10 @@ class CachedHSAHostRuntime(HSAHostRuntime):
     def load(self, npu_kernel, **kwargs) -> HSAKernelHandle:
         insts_path, pdi_path, kernel_name = self._resolve_kernel(npu_kernel)
         key = (
-            str(insts_path), insts_path.stat().st_mtime,
-            str(pdi_path), pdi_path.stat().st_mtime,
+            str(insts_path),
+            insts_path.stat().st_mtime,
+            str(pdi_path),
+            pdi_path.stat().st_mtime,
             kernel_name,
         )
         if key in self._exe_cache:

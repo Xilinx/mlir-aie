@@ -85,7 +85,8 @@ class HSAContext:
         min_size = ctypes.c_uint32()
         _check(
             lib.hsa_agent_get_info(
-                self.aie_agent, HSA_AGENT_INFO_QUEUE_MIN_SIZE,
+                self.aie_agent,
+                HSA_AGENT_INFO_QUEUE_MIN_SIZE,
                 ctypes.byref(min_size),
             ),
             "hsa_agent_get_info(QUEUE_MIN_SIZE)",
@@ -93,8 +94,14 @@ class HSAContext:
         qptr = ctypes.POINTER(HsaQueue)()
         _check(
             lib.hsa_queue_create(
-                self.aie_agent, min_size.value, HSA_QUEUE_TYPE_SINGLE, None, None,
-                0, 0, ctypes.byref(qptr),
+                self.aie_agent,
+                min_size.value,
+                HSA_QUEUE_TYPE_SINGLE,
+                None,
+                None,
+                0,
+                0,
+                ctypes.byref(qptr),
             ),
             "hsa_queue_create",
         )
@@ -152,17 +159,34 @@ class HSAContext:
         @ctypes.CFUNCTYPE(ctypes.c_int, hsa_amd_memory_pool_t, ctypes.c_void_p)
         def cb(pool, _data):
             seg = ctypes.c_int()
-            if lib.hsa_amd_memory_pool_get_info(pool, HSA_AMD_MEMORY_POOL_INFO_SEGMENT, ctypes.byref(seg)) != HSA_STATUS_SUCCESS:
+            if (
+                lib.hsa_amd_memory_pool_get_info(
+                    pool, HSA_AMD_MEMORY_POOL_INFO_SEGMENT, ctypes.byref(seg)
+                )
+                != HSA_STATUS_SUCCESS
+            ):
                 return HSA_STATUS_SUCCESS
             if seg.value != HSA_AMD_SEGMENT_GLOBAL:
                 return HSA_STATUS_SUCCESS
             flags = ctypes.c_uint32()
-            if lib.hsa_amd_memory_pool_get_info(pool, HSA_AMD_MEMORY_POOL_INFO_GLOBAL_FLAGS, ctypes.byref(flags)) != HSA_STATUS_SUCCESS:
+            if (
+                lib.hsa_amd_memory_pool_get_info(
+                    pool, HSA_AMD_MEMORY_POOL_INFO_GLOBAL_FLAGS, ctypes.byref(flags)
+                )
+                != HSA_STATUS_SUCCESS
+            ):
                 return HSA_STATUS_SUCCESS
             if (flags.value & HSA_AMD_MEMORY_POOL_GLOBAL_FLAG_COARSE_GRAINED) == 0:
                 return HSA_STATUS_SUCCESS
             rec = ctypes.c_size_t()
-            if lib.hsa_amd_memory_pool_get_info(pool, HSA_AMD_MEMORY_POOL_INFO_RUNTIME_ALLOC_REC_GRANULE, ctypes.byref(rec)) != HSA_STATUS_SUCCESS:
+            if (
+                lib.hsa_amd_memory_pool_get_info(
+                    pool,
+                    HSA_AMD_MEMORY_POOL_INFO_RUNTIME_ALLOC_REC_GRANULE,
+                    ctypes.byref(rec),
+                )
+                != HSA_STATUS_SUCCESS
+            ):
                 return HSA_STATUS_SUCCESS
             if (rec.value == 0) != dev_heap:
                 return HSA_STATUS_SUCCESS
@@ -171,7 +195,9 @@ class HSAContext:
 
         status = lib.hsa_amd_agent_iterate_memory_pools(agent, cb, None)
         if status not in (HSA_STATUS_SUCCESS, HSA_STATUS_INFO_BREAK):
-            raise HSAError(f"hsa_amd_agent_iterate_memory_pools failed (hsa status {status})")
+            raise HSAError(
+                f"hsa_amd_agent_iterate_memory_pools failed (hsa status {status})"
+            )
         if found.value == 0:
             kind = "device heap" if dev_heap else "data"
             raise HSAError(f"No coarse-grained {kind} pool found on AIE agent")
@@ -211,7 +237,8 @@ class HSAContext:
         gran = ctypes.c_size_t()
         _check(
             lib.hsa_amd_memory_pool_get_info(
-                self.pool, HSA_AMD_MEMORY_POOL_INFO_RUNTIME_ALLOC_GRANULE,
+                self.pool,
+                HSA_AMD_MEMORY_POOL_INFO_RUNTIME_ALLOC_GRANULE,
                 ctypes.byref(gran),
             ),
             "hsa_amd_memory_pool_get_info(GRANULE)",
@@ -239,14 +266,22 @@ class HSAContext:
         handle = hsa_amd_vmem_alloc_handle_t()
         _check(
             lib.hsa_amd_vmem_handle_create(
-                self.pool, size, MEMORY_TYPE_PINNED, 0, ctypes.byref(handle),
+                self.pool,
+                size,
+                MEMORY_TYPE_PINNED,
+                0,
+                ctypes.byref(handle),
             ),
             "hsa_amd_vmem_handle_create",
         )
         va = ctypes.c_void_p()
         _check(
             lib.hsa_amd_vmem_address_reserve_align(
-                ctypes.byref(va), size, 0, 0, HSA_AMD_VMEM_ADDRESS_NO_REGISTER,
+                ctypes.byref(va),
+                size,
+                0,
+                0,
+                HSA_AMD_VMEM_ADDRESS_NO_REGISTER,
             ),
             "hsa_amd_vmem_address_reserve_align",
         )
@@ -285,7 +320,9 @@ class HSAContext:
             lib.hsa_signal_destroy(hsa_signal_t(sig))
 
     # -- dispatch ----------------------------------------------------------
-    def _fill_packet(self, pdi_ptr, insts_ptr, insts_size, kernarg_ptr, num_kernargs, signal):
+    def _fill_packet(
+        self, pdi_ptr, insts_ptr, insts_size, kernarg_ptr, num_kernargs, signal
+    ):
         pkt = HsaAieKernelDispatchPacket()
         pkt.header = _DISPATCH_HEADER
         pkt.opcode = HSA_AMD_AIE_PACKET_OPCODE_KMQ
@@ -299,7 +336,9 @@ class HSAContext:
         pkt.pdi_addr = pdi_ptr
         return pkt
 
-    def enqueue(self, pdi_ptr, insts_ptr, insts_size, kernarg_ptr, num_kernargs, signal):
+    def enqueue(
+        self, pdi_ptr, insts_ptr, insts_size, kernarg_ptr, num_kernargs, signal
+    ):
         """Write one packet at the next queue slot (no doorbell). Returns its wr_idx.
 
         Spins while the queue is full so an in-flight batch drains (wrap-around),
@@ -307,7 +346,9 @@ class HSAContext:
         is set, the spin is bounded by that timeout and raises
         :class:`HSATimeoutError` (mirroring :meth:`wait`); the reserved write
         index is then abandoned since the packet was never made visible."""
-        pkt = self._fill_packet(pdi_ptr, insts_ptr, insts_size, kernarg_ptr, num_kernargs, signal)
+        pkt = self._fill_packet(
+            pdi_ptr, insts_ptr, insts_size, kernarg_ptr, num_kernargs, signal
+        )
         q = self.queue
         qsize = self.queue_size
         wr_idx = lib.hsa_queue_add_write_index_relaxed(q, 1)
@@ -332,9 +373,13 @@ class HSAContext:
     def ring(self, wr_idx):
         lib.hsa_signal_store_screlease(self.queue_doorbell, wr_idx)
 
-    def dispatch(self, pdi_ptr, insts_ptr, insts_size, kernarg_ptr, num_kernargs, signal):
+    def dispatch(
+        self, pdi_ptr, insts_ptr, insts_size, kernarg_ptr, num_kernargs, signal
+    ):
         """Single dispatch: enqueue one packet and ring the doorbell."""
-        wr_idx = self.enqueue(pdi_ptr, insts_ptr, insts_size, kernarg_ptr, num_kernargs, signal)
+        wr_idx = self.enqueue(
+            pdi_ptr, insts_ptr, insts_size, kernarg_ptr, num_kernargs, signal
+        )
         self.ring(wr_idx)
 
     def dispatch_chain(self, items, signal):
@@ -352,7 +397,9 @@ class HSAContext:
         after each packet so completed slots drain and wrap around.
         """
         for pdi_ptr, insts_ptr, insts_size, kernarg_ptr, num_kernargs in items:
-            wr_idx = self.enqueue(pdi_ptr, insts_ptr, insts_size, kernarg_ptr, num_kernargs, signal)
+            wr_idx = self.enqueue(
+                pdi_ptr, insts_ptr, insts_size, kernarg_ptr, num_kernargs, signal
+            )
             # Ring per packet so the packet processor drains slots, letting a chain
             # longer than the queue wrap around without deadlocking on a full queue.
             self.ring(wr_idx)
@@ -362,7 +409,10 @@ class HSAContext:
         if timeout <= 0:
             # Default: block until the signal reaches 0 (unchanged behavior).
             lib.hsa_signal_wait_scacquire(
-                signal, HSA_SIGNAL_CONDITION_EQ, 0, _HSA_WAIT_FOREVER,
+                signal,
+                HSA_SIGNAL_CONDITION_EQ,
+                0,
+                _HSA_WAIT_FOREVER,
                 HSA_WAIT_STATE_BLOCKED,
             )
             return
@@ -375,7 +425,10 @@ class HSAContext:
         def _worker():
             try:
                 lib.hsa_signal_wait_scacquire(
-                    signal, HSA_SIGNAL_CONDITION_EQ, 0, _HSA_WAIT_FOREVER,
+                    signal,
+                    HSA_SIGNAL_CONDITION_EQ,
+                    0,
+                    _HSA_WAIT_FOREVER,
                     HSA_WAIT_STATE_BLOCKED,
                 )
                 result["ok"] = True

@@ -96,13 +96,14 @@ class HSATimeoutError(HSAError):
 
 class HsaAmdMemoryAccessDesc(ctypes.Structure):
     _fields_ = [
-        ("permissions", ctypes.c_int),      # hsa_access_permission_t
+        ("permissions", ctypes.c_int),  # hsa_access_permission_t
         ("agent", hsa_agent_t),
     ]
 
 
 class HsaAieKernelDispatchPacket(ctypes.Structure):
     """Mirror of hsa_amd_aie_kernel_dispatch_packet_t (64-byte AQL packet)."""
+
     _fields_ = [
         ("header", ctypes.c_uint16),
         ("opcode", ctypes.c_uint16),
@@ -195,88 +196,134 @@ class _HsaLib:
         decl("hsa_init", ctypes.c_int, [])
         decl("hsa_shut_down", ctypes.c_int, [])
         decl(
-            "hsa_iterate_agents", ctypes.c_int,
-            [ctypes.CFUNCTYPE(ctypes.c_int, hsa_agent_t, ctypes.c_void_p), ctypes.c_void_p],
+            "hsa_iterate_agents",
+            ctypes.c_int,
+            [
+                ctypes.CFUNCTYPE(ctypes.c_int, hsa_agent_t, ctypes.c_void_p),
+                ctypes.c_void_p,
+            ],
         )
         decl(
-            "hsa_agent_get_info", ctypes.c_int,
+            "hsa_agent_get_info",
+            ctypes.c_int,
             [hsa_agent_t, ctypes.c_int, ctypes.c_void_p],
         )
         decl(
-            "hsa_amd_agent_iterate_memory_pools", ctypes.c_int,
-            [hsa_agent_t,
-             ctypes.CFUNCTYPE(ctypes.c_int, hsa_amd_memory_pool_t, ctypes.c_void_p),
-             ctypes.c_void_p],
+            "hsa_amd_agent_iterate_memory_pools",
+            ctypes.c_int,
+            [
+                hsa_agent_t,
+                ctypes.CFUNCTYPE(ctypes.c_int, hsa_amd_memory_pool_t, ctypes.c_void_p),
+                ctypes.c_void_p,
+            ],
         )
         decl(
-            "hsa_amd_memory_pool_get_info", ctypes.c_int,
+            "hsa_amd_memory_pool_get_info",
+            ctypes.c_int,
             [hsa_amd_memory_pool_t, ctypes.c_int, ctypes.c_void_p],
         )
         decl(
-            "hsa_amd_memory_pool_allocate", ctypes.c_int,
-            [hsa_amd_memory_pool_t, ctypes.c_size_t, ctypes.c_uint32,
-             ctypes.POINTER(ctypes.c_void_p)],
+            "hsa_amd_memory_pool_allocate",
+            ctypes.c_int,
+            [
+                hsa_amd_memory_pool_t,
+                ctypes.c_size_t,
+                ctypes.c_uint32,
+                ctypes.POINTER(ctypes.c_void_p),
+            ],
         )
         decl("hsa_amd_memory_pool_free", ctypes.c_int, [ctypes.c_void_p])
         decl(
-            "hsa_amd_vmem_handle_create", ctypes.c_int,
-            [hsa_amd_memory_pool_t, ctypes.c_size_t, ctypes.c_int, ctypes.c_uint64,
-             ctypes.POINTER(hsa_amd_vmem_alloc_handle_t)],
+            "hsa_amd_vmem_handle_create",
+            ctypes.c_int,
+            [
+                hsa_amd_memory_pool_t,
+                ctypes.c_size_t,
+                ctypes.c_int,
+                ctypes.c_uint64,
+                ctypes.POINTER(hsa_amd_vmem_alloc_handle_t),
+            ],
+        )
+        decl("hsa_amd_vmem_handle_release", ctypes.c_int, [hsa_amd_vmem_alloc_handle_t])
+        decl(
+            "hsa_amd_vmem_address_reserve_align",
+            ctypes.c_int,
+            [
+                ctypes.POINTER(ctypes.c_void_p),
+                ctypes.c_size_t,
+                ctypes.c_uint64,
+                ctypes.c_uint64,
+                ctypes.c_uint64,
+            ],
         )
         decl(
-            "hsa_amd_vmem_handle_release", ctypes.c_int, [hsa_amd_vmem_alloc_handle_t]
-        )
-        decl(
-            "hsa_amd_vmem_address_reserve_align", ctypes.c_int,
-            [ctypes.POINTER(ctypes.c_void_p), ctypes.c_size_t, ctypes.c_uint64,
-             ctypes.c_uint64, ctypes.c_uint64],
-        )
-        decl(
-            "hsa_amd_vmem_address_free", ctypes.c_int,
+            "hsa_amd_vmem_address_free",
+            ctypes.c_int,
             [ctypes.c_void_p, ctypes.c_size_t],
         )
         decl(
-            "hsa_amd_vmem_map", ctypes.c_int,
-            [ctypes.c_void_p, ctypes.c_size_t, ctypes.c_size_t,
-             hsa_amd_vmem_alloc_handle_t, ctypes.c_uint64],
+            "hsa_amd_vmem_map",
+            ctypes.c_int,
+            [
+                ctypes.c_void_p,
+                ctypes.c_size_t,
+                ctypes.c_size_t,
+                hsa_amd_vmem_alloc_handle_t,
+                ctypes.c_uint64,
+            ],
         )
+        decl("hsa_amd_vmem_unmap", ctypes.c_int, [ctypes.c_void_p, ctypes.c_size_t])
         decl(
-            "hsa_amd_vmem_unmap", ctypes.c_int, [ctypes.c_void_p, ctypes.c_size_t]
-        )
-        decl(
-            "hsa_amd_vmem_set_access", ctypes.c_int,
-            [ctypes.c_void_p, ctypes.c_size_t, ctypes.POINTER(HsaAmdMemoryAccessDesc),
-             ctypes.c_size_t],
+            "hsa_amd_vmem_set_access",
+            ctypes.c_int,
+            [
+                ctypes.c_void_p,
+                ctypes.c_size_t,
+                ctypes.POINTER(HsaAmdMemoryAccessDesc),
+                ctypes.c_size_t,
+            ],
         )
 
         decl(
-            "hsa_queue_create", ctypes.c_int,
-            [hsa_agent_t, ctypes.c_uint32, ctypes.c_uint32, ctypes.c_void_p,
-             ctypes.c_void_p, ctypes.c_uint32, ctypes.c_uint32,
-             ctypes.POINTER(ctypes.POINTER(HsaQueue))],
+            "hsa_queue_create",
+            ctypes.c_int,
+            [
+                hsa_agent_t,
+                ctypes.c_uint32,
+                ctypes.c_uint32,
+                ctypes.c_void_p,
+                ctypes.c_void_p,
+                ctypes.c_uint32,
+                ctypes.c_uint32,
+                ctypes.POINTER(ctypes.POINTER(HsaQueue)),
+            ],
         )
+        decl("hsa_queue_destroy", ctypes.c_int, [ctypes.POINTER(HsaQueue)])
         decl(
-            "hsa_queue_destroy", ctypes.c_int, [ctypes.POINTER(HsaQueue)]
-        )
-        decl(
-            "hsa_queue_add_write_index_relaxed", ctypes.c_uint64,
+            "hsa_queue_add_write_index_relaxed",
+            ctypes.c_uint64,
             [ctypes.POINTER(HsaQueue), ctypes.c_uint64],
         )
         decl(
-            "hsa_queue_load_read_index_scacquire", ctypes.c_uint64,
+            "hsa_queue_load_read_index_scacquire",
+            ctypes.c_uint64,
             [ctypes.POINTER(HsaQueue)],
         )
         decl(
-            "hsa_signal_create", ctypes.c_int,
-            [ctypes.c_int64, ctypes.c_uint32, ctypes.c_void_p,
-             ctypes.POINTER(hsa_signal_t)],
+            "hsa_signal_create",
+            ctypes.c_int,
+            [
+                ctypes.c_int64,
+                ctypes.c_uint32,
+                ctypes.c_void_p,
+                ctypes.POINTER(hsa_signal_t),
+            ],
         )
         decl("hsa_signal_destroy", ctypes.c_int, [hsa_signal_t])
+        decl("hsa_signal_store_screlease", None, [hsa_signal_t, ctypes.c_int64])
         decl(
-            "hsa_signal_store_screlease", None, [hsa_signal_t, ctypes.c_int64]
-        )
-        decl(
-            "hsa_signal_wait_scacquire", ctypes.c_int64,
+            "hsa_signal_wait_scacquire",
+            ctypes.c_int64,
             [hsa_signal_t, ctypes.c_int, ctypes.c_int64, ctypes.c_uint64, ctypes.c_int],
         )
 
