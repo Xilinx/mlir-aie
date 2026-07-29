@@ -331,7 +331,6 @@ class _HsaLib:
                 ctypes.POINTER(hsa_signal_t),
             ],
         )
-        decl("hsa_signal_destroy", ctypes.c_int, [hsa_signal_t])
         decl("hsa_signal_store_screlease", None, [hsa_signal_t, ctypes.c_int64])
         decl(
             "hsa_signal_wait_scacquire",
