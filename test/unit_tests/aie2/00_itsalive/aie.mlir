@@ -6,10 +6,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-// REQUIRES: valid_xchess_license
+// REQUIRES: peano
 
-// RUN: %aiecc --xchesscc --xbridge --no-unified %s
-// RUN: %aiecc --xchesscc --xbridge --unified    %s
+// RUN: %aiecc --no-xchesscc --no-xbridge --no-unified %s
+// RUN: %aiecc --no-xchesscc --no-xbridge --unified    %s
 
 module @test00_itsalive {
   aie.device(xcve2802) {
