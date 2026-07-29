@@ -18,6 +18,8 @@
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/Support/Debug.h"
 
+#include <set>
+
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
@@ -419,6 +421,13 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
   // master select.
   std::map<std::pair<TileID, int>, SmallVector<Port, 4>> masterAMSels;
 
+  // <arbiter, msel> slots (per tile) already occupied by packet-switch
+  // configuration present in the input IR (e.g. pinned via segments emitted by
+  // --aie-split-flow-vias). These are reserved so the allocator below does not
+  // hand them out again and create two flows that share one amsel. Kept
+  // separate from masterAMSels so the existing masterset ops are not re-emitted.
+  std::set<std::pair<TileID, int>> reservedAmsels;
+
   // Track which arbiter each port is assigned to (to prevent conflicts)
   std::map<PhysPort, int> portToArbiter;
 
@@ -441,17 +450,20 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
       [&](const std::map<std::pair<TileID, int>, SmallVector<Port, 4>>
               &masterAMSels,
           TileOp tileOp, bool isCtrlPkt) {
+        auto slotFree = [&](int a, int i) {
+          auto key = std::make_pair(tileOp.getTileID(),
+                                    getAmselFromArbiterIDAndMsel(a, i));
+          return !masterAMSels.count(key) && !reservedAmsels.count(key);
+        };
         if (isCtrlPkt) { // Higher AMsel first
           for (int i = numMselsPerArbiter - 1; i >= 0; i--)
             for (int a = numArbiters - 1; a >= 0; a--)
-              if (!masterAMSels.count(
-                      {tileOp.getTileID(), getAmselFromArbiterIDAndMsel(a, i)}))
+              if (slotFree(a, i))
                 return getAmselFromArbiterIDAndMsel(a, i);
         } else { // Lower AMsel first
           for (int i = 0; i < numMselsPerArbiter; i++)
             for (int a = 0; a < numArbiters; a++)
-              if (!masterAMSels.count(
-                      {tileOp.getTileID(), getAmselFromArbiterIDAndMsel(a, i)}))
+              if (slotFree(a, i))
                 return getAmselFromArbiterIDAndMsel(a, i);
         }
         tileOp->emitOpError(
@@ -463,10 +475,12 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
       [&](const std::map<std::pair<TileID, int>, SmallVector<Port, 4>>
               &masterAMSels,
           TileOp tileOp, int arbiter) {
-        for (int i = 0; i < numMselsPerArbiter; i++)
-          if (!masterAMSels.count({tileOp.getTileID(),
-                                   getAmselFromArbiterIDAndMsel(arbiter, i)}))
+        for (int i = 0; i < numMselsPerArbiter; i++) {
+          auto key = std::make_pair(tileOp.getTileID(),
+                                    getAmselFromArbiterIDAndMsel(arbiter, i));
+          if (!masterAMSels.count(key) && !reservedAmsels.count(key))
             return getAmselFromArbiterIDAndMsel(arbiter, i);
+        }
         tileOp->emitOpError("tile op arbiter ")
             << std::to_string(arbiter) << " has used up all its msels";
         return INVALID_AMSEL_VALUE;
@@ -534,6 +548,27 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
     }
     return INVALID_ARBITER_VALUE;
   };
+
+  // Seed the reserved-amsel set with packet-switch configuration that is
+  // already present in the switchboxes (e.g. pinned via segments materialized
+  // by --aie-split-flow-vias, or any pre-lowered packet routing). Without this
+  // the allocator below starts from an empty state and can hand out an
+  // <arbiter, msel> pair that another master on the same tile already occupies,
+  // producing two independent flows that share one amsel and mis-multicast
+  // (deadlock).
+  for (auto swboxOp : device.getOps<SwitchboxOp>()) {
+    TileID tileId = swboxOp.getTileOp().getTileID();
+    for (auto mtset : swboxOp.getConnections().getOps<MasterSetOp>()) {
+      for (Value amselVal : mtset.getAmsels()) {
+        auto amselOp = amselVal.getDefiningOp<AMSelOp>();
+        if (!amselOp)
+          continue;
+        reservedAmsels.insert(
+            {tileId, getAmselFromArbiterIDAndMsel(amselOp.arbiterIndex(),
+                                                  amselOp.getMselValue())});
+      }
+    }
+  }
 
   // Check all multi-cast flows (same source, same ID). They should be
   // assigned the same arbiter and msel so that the flow can reach all the

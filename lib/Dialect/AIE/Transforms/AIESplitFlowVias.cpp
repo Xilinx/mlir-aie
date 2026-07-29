@@ -133,7 +133,8 @@ static void emitRoutableSegment(OpBuilder &builder, Location loc,
                                 WireBundle srcBundle, int srcChannel,
                                 Value dstTile, WireBundle dstBundle,
                                 int dstChannel, int packetID,
-                                DenseMap<Value, ShimMuxOp> &shimMuxes) {
+                                DenseMap<Value, ShimMuxOp> &shimMuxes,
+                                mlir::IntegerAttr maskAttr = {}) {
   if (srcTile == dstTile && srcBundle == dstBundle && srcChannel == dstChannel)
     return;
   if (isDirectWire(srcTile, srcBundle, srcChannel, dstTile, dstBundle,
@@ -163,6 +164,11 @@ static void emitRoutableSegment(OpBuilder &builder, Location loc,
   auto pf = PacketFlowOp::create(builder, loc,
                                  static_cast<uint8_t>(packetID), BoolAttr(),
                                  BoolAttr());
+  // Preserve the flow's pinned packet-rule mask on the routed remainder; without
+  // it the pathfinder derives a full 0x1f mask that mismatches the pinned via
+  // segments' rules for the same flow and the packet is never accepted.
+  if (maskAttr)
+    pf.setMaskAttr(maskAttr);
   PacketFlowOp::ensureTerminator(pf.getPorts(), builder, loc);
   builder.setInsertionPoint(pf.getPorts().front().getTerminator());
   PacketSourceOp::create(builder, loc, srcTile, srcBundle, srcChannel);
@@ -272,7 +278,8 @@ struct AIESplitFlowViasPass
       auto emitSegment = [&](Value dstTile, WireBundle dstBundle,
                              int dstChannel) {
         emitRoutableSegment(builder, loc, pf, srcTile, srcBundle, srcChannel,
-                            dstTile, dstBundle, dstChannel, id, shimMuxes);
+                            dstTile, dstBundle, dstChannel, id, shimMuxes,
+                            pf.getMaskAttr());
       };
 
       for (size_t i = 0, e = pf.getVias().size(); i < e; i++) {
