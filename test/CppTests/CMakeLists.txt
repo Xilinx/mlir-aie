@@ -10,12 +10,10 @@ add_executable(target_model  target_model.cpp)
 add_executable(target_model_rtti  target_model_rtti.cpp)
 add_executable(target_model_unknown_device  target_model_unknown_device.cpp)
 add_executable(register_database  register_database.cpp)
-add_executable(register_field_test  register_field_test.cpp)
 add_test(NAME TargetModel COMMAND target_model)
 add_test(NAME TargetModelRtti COMMAND target_model_rtti)
 add_test(NAME TargetModelUnknownDevice COMMAND target_model_unknown_device)
 add_test(NAME RegisterDatabase COMMAND register_database WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-add_test(NAME RegisterField COMMAND register_field_test)
 
 # Exercises the uint16 fallback path of test_utils::bfloat16_t on every
 # platform by force-undefining __STDCPP_BFLOAT16_T__ for this TU only.
@@ -31,28 +29,9 @@ add_test(NAME Bfloat16Fallback COMMAND bfloat16_fallback_test)
 
 get_property(dialect_libs GLOBAL PROPERTY MLIR_DIALECT_LIBS)
 
-set(EXECUTABLES target_model target_model_rtti target_model_unknown_device register_database register_field_test)
+set(EXECUTABLES target_model target_model_rtti target_model_unknown_device register_database)
 
 add_custom_target(check-aie-cpp COMMAND ${CMAKE_CTEST_COMMAND} DEPENDS ${EXECUTABLES} bfloat16_fallback_test)
-
-# register_field_test exercises AIEX::encodeRegisterField directly (see
-# lib/Dialect/AIEX/Utils/RegisterField.cpp, linked in below via AIEXUtils),
-# and RegisterField.h also names xilinx::AIEX::NpuMaskWrite32Op (in
-# createMaskWriteField's signature), so unlike the other executables here it
-# needs the AIEX dialect library and its MLIRDLTIDialect dependency
-# (AIEX::DeviceOp's DataLayoutOpInterface / HasDefaultDLTIDataLayout trait)
-# too. ${dialect_libs} below is not a reliable source for either: a sibling
-# add_subdirectory under programming_examples/programming_guide reloads MLIR
-# and clobbers the accumulated MLIR_DIALECT_LIBS global property first (see
-# the "Last because ..." comment on add_subdirectory(test) in the top-level
-# CMakeLists.txt), and this is the only CppTest that references an
-# AIEX-registered op type, so the gap was latent until this target. Wrap the
-# whole static-archive set in --start-group/--end-group: AIE/AIEX/
-# MLIRDLTIDialect resolve each other in a way a single left-to-right archive
-# scan does not settle in one pass (confirmed by hand: the same libraries
-# without the group wrapper leave verifyHasDefaultDLTIDataLayoutTrait and
-# friends undefined at link time).
-target_link_libraries(register_field_test PUBLIC -Wl,--start-group)
 
 foreach(executable ${EXECUTABLES})
     target_link_libraries(${executable}
@@ -60,8 +39,5 @@ foreach(executable ${EXECUTABLES})
                         AIE
                         ${dialect_libs})
 endforeach()
-
-target_link_libraries(register_field_test PUBLIC
-                      AIEXUtils AIEX MLIRDLTIDialect -Wl,--end-group)
 
 add_dependencies(check-aie check-aie-cpp)

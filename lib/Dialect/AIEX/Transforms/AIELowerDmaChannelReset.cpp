@@ -8,7 +8,6 @@
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
-#include "aie/Dialect/AIEX/Utils/RegisterField.h"
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/IR/SymbolTable.h"
@@ -181,20 +180,6 @@ static LogicalResult expandDmaChannelResetForOps(DeviceOp device) {
   return success();
 }
 
-// The S2MM/MM2S channel CTRL.RESET field: bit 1, matching
-// XAIE2PGBL_MEMORY_MODULE_DMA_{S2MM,MM2S}_{0,1}_CTRL_RESET_{LSB,MASK} --
-// identical across every core-tile and mem-tile channel register in the
-// aie2p reginit tables. This does NOT hold for the shim/NOC DMA CTRL
-// register: XAIE2PGBL_NOC_MODULE_DMA_{S2MM,MM2S}_{0,1}_CTRL has no RESET
-// field at all -- bit 1 there is PAUSE_MEM (aie-rt's Aie2PShimDmaChProp sets
-// Reset.Lsb = 0, Reset.Mask = 0). DmaChannelResetOp::verify() rejects shim
-// tiles before this lowering ever runs, so kDmaCtrlResetMask is never
-// applied to a shim register; do not reuse this constant for a shim-facing
-// op without rederiving it. The register offset itself (`regOff`) differs
-// per channel/direction/tile type, so it is filled in per-op from
-// AIETargetModel::getDmaControlAddress rather than baked into this constant.
-static constexpr uint32_t kDmaCtrlResetMask = 0x2;
-
 struct DmaChannelResetToMaskWrite32Pattern
     : OpConversionPattern<DmaChannelResetOp> {
   using OpConversionPattern<DmaChannelResetOp>::OpConversionPattern;
@@ -220,34 +205,51 @@ struct DmaChannelResetToMaskWrite32Pattern
     uint32_t ctrlAddrLocal =
         tm.getDmaControlAddress(col, row, channel, dir) & 0xFFFFF;
 
-    // The RESET field's mask is fixed across every core-tile/mem-tile DMA
-    // CTRL register (see kDmaCtrlResetMask above); only the register offset
-    // varies per channel/direction/tile type, so it is filled in here.
-    RegField ctrlResetField = {/*name=*/"DMA_CTRL.RESET",
-                               /*regOff=*/ctrlAddrLocal,
-                               /*mask=*/kDmaCtrlResetMask};
+    // Resolve the channel's reset bit from the register database rather than
+    // restating the layout here. The DMA control registers live in a tile's
+    // memory module (mem tiles resolve to their own module regardless), so the
+    // lookup is isMem; shim tiles are rejected by the verifier.
+    std::string ctrlRegName =
+        (dir == AIE::DMAChannelDir::S2MM ? "DMA_S2MM_" : "DMA_MM2S_") +
+        std::to_string(channel) + "_Ctrl";
+    const AIE::RegisterInfo *ctrlReg =
+        tm.lookupRegister(ctrlRegName, tile.getTileID(), /*isMem=*/true);
+    if (!ctrlReg)
+      return op.emitOpError("target has no ")
+             << ctrlRegName << " register in its register database";
+    const AIE::BitFieldInfo *resetField = ctrlReg->getField("Reset");
+    if (!resetField)
+      return op.emitOpError()
+             << ctrlRegName << " has no Reset field in the register database";
+    std::optional<uint32_t> resetMask = tm.getFieldMask(*resetField);
+    if (!resetMask)
+      return op.emitOpError()
+             << ctrlRegName << " Reset field does not fit in a 32-bit register";
 
     Location loc = op.getLoc();
     IntegerAttr colAttr = rewriter.getI32IntegerAttr(col);
     IntegerAttr rowAttr = rewriter.getI32IntegerAttr(row);
 
-    // Reset pulse: assert the reset bit, then clear it. createMaskWriteField
-    // derives the shift and mask from ctrlResetField and always emits
-    // npu.maskwrite32, so the pulse preserves the other CTRL fields
+    // Reset pulse: assert the reset bit, then clear it. Both writes mask to the
+    // reset bit only, so the pulse preserves the other CTRL fields
     // (DECOMPRESSION_ENABLE, ENABLE_OUT_OF_ORDER, CONTROLLER_ID, FOT_MODE)
     // instead of clobbering them. This mirrors aie-rt's XAie_DmaChannelReset,
-    // which drives the reset bit with a MaskWrite32.
-    FailureOr<NpuMaskWrite32Op> assertWrite = createMaskWriteField(
-        rewriter, loc, op, ctrlResetField, /*value=*/1, colAttr, rowAttr);
-    if (failed(assertWrite))
-      return failure();
+    // which drives the reset bit with a MaskWrite32. Constants are materialized
+    // in named locals so the emitted IR order does not depend on unspecified
+    // C++ argument-evaluation order.
+    Value assertAddr = createConstantI32(rewriter, loc, ctrlAddrLocal);
+    Value assertVal =
+        createConstantI32(rewriter, loc, tm.encodeFieldValue(*resetField, 1));
+    Value assertMask = createConstantI32(rewriter, loc, *resetMask);
+    rewriter.create<NpuMaskWrite32Op>(loc, assertAddr, assertVal, assertMask,
+                                      nullptr, colAttr, rowAttr);
 
-    FailureOr<NpuMaskWrite32Op> clearWrite = createMaskWriteField(
-        rewriter, loc, op, ctrlResetField, /*value=*/0, colAttr, rowAttr);
-    if (failed(clearWrite))
-      return failure();
+    Value clearAddr = createConstantI32(rewriter, loc, ctrlAddrLocal);
+    Value clearVal = createConstantI32(rewriter, loc, 0u);
+    Value clearMask = createConstantI32(rewriter, loc, *resetMask);
+    rewriter.replaceOpWithNewOp<NpuMaskWrite32Op>(
+        op, clearAddr, clearVal, clearMask, nullptr, colAttr, rowAttr);
 
-    rewriter.replaceOp(op, *clearWrite);
     return success();
   };
 };
