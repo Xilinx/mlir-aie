@@ -103,14 +103,16 @@ def _make_fake_ctx_cls(overflows):
 
         def __init__(self, timeout_on_wait):
             self._timeout_on_wait = timeout_on_wait
-            self.destroy_signal_calls = []
+            self.armed = []
+            self.discard_calls = 0
             self.vmem_free_calls = []
 
-        def create_signal(self, initial):
+        def arm_signal(self, value):
+            self.armed.append(value)
             return 42  # fake signal handle
 
-        def destroy_signal(self, sig):
-            self.destroy_signal_calls.append(sig)
+        def discard_signal(self):
+            self.discard_calls += 1
 
         def vmem_free(self, handle, va, size):
             self.vmem_free_calls.append((handle, va, size))
@@ -142,28 +144,31 @@ def _run_with_fake_ctx(monkeypatch, overflows, timeout_on_wait):
     return rt, handle
 
 
-def test_pooled_run_frees_no_kernargs(monkeypatch):
-    """A pooled dispatch allocates no kernargs, so a normal run frees none.
+def test_pooled_run_allocates_and_frees_nothing(monkeypatch):
+    """The steady-state dispatch path touches no allocator at all.
 
-    Kernargs live in the context's fixed slot pool; only the signal is per-run.
+    Kernargs come from the fixed slot pool and the completion signal is reused,
+    so a normal run neither allocates nor frees -- it only arms the signal.
     """
     rt, handle = _run_with_fake_ctx(monkeypatch, overflows=[], timeout_on_wait=False)
     assert rt.run(handle, []).is_success()
-    assert rt._ctx.destroy_signal_calls == [42]
+    assert rt._ctx.armed == [1], "signal must be armed to 1 for a single dispatch"
+    assert rt._ctx.discard_calls == 0
     assert rt._ctx.vmem_free_calls == []
 
 
-def test_run_leaks_signal_on_timeout(monkeypatch):
-    """On HSATimeoutError from wait(), run() must NOT free the signal.
+def test_run_replaces_shared_signal_on_timeout(monkeypatch):
+    """On HSATimeoutError the shared signal must be discarded, not reused.
 
-    The dispatch is still in flight, so the device owns it.
+    The dispatch is still in flight and may decrement the signal at any point,
+    which would corrupt the count of whichever dispatch armed it next.
     """
     from aie.utils.hostruntime.hsaruntime._bindings import HSATimeoutError
 
     rt, handle = _run_with_fake_ctx(monkeypatch, overflows=[], timeout_on_wait=True)
     with pytest.raises(HSATimeoutError):
         rt.run(handle, [])
-    assert rt._ctx.destroy_signal_calls == [], "signal must be leaked on timeout"
+    assert rt._ctx.discard_calls == 1, "in-flight signal must not be reused"
     assert rt._ctx.vmem_free_calls == []
 
 
@@ -189,6 +194,36 @@ def test_overflow_kernargs_freed_on_success_and_leaked_on_timeout(monkeypatch):
     with pytest.raises(HSATimeoutError):
         rt2.run(handle2, [])
     assert rt2._ctx.vmem_free_calls == [], "overflow kernargs must leak on timeout"
+    assert rt2._ctx.discard_calls == 1
+
+
+def test_run_chain_arms_shared_signal_to_chain_length(monkeypatch):
+    """One shared signal armed to len(runs) covers the whole chain.
+
+    Each completed packet decrements it, so a single wait suffices; arming to
+    anything else would either return early or hang.
+    """
+    from aie.utils.hostruntime.hsaruntime import hostruntime as hrt
+
+    cls = _make_fake_ctx_cls([])
+
+    class _ChainCtx(cls):
+        def dispatch_chain(self, items, signal):
+            self.chained = len(items)
+            return []
+
+    monkeypatch.setattr(
+        hrt.HSAContext, "get", classmethod(lambda c: _ChainCtx(timeout_on_wait=False))
+    )
+    rt = hrt.HSAHostRuntime()
+    handle = hrt.HSAKernelHandle(
+        pdi_ptr=0x1, insts_ptr=0x2, insts_size=4, kernel_name="MLIR_AIE"
+    )
+    runs = [(handle, []), (handle, []), (handle, [])]
+    assert rt.run_chain(runs).is_success()
+    assert rt._ctx.armed == [3]
+    assert rt._ctx.chained == 3
+    assert rt._ctx.discard_calls == 0
 
 
 def test_write_kernargs_layout():
