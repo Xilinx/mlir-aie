@@ -431,9 +431,7 @@ class HSAContext:
 
         Returns the list of one-off kernarg allocations to free after the wait
         (empty in the common pooled case)."""
-        wr_idx, overflow = self.enqueue(
-            pdi_ptr, insts_ptr, insts_size, args, signal
-        )
+        wr_idx, overflow = self.enqueue(pdi_ptr, insts_ptr, insts_size, args, signal)
         self.ring(wr_idx)
         return [overflow] if overflow is not None else []
 
