@@ -29,3 +29,11 @@ target_link_libraries(${currentTarget} PUBLIC
 )
 
 target_link_test_utils(${currentTarget})
+
+# Make-free build+run: JIT the design into final.xclbin/insts.bin and register a
+# ctest that runs the host exe on the NPU (cmake+ctest replaces `make run`).
+# DEVICE defaults to npu1; pass -DAIE_DEVICE=npu2 to target Strix.
+set(AIE_DEVICE npu CACHE STRING "NPU device family for the example (npu|npu2)")
+add_aie_design(TARGET ${currentTarget} PY vector_vector_modulo.py DEVICE ${AIE_DEVICE})
+add_dependencies(${currentTarget} ${currentTarget}_xclbin)
+add_aie_run_test(NAME ${currentTarget} DEVICE ${AIE_DEVICE} EXE ${currentTarget})
