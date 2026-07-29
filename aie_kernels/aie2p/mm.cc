@@ -9,6 +9,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <type_traits>
 
 #define REL_WRITE 0
 #define REL_READ 1
@@ -84,6 +85,21 @@ static inline void matmul_vectorized_2x2_mmul(const T_in *__restrict pA,
   using MMUL = aie::mmul<r, s, t, T_in, T_in, accauto>;
 
   event0();
+
+#ifdef AIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16
+  // The bfp16 emulation converts every A and B tile from bf16 to bfp16 before
+  // the MAC, and that conversion follows the core rounding mode. The default
+  // mode is rounding_mode::floor, which rounds toward negative infinity, so
+  // each converted element is biased low and the bias accumulates over the K
+  // reduction rather than cancelling. Select round-to-nearest-even for the
+  // duration of the kernel and restore the caller's mode before returning. Only
+  // the bf16 shapes convert, so the integer shapes keep whatever mode the
+  // caller set.
+  constexpr bool emulated_bf16 = std::is_same_v<T_in, bfloat16>;
+  aie::rounding_mode saved_rounding = aie::rounding_mode::floor;
+  if constexpr (emulated_bf16)
+    saved_rounding = aie::swap_rounding(aie::rounding_mode::conv_even);
+#endif
 
   for (unsigned z = 0; z < rowA; z += 2)
     chess_prepare_for_pipelining chess_loop_range(4, ) {
@@ -206,6 +222,11 @@ static inline void matmul_vectorized_2x2_mmul(const T_in *__restrict pA,
           }
         }
     }
+
+#ifdef AIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16
+  if constexpr (emulated_bf16)
+    aie::set_rounding(saved_rounding);
+#endif
 
   event1();
 }

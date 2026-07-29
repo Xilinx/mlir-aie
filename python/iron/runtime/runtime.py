@@ -61,8 +61,8 @@ class ActiveSequence:
 
     The body's data-movement verbs (``fifo.fill``/``fifo.drain``) and
     ``TaskGroup`` reach this object through the active-sequence ContextVar
-    (see [`_context`][iron.runtime._context]) rather than a threaded ``rt``
-    reference, so the body signature carries only the runtime buffers.
+    (see ``_context``) rather than a threaded ``rt`` reference, so the body
+    signature carries only the runtime buffers.
 
     The body runs exactly once, inside the ``runtime_sequence`` op: each verb
     both binds its ObjectFifo's shim endpoint and emits the shim DMA. The DMA
@@ -156,15 +156,14 @@ class ActiveSequence:
 
 
 class Runtime(Resolvable):
-    """The host-side sequence of data-movement and worker-start operations that
-    execute an IRON design.
+    """The host-side sequence of data-movement operations that execute an
+    IRON design.
 
     A Runtime describes what the host does at runtime: filling input
     [`ObjectFifo`][iron.ObjectFifo]s with data and draining results back to host
-    buffers. The sequence is a callback registered with
-    [`sequence`][iron.runtime.runtime.Runtime.sequence]; its body reads the
-    runtime buffers as parameters and moves data with ``fifo.fill(...)`` /
-    ``fifo.drain(...)``.
+    buffers. The sequence is the ``seq_fn`` callback passed to the
+    constructor; its body reads the runtime buffers as parameters and moves
+    data with ``fifo.fill(...)`` / ``fifo.drain(...)``.
     """
 
     def __init__(
@@ -305,9 +304,15 @@ class Runtime(Resolvable):
         runtime endpoint -- including those on link siblings -- is already bound.
 
         Args:
-            trace_size/reuse_output_buffer/egress_shim_col: Forwarded from
+            trace_size: Forwarded from
                 [`Program.enable_trace`][iron.program.Program.enable_trace]; see
-                there. ``trace_size`` of ``None``/``0`` disables tracing.
+                there. ``None``/``0`` disables tracing.
+            reuse_output_buffer: Forwarded from
+                [`Program.enable_trace`][iron.program.Program.enable_trace]; see
+                there.
+            egress_shim_col: Forwarded from
+                [`Program.enable_trace`][iron.program.Program.enable_trace]; see
+                there.
             load_pdi_device_ref: On the full-ELF path (no xclbin configures the
                 device), the device symbol to load via ``npu_load_pdi`` as the
                 first op in the sequence. ``None`` on the xclbin path.

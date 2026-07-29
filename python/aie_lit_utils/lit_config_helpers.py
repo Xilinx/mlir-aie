@@ -849,6 +849,10 @@ class LitConfigHelper:
         # System environment variables
         llvm_config.with_system_environment(["HOME", "INCLUDE", "LIB", "TMP", "TEMP"])
 
+        # Let a headless caller force matplotlib's non-interactive backend so
+        # taplib visualize()'s plt.show() doesn't block a display-less runner.
+        llvm_config.with_system_environment("MPLBACKEND")
+
         # JIT cache for compiled designs. NPU_CACHE_HOME is the current name;
         # IRON_CACHE_HOME is kept as a no-op safety for any straggler caller.
         llvm_config.with_system_environment(["NPU_CACHE_HOME", "IRON_CACHE_HOME"])
