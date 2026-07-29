@@ -134,7 +134,11 @@ def _bench(label: str, inline: bool, x, num_elements: int, iters: int):
         f"  {label:<13} {scope} (avg/min/max us): "
         f"{stats.avg_us:.1f} / {stats.min_us:.1f} / {stats.max_us:.1f}"
     )
-    return stats, y.numpy()
+    # Copy, don't alias: Tensor.numpy() hands back a view over the XRT buffer's
+    # mapped memory (np.frombuffer(bo.map(), ...)).  `y` dies when this function
+    # returns, its __del__ drops the bo, and the view would dangle -- a segfault
+    # in whatever reads it next.
+    return stats, y.numpy().copy()
 
 
 def main() -> None:
@@ -151,6 +155,11 @@ def main() -> None:
 
     # One input for both variants, so the outputs are directly comparable.
     x = iron.randint(0, 100, (args.num_elements,), dtype=np.int32, device="npu")
+    # Snapshot the host copy up front.  Reading an NPU tensor syncs its XRT
+    # buffer from the device, and _bench tears down each variant's kernel
+    # between runs -- so the only safe time to touch device memory is while
+    # that variant's kernel is still alive.
+    expected = x.numpy() + 1
 
     obj, obj_out = _bench("object-link", False, x, args.num_elements, args.iters)
     inl, inl_out = _bench("inline", True, x, args.num_elements, args.iters)
@@ -159,7 +168,7 @@ def main() -> None:
 
     assert_pass(
         obj_out,
-        x.numpy() + 1,
+        expected,
         fail_msg="object-linked output mismatch",
         print_pass=False,
     )
