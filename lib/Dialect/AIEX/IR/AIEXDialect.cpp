@@ -19,6 +19,7 @@
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
 #include "mlir/Interfaces/FoldInterfaces.h"
+#include "mlir/Interfaces/ViewLikeInterface.h"
 #include "mlir/Transforms/InliningUtils.h"
 
 #include "llvm/ADT/TypeSwitch.h"
@@ -1125,6 +1126,20 @@ verifyTaskBDDimensions(const AIE::AIETargetModel &targetModel, int col, int row,
     ++maxNDims; // leading dim is hoisted into the iteration/repeat register
   LogicalResult result = success();
   body.walk([&](AIE::DMABDOp bd) {
+    // AIE::DMABDOp::verify() only runs this same check when its parent is a
+    // MemOp/MemTileDMAOp/ShimDMAOp/DMAOp (see its own comment); a BD nested in
+    // a DMA task op reaches here unchecked. Validate the dynamic-operand count
+    // against the kDynamic-sentinel count in static_sizes before calling
+    // getMixedSizes(): mismatched lists make it call mlir::getMixedValues(),
+    // which indexes past the end of the operand range on a mismatch instead
+    // of diagnosing it (asserts in a debug build, OOB read otherwise).
+    llvm::ArrayRef<int64_t> staticSizes =
+        bd.getStaticSizes().value_or(llvm::ArrayRef<int64_t>{});
+    if (failed(mlir::verifyListOfOperandsOrIntegers(
+            bd, "sizes", staticSizes.size(), staticSizes, bd.getSizes()))) {
+      result = failure();
+      return;
+    }
     size_t numDims = bd.getMixedSizes().size();
     if (numDims > maxNDims) {
       bd.emitOpError() << "Cannot give more than " << std::to_string(maxNDims)
