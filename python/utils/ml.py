@@ -18,7 +18,6 @@ import csv
 import json
 import math
 import os
-import sys
 
 import numpy as np
 import torch  # pyright: ignore[reportMissingImports]
@@ -84,10 +83,8 @@ def unpickle(file):
 def fuse_single_conv_bn_pair(bn_mean, bn_var, bn_wts, bn_bias, conv_wts):
     # https://github.com/ChoiDM/Pytorch_BN_Fold/blob/master/bn_fold.py
     eps = 1e-05
-    mu = bn_mean
     var = bn_var
     gamma = bn_wts
-    beta = bn_bias
     W = conv_wts
 
     denom = torch.sqrt(var + eps)
@@ -413,7 +410,7 @@ def run_conv_torch_test(
             Default ``None`` (no dumps).
     """
     import aie.iron as iron
-    from aie.utils import HostRuntime, NPUKernel, DefaultNPURuntime, TraceConfig
+    from aie.utils import DefaultNPURuntime, HostRuntime, NPUKernel, TraceConfig
 
     dtype_in = np.dtype(dtype_in)
     dtype_wts = np.dtype(dtype_wts)

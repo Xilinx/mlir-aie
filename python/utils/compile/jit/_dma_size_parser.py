@@ -67,14 +67,14 @@ def parse_dma_sizes(kernel_dir: Path) -> list[int] | None:
         return None
     try:
         # Trigger AIE/aiex dialect registration before constructing the context.
-        from aie.dialects import aie as _aie  # noqa: F401
-        from aie.dialects import aiex as _aiex  # noqa: F401
         from aie import (  # pyright: ignore[reportMissingImports]
             ir,  # pyright: ignore[reportAttributeAccessIssue]
         )
         from aie._mlir_libs import (  # pyright: ignore[reportMissingImports]
             get_dialect_registry,  # pyright: ignore[reportAttributeAccessIssue]
         )
+        from aie.dialects import aie as _aie  # noqa: F401
+        from aie.dialects import aiex as _aiex  # noqa: F401
 
         ir_context = ir.Context  # pyright: ignore[reportAttributeAccessIssue]
         ir_location = ir.Location  # pyright: ignore[reportAttributeAccessIssue]

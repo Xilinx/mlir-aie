@@ -3,12 +3,12 @@
 
 from copy import deepcopy
 from functools import partial
-import numpy as np
 from typing import Sequence
 
-from .tas import TensorAccessSequence
-from aie.utils import ceildiv
+import numpy as np
+from aie.utils.tensor_factory import ceildiv
 
+from .tas import TensorAccessSequence
 from .utils import validate_and_clean_sizes_strides, validate_tensor_dims
 
 
@@ -138,7 +138,11 @@ class TensorTiler2D:
             tile_col_major (bool, optional): Iterate column major within each tile. Defaults to False.
             tile_group_col_major (bool, optional): Iterate column major between tiles in a group within a TensorAccessSequence. Defaults to False.
             iter_col_major (bool, optional): Iterate column major over tiles within the TensorAccessSequence. Defaults to False.
-            allow_partial (bool, optional): Whether to allow partial tile groups. A tensor always decomposes into tiles evenly, but it may not decompose into tile *groups* evenly. When False, a partial tile grouping raises a ValueError; when True, partial groupings at the tensor edges are permitted. Defaults to False.
+            allow_partial (bool, optional): Whether to allow partial tile groups. A tensor
+                always decomposes into tiles evenly, but it may not decompose into tile
+                *groups* evenly. When False, a partial tile grouping raises a ValueError;
+                when True, partial groupings at the tensor edges are permitted. Defaults
+                to False.
             pattern_repeat (int, optional): Apply the access pattern n times within a single TensorAccessPattern. Defaults to 1.
             prune_step (bool, optional): Prune the iteration steps in the tiling process. Defaults to True.
 

@@ -1,19 +1,17 @@
 # Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-import numpy as np
+from contextlib import contextmanager
 from typing import Sequence
 
-from ...ir import (  # pyright: ignore[reportMissingImports]
-    IndexType,
-    InsertionPoint,
-    Value,
-)
+import numpy as np
+
 from ...dialects.scf import (  # pyright: ignore[reportMissingImports]
-    IfOp,
     ForOp,
+    IfOp,
     yield_,
 )
+from ...extras import types as T  # pyright: ignore[reportMissingImports]
 from ...extras.dialects.arith import (  # pyright: ignore[reportMissingImports]
     constant,
     index_cast,
@@ -21,8 +19,11 @@ from ...extras.dialects.arith import (  # pyright: ignore[reportMissingImports]
 from ...extras.util import (  # pyright: ignore[reportMissingImports]
     get_user_code_loc,
 )
-from contextlib import contextmanager
-from ...extras import types as T  # pyright: ignore[reportMissingImports]
+from ...ir import (  # pyright: ignore[reportMissingImports]
+    IndexType,
+    InsertionPoint,
+    Value,
+)
 
 
 def _for(

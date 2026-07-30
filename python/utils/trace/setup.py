@@ -3,43 +3,43 @@
 
 import logging
 
-logger = logging.getLogger(__name__)
-
 from aie.dialects.aie import (
-    packetflow,
+    TraceMode,  # pyright: ignore[reportAttributeAccessIssue]
+    TracePacketType,  # pyright: ignore[reportAttributeAccessIssue]
     WireBundle,  # pyright: ignore[reportAttributeAccessIssue]
+    get_target_model,  # pyright: ignore[reportAttributeAccessIssue]
+    packetflow,
     trace,
-    trace_mode,
     trace_event,
+    trace_host_config,
+    trace_mode,
     trace_packet,
     trace_port,
     trace_start,
-    trace_stop,
     trace_start_config,
-    trace_host_config,
-    TraceMode,  # pyright: ignore[reportAttributeAccessIssue]
-    TracePacketType,  # pyright: ignore[reportAttributeAccessIssue]
-    DMAChannelDir,  # pyright: ignore[reportAttributeAccessIssue]
-    get_target_model,  # pyright: ignore[reportAttributeAccessIssue]
+    trace_stop,
 )
 from aie.dialects.aiex import (
+    npu_address_patch,  # pyright: ignore[reportAttributeAccessIssue]
+    npu_maskwrite32,  # pyright: ignore[reportAttributeAccessIssue]
+    npu_sync,
     npu_write32,  # pyright: ignore[reportAttributeAccessIssue]
     npu_writebd,  # pyright: ignore[reportAttributeAccessIssue]
-    npu_maskwrite32,  # pyright: ignore[reportAttributeAccessIssue]
-    npu_address_patch,  # pyright: ignore[reportAttributeAccessIssue]
-    npu_sync,
 )
+
 from .events import (
     BasePortEvent,
-    GenericEvent,
-    PortEvent,
     CoreEvent,
+    GenericEvent,
     MemEvent,
-    ShimTileEvent,
     MemTileEvent,
     MemTilePortEvent,
     PacketType,
+    PortEvent,
+    ShimTileEvent,
 )
+
+logger = logging.getLogger(__name__)
 
 # Globally defined constants
 direction_s2mm = 0

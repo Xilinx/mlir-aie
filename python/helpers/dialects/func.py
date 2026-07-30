@@ -2,46 +2,43 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 import inspect
-import numpy as np
-from functools import lru_cache, update_wrapper
-import sys
-from typing import get_args, get_origin, Any, List
+from functools import update_wrapper
+from typing import Any, List, get_args, get_origin
 
-from ...extras.meta import op_region_builder  # pyright: ignore[reportMissingImports]
-from ...extras.util import (  # pyright: ignore[reportMissingImports]
-    get_user_code_loc,
-    make_maybe_no_args_decorator,
-)
-from ..util import get_arg_types, NpuDType, try_convert_np_type_to_mlir_type
+import numpy as np
+
 from ...dialects._ods_common import (  # pyright: ignore[reportMissingImports]
     get_op_result_or_op_results,
 )
-from ...dialects.func import *  # pyright: ignore[reportMissingImports]
 from ...dialects.func import (  # pyright: ignore[reportMissingImports]
-    FuncOp,
     CallOp,
+    FuncOp,
     ReturnOp,
-)
-from ...ir import (  # pyright: ignore[reportMissingImports]
-    Context,
-    FlatSymbolRefAttr,
-    FunctionType,
-    InsertionPoint,
-    OpView,
-    Operation,
-    Type,
-    TypeAttr,
-    Value,
 )
 from ...extras.dialects.arith import (  # pyright: ignore[reportMissingImports]
     ScalarValue,
     index_cast,
 )
-from ...ir import (  # pyright: ignore[reportMissingImports]
-    IndexType,
-    IntegerType,
-    OpResult,
+from ...extras.meta import op_region_builder  # pyright: ignore[reportMissingImports]
+from ...extras.util import (  # pyright: ignore[reportMissingImports]
+    get_user_code_loc,
+    make_maybe_no_args_decorator,
 )
+from ...ir import (  # pyright: ignore[reportMissingImports]  # pyright: ignore[reportMissingImports]
+    Context,
+    FlatSymbolRefAttr,
+    FunctionType,
+    IndexType,
+    InsertionPoint,
+    IntegerType,
+    Operation,
+    OpResult,
+    OpView,
+    Type,
+    TypeAttr,
+    Value,
+)
+from ..util import NpuDType, get_arg_types, try_convert_np_type_to_mlir_type
 
 
 def call(
@@ -139,17 +136,20 @@ def call(
 
 
 def isalambda(v):
-    LAMBDA = lambda: 0
+    # A `def` here would defeat the check: Python only assigns the literal
+    # name "<lambda>" to actual lambda expressions, not to `def`s.
+    LAMBDA = lambda: 0  # noqa: E731
+
     return isinstance(v, type(LAMBDA)) and v.__name__ == LAMBDA.__name__
 
 
 def prep_func_types(sig, return_types):
     assert not (
-        not sig.return_annotation is inspect.Signature.empty and len(return_types) > 0
-    ), f"func can use return annotation or explicit return_types but not both"
+        sig.return_annotation is not inspect.Signature.empty and len(return_types) > 0
+    ), "func can use return annotation or explicit return_types but not both"
     return_types = (
         sig.return_annotation
-        if not sig.return_annotation is inspect.Signature.empty
+        if sig.return_annotation is not inspect.Signature.empty
         else return_types
     )
     if not isinstance(return_types, (tuple, list)):
@@ -162,7 +162,7 @@ def prep_func_types(sig, return_types):
     input_types = [
         p.annotation
         for p in sig.parameters.values()
-        if not p.annotation is inspect.Signature.empty
+        if p.annotation is not inspect.Signature.empty
     ]
     # convert ndarray types to memref types
     assert all(
@@ -233,7 +233,7 @@ class FuncBase:
         if self._is_decl():
             assert len(self.input_types) == len(
                 sig.parameters
-            ), f"func decl needs all input types annotated"
+            ), "func decl needs all input types annotated"
             self.sym_visibility = "private"
             self.emit()
 

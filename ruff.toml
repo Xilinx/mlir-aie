@@ -1,0 +1,60 @@
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+target-version = "py39"
+# Deliberately more generous than black's 88: black already wraps ordinary
+# code at 88, so anything ruff still sees over 88 is a long string, comment,
+# or docstring line black leaves alone -- most commonly this codebase's
+# established one-line-per-arg Google-docstring convention (`name (type,
+# optional): description. Defaults to X.`). 160 clears nearly all of those
+# without forcing a reformat of that convention across the API surface, or
+# hand-wraps of long URLs/qualified names/error-message f-strings for little
+# readability benefit.
+line-length = 160
+
+# Same scope as pyrightconfig.json's "include".
+include = [
+  "python/iron/**/*.py",
+  "python/utils/**/*.py",
+  "python/helpers/**/*.py",
+  "python/compiler/**/*.py",
+]
+
+# Same generated/vendored dirs excluded from the black pre-commit hook.
+extend-exclude = [
+  "third_party",
+  "*build*",
+  "*install*",
+  "sandbox*",
+  "llvm*",
+  "cmakeModules*",
+  "ironenv",
+]
+
+[lint]
+# E/F: pyflakes + pycodestyle errors (ruff defaults).
+# I: isort (no import sorter previously enforced).
+# N802/N816: pep8-naming subset that's clean across this codebase (verified:
+# zero violations at introduction). N801/N803/N806/N812 are dropped -- each
+# was individually confirmed to collide with a real, load-bearing convention
+# rather than catching a mistake:
+#   N801: hardware-format dtype classes (e.g. v8bfp16ebs8) are named to match
+#     the literal spec string shared with C++ (see helper.h); CapWords would
+#     break that 1:1 mirroring.
+#   N812: `types as T` / `_aie as CustomTypes` mirror the upstream MLIR
+#     python-bindings type-namespace convention (`T` used 30+ times).
+#   N803/N806: matrix/tensor-dimension math notation (N_div_n, ml.py's W/A/D
+#     following the referenced Pytorch_BN_Fold algorithm's own variable
+#     names), true local constants (_RGBA, _ACC_FACTOR), an MLIR attribute
+#     name mirrored verbatim (via_DMA -- literally `via_DMA` in the IR, see
+#     aie_ops.py FileCheck tests), a public API parameter used externally
+#     (hasElse), and dynamically-fetched dialect op/enum classes bound via
+#     getattr (regdb.py/parse.py) because pyright can't see attributes on the
+#     compiled bindings module -- renaming those to lowercase would make
+#     `isinstance(x, device_op)`-style checks read as instance access.
+select = ["E", "F", "I", "N802", "N816"]
+
+[lint.per-file-ignores]
+# Markdown-formatted module docstring (headers, tables, code fences); wrapping
+# it to fit a line-length limit would break the markdown formatting.
+"python/utils/trace/__init__.py" = ["E501"]

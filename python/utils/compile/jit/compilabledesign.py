@@ -37,6 +37,13 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Callable, Mapping
 
+from aie.extras.context import mlir_mod_ctx  # pyright: ignore[reportMissingImports]
+from aie.ir import (  # pyright: ignore[reportMissingImports]
+    Module as _Module,  # pyright: ignore[reportAttributeAccessIssue]
+)
+from aie.ir import (  # pyright: ignore[reportMissingImports]
+    StringAttr,  # pyright: ignore[reportAttributeAccessIssue]
+)
 from aie.utils.compile import (
     NPU_CACHE_HOME,
     compile_external_kernel,
@@ -44,11 +51,6 @@ from aie.utils.compile import (
 )
 from aie.utils.compile.cache.utils import file_lock
 from aie.utils.compile.utils import _cleanup_failed_compilation
-from aie.extras.context import mlir_mod_ctx  # pyright: ignore[reportMissingImports]
-from aie.ir import (  # pyright: ignore[reportMissingImports]
-    Module as _Module,  # pyright: ignore[reportAttributeAccessIssue]
-    StringAttr,  # pyright: ignore[reportAttributeAccessIssue]
-)
 
 from ._dma_size_parser import parse_dma_sizes
 from ._hash import (
@@ -61,11 +63,9 @@ from ._introspect import (
     _introspect_generator,
     _is_compile_param,
     _is_tensor_param,
-    split_params,
 )
-from ._serialization import _TensorPlaceholder, _decode_kwarg, _encode_kwarg
+from ._serialization import _decode_kwarg, _encode_kwarg, _TensorPlaceholder
 from .context import compile_context
-from .markers import CompileTime, In, InOut, Out
 
 # A waiter on this lock is waiting out someone else's *compile*, not just an
 # acquisition, so the bound has to exceed a full build rather than a handshake.
@@ -603,7 +603,7 @@ class CompilableDesign:
         Returns:
             ``(tensor_args, scalar_kwargs)``
         """
-        from aie.iron.kernel import ExternalFunction, Kernel
+        from aie.iron.kernel import Kernel
 
         if not callable(self.mlir_generator):
             # Static .mlir file: pass everything through as tensors,

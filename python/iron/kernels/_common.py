@@ -8,9 +8,8 @@
 import hashlib
 import logging
 from pathlib import Path
-import numpy as np
-from ml_dtypes import bfloat16
 
+import numpy as np
 from aie.iron.kernel import ExternalFunction
 
 _log = logging.getLogger(__name__)

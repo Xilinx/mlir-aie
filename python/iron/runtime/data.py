@@ -4,18 +4,19 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 
+from typing import Sequence, get_origin
+
 import numpy as np
-from typing import get_origin, Sequence
 
 from ...extras.dialects.memref import (  # pyright: ignore[reportMissingImports]
     MemRefValue,
 )
+from ...helpers.taplib import TensorAccessPattern, TensorTiler2D
 from ...helpers.util import (
     NpuDType,
     np_ndarray_type_get_dtype,
     np_ndarray_type_get_shape,
 )
-from ...helpers.taplib import TensorAccessPattern, TensorTiler2D
 
 
 class RuntimeData:

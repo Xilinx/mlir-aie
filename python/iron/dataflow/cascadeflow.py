@@ -6,6 +6,7 @@
 """CascadeFlow: a directed cascade stream connection between two Workers."""
 
 from __future__ import annotations
+
 from typing import TYPE_CHECKING
 
 from ...dialects.aie import (

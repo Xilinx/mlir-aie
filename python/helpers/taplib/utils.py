@@ -2,8 +2,9 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 from copy import deepcopy
-import numpy as np
 from typing import Sequence
+
+import numpy as np
 
 
 def validate_and_clean_sizes_strides(
@@ -35,7 +36,7 @@ def validate_and_clean_sizes_strides(
             raise ValueError("Strides is None, but expected Sequence[int]")
     # After this point can assume None is ok for sizes/strides
 
-    if not (expected_dims is None):
+    if expected_dims is not None:
         if expected_dims < 1:
             raise ValueError(f"Expected dimensions ({expected_dims}) should be >= 1")
 
@@ -44,9 +45,9 @@ def validate_and_clean_sizes_strides(
         return None, None
 
     # Validate dimensions
-    if (not (sizes is None)) and len(sizes) == 0:
+    if (sizes is not None) and len(sizes) == 0:
         raise ValueError("len(sizes) must be >0")
-    if (not (strides is None)) and len(strides) == 0:
+    if (strides is not None) and len(strides) == 0:
         raise ValueError("len(strides) must be >0")
 
     if sizes and strides:
@@ -110,7 +111,7 @@ def validate_tensor_dims(
     Returns:
         Sequence[int]: The validated tensor dimensions.
     """
-    if not (expected_dims is None):
+    if expected_dims is not None:
         if expected_dims < 1:
             raise ValueError(f"Expected dimensions ({expected_dims}) should be >= 1")
     tensor_dims = deepcopy(tensor_dims)
@@ -130,7 +131,7 @@ def validate_tensor_dims(
     if len(tensor_dims) == 1:
         tensor_dims = [1, tensor_dims[0]]
 
-    if not (expected_dims is None) and len(tensor_dims) != expected_dims:
+    if expected_dims is not None and len(tensor_dims) != expected_dims:
         raise ValueError(
             f"Tensor dimension ({tensor_dims}) does not match expected dimension ({expected_dims})"
         )

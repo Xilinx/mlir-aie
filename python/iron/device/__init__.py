@@ -7,7 +7,16 @@
 
 from . import device as _device_module
 from .device import Device
-from .tile import AnyShimTile, AnyMemTile, AnyComputeTile, Tile
+from .tile import AnyComputeTile, AnyMemTile, AnyShimTile, Tile
+
+__all__ = [
+    "Device",
+    "AnyShimTile",
+    "AnyMemTile",
+    "AnyComputeTile",
+    "Tile",
+    "from_name",
+]
 
 
 def __getattr__(name: str) -> type[Device]:

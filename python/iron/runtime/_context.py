@@ -14,6 +14,7 @@ so it is well-defined even across nested calls and is always cleared on exit.
 """
 
 from __future__ import annotations
+
 from contextlib import contextmanager
 from contextvars import ContextVar
 from typing import TYPE_CHECKING, Iterator

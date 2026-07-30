@@ -4,17 +4,11 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 from __future__ import annotations
+
 import itertools
-import numpy as np
 from typing import Sequence, TypeAlias
 
-# Named aliases for the (size, stride) pair-lists used by DMA stream
-# layout transforms and pad-then-stream descriptors. Both are list[(size,
-# stride)] from highest to lowest dimension; the names exist purely to
-# make signatures and docs self-documenting — they are not validated
-# types at runtime.
-StreamDims: TypeAlias = list[Sequence[int]]
-PadDims: TypeAlias = list[Sequence[int]]
+import numpy as np
 
 from ... import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
 from ...dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
@@ -27,15 +21,22 @@ from ...dialects._aie_ops_gen import (  # pyright: ignore[reportMissingImports]
 from ...dialects.aie import object_fifo, object_fifo_link
 from ...helpers.util import (
     NpuDType,
-    np_ndarray_type_to_memref_type,
     np_ndarray_type_get_dtype,
     np_ndarray_type_get_shape,
+    np_ndarray_type_to_memref_type,
     single_elem_or_list_to_list,
 )
-
-from ..resolvable import Resolvable, NotResolvedError
+from ..device import AnyMemTile, Tile
+from ..resolvable import NotResolvedError, Resolvable
 from .endpoint import ObjectFifoEndpoint
-from ..device import Tile, AnyMemTile
+
+# Named aliases for the (size, stride) pair-lists used by DMA stream
+# layout transforms and pad-then-stream descriptors. Both are list[(size,
+# stride)] from highest to lowest dimension; the names exist purely to
+# make signatures and docs self-documenting — they are not validated
+# types at runtime.
+StreamDims: TypeAlias = list[Sequence[int]]
+PadDims: TypeAlias = list[Sequence[int]]
 
 
 def _same_shim_pin(a: "Tile | None", b: "Tile | None") -> bool:
@@ -93,15 +94,43 @@ class ObjectFifo(Resolvable):
             obj_type (type[np.ndarray]): The type of each buffer in the ObjectFifo
             depth (int | None, optional): The default depth of the ObjectFifo endpoints. Defaults to 2.
             name (str | None, optional): The name of the ObjectFifo. If None is given, a unique name will be generated. Defaults to None.
-            dims_to_stream (StreamDims | None, optional): Data layout transformations applied when data is pushed onto the AXI stream, described as pairs of (size, stride) from highest to lowest dimension. Defaults to None.
-            dims_from_stream_per_cons (StreamDims | None, optional): List of data layout transformations applied by each consumer when data is read from the AXI stream, described as pairs of (size, stride) from highest to lowest dimension. Defaults to None.
+            dims_to_stream (StreamDims | None, optional): Data layout transformations applied
+                when data is pushed onto the AXI stream, described as pairs of (size, stride)
+                from highest to lowest dimension. Defaults to None.
+            dims_from_stream_per_cons (StreamDims | None, optional): List of data layout
+                transformations applied by each consumer when data is read from the AXI
+                stream, described as pairs of (size, stride) from highest to lowest
+                dimension. Defaults to None.
             plio (bool, optional): Whether the ObjectFifo uses PLIO connections. Defaults to False.
-            disable_synchronization (bool, optional): When True, disables lock-based synchronization on the ObjectFifo. Defaults to False.
-            repeat_count (int | None, optional): If set, causes the MemTile DMA to replay the buffer descriptor this many times without a new DMA transfer from L3. Distinct from ``iter_count`` (BD-chain iteration count). Defaults to None.
-            delegate_tile (Tile | None, optional): Shared-memory delegate tile. When set, the ObjectFifo's underlying buffer pool is allocated on this tile's memory module instead of the default placement. Lowers to ``aie.objectfifo.allocate``. *Only valid when both producer and consumer have shared-memory access to the delegate tile* (e.g. self-loop fifos where prod == cons, or fifos between adjacent tiles spilling to a neighboring MemTile). The delegate is the storage location, not a producer- or consumer-side concept; the underlying op verifier rejects this if either endpoint cannot share memory with the delegate. Defaults to None.
-            init_values (list[np.ndarray] | None, optional): Per-buffer static initial values for the producer endpoint. One ndarray per producer-side buffer; the producer tile must be able to hold static data at design startup (e.g. a MemTile). Lowers to the ``initValues`` attribute on the underlying ``aie.objectfifo`` op. Defaults to None.
-            consumer_obj_type (type[np.ndarray] | None, optional): Consumer element type for asymmetric transfer granularity. When set, the producer sends obj_type-sized transfers and the consumer receives consumer_obj_type-sized transfers. Producer element count must be an integer multiple of consumer element count. Defaults to None.
-            aie_stream (tuple[int, int] | None, optional): Mark the fifo as a direct AIE-stream connection by stamping the ``aie_stream`` / ``aie_stream_port`` attributes ``(end, port)`` on the underlying ``aie.objectfifo`` op. Use with kernels that emit on the wire via ``put_ms()`` instead of going through an L1 buffer. Defaults to None.
+            disable_synchronization (bool, optional): When True, disables lock-based
+                synchronization on the ObjectFifo. Defaults to False.
+            repeat_count (int | None, optional): If set, causes the MemTile DMA to replay the
+                buffer descriptor this many times without a new DMA transfer from L3.
+                Distinct from ``iter_count`` (BD-chain iteration count). Defaults to None.
+            delegate_tile (Tile | None, optional): Shared-memory delegate tile. When set, the
+                ObjectFifo's underlying buffer pool is allocated on this tile's memory module
+                instead of the default placement. Lowers to ``aie.objectfifo.allocate``. *Only
+                valid when both producer and consumer have shared-memory access to the
+                delegate tile* (e.g. self-loop fifos where prod == cons, or fifos between
+                adjacent tiles spilling to a neighboring MemTile). The delegate is the storage
+                location, not a producer- or consumer-side concept; the underlying op verifier
+                rejects this if either endpoint cannot share memory with the delegate.
+                Defaults to None.
+            init_values (list[np.ndarray] | None, optional): Per-buffer static initial values
+                for the producer endpoint. One ndarray per producer-side buffer; the producer
+                tile must be able to hold static data at design startup (e.g. a MemTile).
+                Lowers to the ``initValues`` attribute on the underlying ``aie.objectfifo``
+                op. Defaults to None.
+            consumer_obj_type (type[np.ndarray] | None, optional): Consumer element type for
+                asymmetric transfer granularity. When set, the producer sends obj_type-sized
+                transfers and the consumer receives consumer_obj_type-sized transfers.
+                Producer element count must be an integer multiple of consumer element count.
+                Defaults to None.
+            aie_stream (tuple[int, int] | None, optional): Mark the fifo as a direct
+                AIE-stream connection by stamping the ``aie_stream`` / ``aie_stream_port``
+                attributes ``(end, port)`` on the underlying ``aie.objectfifo`` op. Use with
+                kernels that emit on the wire via ``put_ms()`` instead of going through an L1
+                buffer. Defaults to None.
 
         Raises:
             ValueError: If ``depth`` is provided and is less than 1.
@@ -223,7 +252,7 @@ class ObjectFifo(Resolvable):
         if self._prod:
             if depth is None:
                 if self._depth is None:
-                    raise ValueError(f"If depth is None, then depth must be specified.")
+                    raise ValueError("If depth is None, then depth must be specified.")
                 else:
                     depth = self._depth
             elif depth < 1:
@@ -268,7 +297,7 @@ class ObjectFifo(Resolvable):
         """
         if depth is None:
             if self._depth is None:
-                raise ValueError(f"If depth is None, then depth must be specified.")
+                raise ValueError("If depth is None, then depth must be specified.")
             else:
                 depth = self._depth
 
@@ -298,7 +327,7 @@ class ObjectFifo(Resolvable):
         """
         tiles = []
         if not cons_only:
-            if self._prod == None:
+            if self._prod is None:
                 raise ValueError(
                     "Cannot return prod.tile.op because prod was not created."
                 )
@@ -316,7 +345,7 @@ class ObjectFifo(Resolvable):
         return tiles
 
     def _prod_tile_op(self) -> Tile:
-        if self._prod == None:
+        if self._prod is None:
             raise ValueError(
                 f"Cannot return prod.tile.op for ObjectFifo {self.name} because prod was not created."
             )
@@ -519,7 +548,9 @@ class ObjectFifoHandle(Resolvable):
         """Acquire access to some elements of the ObjectFifo, using ObjectFifo synchronization to moderate access.
 
         Args:
-            num_elem (int): Number of elements to acquire. If some elements are already acquired, only the additional elements needed to reach a total of ``num_elem`` are acquired.
+            num_elem (int): Number of elements to acquire. If some elements are already
+                acquired, only the additional elements needed to reach a total of
+                ``num_elem`` are acquired.
 
         Raises:
             ValueError: Number of elements cannot exceed ObjectFifo depth.
@@ -654,11 +685,11 @@ class ObjectFifoHandle(Resolvable):
 
         Lazy imports break the runtime<->dataflow import cycle.
         """
+        from ..runtime._context import active_sequence
         from ..runtime.data import RuntimeData
         from ..runtime.dmatask import DMATask
         from ..runtime.dmataskhandle import Task
         from ..runtime.endpoint import RuntimeEndpoint
-        from ..runtime._context import active_sequence
         from ..scratchpad_parameter import ScratchpadParameter
 
         active = active_sequence()
@@ -740,8 +771,7 @@ class ObjectFifoHandle(Resolvable):
         """Fill this producer ObjectFifo with data from the ``source`` runtime buffer.
 
         Call from within a [`Runtime`][iron.Runtime] sequence body on a producer
-        handle. See [`_emit_transfer`][iron.dataflow.objectfifo.ObjectFifoHandle._emit_transfer]
-        for the shared arguments; returns a
+        handle. See ``_emit_transfer`` for the shared arguments; returns a
         [`Task`][iron.runtime.dmataskhandle.Task] handle to the transfer.
         """
         if not self._is_prod:
@@ -778,8 +808,7 @@ class ObjectFifoHandle(Resolvable):
         """Drain this consumer ObjectFifo, writing data to the ``dest`` runtime buffer.
 
         Call from within a [`Runtime`][iron.Runtime] sequence body on a consumer
-        handle. See [`_emit_transfer`][iron.dataflow.objectfifo.ObjectFifoHandle._emit_transfer]
-        for the shared arguments; returns a
+        handle. See ``_emit_transfer`` for the shared arguments; returns a
         [`Task`][iron.runtime.dmataskhandle.Task] handle to the transfer.
         """
         if self._is_prod:
@@ -827,7 +856,9 @@ class ObjectFifoHandle(Resolvable):
             obj_types (list[type[np.ndarray]], optional): The type of the buffers corresponding to each new ObjectFifo. Defaults to None.
             names (list[str] | None, optional): The name of each new ObjectFifo. If not given, unique names will be generated. Defaults to None.
             dims_to_stream (list[list[Sequence[int]  |  None]] | None, optional): The dimensionsToStream to assign to each new ObjectFifo. Defaults to None.
-            dims_from_stream (list[list[Sequence[int]  |  None]] | None, optional): The dimensionsFromStream to assign to each new ObjectFifo consumer. Defaults to None.
+            dims_from_stream (list[list[Sequence[int]  |  None]] | None, optional): The
+                dimensionsFromStream to assign to each new ObjectFifo consumer. Defaults
+                to None.
             plio (bool, optional): Set plio on each new ObjectFifo. Defaults to False.
             repeat_counts (list[int | None] | None, optional): Per-sub-fifo MemTile DMA repeat count (see ObjectFifo.repeat_count). Defaults to None.
 
@@ -1060,8 +1091,10 @@ class ObjectFifoLink(ObjectFifoEndpoint, Resolvable):
             srcs (list[ObjectFifoHandle] | ObjectFifoHandle): A list of consumer ObjectFifoHandles to link.
             dsts (list[ObjectFifoHandle] | ObjectFifoHandle): A list of producer ObjectFifoHandles to link.
             tile (Tile, optional): The tile where the link occurs. Also accepts None (treated as AnyMemTile). Defaults to AnyMemTile.
-            src_offsets (list[int] | None, optional): If many sources, one offset per source is required to split the destination. Defaults to None (empty list).
-            dst_offsets (list[int] | None, optional): If many destinations, one offset per destination is required to split the source. Defaults to None (empty list).
+            src_offsets (list[int] | None, optional): If many sources, one offset per source
+                is required to split the destination. Defaults to None (empty list).
+            dst_offsets (list[int] | None, optional): If many destinations, one offset per
+                destination is required to split the source. Defaults to None (empty list).
 
         Raises:
             ValueError: Arguments are validated.

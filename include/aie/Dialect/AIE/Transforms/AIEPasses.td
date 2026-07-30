@@ -13,12 +13,20 @@ include "mlir/Pass/PassBase.td"
 
 def AIEAssignCoreLinkFiles : Pass<"aie-assign-core-link-files", "DeviceOp"> {
   let summary =
-      "Infer per-core link_files from func-level link_with attributes";
+      "Infer per-core link_files/link_merge_files from func-level link_with";
   let description = [{
-    Walks each aie.core and collects the set of external object files it needs
-    by tracing direct func.call edges to func.func declarations that carry a
-    "link_with" string attribute.  The result is stored in the CoreOp's
-    "link_files" StrArrayAttr.
+    Walks each aie.core and collects the external artifacts it needs by
+    tracing direct func.call edges to func.func declarations that carry a
+    "link_with" string attribute.
+
+    Each artifact is routed by its optional "link_with_mode" attribute:
+
+      * no "link_with_mode"      -> the CoreOp's "link_files"
+      * "link_with_mode" = "merge" -> the CoreOp's "link_merge_files"
+
+    Both attributes are StrArrayAttrs and may coexist on one core.  "merge"
+    is currently the only supported mode; any other value, or a
+    "link_with_mode" without a "link_with", is an error.
 
     Only direct calls (func.call) are resolved.  Indirect calls
     (func.call_indirect) inside a core body emit a warning and are not
@@ -26,11 +34,17 @@ def AIEAssignCoreLinkFiles : Pass<"aie-assign-core-link-files", "DeviceOp"> {
     so the pass can trace the dependency.
 
     Core-level "link_with" (deprecated) is also migrated: its value is
-    folded into the set and the attribute is removed from the CoreOp.
+    folded into "link_files" -- it has no way to request a mode -- and the
+    attribute is removed from the CoreOp.
 
     func.func declarations that carry "link_with" but are never called from
-    any core emit a warning; their object files will not appear in any
-    core's link_files.
+    any core emit a warning; their artifacts will not appear in any core's
+    list.
+
+    The pass rejects a device in which one artifact is merged by
+    one core and object-linked by another.  aiecc's unified mode compiles
+    all cores of a device from a single llvm-linked module, so such an
+    artifact would have its symbols defined twice.
   }];
 
   let constructor = "xilinx::AIE::createAIEAssignCoreLinkFilesPass()";

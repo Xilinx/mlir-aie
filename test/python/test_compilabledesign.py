@@ -12,8 +12,11 @@ test/python/npu-xrt/test_iron_jit_e2e.py (requires xrt_python_bindings).
 """
 
 import json
+import subprocess
+import sys
 import time
 from pathlib import Path
+from types import CodeType
 
 import pytest
 
@@ -312,6 +315,164 @@ def test_hash_keys_on_the_aiecc_the_compile_uses(monkeypatch):
     monkeypatch.setattr(config, "aiecc_path", fake_aiecc_path)
     CompilableDesign(_gemm_gen())._compute_cache_hash()
     assert seen, "artifact hash did not consult config.aiecc_path()"
+
+
+def _design(body, name="design"):
+    """A generator built from source, so a pair can differ in exactly one way."""
+    ns = {"__name__": "designs.probe"}
+    exec(body, ns)  # noqa: S102 -- controlling the source is the point
+    return ns[name]
+
+
+def test_hash_is_stable_for_a_generator_with_a_nested_function(tmp_path):
+    """repr() of a nested code object embeds its address; the key must not."""
+    script = tmp_path / "probe.py"
+    script.write_text(
+        "from aie.utils.compile.jit._hash import _compute_recipe_hash\n"
+        "def make():\n"
+        "    def design(a, b):\n"
+        "        def core(x):\n"
+        "            return x + 1\n"
+        "        return core\n"
+        "    return design\n"
+        "print(_compute_recipe_hash(make(), {}, (), ()))\n"
+    )
+    seen = {
+        subprocess.run(
+            [sys.executable, str(script)], capture_output=True, text=True, check=True
+        ).stdout.strip()
+        for _ in range(3)
+    }
+    assert len(seen) == 1, f"recipe hash differed between processes: {seen}"
+
+
+def test_hash_distinguishes_designs_differing_only_in_a_nested_body():
+    """Only recursion into the nested code object can tell these apart.
+
+    Both are named `design` in one module, so qualname and module cannot
+    discriminate, and the outer bytecode is asserted byte-identical.
+    """
+
+    def build(leaf):
+        return _design(
+            "def design(a, b):\n"
+            "    def core(x):\n"
+            f"        return x + {leaf}\n"
+            "    return core\n"
+        )
+
+    a, b = build(1), build(2)
+    assert a.__qualname__ == b.__qualname__
+    assert (
+        a.__code__.co_code == b.__code__.co_code
+    ), "outer bytecode differs; this test would not exercise the nested walk"
+    assert _compute_hash(a, {}, [], [], [], []) != _compute_hash(b, {}, [], [], [], [])
+
+
+def test_hash_distinguishes_designs_calling_different_symbols():
+    """A symbol is an index into co_names, so the bytecode is identical."""
+
+    def build(kernel):
+        return _design(
+            "def design(a_ty, b_ty, c_ty):\n"
+            "    def core_body(a, b, c):\n"
+            f"        {kernel}(a, b, c)\n"
+            "    return core_body\n"
+        )
+
+    def nested(fn):
+        return next(c for c in fn.__code__.co_consts if isinstance(c, CodeType))
+
+    a, b = build("matmul_bf16"), build("matmul_i8")
+    assert (
+        nested(a).co_code == nested(b).co_code
+    ), "nested bytecode differs; this test would not exercise co_names"
+    assert _compute_hash(a, {}, [], [], [], []) != _compute_hash(b, {}, [], [], [], [])
+
+
+def test_hash_distinguishes_designs_differing_only_in_a_compile_time_default():
+    """A CompileTime[T] left at its default never reaches compile_kwargs."""
+
+    def build(tile):
+        return _design(
+            f"def design(a, b, *, TILE=({tile})):\n"
+            "    def core(x):\n"
+            "        return x * TILE\n"
+            "    return core\n"
+        )
+
+    a, b = build(512), build(1024)
+    assert (
+        a.__code__.co_code == b.__code__.co_code
+    ), "bytecode differs; the default would not be the only difference"
+    assert _compute_hash(a, {}, [], [], [], []) != _compute_hash(b, {}, [], [], [], [])
+
+
+def test_hash_of_a_callable_compile_time_value_is_stable_and_not_blind():
+    """The callable branch of _kwarg_repr needs the same treatment."""
+
+    def build(factor):
+        return _design(
+            "def act(x):\n"
+            "    def inner(y):\n"
+            f"        return y * {factor}\n"
+            "    return inner(x)\n",
+            name="act",
+        )
+
+    gen = _design("def design(a, b):\n    return a\n")
+
+    def key(act):
+        return _compute_hash(gen, {"act": act}, [], [], [], [])
+
+    assert key(build(2)) == key(build(2))
+    assert key(build(2)) != key(build(3))
+
+
+def test_hash_survives_a_move_of_the_design_file():
+    """co_filename and line info are not part of the design."""
+    src = "def design(a):\n    def core(x):\n        return x + 1\n    return core\n"
+
+    def build(filename, line_offset=0):
+        ns = {"__name__": "designs.probe"}
+        exec(  # noqa: S102 -- the location is what this test varies
+            compile("\n" * line_offset + src, filename, "exec"), ns
+        )
+        return ns["design"]
+
+    def key(fn):
+        return _compute_hash(fn, {}, [], [], [], [])
+
+    assert key(build("/checkout-a/design.py")) == key(build("/checkout-b/design.py"))
+    assert key(build("/checkout-a/design.py")) == key(
+        build("/checkout-a/design.py", line_offset=8)
+    )
+    # Reflowing a body leaves co_code alone and rewrites co_linetable, which a
+    # uniform line shift does not.
+    flat = _design("def design(a):\n    return (a + 1)\n")
+    reflowed = _design("def design(a):\n    return (\n        a\n        + 1\n    )\n")
+    assert flat.__code__.co_code == reflowed.__code__.co_code
+    assert key(flat) == key(reflowed)
+
+
+def _nest(leaf, depth=40):
+    src = f"def f0():\n    {leaf}\n"
+    for i in range(1, depth):
+        body = "\n".join("    " + line for line in src.splitlines())
+        src = f"def f{i}():\n{body}\n    return f{i - 1}\n"
+    return _design(src, name=f"f{depth - 1}")
+
+
+def test_hash_distinguishes_bodies_nested_past_any_fixed_depth():
+    """A bound on the walk would silently collide designs differing past it."""
+    assert _compute_hash(_nest("return 1"), {}, [], [], [], []) != _compute_hash(
+        _nest("return 2"), {}, [], [], [], []
+    )
+
+
+def test_hash_handles_deeply_nested_functions():
+    """The walk must terminate on pathological nesting."""
+    assert len(_compute_hash(_nest("pass"), {}, [], [], [], [])) == 24
 
 
 def test_hash_is_24_hex_chars():

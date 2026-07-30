@@ -4,6 +4,7 @@
 import argparse
 import logging
 import sys
+
 from aie.utils.trace.utils import print_cycles_summary
 
 logger = logging.getLogger(__name__)

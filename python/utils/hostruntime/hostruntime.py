@@ -1,24 +1,25 @@
 # Copyright (C) 2025-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-from abc import ABC, abstractmethod
 import logging
-import numpy as np
 import sys
+from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-logger = logging.getLogger(__name__)
+import numpy as np
 
-from .. import tensor
+from ..tensor_factory import tensor
 
 if TYPE_CHECKING:
     from aie.iron.device import Device
-from .tensor_class import Tensor
+from ..npukernel import NPUKernel
 from ..trace import TraceConfig
 from ..trace.utils import create_ctrl_pkt, extract_tile
-from ..npukernel import NPUKernel
 from . import bfloat16_safe_allclose
+from .tensor_class import Tensor
+
+logger = logging.getLogger(__name__)
 
 
 class HostRuntimeError(Exception):
@@ -82,7 +83,7 @@ class KernelResult(ABC):
         Returns:
             bool: True if trace configuration is present, False otherwise.
         """
-        return not (self._trace_config is None)
+        return self._trace_config is not None
 
     @abstractmethod
     def is_success(self) -> bool:

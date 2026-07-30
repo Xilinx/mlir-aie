@@ -6,23 +6,24 @@ XRT-based implementation of the HostRuntime
 """
 
 import atexit
+import gc
 import logging
-from collections import OrderedDict
 import os
 import shutil
+import subprocess
 import time
 import weakref
-import gc
-import subprocess
+from collections import OrderedDict
 from pathlib import Path
 from typing import TYPE_CHECKING
-import numpy as np
+
 import pyxrt  # pyright: ignore[reportMissingImports]
 
 from ..hostruntime import HostRuntime, HostRuntimeError, KernelHandle, KernelResult
 
 if TYPE_CHECKING:
     from aie.iron.device import Device
+
     from ...trace import TraceConfig
 from .tensor import XRTTensor
 

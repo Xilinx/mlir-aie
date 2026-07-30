@@ -6,8 +6,9 @@
 """Named memory region accessible by both Workers and the Runtime."""
 
 import itertools
+from typing import TYPE_CHECKING, Sequence
+
 import numpy as np
-from typing import Sequence, TYPE_CHECKING
 
 from .. import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
 from ..dialects.aie import buffer
@@ -17,7 +18,7 @@ from ..helpers.util import (
     np_ndarray_type_get_shape,
 )
 from .device import Tile
-from .resolvable import Resolvable, NotResolvedError
+from .resolvable import NotResolvedError, Resolvable
 
 if TYPE_CHECKING:
     from .worker import Worker
@@ -45,11 +46,19 @@ class Buffer(Resolvable):
 
         Args:
             type (type[np.ndarray] | None, optional): The type of the buffer. Defaults to None.
-            initial_value (np.ndarray | None, optional): An initial value to set the buffer to. Should be of same datatype and shape as the buffer. Defaults to None.
-            name (str | None, optional): The name of the buffer. If none is given, a unique name will be generated. Defaults to None.
-            tile (Tile | None, optional): The tile for the buffer. Automatically set to the Worker's tile when the buffer is passed in the Worker's fn_args list. Defaults to None.
-            use_write_rtp (bool, optional): If use_write_rtp, write_rtp/read_rtp operations will be generated. Otherwise, traditional write/read operations will be used. Defaults to False.
-            address (int | None, optional): Pin the buffer to a fixed L1 address. Needed for host-written RTP buffers the runtime pokes at a hardcoded address. Defaults to None (compiler-assigned).
+            initial_value (np.ndarray | None, optional): An initial value to set the buffer
+                to. Should be of same datatype and shape as the buffer. Defaults to None.
+            name (str | None, optional): The name of the buffer. If none is given, a unique
+                name will be generated. Defaults to None.
+            tile (Tile | None, optional): The tile for the buffer. Automatically set to the
+                Worker's tile when the buffer is passed in the Worker's fn_args list.
+                Defaults to None.
+            use_write_rtp (bool, optional): If use_write_rtp, write_rtp/read_rtp operations
+                will be generated. Otherwise, traditional write/read operations will be
+                used. Defaults to False.
+            address (int | None, optional): Pin the buffer to a fixed L1 address. Needed
+                for host-written RTP buffers the runtime pokes at a hardcoded address.
+                Defaults to None (compiler-assigned).
 
         Raises:
             ValueError: If neither ``type`` nor ``initial_value`` is provided.

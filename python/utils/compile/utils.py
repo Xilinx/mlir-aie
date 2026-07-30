@@ -7,11 +7,13 @@
 
 import logging
 import os
+import re
 import shutil
 import subprocess
 import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
+
 import aie.utils.config as config
 
 if TYPE_CHECKING:
@@ -48,6 +50,182 @@ def resolve_target_arch(device=None) -> str:
     )
 
 
+# Linkage keywords that may appear immediately after ``define``.  Used to tell
+# "this function already declares a linkage" from "the next token is a
+# preemption specifier / visibility / cconv / return type"; emitting a second
+# linkage keyword is a parse error.
+_LLVM_LINKAGE_KEYWORDS = frozenset(
+    {
+        "private",
+        "internal",
+        "available_externally",
+        "linkonce",
+        "weak",
+        "common",
+        "appending",
+        "extern_weak",
+        "linkonce_odr",
+        "weak_odr",
+        "external",
+    }
+)
+
+# The optional tokens the grammar allows between a function's parameter list
+# and its attribute list.
+_UNNAMED_ADDR_RE = re.compile(r"\s*(?:local_)?unnamed_addr\b")
+_ADDRSPACE_RE = re.compile(r"\s*addrspace\(\d+\)")
+
+# Attributes that cannot coexist with ``alwaysinline`` (the LLVM verifier
+# rejects the combination).  clang emits both at ``-O0``, which a caller can
+# reach by passing ``-O0`` in ``compile_flags``.
+_NO_INLINE_ATTRS_RE = re.compile(r"\s*\b(?:noinline|optnone)\b")
+
+_ATTR_GROUP_DEF_RE = re.compile(r"^attributes\s+#(\d+)\s*=\s*\{(.*)\}\s*$")
+
+_ATTR_GROUP_REF_RE = re.compile(r"#(\d+)\b")
+
+
+def _end_of_parameter_list(line: str, open_paren: int) -> int:
+    """Return the index just past the ``)`` closing a function's parameter list.
+
+    Parameter attributes nest parentheses (``byval(%struct.S)``,
+    ``sret({ i32 })``, ``align(4)``) and quoted attribute strings may contain
+    unbalanced ones, so the closing paren has to be scanned for rather than
+    found with ``str.find``.  Returns -1 if the list does not close on `line`.
+    """
+    depth = 0
+    in_string = False
+    i = open_paren
+    while i < len(line):
+        c = line[i]
+        if in_string:
+            if c == "\\":
+                i += 2
+                continue
+            if c == '"':
+                in_string = False
+        elif c == '"':
+            in_string = True
+        elif c == "(":
+            depth += 1
+        elif c == ")":
+            depth -= 1
+            if depth == 0:
+                return i + 1
+        i += 1
+    return -1
+
+
+def _make_ir_inlinable(ir_path: str, symbol_name: str) -> None:
+    """Rewrite an emitted LLVM IR kernel so aiecc inlines it into the core.
+
+    Gives the kernel ``define`` ``alwaysinline`` (so aiecc's conservative
+    ``-inline-threshold`` still inlines it after the llvm-link merge) and
+    ``linkonce_odr`` linkage (so the now-dead definition is DCE'd post-inline
+    instead of being codegen'd).
+
+    Both edits have to respect the ``define`` grammar::
+
+        define [linkage] [preemption] [visibility] [dll] [cconv] [ret attrs]
+               <ty> @<name>(<params>) [unnamed_addr] [addrspace(N)] [fn attrs]
+               [section] [partition] [comdat] [align] [gc] [prefix] [prologue]
+               [personality] (!name !N)* { ...
+
+    so ``alwaysinline`` is inserted right after the parameter list (and any
+    ``unnamed_addr`` / ``addrspace``), not next to the opening brace: placing a
+    function attribute after a ``personality`` clause or a ``!dbg`` attachment
+    -- the latter appears as soon as the caller passes ``-g`` -- is a parse
+    error.  ``linkonce_odr`` is inserted only when the define does not already
+    carry a linkage keyword.
+    """
+    lines = Path(ir_path).read_text().splitlines()
+
+    symbol_re = re.compile(r"@" + re.escape(symbol_name) + r"\b\s*\(")
+    define_idx = -1
+    params_at = -1
+    for i, text in enumerate(lines):
+        if not text.startswith("define"):
+            continue
+        match = symbol_re.search(text)
+        if match:
+            define_idx = i
+            params_at = match.end() - 1
+            break
+    if define_idx < 0:
+        raise RuntimeError(
+            f"inline=True: no `define` for symbol '{symbol_name}' in "
+            f"{ir_path}. The kernel must be defined in this translation unit "
+            f'and exported under that exact name (declare it `extern "C"` so '
+            f"C++ name mangling does not rename it)."
+        )
+
+    line = lines[define_idx]
+    params_end = _end_of_parameter_list(line, params_at)
+    brace = line.rfind("{")
+    if params_end < 0 or brace < params_end:
+        raise RuntimeError(
+            f"inline=True: could not parse the `define` for '{symbol_name}' in "
+            f"{ir_path}: {line!r}"
+        )
+
+    # Start of the [fn attrs] slot: after the parameter list and the optional
+    # unnamed_addr / addrspace tokens that precede it.
+    attrs_at = params_end
+    for pattern in (_UNNAMED_ADDR_RE, _ADDRSPACE_RE):
+        token = pattern.match(line, attrs_at)
+        if token:
+            attrs_at = token.end()
+
+    region = line[attrs_at:brace]
+
+    # `alwaysinline` is incompatible with `noinline` / `optnone`.  Those
+    # normally arrive through a shared `attributes #N = { ... }` group, so
+    # repoint this define at a private copy with them dropped rather than
+    # editing a group that other functions in the module also reference.
+    groups = {
+        int(m.group(1)): m.group(2)
+        for m in (_ATTR_GROUP_DEF_RE.match(t) for t in lines)
+        if m
+    }
+    referenced = {int(m.group(1)) for m in _ATTR_GROUP_REF_RE.finditer(region)}
+    conflicting = sorted(
+        gid
+        for gid in referenced
+        if gid in groups and _NO_INLINE_ATTRS_RE.search(groups[gid])
+    )
+    if conflicting:
+        next_id = max(groups) + 1
+        remap = {}
+        for gid in conflicting:
+            cleaned = _NO_INLINE_ATTRS_RE.sub("", groups[gid]).strip()
+            remap[gid] = next_id
+            lines.append(f"attributes #{next_id} = {{ {cleaned} }}")
+            next_id += 1
+        region = _ATTR_GROUP_REF_RE.sub(
+            lambda m: f"#{remap.get(int(m.group(1)), int(m.group(1)))}", region
+        )
+    # ... and drop them if they were spelled out on the define itself.
+    region = _NO_INLINE_ATTRS_RE.sub("", region)
+
+    if not re.search(r"\balwaysinline\b", region):
+        region = " alwaysinline" + region
+    line = line[:attrs_at] + region + line[brace:]
+
+    head = re.match(r"define\s+([A-Za-z_][A-Za-z0-9_]*)", line)
+    linkage = head.group(1) if head else None
+    if linkage == "external":
+        # Strong definition: swap it for a discardable one.
+        line = re.sub(r"^define\s+external\b", "define linkonce_odr", line, count=1)
+    elif linkage not in _LLVM_LINKAGE_KEYWORDS:
+        # No linkage keyword at all (the common case: `define dso_local ...`).
+        line = re.sub(r"^define\s+", "define linkonce_odr ", line, count=1)
+    # Any other linkage (internal, weak_odr, ...) already allows the definition
+    # to be discarded once every call site has been inlined; leave it alone.
+
+    lines[define_idx] = line
+    Path(ir_path).write_text("\n".join(lines) + "\n")
+
+
 def compile_cxx_core_function(
     source_path: str,
     target_arch: str,
@@ -56,6 +234,8 @@ def compile_cxx_core_function(
     compile_args: list[str] | None = None,
     cwd: str | None = None,
     use_chess: bool = False,
+    inline: bool = False,
+    symbol_name: str | None = None,
 ):
     """
     Compile a C++ core function via either Peano (default) or the Chess
@@ -64,7 +244,8 @@ def compile_cxx_core_function(
     Parameters:
         source_path (str): Path to C++ source.
         target_arch (str): Target architecture, e.g., aie2.
-        output_path (str): Output object file path.
+        output_path (str): Output object file path (``.o``), or LLVM IR file
+            (textual ``.ll`` or binary ``.bc``) when ``inline`` is True.
         include_dirs (list[str], optional): List of include directories to add with -I.
         compile_args (list[str], optional): Additional compile arguments
             forwarded verbatim to the chosen compiler.
@@ -77,7 +258,32 @@ def compile_cxx_core_function(
             for the AIE-tools include directory; the standard mlir-aie
             include path is added explicitly here so it doesn't depend on
             the Chess wrapper's include search.
+        inline (bool): When True, emit inlinable LLVM IR instead of an object.
+        symbol_name (str, optional): Required when ``inline`` is True; names the
+            LLVM ``define`` for the kernel that ``_make_ir_inlinable`` rewrites
+            to ``alwaysinline`` / ``linkonce_odr``. Must match the symbol as it
+            appears in the freshly emitted IR.
     """
+    if inline and use_chess:
+        raise ValueError(
+            "inline=True requires the Peano toolchain and cannot be combined "
+            "with use_chess=True"
+        )
+    if inline and not symbol_name:
+        raise ValueError("symbol_name is required when inline=True")
+
+    ir_suffix = Path(output_path).suffix.lower()
+    if inline and ir_suffix not in (".ll", ".bc"):
+        raise ValueError(
+            "inline=True output_path must use .ll for textual LLVM IR or .bc "
+            f"for binary LLVM IR; got {output_path!r}"
+        )
+
+    # Inline IR is first emitted as text so its kernel definition can be marked
+    # alwaysinline/linkonce_odr. A requested .bc is assembled afterward.
+
+    # ``-c`` (object) by default; ``-S -emit-llvm`` (textual IR) for inline.
+    emit_flags = ["-S", "-emit-llvm"] if inline else ["-c"]
     if use_chess:
         wrapper = shutil.which("xchesscc_wrapper")
         if not wrapper:
@@ -89,7 +295,7 @@ def compile_cxx_core_function(
         cmd = [
             wrapper,
             target_arch,  # "aie2" or "aie2p"
-            "-c",
+            *emit_flags,
             source_path,
             "-o",
             f"{output_path}",
@@ -99,7 +305,7 @@ def compile_cxx_core_function(
         cmd = [
             config.peano_cxx_path(),
             source_path,
-            "-c",
+            *emit_flags,
             "-o",
             f"{output_path}",
             f"-I{config.cxx_header_path()}",
@@ -142,6 +348,46 @@ def compile_cxx_core_function(
         if ret.stderr:
             raise RuntimeError(f"[{tool}] compilation failed:\n{ret.stderr.decode()}")
         raise RuntimeError(f"[{tool}] compilation failed")
+
+    if inline:
+        assert symbol_name is not None
+        _make_ir_inlinable(output_path, symbol_name)
+        if ir_suffix == ".bc":
+            # Assemble the rewritten text with clang++, not llvm-as: the
+            # llvm-aie wheel ships clang++/llvm-link/opt/llc but no llvm-as, so
+            # depending on it breaks every wheel-based install.  clang++ is
+            # already a hard requirement of this function.
+            #
+            # -disable-llvm-passes keeps this a pure text->bitcode conversion.
+            # clang normalizes `alwaysinline` into the function's attribute
+            # group rather than leaving it on the `define`; llvm-link and the
+            # always-inliner honor both spellings identically.
+            #
+            # The IR is piped in because the input and output are the same path.
+            textual_ir = Path(output_path).read_bytes()
+            assemble = subprocess.run(
+                [
+                    config.peano_cxx_path(),
+                    "-x",
+                    "ir",
+                    "-",
+                    "-c",
+                    "-emit-llvm",
+                    "-O0",
+                    "-Xclang",
+                    "-disable-llvm-passes",
+                    f"--target={target_arch}-none-unknown-elf",
+                    "-o",
+                    output_path,
+                ],
+                input=textual_ir,
+                cwd=cwd,
+                check=False,
+                capture_output=True,
+            )
+            if assemble.returncode != 0:
+                detail = f":\n{assemble.stderr.decode()}" if assemble.stderr else ""
+                raise RuntimeError(f"[Peano] LLVM bitcode assembly failed{detail}")
 
 
 def _run_aiecc(mlir_file: str, args: list[str]):
@@ -255,15 +501,14 @@ def compile_mlir_module(
     # the loop in compilabledesign.py but for callers (e.g. low-level
     # designs using rt.inline_ops) that didn't go through @iron.jit.
     if work_dir and device is not None:
-        try:
-            from aie.iron.kernel import ExternalFunction
-        except ImportError:
-            ExternalFunction = None
-        if ExternalFunction is not None:
-            target_arch = resolve_target_arch(device)
-            for func in list(ExternalFunction._instances):
-                if not func._compiled and getattr(func, "_source_file", None):
-                    compile_external_kernel(func, str(work_dir), target_arch)
+        # Deferred: aie.iron's __init__ imports back into aie.utils.compile.jit,
+        # so a module-level import here deadlocks on a cold aie.utils.compile entry.
+        from aie.iron.kernel import ExternalFunction
+
+        target_arch = resolve_target_arch(device)
+        for func in list(ExternalFunction._instances):
+            if not func._compiled and getattr(func, "_source_file", None):
+                compile_external_kernel(func, str(work_dir), target_arch)
 
     # When work_dir is provided, invoke the aiecc binary as a subprocess so
     # that it resolves relative link_with paths (e.g. "add_one.o") against the
@@ -317,6 +562,20 @@ def compile_external_kernel(func, kernel_dir, target_arch):
     if func._compiled:
         return
 
+    # inline + symbol_prefix is unsupported: the MLIR func.call uses the
+    # prefixed func._name, but an inline kernel is emitted as a textual .ll whose
+    # ``define`` carries the un-prefixed _original_name. Object mode reconciles
+    # the two via an llvm-objcopy --redefine-sym rename, which cannot rewrite a
+    # .ll. Fail loudly here rather than downstream in objcopy or as a silent
+    # call/define name mismatch at llvm-link time.
+    if getattr(func, "_inline", False) and getattr(func, "_symbol_prefix", None):
+        raise NotImplementedError(
+            f"ExternalFunction '{func._name}': inline=True combined with "
+            "symbol_prefix is not supported (an inline kernel is emitted as "
+            "LLVM IR and cannot be symbol-renamed). Use inline without a "
+            "symbol_prefix, or drop inline for this kernel."
+        )
+
     # Skip if the object file already exists (cache hit).
     output_file = os.path.join(kernel_dir, func.object_file_name)
     if os.path.exists(output_file):
@@ -335,9 +594,14 @@ def compile_external_kernel(func, kernel_dir, target_arch):
             source_path=source_file,
             target_arch=target_arch,
             output_path=output_file,
+            # The source is compiled under _original_name, so that is the symbol
+            # in the emitted .ll ``define`` that _make_ir_inlinable must rewrite.
+            # (inline + symbol_prefix is rejected above, so no rename applies.)
+            symbol_name=func._original_name,
             include_dirs=func._include_dirs,
             compile_args=func._compile_flags,
             cwd=str(kernel_dir),
+            inline=getattr(func, "_inline", False),
             use_chess=getattr(func, "_use_chess", False),
         )
 
@@ -360,9 +624,13 @@ def compile_external_kernel(func, kernel_dir, target_arch):
             source_path=source_file,
             target_arch=target_arch,
             output_path=output_file,
+            # _original_name is the symbol in the emitted .ll ``define`` (see
+            # the source_string branch above).
+            symbol_name=func._original_name,
             include_dirs=include_dirs,
             compile_args=func._compile_flags,
             cwd=kernel_dir,
+            inline=getattr(func, "_inline", False),
             use_chess=getattr(func, "_use_chess", False),
         )
     else:

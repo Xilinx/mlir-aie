@@ -34,13 +34,36 @@ Provides the primary abstractions for describing NPU designs:
     surface at MLIR verification time.
 """
 
+from aie.utils import (
+    arange,
+    ceildiv,
+    ensure_current_device,
+    full,
+    get_current_device,
+    ones,
+    rand,
+    randint,
+    set_current_device,
+    set_tensor_class,
+    tensor,
+    zeros,
+    zeros_like,
+)
+from aie.utils.callabledesign import CallableDesign
+from aie.utils.compile.jit import (
+    CompilableDesign,
+    CompileTime,
+    In,
+    InOut,
+    Out,
+    compile_context,
+    compileconfig,
+    get_compile_arg,
+)
+from aie.utils.jit import jit
+
+from . import algorithms, kernels
 from .buffer import Buffer
-from .kernel import ExternalFunction, Kernel
-from .lock import Lock
-from .scratchpad_parameter import ScratchpadParameter
-from .program import Program
-from .worker import Worker, WorkerRuntimeBarrier
-from .runtime import Runtime, TaskGroup, RuntimeData, Task, sync_parameters
 from .dataflow import (
     Acquire,
     Bd,
@@ -55,36 +78,13 @@ from .dataflow import (
     StreamDims,
     TileDma,
 )
-from .dtype import str_to_dtype, dtype_to_str
-from aie.utils.compile.jit import (
-    CompilableDesign,
-    compile_context,
-    CompileTime,
-    In,
-    InOut,
-    Out,
-    compileconfig,
-    get_compile_arg,
-)
-from aie.utils.jit import jit
-from aie.utils.callabledesign import CallableDesign
-from . import kernels
-from . import algorithms
-from aie.utils import (
-    tensor,
-    ones,
-    zeros,
-    full,
-    randint,
-    rand,
-    arange,
-    zeros_like,
-    ceildiv,
-    set_tensor_class,
-    set_current_device,
-    get_current_device,
-    ensure_current_device,
-)
+from .dtype import dtype_to_str, str_to_dtype
+from .kernel import ExternalFunction, Kernel
+from .lock import Lock
+from .program import Program
+from .runtime import Runtime, RuntimeData, Task, TaskGroup, sync_parameters
+from .scratchpad_parameter import ScratchpadParameter
+from .worker import Worker, WorkerRuntimeBarrier
 
 __all__ = [
     # Core design abstractions

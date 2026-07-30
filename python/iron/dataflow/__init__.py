@@ -15,14 +15,32 @@ Lower-level (explicit routing + DMA programs; peers of the above):
 [`Acquire`][iron.Acquire], [`Release`][iron.Release]
 """
 
+from .cascadeflow import CascadeFlow
+from .flow import Flow, PacketDest, PacketFlow
 from .objectfifo import (
     ObjectFifo,
+    ObjectFifoEndpoint,
     ObjectFifoHandle,
     ObjectFifoLink,
-    ObjectFifoEndpoint,
     PadDims,
     StreamDims,
 )
-from .cascadeflow import CascadeFlow
-from .flow import Flow, PacketDest, PacketFlow
 from .tile_dma import Acquire, Bd, DmaChannel, Release, TileDma
+
+__all__ = [
+    "ObjectFifo",
+    "ObjectFifoHandle",
+    "ObjectFifoLink",
+    "ObjectFifoEndpoint",
+    "PadDims",
+    "StreamDims",
+    "CascadeFlow",
+    "Flow",
+    "PacketDest",
+    "PacketFlow",
+    "Acquire",
+    "Bd",
+    "DmaChannel",
+    "Release",
+    "TileDma",
+]

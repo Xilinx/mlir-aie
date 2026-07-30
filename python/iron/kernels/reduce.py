@@ -6,9 +6,8 @@
 """Reduction kernel factories: reduce_add, reduce_min, reduce_max, compute_max."""
 
 import numpy as np
-from ml_dtypes import bfloat16
-
 from aie.iron.kernel import ExternalFunction
+from ml_dtypes import bfloat16
 
 from ._common import _default_source_path, _make_extern, _min_dma_aligned_elems
 

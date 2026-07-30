@@ -7,17 +7,19 @@
 
 import hashlib
 import logging
-import numpy as np
+from pathlib import Path
 
-logger = logging.getLogger(__name__)
+import numpy as np
 
 from .. import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
 from ..dialects import memref  # pyright: ignore[reportAttributeAccessIssue]
+from ..dialects.aie import external_func
 from ..extras.dialects.func import FuncOp  # pyright: ignore[reportMissingImports]
 from ..helpers.dialects.func import call
-from ..dialects.aie import external_func
-from .resolvable import Resolvable
 from .buffer import Buffer
+from .resolvable import Resolvable
+
+logger = logging.getLogger(__name__)
 
 
 def _is_contiguous_row_major(mr):
@@ -225,6 +227,11 @@ class Kernel(BaseKernel):
     `link_with` attribute naming `object_file_name`. The
     `aie-assign-core-link-files` pass propagates this into the CoreOp's
     `link_files` attribute so the linker knows which file to include.
+
+    `link_with_mode` selects how that artifact is consumed: the default
+    (None) object-links it, while `"merge"` asks aiecc to llvm-link it into
+    the core's LLVM module before codegen.  The mode is explicit metadata --
+    it is never inferred from the file suffix.
     """
 
     def __init__(
@@ -232,6 +239,8 @@ class Kernel(BaseKernel):
         name: str,
         object_file_name: str,
         arg_types: list[type[np.ndarray] | np.dtype] | None = None,
+        *,
+        link_with_mode: str | None = None,
     ) -> None:
         """
         Args:
@@ -240,14 +249,23 @@ class Kernel(BaseKernel):
                 (e.g. ``"add_one.o"``).  Must be on the linker search path
                 at compile time.
             arg_types: Type signature of the function arguments.  Defaults to None (empty list).
+            link_with_mode: Optional link policy emitted alongside
+                ``link_with``.  ``"merge"`` routes the artifact through aiecc's
+                ``llvm-link`` merge path; None (the default) object-links it.
         """
         super().__init__(name, arg_types)
         self._object_file_name = object_file_name
+        self._link_with_mode = link_with_mode
 
     @property
     def object_file_name(self) -> str:
         """Filename of the compiled object file."""
         return self._object_file_name
+
+    @property
+    def link_with_mode(self) -> str | None:
+        """Link policy emitted with ``link_with``, or None for object linking."""
+        return self._link_with_mode
 
     def resolve(
         self,
@@ -256,7 +274,10 @@ class Kernel(BaseKernel):
     ) -> None:
         if not self._op:
             self._op = external_func(
-                self._name, inputs=self._arg_types, link_with=self._object_file_name
+                self._name,
+                inputs=self._arg_types,
+                link_with=self._object_file_name,
+                link_with_mode=self._link_with_mode,
             )
 
 
@@ -296,13 +317,17 @@ class ExternalFunction(Kernel):
         *,
         symbol_prefix: str | None = None,
         use_chess: bool = False,
+        inline: bool = False,
     ) -> None:
         """
         Args:
             name: Symbol name of the function as it will appear in the object
                 file.
-            object_file_name: Output object file name.  Defaults to
-                ``<effective_name>.o``.
+            object_file_name: Output artifact name. Defaults to
+                ``<effective_name>.o``, or ``<effective_name>.ll`` with
+                ``inline=True``. With ``inline=True`` an explicit name must end
+                in ``.ll`` (textual LLVM IR) or ``.bc`` (bitcode) -- that suffix
+                selects the emitted format -- and is otherwise rejected.
             source_file: Path to a C/C++ source file on disk.  Mutually
                 exclusive with ``source_string``.
             source_string: Inline C/C++ source code.  Mutually exclusive with
@@ -325,14 +350,58 @@ class ExternalFunction(Kernel):
                 aiecc's front-end accordingly; mixing chess + peano EFs in
                 one design is rejected loudly because aiecc only invokes one
                 front-end per compile.
+            inline: When True, compile the kernel to ``alwaysinline`` LLVM IR
+                (``.ll``) and declare it with ``link_with_mode = "merge"`` so
+                aiecc llvm-links it into the core and inlines it, instead of
+                object-linking a separate ``.o``. Removes the ``func.call``
+                boundary and the separate object. Peano path only (the
+                Chess/xchesscc toolchain cannot llvm-link).
         """
+        if inline and use_chess:
+            raise ValueError(
+                f"ExternalFunction '{name}': inline=True requires the Peano "
+                "toolchain and cannot be combined with use_chess=True."
+            )
+        if inline and symbol_prefix:
+            raise NotImplementedError(
+                f"ExternalFunction '{name}': inline=True combined with symbol_prefix is "
+                "not supported (an inline kernel is emitted as LLVM IR and cannot be "
+                "symbol-renamed). Use inline without a symbol_prefix, or drop inline for "
+                "this kernel."
+            )
+
+        # Must precede the collision scan below: it registers this instance in
+        # `_instances`, whose hash/eq run `_content_digest()` -- which reads
+        # `_inline`.  `_original_name` / `_symbol_prefix` are likewise read by
+        # compile_external_kernel (source naming and the objcopy symbol rename).
         self._original_name = name
         self._symbol_prefix = symbol_prefix
+        self._inline = inline
         effective_name = f"{symbol_prefix}_{name}" if symbol_prefix else name
         object_file_name_explicit = object_file_name is not None
         if not object_file_name:
-            object_file_name = f"{effective_name}.o"
-        super().__init__(effective_name, object_file_name, arg_types)
+            object_file_name = (
+                f"{effective_name}.ll" if inline else f"{effective_name}.o"
+            )
+        elif inline and Path(object_file_name).suffix.lower() not in (".ll", ".bc"):
+            # An inline kernel is emitted as LLVM IR, and the suffix picks the
+            # format (textual vs bitcode), so a wrong one has no valid reading.
+            # Reject it instead of silently renaming the caller's artifact --
+            # aiecc routes on the `link_with_mode` attribute, not the suffix, so
+            # a rename would buy nothing.  Compared case-insensitively, matching
+            # compile_cxx_core_function's own suffix check; the caller's exact
+            # spelling is preserved either way.
+            raise ValueError(
+                f"ExternalFunction '{name}': inline=True emits LLVM IR, so "
+                f"object_file_name must end in '.ll' (textual LLVM IR) or "
+                f"'.bc' (bitcode); got '{object_file_name}'."
+            )
+        super().__init__(
+            effective_name,
+            object_file_name,
+            arg_types,
+            link_with_mode="merge" if inline else None,
+        )
 
         if source_file is not None:
             self._source_file = source_file
@@ -349,8 +418,8 @@ class ExternalFunction(Kernel):
         self._compiled = False
         self._cached_digest: str | None = None
 
-        # Two same-name EFs with default object_file_name would collide on
-        # the same .o path. Auto-suffix defaulted names with a content digest;
+        # Two same-name EFs with default object_file_name would collide on the
+        # same artifact path. Auto-suffix defaulted names with a content digest;
         # raise on explicit names so silent renames don't surprise the caller.
         for existing in ExternalFunction._instances:
             if (
@@ -368,7 +437,12 @@ class ExternalFunction(Kernel):
                         f"`name=...`."
                     )
                 suffix = self._content_digest()[:8]
-                object_file_name = f"{effective_name}_{suffix}.o"
+                output_path = Path(object_file_name)
+                object_file_name = str(
+                    output_path.with_name(
+                        f"{output_path.stem}_{suffix}{output_path.suffix}"
+                    )
+                )
                 self._object_file_name = object_file_name
                 break
         ExternalFunction._instances.add(self)
@@ -438,6 +512,7 @@ class ExternalFunction(Kernel):
             # contents even when name + arg_types + flags + source are
             # identical, so the digest must distinguish them.
             f"chess={self._use_chess}",
+            f"inline={self._inline}",
         ]
         if self._source_string:
             parts.append(self._source_string)

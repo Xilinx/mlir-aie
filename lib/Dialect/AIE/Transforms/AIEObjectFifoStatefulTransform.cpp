@@ -57,6 +57,11 @@ public:
     // go over the locks created for each tile and update the index in
     // locksPerTile
     device.walk([&](LockOp lockOp) {
+      // A lock without an ID does not reserve a particular ID yet, so it does
+      // not make one unavailable here. AIEAssignLockIDs runs later and gives
+      // it one of the IDs still free on the tile.
+      if (!lockOp.getLockID().has_value())
+        return;
       auto tile = lockOp.getTile();
       auto lockID = lockOp.getLockIDValue();
       locksPerTile[{tile, lockID}] = 1;

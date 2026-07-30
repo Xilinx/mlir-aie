@@ -19,10 +19,10 @@ Companion numpy reference implementations for host-side verification:
 """
 
 from pathlib import Path
-import numpy as np
-from ml_dtypes import bfloat16
 
+import numpy as np
 from aie.iron.kernel import ExternalFunction
+from ml_dtypes import bfloat16
 
 from ._common import (
     _detect_arch,

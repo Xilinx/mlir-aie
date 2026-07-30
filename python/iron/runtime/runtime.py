@@ -16,40 +16,40 @@ bounds) elaborates to a flat binary sequence.
 """
 
 from __future__ import annotations
+
 import itertools
 import logging
-import numpy as np
 from typing import Callable, Sequence, get_origin
 
-logger = logging.getLogger(__name__)
-
-from ...utils import trace as trace_utils
+import numpy as np
 
 from ... import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
-
-from ...dialects.aiex import (
-    npu_load_pdi,  # pyright: ignore[reportAttributeAccessIssue]
-    sync_scratchpad_parameters_from_host,  # pyright: ignore[reportAttributeAccessIssue]
-    dma_await_task,
-    dma_free_task,
-)
 from ...dialects._aie_ops_gen import (  # pyright: ignore[reportMissingImports]
     RuntimeSequenceOp,
 )
-from ...helpers.util import (
-    try_convert_np_type_to_mlir_type,
-    np_dtype_to_mlir_type,
-    flatten_fn_args,
+from ...dialects.aiex import (
+    dma_await_task,
+    dma_free_task,
+    npu_load_pdi,  # pyright: ignore[reportAttributeAccessIssue]
+    sync_scratchpad_parameters_from_host,  # pyright: ignore[reportAttributeAccessIssue]
 )
 from ...extras.dialects.arith import constant  # pyright: ignore[reportMissingImports]
+from ...helpers.util import (
+    flatten_fn_args,
+    np_dtype_to_mlir_type,
+    try_convert_np_type_to_mlir_type,
+)
+from ...utils import trace as trace_utils
 from ..dataflow import ObjectFifoHandle
 from ..resolvable import Resolvable
 from ..scratchpad_parameter import ScratchpadParameter
-from .dmatask import DMATask
+from ._context import active_sequence, active_sequence_scope
 from .data import RuntimeData
+from .dmatask import DMATask
 from .endpoint import RuntimeEndpoint
 from .taskgroup import TaskGroup
-from ._context import active_sequence, active_sequence_scope
+
+logger = logging.getLogger(__name__)
 
 
 class IronRuntimeError(Exception):
@@ -61,8 +61,8 @@ class ActiveSequence:
 
     The body's data-movement verbs (``fifo.fill``/``fifo.drain``) and
     ``TaskGroup`` reach this object through the active-sequence ContextVar
-    (see [`_context`][iron.runtime._context]) rather than a threaded ``rt``
-    reference, so the body signature carries only the runtime buffers.
+    (see ``_context``) rather than a threaded ``rt`` reference, so the body
+    signature carries only the runtime buffers.
 
     The body runs exactly once, inside the ``runtime_sequence`` op: each verb
     both binds its ObjectFifo's shim endpoint and emits the shim DMA. The DMA
@@ -156,15 +156,14 @@ class ActiveSequence:
 
 
 class Runtime(Resolvable):
-    """The host-side sequence of data-movement and worker-start operations that
-    execute an IRON design.
+    """The host-side sequence of data-movement operations that execute an
+    IRON design.
 
     A Runtime describes what the host does at runtime: filling input
     [`ObjectFifo`][iron.ObjectFifo]s with data and draining results back to host
-    buffers. The sequence is a callback registered with
-    [`sequence`][iron.runtime.runtime.Runtime.sequence]; its body reads the
-    runtime buffers as parameters and moves data with ``fifo.fill(...)`` /
-    ``fifo.drain(...)``.
+    buffers. The sequence is the ``seq_fn`` callback passed to the
+    constructor; its body reads the runtime buffers as parameters and moves
+    data with ``fifo.fill(...)`` / ``fifo.drain(...)``.
     """
 
     def __init__(
@@ -305,9 +304,15 @@ class Runtime(Resolvable):
         runtime endpoint -- including those on link siblings -- is already bound.
 
         Args:
-            trace_size/reuse_output_buffer/egress_shim_col: Forwarded from
+            trace_size: Forwarded from
                 [`Program.enable_trace`][iron.program.Program.enable_trace]; see
-                there. ``trace_size`` of ``None``/``0`` disables tracing.
+                there. ``None``/``0`` disables tracing.
+            reuse_output_buffer: Forwarded from
+                [`Program.enable_trace`][iron.program.Program.enable_trace]; see
+                there.
+            egress_shim_col: Forwarded from
+                [`Program.enable_trace`][iron.program.Program.enable_trace]; see
+                there.
             load_pdi_device_ref: On the full-ELF path (no xclbin configures the
                 device), the device symbol to load via ``npu_load_pdi`` as the
                 first op in the sequence. ``None`` on the xclbin path.
