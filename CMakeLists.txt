@@ -120,6 +120,59 @@ configure_file(./utils/vitisVariables.config.in
                ${CMAKE_BINARY_DIR}/utils/vitisVariables.config @ONLY)
 find_package(XRT)
 
+# PEANO_INSTALL_DIR (set above) is an unchecked passthrough: if it is set but wrong (missing, not
+# an llvm-aie build, or missing AIE2/AIE2P target support), nothing today says so at configure time
+# -- the first symptom is normally a raw "No such file or directory" from whatever later shells out
+# to ${PEANO_INSTALL_DIR}/bin/clang (test/lit.site.cfg.py.in, programming_examples/**/Makefile).
+# Validate it now and fail loud, the same way an explicitly-requested Vitis/XRT would. A user who
+# has not asked for Peano (PEANO_INSTALL_DIR unset) is unaffected.
+#
+# Peano ships no CMake package config and no dedicated version query, so FindPeano.cmake can only
+# assert identity + capability: is this actually Peano, and does it support the requested target.
+# The one piece of real provenance it does expose is the git repository + revision that LLVM's
+# standard VCS banner embeds into `clang --version` (LLVM_REPOSITORY / LLVM_REVISION, see
+# clang/lib/Basic/Version.cpp) -- e.g. "clang version 21.0.0git
+# (https://github.com/Xilinx/llvm-aie.git <sha>)". That is identity/provenance, not a compatibility
+# predicate: llvm-aie's LLVM_VERSION stays fixed between releases, so there is no meaningful ">="
+# range to gate on here, only "which exact build is this." Record it for diagnostics.
+if(NOT PEANO_INSTALL_DIR STREQUAL "<unset>")
+  find_package(Peano QUIET)
+  if(NOT Peano_FOUND)
+    message(FATAL_ERROR
+      "PEANO_INSTALL_DIR is set to '${PEANO_INSTALL_DIR}' but no valid Peano (llvm-aie) install "
+      "was found there. Expected ${PEANO_INSTALL_DIR}/bin/clang and ${PEANO_INSTALL_DIR}/bin/llc "
+      "to exist, llc -mtriple=aie --version to report \"Xilinx AI Engine\", and AIE2/AIE2P headers "
+      "under ${PEANO_INSTALL_DIR}/include/. Fix PEANO_INSTALL_DIR, or unset it to configure without "
+      "Peano.")
+  else()
+    set(PEANO_VERSION_STRING "")
+    set(PEANO_REVISION "")
+    if(PEANO_CLANG)
+      execute_process(
+        COMMAND ${PEANO_CLANG} --version
+        OUTPUT_VARIABLE peanoClangVersionOutput
+        ERROR_QUIET
+        RESULT_VARIABLE peanoClangResult
+      )
+      if(peanoClangResult EQUAL 0)
+        if(peanoClangVersionOutput MATCHES "clang version ([^ \n]+)")
+          set(PEANO_VERSION_STRING "${CMAKE_MATCH_1}")
+        endif()
+        if(peanoClangVersionOutput MATCHES "github.com/Xilinx/llvm-aie[^ \n]* ([0-9a-fA-F]+)")
+          set(PEANO_REVISION "${CMAKE_MATCH_1}")
+        endif()
+      endif()
+    endif()
+    if(PEANO_REVISION)
+      message(STATUS "Peano (llvm-aie) validated: ${PEANO_DIR} (version ${PEANO_VERSION_STRING}, revision ${PEANO_REVISION})")
+    elseif(PEANO_VERSION_STRING)
+      message(STATUS "Peano (llvm-aie) validated: ${PEANO_DIR} (version ${PEANO_VERSION_STRING}, no embedded git revision)")
+    else()
+      message(STATUS "Peano (llvm-aie) validated: ${PEANO_DIR}")
+    endif()
+  endif()
+endif()
+
 # Find AIEBU library for direct ELF generation (optional, falls back to subprocess)
 find_package(aiebu QUIET NO_DEFAULT_PATH
   PATHS /opt/xilinx/xrt/share/cmake/AIEBU
