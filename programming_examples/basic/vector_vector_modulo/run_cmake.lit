@@ -8,4 +8,4 @@
 //
 // RUN: cmake -G Ninja -S %S -B %t.cmake -DAIE_DEVICE=npu -DTARGET_NAME=vector_vector_modulo
 // RUN: cmake --build %t.cmake
-// RUN: ctest --test-dir %t.cmake --output-on-failure
+// RUN: ctest --test-dir %t.cmake --output-on-failure --no-tests=error

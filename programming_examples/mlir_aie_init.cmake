@@ -43,7 +43,11 @@ macro(mlir_aie_init_example)
     add_compile_options(/Zc:__cplusplus)
   endif()
 
-  set(TARGET_NAME test CACHE STRING "Target to be built")
+  # Not "test": CTest reserves that target name once enable_testing() is in
+  # effect, and common.cmake enables testing at directory scope. Every real
+  # invocation passes -DTARGET_NAME anyway (build_host_exe and the run_cmake
+  # lits both do), so this is only the fallback for a bare `cmake <example>`.
+  set(TARGET_NAME test_exe CACHE STRING "Target to be built")
   set(ProjectName proj_${TARGET_NAME})
   set(currentTarget ${TARGET_NAME})
 endmacro()

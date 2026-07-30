@@ -128,11 +128,16 @@ endef
 #        lives in a parent dir
 #   $4 = extra cmake -D flags (optional)
 #   $5 = cmake project dir (optional; defaults to ${srcdir})
+#
+# -DAIE_BUILD_DESIGN=OFF: examples converted to the CMake path call
+# add_aie_design() in their CMakeLists, but here make already builds the design
+# itself via jit_xclbin. The flag keeps this configure host-only, so make and
+# cmake don't both JIT the design (see common.cmake).
 define build_host_exe
 $(1).exe: $${srcdir}/$(3)
 	rm -rf $(2)
 	mkdir -p $(2)
-	cd $(2) && $${powershell} cmake `$${getwslpath} $(if $(5),$(5),$${srcdir})` -DTARGET_NAME=$(1) $(4) $${NPU_RUNTIME_CMAKE_FLAGS}
+	cd $(2) && $${powershell} cmake `$${getwslpath} $(if $(5),$(5),$${srcdir})` -DTARGET_NAME=$(1) -DAIE_BUILD_DESIGN=OFF $(4) $${NPU_RUNTIME_CMAKE_FLAGS}
 	cd $(2) && $${powershell} cmake --build . --config Release
 	cp $(2)/$(1)$${host_exe_suffix} $$@
 endef

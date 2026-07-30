@@ -212,6 +212,12 @@ endfunction()
 # CMake equivalents of makefile-common's jit_xclbin and the per-example `run:`
 # target: build the xclbin/insts and run on the NPU via cmake + ctest.
 
+# Must be at directory scope: enable_testing() inside a function does NOT write
+# CTestTestfile.cmake, so add_test() calls silently vanish and `ctest` reports
+# "No tests were found!!!" -- and still exits 0, so the lit test passes without
+# ever running on the NPU. This file is always included at directory scope.
+enable_testing()
+
 # Required only by the helpers below, so host-only consumers don't need Python.
 macro(_aie_require_python)
   if(NOT Python3_Interpreter_FOUND)
@@ -222,9 +228,25 @@ endmacro()
 # add_aie_design(TARGET <t> PY <design.py> DEVICE <npu|npu2> [ELF] [ARGS ...])
 #   JITs the design into final.xclbin/insts.bin (+ final.elf with ELF) in the
 #   build dir. Creates target <t>_xclbin for the host exe to depend on.
+#
+# The design is only built when AIE_BUILD_DESIGN is ON. This matters because
+# makefile-common's build_host_exe configures and builds this same CMakeLists to
+# produce the host binary, while separately JIT-ing the design itself via
+# jit_xclbin. Without the guard, `make` would also trigger the CMake-side JIT --
+# duplicated work that additionally broke ml/block_datatypes (BFP kernels fail to
+# compile in that context). build_host_exe therefore passes -DAIE_BUILD_DESIGN=OFF,
+# and run_cmake.lit gets the default ON.
+option(AIE_BUILD_DESIGN "Build the example's AIE design (off when make drives the build)" ON)
+
 function(add_aie_design)
   _aie_require_python()
   cmake_parse_arguments(D "ELF" "TARGET;PY;DEVICE" "ARGS" ${ARGN})
+  # Still define the target so callers' add_dependencies() stays valid; it just
+  # has nothing to do.
+  if(NOT AIE_BUILD_DESIGN)
+    add_custom_target(${D_TARGET}_xclbin)
+    return()
+  endif()
   set(_out "${CMAKE_CURRENT_BINARY_DIR}")
   set(_xclbin "${_out}/final.xclbin")
   set(_insts "${_out}/insts.bin")
@@ -247,15 +269,21 @@ function(add_aie_design)
 endfunction()
 
 # add_aie_run_test(NAME <t> DEVICE <npu|npu2> [EXE <host_target>] [PY <test.py>]
-#                  [KERNEL <name>] [PY_STANDALONE])
+#                  [KERNEL <name>] [PY_STANDALONE] [USE_ELF]
+#                  [RUN_ARGS ...] [ENVIRONMENT ...])
 #   Registers a ctest that runs on the NPU via utils/run_on_npu.py.
 #     EXE            => run the host binary against final.xclbin/insts.bin
 #     PY             => run a Python host test against those artifacts (run_py)
 #     PY_STANDALONE  => run the script alone (@iron.jit self-running designs)
+#     USE_ELF        => pass final.elf instead of insts.bin as -i (xrt::elf +
+#                       xrt::module testbenches; pair with add_aie_design's ELF)
+#     RUN_ARGS       => extra args appended to the host command, mirroring the
+#                       Makefile `run:` recipe (e.g. -l 4096 --op add)
+#     ENVIRONMENT    => "VAR=value" entries set for the test (e.g. NORM_OP=rms)
 function(add_aie_run_test)
   _aie_require_python()
-  cmake_parse_arguments(R "PY_STANDALONE" "NAME;DEVICE;EXE;PY;KERNEL" "" ${ARGN})
-  enable_testing()
+  cmake_parse_arguments(R "PY_STANDALONE;USE_ELF" "NAME;DEVICE;EXE;PY;KERNEL"
+                          "RUN_ARGS;ENVIRONMENT" ${ARGN})
   if(R_DEVICE STREQUAL "npu2")
     set(_kind npu2)
   else()
@@ -265,24 +293,34 @@ function(add_aie_run_test)
   if(R_KERNEL)
     set(_k ${R_KERNEL})
   endif()
+  # The instruction stream is either the raw insts.bin or the ELF-wrapped form.
+  if(R_USE_ELF)
+    set(_instr "${CMAKE_CURRENT_BINARY_DIR}/final.elf")
+  else()
+    set(_instr "${CMAKE_CURRENT_BINARY_DIR}/insts.bin")
+  endif()
   if(R_EXE)
     add_test(NAME ${R_NAME}
       COMMAND ${Python3_EXECUTABLE} "${MLIR_AIE_DIR}/utils/run_on_npu.py" ${_kind}
               $<TARGET_FILE:${R_EXE}>
               -x "${CMAKE_CURRENT_BINARY_DIR}/final.xclbin"
-              -i "${CMAKE_CURRENT_BINARY_DIR}/insts.bin"
-              -k ${_k})
+              -i "${_instr}"
+              -k ${_k} ${R_RUN_ARGS})
   elseif(R_PY_STANDALONE)
     add_test(NAME ${R_NAME}
       COMMAND ${Python3_EXECUTABLE} "${MLIR_AIE_DIR}/utils/run_on_npu.py" ${_kind}
-              ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/${R_PY}")
+              ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/${R_PY}"
+              ${R_RUN_ARGS})
   else()
     # `run_py` flow: a Python host test driven against the built artifacts.
     add_test(NAME ${R_NAME}
       COMMAND ${Python3_EXECUTABLE} "${MLIR_AIE_DIR}/utils/run_on_npu.py" ${_kind}
               ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/${R_PY}"
               --xclbin "${CMAKE_CURRENT_BINARY_DIR}/final.xclbin"
-              --instr "${CMAKE_CURRENT_BINARY_DIR}/insts.bin"
-              -k ${_k})
+              --instr "${_instr}"
+              -k ${_k} ${R_RUN_ARGS})
+  endif()
+  if(R_ENVIRONMENT)
+    set_tests_properties(${R_NAME} PROPERTIES ENVIRONMENT "${R_ENVIRONMENT}")
   endif()
 endfunction()
