@@ -134,7 +134,7 @@ def test_a_backend_may_require_a_coarser_granule():
 
 def test_subview_shares_storage():
     parent = CPUOnlyTensor((4, _F32_PER_GRANULE), dtype=np.float32)
-    view = parent.subview(_F32_PER_GRANULE, (_F32_PER_GRANULE,))  # row 1
+    view = parent.subview(GRANULE, (_F32_PER_GRANULE,))  # row 1, one granule in
     assert view.shape == (_F32_PER_GRANULE,)
     view.data[:] = 3.0
     assert np.allclose(parent.data[1], 3.0)
@@ -158,8 +158,8 @@ def test_subview_does_not_copy():
 
 def test_subview_nested():
     parent = CPUOnlyTensor((4 * _F32_PER_GRANULE,), dtype=np.float32)
-    outer = parent.subview(_F32_PER_GRANULE, (2 * _F32_PER_GRANULE,))
-    inner = outer.subview(_F32_PER_GRANULE, (_F32_PER_GRANULE,))
+    outer = parent.subview(GRANULE, (2 * _F32_PER_GRANULE,))
+    inner = outer.subview(GRANULE, (_F32_PER_GRANULE,))
     inner.data[:] = 7.0
     assert np.allclose(parent.data[2 * _F32_PER_GRANULE : 3 * _F32_PER_GRANULE], 7.0)
     assert np.allclose(parent.data[: 2 * _F32_PER_GRANULE], 0.0)
@@ -263,19 +263,39 @@ def test_subview_dtype_reinterpret_of_the_same_width():
     assert view.data.dtype == np.dtype(np.float32)
 
 
-def test_offset_counts_elements_of_the_parent_dtype():
+def test_offset_counts_bytes_whatever_the_dtypes_are():
     """The one case where the offset unit is observable.
 
-    offset is in the parent's elements while shape is in the view's, so a
-    reinterpreting subview at a nonzero offset is the only call that can tell
-    the two units apart. At offset 0 every possible unit agrees.
+    A reinterpreting subview at a nonzero offset is the only call that can tell
+    the candidate units apart, since at offset 0 all of them agree. Bytes is the
+    unit the buffer is measured in: it has no dtype, the alignment rule is in
+    bytes, and storage_offset reports bytes.
     """
     parent = CPUOnlyTensor((GRANULE,), dtype=np.uint32)  # 4 * GRANULE bytes
-    view = parent.subview(GRANULE // 4, (GRANULE,), dtype=np.uint8)
+    view = parent.subview(GRANULE, (GRANULE,), dtype=np.uint8)
     view.data[:] = 0xEE
     written = np.nonzero(parent.data.view(np.uint8) != 0)[0]
-    assert written.min() == GRANULE  # (GRANULE // 4) elements * 4 bytes
+    assert written.min() == GRANULE
     assert written.max() == 2 * GRANULE - 1
+
+
+def test_offset_does_not_scale_with_the_parent_dtype():
+    """Same byte offset, same place, whatever the parent is typed as.
+
+    Under the old parent-dtype rule these two landed 4x apart.
+    """
+    as_bytes = CPUOnlyTensor((4 * GRANULE,), dtype=np.uint8)
+    as_words = CPUOnlyTensor((GRANULE,), dtype=np.uint32)
+    assert as_bytes.subview(GRANULE, (GRANULE,)).storage_offset == GRANULE
+    assert as_words.subview(GRANULE, (GRANULE // 4,)).storage_offset == GRANULE
+
+
+def test_offset_agrees_with_storage_offset():
+    """The argument in and the value reported back are the same number."""
+    parent = CPUOnlyTensor((GRANULE,), dtype=np.uint32)
+    assert parent.subview(2 * GRANULE, (GRANULE,), dtype=np.uint8).storage_offset == (
+        2 * GRANULE
+    )
 
 
 def test_subview_accepts_a_multidimensional_shape():
@@ -333,9 +353,9 @@ def test_subview_accepts_an_empty_region():
 def test_subview_bounds_checked():
     parent = CPUOnlyTensor((4 * _F32_PER_GRANULE,), dtype=np.float32)
     with pytest.raises(ValueError, match="out of bounds"):
-        parent.subview(_F32_PER_GRANULE, (4 * _F32_PER_GRANULE,))
+        parent.subview(GRANULE, (4 * _F32_PER_GRANULE,))
     with pytest.raises(ValueError, match="out of bounds"):
-        parent.subview(-_F32_PER_GRANULE, (_F32_PER_GRANULE,))
+        parent.subview(-GRANULE, (_F32_PER_GRANULE,))
     # The boundary case, on a single-byte dtype so that offset -1 is -1 byte:
     # a wider dtype scales it away from the boundary and stops testing it.
     single_byte = CPUOnlyTensor((4 * GRANULE,), dtype=np.uint8)
@@ -422,7 +442,7 @@ def test_the_backend_hook_receives_a_byte_offset_and_the_view_dtype():
             return super()._subview(offset_bytes, shape, dtype)
 
     parent = RecordingTensor((4 * GRANULE,), dtype=np.uint32)
-    parent.subview(GRANULE // 4, (GRANULE,), dtype=np.uint8)
+    parent.subview(GRANULE, (GRANULE,), dtype=np.uint8)
     assert seen["offset_bytes"] == GRANULE  # elements * parent itemsize
     assert seen["shape"] == (GRANULE,)
     assert seen["dtype"] == np.dtype(np.uint8)

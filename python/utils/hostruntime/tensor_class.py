@@ -849,14 +849,17 @@ class NpuTensor(ABC):
         The alignment requirement has no analogue in either library, because
         neither reconciles anything between two agents.
 
-        Offsets are counted in units of this tensor's dtype, while ``shape`` is
-        in units of the view's, and :attr:`storage_offset` reports bytes. numpy
-        counts offsets in the array's own dtype and torch reports
-        ``storage_offset`` in elements, so this matches neither. The closest
-        mental model is a typed pointer cast, not an array slice.
+        ``offset`` is in bytes, where numpy counts offsets in elements of the
+        array's own dtype and torch reports ``storage_offset`` in elements.
+        Bytes because that is the unit the thing being carved is measured in: a
+        buffer has no dtype, the alignment rule below is in bytes, and
+        :attr:`storage_offset` reports bytes, so the argument going in and the
+        value reported back are the same number. ``shape`` stays in elements of
+        the view's dtype, since it describes the tensor rather than the region.
 
         Args:
-            offset: Start of the region, in elements of this tensor's dtype.
+            offset: Start of the region, in bytes from the start of this
+                tensor's own region.
             shape: Logical shape of the view.
             dtype (np.dtype, optional): dtype to interpret the region as.
                 Defaults to this tensor's dtype.
@@ -880,10 +883,10 @@ class NpuTensor(ABC):
             offset = operator.index(offset)
         except TypeError:
             raise TypeError(
-                f"subview() offset must be an integer, got {offset!r}. It counts "
-                f"elements of this buffer's dtype ({np.dtype(self.dtype)}), not bytes."
+                f"subview() offset must be an integer number of bytes, got "
+                f"{offset!r}."
             ) from None
-        offset_bytes = offset * np.dtype(self.dtype).itemsize
+        offset_bytes = offset
         # math.prod over validated ints: np.prod would accumulate in int64 and
         # wrap silently, which defeats the bounds check below rather than
         # tripping it.

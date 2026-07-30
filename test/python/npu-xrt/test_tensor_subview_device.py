@@ -50,6 +50,10 @@ _N = 256  # int32 elements the kernel transforms
 _ADD = 7
 _ELEM = np.dtype(np.int32).itemsize
 _PAD = COHERENCE_GRANULE // _ELEM  # one granule, in int32 elements
+# subview() offsets are bytes, while shapes stay in elements, so the same
+# padding needs both spellings.
+_PAD_BYTES = COHERENCE_GRANULE
+_N_BYTES = _N * _ELEM
 
 
 def _add_const_design(input_buf: In, output_buf: Out, N: CompileTime[int]):
@@ -98,7 +102,7 @@ def test_device_writes_through_subview(source, expected):
     """A view is a real destination: the device writes the parent's storage."""
     parent = XRTTensor((_PAD + _N + _PAD,), dtype=np.int32, device="npu")
     parent.fill_(0)
-    view = parent.subview(_PAD, (_N,))
+    view = parent.subview(_PAD_BYTES, (_N,))
 
     add_const(source, view)
     view.to("cpu")
@@ -118,7 +122,7 @@ def test_subview_result_matches_a_standalone_buffer(source, expected):
 
     parent = XRTTensor((_PAD + _N + _PAD,), dtype=np.int32, device="npu")
     parent.fill_(0)
-    view = parent.subview(_PAD, (_N,))
+    view = parent.subview(_PAD_BYTES, (_N,))
     add_const(source, view)
     view.to("cpu")
 
@@ -143,9 +147,9 @@ def test_subview_sync_does_not_disturb_neighbours(source, expected):
     """
     parent = XRTTensor((_PAD + _N + _PAD,), dtype=np.int32, device="npu")
     parent.fill_(0)
-    view = parent.subview(_PAD, (_N,))
+    view = parent.subview(_PAD_BYTES, (_N,))
     left = parent.subview(0, (_PAD,))
-    right = parent.subview(_PAD + _N, (_PAD,))
+    right = parent.subview(_PAD_BYTES + _N_BYTES, (_PAD,))
 
     # Host-owned bytes either side, deliberately never synced to the device.
     left_pattern = np.full(_PAD, 0x0A0A0A0A, dtype=np.int32)
@@ -170,7 +174,7 @@ def test_view_outlives_the_caller_s_reference_to_its_parent(source, expected):
     """
     parent = XRTTensor((_PAD + _N + _PAD,), dtype=np.int32, device="npu")
     parent.fill_(0)
-    view = parent.subview(_PAD, (_N,))
+    view = parent.subview(_PAD_BYTES, (_N,))
     add_const(source, view)
     view.to("cpu")
 
@@ -185,7 +189,7 @@ def test_nested_subviews_address_the_root_buffer(source, expected):
     """A view of a view must resolve against the original allocation."""
     parent = XRTTensor((2 * _PAD + 2 * _N,), dtype=np.int32, device="npu")
     parent.fill_(0)
-    outer = parent.subview(_PAD, (_N + _PAD,))
+    outer = parent.subview(_PAD_BYTES, (_N + _PAD,))
     inner = outer.subview(0, (_N,))
     assert inner.base is parent
 
@@ -205,7 +209,7 @@ def test_adjacent_subviews_are_independent(source, expected):
     parent = XRTTensor((2 * _N,), dtype=np.int32, device="npu")
     parent.fill_(0)
     first = parent.subview(0, (_N,))
-    second = parent.subview(_N, (_N,))
+    second = parent.subview(_N_BYTES, (_N,))
 
     add_const(source, first)
     first.to("cpu")
