@@ -173,11 +173,10 @@ def _compute_artifact_hash(
         except (FileNotFoundError, OSError):
             pass
 
-    # The active backend's DDR-patch ABI changes the emitted insts.bin bytes
-    # (XRT folds the AIE DDR aperture offset for args >= 5; HRX emits raw offsets
-    # and adds the aperture at runtime), so it must key the cache -- otherwise an
-    # HRX run could reuse an XRT-populated entry (or vice versa) and dispatch a
-    # mis-translated instruction stream.
+    # DDR-patch ABI: XRT (and CPU) consume the folded firmware ABI; HRX consumes
+    # the producer-independent (unfolded) insts.bin and adds the AIE DDR aperture
+    # offset for every arg itself. cl::opt defaults to true, so only pass the
+    # flag when unfolding is requested.
     try:
         from aie.utils import npu_runtime_folds_ddr_addr_offset
 

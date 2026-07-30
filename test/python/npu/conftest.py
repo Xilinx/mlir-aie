@@ -12,21 +12,6 @@ import pytest
 # not (yet) support; keep them running on XRT but skip them when the active
 # runtime is HRX. Keyed by a substring of the pytest node id -> reason. These
 # are HRX backend gaps worth a follow-up, not test bugs.
-#
-# Two libhrx DDR-patch bugs that previously required skips here are now fixed and
-# no longer skipped:
-#   * >5-host-arg DDR double-offset: the HRX path now uses a producer-independent
-#     patch-table ABI -- aiecc emits the insts.bin unfolded
-#     (--fold-ddr-addr-offset=false when NPU_RUNTIME=hrx) and libhrx adds the AIE
-#     DDR aperture offset for every arg exactly once, independent of the
-#     firmware's first-5-args translation cutoff (test_jit_many_args). XRT keeps
-#     the folded firmware ABI; the JIT cache keys on the fold state so the two
-#     never share a compiled insts.bin.
-#   * sub-buffer offset double-count: BDs that address a sub-range of a buffer
-#     (e.g. transform_parallel's per-column/per-channel split) carry the
-#     intra-buffer offset in both the compiler-baked BD address and the
-#     DDR_PATCH addend; libhrx now overwrites the baked value instead of adding
-#     to it, so the offset is applied once (transform_parallel).
 _HRX_UNSUPPORTED = {
     "test_trace_config_without_enable_trace_raises": (
         "HRX rejects any trace_config up front, before the host-buffer argument "
