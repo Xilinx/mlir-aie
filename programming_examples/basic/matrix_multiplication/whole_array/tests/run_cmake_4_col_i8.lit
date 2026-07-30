@@ -4,8 +4,8 @@
 // Build+run via CMake + ctest (no make; works on Windows).
 // add_aie_run_test's ctest already wraps run_on_npu.py, so ctest runs directly.
 //
-// REQUIRES: ryzen_ai_npu2, peano, cmake_examples
+// REQUIRES: ryzen_ai, peano, cmake_examples
 //
-// RUN: cmake -G Ninja -S %S/../.. -B %t.cmake -DAIE_DEVICE=npu2 -DTARGET_NAME=matrix_vector -Dsubdir=matrix_vector
+// RUN: cmake -G Ninja -S %S/../.. -B %t.cmake -DAIE_DEVICE=%aie_cmake_device% -DTARGET_NAME=whole_array -Dsubdir=whole_array -DN_AIE_COLS=4 -DDTYPE_IN=i8 -DDTYPE_OUT=i8 -DM=512 -DK=512 -DN=512 -DTILE_M=64 -DTILE_K=128 -DTILE_N=64
 // RUN: cmake --build %t.cmake
 // RUN: ctest --test-dir %t.cmake --output-on-failure --no-tests=error
