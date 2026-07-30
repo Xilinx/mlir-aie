@@ -1,12 +1,19 @@
 // Copyright (C) 2025 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// REQUIRES: ryzen_ai_npu1, peano
+// REQUIRES: ryzen_ai_npu1, chess
 //
-// RUN: %PEANO_INSTALL_DIR/bin/clang++ --target=aie2-none-unknown-elf -O2 \
-// RUN:   -std=c++20 -DNDEBUG -D__AIE_API_AIE_ADF_HPP__ \
-// RUN:   -I%S/../../../include -I%S/../../../third_party/aie_api/include \
-// RUN:   -c %S/kernel.cpp -o kernel.o
-// RUN: %aiecc --no-xchesscc --no-xbridge --get-xclbin --get-npu-insts --xclbin-name=aie.xclbin --npu-insts-name=insts.bin %S/aie.mlir
+// TODO: move to Peano. kernel.cpp pins its probe variable at the tile-mapped
+// base with chess_storage(TM : 0x80000) so it can read the lock registers.
+// Peano defines chess_storage(...) as an empty macro (aiebase_chess.h), so the
+// address is silently dropped, the variable lands wherever the linker puts it,
+// and the test reads unrelated memory. Note this FAILS AT RUNTIME rather than
+// at build time: it compiles and links clean and returns wrong data, so a
+// Peano port of this test needs an absolute-placement mechanism first (section
+// attribute plus a linker script) and must be checked on device, not by
+// building it.
+//
+// RUN: xchesscc_wrapper aie2 -I %aietools/include -c %S/kernel.cpp -o kernel.o
+// RUN: %aiecc --xchesscc --xbridge --get-xclbin --get-npu-insts --xclbin-name=aie.xclbin --npu-insts-name=insts.bin %S/aie.mlir
 // RUN: %host_clang %S/test.cpp -o test.exe -std=c++17 -Wall %xrt_flags %host_link_flags %test_utils_flags
 // RUN: %run_on_npu1% ./test.exe -x aie.xclbin -k MLIR_AIE -i insts.bin
