@@ -13,7 +13,7 @@
 | [Eltwise Unary (ReLU / SiLU / GELU)](../../programming_examples/ml/eltwise_unary/) | bfloat16 | Element-wise ReLU, SiLU, or GELU activation on a vector (`op={relu,silu,gelu}` option). |
 | [SwiGLU](../../programming_examples/ml/swiglu/) | bfloat16 | Swish-Gated Linear Unit (SwiGLU) activation function on a vector |
 | [Softmax](../../programming_examples/ml/softmax/) | bfloat16 | Softmax operation on a matrix  |
-| [Norm (RMS / Layer)](../../programming_examples/ml/norm/) | bfloat16 | Row-wise RMSNorm or LayerNorm on a matrix (`op={rms,layer}` option). |
+| [Norm (RMS / Layer)](../../programming_examples/ml/norm/) | bfloat16 / float32 | Row-wise RMSNorm or LayerNorm on a matrix (`op={rms,layer,layer_f32,layer_affine_cast}` option); `layer_affine_cast` fuses a real per-column affine and a `float32 -> bfloat16` cast into the same dispatch. |
 | [RoPE](../../programming_examples/ml/rope/) | bfloat16 | Rotary Position Embedding on a matrix |
 | [Scale Shift](../../programming_examples/ml/scale_shift/) | bfloat16 | Element-wise scale (multiply) and shift (add) on vectors |
 | [Cast f32 -> bf16](../../programming_examples/ml/cast_f32_bf16/) | float32 -> bfloat16 | Row-wise element-wise narrowing cast, round-to-nearest-even. |
