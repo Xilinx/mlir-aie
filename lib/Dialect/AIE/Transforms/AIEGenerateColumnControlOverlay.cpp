@@ -300,10 +300,12 @@ struct AIEGenerateColumnControlOverlayPass
     int minOccupiedCol = tiles.front().first.col;
     int maxOccupiedCol = minOccupiedCol;
     int maxOccupiedRow = 0;
+    llvm::SmallSet<int, 4> declaredCols;
     for (auto &[tId, tOp] : tiles) {
       minOccupiedCol = std::min(minOccupiedCol, tId.col);
       maxOccupiedCol = std::max(maxOccupiedCol, tId.col);
       maxOccupiedRow = std::max(maxOccupiedRow, tId.row);
+      declaredCols.insert(tId.col);
     }
 
     // Cover the full column range between the leftmost and rightmost occupied
@@ -317,6 +319,14 @@ struct AIEGenerateColumnControlOverlayPass
     for (int col = minOccupiedCol; col <= maxOccupiedCol; col++) {
       builder.setInsertionPointToStart(device.getBody());
       AIE::TileOp shimTile = TileOp::getOrCreate(builder, device, col, 0);
+      // Register the shim in the column's tile set. The TCT branch below
+      // selects out of `tiles` and, with the default `shim-only`, keeps only
+      // shim tiles -- so in a column holding compute tiles but no *declared*
+      // shim it selected nothing and emitted no TCT route, while the branch
+      // after it still wired that column's configuration path through the shim
+      // materialized just above. Which of the two paths a column got therefore
+      // depended on whether the design happened to declare its shim.
+      tiles[{col, 0}] = shimTile;
 
       if (clRouteShimCTRLToTCT == "all-tiles" ||
           clRouteShimCTRLToTCT == "shim-only") {
@@ -341,19 +351,18 @@ struct AIEGenerateColumnControlOverlayPass
         // tiles) are needed for control packet routing and will also need
         // their switchboxes configured via control packets.
         int maxRow = 0;
-        bool colIsOccupied = false;
         for (auto &[tId, tOp] : tiles) {
-          if (tId.col == col) {
+          if (tId.col == col)
             maxRow = std::max(maxRow, tId.row);
-            colIsOccupied = true;
-          }
         }
-        // A column holding no tile of its own is only in range because flows
-        // route through it, and such a flow can traverse it at any row up to
-        // the highest row in use. Rows map to shim channels in round robin
-        // (getRowToShimChanMap), so covering only row 0 here would allocate
-        // just one of the channels its control packets get addressed to.
-        if (!colIsOccupied)
+        // A column the design declared no tile in is only in range because
+        // flows route through it, and such a flow can traverse it at any row up
+        // to the highest row in use. Rows map to shim channels in round robin
+        // (getRowToShimChanMap), so covering only the shim row here would
+        // allocate just one of the channels its packets get addressed to. Test
+        // against the columns the design itself declared, not against `tiles`,
+        // which now also holds the shim materialized just above.
+        if (!declaredCols.contains(col))
           maxRow = maxOccupiedRow;
         SmallVector<AIE::TileOp> tilesOnCol;
         for (int row = 0; row <= maxRow; row++) {
