@@ -1,9 +1,8 @@
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Make-free build+run via CMake + ctest (works on Windows; no GNU make).
-// The ctest registered by add_aie_run_test already runs the host exe on the NPU
-// through run_on_npu.py, so ctest is invoked directly (not wrapped again).
+// Build+run via CMake + ctest (no make; works on Windows).
+// add_aie_run_test's ctest already wraps run_on_npu.py, so ctest runs directly.
 //
 // REQUIRES: ryzen_ai_npu1, peano, cmake_examples
 //

@@ -112,13 +112,9 @@ class LitConfigHelper:
 
     @staticmethod
     def add_cmake_examples_feature(config_obj) -> None:
-        """Enable CMake-based example tests when the full toolchain is present.
+        """Enable CMake-based example tests (works on Windows, unlike Make).
 
-        Requires cmake, ctest and ninja, matching what the run_cmake.lit tests
-        actually invoke (`cmake -G Ninja`, `cmake --build`, `ctest`). Unlike the
-        Make path this works on Windows too — it is how example designs
-        build+run without GNU make (see add_aie_design / add_aie_run_test in
-        programming_examples/common.cmake)."""
+        Requires cmake, ctest and ninja — what run_cmake.lit actually invokes."""
         if all(shutil.which(tool) for tool in ("cmake", "ctest", "ninja")):
             config_obj.available_features.add("cmake_examples")
 

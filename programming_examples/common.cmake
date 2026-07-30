@@ -209,15 +209,10 @@ endfunction()
 # -----------------------------------------------------------------------------
 # Make-free NPU design build + run helpers
 # -----------------------------------------------------------------------------
-# These let an example build its xclbin/insts and run on the NPU entirely
-# through cmake + ctest, with no GNU make and no shell (the process is launched
-# directly, so no powershell/wslpath wrapping is needed on any host). They are
-# the CMake equivalents of makefile-common's jit_xclbin (design build) and the
-# per-example `run:` target.
+# CMake equivalents of makefile-common's jit_xclbin and the per-example `run:`
+# target: build the xclbin/insts and run on the NPU via cmake + ctest.
 
-# Python is only needed by the helpers below (to JIT the design and to launch
-# run_on_npu.py), so require it there rather than at file scope — consumers that
-# only build host code must not be forced to have an interpreter.
+# Required only by the helpers below, so host-only consumers don't need Python.
 macro(_aie_require_python)
   if(NOT Python3_Interpreter_FOUND)
     find_package(Python3 COMPONENTS Interpreter REQUIRED)
@@ -225,9 +220,8 @@ macro(_aie_require_python)
 endmacro()
 
 # add_aie_design(TARGET <t> PY <design.py> DEVICE <npu|npu2> [ELF] [ARGS ...])
-#   JIT-compiles the design .py into ${CMAKE_CURRENT_BINARY_DIR}/final.xclbin and
-#   insts.bin (and final.elf with ELF), mirroring makefile-common's jit_xclbin.
-#   Creates target <t>_xclbin so the host exe can depend on it.
+#   JITs the design into final.xclbin/insts.bin (+ final.elf with ELF) in the
+#   build dir. Creates target <t>_xclbin for the host exe to depend on.
 function(add_aie_design)
   _aie_require_python()
   cmake_parse_arguments(D "ELF" "TARGET;PY;DEVICE" "ARGS" ${ARGN})
@@ -254,13 +248,10 @@ endfunction()
 
 # add_aie_run_test(NAME <t> DEVICE <npu|npu2> [EXE <host_target>] [PY <test.py>]
 #                  [KERNEL <name>] [PY_STANDALONE])
-#   Registers a ctest that runs on the NPU via utils/run_on_npu.py (which handles
-#   XRT setup/retries).
-#     EXE            => run the built host binary against final.xclbin/insts.bin
-#     PY             => run a Python host test against final.xclbin/insts.bin
-#                       (the `run_py` flow: test.py --xclbin ... --instr ... -k)
-#     PY_STANDALONE  => run the script with no artifact args (@iron.jit designs
-#                       that build and run themselves)
+#   Registers a ctest that runs on the NPU via utils/run_on_npu.py.
+#     EXE            => run the host binary against final.xclbin/insts.bin
+#     PY             => run a Python host test against those artifacts (run_py)
+#     PY_STANDALONE  => run the script alone (@iron.jit self-running designs)
 function(add_aie_run_test)
   _aie_require_python()
   cmake_parse_arguments(R "PY_STANDALONE" "NAME;DEVICE;EXE;PY;KERNEL" "" ${ARGN})
