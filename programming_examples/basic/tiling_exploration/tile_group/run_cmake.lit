@@ -1,0 +1,11 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// Build+run via CMake + ctest (no make; works on Windows).
+// Pure-Python design: the ctest runs tile_group.py on the NPU, which JITs and
+// verifies in-process and exits non-zero on mismatch.
+//
+// REQUIRES: ryzen_ai_npu1, peano, cmake_examples
+//
+// RUN: cmake -G Ninja -S %S -B %t.cmake -DAIE_DEVICE=npu -DTARGET_NAME=tile_group
+// RUN: ctest --test-dir %t.cmake --output-on-failure --no-tests=error
