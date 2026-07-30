@@ -7,6 +7,12 @@
 
 srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
+# aie2p (npu2) only: mm_activation_epilogue_row lives under aie_kernels/aie2p/
+# and has no aie2 counterpart, so makefile-common's default of `npu` would fail
+# to compile the kernel. Must be set BEFORE the include, per that file's own
+# contract -- it uses `?=`, so a later assignment here would be a no-op.
+devicename ?= npu2
+
 include ${srcdir}/../../makefile-common
 
 SHELL := /bin/bash
@@ -29,7 +35,7 @@ $(eval $(call build_host_exe,${targetname},_build,test.cpp))
 
 .PHONY: run
 run: ${targetname}.exe ${xclbin_target} ${insts_target}
-	${powershell} ./$< -x ${xclbin_target} -i ${insts_target} -k MLIR_AIE
+	${powershell} ./$< -x ${xclbin_target} -i ${insts_target} -k MLIR_AIE -l ${length}
 
 .PHONY: clean
 clean:
