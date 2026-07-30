@@ -218,11 +218,15 @@ jobs:
           # owns versioned subdirs (dev/, 1.x.y/, versions.json, index.html);
           # everything else at the root is carry-over from the old Jekyll setup.
           cd ../gh-pages-wt
+          # Keep the versioned dirs (dev/, 1.x.y/) plus the bare "latest"
+          # alias mike writes as a symlink (a file literally named "latest",
+          # no trailing slash). The (/|$) is load-bearing: matching only
+          # "latest/" would let git rm delete the symlink, 404-ing the site.
           git ls-files -z \
             | grep -zv '^\.nojekyll$' \
             | grep -zv '^index\.html$' \
             | grep -zv '^versions\.json$' \
-            | grep -zvE '^(dev|latest)/' \
+            | grep -zvE '^(dev|latest)(/|$)' \
             | grep -zvE '^[0-9]+\.' \
             | xargs -0 -r git rm -rf --ignore-unmatch -q
           cd -
