@@ -295,9 +295,12 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
   std::map<std::pair<PhysPort, int>, SmallVector<PhysPort, 4>> ctrlPacketFlows;
   SmallVector<std::pair<PhysPort, int>, 4> slavePorts;
   DenseMap<std::pair<PhysPort, int>, int> slaveAMSels;
-  // Explicit packet-rule masks pinned per flow ID by aie.packet_flow's mask
-  // attribute; flows without one have their mask derived automatically.
-  DenseMap<int, int> explicitMasks;
+  // Explicit packet-rule masks pinned by aie.packet_flow's mask attribute,
+  // keyed per slave port (switchbox ingress + flow ID). Keying by flow ID alone
+  // is wrong: a design may reuse one ID across several flows with different
+  // masks, and a flat ID->mask map lets the last-processed flow clobber the
+  // others. Flows without an explicit mask have theirs derived automatically.
+  std::map<std::pair<PhysPort, int>, int> explicitPortMasks;
   // Flag to keep packet header at packet flow destination
   DenseMap<PhysPort, BoolAttr> keepPktHeaderAttr;
   // Map from tileID and master ports to flags labelling control packet flows
@@ -317,8 +320,10 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
     Region &r = pktFlowOp.getPorts();
     Block &b = r.front();
     int flowID = pktFlowOp.IDInt();
-    if (auto m = pktFlowOp.getMask())
-      explicitMasks[flowID] = static_cast<int>(*m);
+    std::optional<int> flowMask =
+        pktFlowOp.getMask()
+            ? std::optional<int>(static_cast<int>(*pktFlowOp.getMask()))
+            : std::nullopt;
     SmallVector<std::pair<TileID, Port>, 4> sources;
 
     // Pass 1: collect all sources (order-independent; supports fan-in).
@@ -368,6 +373,11 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
                     switchboxes[currTile].begin(), switchboxes[currTile].end(),
                     std::pair{connect, flowID}) == switchboxes[currTile].end())
               switchboxes[currTile].push_back({connect, flowID});
+            // Pin this flow's declared mask to the slave port it enters here, so
+            // flows that share an ID but declare different masks stay distinct.
+            if (flowMask)
+              explicitPortMasks[{{currTile, {src.bundle, src.channel}},
+                                 flowID}] = *flowMask;
             // Assign "control packet flows" flag per switchbox, based on
             // packet flow op attribute
             auto ctrlPkt = pktFlowOp.getPriorityRoute();
@@ -821,7 +831,7 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
     // one, derive it from the IDs.
     std::optional<int> pinnedMask;
     for (auto port : group)
-      if (auto it = explicitMasks.find(port.second); it != explicitMasks.end())
+      if (auto it = explicitPortMasks.find(port); it != explicitPortMasks.end())
         pinnedMask = it->second;
 
     int maskValue;
