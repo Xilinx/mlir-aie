@@ -4,16 +4,17 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 
-# RUN: %pytest %s
+# RUN: %run_on_npu1% %pytest %s
+# RUN: %run_on_npu2% %pytest %s
+# REQUIRES: xrt_python_bindings
 
-"""How XRTTensor derives a sub-buffer, without needing a device.
+"""How XRTTensor derives a sub-buffer, with the allocation substituted.
 
-The on-device tests in ``npu-xrt/`` prove the result is right on hardware, but
-they only run where hardware exists. This pins the derivation itself -- which
-buffer a view is carved from and at what offset -- on any machine, so a lane
-without an NPU still catches a backend that ignores the offset or nests from the
-wrong buffer. Only the XRT allocation call is substituted; the code under test is
-the real ``XRTTensor._subview``.
+``test_tensor_subview_device.py`` proves the result is right on hardware. This
+pins the derivation itself -- which buffer a view is carved from and at what
+offset -- by substituting only the XRT allocation call, so a wrong offset or a
+nest from the wrong buffer is caught as a wrong argument rather than as wrong
+bytes. The code under test is the real ``XRTTensor._subview``.
 """
 
 import numpy as np
