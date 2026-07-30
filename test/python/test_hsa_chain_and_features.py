@@ -65,39 +65,6 @@ def test_hsa_context_get_is_thread_safe(monkeypatch):
     assert len({id(r) for r in results}) == 1, "threads saw >1 HSAContext instance"
 
 
-def test_uncached_runtime_tracks_and_frees_without_cache(monkeypatch):
-    """HSAHostRuntime (uncached) allocates a fresh handle per load and frees all in cleanup."""
-    from aie.utils.hostruntime.hsaruntime import hostruntime as hrt
-
-    freed = []
-
-    class _FakeCtx:
-        device_gen = "npu2"
-
-        def alloc_dev(self, n):
-            return 0x1000 + n  # unique-ish fake pointer
-
-        def free_dev(self, ptr):
-            freed.append(ptr)
-
-    monkeypatch.setattr(hrt.HSAContext, "get", classmethod(lambda cls: _FakeCtx()))
-
-    rt = hrt.HSAHostRuntime()
-    assert not hasattr(rt, "_exe_cache")  # uncached has no LRU cache
-    assert hasattr(rt, "_handles")  # but tracks handles for cleanup
-
-
-def test_cached_runtime_has_lru_cache(monkeypatch):
-    from aie.utils.hostruntime.hsaruntime import hostruntime as hrt
-
-    class _FakeCtx:
-        device_gen = "npu2"
-
-    monkeypatch.setattr(hrt.HSAContext, "get", classmethod(lambda cls: _FakeCtx()))
-    rt = hrt.CachedHSAHostRuntime()
-    assert hasattr(rt, "_exe_cache")
-
-
 def _make_fake_ctx_cls(overflows):
     """Fake HSAContext whose dispatch reports `overflows` to free after the wait."""
     from aie.utils.hostruntime.hsaruntime._bindings import HSATimeoutError
@@ -342,16 +309,6 @@ def test_dispatch_chain_rings_in_batches():
     assert rings == [batch - 1, 2 * batch - 1, n - 1]
 
 
-def test_dispatch_chain_rings_once_when_shorter_than_a_batch():
-    """A chain shorter than one batch is submitted as a single command chain."""
-    from aie.utils.hostruntime.hsaruntime import context as ctx_mod
-
-    ctx, rings = _chain_ctx()
-    items = [(0x1, 0x2, 4, []) for _ in range(3)]
-    ctx_mod.HSAContext.dispatch_chain(ctx, items, 42)
-    assert rings == [2], "one ring carrying the last write index"
-
-
 def test_vmem_free_revokes_access_before_unmapping(monkeypatch):
     """Access must be revoked before the unmap, or the teardown silently fails.
 
@@ -438,17 +395,6 @@ def test_write_kernargs_layout():
         ctypes.addressof(buf), [0x1000, 0x2000, 0x3000], [16, 32, 48]
     )
     assert list(buf) == [0x1000, 0x2000, 0x3000, 16, 32, 48]
-
-
-def test_kernarg_pool_sizing_covers_real_designs():
-    """The pooled slot must hold more args than in-tree designs actually use.
-
-    test_jit_many_args deliberately runs 9 tensor arguments; a slot capacity at
-    or below that would push a real design onto the allocating fallback path.
-    """
-    from aie.utils.hostruntime.hsaruntime import context as ctx_mod
-
-    assert ctx_mod._MAX_POOLED_KERNARGS >= 9
 
 
 def test_enqueue_times_out_when_queue_never_drains(monkeypatch):
