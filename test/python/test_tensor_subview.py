@@ -526,3 +526,161 @@ def test_a_written_window_is_one_range_not_several():
         (0, 2 * GRANULE),
         (4 * GRANULE, 6 * GRANULE),
     ]
+
+
+# ---------------------------------------------------------------------------
+# The whole-tensor methods, over a buffer whose regions disagree
+# ---------------------------------------------------------------------------
+
+
+class TwoMemoryBuffer(tensor_class.NpuBuffer):
+    """Host and device bytes as separate arrays, so a missed reconcile shows.
+
+    ``CPUOnlyTensor`` cannot demonstrate any of this: its transfers are no-ops
+    over one array, so a skipped reconcile is indistinguishable from a correct
+    one. Here the two sides are different memory and only a transfer moves a
+    byte between them, which is what makes an omitted transfer observable.
+    """
+
+    def __init__(self, nbytes, device, granule=None):
+        super().__init__(nbytes, device, granule)
+        self._host = np.zeros(nbytes, dtype=np.uint8)
+        self.device_bytes = np.zeros(nbytes, dtype=np.uint8)
+
+    @property
+    def host_bytes(self):
+        return self._host
+
+    def sync_to_device(self, offset, nbytes):
+        end = offset + nbytes
+        self.device_bytes[offset:end] = self._host[offset:end]
+
+    def sync_from_device(self, offset, nbytes):
+        end = offset + nbytes
+        self._host[offset:end] = self.device_bytes[offset:end]
+
+
+class TwoMemoryTensor(NpuTensor):
+    """A minimal backend over :class:`TwoMemoryBuffer`."""
+
+    DEVICES = ["cpu", "npu"]
+    DEFAULT_DEVICE = "npu"
+
+    def __init__(self, shape, dtype=np.uint8, device="npu"):
+        super().__init__(shape, dtype=dtype, device=device)
+        self._shape = tuple(shape)
+        nbytes = int(np.prod(self._shape)) * np.dtype(dtype).itemsize
+        self._buffer = TwoMemoryBuffer(
+            nbytes, self._initial_device, self._resolve_coherence_granule()
+        )
+        self._offset_bytes = 0
+        self._data = self._buffer.host_bytes.view(dtype).reshape(self._shape)
+
+    @property
+    def data(self):
+        return self._data
+
+    @property
+    def shape(self):
+        return self._shape
+
+    def _sync_to_device(self):
+        start, end = self._extent
+        self._buffer.sync_to_device(start, end - start)
+
+    def _sync_from_device(self):
+        start, end = self._extent
+        self._buffer.sync_from_device(start, end - start)
+
+    def _subview(self, offset_bytes, shape, dtype):
+        nbytes = int(np.prod(shape)) * dtype.itemsize
+        view = type(self).__new__(type(self))
+        NpuTensor.__init__(view, shape, dtype=dtype, device=self.device)
+        view._storage = self
+        view._shape = tuple(shape)
+        view._buffer = self._buffer
+        absolute = self.storage_offset + offset_bytes
+        view._offset_bytes = absolute
+        view._data = (
+            self._buffer.host_bytes[absolute : absolute + nbytes]
+            .view(dtype)
+            .reshape(view._shape)
+        )
+        return view
+
+
+def fragmented(fill=0xAA):
+    """A tensor whose first window is host-written and whose second is not.
+
+    This is the state an ordinary caller reaches by writing one window through
+    a view and then touching the enclosing tensor before reconciling.
+    """
+    tensor = TwoMemoryTensor((2 * GRANULE,))
+    tensor.buffer.device_bytes[:] = fill
+    tensor.buffer.host_bytes[:] = fill
+    with tensor.subview(0, (GRANULE,)).mutate() as window:
+        window[:] = 0x11
+    return tensor
+
+
+def test_the_premise_a_written_window_leaves_the_extent_mixed():
+    """Guard for the tests below: they mean nothing if the state is uniform."""
+    tensor = fragmented()
+    assert tensor.buffer.coherence.uniform is None
+    assert tensor.device == "cpu"
+
+
+def test_fill_reaches_the_device_even_where_the_extent_was_device_held():
+    """``fill_`` writes every byte, so every byte must arrive.
+
+    The tensor reports ``cpu`` because part of it is host-written, and a guard
+    that reads that as "nothing to send" skips the region that is still
+    device-held, losing the bytes ``fill_`` just wrote there.
+    """
+    tensor = fragmented()
+    tensor.fill_(0x22)
+    tensor.to("npu")
+    assert (tensor.buffer.device_bytes == 0x22).all()
+
+
+def test_setitem_reaches_the_device_even_where_the_extent_was_device_held():
+    tensor = fragmented()
+    tensor[GRANULE:] = 0x33
+    tensor.to("npu")
+    assert (tensor.buffer.device_bytes[GRANULE:] == 0x33).all()
+
+
+def test_numpy_sees_device_writes_to_a_region_it_does_not_hold():
+    """A read must reconcile the regions the device holds, not skip them.
+
+    The mirror of the write case: the extent reports ``cpu``, so a guard that
+    reads that as "already current" returns the stale host copy of the window
+    the device actually owns.
+    """
+    tensor = fragmented()
+    tensor.buffer.device_bytes[GRANULE:] = 0xBB
+    assert (tensor.numpy()[GRANULE:] == 0xBB).all()
+
+
+def test_getitem_sees_device_writes_to_a_region_it_does_not_hold():
+    tensor = fragmented()
+    tensor.buffer.device_bytes[GRANULE:] = 0xCC
+    assert tensor[GRANULE] == 0xCC
+
+
+def test_array_sees_device_writes_to_a_region_it_does_not_hold():
+    tensor = fragmented()
+    tensor.buffer.device_bytes[GRANULE:] = 0xDD
+    assert (np.asarray(tensor)[GRANULE:] == 0xDD).all()
+
+
+def test_a_uniform_tensor_still_takes_the_cheap_path():
+    """The fix must not make the ordinary case reconcile when it need not."""
+    tensor = TwoMemoryTensor((2 * GRANULE,))
+    tensor.to("npu")
+    transfers = []
+    tensor.buffer.sync_from_device = lambda o, n: transfers.append((o, n))
+    tensor.fill_(0x44)
+    tensor.to("npu")
+    assert transfers == []
+    assert (tensor.buffer.device_bytes == 0x44).all()

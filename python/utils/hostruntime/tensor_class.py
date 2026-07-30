@@ -439,8 +439,14 @@ class NpuTensor(ABC):
     The invariant in full:
 
     * Writes through the declared paths (:meth:`__setitem__`, :meth:`fill_`, and
-      the factories) resynchronize. A write through the raw ``data`` array does
-      not, and is the one way to leave host and device disagreeing.
+      the factories) are reconciled: the factories transfer as they construct,
+      and the in-place writes record the region so the next :meth:`to` sends it.
+      A write through the raw ``data`` array does neither, and is the one way to
+      leave host and device disagreeing.
+    * A method that spans regions in different states reconciles per region.
+      Asking a whole tensor where it lives collapses a mixed extent to one
+      answer, which is the right answer for :meth:`to` and the wrong one to
+      transfer by.
     * :meth:`to` moves residency and is a no-op when the buffer is already on the
       target device, so a caller that has written through a declared path never
       pays for a redundant transfer, and a caller that has bypassed one gets no
@@ -632,8 +638,7 @@ class NpuTensor(ABC):
 
         Note: This method may implicitly trigger data synchronization to devices.
         """
-        if self.device == "npu":
-            self._sync_from_device()
+        self._reconcile_for_read()
         array_str = np.array2string(self.data, separator=",")
         return f"{self.__class__.__name__}({array_str}, device='{self.device}')"
 
@@ -653,8 +658,7 @@ class NpuTensor(ABC):
         Note: For NPU tensors, this method causes implicit data synchronization from device to host
         to ensure the returned array reflects the current device state.
         """
-        if self.device == "npu":
-            self._sync_from_device()
+        self._reconcile_for_read()
         if dtype:
             return self.data.astype(dtype)
         return self.data
@@ -672,8 +676,7 @@ class NpuTensor(ABC):
         Note: For NPU tensors, this method causes implicit data synchronization from device to host
         to ensure the retrieved value reflects the current device state.
         """
-        if self.device == "npu":
-            self._sync_from_device()
+        self._reconcile_for_read()
         return self.data[index]
 
     def __setitem__(self, index, value):
@@ -684,15 +687,12 @@ class NpuTensor(ABC):
             index (int): The index of the value to set.
             value: The new value to assign.
 
-        Note: For NPU tensors, this method causes implicit data synchronization from device to host
-        before modification and back to device after modification to ensure
-        data consistency across device and host memory.
+        Note: this reconciles before the write so the untouched elements keep
+        their current contents, and records the write rather than flushing it,
+        so a run of assignments costs one transfer at the next :meth:`to`.
         """
-        if self.device == "npu":
-            self._sync_from_device()
-        self.data[index] = value
-        if self.device == "npu":
-            self._sync_to_device()
+        with self.mutate() as array:
+            array[index] = value
 
     def __len__(self):
         """
@@ -721,6 +721,27 @@ class NpuTensor(ABC):
         Number of bytes per element
         """
         return np.dtype(self.dtype).itemsize
+
+    def _reconcile_for_read(self):
+        """Make the host's copy of this tensor's extent current.
+
+        The pull half of ``to("cpu")`` without the claim that follows it: a read
+        makes the host copy current, it does not make the host the author.
+        Recording it as host-written would cost the next transfer a flush of
+        bytes nobody wrote.
+
+        Range-aware, because an extent covering regions in different states has
+        no single answer: the regions the device holds are the ones to pull, and
+        asking the tensor as a whole where it lives collapses them to one.
+        """
+        coherence = self._coherence_ref or self._coherence()
+        if coherence.uniform == _CoherenceMap.HOST:
+            return
+        start, end = self._extent
+        if coherence.get(start, end) == _CoherenceMap.HOST:
+            return
+        for lo, hi in coherence.ranges(start, end, _CoherenceMap.DEVICE):
+            self.buffer.sync_from_device(lo, hi - lo)
 
     def to(self, target_device: str):
         """
@@ -956,8 +977,7 @@ class NpuTensor(ABC):
         Note: For NPU tensors, this method causes implicit data synchronization from device to host
         to ensure the returned array reflects the current device state.
         """
-        if self.device == "npu":
-            self._sync_from_device()
+        self._reconcile_for_read()
         return self.data
 
     def to_torch(self):
@@ -1041,11 +1061,12 @@ class NpuTensor(ABC):
         Args:
             value: The scalar value to fill the tensor with.
 
-        Note: For NPU tensors, this method syncs the filled data to device after modification.
+        Note: this replaces every byte, so it skips the reconcile a partial
+        write would need, and records the write rather than flushing it. The
+        next transfer to the device sends it.
         """
-        self.data.fill(value)
-        if self.device == "npu":
-            self._sync_to_device()
+        with self.overwrite() as array:
+            array.fill(value)
 
     def numel(self):
         """
