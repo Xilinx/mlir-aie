@@ -433,9 +433,13 @@ def configure_trace(
         trace_specs.append((tile_op, is_mem_trace))
         if is_mem_trace:
             mem_traced_tiles.add(tile_op)
+    # Walk tiles_to_trace again rather than seen_core_tiles: trace_seq numbers
+    # the specs in order, so the appended entries have to come in the caller's
+    # tile order. Iterating the set would name them in whatever order the
+    # tiles happen to hash in, which is not stable across runs.
     if coremem_events is not None:
-        for tile_op in seen_core_tiles:
-            if tile_op not in mem_traced_tiles:
+        for tile_op in tiles_to_trace:
+            if tile_op.is_core_tile() and tile_op not in mem_traced_tiles:
                 trace_specs.append((tile_op, True))
                 mem_traced_tiles.add(tile_op)
 

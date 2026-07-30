@@ -44,3 +44,26 @@ def corememSingleOccurrence():
             coretile_events=[CoreEvent.INSTR_EVENT_0],
             coremem_events=[MemEvent.DMA_S2MM_0_START_TASK],
         )
+
+
+# The memory traces are appended after the core traces, and must come in
+# tiles_to_trace order: trace_seq numbers them in the order they are appended,
+# so an unordered container here would rename them run to run.
+# CHECK-LABEL: corememTileOrder
+# CHECK: aie.trace @trace_core_1(%tile_0_2)
+# CHECK: aie.trace @trace_core_2(%tile_1_2)
+# CHECK: aie.trace @trace_core_3(%tile_2_2)
+# CHECK: aie.trace @trace_mem_4(%tile_0_2)
+# CHECK: aie.trace @trace_mem_5(%tile_1_2)
+# CHECK: aie.trace @trace_mem_6(%tile_2_2)
+@construct_and_print_module
+def corememTileOrder():
+    @device(AIEDevice.npu1)
+    def device_body():
+        tiles = [tile(0, 2), tile(1, 2), tile(2, 2)]
+
+        trace_utils.configure_trace(
+            tiles,
+            coretile_events=[CoreEvent.INSTR_EVENT_0],
+            coremem_events=[MemEvent.DMA_S2MM_0_START_TASK],
+        )
