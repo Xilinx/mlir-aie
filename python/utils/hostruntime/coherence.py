@@ -10,7 +10,6 @@ and tested, without the tensor surface layered over it.
 """
 
 import bisect
-import os
 
 # Host<->device synchronization is not byte-granular: on a part that is not
 # cache-coherent the runtime maintains whole cache lines (it walks
@@ -49,22 +48,18 @@ def _read_sysfs_line_size(cache_dir=_SYSFS_CACHE_DIR):
 def _detect_coherence_granule(default=64):
     """Largest plausible coherence granule for this host, never below ``default``.
 
-    ``sysconf`` first because it is the portable spelling and is what the
-    runtime's own flush loop uses; the sysfs scan is a fallback for platforms
-    that do not report it. Rounded up to a power of two so the value can be used
-    as an alignment, and floored so a missing or nonsensical report can only ever
-    make the check stricter, never weaker. Absent both sources (notably Windows,
-    where ``os.sysconf`` does not exist) the floor is what is used, which is the
-    line size of every architecture this runs on today.
+    The sysfs scan is the only source available from Python. The C spelling the
+    runtime's own flush loop uses, ``sysconf(_SC_LEVEL1_DCACHE_LINESIZE)``, is a
+    glibc extension that CPython does not carry in ``os.sysconf_names``, so
+    asking ``os.sysconf`` for it by name cannot answer on any platform: it
+    raises ValueError where sysconf exists and AttributeError where it does not.
+    Where sysfs is absent as well (notably Windows) the floor is what is used,
+    which is the line size of every architecture this runs on today. Rounded up
+    to a power of two so the value can be used as an alignment, and floored so a
+    missing or nonsensical report can only ever make the check stricter, never
+    weaker.
     """
-    reported = None
-    try:
-        reported = os.sysconf("SC_LEVEL1_DCACHE_LINESIZE")
-    except (ValueError, OSError, AttributeError):
-        pass
-    if not reported or reported < 0:
-        reported = _read_sysfs_line_size()
-    granule = max(reported or 0, default)
+    granule = max(_read_sysfs_line_size() or 0, default)
     # Round up to a power of two: alignment arithmetic assumes it, and a cache
     # line is one on every architecture, but nothing in the reporting path
     # promises it.

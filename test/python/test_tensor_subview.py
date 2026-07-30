@@ -7,6 +7,7 @@
 # RUN: %pytest %s
 
 import gc
+import os
 
 import numpy as np
 import pytest
@@ -39,39 +40,37 @@ def test_detected_granule_matches_the_literal_this_suite_assumes():
 
 def test_granule_is_floored_when_the_host_reports_something_smaller(monkeypatch):
     """A small or absent report must make the check stricter, never weaker."""
-    monkeypatch.setattr(coherence.os, "sysconf", lambda _: 8)
+    monkeypatch.setattr(coherence, "_read_sysfs_line_size", lambda: 8)
     assert _detect_coherence_granule(default=64) == 64
 
 
 def test_granule_uses_a_larger_reported_line_size(monkeypatch):
-    monkeypatch.setattr(coherence.os, "sysconf", lambda _: 128)
+    monkeypatch.setattr(coherence, "_read_sysfs_line_size", lambda: 128)
     assert _detect_coherence_granule(default=64) == 128
 
 
 def test_granule_is_rounded_up_to_a_power_of_two(monkeypatch):
     """Alignment arithmetic assumes it; nothing in the reporting path promises it."""
-    monkeypatch.setattr(coherence.os, "sysconf", lambda _: 96)
+    monkeypatch.setattr(coherence, "_read_sysfs_line_size", lambda: 96)
     assert _detect_coherence_granule(default=64) == 128
 
 
 def test_granule_falls_back_when_no_source_reports(monkeypatch):
-    """Windows has no os.sysconf at all; the floor is the answer there."""
-
-    def no_sysconf(_):
-        raise AttributeError("no sysconf on this platform")
-
-    monkeypatch.setattr(coherence.os, "sysconf", no_sysconf)
+    """Windows has no sysfs cache directory; the floor is the answer there."""
     monkeypatch.setattr(coherence, "_read_sysfs_line_size", lambda: None)
     assert _detect_coherence_granule(default=64) == 64
 
 
-def test_granule_falls_back_to_sysfs_when_sysconf_is_unavailable(monkeypatch):
-    def no_sysconf(_):
-        raise ValueError("unrecognized configuration name")
+def test_sysconf_cannot_report_the_line_size_on_this_interpreter():
+    """The detector reads sysfs rather than asking sysconf, and this is why.
 
-    monkeypatch.setattr(coherence.os, "sysconf", no_sysconf)
-    monkeypatch.setattr(coherence, "_read_sysfs_line_size", lambda: 128)
-    assert _detect_coherence_granule(default=64) == 128
+    ``_SC_LEVEL1_DCACHE_LINESIZE`` is a glibc extension, not POSIX, and CPython
+    does not carry it in ``os.sysconf_names``. Asking for it by name therefore
+    raises on every platform: ValueError where sysconf exists, AttributeError on
+    Windows where it does not. If a future interpreter did grow the name, this
+    is the test that says the detector could start preferring it.
+    """
+    assert "SC_LEVEL1_DCACHE_LINESIZE" not in getattr(os, "sysconf_names", {})
 
 
 def _write_cache_index(cache_dir, index, level, kind, line_size):
