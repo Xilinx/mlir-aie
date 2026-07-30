@@ -28,7 +28,14 @@ class HSATensor(Tensor):
 
         np_data = None
         if isinstance(shape_or_data, tuple):
-            np_type = np.ndarray[shape_or_data, np.dtype[dtype]]
+            # Subscripting ndarray here is a runtime trick to validate
+            # "ShapeLike"-ness; only the shape is read back out. Same line as the
+            # XRT and HRX tensors, which escape the check only because their
+            # unresolvable backend imports leave pyright with Unknown types.
+            np_type = np.ndarray[
+                shape_or_data,
+                np.dtype[dtype],  # pyright: ignore[reportInvalidTypeArguments]
+            ]
             self._shape = np_ndarray_type_get_shape(np_type)
         elif hasattr(shape_or_data, "shape"):
             self._shape = shape_or_data.shape
