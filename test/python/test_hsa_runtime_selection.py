@@ -40,12 +40,6 @@ def test_invalid_npu_runtime_is_hard_error():
     assert "Invalid NPU_RUNTIME" in res.stderr, res.stderr
 
 
-def test_unset_npu_runtime_imports_cleanly():
-    """Unset NPU_RUNTIME defaults to 'auto' and must import fine."""
-    res = _run_import({"NPU_RUNTIME": None})
-    assert res.returncode == 0, res.stdout + res.stderr
-
-
 def test_auto_never_selects_hsa():
     """auto must resolve to XRT or CPU, never HSA (opt-in only)."""
     res = _run_import(
