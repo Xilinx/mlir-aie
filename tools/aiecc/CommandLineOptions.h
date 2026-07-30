@@ -226,12 +226,10 @@ inline cl::opt<std::string> npuInstsName(
     cl::desc("Output NPU insts filename template (use {0} for multi-device)"),
     cl::init("insts_{0}.bin"));
 
-// Fold the AIE DDR-aperture offset into the DDR patch's arg_plus for the
-// firmware-translated args >= 5. This is the xclbin / instruction-buffer
-// runtime ABI (XRT), whose firmware pre-translates only the first 5 host args
-// into the AIE DDR aperture. Set false for the producer-independent HRX ABI:
-// the compiler then emits raw offsets and the HRX runtime (libhrx) adds exactly
-// one aperture offset for every arg. See AIETargetNPU.cpp appendAddressPatch.
+// DDR-patch ABI: XRT (and CPU) consume the folded firmware ABI; HRX consumes
+// the producer-independent (unfolded) insts.bin and adds the AIE DDR aperture
+// offset for every arg itself. cl::opt defaults to true, so only pass the
+// flag when unfolding is requested.
 inline cl::opt<bool> foldDDRAddrOffsetOpt(
     "fold-ddr-addr-offset",
     cl::desc("Fold the AIE DDR-aperture offset into arg_plus for args >= 5 "

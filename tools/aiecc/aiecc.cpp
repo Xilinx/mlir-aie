@@ -515,11 +515,10 @@ aiesimulator --pkg-dir=${prj_name}/sim --dump-vcd ${vcd_filename}
 // (the transaction instruction binary + its source-location map) per sequence,
 // keyed "<device>_<sequence>".
 //
-// `foldDDRAddrOffset` selects how host-buffer addresses are encoded in the TXN:
-//   * true  -- the DDR-aperture offset is folded into the transaction, as the
-//              xclbin + instruction-buffer runtime expects;
-//   * false -- the offset is left out, as the full-ELF runtime (xrt.ext.kernel)
-//              assigns NPU-space device addresses to every host buffer itself.
+// DDR-patch ABI: XRT (and CPU) consume the folded firmware ABI; HRX consumes
+// the producer-independent (unfolded) insts.bin and adds the AIE DDR aperture
+// offset for every arg itself. cl::opt defaults to true, so only pass the
+// flag when unfolding is requested.
 EdgeWithTypedOutput<NpuProgram> &buildNpuProgramSubgraph(
     EdgeWithTypedOutput<OpInModule<xilinx::AIE::RuntimeSequenceOp>> &perSeq,
     std::string programName, bool foldDDRAddrOffset) {
@@ -1084,12 +1083,10 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
         ModRef clone = item.get().get().clone();
         if (mlir::failed(getControlPacketDmaPipeline(&context)->run(*clone)))
           return mlir::failure();
-        // The control-packet DMA sequence only ever pairs with the xclbin /
-        // instruction-buffer runtime (full ELF is rejected up front). It folds
-        // the DDR-aperture offset into the TXN for the XRT firmware ABI, but
-        // not for the producer-independent HRX ABI
-        // (--fold-ddr-addr-offset=false), where the runtime adds the aperture
-        // offset for all args itself.
+        // DDR-patch ABI: XRT (and CPU) consume the folded firmware ABI; HRX
+        // consumes the producer-independent (unfolded) insts.bin and adds the
+        // AIE DDR aperture offset for every arg itself. cl::opt defaults to
+        // true, so only pass the flag when unfolding is requested.
         return xilinx::AIE::AIETranslateNpuToBinary(
             clone.get(), words, item.key, "",
             /*locmap=*/nullptr,
@@ -1320,13 +1317,11 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
                   });
 
   // Translate each sequence exactly once into its NPU program (the .bin bytes
-  // and the locmap). Two variants are built from the same per-sequence input,
-  // differing only in whether the DDR-aperture offset is folded into the TXN:
-  //   * npuProgram (folded) drives the xclbin / instruction-buffer artifacts
-  //     (instElf, insts.bin, locmap), whose runtime needs the offset folded in;
-  //   * npuProgramFullElf (not folded, built just below the full-ELF section)
-  //     drives the combined full ELF, whose runtime assigns host-buffer
-  //     addresses itself.
+  // and the locmap). Two variants are built from the same per-sequence input.
+  // DDR-patch ABI: XRT (and CPU) consume the folded firmware ABI; HRX consumes
+  // the producer-independent (unfolded) insts.bin and adds the AIE DDR aperture
+  // offset for every arg itself. cl::opt defaults to true, so only pass the
+  // flag when unfolding is requested.
   auto &npuProgram = buildNpuProgramSubgraph(
       perSeq, "npu_program_{0}.bin",
       /*foldDDRAddrOffset=*/foldDDRAddrOffsetOpt.getValue());
@@ -1376,10 +1371,10 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
   //--------------------------------------------------------------------------//
   // Combined full ELF (joins the static configuration + NPU branches)
   //--------------------------------------------------------------------------//
-  // The full ELF consumes its own NPU program variant, translated WITHOUT
-  // folding the DDR-aperture offset (foldDDRAddrOffset=false): the full-ELF
-  // runtime assigns host-buffer addresses itself, so the offset must not be
-  // baked into the TXN.
+  // DDR-patch ABI: XRT (and CPU) consume the folded firmware ABI; HRX consumes
+  // the producer-independent (unfolded) insts.bin and adds the AIE DDR aperture
+  // offset for every arg itself. cl::opt defaults to true, so only pass the
+  // flag when unfolding is requested.
   auto &npuProgramFullElf = buildNpuProgramSubgraph(
       perSeq, "npu_program_full_elf_{0}.bin", /*foldDDRAddrOffset=*/false);
   auto &npuInstsFullElf = npuProgramFullElf.map<std::vector<char>>(

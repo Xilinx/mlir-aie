@@ -12,11 +12,12 @@
 # Exercises the >5 host-buffer DDR-address-patch path; pre-existing Windows-only
 # runtime failure, tracked separately.
 
-# End-to-end @iron.jit test for a design with more than 5 host buffers. The NPU
-# firmware only pre-translates the first 5 host buffer addresses into the AIE
-# address space; buffers beyond that have the translation offset folded into
-# their DDR address patch by the compiler. This exercises that path through the
-# top-level IRON API (@iron.jit + Runtime), where a user would hit it.
+# End-to-end @iron.jit test for a design with more than 5 host buffers, through
+# the top-level IRON API (@iron.jit + Runtime), where a user would hit it.
+# DDR-patch ABI: XRT (and CPU) consume the folded firmware ABI; HRX consumes
+# the producer-independent (unfolded) insts.bin and adds the AIE DDR aperture
+# offset for every arg itself. cl::opt defaults to true, so only pass the
+# flag when unfolding is requested.
 #
 # The design is three independent workers, each summing two inputs into one
 # output: 6 inputs + 3 outputs = 9 host buffers (> 5). Spreading the work across
