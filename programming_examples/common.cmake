@@ -215,13 +215,21 @@ endfunction()
 # the CMake equivalents of makefile-common's jit_xclbin (design build) and the
 # per-example `run:` target.
 
-find_package(Python3 COMPONENTS Interpreter REQUIRED)
+# Python is only needed by the helpers below (to JIT the design and to launch
+# run_on_npu.py), so require it there rather than at file scope — consumers that
+# only build host code must not be forced to have an interpreter.
+macro(_aie_require_python)
+  if(NOT Python3_Interpreter_FOUND)
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+  endif()
+endmacro()
 
 # add_aie_design(TARGET <t> PY <design.py> DEVICE <npu|npu2> [ELF] [ARGS ...])
 #   JIT-compiles the design .py into ${CMAKE_CURRENT_BINARY_DIR}/final.xclbin and
 #   insts.bin (and final.elf with ELF), mirroring makefile-common's jit_xclbin.
 #   Creates target <t>_xclbin so the host exe can depend on it.
 function(add_aie_design)
+  _aie_require_python()
   cmake_parse_arguments(D "ELF" "TARGET;PY;DEVICE" "ARGS" ${ARGN})
   set(_out "${CMAKE_CURRENT_BINARY_DIR}")
   set(_xclbin "${_out}/final.xclbin")
@@ -254,6 +262,7 @@ endfunction()
 #     PY_STANDALONE  => run the script with no artifact args (@iron.jit designs
 #                       that build and run themselves)
 function(add_aie_run_test)
+  _aie_require_python()
   cmake_parse_arguments(R "PY_STANDALONE" "NAME;DEVICE;EXE;PY;KERNEL" "" ${ARGN})
   enable_testing()
   if(R_DEVICE STREQUAL "npu2")
