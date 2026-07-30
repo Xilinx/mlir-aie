@@ -35,6 +35,7 @@ from ml_dtypes import bfloat16
 from aie.iron import kernels
 from aie.iron.device import NPU2Col1
 from aie.iron.kernel import ExternalFunction
+from aie.utils import get_current_device
 from aie.utils.hostruntime import set_current_device
 
 # ---------------------------------------------------------------------------
@@ -688,13 +689,21 @@ def _device_for(spec: KernelSpec):
     duration of the call, mirroring the npu2_device fixture test_kernels_
     chess.py's emulated-bf16 tests use, inlined here since KERNEL_SPECS'
     generic tests are parametrized per-spec, not per-fixture.
+
+    Restores whatever was bound before rather than clearing, so binding here
+    cannot drop a device a caller had already selected. The npu2_device fixture
+    in conftest.py can clear unconditionally because pytest scopes its teardown
+    to one test; this runs inline, per parametrized spec.
     """
     if spec.requires_npu2:
+        # probe_runtime=False reads only the explicit binding, and never
+        # initializes the default runtime just to snapshot it.
+        previous = get_current_device(probe_runtime=False)
         set_current_device(NPU2Col1())
         try:
             yield
         finally:
-            set_current_device(None)
+            set_current_device(previous)
     else:
         yield
 

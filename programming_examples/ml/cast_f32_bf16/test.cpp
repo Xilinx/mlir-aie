@@ -27,16 +27,17 @@ void initialize_bufOut(DATATYPE_OUT *bufOut, int out_volume) {
 }
 
 int verify_cast_kernel(DATATYPE_IN1 *bufIn1, DATATYPE_OUT *bufOut,
-                       int in_elements, int out_elements) {
+                       int in_elements, int verbosity) {
   int errors = 0, pass = 0;
   for (int i = 0; i < in_elements; i++) {
     // round-to-nearest-even, same rule as the kernel's aie::conv_even.
     DATATYPE_OUT expected = test_utils::bfloat16_from_float(bufIn1[i]);
     DATATYPE_OUT got = bufOut[i];
     if (expected != got) {
-      std::cout << "Mismatch at index " << i << ": expected "
-                << test_utils::bfloat16_to_float(expected) << ", got "
-                << test_utils::bfloat16_to_float(got) << std::endl;
+      if (verbosity >= 1 || errors < 10)
+        std::cout << "Mismatch at index " << i << ": expected "
+                  << test_utils::bfloat16_to_float(expected) << ", got "
+                  << test_utils::bfloat16_to_float(got) << std::endl;
       errors++;
     } else {
       pass++;
