@@ -26,9 +26,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ..hostruntime import HostRuntime, HostRuntimeError, KernelHandle, KernelResult
-from .tensor import HSATensor
-from .context import HSAContext
 from ._bindings import HSATimeoutError
+from .context import HSAContext
+from .tensor import HSATensor
 
 if TYPE_CHECKING:
     from aie.iron.device import Device
