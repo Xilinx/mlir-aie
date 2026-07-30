@@ -40,7 +40,10 @@ macro(mlir_aie_init_example)
     endif()
   else()
     set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_BINARY_DIR})
-    add_compile_options(/Zc:__cplusplus)
+    # NOTE: /Zc:__cplusplus is NOT added here. It is MSVC-only, and this macro
+    # runs before project(), so the compiler is not yet known -- MSVC is still
+    # undefined at this point. common.cmake adds it after project() has done
+    # language detection, guarded on MSVC. See the note there.
   endif()
 
   # Not "test": CTest reserves that target name once enable_testing() is in

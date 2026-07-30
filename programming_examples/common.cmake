@@ -21,6 +21,19 @@ if(NOT PROJECT_NAME)
 endif()
 
 # -----------------------------------------------------------------------------
+# MSVC conformance flag
+# -----------------------------------------------------------------------------
+# Without /Zc:__cplusplus MSVC reports __cplusplus as 199711L regardless of
+# /std:, which breaks headers that feature-test on it. It has to be added here
+# rather than in mlir_aie_init_example(): that macro runs before project(), so
+# MSVC is still undefined there, and adding the flag unconditionally breaks a
+# native-Windows build whose compiler is a GNU-style clang (llvm-aie's, when it
+# is on PATH) -- that driver rejects /Zc:__cplusplus as a missing input file.
+if(MSVC)
+  add_compile_options(/Zc:__cplusplus)
+endif()
+
+# -----------------------------------------------------------------------------
 # Resolve MLIR-AIE root directory
 # -----------------------------------------------------------------------------
 # In WSL, CMake runs on Windows via `powershell.exe cmake`. Therefore, we must
@@ -219,8 +232,19 @@ endfunction()
 enable_testing()
 
 # Required only by the helpers below, so host-only consumers don't need Python.
+#
+# The interpreter must be the one the IRON environment set up, because the design
+# scripts import numpy and the `aie` package. Prefer an active virtualenv: on
+# Windows CMake otherwise resolves Python from the registry and picks the system
+# install, which has neither -- the JIT then dies with "No module named 'numpy'".
+# (The main build sidesteps this by passing -DPython3_EXECUTABLE explicitly; the
+# per-example configures get no such flag.) On POSIX this changes nothing, since
+# FIRST is already CMake's default there and the venv is on PATH.
 macro(_aie_require_python)
   if(NOT Python3_Interpreter_FOUND)
+    set(Python3_FIND_VIRTUALENV FIRST)
+    set(Python3_FIND_REGISTRY LAST)
+    set(Python3_FIND_STRATEGY LOCATION)
     find_package(Python3 COMPONENTS Interpreter REQUIRED)
   endif()
 endmacro()
