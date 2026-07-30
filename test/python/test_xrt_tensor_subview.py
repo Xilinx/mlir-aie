@@ -126,7 +126,7 @@ def test_subview_keeps_its_parent(fake_xrt):
 def test_subview_carries_the_requested_dtype(fake_xrt):
     root = make_root(4 * GRANULE, dtype=np.uint32)
     view = root.subview(GRANULE, (GRANULE,), dtype=np.uint8)
-    # offset counts the parent's elements: (GRANULE // 4) * 4 bytes
+    # offset is bytes, so the parent's uint32 does not scale it
     assert fake_xrt[-1]["offset"] == GRANULE
     assert view.dtype == np.dtype(np.uint8)
     assert view.data.dtype == np.dtype(np.uint8)

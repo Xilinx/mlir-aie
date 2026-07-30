@@ -83,7 +83,18 @@ class _WriteBorrow:
         return array
 
     def __exit__(self, *exc_info):
+        # Retire the borrow either way: the scope is over, and a reference kept
+        # past it must not stay writable whether or not the body succeeded.
         self._array.flags.writeable = False
+        if exc_info[0] is not None:
+            # The body raised, so the write it promised did not happen, and
+            # recording it would be a claim about bytes the host may never have
+            # held: an overwrite() scope skips the reconcile on entry, so on this
+            # path the device's copy was never pulled, and marking the region
+            # host-written would serve it to the next read and push it over the
+            # device's at the next transfer. Leaving the state alone loses a
+            # partial write, which is what a failed write should look like.
+            return False
         tensor = self._tensor
         start, end = tensor._extent
         tensor._coherence().set(start, end, "cpu")

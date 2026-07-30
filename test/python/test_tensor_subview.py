@@ -443,7 +443,7 @@ def test_the_backend_hook_receives_a_byte_offset_and_the_view_dtype():
 
     parent = RecordingTensor((4 * GRANULE,), dtype=np.uint32)
     parent.subview(GRANULE, (GRANULE,), dtype=np.uint8)
-    assert seen["offset_bytes"] == GRANULE  # elements * parent itemsize
+    assert seen["offset_bytes"] == GRANULE  # bytes, unscaled by either dtype
     assert seen["shape"] == (GRANULE,)
     assert seen["dtype"] == np.dtype(np.uint8)
 
@@ -723,3 +723,46 @@ def test_a_buffer_must_supply_host_bytes():
 
     with pytest.raises(TypeError, match="host_bytes"):
         BufferWithoutHostBytes(GRANULE, "cpu", GRANULE)
+
+
+def test_repr_reaches_the_device_for_a_region_it_does_not_hold():
+    """repr renders the data, so it reconciles like the other readers do."""
+    tensor = fragmented()
+    tensor.buffer.device_bytes[GRANULE:] = 0x7B  # 123
+    assert "123" in repr(tensor)
+
+
+def test_a_write_that_raises_records_nothing():
+    """A scope that failed wrote nothing, so it must claim nothing.
+
+    ``overwrite()`` skips the reconcile on entry because the caller promised to
+    replace every byte. When the write then raises, that promise was not kept
+    and the host copy was never pulled, so recording the region as host-written
+    claims bytes the host never held: the next read returns them and the next
+    transfer pushes them over what the device has.
+    """
+    tensor = TwoMemoryTensor((GRANULE,), dtype=np.int32)
+    tensor.buffer.device_bytes[:] = 0xEE
+    tensor.to("npu")
+    with pytest.raises(ValueError):
+        tensor.fill_(float("nan"))  # numpy rejects the cast, writing nothing
+    assert tensor.device == "npu"
+    assert (tensor.numpy().view(np.uint8) == 0xEE).all()
+
+
+def test_a_partial_write_that_raises_keeps_the_device_copy():
+    """The same at the scope level, where some bytes did land.
+
+    Neither promise can be honoured once the body raises partway. Keeping the
+    device copy loses the partial write, which is what a failed write should
+    look like; claiming the host copy would lose whatever the device holds.
+    """
+    tensor = TwoMemoryTensor((2 * GRANULE,), dtype=np.uint8)
+    tensor.buffer.device_bytes[:] = 0xEE
+    tensor.to("npu")
+    with pytest.raises(RuntimeError):
+        with tensor.overwrite() as array:
+            array[:GRANULE] = 0x11
+            raise RuntimeError("caller gave up half way")
+    assert tensor.device == "npu"
+    assert (tensor.numpy() == 0xEE).all()
