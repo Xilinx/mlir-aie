@@ -294,16 +294,6 @@ class _CoherenceMap:
             if value == state and lo < end and hi > start
         ]
 
-    @staticmethod
-    def _coalesce(spans):
-        merged = []
-        for span in spans:
-            if merged and merged[-1][1] == span[0] and merged[-1][2] == span[2]:
-                merged[-1][1] = span[1]
-            else:
-                merged.append(span)
-        return merged
-
 
 class NpuBuffer(ABC):
     """One allocation, and the coherence of the memory in it.
@@ -322,6 +312,15 @@ class NpuBuffer(ABC):
     def __init__(self, nbytes, device, granule=None):
         self.nbytes = nbytes
         self.coherence = _CoherenceMap(nbytes, device, granule)
+
+    @property
+    @abstractmethod
+    def host_bytes(self) -> np.ndarray:
+        """The allocation as a flat ``uint8`` array the host can address.
+
+        Every tensor over this buffer takes its data from here, so it is part of
+        the contract rather than a convention each backend happens to follow.
+        """
 
     @abstractmethod
     def sync_to_device(self, offset, nbytes):

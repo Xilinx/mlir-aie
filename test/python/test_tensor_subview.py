@@ -684,3 +684,22 @@ def test_a_uniform_tensor_still_takes_the_cheap_path():
     tensor.to("npu")
     assert transfers == []
     assert (tensor.buffer.device_bytes == 0x44).all()
+
+
+def test_a_buffer_must_supply_host_bytes():
+    """``host_bytes`` is part of the contract, so the base must require it.
+
+    Every tensor reaches its bytes through it, so a backend that omits it fails
+    at first use rather than at construction, which is the wrong end. The two
+    transfer methods are declared; this one was not.
+    """
+
+    class BufferWithoutHostBytes(tensor_class.NpuBuffer):
+        def sync_to_device(self, offset, nbytes):
+            pass
+
+        def sync_from_device(self, offset, nbytes):
+            pass
+
+    with pytest.raises(TypeError, match="host_bytes"):
+        BufferWithoutHostBytes(GRANULE, "cpu", GRANULE)
