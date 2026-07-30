@@ -235,32 +235,47 @@ def test_unreadable_depfile_records_an_incomplete_manifest(tmp_path):
     shim = tmp_path / "shim.cc"
     shim.write_text("// k")
     _depfile(tmp_path, "k.o", [shim])
-    (tmp_path / "k.o.d").chmod(0o000)
-    try:
-        _manifest.record(tmp_path, [_Kernel(source_file=str(shim))], ())
-    finally:
-        (tmp_path / "k.o.d").chmod(0o644)
+    # A directory where the depfile should be fails the read for every user.
+    # chmod(0o000) would not: the Ryzen AI Software CI job runs as root, which
+    # bypasses the permission bits and made this assertion vacuous there.
+    depfile = tmp_path / "k.o.d"
+    depfile.unlink()
+    depfile.mkdir()
+
+    _manifest.record(tmp_path, [_Kernel(source_file=str(shim))], ())
 
     payload = json.loads((tmp_path / _manifest.MANIFEST_NAME).read_text())
     assert payload["complete"] is False
     assert _manifest.is_valid(tmp_path)
 
 
-def test_unreadable_input_records_an_incomplete_manifest(tmp_path):
-    """An input that cannot be digested is unverifiable, not uncacheable."""
+def test_unreadable_input_records_an_incomplete_manifest(tmp_path, monkeypatch):
+    """An input that cannot be digested is unverifiable, not uncacheable.
+
+    _write only digests paths that already passed is_file(), so the branch under
+    test is the narrow one where the read fails anyway: the file goes away, or
+    the I/O errors, between the two calls. Raising it directly is also what
+    survives running as root, where chmod(0o000) is not a read barrier.
+    """
     shim = tmp_path / "shim.cc"
     shim.write_text("// k")
     secret = tmp_path / "secret.h"
     secret.write_text("// h")
     _depfile(tmp_path, "k.o", [shim, secret])
-    secret.chmod(0o000)
-    try:
-        _manifest.record(tmp_path, [_Kernel(source_file=str(shim))], ())
-    finally:
-        secret.chmod(0o644)
+
+    entry = _manifest._entry
+
+    def unreadable_secret(path):
+        if path.name == "secret.h":
+            raise OSError("input vanished under us")
+        return entry(path)
+
+    monkeypatch.setattr(_manifest, "_entry", unreadable_secret)
+    _manifest.record(tmp_path, [_Kernel(source_file=str(shim))], ())
 
     payload = json.loads((tmp_path / _manifest.MANIFEST_NAME).read_text())
     assert payload["complete"] is False
+    assert payload["inputs"] == []
     assert _manifest.is_valid(tmp_path)
 
 
