@@ -776,3 +776,36 @@ def test_a_partial_write_that_raises_keeps_the_device_copy():
             raise RuntimeError("caller gave up half way")
     assert tensor.device == "npu"
     assert (tensor.numpy() == 0xEE).all()
+
+
+def test_a_mutate_that_raises_leaves_residency_alone():
+    """A failed write must not move residency either, not just not record one.
+
+    ``mutate`` reconciles on entry so a partial update sees current contents.
+    Doing that with ``to("cpu")`` also *claims* the extent for the host, which
+    survives a body that raises and outlives the write that never happened: the
+    next transfer flushes a region nobody wrote, and a failed ``mutate`` and a
+    failed ``overwrite`` disagree about what a failed write leaves behind.
+    """
+    tensor = TwoMemoryTensor((2 * GRANULE,), dtype=np.uint8)
+    tensor.storage._transport.device_bytes[:] = 0xEE
+    tensor.to("npu")
+    with pytest.raises(RuntimeError):
+        with tensor.mutate() as array:
+            array[:GRANULE] = 0x11
+            raise RuntimeError("caller gave up half way")
+    assert tensor.device == "npu"
+    assert (tensor.numpy() == 0xEE).all()
+
+
+def test_a_mutate_that_completes_still_sees_current_contents():
+    """The reconcile on entry is what a partial update depends on."""
+    tensor = TwoMemoryTensor((2 * GRANULE,), dtype=np.uint8)
+    tensor.storage._transport.device_bytes[:] = 0xEE
+    tensor.to("npu")
+    with tensor.mutate() as array:
+        array[:GRANULE] = 0x11  # leaves the second window untouched
+    assert tensor.device == "cpu"
+    tensor.to("npu")
+    assert (tensor.storage._transport.device_bytes[:GRANULE] == 0x11).all()
+    assert (tensor.storage._transport.device_bytes[GRANULE:] == 0xEE).all()

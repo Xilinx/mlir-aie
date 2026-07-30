@@ -78,7 +78,13 @@ class _WriteBorrow:
     def __enter__(self):
         tensor = self._tensor
         if self._reconcile:
-            tensor.to("cpu")
+            # Pull without claiming. to("cpu") would do both, and the claim
+            # outlives a body that raises: a failed write would leave residency
+            # moved, so the next transfer flushes a region nobody wrote and a
+            # failed mutate disagrees with a failed overwrite about what it
+            # left behind. Recording the write is __exit__'s job, and it only
+            # does it when the body completed.
+            tensor._reconcile_for_read()
         array = tensor.data[...]
         self._array = array
         return array
