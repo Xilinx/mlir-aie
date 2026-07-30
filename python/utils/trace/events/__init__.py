@@ -12,27 +12,26 @@ under architecture-agnostic names (CoreEvent, etc.) for convenience.
 Use get_events_for_device() to select the correct architecture.
 """
 
+import typing
 from enum import IntEnum
 from types import SimpleNamespace
-import typing
 
 from aie.dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
     CoreEventAIE,
-    MemEventAIE,
-    ShimTileEventAIE,
     CoreEventAIE2,
-    MemEventAIE2,
-    ShimTileEventAIE2,
-    MemTileEventAIE2,
     CoreEventAIE2P,
+    MemEventAIE,
+    MemEventAIE2,
     MemEventAIE2P,
-    ShimTileEventAIE2P,
+    MemTileEventAIE2,
     MemTileEventAIE2P,
+    ShimTileEventAIE,
+    ShimTileEventAIE2,
+    ShimTileEventAIE2P,
 )
-
 from aie.dialects.aie import (
-    WireBundle,  # pyright: ignore[reportAttributeAccessIssue]
     DMAChannelDir,  # pyright: ignore[reportAttributeAccessIssue]
+    WireBundle,  # pyright: ignore[reportAttributeAccessIssue]
 )
 
 # Default to AIE2 for backwards compatibility

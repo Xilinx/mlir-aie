@@ -6,9 +6,9 @@
 
 import numpy as np
 import pyxrt as xrt  # pyright: ignore[reportMissingImports]
+from aie.helpers.util import np_ndarray_type_get_shape
 
 from ..tensor_class import Tensor
-from aie.helpers.util import np_ndarray_type_get_shape
 
 
 class XRTTensor(Tensor):

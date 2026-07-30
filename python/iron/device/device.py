@@ -4,6 +4,8 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 
+import re
+
 from ... import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
 from ...dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
     AIEArch,
@@ -11,14 +13,12 @@ from ...dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
 )
 from ...dialects.aie import (
     AIEDevice,  # pyright: ignore[reportAttributeAccessIssue]
-    logical_tile,
     LogicalTileOp,
     get_target_model,  # pyright: ignore[reportAttributeAccessIssue]
+    logical_tile,
 )
 from ..resolvable import Resolvable
 from .tile import Tile
-
-import re
 
 
 class Device(Resolvable):

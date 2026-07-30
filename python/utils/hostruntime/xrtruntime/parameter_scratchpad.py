@@ -26,7 +26,6 @@ import struct
 from pathlib import Path
 
 import pyxrt  # pyright: ignore[reportMissingImports]
-
 from aie._mlir_libs._parameter_scratchpad import (  # pyright: ignore[reportMissingImports]
     ParameterScratchpad as _ParameterScratchpadImpl,
 )

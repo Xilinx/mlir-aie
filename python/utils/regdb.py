@@ -646,9 +646,9 @@ class MLIRModuleAnnotator:
             Number of operations annotated
         """
         # Import here to avoid circular imports and allow module to load without MLIR
-        from aie.extras.util import find_ops  # pyright: ignore[reportMissingImports]
         import aie.dialects.aie as aiedialect
         import aie.dialects.aiex as aiexdialect
+        from aie.extras.util import find_ops  # pyright: ignore[reportMissingImports]
 
         # These op classes / enums come through compiled dialect bindings that
         # pyright can't see; fetch them dynamically so the static checker is happy.
@@ -747,13 +747,13 @@ class MLIRModuleAnnotator:
             Number of operations annotated
         """
         # Import here to avoid circular imports and allow module to load without MLIR
-        from aie.ir import (  # pyright: ignore[reportMissingImports]
-            Context,  # pyright: ignore[reportAttributeAccessIssue]
-            Module,  # pyright: ignore[reportAttributeAccessIssue]
-            Location,  # pyright: ignore[reportAttributeAccessIssue]
-        )
         from aie._mlir_libs import (  # pyright: ignore[reportMissingImports]
             get_dialect_registry,  # pyright: ignore[reportAttributeAccessIssue]
+        )
+        from aie.ir import (  # pyright: ignore[reportMissingImports]
+            Context,  # pyright: ignore[reportAttributeAccessIssue]
+            Location,  # pyright: ignore[reportAttributeAccessIssue]
+            Module,  # pyright: ignore[reportAttributeAccessIssue]
         )
 
         # Read input file

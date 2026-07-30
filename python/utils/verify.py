@@ -20,7 +20,6 @@ from __future__ import annotations
 import sys
 
 import numpy as np
-
 from aie.utils.benchmark import print_benchmark
 
 _DEFAULT_RTOL = 0.128

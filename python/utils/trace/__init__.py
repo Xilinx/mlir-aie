@@ -434,21 +434,41 @@ which reduces the timer from 11,091,042 cycles to 381,175 seems to fix it.
 from .config import TraceConfig
 from .parse import parse_trace
 from .setup import (
-    configure_packet_ctrl_flow,
     config_ctrl_pkts_aie,
+    configure_packet_ctrl_flow,
     configure_trace,
     start_trace,
 )
 from .utils import (
-    parity,
-    extract_tile,
-    pack4bytes,
     create_ctrl_pkt,
-    get_kernel_code,
     extract_buffers,
+    extract_tile,
     get_cycles,
     get_cycles_summary,
-    print_cycles_summary,
+    get_kernel_code,
     get_vector_time,
+    pack4bytes,
+    parity,
+    print_cycles_summary,
     split_trace_segments,
 )
+
+__all__ = [
+    "TraceConfig",
+    "parse_trace",
+    "configure_packet_ctrl_flow",
+    "config_ctrl_pkts_aie",
+    "configure_trace",
+    "start_trace",
+    "parity",
+    "extract_tile",
+    "pack4bytes",
+    "create_ctrl_pkt",
+    "get_kernel_code",
+    "extract_buffers",
+    "get_cycles",
+    "get_cycles_summary",
+    "print_cycles_summary",
+    "get_vector_time",
+    "split_trace_segments",
+]

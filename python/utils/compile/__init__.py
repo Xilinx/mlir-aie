@@ -10,8 +10,8 @@ from pathlib import Path
 
 from .utils import (
     compile_cxx_core_function,
-    compile_mlir_module,
     compile_external_kernel,
+    compile_mlir_module,
     resolve_target_arch,
 )
 
@@ -19,3 +19,11 @@ from .utils import (
 NPU_CACHE_HOME = Path(
     os.environ.get("NPU_CACHE_HOME", Path.home() / ".npu" / "cache")
 ).resolve()
+
+__all__ = [
+    "compile_cxx_core_function",
+    "compile_mlir_module",
+    "compile_external_kernel",
+    "resolve_target_arch",
+    "NPU_CACHE_HOME",
+]

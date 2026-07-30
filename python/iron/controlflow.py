@@ -3,6 +3,8 @@
 
 from aie.helpers.dialects.scf import (
     _for,
+)
+from aie.helpers.dialects.scf import (
     yield_ as _yield_,  # pyright: ignore[reportAttributeAccessIssue]
 )
 from aie.iron.runtime.dmataskhandle import Task

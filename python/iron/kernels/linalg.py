@@ -6,9 +6,8 @@
 """Linear algebra kernel factories: mm, mv, cascade_mm."""
 
 import numpy as np
-from ml_dtypes import bfloat16
-
 from aie.iron.kernel import ExternalFunction, Kernel
+from ml_dtypes import bfloat16
 
 from ._common import _default_source_path, _detect_arch, _make_extern
 

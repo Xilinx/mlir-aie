@@ -6,7 +6,6 @@
 """Convolution kernel factories: conv2dk1/3/14, bottleneck (bn_*) variants."""
 
 import numpy as np
-
 from aie.iron.kernel import ExternalFunction
 
 from ._common import (

@@ -4,7 +4,6 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 from ... import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
-
 from ..resolvable import Resolvable
 from .taskgroup import TaskGroup
 

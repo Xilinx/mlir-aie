@@ -6,14 +6,13 @@
 """DMATask: a RuntimeTask that generates a shim DMA transfer operation."""
 
 from ... import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
-
 from ...dialects._aiex_ops_gen import (  # pyright: ignore[reportMissingImports]
     dma_start_task,
 )
 from ...dialects.aiex import shim_dma_single_bd_task
+from ...helpers.taplib import TensorAccessPattern
 from ..dataflow import ObjectFifoHandle
 from .data import RuntimeData
-from ...helpers.taplib import TensorAccessPattern
 from .task import RuntimeTask
 from .taskgroup import TaskGroup
 
@@ -46,7 +45,8 @@ class DMATask(RuntimeTask):
             tap (TensorAccessPattern | None, optional): The static access pattern. Mutually exclusive with sizes/strides/offset/transfer_len.
             task_group (TaskGroup | None, optional): The task group associated with the operation. Defaults to None.
             wait (bool, optional): Whether this task should conclude with a call to await or a call to free. Defaults to False.
-            offset_parameter (str | None, optional): Name of a ScratchpadParameter whose value is used as the element offset for this DMA transfer. Defaults to None.
+            offset_parameter (str | None, optional): Name of a ScratchpadParameter whose
+                value is used as the element offset for this DMA transfer. Defaults to None.
             packet (tuple[int, int] | None, optional): Stamp the shim DMA's
                 BD with a packet header `(pkt_type, pkt_id)`. Pairs with
                 downstream packet-switched routing (e.g. ObjectFifos

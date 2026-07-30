@@ -32,7 +32,11 @@ from ...dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
 )
 from ...dialects.aie import (
     flow as _flow_op,
+)
+from ...dialects.aie import (
     packetflow as _packetflow_op,
+)
+from ...dialects.aie import (
     shim_dma_allocation,  # pyright: ignore[reportAttributeAccessIssue]
 )
 from ..device import Tile  # noqa: F401  (re-exported via package)

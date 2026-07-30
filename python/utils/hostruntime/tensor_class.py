@@ -5,6 +5,7 @@
 #
 from abc import ABC, abstractmethod
 from functools import cached_property
+
 import numpy as np
 import numpy.typing as npt
 
@@ -18,8 +19,8 @@ _ML_DTYPE_TO_TORCH: dict | None = None
 def _ml_dtype_to_torch_map():
     global _ML_DTYPE_TO_TORCH
     if _ML_DTYPE_TO_TORCH is None:
-        import torch  # pyright: ignore[reportMissingImports]
         import ml_dtypes
+        import torch  # pyright: ignore[reportMissingImports]
 
         _candidates = {
             ml_dtypes.bfloat16: torch.bfloat16,

@@ -6,8 +6,10 @@
 """Host runtime utilities: device selection, tensor allocation, and numerical helpers."""
 
 from typing import TYPE_CHECKING
-from ml_dtypes import bfloat16
+
 import numpy as np
+from ml_dtypes import bfloat16
+
 from .tensor_class import Tensor
 
 if TYPE_CHECKING:

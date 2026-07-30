@@ -17,6 +17,8 @@ from .. import ir  # pyright: ignore[reportMissingImports, reportAttributeAccess
 from ..dialects._aie_enum_gen import LockAction  # pyright: ignore[reportMissingImports]
 from ..dialects.aie import (
     lock as _lock_op,
+)
+from ..dialects.aie import (
     use_lock as _use_lock,  # pyright: ignore[reportAttributeAccessIssue]
 )
 from .device import Tile

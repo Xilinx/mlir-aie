@@ -25,4 +25,5 @@ __all__ = [
     "HRXContext",
     "HRXError",
     "control_code_from_elf",
+    "_hrx_sync_timeout_s",
 ]
