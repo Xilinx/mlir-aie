@@ -6,11 +6,10 @@
 # RUN: %pytest %s
 
 import ctypes
-import pytest
 
-from aie.utils.hostruntime.hsaruntime import discovery
-from aie.utils.hostruntime.hsaruntime import _bindings
+import pytest
 from aie.utils.hostruntime import hsaruntime
+from aie.utils.hostruntime.hsaruntime import _bindings, discovery
 
 
 def test_packet_struct_size_is_64_bytes():

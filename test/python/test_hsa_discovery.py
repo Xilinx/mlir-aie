@@ -8,7 +8,6 @@
 """Discovery of a ROCm install: explicit root, pip wheel, then system."""
 
 import pytest
-
 from aie.utils.hostruntime.hsaruntime import discovery
 
 

@@ -8,7 +8,6 @@
 """Host-side unit tests for HSA parity features (no NPU dispatch)."""
 
 import pytest
-
 from aie.utils.hostruntime.hsaruntime import _bindings
 
 
@@ -30,8 +29,9 @@ def test_hsa_sync_timeout_parsing(monkeypatch, value, expected):
 
 def test_hsa_context_get_is_thread_safe(monkeypatch):
     """Concurrent first-touch builds exactly one HSAContext."""
-    import time
     import threading
+    import time
+
     from aie.utils.hostruntime.hsaruntime import context as ctx_mod
 
     builds = []
@@ -573,8 +573,8 @@ def test_unbounded_wait_blocks_forever_by_default(monkeypatch):
 
 def test_load_and_run_rejects_trace_before_touching_args(monkeypatch):
     """A trace_config must be rejected before base load_and_run mutates run_args."""
-    from aie.utils.hostruntime.hsaruntime import hostruntime as hrt
     from aie.utils.hostruntime.hostruntime import HostRuntimeError
+    from aie.utils.hostruntime.hsaruntime import hostruntime as hrt
 
     class _FakeCtx:
         device_gen = "npu2"
