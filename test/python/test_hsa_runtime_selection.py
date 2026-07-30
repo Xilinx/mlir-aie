@@ -71,9 +71,8 @@ def test_npu_runtime_hsa_without_libhsa_raises():
     res = _run_import(
         {
             "NPU_RUNTIME": "hsa",
-            "HSA_RUNTIME_LIB": None,
-            "HSA_RUNTIME_DIR": None,
             "ROCM_PATH": None,
+            "ROCM_HOME": None,
             "LD_LIBRARY_PATH": "",
         }
     )

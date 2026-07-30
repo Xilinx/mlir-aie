@@ -144,7 +144,9 @@ class HsaQueue(ctypes.Structure):
 def _load_libhsa() -> ctypes.CDLL:
     tried = []
     last_err = None
-    for c in [find_libhsa(), "libhsa-runtime64.so"]:
+    # Fall back to the linker search path. The SONAME comes first: a ROCm
+    # installed from a wheel provides no unversioned developer symlink.
+    for c in [find_libhsa(), "libhsa-runtime64.so.1", "libhsa-runtime64.so"]:
         if not c:
             continue
         tried.append(c)
@@ -154,7 +156,8 @@ def _load_libhsa() -> ctypes.CDLL:
             last_err = e
     raise HSAError(
         f"Could not load libhsa-runtime64.so (tried: {tried}). Set "
-        f"HSA_RUNTIME_LIB/ROCM_PATH or add it to LD_LIBRARY_PATH. "
+        f"ROCM_PATH to a ROCm install, pip install ROCm from TheRock, or add "
+        f"the library to LD_LIBRARY_PATH. "
         f"Last error: {last_err}"
     )
 
