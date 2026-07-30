@@ -3,7 +3,7 @@
 //
 // Core reset: reset -> unreset -> enable re-runs the core (see README.md).
 //
-// REQUIRES: ryzen_ai
+// REQUIRES: ryzen_ai, peano
 //
 // RUN: cp %S/aie.mlir aie_arch.mlir
 // RUN: %run_on_npu1% sed 's/NPUDEVICE/npu1_1col/g' -i aie_arch.mlir

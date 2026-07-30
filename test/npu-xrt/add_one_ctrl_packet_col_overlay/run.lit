@@ -1,7 +1,7 @@
 // Copyright (C) 2024 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// REQUIRES: ryzen_ai_npu1
+// REQUIRES: ryzen_ai_npu1, peano
 //
 // RUN: %aiecc --no-xchesscc --no-xbridge --get-xclbin --get-npu-insts --alloc-scheme=basic-sequential --generate-ctrl-pkt-overlay --xclbin-name=aie.xclbin --npu-insts-name=insts.bin %S/aie.mlir
 // RUN: %host_clang %S/test.cpp -o test.exe -std=c++17 -Wall %xrt_flags %host_link_flags %test_utils_flags

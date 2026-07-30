@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 
-# REQUIRES: ryzen_ai_npu1
+# REQUIRES: ryzen_ai_npu1, peano
 #
 # RUN: %python %S/aie2.py > ./aie2.mlir
 # RUN: %aiecc --no-xchesscc --no-xbridge --get-npu-insts --get-xclbin --xclbin-name=final.xclbin --npu-insts-name=insts.bin ./aie2.mlir
