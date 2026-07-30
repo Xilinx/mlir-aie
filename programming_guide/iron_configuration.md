@@ -192,9 +192,11 @@ TheRock's runtime wheels contain no symlinks, so a pip-installed ROCm provides
 only the versioned name.
 
 > **Set `ROCM_PATH` if you have more than one ROCm.** A system `/opt/rocm` is
-> found before nothing else, so an older system ROCm will shadow a newer local
-> build. If the ROCm that wins is too old for AIE, the failure surfaces later as
-> an opaque HSA error rather than a version complaint.
+> the *last* root tried, but it still wins whenever `ROCM_PATH` is unset and no
+> ROCm wheel is installed — so an older system ROCm shadows a newer local build
+> that discovery has no way to find. If the ROCm that wins is too old for AIE,
+> the failure surfaces later as an opaque HSA error rather than a version
+> complaint.
 
 ### Runtime behavior
 

@@ -40,10 +40,12 @@ Discovery looks for a ROCm *installation root*, in this order:
 
 The first root that actually contains the library wins.
 
-> **If the machine has more than one ROCm, set `ROCM_PATH`.** `/opt/rocm` is
-> probed before nothing else, so an older system ROCm silently shadows a newer
-> local build — and if the winner is too old for AIE, you get an opaque HSA
-> error rather than a version complaint.
+> **Set `ROCM_PATH` if you have more than one ROCm.** A system `/opt/rocm` is
+> the *last* root tried, but it still wins whenever `ROCM_PATH` is unset and no
+> ROCm wheel is installed — so an older system ROCm shadows a newer local build
+> that discovery has no way to find. If the ROCm that wins is too old for AIE,
+> the failure surfaces later as an opaque HSA error rather than a version
+> complaint.
 
 Both `libhsa-runtime64.so` and the bare SONAME `libhsa-runtime64.so.1` are
 accepted. TheRock's runtime wheels contain no symlinks at all, so a

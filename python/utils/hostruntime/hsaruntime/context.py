@@ -335,22 +335,49 @@ class HSAContext:
             ),
             "hsa_amd_vmem_handle_create",
         )
+        # Past this point a failure would strand the handle, and then the VA
+        # reservation and mapping as each is acquired, so unwind whatever
+        # succeeded before re-raising. A stranded mapping is not merely a leak:
+        # it makes the next allocation that reserves the same VA fail in
+        # hsa_amd_vmem_map (see vmem_free).
         va = ctypes.c_void_p()
-        _check(
-            lib.hsa_amd_vmem_address_reserve_align(
-                ctypes.byref(va),
-                size,
-                0,
-                0,
-                HSA_AMD_VMEM_ADDRESS_NO_REGISTER,
-            ),
-            "hsa_amd_vmem_address_reserve_align",
-        )
-        _check(
-            lib.hsa_amd_vmem_map(va, size, 0, handle, 0),
-            "hsa_amd_vmem_map",
-        )
-        self._set_vmem_access(va, size, HSA_ACCESS_PERMISSION_RW)
+        reserved = False
+        mapped = False
+        try:
+            _check(
+                lib.hsa_amd_vmem_address_reserve_align(
+                    ctypes.byref(va),
+                    size,
+                    0,
+                    0,
+                    HSA_AMD_VMEM_ADDRESS_NO_REGISTER,
+                ),
+                "hsa_amd_vmem_address_reserve_align",
+            )
+            reserved = True
+            _check(
+                lib.hsa_amd_vmem_map(va, size, 0, handle, 0),
+                "hsa_amd_vmem_map",
+            )
+            mapped = True
+            self._set_vmem_access(va, size, HSA_ACCESS_PERMISSION_RW)
+        except BaseException:
+            # Best-effort, and logged rather than raised: the original failure
+            # is the one worth propagating.
+            if mapped:
+                self._log_if_error(
+                    lib.hsa_amd_vmem_unmap(va, size), "hsa_amd_vmem_unmap"
+                )
+            if reserved:
+                self._log_if_error(
+                    lib.hsa_amd_vmem_address_free(va, size),
+                    "hsa_amd_vmem_address_free",
+                )
+            self._log_if_error(
+                lib.hsa_amd_vmem_handle_release(handle),
+                "hsa_amd_vmem_handle_release",
+            )
+            raise
         return handle.value, va.value, size
 
     def _set_vmem_access(self, va, size, permission):

@@ -309,6 +309,63 @@ def test_dispatch_chain_rings_in_batches():
     assert rings == [batch - 1, 2 * batch - 1, n - 1]
 
 
+@pytest.mark.parametrize(
+    "fail_at,expect_unwind",
+    [
+        ("reserve", ["handle_release"]),
+        ("map", ["address_free", "handle_release"]),
+        ("set_access", ["unmap", "address_free", "handle_release"]),
+    ],
+)
+def test_vmem_alloc_unwinds_what_it_acquired(monkeypatch, fail_at, expect_unwind):
+    """A failure partway through vmem_alloc must not strand what it acquired.
+
+    A stranded mapping is worse than a leak: the next allocation reserving that
+    VA fails in hsa_amd_vmem_map, so the damage lands on unrelated code.
+    """
+    from aie.utils.hostruntime.hsaruntime import context as ctx_mod
+    from aie.utils.hostruntime.hsaruntime._bindings import HSAError
+
+    ERR = 4096  # HSA_STATUS_ERROR
+    calls = []
+
+    class _FakeLib:
+        def hsa_amd_vmem_handle_create(self, pool, size, mtype, flags, out):
+            return 0
+
+        def hsa_amd_vmem_address_reserve_align(self, out, size, addr, align, flags):
+            return ERR if fail_at == "reserve" else 0
+
+        def hsa_amd_vmem_map(self, va, size, off, handle, flags):
+            return ERR if fail_at == "map" else 0
+
+        def hsa_amd_vmem_set_access(self, va, size, descs, n):
+            return ERR if fail_at == "set_access" else 0
+
+        def hsa_amd_vmem_unmap(self, va, size):
+            calls.append("unmap")
+            return 0
+
+        def hsa_amd_vmem_address_free(self, va, size):
+            calls.append("address_free")
+            return 0
+
+        def hsa_amd_vmem_handle_release(self, handle):
+            calls.append("handle_release")
+            return 0
+
+    monkeypatch.setattr(ctx_mod, "lib", _FakeLib())
+    ctx = object.__new__(ctx_mod.HSAContext)
+    ctx.pool = 1
+    ctx.pool_granule = 4096
+    ctx.cpu_agent = 1
+    ctx.aie_agent = 2
+
+    with pytest.raises(HSAError):
+        ctx_mod.HSAContext.vmem_alloc(ctx, 4096)
+    assert calls == expect_unwind
+
+
 def test_vmem_free_revokes_access_before_unmapping(monkeypatch):
     """Access must be revoked before the unmap, or the teardown silently fails.
 
