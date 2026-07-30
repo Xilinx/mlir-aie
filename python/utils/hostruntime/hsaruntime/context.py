@@ -12,22 +12,26 @@ issues/waits on AIE kernel-dispatch packets.
 """
 
 import ctypes
+import logging
 import os
 import threading
 import time
 
 from ._bindings import (
+    _DISPATCH_HEADER,
+    _HSA_WAIT_FOREVER,
+    HSA_ACCESS_PERMISSION_NONE,
     HSA_ACCESS_PERMISSION_RW,
     HSA_AGENT_INFO_DEVICE,
     HSA_AGENT_INFO_NAME,
     HSA_AGENT_INFO_QUEUE_MIN_SIZE,
+    HSA_AMD_AIE_PACKET_OPCODE_KMQ,
     HSA_AMD_MEMORY_POOL_GLOBAL_FLAG_COARSE_GRAINED,
     HSA_AMD_MEMORY_POOL_INFO_GLOBAL_FLAGS,
     HSA_AMD_MEMORY_POOL_INFO_RUNTIME_ALLOC_GRANULE,
     HSA_AMD_MEMORY_POOL_INFO_RUNTIME_ALLOC_REC_GRANULE,
     HSA_AMD_MEMORY_POOL_INFO_SEGMENT,
     HSA_AMD_SEGMENT_GLOBAL,
-    HSA_AMD_AIE_PACKET_OPCODE_KMQ,
     HSA_AMD_VMEM_ADDRESS_NO_REGISTER,
     HSA_DEVICE_TYPE_AIE,
     HSA_DEVICE_TYPE_CPU,
@@ -39,21 +43,21 @@ from ._bindings import (
     HSA_SYSTEM_INFO_TIMESTAMP_FREQUENCY,
     HSA_WAIT_STATE_BLOCKED,
     MEMORY_TYPE_PINNED,
-    HSAError,
-    HSATimeoutError,
     HsaAieKernelDispatchPacket,
     HsaAmdMemoryAccessDesc,
+    HSAError,
     HsaQueue,
+    HSATimeoutError,
     _check,
-    _DISPATCH_HEADER,
     _hsa_sync_timeout_s,
-    _HSA_WAIT_FOREVER,
     hsa_agent_t,
     hsa_amd_memory_pool_t,
     hsa_amd_vmem_alloc_handle_t,
     hsa_signal_t,
     lib,
 )
+
+_logger = logging.getLogger(__name__)
 
 # Tensor arguments a pooled kernarg slot holds (as 2*N uint64: N addresses then
 # N sizes). Sized to cover real designs with headroom -- IRON designs in-tree go
@@ -346,22 +350,59 @@ class HSAContext:
             lib.hsa_amd_vmem_map(va, size, 0, handle, 0),
             "hsa_amd_vmem_map",
         )
+        self._set_vmem_access(va, size, HSA_ACCESS_PERMISSION_RW)
+        return handle.value, va.value, size
+
+    def _set_vmem_access(self, va, size, permission):
+        """Grant or revoke CPU+AIE access to a mapped vmem range."""
         descs = (HsaAmdMemoryAccessDesc * 2)(
-            HsaAmdMemoryAccessDesc(HSA_ACCESS_PERMISSION_RW, self.cpu_agent),
-            HsaAmdMemoryAccessDesc(HSA_ACCESS_PERMISSION_RW, self.aie_agent),
+            HsaAmdMemoryAccessDesc(permission, self.cpu_agent),
+            HsaAmdMemoryAccessDesc(permission, self.aie_agent),
         )
         _check(
             lib.hsa_amd_vmem_set_access(va, size, descs, 2),
             "hsa_amd_vmem_set_access",
         )
-        return handle.value, va.value, size
 
     def vmem_free(self, handle, va, size):
+        """Tear down a vmem allocation made by :meth:`vmem_alloc`.
+
+        Access must be revoked *before* unmapping. With an agent grant still in
+        place ROCR refuses the unmap (HSA_STATUS_ERROR) and then the address
+        free (HSA_STATUS_ERROR_RESOURCE_FREE), leaving the range mapped -- after
+        which the next :meth:`vmem_alloc` reserving that VA fails in
+        ``hsa_amd_vmem_map``. Statuses are logged rather than raised: this runs
+        from ``__del__`` and from ``finally`` cleanup, where raising would either
+        be swallowed or mask the original error.
+        """
         if va:
-            lib.hsa_amd_vmem_unmap(ctypes.c_void_p(va), size)
-            lib.hsa_amd_vmem_address_free(ctypes.c_void_p(va), size)
+            va_p = ctypes.c_void_p(va)
+            try:
+                self._set_vmem_access(va_p, size, HSA_ACCESS_PERMISSION_NONE)
+            except HSAError as e:
+                _logger.warning("vmem_free: revoking access failed: %s", e)
+            self._log_if_error(
+                lib.hsa_amd_vmem_unmap(va_p, size), "hsa_amd_vmem_unmap"
+            )
+            self._log_if_error(
+                lib.hsa_amd_vmem_address_free(va_p, size),
+                "hsa_amd_vmem_address_free",
+            )
         if handle:
-            lib.hsa_amd_vmem_handle_release(hsa_amd_vmem_alloc_handle_t(handle))
+            self._log_if_error(
+                lib.hsa_amd_vmem_handle_release(hsa_amd_vmem_alloc_handle_t(handle)),
+                "hsa_amd_vmem_handle_release",
+            )
+
+    @staticmethod
+    def _log_if_error(status, what):
+        """Report a failed teardown call without raising.
+
+        Ignoring these silently is what let a failed unmap corrupt the next
+        allocation instead of surfacing at the point of failure.
+        """
+        if status != HSA_STATUS_SUCCESS:
+            _logger.warning("%s failed (hsa status %s)", what, status)
 
     # -- signals -----------------------------------------------------------
     def create_signal(self, initial):

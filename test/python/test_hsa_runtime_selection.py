@@ -50,7 +50,12 @@ def test_auto_never_selects_hsa():
     """auto must resolve to XRT or CPU, never HSA (opt-in only)."""
     res = _run_import(
         {"NPU_RUNTIME": "auto"},
-        body="import aie.utils as u; print(u.DEFAULT_TENSOR_CLASS.__name__)",
+        # DEFAULT_TENSOR_CLASS lives in tensor_factory; aie.utils re-exports the
+        # factory functions but not the class itself.
+        body=(
+            "from aie.utils.tensor_factory import DEFAULT_TENSOR_CLASS; "
+            "print(DEFAULT_TENSOR_CLASS.__name__)"
+        ),
     )
     assert res.returncode == 0, res.stdout + res.stderr
     assert "HSATensor" not in res.stdout, res.stdout

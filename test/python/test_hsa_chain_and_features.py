@@ -352,6 +352,80 @@ def test_dispatch_chain_rings_once_when_shorter_than_a_batch():
     assert rings == [2], "one ring carrying the last write index"
 
 
+def test_vmem_free_revokes_access_before_unmapping(monkeypatch):
+    """Access must be revoked before the unmap, or the teardown silently fails.
+
+    With an agent grant still in place ROCR refuses the unmap and the address
+    free, leaving the range mapped -- the next allocation reserving that VA then
+    dies in hsa_amd_vmem_map. Ordering here is load-bearing, not cosmetic.
+    """
+    from aie.utils.hostruntime.hsaruntime import context as ctx_mod
+    from aie.utils.hostruntime.hsaruntime._bindings import HSA_ACCESS_PERMISSION_NONE
+
+    calls = []
+
+    class _FakeLib:
+        def hsa_amd_vmem_set_access(self, va, size, descs, n):
+            calls.append(("set_access", descs[0].permissions))
+            return 0
+
+        def hsa_amd_vmem_unmap(self, va, size):
+            calls.append(("unmap", None))
+            return 0
+
+        def hsa_amd_vmem_address_free(self, va, size):
+            calls.append(("address_free", None))
+            return 0
+
+        def hsa_amd_vmem_handle_release(self, handle):
+            calls.append(("handle_release", None))
+            return 0
+
+    monkeypatch.setattr(ctx_mod, "lib", _FakeLib())
+    ctx = object.__new__(ctx_mod.HSAContext)
+    ctx.cpu_agent = 1
+    ctx.aie_agent = 2
+    ctx_mod.HSAContext.vmem_free(ctx, 0xCAFE, 0x1000, 4096)
+
+    assert [c[0] for c in calls] == [
+        "set_access",
+        "unmap",
+        "address_free",
+        "handle_release",
+    ]
+    assert calls[0][1] == HSA_ACCESS_PERMISSION_NONE, "must revoke, not re-grant"
+
+
+def test_vmem_free_logs_a_failed_teardown(monkeypatch, caplog):
+    """A failing teardown call must be reported, not swallowed.
+
+    Ignoring these statuses is what let a failed unmap corrupt the next
+    allocation instead of surfacing where it happened.
+    """
+    from aie.utils.hostruntime.hsaruntime import context as ctx_mod
+
+    class _FakeLib:
+        def hsa_amd_vmem_set_access(self, va, size, descs, n):
+            return 0
+
+        def hsa_amd_vmem_unmap(self, va, size):
+            return 4096  # HSA_STATUS_ERROR
+
+        def hsa_amd_vmem_address_free(self, va, size):
+            return 0
+
+        def hsa_amd_vmem_handle_release(self, handle):
+            return 0
+
+    monkeypatch.setattr(ctx_mod, "lib", _FakeLib())
+    ctx = object.__new__(ctx_mod.HSAContext)
+    ctx.cpu_agent = 1
+    ctx.aie_agent = 2
+    with caplog.at_level("WARNING"):
+        ctx_mod.HSAContext.vmem_free(ctx, 0xCAFE, 0x1000, 4096)
+    assert "hsa_amd_vmem_unmap" in caplog.text
+
+
 def test_write_kernargs_layout():
     """The kernarg block is 2*N uint64: N addresses, then N byte sizes."""
     import ctypes
