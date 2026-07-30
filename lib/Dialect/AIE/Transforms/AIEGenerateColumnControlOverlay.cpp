@@ -292,16 +292,29 @@ struct AIEGenerateColumnControlOverlayPass
 
     // Collect existing TileOps
     llvm::MapVector<AIE::TileID, AIE::TileOp> tiles;
-    llvm::SmallSet<int, 1> occupiedCols;
-    for (auto tile : device.getOps<AIE::TileOp>()) {
-      int colIndex = tile.colIndex();
-      int rowIndex = tile.rowIndex();
-      tiles[{colIndex, rowIndex}] = tile;
-      occupiedCols.insert(colIndex);
+    for (auto tile : device.getOps<AIE::TileOp>())
+      tiles[{tile.colIndex(), tile.rowIndex()}] = tile;
+    if (tiles.empty())
+      return success();
+
+    int minOccupiedCol = tiles.front().first.col;
+    int maxOccupiedCol = minOccupiedCol;
+    int maxOccupiedRow = 0;
+    for (auto &[tId, tOp] : tiles) {
+      minOccupiedCol = std::min(minOccupiedCol, tId.col);
+      maxOccupiedCol = std::max(maxOccupiedCol, tId.col);
+      maxOccupiedRow = std::max(maxOccupiedRow, tId.row);
     }
 
+    // Cover the full column range between the leftmost and rightmost occupied
+    // column, not just the occupied columns. A flow between two columns is
+    // routed through the stream switches of the columns in between, so those
+    // switchboxes are configured by control packets addressed to a column that
+    // holds no tile of its own. Skipping such a column leaves its control
+    // packets without a shim dma allocation to be issued through. This mirrors
+    // what the per-column loop below already does for intermediate rows.
     auto tileIDMap = getTileToControllerIdMap(true, targetModel);
-    for (int col : occupiedCols) {
+    for (int col = minOccupiedCol; col <= maxOccupiedCol; col++) {
       builder.setInsertionPointToStart(device.getBody());
       AIE::TileOp shimTile = TileOp::getOrCreate(builder, device, col, 0);
 
@@ -328,10 +341,20 @@ struct AIEGenerateColumnControlOverlayPass
         // tiles) are needed for control packet routing and will also need
         // their switchboxes configured via control packets.
         int maxRow = 0;
+        bool colIsOccupied = false;
         for (auto &[tId, tOp] : tiles) {
-          if (tId.col == col)
+          if (tId.col == col) {
             maxRow = std::max(maxRow, tId.row);
+            colIsOccupied = true;
+          }
         }
+        // A column holding no tile of its own is only in range because flows
+        // route through it, and such a flow can traverse it at any row up to
+        // the highest row in use. Rows map to shim channels in round robin
+        // (getRowToShimChanMap), so covering only row 0 here would allocate
+        // just one of the channels its control packets get addressed to.
+        if (!colIsOccupied)
+          maxRow = maxOccupiedRow;
         SmallVector<AIE::TileOp> tilesOnCol;
         for (int row = 0; row <= maxRow; row++) {
           auto tOp = TileOp::getOrCreate(builder, device, col, row);
