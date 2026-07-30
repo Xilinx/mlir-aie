@@ -50,7 +50,11 @@ def _wheel_root() -> Path | None:
     """
     name = _WHEEL_CORE_PACKAGE
     try:
-        from rocm_sdk import _dist_info  # cheap: pure python, no dlopen
+        # Optional dependency, present only when ROCm was pip-installed, and
+        # cheap when it is: pure python, no dlopen.
+        from rocm_sdk import (  # pyright: ignore[reportMissingImports]
+            _dist_info,
+        )
 
         name = _dist_info.ALL_PACKAGES["core"].get_py_package_name()
     except Exception:

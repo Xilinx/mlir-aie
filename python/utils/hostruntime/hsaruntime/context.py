@@ -308,6 +308,8 @@ class HSAContext:
             lib.hsa_amd_memory_pool_allocate(self.dev_pool, size, 0, ctypes.byref(ptr)),
             "hsa_amd_memory_pool_allocate",
         )
+        if not ptr.value:
+            raise HSAError("hsa_amd_memory_pool_allocate returned a null pointer")
         return ptr.value
 
     def free_dev(self, ptr):
@@ -462,6 +464,7 @@ class HSAContext:
         # timeout / compute the deadline lazily on first spin to keep the common
         # path free of a per-dispatch os.environ read.
         deadline = None
+        timeout = 0.0  # only meaningful once the spin below reads it
         while wr_idx - lib.hsa_queue_load_read_index_scacquire(q) >= qsize:
             if deadline is None:
                 timeout = _hsa_sync_timeout_s()
