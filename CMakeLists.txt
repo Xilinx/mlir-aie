@@ -136,6 +136,26 @@ find_package(XRT)
 # predicate: llvm-aie's LLVM_VERSION stays fixed between releases, so there is no meaningful ">="
 # range to gate on here, only "which exact build is this." Record it for diagnostics.
 if(NOT PEANO_INSTALL_DIR STREQUAL "<unset>")
+  # FindPeano.cmake lives in the cmake/modulesXilinx submodule, and this file only puts that
+  # directory on CMAKE_MODULE_PATH on WIN32; every other build passes -DCMAKE_MODULE_PATH (see
+  # utils/build-mlir-aie-from-wheels.sh and the CI workflows). When it is absent, or the submodule
+  # is uninitialized, find_package below reports "not found" for a reason that has nothing to do
+  # with PEANO_INSTALL_DIR, so check it separately rather than blaming the path.
+  set(peanoFindModule "")
+  foreach(peanoModuleDir IN LISTS CMAKE_MODULE_PATH)
+    if(EXISTS "${peanoModuleDir}/FindPeano.cmake")
+      set(peanoFindModule "${peanoModuleDir}/FindPeano.cmake")
+      break()
+    endif()
+  endforeach()
+  if(NOT peanoFindModule)
+    message(FATAL_ERROR
+      "PEANO_INSTALL_DIR is set to '${PEANO_INSTALL_DIR}' but FindPeano.cmake is not on "
+      "CMAKE_MODULE_PATH ('${CMAKE_MODULE_PATH}'), so the install cannot be validated. Pass "
+      "-DCMAKE_MODULE_PATH=<mlir-aie>/cmake/modulesXilinx, and initialize that submodule with "
+      "git submodule update --init cmake/modulesXilinx.")
+  endif()
+
   find_package(Peano QUIET)
   if(NOT Peano_FOUND)
     message(FATAL_ERROR
