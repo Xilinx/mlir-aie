@@ -838,6 +838,23 @@ class NpuTensor(ABC):
         range. Correctness must not depend on a sync being narrow, only on views
         not sharing a coherence granule.
 
+        Three ways this departs from numpy and torch, none of them accidental:
+
+        Out-of-range and negative arguments are rejected, where numpy slicing
+        clamps and wraps them. Clamping a region silently hands back a smaller
+        one than asked for, and a DMA region that is quietly the wrong size is
+        worse than an error. The method-with-arguments spelling is far enough
+        from ``[start:stop]`` that it should not invite the slicing intuition.
+
+        The alignment requirement has no analogue in either library, because
+        neither reconciles anything between two agents.
+
+        Offsets are counted in units of this tensor's dtype, while ``shape`` is
+        in units of the view's, and :attr:`storage_offset` reports bytes. numpy
+        counts offsets in the array's own dtype and torch reports
+        ``storage_offset`` in elements, so this matches neither. The closest
+        mental model is a typed pointer cast, not an array slice.
+
         Args:
             offset: Start of the region, in elements of this tensor's dtype.
             shape: Logical shape of the view.
@@ -918,6 +935,14 @@ class NpuTensor(ABC):
         ``shape`` and ``dtype``. Implementations must not allocate or copy, must
         record this tensor as the storage owner so it outlives the view, and
         must leave residency per-view (the returned view syncs its own slice).
+
+        The in-tree implementations build the view with ``__new__`` and set its
+        fields directly, replaying only ``NpuTensor.__init__``, because running
+        the backend's own ``__init__`` would allocate the buffer this view
+        exists to avoid. The constraint that follows is on backend authors: a
+        subclass that establishes state in its own ``__init__`` must set that
+        state here too, or its views will be missing it. Nothing in tree does,
+        which is why this is a note rather than a hook.
 
         Kept concrete (not abstract) so a backend that does not implement
         sub-region views is not forced to; the default raises
