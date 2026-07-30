@@ -12,14 +12,25 @@
 #define MATRIX_MULTIPLICATION_H
 
 #include <algorithm>
-#include <bits/stdc++.h>
-#include <cassert> // for assert(); not guaranteed via other headers
+#include <cassert>
+#include <cfloat>
 #include <cmath>
+#include <cstddef>
+#include <cstdint>
+#include <cstdlib>
+#include <cstring>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
+#include <limits>
 #include <optional>
 #include <ostream>
+#include <random>
+#include <ranges>
+#include <string>
+#include <tuple>
 #include <type_traits>
+#include <vector>
 
 #include "test_utils.h"
 
@@ -138,20 +149,20 @@ static inline Tacc accum_add_product(Tacc running_sum, Tin lhs, Tin rhs) {
 
 template <>
 std::int16_t get_random<std::int16_t>() {
-  return (std::int16_t)rand() % 0x10000;
+  return static_cast<std::int16_t>(std::rand()) % 0x10000;
 }
 
 template <>
-int8_t get_random<int8_t>() {
-  return (int8_t)rand() % 0x100;
+std::int8_t get_random<std::int8_t>() {
+  return static_cast<std::int8_t>(std::rand()) % 0x100;
 }
 
 template <>
 test_utils::bfloat16_t get_random<test_utils::bfloat16_t>() {
   // Random numbers should NOT be uniformly between 0 and 1, because that
   // would make the matrix product AB always close to 1.
-  return test_utils::bfloat16_from_float(4.0f * (float)rand() /
-                                         (float)(RAND_MAX));
+  return test_utils::bfloat16_from_float(
+      4.0f * static_cast<float>(std::rand()) / static_cast<float>(RAND_MAX));
 }
 
 template <typename Tin, typename Tout, typename Tacc>
@@ -243,7 +254,7 @@ float get_abs_tol<float>() {
 }
 
 template <>
-float get_abs_tol<int8_t>() {
+float get_abs_tol<std::int8_t>() {
   return 0;
 }
 
@@ -268,7 +279,7 @@ float get_rel_tol<float>() {
 }
 
 template <>
-float get_rel_tol<int8_t>() {
+float get_rel_tol<std::int8_t>() {
   return 0;
 }
 
@@ -282,7 +293,7 @@ void print_matrix(const std::vector<T> matrix, int n_cols,
 
   auto maxima = std::minmax_element(matrix.begin(), matrix.end());
   T max_val = std::max(*maxima.first, (T)std::abs(*maxima.second));
-  size_t n_digits = log10(max_val);
+  std::size_t n_digits = std::log10(max_val);
   if (w == -1) {
     w = n_digits;
   }
@@ -295,7 +306,7 @@ void print_matrix(const std::vector<T> matrix, int n_cols,
   const bool elide_cols = n_printable_cols < n_cols;
 
   if (elide_rows || elide_cols) {
-    w = std::max((int)w, (int)strlen(elide_sym));
+    w = std::max((int)w, (int)std::strlen(elide_sym));
   }
 
   w += 3; // for decimal point and two decimal digits
@@ -332,16 +343,16 @@ void print_matrix(const std::vector<T> matrix, int n_cols,
 #undef print_row
 }
 
-// int8_t aka char will not print as a number but as a character; specialize
-// print_matrix<int8_t> to cast to int16_t first so everything prints as numbers
+// std::int8_t streams as a character. Cast to std::int16_t so matrix
+// entries print numerically.
 template <>
-void print_matrix(const std::vector<int8_t> matrix, int n_cols,
+void print_matrix(const std::vector<std::int8_t> matrix, int n_cols,
                   int n_printable_rows, int n_printable_cols,
                   std::ostream &ostream, const char col_sep[],
                   const char elide_sym[], int w) {
-  std::vector<int16_t> cast_matrix(matrix.size());
-  for (uint i = 0; i < matrix.size(); i++) {
-    cast_matrix[i] = (int16_t)matrix[i];
+  std::vector<std::int16_t> cast_matrix(matrix.size());
+  for (std::size_t i = 0; i < matrix.size(); i++) {
+    cast_matrix[i] = static_cast<std::int16_t>(matrix[i]);
   }
   print_matrix(cast_matrix, n_cols, n_printable_rows, n_printable_cols, ostream,
                col_sep, elide_sym, w);
@@ -469,7 +480,7 @@ int verify_stochastic(int M, int N, int K, std::vector<Tin> A,
   std::vector<struct error<Tout>> errors;
   float max_rel_error = 0.0f;
   double progress = 0;
-  for (std::tuple<size_t, std::tuple<int &, int &>> cell :
+  for (std::tuple<std::size_t, std::tuple<int &, int &>> cell :
        std::views::enumerate(std::views::zip(sampled_rows, sampled_cols))) {
     int i = std::get<0>(cell);
     int row = std::get<0>(std::get<1>(cell));
@@ -513,9 +524,10 @@ int verify_stochastic(int M, int N, int K, std::vector<Tin> A,
 // --------------------------------------------------------------------------
 // Tracing
 // --------------------------------------------------------------------------
-void write_out_trace(char *traceOutPtr, size_t trace_size, std::string path) {
+void write_out_trace(char *traceOutPtr, std::size_t trace_size,
+                     std::string path) {
   std::ofstream fout(path);
-  uint32_t *traceOut = (uint32_t *)traceOutPtr;
+  auto *traceOut = reinterpret_cast<std::uint32_t *>(traceOutPtr);
   for (int i = 0; i < trace_size / sizeof(traceOut[0]); i++) {
     fout << std::setfill('0') << std::setw(8) << std::hex << (int)traceOut[i];
     fout << std::endl;

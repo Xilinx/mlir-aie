@@ -4,8 +4,8 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 
-# RUN: %run_on_npu2% env NPU_RUNTIME=hrx %pytest %s
-# REQUIRES: hrx_python_bindings
+# RUN: env NPU_RUNTIME=hrx %pytest %s
+# REQUIRES: hrx_python_bindings, hrx_npu2
 
 """Cached vs. uncached HRX runtime behavior.
 
@@ -17,7 +17,7 @@ Covers the two HRX runtimes:
 The design under test is a plain IRON ObjectFifo ``out = in + 1`` kernel built
 through the normal ``@compileconfig`` path; only the runtime wiring is
 backend-specific. Loading an executable requires the amdxdna device, so this is
-an on-hardware test (gated by ``hrx_python_bindings`` + ``run_on_npu2``).
+an on-hardware test (gated by ``hrx_python_bindings`` + ``hrx_npu2``).
 """
 
 import os
@@ -65,12 +65,13 @@ def _add_one_design(input_buf: In, output_buf: Out, N: CompileTime[int]):
             of_out.release(1)
 
     worker = Worker(core_body, fn_args=[of_in.cons(), of_out.prod()])
-    rt = Runtime()
-    with rt.sequence(tensor_ty, tensor_ty) as (a, b):
-        rt.start(worker)
-        rt.fill(of_in.prod(), a)
-        rt.drain(of_out.cons(), b, wait=True)
-    return Program(iron.get_current_device(), rt).resolve_program()
+
+    def sequence(a, b, in_h, out_h):
+        in_h.fill(a)
+        out_h.drain(b, wait=True)
+
+    rt = Runtime(sequence, [tensor_ty, tensor_ty, of_in.prod(), of_out.cons()])
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 
 
 @compileconfig

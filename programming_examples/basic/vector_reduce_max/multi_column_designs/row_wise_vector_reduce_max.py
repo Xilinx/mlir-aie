@@ -21,9 +21,10 @@ Two invocation modes:
 import argparse
 import sys
 
-import aie.iron as iron
 import numpy as np
-from aie.helpers.taplib.tensortiler2d import TensorTiler2D
+from ml_dtypes import bfloat16
+
+import aie.iron as iron
 from aie.iron import (
     Buffer,
     CompileTime,
@@ -37,14 +38,11 @@ from aie.iron import (
     str_to_dtype,
 )
 from aie.iron.controlflow import range_
-from aie.utils.hostruntime.argparse import (
-    add_compile_args,
-    add_trace_arg,
-    device_from_args,
-)
+from aie.utils.hostruntime.argparse import device_from_args
+from aie.helpers.taplib.tensortiler2d import TensorTiler2D
+from aie.utils.hostruntime.argparse import add_compile_args, add_trace_arg
 from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
-from ml_dtypes import bfloat16
 
 
 @iron.jit
@@ -170,24 +168,24 @@ def vector_reduce_max(
 
         workers.append(Worker(core_body, fn_args=fifo_args, trace=enable_trace))
 
-    rt = Runtime()
-    with rt.sequence(in_ty, out_ty) as (a, c):
-        if trace_size > 0:
-            rt.enable_trace(trace_size)
-        rt.start(*workers)
-        for i in range(n_channels):
-            rt.fill(in_fifos[i].prod(), a, taps[i])
-        rt.drain(
-            out_fifos[
-                0 if n_cores == 1 else 1 if n_cores < 5 else 4 if n_cores == 5 else 5
-            ].cons(),
-            c,
-            wait=True,
-        )
+    in_prods = [in_fifos[i].prod() for i in range(n_channels)]
+    out_idx = 0 if n_cores == 1 else 1 if n_cores < 5 else 4 if n_cores == 5 else 5
+    out_cons = out_fifos[out_idx].cons()
 
-    device = iron.get_current_device()
-    assert device is not None
-    return Program(device, rt).resolve_program()
+    def sequence(a, c, in_hs, out_h):
+        for i in range(n_channels):
+            in_hs[i].fill(a, taps[i])
+        out_h.drain(c, wait=True)
+
+    rt = Runtime(
+        sequence,
+        [in_ty, out_ty, in_prods, out_cons],
+    )
+    prog = Program(iron.get_current_device(), rt, workers=workers)
+    if trace_size > 0:
+        prog.enable_trace(trace_size)
+
+    return prog.resolve_program()
 
 
 def _make_argparser():

@@ -12,9 +12,11 @@ host-side tile loop or memtile fanout. Strix-only; kernel is chess-built.
 import argparse
 from pathlib import Path
 
-import aie.iron as iron
 import numpy as np
+
 from aie.dialects.aiex import v8bfp16ebs8
+
+import aie.iron as iron
 from aie.iron import (
     CompileTime,
     ExternalFunction,
@@ -26,8 +28,8 @@ from aie.iron import (
     Worker,
 )
 from aie.utils.hostruntime.argparse import (
-    add_compile_args,
     device_from_args,
+    add_compile_args,
 )
 from aie.utils.hostruntime.cli import run_design_cli
 
@@ -103,16 +105,17 @@ def single_core_no_tiling(
     B_ty = np.ndarray[(K * N // 8,), np.dtype[v8bfp16ebs8]]
     C_ty = np.ndarray[(M * N // 8,), np.dtype[v8bfp16ebs8]]
 
-    rt = Runtime()
-    with rt.sequence(A_ty, B_ty, C_ty) as (a, b, c):
-        rt.start(worker)
-        rt.fill(inA.prod(), a)
-        rt.fill(inB.prod(), b)
-        rt.drain(outC.cons(), c, wait=True)
+    def sequence(a, b, c, inA_h, inB_h, outC_h):
+        inA_h.fill(a)
+        inB_h.fill(b)
+        outC_h.drain(c, wait=True)
 
-    device = iron.get_current_device()
-    assert device is not None
-    return Program(device, rt).resolve_program()
+    rt = Runtime(
+        sequence,
+        [A_ty, B_ty, C_ty, inA.prod(), inB.prod(), outC.cons()],
+    )
+
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 
 
 def _make_argparser():

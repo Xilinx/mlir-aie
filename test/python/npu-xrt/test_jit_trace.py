@@ -48,16 +48,19 @@ def design(
     # Define Worker
     worker = Worker(scale_scalar, fn_args=[of_in.cons(), of_out.prod(), 2, N])
 
-    rt = Runtime()
-    with rt.sequence(a_type, c_type) as (a, c):
-        if trace_config:
-            rt.enable_trace(trace_config.trace_size, workers=[worker])
-
+    def sequence(a, c, in_h, out_h):
         # In runtime sequence:
-        rt.fill(of_in.prod(), a)
-        rt.start(worker)
-        rt.drain(of_out.cons(), c, wait=True)
-    return Program(iron.get_current_device(), rt).resolve_program()
+        in_h.fill(a)
+        out_h.drain(c, wait=True)
+
+    rt = Runtime(
+        sequence,
+        [a_type, c_type, of_in.prod(), of_out.cons()],
+    )
+    prog = Program(iron.get_current_device(), rt, workers=[worker])
+    if trace_config:
+        prog.enable_trace(trace_config.trace_size, workers=[worker])
+    return prog.resolve_program()
 
 
 @pytest.mark.parametrize("trace_size", [8192])

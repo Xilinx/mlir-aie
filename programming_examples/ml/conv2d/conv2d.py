@@ -24,13 +24,14 @@ End-to-end verification lives in ``test.py``.
 
 import argparse
 
-import aie.iron as iron
 import numpy as np
-from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker, kernels
+
+import aie.iron as iron
+from aie.iron import CompileTime, In, Out, ObjectFifo, Program, Runtime, Worker, kernels
 from aie.iron.controlflow import range_
 from aie.utils.hostruntime.argparse import (
-    add_compile_args,
     device_from_args,
+    add_compile_args,
 )
 from aie.utils.hostruntime.cli import run_design_cli
 
@@ -58,7 +59,6 @@ def conv2d(
         raise ValueError("out_channels must be a multiple of 8 and >= 8")
 
     device = iron.get_current_device()
-    assert device is not None
     out_dtype = np.uint8 if fuse_relu else np.int8
 
     act_in = width * in_channels
@@ -115,14 +115,24 @@ def conv2d(
         stack_size=stack_size,
     )
 
-    rt = Runtime()
-    with rt.sequence(tensor_in_ty, weights_ty, tensor_out_ty) as (inp, wts, outp):
-        rt.start(worker)
-        rt.fill(of_act_l3l2.prod(), inp)
-        rt.fill(of_wts_l3l2.prod(), wts)
-        rt.drain(of_out_l3.cons(), outp, wait=True)
+    def sequence(I, W, O, act_prod, wts_prod, out_cons):
+        act_prod.fill(I)
+        wts_prod.fill(W)
+        out_cons.drain(O, wait=True)
 
-    return Program(device, rt).resolve_program()
+    rt = Runtime(
+        sequence,
+        [
+            tensor_in_ty,
+            weights_ty,
+            tensor_out_ty,
+            of_act_l3l2.prod(),
+            of_wts_l3l2.prod(),
+            of_out_l3.cons(),
+        ],
+    )
+
+    return Program(device, rt, workers=[worker]).resolve_program()
 
 
 def _make_argparser():

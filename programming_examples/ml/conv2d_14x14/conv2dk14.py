@@ -38,19 +38,21 @@ import argparse
 import sys
 from pathlib import Path
 
-import aie.iron as iron
 import numpy as np
-import torch  # pyright: ignore[reportMissingImports]
-import torch.nn as nn  # pyright: ignore[reportMissingImports]
-from aie.helpers.taplib import TensorAccessPattern
-from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker
+import torch
+import torch.nn as nn
+
+import aie.iron as iron
+from aie.utils.ml import DataShaper
+from aie.iron import CompileTime, In, Out, ObjectFifo, Program, Runtime, Worker
 from aie.iron.controlflow import range_
 from aie.iron.device import Tile
+from aie.utils.hostruntime.argparse import device_from_args
 from aie.iron.kernel import ExternalFunction
+from aie.helpers.taplib import TensorAccessPattern
 from aie.utils import config
-from aie.utils.hostruntime.argparse import add_compile_args, device_from_args
+from aie.utils.hostruntime.argparse import add_compile_args
 from aie.utils.hostruntime.cli import run_design_cli
-from aie.utils.ml import DataShaper
 
 # Sub-tile sizing baked into the conv2dk14 kernel.
 _SUB_OUT_CHANNELS = 16
@@ -66,7 +68,7 @@ def _conv2dk14_extern(act_in_ty, weights_ty, out_ty):
     return ExternalFunction(
         "conv2dk14_i8",
         source_file=str(_KERNEL_SRC),
-        arg_types=[  # pyright: ignore[reportArgumentType]
+        arg_types=[
             act_in_ty,
             weights_ty,
             out_ty,
@@ -97,7 +99,6 @@ def conv2dk14(
         raise ValueError("height must be a multiple of 8 and >= 8")
 
     device = iron.get_current_device()
-    assert device is not None
 
     act_in = _KERNEL_SIZE * _KERNEL_SIZE * _IN_CHANNELS * _SUB_TILES
     weights = _KERNEL_SIZE * _KERNEL_SIZE * _IN_CHANNELS * _SUB_OUT_CHANNELS
@@ -181,14 +182,24 @@ def conv2dk14(
         stack_size=0x600,
     )
 
-    rt = Runtime()
-    with rt.sequence(tensor_in_ty, tensor_wts_ty, tensor_out_ty) as (inp, wts, outp):
-        rt.start(worker)
-        rt.fill(of_act_l3l2.prod(), inp)
-        rt.fill(of_wts_l3l2.prod(), wts)
-        rt.drain(of_out_l3.cons(), outp, wait=True)
+    def sequence(I, W, O, act_prod, wts_prod, out_cons):
+        act_prod.fill(I)
+        wts_prod.fill(W)
+        out_cons.drain(O, wait=True)
 
-    return Program(device, rt).resolve_program()
+    rt = Runtime(
+        sequence,
+        [
+            tensor_in_ty,
+            tensor_wts_ty,
+            tensor_out_ty,
+            of_act_l3l2.prod(),
+            of_wts_l3l2.prod(),
+            of_out_l3.cons(),
+        ],
+    )
+
+    return Program(device, rt, workers=[worker]).resolve_program()
 
 
 @iron.jit
@@ -216,7 +227,6 @@ def conv2dk14_multi(
         raise ValueError("height must be a multiple of 8 and >= 8")
 
     device = iron.get_current_device()
-    assert device is not None
     n_cols, n_rows = 8, 4
     if device.cols < n_cols:
         raise ValueError(
@@ -253,10 +263,10 @@ def conv2dk14_multi(
     conv_fn = _conv2dk14_extern(act_in_ty, weights_ty, out_ty)
 
     # Activations: per-row shim -> per-row memtile -> broadcast to 8 cores
-    of_act_l3l2: list[ObjectFifo] = []
-    of_act_l2l1: list[ObjectFifo] = []
+    of_act_l3l2 = [None] * n_rows
+    of_act_l2l1 = [None] * n_rows
     for j in range(n_rows):
-        act_l3l2 = ObjectFifo(
+        of_act_l3l2[j] = ObjectFifo(
             buf_in_ty,
             name=f"of_act_L3L2_{j}",
             dims_from_stream_per_cons=[
@@ -265,9 +275,10 @@ def conv2dk14_multi(
                 (_KERNEL_SIZE * _IN_CHANNELS, 1),
             ],
         )
-        of_act_l3l2.append(act_l3l2)
-        of_act_l2l1.append(
-            act_l3l2.cons().forward(
+        of_act_l2l1[j] = (
+            of_act_l3l2[j]
+            .cons()
+            .forward(
                 obj_type=act_in_ty,
                 name=f"of_act_L2L1_{j}",
                 dims_to_stream=[
@@ -284,24 +295,27 @@ def conv2dk14_multi(
     of_wts = [ObjectFifo(weights_ty, name=f"of_wts_L3L1_{i}") for i in range(n_cols)]
 
     # Outputs: per-col join across 4 rows in memtile, then to per-col shim
-    of_out_l2l3: list[ObjectFifo] = []
-    of_out_l1l2: list[list[ObjectFifo]] = [[] for _ in range(n_rows)]
+    of_out_l2l3 = [None] * n_cols
+    of_out_l1l2 = [[None] * n_cols for _ in range(n_rows)]
     out_offsets = [act_out * 4 * 16 * j for j in range(n_rows)]
     for i in range(n_cols):
-        out_l2l3 = ObjectFifo(
+        of_out_l2l3[i] = ObjectFifo(
             out_mem_ty,
             name=f"of_out_L2L3_{i}",
             dims_to_stream=[(64, 256), (16, 8), (2, 128), (8, 1)],
         )
-        of_out_l2l3.append(out_l2l3)
-        col_fifos = out_l2l3.prod().join(
-            out_offsets,
-            obj_types=[out_ty] * n_rows,
-            names=[f"of_out_L1L2_{j}_{i}" for j in range(n_rows)],
-            tile=Tile(i, 1),
+        col_fifos = (
+            of_out_l2l3[i]
+            .prod()
+            .join(
+                out_offsets,
+                obj_types=[out_ty] * n_rows,
+                names=[f"of_out_L1L2_{j}_{i}" for j in range(n_rows)],
+                tile=Tile(i, 1),
+            )
         )
         for j in range(n_rows):
-            of_out_l1l2[j].append(col_fifos[j])
+            of_out_l1l2[j][i] = col_fifos[j]
 
     def core_fn(of_wts_in, of_act, of_out, kernel):
         y_dim = height // (_KERNEL_SIZE * n_rows)
@@ -341,9 +355,7 @@ def conv2dk14_multi(
         ),
     )
 
-    rt = Runtime()
-    with rt.sequence(tensor_in_ty, tensor_wts_ty, tensor_out_ty) as (inp, wts, outp):
-        rt.start(*[w for row in workers for w in row])
+    def sequence(I, W, O, act_prods, wts_prods, out_conses):
         row_chunk = tensor_in_size // n_rows
         wts_chunk = tensor_wts_size // n_cols
         out_chunk = tensor_out_size // n_cols
@@ -354,7 +366,7 @@ def conv2dk14_multi(
                 [act_repeat, 1, 1, row_chunk],
                 [0, 0, 0, 1],
             )
-            rt.fill(of_act_l3l2[j].prod(), inp, tap)
+            act_prods[j].fill(I, tap)
         for i in range(n_cols):
             wts_tap = TensorAccessPattern(
                 (1, tensor_wts_size),
@@ -368,10 +380,24 @@ def conv2dk14_multi(
                 [1, 1, 1, out_chunk],
                 [0, 0, 0, 1],
             )
-            rt.fill(of_wts[i].prod(), wts, wts_tap)
-            rt.drain(of_out_l2l3[i].cons(), outp, out_tap, wait=True)
+            wts_prods[i].fill(W, wts_tap)
+            out_conses[i].drain(O, out_tap, wait=True)
 
-    return Program(device, rt).resolve_program()
+    rt = Runtime(
+        sequence,
+        [
+            tensor_in_ty,
+            tensor_wts_ty,
+            tensor_out_ty,
+            [of_act_l3l2[j].prod() for j in range(n_rows)],
+            [of_wts[i].prod() for i in range(n_cols)],
+            [of_out_l2l3[i].cons() for i in range(n_cols)],
+        ],
+    )
+
+    return Program(
+        device, rt, workers=[w for row in workers for w in row]
+    ).resolve_program()
 
 
 def _make_argparser():

@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 
-from typing import Sequence
+from typing import Sequence, get_origin
 
 import numpy as np
 
@@ -20,7 +20,7 @@ from ...helpers.util import (
 
 
 class RuntimeData:
-    """A handle to I/O data in the Runtime."""
+    """A handle to I/O data in the Runtime"""
 
     def __init__(self, arr_type: type[np.ndarray]):
         """Construct a handle to a Runtime buffer.
@@ -33,12 +33,12 @@ class RuntimeData:
 
     @property
     def shape(self) -> Sequence[int]:
-        """The shape of the buffer."""
+        """The shape of the buffer"""
         return np_ndarray_type_get_shape(self._arr_type)
 
     @property
     def dtype(self) -> NpuDType:
-        """The per-element datatype of the buffer."""
+        """The per-element datatype of the buffer"""
         return np_ndarray_type_get_dtype(self._arr_type)
 
     @property
@@ -46,8 +46,19 @@ class RuntimeData:
         """The tensor type of the buffer."""
         return self._arr_type
 
+    @property
+    def is_scalar(self) -> bool:
+        """Whether this runtime argument is a scalar (no shape) rather than a
+        tensor. Scalar runtime args (e.g. a runtime ``M``/``K``/``N``) are passed
+        to the sequence body as their live SSA value, since they are used in
+        arithmetic and ``range_``/``if_`` bounds, not as fill/drain buffers."""
+        if get_origin(self._arr_type) is not np.ndarray:
+            # Not an np.ndarray[...] generic alias at all (e.g. bare np.int32).
+            return True
+        return len(np_ndarray_type_get_shape(self._arr_type)) == 0
+
     def default_tap(self) -> TensorAccessPattern:
-        """Return a default access pattern for a linear transfer of the buffer."""
+        """A default access pattern for a linear transfer of the buffer."""
         # TODO: what if not two dimensional?
         return TensorTiler2D.simple_tiler(self.shape)[0]
 

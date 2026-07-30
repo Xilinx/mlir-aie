@@ -10,12 +10,13 @@ shim --> rgba2hue --> (threshold-upper, threshold-lower in parallel) -->
 
 import argparse
 
-import aie.iron as iron
 import numpy as np
+
+import aie.iron as iron
 from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker, kernels
 from aie.utils.hostruntime.argparse import (
-    add_compile_args,
     device_from_args,
+    add_compile_args,
 )
 from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
@@ -183,15 +184,20 @@ def color_detect(
         ],
     )
 
-    rt = Runtime()
-    with rt.sequence(tensor_ty, tensor_16x16_ty, tensor_ty) as (i_in, _b, o_out):
-        rt.start(worker2, worker3, worker4, worker5)
-        rt.fill(in_of_l3l2.prod(), i_in)
-        rt.drain(out_of_l2l3.cons(), o_out, wait=True)
+    def sequence(i_in, _b, o_out, in_prod, out_cons):
+        in_prod.fill(i_in)
+        out_cons.drain(o_out, wait=True)
 
-    device = iron.get_current_device()
-    assert device is not None
-    return Program(device, rt).resolve_program()
+    rt = Runtime(
+        sequence,
+        [tensor_ty, tensor_16x16_ty, tensor_ty, in_of_l3l2.prod(), out_of_l2l3.cons()],
+    )
+
+    return Program(
+        iron.get_current_device(),
+        rt,
+        workers=[worker2, worker3, worker4, worker5],
+    ).resolve_program()
 
 
 def _make_argparser():
@@ -230,9 +236,7 @@ def _design_for(opts):
     flags = list(color_detect.compilable.aiecc_flags) + [f"--placer={opts.placer}"]
     if opts.sa_seed is not None:
         flags.append(f"--sa-seed={opts.sa_seed}")
-    mlir_generator = color_detect.compilable.mlir_generator
-    assert callable(mlir_generator)
-    return iron.jit(aiecc_flags=flags)(mlir_generator)
+    return iron.jit(aiecc_flags=flags)(color_detect.compilable.mlir_generator)
 
 
 def _rgba2hue_ref(rgba_uint8):

@@ -2,24 +2,16 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 
-import aie.iron as iron
-import numpy as np
-from aie.helpers.dialects.scf import else_, if_
-from aie.helpers.util import np_ndarray_type_get_shape
-from aie.iron import (
-    Buffer,
-    CompileTime,
-    In,
-    ObjectFifo,
-    Out,
-    Program,
-    Runtime,
-    Worker,
-    kernels,
-)
-from aie.iron.controlflow import range_
-from aie.utils.verify import assert_pass
 from ml_dtypes import bfloat16
+import numpy as np
+
+import aie.iron as iron
+from aie.iron import CompileTime, In, Out
+from aie.iron import ObjectFifo, Program, Runtime, Worker, Buffer, kernels
+from aie.iron.controlflow import range_
+from aie.helpers.util import np_ndarray_type_get_shape
+from aie.helpers.dialects.scf import if_, else_
+from aie.utils.verify import assert_pass
 
 
 # JIT decorator for IRON
@@ -64,7 +56,7 @@ def vector_reduce_max(
 
     if n_cores > 1:
         of_a_offsets = [
-            int(np.prod(np_ndarray_type_get_shape(mem_ty)) // n_cores) * i
+            (np.prod(np_ndarray_type_get_shape(mem_ty)) // n_cores) * i
             for i in range(n_cores)
         ]
     else:
@@ -108,7 +100,7 @@ def vector_reduce_max(
         for _ in range_(num_iter):
             elem_in = of_in.acquire(1)
             reduce_fn(elem_in, tmp_buffer, elems_per_core)
-            with if_(nextC_buffer[0] < tmp_buffer[0]):
+            with if_(nextC_buffer[0] < tmp_buffer[0]) as if_op:
                 nextC_buffer[0] = tmp_buffer[0]
             of_in.release(1)
         elem_out[0] = nextC_buffer[0]
@@ -118,7 +110,7 @@ def vector_reduce_max(
         for _ in range_(num_iter):
             elem_in = of_in.acquire(1)
             reduce_fn(elem_in, tmp_buffer, elems_per_core)
-            with if_(nextC_buffer[0] < tmp_buffer[0]):
+            with if_(nextC_buffer[0] < tmp_buffer[0]) as if_op:
                 nextC_buffer[0] = tmp_buffer[0]
             of_in.release(1)
 
@@ -167,28 +159,27 @@ def vector_reduce_max(
     # DRAM-NPU data movement and work dispatch
     # --------------------------------------------------------------------------
 
-    rt = Runtime()
-    with rt.sequence(in_ty, out_ty) as (
-        a_in,
-        c_out,
-    ):
-        rt.start(*workers)
-        rt.fill(of_in.prod(), a_in)
-        rt.drain(out_fifos[0].cons(), c_out, wait=True)
+    def sequence(a_in, c_out, in_prod, out_cons):
+        in_prod.fill(a_in)
+        out_cons.drain(c_out, wait=True)
+
+    rt = Runtime(
+        sequence,
+        [in_ty, out_ty, of_in.prod(), out_fifos[0].cons()],
+    )
 
     # --------------------------------------------------------------------------
     # Place and generate MLIR program
     # --------------------------------------------------------------------------
 
-    device = iron.get_current_device()
-    assert device is not None
-    my_program = Program(device, rt)
+    my_program = Program(iron.get_current_device(), rt, workers=workers)
     return my_program.resolve_program()
 
 
 def main():
     # Define tensor shapes and data types
     in_size = 524288
+    out_size = 4
     element_type = bfloat16
 
     in_tensor_size = in_size // element_type(0).nbytes

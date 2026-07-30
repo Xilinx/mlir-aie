@@ -29,22 +29,11 @@ emitted for the equivalent two ``aie.flow`` s; we just write them out.
 """
 
 import argparse
+import sys
+
+import numpy as np
 
 import aie.iron as iron
-import numpy as np
-from aie.dialects._aie_enum_gen import AIETileType, DMAChannelDir, WireBundle
-from aie.dialects.aie import (
-    EndOp,  # pyright: ignore[reportAttributeAccessIssue]
-    connect,  # pyright: ignore[reportAttributeAccessIssue]
-    shim_mux,
-    switchbox,
-)
-from aie.dialects.aiex import (
-    npu_address_patch,
-    npu_push_queue,
-    npu_sync,
-    npu_writebd,  # pyright: ignore[reportAttributeAccessIssue]
-)
 from aie.iron import (
     Acquire,
     Bd,
@@ -57,14 +46,27 @@ from aie.iron import (
     Program,
     Release,
     Runtime,
-    TileDma,
     Worker,
+    TileDma,
 )
 from aie.iron.controlflow import range_
 from aie.iron.device import Tile
 from aie.utils.hostruntime.argparse import add_compile_args, device_from_args
 from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
+from aie.dialects._aie_enum_gen import AIETileType, DMAChannelDir, WireBundle
+from aie.dialects.aie import (
+    EndOp,
+    connect,
+    shim_mux,
+    switchbox,
+)
+from aie.dialects.aiex import (
+    npu_address_patch,
+    npu_push_queue,
+    npu_sync,
+    npu_writebd,
+)
 
 N = 64  # elements per transfer (int32)
 
@@ -226,12 +228,7 @@ def manual_switchbox(a_in: In, c_out: Out, *, col: CompileTime[int] = 0):
         while_true=False,
     )
 
-    rt = Runtime()
-    for lk in (in_prod, in_cons, out_prod, out_cons):
-        rt.add_lock(lk)
-    rt.add_tile_dma(comp_dma)
-
-    def host_bd_writes(a, c):
+    def sequence(a, c):
         # shim S2MM ch0: DDR (a) -> array
         npu_writebd(
             bd_id=0,
@@ -324,13 +321,12 @@ def manual_switchbox(a_in: In, c_out: Out, *, col: CompileTime[int] = 0):
         )
         npu_sync(column=col, row=0, direction=1, channel=0, column_num=1, row_num=1)
 
-    with rt.sequence(vec_ty, vec_ty) as (a, c):
-        rt.start(worker)
-        rt.inline_ops(host_bd_writes, [a, c])
+    rt = Runtime(sequence, [vec_ty, vec_ty])
+    for lk in (in_prod, in_cons, out_prod, out_cons):
+        rt.add_lock(lk)
+    rt.add_tile_dma(comp_dma)
 
-    device = iron.get_current_device()
-    assert device is not None
-    return Program(device, rt).resolve_program()
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 
 
 def _compile_kwargs(opts):

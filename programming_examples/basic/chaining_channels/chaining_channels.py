@@ -21,17 +21,11 @@ where users can read + extend without dropping to the dialect.
 
 import argparse
 import sys
+from pathlib import Path
+
+import numpy as np
 
 import aie.iron as iron
-import numpy as np
-from aie.dialects._aie_enum_gen import AIETileType, DMAChannelDir, WireBundle
-from aie.dialects.aiex import (
-    npu_address_patch,
-    npu_push_queue,
-    npu_sync,
-    npu_write32,
-    npu_writebd,  # pyright: ignore[reportAttributeAccessIssue]
-)
 from aie.iron import (
     Acquire,
     Bd,
@@ -50,12 +44,21 @@ from aie.iron import (
 )
 from aie.iron.controlflow import range_
 from aie.iron.device import Tile
-from aie.utils.hostruntime.argparse import add_compile_args, device_from_args
+from aie.utils.hostruntime.argparse import device_from_args
+from aie.dialects._aie_enum_gen import AIETileType, DMAChannelDir, WireBundle
+from aie.dialects.aiex import (
+    npu_address_patch,
+    npu_push_queue,
+    npu_sync,
+    npu_write32,
+    npu_writebd,
+)
+from aie.utils.hostruntime.argparse import add_compile_args
 from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.trace.events import (
     MemTileEvent,
-    MemTilePortEvent,
     ShimTileEvent,
+    MemTilePortEvent,
     ShimTilePortEvent,
 )
 
@@ -173,7 +176,7 @@ def chaining_channels(
     )
 
     # ---- runtime sequence: manual BD writes (THE lesson) ---------------
-    def manual_bd_writes(a, b):
+    def sequence(a, b):
         # Release the MemTile lock to trigger the memtile MM2S BD.
         npu_write32(column=col, row=1, address=0xC0000, value=1)
 
@@ -274,7 +277,7 @@ def chaining_channels(
         npu_sync(column=col, row=0, direction=1, channel=0, column_num=1, row_num=1)
 
     # ---- assemble + return the Program --------------------------------
-    rt = Runtime()
+    rt = Runtime(sequence, [vector_ty, vector_ty_read])
     rt.add_flow(mem_to_shim_flow)
     rt.add_flow(shim_to_compute_flow)
     for lk in (memtile_lock, compute_prod_lock, compute_cons_lock):
@@ -282,46 +285,41 @@ def chaining_channels(
     rt.add_tile_dma(memtile_dma)
     rt.add_tile_dma(compute_dma)
 
-    with rt.sequence(vector_ty, vector_ty_read) as (a, b):
-        if trace_size > 0:
-            rt.enable_trace(
-                trace_size,
-                workers=[worker],
-                memtile_events=[
-                    MemTileEvent.LOCK_SEL0_ACQ_GE,
-                    MemTilePortEvent(
-                        MemTileEvent.PORT_RUNNING_0, WireBundle.South, 3, True
-                    ),
-                    MemTilePortEvent(
-                        MemTileEvent.PORT_TLAST_0, WireBundle.South, 3, True
-                    ),
-                    MemTileEvent.DMA_MM2S_SEL0_STREAM_BACKPRESSURE,
-                    MemTileEvent.DMA_MM2S_SEL0_STALLED_LOCK,
-                    MemTileEvent.DMA_MM2S_SEL0_START_TASK,
-                    MemTileEvent.DMA_MM2S_SEL0_FINISHED_TASK,
-                    MemTileEvent.DMA_MM2S_SEL0_FINISHED_BD,
-                ],
-                shimtile_events=[
-                    ShimTileEvent.DMA_S2MM_0_START_TASK,
-                    ShimTileEvent.DMA_S2MM_0_FINISHED_TASK,
-                    ShimTileEvent.DMA_MM2S_0_START_TASK,
-                    ShimTileEvent.DMA_MM2S_0_FINISHED_TASK,
-                    ShimTileEvent.DMA_MM2S_0_STALLED_LOCK,
-                    ShimTileEvent.DMA_MM2S_0_MEMORY_STARVATION,
-                    ShimTilePortEvent(
-                        ShimTileEvent.PORT_RUNNING_0, WireBundle.South, 2, True
-                    ),
-                    ShimTilePortEvent(
-                        ShimTileEvent.PORT_RUNNING_1, WireBundle.South, 3, False
-                    ),
-                ],
-            )
-        rt.start(worker)
-        rt.inline_ops(manual_bd_writes, [a, b])
+    prog = Program(iron.get_current_device(), rt, workers=[worker])
 
-    device = iron.get_current_device()
-    assert device is not None
-    return Program(device, rt).resolve_program()
+    if trace_size > 0:
+        prog.enable_trace(
+            trace_size,
+            workers=[worker],
+            memtile_events=[
+                MemTileEvent.LOCK_SEL0_ACQ_GE,
+                MemTilePortEvent(
+                    MemTileEvent.PORT_RUNNING_0, WireBundle.South, 3, True
+                ),
+                MemTilePortEvent(MemTileEvent.PORT_TLAST_0, WireBundle.South, 3, True),
+                MemTileEvent.DMA_MM2S_SEL0_STREAM_BACKPRESSURE,
+                MemTileEvent.DMA_MM2S_SEL0_STALLED_LOCK,
+                MemTileEvent.DMA_MM2S_SEL0_START_TASK,
+                MemTileEvent.DMA_MM2S_SEL0_FINISHED_TASK,
+                MemTileEvent.DMA_MM2S_SEL0_FINISHED_BD,
+            ],
+            shimtile_events=[
+                ShimTileEvent.DMA_S2MM_0_START_TASK,
+                ShimTileEvent.DMA_S2MM_0_FINISHED_TASK,
+                ShimTileEvent.DMA_MM2S_0_START_TASK,
+                ShimTileEvent.DMA_MM2S_0_FINISHED_TASK,
+                ShimTileEvent.DMA_MM2S_0_STALLED_LOCK,
+                ShimTileEvent.DMA_MM2S_0_MEMORY_STARVATION,
+                ShimTilePortEvent(
+                    ShimTileEvent.PORT_RUNNING_0, WireBundle.South, 2, True
+                ),
+                ShimTilePortEvent(
+                    ShimTileEvent.PORT_RUNNING_1, WireBundle.South, 3, False
+                ),
+            ],
+        )
+
+    return prog.resolve_program()
 
 
 def _compile_kwargs(opts):

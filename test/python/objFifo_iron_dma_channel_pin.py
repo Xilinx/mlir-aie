@@ -40,11 +40,12 @@ def test_prod_cons_channel_pins_emit_attrs():
     w_prod = Worker(prod_body, fn_args=[of_pin.prod(channel=1)], tile=Tile(0, 2))
     w_cons = Worker(cons_body, fn_args=[of_pin.cons(channel=1)], tile=Tile(0, 3))
 
-    rt = Runtime()
-    with rt.sequence():
-        rt.start(w_prod, w_cons)
+    def sequence():
+        pass
 
-    module = Program(dev, rt).resolve_program()
+    rt = Runtime(sequence, [])
+
+    module = Program(dev, rt, workers=[w_prod, w_cons]).resolve_program()
     print(module)
 
 
@@ -73,11 +74,12 @@ def test_partial_cons_pins_use_sentinel():
     w_cons_a = Worker(cons_body, fn_args=[of_partial.cons()], tile=Tile(0, 3))
     w_cons_b = Worker(cons_body, fn_args=[of_partial.cons(channel=2)], tile=Tile(0, 4))
 
-    rt = Runtime()
-    with rt.sequence():
-        rt.start(w_prod, w_cons_a, w_cons_b)
+    def sequence():
+        pass
 
-    module = Program(dev, rt).resolve_program()
+    rt = Runtime(sequence, [])
+
+    module = Program(dev, rt, workers=[w_prod, w_cons_a, w_cons_b]).resolve_program()
     print(module)
 
 

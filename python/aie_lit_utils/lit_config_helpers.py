@@ -29,6 +29,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass, field
 
@@ -191,6 +192,12 @@ class LitConfigHelper:
         if vitis_components is None:
             vitis_components = []
 
+        expected_npu = os.environ.get("AIE_EXPECTED_NPU")
+        if expected_npu and expected_npu not in LitConfigHelper.NPU_MODELS:
+            llvm_config.lit_config.fatal(
+                "AIE_EXPECTED_NPU must be 'npu1' or 'npu2', " f"got {expected_npu!r}"
+            )
+
         config = HardwareConfig()
         run_on_npu1 = "echo"
         run_on_npu2 = "echo"
@@ -199,6 +206,12 @@ class LitConfigHelper:
             logger.info("xrt not found")
             config.flags = ""
             config.substitutions["%xrt_flags"] = ""
+
+            if expected_npu:
+                llvm_config.lit_config.fatal(
+                    f"AIE_EXPECTED_NPU={expected_npu}, but XRT is unavailable"
+                )
+
             config.substitutions["%run_on_npu1%"] = run_on_npu1
             config.substitutions["%run_on_npu2%"] = run_on_npu2
             return config
@@ -237,13 +250,49 @@ class LitConfigHelper:
                     probe_env[key] = value
 
             print(f"Using xrt-smi: {xrtsmi}")
-            result = subprocess.run(
-                [xrtsmi, "examine"],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                env=probe_env,
-                timeout=10,
-            )
+            attempts = 3 if expected_npu else 1
+            result = None
+            for attempt in range(1, attempts + 1):
+                try:
+                    result = subprocess.run(
+                        [xrtsmi, "examine"],
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        env=probe_env,
+                        timeout=10,
+                    )
+                except subprocess.TimeoutExpired:
+                    if attempt == attempts:
+                        raise
+                else:
+                    if not expected_npu:
+                        break
+                    probe_output = result.stdout.decode(
+                        "utf-8", errors="ignore"
+                    ) + result.stderr.decode("utf-8", errors="ignore")
+                    if result.returncode == 0 and any(
+                        model in probe_output
+                        for model in LitConfigHelper.NPU_MODELS[expected_npu]
+                    ):
+                        break
+
+                if attempt < attempts:
+                    delay = attempt * 3
+                    logger.warning(
+                        "Expected %s was not visible to xrt-smi on attempt %d/%d; "
+                        "retrying in %ds",
+                        expected_npu.upper(),
+                        attempt,
+                        attempts,
+                        delay,
+                    )
+                    time.sleep(delay)
+
+            if result is None:
+                raise RuntimeError("xrt-smi did not complete")
+            if expected_npu and result.returncode != 0:
+                raise subprocess.CalledProcessError(result.returncode, result.args)
+
             output = (
                 result.stdout.decode("utf-8", errors="ignore")
                 + "\n"
@@ -315,6 +364,12 @@ class LitConfigHelper:
             logger.warning("Failed to run xrt-smi (not found)")
         except Exception as e:
             logger.warning("Failed to run xrt-smi: %s", e)
+
+        if expected_npu and f"ryzen_ai_{expected_npu}" not in config.features:
+            llvm_config.lit_config.fatal(
+                f"AIE_EXPECTED_NPU={expected_npu}, but the matching hardware "
+                "feature was not found!"
+            )
 
         config.substitutions["%run_on_npu1%"] = run_on_npu1
         config.substitutions["%run_on_npu2%"] = run_on_npu2
@@ -540,9 +595,10 @@ class LitConfigHelper:
     def setup_host_link_substitution(config_obj) -> None:
         """Add host linker flags for tests that build XRT host executables.
 
-        Linux-hosted tests need librt/libstdc++. Windows-hosted tests link
-        against CMake-built dynamic MSVC libraries, matching CMake's default
-        /MD runtime selection.
+        Linux-hosted tests link librt, libstdc++, and libm explicitly because
+        the host compiler substitution resolves to clang rather than clang++.
+        Windows-hosted tests link against CMake-built dynamic MSVC libraries,
+        matching CMake's default /MD runtime selection.
         """
         if os.name == "nt":
             host_link_flags = " ".join(
@@ -555,7 +611,7 @@ class LitConfigHelper:
                 ]
             )
         else:
-            host_link_flags = "-lrt -lstdc++"
+            host_link_flags = "-lrt -lstdc++ -lm"
         config_obj.substitutions.append(("%host_link_flags", host_link_flags))
 
     @staticmethod
@@ -792,6 +848,10 @@ class LitConfigHelper:
 
         # System environment variables
         llvm_config.with_system_environment(["HOME", "INCLUDE", "LIB", "TMP", "TEMP"])
+
+        # Let a headless caller force matplotlib's non-interactive backend so
+        # taplib visualize()'s plt.show() doesn't block a display-less runner.
+        llvm_config.with_system_environment("MPLBACKEND")
 
         # JIT cache for compiled designs. NPU_CACHE_HOME is the current name;
         # IRON_CACHE_HOME is kept as a no-op safety for any straggler caller.

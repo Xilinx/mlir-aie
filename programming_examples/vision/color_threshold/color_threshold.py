@@ -14,11 +14,9 @@ sequence's ``set_rtps()`` before reading.
 
 import argparse
 
-import aie.iron as iron
 import numpy as np
-from aie.extras import types as T
-from aie.extras.dialects import arith
-from aie.helpers.util import np_ndarray_type_get_shape
+
+import aie.iron as iron
 from aie.iron import (
     Buffer,
     CompileTime,
@@ -31,7 +29,12 @@ from aie.iron import (
     WorkerRuntimeBarrier,
     kernels,
 )
-from aie.utils.hostruntime.argparse import add_compile_args, device_from_args
+from aie.utils.hostruntime.argparse import device_from_args
+from aie.extras.dialects import arith
+from aie.helpers.util import np_ndarray_type_get_shape
+from aie.dialects.aie import T
+
+from aie.utils.hostruntime.argparse import add_compile_args
 from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
 
@@ -57,9 +60,7 @@ def color_threshold(
     threshold_line = kernels.threshold(line_width=line_width, dtype=np.uint8)
 
     in_oob_l3l2 = ObjectFifo(line_channels_ty, name="inOOB_L3L2")
-    of_offsets = [
-        int(np.prod(np_ndarray_type_get_shape(line_ty))) * i for i in range(4)
-    ]
+    of_offsets = [np.prod(np_ndarray_type_get_shape(line_ty)) * i for i in range(4)]
     in_oob_l2l1s = in_oob_l3l2.cons().split(
         of_offsets,
         obj_types=[line_ty] * 4,
@@ -118,27 +119,24 @@ def color_threshold(
         for i in range(4)
     ]
 
-    rt = Runtime()
-    with rt.sequence(tensor_ty, unused_ty, tensor_ty) as (i_in, _b, o_out):
-
-        def set_rtps(*args):
-            for rtp in args:
-                rtp[0] = 50
-                rtp[1] = 255
-                rtp[2] = 0
-
-        rt.inline_ops(set_rtps, rtps)
+    def sequence(i_in, _b, o_out, in_h, out_h):
+        for rtp in rtps:
+            rtp[0] = 50
+            rtp[1] = 255
+            rtp[2] = 0
 
         for i in range(4):
-            rt.set_barrier(worker_barriers[i], 1)
+            worker_barriers[i].set(1)
 
-        rt.start(*workers)
-        rt.fill(in_oob_l3l2.prod(), i_in)
-        rt.drain(out_oob_l2l3.cons(), o_out, wait=True)
+        in_h.fill(i_in)
+        out_h.drain(o_out, wait=True)
 
-    device = iron.get_current_device()
-    assert device is not None
-    return Program(device, rt).resolve_program()
+    rt = Runtime(
+        sequence,
+        [tensor_ty, unused_ty, tensor_ty, in_oob_l3l2.prod(), out_oob_l2l3.cons()],
+    )
+
+    return Program(iron.get_current_device(), rt, workers=workers).resolve_program()
 
 
 def _make_argparser():

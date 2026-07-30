@@ -42,10 +42,20 @@ def passthrough_dmas(
     of_in = ObjectFifo(line_ty, name="in")
     of_out = of_in.cons().forward()
 
-    rt = Runtime()
-    with rt.sequence(vector_ty, vector_ty, vector_ty) as (a, _, c):
-        rt.fill(of_in.prod(), a, tile=AnyShimTile)
-        rt.drain(of_out.cons(), c, tile=AnyShimTile, wait=True)
+    def sequence(a, _, c, in_h, out_h):
+        in_h.fill(a)
+        out_h.drain(c, wait=True)
+
+    rt = Runtime(
+        sequence,
+        [
+            vector_ty,
+            vector_ty,
+            vector_ty,
+            of_in.prod(tile=AnyShimTile),
+            of_out.cons(tile=AnyShimTile),
+        ],
+    )
 
     device = iron.get_current_device()
     assert device is not None

@@ -377,7 +377,14 @@ def AIE_CoreOp: AIE_Op<"core", [
     OptionalAttr<StrAttr>:$link_with,
     // Populated by aie-assign-core-link-files; consumed by BCF/ldscript emitters
     // and the aiecc driver.  Specifying both link_with and link_files is an error.
+    // These artifacts are ordinary inputs to the core's final link.
     OptionalAttr<StrArrayAttr>:$link_files,
+    // Populated by aie-assign-core-link-files from func.func declarations that
+    // carry `link_with_mode = "merge"`.  These artifacts are merged into the
+    // core's LLVM module (llvm-link) before codegen instead of being handed to
+    // the final link.  May coexist with link_files, but a given path must not
+    // appear in both.
+    OptionalAttr<StrArrayAttr>:$link_merge_files,
     OptionalAttr<StrAttr>:$elf_file,
     OptionalAttr<BoolAttr>:$dynamic_objfifo_lowering,
     // If set to false, suppresses automatic insertion of the parameter-sync
@@ -408,17 +415,40 @@ def AIE_CoreOp: AIE_Op<"core", [
     This op has an optional `dynamic_objfifo_lowering` attribute, to finely control whether the
     objectfifos in this core should be lowered using the dynamic runtime lowering.
 
-    **External object files.**  The preferred mechanism is to attach a `link_with`
-    string attribute to each `func.func` declaration for an externally-defined
-    function, then run the `aie-assign-core-link-files` pass.  That pass traces
-    direct `func.call` edges from each core and writes the aggregated, de-duplicated
-    list of object file paths into the `link_files` attribute on this op.  The
-    BCF/ldscript emitters and the aiecc driver consume `link_files`.
+    **External link artifacts.**  The preferred mechanism is to attach a
+    `link_with` string attribute to each `func.func` declaration for an
+    externally-defined function, then run the `aie-assign-core-link-files` pass.
+    That pass traces direct `func.call` edges from each core and writes the
+    aggregated, de-duplicated list of artifact paths into the `link_files` and
+    `link_merge_files` attributes on this op.  The BCF/ldscript emitters and the
+    aiecc driver consume both.
+
+    How an artifact is linked is a property of the metadata, never of the file
+    or file extension.  A `func.func` declaration may carry an optional
+    `link_with_mode` string attribute alongside `link_with`:
+
+      * absent -- the artifact is an ordinary input to the core's final link,
+        and the pass records it in `link_files`;
+      * `"merge"` -- the artifact is an LLVM IR module (e.g. as emitted by
+        `ExternalFunction(inline=True)`) that must be merged into the core's
+        LLVM module with llvm-link before codegen, so that the callee can be
+        inlined and no separate object is linked.  The pass records it in
+        `link_merge_files`.
+
+    `"merge"` is currently the only accepted `link_with_mode` value, and
+    `link_with_mode` without `link_with` is an error.  Both lists may be present
+    on the same core, but a given path must not appear in both -- an artifact is
+    either merged or linked, not both.  Because the aiecc "unified" flow builds
+    one LLVM module for all cores of a device, the pass additionally rejects a
+    path that is merged by one core and object-linked by another core of the
+    same device.
 
     The core-level `link_with` attribute is deprecated and kept only for
-    backward compatibility.  It is migrated by `aie-assign-core-link-files`
-    (its value is folded into `link_files` and then removed).  Specifying both
-    `link_with` and `link_files` on the same CoreOp is a verifier error.
+    backward compatibility.  It always means an ordinary final-link input;
+    there is no core-level way to request merging.  It is migrated by
+    `aie-assign-core-link-files` (its value is folded into `link_files` and then
+    removed).  Specifying both `link_with` and either `link_files` or
+    `link_merge_files` on the same CoreOp is a verifier error.
 
     Examples:
     ```
@@ -1806,6 +1836,73 @@ def AIE_ShimDMAAllocationOp : AIE_Op<"shim_dma_allocation", [HasParent<"DeviceOp
     TileOp getTileOp();
     static ::xilinx::AIE::ShimDMAAllocationOp getForSymbol(::xilinx::AIE::DeviceOp device, ::llvm::StringRef symbol);
   }];
+}
+
+def AIE_ObjectFifoRearmBindingOp : AIE_Op<"objectfifo_rearm_binding",
+    [HasParent<"DeviceOp">, Symbol, AttrSizedOperandSegments]> {
+  let summary = "Resident re-arm binding for an objectFIFO's core/mem DMA channels";
+  let description = [{
+    Runtime re-arm information for a single objectFIFO, generalizing
+    `aie.shim_dma_allocation` to the core and mem tile endpoints.
+
+    `aie.objectfifo_stateful_transform` erases the `aie.objectfifo` op and
+    rewrites every remaining `@fifo` use to the fifo's `@fifo_shim_alloc`
+    (shim endpoint only). That loses the core/mem channels + locks that a
+    resident re-arm (`aiex.dma_channel_reset_for`) needs, and for a
+    core-to-core fifo there is no shim allocation at all. To keep that
+    information resolvable in the later runtime-sequence lowering, the transform
+    emits this op (on demand, only for fifos actually targeted by a
+    `aiex.dma_channel_reset_for`) recording the fifo's non-shim DMA endpoints and
+    its producer/consumer locks.
+
+    Each non-shim DMA endpoint is one `channel_tiles` operand paired positionally
+    with `channel_dirs` (0 = S2MM, 1 = MM2S) and `channel_indices`. Each lock is
+    one `locks` operand paired positionally with `lock_inits` (the initial lock
+    value the fifo was armed with: producer = (numElem - init) * repeat, consumer
+    = init * repeat).
+
+    `head_bd_ids` and `repeat_counts` carry, positionally per `channel_tiles`
+    endpoint, the resident channel's head buffer-descriptor id and its (already
+    N-1 biased) START_QUEUE repeat count -- everything the re-arm re-push needs.
+    They are optional because the head BD id is not known until
+    `--aie-assign-bd-ids` runs: that pass populates both here (reading them off
+    the resident `aie.mem` / `aie.memtile_dma` chain once, at the point the ids
+    are assigned) so the later `aiex.dma_channel_reset_for` lowering reads them
+    straight off this op rather than re-scanning the objectFIFO-emitted chain. A
+    hand-authored binding may set them directly, in which case
+    `--aie-assign-bd-ids` leaves them untouched; this keeps the op usable without
+    any objectFIFO code behind it.
+
+    Example:
+    ```
+      aie.objectfifo_rearm_binding @of_rearm channels(%core_tile : index)
+        locks(%prod_lock, %cons_lock : index, index) {
+          channel_dirs = array<i32: 0>, channel_indices = array<i32: 0>,
+          lock_inits = array<i32: 2, 0>,
+          head_bd_ids = array<i32: 5>, repeat_counts = array<i32: 0> }
+    ```
+  }];
+
+  let arguments = (ins
+    SymbolNameAttr:$sym_name,
+    Variadic<Index>:$channel_tiles,
+    Variadic<Index>:$locks,
+    DenseI32ArrayAttr:$channel_dirs,
+    DenseI32ArrayAttr:$channel_indices,
+    DenseI32ArrayAttr:$lock_inits,
+    OptionalAttr<DenseI32ArrayAttr>:$head_bd_ids,
+    OptionalAttr<DenseI32ArrayAttr>:$repeat_counts
+  );
+
+  let results = (outs);
+
+  let assemblyFormat = [{
+    $sym_name
+    `channels` `(` ($channel_tiles^ `:` type($channel_tiles))? `)`
+    `locks` `(` ($locks^ `:` type($locks))? `)` attr-dict
+  }];
+
+  let hasVerifier = 1;
 }
 
 def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]> {

@@ -42,8 +42,9 @@ The objects most designs are built from.
 
 ### Runtime
 
-The host-side orchestration entry point that declares `fill` / `drain` /
-`start` operations via `rt.sequence(...)`.
+The host-side orchestration entry point. Its `fill` / `drain` operations
+are declared in the sequence body passed to `Runtime(seq, fn_args)`;
+Workers are passed to `Program(workers=...)` rather than started from the body.
 
 ::: iron.runtime.runtime
     options:
@@ -181,5 +182,9 @@ Lower-level runtime task types scheduled by the
       show_root_heading: false
 
 ::: iron.runtime.dmatask
+    options:
+      show_root_heading: false
+
+::: iron.runtime.dmataskhandle
     options:
       show_root_heading: false

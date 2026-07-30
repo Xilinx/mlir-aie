@@ -25,20 +25,20 @@ import argparse
 import json
 import os
 
-import aie.iron as iron
 import numpy as np
-from aie.iron import ObjectFifo, Program, Runtime
-from aie.iron.device import Tile
-from aie.utils.hostruntime import set_current_device
-from aie.utils.hostruntime.argparse import add_compile_args, device_from_args
 
-from .bottleneck._common import i8 as _i8
-from .bottleneck._common import u8 as _u8
-from .bottleneck.cascade import build_cascade
-from .bottleneck.pipeline import build_3tile_pipeline, build_bn12_2tile
+import aie.iron as iron
+from aie.iron import ObjectFifo, Program, Runtime, TaskGroup
+from aie.iron.device import Tile
+from aie.utils.hostruntime.argparse import device_from_args
+from aie.utils.hostruntime import set_current_device
+from aie.utils.hostruntime.argparse import add_compile_args
+
+from .network_spec import block as nsblock, CASCADE_NAMES
+from .bottleneck._common import i8 as _i8, u8 as _u8
 from .bottleneck.regular import build_2layer_skip, build_3layer, build_fused_pair
-from .network_spec import CASCADE_NAMES
-from .network_spec import block as nsblock
+from .bottleneck.pipeline import build_3tile_pipeline, build_bn12_2tile
+from .bottleneck.cascade import build_cascade
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data") + "/"
 SCALE_FACTORS = None  # Lazy-loaded in per_block_iron from --scales-json or default.
@@ -223,70 +223,51 @@ def per_block_iron(block_name, data_dir=None, scales_json=None):
 
     out_fifo, workers, wts_fifos = _build_one(block_name, act_in)
 
-    rt = Runtime()
     if wts_fifos:
         # Cascade: input + 2 weight buffers + output.
         BN_WTS_SZ = 80 * 960  # 76800 bytes per L1/L3 weight chunk for bn13/bn14
         wts_ty = np.ndarray[(BN_WTS_SZ // 4,), np.dtype[np.int32]]
-        with rt.sequence(in_ty, wts_ty, wts_ty, out_ty) as (
-            inp,
-            wl1,
-            wl3,
-            out,
-        ):
-            rt.start(*workers)
-            tg = rt.task_group()
-            rt.fill(
-                act_in.prod(),
-                inp,
-                tile=TEST_PLACEMENT["shim_input"],
-                task_group=tg,
-            )
-            rt.fill(
-                wts_fifos[0].prod(),
-                wl1,
-                tile=TEST_PLACEMENT["shim_wts_l1"],
-                task_group=tg,
-            )
-            rt.fill(
-                wts_fifos[1].prod(),
-                wl3,
-                tile=TEST_PLACEMENT["shim_wts_l3"],
-                task_group=tg,
-            )
-            rt.drain(
-                out_fifo.cons(),
-                out,
-                wait=True,
-                tile=TEST_PLACEMENT["shim_output"],
-                task_group=tg,
-            )
-            rt.finish_task_group(tg)
-    else:
-        with rt.sequence(in_ty, out_ty) as (
-            inp,
-            out,
-        ):
-            rt.start(*workers)
-            tg = rt.task_group()
-            rt.fill(
-                act_in.prod(),
-                inp,
-                tile=TEST_PLACEMENT["shim_input"],
-                task_group=tg,
-            )
-            rt.drain(
-                out_fifo.cons(),
-                out,
-                wait=True,
-                tile=TEST_PLACEMENT["shim_output"],
-                task_group=tg,
-            )
-            rt.finish_task_group(tg)
 
-    device = iron.get_current_device()
-    assert device is not None
-    return Program(device, rt).resolve_program()
+        def sequence(inp, wl1, wl3, out, in_prod, wl1_prod, wl3_prod, out_cons):
+            tg = TaskGroup()
+            in_prod.fill(inp, group=tg)
+            wl1_prod.fill(wl1, group=tg)
+            wl3_prod.fill(wl3, group=tg)
+            out_cons.drain(out, wait=True, group=tg)
+            tg.finish()
+
+        rt = Runtime(
+            sequence,
+            [
+                in_ty,
+                wts_ty,
+                wts_ty,
+                out_ty,
+                act_in.prod(tile=TEST_PLACEMENT["shim_input"]),
+                wts_fifos[0].prod(tile=TEST_PLACEMENT["shim_wts_l1"]),
+                wts_fifos[1].prod(tile=TEST_PLACEMENT["shim_wts_l3"]),
+                out_fifo.cons(tile=TEST_PLACEMENT["shim_output"]),
+            ],
+        )
+    else:
+
+        def sequence(inp, out, in_prod, out_cons):
+            tg = TaskGroup()
+            in_prod.fill(inp, group=tg)
+            out_cons.drain(out, wait=True, group=tg)
+            tg.finish()
+
+        rt = Runtime(
+            sequence,
+            [
+                in_ty,
+                out_ty,
+                act_in.prod(tile=TEST_PLACEMENT["shim_input"]),
+                out_fifo.cons(tile=TEST_PLACEMENT["shim_output"]),
+            ],
+        )
+
+    return Program(iron.get_current_device(), rt, workers=workers).resolve_program()
 
 
 def _make_argparser():
@@ -310,9 +291,7 @@ def _make_argparser():
 
 def main():
     opts = _make_argparser().parse_args()
-    set_current_device(
-        device_from_args(opts, n_cols=None)  # pyright: ignore[reportArgumentType]
-    )
+    set_current_device(device_from_args(opts, n_cols=None))
     print(
         per_block_iron(opts.block, data_dir=opts.data_dir, scales_json=opts.scales_json)
     )

@@ -21,11 +21,12 @@ Three invocation modes:
 
 import argparse
 
-import aie.iron as iron
 import numpy as np
-from aie.helpers.taplib import TensorTiler2D
+
+import aie.iron as iron
 from aie.iron import Buffer, CompileTime, ObjectFifo, Out, Program, Runtime, Worker
 from aie.iron.controlflow import range_
+from aie.helpers.taplib import TensorTiler2D
 from aie.utils.hostruntime.argparse import add_compile_args
 from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
@@ -62,15 +63,16 @@ def per_tile(
 
     worker = Worker(access_order, [of_out.prod(), access_counter])
 
-    rt = Runtime()
-    with rt.sequence(flattened_tensor) as out_tensor:
-        rt.start(worker)
+    def sequence(tensor_out, out_h):
         for t in tiler:
-            rt.drain(of_out.cons(), out_tensor, t, wait=True)
+            out_h.drain(tensor_out, t, wait=True)
 
-    device = iron.get_current_device()
-    assert device is not None
-    return Program(device, rt).resolve_program()
+    rt = Runtime(
+        sequence,
+        [flattened_tensor, of_out.cons()],
+    )
+
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 
 
 def _make_argparser():

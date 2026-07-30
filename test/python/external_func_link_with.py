@@ -1,8 +1,10 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-# Verify that the link_with keyword argument on external_func produces the
-# expected func.func attribute in the emitted MLIR.
+# Verify that the link_with and link_with_mode keyword arguments on
+# external_func produce the expected func.func attributes in the emitted MLIR,
+# and that link_with_mode's contract (requires link_with; "merge" is the only
+# accepted value) is enforced.
 
 # RUN: %python %s | FileCheck %s
 
@@ -102,5 +104,71 @@ def func_without_link_with():
             "helper",
             inputs=[np.ndarray[(16,), np.dtype[np.int32]]],
         )
+        tile(0, 2)
+        end()
+
+
+# link_with_mode="merge" is emitted as its own string attribute.  It is the
+# only signal that routes the artifact to aiecc's llvm-link merge path -- the
+# suffix (here a plain .o) does not.
+# CHECK-LABEL: TEST: link_with_mode_merge
+# CHECK: func.func private @merged({{.*}}) attributes {link_with = "merged.o", link_with_mode = "merge"}
+@construct_and_print_module
+def link_with_mode_merge():
+    dev = Device(AIEDevice.npu1_1col)
+    dev_block = Block.create_at_start(dev.body_region)
+    with InsertionPoint(dev_block):
+        external_func(
+            "merged",
+            inputs=[np.ndarray[(16,), np.dtype[np.int32]]],
+            link_with="merged.o",
+            link_with_mode="merge",
+        )
+        tile(0, 2)
+        end()
+
+
+# A mode with nothing to apply it to is a caller error, not a silent no-op.
+# CHECK-LABEL: TEST: link_with_mode_requires_link_with
+# CHECK: ValueError: external_func 'orphan': link_with_mode requires link_with to be set.
+# CHECK-NOT: func.func private @orphan
+@construct_and_print_module
+def link_with_mode_requires_link_with():
+    dev = Device(AIEDevice.npu1_1col)
+    dev_block = Block.create_at_start(dev.body_region)
+    with InsertionPoint(dev_block):
+        try:
+            external_func(
+                "orphan",
+                inputs=[np.ndarray[(16,), np.dtype[np.int32]]],
+                link_with_mode="merge",
+            )
+            raise AssertionError("expected ValueError")
+        except ValueError as e:
+            print("ValueError:", e)
+        tile(0, 2)
+        end()
+
+
+# "merge" is the only defined mode; anything else is rejected by name so a
+# typo can't silently degrade to object linking.
+# CHECK-LABEL: TEST: link_with_mode_rejects_unknown_value
+# CHECK: ValueError: external_func 'bogus_mode': invalid link_with_mode 'inline'; the only supported value is 'merge'.
+# CHECK-NOT: func.func private @bogus_mode
+@construct_and_print_module
+def link_with_mode_rejects_unknown_value():
+    dev = Device(AIEDevice.npu1_1col)
+    dev_block = Block.create_at_start(dev.body_region)
+    with InsertionPoint(dev_block):
+        try:
+            external_func(
+                "bogus_mode",
+                inputs=[np.ndarray[(16,), np.dtype[np.int32]]],
+                link_with="bogus.o",
+                link_with_mode="inline",
+            )
+            raise AssertionError("expected ValueError")
+        except ValueError as e:
+            print("ValueError:", e)
         tile(0, 2)
         end()

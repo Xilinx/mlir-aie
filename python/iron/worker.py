@@ -22,6 +22,7 @@ from ..dialects.aiex import (
     set_lock_value,
 )
 from ..helpers.dialects.scf import _for as range_
+from ..helpers.util import flatten_fn_args
 from .buffer import Buffer
 from .dataflow.endpoint import ObjectFifoEndpoint
 from .dataflow.objectfifo import ObjectFifo, ObjectFifoHandle
@@ -42,7 +43,7 @@ class Worker(ObjectFifoEndpoint):
         self,
         core_fn: Callable | None,
         fn_args: list | None = None,
-        tile: Tile | None = AnyComputeTile,
+        tile: Tile = AnyComputeTile,
         while_true: bool = True,
         stack_size: int | None = None,
         allocation_scheme: str | None = None,
@@ -50,7 +51,7 @@ class Worker(ObjectFifoEndpoint):
         trace_events: list | None = None,
         dynamic_objfifo_lowering: bool | None = None,
     ):
-        """Construct a Worker.
+        """Construct a Worker
 
         Args:
             core_fn (Callable | None): The task to run on a core. If None, a busy-loop (`while(true): pass`) core will be generated.
@@ -123,7 +124,9 @@ class Worker(ObjectFifoEndpoint):
         self._outgoing_cascades: list = []
 
         # Check arguments to the core. Some information is saved for resolution.
-        for arg in self.fn_args:
+        # fn_args may nest lists (e.g. one fifo per column); iterate the flattened
+        # leaves for registration while the core_fn still receives the structure.
+        for arg in flatten_fn_args(self.fn_args):
             if isinstance(arg, ObjectFifoHandle):
                 arg.endpoint = self
                 self._fifos.append(arg)
@@ -208,6 +211,15 @@ class Worker(ObjectFifoEndpoint):
         return self._tile
 
     @property
+    def flat_fn_args(self) -> list:
+        """fn_args with any nested lists/tuples flattened to their leaves.
+
+        Use this (not ``fn_args``) when iterating to register/resolve individual
+        arguments; ``fn_args`` keeps its structure for the core_fn call.
+        """
+        return list(flatten_fn_args(self.fn_args))
+
+    @property
     def fifos(self) -> list[ObjectFifoHandle]:
         """Returns a list of ObjectFifoHandles given to the Worker via fn_args.
 
@@ -268,9 +280,9 @@ class WorkerRuntimeBarrier:
         self.worker_locks = []
 
     def wait_for_value(self, value: int):
-        """Wait for the barrier to be set to `value`.
-
+        """
         Should be called from inside a core function.
+        Wait for the barrier to be set to `value`.
 
         Args:
             value (int): The value to wait for.
@@ -284,6 +296,14 @@ class WorkerRuntimeBarrier:
             )
         use_lock(self.worker_locks[-1], LockAction.Acquire, value=value)
 
+    def set(self, value: int):
+        """Set the barrier to ``value`` from within a runtime sequence body.
+
+        Args:
+            value (int): The value to set the barrier to.
+        """
+        _BarrierSetOp(self, value).resolve()
+
     def _add_worker_lock(self, lock):
         """Register an additional lock in the barrier."""
         self.worker_locks.append(lock)
@@ -294,7 +314,8 @@ class WorkerRuntimeBarrier:
             set_lock_value(worker_lock, value)
 
     def release_with_value(self, value: int):
-        """Release and decrement the barrier by `value` inside the core.
+        """
+        Release and decrement the barrier by `value` inside the core.
 
         Args:
             value (int): The value to decrement by in Release.

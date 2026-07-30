@@ -41,6 +41,12 @@ with full control over tile placement, data movement, and vectorized compute.
 <span class="iron-card-desc">Five short exercises — a working NPU design in minutes.</span>
 </a>
 
+<a class="iron-card" href="skills/agentic_programming/" markdown>
+<span class="iron-card-icon">🤖</span>
+<span class="iron-card-title">Agentic Programming</span>
+<span class="iron-card-desc">Agent Skills that teach a coding agent to port and optimize IRON designs.</span>
+</a>
+
 </div>
 
 ---
@@ -73,14 +79,21 @@ def vector_add_one(a_in: In, b_out: Out):
 
     w = Worker(core_fn, [of_in.cons(), of_out.prod()])
 
-    rt = Runtime()
-    with rt.sequence(np.ndarray[(1024,), np.dtype[np.int32]],
-                     np.ndarray[(1024,), np.dtype[np.int32]]) as (a, b):
-        rt.start(w)
-        rt.fill(of_in.prod(), a)
-        rt.drain(of_out.cons(), b, wait=True)
+    def sequence(a, b, in_h, out_h):
+        in_h.fill(a)
+        out_h.drain(b, wait=True)
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    rt = Runtime(
+        sequence,
+        [
+            np.ndarray[(1024,), np.dtype[np.int32]],
+            np.ndarray[(1024,), np.dtype[np.int32]],
+            of_in.prod(),
+            of_out.cons(),
+        ],
+    )
+
+    return Program(iron.get_current_device(), rt, workers=[w]).resolve_program()
 
 a = iron.arange(1024, dtype=np.int32, device="npu")
 b = iron.zeros(1024,  dtype=np.int32, device="npu")

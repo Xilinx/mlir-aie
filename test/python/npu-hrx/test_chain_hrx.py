@@ -4,8 +4,8 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 
-# RUN: %run_on_npu2% env NPU_RUNTIME=hrx %pytest %s
-# REQUIRES: hrx_python_bindings
+# RUN: env NPU_RUNTIME=hrx %pytest %s
+# REQUIRES: hrx_python_bindings, hrx_npu2
 
 """HRX multi-dispatch / chain (runlist) backend test.
 
@@ -62,12 +62,13 @@ def _add_one_design(input_buf: In, output_buf: Out, N: CompileTime[int]):
             of_out.release(1)
 
     worker = Worker(core_body, fn_args=[of_in.cons(), of_out.prod()])
-    rt = Runtime()
-    with rt.sequence(tensor_ty, tensor_ty) as (a, b):
-        rt.start(worker)
-        rt.fill(of_in.prod(), a)
-        rt.drain(of_out.cons(), b, wait=True)
-    return Program(iron.get_current_device(), rt).resolve_program()
+
+    def sequence(a, b, in_h, out_h):
+        in_h.fill(a)
+        out_h.drain(b, wait=True)
+
+    rt = Runtime(sequence, [tensor_ty, tensor_ty, of_in.prod(), of_out.cons()])
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 
 
 @compileconfig
@@ -78,9 +79,10 @@ def add_one(input_buf: In, output_buf: Out, *, N: CompileTime[int]):
 def _hrx_runtime():
     """The default NPU runtime, which is the HRX runtime under NPU_RUNTIME=hrx.
 
-    The RUN line forces ``NPU_RUNTIME=hrx`` (and the ``hrx_python_bindings``
-    REQUIRES gate keeps this off non-HRX hosts), so ``DefaultNPURuntime`` here is
-    the ``CachedHRXRuntime`` that provides the ``run_chain`` under test.
+    The RUN line forces ``NPU_RUNTIME=hrx``. The ``hrx_python_bindings`` and
+    ``hrx_npu2`` gates keep this off non-HRX or non-NPU2 hosts.
+    ``DefaultNPURuntime`` is therefore the ``CachedHRXRuntime`` that provides
+    the ``run_chain`` under test.
     """
     import aie.utils as u
 

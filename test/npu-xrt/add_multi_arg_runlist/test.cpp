@@ -23,7 +23,7 @@
 // run1 (ADDTWO) adds 2, taking run0's three outputs as its three inputs. Final
 // result for a correctly executed in-order chain is input + 3.
 
-constexpr int SIZE = 64;
+constexpr int BUF_SIZE = 64;
 constexpr int LANES = 3;
 
 int main(int argc, const char *argv[]) {
@@ -66,18 +66,18 @@ int main(int argc, const char *argv[]) {
   // Data buffers: 3 inputs to run0, 3 shared (run0 out -> run1 in), 3 outputs.
   std::vector<xrt::bo> bo_in0, bo_mid, bo_out1;
   for (int l = 0; l < LANES; l++) {
-    bo_in0.push_back(xrt::bo(device, SIZE * sizeof(int32_t),
+    bo_in0.push_back(xrt::bo(device, BUF_SIZE * sizeof(int32_t),
                              XRT_BO_FLAGS_HOST_ONLY, kernel0.group_id(3)));
-    bo_mid.push_back(xrt::bo(device, SIZE * sizeof(int32_t),
+    bo_mid.push_back(xrt::bo(device, BUF_SIZE * sizeof(int32_t),
                              XRT_BO_FLAGS_HOST_ONLY, kernel0.group_id(4)));
-    bo_out1.push_back(xrt::bo(device, SIZE * sizeof(int32_t),
+    bo_out1.push_back(xrt::bo(device, BUF_SIZE * sizeof(int32_t),
                               XRT_BO_FLAGS_HOST_ONLY, kernel1.group_id(4)));
   }
 
   // Initialize inputs: lane l holds i + l.
   for (int l = 0; l < LANES; l++) {
     uint32_t *p = bo_in0[l].map<uint32_t *>();
-    for (int i = 0; i < SIZE; i++)
+    for (int i = 0; i < BUF_SIZE; i++)
       p[i] = i + l;
     bo_in0[l].sync(XCL_BO_SYNC_BO_TO_DEVICE);
   }
@@ -121,7 +121,7 @@ int main(int argc, const char *argv[]) {
   for (int l = 0; l < LANES; l++) {
     bo_out1[l].sync(XCL_BO_SYNC_BO_FROM_DEVICE);
     uint32_t *p = bo_out1[l].map<uint32_t *>();
-    for (int i = 0; i < SIZE; i++) {
+    for (int i = 0; i < BUF_SIZE; i++) {
       uint32_t ref = (i + l) + 1 + 2;
       if (p[i] != ref) {
         if (errors < 16)

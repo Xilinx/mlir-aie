@@ -386,7 +386,22 @@ def AIELowerSetLock : Pass<"aie-lower-set-lock", "AIE::DeviceOp"> {
 }
 
 def AIELowerDmaChannelReset : Pass<"aie-lower-dma-channel-reset", "AIE::DeviceOp"> {
-  let summary = "Lowers all aiex.dma_channel_reset operations to npu.maskwrite32";
+  let summary = "Lowers aiex.dma_channel_reset(_for) to npu.maskwrite32 + re-arm";
+  let description = [{
+    Two concerns, one pass (kept together like the other reset lowerings):
+
+    - Each `aiex.dma_channel_reset_for @fifo` is first expanded, via the fifo's
+      `aie.objectfifo_rearm_binding`, into the resident re-arm of its non-shim
+      channels: an `aiex.dma_channel_reset` per channel, an `aiex.set_lock` per
+      producer/consumer lock, and an `aiex.npu.push_queue` START_QUEUE re-push
+      per channel (head BD id + repeat read straight off the binding, populated
+      by `--aie-assign-bd-ids`).
+    - Every `aiex.dma_channel_reset` -- standalone or just emitted above -- is
+      then lowered to the `aiex.npu.maskwrite32` reset pulse.
+
+    The emitted `set_lock` / `push_queue` are lowered later by
+    `--aie-lower-set-lock` / `--aie-dma-to-npu`, so run this before them.
+  }];
   let constructor = "xilinx::AIEX::createAIELowerDmaChannelResetPass()";
   let dependentDialects = [
     "mlir::arith::ArithDialect",
@@ -400,6 +415,17 @@ def AIELowerCoreReset : Pass<"aie-lower-core-reset", "AIE::DeviceOp"> {
   let constructor = "xilinx::AIEX::createAIELowerCoreResetPass()";
   let dependentDialects = [
     "mlir::arith::ArithDialect",
+    "xilinx::AIE::AIEDialect",
+    "xilinx::AIEX::AIEXDialect",
+  ];
+}
+
+def AIEVerifyRuntimeRearm : Pass<"aie-verify-runtime-rearm", "AIE::DeviceOp"> {
+  let summary = "Experimental, opt-in: reject an aiex.dma_channel_reset whose "
+                "objectFIFO lock is never re-armed (a necessary, not sufficient, "
+                "condition for a safe reset)";
+  let constructor = "xilinx::AIEX::createAIEVerifyRuntimeRearmPass()";
+  let dependentDialects = [
     "xilinx::AIE::AIEDialect",
     "xilinx::AIEX::AIEXDialect",
   ];

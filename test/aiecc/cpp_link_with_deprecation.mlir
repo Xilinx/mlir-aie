@@ -12,9 +12,13 @@
 // RUN: aie-opt --aie-assign-core-link-files %s | FileCheck %s --check-prefix=MIGRATED
 
 // Verify the pass migrated the deprecated core-level attr into link_files and
-// removed link_with from the core.
+// removed link_with from the core.  It must never reach link_merge_files: only
+// a func.func declaration can carry link_with_mode, so the deprecated
+// core-level attribute has no way to request merging.
+// MIGRATED-NOT: link_merge_files
 // MIGRATED:     link_files = ["legacy.o"]
 // MIGRATED-NOT: link_with = "legacy.o"
+// MIGRATED-NOT: link_merge_files
 
 module {
   aie.device(npu1_1col) {

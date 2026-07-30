@@ -17,22 +17,22 @@ to ship pre-compiled binaries — without having to change how the design
 is decorated.
 """
 
-from typing import Any
+import numpy as np
 
 import aie.iron as iron
-import numpy as np
-from aie.helpers.taplib import TensorAccessPattern, TensorTiler2D
 from aie.iron import (
     CompileTime,
     In,
-    ObjectFifo,
     Out,
+    ObjectFifo,
     Program,
     Runtime,
+    TaskGroup,
     Worker,
     kernels,
 )
 from aie.iron.controlflow import range_
+from aie.helpers.taplib import TensorAccessPattern, TensorTiler2D
 from aie.utils.verify import assert_pass
 
 # Tile size moved to/from the compute cores via mem tiles.
@@ -104,8 +104,7 @@ def matrix_multiplication_single_core(
         strides=[r * n, t, r * t, 1],
     )
     fifo_C_L2L3 = fifo_C_L1L2.cons().forward(
-        dims_to_stream=list(tap_C_L1L2.transformation_dims),
-        name="C_L2L3",
+        dims_to_stream=tap_C_L1L2.transformation_dims, name="C_L2L3"
     )
 
     def core_fn(of_a, of_b, of_c, matmul):
@@ -137,29 +136,25 @@ def matrix_multiplication_single_core(
     )[0]
     c_taps = TensorTiler2D.group_tiler((M, N), (m, n), (1, N // n))
 
-    rt = Runtime()
-    with rt.sequence(A_ty, B_ty, C_ty) as (
-        A,
-        B,
-        C,
-    ):
-        rt.start(worker)
+    def sequence(A, B, C, a_prod, b_prod, c_cons):
         for tile_row in range(M // m):
-            task_group = rt.task_group()
-            rt.fill(fifo_A_L3L2.prod(), A, tap=a_taps[tile_row], task_group=task_group)
-            rt.fill(fifo_B_L3L2.prod(), B, tap=b_tap, task_group=task_group)
-            rt.drain(
-                fifo_C_L2L3.cons(),
+            task_group = TaskGroup()
+            a_prod.fill(A, tap=a_taps[tile_row], group=task_group)
+            b_prod.fill(B, tap=b_tap, group=task_group)
+            c_cons.drain(
                 C,
                 tap=c_taps[tile_row],
-                task_group=task_group,
+                group=task_group,
                 wait=True,
             )
-            rt.finish_task_group(task_group)
+            task_group.finish()
 
-    device = iron.get_current_device()
-    assert device is not None
-    return Program(device, rt).resolve_program()
+    rt = Runtime(
+        sequence,
+        [A_ty, B_ty, C_ty, fifo_A_L3L2.prod(), fifo_B_L3L2.prod(), fifo_C_L2L3.cons()],
+    )
+
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 
 
 def aot_compile(M: int, K: int, N: int, element_type) -> None:
@@ -196,7 +191,7 @@ def run_and_verify(M: int, K: int, N: int, element_type) -> None:
 
 
 def main():
-    shapes: list[dict[str, Any]] = [
+    shapes = [
         dict(M=256, K=256, N=256, element_type=np.int16),
         dict(M=512, K=512, N=512, element_type=np.int16),
     ]

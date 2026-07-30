@@ -14,10 +14,12 @@ legalize the bfp16ebs8 mac intrinsics.
 import argparse
 from pathlib import Path
 
-import aie.iron as iron
 import numpy as np
+
 from aie.dialects.aiex import v8bfp16ebs8
 from aie.helpers.taplib import TensorTiler2D
+
+import aie.iron as iron
 from aie.iron import (
     CompileTime,
     ExternalFunction,
@@ -26,12 +28,13 @@ from aie.iron import (
     Out,
     Program,
     Runtime,
+    TaskGroup,
     Worker,
 )
 from aie.iron.controlflow import range_
 from aie.utils.hostruntime.argparse import (
-    add_compile_args,
     device_from_args,
+    add_compile_args,
 )
 from aie.utils.hostruntime.cli import run_design_cli
 
@@ -128,9 +131,8 @@ def single_core_matmul(
     )
     c_index = 0
 
-    rt = Runtime()
-    with rt.sequence(A_ty, B_ty, C_ty) as (a, b, c):
-        rt.start(worker)
+    def sequence(a, b, c, inA_h, inB_h, outC_h):
+        nonlocal c_index
         tgs = []
         for tile_row_block in range(iron.ceildiv(M_div_m, rows_per_block)):
             for pingpong in [0, 1]:
@@ -140,24 +142,25 @@ def single_core_matmul(
                 num_tile_rows = min([rows_per_block // 2, M_div_m - row_base])
                 if num_tile_rows <= 0:
                     break
-                tgs.append(rt.task_group())
+                tgs.append(TaskGroup())
                 for tile_row in range(num_tile_rows):
                     tile_offset = (row_base + tile_row) % len(A_tiles)
-                    rt.fill(inA.prod(), a, tap=A_tiles[tile_offset], task_group=tgs[-1])
-                    rt.fill(inB.prod(), b, tap=b_tap, task_group=tgs[-1])
-                rt.drain(
-                    outC.cons(), c, tap=C_tiles[c_index], task_group=tgs[-1], wait=True
-                )
+                    inA_h.fill(a, tap=A_tiles[tile_offset], group=tgs[-1])
+                    inB_h.fill(b, tap=b_tap, group=tgs[-1])
+                outC_h.drain(c, tap=C_tiles[c_index], group=tgs[-1], wait=True)
                 c_index += 1
                 if tile_row_block > 0 or (tile_row_block == 0 and pingpong > 0):
-                    rt.finish_task_group(tgs[-2])
+                    tgs[-2].finish()
                     del tgs[-2]
-        rt.finish_task_group(tgs[-1])
+        tgs[-1].finish()
         del tgs[-1]
 
-    device = iron.get_current_device()
-    assert device is not None
-    return Program(device, rt).resolve_program()
+    rt = Runtime(
+        sequence,
+        [A_ty, B_ty, C_ty, inA.prod(), inB.prod(), outC.cons()],
+    )
+
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 
 
 def _make_argparser():

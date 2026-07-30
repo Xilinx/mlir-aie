@@ -12,8 +12,9 @@ time via ``passThroughLine`` (``-DBIT_WIDTH=8`` from
 
 import argparse
 
-import aie.iron as iron
 import numpy as np
+
+import aie.iron as iron
 from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker, kernels
 from aie.utils.hostruntime.argparse import add_compile_args
 from aie.utils.hostruntime.cli import run_design_cli
@@ -47,15 +48,16 @@ def vision_passthrough(
 
     worker = Worker(passthrough_fn, [of_in.cons(), of_out.prod(), pass_through_line])
 
-    rt = Runtime()
-    with rt.sequence(tensor_ty, tensor_ty, tensor_ty) as (a, _, b):
-        rt.start(worker)
-        rt.fill(of_in.prod(), a)
-        rt.drain(of_out.cons(), b, wait=True)
+    def sequence(a, _, b, in_prod, out_cons):
+        in_prod.fill(a)
+        out_cons.drain(b, wait=True)
 
-    device = iron.get_current_device()
-    assert device is not None
-    return Program(device, rt).resolve_program()
+    rt = Runtime(
+        sequence,
+        [tensor_ty, tensor_ty, tensor_ty, of_in.prod(), of_out.cons()],
+    )
+
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 
 
 def _make_argparser():

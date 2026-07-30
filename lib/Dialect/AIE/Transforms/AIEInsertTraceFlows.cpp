@@ -209,9 +209,8 @@ struct AIEInsertTraceFlowsPass
     // function of the active trace tile set.
     llvm::DenseMap<Operation *, int> autoPacketIds;
     {
-      // Hardware packet IDs are 5 bits (0..31). Silently wrapping past
-      // 31 would alias two traces onto the same id.
-      constexpr int kMaxPacketId = 31;
+      // Wrapping past the max would alias two traces onto the same id.
+      const int kMaxPacketId = device.getTargetModel().getMaxPacketId();
 
       // First pass: bucket traces and collect explicit ids. An explicit
       // id reserves a slot the auto-allocator must avoid, and two

@@ -9,11 +9,10 @@ Default config: ``M=K=288``, kernel tile ``m=k=32``, vectorized mv kernel.
 """
 
 import argparse
-from collections.abc import Sequence
+
+import numpy as np
 
 import aie.iron as iron
-import numpy as np
-from aie.helpers.taplib import TensorTiler2D
 from aie.iron import (
     CompileTime,
     In,
@@ -25,6 +24,7 @@ from aie.iron import (
     kernels,
 )
 from aie.iron.controlflow import range_
+from aie.helpers.taplib import TensorTiler2D
 from aie.utils.benchmark import run_iters
 from aie.utils.hostruntime.argparse import add_benchmark_args, add_compile_args
 from aie.utils.hostruntime.cli import run_design_cli
@@ -67,9 +67,7 @@ def matrix_vector(
     # (see aie_kernels/aie2/mv.cc): for 2-byte elements the transpose
     # granularity is 2 elements, packing rows of each 2-column word slowly,
     # m rows then the next 2-col word.
-    a_dims_from_stream: list[Sequence[int]] | None = (
-        [(m, 2), (k // 2, 2 * m), (2, 1)] if vectorized else None
-    )
+    a_dims_from_stream = [(m, 2), (k // 2, 2 * m), (2, 1)] if vectorized else None
 
     def core_fn(of_a, of_b, of_c, zero, matvec):
         elem_out = of_c.acquire(1)
@@ -113,21 +111,21 @@ def matrix_vector(
         (1, K), pattern_repeat=M_div_m_div_n_cores, prune_step=False
     )[0]
 
-    rt = Runtime()
-    with rt.sequence(A_ty, B_ty, C_ty) as (
-        a_in,
-        b_in,
-        c_out,
-    ):
-        rt.start(*workers)
-        rt.fill(B_fifo.prod(), b_in, b_tap)
-        for i, (a_tap, c_tap) in enumerate(zip(A_taps, C_taps)):
-            rt.fill(memA_fifos[i].prod(), a_in, a_tap)
-            rt.drain(outC_fifos[i].cons(), c_out, c_tap, wait=True)
+    memA_prods = [f.prod() for f in memA_fifos]
+    outC_cons = [f.cons() for f in outC_fifos]
 
-    device = iron.get_current_device()
-    assert device is not None
-    return Program(device, rt).resolve_program()
+    def sequence(a_in, b_in, c_out, b_h, memA_hs, outC_hs):
+        b_h.fill(b_in, b_tap)
+        for i, (a_tap, c_tap) in enumerate(zip(A_taps, C_taps)):
+            memA_hs[i].fill(a_in, a_tap)
+            outC_hs[i].drain(c_out, c_tap, wait=True)
+
+    rt = Runtime(
+        sequence,
+        [A_ty, B_ty, C_ty, B_fifo.prod(), memA_prods, outC_cons],
+    )
+
+    return Program(iron.get_current_device(), rt, workers=workers).resolve_program()
 
 
 def _make_argparser():

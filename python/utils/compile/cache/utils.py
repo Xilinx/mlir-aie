@@ -9,6 +9,8 @@ import contextlib
 import hashlib
 import os
 import pickle
+import queue
+import threading
 import time
 
 # Cross-platform file locking:
@@ -20,6 +22,10 @@ else:
     import fcntl
 
 from aie.utils.hostruntime.tensor_class import Tensor
+
+# Windows has no indefinite blocking lock -- msvcrt.locking's LK_LOCK gives up
+# after ~10s -- so that platform waits by retrying.  See _wait_for_lock.
+_LOCK_POLL_SECONDS = 0.005
 
 
 def _cell_val_to_key(val):
@@ -198,6 +204,77 @@ def _create_function_cache_key(function, args, kwargs, *, extra_key=()):
     return (*key, extra_key) if extra_key else key
 
 
+def _blocking_acquire(lock_file_path):
+    """Block until the lock is ours, returning the holding file object.
+
+    POSIX only: `flock` without LOCK_NB parks the caller in the kernel until the
+    holder releases, so there is nothing to poll and no handoff delay.
+    """
+    lock_file = open(lock_file_path, "a+")
+    try:
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+    except OSError:
+        lock_file.close()
+        raise
+    return lock_file
+
+
+def _wait_for_lock(lock_file_path, timeout_seconds):
+    """Wait out a held lock, honouring `timeout_seconds`, and return the lock.
+
+    On POSIX the wait happens inside a blocking `flock` on a helper thread, so
+    the kernel wakes us the instant the holder releases rather than us guessing
+    when to look. The timeout then applies to the handoff instead of to a poll
+    interval. Windows has no indefinite blocking lock, so it retries.
+    """
+    if os.name == "nt":
+        deadline = time.time() + timeout_seconds
+        lock_file = open(lock_file_path, "a+")
+        while not _try_acquire_lock(lock_file):
+            if time.time() > deadline:
+                lock_file.close()
+                raise TimeoutError(
+                    f"Could not acquire lock on {lock_file_path} within "
+                    f"{timeout_seconds} seconds"
+                )
+            time.sleep(_LOCK_POLL_SECONDS)
+        return lock_file
+
+    handoff = queue.Queue()
+    cancelled = threading.Event()
+    # The waiter's cancelled-check and its handoff must be atomic against the
+    # timeout below.  Otherwise the thread can win the lock in the instant the
+    # caller gives up, hand it to nobody, and hold it until the process exits.
+    state = threading.Lock()
+
+    def waiter():
+        try:
+            acquired = _blocking_acquire(lock_file_path)
+        except OSError:
+            return
+        with state:
+            if not cancelled.is_set():
+                handoff.put(acquired)
+                return
+        _release_lock(acquired)
+        acquired.close()
+
+    threading.Thread(target=waiter, name="aie-jit-cache-lock", daemon=True).start()
+    try:
+        return handoff.get(timeout=timeout_seconds)
+    except queue.Empty:
+        with state:
+            cancelled.set()
+            while not handoff.empty():  # it may have landed as we gave up
+                late = handoff.get_nowait()
+                _release_lock(late)
+                late.close()
+        raise TimeoutError(
+            f"Could not acquire lock on {lock_file_path} within "
+            f"{timeout_seconds} seconds"
+        )
+
+
 @contextlib.contextmanager
 def file_lock(lock_file_path, timeout_seconds=60):
     """Context manager for file locking using flock to prevent race conditions.
@@ -217,19 +294,12 @@ def file_lock(lock_file_path, timeout_seconds=60):
             pass  # File already exists
         lock_file = open(lock_file_path, "a+")
 
-        # Try to acquire exclusive lock with timeout
-        start_time = time.time()
-        while True:
-            try:
-                if _try_acquire_lock(lock_file):
-                    break
-            except OSError:
-                # Lock is held by another process
-                if time.time() - start_time > timeout_seconds:
-                    raise TimeoutError(
-                        f"Could not acquire lock on {lock_file_path} within {timeout_seconds} seconds"
-                    )
-                time.sleep(0.1)
+        if not _try_acquire_lock(lock_file):
+            # Drop our handle before waiting, and clear it first: the waiter can
+            # raise, and the cleanup below must not touch a closed file.
+            closed, lock_file = lock_file, None
+            closed.close()
+            lock_file = _wait_for_lock(lock_file_path, timeout_seconds)
 
         yield lock_file
 

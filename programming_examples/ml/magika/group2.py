@@ -15,19 +15,17 @@ as a direct-stream connection.
 import argparse
 from pathlib import Path
 
-import aie.iron as iron
 import numpy as np
-from aie.dialects._aie_enum_gen import AIETileType
+
+import aie.iron as iron
 from aie.iron import Buffer, CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker
 from aie.iron.controlflow import range_
 from aie.iron.device import Tile
+from aie.utils.hostruntime.argparse import device_from_args
 from aie.iron.kernel import ExternalFunction
+from aie.dialects._aie_enum_gen import AIETileType
 from aie.utils.config import cxx_header_path
-from aie.utils.hostruntime.argparse import (
-    add_compile_args,
-    add_trace_arg,
-    device_from_args,
-)
+from aie.utils.hostruntime.argparse import add_compile_args, add_trace_arg
 from aie.utils.hostruntime.cli import run_design_cli
 
 _THIS_DIR = Path(__file__).parent
@@ -64,6 +62,7 @@ def group2(
     # Tile placement matches the dialect-direct original (col=1, row=3).
     # LUTs are spread across the 4 neighboring tiles for memory capacity.
     shim_tile = Tile(col=1, row=0, tile_type=AIETileType.ShimNOCTile)
+    mem_tile = Tile(col=1, row=1, tile_type=AIETileType.MemTile)
     compute_tile = Tile(col=1, row=3, tile_type=AIETileType.CoreTile)
     south_tile = Tile(col=1, row=2, tile_type=AIETileType.CoreTile)
     north_tile = Tile(col=1, row=4, tile_type=AIETileType.CoreTile)
@@ -136,17 +135,25 @@ def group2(
         while_true=False,
     )
 
-    rt = Runtime()
-    with rt.sequence(din_ty, scalar_ty, dout_ty) as (a, _b, c):
-        if trace_size > 0:
-            rt.enable_trace(trace_size)
-        rt.start(worker)
-        rt.fill(of_din_L3L2.prod(), a, tile=shim_tile)
-        rt.drain(of_dout_L1L3.cons(), c, tile=shim_tile, wait=True)
+    def sequence(a, _b, c, in_prod, out_cons):
+        in_prod.fill(a)
+        out_cons.drain(c, wait=True)
 
-    device = iron.get_current_device()
-    assert device is not None
-    return Program(device, rt).resolve_program()
+    rt = Runtime(
+        sequence,
+        [
+            din_ty,
+            scalar_ty,
+            dout_ty,
+            of_din_L3L2.prod(tile=shim_tile),
+            of_dout_L1L3.cons(tile=shim_tile),
+        ],
+    )
+    prog = Program(iron.get_current_device(), rt, workers=[worker])
+    if trace_size > 0:
+        prog.enable_trace(trace_size)
+
+    return prog.resolve_program()
 
 
 def _make_argparser():

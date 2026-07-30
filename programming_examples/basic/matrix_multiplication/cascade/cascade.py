@@ -12,9 +12,9 @@ writes the final C tile to L2.
 
 import argparse
 
-import aie.iron as iron
 import numpy as np
-from aie.helpers.taplib import TensorTiler2D
+
+import aie.iron as iron
 from aie.iron import (
     Buffer,
     CascadeFlow,
@@ -24,12 +24,14 @@ from aie.iron import (
     Out,
     Program,
     Runtime,
+    TaskGroup,
     Worker,
     kernels,
     str_to_dtype,
 )
 from aie.iron.controlflow import range_
 from aie.iron.device import Tile, from_name
+from aie.helpers.taplib import TensorTiler2D
 from aie.utils.benchmark import run_iters
 from aie.utils.hostruntime.argparse import (
     add_benchmark_args,
@@ -104,7 +106,7 @@ def cascade(
         ObjectFifo(A_l2_ty, name=f"A_L3L2_{col}", depth=fifo_depth)
         for col in range(n_aie_cols)
     ]
-    A_l2l1_fifos = []
+    A_l2l1_fifos = [None] * n_aie_rows
     for col in range(n_aie_cols):
         start_row = col * n_A_tiles_per_shim
         of_offsets = [m * k * j for j in range(n_A_tiles_per_shim)]
@@ -127,16 +129,15 @@ def cascade(
                 tile=Tile(col, 1),
             )
         )
-        A_l2l1_fifos.extend(fifos)
+        for j, f in enumerate(fifos):
+            A_l2l1_fifos[start_row + j] = f
 
     # B: shim → mem → distribute across rows within a column
     B_l3l2_fifos = [
         ObjectFifo(B_l2_ty, name=f"B_L3L2_{col}", depth=fifo_depth)
         for col in range(n_aie_cols)
     ]
-    # Indexed [col][row]: split() returns one handle per row for each column,
-    # so appending each column's row-list keeps this sentinel-free.
-    B_l2l1_fifos = []
+    B_l2l1_fifos = [[None] * n_aie_cols for _ in range(n_aie_rows)]
     for col in range(n_aie_cols):
         of_offsets = [k * n * row for row in range(n_aie_rows)]
         b_dims = [(k // s, s * n), (n // t, t), (s, n), (t, 1)]
@@ -151,7 +152,8 @@ def cascade(
                 tile=Tile(col, 1),
             )
         )
-        B_l2l1_fifos.append(list(fifos))
+        for row in range(n_aie_rows):
+            B_l2l1_fifos[row][col] = fifos[row]
 
     # C output (row 0 only): L1 → mem → shim.  Only one producer per column,
     # so this is a simple forward chain with the L2→L3 dim transform applied
@@ -214,16 +216,14 @@ def cascade(
                 in_a.release(1)
                 in_b.release(1)
 
-    workers: list[list[Worker | None]] = [
-        [None] * n_aie_cols for _ in range(n_aie_rows)
-    ]
+    workers = [[None] * n_aie_cols for _ in range(n_aie_rows)]
     for col in range(n_aie_cols):
         # Row 0 (top — get_only, zeroes + writes C)
         workers[0][col] = Worker(
             _row0_fn,
             [
                 A_l2l1_fifos[0].cons(),
-                B_l2l1_fifos[col][0].cons(),
+                B_l2l1_fifos[0][col].cons(),
                 C_l1l2_fifos[col].prod(),
                 zero_kernel,
                 matmul_get_only,
@@ -240,7 +240,7 @@ def cascade(
                 _row_mid_fn,
                 [
                     A_l2l1_fifos[row].cons(),
-                    B_l2l1_fifos[col][row].cons(),
+                    B_l2l1_fifos[row][col].cons(),
                     c_buf,
                     matmul_put_get,
                 ],
@@ -252,7 +252,7 @@ def cascade(
             _row_bot_fn,
             [
                 A_l2l1_fifos[n_aie_rows - 1].cons(),
-                B_l2l1_fifos[col][n_aie_rows - 1].cons(),
+                B_l2l1_fifos[n_aie_rows - 1][col].cons(),
                 c_buf_bot,
                 matmul_put_only,
             ],
@@ -262,10 +262,7 @@ def cascade(
     # Cascade edges: row 3 → row 2 → row 1 → row 0 (within each column).
     for col in range(n_aie_cols):
         for row in range(n_aie_rows - 1, 0, -1):
-            CascadeFlow(
-                workers[row][col],  # pyright: ignore[reportArgumentType]
-                workers[row - 1][col],  # pyright: ignore[reportArgumentType]
-            )
+            CascadeFlow(workers[row][col], workers[row - 1][col])
 
     flat_workers = [w for row in workers for w in row]
 
@@ -305,49 +302,47 @@ def cascade(
         prune_step=False,
     )
 
-    rt = Runtime()
-    with rt.sequence(A_ty, B_ty, C_ty) as (
-        a_rt,
-        b_rt,
-        c_rt,
-    ):
-        rt.start(*flat_workers)  # pyright: ignore[reportArgumentType]
+    # Move the shim-tile placement onto the handles (fill/drain no longer take
+    # tile=); one prod/cons handle per column, passed as fn_args lists.
+    A_prods = [f.prod(tile=Tile(col, 0)) for col, f in enumerate(A_l3l2_fifos)]
+    B_prods = [f.prod(tile=Tile(col, 0)) for col, f in enumerate(B_l3l2_fifos)]
+    C_conses = [f.cons(tile=Tile(col, 0)) for col, f in enumerate(C_l2l3_fifos)]
 
+    def sequence(A, B, C, A_hs, B_hs, C_hs):
         c_index = 0
         for tb in range(iron.ceildiv(M // m, tb_max_n_rows)):
             tb_n_rows = min([tb_max_n_rows, M // m - tb * tb_max_n_rows])
-            tg = rt.task_group()
+            tg = TaskGroup()
             for col in range(n_aie_cols):
-                rt.drain(
-                    C_l2l3_fifos[col].cons(),
-                    c_rt,
+                C_hs[col].drain(
+                    C,
                     tap=C_taps[c_index],
                     wait=True,
-                    task_group=tg,
-                    tile=Tile(col, 0),
+                    group=tg,
                 )
                 c_index += 1
                 for tile_row in range(tb_n_rows):
                     a_idx = ((tb * tb_max_n_rows) + tile_row) * n_aie_cols + col
-                    rt.fill(
-                        A_l3l2_fifos[col].prod(),
-                        a_rt,
+                    A_hs[col].fill(
+                        A,
                         tap=A_taps[a_idx],
-                        task_group=tg,
-                        tile=Tile(col, 0),
+                        group=tg,
                     )
-                    rt.fill(
-                        B_l3l2_fifos[col].prod(),
-                        b_rt,
+                    B_hs[col].fill(
+                        B,
                         tap=B_taps[col],
-                        task_group=tg,
-                        tile=Tile(col, 0),
+                        group=tg,
                     )
-            rt.finish_task_group(tg)
+            tg.finish()
 
-    device = iron.get_current_device()
-    assert device is not None
-    return Program(device, rt).resolve_program()
+    rt = Runtime(
+        sequence,
+        [A_ty, B_ty, C_ty, A_prods, B_prods, C_conses],
+    )
+
+    return Program(
+        iron.get_current_device(), rt, workers=flat_workers
+    ).resolve_program()
 
 
 def _make_argparser():

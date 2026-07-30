@@ -63,13 +63,13 @@ def distribute_and_join_L2(a_in: In, c_out: Out):
         Worker(core_fn, [of_ins[w].cons(), of_outs[w].prod()]) for w in range(n_workers)
     ]
 
-    rt = Runtime()
-    with rt.sequence(data_ty, data_ty) as (a, c):
-        rt.start(*workers)
-        rt.fill(of_in.prod(), a)
-        rt.drain(of_out.cons(), c, wait=True)
+    def sequence(a, c, in_h, out_h):
+        in_h.fill(a)
+        out_h.drain(c, wait=True)
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    rt = Runtime(sequence, [data_ty, data_ty, of_in.prod(), of_out.cons()])
+
+    return Program(iron.get_current_device(), rt, workers=workers).resolve_program()
 
 
 def _run_and_verify(opts):

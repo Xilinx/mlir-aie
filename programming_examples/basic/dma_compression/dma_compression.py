@@ -16,40 +16,9 @@ to size asymmetric BDs so neither side hangs on a length mismatch.
 import os
 import sys
 
-import aie.iron as iron
 import numpy as np
-from aie.dialects._aie_enum_gen import AIETileType
-from aie.dialects.aie import (
-    AIEDevice,  # pyright: ignore[reportAttributeAccessIssue]
-    DMAChannelDir,  # pyright: ignore[reportAttributeAccessIssue]
-    LockAction,  # pyright: ignore[reportAttributeAccessIssue]
-    WireBundle,  # pyright: ignore[reportAttributeAccessIssue]
-    buffer,
-    core,
-    device,
-    dma_bd,
-    dma_start,
-    flow,
-    lock,
-    mem,
-    next_bd,
-    shim_dma_allocation,  # pyright: ignore[reportAttributeAccessIssue]
-    tile,
-    use_lock,
-)
-from aie.dialects.aie import (
-    end as aie_end,  # pyright: ignore[reportAttributeAccessIssue]
-)
-from aie.dialects.aiex import (
-    dma_await_task,
-    dma_start_task,
-    npu_maskwrite32,
-    runtime_sequence,
-    shim_dma_single_bd_task,
-)
-from aie.extras.context import mlir_mod_ctx
-from aie.helpers.dialects.func import func
-from aie.helpers.taplib.tap import TensorAccessPattern
+
+import aie.iron as iron
 from aie.iron import (
     CompileTime,
     ExternalFunction,
@@ -61,7 +30,37 @@ from aie.iron import (
     Worker,
 )
 from aie.iron.controlflow import range_
+from aie.helpers.dialects.func import func
 from aie.iron.device import Tile
+from aie.helpers.taplib.tap import TensorAccessPattern
+from aie.dialects._aie_enum_gen import AIETileType
+from aie.dialects.aie import (
+    device,
+    tile,
+    buffer,
+    lock,
+    mem,
+    dma_start,
+    dma_bd,
+    next_bd,
+    use_lock,
+    flow,
+    end as aie_end,
+    core,
+    AIEDevice,
+    DMAChannelDir,
+    LockAction,
+    WireBundle,
+    shim_dma_allocation,
+)
+from aie.dialects.aiex import (
+    npu_maskwrite32,
+    runtime_sequence,
+    shim_dma_single_bd_task,
+    dma_start_task,
+    dma_await_task,
+)
+from aie.extras.context import mlir_mod_ctx
 
 N = 4096
 LINE_SIZE = 1024
@@ -196,16 +195,14 @@ def _build_multi_cmp_only():
             with block[6]:
                 aie_end()
 
-    current_device = iron.get_current_device()
-    assert current_device is not None
-    resolved = current_device.resolve()
+    resolved = iron.get_current_device().resolve()
     aie_dev = (
         AIEDevice.npu2_1col
         if resolved in (AIEDevice.npu2, AIEDevice.npu2_1col)
         else AIEDevice.npu1_1col
     )
 
-    with mlir_mod_ctx() as ctx:  # pyright: ignore[reportGeneralTypeIssues]
+    with mlir_mod_ctx() as ctx:
 
         @device(aie_dev)
         def _dev():
@@ -293,24 +290,18 @@ def _build_regdump():
 
     worker = Worker(regdump_core, [of_out.prod(), dump_fn], tile=compute_tile)
 
-    rt = Runtime()
-    with rt.sequence(vec_ty, vec_ty) as (a_in, c_out):
+    def sequence(a_in, c_out, out_h):
+        npu_maskwrite32(
+            column=COL,
+            row=COMPUTE_ROW,
+            address=CORE_PROCESSOR_BUS_EN,
+            value=0x1,
+            mask=0x1,
+        )
+        out_h.drain(c_out, wait=True)
 
-        def enable_processor_bus():
-            npu_maskwrite32(
-                column=COL,
-                row=COMPUTE_ROW,
-                address=CORE_PROCESSOR_BUS_EN,
-                value=0x1,
-                mask=0x1,
-            )
-
-        rt.inline_ops(enable_processor_bus, [])
-        rt.start(worker)
-        rt.drain(of_out.cons(), c_out, wait=True)
-    device = iron.get_current_device()
-    assert device is not None
-    return Program(device, rt).resolve_program()
+    rt = Runtime(sequence, [vec_ty, vec_ty, of_out.cons()])
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 
 
 @iron.jit
@@ -382,29 +373,22 @@ def dma_compression(
             tile=compute_tile,
         )
 
-        rt = Runtime()
-        with rt.sequence(vec_ty, vec_ty) as (a_in, c_out):
+        def sequence(a_in, c_out, in_h, out_h):
+            if engage_compress:
+                # CT(0,2) MM2S compress (sends compressed bytes to consumer)
+                _maskwrite_compress(COMPUTE_ROW, CT_BD1_BASE, BD_MM2S, CT_MM2S0_CTRL)
+            if engage_decompress:
+                # Consumer tile S2MM decompress (receives compressed bytes)
+                _maskwrite_compress(
+                    consumer_row, consumer_bd_base, BD_S2MM, consumer_s2mm_ctrl
+                )
+            in_h.fill(a_in)
+            out_h.drain(c_out, tap=out_tap_rt, wait=True)
 
-            def configure_compression_roundtrip():
-                if engage_compress:
-                    # CT(0,2) MM2S compress (sends compressed bytes to consumer)
-                    _maskwrite_compress(
-                        COMPUTE_ROW, CT_BD1_BASE, BD_MM2S, CT_MM2S0_CTRL
-                    )
-                if engage_decompress:
-                    # Consumer tile S2MM decompress (receives compressed bytes)
-                    _maskwrite_compress(
-                        consumer_row, consumer_bd_base, BD_S2MM, consumer_s2mm_ctrl
-                    )
-
-            if engage_compress or engage_decompress:
-                rt.inline_ops(configure_compression_roundtrip, [])
-            rt.start(ct_worker)
-            rt.fill(of_a.prod(), a_in)
-            rt.drain(of_c.cons(), c_out, tap=out_tap_rt, wait=True)
-        device = iron.get_current_device()
-        assert device is not None
-        return Program(device, rt).resolve_program()
+        rt = Runtime(sequence, [vec_ty, vec_ty, of_a.prod(), of_c.cons()])
+        return Program(
+            iron.get_current_device(), rt, workers=[ct_worker]
+        ).resolve_program()
 
     is_memtile = config in MEMTILE_CONFIGS
     if is_memtile:
@@ -485,37 +469,27 @@ def dma_compression(
     is_host_compression = config in HOST_CONFIGS or config in MEMTILE_CONFIGS
     base_config = config in ("base", "memtile_base")
 
-    rt = Runtime()
-    with rt.sequence(vec_ty, vec_ty) as (a_in, c_out):
+    def sequence(a_in, c_out, in_h, out_h):
         if is_host_compression and not base_config:
-
-            def configure_compression_host():
-                if has_mm2s_cmp:
-                    _maskwrite_compress(link_row, link_bd_base, BD_MM2S, link_mm2s_ctrl)
-                if has_s2mm_dcmp:
-                    _maskwrite_compress(link_row, link_bd_base, BD_S2MM, link_s2mm_ctrl)
-
-            rt.inline_ops(configure_compression_host, [])
+            if has_mm2s_cmp:
+                _maskwrite_compress(link_row, link_bd_base, BD_MM2S, link_mm2s_ctrl)
+            if has_s2mm_dcmp:
+                _maskwrite_compress(link_row, link_bd_base, BD_S2MM, link_s2mm_ctrl)
         elif config in CORE_CONFIGS:
             # Enable the processor bus on the compute tile so st.tm from
             # inside the core can reach the DMA registers (otherwise the
             # core hangs on the first write_tm).
-            def enable_processor_bus():
-                npu_maskwrite32(
-                    column=COL,
-                    row=COMPUTE_ROW,
-                    address=CORE_PROCESSOR_BUS_EN,
-                    value=0x1,
-                    mask=0x1,
-                )
+            npu_maskwrite32(
+                column=COL,
+                row=COMPUTE_ROW,
+                address=CORE_PROCESSOR_BUS_EN,
+                value=0x1,
+                mask=0x1,
+            )
 
-            rt.inline_ops(enable_processor_bus, [])
-            assert core_worker is not None
-            rt.start(core_worker)
+        in_h.fill(a_in, tap=in_tap)
+        out_h.drain(c_out, tap=out_tap, wait=True)
 
-        rt.fill(of_in.prod(), a_in, tap=in_tap)
-        rt.drain(of_out.cons(), c_out, tap=out_tap, wait=True)
-
-    device = iron.get_current_device()
-    assert device is not None
-    return Program(device, rt).resolve_program()
+    rt = Runtime(sequence, [vec_ty, vec_ty, of_in.prod(), of_out.cons()])
+    workers = [core_worker] if core_worker is not None else []
+    return Program(iron.get_current_device(), rt, workers=workers).resolve_program()

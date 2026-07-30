@@ -20,12 +20,14 @@ Two invocation modes:
 
 import argparse
 
-import aie.iron as iron
 import numpy as np
-from aie.helpers.taplib import TensorTiler2D
+
+import aie.iron as iron
 from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker
 from aie.iron.controlflow import range_
-from aie.utils.hostruntime.argparse import add_compile_args, device_from_args
+from aie.utils.hostruntime.argparse import device_from_args
+from aie.helpers.taplib import TensorTiler2D
+from aie.utils.hostruntime.argparse import add_compile_args
 from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
 
@@ -64,15 +66,16 @@ def matrix_scalar_add(
 
     tap = TensorTiler2D.simple_tiler(matrix_shape, tile_shape)[0]
 
-    rt = Runtime()
-    with rt.sequence(matrix_ty, matrix_ty) as (in_tensor, out_tensor):
-        rt.start(worker)
-        rt.fill(of_in.prod(), in_tensor, tap)
-        rt.drain(of_out.cons(), out_tensor, tap, wait=True)
+    def sequence(in_tensor, out_tensor, in_h, out_h):
+        in_h.fill(in_tensor, tap)
+        out_h.drain(out_tensor, tap, wait=True)
 
-    device = iron.get_current_device()
-    assert device is not None
-    return Program(device, rt).resolve_program()
+    rt = Runtime(
+        sequence,
+        [matrix_ty, matrix_ty, of_in.prod(), of_out.cons()],
+    )
+
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 
 
 def _make_argparser():

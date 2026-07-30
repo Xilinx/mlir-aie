@@ -6,6 +6,10 @@
 # RUN: %run_on_npu1% %pytest %s
 # RUN: %run_on_npu2% %pytest %s
 # REQUIRES: xrt_python_bindings
+# XFAIL: system-windows
+# Compiles, but the kernel aborts on the NPU (ERT_CMD_STATE_ABORT) on Windows.
+# Exercises the >5 host-buffer DDR-address-patch path; pre-existing Windows-only
+# runtime failure, tracked separately.
 
 # End-to-end @iron.jit test for a design with more than 5 host buffers. The NPU
 # firmware only pre-translates the first 5 host buffer addresses into the AIE
@@ -67,17 +71,31 @@ def design(
         for i in range(NUM_LANES)
     ]
 
-    rt = Runtime()
-    with rt.sequence(*([tile_ty] * (3 * NUM_LANES))) as seq_args:
+    # fn_args order: all producer/consumer fifo handles, appended after the
+    # sequence inputs. The body receives seq inputs first, then the fifo handles.
+    fifo_args = (
+        [of_a[i].prod() for i in range(NUM_LANES)]
+        + [of_b[i].prod() for i in range(NUM_LANES)]
+        + [of_c[i].cons() for i in range(NUM_LANES)]
+    )
+
+    def sequence(*args):
         # seq order matches the design signature: a0,b0,a1,b1,a2,b2,c0,c1,c2.
+        seq_args = args[: 3 * NUM_LANES]
+        a_prods = args[3 * NUM_LANES : 4 * NUM_LANES]
+        b_prods = args[4 * NUM_LANES : 5 * NUM_LANES]
+        c_conses = args[5 * NUM_LANES : 6 * NUM_LANES]
         for i in range(NUM_LANES):
-            rt.fill(of_a[i].prod(), seq_args[2 * i])
-            rt.fill(of_b[i].prod(), seq_args[2 * i + 1])
-        for w in workers:
-            rt.start(w)
+            a_prods[i].fill(seq_args[2 * i])
+            b_prods[i].fill(seq_args[2 * i + 1])
         for i in range(NUM_LANES):
-            rt.drain(of_c[i].cons(), seq_args[2 * NUM_LANES + i], wait=True)
-    return Program(iron.get_current_device(), rt).resolve_program()
+            c_conses[i].drain(seq_args[2 * NUM_LANES + i], wait=True)
+
+    rt = Runtime(
+        sequence,
+        [tile_ty] * (3 * NUM_LANES) + fifo_args,
+    )
+    return Program(iron.get_current_device(), rt, workers=workers).resolve_program()
 
 
 def test_jit_many_args():

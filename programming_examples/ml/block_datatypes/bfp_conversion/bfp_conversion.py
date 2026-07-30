@@ -14,17 +14,19 @@ import argparse
 import sys
 from pathlib import Path
 
-import aie.iron as iron
 import numpy as np
+
+from ml_dtypes import bfloat16
 from aie.dialects.aiex import v8bfp16ebs8
+
+import aie.iron as iron
 from aie.iron import ExternalFunction, In, ObjectFifo, Out, Program, Runtime, Worker
 from aie.iron.controlflow import range_
 from aie.utils.hostruntime.argparse import (
-    add_compile_args,
     device_from_args,
+    add_compile_args,
 )
 from aie.utils.hostruntime.cli import run_design_cli
-from ml_dtypes import bfloat16
 
 N_IN = 64
 N_OUT = 8
@@ -100,20 +102,28 @@ def bfp_conversion(a_in: In, b_in: In, c_out: Out):
         ),
     ]
 
-    rt = Runtime()
-    with rt.sequence(_TENSOR_BF16_TY, _TENSOR_BF16_TY, _TENSOR_BFP16_TY) as (A, B, C):
-        rt.start(*workers)
-        rt.fill(of_in1.prod(), A)
+    def sequence(A, B, C, in1_h, in2_h, out_h):
+        in1_h.fill(A)
         # Aligning dot products with bfp blocks requires transposing the second
         # matrix before conversion to bfp; bf16's element size (2B) precludes a
         # 4B-aligned transpose at this level, so transposition happens inside
         # the multiplication kernel.
-        rt.fill(of_in2.prod(), B)
-        rt.drain(of_out.cons(), C, wait=True)
+        in2_h.fill(B)
+        out_h.drain(C, wait=True)
 
-    device = iron.get_current_device()
-    assert device is not None
-    return Program(device, rt).resolve_program()
+    rt = Runtime(
+        sequence,
+        [
+            _TENSOR_BF16_TY,
+            _TENSOR_BF16_TY,
+            _TENSOR_BFP16_TY,
+            of_in1.prod(),
+            of_in2.prod(),
+            of_out.cons(),
+        ],
+    )
+
+    return Program(iron.get_current_device(), rt, workers=workers).resolve_program()
 
 
 def _make_argparser():

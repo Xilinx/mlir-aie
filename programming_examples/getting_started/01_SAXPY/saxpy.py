@@ -4,21 +4,14 @@
 
 from pathlib import Path
 
-import aie.iron as iron
 import numpy as np
-from aie.iron import (
-    CompileTime,
-    ExternalFunction,
-    In,
-    ObjectFifo,
-    Out,
-    Program,
-    Runtime,
-    Worker,
-)
+from ml_dtypes import bfloat16
+
+import aie.iron as iron
+from aie.iron import CompileTime, ExternalFunction, In, Out
+from aie.iron import ObjectFifo, Program, Runtime, Worker
 from aie.utils.config import cxx_header_path
 from aie.utils.verify import assert_pass
-from ml_dtypes import bfloat16
 
 
 # JIT decorator for IRON
@@ -77,24 +70,21 @@ def saxpy(
     # DRAM-NPU data movement and work dispatch
     # --------------------------------------------------------------------------
 
-    rt = Runtime()
-    with rt.sequence(in_ty, in_ty, out_ty) as (
-        a_x,
-        a_y,
-        c_z,
-    ):
-        rt.start(worker)
-        rt.fill(of_x.prod(), a_x)
-        rt.fill(of_y.prod(), a_y)
-        rt.drain(of_z.cons(), c_z, wait=True)
+    def sequence(a_x, a_y, c_z, x_prod, y_prod, z_cons):
+        x_prod.fill(a_x)
+        y_prod.fill(a_y)
+        z_cons.drain(c_z, wait=True)
+
+    rt = Runtime(
+        sequence,
+        [in_ty, in_ty, out_ty, of_x.prod(), of_y.prod(), of_z.cons()],
+    )
 
     # --------------------------------------------------------------------------
     # Place and generate MLIR program
     # --------------------------------------------------------------------------
 
-    device = iron.get_current_device()
-    assert device is not None
-    my_program = Program(device, rt)
+    my_program = Program(iron.get_current_device(), rt, workers=[worker])
     return my_program.resolve_program()
 
 

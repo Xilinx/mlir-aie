@@ -4,12 +4,13 @@
 #
 """ResNet conv2_x layers — IRON + ``@iron.jit``, kernel-library backed."""
 
-import aie.iron as iron
 import numpy as np
-from aie.helpers.taplib import TensorAccessPattern
+
+import aie.iron as iron
 from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker, kernels
 from aie.iron.controlflow import range_
 from aie.iron.device import Tile
+from aie.helpers.taplib import TensorAccessPattern
 
 
 @iron.jit
@@ -445,13 +446,17 @@ def resnet_conv2_x(
         )
 
     # Runtime: stream activations + weights in, drain output.
-    rt = Runtime()
-    with rt.sequence(
-        activationsInL3_ty, weightsInL3_ty_complete, activationsOutL3_ty
-    ) as (inputFromL3, weightsFromL3, outputToL3):
-        rt.start(*workers)
-
-        rt.fill(act1_fifos[0].prod(), inputFromL3, tile=Tile(0, 0))
+    def sequence(
+        inputFromL3,
+        weightsFromL3,
+        outputToL3,
+        act1_prod,
+        wts0_prod,
+        wts1_prod,
+        wts2_prod,
+        out_cons,
+    ):
+        act1_prod.fill(inputFromL3)
 
         tap = TensorAccessPattern(
             (totalWeights_complete,),
@@ -459,7 +464,7 @@ def resnet_conv2_x(
             sizes=[1, 1, 1, totalWeights_init],
             strides=[0, 0, 0, 1],
         )
-        rt.fill(wts_fifos[0].prod(), weightsFromL3, tap, tile=Tile(0, 0))
+        wts0_prod.fill(weightsFromL3, tap)
 
         tap = TensorAccessPattern(
             (totalWeights_complete,),
@@ -467,7 +472,7 @@ def resnet_conv2_x(
             sizes=[1, 1, 1, totalWeights_rest],
             strides=[0, 0, 0, 1],
         )
-        rt.fill(wts_fifos[1].prod(), weightsFromL3, tap, tile=Tile(1, 0))
+        wts1_prod.fill(weightsFromL3, tap)
 
         tap = TensorAccessPattern(
             (totalWeights_complete,),
@@ -475,9 +480,21 @@ def resnet_conv2_x(
             sizes=[1, 1, 1, totalWeights_rest],
             strides=[0, 0, 0, 1],
         )
-        rt.fill(wts_fifos[2].prod(), weightsFromL3, tap, tile=Tile(2, 0))
-        rt.drain(outOFL2L3.cons(), outputToL3, tile=Tile(1, 0), wait=True)
+        wts2_prod.fill(weightsFromL3, tap)
+        out_cons.drain(outputToL3, wait=True)
 
-    device = iron.get_current_device()
-    assert device is not None
-    return Program(device, rt).resolve_program()
+    rt = Runtime(
+        sequence,
+        [
+            activationsInL3_ty,
+            weightsInL3_ty_complete,
+            activationsOutL3_ty,
+            act1_fifos[0].prod(tile=Tile(0, 0)),
+            wts_fifos[0].prod(tile=Tile(0, 0)),
+            wts_fifos[1].prod(tile=Tile(1, 0)),
+            wts_fifos[2].prod(tile=Tile(2, 0)),
+            outOFL2L3.cons(tile=Tile(1, 0)),
+        ],
+    )
+
+    return Program(iron.get_current_device(), rt, workers=workers).resolve_program()

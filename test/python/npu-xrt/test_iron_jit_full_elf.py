@@ -62,12 +62,13 @@ def _add_const_design(input_buf, output_buf, N, add_value):
             of_out.release(1)
 
     worker = Worker(core_body, fn_args=[of_in.cons(), of_out.prod()])
-    rt = Runtime()
-    with rt.sequence(tensor_ty, tensor_ty) as (a, b):
-        rt.start(worker)
-        rt.fill(of_in.prod(), a)
-        rt.drain(of_out.cons(), b, wait=True)
-    return Program(iron.get_current_device(), rt).resolve_program()
+
+    def sequence(a, b, in_h, out_h):
+        in_h.fill(a)
+        out_h.drain(b, wait=True)
+
+    rt = Runtime(sequence, [tensor_ty, tensor_ty, of_in.prod(), of_out.cons()])
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 
 
 _N = 1024
@@ -165,14 +166,16 @@ def add_const_full_elf_trace(
             of_out.release(1)
 
     worker = Worker(core_body, fn_args=[of_in.cons(), of_out.prod()])
-    rt = Runtime()
-    with rt.sequence(tensor_ty, tensor_ty) as (a, b):
-        if trace_config:
-            rt.enable_trace(trace_config.trace_size, workers=[worker])
-        rt.start(worker)
-        rt.fill(of_in.prod(), a)
-        rt.drain(of_out.cons(), b, wait=True)
-    return Program(iron.get_current_device(), rt).resolve_program()
+
+    def sequence(a, b, in_h, out_h):
+        in_h.fill(a)
+        out_h.drain(b, wait=True)
+
+    rt = Runtime(sequence, [tensor_ty, tensor_ty, of_in.prod(), of_out.cons()])
+    prog = Program(iron.get_current_device(), rt, workers=[worker])
+    if trace_config:
+        prog.enable_trace(trace_config.trace_size, workers=[worker])
+    return prog.resolve_program()
 
 
 @pytest.mark.parametrize("trace_size", [8192])

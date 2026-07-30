@@ -22,9 +22,10 @@ Two invocation modes:
 import argparse
 import sys
 
-import aie.iron as iron
 import numpy as np
-from aie.helpers.util import np_ndarray_type_get_shape
+from ml_dtypes import bfloat16
+
+import aie.iron as iron
 from aie.iron import (
     Buffer,
     CompileTime,
@@ -38,10 +39,10 @@ from aie.iron import (
     str_to_dtype,
 )
 from aie.iron.controlflow import range_
+from aie.helpers.util import np_ndarray_type_get_shape
 from aie.utils.hostruntime.argparse import add_compile_args, add_trace_arg
 from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
-from ml_dtypes import bfloat16
 
 
 @iron.jit
@@ -75,7 +76,7 @@ def vector_reduce_max(
 
     of_in = ObjectFifo(mem_ty, name="of_in")
     of_a_offsets = [
-        int(np.prod(np_ndarray_type_get_shape(mem_ty)) // n_cores) * i
+        (np.prod(np_ndarray_type_get_shape(mem_ty)) // n_cores) * i
         for i in range(n_cores)
     ]
     in_fifos = of_in.cons().split(
@@ -181,17 +182,19 @@ def vector_reduce_max(
                 )
             )
 
-    rt = Runtime()
-    with rt.sequence(in_ty, out_ty) as (a, c):
-        if trace_size > 0:
-            rt.enable_trace(trace_size)
-        rt.start(*workers)
-        rt.fill(of_in.prod(), a)
-        rt.drain(out_fifos[1].cons(), c, wait=True)
+    def sequence(a, c, in_h, out_h):
+        in_h.fill(a)
+        out_h.drain(c, wait=True)
 
-    device = iron.get_current_device()
-    assert device is not None
-    return Program(device, rt).resolve_program()
+    rt = Runtime(
+        sequence,
+        [in_ty, out_ty, of_in.prod(), out_fifos[1].cons()],
+    )
+    prog = Program(iron.get_current_device(), rt, workers=workers)
+    if trace_size > 0:
+        prog.enable_trace(trace_size)
+
+    return prog.resolve_program()
 
 
 def _make_argparser():

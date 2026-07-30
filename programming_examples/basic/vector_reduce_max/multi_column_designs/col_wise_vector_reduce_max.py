@@ -23,9 +23,10 @@ Two invocation modes:
 import argparse
 import sys
 
-import aie.iron as iron
 import numpy as np
-from aie.helpers.taplib.tensortiler2d import TensorTiler2D
+from ml_dtypes import bfloat16
+
+import aie.iron as iron
 from aie.iron import (
     Buffer,
     CompileTime,
@@ -39,14 +40,11 @@ from aie.iron import (
     str_to_dtype,
 )
 from aie.iron.controlflow import range_
-from aie.utils.hostruntime.argparse import (
-    add_compile_args,
-    add_trace_arg,
-    device_from_args,
-)
+from aie.utils.hostruntime.argparse import device_from_args
+from aie.helpers.taplib.tensortiler2d import TensorTiler2D
+from aie.utils.hostruntime.argparse import add_compile_args, add_trace_arg
 from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
-from ml_dtypes import bfloat16
 
 
 # cores_per_col=2 is baked into the neighbor-FIFO wiring below; pass the
@@ -148,7 +146,7 @@ def vector_reduce_max(
 
     my_workers = []
     for i in range(num_cores):
-        fifo_args: list = [of_in1s[i].cons(), of_outs[i].prod()]
+        fifo_args = [of_in1s[i].cons(), of_outs[i].prod()]
         if cores_per_col - 1 < i:
             fifo_args.append(of_outs[i - cores_per_col].cons())
             if num_cores - cores_per_col < i:
@@ -164,18 +162,23 @@ def vector_reduce_max(
     # across the ``(1, in_num_elements)`` tensor.
     taps = TensorTiler2D.simple_tiler((1, in_num_elements), (1, chunk))
 
-    rt = Runtime()
-    with rt.sequence(in_tensor_ty, out_tensor_ty) as (a, c):
-        if enable_trace:
-            rt.enable_trace(trace_size)
-        rt.start(*my_workers)
-        for i in range(num_cores):
-            rt.fill(of_in1s[i].prod(), a, taps[i])
-        rt.drain(of_outs[num_cores - 1].cons(), c, wait=True)
+    in_prods = [of_in1s[i].prod() for i in range(num_cores)]
+    out_cons = of_outs[num_cores - 1].cons()
 
-    device = iron.get_current_device()
-    assert device is not None
-    return Program(device, rt).resolve_program()
+    def sequence(a, c, in_hs, out_h):
+        for i in range(num_cores):
+            in_hs[i].fill(a, taps[i])
+        out_h.drain(c, wait=True)
+
+    rt = Runtime(
+        sequence,
+        [in_tensor_ty, out_tensor_ty, in_prods, out_cons],
+    )
+    prog = Program(iron.get_current_device(), rt, workers=my_workers)
+    if enable_trace:
+        prog.enable_trace(trace_size)
+
+    return prog.resolve_program()
 
 
 def _make_argparser():

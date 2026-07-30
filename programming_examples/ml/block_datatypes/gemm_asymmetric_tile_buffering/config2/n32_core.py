@@ -14,10 +14,12 @@ asymmetry ratio DIV=6. Strix-only; chess-built kernel.
 import argparse
 from pathlib import Path
 
-import aie.iron as iron
 import numpy as np
+
 from aie.dialects.aiex import v8bfp16ebs8
 from aie.helpers.taplib import TensorTiler2D
+
+import aie.iron as iron
 from aie.iron import (
     CompileTime,
     ExternalFunction,
@@ -26,13 +28,13 @@ from aie.iron import (
     Out,
     Program,
     Runtime,
+    TaskGroup,
     Worker,
 )
 from aie.iron.controlflow import range_
-from aie.iron.runtime.taskgroup import RuntimeTaskGroup
 from aie.utils.hostruntime.argparse import (
-    add_compile_args,
     device_from_args,
+    add_compile_args,
 )
 from aie.utils.hostruntime.cli import run_design_cli
 
@@ -88,39 +90,44 @@ def n32_core_gemm(
         use_chess=True,
     )
 
-    A_l3l2_fifos: list[ObjectFifo] = []
-    A_l2l1_fifos: list[ObjectFifo] = []
-    B_l3l2_fifos: list[ObjectFifo] = []
-    B_l2l1_fifos: list[ObjectFifo] = []
-    C_l1l2_fifos: list[list[ObjectFifo]] = [[] for _ in range(n_aie_rows)]
-    C_l2l3_fifos: list[ObjectFifo] = []
+    A_l3l2_fifos = [None] * n_aie_rows
+    A_l2l1_fifos = [None] * n_aie_rows
+    B_l3l2_fifos = [None] * n_aie_cols
+    B_l2l1_fifos = [None] * n_aie_cols
+    C_l1l2_fifos = [[None] * n_aie_cols for _ in range(n_aie_rows)]
+    C_l2l3_fifos = [None] * n_aie_cols
 
     for row in range(n_aie_rows):
-        a_l3l2 = ObjectFifo(A_l2_ty, name=f"A_L3L2_{row}", depth=2)
-        A_l3l2_fifos.append(a_l3l2)
-        A_l2l1_fifos.append(
-            a_l3l2.cons().forward(obj_type=A_l1_ty, name=f"A_L2L1_{row}", depth=2)
+        A_l3l2_fifos[row] = ObjectFifo(A_l2_ty, name=f"A_L3L2_{row}", depth=2)
+        A_l2l1_fifos[row] = (
+            A_l3l2_fifos[row]
+            .cons()
+            .forward(obj_type=A_l1_ty, name=f"A_L2L1_{row}", depth=2)
         )
 
     for col in range(n_aie_cols):
-        b_l3l2 = ObjectFifo(B_l2_ty, name=f"B_L3L2_{col}", depth=2)
-        B_l3l2_fifos.append(b_l3l2)
-        B_l2l1_fifos.append(
-            b_l3l2.cons().forward(obj_type=B_l1_ty, name=f"B_L2L1_{col}", depth=2)
+        B_l3l2_fifos[col] = ObjectFifo(B_l2_ty, name=f"B_L3L2_{col}", depth=2)
+        B_l2l1_fifos[col] = (
+            B_l3l2_fifos[col]
+            .cons()
+            .forward(obj_type=B_l1_ty, name=f"B_L2L1_{col}", depth=2)
         )
 
     for col in range(n_aie_cols):
-        c_l2l3 = ObjectFifo(C_l2_ty, name=f"C_L2L3_{col}", depth=2)
-        C_l2l3_fifos.append(c_l2l3)
+        C_l2l3_fifos[col] = ObjectFifo(C_l2_ty, name=f"C_L2L3_{col}", depth=2)
         of_offsets = [m * n // 8 * i for i in range(n_aie_rows)]
-        c_tmp_fifos = c_l2l3.prod().join(
-            of_offsets,
-            obj_types=[C_l1_ty] * n_aie_rows,
-            names=[f"C_L1L2_{col}_{row}" for row in range(n_aie_rows)],
-            depths=[1] * n_aie_rows,
+        c_tmp_fifos = (
+            C_l2l3_fifos[col]
+            .prod()
+            .join(
+                of_offsets,
+                obj_types=[C_l1_ty] * n_aie_rows,
+                names=[f"C_L1L2_{col}_{row}" for row in range(n_aie_rows)],
+                depths=[1] * n_aie_rows,
+            )
         )
         for j in range(n_aie_rows):
-            C_l1l2_fifos[j].append(c_tmp_fifos[j])
+            C_l1l2_fifos[j][col] = c_tmp_fifos[j]
 
     tiles_per_core = (M // m) * (N // n) // (n_aie_cols * n_aie_rows)
 
@@ -167,62 +174,65 @@ def n32_core_gemm(
     num_col_tile = N // n // n_aie_cols
     num_groups = num_row_tile * num_col_tile
 
-    rt = Runtime()
-    with rt.sequence(A_ty, B_ty, C_ty) as (a, b, c):
-        rt.start(*[w for row in workers for w in row])
-        slots: list[RuntimeTaskGroup | None] = [None] * tb_max_n_rows
-
-        def finish_slot(idx: int):
-            slot = slots[idx]
-            assert slot is not None
-            rt.finish_task_group(slot)
-
+    def sequence(a, b, c, A_prods, B_prods, C_conses):
+        slots = [None] * tb_max_n_rows
         for group_idx in range(num_groups):
             slot_idx = group_idx % tb_max_n_rows
-            tg = rt.task_group()
+            tg = TaskGroup()
             slots[slot_idx] = tg
 
             a_base_idx = (group_idx // num_col_tile) * n_aie_rows
             for row in range(n_aie_rows):
-                rt.fill(
-                    A_l3l2_fifos[row].prod(),
+                A_prods[row].fill(
                     a,
                     tap=A_taps[a_base_idx + row],
-                    task_group=tg,
+                    group=tg,
                     wait=False,
                 )
             b_base_idx = (group_idx % num_col_tile) * n_aie_cols
             for col in range(n_aie_cols):
-                rt.fill(
-                    B_l3l2_fifos[col].prod(),
+                B_prods[col].fill(
                     b,
                     tap=B_taps[b_base_idx + col],
-                    task_group=tg,
+                    group=tg,
                     wait=False,
                 )
             c_base_idx = group_idx * n_aie_cols
             for col in range(n_aie_cols):
-                rt.drain(
-                    C_l2l3_fifos[col].cons(),
+                C_conses[col].drain(
                     c,
                     tap=C_taps[c_base_idx + col],
-                    task_group=tg,
+                    group=tg,
                     wait=True,
                 )
 
             if slot_idx == 1 and group_idx != 1:
-                finish_slot(2)
-                finish_slot(3)
+                slots[2].finish()
+                slots[3].finish()
             if slot_idx == 3:
-                finish_slot(0)
-                finish_slot(1)
+                slots[0].finish()
+                slots[1].finish()
 
-        finish_slot(2)
-        finish_slot(3)
+        slots[2].finish()
+        slots[3].finish()
 
-    device = iron.get_current_device()
-    assert device is not None
-    return Program(device, rt).resolve_program()
+    rt = Runtime(
+        sequence,
+        [
+            A_ty,
+            B_ty,
+            C_ty,
+            [f.prod() for f in A_l3l2_fifos],
+            [f.prod() for f in B_l3l2_fifos],
+            [f.cons() for f in C_l2l3_fifos],
+        ],
+    )
+
+    return Program(
+        iron.get_current_device(),
+        rt,
+        workers=[w for row in workers for w in row],
+    ).resolve_program()
 
 
 def _make_argparser():
