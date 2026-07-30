@@ -239,16 +239,20 @@ aie.device(npu1_2col) {
 
 // two occupied columns with a gap: flows between column 0 and column 2 route
 // through column 1's stream switches, so column 1's switchboxes get configured
-// by control packets and need a shim dma allocation of their own.
+// by control packets and need a shim dma allocation of their own. Column 2
+// reaches row 5, which maps to the second shim channel, so column 1 has to
+// cover both channels and not just the one its own shim row maps to.
 
 // CHECK-LABEL: module {
 // CTRLPKT-LABEL: module {
 // CTRLPKT-DAG: aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan0
 // CTRLPKT-DAG: aie.shim_dma_allocation @ctrlpkt_col1_mm2s_chan0
+// CTRLPKT-DAG: aie.shim_dma_allocation @ctrlpkt_col1_mm2s_chan1
 // CTRLPKT-DAG: aie.shim_dma_allocation @ctrlpkt_col2_mm2s_chan0
+// CTRLPKT-DAG: aie.shim_dma_allocation @ctrlpkt_col2_mm2s_chan1
 
 aie.device(npu2) {
   %tile_0_0 = aie.tile(0, 0)
   %tile_2_1 = aie.tile(2, 1)
-  %tile_2_2 = aie.tile(2, 2)
+  %tile_2_5 = aie.tile(2, 5)
 }

@@ -357,11 +357,12 @@ struct AIEGenerateColumnControlOverlayPass
         }
         // A column the design declared no tile in is only in range because
         // flows route through it, and such a flow can traverse it at any row up
-        // to the highest row in use. Rows map to shim channels in round robin
-        // (getRowToShimChanMap), so covering only the shim row here would
-        // allocate just one of the channels its packets get addressed to. Test
-        // against the columns the design itself declared, not against `tiles`,
-        // which now also holds the shim materialized just above.
+        // to the highest row in use. getRowToShimChanMap splits the rows into
+        // one contiguous range per shim channel, so covering only the shim row
+        // here would allocate just one of the channels its packets get
+        // addressed to. Test against the columns the design itself declared,
+        // not against `tiles`, which now also holds the shim materialized just
+        // above.
         if (!declaredCols.contains(col))
           maxRow = maxOccupiedRow;
         SmallVector<AIE::TileOp> tilesOnCol;
