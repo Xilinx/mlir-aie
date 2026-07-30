@@ -381,9 +381,7 @@ class HSAContext:
                 self._set_vmem_access(va_p, size, HSA_ACCESS_PERMISSION_NONE)
             except HSAError as e:
                 _logger.warning("vmem_free: revoking access failed: %s", e)
-            self._log_if_error(
-                lib.hsa_amd_vmem_unmap(va_p, size), "hsa_amd_vmem_unmap"
-            )
+            self._log_if_error(lib.hsa_amd_vmem_unmap(va_p, size), "hsa_amd_vmem_unmap")
             self._log_if_error(
                 lib.hsa_amd_vmem_address_free(va_p, size),
                 "hsa_amd_vmem_address_free",
