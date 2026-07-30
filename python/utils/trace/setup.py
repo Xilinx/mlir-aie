@@ -395,7 +395,10 @@ def configure_trace(
         start_broadcast: Broadcast channel for trace start event (default: 15).
         stop_broadcast: Broadcast channel for trace stop event (default: 14).
         coretile_events: List of events for core tile tracing (max 8).
-        coremem_events: List of events for core memory tracing (max 8).
+        coremem_events: List of events for core memory tracing (max 8). A
+            core tile needs to appear only once in tiles_to_trace to get a
+            memory trace from this; it does not need a second, duplicate
+            entry in the list.
         memtile_events: List of events for mem tile tracing (max 8).
         shimtile_events: List of events for shim tile tracing (max 8).
     """
@@ -411,16 +414,32 @@ def configure_trace(
     # routing-rule layout a pure function of the active trace tile set.
     trace_seq = 1
     seen_core_tiles = set()
+    mem_traced_tiles = set()
 
+    # Build the (tile, is_mem_trace) work list. A core tile normally yields
+    # one core trace. It gets a second, memory-trace entry either from the
+    # legacy convention of listing the same tile twice in tiles_to_trace, or,
+    # new, simply by the caller passing coremem_events, so a single
+    # occurrence is enough to get both a core trace and a memory trace for
+    # that tile.
+    trace_specs = []
     for tile_op in tiles_to_trace:
-        # Determine if this is a core tile memory trace (second occurrence)
         is_mem_trace = False
         if tile_op.is_core_tile():
             if tile_op in seen_core_tiles:
                 is_mem_trace = True
             else:
                 seen_core_tiles.add(tile_op)
+        trace_specs.append((tile_op, is_mem_trace))
+        if is_mem_trace:
+            mem_traced_tiles.add(tile_op)
+    if coremem_events is not None:
+        for tile_op in seen_core_tiles:
+            if tile_op not in mem_traced_tiles:
+                trace_specs.append((tile_op, True))
+                mem_traced_tiles.add(tile_op)
 
+    for tile_op, is_mem_trace in trace_specs:
         # Generate unique trace name based on tile type
         if tile_op.is_core_tile():
             trace_type = "mem" if is_mem_trace else "core"
