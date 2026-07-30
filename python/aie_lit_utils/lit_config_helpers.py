@@ -193,7 +193,9 @@ class LitConfigHelper:
             HardwareConfig contains:
                 - found: True if XRT is detected and valid
                 - flags: Compiler/linker flags for XRT (includes -I, -L, and libraries)
-                - substitutions: Dictionary with "%xrt_flags", "%run_on_npu1%", and "%run_on_npu2%" mappings
+                - substitutions: Dictionary with "%xrt_flags", "%run_on_npu1%", "%run_on_npu2%",
+                                 "%run_on_npu%" (whichever of the above is real), and
+                                 "%aie_npu_device%" (detected "npu1"/"npu2", or "" if none)
                 - features: List of features including "ryzen_ai", "ryzen_ai_npu1", or "ryzen_ai_npu2"
                            based on detected NPU hardware and available Vitis components
         """
@@ -209,6 +211,9 @@ class LitConfigHelper:
         config = HardwareConfig()
         run_on_npu1 = "echo"
         run_on_npu2 = "echo"
+        # Whichever generation is actually detected, so device-agnostic tests
+        # (single lit file, no npu1/npu2 duplication) can target it directly.
+        detected_npu_device = ""
 
         if not xrt_lib_dir:
             logger.info("xrt not found")
@@ -222,6 +227,9 @@ class LitConfigHelper:
 
             config.substitutions["%run_on_npu1%"] = run_on_npu1
             config.substitutions["%run_on_npu2%"] = run_on_npu2
+            config.substitutions["%run_on_npu%"] = run_on_npu1
+            config.substitutions["%aie_npu_device%"] = detected_npu_device
+            config.substitutions["%aie_cmake_device%"] = "npu"
             return config
 
         logger.info("xrt found at %s", os.path.dirname(xrt_lib_dir))
@@ -340,6 +348,7 @@ class LitConfigHelper:
                         )
                         config.features.extend(["ryzen_ai", "ryzen_ai_npu1"])
                         config.substitutions["%run_on_npu1%"] = run_on_npu1
+                        detected_npu_device = "npu1"
                         logger.info(
                             "Running tests on NPU1 with command line: %s", run_on_npu1
                         )
@@ -354,6 +363,7 @@ class LitConfigHelper:
                         )
                         config.features.extend(["ryzen_ai", "ryzen_ai_npu2"])
                         config.substitutions["%run_on_npu2%"] = run_on_npu2
+                        detected_npu_device = "npu2"
                         llvm_config.with_environment("NPU2", "1")
                         logger.info(
                             "Running tests on NPU2 with command line: %s", run_on_npu2
@@ -381,6 +391,16 @@ class LitConfigHelper:
 
         config.substitutions["%run_on_npu1%"] = run_on_npu1
         config.substitutions["%run_on_npu2%"] = run_on_npu2
+        config.substitutions["%aie_npu_device%"] = detected_npu_device
+        # Device-agnostic alias: whichever of run_on_npu1/run_on_npu2 is real.
+        config.substitutions["%run_on_npu%"] = (
+            run_on_npu2 if detected_npu_device == "npu2" else run_on_npu1
+        )
+        # add_aie_design/add_aie_run_test's -DAIE_DEVICE takes "npu" (not
+        # "npu1") for the first-gen device -- map the detected generation.
+        config.substitutions["%aie_cmake_device%"] = (
+            "npu2" if detected_npu_device == "npu2" else "npu"
+        )
 
         return config
 
