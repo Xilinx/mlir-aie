@@ -50,9 +50,9 @@ from aie.utils.compile import (
     compile_mlir_module,
 )
 from aie.utils.compile.cache.utils import file_lock
-from aie.utils.compile.jit import _manifest
 from aie.utils.compile.utils import _cleanup_failed_compilation
 
+from . import _manifest
 from ._dma_size_parser import parse_dma_sizes
 from ._hash import (
     _compute_artifact_hash,

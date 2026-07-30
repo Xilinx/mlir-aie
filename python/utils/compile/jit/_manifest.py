@@ -1,3 +1,8 @@
+# _manifest.py -*- Python -*-
+#
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
 """Recorded dependency manifest for the JIT cache.
 
 The cache key cannot know a design's kernel sources: they are registered while
@@ -20,9 +25,18 @@ design has to keep the cache behaviour it had before this file existed, whereas
 writing nothing at all would make every lookup discard the entry and rebuild,
 which is strictly worse than the status quo it is meant to preserve.
 
-Everything here fails closed: an absent, unparsable or partial manifest is a
-miss. Where a build path cannot report its inputs, the manifest says so rather
-than claiming a check it did not perform.
+Everything here fails closed: an absent, unparsable, misshapen or partial
+manifest is a miss. A manifest is checked for shape rather than trusted, since a
+lookup that raises on a corrupt one fails neither open nor closed.
+
+Where a build path cannot report its inputs, the manifest says so -- an
+unreadable depfile and an undigestable input both record ``complete: false``,
+never nothing at all. Unverifiable is not uncacheable.
+
+Recorded paths are absolute: an entry is written by one process and checked by
+another that need not share a working directory. Depfile tokens anchor against
+``kernel_dir`` (the cwd Peano runs in, so what their relative paths mean),
+declared sources against the caller's cwd.
 
 **Known limits.** Two paths fail open rather than closed -- they can report a
 valid entry that is actually stale -- so they are worth knowing before relying
@@ -40,6 +54,12 @@ unchanged.
    reset mtimes -- a fresh clone, a checkout, an extracted archive -- therefore
    reads as unchanged. The digest is what catches a same-size edit; this
    shortcut is what makes the common case cheap.
+
+   No clock reset is needed for this to bite: two same-size writes inside one
+   timestamp tick are indistinguishable, and the tick belongs to the
+   filesystem. On NFS it can be a whole second, and the client attribute cache
+   may serve a stale size and mtime for ``acregmax`` on top. ``ccache`` gates
+   the same shortcut behind ``sloppiness``.
 """
 
 from __future__ import annotations
@@ -74,11 +94,65 @@ def _entry(path: Path) -> dict:
     }
 
 
+def _absolute(base: Path, path: Path) -> Path:
+    """Anchor a possibly-relative path against `base`, keeping symlinks intact.
+
+    Lexical, not ``resolve()``: keeping the path the compiler opened means
+    repointing a symlink is caught, since stat and the digest follow the link.
+    """
+    return Path(os.path.normpath(base / path))
+
+
 def _parse_depfile(depfile: Path) -> list[Path]:
-    """Read a make-style depfile: 'target: a b \\\n  c d'."""
+    """Read a make-style depfile: 'target: a b \\\n  c d'.
+
+    Make quoting is undone rather than split through: a space arrives as ``\\ ``
+    and a dollar as ``$$``, so splitting on bare whitespace would turn one real
+    dependency into two tokens naming no file -- and those are dropped, leaving
+    a manifest silently short while still calling itself complete.
+    """
     text = depfile.read_text()
-    _, _, rhs = text.partition(":")
-    return [Path(tok) for tok in rhs.replace("\\\n", " ").split() if tok.strip()]
+    tokens: list[str] = []
+    current: list[str] = []
+    past_target = False
+    i = 0
+    while i < len(text):
+        c = text[i]
+        if c == "\\" and i + 1 < len(text):
+            nxt = text[i + 1]
+            if nxt == "\n":  # line continuation: a separator
+                i += 2
+                if current:
+                    tokens.append("".join(current))
+                    current = []
+                continue
+            if nxt in " #":  # escaped: the character itself
+                current.append(nxt)
+                i += 2
+                continue
+            current.append(c)  # lone backslash: a path separator, not quoting
+            i += 1
+            continue
+        if c == "$" and text[i : i + 2] == "$$":
+            current.append("$")
+            i += 2
+            continue
+        if not past_target and c == ":":
+            past_target = True
+            current = []
+            i += 1
+            continue
+        if c.isspace():
+            if current:
+                tokens.append("".join(current))
+                current = []
+            i += 1
+            continue
+        current.append(c)
+        i += 1
+    if current:
+        tokens.append("".join(current))
+    return [Path(tok) for tok in tokens] if past_target else []
 
 
 def record(kernel_dir, external_kernels, source_files, used_chess=False) -> None:
@@ -110,26 +184,44 @@ def record(kernel_dir, external_kernels, source_files, used_chess=False) -> None
     found: set[Path] = set()
     for dep in depfiles:
         try:
-            found.update(_parse_depfile(dep))
+            # Peano runs with cwd=kernel_dir, so that is what a relative token means.
+            found.update(_absolute(kernel_dir, p) for p in _parse_depfile(dep))
         except OSError:
-            return  # cannot know the set -> do not claim one
+            # Unknowable, as for Chess. Writing nothing would instead read as a
+            # miss, and the caller answers a miss by discarding the entry.
+            logger.debug(
+                "cache manifest: %s could not be read; recording an incomplete "
+                "manifest, inputs will not be checked",
+                dep,
+            )
+            _write(kernel_dir, [], complete=False)
+            return
+
+    # Declared paths are the caller's, read where the caller stands -- the same
+    # reading compile_external_kernel gives them.
+    cwd = Path.cwd()
     for f in compiled:
         if getattr(f, "_source_file", None):
-            found.add(Path(f._source_file))
-    found.update(Path(sf) for sf in source_files)
+            found.add(_absolute(cwd, Path(f._source_file)))
+    found.update(_absolute(cwd, Path(sf)) for sf in source_files)
     _write(kernel_dir, sorted({p for p in found if p.is_file()}, key=str))
 
 
 def _write(kernel_dir: Path, inputs: list[Path], complete: bool = True) -> None:
-    payload = {"version": _VERSION, "complete": complete, "inputs": []}
+    entries: list[dict] = []
     for path in inputs:
         try:
-            payload["inputs"].append(_entry(path))
+            entries.append(_entry(path))
         except OSError:
-            # An input we cannot record is an input we cannot verify.  Refuse to
-            # write a manifest that would later read as complete.
-            logger.warning("cache manifest: %s unreadable; not recording", path)
-            return
+            # Unverifiable, but not uncacheable: mark it incomplete rather than
+            # writing nothing and costing the entry on every later lookup.
+            logger.warning(
+                "cache manifest: %s unreadable; recording an incomplete manifest",
+                path,
+            )
+            entries, complete = [], False
+            break
+    payload = {"version": _VERSION, "complete": complete, "inputs": entries}
     tmp = Path(kernel_dir) / (MANIFEST_NAME + ".tmp")
     tmp.write_text(json.dumps(payload))
     os.replace(tmp, Path(kernel_dir) / MANIFEST_NAME)
@@ -159,24 +251,42 @@ def is_valid(kernel_dir: Path) -> bool:
         payload = json.loads(path.read_text())
     except (OSError, ValueError):
         return False
-    if payload.get("version") != _VERSION:
+    # Shape is an input to check, not an invariant to assume: raising on a
+    # malformed manifest fails neither open nor closed.
+    if not isinstance(payload, dict) or payload.get("version") != _VERSION:
         return False
     if not payload.get("complete", True):
         logger.debug(
             "cache manifest: %s records no verifiable inputs; not checking", path
         )
         return True
-    for rec in payload.get("inputs", ()):
-        f = Path(rec["path"])
+    inputs = payload.get("inputs", ())
+    if not isinstance(inputs, list):
+        return False
+    for rec in inputs:
+        if not isinstance(rec, dict):
+            return False
+        recorded_path = rec.get("path")
+        size = rec.get("size")
+        mtime = rec.get("mtime")
+        sha256 = rec.get("sha256")
+        if (
+            not isinstance(recorded_path, str)
+            or not isinstance(size, int)
+            or not isinstance(mtime, (int, float))
+            or not isinstance(sha256, str)
+        ):
+            return False
+        f = Path(recorded_path)
         try:
             st = f.stat()
         except OSError:
             return False
         # tsbuildinfo pattern: size+mtime agree -> trust it, skip the hash.
-        if st.st_size == rec["size"] and st.st_mtime == rec["mtime"]:
+        if st.st_size == size and st.st_mtime == mtime:
             continue
         try:
-            if _digest(f) != rec["sha256"]:
+            if _digest(f) != sha256:
                 return False
         except OSError:
             return False

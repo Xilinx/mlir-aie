@@ -51,6 +51,42 @@ def test_manifest_from_a_future_version_is_not_valid(tmp_path):
     assert not _manifest.is_valid(tmp_path)
 
 
+@pytest.mark.parametrize(
+    "build_payload",
+    [
+        pytest.param(lambda src: [1, 2, 3], id="payload-is-not-an-object"),
+        pytest.param(
+            lambda src: {"version": 1, "inputs": str(src)}, id="inputs-is-not-a-list"
+        ),
+        pytest.param(
+            lambda src: {"version": 1, "inputs": [str(src)]},
+            id="input-is-not-an-object",
+        ),
+        pytest.param(
+            lambda src: {"version": 1, "inputs": [{"path": str(src)}]},
+            id="input-is-partial",
+        ),
+        pytest.param(
+            lambda src: {
+                "version": 1,
+                "inputs": [{"path": str(src), "size": "4", "mtime": 0.0}],
+            },
+            id="input-field-is-the-wrong-type",
+        ),
+    ],
+)
+def test_malformed_manifest_is_not_valid(tmp_path, build_payload):
+    """Well-formed JSON that is not a manifest must miss, not raise.
+
+    Each payload names a file that exists, so validation reaches the recorded
+    fields instead of stopping at a failed ``stat``.
+    """
+    src = tmp_path / "k.cc"
+    src.write_text("// k")
+    (tmp_path / _manifest.MANIFEST_NAME).write_text(json.dumps(build_payload(src)))
+    assert not _manifest.is_valid(tmp_path)
+
+
 def test_deleted_input_is_not_valid(tmp_path):
     src = tmp_path / "k.cc"
     src.write_text("// v1")
@@ -187,4 +223,135 @@ def test_design_without_kernels_records_its_declared_sources(tmp_path):
 
     time.sleep(0.01)
     src.write_text("// y")
+    assert not _manifest.is_valid(tmp_path)
+
+
+def test_unreadable_depfile_records_an_incomplete_manifest(tmp_path):
+    """A depfile that cannot be read leaves the set unknowable, like Chess.
+
+    Writing nothing would read as a miss, and the caller answers a miss by
+    discarding the directory -- wiping a good entry on every later lookup.
+    """
+    shim = tmp_path / "shim.cc"
+    shim.write_text("// k")
+    _depfile(tmp_path, "k.o", [shim])
+    (tmp_path / "k.o.d").chmod(0o000)
+    try:
+        _manifest.record(tmp_path, [_Kernel(source_file=str(shim))], ())
+    finally:
+        (tmp_path / "k.o.d").chmod(0o644)
+
+    payload = json.loads((tmp_path / _manifest.MANIFEST_NAME).read_text())
+    assert payload["complete"] is False
+    assert _manifest.is_valid(tmp_path)
+
+
+def test_unreadable_input_records_an_incomplete_manifest(tmp_path):
+    """An input that cannot be digested is unverifiable, not uncacheable."""
+    shim = tmp_path / "shim.cc"
+    shim.write_text("// k")
+    secret = tmp_path / "secret.h"
+    secret.write_text("// h")
+    _depfile(tmp_path, "k.o", [shim, secret])
+    secret.chmod(0o000)
+    try:
+        _manifest.record(tmp_path, [_Kernel(source_file=str(shim))], ())
+    finally:
+        secret.chmod(0o644)
+
+    payload = json.loads((tmp_path / _manifest.MANIFEST_NAME).read_text())
+    assert payload["complete"] is False
+    assert _manifest.is_valid(tmp_path)
+
+
+# ---------------------------------------------------------------------------
+# Recorded paths must not depend on where the caller happens to stand
+# ---------------------------------------------------------------------------
+
+
+def test_relative_declared_source_is_recorded_absolutely(tmp_path, monkeypatch):
+    """``source_files`` is user-supplied and routinely relative.
+
+    Stored verbatim it is checked from whatever directory a later process runs
+    in, so it either misses forever or stats a same-named file elsewhere.
+    """
+    kernel_dir = tmp_path / "cache"
+    kernel_dir.mkdir()
+    project = tmp_path / "project"
+    (project / "kernels").mkdir(parents=True)
+    src = project / "kernels" / "vector_add.cc"
+    src.write_text("// v1")
+
+    monkeypatch.chdir(project)
+    _manifest.record(kernel_dir, [], ("kernels/vector_add.cc",))
+
+    recorded = json.loads((kernel_dir / _manifest.MANIFEST_NAME).read_text())["inputs"]
+    assert [i["path"] for i in recorded] == [str(src)]
+
+    # The next lookup runs from somewhere else, as a second process would.
+    monkeypatch.chdir(tmp_path)
+    assert _manifest.is_valid(kernel_dir)
+    time.sleep(0.01)
+    src.write_text("// v2")
+    assert not _manifest.is_valid(kernel_dir)
+
+
+def test_relative_kernel_source_is_recorded_absolutely(tmp_path, monkeypatch):
+    """Same for ``ExternalFunction(source_file=...)``, stored exactly as given."""
+    kernel_dir = tmp_path / "cache"
+    kernel_dir.mkdir()
+    project = tmp_path / "project"
+    project.mkdir()
+    src = project / "k.cc"
+    src.write_text("// v1")
+
+    monkeypatch.chdir(project)
+    _manifest.record(kernel_dir, [_Kernel(source_file="k.cc")], (), used_chess=True)
+    _manifest.record(kernel_dir, [], ("k.cc",))
+
+    monkeypatch.chdir(tmp_path)
+    assert _manifest.is_valid(kernel_dir)
+    time.sleep(0.01)
+    src.write_text("// v2")
+    assert not _manifest.is_valid(kernel_dir)
+
+
+def test_relative_depfile_entry_resolves_against_the_compile_directory(tmp_path):
+    """Depfile paths are relative to the compiler's cwd, and Peano runs in
+    kernel_dir -- not in whatever directory writes the manifest."""
+    header = tmp_path / "hdr.h"
+    header.write_text("// h")
+    (tmp_path / "k.o.d").write_text(f"{tmp_path / 'k.o'}: hdr.h\n")
+
+    _manifest.record(tmp_path, [_Kernel(source_string="// k")], ())
+
+    payload = json.loads((tmp_path / _manifest.MANIFEST_NAME).read_text())
+    assert [i["path"] for i in payload["inputs"]] == [str(header)]
+
+    time.sleep(0.01)
+    header.write_text("// h v2")
+    assert not _manifest.is_valid(tmp_path)
+
+
+def test_depfile_entry_with_an_escaped_space_is_recorded(tmp_path):
+    """clang escapes a space in a dependency path as ``\\ ``.
+
+    Splitting on bare whitespace shreds it into two tokens naming no file, both
+    dropped -- leaving a real input unrecorded under ``complete: true``.
+    """
+    spaced = tmp_path / "my dir"
+    spaced.mkdir()
+    header = spaced / "hdr.h"
+    header.write_text("// h")
+    (tmp_path / "k.o.d").write_text(
+        f"{tmp_path / 'k.o'}: {str(header).replace(' ', chr(92) + ' ')}\n"
+    )
+
+    _manifest.record(tmp_path, [_Kernel(source_string="// k")], ())
+
+    payload = json.loads((tmp_path / _manifest.MANIFEST_NAME).read_text())
+    assert [i["path"] for i in payload["inputs"]] == [str(header)]
+
+    time.sleep(0.01)
+    header.write_text("// h v2")
     assert not _manifest.is_valid(tmp_path)
