@@ -22,24 +22,22 @@ ROCm installations are looked for in three places, in this order:
 
 import importlib.util
 import os
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Iterator, Optional
 
-__all__ = ["find_libhsa", "find_hsa_include_dir", "hsa_available"]
+__all__ = ["find_hsa_include_dir", "find_libhsa", "hsa_available"]
 
-# Explicit user-chosen root. ROCM_PATH is the ROCm-wide convention; TheRock's
-# docs additionally suggest ROCM_HOME for a user's own builds, so honor both.
-_ENV_ROOT_VARS = ("ROCM_PATH", "ROCM_HOME")
+# Explicit user-chosen root. ROCM_PATH is the ROCm-wide convention.
+_ENV_ROOT_VARS = ("ROCM_PATH",)
 
-# Conventional system roots. /usr and /usr/local cover distro packages that
-# install straight into <prefix>/lib.
-_SYSTEM_ROOTS = (Path("/opt/rocm"), Path("/usr"), Path("/usr/local"))
+# Conventional system install location.
+_SYSTEM_ROOTS = (Path("/opt/rocm"),)
 
 # TheRock's pure-python shim, whose platform sibling holds the actual ROCm tree.
 _WHEEL_CORE_PACKAGE = "_rocm_sdk_core"
 
 
-def _wheel_root() -> Optional[Path]:
+def _wheel_root() -> Path | None:
     """Root of a pip-installed ROCm from TheRock, if one is importable.
 
     The runtime tree ships as a platform package (``_rocm_sdk_core``) beside the
@@ -78,7 +76,7 @@ def _rocm_roots() -> Iterator[Path]:
     yield from _SYSTEM_ROOTS
 
 
-def _libhsa_under(root: Path) -> Optional[str]:
+def _libhsa_under(root: Path) -> str | None:
     """The HSA runtime inside one ROCm root, or None.
 
     Prefers the unversioned developer symlink, but falls back to the SONAME:
@@ -97,7 +95,7 @@ def _libhsa_under(root: Path) -> Optional[str]:
     return None
 
 
-def find_libhsa() -> Optional[str]:
+def find_libhsa() -> str | None:
     """Locate libhsa-runtime64.so in the first ROCm install that provides it."""
     for root in _rocm_roots():
         lib = _libhsa_under(root)
@@ -106,7 +104,7 @@ def find_libhsa() -> Optional[str]:
     return None
 
 
-def find_hsa_include_dir() -> Optional[str]:
+def find_hsa_include_dir() -> str | None:
     """Locate the directory containing hsa/hsa.h (for reference; not required at runtime)."""
     for root in _rocm_roots():
         include = root / "include"
