@@ -44,7 +44,6 @@ from aie.ir import (  # pyright: ignore[reportMissingImports]
 from aie.ir import (  # pyright: ignore[reportMissingImports]
     StringAttr,  # pyright: ignore[reportAttributeAccessIssue]
 )
-from aie.iron.kernel import ExternalFunction
 from aie.utils.compile import (
     NPU_CACHE_HOME,
     compile_external_kernel,
@@ -271,6 +270,8 @@ class CompilableDesign:
         ``inst_path``.  In default cache mode aiecc still emits a ``main.pdi``
         into the cache directory — use :meth:`get_pdi_path` to locate it.
         """
+        from aie.iron.kernel import ExternalFunction
+
         full_elf = self.full_elf or full_elf_path is not None
         if full_elf:
             return self._compile_full_elf(ExternalFunction, full_elf_path)
@@ -667,6 +668,8 @@ class CompilableDesign:
         Returns:
             The generated ``mlir.ir.Module``.
         """
+        from aie.iron.kernel import ExternalFunction
+
         return self._generate_mlir(ExternalFunction, full_elf=self.full_elf)
 
     def validate_tensor_args(self, tensor_args: list) -> None:
@@ -873,6 +876,8 @@ class CompilableDesign:
 
     def _generate_uncached(self, *, full_elf: bool = False) -> tuple[str, list]:
         """Run the generator and collect generated MLIR text and external kernels."""
+        from aie.iron.kernel import ExternalFunction
+
         if isinstance(self.mlir_generator, Path):
             # Static .mlir file: text already on disk; no kernels to collect.
             return self.mlir_generator.read_text(), []
