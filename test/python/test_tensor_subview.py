@@ -11,7 +11,7 @@ import gc
 import numpy as np
 import pytest
 
-from aie.utils.hostruntime import tensor_class
+from aie.utils.hostruntime import coherence, tensor_class
 from aie.utils.hostruntime.tensor_class import (
     COHERENCE_GRANULE,
     CPUOnlyTensor,
@@ -39,18 +39,18 @@ def test_detected_granule_matches_the_literal_this_suite_assumes():
 
 def test_granule_is_floored_when_the_host_reports_something_smaller(monkeypatch):
     """A small or absent report must make the check stricter, never weaker."""
-    monkeypatch.setattr(tensor_class.os, "sysconf", lambda _: 8)
+    monkeypatch.setattr(coherence.os, "sysconf", lambda _: 8)
     assert _detect_coherence_granule(default=64) == 64
 
 
 def test_granule_uses_a_larger_reported_line_size(monkeypatch):
-    monkeypatch.setattr(tensor_class.os, "sysconf", lambda _: 128)
+    monkeypatch.setattr(coherence.os, "sysconf", lambda _: 128)
     assert _detect_coherence_granule(default=64) == 128
 
 
 def test_granule_is_rounded_up_to_a_power_of_two(monkeypatch):
     """Alignment arithmetic assumes it; nothing in the reporting path promises it."""
-    monkeypatch.setattr(tensor_class.os, "sysconf", lambda _: 96)
+    monkeypatch.setattr(coherence.os, "sysconf", lambda _: 96)
     assert _detect_coherence_granule(default=64) == 128
 
 
@@ -60,8 +60,8 @@ def test_granule_falls_back_when_no_source_reports(monkeypatch):
     def no_sysconf(_):
         raise AttributeError("no sysconf on this platform")
 
-    monkeypatch.setattr(tensor_class.os, "sysconf", no_sysconf)
-    monkeypatch.setattr(tensor_class, "_read_sysfs_line_size", lambda: None)
+    monkeypatch.setattr(coherence.os, "sysconf", no_sysconf)
+    monkeypatch.setattr(coherence, "_read_sysfs_line_size", lambda: None)
     assert _detect_coherence_granule(default=64) == 64
 
 
@@ -69,8 +69,8 @@ def test_granule_falls_back_to_sysfs_when_sysconf_is_unavailable(monkeypatch):
     def no_sysconf(_):
         raise ValueError("unrecognized configuration name")
 
-    monkeypatch.setattr(tensor_class.os, "sysconf", no_sysconf)
-    monkeypatch.setattr(tensor_class, "_read_sysfs_line_size", lambda: 128)
+    monkeypatch.setattr(coherence.os, "sysconf", no_sysconf)
+    monkeypatch.setattr(coherence, "_read_sysfs_line_size", lambda: 128)
     assert _detect_coherence_granule(default=64) == 128
 
 
@@ -91,17 +91,17 @@ def test_sysfs_scan_selects_the_l1_data_cache_not_the_first_entry(tmp_path):
     _write_cache_index(tmp_path, 0, level=1, kind="Instruction", line_size=32)
     _write_cache_index(tmp_path, 1, level=1, kind="Data", line_size=128)
     _write_cache_index(tmp_path, 2, level=2, kind="Unified", line_size=256)
-    assert tensor_class._read_sysfs_line_size(cache_dir=str(tmp_path)) == 128
+    assert coherence._read_sysfs_line_size(cache_dir=str(tmp_path)) == 128
 
 
 def test_sysfs_scan_accepts_a_unified_l1(tmp_path):
     _write_cache_index(tmp_path, 0, level=1, kind="Unified", line_size=128)
-    assert tensor_class._read_sysfs_line_size(cache_dir=str(tmp_path)) == 128
+    assert coherence._read_sysfs_line_size(cache_dir=str(tmp_path)) == 128
 
 
 def test_sysfs_scan_reports_nothing_when_there_is_no_l1_data_cache(tmp_path):
     _write_cache_index(tmp_path, 0, level=2, kind="Unified", line_size=128)
-    assert tensor_class._read_sysfs_line_size(cache_dir=str(tmp_path)) is None
+    assert coherence._read_sysfs_line_size(cache_dir=str(tmp_path)) is None
 
 
 def test_enforced_granule_follows_the_module_value(monkeypatch):
