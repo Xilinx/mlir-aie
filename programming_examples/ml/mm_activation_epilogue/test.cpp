@@ -5,7 +5,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -122,14 +121,8 @@ int main(int argc, const char *argv[]) {
   auto device = xrt::device(device_index);
 
   auto xclbin = xrt::xclbin(vm["xclbin"].as<std::string>());
-  std::string Node = vm["kernel"].as<std::string>();
-  auto xkernels = xclbin.get_kernels();
-  auto xkernel = *std::find_if(xkernels.begin(), xkernels.end(),
-                               [Node](xrt::xclbin::kernel &k) {
-                                 auto name = k.get_name();
-                                 return name.rfind(Node, 0) == 0;
-                               });
-  auto kernelName = xkernel.get_name();
+  auto kernelName = test_utils::get_kernel_name(
+      xclbin, vm["kernel"].as<std::string>(), verbosity);
 
   device.register_xclbin(xclbin);
   xrt::hw_context context(device, xclbin.get_uuid());
