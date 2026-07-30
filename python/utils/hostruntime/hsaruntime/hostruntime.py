@@ -26,7 +26,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ..hostruntime import HostRuntime, HostRuntimeError, KernelHandle, KernelResult
-from ._bindings import HSATimeoutError
 from .context import HSAContext
 from .tensor import HSATensor
 
@@ -140,16 +139,21 @@ class HSAHostRuntime(HostRuntime):
         the kernarg block must carry, matching ROCR's dispatch.cc."""
         return [(t.buffer_object(), t.nbytes) for t in kept]
 
-    def _release_dispatch(self, timed_out, overflows):
-        """Release what a completed dispatch owns; leak what a wedged one still does.
+    def _release_dispatch(self, failed, overflows):
+        """Release what a completed dispatch owns; leak what a failed one may still.
 
         The steady-state path frees nothing: kernargs come from the context's
         fixed slot pool and the completion signal is reused. Only an
-        over-capacity argument list allocates. On a timeout the packets are still
-        in flight, so the device may yet decrement the shared signal and read the
-        overflow buffers -- replace the signal rather than reuse it, and leak the
-        buffers rather than free them (see HSATimeoutError)."""
-        if timed_out:
+        over-capacity argument list allocates.
+
+        Any failure once packets may be in flight compromises the shared signal,
+        not just a timeout: `dispatch_chain` rings the packets it already wrote
+        before propagating a non-timeout error, and those will decrement the
+        signal whenever they complete. Reusing it would let the next dispatch's
+        wait see somebody else's decrements and return early. So on any failure
+        the signal is replaced, and the overflow buffers are leaked rather than
+        freed, since the device may still read them."""
+        if failed:
             self._ctx.discard_signal()
         else:
             for overflow in overflows:
@@ -175,15 +179,15 @@ class HSAHostRuntime(HostRuntime):
     ) -> HSAKernelResult:
         """``fail_on_error`` is accepted for API compatibility but not honored:
         HSA always raises on failure via the context's ``_check`` (see the
-        HSATimeoutError leak-on-timeout note below for the one path where
-        cleanup is intentionally skipped rather than run unconditionally)."""
+        _release_dispatch note below for the one path where cleanup is
+        intentionally skipped rather than run unconditionally)."""
         assert isinstance(kernel_handle, HSAKernelHandle)
         if trace_config is not None:
             raise HostRuntimeError(_TRACE_UNSUPPORTED_MSG)
         self.check_device_consistency()
 
         kept = self._validate_args(args)
-        timed_out = False
+        failed = False
         overflows = []
         signal = self._ctx.arm_signal(1)
         try:
@@ -197,11 +201,11 @@ class HSAHostRuntime(HostRuntime):
             )
             self._ctx.wait(signal)
             stop = time.time_ns()
-        except HSATimeoutError:
-            timed_out = True
+        except BaseException:
+            failed = True
             raise
         finally:
-            self._release_dispatch(timed_out, overflows)
+            self._release_dispatch(failed, overflows)
 
         return HSAKernelResult(stop - start, success=True)
 
@@ -229,7 +233,7 @@ class HSAHostRuntime(HostRuntime):
             return HSAKernelResult(0, success=True)
 
         items = []
-        timed_out = False
+        failed = False
         overflows = []
         signal = self._ctx.arm_signal(len(runs))
         try:
@@ -249,11 +253,11 @@ class HSAHostRuntime(HostRuntime):
             overflows = self._ctx.dispatch_chain(items, signal)
             self._ctx.wait(signal)
             stop = time.time_ns()
-        except HSATimeoutError:
-            timed_out = True
+        except BaseException:
+            failed = True
             raise
         finally:
-            self._release_dispatch(timed_out, overflows)
+            self._release_dispatch(failed, overflows)
 
         return HSAKernelResult(stop - start, success=True)
 
@@ -312,7 +316,13 @@ class CachedHSAHostRuntime(HSAHostRuntime):
             return self._exe_cache[key]
 
         handle = self._build_handle(insts_path, pdi_path, kernel_name)
-        if self._cache_size > 0 and len(self._exe_cache) >= self._cache_size:
+        if self._cache_size <= 0:
+            # Caching disabled. Track the handle so cleanup still frees it,
+            # rather than never evicting (which is what a bare `>= size` test
+            # would do here, and what a size of 0 previously meant).
+            self._handles.append(handle)
+            return handle
+        while self._exe_cache and len(self._exe_cache) >= self._cache_size:
             _, old = self._exe_cache.popitem(last=False)
             self._free_handle(old)
         self._exe_cache[key] = handle

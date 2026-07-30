@@ -268,6 +268,15 @@ class HSAContext:
         """
         env = os.environ.get("IRON_HSA_DEVICE")
         if env:
+            # Validate the override too. Letting an unrecognized value through
+            # would defeat the point of raising below: it surfaces much later,
+            # as an unknown-device error from `device()`, far from the variable
+            # that caused it.
+            if env not in ("npu1", "npu2"):
+                raise HSAError(
+                    f"IRON_HSA_DEVICE={env!r} is not a known device generation; "
+                    f"expected npu1 or npu2."
+                )
             return env
         name = (ctypes.c_char * 64)()
         status = lib.hsa_agent_get_info(self.aie_agent, HSA_AGENT_INFO_NAME, name)

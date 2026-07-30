@@ -7,6 +7,8 @@
 
 """Host-side unit tests for HSA parity features (no NPU dispatch)."""
 
+import pathlib
+
 import pytest
 from aie.utils.hostruntime.hsaruntime import _bindings
 
@@ -145,6 +147,69 @@ def test_run_replaces_shared_signal_on_timeout(monkeypatch):
         rt.run(handle, [])
     assert rt._ctx.discard_calls == 1, "in-flight signal must not be reused"
     assert rt._ctx.vmem_free_calls == []
+
+
+def test_non_timeout_failure_also_replaces_the_shared_signal(monkeypatch):
+    """Any failure once packets may be in flight must discard the shared signal.
+
+    dispatch_chain rings the packets it already wrote before propagating a
+    non-timeout error. Those decrement the signal whenever they complete, so
+    reusing it would let the next dispatch's wait see somebody else's
+    decrements and return early on a half-written output.
+    """
+    from aie.utils.hostruntime.hsaruntime import hostruntime as hrt
+
+    cls = _make_fake_ctx_cls([])
+
+    class _BoomCtx(cls):
+        def dispatch(self, *a):
+            raise HSAErrorForTest("packet build failed after ringing")
+
+    monkeypatch.setattr(
+        hrt.HSAContext, "get", classmethod(lambda c: _BoomCtx(timeout_on_wait=False))
+    )
+    rt = hrt.HSAHostRuntime()
+    handle = hrt.HSAKernelHandle(
+        pdi_ptr=0x1, insts_ptr=0x2, insts_size=4, kernel_name="MLIR_AIE"
+    )
+    with pytest.raises(HSAErrorForTest):
+        rt.run(handle, [])
+    assert rt._ctx.discard_calls == 1, "a non-timeout failure must not reuse the signal"
+
+
+def test_cache_size_zero_disables_caching(monkeypatch):
+    """HSA_EXE_CACHE_SIZE=0 must mean "keep none", not "never evict".
+
+    A bare `len(cache) >= size` test would pop an empty dict on the first load;
+    guarding that with `size > 0` instead made 0 mean an unbounded cache, i.e.
+    the opposite of what the variable documents.
+    """
+    from aie.utils.hostruntime.hsaruntime import hostruntime as hrt
+
+    monkeypatch.setenv("HSA_EXE_CACHE_SIZE", "0")
+    monkeypatch.setattr(
+        hrt.HSAContext, "get", classmethod(lambda c: _make_fake_ctx_cls([])(False))
+    )
+    rt = hrt.CachedHSAHostRuntime()
+    built = []
+    monkeypatch.setattr(
+        rt, "_resolve_kernel", lambda k: (pathlib.Path(k), pathlib.Path(k), "MLIR_AIE")
+    )
+    monkeypatch.setattr(
+        rt,
+        "_build_handle",
+        lambda i, p, n: built.append(str(i)) or hrt.HSAKernelHandle(1, 2, 4, n),
+    )
+    monkeypatch.setattr(pathlib.Path, "stat", lambda self: _FakeStat())
+    rt.load("a")
+    rt.load("a")
+    assert len(rt._exe_cache) == 0, "nothing may be cached when the size is 0"
+    assert len(built) == 2, "each load rebuilds when caching is disabled"
+    assert len(rt._handles) == 2, "handles are still tracked so cleanup frees them"
+
+
+class _FakeStat:
+    st_mtime = 1.0
 
 
 def test_overflow_kernargs_freed_on_success_and_leaked_on_timeout(monkeypatch):
