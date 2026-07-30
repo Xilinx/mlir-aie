@@ -140,13 +140,15 @@ LogicalResult AIETranslateToBCF(ModuleOp module, raw_ostream &output,
              << " // And everything else the core can't see\n";
 
       if (auto coreOp = tile.getCoreOp()) {
+        // `link_files` holds the final-link inputs (object files)
         if (auto filesAttr = coreOp.getLinkFiles()) {
           // Canonical path: link_files populated by aie-assign-core-link-files.
           for (auto f : filesAttr->getAsRange<mlir::StringAttr>())
             output << "_include _file " << f.getValue() << "\n";
         } else if (coreOp.getLinkWith()) {
           // Deprecated fallback: core-level link_with was not migrated by
-          // aie-assign-core-link-files (e.g., the pass was not run).
+          // aie-assign-core-link-files (e.g., the pass was not run). It carries
+          // no mode, so it is always an ordinary link input.
           output << "_include _file " << coreOp.getLinkWith().value().str()
                  << "\n";
         }
