@@ -637,8 +637,8 @@ jobs:
     name: Smoke-Test Wheel on Ryzen AI (Windows)
     # Windows analogue of smoke-test-npu: install the same-commit 3.13/RTTI-ON
     # build-windows wheel via iron_setup.py (runtime mode, so the installed
-    # wheel is exercised, not a from-source build) and run a make-free @iron.jit
-    # example on the self-hosted Windows NPU. Only npu2 Windows runners exist.
+    # wheel is exercised, not a from-source build) and run a few @iron.jit
+    # designs on the self-hosted Windows NPU. Only npu2 Windows runners exist.
     # 3.13 matches the runner's pre-provisioned interpreter (docs/buildHostWinNative.md).
     needs: build-windows
     runs-on: [self-hosted, windows, ryzenai, npu2]
@@ -671,11 +671,28 @@ jobs:
           mkdir "%NPU_CACHE_HOME%"
           set XRT_CONTEXT_CACHE_SIZE=2
 
-          REM Make-free @iron.jit example (Windows has no make on PATH).
+          REM A few representative @iron.jit designs: an elementwise kernel, a
+          REM vector-vector op, a reduction, and a 2D data-movement design. Each
+          REM resolves the device via iron.get_current_device(), so they target
+          REM this npu2 runner.
           REM Use the venv interpreter explicitly: bare "python" picked up the
           REM system 3.13, which has no numpy.
           set "IRON_PY=%CD%\ironenv\Scripts\python.exe"
+
+          echo ===== basic/passthrough_kernel =====
           "%IRON_PY%" utils\run_on_npu.py npu2 "%IRON_PY%" programming_examples\basic\passthrough_kernel\passthrough_kernel.py --in1_size 4096
+          if errorlevel 1 exit /b 1
+
+          echo ===== basic/vector_vector_add =====
+          "%IRON_PY%" utils\run_on_npu.py npu2 "%IRON_PY%" programming_examples\basic\vector_vector_add\vector_vector_add.py
+          if errorlevel 1 exit /b 1
+
+          echo ===== basic/vector_reduce_add =====
+          "%IRON_PY%" utils\run_on_npu.py npu2 "%IRON_PY%" programming_examples\basic\vector_reduce_add\vector_reduce_add.py
+          if errorlevel 1 exit /b 1
+
+          echo ===== basic/matrix_scalar_add =====
+          "%IRON_PY%" utils\run_on_npu.py npu2 "%IRON_PY%" programming_examples\basic\matrix_scalar_add\matrix_scalar_add.py
           if errorlevel 1 exit /b 1
 
       - name: Cleanup NPU_CACHE_HOME
