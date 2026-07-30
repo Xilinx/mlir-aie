@@ -460,13 +460,13 @@ def test_buffer_refuses_a_state_boundary_inside_a_granule():
     to record state, and a future path that marks a sub-range written would not
     go through it. The rule belongs where the state is.
     """
-    buffer = tensor_class.CPUBuffer(4 * GRANULE, "npu", GRANULE)
+    buffer = _host_storage(4 * GRANULE, "npu", GRANULE)
     with pytest.raises(ValueError, match="coherence granule"):
         buffer.coherence.set(0, GRANULE + 8, "cpu")
 
 
 def test_buffer_allows_an_aligned_state_boundary():
-    buffer = tensor_class.CPUBuffer(4 * GRANULE, "npu", GRANULE)
+    buffer = _host_storage(4 * GRANULE, "npu", GRANULE)
     buffer.coherence.set(0, GRANULE, "cpu")
     assert buffer.coherence.get(0, GRANULE) == "cpu"
     assert buffer.coherence.get(GRANULE, 2 * GRANULE) == "npu"
@@ -474,13 +474,13 @@ def test_buffer_allows_an_aligned_state_boundary():
 
 def test_buffer_allows_a_final_region_to_end_anywhere():
     """Nothing follows the last region, so its end shares a granule with nobody."""
-    buffer = tensor_class.CPUBuffer(GRANULE + 8, "npu", GRANULE)
+    buffer = _host_storage(GRANULE + 8, "npu", GRANULE)
     buffer.coherence.set(GRANULE, GRANULE + 8, "cpu")
     assert buffer.coherence.get(GRANULE, GRANULE + 8) == "cpu"
 
 
 def test_a_backend_granule_governs_its_buffer():
-    buffer = tensor_class.CPUBuffer(8 * GRANULE, "npu", 4 * GRANULE)
+    buffer = _host_storage(8 * GRANULE, "npu", 4 * GRANULE)
     with pytest.raises(ValueError, match="256-byte coherence granule"):
         buffer.coherence.set(0, GRANULE, "cpu")
     buffer.coherence.set(0, 4 * GRANULE, "cpu")  # on its own granule, fine
@@ -521,7 +521,7 @@ def test_regions_written_forwards_collapse_back_into_one():
     of it walks spans, and handing the buffer to the device sends each window
     separately instead of the run they now form.
     """
-    buffer = tensor_class.CPUBuffer(4 * GRANULE, "npu", GRANULE)
+    buffer = _host_storage(4 * GRANULE, "npu", GRANULE)
     for i in range(4):
         buffer.coherence.set(i * GRANULE, (i + 1) * GRANULE, "cpu")
     assert buffer.coherence.uniform == "cpu"
@@ -530,7 +530,7 @@ def test_regions_written_forwards_collapse_back_into_one():
 
 def test_regions_written_backwards_collapse_too():
     """The same, merging onto the region that follows rather than precedes."""
-    buffer = tensor_class.CPUBuffer(4 * GRANULE, "npu", GRANULE)
+    buffer = _host_storage(4 * GRANULE, "npu", GRANULE)
     for i in reversed(range(4)):
         buffer.coherence.set(i * GRANULE, (i + 1) * GRANULE, "cpu")
     assert buffer.coherence.uniform == "cpu"
@@ -539,7 +539,7 @@ def test_regions_written_backwards_collapse_too():
 
 def test_a_written_window_is_one_range_not_several():
     """Two windows either side of an untouched one stay two ranges, not four."""
-    buffer = tensor_class.CPUBuffer(8 * GRANULE, "npu", GRANULE)
+    buffer = _host_storage(8 * GRANULE, "npu", GRANULE)
     buffer.coherence.set(0, 2 * GRANULE, "cpu")
     buffer.coherence.set(4 * GRANULE, 6 * GRANULE, "cpu")
     assert buffer.coherence.ranges(0, 8 * GRANULE, "cpu") == [
@@ -553,7 +553,14 @@ def test_a_written_window_is_one_range_not_several():
 # ---------------------------------------------------------------------------
 
 
-class TwoMemoryBuffer(tensor_class.NpuBuffer):
+def _host_storage(nbytes, device, granule=None):
+    """A host-only storage, the spelling several tests below want."""
+    return tensor_class.Storage(
+        tensor_class.HostOnlyTransport(nbytes), nbytes, device, granule
+    )
+
+
+class TwoMemoryTransport(tensor_class.Transport):
     """Host and device bytes as separate arrays, so a missed reconcile shows.
 
     ``CPUOnlyTensor`` cannot demonstrate any of this: its transfers are no-ops
@@ -562,8 +569,7 @@ class TwoMemoryBuffer(tensor_class.NpuBuffer):
     byte between them, which is what makes an omitted transfer observable.
     """
 
-    def __init__(self, nbytes, device, granule=None):
-        super().__init__(nbytes, device, granule)
+    def __init__(self, nbytes):
         self._host = np.zeros(nbytes, dtype=np.uint8)
         self.device_bytes = np.zeros(nbytes, dtype=np.uint8)
 
@@ -571,17 +577,17 @@ class TwoMemoryBuffer(tensor_class.NpuBuffer):
     def host_bytes(self):
         return self._host
 
-    def sync_to_device(self, offset, nbytes):
+    def to_device(self, offset, nbytes):
         end = offset + nbytes
         self.device_bytes[offset:end] = self._host[offset:end]
 
-    def sync_from_device(self, offset, nbytes):
+    def from_device(self, offset, nbytes):
         end = offset + nbytes
         self._host[offset:end] = self.device_bytes[offset:end]
 
 
 class TwoMemoryTensor(NpuTensor):
-    """A minimal backend over :class:`TwoMemoryBuffer`."""
+    """A minimal backend over :class:`TwoMemoryTransport`."""
 
     DEVICES = ["cpu", "npu"]
     DEFAULT_DEVICE = "npu"
@@ -590,11 +596,15 @@ class TwoMemoryTensor(NpuTensor):
         super().__init__(shape, dtype=dtype, device=device)
         self._shape = tuple(shape)
         nbytes = int(np.prod(self._shape)) * np.dtype(dtype).itemsize
-        self._buffer = TwoMemoryBuffer(
-            nbytes, self._initial_device, self._resolve_coherence_granule()
+        self._transport = TwoMemoryTransport(nbytes)
+        self._storage = tensor_class.Storage(
+            self._transport,
+            nbytes,
+            self._initial_device,
+            self._resolve_coherence_granule(),
         )
         self._offset_bytes = 0
-        self._data = self._buffer.host_bytes.view(dtype).reshape(self._shape)
+        self._data = self._storage.host_bytes.view(dtype).reshape(self._shape)
 
     @property
     def data(self):
@@ -606,11 +616,11 @@ class TwoMemoryTensor(NpuTensor):
 
     def _sync_to_device(self):
         start, end = self._extent
-        self._buffer.sync_to_device(start, end - start)
+        self._storage.sync_to_device(start, end - start)
 
     def _sync_from_device(self):
         start, end = self._extent
-        self._buffer.sync_from_device(start, end - start)
+        self._storage.sync_from_device(start, end - start)
 
     def _subview(self, offset_bytes, shape, dtype):
         nbytes = int(np.prod(shape)) * dtype.itemsize
@@ -618,11 +628,11 @@ class TwoMemoryTensor(NpuTensor):
         NpuTensor.__init__(view, shape, dtype=dtype, device=self.device)
         view._storage = self
         view._shape = tuple(shape)
-        view._buffer = self._buffer
+        view._storage = self._storage
         absolute = self.storage_offset + offset_bytes
         view._offset_bytes = absolute
         view._data = (
-            self._buffer.host_bytes[absolute : absolute + nbytes]
+            self._storage.host_bytes[absolute : absolute + nbytes]
             .view(dtype)
             .reshape(view._shape)
         )
@@ -636,8 +646,8 @@ def fragmented(fill=0xAA):
     a view and then touching the enclosing tensor before reconciling.
     """
     tensor = TwoMemoryTensor((2 * GRANULE,))
-    tensor.buffer.device_bytes[:] = fill
-    tensor.buffer.host_bytes[:] = fill
+    tensor.storage._transport.device_bytes[:] = fill
+    tensor.storage.host_bytes[:] = fill
     with tensor.subview(0, (GRANULE,)).mutate() as window:
         window[:] = 0x11
     return tensor
@@ -646,7 +656,7 @@ def fragmented(fill=0xAA):
 def test_the_premise_a_written_window_leaves_the_extent_mixed():
     """Guard for the tests below: they mean nothing if the state is uniform."""
     tensor = fragmented()
-    assert tensor.buffer.coherence.uniform is None
+    assert tensor.storage.coherence.uniform is None
     assert tensor.device == "cpu"
 
 
@@ -660,14 +670,14 @@ def test_fill_reaches_the_device_even_where_the_extent_was_device_held():
     tensor = fragmented()
     tensor.fill_(0x22)
     tensor.to("npu")
-    assert (tensor.buffer.device_bytes == 0x22).all()
+    assert (tensor.storage._transport.device_bytes == 0x22).all()
 
 
 def test_setitem_reaches_the_device_even_where_the_extent_was_device_held():
     tensor = fragmented()
     tensor[GRANULE:] = 0x33
     tensor.to("npu")
-    assert (tensor.buffer.device_bytes[GRANULE:] == 0x33).all()
+    assert (tensor.storage._transport.device_bytes[GRANULE:] == 0x33).all()
 
 
 def test_numpy_sees_device_writes_to_a_region_it_does_not_hold():
@@ -678,19 +688,19 @@ def test_numpy_sees_device_writes_to_a_region_it_does_not_hold():
     the device actually owns.
     """
     tensor = fragmented()
-    tensor.buffer.device_bytes[GRANULE:] = 0xBB
+    tensor.storage._transport.device_bytes[GRANULE:] = 0xBB
     assert (tensor.numpy()[GRANULE:] == 0xBB).all()
 
 
 def test_getitem_sees_device_writes_to_a_region_it_does_not_hold():
     tensor = fragmented()
-    tensor.buffer.device_bytes[GRANULE:] = 0xCC
+    tensor.storage._transport.device_bytes[GRANULE:] = 0xCC
     assert tensor[GRANULE] == 0xCC
 
 
 def test_array_sees_device_writes_to_a_region_it_does_not_hold():
     tensor = fragmented()
-    tensor.buffer.device_bytes[GRANULE:] = 0xDD
+    tensor.storage._transport.device_bytes[GRANULE:] = 0xDD
     assert (np.asarray(tensor)[GRANULE:] == 0xDD).all()
 
 
@@ -699,11 +709,11 @@ def test_a_uniform_tensor_still_takes_the_cheap_path():
     tensor = TwoMemoryTensor((2 * GRANULE,))
     tensor.to("npu")
     transfers = []
-    tensor.buffer.sync_from_device = lambda o, n: transfers.append((o, n))
+    tensor.storage.sync_from_device = lambda o, n: transfers.append((o, n))
     tensor.fill_(0x44)
     tensor.to("npu")
     assert transfers == []
-    assert (tensor.buffer.device_bytes == 0x44).all()
+    assert (tensor.storage._transport.device_bytes == 0x44).all()
 
 
 def test_a_buffer_must_supply_host_bytes():
@@ -714,21 +724,21 @@ def test_a_buffer_must_supply_host_bytes():
     transfer methods are declared; this one was not.
     """
 
-    class BufferWithoutHostBytes(tensor_class.NpuBuffer):
-        def sync_to_device(self, offset, nbytes):
+    class TransportWithoutHostBytes(tensor_class.Transport):
+        def to_device(self, offset, nbytes):
             pass
 
-        def sync_from_device(self, offset, nbytes):
+        def from_device(self, offset, nbytes):
             pass
 
     with pytest.raises(TypeError, match="host_bytes"):
-        BufferWithoutHostBytes(GRANULE, "cpu", GRANULE)
+        TransportWithoutHostBytes()
 
 
 def test_repr_reaches_the_device_for_a_region_it_does_not_hold():
     """repr renders the data, so it reconciles like the other readers do."""
     tensor = fragmented()
-    tensor.buffer.device_bytes[GRANULE:] = 0x7B  # 123
+    tensor.storage._transport.device_bytes[GRANULE:] = 0x7B  # 123
     assert "123" in repr(tensor)
 
 
@@ -742,7 +752,7 @@ def test_a_write_that_raises_records_nothing():
     transfer pushes them over what the device has.
     """
     tensor = TwoMemoryTensor((GRANULE,), dtype=np.int32)
-    tensor.buffer.device_bytes[:] = 0xEE
+    tensor.storage._transport.device_bytes[:] = 0xEE
     tensor.to("npu")
     with pytest.raises(ValueError):
         tensor.fill_(float("nan"))  # numpy rejects the cast, writing nothing
@@ -758,7 +768,7 @@ def test_a_partial_write_that_raises_keeps_the_device_copy():
     look like; claiming the host copy would lose whatever the device holds.
     """
     tensor = TwoMemoryTensor((2 * GRANULE,), dtype=np.uint8)
-    tensor.buffer.device_bytes[:] = 0xEE
+    tensor.storage._transport.device_bytes[:] = 0xEE
     tensor.to("npu")
     with pytest.raises(RuntimeError):
         with tensor.overwrite() as array:

@@ -7,7 +7,7 @@
 
 The allocation itself, its residency bookkeeping, and the torch bridge live in
 :mod:`buffer`, :mod:`coherence` and :mod:`torch_interop`. Each is re-exported
-here, so ``from .tensor_class import CPUBuffer`` and friends keep resolving.
+here, so ``from .tensor_class import Storage`` and friends keep resolving.
 """
 
 import math
@@ -18,9 +18,10 @@ from functools import cached_property
 import numpy as np
 import numpy.typing as npt
 
-from .buffer import CPUBuffer as CPUBuffer
-from .buffer import NpuBuffer as NpuBuffer
-from .buffer import _TensorBackedBuffer as _TensorBackedBuffer
+from .buffer import HostOnlyTransport as HostOnlyTransport
+from .buffer import Storage as Storage
+from .buffer import Transport as Transport
+from .buffer import WholeExtentTransport as WholeExtentTransport
 from .coherence import COHERENCE_GRANULE as COHERENCE_GRANULE
 from .coherence import _CoherenceMap as _CoherenceMap
 from .coherence import _detect_coherence_granule as _detect_coherence_granule
@@ -150,10 +151,16 @@ class NpuTensor(ABC):
     _coherence_granule: int | None = None
 
     # Set on views by the backend hook. Declared here rather than conjured onto
-    # the instance so that every buffer has them, they are part of the contract
+    # the instance so that every tensor has them, they are part of the contract
     # a backend implements against, and the type checker can see them.
-    _storage: "NpuTensor | None" = None
+    _parent: "NpuTensor | None" = None
     _offset_bytes: int = 0
+    # Same, for the two the class fills in lazily rather than the backend. Held
+    # as declared attributes because writing through ``__dict__`` to cache them
+    # is an index into a read-only mapping as far as a type checker is
+    # concerned, and the attribute is what was meant in any case.
+    _storage: "Storage | None" = None
+    _extent_cache: "tuple[int, int] | None" = None
     # Bound on first use. Held directly rather than reached through the buffer
     # because the residency query is on the path a dispatch takes for every
     # argument, and an attribute read is the whole fast path.
@@ -174,22 +181,28 @@ class NpuTensor(ABC):
         return self.base or self
 
     @property
-    def buffer(self) -> "NpuBuffer":
+    def storage(self) -> "Storage":
         """The allocation this tensor is a view of.
 
-        Backends that own their storage directly are wrapped on first use, so
-        every tensor has one whether or not its backend has adopted the split.
+        A backend that still owns its bytes directly is wrapped on first use in
+        a storage whose transport reconciles whole-extent, so every tensor has
+        one whether or not its backend has adopted the split.
         """
-        existing = self.__dict__.get("_buffer")
+        existing = self._storage
         if existing is None:
-            existing = _TensorBackedBuffer(self)
-            self.__dict__["_buffer"] = existing
+            existing = Storage(
+                WholeExtentTransport(self),
+                self.nbytes,
+                self._initial_device,
+                type(self)._resolve_coherence_granule(),
+            )
+            self._storage = existing
         return existing
 
     def _coherence(self) -> "_CoherenceMap":
         coherence = self._coherence_ref
         if coherence is None:
-            coherence = self.buffer.coherence
+            coherence = self.storage.coherence
             self._coherence_ref = coherence
         return coherence
 
@@ -201,13 +214,13 @@ class NpuTensor(ABC):
         this is read on every residency query, which a dispatch does per
         argument.
         """
-        cached = self.__dict__.get("_extent_cache")
+        cached = self._extent_cache
         if cached is not None:
             return cached
         start = self.storage_offset
         size = math.prod(self.shape) * np.dtype(self.dtype).itemsize
         extent = (start, start + size)
-        self.__dict__["_extent_cache"] = extent
+        self._extent_cache = extent
         return extent
 
     @property
@@ -246,9 +259,9 @@ class NpuTensor(ABC):
         internally, so the whole chain stays alive for as long as any view of it
         does.
         """
-        owner = self._storage
+        owner = self._parent
         while owner is not None:
-            parent = owner._storage
+            parent = owner._parent
             if parent is None:
                 return owner
             owner = parent
@@ -417,7 +430,7 @@ class NpuTensor(ABC):
         if coherence.get(start, end) == _CoherenceMap.HOST:
             return
         for lo, hi in coherence.ranges(start, end, _CoherenceMap.DEVICE):
-            self.buffer.sync_from_device(lo, hi - lo)
+            self.storage.sync_from_device(lo, hi - lo)
 
     def to(self, target_device: str):
         """
@@ -443,11 +456,11 @@ class NpuTensor(ABC):
             # so a buffer written end to end costs one transfer and a buffer
             # with a few dirty windows costs those windows.
             for lo, hi in coherence.ranges(start, end, _CoherenceMap.HOST):
-                self.buffer.sync_to_device(lo, hi - lo)
+                self.storage.sync_to_device(lo, hi - lo)
             coherence.set(start, end, "npu")
         elif target_device == "cpu":
             for lo, hi in coherence.ranges(start, end, _CoherenceMap.DEVICE):
-                self.buffer.sync_from_device(lo, hi - lo)
+                self.storage.sync_from_device(lo, hi - lo)
             coherence.set(start, end, "cpu")
         else:
             raise ValueError(f"Unknown device '{target_device}'")
@@ -1058,11 +1071,14 @@ class CPUOnlyTensor(NpuTensor):
         # Re-home the bytes in a buffer so views share one allocation and one
         # coherence map, then keep a typed view of the whole of it.
         source = self._data
-        self._buffer = CPUBuffer(
-            source.nbytes, self._initial_device, self._resolve_coherence_granule()
+        self._storage = Storage(
+            HostOnlyTransport(source.nbytes),
+            source.nbytes,
+            self._initial_device,
+            self._resolve_coherence_granule(),
         )
         self._offset_bytes = 0
-        self._data = self._buffer.host_bytes.view(source.dtype).reshape(self._shape)
+        self._data = self._storage.host_bytes.view(source.dtype).reshape(self._shape)
         np.copyto(self._data, source)
 
     @property
@@ -1110,14 +1126,14 @@ class CPUOnlyTensor(NpuTensor):
         view = type(self).__new__(type(self))
         # Set the NpuTensor contract fields without allocating a new array.
         NpuTensor.__init__(view, shape, dtype=dtype, device=self.device)
-        view._storage = self  # keep parent alive; shared storage
+        view._parent = self  # keep parent alive; shared storage
         view._shape = tuple(shape)
-        view._buffer = self._buffer
+        view._storage = self._storage
         absolute = self.storage_offset + offset_bytes
         view._offset_bytes = absolute
         # A numpy view over the same bytes (zero-copy) so writes are shared.
         view._data = (
-            self._buffer.host_bytes[absolute : absolute + nbytes]
+            self.storage.host_bytes[absolute : absolute + nbytes]
             .view(dtype)
             .reshape(view._shape)
         )

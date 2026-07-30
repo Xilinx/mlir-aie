@@ -22,6 +22,7 @@ import pytest
 
 pytest.importorskip("pyxrt")
 
+from aie.utils.hostruntime import tensor_class  # noqa: E402
 from aie.utils.hostruntime.tensor_class import NpuTensor  # noqa: E402
 from aie.utils.hostruntime.xrtruntime import tensor as xrt_tensor_module  # noqa: E402
 from aie.utils.hostruntime.xrtruntime.tensor import XRTTensor  # noqa: E402
@@ -68,10 +69,15 @@ def make_root(nbytes, dtype=np.uint8):
     NpuTensor.__init__(root, shape, dtype=dtype, device="npu")
     root.xrt_device = object()
     root._shape = shape
-    root._buffer = xrt_tensor_module.XRTBuffer(root.xrt_device, nbytes, None, 0, "npu")
+    root._storage = tensor_class.Storage(
+        xrt_tensor_module.XrtTransport(root.xrt_device, nbytes, None, 0),
+        nbytes,
+        "npu",
+        GRANULE,
+    )
     root._offset_bytes = 0
-    root._bo = root._buffer.binding_handle(0, nbytes)
-    root._data = root._buffer.host_bytes.view(dtype).reshape(shape)
+    root._bo = root._storage.binding_handle(0, nbytes)
+    root._data = root._storage.host_bytes.view(dtype).reshape(shape)
     return root
 
 
@@ -80,7 +86,7 @@ def test_subview_derives_from_the_parent_at_a_byte_offset(fake_xrt):
     view = root.subview(GRANULE, (GRANULE,))
 
     assert len(fake_xrt) == 1
-    assert fake_xrt[0]["parent"] is root._buffer._bo
+    assert fake_xrt[0]["parent"] is root._storage._transport._bo
     assert fake_xrt[0]["offset"] == GRANULE
     assert fake_xrt[0]["size"] == GRANULE
     assert view.storage_offset == GRANULE
@@ -101,7 +107,9 @@ def test_nested_subview_derives_from_the_root_at_an_accumulated_offset(fake_xrt)
     outer = root.subview(2 * GRANULE, (4 * GRANULE,))
     inner = outer.subview(GRANULE, (GRANULE,))
 
-    assert fake_xrt[-1]["parent"] is root._buffer._bo  # not the intermediate view
+    assert (
+        fake_xrt[-1]["parent"] is root._storage._transport._bo
+    )  # not the intermediate view
     assert fake_xrt[-1]["offset"] == 3 * GRANULE  # 2 + 1 granules, from the root
     assert inner.storage_offset == 3 * GRANULE
     assert inner.base is root
@@ -113,7 +121,7 @@ def test_nested_subview_addresses_the_same_bytes_the_host_sees(fake_xrt):
     inner = root.subview(2 * GRANULE, (4 * GRANULE,)).subview(GRANULE, (GRANULE,))
 
     inner.data[:] = 0xC7
-    written = np.nonzero(root._buffer.host_bytes)[0]
+    written = np.nonzero(root._storage.host_bytes)[0]
     assert written.min() == inner.storage_offset
     assert written.max() == inner.storage_offset + GRANULE - 1
 
@@ -121,7 +129,7 @@ def test_nested_subview_addresses_the_same_bytes_the_host_sees(fake_xrt):
 def test_subview_keeps_its_parent(fake_xrt):
     root = make_root(2 * GRANULE)
     view = root.subview(GRANULE, (GRANULE,))
-    assert view._storage is root
+    assert view._parent is root
 
 
 def test_subview_carries_the_requested_dtype(fake_xrt):
@@ -149,13 +157,13 @@ def test_a_transfer_covers_only_the_ranges_that_were_written(fake_xrt, monkeypat
     written still produces the right answer, so it is pinned here.
     """
     sent = []
-    original = xrt_tensor_module.XRTBuffer.sync_to_device
+    original = xrt_tensor_module.XrtTransport.to_device
 
     def recording(self, offset, nbytes):
         sent.append((offset, nbytes))
         return original(self, offset, nbytes)
 
-    monkeypatch.setattr(xrt_tensor_module.XRTBuffer, "sync_to_device", recording)
+    monkeypatch.setattr(xrt_tensor_module.XrtTransport, "to_device", recording)
 
     root = make_root(16 * GRANULE)
     root.to("npu")

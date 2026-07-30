@@ -1,9 +1,14 @@
-# tensor.py -*- Python -*-
+# buffer.py -*- Python -*-
 #
 # Copyright (C) 2025-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""Allocations, and how each backend reconciles one between host and device."""
+"""An allocation, and how a backend reaches and reconciles the bytes in it.
+
+The allocation is one class. What differs between backends is not the allocation
+but the two things layered under it: where the host's bytes come from, and what
+reconciling a range actually does. Those are the :class:`Transport`.
+"""
 
 from abc import ABC, abstractmethod
 
@@ -12,42 +17,35 @@ import numpy as np
 from .coherence import _CoherenceMap
 
 
-class NpuBuffer(ABC):
-    """One allocation, and the coherence of the memory in it.
+class Transport(ABC):
+    """How one allocation's bytes are reached, and reconciled between agents.
 
-    A buffer owns bytes and knows how to reconcile them between host and device.
-    It has no shape and no dtype: those are interpretations, and they belong to
-    the :class:`NpuTensor` views layered over it. Many tensors may share one
-    buffer, which is why the coherence state lives here -- it describes the
-    memory, so storing it per tensor would let two names for the same bytes
-    disagree.
+    Everything that varies between backends lives here, and it is only ever
+    these three things: where the host's bytes come from, what moving a range in
+    either direction does, and whether a region has a handle a runtime can bind.
+    A backend is a transport, not a kind of allocation.
 
-    Compare :class:`torch.Storage`, which draws the same line for the same
-    reason, and is where ``storage_offset`` comes from.
+    Ranges are part of the contract rather than a hint. A transport that cannot
+    honour them says so in its name (see :class:`WholeExtentTransport`) instead
+    of taking the arguments and ignoring them, which is a promise the caller has
+    no way to check, and is the reason this is a strategy rather than a subclass
+    of the allocation.
     """
-
-    def __init__(self, nbytes, device, granule=None):
-        self.nbytes = nbytes
-        self.coherence = _CoherenceMap(nbytes, device, granule)
 
     @property
     @abstractmethod
     def host_bytes(self) -> np.ndarray:
-        """The allocation as a flat ``uint8`` array the host can address.
-
-        Every tensor over this buffer takes its data from here, so it is part of
-        the contract rather than a convention each backend happens to follow.
-        """
+        """The allocation as a flat ``uint8`` array the host can address."""
 
     @abstractmethod
-    def sync_to_device(self, offset, nbytes):
+    def to_device(self, offset, nbytes):
         """Make the host's writes to ``[offset, offset+nbytes)`` visible to the device."""
 
     @abstractmethod
-    def sync_from_device(self, offset, nbytes):
+    def from_device(self, offset, nbytes):
         """Make the device's writes to ``[offset, offset+nbytes)`` visible to the host."""
 
-    def binding_handle(self, offset, nbytes):
+    def handle(self, offset, nbytes):
         """A handle a runtime can bind for this region, if the backend has one.
 
         Returning None is a legitimate answer, not a stub: a design where the
@@ -57,50 +55,95 @@ class NpuBuffer(ABC):
         return None
 
 
-class _TensorBackedBuffer(NpuBuffer):
-    """Compatibility buffer for a backend that still owns its own storage.
+class HostOnlyTransport(Transport):
+    """Bytes the host allocates and no other agent touches.
 
-    Delegates reconciliation to the tensor's transfer methods, whole-extent,
-    which is what those backends did before buffers existed. It lets a backend
-    adopt the split when it is ready rather than being restructured by this
-    change, without opting out of per-region coherence.
+    Reconciliation is a no-op because there is only one agent, which is the
+    degenerate case of this contract rather than a different one.
     """
 
-    def __init__(self, tensor):
-        super().__init__(
-            tensor.nbytes,
-            tensor._initial_device,
-            type(tensor)._resolve_coherence_granule(),
-        )
-        self._tensor = tensor
-
-    def sync_to_device(self, offset, nbytes):
-        self._tensor._sync_to_device()
-
-    def sync_from_device(self, offset, nbytes):
-        self._tensor._sync_from_device()
-
-    def binding_handle(self, offset, nbytes):
-        return getattr(self._tensor, "_bo", None)
-
-    @property
-    def host_bytes(self):
-        return self._tensor._data.reshape(-1).view(np.uint8)
-
-
-class CPUBuffer(NpuBuffer):
-    """A host allocation. Reconciliation is a no-op: there is only one agent."""
-
-    def __init__(self, nbytes, device, granule=None):
-        super().__init__(nbytes, device, granule)
+    def __init__(self, nbytes):
         self._host = np.zeros(nbytes, dtype=np.uint8)
 
     @property
     def host_bytes(self):
         return self._host
 
-    def sync_to_device(self, offset, nbytes):
+    def to_device(self, offset, nbytes):
         pass
 
-    def sync_from_device(self, offset, nbytes):
+    def from_device(self, offset, nbytes):
         pass
+
+
+class WholeExtentTransport(Transport):
+    """For a backend whose transfer methods do not take a range.
+
+    Reconciles the whole allocation whatever range it is handed, which is what
+    those backends did before storage was split out of the tensor. The name is
+    the point: over-reconciling is safe, so the cost is wider cache maintenance
+    than was asked for, and per-region coherence is still tracked above it, but
+    a reader can see which it is without opening the method.
+
+    A backend that can reconcile by range wants its own transport instead. HRX
+    is the standing example, since ``hrx_buffer_flush_range`` already takes an
+    offset and a size and it is the tensor layer above that discards them.
+    """
+
+    def __init__(self, tensor):
+        self._tensor = tensor
+
+    @property
+    def host_bytes(self):
+        return self._tensor._data.reshape(-1).view(np.uint8)
+
+    def to_device(self, offset, nbytes):
+        self._tensor._sync_to_device()
+
+    def from_device(self, offset, nbytes):
+        self._tensor._sync_from_device()
+
+    def handle(self, offset, nbytes):
+        return getattr(self._tensor, "_bo", None)
+
+
+class Storage:
+    """One allocation, and the coherence of the memory in it.
+
+    Storage owns bytes and the record of which agent holds each range of them.
+    It has no shape and no dtype: those are interpretations, and interpretations
+    are what :class:`NpuTensor` is for. Many tensors may name one storage, which
+    is why the coherence state lives here. Kept per tensor, two names for the
+    same bytes could disagree and nothing would reconcile them.
+
+    This is the split torch draws between ``UntypedStorage`` and ``Tensor``, and
+    is where ``storage_offset`` comes from.
+
+    Not subclassed. A backend supplies a :class:`Transport`, so the reconcile
+    mechanism is data this class holds rather than an identity a subclass
+    carries. That is the same argument made one level up about coherence
+    belonging to the memory rather than to whichever tensor names it, and it is
+    what stops a backend quietly redefining what a range means.
+    """
+
+    def __init__(self, transport: Transport, nbytes, device, granule=None):
+        self.nbytes = nbytes
+        self.coherence = _CoherenceMap(nbytes, device, granule)
+        self._transport = transport
+
+    @property
+    def host_bytes(self) -> np.ndarray:
+        """The allocation as a flat ``uint8`` array the host can address."""
+        return self._transport.host_bytes
+
+    def sync_to_device(self, offset, nbytes):
+        """Make the host's writes to ``[offset, offset+nbytes)`` visible to the device."""
+        self._transport.to_device(offset, nbytes)
+
+    def sync_from_device(self, offset, nbytes):
+        """Make the device's writes to ``[offset, offset+nbytes)`` visible to the host."""
+        self._transport.from_device(offset, nbytes)
+
+    def binding_handle(self, offset, nbytes):
+        """A handle a runtime can bind for this region, or None."""
+        return self._transport.handle(offset, nbytes)

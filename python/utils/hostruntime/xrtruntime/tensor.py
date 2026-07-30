@@ -10,15 +10,16 @@ import numpy as np
 import pyxrt as xrt  # pyright: ignore[reportMissingImports]
 from aie.helpers.util import np_ndarray_type_get_shape
 
-from ..tensor_class import NpuBuffer, NpuTensor
+from ..buffer import Storage, Transport
+from ..tensor_class import NpuTensor
 
 
-class XRTBuffer(NpuBuffer):
-    """An XRT allocation, and the coherence of the memory in it.
+class XrtTransport(Transport):
+    """An XRT allocation, reconciled by range through derived sub-buffers.
 
-    Sub-buffer handles are derived from this allocation and cached, so a view
-    binds the same handle every dispatch and the whole chain stays alive for as
-    long as the buffer does.
+    Handles are derived from this allocation and cached, so a view binds the
+    same handle every dispatch and the whole chain stays alive as long as the
+    transport does.
 
     Every handle is derived from the root rather than from another sub-buffer.
     A sub-buffer of a sub-buffer does not compose: XRT takes the host pointer
@@ -28,9 +29,9 @@ class XRTBuffer(NpuBuffer):
     another.
     """
 
-    def __init__(self, xrt_device, nbytes, flags, group_id, device, granule=None):
-        super().__init__(nbytes, device, granule)
+    def __init__(self, xrt_device, nbytes, flags, group_id):
         self.xrt_device = xrt_device
+        self.nbytes = nbytes
         self._bo = xrt.bo(xrt_device, nbytes, flags, group_id)
         self._host = np.frombuffer(self._bo.map(), dtype=np.uint8)
         self._handles = {}
@@ -39,7 +40,7 @@ class XRTBuffer(NpuBuffer):
     def host_bytes(self):
         return self._host
 
-    def binding_handle(self, offset, nbytes):
+    def handle(self, offset, nbytes):
         if offset == 0 and nbytes == self.nbytes:
             return self._bo
         key = (offset, nbytes)
@@ -49,13 +50,13 @@ class XRTBuffer(NpuBuffer):
             self._handles[key] = handle
         return handle
 
-    def sync_to_device(self, offset, nbytes):
-        self.binding_handle(offset, nbytes).sync(
+    def to_device(self, offset, nbytes):
+        self.handle(offset, nbytes).sync(
             xrt.xclBOSyncDirection.XCL_BO_SYNC_BO_TO_DEVICE
         )
 
-    def sync_from_device(self, offset, nbytes):
-        self.binding_handle(offset, nbytes).sync(
+    def from_device(self, offset, nbytes):
+        self.handle(offset, nbytes).sync(
             xrt.xclBOSyncDirection.XCL_BO_SYNC_BO_FROM_DEVICE
         )
 
@@ -119,17 +120,15 @@ class XRTTensor(NpuTensor):
         # Eventually, xrt:ext::bo uses the 0 magic number that shall be fixed in the future, so that is used as a default.
         # https://github.com/Xilinx/XRT/blob/9b114f18c4fcf4e3558291aa2d78f6d97c406365/src/runtime_src/core/common/api/xrt_bo.cpp#L1626
         nbytes = int(np.prod(self._shape) * np.dtype(self.dtype).itemsize)
-        self._buffer = XRTBuffer(
-            self.xrt_device,
+        self._storage = Storage(
+            XrtTransport(self.xrt_device, nbytes, flags, group_id),
             nbytes,
-            flags,
-            group_id,
             self._initial_device,
             self._resolve_coherence_granule(),
         )
         self._offset_bytes = 0
-        self._bo = self._buffer.binding_handle(0, nbytes)
-        self._data = self._buffer.host_bytes.view(self.dtype).reshape(self._shape)
+        self._bo = self._storage.binding_handle(0, nbytes)
+        self._data = self._storage.host_bytes.view(self.dtype).reshape(self._shape)
 
         if not isinstance(shape_or_data, tuple):
             assert np_data is not None
@@ -169,14 +168,14 @@ class XRTTensor(NpuTensor):
         Syncs the tensor data from the host to the device memory.
         """
         start, end = self._extent
-        return self._buffer.sync_to_device(start, end - start)
+        return self.storage.sync_to_device(start, end - start)
 
     def _sync_from_device(self):
         """
         Syncs the tensor data from the device to the host memory.
         """
         start, end = self._extent
-        return self._buffer.sync_from_device(start, end - start)
+        return self.storage.sync_from_device(start, end - start)
 
     def __del__(self):
         """
@@ -205,17 +204,17 @@ class XRTTensor(NpuTensor):
         # Set the NpuTensor contract fields without allocating a new buffer.
         NpuTensor.__init__(view, shape, dtype=dtype, device=self.device)
         view.xrt_device = self.xrt_device
-        view._storage = self  # keep parent alive; shared storage
+        view._parent = self  # keep parent alive; shared storage
         view._shape = tuple(shape)
         # Same allocation, further along: the buffer holds the bytes and their
         # coherence, so a view carries nothing but where it starts and what the
         # bytes mean there.
-        view._buffer = self._buffer
+        view._storage = self._storage
         absolute_offset = self.storage_offset + offset_bytes
         view._offset_bytes = absolute_offset
-        view._bo = self._buffer.binding_handle(absolute_offset, nbytes)
+        view._bo = self.storage.binding_handle(absolute_offset, nbytes)
         view._data = (
-            self._buffer.host_bytes[absolute_offset : absolute_offset + nbytes]
+            self.storage.host_bytes[absolute_offset : absolute_offset + nbytes]
             .view(dtype)
             .reshape(view._shape)
         )
