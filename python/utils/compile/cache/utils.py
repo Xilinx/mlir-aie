@@ -21,7 +21,7 @@ if os.name == "nt":
 else:
     import fcntl
 
-from aie.utils.hostruntime.tensor_class import Tensor
+from aie.utils.hostruntime.tensor_class import NpuTensor
 
 # Windows has no indefinite blocking lock -- msvcrt.locking's LK_LOCK gives up
 # after ~10s -- so that platform waits by retrying.  See _wait_for_lock.
@@ -126,7 +126,7 @@ def _create_function_cache_key(function, args, kwargs, *, extra_key=()):
     signature_parts = []
 
     for arg in args:
-        if isinstance(arg, Tensor):
+        if isinstance(arg, NpuTensor):
             # Tensor argument - include shape and dtype
             signature_parts.append(f"tensor_{arg.shape}_{arg.dtype}")
         elif callable(arg):
@@ -160,7 +160,7 @@ def _create_function_cache_key(function, args, kwargs, *, extra_key=()):
             signature_parts.append(f"{type(arg).__name__}_{arg_hash}")
 
     for key, value in sorted(kwargs.items()):
-        if isinstance(value, Tensor):
+        if isinstance(value, NpuTensor):
             # Tensor argument - include shape and dtype
             signature_parts.append(f"{key}_tensor_{value.shape}_{value.dtype}")
         elif callable(value):

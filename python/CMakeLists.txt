@@ -49,9 +49,12 @@ declare_mlir_python_sources(AIEPythonSources.Utils
     utils/verify.py
     utils/hostruntime/__init__.py
     utils/hostruntime/argparse.py
+    utils/hostruntime/buffer.py
     utils/hostruntime/cli.py
+    utils/hostruntime/coherence.py
     utils/hostruntime/hostruntime.py
     utils/hostruntime/tensor_class.py
+    utils/hostruntime/torch_interop.py
     utils/hostruntime/xrtruntime/__init__.py
     utils/hostruntime/xrtruntime/hostruntime.py
     utils/hostruntime/xrtruntime/parameter_scratchpad.py
