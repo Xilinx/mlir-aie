@@ -57,9 +57,7 @@ def passthrough_dmas(
         ],
     )
 
-    device = iron.get_current_device()
-    assert device is not None
-    return Program(device, rt).resolve_program()
+    return Program(iron.get_current_device(), rt).resolve_program()
 
 
 def _make_argparser():

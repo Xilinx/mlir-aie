@@ -47,8 +47,6 @@ def bottleneck(
     scale_skip: CompileTime[int] = 1,
     skip_scale: CompileTime[int] = 0,
 ):
-    device = iron.get_current_device()
-    assert device is not None
     l1_in_c = tensor_in_c
     l1_out_c = l1_in_c // 4
     l2_in_c = l1_out_c
@@ -284,7 +282,7 @@ def bottleneck(
         ],
     )
 
-    return Program(device, rt, workers=workers).resolve_program()
+    return Program(iron.get_current_device(), rt, workers=workers).resolve_program()
 
 
 def _make_argparser():

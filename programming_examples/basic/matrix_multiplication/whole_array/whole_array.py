@@ -383,10 +383,8 @@ def whole_array(
     use_chess: CompileTime[bool] = False,
     scalar: CompileTime[bool] = False,
 ):
-    device = iron.get_current_device()
-    assert device is not None
     return _build_design(
-        device,
+        iron.get_current_device(),
         M,
         K,
         N,

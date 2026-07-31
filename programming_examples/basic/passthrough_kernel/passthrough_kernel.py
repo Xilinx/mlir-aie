@@ -67,9 +67,7 @@ def my_passthrough_kernel(
         sequence,
         [vector_type, vector_type, of_in.prod(), of_out.cons()],
     )
-    device = iron.get_current_device()
-    assert device is not None
-    prog = Program(device, rt, workers=[worker])
+    prog = Program(iron.get_current_device(), rt, workers=[worker])
     if trace_config:
         prog.enable_trace(trace_config.trace_size, workers=[worker])
 

@@ -82,8 +82,6 @@ def packet_switch(
     in_out_size: CompileTime[int] = 256,
     input_packet_id: CompileTime[int] = 0,
 ):
-    dev = iron.get_current_device()
-    assert dev is not None
     in_out_ty = np.dtype[np.int8]
     vector_ty = np.ndarray[(in_out_size,), in_out_ty]
     # +4 bytes for the kept packet header at the memtile.
@@ -434,7 +432,9 @@ def packet_switch(
     for td in (c02_dma, c03_dma, mem_dma):
         rt.add_tile_dma(td)
 
-    return Program(dev, rt, workers=[c02_worker, c03_worker]).resolve_program()
+    return Program(
+        iron.get_current_device(), rt, workers=[c02_worker, c03_worker]
+    ).resolve_program()
 
 
 def _make_argparser():

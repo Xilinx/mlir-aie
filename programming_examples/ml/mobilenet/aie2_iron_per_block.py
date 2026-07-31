@@ -269,9 +269,7 @@ def per_block_iron(block_name, data_dir=None, scales_json=None):
             ],
         )
 
-    device = iron.get_current_device()
-    assert device is not None
-    return Program(device, rt, workers=workers).resolve_program()
+    return Program(iron.get_current_device(), rt, workers=workers).resolve_program()
 
 
 def _make_argparser():
@@ -295,9 +293,7 @@ def _make_argparser():
 
 def main():
     opts = _make_argparser().parse_args()
-    device = device_from_args(opts, n_cols=None)
-    assert device is not None
-    set_current_device(device)
+    set_current_device(device_from_args(opts, n_cols=None))
     print(
         per_block_iron(opts.block, data_dir=opts.data_dir, scales_json=opts.scales_json)
     )

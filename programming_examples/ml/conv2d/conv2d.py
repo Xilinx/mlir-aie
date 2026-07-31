@@ -57,8 +57,6 @@ def conv2d(
     if out_channels % 8 != 0 or out_channels < 8:
         raise ValueError("out_channels must be a multiple of 8 and >= 8")
 
-    device = iron.get_current_device()
-    assert device is not None
     out_dtype = np.uint8 if fuse_relu else np.int8
 
     act_in = width * in_channels
@@ -132,7 +130,7 @@ def conv2d(
         ],
     )
 
-    return Program(device, rt, workers=[worker]).resolve_program()
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 
 
 def _make_argparser():

@@ -82,8 +82,6 @@ def vector_vector_add(
     *,
     col: CompileTime[int] = 0,
 ):
-    dev = iron.get_current_device()
-    assert dev is not None
     N = 256
     n = 16
     N_div_n = N // n
@@ -223,7 +221,7 @@ def vector_vector_add(
         rt.add_lock(lk)
     rt.add_tile_dma(compute_dma)
 
-    return Program(dev, rt, workers=[worker]).resolve_program()
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 
 
 def _make_argparser():

@@ -71,9 +71,7 @@ def per_tile(
         [flattened_tensor, of_out.cons()],
     )
 
-    device = iron.get_current_device()
-    assert device is not None
-    return Program(device, rt, workers=[worker]).resolve_program()
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 
 
 def _make_argparser():

@@ -188,9 +188,7 @@ def single_core(
         sequence,
         [A_ty, B_ty, C_ty, inA.prod(), inB.prod(), outC.cons()],
     )
-    device = iron.get_current_device()
-    assert device is not None
-    prog = Program(device, rt, workers=[worker])
+    prog = Program(iron.get_current_device(), rt, workers=[worker])
     if trace_config:
         prog.enable_trace(trace_config.trace_size, workers=[worker])
 

@@ -227,10 +227,8 @@ def n32_core_gemm(
         ],
     )
 
-    device = iron.get_current_device()
-    assert device is not None
     return Program(
-        device,
+        iron.get_current_device(),
         rt,
         workers=[w for row in workers for w in row],
     ).resolve_program()

@@ -282,9 +282,7 @@ def chaining_channels(
     rt.add_tile_dma(memtile_dma)
     rt.add_tile_dma(compute_dma)
 
-    device = iron.get_current_device()
-    assert device is not None
-    prog = Program(device, rt, workers=[worker])
+    prog = Program(iron.get_current_device(), rt, workers=[worker])
 
     if trace_size > 0:
         prog.enable_trace(

@@ -353,9 +353,9 @@ def cascade(
         [A_ty, B_ty, C_ty, A_prods, B_prods, C_conses],
     )
 
-    device = iron.get_current_device()
-    assert device is not None
-    return Program(device, rt, workers=flat_workers).resolve_program()
+    return Program(
+        iron.get_current_device(), rt, workers=flat_workers
+    ).resolve_program()
 
 
 def _make_argparser():

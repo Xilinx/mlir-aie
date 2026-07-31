@@ -18,12 +18,14 @@ import sys
 
 import aie.iron as iron
 import numpy as np
-from aie.dialects._aie_enum_gen import AIETileType
+from aie.dialects._aie_enum_gen import (
+    AIEDevice,
+    AIETileType,
+    DMAChannelDir,
+    LockAction,
+    WireBundle,
+)
 from aie.dialects.aie import (
-    AIEDevice,  # pyright: ignore[reportAttributeAccessIssue]
-    DMAChannelDir,  # pyright: ignore[reportAttributeAccessIssue]
-    LockAction,  # pyright: ignore[reportAttributeAccessIssue]
-    WireBundle,  # pyright: ignore[reportAttributeAccessIssue]
     buffer,
     core,
     device,
@@ -304,9 +306,7 @@ def _build_regdump():
         out_h.drain(c_out, wait=True)
 
     rt = Runtime(sequence, [vec_ty, vec_ty, of_out.cons()])
-    device = iron.get_current_device()
-    assert device is not None
-    return Program(device, rt, workers=[worker]).resolve_program()
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 
 
 @iron.jit
@@ -391,9 +391,9 @@ def dma_compression(
             out_h.drain(c_out, tap=out_tap_rt, wait=True)
 
         rt = Runtime(sequence, [vec_ty, vec_ty, of_a.prod(), of_c.cons()])
-        device = iron.get_current_device()
-        assert device is not None
-        return Program(device, rt, workers=[ct_worker]).resolve_program()
+        return Program(
+            iron.get_current_device(), rt, workers=[ct_worker]
+        ).resolve_program()
 
     is_memtile = config in MEMTILE_CONFIGS
     if is_memtile:
@@ -497,6 +497,4 @@ def dma_compression(
 
     rt = Runtime(sequence, [vec_ty, vec_ty, of_in.prod(), of_out.cons()])
     workers = [core_worker] if core_worker is not None else []
-    device = iron.get_current_device()
-    assert device is not None
-    return Program(device, rt, workers=workers).resolve_program()
+    return Program(iron.get_current_device(), rt, workers=workers).resolve_program()

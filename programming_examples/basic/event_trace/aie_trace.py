@@ -22,6 +22,7 @@ import argparse
 
 import aie.iron as iron
 import numpy as np
+from aie.dialects._aie_enum_gen import WireBundle
 from aie.iron import (
     CompileTime,
     In,
@@ -42,7 +43,6 @@ from aie.utils.trace.events import (
     MemTilePortEvent,
     PortEvent,
     ShimTileEvent,
-    WireBundle,  # pyright: ignore[reportAttributeAccessIssue]
 )
 from aie.utils.verify import assert_pass
 
@@ -102,9 +102,7 @@ def aie_trace(
         ],
     )
 
-    device = iron.get_current_device()
-    assert device is not None
-    prog = Program(device, rt, workers=[worker])
+    prog = Program(iron.get_current_device(), rt, workers=[worker])
 
     # Custom per-tile-class event lists, forwarded by IRON's Program
     # to the same configure_trace() the dialect-level example used.

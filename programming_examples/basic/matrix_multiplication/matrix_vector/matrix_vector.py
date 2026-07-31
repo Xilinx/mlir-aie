@@ -127,9 +127,7 @@ def matrix_vector(
         [A_ty, B_ty, C_ty, B_fifo.prod(), memA_prods, outC_cons],
     )
 
-    device = iron.get_current_device()
-    assert device is not None
-    return Program(device, rt, workers=workers).resolve_program()
+    return Program(iron.get_current_device(), rt, workers=workers).resolve_program()
 
 
 def _make_argparser():

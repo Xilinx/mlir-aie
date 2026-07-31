@@ -240,9 +240,7 @@ def edge_detect(
         [tensor_ty, tensor_16x16_ty, tensor_ty, in_of_l3l2.prod(), out_of_l2l3.cons()],
     )
 
-    device = iron.get_current_device()
-    assert device is not None
-    return Program(device, rt, workers=workers).resolve_program()
+    return Program(iron.get_current_device(), rt, workers=workers).resolve_program()
 
 
 def _make_argparser():

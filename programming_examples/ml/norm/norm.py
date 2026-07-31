@@ -71,8 +71,6 @@ def norm(
     embedding_dim: CompileTime[int] = 4096,
     op: CompileTime[str] = "rms",
 ):
-    device = iron.get_current_device()
-    assert device is not None
     n_cores = 8
     vec = 16  # kernels reduce/store one aie::vector<T, 16> at a time
 
@@ -129,7 +127,7 @@ def norm(
         ],
     )
 
-    return Program(device, rt, workers=workers).resolve_program()
+    return Program(iron.get_current_device(), rt, workers=workers).resolve_program()
 
 
 def _make_argparser():

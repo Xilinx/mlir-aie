@@ -121,9 +121,7 @@ def bfp_conversion(a_in: In, b_in: In, c_out: Out):
         ],
     )
 
-    device = iron.get_current_device()
-    assert device is not None
-    return Program(device, rt, workers=workers).resolve_program()
+    return Program(iron.get_current_device(), rt, workers=workers).resolve_program()
 
 
 def _make_argparser():

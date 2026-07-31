@@ -91,9 +91,7 @@ def _transpose_dma(
         sequence,
         [tensor_ty, tensor_ty, of_in.prod(), of_out.cons()],
     )
-    device = iron.get_current_device()
-    assert device is not None
-    return Program(device, rt).resolve_program()
+    return Program(iron.get_current_device(), rt).resolve_program()
 
 
 @iron.jit(aiecc_flags=["--packet-sw-objFifos"])
@@ -124,9 +122,7 @@ def _transpose_dma_packet(
         sequence,
         [tensor_ty, tensor_ty, of_in.prod(), of_out.cons()],
     )
-    device = iron.get_current_device()
-    assert device is not None
-    return Program(device, rt).resolve_program()
+    return Program(iron.get_current_device(), rt).resolve_program()
 
 
 # ---------------------------------------------------------------------------
@@ -177,9 +173,7 @@ def _transpose_shuffle(
         sequence,
         [tile_ty, tile_ty, in_fifo.prod(), out_fifo.cons()],
     )
-    device = iron.get_current_device()
-    assert device is not None
-    return Program(device, rt, workers=[worker]).resolve_program()
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 
 
 # ---------------------------------------------------------------------------
@@ -279,9 +273,7 @@ def _transpose_combined(
         sequence,
         [matrix_ty, matrix_ty, in_L3L2_fifo.prod(), out_fifo.cons()],
     )
-    device = iron.get_current_device()
-    assert device is not None
-    return Program(device, rt, workers=[worker]).resolve_program()
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 
 
 # ---------------------------------------------------------------------------

@@ -153,9 +153,7 @@ def matrix_multiplication_single_core(
         [A_ty, B_ty, C_ty, fifo_A_L3L2.prod(), fifo_B_L3L2.prod(), fifo_C_L2L3.cons()],
     )
 
-    device = iron.get_current_device()
-    assert device is not None
-    return Program(device, rt, workers=[worker]).resolve_program()
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 
 
 def aot_compile(M: int, K: int, N: int, element_type) -> None:

@@ -58,8 +58,6 @@ def rope(
     sequence_length: CompileTime[int] = 64,
     embedding_dim: CompileTime[int] = 4096,
 ):
-    device = iron.get_current_device()
-    assert device is not None
     n_cores = 4
 
     if sequence_length % n_cores != 0:
@@ -121,7 +119,7 @@ def rope(
         ],
     )
 
-    return Program(device, rt, workers=workers).resolve_program()
+    return Program(iron.get_current_device(), rt, workers=workers).resolve_program()
 
 
 def _make_argparser():

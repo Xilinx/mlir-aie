@@ -98,9 +98,7 @@ def transform(
 
     rt = Runtime(sequence, [tensor_ty, tensor_ty, of_in.prod(), of_out.cons()])
 
-    device = iron.get_current_device()
-    assert device is not None
-    return Program(device, rt, workers=[worker]).resolve_program()
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 
 
 def _add_one(inline: bool) -> ExternalFunction:

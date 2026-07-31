@@ -112,9 +112,7 @@ def memcpy(
         [transfer_type, transfer_type, in_prods, out_conses],
     )
 
-    device = iron.get_current_device()
-    assert device is not None
-    return Program(device, rt, workers=my_workers).resolve_program()
+    return Program(iron.get_current_device(), rt, workers=my_workers).resolve_program()
 
 
 def _make_argparser():

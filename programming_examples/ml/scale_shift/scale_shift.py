@@ -68,8 +68,6 @@ def scale_shift(
     *,
     size: CompileTime[int] = 65536,
 ):
-    device = iron.get_current_device()
-    assert device is not None
     n_cores = 2
     tile_size = 1024
 
@@ -189,7 +187,7 @@ def scale_shift(
         ],
     )
 
-    return Program(device, rt, workers=workers).resolve_program()
+    return Program(iron.get_current_device(), rt, workers=workers).resolve_program()
 
 
 def _make_argparser():

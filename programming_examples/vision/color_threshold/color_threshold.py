@@ -135,9 +135,7 @@ def color_threshold(
         [tensor_ty, unused_ty, tensor_ty, in_oob_l3l2.prod(), out_oob_l2l3.cons()],
     )
 
-    device = iron.get_current_device()
-    assert device is not None
-    return Program(device, rt, workers=workers).resolve_program()
+    return Program(iron.get_current_device(), rt, workers=workers).resolve_program()
 
 
 def _make_argparser():
