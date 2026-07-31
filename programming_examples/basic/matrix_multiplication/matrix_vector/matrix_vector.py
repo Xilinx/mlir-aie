@@ -20,6 +20,7 @@ from aie.iron import (
     Out,
     Program,
     Runtime,
+    StreamDims,
     Worker,
     kernels,
 )
@@ -66,7 +67,9 @@ def matrix_vector(
     # (see aie_kernels/aie2/mv.cc): for 2-byte elements the transpose
     # granularity is 2 elements, packing rows of each 2-column word slowly,
     # m rows then the next 2-col word.
-    a_dims_from_stream = [(m, 2), (k // 2, 2 * m), (2, 1)] if vectorized else None
+    a_dims_from_stream: StreamDims | None = (
+        [(m, 2), (k // 2, 2 * m), (2, 1)] if vectorized else None
+    )
 
     def core_fn(of_a, of_b, of_c, zero, matvec):
         elem_out = of_c.acquire(1)
@@ -124,7 +127,9 @@ def matrix_vector(
         [A_ty, B_ty, C_ty, B_fifo.prod(), memA_prods, outC_cons],
     )
 
-    return Program(iron.get_current_device(), rt, workers=workers).resolve_program()
+    device = iron.get_current_device()
+    assert device is not None
+    return Program(device, rt, workers=workers).resolve_program()
 
 
 def _make_argparser():

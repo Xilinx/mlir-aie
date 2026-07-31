@@ -24,6 +24,7 @@ from aie.iron import (
     Out,
     Program,
     Runtime,
+    StreamDims,
     TaskGroup,
     Worker,
     kernels,
@@ -105,11 +106,11 @@ def cascade(
         ObjectFifo(A_l2_ty, name=f"A_L3L2_{col}", depth=fifo_depth)
         for col in range(n_aie_cols)
     ]
-    A_l2l1_fifos = [None] * n_aie_rows
+    A_l2l1_fifos: list[ObjectFifo] = []
     for col in range(n_aie_cols):
         start_row = col * n_A_tiles_per_shim
         of_offsets = [m * k * j for j in range(n_A_tiles_per_shim)]
-        a_dims = [(m // r, r * k), (k // s, s), (r, k), (s, 1)]
+        a_dims: StreamDims = [(m // r, r * k), (k // s, s), (r, k), (s, 1)]
         # Each row's L2→L1 fifo is broadcast to all n_aie_cols core_tiles in
         # that row.  split() returns one handle per output, but we want one
         # logical broadcast fifo per row.  Using forward() with a list of
@@ -128,18 +129,17 @@ def cascade(
                 tile=Tile(col, 1),
             )
         )
-        for j, f in enumerate(fifos):
-            A_l2l1_fifos[start_row + j] = f
+        A_l2l1_fifos.extend(fifos)
 
     # B: shim → mem → distribute across rows within a column
     B_l3l2_fifos = [
         ObjectFifo(B_l2_ty, name=f"B_L3L2_{col}", depth=fifo_depth)
         for col in range(n_aie_cols)
     ]
-    B_l2l1_fifos = [[None] * n_aie_cols for _ in range(n_aie_rows)]
+    B_l2l1_fifos: list[list[ObjectFifo]] = [[] for _ in range(n_aie_rows)]
     for col in range(n_aie_cols):
         of_offsets = [k * n * row for row in range(n_aie_rows)]
-        b_dims = [(k // s, s * n), (n // t, t), (s, n), (t, 1)]
+        b_dims: StreamDims = [(k // s, s * n), (n // t, t), (s, n), (t, 1)]
         fifos = (
             B_l3l2_fifos[col]
             .cons()
@@ -152,7 +152,7 @@ def cascade(
             )
         )
         for row in range(n_aie_rows):
-            B_l2l1_fifos[row][col] = fifos[row]
+            B_l2l1_fifos[row].append(fifos[row])
 
     # C output (row 0 only): L1 → mem → shim.  Only one producer per column,
     # so this is a simple forward chain with the L2→L3 dim transform applied
@@ -215,48 +215,62 @@ def cascade(
                 in_a.release(1)
                 in_b.release(1)
 
-    workers = [[None] * n_aie_cols for _ in range(n_aie_rows)]
+    # Build column-by-column (each column is rows 0..n_aie_rows-1 in order),
+    # then transpose into a row-major grid so indexing reads workers[row][col].
+    cols: list[list[Worker]] = []
+    c_buf_ty = np.ndarray[(m * n,), np.dtype[dtype_out]]
     for col in range(n_aie_cols):
+        col_workers: list[Worker] = []
         # Row 0 (top — get_only, zeroes + writes C)
-        workers[0][col] = Worker(
-            _row0_fn,
-            [
-                A_l2l1_fifos[0].cons(),
-                B_l2l1_fifos[0][col].cons(),
-                C_l1l2_fifos[col].prod(),
-                zero_kernel,
-                matmul_get_only,
-            ],
-            tile=Tile(col, 2),
+        col_workers.append(
+            Worker(
+                _row0_fn,
+                [
+                    A_l2l1_fifos[0].cons(),
+                    B_l2l1_fifos[0][col].cons(),
+                    C_l1l2_fifos[col].prod(),
+                    zero_kernel,
+                    matmul_get_only,
+                ],
+                tile=Tile(col, 2),
+            )
         )
         # Mid rows (put_get) — each gets a per-tile C scratch Buffer.  The
         # cascade kernel's C arg signature is 1D (matches kernels.cascade_mm's
         # arg_types), so allocate the scratch buffer 1D too.
-        c_buf_ty = np.ndarray[(m * n,), np.dtype[dtype_out]]
         for row in (1, 2):
             c_buf = Buffer(c_buf_ty, name=f"C_scratch_{col}_{row}")
-            workers[row][col] = Worker(
-                _row_mid_fn,
-                [
-                    A_l2l1_fifos[row].cons(),
-                    B_l2l1_fifos[row][col].cons(),
-                    c_buf,
-                    matmul_put_get,
-                ],
-                tile=Tile(col, 2 + row),
+            col_workers.append(
+                Worker(
+                    _row_mid_fn,
+                    [
+                        A_l2l1_fifos[row].cons(),
+                        B_l2l1_fifos[row][col].cons(),
+                        c_buf,
+                        matmul_put_get,
+                    ],
+                    tile=Tile(col, 2 + row),
+                )
             )
         # Row n_aie_rows-1 (bottom — put_only)
         c_buf_bot = Buffer(c_buf_ty, name=f"C_scratch_{col}_{n_aie_rows - 1}")
-        workers[n_aie_rows - 1][col] = Worker(
-            _row_bot_fn,
-            [
-                A_l2l1_fifos[n_aie_rows - 1].cons(),
-                B_l2l1_fifos[n_aie_rows - 1][col].cons(),
-                c_buf_bot,
-                matmul_put_only,
-            ],
-            tile=Tile(col, 2 + n_aie_rows - 1),
+        col_workers.append(
+            Worker(
+                _row_bot_fn,
+                [
+                    A_l2l1_fifos[n_aie_rows - 1].cons(),
+                    B_l2l1_fifos[n_aie_rows - 1][col].cons(),
+                    c_buf_bot,
+                    matmul_put_only,
+                ],
+                tile=Tile(col, 2 + n_aie_rows - 1),
+            )
         )
+        cols.append(col_workers)
+
+    workers: list[list[Worker]] = [
+        [cols[col][row] for col in range(n_aie_cols)] for row in range(n_aie_rows)
+    ]
 
     # Cascade edges: row 3 → row 2 → row 1 → row 0 (within each column).
     for col in range(n_aie_cols):
@@ -339,9 +353,9 @@ def cascade(
         [A_ty, B_ty, C_ty, A_prods, B_prods, C_conses],
     )
 
-    return Program(
-        iron.get_current_device(), rt, workers=flat_workers
-    ).resolve_program()
+    device = iron.get_current_device()
+    assert device is not None
+    return Program(device, rt, workers=flat_workers).resolve_program()
 
 
 def _make_argparser():

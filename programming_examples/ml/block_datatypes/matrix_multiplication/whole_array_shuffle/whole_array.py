@@ -92,10 +92,10 @@ def whole_array_shuffle(
         arg_types=[
             A_l1_ty,
             A_l1_ty,
-            np.int16,
-            np.int16,
-            np.int16,
-        ],  # pyright: ignore[reportArgumentType]
+            np.dtype(np.int16),
+            np.dtype(np.int16),
+            np.dtype(np.int16),
+        ],
         compile_flags=kernel_flags + ["-DSHUFFLE_ONLY"],
         use_chess=True,
     )
