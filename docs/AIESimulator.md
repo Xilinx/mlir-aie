@@ -275,6 +275,16 @@ array exists. That is the main reason for the split.
 * **Register-map fidelity.** The aie-rt headers give offsets and fields, not behaviour. Behaviour comes
   from reading the aie-rt driver modules that program them, and from the tests. Where behaviour is
   genuinely unknown, the model should fault rather than guess.
+* **Some datapath facts are not in the register map at all, and this is the sharpest divergence risk.**
+  aie-rt configures the hardware; it does not describe what travels on a wire. Two concrete cases found
+  while building the stream switch: the bit layout of an in-flight packet header word, and the polarity
+  of a slot match mask. Nothing in the vendored tree defines either, because neither is a register.
+  Where the model has had to fix an encoding it says so at the point of use, but a fixed encoding that
+  disagrees with silicon would make packet-switched designs pass here and fail on hardware. These are
+  the first things to check in the differential run against a real NPU, and until that run happens
+  packet routing should be treated as unvalidated rather than merely untested. True arbitration between
+  two slaves resolving to the same arbiter and msel in one cycle is in the same category and currently
+  faults rather than picking a tie-break.
 * **Divergence from hardware.** A simulator that disagrees with silicon is a liability. The intended
   guard is running the same design both ways on a machine that has an NPU, and comparing outputs. That
   cannot be a CI gate on unlicensed runners, but it can be a periodic job.
