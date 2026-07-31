@@ -63,8 +63,13 @@ jobs:
             expected_npu: npu2
     env:
       AIE_EXPECTED_NPU: ${{ matrix.expected_npu }}
-      NPU_CACHE_HOME: ${{ github.workspace }}/iron-cache-${{ matrix.runner_type }}-${{ github.run_id }}
+      # NPU_CACHE_HOME is set by the "Prepare the shared JIT cache" step below:
+      # it must live outside GITHUB_WORKSPACE, which actions/checkout wipes.
       PIP_CACHE_DIR: ${{ github.workspace }}/.pip-cache-${{ matrix.runner_type }}-${{ github.run_id }}
+      # Evict entries older than this. Content-addressed entries are never
+      # overwritten, so without a bound the store grows once per changed kernel
+      # for the life of the runner.
+      NPU_CACHE_MAX_AGE_DAYS: 14
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
         with:
@@ -81,6 +86,24 @@ jobs:
           # both write global state on a machine other jobs also build on.
           # Print before and after instead; the delta is the per-job figure.
           command -v ccache >/dev/null && ccache -s || echo "ccache not installed"
+
+      - name: Prepare the shared JIT cache
+        run: |
+          # One store per runner type, kept across runs. It cannot live under
+          # GITHUB_WORKSPACE: actions/checkout cleans that directory, which is
+          # why every run used to start from an empty cache.
+          CACHE_ROOT="$HOME/.cache/mlir-aie/npu-cache-${{ matrix.runner_type }}"
+          mkdir -p "$CACHE_ROOT"
+          echo "NPU_CACHE_HOME=$CACHE_ROOT" >> "$GITHUB_ENV"
+
+          # Age out old entries. Deliberately coarse: an entry is a compiled
+          # artifact for one exact set of inputs, so a stale one is never wrong
+          # to keep, only wasteful, and re-creating it costs one compile.
+          find "$CACHE_ROOT" -mindepth 1 -maxdepth 1 -type d \
+            -mtime +"$NPU_CACHE_MAX_AGE_DAYS" -exec rm -rf {} + 2>/dev/null || true
+
+          echo "cache entries before this run: $(find "$CACHE_ROOT" -mindepth 1 -maxdepth 1 -type d | wc -l)"
+          echo "cache size before this run:    $(du -sh "$CACHE_ROOT" 2>/dev/null | cut -f1)"
 
       - name: Setup virtual environment / prerequisites
         run: |
@@ -186,9 +209,8 @@ jobs:
 
           pushd build
 
-          # Create runner-specific cache directory
-          rm -rf $NPU_CACHE_HOME
-          mkdir $NPU_CACHE_HOME
+          # NPU_CACHE_HOME is prepared once per job, before the venv step, and
+          # is shared with previous runs -- do NOT clear it here.
 
           # Set number of contexts to maintain in cache per process
           export XRT_CONTEXT_CACHE_SIZE=2
@@ -264,10 +286,16 @@ jobs:
         run: |
           command -v ccache >/dev/null && ccache -s || echo "ccache not installed"
 
-      - name: Cleanup NPU_CACHE_HOME
+      - name: Report JIT cache state and clean up per-run dirs
         if: always()
         run: |
-          rm -rf $NPU_CACHE_HOME
+          # The JIT cache is intentionally NOT deleted -- it is the thing being
+          # reused. Printing its growth is how the reuse stays visible: on a run
+          # that changes no kernel, "added this run" should be ~0.
+          if [ -n "$NPU_CACHE_HOME" ] && [ -d "$NPU_CACHE_HOME" ]; then
+            echo "cache entries after this run: $(find "$NPU_CACHE_HOME" -mindepth 1 -maxdepth 1 -type d | wc -l)"
+            echo "cache size after this run:    $(du -sh "$NPU_CACHE_HOME" 2>/dev/null | cut -f1)"
+          fi
           rm -rf $PIP_CACHE_DIR
 
   build-and-test-pure-hrx:
@@ -284,8 +312,12 @@ jobs:
     #     vector_reduce_max C++).
     runs-on: aie2p-8col
     env:
-      NPU_CACHE_HOME: ${{ github.workspace }}/iron-cache-hrx-${{ github.run_id }}
+      # NPU_CACHE_HOME is set by the "Prepare the shared JIT cache" step below.
+      # Its own store: this job builds a different aiecc (bundled
+      # hrx-xclbinutil), so its keys would never collide with the matrix job's
+      # anyway, and keeping them apart keeps each one's growth readable.
       PIP_CACHE_DIR: ${{ github.workspace }}/.pip-cache-hrx-${{ github.run_id }}
+      NPU_CACHE_MAX_AGE_DAYS: 14
       # Token for the (private) HRX release repo. fetch-hrx-release.sh passes it
       # to gh / curl; the runner's own gh auth is used when this is empty.
       GH_TOKEN: ${{ secrets.HRX_RELEASE_TOKEN }}
@@ -296,6 +328,15 @@ jobs:
 
       - name: Print hostname
         run: hostname
+
+      - name: Prepare the shared JIT cache
+        run: |
+          CACHE_ROOT="$HOME/.cache/mlir-aie/npu-cache-hrx"
+          mkdir -p "$CACHE_ROOT"
+          echo "NPU_CACHE_HOME=$CACHE_ROOT" >> "$GITHUB_ENV"
+          find "$CACHE_ROOT" -mindepth 1 -maxdepth 1 -type d \
+            -mtime +"$NPU_CACHE_MAX_AGE_DAYS" -exec rm -rf {} + 2>/dev/null || true
+          echo "cache entries before this run: $(find "$CACHE_ROOT" -mindepth 1 -maxdepth 1 -type d | wc -l)"
 
       - name: Setup virtual environment / prerequisites
         run: |
@@ -349,7 +390,8 @@ jobs:
           export PYTHONPATH="$PWD/install/python:$PYTHONPATH"
           export LD_LIBRARY_PATH="$PWD/install/lib:$LD_LIBRARY_PATH"
 
-          rm -rf "$NPU_CACHE_HOME" && mkdir -p "$NPU_CACHE_HOME"
+          # Shared with previous runs; prepared once per job, not cleared here.
+          mkdir -p "$NPU_CACHE_HOME"
 
           # 1) lit check: bundled hrx-xclbinutil packages the required NPU
           #    .xclbin metadata sections (gated by the `hrxxclbinutil` feature).
@@ -410,10 +452,12 @@ jobs:
         run: |
           command -v ccache >/dev/null && ccache -s || echo "ccache not installed"
 
-      - name: Cleanup NPU_CACHE_HOME
+      - name: Report JIT cache state and clean up per-run dirs
         if: always()
         run: |
-          rm -rf $NPU_CACHE_HOME
+          if [ -n "$NPU_CACHE_HOME" ] && [ -d "$NPU_CACHE_HOME" ]; then
+            echo "cache entries after this run: $(find "$NPU_CACHE_HOME" -mindepth 1 -maxdepth 1 -type d | wc -l)"
+          fi
           rm -rf $PIP_CACHE_DIR
 
   build-pure-hrx-windows:
