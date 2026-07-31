@@ -10,11 +10,7 @@
 
 // Element-wise f32 -> bf16 narrowing cast, round-to-nearest-even.
 //
-// A resident on-chip dataflow that hands an intermediate activation from an
-// f32-producing kernel (e.g. a numerically-stable norm or a K-split f32
-// accumulate) to a bf16-consuming one (e.g. a bf16 matmul) needs this cast to
-// stay on-chip; otherwise the f32 buffer has to round-trip through the host to
-// be requantized. `aie::vector<float, N>` has no `to_vector<bfloat16>`
+// `aie::vector<float, N>` has no `to_vector<bfloat16>`
 // directly, so the narrow goes through an `accfloat` accumulator, which does.
 //
 // One call processes one row of `cols` elements; `cols` must be a multiple of

@@ -119,10 +119,7 @@ static inline void layer_norm_f32_impl(const TIn *restrict input,
   ::aie::vector<TIn, N> inv_std_v = ::aie::broadcast<TIn, N>((TIn)inv_std);
 
   // The two instantiations diverge only in where gamma/beta come from and
-  // whether the write narrows, kept as two separate loop bodies (selected
-  // at compile time, no runtime branch in either) rather than one loop with
-  // per-iteration `if constexpr` dispatch, so each instantiation's codegen is
-  // exactly the sequence of ops it needs, nothing left over from the other.
+  // whether the write narrows.
   if constexpr (kAffine) {
     // Real per-column affine + narrowing write. Only this instantiation
     // touches the rounding mode, and it hands the caller's mode back before
@@ -150,8 +147,7 @@ static inline void layer_norm_f32_impl(const TIn *restrict input,
     }
     ::aie::set_rounding(saved_rounding);
   } else {
-    // gamma = 1, beta = 0, TOut == TIn: `layer_norm_f32`'s original body,
-    // unchanged, no gamma/beta loads, no rounding-mode calls.
+    // gamma = 1, beta = 0, TOut == TIn
     ::aie::vector<TIn, N> gamma_v = ::aie::broadcast<TIn, N>((TIn)1.0f);
     ::aie::vector<TIn, N> beta_v = ::aie::broadcast<TIn, N>((TIn)0.0f);
     for (int i = 0; i < chunks; i++) {

@@ -11,7 +11,7 @@
 //   out[t] = bias + sum_{p=0..K-1} w[p] * in_pad[t + p],   t = 0 .. T-1
 //
 // This is a cross-correlation (no kernel flip), matching torch.nn.Conv1d and
-// most framework "same" depthwise convs. `in_pad` is the ALREADY-PADDED row
+// most framework "same" depthwise convs. `in_pad` is the already-padded row
 // the caller supplies, this kernel does no boundary handling and needs no
 // local scratch buffer:
 //
@@ -21,7 +21,7 @@
 //
 // The trailing "don't-care" slack past the halo (up to a fixed 16 elements,
 // independent of K) exists only so the vectorized kernel's aligned 16-wide
-// loads never read past the end of the buffer; its VALUES never reach the
+// loads never read past the end of the buffer; its values never reach the
 // output (see the tap loop below). Callers can zero it like the rest of the
 // pad. See dwconv1d.py's `_pad_input` for a reference construction.
 //
