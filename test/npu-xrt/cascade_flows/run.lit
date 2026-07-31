@@ -3,9 +3,15 @@
 //
 // REQUIRES: ryzen_ai_npu1, chess
 //
+// TODO: move to Peano. The kernels call upd_elem/ext_elem, which Peano defines
+// only for aie2p (lib/clang/*/include/aie2p/aie2p_scl2vec.h). There is no aie2
+// definition, so building this for aie2 links with "undefined symbol:
+// upd_elem(int vector[32], int, int)". Unblocked either by Peano gaining the
+// aie2 forms or by rewriting the kernels on aie_api.
+//
 // RUN: xchesscc_wrapper aie2 -I %aietools/include -c %S/kernel1.cc -o ./kernel1.o
 // RUN: xchesscc_wrapper aie2 -I %aietools/include -c %S/kernel2.cc -o ./kernel2.o
 // RUN: xchesscc_wrapper aie2 -I %aietools/include -c %S/kernel3.cc -o ./kernel3.o
-// RUN: %aiecc %backend_flags --get-xclbin --get-npu-insts --xclbin-name=aie.xclbin --npu-insts-name=insts.bin %S/aie.mlir
+// RUN: %aiecc --xchesscc --xbridge --get-xclbin --get-npu-insts --xclbin-name=aie.xclbin --npu-insts-name=insts.bin %S/aie.mlir
 // RUN: %host_clang %S/test.cpp -o test.exe -std=c++17 -Wall %xrt_flags %host_link_flags %test_utils_flags
 // RUN: %run_on_npu1% ./test.exe -x aie.xclbin -k MLIR_AIE -i insts.bin
