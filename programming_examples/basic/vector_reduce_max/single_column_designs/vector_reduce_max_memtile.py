@@ -83,7 +83,7 @@ def vector_reduce_max(
     of_out = ObjectFifo(out_ty, name="of_out")
 
     of_a_offsets = [
-        (np.prod(np_ndarray_type_get_shape(mem_ty)) // n_cores) * i
+        int(np.prod(np_ndarray_type_get_shape(mem_ty)) // n_cores) * i
         for i in range(n_cores)
     ]
     of_c_offsets = [(out_tensor_size * i) for i in range(n_cores)]

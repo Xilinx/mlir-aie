@@ -34,7 +34,7 @@ from pathlib import Path
 import aie.iron as iron
 import numpy as np
 from aie.dialects._aie_enum_gen import AIETileType, DMAChannelDir, WireBundle
-from aie.dialects.aie import EndOp
+from aie.dialects.aie import EndOp  # pyright: ignore[reportAttributeAccessIssue]
 from aie.dialects.aiex import (
     bds,
     dma_await_task,
@@ -389,7 +389,7 @@ def packet_switch(
                     offset=0,
                     sizes=[1, 1, 1, in_out_size],
                     strides=[0, 0, 0, 1],
-                    packet=(0, input_packet_id),
+                    packet=(0, input_packet_id),  # pyright: ignore[reportArgumentType]
                 )
                 EndOp()
         out_task = dma_configure_task(shim.op, DMAChannelDir.S2MM, 0, issue_token=True)

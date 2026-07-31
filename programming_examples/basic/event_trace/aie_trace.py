@@ -42,7 +42,7 @@ from aie.utils.trace.events import (
     MemTilePortEvent,
     PortEvent,
     ShimTileEvent,
-    WireBundle,
+    WireBundle,  # pyright: ignore[reportAttributeAccessIssue]
 )
 from aie.utils.verify import assert_pass
 

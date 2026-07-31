@@ -30,7 +30,7 @@ from aie.dialects.aiex import (
     npu_push_queue,
     npu_sync,
     npu_write32,
-    npu_writebd,
+    npu_writebd,  # pyright: ignore[reportAttributeAccessIssue]
 )
 from aie.iron import (
     Acquire,

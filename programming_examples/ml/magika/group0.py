@@ -72,7 +72,13 @@ def group0(
         source_file=str(_KERNEL_SRC),
         compile_flags=["-DGROUPA"],
         include_dirs=[str(_KERNEL_INC), cxx_header_path()],
-        arg_types=[din_ty, data_int_ty, lut0a_ty, np.int32, np.int32],
+        arg_types=[
+            din_ty,
+            data_int_ty,
+            lut0a_ty,
+            np.dtype(np.int32),
+            np.dtype(np.int32),
+        ],
         object_file_name="group0a.o",
     )
 

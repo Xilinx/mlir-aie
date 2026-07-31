@@ -43,7 +43,7 @@ _VECTOR_TY = np.ndarray[(VECTOR_SIZE,), np.dtype[np.uint8]]
 @func
 def passthrough_fn(input: _LINE_TY, output: _LINE_TY, line_width: np.int32):
     for i in range_(line_width):
-        output[i] = input[i]
+        output[i] = input[i]  # pyright: ignore[reportCallIssue, reportArgumentType]
 
 
 @iron.jit

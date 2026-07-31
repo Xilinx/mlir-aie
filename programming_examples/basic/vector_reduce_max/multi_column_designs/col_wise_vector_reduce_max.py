@@ -148,7 +148,7 @@ def vector_reduce_max(
 
     my_workers = []
     for i in range(num_cores):
-        fifo_args = [of_in1s[i].cons(), of_outs[i].prod()]
+        fifo_args: list = [of_in1s[i].cons(), of_outs[i].prod()]
         if cores_per_col - 1 < i:
             fifo_args.append(of_outs[i - cores_per_col].cons())
             if num_cores - cores_per_col < i:

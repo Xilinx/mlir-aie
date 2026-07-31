@@ -254,7 +254,7 @@ def _transpose_combined(
 
     in_L3L2_fifo = ObjectFifo(tile_ty, name="in_L3L2_fifo")
     in_L2L1_fifo = in_L3L2_fifo.cons(
-        dims_from_stream=tap_in_L2L1.transformation_dims
+        dims_from_stream=list(tap_in_L2L1.transformation_dims)
     ).forward(obj_type=tile_ty, name="in_L2L1_fifo")
     out_fifo = ObjectFifo(tile_ty, name="out_fifo")
 

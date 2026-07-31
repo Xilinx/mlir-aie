@@ -69,7 +69,7 @@ class PreInitializedConstantBuffer(Buffer):
 
     def __init__(self, value: np.ndarray, name: str | None = None):
         super().__init__(
-            type=np.ndarray[value.shape, np.dtype[value.dtype]],
+            type=np.ndarray[value.shape, np.dtype[value.dtype.type]],
             name=name,
             initial_value=value,
         )

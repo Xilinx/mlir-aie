@@ -70,7 +70,7 @@ def transform(
     input: In,
     output: Out,
     *,
-    func: CompileTime[object],
+    func: CompileTime[ExternalFunction],
     num_elements: CompileTime[int],
 ):
     tile_size = func.tile_size(0)
@@ -110,7 +110,7 @@ def _add_one(inline: bool) -> ExternalFunction:
         arg_types=[
             np.ndarray[(16,), np.dtype[np.int32]],
             np.ndarray[(16,), np.dtype[np.int32]],
-            np.int32,
+            np.dtype(np.int32),
         ],
         inline=inline,
     )

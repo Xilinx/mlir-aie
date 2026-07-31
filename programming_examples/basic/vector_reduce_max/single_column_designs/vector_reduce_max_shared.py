@@ -75,7 +75,7 @@ def vector_reduce_max(
 
     of_in = ObjectFifo(mem_ty, name="of_in")
     of_a_offsets = [
-        (np.prod(np_ndarray_type_get_shape(mem_ty)) // n_cores) * i
+        int(np.prod(np_ndarray_type_get_shape(mem_ty)) // n_cores) * i
         for i in range(n_cores)
     ]
     in_fifos = of_in.cons().split(

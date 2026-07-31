@@ -34,8 +34,8 @@ import aie.iron as iron
 import numpy as np
 from aie.dialects._aie_enum_gen import AIETileType, DMAChannelDir, WireBundle
 from aie.dialects.aie import (
-    EndOp,
-    connect,
+    EndOp,  # pyright: ignore[reportAttributeAccessIssue]
+    connect,  # pyright: ignore[reportAttributeAccessIssue]
     shim_mux,
     switchbox,
 )
@@ -43,7 +43,7 @@ from aie.dialects.aiex import (
     npu_address_patch,
     npu_push_queue,
     npu_sync,
-    npu_writebd,
+    npu_writebd,  # pyright: ignore[reportAttributeAccessIssue]
 )
 from aie.iron import (
     Acquire,

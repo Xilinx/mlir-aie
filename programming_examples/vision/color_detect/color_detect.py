@@ -237,7 +237,9 @@ def _design_for(opts):
     flags = list(color_detect.compilable.aiecc_flags) + [f"--placer={opts.placer}"]
     if opts.sa_seed is not None:
         flags.append(f"--sa-seed={opts.sa_seed}")
-    return iron.jit(aiecc_flags=flags)(color_detect.compilable.mlir_generator)
+    generator = color_detect.compilable.mlir_generator
+    assert callable(generator)
+    return iron.jit(aiecc_flags=flags)(generator)
 
 
 def _rgba2hue_ref(rgba_uint8):

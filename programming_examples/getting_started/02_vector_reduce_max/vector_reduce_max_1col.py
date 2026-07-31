@@ -64,7 +64,7 @@ def vector_reduce_max(
 
     if n_cores > 1:
         of_a_offsets = [
-            (np.prod(np_ndarray_type_get_shape(mem_ty)) // n_cores) * i
+            int(np.prod(np_ndarray_type_get_shape(mem_ty)) // n_cores) * i
             for i in range(n_cores)
         ]
     else:
