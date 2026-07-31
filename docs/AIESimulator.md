@@ -170,9 +170,23 @@ Owns everything outside the core datapath, and holds the `ess_*` entry points:
   the shim and memtile variants.
 * **Stream switch.** Circuit-switched connections and packet-switched rules, built from the switch
   configuration registers, so routing is whatever the design actually programmed.
-* **Time.** A cycle counter and a fixed round-robin over components. The array advances inside the
-  `ess_*` entry points, so a host polling loop (which is how aie-rt implements every wait) makes
-  progress naturally, with no threads and no reordering.
+* **Registers, and the fault contract.** Every offset is claimed by a component, on an explicit
+  reserved-reads-zero allow-list, or modelled by nothing. Reading an offset that is unclaimed AND was
+  never written is a hard named failure, because a design polling a status register nobody implemented
+  would otherwise spin on a fabricated zero with no diagnostic. Reading back a value the host itself
+  wrote is a pass-through rather than an invention, so it is allowed. Writes to unmodelled registers
+  are recorded rather than fatal (the model will never claim every register, and refusing to run until
+  it does would make it useless); `AIE_SIM_STRICT=1` promotes them, and the recorded set is emitted as
+  a coverage report so "unmodelled" is a number rather than a surprise.
+* **Time.** A cycle counter, and only components with outstanding work are stepped. Order within a
+  cycle is registration order, used as an explicit sort key rather than left to container iteration,
+  which is what makes runs reproducible. The array advances inside the `ess_*` entry points, so a host
+  polling loop (which is how aie-rt implements every wait) makes progress with no threads.
+
+  Host READS advance the clock and writes do not. That asymmetry is deliberate: aie-rt's masked
+  register update is a `Read32` followed by a `Write32`, and if the write also advanced, the array
+  could evolve between the sampled value and the applied one and clobber a hardware-driven bit in a gap
+  silicon does not have.
 
 The fabric deliberately does not know how to execute an instruction.
 
@@ -290,6 +304,24 @@ The two components can proceed in parallel; neither blocks the other.
 
 Array phases 1 to 3 are useful before any core executes, and core phases 1 to 2 are useful before any
 array exists. That is the main reason for the split.
+
+## 8a. Design decisions settled by research, so they are not re-litigated
+
+Researched after the first implementation, which is the wrong order and cost two of the errors below.
+Recorded here so the reasons travel with the code.
+
+* **Event-driven activation on ONE logical clock.** Not cycle-driven stepping of everything, which is
+  what the first version did and what made an idle 48-tile array run at 12.8k cycles/s.
+* **`step()` then `commit()` stays.** It is SystemC's evaluate/update phase. It was re-derived here
+  from a bug rather than read from a 30-year-old standard, but it is right.
+* **Do NOT separate the functional model from the timing model.** That decoupling exists for running
+  far ahead of hardware time, which is not this problem, and it would destroy the relative-cycle
+  invariants that have already caught a serious bug.
+* **The core engine is a call-threaded interpreter, not a JIT.** Being inside LLVM does not make a JIT
+  cheap: QEMU's Hexagon target generates code from Qualcomm's own architecture description and still
+  landed as a follow-on to a hand-written-helper target.
+* **No home-grown ISA description language.** It relocates the authoring burden into a new grammar
+  that also has to be debugged, and pays off only for a retargetable tool family, which this is not.
 
 ## 8. Honest risks
 
