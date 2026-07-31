@@ -14,9 +14,17 @@
 //
 //     (Col << ColShift) | (Row << RowShift) | RegOff
 //
-// (see _XAie_GetTileAddr and the inverse helpers in
-// third_party/aie-rt/driver/src/common/xaie_helper.c:920-931), with the shifts
-// coming from the XAie_Config the host program passes to XAie_CfgInitialize.
+// (_XAie_GetTileAddr, third_party/aie-rt/driver/src/common/xaie_helper.h:145),
+// with the shifts coming from the XAie_Config the host program passes to
+// XAie_CfgInitialize.
+//
+// Do not reach for aie-rt's _XAie_GetRowfromRegOff / _XAie_GetColfromRegOff
+// (xaie_helper.c:920-931) as the inverse. They are both off by one field:
+// GetRowfromRegOff returns the low RowShift bits, which is the intra-tile
+// offset, and GetColfromRegOff returns the bits between RowShift and ColShift,
+// which is the row. They feed only the informational Col/Row fields of
+// transaction command headers (xaie_helper.c:940-998), whose consumers use the
+// full RegOff for the actual access, so the bug is latent there.
 // The values here must match those configs; DeviceModel::checkAgainstConfig
 // exists so a mismatch is a loud failure at simulation start rather than a
 // silent decode into the wrong tile.
