@@ -64,22 +64,28 @@ class ScatterReadDMA(Resolvable):
         return ts
 
     def acquire(self, n: int = 1):
-        from aie.dialects.aie import LockAction, use_lock
+        from aie.dialects.aie import (
+            LockAction,  # pyright: ignore[reportAttributeAccessIssue]
+            use_lock,
+        )
 
         use_lock(self._comp_cons_lock, LockAction.AcquireGreaterEqual)
         return self._recv_buf
 
     def release(self, n: int = 1):
-        from aie.dialects.aie import LockAction, use_lock
+        from aie.dialects.aie import (
+            LockAction,  # pyright: ignore[reportAttributeAccessIssue]
+            use_lock,
+        )
 
         use_lock(self._comp_prod_lock, LockAction.Release)
 
     def resolve(self, loc=None, ip=None) -> None:
         from aie.dialects.aie import (
-            DMAChannelDir,
-            EndOp,
-            LockAction,
-            WireBundle,
+            DMAChannelDir,  # pyright: ignore[reportAttributeAccessIssue]
+            EndOp,  # pyright: ignore[reportAttributeAccessIssue]
+            LockAction,  # pyright: ignore[reportAttributeAccessIssue]
+            WireBundle,  # pyright: ignore[reportAttributeAccessIssue]
             buffer,
             dma_bd,
             dma_start,
@@ -91,6 +97,7 @@ class ScatterReadDMA(Resolvable):
             use_lock,
         )
 
+        assert self._memtile is not None and self._compute is not None
         memtile_op = self._memtile.op
         compute_op = self._compute.op
 
@@ -244,7 +251,7 @@ p.add_argument("-d", "--dev", required=True, dest="device", help="AIE Device")
 opts = p.parse_args(sys.argv[1:])
 
 if opts.device == "npu2":
-    dev = NPU2()
+    dev = NPU2()  # pyright: ignore[reportCallIssue]
 else:
     raise ValueError(f"[ERROR] Device name {opts.device} is unknown")
 
