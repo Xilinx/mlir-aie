@@ -150,7 +150,6 @@ LitConfigHelper.apply_config_to_lit(
 
 LitConfigHelper.setup_host_compiler_substitutions(config)
 LitConfigHelper.setup_aiecc_substitution(config)
-LitConfigHelper.setup_backend_flags_substitution(config)
 LitConfigHelper.setup_host_link_substitution(config)
 
 tools = [
