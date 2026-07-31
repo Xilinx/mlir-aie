@@ -21,15 +21,27 @@
 //    Array::advance()/runUntilQuiescent() do not depend on decodeAddress,
 //    so cycle-stepping works normally.
 //
-//  * Lock.cpp and StreamSwitch.cpp are ALSO placeholders as of this
-//    writing (installLocks/installStreamSwitch do nothing), so
-//    tile.locks() and tile.streamSwitch() are both null for every tile
-//    built here. This file exercises what Dma.cpp itself owns by using
-//    the test-only hooks dmaTestSetPort/dmaTestSetLocks (defined in
-//    lib/Dma.cpp, forward-declared again below -- the two files share no
-//    header), which attach a hand-written StreamPort/LockModule to a
-//    channel directly, standing in for the stream switch and lock module
-//    until those land.
+//  * Lock.cpp and StreamSwitch.cpp are REAL now (they were placeholders
+//    when this file was first written, which is why Dma.cpp still carries
+//    a `dmaTestSetPort` test-only hook -- see below for the one case that
+//    still needs it). Every Core-tile test here drives the genuinely
+//    installed LockModule and StreamSwitchModule through ordinary register
+//    writes, the same interface aie-rt itself would use: a BD's lock
+//    acquire is armed via the real LockN_Value register, and a channel's
+//    stream side is observed by circuit-switching it to a local
+//    (non-wired) stream-switch bundle and reading that bundle's port
+//    directly, exactly as test/stream_switch_test.cpp does.
+//
+//  * The one place a hand-written test double is still unavoidable:
+//    testShimDdr. aie-rt's Aie2PShimStrmMstr/Aie2PShimStrmSlv both give the
+//    DMA bundle NumPorts == 0 on a Shim tile
+//    (third_party/aie-rt/driver/src/global/xaie2pgbl_reginit.c:304-307,
+//    348-351) -- a Shim's DMA reaches the NoC through a mechanism this
+//    stream-switch model has no port for at all, so
+//    `streamSwitch()->slavePort(PortBundle::DMA, ch)` has no valid index to
+//    return on a Shim tile in the real module either. `dmaTestSetPort`
+//    stands in for that missing port, not for a placeholder that no longer
+//    exists.
 //
 //===----------------------------------------------------------------------===//
 
@@ -39,6 +51,7 @@
 
 #include <deque>
 #include <string>
+#include <vector>
 
 using namespace aiesim;
 
@@ -48,7 +61,6 @@ using namespace aiesim;
 namespace aiesim {
 void dmaTestSetPort(DmaModule &dma, DmaDirection dir, uint32_t channel,
                     StreamPort *port);
-void dmaTestSetLocks(DmaModule &dma, LockModule *locks);
 } // namespace aiesim
 
 namespace {
@@ -97,7 +109,7 @@ DeviceModel makeTestDevice() {
 // Register offsets, mirrored from lib/Dma.cpp's kCoreLayout/kShimLayout
 // (see that file for the grounding citations for every one of these
 // numbers). Not shared through a header for the same reason as the
-// dmaTestSetPort/dmaTestSetLocks declarations above.
+// dmaTestSetPort declaration above.
 namespace CoreRegs {
 constexpr uint32_t kBdBase = 0x1D000;
 constexpr uint32_t kBdStride = 0x20;
@@ -116,27 +128,81 @@ constexpr uint32_t kCtrlStride = 0x8;
 constexpr uint32_t kNumCh = 2;
 } // namespace ShimRegs
 
-uint32_t ctrlQueueOff(uint32_t ctrlBase, uint32_t ctrlStride, uint32_t numCh,
-                     DmaDirection dir, uint32_t ch) {
-  uint32_t dirOff = dir == DmaDirection::MM2S ? ctrlStride * numCh : 0;
-  return ctrlBase + ch * ctrlStride + dirOff + 4; // +4: the start-queue
-                                                  // word follows the ctrl
-                                                  // word (Dma.cpp).
+// Core-tile stream-switch register offsets, AIE2P. Independently duplicated
+// from StreamSwitch.cpp's kCoreLayout (and from stream_switch_test.cpp's
+// own copy of the same numbers) rather than shared: this test target does
+// not get StreamSwitch.cpp's private aie-rt include path, so it could not
+// include the vendored headers even if it wanted to, and a mismatch
+// between the two independent copies shows up as a failing test rather
+// than being hidden by sharing one set of numbers.
+namespace SsRegs {
+constexpr uint32_t kMstrCtrl = 0x0003F00C;      // MASTER_CONFIG_TILE_CTRL
+constexpr uint32_t kMstrDma0 = 0x0003F004;      // MASTER_CONFIG_DMA0
+constexpr uint32_t kSlvCtrl = 0x0003F10C;       // SLAVE_CONFIG_TILE_CTRL
+constexpr uint32_t kSlvDma0 = 0x0003F104;       // SLAVE_CONFIG_DMA_0
+constexpr uint32_t kSlvConfigBase = 0x0003F100; // SlvConfigBaseAddr
+} // namespace SsRegs
+
+// LockN_Value register (the direct-write path, distinct from the
+// acquire/release request range): XAIE2PGBL_MEMORY_MODULE_LOCK0_VALUE
+// (third_party/aie-rt/driver/src/global/xaie2pgbl_params.h:10645); stride
+// is XAie_LockMod::LockSetValOff, see Lock.cpp's kValueRegOff.
+namespace LockRegs {
+constexpr uint32_t kValueBase = 0x0001F000;
+constexpr uint32_t kValueStride = 0x10;
+constexpr uint32_t kValueMask = 0x3Fu;
+} // namespace LockRegs
+
+// _XAie_GetSlaveIdx's own formula
+// (third_party/aie-rt/driver/src/common/xaie_helper.c:246-268): the
+// physical slave index a circuit-mode master's Configuration field names is
+// (regOff - SlvConfigBaseAddr) / 4.
+uint32_t physIdx(uint32_t slaveRegOff) {
+  return (slaveRegOff - SsRegs::kSlvConfigBase) / 4;
+}
+uint32_t packMasterCircuit(uint32_t slaveIdx) {
+  return (1u << 31) | (slaveIdx & 0x7Fu); // MASTER_ENABLE=1, PACKET_ENABLE=0
+}
+uint32_t packSlaveEnable(bool packetMode) {
+  return (1u << 31) | (packetMode ? (1u << 30) : 0u);
 }
 
-uint32_t statusOff(uint32_t statusBase, uint32_t statusDirStride,
-                   DmaDirection dir, uint32_t ch) {
-  uint32_t dirOff = dir == DmaDirection::MM2S ? statusDirStride : 0;
-  return statusBase + ch * 4 + dirOff;
+// Wires DMA0's own slave port (the MM2S output side) to the Ctrl master, a
+// local (non-wired) bundle, so words the channel pushes are directly
+// observable through the REAL stream switch. Mirrors
+// stream_switch_test.cpp's testCircuitSwitchedConnection wiring exactly.
+void wireMm2sToCtrl(Tile &core) {
+  core.regs().write(SsRegs::kSlvDma0, packSlaveEnable(/*packetMode=*/false));
+  core.regs().write(SsRegs::kMstrCtrl,
+                    packMasterCircuit(physIdx(SsRegs::kSlvDma0)));
+}
+
+// Steps `array` one cycle at a time, draining `port` after every cycle,
+// until `count` words have been collected or `maxCycles` elapse. Needed
+// because the real stream switch's FIFOs are deliberately small (a "small
+// FIFO per port", StreamSwitch.cpp's kFifoDepth): a single
+// runUntilQuiescent() call would stop advancing the moment the DMA stalls
+// on a full port, well before a multi-word transfer finishes draining.
+void drainInterleaved(Array &array, StreamPort &port, size_t count,
+                      std::vector<uint32_t> &words, std::vector<bool> &tlasts,
+                      int maxCycles) {
+  for (int cyc = 0; cyc < maxCycles && words.size() < count; ++cyc) {
+    array.advance(1);
+    while (port.canPop()) {
+      uint32_t w;
+      bool tl;
+      port.pop(w, tl);
+      words.push_back(w);
+      tlasts.push_back(tl);
+    }
+  }
 }
 
 //===----------------------------------------------------------------------===//
-// Test doubles for the two components this file does not own.
+// Test double for the one component this file cannot reach through the
+// real stream switch: a Shim tile's DMA bundle (see the file comment).
 //===----------------------------------------------------------------------===//
 
-// Stands in for a stream-switch port: an unbounded FIFO so MM2S never has
-// to stall on backpressure in these tests (the stall path itself is
-// exercised through the lock, not the stream, below).
 class FifoPort : public StreamPort {
 public:
   bool canPush() const override { return true; }
@@ -154,29 +220,6 @@ public:
 
   std::deque<uint32_t> words;
   std::deque<bool> tlasts;
-};
-
-// Lock id 0 gates on `armed`; every other id always succeeds. Lets a test
-// hold a channel stalled and then let it through.
-class FakeLockModule : public LockModule {
-public:
-  bool step() override { return false; }
-  bool tryAcquire(uint32_t id, int32_t value) override {
-    (void)value;
-    acquireAttempts++;
-    return id == 0 ? armed : true;
-  }
-  void release(uint32_t id, int32_t value) override {
-    (void)id;
-    (void)value;
-    ++releaseCount;
-  }
-  int32_t value(uint32_t) const override { return 0; }
-  uint32_t count() const override { return 1; }
-
-  bool armed = false;
-  int releaseCount = 0;
-  int acquireAttempts = 0;
 };
 
 //===----------------------------------------------------------------------===//
@@ -252,6 +295,20 @@ void writeShimBd(Tile &tile, uint32_t bdId, const BdSpec &s) {
   tile.regs().write(base + 28, w7);
 }
 
+uint32_t ctrlQueueOff(uint32_t ctrlBase, uint32_t ctrlStride, uint32_t numCh,
+                     DmaDirection dir, uint32_t ch) {
+  uint32_t dirOff = dir == DmaDirection::MM2S ? ctrlStride * numCh : 0;
+  return ctrlBase + ch * ctrlStride + dirOff + 4; // +4: the start-queue
+                                                  // word follows the ctrl
+                                                  // word (Dma.cpp).
+}
+
+uint32_t statusOff(uint32_t statusBase, uint32_t statusDirStride,
+                   DmaDirection dir, uint32_t ch) {
+  uint32_t dirOff = dir == DmaDirection::MM2S ? statusDirStride : 0;
+  return statusBase + ch * 4 + dirOff;
+}
+
 void startQueue(Tile &tile, uint32_t ctrlBase, uint32_t ctrlStride,
                uint32_t numCh, DmaDirection dir, uint32_t ch,
                uint8_t startBd) {
@@ -269,8 +326,8 @@ struct ErrorCapture {
 };
 
 //===----------------------------------------------------------------------===//
-// Test 1: a 1-D BD moves the right bytes out of tile memory in the right
-// order.
+// Test 1: a 1-D BD moves the right words out of tile memory in the right
+// order, through the real stream switch.
 //===----------------------------------------------------------------------===//
 
 void testOneDMove() {
@@ -281,6 +338,7 @@ void testOneDMove() {
   Tile *core = array.tile(0, 2);
   AIESIM_CHECK(core != nullptr);
   AIESIM_CHECK(core->dma() != nullptr);
+  AIESIM_CHECK(core->streamSwitch() != nullptr);
 
   uint32_t src[8] = {10, 11, 12, 13, 14, 15, 16, 17};
   AIESIM_CHECK(core->memory()->write(0, src, sizeof(src)));
@@ -291,22 +349,24 @@ void testOneDMove() {
                         // whole BD (see Dma.cpp's computeAddress comment).
   writeCoreBd(*core, /*bdId=*/0, spec);
 
-  FifoPort port;
-  dmaTestSetPort(*core->dma(), DmaDirection::MM2S, 0, &port);
+  wireMm2sToCtrl(*core);
+  StreamPort *sink = core->streamSwitch()->masterPort(PortBundle::Ctrl, 0);
 
   startQueue(*core, CoreRegs::kCtrlBase, CoreRegs::kCtrlStride,
             CoreRegs::kNumCh, DmaDirection::MM2S, 0, /*startBd=*/0);
 
-  bool quiescent = array.runUntilQuiescent(1000);
-  AIESIM_CHECK(quiescent);
-  AIESIM_CHECK(err.message.empty());
+  std::vector<uint32_t> words;
+  std::vector<bool> tlasts;
+  drainInterleaved(array, *sink, 8, words, tlasts, /*maxCycles=*/500);
 
-  AIESIM_CHECK_EQ(port.words.size(), static_cast<size_t>(8));
-  for (uint32_t i = 0; i < 8; ++i)
-    AIESIM_CHECK_EQ(port.words[i], src[i]);
-  for (uint32_t i = 0; i + 1 < port.tlasts.size(); ++i)
-    AIESIM_CHECK(!port.tlasts[i]);
-  AIESIM_CHECK(port.tlasts.back());
+  AIESIM_CHECK(err.message.empty());
+  AIESIM_CHECK_EQ(words.size(), static_cast<size_t>(8));
+  for (uint32_t i = 0; i < 8 && i < words.size(); ++i)
+    AIESIM_CHECK_EQ(words[i], src[i]);
+  for (size_t i = 0; i + 1 < tlasts.size(); ++i)
+    AIESIM_CHECK(!tlasts[i]);
+  if (!tlasts.empty())
+    AIESIM_CHECK(tlasts.back());
 
   AIESIM_CHECK_EQ(core->dma()->completedBds(DmaDirection::MM2S, 0), 1u);
 }
@@ -346,25 +406,28 @@ void testNdGenerator() {
   spec.stepSizeMinus1[2] = 1 - 1;
   writeCoreBd(*core, /*bdId=*/1, spec);
 
-  FifoPort port;
-  dmaTestSetPort(*core->dma(), DmaDirection::MM2S, 0, &port);
+  wireMm2sToCtrl(*core);
+  StreamPort *sink = core->streamSwitch()->masterPort(PortBundle::Ctrl, 0);
   startQueue(*core, CoreRegs::kCtrlBase, CoreRegs::kCtrlStride,
             CoreRegs::kNumCh, DmaDirection::MM2S, 0, /*startBd=*/1);
 
-  AIESIM_CHECK(array.runUntilQuiescent(2000));
+  std::vector<uint32_t> words;
+  std::vector<bool> tlasts;
+  drainInterleaved(array, *sink, 128, words, tlasts, /*maxCycles=*/2000);
+
   AIESIM_CHECK(err.message.empty());
-  AIESIM_CHECK_EQ(port.words.size(), static_cast<size_t>(128));
+  AIESIM_CHECK_EQ(words.size(), static_cast<size_t>(128));
 
   // Hand-computed expected sequence: D0 fastest (mod 8), then D1 (mod 8),
   // then D2 (unbounded remainder) -- the same nested-loop order
   // test/unit_tests/aie2/29_aie2_nd_dma_even_odd/test.cpp's
   // populate_expected() uses for its own (different) stride/size choice.
-  for (uint32_t l = 0; l < 128; ++l) {
+  for (uint32_t l = 0; l < 128 && l < words.size(); ++l) {
     uint32_t d0 = l % 8;
     uint32_t d1 = (l / 8) % 8;
     uint32_t d2 = l / 64;
     uint32_t expected = d0 * 8 + d1 * 1 + d2 * 1;
-    AIESIM_CHECK_EQ(port.words[l], expected);
+    AIESIM_CHECK_EQ(words[l], expected);
   }
 
   AIESIM_CHECK_EQ(core->dma()->completedBds(DmaDirection::MM2S, 0), 1u);
@@ -373,7 +436,9 @@ void testNdGenerator() {
 //===----------------------------------------------------------------------===//
 // Test 3: a channel stalls rather than proceeding when its lock acquire
 // cannot succeed, and completedBds only counts once the BD actually
-// finishes.
+// finishes. Drives the REAL LockModule (armed through the LockN_Value
+// register, exactly as a host would pre-set a lock's initial value) rather
+// than a fake.
 //===----------------------------------------------------------------------===//
 
 void testLockStall() {
@@ -390,26 +455,25 @@ void testLockStall() {
   spec.lengthWords = 4;
   spec.lockAcqEn = true;
   spec.lockAcqId = 0;
-  spec.lockAcqVal = 1;
+  spec.lockAcqVal = 1; // Exact-match acquire: needs lock 0's counter
+                       // (real LockModule, reset value 0) to read 1.
   spec.lockRelId = 1;
   spec.lockRelVal = 1;
   writeCoreBd(*core, /*bdId=*/2, spec);
 
-  FifoPort port;
-  dmaTestSetPort(*core->dma(), DmaDirection::MM2S, 0, &port);
-  FakeLockModule fakeLocks; // armed = false: acquire always fails.
-  dmaTestSetLocks(*core->dma(), &fakeLocks);
+  wireMm2sToCtrl(*core);
+  StreamPort *sink = core->streamSwitch()->masterPort(PortBundle::Ctrl, 0);
 
   startQueue(*core, CoreRegs::kCtrlBase, CoreRegs::kCtrlStride,
             CoreRegs::kNumCh, DmaDirection::MM2S, 0, /*startBd=*/2);
 
-  // Several cycles with the lock unavailable: nothing should move, and
+  // Several cycles with lock 0 still at its reset value of 0: the exact
+  // match acquire (value=1) cannot succeed, so nothing should move, and
   // the channel must not spin/error, just stall.
   array.advance(20);
   AIESIM_CHECK(err.message.empty());
-  AIESIM_CHECK(port.words.empty());
+  AIESIM_CHECK(!sink->canPop());
   AIESIM_CHECK_EQ(core->dma()->completedBds(DmaDirection::MM2S, 0), 0u);
-  AIESIM_CHECK(fakeLocks.acquireAttempts > 0);
 
   // The status register's StalledLockAcq bit (lsb 2) must reflect this.
   uint32_t status = core->regs().read(
@@ -417,16 +481,27 @@ void testLockStall() {
                DmaDirection::MM2S, 0));
   AIESIM_CHECK((status & 0x4u) != 0);
 
-  // Let the lock through and let the transfer finish.
-  fakeLocks.armed = true;
-  AIESIM_CHECK(array.runUntilQuiescent(1000));
-  AIESIM_CHECK(err.message.empty());
+  // Arm lock 0 through the real LockN_Value register (Lock.cpp's
+  // setRawValue / xaie_locks_aieml.c:150-164 direct-write path) and let the
+  // transfer finish.
+  core->regs().write(LockRegs::kValueBase + 0 * LockRegs::kValueStride, 1);
 
-  AIESIM_CHECK_EQ(port.words.size(), static_cast<size_t>(4));
-  for (uint32_t i = 0; i < 4; ++i)
-    AIESIM_CHECK_EQ(port.words[i], src[i]);
+  std::vector<uint32_t> words;
+  std::vector<bool> tlasts;
+  drainInterleaved(array, *sink, 4, words, tlasts, /*maxCycles=*/500);
+
+  AIESIM_CHECK(err.message.empty());
+  AIESIM_CHECK_EQ(words.size(), static_cast<size_t>(4));
+  for (uint32_t i = 0; i < 4 && i < words.size(); ++i)
+    AIESIM_CHECK_EQ(words[i], src[i]);
   AIESIM_CHECK_EQ(core->dma()->completedBds(DmaDirection::MM2S, 0), 1u);
-  AIESIM_CHECK_EQ(fakeLocks.releaseCount, 1);
+
+  // Release side: lock 1's counter must now read back lockRelVal (1),
+  // confirming the release ran against the real LockModule.
+  uint32_t lock1 = core->regs().read(LockRegs::kValueBase +
+                                     1 * LockRegs::kValueStride) &
+                   LockRegs::kValueMask;
+  AIESIM_CHECK_EQ(lock1, 1u);
 
   status = core->regs().read(
       statusOff(CoreRegs::kStatusBase, CoreRegs::kStatusDirStride,
@@ -435,11 +510,111 @@ void testLockStall() {
 }
 
 //===----------------------------------------------------------------------===//
-// Test 4 (bonus, beyond the required minimum): shim DMA moves words
+// Test 4 (regression for the BufferLen==0 finding): a zero-length BD must
+// move zero words, while still performing its lock acquire and release
+// and completing normally. Before the fix, `stepChannel` called
+// moveOneWord unconditionally and an unsigned `beatsDone(0) <
+// lengthWords(0)` compared false, so the BD "completed" after silently
+// moving one word it should never have touched.
+//===----------------------------------------------------------------------===//
+
+void testZeroLengthBdMovesNoDataStillLocks() {
+  Array array(makeTestDevice(), nullptr);
+  ErrorCapture err;
+  array.setDiagnosticHandler(err.handler());
+
+  Tile *core = array.tile(0, 2);
+  uint32_t poison = 0xDEADBEEFu;
+  AIESIM_CHECK(core->memory()->write(0, &poison, sizeof(poison)));
+
+  BdSpec spec;
+  spec.addrWordOffset = 0;
+  spec.lengthWords = 0; // The case under test: BufferLen=0 is a legitimate
+                        // encoding (aie-rt's LenActualOffset is 0U for
+                        // every AIE2/AIE2P tile type -- see Dma.cpp's file
+                        // header), used to acquire and release a lock with
+                        // no data movement.
+  spec.lockAcqEn = true;
+  spec.lockAcqId = 2;
+  spec.lockAcqVal = 1;
+  spec.lockRelId = 3;
+  spec.lockRelVal = 1;
+  writeCoreBd(*core, /*bdId=*/4, spec);
+
+  wireMm2sToCtrl(*core);
+  StreamPort *sink = core->streamSwitch()->masterPort(PortBundle::Ctrl, 0);
+
+  // Arm lock 2 so the acquire (still required for a zero-length BD) can
+  // succeed.
+  core->regs().write(LockRegs::kValueBase + 2 * LockRegs::kValueStride, 1);
+
+  startQueue(*core, CoreRegs::kCtrlBase, CoreRegs::kCtrlStride,
+            CoreRegs::kNumCh, DmaDirection::MM2S, 0, /*startBd=*/4);
+
+  AIESIM_CHECK(array.runUntilQuiescent(200));
+  AIESIM_CHECK(err.message.empty());
+  AIESIM_CHECK(!sink->canPop()); // Zero words moved, not one.
+  AIESIM_CHECK_EQ(core->dma()->completedBds(DmaDirection::MM2S, 0), 1u);
+
+  // Lock 3's counter must show the release ran even though no data moved.
+  uint32_t lock3 = core->regs().read(LockRegs::kValueBase +
+                                     3 * LockRegs::kValueStride) &
+                   LockRegs::kValueMask;
+  AIESIM_CHECK_EQ(lock3, 1u);
+}
+
+//===----------------------------------------------------------------------===//
+// Test 5: S2MM, previously untested entirely in this file. A local
+// (non-wired) stream-switch port stands in for whatever producer a real
+// design would wire up, circuit-switched into DMA0's master port so the
+// S2MM channel reads through the REAL stream switch.
+//===----------------------------------------------------------------------===//
+
+void testS2mmMove() {
+  Array array(makeTestDevice(), nullptr);
+  ErrorCapture err;
+  array.setDiagnosticHandler(err.handler());
+
+  Tile *core = array.tile(0, 2);
+  AIESIM_CHECK(core->dma() != nullptr);
+  AIESIM_CHECK(core->streamSwitch() != nullptr);
+
+  RegisterFile &regs = core->regs();
+  regs.write(SsRegs::kSlvCtrl, packSlaveEnable(/*packetMode=*/false));
+  regs.write(SsRegs::kMstrDma0, packMasterCircuit(physIdx(SsRegs::kSlvCtrl)));
+
+  BdSpec spec;
+  spec.addrWordOffset = 0;
+  spec.lengthWords = 4;
+  writeCoreBd(*core, /*bdId=*/3, spec);
+  startQueue(*core, CoreRegs::kCtrlBase, CoreRegs::kCtrlStride,
+            CoreRegs::kNumCh, DmaDirection::S2MM, 0, /*startBd=*/3);
+
+  StreamPort *source = core->streamSwitch()->slavePort(PortBundle::Ctrl, 0);
+  source->push(200, false);
+  source->push(201, false);
+  source->push(202, false);
+  source->push(203, true);
+
+  AIESIM_CHECK(array.runUntilQuiescent(500));
+  AIESIM_CHECK(err.message.empty());
+
+  uint32_t dst[4] = {};
+  AIESIM_CHECK(core->memory()->read(0, dst, sizeof(dst)));
+  AIESIM_CHECK_EQ(dst[0], 200u);
+  AIESIM_CHECK_EQ(dst[1], 201u);
+  AIESIM_CHECK_EQ(dst[2], 202u);
+  AIESIM_CHECK_EQ(dst[3], 203u);
+  AIESIM_CHECK_EQ(core->dma()->completedBds(DmaDirection::S2MM, 0), 1u);
+}
+
+//===----------------------------------------------------------------------===//
+// Test 6 (bonus, beyond the required minimum): shim DMA moves words
 // between DDR (Array::ddrRead/ddrWrite) and the stream, using the 64-bit
 // address assembled from the low/high registers. Exercises the one piece
 // of address decode with a non-obvious register encoding (see Dma.cpp's
-// kShimLayout.addrLo comment).
+// kShimLayout.addrLo comment). Uses dmaTestSetPort: see the file header
+// for why a Shim tile's DMA bundle has no real port to attach to.
 //===----------------------------------------------------------------------===//
 
 void testShimDdr() {
@@ -481,6 +656,8 @@ int main() {
   testOneDMove();
   testNdGenerator();
   testLockStall();
+  testZeroLengthBdMovesNoDataStillLocks();
+  testS2mmMove();
   testShimDdr();
   return aiesim_test::summarize("dma");
 }

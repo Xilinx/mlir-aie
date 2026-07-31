@@ -84,12 +84,13 @@ using namespace aiesim;
 
 namespace {
 
-constexpr uint32_t kNumBundles = 9; // Core,DMA,Ctrl,FIFO,South,West,North,East,Trace
-constexpr uint32_t kPortOffset = 0x4;        // Distance between ports of one bundle.
-constexpr uint32_t kNumSlaveSlots = 4;       // NumSlaveSlots, every StrmMod instance.
+// Core,DMA,Ctrl,FIFO,South,West,North,East,Trace -- aiesim::PortBundle.
+constexpr uint32_t kNumBundles = 9;
+constexpr uint32_t kPortOffset = 0x4;  // Distance between ports of one bundle.
+constexpr uint32_t kNumSlaveSlots = 4; // NumSlaveSlots, every StrmMod instance.
 constexpr uint32_t kSlotOffsetPerPort = 0x10; // SlotOffsetPerPort, ditto.
-constexpr uint32_t kSlotOffset = 0x4;        // SlotOffset (distance between slots).
-constexpr size_t kFifoDepth = 2;             // "a small FIFO per port" (task text).
+constexpr uint32_t kSlotOffset = 0x4;  // SlotOffset (distance between slots).
+constexpr size_t kFifoDepth = 2;       // "a small FIFO per port" (task text).
 
 // Universal bit fields (xaie2pgbl_params.h:3630-3648 for master,
 // :4090-4100 for slave, :4390-4412 for slot; reused verbatim by the Shim
@@ -367,8 +368,25 @@ public:
   bool step() override {
     bool moved = stepCircuitSwitch();
     moved |= stepPacketSwitch();
-    moved |= stepInterTileWires();
+    moved |= stageInterTileWires();
     return moved;
+  }
+
+  // Publishes whatever stageInterTileWires() staged this cycle. Splitting
+  // the actual cross-tile push out of step() into commit() is what makes
+  // propagation exactly one hop per cycle in every direction (Array.h's
+  // Steppable contract): every tile's step() this cycle reads FIFOs as they
+  // stood at the end of the PREVIOUS cycle, because no tile's commit() has
+  // run yet, regardless of which order tiles happen to appear in the
+  // steppables list. Before this split, a tile stepped later in that list
+  // (e.g. a higher column, going East) could see data pushed by a tile
+  // stepped earlier in the SAME cycle and relay it again immediately, so a
+  // word crossed an unbounded number of tiles per cycle going one way and
+  // exactly one tile per cycle going the other.
+  void commit() override {
+    for (PendingWire &p : pendingWires)
+      p.dst->push(p.word, p.tlast);
+    pendingWires.clear();
   }
 
   // Invoked by the RegisterFile handler installStreamSwitch() registers.
@@ -540,8 +558,18 @@ private:
         if (!src.canPop())
           continue;
 
+        // The front-of-FIFO word is a pending, undelivered header for as
+        // long as `inPacket` is false. Matching it against a slot rule below
+        // only resolves WHICH (arbiter, msel) it targets; it says nothing
+        // about whether a listener exists yet or has room, both of which can
+        // `continue` without popping the word (ordinary backpressure or a
+        // master not configured yet). `inPacket` must therefore only flip to
+        // true where the word is actually popped, further down, not here --
+        // otherwise a later retry's `isHeaderWord` goes false for a header
+        // that was never delivered, and a DropHeader master configured on
+        // that retry wrongly receives it (the bug this fixes).
         bool isHeaderWord = !ss.pkt.inPacket;
-        if (!ss.pkt.inPacket) {
+        if (isHeaderWord) {
           // Our own header-word convention: bits [4:0] carry the packet id
           // (matches the 5-bit width in xaiegbl.h:49); see the "NOT
           // GROUNDED" note at the top of this file.
@@ -573,7 +601,6 @@ private:
             moved = true;
             continue;
           }
-          ss.pkt.inPacket = true;
         }
 
         std::vector<std::pair<uint32_t, uint32_t>> matching;
@@ -614,8 +641,11 @@ private:
         for (Fifo *dst : dests)
           dst->push(word, tlast);
         moved = true;
-        if (tlast)
-          ss.pkt.inPacket = false;
+        // The word is now actually delivered (or intentionally dropped for
+        // every master that asked for DropHeader, if `dests` ended up
+        // empty): only now has the switch truly left "awaiting header",
+        // and only until tlast ends the packet.
+        ss.pkt.inPacket = !tlast;
       }
     }
     return moved;
@@ -629,17 +659,26 @@ private:
   // between two tiles' switches, not a connection either switch chose.
   //===--------------------------------------------------------------===//
 
-  bool stepInterTileWires() {
+  bool stageInterTileWires() {
     bool moved = false;
-    moved |= wireToNeighbor(PortBundle::North, PortBundle::South, 0, 1);
-    moved |= wireToNeighbor(PortBundle::South, PortBundle::North, 0, -1);
-    moved |= wireToNeighbor(PortBundle::East, PortBundle::West, 1, 0);
-    moved |= wireToNeighbor(PortBundle::West, PortBundle::East, -1, 0);
+    moved |= stageWireToNeighbor(PortBundle::North, PortBundle::South, 0, 1);
+    moved |= stageWireToNeighbor(PortBundle::South, PortBundle::North, 0, -1);
+    moved |= stageWireToNeighbor(PortBundle::East, PortBundle::West, 1, 0);
+    moved |= stageWireToNeighbor(PortBundle::West, PortBundle::East, -1, 0);
     return moved;
   }
 
-  bool wireToNeighbor(PortBundle mine, PortBundle theirs, int dCol,
-                      int dRow) {
+  // Reads this tile's own master FIFO (our state; safe to pop now, since
+  // nothing else on this tile drains a North/South/East/West master FIFO
+  // except this same call) and the neighbour's PUBLISHED slave-FIFO state
+  // (also safe: the neighbour's commit() has not run this cycle either).
+  // The actual delivery -- the write into the neighbour's FIFO -- is staged
+  // into pendingWires and only applied from commit(), so it is invisible to
+  // every component, on every tile, until every step() this cycle has
+  // finished. See the commit() comment above for why that is what makes a
+  // hop cost exactly one cycle regardless of direction.
+  bool stageWireToNeighbor(PortBundle mine, PortBundle theirs, int dCol,
+                           int dRow) {
     uint32_t col = tile.getCol(), row = tile.getRow();
     if (dCol < 0 && col == 0)
       return false; // Array edge: leave the port unconnected.
@@ -671,7 +710,7 @@ private:
       uint32_t word;
       bool tlast;
       src.pop(word, tlast);
-      dst->push(word, tlast);
+      pendingWires.push_back({dst, word, tlast});
       moved = true;
     }
     return moved;
@@ -684,6 +723,15 @@ private:
   std::array<std::vector<MasterState>, kNumBundles> masterSt;
   std::array<std::vector<SlaveState>, kNumBundles> slaveSt;
   std::array<std::vector<SlotState>, kNumBundles> slotSt;
+
+  // A word popped from our own master FIFO this cycle, destined for a
+  // neighbour's slave FIFO, held until commit(). See stageWireToNeighbor().
+  struct PendingWire {
+    StreamPort *dst;
+    uint32_t word;
+    bool tlast;
+  };
+  std::vector<PendingWire> pendingWires;
 };
 
 } // namespace

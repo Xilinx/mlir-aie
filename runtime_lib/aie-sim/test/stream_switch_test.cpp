@@ -104,6 +104,36 @@ uint32_t packSlot(uint32_t id, uint32_t mask, uint32_t msel,
   return (1u << 8) | ((id & 0x1Fu) << 24) | ((mask & 0x1Fu) << 16) |
         ((msel & 0x3u) << 4) | (arbitor & 0x7u);
 }
+uint32_t packMasterPacketDropHeader(uint32_t arbitor, uint32_t mselEnMask,
+                                    bool dropHeader) {
+  return (1u << 31) | (1u << 30) | (dropHeader ? (1u << 7) : 0u) |
+        ((mselEnMask & 0xFu) << 3) | (arbitor & 0x7u);
+}
+
+// A 4-column, 3-row device (shim, one memtile row, one core row) wide
+// enough to build a multi-tile East/West chain along the core row. Only
+// used by testMultiHopRouteSameCycleCountBothDirections below; the other
+// tests in this file use the 1-column, 4-row device above for their
+// North/South needs.
+DeviceModel makeRowTestDevice() {
+  DeviceModel dev{};
+  dev.generation = Generation::AIE2P;
+  dev.numCols = 4;
+  dev.numRows = 3; // shim(0), memtile(1), core(2)
+  dev.numMemTileRows = 1;
+  dev.coreDataMemSize = 64 * 1024;
+  dev.coreProgMemSize = 16 * 1024;
+  dev.memTileMemSize = 512 * 1024;
+  dev.numCoreLocks = 16;
+  dev.numMemTileLocks = 64;
+  dev.numShimLocks = 16;
+  return dev;
+}
+
+constexpr uint32_t kMstrWest0 = 0x0003F024; // MASTER_CONFIG_WEST0
+constexpr uint32_t kMstrEast0 = 0x0003F04C; // MASTER_CONFIG_EAST0
+constexpr uint32_t kSlvWest0 = 0x0003F12C;  // SLAVE_CONFIG_WEST_0
+constexpr uint32_t kSlvEast0 = 0x0003F14C;  // SLAVE_CONFIG_EAST_0
 
 //===----------------------------------------------------------------------===//
 
@@ -306,6 +336,155 @@ void testPacketSwitchDemux() {
   AIESIM_CHECK(diag.empty());
 }
 
+// Wires a 4-tile chain across row 2 of `array` (columns 0-3), in the given
+// direction, and returns the number of advance(1) calls needed to deliver
+// one word from the chain's source end to a local (Ctrl) sink at the far
+// end, or -1 if it never arrives within `maxCycles`.
+//
+// eastward: source at col 0 (DMA0 slave), two pass-through tiles relaying
+// West slave -> East master, sink at col 3 (Ctrl master).
+// westward: the mirror image (source col 3, sink col 0, relaying East
+// slave -> West master) -- same topology, opposite direction.
+int wireAndTimeChain(Array &array, bool eastward, int maxCycles) {
+  Tile *t0 = array.tile(0, 2);
+  Tile *t1 = array.tile(1, 2);
+  Tile *t2 = array.tile(2, 2);
+  Tile *t3 = array.tile(3, 2);
+
+  Tile *src = eastward ? t0 : t3;
+  Tile *mid1 = eastward ? t1 : t2;
+  Tile *mid2 = eastward ? t2 : t1;
+  Tile *sink = eastward ? t3 : t0;
+
+  uint32_t mstrOut = eastward ? kMstrEast0 : kMstrWest0;
+  uint32_t slvIn = eastward ? kSlvWest0 : kSlvEast0;
+
+  src->regs().write(kSlvDma0, packSlaveEnable(/*packetMode=*/false));
+  src->regs().write(mstrOut, packMasterCircuit(physIdx(kSlvDma0)));
+
+  mid1->regs().write(slvIn, packSlaveEnable(/*packetMode=*/false));
+  mid1->regs().write(mstrOut, packMasterCircuit(physIdx(slvIn)));
+
+  mid2->regs().write(slvIn, packSlaveEnable(/*packetMode=*/false));
+  mid2->regs().write(mstrOut, packMasterCircuit(physIdx(slvIn)));
+
+  sink->regs().write(slvIn, packSlaveEnable(/*packetMode=*/false));
+  sink->regs().write(kMstrCtrl, packMasterCircuit(physIdx(slvIn)));
+
+  StreamPort *source = src->streamSwitch()->slavePort(PortBundle::DMA, 0);
+  StreamPort *dest = sink->streamSwitch()->masterPort(PortBundle::Ctrl, 0);
+  source->push(0xF00D, /*tlast=*/true);
+
+  for (int cyc = 1; cyc <= maxCycles; ++cyc) {
+    array.advance(1);
+    if (dest->canPop())
+      return cyc;
+  }
+  return -1;
+}
+
+// Regression for finding 1: a word crossing multiple tile-to-tile hops must
+// take exactly one cycle per hop, in EVERY direction. Before the fix,
+// Array::advance() stepped every tile's StreamSwitchModule once per cycle
+// in row-major (column-ascending) order, and stepInterTileWires() pushed
+// straight into a neighbour's FIFO from inside step(): a neighbour stepped
+// later in that same pass (a higher column, i.e. East) would see the word
+// immediately and relay it again in the SAME cycle, collapsing an
+// unbounded number of hops into one; a neighbour stepped earlier (a lower
+// column, i.e. West) could not, so it took the physically correct number of
+// cycles. This asserts the EXACT cycle count for both directions on a
+// 3-hop (4-tile) chain, not just that the word eventually arrives -- the
+// polling loop `for (cyc < 20 && !delivered)` style used elsewhere in this
+// file is precisely the blind spot that hid the bug.
+void testMultiHopRouteSameCycleCountBothDirections() {
+  DeviceModel dev = makeRowTestDevice();
+
+  Array eastArray(dev, nullptr);
+  std::vector<std::string> eastDiag;
+  eastArray.setDiagnosticHandler(
+      [&](const std::string &m) { eastDiag.push_back(m); });
+  int eastCycles = wireAndTimeChain(eastArray, /*eastward=*/true, 20);
+
+  Array westArray(dev, nullptr);
+  std::vector<std::string> westDiag;
+  westArray.setDiagnosticHandler(
+      [&](const std::string &m) { westDiag.push_back(m); });
+  int westCycles = wireAndTimeChain(westArray, /*eastward=*/false, 20);
+
+  // 4 tiles, 3 hops: one cycle per switch stage. Each of the first three
+  // tiles routes its own input to its own output AND stages the hand-off to
+  // the next tile in the SAME cycle (published only at commit()); the
+  // fourth tile's routing needs no further hop, since Ctrl is a local
+  // sink. See StreamSwitch.cpp's commit() comment for why that makes the
+  // total exactly (number of tiles in the chain), regardless of direction.
+  AIESIM_CHECK_EQ(eastCycles, 4);
+  AIESIM_CHECK_EQ(westCycles, 4);
+  AIESIM_CHECK_EQ(eastCycles, westCycles);
+  AIESIM_CHECK(eastDiag.empty());
+  AIESIM_CHECK(westDiag.empty());
+}
+
+// Regression for finding 3: a slot rule matching a packet header must not
+// be conflated with the header actually being delivered. Ordinary
+// transient backpressure (or, as here, a DropHeader master simply not
+// configured yet) must not defeat DropHeader once that master does show
+// up: it must still never receive the header word.
+void testDropHeaderSurvivesLateConfiguration() {
+  DeviceModel dev = makeTestDevice();
+  Array array(dev, nullptr);
+  std::vector<std::string> diag;
+  array.setDiagnosticHandler([&](const std::string &m) { diag.push_back(m); });
+
+  Tile *core = array.tile(0, 2);
+  AIESIM_CHECK(core != nullptr);
+  if (!core)
+    return;
+  RegisterFile &regs = core->regs();
+
+  // Slot rule for header id 9 -> (arbiter 0, msel 0); no master configured
+  // to listen yet.
+  regs.write(kSlvDma0, packSlaveEnable(/*packetMode=*/true));
+  regs.write(kSlotDma0Slot0,
+            packSlot(/*id=*/9, /*mask=*/0, /*msel=*/0, /*arbitor=*/0));
+
+  StreamSwitchModule *sw = core->streamSwitch();
+  StreamPort *slave = sw->slavePort(PortBundle::DMA, 0);
+  StreamPort *ctrlMaster = sw->masterPort(PortBundle::Ctrl, 0);
+
+  slave->push(/*header, id=9*/ 9u, /*tlast=*/false);
+  slave->push(/*payload*/ 0xABCDu, /*tlast=*/true);
+
+  // Several cycles where the header matches the slot rule but nobody
+  // listens: exactly the state finding 3's bug mis-tracked as "delivered".
+  array.advance(5);
+  AIESIM_CHECK(!ctrlMaster->canPop());
+
+  // Now configure Ctrl with DropHeader=1, listening on (arbiter 0, msel 0).
+  regs.write(kMstrCtrl, packMasterPacketDropHeader(/*arbitor=*/0,
+                                                   /*mselEnMask=*/0x1,
+                                                   /*dropHeader=*/true));
+
+  std::vector<uint32_t> words;
+  std::vector<bool> tlasts;
+  for (int cyc = 0; cyc < 10 && words.empty(); ++cyc) {
+    array.advance(1);
+    while (ctrlMaster->canPop()) {
+      uint32_t w;
+      bool tl;
+      ctrlMaster->pop(w, tl);
+      words.push_back(w);
+      tlasts.push_back(tl);
+    }
+  }
+
+  AIESIM_CHECK_EQ(words.size(), size_t{1});
+  if (!words.empty()) {
+    AIESIM_CHECK_EQ(words[0], 0xABCDu); // Payload only, never the header.
+    AIESIM_CHECK(tlasts[0]);
+  }
+  AIESIM_CHECK(diag.empty());
+}
+
 } // namespace
 
 int main() {
@@ -313,5 +492,7 @@ int main() {
   testCircuitSwitchedConnection();
   testTwoTileRoute();
   testPacketSwitchDemux();
+  testMultiHopRouteSameCycleCountBothDirections();
+  testDropHeaderSurvivesLateConfiguration();
   return aiesim_test::summarize("stream_switch");
 }

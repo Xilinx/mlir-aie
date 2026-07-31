@@ -93,11 +93,9 @@
 //
 // Together these three call sites agree: AcquireGreaterEqual is encoded as a
 // NEGATIVE request value (magnitude = the threshold), and plain Acquire is a
-// non-negative value (an exact match). That is the OPPOSITE polarity from
-// the comment on `LockModule` in Components.h ("a positive value means
-// acquire greater-equal"); this file follows the grounded polarity found
-// above and flags the conflict rather than silently picking one. See the
-// task report for the full discussion.
+// non-negative value (an exact match). Components.h's `LockModule` doc
+// comment states this same polarity and cites the same three sources; the
+// two files agree.
 //
 // One corner is NOT fully nailed down by a single source line: whether a
 // successful plain (non-GE) Acquire also decrements the counter by the
