@@ -6,7 +6,7 @@ import sys
 from collections import OrderedDict
 
 import numpy as np
-import onnxruntime as ort
+import onnxruntime as ort  # pyright: ignore[reportMissingImports]
 
 if len(sys.argv) < 2:
     model_name = "model.onnx"

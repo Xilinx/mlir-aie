@@ -40,8 +40,8 @@ from pathlib import Path
 
 import aie.iron as iron
 import numpy as np
-import torch
-import torch.nn as nn
+import torch  # pyright: ignore[reportMissingImports]
+import torch.nn as nn  # pyright: ignore[reportMissingImports]
 from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker
 from aie.iron.controlflow import range_
