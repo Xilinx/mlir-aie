@@ -10,51 +10,21 @@
 //
 //   out[t] = bias + sum_{p=0..K-1} w[p] * in_pad[t + p],   t = 0 .. T-1
 //
-// This is a cross-correlation (no kernel flip), matching torch.nn.Conv1d and
-// most framework "same" depthwise convs. `in_pad` is the already-padded row
-// the caller supplies, this kernel does no boundary handling and needs no
-// local scratch buffer:
+// A cross-correlation, no kernel flip, matching torch.nn.Conv1d and most
+// framework "same" depthwise convs. The caller supplies the padded row, so
+// the kernel does no boundary handling and needs no scratch buffer:
 //
 //   in_pad[0 .. T+15]: [P zeros | T real samples | P zeros | 16-(K-1) junk]
 //                       \_______________ T+K-1 valid, halo-padded ________/
 //   P = (K - 1) / 2
 //
-// The trailing "don't-care" slack past the halo (up to a fixed 16 elements,
-// independent of K) exists only so the vectorized kernel's aligned 16-wide
-// loads never read past the end of the buffer; its values never reach the
-// output (see the tap loop below). Callers can zero it like the rest of the
-// pad. See dwconv1d.py's `_pad_input` for a reference construction.
+// The slack past the halo is a fixed 16 elements whatever K is, so that the
+// aligned 16-wide loads never read past the end of the buffer; its values
+// never reach the output. dwconv1d.py's `_pad_input` builds one.
 //
-// Vectorized 16-outputs/iteration: two aligned loads build a 32-lane window
-// (`in_pad` must be aligned; T a multiple of 16), and aie::shuffle_down_fill
-// slides a 16-wide tap window across it in-register, no unaligned loads.
-// Each tap's product is aie::mac'd into one accfloat accumulator per output
-// chunk (the K-sum never leaves the accumulator).
-//
-// K is compile-time (DWCONV_K, default 9); the shuffle window this uses is
-// 16 + K - 1 wide and must fit the 32-lane two-register concat, so K <= 17.
-//
-// *** Implementation note ***
-// aie::sliding_mul_ops is the general, dedicated primitive for exactly this
-// shape (a K-tap window MAC with the K-sum kept in one accumulator). This
-// kernel does not use it: instead, each tap's window is built in-register
-// from two aligned 16-wide loads plus aie::shuffle_down_fill, then
-// aie::mac'd into one accfloat accumulator per 16-output chunk. Same
-// brick-layer intent as sliding_mul (one accumulator, L outputs/issue, no
-// scalar per-tap loop), a path that is bit-correct here.
-//
-// An earlier version of this kernel used
-// aie::sliding_mul_ops<L, K, 1, 1, 1, bfloat16, bfloat16>::mul() and, in a
-// full multi-channel pipeline (not isolated), observed wrong bf16 output.
-// A later, standalone single-core repro of that same call, independent of
-// this kernel's dataflow, found the primitive itself correct at K in
-// {1, 4, 9, 16} (rel-L2 ~0.003, the known bf16 noise floor for this class of
-// kernel, zero non-finite outputs), against both the pinned toolchain and
-// the mlir_aie wheel's aie_api. The original wrong output is attributed to a
-// dataflow-wiring bug in the surrounding multi-channel pipeline, not to
-// sliding_mul_ops. No head-to-head performance comparison between the two
-// implementations has been made; this kernel's aligned-load + shuffle path
-// is not claimed to be faster, only bit-correct as measured.
+// K is compile-time (DWCONV_K, default 9). The 16 + K - 1 wide shuffle window
+// must fit the 32-lane two-register concat, so K <= 17, and in_pad must be
+// aligned with T a multiple of 16.
 //
 //===----------------------------------------------------------------------===//
 
@@ -69,11 +39,8 @@ static inline void dwconv1d_same_bf16_impl(const bfloat16 *restrict in_pad,
       K >= 1 && K <= 17,
       "K taps must fit one 32-lane shuffle window (16 + K - 1 <= 32)");
   event0();
-  // Save the caller's rounding mode and restore it before returning: a
-  // single sticky register is shared by every kernel that runs on this
-  // core, so this kernel must not leave conv_even set for whatever runs
-  // after it. Matches mm.cc's AIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16
-  // save/restore pattern.
+  // The rounding mode is one sticky register shared by every kernel on this
+  // core, so conv_even must be handed back before returning.
   ::aie::rounding_mode saved_rounding =
       ::aie::swap_rounding(::aie::rounding_mode::conv_even);
 
@@ -91,10 +58,8 @@ static inline void dwconv1d_same_bf16_impl(const bfloat16 *restrict in_pad,
     ::aie::accum<accfloat, 16> acc;
     acc.from_vector(bias_v);
     for (int p = 0; p < K; p++) {
-      // window(p) = in_pad[o+p .. o+p+15], built in-register from a0/a1,
-      // never an unaligned load. Only fill lanes [0, p) of a1 are selected
-      // here (p <= K-1 <= 16), so the don't-care tail described above never
-      // reaches the accumulator.
+      // in_pad[o+p .. o+p+15]. p <= K-1 <= 16 selects only lanes [0, p) of
+      // a1, so the don't-care tail never reaches the accumulator.
       const ::aie::vector<bfloat16, 16> window =
           ::aie::shuffle_down_fill(a0, a1, static_cast<unsigned>(p));
       acc = ::aie::mac(acc, window, coeff[p]);
@@ -114,19 +79,11 @@ static inline void dwconv1d_same_bf16_impl(const bfloat16 *restrict in_pad,
 
 extern "C" {
 
-// Depthwise conv1d, 'same' padding, one channel per call. K = DWCONV_K taps
-// (default 9), bias = DWCONV_BIAS (default on). See the file header for the
-// in_pad layout and the -DDWCONV_K=/-DDWCONV_BIAS= compile-time selection
-// (mirrors the -DINT8_ACT-style flag convention the sibling conv kernels in
-// this directory use).
-//   in_pad: T + 16 bf16 (halo + don't-care tail, see above)
-//   w:      DWCONV_K + DWCONV_BIAS bf16 (taps [0..K-1], bias at [K] if BIAS).
-//           This kernel itself only ever reads DWCONV_K + DWCONV_BIAS
-//           elements of w; an IRON caller (e.g. dwconv1d.py) may pass a wider
-//           buffer than that for its own reasons (aie.dma_bd needs a 4-byte-
-//           aligned transfer length, which a DWCONV_BIAS=0 row of odd
-//           DWCONV_K would not be); any padding past index
-//           DWCONV_K + DWCONV_BIAS - 1 is never touched here.
+//   in_pad: T + 16 bf16, halo-padded as in the file header
+//   w:      taps [0 .. DWCONV_K-1], bias at [DWCONV_K] if DWCONV_BIAS. A
+//           caller may pass a wider row (dwconv1d.py pads to keep the
+//           aie.dma_bd transfer length 4-byte aligned); anything past the
+//           bias is never read.
 //   out:    T bf16
 //   T:      output length, must be a multiple of 16
 void dwconv1d_bf16(bfloat16 *in_pad, bfloat16 *w, bfloat16 *out, int32_t T) {
