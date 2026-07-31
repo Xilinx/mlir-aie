@@ -11022,6 +11022,26 @@ are rejected by the verifier because their DMA control register has no reset
 field.</p>
 <p><code>tile</code> is an SSA <code>aie.tile</code> value, so the target is named the same way as
 <code>aiex.dma_configure_task</code>.</p>
+<p>To re-arm one resident objectFIFO, prefer <code>aiex.dma_channel_reset_for</code>:
+resetting a channel is only one third of the sequence a resident FIFO needs
+-- the reset also freezes the channel's bound lock counters, and an aie2p
+DMA channel has no enable bit, so once the reset drains its queue only a
+START_QUEUE write restarts it. That op resolves the whole trio (reset,
+<code>aiex.set_lock</code> per bound lock, <code>aiex.npu.push_queue</code> re-push) from the
+fifo's <code>aie.objectfifo_rearm_binding</code>. Note that
+<code>AIEVerifyRuntimeRearmPass</code> checks only the lock half, so satisfying it
+after a hand-written reset still leaves a channel that never restarts.</p>
+<p>Resetting every DMA channel on a tile has no dedicated op, because it is a
+loop a caller can already write: emit one <code>aiex.dma_channel_reset</code> per
+channel per direction, MM2S 0..N-1 then S2MM 0..N-1, where N is the tile's
+channel count in that direction
+(<code>AIETargetModel::getNumSourceSwitchboxConnections</code> /
+<code>getNumDestSwitchboxConnections</code> with <code>WireBundle::DMA</code>, the same query this
+op's verifier uses to bound <code>channel</code>). That is exactly what aie-rt's
+<code>XAie_DmaChannelResetAll</code> is -- a bare loop over <code>XAie_DmaChannelReset</code> with
+no tile-wide reset-all bit underneath it. Resetting a channel that was never
+configured is safe: aie-rt gates the reset only on the channel index being
+in range for the tile and direction, not on configuration state.</p>
 <p>Example:
 <div class="highlight"><pre><span></span><code><a id="__codelineno-44-1" name="__codelineno-44-1" href="#__codelineno-44-1"></a>  %tile = aie.tile(2, 3)
 <a id="__codelineno-44-2" name="__codelineno-44-2" href="#__codelineno-44-2"></a>  aiex.dma_channel_reset(%tile, S2MM, 0)
