@@ -97,7 +97,7 @@ def conv2dk14(
         raise ValueError("height must be a multiple of 8 and >= 8")
 
     device = iron.get_current_device()
-
+    assert device is not None
     act_in = _KERNEL_SIZE * _KERNEL_SIZE * _IN_CHANNELS * _SUB_TILES
     weights = _KERNEL_SIZE * _KERNEL_SIZE * _IN_CHANNELS * _SUB_OUT_CHANNELS
     act_out = _SUB_TILES * _SUB_OUT_CHANNELS
@@ -225,6 +225,7 @@ def conv2dk14_multi(
         raise ValueError("height must be a multiple of 8 and >= 8")
 
     device = iron.get_current_device()
+    assert device is not None
     n_cols, n_rows = 8, 4
     if device.cols < n_cols:
         raise ValueError(

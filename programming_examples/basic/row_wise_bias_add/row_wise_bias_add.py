@@ -95,7 +95,9 @@ def row_wise_bias_add(
         [in_ty, bias_full_ty, in_ty, in_fifo.prod(), bias_fifo.prod(), out_fifo.cons()],
     )
 
-    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
+    device = iron.get_current_device()
+    assert device is not None
+    return Program(device, rt, workers=[worker]).resolve_program()
 
 
 def _make_argparser():

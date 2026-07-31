@@ -102,7 +102,9 @@ def aie_trace(
         ],
     )
 
-    prog = Program(iron.get_current_device(), rt, workers=[worker])
+    device = iron.get_current_device()
+    assert device is not None
+    prog = Program(device, rt, workers=[worker])
 
     # Custom per-tile-class event lists, forwarded by IRON's Program
     # to the same configure_trace() the dialect-level example used.

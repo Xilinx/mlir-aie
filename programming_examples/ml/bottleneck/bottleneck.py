@@ -48,7 +48,7 @@ def bottleneck(
     skip_scale: CompileTime[int] = 0,
 ):
     device = iron.get_current_device()
-
+    assert device is not None
     l1_in_c = tensor_in_c
     l1_out_c = l1_in_c // 4
     l2_in_c = l1_out_c

@@ -43,7 +43,7 @@ def swiglu(
 ):
     xfr_dtype = bfloat16
     device = iron.get_current_device()
-
+    assert device is not None
     if num_columns > device.cols:
         raise ValueError(
             f"num_columns ({num_columns}) exceeds device.cols ({device.cols})"

@@ -180,7 +180,9 @@ def vector_reduce_max(
     # Place and generate MLIR program
     # --------------------------------------------------------------------------
 
-    my_program = Program(iron.get_current_device(), rt, workers=workers)
+    device = iron.get_current_device()
+    assert device is not None
+    my_program = Program(device, rt, workers=workers)
     return my_program.resolve_program()
 
 

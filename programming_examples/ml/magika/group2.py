@@ -150,7 +150,9 @@ def group2(
             of_dout_L1L3.cons(tile=shim_tile),
         ],
     )
-    prog = Program(iron.get_current_device(), rt, workers=[worker])
+    device = iron.get_current_device()
+    assert device is not None
+    prog = Program(device, rt, workers=[worker])
     if trace_size > 0:
         prog.enable_trace(trace_size)
 

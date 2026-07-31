@@ -69,7 +69,9 @@ def passthrough_pykernel(a_in: In, b_out: Out):
         [_VECTOR_TY, _VECTOR_TY, of_in.prod(), of_out.cons()],
     )
 
-    return Program(iron.get_current_device(), rt, workers=[my_worker]).resolve_program()
+    device = iron.get_current_device()
+    assert device is not None
+    return Program(device, rt, workers=[my_worker]).resolve_program()
 
 
 def _make_argparser():

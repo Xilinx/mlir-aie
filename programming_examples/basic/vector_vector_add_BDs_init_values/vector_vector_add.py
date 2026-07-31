@@ -83,6 +83,7 @@ def vector_vector_add(
     col: CompileTime[int] = 0,
 ):
     dev = iron.get_current_device()
+    assert dev is not None
     N = 256
     n = 16
     N_div_n = N // n

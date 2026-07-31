@@ -156,8 +156,10 @@ def group0(
             of_dout_L2L3.cons(),
         ],
     )
+    device = iron.get_current_device()
+    assert device is not None
     prog = Program(
-        iron.get_current_device(),
+        device,
         rt,
         workers=[group0a_worker, group0b_worker],
     )

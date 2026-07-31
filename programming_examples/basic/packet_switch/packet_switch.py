@@ -83,6 +83,7 @@ def packet_switch(
     input_packet_id: CompileTime[int] = 0,
 ):
     dev = iron.get_current_device()
+    assert dev is not None
     in_out_ty = np.dtype[np.int8]
     vector_ty = np.ndarray[(in_out_size,), in_out_ty]
     # +4 bytes for the kept packet header at the memtile.

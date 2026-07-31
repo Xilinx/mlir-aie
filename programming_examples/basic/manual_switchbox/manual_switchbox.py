@@ -324,7 +324,9 @@ def manual_switchbox(a_in: In, c_out: Out, *, col: CompileTime[int] = 0):
         rt.add_lock(lk)
     rt.add_tile_dma(comp_dma)
 
-    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
+    device = iron.get_current_device()
+    assert device is not None
+    return Program(device, rt, workers=[worker]).resolve_program()
 
 
 def _compile_kwargs(opts):

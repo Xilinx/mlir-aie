@@ -58,6 +58,7 @@ def conv2d(
         raise ValueError("out_channels must be a multiple of 8 and >= 8")
 
     device = iron.get_current_device()
+    assert device is not None
     out_dtype = np.uint8 if fuse_relu else np.int8
 
     act_in = width * in_channels

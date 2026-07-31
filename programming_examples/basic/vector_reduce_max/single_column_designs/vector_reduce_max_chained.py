@@ -178,7 +178,9 @@ def vector_reduce_max(
         sequence,
         [in_ty, out_ty, of_in.prod(), out_fifos[0].cons()],
     )
-    prog = Program(iron.get_current_device(), rt, workers=workers)
+    device = iron.get_current_device()
+    assert device is not None
+    prog = Program(device, rt, workers=workers)
     if trace_size > 0:
         prog.enable_trace(trace_size)
 

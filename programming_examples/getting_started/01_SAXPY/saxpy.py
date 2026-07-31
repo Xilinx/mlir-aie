@@ -91,7 +91,9 @@ def saxpy(
     # Place and generate MLIR program
     # --------------------------------------------------------------------------
 
-    my_program = Program(iron.get_current_device(), rt, workers=[worker])
+    device = iron.get_current_device()
+    assert device is not None
+    my_program = Program(device, rt, workers=[worker])
     return my_program.resolve_program()
 
 

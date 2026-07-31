@@ -267,7 +267,9 @@ def per_block_iron(block_name, data_dir=None, scales_json=None):
             ],
         )
 
-    return Program(iron.get_current_device(), rt, workers=workers).resolve_program()
+    device = iron.get_current_device()
+    assert device is not None
+    return Program(device, rt, workers=workers).resolve_program()
 
 
 def _make_argparser():
