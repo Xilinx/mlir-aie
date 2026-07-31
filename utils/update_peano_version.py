@@ -27,8 +27,22 @@ NIGHTLY_INDEX_URL = (
 REPO_ROOT = Path(__file__).resolve().parent.parent
 REQUIREMENTS_FILE = REPO_ROOT / "utils" / "peano-requirements.txt"
 
-# Wheel filenames look like: llvm_aie-21.0.0.2026062501+c83e305a-py3-none-...whl
-WHEEL_VERSION_RE = re.compile(r"llvm_aie-([0-9][0-9.]*\+[0-9a-f]+)-")
+# Wheel filenames look like:
+#   llvm_aie-21.0.0.2026062501+c83e305a-py3-none-manylinux_2_27_x86_64...whl
+#   llvm_aie-21.0.0.2026062501+c83e305a-py3-none-win_amd64.whl
+# Capture the version and the platform tag separately: a nightly is only usable
+# once it has published a wheel for every platform CI builds on.
+WHEEL_RE = re.compile(r"llvm_aie-([0-9][0-9.]*\+[0-9a-f]+)-[^\"]*?-([^\"-]+)\.whl")
+
+# Platform tags CI needs. The Linux runners install the manylinux wheel and the
+# Windows runners the win_amd64 one, so a nightly missing either breaks half of
+# CI at IRON setup -- with a confusing error, because pip's "from versions:"
+# list is filtered to the current platform and so appears to omit the pin
+# entirely rather than reporting a platform mismatch.
+REQUIRED_PLATFORMS = {
+    "linux": lambda tag: "linux" in tag,
+    "windows": lambda tag: tag.startswith("win"),
+}
 
 # The pin line in peano-requirements.txt, e.g. llvm-aie==21.0.0.2026062501+c83e305a
 PIN_RE = re.compile(r"^(llvm-aie==)(\S+)[^\S\n]*$", re.MULTILINE)
@@ -42,16 +56,56 @@ def get_request(url):
     return urllib.request.urlopen(req, timeout=60)
 
 
-def fetch_latest_nightly():
+def fetch_nightly_platforms():
+    """Map each nightly version to the set of REQUIRED_PLATFORMS it ships."""
     with get_request(NIGHTLY_INDEX_URL) as response:
         html = response.read().decode("utf-8")
-    versions = set(WHEEL_VERSION_RE.findall(html))
-    if not versions:
+    found = {}
+    for version, platform_tag in WHEEL_RE.findall(html):
+        names = {
+            name
+            for name, matches in REQUIRED_PLATFORMS.items()
+            if matches(platform_tag)
+        }
+        if names:
+            found.setdefault(version, set()).update(names)
+    if not found:
         sys.exit(
             f"error: no llvm-aie wheels found at {NIGHTLY_INDEX_URL}; "
             "the index format may have changed."
         )
-    return max(versions, key=Version)
+    return found
+
+
+def fetch_latest_nightly():
+    """Newest nightly that has a wheel for every platform CI builds on.
+
+    Publishing is not atomic across platforms -- a nightly can ship its Linux
+    wheel while the Windows one is delayed or never appears (2026072101 through
+    2026072901 had no win_amd64 wheel at all). Taking the newest version
+    outright pins something half the CI fleet cannot install, so skip any
+    nightly that is not complete.
+    """
+    found = fetch_nightly_platforms()
+    complete = [v for v, plats in found.items() if plats == set(REQUIRED_PLATFORMS)]
+    if not complete:
+        newest = max(found, key=Version)
+        sys.exit(
+            f"error: no llvm-aie nightly at {NIGHTLY_INDEX_URL} has wheels for "
+            f"all required platforms ({', '.join(sorted(REQUIRED_PLATFORMS))}). "
+            f"Newest available is {newest} with: "
+            f"{', '.join(sorted(found[newest])) or 'none'}."
+        )
+
+    latest = max(complete, key=Version)
+    newest_any = max(found, key=Version)
+    if Version(newest_any) > Version(latest):
+        missing = sorted(set(REQUIRED_PLATFORMS) - found[newest_any])
+        print(
+            f"note: skipping {newest_any} and newer; no wheel for "
+            f"{', '.join(missing)}. Falling back to {latest}."
+        )
+    return latest
 
 
 def read_current():
@@ -101,7 +155,20 @@ def main():
     args = parser.parse_args()
 
     current = read_current()
-    target = args.peano_version.strip() or fetch_latest_nightly()
+    explicit = args.peano_version.strip()
+    if explicit:
+        # Check the hand-picked version too: pinning one that is missing a
+        # platform is exactly the failure this script exists to prevent.
+        available = fetch_nightly_platforms().get(explicit, set())
+        missing = sorted(set(REQUIRED_PLATFORMS) - available)
+        if missing:
+            sys.exit(
+                f"error: llvm-aie {explicit} has no wheel for "
+                f"{', '.join(missing)} at {NIGHTLY_INDEX_URL}."
+            )
+        target = explicit
+    else:
+        target = fetch_latest_nightly()
 
     print(f"current: {current}")
     print(f"target:  {target}")
