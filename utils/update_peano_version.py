@@ -39,9 +39,14 @@ WHEEL_RE = re.compile(r"llvm_aie-([0-9][0-9.]*\+[0-9a-f]+)-[^\"]*?-([^\"-]+)\.wh
 # CI at IRON setup -- with a confusing error, because pip's "from versions:"
 # list is filtered to the current platform and so appears to omit the pin
 # entirely rather than reporting a platform mismatch.
+#
+# Match the architecture too, not just the OS: every runner is x86_64, so a
+# nightly that shipped only win_arm64 or only linux_aarch64 would satisfy a
+# looser OS-only check while still being uninstallable on the machines that
+# actually run CI. Add an entry here if CI grows a non-x86_64 runner.
 REQUIRED_PLATFORMS = {
-    "linux": lambda tag: "linux" in tag,
-    "windows": lambda tag: tag.startswith("win"),
+    "linux-x86_64": lambda tag: "linux" in tag and tag.endswith("x86_64"),
+    "windows-x86_64": lambda tag: tag == "win_amd64",
 }
 
 # The pin line in peano-requirements.txt, e.g. llvm-aie==21.0.0.2026062501+c83e305a
