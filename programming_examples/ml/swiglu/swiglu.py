@@ -12,26 +12,24 @@ Weights are interleaved (1024 of w1, then 1024 of w2, ...) into a single
 
 import argparse
 
-import numpy as np
-from ml_dtypes import bfloat16
-
 import aie.iron as iron
+import numpy as np
+from aie.helpers.taplib.tensortiler2d import TensorTiler2D
 from aie.iron import (
     CompileTime,
     In,
-    Out,
     ObjectFifo,
+    Out,
     Program,
     Runtime,
     TaskGroup,
     Worker,
     kernels,
 )
-from aie.utils.hostruntime.argparse import device_from_args
-from aie.helpers.taplib.tensortiler2d import TensorTiler2D
-from aie.utils.hostruntime.argparse import add_compile_args
+from aie.utils.hostruntime.argparse import add_compile_args, device_from_args
 from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
+from ml_dtypes import bfloat16
 
 
 @iron.jit

@@ -26,21 +26,20 @@ Usage:
 import argparse
 import json
 
-import numpy as np
-
 import aie.iron as iron
+import numpy as np
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import ObjectFifo, Program, Runtime, TaskGroup
 from aie.iron.device import Tile
-from aie.utils.hostruntime.argparse import device_from_args
 from aie.utils.hostruntime import set_current_device
-from aie.utils.hostruntime.argparse import add_compile_args
-from aie.helpers.taplib import TensorAccessPattern
+from aie.utils.hostruntime.argparse import add_compile_args, device_from_args
 
-from .network_spec import block as nsblock
-from .bottleneck._common import i8 as _i8, u8 as _u8
-from .bottleneck.regular import regular_bottlenecks
-from .bottleneck.pipeline import pipeline_bottlenecks
+from .bottleneck._common import i8 as _i8
+from .bottleneck._common import u8 as _u8
 from .bottleneck.cascade import cascade_bottlenecks
+from .bottleneck.pipeline import pipeline_bottlenecks
+from .bottleneck.regular import regular_bottlenecks
+from .network_spec import block as nsblock
 
 T = Tile
 

@@ -17,14 +17,14 @@ to ship pre-compiled binaries — without having to change how the design
 is decorated.
 """
 
-import numpy as np
-
 import aie.iron as iron
+import numpy as np
+from aie.helpers.taplib import TensorAccessPattern, TensorTiler2D
 from aie.iron import (
     CompileTime,
     In,
-    Out,
     ObjectFifo,
+    Out,
     Program,
     Runtime,
     TaskGroup,
@@ -32,7 +32,6 @@ from aie.iron import (
     kernels,
 )
 from aie.iron.controlflow import range_
-from aie.helpers.taplib import TensorAccessPattern, TensorTiler2D
 from aie.utils.verify import assert_pass
 
 # Tile size moved to/from the compute cores via mem tiles.

@@ -18,17 +18,19 @@ to select which entry point gets exported.
 import argparse
 from pathlib import Path
 
-import numpy as np
-
 import aie.iron as iron
+import numpy as np
 from aie.extras.dialects import arith
 from aie.helpers.util import np_dtype_to_mlir_type
 from aie.iron import Buffer, CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker
 from aie.iron.controlflow import range_
-from aie.utils.hostruntime.argparse import device_from_args
 from aie.iron.kernel import ExternalFunction
 from aie.utils.config import cxx_header_path
-from aie.utils.hostruntime.argparse import add_compile_args, add_trace_arg
+from aie.utils.hostruntime.argparse import (
+    add_compile_args,
+    add_trace_arg,
+    device_from_args,
+)
 from aie.utils.hostruntime.cli import run_design_cli
 
 _THIS_DIR = Path(__file__).parent

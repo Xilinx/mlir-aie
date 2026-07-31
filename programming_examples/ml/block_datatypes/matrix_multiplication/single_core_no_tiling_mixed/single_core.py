@@ -12,12 +12,9 @@ tile loop. Strix-only; chess-built.
 import argparse
 from pathlib import Path
 
-import numpy as np
-from ml_dtypes import bfloat16
-
-from aie.dialects.aiex import v8bfp16ebs8
-
 import aie.iron as iron
+import numpy as np
+from aie.dialects.aiex import v8bfp16ebs8
 from aie.iron import (
     CompileTime,
     ExternalFunction,
@@ -29,10 +26,11 @@ from aie.iron import (
     Worker,
 )
 from aie.utils.hostruntime.argparse import (
-    device_from_args,
     add_compile_args,
+    device_from_args,
 )
 from aie.utils.hostruntime.cli import run_design_cli
+from ml_dtypes import bfloat16
 
 _KERNEL_SRC = (
     Path(__file__).resolve().parents[5] / "aie_kernels" / "aie2p" / "mm_bfp_mixed.cc"

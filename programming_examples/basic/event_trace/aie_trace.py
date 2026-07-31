@@ -20,9 +20,8 @@ Two invocation modes:
 
 import argparse
 
-import numpy as np
-
 import aie.iron as iron
+import numpy as np
 from aie.iron import (
     CompileTime,
     In,
@@ -36,7 +35,6 @@ from aie.iron import (
 from aie.iron.controlflow import range_
 from aie.utils.hostruntime.argparse import add_compile_args
 from aie.utils.hostruntime.cli import run_design_cli
-from aie.utils.verify import assert_pass
 from aie.utils.trace.events import (
     CoreEvent,
     MemEvent,
@@ -46,6 +44,7 @@ from aie.utils.trace.events import (
     ShimTileEvent,
     WireBundle,
 )
+from aie.utils.verify import assert_pass
 
 
 @iron.jit

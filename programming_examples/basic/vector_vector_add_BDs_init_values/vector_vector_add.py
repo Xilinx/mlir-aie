@@ -29,9 +29,15 @@ Invocation:
 
 import argparse
 
-import numpy as np
-
 import aie.iron as iron
+import numpy as np
+from aie.dialects._aie_enum_gen import AIETileType, DMAChannelDir, WireBundle
+from aie.dialects.aiex import (
+    dma_await_task,
+    dma_free_task,
+    dma_start_task,
+    shim_dma_single_bd_task,
+)
 from aie.iron import (
     Acquire,
     Bd,
@@ -50,15 +56,7 @@ from aie.iron import (
 )
 from aie.iron.controlflow import range_
 from aie.iron.device import Tile
-from aie.utils.hostruntime.argparse import device_from_args
-from aie.dialects._aie_enum_gen import AIETileType, DMAChannelDir, WireBundle
-from aie.dialects.aiex import (
-    dma_await_task,
-    dma_free_task,
-    dma_start_task,
-    shim_dma_single_bd_task,
-)
-from aie.utils.hostruntime.argparse import add_compile_args
+from aie.utils.hostruntime.argparse import add_compile_args, device_from_args
 from aie.utils.hostruntime.cli import run_design_cli
 
 

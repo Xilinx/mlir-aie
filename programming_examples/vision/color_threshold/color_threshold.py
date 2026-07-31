@@ -14,9 +14,11 @@ sequence's ``set_rtps()`` before reading.
 
 import argparse
 
-import numpy as np
-
 import aie.iron as iron
+import numpy as np
+from aie.dialects.aie import T
+from aie.extras.dialects import arith
+from aie.helpers.util import np_ndarray_type_get_shape
 from aie.iron import (
     Buffer,
     CompileTime,
@@ -29,12 +31,7 @@ from aie.iron import (
     WorkerRuntimeBarrier,
     kernels,
 )
-from aie.utils.hostruntime.argparse import device_from_args
-from aie.extras.dialects import arith
-from aie.helpers.util import np_ndarray_type_get_shape
-from aie.dialects.aie import T
-
-from aie.utils.hostruntime.argparse import add_compile_args
+from aie.utils.hostruntime.argparse import add_compile_args, device_from_args
 from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
 

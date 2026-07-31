@@ -39,11 +39,19 @@ from __future__ import annotations
 
 import argparse
 
-import numpy as np
-
 import aie.iron as iron
-from aie.iron import CompileTime, ExternalFunction, In, Out, jit
-from aie.iron import ObjectFifo, Worker, Runtime, Program
+import numpy as np
+from aie.iron import (
+    CompileTime,
+    ExternalFunction,
+    In,
+    ObjectFifo,
+    Out,
+    Program,
+    Runtime,
+    Worker,
+    jit,
+)
 from aie.iron.controlflow import range_
 from aie.utils.benchmark import run_iters
 from aie.utils.verify import assert_pass

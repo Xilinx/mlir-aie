@@ -38,21 +38,19 @@ import argparse
 import sys
 from pathlib import Path
 
+import aie.iron as iron
 import numpy as np
 import torch
 import torch.nn as nn
-
-import aie.iron as iron
-from aie.utils.ml import DataShaper
-from aie.iron import CompileTime, In, Out, ObjectFifo, Program, Runtime, Worker
+from aie.helpers.taplib import TensorAccessPattern
+from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker
 from aie.iron.controlflow import range_
 from aie.iron.device import Tile
-from aie.utils.hostruntime.argparse import device_from_args
 from aie.iron.kernel import ExternalFunction
-from aie.helpers.taplib import TensorAccessPattern
 from aie.utils import config
-from aie.utils.hostruntime.argparse import add_compile_args
+from aie.utils.hostruntime.argparse import add_compile_args, device_from_args
 from aie.utils.hostruntime.cli import run_design_cli
+from aie.utils.ml import DataShaper
 
 # Sub-tile sizing baked into the conv2dk14 kernel.
 _SUB_OUT_CHANNELS = 16
@@ -182,10 +180,10 @@ def conv2dk14(
         stack_size=0x600,
     )
 
-    def sequence(I, W, O, act_prod, wts_prod, out_cons):
-        act_prod.fill(I)
+    def sequence(inp, W, out, act_prod, wts_prod, out_cons):
+        act_prod.fill(inp)
         wts_prod.fill(W)
-        out_cons.drain(O, wait=True)
+        out_cons.drain(out, wait=True)
 
     rt = Runtime(
         sequence,
@@ -355,7 +353,7 @@ def conv2dk14_multi(
         ),
     )
 
-    def sequence(I, W, O, act_prods, wts_prods, out_conses):
+    def sequence(inp, W, out, act_prods, wts_prods, out_conses):
         row_chunk = tensor_in_size // n_rows
         wts_chunk = tensor_wts_size // n_cols
         out_chunk = tensor_out_size // n_cols
@@ -366,7 +364,7 @@ def conv2dk14_multi(
                 [act_repeat, 1, 1, row_chunk],
                 [0, 0, 0, 1],
             )
-            act_prods[j].fill(I, tap)
+            act_prods[j].fill(inp, tap)
         for i in range(n_cols):
             wts_tap = TensorAccessPattern(
                 (1, tensor_wts_size),
@@ -381,7 +379,7 @@ def conv2dk14_multi(
                 [0, 0, 0, 1],
             )
             wts_prods[i].fill(W, wts_tap)
-            out_conses[i].drain(O, out_tap, wait=True)
+            out_conses[i].drain(out, out_tap, wait=True)
 
     rt = Runtime(
         sequence,

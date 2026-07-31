@@ -29,31 +29,9 @@ emitted for the equivalent two ``aie.flow`` s; we just write them out.
 """
 
 import argparse
-import sys
-
-import numpy as np
 
 import aie.iron as iron
-from aie.iron import (
-    Acquire,
-    Bd,
-    Buffer,
-    CompileTime,
-    DmaChannel,
-    In,
-    Lock,
-    Out,
-    Program,
-    Release,
-    Runtime,
-    Worker,
-    TileDma,
-)
-from aie.iron.controlflow import range_
-from aie.iron.device import Tile
-from aie.utils.hostruntime.argparse import add_compile_args, device_from_args
-from aie.utils.hostruntime.cli import run_design_cli
-from aie.utils.verify import assert_pass
+import numpy as np
 from aie.dialects._aie_enum_gen import AIETileType, DMAChannelDir, WireBundle
 from aie.dialects.aie import (
     EndOp,
@@ -67,6 +45,26 @@ from aie.dialects.aiex import (
     npu_sync,
     npu_writebd,
 )
+from aie.iron import (
+    Acquire,
+    Bd,
+    Buffer,
+    CompileTime,
+    DmaChannel,
+    In,
+    Lock,
+    Out,
+    Program,
+    Release,
+    Runtime,
+    TileDma,
+    Worker,
+)
+from aie.iron.controlflow import range_
+from aie.iron.device import Tile
+from aie.utils.hostruntime.argparse import add_compile_args, device_from_args
+from aie.utils.hostruntime.cli import run_design_cli
+from aie.utils.verify import assert_pass
 
 N = 64  # elements per transfer (int32)
 

@@ -24,14 +24,12 @@ Two invocation modes:
 import argparse
 import sys
 
-import numpy as np
-
 import aie.iron as iron
+import numpy as np
+from aie.helpers.dialects.func import func
 from aie.iron import In, ObjectFifo, Out, Program, Runtime, Worker
 from aie.iron.controlflow import range_
-from aie.utils.hostruntime.argparse import device_from_args
-from aie.helpers.dialects.func import func
-from aie.utils.hostruntime.argparse import add_compile_args
+from aie.utils.hostruntime.argparse import add_compile_args, device_from_args
 from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
 

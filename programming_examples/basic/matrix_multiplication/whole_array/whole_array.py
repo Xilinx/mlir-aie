@@ -20,9 +20,9 @@ The script has two modes:
 import argparse
 import sys
 
-import numpy as np
-
 import aie.iron as iron
+import numpy as np
+from aie.helpers.taplib import TensorAccessSequence, TensorTiler2D
 from aie.iron import (
     CompileTime,
     In,
@@ -37,7 +37,6 @@ from aie.iron import (
 )
 from aie.iron.controlflow import range_
 from aie.iron.device import NPU2, from_name
-from aie.helpers.taplib import TensorAccessSequence, TensorTiler2D
 from aie.utils.benchmark import run_iters
 from aie.utils.hostruntime.argparse import add_benchmark_args, add_compile_args
 from aie.utils.hostruntime.cli import run_design_cli
@@ -142,9 +141,6 @@ def _build_design(
     A_l1_ty = np.ndarray[(m, k), np.dtype[dtype_in]]
     B_l1_ty = np.ndarray[(k, n), np.dtype[dtype_in]]
     C_l1_ty = np.ndarray[(m, n), np.dtype[dtype_out]]
-
-    tiles = [[(col, row) for col in range(0, n_aie_cols)] for row in range(0, 6)]
-    core_tiles = tiles[2:]
 
     A_l3l2_fifos = [None] * n_shim_mem_A
     A_l2l1_fifos = [None] * n_aie_rows
@@ -428,7 +424,7 @@ def generate_taps(
 ):
     """Return ``(A_taps, B_taps, C_taps)`` for the visualization notebook."""
     dev_obj = _device_for(dev, n_aie_cols)
-    set_current_device(dev_obj)
+    iron.set_current_device(dev_obj)
     return _build_design(
         dev_obj,
         M,

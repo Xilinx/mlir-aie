@@ -4,15 +4,15 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 
-import numpy as np
 import argparse
 import sys
 
+import numpy as np
+from aie.dialects.aiex import set_lock_value
 from aie.iron import ObjectFifo, Program, Runtime, TaskGroup, Worker
 from aie.iron.controlflow import range_
 from aie.iron.device import NPU2, AnyComputeTile, AnyMemTile
 from aie.iron.resolvable import Resolvable
-from aie.dialects.aiex import set_lock_value
 
 
 class ScatterReadDMA(Resolvable):
@@ -64,31 +64,31 @@ class ScatterReadDMA(Resolvable):
         return ts
 
     def acquire(self, n: int = 1):
-        from aie.dialects.aie import use_lock, LockAction
+        from aie.dialects.aie import LockAction, use_lock
 
         use_lock(self._comp_cons_lock, LockAction.AcquireGreaterEqual)
         return self._recv_buf
 
     def release(self, n: int = 1):
-        from aie.dialects.aie import use_lock, LockAction
+        from aie.dialects.aie import LockAction, use_lock
 
         use_lock(self._comp_prod_lock, LockAction.Release)
 
     def resolve(self, loc=None, ip=None) -> None:
         from aie.dialects.aie import (
-            buffer,
-            lock,
-            flow,
-            memtile_dma,
-            mem,
-            dma_start,
-            dma_bd,
-            next_bd,
-            use_lock,
             DMAChannelDir,
+            EndOp,
             LockAction,
             WireBundle,
-            EndOp,
+            buffer,
+            dma_bd,
+            dma_start,
+            flow,
+            lock,
+            mem,
+            memtile_dma,
+            next_bd,
+            use_lock,
         )
 
         memtile_op = self._memtile.op

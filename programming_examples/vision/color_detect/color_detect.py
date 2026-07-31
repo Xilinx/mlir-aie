@@ -10,13 +10,12 @@ shim --> rgba2hue --> (threshold-upper, threshold-lower in parallel) -->
 
 import argparse
 
-import numpy as np
-
 import aie.iron as iron
+import numpy as np
 from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker, kernels
 from aie.utils.hostruntime.argparse import (
-    device_from_args,
     add_compile_args,
+    device_from_args,
 )
 from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass

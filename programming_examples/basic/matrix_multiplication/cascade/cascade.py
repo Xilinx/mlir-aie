@@ -12,9 +12,9 @@ writes the final C tile to L2.
 
 import argparse
 
-import numpy as np
-
 import aie.iron as iron
+import numpy as np
+from aie.helpers.taplib import TensorTiler2D
 from aie.iron import (
     Buffer,
     CascadeFlow,
@@ -31,7 +31,6 @@ from aie.iron import (
 )
 from aie.iron.controlflow import range_
 from aie.iron.device import Tile, from_name
-from aie.helpers.taplib import TensorTiler2D
 from aie.utils.benchmark import run_iters
 from aie.utils.hostruntime.argparse import (
     add_benchmark_args,

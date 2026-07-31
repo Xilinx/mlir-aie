@@ -676,10 +676,12 @@ class ObjectFifoHandle(Resolvable):
         transfer_len=None,
         managed=True,
     ):
-        """Shared body for fill()/drain(): bind the shim endpoint, register the
-        fifo with the active runtime sequence, and emit the shim DMA transfer.
-        Returns a [`Task`][iron.runtime.dmataskhandle.Task] handle to the
-        transfer (carry it as a ``range_`` iter_arg; ``.free()``/``.await_()`` it).
+        """Shared body for fill()/drain().
+
+        Bind the shim endpoint, register the fifo with the active runtime
+        sequence, and emit the shim DMA transfer. Returns a
+        [`Task`][iron.runtime.dmataskhandle.Task] handle to the transfer
+        (carry it as a ``range_`` iter_arg; ``.free()``/``.await_()`` it).
 
         The access pattern is given either as a static ``tap`` or as explicit
         ``sizes``/``strides``/``offset``/``transfer_len`` whose entries may be

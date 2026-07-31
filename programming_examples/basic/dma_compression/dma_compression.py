@@ -16,9 +16,40 @@ to size asymmetric BDs so neither side hangs on a length mismatch.
 import os
 import sys
 
-import numpy as np
-
 import aie.iron as iron
+import numpy as np
+from aie.dialects._aie_enum_gen import AIETileType
+from aie.dialects.aie import (
+    AIEDevice,
+    DMAChannelDir,
+    LockAction,
+    WireBundle,
+    buffer,
+    core,
+    device,
+    dma_bd,
+    dma_start,
+    flow,
+    lock,
+    mem,
+    next_bd,
+    shim_dma_allocation,
+    tile,
+    use_lock,
+)
+from aie.dialects.aie import (
+    end as aie_end,
+)
+from aie.dialects.aiex import (
+    dma_await_task,
+    dma_start_task,
+    npu_maskwrite32,
+    runtime_sequence,
+    shim_dma_single_bd_task,
+)
+from aie.extras.context import mlir_mod_ctx
+from aie.helpers.dialects.func import func
+from aie.helpers.taplib.tap import TensorAccessPattern
 from aie.iron import (
     CompileTime,
     ExternalFunction,
@@ -30,37 +61,7 @@ from aie.iron import (
     Worker,
 )
 from aie.iron.controlflow import range_
-from aie.helpers.dialects.func import func
 from aie.iron.device import Tile
-from aie.helpers.taplib.tap import TensorAccessPattern
-from aie.dialects._aie_enum_gen import AIETileType
-from aie.dialects.aie import (
-    device,
-    tile,
-    buffer,
-    lock,
-    mem,
-    dma_start,
-    dma_bd,
-    next_bd,
-    use_lock,
-    flow,
-    end as aie_end,
-    core,
-    AIEDevice,
-    DMAChannelDir,
-    LockAction,
-    WireBundle,
-    shim_dma_allocation,
-)
-from aie.dialects.aiex import (
-    npu_maskwrite32,
-    runtime_sequence,
-    shim_dma_single_bd_task,
-    dma_start_task,
-    dma_await_task,
-)
-from aie.extras.context import mlir_mod_ctx
 
 N = 4096
 LINE_SIZE = 1024
