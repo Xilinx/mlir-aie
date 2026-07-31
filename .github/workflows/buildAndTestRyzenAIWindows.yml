@@ -22,7 +22,12 @@ concurrency:
   # A PR number if a pull request and otherwise the commit hash. This cancels
   # queued and in-progress runs for the same PR (presubmit) or commit
   # (postsubmit).
-  group: ci-build-test-ryzenai-windows-${{ github.event.number || github.sha }}-${{ github.event_name }}
+  #
+  # github.event_name is deliberately NOT part of the key. The merge queue tests
+  # a candidate SHA, then that same SHA lands on main and fires a `push` run --
+  # keying on the event made those two distinct groups, so every merged PR
+  # occupied the single self-hosted NPU runner twice for the identical commit.
+  group: ci-build-test-ryzenai-windows-${{ github.event.number || github.sha }}
   cancel-in-progress: true
 
 env:
