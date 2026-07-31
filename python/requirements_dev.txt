@@ -15,6 +15,9 @@ pre-commit>=4.6.0,<5.0
 black[jupyter]
 pyright
 ruff
+# Computes per-PR diff coverage from the llvm-cov lcov export in the
+# code-coverage CI job (.github/workflows/lintAndFormat.yml).
+diff-cover
 # nanobind ABI-couples to the prebuilt mlir distro wheel (built against the
 # same version); a mismatch breaks Value-subclass recognition at runtime. Keep
 # this constraint identical to utils/mlir_wheels/requirements.in and

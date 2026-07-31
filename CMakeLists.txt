@@ -455,11 +455,21 @@ if (NOT INSTRUMENTED_COVERAGE_FILES)
   )
 endif()
 
+# Report coverage against every tool the lit suite exercises, not just aie-opt.
+# check-aie also runs aie-translate and aiecc (a compiled C++ driver); llvm-cov
+# merges counters across the objects, so code reached only through those tools is
+# no longer reported as uncovered.
+set(AIE_COVERAGE_BINARIES
+  ${CMAKE_BINARY_DIR}/bin/aie-opt
+  ${CMAKE_BINARY_DIR}/bin/aie-translate
+  ${CMAKE_BINARY_DIR}/bin/aiecc)
+
 add_custom_target(generate-aie-coverage-report
   COMMAND ${Python3_EXECUTABLE} ${AIE_SOURCE_DIR}/utils/prepare-code-coverage-artifact.py
   ${LLVM_PROFDATA} ${LLVM_COV} ${LLVM_PROFILE_DATA_DIR}
   ${REPORT_DIR}
-  ${CMAKE_BINARY_DIR}/bin/aie-opt
-  --unified-report --restrict ${INSTRUMENTED_COVERAGE_FILES}
+  ${AIE_COVERAGE_BINARIES}
+  --unified-report --emit-lcov ${REPORT_DIR}/coverage.lcov
+  --restrict ${INSTRUMENTED_COVERAGE_FILES}
   WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
   DEPENDS check-aie) # Run tests
