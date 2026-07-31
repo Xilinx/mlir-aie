@@ -14,6 +14,7 @@
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
+#include <map>
 #include <type_traits>
 #include <vector>
 
@@ -30,9 +31,27 @@ using namespace xilinx;
 
 namespace {
 
-// slightly smaller than the actual page size to account for overheads and
-// estimation errors
+// Two distinct thresholds, doing two different jobs.
+//
+// `cert_page_size` is the conservative trigger for *attempting* a split. It
+// sits below the real limit to absorb the imprecision in estimateCost (page
+// `.align 16` padding, `.eop`, and the data-vs-page layout it approximates).
+//
+// `cert_page_limit` is the hard architectural bound: a uC page buffer is 8 KB.
+// Anything at or under it is legal hardware.
+//
+// The distinction matters for diagnostics. A page between the two values trips
+// the trigger but is still perfectly loadable, so failing to split it is not an
+// error -- only a page whose estimate exceeds `cert_page_limit` is genuinely
+// unlowerable and worth rejecting at compile time.
 static constexpr uint32_t cert_page_size = 8000;
+static constexpr uint32_t cert_page_limit = 8192;
+
+// Per-job control-code overhead: START_JOB (ISA_OPSIZE_START_JOB = 0x08) plus
+// END_JOB (ISA_OPSIZE_END_JOB = 0x04), emitted around every job's body by
+// emitJob.
+static constexpr uint32_t cert_job_start_cost = 8;
+static constexpr uint32_t cert_job_end_cost = 4;
 
 // Returns the PDI id to use for a cert.load_pdi that references `deviceSymName`
 // within `parentDevice`. If a load_pdi for that symbol already exists, its id
@@ -73,15 +92,18 @@ struct RuntimeSequenceToCertJob : OpConversionPattern<AIE::RuntimeSequenceOp> {
       newJobId = maxJobId + 1;
     }
 
-    // Create page wrapper at the same location as the runtime sequence
+    // Create the job in place of the runtime sequence, WITHOUT a page wrapper.
+    // A later "form implicit pages" step (in cert-legalize-pages) groups
+    // contiguous top-level jobs into pages; explicit cert.page ops are the only
+    // delimiters. CertJobOp legally parents under DeviceOp, so a bare
+    // device-level job is valid between the two passes.
     rewriter.setInsertionPoint(op);
-    auto pageOp = AIEX::CertPageOp::create(rewriter, op.getLoc());
-    Block *pageBlock = new Block();
-    pageOp.getBody().push_back(pageBlock);
-    rewriter.setInsertionPointToStart(pageBlock);
-
-    // Create job inside page
     auto jobOp = AIEX::CertJobOp::create(rewriter, op.getLoc(), newJobId);
+
+    // Tag the implicit configuration job so a later step can force it to be the
+    // first page on uC0 and keep it out of user implicit pages.
+    if (symName == "configure")
+      jobOp->setAttr("cert.configure", rewriter.getUnitAttr());
 
     // Clone runtime sequence body into job
     // Note: This preserves block arguments from the runtime sequence, which
@@ -89,8 +111,6 @@ struct RuntimeSequenceToCertJob : OpConversionPattern<AIE::RuntimeSequenceOp> {
     IRMapping remap;
     op.getRegion().cloneInto(&jobOp.getBody(), remap);
     AIEX::CertJobOp::ensureTerminator(jobOp.getBody(), rewriter, op->getLoc());
-    AIEX::CertPageOp::ensureTerminator(pageOp.getBody(), rewriter,
-                                       op->getLoc());
 
     // Erase the original runtime sequence
     rewriter.eraseOp(op);
@@ -1074,26 +1094,38 @@ struct AIENpuToCertPass
 
 } // namespace
 
+// Instruction sizes are the authoritative ISA_OPSIZE_* values from
+// third_party/aiebu/specification/aie2ps/isa_stubs.h -- the same table the
+// assembler encodes against -- so the running total here matches the bytes
+// emitJob actually produces. Keep the two in sync when adding a cert op:
+// an op the emitter can emit but this function ignores is counted as free,
+// which makes the page look smaller than it is.
 static void updateCostForOp(Operation &o, AIE::DeviceOp deviceOp,
                             uint32_t &text_cost, uint32_t &data_cost) {
   // Several distinct op kinds share an encoded instruction size below --
   // an instruction-size table, not a copy-paste clone.
   // NOLINTBEGIN(bugprone-branch-clone)
   if (isa<AIEX::CertLocalBarrierOp>(o)) {
-    text_cost += 8; // local barrier
+    text_cost += 4; // ISA_OPSIZE_LOCAL_BARRIER
   } else if (isa<AIEX::CertRemoteBarrierOp>(o)) {
-    text_cost += 8; // remote barrier
+    text_cost += 8; // ISA_OPSIZE_REMOTE_BARRIER
   } else if (isa<AIEX::CertWaitTCTSOp>(o)) {
-    text_cost += 8; // wait tct
+    text_cost += 8; // ISA_OPSIZE_WAIT_TCTS
   } else if (isa<AIEX::CertMaskWrite32Op>(o)) {
-    text_cost += 16; // mask write
+    text_cost += 16; // ISA_OPSIZE_MASK_WRITE_32
   } else if (isa<AIEX::CertWrite32Op>(o)) {
-    text_cost += 12; // write
+    text_cost += 12; // ISA_OPSIZE_WRITE_32
   } else if (isa<AIEX::CertApplyOffset57Op>(o)) {
-    text_cost += 16; // apply offset
+    text_cost += 8; // ISA_OPSIZE_APPLY_OFFSET_57
+  } else if (isa<AIEX::CertNopOp>(o)) {
+    text_cost += 4; // ISA_OPSIZE_NOP
+  } else if (isa<AIEX::CertPreemptOp>(o)) {
+    text_cost += 8; // ISA_OPSIZE_PREEMPT
+  } else if (isa<AIEX::CertLoadPdiOp>(o)) {
+    text_cost += 12; // ISA_OPSIZE_LOAD_PDI
     // NOLINTEND(bugprone-branch-clone)
   } else if (auto syncOp = dyn_cast<AIEX::CertUcDmaWriteDesSyncOp>(o)) {
-    text_cost += 16; // write des sync
+    text_cost += 4; // ISA_OPSIZE_UC_DMA_WRITE_DES_SYNC
     // find the uc_dma_chain
     StringRef sym_name = syncOp.getSymbol();
     auto chain = dyn_cast_if_present<AIEX::CertUcDmaChainOp>(
@@ -1122,12 +1154,15 @@ static uint32_t estimateCost(AIEX::CertPageOp op, uint32_t split_target,
                              AIEX::CertJobOp &split_job,
                              Block::iterator &split_iter,
                              bool &found_split_point) {
-  uint32_t text_cost = 32; // page header
+  uint32_t text_cost = 32; // page header: `.align 16` padding plus `.eop`
   uint32_t data_cost = 0;
   found_split_point = false;
   AIE::DeviceOp deviceOp = op->getParentOfType<AIE::DeviceOp>();
 
   for (auto job : op.getBody().front().getOps<AIEX::CertJobOp>()) {
+    // START_JOB precedes the body, so it is already spent at every candidate
+    // split point inside this job; END_JOB is charged after the body below.
+    text_cost += cert_job_start_cost;
     for (auto &o : job.getBody().front().getOperations()) {
       Block::iterator current(&o);
       if (!found_split_point && !isa<AIE::EndOp>(o) &&
@@ -1150,33 +1185,106 @@ static uint32_t estimateCost(AIEX::CertPageOp op, uint32_t split_target,
         }
       }
     }
+    text_cost += cert_job_end_cost;
   }
   return text_cost + data_cost;
 }
 
-namespace {
+// local_barrier co-location across a page split (G-localbar).
+//
+// A page is a single uC scope, so all cert.local_barrier ops that share a
+// local_barrier_id are participants of one barrier and must stay together on a
+// single page (splitting them across an .eop hangs the firmware). We model a
+// candidate split as a "cut" in the page's flat textual op order: ops before
+// the cut land on the earlier page, ops at/after the cut land on the later
+// page. A barrier group is "separated" iff the cut falls strictly inside the
+// span of its participants' flat indices.
 
-struct WrapStandaloneCertJobOpPattern : OpRewritePattern<AIEX::CertJobOp> {
-  using OpRewritePattern::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(AIEX::CertJobOp jobOp,
-                                PatternRewriter &rewriter) const override {
-    if (jobOp->getParentOfType<AIEX::CertPageOp>())
-      return failure();
-
-    auto loc = jobOp.getLoc();
-    rewriter.setInsertionPoint(jobOp);
-
-    auto pageOp = AIEX::CertPageOp::create(rewriter, loc);
-    Block *pageBlock = new Block();
-    pageOp.getBody().push_back(pageBlock);
-
-    jobOp->moveBefore(pageBlock, pageBlock->begin());
-    AIEX::CertPageOp::ensureTerminator(pageOp.getBody(), rewriter, loc);
-
-    return success();
+// Assign each non-terminator op in `page` a flat textual index (jobs in order,
+// ops in order) and record, per local_barrier_id, the [min,max] flat-index span
+// of its participants.
+static void computeBarrierSpans(AIEX::CertPageOp page,
+                                std::map<Operation *, int> &flatIndex,
+                                std::map<int, std::pair<int, int>> &spans) {
+  int idx = 0;
+  for (auto job : page.getBody().front().getOps<AIEX::CertJobOp>()) {
+    for (auto &o : job.getBody().front().getOperations()) {
+      if (isa<AIE::EndOp>(o))
+        continue;
+      flatIndex[&o] = idx;
+      if (auto bar = dyn_cast<AIEX::CertLocalBarrierOp>(o)) {
+        int id = bar.getLocalBarrierId();
+        auto it = spans.find(id);
+        if (it == spans.end())
+          spans[id] = {idx, idx};
+        else {
+          it->second.first = std::min(it->second.first, idx);
+          it->second.second = std::max(it->second.second, idx);
+        }
+      }
+      ++idx;
+    }
   }
-};
+}
+
+// A cut before flat index `p` (ops with index < p -> earlier page) separates a
+// local_barrier group iff some participant is before and some at/after the cut.
+static bool cutSeparatesBarrier(const std::map<int, std::pair<int, int>> &spans,
+                                int p) {
+  return llvm::any_of(spans, [p](const auto &entry) {
+    auto [lo, hi] = entry.second;
+    return lo < p && hi >= p;
+  });
+}
+
+// Search for an interior split point (a position inside some job, with at least
+// one op before it in that job and a real op at/after it) whose cut keeps every
+// local_barrier group intact. Among the legal candidates pick the one whose
+// earlier-page cost is closest to `split_target`. Returns false if no legal
+// split point exists (the caller then leaves the page intact).
+static bool findLegalSplitPoint(AIEX::CertPageOp page, uint32_t split_target,
+                                const std::map<Operation *, int> &flatIndex,
+                                const std::map<int, std::pair<int, int>> &spans,
+                                AIEX::CertJobOp &split_job,
+                                Block::iterator &split_iter) {
+  AIE::DeviceOp deviceOp = page->getParentOfType<AIE::DeviceOp>();
+  uint32_t text_cost = 32; // page header, mirrors estimateCost
+  uint32_t data_cost = 0;
+  bool found = false;
+  uint32_t best_delta = 0;
+  for (auto job : page.getBody().front().getOps<AIEX::CertJobOp>()) {
+    text_cost += cert_job_start_cost; // mirrors estimateCost
+    bool sawOpInJob = false;
+    for (auto &o : job.getBody().front().getOperations()) {
+      if (isa<AIE::EndOp>(o))
+        continue;
+      Block::iterator current(&o);
+      // Candidate: cut before `o`. Only interior points are valid (at least one
+      // op precedes `o` in this job), matching what the splitter can execute.
+      if (sawOpInJob) {
+        auto fi = flatIndex.find(&o);
+        int p = fi == flatIndex.end() ? 0 : fi->second;
+        if (!cutSeparatesBarrier(spans, p)) {
+          uint32_t cost = text_cost + data_cost;
+          uint32_t delta =
+              cost > split_target ? cost - split_target : split_target - cost;
+          if (!found || delta < best_delta) {
+            found = true;
+            best_delta = delta;
+            split_job = job;
+            split_iter = current;
+          }
+        }
+      }
+      updateCostForOp(o, deviceOp, text_cost, data_cost);
+      sawOpInJob = true;
+    }
+    text_cost += cert_job_end_cost; // mirrors estimateCost
+  }
+  return found;
+}
+
+namespace {
 
 // Pattern to isolate load_pdi and preempt operations into their own job and
 // page According to CERT spec: "load_pdi and preempt should take one whole job
@@ -1350,7 +1458,13 @@ struct IsolateFullPageOpsPattern : OpRewritePattern<AIEX::CertJobOp> {
 };
 
 struct SplitCertPageOpPattern : OpRewritePattern<AIEX::CertPageOp> {
-  using OpRewritePattern::OpRewritePattern;
+  // `hadError` is raised when the pattern emits an error diagnostic. A rewrite
+  // pattern returning failure() is ordinary control flow -- it does NOT fail
+  // the pass -- so without this the "cannot split" error below would print and
+  // the oversized page would still reach codegen. The pass checks the flag
+  // after applyPatternsGreedily and calls signalPassFailure().
+  SplitCertPageOpPattern(MLIRContext *context, bool *hadError)
+      : OpRewritePattern(context), hadError(hadError) {}
 
   LogicalResult matchAndRewrite(AIEX::CertPageOp op,
                                 PatternRewriter &rewriter) const override {
@@ -1365,10 +1479,115 @@ struct SplitCertPageOpPattern : OpRewritePattern<AIEX::CertPageOp> {
     LLVM_DEBUG(llvm::outs() << "Estimate cost for page: "
                             << " is " << cost << "\n");
 
-    if (cost < split_threshold || !found_split_point)
+    if (cost < split_threshold)
       return failure();
 
+    // Over the split trigger but with nowhere to cut. A split point must fall
+    // inside a job with at least one op ahead of it, so a page whose bulk sits
+    // in a single one-op job offers none. Leave the page alone -- but if it is
+    // also over the hard limit, it will not load, so say so instead of emitting
+    // a page the firmware will reject.
+    if (!found_split_point) {
+      if (cost > cert_page_limit) {
+        op.emitError() << "cert.page is an estimated " << cost
+                       << " bytes, over the " << cert_page_limit
+                       << "-byte microcontroller page limit, and offers no "
+                          "split point (a split must fall inside a job, after "
+                          "at least one of its ops); break the oversized job "
+                          "into smaller jobs";
+        *hadError = true;
+      }
+      return failure();
+    }
+
+    // never split a local_barrier participant set across an .eop
+    // (G-localbar). If the cost-chosen split point would separate a barrier
+    // group, retarget to a legal split point; if none exists the page cannot be
+    // made legal, so fail the compile rather than emit something broken.
+    // an implicit page (formed by formImplicitPages) groups jobs meant to
+    // be cooperatively scheduled together; an explicit page is a user-authored
+    // boundary. This governs the wording of the diagnostics below (the remedy
+    // differs), not whether they fire.
+    bool isImplicit = op->hasAttr("cert.implicit");
+
+    std::map<Operation *, int> flatIndex;
+    std::map<int, std::pair<int, int>> barrierSpans;
+    computeBarrierSpans(op, flatIndex, barrierSpans);
+    if (!barrierSpans.empty()) {
+      auto fi = flatIndex.find(&*split_iter);
+      int p = fi == flatIndex.end() ? 0 : fi->second;
+      if (cutSeparatesBarrier(barrierSpans, p)) {
+        if (!findLegalSplitPoint(op, cert_page_size / 2, flatIndex,
+                                 barrierSpans, split_job, split_iter)) {
+          // No split keeps every local_barrier group intact. Leave the
+          // page whole: severing a barrier hangs the firmware, so an oversized
+          // page is the better of the two. That is only survivable while the
+          // page still fits, though -- past cert_page_limit neither option
+          // works, and both fail silently at runtime, so diagnose and fail the
+          // compile. The remedy differs by page kind: an implicit page just
+          // needs a user-authored boundary in the right place, while an
+          // explicit page is already where the user put it and has to be made
+          // smaller or its participants regrouped. Raise `hadError` so the pass
+          // actually fails -- returning failure() alone only tells the greedy
+          // driver this pattern did not apply.
+          if (cost > cert_page_limit) {
+            if (isImplicit)
+              op.emitError()
+                  << "implicit cert.page is an estimated " << cost
+                  << " bytes, over the " << cert_page_limit
+                  << "-byte microcontroller page limit, and cannot be split "
+                     "without separating a local_barrier participant set "
+                     "across pages; insert an explicit cert.page boundary to "
+                     "co-locate the barrier participants";
+            else
+              op.emitError()
+                  << "cert.page is an estimated " << cost << " bytes, over the "
+                  << cert_page_limit
+                  << "-byte microcontroller page limit, and cannot be split "
+                     "without separating a local_barrier participant set "
+                     "across pages; reduce the page's contents or regroup its "
+                     "local_barrier participants so that a legal split point "
+                     "exists";
+            *hadError = true;
+          }
+          return failure();
+        }
+      }
+    }
+
+    // splitting an implicit page turns jobs that were meant to run
+    // cooperatively on one page into strictly sequential pages. Warn so the
+    // user can insert an explicit boundary if the serialization is unintended.
+    if (isImplicit)
+      op.emitRemark()
+          << "auto-split of implicit cert.page serializes cooperatively-"
+             "scheduled jobs into separate sequential pages; insert an "
+             "explicit "
+             "cert.page boundary to control where the split occurs";
+
     auto loc = op.getLoc();
+
+    // the split preserves IR (textual) order both within and across the
+    // two result pages. Jobs before split_job are cloned whole onto the earlier
+    // page; jobs after it onto the later page; split_job's own ops are
+    // partitioned at split_iter into [begin, split_iter) -> earlier page and
+    // [split_iter, end) -> later page, each cloned in order (see the
+    // distribution loop below). Because nothing is reordered, every producer
+    // stays before its consumer, so any dependency that survives across the new
+    // .eop is backward (earlier page -> later page), which is legal (G-fwd). In
+    // particular splitting a wait_tcts from its earlier uc_dma enqueues is
+    // allowed: the enqueues land on the earlier page and the wait on the later
+    // page (a backward dependency). split_iter is always interior to split_job
+    // (estimateCost / findLegalSplitPoint guarantee at least one op precedes
+    // it), so the earlier page is never empty.
+    assert(split_iter != split_job.getBody().front().begin() &&
+           "split_iter must be interior: at least one op stays on the earlier "
+           "page, preserving producer-before-consumer order");
+
+    // NOTE: the device-wide job-id shift below only keeps job ids unique per
+    // page; job_id is a label, not an order, so it does not affect
+    // emission/execution order, which is textual. A device-wide job-id renumber
+    // is left for a follow-up.
     op->getParentOfType<AIE::DeviceOp>().walk([&](AIEX::CertJobOp certJobOp) {
       if (certJobOp.getJobId() > split_job.getJobId())
         certJobOp.setJobId(certJobOp.getJobId() + 1);
@@ -1405,6 +1624,13 @@ struct SplitCertPageOpPattern : OpRewritePattern<AIEX::CertPageOp> {
     Block *newPageBlock1 = new Block();
     newPageOp1.getBody().push_back(newPageBlock1);
 
+    // propagate the implicit tag so a later re-split of either fragment
+    // still knows it came from an implicit page and diagnoses consistently.
+    if (isImplicit) {
+      newPageOp0->setAttr("cert.implicit", rewriter.getUnitAttr());
+      newPageOp1->setAttr("cert.implicit", rewriter.getUnitAttr());
+    }
+
     for (auto job : op.getBody().front().getOps<AIEX::CertJobOp>()) {
       if (job == split_job) {
         rewriter.setInsertionPointToEnd(newPageBlock0);
@@ -1434,16 +1660,194 @@ struct SplitCertPageOpPattern : OpRewritePattern<AIEX::CertPageOp> {
     rewriter.eraseOp(op);
     return success();
   }
+
+  bool *hadError;
 };
+
+// Form implicit pages: group maximal runs of contiguous top-level
+// cert.job ops into a single cert.page. Only an explicit cert.page delimits a
+// run; structural ops (tiles, buffers, locks, switchboxes, ...) do NOT. The
+// implicit configuration job (tagged {cert.configure}) is kept isolated in its
+// own page so it can be forced first on uC0 and never merged into a user
+// implicit page. CertJobOp legally parents under DeviceOp, so bare device-level
+// jobs are valid input here (produced by RuntimeSequenceToCertJob).
+// attach_to_group(0) names uC 0, which is exactly the default (unspecified)
+// group. It is therefore a placement no-op, not a page boundary: flatten it so
+// its content joins the device-level group-0 stream and participates in
+// implicit-page formation with adjacent default-group-0 content (rather than
+// being isolated on its own page). Move each group-0 op out before the
+// attach_to_group, preserving order, then erase the now-empty op.
+static void inlineDefaultGroup(AIE::DeviceOp dev) {
+  Block *body = dev.getBody();
+  SmallVector<AIEX::CertAttachToGroupOp> zeroGroups;
+  for (auto grp : body->getOps<AIEX::CertAttachToGroupOp>())
+    if (grp.getGroupId() == 0)
+      zeroGroups.push_back(grp);
+  for (auto grp : zeroGroups) {
+    SmallVector<Operation *> inner;
+    for (Operation &op : grp.getBody().front())
+      if (!isa<AIE::EndOp>(op))
+        inner.push_back(&op);
+    for (Operation *op : inner)
+      op->moveBefore(grp.getOperation());
+    grp.erase();
+  }
+}
+
+// Group a block's maximal runs of contiguous top-level cert.job ops into
+// implicit cert.page ops (only an explicit cert.page delimits; the
+// {cert.configure} job stays isolated in its own page). Applied per uC stream.
+static void formImplicitPagesInBlock(Block *body, OpBuilder &builder) {
+  // Snapshot top-level ops; the body is mutated while iterating.
+  SmallVector<Operation *> topOps;
+  for (Operation &op : *body)
+    topOps.push_back(&op);
+
+  // `cert.implicit` marks a page formed from a run of *user* jobs -- a
+  // boundary the author could have drawn but didn't. The splitter's diagnostics
+  // are keyed off it and all advise editing page boundaries, so it must not be
+  // set on a page the user cannot restructure. The compiler-synthesized
+  // @configure page is exactly that case, and it is isolated by construction,
+  // so the tag would buy nothing there anyway.
+  auto openPage = [&](Location loc, Operation *before,
+                      bool implicit) -> AIEX::CertPageOp {
+    builder.setInsertionPoint(before);
+    auto page = AIEX::CertPageOp::create(builder, loc);
+    if (implicit)
+      page->setAttr("cert.implicit", builder.getUnitAttr());
+    Block *b = new Block();
+    page.getBody().push_back(b);
+    AIEX::CertPageOp::ensureTerminator(page.getBody(), builder, loc);
+    return page;
+  };
+
+  AIEX::CertPageOp currentPage; // null => no open implicit page
+  for (Operation *op : topOps) {
+    if (auto job = dyn_cast<AIEX::CertJobOp>(op)) {
+      if (job->hasAttr("cert.configure")) {
+        // Keep the configuration job isolated in its own page. Not tagged
+        // implicit: the user did not author this job and cannot add a boundary
+        // inside it, so the auto-split remark would be noise on every compile
+        // whose
+        // config transaction is large enough to split (and it usually is).
+        auto page = openPage(job.getLoc(), job, /*implicit=*/false);
+        job->moveBefore(page.getBody().front().getTerminator());
+        currentPage = nullptr;
+        continue;
+      }
+      if (!currentPage)
+        currentPage = openPage(job.getLoc(), job, /*implicit=*/true);
+      job->moveBefore(currentPage.getBody().front().getTerminator());
+    } else if (isa<AIEX::CertPageOp>(op)) {
+      // An explicit page delimits the current implicit run.
+      currentPage = nullptr;
+    }
+    // All other ops (structural / control containers) do not delimit a run.
+  }
+}
+
+static void formImplicitPages(AIE::DeviceOp dev) {
+  OpBuilder builder(dev.getContext());
+  // uC 0 (device-level) stream. attach_to_group(0) has already been inlined
+  // here by inlineDefaultGroup.
+  formImplicitPagesInBlock(dev.getBody(), builder);
+  // Each other uC (attach_to_group) forms implicit pages within its own stream,
+  // so adjacent jobs on that uC are cooperatively co-located too.
+  SmallVector<AIEX::CertAttachToGroupOp> groups;
+  for (auto grp : dev.getBody()->getOps<AIEX::CertAttachToGroupOp>())
+    groups.push_back(grp);
+  for (auto grp : groups)
+    formImplicitPagesInBlock(&grp.getBody().front(), builder);
+}
+
+// Force the implicit configuration page to be the first page on uC0:
+// @configure sets up the device (DMA/lock/core config), so it must strictly
+// precede all other uC0 pages regardless of where it appeared textually. The
+// config job is already isolated in its own page by formImplicitPages; here we
+// just hoist that page to the front of the device body (structural ops are not
+// control code, so position relative to them does not matter).
+static void moveConfigPageFirst(AIE::DeviceOp dev) {
+  Block *body = dev.getBody();
+  AIEX::CertPageOp configPage;
+  for (auto page : body->getOps<AIEX::CertPageOp>()) {
+    for (auto job : page.getBody().front().getOps<AIEX::CertJobOp>()) {
+      if (job->hasAttr("cert.configure")) {
+        configPage = page;
+        break;
+      }
+    }
+    if (configPage)
+      break;
+  }
+  if (configPage && &body->front() != configPage.getOperation())
+    configPage->moveBefore(&body->front());
+}
+
+// Lower the `placement` attribute on top-level cert.page ops to enclosing
+// cert.attach_to_group ops. Placed pages (placement present and != 0)
+// are moved, preserving IR order, under one cert.attach_to_group per distinct
+// group id. Unplaced pages (and placement 0) stay at device level and are
+// emitted as the implicit group 0. Nesting stays attach_to_group -> page -> job
+// as the emitter expects.
+static void lowerPagePlacementToGroups(AIE::DeviceOp dev) {
+  Block *body = dev.getBody();
+
+  // Collect placed top-level pages by resolved group id, in first-seen order.
+  std::map<int32_t, SmallVector<AIEX::CertPageOp, 4>> byGroup;
+  for (auto page : body->getOps<AIEX::CertPageOp>()) {
+    if (auto placement = page.getPlacementAttr()) {
+      auto gid = static_cast<int32_t>(placement.getInt());
+      if (gid != 0)
+        byGroup[gid].push_back(page);
+    }
+  }
+
+  OpBuilder builder(dev.getContext());
+  for (auto &entry : byGroup) {
+    int32_t gid = entry.first;
+    SmallVector<AIEX::CertPageOp, 4> &pages = entry.second;
+
+    // Create the group op where the first placed page currently lives (avoids
+    // assuming anything about a device terminator).
+    builder.setInsertionPoint(pages.front());
+    auto grp = AIEX::CertAttachToGroupOp::create(builder, dev.getLoc(), gid);
+    Block *grpBlock = new Block();
+    grp.getBody().push_back(grpBlock);
+
+    // Move the placed pages into the group, in order, dropping the
+    // now-redundant placement attribute (the group encodes it).
+    for (AIEX::CertPageOp page : pages) {
+      page->removeAttr("placement");
+      page->moveBefore(grpBlock, grpBlock->end());
+    }
+    AIEX::CertAttachToGroupOp::ensureTerminator(grp.getBody(), builder,
+                                                dev.getLoc());
+  }
+}
 
 struct AIECertPagesPass
     : xilinx::AIEX::impl::AIECertPagesBase<AIECertPagesPass> {
   void runOnOperation() override {
-    // Normalize legacy standalone jobs to the page-based representation.
-    RewritePatternSet wrapPatterns(&getContext());
-    wrapPatterns.insert<WrapStandaloneCertJobOpPattern>(&getContext());
-    if (failed(applyPatternsGreedily(getOperation(), std::move(wrapPatterns))))
-      signalPassFailure();
+    // Flatten attach_to_group(0) into the device-level (default group-0) stream
+    // so it is a placement no-op, not a page boundary.
+    inlineDefaultGroup(getOperation());
+
+    // Form implicit pages: group contiguous top-level jobs into pages; only an
+    // explicit cert.page delimits. Replaces the old one-page-per-job
+    // wrapping.
+    formImplicitPages(getOperation());
+
+    // Force the @configure page to be first on uC0.
+    moveConfigPageFirst(getOperation());
+
+    // Lower cert.page placement to cert.attach_to_group BEFORE isolate
+    // and split. Those rewrites create replacement pages adjacent to the
+    // original (same parent block) with the no-placement builder; running the
+    // placement grouping first means placed pages already live inside their
+    // cert.attach_to_group, so any pages the later rewrites spawn stay in the
+    // same group by position. (Doing this last silently dropped placement from
+    // split/isolated pages, emitting them on group 0.)
+    lowerPagePlacementToGroups(getOperation());
 
     // First, isolate load_pdi and preempt operations into their own job/page
     RewritePatternSet isolatePatterns(&getContext());
@@ -1452,10 +1856,16 @@ struct AIECertPagesPass
             applyPatternsGreedily(getOperation(), std::move(isolatePatterns))))
       signalPassFailure();
 
-    // Then apply the page splitting pattern
+    // Then apply the page splitting pattern. `splitError` catches diagnostics
+    // the pattern emits while declining to split (see SplitCertPageOpPattern):
+    // applyPatternsGreedily reports only whether the rewrite converged, so an
+    // illegal-to-split page would otherwise print an error and still compile.
+    bool splitError = false;
     RewritePatternSet p1(&getContext());
-    p1.insert<SplitCertPageOpPattern>(&getContext());
+    p1.insert<SplitCertPageOpPattern>(&getContext(), &splitError);
     if (failed(applyPatternsGreedily(getOperation(), std::move(p1))))
+      signalPassFailure();
+    if (splitError)
       signalPassFailure();
 
     // Add the merge pattern for CertUcDmaWriteDesSyncOps
