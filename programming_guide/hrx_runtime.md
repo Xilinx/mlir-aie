@@ -14,7 +14,7 @@ default [XRT](iron_configuration.md) path. It requires no XRT userspace at
 runtime, and — combined with the bundled XRT-free `xclbinutil` — lets the whole
 build-and-run flow work on a machine with no XRT install at all.
 
-HRX plugs into the same [`aie.utils.Tensor`](../python/utils/hostruntime/tensor_class.py)
+HRX plugs into the same [`aie.utils.NpuTensor`](../python/utils/hostruntime/tensor_class.py)
 and [`HostRuntime`](../python/utils/hostruntime/hostruntime.py) abstractions the
 XRT backend uses, so example and design code is unchanged — the backend is chosen
 by an environment/make variable, not by editing sources.

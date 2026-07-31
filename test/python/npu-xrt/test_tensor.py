@@ -9,7 +9,7 @@
 import pytest
 import numpy as np
 import aie.iron as iron
-from aie.utils.hostruntime.tensor_class import CPUOnlyTensor, Tensor
+from aie.utils.hostruntime.tensor_class import CPUOnlyTensor, NpuTensor
 from aie.utils.hostruntime.xrtruntime.tensor import XRTTensor
 from aie.utils.hostruntime import bfloat16_safe_allclose
 from ml_dtypes import bfloat16
@@ -24,7 +24,7 @@ def test_tensor_creation(dtype, tensorclass):
     for d in tensorclass.DEVICES:
         t = tensorclass((2, 2), dtype=dtype, device=d)
         assert t.dtype == dtype
-        assert isinstance(t, Tensor)
+        assert isinstance(t, NpuTensor)
         assert isinstance(t, tensorclass)
         expected = np.zeros((2, 2), dtype=dtype)
         assert bfloat16_safe_allclose(dtype, t, expected)
@@ -38,7 +38,7 @@ def test_to_device(dtype, tensorclass):
     iron.set_tensor_class(tensorclass)
     for d in tensorclass.DEVICES:
         t = iron.ones((2, 2), dtype=dtype, device=d)
-        assert isinstance(t, Tensor)
+        assert isinstance(t, NpuTensor)
         assert isinstance(t, tensorclass)
         assert t.dtype == dtype
         for d2 in tensorclass.DEVICES:
