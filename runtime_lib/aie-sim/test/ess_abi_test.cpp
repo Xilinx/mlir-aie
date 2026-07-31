@@ -28,6 +28,7 @@
 #include "TestSupport.h"
 
 #include <cstdint>
+#include <string>
 #include <vector>
 
 // --- verbatim from xaie_sim.c:41 (the typedef the declarations below use) ---
@@ -115,6 +116,31 @@ int main() {
   // Time must have advanced: the whole reason host polling loops make progress
   // without threads is that the ess_* entry points step the array.
   AIESIM_CHECK(currentArray().cycle() > 0);
+
+  // The fault contract, which is the point of the register file. Reading an
+  // offset that nothing models AND nobody wrote must be a named failure, not a
+  // fabricated zero: that is the case where a design polling an unimplemented
+  // status register would otherwise spin forever with no diagnostic.
+  std::string caught;
+  currentArray().setDiagnosticHandler(
+      [&](const std::string &m) { caught = m; });
+  (void)ess_Read32(tileAddr(dev, 0, 2, 0x00007f00));
+  AIESIM_CHECK(caught.find("unmodelled register") != std::string::npos);
+
+  // Writes to something unmodelled are recorded rather than fatal, so a model
+  // that does not claim every register is still usable, and what it missed is
+  // a number rather than a surprise.
+  caught.clear();
+  ess_Write32(tileAddr(dev, 0, 2, 0x00007f80), 1);
+  AIESIM_CHECK(caught.empty());
+  AIESIM_CHECK(!currentArray().unclaimedWrites().empty());
+  AIESIM_CHECK(currentArray().unclaimedReport().find("0x7f80") !=
+               std::string::npos);
+
+  // Strict mode promotes that write to a fault.
+  currentArray().setStrict(true);
+  ess_Write32(tileAddr(dev, 0, 2, 0x00007fc0), 1);
+  AIESIM_CHECK(caught.find("AIE_SIM_STRICT") != std::string::npos);
 
   return aiesim_test::summarize("ess_abi");
 }
