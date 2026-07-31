@@ -91,12 +91,30 @@ private:
 };
 
 /// One component of the array that is stepped once per simulated cycle.
+///
+/// A cycle has TWO phases, and the split is load bearing rather than
+/// decoration. `step()` may read any component's published state and may stage
+/// its own outputs, but must not make an output visible to another component.
+/// `commit()` then publishes what was staged. Every component sees the same
+/// state during `step()`, whatever order they happen to run in.
+///
+/// Without this the model is a combinational mesh, not a synchronous one: a
+/// component that pushed straight into a neighbour would be seen by any
+/// neighbour that had not run yet this cycle, so data would cross an unbounded
+/// number of tiles in one cycle travelling one way and exactly one tile per
+/// cycle travelling the other. That is not slightly-wrong timing, it is a
+/// model in which identical hardware behaves differently depending on which
+/// way the data flows.
 class Steppable {
 public:
   virtual ~Steppable() = default;
-  /// Advance one cycle. Returns true if the component did observable work,
-  /// which the array uses to decide whether it has gone quiescent.
+  /// Advance one cycle: read published state, stage outputs. Returns true if
+  /// the component did observable work, which the array uses to decide whether
+  /// it has gone quiescent.
   virtual bool step() = 0;
+  /// Publish whatever `step()` staged. Components with no cross-component
+  /// outputs need not override this.
+  virtual void commit() {}
 };
 
 /// One tile. Which sub-objects are present depends on the tile type.

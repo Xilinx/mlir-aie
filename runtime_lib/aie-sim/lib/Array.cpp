@@ -213,10 +213,15 @@ void Array::readGlobal(uint64_t addr, void *data, uint64_t size) {
 // Clock
 //===----------------------------------------------------------------------===//
 
+// Two phases per cycle. Every component reads the same published state during
+// step(), regardless of registration order, and only then does commit() make
+// the new state visible. See the comment on Steppable.
 void Array::advance(uint64_t n) {
   for (uint64_t i = 0; i < n; ++i) {
     for (Steppable *s : steppables)
       s->step();
+    for (Steppable *s : steppables)
+      s->commit();
     ++cycles;
   }
 }
@@ -226,6 +231,8 @@ bool Array::runUntilQuiescent(uint64_t maxCycles) {
     bool worked = false;
     for (Steppable *s : steppables)
       worked |= s->step();
+    for (Steppable *s : steppables)
+      s->commit();
     ++cycles;
     if (!worked)
       return true;

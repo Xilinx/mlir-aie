@@ -18,8 +18,13 @@ cmake_minimum_required(VERSION 3.20)
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
   project(aie-sim CXX)
   set(AIE_SIM_STANDALONE ON)
-  include(CTest)
 endif()
+
+# Unconditionally, not just standalone. In a full mlir-aie build BUILD_TESTING
+# may be undefined, and gating the tests on it would silently register none of
+# them in exactly the configuration most people build. test/CppTests does the
+# same for the same reason.
+include(CTest)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
