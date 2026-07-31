@@ -161,6 +161,13 @@ There is a second, independent reason to put it there. llvm-aie today has no exe
 gives the backend end-to-end execution testing for the first time, which is worth having on its own
 even if mlir-aie never called it.
 
+That side has its own RFC (`llvm/docs/AIEInstructionSimulator.md` in llvm-aie). Two numbers from it
+matter here, because they set expectations for this proposal: bundle decode is already complete and
+tested, and AIE2P has **1198 real machine instructions** of which declarative TableGen patterns cover
+about 48, so instruction semantics are roughly 1150 instructions of hand-written work and cannot be
+generated. That is the long pole of the whole effort, and it is why the array model is designed to be
+useful before any core executes.
+
 ### 4.3 The boundary between them
 
 A Peano distribution ships `lib/libLLVM.so` but no LLVM headers, and mlir-aie and Peano are separately
@@ -261,10 +268,10 @@ array exists. That is the main reason for the split.
 
 ## 8. Honest risks
 
-* **Vector ISA size.** AIE2P defines 242 intrinsics and AIE2 defines 317, and the machine instruction
-  count is larger still. Core phase 3 is the long pole of the whole proposal. The mitigation is the
-  fault contract in 4.3 plus a coverage report, so partial support is visible rather than silently
-  wrong.
+* **Vector ISA size.** 497 of AIE2P's 1198 machine instructions are vector load/store and another 112
+  are MAC-family. Core phase 3 is the long pole of the whole proposal, and it is measured in months of
+  hand-written semantics, not weeks. The mitigation is the fault contract in 4.3 plus a coverage
+  report, so partial support is visible rather than silently wrong.
 * **Register-map fidelity.** The aie-rt headers give offsets and fields, not behaviour. Behaviour comes
   from reading the aie-rt driver modules that program them, and from the tests. Where behaviour is
   genuinely unknown, the model should fault rather than guess.
