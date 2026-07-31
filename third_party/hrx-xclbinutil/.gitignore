@@ -1,0 +1,10 @@
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+# Build output. Tracked: vendor/ (trimmed XRT source) + util/ (hrx shim).
+bld/
+bld-*/
+bin/
+*.log
+# generated at configure time
+vendor/xclbinutil/version.h

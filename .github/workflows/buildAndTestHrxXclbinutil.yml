@@ -1,0 +1,91 @@
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
+# Standalone build + smoke test of the in-tree hrx-xclbinutil (third_party/hrx-xclbinutil)
+# on public GitHub runners — Linux (clang + gcc) and Windows (cl + clang-cl). No NPU,
+# no XRT, no Boost — the tool is self-contained.
+
+name: Build and Test hrx-xclbinutil
+
+permissions:
+  contents: read
+
+# Scoped to hrx-xclbinutil: this job only runs when the tool's own sources (or
+# this workflow) change, since it builds nothing else. merge_group is omitted on
+# purpose — it does not support `paths`, so keeping it would run the job on every
+# merge-queue entry regardless of what changed.
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'third_party/hrx-xclbinutil/**'
+      - 'tools/hrx-xclbinutil/**'
+      - '.github/workflows/buildAndTestHrxXclbinutil.yml'
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'third_party/hrx-xclbinutil/**'
+      - 'tools/hrx-xclbinutil/**'
+      - '.github/workflows/buildAndTestHrxXclbinutil.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ci-build-test-hrxxclbinutil-${{ github.event.number || github.sha }}-${{ github.event_name }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test-linux:
+    name: build-and-test (linux, ${{ matrix.compiler }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [clang, gcc]
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+
+      - name: Install build tools
+        run: sudo apt-get update && sudo apt-get install -y ninja-build clang
+
+      - name: Configure
+        run: |
+          if [ "${{ matrix.compiler }}" = "clang" ]; then CC=clang; CXX=clang++; else CC=gcc; CXX=g++; fi
+          cmake -G Ninja -B build -S third_party/hrx-xclbinutil -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER="$CC" -DCMAKE_CXX_COMPILER="$CXX"
+
+      # Build the default target, not just hrx-xclbinutil: ctest needs the test
+      # executables too, and naming one target means a test added later silently
+      # never runs.
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+  # Both Windows compilers. They are not interchangeable for consumers of this tool:
+  # mlir-aie is only tested with cl while IREE prefers clang-cl. Keeping both green here
+  # means that choice stays open. The vendored aie-pdi-transform sources use no GNU-only
+  # syntax any more — see libinclude/xpdi_compiler.h.
+  build-and-test-windows:
+    name: build-and-test (windows, ${{ matrix.toolset }})
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - toolset: msvc-cl
+            cmake_toolset: ""            # default VS toolset = cl.exe
+          - toolset: clang-cl
+            cmake_toolset: "-T ClangCL"
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+
+      - name: Configure
+        run: cmake -B build -S third_party/hrx-xclbinutil -A x64 ${{ matrix.cmake_toolset }}
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      - name: Test
+        run: ctest --test-dir build -C Release --output-on-failure
