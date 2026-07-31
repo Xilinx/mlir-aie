@@ -158,7 +158,9 @@ def single_core_matmul(
         [A_ty, B_ty, C_ty, inA.prod(), inB.prod(), outC.cons()],
     )
 
-    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
+    device = iron.get_current_device()
+    assert device is not None
+    return Program(device, rt, workers=[worker]).resolve_program()
 
 
 def _make_argparser():

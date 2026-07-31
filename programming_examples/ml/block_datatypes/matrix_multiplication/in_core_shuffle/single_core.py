@@ -57,7 +57,13 @@ def in_core_shuffle(
     scalar_shuffle_kernel = ExternalFunction(
         "scalar_shuffle",
         source_file=str(_KERNEL_SRC),
-        arg_types=[a_ty, c_ty, np.int16, np.int16, np.int16],
+        arg_types=[
+            a_ty,
+            c_ty,
+            np.int16,
+            np.int16,
+            np.int16,
+        ],  # pyright: ignore[reportArgumentType]
         compile_flags=kernel_flags + ["-DSHUFFLE_ONLY"],
         use_chess=True,
     )
@@ -92,7 +98,9 @@ def in_core_shuffle(
         [A_ty, C_ty, inA.prod(), outC.cons()],
     )
 
-    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
+    device = iron.get_current_device()
+    assert device is not None
+    return Program(device, rt, workers=[worker]).resolve_program()
 
 
 def _make_argparser():

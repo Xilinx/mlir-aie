@@ -23,6 +23,7 @@ from aie.iron import (
     Out,
     Program,
     Runtime,
+    StreamDims,
     Worker,
 )
 from aie.utils.hostruntime.argparse import (
@@ -74,12 +75,12 @@ def single_core_no_tiling_mixed(
     )
 
     inA = ObjectFifo(a_ty, name="inA")
-    a_dims = [(m // r, r * k), (k // s, s), (r, k), (s, 1)]
+    a_dims: StreamDims = [(m // r, r * k), (k // s, s), (r, k), (s, 1)]
     memA = inA.cons().forward(name="memA", dims_to_stream=a_dims)
     inB = ObjectFifo(b_ty, name="inB")
     memB = inB.cons().forward(name="memB")
     memC = ObjectFifo(c_ty, name="memC")
-    c_dims = [(m // r, r * n), (r, t), (n // t, r * t), (t, 1)]
+    c_dims: StreamDims = [(m // r, r * n), (r, t), (n // t, r * t), (t, 1)]
     outC = memC.cons().forward(name="outC", dims_to_stream=c_dims)
 
     def core_fn(of_a, of_b, of_c, zero, matmul):
@@ -112,7 +113,9 @@ def single_core_no_tiling_mixed(
         [A_ty, B_ty, C_ty, inA.prod(), inB.prod(), outC.cons()],
     )
 
-    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
+    device = iron.get_current_device()
+    assert device is not None
+    return Program(device, rt, workers=[worker]).resolve_program()
 
 
 def _make_argparser():
