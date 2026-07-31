@@ -68,10 +68,18 @@ def AIE_CertPageOp
   let summary = "A control code page";
   let description = [{
     This operation represents a page of control code. Pages are the basic unit
-    of control code organization, with a maximum size of 8192 bytes. Each page
-    typically contains one job along with its associated data.
+    of control code organization, with a maximum size of 8192 bytes. A page may
+    contain one or more jobs along with their associated data; jobs within a
+    page are cooperatively scheduled (see `cert.job`), while pages of a given
+    microcontroller execute strictly in order.
 
     Corresponds to the `.eop` (end of page) directive in assembly.
+
+    The optional `placement` attribute selects the microcontroller (CERT group /
+    uC id) that runs this page. It is a resolved group id — use the target
+    model's `getUcGroupId(col, half)` to compute it rather than deriving it by
+    hand. When absent, the page defaults to group 0 (col0/uC0). A later pass lowers
+    `placement` to an enclosing `cert.attach_to_group`.
 
     Example:
     ```
@@ -80,10 +88,24 @@ def AIE_CertPageOp
           cert.write32(0x1000, 42)
         }
       }
+
+      // placed on microcontroller (group) 2:
+      cert.page {
+        cert.job(1) {
+          cert.write32(0x2000, 43)
+        }
+      } {placement = 2 : i32}
     ```
   }];
+  let arguments = (ins OptionalAttr<I32Attr>:$placement);
   let regions = (region AnyRegion:$body);
   let assemblyFormat = [{ $body attr-dict }];
+  let builders = [
+      // Convenience builder for an unplaced page (defaults to group 0), keeping
+      // the previous no-argument call sites valid.
+      OpBuilder<(ins), [{
+      build($_builder, $_state, /*placement=*/nullptr);
+    }]>];
 }
 
 def AIE_CertJobOp
@@ -92,8 +114,16 @@ def AIE_CertJobOp
                            SingleBlockImplicitTerminator<"AIE::EndOp">]> {
   let summary = "Start a job with a given job ID";
   let description = [{
-    This operation starts a job identified by the given job ID. The job ID is an
-    integer that uniquely identifies the job to be started.
+    This operation starts a job identified by the given job ID.
+
+    The job ID is a *label*, not an execution or emission order: it must be
+    unique among jobs on the same page, and the CERT firmware uses it as a
+    job-table key (and as the handle referenced by deferred/launch jobs). It is
+    NOT a priority. Emission order and execution order are both determined by
+    textual (IR) order: within a page the firmware starts jobs in textual order
+    (running each until it blocks or ends), and between pages on one uC
+    execution is strictly sequential. Emitters must therefore preserve IR order
+    and must not sort jobs by job_id.
 
     Example:
     ```
