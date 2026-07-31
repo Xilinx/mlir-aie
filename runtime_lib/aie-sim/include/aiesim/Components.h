@@ -23,9 +23,18 @@
 
 namespace aiesim {
 
-/// AIE2/AIE2P locks are semaphores. Acquire takes a signed value: a positive
-/// value means "acquire greater-equal", the encoding aie-rt uses, and the
-/// operation succeeds only when the current count allows it. Release adds.
+/// AIE2/AIE2P locks are semaphores, and the acquire value is signed, with the
+/// SIGN selecting the mode:
+///
+///   value <  0   AcquireGreaterEqual: succeed once the count is at least
+///                |value|, then subtract |value|.
+///   value >= 0   Acquire: succeed only on an exact match.
+///
+/// That polarity is not arbitrary and is easy to get backwards. It comes from
+/// lib/Targets/AIERT.cpp:329-330, which negates the value when the op is
+/// `acquireGE`, and it is visible in the tests, e.g.
+/// test/unit_tests/chess_compiler_tests_aie2/08_tile_locks/test.cpp:51 passes
+/// -2 to mean "wait for two releases".
 class LockModule : public Steppable {
 public:
   /// Returns false if the acquire cannot succeed right now. Callers stall;
