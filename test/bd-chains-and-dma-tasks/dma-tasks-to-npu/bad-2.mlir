@@ -5,7 +5,7 @@
 
 // RUN: aie-opt --verify-diagnostics --aie-dma-tasks-to-npu %s 
 
-// This test ensures that the proper error is emitted if the user attempts to sepcify more than
+// This test ensures that the proper error is emitted if the user attempts to specify more than
 // the architecturally possible number of data layout transformation dimensions in a `aie.dma_bd`
 // operation inside the runtime sequence. The DMAConfigureTaskOp verifier now rejects this at
 // verification time (a shim BD supports 3 access dimensions plus the hoisted iteration

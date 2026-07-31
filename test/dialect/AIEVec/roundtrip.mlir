@@ -364,3 +364,35 @@ func.func @shuffle_i512(%v : vector<1xi512>) -> vector<1xi512> {
   %1 = aievec.shuffle %0, %v [t512_1x2_hi] : vector<1xi512>
   return %1 : vector<1xi512>
 }
+
+// -----
+
+// Operand signedness is carried in the element type (si8/ui8) and round-trips.
+
+// CHECK-LABEL: func.func @matmul_i8i8_signedness(
+// CHECK-SAME: %[[A:.*]]: vector<4x8xsi8>
+// CHECK-SAME: %[[B:.*]]: vector<8x8xui8>
+// CHECK-SAME: %[[C:.*]]: vector<4x8xi32>
+// CHECK:      %[[RES:.*]] = aievec.matmul %[[A]], %[[B]], %[[C]] :
+// CHECK-SAME: vector<4x8xsi8>, vector<8x8xui8> into vector<4x8xi32>
+// CHECK: return %[[RES]] : vector<4x8xi32>
+func.func @matmul_i8i8_signedness(%A : vector<4x8xsi8>, %B : vector<8x8xui8>,
+                                  %C : vector<4x8xi32>) -> vector<4x8xi32> {
+  %0 = aievec.matmul %A, %B, %C : vector<4x8xsi8>, vector<8x8xui8>
+                                  into vector<4x8xi32>
+  return %0 : vector<4x8xi32>
+}
+
+// -----
+
+// Signless operands round-trip unchanged (historical default signedness).
+
+// CHECK-LABEL: func.func @matmul_i8i8_signless(
+// CHECK:      %[[RES:.*]] = aievec.matmul %{{.*}}, %{{.*}}, %{{.*}} :
+// CHECK-SAME: vector<4x8xi8>, vector<8x8xi8> into vector<4x8xi32>
+func.func @matmul_i8i8_signless(%A : vector<4x8xi8>, %B : vector<8x8xi8>,
+                                %C : vector<4x8xi32>) -> vector<4x8xi32> {
+  %0 = aievec.matmul %A, %B, %C : vector<4x8xi8>, vector<8x8xi8>
+                                  into vector<4x8xi32>
+  return %0 : vector<4x8xi32>
+}

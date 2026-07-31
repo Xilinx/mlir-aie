@@ -9,12 +9,16 @@
 
 // REQUIRES: peano
 
-// RUN: aiecc --no-xchesscc --no-xbridge --get-xclbin %s
+// RUN: aiecc --get-xclbin %s
 // RUN: FileCheck %s --input-file=cpp_partition_npu1_1col.mlir.prj/partition_main.json
 
 // CHECK: "column_width": 1
 // CHECK: "start_columns": [
-// CHECK: 1
+// CHECK-NEXT: 0
+// CHECK-NEXT: 1
+// CHECK-NEXT: 2
+// CHECK-NEXT: 3
+// CHECK-NEXT: ]
 
 module {
   aie.device(npu1_1col) {

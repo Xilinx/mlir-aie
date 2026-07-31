@@ -11,7 +11,7 @@ import pytest
 import numpy as np
 import torch
 import aie.iron as iron
-from aie.utils.hostruntime.tensor_class import CPUOnlyTensor, Tensor
+from aie.utils.hostruntime.tensor_class import CPUOnlyTensor, NpuTensor
 from aie.utils.hostruntime.xrtruntime.tensor import XRTTensor
 import ml_dtypes
 from ml_dtypes import bfloat16
@@ -213,7 +213,7 @@ def test_from_torch(shape, dtype, torch_dtype, tensorclass):
     iron.set_tensor_class(tensorclass)
     torch_t = torch.ones(shape, dtype=torch_dtype)
     iron_t = tensorclass.from_torch(torch_t)
-    assert isinstance(iron_t, Tensor)
+    assert isinstance(iron_t, NpuTensor)
     assert iron_t.shape == torch_t.shape
     assert bfloat16_safe_allclose(dtype, iron_t, torch_t)
 

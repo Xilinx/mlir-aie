@@ -6,7 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// REQUIRES: valid_xchess_license
+// REQUIRES: peano
 
 // RUN: %aiecc --no-unified %s
 // RUN: %aiecc --unified    %s

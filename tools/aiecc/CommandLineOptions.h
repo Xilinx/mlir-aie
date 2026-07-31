@@ -127,22 +127,14 @@ inline cl::opt<bool> loadPdiToCtrlPkt(
              "with --expand-load-pdis)"));
 inline cl::opt<bool> xchesscc(
     "xchesscc",
-    cl::desc("Compile cores with the Chess toolchain (xchesscc) instead of "
-             "Peano"),
-    cl::init(true));
-inline cl::opt<bool> noXchesscc(
-    "no-xchesscc",
-    cl::desc("Compile cores with Peano instead of the Chess toolchain "
-             "(implies --no-xbridge)"));
+    cl::desc("Compile cores with the Chess toolchain (xchesscc) instead of the "
+             "default Peano; implies --xbridge unless that is stated too; "
+             "requires Vitis AIE Essentials"));
 inline cl::opt<bool> xbridge(
     "xbridge",
-    cl::desc("Link cores with the Chess toolchain (xbridge/BCF) instead of "
-             "Peano lld"),
-    cl::init(true));
-inline cl::opt<bool> noXbridge(
-    "no-xbridge",
-    cl::desc("Link cores with Peano lld instead of the Chess toolchain "
-             "(xbridge/BCF)"));
+    cl::desc("Link cores with the Chess toolchain (xbridge/BCF) instead of the "
+             "default Peano lld; implies --xchesscc unless that is stated too; "
+             "requires Vitis AIE Essentials"));
 inline cl::opt<std::string> aietoolsDir(
     "aietools",
     cl::desc("Path to the aietools (Vitis AIE) install dir; auto-discovered "
@@ -478,27 +470,18 @@ inline bool doCompileHost = false;
 // Returns false (after a diagnostic) if the requested combination is
 // impossible.
 inline bool resolveOptions() {
-  if (noXchesscc) {
-    xchesscc = false;
-    xbridge = false;
-  }
-  if (noXbridge)
-    xbridge = false;
-  if ((xchesscc || xbridge) && !noXchesscc && !noXbridge) {
-    xchesscc = true;
+  // Each Chess flag implies the other, so that a bare --xchesscc does not hand
+  // Chess-compiled objects to Peano's linker. State both to mix the two.
+  if (xchesscc && !xbridge.getNumOccurrences())
     xbridge = true;
-  }
+  if (xbridge && !xchesscc.getNumOccurrences())
+    xchesscc = true;
 
   wantAiesim = generateAiesim;
-  if (wantAiesim && !xbridge) {
-    if (noXbridge || noXchesscc) {
-      llvm::errs()
-          << "aiecc: --get-aiesim requires --xbridge (the AIE simulator "
-             "consumes Chess-compiled cores)\n";
-      return false;
-    }
-    xchesscc = true;
-    xbridge = true;
+  if (wantAiesim && !(xchesscc && xbridge)) {
+    llvm::errs() << "aiecc: --get-aiesim requires --xchesscc and --xbridge "
+                    "(the AIE simulator consumes Chess-compiled cores)\n";
+    return false;
   }
 
   doUnified = unified && !noUnified;

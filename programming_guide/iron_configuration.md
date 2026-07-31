@@ -11,9 +11,9 @@ There are several options that exist to configure the IRON Python programming en
 
 ## Default IRON Tensor Class
 
-This is a variable that controls the types of [```aie.utils.Tensor```](../python/utils/hostruntime/tensor_class.py)s that are produced by the utility functions ```tensor```, ```ones```, etc. The available tensor implementations are [```CPUOnlyTensor```](../python/utils/hostruntime/tensor_class.py), [```XRTTensor```](../python/utils/hostruntime/xrtruntime/tensor.py), [```HRXTensor```](../python/utils/hostruntime/hrxruntime/tensor.py) and [```HSATensor```](../python/utils/hostruntime/hsaruntime/tensor.py); the last two are selected via [```NPU_RUNTIME```](#host-runtime-backend-selection-npu_runtime).
+This is a variable that controls the types of [```aie.utils.NpuTensor```](../python/utils/hostruntime/tensor_class.py)s that are produced by the utility functions ```tensor```, ```ones```, etc. The available tensor implementations are [```CPUOnlyTensor```](../python/utils/hostruntime/tensor_class.py), [```XRTTensor```](../python/utils/hostruntime/xrtruntime/tensor.py), [```HRXTensor```](../python/utils/hostruntime/hrxruntime/tensor.py) and [```HSATensor```](../python/utils/hostruntime/hsaruntime/tensor.py); the last two are selected via [```NPU_RUNTIME```](#host-runtime-backend-selection-npu_runtime).
 
-By default, if ```pyxrt``` is available, the ```DEFAULT_TENSOR_CLASS``` is set to ```XRTTensor```. However, you can also manually set this value through the ```set_tensor_class()```, e.g.:
+By default, if ```pyxrt``` is available, the ```DEFAULT_TENSOR_CLASS``` is set to ```XRTTensor```. ```HRXTensor``` is never selected automatically: it is chosen only by setting ```NPU_RUNTIME=hrx``` explicitly (see [HRX runtime](hrx_runtime.md)). You can also set the class directly through ```set_tensor_class()```, e.g.:
 ```python
 >>> import numpy as np
 >>> print(aie.utils.tensor.DEFAULT_TENSOR_CLASS.__name__)
