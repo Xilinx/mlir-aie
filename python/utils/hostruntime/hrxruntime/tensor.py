@@ -34,6 +34,11 @@ class HRXTensor(NpuTensor):
     single-threaded-dispatch expectation within a process).
     """
 
+    # HRX consumes the producer-independent (unfolded) insts.bin and adds the
+    # AIE DDR aperture offset for every arg itself, so the compiler must NOT
+    # fold it in (overrides the folded XRT/CPU default on the base Tensor).
+    FOLDS_DDR_ADDR_OFFSET = False
+
     def __init__(self, shape_or_data, dtype=np.uint32, device="npu", **kwargs):
         """Allocate an HRX persistent-mapped buffer and wrap it as a tensor.
 
