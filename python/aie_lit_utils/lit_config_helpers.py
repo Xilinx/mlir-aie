@@ -658,21 +658,6 @@ class LitConfigHelper:
         )
 
     @staticmethod
-    def setup_backend_flags_substitution(config_obj) -> None:
-        """Add backend-selection flags for generic aiecc-driven tests.
-
-        Keep existing Chess behavior when Chess is available, but steer tests
-        onto the Peano/lld path when Peano is the only detected AIE backend.
-        """
-        backend_flags = ""
-        if (
-            "peano" in config_obj.available_features
-            and "chess" not in config_obj.available_features
-        ):
-            backend_flags = "--no-xchesscc --no-xbridge"
-        config_obj.substitutions.append(("%backend_flags", backend_flags))
-
-    @staticmethod
     def add_python_tool_substitutions(config_obj, tool_names: List[str]) -> None:
         """Add explicit substitutions for Python scripts under the AIE bin dir.
 

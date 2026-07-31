@@ -17,7 +17,7 @@ from ..npukernel import NPUKernel
 from ..trace import TraceConfig
 from ..trace.utils import create_ctrl_pkt, extract_tile
 from . import bfloat16_safe_allclose
-from .tensor_class import Tensor
+from .tensor_class import NpuTensor
 
 logger = logging.getLogger(__name__)
 
@@ -293,17 +293,17 @@ class HostRuntime(ABC):
 
     @classmethod
     def prepare_args_for_trace(
-        cls, args: list[Tensor], trace_config: TraceConfig
-    ) -> list[Tensor]:
+        cls, args: list[NpuTensor], trace_config: TraceConfig
+    ) -> list[NpuTensor]:
         """
         Prepare arguments for tracing by appending necessary buffers.
 
         Args:
-            args (list[Tensor]): List of input/output tensors.
+            args (list[NpuTensor]): List of input/output tensors.
             trace_config (TraceConfig): Trace configuration.
 
         Returns:
-            list[Tensor]: The updated list of tensors with trace buffers appended.
+            list[NpuTensor]: The updated list of tensors with trace buffers appended.
         """
         if trace_config.reuse_output_buffer:
             # Trace data is written into the tail of the last output buffer.
@@ -345,13 +345,13 @@ class HostRuntime(ABC):
 
     @classmethod
     def extract_trace_from_args(
-        cls, args: list[Tensor], trace_config: TraceConfig
+        cls, args: list[NpuTensor], trace_config: TraceConfig
     ) -> tuple[np.ndarray, np.ndarray | None]:
         """
         Extract trace and control buffers from the arguments.
 
         Args:
-            args (list[Tensor]): List of tensors used in execution.
+            args (list[NpuTensor]): List of tensors used in execution.
             trace_config (TraceConfig): Trace configuration.
 
         Returns:
@@ -384,7 +384,7 @@ class HostRuntime(ABC):
         Separate output data and trace data from a single output buffer stream.
 
         Args:
-            tensor (Tensor | np.ndarray): The combined tensor.
+            tensor (NpuTensor | np.ndarray): The combined tensor.
             prefix_shape (tuple): Shape of the prefix (output data).
             prefix_dtype (np.dtype): Data type of the prefix.
 
@@ -437,7 +437,7 @@ class HostRuntime(ABC):
         Verify the results of the kernel execution against reference data.
 
         Args:
-            io_args (list[Tensor]): List of input/output tensors.
+            io_args (list[NpuTensor]): List of input/output tensors.
             refs (dict | None, optional): Dictionary mapping index to reference numpy array. Defaults to None (empty dict).
             verbosity (int, optional): Verbosity level. Defaults to 0.
 
@@ -477,7 +477,7 @@ class HostRuntime(ABC):
 
         Args:
             npu_kernel (NPUKernel): The NPU kernel to test.
-            io_args (list[Tensor]): List of input/output tensors.
+            io_args (list[NpuTensor]): List of input/output tensors.
             ref (dict): Reference data for verification.
             verify (bool, optional): Whether to verify results. Defaults to True.
             verbosity (int, optional): Verbosity level. Defaults to 0.
