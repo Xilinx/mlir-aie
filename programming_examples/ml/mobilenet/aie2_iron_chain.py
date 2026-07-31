@@ -173,7 +173,7 @@ def _chain_iron(mode, data_dir, scales_json):
                 strides=[0, 0, 0, 1],
             )
 
-        def sequence(inp, all_wts, out, in_prod, wts_prods, out_cons):
+        def sequence_with_wts(inp, all_wts, out, in_prod, wts_prods, out_cons):
             tg = TaskGroup()
             in_prod.fill(inp, group=tg)
             for wts_prod, off in zip(wts_prods, offsets_i32):
@@ -182,7 +182,7 @@ def _chain_iron(mode, data_dir, scales_json):
             tg.finish()
 
         rt = Runtime(
-            sequence,
+            sequence_with_wts,
             [
                 in_ty,
                 wts_ty,
@@ -197,14 +197,14 @@ def _chain_iron(mode, data_dir, scales_json):
         )
     else:
 
-        def sequence(inp, out, in_prod, out_cons):
+        def sequence_no_wts(inp, out, in_prod, out_cons):
             tg = TaskGroup()
             in_prod.fill(inp, group=tg)
             out_cons.drain(out, wait=True, group=tg)
             tg.finish()
 
         rt = Runtime(
-            sequence,
+            sequence_no_wts,
             [
                 in_ty,
                 out_ty,
@@ -229,7 +229,9 @@ def _make_argparser():
 
 def main():
     opts = _make_argparser().parse_args()
-    set_current_device(device_from_args(opts, n_cols=None))
+    device = device_from_args(opts, n_cols=None)
+    assert device is not None
+    set_current_device(device)
     print(_chain_iron(opts.mode, opts.data_dir, opts.scales_json))
 
 

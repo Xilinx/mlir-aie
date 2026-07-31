@@ -563,6 +563,7 @@ def _main():
     inp = _load_input_image(data_dir, in_h, in_w, in_c)
     print(f"Input: shape={inp.shape}, range=[{inp.min()}, {inp.max()}]\n")
     out, inter = run(inp, data_dir, scales, return_intermediates=True)
+    assert isinstance(inter, dict)
     print(f"\nFinal: shape={out.shape}, dtype={out.dtype}")
 
     # Compare against both references: brevitas golden + actual AIE output.

@@ -228,7 +228,9 @@ def per_block_iron(block_name, data_dir=None, scales_json=None):
         BN_WTS_SZ = 80 * 960  # 76800 bytes per L1/L3 weight chunk for bn13/bn14
         wts_ty = np.ndarray[(BN_WTS_SZ // 4,), np.dtype[np.int32]]
 
-        def sequence(inp, wl1, wl3, out, in_prod, wl1_prod, wl3_prod, out_cons):
+        def sequence_with_wts(
+            inp, wl1, wl3, out, in_prod, wl1_prod, wl3_prod, out_cons
+        ):
             tg = TaskGroup()
             in_prod.fill(inp, group=tg)
             wl1_prod.fill(wl1, group=tg)
@@ -237,7 +239,7 @@ def per_block_iron(block_name, data_dir=None, scales_json=None):
             tg.finish()
 
         rt = Runtime(
-            sequence,
+            sequence_with_wts,
             [
                 in_ty,
                 wts_ty,
@@ -251,14 +253,14 @@ def per_block_iron(block_name, data_dir=None, scales_json=None):
         )
     else:
 
-        def sequence(inp, out, in_prod, out_cons):
+        def sequence_no_wts(inp, out, in_prod, out_cons):
             tg = TaskGroup()
             in_prod.fill(inp, group=tg)
             out_cons.drain(out, wait=True, group=tg)
             tg.finish()
 
         rt = Runtime(
-            sequence,
+            sequence_no_wts,
             [
                 in_ty,
                 out_ty,
@@ -293,7 +295,9 @@ def _make_argparser():
 
 def main():
     opts = _make_argparser().parse_args()
-    set_current_device(device_from_args(opts, n_cols=None))
+    device = device_from_args(opts, n_cols=None)
+    assert device is not None
+    set_current_device(device)
     print(
         per_block_iron(opts.block, data_dir=opts.data_dir, scales_json=opts.scales_json)
     )
