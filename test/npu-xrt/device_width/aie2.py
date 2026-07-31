@@ -3,11 +3,11 @@
 # Copyright (C) 2024 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# REQUIRES: ryzen_ai_npu1, valid_xchess_license
+# REQUIRES: ryzen_ai_npu1, peano
 #
 # RUN: %python %S/aie2.py > ./aie2.mlir
 # RUN: %host_clang %S/test.cpp -o test.exe -std=c++17 -Wall %xrt_flags %host_link_flags %test_utils_flags
-# RUN: %aiecc %backend_flags --get-npu-insts --get-xclbin --xclbin-name=final.xclbin --npu-insts-name=insts.bin ./aie2.mlir
+# RUN: %aiecc --no-xchesscc --no-xbridge --get-npu-insts --get-xclbin --xclbin-name=final.xclbin --npu-insts-name=insts.bin ./aie2.mlir
 # RUN: %run_on_npu1% ./test.exe -x final.xclbin -k MLIR_AIE -i insts.bin
 
 import numpy as np

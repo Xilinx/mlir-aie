@@ -17,6 +17,20 @@
 # <build dir>    - optional, mlir-aie/build dir name, default is 'build'
 # <install dir>  - optional, mlir-aie/install dir name, default is 'install'
 #
+# Optional 4th positional arg / environment:
+#
+# <peano dir>              - optional 4th arg, Peano (llvm-aie) install dir;
+#                           default: located via 'pip show llvm-aie'
+#
+# Environment variables picked up by this script:
+#
+#   BUILD_TYPE                    CMake build type. Default: Release
+#   LLVM_ENABLE_RTTI              ON/OFF. Default: OFF
+#   COMPILE_JOBS=N                Cap parallel compiles (job pool, generation).
+#   LINK_JOBS=N                   Cap parallel links (job pool, generation).
+#   CMAKE_BUILD_PARALLEL_LEVEL=N  Overall -j at build time (cmake --build).
+#   EXTRA_CMAKE_ARGS="..."        Extra -D options appended last for overrides.
+#
 ##===----------------------------------------------------------------------===##
 
 # Windows (Git-for-Windows/MSYS) bash: gate off Linux-only assumptions.
@@ -90,7 +104,7 @@ BUILD_TYPE="${BUILD_TYPE:-Release}"
 mkdir -p $BUILD_DIR
 mkdir -p $INSTALL_DIR
 cd $BUILD_DIR
-#set -o pipefail
+set -o pipefail
 #set -e
 
 # Build the -D list as an array so paths with spaces survive as single args.
@@ -119,8 +133,31 @@ if [ -x "$(command -v lld)" ]; then
   CMAKE_CONFIGS+=(-DLLVM_USE_LINKER=lld)
 fi
 
+# LLVM_CCACHE_BUILD is declared and acted on in llvm/CMakeLists.txt, LLVM's
+# top-level project file, not in HandleLLVMOptions.cmake, which is what a
+# standalone consumer includes.  Building mlir-aie against the MLIR wheels never
+# reaches that file, so the option was silently dropped and CMake said so on
+# every build ("Manually-specified variables were not used by the project:
+# LLVM_CCACHE_BUILD").  Set the launcher directly, which is the portable
+# spelling and the one this repo's own workflows already use.
 if [ -x "$(command -v ccache)" ]; then
-  CMAKE_CONFIGS+=(-DLLVM_CCACHE_BUILD=ON)
+  CMAKE_CONFIGS+=(-DCMAKE_C_COMPILER_LAUNCHER=ccache)
+  CMAKE_CONFIGS+=(-DCMAKE_CXX_COMPILER_LAUNCHER=ccache)
+fi
+
+# Do not use LLVM_PARALLEL_{COMPILE,LINK}_JOBS: HandleLLVMOptions is included
+# several times in this tree, so those append duplicate pools.
+POOLS=""
+if [ -n "${COMPILE_JOBS}" ]; then
+  POOLS="compile=${COMPILE_JOBS}"
+  CMAKE_CONFIGS+=(-DCMAKE_JOB_POOL_COMPILE=compile)
+fi
+if [ -n "${LINK_JOBS}" ]; then
+  POOLS="${POOLS:+${POOLS};}link=${LINK_JOBS}"
+  CMAKE_CONFIGS+=(-DCMAKE_JOB_POOL_LINK=link)
+fi
+if [ -n "${POOLS}" ]; then
+  CMAKE_CONFIGS+=("-DCMAKE_JOB_POOLS=${POOLS}")
 fi
 
 # Allow callers (e.g. CI) to inject additional -D options without editing this
@@ -132,9 +169,15 @@ if [ -n "${EXTRA_CMAKE_ARGS}" ]; then
 fi
 
 cmake "${CMAKE_CONFIGS[@]}" .. 2>&1 | tee cmake.log
-ninja 2>&1 | tee mlir-aie-ninja.log
-ninja install 2>&1 | tee mlir-aie-ninja-install.log
 success=$?
+if [ ${success} -eq 0 ]; then
+    cmake --build . 2>&1 | tee cmake-build.log
+    success=$?
+fi
+if [ ${success} -eq 0 ]; then
+    cmake --build . --target install 2>&1 | tee cmake-install.log
+    success=$?
+fi
 
 if [ ${success} -ne 0 ]
 then
