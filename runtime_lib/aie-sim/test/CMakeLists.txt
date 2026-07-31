@@ -11,6 +11,10 @@ set(AIE_SIM_TESTS
   lock_test
   dma_test
   stream_switch_test
+  # Guards the component's central claim: that the ess_* symbols aie-rt
+  # declares are all provided, with matching signatures. Compiling it is the
+  # signature check, linking it is the completeness check.
+  ess_abi_test
 )
 
 set(AIE_SIM_PRESENT_TESTS)
