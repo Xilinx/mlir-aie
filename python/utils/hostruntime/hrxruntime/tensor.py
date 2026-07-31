@@ -19,11 +19,11 @@ import ctypes
 import numpy as np
 from aie.helpers.util import np_ndarray_type_get_shape
 
-from ..tensor_class import Tensor
+from ..tensor_class import NpuTensor
 from . import HRXContext
 
 
-class HRXTensor(Tensor):
+class HRXTensor(NpuTensor):
     """Tensor backed by an HRX persistent-mapped device buffer.
 
     Each tensor allocates its buffer through the process-wide

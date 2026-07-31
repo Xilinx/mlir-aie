@@ -10,7 +10,8 @@ from typing import TYPE_CHECKING
 import numpy as np
 from ml_dtypes import bfloat16
 
-from .tensor_class import Tensor
+from .tensor_class import NpuTensor
+from .tensor_class import Tensor as Tensor  # re-export of the old name
 
 if TYPE_CHECKING:
     from aie.iron.device import Device
@@ -43,11 +44,11 @@ def bfloat16_safe_allclose(dtype, arr1, arr2):
         bool: True if the arrays are equal within tolerance, False otherwise.
     """
     if dtype == bfloat16:
-        if isinstance(arr1, Tensor):
+        if isinstance(arr1, NpuTensor):
             arr1 = np.array(arr1, dtype=np.float16)
         else:
             arr1 = arr1.astype(np.float16)
-        if isinstance(arr2, Tensor):
+        if isinstance(arr2, NpuTensor):
             arr2 = np.array(arr2, dtype=np.float16)
         else:
             arr2 = arr2.astype(np.float16)

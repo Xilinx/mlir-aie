@@ -17,7 +17,7 @@ import os
 
 import numpy as np
 
-from .hostruntime.tensor_class import Tensor
+from .hostruntime.tensor_class import NpuTensor
 
 _logger = logging.getLogger(__name__)
 
@@ -143,7 +143,7 @@ def tensor(*args, **kwargs):
         **kwargs: Keyword arguments passed to the tensor constructor.
 
     Returns:
-        Tensor: The created tensor.
+        NpuTensor: The created tensor.
     """
     if args and isinstance(args[0], np.ndarray) and "dtype" in kwargs:
         arr_dt = args[0].dtype
@@ -165,7 +165,7 @@ def ones(*args, **kwargs):
         **kwargs: Keyword arguments passed to the ones method.
 
     Returns:
-        Tensor: The created tensor.
+        NpuTensor: The created tensor.
     """
     return DEFAULT_TENSOR_CLASS.ones(*args, **kwargs)
 
@@ -178,7 +178,7 @@ def zeros(*args, **kwargs):
         **kwargs: Keyword arguments passed to the zeros method.
 
     Returns:
-        Tensor: The created tensor.
+        NpuTensor: The created tensor.
     """
     return DEFAULT_TENSOR_CLASS.zeros(*args, **kwargs)
 
@@ -191,7 +191,7 @@ def full(*args, **kwargs):
         **kwargs: Keyword arguments passed to the full method.
 
     Returns:
-        Tensor: The created tensor.
+        NpuTensor: The created tensor.
     """
     return DEFAULT_TENSOR_CLASS.full(*args, **kwargs)
 
@@ -204,7 +204,7 @@ def randint(*args, **kwargs):
         **kwargs: Keyword arguments passed to the randint method.
 
     Returns:
-        Tensor: The created tensor.
+        NpuTensor: The created tensor.
     """
     return DEFAULT_TENSOR_CLASS.randint(*args, **kwargs)
 
@@ -217,7 +217,7 @@ def rand(*args, **kwargs):
         **kwargs: Keyword arguments passed to the rand method.
 
     Returns:
-        Tensor: The created tensor.
+        NpuTensor: The created tensor.
     """
     return DEFAULT_TENSOR_CLASS.rand(*args, **kwargs)
 
@@ -230,7 +230,7 @@ def arange(*args, **kwargs):
         **kwargs: Keyword arguments passed to the arange method.
 
     Returns:
-        Tensor: The created tensor.
+        NpuTensor: The created tensor.
     """
     return DEFAULT_TENSOR_CLASS.arange(*args, **kwargs)
 
@@ -243,7 +243,7 @@ def zeros_like(*args, **kwargs):
         **kwargs: Keyword arguments passed to the zeros_like method.
 
     Returns:
-        Tensor: The created tensor.
+        NpuTensor: The created tensor.
     """
     return DEFAULT_TENSOR_CLASS.zeros_like(*args, **kwargs)
 
@@ -252,14 +252,14 @@ def set_tensor_class(cls):
     """Set the default tensor class.
 
     Args:
-        cls: The new default tensor class. Must inherit from Tensor.
+        cls: The new default tensor class. Must inherit from NpuTensor.
 
     Raises:
-        ValueError: If cls does not inherit from Tensor.
+        ValueError: If cls does not inherit from NpuTensor.
     """
-    if not issubclass(cls, Tensor):
+    if not issubclass(cls, NpuTensor):
         raise ValueError(
-            f"Tensors must inherit from the Tensor class but {cls} does not."
+            f"Tensors must inherit from the NpuTensor class but {cls} does not."
         )
     global DEFAULT_TENSOR_CLASS
     DEFAULT_TENSOR_CLASS = cls

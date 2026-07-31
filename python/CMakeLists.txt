@@ -49,9 +49,12 @@ declare_mlir_python_sources(AIEPythonSources.Utils
     utils/verify.py
     utils/hostruntime/__init__.py
     utils/hostruntime/argparse.py
+    utils/hostruntime/buffer.py
     utils/hostruntime/cli.py
+    utils/hostruntime/coherence.py
     utils/hostruntime/hostruntime.py
     utils/hostruntime/tensor_class.py
+    utils/hostruntime/torch_interop.py
     utils/hostruntime/xrtruntime/__init__.py
     utils/hostruntime/xrtruntime/hostruntime.py
     utils/hostruntime/xrtruntime/parameter_scratchpad.py
@@ -70,6 +73,7 @@ declare_mlir_python_sources(AIEPythonSources.Utils
     utils/compile/jit/_dma_size_parser.py
     utils/compile/jit/_hash.py
     utils/compile/jit/_introspect.py
+    utils/compile/jit/_manifest.py
     utils/compile/jit/_serialization.py
     utils/compile/jit/markers.py
     utils/compile/jit/context.py

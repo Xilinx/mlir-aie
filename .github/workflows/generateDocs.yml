@@ -7,6 +7,15 @@ name: Generate GitHub Pages
 permissions:
   contents: read
 
+# Serialize deploys instead of racing them: mike and the Doxygen-copy step
+# both push to gh-pages, so two runs overlapping (e.g. back-to-back pushes
+# to main) can have the second's push rejected as non-fast-forward.
+# cancel-in-progress is false so a queued run still deploys rather than
+# being dropped.
+concurrency:
+  group: generate-docs-${{ github.ref }}
+  cancel-in-progress: false
+
 on:
   push:
     branches:
@@ -218,11 +227,15 @@ jobs:
           # owns versioned subdirs (dev/, 1.x.y/, versions.json, index.html);
           # everything else at the root is carry-over from the old Jekyll setup.
           cd ../gh-pages-wt
+          # Keep the versioned dirs (dev/, 1.x.y/) plus the bare "latest"
+          # alias mike writes as a symlink (a file literally named "latest",
+          # no trailing slash). The (/|$) is load-bearing: matching only
+          # "latest/" would let git rm delete the symlink, 404-ing the site.
           git ls-files -z \
             | grep -zv '^\.nojekyll$' \
             | grep -zv '^index\.html$' \
             | grep -zv '^versions\.json$' \
-            | grep -zvE '^(dev|latest)/' \
+            | grep -zvE '^(dev|latest)(/|$)' \
             | grep -zvE '^[0-9]+\.' \
             | xargs -0 -r git rm -rf --ignore-unmatch -q
           cd -

@@ -52,6 +52,7 @@ from aie.utils.compile import (
 from aie.utils.compile.cache.utils import file_lock
 from aie.utils.compile.utils import _cleanup_failed_compilation
 
+from . import _manifest
 from ._dma_size_parser import parse_dma_sizes
 from ._hash import (
     _compute_artifact_hash,
@@ -331,6 +332,19 @@ class CompilableDesign:
             inst_exists = inst_path.exists()
 
             if not explicit_paths and self.use_cache and xclbin_exists and inst_exists:
+                if not _manifest.is_valid(kernel_dir):
+                    # A recorded input moved.  The directory holds nested caches
+                    # of its own -- compile_external_kernel skips any .o that is
+                    # already present -- so a stale entry has to be cleared, not
+                    # merely rebuilt over.
+                    logger.debug(
+                        "Inputs changed for '%s'; discarding cache entry",
+                        self.generator_name,
+                    )
+                    _cleanup_failed_compilation(kernel_dir)
+                    xclbin_exists = inst_exists = False
+
+            if not explicit_paths and self.use_cache and xclbin_exists and inst_exists:
                 logger.debug(
                     "Cache hit for '%s' (hash=%s)", self.generator_name, cache_hash
                 )
@@ -398,6 +412,15 @@ class CompilableDesign:
                         "but expected output file(s) were not created: "
                         + ", ".join(str(p) for p in missing)
                     )
+
+                # Build succeeded: record what it consumed, so the next lookup
+                # can check the real inputs instead of guessing at them.
+                _manifest.record(
+                    kernel_dir,
+                    external_kernels,
+                    self.source_files,
+                    used_chess=use_chess,
+                )
             except Exception:
                 _cleanup_failed_compilation(kernel_dir)
                 raise
@@ -438,6 +461,18 @@ class CompilableDesign:
 
         with file_lock(lock_file_path, timeout_seconds=_COMPILE_LOCK_TIMEOUT_SECONDS):
             os.makedirs(kernel_dir, exist_ok=True)
+
+            if (
+                not explicit_path
+                and self.use_cache
+                and elf_path.exists()
+                and not _manifest.is_valid(kernel_dir)
+            ):
+                logger.debug(
+                    "Inputs changed for '%s'; discarding full-ELF cache entry",
+                    self.generator_name,
+                )
+                _cleanup_failed_compilation(kernel_dir)
 
             if not explicit_path and self.use_cache and elf_path.exists():
                 logger.debug(
@@ -484,6 +519,13 @@ class CompilableDesign:
                         "code 0) but the expected output file was not created: "
                         f"{elf_path}"
                     )
+
+                _manifest.record(
+                    kernel_dir,
+                    external_kernels,
+                    self.source_files,
+                    used_chess=use_chess,
+                )
             except Exception:
                 _cleanup_failed_compilation(kernel_dir)
                 raise

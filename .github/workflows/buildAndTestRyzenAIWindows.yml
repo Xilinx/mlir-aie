@@ -107,40 +107,24 @@ jobs:
           python -c "import zipfile,glob; zipfile.ZipFile(glob.glob('mlir-*.whl')[0]).extractall('.')"
           if errorlevel 1 exit /b 1
 
-          REM Diagnostic: LLVMExports.cmake references llvm-debuginfod.exe,
-          REM which has previously gone missing post-extraction on this
-          REM runner (possibly quarantined by endpoint security software,
-          REM since it's a symbol-fetching tool that heuristic scanners
-          REM sometimes flag). Fail here with a clear message instead of a
-          REM confusing CMake error deeper in configure.
+          REM llvm-debuginfod.exe has gone missing post-extraction here (likely
+          REM AV quarantine); fail early with a clear message, not a later
+          REM confusing CMake error.
           if not exist "mlir\bin\llvm-debuginfod.exe" (
             echo ##[error]mlir\bin\llvm-debuginfod.exe is missing after wheel extraction - check endpoint security/antivirus quarantine logs on the runner
             dir mlir\bin\llvm-debuginfod* 2>nul
             exit /b 1
           )
 
-          REM The wheel's LLVMExports.cmake bakes in the absolute diaguids.lib
-          REM (DIA SDK) path from whatever VS edition built it (Enterprise),
-          REM which won't exist on this runner (BuildTools). Reuse the repo's
-          REM own fixup to rewrite it to this machine's DIA SDK path.
+          REM LLVMExports.cmake bakes in a diaguids.lib (DIA SDK) path from the
+          REM VS edition that built the wheel; rewrite it for this runner.
           python -c "import sys; sys.path.insert(0, r'..\utils\mlir_aie_wheels\scripts'); from pathlib import Path; import download_mlir; download_mlir._fixup_llvm_diaguids(Path('mlir'))"
           if errorlevel 1 exit /b 1
 
-          REM Mirrors build-mlir-aie-from-wheels.sh: a freshly extracted wheel
-          REM can carry future-dated timestamps (build-time clock skew), which
-          REM makes ninja loop forever re-checking dependencies. Stamp every
-          REM extracted file to a fixed point in the past.
+          REM Future-dated wheel timestamps make ninja loop; stamp them to the past.
           python -c "import os,time; [os.utime(os.path.join(r,f),(315600000,315600000)) for r,_,fs in os.walk('mlir') for f in fs]"
           if errorlevel 1 exit /b 1
           popd
-
-          for /f "usebackq delims=" %%p in (`python -c "import sys; print(sys.executable)"`) do set PYTHON_EXE=%%p
-          for /f "usebackq delims=" %%p in (`python -c "import shutil; print(shutil.which('lit'))"`) do set LIT_EXE=%%p
-          if not defined LIT_EXE exit /b 1
-
-          mkdir build
-          mkdir install
-          pushd build
 
           if not defined PEANO_INSTALL_DIR (
             echo ##[error]PEANO_INSTALL_DIR is not set - ensure the runner is provisioned per the runner setup guide
@@ -159,16 +143,6 @@ jobs:
             exit /b 1
           )
 
-          REM CMake treats backslashes in -D string args as C-style escapes
-          REM (e.g. "\W" isn't valid, and "\a"/"\t"/etc. would be silently
-          REM misinterpreted), so pass every path with forward slashes,
-          REM which CMake accepts natively on Windows.
-          set "CD_FWD=%CD:\=/%"
-          set "PEANO_INSTALL_DIR_FWD=%PEANO_INSTALL_DIR:\=/%"
-          set "XRT_ROOT_FWD=%XRT_ROOT:\=/%"
-          set "PYTHON_EXE_FWD=%PYTHON_EXE:\=/%"
-          set "LIT_EXE_FWD=%LIT_EXE:\=/%"
-
           REM tools/bootgen unconditionally requires OpenSSL (used by aiecc
           REM for in-process PDI generation). Per docs/buildHostWinNative.md
           REM Addendum B.1, this must be the full Win64 OpenSSL package from
@@ -179,30 +153,23 @@ jobs:
             exit /b 1
           )
 
-          cmake .. -G Ninja ^
-            -DCMAKE_PREFIX_PATH="%CD_FWD%/../my_install/mlir" ^
-            -DCMAKE_MODULE_PATH="%CD_FWD%/../cmake/modulesXilinx" ^
-            -DCMAKE_INSTALL_PREFIX="%CD_FWD%/../install" ^
-            -DCMAKE_BUILD_TYPE=Release ^
-            -DLLVM_ENABLE_ASSERTIONS=ON ^
-            -DAIE_ENABLE_BINDINGS_PYTHON=ON ^
-            -DAIE_ENABLE_PYTHON_PASSES=OFF ^
-            -DAIE_ENABLE_XRT_PYTHON_BINDINGS=ON ^
-            -DAIE_RUNTIME_TARGETS=x86_64 ^
-            -DAIE_RUNTIME_TEST_TARGET=x86_64 ^
-            -DPEANO_INSTALL_DIR="%PEANO_INSTALL_DIR_FWD%" ^
-            -DXRT_ROOT="%XRT_ROOT_FWD%" ^
-            -DPython3_EXECUTABLE="%PYTHON_EXE_FWD%" ^
-            -DLLVM_EXTERNAL_LIT="%LIT_EXE_FWD%" ^
-            -DOPENSSL_ROOT_DIR="C:/Program Files/OpenSSL-Win64" ^
-            -DOPENSSL_USE_STATIC_LIBS=TRUE
-          if errorlevel 1 exit /b 1
+          for /f "usebackq delims=" %%p in (`python -c "import sys; print(sys.executable)"`) do set PYTHON_EXE=%%p
 
-          ninja
+          REM Build with the same script as the Linux job (one source of truth).
+          REM Wheel is already prepped above, so pass it as arg 1 to skip the
+          REM script's own download. EXTRA_CMAKE_ARGS carries the Windows-only
+          REM -D flags; paths are forward-slashed and space-free (OpenSSL via 8.3
+          REM short name) since the script expands args unquoted.
+          set "XRT_ROOT_FWD=%XRT_ROOT:\=/%"
+          set "PYTHON_EXE_FWD=%PYTHON_EXE:\=/%"
+          set "PEANO_INSTALL_DIR_FWD=%PEANO_INSTALL_DIR:\=/%"
+          for %%I in ("C:\Program Files\OpenSSL-Win64") do set "OPENSSL_ROOT=%%~sI"
+          set "OPENSSL_ROOT_FWD=%OPENSSL_ROOT:\=/%"
+          set "EXTRA_CMAKE_ARGS=-DAIE_ENABLE_PYTHON_PASSES=OFF -DAIE_ENABLE_XRT_PYTHON_BINDINGS=ON -DXRT_ROOT=%XRT_ROOT_FWD% -DPython3_EXECUTABLE=%PYTHON_EXE_FWD% -DOPENSSL_ROOT_DIR=%OPENSSL_ROOT_FWD% -DOPENSSL_USE_STATIC_LIBS=TRUE"
+
+          REM arg 4 = provisioned Peano, else the script derives its own.
+          "C:\Program Files\Git\bin\bash.exe" utils/build-mlir-aie-from-wheels.sh my_install/mlir build install "%PEANO_INSTALL_DIR_FWD%"
           if errorlevel 1 exit /b 1
-          ninja install
-          if errorlevel 1 exit /b 1
-          popd
 
       - name: Run tests and examples
         shell: cmd

@@ -13,13 +13,20 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 # Constants
-TRITON_LLVM_HASH_URL = (
-    "https://raw.githubusercontent.com/triton-lang/triton/main/cmake/llvm-hash.txt"
+# ROCm/llvm-project is the fork mlir-aie builds against (since PR #3326).
+# eudsl-python-extras itself still tracks upstream llvm/llvm-project, so its
+# submodule-pinned commit dates are looked up against upstream (the default
+# `repo` below), while our own current/target commits are ROCm-fork commits
+# and must be looked up against the fork.
+ROCM_LLVM_REPO = "ROCm/llvm-project"
+ROCM_LLVM_BRANCH = "amd-staging"
+ROCM_LLVM_LATEST_COMMIT_URL = (
+    f"https://api.github.com/repos/{ROCM_LLVM_REPO}/commits/{ROCM_LLVM_BRANCH}"
 )
-TORCH_MLIR_SUBMODULE_URL = (
-    "https://api.github.com/repos/llvm/torch-mlir/contents/externals/llvm-project"
+LLVM_PROJECT_COMMIT_URL = "https://api.github.com/repos/{repo}/commits/{sha}"
+LLVM_VERSION_FILE_URL = (
+    "https://raw.githubusercontent.com/{repo}/{ref}/cmake/Modules/LLVMVersion.cmake"
 )
-LLVM_PROJECT_COMMIT_URL = "https://api.github.com/repos/llvm/llvm-project/commits/{}"
 EUDSL_INDEX_URL = "https://llvm.github.io/eudsl/"
 EUDSL_SUBMODULE_URL = (
     "https://api.github.com/repos/llvm/eudsl/contents/third_party/llvm-project?ref={}"
@@ -94,13 +101,13 @@ def parse_utc_date(date_str):
     )
 
 
-def get_commit_date(commit_hash):
+def get_commit_date(commit_hash, repo="llvm/llvm-project"):
     if not commit_hash:
         return None
     if commit_hash in COMMIT_DATE_CACHE:
         return COMMIT_DATE_CACHE[commit_hash]
 
-    url = LLVM_PROJECT_COMMIT_URL.format(commit_hash)
+    url = LLVM_PROJECT_COMMIT_URL.format(repo=repo, sha=commit_hash)
     try:
         with get_request_simple(url) as response:
             data = json.loads(response.read().decode("utf-8"))
@@ -109,8 +116,36 @@ def get_commit_date(commit_hash):
             COMMIT_DATE_CACHE[commit_hash] = dt
             return dt
     except Exception as e:
-        print(f"Error fetching commit date for {commit_hash}: {e}", file=sys.stderr)
+        print(
+            f"Error fetching commit date for {commit_hash} in {repo}: {e}",
+            file=sys.stderr,
+        )
         return None
+
+
+def get_llvm_major(commit_hash, repo="llvm/llvm-project"):
+    """Read LLVM_VERSION_MAJOR from cmake/Modules/LLVMVersion.cmake at a commit.
+
+    Used to keep the eudsl pick on the same LLVM major as the target. Since we
+    now track amd-staging, which advances across major bumps, a purely
+    date-based eudsl match can land an off-major build near a boundary; matching
+    the major first avoids that. Returns None if it can't be determined.
+    """
+    if not commit_hash:
+        return None
+    url = LLVM_VERSION_FILE_URL.format(repo=repo, ref=commit_hash)
+    try:
+        with get_request_simple(url) as response:
+            text = response.read().decode("utf-8")
+        match = re.search(r"LLVM_VERSION_MAJOR\s+(\d+)", text)
+        if match:
+            return int(match.group(1))
+    except Exception as e:
+        print(
+            f"Error fetching LLVM major for {commit_hash[:8]} in {repo}: {e}",
+            file=sys.stderr,
+        )
+    return None
 
 
 def get_current_llvm_commit():
@@ -124,25 +159,25 @@ def get_current_llvm_commit():
     return None
 
 
-def get_triton_llvm_commit():
-    try:
-        with get_request_simple(TRITON_LLVM_HASH_URL) as response:
-            content = response.read().decode("utf-8").strip()
-            if re.match(r"^[a-f0-9]+$", content):
-                return content
-    except Exception as e:
-        print(f"Error fetching Triton LLVM commit: {e}", file=sys.stderr)
-    return None
+def get_latest_rocm_llvm_commit():
+    """Fetch the HEAD commit of ROCm/llvm-project@amd-staging.
 
-
-def get_torch_mlir_llvm_commit():
+    This is the branch mlirDistro.yml builds wheels from, so it's the natural
+    target for this script post-migration (replaces the old triton/torch-mlir
+    pin comparisons, which compared upstream pins against a fork commit and
+    no longer mean anything).
+    """
     try:
-        with get_request_simple(TORCH_MLIR_SUBMODULE_URL) as response:
+        with get_request_simple(ROCM_LLVM_LATEST_COMMIT_URL) as response:
             data = json.loads(response.read().decode("utf-8"))
-            return data["sha"]
+            sha = data["sha"]
+            date_str = data["commit"]["committer"]["date"]
+            date = parse_utc_date(date_str)
+            COMMIT_DATE_CACHE[sha] = date
+            return sha, date
     except Exception as e:
-        print(f"Error fetching Torch-MLIR LLVM commit: {e}", file=sys.stderr)
-    return None
+        print(f"Error fetching ROCm/llvm-project HEAD commit: {e}", file=sys.stderr)
+    return None, None
 
 
 def get_eudsl_candidates(target_date, window_days=14):
@@ -178,9 +213,12 @@ def get_eudsl_candidates(target_date, window_days=14):
     return candidates
 
 
-def find_closest_eudsl_version(target_llvm_hash, target_llvm_date):
+def find_closest_eudsl_version(target_llvm_hash, target_llvm_date, target_major=None):
     print(
-        f"Looking for eudsl version with LLVM date close to {target_llvm_hash[:8]} ({target_llvm_date})..."
+        f"Looking for eudsl version with LLVM date close to {target_llvm_hash[:8]} "
+        f"({target_llvm_date})"
+        + (f", LLVM major {target_major}" if target_major else "")
+        + "..."
     )
 
     # 1. Populate cache with commits around target date
@@ -192,8 +230,13 @@ def find_closest_eudsl_version(target_llvm_hash, target_llvm_date):
     candidates = get_eudsl_candidates(target_llvm_date, window_days=7)
     print(f"Found {len(candidates)} eudsl candidates within date range.")
 
-    best_candidate = None
-    min_diff = timedelta.max
+    # Track the closest candidate that matches the target's LLVM major, and the
+    # closest overall as a fallback if none match (e.g. eudsl hasn't published a
+    # build for that major yet).
+    best_major = None
+    best_any = None
+    min_diff_major = timedelta.max
+    min_diff_any = timedelta.max
 
     for ver_date, eudsl_hash, full_version in candidates:
         # Get LLVM hash for this eudsl version
@@ -203,24 +246,36 @@ def find_closest_eudsl_version(target_llvm_hash, target_llvm_date):
                 data = json.loads(response.read().decode("utf-8"))
                 llvm_hash = data["sha"]
 
-                # Get date of this LLVM hash
-                llvm_date = get_commit_date(llvm_hash)
-                if not llvm_date:
-                    continue
+            # Get date of this LLVM hash (eudsl tracks upstream llvm/llvm-project)
+            llvm_date = get_commit_date(llvm_hash)
+            if not llvm_date:
+                continue
 
-                # Compare with target_llvm_date
-                diff = abs(llvm_date - target_llvm_date)
+            # Compare with target_llvm_date
+            diff = abs(llvm_date - target_llvm_date)
 
-                # print(f"  Checked {full_version}: LLVM {llvm_hash[:8]} ({llvm_date}), diff: {diff}")
+            if diff < min_diff_any:
+                min_diff_any = diff
+                best_any = (llvm_hash, llvm_date, full_version)
 
-                if diff < min_diff:
-                    min_diff = diff
-                    best_candidate = (llvm_hash, llvm_date, full_version)
+            # Check the cheap date comparison before get_llvm_major()'s network
+            # fetch, so we only look up LLVMVersion.cmake for candidates that
+            # could actually become the best major-matched pick.
+            if target_major is not None and diff < min_diff_major:
+                if get_llvm_major(llvm_hash) == target_major:
+                    min_diff_major = diff
+                    best_major = (llvm_hash, llvm_date, full_version)
 
         except Exception as e:
             print(f"Error checking eudsl candidate {eudsl_hash}: {e}", file=sys.stderr)
 
-    return best_candidate
+    if target_major is not None and best_major is None and best_any is not None:
+        print(
+            f"Warning: no eudsl candidate matched LLVM major {target_major}; "
+            f"falling back to closest-by-date {best_any[2]}.",
+            file=sys.stderr,
+        )
+    return best_major if best_major is not None else best_any
 
 
 MLIR_DISTRO_RELEASE_URL = (
@@ -361,7 +416,7 @@ def main():
         print("Could not determine current LLVM commit. Aborting.", file=sys.stderr)
         sys.exit(1)
 
-    current_date = get_commit_date(current_commit)
+    current_date = get_commit_date(current_commit, repo=ROCM_LLVM_REPO)
     if not current_date:
         print("Could not determine date of current LLVM commit. Assuming very old.")
         current_date = datetime.min.replace(tzinfo=timezone.utc)
@@ -375,43 +430,32 @@ def main():
     if args.llvm_hash:
         print(f"Using provided LLVM hash: {args.llvm_hash}")
         target_commit = args.llvm_hash
-        target_date = get_commit_date(target_commit)
+        target_date = get_commit_date(target_commit, repo=ROCM_LLVM_REPO)
         if not target_date:
             print("Could not get date for provided hash. Aborting.")
             sys.exit(1)
         reason = "Manual update via --llvm-hash"
     else:
-        # 2. Get upstream info
-        triton_commit = get_triton_llvm_commit()
-        triton_date = get_commit_date(triton_commit)
-        if triton_commit:
-            print(f"Triton LLVM commit:     {triton_commit[:8]} ({triton_date})")
-        else:
-            print("Failed to fetch Triton LLVM commit.")
-
-        torch_commit = get_torch_mlir_llvm_commit()
-        torch_date = get_commit_date(torch_commit)
-        if torch_commit:
-            print(f"Torch-MLIR LLVM commit: {torch_commit[:8]} ({torch_date})")
-        else:
-            print("Failed to fetch Torch-MLIR LLVM commit.")
+        # 2. Get latest commit on the ROCm/llvm-project fork branch that
+        # mlirDistro.yml builds wheels from.
+        target_commit, target_date = get_latest_rocm_llvm_commit()
+        if not target_commit:
+            print("Failed to fetch latest ROCm/llvm-project commit. Aborting.")
+            sys.exit(1)
+        print(
+            f"Latest {ROCM_LLVM_REPO}@{ROCM_LLVM_BRANCH}: "
+            f"{target_commit[:8]} ({target_date})"
+        )
 
         # 3. Determine target
-        potential_targets = []
-        if triton_date and triton_date > current_date:
-            potential_targets.append((triton_date, triton_commit, "Triton"))
-        if torch_date and torch_date > current_date:
-            potential_targets.append((torch_date, torch_commit, "Torch-MLIR"))
-
-        if not potential_targets:
-            print("No newer LLVM commits found in Triton or Torch-MLIR.")
+        if target_date <= current_date:
+            print(f"No newer commits found on {ROCM_LLVM_BRANCH}.")
             return
 
-        # Sort by date descending (newest first)
-        potential_targets.sort(key=lambda x: x[0], reverse=True)
-        target_date, target_commit, source = potential_targets[0]
-
-        reason = f"Bump to match {source} LLVM {target_commit[:8]} ({target_date})"
+        reason = (
+            f"Bump to latest {ROCM_LLVM_REPO}@{ROCM_LLVM_BRANCH} "
+            f"{target_commit[:8]} ({target_date})"
+        )
         print(f"Found update! {reason}")
 
     if args.identify_only:
@@ -431,8 +475,9 @@ def main():
                 f.write(f"bump_reason={reason}\n")
         return
 
-    # 4. Find closest eudsl version
-    result = find_closest_eudsl_version(target_commit, target_date)
+    # 4. Find closest eudsl version (matching the target's LLVM major)
+    target_major = get_llvm_major(target_commit, repo=ROCM_LLVM_REPO)
+    result = find_closest_eudsl_version(target_commit, target_date, target_major)
 
     if not result:
         print("Could not find a suitable eudsl version.")

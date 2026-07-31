@@ -585,6 +585,123 @@ jobs:
           path: wheelhouse/repaired_wheel/mlir_aie*whl
           name: mlir_aie_windows_rtti_${{ matrix.ENABLE_RTTI }}-${{ matrix.python_version }}
 
+  smoke-test-wheels-windows:
+    name: Smoke-test wheel (Windows)
+    # Import the build-windows wheel in a clean venv on a toolchain-free runner
+    # (Windows analogue of the Linux venv smoke test). Import-only; NPU
+    # execution is covered by smoke-test-wheels-npu-windows below.
+    needs: build-windows
+    runs-on: windows-2022
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - python_version: "3.11"
+            ENABLE_RTTI: ON
+          - python_version: "3.11"
+            ENABLE_RTTI: OFF
+          - python_version: "3.12"
+            ENABLE_RTTI: ON
+          - python_version: "3.12"
+            ENABLE_RTTI: OFF
+          - python_version: "3.13"
+            ENABLE_RTTI: ON
+          - python_version: "3.13"
+            ENABLE_RTTI: OFF
+          - python_version: "3.14"
+            ENABLE_RTTI: ON
+          - python_version: "3.14"
+            ENABLE_RTTI: OFF
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
+        with:
+          python-version: ${{ matrix.python_version }}
+          allow-prereleases: true
+
+      - name: Download same-commit mlir_aie wheel
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          name: mlir_aie_windows_rtti_${{ matrix.ENABLE_RTTI }}-${{ matrix.python_version }}
+          path: wheelhouse
+
+      - name: Smoke test wheel in clean venv
+        shell: bash
+        run: |
+          python -m venv /tmp/smoke-venv
+          /tmp/smoke-venv/Scripts/python -m pip install --upgrade pip
+          /tmp/smoke-venv/Scripts/python -m pip install wheelhouse/mlir_aie*whl
+          /tmp/smoke-venv/Scripts/python -c 'import aie.ir; import aie.extras; import aie.helpers'
+
+  smoke-test-wheels-npu-windows:
+    name: Smoke-Test Wheel on Ryzen AI (Windows)
+    # Windows analogue of smoke-test-npu: install the same-commit 3.13/RTTI-ON
+    # build-windows wheel via iron_setup.py (runtime mode, so the installed
+    # wheel is exercised, not a from-source build) and run a few @iron.jit
+    # designs on the self-hosted Windows NPU. Only npu2 Windows runners exist.
+    # 3.13 matches the runner's pre-provisioned interpreter (docs/buildHostWinNative.md).
+    needs: build-windows
+    runs-on: [self-hosted, windows, ryzenai, npu2]
+    env:
+      NPU_CACHE_HOME: ${{ github.workspace }}\iron-cache-${{ github.run_id }}
+      PIP_CACHE_DIR: ${{ github.workspace }}\.pip-cache-${{ github.run_id }}
+      MPLBACKEND: Agg
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          submodules: "true"
+
+      - name: Download same-commit mlir_aie wheel
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          name: mlir_aie_windows_rtti_ON-3.13
+          path: wheelhouse
+
+      - name: Install wheel and run an example on the NPU
+        shell: cmd
+        run: |
+          REM iron_setup --wheelhouse installs the downloaded same-commit wheel
+          REM (runtime env, no --dev), so this exercises the published wheel.
+          python utils\iron_setup.py --wheelhouse wheelhouse
+          if errorlevel 1 exit /b 1
+          call .\iron_env.cmd
+          if errorlevel 1 exit /b 1
+
+          if exist "%NPU_CACHE_HOME%" rmdir /s /q "%NPU_CACHE_HOME%"
+          mkdir "%NPU_CACHE_HOME%"
+          set XRT_CONTEXT_CACHE_SIZE=2
+
+          REM A few representative @iron.jit designs: an elementwise kernel, a
+          REM vector-vector op, a reduction, and a 2D data-movement design. Each
+          REM resolves the device via iron.get_current_device(), so they target
+          REM this npu2 runner.
+          REM Use the venv interpreter explicitly: bare "python" picked up the
+          REM system 3.13, which has no numpy.
+          set "IRON_PY=%CD%\ironenv\Scripts\python.exe"
+
+          echo ===== basic/passthrough_kernel =====
+          "%IRON_PY%" utils\run_on_npu.py npu2 "%IRON_PY%" programming_examples\basic\passthrough_kernel\passthrough_kernel.py --in1_size 4096
+          if errorlevel 1 exit /b 1
+
+          echo ===== basic/vector_vector_add =====
+          "%IRON_PY%" utils\run_on_npu.py npu2 "%IRON_PY%" programming_examples\basic\vector_vector_add\vector_vector_add.py
+          if errorlevel 1 exit /b 1
+
+          echo ===== basic/vector_reduce_add =====
+          "%IRON_PY%" utils\run_on_npu.py npu2 "%IRON_PY%" programming_examples\basic\vector_reduce_add\vector_reduce_add.py
+          if errorlevel 1 exit /b 1
+
+          echo ===== basic/matrix_scalar_add =====
+          "%IRON_PY%" utils\run_on_npu.py npu2 "%IRON_PY%" programming_examples\basic\matrix_scalar_add\matrix_scalar_add.py
+          if errorlevel 1 exit /b 1
+
+      - name: Cleanup NPU_CACHE_HOME
+        if: always()
+        shell: cmd
+        run: |
+          if exist "%NPU_CACHE_HOME%" rmdir /s /q "%NPU_CACHE_HOME%"
+          if exist "%PIP_CACHE_DIR%" rmdir /s /q "%PIP_CACHE_DIR%"
+
   publish:
     name: Publish wheels
     if: |

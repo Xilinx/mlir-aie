@@ -34,8 +34,9 @@ env:
   XILINXD_LICENSE_FILE: /opt/xilinx/Xilinx.lic
   VITIS: /opt/ryzen_ai-1.3.0.1/vitis_aie_essentials
   # ccache and lld are auto-detected and enabled by
-  # utils/build-mlir-aie-from-wheels.sh (LLVM_CCACHE_BUILD / LLVM_USE_LINKER),
-  # so only the options the script does not set itself are listed here.
+  # utils/build-mlir-aie-from-wheels.sh (CMAKE_<LANG>_COMPILER_LAUNCHER /
+  # LLVM_USE_LINKER), so only the options the script does not set itself are
+  # listed here.
   CMAKE_ARGS: |
             -DXRT_ROOT=/opt/xilinx/xrt \
             -DAIE_ENABLE_PYTHON_PASSES=OFF \
@@ -68,6 +69,15 @@ jobs:
 
       - name: Print hostname
         run: hostname
+
+      - name: ccache stats before the build
+        run: |
+          # These runners are long-lived and shared, so the ccache directory
+          # survives between runs while actions/checkout wipes the workspace.
+          # Deliberately read-only: no `ccache -z` and no `ccache -M`, because
+          # both write global state on a machine other jobs also build on.
+          # Print before and after instead; the delta is the per-job figure.
+          command -v ccache >/dev/null && ccache -s || echo "ccache not installed"
 
       - name: Setup virtual environment / prerequisites
         run: |
@@ -246,6 +256,11 @@ jobs:
           fi
 
           popd
+      - name: ccache stats after the build
+        if: always()
+        run: |
+          command -v ccache >/dev/null && ccache -s || echo "ccache not installed"
+
       - name: Cleanup NPU_CACHE_HOME
         if: always()
         run: |
@@ -282,6 +297,15 @@ jobs:
       - name: Setup virtual environment / prerequisites
         run: |
           source ./utils/env_install.sh aie-venv --dev --extras
+
+      - name: ccache stats before the build
+        run: |
+          # These runners are long-lived and shared, so the ccache directory
+          # survives between runs while actions/checkout wipes the workspace.
+          # Deliberately read-only: no `ccache -z` and no `ccache -M`, because
+          # both write global state on a machine other jobs also build on.
+          # Print before and after instead; the delta is the per-job figure.
+          command -v ccache >/dev/null && ccache -s || echo "ccache not installed"
 
       - name: Fetch pinned HRX release
         run: |
@@ -377,6 +401,11 @@ jobs:
           NPU_RUNTIME=hrx make all
           NPU_RUNTIME=hrx make run
           popd
+
+      - name: ccache stats after the build
+        if: always()
+        run: |
+          command -v ccache >/dev/null && ccache -s || echo "ccache not installed"
 
       - name: Cleanup NPU_CACHE_HOME
         if: always()

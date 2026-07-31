@@ -3,13 +3,12 @@
 
 name: Update LLVM Version
 
-# The automatic schedule is paused as of the ROCm/llvm-project migration:
-# utils/update_llvm_version.py is hardcoded to upstream llvm/llvm-project
-# (including cross-checking llvm/torch-mlir and llvm/eudsl compatibility
-# windows that don't apply to the ROCm fork), so left running biweekly it
-# would silently open PRs proposing to revert clone-llvm.sh back toward
-# upstream commits. workflow_dispatch is kept for manual, upstream-specific
-# use. Making this ROCm-aware is left as future work.
+# As of the ROCm/llvm-project migration, utils/update_llvm_version.py targets
+# the HEAD of ROCm/llvm-project@amd-staging (the branch mlirDistro.yml builds
+# wheels from) instead of cross-checking upstream llvm/torch-mlir and Triton
+# pins, which don't correspond to fork commits. The eudsl-python-extras
+# compatibility match still runs against upstream, since eudsl itself tracks
+# upstream llvm/llvm-project.
 on:
   workflow_dispatch:
     inputs:
@@ -17,12 +16,11 @@ on:
         description: 'Specific LLVM hash to use'
         required: false
         type: string
-  # schedule:
-  #   # Run every other Monday at 6:00 UTC (approx biweekly)
-  #   # Note: GitHub Actions cron doesn't support "every 2 weeks" directly.
-  #   # Running weekly is usually fine, or 1st and 15th.
-  #   # Using 1st and 15th of every month.
-  #   - cron: '0 6 1,15 * *'
+  schedule:
+    # Run on the 1st and 15th of every month at 6:00 UTC (approx biweekly).
+    # GitHub Actions cron can't express "every 2 weeks" directly, so we use
+    # fixed days of the month rather than a weekday cadence.
+    - cron: '0 6 1,15 * *'
 
 permissions:
   contents: write
@@ -170,7 +168,7 @@ jobs:
           commit-message: "Update LLVM version"
           title: "Update LLVM version"
           body: |
-            Updates LLVM version based on `triton-shared` or `torch-mlir`.
+            Updates LLVM version to the latest ROCm/llvm-project@amd-staging commit.
 
             Reason: ${{ steps.update.outputs.bump_reason }}
 

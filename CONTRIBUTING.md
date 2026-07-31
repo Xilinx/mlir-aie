@@ -12,7 +12,9 @@ below before contributing.
 We use GitHub to host code, collaborate, and manage version control. All changes
 go through pull requests; [GitHub issues](https://github.com/Xilinx/mlir-aie/issues)
 track known bugs, and [GitHub Discussions](https://github.com/Xilinx/mlir-aie/discussions)
-are the place for usage questions and feature ideas.
+are the place for usage questions and feature ideas. For more informal, real-time
+chat with the team and other users, join the [ROCm Discord](https://discord.gg/UbXzGdXsR5)
+and look for the **ROCm-NPU** channel.
 
 ## Issue tracking
 
