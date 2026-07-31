@@ -8,9 +8,8 @@ permissions:
   contents: read
 
 on:
-  push:
-    branches:
-      - main
+  # No push trigger for main: the merge queue runs this workflow on the
+  # commit that lands, so a push run repeats it.
   pull_request:
     types: [opened, synchronize, reopened]
   workflow_dispatch:
