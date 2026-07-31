@@ -46,11 +46,18 @@ program's stdout).
 
 The interesting finding is how small the proprietary surface actually is.
 
-mlir-aie already builds `libxaienginecdo` with `__AIESIM__` defined
-(`runtime_lib/xaiengine/lib/CMakeLists.txt:57`). That selects aie-rt's `XAIE_IO_BACKEND_SIM`
-(`third_party/aie-rt/driver/src/io_backend/xaie_io.c:34-35`), whose entire implementation
-(`third_party/aie-rt/driver/src/io_backend/ext/xaie_sim.c`) forwards every register access to seven
-externally-declared C functions:
+mlir-aie already builds the host-side `libxaienginecdo` with `__AIESIM__` defined
+(`runtime_lib/xaiengine/lib/CMakeLists.txt:57`), and that is the library a simulated host program links
+against (`tools/aiecc/aiecc.cpp:374-375` passes `-L<runtime_lib>/<arch>/xaiengine/lib -lxaienginecdo`
+when it builds `ps.so`). Note this is a different target from `xaienginecdo_static`, which the compiler
+itself links for CDO generation and which is built `-D__AIECDO__ -D__AIEDEBUG__` without `__AIESIM__`
+(`runtime_lib/CMakeLists.txt:155-160`); in that build `xaie_sim.c` compiles to stubs that refuse at run
+time, so only the host-side library carries the undefined symbols.
+
+`__AIESIM__` selects aie-rt's `XAIE_IO_BACKEND_SIM`
+(`third_party/aie-rt/driver/src/io_backend/xaie_io.c:34-35`), whose implementation
+(`third_party/aie-rt/driver/src/io_backend/ext/xaie_sim.c:70-598`) forwards every register access to
+seven externally-declared C functions:
 
 ```c
 void     ess_Write32(uint64_t Addr, uint32_t Data);          /* xaie_sim.c:45  */
@@ -182,9 +189,11 @@ The Vitis simulator is configured from four descriptor files that `aiecc` genera
 and recurring class in this project, are invisible to it.
 
 Driving the model from register writes removes both the descriptor files and the blind spot, and it
-generalises for free. Anything that reduces to register writes can be fed to the same model: the
-`aie_inc.cpp` path, a CDO blob, or an XRT transaction binary. That last one is what actually runs on
-npu1 and npu2 hardware, and there is currently no hardware-free way to execute it at all.
+generalises. Anything that reduces to register writes can be fed to the same model: the `aie_inc.cpp`
+path, a CDO blob, or an XRT transaction binary. The last two need a decoder in front of the model, not
+a different model, and the transaction format is small and already decoded in open code. That matters
+because the transaction binary is what actually runs on npu1 and npu2 hardware, and there is currently
+no hardware-free way to execute it at all.
 
 ## 6. What the existing tests actually need
 
