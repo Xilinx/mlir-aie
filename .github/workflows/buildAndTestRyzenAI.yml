@@ -107,6 +107,12 @@ jobs:
           #      host read an output buffer before the NPU DMA had fully landed;
           #      by the time the value is printed it has settled. A real logic
           #      error produces UNEQUAL values and is therefore never retried.
+          #   3. aie2-4col hardware-context creation failing with ENOENT
+          #      (DRM_IOCTL_AMDXDNA_CREATE_HWCTX err=-2). The driver could not
+          #      hand out a context, usually because a previous test's context
+          #      had not been torn down yet; the same test passes on a re-run.
+          #      This is a setup failure before the design executes, so it can
+          #      never mask a wrong-result regression.
           # A deterministic regression fails both runs, so the retry only masks
           # nondeterministic failures.
           #
@@ -133,6 +139,13 @@ jobs:
             if [ "${{ matrix.runner_type }}" = "aie2-4col" ] && \
                grep -qF "DRM_IOCTL_AMDXDNA_EXEC_CMD IOCTL failed (err=-5): Input/output error" "$log"; then
               transient=eio
+            elif [ "${{ matrix.runner_type }}" = "aie2-4col" ] && \
+                 grep -qF "DRM_IOCTL_AMDXDNA_CREATE_HWCTX IOCTL failed (err=-2): No such file or directory" "$log"; then
+              # Context creation fails before the design runs, and lit completes
+              # the suite normally (it reports a Failed Tests summary), so this
+              # narrows to the failed tests like a read race rather than
+              # re-running the whole suite.
+              transient=hwctx
             elif grep -Pq 'idx [0-9]+: ([0-9]+) != \1\b' "$log"; then
               transient=readrace
             fi
@@ -233,11 +246,13 @@ jobs:
                 continue
               fi
               reached=1
-              if [ "$s" = "$FAILED_SUITE" ] && [ "$STEP_RETRY_TRANSIENT" = readrace ] \
+              if [ "$s" = "$FAILED_SUITE" ] \
+                 && { [ "$STEP_RETRY_TRANSIENT" = readrace ] || [ "$STEP_RETRY_TRANSIENT" = hwctx ]; } \
                  && [ -n "$RETRY_LIT_FILTER" ]; then
-                # read-race only: lit completed the suite, so narrowing to the
-                # failed tests is coverage-safe. EIO (may have aborted lit) and
-                # the empty-filter fallback both drop to the full-suite branch.
+                # read-race and hwctx only: lit completed the suite in both
+                # cases, so narrowing to the failed tests is coverage-safe. EIO
+                # (may have aborted lit mid-suite) and the empty-filter fallback
+                # both drop to the full-suite branch.
                 echo "===== suite: $s (retry only failed tests) ====="
                 run_suite "$s" only-failed
               else
