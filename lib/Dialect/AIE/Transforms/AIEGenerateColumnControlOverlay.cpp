@@ -309,25 +309,14 @@ struct AIEGenerateColumnControlOverlayPass
     }
 
     // Both widenings below are scoped to the control-packet configuration path
-    // (`route-shim-to-tile-ctrl`). That is the path this fix is for: it is the
-    // one that routes a column's configuration through a shim dma, so it is the
-    // only one that cares which columns a flow crosses or whether a column's
-    // shim is in the tile set. On the default path the pass has to keep its
-    // previous shape -- it runs on every aiecc invocation, for every target,
-    // and widening it there changes routing for designs that never asked for a
-    // control overlay. Versal designs that declare compute tiles and no shim
-    // are the ones that showed this: they gained TCT routes they never had and
-    // stopped routing at all.
+    // (`route-shim-to-tile-ctrl`); do not add tile declarations if the control
+    // overlay was not requested, as to not congest routing needlessly.
     SmallVector<int> colsToCover;
     if (clRouteShimDmaToTileCTRL) {
       // Cover the full column range between the leftmost and rightmost occupied
-      // column, not just the occupied columns. A flow between two columns is
-      // routed through the stream switches of the columns in between, so those
-      // switchboxes are configured by control packets addressed to a column
-      // that holds no tile of its own. Skipping such a column leaves its
-      // control packets without a shim dma allocation to be issued through.
-      // This mirrors what the per-column loop below already does for
-      // intermediate rows.
+      // column, not just the occupied columns. This is required so that a shim
+      // DMA allocation is later emitted for the intermediate columns that a
+      // flow will route through.
       for (int col = minOccupiedCol; col <= maxOccupiedCol; col++)
         colsToCover.push_back(col);
     } else {
@@ -340,13 +329,6 @@ struct AIEGenerateColumnControlOverlayPass
     for (int col : colsToCover) {
       builder.setInsertionPointToStart(device.getBody());
       AIE::TileOp shimTile = TileOp::getOrCreate(builder, device, col, 0);
-      // Register the shim in the column's tile set. The TCT branch below
-      // selects out of `tiles` and, with the default `shim-only`, keeps only
-      // shim tiles -- so in a column holding compute tiles but no *declared*
-      // shim it selected nothing and emitted no TCT route, while the branch
-      // after it still wired that column's configuration path through the shim
-      // materialized just above. Which of the two paths a column got therefore
-      // depended on whether the design happened to declare its shim.
       if (clRouteShimDmaToTileCTRL)
         tiles[{col, 0}] = shimTile;
 
