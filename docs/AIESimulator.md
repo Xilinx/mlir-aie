@@ -12,11 +12,11 @@ last hard anchor holding Chess and Vitis in this project. Everything else has an
 The simulator does not. Three separate things make it Vitis-only:
 
 * The `sim/` work folder is consumed by `aiesimulator`, an external Vitis binary
-  (`tools/aiecc/aiecc.cpp:402-417` writes `aiesim.sh`, which runs `aiesimulator --pkg-dir=...`).
+  (`tools/aiecc/aiecc.cpp:471-482` writes `aiesim.sh`, which runs `aiesimulator --pkg-dir=...`).
 * `sim/ps/ps.so` is compiled against `adf/wrapper/wrapper.h`, `xtlm.h`, `libsystemc` and `libxtlm`
-  from `$AIETOOLS_ROOT` (`tools/aiecc/aiecc.cpp:311-392`).
+  from `$AIETOOLS_ROOT` (`tools/aiecc/aiecc.cpp:380-460`).
 * `--get-aiesim` forces `--xbridge` and refuses `--no-xchesscc`
-  (`tools/aiecc/CommandLineOptions.h:493-502`, "the AIE simulator consumes Chess-compiled cores"), so
+  (`tools/aiecc/CommandLineOptions.h:496`, "the AIE simulator consumes Chess-compiled cores"), so
   even the core ELFs must come from Chess.
 
 Simulator tests are gated `REQUIRES: aiesimulator` and usually `valid_xchess_license` too. They are the
@@ -75,17 +75,43 @@ void     ess_ReadGM(uint64_t addr, void *data, uint64_t size);
 Vitis wrapper (`aie_runtime_lib/AIE2P/aiesim/genwrapper_for_ps.cpp:277-298`) but nothing in aie-rt calls
 them.
 
-Those symbols are the whole boundary. Everything above them is open code we already ship: aie-rt's
-tile, DMA, lock, stream-switch and core modules, and the `aie_inc.cpp` that `aiecc` generates. Core ELFs
-are not handed to the simulator through a side channel either. `_XAie_LoadProgMemSection`
-(`third_party/aie-rt/driver/src/core/xaie_elfloader.c:221-260`) writes program sections into program
-memory with ordinary block writes, so the ELF arrives as MMIO traffic exactly as on hardware. The two
-`XAie_CmdWrite` cases (`SETSTACK`, `LOADSYM`, `xaie_elfloader.c:44-45`) are debug conveniences.
+Those symbols carry all register and memory traffic. Everything above them is open code we already
+ship: aie-rt's tile, DMA, lock, stream-switch and core modules, and the `aie_inc.cpp` that `aiecc`
+generates. Core ELFs are not handed to the simulator through a side channel either.
+`_XAie_LoadProgMemSection` (`third_party/aie-rt/driver/src/core/xaie_elfloader.c:221-260`) writes
+program sections into program memory with ordinary block writes, so the ELF arrives as MMIO traffic
+exactly as on hardware. The two `XAie_CmdWrite` cases (`SETSTACK`, `LOADSYM`,
+`xaie_elfloader.c:44-45`) are debug conveniences.
 
 **So an open simulator is a library that defines those seven symbols over a software model of the
 array.** No aie-rt fork is needed, no new IO backend, no vendored patch to maintain. That matters:
 aie-rt is a third-party submodule shared with XRT and iree-amd-aie, and a fork of it would be a
 permanent tax.
+
+### 2.1 The eighth dependency, which is a file format rather than a symbol
+
+There is one more thing in the way, and it is not an `ess_*` symbol, so it is easy to miss. Under
+`__AIESIM__`, `XAie_LoadElf` (`third_party/aie-rt/driver/src/core/xaie_elfloader.c:682-728`) runs a
+block *before* it loads anything: it opens `<elf>.map`, and `XAieSim_GetStackRange`
+(`xaie_elfloader.c:506-541`) scans that file for a line matching `"items) : Stack"` and parses it with
+`sscanf(buffer, "    0x%8x..0x%8x (%*s")`. That is the Chess linker's map format. If the file is
+missing or does not match, the function returns `XAIE_ERR` and `XAie_LoadElf` **returns without ever
+calling `XAie_LoadElfPartial`**, so the ELF is silently never loaded and the generated host code's
+`assert(RC == XAIE_OK)` fires.
+
+Nothing in the aiecc build graph emits such a file for either backend, so this affects any host program
+linked against the host-side `libxaienginecdo`, not just this proposal. It has simply never been
+exercised, because `--get-aiesim` has always forced Chess.
+
+The resolution keeps the no-fork property: generated host code targeting this simulator should call
+`XAie_LoadElfPartial(dev, loc, elf, XAIE_LOAD_ELF_ALL)`, which is exactly what `XAie_LoadElf` does
+after that block, and which is already public API (`xaie_elfloader.h:112`). The stack-range command it
+skips is a Vitis profiling convenience that this model does not consume. That is a one-line change in
+`lib/Targets/AIETargetXAIEV2.cpp:443`, in mlir-aie, under the same flag that selects the simulator.
+
+This also settles a question about the current tool: `--get-aiesim` forcing `--xbridge` is not purely a
+policy in aiecc's option resolver. There is a second, independent blocker in aie-rt's own loader that a
+Peano ELF would hit, and no Peano link in this tree produces a Chess-format map file.
 
 ## 3. What the replacement looks like from the outside
 
@@ -161,12 +187,11 @@ There is a second, independent reason to put it there. llvm-aie today has no exe
 gives the backend end-to-end execution testing for the first time, which is worth having on its own
 even if mlir-aie never called it.
 
-That side has its own RFC (`llvm/docs/AIEInstructionSimulator.md` in llvm-aie). Two numbers from it
+That side has its own RFC (`llvm/docs/AIEInstructionSimulator.md` in llvm-aie). Two things from it
 matter here, because they set expectations for this proposal: bundle decode is already complete and
-tested, and AIE2P has **1198 real machine instructions** of which declarative TableGen patterns cover
-about 48, so instruction semantics are roughly 1150 instructions of hand-written work and cannot be
-generated. That is the long pole of the whole effort, and it is why the array model is designed to be
-useful before any core executes.
+tested, and instruction semantics are order-1000 instructions of hand-written work that cannot be
+generated, since declarative TableGen patterns cover only the scalar core. That is the long pole of the
+whole effort, and it is why the array model is designed to be useful before any core executes.
 
 ### 4.3 The boundary between them
 
@@ -268,10 +293,25 @@ array exists. That is the main reason for the split.
 
 ## 8. Honest risks
 
-* **Vector ISA size.** 497 of AIE2P's 1198 machine instructions are vector load/store and another 112
-  are MAC-family. Core phase 3 is the long pole of the whole proposal, and it is measured in months of
-  hand-written semantics, not weeks. The mitigation is the fault contract in 4.3 plus a coverage
-  report, so partial support is visible rather than silently wrong.
+* **Vector ISA size.** Vector load/store dominates the AIE2P opcode space (`VST` 184, `VLDA` 163,
+  `VLDB` 95, `VLD` 55) with another 112 in the MAC family. Core phase 3 is the long pole of the whole
+  proposal, and it is measured in months of hand-written semantics, not weeks. The mitigation is the
+  fault contract in 4.3 plus a coverage report, so partial support is visible rather than silently
+  wrong.
+* **Existing tests use wall-clock sleeps, and this model has no wall clock.** Several in-scope tests
+  synchronise with `usleep`/`sleep` rather than by polling a register, for example
+  `test/unit_tests/chess_compiler_tests_aie2/04_shared_memory/test.cpp:69`. Nothing calls an `ess_*`
+  entry point during a sleep, so zero simulated cycles pass and the sleep does nothing. Worse, the lock
+  timeouts those tests pass are microsecond values calibrated against wall-clock hardware, and under
+  this model `XAie_SimIO_MaskPoll` turns them into a bound on poll iterations, hence on simulated
+  cycles: a `LOCK_TIMEOUT` of 100 gives a core 100 cycles to finish. Converted tests need to wait on a
+  register or run to quiescence rather than sleep, and their timeouts need re-reading as iteration
+  counts. This is a test-conversion cost, not a model bug, but it is not free and it is why phase 4 is
+  its own phase.
+* **Read-modify-write is not atomic in this model.** `XAie_SimIO_MaskWrite32` is a `Read32` followed by
+  a `Write32`, and the model advances the clock on host accesses, so hardware could evolve between the
+  sampled value and the applied one in a way silicon would not allow. The mitigation is that only reads
+  advance the clock (see 4.1), which makes the modify-and-write half atomic with respect to the sample.
 * **Register-map fidelity.** The aie-rt headers give offsets and fields, not behaviour. Behaviour comes
   from reading the aie-rt driver modules that program them, and from the tests. Where behaviour is
   genuinely unknown, the model should fault rather than guess.
