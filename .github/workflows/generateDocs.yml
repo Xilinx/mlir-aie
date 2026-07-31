@@ -7,6 +7,15 @@ name: Generate GitHub Pages
 permissions:
   contents: read
 
+# Serialize deploys instead of racing them: mike and the Doxygen-copy step
+# both push to gh-pages, so two runs overlapping (e.g. back-to-back pushes
+# to main) can have the second's push rejected as non-fast-forward.
+# cancel-in-progress is false so a queued run still deploys rather than
+# being dropped.
+concurrency:
+  group: generate-docs-${{ github.ref }}
+  cancel-in-progress: false
+
 on:
   push:
     branches:
