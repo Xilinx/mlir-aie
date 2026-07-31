@@ -20,6 +20,19 @@ using namespace aiesim;
 
 Tile::Tile(Array &array, uint32_t col, uint32_t row, TileType type)
     : array(array), col(col), row(row), type(type) {
+  registers.setUnclaimedHandler([this](uint32_t off, bool isRead) {
+    if (isRead) {
+      char buf[192];
+      std::snprintf(buf, sizeof(buf),
+                    "read of unmodelled register 0x%x on tile (%u, %u): "
+                    "nothing claims this offset, so any value returned would "
+                    "be invented",
+                    off, this->col, this->row);
+      this->array.error(buf);
+      return;
+    }
+    this->array.recordUnclaimedWrite(this->col, this->row, off);
+  });
   const DeviceModel &dev = array.device();
   switch (type) {
   case TileType::Core:
@@ -49,6 +62,8 @@ void Tile::setDma(std::unique_ptr<DmaModule> m) { dmaModule = std::move(m); }
 
 Array::Array(const DeviceModel &dev, std::unique_ptr<CoreEngineFactory> engines)
     : dev(dev), engines(std::move(engines)) {
+  if (const char *s = std::getenv("AIE_SIM_STRICT"))
+    strictMode = s[0] == '1';
   diag = [](const std::string &message) {
     std::fprintf(stderr, "aie-sim: %s\n", message.c_str());
     std::abort();
@@ -84,6 +99,36 @@ Tile *Array::tile(uint32_t col, uint32_t row) {
 void Array::error(const std::string &message) {
   if (diag)
     diag(message);
+}
+
+void Array::recordUnclaimedWrite(uint32_t col, uint32_t row, uint32_t regOff) {
+  uint64_t key = (static_cast<uint64_t>(col) << 48) |
+                 (static_cast<uint64_t>(row) << 32) | regOff;
+  if (!unclaimedSeen.insert(key).second)
+    return;
+  unclaimed.push_back({col, row, regOff});
+  if (strictMode) {
+    char buf[192];
+    std::snprintf(buf, sizeof(buf),
+                  "write to unmodelled register 0x%x on tile (%u, %u) "
+                  "(AIE_SIM_STRICT=1)",
+                  regOff, col, row);
+    error(buf);
+  }
+}
+
+std::string Array::unclaimedReport() const {
+  if (unclaimed.empty())
+    return "aie-sim: every register written was modelled\n";
+  std::string out = "aie-sim: " + std::to_string(unclaimed.size()) +
+                    " distinct register(s) written but modelled by nothing:\n";
+  char buf[96];
+  for (const UnclaimedWrite &u : unclaimed) {
+    std::snprintf(buf, sizeof(buf), "  tile (%u, %u) offset 0x%x\n", u.col,
+                  u.row, u.regOff);
+    out += buf;
+  }
+  return out;
 }
 
 //===----------------------------------------------------------------------===//
