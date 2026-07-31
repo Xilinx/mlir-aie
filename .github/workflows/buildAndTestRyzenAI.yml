@@ -34,8 +34,9 @@ env:
   XILINXD_LICENSE_FILE: /opt/xilinx/Xilinx.lic
   VITIS: /opt/ryzen_ai-1.3.0.1/vitis_aie_essentials
   # ccache and lld are auto-detected and enabled by
-  # utils/build-mlir-aie-from-wheels.sh (LLVM_CCACHE_BUILD / LLVM_USE_LINKER),
-  # so only the options the script does not set itself are listed here.
+  # utils/build-mlir-aie-from-wheels.sh (CMAKE_<LANG>_COMPILER_LAUNCHER /
+  # LLVM_USE_LINKER), so only the options the script does not set itself are
+  # listed here.
   CMAKE_ARGS: |
             -DXRT_ROOT=/opt/xilinx/xrt \
             -DAIE_ENABLE_PYTHON_PASSES=OFF \
