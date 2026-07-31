@@ -109,6 +109,9 @@ extra:
     - icon: fontawesome/brands/github
       link: https://github.com/Xilinx/mlir-aie
       name: mlir-aie on GitHub
+    - icon: fontawesome/brands/discord
+      link: https://discord.gg/UbXzGdXsR5
+      name: Join us on the ROCm Discord (#ROCm-NPU)
     - icon: fontawesome/solid/paper-plane
       link: mailto:aup@amd.com
       name: AMD University Program
