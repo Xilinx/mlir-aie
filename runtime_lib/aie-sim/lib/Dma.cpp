@@ -446,16 +446,18 @@ public:
   void onChannelWrite(uint32_t off, uint32_t value);
   uint32_t onStatusRead(uint32_t off) const;
 
-  // Test-only hooks. Production code (installDma) never calls these. They
-  // exist because, while this simulator is being built, LockModule and
-  // StreamSwitchModule may still be the placeholder installers in
-  // Lock.cpp/StreamSwitch.cpp (both return null from tile.locks() /
-  // tile.streamSwitch()), so a unit test for this file alone has no other
-  // way to observe the words a channel moves, or to exercise the lock-
-  // stall path. See dma_test.cpp for how these are used and the limitation
-  // this implies.
+  // Test-only hook. Production code (installDma) never calls this. Lock.cpp
+  // and StreamSwitch.cpp are both real now, so every Core/MemTile DMA test
+  // drives the genuinely-installed LockModule/StreamSwitchModule through
+  // register writes, same as production. The one exception is a Shim tile's
+  // DMA bundle: aie-rt's Aie2PShimStrmMstr/Slv give it NumPorts == 0
+  // (third_party/aie-rt/driver/src/global/xaie2pgbl_reginit.c:304-307,
+  // 348-351), so `tile.streamSwitch()->slavePort(PortBundle::DMA, ch)` has
+  // no valid index to return on a Shim tile at all (shim DMA reaches the NoC
+  // through a mechanism this stream-switch model does not have a port for).
+  // A Shim DMA test therefore has no real port to attach to and keeps this
+  // hook; see dma_test.cpp's testShimDdr.
   void setTestPort(DmaDirection dir, uint32_t ch, StreamPort *port);
-  void setTestLocks(LockModule *locks);
 
 private:
   ChannelState &channel(DmaDirection dir, uint32_t ch);
@@ -475,7 +477,6 @@ private:
   const DmaTileLayout &layout;
   std::vector<ChannelState> s2mm;
   std::vector<ChannelState> mm2s;
-  LockModule *testLocks = nullptr;
 };
 
 ChannelState &DmaModuleImpl::channel(DmaDirection dir, uint32_t ch) {
@@ -490,11 +491,8 @@ void DmaModuleImpl::setTestPort(DmaDirection dir, uint32_t ch,
                                 StreamPort *port) {
   channel(dir, ch).testPort = port;
 }
-void DmaModuleImpl::setTestLocks(LockModule *locks) { testLocks = locks; }
 
-LockModule *DmaModuleImpl::effectiveLocks() const {
-  return testLocks ? testLocks : tile.locks();
-}
+LockModule *DmaModuleImpl::effectiveLocks() const { return tile.locks(); }
 
 StreamPort *DmaModuleImpl::effectivePort(DmaDirection dir, uint32_t ch,
                                          ChannelState &c) {
@@ -731,12 +729,23 @@ bool DmaModuleImpl::stepChannel(ChannelState &c, DmaDirection dir,
     c.lockAcquired = true;
   }
 
-  if (!moveOneWord(c, dir, ch))
-    return false; // Stream backpressure/starvation stall.
+  // BufferLen==0 is a legitimate encoding (aie-rt's LenActualOffset is 0U for
+  // every AIE2/AIE2P tile type -- xaie2pgbl_reginit.c / xaiemlgbl_reginit.c
+  // -- so this is a literal word count with no off-by-one), used to acquire
+  // and release a lock with no data movement at all. Move nothing and fall
+  // straight through to BD completion below: `beatsDone < lengthWords` is an
+  // unsigned compare, and `0 < 0` is false, so without this check the code
+  // below called moveOneWord unconditionally and then "completed" a BD that
+  // had moved one word it should never have touched, with a wrong tlast
+  // (beatsDone+1 == lengthWords is never true for lengthWords==0) besides.
+  if (c.bd.lengthWords != 0) {
+    if (!moveOneWord(c, dir, ch))
+      return false; // Stream backpressure/starvation stall.
 
-  ++c.beatsDone;
-  if (c.beatsDone < c.bd.lengthWords)
-    return true;
+    ++c.beatsDone;
+    if (c.beatsDone < c.bd.lengthWords)
+      return true;
+  }
 
   // This BD instance is complete.
   //
@@ -932,11 +941,10 @@ void aiesim::installDma(Tile &tile) {
 }
 
 //===----------------------------------------------------------------------===//
-// Test-only hooks (see the DmaModuleImpl comment above for why these
-// exist). Declared again, verbatim, in dma_test.cpp: both files are owned
-// by this same change, and there is no shared header to put them in
-// without touching Components.h, which is the contract this file does not
-// own.
+// Test-only hook (see the DmaModuleImpl comment above for why this exists).
+// Declared again, verbatim, in dma_test.cpp: both files are owned by this
+// same change, and there is no shared header to put it in without touching
+// Components.h, which is the contract this file does not own.
 //===----------------------------------------------------------------------===//
 
 namespace aiesim {
@@ -944,10 +952,6 @@ namespace aiesim {
 void dmaTestSetPort(DmaModule &dma, DmaDirection dir, uint32_t channel,
                     StreamPort *port) {
   static_cast<DmaModuleImpl &>(dma).setTestPort(dir, channel, port);
-}
-
-void dmaTestSetLocks(DmaModule &dma, LockModule *locks) {
-  static_cast<DmaModuleImpl &>(dma).setTestLocks(locks);
 }
 
 } // namespace aiesim

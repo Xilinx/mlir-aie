@@ -328,5 +328,10 @@ array exists. That is the main reason for the split.
 * **Divergence from hardware.** A simulator that disagrees with silicon is a liability. The intended
   guard is running the same design both ways on a machine that has an NPU, and comparing outputs. That
   cannot be a CI gate on unlicensed runners, but it can be a periodic job.
-* **Bundle-per-cycle timing is wrong.** Until phase 6 it should be described as functional simulation
-  with an ordering model, not as cycle-approximate, and tests should not check cycle counts.
+* **Bundle-per-cycle timing is wrong.** Until the core engine's timing phase lands, this should be
+  described as functional simulation with an ordering model, not as cycle-approximate. No test should
+  assert an ABSOLUTE cycle count as though it predicted hardware or matched Vitis.
+  Asserting a RELATIVE invariant is a different thing and is encouraged: the stream-switch tests check
+  that a route takes the same number of cycles in every direction, which is not a performance claim but
+  a check that the model is synchronous at all. That distinction is what caught the worst bug found so
+  far, so it is worth stating rather than leaving to taste.
