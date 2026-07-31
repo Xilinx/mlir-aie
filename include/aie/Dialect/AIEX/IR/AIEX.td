@@ -1599,6 +1599,28 @@ def AIEX_DmaChannelResetOp: AIEX_Op<"dma_channel_reset", [HasParent<"AIE::Runtim
     `tile` is an SSA `aie.tile` value, so the target is named the same way as
     `aiex.dma_configure_task`.
 
+    To re-arm one resident objectFIFO, prefer `aiex.dma_channel_reset_for`:
+    resetting a channel is only one third of the sequence a resident FIFO needs
+    -- the reset also freezes the channel's bound lock counters, and an aie2p
+    DMA channel has no enable bit, so once the reset drains its queue only a
+    START_QUEUE write restarts it. That op resolves the whole trio (reset,
+    `aiex.set_lock` per bound lock, `aiex.npu.push_queue` re-push) from the
+    fifo's `aie.objectfifo_rearm_binding`. Note that
+    `AIEVerifyRuntimeRearmPass` checks only the lock half, so satisfying it
+    after a hand-written reset still leaves a channel that never restarts.
+
+    Resetting every DMA channel on a tile has no dedicated op, because it is a
+    loop a caller can already write: emit one `aiex.dma_channel_reset` per
+    channel per direction, MM2S 0..N-1 then S2MM 0..N-1, where N is the tile's
+    channel count in that direction
+    (`AIETargetModel::getNumSourceSwitchboxConnections` /
+    `getNumDestSwitchboxConnections` with `WireBundle::DMA`, the same query this
+    op's verifier uses to bound `channel`). That is exactly what aie-rt's
+    `XAie_DmaChannelResetAll` is -- a bare loop over `XAie_DmaChannelReset` with
+    no tile-wide reset-all bit underneath it. Resetting a channel that was never
+    configured is safe: aie-rt gates the reset only on the channel index being
+    in range for the tile and direction, not on configuration state.
+
     Example:
     ```
       %tile = aie.tile(2, 3)
