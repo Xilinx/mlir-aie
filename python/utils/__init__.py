@@ -21,7 +21,6 @@ from .tensor_factory import full as full
 from .tensor_factory import (
     npu_runtime_folds_ddr_addr_offset as npu_runtime_folds_ddr_addr_offset,
 )
-from .tensor_factory import npu_runtime_kind as npu_runtime_kind
 from .tensor_factory import ones as ones
 from .tensor_factory import rand as rand
 from .tensor_factory import randint as randint

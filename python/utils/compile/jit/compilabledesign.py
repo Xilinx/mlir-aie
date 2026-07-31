@@ -303,6 +303,12 @@ class CompilableDesign:
         if not isinstance(self.mlir_generator, Path):
             self._bind_generation_device()
 
+        # The DDR-patch fold ABI feeds both the cache key (via _compute_cache_hash)
+        # and the aiecc invocation below. Both read it from the single resolver
+        # _resolve_fold_ddr_addr_offset() -> the backend's FOLDS_DDR_ADDR_OFFSET
+        # class attribute, so they can never disagree.
+        fold_ddr_addr_offset = self._resolve_fold_ddr_addr_offset()
+
         if explicit_paths:
             assert xclbin_path is not None and inst_path is not None
             # Absolutize so compile_external_kernel's `cwd=kernel_dir` doesn't
@@ -387,8 +393,6 @@ class CompilableDesign:
                     if not func._compiled:
                         compile_external_kernel(func, kernel_dir, target_arch)
 
-                from aie.utils import npu_runtime_folds_ddr_addr_offset
-
                 compile_mlir_module(
                     mlir_module=mlir_module,
                     insts_path=inst_path,
@@ -398,7 +402,7 @@ class CompilableDesign:
                     work_dir=kernel_dir,
                     use_chess=use_chess,
                     options=list(self.aiecc_flags) if self.aiecc_flags else None,
-                    fold_ddr_addr_offset=npu_runtime_folds_ddr_addr_offset(),
+                    fold_ddr_addr_offset=fold_ddr_addr_offset,
                 )
 
                 # aiecc may exit 0 even when xclbin generation fails silently
@@ -849,6 +853,19 @@ class CompilableDesign:
             self.full_elf,
         )
 
+    @staticmethod
+    def _resolve_fold_ddr_addr_offset() -> bool:
+        """Active backend's DDR-patch fold ABI (see
+        :func:`aie.utils.npu_runtime_folds_ddr_addr_offset`).
+
+        Kept in one place, and resolved from the backend's
+        ``FOLDS_DDR_ADDR_OFFSET`` class attribute, so the cache key and the aiecc
+        invocation always agree on whether ``insts.bin`` is folded.
+        """
+        from aie.utils import npu_runtime_folds_ddr_addr_offset
+
+        return npu_runtime_folds_ddr_addr_offset()
+
     @property
     def artifact_hash(self) -> str:
         """Hash of the build environment: source/object mtimes + tool mtimes + device.
@@ -860,6 +877,7 @@ class CompilableDesign:
             self.mlir_generator,
             self.source_files,
             self.object_files,
+            self._resolve_fold_ddr_addr_offset(),
         )
 
     def _compute_cache_hash(self) -> str:
@@ -871,6 +889,7 @@ class CompilableDesign:
             self.aiecc_flags,
             self.compile_flags,
             self.full_elf,
+            self._resolve_fold_ddr_addr_offset(),
         )
 
     def _bind_generation_device(self):
