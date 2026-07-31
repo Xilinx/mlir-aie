@@ -90,10 +90,23 @@ void Array::error(const std::string &message) {
 // Register access
 //===----------------------------------------------------------------------===//
 
-// Every host register access costs one simulated cycle, which is both roughly
-// right (an MMIO access is not free) and the mechanism that makes host polling
-// loops make progress without threads.
-static constexpr uint64_t kCyclesPerHostAccess = 1;
+// Host READS advance the clock; host writes do not.
+//
+// Advancing on reads is what makes a polling loop progress without threads,
+// and polling is how aie-rt implements every wait. Leaving writes free is not
+// laziness, it is what keeps a read-modify-write atomic: aie-rt's masked
+// register update (XAie_SimIO_MaskWrite32,
+// third_party/aie-rt/driver/src/io_backend/ext/xaie_sim.c) is a Read32
+// followed by a Write32, and if the write also advanced, the array could
+// evolve between the sampled value and the applied one and clobber a
+// hardware-driven bit. Real hardware treats that pair as back-to-back at bus
+// speed. We cannot see that the two accesses are a pair, so the fix is to make
+// the second one cost nothing.
+//
+// Consequence worth knowing: a burst of configuration writes takes zero
+// simulated time. That is closer to the truth than charging each one a core
+// cycle, since configuration runs far faster than the array it configures.
+static constexpr uint64_t kCyclesPerHostRead = 1;
 
 void Array::write32(uint64_t addr, uint32_t value) {
   DecodedAddress d = decodeAddress(dev, addr);
@@ -108,7 +121,6 @@ void Array::write32(uint64_t addr, uint32_t value) {
     return;
   }
   tile(d.col, d.row)->regs().write(d.regOff, value);
-  advance(kCyclesPerHostAccess);
 }
 
 uint32_t Array::read32(uint64_t addr) {
@@ -122,7 +134,7 @@ uint32_t Array::read32(uint64_t addr) {
   }
   // Advance before the read, so a poll loop observes state that has moved on
   // since the previous poll.
-  advance(kCyclesPerHostAccess);
+  advance(kCyclesPerHostRead);
   return tile(d.col, d.row)->regs().read(d.regOff);
 }
 
@@ -190,11 +202,10 @@ bool Array::ddrRead(uint64_t addr, void *data, uint64_t size) {
 
 void Array::writeGlobal(uint64_t addr, const void *data, uint64_t size) {
   ddrWrite(addr, data, size);
-  advance(kCyclesPerHostAccess);
 }
 
 void Array::readGlobal(uint64_t addr, void *data, uint64_t size) {
-  advance(kCyclesPerHostAccess);
+  advance(kCyclesPerHostRead);
   ddrRead(addr, data, size);
 }
 

@@ -745,16 +745,27 @@ bool DmaModuleImpl::stepChannel(ChannelState &c, DmaDirection dir,
   // _XAieMl_{Tile,MemTile,Shim}DmaWriteBd/ReadBd never touch a
   // "LockRelEn" register field, even though the software XAie_DmaDesc
   // struct carries one (used only by the separate, out-of-scope AIE1
-  // path in xaie_dma_aie.c). We still gate the release on lockAcqEn here:
-  // every real design we read pairs an acquire with a release, and this
-  // way a channel doing no locking at all never touches tile.locks(),
-  // which matters while Lock.cpp is still a placeholder.
-  if (c.bd.lockAcqEn) {
+  // path in xaie_dma_aie.c). mlir-aie agrees from the other side:
+  // lib/Targets/AIERT.cpp sets relEn = false unconditionally with the
+  // comment "no RelEn in the arch spec even though the API requires you to
+  // set it".
+  //
+  // So do NOT gate this on lockAcqEn. An earlier version did, on the
+  // reasoning that every design pairs an acquire with a release. That is
+  // true of what mlir-aie emits today (AIERT.cpp asserts a lock-bearing BD
+  // carries both), but it is not what the hardware does, and a BD with
+  // acq_en = 0 and a release configured would have had its release silently
+  // dropped -- a hang or wrong data, which is exactly the failure mode this
+  // model refuses. A BD that configures no locks leaves these fields zero,
+  // and releasing zero is a no-op, so unconditional release is safe.
+  if (c.bd.lockRelVal != 0) {
     LockModule *locks = effectiveLocks();
-    if (locks)
-      locks->release(c.bd.lockRelId, c.bd.lockRelVal);
-    // If locks is null here, lockAcqEn must be false (acquire would have
-    // errored above first), so this branch cannot fire without one.
+    if (!locks) {
+      tile.getArray().error("DMA BD configures a lock release but this tile "
+                            "has no lock module installed");
+      return false;
+    }
+    locks->release(c.bd.lockRelId, c.bd.lockRelVal);
   }
 
   c.bdLoaded = false;
