@@ -13,7 +13,7 @@ Hashing is split into two halves so callers can distinguish "recipe changed"
 from "rebuild needed":
 
 * ``recipe_hash``   — generator identity + compile_kwargs + aiecc/compile flags
-* ``artifact_hash`` — source / object mtimes + tool mtimes + target device
+* ``artifact_hash`` — source / object content + tool content + target device
 
 ``hash(design)`` composes both into a 24-hex cache key; no MLIR generation
 needed for a cache lookup.
@@ -32,6 +32,7 @@ import inspect
 import json
 import logging
 import os
+import shutil
 import sys
 from pathlib import Path
 from types import MappingProxyType
@@ -77,6 +78,29 @@ _COMPILE_LOCK_TIMEOUT_SECONDS = 1800
 logger = logging.getLogger(__name__)
 
 
+def _publish_artifacts(pairs: list[tuple[Path, Path]]) -> None:
+    """Place cache-built artifacts at the paths the caller asked for.
+
+    Hard-links when the cache and the destination share a filesystem, which is
+    the common case and costs no bytes; falls back to a copy across devices.
+    The link is broken first so a stale destination from an earlier build is
+    replaced rather than written through -- and so a hard link never becomes a
+    back door into the cache entry, which must stay immutable while its key
+    still describes it.
+    """
+    for src, dst in pairs:
+        if src == dst:
+            continue
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        tmp = dst.with_name(dst.name + ".tmp-publish")
+        tmp.unlink(missing_ok=True)
+        try:
+            os.link(src, tmp)
+        except OSError:
+            shutil.copy2(src, tmp)
+        os.replace(tmp, dst)  # atomic: a reader sees the old or new file
+
+
 def config_param_names(cls) -> frozenset[str]:
     """Names of ``cls.__init__``'s configuration parameters.
 
@@ -114,7 +138,7 @@ class CompilableDesign:
         compile_kwargs: Values for the ``CompileTime[T]``-annotated parameters.
             Validated against the generator signature via ``inspect.Signature.bind``.
         compile_flags: Extra flags forwarded to the Peano C++ compiler.
-        source_files: Paths to C++ kernel source files.  Their mtimes are
+        source_files: Paths to C++ kernel source files.  Their contents are
             included in the cache key so that edits correctly invalidate the cache.
         include_paths: Extra ``-I`` paths forwarded to the C++ compiler.
         aiecc_flags: Extra flags forwarded to ``aiecc``.
@@ -303,21 +327,57 @@ class CompilableDesign:
         if not isinstance(self.mlir_generator, Path):
             self._bind_generation_device()
 
+        # Artifacts the caller asked to be written at a path of its choosing,
+        # as (built artifact -> requested destination).  Non-empty only in the
+        # explicit-path + cache case below.
+        publish: list[tuple[Path, Path]] = []
+
         if explicit_paths:
             assert xclbin_path is not None and inst_path is not None
             # Absolutize so compile_external_kernel's `cwd=kernel_dir` doesn't
             # turn relative paths into "build/build/foo.cc" etc.
-            xclbin_path = Path(xclbin_path).resolve()
-            inst_path = Path(inst_path).resolve()
-            if elf_path is not None:
-                elf_path = Path(elf_path).resolve()
-            if pdi_path is not None:
-                pdi_path = Path(pdi_path).resolve()
-            # Per-xclbin scratch dir (mirrors aiecc's default <input>.prj
-            # naming) so two siblings sharing one build/ don't clobber each
-            # other's input_with_addresses.mlir / .o files.
-            kernel_dir = xclbin_path.parent / f"{xclbin_path.stem}.prj"
-            lock_file_path = kernel_dir / ".lock"
+            requested_xclbin = Path(xclbin_path).resolve()
+            requested_inst = Path(inst_path).resolve()
+            requested_elf = None if elf_path is None else Path(elf_path).resolve()
+            requested_pdi = None if pdi_path is None else Path(pdi_path).resolve()
+
+            if self.use_cache:
+                # An explicit path says WHERE THE CALLER WANTS THE ARTIFACT,
+                # not "do not cache".  Treating it as a cache opt-out is why
+                # the Makefile-driven examples -- which all pass --xclbin-path
+                # / --insts-path -- recompiled from scratch on every run even
+                # when nothing about the design had changed.
+                #
+                # So build inside the cache entry and publish out of it.
+                # Building in the entry (rather than building in place and
+                # copying in) keeps hit and miss symmetric: aiecc's
+                # intermediates, including the input_with_addresses.mlir that
+                # parse_dma_sizes() reads, live beside the artifacts they
+                # describe, so a hit can answer the same questions a fresh
+                # compile can.
+                cache_hash = self._compute_cache_hash()
+                kernel_dir = NPU_CACHE_HOME / cache_hash
+                lock_file_path = kernel_dir / ".lock"
+                xclbin_path = kernel_dir / "final.xclbin"
+                inst_path = kernel_dir / "insts.bin"
+                publish.append((xclbin_path, requested_xclbin))
+                publish.append((inst_path, requested_inst))
+                if requested_elf is not None:
+                    elf_path = kernel_dir / "insts.elf"
+                    publish.append((elf_path, requested_elf))
+                if requested_pdi is not None:
+                    pdi_path = kernel_dir / "main.pdi"
+                    publish.append((pdi_path, requested_pdi))
+            else:
+                xclbin_path = requested_xclbin
+                inst_path = requested_inst
+                elf_path = requested_elf
+                pdi_path = requested_pdi
+                # Per-xclbin scratch dir (mirrors aiecc's default <input>.prj
+                # naming) so two siblings sharing one build/ don't clobber each
+                # other's input_with_addresses.mlir / .o files.
+                kernel_dir = xclbin_path.parent / f"{xclbin_path.stem}.prj"
+                lock_file_path = kernel_dir / ".lock"
         else:
             cache_hash = self._compute_cache_hash()
             kernel_dir = NPU_CACHE_HOME / cache_hash
@@ -331,7 +391,12 @@ class CompilableDesign:
             xclbin_exists = xclbin_path.exists()
             inst_exists = inst_path.exists()
 
-            if not explicit_paths and self.use_cache and xclbin_exists and inst_exists:
+            if (
+                cache_hash is not None
+                and self.use_cache
+                and xclbin_exists
+                and inst_exists
+            ):
                 if not _manifest.is_valid(kernel_dir):
                     # A recorded input moved.  The directory holds nested caches
                     # of its own -- compile_external_kernel skips any .o that is
@@ -344,10 +409,23 @@ class CompilableDesign:
                     _cleanup_failed_compilation(kernel_dir)
                     xclbin_exists = inst_exists = False
 
-            if not explicit_paths and self.use_cache and xclbin_exists and inst_exists:
+            # Every artifact this call has to produce must already be in the
+            # entry for it to count as a hit.  An entry written by an earlier
+            # call that did not request an ELF cannot serve one that does, so
+            # the partial entry misses and recompiles rather than publishing a
+            # stale or absent file.  Computed after the manifest check above,
+            # which can invalidate the entry and clear those two flags.
+            cache_complete = (
+                xclbin_exists
+                and inst_exists
+                and all(src.exists() for src, _ in publish)
+            )
+
+            if cache_hash is not None and self.use_cache and cache_complete:
                 logger.debug(
                     "Cache hit for '%s' (hash=%s)", self.generator_name, cache_hash
                 )
+                _publish_artifacts(publish)
                 self._xclbin_path = xclbin_path
                 self._inst_path = inst_path
                 self._kernel_dir = kernel_dir
@@ -424,6 +502,11 @@ class CompilableDesign:
             except Exception:
                 _cleanup_failed_compilation(kernel_dir)
                 raise
+
+            # Fresh build in a cache entry: hand the caller the paths it asked
+            # for.  Inside the lock, so a concurrent compile of the same design
+            # cannot observe a half-published output.
+            _publish_artifacts(publish)
 
         self._xclbin_path = xclbin_path
         self._inst_path = inst_path
@@ -848,7 +931,7 @@ class CompilableDesign:
 
     @property
     def artifact_hash(self) -> str:
-        """Hash of the build environment: source/object mtimes + tool mtimes + device.
+        """Hash of the build environment: source/object + tool content + device.
 
         Changes whenever a kernel ``.cc``, an ``.o``, Peano, aiecc, or the
         target device changes; identifies the *with what* of compilation.
