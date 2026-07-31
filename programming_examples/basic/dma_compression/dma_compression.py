@@ -20,10 +20,10 @@ import aie.iron as iron
 import numpy as np
 from aie.dialects._aie_enum_gen import AIETileType
 from aie.dialects.aie import (
-    AIEDevice,
-    DMAChannelDir,
-    LockAction,
-    WireBundle,
+    AIEDevice,  # pyright: ignore[reportAttributeAccessIssue]
+    DMAChannelDir,  # pyright: ignore[reportAttributeAccessIssue]
+    LockAction,  # pyright: ignore[reportAttributeAccessIssue]
+    WireBundle,  # pyright: ignore[reportAttributeAccessIssue]
     buffer,
     core,
     device,
@@ -33,12 +33,12 @@ from aie.dialects.aie import (
     lock,
     mem,
     next_bd,
-    shim_dma_allocation,
+    shim_dma_allocation,  # pyright: ignore[reportAttributeAccessIssue]
     tile,
     use_lock,
 )
 from aie.dialects.aie import (
-    end as aie_end,
+    end as aie_end,  # pyright: ignore[reportAttributeAccessIssue]
 )
 from aie.dialects.aiex import (
     dma_await_task,
@@ -123,7 +123,7 @@ line_ty = np.ndarray[(LINE_SIZE,), np.dtype[np.int32]]
 @func
 def passthrough_line(src: line_ty, dst: line_ty, n: np.int32):
     for i in range_(n):
-        dst[i] = src[i]
+        dst[i] = src[i]  # pyright: ignore[reportCallIssue, reportArgumentType]
 
 
 def _maskwrite_compress(row, bd_base, bds, ctrl_addr):
@@ -196,14 +196,16 @@ def _build_multi_cmp_only():
             with block[6]:
                 aie_end()
 
-    resolved = iron.get_current_device().resolve()
+    current_device = iron.get_current_device()
+    assert current_device is not None
+    resolved = current_device.resolve()
     aie_dev = (
         AIEDevice.npu2_1col
         if resolved in (AIEDevice.npu2, AIEDevice.npu2_1col)
         else AIEDevice.npu1_1col
     )
 
-    with mlir_mod_ctx() as ctx:
+    with mlir_mod_ctx() as ctx:  # pyright: ignore[reportGeneralTypeIssues]
 
         @device(aie_dev)
         def _dev():
