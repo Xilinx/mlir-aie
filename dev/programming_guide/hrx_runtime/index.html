@@ -3653,7 +3653,7 @@ HAL), consuming the same <code>aiecc</code> artifacts (<code>final.xclbin</code>
 default <a href="../iron_configuration/">XRT</a> path. It requires no XRT userspace at
 runtime, and — combined with the bundled XRT-free <code>xclbinutil</code> — lets the whole
 build-and-run flow work on a machine with no XRT install at all.</p>
-<p>HRX plugs into the same <a href="https://github.com/Xilinx/mlir-aie/blob/main/python/utils/hostruntime/tensor_class.py"><code>aie.utils.Tensor</code></a>
+<p>HRX plugs into the same <a href="https://github.com/Xilinx/mlir-aie/blob/main/python/utils/hostruntime/tensor_class.py"><code>aie.utils.NpuTensor</code></a>
 and <a href="https://github.com/Xilinx/mlir-aie/blob/main/python/utils/hostruntime/hostruntime.py"><code>HostRuntime</code></a> abstractions the
 XRT backend uses, so example and design code is unchanged — the backend is chosen
 by an environment/make variable, not by editing sources.</p>
