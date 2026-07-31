@@ -43,7 +43,16 @@ import numpy as np
 import torch  # pyright: ignore[reportMissingImports]
 import torch.nn as nn  # pyright: ignore[reportMissingImports]
 from aie.helpers.taplib import TensorAccessPattern
-from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker
+from aie.iron import (
+    CompileTime,
+    In,
+    ObjectFifo,
+    Out,
+    Program,
+    Runtime,
+    StreamDims,
+    Worker,
+)
 from aie.iron.controlflow import range_
 from aie.iron.device import Tile
 from aie.iron.kernel import ExternalFunction
@@ -70,11 +79,11 @@ def _conv2dk14_extern(act_in_ty, weights_ty, out_ty):
             act_in_ty,
             weights_ty,
             out_ty,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
+            np.dtype(np.int32),
+            np.dtype(np.int32),
+            np.dtype(np.int32),
+            np.dtype(np.int32),
+            np.dtype(np.int32),
         ],
         include_dirs=[config.cxx_header_path()],
         compile_flags=["-DUINT8_ACT"],
@@ -262,30 +271,31 @@ def conv2dk14_multi(
     conv_fn = _conv2dk14_extern(act_in_ty, weights_ty, out_ty)
 
     # Activations: per-row shim -> per-row memtile -> broadcast to 8 cores
-    of_act_l3l2 = [None] * n_rows
-    of_act_l2l1 = [None] * n_rows
+    of_act_l3l2: list[ObjectFifo] = []
+    of_act_l2l1: list[ObjectFifo] = []
+    act_l3l2_dims: StreamDims = [
+        (_KERNEL_SIZE, _KERNEL_SIZE * _IN_CHANNELS),
+        (64, _KERNEL_SIZE * _KERNEL_SIZE * _IN_CHANNELS),
+        (_KERNEL_SIZE * _IN_CHANNELS, 1),
+    ]
+    act_l2l1_dims: StreamDims = [
+        (2, _KERNEL_SIZE * _KERNEL_SIZE * _IN_CHANNELS * 8),
+        (_KERNEL_SIZE * _KERNEL_SIZE // 2, 2 * _IN_CHANNELS),
+        (8, _KERNEL_SIZE * _KERNEL_SIZE * _IN_CHANNELS),
+        (2 * _IN_CHANNELS, 1),
+    ]
     for j in range(n_rows):
-        of_act_l3l2[j] = ObjectFifo(
+        act_l3l2 = ObjectFifo(
             buf_in_ty,
             name=f"of_act_L3L2_{j}",
-            dims_from_stream_per_cons=[
-                (_KERNEL_SIZE, _KERNEL_SIZE * _IN_CHANNELS),
-                (64, _KERNEL_SIZE * _KERNEL_SIZE * _IN_CHANNELS),
-                (_KERNEL_SIZE * _IN_CHANNELS, 1),
-            ],
+            dims_from_stream_per_cons=act_l3l2_dims,
         )
-        of_act_l2l1[j] = (
-            of_act_l3l2[j]
-            .cons()
-            .forward(
+        of_act_l3l2.append(act_l3l2)
+        of_act_l2l1.append(
+            act_l3l2.cons().forward(
                 obj_type=act_in_ty,
                 name=f"of_act_L2L1_{j}",
-                dims_to_stream=[
-                    (2, _KERNEL_SIZE * _KERNEL_SIZE * _IN_CHANNELS * 8),
-                    (_KERNEL_SIZE * _KERNEL_SIZE // 2, 2 * _IN_CHANNELS),
-                    (8, _KERNEL_SIZE * _KERNEL_SIZE * _IN_CHANNELS),
-                    (2 * _IN_CHANNELS, 1),
-                ],
+                dims_to_stream=act_l2l1_dims,
                 tile=Tile(j, 1),
             )
         )
@@ -294,27 +304,25 @@ def conv2dk14_multi(
     of_wts = [ObjectFifo(weights_ty, name=f"of_wts_L3L1_{i}") for i in range(n_cols)]
 
     # Outputs: per-col join across 4 rows in memtile, then to per-col shim
-    of_out_l2l3 = [None] * n_cols
-    of_out_l1l2 = [[None] * n_cols for _ in range(n_rows)]
+    of_out_l2l3: list[ObjectFifo] = []
+    of_out_l1l2: list[list[ObjectFifo]] = [[] for _ in range(n_rows)]
     out_offsets = [act_out * 4 * 16 * j for j in range(n_rows)]
+    out_l2l3_dims: StreamDims = [(64, 256), (16, 8), (2, 128), (8, 1)]
     for i in range(n_cols):
-        of_out_l2l3[i] = ObjectFifo(
+        out_l2l3 = ObjectFifo(
             out_mem_ty,
             name=f"of_out_L2L3_{i}",
-            dims_to_stream=[(64, 256), (16, 8), (2, 128), (8, 1)],
+            dims_to_stream=out_l2l3_dims,
         )
-        col_fifos = (
-            of_out_l2l3[i]
-            .prod()
-            .join(
-                out_offsets,
-                obj_types=[out_ty] * n_rows,
-                names=[f"of_out_L1L2_{j}_{i}" for j in range(n_rows)],
-                tile=Tile(i, 1),
-            )
+        of_out_l2l3.append(out_l2l3)
+        col_fifos = out_l2l3.prod().join(
+            out_offsets,
+            obj_types=[out_ty] * n_rows,
+            names=[f"of_out_L1L2_{j}_{i}" for j in range(n_rows)],
+            tile=Tile(i, 1),
         )
         for j in range(n_rows):
-            of_out_l1l2[j][i] = col_fifos[j]
+            of_out_l1l2[j].append(col_fifos[j])
 
     def core_fn(of_wts_in, of_act, of_out, kernel):
         y_dim = height // (_KERNEL_SIZE * n_rows)
