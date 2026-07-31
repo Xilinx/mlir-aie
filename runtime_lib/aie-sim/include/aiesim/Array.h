@@ -30,6 +30,7 @@
 #include <cstdint>
 #include <functional>
 #include <map>
+#include <set>
 #include <memory>
 #include <string>
 #include <vector>
@@ -61,23 +62,59 @@ private:
 
 /// The per-tile register window.
 ///
-/// Registers are stored sparsely: a register that was never written reads back
-/// as zero, which matches how the tests use them and keeps a full array cheap.
-/// Registers with side effects (lock requests, core control, DMA channel
-/// control, stream-switch config) additionally run a handler, registered by
-/// the component that owns them.
+/// Every offset falls in exactly one of three buckets, and which bucket decides
+/// whether an access is trustworthy:
+///
+///   * CLAIMED, because a component said it owns the range. Reads return the
+///     component's handler value or the stored word.
+///   * RESERVED, an explicit allow-list of ranges known to read as zero. These
+///     must come from the vendor's own field documentation, never from "the
+///     tests seem happy".
+///   * UNCLAIMED, meaning nothing models it.
+///
+/// An unclaimed read of an offset that was NEVER WRITTEN is a fault. That is
+/// the direction which produces silent wrongness: a design polling a status
+/// register nobody modelled would spin on a fabricated zero forever, hanging
+/// with no diagnostic. Reading back a value the host itself wrote is a
+/// pass-through rather than an invention, so it is allowed.
+///
+/// An earlier version returned zero for any unwritten register and justified it
+/// with "matches how the tests use them", which is circular: the tests were
+/// written against this model.
+///
+/// An unclaimed WRITE is recorded rather than fatal by default, because the
+/// model will never claim every register and refusing to run until it does is
+/// useless. It is still a real risk (the design configured something we will
+/// not honour), so every one is reported through Array's coverage set, and
+/// AIE_SIM_STRICT=1 promotes it to a fault.
 class RegisterFile {
 public:
   using WriteHandler = std::function<void(uint32_t off, uint32_t value)>;
   using ReadHandler = std::function<uint32_t(uint32_t off)>;
+  /// Called for an access nothing claims. `isRead` distinguishes the fatal
+  /// direction from the recorded one. Unset on a bare RegisterFile, which is
+  /// then permissive; a Tile always sets it.
+  using UnclaimedHandler = std::function<void(uint32_t off, bool isRead)>;
 
   uint32_t read(uint32_t off) const;
   void write(uint32_t off, uint32_t value);
 
   /// Registers in [begin, end) get `h` called after the stored value updates.
+  /// Implies claim().
   void onWrite(uint32_t begin, uint32_t end, WriteHandler h);
-  /// Registers in [begin, end) are computed rather than stored.
+  /// Registers in [begin, end) are computed rather than stored. Implies claim().
   void onRead(uint32_t begin, uint32_t end, ReadHandler h);
+
+  /// Declare ownership of [begin, end) with no handler: plain storage a
+  /// component reads back itself, such as a buffer-descriptor block.
+  void claim(uint32_t begin, uint32_t end);
+  /// Declare [begin, end) as architecturally reading zero. `why` must cite the
+  /// evidence, and is quoted in diagnostics.
+  void reserve(uint32_t begin, uint32_t end, const char *why);
+
+  bool isClaimed(uint32_t off) const;
+
+  void setUnclaimedHandler(UnclaimedHandler h) { onUnclaimed = std::move(h); }
 
 private:
   struct Range {
@@ -85,9 +122,11 @@ private:
     uint32_t end;
     WriteHandler write;
     ReadHandler read;
+    const char *reservedWhy = nullptr;
   };
   std::map<uint32_t, uint32_t> stored;
   std::vector<Range> ranges;
+  UnclaimedHandler onUnclaimed;
 };
 
 /// One component of the array that is stepped once per simulated cycle.
@@ -194,6 +233,30 @@ public:
   /// Report a fatal modelling problem.
   void error(const std::string &message);
 
+  /// A write to a register nothing models. Recorded, not fatal, unless strict
+  /// mode is on. See the RegisterFile comment for why the two directions are
+  /// treated differently.
+  void recordUnclaimedWrite(uint32_t col, uint32_t row, uint32_t regOff);
+
+  /// Strict mode promotes an unclaimed write to a fault. Set from
+  /// AIE_SIM_STRICT at construction; a test can override it.
+  bool strict() const { return strictMode; }
+  void setStrict(bool s) { strictMode = s; }
+
+  /// Every distinct (col, row, regOff) written but modelled by nothing, in
+  /// first-seen order. This is what makes "unmodelled" a number rather than a
+  /// surprise; see docs/AIESimulator.md.
+  struct UnclaimedWrite {
+    uint32_t col;
+    uint32_t row;
+    uint32_t regOff;
+  };
+  const std::vector<UnclaimedWrite> &unclaimedWrites() const {
+    return unclaimed;
+  }
+  /// Human-readable coverage summary, one line per distinct site.
+  std::string unclaimedReport() const;
+
   /// Registers a component to be stepped once per cycle, in registration
   /// order. Order is fixed so runs are reproducible.
   void addSteppable(Steppable *s) { steppables.push_back(s); }
@@ -213,6 +276,9 @@ private:
   std::map<uint64_t, std::vector<uint8_t>> ddrPages;
   DiagnosticHandler diag;
   uint64_t cycles = 0;
+  bool strictMode = false;
+  std::vector<UnclaimedWrite> unclaimed;
+  std::set<uint64_t> unclaimedSeen;
 };
 
 /// The array the ess_* symbols operate on. A process simulates one array; the
