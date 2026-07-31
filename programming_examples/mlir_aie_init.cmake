@@ -40,6 +40,26 @@ macro(mlir_aie_init_example)
     endif()
   else()
     set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_BINARY_DIR})
+
+    # Default the host compiler to MSVC. Otherwise CMake takes the first
+    # clang++ on PATH, which in the IRON environment is llvm-aie's -- a
+    # bare-metal AIE cross-compiler. It gets far enough to be selected and
+    # then dies including MSVC's <intrin.h>, because its own xmmintrin.h
+    # expects an mm_malloc.h that the bare-metal toolchain does not ship:
+    #
+    #   llvm-aie/lib/clang/21/include/xmmintrin.h:31:10:
+    #     fatal error: 'mm_malloc.h' file not found
+    #
+    # Under WSL this is a no-op: `powershell.exe cmake` already selects MSVC,
+    # and cl.exe is the right answer there too. An explicit -DCMAKE_CXX_COMPILER
+    # still wins, which is how the vision examples pass gcc/g++ under WSL.
+    if(NOT DEFINED CMAKE_C_COMPILER)
+      set(CMAKE_C_COMPILER cl)
+    endif()
+    if(NOT DEFINED CMAKE_CXX_COMPILER)
+      set(CMAKE_CXX_COMPILER cl)
+    endif()
+
     # NOTE: /Zc:__cplusplus is NOT added here. It is MSVC-only, and this macro
     # runs before project(), so the compiler is not yet known -- MSVC is still
     # undefined at this point. common.cmake adds it after project() has done
