@@ -4,11 +4,18 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 from collections import deque
+import contextlib
 import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
+
+try:
+    import fcntl
+except ImportError:  # Windows
+    fcntl = None
 
 # Retry configuration
 TRANSIENT_FAILURE_TEXT = "No such device"
@@ -138,6 +145,47 @@ def run_command(command: list[str]) -> tuple[int, str]:
 
 
 # Main entry point.
+# The NPU cannot sustain concurrent dispatch, so device runs must be serialized.
+# lit does that today by putting the whole test directory in a capacity-1
+# parallelism group, which also serializes each test's COMPILE, and compilation
+# is ~99% of a device test's wall time and needs no device at all.
+#
+# Serialize here instead, around the dispatch only, so lit is free to run the
+# tests in parallel. Properties that matter:
+#   * flock is released by the kernel when the fd closes or the process dies, so
+#     a crashed or timed-out test cannot wedge the queue.
+#   * the lock file lives at a stable path and is never unlinked: flock is per
+#     INODE, so deleting and recreating the file would let two holders through.
+#   * it is machine-wide, which is stronger than a lit parallelism group; that
+#     only serializes within one lit invocation, and gives nothing if a second
+#     job on the same host also touches the device.
+#   * keyed on the NPU kind, so npu1 and npu2 dispatches do not block each other.
+# AIE_NPU_NO_DEVICE_LOCK=1 opts out, for tests that exercise concurrency itself.
+@contextlib.contextmanager
+def device_lock(npu_kind: str):
+    if os.environ.get("AIE_NPU_NO_DEVICE_LOCK"):
+        yield
+        return
+    # No flock here. test/npu-xrt/lit.local.cfg keys on the same import and keeps
+    # the lit-level npu-xrt parallelism group on these platforms, so dispatch stays
+    # serialized -- just at test granularity rather than at dispatch granularity.
+    if fcntl is None:
+        yield
+        return
+    lock_dir = os.environ.get("XDG_RUNTIME_DIR") or tempfile.gettempdir()
+    lock_path = os.path.join(lock_dir, f"mlir-aie-npu-{npu_kind}.lock")
+    fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o666)
+    t0 = time.perf_counter()
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        waited = time.perf_counter() - t0
+        if waited > 1.0:
+            log(f"waited {waited:.1f}s for the {npu_kind} device lock")
+        yield
+    finally:
+        os.close(fd)  # releases the lock
+
+
 def main() -> int:
     if len(sys.argv) < 3:
         print("usage: run_on_npu.py <npu-kind> <command> [args...]", file=sys.stderr)
@@ -154,8 +202,12 @@ def main() -> int:
     )
     launched_command = wrapped_command(xrt_dir, command)
 
+    npu_kind = sys.argv[1]
     for attempt in range(1, MAX_ATTEMPTS + 1):
-        returncode, recent_output = run_command(launched_command)
+        # Held across one attempt only: the retry backoff below must not keep
+        # the device reserved while it sleeps.
+        with device_lock(npu_kind):
+            returncode, recent_output = run_command(launched_command)
         if returncode == 0:
             return 0
         if TRANSIENT_FAILURE_TEXT not in recent_output:

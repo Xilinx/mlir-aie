@@ -3,6 +3,15 @@
 //
 // REQUIRES: ryzen_ai, peano
 //
+// Sibling tests in this directory write the same artifact names, and lit's
+// working directory is the test DIRECTORY rather than the test file, so they
+// would clobber each other if they ever ran concurrently.  Give each test its
+// own directory (%t is per test file), the way the makefile-driven examples
+// already do.  This is what lets the device lock replace the capacity-1
+// parallelism group without the tests racing on their artifacts.
+//
+// RUN: rm -rf %t.d && mkdir -p %t.d
+// RUN: cd %t.d
 // RUN: cp %S/aie.mlir aie_arch.mlir
 // RUN: %run_on_npu1% sed 's/NPUDEVICE/npu1_1col/g' -i aie_arch.mlir
 // RUN: %run_on_npu2% sed 's/NPUDEVICE/npu2_1col/g' -i aie_arch.mlir
