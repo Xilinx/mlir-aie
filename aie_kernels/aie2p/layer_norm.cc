@@ -56,36 +56,13 @@ void layer_norm(const T *restrict input, T *restrict output, int32_t cols) {
   event1();
 }
 
-// f32 per-row LayerNorm, optionally with a real per-column affine and an
-// output cast, sharing one core: the bf16 layer_norm above centers with a
-// single E[x^2] - mean^2 reduction, which is fine because the bf16 input
-// contract keeps the mean/std ratio small (a bf16 value near a large mean has
-// an ulp wider than the std, so that regime is unrepresentable). On f32 input
-// the mean can be large relative to the std and E[x^2] - mean^2 then
-// catastrophically cancels, so this variant reduces over the feature axis
-// (cols) per row with a numerically stable two-pass centered variance: center
-// first, then square.
-//
-// kAffine selects between the two extern "C" entry points below:
-//   false: gamma = 1, beta = 0 (broadcast identity constants), TOut == TIn,
-//          no rounding-mode change: this is `layer_norm_f32`'s original
-//          body, unchanged.
-//   true:  gamma/beta are real per-column values loaded from the caller, and
-//          the result is narrowed to TOut (bfloat16). The narrowing write
-//          needs round-to-nearest-even (`conv_even`), so this path saves the
-//          core's rounding mode before the write and restores it after.
-//          The AIE2p core's rounding mode is a single sticky register,
-//          shared by every kernel that runs on that core, so a kernel that
-//          cares about its own narrowing behavior has to set the mode
-//          itself and hand it back, the same save/restore mm.cc's
-//          AIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16 block uses. conv_even
-//          also matches a typical host f32 -> bf16 pack (e.g. AVX512-BF16's
-//          vcvtne2ps2bf16), so an on-chip and a host cast of the same value
-//          agree bit-for-bit.
-// `if constexpr` on kAffine picks one of two whole loop bodies at compile
-// time (no runtime branch in either): the false instantiation has no
-// gamma/beta loads and no rounding-mode calls at all, so `layer_norm_f32`'s
-// codegen is unaffected by this refactor.
+// f32 per-row LayerNorm, optionally with a per-column affine and a narrowing
+// output cast. The bf16 layer_norm above centers with a single
+// E[x^2] - mean^2 reduction, which the bf16 input contract makes safe: a bf16
+// value near a large mean has an ulp wider than the std, so that regime is
+// unrepresentable. On f32 input the mean can be large relative to the std and
+// E[x^2] - mean^2 catastrophically cancels, so this one takes the two-pass
+// centered variance instead: center first, then square.
 template <typename TIn, typename TOut, int N, bool kAffine>
 static inline void layer_norm_f32_impl(const TIn *restrict input,
                                        TOut *restrict output,
@@ -121,16 +98,9 @@ static inline void layer_norm_f32_impl(const TIn *restrict input,
   // The two instantiations diverge only in where gamma/beta come from and
   // whether the write narrows.
   if constexpr (kAffine) {
-    // Real per-column affine + narrowing write. Only this instantiation
-    // touches the rounding mode, and it hands the caller's mode back before
-    // returning: the AIE2p core's rounding mode is a single sticky register
-    // shared by every kernel that runs on that core, so a kernel that cares
-    // about its own narrowing behavior has to set the mode itself and hand
-    // it back, the same save/restore mm.cc's
-    // AIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16 block uses. conv_even also
-    // matches a typical host f32 -> bf16 pack (e.g. AVX512-BF16's
-    // vcvtne2ps2bf16), so an on-chip and a host cast of the same value agree
-    // bit-for-bit.
+    // conv_even makes the narrowing write agree bit-for-bit with a host
+    // f32 -> bf16 pack. The mode is one sticky register shared by every
+    // kernel on this core, so it is handed back before returning.
     ::aie::rounding_mode saved_rounding =
         ::aie::swap_rounding(::aie::rounding_mode::conv_even);
     for (int i = 0; i < chunks; i++) {
@@ -168,19 +138,15 @@ void layer_norm(bfloat16 *input, bfloat16 *output, int32_t cols) {
   layer_norm<bfloat16, 16>(input, output, cols);
 }
 
-// Unchanged ABI: gamma = 1, beta = 0, f32 in and out. See the kAffine
-// comment above layer_norm_f32_impl.
 void layer_norm_f32(float *input, float *output, int32_t cols) {
   layer_norm_f32_impl<float, float, 16, false>(input, output, nullptr, nullptr,
                                                cols);
 }
 
-// Fused row-wise LayerNorm + real per-column affine + f32 -> bfloat16
-// narrowing cast, one dispatch. `gb` packs gamma then beta into one
-// `[2 * cols]` buffer on a single DMA input channel, alongside the `[cols]`
-// `input`, two inputs total, the AIE2p compute-tile input-DMA limit (see
-// programming_examples/ml/norm/norm.py's `norm_affine` design, which mirrors
-// this exact packing on the IRON side).
+// LayerNorm + per-column affine + f32 -> bfloat16 cast in one dispatch. `gb`
+// packs gamma then beta into one `[2 * cols]` buffer so that the kernel takes
+// two DMA inputs, the AIE2p compute-tile limit; see `norm_affine` in
+// programming_examples/ml/norm/norm.py for the matching packing.
 void layer_norm_affine_cast(float *input, float *gb, bfloat16 *output,
                             int32_t cols) {
   layer_norm_f32_impl<float, bfloat16, 16, true>(input, output, gb, gb + cols,

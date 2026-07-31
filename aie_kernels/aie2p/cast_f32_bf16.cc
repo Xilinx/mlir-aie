@@ -6,27 +6,23 @@
 //===----------------------------------------------------------------------===//
 
 #include <aie_api/aie.hpp>
+#include <cassert>
 #include <stdint.h>
 
-// Element-wise f32 -> bf16 narrowing cast, round-to-nearest-even.
+// Element-wise f32 -> bf16 narrowing cast over one row of `cols` elements.
 //
 // `aie::vector<float, N>` has no `to_vector<bfloat16>`
 // directly, so the narrow goes through an `accfloat` accumulator, which does.
 //
-// One call processes one row of `cols` elements; `cols` must be a multiple of
-// N (16). Rounding is round-to-nearest-even (`conv_even`) rather than the AIE
-// default (truncation toward zero), matching a host f32->bf16 pack that also
-// rounds to nearest even (e.g. `_mm512_cvtne2ps_pbh` on AVX512-BF16) so an
-// on-chip cast and its host equivalent agree bit-for-bit.
-//
-// The rounding mode is a single sticky register shared by every kernel that
-// runs on this core, so this kernel saves the caller's mode and restores it
-// before returning rather than leaving conv_even set for whatever runs next,
-// the same save/restore mm.cc's AIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16
-// block uses.
+// The default AIE rounding is truncation toward zero; `conv_even` instead
+// matches a host f32 -> bf16 pack (e.g. `_mm512_cvtne2ps_pbh` on AVX512-BF16),
+// so an on-chip cast and its host equivalent agree bit-for-bit. The mode is
+// one sticky register shared by every kernel on this core, so it is handed
+// back before returning.
 template <int N>
 void cast_f32_bf16_row(const float *restrict input, bfloat16 *restrict output,
                        int32_t cols) {
+  assert(cols % N == 0);
   event0();
   ::aie::rounding_mode saved_rounding =
       ::aie::swap_rounding(::aie::rounding_mode::conv_even);
