@@ -102,6 +102,10 @@ jobs:
           # pure noise. Retry once when the failure matches a known transient
           # signature:
           #   1. aie2-4col NPU hardware fault (DRM_IOCTL_AMDXDNA_EXEC_CMD I/O error).
+          #   1b. Hardware-context creation failure (DRM_IOCTL_AMDXDNA_CREATE_HWCTX
+          #      err=-2). The driver intermittently cannot hand out a context; the
+          #      same test passes on a re-run. Seen on both NPU generations, so
+          #      unlike the EIO case it is not restricted to aie2-4col.
           #   2. A host/device read race in an on-device test: an "X != X" result
           #      mismatch where the observed and reference values are equal. The
           #      host read an output buffer before the NPU DMA had fully landed;
@@ -133,6 +137,10 @@ jobs:
             if [ "${{ matrix.runner_type }}" = "aie2-4col" ] && \
                grep -qF "DRM_IOCTL_AMDXDNA_EXEC_CMD IOCTL failed (err=-5): Input/output error" "$log"; then
               transient=eio
+            elif grep -qF "DRM_IOCTL_AMDXDNA_CREATE_HWCTX IOCTL failed (err=-2): No such file or directory" "$log"; then
+              # Same shape as the EIO case -- the abort can leave tests un-run --
+              # so it takes the full-suite retry path rather than narrowing.
+              transient=hwctx
             elif grep -Pq 'idx [0-9]+: ([0-9]+) != \1\b' "$log"; then
               transient=readrace
             fi
