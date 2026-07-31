@@ -243,7 +243,13 @@ aie.device(npu1_2col) {
 // reaches row 5, which maps to the second shim channel, so column 1 has to
 // cover both channels and not just the one its own shim row maps to.
 
+// Only the control-packet path covers the gap. Without
+// route-shim-to-tile-ctrl the pass runs on every aiecc invocation for every
+// target, so it must not reach into a column the design never declared: doing
+// so gave such columns routes they previously had none of and left designs
+// that used to route with no legal routing at all.
 // CHECK-LABEL: module {
+// CHECK-NOT: aie.tile(1, {{[0-9]+}})
 // CTRLPKT-LABEL: module {
 // CTRLPKT-DAG: aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan0
 // CTRLPKT-DAG: aie.shim_dma_allocation @ctrlpkt_col1_mm2s_chan0
