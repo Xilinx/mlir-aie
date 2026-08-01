@@ -644,12 +644,23 @@ def AIEVec_MatMulOp:
   ]>,
   Arguments<(ins AIE2MatMulLHS:$lhs,
                  AIE2MatMulRHS:$rhs,
-                 AIE2MatMulACC:$acc)>,
+                 AIE2MatMulACC:$acc,
+                 OptionalAttr<BoolAttr>:$lhsSigned,
+                 OptionalAttr<BoolAttr>:$rhsSigned)>,
   Results<(outs AIE2MatMulACC:$result)> {
   let summary = "AIE2 matrix-multiply and accummulate";
   let description = [{
     AMD AIEv2-specific intrinsic that performs a matrix multiplications
     between `lhs` and `rhs`, and accumulates the result in `acc`.
+
+    MLIR integers are signless, and the pattern that creates this op from a
+    `vector.contract` looks through any `arith.extsi`/`arith.extui` on the
+    operands to recover the narrow input types. That peel would otherwise
+    discard whether each operand is signed, which the AIE2 MAC needs in order
+    to set the `signX`/`signY` bits of its configuration word. The optional
+    `lhsSigned`/`rhsSigned` attributes carry that information forward. When
+    absent, the lowering falls back to inferring signedness from the operand
+    types (preserving behavior for hand-written `aievec.matmul` IR).
 
     Currently, this intrinsic supports the following type combinations:
 
@@ -681,7 +692,9 @@ def AIEVec_MatMulOp_AIE2P:
   ]>,
   Arguments<(ins AIE2PMatMulLHS:$lhs,
                  AIE2PMatMulRHS:$rhs,
-                 AIE2PMatMulACC:$acc)>,
+                 AIE2PMatMulACC:$acc,
+                 OptionalAttr<BoolAttr>:$lhsSigned,
+                 OptionalAttr<BoolAttr>:$rhsSigned)>,
   Results<(outs AIE2PMatMulACC:$result)> {
   let summary = "AIE2P matrix-multiply and accummulate";
   let description = [{

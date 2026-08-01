@@ -178,6 +178,30 @@ static std::optional<Value> getSourceOfWideningOp(Value src) {
   return std::optional<Value>();
 }
 
+// Given a Value, if it is defined by an integer widening op, return whether
+// that widening is signed. Returns std::nullopt when the defining op is not a
+// recognized integer widening op, or when it carries no signedness (e.g. a
+// floating-point extension, or an accumulator round-trip through
+// aievec.ups/srs). Callers use this to record the operand signedness on the
+// created matmul op, since peeling the widening op would otherwise discard it
+// (MLIR integers are signless).
+static std::optional<bool> getSignednessOfWideningOp(Value src) {
+  // Look through shape casts, which may sit between the extension op and the
+  // consumer.
+  while (auto castOp = src.getDefiningOp<vector::ShapeCastOp>())
+    src = castOp.getSource();
+  if (src.getDefiningOp<arith::ExtSIOp>())
+    return true;
+  if (src.getDefiningOp<arith::ExtUIOp>())
+    return false;
+  // An arith.extsi/extui may already have been rewritten into an
+  // aievec.ups + aievec.srs pair by another pattern in this same conversion.
+  // Only aievec.srs records a signedness; aievec.ups and aievec.cast do not.
+  if (auto srsOp = src.getDefiningOp<aievec::SRSOp>())
+    return srsOp.getSign() != 0;
+  return std::nullopt;
+}
+
 // Given a Value, if it is defined by a narrowing op (arith::TruncFOp,
 // arith::TruncIOp), return the source of the narrowing op.
 static std::optional<Value> getSourceOfNarrowingOp(Value src) {
@@ -4667,8 +4691,13 @@ struct LowerVectorContractionOpToAIEVecMatMulPattern
     auto acc = reshapeLeadingUnitDims(rewriter, adaptor.getAcc());
     bool bReshapedAcc = (acc != adaptor.getAcc());
 
-    auto matmulOp = MatMulOpTy::create(rewriter, contractOp.getLoc(),
-                                       acc.getType(), lhs, rhs, acc);
+    // No signedness recorded on this first attempt: the operands still carry
+    // their extension ops, so the LLVM lowering can read the signedness from
+    // them directly.
+    auto matmulOp =
+        MatMulOpTy::create(rewriter, contractOp.getLoc(), acc.getType(), lhs,
+                           rhs, acc, /*lhsSigned=*/nullptr,
+                           /*rhsSigned=*/nullptr);
     Value result;
     {
       // Replace diagnostics handler to silence errors when verifying the
@@ -4682,16 +4711,29 @@ struct LowerVectorContractionOpToAIEVecMatMulPattern
         // precision outside the contraction. For those cases, we check.
         lhs = adaptor.getLhs();
         auto wideLhsValue = getSourceOfWideningOp(lhs).value_or(nullptr);
+        // Record the signedness before the widening op is peeled off; the
+        // narrow integer type left behind is signless and cannot carry it.
+        // Consult the original (pre-conversion) operand as well: by the time
+        // this pattern runs, another pattern in the same conversion may have
+        // already rewritten the arith.extsi into aievec ops.
+        auto lhsSigned = getSignednessOfWideningOp(lhs);
+        if (!lhsSigned)
+          lhsSigned = getSignednessOfWideningOp(contractOp.getLhs());
         if (wideLhsValue)
           lhs = reshapeLeadingUnitDims(rewriter, wideLhsValue);
 
         rhs = adaptor.getRhs();
         auto wideRhsValue = getSourceOfWideningOp(rhs).value_or(nullptr);
+        auto rhsSigned = getSignednessOfWideningOp(rhs);
+        if (!rhsSigned)
+          rhsSigned = getSignednessOfWideningOp(contractOp.getRhs());
         if (wideRhsValue)
           rhs = reshapeLeadingUnitDims(rewriter, wideRhsValue);
 
-        matmulOp = MatMulOpTy::create(rewriter, contractOp.getLoc(),
-                                      acc.getType(), lhs, rhs, acc);
+        matmulOp = MatMulOpTy::create(
+            rewriter, contractOp.getLoc(), acc.getType(), lhs, rhs, acc,
+            lhsSigned ? rewriter.getBoolAttr(*lhsSigned) : nullptr,
+            rhsSigned ? rewriter.getBoolAttr(*rhsSigned) : nullptr);
         if (failed(matmulOp.verifyInvariants()))
           return failure();
       }

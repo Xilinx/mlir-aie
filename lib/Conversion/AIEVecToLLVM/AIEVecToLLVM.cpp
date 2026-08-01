@@ -4289,11 +4289,16 @@ class MatMulOpConversion
       lhs = lookThroughShapeCasts(extUIOp.getIn());
       lhsVecTy = cast<VectorType>(lhs.getType());
       lhsScaTy = cast<IntegerType>(lhsVecTy.getElementType());
+    } else if (auto lhsSignedAttr = op.getLhsSigned()) {
+      // The VectorToAIEVec pass strips extsi/extui before creating
+      // aievec.matmul. When it does, it records the operand signedness on the
+      // op, because the remaining narrow integer type is signless and cannot
+      // carry it. Prefer that recorded value over any type-based guess.
+      signX = *lhsSignedAttr ? 1 : 0;
     } else {
       // Default to unsigned for lhs (activation input is typically uint8).
-      // The VectorToAIEVec pass strips extsi/extui before creating
-      // aievec.matmul, so sign info is not available here. Using unsigned
-      // for A matches the common use case of uint8 activations × int8 weights.
+      // Reached only for hand-written aievec.matmul IR that carries neither an
+      // extension op nor a recorded signedness.
       if (lhsScaTy.isUnsigned())
         signX = 0;
     }
@@ -4311,6 +4316,9 @@ class MatMulOpConversion
       rhs = lookThroughShapeCasts(extUIOp.getIn());
       rhsVecTy = cast<VectorType>(rhs.getType());
       rhsScaTy = cast<IntegerType>(rhsVecTy.getElementType());
+    } else if (auto rhsSignedAttr = op.getRhsSigned()) {
+      // See the lhs case above.
+      signY = *rhsSignedAttr ? 1 : 0;
     } else {
       // NOTE: We're choosing 'signed' by default
       if (!rhsScaTy.isUnsigned())

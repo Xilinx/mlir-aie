@@ -364,3 +364,38 @@ func.func @shuffle_i512(%v : vector<1xi512>) -> vector<1xi512> {
   %1 = aievec.shuffle %0, %v [t512_1x2_hi] : vector<1xi512>
   return %1 : vector<1xi512>
 }
+
+// -----
+
+// CHECK-LABEL: func.func @matmul_i8i8_signedness(
+// CHECK-SAME: %[[A:.*]]: vector<4x8xi8>
+// CHECK-SAME: %[[B:.*]]: vector<8x8xi8>
+// CHECK-SAME: %[[C:.*]]: vector<4x8xi32>
+// CHECK:      %[[RES:.*]] = aievec.matmul %[[A]], %[[B]], %[[C]]
+// CHECK-SAME: {lhsSigned = true, rhsSigned = false}
+// CHECK-SAME: vector<4x8xi8>, vector<8x8xi8> into vector<4x8xi32>
+// CHECK: return %[[RES]] : vector<4x8xi32>
+func.func @matmul_i8i8_signedness(%A : vector<4x8xi8>, %B : vector<8x8xi8>,
+                                  %C : vector<4x8xi32>) -> vector<4x8xi32> {
+  %0 = aievec.matmul %A, %B, %C {lhsSigned = true, rhsSigned = false} :
+                                  vector<4x8xi8>, vector<8x8xi8>
+                                  into vector<4x8xi32>
+  return %0 : vector<4x8xi32>
+}
+
+// -----
+
+// The signedness attributes are optional: an op without them round-trips
+// unchanged.
+
+// CHECK-LABEL: func.func @matmul_i8i8_no_signedness(
+// CHECK:      %[[RES:.*]] = aievec.matmul %{{.*}}, %{{.*}}, %{{.*}} :
+// CHECK-SAME: vector<4x8xi8>, vector<8x8xi8> into vector<4x8xi32>
+// CHECK-NOT:  lhsSigned
+// CHECK-NOT:  rhsSigned
+func.func @matmul_i8i8_no_signedness(%A : vector<4x8xi8>, %B : vector<8x8xi8>,
+                                     %C : vector<4x8xi32>) -> vector<4x8xi32> {
+  %0 = aievec.matmul %A, %B, %C : vector<4x8xi8>, vector<8x8xi8>
+                                  into vector<4x8xi32>
+  return %0 : vector<4x8xi32>
+}

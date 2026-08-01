@@ -111,3 +111,75 @@ func.func @matmul(%A : vector<4x2xi32>, %B : vector<2x4xi16>,
 // CHECK:      %[[R:.*]] = vector.shape_cast %[[BCR]] :
 // CHECK-SAME:                      vector<16xi64> to vector<4x4xi64>
 // CHECK:      return %[[R]] : vector<4x4xi64>
+
+// -----
+
+// The AIE2 MAC takes its operand signedness from bits 9 (signX, lhs) and
+// 8 (signY, rhs) of the configuration word, not from the operand types --
+// MLIR integers are signless and the intrinsic always takes v64uint8. For the
+// i8 4x8x8 shape the remaining config bits are amode=0, bmode=1 (BMODE_8x8),
+// giving a base of 0x008. The four combinations below therefore pin
+// 0x008/0x108/0x208/0x308.
+
+func.func @matmul_i8i8_signed_signed(%A : vector<4x8xi8>, %B : vector<8x8xi8>,
+                                     %C : vector<4x8xi32>) -> vector<4x8xi32> {
+  %0 = aievec.matmul %A, %B, %C {lhsSigned = true, rhsSigned = true} :
+                                  vector<4x8xi8>, vector<8x8xi8>
+                                  into vector<4x8xi32>
+  return %0 : vector<4x8xi32>
+}
+
+// CHECK-LABEL: @matmul_i8i8_signed_signed
+// signX = 1, signY = 1 -> 0x308
+// CHECK:      %[[CONF:.*]] = llvm.mlir.constant(776 : i32) : i32
+// CHECK:      "xllvm.intr.aie2.I512.I512.ACC1024.acc32.mac.conf"(
+// CHECK-SAME:   %{{.*}}, %{{.*}}, %{{.*}}, %[[CONF]])
+
+// -----
+
+func.func @matmul_i8i8_unsigned_unsigned(%A : vector<4x8xi8>, %B : vector<8x8xi8>,
+                                         %C : vector<4x8xi32>) -> vector<4x8xi32> {
+  %0 = aievec.matmul %A, %B, %C {lhsSigned = false, rhsSigned = false} :
+                                  vector<4x8xi8>, vector<8x8xi8>
+                                  into vector<4x8xi32>
+  return %0 : vector<4x8xi32>
+}
+
+// CHECK-LABEL: @matmul_i8i8_unsigned_unsigned
+// signX = 0, signY = 0 -> 0x008
+// CHECK:      %[[CONF:.*]] = llvm.mlir.constant(8 : i32) : i32
+// CHECK:      "xllvm.intr.aie2.I512.I512.ACC1024.acc32.mac.conf"(
+// CHECK-SAME:   %{{.*}}, %{{.*}}, %{{.*}}, %[[CONF]])
+
+// -----
+
+func.func @matmul_i8i8_unsigned_signed(%A : vector<4x8xi8>, %B : vector<8x8xi8>,
+                                       %C : vector<4x8xi32>) -> vector<4x8xi32> {
+  %0 = aievec.matmul %A, %B, %C {lhsSigned = false, rhsSigned = true} :
+                                  vector<4x8xi8>, vector<8x8xi8>
+                                  into vector<4x8xi32>
+  return %0 : vector<4x8xi32>
+}
+
+// CHECK-LABEL: @matmul_i8i8_unsigned_signed
+// signX = 0, signY = 1 -> 0x108 (uint8 activations x int8 weights)
+// CHECK:      %[[CONF:.*]] = llvm.mlir.constant(264 : i32) : i32
+// CHECK:      "xllvm.intr.aie2.I512.I512.ACC1024.acc32.mac.conf"(
+// CHECK-SAME:   %{{.*}}, %{{.*}}, %{{.*}}, %[[CONF]])
+
+// -----
+
+func.func @matmul_i8i8_signed_unsigned(%A : vector<4x8xi8>, %B : vector<8x8xi8>,
+                                       %C : vector<4x8xi32>) -> vector<4x8xi32> {
+  %0 = aievec.matmul %A, %B, %C {lhsSigned = true, rhsSigned = false} :
+                                  vector<4x8xi8>, vector<8x8xi8>
+                                  into vector<4x8xi32>
+  return %0 : vector<4x8xi32>
+}
+
+// CHECK-LABEL: @matmul_i8i8_signed_unsigned
+// signX = 1, signY = 0 -> 0x208
+// CHECK:      %[[CONF:.*]] = llvm.mlir.constant(520 : i32) : i32
+// CHECK:      "xllvm.intr.aie2.I512.I512.ACC1024.acc32.mac.conf"(
+// CHECK-SAME:   %{{.*}}, %{{.*}}, %{{.*}}, %[[CONF]])
+
