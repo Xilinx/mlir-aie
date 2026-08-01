@@ -7,9 +7,12 @@ permissions:
   contents: read
 
 on:
+  # No `push` on main: see buildAndTestRyzenAIWindows.yml. The merge queue tests
+  # the exact commit that merging pushes to main, and main is admin-enforced
+  # with a required merge queue and no force pushes, so the postsubmit run only
+  # ever re-tests an already-tested SHA. The nightly schedule still covers main.
   push:
     branches:
-      - main
       - test-ryzen-ai
   pull_request:
     types: [opened, synchronize, reopened]
