@@ -372,6 +372,29 @@ public:
     return moved;
   }
 
+  // A word sitting in any FIFO still needs to be routed onward, and a slave
+  // port mid-packet (header delivered, tlast not yet seen) is committed to a
+  // specific arbiter/msel even while its FIFO is momentarily empty between
+  // beats. Neither can be left stranded just because this switch itself did
+  // nothing on the cycle busy() is asked about -- enabled-but-idle ports are
+  // deliberately NOT included: a switch that finished routing everything it
+  // was ever going to see must be able to go quiescent, which is what
+  // Array::runUntilQuiescent() is for.
+  bool busy() const override {
+    for (uint32_t b = 0; b < kNumBundles; ++b) {
+      for (const Fifo &f : slaveFifo[b])
+        if (f.canPop())
+          return true;
+      for (const Fifo &f : masterFifo[b])
+        if (f.canPop())
+          return true;
+      for (const SlaveState &ss : slaveSt[b])
+        if (ss.pkt.inPacket)
+          return true;
+    }
+    return false;
+  }
+
   // Publishes whatever stageInterTileWires() staged this cycle. Splitting
   // the actual cross-tile push out of step() into commit() is what makes
   // propagation exactly one hop per cycle in every direction (Array.h's
@@ -384,13 +407,19 @@ public:
   // word crossed an unbounded number of tiles per cycle going one way and
   // exactly one tile per cycle going the other.
   void commit() override {
-    for (PendingWire &p : pendingWires)
+    for (PendingWire &p : pendingWires) {
       p.dst->push(p.word, p.tlast);
+      // The neighbour may have had nothing of its own outstanding and so may
+      // not be in the active set right now; it just became responsible for
+      // relaying this word and nothing else will prompt it to notice.
+      tile.getArray().wake(p.owner);
+    }
     pendingWires.clear();
   }
 
   // Invoked by the RegisterFile handler installStreamSwitch() registers.
   void onRegWrite(uint32_t off, uint32_t value) {
+    tile.getArray().wake(this); // Any config write may open a new route.
     for (uint32_t b = 0; b < kNumBundles; ++b) {
       const BundlePorts &bp = layout.bundle[b];
       if (bp.mstrCount &&
@@ -710,7 +739,7 @@ private:
       uint32_t word;
       bool tlast;
       src.pop(word, tlast);
-      pendingWires.push_back({dst, word, tlast});
+      pendingWires.push_back({dst, word, tlast, nsw});
       moved = true;
     }
     return moved;
@@ -726,10 +755,12 @@ private:
 
   // A word popped from our own master FIFO this cycle, destined for a
   // neighbour's slave FIFO, held until commit(). See stageWireToNeighbor().
+  // `owner` is that neighbour's switch, woken on delivery (see commit()).
   struct PendingWire {
     StreamPort *dst;
     uint32_t word;
     bool tlast;
+    Steppable *owner;
   };
   std::vector<PendingWire> pendingWires;
 };

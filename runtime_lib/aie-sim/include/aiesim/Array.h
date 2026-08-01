@@ -14,10 +14,12 @@
 // configured through a side API, which is what keeps the model honest: it
 // simulates what the configuration code actually programmed.
 //
-// Time. There is one global cycle counter and no threads. `advance(n)` steps
-// every component n times in a fixed order, and the ess_* entry points call it
-// so that a host polling loop (which is how aie-rt implements every wait)
-// makes progress. This is what makes runs reproducible.
+// Time. There is one global cycle counter and no threads. Only components
+// with outstanding work are stepped each cycle (the active set, see
+// Steppable::busy() and Array::wake()); order within that set is always
+// registration order, which is what keeps runs reproducible. The ess_* entry
+// points call advance() so that a host polling loop (which is how aie-rt
+// implements every wait) makes progress.
 //
 //===----------------------------------------------------------------------===//
 
@@ -33,6 +35,7 @@
 #include <set>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace aiesim {
@@ -154,6 +157,12 @@ public:
   /// Publish whatever `step()` staged. Components with no cross-component
   /// outputs need not override this.
   virtual void commit() {}
+
+  /// True while this component has work outstanding, INCLUDING work it
+  /// cannot currently make progress on (a DMA channel stalled on a lock).
+  /// Distinct from step()'s return value, which says whether this cycle did
+  /// observable work: a stalled component is busy but did nothing.
+  virtual bool busy() const { return false; }
 };
 
 /// One tile. Which sub-objects are present depends on the tile type.
@@ -220,12 +229,21 @@ public:
   void writeCmd(uint8_t command, uint8_t col, uint8_t row, uint32_t word0,
                 uint32_t word1, const char *str);
 
-  /// Step every component `cycles` times.
+  /// Step the active set forward `cycles` times. An idle array (empty active
+  /// set) jumps the cycle counter straight to the target instead of looping,
+  /// so a design that configures nothing costs O(1) regardless of `cycles`.
   void advance(uint64_t cycles);
-  /// Step until nothing does observable work, or until `maxCycles` elapse.
-  /// Returns false if the budget ran out, which is how a deadlocked design is
+  /// Step until the active set is empty, or until `maxCycles` elapse. Returns
+  /// false if the budget ran out, which is how a deadlocked design is
   /// reported rather than hanging.
   bool runUntilQuiescent(uint64_t maxCycles);
+
+  /// Marks `s` active: it is stepped and committed starting next cycle.
+  /// Idempotent. A component must call this on itself from its own register
+  /// write handler when that write gives it new work, since nothing else
+  /// will notice it needs to run -- see Steppable::busy() for the other half
+  /// of how a component stays scheduled once it is already active.
+  void wake(Steppable *s);
 
   uint64_t cycle() const { return cycles; }
 
@@ -257,9 +275,13 @@ public:
   /// Human-readable coverage summary, one line per distinct site.
   std::string unclaimedReport() const;
 
-  /// Registers a component to be stepped once per cycle, in registration
-  /// order. Order is fixed so runs are reproducible.
-  void addSteppable(Steppable *s) { steppables.push_back(s); }
+  /// Registers a component. Its index in `steppables` is both its wake()
+  /// identity and its sort key in the active set, so registration order is
+  /// what makes the order components step in reproducible -- see wake().
+  void addSteppable(Steppable *s) {
+    steppableIndex[s] = steppables.size();
+    steppables.push_back(s);
+  }
 
   CoreEngineFactory *coreEngines() { return engines.get(); }
 
@@ -269,10 +291,20 @@ public:
   bool ddrWrite(uint64_t addr, const void *data, uint64_t size);
 
 private:
+  // One cycle over exactly the components active at its start, in
+  // registration order for both phases. See advance()/runUntilQuiescent().
+  void stepOneCycle();
+
   DeviceModel dev;
   std::unique_ptr<CoreEngineFactory> engines;
   std::vector<std::unique_ptr<Tile>> tiles; // row-major, numRows * numCols
   std::vector<Steppable *> steppables;
+  std::unordered_map<Steppable *, size_t> steppableIndex; // -> steppables idx
+  // Registration indices of components due to be stepped, ordered ascending
+  // so iteration order is always registration order -- the determinism
+  // guarantee is this sort key, not whatever order wake() happened to be
+  // called in.
+  std::set<size_t> active;
   std::map<uint64_t, std::vector<uint8_t>> ddrPages;
   DiagnosticHandler diag;
   uint64_t cycles = 0;

@@ -311,7 +311,11 @@ Researched after the first implementation, which is the wrong order and cost two
 Recorded here so the reasons travel with the code.
 
 * **Event-driven activation on ONE logical clock.** Not cycle-driven stepping of everything, which is
-  what the first version did and what made an idle 48-tile array run at 12.8k cycles/s.
+  what the first version did. Measured on a 48-tile npu2, release build: idle advance went from
+  0.12 Mcycle/s to O(1) in the number of tiles, and a busy two-tile DMA route went from 0.12 to
+  1.86 Mcycle/s. The shape matters more than the ratio: busy throughput is now roughly independent of
+  array size (2.20 / 2.10 / 1.86 Mcycle/s at 1, 4 and 8 columns) where before it degraded linearly
+  (1.03 / 0.24 / 0.12).
 * **`step()` then `commit()` stays.** It is SystemC's evaluate/update phase. It was re-derived here
   from a bug rather than read from a 30-year-old standard, but it is right.
 * **Do NOT separate the functional model from the timing model.** That decoupling exists for running
