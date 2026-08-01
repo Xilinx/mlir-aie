@@ -112,7 +112,22 @@ DeviceModel fillAIE2Family(uint32_t numCols, uint32_t numRows,
 
   dev.colShift = 25;         // AIETargetModel.h:738
   dev.rowShift = 20;         // AIETargetModel.h:739
-  dev.baseAddr = 0x40000000; // lib/Targets/AIERT.cpp:187 (XAIE_BASE_ADDR)
+  // The HOST program's base address, which is the only one this simulator
+  // ever sees: the generated mlir_aie_init_libxaie() sets
+  // XAieConfig->BaseAddr = 0x20000000000 (lib/Targets/AIETargetXAIEV2.cpp:383)
+  // and never calls XAie_SetupPartitionConfig, so DevInst->NumCols is still 0
+  // when XAie_CfgInitialize runs and the copy at
+  // third_party/aie-rt/driver/src/global/xaiegbl.c:198-202 does take effect.
+  //
+  // Do NOT use AIERT.cpp's XAIE_BASE_ADDR (0x40000000). That is the
+  // COMPILER-side CDO path, it is a different number, and there it never even
+  // takes effect: AIERT.cpp:280 calls XAie_SetupPartitionConfig first, which
+  // makes NumCols nonzero, so the same copy is skipped and the live base stays
+  // XAIE_PARTITION_BASE_ADDR (0x0, AIERT.cpp:190). An earlier version of this
+  // file used 0x40000000 and would have rejected every access a real host
+  // program makes. Found by the aie-rt integration test, which is the whole
+  // reason that tier exists.
+  dev.baseAddr = 0x20000000000;
 
   dev.coreDataMemSize = 0x00010000; // 64KB, AIETargetModel.h:640
   dev.coreProgMemSize = 16 * 1024;  // aie-rt only, ProgMemSize (see above)

@@ -90,7 +90,10 @@ void checkTileTypes(const DeviceModel &dev) {
 void checkAIE2FamilyConstants(const DeviceModel &dev) {
   AIESIM_CHECK_EQ(dev.colShift, 25u);
   AIESIM_CHECK_EQ(dev.rowShift, 20u);
-  AIESIM_CHECK_EQ(dev.baseAddr, static_cast<uint64_t>(0x40000000));
+  // The HOST program's base address (AIETargetXAIEV2.cpp:383), not the
+  // compiler-side CDO one. See the comment in Device.cpp: 0x40000000 was
+  // wrong for both paths and would have rejected every real host access.
+  AIESIM_CHECK_EQ(dev.baseAddr, static_cast<uint64_t>(0x20000000000));
 
   AIESIM_CHECK_EQ(dev.coreDataMemSize, 0x00010000u);
   AIESIM_CHECK_EQ(dev.coreProgMemSize, 16u * 1024u);
