@@ -3,7 +3,7 @@
 # Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""ML related utilties.
+"""ML related utilities.
 
 * class `CSVLogger`
 * `load_class_label`

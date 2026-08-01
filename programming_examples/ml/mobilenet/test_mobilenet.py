@@ -540,7 +540,7 @@ def main(opts):
     print("golden shape: ", golden.shape)
     print("Output shape: ", ofm_mem_fmt_out.shape)
 
-    # TODO Disabled to not print mistmatches to stdout for now
+    # TODO Disabled to not print mismatches to stdout for now
     # print("Mismatch indices and corresponding values:")
     # for idx, (golden_value, ofm_value) in zip(
     #     zip(*mismatch_indices), zip(mismatch_values_golden, mismatch_values_ofm)

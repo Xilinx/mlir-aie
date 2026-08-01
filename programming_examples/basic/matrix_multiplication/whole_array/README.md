@@ -176,7 +176,7 @@ Let us break down each component of this pattern. We do so back-to-front for eas
     * Wrap: `s` is the length of a row of a `r`&times;`s`-sized block in units of 4 bytes (i32 elements).
     * Stride: A stride of `1` retrieves contiguous elements.
 * Pair 3: `(r, k)`
-    * Together with the previous dimension, this dimenison represents the transfer of a single `r`&times;`s`-sized tile.
+    * Together with the previous dimension, this dimension represents the transfer of a single `r`&times;`s`-sized tile.
     * Wrap: `r` is the number of rows of a `r`&times;`s`-sized tile.
     * Stride: `k` is the stride between first element of each consecutive row along the `m` dimension, i.e. adding this stride to a memory address points to the element in the matrix directly below the original address. 
 * Pair 2: `(k // s, s)`
@@ -295,6 +295,6 @@ This C++ code demonstrates how to implement matrix multiplication for different 
 
 1. Zeroing functions: Functions like `zero_vectorized` and `zero_scalar` initialize the output matrix (`c_out`) with all zero values.
 
-1. `matmul_vectorized_b_col_maj` functions: These functions are identical to the `matmul_vectorized_2x2` implementation except for diffrences in pointer arithmetic for accessing the `B` matrix and issuing a transpose instruction for `B`. This allows us to feed column-major `s`&times;`t`-sized tiles into the compute kernel, which then transposes those into row-major.
+1. `matmul_vectorized_b_col_maj` functions: These functions are identical to the `matmul_vectorized_2x2` implementation except for differences in pointer arithmetic for accessing the `B` matrix and issuing a transpose instruction for `B`. This allows us to feed column-major `s`&times;`t`-sized tiles into the compute kernel, which then transposes those into row-major.
 
 This code showcases efficient performance in matrix multiplication-intensive workloads and can be adapted for other types of inputs and operations as needed.

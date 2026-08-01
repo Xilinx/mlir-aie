@@ -146,7 +146,7 @@ def deactivate_events(
             active_events[k] = 0
 
 
-# Assert a begin siganl for the current event unless the event is still active
+# Assert a begin signal for the current event unless the event is still active
 def activate_event(
     event, tt, loc, timer, pid, active_events, pid_events, trace_events, events_module
 ):

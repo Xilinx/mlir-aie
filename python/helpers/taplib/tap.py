@@ -61,7 +61,7 @@ class TensorAccessPattern:
 
     @property
     def offset(self) -> int:
-        """Returns the offset into the tensor.
+        """Return the offset into the tensor.
 
         Returns:
             int: offset
@@ -83,7 +83,7 @@ class TensorAccessPattern:
         """A copy of the access pattern strides.
 
         Returns:
-            Sequence[int]: Trsnformation strides
+            Sequence[int]: Transformation strides
         """
         # Copy to prevent callers from mutating self
         return deepcopy(self._strides)

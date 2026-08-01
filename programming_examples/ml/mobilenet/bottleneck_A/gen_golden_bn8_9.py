@@ -313,9 +313,9 @@ def main():
     # calib_loader = torch.utils.data.DataLoader(dataset=val_sub, batch_size=32, shuffle=False)
 
     src_data = "/group/xrlabs2/imagenet/calibration"
-    datset = torchvision.datasets.ImageFolder(src_data, transform)
+    dataset = torchvision.datasets.ImageFolder(src_data, transform)
     indices = torch.arange(4)
-    val_sub = data_utils.Subset(datset, indices)
+    val_sub = data_utils.Subset(dataset, indices)
     calib_loader = torch.utils.data.DataLoader(
         dataset=val_sub, batch_size=32, shuffle=False
     )
