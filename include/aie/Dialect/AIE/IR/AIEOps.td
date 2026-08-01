@@ -1117,6 +1117,11 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
     ::llvm::SmallVector<::mlir::OpFoldResult> getMixedSizes();
     ::llvm::SmallVector<::mlir::OpFoldResult> getMixedStrides();
 
+    // Consumers of the mixed lists index past the end of the operand range on
+    // a mismatch (llvm #179401). A BD in a DMA task reaches its parent op's
+    // verifier before its own, so that verifier must call this directly.
+    ::mlir::LogicalResult verifyMixedSizesAndStrides();
+
     // Reconstruct the historical BDDimLayoutAttr list (outermost-first) by
     // folding the mixed sizes/strides to constants. Returns:
     //   - empty vector if there are no dimensions (linear transfer);
