@@ -84,9 +84,16 @@ exactly as on hardware. The two `XAie_CmdWrite` cases (`SETSTACK`, `LOADSYM`,
 `xaie_elfloader.c:44-45`) are debug conveniences.
 
 **So an open simulator is a library that defines those seven symbols over a software model of the
-array.** No aie-rt fork is needed, no new IO backend, no vendored patch to maintain. That matters:
-aie-rt is a third-party submodule shared with XRT and iree-amd-aie, and a fork of it would be a
-permanent tax.
+array.** No aie-rt fork, no new IO backend, and no NEW vendored patch. That matters: aie-rt is a
+third-party submodule shared with XRT and iree-amd-aie, and forking it would be a permanent tax.
+
+One qualification, because it is easy to state this too strongly. Those `ess_*` declarations are not
+pristine upstream aie-rt. Upstream `xaie_sim.c` has `#include "main_rts.h"`, a Vitis-only header;
+mlir-aie's `third_party/patches/aie-rt/0001-cdo-sim-defork-fixes.patch` replaces that include with local
+forward declarations of the `ess_*` functions, and `aiert.cmake` applies it at configure time. So the
+de-Vitis-ing of the SIM backend has already been done, by mlir-aie, for exactly this reason. This
+proposal inherits it rather than adding to it, and the line numbers cited above are post-patch. Anyone
+reading pristine upstream aie-rt will not find those declarations.
 
 ### 2.1 The eighth dependency, which is a file format rather than a symbol
 
