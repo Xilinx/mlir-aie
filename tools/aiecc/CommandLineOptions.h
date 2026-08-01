@@ -207,6 +207,9 @@ inline cl::opt<std::string>
 // Selected with --get-aiesim: generate an AIE simulator Work folder (requires
 // --xbridge).
 inline bool generateAiesim = false;
+// The open simulator (docs/AIESimulator.md): a host executable that links the
+// array model, rather than a sim/ package for the Vitis aiesimulator.
+inline bool generateSim = false;
 inline cl::list<std::string>
     hostIncludeDirs("I", cl::Prefix, cl::desc("Host include directory"));
 inline cl::list<std::string>
@@ -380,6 +383,7 @@ inline llvm::ArrayRef<OutputSelector> outputSelectors() {
       {"locmap", "insts_{0}.bin.locmap.json", &keepLoc},
       {"host", "a.out", &generateHost},
       {"aiesim", "aiesim_{0}.stamp", &generateAiesim},
+      {"sim", "a.out", &generateSim},
   };
   return table;
 }
@@ -487,6 +491,7 @@ inline cl::opt<std::string> repeaterOutputDir(
 
 // Whether to generate the AIE simulator Work folder (off unless --get-aiesim).
 inline bool wantAiesim = false;
+inline bool wantSim = false;
 // Compile all cores of a device together into one shared object (negated by
 // --no-unified).
 inline bool doUnified = false;
@@ -512,8 +517,18 @@ inline bool resolveOptions() {
     return false;
   }
 
+  // --get-sim builds the same host executable as --get-host, plus the array
+  // model to satisfy aie-rt's ess_* symbols. Unlike --get-aiesim it does NOT
+  // force Chess: running Peano-compiled cores is one of the reasons it exists.
+  wantSim = generateSim;
+  if (wantSim && wantAiesim) {
+    llvm::errs() << "aiecc: --get-sim and --get-aiesim are alternatives; "
+                    "pick one\n";
+    return false;
+  }
+
   doUnified = unified && !noUnified;
-  doCompileHost = generateHost;
+  doCompileHost = generateHost || generateSim;
   return true;
 }
 

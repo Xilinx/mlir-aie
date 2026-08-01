@@ -203,6 +203,8 @@ struct HostRuntimeLibs {
   std::string xaiengineInclude;
   std::string xaiengineLib;
   std::string memoryAllocator;
+  std::string simMemoryAllocator;
+  std::string aieSimLib;
 };
 
 inline HostRuntimeLibs getHostRuntimeLibs(llvm::StringRef installDir,
@@ -212,7 +214,10 @@ inline HostRuntimeLibs getHostRuntimeLibs(llvm::StringRef installDir,
   return {
       llvm::formatv("{0}/xaiengine/include", base),
       llvm::formatv("{0}/xaiengine/lib", base),
-      llvm::formatv("{0}/test_lib/lib/{1}", base, "libmemory_allocator_ion.a")};
+      llvm::formatv("{0}/test_lib/lib/{1}", base, "libmemory_allocator_ion.a"),
+      llvm::formatv("{0}/test_lib/lib/{1}", base,
+                    "libmemory_allocator_sim_aie.a"),
+      llvm::formatv("{0}/runtime_lib/aie-sim/lib", installDir)};
 }
 
 } // namespace xilinx::aiecc
