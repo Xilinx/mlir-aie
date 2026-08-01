@@ -79,21 +79,18 @@ def whole_array_shuffle(
         source_file=str(_KERNEL_SRC),
         arg_types=[C_l1_ty],
         compile_flags=kernel_flags + ["-DZERO_ONLY"],
-        use_chess=True,
     )
     matmul_kernel = ExternalFunction(
         "matmul_vectorized_bfp16",
         source_file=str(_KERNEL_SRC),
         arg_types=[A_l1_ty, B_l1_ty, C_l1_ty],
         compile_flags=kernel_flags + ["-DMATMUL_ONLY"],
-        use_chess=True,
     )
     shuffle_kernel = ExternalFunction(
         "scalar_shuffle",
         source_file=str(_KERNEL_SRC),
         arg_types=[A_l1_ty, A_l1_ty, np.int16, np.int16, np.int16],
         compile_flags=kernel_flags + ["-DSHUFFLE_ONLY"],
-        use_chess=True,
     )
 
     A_l3l2_fifos = [None] * n_shim_mem_A

@@ -6,9 +6,7 @@
 """Single-core bfp16ebs8 matrix multiply — ``@iron.jit`` IRON design.
 
 One AIE2P core does a tiled GEMM (M,K,N) with per-core tiles (m,k,n).
-Strix-only because ``v8bfp16ebs8`` is an AIE2P intrinsic type; the core
-kernel is built with xchesscc because Peano's AIE2P backend doesn't yet
-legalize the bfp16ebs8 mac intrinsics.
+Strix-only because ``v8bfp16ebs8`` is an AIE2P intrinsic type.
 """
 
 import argparse
@@ -78,14 +76,12 @@ def single_core_matmul(
         source_file=str(_KERNEL_SRC),
         arg_types=[c_ty],
         compile_flags=kernel_flags + ["-DZERO_ONLY"],
-        use_chess=True,
     )
     matmul_kernel = ExternalFunction(
         "matmul_vectorized_bfp16",
         source_file=str(_KERNEL_SRC),
         arg_types=[a_ty, b_ty, c_ty],
         compile_flags=kernel_flags + ["-DMATMUL_ONLY"],
-        use_chess=True,
     )
 
     inA = ObjectFifo(a_ty, name="inA")
