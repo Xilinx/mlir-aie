@@ -16,17 +16,33 @@ set(AIE_SIM_TESTS
   # declares are all provided, with matching signatures. Compiling it is the
   # signature check, linking it is the completeness check.
   ess_abi_test
+  # Drives the model through the real vendored aie-rt driver instead of
+  # hand-packed registers (see the aie_rt_sim target in the parent
+  # CMakeLists.txt). Optional: skipped below if that target is not available.
+  aie_rt_integration_test
 )
 
 set(AIE_SIM_PRESENT_TESTS)
 foreach(t ${AIE_SIM_TESTS})
+  if(t STREQUAL "aie_rt_integration_test" AND NOT AIE_SIM_HAVE_AIE_RT)
+    message(STATUS "aie-sim: aie-rt not available, skipping ${t}")
+    continue()
+  endif()
   # While the simulator is being built up, a component whose test has not been
   # written yet simply contributes no target. Once all of them exist this loop
   # is unconditional; until then a missing file must not break the build for
   # everyone else.
   if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/${t}.cpp)
     add_executable(${t} ${t}.cpp)
-    target_link_libraries(${t} PRIVATE aie-sim)
+    if(t STREQUAL "aie_rt_integration_test")
+      # aie_rt_sim first: its undefined ess_* symbols (Array.h's ABI) are
+      # resolved from aie-sim, and a plain ld does one left-to-right pass
+      # over static libraries, so the library WITH the undefined refs must
+      # come before the one that satisfies them.
+      target_link_libraries(${t} PRIVATE aie_rt_sim aie-sim)
+    else()
+      target_link_libraries(${t} PRIVATE aie-sim)
+    endif()
     add_test(NAME aie-sim-${t} COMMAND ${t})
     list(APPEND AIE_SIM_PRESENT_TESTS ${t})
   else()
