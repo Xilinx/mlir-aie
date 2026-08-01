@@ -258,31 +258,70 @@ void Array::readGlobal(uint64_t addr, void *data, uint64_t size) {
 // Clock
 //===----------------------------------------------------------------------===//
 
-// Two phases per cycle. Every component reads the same published state during
-// step(), regardless of registration order, and only then does commit() make
-// the new state visible. See the comment on Steppable.
+void Array::wake(Steppable *s) {
+  auto it = steppableIndex.find(s);
+  if (it == steppableIndex.end())
+    return; // Not a registered component: addSteppable() always precedes any
+            // write handler that could call wake(), so this is unreachable
+            // outside a bug in a component itself.
+  active.insert(it->second);
+}
+
+// Two phases per cycle, over the active set only. Every active component
+// reads the same published state during step(), regardless of registration
+// order, and only then does commit() make the new state visible -- see the
+// comment on Steppable. `active` is a std::set<size_t> of registration
+// indices, so both loops below run in registration order regardless of
+// wake() call order: that is the determinism guarantee.
+//
+// The set consumed by both phases is snapshotted into `current` up front. A
+// component can still call wake() on ANOTHER component from inside step()/
+// commit() this same cycle -- a stream switch handing a word to a neighbour
+// tile's switch, or a DMA channel depositing into its tile's switch, both do
+// (StreamSwitch.cpp, Dma.cpp): that neighbour may otherwise have nothing of
+// its own to report busy() about yet. Such a wake() only ever targets a
+// component outside `current` (everything inside it is re-evaluated below
+// regardless), so the fix-up below must REMOVE non-requalifiers from
+// `active` rather than rebuild it from `current` -- a rebuild would discard
+// exactly those mid-cycle wake() calls.
+void Array::stepOneCycle() {
+  std::vector<size_t> current(active.begin(), active.end());
+  std::vector<bool> stepped(current.size());
+  for (size_t i = 0; i < current.size(); ++i)
+    stepped[i] = steppables[current[i]]->step();
+  for (size_t idx : current)
+    steppables[idx]->commit();
+
+  // A component that was active this cycle stays active iff it did work or
+  // still has work outstanding; otherwise it leaves the set until something
+  // wakes it again.
+  for (size_t i = 0; i < current.size(); ++i)
+    if (!stepped[i] && !steppables[current[i]]->busy())
+      active.erase(current[i]);
+  ++cycles;
+}
+
 void Array::advance(uint64_t n) {
-  for (uint64_t i = 0; i < n; ++i) {
-    for (Steppable *s : steppables)
-      s->step();
-    for (Steppable *s : steppables)
-      s->commit();
-    ++cycles;
+  while (n > 0) {
+    if (active.empty()) {
+      // Nothing outstanding and nothing to wake it: every remaining cycle is
+      // identical to this one, so skip straight to the target instead of
+      // looping n times over an empty active set.
+      cycles += n;
+      return;
+    }
+    stepOneCycle();
+    --n;
   }
 }
 
 bool Array::runUntilQuiescent(uint64_t maxCycles) {
   for (uint64_t i = 0; i < maxCycles; ++i) {
-    bool worked = false;
-    for (Steppable *s : steppables)
-      worked |= s->step();
-    for (Steppable *s : steppables)
-      s->commit();
-    ++cycles;
-    if (!worked)
+    stepOneCycle();
+    if (active.empty())
       return true;
   }
-  return false;
+  return active.empty();
 }
 
 //===----------------------------------------------------------------------===//
