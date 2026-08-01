@@ -324,7 +324,13 @@ buildHostExeSubgraph(EdgeWithTypedOutput<std::string> &aieInc,
               if (hostTarget == "aarch64-linux-gnu")
                 cmd.arg("--gcc-toolchain=" + sysroot + "/usr");
             }
-            cmd.arg(rt.memoryAllocator)
+            // The open simulator needs the allocator that routes through
+            // ess_WriteGM/ess_ReadGM rather than the ION one, and the array
+            // model itself to define the ess_* symbols that the host-side
+            // libxaienginecdo (built with __AIESIM__) leaves undefined.
+            cmd.arg(wantSim ? rt.simMemoryAllocator : rt.memoryAllocator);
+            if (wantSim)
+              cmd.arg("-L" + rt.aieSimLib).arg("-laie-sim");
                 .arg("-I" + rt.xaiengineInclude)
                 .arg("-L" + rt.xaiengineLib)
                 .arg("-Wl,-R" + rt.xaiengineLib)
