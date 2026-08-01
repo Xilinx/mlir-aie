@@ -104,7 +104,7 @@ def _absolute(base: Path, path: Path) -> Path:
 
 
 def _parse_depfile(depfile: Path) -> list[Path]:
-    """Read a make-style depfile: 'target: a b \\\n  c d'.
+    r"""Read a make-style depfile: 'target: a b \\\n  c d'.
 
     Make quoting is undone rather than split through: a space arrives as ``\\ ``
     and a dollar as ``$$``, so splitting on bare whitespace would turn one real
@@ -233,7 +233,7 @@ def write_for_test(kernel_dir, inputs) -> None:
 
 
 def is_valid(kernel_dir: Path) -> bool:
-    """True only if every recorded input is still exactly as recorded.
+    """Return True only if every recorded input is still exactly as recorded.
 
     Fails closed: a missing, unparsable or partial manifest is a miss, never a
     hit.  Anything this cannot verify, it does not trust.

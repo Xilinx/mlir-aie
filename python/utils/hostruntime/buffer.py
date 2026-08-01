@@ -46,7 +46,7 @@ class Transport(ABC):
         """Make the device's writes to ``[offset, offset+nbytes)`` visible to the host."""
 
     def handle(self, offset, nbytes):
-        """A handle a runtime can bind for this region, if the backend has one.
+        """Return a handle a runtime can bind for this region, if the backend has one.
 
         Returning None is a legitimate answer, not a stub: a design where the
         host writes at offsets into a whole allocation and the kernel addresses
@@ -145,5 +145,5 @@ class Storage:
         self._transport.from_device(offset, nbytes)
 
     def binding_handle(self, offset, nbytes):
-        """A handle a runtime can bind for this region, or None."""
+        """Return a handle a runtime can bind for this region, or None."""
         return self._transport.handle(offset, nbytes)

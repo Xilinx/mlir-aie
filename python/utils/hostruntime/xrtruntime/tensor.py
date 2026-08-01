@@ -62,8 +62,7 @@ class XrtTransport(Transport):
 
 
 class XRTTensor(NpuTensor):
-    """
-    Tensor object backed by memory accessble from the 'npu' and 'cpu' devices, managed using PyXRT.
+    """Tensor object backed by memory accessble from the 'npu' and 'cpu' devices, managed using PyXRT.
 
     The class provides common tensor operations such as creation,
     filling with values, and accessing data.
@@ -79,8 +78,7 @@ class XRTTensor(NpuTensor):
         group_id=0,
         xrt_device=None,
     ):
-        """
-        Initialize the XRTTensor.
+        """Initialize the XRTTensor.
 
         Args:
             shape_or_data (tuple or array-like):
@@ -141,8 +139,7 @@ class XRTTensor(NpuTensor):
 
     @property
     def data(self):
-        """
-        Get the underlying numpy array.
+        """Get the underlying numpy array.
 
         Writes through this array are not reconciled; use :meth:`mutate` for a
         write that is. Kept as the unmediated handle for callers that manage
@@ -155,8 +152,7 @@ class XRTTensor(NpuTensor):
 
     @property
     def shape(self):
-        """
-        Get the shape of the tensor.
+        """Get the shape of the tensor.
 
         Returns:
             tuple: The shape of the tensor.
@@ -164,22 +160,17 @@ class XRTTensor(NpuTensor):
         return self._shape
 
     def _sync_to_device(self):
-        """
-        Syncs the tensor data from the host to the device memory.
-        """
+        """Sync the tensor data from the host to the device memory."""
         start, end = self._extent
         return self.storage.sync_to_device(start, end - start)
 
     def _sync_from_device(self):
-        """
-        Syncs the tensor data from the device to the host memory.
-        """
+        """Sync the tensor data from the device to the host memory."""
         start, end = self._extent
         return self.storage.sync_from_device(start, end - start)
 
     def __del__(self):
-        """
-        Destructor for NpuTensor.
+        """Destructor for NpuTensor.
 
         Releases associated device memory (e.g., XRT buffer object).
         """
@@ -188,8 +179,7 @@ class XRTTensor(NpuTensor):
             self._bo = None
 
     def buffer_object(self):
-        """
-        Returns the XRT buffer object associated with this tensor.
+        """Return the XRT buffer object associated with this tensor.
 
         Returns:
             buffer_object: The XRT buffer object associated with this tensor.
