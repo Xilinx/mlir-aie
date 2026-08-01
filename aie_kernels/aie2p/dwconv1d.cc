@@ -22,9 +22,9 @@
 // aligned 16-wide loads never read past the end of the buffer; its values
 // never reach the output. dwconv1d.py's `_pad_input` builds one.
 //
-// K is compile-time (DWCONV_K, default 9). The 16 + K - 1 wide shuffle window
-// must fit the 32-lane two-register concat, so K <= 17, and in_pad must be
-// aligned with T a multiple of 16.
+// K is compile-time (DWCONV_K, default 9). The window `sliding_mul_ops` reads
+// is 16 + K - 1 wide and must fit one 32-lane vector, so K <= 17. in_pad must
+// be 256-bit aligned and T a multiple of 16.
 //
 //===----------------------------------------------------------------------===//
 
@@ -35,9 +35,8 @@ template <int K, bool BIAS>
 static inline void dwconv1d_same_bf16_impl(const bfloat16 *restrict in_pad,
                                            const bfloat16 *restrict w,
                                            bfloat16 *restrict out, int32_t T) {
-  static_assert(
-      K >= 1 && K <= 17,
-      "K taps must fit one 32-lane shuffle window (16 + K - 1 <= 32)");
+  static_assert(K >= 1 && K <= 17,
+                "K taps must fit one 32-lane window (16 + K - 1 <= 32)");
   event0();
   // The rounding mode is one sticky register shared by every kernel on this
   // core, so conv_even must be handed back before returning.
@@ -47,24 +46,26 @@ static inline void dwconv1d_same_bf16_impl(const bfloat16 *restrict in_pad,
   const float bias = BIAS ? static_cast<float>(w[K]) : 0.0f;
   const ::aie::vector<float, 16> bias_v = ::aie::broadcast<float, 16>(bias);
 
-  // One broadcast per tap, hoisted out of the T-loop.
-  ::aie::vector<bfloat16, 16> coeff[K];
+  // sliding_mul indexes the coefficient vector modulo its length, so it has to
+  // be wide enough to hold all K taps distinctly.
+  constexpr unsigned kCoeffLanes = K <= 16 ? 16 : 32;
+  ::aie::vector<bfloat16, kCoeffLanes> taps =
+      ::aie::zeros<bfloat16, kCoeffLanes>();
   for (int p = 0; p < K; p++)
-    coeff[p] = ::aie::broadcast<bfloat16, 16>(w[p]);
+    taps.set(w[p], p);
+
+  using conv = ::aie::sliding_mul_ops<16, K, 1, 1, 1, bfloat16, bfloat16>;
 
   for (int32_t o = 0; o < T; o += 16) {
-    const ::aie::vector<bfloat16, 16> a0 = ::aie::load_v<16>(in_pad + o);
-    const ::aie::vector<bfloat16, 16> a1 = ::aie::load_v<16>(in_pad + o + 16);
+    // Two 256-bit loads rather than one 512-bit load: in_pad is only 256-bit
+    // aligned, and a 512-bit access on XDNA 2 requires 512-bit alignment.
+    const ::aie::vector<bfloat16, 32> window = ::aie::concat(
+        ::aie::load_v<16>(in_pad + o), ::aie::load_v<16>(in_pad + o + 16));
     ::aie::accum<accfloat, 16> acc;
     acc.from_vector(bias_v);
-    for (int p = 0; p < K; p++) {
-      // in_pad[o+p .. o+p+15]. p <= K-1 <= 16 selects only lanes [0, p) of
-      // a1, so the don't-care tail never reaches the accumulator.
-      const ::aie::vector<bfloat16, 16> window =
-          ::aie::shuffle_down_fill(a0, a1, static_cast<unsigned>(p));
-      acc = ::aie::mac(acc, window, coeff[p]);
-    }
-    ::aie::store_v(out + o, acc.template to_vector<bfloat16>());
+    ::aie::store_v(
+        out + o,
+        conv::mac(acc, taps, 0, window, 0).template to_vector<bfloat16>());
   }
   ::aie::set_rounding(saved_rounding);
   event1();
