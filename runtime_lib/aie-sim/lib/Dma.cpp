@@ -144,6 +144,12 @@ struct DmaTileLayout {
                                 // MM2S's; channels within a direction are
                                 // always 4 bytes apart
                                 // (XAIEML_DMA_STATUS_CHNUM_OFFSET).
+  // S2MM_CURRENT_WRITE_COUNT_0, one word per channel (numChannels of them,
+  // 4 bytes apart). A separate block from ctrl/status, not always adjacent
+  // to it (core's happens to fall inside its own status claim; shim's and
+  // memtile's do not), so it needs its own claim rather than relying on the
+  // status range to cover it.
+  uint32_t writeCountBase = 0;
   uint32_t startQSizeMax = 4; // Aie2P*DmaChProp.StartQSizeMax, all three.
 
   Field qStartBd, qRepeatCountM1, qEnToken; // Within the start-queue word.
@@ -202,6 +208,8 @@ DmaTileLayout makeCoreLayout() {
   l.numChannels = 2;
   l.statusBase = 0x1DF00;
   l.statusDirStride = 0x10;
+  // XAIEMLGBL_MEMORY_MODULE_DMA_S2MM_CURRENT_WRITE_COUNT_0.
+  l.writeCountBase = 0x1DF18;
 
   l.qStartBd = {0, 0, 0x0000000Fu};
   l.qRepeatCountM1 = {0, 16, 0x00FF0000u};
@@ -271,6 +279,8 @@ DmaTileLayout makeMemTileLayout() {
   l.numChannels = 6;
   l.statusBase = 0xA0660;
   l.statusDirStride = 0x20;
+  // XAIEMLGBL_MEM_TILE_MODULE_DMA_S2MM_CURRENT_WRITE_COUNT_0.
+  l.writeCountBase = 0xA06B0;
 
   l.qStartBd = {0, 0, 0x0000000Fu};
   l.qRepeatCountM1 = {0, 16, 0x00FF0000u};
@@ -345,6 +355,8 @@ DmaTileLayout makeShimLayout() {
   l.ctrlStride = 0x8;
   l.numChannels = 2;
   l.statusBase = 0x1D220;
+  // XAIEMLGBL_NOC_MODULE_DMA_S2MM_CURRENT_WRITE_COUNT_0.
+  l.writeCountBase = 0x1D230;
   l.statusDirStride = 0x8;
 
   l.qStartBd = {0, 0, 0x0000000Fu};
@@ -467,7 +479,8 @@ private:
                 uint32_t repeatCount, bool enToken);
   DecodedBd fetchBd(uint32_t bdId) const;
   uint64_t computeAddress(const DecodedBd &bd, uint32_t beat) const;
-  LockModule *effectiveLocks() const;
+  LockModule *effectiveLocks(uint32_t &id) const;
+  Memory *effectiveMemory(uint64_t &addr) const;
   StreamPort *effectivePort(DmaDirection dir, uint32_t ch, ChannelState &c);
   bool stepChannel(ChannelState &c, DmaDirection dir, uint32_t ch);
   bool moveOneWord(ChannelState &c, DmaDirection dir, uint32_t ch);
@@ -493,7 +506,63 @@ void DmaModuleImpl::setTestPort(DmaDirection dir, uint32_t ch,
   channel(dir, ch).testPort = port;
 }
 
-LockModule *DmaModuleImpl::effectiveLocks() const { return tile.locks(); }
+// A MemTile's DMA-BD lock fields index a 3*count() space, not just this
+// tile's own locks: west neighbor [0,n), this tile [n,2n), east neighbor
+// [2n,3n). Matches AIETargetModel::getLockLocalBaseIndex (west=0,
+// internal=getNumLocks(), east=2*getNumLocks()); confirmed by running
+// 09_memtile_locks, whose own-tile lock 0 reference faulted as "lock id 64"
+// before this existed. isWest/isEast there are defined as "src is west/east
+// of dst" with srcCol == dstCol +/- 1, i.e. west is the lower-numbered
+// column. Core/Shim DMAs address only their own tile's locks; cross-tile
+// aie.core lock references are instead pre-resolved to absolute tile
+// addresses at compile time by AIELocalizeLocksPass, so they never reach
+// here as a wide id.
+LockModule *DmaModuleImpl::effectiveLocks(uint32_t &id) const {
+  LockModule *own = tile.locks();
+  if (kind != TileType::MemTile || !own)
+    return own;
+  uint32_t n = own->count();
+  if (n == 0)
+    return own;
+  if (id < n) {
+    Tile *west = tile.getArray().tile(tile.getCol() - 1, tile.getRow());
+    return west ? west->locks() : nullptr;
+  }
+  id -= n;
+  if (id < n)
+    return own;
+  id -= n;
+  Tile *east = tile.getArray().tile(tile.getCol() + 1, tile.getRow());
+  return east ? east->locks() : nullptr;
+}
+
+// A MemTile's DMA-BD data addresses index a 3*size() space, the same
+// west/own/east layout as effectiveLocks(): west neighbor [0,n), this tile
+// [n,2n), east neighbor [2n,3n). Matches AIETargetModel::
+// getMemLocalBaseAddress (west=0, internal=getMemTileSize(),
+// east=2*getMemTileSize()); confirmed by running 09_memtile_locks, whose
+// own-tile buffer access (byte address 0x80000) and neighbor accesses
+// (0x000000 west, 0x100020 east) all faulted as out-of-range before this
+// existed. Core DMAs address only their own tile's memory; Shim has none
+// (routes through Array::ddrRead/ddrWrite instead) and never reaches here.
+Memory *DmaModuleImpl::effectiveMemory(uint64_t &addr) const {
+  Memory *own = tile.memory();
+  if (kind != TileType::MemTile || !own)
+    return own;
+  uint64_t n = own->size();
+  if (n == 0)
+    return own;
+  if (addr < n) {
+    Tile *west = tile.getArray().tile(tile.getCol() - 1, tile.getRow());
+    return west ? west->memory() : nullptr;
+  }
+  addr -= n;
+  if (addr < n)
+    return own;
+  addr -= n;
+  Tile *east = tile.getArray().tile(tile.getCol() + 1, tile.getRow());
+  return east ? east->memory() : nullptr;
+}
 
 // A push/pop through effectivePort() (outside a test double) mutates a FIFO
 // owned by this tile's own stream switch, which may have had nothing of its
@@ -726,14 +795,15 @@ bool DmaModuleImpl::stepChannel(ChannelState &c, DmaDirection dir,
   }
 
   if (!c.lockAcquired) {
-    LockModule *locks = effectiveLocks();
+    uint32_t lockId = c.bd.lockAcqId;
+    LockModule *locks = effectiveLocks(lockId);
     if (!locks) {
       tile.getArray().error(
           "DMA BD requires a lock acquire (LockAcqEn=1) but this tile has "
           "no LockModule installed");
       return false;
     }
-    if (!locks->tryAcquire(c.bd.lockAcqId, c.bd.lockAcqVal)) {
+    if (!locks->tryAcquire(lockId, c.bd.lockAcqVal)) {
       // Stall: do nothing this cycle, retry next cycle. Never spin.
       c.stalledLockAcq = true;
       return false;
@@ -781,13 +851,14 @@ bool DmaModuleImpl::stepChannel(ChannelState &c, DmaDirection dir,
   // model refuses. A BD that configures no locks leaves these fields zero,
   // and releasing zero is a no-op, so unconditional release is safe.
   if (c.bd.lockRelVal != 0) {
-    LockModule *locks = effectiveLocks();
+    uint32_t lockId = c.bd.lockRelId;
+    LockModule *locks = effectiveLocks(lockId);
     if (!locks) {
       tile.getArray().error("DMA BD configures a lock release but this tile "
                             "has no lock module installed");
       return false;
     }
-    locks->release(c.bd.lockRelId, c.bd.lockRelVal);
+    locks->release(lockId, c.bd.lockRelVal);
   }
 
   c.bdLoaded = false;
@@ -838,11 +909,10 @@ bool DmaModuleImpl::moveOneWord(ChannelState &c, DmaDirection dir,
     }
     c.stalledStream = false;
     uint32_t word = 0;
+    Memory *mem = effectiveMemory(addr);
     bool ok = (kind == TileType::Shim)
                   ? tile.getArray().ddrRead(addr, &word, 4)
-                  : (tile.memory() && tile.memory()->read(
-                                          static_cast<uint32_t>(addr),
-                                          &word, 4));
+                  : (mem && mem->read(static_cast<uint32_t>(addr), &word, 4));
     if (!ok) {
       tile.getArray().error(
           "DMA MM2S BD generated an out-of-range source address");
@@ -862,11 +932,10 @@ bool DmaModuleImpl::moveOneWord(ChannelState &c, DmaDirection dir,
   bool tlast = false;
   port->pop(word, tlast);
   wakeStreamSwitch();
+  Memory *mem = effectiveMemory(addr);
   bool ok = (kind == TileType::Shim)
                 ? tile.getArray().ddrWrite(addr, &word, 4)
-                : (tile.memory() &&
-                   tile.memory()->write(static_cast<uint32_t>(addr), &word,
-                                        4));
+                : (mem && mem->write(static_cast<uint32_t>(addr), &word, 4));
   if (!ok) {
     tile.getArray().error(
         "DMA S2MM BD generated an out-of-range destination address");
@@ -950,6 +1019,19 @@ void aiesim::installDma(Tile &tile) {
   uint32_t statusEnd = layout->statusBase + layout->statusDirStride * 2;
   tile.regs().onRead(layout->statusBase, statusEnd,
                      [raw](uint32_t off) { return raw->onStatusRead(off); });
+
+  // write_count sits outside the status block for shim/memtile (a separate,
+  // non-adjacent range); core's happens to fall inside its own status block,
+  // where onStatusRead's channel-range guard already returns 0 for it (ch
+  // computed from the offset is >= numChannels there), so adding a second
+  // claim on top would only ever be shadowed -- skip it.
+  if (layout->writeCountBase >= statusEnd) {
+    uint32_t writeCountEnd = layout->writeCountBase + 4 * layout->numChannels;
+    tile.regs().reserve(layout->writeCountBase, writeCountEnd,
+                        "S2MM_CURRENT_WRITE_COUNT is not modelled as a live "
+                        "counter; every _CURRENT_WRITE_COUNT_n_DEFVAL in "
+                        "xaiemlgbl_params.h is 0");
+  }
 
   tile.setDma(std::move(dma));
   tile.getArray().addSteppable(raw);
