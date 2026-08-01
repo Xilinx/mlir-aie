@@ -25,6 +25,13 @@
 // and the XAie_StrmMod layout in
 // third_party/aie-rt/driver/src/global/xaiegbl_regdef.h:198-231.
 //
+// A header matches a slave slot when (id & mask) == slot id, so a SET
+// mask bit is one that must match, not a don't-care. mlir-aie applies
+// that exact predicate to the same two fields when it checks a rule for
+// false matches (lib/Dialect/AIE/Transforms/AIECreatePathFindFlows.cpp:1155),
+// and aie-rt writes the mask into SlotMask verbatim (xaie_ss.c:646), so
+// the register field carries the same polarity the IR does.
+//
 // Bundle naming and counts are cross-checked against mlir-aie's own model:
 // include/aie/Dialect/AIE/IR/AIETargetModel.h
 // (getNumDestSwitchboxConnections / getNumSourceSwitchboxConnections,
@@ -55,10 +62,6 @@
 //     model. We fix our own encoding (bits [4:0] = packet id, matching the
 //     5-bit width XAIE_PACKET_ID_MAX in xaiegbl.h:49) and say so at the
 //     point it is used, below.
-//   * The polarity of a slot's MASK field (xaie_ss.c only writes it,
-//     xaie_ss.c:644-654, never interprets it). We treat mask bits as
-//     don't-care, the only reading that makes a mask meaningful next to an
-//     exact id field; documented at the comparison, below.
 //   * True hardware arbitration: two slave ports whose slot rules resolve
 //     to the same (arbiter, msel) pair contending in the same cycle for
 //     the same master. aie-rt's registers only select an arbiter/msel per
@@ -609,10 +612,10 @@ private:
             const SlotState &sl = slotSt[b][i * kNumSlaveSlots + s];
             if (!sl.enabled)
               continue;
-            // Mask bits are treated as don't-care (see file header): a
-            // header matches when the "care" bits of id and slot id agree.
-            uint8_t care = static_cast<uint8_t>(~sl.mask & 0x1F);
-            if ((id & care) == (sl.id & care)) {
+            // Set mask bits must match (see GROUNDING). A slot id with a
+            // bit outside its own mask therefore matches nothing and trips
+            // the no-match error below, rather than silently dropping it.
+            if ((id & sl.mask) == sl.id) {
               ss.pkt.arbitor = sl.arbitor;
               ss.pkt.msel = sl.msel;
               matched = true;
