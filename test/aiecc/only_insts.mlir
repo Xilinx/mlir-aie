@@ -9,7 +9,7 @@
 // Check that --get-npu-insts generates _only_ the NPU instructions and
 // skips other expensive compilation steps (core compilation is not pulled in).
 
-// RUN: %aiecc -v --get-npu-insts --npu-insts-name=my_insts.bin %s 2>&1 | FileCheck %s
+// RUN: %aiecc --no-xchesscc --no-xbridge -v --get-npu-insts --npu-insts-name=my_insts.bin %s 2>&1 | FileCheck %s
 // RUN: ls | FileCheck %s --check-prefix=LS
 // CHECK-NOT: xchesscc_wrapper
 // LS: my_insts.bin

@@ -4,7 +4,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: %aiecc -n --get-xclbin %s
+// RUN: %aiecc --no-xchesscc --no-xbridge -n --get-xclbin %s
 // RUN: FileCheck %s --input-file=buffers_xclbin_few.mlir.prj/kernels_main.json
 
 // The host BO count is the runtime_sequence argument count, floored at 5 to
