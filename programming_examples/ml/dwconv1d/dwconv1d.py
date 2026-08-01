@@ -27,18 +27,17 @@ construction and this file's own test input.
 import argparse
 from pathlib import Path
 
-import numpy as np
-from ml_dtypes import bfloat16
-
 import aie.iron as iron
-from aie.iron import CompileTime, In, Out, ObjectFifo, Program, Runtime, Worker
+import numpy as np
+from aie.helpers.taplib import TensorTiler2D
+from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker
 from aie.iron.controlflow import range_
 from aie.iron.kernel import ExternalFunction
-from aie.helpers.taplib import TensorTiler2D
 from aie.utils import config
-from aie.utils.hostruntime.argparse import device_from_args, add_compile_args
+from aie.utils.hostruntime.argparse import add_compile_args, device_from_args
 from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
+from ml_dtypes import bfloat16
 
 _KERNEL_SRC = Path(__file__).resolve().parents[3] / "aie_kernels/aie2p/dwconv1d.cc"
 _TAIL_SLACK = 16  # matches the kernel's fixed aligned-load window, see dwconv1d.cc
@@ -70,7 +69,9 @@ def dwconv1d(
     n_cores: CompileTime[int] = 8,
 ):
     if channels % n_cores != 0:
-        raise ValueError(f"channels ({channels}) must be a multiple of n_cores ({n_cores})")
+        raise ValueError(
+            f"channels ({channels}) must be a multiple of n_cores ({n_cores})"
+        )
     if seq_len % 16 != 0:
         # The kernel processes full 16-lane output chunks with no scalar
         # tail (see dwconv1d.cc), so a non-multiple would silently drop the
@@ -122,7 +123,9 @@ def dwconv1d(
             of_y.release(1)
 
     workers = [
-        Worker(core_fn, [of_ins[i].cons(), of_ws[i].cons(), of_outs[i].prod(), dwconv_fn])
+        Worker(
+            core_fn, [of_ins[i].cons(), of_ws[i].cons(), of_outs[i].prod(), dwconv_fn]
+        )
         for i in range(n_cores)
     ]
 
@@ -132,7 +135,9 @@ def dwconv1d(
     # acquire-a-row-at-a-time split the row_ty ObjectFifos above assume).
     x_taps = TensorTiler2D.simple_tiler((channels, in_row), (channels_per_core, in_row))
     w_taps = TensorTiler2D.simple_tiler((channels, w_row), (channels_per_core, w_row))
-    y_taps = TensorTiler2D.simple_tiler((channels, seq_len), (channels_per_core, seq_len))
+    y_taps = TensorTiler2D.simple_tiler(
+        (channels, seq_len), (channels_per_core, seq_len)
+    )
 
     def sequence(X, W, Y, in_prods, w_prods, out_conses):
         for i in range(n_cores):
@@ -209,7 +214,12 @@ def _compile_kwargs(opts):
 
 def _run_and_verify(opts):
     rng = np.random.default_rng(0)
-    channels, seq_len, K, bias = opts.channels, opts.seq_len, opts.kernel_size, not opts.no_bias
+    channels, seq_len, K, bias = (
+        opts.channels,
+        opts.seq_len,
+        opts.kernel_size,
+        not opts.no_bias,
+    )
     w_row = K + 1  # always K+1, see the w_row comment in dwconv1d() above
 
     x_np = rng.uniform(-2.0, 2.0, size=(channels, seq_len)).astype(bfloat16)
@@ -221,7 +231,9 @@ def _run_and_verify(opts):
 
     x_t = iron.tensor(x_padded, dtype=bfloat16, device="npu")
     w_t = iron.tensor(w_np, dtype=bfloat16, device="npu")
-    y_t = iron.tensor(np.zeros((channels, seq_len), dtype=bfloat16), dtype=bfloat16, device="npu")
+    y_t = iron.tensor(
+        np.zeros((channels, seq_len), dtype=bfloat16), dtype=bfloat16, device="npu"
+    )
 
     dwconv1d(x_t, w_t, y_t, **_compile_kwargs(opts))
 
