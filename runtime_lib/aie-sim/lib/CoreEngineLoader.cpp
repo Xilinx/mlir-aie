@@ -212,8 +212,78 @@ aiesim::loadCoreEngineFactory(const std::string &path, std::string &error) {
 #endif
 }
 
-// Core installation is the last phase of the simulator (docs/AIESimulator.md
-// section 7). Until it lands, a design with no core code still simulates and a
-// design that enables a core gets a diagnostic from the core-control register
-// handler rather than silently doing nothing.
-void aiesim::installCore(Tile &) {}
+//===----------------------------------------------------------------------===//
+// Core module registers
+//===----------------------------------------------------------------------===//
+//
+// The core-module register block, minus the core itself. A tile always has
+// these whether or not a design puts code on it, so a design with no aie.core
+// still reads them -- test_library.cpp's mlir_aie_print_tile_status does,
+// before anything starts.
+//
+// Offsets and reset values are quoted from aie-rt's generated register
+// database, not inferred: xaiemlgbl_params.h for AIE2 and xaie2pgbl_params.h
+// for AIE2P. The two generations agree on CORE_CONTROL, CORE_STATUS,
+// TIMER_LOW and TRACE_STATUS and disagree on every architectural register, so
+// the layout is per-generation.
+
+namespace {
+
+struct CoreLayout {
+  uint32_t control, status, timerLow, traceStatus;
+  uint32_t pc, lr, sp, r0, r4;
+};
+
+CoreLayout layoutFor(Generation gen) {
+  switch (gen) {
+  case Generation::AIE2:
+    return {0x32000, 0x32004, 0x340F8, 0x340D8,
+            0x31100, 0x31130, 0x31120, 0x30C00, 0x30C40};
+  case Generation::AIE2P:
+    return {0x32000, 0x32004, 0x340F8, 0x340D8,
+            0x30E00, 0x30E30, 0x30E20, 0x31000, 0x31040};
+  }
+  return {};
+}
+
+/// CORE_CONTROL comes out of reset with RESET asserted and ENABLE clear:
+/// *_CORE_CONTROL_RESET_DEFVAL is 0x1 at RESET_LSB 1, *_ENABLE_DEFVAL is 0x0
+/// at ENABLE_LSB 0. Initialising this register to plain zero would report a
+/// core that had already left reset.
+constexpr uint32_t kCoreControlReset = 0x2;
+
+} // namespace
+
+void aiesim::installCore(Tile &tile) {
+  if (tile.getType() != TileType::Core)
+    return;
+
+  const CoreLayout layout = layoutFor(tile.getArray().device().generation);
+  RegisterFile &regs = tile.regs();
+
+  regs.claim(layout.control, layout.control + 4);
+  regs.write(layout.control, kCoreControlReset);
+
+  // Every CORE_STATUS field is *_DEFVAL 0, and with no core engine installed
+  // none of them can leave its reset state.
+  regs.onRead(layout.status, layout.status + 4,
+              [](uint32_t) -> uint32_t { return 0; });
+
+  // A free-running counter, so it is computed rather than reserved: reporting
+  // a constant zero would make a host timing loop spin forever.
+  Array &array = tile.getArray();
+  regs.onRead(layout.timerLow, layout.timerLow + 4,
+              [&array](uint32_t) -> uint32_t {
+                return static_cast<uint32_t>(array.cycle());
+              });
+
+  // Architectural registers, read through the debug interface. These are the
+  // seam the instruction simulator plugs into; until it does, a tile with no
+  // core engine holds them at their *_REGISTER_VALUE_DEFVAL of 0.
+  for (uint32_t off : {layout.pc, layout.lr, layout.sp, layout.r0, layout.r4})
+    regs.onRead(off, off + 4, [](uint32_t) -> uint32_t { return 0; });
+
+  regs.reserve(layout.traceStatus, layout.traceStatus + 4,
+               "trace unit is not modelled; *_TRACE_STATUS_STATE_DEFVAL and "
+               "_MODE_DEFVAL are both 0, so an untraced tile reads zero");
+}
