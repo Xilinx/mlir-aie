@@ -49,6 +49,12 @@ target_include_directories(aie-sim PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
 target_include_directories(aie-sim PRIVATE ${AIE_RT_GLOBAL_DIR})
 set_target_properties(aie-sim PROPERTIES POSITION_INDEPENDENT_CODE ON)
+# Put the archive where aiecc's --get-sim looks for it, so a BUILD tree has the
+# same layout as an install tree and aiecc works without an install step.
+if(NOT AIE_SIM_STANDALONE)
+  set_target_properties(aie-sim PROPERTIES ARCHIVE_OUTPUT_DIRECTORY
+                        ${CMAKE_BINARY_DIR}/runtime_lib/aie-sim/lib)
+endif()
 
 if(NOT WIN32)
   target_link_libraries(aie-sim PUBLIC ${CMAKE_DL_LIBS})

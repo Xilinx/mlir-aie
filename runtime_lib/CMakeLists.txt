@@ -106,6 +106,12 @@ foreach(target ${AIE_RUNTIME_TARGETS})
   set(enableTestLibProject OFF)
   if (DEFINED VITIS_ROOT OR DEFINED LibXAIE_${target}_DIR)
     set(enableTestLibProject ON)
+  elseif (NOT WIN32 AND TARGET xaiengine_${target})
+    # test_lib needs xaiengine, not Vitis. Gating it on VITIS_ROOT meant a
+    # Vitis-free build got no test_lib at all, and so no
+    # libmemory_allocator_sim_aie.a -- which is exactly what aiecc --get-sim
+    # links, and --get-sim exists to work without Vitis.
+    set(enableTestLibProject ON)
   elseif (WIN32 AND ${target} STREQUAL "x86_64" AND NOT DEFINED LibXAIE_${target}_DIR AND LibXAIE_FOUND)
     set(enableTestLibProject ON)
   endif()

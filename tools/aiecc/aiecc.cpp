@@ -328,9 +328,7 @@ buildHostExeSubgraph(EdgeWithTypedOutput<std::string> &aieInc,
             // ess_WriteGM/ess_ReadGM rather than the ION one, and the array
             // model itself to define the ess_* symbols that the host-side
             // libxaienginecdo (built with __AIESIM__) leaves undefined.
-            cmd.arg(wantSim ? rt.simMemoryAllocator : rt.memoryAllocator);
-            if (wantSim)
-              cmd.arg("-L" + rt.aieSimLib).arg("-laie-sim");
+            cmd.arg(wantSim ? rt.simMemoryAllocator : rt.memoryAllocator)
                 .arg("-I" + rt.xaiengineInclude)
                 .arg("-L" + rt.xaiengineLib)
                 .arg("-Wl,-R" + rt.xaiengineLib)
@@ -338,6 +336,11 @@ buildHostExeSubgraph(EdgeWithTypedOutput<std::string> &aieInc,
                 .arg("-fuse-ld=lld")
                 .arg("-lm")
                 .arg("-lxaienginecdo");
+            // The array model itself, which defines the ess_* symbols the
+            // host-side libxaienginecdo (built with __AIESIM__) leaves
+            // undefined. After -lxaienginecdo: static link order matters.
+            if (wantSim)
+              cmd.arg("-L" + rt.aieSimLib).arg("-laie-sim");
             cmd.arg(aieArchDefine(arch));
             for (const auto &d : hostIncludeDirs)
               cmd.arg("-I" + d);
@@ -1633,7 +1636,8 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
   // Host executable: only when explicitly requested and host sources exist.
   if (doCompileHost) {
     if (!hasHostSourceFiles())
-      llvm::errs() << "aiecc: --get-host given but no host source files "
+      llvm::errs() << "aiecc: " << (wantSim ? "--get-sim" : "--get-host")
+                   << " given but no host source files "
                       "were provided; skipping host compilation\n";
     else
       outputs.push_back(&hostExe);
