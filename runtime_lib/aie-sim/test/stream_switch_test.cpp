@@ -284,9 +284,9 @@ void testPacketSwitchDemux() {
   // (arbiter 0, msel 0), id 2 selects (arbiter 0, msel 1).
   regs.write(kSlvDma0, packSlaveEnable(/*packetMode=*/true));
   regs.write(kSlotDma0Slot0,
-            packSlot(/*id=*/1, /*mask=*/0, /*msel=*/0, /*arbitor=*/0));
+            packSlot(/*id=*/1, /*mask=*/0x1F, /*msel=*/0, /*arbitor=*/0));
   regs.write(kSlotDma0Slot1,
-            packSlot(/*id=*/2, /*mask=*/0, /*msel=*/1, /*arbitor=*/0));
+            packSlot(/*id=*/2, /*mask=*/0x1F, /*msel=*/1, /*arbitor=*/0));
 
   // Ctrl listens only to msel 0; FIFO listens only to msel 1. Both are
   // local bundles, so nothing drains them but this test.
@@ -333,6 +333,59 @@ void testPacketSwitchDemux() {
   AIESIM_CHECK(tl2);
   AIESIM_CHECK(!ctrlMaster->canPop());
 
+  AIESIM_CHECK(diag.empty());
+}
+
+// A slot's mask picks which id bits must match, so one slot can cover a
+// range of ids. Mirrors mlir-aie's test_ps7_xaie.mlir, where rule(0x1E,
+// 0x0) carries ids 0 and 1 while rule(0x1F, 0x2) carries only id 2.
+void testPacketSwitchPartialMask() {
+  DeviceModel dev = makeTestDevice();
+  Array array(dev, nullptr);
+  std::vector<std::string> diag;
+  array.setDiagnosticHandler([&](const std::string &m) { diag.push_back(m); });
+
+  Tile *core = array.tile(0, 2);
+  AIESIM_CHECK(core != nullptr);
+  if (!core)
+    return;
+  RegisterFile &regs = core->regs();
+
+  regs.write(kSlvDma0, packSlaveEnable(/*packetMode=*/true));
+  regs.write(kSlotDma0Slot0,
+             packSlot(/*id=*/0x0, /*mask=*/0x1E, /*msel=*/0, /*arbitor=*/0));
+  regs.write(kSlotDma0Slot1,
+             packSlot(/*id=*/0x2, /*mask=*/0x1F, /*msel=*/1, /*arbitor=*/0));
+  regs.write(kMstrCtrl, packMasterPacket(/*arbitor=*/0, /*mselEnMask=*/0x1));
+  regs.write(kMstrFifo0, packMasterPacket(/*arbitor=*/0, /*mselEnMask=*/0x2));
+
+  StreamSwitchModule *sw = core->streamSwitch();
+  StreamPort *slave = sw->slavePort(PortBundle::DMA, 0);
+  StreamPort *ctrlMaster = sw->masterPort(PortBundle::Ctrl, 0);
+  StreamPort *fifoMaster = sw->masterPort(PortBundle::FIFO, 0);
+
+  // 0 = arrived at Ctrl (msel 0), 1 = at FIFO (msel 1), -1 = neither.
+  auto route = [&](uint32_t id) {
+    slave->push(id, /*tlast=*/true);
+    uint32_t w = 0;
+    bool tl = false;
+    for (int cyc = 0; cyc < 10; ++cyc) {
+      array.advance(1);
+      if (ctrlMaster->canPop()) {
+        ctrlMaster->pop(w, tl);
+        return 0;
+      }
+      if (fifoMaster->canPop()) {
+        fifoMaster->pop(w, tl);
+        return 1;
+      }
+    }
+    return -1;
+  };
+
+  AIESIM_CHECK_EQ(route(0u), 0); // bit 0 masked out of the compare
+  AIESIM_CHECK_EQ(route(1u), 0); // ... so id 1 lands on the same slot
+  AIESIM_CHECK_EQ(route(2u), 1); // exact-match slot wins, not slot 0
   AIESIM_CHECK(diag.empty());
 }
 
@@ -445,7 +498,7 @@ void testDropHeaderSurvivesLateConfiguration() {
   // to listen yet.
   regs.write(kSlvDma0, packSlaveEnable(/*packetMode=*/true));
   regs.write(kSlotDma0Slot0,
-            packSlot(/*id=*/9, /*mask=*/0, /*msel=*/0, /*arbitor=*/0));
+            packSlot(/*id=*/9, /*mask=*/0x1F, /*msel=*/0, /*arbitor=*/0));
 
   StreamSwitchModule *sw = core->streamSwitch();
   StreamPort *slave = sw->slavePort(PortBundle::DMA, 0);
@@ -492,6 +545,7 @@ int main() {
   testCircuitSwitchedConnection();
   testTwoTileRoute();
   testPacketSwitchDemux();
+  testPacketSwitchPartialMask();
   testMultiHopRouteSameCycleCountBothDirections();
   testDropHeaderSurvivesLateConfiguration();
   return aiesim_test::summarize("stream_switch");
