@@ -490,15 +490,28 @@ inline bool resolveOptions() {
   }
 
   wantAiesim = generateAiesim;
-  if (wantAiesim && !xbridge) {
-    if (noXbridge || noXchesscc) {
-      llvm::errs()
-          << "aiecc: --get-aiesim requires --xbridge (the AIE simulator "
-             "consumes Chess-compiled cores)\n";
+  if (wantAiesim) {
+    // The Chess backend must be asked for, not inherited: --get-aiesim names a
+    // simulator, not a compiler, so a second simulator would silently take over
+    // this flag for everyone who never stated which cores it consumes.
+    bool chessStated =
+        xchesscc.getNumOccurrences() || xbridge.getNumOccurrences();
+    if (noXchesscc || noXbridge) {
+      // Report the contradiction rather than the omission. --no-xchesscc clears
+      // xbridge too, so an explicit --xbridge alongside it lands here with its
+      // occurrence counted and its value gone; telling that user to "pass it
+      // explicitly" names the one thing they did do.
+      llvm::errs() << "aiecc: --get-aiesim needs Chess-compiled cores, but "
+                   << (noXchesscc ? "--no-xchesscc" : "--no-xbridge")
+                   << " was given\n";
       return false;
     }
-    xchesscc = true;
-    xbridge = true;
+    if (!xbridge || !chessStated) {
+      llvm::errs()
+          << "aiecc: --get-aiesim requires --xbridge (the AIE simulator "
+             "consumes Chess-compiled cores); pass it explicitly\n";
+      return false;
+    }
   }
 
   doUnified = unified && !noUnified;

@@ -1,33 +1,26 @@
-//===- cpp_aiesim.mlir -----------------------------------------*- MLIR -*-===//
+//===- cpp_aiesim_negated.mlir -----------------------------------*- MLIR -*-===//
 //
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
-// Test aiesim work folder generation with aiecc.
-// Uses dry-run mode since aiesim requires actual xchesscc/aietools.
+// --get-aiesim's backend-contradiction and backend-omission diagnostics fire
+// in resolveOptions() before any toolchain is touched, so unlike the rest of
+// cpp_aiesim.mlir this needs neither Chess nor Peano installed.
 
-// REQUIRES: chess
+// A negated backend and an unstated one are different mistakes and get
+// different diagnostics. --no-xchesscc clears xbridge as well, so the third
+// line is a contradiction and not an omission -- reporting it as one would
+// tell that user to pass the flag they just passed.
+// RUN: not aiecc --no-xbridge --get-aiesim -n %s 2>&1 | FileCheck %s --check-prefix=NEGATED
+// RUN: not aiecc --no-xchesscc --get-aiesim -n %s 2>&1 | FileCheck %s --check-prefix=NEGATED-CC
+// RUN: not aiecc --no-xchesscc --xbridge --get-aiesim -n %s 2>&1 | FileCheck %s --check-prefix=NEGATED-CC
+// RUN: not aiecc --get-aiesim -n %s 2>&1 | FileCheck %s --check-prefix=UNSTATED
 
-// RUN: aiecc --xchesscc --xbridge --get-aiesim -n --verbose %s 2>&1 | FileCheck %s
-
-// The negative --get-aiesim flag-interaction cases live in
-// cpp_aiesim_negated.mlir: they fire in resolveOptions() before any
-// toolchain is touched, so they don't need Chess and shouldn't be gated on
-// it.
-
-// The sim/ work folder is assembled from declarative graph edges: the
-// graph/shim/scsim descriptors and routed flows are emitted in-process, and
-// the ps.so co-simulation model is linked from the toolchain's
-// genwrapper_for_ps.cpp. (--aie-mlir-to-* no longer shells out.)
-// CHECK-DAG: graph.xpe
-// CHECK-DAG: aieshim_solution.aiesol
-// CHECK-DAG: scsim_config.json
-// CHECK-DAG: flows_physical.json
-// CHECK-DAG: -D__AIESIM__
-// CHECK-DAG: genwrapper_for_ps.cpp
-// CHECK-DAG: {{.*}}ps.so
+// NEGATED: --get-aiesim needs Chess-compiled cores, but --no-xbridge was given
+// NEGATED-CC: --get-aiesim needs Chess-compiled cores, but --no-xchesscc was given
+// UNSTATED: --get-aiesim requires --xbridge
 
 module {
   aie.device(npu1_1col) {
