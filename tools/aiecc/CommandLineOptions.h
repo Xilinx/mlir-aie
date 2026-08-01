@@ -128,8 +128,7 @@ inline cl::opt<bool> loadPdiToCtrlPkt(
 inline cl::opt<bool> xchesscc(
     "xchesscc",
     cl::desc("Compile cores with the Chess toolchain (xchesscc) instead of "
-             "Peano"),
-    cl::init(true));
+             "Peano"));
 inline cl::opt<bool> noXchesscc(
     "no-xchesscc",
     cl::desc("Compile cores with Peano instead of the Chess toolchain "
@@ -137,8 +136,7 @@ inline cl::opt<bool> noXchesscc(
 inline cl::opt<bool> xbridge(
     "xbridge",
     cl::desc("Link cores with the Chess toolchain (xbridge/BCF) instead of "
-             "Peano lld"),
-    cl::init(true));
+             "Peano lld"));
 inline cl::opt<bool> noXbridge(
     "no-xbridge",
     cl::desc("Link cores with Peano lld instead of the Chess toolchain "

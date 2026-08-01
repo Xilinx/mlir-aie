@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 // Test basic xchesscc compilation path in aiecc.
-// Requesting the default compile+link flow drives the full per-core Chess
+// Requesting --xchesscc --xbridge drives the full per-core Chess
 // path: the core is linked against the Chess intrinsic wrapper, compiled to an
 // object with xchesscc, then linked into an ELF with the xbridge (+l) linker.
 // Peano's llc must never be invoked on the Chess path.
