@@ -7,9 +7,16 @@ permissions:
   contents: read
 
 on:
+  # No `push` on main: the merge queue already tests the exact commit that
+  # merging pushes there, so a postsubmit run re-tests an identical SHA. main is
+  # admin-enforced with a required merge queue and no force pushes, so nothing
+  # can reach it without a merge_group run having tested it first. The nightly
+  # schedule below still covers main for environment drift.
+  #
+  # test-ryzen-ai is kept: it is a manual push target that does not go through
+  # the queue, so it has no merge_group run to inherit.
   push:
     branches:
-      - main
       - test-ryzen-ai
   pull_request:
     types: [opened, synchronize, reopened]
