@@ -78,7 +78,7 @@ def dwconv1d(
         raise ValueError(f"seq_len ({seq_len}) must be a multiple of 16")
     if kernel_size < 1 or kernel_size > 17 or kernel_size % 2 == 0:
         # Odd so 'same' padding is symmetric; <= 17 so a tap window (16 +
-        # kernel_size - 1) fits the kernel's 32-lane shuffle concat.
+        # kernel_size - 1) fits the kernel's 32-lane window.
         raise ValueError(f"kernel_size ({kernel_size}) must be odd and in [1, 17]")
 
     device = iron.get_current_device()
