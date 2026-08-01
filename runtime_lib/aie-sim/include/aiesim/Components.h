@@ -103,12 +103,22 @@ public:
 };
 
 /// Installers. Each is called once per tile of the appropriate type during
-/// array construction, in this order: locks, stream switch, DMA, core. Later
-/// components may look up earlier ones through the Tile accessors.
+/// array construction, in this order: memory, locks, stream switch, DMA,
+/// core. Later components may look up earlier ones through the Tile
+/// accessors.
 ///
 /// Each installer is responsible for claiming its own register ranges via
 /// Tile::regs().onWrite / onRead, adopting its state onto the tile, and
 /// registering itself as a Steppable with the array.
+///
+/// installMemory claims [0, tile.memory()->size()) so that a plain
+/// XAie_Read32/Write32 at a data-memory address returns the same bytes as
+/// XAie_DataMemRdWord/WrWord: aie-rt's sim IO backend has exactly one pair of
+/// entry points (ess_Read32/Write32, xaie_sim.c) for every access regardless
+/// of which higher-level API reached it, so data memory must be reachable
+/// through the register bus like everything else or a host-side buffer
+/// read/write (e.g. mlir_aie_read_buffer_local) faults as unclaimed.
+void installMemory(Tile &tile);
 void installLocks(Tile &tile);
 void installStreamSwitch(Tile &tile);
 void installDma(Tile &tile);
