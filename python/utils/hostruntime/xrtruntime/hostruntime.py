@@ -356,10 +356,10 @@ class XRTHostRuntime(HostRuntime):
                         xrt_device=self._device,
                     ).buffer_object()
 
-            start = time.time_ns()
+            start = time.perf_counter_ns()
             h = kernel_handle.kernel(3, insts_bo, insts_bytes, *buffers)
             r = h.wait()
-            stop = time.time_ns()
+            stop = time.perf_counter_ns()
 
             if fail_on_error and r != pyxrt.ert_cmd_state.ERT_CMD_STATE_COMPLETED:
                 raise HostRuntimeError(f"Kernel returned {str(r)}")
@@ -387,12 +387,12 @@ class XRTHostRuntime(HostRuntime):
         for i, buf in enumerate(buffers):
             run.set_arg(i, buf)
 
-        start = time.time_ns()
+        start = time.perf_counter_ns()
         run.start()
         # run.wait() returns the ert_cmd_state; run.wait2() returns None, so it
         # cannot be checked against ERT_CMD_STATE_COMPLETED.
         r = run.wait()
-        stop = time.time_ns()
+        stop = time.perf_counter_ns()
 
         if fail_on_error and r != pyxrt.ert_cmd_state.ERT_CMD_STATE_COMPLETED:
             raise HostRuntimeError(f"Kernel returned {str(r)}")

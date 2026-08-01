@@ -127,9 +127,9 @@ def main(opts):
     # Main run loop
     # ------------------------------------------------------
     for i in range(num_iter):
-        start = time.time_ns()
+        start = time.perf_counter_ns()
         ret = DefaultNPURuntime.run(kernel_handle, buffers)
-        stop = time.time_ns()
+        stop = time.perf_counter_ns()
 
         if enable_trace:
             trace_buffer, _ = HostRuntime.extract_trace_from_args(buffers, trace_config)
