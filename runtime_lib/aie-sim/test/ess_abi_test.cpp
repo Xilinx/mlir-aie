@@ -120,26 +120,29 @@ int main() {
   // The fault contract, which is the point of the register file. Reading an
   // offset that nothing models AND nobody wrote must be a named failure, not a
   // fabricated zero: that is the case where a design polling an unimplemented
-  // status register would otherwise spin forever with no diagnostic.
+  // status register would otherwise spin forever with no diagnostic. Probes
+  // sit in the gap between core data memory ([0, 0x10000), claimed by
+  // installMemory) and the DMA/lock register blocks (0x1D000+), so the probe
+  // stays valid regardless of which side gains coverage next.
   std::string caught;
   currentArray().setDiagnosticHandler(
       [&](const std::string &m) { caught = m; });
-  (void)ess_Read32(tileAddr(dev, 0, 2, 0x00007f00));
+  (void)ess_Read32(tileAddr(dev, 0, 2, 0x00014000));
   AIESIM_CHECK(caught.find("unmodelled register") != std::string::npos);
 
   // Writes to something unmodelled are recorded rather than fatal, so a model
   // that does not claim every register is still usable, and what it missed is
   // a number rather than a surprise.
   caught.clear();
-  ess_Write32(tileAddr(dev, 0, 2, 0x00007f80), 1);
+  ess_Write32(tileAddr(dev, 0, 2, 0x00014080), 1);
   AIESIM_CHECK(caught.empty());
   AIESIM_CHECK(!currentArray().unclaimedWrites().empty());
-  AIESIM_CHECK(currentArray().unclaimedReport().find("0x7f80") !=
+  AIESIM_CHECK(currentArray().unclaimedReport().find("0x14080") !=
                std::string::npos);
 
   // Strict mode promotes that write to a fault.
   currentArray().setStrict(true);
-  ess_Write32(tileAddr(dev, 0, 2, 0x00007fc0), 1);
+  ess_Write32(tileAddr(dev, 0, 2, 0x000140c0), 1);
   AIESIM_CHECK(caught.find("AIE_SIM_STRICT") != std::string::npos);
 
   return aiesim_test::summarize("ess_abi");

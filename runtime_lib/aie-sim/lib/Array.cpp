@@ -50,6 +50,22 @@ Tile::Tile(Array &array, uint32_t col, uint32_t row, TileType type)
 
 Tile::~Tile() = default;
 
+void aiesim::installMemory(Tile &tile) {
+  Memory *mem = tile.memory();
+  if (!mem)
+    return;
+  RegisterFile &regs = tile.regs();
+  uint32_t size = mem->size();
+  regs.onRead(0, size, [mem](uint32_t off) -> uint32_t {
+    uint32_t value = 0;
+    mem->read(off, &value, sizeof(value));
+    return value;
+  });
+  regs.onWrite(0, size, [mem](uint32_t off, uint32_t value) {
+    mem->write(off, &value, sizeof(value));
+  });
+}
+
 void Tile::setLocks(std::unique_ptr<LockModule> m) { lockModule = std::move(m); }
 void Tile::setStreamSwitch(std::unique_ptr<StreamSwitchModule> m) {
   switchModule = std::move(m);
@@ -77,7 +93,10 @@ Array::Array(const DeviceModel &dev, std::unique_ptr<CoreEngineFactory> engines)
 
   // Installation order matters: DMA looks up locks and stream ports, and the
   // core looks up all three. Steppable registration order follows, which is
-  // what makes the cycle-by-cycle interleaving reproducible.
+  // what makes the cycle-by-cycle interleaving reproducible. Memory has no
+  // dependency on the others and none on it, so it goes first.
+  for (auto &t : tiles)
+    installMemory(*t);
   for (auto &t : tiles)
     installLocks(*t);
   for (auto &t : tiles)
