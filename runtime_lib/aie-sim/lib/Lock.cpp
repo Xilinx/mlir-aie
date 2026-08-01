@@ -246,7 +246,8 @@ public:
 
   // Locks have no autonomous per-cycle behaviour: every path that touches
   // one is a register read or write with an immediate side effect. Nothing
-  // to do on a bare clock edge.
+  // to do on a bare clock edge, and never anything outstanding either, so
+  // Steppable::busy()'s default (false) is left as-is.
   bool step() override { return false; }
 
 private:
@@ -335,8 +336,11 @@ void aiesim::installLocks(Tile &tile) {
   // 32 bits) unclaimed rather than aliased onto it.
   for (uint32_t id = 0; id < numLocks; ++id) {
     uint32_t off = layout.valueBase + id * kValueRegOff;
-    tile.regs().onWrite(off, off + 4, [lm, id](uint32_t, uint32_t regValue) {
+    tile.regs().onWrite(off, off + 4, [lm, id, &tile](uint32_t,
+                                                       uint32_t regValue) {
       lm->setRawValue(id, static_cast<int32_t>(regValue & kValueFieldMask));
+      tile.getArray().wake(lm); // Idle lock module receiving a write: rejoin
+                                // the active set (Array.h's wake() contract).
     });
     tile.regs().onRead(off, off + 4, [lm, id](uint32_t) -> uint32_t {
       return static_cast<uint32_t>(lm->value(id)) & kValueFieldMask;

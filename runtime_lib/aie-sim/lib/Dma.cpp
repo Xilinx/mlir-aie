@@ -471,6 +471,7 @@ private:
   StreamPort *effectivePort(DmaDirection dir, uint32_t ch, ChannelState &c);
   bool stepChannel(ChannelState &c, DmaDirection dir, uint32_t ch);
   bool moveOneWord(ChannelState &c, DmaDirection dir, uint32_t ch);
+  void wakeStreamSwitch();
 
   Tile &tile;
   TileType kind;
@@ -493,6 +494,15 @@ void DmaModuleImpl::setTestPort(DmaDirection dir, uint32_t ch,
 }
 
 LockModule *DmaModuleImpl::effectiveLocks() const { return tile.locks(); }
+
+// A push/pop through effectivePort() (outside a test double) mutates a FIFO
+// owned by this tile's own stream switch, which may have had nothing of its
+// own outstanding and so may not be active right now -- nothing else will
+// prompt it to notice the new word (MM2S) or the newly-freed slot (S2MM).
+void DmaModuleImpl::wakeStreamSwitch() {
+  if (StreamSwitchModule *ss = tile.streamSwitch())
+    tile.getArray().wake(ss);
+}
 
 StreamPort *DmaModuleImpl::effectivePort(DmaDirection dir, uint32_t ch,
                                          ChannelState &c) {
@@ -547,6 +557,9 @@ void DmaModuleImpl::onChannelWrite(uint32_t off, uint32_t value) {
   uint32_t repeatCount = getField(value, layout.qRepeatCountM1) + 1;
   bool enToken = getField(value, layout.qEnToken) != 0;
   pushTask(dir, ch, startBd, repeatCount, enToken);
+  // A queue push is the only way an idle DMA gets new work; wake it so the
+  // channel actually starts (Array.h's active-set contract).
+  tile.getArray().wake(this);
 }
 
 uint32_t DmaModuleImpl::onStatusRead(uint32_t off) const {
@@ -836,6 +849,7 @@ bool DmaModuleImpl::moveOneWord(ChannelState &c, DmaDirection dir,
       return false;
     }
     port->push(word, isLast);
+    wakeStreamSwitch();
     return true;
   }
 
@@ -847,6 +861,7 @@ bool DmaModuleImpl::moveOneWord(ChannelState &c, DmaDirection dir,
   uint32_t word = 0;
   bool tlast = false;
   port->pop(word, tlast);
+  wakeStreamSwitch();
   bool ok = (kind == TileType::Shim)
                 ? tile.getArray().ddrWrite(addr, &word, 4)
                 : (tile.memory() &&
