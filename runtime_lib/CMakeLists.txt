@@ -124,6 +124,11 @@ foreach(target ${AIE_RUNTIME_TARGETS})
       BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/${target}/test_lib/lib
       CMAKE_CACHE_ARGS
           -DCMAKE_MODULE_PATH:STRING=${CMAKE_MODULE_PATH}
+          # test_lib's find_package(XRT QUIET) is optional, but a broken system
+          # XRT package raises FATAL_ERROR from inside its own config file,
+          # which QUIET does not suppress. A nested project should honour the
+          # parent's package-disable either way.
+          -DCMAKE_DISABLE_FIND_PACKAGE_XRT:BOOL=${CMAKE_DISABLE_FIND_PACKAGE_XRT}
       CMAKE_ARGS
           -DCMAKE_TOOLCHAIN_FILE=${${target}_TOOLCHAIN_FILE}
           -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}

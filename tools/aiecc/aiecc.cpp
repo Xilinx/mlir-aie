@@ -339,8 +339,16 @@ buildHostExeSubgraph(EdgeWithTypedOutput<std::string> &aieInc,
             // The array model itself, which defines the ess_* symbols the
             // host-side libxaienginecdo (built with __AIESIM__) leaves
             // undefined. After -lxaienginecdo: static link order matters.
+            // --whole-archive: the ess_* symbols are undefined in the SHARED
+            // libxaienginecdo, and a static archive is not searched to satisfy
+            // a shared library's undefined symbols, so they must be pulled in
+            // unconditionally or the link fails under
+            // --no-allow-shlib-undefined.
             if (wantSim)
-              cmd.arg("-L" + rt.aieSimLib).arg("-laie-sim");
+              cmd.arg("-L" + rt.aieSimLib)
+                  .arg("-Wl,--whole-archive")
+                  .arg("-laie-sim")
+                  .arg("-Wl,--no-whole-archive");
             cmd.arg(aieArchDefine(arch));
             for (const auto &d : hostIncludeDirs)
               cmd.arg("-I" + d);
