@@ -64,9 +64,8 @@ reference (``kernels.exp2f_vec_ref``), separately per regime, plus:
 
 import sys
 
-import numpy as np
-
 import aie.iron as iron
+import numpy as np
 from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker, kernels
 from aie.iron.controlflow import range_
 
@@ -128,7 +127,11 @@ def vector_exp2f(
 def _rel_l2(actual, ref):
     diff = actual.astype(np.float64) - ref.astype(np.float64)
     denom = np.linalg.norm(ref.astype(np.float64))
-    return float(np.linalg.norm(diff) / denom) if denom > 0 else float(np.linalg.norm(diff))
+    return (
+        float(np.linalg.norm(diff) / denom)
+        if denom > 0
+        else float(np.linalg.norm(diff))
+    )
 
 
 def main():
@@ -138,7 +141,9 @@ def main():
 
     grid = np.linspace(-100.0, 0.0, n_grid, dtype=np.float64)
     rand = rng.uniform(-100.0, 0.0, n_rand)
-    clamp = np.linspace(-500.0, -100.0001, n_clamp, dtype=np.float64)  # strictly below -100
+    clamp = np.linspace(
+        -500.0, -100.0001, n_clamp, dtype=np.float64
+    )  # strictly below -100
 
     # Positive-domain block: half a dense [0, 127] grid (poly accuracy, same
     # construction as [-100, 0]), half explicit values straddling the
@@ -149,9 +154,29 @@ def main():
     # dense enough to catch a single-lane vector bug, not just a scalar one.
     pos_grid = np.linspace(0.0, 127.0, n_pos // 2, dtype=np.float64)
     boundary_values = np.array(
-        [127.0, 127.5, 127.9, 127.99, 128.0, 128.5, 129.0, 129.5, 130.0,
-         140.0, 150.0, 180.0, 200.0, 255.0, 256.0, 257.0, 300.0, 500.0,
-         1000.0, 1e6, 1e30],
+        [
+            127.0,
+            127.5,
+            127.9,
+            127.99,
+            128.0,
+            128.5,
+            129.0,
+            129.5,
+            130.0,
+            140.0,
+            150.0,
+            180.0,
+            200.0,
+            255.0,
+            256.0,
+            257.0,
+            300.0,
+            500.0,
+            1000.0,
+            1e6,
+            1e30,
+        ],
         dtype=np.float64,
     )
     reps = -(-(n_pos // 2) // len(boundary_values))  # ceil div
@@ -159,9 +184,13 @@ def main():
     pos = np.concatenate([pos_grid, pos_boundary])
 
     a_np = np.concatenate([grid, rand, clamp, pos]).astype(np.float32)
-    domain_end = n_grid + n_rand  # [0, domain_end) is the characterized [-100, 0] domain
+    domain_end = (
+        n_grid + n_rand
+    )  # [0, domain_end) is the characterized [-100, 0] domain
     clamp_end = domain_end + n_clamp
-    pos_grid_end = clamp_end + n_pos // 2  # [clamp_end, pos_grid_end) is the [0,127] exact grid
+    pos_grid_end = (
+        clamp_end + n_pos // 2
+    )  # [clamp_end, pos_grid_end) is the [0,127] exact grid
 
     a = iron.tensor(a_np, dtype=np.float32, device="npu")
     c = iron.zeros(N, dtype=np.float32, device="npu")
@@ -188,7 +217,9 @@ def main():
         f"max_rel_err={dom_max_rel:.6g} rel_l2={dom_rel_l2:.6g} non_finite={dom_n_nonfinite}"
     )
     if dom_n_nonfinite or dom_max_abs > 5e-4:
-        print("FAIL: [-100, 0] domain outside gate (max_abs_err > 5e-4 or non-finite present)")
+        print(
+            "FAIL: [-100, 0] domain outside gate (max_abs_err > 5e-4 or non-finite present)"
+        )
         ok = False
 
     # Clamp block (x < -100): reference is the KERNEL'S documented contract,
@@ -197,8 +228,12 @@ def main():
     # numerical match to the clamped reference is reported but with a
     # looser gate since this is not the kernel's characterized domain.
     clamp_out = out[domain_end:clamp_end]
-    clamp_ref = kernels.exp2f_vec_ref(np.maximum(a_np[domain_end:clamp_end], np.float32(-100.0)))
-    clamp_max_abs = float(np.max(np.abs(clamp_out.astype(np.float64) - clamp_ref.astype(np.float64))))
+    clamp_ref = kernels.exp2f_vec_ref(
+        np.maximum(a_np[domain_end:clamp_end], np.float32(-100.0))
+    )
+    clamp_max_abs = float(
+        np.max(np.abs(clamp_out.astype(np.float64) - clamp_ref.astype(np.float64)))
+    )
     clamp_rel_l2 = _rel_l2(clamp_out, clamp_ref)
     clamp_n_nonfinite = int(np.sum(~np.isfinite(clamp_out)))
     print(
@@ -227,7 +262,9 @@ def main():
         f"rel_l2={posg_rel_l2:.6g} non_finite={posg_n_nonfinite}"
     )
     if posg_n_nonfinite or posg_max_rel > 5e-4:
-        print("FAIL: [0, 127] domain outside gate (max_rel_err > 5e-4 or non-finite present)")
+        print(
+            "FAIL: [0, 127] domain outside gate (max_rel_err > 5e-4 or non-finite present)"
+        )
         ok = False
 
     # Upper-clamp boundary block: THE regression test for the sign-wrap
@@ -252,15 +289,19 @@ def main():
         f"nan={posb_n_nonfinite_nan} negative_or_neg_zero={posb_n_signbit}"
     )
     if posb_n_nonfinite_nan or posb_n_signbit:
-        print("FAIL: boundary block produced NaN or a negative-signed output "
-              "(2**x is never negative for finite real x)")
+        print(
+            "FAIL: boundary block produced NaN or a negative-signed output "
+            "(2**x is never negative for finite real x)"
+        )
         ok = False
 
     if np.any(below_boundary):
         b_out = posb_out[below_boundary].astype(np.float64)
         b_ref = kernels.exp2f_vec_ref(posb_x[below_boundary]).astype(np.float64)
         b_max_rel = float(np.max(np.abs(b_out - b_ref) / np.abs(b_ref)))
-        print(f"  k < 128 sub-block (N={int(np.sum(below_boundary))}): max_rel_err={b_max_rel:.6g}")
+        print(
+            f"  k < 128 sub-block (N={int(np.sum(below_boundary))}): max_rel_err={b_max_rel:.6g}"
+        )
         if b_max_rel > 5e-4:
             print("FAIL: k < 128 sub-block outside the rel-err gate")
             ok = False
@@ -268,17 +309,23 @@ def main():
     if np.any(at_or_above):
         a_out = posb_out[at_or_above]
         n_not_pos_inf = int(np.sum(a_out != np.float32(np.inf)))
-        print(f"  k >= 128 sub-block (N={int(np.sum(at_or_above))}): not_exactly_+inf={n_not_pos_inf}")
+        print(
+            f"  k >= 128 sub-block (N={int(np.sum(at_or_above))}): not_exactly_+inf={n_not_pos_inf}"
+        )
         if n_not_pos_inf:
-            print("FAIL: k >= 128 sub-block: every 2**x here exceeds FLT_MAX, "
-                  "so the contract is EXACT +inf, not approximately")
+            print(
+                "FAIL: k >= 128 sub-block: every 2**x here exceeds FLT_MAX, "
+                "so the contract is EXACT +inf, not approximately"
+            )
             ok = False
 
     if not ok:
         sys.exit(1)
-    print(f"PASS! ({N} samples: {domain_end} in the characterized [-100,0] domain, "
-          f"{n_clamp} exercising the < -100 clamp path, {n_pos // 2} in the exact "
-          f"[0,127] extension, {n_pos // 2} on the upper-clamp boundary)")
+    print(
+        f"PASS! ({N} samples: {domain_end} in the characterized [-100,0] domain, "
+        f"{n_clamp} exercising the < -100 clamp path, {n_pos // 2} in the exact "
+        f"[0,127] extension, {n_pos // 2} on the upper-clamp boundary)"
+    )
 
 
 if __name__ == "__main__":

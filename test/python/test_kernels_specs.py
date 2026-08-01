@@ -26,17 +26,16 @@ directory level.
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable
+from typing import Callable
 
 import numpy as np
 import pytest
-from ml_dtypes import bfloat16
-
 from aie.iron import kernels
 from aie.iron.device import NPU2Col1
 from aie.iron.kernel import ExternalFunction
 from aie.utils import get_current_device
 from aie.utils.hostruntime import set_current_device
+from ml_dtypes import bfloat16
 
 # ---------------------------------------------------------------------------
 # Spec table

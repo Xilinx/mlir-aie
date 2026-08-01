@@ -23,18 +23,17 @@ wiring below rather than delegating to one of those.
 import argparse
 from pathlib import Path
 
-import numpy as np
-from ml_dtypes import bfloat16
-
 import aie.iron as iron
-from aie.iron import CompileTime, In, Out, ObjectFifo, Program, Runtime, Worker
+import numpy as np
+from aie.helpers.taplib import TensorTiler2D
+from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker
 from aie.iron.controlflow import range_
 from aie.iron.kernel import ExternalFunction
-from aie.helpers.taplib import TensorTiler2D
 from aie.utils import config
-from aie.utils.hostruntime.argparse import device_from_args, add_compile_args
+from aie.utils.hostruntime.argparse import add_compile_args, device_from_args
 from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
+from ml_dtypes import bfloat16
 
 _KERNEL_DIR = Path(__file__).resolve().parents[3] / "aie_kernels/aie2p"
 
