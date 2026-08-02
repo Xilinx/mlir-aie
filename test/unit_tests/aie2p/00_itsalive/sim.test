@@ -1,0 +1,19 @@
+//===- sim.test ------------------------------------------------*- MLIR -*-===//
+//
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+//===----------------------------------------------------------------------===//
+
+// Runs the design next door through aie-sim instead of the Vitis ISS. Reuses
+// aie.mlir rather than copying it: aie2/ and chess_compiler_tests_aie2/ already
+// hold the same designs twice and both copies drifted. Both tests take the same
+// input file, so --tmpdir keeps this one off aie.mlir.prj when a box has Vitis
+// and Peano and lit runs the pair together.
+
+// REQUIRES: peano
+
+// RUN: %aiecc --get-sim --tmpdir=sim.prj %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %link_against_hsa% %S/aie.mlir %test_lib_flags -o sim_test.elf -- %S/test.cpp
+// RUN: env AIE_SIM_DEVICE=npu2 ./sim_test.elf | FileCheck %s
+
+// CHECK: Hello, world.
