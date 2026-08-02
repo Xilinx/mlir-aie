@@ -510,6 +510,31 @@ private:
            kPortOffset;
   }
 
+  std::vector<StreamRoute> configuredRoutes() const override {
+    std::vector<StreamRoute> routes;
+    for (uint32_t mb = 0; mb < kNumBundles; ++mb)
+      for (uint32_t mi = 0; mi < layout.bundle[mb].mstrCount; ++mi) {
+        const MasterState &m = masterSt[mb][mi];
+        if (!m.enabled || m.packetMode)
+          continue;
+        uint32_t sb = 0, si = 0;
+        if (!physIdxToBundle(m.slaveIdx, sb, si))
+          continue; // Configuration names a slave this layout does not have.
+        routes.push_back({static_cast<PortBundle>(sb), si,
+                          static_cast<PortBundle>(mb), mi});
+      }
+    return routes;
+  }
+
+  uint32_t packetModeMasters() const override {
+    uint32_t n = 0;
+    for (uint32_t mb = 0; mb < kNumBundles; ++mb)
+      for (uint32_t mi = 0; mi < layout.bundle[mb].mstrCount; ++mi)
+        if (masterSt[mb][mi].enabled && masterSt[mb][mi].packetMode)
+          ++n;
+    return n;
+  }
+
   bool physIdxToBundle(uint32_t physIdx, uint32_t &bundle,
                         uint32_t &index) const {
     for (uint32_t b = 0; b < kNumBundles; ++b) {
@@ -769,6 +794,21 @@ private:
 };
 
 } // namespace
+
+const char *aiesim::portBundleName(PortBundle bundle) {
+  switch (bundle) {
+  case PortBundle::Core: return "Core";
+  case PortBundle::DMA: return "DMA";
+  case PortBundle::Ctrl: return "Ctrl";
+  case PortBundle::FIFO: return "FIFO";
+  case PortBundle::South: return "South";
+  case PortBundle::West: return "West";
+  case PortBundle::North: return "North";
+  case PortBundle::East: return "East";
+  case PortBundle::Trace: return "Trace";
+  }
+  return "?";
+}
 
 void aiesim::installStreamSwitch(Tile &tile) {
   if (tile.getType() == TileType::Invalid)

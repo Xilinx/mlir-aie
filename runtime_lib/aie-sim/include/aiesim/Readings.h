@@ -100,6 +100,35 @@ struct Flow {
   std::vector<std::string> tags;
 };
 
+struct GraphNode {
+  std::string id, label, kind;
+};
+
+struct GraphEdge {
+  std::string from, to, label, kind;
+};
+
+struct Graph {
+  std::string id, label, description;
+  bool directed = true;
+  std::vector<GraphNode> nodes;
+  std::vector<GraphEdge> edges;
+  std::vector<std::string> tags;
+};
+
+struct SeriesTrack {
+  std::string entity;
+  /// (t, value), ascending in t.
+  std::vector<std::pair<uint64_t, double>> points;
+};
+
+struct Series {
+  std::string id, label, description, unit;
+  std::string timeUnit = "cycle";
+  std::vector<SeriesTrack> series;
+  std::vector<std::string> tags;
+};
+
 /// A span class on an interval track. `productive` is what separates work from
 /// lost time, so an occupancy summary sums the rest rather than guessing which
 /// names mean waiting.
@@ -163,6 +192,8 @@ public:
   std::vector<Containment> containments;
   std::vector<Coverage> coverages;
   std::vector<Flow> flows;
+  std::vector<Series> series;
+  std::vector<Graph> graphs;
   std::vector<Interval> intervals;
   std::vector<Verdict> verdicts;
 

@@ -352,7 +352,33 @@ void testOnChipPassesAndDdrFails() {
   AIESIM_CHECK(has(json2, "\"shape\":\"flow\""));
 }
 
+/// A design that configured no route gets an empty graph, and the description
+/// still accounts for packet-mode masters so "no edges" cannot be read as "no
+/// routing" when the two are different things.
+void testGraphIsEmptyWithoutConfiguration() {
+  auto array = makeArray();
+  std::string json = capture(*array, config()).toJson();
+  AIESIM_CHECK(has(json, "\"id\":\"graph/stream-routes\""));
+  AIESIM_CHECK(has(json, "\"shape\":\"graph\""));
+  AIESIM_CHECK(has(json, "0 packet-mode master(s) are configured"));
+}
+
+/// Every cycle stepped shows up on the concurrency series, and it records
+/// change points rather than one entry per cycle.
+void testConcurrencySeriesRecordsChangePoints() {
+  auto array = makeArray();
+  // Nothing is active, so advance() jumps the clock rather than stepping and
+  // there is no point to record -- which is the reading being honest about an
+  // idle array rather than drawing a flat line through cycles nobody ran.
+  array->advance(1000);
+  AIESIM_CHECK(array->concurrency().empty());
+  std::string json = capture(*array, config()).toJson();
+  AIESIM_CHECK(!has(json, "\"id\":\"series/active-components\""));
+}
+
 int main() {
+  testGraphIsEmptyWithoutConfiguration();
+  testConcurrencySeriesRecordsChangePoints();
   testNoTrafficIsUnknownNotResident();
   testOnChipPassesAndDdrFails();
   testNothingScheduledIsUnknownNotPass();
