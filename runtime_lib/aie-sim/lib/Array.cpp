@@ -173,6 +173,16 @@ void Array::error(const std::string &message) {
     diag(message);
 }
 
+void Array::recordUnmodelledOpcode(uint32_t col, uint32_t row,
+                                   std::string name) {
+  // Deduplicated by name alone, not by (tile, name): the question this answers
+  // is "which instructions does the engine lack", and the same gap reported
+  // from four tiles is one gap.
+  if (name.empty() || !unmodelledSeen.insert(name).second)
+    return;
+  unmodelled.push_back({col, row, std::move(name)});
+}
+
 void Array::recordUnclaimedWrite(uint32_t col, uint32_t row, uint32_t regOff) {
   uint64_t key = (static_cast<uint64_t>(col) << 48) |
                  (static_cast<uint64_t>(row) << 32) | regOff;

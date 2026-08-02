@@ -123,15 +123,28 @@ public:
       running = false;
       done = true;
       return true;
-    case CoreStepResult::Fault:
+    case CoreStepResult::Fault: {
       running = false;
       faulted = true;
+      const std::string why = engine->error();
+      // Record the gap as data before reporting it as text, so a sweep can
+      // accumulate "which instructions have no semantics" instead of grepping
+      // diagnostics. The engine spells a missing instruction "<NAME>: no
+      // semantics"; anything else is kept whole rather than mis-parsed, so an
+      // engine that changes the wording degrades to a coarser key, never to a
+      // wrong one.
+      static constexpr char kNoSemantics[] = ": no semantics";
+      const std::string::size_type at = why.find(kNoSemantics);
+      tile.getArray().recordUnmodelledOpcode(
+          tile.getCol(), tile.getRow(),
+          at == std::string::npos ? why : why.substr(0, at));
       // An unmodelled instruction means every later result would be a guess,
       // so this is fatal rather than a status bit alone.
       tile.getArray().error("tile (" + std::to_string(tile.getCol()) + ", " +
                             std::to_string(tile.getRow()) +
-                            "): core faulted: " + engine->error());
+                            "): core faulted: " + why);
       return true;
+    }
     }
     return false;
   }

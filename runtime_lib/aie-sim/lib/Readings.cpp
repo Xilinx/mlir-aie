@@ -600,6 +600,28 @@ Record aiesim::readings::capture(Array &array, const CaptureConfig &config) {
   }
   rec.coverages.push_back(std::move(unclaimed));
 
+  // --- coverage: instructions the engine has no semantics for.
+  Coverage semantics;
+  semantics.id = "coverage/opcode-semantics";
+  semantics.label = "Instructions the core engine cannot execute";
+  semantics.description =
+      "Each distinct instruction a core reached that the engine has no "
+      "semantics for. This is the instruction-semantics gap as a number: an "
+      "empty list means every instruction the design executed was modelled. "
+      "The list is what a design reached, not what it contains -- execution "
+      "stops at the first gap, so a sweep accumulates the set across runs.";
+  for (const Array::UnmodelledOpcode &u : array.unmodelledOpcodes()) {
+    CoverageItem item;
+    item.key = u.name;
+    // seen == "the design needed it", not "the engine has it": these are by
+    // construction the ones it does not have.
+    item.seen = false;
+    item.attrs.push_back(
+        {"tile", std::to_string(u.col) + "," + std::to_string(u.row)});
+    semantics.items.push_back(std::move(item));
+  }
+  rec.coverages.push_back(std::move(semantics));
+
   // --- scalars.
   double touchedRatio =
       totalCapacity ? double(totalTouched) / double(totalCapacity) : 0.0;
@@ -622,9 +644,13 @@ Record aiesim::readings::capture(Array &array, const CaptureConfig &config) {
       {"scalar/unclaimed-registers", "Unmodelled registers written", "",
        Quantity{double(array.unclaimedWrites().size()), "count", "", {}},
        Better::Lower, {}});
+  rec.scalars.push_back(
+      {"scalar/unmodelled-opcodes", "Instructions with no semantics", "",
+       Quantity{double(array.unmodelledOpcodes().size()), "count", "", {}},
+       Better::Lower, {}});
 
   rec.headline = {"scalar/cycles", "scalar/memory-touched",
-                  "scalar/unclaimed-registers"};
+                  "scalar/unclaimed-registers", "scalar/unmodelled-opcodes"};
 
   // --- verdicts.
   Verdict modelled;
@@ -643,6 +669,27 @@ Record aiesim::readings::capture(Array &array, const CaptureConfig &config) {
                    "not provide.";
   }
   rec.verdicts.push_back(std::move(modelled));
+
+  Verdict semanticsComplete;
+  semanticsComplete.id = "all-opcodes-modelled";
+  semanticsComplete.label = "Every instruction the design executed is modelled";
+  semanticsComplete.evidence = {"coverage/opcode-semantics"};
+  if (array.unmodelledOpcodes().empty()) {
+    // Deliberately not a claim about the whole design: a run that never
+    // reached the vector body proves nothing about the vector body.
+    semanticsComplete.outcome = Outcome::Pass;
+    semanticsComplete.why =
+        "No instruction the run reached lacked semantics.";
+  } else {
+    semanticsComplete.outcome = Outcome::Fail;
+    semanticsComplete.severity = "error";
+    semanticsComplete.why =
+        std::to_string(array.unmodelledOpcodes().size()) +
+        " distinct instruction(s) had no semantics, starting with '" +
+        array.unmodelledOpcodes().front().name +
+        "', so execution stopped rather than guessing.";
+  }
+  rec.verdicts.push_back(std::move(semanticsComplete));
 
   Verdict tracked;
   tracked.id = "memory-tracking-enabled";
