@@ -718,10 +718,13 @@ private:
 
   bool stageInterTileWires() {
     bool moved = false;
-    moved |= stageWireToNeighbor(PortBundle::North, PortBundle::South, 0, 1);
-    moved |= stageWireToNeighbor(PortBundle::South, PortBundle::North, 0, -1);
-    moved |= stageWireToNeighbor(PortBundle::East, PortBundle::West, 1, 0);
-    moved |= stageWireToNeighbor(PortBundle::West, PortBundle::East, -1, 0);
+    for (PortBundle mine : {PortBundle::North, PortBundle::South,
+                            PortBundle::East, PortBundle::West}) {
+      PortBundle theirs;
+      int dCol, dRow;
+      if (interTileLink(mine, theirs, dCol, dRow))
+        moved |= stageWireToNeighbor(mine, theirs, dCol, dRow);
+    }
     return moved;
   }
 
@@ -794,6 +797,17 @@ private:
 };
 
 } // namespace
+
+bool aiesim::interTileLink(PortBundle master, PortBundle &slave, int &dCol,
+                           int &dRow) {
+  switch (master) {
+  case PortBundle::North: slave = PortBundle::South; dCol = 0; dRow = 1; return true;
+  case PortBundle::South: slave = PortBundle::North; dCol = 0; dRow = -1; return true;
+  case PortBundle::East:  slave = PortBundle::West;  dCol = 1; dRow = 0; return true;
+  case PortBundle::West:  slave = PortBundle::East;  dCol = -1; dRow = 0; return true;
+  default: return false;
+  }
+}
 
 const char *aiesim::portBundleName(PortBundle bundle) {
   switch (bundle) {
