@@ -63,6 +63,33 @@ Tile::Tile(Array &array, uint32_t col, uint32_t row, TileType type)
 
 Tile::~Tile() = default;
 
+CoreEngine *Tile::ensureCoreEngine() {
+  if (coreEngineAttempted)
+    return coreEngine.get();
+  coreEngineAttempted = true;
+
+  if (type != TileType::Core)
+    return nullptr;
+  CoreEngineFactory *factory = array.coreEngines();
+  if (!factory)
+    return nullptr;
+
+  corePort = makeTileCorePort(*this);
+  coreEngine = factory->create(array.device().generation == Generation::AIE2P
+                                   ? CoreISA::AIE2P
+                                   : CoreISA::AIE2,
+                               *corePort);
+  if (!coreEngine) {
+    // The factory exists but cannot serve this ISA. Say so once, here, rather
+    // than letting every register read quietly return zero.
+    array.error("tile (" + std::to_string(col) + ", " + std::to_string(row) +
+                "): core engine " + factory->name() +
+                " does not support this device's ISA");
+    corePort.reset();
+  }
+  return coreEngine.get();
+}
+
 void aiesim::installMemory(Tile &tile) {
   Memory *mem = tile.memory();
   if (!mem)
