@@ -231,20 +231,49 @@ namespace {
 
 struct CoreLayout {
   uint32_t control, status, timerLow, traceStatus;
-  uint32_t pc, lr, sp, r0, r4;
 };
 
 CoreLayout layoutFor(Generation gen) {
   switch (gen) {
   case Generation::AIE2:
-    return {0x32000, 0x32004, 0x340F8, 0x340D8,
-            0x31100, 0x31130, 0x31120, 0x30C00, 0x30C40};
   case Generation::AIE2P:
-    return {0x32000, 0x32004, 0x340F8, 0x340D8,
-            0x30E00, 0x30E30, 0x30E20, 0x31000, 0x31040};
+    return {0x32000, 0x32004, 0x340F8, 0x340D8};
   }
   return {};
 }
+
+/// A half-open range of the core's memory-mapped architectural registers.
+struct RegRange {
+  uint32_t begin, end;
+};
+
+// The core's register file, projected into the tile's address space as a
+// debug window: 32-bit values at stride 0x10, in contiguous runs with
+// genuinely unmapped gaps between them. Ranges are the CORE_MODULE_CORE_*
+// entries of aie-rt's register database, minus CORE_CONTROL/CORE_STATUS/
+// PROCESSOR_BUS, which are modelled above rather than held at reset.
+//
+// The two generations lay this out differently AND collide -- 0x30C00 is R0
+// on AIE2 but Q0 on AIE2P, 0x30E00 is M0 versus PC, 0x31000 is P0 versus R0,
+// 0x31100 is PC versus R16 -- so a wrong table reads a valid wrong register
+// instead of faulting. Keep them separate.
+
+// 230 registers: BM accumulator partials, WL/WH vector halves, Q, E, the
+// PC..SR control block, R0..S3.
+constexpr RegRange kAIE2PCoreWindow[] = {
+    {0x30000, 0x30500}, {0x30800, 0x30B00}, {0x30C00, 0x30C40},
+    {0x30D00, 0x30DC0}, {0x30E00, 0x30EA0}, {0x31000, 0x314C0},
+};
+
+// 210 registers: AM accumulator partials (9 x 4 x 2, against AIE2P's
+// 5 x 4 x 4), WL/WH, R0..S3, the PC..DP control block, Q.
+constexpr RegRange kAIE2CoreWindow[] = {
+    {0x30000, 0x30480},
+    {0x30800, 0x30B00},
+    {0x30C00, 0x310C0},
+    {0x31100, 0x311A0},
+    {0x31200, 0x31240},
+};
 
 /// CORE_CONTROL comes out of reset with RESET asserted and ENABLE clear:
 /// *_CORE_CONTROL_RESET_DEFVAL is 0x1 at RESET_LSB 1, *_ENABLE_DEFVAL is 0x0
@@ -277,11 +306,19 @@ void aiesim::installCore(Tile &tile) {
                 return static_cast<uint32_t>(array.cycle());
               });
 
-  // Architectural registers, read through the debug interface. These are the
-  // seam the instruction simulator plugs into; until it does, a tile with no
-  // core engine holds them at their *_REGISTER_VALUE_DEFVAL of 0.
-  for (uint32_t off : {layout.pc, layout.lr, layout.sp, layout.r0, layout.r4})
-    regs.onRead(off, off + 4, [](uint32_t) -> uint32_t { return 0; });
+  // The architectural register window. This is the seam a core engine plugs
+  // into: it projects the engine's state here, through
+  // CoreEngine::readRegister. With no engine every register sits at its
+  // *_REGISTER_VALUE_DEFVAL of 0, which is what a core that has never run
+  // reads on hardware too. See docs/AIESimulator.md 4.4.
+  const bool isAIE2P = tile.getArray().device().generation == Generation::AIE2P;
+  const RegRange *window = isAIE2P ? kAIE2PCoreWindow : kAIE2CoreWindow;
+  const size_t windowSize =
+      isAIE2P ? std::size(kAIE2PCoreWindow) : std::size(kAIE2CoreWindow);
+  for (size_t i = 0; i < windowSize; ++i)
+    regs.reserve(window[i].begin, window[i].end,
+                 "core architectural register; no core engine is installed, "
+                 "so it holds its *_REGISTER_VALUE_DEFVAL of 0");
 
   regs.reserve(layout.traceStatus, layout.traceStatus + 4,
                "trace unit is not modelled; *_TRACE_STATUS_STATE_DEFVAL and "
