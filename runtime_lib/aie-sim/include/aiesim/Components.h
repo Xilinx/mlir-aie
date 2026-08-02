@@ -174,6 +174,11 @@ enum class MemDirection { South, West, North, Own };
 /// instead of hanging or reading a plausible wrong word.
 std::unique_ptr<CoreMemoryPort> makeTileCorePort(Tile &tile);
 
+/// Installs the thing that starts and stops a core: CORE_CONTROL's enable and
+/// reset bits drive the engine, and CORE_STATUS reports DONE / ERROR_HALT.
+/// Called by installCore(), which owns the offsets.
+void installCoreExecution(Tile &tile, uint32_t controlOff, uint32_t statusOff);
+
 } // namespace aiesim
 
 #endif // AIESIM_COMPONENTS_H

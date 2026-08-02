@@ -111,6 +111,9 @@ void Tile::setStreamSwitch(std::unique_ptr<StreamSwitchModule> m) {
   switchModule = std::move(m);
 }
 void Tile::setDma(std::unique_ptr<DmaModule> m) { dmaModule = std::move(m); }
+void Tile::setCoreModule(std::unique_ptr<Steppable> m) {
+  coreExecModule = std::move(m);
+}
 
 //===----------------------------------------------------------------------===//
 // Array

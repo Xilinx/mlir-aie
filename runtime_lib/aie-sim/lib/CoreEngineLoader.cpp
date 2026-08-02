@@ -417,10 +417,11 @@ void aiesim::installCore(Tile &tile) {
   regs.claim(layout.control, layout.control + 4);
   regs.write(layout.control, kCoreControlReset);
 
-  // Every CORE_STATUS field is *_DEFVAL 0, and with no core engine installed
-  // none of them can leave its reset state.
-  regs.onRead(layout.status, layout.status + 4,
-              [](uint32_t) -> uint32_t { return 0; });
+  // CORE_CONTROL's enable/reset bits drive the core, and CORE_STATUS reports
+  // what it did. Every other CORE_STATUS field is *_DEFVAL 0 and stays there:
+  // the stall bits would need the stall REASON, which the engine reports as a
+  // single Stalled result without saying which port it waited on.
+  installCoreExecution(tile, layout.control, layout.status);
 
   // A free-running counter, so it is computed rather than reserved: reporting
   // a constant zero would make a host timing loop spin forever.
