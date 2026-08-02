@@ -648,7 +648,14 @@ uint32_t DmaModuleImpl::onStatusRead(uint32_t off) const {
   v = setField(v, layout.stTaskQOverflow, c.overflow ? 1 : 0);
   v = setField(v, layout.stStalledLockAcq, c.stalledLockAcq ? 1 : 0);
   v = setField(v, layout.stStalledStreamStall, c.stalledStream ? 1 : 0);
-  v = setField(v, layout.stCurBd, c.running ? c.curBd : 0);
+  // CUR_BD is reported whether or not the channel is running. It is a pointer
+  // register (CUR_BD_LSB 24, xaiemlgbl_params.h:10463), and nothing in aie-rt
+  // says the hardware clears it when a channel goes idle -- so zeroing it there
+  // would be substituting an invented value for one the channel actually holds,
+  // and an invented BD id is indistinguishable from a real one. NOT verified
+  // against silicon; what is verified is that the previous behaviour was a
+  // guess with nothing behind it.
+  v = setField(v, layout.stCurBd, c.curBd);
   // stStalledLockRel, stStalledTct, stStatus: not modelled. Release never
   // stalls in this model (see the lock-gating note in stepChannel), and
   // the 2-bit "Status" enum's exact meaning is not consumed by any aie-rt
