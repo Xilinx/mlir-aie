@@ -320,7 +320,41 @@ void testIntervalShapeIsIndexedWithItsCategories() {
   AIESIM_CHECK(has(json, "\"name\":\"backpressure\",\"productive\":false"));
 }
 
+/// No DMA ran, so residency was never put to the test. `unknown`, not a pass:
+/// a design that moved nothing has not demonstrated it keeps its stream on
+/// chip, and reporting that as a clean result is the silent-zero mistake in
+/// the place it would matter most.
+void testNoTrafficIsUnknownNotResident() {
+  auto array = makeArray();
+  std::string json = capture(*array, config()).toJson();
+  AIESIM_CHECK(has(json, "\"id\":\"flow/stream-traffic\""));
+  AIESIM_CHECK(has(json, "\"id\":\"stream-stays-on-chip\""));
+  AIESIM_CHECK(has(json, "No DMA transfer happened"));
+  AIESIM_CHECK(has(json, "\"scalar/ddr-bytes\""));
+}
+
+/// Bytes that stayed on chip pass; a single DDR byte fails. Driven through
+/// recordDmaBytes rather than a configured DMA, because what is under test is
+/// the verdict, and dma_test already covers the counting.
+void testOnChipPassesAndDdrFails() {
+  auto array = makeArray();
+  array->recordDmaBytes(TileType::MemTile, /*toFabric=*/true, 256);
+  array->recordDmaBytes(TileType::Core, /*toFabric=*/false, 256);
+  std::string json = capture(*array, config()).toJson();
+  AIESIM_CHECK(has(json, "512 byte(s) moved stayed between L1 and L2"));
+  AIESIM_CHECK(has(json, "\"from\":\"l2\",\"to\":\"fabric\",\"value\":256"));
+
+  auto crossed = makeArray();
+  crossed->recordDmaBytes(TileType::MemTile, /*toFabric=*/true, 256);
+  crossed->recordDmaBytes(TileType::Shim, /*toFabric=*/true, 64);
+  std::string json2 = capture(*crossed, config()).toJson();
+  AIESIM_CHECK(has(json2, "64 byte(s) crossed DDR against 256 on-chip"));
+  AIESIM_CHECK(has(json2, "\"shape\":\"flow\""));
+}
+
 int main() {
+  testNoTrafficIsUnknownNotResident();
+  testOnChipPassesAndDdrFails();
   testNothingScheduledIsUnknownNotPass();
   testTimelineOffIsUnknownNotEmpty();
   testIntervalShapeIsIndexedWithItsCategories();

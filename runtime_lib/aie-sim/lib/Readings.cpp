@@ -325,6 +325,15 @@ std::string Record::toJson() const {
     j.kv("points", uint64_t(c.items.size()));
     j.endObj();
   }
+  for (const Flow &f : flows) {
+    j.beginObj();
+    j.kv("id", f.id);
+    j.kv("shape", "flow");
+    j.kv("label", f.label);
+    j.kv("points", uint64_t(f.edges.size()));
+    j.kvOpt("unit", f.unit);
+    j.endObj();
+  }
   for (const Interval &iv : intervals) {
     uint64_t spans = 0;
     for (const IntervalTrack &t : iv.tracks)
@@ -438,6 +447,40 @@ std::string Record::toJson() const {
       if (it.count)
         j.kv("count", it.count);
       j.attrs("attrs", it.attrs);
+      j.endObj();
+    }
+    j.endArr();
+    j.endObj();
+  }
+  j.endArr();
+
+  j.key("flow");
+  j.beginArr();
+  for (const Flow &f : flows) {
+    j.beginObj();
+    j.kv("id", f.id);
+    j.kv("label", f.label);
+    j.kvOpt("description", f.description);
+    j.strArray("tags", f.tags);
+    j.kv("unit", f.unit);
+    j.key("nodes");
+    j.beginArr();
+    for (const FlowNode &n : f.nodes) {
+      j.beginObj();
+      j.kv("id", n.id);
+      j.kvOpt("label", n.label);
+      j.kvOpt("level", n.level);
+      j.endObj();
+    }
+    j.endArr();
+    j.key("edges");
+    j.beginArr();
+    for (const FlowEdge &e : f.edges) {
+      j.beginObj();
+      j.kv("from", e.from);
+      j.kv("to", e.to);
+      j.kv("value", e.value);
+      j.kvOpt("label", e.label);
       j.endObj();
     }
     j.endArr();
@@ -707,6 +750,39 @@ Record aiesim::readings::capture(Array &array, const CaptureConfig &config) {
   semantics.universe = opcodeSeen.size();
   rec.coverages.push_back(std::move(semantics));
 
+  // --- flow: bytes each memory level exchanged with the stream fabric.
+  //
+  // Counted where a byte actually crosses -- one DMA channel's word transfer --
+  // so this is what the design moved, not what its descriptors said it would.
+  // The level is the DMA's own end: shim is DDR, memtile L2, core tile L1.
+  const Array::StreamTraffic &tr = array.streamTraffic();
+  const uint64_t ddrBytes = tr.ddrRead + tr.ddrWrite;
+  Flow moved;
+  moved.id = "flow/stream-traffic";
+  moved.label = "Bytes moved between each memory level and the stream fabric";
+  moved.unit = "bytes";
+  moved.description =
+      "Which memory level each DMA transfer had at its own end. This does NOT "
+      "say which L2 buffer a given DDR read eventually fed -- that is a "
+      "stream-switch routing question -- so the edges join each level to the "
+      "fabric rather than to each other.";
+  moved.nodes = {{"ddr", "DDR", "L3"},
+                 {"l2", "MemTile", "L2"},
+                 {"l1", "Core tile", "L1"},
+                 {"fabric", "Stream fabric", "fabric"}};
+  auto edge = [&](const char *from, const char *to, uint64_t bytes,
+                  const char *label) {
+    if (bytes)
+      moved.edges.push_back({from, to, label, double(bytes)});
+  };
+  edge("ddr", "fabric", tr.ddrRead, "shim MM2S");
+  edge("fabric", "ddr", tr.ddrWrite, "shim S2MM");
+  edge("l2", "fabric", tr.l2Read, "memtile MM2S");
+  edge("fabric", "l2", tr.l2Write, "memtile S2MM");
+  edge("l1", "fabric", tr.l1Read, "core MM2S");
+  edge("fabric", "l1", tr.l1Write, "core S2MM");
+  rec.flows.push_back(std::move(moved));
+
   // --- interval: where each component's scheduled cycles went.
   //
   // On a machine with no interlocks the core datapath issues one bundle per
@@ -796,8 +872,18 @@ Record aiesim::readings::capture(Array &array, const CaptureConfig &config) {
                    {"unattributed", std::to_string(unattributedCycles)}}},
          Better::Lower, {}});
 
+  rec.scalars.push_back(
+      {"scalar/ddr-bytes", "Bytes crossing DDR", "",
+       Quantity{double(ddrBytes), "bytes", "shim DMA transfers, both directions",
+                {{"read", std::to_string(tr.ddrRead)},
+                 {"write", std::to_string(tr.ddrWrite)},
+                 {"l2", std::to_string(tr.l2Read + tr.l2Write)},
+                 {"l1", std::to_string(tr.l1Read + tr.l1Write)}}},
+       Better::Lower, {}});
+
   rec.headline = {"scalar/cycles", "scalar/memory-touched",
-                  "scalar/unclaimed-registers", "scalar/unmodelled-opcodes"};
+                  "scalar/unclaimed-registers", "scalar/unmodelled-opcodes",
+                  "scalar/ddr-bytes"};
   if (array.timelineEnabled())
     rec.headline.push_back("scalar/stalled-cycles");
 
@@ -881,6 +967,32 @@ Record aiesim::readings::capture(Array &array, const CaptureConfig &config) {
                      "incomplete.";
   }
   rec.verdicts.push_back(std::move(attributed));
+
+  // The "inside a block the stream never leaves L2" invariant, as a check
+  // rather than a habit. Deliberately not "DDR is bad": weights and the first
+  // upload have to come from somewhere. What it answers is whether THIS run
+  // moved anything across DDR, which is the question a resident-block claim
+  // stands or falls on.
+  Verdict resident;
+  resident.id = "stream-stays-on-chip";
+  resident.label = "No data crossed DDR during this run";
+  resident.evidence = {"flow/stream-traffic", "scalar/ddr-bytes"};
+  const uint64_t onChip = tr.l2Read + tr.l2Write + tr.l1Read + tr.l1Write;
+  if (ddrBytes == 0 && onChip == 0) {
+    // No DMA moved at all, so residency was never put to the test.
+    resident.outcome = Outcome::Unknown;
+    resident.why = "No DMA transfer happened, so nothing was resident or "
+                   "otherwise.";
+  } else if (ddrBytes == 0) {
+    resident.outcome = Outcome::Pass;
+    resident.why = "All " + std::to_string(onChip) +
+                   " byte(s) moved stayed between L1 and L2.";
+  } else {
+    resident.outcome = Outcome::Fail;
+    resident.why = std::to_string(ddrBytes) + " byte(s) crossed DDR against " +
+                   std::to_string(onChip) + " on-chip.";
+  }
+  rec.verdicts.push_back(std::move(resident));
 
   Verdict tracked;
   tracked.id = "memory-tracking-enabled";
