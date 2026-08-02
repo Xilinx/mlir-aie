@@ -163,6 +163,12 @@ else()
   endif()
 endif()
 
+# Reports claimed-register coverage against the vendored register map. A
+# review aid rather than a test: much of the map is trace/debug/ECC this model
+# deliberately omits, so there is no number to assert.
+add_executable(register_coverage tools/register_coverage.cpp)
+target_link_libraries(register_coverage PRIVATE aie-sim)
+
 if(BUILD_TESTING)
   add_subdirectory(test)
 endif()
