@@ -193,8 +193,10 @@ Owns everything outside the core datapath, and holds the `ess_*` entry points:
   would otherwise spin on a fabricated zero with no diagnostic. Reading back a value the host itself
   wrote is a pass-through rather than an invention, so it is allowed. Writes to unmodelled registers
   are recorded rather than fatal (the model will never claim every register, and refusing to run until
-  it does would make it useless); `AIE_SIM_STRICT=1` promotes them, and the recorded set is emitted as
-  a coverage report so "unmodelled" is a number rather than a surprise.
+  it does would make it useless); `AIE_SIM_STRICT=1` promotes them, and the recorded set is emitted on
+  stderr at teardown so "unmodelled" is a number rather than a surprise. Nothing is printed when the
+  set is empty, which as of 2026-08-02 is the case for all three of the array tests that run end to
+  end: every register they write is modelled.
 
   That runtime report says what one design touched. The static counterpart says what the model
   covers at all: `register_coverage <params-header> [device]` takes the register universe from
