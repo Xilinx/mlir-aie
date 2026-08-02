@@ -490,6 +490,11 @@ bool addMemoryLeaf(ContainmentNode &tileNode, const char *name, Memory *mem,
 
   bool named = false;
   if (regions) {
+    // The address this memory starts at, so an address-ordered view can place
+    // its children without inferring a base from their own addresses.
+    char base[16];
+    std::snprintf(base, sizeof(base), "0x%x", bandBase);
+    node.attrs.push_back({"base", base});
     for (const Region &r : regions->regions()) {
       // Only what this band maps: the script also describes the neighbour
       // bands and program memory, which are not this memory's bytes.
