@@ -244,6 +244,51 @@ Engine discovery is `$AIE_SIM_CORE_ENGINE`, then `$PEANO_INSTALL_DIR/lib/libaie-
 engine is reported the first time a core is enabled, not at construction, so designs with no core code
 still simulate.
 
+### 4.4 The core-debug register window
+
+A host does not ask the core for its registers over a side channel: it reads them through ordinary MMIO,
+so the fabric must project the engine's architectural state onto tile-local offsets. This is the bridge
+`installCore()` currently stubs, holding five registers at zero until an engine exists.
+
+The window is a real, enumerable hardware structure rather than a handful of special cases. Counting
+`CORE_MODULE_CORE_*` entries in aie-rt's database for AIE2P gives **233 registers over 0x30000-0x32038**,
+and the layout is regular:
+
+* **One 32-bit value per 16-byte slot** -- every family, without exception, has stride `0x10`.
+* **Wider registers occupy consecutive slots** and say so in their names: `WL0_PART0/PART1`,
+  `BMLL0_PART0..PART3`. Their `_WIDTH` is the *architectural* width (128 for a `WL` part), not the 32
+  bits an `XAie_Read32` returns, so a reader assembles a wide register from its parts.
+* The families are the register file as the ISA defines it: `R0-R31`, `P0-P7`, `M0-M7`, `DN/DJ/DC0-7`,
+  `S0-S3`, `Q0-Q3`, `E0-E11`, the `WL/WH0-11` vector halves, the `BM*` accumulator partials, and a
+  control block `PC FC SP LR LS LE LC CR0-1 SR` at `0x30E00-0x30E90`.
+
+**The bridge is a table, not a mechanism.** `CoreEngine::readRegister(name, data, size)` already exists
+and is already documented as serving "the core-debug register window that aie-rt exposes". So the design
+is: map offset to `(register-name, part-index)`, and route the existing `onRead` through it, falling back
+to the present reads-zero behaviour when no engine is loaded. Nothing new crosses the engine boundary,
+and the ABI question in 4.3 is untouched by this.
+
+**Offsets are per generation and the generations genuinely collide**, which is why the table must be
+generated per `Generation` and never shared:
+
+| offset    | AIE2      | AIE2P     |
+|-----------|-----------|-----------|
+| `0x30C00` | `CORE_R0` | `CORE_Q0` |
+| `0x30E00` | `CORE_M0` | `CORE_PC` |
+| `0x31000` | `CORE_P0` | `CORE_R0` |
+| `0x31100` | `CORE_PC` | `CORE_R16`|
+
+Every one of those four offsets is a valid register on both generations and a *different* register on
+each, so a wrong-generation table does not fault -- it returns a plausible number for the wrong register.
+That is the failure mode the fault contract cannot catch, and it is the argument for generating the table
+from the vendored database rather than hand-transcribing five entries per generation.
+
+**Scope.** Expose the control block plus `R`/`P`/`M`/`S` first: those are scalar, 32 bits, one slot each,
+and are what a host debug read actually wants. The vector and accumulator families need the part-assembly
+rule above and an engine that models them at all, so they belong with the vector phase, not here. Writes
+go through `writeRegister` with the same table; nothing in the current tests needs them, so they can stay
+faulted until something does.
+
 ## 5. Why register-level rather than graph-level
 
 The Vitis simulator is configured from four descriptor files that `aiecc` generates from the MLIR
