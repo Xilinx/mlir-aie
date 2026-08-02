@@ -19,6 +19,7 @@
 
 #include "aiesim/Components.h"
 
+#include <algorithm>
 #include <string>
 
 using namespace aiesim;
@@ -67,15 +68,25 @@ public:
     if (done || faulted)
       return;
     if (!tile.ensureCoreEngine()) {
-      // Report once, when a core is actually started, rather than at array
-      // construction -- a design with no code on this tile must still run.
+      // A host enables every core tile in its start-up sequence, including
+      // tiles a design put no code on -- harmless on hardware, since an empty
+      // core has nothing to run. Faulting on those would refuse designs the
+      // model handles perfectly well, so the reaction depends on whether there
+      // is actually a program to skip.
+      if (!hasProgram()) {
+        running = false;
+        return;
+      }
+      // There IS code here and nothing can execute it, so every later result
+      // would be a guess.
       if (!reportedNoEngine) {
         reportedNoEngine = true;
         tile.getArray().error(
             "tile (" + std::to_string(tile.getCol()) + ", " +
             std::to_string(tile.getRow()) +
-            "): CORE_CONTROL enabled a core, but no core engine is available "
-            "(set AIE_SIM_CORE_ENGINE or PEANO_INSTALL_DIR)");
+            "): CORE_CONTROL enabled a core with a program loaded, but no core "
+            "engine is available (set AIE_SIM_CORE_ENGINE or "
+            "PEANO_INSTALL_DIR)");
       }
       return;
     }
@@ -131,6 +142,17 @@ public:
   bool busy() const override { return running; }
 
 private:
+  /// Whether anything was loaded into this tile's program memory. A design with
+  /// no `aie.core` on a tile leaves it all zero, and the host still enables it.
+  bool hasProgram() const {
+    Memory *prog = tile.programMemory();
+    if (!prog)
+      return false;
+    const uint8_t *bytes = prog->data();
+    return std::any_of(bytes, bytes + prog->size(),
+                       [](uint8_t b) { return b != 0; });
+  }
+
   Tile &tile;
   bool running = false;
   bool done = false;
