@@ -24,29 +24,11 @@ DecodedAddress decodeAddress(const DeviceModel &dev, uint64_t addr) {
 
   uint64_t local = addr - dev.baseAddr;
 
-  // _XAie_GetTileAddr (third_party/aie-rt/driver/src/common/xaie_helper.h:
-  // 151-155) builds
-  //   TileAddr = (Row << RowShift) | (Col << ColShift)
-  // and every register write in aie-rt (core, lock, DMA BD, stream switch --
-  // e.g. driver/src/dma/xaie_dma_aie.c:296, driver/src/device/xaie_device_aie.c
-  // :382) adds the intra-tile register offset to that, so the layout from LSB
-  // to MSB is [regOff | row | col]. Inverting it is shift-and-mask, and it
-  // assumes ColShift > RowShift, true for both generations modeled here
-  // (25/20 for both, see below).
-  //
-  // aie-rt also ships _XAie_GetRowfromRegOff / _XAie_GetColfromRegOff
-  // (xaie_helper.c:918-931), which is what this file's header comment (and
-  // docs/AIESimulator.md section 4.1) point at as "the inverse". They are
-  // not: masking the low RowShift bits does not recover Row, which lives at
-  // bit RowShift and up, not below it. Checked by construction: encoding
-  // (row=3, col=5) with RowShift=20/ColShift=25 the way _XAie_GetTileAddr
-  // does, and running both functions on the result, returns row=0 and col=3
-  // -- "GetColfromRegOff" returns the row, and "GetRowfromRegOff" returns the
-  // low bits of the intra-tile offset, not the row. They exist to fill the
-  // Col/Row fields of a debug TXN command header (_XAie_AppendWrite32 and
-  // its MaskWrite32/MaskPoll/BlockWrite32 siblings, same file), not to
-  // decode a live MMIO address, so this function inverts _XAie_GetTileAddr
-  // directly instead of copying them.
+  // Inverts _XAie_GetTileAddr's [regOff | row | col] layout
+  // (xaie_helper.h:151-155); assumes ColShift > RowShift, true for both
+  // generations here. aie-rt's _XAie_GetRowfromRegOff /
+  // _XAie_GetColfromRegOff are NOT this inverse and must not be substituted
+  // -- they decode a TXN command header instead; see docs/AIESimulator.md 4.1.
   uint64_t rowFieldMask = (1ULL << (dev.colShift - dev.rowShift)) - 1;
   uint32_t col = static_cast<uint32_t>(local >> dev.colShift);
   uint32_t row = static_cast<uint32_t>((local >> dev.rowShift) & rowFieldMask);
