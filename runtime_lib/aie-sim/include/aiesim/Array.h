@@ -187,6 +187,11 @@ public:
   void setLocks(std::unique_ptr<class LockModule> m);
   void setStreamSwitch(std::unique_ptr<class StreamSwitchModule> m);
   void setDma(std::unique_ptr<class DmaModule> m);
+  /// What drives this tile's core from CORE_CONTROL. A plain Steppable slot
+  /// rather than its own module type: everything a caller needs to observe
+  /// (running, done, faulted) is already visible through CORE_STATUS, which is
+  /// also where the hardware puts it.
+  void setCoreModule(std::unique_ptr<Steppable> m);
 
   class LockModule *locks() { return lockModule.get(); }
   class StreamSwitchModule *streamSwitch() { return switchModule.get(); }
@@ -213,10 +218,13 @@ private:
   std::unique_ptr<class LockModule> lockModule;
   std::unique_ptr<class StreamSwitchModule> switchModule;
   std::unique_ptr<class DmaModule> dmaModule;
-  // Declared before the engine so it outlives it: the engine holds a reference
-  // to this port and members destruct in reverse declaration order.
+  // Members destruct in reverse declaration order, and each of these three
+  // depends on the one above it: the engine holds a reference to the port, and
+  // the exec module drives the engine. So they are declared port, engine,
+  // module and torn down module, engine, port.
   std::unique_ptr<CoreMemoryPort> corePort;
   std::unique_ptr<CoreEngine> coreEngine;
+  std::unique_ptr<Steppable> coreExecModule;
   bool coreEngineAttempted = false;
 };
 

@@ -37,6 +37,7 @@ add_library(aie-sim STATIC
   lib/Array.cpp
   lib/CoreEngineLoader.cpp
   lib/TileCorePort.cpp
+  lib/CoreModule.cpp
   lib/Device.cpp
   lib/Dma.cpp
   lib/EssAbi.cpp
