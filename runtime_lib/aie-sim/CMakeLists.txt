@@ -43,6 +43,7 @@ add_library(aie-sim STATIC
   lib/EssAbi.cpp
   lib/Lock.cpp
   lib/Memory.cpp
+  lib/Readings.cpp
   lib/RegisterFile.cpp
   lib/StreamSwitch.cpp
 )
