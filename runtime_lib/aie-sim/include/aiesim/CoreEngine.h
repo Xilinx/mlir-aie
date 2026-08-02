@@ -29,6 +29,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace aiesim {
 
@@ -131,6 +132,20 @@ public:
                             uint32_t size) const = 0;
   virtual bool writeRegister(const std::string &name, const void *data,
                              uint32_t size) = 0;
+
+  /// Every distinct opcode this core reached, and whether the engine had
+  /// semantics for it. The engine accumulates this as it executes, so one run
+  /// reports everything it reached rather than only the instruction it stopped
+  /// on -- which is what turns the semantics gap into a number.
+  ///
+  /// Default: report nothing. An engine that does not track coverage is not
+  /// broken, and reporting an empty set is not the same as reporting zero
+  /// gaps, so callers must distinguish "not tracked" from "none".
+  struct OpcodeUse {
+    std::string name;
+    bool modelled = false;
+  };
+  virtual std::vector<OpcodeUse> opcodeCoverage() const { return {}; }
 };
 
 /// Which ISA a core engine should implement.

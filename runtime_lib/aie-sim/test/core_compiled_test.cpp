@@ -38,6 +38,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <string>
+#include <vector>
 
 using namespace aiesim;
 
@@ -128,6 +129,31 @@ int main() {
   AIESIM_CHECK_EQ(memWord(*tile, 0), 42u);
   AIESIM_CHECK_EQ(memWord(*tile, 4), 7u);
   AIESIM_CHECK_EQ(memWord(*tile, 8), 49u);
+
+  // Opcode coverage, end to end through the C ABI: the engine accumulates the
+  // set as it executes, so a run that reached DONE must report the whole set
+  // it ran, all of it modelled. This is the only test that executes real
+  // instructions, so it is the only place the reporting path is exercised.
+  const CoreEngine *engine = tile->attachedCoreEngine();
+  AIESIM_CHECK(engine != nullptr);
+  if (engine) {
+    std::vector<CoreEngine::OpcodeUse> use = engine->opcodeCoverage();
+    AIESIM_CHECK(!use.empty());
+    size_t unmodelled = 0;
+    for (const CoreEngine::OpcodeUse &u : use) {
+      AIESIM_CHECK(!u.name.empty());
+      if (!u.modelled)
+        ++unmodelled;
+    }
+    // This program is scalar throughout and ran to completion, so nothing it
+    // touched can have been missing semantics.
+    AIESIM_CHECK_EQ(unmodelled, size_t(0));
+    // More than one distinct opcode: a set that only ever holds the last
+    // instruction would also be non-empty.
+    AIESIM_CHECK(use.size() > 1);
+    for (const CoreEngine::OpcodeUse &u : use)
+      std::printf("  COVERAGE %-28s modelled=%d\n", u.name.c_str(), u.modelled);
+  }
 
   return aiesim_test::summarize("core_compiled_test");
 }

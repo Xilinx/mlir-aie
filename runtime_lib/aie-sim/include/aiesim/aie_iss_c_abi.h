@@ -120,6 +120,20 @@ typedef struct aie_iss_api {
                        uint32_t size);
   int (*write_register)(aie_iss_core *core, const char *name, const void *data,
                         uint32_t size);
+
+  /*
+   * Every distinct opcode this core reached, with whether the engine had
+   * semantics for it. Calls `sink` once per opcode and returns how many times
+   * it did. `name` stays valid for the duration of the call only.
+   *
+   * This is what makes the semantics gap a NUMBER instead of whatever the run
+   * happened to stop on: the engine accumulates the set as it executes, so one
+   * run reports everything it reached rather than only the first gap. May be
+   * NULL on an engine that does not track it -- check before calling.
+   */
+  uint32_t (*opcode_coverage)(const aie_iss_core *core, void *ctx,
+                              void (*sink)(void *ctx, const char *name,
+                                           int modelled));
 } aie_iss_api;
 
 /*
