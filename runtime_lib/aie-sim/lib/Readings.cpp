@@ -325,6 +325,18 @@ std::string Record::toJson() const {
     j.kv("points", uint64_t(c.items.size()));
     j.endObj();
   }
+  for (const Interval &iv : intervals) {
+    uint64_t spans = 0;
+    for (const IntervalTrack &t : iv.tracks)
+      spans += t.spans.size();
+    j.beginObj();
+    j.kv("id", iv.id);
+    j.kv("shape", "interval");
+    j.kv("label", iv.label);
+    j.kv("points", spans);
+    j.kvOpt("unit", iv.timeUnit);
+    j.endObj();
+  }
   j.endArr();
 
   j.key("topN");
@@ -426,6 +438,47 @@ std::string Record::toJson() const {
       if (it.count)
         j.kv("count", it.count);
       j.attrs("attrs", it.attrs);
+      j.endObj();
+    }
+    j.endArr();
+    j.endObj();
+  }
+  j.endArr();
+
+  j.key("interval");
+  j.beginArr();
+  for (const Interval &iv : intervals) {
+    j.beginObj();
+    j.kv("id", iv.id);
+    j.kv("label", iv.label);
+    j.kvOpt("description", iv.description);
+    j.strArray("tags", iv.tags);
+    j.kv("timeUnit", iv.timeUnit);
+    j.key("categories");
+    j.beginArr();
+    for (const IntervalCategory &cat : iv.categories) {
+      j.beginObj();
+      j.kv("name", cat.name);
+      j.kvOpt("color", cat.color);
+      j.kvBool("productive", cat.productive);
+      j.endObj();
+    }
+    j.endArr();
+    j.key("tracks");
+    j.beginArr();
+    for (const IntervalTrack &t : iv.tracks) {
+      j.beginObj();
+      j.kv("entity", t.entity);
+      j.key("spans");
+      j.beginArr();
+      for (const IntervalSpan &s : t.spans) {
+        j.beginObj();
+        j.kv("start", s.start);
+        j.kv("end", s.end);
+        j.kv("category", s.category);
+        j.endObj();
+      }
+      j.endArr();
       j.endObj();
     }
     j.endArr();
@@ -634,6 +687,14 @@ Record aiesim::readings::capture(Array &array, const CaptureConfig &config) {
       "as a number. This covers what the run REACHED, not what the design "
       "contains: a run that never entered the vector body says nothing about "
       "the vector body.";
+  // Which source filled it decides how complete it is, and a consumer cannot
+  // tell from the items. With no engine enumerating what it executed, all
+  // there is is the instruction the run died on, so the set is a lower bound.
+  semantics.description +=
+      anyEngineReported
+          ? " Enumerated by the core engine, so it is every opcode executed."
+          : " No engine reported coverage, so this is only what the fault path "
+            "saw: a lower bound, not the full set the run executed.";
   for (const auto &[name, seen] : opcodeSeen) {
     CoverageItem item;
     item.key = name;
@@ -645,6 +706,49 @@ Record aiesim::readings::capture(Array &array, const CaptureConfig &config) {
   // more about the ISA than about this run.
   semantics.universe = opcodeSeen.size();
   rec.coverages.push_back(std::move(semantics));
+
+  // --- interval: where each component's scheduled cycles went.
+  //
+  // On a machine with no interlocks the core datapath issues one bundle per
+  // cycle unconditionally, so bundle count already IS its cycle count
+  // (docs/kb/aie-has-no-interlocks-so-bundles-are-cycles). What can still make
+  // a cycle cost more than a bundle is waiting on the fabric -- a lock, a full
+  // or empty stream port -- and that is what this attributes.
+  Interval stalls;
+  stalls.id = "interval/stall-attribution";
+  stalls.label = "Where each component's scheduled cycles went";
+  stalls.timeUnit = "cycle";
+  stalls.categories = {{"running", "", true},
+                       {"lock", "", false},
+                       {"backpressure", "", false},
+                       {"starvation", "", false},
+                       {"core-wait", "", false},
+                       {"unknown", "", false}};
+  uint64_t stalledCycles = 0, runningCycles = 0, unattributedCycles = 0;
+  for (const Array::TimelineTrack &t : array.timeline()) {
+    IntervalTrack track;
+    track.entity = t.entity;
+    for (const Array::TimelineSpan &s : t.spans) {
+      track.spans.push_back({s.start, s.end, s.category});
+      const uint64_t width = s.end - s.start;
+      if (std::string_view(s.category) == "running")
+        runningCycles += width;
+      else {
+        stalledCycles += width;
+        if (std::string_view(s.category) == "unknown")
+          unattributedCycles += width;
+      }
+    }
+    stalls.tracks.push_back(std::move(track));
+  }
+  stalls.description =
+      "Half-open spans over the cycles each component was scheduled. Cycles a "
+      "component was NOT scheduled are absent rather than zero-filled: out of "
+      "the active set it has nothing to do, which is not the same as waiting. "
+      "A DMA's channels share one Steppable, so its track is per module and "
+      "the reason is the first stalled channel's.";
+  if (array.timelineEnabled())
+    rec.intervals.push_back(std::move(stalls));
 
   // --- scalars.
   double touchedRatio =
@@ -678,8 +782,24 @@ Record aiesim::readings::capture(Array &array, const CaptureConfig &config) {
                 {{"reached", std::to_string(opcodeSeen.size())}}},
        Better::Lower, {}});
 
+  // Denominator is scheduled cycles, not simulated cycles: a component that is
+  // not scheduled is idle, and dividing by wall time would report an array
+  // that finished early as one that stalled.
+  const uint64_t scheduledCycles = runningCycles + stalledCycles;
+  if (array.timelineEnabled())
+    rec.scalars.push_back(
+        {"scalar/stalled-cycles", "Component-cycles spent waiting", "",
+         Quantity{double(stalledCycles), "cycles",
+                  "component-cycles scheduled but not doing work",
+                  {{"scheduled", std::to_string(scheduledCycles)},
+                   {"running", std::to_string(runningCycles)},
+                   {"unattributed", std::to_string(unattributedCycles)}}},
+         Better::Lower, {}});
+
   rec.headline = {"scalar/cycles", "scalar/memory-touched",
                   "scalar/unclaimed-registers", "scalar/unmodelled-opcodes"};
+  if (array.timelineEnabled())
+    rec.headline.push_back("scalar/stalled-cycles");
 
   // --- verdicts.
   Verdict modelled;
@@ -728,6 +848,39 @@ Record aiesim::readings::capture(Array &array, const CaptureConfig &config) {
         first + "'.";
   }
   rec.verdicts.push_back(std::move(semanticsComplete));
+
+  // Not "was there a stall" -- stalling is how the fabric synchronises, and a
+  // design with none would be suspicious. This asks whether the stalls that
+  // happened were ATTRIBUTED, because an unexplained wait is the reading
+  // silently under-reporting rather than the design behaving well.
+  Verdict attributed;
+  attributed.id = "stalls-attributed";
+  attributed.label = "Every stalled cycle has a reason";
+  // Evidence only when the readings it names were actually emitted: citing an
+  // observation that is not in the record sends a consumer looking for it.
+  if (array.timelineEnabled())
+    attributed.evidence = {"interval/stall-attribution",
+                           "scalar/stalled-cycles"};
+  if (!array.timelineEnabled()) {
+    attributed.outcome = Outcome::Unknown;
+    attributed.why = "Stall attribution was switched off for this run.";
+  } else if (scheduledCycles == 0) {
+    attributed.outcome = Outcome::Unknown;
+    attributed.why = "No component was ever scheduled, so no time was "
+                     "attributed.";
+  } else if (unattributedCycles == 0) {
+    attributed.outcome = Outcome::Pass;
+    attributed.why = std::to_string(stalledCycles) + " stalled cycle(s) of " +
+                     std::to_string(scheduledCycles) +
+                     " scheduled, all with a named reason.";
+  } else {
+    attributed.outcome = Outcome::Fail;
+    attributed.why = std::to_string(unattributedCycles) + " of " +
+                     std::to_string(stalledCycles) +
+                     " stalled cycle(s) have no reason, so the breakdown is "
+                     "incomplete.";
+  }
+  rec.verdicts.push_back(std::move(attributed));
 
   Verdict tracked;
   tracked.id = "memory-tracking-enabled";
