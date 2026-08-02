@@ -379,9 +379,20 @@ The two components can proceed in parallel; neither blocks the other.
    model. 7 of them are scalar and land with phase 1.
 3. **Vector and accumulator ISA**, with `IntrinsicsAIE2.td` and `IntrinsicsAIE2P.td` as the checklist
    and a coverage report so that partial support is visible.
-4. **Timing.** Replace the flat one-bundle-per-cycle cost with the per-instruction itineraries the
-   backend already carries. `aie2p/AIE2PGenSchedule.td` holds roughly 4000 `InstrItinData` entries, which
-   is the densest machine-readable AIE2P timing data in either repository.
+4. **Timing.** ~~Replace the flat one-bundle-per-cycle cost with the per-instruction itineraries.~~
+   **Superseded 2026-08-02, and the correction matters because this phase was sized in months.** AIE is
+   an in-order VLIW *without interlocks* -- `AIEHazardRecognizer.h:145` says so -- so the compiler covers
+   every operand latency itself by padding the schedule with NOPs, and one bundle issues per cycle
+   unconditionally. **Bundle count already IS the core-datapath cycle count**; applying the itineraries
+   at simulation time would charge a second time for latency the static schedule has already paid.
+   Counted rather than assumed: 110 of 120 `InstrStage` defs are one cycle, so the itineraries carry
+   operand latency and functional unit, not issue occupancy, and both are consumed before the binary
+   exists. Independently confirmed on hardware by an earlier from-source cycle prediction that landed
+   within 8 cycles (0.2%) of a measured 4052.
+
+   What is left of this phase is **fabric stall attribution**: on a machine with no interlocks, waiting
+   on a lock, a stream, a DMA or a memory-port conflict is the only thing that can make a cycle cost
+   more than one bundle. That is an `interval` reading in the array model, not itineraries in the engine.
 
 Array phases 1 to 3 are useful before any core executes, and core phases 1 to 2 are useful before any
 array exists. That is the main reason for the split.
@@ -445,9 +456,12 @@ Recorded here so the reasons travel with the code.
 * **Divergence from hardware.** A simulator that disagrees with silicon is a liability. The intended
   guard is running the same design both ways on a machine that has an NPU, and comparing outputs. That
   cannot be a CI gate on unlicensed runners, but it can be a periodic job.
-* **Bundle-per-cycle timing is wrong.** Until the core engine's timing phase lands, this should be
-  described as functional simulation with an ordering model, not as cycle-approximate. No test should
-  assert an ABSOLUTE cycle count as though it predicted hardware or matched Vitis.
+* **Bundle-per-cycle timing is right for the datapath, and wrong for everything else.** Revised
+  2026-08-02: this entry used to say bundle-per-cycle was simply wrong. It is not -- the machine has no
+  interlocks, so one bundle per cycle is what the core does (see core phase 4). What the model still
+  lacks is fabric stall: lock, stream, DMA and memory-port waits. So this remains functional simulation
+  with an ordering model rather than cycle-approximate, but the missing piece is the array, not the ISA.
+  No test should assert an ABSOLUTE cycle count as though it predicted hardware or matched Vitis.
   Asserting a RELATIVE invariant is a different thing and is encouraged: the stream-switch tests check
   that a route takes the same number of cycles in every direction, which is not a performance claim but
   a check that the model is synchronous at all. That distinction is what caught the worst bug found so
