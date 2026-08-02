@@ -28,7 +28,20 @@ Tile::Tile(Array &array, uint32_t col, uint32_t row, TileType type)
                     "nothing claims this offset, so any value returned would "
                     "be invented",
                     off, this->col, this->row);
-      this->array.error(buf);
+      std::string message = buf;
+      // A device mismatch surfaces here rather than as a wrong value, because
+      // the two generations' core windows collide. Say so: the offset names a
+      // register, but the mistake is the device.
+      if (this->type == TileType::Core)
+        if (const char *other = coreRegisterOnOtherGeneration(
+                this->array.device().generation, off)) {
+          message += ". It IS a core register on ";
+          message += other;
+          message += ", so this is most likely the wrong device: the model "
+                     "takes its device from $AIE_SIM_DEVICE and defaults to "
+                     "npu2, it does not read the design's aie.device";
+        }
+      this->array.error(message);
       return;
     }
     this->array.recordUnclaimedWrite(this->col, this->row, off);
