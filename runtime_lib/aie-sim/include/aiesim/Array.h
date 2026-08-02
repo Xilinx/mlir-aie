@@ -192,6 +192,16 @@ public:
   class StreamSwitchModule *streamSwitch() { return switchModule.get(); }
   class DmaModule *dma() { return dmaModule.get(); }
 
+  /// This tile's core engine, created on FIRST USE from the array's factory.
+  ///
+  /// Lazy rather than eager for two reasons: an engine carries a whole MC
+  /// layer per core, which is wasted on the many tiles a design leaves empty;
+  /// and a missing engine should be reported when a core is actually needed,
+  /// not at array construction, so core-free designs still simulate. Returns
+  /// null when the array has no factory or the factory declined, and it is
+  /// only attempted once.
+  CoreEngine *ensureCoreEngine();
+
 private:
   Array &array;
   uint32_t col;
@@ -203,6 +213,11 @@ private:
   std::unique_ptr<class LockModule> lockModule;
   std::unique_ptr<class StreamSwitchModule> switchModule;
   std::unique_ptr<class DmaModule> dmaModule;
+  // Declared before the engine so it outlives it: the engine holds a reference
+  // to this port and members destruct in reverse declaration order.
+  std::unique_ptr<CoreMemoryPort> corePort;
+  std::unique_ptr<CoreEngine> coreEngine;
+  bool coreEngineAttempted = false;
 };
 
 /// How the simulator reports a problem. Nothing here is recoverable: an
