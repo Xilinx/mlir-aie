@@ -164,8 +164,18 @@ Two components, in the two repositories that own the two halves of the problem.
 Owns everything outside the core datapath, and holds the `ess_*` entry points:
 
 * **Address decode.** `ess_Write32` receives a flat address; column, row and register offset come back
-  out with aie-rt's own shifts (`_XAie_GetTileAddr`, and the inverse in
-  `third_party/aie-rt/driver/src/common/xaie_helper.c:920-931`). Register offsets and field layouts are
+  out by inverting aie-rt's own shifts. `_XAie_GetTileAddr`
+  (`third_party/aie-rt/driver/src/common/xaie_helper.h:151-155`) builds
+  `TileAddr = (Row << RowShift) | (Col << ColShift)` and every register write adds the intra-tile
+  offset to it, so the layout from LSB up is `[regOff | row | col]` and inverting it is shift-and-mask.
+
+  aie-rt's `_XAie_GetRowfromRegOff` / `_XAie_GetColfromRegOff` (`xaie_helper.c:918-931`) look like that
+  inverse and are not. Masking the low `RowShift` bits cannot recover `Row`, which lives at bit
+  `RowShift` and above. Checked by construction: encode `(row=3, col=5)` with `RowShift=20`,
+  `ColShift=25` the way `_XAie_GetTileAddr` does, run both helpers on the result, and they return
+  `row=0`, `col=3` -- the "column" function returns the row and the "row" function returns low bits of
+  the register offset. They fill the Col/Row fields of a debug TXN command header
+  (`_XAie_AppendWrite32` and siblings), which is a different job. Register offsets and field layouts are
   already in the tree as machine-readable tables: `third_party/aie-rt/driver/src/global/xaie2pgbl_params.h`
   is 33k lines of MIT-licensed AIE2P register definitions, with an AIE2 equivalent. The model is written
   against those headers rather than re-deriving the map.
