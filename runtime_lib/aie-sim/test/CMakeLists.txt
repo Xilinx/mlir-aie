@@ -16,6 +16,7 @@ set(AIE_SIM_TESTS
   # The only test that crosses into llvm-aie. Reports SKIP rather than PASS
   # when no engine is configured, since the engine is built by that project.
   core_engine_test
+  core_register_map_test
   # Guards the component's central claim: that the ess_* symbols aie-rt
   # declares are all provided, with matching signatures. Compiling it is the
   # signature check, linking it is the completeness check.
