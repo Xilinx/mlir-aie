@@ -32,11 +32,8 @@ using namespace aiesim;
 
 namespace {
 
-/// Core-local program memory. The linker reserves this whole span; only the
-/// low ProgMemSize bytes are backed, and a fetch past that must fault rather
-/// than wrap.
+/// Core-local program memory, which starts the core's address map.
 constexpr uint32_t kProgramBase = 0x00000;
-constexpr uint32_t kProgramLimit = 0x20000;
 
 /// One 64 KB window onto some tile's data memory, as the core addresses it.
 struct MemBand {
@@ -68,7 +65,8 @@ public:
   }
 
   bool write(uint32_t addr, const void *data, uint32_t size) override {
-    if (addr < kProgramLimit) {
+    if (Memory *prog = tile.programMemory();
+        prog && addr - kProgramBase < prog->size()) {
       // A core writing its own program memory is self-modifying code. The
       // model does not support it: the engine caches decoded bundles, so the
       // write would land but execution would not see it.
@@ -125,7 +123,14 @@ private:
   /// base, or null when nothing does. Null is a genuine fault: the core
   /// computed an address the hardware would not have answered either.
   Memory *resolve(uint32_t addr, uint32_t size) {
-    if (addr < kProgramLimit) {
+    // Program space is everything below the first data band. Nothing in the
+    // core's address map names a tighter boundary: the ld script's
+    // `program (RX) : LENGTH = 0x0020000` is a LINKER region, emitted
+    // identically for every target even though program memory is not, and it
+    // does not line up with the first band at 0x40000 either. So the model
+    // bounds program space by its own band table and reports the backed size
+    // from the device, which are the two numbers it can actually source.
+    if (addr < kAIE2Bands[0].base) {
       regionBase = kProgramBase;
       Memory *prog = tile.programMemory();
       if (prog && prog->inRange(addr - kProgramBase, size))
@@ -154,10 +159,9 @@ private:
       return nullptr;
     }
 
-    fault("core accessed 0x%08X, which is neither program memory [0, 0x%X) "
-          "nor a data band [0x%X, 0x%X)",
-          addr, kProgramLimit, kAIE2Bands[0].base,
-          kAIE2Bands[3].base + kBandSize);
+    fault("core accessed 0x%08X, which is past the last data band "
+          "[0x%X, 0x%X)",
+          addr, kAIE2Bands[0].base, kAIE2Bands[3].base + kBandSize);
     return nullptr;
   }
 
