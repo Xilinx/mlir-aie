@@ -130,6 +130,36 @@ void installCore(Tile &tile);
 /// this is what lets the diagnostic say which mistake was made.
 const char *coreRegisterOnOtherGeneration(Generation gen, uint32_t off);
 
+/// How a core-debug window offset reaches an engine's architectural state.
+///
+/// The name is stored inline rather than returned as a pointer: the indexed
+/// families are computed, not tabulated, so a pointer would have to outlive a
+/// scratch buffer.
+struct CoreRegisterMapping {
+  /// llvm-aie's name for it ("r0", "lc"), for CoreEngine::readRegister. Empty
+  /// when `off` is not a scalar register this maps.
+  char name[8] = {};
+  /// PC has no entry in the engine's register FILE -- it is
+  /// CoreEngine::getProgramCounter(). Set instead of `name`.
+  bool isProgramCounter = false;
+
+  bool mapped() const { return name[0] != '\0' || isProgramCounter; }
+};
+
+/// Maps a core-debug register-window offset onto the engine register that
+/// backs it, for the scalar families that are one 32-bit slot each: r0-r31,
+/// m0-m7, p0-p7, s0-s3 and sp/lr/ls/le/lc, plus PC.
+///
+/// Returns an empty mapping for everything else. That is deliberate rather
+/// than incomplete: the vector and accumulator families (wl/wh, the bm/am
+/// partials) need the part-assembly rule in docs/AIESimulator.md 4.4, and
+/// aie-rt's fc/cr/sr/dp have no one-to-one engine register at all -- llvm-aie
+/// models those bits as separate named registers (crSat, crRnd, ...), so a
+/// single offset would have to be assembled from several. Both are the vector
+/// phase's work; guessing either would produce a plausible wrong number, which
+/// is the one failure the fault contract cannot catch.
+CoreRegisterMapping coreScalarRegister(Generation gen, uint32_t off);
+
 } // namespace aiesim
 
 #endif // AIESIM_COMPONENTS_H

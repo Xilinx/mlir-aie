@@ -288,7 +288,107 @@ bool inWindow(const RegRange *window, size_t n, uint32_t off) {
   return false;
 }
 
+//===----------------------------------------------------------------------===//
+// Offset -> engine register, for the scalar families
+//===----------------------------------------------------------------------===//
+//
+// One indexed family: `count` registers named <prefix><i>, at stride 0x10.
+struct ScalarRun {
+  uint32_t begin;
+  uint32_t count;
+  const char *prefix;
+};
+
+// Every offset below is the CORE_MODULE_CORE_* value in aie-rt's parameter
+// headers -- xaie2pgbl_params.h for AIE2P, xaiemlgbl_params.h for AIE2 -- and
+// the families are contiguous at stride 0x10 there.
+//
+// The generations COLLIDE on three of these: 0x30E00 is AIE2P's PC and AIE2's
+// m0, 0x31000 is AIE2P's r0 and AIE2's p0, 0x31100 is AIE2P's r16 and AIE2's
+// PC. A shared table would return a valid wrong register rather than fault,
+// so these stay separate. See [[aie2-aie2p-core-register-offsets-collide]].
+constexpr ScalarRun kAIE2PScalarRuns[] = {
+    {0x31000, 32, "r"},
+    {0x31200, 8, "m"},
+    {0x31400, 8, "p"},
+    {0x31480, 4, "s"},
+};
+constexpr ScalarRun kAIE2ScalarRuns[] = {
+    {0x30C00, 32, "r"},
+    {0x30E00, 8, "m"},
+    {0x31000, 8, "p"},
+    {0x31080, 4, "s"},
+};
+
+/// A register with a name of its own rather than an index.
+struct ScalarSingle {
+  uint32_t off;
+  const char *name;
+};
+
+// The control block, minus the parts that do not map. aie-rt's fc, cr1/cr2
+// (cr on AIE2), sr and AIE2's dp are deliberately absent: llvm-aie splits
+// those bits across separately named control registers (crSat, crRnd,
+// crFPMask, srsSign0, ...), so one offset is an assembly of several and not a
+// rename. Probed against a real engine rather than assumed -- sp/lr/ls/le/lc
+// answer, fc/pc/dp/cr1/cr2/sr do not.
+constexpr ScalarSingle kAIE2PScalarSingles[] = {
+    {0x30E20, "sp"}, {0x30E30, "lr"}, {0x30E40, "ls"},
+    {0x30E50, "le"}, {0x30E60, "lc"},
+};
+constexpr ScalarSingle kAIE2ScalarSingles[] = {
+    {0x31120, "sp"}, {0x31130, "lr"}, {0x31140, "ls"},
+    {0x31150, "le"}, {0x31160, "lc"},
+};
+
+constexpr uint32_t kAIE2PProgramCounter = 0x30E00;
+constexpr uint32_t kAIE2ProgramCounter = 0x31100;
+
+/// Slot stride of the whole window: one 32-bit value per 16 bytes, in every
+/// family without exception.
+constexpr uint32_t kSlotStride = 0x10;
+
 } // namespace
+
+aiesim::CoreRegisterMapping aiesim::coreScalarRegister(Generation gen,
+                                                       uint32_t off) {
+  const bool isAIE2P = gen == Generation::AIE2P;
+
+  CoreRegisterMapping result;
+  if (off == (isAIE2P ? kAIE2PProgramCounter : kAIE2ProgramCounter)) {
+    result.isProgramCounter = true;
+    return result;
+  }
+
+  // Only the first word of a slot names a register; the three bytes after it
+  // are the same 32-bit value's tail, not a different register.
+  if (off % kSlotStride != 0)
+    return {};
+
+  const ScalarSingle *singles =
+      isAIE2P ? kAIE2PScalarSingles : kAIE2ScalarSingles;
+  size_t nSingles = isAIE2P ? std::size(kAIE2PScalarSingles)
+                            : std::size(kAIE2ScalarSingles);
+  for (size_t i = 0; i < nSingles; ++i)
+    if (singles[i].off == off) {
+      std::snprintf(result.name, sizeof(result.name), "%s", singles[i].name);
+      return result;
+    }
+
+  const ScalarRun *runs = isAIE2P ? kAIE2PScalarRuns : kAIE2ScalarRuns;
+  size_t nRuns = isAIE2P ? std::size(kAIE2PScalarRuns)
+                         : std::size(kAIE2ScalarRuns);
+  for (size_t i = 0; i < nRuns; ++i) {
+    const ScalarRun &run = runs[i];
+    if (off < run.begin || off >= run.begin + run.count * kSlotStride)
+      continue;
+    unsigned index = (off - run.begin) / kSlotStride;
+    std::snprintf(result.name, sizeof(result.name), "%s%u", run.prefix, index);
+    return result;
+  }
+
+  return {};
+}
 
 const char *aiesim::coreRegisterOnOtherGeneration(Generation gen,
                                                   uint32_t off) {
