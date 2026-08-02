@@ -148,6 +148,29 @@ private:
   UnclaimedHandler onUnclaimed;
 };
 
+/// Why a busy component made no progress on a cycle.
+///
+/// A closed set, because it is the category list of the interval reading and a
+/// viewer decides its colours from it. `Unknown` is deliberate and is not a
+/// bucket for "probably a lock": a component that cannot say why it waited
+/// reports that it cannot, the same way an untracked memory reports unknown
+/// rather than zero.
+enum class StallReason {
+  Unknown,
+  /// Waiting for a lock to reach the value a BD asked to acquire.
+  Lock,
+  /// A write could not be accepted: the downstream port or FIFO is full.
+  Backpressure,
+  /// A read found nothing: the upstream port or FIFO is empty.
+  Starvation,
+  /// The core engine declined a bundle. The engine reports one Stalled result
+  /// without naming the port, so this says only that the core was the waiter.
+  Core,
+};
+
+/// The category name this reason carries into the readings record.
+const char *stallReasonName(StallReason reason);
+
 /// One component of the array that is stepped once per simulated cycle.
 ///
 /// A cycle has TWO phases, and the split is load bearing rather than
@@ -179,6 +202,16 @@ public:
   /// Distinct from step()'s return value, which says whether this cycle did
   /// observable work: a stalled component is busy but did nothing.
   virtual bool busy() const { return false; }
+
+  /// Name for this component on the stall timeline, or empty to stay off it.
+  /// Read once, the first time the array steps this component, so it must not
+  /// depend on run state.
+  virtual std::string timelineEntity() const { return {}; }
+
+  /// Why the step() just taken made no progress. Only consulted for a
+  /// component that was busy and did no work, so an implementation answers
+  /// only for the cycle it declined.
+  virtual StallReason stallReason() const { return StallReason::Unknown; }
 };
 
 /// One tile. Which sub-objects are present depends on the tile type.
@@ -340,6 +373,32 @@ public:
     return unmodelled;
   }
 
+  /// Where one component's time went, as spans of equal-category cycles.
+  ///
+  /// Half-open [start, end), and every cycle a component was scheduled falls in
+  /// exactly one span. Cycles it was NOT scheduled are absent rather than
+  /// zero-filled: a component out of the active set is not stalled, it has
+  /// nothing to do, and folding the two together would make an idle array look
+  /// blocked.
+  struct TimelineSpan {
+    uint64_t start = 0;
+    uint64_t end = 0;
+    /// "running" when the cycle did observable work, else a stall reason.
+    const char *category = nullptr;
+  };
+  struct TimelineTrack {
+    std::string entity;
+    std::vector<TimelineSpan> spans;
+  };
+  /// One track per component that named itself, in registration order.
+  const std::vector<TimelineTrack> &timeline() const { return tracks; }
+
+  /// Whether stall attribution is being accumulated. On by default; a caller
+  /// that wants the model's raw stepping cost can turn it off, and capture()
+  /// then reports the reading as unknown rather than as an empty timeline.
+  bool timelineEnabled() const { return timelineOn; }
+  void setTimelineEnabled(bool on) { timelineOn = on; }
+
   /// Registers a component. Its index in `steppables` is both its wake()
   /// identity and its sort key in the active set, so registration order is
   /// what makes the order components step in reproducible -- see wake().
@@ -360,11 +419,20 @@ private:
   // registration order for both phases. See advance()/runUntilQuiescent().
   void stepOneCycle();
 
+  // Attribute the cycle just taken by steppable `idx` to a timeline span.
+  void recordCycle(size_t idx, bool didWork);
+
   DeviceModel dev;
   std::unique_ptr<CoreEngineFactory> engines;
   std::vector<std::unique_ptr<Tile>> tiles; // row-major, numRows * numCols
   std::vector<Steppable *> steppables;
   std::unordered_map<Steppable *, size_t> steppableIndex; // -> steppables idx
+  std::vector<TimelineTrack> tracks;
+  // Track index per steppable, or kNoTrack once it has declined a name. -1
+  // means "not asked yet", so timelineEntity() is called at most once each.
+  static constexpr int kNoTrack = -2;
+  std::vector<int> trackOfSteppable;
+  bool timelineOn = true;
   // Registration indices of components due to be stepped, ordered ascending
   // so iteration order is always registration order -- the determinism
   // guarantee is this sort key, not whatever order wake() happened to be
