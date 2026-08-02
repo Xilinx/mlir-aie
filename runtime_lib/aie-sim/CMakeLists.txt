@@ -36,6 +36,7 @@ set(AIE_RT_GLOBAL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/aie-rt/driv
 add_library(aie-sim STATIC
   lib/Array.cpp
   lib/CoreEngineLoader.cpp
+  lib/TileCorePort.cpp
   lib/Device.cpp
   lib/Dma.cpp
   lib/EssAbi.cpp
