@@ -376,7 +376,35 @@ void testConcurrencySeriesRecordsChangePoints() {
   AIESIM_CHECK(!has(json, "\"id\":\"series/active-components\""));
 }
 
+/// A route out of a directional master follows the fabric wire to the
+/// neighbour's matching slave, which is what makes the graph end-to-end rather
+/// than a pile of per-tile fragments.
+void testDirectionalRouteCrossesTheTileBoundary() {
+  auto array = makeArray();
+  Tile *core = array->tile(0, 2);
+  AIESIM_CHECK(core != nullptr);
+  if (!core)
+    return;
+  // North master 0 fed by the DMA_0 slave. Offsets and the packing are the
+  // stream switch's own (MASTER_CONFIG_NORTH0, and _XAie_GetSlaveIdx's
+  // (regOff - SlvConfigBaseAddr) / 4 for DMA_0 at 0x3F104).
+  constexpr uint32_t kNorthMaster0 = 0x0003F034;
+  constexpr uint32_t kDmaSlave0PhysIdx = (0x0003F104 - 0x0003F100) / 4;
+  core->regs().write(kNorthMaster0, (1u << 31) | kDmaSlave0PhysIdx);
+
+  std::string json = capture(*array, config()).toJson();
+  // The configured half, then the fabric hop it implies.
+  AIESIM_CHECK(has(json, "\"from\":\"tile:0,2/DMA0\",\"to\":\"tile:0,2/North0\","
+                         "\"kind\":\"circuit\""));
+  AIESIM_CHECK(has(json,
+                   "\"from\":\"tile:0,2/North0\",\"to\":\"tile:0,3/South0\","
+                   "\"kind\":\"fabric\""));
+  // The neighbour's port is a node too, so a consumer can walk the path.
+  AIESIM_CHECK(has(json, "\"id\":\"tile:0,3/South0\""));
+}
+
 int main() {
+  testDirectionalRouteCrossesTheTileBoundary();
   testGraphIsEmptyWithoutConfiguration();
   testConcurrencySeriesRecordsChangePoints();
   testNoTrafficIsUnknownNotResident();

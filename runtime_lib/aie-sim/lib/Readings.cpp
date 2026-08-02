@@ -888,15 +888,37 @@ Record aiesim::readings::capture(Array &array, const CaptureConfig &config) {
       packetMasters += t->streamSwitch()->packetModeMasters();
       const std::string where =
           std::to_string(col) + "," + std::to_string(row);
+      auto port = [&](uint32_t c, uint32_t rw, PortBundle b, uint32_t i) {
+        std::string at = std::to_string(c) + "," + std::to_string(rw);
+        std::string name = std::string(portBundleName(b)) + std::to_string(i);
+        std::string id = "tile:" + at + "/" + name;
+        nodes.emplace(id, GraphNode{id, name + " @ (" + at + ")", "port"});
+        return id;
+      };
       for (const StreamRoute &r : t->streamSwitch()->configuredRoutes()) {
-        auto port = [&](PortBundle b, uint32_t i) {
-          std::string name = std::string(portBundleName(b)) + std::to_string(i);
-          std::string id = "tile:" + where + "/" + name;
-          nodes.emplace(id, GraphNode{id, name + " @ (" + where + ")", "port"});
-          return id;
-        };
-        routes.edges.push_back({port(r.slaveBundle, r.slaveIndex),
-                                port(r.masterBundle, r.masterIndex), "", "circuit"});
+        routes.edges.push_back({port(col, row, r.slaveBundle, r.slaveIndex),
+                                port(col, row, r.masterBundle, r.masterIndex),
+                                "", "circuit"});
+        // A directional master is wired to the neighbour's matching slave by
+        // the fabric, so following it is what makes this end-to-end rather
+        // than a pile of per-tile fragments. Emitted only for masters a route
+        // actually feeds, and kept a separate edge kind: this wire is silicon,
+        // not something the design chose.
+        PortBundle theirs;
+        int dCol, dRow;
+        if (!interTileLink(r.masterBundle, theirs, dCol, dRow))
+          continue;
+        const int nc = int(col) + dCol, nr = int(row) + dRow;
+        if (nc < 0 || nr < 0)
+          continue;
+        Tile *n = array.tile(uint32_t(nc), uint32_t(nr));
+        if (!n || !n->streamSwitch() ||
+            !n->streamSwitch()->slavePort(theirs, r.masterIndex))
+          continue; // Off the partition, or the neighbour has no such port.
+        routes.edges.push_back(
+            {port(col, row, r.masterBundle, r.masterIndex),
+             port(uint32_t(nc), uint32_t(nr), theirs, r.masterIndex), "",
+             "fabric"});
       }
     }
   for (auto &[id, n] : nodes)
