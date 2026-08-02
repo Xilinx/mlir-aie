@@ -75,15 +75,54 @@ and two verdicts. The schema covers all seven shapes; the emitter fills three.
 Touched bytes are counted in 32-byte granules and round **up**, so the figure is an upper bound on
 live data. The honest reading is "how much of this memory did the design touch", not byte accounting.
 
+## Memory regions and the stack guard
+
+`aie.core`'s `stack_size` defaults to `0x400`, and the generated linker script places the stack
+immediately below the first objectFIFO buffer. A kernel whose frame exceeds the reservation
+overwrites that buffer with no crash and no diagnostic: deterministic, surviving tiles bit-exact, so
+the result merely looks slightly wrong. It cost weeks across two kernels and about ten correctly
+refuted arithmetic hypotheses, and upstream still handles it by bumping the constant per design
+(#2275, #2280, #2345 -- and #2280 re-bumps two of the files #2275 had just fixed, so guessing does
+not converge).
+
+The simulator can see this, because the linker script says where everything is. Attach one:
+
+```cpp
+RegionMap map;
+std::string err;
+parseLinkerScript(scriptText, map, err);
+tile->setRegionMap(std::move(map));
+```
+
+**Measured 2026-08-02** over the 53 core linker scripts of the 8 `block_datatypes` designs: the gap
+between stack top and the next allocated region is **zero in all 53**. Two independent
+implementations agree (a throwaway Python pass and `RegionMap` itself). This is the default
+arrangement, not an unlucky one.
+
+What it buys, in increasing cost:
+
+- **`stack-clearance` verdict** -- static. Reads the script, fires before a cycle is simulated,
+  needs no core engine and no device. Fails when the first byte past the stack is a live buffer.
+- **`regions-disjoint` verdict** -- two regions claiming one byte is always a defect; whichever
+  writes second wins silently.
+- **Named containment leaves** -- the treemap shows the stack and the buffer next to it, with each
+  region's own touched-against-capacity, instead of one aggregate per tile.
+- **`RegionMap::checkStackPointer`** -- dynamic, for when an engine is attached. The address of a
+  store cannot say whether it is a stack access or a legitimate write to the buffer next door, but
+  the stack POINTER leaving its reservation is unambiguous.
+- **`RegionMap::checkWrite`** -- catches a store that starts inside one region and runs past its end,
+  which the stack-pointer check cannot see.
+
+An address in no region is deliberately not a fault: most of data memory is legitimately unnamed by
+the script, and faulting on it would make the guard unusable.
+
 ## Next, in the order the value falls out
 
-1. **Memory regions** -- split the containment leaves into `.text` / `.data` / `.bss` / stack /
-   objectFIFO buffers from the linker script aiecc already emits. `capacity` minus the children's sum
-   is then the free gap, and a stack abutting a buffer with zero clearance becomes visible instead of
-   being a silent overwrite. This is the reading that retires the `stack_size` bug class.
-2. **Stall attribution** (`interval`) -- for every stalled cycle, why: lock, backpressure, BD
+1. **Stall attribution** (`interval`) -- for every stalled cycle, why: lock, backpressure, BD
    dependency, memory conflict. Nothing available today answers this.
-3. **L2 residency** (`flow` + a verdict) -- turn "inside a block the stream never leaves L2" from a
+2. **L2 residency** (`flow` + a verdict) -- turn "inside a block the stream never leaves L2" from a
    rule people remember into a per-block check.
-4. **Opcode coverage** (`coverage`) -- which instructions have semantics and which this run hit,
+3. **Opcode coverage** (`coverage`) -- which instructions have semantics and which this run hit,
    which makes the gap a per-kernel number rather than an estimate.
+4. **Wire the region map through aiecc** -- `--get-sim` knows the `ldScripts_*.ld.script` paths it
+   just generated, so attaching them should not be the caller's job.

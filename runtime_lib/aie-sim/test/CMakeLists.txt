@@ -9,6 +9,7 @@ set(AIE_SIM_TESTS
   device_test
   memory_test
   readings_test
+  region_map_test
   lock_test
   dma_test
   stream_switch_test

@@ -69,6 +69,9 @@ public:
   /// granule. An upper bound on live data, not an exact figure; the honest use
   /// is "how much of this memory did the design touch", not byte accounting.
   uint32_t touchedBytes() const;
+  /// Same, restricted to [off, off+len). Granule-rounded, so a region shorter
+  /// than a granule reports the whole granule.
+  uint32_t touchedBytesIn(uint32_t off, uint32_t len) const;
   static constexpr uint32_t kTrackGranule = 32;
 
 private:
@@ -220,6 +223,12 @@ public:
   /// only attempted once.
   CoreEngine *ensureCoreEngine();
 
+  /// What this core's linker script allocated where. Optional: a design whose
+  /// script was never handed over simulates exactly as before, it just cannot
+  /// tell a stack overrun from a legitimate buffer write.
+  void setRegionMap(class RegionMap map);
+  const class RegionMap *regionMap() const { return regions.get(); }
+
 private:
   Array &array;
   uint32_t col;
@@ -238,6 +247,7 @@ private:
   std::unique_ptr<CoreMemoryPort> corePort;
   std::unique_ptr<CoreEngine> coreEngine;
   std::unique_ptr<Steppable> coreExecModule;
+  std::unique_ptr<class RegionMap> regions;
   bool coreEngineAttempted = false;
 };
 

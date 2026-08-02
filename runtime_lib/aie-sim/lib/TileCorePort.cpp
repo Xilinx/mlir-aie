@@ -193,3 +193,13 @@ private:
 std::unique_ptr<CoreMemoryPort> aiesim::makeTileCorePort(Tile &tile) {
   return std::make_unique<TileCorePort>(tile);
 }
+
+uint32_t aiesim::ownMemoryBandBase(Generation gen) {
+  (void)gen; // AIE2 and AIE2P share this layout; AIE1 does not and is not modelled.
+  for (const MemBand &b : kAIE2Bands)
+    if (b.dir == MemDirection::Own)
+      return b.base;
+  return 0;
+}
+
+uint32_t aiesim::memoryBandSize() { return kBandSize; }

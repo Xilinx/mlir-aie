@@ -13,7 +13,9 @@
 #include "TestSupport.h"
 
 #include "aiesim/Array.h"
+#include "aiesim/Components.h"
 #include "aiesim/Readings.h"
+#include "aiesim/RegionMap.h"
 
 #include <string>
 
@@ -151,9 +153,97 @@ void testRecordIsByteStable() {
   AIESIM_CHECK(!first.empty());
 }
 
+// A trimmed but verbatim slice of ldScripts_main_core_0_5.ld.script: stack at
+// 0x70000+0xD00 and the tile's first own-memory buffer at 0x70D00.
+const char *kScript = R"LD(
+MEMORY
+{
+   program (RX) : ORIGIN = 0, LENGTH = 0x0020000
+   data (!RX) : ORIGIN = 0x7D20C, LENGTH = 0x2DF4
+}
+SECTIONS
+{
+. = 0x70000;
+_sp_start_value_DM_stack = .;
+. += 0xD00; /* stack */
+. = 0x70D00;
+C_L1L2_3_0_buff_0 = .;
+. += 0x1200;
+}
+)LD";
+
+Tile *firstCore(Array &array) {
+  for (uint32_t row = 0; row < array.device().numRows; ++row)
+    if (Tile *t = array.tile(0, row))
+      if (t->getType() == TileType::Core)
+        return t;
+  return nullptr;
+}
+
+void testZeroClearanceIsReportedAsAFailedVerdict() {
+  auto array = makeArray();
+  Tile *core = firstCore(*array);
+  AIESIM_CHECK(core != nullptr);
+  if (!core)
+    return;
+  RegionMap map;
+  std::string err;
+  AIESIM_CHECK(parseLinkerScript(kScript, map, err));
+  core->setRegionMap(std::move(map));
+
+  Record rec = capture(*array, config());
+  std::string json = rec.toJson();
+
+  // The whole point of the region map: this fires with no core engine, no
+  // execution, and no device -- before the overwrite it describes could happen.
+  bool failed = false;
+  for (const Verdict &v : rec.verdicts)
+    if (v.id == "stack-clearance") {
+      failed = v.outcome == Outcome::Fail;
+      AIESIM_CHECK(v.why.find("C_L1L2_3_0_buff_0") != std::string::npos);
+      AIESIM_CHECK(v.why.find("one-byte frame overrun") != std::string::npos);
+    }
+  AIESIM_CHECK(failed);
+  AIESIM_CHECK(has(json, "\"id\":\"regions-disjoint\""));
+
+  // The named allocations replace the flat "data" leaf, so the treemap shows
+  // the stack abutting the buffer instead of one aggregate number.
+  AIESIM_CHECK(has(json, "\"name\":\"_sp_start_value_DM_stack\""));
+  AIESIM_CHECK(has(json, "\"kind\":\"stack\""));
+  AIESIM_CHECK(has(json, "\"addr\":\"0x70d00\""));
+  AIESIM_CHECK(has(json, "\"capacity\":3328"));
+}
+
+void testTouchedIsAttributedToTheRegionItLandedIn() {
+  auto array = makeArray();
+  enableMemoryTracking(*array);
+  Tile *core = firstCore(*array);
+  AIESIM_CHECK(core != nullptr);
+  if (!core)
+    return;
+  RegionMap map;
+  std::string err;
+  AIESIM_CHECK(parseLinkerScript(kScript, map, err));
+  core->setRegionMap(std::move(map));
+
+  // 0x70D00 is the buffer's first byte; as a data-memory offset that is
+  // 0x70D00 - ownMemoryBandBase = 0xD00.
+  uint32_t off = 0x70D00 - ownMemoryBandBase(array->device().generation);
+  std::vector<uint8_t> payload(64, 0x11);
+  AIESIM_CHECK(core->memory()->write(off, payload.data(), 64));
+
+  std::string json = capture(*array, config()).toJson();
+  // The buffer accounts for the write and the stack does not, which is the
+  // attribution a flat per-tile total cannot make.
+  AIESIM_CHECK(has(json, "\"name\":\"C_L1L2_3_0_buff_0\",\"value\":64"));
+  AIESIM_CHECK(has(json, "\"name\":\"_sp_start_value_DM_stack\",\"value\":0"));
+}
+
 } // namespace
 
 int main() {
+  testZeroClearanceIsReportedAsAFailedVerdict();
+  testTouchedIsAttributedToTheRegionItLandedIn();
   testTrackingOffIsUnknownNotZero();
   testTouchedMemoryIsObserved();
   testUnclaimedRegistersBecomeCoverageAndAVerdict();

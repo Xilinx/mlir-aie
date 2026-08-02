@@ -166,6 +166,14 @@ CoreRegisterMapping coreScalarRegister(Generation gen, uint32_t off);
 /// neighbour, and the four are not symmetric.
 enum class MemDirection { South, West, North, Own };
 
+/// Core-local address of the band that maps the tile's OWN data memory, so
+/// callers that need to turn a core address into a data-memory offset (the
+/// region map, readings) take it from the one table that defines the bands
+/// instead of restating the constant.
+uint32_t ownMemoryBandBase(Generation gen);
+/// Size of one band, i.e. the span `ownMemoryBandBase` covers.
+uint32_t memoryBandSize();
+
 /// The CoreMemoryPort a real tile presents to its engine: core-local program
 /// memory at [0, 0x20000) and the tile's own data memory in the east band.
 ///
