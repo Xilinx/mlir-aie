@@ -284,7 +284,46 @@ void testTouchedIsAttributedToTheRegionItLandedIn() {
 
 } // namespace
 
+/// A component that never runs must not make the array look blocked. Nothing
+/// was scheduled, so there is no time to attribute and the verdict says so
+/// rather than reporting a clean sweep of zero stalls.
+void testNothingScheduledIsUnknownNotPass() {
+  auto array = makeArray();
+  std::string json = capture(*array, config()).toJson();
+  AIESIM_CHECK(has(json, "\"id\":\"interval/stall-attribution\""));
+  AIESIM_CHECK(has(json, "\"id\":\"stalls-attributed\""));
+  AIESIM_CHECK(has(json, "No component was ever scheduled"));
+  AIESIM_CHECK(has(json, "\"scalar/stalled-cycles\""));
+}
+
+/// Switching attribution off is reported as unknown, not as an empty timeline
+/// that reads like a run with no stalls -- the same silent-zero the register
+/// file exists to prevent.
+void testTimelineOffIsUnknownNotEmpty() {
+  auto array = makeArray();
+  array->setTimelineEnabled(false);
+  std::string json = capture(*array, config()).toJson();
+  AIESIM_CHECK(has(json, "Stall attribution was switched off"));
+  AIESIM_CHECK(!has(json, "\"id\":\"interval/stall-attribution\""));
+  AIESIM_CHECK(!has(json, "\"scalar/stalled-cycles\""));
+}
+
+/// The interval shape reaches the index and the categories carry the
+/// productive flag a consumer sums lost time with.
+void testIntervalShapeIsIndexedWithItsCategories() {
+  auto array = makeArray();
+  std::string json = capture(*array, config()).toJson();
+  AIESIM_CHECK(has(json, "\"shape\":\"interval\""));
+  AIESIM_CHECK(has(json, "\"timeUnit\":\"cycle\""));
+  AIESIM_CHECK(has(json, "\"name\":\"running\",\"productive\":true"));
+  AIESIM_CHECK(has(json, "\"name\":\"lock\",\"productive\":false"));
+  AIESIM_CHECK(has(json, "\"name\":\"backpressure\",\"productive\":false"));
+}
+
 int main() {
+  testNothingScheduledIsUnknownNotPass();
+  testTimelineOffIsUnknownNotEmpty();
+  testIntervalShapeIsIndexedWithItsCategories();
   testZeroClearanceIsReportedAsAFailedVerdict();
   testTouchedIsAttributedToTheRegionItLandedIn();
   testTrackingOffIsUnknownNotZero();

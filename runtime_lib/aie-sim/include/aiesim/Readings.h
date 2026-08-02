@@ -84,6 +84,35 @@ struct Coverage {
   std::vector<std::string> tags;
 };
 
+/// A span class on an interval track. `productive` is what separates work from
+/// lost time, so an occupancy summary sums the rest rather than guessing which
+/// names mean waiting.
+struct IntervalCategory {
+  std::string name;
+  std::string color;
+  bool productive = false;
+};
+
+/// Half-open [start, end) in `timeUnit`.
+struct IntervalSpan {
+  uint64_t start = 0;
+  uint64_t end = 0;
+  std::string category;
+};
+
+struct IntervalTrack {
+  std::string entity;
+  std::vector<IntervalSpan> spans;
+};
+
+struct Interval {
+  std::string id, label, description;
+  std::string timeUnit = "cycle";
+  std::vector<IntervalCategory> categories;
+  std::vector<IntervalTrack> tracks;
+  std::vector<std::string> tags;
+};
+
 enum class Outcome { Pass, Fail, Unknown };
 
 /// A judgment computed here rather than left to whoever reads the number.
@@ -117,6 +146,7 @@ public:
   std::vector<Scalar> scalars;
   std::vector<Containment> containments;
   std::vector<Coverage> coverages;
+  std::vector<Interval> intervals;
   std::vector<Verdict> verdicts;
 
   /// Ids promoted into summary.headline. Unknown ids are ignored, so a caller
