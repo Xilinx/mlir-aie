@@ -59,8 +59,21 @@ public:
   uint8_t *data() { return bytes.data(); }
   const uint8_t *data() const { return bytes.data(); }
 
+  /// Record which granules get written, for the readings memory map. Off by
+  /// default so write() costs nothing in a normal run, and enabling it changes
+  /// no scheduling -- an observation that alters the thing observed would cost
+  /// the determinism guarantee this model is built on.
+  void trackWrites();
+  bool tracksWrites() const { return !written.empty(); }
+  /// Bytes in granules that have been written at least once, rounded UP to the
+  /// granule. An upper bound on live data, not an exact figure; the honest use
+  /// is "how much of this memory did the design touch", not byte accounting.
+  uint32_t touchedBytes() const;
+  static constexpr uint32_t kTrackGranule = 32;
+
 private:
   std::vector<uint8_t> bytes;
+  std::vector<uint64_t> written; // granule bitmap; empty when not tracking
 };
 
 /// The per-tile register window.
