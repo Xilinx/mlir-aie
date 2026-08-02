@@ -374,9 +374,15 @@ void Array::stepOneCycle() {
   for (size_t idx : current)
     steppables[idx]->commit();
 
-  if (timelineOn)
+  if (timelineOn) {
     for (size_t i = 0; i < current.size(); ++i)
       recordCycle(current[i], stepped[i]);
+    // Change points only: this is a step function, so a run that idles for a
+    // million cycles costs one entry rather than a million.
+    const uint32_t active = static_cast<uint32_t>(current.size());
+    if (concurrencyPoints.empty() || concurrencyPoints.back().active != active)
+      concurrencyPoints.push_back({cycles, active});
+  }
 
   // A component that was active this cycle stays active iff it did work or
   // still has work outstanding; otherwise it leaves the set until something
