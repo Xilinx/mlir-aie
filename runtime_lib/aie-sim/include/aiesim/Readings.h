@@ -84,6 +84,22 @@ struct Coverage {
   std::vector<std::string> tags;
 };
 
+struct FlowNode {
+  std::string id, label, level;
+};
+
+struct FlowEdge {
+  std::string from, to, label;
+  double value = 0;
+};
+
+struct Flow {
+  std::string id, label, description, unit;
+  std::vector<FlowNode> nodes;
+  std::vector<FlowEdge> edges;
+  std::vector<std::string> tags;
+};
+
 /// A span class on an interval track. `productive` is what separates work from
 /// lost time, so an occupancy summary sums the rest rather than guessing which
 /// names mean waiting.
@@ -146,6 +162,7 @@ public:
   std::vector<Scalar> scalars;
   std::vector<Containment> containments;
   std::vector<Coverage> coverages;
+  std::vector<Flow> flows;
   std::vector<Interval> intervals;
   std::vector<Verdict> verdicts;
 
