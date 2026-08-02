@@ -929,6 +929,7 @@ bool DmaModuleImpl::moveOneWord(ChannelState &c, DmaDirection dir,
     }
     port->push(word, isLast);
     wakeStreamSwitch();
+    tile.getArray().recordDmaBytes(kind, /*toFabric=*/true, 4);
     return true;
   }
 
@@ -950,6 +951,7 @@ bool DmaModuleImpl::moveOneWord(ChannelState &c, DmaDirection dir,
         "DMA S2MM BD generated an out-of-range destination address");
     return false;
   }
+  tile.getArray().recordDmaBytes(kind, /*toFabric=*/false, 4);
   return true;
 }
 

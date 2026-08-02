@@ -403,6 +403,22 @@ const char *aiesim::stallReasonName(StallReason reason) {
   return "unknown";
 }
 
+void Array::recordDmaBytes(TileType kind, bool toFabric, uint64_t bytes) {
+  switch (kind) {
+  case TileType::Shim:
+    (toFabric ? traffic.ddrRead : traffic.ddrWrite) += bytes;
+    break;
+  case TileType::MemTile:
+    (toFabric ? traffic.l2Read : traffic.l2Write) += bytes;
+    break;
+  case TileType::Core:
+    (toFabric ? traffic.l1Read : traffic.l1Write) += bytes;
+    break;
+  default:
+    break;
+  }
+}
+
 void Array::recordCycle(size_t idx, bool didWork) {
   if (trackOfSteppable.size() <= idx)
     trackOfSteppable.resize(steppables.size(), -1);

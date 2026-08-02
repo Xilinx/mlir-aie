@@ -399,6 +399,23 @@ public:
   bool timelineEnabled() const { return timelineOn; }
   void setTimelineEnabled(bool on) { timelineOn = on; }
 
+  /// Bytes a DMA moved between a memory level and the stream fabric.
+  ///
+  /// Counted at the only place a byte actually crosses -- one DMA channel's
+  /// word transfer -- so this is what the design moved, not what its
+  /// descriptors said it would. The level is the DMA's OWN end of the
+  /// transfer: a shim DMA's end is DDR, a memtile's is L2, a core tile's L1.
+  /// Which L2 buffer a given DDR read eventually feeds is a stream-switch
+  /// routing question this does not answer and does not pretend to.
+  struct StreamTraffic {
+    uint64_t ddrRead = 0, ddrWrite = 0;
+    uint64_t l2Read = 0, l2Write = 0;
+    uint64_t l1Read = 0, l1Write = 0;
+  };
+  /// \p toFabric is true for MM2S (memory read into the stream).
+  void recordDmaBytes(TileType kind, bool toFabric, uint64_t bytes);
+  const StreamTraffic &streamTraffic() const { return traffic; }
+
   /// Registers a component. Its index in `steppables` is both its wake()
   /// identity and its sort key in the active set, so registration order is
   /// what makes the order components step in reproducible -- see wake().
@@ -433,6 +450,7 @@ private:
   static constexpr int kNoTrack = -2;
   std::vector<int> trackOfSteppable;
   bool timelineOn = true;
+  StreamTraffic traffic;
   // Registration indices of components due to be stepped, ordered ascending
   // so iteration order is always registration order -- the determinism
   // guarantee is this sort key, not whatever order wake() happened to be
