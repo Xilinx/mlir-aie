@@ -164,3 +164,68 @@ func.func @matmul_aie2p_i512_acc2048(%A : vector<4x8xbf16>, %B : vector<8x4xbf16
 // Extract first 16 elements from 32-element result
 // CHECK:      vector.shuffle {{.*}} : vector<32xf32>, vector<32xf32>
 // CHECK:      vector.shape_cast {{.*}} : vector<16xf32> to vector<4x4xf32>
+
+
+// i8 x i8 matmul MAC configuration word for each signedness combination. The
+// AIE2P config word places signX at bit 9 and signY at bit 8 over the base
+// (bmode=1 -> 0x8), so: uns/uns=8, uns/sgn=264, sgn/uns=520, sgn/sgn=776.
+
+func.func @matmul_aie2p_i8_signed_signed(%A : vector<8x8xi8>, %B : vector<8x8xi8>,
+                                         %C : vector<8x8xi32>) -> vector<8x8xi32> {
+  %0 = aievec.matmul_aie2p %A, %B, %C {lhsSigned = true, rhsSigned = true} :
+       vector<8x8xi8>, vector<8x8xi8> into vector<8x8xi32>
+  return %0 : vector<8x8xi32>
+}
+
+// CHECK-LABEL: @matmul_aie2p_i8_signed_signed
+// CHECK:      %[[CONF:.*]] = llvm.mlir.constant(776 : i32) : i32
+// CHECK:      "xllvm.intr.aie2p.I512.I512.ACC2048.mac.conf"({{.*}}, {{.*}}, {{.*}}, %[[CONF]])
+
+
+func.func @matmul_aie2p_i8_unsigned_signed(%A : vector<8x8xi8>, %B : vector<8x8xi8>,
+                                           %C : vector<8x8xi32>) -> vector<8x8xi32> {
+  %0 = aievec.matmul_aie2p %A, %B, %C {lhsSigned = false, rhsSigned = true} :
+       vector<8x8xi8>, vector<8x8xi8> into vector<8x8xi32>
+  return %0 : vector<8x8xi32>
+}
+
+// CHECK-LABEL: @matmul_aie2p_i8_unsigned_signed
+// CHECK:      %[[CONF:.*]] = llvm.mlir.constant(264 : i32) : i32
+// CHECK:      "xllvm.intr.aie2p.I512.I512.ACC2048.mac.conf"({{.*}}, {{.*}}, {{.*}}, %[[CONF]])
+
+
+func.func @matmul_aie2p_i8_signed_unsigned(%A : vector<8x8xi8>, %B : vector<8x8xi8>,
+                                           %C : vector<8x8xi32>) -> vector<8x8xi32> {
+  %0 = aievec.matmul_aie2p %A, %B, %C {lhsSigned = true, rhsSigned = false} :
+       vector<8x8xi8>, vector<8x8xi8> into vector<8x8xi32>
+  return %0 : vector<8x8xi32>
+}
+
+// CHECK-LABEL: @matmul_aie2p_i8_signed_unsigned
+// CHECK:      %[[CONF:.*]] = llvm.mlir.constant(520 : i32) : i32
+// CHECK:      "xllvm.intr.aie2p.I512.I512.ACC2048.mac.conf"({{.*}}, {{.*}}, {{.*}}, %[[CONF]])
+
+
+func.func @matmul_aie2p_i8_unsigned_unsigned(%A : vector<8x8xi8>, %B : vector<8x8xi8>,
+                                             %C : vector<8x8xi32>) -> vector<8x8xi32> {
+  %0 = aievec.matmul_aie2p %A, %B, %C {lhsSigned = false, rhsSigned = false} :
+       vector<8x8xi8>, vector<8x8xi8> into vector<8x8xi32>
+  return %0 : vector<8x8xi32>
+}
+
+// CHECK-LABEL: @matmul_aie2p_i8_unsigned_unsigned
+// CHECK:      %[[CONF:.*]] = llvm.mlir.constant(8 : i32) : i32
+// CHECK:      "xllvm.intr.aie2p.I512.I512.ACC2048.mac.conf"({{.*}}, {{.*}}, {{.*}}, %[[CONF]])
+
+
+// No attributes: integer lowering defaults to signed x signed (776).
+func.func @matmul_aie2p_i8_default(%A : vector<8x8xi8>, %B : vector<8x8xi8>,
+                                   %C : vector<8x8xi32>) -> vector<8x8xi32> {
+  %0 = aievec.matmul_aie2p %A, %B, %C :
+       vector<8x8xi8>, vector<8x8xi8> into vector<8x8xi32>
+  return %0 : vector<8x8xi32>
+}
+
+// CHECK-LABEL: @matmul_aie2p_i8_default
+// CHECK:      %[[CONF:.*]] = llvm.mlir.constant(776 : i32) : i32
+// CHECK:      "xllvm.intr.aie2p.I512.I512.ACC2048.mac.conf"({{.*}}, {{.*}}, {{.*}}, %[[CONF]])

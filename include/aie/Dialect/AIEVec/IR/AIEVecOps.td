@@ -658,9 +658,11 @@ def AIEVec_MatMulOp:
     operands to recover the narrow input types. That peel would otherwise
     discard whether each operand is signed, which the AIE2 MAC needs in order
     to set the `signX`/`signY` bits of its configuration word. The optional
-    `lhsSigned`/`rhsSigned` attributes carry that information forward. When
-    absent, the lowering falls back to inferring signedness from the operand
-    types (preserving behavior for hand-written `aievec.matmul` IR).
+    `lhsSigned`/`rhsSigned` attributes carry that information forward. When an
+    attribute is absent (e.g. hand-written `aievec.matmul` IR), the lowering
+    uses the historical asymmetric defaults: the lhs is treated as unsigned
+    unless it is fed by an `arith.extsi`, and the rhs is treated as signed
+    unless its element type is explicitly unsigned.
 
     Currently, this intrinsic supports the following type combinations:
 
@@ -700,6 +702,12 @@ def AIEVec_MatMulOp_AIE2P:
   let description = [{
     AMD AIEv2P-specific intrinsic that performs a matrix multiplication
     between `lhs` and `rhs`, and accumulates the result in `acc`.
+
+    As for `aievec.matmul`, the optional `lhsSigned`/`rhsSigned` attributes
+    carry each operand's signedness (lost when the pattern peels the
+    `arith.extsi`/`arith.extui`) so the integer MAC configuration word can set
+    its `signX`/`signY` bits. When absent, the integer lowering defaults to
+    signed x signed.
 
     Currently, this intrinsic supports the following type combinations:
 

@@ -4737,9 +4737,17 @@ class MatMulOpAIE2pConversion
       if (lhsIntTy.getWidth() == 8 && rhsIntTy.getWidth() == 8 &&
           accIntTy.getWidth() == 32 && lhsLanes == 64 && rhsLanes == 64 &&
           accLanes == 64) {
-        // Uses I512.I512.ACC2048 (64 lanes of i8 -> 64 lanes of i32)
+        // Uses I512.I512.ACC2048 (64 lanes of i8 -> 64 lanes of i32).
+        // Base conf for amode=0/bmode=1 is bmode<<3 = 8; signedness lives in
+        // signX (bit 9) / signY (bit 8). Prefer the recorded
+        // lhsSigned/rhsSigned attrs (see aiev2_vmac_compute_control /
+        // aie2p_compute_control), and default to signed x signed (776 = 0x308)
+        // to preserve prior behavior.
+        int signX = op.getLhsSigned().value_or(true) ? 1 : 0;
+        int signY = op.getRhsSigned().value_or(true) ? 1 : 0;
+        int conf = 8 | (signX << 9) | (signY << 8);
         return {DecodedMatMulOp::Kind::I8_8x8x8_I512_ACC2048, lhs, rhs, acc,
-                776};
+                conf};
       }
 
       // Check for <8x2xi16> x <2x8xi16> + <8x8xi32>
