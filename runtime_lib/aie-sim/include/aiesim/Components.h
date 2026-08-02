@@ -108,6 +108,17 @@ public:
 /// "Core", "DMA", "North" ... for naming a port in a record.
 const char *portBundleName(PortBundle bundle);
 
+/// The fixed fabric wire out of a directional master port: a master on the
+/// North bundle of (c, r) IS the slave on the South bundle of (c, r+1), and so
+/// on. Port index is preserved.
+///
+/// This is silicon wiring, not something a design chooses -- unlike a
+/// StreamRoute, which a register decided. One definition, used both to move
+/// words and to report the topology, so the two cannot drift.
+///
+/// \returns false for a bundle that stays inside its tile.
+bool interTileLink(PortBundle master, PortBundle &slave, int &dCol, int &dRow);
+
 /// Direction of a DMA channel, named as in the register map.
 enum class DmaDirection {
   S2MM, ///< Stream to memory.
