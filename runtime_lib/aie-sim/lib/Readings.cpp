@@ -334,6 +334,26 @@ std::string Record::toJson() const {
     j.kvOpt("unit", f.unit);
     j.endObj();
   }
+  for (const Graph &g : graphs) {
+    j.beginObj();
+    j.kv("id", g.id);
+    j.kv("shape", "graph");
+    j.kv("label", g.label);
+    j.kv("points", uint64_t(g.nodes.size() + g.edges.size()));
+    j.endObj();
+  }
+  for (const Series &sr : series) {
+    uint64_t pts = 0;
+    for (const SeriesTrack &tr : sr.series)
+      pts += tr.points.size();
+    j.beginObj();
+    j.kv("id", sr.id);
+    j.kv("shape", "series");
+    j.kv("label", sr.label);
+    j.kv("points", pts);
+    j.kvOpt("unit", sr.unit);
+    j.endObj();
+  }
   for (const Interval &iv : intervals) {
     uint64_t spans = 0;
     for (const IntervalTrack &t : iv.tracks)
@@ -481,6 +501,71 @@ std::string Record::toJson() const {
       j.kv("to", e.to);
       j.kv("value", e.value);
       j.kvOpt("label", e.label);
+      j.endObj();
+    }
+    j.endArr();
+    j.endObj();
+  }
+  j.endArr();
+
+  j.key("graph");
+  j.beginArr();
+  for (const Graph &g : graphs) {
+    j.beginObj();
+    j.kv("id", g.id);
+    j.kv("label", g.label);
+    j.kvOpt("description", g.description);
+    j.strArray("tags", g.tags);
+    j.kvBool("directed", g.directed);
+    j.key("nodes");
+    j.beginArr();
+    for (const GraphNode &n : g.nodes) {
+      j.beginObj();
+      j.kv("id", n.id);
+      j.kvOpt("label", n.label);
+      j.kvOpt("kind", n.kind);
+      j.endObj();
+    }
+    j.endArr();
+    j.key("edges");
+    j.beginArr();
+    for (const GraphEdge &e : g.edges) {
+      j.beginObj();
+      j.kv("from", e.from);
+      j.kv("to", e.to);
+      j.kvOpt("label", e.label);
+      j.kvOpt("kind", e.kind);
+      j.endObj();
+    }
+    j.endArr();
+    j.endObj();
+  }
+  j.endArr();
+
+  j.key("series");
+  j.beginArr();
+  for (const Series &sr : series) {
+    j.beginObj();
+    j.kv("id", sr.id);
+    j.kv("label", sr.label);
+    j.kvOpt("description", sr.description);
+    j.strArray("tags", sr.tags);
+    j.kv("unit", sr.unit);
+    j.kv("timeUnit", sr.timeUnit);
+    j.key("series");
+    j.beginArr();
+    for (const SeriesTrack &tr : sr.series) {
+      j.beginObj();
+      j.kv("entity", tr.entity);
+      j.key("points");
+      j.beginArr();
+      for (const auto &[t2, v] : tr.points) {
+        j.beginArr();
+        j.u64(t2);
+        j.num(v);
+        j.endArr();
+      }
+      j.endArr();
       j.endObj();
     }
     j.endArr();
@@ -782,6 +867,74 @@ Record aiesim::readings::capture(Array &array, const CaptureConfig &config) {
   edge("l1", "fabric", tr.l1Read, "core MM2S");
   edge("fabric", "l1", tr.l1Write, "core S2MM");
   rec.flows.push_back(std::move(moved));
+
+  // --- graph: the dataflow the configuration code actually programmed.
+  //
+  // Read out of the stream switches rather than out of the design's source,
+  // which is this model's whole point: a routing bug is invisible to a
+  // graph-level simulator because that one is handed the intended graph. Here
+  // an edge exists because a register says so.
+  Graph routes;
+  routes.id = "graph/stream-routes";
+  routes.label = "Circuit-switched routes the design configured";
+  routes.directed = true;
+  uint32_t packetMasters = 0;
+  std::map<std::string, GraphNode> nodes;
+  for (uint32_t col = 0; col < dev.numCols; ++col)
+    for (uint32_t row = 0; row < dev.numRows; ++row) {
+      Tile *t = array.tile(col, row);
+      if (!t || !t->streamSwitch())
+        continue;
+      packetMasters += t->streamSwitch()->packetModeMasters();
+      const std::string where =
+          std::to_string(col) + "," + std::to_string(row);
+      for (const StreamRoute &r : t->streamSwitch()->configuredRoutes()) {
+        auto port = [&](PortBundle b, uint32_t i) {
+          std::string name = std::string(portBundleName(b)) + std::to_string(i);
+          std::string id = "tile:" + where + "/" + name;
+          nodes.emplace(id, GraphNode{id, name + " @ (" + where + ")", "port"});
+          return id;
+        };
+        routes.edges.push_back({port(r.slaveBundle, r.slaveIndex),
+                                port(r.masterBundle, r.masterIndex), "", "circuit"});
+      }
+    }
+  for (auto &[id, n] : nodes)
+    routes.nodes.push_back(n);
+  routes.description =
+      "One edge per enabled circuit-mode master, taken from the switch "
+      "registers, so it is what the configuration built rather than what the "
+      "design meant. Packet-mode masters are ABSENT: a packet master names an "
+      "arbiter and an msel mask, not one slave, so its source is decided at "
+      "run time. " +
+      std::to_string(packetMasters) +
+      " packet-mode master(s) are configured and not shown here.";
+  rec.graphs.push_back(std::move(routes));
+
+  // --- series: how many components were scheduled, over time.
+  //
+  // The interval reading says where ONE component's time went; this says how
+  // many were running at once, which is the axis a serialised design shows up
+  // on. Sampled at change points only -- it is a step function, so that is
+  // lossless and an idle stretch costs one entry instead of millions.
+  if (array.timelineEnabled() && !array.concurrency().empty()) {
+    Series conc;
+    conc.id = "series/active-components";
+    conc.label = "Components scheduled per cycle";
+    conc.unit = "count";
+    conc.timeUnit = "cycle";
+    conc.description =
+        "Change points, not samples: a value holds from its cycle until the "
+        "next entry. Counts components the scheduler ran, which includes ones "
+        "that stalled -- pair it with interval/stall-attribution to separate "
+        "busy from merely scheduled.";
+    SeriesTrack track;
+    track.entity = "array";
+    for (const Array::ConcurrencyPoint &p : array.concurrency())
+      track.points.push_back({p.cycle, double(p.active)});
+    conc.series.push_back(std::move(track));
+    rec.series.push_back(std::move(conc));
+  }
 
   // --- interval: where each component's scheduled cycles went.
   //

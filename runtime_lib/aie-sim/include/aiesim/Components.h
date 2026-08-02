@@ -20,6 +20,7 @@
 #include "aiesim/Array.h"
 
 #include <cstdint>
+#include <vector>
 
 namespace aiesim {
 
@@ -76,13 +77,36 @@ enum class PortBundle {
 /// towards a consumer; slave ports carry data into the switch from a producer.
 /// Which master is fed by which slave comes out of the switch's own
 /// configuration registers, so routing is whatever the design programmed.
+/// One circuit-switched connection the design programmed: which slave port
+/// feeds which master port, inside one tile.
+///
+/// Packet-mode masters are deliberately absent. A packet master names an
+/// arbiter and an msel mask rather than one slave, so its source depends on
+/// arbitration at run time and any edge drawn for it would be invented -- and
+/// the packet header encoding this model uses is itself ungrounded.
+struct StreamRoute {
+  PortBundle slaveBundle;
+  uint32_t slaveIndex;
+  PortBundle masterBundle;
+  uint32_t masterIndex;
+};
+
 class StreamSwitchModule : public Steppable {
 public:
   /// Endpoint a local producer writes into (the switch's slave side).
   virtual StreamPort *slavePort(PortBundle bundle, uint32_t index) = 0;
   /// Endpoint a local consumer reads from (the switch's master side).
   virtual StreamPort *masterPort(PortBundle bundle, uint32_t index) = 0;
+  /// Every enabled circuit-mode connection, in bundle then index order.
+  virtual std::vector<StreamRoute> configuredRoutes() const = 0;
+  /// How many masters are enabled in PACKET mode, which configuredRoutes()
+  /// cannot describe. Reported so a consumer knows the graph is partial
+  /// rather than assuming the design had no other routes.
+  virtual uint32_t packetModeMasters() const = 0;
 };
+
+/// "Core", "DMA", "North" ... for naming a port in a record.
+const char *portBundleName(PortBundle bundle);
 
 /// Direction of a DMA channel, named as in the register map.
 enum class DmaDirection {

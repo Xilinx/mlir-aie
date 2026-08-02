@@ -416,6 +416,21 @@ public:
   void recordDmaBytes(TileType kind, bool toFabric, uint64_t bytes);
   const StreamTraffic &streamTraffic() const { return traffic; }
 
+  /// How many components were scheduled on a cycle, sampled only where the
+  /// number CHANGES.
+  ///
+  /// A step function, so change points are lossless and a long idle stretch
+  /// costs one entry instead of millions -- which is what makes recording this
+  /// every cycle affordable at all. Read it as: value holds from this cycle
+  /// until the next entry's cycle.
+  struct ConcurrencyPoint {
+    uint64_t cycle;
+    uint32_t active;
+  };
+  const std::vector<ConcurrencyPoint> &concurrency() const {
+    return concurrencyPoints;
+  }
+
   /// Registers a component. Its index in `steppables` is both its wake()
   /// identity and its sort key in the active set, so registration order is
   /// what makes the order components step in reproducible -- see wake().
@@ -451,6 +466,7 @@ private:
   std::vector<int> trackOfSteppable;
   bool timelineOn = true;
   StreamTraffic traffic;
+  std::vector<ConcurrencyPoint> concurrencyPoints;
   // Registration indices of components due to be stepped, ordered ascending
   // so iteration order is always registration order -- the determinism
   // guarantee is this sort key, not whatever order wake() happened to be
