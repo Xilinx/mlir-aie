@@ -254,6 +254,12 @@ public:
   /// Return the size (in bytes) of the local data memory of a core.
   virtual uint32_t getLocalMemorySize() const = 0;
 
+  /// Return the default stack reservation (in bytes) for a core, used when a
+  /// design does not state one. The linker script places the stack directly
+  /// below the objectFIFO buffers with no clearance, so a design whose frames
+  /// exceed this corrupts them instead of faulting.
+  virtual uint32_t getDefaultCoreStackSize() const { return 0x400; }
+
   /// Return the data bus width (in bits) for load/store operations of a compute
   /// core.
   virtual uint32_t getComputeTileLoadStoreBusWidth() const = 0;

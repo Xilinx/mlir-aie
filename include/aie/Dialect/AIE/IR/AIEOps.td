@@ -371,7 +371,8 @@ def AIE_CoreOp: AIE_Op<"core", [
   ]>, Results<(outs Index)> {
   let arguments = (
     ins Index:$tile,
-    DefaultValuedAttr<AIEI32Attr, "0x400">:$stack_size,
+    // Absent means "use this target's default"; read getEffectiveStackSize().
+    OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<1>]>>:$stack_size,
     // Deprecated: attach link_with to func.func declarations instead and run
     // aie-assign-core-link-files to populate link_files.
     OptionalAttr<StrAttr>:$link_with,
@@ -407,10 +408,15 @@ def AIE_CoreOp: AIE_Op<"core", [
     will run in the core. The path specified should is relative to the MLIR
     file.
 
-    This op has an optional `stackSize` attribute, to control the amount of memory (in bytes)
-    reserved for the stack.  The default value is 1024.  The stack (and other data allocations)
-    are always stored in the local core memory, to avoid conflicts with static data allocations
-    in other cores.
+    This op has an optional `stack_size` attribute, to control the amount of memory (in bytes)
+    reserved for the stack.  When absent the target's default is used
+    (`AIETargetModel::getDefaultCoreStackSize()`).  The stack (and other data allocations)
+    are always stored in the local core memory, to avoid conflicts with static data
+    allocations in other cores.
+
+    The reservation is not checked against the core's actual frames, and the stack sits
+    directly below the objectFIFO buffers with no clearance, so a design with large frames
+    must set this attribute or it will overwrite them silently.
 
     This op has an optional `dynamic_objfifo_lowering` attribute, to finely control whether the
     objectfifos in this core should be lowered using the dynamic runtime lowering.
@@ -464,7 +470,7 @@ def AIE_CoreOp: AIE_Op<"core", [
     %tile = aie.tile(3, 3)
     aie.core(%tile) {
       aie.end
-    } { stackSize = 2048 : i32, elf_file = "core_33.elf" }
+    } { stack_size = 2048 : i32, elf_file = "core_33.elf" }
     ```
   }];
 
@@ -476,6 +482,9 @@ def AIE_CoreOp: AIE_Op<"core", [
     TileOp getTileOp();
     bool isMemWest() { return ((rowIndex() % 2) == 0); };
     bool isEmpty();
+    /// The stack reservation in bytes: the `stack_size` attribute when set,
+    /// otherwise this target's default.
+    uint32_t getEffectiveStackSize();
     void getAsmResultNames(::mlir::OpAsmSetValueNameFn setNameFn) {
       TileElement::Trait<CoreOp>::getAsmResultNames(setNameFn);
     }
