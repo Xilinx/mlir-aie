@@ -18,6 +18,7 @@ set(AIE_SIM_TESTS
   core_engine_test
   core_register_map_test
   tile_core_port_test
+  core_dispatch_test
   # Guards the component's central claim: that the ess_* symbols aie-rt
   # declares are all provided, with matching signatures. Compiling it is the
   # signature check, linking it is the completeness check.
@@ -50,7 +51,7 @@ foreach(t ${AIE_SIM_TESTS})
       target_link_libraries(${t} PRIVATE aie-sim)
     endif()
     add_test(NAME aie-sim-${t} COMMAND ${t})
-    if(t STREQUAL "core_engine_test")
+    if(t STREQUAL "core_engine_test" OR t STREQUAL "core_dispatch_test")
       # Exit 77 means "no engine configured", which must read as SKIP. Letting
       # it pass would report a green boundary test with nothing on the far side.
       set_tests_properties(aie-sim-${t} PROPERTIES SKIP_RETURN_CODE 77)

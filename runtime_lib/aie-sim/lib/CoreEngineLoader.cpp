@@ -439,10 +439,32 @@ void aiesim::installCore(Tile &tile) {
   const RegRange *window = isAIE2P ? kAIE2PCoreWindow : kAIE2CoreWindow;
   const size_t windowSize =
       isAIE2P ? std::size(kAIE2PCoreWindow) : std::size(kAIE2CoreWindow);
-  for (size_t i = 0; i < windowSize; ++i)
+  const Generation gen = tile.getArray().device().generation;
+  for (size_t i = 0; i < windowSize; ++i) {
     regs.reserve(window[i].begin, window[i].end,
                  "core architectural register; no core engine is installed, "
                  "so it holds its *_REGISTER_VALUE_DEFVAL of 0");
+    // Layered over the reservation rather than replacing it: onRead wins for
+    // reads, and the reservation keeps documenting why an unmapped offset in
+    // this window is zero rather than unclaimed.
+    regs.onRead(window[i].begin, window[i].end,
+                [&tile, gen](uint32_t off) -> uint32_t {
+                  CoreEngine *engine = tile.ensureCoreEngine();
+                  if (!engine)
+                    return 0;
+                  CoreRegisterMapping reg = coreScalarRegister(gen, off);
+                  if (reg.isProgramCounter)
+                    return engine->getProgramCounter();
+                  if (!reg.mapped())
+                    return 0;
+                  uint32_t value = 0;
+                  // A name the engine does not know reads 0 rather than
+                  // faulting: the window is wider than the scalar map, and a
+                  // host walking it must not take the array down.
+                  engine->readRegister(reg.name, &value, sizeof(value));
+                  return value;
+                });
+  }
 
   regs.reserve(layout.traceStatus, layout.traceStatus + 4,
                "trace unit is not modelled; *_TRACE_STATUS_STATE_DEFVAL and "
