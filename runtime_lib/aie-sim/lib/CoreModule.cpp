@@ -154,6 +154,16 @@ public:
   /// dropped from the active set and never resume.
   bool busy() const override { return running; }
 
+  std::string timelineEntity() const override {
+    return "tile:" + std::to_string(tile.getCol()) + "," +
+           std::to_string(tile.getRow()) + "/core";
+  }
+
+  /// The engine answers Stalled without naming the port it waited on, so this
+  /// says the core was the waiter and nothing more. Refining it needs a reason
+  /// on the C ABI's step result, not more work here.
+  StallReason stallReason() const override { return StallReason::Core; }
+
 private:
   /// Whether anything was loaded into this tile's program memory. A design with
   /// no `aie.core` on a tile leaves it all zero, and the host still enables it.

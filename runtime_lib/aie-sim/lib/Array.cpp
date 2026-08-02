@@ -374,6 +374,10 @@ void Array::stepOneCycle() {
   for (size_t idx : current)
     steppables[idx]->commit();
 
+  if (timelineOn)
+    for (size_t i = 0; i < current.size(); ++i)
+      recordCycle(current[i], stepped[i]);
+
   // A component that was active this cycle stays active iff it did work or
   // still has work outstanding; otherwise it leaves the set until something
   // wakes it again.
@@ -381,6 +385,60 @@ void Array::stepOneCycle() {
     if (!stepped[i] && !steppables[current[i]]->busy())
       active.erase(current[i]);
   ++cycles;
+}
+
+const char *aiesim::stallReasonName(StallReason reason) {
+  switch (reason) {
+  case StallReason::Lock:
+    return "lock";
+  case StallReason::Backpressure:
+    return "backpressure";
+  case StallReason::Starvation:
+    return "starvation";
+  case StallReason::Core:
+    return "core-wait";
+  case StallReason::Unknown:
+    break;
+  }
+  return "unknown";
+}
+
+void Array::recordCycle(size_t idx, bool didWork) {
+  if (trackOfSteppable.size() <= idx)
+    trackOfSteppable.resize(steppables.size(), -1);
+
+  int &slot = trackOfSteppable[idx];
+  if (slot == -1) {
+    std::string name = steppables[idx]->timelineEntity();
+    if (name.empty()) {
+      slot = kNoTrack;
+      return;
+    }
+    slot = static_cast<int>(tracks.size());
+    tracks.push_back({std::move(name), {}});
+  }
+  if (slot == kNoTrack)
+    return;
+
+  // "running" covers the cycle the component reported observable work; every
+  // other scheduled cycle is a stall it has to name. A component that did no
+  // work and is not busy is leaving the active set this cycle, so there is no
+  // wait to attribute -- charging it as a stall would bill the transition.
+  const char *category;
+  if (didWork)
+    category = "running";
+  else if (steppables[idx]->busy())
+    category = stallReasonName(steppables[idx]->stallReason());
+  else
+    return;
+
+  std::vector<TimelineSpan> &spans = tracks[slot].spans;
+  if (!spans.empty() && spans.back().end == cycles &&
+      spans.back().category == category) {
+    spans.back().end = cycles + 1;
+    return;
+  }
+  spans.push_back({cycles, cycles + 1, category});
 }
 
 void Array::advance(uint64_t n) {

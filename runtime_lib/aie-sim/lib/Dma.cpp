@@ -452,6 +452,8 @@ public:
 
   bool step() override;
   bool busy() const override;
+  std::string timelineEntity() const override;
+  StallReason stallReason() const override;
   uint32_t completedBds(DmaDirection dir, uint32_t channel) const override;
 
   // Register-side entry points, wired up by installDma().
@@ -968,6 +970,35 @@ bool DmaModuleImpl::busy() const {
     if (c.running || !c.queue.empty())
       return true;
   return false;
+}
+
+std::string DmaModuleImpl::timelineEntity() const {
+  return "tile:" + std::to_string(tile.getCol()) + "," +
+         std::to_string(tile.getRow()) + "/dma";
+}
+
+// All channels of a tile share one Steppable, so the timeline is per DMA
+// module: step() returns moved-on-any-channel, and a cycle only counts as a
+// stall when no channel moved at all. The reason is then the first stalled
+// channel in a fixed scan order, which is deterministic but coarser than the
+// record's entity convention allows -- per-channel tracks need per-channel
+// Steppables, which is a scheduling change, not a reporting one.
+StallReason DmaModuleImpl::stallReason() const {
+  for (uint32_t ch = 0; ch < layout.numChannels; ++ch) {
+    for (const auto &[c, dir] : {std::pair{&s2mm[ch], DmaDirection::S2MM},
+                                 std::pair{&mm2s[ch], DmaDirection::MM2S}}) {
+      if (!c->running)
+        continue;
+      if (c->stalledLockAcq)
+        return StallReason::Lock;
+      // Same flag, opposite ends of the same wire: MM2S could not push into a
+      // full port, S2MM could not pop from an empty one.
+      if (c->stalledStream)
+        return dir == DmaDirection::MM2S ? StallReason::Backpressure
+                                         : StallReason::Starvation;
+    }
+  }
+  return StallReason::Unknown;
 }
 
 uint32_t DmaModuleImpl::completedBds(DmaDirection dir, uint32_t ch) const {

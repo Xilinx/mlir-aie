@@ -481,6 +481,29 @@ void testLockStall() {
                DmaDirection::MM2S, 0));
   AIESIM_CHECK((status & 0x4u) != 0);
 
+  // The same wait, attributed. The status bit says a channel is stalled right
+  // now; the timeline says for how long and why, which is what the readings
+  // record turns into an interval. Checked here rather than in readings_test
+  // because this is the only place a real lock stall is set up.
+  const std::vector<Array::TimelineTrack> &timeline = array.timeline();
+  const Array::TimelineTrack *dmaTrack = nullptr;
+  for (const Array::TimelineTrack &t : timeline)
+    if (t.entity == "tile:0,2/dma")
+      dmaTrack = &t;
+  AIESIM_CHECK(dmaTrack != nullptr);
+  if (dmaTrack) {
+    // Every scheduled cycle so far was the lock wait, so it coalesces into a
+    // single span. More than one span here would mean the DMA was credited
+    // with work it never did.
+    AIESIM_CHECK_EQ(dmaTrack->spans.size(), static_cast<size_t>(1));
+    AIESIM_CHECK(std::string(dmaTrack->spans[0].category) == "lock");
+    uint64_t stalled = 0;
+    for (const Array::TimelineSpan &s : dmaTrack->spans)
+      stalled += s.end - s.start;
+    AIESIM_CHECK(stalled > 0);
+    AIESIM_CHECK(stalled <= array.cycle());
+  }
+
   // Arm lock 0 through the real LockN_Value register (Lock.cpp's
   // setRawValue / xaie_locks_aieml.c:150-164 direct-write path) and let the
   // transfer finish.
