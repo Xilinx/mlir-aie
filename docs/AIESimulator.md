@@ -185,6 +185,16 @@ Owns everything outside the core datapath, and holds the `ess_*` entry points:
   are recorded rather than fatal (the model will never claim every register, and refusing to run until
   it does would make it useless); `AIE_SIM_STRICT=1` promotes them, and the recorded set is emitted as
   a coverage report so "unmodelled" is a number rather than a surprise.
+
+  That runtime report says what one design touched. The static counterpart says what the model
+  covers at all: `register_coverage <params-header> [device]` takes the register universe from
+  aie-rt's own generated database (a define is an address when a sibling `_WIDTH` exists, which
+  separates the ~2.1k addresses from the ~31k field defines) and asks `RegisterFile::isClaimed()`
+  once per address, so the answer comes from the same lookup a running design hits rather than from
+  a hand-kept list that drifts. As of 2026-08-02, AIE2P/npu2 is **1176 of 2141 addresses, 54.9%** --
+  memtile 74.3%, shim 54.9%, core 35.3%; AIE2/xcve2802 is 53.7% of a slightly larger map. Unclaimed
+  is not automatically a gap: trace, debug, performance counters and ECC are deliberately absent, so
+  this is a trend line and a review aid, not a number to maximise.
 * **Time.** A cycle counter, and only components with outstanding work are stepped. Order within a
   cycle is registration order, used as an explicit sort key rather than left to container iteration,
   which is what makes runs reproducible. The array advances inside the `ess_*` entry points, so a host
