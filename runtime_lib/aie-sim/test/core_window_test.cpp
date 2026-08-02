@@ -17,6 +17,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "aiesim/Array.h"
+#include "aiesim/Components.h"
 #include "aiesim/Device.h"
 
 #include "TestSupport.h"
@@ -109,6 +110,20 @@ int main() {
   size_t aie2 = checkWindow("xcve2802", kAIE2, std::size(kAIE2),
                             /*pc=*/0x31100, /*gap=*/0x30500);
   AIESIM_CHECK_EQ(aie2, size_t{210});
+
+  // A wrong device shows up as an unclaimed offset, never a wrong value, so
+  // the fault can name the real mistake. 0x30C40 is CORE_R4 on AIE2 and falls
+  // in a gap on AIE2P; 0x310C0 is the mirror case.
+  AIESIM_CHECK(coreRegisterOnOtherGeneration(Generation::AIE2P, 0x30C40) !=
+               nullptr);
+  AIESIM_CHECK(coreRegisterOnOtherGeneration(Generation::AIE2, 0x310C0) !=
+               nullptr);
+  // Its own registers are not "the other generation's", and a gap on both is
+  // nobody's.
+  AIESIM_CHECK(coreRegisterOnOtherGeneration(Generation::AIE2P, 0x30E00) ==
+               nullptr);
+  AIESIM_CHECK(coreRegisterOnOtherGeneration(Generation::AIE2P, 0x30500) ==
+               nullptr);
 
   return aiesim_test::summarize("core_window");
 }
