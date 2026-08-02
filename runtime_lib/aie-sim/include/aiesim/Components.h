@@ -160,6 +160,20 @@ struct CoreRegisterMapping {
 /// is the one failure the fault contract cannot catch.
 CoreRegisterMapping coreScalarRegister(Generation gen, uint32_t off);
 
+/// Which tile's data memory a core-local band addresses. On AIE2/AIE2P a core
+/// reaches four 64 KB bands; `getMemInternalBaseAddress` returns East
+/// unconditionally there, so East is the tile's OWN memory rather than a
+/// neighbour, and the four are not symmetric.
+enum class MemDirection { South, West, North, Own };
+
+/// The CoreMemoryPort a real tile presents to its engine: core-local program
+/// memory at [0, 0x20000) and the tile's own data memory in the east band.
+///
+/// The other three bands and the core's stream/cascade ports are not modelled
+/// and fault rather than stall, so a design that reaches one fails loudly
+/// instead of hanging or reading a plausible wrong word.
+std::unique_ptr<CoreMemoryPort> makeTileCorePort(Tile &tile);
+
 } // namespace aiesim
 
 #endif // AIESIM_COMPONENTS_H
