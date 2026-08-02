@@ -201,8 +201,8 @@ Owns everything outside the core datapath, and holds the `ess_*` entry points:
   aie-rt's own generated database (a define is an address when a sibling `_WIDTH` exists, which
   separates the ~2.1k addresses from the ~31k field defines) and asks `RegisterFile::isClaimed()`
   once per address, so the answer comes from the same lookup a running design hits rather than from
-  a hand-kept list that drifts. As of 2026-08-02, AIE2P/npu2 is **1176 of 2141 addresses, 54.9%** --
-  memtile 74.3%, shim 54.9%, core 35.3%; AIE2/xcve2802 is 53.7% of a slightly larger map. Unclaimed
+  a hand-kept list that drifts. As of 2026-08-02, AIE2P/npu2 is **1401 of 2141 addresses, 65.4%** --
+  memtile 74.3%, core 63.6%, shim 54.9%; AIE2/xcve2802 is 63.0% of a slightly larger map. Unclaimed
   is not automatically a gap: trace, debug, performance counters and ECC are deliberately absent, so
   this is a trend line and a review aid, not a number to maximise.
 * **Time.** A cycle counter, and only components with outstanding work are stepped. Order within a
@@ -293,11 +293,18 @@ each, so a wrong-generation table does not fault -- it returns a plausible numbe
 That is the failure mode the fault contract cannot catch, and it is the argument for generating the table
 from the vendored database rather than hand-transcribing five entries per generation.
 
-**Scope.** Expose the control block plus `R`/`P`/`M`/`S` first: those are scalar, 32 bits, one slot each,
-and are what a host debug read actually wants. The vector and accumulator families need the part-assembly
-rule above and an engine that models them at all, so they belong with the vector phase, not here. Writes
-go through `writeRegister` with the same table; nothing in the current tests needs them, so they can stay
-faulted until something does.
+**Status.** The window is claimed: 230 registers on AIE2P, 210 on AIE2, expressed as the six (resp. five)
+contiguous ranges the families merge into, so the gaps between them stay unmapped and still fault. With no
+engine loaded every one reads its `*_REGISTER_VALUE_DEFVAL` of 0, which is also what a core that has never
+run reads on hardware. `core_window_test` checks both generations against independently written ranges,
+asserts the gaps are *not* claimed, and asserts `CORE_CONTROL` still reports its reset value rather than
+being swallowed by the window.
+
+What remains is the engine dispatch: routing those reads to `readRegister` when a core engine is attached,
+which needs the offset-to-name mapping and an engine to ask. Scalar families (`R`/`P`/`M`/`S` and the
+control block) are one slot each and map directly; the vector and accumulator families need the
+part-assembly rule above and an engine that models them at all, so they belong with the vector phase.
+Writes go through `writeRegister` on the same table and can stay faulted until something needs them.
 
 ## 5. Why register-level rather than graph-level
 
