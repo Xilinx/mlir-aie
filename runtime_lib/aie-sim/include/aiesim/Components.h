@@ -124,6 +124,12 @@ void installStreamSwitch(Tile &tile);
 void installDma(Tile &tile);
 void installCore(Tile &tile);
 
+/// Name of the other AIE2-family generation when `off` is one of ITS core
+/// registers and not one of `gen`'s, else null. The two windows collide, so a
+/// device mismatch shows up as an unclaimed offset rather than a wrong value;
+/// this is what lets the diagnostic say which mistake was made.
+const char *coreRegisterOnOtherGeneration(Generation gen, uint32_t off);
+
 } // namespace aiesim
 
 #endif // AIESIM_COMPONENTS_H

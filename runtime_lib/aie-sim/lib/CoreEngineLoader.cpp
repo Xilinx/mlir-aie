@@ -281,7 +281,31 @@ constexpr RegRange kAIE2CoreWindow[] = {
 /// core that had already left reset.
 constexpr uint32_t kCoreControlReset = 0x2;
 
+bool inWindow(const RegRange *window, size_t n, uint32_t off) {
+  for (size_t i = 0; i < n; ++i)
+    if (off >= window[i].begin && off < window[i].end)
+      return true;
+  return false;
+}
+
 } // namespace
+
+const char *aiesim::coreRegisterOnOtherGeneration(Generation gen,
+                                                  uint32_t off) {
+  const bool isAIE2P = gen == Generation::AIE2P;
+  const RegRange *own = isAIE2P ? kAIE2PCoreWindow : kAIE2CoreWindow;
+  size_t ownSize =
+      isAIE2P ? std::size(kAIE2PCoreWindow) : std::size(kAIE2CoreWindow);
+  if (inWindow(own, ownSize, off))
+    return nullptr;
+
+  const RegRange *other = isAIE2P ? kAIE2CoreWindow : kAIE2PCoreWindow;
+  size_t otherSize =
+      isAIE2P ? std::size(kAIE2CoreWindow) : std::size(kAIE2PCoreWindow);
+  if (!inWindow(other, otherSize, off))
+    return nullptr;
+  return isAIE2P ? "AIE2" : "AIE2P";
+}
 
 void aiesim::installCore(Tile &tile) {
   if (tile.getType() != TileType::Core)
