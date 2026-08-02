@@ -107,6 +107,43 @@ void testUnclaimedRegistersBecomeCoverageAndAVerdict() {
   AIESIM_CHECK(has(json, "\"fail\":1"));
 }
 
+void testUnmodelledOpcodesBecomeCoverageAndAVerdict() {
+  auto array = makeArray();
+  array->recordUnmodelledOpcode(0, 2, "VMAC_f_vmac_bfp_vmul_bfp_core_EX_EX");
+
+  Record rec = capture(*array, config());
+  std::string json = rec.toJson();
+
+  AIESIM_CHECK(has(json, "\"id\":\"coverage/opcode-semantics\""));
+  AIESIM_CHECK(has(json, "VMAC_f_vmac_bfp_vmul_bfp_core_EX_EX"));
+  AIESIM_CHECK(has(json, "\"id\":\"all-opcodes-modelled\""));
+  AIESIM_CHECK(has(json, "\"scalar/unmodelled-opcodes\""));
+  AIESIM_CHECK(has(json, "\"outcome\":\"fail\""));
+}
+
+void testUnmodelledOpcodesAreDedupedByName() {
+  auto array = makeArray();
+  // The same gap reached from several tiles is ONE gap: the question is which
+  // instructions the engine lacks, not how many cores tripped over them.
+  array->recordUnmodelledOpcode(0, 2, "VSHUFFLE_vec_shuffle_x");
+  array->recordUnmodelledOpcode(1, 3, "VSHUFFLE_vec_shuffle_x");
+  array->recordUnmodelledOpcode(0, 4, "VSRS_2x_mv_x_srs_cm_srsSign0");
+  AIESIM_CHECK(array->unmodelledOpcodes().size() == 2);
+
+  Record rec = capture(*array, config());
+  AIESIM_CHECK(has(rec.toJson(), "\"value\":2"));
+}
+
+void testNoUnmodelledOpcodesPasses() {
+  auto array = makeArray();
+  Record rec = capture(*array, config());
+  std::string json = rec.toJson();
+  // Present even when empty: a shape that vanishes when clean cannot be
+  // distinguished from a shape nobody emitted.
+  AIESIM_CHECK(has(json, "\"id\":\"coverage/opcode-semantics\""));
+  AIESIM_CHECK(has(json, "\"id\":\"all-opcodes-modelled\""));
+}
+
 void testSummaryTierIsPresentAndPointsAtTheBody() {
   auto array = makeArray();
   enableMemoryTracking(*array);
@@ -247,6 +284,9 @@ int main() {
   testTrackingOffIsUnknownNotZero();
   testTouchedMemoryIsObserved();
   testUnclaimedRegistersBecomeCoverageAndAVerdict();
+  testUnmodelledOpcodesBecomeCoverageAndAVerdict();
+  testUnmodelledOpcodesAreDedupedByName();
+  testNoUnmodelledOpcodesPasses();
   testSummaryTierIsPresentAndPointsAtTheBody();
   testRecordIsByteStable();
   return aiesim_test::summarize("readings_test");

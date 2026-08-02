@@ -321,6 +321,20 @@ public:
   /// Human-readable coverage summary, one line per distinct site.
   std::string unclaimedReport() const;
 
+  /// An instruction the core engine has no semantics for. Recorded so the
+  /// semantics gap is a number in the readings record rather than a string in
+  /// a diagnostic, which is what lets a sweep accumulate it across designs.
+  struct UnmodelledOpcode {
+    uint32_t col;
+    uint32_t row;
+    /// Opcode name when the engine reported one, otherwise its whole message.
+    std::string name;
+  };
+  void recordUnmodelledOpcode(uint32_t col, uint32_t row, std::string name);
+  const std::vector<UnmodelledOpcode> &unmodelledOpcodes() const {
+    return unmodelled;
+  }
+
   /// Registers a component. Its index in `steppables` is both its wake()
   /// identity and its sort key in the active set, so registration order is
   /// what makes the order components step in reproducible -- see wake().
@@ -357,6 +371,8 @@ private:
   bool strictMode = false;
   std::vector<UnclaimedWrite> unclaimed;
   std::set<uint64_t> unclaimedSeen;
+  std::vector<UnmodelledOpcode> unmodelled;
+  std::set<std::string> unmodelledSeen;
 };
 
 /// The array the ess_* symbols operate on. A process simulates one array; the
