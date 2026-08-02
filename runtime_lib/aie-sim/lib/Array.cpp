@@ -7,6 +7,7 @@
 
 #include "aiesim/Array.h"
 #include "aiesim/Components.h"
+#include "aiesim/RegionMap.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -111,6 +112,9 @@ void Tile::setStreamSwitch(std::unique_ptr<StreamSwitchModule> m) {
   switchModule = std::move(m);
 }
 void Tile::setDma(std::unique_ptr<DmaModule> m) { dmaModule = std::move(m); }
+void Tile::setRegionMap(RegionMap map) {
+  regions = std::make_unique<RegionMap>(std::move(map));
+}
 void Tile::setCoreModule(std::unique_ptr<Steppable> m) {
   coreExecModule = std::move(m);
 }

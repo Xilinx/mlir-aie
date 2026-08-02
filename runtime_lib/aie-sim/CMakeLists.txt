@@ -44,6 +44,7 @@ add_library(aie-sim STATIC
   lib/Lock.cpp
   lib/Memory.cpp
   lib/Readings.cpp
+  lib/RegionMap.cpp
   lib/RegisterFile.cpp
   lib/StreamSwitch.cpp
 )

@@ -8,6 +8,8 @@
 #include "aiesim/Readings.h"
 
 #include "aiesim/Array.h"
+#include "aiesim/Components.h"
+#include "aiesim/RegionMap.h"
 
 #include <algorithm>
 #include <cinttypes>
@@ -463,25 +465,58 @@ const char *tileTypeName(TileType t) {
 /// One memory of one tile. Emitted as a leaf carrying its capacity, so the
 /// viewer can draw touched-against-capacity and the free remainder is
 /// arithmetic rather than another number that could disagree.
+///
+/// With a region map attached, the leaf becomes a parent whose children are
+/// the linker script's own allocations. That is the difference between "this
+/// tile used 12 KB" and "the stack is 3328 bytes and the buffer starts at the
+/// byte after it".
 bool addMemoryLeaf(ContainmentNode &tileNode, const char *name, Memory *mem,
-                   bool includeUntouched) {
+                   bool includeUntouched, const RegionMap *regions,
+                   uint32_t bandBase) {
   if (!mem)
     return false;
   uint32_t touched = mem->tracksWrites() ? mem->touchedBytes() : 0;
-  if (!touched && !includeUntouched)
+  if (!touched && !includeUntouched && !regions)
     return false;
-  ContainmentNode leaf;
-  leaf.name = name;
-  leaf.hasValue = true;
-  leaf.value = touched;
-  leaf.hasCapacity = true;
-  leaf.capacity = mem->size();
+  ContainmentNode node;
+  node.name = name;
+  node.hasCapacity = true;
+  node.capacity = mem->size();
   if (!mem->tracksWrites())
     // Otherwise a 0 here reads as "nothing was written" rather than "nobody
     // was counting", which is the same silent-zero mistake the register file
     // exists to prevent.
-    leaf.attrs.push_back({"tracked", "false"});
-  tileNode.children.push_back(std::move(leaf));
+    node.attrs.push_back({"tracked", "false"});
+
+  bool named = false;
+  if (regions) {
+    for (const Region &r : regions->regions()) {
+      // Only what this band maps: the script also describes the neighbour
+      // bands and program memory, which are not this memory's bytes.
+      if (r.kind == RegionKind::Program || r.kind == RegionKind::Data)
+        continue;
+      if (r.begin < bandBase || r.begin >= bandBase + mem->size())
+        continue;
+      uint32_t off = r.begin - bandBase;
+      ContainmentNode leaf;
+      leaf.name = r.name;
+      leaf.hasValue = true;
+      leaf.value = mem->tracksWrites() ? mem->touchedBytesIn(off, r.size) : 0;
+      leaf.hasCapacity = true;
+      leaf.capacity = r.size;
+      leaf.attrs.push_back({"kind", regionKindName(r.kind)});
+      char addr[16];
+      std::snprintf(addr, sizeof(addr), "0x%x", r.begin);
+      leaf.attrs.push_back({"addr", addr});
+      node.children.push_back(std::move(leaf));
+      named = true;
+    }
+  }
+  if (!named) {
+    node.hasValue = true;
+    node.value = touched;
+  }
+  tileNode.children.push_back(std::move(node));
   return true;
 }
 
@@ -520,10 +555,12 @@ Record aiesim::readings::capture(Array &array, const CaptureConfig &config) {
       ContainmentNode tileNode;
       tileNode.name = "tile:" + std::to_string(col) + "," + std::to_string(row);
       tileNode.attrs.push_back({"type", tileTypeName(t->getType())});
+      const RegionMap *regions = t->regionMap();
       bool any = addMemoryLeaf(tileNode, "data", t->memory(),
-                               config.includeUntouchedTiles);
+                               config.includeUntouchedTiles, regions,
+                               ownMemoryBandBase(dev.generation));
       any |= addMemoryLeaf(tileNode, "program", t->programMemory(),
-                           config.includeUntouchedTiles);
+                           config.includeUntouchedTiles, nullptr, 0);
       if (t->memory()) {
         totalCapacity += t->memory()->size();
         totalTouched += t->memory()->tracksWrites()
@@ -625,6 +662,90 @@ Record aiesim::readings::capture(Array &array, const CaptureConfig &config) {
                   "because nobody counted, not because nothing was written.";
   }
   rec.verdicts.push_back(std::move(tracked));
+
+  // --- stack clearance, and any two regions claiming one byte.
+  //
+  // Static: it reads the linker script, so it fires before a single cycle is
+  // simulated and does not need a core engine. That matters because the bug it
+  // describes produces no crash at run time -- the overwrite is silent, and by
+  // the time a number looks wrong the cause is many layers away.
+  uint32_t worstGap = 0;
+  std::string worstNext, worstTile;
+  bool haveGap = false;
+  uint32_t overlapTotal = 0;
+  std::string firstOverlap;
+  uint32_t mappedTiles = 0;
+
+  for (uint32_t col = 0; col < dev.numCols; ++col)
+    for (uint32_t row = 0; row < dev.numRows; ++row) {
+      Tile *t = array.tile(col, row);
+      if (!t || !t->regionMap())
+        continue;
+      ++mappedTiles;
+      const RegionMap &rm = *t->regionMap();
+      std::string tileName =
+          "tile:" + std::to_string(col) + "," + std::to_string(row);
+
+      uint32_t gap = 0;
+      std::string next;
+      if (rm.stackClearance(gap, next))
+        if (!haveGap || gap < worstGap) {
+          haveGap = true;
+          worstGap = gap;
+          worstNext = next;
+          worstTile = tileName;
+        }
+      for (const RegionMap::Overlap &o : rm.overlaps()) {
+        ++overlapTotal;
+        if (firstOverlap.empty())
+          firstOverlap = tileName + " '" + o.a + "' and '" + o.b + "'";
+      }
+    }
+
+  Verdict clearance;
+  clearance.id = "stack-clearance";
+  clearance.label = "The stack has room to overrun into";
+  clearance.evidence = {"containment/tile-memory"};
+  if (!mappedTiles) {
+    clearance.outcome = Outcome::Unknown;
+    clearance.severity = "info";
+    clearance.why = "No linker script was attached, so no region is known.";
+  } else if (!haveGap) {
+    clearance.outcome = Outcome::Unknown;
+    clearance.severity = "info";
+    clearance.why = "No stack reservation was found in the attached script(s).";
+  } else if (worstGap == 0) {
+    clearance.outcome = Outcome::Fail;
+    clearance.severity = "error";
+    clearance.why = "On " + worstTile +
+                    " the first byte past the stack is '" + worstNext +
+                    "', so a one-byte frame overrun silently overwrites it.";
+  } else {
+    clearance.outcome = Outcome::Pass;
+    clearance.why = "Smallest gap between a stack and the next region is " +
+                    std::to_string(worstGap) + " byte(s), on " + worstTile + ".";
+  }
+  rec.verdicts.push_back(std::move(clearance));
+
+  Verdict disjoint;
+  disjoint.id = "regions-disjoint";
+  disjoint.label = "No two regions claim the same byte";
+  disjoint.evidence = {"containment/tile-memory"};
+  if (!mappedTiles) {
+    disjoint.outcome = Outcome::Unknown;
+    disjoint.severity = "info";
+    disjoint.why = "No linker script was attached.";
+  } else if (overlapTotal) {
+    disjoint.outcome = Outcome::Fail;
+    disjoint.severity = "error";
+    disjoint.why = std::to_string(overlapTotal) +
+                   " overlapping region pair(s); whichever writes second wins "
+                   "silently. First: " + firstOverlap + ".";
+  } else {
+    disjoint.outcome = Outcome::Pass;
+    disjoint.why = "Every allocation in the attached script(s) is disjoint.";
+  }
+  rec.verdicts.push_back(std::move(disjoint));
 
   return rec;
 }
