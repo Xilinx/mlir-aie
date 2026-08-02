@@ -15,6 +15,7 @@
 #include <cinttypes>
 #include <cmath>
 #include <cstdio>
+#include <map>
 
 using namespace aiesim;
 using namespace aiesim::readings;
@@ -600,26 +601,49 @@ Record aiesim::readings::capture(Array &array, const CaptureConfig &config) {
   }
   rec.coverages.push_back(std::move(unclaimed));
 
-  // --- coverage: instructions the engine has no semantics for.
+  // --- coverage: instruction semantics, over everything the cores reached.
+  //
+  // Two sources, merged. The engines accumulate the whole set they executed as
+  // they go, which is the real answer; the fault path contributes the
+  // instruction a run stopped on, which is all there is when the engine does
+  // not report coverage. `seen` means "the engine has semantics for it", so
+  // the unseen entries are the gap.
+  std::map<std::string, bool> opcodeSeen;
+  bool anyEngineReported = false;
+  for (uint32_t col = 0; col < dev.numCols; ++col)
+    for (uint32_t row = 0; row < dev.numRows; ++row)
+      if (Tile *t = array.tile(col, row))
+        if (const CoreEngine *eng = t->attachedCoreEngine())
+          for (const CoreEngine::OpcodeUse &u : eng->opcodeCoverage()) {
+            anyEngineReported = true;
+            // Modelled anywhere is modelled: the same opcode cannot be
+            // implemented on one core and missing on another.
+            auto [it, inserted] = opcodeSeen.emplace(u.name, u.modelled);
+            if (!inserted)
+              it->second = it->second || u.modelled;
+          }
+  for (const Array::UnmodelledOpcode &u : array.unmodelledOpcodes())
+    opcodeSeen.emplace(u.name, false);
+
   Coverage semantics;
   semantics.id = "coverage/opcode-semantics";
-  semantics.label = "Instructions the core engine cannot execute";
+  semantics.label = "Instruction semantics over the opcodes the cores reached";
   semantics.description =
-      "Each distinct instruction a core reached that the engine has no "
-      "semantics for. This is the instruction-semantics gap as a number: an "
-      "empty list means every instruction the design executed was modelled. "
-      "The list is what a design reached, not what it contains -- execution "
-      "stops at the first gap, so a sweep accumulates the set across runs.";
-  for (const Array::UnmodelledOpcode &u : array.unmodelledOpcodes()) {
+      "Every distinct instruction a core reached, marked with whether the "
+      "engine had semantics for it. The unseen entries are the semantics gap "
+      "as a number. This covers what the run REACHED, not what the design "
+      "contains: a run that never entered the vector body says nothing about "
+      "the vector body.";
+  for (const auto &[name, seen] : opcodeSeen) {
     CoverageItem item;
-    item.key = u.name;
-    // seen == "the design needed it", not "the engine has it": these are by
-    // construction the ones it does not have.
-    item.seen = false;
-    item.attrs.push_back(
-        {"tile", std::to_string(u.col) + "," + std::to_string(u.row)});
+    item.key = name;
+    item.seen = seen;
     semantics.items.push_back(std::move(item));
   }
+  // universe is the count reached, which is a denominator that exists. The
+  // size of the ISA would be an invented one: coverage against it would say
+  // more about the ISA than about this run.
+  semantics.universe = opcodeSeen.size();
   rec.coverages.push_back(std::move(semantics));
 
   // --- scalars.
@@ -644,9 +668,14 @@ Record aiesim::readings::capture(Array &array, const CaptureConfig &config) {
       {"scalar/unclaimed-registers", "Unmodelled registers written", "",
        Quantity{double(array.unclaimedWrites().size()), "count", "", {}},
        Better::Lower, {}});
+  uint64_t opcodeGap = 0;
+  for (const auto &[name, seen] : opcodeSeen)
+    if (!seen)
+      ++opcodeGap;
   rec.scalars.push_back(
       {"scalar/unmodelled-opcodes", "Instructions with no semantics", "",
-       Quantity{double(array.unmodelledOpcodes().size()), "count", "", {}},
+       Quantity{double(opcodeGap), "count", "unseen in coverage/opcode-semantics",
+                {{"reached", std::to_string(opcodeSeen.size())}}},
        Better::Lower, {}});
 
   rec.headline = {"scalar/cycles", "scalar/memory-touched",
@@ -674,20 +703,29 @@ Record aiesim::readings::capture(Array &array, const CaptureConfig &config) {
   semanticsComplete.id = "all-opcodes-modelled";
   semanticsComplete.label = "Every instruction the design executed is modelled";
   semanticsComplete.evidence = {"coverage/opcode-semantics"};
-  if (array.unmodelledOpcodes().empty()) {
+  if (opcodeSeen.empty()) {
+    // No core reached an instruction, so nothing was tested. `unknown` rather
+    // than `pass`: a design that never ran must not read as a design whose
+    // instructions are all modelled.
+    semanticsComplete.outcome = Outcome::Unknown;
+    semanticsComplete.why = "No core executed an instruction, so instruction "
+                            "semantics were not exercised.";
+  } else if (opcodeGap == 0) {
     // Deliberately not a claim about the whole design: a run that never
     // reached the vector body proves nothing about the vector body.
     semanticsComplete.outcome = Outcome::Pass;
-    semanticsComplete.why =
-        "No instruction the run reached lacked semantics.";
+    semanticsComplete.why = "All " + std::to_string(opcodeSeen.size()) +
+                            " instruction(s) the run reached are modelled.";
   } else {
     semanticsComplete.outcome = Outcome::Fail;
     semanticsComplete.severity = "error";
+    std::string first;
+    for (const auto &[name, seen] : opcodeSeen)
+      if (!seen) { first = name; break; }
     semanticsComplete.why =
-        std::to_string(array.unmodelledOpcodes().size()) +
-        " distinct instruction(s) had no semantics, starting with '" +
-        array.unmodelledOpcodes().front().name +
-        "', so execution stopped rather than guessing.";
+        std::to_string(opcodeGap) + " of " + std::to_string(opcodeSeen.size()) +
+        " instruction(s) the run reached have no semantics, starting with '" +
+        first + "'.";
   }
   rec.verdicts.push_back(std::move(semanticsComplete));
 

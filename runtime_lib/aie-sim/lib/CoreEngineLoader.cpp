@@ -128,6 +128,22 @@ public:
     return api->write_register(core, name.c_str(), data, size) != 0;
   }
 
+  std::vector<OpcodeUse> opcodeCoverage() const override {
+    // The loader already rejects an engine whose struct is smaller than the
+    // one this build knows, so a too-old engine never reaches here. This
+    // guards the other direction: an engine that reports a large enough size
+    // but leaves the slot null.
+    if (!api->opcode_coverage)
+      return {};
+    std::vector<OpcodeUse> out;
+    api->opcode_coverage(
+        core, &out, [](void *ctx, const char *name, int modelled) {
+          static_cast<std::vector<OpcodeUse> *>(ctx)->push_back(
+              {name ? name : "", modelled != 0});
+        });
+    return out;
+  }
+
 private:
   const aie_iss_api *api;
   aie_iss_core *core;

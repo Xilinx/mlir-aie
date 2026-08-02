@@ -134,14 +134,20 @@ void testUnmodelledOpcodesAreDedupedByName() {
   AIESIM_CHECK(has(rec.toJson(), "\"value\":2"));
 }
 
-void testNoUnmodelledOpcodesPasses() {
+void testNoInstructionsReachedIsUnknownNotPass() {
   auto array = makeArray();
   Record rec = capture(*array, config());
   std::string json = rec.toJson();
   // Present even when empty: a shape that vanishes when clean cannot be
   // distinguished from a shape nobody emitted.
   AIESIM_CHECK(has(json, "\"id\":\"coverage/opcode-semantics\""));
-  AIESIM_CHECK(has(json, "\"id\":\"all-opcodes-modelled\""));
+  // And the verdict must be `unknown`, not `pass`: a design where no core ran
+  // an instruction has not demonstrated that its instructions are modelled.
+  bool sawUnknown = false;
+  for (const Verdict &v : rec.verdicts)
+    if (v.id == "all-opcodes-modelled" && v.outcome == Outcome::Unknown)
+      sawUnknown = true;
+  AIESIM_CHECK(sawUnknown);
 }
 
 void testSummaryTierIsPresentAndPointsAtTheBody() {
@@ -286,7 +292,7 @@ int main() {
   testUnclaimedRegistersBecomeCoverageAndAVerdict();
   testUnmodelledOpcodesBecomeCoverageAndAVerdict();
   testUnmodelledOpcodesAreDedupedByName();
-  testNoUnmodelledOpcodesPasses();
+  testNoInstructionsReachedIsUnknownNotPass();
   testSummaryTierIsPresentAndPointsAtTheBody();
   testRecordIsByteStable();
   return aiesim_test::summarize("readings_test");

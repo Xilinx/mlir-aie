@@ -223,6 +223,11 @@ public:
   /// only attempted once.
   CoreEngine *ensureCoreEngine();
 
+  /// The engine if one was already attached, else null. Distinct from
+  /// ensureCoreEngine() so an observer can look without causing the very
+  /// attachment it is trying to observe.
+  const CoreEngine *attachedCoreEngine() const { return coreEngine.get(); }
+
   /// What this core's linker script allocated where. Optional: a design whose
   /// script was never handed over simulates exactly as before, it just cannot
   /// tell a stack overrun from a legitimate buffer write.
