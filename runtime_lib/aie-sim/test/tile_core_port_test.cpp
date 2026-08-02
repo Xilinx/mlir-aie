@@ -112,13 +112,13 @@ int main() {
   // --- Past the end of a region faults ---
   {
     uint32_t sink = 0;
-    // Program memory is 16 KB; the ld script reserves 0x20000 of address
-    // space, so an address in the reserved-but-unbacked part must fault.
+    // Program memory is 16 KB, and program space runs to the first data band,
+    // so both of these are unbacked addresses inside it and must fault rather
+    // than wrap onto something.
     AIESIM_CHECK(faulted(array, [&] { port->read(0x10000, &sink, 4); }));
+    AIESIM_CHECK(faulted(array, [&] { port->read(0x30000, &sink, 4); }));
     // Past the own band's 64 KB.
     AIESIM_CHECK(faulted(array, [&] { port->read(kOwnBase + 0x10000, &sink, 4); }));
-    // Between program memory and the first band.
-    AIESIM_CHECK(faulted(array, [&] { port->read(0x30000, &sink, 4); }));
   }
 
   // --- Writing program memory faults ---
