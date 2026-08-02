@@ -120,7 +120,13 @@ Array::Array(const DeviceModel &dev, std::unique_ptr<CoreEngineFactory> engines)
     installCore(*t);
 }
 
-Array::~Array() = default;
+Array::~Array() {
+  // Writes to registers nothing models are recorded rather than fatal, so
+  // without this the run ends and the record dies with it. On stderr: the
+  // existing tests FileCheck stdout.
+  if (!unclaimed.empty())
+    std::fputs(unclaimedReport().c_str(), stderr);
+}
 
 Tile *Array::tile(uint32_t col, uint32_t row) {
   if (!dev.contains(col, row))
