@@ -390,9 +390,23 @@ The two components can proceed in parallel; neither blocks the other.
    exists. Independently confirmed on hardware by an earlier from-source cycle prediction that landed
    within 8 cycles (0.2%) of a measured 4052.
 
-   What is left of this phase is **fabric stall attribution**: on a machine with no interlocks, waiting
+   What was left of this phase is **fabric stall attribution**: on a machine with no interlocks, waiting
    on a lock, a stream, a DMA or a memory-port conflict is the only thing that can make a cycle cost
    more than one bundle. That is an `interval` reading in the array model, not itineraries in the engine.
+   **DONE 2026-08-02**, and it is the `interval` shape's first producer. `Array::stepOneCycle` already
+   knows whether a component did work and whether it is still busy, so it owns the attribution and
+   components supply only the reason; one that cannot answer reports `unknown`, and the
+   `stalls-attributed` verdict fails on any such cycle rather than letting the breakdown look complete.
+   Cycles a component was not scheduled are absent rather than zero-filled, and the occupancy
+   denominator is scheduled cycles, so an array that finished early does not read as one that stalled.
+   Measured free: 48-tile npu2 with every DMA lock-stalled, best of 9 runs of 2M cycles, 1.87 Mcycle/s
+   with attribution off against 1.97 with it on.
+
+   Known granularity limit: a tile's DMA channels share one `Steppable`, so a track is per DMA module
+   and the reason is the first stalled channel's in a fixed scan order. The record's entity convention
+   allows `tile:c,r/dma:s2mm0`; reaching it means per-channel `Steppable`s, which is a scheduling
+   change rather than a reporting one. The core reports only that it was the waiter, because the C ABI
+   returns one `Stalled` result without naming the port.
 
 Array phases 1 to 3 are useful before any core executes, and core phases 1 to 2 are useful before any
 array exists. That is the main reason for the split.
