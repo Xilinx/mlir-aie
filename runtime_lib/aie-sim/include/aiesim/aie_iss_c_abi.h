@@ -134,6 +134,22 @@ typedef struct aie_iss_api {
   uint32_t (*opcode_coverage)(const aie_iss_core *core, void *ctx,
                               void (*sink)(void *ctx, const char *name,
                                            int modelled));
+
+  /*
+   * The core's clock, its retired-bundle count, and the cycles it lost to
+   * structural hazards. Cycles exceed bundles by exactly stall_cycles.
+   *
+   * Separate from opcode coverage because it answers a different question: not
+   * "what could this engine execute" but "what did the schedule cost". A bundle
+   * count cannot show a part-word store locking the memory pipe for 7 cycles,
+   * because no bundle issued during it.
+   *
+   * Any pointer may be NULL. May itself be NULL on an engine that does not
+   * track cycles -- check before calling, and do not read the outputs as zero
+   * when it is, because "not tracked" is not "no stalls".
+   */
+  void (*cycle_counts)(const aie_iss_core *core, uint64_t *cycles,
+                       uint64_t *retired_bundles, uint64_t *stall_cycles);
 } aie_iss_api;
 
 /*
