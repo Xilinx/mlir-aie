@@ -322,6 +322,45 @@ a different model, and the transaction format is small and already decoded in op
 because the transaction binary is what actually runs on npu1 and npu2 hardware, and there is currently
 no hardware-free way to execute it at all.
 
+## 5a. Compiling the aievec kernels for AIE2P
+
+`test/unit_tests/aievec_tests/aie2` holds 25 vectorised kernels. Their RUN lines call lit
+substitutions (`%vector-to-llvmir%`, `%llvmir-to-ll%`) that `test/lit.cfg.py` no longer defines, every
+one is `XFAIL: *`, and the intended path ends in `xca_udm_dbg` -- the Vitis tool this component
+replaces. The pipeline they describe still works and is worth writing down, because it is how kernels
+get in front of the simulator:
+
+```sh
+aie-opt "$K" -affine-super-vectorize="virtual-vector-size=$VS" \
+  -convert-vector-to-aievec="aie-target=aie2" \
+  -lower-vector-to-aievec="aie-target=aie2" \
+  -convert-aievec-to-llvm="aie-target=aie2p" \
+  -lower-affine -convert-scf-to-cf -convert-vector-to-llvm -convert-arith-to-llvm \
+  -finalize-memref-to-llvm -convert-index-to-llvm -convert-cf-to-llvm \
+  -convert-func-to-llvm -reconcile-unrealized-casts -o kernel.mlir
+aie-translate kernel.mlir --mlir-to-llvmir -o kernel.ll
+llc -mtriple=aie2p -O2 -filetype=obj kernel.ll -o kernel.o
+ld.lld -e dut --section-start=.text=0x1000 --section-start=.bss=0x30000 -o kernel.elf kernel.o
+llvm-aie-run kernel.elf --entry=dut --scratch=0x0:0x40000 --coverage
+```
+
+`$VS` differs per kernel and is in that kernel's own RUN line; take it from there rather than
+assuming 32.
+
+**The target argument differs between the two halves, and getting it wrong silently costs
+everything.** `convert-vector-to-aievec` and `lower-vector-to-aievec` accept only `aie` or `aie2` --
+the aievec dialect is shared. `convert-aievec-to-llvm` accepts `aie2p` as well, and it is what
+chooses the intrinsic namespace. Passing `aie2` there emits `llvm.aie2.*`, which `llc -mtriple=aie2p`
+cannot select for any of the 25; passing `aie2p` emits `llvm.aie2p.*` and 16 of them compile.
+
+Measured 2026-08-03: pipeline succeeds for 25/25, `llc -mtriple=aie2p` succeeds for **16**. The nine
+that do not:
+
+* **six** `*_mul_elem*` kernels stop in `aie-opt` with `aievec.mul_elem conversion is not supported
+  for AIE2p` -- an explicit gap in `lib/Conversion/AIEVecToLLVM`, not a pipeline mistake;
+* **`bf16_exp_lut`** stops in `llc` with `unable to translate instruction: call` (a libcall);
+* **`bf16_max_reduce`** and **`bf16_min_reduce`** stop in `llc` on their reduce lowering.
+
 ## 6. What the existing tests actually need
 
 Counted on `upstream/main`, 58 files total. The point of the breakdown is that the headline number
