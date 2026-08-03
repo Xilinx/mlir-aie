@@ -1077,10 +1077,23 @@ Record aiesim::readings::capture(Array &array, const CaptureConfig &config) {
   // Absent rather than zero when no engine counts: "not tracked" and "no
   // stalls" are different answers and a consumer must not read one as the
   // other.
+  //
+  // KNOWN OVER-REPORT, stated on the reading rather than left for a reader to
+  // discover: an itinerary claims the write port of every register file its
+  // DESTINATION CLASS can reach, because a scheduling class cannot see which
+  // register an instance writes. LDA with an eR destination claims one port;
+  // the same load with the wide mLdaScl destination claims six, and a mov
+  // claims fifteen. An instance writes one register through one port, so
+  // conflicts among those are counted here and cannot happen on hardware.
+  // The hazards written as explicit tokens -- PART_WORD_STORE, LCKREQ -- are
+  // unaffected, which is why the two are named apart in the description.
   if (anyEngineCounts)
     rec.scalars.push_back(
         {"scalar/core-stall-cycles", "Core-cycles lost to structural hazards",
-         "",
+         "Sound for the explicit hazard tokens (PART_WORD_STORE, LCKREQ). "
+         "OVER-REPORTS register write-port conflicts: an itinerary claims a "
+         "port per register file its destination CLASS can reach, so an "
+         "instance that writes one register is charged for all of them.",
          Quantity{double(coreStalls), "cycles",
                   "issue held by a functional unit another instruction holds",
                   {{"core-cycles", std::to_string(coreCycles)},
