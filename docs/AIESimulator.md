@@ -433,6 +433,37 @@ Recorded here so the reasons travel with the code.
 * **No home-grown ISA description language.** It relocates the authoring burden into a new grammar
   that also has to be debugged, and pays off only for a retargetable tool family, which this is not.
 
+### 8a.1 Why some interfaces refuse rather than approximate
+
+Four places in `Components.h` and `CoreEngine.h` return "not available" where a plausible value could
+have been produced. Each is a decision, not a gap:
+
+* **Packet-mode stream masters are absent from `StreamRoute`.** A packet master names an arbiter and
+  an msel mask rather than one slave, so its source is decided by arbitration at run time; any edge
+  drawn for it would be invented. The packet header encoding this model uses is itself ungrounded.
+  `StreamSwitchModule::packetModeMasters()` reports the count so a consumer knows the routing graph is
+  partial rather than assuming the design had no other routes.
+* **`coreScalarRegister` maps only the one-slot scalar families** (r0-r31, m0-m7, p0-p7, s0-s3,
+  sp/lr/ls/le/lc, PC). The vector and accumulator families (wl/wh, the bm/am partials) need the
+  part-assembly rule in 4.4, and aie-rt's fc/cr/sr/dp have no one-to-one engine register at all --
+  llvm-aie models those bits as separate named registers (`crSat`, `crRnd`, ...), so one offset would
+  have to be assembled from several. Both are vector-phase work, and guessing either produces a
+  plausible wrong number, which is the one failure the fault contract cannot catch.
+* **`makeTileCorePort` faults on the three neighbour bands and the core stream/cascade ports** rather
+  than stalling, so a design that reaches one fails loudly instead of hanging or reading a plausible
+  wrong word.
+* **`CoreEngine::opcodeCoverage()` defaults to empty.** An engine that does not track coverage is not
+  broken, so callers must distinguish "not tracked" from "no gaps".
+
+### 8a.2 Why data memory is claimed on the register bus
+
+`installMemory` claims `[0, tile.memory()->size())` on the tile's `RegisterFile`, which looks like a
+layering violation until you follow the host path. aie-rt's sim IO backend has exactly one pair of
+entry points -- `ess_Read32` / `ess_Write32` in `xaie_sim.c` -- for every access regardless of which
+higher-level API reached it. So `XAie_Read32` at a data-memory address and `XAie_DataMemRdWord` arrive
+identically, and unless data memory is reachable through the register bus a host-side buffer access
+(`mlir_aie_read_buffer_local`, say) faults as unclaimed.
+
 ## 8. Honest risks
 
 * **Vector ISA size.** Vector load/store dominates the AIE2P opcode space (`VST` 184, `VLDA` 163,

@@ -8,18 +8,15 @@
 // The contract between the array/fabric model and whatever executes AIE core
 // instructions.
 //
-// The fabric model owns every architectural resource that lives OUTSIDE the
-// core datapath: program memory, data memory, locks, DMAs, stream switches,
-// DDR. A core engine owns only the datapath: fetch a bundle at the current
-// program counter, execute it, and call back into the fabric for every memory
-// access it makes. That split is what lets the ISA implementation live in
-// llvm-aie (where the ISA is defined) while the array model lives here (where
-// the array is defined).
+// The fabric owns every architectural resource OUTSIDE the core datapath:
+// program memory, data memory, locks, DMAs, stream switches, DDR. An engine
+// owns only the datapath, and calls back into the fabric for every memory
+// access. That split lets the ISA implementation live in llvm-aie, where the
+// ISA is defined.
 //
-// The interface is deliberately narrow and free of LLVM types so that
-// `AIESimEngineFactory` can be satisfied by a dlopen'd shared object built
-// against a different LLVM than the one that built this library. See
-// `aie_iss_c_abi.h` for the C ABI that a loadable engine exports.
+// The interface carries no LLVM types, so a factory can be satisfied by a
+// dlopen'd shared object built against a different LLVM than this library.
+// `aie_iss_c_abi.h` has the C ABI a loadable engine exports.
 //
 //===----------------------------------------------------------------------===//
 
@@ -33,52 +30,45 @@
 
 namespace aiesim {
 
-/// Every memory access a core makes is routed back through this interface, so
-/// the fabric stays the single owner of address decode and of side effects
-/// (lock ports, cascade ports, stream ports and DMA-visible memory all live on
-/// the far side of it).
+/// Every memory access a core makes routes through here, so the fabric stays
+/// the single owner of address decode and of side effects.
 ///
-/// Addresses are CORE-LOCAL: they are what the instruction stream computes,
-/// i.e. what the hardware core would put on its data bus. The fabric maps them
-/// onto tile-local memory, a neighbour's memory, or a special port.
+/// Addresses are CORE-LOCAL: what the hardware core would put on its data bus.
+/// The fabric maps them onto tile-local memory, a neighbour's memory, or a
+/// special port.
 class CoreMemoryPort {
 public:
   virtual ~CoreMemoryPort() = default;
 
-  /// Read `size` bytes at core-local `addr` into `data`.
   /// Returns false if the access is not mapped, which the engine must surface
   /// as a core fault rather than as a silent zero.
   virtual bool read(uint32_t addr, void *data, uint32_t size) = 0;
 
-  /// Write `size` bytes from `data` at core-local `addr`.
   /// Returns false if the access is not mapped.
   virtual bool write(uint32_t addr, const void *data, uint32_t size) = 0;
 
-  /// Acquire `lockId` with `value`. Returns false if the lock is not
-  /// currently acquirable; the engine must then stall the core (re-issuing the
-  /// same instruction on a later cycle) rather than fail. This models the
-  /// blocking lock ports, which are part of the core datapath and not
-  /// reachable through the memory map.
+  /// Acquire `lockId` with `value`. Returns false if the lock is not currently
+  /// acquirable; the engine must then stall the core, re-issuing the same
+  /// instruction on a later cycle, rather than fail. The blocking lock ports
+  /// are part of the core datapath and are not reachable through the memory
+  /// map, which is why they are on this interface.
   virtual bool tryAcquireLock(uint32_t lockId, int32_t value) = 0;
 
-  /// Release `lockId` with `value`. Release never blocks on AIE2/AIE2P.
+  /// Never blocks on AIE2/AIE2P.
   virtual void releaseLock(uint32_t lockId, int32_t value) = 0;
 
-  /// Pop one 32-bit word from stream port `port`. Returns false if the port is
-  /// empty, in which case the engine stalls the core.
+  /// Returns false if the port is empty, in which case the engine stalls.
   virtual bool tryReadStream(uint32_t port, uint32_t *word, bool *tlast) = 0;
 
-  /// Push one 32-bit word to stream port `port`. Returns false if the port is
-  /// full, in which case the engine stalls the core.
+  /// Returns false if the port is full, in which case the engine stalls.
   virtual bool tryWriteStream(uint32_t port, uint32_t word, bool tlast) = 0;
 
-  /// Pop / push the 512-bit cascade port. Same stall contract as streams.
+  /// The 512-bit cascade port. Same stall contract as streams.
   virtual bool tryReadCascade(void *data512) = 0;
   virtual bool tryWriteCascade(const void *data512) = 0;
 
   /// Emit one character on the core's debug/print channel. The fabric merges
-  /// these into the simulator's stdout, which is what the existing lit tests
-  /// FileCheck.
+  /// these into the simulator's stdout, which is what lit tests FileCheck.
   virtual void putChar(char c) = 0;
 };
 
@@ -103,44 +93,39 @@ enum class CoreStepResult {
 ///
 /// Lifetime: the fabric creates one per core tile at array construction, then
 /// drives reset()/enable()/step() from the register writes the host makes
-/// through the ess_* ABI. Program memory is NOT owned here: the fabric owns it
-/// (the host loads ELF sections into it with ordinary MMIO writes, exactly as
-/// on hardware) and the engine fetches through `CoreMemoryPort` on demand,
-/// which is what makes self-modifying loads and partial ELF reloads behave.
+/// through the ess_* ABI. Program memory is NOT owned here -- the fabric owns
+/// it and the engine fetches through `CoreMemoryPort` on demand, which is what
+/// makes self-modifying loads and partial ELF reloads behave.
 class CoreEngine {
 public:
   virtual ~CoreEngine() = default;
 
-  /// Clear architectural state. Does not touch program memory.
+  /// Does not touch program memory.
   virtual void reset() = 0;
 
   /// Set the program counter, in bytes, relative to program-memory base.
   virtual void setProgramCounter(uint32_t pc) = 0;
   virtual uint32_t getProgramCounter() const = 0;
 
-  /// Execute at most one instruction bundle. See CoreStepResult.
+  /// Executes at most one instruction bundle.
   virtual CoreStepResult step() = 0;
 
   /// Human-readable reason for the last CoreStepResult::Fault.
   virtual std::string error() const = 0;
 
-  /// Read/write an architectural register by its name in the llvm-aie
-  /// register set (for example "r0", "p1", "wl2", "lc"). Used by the
-  /// core-debug register window that aie-rt exposes and by tests. Returns
-  /// false for an unknown name.
+  /// By its name in the llvm-aie register set ("r0", "p1", "wl2", "lc").
+  /// False for an unknown name.
   virtual bool readRegister(const std::string &name, void *data,
                             uint32_t size) const = 0;
   virtual bool writeRegister(const std::string &name, const void *data,
                              uint32_t size) = 0;
 
   /// Every distinct opcode this core reached, and whether the engine had
-  /// semantics for it. The engine accumulates this as it executes, so one run
-  /// reports everything it reached rather than only the instruction it stopped
-  /// on -- which is what turns the semantics gap into a number.
+  /// semantics for it. Accumulated as it executes, so one run reports
+  /// everything it reached rather than only the instruction it stopped on.
   ///
-  /// Default: report nothing. An engine that does not track coverage is not
-  /// broken, and reporting an empty set is not the same as reporting zero
-  /// gaps, so callers must distinguish "not tracked" from "none".
+  /// Empty by default, and that is not the same as reporting zero gaps --
+  /// docs/AIESimulator.md 8a.1.
   struct OpcodeUse {
     std::string name;
     bool modelled = false;
@@ -151,11 +136,9 @@ public:
 /// Which ISA a core engine should implement.
 enum class CoreISA { AIE2, AIE2P, AIE2PS };
 
-/// Creates core engines. The default factory resolves a loadable engine from
-/// the Peano install (see `loadPeanoCoreEngineFactory`); a null factory means
-/// "no core execution available", which the fabric reports as a clear
-/// diagnostic the first time a core is enabled rather than at array
-/// construction, so that core-free designs still simulate.
+/// Creates core engines. A null factory means "no core execution available",
+/// which the fabric reports the first time a core is enabled rather than at
+/// array construction, so core-free designs still simulate.
 class CoreEngineFactory {
 public:
   virtual ~CoreEngineFactory() = default;

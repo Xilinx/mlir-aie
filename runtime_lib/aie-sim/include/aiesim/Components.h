@@ -73,17 +73,9 @@ enum class PortBundle {
   Trace,
 };
 
-/// The per-tile stream switch. Master ports carry data out of the switch
-/// towards a consumer; slave ports carry data into the switch from a producer.
-/// Which master is fed by which slave comes out of the switch's own
-/// configuration registers, so routing is whatever the design programmed.
-/// One circuit-switched connection the design programmed: which slave port
-/// feeds which master port, inside one tile.
-///
-/// Packet-mode masters are deliberately absent. A packet master names an
-/// arbiter and an msel mask rather than one slave, so its source depends on
-/// arbitration at run time and any edge drawn for it would be invented -- and
-/// the packet header encoding this model uses is itself ungrounded.
+/// One circuit-switched connection inside a tile: which slave port feeds which
+/// master port. Packet-mode masters have no entry here -- see
+/// docs/AIESimulator.md 8a.1.
 struct StreamRoute {
   PortBundle slaveBundle;
   uint32_t slaveIndex;
@@ -91,6 +83,8 @@ struct StreamRoute {
   uint32_t masterIndex;
 };
 
+/// The per-tile stream switch. Routing comes out of the switch's own
+/// configuration registers, so it is whatever the design programmed.
 class StreamSwitchModule : public Steppable {
 public:
   /// Endpoint a local producer writes into (the switch's slave side).
@@ -99,9 +93,8 @@ public:
   virtual StreamPort *masterPort(PortBundle bundle, uint32_t index) = 0;
   /// Every enabled circuit-mode connection, in bundle then index order.
   virtual std::vector<StreamRoute> configuredRoutes() const = 0;
-  /// How many masters are enabled in PACKET mode, which configuredRoutes()
-  /// cannot describe. Reported so a consumer knows the graph is partial
-  /// rather than assuming the design had no other routes.
+  /// Masters enabled in PACKET mode, which configuredRoutes() cannot describe.
+  /// A non-zero count means that graph is partial.
   virtual uint32_t packetModeMasters() const = 0;
 };
 
@@ -110,11 +103,8 @@ const char *portBundleName(PortBundle bundle);
 
 /// The fixed fabric wire out of a directional master port: a master on the
 /// North bundle of (c, r) IS the slave on the South bundle of (c, r+1), and so
-/// on. Port index is preserved.
-///
-/// This is silicon wiring, not something a design chooses -- unlike a
-/// StreamRoute, which a register decided. One definition, used both to move
-/// words and to report the topology, so the two cannot drift.
+/// on, with the port index preserved. Silicon wiring, not something a design
+/// chooses -- unlike a StreamRoute, which a register decided.
 ///
 /// \returns false for a bundle that stays inside its tile.
 bool interTileLink(PortBundle master, PortBundle &slave, int &dCol, int &dRow);
@@ -126,33 +116,24 @@ enum class DmaDirection {
 };
 
 /// The per-tile DMA. Buffer descriptors and channel control live in the tile
-/// register file; this interface exists so tests and the array can observe
-/// progress without reaching into the implementation.
+/// register file; this observes progress without reaching into them.
 class DmaModule : public Steppable {
 public:
   /// True while any channel still has work queued or in flight.
   virtual bool busy() const = 0;
-  /// Number of buffer descriptors completed on a channel since reset. This is
-  /// what the task-completion-token registers count.
+  /// Since reset. This is what the task-completion-token registers count.
   virtual uint32_t completedBds(DmaDirection dir, uint32_t channel) const = 0;
 };
 
 /// Installers. Each is called once per tile of the appropriate type during
 /// array construction, in this order: memory, locks, stream switch, DMA,
-/// core. Later components may look up earlier ones through the Tile
-/// accessors.
+/// core. Later components may look up earlier ones through the Tile accessors.
 ///
-/// Each installer is responsible for claiming its own register ranges via
-/// Tile::regs().onWrite / onRead, adopting its state onto the tile, and
-/// registering itself as a Steppable with the array.
-///
-/// installMemory claims [0, tile.memory()->size()) so that a plain
-/// XAie_Read32/Write32 at a data-memory address returns the same bytes as
-/// XAie_DataMemRdWord/WrWord: aie-rt's sim IO backend has exactly one pair of
-/// entry points (ess_Read32/Write32, xaie_sim.c) for every access regardless
-/// of which higher-level API reached it, so data memory must be reachable
-/// through the register bus like everything else or a host-side buffer
-/// read/write (e.g. mlir_aie_read_buffer_local) faults as unclaimed.
+/// Each claims its own register ranges via Tile::regs().onWrite / onRead,
+/// adopts its state onto the tile, and registers itself as a Steppable.
+/// installMemory claims the whole data memory so it is reachable through the
+/// register bus -- docs/AIESimulator.md 8a.2 for why that is not a layering
+/// violation.
 void installMemory(Tile &tile);
 void installLocks(Tile &tile);
 void installStreamSwitch(Tile &tile);
@@ -185,14 +166,8 @@ struct CoreRegisterMapping {
 /// backs it, for the scalar families that are one 32-bit slot each: r0-r31,
 /// m0-m7, p0-p7, s0-s3 and sp/lr/ls/le/lc, plus PC.
 ///
-/// Returns an empty mapping for everything else. That is deliberate rather
-/// than incomplete: the vector and accumulator families (wl/wh, the bm/am
-/// partials) need the part-assembly rule in docs/AIESimulator.md 4.4, and
-/// aie-rt's fc/cr/sr/dp have no one-to-one engine register at all -- llvm-aie
-/// models those bits as separate named registers (crSat, crRnd, ...), so a
-/// single offset would have to be assembled from several. Both are the vector
-/// phase's work; guessing either would produce a plausible wrong number, which
-/// is the one failure the fault contract cannot catch.
+/// Everything else returns an empty mapping by design, not by omission --
+/// docs/AIESimulator.md 8a.1.
 CoreRegisterMapping coreScalarRegister(Generation gen, uint32_t off);
 
 /// Which tile's data memory a core-local band addresses. On AIE2/AIE2P a core
@@ -201,20 +176,16 @@ CoreRegisterMapping coreScalarRegister(Generation gen, uint32_t off);
 /// neighbour, and the four are not symmetric.
 enum class MemDirection { South, West, North, Own };
 
-/// Core-local address of the band that maps the tile's OWN data memory, so
-/// callers that need to turn a core address into a data-memory offset (the
-/// region map, readings) take it from the one table that defines the bands
-/// instead of restating the constant.
+/// Core-local address of the band that maps the tile's OWN data memory, for
+/// turning a core address into a data-memory offset.
 uint32_t ownMemoryBandBase(Generation gen);
 /// Size of one band, i.e. the span `ownMemoryBandBase` covers.
 uint32_t memoryBandSize();
 
 /// The CoreMemoryPort a real tile presents to its engine: core-local program
-/// memory at [0, 0x20000) and the tile's own data memory in the east band.
-///
-/// The other three bands and the core's stream/cascade ports are not modelled
-/// and fault rather than stall, so a design that reaches one fails loudly
-/// instead of hanging or reading a plausible wrong word.
+/// memory and the tile's own data memory in the east band. The other three
+/// bands and the core's stream/cascade ports fault rather than stall --
+/// docs/AIESimulator.md 8a.1.
 std::unique_ptr<CoreMemoryPort> makeTileCorePort(Tile &tile);
 
 /// Installs the thing that starts and stops a core: CORE_CONTROL's enable and
