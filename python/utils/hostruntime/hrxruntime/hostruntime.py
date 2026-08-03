@@ -284,7 +284,7 @@ class HRXHostRuntime(HostRuntime):
 
         args, bindings = self._prepare_bindings(args)
 
-        start = time.time_ns()
+        start = time.perf_counter_ns()
         try:
             self._ctx.dispatch(
                 kernel_handle.executable, kernel_handle.export_ordinal, bindings
@@ -293,9 +293,9 @@ class HRXHostRuntime(HostRuntime):
         except HRXError as e:
             if fail_on_error:
                 raise HostRuntimeError(f"HRX dispatch failed: {e}") from e
-            stop = time.time_ns()
+            stop = time.perf_counter_ns()
             return HRXKernelResult(stop - start, success=False)
-        stop = time.time_ns()
+        stop = time.perf_counter_ns()
 
         # Outputs were written on-device; the persistent host mapping is stale.
         # Leave the tensors marked device="npu" so the next host read
@@ -356,16 +356,16 @@ class HRXHostRuntime(HostRuntime):
             )
             touched.extend(kept)
 
-        start = time.time_ns()
+        start = time.perf_counter_ns()
         try:
             self._ctx.dispatch_chain(items)
             self._ctx.synchronize()
         except HRXError as e:
             if fail_on_error:
                 raise HostRuntimeError(f"HRX chain dispatch failed: {e}") from e
-            stop = time.time_ns()
+            stop = time.perf_counter_ns()
             return HRXKernelResult(stop - start, success=False)
-        stop = time.time_ns()
+        stop = time.perf_counter_ns()
 
         # Mark every touched tensor device-resident so the next host read
         # invalidates and observes the on-device results.

@@ -515,9 +515,9 @@ def main(opts):
     # Main run loop
     # ------------------------------------------------------
     for i in range(num_iter):
-        start = time.time_ns()
+        start = time.perf_counter_ns()
         DefaultNPURuntime.run(kernel_handle, buffers)
-        stop = time.time_ns()
+        stop = time.perf_counter_ns()
         npu_time = stop - start
         npu_time_total = npu_time_total + npu_time
 
