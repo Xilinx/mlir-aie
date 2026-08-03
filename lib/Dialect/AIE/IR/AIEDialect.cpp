@@ -1833,6 +1833,14 @@ LogicalResult CoreOp::verify() {
                  << "' appears in both 'link_files' and 'link_merge_files'; an "
                     "artifact must be either merged or linked, not both";
     }
+  // Checked last so it does not pre-empt the diagnostics above on an op with
+  // more than one defect.
+  if (uint32_t stackSize = getEffectiveStackSize(),
+      localMem = getTargetModel(*this).getLocalMemorySize();
+      stackSize >= localMem)
+    return emitOpError("stack_size ")
+           << stackSize << " leaves no local memory for this tile's buffers ("
+           << localMem << " bytes total)";
   return success();
 }
 
@@ -1845,6 +1853,11 @@ bool CoreOp::isEmpty() {
 
 TileOp CoreOp::getTileOp() {
   return cast<TileElement>(this->getOperation()).getTileOp();
+}
+
+uint32_t CoreOp::getEffectiveStackSize() {
+  return getStackSize().value_or(
+      getTargetModel(*this).getDefaultCoreStackSize());
 }
 
 //===----------------------------------------------------------------------===//
