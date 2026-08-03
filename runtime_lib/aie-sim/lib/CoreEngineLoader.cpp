@@ -144,6 +144,15 @@ public:
     return out;
   }
 
+  CycleCounts cycleCounts() const override {
+    if (!api->cycle_counts)
+      return {};
+    CycleCounts c;
+    api->cycle_counts(core, &c.cycles, &c.retiredBundles, &c.stallCycles);
+    c.tracked = true;
+    return c;
+  }
+
 private:
   const aie_iss_api *api;
   aie_iss_core *core;

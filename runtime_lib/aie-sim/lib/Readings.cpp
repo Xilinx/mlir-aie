@@ -806,6 +806,24 @@ Record aiesim::readings::capture(Array &array, const CaptureConfig &config) {
   for (const Array::UnmodelledOpcode &u : array.unmodelledOpcodes())
     opcodeSeen.emplace(u.name, false);
 
+  // What the schedule cost the cores. Summed across them because a structural
+  // hazard is per-core: two cores stalling in the same cycle cost two
+  // core-cycles, exactly as the component-cycle scalar above counts.
+  uint64_t coreCycles = 0, coreBundles = 0, coreStalls = 0;
+  bool anyEngineCounts = false;
+  for (uint32_t col = 0; col < dev.numCols; ++col)
+    for (uint32_t row = 0; row < dev.numRows; ++row)
+      if (Tile *t = array.tile(col, row))
+        if (const CoreEngine *eng = t->attachedCoreEngine()) {
+          const CoreEngine::CycleCounts c = eng->cycleCounts();
+          if (!c.tracked)
+            continue;
+          anyEngineCounts = true;
+          coreCycles += c.cycles;
+          coreBundles += c.retiredBundles;
+          coreStalls += c.stallCycles;
+        }
+
   Coverage semantics;
   semantics.id = "coverage/opcode-semantics";
   semantics.label = "Instruction semantics over the opcodes the cores reached";
@@ -1056,9 +1074,24 @@ Record aiesim::readings::capture(Array &array, const CaptureConfig &config) {
                  {"l1", std::to_string(tr.l1Read + tr.l1Write)}}},
        Better::Lower, {}});
 
+  // Absent rather than zero when no engine counts: "not tracked" and "no
+  // stalls" are different answers and a consumer must not read one as the
+  // other.
+  if (anyEngineCounts)
+    rec.scalars.push_back(
+        {"scalar/core-stall-cycles", "Core-cycles lost to structural hazards",
+         "",
+         Quantity{double(coreStalls), "cycles",
+                  "issue held by a functional unit another instruction holds",
+                  {{"core-cycles", std::to_string(coreCycles)},
+                   {"retired-bundles", std::to_string(coreBundles)}}},
+         Better::Lower, {}});
+
   rec.headline = {"scalar/cycles", "scalar/memory-touched",
                   "scalar/unclaimed-registers", "scalar/unmodelled-opcodes",
                   "scalar/ddr-bytes"};
+  if (anyEngineCounts)
+    rec.headline.push_back("scalar/core-stall-cycles");
   if (array.timelineEnabled())
     rec.headline.push_back("scalar/stalled-cycles");
 
