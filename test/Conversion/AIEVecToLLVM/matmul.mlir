@@ -115,16 +115,14 @@ func.func @matmul(%A : vector<4x2xi32>, %B : vector<2x4xi16>,
 // -----
 
 // The AIE2 MAC takes its operand signedness from bits 9 (signX, lhs) and
-// 8 (signY, rhs) of the configuration word, not from the operand types --
-// MLIR integers are signless and the intrinsic always takes v64uint8. For the
-// i8 4x8x8 shape the remaining config bits are amode=0, bmode=1 (BMODE_8x8),
-// giving a base of 0x008. The four combinations below therefore pin
-// 0x008/0x108/0x208/0x308.
+// 8 (signY, rhs) of the configuration word. Operand signedness is carried in
+// the element type (si8/ui8). For the i8 4x8x8 shape the remaining config bits
+// are amode=0, bmode=1 (BMODE_8x8), giving a base of 0x008. The four
+// combinations below therefore pin 0x008/0x108/0x208/0x308.
 
-func.func @matmul_i8i8_signed_signed(%A : vector<4x8xi8>, %B : vector<8x8xi8>,
+func.func @matmul_i8i8_signed_signed(%A : vector<4x8xsi8>, %B : vector<8x8xsi8>,
                                      %C : vector<4x8xi32>) -> vector<4x8xi32> {
-  %0 = aievec.matmul %A, %B, %C {lhsSigned = true, rhsSigned = true} :
-                                  vector<4x8xi8>, vector<8x8xi8>
+  %0 = aievec.matmul %A, %B, %C : vector<4x8xsi8>, vector<8x8xsi8>
                                   into vector<4x8xi32>
   return %0 : vector<4x8xi32>
 }
@@ -137,10 +135,9 @@ func.func @matmul_i8i8_signed_signed(%A : vector<4x8xi8>, %B : vector<8x8xi8>,
 
 // -----
 
-func.func @matmul_i8i8_unsigned_unsigned(%A : vector<4x8xi8>, %B : vector<8x8xi8>,
+func.func @matmul_i8i8_unsigned_unsigned(%A : vector<4x8xui8>, %B : vector<8x8xui8>,
                                          %C : vector<4x8xi32>) -> vector<4x8xi32> {
-  %0 = aievec.matmul %A, %B, %C {lhsSigned = false, rhsSigned = false} :
-                                  vector<4x8xi8>, vector<8x8xi8>
+  %0 = aievec.matmul %A, %B, %C : vector<4x8xui8>, vector<8x8xui8>
                                   into vector<4x8xi32>
   return %0 : vector<4x8xi32>
 }
@@ -153,10 +150,9 @@ func.func @matmul_i8i8_unsigned_unsigned(%A : vector<4x8xi8>, %B : vector<8x8xi8
 
 // -----
 
-func.func @matmul_i8i8_unsigned_signed(%A : vector<4x8xi8>, %B : vector<8x8xi8>,
+func.func @matmul_i8i8_unsigned_signed(%A : vector<4x8xui8>, %B : vector<8x8xsi8>,
                                        %C : vector<4x8xi32>) -> vector<4x8xi32> {
-  %0 = aievec.matmul %A, %B, %C {lhsSigned = false, rhsSigned = true} :
-                                  vector<4x8xi8>, vector<8x8xi8>
+  %0 = aievec.matmul %A, %B, %C : vector<4x8xui8>, vector<8x8xsi8>
                                   into vector<4x8xi32>
   return %0 : vector<4x8xi32>
 }
@@ -169,10 +165,9 @@ func.func @matmul_i8i8_unsigned_signed(%A : vector<4x8xi8>, %B : vector<8x8xi8>,
 
 // -----
 
-func.func @matmul_i8i8_signed_unsigned(%A : vector<4x8xi8>, %B : vector<8x8xi8>,
+func.func @matmul_i8i8_signed_unsigned(%A : vector<4x8xsi8>, %B : vector<8x8xui8>,
                                        %C : vector<4x8xi32>) -> vector<4x8xi32> {
-  %0 = aievec.matmul %A, %B, %C {lhsSigned = true, rhsSigned = false} :
-                                  vector<4x8xi8>, vector<8x8xi8>
+  %0 = aievec.matmul %A, %B, %C : vector<4x8xsi8>, vector<8x8xui8>
                                   into vector<4x8xi32>
   return %0 : vector<4x8xi32>
 }

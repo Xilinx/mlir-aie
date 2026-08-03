@@ -4257,6 +4257,30 @@ class MatMulOpConversion
     Value lhs = op.getLhs();
     Value rhs = op.getRhs();
     Value acc = op.getAcc();
+
+    // The VectorToAIEVec pass carries operand signedness in the element type
+    // (si8/ui8) via an unrealized_conversion_cast from a signless value.
+    // Capture the signedness from the cast result type, then continue with the
+    // signless input so the cast is left dead (DCE'd) rather than leaking to
+    // LLVM.
+    auto castSignedness = [](Value &v) -> std::optional<bool> {
+      auto c = v.getDefiningOp<UnrealizedConversionCastOp>();
+      if (!c)
+        return std::nullopt;
+      std::optional<bool> isSigned;
+      if (auto vt = dyn_cast<VectorType>(v.getType()))
+        if (auto it = dyn_cast<IntegerType>(vt.getElementType())) {
+          if (it.isSigned())
+            isSigned = true;
+          else if (it.isUnsigned())
+            isSigned = false;
+        }
+      v = c.getInputs()[0];
+      return isSigned;
+    };
+    std::optional<bool> lhsCastSigned = castSignedness(lhs);
+    std::optional<bool> rhsCastSigned = castSignedness(rhs);
+
     auto accVecTy = cast<VectorType>(acc.getType());
     if (isa<Float32Type>(accVecTy.getElementType()))
       // <4x8xbf16> x <8x4xbf16> + <4x4xf32>
@@ -4289,18 +4313,17 @@ class MatMulOpConversion
       lhs = lookThroughShapeCasts(extUIOp.getIn());
       lhsVecTy = cast<VectorType>(lhs.getType());
       lhsScaTy = cast<IntegerType>(lhsVecTy.getElementType());
-    } else if (auto lhsSignedAttr = op.getLhsSigned()) {
-      // The VectorToAIEVec pass strips extsi/extui before creating
-      // aievec.matmul. When it does, it records the operand signedness on the
-      // op, because the remaining narrow integer type is signless and cannot
-      // carry it. Prefer that recorded value over any type-based guess.
-      signX = *lhsSignedAttr ? 1 : 0;
+    } else if (lhsCastSigned.has_value()) {
+      // Signedness carried in the operand element type (si8/ui8).
+      signX = *lhsCastSigned ? 1 : 0;
+    } else if (lhsScaTy.isSigned()) {
+      signX = 1;
+    } else if (lhsScaTy.isUnsigned()) {
+      signX = 0;
     } else {
-      // Default to unsigned for lhs (activation input is typically uint8).
-      // Reached only for hand-written aievec.matmul IR that carries neither an
-      // extension op nor a recorded signedness.
-      if (lhsScaTy.isUnsigned())
-        signX = 0;
+      // Signless (e.g. hand-written aievec.matmul IR): default lhs to unsigned
+      // (activation input is typically uint8).
+      signX = 0;
     }
     auto lhsShape = lhsVecTy.getShape();
 
@@ -4316,13 +4339,14 @@ class MatMulOpConversion
       rhs = lookThroughShapeCasts(extUIOp.getIn());
       rhsVecTy = cast<VectorType>(rhs.getType());
       rhsScaTy = cast<IntegerType>(rhsVecTy.getElementType());
-    } else if (auto rhsSignedAttr = op.getRhsSigned()) {
-      // See the lhs case above.
-      signY = *rhsSignedAttr ? 1 : 0;
+    } else if (rhsCastSigned.has_value()) {
+      // Signedness carried in the operand element type (si8/ui8).
+      signY = *rhsCastSigned ? 1 : 0;
+    } else if (rhsScaTy.isUnsigned()) {
+      signY = 0;
     } else {
-      // NOTE: We're choosing 'signed' by default
-      if (!rhsScaTy.isUnsigned())
-        signY = 1;
+      // Signed element type or signless: default rhs to signed.
+      signY = 1;
     }
 
     unsigned lhsBitWidth = lhsScaTy.getWidth();
@@ -4716,8 +4740,18 @@ class MatMulOpAIE2pConversion
     Value rhs = op.getRhs();
     Value acc = op.getAcc();
 
-    auto lhsVecTy = cast<VectorType>(lhs.getType());
-    auto rhsVecTy = cast<VectorType>(rhs.getType());
+    // The VectorToAIEVec pass carries operand signedness in the element type
+    // (si8/ui8) via an unrealized_conversion_cast from a signless value. Read
+    // signedness from the cast result type below, but feed the intrinsic the
+    // signless input so the cast is left dead (and DCE'd) rather than leaking
+    // to LLVM translation.
+    if (auto c = lhs.getDefiningOp<UnrealizedConversionCastOp>())
+      lhs = c.getInputs()[0];
+    if (auto c = rhs.getDefiningOp<UnrealizedConversionCastOp>())
+      rhs = c.getInputs()[0];
+
+    auto lhsVecTy = cast<VectorType>(op.getLhs().getType());
+    auto rhsVecTy = cast<VectorType>(op.getRhs().getType());
     auto accVecTy = cast<VectorType>(acc.getType());
 
     // Check for AIE2p integer matmul
@@ -4739,12 +4773,11 @@ class MatMulOpAIE2pConversion
           accLanes == 64) {
         // Uses I512.I512.ACC2048 (64 lanes of i8 -> 64 lanes of i32).
         // Base conf for amode=0/bmode=1 is bmode<<3 = 8; signedness lives in
-        // signX (bit 9) / signY (bit 8). Prefer the recorded
-        // lhsSigned/rhsSigned attrs (see aiev2_vmac_compute_control /
-        // aie2p_compute_control), and default to signed x signed (776 = 0x308)
-        // to preserve prior behavior.
-        int signX = op.getLhsSigned().value_or(true) ? 1 : 0;
-        int signY = op.getRhsSigned().value_or(true) ? 1 : 0;
+        // signX (bit 9) / signY (bit 8). PROTOTYPE: read signedness from the
+        // operand element TYPE (si8 -> signed, ui8 -> unsigned, signless i8 ->
+        // signed default), instead of lhsSigned/rhsSigned attributes.
+        int signX = lhsIntTy.isUnsigned() ? 0 : 1;
+        int signY = rhsIntTy.isUnsigned() ? 0 : 1;
         int conf = 8 | (signX << 9) | (signY << 8);
         return {DecodedMatMulOp::Kind::I8_8x8x8_I512_ACC2048, lhs, rhs, acc,
                 conf};

@@ -4692,35 +4692,54 @@ struct LowerVectorContractionOpToAIEVecMatMulPattern
     auto acc = reshapeLeadingUnitDims(rewriter, adaptor.getAcc());
     bool bReshapedAcc = (acc != adaptor.getAcc());
 
-    // Record operand signedness up front so it is preserved regardless of which
-    // creation path is taken below. The narrow integer type left after peeling
-    // a widening op is signless, and later canonicalizations may strip the
-    // original extsi/extui, so the LLVM lowering cannot be relied upon to
-    // re-derive it. Consult both the (possibly already-rewritten) adaptor
-    // operands and the original pre-conversion contraction operands.
+    // Recover operand signedness from the widening op before it is peeled.
+    // Consult both the (possibly already-rewritten) adaptor operands and the
+    // original pre-conversion contraction operands.
     auto lhsSigned = getSignednessOfWideningOp(adaptor.getLhs());
     if (!lhsSigned)
       lhsSigned = getSignednessOfWideningOp(contractOp.getLhs());
     auto rhsSigned = getSignednessOfWideningOp(adaptor.getRhs());
     if (!rhsSigned)
       rhsSigned = getSignednessOfWideningOp(contractOp.getRhs());
-    auto lhsSignedAttr = lhsSigned ? rewriter.getBoolAttr(*lhsSigned) : nullptr;
-    auto rhsSignedAttr = rhsSigned ? rewriter.getBoolAttr(*rhsSigned) : nullptr;
 
-    auto matmulOp =
-        MatMulOpTy::create(rewriter, contractOp.getLoc(), acc.getType(), lhs,
-                           rhs, acc, lhsSignedAttr, rhsSignedAttr);
+    // Carry the signedness in the matmul operand element type (si8/ui8). MLIR
+    // has no signless->signed/unsigned cast, so materialize an
+    // unrealized_conversion_cast; it folds to a no-op once both sides lower to
+    // signless LLVM integers. bf16/unknown-signedness operands are unchanged.
+    auto retype = [&](Value v, std::optional<bool> isSigned) -> Value {
+      if (!isSigned)
+        return v;
+      auto vecTy = dyn_cast<VectorType>(v.getType());
+      if (!vecTy)
+        return v;
+      auto intTy = dyn_cast<IntegerType>(vecTy.getElementType());
+      if (!intTy || !intTy.isSignless())
+        return v;
+      auto signednessTy = IntegerType::get(intTy.getContext(), intTy.getWidth(),
+                                           *isSigned ? IntegerType::Signed
+                                                     : IntegerType::Unsigned);
+      return UnrealizedConversionCastOp::create(rewriter, v.getLoc(),
+                                                vecTy.clone(signednessTy), v)
+          .getResult(0);
+    };
+
     Value result;
     {
       // Replace diagnostics handler to silence errors when verifying the
       // validity of the matmul ops being generated.
       ScopedDiagnosticHandler diagHandler(
           contractOp.getContext(), [](Diagnostic &) { return success(); });
-      if (failed(matmulOp.verifyInvariants())) {
-        rewriter.eraseOp(matmulOp);
-        // There is a possibility that, when the linalg op is converted to
-        // contractions, lower precisions operands are cast to the target
-        // precision outside the contraction. For those cases, we check.
+      // Decide whether the wide operands already form a valid matmul, or
+      // whether the widening ops must be peeled to reach a supported narrow
+      // shape. Use a throwaway signless op so a failed attempt leaves no retype
+      // casts behind.
+      auto testOp = MatMulOpTy::create(rewriter, contractOp.getLoc(),
+                                       acc.getType(), lhs, rhs, acc);
+      bool needsPeel = failed(testOp.verifyInvariants());
+      rewriter.eraseOp(testOp);
+      if (needsPeel) {
+        // When the linalg op is converted to contractions, lower-precision
+        // operands may be cast to the target precision outside the contraction.
         lhs = adaptor.getLhs();
         auto wideLhsValue = getSourceOfWideningOp(lhs).value_or(nullptr);
         if (wideLhsValue)
@@ -4730,15 +4749,15 @@ struct LowerVectorContractionOpToAIEVecMatMulPattern
         auto wideRhsValue = getSourceOfWideningOp(rhs).value_or(nullptr);
         if (wideRhsValue)
           rhs = reshapeLeadingUnitDims(rewriter, wideRhsValue);
-
-        matmulOp =
-            MatMulOpTy::create(rewriter, contractOp.getLoc(), acc.getType(),
-                               lhs, rhs, acc, lhsSignedAttr, rhsSignedAttr);
-        if (failed(matmulOp.verifyInvariants()))
-          return failure();
       }
+
+      auto matmulOp = MatMulOpTy::create(rewriter, contractOp.getLoc(),
+                                         acc.getType(), retype(lhs, lhsSigned),
+                                         retype(rhs, rhsSigned), acc);
+      if (failed(matmulOp.verifyInvariants()))
+        return failure();
+      result = matmulOp.getResult();
     }
-    result = matmulOp.getResult();
 
     if (bReshapedAcc)
       result = vector::ShapeCastOp::create(rewriter, contractOp.getLoc(),

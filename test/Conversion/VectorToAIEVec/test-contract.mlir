@@ -28,8 +28,8 @@ func.func @contractbf16bf16f32(%A : vector<4x8xbf16>,
 // CHECK-LLVM-SAME: %[[A:[a-zA-Z0-9]+]]: vector<4x4xi16>,
 // CHECK-LLVM-SAME: %[[B:[a-zA-Z0-9]+]]: vector<4x8xi8>,
 // CHECK-LLVM-SAME: %[[C:[a-zA-Z0-9]+]]: vector<4x8xi32>) -> vector<4x8xi32> {
-// CHECK-LLVM:        %[[MM:.*]] = aievec.matmul %[[A]], %[[B]], %[[C]] {rhsSigned = true} :
-// CHECK-LLVM-SAME:   vector<4x4xi16>, vector<4x8xi8> into vector<4x8xi32>
+// CHECK-LLVM:        %[[MM:.*]] = aievec.matmul %{{.*}}, %{{.*}}, %[[C]] :
+// CHECK-LLVM-SAME:   vector<4x4xi16>, vector<4x8xsi8> into vector<4x8xi32>
 // CHECK-LLVM:        return %[[MM]] : vector<4x8xi32>
 func.func @contracti16i8i32(%A : vector<4x4xi16>,
                             %B : vector<4x8xi8>,
@@ -46,8 +46,8 @@ func.func @contracti16i8i32(%A : vector<4x4xi16>,
 // CHECK-LLVM-SAME: %[[A:[a-zA-Z0-9]+]]: vector<4x2xi32>,
 // CHECK-LLVM-SAME: %[[B:[a-zA-Z0-9]+]]: vector<2x4xi16>,
 // CHECK-LLVM-SAME: %[[C:[a-zA-Z0-9]+]]: vector<4x4xi64>) -> vector<4x4xi64> {
-// CHECK-LLVM:        %[[MM:.*]] = aievec.matmul %[[A]], %[[B]], %[[C]] {rhsSigned = true} :
-// CHECK-LLVM-SAME:   vector<4x2xi32>, vector<2x4xi16> into vector<4x4xi64>
+// CHECK-LLVM:        %[[MM:.*]] = aievec.matmul %{{.*}}, %{{.*}}, %[[C]] :
+// CHECK-LLVM-SAME:   vector<4x2xi32>, vector<2x4xsi16> into vector<4x4xi64>
 // CHECK-LLVM:        return %[[MM]] : vector<4x4xi64>
 func.func @contracti32i16i64(%A : vector<4x2xi32>,
                              %B : vector<2x4xi16>,
@@ -83,8 +83,8 @@ func.func @contractf32f32f32(%A : vector<4x8xbf16>,
 // CHECK-LLVM-SAME: %[[A:[a-zA-Z0-9]+]]: vector<4x4xi16>,
 // CHECK-LLVM-SAME: %[[B:[a-zA-Z0-9]+]]: vector<4x8xi8>,
 // CHECK-LLVM-SAME: %[[C:[a-zA-Z0-9]+]]: vector<4x8xi32>) -> vector<4x8xi32> {
-// CHECK-LLVM:        %[[MM:.*]] = aievec.matmul %[[A]], %[[B]], %[[C]] {lhsSigned = true, rhsSigned = true} :
-// CHECK-LLVM-SAME:   vector<4x4xi16>, vector<4x8xi8> into vector<4x8xi32>
+// CHECK-LLVM:        %[[MM:.*]] = aievec.matmul %{{.*}}, %{{.*}}, %[[C]] :
+// CHECK-LLVM-SAME:   vector<4x4xsi16>, vector<4x8xsi8> into vector<4x8xi32>
 // CHECK-LLVM:        return %[[MM]] : vector<4x8xi32>
 func.func @contracti32i32i32(%A : vector<4x4xi16>,
                              %B : vector<4x8xi8>,
@@ -102,8 +102,8 @@ func.func @contracti32i32i32(%A : vector<4x4xi16>,
 // CHECK-LLVM-SAME: %[[A:[a-zA-Z0-9]+]]: vector<4x2xi32>,
 // CHECK-LLVM-SAME: %[[B:[a-zA-Z0-9]+]]: vector<2x4xi16>,
 // CHECK-LLVM-SAME: %[[C:[a-zA-Z0-9]+]]: vector<4x4xi64>) -> vector<4x4xi64> {
-// CHECK-LLVM:        %[[MM:.*]] = aievec.matmul %[[A]], %[[B]], %[[C]] {lhsSigned = false, rhsSigned = false} :
-// CHECK-LLVM-SAME:   vector<4x2xi32>, vector<2x4xi16> into vector<4x4xi64>
+// CHECK-LLVM:        %[[MM:.*]] = aievec.matmul %{{.*}}, %{{.*}}, %[[C]] :
+// CHECK-LLVM-SAME:   vector<4x2xui32>, vector<2x4xui16> into vector<4x4xi64>
 // CHECK-LLVM:        return %[[MM]] : vector<4x4xi64>
 func.func @contracti64i64i64(%A : vector<4x2xi32>,
                              %B : vector<2x4xi16>,
@@ -125,8 +125,8 @@ func.func @contracti64i64i64(%A : vector<4x2xi32>,
 // CHECK-LLVM-SAME: %[[A:[a-zA-Z0-9]+]]: vector<4x8xi8>,
 // CHECK-LLVM-SAME: %[[B:[a-zA-Z0-9]+]]: vector<8x8xi8>,
 // CHECK-LLVM-SAME: %[[C:[a-zA-Z0-9]+]]: vector<4x8xi32>) -> vector<4x8xi32> {
-// CHECK-LLVM:        %[[MM:.*]] = aievec.matmul %[[A]], %[[B]], %[[C]] {lhsSigned = false, rhsSigned = true} :
-// CHECK-LLVM-SAME:   vector<4x8xi8>, vector<8x8xi8> into vector<4x8xi32>
+// CHECK-LLVM:        %[[MM:.*]] = aievec.matmul %{{.*}}, %{{.*}}, %[[C]] :
+// CHECK-LLVM-SAME:   vector<4x8xui8>, vector<8x8xsi8> into vector<4x8xi32>
 // CHECK-LLVM:        return %[[MM]] : vector<4x8xi32>
 func.func @contract_extui_extsi_i8(%A : vector<4x8xi8>,
                                     %B : vector<8x8xi8>,
@@ -148,8 +148,8 @@ func.func @contract_extui_extsi_i8(%A : vector<4x8xi8>,
 // CHECK-LLVM-SAME: %[[A:[a-zA-Z0-9]+]]: vector<4x8xi8>,
 // CHECK-LLVM-SAME: %[[B:[a-zA-Z0-9]+]]: vector<8x8xi8>,
 // CHECK-LLVM-SAME: %[[C:[a-zA-Z0-9]+]]: vector<4x8xi32>) -> vector<4x8xi32> {
-// CHECK-LLVM:        %[[MM:.*]] = aievec.matmul %[[A]], %[[B]], %[[C]] {lhsSigned = true, rhsSigned = true} :
-// CHECK-LLVM-SAME:   vector<4x8xi8>, vector<8x8xi8> into vector<4x8xi32>
+// CHECK-LLVM:        %[[MM:.*]] = aievec.matmul %{{.*}}, %{{.*}}, %[[C]] :
+// CHECK-LLVM-SAME:   vector<4x8xsi8>, vector<8x8xsi8> into vector<4x8xi32>
 // CHECK-LLVM:        return %[[MM]] : vector<4x8xi32>
 func.func @contract_extsi_extsi_i8(%A : vector<4x8xi8>,
                                    %B : vector<8x8xi8>,
@@ -169,8 +169,8 @@ func.func @contract_extsi_extsi_i8(%A : vector<4x8xi8>,
 // CHECK-LLVM-SAME: %[[A:[a-zA-Z0-9]+]]: vector<4x8xi8>,
 // CHECK-LLVM-SAME: %[[B:[a-zA-Z0-9]+]]: vector<8x8xi8>,
 // CHECK-LLVM-SAME: %[[C:[a-zA-Z0-9]+]]: vector<4x8xi32>) -> vector<4x8xi32> {
-// CHECK-LLVM:        %[[MM:.*]] = aievec.matmul %[[A]], %[[B]], %[[C]] {lhsSigned = true, rhsSigned = false} :
-// CHECK-LLVM-SAME:   vector<4x8xi8>, vector<8x8xi8> into vector<4x8xi32>
+// CHECK-LLVM:        %[[MM:.*]] = aievec.matmul %{{.*}}, %{{.*}}, %[[C]] :
+// CHECK-LLVM-SAME:   vector<4x8xsi8>, vector<8x8xui8> into vector<4x8xi32>
 // CHECK-LLVM:        return %[[MM]] : vector<4x8xi32>
 func.func @contract_extsi_extui_i8(%A : vector<4x8xi8>,
                                    %B : vector<8x8xi8>,
