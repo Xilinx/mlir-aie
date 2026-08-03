@@ -10716,10 +10716,14 @@ attribute.</p>
 present in the core; in that case, the binary file linked dictates what
 will run in the core. The path specified should is relative to the MLIR
 file.</p>
-<p>This op has an optional <code>stackSize</code> attribute, to control the amount of memory (in bytes)
-reserved for the stack.  The default value is 1024.  The stack (and other data allocations)
-are always stored in the local core memory, to avoid conflicts with static data allocations
-in other cores.</p>
+<p>This op has an optional <code>stack_size</code> attribute, to control the amount of memory (in bytes)
+reserved for the stack.  When absent the target's default is used
+(<code>AIETargetModel::getDefaultCoreStackSize()</code>).  The stack (and other data allocations)
+are always stored in the local core memory, to avoid conflicts with static data
+allocations in other cores.</p>
+<p>The reservation is not checked against the core's actual frames, and the stack sits
+directly below the objectFIFO buffers with no clearance, so a design with large frames
+must set this attribute or it will overwrite them silently.</p>
 <p>This op has an optional <code>dynamic_objfifo_lowering</code> attribute, to finely control whether the
 objectfifos in this core should be lowered using the dynamic runtime lowering.</p>
 <p><strong>External link artifacts.</strong>  The preferred mechanism is to attach a
@@ -10766,14 +10770,14 @@ removed).  Specifying both <code>link_with</code> and either <code>link_files</c
 <div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>%tile = aie.tile(3, 3)
 <a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>aie.core(%tile) {
 <a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>  aie.end
-<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a>} { stackSize = 2048 : i32, elf_file = &quot;core_33.elf&quot; }
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a>} { stack_size = 2048 : i32, elf_file = &quot;core_33.elf&quot; }
 </code></pre></div></p>
 <p>Traits: <code>IsFlowEndPoint</code></p>
 <p>Interfaces: <code>InferTypeOpInterface</code>, <code>OpAsmOpInterface</code>, <code>TileElement</code></p>
 <h4 id="attributes_5">Attributes:<a class="headerlink" href="#attributes_5" title="Permanent link">&para;</a></h4>
 <table>
 <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
-<tr><td><code>stack_size</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>stack_size</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 1</td></tr>
 <tr><td><code>link_with</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
 <tr><td><code>link_files</code></td><td>::mlir::ArrayAttr</td><td>string array attribute</td></tr>
 <tr><td><code>link_merge_files</code></td><td>::mlir::ArrayAttr</td><td>string array attribute</td></tr>
