@@ -5,26 +5,20 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Software f32 2^x for exp-family ops that need more accuracy than the
-// hardware `aie::exp2<bfloat16>` LUT behind bf16_exp.cc. Measured on aie2p
-// against a float64 reference, the LUT's max relative error runs from 6.1% on
-// [-1, 0] to 49.1% on [-100, 0], where this poly holds 8.5e-5. [-100, 0] is
-// softmax's range: scores are shifted by the row max before exponentiating.
-// See programming_examples/basic/vector_exp2f.
+// Software f32 2^x for exp-family ops needing more accuracy than the hardware
+// `aie::exp2<bfloat16>` LUT behind bf16_exp.cc. Measured on aie2p against a
+// float64 reference, the LUT's max relative error runs 6.1% on [-1, 0] to 49.1%
+// on [-100, 0], softmax's range, where this poly holds 8.5e-5. See
+// programming_examples/basic/vector_exp2f.
 //
-// x = k + f with k = floor(x), f in [0, 1); poly5(f) by Horner, 2^k by packing
-// k + 127 into the f32 exponent field. The clamps keep k + 127 inside that
-// 8-bit field; past it the biased exponent walks into the sign bit and the
-// kernel returns wrong-signed finite values (k = 129 gives -0.0, k = 257 gives
-// -2.0) that no isfinite() check catches.
+// The clamps keep k + 127 inside the f32 exponent field; past it the biased
+// exponent walks into the sign bit and the result is a wrong-signed finite
+// value (k = 129 gives -0.0) that no isfinite() check catches.
 //
-// x <= -100 returns 2^-100, already zero for any softmax weight. x >= 128
-// returns +inf, the true 2^x there since 2^128 > FLT_MAX, via a select rather
-// than a saturating multiply through the all-ones exponent pattern: aie::mul
-// here returns NaN, not +inf, on f32 overflow, and that edge is ~1 ULP wide
-// (127.99999 gives NaN, 127.99998 does not). Hence the arithmetic clamp at
-// 127.999, which collapses [127.999, 128) onto one value at a 7.8e-4 relative
-// error. NaN propagates.
+// x >= 128 returns +inf through a select, not a saturating multiply: aie::mul
+// returns NaN on f32 overflow, and that edge is ~1 ULP wide (127.99999 gives
+// NaN, 127.99998 does not). Hence the arithmetic clamp at 127.999, collapsing
+// [127.999, 128) onto one value at 7.8e-4 relative error.
 //
 //===----------------------------------------------------------------------===//
 #include <aie_api/aie.hpp>

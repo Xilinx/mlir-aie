@@ -5,26 +5,13 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Depthwise conv1d, 'same' padding, stride 1, bf16, one channel (row) per
-// call:
+// Depthwise conv1d, 'same' padding, stride 1, bf16, one channel per call.
+// Cross-correlation, no kernel flip, matching torch.nn.Conv1d.
 //
-//   out[t] = bias + sum_{p=0..K-1} w[p] * in_pad[t + p],   t = 0 .. T-1
-//
-// A cross-correlation, no kernel flip, matching torch.nn.Conv1d and most
-// framework "same" depthwise convs. The caller supplies the padded row, so
-// the kernel does no boundary handling and needs no scratch buffer:
-//
-//   in_pad[0 .. T+15]: [P zeros | T real samples | P zeros | 16-(K-1) junk]
-//                       \_______________ T+K-1 valid, halo-padded ________/
-//   P = (K - 1) / 2
-//
-// The slack past the halo is a fixed 16 elements whatever K is, so that the
-// aligned 16-wide loads never read past the end of the buffer; its values
-// never reach the output. dwconv1d.py's `_pad_input` builds one.
-//
-// K is compile-time (DWCONV_K, default 9). The window `sliding_mul_ops` reads
-// is 16 + K - 1 wide and must fit one 32-lane vector, so K <= 17. in_pad must
-// be 256-bit aligned and T a multiple of 16.
+// The caller supplies the padded row [P zeros | T samples | P zeros | slack],
+// P = (K-1)/2, with a fixed 16 elements of slack whatever K is so the aligned
+// 16-wide loads never read past the buffer. in_pad must be 256-bit aligned and
+// T a multiple of 16; dwconv1d.py's `_pad_input` builds one.
 //
 //===----------------------------------------------------------------------===//
 
@@ -38,16 +25,14 @@ static inline void dwconv1d_same_bf16_impl(const bfloat16 *restrict in_pad,
   static_assert(K >= 1 && K <= 17,
                 "K taps must fit one 32-lane window (16 + K - 1 <= 32)");
   event0();
-  // The rounding mode is one sticky register shared by every kernel on this
-  // core, so conv_even must be handed back before returning.
+  // Rounding is one sticky register shared by every kernel on this core.
   ::aie::rounding_mode saved_rounding =
       ::aie::swap_rounding(::aie::rounding_mode::conv_even);
 
   const float bias = BIAS ? static_cast<float>(w[K]) : 0.0f;
   const ::aie::vector<float, 16> bias_v = ::aie::broadcast<float, 16>(bias);
 
-  // sliding_mul indexes the coefficient vector modulo its length, so it has to
-  // be wide enough to hold all K taps distinctly.
+  // sliding_mul indexes the coefficients modulo the vector length.
   constexpr unsigned kCoeffLanes = K <= 16 ? 16 : 32;
   ::aie::vector<bfloat16, kCoeffLanes> taps =
       ::aie::zeros<bfloat16, kCoeffLanes>();
@@ -57,8 +42,7 @@ static inline void dwconv1d_same_bf16_impl(const bfloat16 *restrict in_pad,
   using conv = ::aie::sliding_mul_ops<16, K, 1, 1, 1, bfloat16, bfloat16>;
 
   for (int32_t o = 0; o < T; o += 16) {
-    // Two 256-bit loads rather than one 512-bit load: in_pad is only 256-bit
-    // aligned, and a 512-bit access on XDNA 2 requires 512-bit alignment.
+    // in_pad is only 256-bit aligned; a 512-bit access needs 512-bit alignment.
     const ::aie::vector<bfloat16, 32> window = ::aie::concat(
         ::aie::load_v<16>(in_pad + o), ::aie::load_v<16>(in_pad + o + 16));
     ::aie::accum<accfloat, 16> acc;
@@ -80,13 +64,9 @@ static inline void dwconv1d_same_bf16_impl(const bfloat16 *restrict in_pad,
 
 extern "C" {
 
-//   in_pad: T + 16 bf16, halo-padded as in the file header
-//   w:      taps [0 .. DWCONV_K-1], bias at [DWCONV_K] if DWCONV_BIAS. A
-//           caller may pass a wider row (dwconv1d.py pads to keep the
-//           aie.dma_bd transfer length 4-byte aligned); anything past the
-//           bias is never read.
-//   out:    T bf16
-//   T:      output length, must be a multiple of 16
+// w holds taps [0 .. DWCONV_K-1] with the bias at [DWCONV_K]. A caller may pass
+// a wider row (dwconv1d.py pads for 4-byte aie.dma_bd alignment); anything past
+// the bias is never read.
 void dwconv1d_bf16(bfloat16 *in_pad, bfloat16 *w, bfloat16 *out, int32_t T) {
   dwconv1d_same_bf16_impl<DWCONV_K, (bool)DWCONV_BIAS>(in_pad, w, out, T);
 }
