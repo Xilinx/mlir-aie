@@ -131,6 +131,20 @@ public:
     bool modelled = false;
   };
   virtual std::vector<OpcodeUse> opcodeCoverage() const { return {}; }
+
+  /// What the schedule cost, which a bundle count cannot show: a structural
+  /// hazard holds a bundle at issue, so cycles pass with nothing retiring.
+  /// `cycles` exceeds `retiredBundles` by exactly `stallCycles`.
+  ///
+  /// `tracked` false means the engine does not count, which is not the same as
+  /// counting zero.
+  struct CycleCounts {
+    uint64_t cycles = 0;
+    uint64_t retiredBundles = 0;
+    uint64_t stallCycles = 0;
+    bool tracked = false;
+  };
+  virtual CycleCounts cycleCounts() const { return {}; }
 };
 
 /// Which ISA a core engine should implement.
