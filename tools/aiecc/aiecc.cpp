@@ -1761,7 +1761,15 @@ int main(int argc, char **argv) {
     inputBufferId =
         sourceMgr.AddNewSourceBuffer(std::move(inputBuf), llvm::SMLoc());
   mlir::SourceMgrDiagnosticHandler diagHandler(sourceMgr, &context);
-  ShellCommand::addInstallPrefix("peano", peanoInstallDir);
+  if (!ShellCommand::addInstallPrefix("peano", peanoInstallDir))
+    return 1;
+  // discoverAietoolsDir has the same shape: it falls through to $AIETOOLS_ROOT
+  // and then to xchesscc on PATH.
+  if (!aietoolsDir.empty() && !llvm::sys::fs::is_directory(aietoolsDir)) {
+    llvm::errs() << "aiecc: --aietools directory does not exist: "
+                 << aietoolsDir << "\n";
+    return 1;
+  }
   ShellCommand::verbose = verbose;
   ShellCommand::dryRun = dryRun;
 
