@@ -203,7 +203,7 @@ static void print_aie2_dmachannel_status(aie_libxaie_ctx_t *ctx, int col,
                                          const char *channel, int channelNum,
                                          u32 statusOffset, u32 controlOffset,
                                          int &current_bd) {
-  u64 tileAddr = mlir_aie_get_tile_addr(ctx, row, col);
+  u64 tileAddr = mlir_aie_get_tile_addr(ctx, col, row);
   u32 status, control;
   XAie_Read32(ctx->XAieDevInst, tileAddr + statusOffset, &status);
   XAie_Read32(ctx->XAieDevInst, tileAddr + controlOffset, &control);
@@ -301,7 +301,7 @@ static void print_bd(int bd, int bd_valid, u32 nextBd, u32 useNextBd,
 
 /// @brief Print a summary of the status of the given Tile DMA.
 void mlir_aie_print_dma_status(aie_libxaie_ctx_t *ctx, int col, int row) {
-  u64 tileAddr = mlir_aie_get_tile_addr(ctx, row, col);
+  u64 tileAddr = mlir_aie_get_tile_addr(ctx, col, row);
   auto TileType = ctx->XAieDevInst->DevOps->GetTTypefromLoc(
       ctx->XAieDevInst, XAie_TileLoc(col, row));
   assert(TileType == XAIEGBL_TILE_TYPE_AIETILE);
@@ -316,7 +316,7 @@ void mlir_aie_print_dma_status(aie_libxaie_ctx_t *ctx, int col, int row) {
                                    0x0001DF00 + 4 * i, 0x0001DE00 + 8 * i,
                                    s2mm_current_bd[i]);
       u32 write_count;
-      XAie_Read32(ctx->XAieDevInst, tileAddr + 0x0001D230 + (0x4 * i),
+      XAie_Read32(ctx->XAieDevInst, tileAddr + 0x0001DF18 + (0x4 * i),
                   &write_count);
       printf("DMA [%d, %d] s2mm%d write_count = %d\n", col, row, i,
              write_count);
@@ -492,7 +492,7 @@ void mlir_aie_print_dma_status(aie_libxaie_ctx_t *ctx, int col, int row) {
 
 void print_aie2_lock_status(aie_libxaie_ctx_t *ctx, int col, int row,
                             const char *type, int lockOffset, int locks) {
-  u64 tileAddr = mlir_aie_get_tile_addr(ctx, row, col);
+  u64 tileAddr = mlir_aie_get_tile_addr(ctx, col, row);
   printf("%s [%d, %d] AIE2 locks are: ", type, col, row);
   int lockAddr = tileAddr + lockOffset;
   for (int lock = 0; lock < locks; lock++) {
@@ -507,7 +507,7 @@ void print_aie2_lock_status(aie_libxaie_ctx_t *ctx, int col, int row,
 /// @brief Print a summary of the status of the given MemTile DMA.
 void mlir_aie_print_memtiledma_status(aie_libxaie_ctx_t *ctx, int col,
                                       int row) {
-  u64 tileAddr = mlir_aie_get_tile_addr(ctx, row, col);
+  u64 tileAddr = mlir_aie_get_tile_addr(ctx, col, row);
   auto TileType = ctx->XAieDevInst->DevOps->GetTTypefromLoc(
       ctx->XAieDevInst, XAie_TileLoc(col, row));
   assert(TileType == XAIEGBL_TILE_TYPE_MEMTILE);
@@ -570,7 +570,7 @@ void mlir_aie_print_memtiledma_status(aie_libxaie_ctx_t *ctx, int col,
 void mlir_aie_print_shimdma_status(aie_libxaie_ctx_t *ctx, int col, int row) {
   // int col = loc.Col;
   // int row = loc.Row;
-  u64 tileAddr = mlir_aie_get_tile_addr(ctx, row, col);
+  u64 tileAddr = mlir_aie_get_tile_addr(ctx, col, row);
   auto TileType = ctx->XAieDevInst->DevOps->GetTTypefromLoc(
       ctx->XAieDevInst, XAie_TileLoc(col, row));
   assert(TileType == XAIEGBL_TILE_TYPE_SHIMNOC);
@@ -740,7 +740,7 @@ void mlir_aie_print_shimdma_status(aie_libxaie_ctx_t *ctx, int col, int row) {
 void mlir_aie_print_tile_status(aie_libxaie_ctx_t *ctx, int col, int row) {
   // int col = loc.Col;
   // int row = loc.Row;
-  u64 tileAddr = mlir_aie_get_tile_addr(ctx, row, col);
+  u64 tileAddr = mlir_aie_get_tile_addr(ctx, col, row);
   u32 status, coreTimerLow, PC, LR, SP, locks, R0, R4;
   u32 trace_status;
   if (ctx->XAieConfig->AieGen == XAIE_DEV_GEN_AIEML) {
@@ -839,7 +839,7 @@ static void clear_range(XAie_DevInst *devInst, u64 tileAddr, u64 low,
 /// This includes: clearing the program memory, data memory,
 /// DMA descriptors, and stream switch configuration.
 void mlir_aie_clear_config(aie_libxaie_ctx_t *ctx, int col, int row) {
-  u64 tileAddr = mlir_aie_get_tile_addr(ctx, row, col);
+  u64 tileAddr = mlir_aie_get_tile_addr(ctx, col, row);
 
   // Put the core in reset first, otherwise bus collisions
   // result in arm bus errors.
@@ -869,7 +869,7 @@ void mlir_aie_clear_config(aie_libxaie_ctx_t *ctx, int col, int row) {
 /// This includes: clearing the program memory, data memory,
 /// DMA descriptors, and stream switch configuration.
 void mlir_aie_clear_shim_config(aie_libxaie_ctx_t *ctx, int col, int row) {
-  u64 tileAddr = mlir_aie_get_tile_addr(ctx, row, col);
+  u64 tileAddr = mlir_aie_get_tile_addr(ctx, col, row);
 
   // ShimDMA
   clear_range(ctx->XAieDevInst, tileAddr, 0x1D000, 0x1D13C);
