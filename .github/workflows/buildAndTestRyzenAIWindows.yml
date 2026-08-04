@@ -193,8 +193,15 @@ jobs:
           pushd build
 
           echo ===== Running tests =====
+          REM check-aie discovers the same corpus on every runner in the repo,
+          REM hosted included, so the tests that don't require npu-xrt/npu-hrx
+          REM (REQUIRES: ryzen_ai*/xrt_python_bindings*/hrx_*, or
+          REM %%run_on_npu1%%/%%run_on_npu2%%) already ran on ~33 hosted legs
+          REM before reaching this scarce runner.
+          set "LIT_FILTER=npu-xrt|npu-hrx|python/npu/"
           ninja check-aie
           if errorlevel 1 exit /b 1
+          set "LIT_FILTER="
 
           echo ===== Running concurrency tests =====
           ninja check-aie-concurrency

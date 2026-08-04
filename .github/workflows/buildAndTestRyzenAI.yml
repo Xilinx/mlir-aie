@@ -209,13 +209,19 @@ jobs:
           GEMM=gemm_asymmetric_tile_buffering
           ATB_LIT_OPTS="-j4 -sv --time-tests --timeout 1200 --show-unsupported --show-excluded"
 
+          # check-aie discovers the same corpus on every runner in the repo,
+          # hosted included, so the tests that don't require npu-xrt/npu-hrx
+          # (REQUIRES: ryzen_ai*/xrt_python_bindings*/hrx_*, or %run_on_npu[12]%)
+          # already ran on ~33 hosted legs before reaching this scarce runner.
+          DEVICE_ONLY_LIT_FILTER='npu-xrt|npu-hrx|python/npu/'
+
           # run_suite <name> full|only-failed
           #   full        -- the suite's normal invocation
           #   only-failed -- restrict to RETRY_LIT_FILTER (retry of the failed suite)
           run_suite() {
             case "$1" in
               check-aie)   if [ "$2" = only-failed ]; then LIT_FILTER="$RETRY_LIT_FILTER" ninja check-aie
-                           else ninja check-aie; fi ;;
+                           else LIT_FILTER="$DEVICE_ONLY_LIT_FILTER" ninja check-aie; fi ;;
               concurrency) if [ "$2" = only-failed ]; then LIT_FILTER="$RETRY_LIT_FILTER" ninja check-aie-concurrency
                            else ninja check-aie-concurrency; fi ;;
               refs)        if [ "$2" = only-failed ]; then LIT_FILTER="$RETRY_LIT_FILTER" ninja check-reference-designs
