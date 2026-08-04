@@ -146,12 +146,7 @@ def run_command(command: list[str]) -> tuple[int, str]:
 
 # Main entry point.
 # The NPU cannot sustain concurrent dispatch, so device runs must be serialized.
-# lit does that today by putting the whole test directory in a capacity-1
-# parallelism group, which also serializes each test's COMPILE, and compilation
-# is ~99% of a device test's wall time and needs no device at all.
-#
-# Serialize here instead, around the dispatch only, so lit is free to run the
-# tests in parallel. Properties that matter:
+# Serialize around the dispatch only, so lit is free to run the tests in parallel. 
 #   * flock is released by the kernel when the fd closes or the process dies, so
 #     a crashed or timed-out test cannot wedge the queue.
 #   * the lock file lives at a stable path and is never unlinked: flock is per
@@ -159,7 +154,6 @@ def run_command(command: list[str]) -> tuple[int, str]:
 #   * it is machine-wide, which is stronger than a lit parallelism group; that
 #     only serializes within one lit invocation, and gives nothing if a second
 #     job on the same host also touches the device.
-#   * keyed on the NPU kind, so npu1 and npu2 dispatches do not block each other.
 # AIE_NPU_NO_DEVICE_LOCK=1 opts out, for tests that exercise concurrency itself.
 @contextlib.contextmanager
 def device_lock(npu_kind: str):
