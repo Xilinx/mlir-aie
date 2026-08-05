@@ -2106,6 +2106,33 @@ using LowerVectorMinSIOpToAIEVecMinOp =
     LowerVectorMinMaxOpToAIEVecMinMaxOp<arith::MinSIOp, aievec::MinOp>;
 using LowerVectorMaxSIOpToAIEVecMaxOp =
     LowerVectorMinMaxOpToAIEVecMinMaxOp<arith::MaxSIOp, aievec::MaxOp>;
+
+// aievec.min/aievec.max are signed-only, so unsigned integer min/max have no
+// direct AIE intrinsic. Re-expand them into cmp+select, which the aievec
+// cmp/sel lowerings turn into aievec.cmp/aievec.sel.
+template <typename SrcOpTy, arith::CmpIPredicate Pred>
+struct LowerVectorUMinMaxOpToCmpSelOp : OpConversionPattern<SrcOpTy> {
+  using OpConversionPattern<SrcOpTy>::OpConversionPattern;
+  using OpAdaptor = typename SrcOpTy::Adaptor;
+
+  LogicalResult
+  matchAndRewrite(SrcOpTy srcOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    if (!isa<VectorType>(srcOp.getType()))
+      return failure();
+    Value lhs = adaptor.getLhs();
+    Value rhs = adaptor.getRhs();
+    auto cmpOp = arith::CmpIOp::create(rewriter, srcOp.getLoc(), Pred, lhs, rhs);
+    rewriter.replaceOpWithNewOp<arith::SelectOp>(srcOp, cmpOp, lhs, rhs);
+    return success();
+  }
+};
+
+using LowerVectorMinUIOpToCmpSelOp =
+    LowerVectorUMinMaxOpToCmpSelOp<arith::MinUIOp, arith::CmpIPredicate::ult>;
+using LowerVectorMaxUIOpToCmpSelOp =
+    LowerVectorUMinMaxOpToCmpSelOp<arith::MaxUIOp, arith::CmpIPredicate::ugt>;
+
 // Promote scalar arith.maxsi/arith.minsi to vector aievec.max/aievec.min
 // to avoid the AIE2 G_SELECT legalizer crash on scalar i32 select.
 template <typename SrcOpTy, typename DstOpTy>
@@ -4876,6 +4903,8 @@ populateAIEVecV2CommonConversionPatterns(RewritePatternSet &patterns) {
       LowerScalarMaxSIOpToAIEVecMaxOp,
       LowerVectorMaximumFOpToAIEVecMaxOp,
       LowerVectorMaxNumFFOpToAIEVecMaxOp,
+      LowerVectorMinUIOpToCmpSelOp,
+      LowerVectorMaxUIOpToCmpSelOp,
       LowerVectorCmpIOpToAIEVecCmpOp,
       LowerVectorCmpFOpToAIEVecCmpOp,
       LowerVectorSelectOpToAIEVecSelOp,
@@ -5723,6 +5752,32 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target) {
     unsigned laneSize = getVectorLaneSize(resultType);
 
     return !elWidthSet.count(resultElWidth) || laneSize * resultElWidth != 512;
+  });
+
+  target.addDynamicallyLegalOp<arith::MinUIOp>([=](arith::MinUIOp op) {
+    auto resultType = dyn_cast<VectorType>(op.getType());
+    if (!resultType)
+      return true;
+
+    auto resultElWidth = resultType.getElementType().getIntOrFloatBitWidth();
+    unsigned laneSize = getVectorLaneSize(resultType);
+    unsigned totalBits = laneSize * resultElWidth;
+
+    return !elWidthSet.count(resultElWidth) ||
+           (totalBits != 512 && !(totalBits == 256 && resultElWidth == 16));
+  });
+
+  target.addDynamicallyLegalOp<arith::MaxUIOp>([=](arith::MaxUIOp op) {
+    auto resultType = dyn_cast<VectorType>(op.getType());
+    if (!resultType)
+      return true;
+
+    auto resultElWidth = resultType.getElementType().getIntOrFloatBitWidth();
+    unsigned laneSize = getVectorLaneSize(resultType);
+    unsigned totalBits = laneSize * resultElWidth;
+
+    return !elWidthSet.count(resultElWidth) ||
+           (totalBits != 512 && !(totalBits == 256 && resultElWidth == 16));
   });
 
   target.addDynamicallyLegalOp<arith::MinimumFOp>([=](arith::MinimumFOp op) {
