@@ -6,7 +6,10 @@
 
 import logging
 
-from ..dialects.aie import device
+from ..dialects.aie import (
+    TraceMode,  # pyright: ignore[reportAttributeAccessIssue]
+    device,
+)
 from ..extras.context import mlir_mod_ctx  # pyright: ignore[reportMissingImports]
 from ..helpers.dialects.func import FuncBase
 from ..utils import trace as trace_utils
@@ -50,6 +53,7 @@ class Program:
         self._coremem_events = None
         self._memtile_events = None
         self._shimtile_events = None
+        self._core_trace_mode = TraceMode.EventTime
 
     def enable_trace(
         self,
@@ -61,6 +65,7 @@ class Program:
         memtile_events: list | None = None,
         shimtile_events: list | None = None,
         egress_shim_col: int = 0,
+        core_trace_mode=TraceMode.EventTime,
     ):
         """Enable hardware tracing for this program.
 
@@ -90,6 +95,8 @@ class Program:
                 Defaults to None (uses hardware defaults).
             egress_shim_col (int, optional): Column of the shim tile used to
                 egress trace packets to DDR. Defaults to 0.
+            core_trace_mode (TraceMode, optional): Trace mode for core tiles.
+                Defaults to Event-Time.
         """
         self._trace_size = trace_size
         self._trace_workers = workers
@@ -98,6 +105,7 @@ class Program:
         self._coremem_events = coremem_events
         self._memtile_events = memtile_events
         self._shimtile_events = shimtile_events
+        self._core_trace_mode = core_trace_mode
         self._egress_shim_col = egress_shim_col
 
     def resolve_program(self, device_name="main"):
@@ -239,6 +247,7 @@ class Program:
                         coremem_events=self._coremem_events,
                         memtile_events=self._memtile_events,
                         shimtile_events=self._shimtile_events,
+                        core_trace_mode=self._core_trace_mode,
                     )
 
                 # Emit the runtime sequence body LAST: workers, their locks, and
