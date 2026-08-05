@@ -1,22 +1,26 @@
-//===- cpp_no_xchesscc_implies_no_xbridge.mlir ------------------*- MLIR -*-===//
+//===- cpp_backend_dir_missing.mlir ----------------------------*- MLIR -*-===//
 //
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
-// Test that --no-xchesscc automatically disables xbridge so that the Chess
-// bridge linker (xchesscc_wrapper) is never invoked on Peano-compiled objects.
+// A --peano path that does not exist used to be dropped and the search fell
+// through to PATH, which answers `opt` and `llc` with the host LLVM. The build
+// then ran most of the way against the wrong toolchain before failing inside
+// one of those tools. Stop at the flag instead.
 
-// REQUIRES: peano
+// RUN: not aiecc --peano=%t.does.not.exist --get-full-elf -n %s 2>&1 | FileCheck %s
+// CHECK: --peano directory does not exist
 
-// RUN: aiecc --no-xchesscc --get-npu-insts --verbose %s 2>&1 | FileCheck %s
+// Same rule on the Chess side: discoverAietoolsDir would fall through to
+// $AIETOOLS_ROOT and then xchesscc on PATH.
+// RUN: not aiecc --xchesscc --xbridge --aietools=%t.no.aietools --get-full-elf -n %s 2>&1 | FileCheck %s --check-prefix=AIETOOLS
+// AIETOOLS: --aietools directory does not exist
 
-// Verify the Chess bridge linker (xchesscc_wrapper) is NOT invoked when
-// --no-xchesscc is used without an explicit --no-xbridge (Peano link path).
-// CHECK: ({{[0-9]+}}/{{[0-9]+}}) input.mlir
-// CHECK-NOT: xchesscc_wrapper
-// CHECK: wrote edge 'insts_
+// An empty value is not a stated path, so it must still reach discovery.
+// RUN: aiecc --peano= --get-full-elf -n %s 2>&1 | FileCheck %s --check-prefix=DISCOVER
+// DISCOVER-NOT: does not exist
 
 module {
   aie.device(npu1_1col) {

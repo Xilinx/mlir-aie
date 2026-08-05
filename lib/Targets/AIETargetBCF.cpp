@@ -68,7 +68,7 @@ LogicalResult AIETranslateToBCF(ModuleOp module, raw_ostream &output,
 
       int stacksize = 0;
       if (auto core = tile.getCoreOp())
-        stacksize = core.getStackSize();
+        stacksize = core.getEffectiveStackSize();
       output << "_stack DM_stack "
              << utohexstr(targetModel.getMemInternalBaseAddress(srcCoord))
              << " " << utohexstr(stacksize) << " // stack for core\n";

@@ -92,7 +92,7 @@ LogicalResult xilinx::AIE::AIETranslateToLdScript(ModuleOp module,
       // Collect occupied [start, end) intervals in tile-local coordinates: the
       // stack sits at the bottom of memory, followed by the placed buffers.
       SmallVector<std::pair<int, int>, 8> occupied;
-      occupied.push_back({0, core.getStackSize()});
+      occupied.push_back({0, core.getEffectiveStackSize()});
       for (auto buf : buffers[tiles[srcCoord]]) {
         int bufferBaseAddr = getBufferBaseAddress(buf);
         int numBytes = buf.getAllocationSize();
@@ -190,7 +190,7 @@ SECTIONS
       output << "_sp_start_value_DM_stack = .;\n";
 
       if (auto core = tile.getCoreOp())
-        output << ". += 0x" << llvm::utohexstr(core.getStackSize())
+        output << ". += 0x" << llvm::utohexstr(core.getEffectiveStackSize())
                << "; /* stack */\n";
       else
         output << "/* no stack allocated */\n";

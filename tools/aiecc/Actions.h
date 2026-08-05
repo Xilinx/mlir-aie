@@ -232,8 +232,10 @@ struct ShellCommand {
 
   // Register `<dir>/bin` as a search path. Tries (in order): overrideDir,
   // $<NAME>_INSTALL_DIR, <exe-prefix>/<name>, <exe-grandparent>/<name>.
-  static void addInstallPrefix(llvm::StringRef name,
-                               llvm::StringRef overrideDir = "") {
+  // Returns false only when overrideDir was given and is not a directory; the
+  // discovered candidates are guesses, so their absence is not an error.
+  [[nodiscard]] static bool addInstallPrefix(llvm::StringRef name,
+                                             llvm::StringRef overrideDir = "") {
     auto tryAdd = [](llvm::StringRef dir) -> bool {
       if (dir.empty() || !llvm::sys::fs::is_directory(dir))
         return false;
@@ -242,12 +244,20 @@ struct ShellCommand {
       addSearchPath(std::string(binDir));
       return true;
     };
-    if (tryAdd(overrideDir))
-      return;
+    if (!overrideDir.empty()) {
+      // Not falling through to discovery: the last candidate is PATH, which
+      // answers `opt` and `llc` with the host LLVM.
+      if (!tryAdd(overrideDir)) {
+        llvm::errs() << "aiecc: --" << name
+                     << " directory does not exist: " << overrideDir << "\n";
+        return false;
+      }
+      return true;
+    }
     std::string envName = name.upper() + "_INSTALL_DIR";
     if (const char *env = std::getenv(envName.c_str()))
       if (tryAdd(env))
-        return;
+        return true;
     std::string mainExe = llvm::sys::fs::getMainExecutable(
         nullptr, reinterpret_cast<void *>(&addInstallPrefix));
     llvm::StringRef prefix =
@@ -256,8 +266,9 @@ struct ShellCommand {
       llvm::SmallString<256> p(base);
       llvm::sys::path::append(p, name);
       if (tryAdd(p))
-        return;
+        return true;
     }
+    return true;
   }
 
   // Force `name` to resolve to `path` (caller must pass an executable path),
