@@ -400,6 +400,89 @@ def convert_to_commands(byte_stream_list, zero=True):
     return commands
 
 
+def decode_event_pc_stream(byte_stream, zero=True):
+    """Decode a mode-1 (EVENT_PC) trace byte stream into commands.
+
+    Mode 1 records the program counter of each traced event instead of a
+    cycle delta.  The opcode skeleton is shared with mode 0 (Start, DC,
+    Repeat0/1, Sync, Skip); only the per-event encoding differs -- the
+    mode-0 Single*/Multiple* opcodes are replaced by a single 4-byte
+    ``EventPC`` opcode carrying an 8-bit event mask and a 14-bit PC.
+
+    EventPC layout (32-bit word, MSB-first):
+        bits 31..26  opcode discriminator (0b110001)
+        bits 25..18  8-bit event mask (which of the 8 trace slots fired)
+        bits 17..14  reserved (zero in every observed capture)
+        bits 13..0   14-bit PC value
+
+    The mask is expanded into ``eventN`` keys, matching the mode-0
+    Multiple* convention; the PC is carried in a ``pc`` field.
+
+    Provenance: the byte-level skeleton is the mode-0 opcode table
+    documented openly in ``convert_to_commands`` above.  The EVENT_PC
+    extension was derived black-box, by diffing mode-0 and mode-1
+    captures of an identical kernel; every field follows from the
+    observed bytes.
+    """
+    commands = []
+    cursor = 0
+    n = len(byte_stream)
+    try:
+        while cursor < n:
+            b = byte_stream[cursor]
+            # Start: 1111 0X01 (0xF1/0xF5) + 7 timer bytes.  Same family as
+            # mode-0's 1111 0X00 Start, but bit 0 is the trace-mode
+            # discriminator (set for mode 1).  Big-endian 7-byte timer.
+            if (b & 0b11111011) == 0b11110001:
+                com = {"type": "Start", "timer_value": 0}
+                if not zero:
+                    for i in range(7):
+                        com["timer_value"] += (byte_stream[cursor + i + 1]) * (
+                            256 ** (6 - i)
+                        )
+                commands.append(com)
+                cursor = cursor + 8
+                continue
+            # Sync (decoder resync): 1111 1111 (0xFF), one byte.
+            if b == 0xFF:
+                commands.append({"type": "Event_Sync"})
+                cursor = cursor + 1
+                continue
+            # DC (don't-care padding): 1101 11xx + 3 bytes, no command.
+            if (b & 0b11111100) == 0b11011100:
+                cursor = cursor + 4
+                continue
+            # Repeat0: 1110 xxxx, 4-bit repeat count, one byte.
+            if (b & 0b11110000) == 0b11100000:
+                commands.append({"type": "Repeat0", "repeats": b & 0b1111})
+                cursor = cursor + 1
+                continue
+            # Repeat1: 1101 10xx + 1 byte, 10-bit repeat count.
+            if (b & 0b11111100) == 0b11011000:
+                repeats = (b & 0b11) * 256 + byte_stream[cursor + 1]
+                commands.append({"type": "Repeat1", "repeats": repeats})
+                cursor = cursor + 2
+                continue
+            # EventPC: 1100 01xx + 3 bytes (8b event mask + 14b PC)
+            if (b & 0b11111100) == 0b11000100:
+                b1 = byte_stream[cursor + 1]
+                b2 = byte_stream[cursor + 2]
+                b3 = byte_stream[cursor + 3]
+                mask = ((b & 0b11) << 6) | (b1 >> 2)
+                pc = ((b2 & 0b00111111) << 8) | b3
+                com = {"type": "EventPC", "pc": pc}
+                for i in range(8):
+                    if (mask >> i) & 0b1:
+                        com["event" + str(i)] = i
+                commands.append(com)
+                cursor = cursor + 4
+                continue
+            cursor = cursor + 1
+    except IndexError:
+        pass
+    return commands
+
+
 def trim_trace_pkts(trace_pkts):
     for i in range(len(trace_pkts)):
         if trace_pkts[i] == "fefefefe" or trace_pkts[i] == "FEFEFEFE":
