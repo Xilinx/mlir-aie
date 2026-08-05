@@ -10599,7 +10599,7 @@ This operation represents a buffer in tile (3, 3) of 256 elements, each a 64-bit
 <tbody>
 <tr>
 <td style="text-align: center;"><code>buffer</code></td>
-<td>memref of any type values</td>
+<td>memref of any non-token type values</td>
 </tr>
 </tbody>
 </table>
@@ -10833,7 +10833,7 @@ removed).  Specifying both <code>link_with</code> and either <code>link_files</c
 <tbody>
 <tr>
 <td style="text-align: center;"><code>arg</code></td>
-<td>any type</td>
+<td>any non-token type</td>
 </tr>
 </tbody>
 </table>
@@ -11028,7 +11028,7 @@ is 0). All counts are expressed in multiples of the element width.</p>
 <tbody>
 <tr>
 <td style="text-align: center;"><code>buffer</code></td>
-<td>ranked or unranked memref of any type values</td>
+<td>ranked or unranked memref of any non-token type values</td>
 </tr>
 <tr>
 <td style="text-align: center;"><code>offset</code></td>
@@ -11193,7 +11193,7 @@ This operation represents an external buffer.</p>
 <tbody>
 <tr>
 <td style="text-align: center;"><code>buffer</code></td>
-<td>memref of any type values</td>
+<td>memref of any non-token type values</td>
 </tr>
 </tbody>
 </table>
@@ -11259,7 +11259,7 @@ which is architecture-dependent. e.g. AIE1: i384 or vector&lt;8xi48&gt;  AIE2: i
 <tbody>
 <tr>
 <td style="text-align: center;"><code>cascade_value</code></td>
-<td>any type</td>
+<td>any non-token type</td>
 </tr>
 </tbody>
 </table>
@@ -11888,7 +11888,7 @@ This operation registers external buffers <code>%buffer_in_0</code> and <code>%b
 </tr>
 <tr>
 <td style="text-align: center;"><code>externalBuffers</code></td>
-<td>variadic of memref of any type values</td>
+<td>variadic of memref of any non-token type values</td>
 </tr>
 </tbody>
 </table>
@@ -11962,7 +11962,7 @@ verifier.</p>
 <tbody>
 <tr>
 <td style="text-align: center;"><code>output</code></td>
-<td>memref of any type values</td>
+<td>memref of any non-token type values</td>
 </tr>
 </tbody>
 </table>
@@ -12197,7 +12197,7 @@ which is architecture-dependent. e.g. AIE1: i384 or vector&lt;8xi48&gt;  AIE2: i
 <tbody>
 <tr>
 <td style="text-align: center;"><code>cascade_value</code></td>
-<td>any type</td>
+<td>any non-token type</td>
 </tr>
 </tbody>
 </table>
@@ -13299,7 +13299,7 @@ compile-time type checking.</p>
 <tr>
 <td style="text-align: center;">memref</td>
 <td style="text-align: center;"><code>::mlir::MemRefType</code></td>
-<td>memref of any type values</td>
+<td>memref of any non-token type values</td>
 </tr>
 </tbody>
 </table>
@@ -13323,7 +13323,7 @@ compile-time type checking.</p>
 <tr>
 <td style="text-align: center;">memref</td>
 <td style="text-align: center;"><code>::mlir::MemRefType</code></td>
-<td>memref of any type values</td>
+<td>memref of any non-token type values</td>
 </tr>
 </tbody>
 </table>
