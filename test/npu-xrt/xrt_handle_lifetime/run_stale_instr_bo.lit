@@ -4,6 +4,13 @@
 // REQUIRES: ryzen_ai, peano
 // XFAIL: system-windows
 //
+// Sibling tests in this directory write the same artifact names, and lit's
+// working directory is the test DIRECTORY rather than the test file, so they
+// would clobber each other if they ever ran concurrently.  Give each test its
+// own directory (%t is per test file).
+//
+// RUN: rm -rf %t.d && mkdir -p %t.d
+// RUN: cd %t.d
 // RUN: cp %S/aie.mlir aie_arch.mlir
 // RUN: %run_on_npu1% sed 's/NPUDEVICE/npu1_1col/g' -i aie_arch.mlir
 // RUN: %run_on_npu2% sed 's/NPUDEVICE/npu2_1col/g' -i aie_arch.mlir
