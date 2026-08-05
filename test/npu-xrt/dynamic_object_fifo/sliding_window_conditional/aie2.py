@@ -11,7 +11,7 @@
 # RUN:   -c %S/kernel.cc -o ./kernel.o
 # RUN: %host_clang %S/test.cpp -o test.exe -std=c++17 -Wall %xrt_flags %host_link_flags %test_utils_flags
 # RUN: %python %S/aie2.py > ./aie2.mlir
-# RUN: %aiecc --no-xchesscc --no-xbridge --get-npu-insts --get-xclbin --xclbin-name=final.xclbin --npu-insts-name=insts.bin ./aie2.mlir
+# RUN: %aiecc --get-npu-insts --get-xclbin --xclbin-name=final.xclbin --npu-insts-name=insts.bin ./aie2.mlir
 # RUN: %run_on_npu1% ./test.exe
 
 import numpy as np

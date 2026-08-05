@@ -12,7 +12,7 @@
 // REQUIRES: peano
 
 // RUN: rm -rf %t && mkdir -p %t
-// RUN: cd %t && aiecc --no-xchesscc --no-xbridge --get-full-elf --expand-load-pdis --tmpdir=%t %S/cpp_expand_load_pdis.mlir 2>&1
+// RUN: cd %t && aiecc --get-full-elf --expand-load-pdis --tmpdir=%t %S/cpp_expand_load_pdis.mlir 2>&1
 // RUN: cat %t/full_elf_config.json | FileCheck %s
 
 // Verify config.json has xrt-kernels entry (only devices with runtime sequences)

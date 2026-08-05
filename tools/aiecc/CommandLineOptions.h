@@ -128,17 +128,13 @@ inline cl::opt<bool> loadPdiToCtrlPkt(
 inline cl::opt<bool> xchesscc(
     "xchesscc",
     cl::desc("Compile cores with the Chess toolchain (xchesscc) instead of the "
-             "default Peano; requires Vitis AIE Essentials"));
-inline cl::opt<bool> noXchesscc(
-    "no-xchesscc",
-    cl::desc("Compile cores with Peano, the default (implies --no-xbridge)"));
+             "default Peano; implies --xbridge unless that is stated too; "
+             "requires Vitis AIE Essentials"));
 inline cl::opt<bool> xbridge(
     "xbridge",
     cl::desc("Link cores with the Chess toolchain (xbridge/BCF) instead of the "
-             "default Peano lld; requires Vitis AIE Essentials"));
-inline cl::opt<bool> noXbridge("no-xbridge",
-                               cl::desc("Link cores with Peano lld, the "
-                                        "default"));
+             "default Peano lld; implies --xchesscc unless that is stated too; "
+             "requires Vitis AIE Essentials"));
 inline cl::opt<std::string> aietoolsDir(
     "aietools",
     cl::desc("Path to the aietools (Vitis AIE) install dir; auto-discovered "
@@ -474,40 +470,18 @@ inline bool doCompileHost = false;
 // Returns false (after a diagnostic) if the requested combination is
 // impossible.
 inline bool resolveOptions() {
-  if (noXchesscc) {
-    xchesscc = false;
-    xbridge = false;
-  }
-  if (noXbridge)
-    xbridge = false;
-  if ((xchesscc || xbridge) && !noXchesscc && !noXbridge) {
-    xchesscc = true;
+  // Each Chess flag implies the other, so that a bare --xchesscc does not hand
+  // Chess-compiled objects to Peano's linker. State both to mix the two.
+  if (xchesscc && !xbridge.getNumOccurrences())
     xbridge = true;
-  }
+  if (xbridge && !xchesscc.getNumOccurrences())
+    xchesscc = true;
 
   wantAiesim = generateAiesim;
-  if (wantAiesim) {
-    // The Chess backend must be asked for, not inherited: --get-aiesim names a
-    // simulator, not a compiler, so a second simulator would silently take over
-    // this flag for everyone who never stated which cores it consumes.
-    bool chessStated =
-        xchesscc.getNumOccurrences() || xbridge.getNumOccurrences();
-    if (noXchesscc || noXbridge) {
-      // Report the contradiction rather than the omission. --no-xchesscc clears
-      // xbridge too, so an explicit --xbridge alongside it lands here with its
-      // occurrence counted and its value gone; telling that user to "pass it
-      // explicitly" names the one thing they did do.
-      llvm::errs() << "aiecc: --get-aiesim needs Chess-compiled cores, but "
-                   << (noXchesscc ? "--no-xchesscc" : "--no-xbridge")
-                   << " was given\n";
-      return false;
-    }
-    if (!xbridge || !chessStated) {
-      llvm::errs()
-          << "aiecc: --get-aiesim requires --xbridge (the AIE simulator "
-             "consumes Chess-compiled cores); pass it explicitly\n";
-      return false;
-    }
+  if (wantAiesim && !(xchesscc && xbridge)) {
+    llvm::errs() << "aiecc: --get-aiesim requires --xchesscc and --xbridge "
+                    "(the AIE simulator consumes Chess-compiled cores)\n";
+    return false;
   }
 
   doUnified = unified && !noUnified;

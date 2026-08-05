@@ -11,17 +11,17 @@
 // REQUIRES: peano
 
 // An unknown long option is rejected.
-// RUN: not aiecc --no-xchesscc --no-xbridge --garbage %s 2>&1 | FileCheck %s --check-prefix=GARBAGE
+// RUN: not aiecc --garbage %s 2>&1 | FileCheck %s --check-prefix=GARBAGE
 // GARBAGE: {{[Uu]nknown command line argument.*--garbage}}
 
 // A typo'd `--aie-*` option is rejected (the case reported in #2989).
-// RUN: not aiecc --no-xchesscc --no-xbridge --aie-genrate-npu-insts %s 2>&1 | FileCheck %s --check-prefix=TYPO
+// RUN: not aiecc --aie-genrate-npu-insts %s 2>&1 | FileCheck %s --check-prefix=TYPO
 // TYPO: {{[Uu]nknown command line argument.*--aie-genrate-npu-insts}}
 
 // Anything after `--` is forwarded to host compilation and not validated by
 // aiecc. Host compilation is off by default, so the passthrough args are
 // not consumed at all, which is fine.
-// RUN: aiecc --no-xchesscc --no-xbridge -n --verbose %s -- --garbage 2>&1 | FileCheck %s --check-prefix=PASSTHROUGH
+// RUN: aiecc -n --verbose %s -- --garbage 2>&1 | FileCheck %s --check-prefix=PASSTHROUGH
 // PASSTHROUGH-NOT: {{[Uu]nknown command line argument}}
 
 module {

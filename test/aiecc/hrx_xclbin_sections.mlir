@@ -19,7 +19,7 @@
 // REQUIRES: peano
 // REQUIRES: hrxxclbinutil
 
-// RUN: %aiecc --no-xchesscc --get-xclbin --xclbin-name=hrx_sections.xclbin %s
+// RUN: %aiecc --get-xclbin --xclbin-name=hrx_sections.xclbin %s
 // RUN: xclbinutil --info --input hrx_sections.xclbin | FileCheck %s
 
 // CHECK-DAG: MEM_TOPOLOGY

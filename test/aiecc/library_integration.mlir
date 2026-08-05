@@ -11,13 +11,13 @@
 // REQUIRES: peano
 
 // Test ELF generation
-// RUN: aiecc --no-xchesscc --no-xbridge --get-elf --verbose %s 2>&1 | FileCheck %s --check-prefix=ELF
+// RUN: aiecc --get-elf --verbose %s 2>&1 | FileCheck %s --check-prefix=ELF
 
 // ELF: ({{[0-9]+}}/{{[0-9]+}}) design.elf
 // ELF: wrote edge 'design.elf'
 
 // Test PDI generation
-// RUN: aiecc --no-xchesscc --no-xbridge --get-cdo --get-pdi --verbose %s 2>&1 | FileCheck %s --check-prefix=PDI
+// RUN: aiecc --get-cdo --get-pdi --verbose %s 2>&1 | FileCheck %s --check-prefix=PDI
 
 // PDI: ({{[0-9]+}}/{{[0-9]+}}) cdo_{{.*}}
 // PDI: ({{[0-9]+}}/{{[0-9]+}}) {{.*}}.pdi

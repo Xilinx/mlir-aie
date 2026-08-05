@@ -475,8 +475,6 @@ def compile_mlir_module(
         ]
     else:
         args = [
-            "--no-xchesscc",
-            "--no-xbridge",
             f"--peano={config.peano_install_dir()}",
         ]
     if full_elf_path:

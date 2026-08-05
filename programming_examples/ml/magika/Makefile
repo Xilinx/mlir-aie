@@ -104,7 +104,6 @@ ifeq ($(CHESS), true)
 				--get-npu-insts --npu-insts-name=insts.bin $(<:%=../%)
 else
 	cd ${@D} && aiecc -v --get-xclbin --xclbin-name=${@F} ${alloc_scheme} \
-    		--no-xchesscc --no-xbridge \
 				--get-npu-insts --npu-insts-name=insts.bin $(<:%=../%)
 endif
 
@@ -115,7 +114,6 @@ ifeq ($(CHESS), true)
 				--get-npu-insts --npu-insts-name=insts.bin $(<:%=../%)
 else
 	cd ${@D} && aiecc -v --get-xclbin --xclbin-name=${@F} ${alloc_scheme} \
-    		--no-xchesscc --no-xbridge \
 				--get-npu-insts --npu-insts-name=insts.bin $(<:%=../%)
 endif
 

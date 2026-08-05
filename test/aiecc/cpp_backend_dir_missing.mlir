@@ -10,7 +10,7 @@
 // then ran most of the way against the wrong toolchain before failing inside
 // one of those tools. Stop at the flag instead.
 
-// RUN: not aiecc --no-xchesscc --no-xbridge --peano=%t.does.not.exist --get-full-elf -n %s 2>&1 | FileCheck %s
+// RUN: not aiecc --peano=%t.does.not.exist --get-full-elf -n %s 2>&1 | FileCheck %s
 // CHECK: --peano directory does not exist
 
 // Same rule on the Chess side: discoverAietoolsDir would fall through to
@@ -19,7 +19,7 @@
 // AIETOOLS: --aietools directory does not exist
 
 // An empty value is not a stated path, so it must still reach discovery.
-// RUN: aiecc --no-xchesscc --no-xbridge --peano= --get-full-elf -n %s 2>&1 | FileCheck %s --check-prefix=DISCOVER
+// RUN: aiecc --peano= --get-full-elf -n %s 2>&1 | FileCheck %s --check-prefix=DISCOVER
 // DISCOVER-NOT: does not exist
 
 module {

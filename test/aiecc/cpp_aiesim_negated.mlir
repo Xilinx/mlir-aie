@@ -5,22 +5,20 @@
 //
 //===----------------------------------------------------------------------===//
 
-// --get-aiesim's backend-contradiction and backend-omission diagnostics fire
-// in resolveOptions() before any toolchain is touched, so unlike the rest of
-// cpp_aiesim.mlir this needs neither Chess nor Peano installed.
+// --get-aiesim's backend diagnostic fires in resolveOptions() before any
+// toolchain is touched, so unlike the rest of cpp_aiesim.mlir this needs
+// neither Chess nor Peano installed.
 
-// A negated backend and an unstated one are different mistakes and get
-// different diagnostics. --no-xchesscc clears xbridge as well, so the third
-// line is a contradiction and not an omission -- reporting it as one would
-// tell that user to pass the flag they just passed.
-// RUN: not aiecc --no-xbridge --get-aiesim -n %s 2>&1 | FileCheck %s --check-prefix=NEGATED
-// RUN: not aiecc --no-xchesscc --get-aiesim -n %s 2>&1 | FileCheck %s --check-prefix=NEGATED-CC
-// RUN: not aiecc --no-xchesscc --xbridge --get-aiesim -n %s 2>&1 | FileCheck %s --check-prefix=NEGATED-CC
-// RUN: not aiecc --get-aiesim -n %s 2>&1 | FileCheck %s --check-prefix=UNSTATED
+// Peano is the default, so every way of not asking for Chess reaches the same
+// diagnostic: omitting the flags, turning either off, and turning one off while
+// the other is on.
+// RUN: not aiecc --get-aiesim -n %s 2>&1 | FileCheck %s
+// RUN: not aiecc --xbridge=false --get-aiesim -n %s 2>&1 | FileCheck %s
+// RUN: not aiecc --xchesscc=false --get-aiesim -n %s 2>&1 | FileCheck %s
+// RUN: not aiecc --xchesscc --xbridge=false --get-aiesim -n %s 2>&1 | FileCheck %s
+// RUN: not aiecc --xchesscc=false --xbridge --get-aiesim -n %s 2>&1 | FileCheck %s
 
-// NEGATED: --get-aiesim needs Chess-compiled cores, but --no-xbridge was given
-// NEGATED-CC: --get-aiesim needs Chess-compiled cores, but --no-xchesscc was given
-// UNSTATED: --get-aiesim requires --xbridge
+// CHECK: --get-aiesim requires --xchesscc and --xbridge
 
 module {
   aie.device(npu1_1col) {
