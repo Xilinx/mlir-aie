@@ -653,9 +653,14 @@ def AIEVec_MatMulOp:
 
     Operand signedness is carried in the integer element types: a signed
     element type (`si8`) sets the MAC `signX`/`signY` bit, an unsigned type
-    (`ui8`) clears it. A signless element type (`i8`) keeps the historical
-    asymmetric defaults for hand-written IR: the lhs is treated as unsigned and
-    the rhs as signed.
+    (`ui8`) clears it. Prefer spelling the signedness out.
+
+    A signless element type (`i8`) falls back to the pre-existing asymmetric
+    behavior -- lhs treated as unsigned, rhs as signed. That fallback is kept
+    only for compatibility with IR written before signedness was expressible
+    here; it is not a recommended default, and it disagrees with
+    `aievec.matmul_aie2p`, which defaults signless operands to signed.
+    Reconciling the two is left to a follow-up.
 
     Currently, this intrinsic supports the following type combinations:
 
