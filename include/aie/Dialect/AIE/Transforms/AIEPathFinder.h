@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <iostream>
 #include <list>
+#include <optional>
 #include <set>
 
 namespace xilinx::AIE {
@@ -49,6 +50,9 @@ using SwitchboxConnect = struct SwitchboxConnect {
   std::vector<std::vector<int>> packetFlowCount;
   // only sharing the channel with the same packet group id
   std::vector<std::vector<int>> packetGroupId;
+  // packet ids currently routed through each channel (and its crossbar
+  // row/column); a channel may be shared only among distinct ids.
+  std::vector<std::vector<std::set<int>>> packetIds;
   // flags indicating priority routings
   std::vector<std::vector<bool>> isPriority;
 
@@ -63,6 +67,8 @@ using SwitchboxConnect = struct SwitchboxConnect {
     packetFlowCount.resize(srcPorts.size(),
                            std::vector<int>(dstPorts.size(), 0));
     packetGroupId.resize(srcPorts.size(), std::vector<int>(dstPorts.size(), 0));
+    packetIds.resize(srcPorts.size(),
+                     std::vector<std::set<int>>(dstPorts.size()));
     isPriority.resize(srcPorts.size(),
                       std::vector<bool>(dstPorts.size(), false));
   }
@@ -125,6 +131,10 @@ using Flow = struct Flow {
   bool isPriorityFlow;
   PathEndPoint src;
   std::vector<PathEndPoint> dsts;
+  // packet id carried by this flow (nullopt for circuit flows); a channel may
+  // be shared only among distinct ids so same-id flows never merge then fan
+  // out.
+  std::optional<int> packetId;
 };
 
 // A SwitchSetting defines the required settings for a Switchbox for a flow
@@ -186,7 +196,7 @@ public:
   virtual void initialize(int maxCol, int maxRow,
                           const AIETargetModel &targetModel) = 0;
   virtual void addFlow(TileID srcCoords, Port srcPort, TileID dstCoords,
-                       Port dstPort, bool isPacketFlow,
+                       Port dstPort, std::optional<int> packetId,
                        bool isPriorityFlow) = 0;
   virtual void sortFlows() = 0;
   virtual bool addFixedConnection(SwitchboxOp switchboxOp) = 0;
@@ -200,7 +210,7 @@ public:
   void initialize(int maxCol, int maxRow,
                   const AIETargetModel &targetModel) override;
   void addFlow(TileID srcCoords, Port srcPort, TileID dstCoords, Port dstPort,
-               bool isPacketFlow, bool isPriorityFlow) override;
+               std::optional<int> packetId, bool isPriorityFlow) override;
   void sortFlows() override;
   bool addFixedConnection(SwitchboxOp switchboxOp) override;
   std::optional<std::map<PathEndPoint, SwitchSettings>>
