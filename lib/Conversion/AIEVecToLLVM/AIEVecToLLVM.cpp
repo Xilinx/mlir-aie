@@ -4248,6 +4248,28 @@ static Value lookThroughShapeCasts(Value v) {
   return v;
 }
 
+// If `v` is defined by a signedness-carrying unrealized_conversion_cast --
+// which is how VectorToAIEVec attaches si*/ui* to an otherwise signless
+// operand -- return the signedness it carries and advance `v` past it, so the
+// intrinsic consumes the signless input and the cast is left dead for
+// canonicalization rather than leaking to LLVM translation.
+//
+// A cast whose result element type is not explicitly signed or unsigned is
+// left in place: it is some other type conversion, and dropping it would
+// silently change the operand.
+static std::optional<bool> peelSignednessCast(Value &v) {
+  auto castOp = v.getDefiningOp<UnrealizedConversionCastOp>();
+  if (!castOp)
+    return std::nullopt;
+  auto vecTy = dyn_cast<VectorType>(v.getType());
+  auto intTy =
+      vecTy ? dyn_cast<IntegerType>(vecTy.getElementType()) : IntegerType();
+  if (!intTy || intTy.isSignless())
+    return std::nullopt;
+  v = castOp.getInputs()[0];
+  return intTy.isSigned();
+}
+
 // The result of resolving one integer matmul operand.
 struct ResolvedMatMulOperand {
   // The value the MAC intrinsic should consume, with any widening op and any
@@ -4278,17 +4300,7 @@ struct ResolvedMatMulOperand {
 // Both aievec.matmul and aievec.matmul_aie2p resolve signedness through this
 // function. They previously each had their own copy and had drifted apart.
 static ResolvedMatMulOperand resolveMatMulOperand(Value v) {
-  std::optional<bool> castSigned;
-  if (auto castOp = v.getDefiningOp<UnrealizedConversionCastOp>()) {
-    if (auto vecTy = dyn_cast<VectorType>(v.getType()))
-      if (auto intTy = dyn_cast<IntegerType>(vecTy.getElementType())) {
-        if (intTy.isSigned())
-          castSigned = true;
-        else if (intTy.isUnsigned())
-          castSigned = false;
-      }
-    v = castOp.getInputs()[0];
-  }
+  std::optional<bool> castSigned = peelSignednessCast(v);
 
   Value orig = lookThroughShapeCasts(v);
   if (auto extSIOp = orig.getDefiningOp<arith::ExtSIOp>())
@@ -4299,8 +4311,8 @@ static ResolvedMatMulOperand resolveMatMulOperand(Value v) {
     return {v, *castSigned};
 
   auto vecTy = dyn_cast<VectorType>(v.getType());
-  auto intTy = vecTy ? dyn_cast<IntegerType>(vecTy.getElementType())
-                     : IntegerType();
+  auto intTy =
+      vecTy ? dyn_cast<IntegerType>(vecTy.getElementType()) : IntegerType();
   return {v, !(intTy && intTy.isUnsigned())};
 }
 
@@ -4742,17 +4754,14 @@ class MatMulOpAIE2pConversion
     Value acc = op.getAcc();
 
     // Signedness follows the same rule as aievec.matmul; see
-    // resolveMatMulOperand. Only the signedness is taken from it here: the
+    // resolveMatMulOperand. Only the signedness is taken from it here -- the
     // shape checks below match on the original operand types, so the operand
-    // values keep their existing treatment (strip the signedness-carrying cast
-    // so it is left dead for canonicalization rather than leaking to LLVM
-    // translation).
+    // values are only advanced past a signedness-carrying cast, not past a
+    // widening op.
     bool lhsIsSigned = resolveMatMulOperand(lhs).isSigned;
     bool rhsIsSigned = resolveMatMulOperand(rhs).isSigned;
-    if (auto c = lhs.getDefiningOp<UnrealizedConversionCastOp>())
-      lhs = c.getInputs()[0];
-    if (auto c = rhs.getDefiningOp<UnrealizedConversionCastOp>())
-      rhs = c.getInputs()[0];
+    peelSignednessCast(lhs);
+    peelSignednessCast(rhs);
 
     auto lhsVecTy = cast<VectorType>(op.getLhs().getType());
     auto rhsVecTy = cast<VectorType>(op.getRhs().getType());
