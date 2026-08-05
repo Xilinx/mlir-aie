@@ -9203,6 +9203,15 @@ Note: the same operator can be used as fmsub operator by setting the
 </code></pre></div>
 <p>AMD AIEv2-specific intrinsic that performs a matrix multiplications
 between <code>lhs</code> and <code>rhs</code>, and accumulates the result in <code>acc</code>.</p>
+<p>Operand signedness is carried in the integer element types: a signed
+element type (<code>si8</code>) sets the MAC <code>signX</code>/<code>signY</code> bit, an unsigned type
+(<code>ui8</code>) clears it. Prefer spelling the signedness out.</p>
+<p>A signless element type (<code>i8</code>) falls back to the pre-existing asymmetric
+behavior -- lhs treated as unsigned, rhs as signed. That fallback is kept
+only for compatibility with IR written before signedness was expressible
+here; it is not a recommended default, and it disagrees with
+<code>aievec.matmul_aie2p</code>, which defaults signless operands to signed.
+Reconciling the two is left to a follow-up.</p>
 <p>Currently, this intrinsic supports the following type combinations:</p>
 <div class="highlight"><pre><span></span><code> lhs                | rhs                | Accumulator
 :------------------:|:------------------:|:-----------------:
@@ -9266,6 +9275,9 @@ between <code>lhs</code> and <code>rhs</code>, and accumulates the result in <co
 </code></pre></div>
 <p>AMD AIEv2P-specific intrinsic that performs a matrix multiplication
 between <code>lhs</code> and <code>rhs</code>, and accumulates the result in <code>acc</code>.</p>
+<p>As for <code>aievec.matmul</code>, operand signedness is carried in the integer
+element types (<code>si8</code>/<code>ui8</code>) so the integer MAC configuration word can set
+its <code>signX</code>/<code>signY</code> bits. A signless element type defaults to signed.</p>
 <p>Currently, this intrinsic supports the following type combinations:</p>
 <div class="highlight"><pre><span></span><code> lhs                 | rhs                 | Accumulator
 :-------------------:|:-------------------:|:------------------:
