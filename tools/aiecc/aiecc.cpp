@@ -226,18 +226,16 @@ buildObjectSubgraph(EdgeWithTypedOutput<ModRef> &lowered,
   // constructs downgradeIRForPeano stripped from peano-compat (notably the
   // `nocreateundeforpoison` fn attr). Peano's opt then can't parse them, so
   // downgrade the linked module once more before opt.
-  auto &peanoCompatLinked =
-      peanoLinked.map<std::string>(
-          "peano-compat-linked_{0}.ll",
-          [](const Item<File> &in,
-             Item<std::string> &out) -> mlir::LogicalResult {
-            auto ir = Deserializer<std::string>::read(in.asFile(),
-                                                      DeserializeContext{});
-            if (mlir::failed(ir))
-              return mlir::failure();
-            out.value = downgradeIRForPeano(*ir);
-            return mlir::success();
-          });
+  auto &peanoCompatLinked = peanoLinked.map<std::string>(
+      "peano-compat-linked_{0}.ll",
+      [](const Item<File> &in, Item<std::string> &out) -> mlir::LogicalResult {
+        auto ir =
+            Deserializer<std::string>::read(in.asFile(), DeserializeContext{});
+        if (mlir::failed(ir))
+          return mlir::failure();
+        out.value = downgradeIRForPeano(*ir);
+        return mlir::success();
+      });
   auto &opted =
       peanoCompatLinked.map<File>("opted_{0}.ll", optCmd).threadSafe();
   ShellCommand llcCmd{"llc"};

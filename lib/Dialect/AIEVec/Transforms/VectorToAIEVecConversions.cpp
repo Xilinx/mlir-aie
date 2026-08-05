@@ -2122,7 +2122,8 @@ struct LowerVectorUMinMaxOpToCmpSelOp : OpConversionPattern<SrcOpTy> {
       return failure();
     Value lhs = adaptor.getLhs();
     Value rhs = adaptor.getRhs();
-    auto cmpOp = arith::CmpIOp::create(rewriter, srcOp.getLoc(), Pred, lhs, rhs);
+    auto cmpOp =
+        arith::CmpIOp::create(rewriter, srcOp.getLoc(), Pred, lhs, rhs);
     rewriter.replaceOpWithNewOp<arith::SelectOp>(srcOp, cmpOp, lhs, rhs);
     return success();
   }
