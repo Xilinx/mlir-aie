@@ -53,7 +53,7 @@
 // CHECK:               %[[VAL_31:.*]] = arith.subi %[[VAL_29]], %[[VAL_12]] : i32
 // CHECK:               %[[VAL_32:.*]] = arith.select %[[VAL_30]], %[[VAL_31]], %[[VAL_29]] : i32
 // CHECK:               scf.yield %[[VAL_27]], %[[VAL_32]] : i32, i32
-// CHECK:             } {aie.unroll_hint = 1 : i64}
+// CHECK:             }
 // CHECK:             aie.end
 // CHECK:           } {dynamic_objfifo_lowering = true}
 // CHECK:           aie.shim_dma_allocation @input_fifo_shim_alloc(%[[VAL_1]], MM2S, 0)

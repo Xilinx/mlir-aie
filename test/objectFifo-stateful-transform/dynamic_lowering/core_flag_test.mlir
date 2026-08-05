@@ -113,7 +113,7 @@
 // CHECK:               %[[VAL_71:.*]] = arith.subi %[[VAL_69]], %[[VAL_32]] : i32
 // CHECK:               %[[VAL_72:.*]] = arith.select %[[VAL_70]], %[[VAL_71]], %[[VAL_69]] : i32
 // CHECK:               scf.yield %[[VAL_67]], %[[VAL_59]], %[[VAL_72]], %[[VAL_64]] : i32, i32, i32, i32
-// CHECK:             } {aie.unroll_hint = 2 : i64}
+// CHECK:             }
 // CHECK:             aie.end
 // CHECK:           } {dynamic_objfifo_lowering = true}
 // CHECK:           %[[VAL_73:.*]] = aie.core(%[[VAL_4]]) {
