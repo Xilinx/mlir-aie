@@ -264,12 +264,24 @@ option(AIE_BUILD_DESIGN "Build the example's AIE design (off when make drives th
 
 function(add_aie_design)
   _aie_require_python()
-  cmake_parse_arguments(D "ELF" "TARGET;PY;DEVICE" "ARGS" ${ARGN})
+  cmake_parse_arguments(D "ELF" "TARGET;PY;DEVICE;DEVICE_FLAG;PY_DIR" "ARGS" ${ARGN})
   # Still define the target so callers' add_dependencies() stays valid; it just
   # has nothing to do.
   if(NOT AIE_BUILD_DESIGN)
     add_custom_target(${D_TARGET}_xclbin)
     return()
+  endif()
+  # Most designs take -d/--dev; the matmul family passes short_dev=None to
+  # add_compile_args and so accepts only --dev.
+  set(_devflag "-d")
+  if(D_DEVICE_FLAG)
+    set(_devflag "${D_DEVICE_FLAG}")
+  endif()
+  # Sweep families keep the design .py in a parent dir and drive it from a
+  # per-parameterization subdir, so the script is not always beside the caller.
+  set(_pydir "${CMAKE_CURRENT_SOURCE_DIR}")
+  if(D_PY_DIR)
+    set(_pydir "${D_PY_DIR}")
   endif()
   set(_out "${CMAKE_CURRENT_BINARY_DIR}")
   set(_xclbin "${_out}/final.xclbin")
@@ -282,10 +294,10 @@ function(add_aie_design)
   endif()
   add_custom_command(
     OUTPUT ${_outs}
-    COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/${D_PY}"
-            -d ${D_DEVICE} ${D_ARGS}
+    COMMAND ${Python3_EXECUTABLE} "${_pydir}/${D_PY}"
+            ${_devflag} ${D_DEVICE} ${D_ARGS}
             "--xclbin-path=${_xclbin}" "--insts-path=${_insts}" ${_elfarg}
-    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/${D_PY}"
+    DEPENDS "${_pydir}/${D_PY}"
     WORKING_DIRECTORY "${_out}"
     COMMENT "JIT-compiling ${D_PY} for ${D_DEVICE}"
     VERBATIM)

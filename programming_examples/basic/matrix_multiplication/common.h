@@ -379,7 +379,7 @@ verify_single(std::ostream &os, int row, int col, Tout expected, Tout actual,
                          rel_tol, abs_tol);
   }
   if (!match) {
-    return (struct error<Tout>){row, col, expected, actual};
+    return error<Tout>{row, col, expected, actual};
   }
   return std::nullopt;
 }
