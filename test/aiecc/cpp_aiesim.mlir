@@ -12,8 +12,10 @@
 
 // RUN: aiecc --xchesscc --xbridge --get-aiesim -n --verbose %s 2>&1 | FileCheck %s
 
-// Verify aiesim requires xbridge
-// RUN: not aiecc --no-xbridge --get-aiesim -n %s 2>&1 | FileCheck %s --check-prefix=NOXBRIDGE
+// The negative --get-aiesim flag-interaction cases live in
+// cpp_aiesim_negated.mlir: they fire in resolveOptions() before any
+// toolchain is touched, so they don't need Chess and shouldn't be gated on
+// it.
 
 // The sim/ work folder is assembled from declarative graph edges: the
 // graph/shim/scsim descriptors and routed flows are emitted in-process, and
@@ -26,8 +28,6 @@
 // CHECK-DAG: -D__AIESIM__
 // CHECK-DAG: genwrapper_for_ps.cpp
 // CHECK-DAG: {{.*}}ps.so
-
-// NOXBRIDGE: --get-aiesim requires --xbridge
 
 module {
   aie.device(npu1_1col) {
