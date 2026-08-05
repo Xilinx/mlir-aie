@@ -244,6 +244,12 @@ include(HandleLLVMOptions)
 include(ExternalProject)
 include(CMakeDependentOption)
 
+# The AIE event codegen (include/aie/Dialect/AIE/IR) runs on every build, but
+# mlir_configure_python_dev_packages() only sets Python3_EXECUTABLE when
+# AIE_ENABLE_BINDINGS_PYTHON is on. Same minimum version, so the two agree.
+include(MLIRDetectPythonEnv)
+find_package(Python3 ${MLIR_MINIMUM_PYTHON_VERSION} REQUIRED COMPONENTS Interpreter)
+
 include_directories(${LLVM_INCLUDE_DIRS})
 include_directories(${MLIR_INCLUDE_DIRS})
 include_directories(${PROJECT_SOURCE_DIR}/include)

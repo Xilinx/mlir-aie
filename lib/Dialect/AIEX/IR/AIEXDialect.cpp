@@ -1125,6 +1125,12 @@ verifyTaskBDDimensions(const AIE::AIETargetModel &targetModel, int col, int row,
     ++maxNDims; // leading dim is hoisted into the iteration/repeat register
   LogicalResult result = success();
   body.walk([&](AIE::DMABDOp bd) {
+    // The BD's own verifier skips it here, so nothing has yet established that
+    // its mixed sizes/strides lists are safe to read.
+    if (failed(bd.verifyMixedSizesAndStrides())) {
+      result = failure();
+      return;
+    }
     size_t numDims = bd.getMixedSizes().size();
     if (numDims > maxNDims) {
       bd.emitOpError() << "Cannot give more than " << std::to_string(maxNDims)

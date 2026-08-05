@@ -28,8 +28,8 @@ func.func @contractbf16bf16f32(%A : vector<4x8xbf16>,
 // CHECK-LLVM-SAME: %[[A:[a-zA-Z0-9]+]]: vector<4x4xi16>,
 // CHECK-LLVM-SAME: %[[B:[a-zA-Z0-9]+]]: vector<4x8xi8>,
 // CHECK-LLVM-SAME: %[[C:[a-zA-Z0-9]+]]: vector<4x8xi32>) -> vector<4x8xi32> {
-// CHECK-LLVM:        %[[MM:.*]] = aievec.matmul %[[A]], %[[B]], %[[C]] :
-// CHECK-LLVM-SAME:   vector<4x4xi16>, vector<4x8xi8> into vector<4x8xi32>
+// CHECK-LLVM:        %[[MM:.*]] = aievec.matmul %{{.*}}, %{{.*}}, %[[C]] :
+// CHECK-LLVM-SAME:   vector<4x4xi16>, vector<4x8xsi8> into vector<4x8xi32>
 // CHECK-LLVM:        return %[[MM]] : vector<4x8xi32>
 func.func @contracti16i8i32(%A : vector<4x4xi16>,
                             %B : vector<4x8xi8>,
@@ -46,8 +46,8 @@ func.func @contracti16i8i32(%A : vector<4x4xi16>,
 // CHECK-LLVM-SAME: %[[A:[a-zA-Z0-9]+]]: vector<4x2xi32>,
 // CHECK-LLVM-SAME: %[[B:[a-zA-Z0-9]+]]: vector<2x4xi16>,
 // CHECK-LLVM-SAME: %[[C:[a-zA-Z0-9]+]]: vector<4x4xi64>) -> vector<4x4xi64> {
-// CHECK-LLVM:        %[[MM:.*]] = aievec.matmul %[[A]], %[[B]], %[[C]] :
-// CHECK-LLVM-SAME:   vector<4x2xi32>, vector<2x4xi16> into vector<4x4xi64>
+// CHECK-LLVM:        %[[MM:.*]] = aievec.matmul %{{.*}}, %{{.*}}, %[[C]] :
+// CHECK-LLVM-SAME:   vector<4x2xi32>, vector<2x4xsi16> into vector<4x4xi64>
 // CHECK-LLVM:        return %[[MM]] : vector<4x4xi64>
 func.func @contracti32i16i64(%A : vector<4x2xi32>,
                              %B : vector<2x4xi16>,
@@ -83,8 +83,8 @@ func.func @contractf32f32f32(%A : vector<4x8xbf16>,
 // CHECK-LLVM-SAME: %[[A:[a-zA-Z0-9]+]]: vector<4x4xi16>,
 // CHECK-LLVM-SAME: %[[B:[a-zA-Z0-9]+]]: vector<4x8xi8>,
 // CHECK-LLVM-SAME: %[[C:[a-zA-Z0-9]+]]: vector<4x8xi32>) -> vector<4x8xi32> {
-// CHECK-LLVM:        %[[MM:.*]] = aievec.matmul %[[A]], %[[B]], %[[C]] :
-// CHECK-LLVM-SAME:   vector<4x4xi16>, vector<4x8xi8> into vector<4x8xi32>
+// CHECK-LLVM:        %[[MM:.*]] = aievec.matmul %{{.*}}, %{{.*}}, %[[C]] :
+// CHECK-LLVM-SAME:   vector<4x4xsi16>, vector<4x8xsi8> into vector<4x8xi32>
 // CHECK-LLVM:        return %[[MM]] : vector<4x8xi32>
 func.func @contracti32i32i32(%A : vector<4x4xi16>,
                              %B : vector<4x8xi8>,
@@ -102,8 +102,8 @@ func.func @contracti32i32i32(%A : vector<4x4xi16>,
 // CHECK-LLVM-SAME: %[[A:[a-zA-Z0-9]+]]: vector<4x2xi32>,
 // CHECK-LLVM-SAME: %[[B:[a-zA-Z0-9]+]]: vector<2x4xi16>,
 // CHECK-LLVM-SAME: %[[C:[a-zA-Z0-9]+]]: vector<4x4xi64>) -> vector<4x4xi64> {
-// CHECK-LLVM:        %[[MM:.*]] = aievec.matmul %[[A]], %[[B]], %[[C]] :
-// CHECK-LLVM-SAME:   vector<4x2xi32>, vector<2x4xi16> into vector<4x4xi64>
+// CHECK-LLVM:        %[[MM:.*]] = aievec.matmul %{{.*}}, %{{.*}}, %[[C]] :
+// CHECK-LLVM-SAME:   vector<4x2xui32>, vector<2x4xui16> into vector<4x4xi64>
 // CHECK-LLVM:        return %[[MM]] : vector<4x4xi64>
 func.func @contracti64i64i64(%A : vector<4x2xi32>,
                              %B : vector<2x4xi16>,
@@ -125,8 +125,8 @@ func.func @contracti64i64i64(%A : vector<4x2xi32>,
 // CHECK-LLVM-SAME: %[[A:[a-zA-Z0-9]+]]: vector<4x8xi8>,
 // CHECK-LLVM-SAME: %[[B:[a-zA-Z0-9]+]]: vector<8x8xi8>,
 // CHECK-LLVM-SAME: %[[C:[a-zA-Z0-9]+]]: vector<4x8xi32>) -> vector<4x8xi32> {
-// CHECK-LLVM:        %[[MM:.*]] = aievec.matmul %[[A]], %[[B]], %[[C]] :
-// CHECK-LLVM-SAME:   vector<4x8xi8>, vector<8x8xi8> into vector<4x8xi32>
+// CHECK-LLVM:        %[[MM:.*]] = aievec.matmul %{{.*}}, %{{.*}}, %[[C]] :
+// CHECK-LLVM-SAME:   vector<4x8xui8>, vector<8x8xsi8> into vector<4x8xi32>
 // CHECK-LLVM:        return %[[MM]] : vector<4x8xi32>
 func.func @contract_extui_extsi_i8(%A : vector<4x8xi8>,
                                     %B : vector<8x8xi8>,
@@ -140,3 +140,46 @@ func.func @contract_extui_extsi_i8(%A : vector<4x8xi8>,
   return %2 : vector<4x8xi32>
 }
 
+// Signed A (extsi) x signed B (extsi) for i8 matmul: the plain signed case,
+// e.g. tl.dot(i8, i8) -> i32. Both signX and signY must be set; defaulting the
+// lhs to unsigned here silently computes zext(A) * sext(B).
+
+// CHECK-LLVM-LABEL: func.func @contract_extsi_extsi_i8(
+// CHECK-LLVM-SAME: %[[A:[a-zA-Z0-9]+]]: vector<4x8xi8>,
+// CHECK-LLVM-SAME: %[[B:[a-zA-Z0-9]+]]: vector<8x8xi8>,
+// CHECK-LLVM-SAME: %[[C:[a-zA-Z0-9]+]]: vector<4x8xi32>) -> vector<4x8xi32> {
+// CHECK-LLVM:        %[[MM:.*]] = aievec.matmul %{{.*}}, %{{.*}}, %[[C]] :
+// CHECK-LLVM-SAME:   vector<4x8xsi8>, vector<8x8xsi8> into vector<4x8xi32>
+// CHECK-LLVM:        return %[[MM]] : vector<4x8xi32>
+func.func @contract_extsi_extsi_i8(%A : vector<4x8xi8>,
+                                   %B : vector<8x8xi8>,
+                                   %C : vector<4x8xi32>) -> vector<4x8xi32> {
+  %0 = arith.extsi %A : vector<4x8xi8> to vector<4x8xi32>
+  %1 = arith.extsi %B : vector<8x8xi8> to vector<8x8xi32>
+  %2 = vector.contract {indexing_maps = [#map1, #map2, #map3],
+                        iterator_types = ["parallel", "parallel", "reduction"],
+                        kind = #vector.kind<add>} %0, %1, %C :
+                        vector<4x8xi32>, vector<8x8xi32> into vector<4x8xi32>
+  return %2 : vector<4x8xi32>
+}
+
+// Signed A (extsi) x unsigned B (extui): the remaining mixed combination.
+
+// CHECK-LLVM-LABEL: func.func @contract_extsi_extui_i8(
+// CHECK-LLVM-SAME: %[[A:[a-zA-Z0-9]+]]: vector<4x8xi8>,
+// CHECK-LLVM-SAME: %[[B:[a-zA-Z0-9]+]]: vector<8x8xi8>,
+// CHECK-LLVM-SAME: %[[C:[a-zA-Z0-9]+]]: vector<4x8xi32>) -> vector<4x8xi32> {
+// CHECK-LLVM:        %[[MM:.*]] = aievec.matmul %{{.*}}, %{{.*}}, %[[C]] :
+// CHECK-LLVM-SAME:   vector<4x8xsi8>, vector<8x8xui8> into vector<4x8xi32>
+// CHECK-LLVM:        return %[[MM]] : vector<4x8xi32>
+func.func @contract_extsi_extui_i8(%A : vector<4x8xi8>,
+                                   %B : vector<8x8xi8>,
+                                   %C : vector<4x8xi32>) -> vector<4x8xi32> {
+  %0 = arith.extsi %A : vector<4x8xi8> to vector<4x8xi32>
+  %1 = arith.extui %B : vector<8x8xi8> to vector<8x8xi32>
+  %2 = vector.contract {indexing_maps = [#map1, #map2, #map3],
+                        iterator_types = ["parallel", "parallel", "reduction"],
+                        kind = #vector.kind<add>} %0, %1, %C :
+                        vector<4x8xi32>, vector<8x8xi32> into vector<4x8xi32>
+  return %2 : vector<4x8xi32>
+}

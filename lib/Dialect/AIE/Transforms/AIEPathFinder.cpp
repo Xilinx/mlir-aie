@@ -65,7 +65,7 @@ LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
                      << stringifyWireBundle(dstPort.bundle) << dstPort.channel
                      << "\n");
           pathfinder->addFlow(srcCoords, srcPort, dstCoords, dstPort,
-                              /*isPktFlow*/ true, priorityFlow);
+                              pktFlowOp.IDInt(), priorityFlow);
         }
       }
     }
@@ -86,7 +86,7 @@ LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
                << stringifyWireBundle(dstPort.bundle) << dstPort.channel
                << "\n");
     pathfinder->addFlow(srcCoords, srcPort, dstCoords, dstPort,
-                        /*isPktFlow*/ false, /*isPriorityFlow*/ false);
+                        /*packetId=*/std::nullopt, /*isPriorityFlow=*/false);
   }
 
   // Canonicalize all flows after both packet and circuit flows are collected.
@@ -304,9 +304,10 @@ void Pathfinder::initialize(int maxCol, int maxRow,
 // Add a flow from src to dst can have an arbitrary number of dst locations
 // due to fanout.
 void Pathfinder::addFlow(TileID srcCoords, Port srcPort, TileID dstCoords,
-                         Port dstPort, bool isPacketFlow, bool isPriorityFlow) {
+                         Port dstPort, std::optional<int> packetId,
+                         bool isPriorityFlow) {
   // check if a flow with this source already exists
-  for (auto &[_, prioritized, src, dsts] : flows) {
+  for (auto &[_, prioritized, src, dsts, pid] : flows) {
     if (src.coords == srcCoords && src.port == srcPort) {
       if (isPriorityFlow) {
         prioritized = true;
@@ -322,9 +323,9 @@ void Pathfinder::addFlow(TileID srcCoords, Port srcPort, TileID dstCoords,
   // channel sharing will happen within the same group ID
   // for circuit flows, group ID is always -1, and no channel sharing
   int packetGroupId = -1;
-  if (isPacketFlow) {
+  if (packetId.has_value()) {
     bool found = false;
-    for (auto &[existingId, _, src, dsts] : flows) {
+    for (auto &[existingId, _, src, dsts, pid] : flows) {
       if (src.coords == srcCoords && src.port == srcPort) {
         packetGroupId = existingId;
         found = true;
@@ -344,9 +345,9 @@ void Pathfinder::addFlow(TileID srcCoords, Port srcPort, TileID dstCoords,
     }
   }
   // If no existing flow was found with this source, create a new flow.
-  flows.push_back(
-      Flow{packetGroupId, isPriorityFlow, PathEndPoint{srcCoords, srcPort},
-           std::vector<PathEndPoint>{PathEndPoint{dstCoords, dstPort}}});
+  flows.push_back(Flow{
+      packetGroupId, isPriorityFlow, PathEndPoint{srcCoords, srcPort},
+      std::vector<PathEndPoint>{PathEndPoint{dstCoords, dstPort}}, packetId});
 }
 
 // Sort flows to (1) get deterministic routing, and (2) perform routings on
@@ -632,6 +633,7 @@ Pathfinder::findPaths(const int maxIterations) {
           sb.usedCapacity[i][j] = 0;
           sb.packetFlowCount[i][j] = 0;
           sb.packetGroupId[i][j] = -1;
+          sb.packetIds[i][j].clear();
         }
       }
     }
@@ -640,7 +642,8 @@ Pathfinder::findPaths(const int maxIterations) {
     // update used_capacity for the path between them
 
     for (const auto &[_, flows] : groupedFlows) {
-      for (const auto &[packetGroupId, isPriority, src, dsts] : flows) {
+      for (const auto &[packetGroupId, isPriority, src, dsts, packetId] :
+           flows) {
         // Use dijkstra to find path given current demand from the start
         // switchbox; find the shortest paths to each other switchbox. Output is
         // in the predecessor arrays, which must then be processed to get
@@ -675,14 +678,19 @@ Pathfinder::findPaths(const int maxIterations) {
             int i = e.i;
             int j = e.j;
             sb.isPriority[i][j] = isPriority;
+            // Packet flows in the same group may share a channel, but only if
+            // their ids differ, so two same-id flows never merge onto a channel
+            // and then fan back out to separate destinations.
             if (packetGroupId >= 0 &&
                 (sb.packetGroupId[i][j] == -1 ||
-                 sb.packetGroupId[i][j] == packetGroupId)) {
+                 sb.packetGroupId[i][j] == packetGroupId) &&
+                sb.packetIds[i][j].count(*packetId) == 0) {
               for (size_t k = 0; k < sb.srcPorts.size(); k++) {
                 for (size_t l = 0; l < sb.dstPorts.size(); l++) {
                   if (k == static_cast<size_t>(i) ||
                       l == static_cast<size_t>(j)) {
                     sb.packetGroupId[k][l] = packetGroupId;
+                    sb.packetIds[k][l].insert(*packetId);
                   }
                 }
               }
