@@ -146,7 +146,7 @@ def run_command(command: list[str]) -> tuple[int, str]:
 
 # Main entry point.
 # The NPU cannot sustain concurrent dispatch, so device runs must be serialized.
-# Serialize around the dispatch only, so lit is free to run the tests in parallel. 
+# Serialize around the dispatch only, so lit is free to run the tests in parallel.
 #   * flock is released by the kernel when the fd closes or the process dies, so
 #     a crashed or timed-out test cannot wedge the queue.
 #   * the lock file lives at a stable path and is never unlinked: flock is per
