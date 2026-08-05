@@ -392,7 +392,6 @@ def AIEObjectFifoStatefulTransform : Pass<"aie-objectFifo-stateful-transform", "
   ];
 }
 
-
 def AIEObjectFifoUnroll : Pass<"aie-objectFifo-unroll", "DeviceOp"> {
   let summary = "Unroll scf.for loops that contain objectFifo operations";
   let description = [{
@@ -412,12 +411,9 @@ def AIEObjectFifoUnroll : Pass<"aie-objectFifo-unroll", "DeviceOp"> {
   }];
 
   let constructor = "xilinx::AIE::createAIEObjectFifoUnrollPass()";
-  let dependentDialects = [
-    "mlir::scf::SCFDialect",
-    "xilinx::AIE::AIEDialect",
+  let dependentDialects = ["mlir::scf::SCFDialect", "xilinx::AIE::AIEDialect",
   ];
 }
-
 
 def AIELowerCascadeFlows : Pass<"aie-lower-cascade-flows", "DeviceOp"> {
   let summary = "Lower aie.cascade_flow operations through `aie.configure_cascade` operations";

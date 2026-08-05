@@ -50,9 +50,9 @@ using namespace xilinx::AIE;
 // Marker for `memref.alloca`s emitted by this pass for bookkeeping only (number
 // of locks held, current buffer index). We use memrefs for these bookkeeping
 // values because it enables easier threading through loop/control-flow
-// structures. A `mem2reg` pass at the end converts them back to SSA values; this
-// marker ensures that we convert _all_ allocas back to SSA values but touch _no_
-// allocas that were not emitted by us.
+// structures. A `mem2reg` pass at the end converts them back to SSA values;
+// this marker ensures that we convert _all_ allocas back to SSA values but
+// touch _no_ allocas that were not emitted by us.
 static constexpr llvm::StringLiteral kBookkeepingSlotAttrName =
     "aie.objectfifo.bookkeeping_slot";
 
@@ -2504,6 +2504,12 @@ struct AIEObjectFifoStatefulTransformPass
     // afterwards).
     if (!clDynamicObjectFifos) {
       for (auto coreOp : device.getOps<CoreOp>()) {
+        // A core may individually opt back into dynamic lowering via its
+        // `dynamic_objfifo_lowering` attribute; those cores keep their loops
+        // rolled, so no unroll hint is emitted and the unroll pass leaves them
+        // in the runtime (dynamic) form.
+        if (coreOp.getDynamicObjfifoLowering().value_or(false))
+          continue;
         coreOp.walk([&](scf::ForOp forOp) {
           int64_t lcm = 1;
           bool hasAccess = false;
