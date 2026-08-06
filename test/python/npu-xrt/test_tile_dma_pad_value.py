@@ -10,8 +10,8 @@
 
 """On-device test of DMA constant padding through the IRON explicit-DMA API.
 
-A hand-placed memtile TileDma stages a 13-element int32 transfer and its MM2S
-channel pads it up to 16 (2 before, 1 after), filling the padded region with
+A hand-placed memtile TileDma stages a 8-element int8 transfer and its MM2S
+channel pads it up to 16 (4 before, 4 after), filling the padded region with
 DmaChannel(pad_value=42) and the geometry via Bd(pad_dimensions=...). Pure DMA
 passthrough (no core), so the read-back directly exposes the pad fill.
 """
@@ -44,16 +44,16 @@ from aie.iron import (
 )
 from aie.iron.device import Tile
 
-REAL = 13
+REAL = 8
 REGION = 16
-PAD_BEFORE = 2
-PAD_AFTER = 1
+PAD_BEFORE = 4
+PAD_AFTER = 4
 PAD_VALUE = 42
 
 
 @iron.jit
 def tile_dma_pad(a: In, c: Out):
-    mem_ty = np.ndarray[(REAL,), np.dtype[np.int32]]
+    mem_ty = np.ndarray[(REAL,), np.dtype[np.int8]]
     shim = Tile(col=0, row=0, tile_type=AIETileType.ShimNOCTile)
     mem = Tile(col=0, row=1, tile_type=AIETileType.MemTile)
     mem_buf = Buffer(type=mem_ty, tile=mem, name="mem_buf")
@@ -116,8 +116,8 @@ def tile_dma_pad(a: In, c: Out):
     rt = Runtime(
         seq,
         [
-            np.ndarray[(REAL,), np.dtype[np.int32]],
-            np.ndarray[(REGION,), np.dtype[np.int32]],
+            np.ndarray[(REAL,), np.dtype[np.int8]],
+            np.ndarray[(REGION,), np.dtype[np.int8]],
         ],
     )
     for f in (flow_in, flow_out):
@@ -129,13 +129,13 @@ def tile_dma_pad(a: In, c: Out):
 
 
 def test_tile_dma_pad_value():
-    a = iron.arange(REAL, dtype=np.int32)  # 0..12
-    c = iron.zeros(REGION, dtype=np.int32, device="npu")
+    a = iron.arange(REAL, dtype=np.int8)  # 0..12
+    c = iron.zeros(REGION, dtype=np.int8, device="npu")
     tile_dma_pad(a, c)
     c.to("cpu")
 
     expected = np.array(
         [PAD_VALUE] * PAD_BEFORE + list(range(REAL)) + [PAD_VALUE] * PAD_AFTER,
-        dtype=np.int32,
+        dtype=np.int8,
     )
     np.testing.assert_array_equal(c.numpy(), expected)

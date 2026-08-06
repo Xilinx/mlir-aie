@@ -22,6 +22,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Iterable, Sequence
 
+import numpy as np
+
 from ... import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
 from ...dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
     AIETileType,
@@ -39,6 +41,7 @@ from ...dialects.aie import (
     shim_mem,
     use_lock,  # pyright: ignore[reportAttributeAccessIssue]
 )
+from ...helpers.util import pack_pad_value
 from ..buffer import Buffer
 from ..device import Tile
 from ..lock import Lock
@@ -122,14 +125,35 @@ class DmaChannel:
     direction: DMAChannelDir
     channel: int
     bds: list[Bd]
-    # Per-channel constant pad value (MemTile MM2S CONSTANT_PAD_VALUE register),
-    # shared by every padded BD on this channel. Default 0. In hardware the pad
-    # value is a channel property, not a per-BD one, so it lives here rather than
-    # on Bd (which carries only the per-BD pad geometry). It is the raw 32-bit
-    # stream word (1:1 with aie-rt XAie_DmaSetPadValue); the DMA inserts one such
-    # word per padded stream word, so a sub-32b element fill must be pre-packed
-    # across the word (e.g. 0x07070707 to fill an i8 region with 0x07).
     pad_value: int = 0
+
+
+def _channel_pad_word(ch: "DmaChannel") -> int | None:
+    """Resolve a channel's per-element pad_value into the raw 32-bit stream word.
+
+    Returns None for the default 0 (elides the attribute). The element width is
+    taken from the channel's padded BD(s); a nonzero pad_value requires at least
+    one BD with pad_dimensions (else it would silently no-op), and all padded BDs
+    on the channel must share an element size (one register serves them all).
+    """
+    if not ch.pad_value:
+        return None
+    elem_sizes = {
+        np.dtype(bd.buffer.dtype).itemsize
+        for bd in ch.bds
+        if bd.pad_dimensions is not None
+    }
+    if not elem_sizes:
+        raise ValueError(
+            "DmaChannel.pad_value is set but no BD on the channel has "
+            "pad_dimensions; a pad value needs a padded region."
+        )
+    if len(elem_sizes) > 1:
+        raise ValueError(
+            "DmaChannel.pad_value is shared by all padded BDs on the channel, "
+            f"but they have differing element sizes {sorted(elem_sizes)}."
+        )
+    return pack_pad_value(ch.pad_value, elem_sizes.pop())
 
 
 class TileDma(Resolvable):
@@ -240,7 +264,7 @@ class TileDma(Resolvable):
                 ch.channel,
                 dest=block[chan_head_idx[0]],
                 chain=block[chan_chain_idx[0]],
-                pad_value=ch.pad_value,
+                pad_value=_channel_pad_word(ch),
             )
             # Chain blocks: dma_start for channels 1..N-1
             for i in range(1, len(channels)):
@@ -251,7 +275,7 @@ class TileDma(Resolvable):
                         ch_i.channel,
                         dest=block[chan_head_idx[i]],
                         chain=block[chan_chain_idx[i]],
-                        pad_value=ch_i.pad_value,
+                        pad_value=_channel_pad_word(ch_i),
                     )
 
             # Per-channel BD bodies.

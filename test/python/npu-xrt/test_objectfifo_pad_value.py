@@ -11,7 +11,7 @@
 """On-device test of DMA constant padding through the IRON ObjectFifo API.
 
 A memtile-staged output ObjectFifo (created via forward()) pads a 13-element
-int32 transfer up to 16 (2 before, 1 after) and fills the padded region with
+int8 transfer up to 16 (4 before, 4 after) and fills the padded region with
 pad_value = 42. Pure DMA passthrough (no core), so the read-back directly
 exposes the pad fill. Exercises the ObjectFifo pad_value routing end-to-end on
 hardware.
@@ -21,17 +21,17 @@ import aie.iron as iron
 import numpy as np
 from aie.iron import In, ObjectFifo, Out, Program, Runtime
 
-REAL = 13
+REAL = 8
 REGION = 16
-PAD_BEFORE = 2
-PAD_AFTER = 1
+PAD_BEFORE = 4
+PAD_AFTER = 4
 PAD_VALUE = 42
 
 
 @iron.jit
 def objectfifo_pad(a: In, c: Out):
-    small = np.ndarray[(REAL,), np.dtype[np.int32]]
-    big = np.ndarray[(REGION,), np.dtype[np.int32]]
+    small = np.ndarray[(REAL,), np.dtype[np.int8]]
+    big = np.ndarray[(REGION,), np.dtype[np.int8]]
     of_in = ObjectFifo(small, name="in0")
     of_out = of_in.cons().forward(
         obj_type=big,
@@ -50,13 +50,13 @@ def objectfifo_pad(a: In, c: Out):
 
 
 def test_objectfifo_pad_value():
-    a = iron.arange(REAL, dtype=np.int32)  # 0..12
-    c = iron.zeros(REGION, dtype=np.int32, device="npu")
+    a = iron.arange(REAL, dtype=np.int8)  # 0..12
+    c = iron.zeros(REGION, dtype=np.int8, device="npu")
     objectfifo_pad(a, c)
     c.to("cpu")
 
     expected = np.array(
         [PAD_VALUE] * PAD_BEFORE + list(range(REAL)) + [PAD_VALUE] * PAD_AFTER,
-        dtype=np.int32,
+        dtype=np.int8,
     )
     np.testing.assert_array_equal(c.numpy(), expected)

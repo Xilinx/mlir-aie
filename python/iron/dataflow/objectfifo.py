@@ -24,6 +24,7 @@ from ...helpers.util import (
     np_ndarray_type_get_dtype,
     np_ndarray_type_get_shape,
     np_ndarray_type_to_memref_type,
+    pack_pad_value,
     single_elem_or_list_to_list,
 )
 from ..device import AnyMemTile, Tile
@@ -106,11 +107,10 @@ class ObjectFifo(Resolvable):
                 buffer, described as ``(pad_before, pad_after)`` pairs from highest to lowest
                 dimension. Lowers to the ``padDimensions`` attribute on the underlying
                 ``aie.objectfifo`` op. Defaults to None.
-            pad_value (int, optional): Constant value used to fill the region created by
-                ``pad_dimensions``. It is the raw 32-bit CONSTANT_PAD_VALUE stream word (the DMA
-                inserts one per padded 32-bit word), so a sub-32b element fill must be pre-packed
-                across the word (e.g. ``0x07070707`` to fill an int8 region with ``0x07``). Only
-                valid together with ``pad_dimensions`` (MemTile padding). Defaults to 0.
+            pad_value (int, optional): Per-element constant value used to fill the region created
+                by ``pad_dimensions``. Packed into the raw 32-bit CONSTANT_PAD_VALUE register
+                using this fifo's element width. Only valid together with ``pad_dimensions`` (MemTile
+                padding). Defaults to 0.
             disable_synchronization (bool, optional): When True, disables lock-based
                 synchronization on the ObjectFifo. Defaults to False.
             repeat_count (int | None, optional): If set, causes the MemTile DMA to replay the
@@ -444,7 +444,13 @@ class ObjectFifo(Resolvable):
                 dimensionsFromStreamPerConsumer=dims_from_stream_per_cons,
                 plio=self._plio,
                 padDimensions=self._pad_dimensions,
-                pad_value=self._pad_value or None,
+                pad_value=(
+                    pack_pad_value(
+                        self._pad_value,
+                        np.dtype(np_ndarray_type_get_dtype(self._obj_type)).itemsize,
+                    )
+                    or None
+                ),
                 iter_count=self._iter_count,
                 disable_synchronization=self._disable_synchronization or None,
                 via_DMA=self._via_DMA or None,
@@ -1082,10 +1088,9 @@ class ObjectFifoHandle(Resolvable):
             plio (bool, optional): Set plio on each new ObjectFifo. Defaults to False.
             repeat_count (int | None, optional): MemTile DMA repeat count for the new ObjectFifo (see ObjectFifo.repeat_count). Defaults to None.
             pad_dimensions (PadDims | None, optional): Per-dimension (before, after) constant-pad
-                counts for the forwarded (memtile) ObjectFifo. The forward runs on a MemTile, which
-                is where DMA constant padding is supported. Defaults to None.
-            pad_value (int, optional): Constant fill value for pad_dimensions (raw 32-bit stream
-                word; see ObjectFifo.pad_value). Defaults to 0.
+                counts for the forwarded (memtile) ObjectFifo. Defaults to None.
+            pad_value (int, optional): Per-element constant fill value for pad_dimensions (see
+                ObjectFifo.pad_value). Defaults to 0.
 
         Raises:
             ValueError: Arguments are Validated

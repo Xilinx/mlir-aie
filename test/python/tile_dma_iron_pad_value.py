@@ -15,7 +15,9 @@ from aie.iron import Bd, Buffer, DmaChannel, Program, Runtime, TileDma
 from aie.iron.device import Tile, from_name
 
 
-# CHECK: aie.dma_start(MM2S, 0, {{.*}}) {pad_value = 7 : i32}
+# pad_value is authored per element and packed to the 32-bit register by the
+# buffer's element width: for i8, pad_value=7 -> 0x07070707 = 117901063.
+# CHECK: aie.dma_start(MM2S, 0, {{.*}}) {pad_value = 117901063 : i32}
 # CHECK: aie.dma_bd({{.*}} pad [<const_pad_before = 0, const_pad_after = 1>, <const_pad_before = 0, const_pad_after = 0>])
 def build_module():
     i8 = np.int8
