@@ -1297,6 +1297,9 @@ def AIE_DMAConfigureTaskOp : AIEX_Op<"dma_configure_task", [HasAncestor<"AIE::Ru
 
   let extraClassDeclaration = [{
     AIE::TileOp getTileOp();
+    // Null when the tile is still an aie.logical_tile, so passes that can run
+    // before placement defer instead of aborting inside getTileOp().
+    AIE::TileOp tryGetTileOp();
     std::optional<uint32_t> getFirstBdId();
     // The repeat count as an OpFoldResult: the runtime operand if present, else
     // the compile-time attribute. Mirrors dma_bd's offset/len duality.
@@ -1310,6 +1313,7 @@ def AIE_DMAConfigureTaskOp : AIEX_Op<"dma_configure_task", [HasAncestor<"AIE::Ru
 
   let extraClassDefinition = [{
     AIE::TileOp DMAConfigureTaskOp::getTileOp() { return cast<AIE::TileElement>(this->getOperation()).getTileOp(); }
+    AIE::TileOp DMAConfigureTaskOp::tryGetTileOp() { return cast<AIE::TileElement>(this->getOperation()).tryGetTileOp(); }
   }];
 
   let hasVerifier = 1;
