@@ -249,12 +249,14 @@ struct ObjectFifoState {
       splitBecauseLink; // objfifos which have been split because they are
                         // part of a Link, not because they didn't have a shared
                         // memory module
-  DenseMap<Operation *, DenseMap<std::pair<ObjectFifoCreateOp, int>, Value>>
-      rotationCounterSlotsPerCore; // core -> (fifo, port) -> rotating
-                                   // next-element index counter; keys the
-                                   // runtime buffer index_switch and (on
-                                   // binary-lock architectures) the runtime
-                                   // lock index_switch
+  DenseMap<Operation *,
+           DenseMap<std::pair<ObjectFifoCreateOp, int>, memref::AllocaOp>>
+      currentObjectBookkeepingMemrefPerCore; // core -> (fifo, port) -> rotating
+                                             // next-element index counter
+                                             // memref; keys the runtime buffer
+                                             // index_switch and (on binary-lock
+                                             // architectures) the runtime lock
+                                             // index_switch
 };
 
 struct AIEObjectFifoStatefulTransformPass
@@ -1420,8 +1422,9 @@ struct AIEObjectFifoStatefulTransformPass
         std::map<std::pair<ObjectFifoCreateOp, ObjectFifoPort>,
                  arith::ConstantOp>
             constantSizes;
-        std::map<std::pair<ObjectFifoCreateOp, ObjectFifoPort>, Value>
-            counterSlots;
+        std::map<std::pair<ObjectFifoCreateOp, ObjectFifoPort>,
+                 memref::AllocaOp>
+            currentObjectBookkeepingMemref;
 
         builder.setInsertionPointToStart(&(coreOp.getBody().front()));
         Value initVal = arith::ConstantOp::create(builder, coreOp.getLoc(),
@@ -1444,22 +1447,21 @@ struct AIEObjectFifoStatefulTransformPass
                 arith::ConstantOp::create(builder, initVal.getLoc(),
                                           builder.getI32IntegerAttr(op.size()));
             constantSizes[{op, port}] = size;
-            Value slot =
+            memref::AllocaOp slot =
                 memref::AllocaOp::create(builder, coreOp.getLoc(), scalarTy);
-            slot.getDefiningOp()->setAttr(kBookkeepingSlotAttrName,
-                                          builder.getUnitAttr());
-            counterSlots[{op, port}] = slot;
+            slot->setAttr(kBookkeepingSlotAttrName, builder.getUnitAttr());
+            currentObjectBookkeepingMemref[{op, port}] = slot;
             int portNum = port == ObjectFifoPort::Produce ? 0 : 1;
-            state.rotationCounterSlotsPerCore[coreOp.getOperation()]
-                                             [{op, portNum}] = slot;
+            state.currentObjectBookkeepingMemrefPerCore[coreOp.getOperation()]
+                                                       [{op, portNum}] = slot;
           }
         });
 
         // Initialize all counter slots to 0.
-        for (auto &i : counterSlots) {
-          builder.setInsertionPointAfterValue(i.second);
-          memref::StoreOp::create(builder, coreOp.getLoc(), initVal, i.second,
-                                  ValueRange{});
+        for (auto &i : currentObjectBookkeepingMemref) {
+          builder.setInsertionPointAfterValue(i.second.getResult());
+          memref::StoreOp::create(builder, coreOp.getLoc(), initVal,
+                                  i.second.getResult(), ValueRange{});
         }
 
         // Walk the code:
@@ -1472,9 +1474,10 @@ struct AIEObjectFifoStatefulTransformPass
           if (auto relOp = dyn_cast<ObjectFifoReleaseOp>(op)) {
             ObjectFifoCreateOp createOp = relOp.getObjectFifo();
             ObjectFifoPort port = relOp.getPort();
-            updateGlobalNextIndex(builder, relOp,
-                                  counterSlots[{createOp, port}],
-                                  constantSizes[{createOp, port}]);
+            updateGlobalNextIndex(
+                builder, relOp,
+                currentObjectBookkeepingMemref[{createOp, port}].getResult(),
+                constantSizes[{createOp, port}]);
           }
           if (auto acqOp = dyn_cast<ObjectFifoAcquireOp>(op)) {
             std::vector<ObjectFifoSubviewAccessOp> accessOps;
@@ -1493,7 +1496,8 @@ struct AIEObjectFifoStatefulTransformPass
               // Create a switch for each subview access
               builder.setInsertionPointAfter(accessOp);
               auto switchIndexAsInteger = memref::LoadOp::create(
-                  builder, acqOp.getLoc(), counterSlots[{createOp, port}],
+                  builder, acqOp.getLoc(),
+                  currentObjectBookkeepingMemref[{createOp, port}].getResult(),
                   ValueRange{});
               auto switchIndex = arith::IndexCastOp::create(
                   builder, acqOp.getLoc(), builder.getIndexType(),
@@ -2682,13 +2686,15 @@ struct AIEObjectFifoStatefulTransformPass
           dynamicLoweringTiles.count(coreOp.getTileOp()) > 0 &&
           !device.getTargetModel().hasProperty(
               AIETargetModel::UsesSemaphoreLocks);
-      DenseMap<std::pair<ObjectFifoCreateOp, int>, Value> &counterSlots =
-          state.rotationCounterSlotsPerCore[coreOp.getOperation()];
+      DenseMap<std::pair<ObjectFifoCreateOp, int>, memref::AllocaOp>
+          &currentObjectBookkeepingMemref =
+              state.currentObjectBookkeepingMemrefPerCore[coreOp.getOperation()];
       // Per-(fifo, port) scalar "held" counter slots. Each is a promotable
       // rank-0 memref.alloca, so -mem2reg threads it through the enclosing
       // scf.for loops as an iter_arg and the computed lock counts fold to
       // constants once the loops are unrolled.
-      DenseMap<std::pair<ObjectFifoCreateOp, int>, Value> heldSlots;
+      DenseMap<std::pair<ObjectFifoCreateOp, int>, memref::AllocaOp>
+          heldCountBookkeepingMemref;
       if (isDynamicCore) {
         // Ordered list of (fifo, port) keys, so that the counter slots are
         // created deterministically (a plain DenseMap iteration order is not
@@ -2696,8 +2702,8 @@ struct AIEObjectFifoStatefulTransformPass
         SmallVector<std::pair<ObjectFifoCreateOp, int>> slotOrder;
         auto assignSlot = [&](ObjectFifoCreateOp fifo, ObjectFifoPort p) {
           int pn = p == ObjectFifoPort::Produce ? 0 : 1;
-          if (!heldSlots.count({fifo, pn})) {
-            heldSlots[{fifo, pn}] = Value();
+          if (!heldCountBookkeepingMemref.count({fifo, pn})) {
+            heldCountBookkeepingMemref[{fifo, pn}] = memref::AllocaOp();
             slotOrder.push_back({fifo, pn});
           }
         };
@@ -2714,15 +2720,14 @@ struct AIEObjectFifoStatefulTransformPass
           Value zero = arith::ConstantOp::create(builder, coreOp.getLoc(),
                                                  builder.getI32IntegerAttr(0));
           for (auto &key : slotOrder) {
-            Value slot =
+            memref::AllocaOp slot =
                 memref::AllocaOp::create(builder, coreOp.getLoc(), heldTy);
-            slot.getDefiningOp()->setAttr(kBookkeepingSlotAttrName,
-                                          builder.getUnitAttr());
+            slot->setAttr(kBookkeepingSlotAttrName, builder.getUnitAttr());
             // Initialize the counter right after the alloca so it dominates all
             // of its stores.
-            memref::StoreOp::create(builder, coreOp.getLoc(), zero, slot,
-                                    ValueRange{});
-            heldSlots[key] = slot;
+            memref::StoreOp::create(builder, coreOp.getLoc(), zero,
+                                    slot.getResult(), ValueRange{});
+            heldCountBookkeepingMemref[key] = slot;
           }
         }
       }
@@ -2762,14 +2767,16 @@ struct AIEObjectFifoStatefulTransformPass
         // account for repetition
         if (op.getRepeatCount().has_value())
           numLocks *= op.getRepeatCount().value();
-        if (isDynamicBinaryCore && counterSlots.count({op, portNum})) {
+        if (isDynamicBinaryCore &&
+            currentObjectBookkeepingMemref.count({op, portNum})) {
           // Binary locks (AIE1): the released locks are those of the oldest
           // held elements, at rotation offset 0 relative to the counter (which
           // still points at the next element to release; the counter is
           // advanced afterwards by the buffer-addressing bookkeeping).
           createUseLocksDynamicBinary(
-              builder, op, port, counterSlots[{op, portNum}], /*baseOffset=*/0,
-              numLocks, LockAction::Release, state);
+              builder, op, port,
+              currentObjectBookkeepingMemref[{op, portNum}].getResult(),
+              /*baseOffset=*/0, numLocks, LockAction::Release, state);
         } else {
           createUseLocks(builder, op, port, relPerFifo, numLocks,
                          LockAction::Release, state);
@@ -2777,8 +2784,8 @@ struct AIEObjectFifoStatefulTransformPass
 
         // For dynamic tiles, decrement the runtime "held" counter by the
         // number of released elements.
-        if (isDynamicCore && heldSlots.count({op, portNum})) {
-          Value slot = heldSlots[{op, portNum}];
+        if (isDynamicCore && heldCountBookkeepingMemref.count({op, portNum})) {
+          Value slot = heldCountBookkeepingMemref[{op, portNum}].getResult();
           Value held = memref::LoadOp::create(builder, releaseOp.getLoc(), slot,
                                               ValueRange{});
           Value m = arith::ConstantOp::create(
@@ -2846,11 +2853,11 @@ struct AIEObjectFifoStatefulTransformPass
         // addressing for size > 1 fifos is handled separately (via runtime
         // index_switch in dynamicGlobalObjectFifos); the subview references
         // built below are only used for size-1 fifos.
-        if (isDynamicCore && heldSlots.count({op, portNum})) {
+        if (isDynamicCore && heldCountBookkeepingMemref.count({op, portNum})) {
           builder.setInsertionPointAfter(acquireOp);
           int acqNum = acquireOp.acqNumber();
           int repeat = op.getRepeatCount().value_or(1);
-          Value slot = heldSlots[{op, portNum}];
+          Value slot = heldCountBookkeepingMemref[{op, portNum}].getResult();
           Value held = memref::LoadOp::create(builder, acquireOp.getLoc(), slot,
                                               ValueRange{});
           Value nVal = arith::ConstantOp::create(
@@ -2947,12 +2954,14 @@ struct AIEObjectFifoStatefulTransformPass
           numCreate *= op.getRepeatCount().value();
 
         auto dev = op->getParentOfType<DeviceOp>();
-        if (isDynamicBinaryCore && counterSlots.count({op, portNum})) {
+        if (isDynamicBinaryCore &&
+            currentObjectBookkeepingMemref.count({op, portNum})) {
           // Binary locks (AIE1): select the rotating lock at runtime. The new
           // locks are those of the elements acquired past the ones already
           // held, i.e. at rotation offset `alreadyAcq` relative to the counter.
           createUseLocksDynamicBinary(
-              builder, op, port, counterSlots[{op, portNum}],
+              builder, op, port,
+              currentObjectBookkeepingMemref[{op, portNum}].getResult(),
               /*baseOffset=*/alreadyAcq, numCreate, LockAction::Acquire, state);
         } else if (auto &targetArch = dev.getTargetModel();
                    targetArch.getTargetArch() == AIEArch::AIE1)
