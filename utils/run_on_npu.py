@@ -5,6 +5,7 @@
 
 from collections import deque
 import contextlib
+import errno
 import os
 import shutil
 import subprocess
@@ -145,16 +146,19 @@ def run_command(command: list[str]) -> tuple[int, str]:
 
 
 # Main entry point.
-# The NPU cannot sustain concurrent dispatch, so device runs must be serialized.
-# Serialize around the dispatch only, so lit is free to run the tests in parallel.
+# Bound how many device runs are in flight at once, rather than allowing one.
 #   * flock is released by the kernel when the fd closes or the process dies, so
 #     a crashed or timed-out test cannot wedge the queue.
-#   * the lock file lives at a stable path and is never unlinked: flock is per
-#     INODE, so deleting and recreating the file would let two holders through.
+#   * the lock files live at stable paths and are never unlinked: flock is per
+#     INODE, so deleting and recreating one would let two holders through.
 #   * it is machine-wide, which is stronger than a lit parallelism group; that
-#     only serializes within one lit invocation, and gives nothing if a second
-#     job on the same host also touches the device.
-# AIE_NPU_NO_DEVICE_LOCK=1 opts out, for tests that exercise concurrency itself.
+#     only bounds one lit invocation, and gives nothing if a second job on the
+#     same host also touches the device.
+# AIE_NPU_MAX_CONCURRENT_DISPATCH sets the bound; 1 restores strict serialization.
+# AIE_NPU_NO_DEVICE_LOCK=1 opts out entirely, for tests that exercise concurrency.
+DEFAULT_MAX_CONCURRENT_DISPATCH = 8
+
+
 @contextlib.contextmanager
 def device_lock(npu_kind: str):
     if os.environ.get("AIE_NPU_NO_DEVICE_LOCK"):
@@ -166,18 +170,41 @@ def device_lock(npu_kind: str):
     if fcntl is None:
         yield
         return
-    lock_dir = os.environ.get("XDG_RUNTIME_DIR") or tempfile.gettempdir()
-    lock_path = os.path.join(lock_dir, f"mlir-aie-npu-{npu_kind}.lock")
-    fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o666)
-    t0 = time.perf_counter()
     try:
-        fcntl.flock(fd, fcntl.LOCK_EX)
-        waited = time.perf_counter() - t0
-        if waited > 1.0:
-            log(f"waited {waited:.1f}s for the {npu_kind} device lock")
+        slots = int(os.environ.get("AIE_NPU_MAX_CONCURRENT_DISPATCH", ""))
+    except ValueError:
+        slots = DEFAULT_MAX_CONCURRENT_DISPATCH
+    slots = max(1, slots)
+    lock_dir = os.environ.get("XDG_RUNTIME_DIR") or tempfile.gettempdir()
+    # A counting semaphore built from `slots` lock files: probe each without
+    # blocking and take the first that is free. Blocking on one chosen file
+    # instead would queue behind that holder while another slot sat idle.
+    fd = None
+    t0 = time.perf_counter()
+    while fd is None:
+        for i in range(slots):
+            path = os.path.join(lock_dir, f"mlir-aie-npu-{npu_kind}.{i}.lock")
+            candidate = os.open(path, os.O_CREAT | os.O_RDWR, 0o666)
+            try:
+                fcntl.flock(candidate, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                fd = candidate
+                break
+            except OSError as e:
+                os.close(candidate)
+                # Only contention means "try the next slot". Anything else --
+                # a lock_dir whose filesystem has no flock, say -- would spin
+                # here forever, which is the wedged job this lock exists to avoid.
+                if e.errno not in (errno.EWOULDBLOCK, errno.EAGAIN, errno.EACCES):
+                    raise
+        if fd is None:
+            time.sleep(0.01)
+    waited = time.perf_counter() - t0
+    if waited > 1.0:
+        log(f"waited {waited:.1f}s for one of {slots} {npu_kind} device slots")
+    try:
         yield
     finally:
-        os.close(fd)  # releases the lock
+        os.close(fd)  # releases the slot
 
 
 def main() -> int:
