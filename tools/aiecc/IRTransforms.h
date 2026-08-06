@@ -292,6 +292,41 @@ inline std::string downgradeIRForPeano(llvm::StringRef ir) {
   replaceAll("getelementptr inbounds nuw", "getelementptr inbounds");
   erasePattern("nocreateundeforpoison",
                [](char c) { return c == ' ' || c == '\t'; });
+  // LLVM 23 dropped the size operand of `llvm.lifetime.start`/`.end`; Peano
+  // still declares it `immarg`, so the size-less form fails its verifier
+  // ("immarg operand has non-immediate parameter"). Put it back -- `-1` is
+  // "whole object", what LLVM's own auto-upgrade uses. Matching the marker name
+  // covers every address space; already-sized calls are skipped, so this is
+  // idempotent.
+  for (llvm::StringRef marker :
+       {"@llvm.lifetime.start.", "@llvm.lifetime.end."}) {
+    for (size_t p = 0;
+         (p = result.find(marker.str(), p)) != std::string::npos;) {
+      size_t paren = result.find('(', p);
+      size_t eol = result.find('\n', p);
+      if (paren == std::string::npos ||
+          (eol != std::string::npos && paren > eol)) {
+        p += marker.size();
+        continue;
+      }
+      // The size-less form is the one whose first operand is the pointer.
+      size_t arg = paren + 1;
+      if (arg + 3 > result.size() || result.compare(arg, 3, "ptr") != 0 ||
+          (arg + 3 < result.size() && isIdentChar(result[arg + 3]))) {
+        p = arg;
+        continue;
+      }
+      size_t bol = result.rfind('\n', p);
+      bol = (bol == std::string::npos) ? 0 : bol + 1;
+      bool isDeclaration = llvm::StringRef(result)
+                               .substr(bol, p - bol)
+                               .ltrim()
+                               .starts_with("declare");
+      std::string sizeArg = isDeclaration ? "i64 immarg, " : "i64 -1, ";
+      result.insert(arg, sizeArg);
+      p = arg + sizeArg.size();
+    }
+  }
   replaceTypedLiteral("half -inf", "half 0xHFC00");
   replaceTypedLiteral("half inf", "half 0xH7C00");
   replaceTypedLiteral("half nan", "half 0xH7E00");
@@ -337,6 +372,10 @@ inline std::string downgradeIRForPeano(llvm::StringRef ir) {
   // to skip vectorizing the matmul K-loop, scalarizing it into ~10x more
   // program memory and overflowing AIE core memory. Do not remove without
   // confirming the i8 matmul still fits program memory.
+  //
+  // Applies after the merge too: llvm-link reprints the module and reintroduces
+  // `align` (with ABI defaults) on the very instructions this stripped before
+  // linking, so a merged core would otherwise reach opt fully annotated.
   {
     const std::string alignPat = ", align ";
     size_t pos = 0;
