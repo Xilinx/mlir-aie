@@ -292,18 +292,45 @@ struct AIEGenerateColumnControlOverlayPass
 
     // Collect existing TileOps
     llvm::MapVector<AIE::TileID, AIE::TileOp> tiles;
-    llvm::SmallSet<int, 1> occupiedCols;
-    for (auto tile : device.getOps<AIE::TileOp>()) {
-      int colIndex = tile.colIndex();
-      int rowIndex = tile.rowIndex();
-      tiles[{colIndex, rowIndex}] = tile;
-      occupiedCols.insert(colIndex);
+    for (auto tile : device.getOps<AIE::TileOp>())
+      tiles[{tile.colIndex(), tile.rowIndex()}] = tile;
+    if (tiles.empty())
+      return success();
+
+    int minOccupiedCol = tiles.front().first.col;
+    int maxOccupiedCol = minOccupiedCol;
+    int maxOccupiedRow = 0;
+    llvm::SmallSet<int, 4> declaredCols;
+    for (auto &[tId, tOp] : tiles) {
+      minOccupiedCol = std::min(minOccupiedCol, tId.col);
+      maxOccupiedCol = std::max(maxOccupiedCol, tId.col);
+      maxOccupiedRow = std::max(maxOccupiedRow, tId.row);
+      declaredCols.insert(tId.col);
+    }
+
+    // Both widenings below are scoped to the control-packet configuration path
+    // (`route-shim-to-tile-ctrl`); do not add tile declarations if the control
+    // overlay was not requested, as to not congest routing needlessly.
+    SmallVector<int> colsToCover;
+    if (clRouteShimDmaToTileCTRL) {
+      // Cover the full column range between the leftmost and rightmost occupied
+      // column, not just the occupied columns. This is required so that a shim
+      // DMA allocation is later emitted for the intermediate columns that a
+      // flow will route through.
+      for (int col = minOccupiedCol; col <= maxOccupiedCol; col++)
+        colsToCover.push_back(col);
+    } else {
+      for (auto &[tId, tOp] : tiles)
+        if (!llvm::is_contained(colsToCover, tId.col))
+          colsToCover.push_back(tId.col);
     }
 
     auto tileIDMap = getTileToControllerIdMap(true, targetModel);
-    for (int col : occupiedCols) {
+    for (int col : colsToCover) {
       builder.setInsertionPointToStart(device.getBody());
       AIE::TileOp shimTile = TileOp::getOrCreate(builder, device, col, 0);
+      if (clRouteShimDmaToTileCTRL)
+        tiles[{col, 0}] = shimTile;
 
       if (clRouteShimCTRLToTCT == "all-tiles" ||
           clRouteShimCTRLToTCT == "shim-only") {
@@ -332,6 +359,16 @@ struct AIEGenerateColumnControlOverlayPass
           if (tId.col == col)
             maxRow = std::max(maxRow, tId.row);
         }
+        // A column the design declared no tile in is only in range because
+        // flows route through it, and such a flow can traverse it at any row up
+        // to the highest row in use. getRowToShimChanMap splits the rows into
+        // one contiguous range per shim channel, so covering only the shim row
+        // here would allocate just one of the channels its packets get
+        // addressed to. Test against the columns the design itself declared,
+        // not against `tiles`, which now also holds the shim materialized just
+        // above.
+        if (!declaredCols.contains(col))
+          maxRow = maxOccupiedRow;
         SmallVector<AIE::TileOp> tilesOnCol;
         for (int row = 0; row <= maxRow; row++) {
           auto tOp = TileOp::getOrCreate(builder, device, col, row);

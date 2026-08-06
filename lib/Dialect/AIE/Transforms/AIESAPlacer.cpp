@@ -1199,7 +1199,7 @@ LogicalResult SAPlacer::collectAndBuildModel(DeviceOp device) {
     auto *tileOp = coreOp.getTile().getDefiningOp();
     if (!tileOp || !isa<LogicalTileOp>(tileOp))
       return;
-    stackSizes[tileOp] = coreOp.getStackSize();
+    stackSizes[tileOp] = coreOp.getEffectiveStackSize();
   });
 
   // Build net model, fifo buffer info, and cascade groups

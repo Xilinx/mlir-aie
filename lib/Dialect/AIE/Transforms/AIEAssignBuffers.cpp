@@ -182,7 +182,7 @@ static bool basicAllocation(TileOp tile) {
   int64_t stacksize = 0;
   int64_t address = 0;
   if (auto core = tile.getCoreOp()) {
-    stacksize = core.getStackSize();
+    stacksize = core.getEffectiveStackSize();
     address += stacksize;
   }
 
@@ -544,7 +544,7 @@ static bool simpleBankAwareAllocation(TileOp tile) {
   for (int i = 0; i < numBanks; i++)
     nextAddrInBanks.push_back(bankSize * i);
   if (auto core = tile.getCoreOp()) {
-    stacksize = core.getStackSize();
+    stacksize = core.getEffectiveStackSize();
     nextAddrInBanks[0] += stacksize;
   }
   fillBankLimits(numBanks, bankSize, bankLimits);

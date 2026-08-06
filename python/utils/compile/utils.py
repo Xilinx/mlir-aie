@@ -464,14 +464,15 @@ def compile_mlir_module(
     if use_chess:
         # Chess-driven aiecc.  --unified runs all cores' xchesscc invocations
         # in a single Chess process to amortise startup cost; matches the
-        # makefile-common ``aiecc_chess_flags=--unified`` recipe.
+        # makefile-common ``aiecc_chess_flags=--unified`` recipe.  Chess must
+        # be named explicitly: aiecc no longer defaults to it.
         args = [
             "--unified",
+            "--xchesscc",
+            "--xbridge",
         ]
     else:
         args = [
-            "--no-xchesscc",
-            "--no-xbridge",
             f"--peano={config.peano_install_dir()}",
         ]
     if full_elf_path:

@@ -244,6 +244,12 @@ include(HandleLLVMOptions)
 include(ExternalProject)
 include(CMakeDependentOption)
 
+# The AIE event codegen (include/aie/Dialect/AIE/IR) runs on every build, but
+# mlir_configure_python_dev_packages() only sets Python3_EXECUTABLE when
+# AIE_ENABLE_BINDINGS_PYTHON is on. Same minimum version, so the two agree.
+include(MLIRDetectPythonEnv)
+find_package(Python3 ${MLIR_MINIMUM_PYTHON_VERSION} REQUIRED COMPONENTS Interpreter)
+
 include_directories(${LLVM_INCLUDE_DIRS})
 include_directories(${MLIR_INCLUDE_DIRS})
 include_directories(${PROJECT_SOURCE_DIR}/include)
@@ -455,11 +461,21 @@ if (NOT INSTRUMENTED_COVERAGE_FILES)
   )
 endif()
 
+# Report coverage against every tool the lit suite exercises, not just aie-opt.
+# check-aie also runs aie-translate and aiecc (a compiled C++ driver); llvm-cov
+# merges counters across the objects, so code reached only through those tools is
+# no longer reported as uncovered.
+set(AIE_COVERAGE_BINARIES
+  ${CMAKE_BINARY_DIR}/bin/aie-opt
+  ${CMAKE_BINARY_DIR}/bin/aie-translate
+  ${CMAKE_BINARY_DIR}/bin/aiecc)
+
 add_custom_target(generate-aie-coverage-report
   COMMAND ${Python3_EXECUTABLE} ${AIE_SOURCE_DIR}/utils/prepare-code-coverage-artifact.py
   ${LLVM_PROFDATA} ${LLVM_COV} ${LLVM_PROFILE_DATA_DIR}
   ${REPORT_DIR}
-  ${CMAKE_BINARY_DIR}/bin/aie-opt
-  --unified-report --restrict ${INSTRUMENTED_COVERAGE_FILES}
+  ${AIE_COVERAGE_BINARIES}
+  --unified-report --emit-lcov ${REPORT_DIR}/coverage.lcov
+  --restrict ${INSTRUMENTED_COVERAGE_FILES}
   WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
   DEPENDS check-aie) # Run tests

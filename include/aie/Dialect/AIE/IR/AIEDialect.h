@@ -242,16 +242,6 @@ namespace llvm {
 // Functions hash just like pointers.
 template <>
 struct DenseMapInfo<xilinx::AIE::ObjectFifoAcquireOp> {
-  static xilinx::AIE::ObjectFifoAcquireOp getEmptyKey() {
-    auto *pointer = DenseMapInfo<void *>::getEmptyKey();
-    return xilinx::AIE::ObjectFifoAcquireOp::getFromOpaquePointer(pointer);
-  }
-
-  static xilinx::AIE::ObjectFifoAcquireOp getTombstoneKey() {
-    auto *pointer = DenseMapInfo<void *>::getTombstoneKey();
-    return xilinx::AIE::ObjectFifoAcquireOp::getFromOpaquePointer(pointer);
-  }
-
   static unsigned getHashValue(xilinx::AIE::ObjectFifoAcquireOp val) {
     return hash_value(val.getAsOpaquePointer());
   }
@@ -267,16 +257,6 @@ namespace llvm {
 // Functions hash just like pointers.
 template <>
 struct DenseMapInfo<xilinx::AIE::ObjectFifoCreateOp> {
-  static xilinx::AIE::ObjectFifoCreateOp getEmptyKey() {
-    auto *pointer = DenseMapInfo<void *>::getEmptyKey();
-    return xilinx::AIE::ObjectFifoCreateOp::getFromOpaquePointer(pointer);
-  }
-
-  static xilinx::AIE::ObjectFifoCreateOp getTombstoneKey() {
-    auto *pointer = DenseMapInfo<void *>::getTombstoneKey();
-    return xilinx::AIE::ObjectFifoCreateOp::getFromOpaquePointer(pointer);
-  }
-
   static unsigned getHashValue(xilinx::AIE::ObjectFifoCreateOp val) {
     return hash_value(val.getAsOpaquePointer());
   }
@@ -291,14 +271,6 @@ template <>
 struct DenseMapInfo<xilinx::AIE::DMAChannel> {
   using FirstInfo = DenseMapInfo<xilinx::AIE::DMAChannelDir>;
   using SecondInfo = DenseMapInfo<int>;
-
-  static xilinx::AIE::DMAChannel getEmptyKey() {
-    return {FirstInfo::getEmptyKey(), SecondInfo::getEmptyKey()};
-  }
-
-  static xilinx::AIE::DMAChannel getTombstoneKey() {
-    return {FirstInfo::getTombstoneKey(), SecondInfo::getTombstoneKey()};
-  }
 
   static unsigned getHashValue(const xilinx::AIE::DMAChannel &d) {
     return detail::combineHashValue(FirstInfo::getHashValue(d.direction),
@@ -315,14 +287,6 @@ template <>
 struct DenseMapInfo<xilinx::AIE::Port> {
   using FirstInfo = DenseMapInfo<xilinx::AIE::WireBundle>;
   using SecondInfo = DenseMapInfo<int>;
-
-  static xilinx::AIE::Port getEmptyKey() {
-    return {FirstInfo::getEmptyKey(), SecondInfo::getEmptyKey()};
-  }
-
-  static xilinx::AIE::Port getTombstoneKey() {
-    return {FirstInfo::getTombstoneKey(), SecondInfo::getTombstoneKey()};
-  }
 
   static unsigned getHashValue(const xilinx::AIE::Port &d) {
     return detail::combineHashValue(FirstInfo::getHashValue(d.bundle),

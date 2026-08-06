@@ -6,8 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: %aiecc --unified %s
-// RUN: %aiecc --no-unified %s
+// RUN: %aiecc --xchesscc --xbridge --unified %s
+// RUN: %aiecc --xchesscc --xbridge --no-unified %s
 
 module @test00_itsalive {
 aie.device(xcvc1902) {

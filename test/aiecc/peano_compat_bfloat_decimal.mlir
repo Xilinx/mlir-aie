@@ -13,7 +13,7 @@
 
 // REQUIRES: peano
 
-// RUN: aiecc --no-xchesscc --no-xbridge --tmpdir %t %s
+// RUN: aiecc --tmpdir %t %s
 // RUN: FileCheck %s --input-file %t/peano-compat_main_core_0_2.ll \
 // RUN:   --implicit-check-not="bfloat {{[0-9][0-9]*\.[0-9]}}"
 // RUN: FileCheck %s --input-file %t/peano-compat_main_core_0_2.ll \

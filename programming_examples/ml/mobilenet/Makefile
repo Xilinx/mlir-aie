@@ -50,7 +50,6 @@ SA_SEED ?= 3
 build/sa_mobilenet.xclbin: build/${MLIR_FILE}_unplaced.mlir
 	mkdir -p ${@D}
 	cd ${@D} && aiecc --get-xclbin --xclbin-name=${@F} \
-		--no-xchesscc --no-xbridge \
 		--dynamic-objFifos=false \
 		--placer=sa_placer --sa-seed=$(SA_SEED) \
 		--get-npu-insts --npu-insts-name=sa_insts.bin ${<F}

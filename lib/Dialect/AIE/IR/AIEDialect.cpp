@@ -1833,6 +1833,14 @@ LogicalResult CoreOp::verify() {
                  << "' appears in both 'link_files' and 'link_merge_files'; an "
                     "artifact must be either merged or linked, not both";
     }
+  // Checked last so it does not pre-empt the diagnostics above on an op with
+  // more than one defect.
+  if (uint32_t stackSize = getEffectiveStackSize(),
+      localMem = getTargetModel(*this).getLocalMemorySize();
+      stackSize >= localMem)
+    return emitOpError("stack_size ")
+           << stackSize << " leaves no local memory for this tile's buffers ("
+           << localMem << " bytes total)";
   return success();
 }
 
@@ -1845,6 +1853,11 @@ bool CoreOp::isEmpty() {
 
 TileOp CoreOp::getTileOp() {
   return cast<TileElement>(this->getOperation()).getTileOp();
+}
+
+uint32_t CoreOp::getEffectiveStackSize() {
+  return getStackSize().value_or(
+      getTargetModel(*this).getDefaultCoreStackSize());
 }
 
 //===----------------------------------------------------------------------===//
@@ -2192,6 +2205,24 @@ llvm::SmallVector<mlir::OpFoldResult> DMABDOp::getMixedStrides() {
       getContext());
 }
 
+LogicalResult DMABDOp::verifyMixedSizesAndStrides() {
+  llvm::ArrayRef<int64_t> staticSizes =
+      getStaticSizes().value_or(llvm::ArrayRef<int64_t>{});
+  llvm::ArrayRef<int64_t> staticStrides =
+      getStaticStrides().value_or(llvm::ArrayRef<int64_t>{});
+  if (failed(mlir::verifyListOfOperandsOrIntegers(
+          *this, "sizes", staticSizes.size(), staticSizes, getSizes())))
+    return failure();
+  if (failed(mlir::verifyListOfOperandsOrIntegers(
+          *this, "strides", staticStrides.size(), staticStrides, getStrides())))
+    return failure();
+  if (staticSizes.size() != staticStrides.size())
+    return emitOpError("expected the same number of sizes (")
+           << staticSizes.size() << ") and strides (" << staticStrides.size()
+           << ")";
+  return success();
+}
+
 std::optional<llvm::SmallVector<BDDimLayoutAttr>> DMABDOp::getFoldedDimensions(
     llvm::function_ref<mlir::InFlightDiagnostic()> emitError) {
   llvm::SmallVector<mlir::OpFoldResult> sizes = getMixedSizes();
@@ -2325,23 +2356,8 @@ LogicalResult DMABDOp::verify() {
     }
   }
 
-  // The dynamic-operand count must match the kDynamic-sentinel count in each
-  // static array, and sizes/strides must agree in rank. Checked before any
-  // consumer calls getMixedValues, which crashes on a mismatch (llvm #179401).
-  llvm::ArrayRef<int64_t> staticSizes =
-      getStaticSizes().value_or(llvm::ArrayRef<int64_t>{});
-  llvm::ArrayRef<int64_t> staticStrides =
-      getStaticStrides().value_or(llvm::ArrayRef<int64_t>{});
-  if (failed(mlir::verifyListOfOperandsOrIntegers(
-          *this, "sizes", staticSizes.size(), staticSizes, getSizes())))
+  if (failed(verifyMixedSizesAndStrides()))
     return failure();
-  if (failed(mlir::verifyListOfOperandsOrIntegers(
-          *this, "strides", staticStrides.size(), staticStrides, getStrides())))
-    return failure();
-  if (staticSizes.size() != staticStrides.size())
-    return emitOpError("expected the same number of sizes (")
-           << staticSizes.size() << ") and strides (" << staticStrides.size()
-           << ")";
 
   // Fold the mixed sizes/strides to a constant BDDimLayoutAttr list for
   // verification; a runtime size/stride yields nullopt plus a diagnostic.

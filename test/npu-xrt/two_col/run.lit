@@ -7,6 +7,6 @@
 // RUN:   -std=c++20 -DNDEBUG -D__AIE_API_AIE_ADF_HPP__ -DBIT_WIDTH=8 \
 // RUN:   -I%S/../../../include -I%S/../../../third_party/aie_api/include \
 // RUN:   -c %S/threshold.cc -o ./threshold.o
-// RUN: %aiecc --no-xchesscc --no-xbridge --get-xclbin --get-npu-insts --xclbin-name=aie.xclbin --npu-insts-name=insts.bin %S/aie.mlir
+// RUN: %aiecc --get-xclbin --get-npu-insts --xclbin-name=aie.xclbin --npu-insts-name=insts.bin %S/aie.mlir
 // RUN: %host_clang %S/test.cpp -o test.exe -std=c++17 -Wall %xrt_flags %host_link_flags %test_utils_flags
 // RUN: %run_on_npu1% ./test.exe -x aie.xclbin -k MLIR_AIE -i insts.bin
