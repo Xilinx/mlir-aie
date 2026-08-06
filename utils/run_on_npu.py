@@ -19,7 +19,21 @@ except ImportError:  # Windows
     fcntl = None
 
 # Retry configuration
-TRANSIENT_FAILURE_TEXT = "No such device"
+#
+# GET_INFO/-22 is the driver failing to resume: on runtime-PM resume it restarts
+# the hardware contexts, aie2_config_cu() looks up a CU BO that is already gone,
+# and the -EINVAL surfaces on whatever ioctl triggered the resume. dmesg shows
+#   aie2_config_cu: Lookup GEM object failed
+#   aie2_hwctx_restart: Config cu failed, ret -22
+#   amdxdna_pm_resume_get: Resume failed: -22
+# XRT raises it as an uncaught xrt_core::system_error, so the test aborts. Like
+# the other signatures this cannot mask a wrong result: it fails before the
+# design runs, so there is no output to compare, and a deterministic failure
+# still fails every attempt.
+TRANSIENT_FAILURE_TEXT = (
+    "No such device",
+    "DRM_IOCTL_AMDXDNA_GET_INFO IOCTL failed (err=-22)",
+)
 MAX_ATTEMPTS = 3
 TAIL_LINES = 200
 
@@ -231,7 +245,7 @@ def main() -> int:
             returncode, recent_output = run_command(launched_command)
         if returncode == 0:
             return 0
-        if TRANSIENT_FAILURE_TEXT not in recent_output:
+        if not any(text in recent_output for text in TRANSIENT_FAILURE_TEXT):
             return returncode
         emit_failure_diagnostics(xrt_dir, attempt)
         if attempt == MAX_ATTEMPTS:
