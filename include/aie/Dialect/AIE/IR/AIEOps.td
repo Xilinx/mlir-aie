@@ -2047,6 +2047,10 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
         OptionalAttr<DenseI32ArrayAttr>:$cons_dma_channels,
         InitValuesArrayAttr:$initValues,
         OptionalAttr<BDPadLayoutArrayAttr>:$padDimensions,
+        // Constant pad value for padDimensions (raw 32-bit CONSTANT_PAD_VALUE
+        // stream word; default 0). Routed by the lowering to the memtile MM2S
+        // channel that applies the padding. See aie.dma_start's pad_value.
+        DefaultValuedOptionalAttr<AIEI32Attr, "0">:$pad_value,
         OptionalAttr<AIEI32Attr>:$iter_count
   );
 

@@ -79,6 +79,7 @@ class ObjectFifo(Resolvable):
         dims_from_stream_per_cons: StreamDims | None = None,
         plio: bool = False,
         pad_dimensions: PadDims | None = None,
+        pad_value: int = 0,
         disable_synchronization: bool = False,
         repeat_count: int | None = None,
         delegate_tile: Tile | None = None,
@@ -105,6 +106,11 @@ class ObjectFifo(Resolvable):
                 buffer, described as ``(pad_before, pad_after)`` pairs from highest to lowest
                 dimension. Lowers to the ``padDimensions`` attribute on the underlying
                 ``aie.objectfifo`` op. Defaults to None.
+            pad_value (int, optional): Constant value used to fill the region created by
+                ``pad_dimensions``. It is the raw 32-bit CONSTANT_PAD_VALUE stream word (the DMA
+                inserts one per padded 32-bit word), so a sub-32b element fill must be pre-packed
+                across the word (e.g. ``0x07070707`` to fill an int8 region with ``0x07``). Only
+                valid together with ``pad_dimensions`` (MemTile padding). Defaults to 0.
             disable_synchronization (bool, optional): When True, disables lock-based
                 synchronization on the ObjectFifo. Defaults to False.
             repeat_count (int | None, optional): If set, causes the MemTile DMA to replay the
@@ -152,6 +158,7 @@ class ObjectFifo(Resolvable):
         self._dims_from_stream_per_cons = dims_from_stream_per_cons
         self._plio = plio
         self._pad_dimensions = pad_dimensions
+        self._pad_value = pad_value
         if name is None:
             self.name = f"of{next(ObjectFifo._of_index)}"
         else:
@@ -437,6 +444,7 @@ class ObjectFifo(Resolvable):
                 dimensionsFromStreamPerConsumer=dims_from_stream_per_cons,
                 plio=self._plio,
                 padDimensions=self._pad_dimensions,
+                pad_value=self._pad_value or None,
                 iter_count=self._iter_count,
                 disable_synchronization=self._disable_synchronization or None,
                 via_DMA=self._via_DMA or None,
