@@ -489,11 +489,8 @@ LogicalResult ObjectFifoCreateOp::verify() {
       return emitError("`repeat_count` unavailable for shim tiles");
   }
 
-  // A nonzero pad_value only has meaning together with padDimensions (it fills
-  // the region the padding creates); on its own it would silently no-op. The
-  // memtile-only restriction is enforced downstream via padDimensions.
   if (getPadValue() != 0 && !getPadDimensions().has_value())
-    return emitError("`pad_value` requires `padDimensions`");
+    return emitError("`padValue` requires `padDimensions`");
 
   if (getAieStreamPort().has_value()) {
     if (!getAieStream().has_value())

@@ -7,7 +7,7 @@
 
 // RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=false" %s | FileCheck %s
 
-// An objectfifo carrying both padDimensions and pad_value lowers the pad
+// An objectfifo carrying both padDimensions and padValue lowers the pad
 // GEOMETRY onto the emitted aie.dma_bd and routes the pad VALUE onto the memtile
 // MM2S channel op (aie.dma_start) that applies the padding -- matching the
 // hardware split (geometry per-BD, value per-MM2S-channel register).
@@ -26,7 +26,7 @@ module {
     aie.objectfifo @objFifo_in1(%tile_0_1, {%tile_0_2}, 2 : i32) : !aie.objectfifo<memref<64x64xi8>>
     aie.objectfifo.link [@objFifo_in0] -> [@objFifo_in1] ([] [])
     aie.objectfifo @objFifo_out1(%tile_0_2, {%tile_0_1}, 2 : i32) : !aie.objectfifo<memref<64x64xi8>>
-    aie.objectfifo @objFifo_out0(%tile_0_1 dimensionsToStream [<size = 61, stride = 56>, <size = 56, stride = 1>], {%tile_0_0}, 2 : i32) {padDimensions = #aie<bd_pad_layout_array[<const_pad_before = 2, const_pad_after = 1>, <const_pad_before = 4, const_pad_after = 4>]>, pad_value = 7 : i32} : !aie.objectfifo<memref<64x64xi8>>
+    aie.objectfifo @objFifo_out0(%tile_0_1 dimensionsToStream [<size = 61, stride = 56>, <size = 56, stride = 1>], {%tile_0_0}, 2 : i32) {padDimensions = #aie<bd_pad_layout_array[<const_pad_before = 2, const_pad_after = 1>, <const_pad_before = 4, const_pad_after = 4>]>, padValue = 7 : i32} : !aie.objectfifo<memref<64x64xi8>>
     aie.objectfifo.link [@objFifo_out1] -> [@objFifo_out0] ([] [])
     %core_0_2 = aie.core(%tile_0_2) {
       %subview = aie.objectfifo.acquire @objFifo_in1 (Consume, 1) : !aie.objectfifosubview<memref<64x64xi8>>

@@ -444,7 +444,7 @@ class ObjectFifo(Resolvable):
                 dimensionsFromStreamPerConsumer=dims_from_stream_per_cons,
                 plio=self._plio,
                 padDimensions=self._pad_dimensions,
-                pad_value=(
+                padValue=(
                     pack_pad_value(
                         self._pad_value,
                         np.dtype(np_ndarray_type_get_dtype(self._obj_type)).itemsize,
