@@ -959,6 +959,8 @@ class ObjectFifoHandle(Resolvable):
         dims_from_stream: list[StreamDims] | None = None,
         plio: bool = False,
         repeat_counts: list[int | None] | None = None,
+        pad_dimensions: list[PadDims | None] | None = None,
+        pad_value: list[int] | None = None,
     ) -> list[ObjectFifo]:
         """Split the data from an ObjectFifoConsumer handle by sending it to producers in N newly constructed ObjectFifos.
 
@@ -1018,6 +1020,18 @@ class ObjectFifoHandle(Resolvable):
         elif len(repeat_counts) != num_subfifos:
             raise ValueError("Number of repeat_counts does not match number of offsets")
 
+        if pad_dimensions is None:
+            pad_dimensions = [None for _ in range(num_subfifos)]
+        elif len(pad_dimensions) != num_subfifos:
+            raise ValueError(
+                "Number of pad_dimensions does not match number of offsets"
+            )
+
+        if pad_value is None:
+            pad_value = [0 for _ in range(num_subfifos)]
+        elif len(pad_value) != num_subfifos:
+            raise ValueError("Number of pad_value does not match number of offsets")
+
         # Create subfifos
         subfifos = []
         for i in range(num_subfifos):
@@ -1030,6 +1044,8 @@ class ObjectFifoHandle(Resolvable):
                     dims_from_stream_per_cons=dims_from_stream[i],
                     plio=plio,
                     repeat_count=repeat_counts[i],
+                    pad_dimensions=pad_dimensions[i],
+                    pad_value=pad_value[i],
                 )
             )
 
@@ -1048,6 +1064,8 @@ class ObjectFifoHandle(Resolvable):
         dims_from_stream: StreamDims | None = None,
         plio: bool = False,
         repeat_count: int | None = None,
+        pad_dimensions: PadDims | None = None,
+        pad_value: int = 0,
     ) -> ObjectFifo:
         """Forward an ObjectFifoHandle of type consumer to a newly-constructed ObjectFifo.
 
@@ -1063,6 +1081,11 @@ class ObjectFifoHandle(Resolvable):
             dims_from_stream (StreamDims | None, optional): The dimensions from stream for the new ObjectFifo. Defaults to None.
             plio (bool, optional): Set plio on each new ObjectFifo. Defaults to False.
             repeat_count (int | None, optional): MemTile DMA repeat count for the new ObjectFifo (see ObjectFifo.repeat_count). Defaults to None.
+            pad_dimensions (PadDims | None, optional): Per-dimension (before, after) constant-pad
+                counts for the forwarded (memtile) ObjectFifo. The forward runs on a MemTile, which
+                is where DMA constant padding is supported. Defaults to None.
+            pad_value (int, optional): Constant fill value for pad_dimensions (raw 32-bit stream
+                word; see ObjectFifo.pad_value). Defaults to 0.
 
         Raises:
             ValueError: Arguments are Validated
@@ -1088,6 +1111,8 @@ class ObjectFifoHandle(Resolvable):
             dims_from_stream=dims_from_stream_arg,
             plio=plio,
             repeat_counts=[repeat_count] if repeat_count is not None else None,
+            pad_dimensions=[pad_dimensions] if pad_dimensions is not None else None,
+            pad_value=[pad_value] if pad_value else None,
         )
         return forward_fifo[0]
 
