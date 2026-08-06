@@ -39,51 +39,10 @@ DecodedAddress decodeAddress(const DeviceModel &dev, uint64_t addr) {
 
 namespace {
 
-// Per-tile constants shared by every AIE2-family device this simulator
-// builds (AIE2/npu1, AIE2P/npu2, and the Versal xcve2802 shape, which is an
-// AIE2TargetModel subclass with no overrides for any of these). Grounded in
-// two sources that agree exactly wherever both cover a field:
-//
-//   (a) mlir-aie's AIETargetModel.h (AIE2TargetModel, the base every one of
-//       these devices derives from; BaseNPU1TargetModel/BaseNPU2TargetModel/
-//       VE2802TargetModel override only shape, never these fields):
-//         getColumnShift/getRowShift ....... AIETargetModel.h:738-739
-//         getLocalMemorySize (core data) ... AIETargetModel.h:640 (0x10000)
-//         getMemTileSize .................... AIETargetModel.h:711 (0x80000)
-//         getNumLocks (16 core/shim, 64 memtile) .. AIETargetModel.h:645-647
-//         getNumBDs (16 core/shim, 48 memtile) .... AIETargetModel.h:654-656
-//
-//   (b) aie-rt's per-generation register-init tables. The "aie2ipu" tables
-//       (real AIE2 / npu1's XAIE_DEV_GEN_AIE2IPU) and the "aie2p" tables
-//       (AIE2P / npu2's XAIE_DEV_GEN_AIE2P_STRIX_B0) are numerically
-//       IDENTICAL for every field below -- confirmed by reading both, not
-//       assumed:
-//         third_party/aie-rt/driver/src/global/xaie2ipugbl_reginit.c
-//           ProgMemSize/ProgMemHostOffset/DataMemSize: 2270-2273
-//           core data mem Size=0x10000, memtile mem Size=0x80000: 2298, 2306
-//           lock counts 16/16/64: 2358, 2383, 2408
-//           BD counts 16 (core), BD counts 48 + 6 chan (memtile): 391-405
-//           BD counts 16 + 2 chan (core-ish/shim-ish): 627-641, 878-892
-//         third_party/aie-rt/driver/src/global/xaie2pgbl_reginit.c
-//           ProgMemSize/ProgMemHostOffset/DataMemSize: 181-184
-//           core data mem Size=0x10000, memtile mem Size=0x80000: 2187, 2195
-//           lock counts 16/16/64: 2387, 2412, 2437
-//           MemTile BDs=48, NumChannels=6: 1656, 1670
-//           Core tile BDs=16, NumChannels=2: 1893, 1907
-//           Shim BDs=16, NumChannels=2: 2144, 2158
-//
-//   XAIE_BASE_ADDR = 0x40000000 has no aie-rt counterpart to cross-check --
-//   it is a constant mlir-aie itself picks when it builds the XAie_Config
-//   passed to XAie_CfgInitialize (lib/Targets/AIERT.cpp:187,264), not a
-//   property of the silicon. aie-rt just stores whatever it is given
-//   (driver/src/global/xaiegbl.c:2xx), so there is nothing in aie-rt to
-//   compare it against; it is trusted as given by the one host program that
-//   actually drives this hardware.
-//
-//   coreProgMemSize, progMemHostOffset, and every DMA-channel count are
-//   aie-rt-only: AIETargetModel.h has no field for ELF program-memory
-//   layout or per-tile-type DMA channel counts (getNumBDs covers buffer
-//   descriptors, not channels), so those four have only source (b).
+// Per-tile constants shared by every AIE2-family device this simulator builds
+// (AIE2/npu1, AIE2P/npu2, and the Versal xcve2802 shape). Each assignment
+// carries the source line it came from; docs/AIESimulator.md 8a.6 is the
+// aggregate, including which fields aie-rt is the only source for.
 DeviceModel fillAIE2Family(uint32_t numCols, uint32_t numRows,
                            uint32_t numMemTileRows, Generation gen) {
   DeviceModel dev{};
@@ -94,25 +53,16 @@ DeviceModel fillAIE2Family(uint32_t numCols, uint32_t numRows,
 
   dev.colShift = 25;         // AIETargetModel.h:738
   dev.rowShift = 20;         // AIETargetModel.h:739
-  // The HOST program's base address, which is the only one this simulator
-  // ever sees: the generated mlir_aie_init_libxaie() sets
-  // XAieConfig->BaseAddr = 0x20000000000 (lib/Targets/AIETargetXAIEV2.cpp:383)
-  // and never calls XAie_SetupPartitionConfig, so DevInst->NumCols is still 0
-  // when XAie_CfgInitialize runs and the copy at
-  // third_party/aie-rt/driver/src/global/xaiegbl.c:198-202 does take effect.
-  //
-  // Do NOT use AIERT.cpp's XAIE_BASE_ADDR (0x40000000). That is the
-  // COMPILER-side CDO path, it is a different number, and there it never even
-  // takes effect: AIERT.cpp:280 calls XAie_SetupPartitionConfig first, which
-  // makes NumCols nonzero, so the same copy is skipped and the live base stays
-  // XAIE_PARTITION_BASE_ADDR (0x0, AIERT.cpp:190). An earlier version of this
-  // file used 0x40000000 and would have rejected every access a real host
-  // program makes. Found by the aie-rt integration test, which is the whole
-  // reason that tier exists.
+  // The HOST program's base address, which is the only one this simulator sees:
+  // mlir_aie_init_libxaie() sets it and never calls XAie_SetupPartitionConfig,
+  // so NumCols is still 0 at XAie_CfgInitialize and xaiegbl.c:198-202 copies it
+  // through (AIETargetXAIEV2.cpp:383). NOT AIERT.cpp's XAIE_BASE_ADDR -- that is
+  // the compiler-side CDO path, a different number, and it does not survive that
+  // copy anyway; docs/AIESimulator.md 8a.6.
   dev.baseAddr = 0x20000000000;
 
   dev.coreDataMemSize = 0x00010000; // 64KB, AIETargetModel.h:640
-  dev.coreProgMemSize = 16 * 1024;  // aie-rt only, ProgMemSize (see above)
+  dev.coreProgMemSize = 16 * 1024;  // aie-rt ProgMemSize; no mlir-aie field
   dev.memTileMemSize = 0x00080000;  // 512KB, AIETargetModel.h:711
   // aie-rt only: XAIE2PGBL_CORE_MODULE_PROGRAM_MEMORY (xaie2pgbl_params.h:38)
   // and XAIEMLGBL_CORE_MODULE_PROGRAM_MEMORY (xaiemlgbl_params.h:41) are

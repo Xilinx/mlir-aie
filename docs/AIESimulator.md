@@ -503,6 +503,183 @@ higher-level API reached it. So `XAie_Read32` at a data-memory address and `XAie
 identically, and unless data memory is reachable through the register bus a host-side buffer access
 (`mlir_aie_read_buffer_local`, say) faults as unclaimed.
 
+### 8a.3 Where the lock semantics come from
+
+aie-rt never calls a lock API on the simulator: it reads and writes plain registers, and the semantics
+live in how those registers are wired. Two disjoint per-tile ranges matter, both taken from the
+vendored MIT-licensed AIE2/AIE2P tables in `third_party/aie-rt` rather than re-derived.
+
+**The acquire/release REQUEST range.** A read at an address that folds the signed request value into
+address bits performs the operation as a side effect and returns success in bit 0. That is the
+documented hardware mechanism, not a simulator shortcut: `xaiegbl_regdef.h:681-690`, on
+`struct XAie_LockMod`, says "the lock is acquired by reading a register", and the sim IO backend's
+blocking poll is a plain `Read32` loop with no writes (`io_backend/ext/xaie_sim.c:205-225`,
+`XAie_SimIO_MaskPoll`). Address arithmetic and field encoding come from `locks/xaie_locks_aieml.c:66-133`
+(`_XAieMl_LockAcquire` / `_XAieMl_LockRelease`):
+
+```
+acquire off = BaseAddr + LockId*LockIdOff + RelAcqOff + (v7 << 2)
+release off = BaseAddr + LockId*LockIdOff              + (v7 << 2)
+v7    = (uint8_t)LockVal & 0x7F   (xaie_locks_aieml.c:34, MASK)
+shift = 2                          (xaie_locks_aieml.c:35, SHIFT)
+success = bit 0 of the read value  (xaie_locks_aieml.c:37-39)
+```
+
+`BaseAddr`, `LockIdOff` (0x400) and `RelAcqOff` (0x200) are per tile-type fields of the vendored
+`XAie_LockMod` instances, identical between AIE2 and AIE2P (compared field by field), so `Lock.cpp`
+does not branch on generation for them: `global/xaie2pgbl_reginit.c:2384-2401` (core), `:2409-2426`
+(shim/noc), `:2434-2451` (memtile), against `global/xaiemlgbl_reginit.c:2448-2513`. The `BaseAddr`
+values are included from the vendored param headers rather than copied, so the file tracks a submodule
+bump: `XAIE2PGBL_{MEMORY,NOC,MEM_TILE}_MODULE_LOCK_REQUEST` at `xaie2pgbl_params.h:11005/19195/33546`
+and the `XAIEMLGBL_` equivalents at `xaiemlgbl_params.h:11076/19226/33533`.
+
+**The plain VALUE range** (`LockN_Value`), one 32-bit register per lock at `LockSetValBase + id*0x10`,
+a 6-bit field (mask 0x3F, DEFVAL 0), read/write with no acquire semantics
+(`locks/xaie_locks_aieml.c:150-198`). DEFVAL 0 is also the reset value, matching the all-zero row
+`chess_compiler_tests_aie2/08_tile_locks` expects before any lock is touched. Bases:
+`XAIE2PGBL_{MEMORY,NOC,MEM_TILE}_MODULE_LOCK0_VALUE` at `xaie2pgbl_params.h:10645/15919/32410`,
+`XAIEMLGBL_` at `xaiemlgbl_params.h:10716/15950/32397`.
+
+**Acquire/AcquireGreaterEqual/Release polarity** is not spelled out in aie-rt's C comments, so it is
+grounded one level up in how mlir-aie produces the signed value. Three call sites agree that
+AcquireGreaterEqual is encoded as a NEGATIVE request (magnitude = threshold) and plain Acquire is
+non-negative (exact match): `AIEOps.td:1472-1476` (the `UseLockOp` doc); `AIERT.cpp:322-333`, which
+negates on `acquireGE`; and `chess_compiler_tests_aie2/08_tile_locks/test.cpp:51-52`, which passes a
+literal `-2` to mean "wait for two releases" (`AIETargetXAIEV2.cpp:855-861` shows the generated wrapper
+forwards `value` unchanged).
+
+**One corner is not nailed down by any single source line:** whether a successful plain (non-GE)
+Acquire also decrements by the matched value, the way AcquireGreaterEqual explicitly does. `AIEOps.td`
+is silent. `Lock.cpp` decrements in both cases -- one compare-then-subtract datapath gated only by the
+sign -- because (a) the encoding gives both modes one signed 7-bit field with no separate opcode,
+(b) `Components.h` defines one `tryAcquire` entry point for both, and (c) on an exact match the
+subtraction always lands on zero, so it cannot be observed to do anything unsound. That is a coherence
+argument, not a witnessed test, and it is called out at the point in the code where it matters.
+
+### 8a.4 Where the stream-switch model comes from, and what it refuses
+
+Register offsets and field layouts come from `global/xaie2pgbl_params.h` (AIE2P / npu2), spot-checked
+byte-identical to the AIE2 map at every address used -- `STREAM_SWITCH_SLAVE_CONFIG_AIE_CORE0` = 0x3F100
+in both `xaie2pgbl_params.h:4090` and `xaiemlgbl_params.h:4221`;
+`PL_MODULE_STREAM_SWITCH_MASTER_CONFIG_TILE_CTRL` = 0x3F000 in both `xaie2pgbl_params.h:12556` and
+`xaiemlgbl_params.h:12647` -- so one table serves both `Generation` values without branching. Behaviour
+comes from `stream_switch/xaie_ss.c` and the `XAie_StrmMod` layout in `xaiegbl_regdef.h:198-231`.
+
+A header matches a slave slot when `(id & mask) == slot id`, so a SET mask bit must match rather than
+being a don't-care. mlir-aie applies that same predicate to the same two fields when checking a rule for
+false matches (`AIECreatePathFindFlows.cpp:1155`), and aie-rt writes the mask into `SlotMask` verbatim
+(`xaie_ss.c:646`), so the register field carries the polarity the IR does.
+
+Bundle naming and counts are cross-checked against mlir-aie's own model (`AIETargetModel.h`'s
+`getNumDestSwitchboxConnections` / `getNumSourceSwitchboxConnections`, implemented for AIE2 in
+`AIETargetModel.cpp:872-1019`, and the `WireBundle` enum in `AIEAttrs.td:53-60`). Every port count
+matches tile type by tile type with one exception, at `kShimLayout`: for the Shim/PL trace-slave count
+aie-rt says 2 and mlir-aie says 1. We follow aie-rt, since that is the register map this file drives.
+
+`aiesim::PortBundle` has 9 members; aie-rt's `StrmSwPortType` (`xaiegbl.h:229-240`) has the same 9 plus
+`UCTRLR` for the AIE2P microcontroller tile. `PortBundle` has no slot for it, so uC-tile stream ports are
+out of scope -- `DeviceModel`/`TileType` has no uC tile type either. mlir-aie's `WireBundle` renames Ctrl
+to TileControl and separately lists PLIO and NOC; those are shim-side names for connections aie-rt treats
+as the plain South bundle plus a distinct shim-mux block (`getNumDestShimMuxConnections`), which is not
+part of the stream switch.
+
+**Two things are NOT grounded, so the model faults rather than guessing:**
+
+* **The bit layout of a packet HEADER WORD on the wire.** aie-rt's driver only ever configures match
+  registers; nothing in the vendored tree defines which bits of an in-flight stream word carry the packet
+  id, because that is a datapath fact aie-rt does not model. We fix our own encoding (bits [4:0] = packet
+  id, matching the 5-bit `XAIE_PACKET_ID_MAX` in `xaiegbl.h:49`) and say so where it is used.
+* **True hardware arbitration.** Two slave ports whose slot rules resolve to the same (arbiter, msel) pair,
+  contending in the same cycle for the same master. aie-rt's registers select an arbiter/msel per port; the
+  policy resolving simultaneous contention lives in silicon we have no register-level description of.
+  `stepPacketSwitch()` faults via `Array::error()` rather than inventing a tie-break.
+
+### 8a.5 Where the DMA model comes from, and what it leaves unmodelled
+
+Every register offset and bit field in `Dma.cpp` is read out of the vendored aie-rt tables:
+`global/xaie2pgbl_params.h` (offsets/masks); `global/xaie2pgbl_reginit.c` for which struct field maps to
+which word/Idx (`Aie2PTileDmaProp`, `Aie2PMemTileDmaProp`, `Aie2PShimDmaProp` and their
+BdEn/Pkt/Lock/AddrMode/Buffer sub-tables); `dma/xaie_dma_aieml.c` for how a BD is packed into words
+(`_XAieMl_{Tile,MemTile,Shim}DmaWriteBd`/`ReadBd`); and `dma/xaie_dma.c` for channel control and
+start-queue address arithmetic (`_XAie_DmaChannelControl`, `XAie_DmaChannelSetStartQueueGeneric`,
+`_XAieMl_DmaGetChannelStatus`).
+
+AIE2 and AIE2P were spot-checked side by side for the core-tile block -- BD base 0x1D000, ctrl 0x1DE00,
+start-queue 0x1DE04, status 0x1DF00, and every bit position used -- and are identical; both generations
+run through the same aie-rt C functions (`xaie_dma_aieml.c` has no `#ifdef` on generation). One layout
+table therefore serves both `Generation` values.
+
+**Cross-check.** mlir-aie's own lowering confirms the base-address arithmetic without going through
+aie-rt at all: `AIETargetModel.cpp:822-869` (`getDmaBdAddress` / `getDmaControlAddress`) computes the
+identical `0x1D000 + bd*0x20` and `0x1DE00 + ch*0x8 (+0x10 for MM2S)` plus the memtile/shim equivalents
+from first principles. `AIETargetShared.cpp:86-133` (`generateXAieDmaSetMultiDimAddr`) confirms the n-D
+dimension order -- MLIR lists dims outermost-first, D0 is always the last entry -- and that stepsize and
+wrap are 32-bit-word granular, matching the doc comment at `xaie_dma.c:443-447`.
+
+**Not modelled**, either ungrounded or out of scope; each ungrounded case is a hard error at the point it
+would matter rather than a silent guess:
+
+* **Packet-switched header insertion.** PktEn/PktType/PktId are decoded, but the on-wire header word
+  format was not grounded from source, so a BD with `PktEn=1` errors.
+* **The Iteration dimension's address offset** (IterCurr/Iter.Wrap/Iter.StepSize). Decoded, but used only
+  to detect the case where it would matter (`IterWrap>1` or `IterCurr!=0`), which errors.
+* **Zero-padding** (memtile D0-D2 pad before/after): not in the required field list, not decoded.
+* **AXI/NoC shim properties** (SMID, AxCache, AxQoS, BurstLen, SecureAccess), compression, out-of-order
+  completion, FoT mode, controller ID, channel reset: no bus or compute modelling here needs them, so
+  they are left unread.
+
+### 8a.6 Where the per-tile device constants come from
+
+`fillAIE2Family` in `Device.cpp` fills the constants shared by every AIE2-family device this simulator
+builds (AIE2/npu1, AIE2P/npu2, and the Versal xcve2802 shape, an `AIE2TargetModel` subclass that
+overrides none of them). Each constant carries its own one-line citation at the assignment; this is the
+aggregate picture. Two sources agree exactly wherever both cover a field.
+
+**(a) mlir-aie's `AIETargetModel.h`** -- `AIE2TargetModel`, the base every one of these devices derives
+from; `BaseNPU1TargetModel` / `BaseNPU2TargetModel` / `VE2802TargetModel` override only shape:
+`getColumnShift`/`getRowShift` at :738-739; `getLocalMemorySize` (core data) at :640 (0x10000);
+`getMemTileSize` at :711 (0x80000); `getNumLocks` (16 core/shim, 64 memtile) at :645-647; `getNumBDs`
+(16 core/shim, 48 memtile) at :654-656.
+
+**(b) aie-rt's per-generation register-init tables.** The `aie2ipu` tables (npu1's
+`XAIE_DEV_GEN_AIE2IPU`) and the `aie2p` tables (npu2's `XAIE_DEV_GEN_AIE2P_STRIX_B0`) are numerically
+identical for every field used -- confirmed by reading both, not assumed. In
+`global/xaie2ipugbl_reginit.c`: ProgMemSize/ProgMemHostOffset/DataMemSize at :2270-2273; core data mem
+Size=0x10000 and memtile Size=0x80000 at :2298, :2306; lock counts 16/16/64 at :2358, :2383, :2408; BD
+counts at :391-405, :627-641, :878-892. In `global/xaie2pgbl_reginit.c`: the same four at :181-184;
+:2187, :2195; :2387, :2412, :2437; MemTile BDs=48 / NumChannels=6 at :1656, :1670; core BDs=16 /
+channels=2 at :1893, :1907; shim BDs=16 / channels=2 at :2144, :2158.
+
+`coreProgMemSize`, `progMemHostOffset` and every DMA-channel count have only source (b):
+`AIETargetModel.h` has no field for ELF program-memory layout or per-tile-type channel counts
+(`getNumBDs` covers buffer descriptors, not channels).
+
+**`XAIE_BASE_ADDR = 0x40000000` has no aie-rt counterpart to cross-check**, and is not the one to use.
+It is a constant mlir-aie picks when building the `XAie_Config` passed to `XAie_CfgInitialize`
+(`AIERT.cpp:187,264`), not a property of the silicon, and aie-rt just stores what it is given. It also
+never takes effect on that path: `AIERT.cpp:280` calls `XAie_SetupPartitionConfig` first, which makes
+`NumCols` nonzero, so the copy at `global/xaiegbl.c:198-202` is skipped and the live base stays
+`XAIE_PARTITION_BASE_ADDR` (0x0, `AIERT.cpp:190`). The base this simulator sees is the HOST program's:
+the generated `mlir_aie_init_libxaie()` sets `XAieConfig->BaseAddr = 0x20000000000`
+(`AIETargetXAIEV2.cpp:383`) and never calls `XAie_SetupPartitionConfig`, so `NumCols` is still 0 at
+`XAie_CfgInitialize` and that copy does take effect. Using the compiler-side number instead rejects
+every access a real host program makes -- caught by the aie-rt integration test, which is why that tier
+exists.
+
+### 8a.7 Why the address decode does not reuse aie-rt's inverse helpers
+
+Address decode is the first thing the simulator has to get right: everything arrives as a flat address at
+`ess_Write32` / `ess_Read32`. aie-rt builds those as `(Col << ColShift) | (Row << RowShift) | RegOff`
+(`_XAie_GetTileAddr`, `common/xaie_helper.h:145`).
+
+Its inverse helpers are not usable for the reverse direction. `_XAie_GetRowfromRegOff` and
+`_XAie_GetColfromRegOff` (`xaie_helper.c:920-931`) are each off by one field:
+`GetRowfromRegOff` returns the low `RowShift` bits, which is the intra-tile offset, and
+`GetColfromRegOff` returns the bits between `RowShift` and `ColShift`, which is the row. The defect is
+latent upstream because those two feed only the informational Col/Row fields of transaction command
+headers (`xaie_helper.c:940-998`), and those consumers use the full `RegOff` for the actual access. A
+simulator that decodes for real cannot inherit that.
+
 ## 8. Honest risks
 
 * **Vector ISA size.** Vector load/store dominates the AIE2P opcode space (`VST` 184, `VLDA` 163,
