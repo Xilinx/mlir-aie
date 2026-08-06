@@ -20,7 +20,7 @@ Used together with [`Flow`][iron.Flow] / [`PacketFlow`][iron.PacketFlow]
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Iterable
+from typing import Any, Iterable, Sequence
 
 from ... import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
 from ...dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
@@ -102,6 +102,10 @@ class Bd:
     # transfer. sizes and strides must have equal length.
     sizes: list = field(default_factory=list)
     strides: list = field(default_factory=list)
+    # Per-BD constant-pad geometry (MemTile only): one (const_pad_before,
+    # const_pad_after) pair per dimension, outermost first, matching the
+    # sizes/strides layout. The fill value is per-channel (DmaChannel.pad_value).
+    pad_dimensions: list[Sequence[int]] | None = None
 
 
 @dataclass
@@ -118,6 +122,14 @@ class DmaChannel:
     direction: DMAChannelDir
     channel: int
     bds: list[Bd]
+    # Per-channel constant pad value (MemTile MM2S CONSTANT_PAD_VALUE register),
+    # shared by every padded BD on this channel. Default 0. In hardware the pad
+    # value is a channel property, not a per-BD one, so it lives here rather than
+    # on Bd (which carries only the per-BD pad geometry). It is the raw 32-bit
+    # stream word (1:1 with aie-rt XAie_DmaSetPadValue); the DMA inserts one such
+    # word per padded stream word, so a sub-32b element fill must be pre-packed
+    # across the word (e.g. 0x07070707 to fill an i8 region with 0x07).
+    pad_value: int = 0
 
 
 class TileDma(Resolvable):
@@ -228,6 +240,7 @@ class TileDma(Resolvable):
                 ch.channel,
                 dest=block[chan_head_idx[0]],
                 chain=block[chan_chain_idx[0]],
+                pad_value=ch.pad_value,
             )
             # Chain blocks: dma_start for channels 1..N-1
             for i in range(1, len(channels)):
@@ -238,6 +251,7 @@ class TileDma(Resolvable):
                         ch_i.channel,
                         dest=block[chan_head_idx[i]],
                         chain=block[chan_chain_idx[i]],
+                        pad_value=ch_i.pad_value,
                     )
 
             # Per-channel BD bodies.
@@ -254,6 +268,8 @@ class TileDma(Resolvable):
                             bd_kwargs["offset"] = bd.offset
                         if bd.length is not None:
                             bd_kwargs["transfer_len"] = bd.length
+                        if bd.pad_dimensions is not None:
+                            bd_kwargs["pad_dimensions"] = bd.pad_dimensions
                         # A packet header must be a distinct aie.dma_bd_packet op
                         # placed BEFORE the aie.dma_bd: the CDO/xclbin backends
                         # (AIERT / AIETargetXAIEV2) read the header only from that

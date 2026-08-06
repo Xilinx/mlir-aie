@@ -2063,6 +2063,8 @@ LogicalResult DMAOp::verify() {
       return emitOpError(
           "DMAOp regions/blocks must have exactly two UseLock ops");
   }
+  if (getPadValue() != 0 && !isa<MemTileDMAOp>(parentOp))
+    return emitOpError("pad value is only supported on memtile DMA channels");
   return success();
 }
 
@@ -2159,7 +2161,6 @@ void DMABDOp::buildMixed(mlir::OpBuilder &builder, mlir::OperationState &state,
         /*static_sizes=*/staticSizesAttr,
         /*static_strides=*/staticStridesAttr,
         /*pad_dimensions=*/padDims,
-        /*pad_value=*/nullptr,
         /*bd_id=*/nullptr,
         /*packet=*/packet,
         /*burst_length=*/nullptr,
@@ -2706,6 +2707,12 @@ void DMABDOp::getCanonicalizationPatterns(RewritePatternSet &patterns,
 void DMAStartOp::getCanonicalizationPatterns(RewritePatternSet &patterns,
                                              MLIRContext *context) {
   patterns.add(FoldDMAStartOp);
+}
+
+LogicalResult DMAStartOp::verify() {
+  if (getPadValue() != 0 && !isa<MemTileDMAOp>(getOperation()->getParentOp()))
+    return emitOpError("pad value is only supported on memtile DMA channels");
+  return success();
 }
 
 //===----------------------------------------------------------------------===//

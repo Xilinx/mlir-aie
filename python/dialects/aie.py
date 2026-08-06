@@ -882,6 +882,7 @@ class DMAStartOp(DMAStartOp):
         dest: Successor | Block | None = None,
         chain: Successor | Block | None = None,
         repeat_count: int | None = None,
+        pad_value: int | None = None,
         loc=None,
         ip=None,
     ):
@@ -899,6 +900,7 @@ class DMAStartOp(DMAStartOp):
             dest,
             chain,
             repeat_count=repeat_count,
+            pad_value=pad_value,
             loc=loc,
             ip=ip,
         )
@@ -919,6 +921,7 @@ def dma_start(
     dest: Successor | Block | ContextManagedBlock | None = None,
     chain: Successor | Block | ContextManagedBlock | None = None,
     repeat_count: int = 0,
+    pad_value: int = 0,
     loc=None,
     ip=None,
 ):
@@ -932,6 +935,7 @@ def dma_start(
         loc=loc,
         ip=ip,
         repeat_count=repeat_count,
+        pad_value=pad_value or None,
     )
     return op.dest, op.chain
 
