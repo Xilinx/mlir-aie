@@ -6,55 +6,15 @@
 //===----------------------------------------------------------------------===//
 //
 // The per-tile DMA: buffer descriptors, channel control/task-queue, the n-D
-// address generator, and lock interaction, for AIE2 and AIE2P (AIE1 is out
-// of scope, per docs/AIESimulator.md).
+// address generator, and lock interaction, for AIE2 and AIE2P (AIE1 is out of
+// scope, per docs/AIESimulator.md).
 //
-// GROUNDING. Every register offset and bit field below is read out of the
-// vendored aie-rt tables, not recalled from memory:
-//   third_party/aie-rt/driver/src/global/xaie2pgbl_params.h  (offsets/masks)
-//   third_party/aie-rt/driver/src/global/xaie2pgbl_reginit.c (which struct
-//     field maps to which word/Idx: Aie2PTileDmaProp, Aie2PMemTileDmaProp,
-//     Aie2PShimDmaProp and their BdEn/Pkt/Lock/AddrMode/Buffer sub-tables)
-//   third_party/aie-rt/driver/src/dma/xaie_dma_aieml.c        (how a BD is
-//     packed into words: _XAieMl_{Tile,MemTile,Shim}DmaWriteBd/ReadBd)
-//   third_party/aie-rt/driver/src/dma/xaie_dma.c               (channel
-//     control/start-queue address arithmetic and field packing:
-//     _XAie_DmaChannelControl, XAie_DmaChannelSetStartQueueGeneric,
-//     _XAieMl_DmaGetChannelStatus in xaie_dma_aieml.c)
-// AIE2 (xaiemlgbl_params.h) and AIE2P (xaie2pgbl_params.h) were spot-checked
-// side by side for the core-tile block -- BD base 0x1D000, ctrl 0x1DE00,
-// start-queue 0x1DE04, status 0x1DF00, and every bit position used below --
-// and are identical; both generations run through the very same aie-rt C
-// functions (xaie_dma_aieml.c has no #ifdef on generation). One layout
-// table therefore serves both aiesim::Generation values; see kCoreLayout
-// etc. below.
-//
-// CROSS-CHECK. mlir-aie's own lowering independently confirms the base
-// address arithmetic without going through aie-rt at all:
-// lib/Dialect/AIE/IR/AIETargetModel.cpp:822-869 (AIE2TargetModel::
-// getDmaBdAddress / getDmaControlAddress) computes the identical
-// `0x1D000 + bd*0x20`, `0x1DE00 + ch*0x8 (+0x10 for MM2S)` and the memtile/
-// shim equivalents from first principles. Also
-// lib/Targets/AIETargetShared.cpp:86-133 (generateXAieDmaSetMultiDimAddr)
-// confirms the n-D dimension order (MLIR lists dims outermost-first, D0 is
-// always the last list entry) and that stepsize/wrap are always 32-bit-word
-// granular, matching xaie_dma.c:443-447's doc comment.
-//
-// WHAT THIS FILE DOES NOT MODEL (ungrounded or explicitly out of scope; see
-// the per-case error() calls below and the accompanying report):
-//   * Packet-switched header insertion (PktEn/PktType/PktId are decoded,
-//     but the on-wire header word format was not grounded from source, so
-//     a BD with PktEn=1 is a hard error rather than a silent guess).
-//   * The Iteration dimension's address offset (IterCurr/Iter.Wrap/
-//     Iter.StepSize): decoded, but only used to detect the case where it
-//     would matter (IterWrap>1 or IterCurr!=0), which is a hard error
-//     rather than a silently wrong address.
-//   * Zero-padding (memtile D0-D2 pad before/after): not in the required
-//     field list, not decoded at all.
-//   * AXI/NoC shim properties (SMID, AxCache, AxQoS, BurstLen,
-//     SecureAccess), compression, out-of-order completion, FoT mode,
-//     controller ID, and channel reset: no bus/compute modelling in this
-//     simulator needs them, so they are left unread.
+// One layout table serves both generations -- their register blocks are
+// identical at every field used here, and aie-rt itself runs both through the
+// same C functions. Provenance for the offsets and the BD word packing, plus
+// the list of what this file deliberately does not model, is
+// docs/AIESimulator.md 8a.5. The ungrounded cases (packet headers, a
+// non-trivial Iteration dimension) error at the point they would matter.
 //
 //===----------------------------------------------------------------------===//
 

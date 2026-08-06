@@ -7,107 +7,12 @@
 //
 // AIE2/AIE2P lock module.
 //
-// aie-rt never "calls a lock API" on the simulator: it reads and writes plain
-// registers, and the lock semantics live in how those particular registers are
-// wired. Two disjoint per-tile register ranges matter, both taken from the
-// vendored, MIT-licensed AIE2/AIE2P tables in third_party/aie-rt rather than
-// re-derived (docs/AIESimulator.md section 2):
-//
-// 1. The acquire/release REQUEST range. A read at an address that folds the
-//    signed request value into address bits performs the operation as a side
-//    effect and returns success in bit 0. This is not a simulator shortcut:
-//    it is the documented hardware mechanism (third_party/aie-rt/driver/src/
-//    global/xaiegbl_regdef.h:681-690, the comment on `struct XAie_LockMod`:
-//    "the lock is acquired by reading a register"), and it is exactly what
-//    the sim IO backend's blocking poll does
-//    (third_party/aie-rt/driver/src/io_backend/ext/xaie_sim.c:205-225,
-//    XAie_SimIO_MaskPoll: a plain Read32 loop, no writes). The address
-//    arithmetic and the field encoding come from
-//    third_party/aie-rt/driver/src/locks/xaie_locks_aieml.c:66-133
-//    (_XAieMl_LockAcquire / _XAieMl_LockRelease):
-//
-//      acquire off = BaseAddr + LockId*LockIdOff + RelAcqOff + (v7 << 2)
-//      release off = BaseAddr + LockId*LockIdOff              + (v7 << 2)
-//      v7 = (uint8_t)LockVal & 0x7F        (xaie_locks_aieml.c:34, MASK)
-//      shift = 2                            (xaie_locks_aieml.c:35, SHIFT)
-//      success = bit 0 of the read value    (xaie_locks_aieml.c:37-39)
-//
-//    BaseAddr, LockIdOff (0x400) and RelAcqOff (0x200) are per tile-type
-//    fields of the vendored `XAie_LockMod` instances; they are identical
-//    between AIE2 and AIE2P (compared field by field against both reginit
-//    files below), so this file does not branch on generation for them:
-//
-//      third_party/aie-rt/driver/src/global/xaie2pgbl_reginit.c:2384-2401
-//      (core), :2409-2426 (shim/noc), :2434-2451 (memtile); the AIE2
-//      equivalents at third_party/aie-rt/driver/src/global/
-//      xaiemlgbl_reginit.c:2448-2513 carry the same numbers.
-//
-//    The BaseAddr values themselves are read straight out of the vendored
-//    param headers (included below) rather than copied, so this file tracks
-//    the submodule if it is ever bumped:
-//
-//      (core)    XAIE2PGBL_MEMORY_MODULE_LOCK_REQUEST   params.h:11005
-//      (shim)    XAIE2PGBL_NOC_MODULE_LOCK_REQUEST      params.h:19195
-//      (memtile) XAIE2PGBL_MEM_TILE_MODULE_LOCK_REQUEST params.h:33546
-//      (core)    XAIEMLGBL_MEMORY_MODULE_LOCK_REQUEST   params.h:11076
-//      (shim)    XAIEMLGBL_NOC_MODULE_LOCK_REQUEST      params.h:19226
-//      (memtile) XAIEMLGBL_MEM_TILE_MODULE_LOCK_REQUEST params.h:33533
-//    (xaie2pgbl_params.h / xaiemlgbl_params.h, both under
-//    third_party/aie-rt/driver/src/global/)
-//
-// 2. The plain VALUE range (`LockN_Value`), one 32-bit register per lock at
-//    LockSetValBase + id*0x10, a 6-bit field (mask 0x3F, DEFVAL 0), a direct
-//    read/write with no acquire semantics
-//    (third_party/aie-rt/driver/src/locks/xaie_locks_aieml.c:150-198,
-//    _XAieMl_LockSetValue / _XAieMl_LockGetValue). DEFVAL 0 is also the
-//    lock's reset value, matching the all-zero row
-//    `chess_compiler_tests_aie2/08_tile_locks` expects before any lock is
-//    touched. Bases, again read from the vendored headers:
-//
-//      (core)    XAIE2PGBL_MEMORY_MODULE_LOCK0_VALUE   params.h:10645
-//      (shim)    XAIE2PGBL_NOC_MODULE_LOCK0_VALUE      params.h:15919
-//      (memtile) XAIE2PGBL_MEM_TILE_MODULE_LOCK0_VALUE params.h:32410
-//      (core)    XAIEMLGBL_MEMORY_MODULE_LOCK0_VALUE   params.h:10716
-//      (shim)    XAIEMLGBL_NOC_MODULE_LOCK0_VALUE      params.h:15950
-//      (memtile) XAIEMLGBL_MEM_TILE_MODULE_LOCK0_VALUE params.h:32397
-//    (same two header files as above)
-//
-// Acquire/AcquireGreaterEqual/Release semantics (what the sign of the request
-// value means, and what happens to the counter) are not spelled out in
-// aie-rt's C comments, so they are grounded one level up, in how mlir-aie
-// itself produces that signed value:
-//
-//   include/aie/Dialect/AIE/IR/AIEOps.td:1472-1476 (UseLockOp doc):
-//     "Acquire: blocks execution until the lock is set to `value`."
-//     "AcquireGreaterEqual (only AIE2): blocks execution until the lock is
-//      set to `value` or greater. Then, the value of the lock is decremented
-//      by `value`."
-//     "Release: ... In AIE2, increment the lock by `value`."
-//   lib/Targets/AIERT.cpp:322-333 (BD lock lowering):
-//     "if (op.acquireGE()) acqValue.value() = -acqValue.value();"
-//   test/unit_tests/chess_compiler_tests_aie2/08_tile_locks/test.cpp:51-52:
-//     mlir_aie_acquire_done_lock_1(_xaie, -2, 10000) -- "wait for 2 releases"
-//     passed as a literal negative value, matching the negation above
-//     (lib/Targets/AIETargetXAIEV2.cpp:855-861 shows the generated wrapper
-//     forwards `value` to XAie_LockAcquire completely unchanged).
-//
-// Together these three call sites agree: AcquireGreaterEqual is encoded as a
-// NEGATIVE request value (magnitude = the threshold), and plain Acquire is a
-// non-negative value (an exact match). Components.h's `LockModule` doc
-// comment states this same polarity and cites the same three sources; the
-// two files agree.
-//
-// One corner is NOT fully nailed down by a single source line: whether a
-// successful plain (non-GE) Acquire also decrements the counter by the
-// matched value, the way AcquireGreaterEqual explicitly does. AIEOps.td is
-// silent on it for plain Acquire. This file decrements in both cases (i.e.
-// runs one compare-then-subtract datapath, gated only by the sign of the
-// request), because (a) the register encoding gives both modes exactly one
-// signed 7-bit field with no separate opcode, (b) Components.h defines
-// exactly one `tryAcquire` entry point for both, and (c) on an exact match
-// the subtraction always lands on zero, so it can never be observed to do
-// anything unsound. This is a coherence argument, not a witnessed test, and
-// it is called out again at the point in the code where it matters.
+// aie-rt never calls a lock API here: it reads and writes plain registers, and
+// the semantics live in how those registers are wired. An acquire is a READ --
+// the signed request value is folded into address bits and success comes back
+// in bit 0. Offsets, field encodings and the sign convention are derived from
+// the vendored aie-rt tables in docs/AIESimulator.md 8a.3, which also records
+// the one corner (plain Acquire's decrement) that no single source settles.
 //
 //===----------------------------------------------------------------------===//
 

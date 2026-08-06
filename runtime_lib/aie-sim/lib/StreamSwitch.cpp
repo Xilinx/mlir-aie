@@ -5,70 +5,17 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// The stream switch: circuit-switched connections and packet-switched
-// routing, both read out of the switch configuration registers a host
-// program (via aie-rt) actually writes. Nothing here consults a
-// compiler-emitted routing description; see docs/AIESimulator.md section 5.
+// The stream switch: circuit-switched connections and packet-switched routing,
+// both read out of the switch configuration registers a host program (via
+// aie-rt) writes. Nothing here consults a compiler-emitted routing
+// description; see docs/AIESimulator.md section 5.
 //
-// GROUNDING. Register offsets and field layouts come from
-// third_party/aie-rt/driver/src/global/xaie2pgbl_params.h (AIE2P / npu2).
-// They are spot-checked byte-identical to the AIE2 map in
-// xaiemlgbl_params.h at every address used here (for example
-// STREAM_SWITCH_SLAVE_CONFIG_AIE_CORE0 = 0x3F100 in both
-// xaie2pgbl_params.h:4090 and xaiemlgbl_params.h:4221, and
-// PL_MODULE_STREAM_SWITCH_MASTER_CONFIG_TILE_CTRL = 0x3F000 in both
-// xaie2pgbl_params.h:12556 and xaiemlgbl_params.h:12647), so one table
-// below serves both aiesim::Generation values without branching on it.
-//
-// Behaviour (which register field means what, and how connections are
-// made) comes from third_party/aie-rt/driver/src/stream_switch/xaie_ss.c
-// and the XAie_StrmMod layout in
-// third_party/aie-rt/driver/src/global/xaiegbl_regdef.h:198-231.
-//
-// A header matches a slave slot when (id & mask) == slot id, so a SET
-// mask bit is one that must match, not a don't-care. mlir-aie applies
-// that exact predicate to the same two fields when it checks a rule for
-// false matches (lib/Dialect/AIE/Transforms/AIECreatePathFindFlows.cpp:1155),
-// and aie-rt writes the mask into SlotMask verbatim (xaie_ss.c:646), so
-// the register field carries the same polarity the IR does.
-//
-// Bundle naming and counts are cross-checked against mlir-aie's own model:
-// include/aie/Dialect/AIE/IR/AIETargetModel.h
-// (getNumDestSwitchboxConnections / getNumSourceSwitchboxConnections,
-// implemented for AIE2 in lib/Dialect/AIE/IR/AIETargetModel.cpp:872-1019)
-// and the WireBundle enum (include/aie/Dialect/AIE/IR/AIEAttrs.td:53-60).
-// Every port count used below matches mlir-aie's, tile type by tile type,
-// with one exception noted at kShimLayout below (Shim/PL trace-slave count:
-// aie-rt says 2, mlir-aie says 1; we follow aie-rt, since that is the
-// actual register map this file drives).
-//
-// aiesim::PortBundle (Components.h:54-64) has 9 members: Core, DMA, Ctrl,
-// FIFO, South, West, North, East, Trace. aie-rt's StrmSwPortType
-// (xaiegbl.h:229-240) has the same 9 plus a 10th, UCTRLR, for the AIE2P
-// microcontroller tile; PortBundle has no slot for it, so this switch does
-// not model uC-tile stream ports (out of scope: DeviceModel/TileType has
-// no uC tile type either). mlir-aie's WireBundle
-// (AIEAttrs.td:53-57) renames Ctrl to TileControl and separately lists
-// PLIO and NOC; those are shim-side names for connections aie-rt still
-// treats as the plain South bundle plus a distinct "shim mux" block
-// (getNumDestShimMuxConnections), which is not part of the stream switch
-// and is out of scope here.
-//
-// NOT GROUNDED, so faulted rather than guessed:
-//   * The bit layout of a packet HEADER WORD on the wire. aie-rt's driver
-//     only ever configures match registers (xaie_ss.c); nothing in the
-//     vendored tree defines what bits of an in-flight stream word carry
-//     the packet id, because that is a datapath fact aie-rt does not
-//     model. We fix our own encoding (bits [4:0] = packet id, matching the
-//     5-bit width XAIE_PACKET_ID_MAX in xaiegbl.h:49) and say so at the
-//     point it is used, below.
-//   * True hardware arbitration: two slave ports whose slot rules resolve
-//     to the same (arbiter, msel) pair contending in the same cycle for
-//     the same master. aie-rt's registers only select an arbiter/msel per
-//     port; the round-robin/priority policy that resolves simultaneous
-//     contention lives in silicon we have no register-level description
-//     of. We fault via Array::error() when this happens rather than invent
-//     a tie-break (see stepPacketSwitch()).
+// One offset table serves both generations -- the AIE2 and AIE2P maps are
+// byte-identical at every address used here. Provenance for the offsets, the
+// slot-mask polarity and the port counts is docs/AIESimulator.md 8a.4, which
+// also records the two facts aie-rt does not model (the on-the-wire packet
+// header layout, and arbitration between ports contending for one master);
+// both fault rather than guess, at the point each is used.
 //
 //===----------------------------------------------------------------------===//
 
@@ -119,7 +66,9 @@ constexpr uint32_t kSlotEnableMask = 0x00000100; // bit 8
 constexpr uint32_t kSlotMselLsb = 4, kSlotMselMask = 0x00000030;
 constexpr uint32_t kSlotArbitMask = 0x00000007; // bits [2:0]
 
-// Our own header-word convention; see the "NOT GROUNDED" note above.
+// Our own convention, not aie-rt's: nothing vendored defines the on-the-wire
+// header layout. Width matches XAIE_PACKET_ID_MAX (xaiegbl.h:49).
+// docs/AIESimulator.md 8a.4.
 constexpr uint32_t kHeaderIdMask = 0x1F; // bits [4:0]
 
 //===----------------------------------------------------------------------===//
