@@ -2641,8 +2641,8 @@ struct AIEObjectFifoStatefulTransformPass
     // differs by architecture: semaphore locks (AIE2+) use a runtime "held"
     // counter with AcquireGreaterEqual/Release by count; binary locks (AIE1)
     // rotate one lock per element, selected at runtime with an index_switch.
-    if (failed(dynamicGlobalObjectFifos(device, builder, objectFifoTiles,
-                                        state)))
+    if (failed(
+            dynamicGlobalObjectFifos(device, builder, objectFifoTiles, state)))
       return signalPassFailure();
 
     //===------------------------------------------------------------------===//
@@ -2677,9 +2677,9 @@ struct AIEObjectFifoStatefulTransformPass
           objectFifoTiles.count(coreOp.getTileOp()) > 0 &&
           !device.getTargetModel().hasProperty(
               AIETargetModel::UsesSemaphoreLocks);
-      DenseMap<std::pair<ObjectFifoCreateOp, int>, memref::AllocaOp>
-          &currentObjectBookkeepingMemref =
-              state.currentObjectBookkeepingMemrefPerCore[coreOp.getOperation()];
+      DenseMap<std::pair<ObjectFifoCreateOp, int>,
+               memref::AllocaOp> &currentObjectBookkeepingMemref =
+          state.currentObjectBookkeepingMemrefPerCore[coreOp.getOperation()];
       // Per-(fifo, port) scalar "held" counter slots. Each is a promotable
       // rank-0 memref.alloca, so -mem2reg threads it through the enclosing
       // scf.for loops as an iter_arg and the computed lock counts fold to
@@ -2891,8 +2891,8 @@ struct AIEObjectFifoStatefulTransformPass
               /*baseOffset=*/0, acqNum * repeat, LockAction::Acquire, state);
           // size-1 fifos read buffer 0; larger fifos have their subview.access
           // already replaced by the runtime index_switch.
-          std::vector<BufferOp *> subviewRefs(
-              acqNum, &state.buffersPerFifo[target][0]);
+          std::vector<BufferOp *> subviewRefs(acqNum,
+                                              &state.buffersPerFifo[target][0]);
           subviews[acquireOp] = subviewRefs;
           return WalkResult::advance();
         }
