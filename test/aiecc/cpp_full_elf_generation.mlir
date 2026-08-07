@@ -10,7 +10,7 @@
 
 // REQUIRES: peano
 
-// RUN: aiecc --no-xchesscc --no-xbridge --get-full-elf --full-elf-name=test_full.elf --verbose %s 2>&1 | FileCheck %s
+// RUN: aiecc --get-full-elf --full-elf-name=test_full.elf --verbose %s 2>&1 | FileCheck %s
 
 // Full ELF via aiebu-asm aie2_config target: config JSON then full ELF,
 // honoring --full-elf-name.

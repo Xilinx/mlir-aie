@@ -1,22 +1,24 @@
-//===- cpp_no_xchesscc_implies_no_xbridge.mlir ------------------*- MLIR -*-===//
+//===- cpp_aiesim_negated.mlir -----------------------------------*- MLIR -*-===//
 //
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
-// Test that --no-xchesscc automatically disables xbridge so that the Chess
-// bridge linker (xchesscc_wrapper) is never invoked on Peano-compiled objects.
+// --get-aiesim's backend diagnostic fires in resolveOptions() before any
+// toolchain is touched, so unlike the rest of cpp_aiesim.mlir this needs
+// neither Chess nor Peano installed.
 
-// REQUIRES: peano
+// Peano is the default, so every way of not asking for Chess reaches the same
+// diagnostic: omitting the flags, turning either off, and turning one off while
+// the other is on.
+// RUN: not aiecc --get-aiesim -n %s 2>&1 | FileCheck %s
+// RUN: not aiecc --xbridge=false --get-aiesim -n %s 2>&1 | FileCheck %s
+// RUN: not aiecc --xchesscc=false --get-aiesim -n %s 2>&1 | FileCheck %s
+// RUN: not aiecc --xchesscc --xbridge=false --get-aiesim -n %s 2>&1 | FileCheck %s
+// RUN: not aiecc --xchesscc=false --xbridge --get-aiesim -n %s 2>&1 | FileCheck %s
 
-// RUN: aiecc --no-xchesscc --get-npu-insts --verbose %s 2>&1 | FileCheck %s
-
-// Verify the Chess bridge linker (xchesscc_wrapper) is NOT invoked when
-// --no-xchesscc is used without an explicit --no-xbridge (Peano link path).
-// CHECK: ({{[0-9]+}}/{{[0-9]+}}) input.mlir
-// CHECK-NOT: xchesscc_wrapper
-// CHECK: wrote edge 'insts_
+// CHECK: --get-aiesim requires --xchesscc and --xbridge
 
 module {
   aie.device(npu1_1col) {

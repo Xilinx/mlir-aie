@@ -178,6 +178,31 @@ static std::optional<Value> getSourceOfWideningOp(Value src) {
   return std::optional<Value>();
 }
 
+// Given a Value, if it is defined by an integer widening op, return whether
+// that widening is signed: arith.extsi -> signed, arith.extui -> unsigned, and
+// an aievec.srs (from an already-rewritten extsi/extui) -> its own `sign`
+// attribute. Returns std::nullopt when the defining op is not a recognized
+// integer widening op, or carries no signedness: a floating-point arith.extf,
+// or an aievec.ups/aievec.cast (which do not encode signedness). Callers record
+// this on the created matmul op, since peeling the widening op would otherwise
+// discard it (MLIR integers are signless).
+static std::optional<bool> getSignednessOfWideningOp(Value src) {
+  // Look through shape casts, which may sit between the extension op and the
+  // consumer.
+  while (auto castOp = src.getDefiningOp<vector::ShapeCastOp>())
+    src = castOp.getSource();
+  if (src.getDefiningOp<arith::ExtSIOp>())
+    return true;
+  if (src.getDefiningOp<arith::ExtUIOp>())
+    return false;
+  // An arith.extsi/extui may already have been rewritten into an
+  // aievec.ups + aievec.srs pair by another pattern in this same conversion.
+  // Only aievec.srs records a signedness; aievec.ups and aievec.cast do not.
+  if (auto srsOp = src.getDefiningOp<aievec::SRSOp>())
+    return srsOp.getSign() != 0;
+  return std::nullopt;
+}
+
 // Given a Value, if it is defined by a narrowing op (arith::TruncFOp,
 // arith::TruncIOp), return the source of the narrowing op.
 static std::optional<Value> getSourceOfNarrowingOp(Value src) {
@@ -2106,6 +2131,34 @@ using LowerVectorMinSIOpToAIEVecMinOp =
     LowerVectorMinMaxOpToAIEVecMinMaxOp<arith::MinSIOp, aievec::MinOp>;
 using LowerVectorMaxSIOpToAIEVecMaxOp =
     LowerVectorMinMaxOpToAIEVecMinMaxOp<arith::MaxSIOp, aievec::MaxOp>;
+
+// aievec.min/aievec.max are signed-only, so unsigned integer min/max have no
+// direct AIE intrinsic. Re-expand them into cmp+select, which the aievec
+// cmp/sel lowerings turn into aievec.cmp/aievec.sel.
+template <typename SrcOpTy, arith::CmpIPredicate Pred>
+struct LowerVectorUMinMaxOpToCmpSelOp : OpConversionPattern<SrcOpTy> {
+  using OpConversionPattern<SrcOpTy>::OpConversionPattern;
+  using OpAdaptor = typename SrcOpTy::Adaptor;
+
+  LogicalResult
+  matchAndRewrite(SrcOpTy srcOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    if (!isa<VectorType>(srcOp.getType()))
+      return failure();
+    Value lhs = adaptor.getLhs();
+    Value rhs = adaptor.getRhs();
+    auto cmpOp =
+        arith::CmpIOp::create(rewriter, srcOp.getLoc(), Pred, lhs, rhs);
+    rewriter.replaceOpWithNewOp<arith::SelectOp>(srcOp, cmpOp, lhs, rhs);
+    return success();
+  }
+};
+
+using LowerVectorMinUIOpToCmpSelOp =
+    LowerVectorUMinMaxOpToCmpSelOp<arith::MinUIOp, arith::CmpIPredicate::ult>;
+using LowerVectorMaxUIOpToCmpSelOp =
+    LowerVectorUMinMaxOpToCmpSelOp<arith::MaxUIOp, arith::CmpIPredicate::ugt>;
+
 // Promote scalar arith.maxsi/arith.minsi to vector aievec.max/aievec.min
 // to avoid the AIE2 G_SELECT legalizer crash on scalar i32 select.
 template <typename SrcOpTy, typename DstOpTy>
@@ -4667,19 +4720,54 @@ struct LowerVectorContractionOpToAIEVecMatMulPattern
     auto acc = reshapeLeadingUnitDims(rewriter, adaptor.getAcc());
     bool bReshapedAcc = (acc != adaptor.getAcc());
 
-    auto matmulOp = MatMulOpTy::create(rewriter, contractOp.getLoc(),
-                                       acc.getType(), lhs, rhs, acc);
+    // Recover operand signedness from the widening op before it is peeled.
+    // Consult both the (possibly already-rewritten) adaptor operands and the
+    // original pre-conversion contraction operands.
+    auto lhsSigned = getSignednessOfWideningOp(adaptor.getLhs());
+    if (!lhsSigned)
+      lhsSigned = getSignednessOfWideningOp(contractOp.getLhs());
+    auto rhsSigned = getSignednessOfWideningOp(adaptor.getRhs());
+    if (!rhsSigned)
+      rhsSigned = getSignednessOfWideningOp(contractOp.getRhs());
+
+    // Carry the signedness in the matmul operand element type (si8/ui8). MLIR
+    // has no signless->signed/unsigned cast, so materialize an
+    // unrealized_conversion_cast; it folds to a no-op once both sides lower to
+    // signless LLVM integers. bf16/unknown-signedness operands are unchanged.
+    auto retype = [&](Value v, std::optional<bool> isSigned) -> Value {
+      if (!isSigned)
+        return v;
+      auto vecTy = dyn_cast<VectorType>(v.getType());
+      if (!vecTy)
+        return v;
+      auto intTy = dyn_cast<IntegerType>(vecTy.getElementType());
+      if (!intTy || !intTy.isSignless())
+        return v;
+      auto signednessTy = IntegerType::get(intTy.getContext(), intTy.getWidth(),
+                                           *isSigned ? IntegerType::Signed
+                                                     : IntegerType::Unsigned);
+      return UnrealizedConversionCastOp::create(rewriter, v.getLoc(),
+                                                vecTy.clone(signednessTy), v)
+          .getResult(0);
+    };
+
     Value result;
     {
       // Replace diagnostics handler to silence errors when verifying the
       // validity of the matmul ops being generated.
       ScopedDiagnosticHandler diagHandler(
           contractOp.getContext(), [](Diagnostic &) { return success(); });
-      if (failed(matmulOp.verifyInvariants())) {
-        rewriter.eraseOp(matmulOp);
-        // There is a possibility that, when the linalg op is converted to
-        // contractions, lower precisions operands are cast to the target
-        // precision outside the contraction. For those cases, we check.
+      // Decide whether the wide operands already form a valid matmul, or
+      // whether the widening ops must be peeled to reach a supported narrow
+      // shape. Use a throwaway signless op so a failed attempt leaves no retype
+      // casts behind.
+      auto testOp = MatMulOpTy::create(rewriter, contractOp.getLoc(),
+                                       acc.getType(), lhs, rhs, acc);
+      bool needsPeel = failed(testOp.verifyInvariants());
+      rewriter.eraseOp(testOp);
+      if (needsPeel) {
+        // When the linalg op is converted to contractions, lower-precision
+        // operands may be cast to the target precision outside the contraction.
         lhs = adaptor.getLhs();
         auto wideLhsValue = getSourceOfWideningOp(lhs).value_or(nullptr);
         if (wideLhsValue)
@@ -4689,14 +4777,15 @@ struct LowerVectorContractionOpToAIEVecMatMulPattern
         auto wideRhsValue = getSourceOfWideningOp(rhs).value_or(nullptr);
         if (wideRhsValue)
           rhs = reshapeLeadingUnitDims(rewriter, wideRhsValue);
-
-        matmulOp = MatMulOpTy::create(rewriter, contractOp.getLoc(),
-                                      acc.getType(), lhs, rhs, acc);
-        if (failed(matmulOp.verifyInvariants()))
-          return failure();
       }
+
+      auto matmulOp = MatMulOpTy::create(rewriter, contractOp.getLoc(),
+                                         acc.getType(), retype(lhs, lhsSigned),
+                                         retype(rhs, rhsSigned), acc);
+      if (failed(matmulOp.verifyInvariants()))
+        return failure();
+      result = matmulOp.getResult();
     }
-    result = matmulOp.getResult();
 
     if (bReshapedAcc)
       result = vector::ShapeCastOp::create(rewriter, contractOp.getLoc(),
@@ -4876,6 +4965,8 @@ populateAIEVecV2CommonConversionPatterns(RewritePatternSet &patterns) {
       LowerScalarMaxSIOpToAIEVecMaxOp,
       LowerVectorMaximumFOpToAIEVecMaxOp,
       LowerVectorMaxNumFFOpToAIEVecMaxOp,
+      LowerVectorMinUIOpToCmpSelOp,
+      LowerVectorMaxUIOpToCmpSelOp,
       LowerVectorCmpIOpToAIEVecCmpOp,
       LowerVectorCmpFOpToAIEVecCmpOp,
       LowerVectorSelectOpToAIEVecSelOp,
@@ -5723,6 +5814,32 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target) {
     unsigned laneSize = getVectorLaneSize(resultType);
 
     return !elWidthSet.count(resultElWidth) || laneSize * resultElWidth != 512;
+  });
+
+  target.addDynamicallyLegalOp<arith::MinUIOp>([=](arith::MinUIOp op) {
+    auto resultType = dyn_cast<VectorType>(op.getType());
+    if (!resultType)
+      return true;
+
+    auto resultElWidth = resultType.getElementType().getIntOrFloatBitWidth();
+    unsigned laneSize = getVectorLaneSize(resultType);
+    unsigned totalBits = laneSize * resultElWidth;
+
+    return !elWidthSet.count(resultElWidth) ||
+           (totalBits != 512 && !(totalBits == 256 && resultElWidth == 16));
+  });
+
+  target.addDynamicallyLegalOp<arith::MaxUIOp>([=](arith::MaxUIOp op) {
+    auto resultType = dyn_cast<VectorType>(op.getType());
+    if (!resultType)
+      return true;
+
+    auto resultElWidth = resultType.getElementType().getIntOrFloatBitWidth();
+    unsigned laneSize = getVectorLaneSize(resultType);
+    unsigned totalBits = laneSize * resultElWidth;
+
+    return !elWidthSet.count(resultElWidth) ||
+           (totalBits != 512 && !(totalBits == 256 && resultElWidth == 16));
   });
 
   target.addDynamicallyLegalOp<arith::MinimumFOp>([=](arith::MinimumFOp op) {

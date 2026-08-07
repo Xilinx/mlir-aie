@@ -368,29 +368,48 @@ jobs:
           export LIT_OPTS="-sv --timeout 600 --filter-out slow_test"
           ninja && ninja generate-aie-coverage-report
 
-          cat /home/runner/work/mlir-aie/mlir-aie/build_release/report/summary.txt
+          cat "$GITHUB_WORKSPACE/build_release/report/summary.txt"
 
-      - name: Format coverage report
+      - name: Build coverage comment
         if: steps.changed-files.outputs.changed-files != ''
         id: format-report
+        working-directory: ${{ github.workspace }}
         run: |
-          sed -i.bak 's/<!doctype html>/<!--<!doctype codecov html>-->/g' /home/runner/work/mlir-aie/mlir-aie/build_release/report/index.html
-          sed -i.bak 's/<pre>//g' /home/runner/work/mlir-aie/mlir-aie/build_release/report/index.html
-          sed -i.bak 's/<\/pre>//g' /home/runner/work/mlir-aie/mlir-aie/build_release/report/index.html
-          sed -i.bak 's/([0-9]*\/[0-9]*)//g' /home/runner/work/mlir-aie/mlir-aie/build_release/report/index.html
-          sed -i.bak "s/href=/href=''/g" /home/runner/work/mlir-aie/mlir-aie/build_release/report/index.html
-          WORKSPACE=$(echo "/home/runner/work/mlir-aie/mlir-aie/" | sed 's/\//\\\//g')
-          sed -i.bak "s/$WORKSPACE//g" /home/runner/work/mlir-aie/mlir-aie/build_release/report/index.html
+          REPORT=build_release/report
+          COMMENT=$REPORT/comment.md
 
+          # Diff coverage: which of the lines this PR added/changed are exercised
+          # by the test suite. Run from the repo root so diff-cover can resolve the
+          # lcov's absolute source paths against `git diff origin/main`.
+          diff-cover $REPORT/coverage.lcov \
+            --compare-branch origin/main \
+            --format markdown:$REPORT/diffcov.md || true
+
+          # Hidden marker lets find-create-or-update-comment replace its own comment.
+          {
+            echo '<!-- aie-coverage-report -->'
+            echo '## Code coverage'
+            echo
+            cat $REPORT/diffcov.md
+            echo
+            echo '<details><summary>Coverage of the changed files by the full test suite'
+            echo '(whole-file, not diff-only)</summary>'
+            echo
+            echo '```'
+            cat $REPORT/summary.txt
+            echo '```'
+            echo
+            echo '</details>'
+          } > $COMMENT
 
       - name: Update PR with coverage results
         if: steps.changed-files.outputs.changed-files != '' && github.event.pull_request.head.repo.full_name == github.repository
         uses: edumserrano/find-create-or-update-comment@82880b65c8a3a6e4c70aa05a204995b6c9696f53  # v3
         with:
           issue-number: ${{ github.event.pull_request.number }}
-          body-includes: '<!--<!doctype codecov html>-->'
+          body-includes: '<!-- aie-coverage-report -->'
           comment-author: 'github-actions[bot]'
-          body-path: /home/runner/work/mlir-aie/mlir-aie/build_release/report/index.html
+          body-path: ${{ github.workspace }}/build_release/report/comment.md
           edit-mode: replace
 
   license-compliance:
