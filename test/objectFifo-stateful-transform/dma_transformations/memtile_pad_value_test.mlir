@@ -12,13 +12,11 @@
 // MM2S channel op (aie.dma_start) that applies the padding -- matching the
 // hardware split (geometry per-BD, value per-MM2S-channel register).
 
-// The padded output fifo's memtile MM2S channel carries pad_value; its BDs carry
-// the pad geometry.
 // CHECK: aie.dma_start(MM2S, {{[0-9]+}}, {{.*}}) {pad_value = 7 : i32}
 // CHECK: aie.dma_bd({{.*}} pad [<const_pad_before = 2, const_pad_after = 1>, <const_pad_before = 4, const_pad_after = 4>])
 
 module {
-  aie.device(npu1_1col) {
+  aie.device(npu2_1col) {
     %tile_0_0 = aie.tile(0, 0)
     %tile_0_1 = aie.tile(0, 1)
     %tile_0_2 = aie.tile(0, 2)

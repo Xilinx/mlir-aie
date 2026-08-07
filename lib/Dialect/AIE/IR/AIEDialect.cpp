@@ -489,8 +489,13 @@ LogicalResult ObjectFifoCreateOp::verify() {
       return emitError("`repeat_count` unavailable for shim tiles");
   }
 
-  if (getPadValue() != 0 && !getPadDimensions().has_value())
-    return emitError("`padValue` requires `padDimensions`");
+  if (getPadValue() != 0) {
+    if (!getPadDimensions().has_value())
+      return emitError("`padValue` requires `padDimensions`");
+    if (!getTargetModel(getOperation()).isMemTilePadValueSupported())
+      return emitError("`padValue` requires the CONSTANT_PAD_VALUE register, "
+                       "unavailable on this target");
+  }
 
   if (getAieStreamPort().has_value()) {
     if (!getAieStream().has_value())
@@ -2069,8 +2074,13 @@ LogicalResult DMAOp::verify() {
       return emitOpError(
           "DMAOp regions/blocks must have exactly two UseLock ops");
   }
-  if (getPadValue() != 0 && !isa<MemTileDMAOp>(parentOp))
-    return emitOpError("pad_value is only supported on memtile DMA channels");
+  if (getPadValue() != 0) {
+    if (!isa<MemTileDMAOp>(parentOp))
+      return emitOpError("pad_value is only supported on memtile DMA channels");
+    if (!getTargetModel(getOperation()).isMemTilePadValueSupported())
+      return emitOpError("pad_value requires the CONSTANT_PAD_VALUE register, "
+                         "unavailable on this target");
+  }
   return success();
 }
 
@@ -2716,8 +2726,13 @@ void DMAStartOp::getCanonicalizationPatterns(RewritePatternSet &patterns,
 }
 
 LogicalResult DMAStartOp::verify() {
-  if (getPadValue() != 0 && !isa<MemTileDMAOp>(getOperation()->getParentOp()))
-    return emitOpError("pad_value is only supported on memtile DMA channels");
+  if (getPadValue() != 0) {
+    if (!isa<MemTileDMAOp>(getOperation()->getParentOp()))
+      return emitOpError("pad_value is only supported on memtile DMA channels");
+    if (!getTargetModel(getOperation()).isMemTilePadValueSupported())
+      return emitOpError("pad_value requires the CONSTANT_PAD_VALUE register, "
+                         "unavailable on this target");
+  }
   return success();
 }
 

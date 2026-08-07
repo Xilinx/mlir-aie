@@ -13,7 +13,7 @@
 
 module {
   // Terminator form: aie.dma_start on a core tile.
-  aie.device(xcve2802) {
+  aie.device(npu2) {
     %t = aie.tile(1, 3)
     %buf = aie.buffer(%t) : memref<8xi32>
     aie.mem(%t) {
@@ -27,7 +27,7 @@ module {
     }
   }
   // Region form: aie.dma on a core tile.
-  aie.device(xcve2802) {
+  aie.device(npu2) {
     %t = aie.tile(1, 3)
     %buf = aie.buffer(%t) : memref<8xi32>
     %pl = aie.lock(%t, 0) {init = 1 : i32}
