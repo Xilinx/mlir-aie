@@ -93,6 +93,9 @@ The hooks cover:
   committed.
 - **Python lint** — [`ruff check`](https://docs.astral.sh/ruff/) (see
   [Linting Python](#linting-python) below).
+- **C++ static analysis** — [`clang-tidy`](https://clang.llvm.org/extra/clang-tidy/),
+  scoped to a growing list of files (see
+  [Static analysis for C++](#static-analysis-for-c-clang-tidy) below).
 - **Baseline hygiene** — trailing whitespace, end-of-file, merge-conflict
   markers, and [REUSE](https://reuse.software/) license-header compliance.
 
@@ -121,6 +124,54 @@ documents, rule by rule, why anything is excluded from the default rule set;
 per-file exceptions live in `[lint.per-file-ignores]`, each with an inline
 justification. Follow that pattern if you need a new one — an unexplained
 exception won't pass review.
+
+## Static analysis for C++ (clang-tidy)
+
+C++ is checked with [clang-tidy](https://clang.llvm.org/extra/clang-tidy/)
+(config in `.clang-tidy`), scoped to an explicit, growing list of files
+rather than the whole repo at once — currently just
+`lib/Dialect/AIE/Transforms/AIEAssignBufferDescriptorIDs.cpp`. Unlike
+clang-format, clang-tidy needs a real compile database
+(`compile_commands.json`) and the tablegen'd headers a file includes to parse
+anything, so it can't run as a bare per-file text check the way the
+formatting hooks do.
+
+If you already have a build (see [Building from source](docs/Building.md)),
+point the pre-push hook and CI at it — any build works, clang or GCC:
+
+```shell
+# If your build wasn't configured with -DCMAKE_EXPORT_COMPILE_COMMANDS=ON,
+# generate compile_commands.json in place:
+ninja -C build -t compdb > build/compile_commands.json
+
+# Defaults to build/ at the repo root; override if yours lives elsewhere:
+export MLIR_AIE_BUILD_DIR=/path/to/build
+```
+
+The pre-push hook then runs it automatically on enabled files you've
+touched, via `utils/run_clang_tidy.sh` — a pinned `clang-tidy==17.0.1`
+(matching clang-format's pinned version, via `python/requirements_dev.txt`)
+rather than a bare `apt install clang-tidy`, so the version doesn't silently
+drift between your machine and CI. If there's no compile database yet, the
+hook fails with the setup hint above instead of silently skipping. To run it
+by hand:
+
+```shell
+utils/run_clang_tidy.sh <file>...
+```
+
+CI mirrors this exactly (see the `clang-tidy` step in
+`.github/workflows/lintAndFormat.yml`), scoped to whichever enabled files a
+given PR actually touched — not the full enabled list every time, the way
+`pyright`/`ruff check` operate below. A PR that doesn't touch any enabled
+file passes trivially.
+
+Growing the enabled file list is the same three-part motion as extending
+ruff/pyright coverage: add the path to `CLANG_TIDY_FILES` in
+`lintAndFormat.yml`'s clang-tidy step, add it to the `files:` regex on the
+`clang-tidy` pre-commit hook (`.pre-commit-config.yaml` — the two must stay
+in sync, same convention `ruff-check` uses for `ruff.toml`'s `include`), and
+fix that file's findings.
 
 ## Type checking Python
 

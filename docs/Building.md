@@ -136,13 +136,20 @@ xrt-smi examine
    python3 -m pip install -r python/requirements_dev.txt
 
    # Install the pre-commit and pre-push hooks defined in .pre-commit-config.yaml
-   # (pre-push runs clang-format/black/ruff to catch formatting and lint issues before CI)
+   # (pre-push runs clang-format/black/ruff/clang-tidy to catch formatting and
+   # lint issues before CI)
    pre-commit install
    ```
 
 1. Use scripted mlir-aie build process. This script downloads llvm/mlir from wheels before building.
    ```bash
    bash ./utils/build-mlir-aie-from-wheels.sh
+   ```
+
+1. (Optional) Generate a compile database so the `clang-tidy` pre-push hook
+   can run (see [CONTRIBUTING.md](../CONTRIBUTING.md#static-analysis-for-c-clang-tidy)):
+   ```bash
+   ninja -C build -t compdb > build/compile_commands.json
    ```
 
 1. Setup environment
