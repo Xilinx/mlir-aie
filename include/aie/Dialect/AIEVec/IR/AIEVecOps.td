@@ -653,14 +653,9 @@ def AIEVec_MatMulOp:
 
     Operand signedness is carried in the integer element types: a signed
     element type (`si8`) sets the MAC `signX`/`signY` bit, an unsigned type
-    (`ui8`) clears it. Prefer spelling the signedness out.
-
-    A signless element type (`i8`) falls back to the pre-existing asymmetric
-    behavior -- lhs treated as unsigned, rhs as signed. That fallback is kept
-    only for compatibility with IR written before signedness was expressible
-    here; it is not a recommended default, and it disagrees with
-    `aievec.matmul_aie2p`, which defaults signless operands to signed.
-    Reconciling the two is left to a follow-up.
+    (`ui8`) clears it. A signless element type (`i8`) is treated as signed.
+    Each operand is resolved independently, and `aievec.matmul_aie2p` follows
+    the same rule.
 
     Currently, this intrinsic supports the following type combinations:
 
@@ -699,9 +694,9 @@ def AIEVec_MatMulOp_AIE2P:
     AMD AIEv2P-specific intrinsic that performs a matrix multiplication
     between `lhs` and `rhs`, and accumulates the result in `acc`.
 
-    As for `aievec.matmul`, operand signedness is carried in the integer
-    element types (`si8`/`ui8`) so the integer MAC configuration word can set
-    its `signX`/`signY` bits. A signless element type defaults to signed.
+    Operand signedness is carried in the integer element types exactly as for
+    `aievec.matmul`: `si8` sets the MAC `signX`/`signY` bit, `ui8` clears it,
+    and a signless element type is treated as signed.
 
     Currently, this intrinsic supports the following type combinations:
 
