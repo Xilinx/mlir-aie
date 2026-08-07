@@ -17,9 +17,9 @@ The script has two modes (matching whole_array.py):
 
 import argparse
 
-import numpy as np
-
 import aie.iron as iron
+import numpy as np
+from aie.helpers.taplib import TensorTiler2D
 from aie.iron import (
     CompileTime,
     In,
@@ -33,7 +33,6 @@ from aie.iron import (
     str_to_dtype,
 )
 from aie.iron.controlflow import range_
-from aie.helpers.taplib import TensorTiler2D
 from aie.utils.benchmark import run_iters
 from aie.utils.hostruntime.argparse import (
     add_benchmark_args,

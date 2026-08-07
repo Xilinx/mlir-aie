@@ -58,9 +58,10 @@ def _emit_shim_dma_alloc(kind: str, shim_symbol, src, src_channel, dst, dst_chan
 
 
 class Flow(Resolvable):
-    """An explicit AXI-stream route between (src_tile, src_port, src_channel) and
-    (dst_tile, dst_port, dst_channel).
+    """An explicit AXI-stream route between a source and destination endpoint.
 
+    Connects ``(src_tile, src_port, src_channel)`` to
+    ``(dst_tile, dst_port, dst_channel)``.
     Lowers to a single `aie.flow` op. The user is responsible for
     arranging matching [`TileDma`][iron.TileDma] channels on the producer and
     consumer ends.
@@ -117,7 +118,7 @@ class Flow(Resolvable):
         return self._op
 
     def all_tiles(self):
-        """The tiles this Flow touches — Program uses this to resolve them."""
+        """Return the tiles this Flow touches — Program uses this to resolve them."""
         return [self._src, self._dst]
 
     def resolve(
@@ -147,9 +148,10 @@ class Flow(Resolvable):
 
 @dataclass
 class PacketDest:
-    """One destination endpoint of a [`PacketFlow`][iron.PacketFlow]. Held as a
-    small dataclass so the PacketFlow constructor's destination list reads
-    cleanly when there are multiple sinks (uncommon, but the underlying op
+    """One destination endpoint of a [`PacketFlow`][iron.PacketFlow].
+
+    Held as a small dataclass so the PacketFlow constructor's destination list
+    reads cleanly when there are multiple sinks (uncommon, but the underlying op
     supports it).
     """
 

@@ -13,14 +13,13 @@ Input:  (1,1,1280) uint16  Output: (1,1,1280) uint16 (4 tiles, joined)
 """
 
 import numpy as np
-
 from aie.iron import ObjectFifo, Worker, kernels
 from aie.iron.controlflow import range_
 from aie.iron.dataflow.endpoint import ObjectFifoEndpoint
-from aie.iron.device import AnyMemTile
+from aie.iron.device import AnyMemTile, Tile
 
-from ._common import i8, load_wts
 from ..network_spec import block as nsblock
+from ._common import i8, load_wts
 
 
 def post_l2(act_in, sf, *, tiles=None, data_dir):
@@ -72,7 +71,8 @@ def post_l2(act_in, sf, *, tiles=None, data_dir):
     # `co` = channels per ObjectFifo element (one WeightIndex iteration's output slice).
     co = post_L2_OutC // (PostOutputSplitL2 * n_fc_tiles)  # = 8
 
-    t = tiles.get if tiles else lambda k: None
+    def t(k) -> Tile | None:
+        return tiles.get(k) if tiles else None
 
     # Split the output fifo into 4 channel-segments, one per FC tile.
     act_post_l2_tiles = act_out_of.prod().join(

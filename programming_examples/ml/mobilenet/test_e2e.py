@@ -26,11 +26,11 @@ Usage:
 
 import argparse
 import sys
-import numpy as np
 
 import aie.iron as iron
-from aie.utils.ml import DataShaper
+import numpy as np
 from aie.utils import DefaultNPURuntime, NPUKernel
+from aie.utils.ml import DataShaper
 
 # (in_w, in_h, in_c, out_w, out_h, out_c) per supported test target.
 SHAPES = {

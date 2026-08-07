@@ -7,11 +7,11 @@
 
 # Block Datatypes - Matrix Multiplication
 
-This folder cotains multiple variations of the standard matrix multiplication example. In order to understand the matrix multiplication example itself, it is recommended to check the [original one](../../../basic/matrix_multiplication/whole_array/README.md), along with its corresponding README file, since explanations related to the matrix multiplication will be found there. Here, only differences related to using blocked datatypes will be mentioned and code comments have been removed.
+This folder contains multiple variations of the standard matrix multiplication example. In order to understand the matrix multiplication example itself, it is recommended to check the [original one](../../../basic/matrix_multiplication/whole_array/README.md), along with its corresponding README file, since explanations related to the matrix multiplication will be found there. Here, only differences related to using blocked datatypes will be mentioned and code comments have been removed.
 
 Blocked datatypes require additional attention when declaring the matrix shapes, since they group multiple elements. When going through these examples, notice how matrices must be reshaped to take this into account (usually with divisions such as `[matrix_dimension] // 8`).
 
-These examples are currently only supported when using the chess compiler. Assuming your environment is properly set up, it can be used with `make run use_chess=1`.
+These examples build with Peano. Run one with `make run`.
 
 ## Block Datatypes - Main changes
 

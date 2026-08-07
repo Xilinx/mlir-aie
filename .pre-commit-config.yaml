@@ -41,6 +41,20 @@ repos:
   hooks:
     - id: ruff-check
       stages: [pre-push]
+      # pre-commit passes changed files as explicit paths, and ruff lints an
+      # explicitly-passed file even if it is outside ruff.toml's `include`
+      # allowlist -- so without this filter the hook reports on files the
+      # project has not opted into linting yet (e.g. python/dialects,
+      # test/**). Mirror ruff.toml's `include` here so the hook and a plain
+      # `ruff check` (what CI runs) see exactly the same file set. Keep this
+      # in sync with ruff.toml `include`.
+      files: |
+        (?x)^(
+          python/(iron|utils|helpers|compiler)/.*\.py|
+          programming_examples/(algorithms|basic|getting_started|vision)/.*\.py|
+          programming_examples/lit\.cfg\.py|
+          programming_examples/ml/(block_datatypes|mobilenet|bottleneck|conv2d|conv2d_14x14|eltwise|eltwise_unary|magika|norm|resnet|rope|scale_shift|softmax|swiglu)/.*\.py
+        )$
 
 # Baseline hygiene: validators run on every commit, fixers gated to pre-push
 - repo: https://github.com/pre-commit/pre-commit-hooks

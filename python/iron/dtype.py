@@ -19,8 +19,7 @@ dtype_map = {
 
 
 def str_to_dtype(dtype_str: str) -> type:
-    """
-    Convert a string representation of a data type to its corresponding dtype object.
+    """Convert a string representation of a data type to its corresponding dtype object.
 
     Args:
         dtype_str: The string representation of the data type.
@@ -28,7 +27,6 @@ def str_to_dtype(dtype_str: str) -> type:
     Returns:
         The corresponding numpy/ml_dtypes type object.
     """
-
     value = None
     try:
         value = dtype_map[dtype_str]
@@ -38,8 +36,7 @@ def str_to_dtype(dtype_str: str) -> type:
 
 
 def dtype_to_str(dtype: type) -> str:
-    """
-    Convert a dtype object to its string representation.
+    """Convert a dtype object to its string representation.
 
     Args:
         dtype: The dtype object to convert.
@@ -47,7 +44,6 @@ def dtype_to_str(dtype: type) -> str:
     Returns:
         The string representation of the dtype.
     """
-
     for key, value in dtype_map.items():
         if value == dtype:
             return key

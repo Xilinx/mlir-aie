@@ -39,14 +39,13 @@ Compile-only:  ``... --xclbin-path=PATH --insts-path=PATH``    (Makefile)
 import argparse
 from pathlib import Path
 
-import numpy as np
-
 import aie.iron as iron
+import numpy as np
+from aie.helpers.taplib import TensorAccessPattern, TensorTiler2D
 from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker
 from aie.iron.controlflow import range_
 from aie.iron.device import AnyComputeTile
 from aie.iron.kernel import ExternalFunction
-from aie.helpers.taplib import TensorAccessPattern, TensorTiler2D
 from aie.utils.hostruntime.argparse import add_compile_args
 from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
@@ -249,7 +248,7 @@ def _transpose_combined(
 
     in_L3L2_fifo = ObjectFifo(tile_ty, name="in_L3L2_fifo")
     in_L2L1_fifo = in_L3L2_fifo.cons(
-        dims_from_stream=tap_in_L2L1.transformation_dims
+        dims_from_stream=list(tap_in_L2L1.transformation_dims)
     ).forward(obj_type=tile_ty, name="in_L2L1_fifo")
     out_fifo = ObjectFifo(tile_ty, name="out_fifo")
 

@@ -12,9 +12,8 @@ Applies ``lambda a, b: a + b`` to each ``tile_size``-element tile of two
 
 import argparse
 
-import numpy as np
-
 import aie.iron as iron
+import numpy as np
 from aie.iron import CompileTime, In, Out
 from aie.utils.verify import assert_pass
 

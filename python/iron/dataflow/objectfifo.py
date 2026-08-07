@@ -51,8 +51,7 @@ def _same_shim_pin(a: "Tile | None", b: "Tile | None") -> bool:
 
 
 class ObjectFifo(Resolvable):
-    """A synchronized, explicit dataflow channel between IRON program
-    components such as [`Worker`][iron.Worker]s and the [`Runtime`][iron.Runtime].
+    """A synchronized, explicit dataflow channel between IRON program components such as [`Worker`][iron.Worker]s and the [`Runtime`][iron.Runtime].
 
     Internally, an ObjectFifo is a circular buffer with a given depth and
     element type. Its users are explicitly either a *producer* or a
@@ -102,6 +101,10 @@ class ObjectFifo(Resolvable):
                 stream, described as pairs of (size, stride) from highest to lowest
                 dimension. Defaults to None.
             plio (bool, optional): Whether the ObjectFifo uses PLIO connections. Defaults to False.
+            pad_dimensions (PadDims | None, optional): Per-dimension zero-padding applied to the
+                buffer, described as ``(pad_before, pad_after)`` pairs from highest to lowest
+                dimension. Lowers to the ``padDimensions`` attribute on the underlying
+                ``aie.objectfifo`` op. Defaults to None.
             disable_synchronization (bool, optional): When True, disables lock-based
                 synchronization on the ObjectFifo. Defaults to False.
             repeat_count (int | None, optional): If set, causes the MemTile DMA to replay the
@@ -116,6 +119,10 @@ class ObjectFifo(Resolvable):
                 location, not a producer- or consumer-side concept; the underlying op verifier
                 rejects this if either endpoint cannot share memory with the delegate.
                 Defaults to None.
+            via_DMA (bool, optional): When True, force the ObjectFifo to route through DMA
+                even when producer and consumer share memory (where a lock-only path would
+                otherwise be used). Lowers to the ``via_DMA`` attribute on the underlying
+                ``aie.objectfifo`` op. Defaults to False.
             init_values (list[np.ndarray] | None, optional): Per-buffer static initial values
                 for the producer endpoint. One ndarray per producer-side buffer; the producer
                 tile must be able to hold static data at design startup (e.g. a MemTile).
@@ -188,17 +195,17 @@ class ObjectFifo(Resolvable):
 
     @property
     def shape(self) -> Sequence[int]:
-        """The shape of each buffer belonging to the ObjectFifo"""
+        """The shape of each buffer belonging to the ObjectFifo."""
         return np_ndarray_type_get_shape(self._obj_type)
 
     @property
     def dtype(self) -> NpuDType:
-        """The per-element data type of each element in each buffer belonging to the ObjectFifo"""
+        """The per-element data type of each element in each buffer belonging to the ObjectFifo."""
         return np_ndarray_type_get_dtype(self._obj_type)
 
     @property
     def obj_type(self) -> type[np.ndarray]:
-        """The tensor type of each buffer belonging to the ObjectFifo"""
+        """The tensor type of each buffer belonging to the ObjectFifo."""
         return self._obj_type
 
     def set_iter_count(self, iter_count: int):
@@ -232,8 +239,10 @@ class ObjectFifo(Resolvable):
         channel: int | None = None,
         tile: Tile | None = None,
     ) -> ObjectFifoHandle:
-        """Returns an ObjectFifoHandle of type producer. Each ObjectFifo may have only one producer
-        handle, so if one already exists, a new reference to this handle will be returned.
+        """Return an ObjectFifoHandle of type producer.
+
+        Each ObjectFifo may have only one producer handle, so if one already
+        exists, a new reference to this handle will be returned.
 
         Args:
             depth (int | None, optional): The depth of the buffers at the endpoint corresponding to the producer handle. Defaults to None.
@@ -278,8 +287,10 @@ class ObjectFifo(Resolvable):
         channel: int | None = None,
         tile: Tile | None = None,
     ) -> ObjectFifoHandle:
-        """Returns an ObjectFifoHandle of type consumer. Each ObjectFifo may have multiple consumers, so this
-        will return a new consumer handle every time it is called.
+        """Return an ObjectFifoHandle of type consumer.
+
+        Each ObjectFifo may have multiple consumers, so this will return a new
+        consumer handle every time it is called.
 
         Args:
             depth (int | None, optional): The depth of the buffers at the endpoint corresponding to this consumer handle. Defaults to None.
@@ -316,7 +327,7 @@ class ObjectFifo(Resolvable):
         return self._cons[-1]
 
     def tiles(self, cons_only: bool = False) -> list[Tile]:
-        """The list of placement tiles corresponding to the endpoints of all handles of this ObjectFifo
+        """Return the placement tiles corresponding to the endpoints of all handles of this ObjectFifo.
 
         Raises:
             ValueError: A producer handle must be constructed.
@@ -503,7 +514,7 @@ class ObjectFifoHandle(Resolvable):
         channel: int | None = None,
         tile: Tile | None = None,
     ):
-        """Construct an ObjectFifoHandle
+        """Construct an ObjectFifoHandle.
 
         Args:
             of (ObjectFifo): The ObjectFifo to construct the handle for.
@@ -584,7 +595,7 @@ class ObjectFifoHandle(Resolvable):
 
     @property
     def name(self) -> str:
-        """The name of the ObjectFifo"""
+        """The name of the ObjectFifo."""
         return self._object_fifo.name
 
     @property
@@ -598,17 +609,17 @@ class ObjectFifoHandle(Resolvable):
 
     @property
     def obj_type(self) -> type[np.ndarray]:
-        """The per-buffer type of the ObjectFifo"""
+        """The per-buffer type of the ObjectFifo."""
         return self._object_fifo.obj_type
 
     @property
     def shape(self) -> Sequence[int]:
-        """The per-buffer shape of the ObjectFifo"""
+        """The per-buffer shape of the ObjectFifo."""
         return self._object_fifo.shape
 
     @property
     def dtype(self) -> NpuDType:
-        """The per-element datatype of the ObjectFifo"""
+        """The per-element datatype of the ObjectFifo."""
         return self._object_fifo.dtype
 
     @property
@@ -620,19 +631,19 @@ class ObjectFifoHandle(Resolvable):
 
     @property
     def depth(self) -> int:
-        """The depth of this ObjectFifoHandle"""
+        """The depth of this ObjectFifoHandle."""
         return self._depth
 
     @property
     def dims_from_stream(self) -> StreamDims | None:
-        """The dimensions from stream of a consumer ObjectFifoHandle"""
+        """The dimensions from stream of a consumer ObjectFifoHandle."""
         if self._is_prod:
             raise ValueError("prod ObjectFifoHandles cannot have dims_from_stream")
         return self._dims_from_stream
 
     @property
     def endpoint(self) -> ObjectFifoEndpoint | None:
-        """The endpoint of this ObjectFifoHandle"""
+        """The endpoint of this ObjectFifoHandle."""
         return self._endpoint
 
     def __str__(self) -> str:
@@ -665,10 +676,12 @@ class ObjectFifoHandle(Resolvable):
         transfer_len=None,
         managed=True,
     ):
-        """Shared body for fill()/drain(): bind the shim endpoint, register the
-        fifo with the active runtime sequence, and emit the shim DMA transfer.
-        Returns a [`Task`][iron.runtime.dmataskhandle.Task] handle to the
-        transfer (carry it as a ``range_`` iter_arg; ``.free()``/``.await_()`` it).
+        """Shared body for fill()/drain().
+
+        Bind the shim endpoint, register the fifo with the active runtime
+        sequence, and emit the shim DMA transfer. Returns a
+        [`Task`][iron.runtime.dmataskhandle.Task] handle to the transfer
+        (carry it as a ``range_`` iter_arg; ``.free()``/``.await_()`` it).
 
         The access pattern is given either as a static ``tap`` or as explicit
         ``sizes``/``strides``/``offset``/``transfer_len`` whose entries may be
@@ -829,7 +842,7 @@ class ObjectFifoHandle(Resolvable):
         )
 
     def all_of_endpoints(self) -> list[ObjectFifoEndpoint]:
-        """All endpoints belonging to an ObjectFifo"""
+        """All endpoints belonging to an ObjectFifo."""
         return self._object_fifo._get_endpoint(
             is_prod=True
         ) + self._object_fifo._get_endpoint(is_prod=False)
@@ -837,7 +850,7 @@ class ObjectFifoHandle(Resolvable):
     def join(
         self,
         offsets: list[int],
-        tile: Tile = AnyMemTile,
+        tile: Tile | None = AnyMemTile,
         depths: list[int] | None = None,
         obj_types: list[type[np.ndarray]] | None = None,
         names: list[str] | None = None,
@@ -847,11 +860,12 @@ class ObjectFifoHandle(Resolvable):
         repeat_counts: list[int | None] | None = None,
     ) -> list[ObjectFifo]:
         """Construct multiple ObjectFifos which feed data into a ObjectFifoHandle.
+
         Note that this function is only valid for producer ObjectFifoHandles.
 
         Args:
             offsets (list[int]): Offsets into the current producer, each corresponding to a new consumer.
-            tile (Tile, optional): The tile where the Join operation occurs. Defaults to AnyMemTile.
+            tile (Tile, optional): The tile where the Join operation occurs. Also accepts None (treated as AnyMemTile). Defaults to AnyMemTile.
             depths (list[int] | None, optional): The depth of each new ObjectFifo. Defaults to None.
             obj_types (list[type[np.ndarray]], optional): The type of the buffers corresponding to each new ObjectFifo. Defaults to None.
             names (list[str] | None, optional): The name of each new ObjectFifo. If not given, unique names will be generated. Defaults to None.
@@ -929,7 +943,7 @@ class ObjectFifoHandle(Resolvable):
     def split(
         self,
         offsets: list[int],
-        tile: Tile = AnyMemTile,
+        tile: Tile | None = AnyMemTile,
         depths: list[int] | None = None,
         obj_types: list[type[np.ndarray]] | None = None,
         names: list[str] | None = None,
@@ -939,11 +953,12 @@ class ObjectFifoHandle(Resolvable):
         repeat_counts: list[int | None] | None = None,
     ) -> list[ObjectFifo]:
         """Split the data from an ObjectFifoConsumer handle by sending it to producers in N newly constructed ObjectFifos.
+
         Note this operation is only valid for ObjectFifoHandles of type consumer.
 
         Args:
             offsets (list[int]): The offset into the current consumer for each new ObjectFifo producer.
-            tile (Tile, optional): The tile where the Split operation takes place. Defaults to AnyMemTile.
+            tile (Tile, optional): The tile where the Split operation takes place. Also accepts None (treated as AnyMemTile). Defaults to AnyMemTile.
             depths (list[int] | None, optional): The depth of each new ObjectFifo. Defaults to None.
             obj_types (list[type[np.ndarray]], optional): The buffer type of each new ObjectFifo. Defaults to None.
             names (list[str] | None, optional): The name of each new ObjectFifo. If not given, a unique name will be generated. Defaults to None.
@@ -1017,7 +1032,7 @@ class ObjectFifoHandle(Resolvable):
 
     def forward(
         self,
-        tile: Tile = AnyMemTile,
+        tile: Tile | None = AnyMemTile,
         obj_type: type[np.ndarray] | None = None,
         depth: int | None = None,
         name: str | None = None,
@@ -1026,11 +1041,13 @@ class ObjectFifoHandle(Resolvable):
         plio: bool = False,
         repeat_count: int | None = None,
     ) -> ObjectFifo:
-        """This is a special case of the split() operation where an ObjectFifoHandle of type consumer
+        """Forward an ObjectFifoHandle of type consumer to a newly-constructed ObjectFifo.
+
+        This is a special case of the split() operation where the consumer handle
         is forwarded to the producer of a newly-constructed ObjectFifo.
 
         Args:
-            tile (Tile, optional): The tile for the Forward operation. Defaults to AnyMemTile.
+            tile (Tile, optional): The tile for the Forward operation. Also accepts None (treated as AnyMemTile). Defaults to AnyMemTile.
             obj_type (type[np.ndarray] | None, optional): The object type of the new ObjectFifo. Defaults to None.
             depth (int | None, optional): The depth of the new ObjectFifo. Defaults to None.
             name (str | None, optional): The name of the new ObjectFifo. If None is given, a unique name will be generated. Defaults to None.
@@ -1081,7 +1098,7 @@ class ObjectFifoLink(ObjectFifoEndpoint, Resolvable):
         self,
         srcs: list[ObjectFifoHandle] | ObjectFifoHandle,
         dsts: list[ObjectFifoHandle] | ObjectFifoHandle,
-        tile: Tile = AnyMemTile,
+        tile: Tile | None = AnyMemTile,
         src_offsets: list[int] | None = None,
         dst_offsets: list[int] | None = None,
     ):

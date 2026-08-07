@@ -4,14 +4,21 @@
 
 from pathlib import Path
 
-import numpy as np
-from ml_dtypes import bfloat16
-
 import aie.iron as iron
-from aie.iron import CompileTime, ExternalFunction, In, Out
-from aie.iron import ObjectFifo, Program, Runtime, Worker
+import numpy as np
+from aie.iron import (
+    CompileTime,
+    ExternalFunction,
+    In,
+    ObjectFifo,
+    Out,
+    Program,
+    Runtime,
+    Worker,
+)
 from aie.utils.config import cxx_header_path
 from aie.utils.verify import assert_pass
+from ml_dtypes import bfloat16
 
 
 # JIT decorator for IRON

@@ -12,9 +12,8 @@ time via ``passThroughLine`` (``-DBIT_WIDTH=8`` from
 
 import argparse
 
-import numpy as np
-
 import aie.iron as iron
+import numpy as np
 from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker, kernels
 from aie.utils.hostruntime.argparse import add_compile_args
 from aie.utils.hostruntime.cli import run_design_cli

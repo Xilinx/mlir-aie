@@ -23,8 +23,10 @@ logger = logging.getLogger(__name__)
 
 
 def _is_contiguous_row_major(mr):
-    """True iff ``mr`` is fully-static row-major contiguous at offset 0;
-    required before ``memref.collapse_shape`` (UB on non-contiguous dims)."""
+    """Return True iff ``mr`` is fully-static row-major contiguous at offset 0.
+
+    Required before ``memref.collapse_shape`` (UB on non-contiguous dims).
+    """
     if any(d < 0 for d in mr.shape):
         return False
     try:
@@ -43,13 +45,15 @@ def _is_contiguous_row_major(mr):
 
 
 def _maybe_collapse_to_match(arg, expected_ty):
-    """Bridge an N-D contiguous memref arg to a 1-D kernel signature via
-    ``memref.collapse_shape``. Iron L1 buffers are multi-dim (e.g.
+    """Bridge an N-D contiguous memref arg to a 1-D kernel signature.
+
+    Uses ``memref.collapse_shape``. Iron L1 buffers are multi-dim (e.g.
     ``memref<64x64xi16>``) but ``aie.iron.kernels.X`` helpers declare
     flat 1-D args; without this adapter MLIR rejects the call even though
     bytes line up. Aliases storage — no copy emitted. Returns ``arg``
     unchanged for any case that isn't safely collapsible, so real bugs
-    still surface in MLIR verification."""
+    still surface in MLIR verification.
+    """
     if not isinstance(arg, ir.Value):
         return arg
     arg_ty = arg.type
@@ -92,7 +96,8 @@ class BaseKernel(Resolvable):
         name: str,
         arg_types: list[type[np.ndarray] | np.dtype] | None = None,
     ):
-        """
+        """Construct a BaseKernel.
+
         Args:
             name: Symbol name of the function.
             arg_types: Type signature of the function arguments.  Defaults to None (empty list).
@@ -242,7 +247,8 @@ class Kernel(BaseKernel):
         *,
         link_with_mode: str | None = None,
     ) -> None:
-        """
+        """Construct a Kernel backed by a pre-compiled object file.
+
         Args:
             name: Symbol name of the function as it appears in the object file.
             object_file_name: Filename of the pre-compiled object file
@@ -319,7 +325,8 @@ class ExternalFunction(Kernel):
         use_chess: bool = False,
         inline: bool = False,
     ) -> None:
-        """
+        """Construct an ExternalFunction compiled from C/C++ source at JIT time.
+
         Args:
             name: Symbol name of the function as it will appear in the object
                 file.

@@ -21,17 +21,16 @@ Three invocation modes:
 
 import argparse
 
-import numpy as np
-
+import aie.extras.dialects.arith as arith  # pyright: ignore[reportMissingImports]
 import aie.iron as iron
-from aie.iron import CompileTime, ObjectFifo, Out, Program, Runtime, Worker
-from aie.iron.controlflow import range_
+import numpy as np
 from aie.helpers.taplib import TensorTiler2D
 from aie.helpers.util import np_dtype_to_mlir_type
+from aie.iron import CompileTime, ObjectFifo, Out, Program, Runtime, Worker
+from aie.iron.controlflow import range_
 from aie.utils.hostruntime.argparse import add_compile_args
 from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
-import aie.extras.dialects.arith as arith
 
 
 @iron.jit

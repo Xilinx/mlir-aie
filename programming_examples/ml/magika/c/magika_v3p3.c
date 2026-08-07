@@ -45,7 +45,7 @@ void magika_group0b(float xy[256 * 512], float g[512], float b[512]) {
       mean += px[j];
     mean = mean / 512.0;
 
-    // compute the varance
+    // compute the variance
     float var = 0;
     for (int j = 0; j < 512; j++)
       var += (px[j] - mean) * (px[j] - mean);
@@ -113,7 +113,7 @@ void magika_group2(float x[512], float w[214 * 512], float b[214],
     mean += x[i];
   mean = mean / 512.0;
 
-  // compute the varance
+  // compute the variance
   float var = 0;
   for (int j = 0; j < 512; j++)
     var += (x[j] - mean) * (x[j] - mean);

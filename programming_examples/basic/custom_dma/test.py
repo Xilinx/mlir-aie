@@ -13,10 +13,11 @@ Expected output (48 x i32):
 """
 
 import argparse
-import numpy as np
 import sys
-import aie.utils.test as test_utils
+
 import aie.iron as iron
+import aie.utils.test as test_utils
+import numpy as np
 from aie.utils import DefaultNPURuntime
 from aie.utils.hostruntime.argparse import add_runtime_args
 

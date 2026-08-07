@@ -4,21 +4,21 @@
 #
 
 import argparse
-import torch
-import torch.nn as nn
-import sys
 import math
-from aie.utils.ml import DataShaper
-import time
 import os
+import sys
 from pathlib import Path
+
 import numpy as np
-import aie.iron as iron
-from aie.utils import DefaultNPURuntime
-from aie.utils import TraceConfig, HostRuntime, NPUKernel, DefaultNPURuntime
-import aie.utils.test as test_utils
-from brevitas.nn import QuantConv2d, QuantIdentity, QuantReLU
-from brevitas.quant.fixed_point import (
+import torch  # pyright: ignore[reportMissingImports]
+import torch.nn as nn  # pyright: ignore[reportMissingImports]
+from aie.utils.ml import DataShaper
+from brevitas.nn import (  # pyright: ignore[reportMissingImports]
+    QuantConv2d,
+    QuantIdentity,
+    QuantReLU,
+)
+from brevitas.quant.fixed_point import (  # pyright: ignore[reportMissingImports]
     Int8ActPerTensorFixedPoint,
     Int8WeightPerTensorFixedPoint,
     Uint8ActPerTensorFixedPoint,
@@ -28,8 +28,6 @@ torch.use_deterministic_algorithms(True)
 torch.manual_seed(0)
 vectorSize = 8
 
-
-from .. import mb_utils
 
 log_dir = str(Path(__file__).parent / "log") + "/"
 data_dir = str(Path(__file__).parent / "data") + "/"
@@ -92,16 +90,9 @@ def main(opts):
     bneck_InC1 = tensorInC
     bneck_OutC1 = depthWiseChannels
 
-    bneck_InW2 = bneck_InW1
-    bneck_InH2 = bneck_InH1
-    bneck_OutC2 = bneck_OutC1
-
-    bneck_InW3 = bneck_InW2 // depthwiseStride
-    bneck_InH3 = bneck_InH2 // depthwiseStride
     bneck_OutC3 = tensorOutC
 
     bneck_InC1_vec = math.floor(bneck_InC1 / vectorSize)
-    bneck_OutC3_vec = math.floor(bneck_OutC3 / vectorSize)
 
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
@@ -112,23 +103,6 @@ def main(opts):
     dtype_in = np.dtype("int8")
     dtype_wts = np.dtype("int8")
     dtype_out = np.dtype("int8")
-
-    shape_total_wts = (
-        bneck_InC1 * bneck_OutC1 + 3 * 3 * bneck_OutC2 + bneck_OutC2 * bneck_OutC3,
-        1,
-    )
-    shape_in_act = (
-        bneck_InH1,
-        bneck_InC1_vec,
-        bneck_InW1,
-        vectorSize,
-    )  #'YCXC8' , 'CYX'
-    shape_out = (bneck_InH3, bneck_OutC3_vec, bneck_InW3, vectorSize)  # HCWC8
-    shape_out_final = (
-        bneck_OutC3_vec * vectorSize,
-        bneck_InH3,
-        bneck_InW3,
-    )  # CHW
 
     # ------------------------------------------------------
     # Initialize activation, weights, scaling factor for int8 model
@@ -214,7 +188,7 @@ def main(opts):
             out = self.bn_quant_conv3(out)
             if (bn == "2") or (bn == "7"):
                 out = self.quant_id_1(out)
-                out = out + out_q
+                out = out + out_q  # pyright: ignore[reportPossiblyUnboundVariable]
                 out = self.bn_add(out)
             else:  # 1, 3, 6
                 out = self.bn_quant_id_2(out)
@@ -223,11 +197,13 @@ def main(opts):
     quant_bottleneck_model = QuantBottleneckA(
         in_planes=bneck_InC1, bn_expand=bneck_OutC1, bn_project=bneck_OutC3
     )
+    import torch.utils.data as data_utils  # pyright: ignore[reportMissingImports]
+    import torchvision  # pyright: ignore[reportMissingImports]
+    from brevitas_examples.imagenet_classification.ptq.ptq_common import (  # pyright: ignore[reportMissingImports]
+        calibrate,
+    )
     from mb_utils import ExpandChannels
-    from brevitas_examples.imagenet_classification.ptq.ptq_common import calibrate
-    import torchvision
-    import torch.utils.data as data_utils
-    from torchvision import transforms
+    from torchvision import transforms  # pyright: ignore[reportMissingImports]
 
     if bn == "1":
         # Define the image preprocessing pipeline
@@ -266,9 +242,11 @@ def main(opts):
 
     if (bn == "1") or (bn == "2"):
         src_data = "/group/xrlabs2/imagenet/calibration"
-        datset = torchvision.datasets.ImageFolder(src_data, transform)
+        dataset = torchvision.datasets.ImageFolder(
+            src_data, transform  # pyright: ignore[reportPossiblyUnboundVariable]
+        )
         indices = torch.arange(4)
-        val_sub = data_utils.Subset(datset, indices)
+        val_sub = data_utils.Subset(dataset, indices)
         calib_loader = torch.utils.data.DataLoader(
             dataset=val_sub, batch_size=32, shuffle=False
         )
