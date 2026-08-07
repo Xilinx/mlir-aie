@@ -22,34 +22,44 @@ def normalize_path(path):
 
 
 def parse_lcov(lcov_path, allowed):
-    """Return {path: (covered_lines, total_lines)} for paths in `allowed`."""
-    records = {}
+    """Return {path: (covered_lines, total_lines)} for paths in `allowed`.
+
+    A header can appear in multiple `SF:` blocks -- one per translation unit
+    that includes it -- each covering the same set of lines. Line hits are
+    unioned by line number (max hits seen for that line across all blocks)
+    rather than summed across blocks, so a header's total line count isn't
+    inflated by however many TUs happen to include it.
+    """
+    line_hits = {}
     path = None
     tracked = False
-    covered = 0
-    total = 0
     with open(lcov_path) as f:
         for line in f:
             line = line.strip()
             if line.startswith("SF:"):
                 path = normalize_path(line[len("SF:") :])
                 tracked = path in allowed
-                covered = 0
-                total = 0
+                if tracked:
+                    line_hits.setdefault(path, {})
             elif tracked and line.startswith("DA:"):
                 fields = line[len("DA:") :].split(",")
-                if len(fields) < 2 or not fields[1].lstrip("-").isdigit():
+                if (
+                    len(fields) < 2
+                    or not fields[0].isdigit()
+                    or not fields[1].lstrip("-").isdigit()
+                ):
                     continue
-                total += 1
-                if int(fields[1]) != 0:
-                    covered += 1
+                line_no = int(fields[0])
+                hits = int(fields[1])
+                hits_by_line = line_hits[path]
+                hits_by_line[line_no] = max(hits_by_line.get(line_no, 0), hits)
             elif line == "end_of_record":
-                if tracked:
-                    prev_covered, prev_total = records.get(path, (0, 0))
-                    records[path] = (prev_covered + covered, prev_total + total)
                 path = None
                 tracked = False
-    return records
+    return {
+        path: (sum(1 for hits in hits_by_line.values() if hits != 0), len(hits_by_line))
+        for path, hits_by_line in line_hits.items()
+    }
 
 
 def format_table(records, max_rows):

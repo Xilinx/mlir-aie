@@ -78,7 +78,7 @@ def warn_if_restrict_ineffective(lcov_path, restricted_dirs):
                     unexpected.add(path)
     if unexpected:
         print(
-            ":: WARNING: --restrict was given {0} path(s), but the lcov "
+            "::warning::--restrict was given {0} path(s), but the lcov "
             "export still includes {1} file(s) outside them -- llvm-cov's "
             "SOURCES filter may have silently no-opped. Examples: "
             "{2}".format(len(restricted), len(unexpected), sorted(unexpected)[:5]),

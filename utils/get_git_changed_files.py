@@ -25,8 +25,12 @@ cov_files = list(
 cov_files = [f for f in cov_files if f.startswith(("lib/", "include/", "tools/"))]
 # CMakeLists.txt's default INSTRUMENTED_COVERAGE_FILES also lists python/,
 # but coverage cannot be attributed reliably to python.exe, so exclude any
-# python-bindings-adjacent file that slips into the three dirs above too.
-cov_files = [f for f in cov_files if "python" not in f.lower()]
+# file under a directory literally named python/ that slips into the three
+# dirs above too. (A path segment match, not a substring match, so e.g.
+# lib/Foo/PythonLikeThing.cpp is unaffected.)
+cov_files = [
+    f for f in cov_files if "python" not in (p.lower() for p in Path(f).parts[:-1])
+]
 print(
     ";".join(
         [
