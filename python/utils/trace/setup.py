@@ -384,6 +384,7 @@ def configure_trace(
     coremem_events=None,
     memtile_events=None,
     shimtile_events=None,
+    core_trace_mode=TraceMode.EventTime,
 ):
     """Generate aie.trace ops for a list of tiles.
 
@@ -401,6 +402,7 @@ def configure_trace(
             entry in the list.
         memtile_events: List of events for mem tile tracing (max 8).
         shimtile_events: List of events for shim tile tracing (max 8).
+        core_trace_mode: Trace mode for core tiles (default: Event-Time).
     """
     _configured_trace_names.clear()
 
@@ -518,7 +520,7 @@ def configure_trace(
         @trace(tile_op, trace_name)
         def trace_body():
             if is_core_trace:
-                trace_mode(TraceMode.EventTime)
+                trace_mode(core_trace_mode)
             # id auto-assigned in (col, row) order by
             # -aie-insert-trace-flows after placement.
             trace_packet(type=packet_type)

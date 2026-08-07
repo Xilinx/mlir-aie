@@ -25,6 +25,7 @@ from aie.utils.trace.events import (
 from aie.utils.trace.utils import (
     convert_to_byte_stream,
     convert_to_commands,
+    decode_event_pc_stream,
     split_trace_segments,
     trace_pkts_de_interleave,
     trim_trace_pkts,
@@ -89,16 +90,37 @@ def make_event_lists(commands):
 
 # testing a flattening of repeat commands
 def flatten_repeat_command(commands):
-    prev = 0
+    prev = None
     flat_commands = list()
     for c in commands:
         if c["type"] == "Repeat0" or c["type"] == "Repeat1":
-            for i in range(int(c["repeats"])):
-                flat_commands.append(prev)
+            if prev is not None:
+                flat_commands.extend([prev] * int(c["repeats"]))
         else:
             flat_commands.append(c)
             prev = c
     return flat_commands
+
+
+def _convert_to_commands_by_mode(byte_streams, trace_modes, zero=True):
+    event_pc_streams = []
+    event_time_streams = [dict() for _ in range(NUM_TRACE_TYPES)]
+    for trace_type, streams in enumerate(byte_streams):
+        for loc, stream in streams.items():
+            mode = trace_modes[trace_type].get(loc, 0)
+            if mode == 0:
+                event_time_streams[trace_type][loc] = stream
+            elif mode == 1:
+                event_pc_streams.append((trace_type, loc, stream))
+            else:
+                raise NotImplementedError(
+                    f"trace mode {mode} is not supported for type {trace_type} tile {loc}"
+                )
+
+    commands = convert_to_commands(event_time_streams, zero)
+    for trace_type, loc, stream in event_pc_streams:
+        commands[trace_type][loc] = decode_event_pc_stream(stream, zero)
+    return commands
 
 
 # This function assert an end event for all active events if:
@@ -178,6 +200,8 @@ def convert_commands_to_json(trace_events, commands, pid_events, events_module):
     for [tt, byte_stream_dict] in enumerate(commands):  # tt = trace type
 
         for loc, command in byte_stream_dict.items():  # row,col with list of commands
+            if any(c["type"] == "EventPC" for c in command):
+                command = flatten_repeat_command(command)
             timer = 0  # TODO Some way to set this or sync this between trace types and row,col
             # timer on each execution is the time for the last execution
             # so we by default will increment it by 1 for each event
@@ -208,8 +232,29 @@ def convert_commands_to_json(trace_events, commands, pid_events, events_module):
             cycles = 0
             multiple_list = list()
             event = None
+            capture_index = 0
             for c in command:
                 t = c["type"]
+                if t == "EventPC":
+                    for event_slot in range(NUM_EVENTS):
+                        if f"event{event_slot}" in c:
+                            trace_events.append(
+                                {
+                                    "name": lookup_event_name_by_type(
+                                        tt,
+                                        pid_events[tt][loc][event_slot],
+                                        events_module,
+                                    ),
+                                    "ts": capture_index,
+                                    "ph": "i",
+                                    "s": "t",
+                                    "pid": pid,
+                                    "tid": event_slot,
+                                    "args": {"pc": c["pc"]},
+                                }
+                            )
+                    capture_index += 1
+                    continue
                 if "Single" in t:
                     event = c["event"]
                     cycles = int(c["cycles"])
@@ -367,8 +412,10 @@ def thread_name_metadata(
 def parse_mlir_trace_events(mlir_module_str, colshift=None):
 
     pid_events = list()
+    trace_modes = list()
     for t in range(NUM_TRACE_TYPES):
         pid_events.append(dict())
+        trace_modes.append(dict())
 
     # These op classes / enums come through compiled dialect bindings that
     # pyright can't see; fetch them dynamically so the static checker is happy.
@@ -445,6 +492,9 @@ def parse_mlir_trace_events(mlir_module_str, colshift=None):
             col = col + colshift
         key = str(row) + "," + str(col)
 
+        if address == 0x340D0 and row != 0:
+            trace_modes[PacketType.CORE][key] = value & 0b11
+
         # core event 0
         if address == 0x340E0:  # 213216, match ignoring case
             if row == 0:  # shim
@@ -516,7 +566,7 @@ def parse_mlir_trace_events(mlir_module_str, colshift=None):
         # TODO shim event 0, 1 needs to also be defined
 
     logger.debug("Found labels: %s", pid_events)
-    return pid_events, events_module
+    return pid_events, trace_modes, events_module
 
 
 def lookup_event_name_by_type(trace_type, code, events_module):
@@ -647,7 +697,7 @@ def setup_trace_metadata(trace_events, pid_events, events_module):
 # Attempt to align the starting column of trace in the design (from 'events')
 # with the start first column observed in the trace ('commands'). This is needed
 # because the runtime/firmware can start the design on any valid column
-def align_column_start_index(events, commands):
+def _get_column_start_shift(events, commands):
     # find min column of commands
     min_commands_col = float("inf")
     for t in range(NUM_TRACE_TYPES):
@@ -664,9 +714,12 @@ def align_column_start_index(events, commands):
             if col < min_events_col:
                 min_events_col = col
 
-    # The shift is the difference between the expected and observed leftmost
-    # column for which trace was enabled (in 'events')
-    colshift = min_events_col - min_commands_col
+    return min_events_col - min_commands_col
+
+
+def align_column_start_index(events, commands, colshift=None):
+    if colshift is None:
+        colshift = _get_column_start_shift(events, commands)
 
     # Shift all event keys by colshift
     new_events = []
@@ -701,7 +754,9 @@ def parse_trace(trace_buffer, mlir_module_str, colshift=None):
     trace_pkts = [f"{int(word):08x}" for word in trace_buffer]
 
     # Parse MLIR to extract event configuration
-    pid_events, events_module = parse_mlir_trace_events(mlir_module_str, colshift)
+    pid_events, trace_modes, events_module = parse_mlir_trace_events(
+        mlir_module_str, colshift
+    )
 
     # Split buffer into segments to handle multi-channel trace buffers
     # (e.g. when distribute-channels splits data across two S2MM channels
@@ -730,12 +785,14 @@ def parse_trace(trace_buffer, mlir_module_str, colshift=None):
     # Convert to byte streams
     byte_streams = convert_to_byte_stream(trace_pkts_sorted)
 
-    # Convert byte streams to command dictionaries
-    commands = convert_to_commands(byte_streams, False)
-
     # Auto-align column indices if colshift not provided
     if colshift is None:
-        pid_events = align_column_start_index(pid_events, commands)
+        column_shift = _get_column_start_shift(pid_events, byte_streams)
+        pid_events = align_column_start_index(pid_events, byte_streams, column_shift)
+        trace_modes = align_column_start_index(trace_modes, byte_streams, column_shift)
+
+    # Convert byte streams to command dictionaries
+    commands = _convert_to_commands_by_mode(byte_streams, trace_modes, False)
 
     # Initialize trace events list
     trace_events = []
@@ -780,7 +837,9 @@ def main():
     try:
         with open(opts.mlir, "r") as mf:
             mlir_module_str = mf.read()
-        pid_events, events_module = parse_mlir_trace_events(mlir_module_str, colshift)
+        pid_events, trace_modes, events_module = parse_mlir_trace_events(
+            mlir_module_str, colshift
+        )
     except Exception as e:
         logger.error(
             "%s could not be opened. Check for valid MLIR file. %s", opts.mlir, e
@@ -834,11 +893,13 @@ def main():
     byte_streams = convert_to_byte_stream(trace_pkts_sorted)
     logger.debug("byte streams: %s", byte_streams)
 
-    commands_0 = convert_to_commands(byte_streams, False)
-    logger.debug("commands_0: %s", commands_0)
-
     if colshift is None:
-        pid_events = align_column_start_index(pid_events, commands_0)
+        column_shift = _get_column_start_shift(pid_events, byte_streams)
+        pid_events = align_column_start_index(pid_events, byte_streams, column_shift)
+        trace_modes = align_column_start_index(trace_modes, byte_streams, column_shift)
+
+    commands_0 = _convert_to_commands_by_mode(byte_streams, trace_modes, False)
+    logger.debug("commands_0: %s", commands_0)
 
     trace_events = list()
 

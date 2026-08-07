@@ -63,6 +63,7 @@ The trace configuration chooses helpful default settings so you can trace your d
 * `coremem_events` - which 8 events do we use for all core mem in array. Search under [AIEXDialect](https://xilinx.github.io/mlir-aie/AIEXDialect.html) for MemEvent for the target device: [aie1](https://xilinx.github.io/mlir-aie/AIEXDialect.html#memeventaie) &middot; [aie2](https://xilinx.github.io/mlir-aie/AIEXDialect.html#memeventaie2) &middot; [aie2p](https://xilinx.github.io/mlir-aie/AIEXDialect.html#memeventaie2p).
 * `memtile_events` - which 8 events do we use for all memtiles in array. Search under [AIEXDialect](https://xilinx.github.io/mlir-aie/AIEXDialect.html) for MemTileEvent for the target device: [aie1](https://xilinx.github.io/mlir-aie/AIEXDialect.html#memtileeventaie) &middot; [aie2](https://xilinx.github.io/mlir-aie/AIEXDialect.html#memtileeventaie2) &middot; [aie2p](https://xilinx.github.io/mlir-aie/AIEXDialect.html#memtileeventaie2p).
 * `shimtile_events` - which 8 events do we use for all shimtiles in array. Search under [AIEXDialect](https://xilinx.github.io/mlir-aie/AIEXDialect.html) for ShimTileEvent for the target device: [aie1](https://xilinx.github.io/mlir-aie/AIEXDialect.html#shimtileeventaie) &middot; [aie2](https://xilinx.github.io/mlir-aie/AIEXDialect.html#shimtileeventaie2) &middot; [aie2p](https://xilinx.github.io/mlir-aie/AIEXDialect.html#shimtileeventaie2p).
+* `core_trace_mode` - core-tile trace encoding. The default is `TraceMode.EventTime`; use `TraceMode.EventPC` from `aie.dialects.aie` to capture the program counter when a selected core event occurs.
 
     ```python
     ...
@@ -386,6 +387,8 @@ Two side effects of the call worth knowing about:
 Once the packet trace text file is generated (`trace.txt`), we use a python-based trace parser ([parse.py](../../../python/utils/trace/parse.py)) to interpret the trace values and generate a waveform json file for visualization (with Perfetto). This is a step in the [Makefile](./Makefile) but can be executed from the command line as well.
 
 The `--mlir` argument should point to `input_with_addresses.mlir` from the `build` work directory, not the original source MLIR. This file contains the lowered register writes produced by the trace passes, which the parser uses to map raw trace packets back to named events.
+
+EVENT_PC traces produce thread-scoped instant events rather than cycle-based waveform intervals. Their `ts` values preserve capture order per tile, and `args.pc` contains the captured program counter; cycle summaries therefore apply only to the default EVENT_TIME mode.
 
 ```bash
 python ../../../python/utils/trace/parse.py \
