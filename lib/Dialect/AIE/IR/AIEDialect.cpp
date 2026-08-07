@@ -1373,10 +1373,13 @@ DeviceOp::getForSymbolInModuleOrError(mlir::ModuleOp module,
 // TileElement
 //===----------------------------------------------------------------------===//
 
-TileOp TileElement::getTileOp() {
+TileOp TileElement::tryGetTileOp() {
   auto element = cast<TileElement>(this->getOperation());
-  Operation *definingOp = element.getTile().getDefiningOp();
-  if (auto tileOp = dyn_cast_or_null<TileOp>(definingOp))
+  return dyn_cast_or_null<TileOp>(element.getTile().getDefiningOp());
+}
+
+TileOp TileElement::getTileOp() {
+  if (auto tileOp = tryGetTileOp())
     return tileOp;
   llvm::report_fatal_error("Calling getTileOp requires TileOp.");
 }
