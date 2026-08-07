@@ -264,7 +264,7 @@ class TileDma(Resolvable):
                 ch.channel,
                 dest=block[chan_head_idx[0]],
                 chain=block[chan_chain_idx[0]],
-                pad_value=_channel_pad_word(ch),
+                pad_value=_channel_pad_word(ch) or 0,
             )
             # Chain blocks: dma_start for channels 1..N-1
             for i in range(1, len(channels)):
@@ -275,7 +275,7 @@ class TileDma(Resolvable):
                         ch_i.channel,
                         dest=block[chan_head_idx[i]],
                         chain=block[chan_chain_idx[i]],
-                        pad_value=_channel_pad_word(ch_i),
+                        pad_value=_channel_pad_word(ch_i) or 0,
                     )
 
             # Per-channel BD bodies.
