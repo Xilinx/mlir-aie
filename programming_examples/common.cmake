@@ -21,6 +21,19 @@ if(NOT PROJECT_NAME)
 endif()
 
 # -----------------------------------------------------------------------------
+# MSVC conformance flag
+# -----------------------------------------------------------------------------
+# Without /Zc:__cplusplus MSVC reports __cplusplus as 199711L regardless of
+# /std:, which breaks headers that feature-test on it. It has to be added here
+# rather than in mlir_aie_init_example(): that macro runs before project(), so
+# MSVC is still undefined there, and adding the flag unconditionally breaks a
+# native-Windows build whose compiler is a GNU-style clang (llvm-aie's, when it
+# is on PATH) -- that driver rejects /Zc:__cplusplus as a missing input file.
+if(MSVC)
+  add_compile_options(/Zc:__cplusplus)
+endif()
+
+# -----------------------------------------------------------------------------
 # Resolve MLIR-AIE root directory
 # -----------------------------------------------------------------------------
 # In WSL, CMake runs on Windows via `powershell.exe cmake`. Therefore, we must
@@ -204,4 +217,134 @@ function(target_link_test_utils target_name)
   endif()
 
   target_link_libraries(${target_name} PUBLIC test_utils)
+endfunction()
+
+# -----------------------------------------------------------------------------
+# Make-free NPU design build + run helpers
+# -----------------------------------------------------------------------------
+# CMake equivalents of makefile-common's jit_xclbin and the per-example `run:`
+# target: build the xclbin/insts and run on the NPU via cmake + ctest.
+
+# Must be at directory scope: enable_testing() inside a function does NOT write
+# CTestTestfile.cmake, so add_test() calls silently vanish and `ctest` reports
+# "No tests were found!!!" -- and still exits 0, so the lit test passes without
+# ever running on the NPU. This file is always included at directory scope.
+enable_testing()
+
+# Required only by the helpers below, so host-only consumers don't need Python.
+#
+# The interpreter must be the one the IRON environment set up, because the design
+# scripts import numpy and the `aie` package. Prefer an active virtualenv: on
+# Windows CMake otherwise resolves Python from the registry and picks the system
+# install, which has neither -- the JIT then dies with "No module named 'numpy'".
+# (The main build sidesteps this by passing -DPython3_EXECUTABLE explicitly; the
+# per-example configures get no such flag.) On POSIX this changes nothing, since
+# FIRST is already CMake's default there and the venv is on PATH.
+macro(_aie_require_python)
+  if(NOT Python3_Interpreter_FOUND)
+    set(Python3_FIND_VIRTUALENV FIRST)
+    set(Python3_FIND_REGISTRY LAST)
+    set(Python3_FIND_STRATEGY LOCATION)
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+  endif()
+endmacro()
+
+# add_aie_design(TARGET <t> PY <design.py> DEVICE <npu|npu2> [ELF] [ARGS ...])
+#   JITs the design into final.xclbin/insts.bin (+ final.elf with ELF) in the
+#   build dir. Creates target <t>_xclbin for the host exe to depend on.
+#
+# The design is only built when AIE_BUILD_DESIGN is ON. This matters because
+# makefile-common's build_host_exe configures and builds this same CMakeLists to
+# produce the host binary, while separately JIT-ing the design itself via
+# jit_xclbin. Without the guard, `make` would also trigger the CMake-side JIT --
+# duplicated work that additionally broke ml/block_datatypes (BFP kernels fail to
+# compile in that context). build_host_exe therefore passes -DAIE_BUILD_DESIGN=OFF,
+# and run_cmake.lit gets the default ON.
+option(AIE_BUILD_DESIGN "Build the example's AIE design (off when make drives the build)" ON)
+
+function(add_aie_design)
+  _aie_require_python()
+  cmake_parse_arguments(D "ELF" "TARGET;PY;DEVICE" "ARGS" ${ARGN})
+  # Still define the target so callers' add_dependencies() stays valid; it just
+  # has nothing to do.
+  if(NOT AIE_BUILD_DESIGN)
+    add_custom_target(${D_TARGET}_xclbin)
+    return()
+  endif()
+  set(_out "${CMAKE_CURRENT_BINARY_DIR}")
+  set(_xclbin "${_out}/final.xclbin")
+  set(_insts "${_out}/insts.bin")
+  set(_outs ${_xclbin} ${_insts})
+  set(_elfarg "")
+  if(D_ELF)
+    list(APPEND _outs "${_out}/final.elf")
+    set(_elfarg "--elf-path=${_out}/final.elf")
+  endif()
+  add_custom_command(
+    OUTPUT ${_outs}
+    COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/${D_PY}"
+            -d ${D_DEVICE} ${D_ARGS}
+            "--xclbin-path=${_xclbin}" "--insts-path=${_insts}" ${_elfarg}
+    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/${D_PY}"
+    WORKING_DIRECTORY "${_out}"
+    COMMENT "JIT-compiling ${D_PY} for ${D_DEVICE}"
+    VERBATIM)
+  add_custom_target(${D_TARGET}_xclbin ALL DEPENDS ${_outs})
+endfunction()
+
+# add_aie_run_test(NAME <t> DEVICE <npu|npu2> [EXE <host_target>] [PY <test.py>]
+#                  [KERNEL <name>] [PY_STANDALONE] [USE_ELF]
+#                  [RUN_ARGS ...] [ENVIRONMENT ...])
+#   Registers a ctest that runs on the NPU via utils/run_on_npu.py.
+#     EXE            => run the host binary against final.xclbin/insts.bin
+#     PY             => run a Python host test against those artifacts (run_py)
+#     PY_STANDALONE  => run the script alone (@iron.jit self-running designs)
+#     USE_ELF        => pass final.elf instead of insts.bin as -i (xrt::elf +
+#                       xrt::module testbenches; pair with add_aie_design's ELF)
+#     RUN_ARGS       => extra args appended to the host command, mirroring the
+#                       Makefile `run:` recipe (e.g. -l 4096 --op add)
+#     ENVIRONMENT    => "VAR=value" entries set for the test (e.g. NORM_OP=rms)
+function(add_aie_run_test)
+  _aie_require_python()
+  cmake_parse_arguments(R "PY_STANDALONE;USE_ELF" "NAME;DEVICE;EXE;PY;KERNEL"
+                          "RUN_ARGS;ENVIRONMENT" ${ARGN})
+  if(R_DEVICE STREQUAL "npu2")
+    set(_kind npu2)
+  else()
+    set(_kind npu1)
+  endif()
+  set(_k MLIR_AIE)
+  if(R_KERNEL)
+    set(_k ${R_KERNEL})
+  endif()
+  # The instruction stream is either the raw insts.bin or the ELF-wrapped form.
+  if(R_USE_ELF)
+    set(_instr "${CMAKE_CURRENT_BINARY_DIR}/final.elf")
+  else()
+    set(_instr "${CMAKE_CURRENT_BINARY_DIR}/insts.bin")
+  endif()
+  if(R_EXE)
+    add_test(NAME ${R_NAME}
+      COMMAND ${Python3_EXECUTABLE} "${MLIR_AIE_DIR}/utils/run_on_npu.py" ${_kind}
+              $<TARGET_FILE:${R_EXE}>
+              -x "${CMAKE_CURRENT_BINARY_DIR}/final.xclbin"
+              -i "${_instr}"
+              -k ${_k} ${R_RUN_ARGS})
+  elseif(R_PY_STANDALONE)
+    add_test(NAME ${R_NAME}
+      COMMAND ${Python3_EXECUTABLE} "${MLIR_AIE_DIR}/utils/run_on_npu.py" ${_kind}
+              ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/${R_PY}"
+              ${R_RUN_ARGS})
+  else()
+    # `run_py` flow: a Python host test driven against the built artifacts.
+    add_test(NAME ${R_NAME}
+      COMMAND ${Python3_EXECUTABLE} "${MLIR_AIE_DIR}/utils/run_on_npu.py" ${_kind}
+              ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/${R_PY}"
+              --xclbin "${CMAKE_CURRENT_BINARY_DIR}/final.xclbin"
+              --instr "${_instr}"
+              -k ${_k} ${R_RUN_ARGS})
+  endif()
+  if(R_ENVIRONMENT)
+    set_tests_properties(${R_NAME} PROPERTIES ENVIRONMENT "${R_ENVIRONMENT}")
+  endif()
 endfunction()
