@@ -16,6 +16,8 @@ the register writes, packet flows, and shim DMA configuration that implement it.
       type. Call this once with all the tiles you want to trace. Per-tile-type
       event lists can be overridden with `coretile_events`, `coremem_events`,
       `memtile_events`, `shimtile_events`; otherwise sensible defaults are used.
+      Core traces default to `TraceMode.EventTime`; pass
+      `core_trace_mode=TraceMode.EventPC` to capture event program counters.
       Port activity is specified with `PortEvent` (see Port Events below).
 
 * `start_trace(trace_size, reuse_output_buffer=False, ...)`
@@ -44,8 +46,8 @@ the register writes, packet flows, and shim DMA configuration that implement it.
   `get_cycles_summary`, `print_cycles_summary`, `get_vector_time`,
   `split_trace_segments`, ...) are re-exported and documented in source.
 
-The high-level IRON entry point is `Runtime.enable_trace(...)`, which builds a
-`TraceConfig` and calls `configure_trace` / `start_trace` for you.
+The high-level IRON entry point is `Program.enable_trace(...)`, which forwards
+trace-unit options to `configure_trace` and coordinates runtime trace-buffer setup.
 
 ## The host trace buffer is a runtime_sequence operand
 
