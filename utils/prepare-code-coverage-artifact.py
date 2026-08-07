@@ -59,6 +59,33 @@ def cov_objects(binaries):
     return objects
 
 
+def warn_if_restrict_ineffective(lcov_path, restricted_dirs):
+    """llvm-cov's SOURCES filter silently reports on every file instead of
+    erroring if none of the given paths match anything in its coverage
+    mapping. Warn loudly here, at the source, instead of only masking the
+    symptom in whatever later consumes this lcov file."""
+    if not restricted_dirs:
+        return
+    restricted = [os.path.normpath(d) for d in restricted_dirs]
+    unexpected = set()
+    with open(lcov_path) as lcov:
+        for line in lcov:
+            if line.startswith("SF:"):
+                path = os.path.normpath(line[len("SF:") :].strip())
+                if not any(
+                    path == r or path.startswith(r + os.sep) for r in restricted
+                ):
+                    unexpected.add(path)
+    if unexpected:
+        print(
+            ":: WARNING: --restrict was given {0} path(s), but the lcov "
+            "export still includes {1} file(s) outside them -- llvm-cov's "
+            "SOURCES filter may have silently no-opped. Examples: "
+            "{2}".format(len(restricted), len(unexpected), sorted(unexpected)[:5]),
+            file=sys.stderr,
+        )
+
+
 def export_lcov(host_llvm_cov, profile, lcov_path, binaries, restricted_dirs):
     print(":: Exporting lcov to {0}...".format(lcov_path), end="")
     sys.stdout.flush()
@@ -70,6 +97,7 @@ def export_lcov(host_llvm_cov, profile, lcov_path, binaries, restricted_dirs):
             + restricted_dirs,
             stdout=lcov,
         )
+    warn_if_restrict_ineffective(lcov_path, restricted_dirs)
     print("Done!")
 
 

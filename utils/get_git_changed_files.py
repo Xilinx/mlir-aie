@@ -17,8 +17,16 @@ changed_files = (
 cov_files = list(
     filter(lambda f: re.search(r"(\.cpp|\.c|\.h|\.hpp)$", f), changed_files)
 )
-# Coverage cannot be attributed reliably to python.exe, so exclude it.
-cov_files = [f for f in cov_files if "python" not in f]
+# Only files under these directories are actually compiled into the
+# instrumented binaries (aie-opt/aie-translate/aiecc). A file outside them
+# (e.g. a kernel source under programming_examples/) will never appear in
+# the coverage mapping, and handing llvm-cov a --restrict path that matches
+# nothing makes it silently report on every file instead.
+cov_files = [f for f in cov_files if f.startswith(("lib/", "include/", "tools/"))]
+# CMakeLists.txt's default INSTRUMENTED_COVERAGE_FILES also lists python/,
+# but coverage cannot be attributed reliably to python.exe, so exclude any
+# python-bindings-adjacent file that slips into the three dirs above too.
+cov_files = [f for f in cov_files if "python" not in f.lower()]
 print(
     ";".join(
         [
