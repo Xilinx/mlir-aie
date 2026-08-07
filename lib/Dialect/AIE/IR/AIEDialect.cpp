@@ -2067,7 +2067,7 @@ LogicalResult DMAOp::verify() {
           "DMAOp regions/blocks must have exactly two UseLock ops");
   }
   if (getPadValue() != 0 && !isa<MemTileDMAOp>(parentOp))
-    return emitOpError("pad value is only supported on memtile DMA channels");
+    return emitOpError("pad_value is only supported on memtile DMA channels");
   return success();
 }
 
@@ -2714,7 +2714,7 @@ void DMAStartOp::getCanonicalizationPatterns(RewritePatternSet &patterns,
 
 LogicalResult DMAStartOp::verify() {
   if (getPadValue() != 0 && !isa<MemTileDMAOp>(getOperation()->getParentOp()))
-    return emitOpError("pad value is only supported on memtile DMA channels");
+    return emitOpError("pad_value is only supported on memtile DMA channels");
   return success();
 }
 
