@@ -21,6 +21,7 @@ from aie.utils.trace.events import get_events_for_device
 from aie.utils.trace.parse import (
     _convert_to_commands_by_mode,
     convert_commands_to_json,
+    flatten_repeat_command,
     parse_mlir_trace_events,
     parse_trace,
 )
@@ -165,6 +166,12 @@ def test_command_dispatch_rejects_unsupported_mode():
             [{"2,1": [0x03]}, {}, {}, {}],
             [{"2,1": 2}, {}, {}, {}],
         )
+
+
+def test_orphan_repeat_is_ignored():
+    event = {"type": "EventPC", "pc": 336, "event3": 3}
+
+    assert flatten_repeat_command([{"type": "Repeat0", "repeats": 2}, event]) == [event]
 
 
 def test_event_pc_json_uses_capture_order_and_expands_repeats():

@@ -90,12 +90,12 @@ def make_event_lists(commands):
 
 # testing a flattening of repeat commands
 def flatten_repeat_command(commands):
-    prev = 0
+    prev = None
     flat_commands = list()
     for c in commands:
         if c["type"] == "Repeat0" or c["type"] == "Repeat1":
-            for i in range(int(c["repeats"])):
-                flat_commands.append(prev)
+            if prev is not None:
+                flat_commands.extend([prev] * int(c["repeats"]))
         else:
             flat_commands.append(c)
             prev = c
