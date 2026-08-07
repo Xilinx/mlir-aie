@@ -3056,6 +3056,21 @@ FailureOr<int32_t> UseLockOp::getConstantValue() {
                      "(defined by an arith.constant).");
 }
 
+LogicalResult UseLockOp::canonicalize(UseLockOp op, PatternRewriter &rewriter) {
+  // An AcquireGreaterEqual by a compile-time-constant 0 is a no-op: the lock is
+  // already >= 0 (semaphore values are non-negative) and it decrements the lock
+  // by 0. The dynamic objectFifo lowering emits such acquires whenever an
+  // access already holds enough elements; folding the counter arithmetic after
+  // loop unrolling exposes the constant 0. Drop it so the result matches the
+  // static lowering, which emits no acquire in that case.
+  if (op.acquireGE())
+    if (auto value = getConstantLockValue(op); value && *value == 0) {
+      rewriter.eraseOp(op);
+      return success();
+    }
+  return failure();
+}
+
 TileOp SwitchboxOp::getTileOp() {
   return cast<TileElement>(this->getOperation()).getTileOp();
 }

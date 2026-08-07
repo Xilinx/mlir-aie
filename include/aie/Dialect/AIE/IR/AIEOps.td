@@ -1509,6 +1509,7 @@ def AIE_UseLockOp: AIE_Op<"use_lock", []> {
   }];
 
   let hasVerifier = 1;
+  let hasCanonicalizeMethod = 1;
   let builders = [
     OpBuilder<(ins "mlir::Value":$lock,
                    "xilinx::AIE::LockAction":$action,

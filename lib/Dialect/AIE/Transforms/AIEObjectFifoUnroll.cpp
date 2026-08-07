@@ -14,6 +14,8 @@
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
 
+#include "llvm/ADT/DenseSet.h"
+
 namespace xilinx::AIE {
 #define GEN_PASS_DEF_AIEOBJECTFIFOUNROLL
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h.inc"
@@ -51,6 +53,43 @@ static std::optional<int64_t> staticTripCount(scf::ForOp forOp) {
 // unroll hint by the objectFifo stateful transform.
 static bool loopHasObjectFifoOp(scf::ForOp forOp) {
   return forOp->hasAttr(kObjectFifoUnrollHintAttrName);
+}
+
+// Remove redundant AIE1 binary-lock acquires.
+//
+// The dynamic lowering acquires the whole sliding window ([counter, counter +
+// acqNumber)) on every loop iteration; after unrolling and constant folding
+// that expands to an explicit `Acquire` of each element's lock. But an AIE1
+// binary lock that is already held (acquired earlier with no intervening
+// release) must not be re-acquired -- `Acquire, N` means "hold N elements
+// total", so re-acquiring an element already in the window is a no-op at best
+// and a hang at worst. This mirrors the static lowering, which only acquires
+// the new leading-edge lock(s) each rotation.
+//
+// The analysis is block-local and conservatively assumes nothing is held on
+// block entry. That keeps the very first acquire of each unrolled loop body
+// (which legitimately re-establishes the window across the back-edge) while
+// dropping the intra-body re-acquires of locks whose element is still held.
+static void removeRedundantBinaryAcquires(DeviceOp device) {
+  device.walk([&](Block *block) {
+    llvm::DenseSet<Value> held;
+    SmallVector<UseLockOp> toErase;
+    for (Operation &op : *block) {
+      auto useLock = dyn_cast<UseLockOp>(&op);
+      if (!useLock)
+        continue;
+      Value lock = useLock.getLock();
+      if (useLock.acquire()) {
+        // A binary `Acquire` of a lock already in the held set is redundant.
+        if (!held.insert(lock).second)
+          toErase.push_back(useLock);
+      } else if (useLock.release()) {
+        held.erase(lock);
+      }
+    }
+    for (UseLockOp op : toErase)
+      op.erase();
+  });
 }
 
 struct AIEObjectFifoUnrollPass
@@ -139,6 +178,15 @@ struct AIEObjectFifoUnrollPass
     foldPipeline.addPass(mlir::createSCCPPass());
     foldPipeline.addPass(mlir::createCanonicalizerPass());
     if (failed(runPipeline(foldPipeline, device)))
+      return signalPassFailure();
+
+    // With the window acquires now folded to concrete per-lock `Acquire` ops,
+    // drop the ones that re-acquire an already-held AIE1 binary lock, then run
+    // a final canonicalize to delete the constants they leave dead.
+    removeRedundantBinaryAcquires(device);
+    OpPassManager cleanupPipeline(DeviceOp::getOperationName());
+    cleanupPipeline.addPass(mlir::createCanonicalizerPass());
+    if (failed(runPipeline(cleanupPipeline, device)))
       return signalPassFailure();
   }
 };
