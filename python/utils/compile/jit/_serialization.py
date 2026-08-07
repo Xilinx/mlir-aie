@@ -3,9 +3,9 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""JSON-friendly encoding for :class:`CompilableDesign.to_json` / ``from_json``,
-plus the runtime-tensor placeholder used during MLIR generation.
+"""JSON-friendly encoding for :class:`CompilableDesign.to_json` / ``from_json``.
 
+Also provides the runtime-tensor placeholder used during MLIR generation.
 Carved out of ``compilabledesign.py`` to keep the main file focused on the
 ``CompilableDesign`` class itself.
 """

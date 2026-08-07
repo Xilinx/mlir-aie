@@ -19,9 +19,8 @@ import argparse
 import sys
 
 import numpy as np
-import torch
-import torch.nn as nn
-
+import torch  # pyright: ignore[reportMissingImports]
+import torch.nn as nn  # pyright: ignore[reportMissingImports]
 from aie.utils.hostruntime.argparse import add_runtime_args
 from aie.utils.ml import run_conv_torch_test
 
@@ -74,7 +73,7 @@ def main(opts):
         out_shape_final=(256, 32, 32),
         out_scale=inp_scale4,
         atol=inp_scale4,
-        dtype_out=np.uint8,
+        dtype_out=np.uint8,  # pyright: ignore[reportArgumentType]
     ):
         sys.exit(-1)
 

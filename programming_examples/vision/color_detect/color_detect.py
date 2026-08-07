@@ -10,13 +10,12 @@ shim --> rgba2hue --> (threshold-upper, threshold-lower in parallel) -->
 
 import argparse
 
-import numpy as np
-
 import aie.iron as iron
+import numpy as np
 from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker, kernels
 from aie.utils.hostruntime.argparse import (
-    device_from_args,
     add_compile_args,
+    device_from_args,
 )
 from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
@@ -236,7 +235,9 @@ def _design_for(opts):
     flags = list(color_detect.compilable.aiecc_flags) + [f"--placer={opts.placer}"]
     if opts.sa_seed is not None:
         flags.append(f"--sa-seed={opts.sa_seed}")
-    return iron.jit(aiecc_flags=flags)(color_detect.compilable.mlir_generator)
+    generator = color_detect.compilable.mlir_generator
+    assert callable(generator)
+    return iron.jit(aiecc_flags=flags)(generator)
 
 
 def _rgba2hue_ref(rgba_uint8):

@@ -3,19 +3,17 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 
-import torch
-import torch.nn as nn
-import sys
-import math
-from aie.utils.ml import DataShaper
-import time
-import os
-import numpy as np
 import argparse
-from aie.utils.hostruntime.argparse import add_runtime_args
+import os
+import sys
+
 import aie.iron as iron
-from aie.utils import TraceConfig, HostRuntime, NPUKernel, DefaultNPURuntime
-from pathlib import Path
+import numpy as np
+import torch  # pyright: ignore[reportMissingImports]
+import torch.nn as nn  # pyright: ignore[reportMissingImports]
+from aie.utils import DefaultNPURuntime, HostRuntime, NPUKernel, TraceConfig
+from aie.utils.hostruntime.argparse import add_runtime_args
+from aie.utils.ml import DataShaper
 
 torch.use_deterministic_algorithms(True)
 torch.manual_seed(0)
@@ -36,16 +34,11 @@ def main(opts):
     co = int(opts.out_channels)
     ksz = int(opts.kernel_size)
 
-    ci8 = ci // 8
-    co8 = co // 8
-
     width_out = width // ksz
     height_out = height // ksz
 
     num_iter = 1
     npu_time_total = 0
-    npu_time_min = 9999999
-    npu_time_max = 0
     trace_size = opts.trace_size
     enable_trace = False if not trace_size else True
     print("Trace status: " + str(enable_trace))
@@ -67,7 +60,6 @@ def main(opts):
 
     shape_total_wts = (ci_co_ksz_ksz, 1)
     shape_in_act = (num_act, height, width, ci)  #'YX (rgba)
-    shape_in_wts1 = (co, ci, ksz, ksz)  # out,in,ky,kx
     shape_out = (co, height_out, width_out)
 
     print("shape_in_act: ")
@@ -227,9 +219,10 @@ def main(opts):
             trace_buffer = trace_buffer.view(np.uint32)
             trace_config.write_trace(trace_buffer)
 
-        data_buffer = out.numpy()
-        scaled_data_buffer = data_buffer * int8_scale
         npu_time_total = npu_time_total + ret.npu_time
+
+    data_buffer = out.numpy()
+    scaled_data_buffer = data_buffer * int8_scale
 
     # ------------------------------------------------------
     # Reorder output data-layout
@@ -242,11 +235,6 @@ def main(opts):
     temp_out_int = ds.reorder_mat(temp_out_int, "CDYX", "CYXD")
     ofm_int = temp_out_int.reshape(co * height_out * 8, 8).astype(np.int8)
     np.savetxt(log_folder + "/ofm_int_CYXX8.txt", ofm_int, fmt="%d", delimiter=",")
-
-    if enable_trace:
-        ofm_log_filename = "/ofm_after_mem_fmt_trace.txt"
-    else:
-        ofm_log_filename = "/ofm_after_mem_fmt.txt"
 
     ofm_float = ofm_mem_fmt.reshape(co * height_out * 8, 8)  # still in float
     np.savetxt(
@@ -326,14 +314,11 @@ def main(opts):
         np.min(golden_numpy_sub_int),
     )
 
-    # Find the indices where the mismatch happens
-    mismatch_indices = np.where(golden_numpy_sub_int != output_numpy_sub_int)
-
-    # Extract mismatch values
-    mismatch_values_golden = golden_numpy_sub_int[mismatch_indices]
-    mismatch_values_ofm = output_numpy_sub_int[mismatch_indices]
-
     # UNCOMMENT BELOW TO PRINT MISMATCHES
+    # Find the indices where the mismatch happens
+    # mismatch_indices = np.where(golden_numpy_sub_int != output_numpy_sub_int)
+    # mismatch_values_golden = golden_numpy_sub_int[mismatch_indices]
+    # mismatch_values_ofm = output_numpy_sub_int[mismatch_indices]
     # print("Mismatch indices and corresponding values:")
     # for idx, (golden_value, ofm_value) in zip(
     #     zip(*mismatch_indices), zip(mismatch_values_golden, mismatch_values_ofm)

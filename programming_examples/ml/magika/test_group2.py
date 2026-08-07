@@ -8,12 +8,10 @@ import math
 import os
 import sys
 import time
-from pathlib import Path
-
-import ml_dtypes
-import numpy as np
 
 import aie.iron as iron
+import ml_dtypes
+import numpy as np
 from aie.utils import DefaultNPURuntime, HostRuntime, NPUKernel, TraceConfig
 from aie.utils.hostruntime.argparse import add_runtime_args
 
@@ -44,8 +42,6 @@ def main(opts):
 
     num_iter = 1
     npu_time_total = 0
-    npu_time_min = 9999999
-    npu_time_max = 0
     trace_size = opts.trace_size
     enable_trace = opts.trace_size > 0
     trace_after_output = False
@@ -56,15 +52,10 @@ def main(opts):
     dtype_in = np.dtype("int16")
     dtype_out = np.dtype("int32")
 
-    shape_in = (2048,)
     shape_out = (214,)
 
     dummy = (4,)
     dummy_dtype = np.dtype("int32")
-    dummy_data = np.zeros([4], dtype=dummy_dtype)
-
-    min = 0
-    max = 255
 
     # ------------------------------------------------------
     # Get device, load the xclbin & kernel and register them
@@ -128,21 +119,21 @@ def main(opts):
     # ------------------------------------------------------
     for i in range(num_iter):
         start = time.perf_counter_ns()
-        ret = DefaultNPURuntime.run(kernel_handle, buffers)
+        DefaultNPURuntime.run(kernel_handle, buffers)
         stop = time.perf_counter_ns()
 
-        if enable_trace:
+        if trace_config is not None:
             trace_buffer, _ = HostRuntime.extract_trace_from_args(buffers, trace_config)
             trace_buffer = trace_buffer.view(np.uint32)
             trace_config.write_trace(trace_buffer)
 
-        out_tensor = out.numpy()
-        if not isinstance(out_tensor, np.ndarray):
-            out_tensor = out_tensor.numpy()
-        aie_output = out_tensor
-
         npu_time = stop - start
         npu_time_total = npu_time_total + npu_time
+
+    out_tensor = out.numpy()
+    if not isinstance(out_tensor, np.ndarray):
+        out_tensor = out_tensor.numpy()
+    aie_output = out_tensor
 
     print("aie_output")
     print("aie output size: " + str(aie_output.size))

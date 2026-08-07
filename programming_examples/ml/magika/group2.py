@@ -15,17 +15,21 @@ as a direct-stream connection.
 import argparse
 from pathlib import Path
 
-import numpy as np
-
 import aie.iron as iron
+import numpy as np
+from aie.dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
+    AIETileType,
+)
 from aie.iron import Buffer, CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker
 from aie.iron.controlflow import range_
 from aie.iron.device import Tile
-from aie.utils.hostruntime.argparse import device_from_args
 from aie.iron.kernel import ExternalFunction
-from aie.dialects._aie_enum_gen import AIETileType
 from aie.utils.config import cxx_header_path
-from aie.utils.hostruntime.argparse import add_compile_args, add_trace_arg
+from aie.utils.hostruntime.argparse import (
+    add_compile_args,
+    add_trace_arg,
+    device_from_args,
+)
 from aie.utils.hostruntime.cli import run_design_cli
 
 _THIS_DIR = Path(__file__).parent
@@ -62,7 +66,6 @@ def group2(
     # Tile placement matches the dialect-direct original (col=1, row=3).
     # LUTs are spread across the 4 neighboring tiles for memory capacity.
     shim_tile = Tile(col=1, row=0, tile_type=AIETileType.ShimNOCTile)
-    mem_tile = Tile(col=1, row=1, tile_type=AIETileType.MemTile)
     compute_tile = Tile(col=1, row=3, tile_type=AIETileType.CoreTile)
     south_tile = Tile(col=1, row=2, tile_type=AIETileType.CoreTile)
     north_tile = Tile(col=1, row=4, tile_type=AIETileType.CoreTile)

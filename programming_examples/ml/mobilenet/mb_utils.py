@@ -1,10 +1,10 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-from PIL import Image
-import torch
 import json
+
 import numpy as np
+import torch  # pyright: ignore[reportMissingImports]
 
 
 def convert_to_numpy(array):

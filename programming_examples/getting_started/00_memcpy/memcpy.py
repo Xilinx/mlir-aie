@@ -9,9 +9,8 @@ The design body is a one-liner delegating to
 per-tile kernel is the library passthrough.
 """
 
-import numpy as np
-
 import aie.iron as iron
+import numpy as np
 from aie.iron import CompileTime, In, Out, kernels
 from aie.iron.algorithms import transform_parallel
 from aie.utils.benchmark import run_iters
@@ -55,6 +54,7 @@ def main():
     )
 
     total_bytes = 2.0 * length * np.dtype(element_type).itemsize  # input + output
+    assert bench.npu is not None
     bandwidth_GBps = total_bytes / bench.npu.avg_us / 1e3  # (bytes / µs) → GB/s
 
     print(

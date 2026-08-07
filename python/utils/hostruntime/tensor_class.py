@@ -109,8 +109,7 @@ class _WriteBorrow:
 
 
 class NpuTensor(ABC):
-    """
-    A host-mapped, device-resident buffer of fixed shape and dtype.
+    """A host-mapped, device-resident buffer of fixed shape and dtype.
 
     This is a buffer with a residency state machine, not a general array. Its
     invariant is host/device coherence: the host and the device each hold a view
@@ -290,8 +289,7 @@ class NpuTensor(ABC):
         return self._offset_bytes
 
     def __init__(self, shape_or_data, dtype: npt.DTypeLike = np.uint32, device="npu"):
-        """
-        Initialize the tensor.
+        """Initialize the tensor.
 
         Args:
             shape_or_data (tuple or array-like):
@@ -308,8 +306,7 @@ class NpuTensor(ABC):
     @property
     @abstractmethod
     def data(self) -> np.ndarray:
-        """
-        Subclasses must implement a data property.
+        """Subclasses must implement a data property.
 
         Returns:
             np.ndarray: The underlying data of the tensor.
@@ -319,8 +316,7 @@ class NpuTensor(ABC):
     @property
     @abstractmethod
     def shape(self) -> tuple[int, ...]:
-        """
-        Subclasses must implement a shape property.
+        """Subclasses must implement a shape property.
 
         Returns:
             tuple: The shape of the tensor.
@@ -328,8 +324,7 @@ class NpuTensor(ABC):
         pass
 
     def __repr__(self):
-        """
-        Return a string representation of the tensor.
+        """Return a string representation of the tensor.
 
         Note: This method may implicitly trigger data synchronization to devices.
         """
@@ -338,8 +333,7 @@ class NpuTensor(ABC):
         return f"{self.__class__.__name__}({array_str}, device='{self.device}')"
 
     def __array__(self, dtype=None):
-        """
-        NumPy protocol method to convert the tensor to a NumPy array.
+        """NumPy protocol method to convert the tensor to a NumPy array.
 
         This allows the tensor to be used in NumPy functions or explicitly converted via np.array(tensor).
 
@@ -359,8 +353,7 @@ class NpuTensor(ABC):
         return self.data
 
     def __getitem__(self, index):
-        """
-        Retrieves the value at a specific index in the tensor.
+        """Retrieve the value at a specific index in the tensor.
 
         Args:
             index (int): The index of the value to retrieve.
@@ -375,8 +368,7 @@ class NpuTensor(ABC):
         return self.data[index]
 
     def __setitem__(self, index, value):
-        """
-        Sets the value at a specific index in the tensor.
+        """Set the value at a specific index in the tensor.
 
         Args:
             index (int): The index of the value to set.
@@ -390,8 +382,7 @@ class NpuTensor(ABC):
             array[index] = value
 
     def __len__(self):
-        """
-        Return the length of the tensor.
+        """Return the length of the tensor.
 
         Returns:
             int: The length of the tensor (size of the first dimension).
@@ -405,16 +396,12 @@ class NpuTensor(ABC):
 
     @cached_property
     def nbytes(self) -> int:
-        """
-        Number of bytes consumed by elements in the tensor
-        """
+        """Number of bytes consumed by elements in the tensor."""
         return self.numel() * self.element_size
 
     @cached_property
     def element_size(self) -> int:
-        """
-        Number of bytes per element
-        """
+        """Number of bytes per element."""
         return np.dtype(self.dtype).itemsize
 
     def _reconcile_for_read(self):
@@ -439,8 +426,7 @@ class NpuTensor(ABC):
             self.storage.sync_from_device(lo, hi - lo)
 
     def to(self, target_device: str):
-        """
-        Moves the tensor to a specified target device.
+        """Move the tensor to a specified target device.
 
         Args:
             target_device (str): The target device.
@@ -505,8 +491,7 @@ class NpuTensor(ABC):
         return _WriteBorrow(self, reconcile=False)
 
     def subview(self, offset, shape, dtype=None):
-        """
-        Return a tensor viewing a sub-region of this tensor's underlying storage.
+        """Return a tensor viewing a sub-region of this tensor's underlying storage.
 
         The returned tensor shares this tensor's buffer (no new allocation, no
         copy), holds a reference to this tensor so the storage outlives the view,
@@ -609,8 +594,7 @@ class NpuTensor(ABC):
 
     @abstractmethod
     def _sync_to_device(self):
-        """
-        Syncs the tensor data from the host to the device memory.
+        """Sync the tensor data from the host to the device memory.
 
         This method should be implemented by subclasses to handle device-specific synchronization.
         """
@@ -618,16 +602,14 @@ class NpuTensor(ABC):
 
     @abstractmethod
     def _sync_from_device(self):
-        """
-        Syncs the tensor data from the device to the host memory.
+        """Sync the tensor data from the device to the host memory.
 
         This method should be implemented by subclasses to handle device-specific synchronization.
         """
         ...
 
     def _subview(self, offset_bytes, shape, dtype):
-        """
-        Backend hook for :meth:`subview`.
+        """Backend hook for :meth:`subview`.
 
         Build and return a tensor of the same backend class that shares this
         tensor's underlying storage starting at ``offset_bytes`` with the given
@@ -651,8 +633,7 @@ class NpuTensor(ABC):
 
     @classmethod
     def __check_or_create(cls, *size, out=None, dtype=None, device=None, **kwargs):
-        """
-        Internal helper to check an output tensor or create a new one.
+        """Check an output tensor or create a new one.
 
         Args:
             *size: Shape of the tensor.
@@ -688,8 +669,7 @@ class NpuTensor(ABC):
         return t
 
     def numpy(self):
-        """
-        Returns a NumPy view of the tensor data on host memory.
+        """Return a NumPy view of the tensor data on host memory.
 
         This method ensures that data is first synchronized from the device
         (e.g., NPU) to the host before returning the array.
@@ -704,8 +684,7 @@ class NpuTensor(ABC):
         return self.data
 
     def to_torch(self):
-        """
-        Returns a torch tensor sharing the data in this tensor if possible.
+        """Return a torch tensor sharing the data in this tensor if possible.
 
         Syncs from device first if the tensor is on the NPU.
 
@@ -718,8 +697,7 @@ class NpuTensor(ABC):
         return _array_to_torch(self.numpy())
 
     def torch_view(self):
-        """
-        Returns a torch tensor sharing this buffer's host memory without syncing from device.
+        """Return a torch tensor sharing this buffer's host memory without syncing from device.
 
         Unlike to_torch(), this does NOT sync from the NPU first. Marks the buffer as
         CPU-resident so that a subsequent .to("npu") call (or the NPU operator's implicit
@@ -737,8 +715,7 @@ class NpuTensor(ABC):
 
     @classmethod
     def from_torch(cls, torch_tensor, device=None, **kwargs):
-        """
-        Returns a tensor with a copy of the data in the torch_tensor.
+        """Return a tensor with a copy of the data in the torch_tensor.
 
         Args:
             torch_tensor (torch.Tensor): The source torch tensor.
@@ -778,8 +755,7 @@ class NpuTensor(ABC):
         )
 
     def fill_(self, value):
-        """
-        Fills the tensor with a scalar value (in-place operation).
+        """Fill the tensor with a scalar value (in-place operation).
 
         Args:
             value: The scalar value to fill the tensor with.
@@ -792,8 +768,7 @@ class NpuTensor(ABC):
             array.fill(value)
 
     def numel(self):
-        """
-        Calculates the number of elements in the tensor.
+        """Calculate the number of elements in the tensor.
 
         Returns:
             int: The total number of elements in the tensor.
@@ -802,8 +777,7 @@ class NpuTensor(ABC):
 
     @classmethod
     def ones(cls, *size, out=None, dtype=None, device=None, **kwargs):
-        """
-        Returns a tensor filled with ones, with shape defined by size.
+        """Return a tensor filled with ones, with shape defined by size.
 
         Args:
             *size (int...): Shape of the tensor, passed as separate ints or a single tuple/list.
@@ -821,8 +795,7 @@ class NpuTensor(ABC):
 
     @classmethod
     def zeros(cls, *size, out=None, dtype=None, device=None, **kwargs):
-        """
-        Returns a tensor filled with zeros, with shape defined by size.
+        """Return a tensor filled with zeros, with shape defined by size.
 
         Args:
             *size (int...): Shape of the tensor, passed as separate ints or a single tuple/list.
@@ -840,8 +813,7 @@ class NpuTensor(ABC):
 
     @classmethod
     def full(cls, size, fill_value, *, out=None, dtype=None, device=None, **kwargs):
-        """
-        Returns a tensor of shape `size` filled with `fill_value`.
+        """Return a tensor of shape `size` filled with `fill_value`.
 
         Args:
             size (int or tuple/list of int): Shape of the returned tensor.
@@ -871,8 +843,7 @@ class NpuTensor(ABC):
         generator=None,
         **kwargs,
     ):
-        """
-        Returns a tensor filled with random integers uniformly sampled from [low, high).
+        """Return a tensor filled with random integers uniformly sampled from [low, high).
 
         Args:
             low (int): Lowest integer to be drawn (inclusive).
@@ -906,8 +877,7 @@ class NpuTensor(ABC):
 
     @classmethod
     def rand(cls, *size, out=None, dtype=None, device=None, generator=None, **kwargs):
-        """
-        Returns a tensor filled with random numbers from a uniform distribution on [0, 1).
+        """Return a tensor filled with random numbers from a uniform distribution on [0, 1).
 
         Args:
             *size (int...): Variable number of integers or a single tuple defining the shape.
@@ -966,8 +936,7 @@ class NpuTensor(ABC):
         device=None,
         **kwargs,
     ):
-        """
-        Returns a tensor with values from the interval [start, end) with spacing `step`.
+        """Return a tensor with values from the interval [start, end) with spacing `step`.
 
         Args:
             start (number): Start of interval. Defaults to 0.
@@ -978,11 +947,11 @@ class NpuTensor(ABC):
             dtype (np.dtype, optional): Desired output data type. Inferred if not provided.
             out (NpuTensor, optional): Optional tensor to write output to (must match shape and dtype).
             device (str, optional): Target device. Defaults to 'npu'.
+            **kwargs: Additional keyword arguments forwarded to the underlying tensor constructor.
 
         Returns:
             NpuTensor: A tensor containing the sequence (1-D by default, or `shape` if given).
         """
-
         if end is None:
             start, end = 0, start
 
@@ -1025,8 +994,7 @@ class NpuTensor(ABC):
 
     @classmethod
     def zeros_like(cls, other, dtype=None, device=None, **kwargs):
-        """
-        Creates a new tensor with the same shape as `other`, filled with zeros.
+        """Create a new tensor with the same shape as `other`, filled with zeros.
 
         Args:
             other (NpuTensor): The reference tensor to copy shape from.
@@ -1049,17 +1017,17 @@ class NpuTensor(ABC):
 
 
 class CPUOnlyTensor(NpuTensor):
-    """
-    This class exists primarily for testing purposes, to test tensor operations without assuming
-    access to a host runtime (e.g., xrt).
+    """A tensor backed only by host memory, used mainly for testing.
+
+    It exists primarily for testing purposes, to test tensor operations without
+    assuming access to a host runtime (e.g., xrt).
     """
 
     DEVICES = ["cpu"]
     DEFAULT_DEVICE = "cpu"
 
     def __init__(self, shape_or_data, dtype: npt.DTypeLike = np.uint32, device="cpu"):
-        """
-        Initialize the CPUOnlyTensor.
+        """Initialize the CPUOnlyTensor.
 
         Args:
             shape_or_data (tuple or array-like):
@@ -1089,8 +1057,7 @@ class CPUOnlyTensor(NpuTensor):
 
     @property
     def data(self):
-        """
-        Get the underlying numpy array.
+        """Get the underlying numpy array.
 
         Writes through this array are not reconciled; use :meth:`mutate` for a
         write that is. Kept as the unmediated handle for callers that manage
@@ -1103,8 +1070,7 @@ class CPUOnlyTensor(NpuTensor):
 
     @property
     def shape(self):
-        """
-        Get the shape of the tensor.
+        """Get the shape of the tensor.
 
         Returns:
             tuple: The shape of the tensor.
@@ -1112,16 +1078,16 @@ class CPUOnlyTensor(NpuTensor):
         return self._shape
 
     def _sync_to_device(self):
-        """
-        Syncs the tensor data from the host to the device memory.
+        """Sync the tensor data from the host to the device memory.
+
         For CPUOnlyTensor, this is a no-op.
         """
         # Nothing to do for CPU only
         pass
 
     def _sync_from_device(self):
-        """
-        Syncs the tensor data from the device to the host memory.
+        """Sync the tensor data from the device to the host memory.
+
         For CPUOnlyTensor, this is a no-op.
         """
         # Nothing to do for CPU only

@@ -101,11 +101,11 @@ class GenericEvent:
         self.code: _AnyEvent = code  # pyright: ignore[reportInvalidTypeForm]
 
     def get_register_writes(self):
-        """
-        Sub-classes for specific events that require writing to a specific
-        register should overwrite this method to return a dicitionary
-        address -> register value.
+        """Return the register writes required for this event as ``address -> value``.
 
+        Sub-classes for specific events that require writing to a specific
+        register should overwrite this method to return a dictionary
+        address -> register value.
         Note that if multiple event(-types) request writing to the same
         register, their writes will be ORed together. (This makes sense if
         configuration requires only writing some bits of the whole register.)
@@ -114,8 +114,7 @@ class GenericEvent:
 
 
 class BasePortEvent(GenericEvent):
-    """
-    Base class for port monitoring events.
+    """Base class for port monitoring events.
 
     Port events (PORT_RUNNING_N, PORT_IDLE_N, PORT_STALLED_N, PORT_TLAST_N) monitor
     activity on stream switch ports. The suffix N (0-7) determines which hardware
@@ -162,8 +161,7 @@ class BasePortEvent(GenericEvent):
 
 
 class PortEvent(BasePortEvent):
-    """
-    Configure a port monitor slot for core tile tracing.
+    """Configure a port monitor slot for core tile tracing.
 
     Example:
         # Monitor DMA channel 0 input with PORT_RUNNING_0
@@ -188,8 +186,7 @@ class PortEvent(BasePortEvent):
 
 
 class MemTilePortEvent(BasePortEvent):
-    """
-    Configure a port monitor slot for mem tile tracing.
+    """Configure a port monitor slot for mem tile tracing.
 
     Example:
         # Monitor DMA channel 0 output with PORT_RUNNING_0
@@ -214,8 +211,7 @@ class MemTilePortEvent(BasePortEvent):
 
 
 class ShimTilePortEvent(BasePortEvent):
-    """
-    Configure a port monitor slot for shim tile tracing.
+    """Configure a port monitor slot for shim tile tracing.
 
     Example:
         # Monitor South port channel 2 input with PORT_RUNNING_0

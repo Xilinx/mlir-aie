@@ -10,11 +10,12 @@
 #
 ##===----------------------------------------------------------------------===##
 
-import json
 import argparse
-import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
+import json
 from collections import defaultdict
+
+import matplotlib.patches as mpatches
+import matplotlib.pyplot as plt
 
 
 def parse_trace_json(trace_file):
@@ -96,7 +97,7 @@ def create_timeline(processes, threads, events, output_file, title="Trace Timeli
 
     # Color map for different event types
     event_colors = {}
-    color_palette = plt.cm.tab20.colors
+    color_palette = plt.cm.tab20.colors  # pyright: ignore[reportAttributeAccessIssue]
     color_idx = 0
 
     # Plot intervals

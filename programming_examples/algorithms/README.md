@@ -37,7 +37,7 @@ The algorithm library automatically tiles input/output tensors and streams them 
 For setup, this means:
 - `ExternalFunction.arg_types` must match the C++ kernel signature, using tile-sized array shapes
 - **Algorithm call** accepts full-size tensors and handles tile automatically in terms of ObjectFifo streaming.
-- `tile_size` **must be passed explictly** as a keyword argument because the kernel needs it at runtime.
+- `tile_size` **must be passed explicitly** as a keyword argument because the kernel needs it at runtime.
 
 **TODO:** Future work is needed to consolidate this setup process and combine with ExternalFunction declaration.
 

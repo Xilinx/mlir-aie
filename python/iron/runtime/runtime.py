@@ -156,8 +156,7 @@ class ActiveSequence:
 
 
 class Runtime(Resolvable):
-    """The host-side sequence of data-movement operations that execute an
-    IRON design.
+    """The host-side sequence of data-movement operations that execute an IRON design.
 
     A Runtime describes what the host does at runtime: filling input
     [`ObjectFifo`][iron.ObjectFifo]s with data and draining results back to host
@@ -254,14 +253,17 @@ class Runtime(Resolvable):
                 self._fifos.add(arg)
 
     def add_flow(self, flow) -> None:
-        """Register an explicit [`Flow`][iron.Flow] (or
-        [`PacketFlow`][iron.PacketFlow]) so the Program resolves it alongside
-        the ObjectFifos."""
+        """Register an explicit flow so the Program resolves it alongside the ObjectFifos.
+
+        Accepts a [`Flow`][iron.Flow] or [`PacketFlow`][iron.PacketFlow].
+        """
         self._flows.append(flow)
 
     def add_lock(self, lock) -> None:
-        """Register an explicit [`Lock`][iron.Lock] shared between a Worker and
-        a [`TileDma`][iron.TileDma]."""
+        """Register an explicit [`Lock`][iron.Lock] shared between a Worker and a TileDma.
+
+        See [`TileDma`][iron.TileDma].
+        """
         self._locks.append(lock)
 
     def add_tile_dma(self, tile_dma) -> None:
@@ -304,6 +306,8 @@ class Runtime(Resolvable):
         runtime endpoint -- including those on link siblings -- is already bound.
 
         Args:
+            loc: Optional MLIR source location for the generated ops.
+            ip: Optional MLIR insertion point for the generated ops.
             trace_size: Forwarded from
                 [`Program.enable_trace`][iron.program.Program.enable_trace]; see
                 there. ``None``/``0`` disables tracing.

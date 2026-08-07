@@ -384,6 +384,7 @@ def configure_trace(
     coremem_events=None,
     memtile_events=None,
     shimtile_events=None,
+    core_trace_mode=TraceMode.EventTime,
 ):
     """Generate aie.trace ops for a list of tiles.
 
@@ -401,6 +402,7 @@ def configure_trace(
             entry in the list.
         memtile_events: List of events for mem tile tracing (max 8).
         shimtile_events: List of events for shim tile tracing (max 8).
+        core_trace_mode: Trace mode for core tiles (default: Event-Time).
     """
     _configured_trace_names.clear()
 
@@ -518,7 +520,7 @@ def configure_trace(
         @trace(tile_op, trace_name)
         def trace_body():
             if is_core_trace:
-                trace_mode(TraceMode.EventTime)
+                trace_mode(core_trace_mode)
             # id auto-assigned in (col, row) order by
             # -aie-insert-trace-flows after placement.
             trace_packet(type=packet_type)
@@ -561,6 +563,8 @@ def start_trace(
                 argument (an output buffer), saving a host buffer.
         routing: Shim routing strategy. Currently only "single" is supported,
                  which routes all traces to column 0's shim.
+        egress_shim_col: Column of the shim tile used to egress trace packets
+                 to DDR. Defaults to 0.
     """
     # Emit host_config op (handles string-to-enum conversion for routing)
     trace_host_config(

@@ -19,30 +19,28 @@ starts the next phase.
 import argparse
 from pathlib import Path
 
-import numpy as np
-from ml_dtypes import bfloat16
-
 import aie.iron as iron
+import numpy as np
+from aie.helpers.util import np_ndarray_type_get_shape
 from aie.iron import (
     Buffer,
     CompileTime,
     In,
-    Out,
     ObjectFifo,
+    Out,
     Program,
     Runtime,
     TaskGroup,
     Worker,
     WorkerRuntimeBarrier,
 )
-from aie.utils.hostruntime.argparse import device_from_args
 from aie.iron.controlflow import range_
 from aie.iron.kernel import ExternalFunction
-from aie.helpers.util import np_ndarray_type_get_shape
 from aie.utils import config
-from aie.utils.hostruntime.argparse import add_compile_args
+from aie.utils.hostruntime.argparse import add_compile_args, device_from_args
 from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
+from ml_dtypes import bfloat16
 
 _KERNEL_SRC = Path(__file__).resolve().parents[3] / "aie_kernels/aie2/scale_shift.cc"
 
@@ -51,7 +49,12 @@ def _scale_shift_extern(tile_ty):
     return ExternalFunction(
         "eltwise_mul_add_bf16_vector",
         source_file=str(_KERNEL_SRC),
-        arg_types=[tile_ty, tile_ty, tile_ty, np.int32],
+        arg_types=[
+            tile_ty,
+            tile_ty,
+            tile_ty,
+            np.int32,  # pyright: ignore[reportArgumentType]
+        ],
         include_dirs=[config.cxx_header_path()],
     )
 
@@ -65,7 +68,6 @@ def scale_shift(
     *,
     size: CompileTime[int] = 65536,
 ):
-    device = iron.get_current_device()
     n_cores = 2
     tile_size = 1024
 
@@ -97,7 +99,7 @@ def scale_shift(
 
     outC = ObjectFifo(memtile_ty, name="outC")
     join_offsets = [
-        (np.prod(np_ndarray_type_get_shape(memtile_ty)) // n_cores) * i
+        int(np.prod(np_ndarray_type_get_shape(memtile_ty)) // n_cores) * i
         for i in range(n_cores)
     ]
     outC_fifos = outC.prod().join(
@@ -185,7 +187,7 @@ def scale_shift(
         ],
     )
 
-    return Program(device, rt, workers=workers).resolve_program()
+    return Program(iron.get_current_device(), rt, workers=workers).resolve_program()
 
 
 def _make_argparser():

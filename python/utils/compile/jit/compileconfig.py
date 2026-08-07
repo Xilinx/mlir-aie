@@ -30,7 +30,7 @@ def compileconfig(
     aiecc_flags: list[str] | None = None,
     object_files: list[str | Path] | None = None,
 ):
-    """Decorator that attaches compile configuration to a generator function.
+    """Attach compile configuration to a generator function.
 
     Can be used bare (``@iron.compileconfig``) or with keyword arguments
     (``@iron.compileconfig(source_files=[...])``).  All configuration options

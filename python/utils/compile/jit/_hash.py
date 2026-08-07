@@ -46,7 +46,7 @@ def _device_identity_key(device) -> tuple[str, str, str, str]:
 
 
 def _without_location(const):
-    """A constant with file and line info dropped, nested code objects included.
+    """Return a constant with file and line info dropped, nested code objects included.
 
     Applied to every constant, not just code objects, so one cannot keep its
     location by sitting inside a tuple.

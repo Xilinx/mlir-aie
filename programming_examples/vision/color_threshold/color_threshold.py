@@ -14,9 +14,11 @@ sequence's ``set_rtps()`` before reading.
 
 import argparse
 
-import numpy as np
-
 import aie.iron as iron
+import numpy as np
+from aie.extras import types as T  # pyright: ignore[reportMissingImports]
+from aie.extras.dialects import arith  # pyright: ignore[reportMissingImports]
+from aie.helpers.util import np_ndarray_type_get_shape
 from aie.iron import (
     Buffer,
     CompileTime,
@@ -29,12 +31,7 @@ from aie.iron import (
     WorkerRuntimeBarrier,
     kernels,
 )
-from aie.utils.hostruntime.argparse import device_from_args
-from aie.extras.dialects import arith
-from aie.helpers.util import np_ndarray_type_get_shape
-from aie.dialects.aie import T
-
-from aie.utils.hostruntime.argparse import add_compile_args
+from aie.utils.hostruntime.argparse import add_compile_args, device_from_args
 from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
 
@@ -60,7 +57,9 @@ def color_threshold(
     threshold_line = kernels.threshold(line_width=line_width, dtype=np.uint8)
 
     in_oob_l3l2 = ObjectFifo(line_channels_ty, name="inOOB_L3L2")
-    of_offsets = [np.prod(np_ndarray_type_get_shape(line_ty)) * i for i in range(4)]
+    of_offsets = [
+        int(np.prod(np_ndarray_type_get_shape(line_ty))) * i for i in range(4)
+    ]
     in_oob_l2l1s = in_oob_l3l2.cons().split(
         of_offsets,
         obj_types=[line_ty] * 4,

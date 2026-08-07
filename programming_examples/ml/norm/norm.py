@@ -25,19 +25,17 @@ Eight cores process ``sequence_length // 8`` rows each; one row =
 import argparse
 from pathlib import Path
 
-import numpy as np
-from ml_dtypes import bfloat16
-
 import aie.iron as iron
-from aie.iron import CompileTime, In, Out, ObjectFifo, Program, Runtime, Worker
-from aie.utils.hostruntime.argparse import device_from_args
+import numpy as np
+from aie.helpers.taplib import TensorTiler2D
+from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker
 from aie.iron.controlflow import range_
 from aie.iron.kernel import ExternalFunction
-from aie.helpers.taplib import TensorTiler2D
 from aie.utils import config
-from aie.utils.hostruntime.argparse import add_compile_args
+from aie.utils.hostruntime.argparse import add_compile_args, device_from_args
 from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
+from ml_dtypes import bfloat16
 
 _KERNEL_DIR = Path(__file__).resolve().parents[3] / "aie_kernels/aie2p"
 _KERNEL_SPEC = {
@@ -55,7 +53,11 @@ def _norm_extern(op, chunk_type):
     return ExternalFunction(
         sym,
         source_file=str(src),
-        arg_types=[chunk_type, chunk_type, np.int32],
+        arg_types=[
+            chunk_type,
+            chunk_type,
+            np.int32,  # pyright: ignore[reportArgumentType]
+        ],
         include_dirs=[config.cxx_header_path()],
     )
 
@@ -69,7 +71,6 @@ def norm(
     embedding_dim: CompileTime[int] = 4096,
     op: CompileTime[str] = "rms",
 ):
-    device = iron.get_current_device()
     n_cores = 8
     vec = 16  # kernels reduce/store one aie::vector<T, 16> at a time
 
@@ -126,7 +127,7 @@ def norm(
         ],
     )
 
-    return Program(device, rt, workers=workers).resolve_program()
+    return Program(iron.get_current_device(), rt, workers=workers).resolve_program()
 
 
 def _make_argparser():

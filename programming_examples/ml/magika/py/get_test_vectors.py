@@ -1,12 +1,12 @@
 # Copyright (C) 2019-2022 Xilinx, Inc.
 # Copyright (C) 2022-2025 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: LicenseRef-AMD-Proprietary
-import onnx
-import onnxruntime as ort
-import numpy as np
-from collections import OrderedDict
 import os
 import sys
+from collections import OrderedDict
+
+import numpy as np
+import onnxruntime as ort  # pyright: ignore[reportMissingImports]
 
 if len(sys.argv) < 2:
     model_name = "model.onnx"
@@ -59,7 +59,7 @@ for testid in range(ntest):
 
     # save output
     a = ort_outs_dict["target_label"]
-    a = np.reshape(a, [-1])
+    a = np.reshape(np.asarray(a), [-1])
     with open(output_path + "/ref.txt", fmode) as f:
         np.savetxt(f, a, fmt="%e")
 

@@ -134,7 +134,11 @@ def TileElement : OpInterface<"TileElement", [
   ];
 
   let extraClassDeclaration = [{
+    // Requires a placed tile: fatally errors if the tile is still logical.
     TileOp getTileOp();
+    // Null when the tile is still logical, so callers that run before
+    // placement can defer instead of aborting.
+    TileOp tryGetTileOp();
   }];
 
   let extraTraitClassDeclaration = [{

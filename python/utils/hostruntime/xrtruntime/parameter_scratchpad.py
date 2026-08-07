@@ -3,9 +3,9 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""Host-side runtime for writing named parameters to AIE cores via the
-scratchpad mechanism.
+"""Host-side runtime for writing named parameters to AIE cores.
 
+Writes named parameters to AIE cores via the scratchpad mechanism.
 Thin Python wrapper around the C++ ``test_utils::ParameterScratchpad``
 class (exposed via pybind11).
 
@@ -32,8 +32,7 @@ from aie._mlir_libs._parameter_scratchpad import (  # pyright: ignore[reportMiss
 
 
 def _to_bytes(value) -> bytes:
-    """
-    Convert any scalar to its little-endian in-memory bytes.
+    """Convert any scalar to its little-endian in-memory bytes.
 
     This helper is required to support native Python `int` and convert them to the 4-byte little-endian format assumed on the cores.
     """

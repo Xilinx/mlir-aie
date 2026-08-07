@@ -4,13 +4,12 @@
 #
 """ResNet conv2_x layers — IRON + ``@iron.jit``, kernel-library backed."""
 
-import numpy as np
-
 import aie.iron as iron
+import numpy as np
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker, kernels
 from aie.iron.controlflow import range_
 from aie.iron.device import Tile
-from aie.helpers.taplib import TensorAccessPattern
 
 
 @iron.jit

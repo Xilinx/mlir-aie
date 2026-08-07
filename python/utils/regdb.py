@@ -3,8 +3,7 @@
 # Copyright (C) 2025 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""
-AIE Register Database Utilities
+"""AIE Register Database Utilities.
 
 Provides the AIEAddressDecoder class for decoding AIE array addresses,
 and MLIRModuleAnnotator for annotating MLIR files with register information.
@@ -37,7 +36,7 @@ logger = logging.getLogger(__name__)
 
 
 class AIEAddressDecoder:
-    """Decoder for AIE array addresses"""
+    """Decoder for AIE array addresses."""
 
     # Memory region definitions: (name, base_offset, size_bytes)
     # These are regions where addresses within the range should show offset from base
@@ -55,13 +54,12 @@ class AIEAddressDecoder:
     }
 
     def __init__(self):
-        """Initialize decoder with register database"""
+        """Initialize decoder with register database."""
         self.database: dict = {}
         self.load_database()
 
     def load_database(self):
-        """Load the register database from JSON file"""
-
+        """Load the register database from JSON file."""
         db_path = Path(root_path()) / "lib" / "regdb" / "aie_registers_aie2.json"
 
         try:
@@ -78,8 +76,7 @@ class AIEAddressDecoder:
             raise
 
     def parse_address(self, address: int) -> Optional[Dict]:
-        """
-        Parse an AIE address and return decoded information
+        """Parse an AIE address and return decoded information.
 
         Args:
             address: Address to decode (hex or decimal)
@@ -172,7 +169,7 @@ class AIEAddressDecoder:
         }
 
     def find_register_by_offset(self, module_data: Dict, offset: int) -> Optional[Dict]:
-        """Find a register in a module by its offset"""
+        """Find a register in a module by its offset."""
         registers = module_data.get("registers", [])
 
         for register in registers:
@@ -193,8 +190,7 @@ class AIEAddressDecoder:
         return None
 
     def find_memory_region(self, module_name: str, offset: int) -> Optional[Dict]:
-        """
-        Check if an offset falls within a known memory region.
+        """Check if an offset falls within a known memory region.
 
         Args:
             module_name: The module name (core, memory, memory_tile, etc.)
@@ -227,8 +223,7 @@ class AIEAddressDecoder:
         register_name: str,
         module_name: Optional[str] = None,
     ) -> Optional[int]:
-        """
-        Encode col, row, and register name into an address (reverse lookup)
+        """Encode col, row, and register name into an address (reverse lookup).
 
         Address format: ((col << column_shift) | (row << row_shift)) + offset
 
@@ -299,7 +294,7 @@ class AIEAddressDecoder:
         include_delimiters: bool = False,
         show_bit_fields: bool = False,
     ) -> str:
-        """Format decoded result for display
+        """Format decoded result for display.
 
         Args:
             result: Decoded address information
@@ -374,15 +369,14 @@ class AIEAddressDecoder:
 
 
 class MLIRModuleAnnotator:
-    """Annotates MLIR modules with register information using Python bindings"""
+    """Annotates MLIR modules with register information using Python bindings."""
 
     def __init__(self):
-        """Initialize with AIE decoder"""
+        """Initialize with AIE decoder."""
         self.decoder = AIEAddressDecoder()
 
     def decode_bit_field_value(self, value: int, bit_range: str) -> int:
-        """
-        Extract bits from value based on bit range
+        """Extract bits from value based on bit range.
 
         Args:
             value: The value to extract from
@@ -408,8 +402,7 @@ class MLIRModuleAnnotator:
     def format_bit_fields(
         self, value: int, bit_fields: List[Dict], mask: Optional[int] = None
     ) -> List[str]:
-        """
-        Format bit-field interpretations for a value
+        """Format bit-field interpretations for a value.
 
         Args:
             value: The register value
@@ -466,8 +459,7 @@ class MLIRModuleAnnotator:
         value: Optional[int] = None,
         mask: Optional[int] = None,
     ) -> str:
-        """
-        Generate comment string for register
+        """Generate comment string for register.
 
         Format:
         Tile(col, row) Offset 0xOFFSET Name: Register | Value 0xX: field1=val1, field2=val2
@@ -526,8 +518,7 @@ class MLIRModuleAnnotator:
     ) -> tuple[
         Optional[int], Optional[int], Optional[int], Optional[int], Optional[int]
     ]:
-        """
-        Extract address, row, col, value, and mask from an operation.
+        """Extract address, row, col, value, and mask from an operation.
 
         For operations with column/row attributes, computes the full address.
         For operations without column/row, extracts them from the address.
@@ -590,8 +581,7 @@ class MLIRModuleAnnotator:
         return address, row, col, value, mask
 
     def annotate_operation(self, op, target_model) -> bool:
-        """
-        Add a 'comment' attribute to an operation with register info.
+        """Add a 'comment' attribute to an operation with register info.
 
         Args:
             op: The MLIR operation to annotate
@@ -636,8 +626,7 @@ class MLIRModuleAnnotator:
         return True
 
     def annotate_module(self, module) -> int:
-        """
-        Walk through module and annotate all relevant aiex.npu operations.
+        """Walk through module and annotate all relevant aiex.npu operations.
 
         Args:
             module: The MLIR module to annotate
@@ -736,8 +725,7 @@ class MLIRModuleAnnotator:
         return annotated_count
 
     def annotate_file(self, input_path: str, output_path: Optional[str] = None) -> int:
-        """
-        Load MLIR file, annotate it, and write output.
+        """Load MLIR file, annotate it, and write output.
 
         Args:
             input_path: Path to input MLIR file
@@ -788,7 +776,7 @@ class MLIRModuleAnnotator:
 
 
 def parse_address_arg(addr_str: str) -> int:
-    """Parse address from string (supports hex and decimal)"""
+    """Parse address from string (supports hex and decimal)."""
     addr_str = addr_str.strip()
 
     if addr_str.startswith("0x") or addr_str.startswith("0X"):

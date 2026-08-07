@@ -5,8 +5,8 @@
 """Shared helpers for the mobilenet bottleneck modules."""
 
 import os
-import numpy as np
 
+import numpy as np
 from aie.iron import Buffer
 
 
