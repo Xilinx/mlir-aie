@@ -1,0 +1,6 @@
+# Vendored XRT sources — keep upstream formatting verbatim. This tree is a
+# trimmed copy of iree-amd-aie/third_party/XRT and is intentionally not held to
+# mlir-aie's clang-format style, so the CI "Check code format" job (which runs
+# `git clang-format origin/main`) leaves these files untouched.
+DisableFormat: true
+SortIncludes: Never
