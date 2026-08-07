@@ -160,7 +160,7 @@ def run_command(command: list[str]) -> tuple[int, str]:
 
 
 # Main entry point.
-# Bound how many device runs are in flight at once, rather than allowing one.
+# Bound how many device runs are in flight at once.
 #   * flock is released by the kernel when the fd closes or the process dies, so
 #     a crashed or timed-out test cannot wedge the queue.
 #   * the lock files live at stable paths and are never unlinked: flock is per
@@ -168,9 +168,16 @@ def run_command(command: list[str]) -> tuple[int, str]:
 #   * it is machine-wide, which is stronger than a lit parallelism group; that
 #     only bounds one lit invocation, and gives nothing if a second job on the
 #     same host also touches the device.
-# AIE_NPU_MAX_CONCURRENT_DISPATCH sets the bound; 1 restores strict serialization.
+# AIE_NPU_MAX_CONCURRENT_DISPATCH overrides the bound; 1 serializes dispatch.
 # AIE_NPU_NO_DEVICE_LOCK=1 opts out entirely, for tests that exercise concurrency.
-DEFAULT_MAX_CONCURRENT_DISPATCH = 8
+#
+# npu1 gets 1: the driver caps it at 6 hardware contexts against npu4's 16 and
+# enables frame-boundary preemption (AIE2_PREEMPT) only on npu4, so it cannot
+# time-share a whole-array design. At 8 the aie2-4col leg lost 6 tests -- five
+# aborted in CREATE_HWCTX/-ENOENT, and writebd_tokens returned all zeros instead
+# of failing. Anything between 1 and 8 is unmeasured there.
+DEFAULT_MAX_CONCURRENT_DISPATCH = {"npu1": 1, "npu2": 8}
+FALLBACK_MAX_CONCURRENT_DISPATCH = 1
 
 
 @contextlib.contextmanager
@@ -187,7 +194,10 @@ def device_lock(npu_kind: str):
     try:
         slots = int(os.environ.get("AIE_NPU_MAX_CONCURRENT_DISPATCH", ""))
     except ValueError:
-        slots = DEFAULT_MAX_CONCURRENT_DISPATCH
+        slots = DEFAULT_MAX_CONCURRENT_DISPATCH.get(npu_kind)
+        if slots is None:
+            log(f"no measured dispatch bound for {npu_kind}, serializing")
+            slots = FALLBACK_MAX_CONCURRENT_DISPATCH
     slots = max(1, slots)
     lock_dir = os.environ.get("XDG_RUNTIME_DIR") or tempfile.gettempdir()
     # A counting semaphore built from `slots` lock files: probe each without
@@ -214,7 +224,7 @@ def device_lock(npu_kind: str):
             time.sleep(0.01)
     waited = time.perf_counter() - t0
     if waited > 1.0:
-        log(f"waited {waited:.1f}s for one of {slots} {npu_kind} device slots")
+        log(f"waited {waited:.1f}s for a free {npu_kind} device slot ({slots} total)")
     try:
         yield
     finally:
