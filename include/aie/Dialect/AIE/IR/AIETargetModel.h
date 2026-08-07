@@ -964,14 +964,6 @@ struct DenseMapInfo<xilinx::AIE::TileID> {
   using FirstInfo = DenseMapInfo<int>;
   using SecondInfo = DenseMapInfo<int>;
 
-  static xilinx::AIE::TileID getEmptyKey() {
-    return {FirstInfo::getEmptyKey(), SecondInfo::getEmptyKey()};
-  }
-
-  static xilinx::AIE::TileID getTombstoneKey() {
-    return {FirstInfo::getTombstoneKey(), SecondInfo::getTombstoneKey()};
-  }
-
   static unsigned getHashValue(const xilinx::AIE::TileID &t) {
     return detail::combineHashValue(FirstInfo::getHashValue(t.col),
                                     SecondInfo::getHashValue(t.row));

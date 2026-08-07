@@ -4239,6 +4239,83 @@ public:
   }
 };
 
+// Look through vector.shape_cast ops to find the defining op. The
+// VectorToAIEVec pass inserts shape_casts (via reshapeLeadingUnitDims) between
+// the extension ops and the matmul, which would otherwise hide the signedness.
+static Value lookThroughShapeCasts(Value v) {
+  while (auto castOp = v.getDefiningOp<vector::ShapeCastOp>())
+    v = castOp.getSource();
+  return v;
+}
+
+// If `v` is defined by a signedness-carrying unrealized_conversion_cast --
+// which is how VectorToAIEVec attaches si*/ui* to an otherwise signless
+// operand -- return the signedness it carries and advance `v` past it, so the
+// intrinsic consumes the signless input and the cast is left dead for
+// canonicalization rather than leaking to LLVM translation.
+//
+// A cast whose result element type is not explicitly signed or unsigned is
+// left in place: it is some other type conversion, and dropping it would
+// silently change the operand.
+static std::optional<bool> peelSignednessCast(Value &v) {
+  auto castOp = v.getDefiningOp<UnrealizedConversionCastOp>();
+  if (!castOp)
+    return std::nullopt;
+  auto vecTy = dyn_cast<VectorType>(v.getType());
+  auto intTy =
+      vecTy ? dyn_cast<IntegerType>(vecTy.getElementType()) : IntegerType();
+  if (!intTy || intTy.isSignless())
+    return std::nullopt;
+  v = castOp.getInputs()[0];
+  return intTy.isSigned();
+}
+
+// The result of resolving one integer matmul operand.
+struct ResolvedMatMulOperand {
+  // The value the MAC intrinsic should consume, with any widening op and any
+  // signedness-carrying cast peeled off.
+  Value narrowed;
+  // Whether that value is to be treated as signed, i.e. whether the MAC
+  // configuration word's signX (lhs) / signY (rhs) bit should be set.
+  bool isSigned;
+};
+
+// Recover the signedness of an integer matmul operand. MLIR integers are
+// signless, so it has to come from context; in priority order:
+//
+//   1. an arith.extsi / arith.extui feeding the operand -- peel it and take
+//      its signedness;
+//   2. an unrealized_conversion_cast to a signed/unsigned element type, which
+//      is how VectorToAIEVec carries signedness across the peel it performs.
+//      Peel it too, so the intrinsic consumes the signless value and the cast
+//      is left dead for canonicalization rather than leaking to LLVM;
+//   3. an explicitly signed or unsigned element type;
+//   4. otherwise the element type is signless -- treat it as signed.
+//
+// Case 4 matches the conventional reading of a signless integer, and is the
+// more useful default: the shapes that reach it are the ones whose operand
+// type is already a legal AIE2 narrow type (so nothing was extended), which in
+// practice means i16/i32 operands carrying signed data.
+//
+// Both aievec.matmul and aievec.matmul_aie2p resolve signedness through this
+// function. They previously each had their own copy and had drifted apart.
+static ResolvedMatMulOperand resolveMatMulOperand(Value v) {
+  std::optional<bool> castSigned = peelSignednessCast(v);
+
+  Value orig = lookThroughShapeCasts(v);
+  if (auto extSIOp = orig.getDefiningOp<arith::ExtSIOp>())
+    return {lookThroughShapeCasts(extSIOp.getIn()), true};
+  if (auto extUIOp = orig.getDefiningOp<arith::ExtUIOp>())
+    return {lookThroughShapeCasts(extUIOp.getIn()), false};
+  if (castSigned)
+    return {v, *castSigned};
+
+  auto vecTy = dyn_cast<VectorType>(v.getType());
+  auto intTy =
+      vecTy ? dyn_cast<IntegerType>(vecTy.getElementType()) : IntegerType();
+  return {v, !(intTy && intTy.isUnsigned())};
+}
+
 class MatMulOpConversion
     : public mlir::ConvertOpToLLVMPattern<aievec::MatMulOp> {
   using ConvertOpToLLVMPattern<aievec::MatMulOp>::ConvertOpToLLVMPattern;
@@ -4257,6 +4334,10 @@ class MatMulOpConversion
     Value lhs = op.getLhs();
     Value rhs = op.getRhs();
     Value acc = op.getAcc();
+
+    // Recover operand signedness, and narrow each operand to the value the MAC
+    // should consume. Deferred until after the bf16 case below, which has no
+    // signedness to speak of.
     auto accVecTy = cast<VectorType>(acc.getType());
     if (isa<Float32Type>(accVecTy.getElementType()))
       // <4x8xbf16> x <8x4xbf16> + <4x4xf32>
@@ -4267,55 +4348,19 @@ class MatMulOpConversion
                   /*sub_mul=*/0, /*sub_acc1=*/0, /*sub_acc2=*/0,
                   /*sub_mask=*/0)};
 
-    // Helper: look through vector.shape_cast ops to find the defining op.
-    // The VectorToAIEVec pass inserts shape_casts (via reshapeLeadingUnitDims)
-    // between the extension ops and the matmul, which hides the signedness.
-    auto lookThroughShapeCasts = [](Value v) -> Value {
-      while (auto castOp = v.getDefiningOp<vector::ShapeCastOp>())
-        v = castOp.getSource();
-      return v;
-    };
+    ResolvedMatMulOperand lhsResolved = resolveMatMulOperand(lhs);
+    ResolvedMatMulOperand rhsResolved = resolveMatMulOperand(rhs);
+    lhs = lhsResolved.narrowed;
+    rhs = rhsResolved.narrowed;
+    int signX = lhsResolved.isSigned ? 1 : 0;
+    int signY = rhsResolved.isSigned ? 1 : 0;
 
-    int signX = 0, signY = 0;
     auto lhsVecTy = cast<VectorType>(lhs.getType());
     auto lhsScaTy = cast<IntegerType>(lhsVecTy.getElementType());
-    Value lhsOrig = lookThroughShapeCasts(lhs);
-    if (auto extSIOp = lhsOrig.getDefiningOp<arith::ExtSIOp>()) {
-      lhs = lookThroughShapeCasts(extSIOp.getIn());
-      lhsVecTy = cast<VectorType>(lhs.getType());
-      lhsScaTy = cast<IntegerType>(lhsVecTy.getElementType());
-      signX = 1;
-    } else if (auto extUIOp = lhsOrig.getDefiningOp<arith::ExtUIOp>()) {
-      lhs = lookThroughShapeCasts(extUIOp.getIn());
-      lhsVecTy = cast<VectorType>(lhs.getType());
-      lhsScaTy = cast<IntegerType>(lhsVecTy.getElementType());
-    } else {
-      // Default to unsigned for lhs (activation input is typically uint8).
-      // The VectorToAIEVec pass strips extsi/extui before creating
-      // aievec.matmul, so sign info is not available here. Using unsigned
-      // for A matches the common use case of uint8 activations × int8 weights.
-      if (lhsScaTy.isUnsigned())
-        signX = 0;
-    }
     auto lhsShape = lhsVecTy.getShape();
 
     auto rhsVecTy = cast<VectorType>(rhs.getType());
     auto rhsScaTy = cast<IntegerType>(rhsVecTy.getElementType());
-    Value rhsOrig = lookThroughShapeCasts(rhs);
-    if (auto extSIOp = rhsOrig.getDefiningOp<arith::ExtSIOp>()) {
-      rhs = lookThroughShapeCasts(extSIOp.getIn());
-      rhsVecTy = cast<VectorType>(rhs.getType());
-      rhsScaTy = cast<IntegerType>(rhsVecTy.getElementType());
-      signY = 1;
-    } else if (auto extUIOp = rhsOrig.getDefiningOp<arith::ExtUIOp>()) {
-      rhs = lookThroughShapeCasts(extUIOp.getIn());
-      rhsVecTy = cast<VectorType>(rhs.getType());
-      rhsScaTy = cast<IntegerType>(rhsVecTy.getElementType());
-    } else {
-      // NOTE: We're choosing 'signed' by default
-      if (!rhsScaTy.isUnsigned())
-        signY = 1;
-    }
 
     unsigned lhsBitWidth = lhsScaTy.getWidth();
     unsigned rhsBitWidth = rhsScaTy.getWidth();
@@ -4708,8 +4753,18 @@ class MatMulOpAIE2pConversion
     Value rhs = op.getRhs();
     Value acc = op.getAcc();
 
-    auto lhsVecTy = cast<VectorType>(lhs.getType());
-    auto rhsVecTy = cast<VectorType>(rhs.getType());
+    // Signedness follows the same rule as aievec.matmul; see
+    // resolveMatMulOperand. Only the signedness is taken from it here -- the
+    // shape checks below match on the original operand types, so the operand
+    // values are only advanced past a signedness-carrying cast, not past a
+    // widening op.
+    bool lhsIsSigned = resolveMatMulOperand(lhs).isSigned;
+    bool rhsIsSigned = resolveMatMulOperand(rhs).isSigned;
+    peelSignednessCast(lhs);
+    peelSignednessCast(rhs);
+
+    auto lhsVecTy = cast<VectorType>(op.getLhs().getType());
+    auto rhsVecTy = cast<VectorType>(op.getRhs().getType());
     auto accVecTy = cast<VectorType>(acc.getType());
 
     // Check for AIE2p integer matmul
@@ -4729,9 +4784,14 @@ class MatMulOpAIE2pConversion
       if (lhsIntTy.getWidth() == 8 && rhsIntTy.getWidth() == 8 &&
           accIntTy.getWidth() == 32 && lhsLanes == 64 && rhsLanes == 64 &&
           accLanes == 64) {
-        // Uses I512.I512.ACC2048 (64 lanes of i8 -> 64 lanes of i32)
+        // Uses I512.I512.ACC2048 (64 lanes of i8 -> 64 lanes of i32).
+        // Base conf for amode=0/bmode=1 is bmode<<3 = 8; signedness lives in
+        // signX (bit 9) / signY (bit 8).
+        int signX = lhsIsSigned ? 1 : 0;
+        int signY = rhsIsSigned ? 1 : 0;
+        int conf = 8 | (signX << 9) | (signY << 8);
         return {DecodedMatMulOp::Kind::I8_8x8x8_I512_ACC2048, lhs, rhs, acc,
-                776};
+                conf};
       }
 
       // Check for <8x2xi16> x <2x8xi16> + <8x8xi32>

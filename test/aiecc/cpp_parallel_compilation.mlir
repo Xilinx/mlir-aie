@@ -9,7 +9,7 @@
 
 // Test parallel core compilation with -j option
 
-// RUN: aiecc --no-xchesscc --no-xbridge --get-npu-insts --get-core-elfs --verbose -j 2 %s 2>&1 | FileCheck %s
+// RUN: aiecc --get-npu-insts --get-core-elfs --verbose -j 2 %s 2>&1 | FileCheck %s
 
 // Parallel compilation (-j 2): both cores are compiled and linked.
 // CHECK: ({{[0-9]+}}/{{[0-9]+}}) input.mlir
@@ -20,8 +20,8 @@
 // Parallel per-core slicing must emit the same object as serial compilation.
 // Compile the same design both ways into separate tmpdirs and diff the per-core
 // objects: byte-identical objects pin the slicing equivalence claim.
-// RUN: aiecc --no-xchesscc --no-xbridge --tmpdir=%t.ser %s
-// RUN: aiecc --no-xchesscc --no-xbridge -j 2 --tmpdir=%t.par %s
+// RUN: aiecc --tmpdir=%t.ser %s
+// RUN: aiecc -j 2 --tmpdir=%t.par %s
 // RUN: diff %t.ser/objects_main_core_0_2/objects_main_core_0_2.o %t.par/objects_main_core_0_2/objects_main_core_0_2.o
 // RUN: diff %t.ser/objects_main_core_1_2/objects_main_core_1_2.o %t.par/objects_main_core_1_2/objects_main_core_1_2.o
 

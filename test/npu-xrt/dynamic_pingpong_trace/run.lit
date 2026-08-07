@@ -15,7 +15,7 @@
 // aie-translate --aie-npu-to-cpp from aiecc's lowered intermediate.
 //
 // RUN: mkdir -p %t.prj
-// RUN: %aiecc --no-xchesscc --no-xbridge --get-xclbin \
+// RUN: %aiecc --get-xclbin \
 // RUN:   --get-input-with-addresses --output-dir=%t.prj \
 // RUN:   --xclbin-name=%t.xclbin --tmpdir=%t.prj %S/aie.mlir
 //

@@ -8,16 +8,16 @@
 
 // REQUIRES: valid_xchess_license, peano
 
-// RUN: %aiecc --no-unified --xchesscc    --xbridge %s
-// RUN: %aiecc --unified    --xchesscc    --xbridge %s
-// RUN: %aiecc --no-unified --no-xchesscc --no-xbridge %s
-// RUN: %aiecc --unified    --no-xchesscc --no-xbridge %s
+// RUN: %aiecc --no-unified --xchesscc       --xbridge %s
+// RUN: %aiecc --unified    --xchesscc       --xbridge %s
+// RUN: %aiecc --no-unified --xchesscc=false --xbridge=false %s
+// RUN: %aiecc --unified    --xchesscc=false --xbridge=false %s
 
 // xchesscc and open source peano do not interact well
-//  UN: %aiecc --no-unified --no-xchesscc --xbridge %s
-//  UN: %aiecc --unified    --no-xchesscc --xbridge %s
-//  UN: %aiecc --no-unified --xchesscc    --no-xbridge %s
-//  UN: %aiecc --unified    --xchesscc    --no-xbridge %s
+//  UN: %aiecc --no-unified --xchesscc=false --xbridge %s
+//  UN: %aiecc --unified    --xchesscc=false --xbridge %s
+//  UN: %aiecc --no-unified --xchesscc       --xbridge=false %s
+//  UN: %aiecc --unified    --xchesscc       --xbridge=false %s
 
 module @test00_itsalive {
   aie.device(xcve2802) {

@@ -14,7 +14,7 @@
 
 // REQUIRES: peano
 
-// RUN: aiecc --no-xchesscc --no-xbridge --tmpdir %t %s
+// RUN: aiecc --tmpdir %t %s
 // RUN: FileCheck %s --input-file %t/peano-compat_main_core_0_2.ll --implicit-check-not=", align "
 
 // CHECK: define void @core_0_2()
