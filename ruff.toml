@@ -12,7 +12,10 @@ target-version = "py39"
 # readability benefit.
 line-length = 160
 
-# Same scope as pyrightconfig.json's "include".
+# Same scope as pyrightconfig.json's "include". The ruff-check pre-commit hook
+# mirrors this list in its `files:` filter (pre-commit passes explicit paths,
+# which override `include`); keep .pre-commit-config.yaml's ruff-check `files:`
+# in sync with any change here.
 include = [
   "python/iron/**/*.py",
   "python/utils/**/*.py",
