@@ -7,7 +7,7 @@
 
 One AIE2P core does a (bf16, bfp16) -> bf16 GEMM with on-shim shuffle
 into the bf16 mac layout via memtile dims_to_stream. Strix-only;
-kernel is chess-built.
+kernel is Peano-built.
 """
 
 import argparse
@@ -73,14 +73,12 @@ def single_core_mixed(
         source_file=str(_KERNEL_SRC),
         arg_types=[c_ty],
         compile_flags=kernel_flags + ["-DZERO_ONLY"],
-        use_chess=True,
     )
     matmul_kernel = ExternalFunction(
         "matmul_vectorized_different_datatypes",
         source_file=str(_KERNEL_SRC),
         arg_types=[a_ty, b_ty, c_ty],
         compile_flags=kernel_flags + ["-DMATMUL_ONLY"],
-        use_chess=True,
     )
 
     inA = ObjectFifo(a_ty, name="inA")

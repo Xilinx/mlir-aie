@@ -65,7 +65,6 @@ def in_core_shuffle(
             np.dtype(np.int16),
         ],
         compile_flags=kernel_flags + ["-DSHUFFLE_ONLY"],
-        use_chess=True,
     )
 
     inA = ObjectFifo(a_ty, name="inA")

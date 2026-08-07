@@ -182,62 +182,92 @@ buildObjectSubgraph(EdgeWithTypedOutput<ModRef> &lowered,
       .output("-o");
   auto &peanoCompat =
       llvmIR.map<std::string>("peano-compat_{0}.ll", downgradeIRForPeano);
-  // Merge the core's merge-mode link artifacts into the downgraded core IR via
-  // llvm-link before opt. With the kernel marked alwaysinline this inlines the
-  // kernel body into the core -- no surviving func.call and no separately
-  // object-linked kernel object. The kernel IR is already peano-flavored (it is
-  // emitted by the peano toolchain), so only the core IR needs downgrading;
-  // llvm-link then merges the two. These artifacts come from the core's
-  // `link_merge_files`, which the ld-script/BCF emitters never emit (they emit
-  // `link_files` only, see AIETranslateToLdScript / AIETranslateToBCF), so each
-  // symbol is merged exactly once. Keys with no merge-mode link files pass the
-  // downgraded IR straight through (no llvm-link is run). Peano only: the chess
-  // front-end cannot llvm-link.
-  ShellCommand llvmLinkCmd{"llvm-link"};
-  llvmLinkCmd.input().inputs().arg("-S").output("-o");
+  // Merge the core's merge-mode link artifacts (`link_merge_files`) into the
+  // downgraded core IR before opt; with the kernel marked alwaysinline that
+  // inlines its body into the core, leaving no func.call and no separate kernel
+  // object. The ld-script/BCF emitters emit `link_files` only, so each symbol
+  // is merged exactly once. Keys with no merge-mode files pass straight
+  // through. Peano only: the chess front-end cannot llvm-link.
+  //
+  // Merged in-process (AIELLVMLink) rather than via `llvm-link`, which the
+  // Peano wheel does not ship -- a bare-name lookup silently lands on whatever
+  // other LLVM is on PATH. A linker reprints the merged module in its own IR
+  // dialect, so downgradeIRForPeano runs again on the result: the pre-link pass
+  // above cannot see the newer spellings the reprint introduces, and the
+  // reprint also restores the `align` attributes it had stripped.
   auto &peanoLinked =
       bundle(peanoCompat.out, irLinkFiles.out)
-          .map<File>("peano-linked_{0}.ll",
-                     [llvmLinkCmd](const Item<std::string> &ir,
-                                   const Item<std::vector<std::string>> &links,
-                                   Item<File> &out) -> mlir::LogicalResult {
-                       if (links.get().empty()) {
-                         // Nothing to merge: the downgraded core IR is the
-                         // object input. Copy it to this edge's own output path
-                         // -- aliasing the peano-compat item's path collides
-                         // with it (the engine requires each item's output path
-                         // to be unique).
-                         if (std::error_code ec = llvm::sys::fs::copy_file(
-                                 ir.asFile(), out.filePath)) {
-                           llvm::errs()
-                               << "aiecc: peano-linked: cannot copy '"
-                               << ir.asFile() << "' to '" << out.filePath
-                               << "': " << ec.message() << "\n";
-                           return mlir::failure();
-                         }
-                         out.value = File{};
-                         return mlir::success();
-                       }
-                       return llvmLinkCmd(ir, links, out);
-                     })
+          .map<File>(
+              "peano-linked_{0}.ll",
+              [](const Item<std::string> &ir,
+                 const Item<std::vector<std::string>> &links,
+                 Item<File> &out) -> mlir::LogicalResult {
+                if (links.get().empty()) {
+                  // Nothing to merge: the downgraded core IR is the
+                  // object input. Copy it to this edge's own output path
+                  // -- aliasing the peano-compat item's path collides
+                  // with it (the engine requires each item's output path
+                  // to be unique).
+                  if (std::error_code ec =
+                          llvm::sys::fs::copy_file(ir.asFile(), out.filePath)) {
+                    llvm::errs() << "aiecc: peano-linked: cannot copy '"
+                                 << ir.asFile() << "' to '" << out.filePath
+                                 << "': " << ec.message() << "\n";
+                    return mlir::failure();
+                  }
+                  out.value = File{};
+                  return mlir::success();
+                }
+                if (dryRun) {
+                  // Placeholder so path bookkeeping resolves without requiring
+                  // the merge artifacts to exist, as the ShellCommand edges do.
+                  std::error_code ec;
+                  llvm::raw_fd_ostream placeholder(out.filePath, ec);
+                  if (ec) {
+                    llvm::errs()
+                        << "aiecc: peano-linked: cannot write '" << out.filePath
+                        << "': " << ec.message() << "\n";
+                    return mlir::failure();
+                  }
+                  out.value = File{};
+                  return mlir::success();
+                }
+                // AIELLVMLink takes module *contents*, not paths (its `Files`
+                // parameter is a misnomer). parseIR sniffs each buffer, so a
+                // `.bc` artifact works the same as a `.ll`.
+                std::vector<std::string> modules{ir.asString()};
+                for (const std::string &link : links.get()) {
+                  auto buf = llvm::MemoryBuffer::getFile(link);
+                  if (!buf) {
+                    llvm::errs()
+                        << "aiecc: peano-linked: cannot read merge-mode link "
+                           "artifact '"
+                        << link << "': " << buf.getError().message() << "\n";
+                    return mlir::failure();
+                  }
+                  modules.push_back((*buf)->getBuffer().str());
+                }
+                std::string merged;
+                llvm::raw_string_ostream mergedOs(merged);
+                if (mlir::failed(xilinx::AIE::AIELLVMLink(mergedOs, modules))) {
+                  llvm::errs() << "aiecc: peano-linked: cannot merge "
+                                  "link_with_mode = \"merge\" artifacts into "
+                                  "the core module\n";
+                  return mlir::failure();
+                }
+                std::error_code ec;
+                llvm::raw_fd_ostream os(out.filePath, ec);
+                if (ec) {
+                  llvm::errs() << "aiecc: peano-linked: cannot write '"
+                               << out.filePath << "': " << ec.message() << "\n";
+                  return mlir::failure();
+                }
+                os << downgradeIRForPeano(merged);
+                out.value = File{};
+                return mlir::success();
+              })
           .threadSafe();
-  // Peano ships opt/llc but not llvm-link, so `llvm-link` resolves to a newer
-  // host LLVM that re-serializes the whole module and reintroduces the LLVM-24
-  // constructs downgradeIRForPeano stripped from peano-compat (notably the
-  // `nocreateundeforpoison` fn attr). Peano's opt then can't parse them, so
-  // downgrade the linked module once more before opt.
-  auto &peanoCompatLinked = peanoLinked.map<std::string>(
-      "peano-compat-linked_{0}.ll",
-      [](const Item<File> &in, Item<std::string> &out) -> mlir::LogicalResult {
-        auto ir =
-            Deserializer<std::string>::read(in.asFile(), DeserializeContext{});
-        if (mlir::failed(ir))
-          return mlir::failure();
-        out.value = downgradeIRForPeano(*ir);
-        return mlir::success();
-      });
-  auto &opted =
-      peanoCompatLinked.map<File>("opted_{0}.ll", optCmd).threadSafe();
+  auto &opted = peanoLinked.map<File>("opted_{0}.ll", optCmd).threadSafe();
   ShellCommand llcCmd{"llc"};
   llcCmd.input()
       .arg("-O" + std::to_string(optLevel.getValue()))

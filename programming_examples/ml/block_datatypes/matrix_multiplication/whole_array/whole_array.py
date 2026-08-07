@@ -6,7 +6,7 @@
 """Whole-array bfp16ebs8 matmul — ``@iron.jit`` IRON design.
 
 n_aie_rows x n_aie_cols compute cores tile a (M,K,N) GEMM with per-core
-(m,k,n). Strix-only; kernel is chess-built.
+(m,k,n). Strix-only.
 """
 
 import argparse
@@ -86,14 +86,12 @@ def whole_array_matmul(
         source_file=str(_KERNEL_SRC),
         arg_types=[C_l1_ty],
         compile_flags=kernel_flags + ["-DZERO_ONLY"],
-        use_chess=True,
     )
     matmul_kernel = ExternalFunction(
         "matmul_vectorized_bfp16",
         source_file=str(_KERNEL_SRC),
         arg_types=[A_l1_ty, B_l1_ty, C_l1_ty],
         compile_flags=kernel_flags + ["-DMATMUL_ONLY"],
-        use_chess=True,
     )
 
     A_l3l2_fifos: list[ObjectFifo] = []

@@ -6,7 +6,7 @@
 """Single-core mixed bf16/bfp16 matmul, NO tiling — ``@iron.jit`` IRON design.
 
 One AIE2P core, one 64x64x64 mixed (bf16, bfp16) -> bf16 mac, no host
-tile loop. Strix-only; chess-built.
+tile loop. Strix-only.
 """
 
 import argparse
@@ -64,14 +64,12 @@ def single_core_no_tiling_mixed(
         source_file=str(_KERNEL_SRC),
         arg_types=[c_ty],
         compile_flags=kernel_flags + ["-DZERO_ONLY"],
-        use_chess=True,
     )
     matmul_kernel = ExternalFunction(
         "matmul_vectorized_different_datatypes",
         source_file=str(_KERNEL_SRC),
         arg_types=[a_ty, b_ty, c_ty],
         compile_flags=kernel_flags + ["-DMATMUL_ONLY"],
-        use_chess=True,
     )
 
     inA = ObjectFifo(a_ty, name="inA")
