@@ -3356,6 +3356,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#linting-python" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Linting Python
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#type-checking-python" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3542,6 +3553,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#linting-python" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Linting Python
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#type-checking-python" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3706,35 +3728,59 @@ before writing code — maintainers are happy to give direction and feedback ear
 Any new feature or API should also come with the corresponding documentation
 update (this repository holds its own docs; there is no separate docs repo).</p>
 <h2 id="formatting-and-hooks">Formatting and hooks<a class="headerlink" href="#formatting-and-hooks" title="Permanent link">&para;</a></h2>
-<p>Formatting is enforced by <a href="https://pre-commit.com/">pre-commit</a>, installed by
-<code>utils/env_install.sh --dev</code>. The hooks run automatically — validators on every
-commit, and the formatters on <code>git push</code> — so CI should never be the first place
-you find out about a formatting issue. To run them by hand:</p>
+<p>Formatting and linting are enforced by <a href="https://pre-commit.com/">pre-commit</a>,
+installed by <code>utils/env_install.sh --dev</code>. The hooks run automatically —
+lightweight validators (REUSE, merge-conflict markers, etc.) on every commit,
+and the heavier formatting/lint checks (<code>clang-format</code>, <code>black</code>, <code>ruff check</code>)
+on <code>git push</code> — so CI should never be the first place you find out about a
+formatting or lint issue. To run them by hand:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>pre-commit<span class="w"> </span>run<span class="w"> </span>--all-files
 </code></pre></div>
 <p>The hooks cover:</p>
 <ul>
 <li><strong>C++</strong> — <a href="https://clang.llvm.org/docs/ClangFormat.html"><code>clang-format</code></a>
   (LLVM style; config in <code>.clang-format</code>).</li>
-<li><strong>Python and notebooks</strong> — <a href="https://black.readthedocs.io/"><code>black</code></a>, plus
-  <code>nbstripout</code> to scrub notebook output before it is committed.</li>
+<li><strong>Python and notebooks</strong> — <a href="https://black.readthedocs.io/"><code>black</code></a> for
+  formatting, plus <code>nbstripout</code> to scrub notebook output before it is
+  committed.</li>
+<li><strong>Python lint</strong> — <a href="https://docs.astral.sh/ruff/"><code>ruff check</code></a> (see
+  <a href="#linting-python">Linting Python</a> below).</li>
 <li><strong>Baseline hygiene</strong> — trailing whitespace, end-of-file, merge-conflict
   markers, and <a href="https://reuse.software/">REUSE</a> license-header compliance.</li>
 </ul>
-<p>If you would rather not install the hooks, you can run <code>clang-format -i &lt;file&gt;</code>
-and <code>black &lt;file&gt;</code> directly, but the hooks are the supported path.</p>
+<p>If you would rather not install the hooks, you can run <code>clang-format -i &lt;file&gt;</code>,
+<code>black &lt;file&gt;</code>, and <code>ruff check --fix &lt;file&gt;</code> directly, but the hooks are the
+supported path.</p>
+<h2 id="linting-python">Linting Python<a class="headerlink" href="#linting-python" title="Permanent link">&para;</a></h2>
+<p>Python style and common bugs are checked with
+<a href="https://docs.astral.sh/ruff/">ruff</a>, scoped to <code>python/{iron,utils,helpers,
+compiler}</code> and a growing set of <code>programming_examples/</code> directories —
+<code>ruff.toml</code>'s <code>include</code> list at the repo root is the source of truth for
+exactly which paths are covered. The pre-push hook runs <code>ruff check</code> and
+blocks the push on any violation; run it by hand with:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>ruff<span class="w"> </span>check
+</code></pre></div>
+<p>Rules enabled: pyflakes/pycodestyle errors (<code>E</code>, <code>F</code>), import sorting (<code>I</code>), a
+narrow pep8-naming subset (<code>N802</code>, <code>N816</code>), and pydocstyle (<code>D</code>, Google
+convention, <code>python/{iron,utils,helpers,compiler}</code> only for now) for docstring
+<em>style</em> — see <a href="#documenting-your-code">Documenting your code</a>. <code>ruff.toml</code>
+documents, rule by rule, why anything is excluded from the default rule set;
+per-file exceptions live in <code>[lint.per-file-ignores]</code>, each with an inline
+justification. Follow that pattern if you need a new one — an unexplained
+exception won't pass review.</p>
 <h2 id="type-checking-python">Type checking Python<a class="headerlink" href="#type-checking-python" title="Permanent link">&para;</a></h2>
-<p>The pure-Python package (<code>python/{iron,utils,helpers,compiler}</code>) is type-checked
-with <a href="https://github.com/microsoft/pyright">pyright</a> in <code>standard</code> mode, and CI
-fails on any error. Configuration lives in <code>pyrightconfig.json</code> at the repo root.
-After a normal build/install you can run:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>pyright
+<p>The pure-Python package (<code>python/{iron,utils,helpers,compiler}</code>) and a growing
+set of <code>programming_examples/</code> directories (<code>pyrightconfig.json</code>'s <code>include</code>
+list at the repo root is the source of truth) are type-checked with
+<a href="https://github.com/microsoft/pyright">pyright</a> in <code>standard</code> mode, and CI
+fails on any error. After a normal build/install you can run:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>pyright
 </code></pre></div>
 <p>When a diagnostic points at a symbol that genuinely exists at runtime but comes
 from a compiled extension (<code>aie._mlir_libs</code>) or a tablegen-generated op/enum
 wildcard (<code>from aie.dialects... import *</code>), suppress just that line, naming the
 exact rule:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="k">with</span> <span class="n">Context</span><span class="p">()</span> <span class="k">as</span> <span class="n">ctx</span><span class="p">:</span>  <span class="c1"># pyright: ignore[reportUndefinedVariable]</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="k">with</span> <span class="n">Context</span><span class="p">()</span> <span class="k">as</span> <span class="n">ctx</span><span class="p">:</span>  <span class="c1"># pyright: ignore[reportUndefinedVariable]</span>
 </code></pre></div>
 <p>Reserve suppressions for these binding gaps. Fix real type issues at the source
 (add a <code>None</code> guard or <code>raise</code>, tighten an annotation, initialize before a
@@ -3742,9 +3788,16 @@ branch) rather than silencing them. Do not add blanket file-level ignores or
 disable rules.</p>
 <h2 id="documenting-your-code">Documenting your code<a class="headerlink" href="#documenting-your-code" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>Python</strong> — document public functions, classes, and modules with docstrings.
+<li><strong>Python</strong> — document public functions, classes, and modules with
+  docstrings, using the Google convention (<code>Args:</code>/<code>Returns:</code>/<code>Raises:</code>
+  sections, one arg per line as <code>name (type[, optional]): description</code>).
   These are rendered into the <a href="../api/">API reference</a> via
-  mkdocstrings, so a good docstring is also good published documentation.</li>
+  mkdocstrings, so a good docstring is also good published documentation. In
+  <code>python/{iron,utils,helpers,compiler}</code>, ruff's pydocstyle rules enforce the
+  <em>style</em> of a docstring once you've written one (blank-line placement,
+  imperative first line, terminal punctuation) — see
+  <a href="#linting-python">Linting Python</a>. Writing a docstring in the first place is
+  still expected for anything public-facing, just not yet machine-enforced.</li>
 <li><strong>C++</strong> — use Doxygen-style triple-slash comments (<code>///</code>, with <code>\brief</code>,
   <code>\param</code>, <code>\returns</code> as needed) on public declarations in headers. These feed
   the <a href="../api/cpp_doxygen/">C++ API reference</a>.</li>
