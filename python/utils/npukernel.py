@@ -7,9 +7,7 @@ from .trace import TraceConfig
 
 
 class NPUKernel:
-    """
-    Represents a compiled NPU kernel.
-    """
+    """Represents a compiled NPU kernel."""
 
     def __init__(
         self,
@@ -21,8 +19,7 @@ class NPUKernel:
         num_host_bos: int | None = None,
         elf_path=None,
     ):
-        """
-        Initialize the NPUKernel.
+        """Initialize the NPUKernel.
 
         Args:
             xclbin_path (str | Path | None): Path to the xclbin file. ``None``
@@ -58,8 +55,7 @@ class NPUKernel:
 
     @property
     def trace_config(self) -> TraceConfig | None:
-        """
-        Get the trace configuration.
+        """Get the trace configuration.
 
         Returns:
             TraceConfig | None: The trace configuration.
@@ -68,8 +64,7 @@ class NPUKernel:
 
     @property
     def xclbin_path(self):
-        """
-        Get the path to the xclbin file.
+        """Get the path to the xclbin file.
 
         Returns:
             str | Path: The xclbin path.
@@ -78,8 +73,7 @@ class NPUKernel:
 
     @property
     def insts_path(self):
-        """
-        Get the path to the instructions file.
+        """Get the path to the instructions file.
 
         Returns:
             str | Path: The instructions path.
@@ -88,8 +82,7 @@ class NPUKernel:
 
     @property
     def elf_path(self):
-        """
-        Get the path to the full ELF file, or ``None`` on the xclbin path.
+        """Get the path to the full ELF file, or ``None`` on the xclbin path.
 
         Returns:
             str | Path | None: The full-ELF path.
@@ -98,8 +91,7 @@ class NPUKernel:
 
     @property
     def kernel_name(self):
-        """
-        Get the kernel name.
+        """Get the kernel name.
 
         Returns:
             str: The kernel name.
@@ -108,8 +100,7 @@ class NPUKernel:
 
     @property
     def num_host_bos(self) -> int | None:
-        """
-        Get the compiled design's true host-buffer count.
+        """Get the compiled design's true host-buffer count.
 
         Returns:
             int | None: The number of ``aie.runtime_sequence`` operands the
@@ -120,8 +111,8 @@ class NPUKernel:
 
     # Blocking call.
     def __call__(self, *args, **kwargs):
-        """
-        Run the kernel with the given arguments.
+        """Run the kernel with the given arguments.
+
         This is a blocking call.
 
         Args:

@@ -22,7 +22,7 @@ For each vector multiply (vmul) on a strix device for uint8/int8 datatypes, we p
 
 Definitions
 * P2 - 2 pixels consisting of rgba. So that would be {r0 b0 g0 a0} and {r1 b1 g1 a1}
-* T8 - 8 tiles. Tiles are a sequential notation we're using to number each of the 14x14 pixel blocks we're interating over. So in our 896 x 896 pixel image, we have 64 x 64 tiles. The first row of tiles are then indexed as t0 .. t63. The first tile in the second row is then t64, etc.
+* T8 - 8 tiles. Tiles are a sequential notation we're using to number each of the 14x14 pixel blocks we're iterating over. So in our 896 x 896 pixel image, we have 64 x 64 tiles. The first row of tiles are then indexed as t0 .. t63. The first tile in the second row is then t64, etc.
 * C8 - 8 channels. This corresponds to output channels. We do technically have 4 input channels but we're grouping all 4 of them into a single pixel in this notation
 
 Then, within our sub-kernel ([conv2dk14.cc](../../../aie_kernels/aie2p/conv2dk14.cc)) we loop over the following inputs, weights and outputs:
@@ -68,14 +68,14 @@ make clean; make multi=1 num_act=1 run_py
 
 ## Multi-core Design Example (32-cores)
 
-The multi-core implementation uses the same underlying convolution kernel ([conv2dk14.cc](../../../aie_kernels/aie2p/conv2dk14.cc)) but distributes the compute over the entire AIE tile array on a Strix device (4 x 8 = 32). Input/activations are broadcasted along the rows and Weights are broadcastd along the columns. The output layout is still organized as CYX{C16}. We distribute the compute such that all tiles are working in parallel. Output channels (1152) are divided by columns such that each column computes 1/8 of all output channels (1152/8 = 144). Since each kernel processes 16 output channels at a time, the columns need to be executed 9 times to compute the results for all the output channels (144/ 16 = 9). Within each column, we divide the compute of the output into quarters such that row 0 (row index 2) computes the first 1/4 of the ouput (16 x 64), row 1 (row index 3) computes the second 1/4, row 3 (row index 4) the third 1/4, and row 4 (row index 5) the last 1/4. As a result, within each core tile, we loop over our conv kernel first by 4 (to compute the entire input image row), and then by 16 to compute 1/4 of the output. The measured default host code wall clock time is then improved from ~20ms for the single-core variant to ~5ms in the 32-core variant. 
+The multi-core implementation uses the same underlying convolution kernel ([conv2dk14.cc](../../../aie_kernels/aie2p/conv2dk14.cc)) but distributes the compute over the entire AIE tile array on a Strix device (4 x 8 = 32). Input/activations are broadcasted along the rows and Weights are broadcastd along the columns. The output layout is still organized as CYX{C16}. We distribute the compute such that all tiles are working in parallel. Output channels (1152) are divided by columns such that each column computes 1/8 of all output channels (1152/8 = 144). Since each kernel processes 16 output channels at a time, the columns need to be executed 9 times to compute the results for all the output channels (144/ 16 = 9). Within each column, we divide the compute of the output into quarters such that row 0 (row index 2) computes the first 1/4 of the output (16 x 64), row 1 (row index 3) computes the second 1/4, row 3 (row index 4) the third 1/4, and row 4 (row index 5) the last 1/4. As a result, within each core tile, we loop over our conv kernel first by 4 (to compute the entire input image row), and then by 16 to compute 1/4 of the output. The measured default host code wall clock time is then improved from ~20ms for the single-core variant to ~5ms in the 32-core variant. 
 
 
 ## Configure design
 While the design was designed to be somewhat configurable, this is mostly tested in the output channel dimension as long as it's a multiple of 16. To configure the parameters of the convolution such as data width, height and the number of input and output channels, you can edit the top of the `Makefile` but this is largely untested. Choosing the scalar or vectorized version of the kernel can likewise be selected in the `Makefile` by modifying the `vectorized` variable but see limitations below on this feature.
 
 ## Limitation Notes
-At the moment, the following limtations exist:
+At the moment, the following limitations exist:
 * The scalar kernel version of this design does not run properly in single core mode for the full data size because the total compute time exceeds the execution time limit of the npu driver (~2 seconds). You can reduce the number of output channels (576 channels works) or you can run the scalar kernel with the 32-core design as noted above.
 * There is a bug if the trace_size is 32,768 bytes (rather than 16kB or 8kB) which causes the trace to seg fault. Still under investigation, but choosing a smaller size seems to be a good workaround.
 * Trace for the 32-core variant currently causes the compilation to hang. Under investigation but the non-trace run works without issue.

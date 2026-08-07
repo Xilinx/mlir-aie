@@ -39,11 +39,19 @@ from __future__ import annotations
 
 import argparse
 
-import numpy as np
-
 import aie.iron as iron
-from aie.iron import CompileTime, ExternalFunction, In, Out, jit
-from aie.iron import ObjectFifo, Worker, Runtime, Program
+import numpy as np
+from aie.iron import (
+    CompileTime,
+    ExternalFunction,
+    In,
+    ObjectFifo,
+    Out,
+    Program,
+    Runtime,
+    Worker,
+    jit,
+)
 from aie.iron.controlflow import range_
 from aie.utils.benchmark import run_iters
 from aie.utils.verify import assert_pass
@@ -62,7 +70,7 @@ def transform(
     input: In,
     output: Out,
     *,
-    func: CompileTime[object],
+    func: CompileTime[ExternalFunction],
     num_elements: CompileTime[int],
 ):
     tile_size = func.tile_size(0)
@@ -100,7 +108,7 @@ def _add_one(inline: bool) -> ExternalFunction:
         arg_types=[
             np.ndarray[(16,), np.dtype[np.int32]],
             np.ndarray[(16,), np.dtype[np.int32]],
-            np.int32,
+            np.dtype(np.int32),
         ],
         inline=inline,
     )

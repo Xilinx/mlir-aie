@@ -130,8 +130,7 @@ def ceildiv(a, b):
 
 
 def tensor(*args, **kwargs):
-    """
-    Create a tensor using the default tensor class.
+    """Create a tensor using the default tensor class.
 
     Passing a typed ``ndarray`` together with a mismatched ``dtype=``
     kwarg raises :class:`TypeError`.  Matching kwargs are passed through
@@ -159,8 +158,7 @@ def tensor(*args, **kwargs):
 
 
 def ones(*args, **kwargs):
-    """
-    Create a tensor filled with ones using the default tensor class.
+    """Create a tensor filled with ones using the default tensor class.
 
     Args:
         *args: Arguments passed to the ones method.
@@ -173,8 +171,7 @@ def ones(*args, **kwargs):
 
 
 def zeros(*args, **kwargs):
-    """
-    Create a tensor filled with zeros using the default tensor class.
+    """Create a tensor filled with zeros using the default tensor class.
 
     Args:
         *args: Arguments passed to the zeros method.
@@ -187,8 +184,7 @@ def zeros(*args, **kwargs):
 
 
 def full(*args, **kwargs):
-    """
-    Create a tensor filled with a scalar value using the default tensor class.
+    """Create a tensor filled with a scalar value using the default tensor class.
 
     Args:
         *args: Arguments passed to the full method (size, fill_value).
@@ -201,8 +197,7 @@ def full(*args, **kwargs):
 
 
 def randint(*args, **kwargs):
-    """
-    Create a tensor filled with random integers using the default tensor class.
+    """Create a tensor filled with random integers using the default tensor class.
 
     Args:
         *args: Arguments passed to the randint method.
@@ -215,8 +210,7 @@ def randint(*args, **kwargs):
 
 
 def rand(*args, **kwargs):
-    """
-    Create a tensor filled with random values using the default tensor class.
+    """Create a tensor filled with random values using the default tensor class.
 
     Args:
         *args: Arguments passed to the rand method.
@@ -229,8 +223,7 @@ def rand(*args, **kwargs):
 
 
 def arange(*args, **kwargs):
-    """
-    Create a tensor with a range of values using the default tensor class.
+    """Create a tensor with a range of values using the default tensor class.
 
     Args:
         *args: Arguments passed to the arange method.
@@ -243,8 +236,7 @@ def arange(*args, **kwargs):
 
 
 def zeros_like(*args, **kwargs):
-    """
-    Create a tensor filled with zeros with the same shape as another tensor using the default tensor class.
+    """Create a tensor filled with zeros with the same shape as another tensor using the default tensor class.
 
     Args:
         *args: Arguments passed to the zeros_like method.
@@ -257,8 +249,7 @@ def zeros_like(*args, **kwargs):
 
 
 def set_tensor_class(cls):
-    """
-    Set the default tensor class.
+    """Set the default tensor class.
 
     Args:
         cls: The new default tensor class. Must inherit from NpuTensor.

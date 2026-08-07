@@ -22,11 +22,11 @@ logger = logging.getLogger(__name__)
 class Program:
     def __init__(
         self,
-        device: Device,
+        device: Device | None,
         rt: Runtime,
         workers: "list | None" = None,
     ):
-        """A Program represents all design information needed to run the design on a device.
+        """Construct a Program with all design information needed to run the design on a device.
 
         !!! note
             MLIR verification (`ctx.module.operation.verify()`) is performed inside
@@ -34,11 +34,23 @@ class Program:
 
         Args:
             device (Device): The device used to generate the final MLIR for the design.
+                Accepts the ``Device | None`` returned by
+                [`get_current_device`][iron.get_current_device] directly and raises
+                if no device has been selected, so callers need not narrow it first.
             rt (Runtime): The runtime object for the design.
             workers (list[Worker] | None, optional): The Workers to run on the
                 device. Defaults to None (no workers). Workers are passed here
                 explicitly rather than started from within the runtime sequence.
+
+        Raises:
+            ValueError: If ``device`` is None (no NPU device was selected/detected).
         """
+        if device is None:
+            raise ValueError(
+                "Program requires a device, but none was selected. Pass an explicit "
+                "Device, or ensure an NPU runtime is available for "
+                "iron.get_current_device()."
+            )
         self._device = device
         self._rt = rt
         self._workers = list(workers) if workers is not None else []
@@ -101,7 +113,7 @@ class Program:
         self._egress_shim_col = egress_shim_col
 
     def resolve_program(self, device_name="main"):
-        """This method resolves the program components in order to generate MLIR.
+        """Resolve the program components in order to generate MLIR.
 
         Tiles are emitted as aie.logical_tile ops. The --aie-place-tiles pass
         in the compilation pipeline converts them to aie.tile ops.

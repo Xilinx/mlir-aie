@@ -561,6 +561,8 @@ def start_trace(
                 argument (an output buffer), saving a host buffer.
         routing: Shim routing strategy. Currently only "single" is supported,
                  which routes all traces to column 0's shim.
+        egress_shim_col: Column of the shim tile used to egress trace packets
+                 to DDR. Defaults to 0.
     """
     # Emit host_config op (handles string-to-enum conversion for routing)
     trace_host_config(

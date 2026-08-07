@@ -25,20 +25,20 @@ import argparse
 import json
 import os
 
-import numpy as np
-
 import aie.iron as iron
+import numpy as np
 from aie.iron import ObjectFifo, Program, Runtime, TaskGroup
 from aie.iron.device import Tile
-from aie.utils.hostruntime.argparse import device_from_args
 from aie.utils.hostruntime import set_current_device
-from aie.utils.hostruntime.argparse import add_compile_args
+from aie.utils.hostruntime.argparse import add_compile_args, device_from_args
 
-from .network_spec import block as nsblock, CASCADE_NAMES
-from .bottleneck._common import i8 as _i8, u8 as _u8
-from .bottleneck.regular import build_2layer_skip, build_3layer, build_fused_pair
-from .bottleneck.pipeline import build_3tile_pipeline, build_bn12_2tile
+from .bottleneck._common import i8 as _i8
+from .bottleneck._common import u8 as _u8
 from .bottleneck.cascade import build_cascade
+from .bottleneck.pipeline import build_3tile_pipeline, build_bn12_2tile
+from .bottleneck.regular import build_2layer_skip, build_3layer, build_fused_pair
+from .network_spec import CASCADE_NAMES
+from .network_spec import block as nsblock
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data") + "/"
 SCALE_FACTORS = None  # Lazy-loaded in per_block_iron from --scales-json or default.
@@ -228,7 +228,9 @@ def per_block_iron(block_name, data_dir=None, scales_json=None):
         BN_WTS_SZ = 80 * 960  # 76800 bytes per L1/L3 weight chunk for bn13/bn14
         wts_ty = np.ndarray[(BN_WTS_SZ // 4,), np.dtype[np.int32]]
 
-        def sequence(inp, wl1, wl3, out, in_prod, wl1_prod, wl3_prod, out_cons):
+        def sequence_with_wts(
+            inp, wl1, wl3, out, in_prod, wl1_prod, wl3_prod, out_cons
+        ):
             tg = TaskGroup()
             in_prod.fill(inp, group=tg)
             wl1_prod.fill(wl1, group=tg)
@@ -237,7 +239,7 @@ def per_block_iron(block_name, data_dir=None, scales_json=None):
             tg.finish()
 
         rt = Runtime(
-            sequence,
+            sequence_with_wts,
             [
                 in_ty,
                 wts_ty,
@@ -251,14 +253,14 @@ def per_block_iron(block_name, data_dir=None, scales_json=None):
         )
     else:
 
-        def sequence(inp, out, in_prod, out_cons):
+        def sequence_no_wts(inp, out, in_prod, out_cons):
             tg = TaskGroup()
             in_prod.fill(inp, group=tg)
             out_cons.drain(out, wait=True, group=tg)
             tg.finish()
 
         rt = Runtime(
-            sequence,
+            sequence_no_wts,
             [
                 in_ty,
                 out_ty,

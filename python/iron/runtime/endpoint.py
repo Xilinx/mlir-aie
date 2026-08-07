@@ -15,6 +15,7 @@ from ..device import AnyShimTile, Tile
 
 class RuntimeEndpoint(ObjectFifoEndpoint):
     """An ObjectFifo endpoint representing data transfer between the host and the device.
+
     Operates on a shim tile — either a ShimNOCTile (the default, used by NPU
     host-driven DMA) or a ShimPLTile (used by VCK5000 PLIO designs where the
     runtime DMA is wired to the PL side of the shim).

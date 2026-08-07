@@ -14,14 +14,13 @@ Input:  (7,1,80) int8   Output: (1,1,1280) uint16 (post_L2_InC wide)
 """
 
 import numpy as np
-
 from aie.iron import ObjectFifo, Worker, kernels
 from aie.iron.controlflow import range_
 from aie.iron.dataflow.endpoint import ObjectFifoEndpoint
 from aie.iron.device import AnyMemTile
 
-from ._common import i8, load_wts
 from ..network_spec import block as nsblock
+from ._common import i8, load_wts
 
 
 def post_l1(act_in, sf, *, tiles=None, data_dir):

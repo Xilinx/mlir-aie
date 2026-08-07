@@ -12,12 +12,10 @@ Strix-only because ``v8bfp16ebs8`` is an AIE2P intrinsic type.
 import argparse
 from pathlib import Path
 
+import aie.iron as iron
 import numpy as np
-
 from aie.dialects.aiex import v8bfp16ebs8
 from aie.helpers.taplib import TensorTiler2D
-
-import aie.iron as iron
 from aie.iron import (
     CompileTime,
     ExternalFunction,
@@ -31,8 +29,8 @@ from aie.iron import (
 )
 from aie.iron.controlflow import range_
 from aie.utils.hostruntime.argparse import (
-    device_from_args,
     add_compile_args,
+    device_from_args,
 )
 from aie.utils.hostruntime.cli import run_design_cli
 

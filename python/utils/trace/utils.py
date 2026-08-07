@@ -50,8 +50,10 @@ def create_ctrl_pkt(
 
 
 def get_kernel_code(test: dict, solutions_path: Optional[str] = None) -> Optional[str]:
-    """Fetch the kernel code from the provided solution path, if none provided default
-    to canonical solution."""
+    """Fetch the kernel code from the provided solution path.
+
+    If none provided, default to the canonical solution.
+    """
     if not solutions_path:
         return test["prompt"] + test["canonical_solution"]
 
@@ -82,9 +84,7 @@ def get_kernel_code(test: dict, solutions_path: Optional[str] = None) -> Optiona
 
 
 def extract_buffers(test):
-    """Specific helper for the AIEval dataset - parses the test dictionary and returns
-    input buffers, output buffers and RTPs as separate lists.
-    """
+    """Specific helper for the AIEval dataset - parses the test dictionary and returns input buffers, output buffers and RTPs as separate lists."""
     input_buffers = []
     for x in test["test_vectors"]["inputs"]:
         array, dtype = list(x.values())
@@ -106,10 +106,7 @@ def extract_buffers(test):
 
 
 def get_cycles(trace_path):
-    """This helper function should only be used to extract cycle counts
-    from NPUEval trace files where the expectation is to have exactly 1 of
-    each event0 and event1.
-    """
+    """Extract the cycle count from an NPUEval trace file with exactly 1 event0 and 1 event1."""
     with open(trace_path, "r") as f:
         data = json.load(f)
 
@@ -129,8 +126,8 @@ def get_cycles(trace_path):
 
 
 def get_cycles_summary(trace_path):
-    """This helper function is  used to extract cycle counts from a trace json
-    file and returns an array of cycles between pairs of event0 and event1.
+    """Extract cycle counts between pairs of event0 and event1 from a trace file.
+
     This always assumes each event0 is followed by an event1 and ignores
     extra event0 and event1's.
     """
@@ -181,9 +178,10 @@ def print_cycles_summary(trace_path):
 
 
 def get_vector_time(trace):
-    """This function extracts the total time spent on the vectorized unit
-    from an NPUEval AIE trace (this must have exactly 1 event0 and 1 event1
-    sandwiching the kernel call).
+    """Extract the total time spent on the vectorized unit from an NPUEval trace.
+
+    The trace must have exactly 1 event0 and 1 event1 sandwiching the kernel
+    call.
     """
     with open(trace, "r") as f:
         data = json.load(f)

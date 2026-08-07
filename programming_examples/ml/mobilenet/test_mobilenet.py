@@ -2,23 +2,20 @@
 # Copyright (C) 2024 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-import sys
-import torch
-import torch.nn as nn
-import sys
-import math
-from aie.utils.ml import DataShaper
-import time
-import os
 import argparse
 import json
-
-import numpy as np
-import torch.nn.functional as F
+import math
+import os
+import sys
+import time
 
 import aie.iron as iron
-from aie.utils import TraceConfig, HostRuntime, NPUKernel, DefaultNPURuntime
+import numpy as np
+import torch  # pyright: ignore[reportMissingImports]
+import torch.nn.functional as F  # pyright: ignore[reportMissingImports]
+from aie.utils import DefaultNPURuntime, HostRuntime, NPUKernel, TraceConfig
 from aie.utils.hostruntime.argparse import add_runtime_args
+from aie.utils.ml import DataShaper
 
 
 def convert_to_numpy(array):
@@ -368,8 +365,6 @@ def main(opts):
 
     num_iter = 1
     npu_time_total = 0
-    npu_time_min = 9999999
-    npu_time_max = 0
     trace_size = 16384
     # enable_trace = False
     enable_trace = 0
@@ -381,7 +376,6 @@ def main(opts):
     # ------------------------------------------------------
     dtype_in = np.dtype("int8")
     dtype_wts = np.dtype("int8")
-    dtype_out = np.dtype("uint8")
     dtype_out_aie = np.dtype("uint16")
     # dtype_out = np.dtype("int8")
 
@@ -404,7 +398,6 @@ def main(opts):
     )
 
     print("total weights:::", shape_total_wts)
-    shape_in_act = (tensorInH, InC_vec, tensorInW, vectorSize)  #'YCXC8' , 'CYX'
     shape_out = (tensorOutH, OutC_vec, tensorOutW, vectorSize)  # HCWC8
     shape_out_final = (OutC_vec * vectorSize, tensorOutH, tensorOutW)  # CHW
 
@@ -457,7 +450,6 @@ def main(opts):
     # bn12_wts2_3 = np.loadtxt(data_dir + "bn12_2_3_chain.txt", delimiter=",", dtype="int32")
 
     bn13_wts1 = np.loadtxt(data_dir + "bn13_1_chain.txt", delimiter=",", dtype="int32")
-    bn13_wts2 = np.loadtxt(data_dir + "bn13_2_chain.txt", delimiter=",", dtype="int32")
     bn13_wts3_put = np.loadtxt(
         data_dir + "bn13_3_put_chain.txt", delimiter=",", dtype="int32"
     )
@@ -465,7 +457,6 @@ def main(opts):
         data_dir + "bn13_3_get_chain.txt", delimiter=",", dtype="int32"
     )
     bn14_wts1 = np.loadtxt(data_dir + "bn14_1_chain.txt", delimiter=",", dtype="int32")
-    bn14_wts2 = np.loadtxt(data_dir + "bn14_2_chain.txt", delimiter=",", dtype="int32")
     bn14_wts3_put = np.loadtxt(
         data_dir + "bn14_3_put_chain.txt", delimiter=",", dtype="int32"
     )
@@ -544,19 +535,12 @@ def main(opts):
         np.abs((golden.astype(int)) - (ofm_mem_fmt_out.astype(int)))
     )
     print("max_difference:", max_difference)
-    # Find the indices where the mismatch happens
-    # Find the indices where the mismatch happens
-    mismatch_indices = np.where(golden != ofm_mem_fmt_out)
-
-    # Extract mismatch values
-    mismatch_values_golden = golden[mismatch_indices]
-    mismatch_values_ofm = ofm_mem_fmt_out[mismatch_indices]
 
     # Print mismatch indices and corresponding values
     print("golden shape: ", golden.shape)
     print("Output shape: ", ofm_mem_fmt_out.shape)
 
-    # TODO Disabled to not print mistmatches to stdout for now
+    # TODO Disabled to not print mismatches to stdout for now
     # print("Mismatch indices and corresponding values:")
     # for idx, (golden_value, ofm_value) in zip(
     #     zip(*mismatch_indices), zip(mismatch_values_golden, mismatch_values_ofm)
@@ -568,12 +552,6 @@ def main(opts):
     print(
         "\n***WARNING**** Temporary check where we accept atol=9, whereas it should be 1"
     )
-    if enable_trace:
-        # trace_buffer = full_output[3920:]
-        print("trace_buffer shape: ", trace_buffer.shape)
-        print("trace_buffer dtype: ", trace_buffer.dtype)
-        # write_out_trace(trace_buffer, str(opts.trace_file))
-        write_out_trace(trace_buffer, "trace.txt")
     if np.allclose(
         ofm_mem_fmt_out,
         golden_output,

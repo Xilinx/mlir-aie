@@ -70,8 +70,7 @@ COHERENCE_GRANULE = _detect_coherence_granule()
 
 
 class _CoherenceMap:
-    """Which byte ranges of one allocation the host has written, and which the
-    device has.
+    """Track which byte ranges of one allocation the host has written, and which the device has.
 
     The state belongs to the memory, not to whichever tensor happens to name it.
     Ranges are kept coalesced, so an arena whose windows are all in the same
@@ -172,7 +171,7 @@ class _CoherenceMap:
                 )
 
     def get(self, start, end):
-        """The state of ``[start, end)``, or None if it is not uniform."""
+        """Return the state of ``[start, end)``, or None if it is not uniform."""
         if self.uniform is not None:
             return self.uniform
         seen = {v for lo, hi, v in self._spans if lo < end and hi > start}
@@ -186,7 +185,7 @@ class _CoherenceMap:
         )
 
     def ranges(self, start, end, state):
-        """The sub-ranges of ``[start, end)`` currently in ``state``."""
+        """Return the sub-ranges of ``[start, end)`` currently in ``state``."""
         return [
             (max(lo, start), min(hi, end))
             for lo, hi, value in self._spans

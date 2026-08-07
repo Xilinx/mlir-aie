@@ -237,9 +237,9 @@ def compile_cxx_core_function(
     inline: bool = False,
     symbol_name: str | None = None,
 ):
-    """
-    Compile a C++ core function via either Peano (default) or the Chess
-    compiler (``use_chess=True``).
+    """Compile a C++ core function via either Peano or the Chess compiler.
+
+    Peano is the default; pass ``use_chess=True`` for Chess.
 
     Parameters:
         source_path (str): Path to C++ source.
@@ -425,8 +425,7 @@ def compile_mlir_module(
     use_chess: bool = False,
     device=None,
 ):
-    """
-    Compile an MLIR module to instruction, PDI, ELF, and/or xclbin files using the aiecc module.
+    """Compile an MLIR module to instruction, PDI, ELF, and/or xclbin files using the aiecc module.
 
     Parameters:
         mlir_module (str): MLIR module to compile.
@@ -462,7 +461,6 @@ def compile_mlir_module(
             ``compile_mlir_module`` directly (e.g. ``basic/packet_switch``)
             still need a Makefile-side ``.o`` rule.
     """
-
     if use_chess:
         # Chess-driven aiecc.  --unified runs all cores' xchesscc invocations
         # in a single Chess process to amortise startup cost; matches the
@@ -550,8 +548,7 @@ def _rename_symbol_in_object(object_path: str, old_name: str, new_name: str) -> 
 
 
 def compile_external_kernel(func, kernel_dir, target_arch):
-    """
-    Compile an ExternalFunction to an object file in the kernel directory.
+    """Compile an ExternalFunction to an object file in the kernel directory.
 
     The output file is named ``func.object_file_name`` and placed in ``kernel_dir``.
     If the object file already exists in ``kernel_dir``, compilation is skipped.

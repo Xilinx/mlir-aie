@@ -24,14 +24,13 @@ End-to-end verification lives in ``test.py``.
 
 import argparse
 
-import numpy as np
-
 import aie.iron as iron
-from aie.iron import CompileTime, In, Out, ObjectFifo, Program, Runtime, Worker, kernels
+import numpy as np
+from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker, kernels
 from aie.iron.controlflow import range_
 from aie.utils.hostruntime.argparse import (
-    device_from_args,
     add_compile_args,
+    device_from_args,
 )
 from aie.utils.hostruntime.cli import run_design_cli
 
@@ -58,7 +57,6 @@ def conv2d(
     if out_channels % 8 != 0 or out_channels < 8:
         raise ValueError("out_channels must be a multiple of 8 and >= 8")
 
-    device = iron.get_current_device()
     out_dtype = np.uint8 if fuse_relu else np.int8
 
     act_in = width * in_channels
@@ -115,10 +113,10 @@ def conv2d(
         stack_size=stack_size,
     )
 
-    def sequence(I, W, O, act_prod, wts_prod, out_cons):
-        act_prod.fill(I)
+    def sequence(inp, W, out, act_prod, wts_prod, out_cons):
+        act_prod.fill(inp)
         wts_prod.fill(W)
-        out_cons.drain(O, wait=True)
+        out_cons.drain(out, wait=True)
 
     rt = Runtime(
         sequence,
@@ -132,7 +130,7 @@ def conv2d(
         ],
     )
 
-    return Program(device, rt, workers=[worker]).resolve_program()
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 
 
 def _make_argparser():

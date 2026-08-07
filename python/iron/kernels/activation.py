@@ -144,7 +144,7 @@ def bf16_exp(tile_size: int = 1024) -> ExternalFunction:
 
 
 def relu_ref(x):
-    """numpy reference for a ReLU kernel — element-wise `max(x, 0)`.
+    """Numpy reference for a ReLU kernel — element-wise `max(x, 0)`.
 
     Exact; tolerance comparison is not needed.  See `aie.utils.verify`
     for the relaxed bf16/LUT-style comparators most kernels here want.
@@ -153,7 +153,7 @@ def relu_ref(x):
 
 
 def silu_ref(x):
-    """numpy reference for [`silu`][iron.kernels.activation.silu] (Swish) — ``x * sigmoid(x)``.
+    """Numpy reference for [`silu`][iron.kernels.activation.silu] (Swish) — ``x * sigmoid(x)``.
 
     LUT-approximation territory; pair with ``rtol=0.128`` (the default
     in `count_mismatches`) when verifying.
@@ -163,9 +163,9 @@ def silu_ref(x):
 
 
 def gelu_ref(x):
-    """numpy reference for [`gelu`][iron.kernels.activation.gelu] — tanh approximation
-    ``0.5 * x * (1 + tanh(sqrt(2/pi) * (x + 0.044715 * x^3)))``.
+    """Numpy reference for [`gelu`][iron.kernels.activation.gelu].
 
+    Tanh approximation ``0.5 * x * (1 + tanh(sqrt(2/pi) * (x + 0.044715 * x^3)))``.
     Matches the C++ kernel's tanh-GELU formula; pair with ``rtol=0.128,
     atol=0.05`` when verifying.
     """
@@ -178,7 +178,7 @@ def gelu_ref(x):
 
 
 def bf16_exp_ref(x):
-    """numpy reference for [`bf16_exp`][iron.kernels.activation.bf16_exp] — element-wise ``exp(x)``.
+    """Numpy reference for [`bf16_exp`][iron.kernels.activation.bf16_exp] — element-wise ``exp(x)``.
 
     LUT approximation territory; the AIE kernel saturates on large inputs.
     Pair with the canonical 12.8% relative tolerance and ``stop_at_
@@ -191,7 +191,7 @@ def bf16_exp_ref(x):
 
 
 def softmax_ref(x, *, tile_size: int = 1024):
-    """numpy reference for [`softmax`][iron.kernels.activation.softmax].
+    """Numpy reference for [`softmax`][iron.kernels.activation.softmax].
 
     The AIE kernel computes softmax independently per ``tile_size``-element
     tile (no cross-tile reduction), so the reference splits ``x`` the same

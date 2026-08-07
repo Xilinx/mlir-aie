@@ -8,7 +8,7 @@
 """Unit tests for CompileTime[T], In, Out, InOut annotation markers — no NPU required."""
 
 import inspect
-from typing import get_args, get_origin
+from typing import Annotated, get_args, get_origin
 
 import pytest
 
@@ -20,30 +20,35 @@ from aie.utils.compile.jit._introspect import (
 from aie.utils.compile.jit.markers import CompileTime, In, InOut, Out
 
 # ---------------------------------------------------------------------------
-# CompileTime[T] — generic parameterisation
+# CompileTime[T] — Annotated[T, ...] parameterisation
+#
+# CompileTime[T] is Annotated[T, ...] so pyright/mypy check callers against T
+# itself; get_origin/get_args below reflect that, not a bespoke generic.
 # ---------------------------------------------------------------------------
 
 
-def test_compile_int_origin_is_compile():
-    assert get_origin(CompileTime[int]) is CompileTime
+def test_compile_int_origin_is_annotated():
+    assert get_origin(CompileTime[int]) is Annotated
 
 
-def test_compile_str_origin_is_compile():
-    assert get_origin(CompileTime[str]) is CompileTime
+def test_compile_str_origin_is_annotated():
+    assert get_origin(CompileTime[str]) is Annotated
 
 
-def test_compile_float_origin_is_compile():
-    assert get_origin(CompileTime[float]) is CompileTime
+def test_compile_float_origin_is_annotated():
+    assert get_origin(CompileTime[float]) is Annotated
 
 
 def test_compile_type_arg_preserved():
-    assert get_args(CompileTime[int]) == (int,)
-    assert get_args(CompileTime[str]) == (str,)
+    assert get_args(CompileTime[int])[0] is int
+    assert get_args(CompileTime[str])[0] is str
 
 
-def test_bare_compile_is_not_parameterised():
-    # Bare CompileTime has no origin.
-    assert get_origin(CompileTime) is None
+def test_bare_compile_has_annotated_origin():
+    # Unlike a bespoke Generic[T], a bare (unsubscripted) Annotated[T, ...]
+    # alias already carries an Annotated origin -- this is why
+    # _is_compile_param(CompileTime) below is still True.
+    assert get_origin(CompileTime) is Annotated
 
 
 # ---------------------------------------------------------------------------

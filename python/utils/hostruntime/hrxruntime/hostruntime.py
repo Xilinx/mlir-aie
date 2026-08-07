@@ -1,8 +1,7 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-"""
-HRX-based implementation of the HostRuntime.
+"""HRX-based implementation of the HostRuntime.
 
 It consumes the ``aiecc`` artifacts (``final.xclbin`` + ``insts.bin``) and
 dispatches them through ``libhrx``:

@@ -136,7 +136,7 @@ xrt-smi examine
    python3 -m pip install -r python/requirements_dev.txt
 
    # Install the pre-commit and pre-push hooks defined in .pre-commit-config.yaml
-   # (pre-push runs clang-format/black to catch formatting issues before CI)
+   # (pre-push runs clang-format/black/ruff to catch formatting and lint issues before CI)
    pre-commit install
    ```
 

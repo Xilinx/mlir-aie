@@ -3,10 +3,11 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""Annotation introspection helpers used to classify generator parameters
-into ``CompileTime[T]`` / tensor / scalar buckets.
+"""Annotation introspection helpers for classifying generator parameters.
 
-Carved out of ``compilabledesign.py`` to keep the main file focused on the
+Classifies generator parameters into ``CompileTime[T]`` / tensor / scalar
+buckets. Carved out of ``compilabledesign.py`` to keep the main file focused on
+the
 ``CompilableDesign`` class itself.  The public surface is
 :func:`split_params`; the rest is implementation detail behind
 :func:`_introspect_generator`'s ``lru_cache``.
@@ -18,9 +19,9 @@ import functools
 import inspect
 import logging
 import typing
-from typing import Callable, get_args, get_origin
+from typing import Annotated, Callable, get_args, get_origin
 
-from .markers import CompileTime, In, InOut, Out
+from .markers import _COMPILE_TIME_TAG, In, InOut, Out
 
 logger = logging.getLogger(__name__)
 
@@ -30,11 +31,9 @@ _TENSOR_ANNOTATIONS = (In, Out, InOut)
 
 def _is_compile_param(annotation) -> bool:
     """Return True for ``CompileTime[T]`` or ``Optional[CompileTime[T]]``."""
-    if annotation is CompileTime:
-        return True
     origin = get_origin(annotation)
-    if origin is CompileTime:
-        return True
+    if origin is Annotated:
+        return any(arg is _COMPILE_TIME_TAG for arg in get_args(annotation)[1:])
     # get_type_hints rewrites `CompileTime[T] = None` defaults to Optional[...].
     if origin is typing.Union:
         return any(_is_compile_param(arg) for arg in get_args(annotation))
@@ -60,7 +59,9 @@ def _introspect_generator(generator: Callable):
     The returned param tuples are immutable; callers that need lists copy.
     """
     try:
-        hints = typing.get_type_hints(generator)
+        # include_extras=True: without it, get_type_hints strips Annotated
+        # metadata and CompileTime[T] becomes indistinguishable from T.
+        hints = typing.get_type_hints(generator, include_extras=True)
     except Exception as exc:
         logger.debug("get_type_hints failed for %r: %s", generator, exc)
         hints = {}

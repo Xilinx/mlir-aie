@@ -116,9 +116,10 @@ def reduce_max(
 
 
 def compute_max(dtype: type = np.int32) -> ExternalFunction:
-    """Pairwise scalar max — companion to [`reduce_max`][iron.kernels.reduce.reduce_max] for multi-core
-    reductions where each core produces a partial max and a final tree
-    reduces them pairwise.
+    """Pairwise scalar max — companion to [`reduce_max`][iron.kernels.reduce.reduce_max].
+
+    Used for multi-core reductions where each core produces a partial max and a
+    final tree reduces them pairwise.
 
     Lives in the same ``reduce_max.cc`` as [`reduce_max`][iron.kernels.reduce.reduce_max]; sharing the
     output ``.o`` (via ``shared_object_file_name``) means both factories

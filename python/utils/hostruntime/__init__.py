@@ -19,20 +19,21 @@ if TYPE_CHECKING:
 _CURRENT_DEVICE = None
 
 
-def set_current_device(device: "Device"):
-    """
-    Set the current device.
+def set_current_device(device: "Device | None"):
+    """Set (or clear) the current device.
 
     Args:
-        device (Device): The device to set as current.
+        device (Device | None): The device to set as current. Passing ``None``
+            clears the current selection (used by test teardown and to reset
+            between designs), so a ``Device | None`` from a resolver can be
+            forwarded here directly.
     """
     global _CURRENT_DEVICE
     _CURRENT_DEVICE = device
 
 
 def bfloat16_safe_allclose(dtype, arr1, arr2):
-    """
-    Check if two arrays are element-wise equal within a tolerance, handling bfloat16 safely.
+    """Check if two arrays are element-wise equal within a tolerance, handling bfloat16 safely.
 
     Args:
         dtype: The data type of the arrays.

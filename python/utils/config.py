@@ -15,7 +15,7 @@ def _executable_name(name):
 
 
 def peano_install_dir():
-    """Returns the Peano install directory."""
+    """Return the Peano install directory."""
     if not os.path.isdir(config.peano_install_dir):
         raise RuntimeError(
             f"Invalid Peano install directory: {config.peano_install_dir}"
@@ -24,7 +24,7 @@ def peano_install_dir():
 
 
 def peano_cxx_path():
-    """Returns the path to the Peano C++ compiler."""
+    """Return the path to the Peano C++ compiler."""
     install_dir = peano_install_dir()
     peano_cxx = os.path.join(install_dir, "bin", _executable_name("clang++"))
     if not os.path.isfile(peano_cxx):
@@ -33,7 +33,7 @@ def peano_cxx_path():
 
 
 def peano_linker_path():
-    """Returns the path to the Peano linker."""
+    """Return the path to the Peano linker."""
     install_dir = peano_install_dir()
     peano_ld = os.path.join(install_dir, "bin", _executable_name("ld.lld"))
     if not os.path.isfile(peano_ld):
@@ -42,7 +42,7 @@ def peano_linker_path():
 
 
 def root_path():
-    """Returns the root path of the MLIR-AIE project."""
+    """Return the root path of the MLIR-AIE project."""
     root_dir = config.install_path()
     if not os.path.isdir(root_dir):
         raise RuntimeError(f"Invalid MLIR-AIE root directory: {root_dir}")
@@ -50,7 +50,7 @@ def root_path():
 
 
 def aiecc_path():
-    """Returns the aiecc executable used by JIT compilation."""
+    """Return the aiecc executable used by JIT compilation."""
     bundled_aiecc = os.path.join(root_path(), "bin", _executable_name("aiecc"))
     if os.path.isfile(bundled_aiecc):
         return bundled_aiecc
@@ -66,7 +66,7 @@ def aiecc_path():
 
 
 def objcopy_path():
-    """Returns the llvm-objcopy used to rename symbols in compiled objects.
+    """Return the llvm-objcopy used to rename symbols in compiled objects.
 
     AIE objects use the AIEngine ELF e_machine, which GNU binutils objcopy
     cannot parse; llvm-objcopy renames symbols structurally regardless of
@@ -89,7 +89,7 @@ def objcopy_path():
 
 
 def cxx_header_path():
-    """Returns the path to the MLIR-AIE C++ headers."""
+    """Return the path to the MLIR-AIE C++ headers."""
     include_dir = os.path.join(root_path(), "include")
     if not os.path.isdir(include_dir):
         raise RuntimeError(f"MLIR-AIE C++ headers not found in {include_dir}")

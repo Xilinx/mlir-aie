@@ -1,8 +1,7 @@
 # Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-"""
-Trace utilities
+"""Trace utilities.
 
 These utilities configure AIE hardware tracing and parse the resulting trace
 data. Tracing is expressed declaratively: you describe *what* to trace with
@@ -92,7 +91,7 @@ configure_trace(..., coretile_events=[CoreEvent.INSTR_EVENT_1, CoreEvent.INSTR_E
 #### Port Events
 
 There is a set of events that fire on certain activity on data memory ports.
-These are `PORT_IDLE_0` through `PORT_IDLE_7`, `PORT_RUNNING_0` through `PORT_RUNNING_7`, `PORT_STALLED_0` throught `PORT_STALLED_7` and finally `PORT_TLAST_0` through `PORT_TLAST_7`.
+These are `PORT_IDLE_0` through `PORT_IDLE_7`, `PORT_RUNNING_0` through `PORT_RUNNING_7`, `PORT_STALLED_0` through `PORT_STALLED_7` and finally `PORT_TLAST_0` through `PORT_TLAST_7`.
 You have to specify on which port the tracing engine should listen for each those events.
 In hardware, this is done by configuring registers `0x3FF00` and `0x3FF04` in the core tile (this is different in memtile and shimtile).
 The Python tracing utilities abstract this in `configure_trace`; you only have to specify the event as a `PortEvent` along with the corresponding port as follows:
@@ -128,8 +127,8 @@ The table below describes the trace control registers for the core module.
 | Trace Control 0 | 0x340D0 | Stop Event | [30:24], 0xNN------ | 0 | Event to stop trace capture |
 | Trace Control 0 | 0x340D0 | Start Event | [22:16], 0x--NN---- | 0 | Event to start trace capture |
 | Trace Control 0 | 0x340D0 | Mode | [1:0], 0x-------N | 0 | Trace mode. 00=event-time, 01=event-PC, 10=execution |
-| Trace Control 1 | 0x340D4 | Packet Type | [14:12], 0x----N--- | 0 | Detination trace packet - packet type |
-| Trace Control 1 | 0x340D4 | Packet ID | [4:0], 0x------NN | 0 | Detination trace packet - packet ID |
+| Trace Control 1 | 0x340D4 | Packet Type | [14:12], 0x----N--- | 0 | Destination trace packet - packet type |
+| Trace Control 1 | 0x340D4 | Packet ID | [4:0], 0x------NN | 0 | Destination trace packet - packet ID |
 
 This info is also found online in [AM025](https://docs.amd.com/r/en-US/am025-versal-aie-ml-register-reference/) for [Trace Control 0](https://docs.amd.com/r/en-US/am025-versal-aie-ml-register-reference/Trace_Control0-CORE_MODULE-Register) and [Trace Control 1](https://docs.amd.com/r/en-US/am025-versal-aie-ml-register-reference/Trace_Control1-CORE_MODULE-Register).
 
@@ -203,7 +202,7 @@ in C/C++
 ```c++
 // Events 0-3 monitored
 // ------------------------
-// Vector instrucitons (0x25)
+// Vector instructions (0x25)
 // Core Instruction - Event 0 (0x21)
 // Core Instruction - Event 1 (0x22)
 // Core Port Running 0 (0x4B)
@@ -362,7 +361,7 @@ parse_trace.py --input trace.txt --mlir build/aie_trace.mlir --output parse_even
 
 * **--filename** : Input trace packet text file. This is generated during the running of our python host code
 * **--mlir**     : MLIR source. This is needed to parse what events and tiles we are monitoring to generate labels for our waveform visualizer.
-* **--colshift (optional)** : runtime column shift. This specifies how much the actual design was shifted from the default position when it was scheduled and called. The reason we need this is becuase even if our design is configured for column 0, the actual loading and execution of the design may place it in column 1, 2, 3 etc. We account for this shift since the parser needs to match the actual column location of the generated trace data. For npu devices (phoenix), this is typically 1 while npu2 (strix) uses 0. The script should be able to automatically figure out the starting column and set this correctly but can be overrided via this argument.
+* **--colshift (optional)** : runtime column shift. This specifies how much the actual design was shifted from the default position when it was scheduled and called. The reason we need this is because even if our design is configured for column 0, the actual loading and execution of the design may place it in column 1, 2, 3 etc. We account for this shift since the parser needs to match the actual column location of the generated trace data. For npu devices (phoenix), this is typically 1 while npu2 (strix) uses 0. The script should be able to automatically figure out the starting column and set this correctly but can be overridden via this argument.
 
     **NOTE** - the underlying tools currently default to column 1 to avoid using column 0 on Ryzen AI since that column does not have a shimDMA and is therefore avoided at the moment.
 * **--output** : output json file
@@ -380,7 +379,7 @@ parse_eventIR.py --input trace.txt --mlir build/aie_trace.mlir --output parse_ev
 ```
 * **--input** : Input trace packet text file. This is generated during the running of our python host code
 * **--mlir**     : MLIR source. This is needed to parse what events and tiles we are monitoring to generate labels for our waveform visualizer.
-* **--colshift** : runtime column shift. This specifies how much the actual design was shifted from the default position when it was scheduled and called. The reason we need this is becuase even if our design is configured for column 0, the actual loading and execution of the design may place it in column 1, 2, 3 etc. We account for this shift since the parser needs to match the actual column location of the generated trace data. Usually 1 is the right value. **NOTE** - the underlying tools currently default to column 1 to avoid using column 0 on Ryzen AI since that column does not have a shimDMA and is therefore avoided at the moment.
+* **--colshift** : runtime column shift. This specifies how much the actual design was shifted from the default position when it was scheduled and called. The reason we need this is because even if our design is configured for column 0, the actual loading and execution of the design may place it in column 1, 2, 3 etc. We account for this shift since the parser needs to match the actual column location of the generated trace data. Usually 1 is the right value. **NOTE** - the underlying tools currently default to column 1 to avoid using column 0 on Ryzen AI since that column does not have a shimDMA and is therefore avoided at the moment.
 
 The parse script create a temporary directory `tmpTrace` performs the following steps within that folder:
 1. [Fixes raw trace data](#1-fixes-raw-trace-data)
@@ -404,7 +403,7 @@ Create a dummy file (`.target`) in the `tmpTrace` with the file content 'hw' sin
 This step uses the information from the MLIR parse step to create a fixed config that has the matching events in a `config.json` file. This file is used by `hwfrontend` when it's parsing the trace packet data. While core tile config seems correct, memtile and shimtile are not yet supported or tested.
 
 #### <u>5. Run Vitis/aietools hwfrontend utility to parse raw trace data --> generates eventIR.txt</u>
-This is the main parse utility that generates a much more friendly eventIR file format. This utilty is the same one used by the adf tools for aiesimulator. However, the utility is very particular and some combinations of trace packet data might confuse the parser or cause an error. See the **Tips** section at the end for workarounds to known issues.
+This is the main parse utility that generates a much more friendly eventIR file format. This utility is the same one used by the adf tools for aiesimulator. However, the utility is very particular and some combinations of trace packet data might confuse the parser or cause an error. See the **Tips** section at the end for workarounds to known issues.
 
 #### <u>6. Convert eventIR.txt to perfetto_compatible.json</u>
 While the Perfetto-compliant json file format is not the same as the eventIR file format. The conversion between them is more straightforward that between trace packets and Perfetto-compliant json. Having said that, it is still possible this pass to be further tested and improved.

@@ -146,7 +146,7 @@ def deactivate_events(
             active_events[k] = 0
 
 
-# Assert a begin siganl for the current event unless the event is still active
+# Assert a begin signal for the current event unless the event is still active
 def activate_event(
     event, tt, loc, timer, pid, active_events, pid_events, trace_events, events_module
 ):
@@ -687,8 +687,7 @@ def align_column_start_index(events, commands):
 
 
 def parse_trace(trace_buffer, mlir_module_str, colshift=None):
-    """
-    Parse AIE trace buffer and return trace events as list in Trace Event Format
+    """Parse AIE trace buffer and return trace events as list in Trace Event Format.
 
     Args:
         trace_buffer: numpy array containing trace data (uint32 words)
@@ -698,7 +697,6 @@ def parse_trace(trace_buffer, mlir_module_str, colshift=None):
     Returns:
         list: trace events in Trace Event Format
     """
-
     # Convert numpy array to list of hex strings (format expected by existing functions)
     trace_pkts = [f"{int(word):08x}" for word in trace_buffer]
 
@@ -757,7 +755,7 @@ def parse_trace(trace_buffer, mlir_module_str, colshift=None):
 
 
 def main():
-    """Command-line interface entry point"""
+    """Command-line interface entry point."""
     opts = parse_args()
 
     logging.basicConfig(
