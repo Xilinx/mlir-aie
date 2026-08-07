@@ -20,7 +20,7 @@ from pathlib import Path
 
 import aie.iron as iron
 import numpy as np
-from aie.extras.dialects import arith
+from aie.extras.dialects import arith  # pyright: ignore[reportMissingImports]
 from aie.helpers.util import np_dtype_to_mlir_type
 from aie.iron import Buffer, CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker
 from aie.iron.controlflow import range_

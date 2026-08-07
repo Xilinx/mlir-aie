@@ -16,8 +16,8 @@ import argparse
 
 import aie.iron as iron
 import numpy as np
-from aie.extras import types as T
-from aie.extras.dialects import arith
+from aie.extras import types as T  # pyright: ignore[reportMissingImports]
+from aie.extras.dialects import arith  # pyright: ignore[reportMissingImports]
 from aie.helpers.util import np_ndarray_type_get_shape
 from aie.iron import (
     Buffer,

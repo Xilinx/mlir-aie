@@ -21,7 +21,7 @@ Three invocation modes:
 
 import argparse
 
-import aie.extras.dialects.arith as arith
+import aie.extras.dialects.arith as arith  # pyright: ignore[reportMissingImports]
 import aie.iron as iron
 import numpy as np
 from aie.helpers.taplib import TensorTiler2D

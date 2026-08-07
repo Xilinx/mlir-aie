@@ -18,7 +18,7 @@ import sys
 
 import aie.iron as iron
 import numpy as np
-from aie.dialects._aie_enum_gen import (
+from aie.dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
     AIEDevice,
     AIETileType,
     DMAChannelDir,
@@ -49,7 +49,9 @@ from aie.dialects.aiex import (
     runtime_sequence,
     shim_dma_single_bd_task,
 )
-from aie.extras.context import mlir_mod_ctx
+from aie.extras.context import (  # pyright: ignore[reportMissingImports]
+    mlir_mod_ctx,
+)
 from aie.helpers.dialects.func import func
 from aie.helpers.taplib.tap import TensorAccessPattern
 from aie.iron import (

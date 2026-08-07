@@ -18,7 +18,9 @@ NETWORK and dispatches to the right builder per block.
 """
 
 import numpy as np
-from aie.extras.dialects.memref import view as memref_view
+from aie.extras.dialects.memref import (  # pyright: ignore[reportMissingImports]
+    view as memref_view,
+)
 from aie.iron import ObjectFifo, Worker, kernels
 from aie.iron.controlflow import range_
 

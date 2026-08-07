@@ -64,20 +64,28 @@ class ScatterReadDMA(Resolvable):
         return ts
 
     def acquire(self, n: int = 1):
-        from aie.dialects._aie_enum_gen import LockAction
+        from aie.dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
+            LockAction,
+        )
         from aie.dialects.aie import use_lock
 
         use_lock(self._comp_cons_lock, LockAction.AcquireGreaterEqual)
         return self._recv_buf
 
     def release(self, n: int = 1):
-        from aie.dialects._aie_enum_gen import LockAction
+        from aie.dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
+            LockAction,
+        )
         from aie.dialects.aie import use_lock
 
         use_lock(self._comp_prod_lock, LockAction.Release)
 
     def resolve(self, loc=None, ip=None) -> None:
-        from aie.dialects._aie_enum_gen import DMAChannelDir, LockAction, WireBundle
+        from aie.dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
+            DMAChannelDir,
+            LockAction,
+            WireBundle,
+        )
         from aie.dialects.aie import (
             EndOp,  # pyright: ignore[reportAttributeAccessIssue]
             buffer,

@@ -17,7 +17,9 @@ from pathlib import Path
 
 import aie.iron as iron
 import numpy as np
-from aie.dialects._aie_enum_gen import AIETileType
+from aie.dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
+    AIETileType,
+)
 from aie.iron import Buffer, CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker
 from aie.iron.controlflow import range_
 from aie.iron.device import Tile

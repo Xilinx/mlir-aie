@@ -22,7 +22,9 @@ import argparse
 
 import aie.iron as iron
 import numpy as np
-from aie.dialects._aie_enum_gen import WireBundle
+from aie.dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
+    WireBundle,
+)
 from aie.iron import (
     CompileTime,
     In,

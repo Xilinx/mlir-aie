@@ -33,7 +33,11 @@ from pathlib import Path
 
 import aie.iron as iron
 import numpy as np
-from aie.dialects._aie_enum_gen import AIETileType, DMAChannelDir, WireBundle
+from aie.dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
+    AIETileType,
+    DMAChannelDir,
+    WireBundle,
+)
 from aie.dialects.aie import EndOp  # pyright: ignore[reportAttributeAccessIssue]
 from aie.dialects.aiex import (
     bds,
