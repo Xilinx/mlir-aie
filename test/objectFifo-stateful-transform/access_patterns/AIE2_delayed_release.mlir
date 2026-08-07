@@ -69,24 +69,22 @@
 // CHECK:             %[[VAL_16:.*]] = arith.constant 1 : index
 // CHECK:             %[[VAL_17:.*]] = arith.constant 0 : index
 // CHECK:             %[[VAL_18:.*]] = arith.constant 3 : i32
-// CHECK:             %[[VAL_19:.*]] = arith.constant 0 : i32
-// CHECK:             %[[VAL_20:.*]] = arith.constant 1 : i32
+// CHECK:             %[[VAL_19:.*]] = arith.constant 1 : i32
 // CHECK:             aie.use_lock(%[[VAL_7]], AcquireGreaterEqual, %[[VAL_13]])
+// CHECK:             %[[VAL_20:.*]] = memref.load %[[VAL_2]][] : memref<i32>
+// CHECK:             memref.store %[[VAL_20]], %[[VAL_8]]{{\[}}%[[VAL_17]]] : memref<4xi32>
 // CHECK:             %[[VAL_21:.*]] = memref.load %[[VAL_2]][] : memref<i32>
-// CHECK:             memref.store %[[VAL_21]], %[[VAL_8]]{{\[}}%[[VAL_17]]] : memref<4xi32>
+// CHECK:             memref.store %[[VAL_21]], %[[VAL_8]]{{\[}}%[[VAL_16]]] : memref<4xi32>
 // CHECK:             aie.use_lock(%[[VAL_7]], AcquireGreaterEqual, %[[VAL_19]])
 // CHECK:             %[[VAL_22:.*]] = memref.load %[[VAL_2]][] : memref<i32>
-// CHECK:             memref.store %[[VAL_22]], %[[VAL_8]]{{\[}}%[[VAL_16]]] : memref<4xi32>
-// CHECK:             aie.use_lock(%[[VAL_7]], AcquireGreaterEqual, %[[VAL_20]])
+// CHECK:             memref.store %[[VAL_22]], %[[VAL_8]]{{\[}}%[[VAL_15]]] : memref<4xi32>
 // CHECK:             %[[VAL_23:.*]] = memref.load %[[VAL_2]][] : memref<i32>
-// CHECK:             memref.store %[[VAL_23]], %[[VAL_8]]{{\[}}%[[VAL_15]]] : memref<4xi32>
-// CHECK:             aie.use_lock(%[[VAL_7]], AcquireGreaterEqual, %[[VAL_19]])
-// CHECK:             %[[VAL_24:.*]] = memref.load %[[VAL_2]][] : memref<i32>
-// CHECK:             memref.store %[[VAL_24]], %[[VAL_8]]{{\[}}%[[VAL_14]]] : memref<4xi32>
+// CHECK:             memref.store %[[VAL_23]], %[[VAL_8]]{{\[}}%[[VAL_14]]] : memref<4xi32>
 // CHECK:             aie.use_lock(%[[VAL_6]], Release, %[[VAL_18]])
 // CHECK:             aie.end
 // CHECK:           }
 // CHECK:         }
+
 
 module @AIE2_delayed_release {
     aie.device(xcve2302) {

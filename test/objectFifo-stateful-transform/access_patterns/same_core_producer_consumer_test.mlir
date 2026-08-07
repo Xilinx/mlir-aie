@@ -30,7 +30,6 @@
 // CHECK:           %[[VAL_7:.*]] = aie.core(%[[VAL_0]]) {
 // CHECK:             %[[VAL_8:.*]] = arith.constant 2 : i32
 // CHECK:             %[[VAL_9:.*]] = arith.constant 1 : i32
-// CHECK:             %[[VAL_10:.*]] = arith.constant 0 : i32
 // CHECK:             aie.use_lock(%[[VAL_4]], AcquireGreaterEqual, %[[VAL_8]])
 // CHECK:             func.call @some_work(%[[VAL_1]]) : (memref<16xi32>) -> ()
 // CHECK:             func.call @some_work(%[[VAL_2]]) : (memref<16xi32>) -> ()
@@ -38,7 +37,6 @@
 // CHECK:             aie.use_lock(%[[VAL_5]], AcquireGreaterEqual, %[[VAL_9]])
 // CHECK:             func.call @some_work(%[[VAL_1]]) : (memref<16xi32>) -> ()
 // CHECK:             aie.use_lock(%[[VAL_4]], Release, %[[VAL_9]])
-// CHECK:             aie.use_lock(%[[VAL_4]], AcquireGreaterEqual, %[[VAL_10]])
 // CHECK:             func.call @some_work(%[[VAL_2]]) : (memref<16xi32>) -> ()
 // CHECK:             aie.use_lock(%[[VAL_5]], Release, %[[VAL_9]])
 // CHECK:             aie.use_lock(%[[VAL_5]], AcquireGreaterEqual, %[[VAL_9]])
@@ -47,6 +45,7 @@
 // CHECK:             aie.end
 // CHECK:           }
 // CHECK:         }
+
 
 module @same_core {
     aie.device(xcve2302) {
