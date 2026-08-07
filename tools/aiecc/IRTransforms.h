@@ -740,7 +740,20 @@ getCoreLLVMLoweringPipeline(mlir::MLIRContext *ctx, llvm::StringRef deviceName,
   pm->addPass(mlir::createCSEPass());
   pm->addPass(mlir::memref::createExpandStridedMetadataPass());
   pm->addPass(mlir::createLowerAffinePass());
-  pm->addPass(mlir::arith::createArithExpandOpsPass());
+  {
+    // LLVM 24 moved the min/max expansion patterns behind arith-expand options
+    // that default to false, on the grounds that arith-to-llvm can lower these
+    // ops straight to the llvm.intr.{maxnum,minnum,...} intrinsics. Peano's
+    // AIE2 GlobalISel has no rule for the resulting G_FMAXNUM/G_FMINNUM, so llc
+    // aborts with "unable to legalize instruction" and the core never builds.
+    // Keep the cmpf/select expansion for the floating-point ops.
+    //
+    // Only the float half is needed: scalar integer min/max is already taken
+    // care of before this point, so include-min-max-i is left at its default.
+    mlir::arith::ArithExpandOpsPassOptions arithOpts;
+    arithOpts.includeMinMaxF = true;
+    pm->addPass(mlir::arith::createArithExpandOpsPass(arithOpts));
+  }
   pm->addPass(mlir::createFinalizeMemRefToLLVMConversionPass());
   pm->addPass(mlir::createConvertFuncToLLVMPass(
       mlir::ConvertFuncToLLVMPassOptions{/*useBarePtrCallConv=*/true}));
