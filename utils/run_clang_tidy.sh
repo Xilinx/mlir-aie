@@ -16,6 +16,14 @@
 #   - resolves the resource-dir clang-tidy needs to find builtin headers
 #     (stddef.h, etc.) -- the pinned clang-tidy PyPI package ships none of
 #     its own, unlike a system `apt install clang-tidy`
+#   - resolves the real clang-tidy binary directly, bypassing the PyPI
+#     package's console-script wrapper: that wrapper's __init__.py does
+#     `import pkg_resources` purely to locate this same binary at a fixed
+#     relative path, and pkg_resources is no longer bundled by setuptools
+#     >=81 -- which requirements_dev.txt requires for unrelated reasons, so
+#     downgrading setuptools repo-wide isn't an option. `clang-tidy --version`
+#     fails outright in that combination; finding the binary by its known
+#     path sidesteps the import entirely.
 #   - runs clang-tidy across the given files in parallel (one process per
 #     file; clang-tidy itself only parallelizes across files, not within one
 #     file's analysis)
@@ -53,6 +61,20 @@ fi
 
 RESOURCE_DIR=$(clang++ -print-resource-dir)
 
+# Prefer the clang-tidy PyPI package's actual binary, found without
+# importing its broken wrapper (see note above); fall back to plain
+# `clang-tidy` on PATH for a system install that has no such wrapper.
+CLANG_TIDY_BIN=$(python3 - <<'PYEOF'
+import sysconfig, glob
+for p in set(sysconfig.get_paths().values()):
+    matches = glob.glob(p + "/clang_tidy/data/bin/clang-tidy*")
+    if matches:
+        print(matches[0])
+        break
+PYEOF
+)
+CLANG_TIDY_BIN="${CLANG_TIDY_BIN:-clang-tidy}"
+
 printf '%s\n' "$@" | xargs -P "$(nproc)" -I{} \
-  clang-tidy -p "$BUILD_DIR" --extra-arg="-resource-dir=$RESOURCE_DIR" \
+  "$CLANG_TIDY_BIN" -p "$BUILD_DIR" --extra-arg="-resource-dir=$RESOURCE_DIR" \
   --warnings-as-errors='*' {}

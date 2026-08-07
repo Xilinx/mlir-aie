@@ -137,11 +137,7 @@ repos:
     - id: clang-tidy
       name: clang-tidy
       language: python
-      # setuptools==79.0.1: the clang-tidy PyPI package's console-script entry
-      # point imports pkg_resources at runtime, which setuptools stopped
-      # bundling starting around 81 -- pin below that so pkg_resources is
-      # actually present in this hook's isolated venv.
-      additional_dependencies: ['clang-tidy==17.0.1', 'setuptools==79.0.1']
+      additional_dependencies: ['clang-tidy==17.0.1']
       entry: utils/run_clang_tidy.sh
       files: ^lib/Dialect/AIE/Transforms/AIEAssignBufferDescriptorIDs\.cpp$
       pass_filenames: true

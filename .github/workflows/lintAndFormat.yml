@@ -178,10 +178,7 @@ jobs:
           fi
 
           echo "Running clang-tidy on: ${to_check[*]}"
-          clang-tidy -p build \
-            --extra-arg=-resource-dir=$(clang++ -print-resource-dir) \
-            --warnings-as-errors='*' \
-            "${to_check[@]}"
+          MLIR_AIE_BUILD_DIR="$PWD/build" utils/run_clang_tidy.sh "${to_check[@]}"
 
 
   formatting:
