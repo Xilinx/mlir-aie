@@ -3061,8 +3061,8 @@ LogicalResult UseLockOp::canonicalize(UseLockOp op, PatternRewriter &rewriter) {
   // already >= 0 (semaphore values are non-negative) and it decrements the lock
   // by 0. The dynamic objectFifo lowering emits such acquires whenever an
   // access already holds enough elements; folding the counter arithmetic after
-  // loop unrolling exposes the constant 0. Drop it so the result matches the
-  // static lowering, which emits no acquire in that case.
+  // loop unrolling exposes the constant 0, at which point the acquire can be
+  // dropped.
   if (op.acquireGE())
     if (auto value = getConstantLockValue(op); value && *value == 0) {
       rewriter.eraseOp(op);

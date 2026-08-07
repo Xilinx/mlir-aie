@@ -673,7 +673,7 @@ inline std::unique_ptr<mlir::PassManager> getInputWithAddressesPipeline(
   // and lock bookkeeping. When dynamic objectFifos are disabled we then
   // statically unroll the loops that carry objectFifo accesses; the subsequent
   // mem2reg + canonicalize folds the (now loop-invariant) runtime bookkeeping
-  // into the equivalent static, unrolled lowering.
+  // into a static, unrolled lowering.
   if (mlir::failed(mlir::parsePassPipeline(
           llvm::formatv("aie-objectFifo-stateful-transform{{dynamic-objFifos="
                         "{0} packet-sw-objFifos={1}}",

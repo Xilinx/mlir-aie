@@ -63,8 +63,8 @@ static bool loopHasObjectFifoOp(scf::ForOp forOp) {
 // binary lock that is already held (acquired earlier with no intervening
 // release) must not be re-acquired -- `Acquire, N` means "hold N elements
 // total", so re-acquiring an element already in the window is a no-op at best
-// and a hang at worst. This mirrors the static lowering, which only acquires
-// the new leading-edge lock(s) each rotation.
+// and a hang at worst. Dropping those leaves only the newly available
+// leading-edge lock(s) acquired each rotation.
 //
 // The analysis is block-local and conservatively assumes nothing is held on
 // block entry. That keeps the very first acquire of each unrolled loop body

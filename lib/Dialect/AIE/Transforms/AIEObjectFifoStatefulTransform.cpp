@@ -2511,9 +2511,9 @@ struct AIEObjectFifoStatefulTransformPass
           };
           // Only account for accesses whose innermost enclosing scf.for is this
           // loop; accesses nested inside a child scf.for belong to (and drive
-          // the unroll factor of) that child, not this loop. This mirrors the
-          // legacy behavior of unrolling each loop by its own rotation period
-          // and prevents over-unrolling ancestor loops.
+          // the unroll factor of) that child, not this loop. Each loop is
+          // unrolled by its own rotation period, so this prevents
+          // over-unrolling ancestor loops.
           auto directlyIn = [&](Operation *op) {
             return op->getParentOfType<scf::ForOp>() == forOp;
           };
@@ -2587,8 +2587,8 @@ struct AIEObjectFifoStatefulTransformPass
           if (spansNestedLoop.contains(entry.first))
             continue;
           if (entry.second > acquired.lookup(entry.first)) {
-            // Attach the diagnostic to the acquire op when present (matching
-            // the legacy behavior); otherwise to the offending release op.
+            // Attach the diagnostic to the acquire op when present; otherwise
+            // to the offending release op.
             if (auto acq = firstAcquire.lookup(entry.first))
               acq->emitOpError(
                   "cannot release more elements than are already acquired");
@@ -2611,9 +2611,9 @@ struct AIEObjectFifoStatefulTransformPass
     // objectFifo accesses are lowered dynamically: runtime buffer addressing
     // (an scf.index_switch selecting the rotating buffer) and runtime lock
     // bookkeeping, keeping the loops rolled. Loop unrolling and the subsequent
-    // constant folding of this runtime bookkeeping (which reproduces the legacy
-    // static, unrolled lowering) is handled by the separate
-    // `aie-objectFifo-unroll` pass followed by `-mem2reg`/`-canonicalize`.
+    // constant folding of this runtime bookkeeping into a statically-addressed,
+    // unrolled form is handled by the separate `aie-objectFifo-unroll` pass
+    // followed by `-mem2reg`/`-canonicalize`.
     //
     // All objectFifo tiles use the dynamic buffer addressing. Lock bookkeeping
     // differs by architecture: semaphore locks (AIE2+) use a runtime "held"
@@ -2642,8 +2642,10 @@ struct AIEObjectFifoStatefulTransformPass
       //===----------------------------------------------------------------===//
       // Semaphore-lock (AIE2+) tiles compute the number of locks to acquire at
       // runtime from a per-(fifo, port) "held" counter. Binary-lock (AIE1)
-      // tiles do not need it: re-acquiring an already-held binary lock is
-      // idempotent, so the full window is acquired every iteration.
+      // tiles do not use it: while the loops are rolled the rotation offset of
+      // the already-held locks is unknown, so an acquire is emitted for every
+      // element of the window and the redundant re-acquires are pruned after
+      // unrolling.
       bool usesSemaphoreLockBookkeeping =
           objectFifoTiles.count(coreOp.getTileOp()) > 0 &&
           device.getTargetModel().hasProperty(
@@ -2853,11 +2855,13 @@ struct AIEObjectFifoStatefulTransformPass
           return WalkResult::advance();
         }
 
-        // Binary locks (AIE1): each element has its own rotating binary lock,
-        // and re-acquiring an already-held binary lock is idempotent, so the
-        // full window [counter, counter + acqNumber) is acquired every time.
-        // The lock is selected at runtime with an index_switch on the rotation
-        // counter and folds to a concrete lock once the loops are unrolled.
+        // Binary locks (AIE1): each element has its own rotating binary lock.
+        // While the loops are rolled the rotation offset of the already-held
+        // locks is unknown, so an acquire is emitted for the whole window
+        // [counter, counter + acqNumber); the redundant re-acquires of
+        // still-held locks are pruned after unrolling. Each lock is selected at
+        // runtime with an index_switch on the rotation counter and folds to a
+        // concrete lock once the loops are unrolled.
         if (usesBinaryLockBookkeeping &&
             currentObjectBookkeepingMemref.count({op, portNum})) {
           builder.setInsertionPointAfter(acquireOp);
