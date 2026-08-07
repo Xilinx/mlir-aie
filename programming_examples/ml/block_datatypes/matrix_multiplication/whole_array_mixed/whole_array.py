@@ -6,7 +6,7 @@
 """Whole-array mixed bf16/bfp16 matmul — ``@iron.jit`` IRON design.
 
 n_aie_rows x n_aie_cols cores running mixed (bf16, bfp16) -> bf16 mac
-on AIE2P. Strix-only; chess-built kernel.
+on AIE2P. Strix-only.
 """
 
 import argparse
@@ -83,14 +83,12 @@ def whole_array_mixed(
         source_file=str(_KERNEL_SRC),
         arg_types=[C_l1_ty],
         compile_flags=kernel_flags + ["-DZERO_ONLY"],
-        use_chess=True,
     )
     matmul_kernel = ExternalFunction(
         "matmul_vectorized_different_datatypes",
         source_file=str(_KERNEL_SRC),
         arg_types=[A_l1_ty, B_l1_ty, C_l1_ty],
         compile_flags=kernel_flags + ["-DMATMUL_ONLY"],
-        use_chess=True,
     )
 
     A_l3l2_fifos = [None] * n_shim_mem_A

@@ -11,7 +11,7 @@ This folder cotains multiple variations of the standard matrix multiplication ex
 
 Blocked datatypes require additional attention when declaring the matrix shapes, since they group multiple elements. When going through these examples, notice how matrices must be reshaped to take this into account (usually with divisions such as `[matrix_dimension] // 8`).
 
-These examples are currently only supported when using the chess compiler. Assuming your environment is properly set up, it can be used with `make run use_chess=1`.
+These examples build with Peano. Run one with `make run`.
 
 ## Block Datatypes - Main changes
 

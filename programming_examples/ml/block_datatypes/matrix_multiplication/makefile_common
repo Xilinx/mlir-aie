@@ -30,8 +30,7 @@ runargs?=-v 2 --warmup 1 --iters 1
 .PHONY: all
 all: ${xclbin_target} ${insts_target} ${targetname}.exe
 
-# @iron.jit's compile() drives kernel compilation (xchesscc for the
-# bfp16 mac kernels — Peano's AIE2P backend can't yet legalize them);
+# @iron.jit's compile() drives kernel compilation;
 # the python invocation produces the xclbin + insts.bin in one step.
 ${xclbin_target} ${insts_target} &: ${srcdir}/${aie_py_src}
 	mkdir -p $$(dirname ${xclbin_target})

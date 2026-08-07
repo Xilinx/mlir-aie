@@ -6,7 +6,7 @@
 """Single-core bfp16ebs8 matmul, NO tiling — ``@iron.jit`` IRON design.
 
 One AIE2P core processes a single 64x128x64 GEMM tile in one shot, no
-host-side tile loop or memtile fanout. Strix-only; kernel is chess-built.
+host-side tile loop or memtile fanout. Strix-only.
 """
 
 import argparse
@@ -68,14 +68,12 @@ def single_core_no_tiling(
         source_file=str(_KERNEL_SRC),
         arg_types=[c_ty],
         compile_flags=kernel_flags + ["-DZERO_ONLY"],
-        use_chess=True,
     )
     matmul_kernel = ExternalFunction(
         "matmul_vectorized_bfp16",
         source_file=str(_KERNEL_SRC),
         arg_types=[a_ty, b_ty, c_ty],
         compile_flags=kernel_flags + ["-DMATMUL_ONLY"],
-        use_chess=True,
     )
 
     inA = ObjectFifo(a_ty, name="inA")

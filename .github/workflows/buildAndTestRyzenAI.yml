@@ -217,7 +217,13 @@ jobs:
             esac
           }
 
-          SUITES="check-aie concurrency refs guide atb"
+          # gemm_asymmetric_tile_buffering reproduces a paper rather than gating
+          # a regression, and is ~6 min of an 18-24 min job that does not shrink
+          # on a bigger host. Nightly, plus test-ryzen-ai for on-demand runs.
+          SUITES="check-aie concurrency refs guide"
+          if [ "$GITHUB_EVENT_NAME" = schedule ] || [ "$GITHUB_REF_NAME" = test-ryzen-ai ]; then
+            SUITES="$SUITES atb"
+          fi
 
           # Only treat FAILED_SUITE as valid if it EXACTLY names a known suite
           # (fixed-string match, not a glob) -- else force the full re-run path.
