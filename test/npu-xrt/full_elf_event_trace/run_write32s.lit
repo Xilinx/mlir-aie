@@ -1,0 +1,16 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// Full-ELF event-trace design compiled through the --expand-load-pdis (explicit
+// write32/blockwrite) reconfigure flow. The design runs and the passthrough is
+// verified.
+//
+// NOTE: unlike the default PDI-load flow (run_loadpdi.lit), the trace buffer is
+// not drained in this flow -- the trace's shim DMA / address patch does not
+// survive the load_pdi expansion -- so only the data path is checked here.
+//
+// REQUIRES: ryzen_ai_npu2, peano
+//
+// RUN: %aiecc -v --get-full-elf --expand-load-pdis --no-xchesscc --no-xbridge %S/aie.mlir
+// RUN: %host_clang -o test.exe %S/test_elf.cpp -std=c++17 %host_link_flags %xrt_flags
+// RUN: ./test.exe
