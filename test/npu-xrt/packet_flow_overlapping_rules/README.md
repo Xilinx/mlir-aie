@@ -131,3 +131,25 @@ $ aie-opt -aie-find-flows aie_arch.mlir
 
 That second destination does not exist on hardware — the shadowed rule carries
 nothing. This is precisely the report in #437.
+
+## How it is caught
+
+`PacketRulesOp::verify()` rejects a rule set in which two rules pointing at
+different amsels match a common id, naming the lowest one:
+
+```
+$ aiecc ... aie_arch.mlir
+aie_arch.mlir:69:9: error: 'aie.rule' op is shadowed for packet id 10: an earlier
+rule in this aie.packet_rules matches it too, and the switch routes on the first
+match
+        aie.rule(24, 8, %1)
+```
+
+That is an op verifier, so it runs at parse time and after every pass: this
+design cannot reach hardware by any route, which is why `run.lit` asserts the
+diagnostic rather than running anything.
+
+`-aie-find-flows` tracks reachable packet ids as an explicit set rather than a
+`(mask, value)` cube and walks a port's rules in order, so a rule claims only
+the ids no earlier rule took. `test/find-flows/shadowed_rule.mlir` covers that;
+it uses a same-amsel overlap, the only kind the verifier permits.
