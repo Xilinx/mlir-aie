@@ -231,7 +231,7 @@ def _run_and_verify(opts):
     rng = np.random.default_rng(0)
     n = opts.length
 
-    a_np = rng.uniform(-4.0, 4.0, size=(n,)).astype(np.float32)
+    a_np = rng.uniform(-8.0, 8.0, size=(n,)).astype(np.float32)
     a_t = iron.tensor(a_np, dtype=np.float32, device="npu")
     id_t = iron.zeros_like(a_t)
     silu_t = iron.zeros_like(a_t)
