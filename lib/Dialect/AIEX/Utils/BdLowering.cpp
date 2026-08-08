@@ -105,9 +105,12 @@ Value buildArgPlusValue(OpBuilder &builder, Location loc,
                   });
   if (allConst) {
     int64_t bytes = baseByteOffset;
-    for (auto [o, s] : llvm::zip(elementOffsets, strides))
-      bytes +=
-          *getConstantIntValue(o) * *getConstantIntValue(s) * elemWidthBytes;
+    for (auto [o, s] : llvm::zip(elementOffsets, strides)) {
+      auto oc = getConstantIntValue(o);
+      auto sc = getConstantIntValue(s);
+      assert(oc && sc && "allConst already verified these are constant");
+      bytes += (*oc) * (*sc) * elemWidthBytes;
+    }
     return arith::ConstantOp::create(builder, loc,
                                      IntegerAttr::get(i32ty, bytes));
   }

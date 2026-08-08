@@ -317,8 +317,11 @@ static Value collapseInnerMostShapeDims(PatternRewriter &b, Location loc,
                                             1, std::multiplies<>());
   SmallVector<int64_t, 4> newShape{shape.begin(), shape.end() - numDims + 1};
   newShape[shape.size() - numDims] = newInnerMostDim;
-  auto reassocIndices =
-      getReassociationIndicesForCollapse(shape, newShape).value();
+  // newShape is constructed above as exactly shape with its trailing
+  // numDims dims merged into one, so this is always a valid collapse.
+  auto reassocIndicesOpt = getReassociationIndicesForCollapse(shape, newShape);
+  assert(reassocIndicesOpt && "newShape must be a valid collapse of shape");
+  auto reassocIndices = *reassocIndicesOpt;
   // Let CollapseShapeOp::inferResultType compute the correct result type,
   // which preserves strided layout and dynamic offset from the source.
   auto newMemRefTy =

@@ -449,9 +449,11 @@ struct AIEObjectFifoStatefulTransformPass
       return locks;
     // Static-init no-link producer cycled via iter_count: source side needs
     // no sync; skip allocation to free the lock IDs.
-    if (op.getInitValues().has_value() && op.getIterCount().has_value() &&
-        op.getIterCount().value() > 1 && !getOptionalLinkOp(op).has_value() &&
-        static_cast<int>(op.getInitValues().value().size()) == numElem)
+    auto lockInitValues = op.getInitValues();
+    auto lockIterCount = op.getIterCount();
+    if (lockInitValues.has_value() && lockIterCount.has_value() &&
+        lockIterCount.value() > 1 && !getOptionalLinkOp(op).has_value() &&
+        static_cast<int>(lockInitValues.value().size()) == numElem)
       return locks;
     auto dev = op->getParentOfType<DeviceOp>();
     auto &target = dev.getTargetModel();
@@ -918,9 +920,10 @@ struct AIEObjectFifoStatefulTransformPass
     // the second pass. Back-pressure to the downstream consumer is handled
     // by the DMA stream's flow control; source-side locking is unnecessary
     // for correctness in this configuration.
+    auto producerIterCount = op.getIterCount();
     bool isCycledStaticInitProducer =
         channelDir == DMAChannelDir::MM2S && op.getInitValues().has_value() &&
-        op.getIterCount().has_value() && op.getIterCount().value() > 1 &&
+        producerIterCount.has_value() && producerIterCount.value() > 1 &&
         !getOptionalLinkOp(op).has_value();
     if (!state.locksPerFifo[op].empty() && !isCycledStaticInitProducer) {
       auto dev = op->getParentOfType<DeviceOp>();
@@ -995,8 +998,8 @@ struct AIEObjectFifoStatefulTransformPass
 
     // check for repeat count
     int repeatCount = 1;
-    if (op.getRepeatCount().has_value())
-      repeatCount = op.getRepeatCount().value();
+    if (auto opRepeatCount = op.getRepeatCount(); opRepeatCount.has_value())
+      repeatCount = opRepeatCount.value();
 
     // search for the buffers/locks (based on if this objFifo has a link)
     ObjectFifoCreateOp target = op;
@@ -1005,9 +1008,10 @@ struct AIEObjectFifoStatefulTransformPass
       if (state.objFifoLinks.find(linkOp.value()) != state.objFifoLinks.end()) {
         target = state.objFifoLinks[linkOp.value()];
         if (target == op) {
-          if (linkOp->getRepeatCount().has_value()) {
-            acqNum *= linkOp->getRepeatCount().value();
-            relNum *= linkOp->getRepeatCount().value();
+          if (auto linkRepeatCount = linkOp->getRepeatCount();
+              linkRepeatCount.has_value()) {
+            acqNum *= linkRepeatCount.value();
+            relNum *= linkRepeatCount.value();
           }
         }
       }
@@ -1174,8 +1178,8 @@ struct AIEObjectFifoStatefulTransformPass
 
     // check for repeat count
     int repeatCount = 1;
-    if (op.getRepeatCount().has_value())
-      repeatCount = op.getRepeatCount().value();
+    if (auto opRepeatCount = op.getRepeatCount(); opRepeatCount.has_value())
+      repeatCount = opRepeatCount.value();
 
     // check for BD chain repeat count
     auto bdChainIterCount = op.getIterCount();
@@ -1195,10 +1199,11 @@ struct AIEObjectFifoStatefulTransformPass
         auto srcOffsets = linkOp->getSrcOffsets();
         auto dstOffsets = linkOp->getDstOffsets();
 
-        if (linkOp->getRepeatCount().has_value())
+        if (auto linkRepeatCount = linkOp->getRepeatCount();
+            linkRepeatCount.has_value())
           if (linkOp->getInputObjectFifos()[0] == op) {
-            acqNum *= linkOp->getRepeatCount().value();
-            relNum *= linkOp->getRepeatCount().value();
+            acqNum *= linkRepeatCount.value();
+            relNum *= linkRepeatCount.value();
           }
 
         if (linkOp->isJoin()) {
@@ -1213,7 +1218,9 @@ struct AIEObjectFifoStatefulTransformPass
                 break;
               i++;
             }
-            extraOffset = *getConstantIntValue(srcOffsets[i]);
+            auto srcOffset = getConstantIntValue(srcOffsets[i]);
+            assert(srcOffset && "join src_offset must be a constant");
+            extraOffset = *srcOffset;
             lenOut = linkOp->getJoinTransferLengths()[i];
             joinDistribLockIndex = i;
           }
@@ -1229,7 +1236,9 @@ struct AIEObjectFifoStatefulTransformPass
                 break;
               i++;
             }
-            extraOffset = *getConstantIntValue(dstOffsets[i]);
+            auto dstOffset = getConstantIntValue(dstOffsets[i]);
+            assert(dstOffset && "distribute dst_offset must be a constant");
+            extraOffset = *dstOffset;
             lenOut = linkOp->getDistributeTransferLengths()[i];
             joinDistribLockIndex = i;
           }
@@ -1338,10 +1347,14 @@ struct AIEObjectFifoStatefulTransformPass
           distribOrJoin = true;
           if (target == op) {
             if (isDistribute) {
-              offset = *getConstantIntValue(linkOp->getDstOffsets()[r]);
+              auto dstOffset = getConstantIntValue(linkOp->getDstOffsets()[r]);
+              assert(dstOffset && "distribute dst_offset must be a constant");
+              offset = *dstOffset;
               lenOut = linkOp->getDistributeTransferLengths()[r];
             } else {
-              offset = *getConstantIntValue(linkOp->getSrcOffsets()[r]);
+              auto srcOffset = getConstantIntValue(linkOp->getSrcOffsets()[r]);
+              assert(srcOffset && "join src_offset must be a constant");
+              offset = *srcOffset;
               lenOut = linkOp->getJoinTransferLengths()[r];
             }
             lockIndex = r % joinDistribFactor;
@@ -2319,15 +2332,15 @@ struct AIEObjectFifoStatefulTransformPass
         if (clPacketSwObjectFifos) {
           // create packet flow
           builder.setInsertionPointAfter(producer);
-          packetflow = builder.create<PacketFlowOp>(
-              producer.getLoc(),
+          packetflow = PacketFlowOp::create(
+              builder, producer.getLoc(),
               builder.getIntegerAttr(builder.getI8Type(), bdPacket->getPktId()),
               nullptr, nullptr);
           {
             OpBuilder::InsertionGuard g(builder);
             builder.setInsertionPointToStart(
                 &packetflow.getRegion().emplaceBlock());
-            builder.create<EndOp>(producer.getLoc());
+            EndOp::create(builder, producer.getLoc());
           }
         }
       }
@@ -2380,9 +2393,9 @@ struct AIEObjectFifoStatefulTransformPass
 
           if (clPacketSwObjectFifos) {
             builder.setInsertionPointToStart(&packetflow.getPorts().front());
-            builder.create<PacketDestOp>(consumer.getLoc(),
-                                         consumer.getProducerTile(),
-                                         WireBundle::DMA, consumerChan.channel);
+            PacketDestOp::create(builder, consumer.getLoc(),
+                                 consumer.getProducerTile(), WireBundle::DMA,
+                                 consumerChan.channel);
           }
         }
 

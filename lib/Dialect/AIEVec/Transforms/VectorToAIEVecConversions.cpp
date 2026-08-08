@@ -1354,14 +1354,18 @@ struct ConvertMulFToAIEVecMulElemOpPattern
     }
     VectorType targetInputType = createVectorType(numLanes, srcElemType);
     if (targetInputType != lSrcType) {
-      lval = convertValueToTargetTypeAIE2(rewriter, mulOp.getLoc(), lval,
-                                          targetInputType)
-                 .value();
+      auto converted = convertValueToTargetTypeAIE2(rewriter, mulOp.getLoc(),
+                                                    lval, targetInputType);
+      if (!converted)
+        return failure();
+      lval = *converted;
     }
     if (targetInputType != rSrcType) {
-      rval = convertValueToTargetTypeAIE2(rewriter, mulOp.getLoc(), rval,
-                                          targetInputType)
-                 .value();
+      auto converted = convertValueToTargetTypeAIE2(rewriter, mulOp.getLoc(),
+                                                    rval, targetInputType);
+      if (!converted)
+        return failure();
+      rval = *converted;
     }
     if (!lval || !rval)
       return failure();
@@ -1461,14 +1465,18 @@ struct ConvertMulIToAIEVecMulElemOpPattern
     }
     VectorType targetInputType = createVectorType(numLanes, srcElemType);
     if (targetInputType != lSrcType) {
-      lval = convertValueToTargetTypeAIE2(rewriter, mulOp.getLoc(), lval,
-                                          targetInputType)
-                 .value();
+      auto converted = convertValueToTargetTypeAIE2(rewriter, mulOp.getLoc(),
+                                                    lval, targetInputType);
+      if (!converted)
+        return failure();
+      lval = *converted;
     }
     if (targetInputType != rSrcType) {
-      rval = convertValueToTargetTypeAIE2(rewriter, mulOp.getLoc(), rval,
-                                          targetInputType)
-                 .value();
+      auto converted = convertValueToTargetTypeAIE2(rewriter, mulOp.getLoc(),
+                                                    rval, targetInputType);
+      if (!converted)
+        return failure();
+      rval = *converted;
     }
     if (!lval || !rval)
       return failure();

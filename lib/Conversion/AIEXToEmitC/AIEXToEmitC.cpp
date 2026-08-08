@@ -344,9 +344,9 @@ private:
                                             emitc::OpaqueAttr::get(ctx, init));
 
     uint32_t colVal = 0, rowVal = 0;
-    if (bw.getColumn() && bw.getRow()) {
-      colVal = *bw.getColumn();
-      rowVal = *bw.getRow();
+    if (auto col = bw.getColumn(), row = bw.getRow(); col && row) {
+      colVal = *col;
+      rowVal = *row;
     }
     emitTxnCall(b, loc, "txn_append_blockwrite", txnVec,
                 {u32Literal(b, loc, addr), arrVar.getResult(),

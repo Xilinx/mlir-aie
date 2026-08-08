@@ -565,10 +565,10 @@ emitControlPacketOps(OpBuilder &builder, Location fallbackLoc,
           /*stream_id*/ builder.getI32IntegerAttr(0),
           DenseI32ArrayAttr::get(ctx, ArrayRef<int32_t>(op.cmd.Value)));
     } else if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_BLOCKWRITE) {
-      if (!payload.getInitialValue())
+      auto initialValue = payload.getInitialValue();
+      if (!initialValue)
         continue;
-      auto blockWriteData =
-          dyn_cast<DenseIntElementsAttr>(*payload.getInitialValue());
+      auto blockWriteData = dyn_cast<DenseIntElementsAttr>(*initialValue);
       if (!blockWriteData) {
         payload.emitError(
             "Global symbol initial value is not a dense int array");
@@ -623,8 +623,16 @@ static LogicalResult orConsecutiveWritesOnSameAddr(Block *body) {
       ctrlPktBuffer = ctrlPktOps[i];
       continue;
     }
-    auto bufferedData = ctrlPktBuffer.getData().value();
-    auto currentData = ctrlPktOps[i].getData().value();
+    auto bufferedDataAttr = ctrlPktBuffer.getData();
+    auto currentDataAttr = ctrlPktOps[i].getData();
+    if (!bufferedDataAttr || !currentDataAttr) {
+      ctrlPktOps[i].emitError(
+          "cannot OR consecutive control packets on the same address: "
+          "control packet has no data payload");
+      return failure();
+    }
+    auto bufferedData = *bufferedDataAttr;
+    auto currentData = *currentDataAttr;
     SmallVector<int> newData;
     for (unsigned j = 0; j < std::max(bufferedData.size(), currentData.size());
          j++) {
