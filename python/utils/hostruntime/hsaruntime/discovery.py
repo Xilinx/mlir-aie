@@ -9,14 +9,19 @@ Locates ``libhsa-runtime64.so`` inside a ROCm installation. Performs no
 ``dlopen`` so it can serve as a cheap capability probe before committing to the
 heavier ctypes bindings import.
 
+The recommended way to provide ROCm is TheRock's pip wheel (``pip install
+--index-url https://rocm.nightlies.amd.com/whl-multi-arch/ rocm``, see
+https://github.com/ROCm/TheRock/blob/main/RELEASES.md); the base ``rocm``
+package pulls ``rocm-sdk-core``, which carries the HSA runtime with AIE
+support. It needs no configuration -- it is found in site-packages.
+
 ROCm installations are looked for in three places, in this order:
 
-1. ``$ROCM_PATH`` -- an explicit installation root chosen by the user. It names
-   a ROCm tree, not a library file, so the same variable serves every ROCm
-   component.
-2. A pip-installed ROCm from TheRock (``pip install "rocm[libraries,...]"``,
-   see https://github.com/ROCm/TheRock/blob/main/RELEASES.md), whose runtime
-   tree lives in a platform package inside site-packages.
+1. ``$ROCM_PATH`` -- an explicit installation root chosen by the user, which
+   overrides the wheel. It names a ROCm tree, not a library file, so the same
+   variable serves every ROCm component.
+2. The pip-installed ROCm above, whose runtime tree lives in a platform package
+   inside site-packages.
 3. A system install, conventionally ``/opt/rocm``.
 """
 

@@ -27,15 +27,23 @@ and no build-system component.
 HSA is **strictly opt-in**. It is never auto-selected: an XRT-less host degrades
 to CPU-only tensors rather than silently switching backends.
 
+This requires a ROCm providing `libhsa-runtime64.so` with AIE support. The
+recommended way to get one is the pip wheel from
+[TheRock](https://github.com/ROCm/TheRock/blob/main/RELEASES.md), installed into
+the environment you run designs from:
+
 ```bash
+pip install --index-url https://rocm.nightlies.amd.com/whl-multi-arch/ rocm
 NPU_RUNTIME=hsa python my_design.py
 ```
 
-This requires a ROCm install providing `libhsa-runtime64.so`. Discovery looks
-for an installation *root*, in order: `ROCM_PATH`, a pip-installed ROCm from
-[TheRock](https://github.com/ROCm/TheRock/blob/main/RELEASES.md), then
-`/opt/rocm`. **Set `ROCM_PATH` when the machine has more than one ROCm** — a
-system `/opt/rocm` will otherwise shadow a newer local build. See
+The base `rocm` package is enough — it pulls `rocm-sdk-core`, which carries the
+HSA runtime; the `[libraries]` and `[device-gfx…]` extras are for GPU workloads.
+Discovery picks the wheel up from site-packages with no path to configure.
+
+Failing that, discovery looks for an installation *root*, in order: `ROCM_PATH`,
+the pip-installed ROCm above, then `/opt/rocm`. **`ROCM_PATH` overrides the
+wheel**, and with neither present an old system `/opt/rocm` is what you get. See
 [Configuration options](iron_configuration.md#hsarocr-runtime-configuration) for
 the full variable list.
 

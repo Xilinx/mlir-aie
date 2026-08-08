@@ -175,6 +175,22 @@ the [HSA Runtime (ROCR)](hsa_runtime.md) overview for the architecture, and the
 [HSA runtime README](../python/utils/hostruntime/hsaruntime/README.md) for the
 full step-by-step flow.
 
+### Getting ROCm
+
+The recommended source is the pip wheel from
+[TheRock](https://github.com/ROCm/TheRock/blob/main/RELEASES.md), installed into
+the environment you run designs from:
+
+```bash
+pip install --index-url https://rocm.nightlies.amd.com/whl-multi-arch/ rocm
+```
+
+The base `rocm` package is enough: it pulls `rocm-sdk-core`, which carries
+`libhsa-runtime64.so` with the AIE support this backend needs. The
+`[libraries]` and `[device-gfx…]` extras are for GPU workloads and are not
+required for the NPU. Discovery finds it in site-packages with nothing to
+configure.
+
 ### ROCm discovery
 
 `libhsa-runtime64.so` is located inside a ROCm *installation root*, looked for
@@ -182,8 +198,8 @@ in three places, in this order:
 
 | Source | Meaning |
 |--------|---------|
-| `ROCM_PATH` | An explicit installation root. It names a ROCm tree, not a library file, so the same variable serves every ROCm component. |
-| pip-installed ROCm | A ROCm installed from [TheRock](https://github.com/ROCm/TheRock/blob/main/RELEASES.md) (`pip install "rocm[libraries,...]"`), whose runtime tree ships inside site-packages. |
+| `ROCM_PATH` | An explicit installation root, overriding the wheel. It names a ROCm tree, not a library file, so the same variable serves every ROCm component. |
+| pip-installed ROCm | The wheel above, whose runtime tree ships inside site-packages. |
 | System install | `/opt/rocm`. |
 
 The first root that actually contains the library wins. Both the unversioned
@@ -191,12 +207,10 @@ The first root that actually contains the library wins. Both the unversioned
 TheRock's runtime wheels contain no symlinks, so a pip-installed ROCm provides
 only the versioned name.
 
-> **Set `ROCM_PATH` if you have more than one ROCm.** A system `/opt/rocm` is
-> the *last* root tried, but it still wins whenever `ROCM_PATH` is unset and no
-> ROCm wheel is installed — so an older system ROCm shadows a newer local build
-> that discovery has no way to find. If the ROCm that wins is too old for AIE,
-> the failure surfaces later as an opaque HSA error rather than a version
-> complaint.
+> **With no wheel and no `ROCM_PATH`, a system `/opt/rocm` is what you get.** If
+> it predates AIE support, the failure surfaces later as an opaque HSA error
+> rather than a version complaint. Installing the wheel avoids this; set
+> `ROCM_PATH` only when you need a specific ROCm instead.
 
 ### Runtime behavior
 

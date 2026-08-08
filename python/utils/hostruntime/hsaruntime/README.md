@@ -19,39 +19,50 @@ environment variable see
 ## 1. Prerequisites
 
 - An AMD XDNA NPU with the `amdxdna` kernel driver loaded.
-- A ROCm install providing `libhsa-runtime64.so` **with AIE support** (ROCR must
-  expose `HSA_DEVICE_TYPE_AIE`).
+- A ROCm providing `libhsa-runtime64.so` **with AIE support** (ROCR must expose
+  `HSA_DEVICE_TYPE_AIE`). Install it from a wheel — see below.
 - The usual IRON toolchain to build designs (`aiecc`), including `xclbinutil` —
   `aiecc` always builds the xclbin edge even though HSA consumes the PDI.
 
-## 2. Point IRON at the right ROCm
+## 2. Install ROCm from a wheel
+
+The recommended way to get ROCR is the pip wheel from
+[TheRock](https://github.com/ROCm/TheRock/blob/main/RELEASES.md), into the same
+environment you run designs from:
+
+```bash
+pip install --index-url https://rocm.nightlies.amd.com/whl-multi-arch/ rocm
+```
+
+The base `rocm` package is enough: it pulls `rocm-sdk-core`, which carries
+`libhsa-runtime64.so` and the AIE support this backend needs. The
+`[libraries]` and `[device-gfx…]` extras exist for GPU workloads and are not
+required for the NPU.
+
+Nothing else is needed — discovery finds the wheel's runtime tree inside
+site-packages automatically, so there is no path to configure.
+
+## 3. Point IRON at a different ROCm (optional)
 
 Discovery looks for a ROCm *installation root*, in this order:
 
-1. `ROCM_PATH` — an explicit root you choose.
-2. A pip-installed ROCm from
-   [TheRock](https://github.com/ROCm/TheRock/blob/main/RELEASES.md), e.g.
-   ```bash
-   pip install --index-url https://rocm.nightlies.amd.com/whl-multi-arch/ \
-       "rocm[libraries,device-gfx1152]"
-   ```
-   whose runtime tree lives in site-packages.
+1. `ROCM_PATH` — an explicit root, which overrides everything below.
+2. A pip-installed ROCm from TheRock (section 2), whose runtime tree lives in
+   site-packages.
 3. A system install at `/opt/rocm`.
 
 The first root that actually contains the library wins.
 
-> **Set `ROCM_PATH` if you have more than one ROCm.** A system `/opt/rocm` is
-> the *last* root tried, but it still wins whenever `ROCM_PATH` is unset and no
-> ROCm wheel is installed — so an older system ROCm shadows a newer local build
-> that discovery has no way to find. If the ROCm that wins is too old for AIE,
-> the failure surfaces later as an opaque HSA error rather than a version
-> complaint.
+> **Set `ROCM_PATH` to override the wheel, and beware an old `/opt/rocm`.** With
+> no wheel installed and `ROCM_PATH` unset, a system `/opt/rocm` is what you
+> get, and if it predates AIE support the failure surfaces later as an opaque
+> HSA error rather than a version complaint. Installing the wheel avoids this.
 
 Both `libhsa-runtime64.so` and the bare SONAME `libhsa-runtime64.so.1` are
 accepted. TheRock's runtime wheels contain no symlinks at all, so a
 pip-installed ROCm ships only the versioned name.
 
-## 3. Run a design
+## 4. Run a design
 
 ```bash
 NPU_RUNTIME=hsa python programming_examples/basic/vector_scalar_add/vector_scalar_add.py
@@ -71,7 +82,7 @@ print(DEFAULT_TENSOR_CLASS.__name__)"
 # -> HSATensor
 ```
 
-## 4. Environment (optional)
+## 5. Environment (optional)
 
 | Variable | Default | Meaning |
 |----------|---------|---------|
@@ -80,19 +91,19 @@ print(DEFAULT_TENSOR_CLASS.__name__)"
 | `HSA_EXE_CACHE_SIZE` | `32` | LRU cap on loaded designs. |
 | `IRON_HSA_TIMEOUT` | `0` (disabled) | Seconds bounding the completion wait. |
 
-## 5. Limitations
+## 6. Limitations
 
 - **No trace capture.** A design with a `trace_config` is rejected up front; use
   `NPU_RUNTIME=xrt` for trace-enabled designs.
 - **Serialize dispatches.** The single in-order AIE queue and doorbell are not
   safe for concurrent dispatch from multiple threads.
 
-## 6. Troubleshooting
+## 7. Troubleshooting
 
 | Symptom | Cause |
 |---------|-------|
-| `ImportError: NPU_RUNTIME=hsa was requested but libhsa-runtime64.so could not be located` | No ROCm found in any of the three roots. Set `ROCM_PATH`. |
-| `HSAError: No HSA AIE agent found` | The ROCm that was found has no AIE support, or the `amdxdna` driver is not loaded. Check which library was picked (see below). |
+| `ImportError: NPU_RUNTIME=hsa was requested but libhsa-runtime64.so could not be located` | No ROCm found in any of the three roots. Install the wheel (section 2), or set `ROCM_PATH`. |
+| `HSAError: No HSA AIE agent found` | The ROCm that was found has no AIE support, or the `amdxdna` driver is not loaded. Check which library was picked (see below); if it is an old `/opt/rocm`, install the wheel (section 2). |
 | `HSAError: Cannot map HSA AIE agent name ... to a device generation` | An agent name this code does not recognize. Override with `IRON_HSA_DEVICE=npu1\|npu2`. |
 | Dispatch hangs, then the kernel log shows `aie2_tdr_work: Device isn't making progress` | The design was compiled for the wrong NPU generation. Check `IRON_HSA_DEVICE` and the `aie.device(...)` in the generated `aie.mlir`. |
 | Submit fails with `EIO`; kernel log shows `aie2_config_cu: Invalid BO type` | The PDI was not allocated from the device heap. |
@@ -105,7 +116,7 @@ from aie.utils.hostruntime.hsaruntime import discovery
 print(discovery.find_libhsa())"
 ```
 
-## 7. Files in this package
+## 8. Files in this package
 
 | File | Responsibility |
 |------|----------------|
