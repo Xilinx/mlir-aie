@@ -49,15 +49,17 @@ typedef struct PacketConnection {
 class ConnectivityAnalysis {
   DeviceOp &device;
 
+  // Clamped so every shift below stays in range; a target with a wider id
+  // field needs a wider IdSet, not a silently truncated analysis.
   unsigned numIds() const {
     uint32_t maxPacketId = device.getTargetModel().getMaxPacketId();
     assert(maxPacketId < 32 && "packet id space wider than an IdSet");
-    return maxPacketId + 1;
+    return std::min<uint32_t>(maxPacketId + 1, 32);
   }
 
   IdSet allIds() const {
     unsigned n = numIds();
-    return n >= 32 ? ~IdSet(0) : (IdSet(1) << n) - 1;
+    return n == 32 ? ~IdSet(0) : (IdSet(1) << n) - 1;
   }
 
   // The ids a rule matches on its own, ignoring priority: (id & mask) == value.
@@ -271,7 +273,10 @@ static void findFlowsFrom(TileOp op, ConnectivityAnalysis &analysis,
                          destOp->getResult(0), destPort.bundle,
                          destPort.channel);
         } else {
-          // Several ids can share a route; name the flow after the lowest.
+          // A route carries a set of ids, but PacketFlowOp names one. Take the
+          // lowest reaching here. With relaxed masks that can be an id no
+          // source sends, so treat the name as identifying the route rather
+          // than a specific packet.
           auto flowOp =
               PacketFlowOp::create(rewriter, Op->getLoc(),
                                    llvm::countr_zero(c.ids), nullptr, nullptr);

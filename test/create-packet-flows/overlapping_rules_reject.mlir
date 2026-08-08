@@ -256,3 +256,87 @@ module {
     }
   }
 }
+
+// -----
+
+// aie.dma_bd_packet is the other way a BD sets a packet header, and the one the
+// objectFIFO lowering and IRON emit -- a hand-routed design may name its ids
+// nowhere else.
+module {
+  aie.device(npu1_1col) {
+    %t02 = aie.tile(0, 2)
+    %buf = aie.buffer(%t02) {sym_name = "bb"} : memref<8xi32>
+    %l0 = aie.lock(%t02, 0) {init = 1 : i32}
+    %l1 = aie.lock(%t02, 1) {init = 0 : i32}
+    %sb = aie.switchbox(%t02) {
+      %n = aie.amsel<0> (0)
+      %s = aie.amsel<0> (1)
+      %0 = aie.masterset(North : 0, %n)
+      %1 = aie.masterset(South : 0, %s)
+      aie.packet_rules(DMA : 0) {
+        // expected-remark@+1 {{this is the rule that claims packet id 10}}
+        aie.rule(26, 10, %n)
+        // expected-error@+1 {{'aie.rule' op is shadowed for packet id 10}}
+        aie.rule(24, 8, %s)
+      }
+    }
+    %mem = aie.mem(%t02) {
+      %d = aie.dma_start(MM2S, 0, ^bd, ^end)
+    ^bd:
+      %c1 = arith.constant 1 : i32
+      aie.use_lock(%l0, AcquireGreaterEqual, %c1)
+      aie.dma_bd_packet(0, 10)
+      aie.dma_bd(%buf : memref<8xi32>)
+      aie.use_lock(%l1, Release, %c1)
+      aie.next_bd ^end
+    ^end:
+      aie.end
+    }
+  }
+}
+
+// -----
+
+// One masterset can list several amsels, so two rules with different amsels can
+// still reach the same master port. Overlap between them is not a misroute.
+module {
+  aie.device(xcvc1902) {
+    %tile = aie.tile(2, 3)
+    aie.packet_flow(10) { aie.packet_source<%tile, DMA : 0>  aie.packet_dest<%tile, West : 0> }
+    aie.packet_flow(11) { aie.packet_source<%tile, DMA : 0>  aie.packet_dest<%tile, West : 0> }
+    %sb = aie.switchbox(%tile) {
+      %a1 = aie.amsel<0> (0)
+      %a2 = aie.amsel<0> (1)
+      %0 = aie.masterset(West : 0, %a1, %a2)
+      aie.packet_rules(DMA : 0) {
+        aie.rule(30, 10, %a1)
+        aie.rule(31, 11, %a2)
+      }
+    }
+  }
+}
+
+// -----
+
+// Two more id sources a hand-routed design can use instead of packet_flow: the
+// packet attribute on aie.shim_dma_allocation, and a tile's controller_id,
+// which is how control packets are addressed.
+module {
+  aie.device(npu1_1col) {
+    %t00 = aie.tile(0, 0)
+    %t02 = aie.tile(0, 2) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 11>}
+    aie.shim_dma_allocation @in (%t00, MM2S, 0, <pkt_type = 0, pkt_id = 10>)
+    %sb = aie.switchbox(%t02) {
+      %n = aie.amsel<0> (0)
+      %s = aie.amsel<0> (1)
+      %0 = aie.masterset(North : 0, %n)
+      %1 = aie.masterset(South : 0, %s)
+      aie.packet_rules(DMA : 0) {
+        // expected-remark@+1 {{this is the rule that claims packet id 10}}
+        aie.rule(26, 10, %n)
+        // expected-error@+1 {{'aie.rule' op is shadowed for packet id 10}}
+        aie.rule(24, 8, %s)
+      }
+    }
+  }
+}

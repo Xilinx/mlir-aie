@@ -439,6 +439,11 @@ def AIEVerifyPacketRules : Pass<"aie-verify-packet-rules", "AIE::DeviceOp"> {
     actually produces therefore send it to whichever rule comes first, and the
     later rule never sees it.
 
+    In practice this guards hand-written `aie.switchbox` configurations.
+    `--aie-create-pathfinder-flows` already keeps its own output free of live-id
+    overlap on a slave port, so the check is a backstop for routing the compiler
+    did not choose.
+
     Only ids some op in the device injects are considered. Rules routinely
     overlap on ids nothing sends: a slave port has a fixed number of slots, so
     the router relaxes masks to merge several ids into one rule, and a relaxed

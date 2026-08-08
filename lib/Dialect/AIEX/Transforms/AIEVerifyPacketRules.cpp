@@ -58,29 +58,64 @@ struct AIEVerifyPacketRulesPass
     dev.walk([&](Operation *op) {
       if (auto flow = dyn_cast<PacketFlowOp>(op))
         live.insert(flow.getID());
+      else if (auto bd = dyn_cast<DMABDPACKETOp>(op))
+        live.insert(bd.getPacketId());
       else if (auto bd = dyn_cast<DMABDOp>(op)) {
         if (auto pkt = bd.getPacket())
+          live.insert(pkt->getPktId());
+      } else if (auto alloc = dyn_cast<ShimDMAAllocationOp>(op)) {
+        if (auto pkt = alloc.getPacket())
           live.insert(pkt->getPktId());
       } else if (auto memcpy = dyn_cast<NpuDmaMemcpyNdOp>(op)) {
         if (auto pkt = memcpy.getPacket())
           live.insert(pkt->getPktId());
+      } else if (auto task = dyn_cast<DMAConfigureTaskOp>(op)) {
+        if (auto pkt = task.getPacket())
+          live.insert(pkt->getPktId());
       } else if (auto bd = dyn_cast<NpuWriteBdOp>(op)) {
+        // Only reachable through aie-opt: the runtime sequence is still
+        // memcpy-shaped when this pass runs inside aiecc.
         if (bd.getEnablePacket())
           live.insert(bd.getPacketId());
+      } else if (auto tile = dyn_cast<TileOp>(op)) {
+        // Control packets are addressed by the target tile's controller id.
+        if (auto pkt = tile->getAttrOfType<PacketInfoAttr>("controller_id"))
+          live.insert(pkt.getPktId());
       }
     });
     return live;
   }
 
-  // Two rules route alike, and so may overlap freely, when their amsels name
-  // the same (arbiter, msel). Distinct AMSelOps can spell the same pair.
+  // Where an amsel actually sends a packet: the master ports of every
+  // masterset naming an amsel with the same (arbiter, msel), since that pair is
+  // all the switch matches on. Two rules whose destinations agree route alike
+  // and may overlap freely -- one masterset can list several amsels, and
+  // distinct AMSelOps can spell the same pair.
+  static SmallVector<Port, 4> destPorts(PacketRuleOp rule) {
+    SmallVector<Port, 4> dests;
+    auto amsel = rule.getAmsel().getDefiningOp<AMSelOp>();
+    if (!amsel)
+      return dests;
+    Block *sb = rule->getParentOp()->getBlock();
+    for (auto ms : sb->getOps<MasterSetOp>())
+      for (Value v : ms.getAmsels()) {
+        auto other = v.getDefiningOp<AMSelOp>();
+        if (other && other.arbiterIndex() == amsel.arbiterIndex() &&
+            other.getMselValue() == amsel.getMselValue()) {
+          dests.push_back(ms.destPort());
+          break;
+        }
+      }
+    llvm::sort(dests);
+    return dests;
+  }
+
   static bool sameRoute(PacketRuleOp a, PacketRuleOp b) {
     if (a.getAmsel() == b.getAmsel())
       return true;
-    auto amselA = a.getAmsel().getDefiningOp<AMSelOp>();
-    auto amselB = b.getAmsel().getDefiningOp<AMSelOp>();
-    return amselA && amselB && amselA.arbiterIndex() == amselB.arbiterIndex() &&
-           amselA.getMselValue() == amselB.getMselValue();
+    SmallVector<Port, 4> da = destPorts(a), db = destPorts(b);
+    // An unresolvable amsel yields no destinations; do not call that a match.
+    return !da.empty() && da == db;
   }
 
   void runOnOperation() override {
