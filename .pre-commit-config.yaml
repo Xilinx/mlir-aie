@@ -125,3 +125,20 @@ repos:
       additional_dependencies: ['reuse[charset-normalizer]==6.2.0']
       pass_filenames: true
       stages: [pre-push]
+
+    # Static analysis for C++, growing one file at a time (see .clang-tidy and
+    # docs/CONTRIBUTING.md's clang-tidy section). Unlike clang-format this
+    # needs a real build (compile_commands.json) to resolve headers, so it
+    # can't run as a bare per-file text hook -- utils/run_clang_tidy.sh finds
+    # the build (MLIR_AIE_BUILD_DIR, defaulting to build/) and fails with a
+    # clear setup hint if there isn't one. `files:` below must be kept in
+    # sync with the file list in lintAndFormat.yml's clang-tidy step (same
+    # convention ruff-check uses to stay in sync with ruff.toml's `include`).
+    - id: clang-tidy
+      name: clang-tidy
+      language: python
+      additional_dependencies: ['clang-tidy==20.1.0']
+      entry: utils/run_clang_tidy.sh
+      files: ^lib/Dialect/AIE/Transforms/AIEAssignBufferDescriptorIDs\.cpp$
+      pass_filenames: true
+      stages: [pre-push]
