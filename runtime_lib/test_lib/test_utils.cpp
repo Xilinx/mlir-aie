@@ -125,6 +125,25 @@ std::vector<uint32_t> test_utils::load_instr_binary(std::string instr_path) {
 // --------------------------------------------------------------------------
 // XRT
 // --------------------------------------------------------------------------
+std::string test_utils::get_kernel_name(const xrt::xclbin &xclbin,
+                                        const std::string &name_prefix,
+                                        int verbosity) {
+  std::string available;
+  for (auto &k : xclbin.get_kernels()) {
+    auto name = k.get_name();
+    if (verbosity >= 1)
+      std::cout << "Name: " << name << std::endl;
+    if (name.rfind(name_prefix, 0) == 0)
+      return name;
+    if (!available.empty())
+      available += ", ";
+    available += name;
+  }
+  throw std::runtime_error(
+      "No kernel in the xclbin starts with '" + name_prefix +
+      "'. Available kernels: " + (available.empty() ? "(none)" : available));
+}
+
 void test_utils::init_xrt_load_kernel(xrt::device &device, xrt::kernel &kernel,
                                       int verbosity, std::string xclbinFileName,
                                       std::string kernelNameInXclbin) {
@@ -141,17 +160,8 @@ void test_utils::init_xrt_load_kernel(xrt::device &device, xrt::kernel &kernel,
     std::cout << "Kernel opcode: " << kernelNameInXclbin << "\n";
 
   // Get the kernel from the xclbin
-  auto xkernels = xclbin.get_kernels();
-  auto xkernel =
-      *std::find_if(xkernels.begin(), xkernels.end(),
-                    [kernelNameInXclbin, verbosity](xrt::xclbin::kernel &k) {
-                      auto name = k.get_name();
-                      if (verbosity >= 1) {
-                        std::cout << "Name: " << name << std::endl;
-                      }
-                      return name.rfind(kernelNameInXclbin, 0) == 0;
-                    });
-  auto kernelName = xkernel.get_name();
+  auto kernelName = get_kernel_name(xclbin, kernelNameInXclbin, verbosity);
+
   // Register xclbin
   if (verbosity >= 1)
     std::cout << "Registering xclbin: " << xclbinFileName << "\n";
