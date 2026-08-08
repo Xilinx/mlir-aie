@@ -26,8 +26,7 @@ epilogue bodies into one resident program and switches between them with an
 reload.
 
 On NPU2 all three modes dispatch clean: identity is bit-exact against the
-reference, SiLU and GELU come out at rel-L2 0.00246 and 0.00341 over a
-`[-8, 8]` sweep, inside the `atol=0.05` gate this example checks against.
+reference, and SiLU and GELU hold the `atol=0.05` gate over a `[-8, 8]` sweep.
 
 ## Source Files Overview
 
@@ -44,21 +43,8 @@ reference, SiLU and GELU come out at rel-L2 0.00246 and 0.00341 over a
    [`aie_kernels/aie2p/`](../../../aie_kernels/aie2p/). One `mode` argument
    (0/1/2) selects identity, SiLU, or GELU.
 
-1. `test.cpp`: C++ testbench. Loads the compiled XCLBIN + `insts.bin`,
-   drives one input and three output buffers, and checks every element of
-   all three outputs against a host `float` reference.
-
 ## Usage
-
-### Standalone JIT verification
 
 ```shell
 python3 mm_activation_epilogue.py --dev npu2
-```
-
-### C++ Testbench
-
-```shell
-make
-make run
 ```
