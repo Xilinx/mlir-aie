@@ -36,9 +36,8 @@ static int64_t getAlignedAddress(int64_t address, uint32_t alignBitWidth) {
   uint32_t alignByteWidth = alignBitWidth / 8;
   if (address % alignByteWidth == 0) {
     return address;
-  } else {
-    return ((address / alignByteWidth) + 1) * alignByteWidth;
   }
+  return ((address / alignByteWidth) + 1) * alignByteWidth;
 }
 
 // Check that every buffer in the list is properly aligned (when its
@@ -203,7 +202,7 @@ static bool basicAllocation(TileOp tile) {
   // placement. Otherwise an unaligned candidate address can appear to fit
   // before the next pre-allocated buffer, but get bumped forward by
   // getAlignedAddress and silently alias that pre-allocated buffer.
-  auto current_alloc = allocated_buffers.begin();
+  auto *current_alloc = allocated_buffers.begin();
   for (auto buffer : buffers) {
     assert(!buffer.getAddress());
     if (buffer.getAligned())
@@ -253,10 +252,10 @@ static bool basicAllocation(TileOp tile) {
 //===----------------------------------------------------------------------===//
 // SimpleBankAwareAllocation : round-robin each alloc over available banks
 //===----------------------------------------------------------------------===//
-typedef struct BankLimits {
+using BankLimits = struct BankLimits {
   int64_t startAddr;
   int64_t endAddr;
-} BankLimits;
+};
 
 // Function that given a number of banks and their size, computes
 // the start and end addresses for each bank and fills in the entry
@@ -541,6 +540,8 @@ static bool simpleBankAwareAllocation(TileOp tile) {
   // AIE1 and 0x10000 in AIE2, but we need room at
   // the bottom for stack.
   int stacksize = 0;
+  nextAddrInBanks.reserve(numBanks);
+
   for (int i = 0; i < numBanks; i++)
     nextAddrInBanks.push_back(bankSize * i);
   if (auto core = tile.getCoreOp()) {
@@ -568,22 +569,20 @@ static bool simpleBankAwareAllocation(TileOp tile) {
   // Then, allocated the buffer with pre-allocated mem_bank t
   // Do it by doing a sort preAllocatedBuffers to have buffer with address
   // first, then buffer with only mem_bank
-  std::sort(
-      preAllocatedBuffers.begin(), preAllocatedBuffers.end(),
-      [](BufferOp a, BufferOp b) -> bool {
-        auto a_addr = a.getAddress();
-        auto b_addr = b.getAddress();
-        if (a_addr.has_value() && !b_addr.has_value()) {
-          return true; // address buffers before mem_bank-only buffers
-        } else if (!a_addr.has_value() && b_addr.has_value()) {
-          return false; // mem_bank-only buffers after address buffers
-        } else if (a_addr.has_value() && b_addr.has_value()) {
-          return a_addr.value() <
-                 b_addr.value(); // ascending address order within same bank
-        } else {
-          return false;
-        }
-      });
+  std::sort(preAllocatedBuffers.begin(), preAllocatedBuffers.end(),
+            [](BufferOp a, BufferOp b) -> bool {
+              auto a_addr = a.getAddress();
+              auto b_addr = b.getAddress();
+              if (a_addr.has_value() && b_addr.has_value()) {
+                return a_addr.value() <
+                       b_addr.value(); // ascending address order
+                                       // within same bank
+              } else {
+                // Address buffers before mem_bank-only buffers; otherwise
+                // stable.
+                return a_addr.has_value() && !b_addr.has_value();
+              }
+            });
 
   for (auto buffer : preAllocatedBuffers) {
 
@@ -624,9 +623,8 @@ static bool simpleBankAwareAllocation(TileOp tile) {
                   bankLimits, stacksize);
       deAllocationBuffers(allocatedBuffers);
       return false;
-    } else {
-      allocatedBuffers.push_back(buffer);
     }
+    allocatedBuffers.push_back(buffer);
   }
   assert(allocatedBuffers.size() == buffersToAlloc.size());
 

@@ -1074,6 +1074,9 @@ struct AIENpuToCertPass
 
 static void updateCostForOp(Operation &o, AIE::DeviceOp deviceOp,
                             uint32_t &text_cost, uint32_t &data_cost) {
+  // Several distinct op kinds share an encoded instruction size below --
+  // an instruction-size table, not a copy-paste clone.
+  // NOLINTBEGIN(bugprone-branch-clone)
   if (isa<AIEX::CertLocalBarrierOp>(o)) {
     text_cost += 8; // local barrier
   } else if (isa<AIEX::CertRemoteBarrierOp>(o)) {
@@ -1086,6 +1089,7 @@ static void updateCostForOp(Operation &o, AIE::DeviceOp deviceOp,
     text_cost += 12; // write
   } else if (isa<AIEX::CertApplyOffset57Op>(o)) {
     text_cost += 16; // apply offset
+    // NOLINTEND(bugprone-branch-clone)
   } else if (auto syncOp = dyn_cast<AIEX::CertUcDmaWriteDesSyncOp>(o)) {
     text_cost += 16; // write des sync
     // find the uc_dma_chain

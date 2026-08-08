@@ -65,11 +65,7 @@ static bool canFoldAIEShiftAndBroadcast(aievec::BroadcastOp op,
   int32_t shiftBytes = cast<IntegerAttr>(constOp.getValue()).getInt();
   idx = shiftBytes * 8 / elemSize + op.getIdx();
 
-  if (idx <= 0 || idx >= (int32_t)getVectorLaneSize(vType)) {
-    return false;
-  }
-
-  return true;
+  return !(idx <= 0 || idx >= (int32_t)getVectorLaneSize(vType));
 }
 
 template <typename AIEv1MACLikeOp,
@@ -110,7 +106,7 @@ static bool isSingleColumnInt16VectorTimesScalarMac(AIEv1MACLikeOp fmaOp) {
 }
 
 static bool singleColumnFMAOpCanFold(aievec::aie1::FMAOp fmaOp) {
-  auto accProdOp = fmaOp.getAcc().getDefiningOp();
+  auto *accProdOp = fmaOp.getAcc().getDefiningOp();
   if (!accProdOp)
     return false;
   auto accFmaOp = dyn_cast<aievec::aie1::FMAOp>(accProdOp);
@@ -134,7 +130,7 @@ struct MergeSingleColumnI16FMAOpPattern
                   ConversionPatternRewriter &rewriter) const override {
     if (!isSingleColumnInt16VectorTimesScalarMac(adaptor))
       return failure();
-    auto accProdOp = adaptor.getAcc().getDefiningOp();
+    auto *accProdOp = adaptor.getAcc().getDefiningOp();
     if (!accProdOp)
       return failure();
     auto accFmaOp = dyn_cast<aievec::aie1::FMAOp>(accProdOp);
@@ -268,7 +264,7 @@ struct AIEVecTransformationPass
       llvm::cl::init("aie")};
 
   void runOnOperation() override {
-    auto op = getOperation();
+    auto *op = getOperation();
     MLIRContext *context = &getContext();
     RewritePatternSet patterns(context);
     ConversionTarget target(*context);
@@ -345,7 +341,7 @@ struct AIEVecConvOpTransformationPass
       llvm::cl::init(0)};
 
   void runOnOperation() override {
-    auto op = getOperation();
+    auto *op = getOperation();
     MLIRContext *context = &getContext();
     RewritePatternSet patterns(context);
     ConversionTarget target(*context);

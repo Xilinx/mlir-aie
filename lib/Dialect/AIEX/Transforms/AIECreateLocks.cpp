@@ -53,13 +53,9 @@ struct Token2LockLowering : public OpConversionPattern<UseTokenOp> {
     Operation *Op = op.getOperation();
     Operation *parentOp = op->getParentOp();
 
-    if (CoreOp core = dyn_cast<CoreOp>(parentOp)) {
-    } else if (MemOp mem = dyn_cast<MemOp>(parentOp)) {
-    } else if (auto shimDma = dyn_cast<ShimDMAOp>(parentOp)) {
-    } else {
+    if (!isa<CoreOp, MemOp, ShimDMAOp>(parentOp))
       llvm_unreachable("A parent operation of UseTokenOp must be either CoreOp "
                        "or MemOp or ShimDMAOp");
-    }
 
     if (op.acquire()) {
       // Acquire lock from pair
@@ -211,10 +207,10 @@ struct AIECreateLocksPass
         Operation *relFromPair = pair.second;
 
         if (relFromPair == release)
-          acqLocks[acqFromPair].push_back(std::make_pair(lock, 0));
+          acqLocks[acqFromPair].emplace_back(lock, 0);
 
         if (acqFromPair == acquire)
-          relLocks[relFromPair].push_back(std::make_pair(lock, 0));
+          relLocks[relFromPair].emplace_back(lock, 0);
       }
     }
 

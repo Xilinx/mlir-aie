@@ -170,7 +170,7 @@ SECTIONS
 
 )THESCRIPT";
       auto doBuffer = [&](std::optional<TileID> tile, int offset,
-                          std::string dir) {
+                          const std::string &dir) {
         if (tile) {
           if (tiles.count(*tile))
             for (auto buf : buffers[tiles[*tile]])

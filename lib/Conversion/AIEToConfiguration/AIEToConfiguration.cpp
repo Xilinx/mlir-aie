@@ -253,7 +253,10 @@ parseTransactionBinary(const std::vector<uint8_t> &data,
         i += opSize;
         break;
       }
-      case 0x8: { // XAie_TxnOpcode::XAIE_IO_LOAD_PDI
+      // Not in the vendored third_party/aie-rt enum (though the driver
+      // protocol defines it); can't add it without forking upstream.
+      case 0x8: { // NOLINT(clang-diagnostic-switch):
+                  // XAie_TxnOpcode::XAIE_IO_LOAD_PDI
         LLVM_DEBUG(llvm::dbgs() << "opcode: LOAD_PDI (0x08)\n");
         constexpr size_t opSize = sizeof(TxnLoadPdiHeader);
         if (!requireBytes(i, opSize))
@@ -287,7 +290,7 @@ parseTransactionBinary(const std::vector<uint8_t> &data,
         constexpr size_t opSize = sizeof(TxnPreemptHeader);
         if (!requireBytes(i, opSize))
           return std::nullopt;
-        auto header =
+        const auto *header =
             reinterpret_cast<const TxnPreemptHeader *>(data.data() + i);
         op.cmd.Value = header->level;
         op.cmd.Size = opSize;
@@ -374,7 +377,10 @@ parseTransactionBinary(const std::vector<uint8_t> &data,
         i += opSize;
         break;
       }
-      case 0x8: { // XAie_TxnOpcode::XAIE_IO_LOAD_PDI
+      // Not in the vendored third_party/aie-rt enum (though the driver
+      // protocol defines it); can't add it without forking upstream.
+      case 0x8: { // NOLINT(clang-diagnostic-switch):
+                  // XAie_TxnOpcode::XAIE_IO_LOAD_PDI
         LLVM_DEBUG(llvm::dbgs() << "opcode: LOAD_PDI (0x08)\n");
         constexpr size_t opSize = sizeof(TxnLoadPdiHeader);
         if (!requireBytes(i, opSize))
@@ -408,7 +414,7 @@ parseTransactionBinary(const std::vector<uint8_t> &data,
         constexpr size_t opSize = sizeof(TxnPreemptHeader);
         if (!requireBytes(i, opSize))
           return std::nullopt;
-        auto header =
+        const auto *header =
             reinterpret_cast<const TxnPreemptHeader *>(data.data() + i);
         op.cmd.Value = header->level;
         op.cmd.Size = opSize;
@@ -546,7 +552,7 @@ emitControlPacketOps(OpBuilder &builder, Location fallbackLoc,
                      std::vector<TransactionBinaryOperation> &operations,
                      std::vector<memref::GlobalOp> &global_data) {
 
-  auto ctx = builder.getContext();
+  auto *ctx = builder.getContext();
 
   // create the control packet ops
   for (auto [op, payload] : llvm::zip(operations, global_data)) {
@@ -600,7 +606,7 @@ emitControlPacketOps(OpBuilder &builder, Location fallbackLoc,
 
 // Perform bitwise or on consecutive control packets operating on the same
 // address, to resolve the lack of mask write in control packets.
-LogicalResult orConsecutiveWritesOnSameAddr(Block *body) {
+static LogicalResult orConsecutiveWritesOnSameAddr(Block *body) {
   SmallVector<AIEX::NpuControlPacketOp> ctrlPktOps;
   body->walk(
       [&](AIEX::NpuControlPacketOp cpOp) { ctrlPktOps.push_back(cpOp); });
@@ -634,7 +640,7 @@ LogicalResult orConsecutiveWritesOnSameAddr(Block *body) {
     erased.push_back(ctrlPktOps[i]);
   }
 
-  for (auto e : erased)
+  for (auto *e : erased)
     e->erase();
 
   return success();
@@ -645,7 +651,7 @@ LogicalResult orConsecutiveWritesOnSameAddr(Block *body) {
 static LogicalResult convertTransactionOpsToMLIR(
     OpBuilder builder, AIE::AIEToConfigurationOutputType outputType,
     std::vector<TransactionBinaryOperation> &operations,
-    std::string blockwrite_prefix = "config_blockwrite_data_") {
+    const std::string &blockwrite_prefix = "config_blockwrite_data_") {
 
   // for each blockwrite in the binary, create a GlobalOp with the data at the
   // device level
@@ -683,7 +689,7 @@ static LogicalResult convertTransactionOpsToMLIR(
     unsigned id = 0;
     for (auto &op : operations) {
       if (op.cmd.Opcode != XAIE_IO_BLOCKWRITE) {
-        global_data.push_back(nullptr);
+        global_data.emplace_back(nullptr);
         continue;
       }
       uint32_t size = op.cmd.Size / 4;
@@ -824,7 +830,7 @@ LogicalResult xilinx::AIE::generateAndInsertConfigOps(
   }
 
   if (failed(convertTransactionOpsToMLIR(builder, outputType, operations,
-                                         blockwrite_prefix))) {
+                                         std::move(blockwrite_prefix)))) {
     return failure();
   }
 

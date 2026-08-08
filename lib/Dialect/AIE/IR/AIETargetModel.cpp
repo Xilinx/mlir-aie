@@ -474,8 +474,12 @@ bool AIE1TargetModel::isLegalTileConnection(int col, int row,
   if (isMemTile(col, row)) {
     return false;
   }
-  // Shimtile
-  else if (isShimNOCorPLTile(col, row)) {
+  // Shimtile and Coretile currently share this trace-routing constraint;
+  // flagged by bugprone-branch-clone -- unconfirmed whether that's
+  // deliberate or a copy-paste that should differ per tile kind, needs
+  // hardware-team confirmation before changing.
+  // NOLINTBEGIN(bugprone-branch-clone)
+  if (isShimNOCorPLTile(col, row)) {
     if (srcBundle == WireBundle::Trace)
       return dstBundle == WireBundle::South;
     else
@@ -488,6 +492,7 @@ bool AIE1TargetModel::isLegalTileConnection(int col, int row,
     else
       return true;
   }
+  // NOLINTEND(bugprone-branch-clone)
   return false;
 }
 
@@ -823,6 +828,11 @@ uint64_t AIE2TargetModel::getDmaBdAddress(int col, int row, uint32_t bd_id,
                                           int channel,
                                           AIE::DMAChannelDir direction) const {
   uint64_t offset = 0;
+  // Shimtile and Coretile currently compute the same offset; flagged by
+  // bugprone-branch-clone -- unconfirmed whether the DMA BD register bank
+  // genuinely shares this base across both tile kinds, needs hardware-team
+  // confirmation before changing.
+  // NOLINTBEGIN(bugprone-branch-clone)
   if (isShimNOCTile(col, row)) {
     offset = 0x0001D000 + bd_id * 0x20;
   } else if (isMemTile(col, row)) {
@@ -833,6 +843,7 @@ uint64_t AIE2TargetModel::getDmaBdAddress(int col, int row, uint32_t bd_id,
     llvm_unreachable(
         "AIE2TargetModel::getDmaBdAddress called for non-DMA tile");
   }
+  // NOLINTEND(bugprone-branch-clone)
   return ((col & 0xff) << getColumnShift()) | ((row & 0xff) << getRowShift()) |
          offset;
 }

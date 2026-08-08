@@ -23,25 +23,25 @@ using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
 
-typedef struct MaskValue {
+using MaskValue = struct MaskValue {
   int mask;
   int value;
-} MaskValue;
+};
 
-typedef struct PortConnection {
+using PortConnection = struct PortConnection {
   Operation *op;
   Port port;
-} PortConnection;
+};
 
-typedef struct PortMaskValue {
+using PortMaskValue = struct PortMaskValue {
   Port port;
   MaskValue mv;
-} PortMaskValue;
+};
 
-typedef struct PacketConnection {
+using PacketConnection = struct PacketConnection {
   PortConnection portConnection;
   MaskValue mv;
-} PacketConnection;
+};
 
 class ConnectivityAnalysis {
   DeviceOp &device;
@@ -120,7 +120,7 @@ private:
 
   std::vector<PacketConnection>
   maskSwitchboxConnections(Operation *switchOp,
-                           std::vector<PortMaskValue> nextPortMaskValues,
+                           const std::vector<PortMaskValue> &nextPortMaskValues,
                            MaskValue maskValue) const {
     std::vector<PacketConnection> worklist;
     for (auto &nextPortMaskValue : nextPortMaskValues) {

@@ -182,9 +182,11 @@ struct AIEDMATasksToNPUPass
       error.attachNote(block.getParentOp()->getLoc())
           << "Error encountered while lowering this BD configuration.";
       return failure();
-    } else if (n_bd_ops > 1) {
+    }
+    if (n_bd_ops > 1) {
       auto error = block.getTerminator()->emitOpError(
-          "This block contains multiple aie.dma_bd operations. Exactly one is "
+          "This block contains multiple aie.dma_bd operations. Exactly one     "
+          "    is "
           "required.");
       auto it = bd_ops.begin();
       ++it;
@@ -744,7 +746,7 @@ struct AIEDMATasksToNPUPass
     auto iteration_size = 0;
     auto iteration_stride = 0;
 
-    if (dims && dims->size() > 0) {
+    if (dims && !dims->empty()) {
       llvm::SmallVector<int64_t, 4> input_sizes =
           llvm::SmallVector<int64_t, 4>(4, 1);
       llvm::SmallVector<int64_t, 4> input_strides =
@@ -863,8 +865,10 @@ struct AIEDMATasksToNPUPass
         return bd_op->emitOpError()
                << "Padding requires n-d data layouts expressed as "
                << "wrap(s) and stride(s).";
-      } else if (padDims) {
-        return bd_op->emitOpError() << "Padding is supported only on MemTiles.";
+      }
+      if (padDims) {
+        return bd_op->emitOpError()
+               << "        Padding is supported only on MemTiles.";
       }
     }
     auto fieldsOr =
@@ -902,8 +906,7 @@ struct AIEDMATasksToNPUPass
 
   LogicalResult hoistNextBdOpsIntoAttrs(DMAConfigureTaskOp op) {
     Region &body = op.getBody();
-    for (auto it = body.begin(); it != body.end(); ++it) {
-      Block &block = *it;
+    for (auto &block : body) {
       if (shouldSkipBlock(block)) {
         continue;
       }
@@ -925,7 +928,7 @@ struct AIEDMATasksToNPUPass
                    .has_value()); // Next BD should have assigned ID, and this
                                   // should have been checked by earlier
                                   // verifyBdInBlock() call
-        bd_op.setNextBdId(next_dma_bd_op.getBdId().value());
+        bd_op.setNextBdId(next_dma_bd_op.getBdId());
         OpBuilder builder(next_bd_op);
         AIE::EndOp::create(builder, next_bd_op.getLoc());
         next_bd_op.erase();
@@ -943,8 +946,8 @@ struct AIEDMATasksToNPUPass
     if (!op.use_empty()) {
       auto err = op.emitOpError("Cannot lower while op still has uses.");
       mlir::Operation::use_range uses = op.getOperation()->getUses();
-      for (auto it = uses.begin(); it != uses.end(); ++it) {
-        err.attachNote(it->getOwner()->getLoc()) << "Used here.";
+      for (auto &use : uses) {
+        err.attachNote(use.getOwner()->getLoc()) << "Used here.";
       }
       return failure();
     }
@@ -954,17 +957,17 @@ struct AIEDMATasksToNPUPass
 
     // Verify each BD block first; subsequent functions rely on them being
     // well-formed
-    for (auto it = body.begin(); it != body.end(); ++it) {
-      if (shouldSkipBlock(*it)) {
+    for (auto &it : body) {
+      if (shouldSkipBlock(it)) {
         continue;
       }
-      if (failed(verifyNoUnsupportedOpsInBlock(*it))) {
+      if (failed(verifyNoUnsupportedOpsInBlock(it))) {
         return failure();
       }
-      if (failed(verifyBdInBlock(*it, hasRuntimeBdId))) {
+      if (failed(verifyBdInBlock(it, hasRuntimeBdId))) {
         return failure();
       }
-      if (failed(verifyOptionalLocksInBlock(*it))) {
+      if (failed(verifyOptionalLocksInBlock(it))) {
         return failure();
       }
     }
@@ -981,8 +984,7 @@ struct AIEDMATasksToNPUPass
     Value runtimeBdId = op.getBdIdVal();
 
     // Lower all BDs
-    for (auto it = body.begin(); it != body.end(); ++it) {
-      Block &block = *it;
+    for (auto &block : body) {
       if (shouldSkipBlock(block)) {
         continue;
       }

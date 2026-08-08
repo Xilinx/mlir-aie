@@ -22,7 +22,7 @@ using namespace xilinx;
 using namespace xilinx::AIE;
 using namespace xilinx::AIEX;
 
-std::string utohexstr(uint32_t u) { return "0x" + llvm::utohexstr(u); }
+static std::string utohexstr(uint32_t u) { return "0x" + llvm::utohexstr(u); }
 
 namespace xilinx {
 namespace AIE {
@@ -98,7 +98,8 @@ LogicalResult AIETranslateToBCF(ModuleOp module, raw_ostream &output,
                           "in the neighboring tile\n";
                 output << "\n";
                 continue;
-              } else if (buf.getInitialValue() && tile == srcCoord) {
+              }
+              if (buf.getInitialValue() && tile == srcCoord) {
                 output << "_overlay " << bufName << " "
                        << utohexstr(offset + bufferBaseAddr) << " // "
                        << numBytes << " bytes\n";

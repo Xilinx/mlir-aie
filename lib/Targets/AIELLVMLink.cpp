@@ -61,10 +61,11 @@ static std::unique_ptr<Module> loadFile(std::unique_ptr<MemoryBuffer> Buffer,
   return Result;
 }
 
-mlir::LogicalResult linkFiles(std::vector<std::string> Files,
-                              LLVMContext &Context, Linker &L, unsigned Flags,
-                              bool DisableDITypeMap, bool NoVerify,
-                              bool Internalize, bool Verbose) {
+static mlir::LogicalResult linkFiles(const std::vector<std::string> &Files,
+                                     LLVMContext &Context, Linker &L,
+                                     unsigned Flags, bool DisableDITypeMap,
+                                     bool NoVerify, bool Internalize,
+                                     bool Verbose) {
   // Filter out flags that don't apply to the first file we load.
   unsigned ApplicableFlags = Flags & Linker::Flags::OverrideFromSrc;
   // Similar to some flags, internalization doesn't apply to the first file.
@@ -135,8 +136,8 @@ xilinx::AIE::AIELLVMLink(llvm::raw_ostream &output,
     Flags |= Linker::Flags::LinkOnlyNeeded;
 
   // First add all the regular input files
-  if (failed(linkFiles(Files, Context, L, Flags, DisableDITypeMap, NoVerify,
-                       Internalize, Verbose)))
+  if (failed(linkFiles(std::move(Files), Context, L, Flags, DisableDITypeMap,
+                       NoVerify, Internalize, Verbose)))
     return mlir::failure();
 
   Composite->print(output, nullptr, PreserveAssemblyUseListOrder);

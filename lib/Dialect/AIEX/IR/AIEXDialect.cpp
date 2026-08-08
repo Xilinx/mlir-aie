@@ -1085,8 +1085,7 @@ AIEX::DMAConfigureTaskOp::canonicalize(AIEX::DMAConfigureTaskOp op,
   // Remove blocks that contain nothing but a terminator
   Region &body = op.getBody();
   bool did_rewrite = false;
-  for (auto it = body.begin(); it != body.end(); ++it) {
-    Block &block = *it;
+  for (auto &block : body) {
     if (block.empty()) {
       continue;
     }
@@ -1154,8 +1153,7 @@ LogicalResult AIEX::DMAConfigureTaskOp::verify() {
       failed(verifyTaskBDDimensions(targetModel, *col, *row, getBody())))
     return failure();
   Region &body = getBody();
-  for (auto it = body.begin(); it != body.end(); ++it) {
-    Block &block = *it;
+  for (auto &block : body) {
     if (block.empty()) {
       continue;
     }

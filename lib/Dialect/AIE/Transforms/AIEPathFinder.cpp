@@ -311,9 +311,9 @@ void Pathfinder::addFlow(TileID srcCoords, Port srcPort, TileID dstCoords,
     if (src.coords == srcCoords && src.port == srcPort) {
       if (isPriorityFlow) {
         prioritized = true;
-        dsts.emplace(dsts.begin(), PathEndPoint{dstCoords, dstPort});
+        dsts.emplace(dsts.begin(), dstCoords, dstPort);
       } else
-        dsts.emplace_back(PathEndPoint{dstCoords, dstPort});
+        dsts.emplace_back(dstCoords, dstPort);
       return;
     }
   }
@@ -456,7 +456,7 @@ void Pathfinder::buildRoutingGraph() {
         for (size_t j = 0; j < sb.dstPorts.size(); j++)
           if (sb.srcPorts[i] == src.port &&
               sb.connectivity[i][j] == Connectivity::AVAILABLE)
-            dests.push_back(PathEndPoint{src.coords, sb.dstPorts[j]});
+            dests.emplace_back(src.coords, sb.dstPorts[j]);
     }
     std::vector<std::pair<TileID, Port>> neighbors = {
         {{src.coords.col, src.coords.row - 1},
@@ -474,7 +474,7 @@ void Pathfinder::buildRoutingGraph() {
         auto &sb = nIt->second;
         if (std::find(sb.dstPorts.begin(), sb.dstPorts.end(), neighborPort) !=
             sb.dstPorts.end())
-          dests.push_back({neighborCoords, neighborPort});
+          dests.emplace_back(neighborCoords, neighborPort);
       }
     }
     std::sort(dests.begin(), dests.end());
@@ -527,12 +527,11 @@ void Pathfinder::dijkstraShortestPaths(int srcId) {
   std::fill(indexInHeap.begin(), indexInHeap.end(), uint64_t{0});
   (void)n;
 
-  typedef d_ary_heap_indirect<
+  using MutableQueue = d_ary_heap_indirect<
       /*Value=*/int, /*Arity=*/4,
       /*IndexInHeapPropertyMap=*/std::vector<uint64_t> &,
       /*DistanceMap=*/std::vector<double> &,
-      /*Compare=*/std::less<>>
-      MutableQueue;
+      /*Compare=*/std::less<>>;
   MutableQueue Q(distance, indexInHeap);
 
   distance[srcId] = 0.0;

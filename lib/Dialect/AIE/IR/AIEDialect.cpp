@@ -40,25 +40,24 @@ struct AIEInlinerInterface : DialectInlinerInterface {
   // We don't have any special restrictions on what can be inlined into
   // destination regions. Always allow it.
   bool isLegalToInline(Region *dest, Region *src, bool wouldBeCloned,
-                       IRMapping &valueMapping) const final override {
+                       IRMapping &valueMapping) const final {
     return true;
   }
 
   // Operations in aie dialect are always legal to inline since they are
   // pure.
   bool isLegalToInline(Operation *op, Region *, bool wouldBeCloned,
-                       IRMapping &) const final override {
+                       IRMapping &) const final {
     return true;
   }
 
   // Handle the given inlined terminator by replacing it with a new operation
   // as necessary. Required when the inlined region has more than one block.
-  void handleTerminator(Operation *op, Block *newDest) const final override {}
+  void handleTerminator(Operation *op, Block *newDest) const final {}
 
   // Handle the given inlined terminator by replacing it with a new operation
   // as necessary. Required when the region has only one block.
-  void handleTerminator(Operation *op,
-                        ValueRange valuesToRepl) const final override {}
+  void handleTerminator(Operation *op, ValueRange valuesToRepl) const final {}
 };
 
 struct AIEDialectFoldInterface : DialectFoldInterface {
@@ -67,7 +66,7 @@ struct AIEDialectFoldInterface : DialectFoldInterface {
   /// Registered hook to check if the given region, which is attached to an
   /// operation that is *not* isolated from above, should be used when
   /// materializing constants.
-  bool shouldMaterializeInto(Region *region) const final override {
+  bool shouldMaterializeInto(Region *region) const final {
     // Materialize constants into the op that "owns" them rather than letting
     // them hoist up to the enclosing IsolatedFromAbove aie.device:
     //  - aie.core bodies are outlined into standalone funcs, so their
@@ -599,8 +598,7 @@ ObjectFifoCreateOp::getDimensionsFromStream(Value consumerTile) {
   for (auto cons : getConsumerTiles()) {
     if (cons == consumerTile)
       break;
-    else
-      dimsIndex++;
+    dimsIndex++;
   }
   return getDimensionsFromStreamPerConsumer()[dimsIndex];
 }
@@ -1005,7 +1003,7 @@ std::vector<int> ObjectFifoLinkOp::getDistributeTransferLengths() {
 std::optional<int> ObjectFifoLinkOp::getRepeatCount() {
   for (auto fifoOut : getOutputObjectFifos())
     if (fifoOut.getRepeatCount().has_value())
-      return {fifoOut.getRepeatCount().value()};
+      return {fifoOut.getRepeatCount()};
   return {};
 }
 
@@ -1340,7 +1338,7 @@ const AIETargetModel &DeviceOp::getTargetModel() {
 xilinx::AIE::DeviceOp DeviceOp::getForSymbolInModule(mlir::ModuleOp module,
                                                      llvm::StringRef symbol) {
   DeviceOp deviceOp;
-  if (!symbol.size()) {
+  if (symbol.empty()) {
     // If no device name is given, assume 'main'
     symbol = "main";
   }
@@ -1664,8 +1662,9 @@ AIETileType TileOp::getTileType() {
   return targetModel.getTileType(getCol(), getRow());
 }
 
-bool isLegalTileConnection(TileOp tile, const AIETargetModel &targetModel,
-                           MasterSetOp masterOp, PacketRulesOp slaveOp) {
+static bool isLegalTileConnection(TileOp tile,
+                                  const AIETargetModel &targetModel,
+                                  MasterSetOp masterOp, PacketRulesOp slaveOp) {
   auto srcBundle = slaveOp.sourcePort().bundle;
   auto srcChan = slaveOp.sourcePort().channel;
   auto dstBundle = masterOp.destPort().bundle;
@@ -1674,8 +1673,9 @@ bool isLegalTileConnection(TileOp tile, const AIETargetModel &targetModel,
       tile.colIndex(), tile.rowIndex(), srcBundle, srcChan, dstBundle, dstChan);
 }
 
-bool isLegalTileConnection(TileOp tile, const AIETargetModel &targetModel,
-                           ConnectOp connectOp) {
+static bool isLegalTileConnection(TileOp tile,
+                                  const AIETargetModel &targetModel,
+                                  ConnectOp connectOp) {
   auto srcBundle = connectOp.getSourceBundle();
   auto srcChan = connectOp.getSourceChannel();
   auto dstBundle = connectOp.getDestBundle();
@@ -2543,7 +2543,7 @@ static LogicalResult FoldDMAStartOp(DMAStartOp op, PatternRewriter &rewriter) {
 
   // Get a vector of unique BDs.
   SmallVector<Block *> uniquePattern;
-  auto patternIt = reachable.begin();
+  const auto *patternIt = reachable.begin();
   while (patternIt != reachable.end() &&
          llvm::none_of(uniquePattern, [patternIt, areEquivalentBDs](Block *b1) {
            return areEquivalentBDs(*patternIt, b1);
@@ -2653,7 +2653,10 @@ struct FoldConstantBDDimList : public mlir::OpRewritePattern<DMABDOp> {
     llvm::SmallVector<mlir::OpFoldResult> sizes = op.getMixedSizes();
     llvm::SmallVector<mlir::OpFoldResult> strides = op.getMixedStrides();
     // foldDynamicIndexList returns success() only if it replaced a dynamic
-    // entry with a constant.
+    // entry with a constant. Bitwise (not logical) OR is deliberate: both
+    // calls must run unconditionally, so strides still folds even once
+    // sizes already succeeded.
+    // NOLINTNEXTLINE(clang-diagnostic-bitwise-instead-of-logical)
     bool changed = succeeded(mlir::foldDynamicIndexList(sizes)) |
                    succeeded(mlir::foldDynamicIndexList(strides));
 
@@ -2689,11 +2692,11 @@ struct FoldConstantBDDimList : public mlir::OpRewritePattern<DMABDOp> {
         op.setStaticStrides(staticStrides);
       if (foldOffset) {
         op.getOffsetMutable().clear();
-        op.setStaticOffset(*foldOffset);
+        op.setStaticOffset(foldOffset);
       }
       if (foldLen) {
         op.getLenMutable().clear();
-        op.setStaticLen(*foldLen);
+        op.setStaticLen(foldLen);
       }
     });
     return mlir::success();
@@ -3145,7 +3148,7 @@ void BDChainOp::print(OpAsmPrinter &printer) {
   Region &body = getRegion();
   auto argsIter = body.getArguments();
   printer << '(';
-  for (auto it = argsIter.begin(); it != argsIter.end(); ++it) {
+  for (auto *it = argsIter.begin(); it != argsIter.end(); ++it) {
     if (it != argsIter.begin()) {
       printer << ", ";
     }
@@ -3342,7 +3345,7 @@ RuntimeSequenceOp
 RuntimeSequenceOp::getForSymbolInDevice(DeviceOp deviceOp,
                                         llvm::StringRef symbol) {
   RuntimeSequenceOp runtimeSequenceOp;
-  if (!symbol.size()) {
+  if (symbol.empty()) {
     auto range = deviceOp.getOps<RuntimeSequenceOp>();
     if (range.begin() == range.end()) {
       // No runtime sequence in the device; let the caller emit a diagnostic

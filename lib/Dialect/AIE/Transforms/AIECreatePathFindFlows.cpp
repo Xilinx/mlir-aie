@@ -219,7 +219,8 @@ struct AIEOpRemoval : OpConversionPattern<MyOp> {
   }
 };
 
-bool AIEPathfinderPass::findPathToDest(SwitchSettings settings, TileID currTile,
+bool AIEPathfinderPass::findPathToDest(const SwitchSettings &settings,
+                                       TileID currTile,
                                        WireBundle currDestBundle,
                                        int currDestChannel, TileID finalTile,
                                        WireBundle finalDestBundle,

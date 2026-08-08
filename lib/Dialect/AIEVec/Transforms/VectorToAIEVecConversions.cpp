@@ -278,7 +278,7 @@ narrowValueWithWideningCheck(Operation *srcOp, Value val, Type targetType,
 static void
 performBF16BinaryOpInF32(Value lhs, Value rhs, Operation *srcOp, Location loc,
                          ConversionPatternRewriter &rewriter,
-                         std::function<Value(Value, Value)> opBuilder) {
+                         const std::function<Value(Value, Value)> &opBuilder) {
   Type f32Type = rewriter.getF32Type();
 
   // Smart widen both operands (reuse f32 source if narrowed from f32)
@@ -509,7 +509,10 @@ buildAttributeListForRotationSelectOp(PatternRewriter &rewriter, VectorType vTy,
 
 namespace xilinx::aievec {
 
+// Also called from AIEVecOptimizations.cpp via a forward declaration there;
+// not static.
 SmallVector<NamedAttribute>
+// NOLINTNEXTLINE(misc-use-internal-linkage)
 buildFMAOpSplatAttrForElemTy(aievec::aie1::FMAOp fmaOp, int64_t bcastPos,
                              int64_t step = 1) {
   unsigned width = 0;
@@ -741,7 +744,7 @@ static func::FuncOp getOrInsertFuncDecl(ConversionPatternRewriter &rewriter,
   func::FuncOp fnOp;
   // if the function is already declared, use the existing function, don't
   // declare multiple times
-  if (fnOpLookup != NULL) {
+  if (fnOpLookup != nullptr) {
     fnOp = fnOpLookup;
   } else {
     StringAttr t1 = rewriter.getStringAttr("sym_visibility");
@@ -1111,7 +1114,7 @@ struct ConvertVectorFMAOpToAIEVecFMAElemOpPattern
 
     // Only support f32 with 16 lanes; bf16 with 16 or 32 lanes.
     if ((!resElemTy.isF32() && !resElemTy.isBF16()) ||
-        (numElems != 16 && !(resElemTy.isBF16() && numElems == 32)))
+        (numElems != 16 && (!resElemTy.isBF16() || numElems != 32)))
       return rewriter.notifyMatchFailure(
           fmaOp, "Unsupported operand types in vector.fma lowering.");
 
@@ -1336,7 +1339,10 @@ struct ConvertMulFToAIEVecMulElemOpPattern
     Type srcElemType = (rBitWidth > lBitWidth) ? rSrcType.getElementType()
                                                : lSrcType.getElementType();
     unsigned numLanes = 0;
-    if (isa<FloatType>(srcElemType) && (bitWidth == 16 || bitWidth == 32)) {
+    // float16/32 and int32 both land on 16 lanes -- genuinely distinct
+    // source types happen to share a lane count, not a copy-paste clone.
+    if (isa<FloatType>(srcElemType) &&
+        (bitWidth == 16 || bitWidth == 32)) { // NOLINT(bugprone-branch-clone)
       numLanes = 16;
     } else if (isa<IntegerType>(srcElemType) &&
                (bitWidth == 8 || bitWidth == 16)) {
@@ -1440,7 +1446,10 @@ struct ConvertMulIToAIEVecMulElemOpPattern
     Type srcElemType = (rBitWidth > lBitWidth) ? rSrcType.getElementType()
                                                : lSrcType.getElementType();
     unsigned numLanes = 0;
-    if (isa<FloatType>(srcElemType) && (bitWidth == 16 || bitWidth == 32)) {
+    // float16/32 and int32 both land on 16 lanes -- genuinely distinct
+    // source types happen to share a lane count, not a copy-paste clone.
+    if (isa<FloatType>(srcElemType) &&
+        (bitWidth == 16 || bitWidth == 32)) { // NOLINT(bugprone-branch-clone)
       numLanes = 16;
     } else if (isa<IntegerType>(srcElemType) &&
                (bitWidth == 8 || bitWidth == 16)) {
@@ -1754,8 +1763,8 @@ struct LowerVectorAddOrSubOpToAIEVecAddElemOrSubElemOp
                                  isa<arith::MulFOp>(lhsDefOp));
     bool rhsIsMul = rhsDefOp && (isa<arith::MulIOp>(rhsDefOp) ||
                                  isa<arith::MulFOp>(rhsDefOp));
-    bool lhsIsConst = lhsDefOp && isa<arith::ConstantOp>(lhsDefOp);
-    bool rhsIsConst = rhsDefOp && isa<arith::ConstantOp>(rhsDefOp);
+    bool lhsIsConst = isa_and_nonnull<arith::ConstantOp>(lhsDefOp);
+    bool rhsIsConst = isa_and_nonnull<arith::ConstantOp>(rhsDefOp);
 
     // Defer to FMA/MAC patterns when a multiply feeds into add, UNLESS the
     // element type is f32 (where no FMA pattern exists). For bf16 and integer
@@ -2104,7 +2113,7 @@ struct LowerVectorMinMaxOpToAIEVecMinMaxOp : OpConversionPattern<SrcOpTy> {
 
     unsigned totalBits = laneSize * resultElWidth;
     if (!elWidthSet.count(resultElWidth) ||
-        (totalBits != 512 && !(totalBits == 256 && resultElWidth == 16)))
+        (totalBits != 512 && (totalBits != 256 || resultElWidth != 16)))
       return failure();
 
     if (totalBits == 256 && resultElWidth == 16) {
@@ -2240,7 +2249,7 @@ struct LowerVectorCmpOpToAIEVecCmpOp : OpConversionPattern<SrcOpTy> {
 
     unsigned totalBits = laneSize * elWidth;
     if (!elWidthSet.count(elWidth) ||
-        (totalBits != 512 && !(totalBits == 256 && elWidth == 16)))
+        (totalBits != 512 && (totalBits != 256 || elWidth != 16)))
       return failure();
 
     Location loc = srcOp.getLoc();
@@ -2305,7 +2314,7 @@ struct LowerVectorSelectOpToAIEVecSelOp : OpConversionPattern<arith::SelectOp> {
 
     unsigned totalBits = laneSize * resultElWidth;
     if (!elWidthSet.count(resultElWidth) ||
-        (totalBits != 512 && !(totalBits == 256 && resultElWidth == 16)))
+        (totalBits != 512 && (totalBits != 256 || resultElWidth != 16)))
       return failure();
 
     if (totalBits == 256 && resultElWidth == 16) {
@@ -2375,7 +2384,7 @@ struct LowerVectorReductionMinOp : OpConversionPattern<vector::ReductionOp> {
     unsigned vectorSize = laneSize * elWidth;
 
     // Support 512-bit vectors directly, and 256-bit bf16 vectors by padding
-    if (vectorSize != 512 && !(vectorSize == 256 && scalarType.isBF16()))
+    if (vectorSize != 512 && (vectorSize != 256 || !scalarType.isBF16()))
       return failure();
 
     Location loc = srcOp.getLoc();
@@ -2444,7 +2453,7 @@ struct LowerVectorReductionMaxOp : OpConversionPattern<vector::ReductionOp> {
 
     // Support 512-bit vectors directly, and 256-bit bf16 vectors by padding
     // Only bf16 is supported for the 256-bit padding path (not f16)
-    if (vectorSize != 512 && !(vectorSize == 256 && scalarType.isBF16()))
+    if (vectorSize != 512 && (vectorSize != 256 || !scalarType.isBF16()))
       return failure();
 
     Location loc = srcOp.getLoc();
@@ -5191,11 +5200,9 @@ static void configureAIEVecCommonLegalizations(ConversionTarget &target) {
     if (!bitcastOp)
       return true;
     auto bitcastSrcType = dyn_cast<VectorType>(bitcastOp.getSource().getType());
-    if (!bitcastSrcType || bitcastSrcType.getRank() != 1 ||
-        !bitcastSrcType.getElementType().isInteger(8) ||
-        bitcastSrcType.getNumElements() * 2 != lanes)
-      return true;
-    return false;
+    return !bitcastSrcType || bitcastSrcType.getRank() != 1 ||
+           !bitcastSrcType.getElementType().isInteger(8) ||
+           bitcastSrcType.getNumElements() * 2 != lanes;
   });
 
   target.addDynamicallyLegalOp<arith::TruncFOp>([](arith::TruncFOp truncfOp) {
@@ -5223,9 +5230,7 @@ static void configureAIEVecCommonLegalizations(ConversionTarget &target) {
     if (!srcType || !dstType) {
       // Scalar trunci: mark illegal if part of compound SRS chain
       // so the LowerScalarShiftClampTruncToSRS pattern can convert it.
-      if (!srcType && !dstType && isSRSCompoundCandidate(trunciOp))
-        return false;
-      return true;
+      return !(!srcType && !dstType && isSRSCompoundCandidate(trunciOp));
     }
 
     Type srcScalarType = srcType.getElementType();
@@ -5488,11 +5493,8 @@ static void configureAIEVecV2PLegalizations(ConversionTarget &target) {
     unsigned elWidth = scalarType.getIntOrFloatBitWidth();
     unsigned laneSize = getVectorLaneSize(srcType);
     // AIE2P LLVMIR: v16bf16 and v32bf16 are illegal (uses aievec.tanh)
-    if (!scalarType.isBF16() || (laneSize != 16 && laneSize != 32) ||
-        elWidth != 16)
-      return true;
-
-    return false;
+    return !scalarType.isBF16() || (laneSize != 16 && laneSize != 32) ||
+           elWidth != 16;
   });
 
   // AIE2P-specific legalization for divf 1.0/x pattern with LLVMIR backend
@@ -5544,10 +5546,7 @@ static void configureAIEVecV2PLegalizations(ConversionTarget &target) {
 
     unsigned srcLaneSize = getVectorLaneSize(srcType);
     unsigned dstLaneSize = getVectorLaneSize(dstType);
-    if ((srcLaneSize % 16 == 0) && (dstLaneSize % 16 == 0))
-      return false;
-
-    return true;
+    return !((srcLaneSize % 16 == 0) && (dstLaneSize % 16 == 0));
   });
 
   // AIE2P-specific legalization: TruncFOp on vector is always illegal
@@ -5564,10 +5563,7 @@ static void configureAIEVecV2PLegalizations(ConversionTarget &target) {
 
     unsigned srcLaneSize = getVectorLaneSize(srcType);
     unsigned dstLaneSize = getVectorLaneSize(dstType);
-    if ((srcLaneSize % 16 == 0) && (dstLaneSize % 16 == 0))
-      return false;
-
-    return true;
+    return !((srcLaneSize % 16 == 0) && (dstLaneSize % 16 == 0));
   });
 
   // AIE2P-specific legalization: ExtSIOp on vector is always illegal
@@ -5584,10 +5580,7 @@ static void configureAIEVecV2PLegalizations(ConversionTarget &target) {
 
     unsigned srcLaneSize = getVectorLaneSize(srcType);
     unsigned dstLaneSize = getVectorLaneSize(dstType);
-    if ((srcLaneSize % 16 == 0) && (dstLaneSize % 16 == 0))
-      return false;
-
-    return true;
+    return !((srcLaneSize % 16 == 0) && (dstLaneSize % 16 == 0));
   });
 
   // AIE2P-specific legalization: TruncIOp on vector is always illegal
@@ -5596,9 +5589,7 @@ static void configureAIEVecV2PLegalizations(ConversionTarget &target) {
     auto dstType = dyn_cast<VectorType>(trunciOp.getOut().getType());
     if (!srcType || !dstType) {
       // Scalar trunci: mark illegal if part of compound SRS chain
-      if (!srcType && !dstType && isSRSCompoundCandidate(trunciOp))
-        return false;
-      return true;
+      return !(!srcType && !dstType && isSRSCompoundCandidate(trunciOp));
     }
     Type srcScalarType = srcType.getElementType();
     Type dstScalarType = dstType.getElementType();
@@ -5612,10 +5603,7 @@ static void configureAIEVecV2PLegalizations(ConversionTarget &target) {
 
     unsigned srcLaneSize = getVectorLaneSize(srcType);
     unsigned dstLaneSize = getVectorLaneSize(dstType);
-    if ((srcLaneSize % 16 == 0) && (dstLaneSize % 16 == 0))
-      return false;
-
-    return true;
+    return !((srcLaneSize % 16 == 0) && (dstLaneSize % 16 == 0));
   });
 
   // AIE2P-specific legalization: Override AddFOp to support laneSize==32 for
@@ -5826,7 +5814,7 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target) {
     unsigned totalBits = laneSize * resultElWidth;
 
     return !elWidthSet.count(resultElWidth) ||
-           (totalBits != 512 && !(totalBits == 256 && resultElWidth == 16));
+           (totalBits != 512 && (totalBits != 256 || resultElWidth != 16));
   });
 
   target.addDynamicallyLegalOp<arith::MaxUIOp>([=](arith::MaxUIOp op) {
@@ -5839,7 +5827,7 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target) {
     unsigned totalBits = laneSize * resultElWidth;
 
     return !elWidthSet.count(resultElWidth) ||
-           (totalBits != 512 && !(totalBits == 256 && resultElWidth == 16));
+           (totalBits != 512 && (totalBits != 256 || resultElWidth != 16));
   });
 
   target.addDynamicallyLegalOp<arith::MinimumFOp>([=](arith::MinimumFOp op) {
@@ -5852,7 +5840,7 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target) {
     unsigned totalBits = laneSize * resultElWidth;
 
     return !elWidthSet.count(resultElWidth) ||
-           (totalBits != 512 && !(totalBits == 256 && resultElWidth == 16));
+           (totalBits != 512 && (totalBits != 256 || resultElWidth != 16));
   });
 
   target.addDynamicallyLegalOp<arith::MaximumFOp>([=](arith::MaximumFOp op) {
@@ -5865,7 +5853,7 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target) {
     unsigned totalBits = laneSize * resultElWidth;
 
     return !elWidthSet.count(resultElWidth) ||
-           (totalBits != 512 && !(totalBits == 256 && resultElWidth == 16));
+           (totalBits != 512 && (totalBits != 256 || resultElWidth != 16));
   });
 
   target.addDynamicallyLegalOp<arith::MaxNumFOp>([=](arith::MaxNumFOp op) {
@@ -5878,7 +5866,7 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target) {
     unsigned totalBits = laneSize * resultElWidth;
 
     return !elWidthSet.count(resultElWidth) ||
-           (totalBits != 512 && !(totalBits == 256 && resultElWidth == 16));
+           (totalBits != 512 && (totalBits != 256 || resultElWidth != 16));
   });
 
   target.addDynamicallyLegalOp<arith::MinNumFOp>([=](arith::MinNumFOp op) {
@@ -5891,7 +5879,7 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target) {
     unsigned totalBits = laneSize * resultElWidth;
 
     return !elWidthSet.count(resultElWidth) ||
-           (totalBits != 512 && !(totalBits == 256 && resultElWidth == 16));
+           (totalBits != 512 && (totalBits != 256 || resultElWidth != 16));
   });
 
   target.addDynamicallyLegalOp<arith::CmpIOp>([=](arith::CmpIOp op) {
@@ -5904,7 +5892,7 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target) {
     unsigned totalBits = laneSize * lhsElWidth;
 
     return !elWidthSet.count(lhsElWidth) ||
-           (totalBits != 512 && !(totalBits == 256 && lhsElWidth == 16));
+           (totalBits != 512 && (totalBits != 256 || lhsElWidth != 16));
   });
 
   target.addDynamicallyLegalOp<arith::CmpFOp>([=](arith::CmpFOp op) {
@@ -5917,7 +5905,7 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target) {
     unsigned totalBits = laneSize * lhsElWidth;
 
     return !elWidthSet.count(lhsElWidth) ||
-           (totalBits != 512 && !(totalBits == 256 && lhsElWidth == 16));
+           (totalBits != 512 && (totalBits != 256 || lhsElWidth != 16));
   });
 
   target.addDynamicallyLegalOp<arith::SelectOp>([=](arith::SelectOp op) {
@@ -5930,7 +5918,7 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target) {
     unsigned totalBits = laneSize * resultElWidth;
 
     return !elWidthSet.count(resultElWidth) ||
-           (totalBits != 512 && !(totalBits == 256 && resultElWidth == 16));
+           (totalBits != 512 && (totalBits != 256 || resultElWidth != 16));
   });
 
   target.addDynamicallyLegalOp<vector::ReductionOp>(
@@ -5984,10 +5972,7 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target) {
 
     unsigned srcLaneSize = getVectorLaneSize(srcType);
     unsigned dstLaneSize = getVectorLaneSize(dstType);
-    if ((srcLaneSize % 16 == 0) && (dstLaneSize % 16 == 0))
-      return false;
-
-    return true;
+    return !((srcLaneSize % 16 == 0) && (dstLaneSize % 16 == 0));
   });
 
   // AIE2-specific legalization: TruncFOp on vector is always illegal
@@ -6004,10 +5989,7 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target) {
 
     unsigned srcLaneSize = getVectorLaneSize(srcType);
     unsigned dstLaneSize = getVectorLaneSize(dstType);
-    if ((srcLaneSize % 16 == 0) && (dstLaneSize % 16 == 0))
-      return false;
-
-    return true;
+    return !((srcLaneSize % 16 == 0) && (dstLaneSize % 16 == 0));
   });
 
   // AIE2-specific legalization: ExtSIOp on vector is always illegal
@@ -6024,10 +6006,7 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target) {
 
     unsigned srcLaneSize = getVectorLaneSize(srcType);
     unsigned dstLaneSize = getVectorLaneSize(dstType);
-    if ((srcLaneSize % 16 == 0) && (dstLaneSize % 16 == 0))
-      return false;
-
-    return true;
+    return !((srcLaneSize % 16 == 0) && (dstLaneSize % 16 == 0));
   });
 
   // AIE2-specific legalization: TruncIOp on vector is always illegal
@@ -6036,9 +6015,7 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target) {
     auto dstType = dyn_cast<VectorType>(trunciOp.getOut().getType());
     if (!srcType || !dstType) {
       // Scalar trunci: mark illegal if part of compound SRS chain
-      if (!srcType && !dstType && isSRSCompoundCandidate(trunciOp))
-        return false;
-      return true;
+      return !(!srcType && !dstType && isSRSCompoundCandidate(trunciOp));
     }
     Type srcScalarType = srcType.getElementType();
     Type dstScalarType = dstType.getElementType();
@@ -6052,10 +6029,7 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target) {
 
     unsigned srcLaneSize = getVectorLaneSize(srcType);
     unsigned dstLaneSize = getVectorLaneSize(dstType);
-    if ((srcLaneSize % 16 == 0) && (dstLaneSize % 16 == 0))
-      return false;
-
-    return true;
+    return !((srcLaneSize % 16 == 0) && (dstLaneSize % 16 == 0));
   });
 
   target.addIllegalOp<vector::ContractionOp, vector::TransposeOp,

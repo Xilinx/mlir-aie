@@ -77,8 +77,10 @@ public:
     std::fflush(stderr);
     ::dup2(savedOut, STDOUT_FILENO);
     ::close(savedOut);
-    ::dup2(savedErr, STDERR_FILENO);
-    ::close(savedErr);
+    if (savedErr >= 0) {
+      ::dup2(savedErr, STDERR_FILENO);
+      ::close(savedErr);
+    }
     if (auto buf = llvm::MemoryBuffer::getFile(tmpPath))
       out = (*buf)->getBuffer().str();
     llvm::sys::fs::remove(tmpPath);

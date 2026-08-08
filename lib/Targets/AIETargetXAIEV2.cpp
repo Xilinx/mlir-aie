@@ -98,7 +98,7 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
   llvm::SetVector<Block *> blockVector =
       getOrderedChainOfBlocks(&memOp.getBody());
 
-  for (auto block : blockVector) {
+  for (auto *block : blockVector) {
     bool foundBdPacket = false;
     int packetType = 0;
     int packetID = 0;
@@ -289,7 +289,7 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
     }
   }
 
-  for (auto block : blockVector) {
+  for (auto *block : blockVector) {
     for (auto op : block->getOps<DMAStartOp>()) {
       int bdNum = blockMap[op.getDest()];
       StringRef dmaDir = stringifyDMAChannelDir(op.getChannelDir());
@@ -503,10 +503,10 @@ xilinx::AIE::AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output,
       for (auto op : block.getOps<DMAStartOp>()) {
         int chNum = op.getChannelIndex();
         channelMap[&block] = chNum;
-        auto dest = op.getDest();
+        auto *dest = op.getDest();
         while (dest) {
           channelMap[dest] = chNum;
-          if (dest->getSuccessors().size() < 1)
+          if (dest->getSuccessors().empty())
             break;
           dest = dest->getSuccessors()[0];
           if (channelMap.count(dest))
