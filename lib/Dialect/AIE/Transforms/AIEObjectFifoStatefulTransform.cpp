@@ -956,18 +956,21 @@ struct AIEObjectFifoStatefulTransformPass
   /// createMemTileDMA() based on op tile row value.
   void createDMA(DeviceOp &device, OpBuilder &builder, ObjectFifoCreateOp op,
                  DMAChannelDir channelDir, int channelIndex, int lockMode,
-                 BDDimLayoutArrayAttr dims, BDPadLayoutArrayAttr pad_dims,
-                 std::optional<PacketInfoAttr> bdPacket,
-                 ObjectFifoState &state) {
+                 BDDimLayoutArrayAttr dims, BDPadLayoutArrayAttr padDimensions,
+                 std::optional<PacketInfoAttr> bdPacket, ObjectFifoState &state,
+                 uint32_t padValue = 0) {
     if (op.getProducerTileOp().isShimTile()) {
       createShimDMA(device, builder, op, channelDir, channelIndex, lockMode,
                     dims, bdPacket, state);
     } else if (op.getProducerTileOp().isMemTile()) {
       BDPadLayoutArrayAttr padDims = nullptr;
-      if (channelDir == DMAChannelDir::MM2S && pad_dims)
-        padDims = pad_dims;
+      uint32_t padVal = 0;
+      if (channelDir == DMAChannelDir::MM2S && padDimensions) {
+        padDims = padDimensions;
+        padVal = padValue;
+      }
       createMemTileDMA(device, builder, op, channelDir, channelIndex, lockMode,
-                       dims, padDims, bdPacket, state);
+                       dims, padDims, bdPacket, state, padVal);
     } else {
       createAIETileDMA(device, builder, op, channelDir, channelIndex, lockMode,
                        dims, bdPacket, state);
@@ -1048,7 +1051,7 @@ struct AIEObjectFifoStatefulTransformPass
     int bdRepeatCount = useHwRepeat ? 1 : repeatCount;
     builder.setInsertionPointToStart(dmaBlock);
     DMAStartOp::create(builder, op.getLoc(), channelDir, channelIndex,
-                       dmaRepeatCount, bdBlock, endBlock);
+                       dmaRepeatCount, /*pad_value*/ 0, bdBlock, endBlock);
     if (lastDmaBlock != nullptr)
       lastDmaBlock->getTerminator()->setSuccessor(dmaBlock, 1);
 
@@ -1124,7 +1127,7 @@ struct AIEObjectFifoStatefulTransformPass
     // create DMA channel
     builder.setInsertionPointToStart(dmaBlock);
     DMAStartOp::create(builder, op.getLoc(), channelDir, channelIndex,
-                       /*repeatCout*/ 0, bdBlock, endBlock);
+                       /*repeat_count*/ 0, /*pad_value*/ 0, bdBlock, endBlock);
     if (lastDmaBlock != nullptr)
       lastDmaBlock->getTerminator()->setSuccessor(dmaBlock, 1);
 
@@ -1161,7 +1164,7 @@ struct AIEObjectFifoStatefulTransformPass
                         BDDimLayoutArrayAttr dims,
                         BDPadLayoutArrayAttr padDimensions,
                         std::optional<PacketInfoAttr> bdPacket,
-                        ObjectFifoState &state) {
+                        ObjectFifoState &state, uint32_t padValue = 0) {
     size_t numBlocks = op.size();
     if (numBlocks == 0)
       return;
@@ -1300,7 +1303,7 @@ struct AIEObjectFifoStatefulTransformPass
       taskCount = repeatCount - 1;
     int bdRepeatFactor = useHwRepeat ? 1 : repeatCount;
     DMAStartOp::create(builder, op.getLoc(), channelDir, channelIndex,
-                       taskCount, bdBlock, endBlock);
+                       taskCount, padValue, bdBlock, endBlock);
     if (lastDmaBlock != nullptr)
       lastDmaBlock->getTerminator()->setSuccessor(dmaBlock, 1);
 
@@ -2298,7 +2301,8 @@ struct AIEObjectFifoStatefulTransformPass
         }
         createDMA(device, builder, producer, producerChan.direction,
                   producerChan.channel, 0, producer.getDimensionsToStreamAttr(),
-                  producer.getPadDimensionsAttr(), bdPacket, state);
+                  producer.getPadDimensionsAttr(), bdPacket, state,
+                  producer.getPadValue());
 
         // Record the producer's non-shim DMA endpoint so a resident
         // aiex.dma_channel_reset_for on this fifo can re-arm it after the fifo

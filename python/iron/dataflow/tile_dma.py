@@ -20,7 +20,9 @@ Used together with [`Flow`][iron.Flow] / [`PacketFlow`][iron.PacketFlow]
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Iterable
+from typing import Any, Iterable, Sequence
+
+import numpy as np
 
 from ... import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
 from ...dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
@@ -39,6 +41,7 @@ from ...dialects.aie import (
     shim_mem,
     use_lock,  # pyright: ignore[reportAttributeAccessIssue]
 )
+from ...helpers.util import pack_pad_value
 from ..buffer import Buffer
 from ..device import Tile
 from ..lock import Lock
@@ -102,6 +105,10 @@ class Bd:
     # transfer. sizes and strides must have equal length.
     sizes: list = field(default_factory=list)
     strides: list = field(default_factory=list)
+    # Per-BD constant-pad geometry (MemTile only): one (const_pad_before,
+    # const_pad_after) pair per dimension, outermost first, matching the
+    # sizes/strides layout. The fill value is per-channel (DmaChannel.pad_value).
+    pad_dimensions: list[Sequence[int]] | None = None
 
 
 @dataclass
@@ -118,6 +125,35 @@ class DmaChannel:
     direction: DMAChannelDir
     channel: int
     bds: list[Bd]
+    pad_value: int = 0
+
+
+def _channel_pad_word(ch: "DmaChannel") -> int | None:
+    """Resolve a channel's per-element pad_value into the raw 32-bit stream word.
+
+    Returns None for the default 0 (elides the attribute). The element width is
+    taken from the channel's padded BD(s); a nonzero pad_value requires at least
+    one BD with pad_dimensions (else it would silently no-op), and all padded BDs
+    on the channel must share an element size (one register serves them all).
+    """
+    if not ch.pad_value:
+        return None
+    elem_sizes = {
+        np.dtype(bd.buffer.dtype).itemsize
+        for bd in ch.bds
+        if bd.pad_dimensions is not None
+    }
+    if not elem_sizes:
+        raise ValueError(
+            "DmaChannel.pad_value is set but no BD on the channel has "
+            "pad_dimensions; a pad value needs a padded region."
+        )
+    if len(elem_sizes) > 1:
+        raise ValueError(
+            "DmaChannel.pad_value is shared by all padded BDs on the channel, "
+            f"but they have differing element sizes {sorted(elem_sizes)}."
+        )
+    return pack_pad_value(ch.pad_value, elem_sizes.pop())
 
 
 class TileDma(Resolvable):
@@ -228,6 +264,7 @@ class TileDma(Resolvable):
                 ch.channel,
                 dest=block[chan_head_idx[0]],
                 chain=block[chan_chain_idx[0]],
+                pad_value=_channel_pad_word(ch) or 0,
             )
             # Chain blocks: dma_start for channels 1..N-1
             for i in range(1, len(channels)):
@@ -238,6 +275,7 @@ class TileDma(Resolvable):
                         ch_i.channel,
                         dest=block[chan_head_idx[i]],
                         chain=block[chan_chain_idx[i]],
+                        pad_value=_channel_pad_word(ch_i) or 0,
                     )
 
             # Per-channel BD bodies.
@@ -254,6 +292,8 @@ class TileDma(Resolvable):
                             bd_kwargs["offset"] = bd.offset
                         if bd.length is not None:
                             bd_kwargs["transfer_len"] = bd.length
+                        if bd.pad_dimensions is not None:
+                            bd_kwargs["pad_dimensions"] = bd.pad_dimensions
                         # A packet header must be a distinct aie.dma_bd_packet op
                         # placed BEFORE the aie.dma_bd: the CDO/xclbin backends
                         # (AIERT / AIETargetXAIEV2) read the header only from that
