@@ -12,9 +12,9 @@ test/python/npu-xrt/test_iron_jit_e2e.py (requires xrt_python_bindings).
 """
 
 import json
+import os
 import subprocess
 import sys
-import time
 from pathlib import Path
 from types import CodeType
 
@@ -288,18 +288,91 @@ def test_hash_for_path_generator_uses_path_string():
     assert hash(d1) != hash(d2)
 
 
-def test_hash_for_existing_source_file_includes_mtime(tmp_path):
-    """Changing a source file (hence mtime) must change the hash."""
+def test_hash_for_existing_source_file_tracks_content(tmp_path):
+    """Changing a source file's content must change the hash.
+
+    No ``time.sleep`` any more: the key digests bytes, so it does not have to
+    wait out filesystem mtime granularity to observe an edit.
+    """
     src = tmp_path / "kernel.cc"
     src.write_text("// v1")
     d1 = CompilableDesign(_gemm_gen(), source_files=[src])
     h1 = hash(d1)
 
-    time.sleep(0.01)
     src.write_text("// v2")
 
     d2 = CompilableDesign(_gemm_gen(), source_files=[src])
     assert h1 != hash(d2)
+
+
+def test_hash_survives_touch_of_an_unchanged_source(tmp_path):
+    """Restamping a source file must NOT change the hash.
+
+    This is the property that makes the cache reusable at all across a fresh
+    checkout, a reinstall or a ``cp``: those restamp every file without
+    changing a byte, and under an mtime-keyed hash every entry was invalidated
+    for reasons that had nothing to do with the build.
+    """
+    src = tmp_path / "kernel.cc"
+    src.write_text("// v1")
+    d1 = CompilableDesign(_gemm_gen(), source_files=[src])
+    h1 = hash(d1)
+
+    st = src.stat()
+    os.utime(src, (st.st_atime + 10_000, st.st_mtime + 10_000))
+
+    d2 = CompilableDesign(_gemm_gen(), source_files=[src])
+    assert hash(d2) == h1
+
+
+def test_hash_survives_touch_of_an_unchanged_object_file(tmp_path):
+    """Same property for prebuilt objects, which are keyed the same way."""
+    obj = tmp_path / "kernel.o"
+    obj.write_bytes(b"\x7fELF-not-really")
+    d1 = CompilableDesign(_gemm_gen(), object_files=[obj])
+    h1 = hash(d1)
+
+    st = obj.stat()
+    os.utime(obj, (st.st_atime + 10_000, st.st_mtime + 10_000))
+
+    d2 = CompilableDesign(_gemm_gen(), object_files=[obj])
+    assert hash(d2) == h1
+
+
+def test_hash_for_path_generator_survives_touch_but_tracks_content(tmp_path):
+    """A static .mlir design is keyed the same way as a C++ source."""
+    design = tmp_path / "design.mlir"
+    design.write_text("module {}\n")
+    h1 = hash(CompilableDesign(design))
+
+    st = design.stat()
+    os.utime(design, (st.st_atime + 10_000, st.st_mtime + 10_000))
+    assert hash(CompilableDesign(design)) == h1
+
+    design.write_text("module { // edited\n}\n")
+    assert hash(CompilableDesign(design)) != h1
+
+
+def test_hash_changes_when_content_changes_under_a_preserved_mtime(tmp_path):
+    """Two different kernels at one path with one mtime must not share a key.
+
+    This is the correctness half rather than the hit-rate half.  An mtime-keyed
+    hash cannot tell these apart, so the second build is served the first
+    build's artifact -- a stale-artifact ride, where a changed kernel runs as
+    the old binary.  Restoring the mtime is not exotic: ``git checkout`` of
+    another revision, a restore from an archive that carries timestamps, and
+    any build step that copies with ``-p`` all reproduce it.
+    """
+    src = tmp_path / "kernel.cc"
+    src.write_text("void k() { /* v1 */ }")
+    st = src.stat()
+    h1 = hash(CompilableDesign(_gemm_gen(), source_files=[src]))
+
+    src.write_text("void k() { /* v2 -- different code */ }")
+    os.utime(src, (st.st_atime, st.st_mtime))  # same timestamp, new bytes
+    assert src.stat().st_mtime == st.st_mtime
+
+    assert hash(CompilableDesign(_gemm_gen(), source_files=[src])) != h1
 
 
 def test_hash_keys_on_the_aiecc_the_compile_uses(monkeypatch):
@@ -310,11 +383,56 @@ def test_hash_keys_on_the_aiecc_the_compile_uses(monkeypatch):
 
     def fake_aiecc_path():
         seen.append(True)
-        return config.__file__  # any real file; only its mtime is consumed
+        return config.__file__  # any real file; only its content is consumed
 
     monkeypatch.setattr(config, "aiecc_path", fake_aiecc_path)
     CompilableDesign(_gemm_gen())._compute_cache_hash()
     assert seen, "artifact hash did not consult config.aiecc_path()"
+
+
+def test_tool_identity_is_memoized_per_path(tmp_path, monkeypatch):
+    """The tool digest is read once per process, not once per lookup.
+
+    A design hash happens on every cache lookup; re-reading the compiler each
+    time would put a fixed I/O cost on the hit path.
+    """
+    from aie.utils.compile.jit import _hash as _hash_mod
+
+    tool = tmp_path / "clang++"
+    tool.write_bytes(b"pretend-driver")
+    monkeypatch.setitem(_hash_mod.__dict__, "_tool_digest_cache", {})
+
+    reads = []
+    real_digest = _hash_mod._content_digest
+
+    def counting_digest(path):
+        reads.append(str(path))
+        return real_digest(path)
+
+    monkeypatch.setattr(_hash_mod, "_content_digest", counting_digest)
+
+    first = _hash_mod._tool_identity(tool)
+    second = _hash_mod._tool_identity(tool)
+
+    assert first == second
+    assert len(reads) == 1, f"tool digest re-read {len(reads)} times"
+
+
+def test_content_digest_streams_a_large_file(tmp_path):
+    """Digesting must not materialise the whole input.
+
+    In-tree kernels already carry multi-megabyte generated LUT headers, so the
+    read is chunked; this pins that the chunked path agrees with hashlib.
+    """
+    import hashlib
+
+    from aie.utils.compile.jit import _hash as _hash_mod
+
+    blob = tmp_path / "big.h"
+    payload = (b"0123456789abcdef" * 64) * 1024  # 1 MiB, spans the chunk edge
+    blob.write_bytes(payload)
+
+    assert _hash_mod._content_digest(blob) == hashlib.sha256(payload).hexdigest()
 
 
 def _design(body, name="design"):
