@@ -2077,6 +2077,8 @@ LogicalResult DMAOp::verify() {
   if (getPadValue() != 0) {
     if (!isa<MemTileDMAOp>(parentOp))
       return emitOpError("pad_value is only supported on memtile DMA channels");
+    if (getChannelDir() != DMAChannelDir::MM2S)
+      return emitOpError("pad_value is only supported on MM2S DMA channels");
     if (!getTargetModel(getOperation()).isMemTilePadValueSupported())
       return emitOpError("pad_value requires the CONSTANT_PAD_VALUE register, "
                          "unavailable on this target");
@@ -2729,6 +2731,8 @@ LogicalResult DMAStartOp::verify() {
   if (getPadValue() != 0) {
     if (!isa<MemTileDMAOp>(getOperation()->getParentOp()))
       return emitOpError("pad_value is only supported on memtile DMA channels");
+    if (getChannelDir() != DMAChannelDir::MM2S)
+      return emitOpError("pad_value is only supported on MM2S DMA channels");
     if (!getTargetModel(getOperation()).isMemTilePadValueSupported())
       return emitOpError("pad_value requires the CONSTANT_PAD_VALUE register, "
                          "unavailable on this target");
