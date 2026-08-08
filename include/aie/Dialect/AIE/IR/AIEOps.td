@@ -1228,7 +1228,9 @@ def AIE_DMAStartOp: AIE_Op<"dma_start", [
     geometry lives per-BD on `aie.dma_bd`). It is a per-channel property in hardware -- one
     `CONSTANT_PAD_VALUE` register per MM2S channel. The value is the raw 32-bit stream word
     inserted for each padded word; for sub-32-bit element types pre-pack it across the word
-    (e.g. `0x07070707` to fill an `i8` region with `0x07`).
+    (e.g. `0x07070707` to fill an `i8` region with `0x07`). The register is present only on
+    targets that provide it (e.g. AIE2P) and only on MM2S channels; the verifier rejects a
+    nonzero `pad_value` elsewhere.
   }];
 
   let arguments = (
@@ -1268,6 +1270,7 @@ def AIE_DMAOp: AIE_Op<"dma", [
         // repeat_count==0 means "do it once" and don't repeat
         DefaultValuedAttr<AIEI32Attr, "0">:$repeat_count,
         OptionalAttr<StrAttr>:$sym_name,
+        // Region form of aie.dma_start's pad_value; see its semantics there.
         DefaultValuedOptionalAttr<AIEI32Attr, "0">:$pad_value
   );
   let regions = (region VariadicRegion<SizedRegion<1>>:$bds);
