@@ -483,8 +483,8 @@ void Pathfinder::buildRoutingGraph() {
         if (nIt != graph.end() &&
             src.port.bundle == getConnectingBundle(neighborPort.bundle)) {
           auto &sb = nIt->second;
-          if (std::find(sb.dstPorts.begin(), sb.dstPorts.end(),
-                        neighborPort) != sb.dstPorts.end())
+          if (std::find(sb.dstPorts.begin(), sb.dstPorts.end(), neighborPort) !=
+              sb.dstPorts.end())
             dests.push_back(
                 {{neighborCoords, neighborPort}, /*isSrcRole=*/true});
         }
