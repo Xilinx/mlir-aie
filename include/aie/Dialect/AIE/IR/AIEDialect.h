@@ -195,7 +195,7 @@ parseObjectFifoProducerTile(mlir::OpAsmParser &parser,
                             BDDimLayoutArrayAttr &dimensions);
 
 void printObjectFifoProducerTile(mlir::OpAsmPrinter &printer,
-                                 mlir::Operation *op, mlir::Value tile,
+                                 mlir::Operation *op, mlir::Value operand,
                                  BDDimLayoutArrayAttr dimensions);
 
 mlir::ParseResult parseObjectFifoConsumerTiles(
@@ -205,7 +205,7 @@ mlir::ParseResult parseObjectFifoConsumerTiles(
 
 void printObjectFifoConsumerTiles(mlir::OpAsmPrinter &printer,
                                   mlir::Operation *op, mlir::OperandRange tiles,
-                                  BDDimLayoutArrayArrayAttr dimensions);
+                                  BDDimLayoutArrayArrayAttr dimsPerTileAttr);
 
 int32_t getBufferBaseAddress(mlir::Operation *bufOp);
 

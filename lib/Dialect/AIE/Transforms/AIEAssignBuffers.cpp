@@ -36,9 +36,8 @@ static int64_t getAlignedAddress(int64_t address, uint32_t alignBitWidth) {
   uint32_t alignByteWidth = alignBitWidth / 8;
   if (address % alignByteWidth == 0) {
     return address;
-  } else {
-    return ((address / alignByteWidth) + 1) * alignByteWidth;
   }
+  return ((address / alignByteWidth) + 1) * alignByteWidth;
 }
 
 // Check that every buffer in the list is properly aligned (when its
@@ -50,8 +49,9 @@ static bool checkAndPrintBufferOverlap(SmallVector<BufferOp> &sortedBuffers,
   uint32_t alignByteWidth = tileAlignBitWidth / 8;
   for (size_t i = 0; i < sortedBuffers.size(); ++i) {
     auto cur = sortedBuffers[i];
-    assert(cur.getAddress().has_value() && "buffer must have address assigned");
-    int64_t curAddr = cur.getAddress().value();
+    auto curAddrOpt = cur.getAddress();
+    assert(curAddrOpt.has_value() && "buffer must have address assigned");
+    int64_t curAddr = *curAddrOpt;
 
     // Alignment check.
     if (cur.getAligned() && alignByteWidth != 0 &&
@@ -67,15 +67,16 @@ static bool checkAndPrintBufferOverlap(SmallVector<BufferOp> &sortedBuffers,
     if (i == 0)
       continue;
     auto prev = sortedBuffers[i - 1];
-    assert(prev.getAddress().has_value() &&
-           "buffer must have address assigned");
-    int64_t prevEnd = prev.getAddress().value() + prev.getAllocationSize();
+    auto prevAddrOpt = prev.getAddress();
+    assert(prevAddrOpt.has_value() && "buffer must have address assigned");
+    int64_t prevAddr = *prevAddrOpt;
+    int64_t prevEnd = prevAddr + prev.getAllocationSize();
     if (curAddr < prevEnd) {
       cur.emitOpError("buffer '")
           << cur.name() << "' at address 0x" << llvm::utohexstr(curAddr)
           << " overlaps with '" << prev.name() << "' at address 0x"
-          << llvm::utohexstr(prev.getAddress().value())
-          << " (size: " << prev.getAllocationSize() << " bytes)";
+          << llvm::utohexstr(prevAddr) << " (size: " << prev.getAllocationSize()
+          << " bytes)";
       return false;
     }
   }
@@ -86,11 +87,12 @@ static bool checkAndPrintBufferOverlap(SmallVector<BufferOp> &sortedBuffers,
 static bool checkAndPrintOverlapStackframe(int stacksize,
                                            SmallVector<BufferOp> &buffers) {
   for (auto buf : buffers) {
-    assert(buf.getAddress().has_value() && "buffer must have address assigned");
-    if (buf.getAddress().value() < stacksize) {
+    auto bufAddrOpt = buf.getAddress();
+    assert(bufAddrOpt.has_value() && "buffer must have address assigned");
+    int64_t bufAddr = *bufAddrOpt;
+    if (bufAddr < stacksize) {
       buf.emitOpError("buffer '")
-          << buf.name() << "' at address 0x"
-          << llvm::utohexstr(buf.getAddress().value())
+          << buf.name() << "' at address 0x" << llvm::utohexstr(bufAddr)
           << " overlaps with stack (size: " << stacksize << " bytes)";
       return false;
     }
@@ -120,10 +122,9 @@ static bool checkAndPrintOverflow(TileOp tile, int address,
       error << "(no stack allocated)\n";
 
     for (auto buffer : buffers) {
-      assert(buffer.getAddress().has_value() &&
-             "buffer must have address assigned");
-      printbuffer(buffer.name(), buffer.getAddress().value(),
-                  buffer.getAllocationSize());
+      auto bufferAddrOpt = buffer.getAddress();
+      assert(bufferAddrOpt.has_value() && "buffer must have address assigned");
+      printbuffer(buffer.name(), *bufferAddrOpt, buffer.getAllocationSize());
     }
     return false;
   }
@@ -188,8 +189,10 @@ static bool basicAllocation(TileOp tile) {
 
   // Ensure alignment of preallocated buffer
   for (auto buffer : allocated_buffers) {
-    if (buffer.getAligned() &&
-        buffer.getAddress().value() % (tileAlignBitWidth / 8) != 0) {
+    auto bufferAddrOpt = buffer.getAddress();
+    assert(bufferAddrOpt.has_value() &&
+           "allocated_buffers only holds buffers with an address");
+    if (buffer.getAligned() && *bufferAddrOpt % (tileAlignBitWidth / 8) != 0) {
       buffer.emitOpError("pre-allocated address must be aligned to tile "
                          "load/store bus width when aligned attribute is set");
       return false;
@@ -203,7 +206,7 @@ static bool basicAllocation(TileOp tile) {
   // placement. Otherwise an unaligned candidate address can appear to fit
   // before the next pre-allocated buffer, but get bumped forward by
   // getAlignedAddress and silently alias that pre-allocated buffer.
-  auto current_alloc = allocated_buffers.begin();
+  auto *current_alloc = allocated_buffers.begin();
   for (auto buffer : buffers) {
     assert(!buffer.getAddress());
     if (buffer.getAligned())
@@ -239,8 +242,10 @@ static bool basicAllocation(TileOp tile) {
   int64_t highWater = address;
   if (!allBuffers_on_tile.empty()) {
     auto &last = allBuffers_on_tile.back();
-    highWater = std::max<int64_t>(highWater, last.getAddress().value() +
-                                                 last.getAllocationSize());
+    auto lastAddrOpt = last.getAddress();
+    assert(lastAddrOpt.has_value() && "buffer must have address assigned");
+    highWater =
+        std::max<int64_t>(highWater, *lastAddrOpt + last.getAllocationSize());
   }
 
   // Check if memory was exceeded or buffers overlap, and print debug info.
@@ -253,10 +258,10 @@ static bool basicAllocation(TileOp tile) {
 //===----------------------------------------------------------------------===//
 // SimpleBankAwareAllocation : round-robin each alloc over available banks
 //===----------------------------------------------------------------------===//
-typedef struct BankLimits {
+using BankLimits = struct BankLimits {
   int64_t startAddr;
   int64_t endAddr;
-} BankLimits;
+};
 
 // Function that given a number of banks and their size, computes
 // the start and end addresses for each bank and fills in the entry
@@ -278,7 +283,10 @@ static void setAndUpdateAddressInBank(BufferOp buffer, int64_t start_addr,
                                       std::vector<int64_t> &nextAddrInBanks) {
 
   buffer.setAddress(start_addr);
-  nextAddrInBanks[buffer.getMemBank().value()] = end_addr;
+  auto memBankOpt = buffer.getMemBank();
+  assert(memBankOpt.has_value() &&
+         "callers must set mem_bank before updating its bank cursor");
+  nextAddrInBanks[*memBankOpt] = end_addr;
 }
 
 // Function that checks whether the given buffer already has a set address
@@ -392,16 +400,20 @@ static void printMemMap(TileOp tile, SmallVector<BufferOp> &allocatedBuffers,
          << "0x" << llvm::utohexstr(bankLimits[i].startAddr) << "-0x"
          << llvm::utohexstr(bankLimits[i].endAddr - 1) << "\n";
     for (auto buffer : preAllocatedBuffers) {
-      auto addr = buffer.getAddress().value();
-      auto mem_bank = buffer.getMemBank().value();
-      if (mem_bank == i)
-        printbuffer(buffer.name(), addr, buffer.getAllocationSize());
+      auto addrOpt = buffer.getAddress();
+      auto memBankOpt = buffer.getMemBank();
+      assert(addrOpt.has_value() && memBankOpt.has_value() &&
+             "pre-allocated buffers have both address and mem_bank set");
+      if (*memBankOpt == i)
+        printbuffer(buffer.name(), *addrOpt, buffer.getAllocationSize());
     }
     for (auto buffer : allocatedBuffers) {
-      auto addr = buffer.getAddress().value();
-      auto mem_bank = buffer.getMemBank().value();
-      if (mem_bank == i)
-        printbuffer(buffer.name(), addr, buffer.getAllocationSize());
+      auto addrOpt = buffer.getAddress();
+      auto memBankOpt = buffer.getMemBank();
+      assert(addrOpt.has_value() && memBankOpt.has_value() &&
+             "allocated buffers have both address and mem_bank set");
+      if (*memBankOpt == i)
+        printbuffer(buffer.name(), *addrOpt, buffer.getAllocationSize());
     }
   }
 }
@@ -490,10 +502,12 @@ static bool checkAndPrintOverflow(TileOp tile, int numBanks, int stacksize,
           error << "(no stack allocated)\n";
       }
       for (auto buffer : allBuffers) {
-        auto addr = buffer.getAddress().value();
-        auto mem_bank = buffer.getMemBank().value();
-        if (mem_bank == i)
-          printbuffer(buffer.name(), addr, buffer.getAllocationSize());
+        auto addrOpt = buffer.getAddress();
+        auto memBankOpt = buffer.getMemBank();
+        assert(addrOpt.has_value() && memBankOpt.has_value() &&
+               "every allocated buffer has both address and mem_bank set");
+        if (*memBankOpt == i)
+          printbuffer(buffer.name(), *addrOpt, buffer.getAllocationSize());
       }
     }
     return false;
@@ -541,6 +555,8 @@ static bool simpleBankAwareAllocation(TileOp tile) {
   // AIE1 and 0x10000 in AIE2, but we need room at
   // the bottom for stack.
   int stacksize = 0;
+  nextAddrInBanks.reserve(numBanks);
+
   for (int i = 0; i < numBanks; i++)
     nextAddrInBanks.push_back(bankSize * i);
   if (auto core = tile.getCoreOp()) {
@@ -568,22 +584,20 @@ static bool simpleBankAwareAllocation(TileOp tile) {
   // Then, allocated the buffer with pre-allocated mem_bank t
   // Do it by doing a sort preAllocatedBuffers to have buffer with address
   // first, then buffer with only mem_bank
-  std::sort(
-      preAllocatedBuffers.begin(), preAllocatedBuffers.end(),
-      [](BufferOp a, BufferOp b) -> bool {
-        auto a_addr = a.getAddress();
-        auto b_addr = b.getAddress();
-        if (a_addr.has_value() && !b_addr.has_value()) {
-          return true; // address buffers before mem_bank-only buffers
-        } else if (!a_addr.has_value() && b_addr.has_value()) {
-          return false; // mem_bank-only buffers after address buffers
-        } else if (a_addr.has_value() && b_addr.has_value()) {
-          return a_addr.value() <
-                 b_addr.value(); // ascending address order within same bank
-        } else {
-          return false;
-        }
-      });
+  std::sort(preAllocatedBuffers.begin(), preAllocatedBuffers.end(),
+            [](BufferOp a, BufferOp b) -> bool {
+              auto a_addr = a.getAddress();
+              auto b_addr = b.getAddress();
+              if (a_addr.has_value() && b_addr.has_value()) {
+                return a_addr.value() <
+                       b_addr.value(); // ascending address order
+                                       // within same bank
+              } else {
+                // Address buffers before mem_bank-only buffers; otherwise
+                // stable.
+                return a_addr.has_value() && !b_addr.has_value();
+              }
+            });
 
   for (auto buffer : preAllocatedBuffers) {
 
@@ -591,7 +605,8 @@ static bool simpleBankAwareAllocation(TileOp tile) {
         buffer, numBanks, tileAlignBitWidth, nextAddrInBanks, bankLimits);
     if (failed(has_addr))
       return false;
-    if (has_addr.value())
+    // NOLINTNEXTLINE
+    if (*has_addr)
       continue;
     auto has_bank = checkAndAddBufferWithMemBank(
         buffer, numBanks, tileAlignBitWidth, nextAddrInBanks, bankLimits);
@@ -624,9 +639,8 @@ static bool simpleBankAwareAllocation(TileOp tile) {
                   bankLimits, stacksize);
       deAllocationBuffers(allocatedBuffers);
       return false;
-    } else {
-      allocatedBuffers.push_back(buffer);
     }
+    allocatedBuffers.push_back(buffer);
   }
   assert(allocatedBuffers.size() == buffersToAlloc.size());
 

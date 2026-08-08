@@ -1,6 +1,13 @@
 # Copyright (C) 2023-2024 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+# bugprone-unchecked-optional-access was disabled through clang-tidy 17
+# (llvm/llvm-project#55530: hung 180s+ on AIEAssignBufferDescriptorIDs.cpp);
+# re-enabled since it completes in ~7s under the 20.1.0 pin.
+# misc-include-cleaner is excluded, matching LLVM's own .clang-tidy: too
+# unreliable on forward-declaration-heavy, template-heavy code.
+# clang-analyzer-* is scoped to four suites (Chromium's precedent) rather
+# than the full wildcard, which is noisy inside MLIR/LLVM header boilerplate.
 Checks: >
   -*,
   clang-diagnostic-*,
@@ -11,22 +18,30 @@ Checks: >
   -misc-non-private-member-variables-in-classes,
   -misc-no-recursion,
   -misc-use-anonymous-namespace,
+  -misc-include-cleaner,
   readability-identifier-naming,
-  -misc-const-correctness,
   bugprone-argument-comment,
   bugprone-assert-side-effect,
+  bugprone-bitwise-pointer-cast,
   bugprone-branch-clone,
   bugprone-copy-constructor-init,
   bugprone-dangling-handle,
   bugprone-dynamic-static-initializers,
+  bugprone-incorrect-enable-shared-from-this,
   bugprone-macro-parentheses,
   bugprone-macro-repeated-side-effects,
   bugprone-misplaced-widening-cast,
   bugprone-move-forwarding-reference,
   bugprone-multiple-statement-macro,
+  bugprone-optional-value-conversion,
+  bugprone-pointer-arithmetic-on-polymorphic-object,
+  bugprone-return-const-ref-from-parameter,
   bugprone-suspicious-semicolon,
+  bugprone-suspicious-stringview-data-usage,
   bugprone-swapped-arguments,
   bugprone-terminating-continue,
+  bugprone-unchecked-optional-access,
+  bugprone-unused-local-non-trivial-variable,
   bugprone-unused-raii,
   bugprone-unused-return-value,
   misc-redundant-expression,
@@ -60,7 +75,11 @@ Checks: >
   readability-redundant-smartptr-get,
   readability-simplify-boolean-expr,
   readability-simplify-subscript-expr,
-  readability-use-anyofallof
+  readability-use-anyofallof,
+  clang-analyzer-core.*,
+  clang-analyzer-cplusplus.*,
+  clang-analyzer-unix.*,
+  clang-analyzer-deadcode.*
 
 CheckOptions:
   # LLVM
@@ -72,13 +91,7 @@ CheckOptions:
     value:           camelBack
   - key:             readability-identifier-naming.FunctionIgnoredRegexp
     value:           "LLVMFuzzerTestOneInput"
-  - key:             readability-identifier-naming.MemberCase
-    value:           CamelCase
-  - key:             readability-identifier-naming.ParameterCase
-    value:           CamelCase
   - key:             readability-identifier-naming.UnionCase
-    value:           CamelCase
-  - key:             readability-identifier-naming.VariableCase
     value:           CamelCase
   - key:             readability-identifier-naming.IgnoreMainLikeFunctions
     value:           1

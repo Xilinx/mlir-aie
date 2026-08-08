@@ -587,7 +587,7 @@ public:
 
   std::optional<uint32_t> getStreamSwitchPortIndex(int col, int row,
                                                    WireBundle bundle,
-                                                   uint32_t channel,
+                                                   uint32_t port_num,
                                                    bool master) const override;
 
   uint32_t getColumnShift() const override { return 23; }
@@ -738,7 +738,7 @@ public:
 
   std::optional<uint32_t> getStreamSwitchPortIndex(int col, int row,
                                                    WireBundle bundle,
-                                                   uint32_t channel,
+                                                   uint32_t port_num,
                                                    bool master) const override;
 
   uint32_t getColumnShift() const override { return 25; }

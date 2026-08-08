@@ -125,3 +125,124 @@ repos:
       additional_dependencies: ['reuse[charset-normalizer]==6.2.0']
       pass_filenames: true
       stages: [pre-push]
+
+    # Static analysis for C++, growing one file at a time (see .clang-tidy and
+    # docs/CONTRIBUTING.md's clang-tidy section). Unlike clang-format this
+    # needs a real build (compile_commands.json) to resolve headers, so it
+    # can't run as a bare per-file text hook -- utils/run_clang_tidy.sh finds
+    # the build (MLIR_AIE_BUILD_DIR, defaulting to build/) and fails with a
+    # clear setup hint if there isn't one. `files:` below must be kept in
+    # sync with the file list in lintAndFormat.yml's clang-tidy step (same
+    # convention ruff-check uses to stay in sync with ruff.toml's `include`).
+    - id: clang-tidy
+      name: clang-tidy
+      language: python
+      additional_dependencies: ['clang-tidy==20.1.0']
+      entry: utils/run_clang_tidy.sh
+      files: |
+        (?x)^(
+          lib/CAPI/Dialects\.cpp|
+          lib/CAPI/Registration\.cpp|
+          lib/CAPI/TargetModel\.cpp|
+          lib/CAPI/Translation\.cpp|
+          lib/Conversion/AIEToConfiguration/AIEToConfiguration\.cpp|
+          lib/Conversion/AIEVecToLLVM/AIEVecToLLVM\.cpp|
+          lib/Conversion/AIEXToEmitC/AIEXToEmitC\.cpp|
+          lib/Dialect/AIE/IR/AIEDialect\.cpp|
+          lib/Dialect/AIE/IR/AIETargetModel\.cpp|
+          lib/Dialect/AIE/IR/AIETraceOps\.cpp|
+          lib/Dialect/AIE/Transforms/AIEAssignBufferDescriptorIDs\.cpp|
+          lib/Dialect/AIE/Transforms/AIEAssignBuffers\.cpp|
+          lib/Dialect/AIE/Transforms/AIEAssignCoreLinkFiles\.cpp|
+          lib/Dialect/AIE/Transforms/AIEAssignLockIDs\.cpp|
+          lib/Dialect/AIE/Transforms/AIECanonicalizeDevice\.cpp|
+          lib/Dialect/AIE/Transforms/AIECoreToStandard\.cpp|
+          lib/Dialect/AIE/Transforms/AIECreatePathFindFlows\.cpp|
+          lib/Dialect/AIE/Transforms/AIEFindFlows\.cpp|
+          lib/Dialect/AIE/Transforms/AIEGenerateColumnControlOverlay\.cpp|
+          lib/Dialect/AIE/Transforms/AIEHoistVectorTransferPointers\.cpp|
+          lib/Dialect/AIE/Transforms/AIEInsertTraceFlows\.cpp|
+          lib/Dialect/AIE/Transforms/AIELocalizeLocks\.cpp|
+          lib/Dialect/AIE/Transforms/AIELowerCascadeFlows\.cpp|
+          lib/Dialect/AIE/Transforms/AIENormalizeAddressSpaces\.cpp|
+          lib/Dialect/AIE/Transforms/AIEObjectFifoLiveness\.cpp|
+          lib/Dialect/AIE/Transforms/AIEObjectFifoStatefulTransform\.cpp|
+          lib/Dialect/AIE/Transforms/AIEPathFinder\.cpp|
+          lib/Dialect/AIE/Transforms/AIEPlacer\.cpp|
+          lib/Dialect/AIE/Transforms/AIEPlaceTiles\.cpp|
+          lib/Dialect/AIE/Transforms/AIESAPlacer\.cpp|
+          lib/Dialect/AIE/Transforms/AIETraceToConfig\.cpp|
+          lib/Dialect/AIE/Transforms/AIEVectorToPointerLoops\.cpp|
+          lib/Dialect/AIE/Transforms/AIEVectorTransferLowering\.cpp|
+          lib/Dialect/AIE/Util/AIERegisterDatabase\.cpp|
+          lib/Dialect/AIEVec/IR/AIE1/AIEVecAIE1Ops\.cpp|
+          lib/Dialect/AIEVec/IR/AIEVecOps\.cpp|
+          lib/Dialect/AIEVec/IR/AIEVecTypes\.cpp|
+          lib/Dialect/AIEVec/TransformOps/AIEVecTransformOps\.cpp|
+          lib/Dialect/AIEVec/TransformOps/DialectExtension\.cpp|
+          lib/Dialect/AIEVec/Transforms/AIEVecOptimizations\.cpp|
+          lib/Dialect/AIEVec/Transforms/ConvertVectorToAIEVec\.cpp|
+          lib/Dialect/AIEVec/Transforms/CopyRemoval\.cpp|
+          lib/Dialect/AIEVec/Transforms/DynamicSizeNoImplicitBroadcast\.cpp|
+          lib/Dialect/AIEVec/Transforms/FoldMulAddChainToConvOp\.cpp|
+          lib/Dialect/AIEVec/Transforms/SplitVectorLoadUpsChains\.cpp|
+          lib/Dialect/AIEVec/Transforms/VectorToAIEVecConversions\.cpp|
+          lib/Dialect/AIEVec/Transforms/VectorToVectorConversions\.cpp|
+          lib/Dialect/AIEVec/Utils/Utils\.cpp|
+          lib/Dialect/AIEX/IR/AIEXDialect\.cpp|
+          lib/Dialect/AIEX/IR/DmaDecomposition\.cpp|
+          lib/Dialect/AIEX/Transforms/AIEAssignRuntimeSequenceBDIDs\.cpp|
+          lib/Dialect/AIEX/Transforms/AIECreateBroadcastPacket\.cpp|
+          lib/Dialect/AIEX/Transforms/AIECreateCores\.cpp|
+          lib/Dialect/AIEX/Transforms/AIECreateLocks\.cpp|
+          lib/Dialect/AIEX/Transforms/AIECtrlPacketToDma\.cpp|
+          lib/Dialect/AIEX/Transforms/AIEDecomposeLargeDmaBd\.cpp|
+          lib/Dialect/AIEX/Transforms/AIEDMATasksToNPU\.cpp|
+          lib/Dialect/AIEX/Transforms/AIEDmaToNpu\.cpp|
+          lib/Dialect/AIEX/Transforms/AIEExpandLoadPdi\.cpp|
+          lib/Dialect/AIEX/Transforms/AIEInlineTraceConfig\.cpp|
+          lib/Dialect/AIEX/Transforms/AIELowerCoreReset\.cpp|
+          lib/Dialect/AIEX/Transforms/AIELowerDmaChannelReset\.cpp|
+          lib/Dialect/AIEX/Transforms/AIELowerDynamicBDPool\.cpp|
+          lib/Dialect/AIEX/Transforms/AIELowerMemcpy\.cpp|
+          lib/Dialect/AIEX/Transforms/AIELowerMulticast\.cpp|
+          lib/Dialect/AIEX/Transforms/AIELowerScratchpadParameters\.cpp|
+          lib/Dialect/AIEX/Transforms/AIELowerSetLock\.cpp|
+          lib/Dialect/AIEX/Transforms/AIEMaterializeBDChains\.cpp|
+          lib/Dialect/AIEX/Transforms/AIEMaterializeRuntimeSequences\.cpp|
+          lib/Dialect/AIEX/Transforms/AIENpuToCert\.cpp|
+          lib/Dialect/AIEX/Transforms/AIESCFToControlFlow\.cpp|
+          lib/Dialect/AIEX/Transforms/AIESubstituteShimDMAAllocations\.cpp|
+          lib/Dialect/AIEX/Transforms/AIETransformBfpTypes\.cpp|
+          lib/Dialect/AIEX/Transforms/AIETxnToControlPacket\.cpp|
+          lib/Dialect/AIEX/Transforms/AIEUnrollRuntimeSequenceLoops\.cpp|
+          lib/Dialect/AIEX/Transforms/AIEVerifyRuntimeRearm\.cpp|
+          lib/Dialect/AIEX/Transforms/AIEXToStandard\.cpp|
+          lib/Dialect/AIEX/Utils/AIETokenAnalysis\.cpp|
+          lib/Dialect/AIEX/Utils/AIEUtils\.cpp|
+          lib/Dialect/AIEX/Utils/BdLowering\.cpp|
+          lib/Dialect/XLLVM/XLLVMOps\.cpp|
+          lib/Target/LLVMIR/Dialect/XLLVM/XLLVMToLLVMIRTranslation\.cpp|
+          lib/Targets/AIEFlowsToJSON\.cpp|
+          lib/Targets/AIELLVMLink\.cpp|
+          lib/Targets/AIERT\.cpp|
+          lib/Targets/AIETargetBCF\.cpp|
+          lib/Targets/AIETargetCDODirect\.cpp|
+          lib/Targets/AIETargetCppTxn\.cpp|
+          lib/Targets/AIETargetLdScript\.cpp|
+          lib/Targets/AIETargetNPU\.cpp|
+          lib/Targets/AIETargets\.cpp|
+          lib/Targets/AIETargetShared\.cpp|
+          lib/Targets/AIETargetSimulationFiles\.cpp|
+          lib/Targets/AIETargetUcCert\.cpp|
+          lib/Targets/AIETargetXAIEV2\.cpp|
+          tools/aiecc/aiecc\.cpp|
+          tools/aie\-lsp\-server/aie\-lsp\-server\.cpp|
+          tools/aie\-opt/aie\-opt\.cpp|
+          tools/aie\-reset/aie\-reset\.cpp|
+          tools/aie\-translate/aie\-translate\.cpp|
+          tools/aie\-visualize/aie\-visualize\.cpp|
+          tools/bootgen/bootgen_c_api\.cpp
+        )$
+      pass_filenames: true
+      stages: [pre-push]

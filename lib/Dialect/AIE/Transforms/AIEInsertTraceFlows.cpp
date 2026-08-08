@@ -294,7 +294,7 @@ struct AIEInsertTraceFlowsPass
         if (auto packetOp = dyn_cast<TracePacketOp>(op)) {
           existingPacketOp = packetOp;
           if (auto explicitId = packetOp.getId())
-            packetId = *explicitId;
+            packetId = explicitId;
           packetType = packetOp.getType();
           break;
         }
@@ -358,12 +358,12 @@ struct AIEInsertTraceFlowsPass
         if (auto startOp = dyn_cast<TraceStartEventOp>(op)) {
           hasStartConfig = true;
           if (startOp.getBroadcast())
-            startBroadcast = *startOp.getBroadcast();
+            startBroadcast = startOp.getBroadcast();
         }
         if (auto stopOp = dyn_cast<TraceStopEventOp>(op)) {
           hasStopConfig = true;
           if (stopOp.getBroadcast())
-            stopBroadcast = *stopOp.getBroadcast();
+            stopBroadcast = stopOp.getBroadcast();
         }
       }
 

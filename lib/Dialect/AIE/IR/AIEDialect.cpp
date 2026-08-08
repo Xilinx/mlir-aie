@@ -40,25 +40,24 @@ struct AIEInlinerInterface : DialectInlinerInterface {
   // We don't have any special restrictions on what can be inlined into
   // destination regions. Always allow it.
   bool isLegalToInline(Region *dest, Region *src, bool wouldBeCloned,
-                       IRMapping &valueMapping) const final override {
+                       IRMapping &valueMapping) const final {
     return true;
   }
 
   // Operations in aie dialect are always legal to inline since they are
   // pure.
   bool isLegalToInline(Operation *op, Region *, bool wouldBeCloned,
-                       IRMapping &) const final override {
+                       IRMapping &) const final {
     return true;
   }
 
   // Handle the given inlined terminator by replacing it with a new operation
   // as necessary. Required when the inlined region has more than one block.
-  void handleTerminator(Operation *op, Block *newDest) const final override {}
+  void handleTerminator(Operation *op, Block *newDest) const final {}
 
   // Handle the given inlined terminator by replacing it with a new operation
   // as necessary. Required when the region has only one block.
-  void handleTerminator(Operation *op,
-                        ValueRange valuesToRepl) const final override {}
+  void handleTerminator(Operation *op, ValueRange valuesToRepl) const final {}
 };
 
 struct AIEDialectFoldInterface : DialectFoldInterface {
@@ -67,7 +66,7 @@ struct AIEDialectFoldInterface : DialectFoldInterface {
   /// Registered hook to check if the given region, which is attached to an
   /// operation that is *not* isolated from above, should be used when
   /// materializing constants.
-  bool shouldMaterializeInto(Region *region) const final override {
+  bool shouldMaterializeInto(Region *region) const final {
     // Materialize constants into the op that "owns" them rather than letting
     // them hoist up to the enclosing IsolatedFromAbove aie.device:
     //  - aie.core bodies are outlined into standalone funcs, so their
@@ -494,14 +493,15 @@ LogicalResult ObjectFifoCreateOp::verify() {
       return emitError("`aie_stream` must be defined");
   }
 
-  if (getAieStream().has_value()) {
+  if (auto aieStream = getAieStream()) {
+    int aieStreamVal = *aieStream;
     if (getConsumerTiles().size() > 1)
       return emitError("`aie_stream` can only be used in 1-to-1 object FIFOs");
 
     if (!getAieStreamPort().has_value())
       return emitError("`aie_stream_port` must be defined");
 
-    if (getAieStream().value() == 0 || getAieStream().value() == 2) {
+    if (aieStreamVal == 0 || aieStreamVal == 2) {
       if (producerTile.isShimTile() || producerTile.isMemTile())
         return emitError(
             "`aie_stream` is not available for shim and mem tiles");
@@ -520,7 +520,7 @@ LogicalResult ObjectFifoCreateOp::verify() {
                          "unavailable on stream end");
     }
 
-    if (getAieStream().value() == 1 || getAieStream().value() == 2) {
+    if (aieStreamVal == 1 || aieStreamVal == 2) {
       TileLike consTile = getTileLikeFromValue(getConsumerTiles()[0]);
       if (consTile && (consTile.isShimTile() || consTile.isMemTile()))
         return emitError(
@@ -537,13 +537,13 @@ LogicalResult ObjectFifoCreateOp::verify() {
       return emitError("`init_values` unavailable for shim tiles");
   }
 
-  if (getInitValues().has_value()) {
-    if ((int)getInitValues().value().size() != size())
+  if (auto initValues = getInitValues()) {
+    if ((int)initValues->size() != size())
       return emitError("`init_values` does not initialize all objects");
   }
 
-  if (getIterCount().has_value()) {
-    int iterCount = getIterCount().value();
+  if (auto iterCountAttr = getIterCount()) {
+    int iterCount = *iterCountAttr;
     if (iterCount < 1 || iterCount > 256)
       return emitError("`iter_count` must be between 1 and 256");
 
@@ -562,9 +562,8 @@ LogicalResult ObjectFifoCreateOp::verify() {
       return emitError("`iter_count` is currently only supported on MemTiles");
   }
 
-  if (getConsumerElemType().has_value()) {
-    auto consType =
-        llvm::dyn_cast<AIEObjectFifoType>(getConsumerElemType().value());
+  if (auto consumerElemType = getConsumerElemType()) {
+    auto consType = llvm::dyn_cast<AIEObjectFifoType>(*consumerElemType);
     if (!consType)
       return emitError("consumer element type must be an "
                        "!aie.objectfifo<memref<...>> type");
@@ -599,8 +598,7 @@ ObjectFifoCreateOp::getDimensionsFromStream(Value consumerTile) {
   for (auto cons : getConsumerTiles()) {
     if (cons == consumerTile)
       break;
-    else
-      dimsIndex++;
+    dimsIndex++;
   }
   return getDimensionsFromStreamPerConsumer()[dimsIndex];
 }
@@ -885,8 +883,8 @@ LogicalResult ObjectFifoLinkOp::verify() {
 
     std::vector<int> repeat_counts;
     for (auto fifoOut : getOutputObjectFifos()) {
-      if (fifoOut.getRepeatCount().has_value()) {
-        repeat_counts.push_back(fifoOut.getRepeatCount().value());
+      if (auto repeatCount = fifoOut.getRepeatCount()) {
+        repeat_counts.push_back(*repeatCount);
       } else {
         repeat_counts.push_back(0);
       }
@@ -969,13 +967,20 @@ std::vector<int> ObjectFifoLinkOp::getJoinTransferLengths() {
         llvm::cast<AIEObjectFifoType>(getOutputObjectFifos()[0].getElemType());
     auto elemTypeOut = llvm::cast<MemRefType>(fifoOut.getElementType());
     int lenOut = elemTypeOut.getNumElements();
+    // src_offsets is an I64ArrayAttr, so every element is an IntegerAttr and
+    // getConstantIntValue always yields a value; assert to keep this fail-fast.
+    auto srcOffset = [&](size_t idx) -> int {
+      std::optional<int64_t> v = getConstantIntValue(getSrcOffsets()[idx]);
+      assert(v && "src_offsets element must be a constant integer");
+      return static_cast<int>(*v);
+    };
     for (size_t i = 0; i < getFifoIns().size(); i++) {
       int len = 0;
-      int offset = *getConstantIntValue(getSrcOffsets()[i]);
+      int offset = srcOffset(i);
       if (i == getFifoIns().size() - 1)
-        len = lenOut - *getConstantIntValue(getSrcOffsets()[i]);
+        len = lenOut - offset;
       else
-        len = *getConstantIntValue(getSrcOffsets()[i + 1]) - offset;
+        len = srcOffset(i + 1) - offset;
       lengths.push_back(len);
     }
   }
@@ -989,13 +994,20 @@ std::vector<int> ObjectFifoLinkOp::getDistributeTransferLengths() {
         llvm::cast<AIEObjectFifoType>(getInputObjectFifos()[0].getElemType());
     auto elemTypeIn = llvm::cast<MemRefType>(fifoIn.getElementType());
     int lenIn = elemTypeIn.getNumElements();
+    // dst_offsets is an I64ArrayAttr, so every element is an IntegerAttr and
+    // getConstantIntValue always yields a value; assert to keep this fail-fast.
+    auto dstOffset = [&](size_t idx) -> int {
+      std::optional<int64_t> v = getConstantIntValue(getDstOffsets()[idx]);
+      assert(v && "dst_offsets element must be a constant integer");
+      return static_cast<int>(*v);
+    };
     for (size_t i = 0; i < getFifoOuts().size(); i++) {
-      int offset = *getConstantIntValue(getDstOffsets()[i]);
+      int offset = dstOffset(i);
       int len = 0;
       if (i == getFifoOuts().size() - 1)
-        len = lenIn - *getConstantIntValue(getDstOffsets()[i]);
+        len = lenIn - offset;
       else
-        len = *getConstantIntValue(getDstOffsets()[i + 1]) - offset;
+        len = dstOffset(i + 1) - offset;
       lengths.push_back(len);
     }
   }
@@ -1005,7 +1017,7 @@ std::vector<int> ObjectFifoLinkOp::getDistributeTransferLengths() {
 std::optional<int> ObjectFifoLinkOp::getRepeatCount() {
   for (auto fifoOut : getOutputObjectFifos())
     if (fifoOut.getRepeatCount().has_value())
-      return {fifoOut.getRepeatCount().value()};
+      return {fifoOut.getRepeatCount()};
   return {};
 }
 
@@ -1340,7 +1352,7 @@ const AIETargetModel &DeviceOp::getTargetModel() {
 xilinx::AIE::DeviceOp DeviceOp::getForSymbolInModule(mlir::ModuleOp module,
                                                      llvm::StringRef symbol) {
   DeviceOp deviceOp;
-  if (!symbol.size()) {
+  if (symbol.empty()) {
     // If no device name is given, assume 'main'
     symbol = "main";
   }
@@ -1442,9 +1454,10 @@ TileID LogicalTileOp::getCanonicalTileID() {
   const auto &targetModel = getTargetModel(*this);
 
   // If col and row are both specified, use them directly
-  if (getCol().has_value() && getRow().has_value()) {
-    return {getCol().value(), getRow().value()};
-  }
+  std::optional<int32_t> col = getCol();
+  std::optional<int32_t> row = getRow();
+  if (col.has_value() && row.has_value())
+    return {*col, *row};
 
   // Otherwise, find a representative tile of the given type
   AIETileType tileType = getTileType();
@@ -1664,8 +1677,9 @@ AIETileType TileOp::getTileType() {
   return targetModel.getTileType(getCol(), getRow());
 }
 
-bool isLegalTileConnection(TileOp tile, const AIETargetModel &targetModel,
-                           MasterSetOp masterOp, PacketRulesOp slaveOp) {
+static bool isLegalTileConnection(TileOp tile,
+                                  const AIETargetModel &targetModel,
+                                  MasterSetOp masterOp, PacketRulesOp slaveOp) {
   auto srcBundle = slaveOp.sourcePort().bundle;
   auto srcChan = slaveOp.sourcePort().channel;
   auto dstBundle = masterOp.destPort().bundle;
@@ -1674,8 +1688,9 @@ bool isLegalTileConnection(TileOp tile, const AIETargetModel &targetModel,
       tile.colIndex(), tile.rowIndex(), srcBundle, srcChan, dstBundle, dstChan);
 }
 
-bool isLegalTileConnection(TileOp tile, const AIETargetModel &targetModel,
-                           ConnectOp connectOp) {
+static bool isLegalTileConnection(TileOp tile,
+                                  const AIETargetModel &targetModel,
+                                  ConnectOp connectOp) {
   auto srcBundle = connectOp.getSourceBundle();
   auto srcChan = connectOp.getSourceChannel();
   auto dstBundle = connectOp.getDestBundle();
@@ -1883,8 +1898,9 @@ LogicalResult BufferOp::verify() {
 // an interface
 int32_t xilinx::AIE::getBufferBaseAddress(Operation *bufOp) {
   if (auto buf = dyn_cast<BufferOp>(bufOp)) {
-    assert(buf.getAddress().has_value() && "buffer must have address assigned");
-    return buf.getAddress().value();
+    std::optional<int32_t> address = buf.getAddress();
+    assert(address.has_value() && "buffer must have address assigned");
+    return *address;
   }
   if (isa_and_nonnull<ExternalBufferOp>(bufOp))
     llvm::report_fatal_error(
@@ -2543,7 +2559,7 @@ static LogicalResult FoldDMAStartOp(DMAStartOp op, PatternRewriter &rewriter) {
 
   // Get a vector of unique BDs.
   SmallVector<Block *> uniquePattern;
-  auto patternIt = reachable.begin();
+  const auto *patternIt = reachable.begin();
   while (patternIt != reachable.end() &&
          llvm::none_of(uniquePattern, [patternIt, areEquivalentBDs](Block *b1) {
            return areEquivalentBDs(*patternIt, b1);
@@ -2653,7 +2669,10 @@ struct FoldConstantBDDimList : public mlir::OpRewritePattern<DMABDOp> {
     llvm::SmallVector<mlir::OpFoldResult> sizes = op.getMixedSizes();
     llvm::SmallVector<mlir::OpFoldResult> strides = op.getMixedStrides();
     // foldDynamicIndexList returns success() only if it replaced a dynamic
-    // entry with a constant.
+    // entry with a constant. Bitwise (not logical) OR is deliberate: both
+    // calls must run unconditionally, so strides still folds even once
+    // sizes already succeeded.
+    // NOLINTNEXTLINE(clang-diagnostic-bitwise-instead-of-logical)
     bool changed = succeeded(mlir::foldDynamicIndexList(sizes)) |
                    succeeded(mlir::foldDynamicIndexList(strides));
 
@@ -2689,11 +2708,11 @@ struct FoldConstantBDDimList : public mlir::OpRewritePattern<DMABDOp> {
         op.setStaticStrides(staticStrides);
       if (foldOffset) {
         op.getOffsetMutable().clear();
-        op.setStaticOffset(*foldOffset);
+        op.setStaticOffset(foldOffset);
       }
       if (foldLen) {
         op.getLenMutable().clear();
-        op.setStaticLen(*foldLen);
+        op.setStaticLen(foldLen);
       }
     });
     return mlir::success();
@@ -2868,14 +2887,13 @@ LogicalResult LockOp::verify() {
   if (auto result = UsesAreAccessible::verifyTrait(*this); result.failed())
     return result;
 
-  if (getLockID().has_value()) {
+  if (auto lockID = getLockID()) {
     TileLike tileLike = getTileLike();
     if (!tileLike)
       return emitOpError("tile operand must implement TileLike interface");
     const auto &targetModel = getTargetModel(*this);
     auto tileType = tileLike.getTileType();
-    if (int numLocks = targetModel.getNumLocks(tileType);
-        getLockID().value() >= numLocks)
+    if (int numLocks = targetModel.getNumLocks(tileType); *lockID >= numLocks)
       return emitOpError("lock assigned invalid id (maximum is ")
              << numLocks - 1 << ")";
   }
@@ -3145,7 +3163,7 @@ void BDChainOp::print(OpAsmPrinter &printer) {
   Region &body = getRegion();
   auto argsIter = body.getArguments();
   printer << '(';
-  for (auto it = argsIter.begin(); it != argsIter.end(); ++it) {
+  for (auto *it = argsIter.begin(); it != argsIter.end(); ++it) {
     if (it != argsIter.begin()) {
       printer << ", ";
     }
@@ -3220,16 +3238,17 @@ LogicalResult ObjectFifoRearmBindingOp::verify() {
   if (getHeadBdIds().has_value() != getRepeatCounts().has_value())
     return emitOpError("head_bd_ids and repeat_counts must both be set or both "
                        "be absent");
-  if (getHeadBdIds().has_value() &&
-      getHeadBdIds()->size() != getChannelTiles().size())
+  if (auto headBdIds = getHeadBdIds();
+      headBdIds.has_value() && headBdIds->size() != getChannelTiles().size())
     return emitOpError("expected one head_bd_ids entry per channel tile (")
-           << getChannelTiles().size() << " tiles, " << getHeadBdIds()->size()
+           << getChannelTiles().size() << " tiles, " << headBdIds->size()
            << " ids)";
-  if (getRepeatCounts().has_value() &&
-      getRepeatCounts()->size() != getChannelTiles().size())
+  if (auto repeatCounts = getRepeatCounts();
+      repeatCounts.has_value() &&
+      repeatCounts->size() != getChannelTiles().size())
     return emitOpError("expected one repeat_counts entry per channel tile (")
-           << getChannelTiles().size() << " tiles, "
-           << getRepeatCounts()->size() << " counts)";
+           << getChannelTiles().size() << " tiles, " << repeatCounts->size()
+           << " counts)";
   for (int32_t dir : getChannelDirs())
     if (dir != 0 && dir != 1)
       return emitOpError("channel_dirs entries must be 0 (S2MM) or 1 (MM2S), "
@@ -3342,7 +3361,7 @@ RuntimeSequenceOp
 RuntimeSequenceOp::getForSymbolInDevice(DeviceOp deviceOp,
                                         llvm::StringRef symbol) {
   RuntimeSequenceOp runtimeSequenceOp;
-  if (!symbol.size()) {
+  if (symbol.empty()) {
     auto range = deviceOp.getOps<RuntimeSequenceOp>();
     if (range.begin() == range.end()) {
       // No runtime sequence in the device; let the caller emit a diagnostic

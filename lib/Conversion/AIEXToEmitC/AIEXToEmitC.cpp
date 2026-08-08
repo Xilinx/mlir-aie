@@ -344,9 +344,9 @@ private:
                                             emitc::OpaqueAttr::get(ctx, init));
 
     uint32_t colVal = 0, rowVal = 0;
-    if (bw.getColumn() && bw.getRow()) {
-      colVal = *bw.getColumn();
-      rowVal = *bw.getRow();
+    if (auto col = bw.getColumn(), row = bw.getRow(); col && row) {
+      colVal = *col;
+      rowVal = *row;
     }
     emitTxnCall(b, loc, "txn_append_blockwrite", txnVec,
                 {u32Literal(b, loc, addr), arrVar.getResult(),
@@ -409,15 +409,15 @@ struct ConvertAIEXToEmitCPass
     builder.setInsertionPointToStart(moduleOp.getBody());
     emitc::IncludeOp::create(builder, moduleOp.getLoc(),
                              "aie/Runtime/TxnEncoding.h",
-                             /*is_standard=*/false);
+                             /*is_standard_include=*/false);
     emitc::IncludeOp::create(builder, moduleOp.getLoc(), "cstdint",
-                             /*is_standard=*/true);
+                             /*is_standard_include=*/true);
     emitc::IncludeOp::create(builder, moduleOp.getLoc(), "vector",
-                             /*is_standard=*/true);
+                             /*is_standard_include=*/true);
     // The builder returns std::optional: a runtime scalar that would overflow a
     // narrow BD field yields std::nullopt instead of a truncated stream.
     emitc::IncludeOp::create(builder, moduleOp.getLoc(), "optional",
-                             /*is_standard=*/true);
+                             /*is_standard_include=*/true);
   }
 
   // Run the upstream arith-to-emitc and scf-to-emitc conversions over the

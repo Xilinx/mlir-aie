@@ -154,7 +154,7 @@ static SmallVector<Value> forceCastOperandsToSignature(OpBuilder &builder,
 static LLVM::LLVMFuncOp getOrCreateScalarHelperFunc(
     ModuleOp module, OpBuilder &rewriter, StringRef opName, StringRef device,
     TypeRange argTypes, Type resultType,
-    std::function<void(OpBuilder &, Location, ValueRange)> bodyBuilder) {
+    const std::function<void(OpBuilder &, Location, ValueRange)> &bodyBuilder) {
 
   // Build function name: __<device>_scalar_<opName>
   std::string funcName = "__" + device.str() + "_scalar_" + opName.str();
@@ -230,8 +230,8 @@ static inline int aiev2_vmac_compute_control(int sgn_x, int sgn_y, int amode,
          ((unsigned)zero_acc << 0);
 }
 
-std::string getVectorTypeString(VectorType type, bool abbrev = false,
-                                bool acc = false) {
+static std::string getVectorTypeString(VectorType type, bool abbrev = false,
+                                       bool acc = false) {
   std::stringstream ss;
   auto size = getVectorLaneSize(type);
   ss << "v" << size;
@@ -243,7 +243,7 @@ std::string getVectorTypeString(VectorType type, bool abbrev = false,
   return ss.str();
 }
 
-std::string getMulOrFMAIntrinsicName(Operation *op) {
+static std::string getMulOrFMAIntrinsicName(Operation *op) {
   std::string baseName;
   Value lhs, result;
   if (auto mulOp = dyn_cast<aievec::aie1::MulOp>(op)) {
@@ -271,7 +271,7 @@ std::string getMulOrFMAIntrinsicName(Operation *op) {
 
 // Squashes the easy-to-read 16-bit square encoding into
 // the 8-bit encoding the configuration register uses
-uint32_t encodeSquare(uint32_t square) {
+static uint32_t encodeSquare(uint32_t square) {
   uint32_t out = 0;
   out |= ((square >> 0) & 0x3) << 0;
   out |= ((square >> 4) & 0x3) << 2;
@@ -282,8 +282,8 @@ uint32_t encodeSquare(uint32_t square) {
 
 // Encode the configuration register with buffer parameters and options
 // TODO: struct to handle this?
-void encodeConf(uint32_t conf[2], const BufferParams &x, const BufferParams &z,
-                bool sub) {
+static void encodeConf(uint32_t conf[2], const BufferParams &x,
+                       const BufferParams &z, bool sub) {
   conf[0] |= ((x.step & 0x3F) << 0) | ((z.step & 0x3F) << 8);
   conf[1] |= (encodeSquare(x.square) << 0) | (encodeSquare(z.square) << 8);
   conf[1] |= sub << 17;
@@ -323,13 +323,12 @@ public:
     // Integer types
     if (llvm::isa<IntegerType>(lhsScaTy)) {
       return {DecodedAddElemOp::Kind::UNSUPPORTED, -1};
-    } else {
-      // Float types
-      if (lhsBitWidth == 32) {
-        // FP32 add_elem
-        return {DecodedAddElemOp::Kind::FP32_FP32_FP32_16x1x1x1, /*conf*/ 0};
-      }
+    } // Float types
+    if (lhsBitWidth == 32) {
+      // FP32 add_elem
+      return {DecodedAddElemOp::Kind::FP32_FP32_FP32_16x1x1x1, /*conf*/ 0};
     }
+
     return {DecodedAddElemOp::Kind::UNSUPPORTED, -1};
   }
 
@@ -394,13 +393,12 @@ public:
     // Integer types
     if (llvm::isa<IntegerType>(lhsScaTy)) {
       return {DecodedSubElemOp::Kind::UNSUPPORTED, -1};
-    } else {
-      // Float types
-      if (lhsBitWidth == 32) {
-        // FP32 sub_elem
-        return {DecodedSubElemOp::Kind::FP32_FP32_FP32_16x1x1x1, /*conf*/ 0};
-      }
+    } // Float types
+    if (lhsBitWidth == 32) {
+      // FP32 sub_elem
+      return {DecodedSubElemOp::Kind::FP32_FP32_FP32_16x1x1x1, /*conf*/ 0};
     }
+
     return {DecodedSubElemOp::Kind::UNSUPPORTED, -1};
   }
 
@@ -470,17 +468,16 @@ public:
     // Integer types
     if (llvm::isa<IntegerType>(lhsScaTy)) {
       return {DecodedAddElemOp::Kind::UNSUPPORTED, -1};
-    } else {
-      // Float types
-      if (lhsBitWidth == 32) {
-        // FP32 add_elem
-        if (laneSize == 16) {
-          return {DecodedAddElemOp::Kind::FP32_FP32_FP32_16x1x1x1, /*conf*/ 60};
-        } else if (laneSize == 32) {
-          return {DecodedAddElemOp::Kind::FP32_FP32_FP32_32x1x1x1, /*conf*/ 60};
-        }
+    } // Float types
+    if (lhsBitWidth == 32) {
+      // FP32 add_elem
+      if (laneSize == 16) {
+        return {DecodedAddElemOp::Kind::FP32_FP32_FP32_16x1x1x1, /*conf*/ 60};
+      } else if (laneSize == 32) {
+        return {DecodedAddElemOp::Kind::FP32_FP32_FP32_32x1x1x1, /*conf*/ 60};
       }
     }
+
     return {DecodedAddElemOp::Kind::UNSUPPORTED, -1};
   }
 
@@ -615,17 +612,16 @@ public:
     // Integer types
     if (llvm::isa<IntegerType>(lhsScaTy)) {
       return {DecodedSubElemOp::Kind::UNSUPPORTED, -1};
-    } else {
-      // Float types
-      if (lhsBitWidth == 32) {
-        // FP32 sub_elem
-        if (laneSize == 16) {
-          return {DecodedSubElemOp::Kind::FP32_FP32_FP32_16x1x1x1, /*conf*/ 60};
-        } else if (laneSize == 32) {
-          return {DecodedSubElemOp::Kind::FP32_FP32_FP32_32x1x1x1, /*conf*/ 60};
-        }
+    } // Float types
+    if (lhsBitWidth == 32) {
+      // FP32 sub_elem
+      if (laneSize == 16) {
+        return {DecodedSubElemOp::Kind::FP32_FP32_FP32_16x1x1x1, /*conf*/ 60};
+      } else if (laneSize == 32) {
+        return {DecodedSubElemOp::Kind::FP32_FP32_FP32_32x1x1x1, /*conf*/ 60};
       }
     }
+
     return {DecodedSubElemOp::Kind::UNSUPPORTED, -1};
   }
 
@@ -946,7 +942,8 @@ public:
                     /*variant=*/1, /*zero_acc=*/0, /*shift16=*/0,
                     /*sub_mul=*/0, /*sub_acc1=*/0, /*sub_acc2=*/0,
                     /*sub_mask=*/0)};
-      } else if (lhsBitWidth == 16) {
+      }
+      if (lhsBitWidth == 16) {
         return {DecodedMulElemOp::Kind::I16_I16_I32_32x1x1x1,
                 aiev2_vmac_compute_control(
                     /*sgn_x=*/1, /*sgn_y=*/1, /*amode=*/0, /*bmode=*/3,
@@ -966,7 +963,8 @@ public:
                     /*variant=*/1, /*zero_acc=*/0, /*shift16=*/0,
                     /*sub_mul=*/0, /*sub_acc1=*/0, /*sub_acc2=*/0,
                     /*sub_mask=*/0)};
-      } else if (lhsBitWidth == 32) {
+      }
+      if (lhsBitWidth == 32) {
         // emulated FP32 mul_elem
         return {DecodedMulElemOp::Kind::FP32_FP32_FP32_16x1x1x1, -1};
       }
@@ -1297,8 +1295,9 @@ public:
     // Handle the emulated I32/FP32 mul_elem
     if (decodedMulElemOp.kind == DecodedMulElemOp::Kind::I32_I32_I64_32x1x2x1) {
       return convertToEmulatedI32MulElem(op, adaptor, rewriter);
-    } else if (decodedMulElemOp.kind ==
-               DecodedMulElemOp::Kind::FP32_FP32_FP32_16x1x1x1) {
+    }
+    if (decodedMulElemOp.kind ==
+        DecodedMulElemOp::Kind::FP32_FP32_FP32_16x1x1x1) {
       return convertToEmulatedFP32MulElem(op, adaptor, rewriter);
     }
 
@@ -1395,22 +1394,21 @@ public:
     // Integer types - not supported for AIE2p elementwise mul
     if (llvm::isa<IntegerType>(lhsScaTy)) {
       return {DecodedMulElemOp::Kind::UNSUPPORTED, -1};
-    } else {
-      // Float types
-      if (lhsBitWidth == 16) {
-        // BF16 mul_elem
-        if (lhsLanes == 16) {
-          // 16-lane bfloat16 uses I512.I512.ACC512 intrinsic
-          return {DecodedMulElemOp::Kind::BF16_BF16_FP32_16x1x1x1, /*conf*/ 60};
-        } else if (lhsLanes == 32) {
-          // 32-lane bfloat16 uses I512.I512.ACC1024 intrinsic
-          return {DecodedMulElemOp::Kind::BF16_BF16_FP32_32x1x2x1, /*conf*/ 60};
-        } else if (lhsLanes == 64) {
-          // 64-lane bfloat16 uses I1024.I1024.ACC2048 intrinsic
-          return {DecodedMulElemOp::Kind::BF16_BF16_FP32_64x1x2x1, /*conf*/ 60};
-        }
+    } // Float types
+    if (lhsBitWidth == 16) {
+      // BF16 mul_elem
+      if (lhsLanes == 16) {
+        // 16-lane         bfloat16 uses I512.I512.ACC512 intrinsic
+        return {DecodedMulElemOp::Kind::BF16_BF16_FP32_16x1x1x1, /*conf*/ 60};
+      } else if (lhsLanes == 32) {
+        // 32-lane         bfloat16 uses I512.I512.ACC1024 intrinsic
+        return {DecodedMulElemOp::Kind::BF16_BF16_FP32_32x1x2x1, /*conf*/ 60};
+      } else if (lhsLanes == 64) {
+        // 64-lane         bfloat16 uses I1024.I1024.ACC2048 intrinsic
+        return {DecodedMulElemOp::Kind::BF16_BF16_FP32_64x1x2x1, /*conf*/ 60};
       }
     }
+
     return {DecodedMulElemOp::Kind::UNSUPPORTED, -1};
   }
 
@@ -4321,7 +4319,7 @@ class MatMulOpConversion
   using ConvertOpToLLVMPattern<aievec::MatMulOp>::ConvertOpToLLVMPattern;
 
   struct DecodedMatMulOp {
-    typedef enum { I32, I64, BF16 } Kind;
+    using Kind = enum { I32, I64, BF16 };
 
     Kind kind;
     Value lhs;
@@ -4377,16 +4375,15 @@ class MatMulOpConversion
                       /*variant=*/0, /*zero_acc=*/0, /*shift16=*/0,
                       /*sub_mul=*/0, /*sub_acc1=*/0, /*sub_acc2=*/0,
                       /*sub_mask=*/0)};
-        } else {
-          // <4x8xi8> x <8x8xi8> + <4x8xi32>
-          return {DecodedMatMulOp::Kind::I32, lhs, rhs, acc,
-                  aiev2_vmac_compute_control(
-                      /*sgn_x=*/signX, /*sgn_y=*/signY, /*amode=*/0,
-                      /*bmode=*/1,
-                      /*variant=*/0, /*zero_acc=*/0, /*shift16=*/0,
-                      /*sub_mul=*/0, /*sub_acc1=*/0, /*sub_acc2=*/0,
-                      /*sub_mask=*/0)};
-        }
+        } // <4x8xi8> x <8x8xi8> + <4x8xi32>
+        return {DecodedMatMulOp::Kind::I32, lhs, rhs, acc,
+                aiev2_vmac_compute_control(
+                    /*sgn_x=*/signX, /*sgn_y=*/signY, /*amode=*/0,
+                    /*bmode=*/1,
+                    /*variant=*/0, /*zero_acc=*/0, /*shift16=*/0,
+                    /*sub_mul=*/0, /*sub_acc1=*/0, /*sub_acc2=*/0,
+                    /*sub_mask=*/0)};
+
       } else {
         if (rhsBitWidth == 8) {
           // <4x4xi16> x <4x8xi8> + <4x8xi32>
@@ -4397,16 +4394,14 @@ class MatMulOpConversion
                       /*variant=*/0, /*zero_acc=*/0, /*shift16=*/0,
                       /*sub_mul=*/0, /*sub_acc1=*/0, /*sub_acc2=*/0,
                       /*sub_mask=*/0)};
-        } else {
-          // <4x2xi16> x <2x8xi16> + <4x8xi32>
-          return {DecodedMatMulOp::Kind::I32, lhs, rhs, acc,
-                  aiev2_vmac_compute_control(
-                      /*sgn_x=*/signX, /*sgn_y=*/signY, /*amode=*/0,
-                      /*bmode=*/3,
-                      /*variant=*/0, /*zero_acc=*/0, /*shift16=*/0,
-                      /*sub_mul=*/0, /*sub_acc1=*/0, /*sub_acc2=*/0,
-                      /*sub_mask=*/0)};
-        }
+        } // <4x2xi16> x <2x8xi16> + <4x8xi32>
+        return {DecodedMatMulOp::Kind::I32, lhs, rhs, acc,
+                aiev2_vmac_compute_control(
+                    /*sgn_x=*/signX, /*sgn_y=*/signY, /*amode=*/0,
+                    /*bmode=*/3,
+                    /*variant=*/0, /*zero_acc=*/0, /*shift16=*/0,
+                    /*sub_mul=*/0, /*sub_acc1=*/0, /*sub_acc2=*/0,
+                    /*sub_mask=*/0)};
       }
     }
 
@@ -4732,7 +4727,7 @@ class MatMulOpAIE2pConversion
     : public mlir::ConvertOpToLLVMPattern<aievec::MatMulOp_AIE2P> {
   using ConvertOpToLLVMPattern<aievec::MatMulOp_AIE2P>::ConvertOpToLLVMPattern;
   struct DecodedMatMulOp {
-    typedef enum {
+    using Kind = enum {
       BF16_8x8x8_I1024_ACC2048,
       BF16_4x8x8_I1024_ACC1024,
       BF16_8x1x8_I512_ACC2048,
@@ -4741,7 +4736,7 @@ class MatMulOpAIE2pConversion
       I8_8x8x8_I512_ACC2048,
       I16_8x2x8_I1024_ACC2048,
       UNSUPPORTED
-    } Kind;
+    };
     Kind kind;
     Value lhs;
     Value rhs;
@@ -4823,25 +4818,27 @@ class MatMulOpAIE2pConversion
                 60};
       }
       // Special case for 8x8x4 matmul: <8x8xbf16> x <8x4xbf16> + <8x4xf32>
-      else if (lhsLanes == 64 && rhsLanes == 32 && accLanes == 32) {
+      if (lhsLanes == 64 && rhsLanes == 32 && accLanes == 32) {
         // Uses I512.I512.ACC1024 for each MAC operation
         return {DecodedMatMulOp::Kind::BF16_8x8x4_I512_ACC1024, lhs, rhs, acc,
                 60};
       }
-      // Special case for 4x8x8 matmul: <4x8xbf16> x <8x8xbf16> + <4x8xf32>
+      // Special case for 4x8x8 matmul: <4x8xbf16>         x <8x8xbf16> +
+      // <4x8xf32>
       else if (lhsLanes == 32 && rhsLanes == 64 && accLanes == 32) {
         // Uses BFP16 format via mac_8x8_8x8T_conf
         return {DecodedMatMulOp::Kind::BF16_4x8x8_I1024_ACC1024, lhs, rhs, acc,
                 780};
       }
-      // Special case for 8x1x8 matmul: <8x1xbf16> x <1x8xbf16> + <8x8xf32>
+      // Special case for 8x1x8 matmul:         <8x1xbf16> x <1x8xbf16> +
+      // <8x8xf32>
       else if (lhsLanes == 8 && rhsLanes == 8 && accLanes == 64) {
-        // Outer product: transpose+replicate LHS, replicate RHS, use
+        // Outer product: transpose+replicate         LHS, replicate RHS, use
         // mac_elem_64_conf
         return {DecodedMatMulOp::Kind::BF16_8x1x8_I512_ACC2048, lhs, rhs, acc,
                 60};
       }
-      // I1024 inputs (64 lanes each)
+      // I1024 inputs (64         lanes each)
       else if (lhsLanes == 64 && rhsLanes == 64 && accLanes == 64) {
         // Uses I1024.I1024.ACC2048 (64 lanes of f32)
         return {DecodedMatMulOp::Kind::BF16_8x8x8_I1024_ACC2048, lhs, rhs, acc,
@@ -5642,7 +5639,7 @@ void populateAIEVecToLLVMCommonConversionPatterns(
   // clang-format on
 }
 
-void populateAIEVecToLLVMAIE2ConversionPatterns(
+static void populateAIEVecToLLVMAIE2ConversionPatterns(
     mlir::LLVMTypeConverter &converter, mlir::RewritePatternSet &patterns,
     Aie2Fp32Emulation aie2Fp32EmulationOption) {
   // Patterns specific to AIE2 backend

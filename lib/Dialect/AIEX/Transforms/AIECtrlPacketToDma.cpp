@@ -63,7 +63,7 @@ struct AIECtrlPacketToDmaPass
   void runOnOperation() override {
     DeviceOp device = getOperation();
     const auto &targetModel = device.getTargetModel();
-    auto ctx = device->getContext();
+    auto *ctx = device->getContext();
     auto loc = device->getLoc();
 
     if (targetModel.getTargetArch() == AIEArch::AIE1)
@@ -97,7 +97,7 @@ struct AIECtrlPacketToDmaPass
 
       // Using dynamic shape for ctrl pkt stream.
       auto ctrlPktMemrefType = MemRefType::get(
-          ShapedType::kDynamic, IntegerType::get(ctx, 32), nullptr, 0);
+          ShapedType::kDynamic, IntegerType::get(ctx, 32), nullptr, nullptr);
       auto newBlockArg = newSeq.getBody().addArgument(ctrlPktMemrefType, loc);
 
       builder.setInsertionPointToStart(&newSeq.getBody().front());
@@ -213,7 +213,7 @@ struct AIECtrlPacketToDmaPass
       erased.push_back(f);
     }
 
-    for (auto e : erased)
+    for (auto *e : erased)
       e->erase();
   }
 };

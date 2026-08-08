@@ -241,8 +241,8 @@ struct DmaChannelResetToMaskWrite32Pattern
     Value assertVal =
         createConstantI32(rewriter, loc, tm.encodeFieldValue(*resetField, 1));
     Value assertMask = createConstantI32(rewriter, loc, *resetMask);
-    rewriter.create<NpuMaskWrite32Op>(loc, assertAddr, assertVal, assertMask,
-                                      nullptr, colAttr, rowAttr);
+    NpuMaskWrite32Op::create(rewriter, loc, assertAddr, assertVal, assertMask,
+                             nullptr, colAttr, rowAttr);
 
     Value clearAddr = createConstantI32(rewriter, loc, ctrlAddrLocal);
     Value clearVal = createConstantI32(rewriter, loc, 0u);

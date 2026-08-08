@@ -39,10 +39,10 @@ jobs:
           fetch-depth: 2
           submodules: "true"
 
-      - name: Install clang-tidy
+      - name: Install C/C++ toolchain
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang-tidy ninja-build clang libelf-dev
+          sudo apt-get install -y ninja-build clang libelf-dev
 
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
         with:
@@ -57,6 +57,9 @@ jobs:
               --requirements python/requirements.txt \
               --install-non-eudsl
           python -m pip install --require-hashes -r python/requirements_dev.lock
+          # clang-tidy comes from this lockfile (see python/requirements_dev.txt),
+          # pinned to match clang-format's pin below -- not a system apt package,
+          # so its version doesn't silently drift across CI runs.
 
       - name: Get MLIR
         id: mlir-wheels
@@ -95,7 +98,13 @@ jobs:
             -DLLVM_EXTERNAL_LIT=$(which lit) \
             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 
-          ninja aie-headers mlir-headers
+          # MLIRAIEPassIncGen: generates AIEPasses.h.inc (Transforms pass
+          # registration tablegen). Not covered by aie-headers/mlir-headers --
+          # needed so clang-tidy (below) can actually parse pass source files
+          # instead of erroring on a missing generated header. Extend this
+          # list as the clang-tidy file set (see the "clang-tidy" step below)
+          # grows into dialects/passes with their own IncGen targets.
+          ninja aie-headers mlir-headers MLIRAIEPassIncGen
 
           # Assemble the Python package sources (hand-written + tablegen'd op/enum
           # wrappers) into build/python/aie. This needs only tablegen, not a full
@@ -132,21 +141,145 @@ jobs:
       - name: Lint Python (ruff)
         run: ruff check
 
-      - name: Analyze
-        id: clang-tidy-fixes
+      - name: Lint C/C++ (clang-tidy)
         run: |
+          # Currently-enabled file(s) -- keep this in sync with the `files:`
+          # regex on the `clang-tidy` pre-commit hook (.pre-commit-config.yaml),
+          # same convention ruff-check's hook uses to stay in sync with
+          # ruff.toml's `include`. Grows one file at a time.
+          #
+          # Unlike pyright/ruff (which always check their whole configured
+          # set), this only checks enabled files that this PR actually
+          # touched -- as the enabled list grows, most PRs don't touch C++
+          # passes at all, and re-linting the full set on every push would be
+          # wasted time. A PR that doesn't touch any enabled file passes
+          # trivially; one that does gets that file fully re-checked (not
+          # just the changed lines).
+          CLANG_TIDY_FILES=(
+            lib/CAPI/Dialects.cpp
+            lib/CAPI/Registration.cpp
+            lib/CAPI/TargetModel.cpp
+            lib/CAPI/Translation.cpp
+            lib/Conversion/AIEToConfiguration/AIEToConfiguration.cpp
+            lib/Conversion/AIEVecToLLVM/AIEVecToLLVM.cpp
+            lib/Conversion/AIEXToEmitC/AIEXToEmitC.cpp
+            lib/Dialect/AIE/IR/AIEDialect.cpp
+            lib/Dialect/AIE/IR/AIETargetModel.cpp
+            lib/Dialect/AIE/IR/AIETraceOps.cpp
+            lib/Dialect/AIE/Transforms/AIEAssignBufferDescriptorIDs.cpp
+            lib/Dialect/AIE/Transforms/AIEAssignBuffers.cpp
+            lib/Dialect/AIE/Transforms/AIEAssignCoreLinkFiles.cpp
+            lib/Dialect/AIE/Transforms/AIEAssignLockIDs.cpp
+            lib/Dialect/AIE/Transforms/AIECanonicalizeDevice.cpp
+            lib/Dialect/AIE/Transforms/AIECoreToStandard.cpp
+            lib/Dialect/AIE/Transforms/AIECreatePathFindFlows.cpp
+            lib/Dialect/AIE/Transforms/AIEFindFlows.cpp
+            lib/Dialect/AIE/Transforms/AIEGenerateColumnControlOverlay.cpp
+            lib/Dialect/AIE/Transforms/AIEHoistVectorTransferPointers.cpp
+            lib/Dialect/AIE/Transforms/AIEInsertTraceFlows.cpp
+            lib/Dialect/AIE/Transforms/AIELocalizeLocks.cpp
+            lib/Dialect/AIE/Transforms/AIELowerCascadeFlows.cpp
+            lib/Dialect/AIE/Transforms/AIENormalizeAddressSpaces.cpp
+            lib/Dialect/AIE/Transforms/AIEObjectFifoLiveness.cpp
+            lib/Dialect/AIE/Transforms/AIEObjectFifoStatefulTransform.cpp
+            lib/Dialect/AIE/Transforms/AIEPathFinder.cpp
+            lib/Dialect/AIE/Transforms/AIEPlacer.cpp
+            lib/Dialect/AIE/Transforms/AIEPlaceTiles.cpp
+            lib/Dialect/AIE/Transforms/AIESAPlacer.cpp
+            lib/Dialect/AIE/Transforms/AIETraceToConfig.cpp
+            lib/Dialect/AIE/Transforms/AIEVectorToPointerLoops.cpp
+            lib/Dialect/AIE/Transforms/AIEVectorTransferLowering.cpp
+            lib/Dialect/AIE/Util/AIERegisterDatabase.cpp
+            lib/Dialect/AIEVec/IR/AIE1/AIEVecAIE1Ops.cpp
+            lib/Dialect/AIEVec/IR/AIEVecOps.cpp
+            lib/Dialect/AIEVec/IR/AIEVecTypes.cpp
+            lib/Dialect/AIEVec/TransformOps/AIEVecTransformOps.cpp
+            lib/Dialect/AIEVec/TransformOps/DialectExtension.cpp
+            lib/Dialect/AIEVec/Transforms/AIEVecOptimizations.cpp
+            lib/Dialect/AIEVec/Transforms/ConvertVectorToAIEVec.cpp
+            lib/Dialect/AIEVec/Transforms/CopyRemoval.cpp
+            lib/Dialect/AIEVec/Transforms/DynamicSizeNoImplicitBroadcast.cpp
+            lib/Dialect/AIEVec/Transforms/FoldMulAddChainToConvOp.cpp
+            lib/Dialect/AIEVec/Transforms/SplitVectorLoadUpsChains.cpp
+            lib/Dialect/AIEVec/Transforms/VectorToAIEVecConversions.cpp
+            lib/Dialect/AIEVec/Transforms/VectorToVectorConversions.cpp
+            lib/Dialect/AIEVec/Utils/Utils.cpp
+            lib/Dialect/AIEX/IR/AIEXDialect.cpp
+            lib/Dialect/AIEX/IR/DmaDecomposition.cpp
+            lib/Dialect/AIEX/Transforms/AIEAssignRuntimeSequenceBDIDs.cpp
+            lib/Dialect/AIEX/Transforms/AIECreateBroadcastPacket.cpp
+            lib/Dialect/AIEX/Transforms/AIECreateCores.cpp
+            lib/Dialect/AIEX/Transforms/AIECreateLocks.cpp
+            lib/Dialect/AIEX/Transforms/AIECtrlPacketToDma.cpp
+            lib/Dialect/AIEX/Transforms/AIEDecomposeLargeDmaBd.cpp
+            lib/Dialect/AIEX/Transforms/AIEDMATasksToNPU.cpp
+            lib/Dialect/AIEX/Transforms/AIEDmaToNpu.cpp
+            lib/Dialect/AIEX/Transforms/AIEExpandLoadPdi.cpp
+            lib/Dialect/AIEX/Transforms/AIEInlineTraceConfig.cpp
+            lib/Dialect/AIEX/Transforms/AIELowerCoreReset.cpp
+            lib/Dialect/AIEX/Transforms/AIELowerDmaChannelReset.cpp
+            lib/Dialect/AIEX/Transforms/AIELowerDynamicBDPool.cpp
+            lib/Dialect/AIEX/Transforms/AIELowerMemcpy.cpp
+            lib/Dialect/AIEX/Transforms/AIELowerMulticast.cpp
+            lib/Dialect/AIEX/Transforms/AIELowerScratchpadParameters.cpp
+            lib/Dialect/AIEX/Transforms/AIELowerSetLock.cpp
+            lib/Dialect/AIEX/Transforms/AIEMaterializeBDChains.cpp
+            lib/Dialect/AIEX/Transforms/AIEMaterializeRuntimeSequences.cpp
+            lib/Dialect/AIEX/Transforms/AIENpuToCert.cpp
+            lib/Dialect/AIEX/Transforms/AIESCFToControlFlow.cpp
+            lib/Dialect/AIEX/Transforms/AIESubstituteShimDMAAllocations.cpp
+            lib/Dialect/AIEX/Transforms/AIETransformBfpTypes.cpp
+            lib/Dialect/AIEX/Transforms/AIETxnToControlPacket.cpp
+            lib/Dialect/AIEX/Transforms/AIEUnrollRuntimeSequenceLoops.cpp
+            lib/Dialect/AIEX/Transforms/AIEVerifyRuntimeRearm.cpp
+            lib/Dialect/AIEX/Transforms/AIEXToStandard.cpp
+            lib/Dialect/AIEX/Utils/AIETokenAnalysis.cpp
+            lib/Dialect/AIEX/Utils/AIEUtils.cpp
+            lib/Dialect/AIEX/Utils/BdLowering.cpp
+            lib/Dialect/XLLVM/XLLVMOps.cpp
+            lib/Target/LLVMIR/Dialect/XLLVM/XLLVMToLLVMIRTranslation.cpp
+            lib/Targets/AIEFlowsToJSON.cpp
+            lib/Targets/AIELLVMLink.cpp
+            lib/Targets/AIERT.cpp
+            lib/Targets/AIETargetBCF.cpp
+            lib/Targets/AIETargetCDODirect.cpp
+            lib/Targets/AIETargetCppTxn.cpp
+            lib/Targets/AIETargetLdScript.cpp
+            lib/Targets/AIETargetNPU.cpp
+            lib/Targets/AIETargets.cpp
+            lib/Targets/AIETargetShared.cpp
+            lib/Targets/AIETargetSimulationFiles.cpp
+            lib/Targets/AIETargetUcCert.cpp
+            lib/Targets/AIETargetXAIEV2.cpp
+            tools/aiecc/aiecc.cpp
+            tools/aie-lsp-server/aie-lsp-server.cpp
+            tools/aie-opt/aie-opt.cpp
+            tools/aie-reset/aie-reset.cpp
+            tools/aie-translate/aie-translate.cpp
+            tools/aie-visualize/aie-visualize.cpp
+            tools/bootgen/bootgen_c_api.cpp
+          )
+
           git fetch origin main
-          git diff -U0 origin/main | clang-tidy-diff -p1 -path build -export-fixes fixes.yml
-          if [ -f fixes.yml ]; then
-            echo "FIXES=true" | tee $GITHUB_OUTPUT
+          mapfile -t changed < <(git diff --name-only origin/main HEAD)
+
+          to_check=()
+          for f in "${CLANG_TIDY_FILES[@]}"; do
+            for c in "${changed[@]}"; do
+              if [ "$f" = "$c" ]; then
+                to_check+=("$f")
+                break
+              fi
+            done
+          done
+
+          if [ "${#to_check[@]}" -eq 0 ]; then
+            echo "No enabled clang-tidy file changed in this PR -- skipping."
+            exit 0
           fi
 
-      - name: Upload clang-tidy fixes
-        if: ${{ steps.clang-tidy-fixes.outputs.FIXES }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
-        with:
-          path: fixes.yml
-          name: clang-tidy-fixes.yml
+          echo "Running clang-tidy on: ${to_check[*]}"
+          MLIR_AIE_BUILD_DIR="$PWD/build" utils/run_clang_tidy.sh "${to_check[@]}"
 
 
   formatting:
@@ -169,7 +302,7 @@ jobs:
       - name: Install clang-format
         uses: aminya/setup-cpp@8170d66c458f4a045220b7b0966c10940bb2a15d  # v1.8.1
         with:
-          clangformat: 17.0.1
+          clangformat: 20.1.0
 
       - name: Setup Python env
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
