@@ -1,3 +1,6 @@
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 """IRON multi-core element-wise design skeleton (explicit topology).
 
 Before adapting this: if your op is in `aie.iron.kernels` and the topology is
