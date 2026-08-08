@@ -268,8 +268,8 @@ private:
 
   // Dense routing graph (built once by buildRoutingGraph()).
   bool graphBuilt = false;
-  std::map<RoledEndPoint, int> nodeIds;      // RoledEndPoint -> dense id
-  std::vector<RoledEndPoint> nodes;          // dense id -> RoledEndPoint
+  std::map<RoledEndPoint, int> nodeIds;     // RoledEndPoint -> dense id
+  std::vector<RoledEndPoint> nodes;         // dense id -> RoledEndPoint
   std::vector<std::vector<Edge>> adjacency; // dense id -> out-edges
 
   // Dijkstra scratch, sized to nodes.size() and reused across calls.
