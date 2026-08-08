@@ -137,7 +137,7 @@ repos:
     - id: clang-tidy
       name: clang-tidy
       language: python
-      additional_dependencies: ['clang-tidy==17.0.1']
+      additional_dependencies: ['clang-tidy==20.1.0']
       entry: utils/run_clang_tidy.sh
       files: ^lib/Dialect/AIE/Transforms/AIEAssignBufferDescriptorIDs\.cpp$
       pass_filenames: true

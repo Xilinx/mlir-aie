@@ -149,7 +149,7 @@ export MLIR_AIE_BUILD_DIR=/path/to/build
 ```
 
 The pre-push hook then runs it automatically on enabled files you've
-touched, via `utils/run_clang_tidy.sh` — a pinned `clang-tidy==17.0.1`
+touched, via `utils/run_clang_tidy.sh` — a pinned `clang-tidy==20.1.0`
 (matching clang-format's pinned version, via `python/requirements_dev.txt`)
 rather than a bare `apt install clang-tidy`, so the version doesn't silently
 drift between your machine and CI. If there's no compile database yet, the
