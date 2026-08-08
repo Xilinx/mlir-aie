@@ -855,6 +855,8 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
 
       amselValue =
           getNewUniqueAmselPerArbiterID(masterAMSels, tileOp, targetArbiter);
+      if (amselValue == INVALID_AMSEL_VALUE)
+        return failure();
 
       // Update masterAMSels with new amsel, skipping ports already assigned to
       // different arbiters
