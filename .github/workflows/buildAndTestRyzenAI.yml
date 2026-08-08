@@ -372,23 +372,31 @@ jobs:
           LIT_FILTER='hrx_xclbin_sections' ninja check-aie
           popd
 
-          # 1b) HRX Python test suite, two groups:
-          #       * on-device (test/python/npu-hrx): the multi-dispatch chain
-          #         (run_chain) backend test, cached/uncached runtime behavior,
-          #         and the multi-process dispatch/isolation test -- self-building
-          #         via @iron.jit / @compileconfig, gated on the
+          # 1b) HRX Python test suite, three groups:
+          #       * shared runtime-agnostic (test/python/npu): the JIT / tensor /
+          #         objectfifo / e2e suite that dispatches through IRON's
+          #         DEFAULT_TENSOR_CLASS. These carry both XRT and HRX RUN lines;
+          #         here the %run_on_npu*_xrt% lines no-op (XRT-free host) and the
+          #         %run_on_npu2_hrx% lines run under NPU_RUNTIME=hrx, giving HRX
+          #         coverage parity with the XRT runner's npu suite;
+          #       * on-device HRX-internal (test/python/npu-hrx): the multi-dispatch
+          #         chain (run_chain) backend test, cached/uncached runtime
+          #         behavior, and the multi-process dispatch/isolation test --
+          #         self-building via @iron.jit / @compileconfig, gated on the
           #         hrx_python_bindings and hrx_npu2 lit features;
           #       * host-side (test_hrx_runtime_selection): the runtime-selection
           #         contract + lazy-init thread-safety tests, which need no NPU
           #         but are exercised here in the real HRX-present / XRT-absent
           #         configuration.
-          #     AIE_XCLBINUTIL points aiecc at the bundled tool so packaging
-          #     stays XRT-free and deterministic.
-          echo "===== lit: HRX python tests (npu-hrx + selection) ====="
+          #     The 'python/npu/' regex fragment matches only the shared dir, not
+          #     npu-xrt (whose tests REQUIRE xrt_python_bindings and are skipped on
+          #     this XRT-free host anyway). AIE_XCLBINUTIL points aiecc at the
+          #     bundled tool so packaging stays XRT-free and deterministic.
+          echo "===== lit: HRX python tests (npu + npu-hrx + selection) ====="
           export AIE_XCLBINUTIL="$PWD/install/bin/xclbinutil"
           pushd build
           AIE_HRX_NPU=npu2 \
-            LIT_FILTER='npu-hrx|test_hrx_runtime_selection' ninja check-aie
+            LIT_FILTER='python/npu/|npu-hrx|test_hrx_runtime_selection' ninja check-aie
           popd
 
           # 2) end-to-end on hardware: package with the bundled tool (NPU_RUNTIME=hrx)

@@ -149,6 +149,12 @@ class NpuTensor(ABC):
     DEFAULT_INT_DTYPE = np.int64  # torch has default int64
     DEFAULT_FLOAT_DTYPE = np.float32  # torch has default float32
 
+    # Whether this backend expects the AIE DDR aperture offset folded into the
+    # compiled insts.bin. True for the XRT firmware ABI (and the CPU default);
+    # HRX overrides this to False and adds the aperture offset for every arg
+    # itself. Read by the JIT compile/cache path to pick the DDR-patch ABI.
+    FOLDS_DDR_ADDR_OFFSET = True
+
     # Alignment :meth:`subview` requires of a sub-region, in bytes. Left unset
     # so the module-level default is resolved per call rather than frozen into
     # the class at import; a backend whose host/device reconciliation has a

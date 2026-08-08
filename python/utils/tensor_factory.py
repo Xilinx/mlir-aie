@@ -110,6 +110,7 @@ if _NPU_RUNTIME == "hrx" and not _probe_hrx():
 if _NPU_RUNTIME == "auto":
     _NPU_RUNTIME = "xrt" if _probe_xrt() else "cpu"
 
+
 if _NPU_RUNTIME == "hrx":
     from .hostruntime.hrxruntime.tensor import HRXTensor
 
@@ -122,6 +123,19 @@ else:
     from .hostruntime.tensor_class import CPUOnlyTensor
 
     DEFAULT_TENSOR_CLASS = CPUOnlyTensor
+
+
+def npu_runtime_folds_ddr_addr_offset() -> bool:
+    """Whether the active backend expects the AIE DDR aperture offset folded into
+    the compiled ``insts.bin``.
+
+    ``True`` for XRT and the CPU default (the firmware-translated ABI); ``False``
+    for HRX, whose runtime adds the aperture offset for every argument itself and
+    therefore needs the producer-independent (unfolded) instruction stream. The
+    value is read from the active backend's ``FOLDS_DDR_ADDR_OFFSET`` class
+    attribute, so the JIT cache and the compiler always agree on the ABI.
+    """
+    return DEFAULT_TENSOR_CLASS.FOLDS_DDR_ADDR_OFFSET
 
 
 def ceildiv(a, b):
