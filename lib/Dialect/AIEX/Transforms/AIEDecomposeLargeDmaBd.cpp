@@ -189,7 +189,9 @@ static bool isUnderRuntimeControlFlow(AIE::DMABDOp op) {
 static std::optional<std::pair<AIE::TileOp, Operation *>>
 resolveTaskAndTile(AIE::DMABDOp op) {
   if (auto cfg = op->getParentOfType<DMAConfigureTaskOp>()) {
-    AIE::TileOp tile = cfg.getTileOp();
+    // Decomposition is a shape rewrite, so an unplaced tile is not an error
+    // here: decline and let the pattern run again after placement.
+    AIE::TileOp tile = cfg.tryGetTileOp();
     if (!tile)
       return std::nullopt;
     return std::make_pair(tile, cfg.getOperation());

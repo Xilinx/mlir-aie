@@ -32,6 +32,18 @@ using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIEX;
 
+// This pass emits absolute tile coordinates, so it cannot run before placement
+// has substituted a concrete `aie.tile` for an `aie.logical_tile`.  Report that
+// instead of calling getTileOp(), which fatally errors on an unplaced tile.
+static LogicalResult emitUnplacedTileError(Operation *op,
+                                           DMAConfigureTaskOp task_op) {
+  auto err = op->emitOpError(
+      "Cannot lower a DMA task whose tile is not placed; run placement first.");
+  if (task_op.getOperation() != op)
+    err.attachNote(task_op.getLoc()) << "Task configured here.";
+  return err;
+}
+
 struct DMAStartTaskOpPattern : OpConversionPattern<DMAStartTaskOp> {
   using OpConversionPattern::OpConversionPattern;
 
@@ -44,7 +56,9 @@ struct DMAStartTaskOpPattern : OpConversionPattern<DMAStartTaskOp> {
       // which we will lower once it has been rewritten into a DMAStartTaskOp.
       return failure();
     }
-    AIE::TileOp tile = task_op.getTileOp();
+    AIE::TileOp tile = task_op.tryGetTileOp();
+    if (!tile)
+      return emitUnplacedTileError(op, task_op);
     Location loc = op.getLoc();
 
     // The bd_id for the queue push: the runtime pool value (dynamic free-list)
@@ -131,7 +145,9 @@ struct DMAAwaitTaskOpPattern : OpConversionPattern<DMAAwaitTaskOp> {
           << "Consider adding attribute `issue_token=true` here.";
       return err;
     }
-    AIE::TileOp tile = task_op.getTileOp();
+    AIE::TileOp tile = task_op.tryGetTileOp();
+    if (!tile)
+      return emitUnplacedTileError(op, task_op);
     Location loc = op.getLoc();
     rewriter.replaceOpWithNewOp<NpuSyncOp>(
         op, createConstantI32(rewriter, loc, tile.getCol()),
@@ -920,7 +936,9 @@ struct AIEDMATasksToNPUPass
 
   LogicalResult rewriteSingleDMAConfigureTaskOp(DMAConfigureTaskOp op) {
     OpBuilder builder(op);
-    AIE::TileOp tile = op.getTileOp();
+    AIE::TileOp tile = op.tryGetTileOp();
+    if (!tile)
+      return emitUnplacedTileError(op, op);
 
     if (!op.use_empty()) {
       auto err = op.emitOpError("Cannot lower while op still has uses.");

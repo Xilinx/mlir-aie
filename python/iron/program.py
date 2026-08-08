@@ -37,9 +37,9 @@ class Program:
 
         Args:
             device (Device): The device used to generate the final MLIR for the design.
-                Accepts the ``Device | None`` returned by
-                [`get_current_device`][iron.get_current_device] directly and raises
-                if no device has been selected, so callers need not narrow it first.
+                Accepts the ``Device | None`` returned by ``iron.get_current_device``
+                directly and raises if no device has been selected, so callers need
+                not narrow it first.
             rt (Runtime): The runtime object for the design.
             workers (list[Worker] | None, optional): The Workers to run on the
                 device. Defaults to None (no workers). Workers are passed here

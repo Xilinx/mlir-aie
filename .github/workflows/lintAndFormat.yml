@@ -395,9 +395,8 @@ jobs:
             echo '<details><summary>Coverage of the changed files by the full test suite'
             echo '(whole-file, not diff-only)</summary>'
             echo
-            echo '```'
-            cat $REPORT/summary.txt
-            echo '```'
+            python utils/format-coverage-comment.py $REPORT/coverage.lcov \
+              --restrict "${{ steps.changed-files.outputs.changed-files }}"
             echo
             echo '</details>'
           } > $COMMENT
@@ -437,3 +436,40 @@ jobs:
 
       - name: Check copyright notice format
         run: python utils/check_copyright_format.py
+
+  docs-build:
+    name: Docs site build (mkdocs --strict)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Get the project repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+
+      # docs/programming_guide and docs/aiecc are gitignored symlinks into the
+      # repo tree (see generateDocs.yml), recreated here so the nav's
+      # referenced pages exist for the strict build.
+      - name: Link programming_guide into docs tree
+        run: ln -s ../programming_guide docs/programming_guide
+
+      - name: Link aiecc docs into docs tree
+        run: ln -s ../tools/aiecc docs/aiecc
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: docs/requirements-mkdocs.txt
+
+      - name: Install MkDocs packages
+        run: pip install -r docs/requirements-mkdocs.txt
+
+      # This is the same strict build generateDocs.yml runs at deploy time
+      # (mike wraps `mkdocs build --strict`), minus the Doxygen/dialect-docs
+      # pieces, which need a full LLVM build and aren't worth the cost on
+      # every PR: mkdocstrings resolves Python docstrings via static analysis
+      # (griffe), not by importing the compiled aie extension, so this still
+      # catches broken docstrings, cross-references, and nav entries without
+      # building anything. The dialect doc pages ship as committed stub files
+      # (docs/AIEDialect.md etc.) precisely so this build works without them.
+      - name: Build docs site (strict)
+        run: mkdocs build --strict
