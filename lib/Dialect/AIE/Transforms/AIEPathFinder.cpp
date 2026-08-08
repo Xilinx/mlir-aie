@@ -500,8 +500,8 @@ void Pathfinder::buildRoutingGraph() {
           sb.srcPorts.begin(),
           std::find(sb.srcPorts.begin(), sb.srcPorts.end(), src.port)));
       int j = static_cast<int>(std::distance(
-          sb.dstPorts.begin(), std::find(sb.dstPorts.begin(),
-                                         sb.dstPorts.end(), dest.pep.port)));
+          sb.dstPorts.begin(),
+          std::find(sb.dstPorts.begin(), sb.dstPorts.end(), dest.pep.port)));
       assert(i < static_cast<int>(sb.srcPorts.size()));
       assert(j < static_cast<int>(sb.dstPorts.size()));
       int destId = getOrAddNodeId(dest);
