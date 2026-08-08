@@ -845,6 +845,7 @@ def dma(
     loop=None,
     repeat_count=None,
     sym_name=None,
+    pad_value: int = 0,
     loc=None,
     ip=None,
 ):
@@ -858,6 +859,7 @@ def dma(
         loop=loop,
         repeat_count=repeat_count,
         sym_name=sym_name,
+        pad_value=pad_value or None,
         loc=loc,
         ip=ip,
     )
