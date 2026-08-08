@@ -538,6 +538,8 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
         if (analyzer.processedFlows[srcPoint])
           continue;
         SwitchSettings settings = analyzer.flowSolutions[srcPoint];
+        // Track whether the source's own switch connection survives routing.
+        bool srcRouted = false;
         // add connections for all the Switchboxes in SwitchSettings
         for (const auto &[curr, setting] : settings) {
           assert(setting.srcs.size() == setting.dsts.size());
@@ -549,6 +551,9 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
             if (!findPathToDest(settings, currTile, dest.bundle, dest.channel,
                                 destCoords, destPort.bundle, destPort.channel))
               continue;
+            if (currTile == srcSB && src.bundle == srcPort.bundle &&
+                src.channel == srcPort.channel)
+              srcRouted = true;
             Connect connect = {{src.bundle, src.channel},
                                {dest.bundle, dest.channel}};
             if (std::find(
@@ -562,6 +567,15 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
                 ctrlPkt ? *ctrlPkt : false;
           }
         }
+        if (!srcRouted)
+          return pktFlowOp.emitOpError()
+                 << "packet flow source (" << srcCoords.col << ", "
+                 << srcCoords.row << ") " << stringifyWireBundle(srcPort.bundle)
+                 << srcPort.channel << " could not be routed to destination ("
+                 << destCoords.col << ", " << destCoords.row << ") "
+                 << stringifyWireBundle(destPort.bundle) << destPort.channel
+                 << "; the pathfinder produced an incomplete routing for this "
+                    "placement.";
       }
     }
   }
