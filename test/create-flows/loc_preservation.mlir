@@ -24,7 +24,10 @@ module {
 
 // Synthesized aie.connect ops inside switchboxes carry the FlowOp's loc.
 // CHECK-DAG: aie.connect<{{.*}}> loc(#[[FLOWLOC:loc[0-9]*]])
-// Synthesized aie.wire ops between switchboxes/tiles carry the tile's loc.
-// CHECK-DAG: aie.wire({{.*}}) loc(#[[TILELOC:loc[0-9]*]])
+// Synthesized aie.wire ops between a *declared* tile and its switchbox carry
+// that tile's loc (routing may bend through additional, undeclared tiles
+// with no known location, so pin this to one of the declared tiles rather
+// than matching the first aie.wire seen).
+// CHECK-DAG: aie.wire(%tile_2_3 : Core, {{.*}}) loc(#[[TILELOC:loc[0-9]*]])
 // CHECK-DAG: #[[FLOWLOC]] = loc("user_design.py":42:4)
 // CHECK-DAG: #[[TILELOC]] = loc("user_design.py":50:8)

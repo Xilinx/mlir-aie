@@ -248,10 +248,28 @@ private:
   // accross two switchboxes
   std::map<std::pair<TileID, TileID>, SwitchboxConnect> graph;
 
+  // A dense graph node is a (tile, port) pair plus which crossbar role it's
+  // playing: isSrcRole = signal arriving into the crossbar (fed by a local
+  // unit, or an incoming wire from a neighbor); !isSrcRole = signal
+  // departing the crossbar (to a local unit, or an outgoing wire). The two
+  // roles of the same port are physically distinct wires, so they must be
+  // distinct graph nodes: an intraconnect hop only ever goes arriving ->
+  // departing within one tile, and a wire only ever goes departing (tile A)
+  // -> arriving (tile B). Collapsing both roles into one node let the
+  // pathfinder chain two intraconnect hops at the same tile with no real
+  // wire in between (issue #2689).
+  struct RoledEndPoint {
+    PathEndPoint pep;
+    bool isSrcRole;
+    bool operator<(const RoledEndPoint &rhs) const {
+      return std::tie(pep, isSrcRole) < std::tie(rhs.pep, rhs.isSrcRole);
+    }
+  };
+
   // Dense routing graph (built once by buildRoutingGraph()).
   bool graphBuilt = false;
-  std::map<PathEndPoint, int> nodeIds;      // PathEndPoint -> dense id
-  std::vector<PathEndPoint> nodes;          // dense id -> PathEndPoint
+  std::map<RoledEndPoint, int> nodeIds;     // RoledEndPoint -> dense id
+  std::vector<RoledEndPoint> nodes;         // dense id -> RoledEndPoint
   std::vector<std::vector<Edge>> adjacency; // dense id -> out-edges
 
   // Dijkstra scratch, sized to nodes.size() and reused across calls.
@@ -261,7 +279,7 @@ private:
   std::vector<int> preds;
   std::vector<Edge> predEdge;
 
-  int getOrAddNodeId(const PathEndPoint &pep);
+  int getOrAddNodeId(const RoledEndPoint &node);
 };
 
 // DynamicTileAnalysis integrates the Pathfinder class into the MLIR
