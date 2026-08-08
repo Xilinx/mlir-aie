@@ -1768,6 +1768,10 @@ TileOp ShimDMAOp::getTileOp() {
   return cast<TileElement>(this->getOperation()).getTileOp();
 }
 
+// Overlapping rules are checked by -aie-verify-packet-rules, not here: whether
+// an overlap misroutes depends on which packet ids the device actually
+// produces, which is not knowable from one op. Relaxed masks that overlap only
+// on ids nothing sends are how the router fits a port's flows into its slots.
 LogicalResult PacketRulesOp::verify() {
   if (Region &body = getRules(); body.empty())
     return emitOpError("should have non-empty body");

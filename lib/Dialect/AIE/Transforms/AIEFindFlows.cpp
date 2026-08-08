@@ -23,28 +23,53 @@ using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
 
-typedef struct MaskValue {
-  int mask;
-  int value;
-} MaskValue;
+// The packet ids reaching a point, one bit per id. A set rather than a
+// (mask, value) cube because first-match priority leaves a rule carrying the
+// ids no earlier rule took, which is not in general a cube. At most 32 ids
+// wide (AIETargetModel::getMaxPacketId).
+typedef uint32_t IdSet;
 
 typedef struct PortConnection {
   Operation *op;
   Port port;
 } PortConnection;
 
-typedef struct PortMaskValue {
+typedef struct PortIdSet {
   Port port;
-  MaskValue mv;
-} PortMaskValue;
+  IdSet ids;
+  bool isPacket;
+} PortIdSet;
 
 typedef struct PacketConnection {
   PortConnection portConnection;
-  MaskValue mv;
+  IdSet ids;
+  bool isPacket;
 } PacketConnection;
 
 class ConnectivityAnalysis {
   DeviceOp &device;
+
+  // Clamped so every shift below stays in range; a target with a wider id
+  // field needs a wider IdSet, not a silently truncated analysis.
+  unsigned numIds() const {
+    uint32_t maxPacketId = device.getTargetModel().getMaxPacketId();
+    assert(maxPacketId < 32 && "packet id space wider than an IdSet");
+    return std::min<uint32_t>(maxPacketId + 1, 32);
+  }
+
+  IdSet allIds() const {
+    unsigned n = numIds();
+    return n == 32 ? ~IdSet(0) : (IdSet(1) << n) - 1;
+  }
+
+  // The ids a rule matches on its own, ignoring priority: (id & mask) == value.
+  IdSet ruleIds(int mask, int value) const {
+    IdSet ids = 0;
+    for (unsigned id = 0; id < numIds(); id++)
+      if ((static_cast<int>(id) & mask) == value)
+        ids |= IdSet(1) << id;
+    return ids;
+  }
 
 public:
   ConnectivityAnalysis(DeviceOp &d) : device(d) {}
@@ -80,15 +105,14 @@ private:
     return std::nullopt;
   }
 
-  std::vector<PortMaskValue>
-  getConnectionsThroughSwitchbox(Region &r, Port sourcePort) const {
+  std::vector<PortIdSet> getConnectionsThroughSwitchbox(Region &r,
+                                                        Port sourcePort) const {
     LLVM_DEBUG(llvm::dbgs() << "Switchbox:\n");
     Block &b = r.front();
-    std::vector<PortMaskValue> portSet;
+    std::vector<PortIdSet> portSet;
     for (auto connectOp : b.getOps<ConnectOp>()) {
       if (connectOp.sourcePort() == sourcePort) {
-        MaskValue maskValue = {0, 0};
-        portSet.push_back({connectOp.destPort(), maskValue});
+        portSet.push_back({connectOp.destPort(), allIds(), false});
         LLVM_DEBUG(llvm::dbgs()
                    << "To:" << stringifyWireBundle(connectOp.destPort().bundle)
                    << " " << connectOp.destPort().channel << "\n");
@@ -100,19 +124,28 @@ private:
                    << "Packet From: "
                    << stringifyWireBundle(connectOp.sourcePort().bundle) << " "
                    << sourcePort.channel << "\n");
-        for (auto masterSetOp : b.getOps<MasterSetOp>())
-          for (Value amsel : masterSetOp.getAmsels())
-            for (auto ruleOp :
-                 connectOp.getRules().front().getOps<PacketRuleOp>()) {
+        // In rule order: a rule carries only what no earlier rule claimed.
+        IdSet claimed = 0;
+        for (auto ruleOp :
+             connectOp.getRules().front().getOps<PacketRuleOp>()) {
+          IdSet matched = ruleIds(ruleOp.maskInt(), ruleOp.valueInt());
+          IdSet carried = matched & ~claimed;
+          claimed |= matched;
+          if (!carried) {
+            // Fully shadowed by an earlier rule: dead on hardware.
+            LLVM_DEBUG(llvm::dbgs() << "Shadowed rule, carries nothing\n");
+            continue;
+          }
+          for (auto masterSetOp : b.getOps<MasterSetOp>())
+            for (Value amsel : masterSetOp.getAmsels())
               if (ruleOp.getAmsel() == amsel) {
                 LLVM_DEBUG(llvm::dbgs()
                            << "To:"
                            << stringifyWireBundle(masterSetOp.destPort().bundle)
                            << " " << masterSetOp.destPort().channel << "\n");
-                MaskValue maskValue = {ruleOp.maskInt(), ruleOp.valueInt()};
-                portSet.push_back({masterSetOp.destPort(), maskValue});
+                portSet.push_back({masterSetOp.destPort(), carried, true});
               }
-            }
+        }
       }
     }
     return portSet;
@@ -120,34 +153,27 @@ private:
 
   std::vector<PacketConnection>
   maskSwitchboxConnections(Operation *switchOp,
-                           std::vector<PortMaskValue> nextPortMaskValues,
-                           MaskValue maskValue) const {
+                           std::vector<PortIdSet> nextPortIdSets, IdSet ids,
+                           bool isPacket) const {
     std::vector<PacketConnection> worklist;
-    for (auto &nextPortMaskValue : nextPortMaskValues) {
-      Port nextPort = nextPortMaskValue.port;
-      MaskValue nextMaskValue = nextPortMaskValue.mv;
-      int maskConflicts = nextMaskValue.mask & maskValue.mask;
-      LLVM_DEBUG(llvm::dbgs() << "Mask: " << maskValue.mask << " "
-                              << maskValue.value << "\n");
-      LLVM_DEBUG(llvm::dbgs() << "NextMask: " << nextMaskValue.mask << " "
-                              << nextMaskValue.value << "\n");
-      LLVM_DEBUG(llvm::dbgs() << maskConflicts << "\n");
+    for (auto &nextPortIdSet : nextPortIdSets) {
+      LLVM_DEBUG(llvm::dbgs() << "Ids: " << ids << "\n");
+      LLVM_DEBUG(llvm::dbgs() << "NextIds: " << nextPortIdSet.ids << "\n");
 
-      if ((maskConflicts & nextMaskValue.value) !=
-          (maskConflicts & maskValue.value)) {
+      IdSet newIds = ids & nextPortIdSet.ids;
+      if (!newIds) {
         // Incoming packets cannot match this rule. Skip it.
         continue;
       }
-      MaskValue newMaskValue = {maskValue.mask | nextMaskValue.mask,
-                                maskValue.value |
-                                    (nextMaskValue.mask & nextMaskValue.value)};
-      auto nextConnection = getConnectionThroughWire(switchOp, nextPort);
+      auto nextConnection =
+          getConnectionThroughWire(switchOp, nextPortIdSet.port);
 
       // If there is no wire to follow then bail out.
       if (!nextConnection)
         continue;
 
-      worklist.push_back({*nextConnection, newMaskValue});
+      worklist.push_back(
+          {*nextConnection, newIds, isPacket || nextPortIdSet.isPacket});
     }
     return worklist;
   }
@@ -176,41 +202,38 @@ public:
     // If there is no wire to traverse, then just return no connection
     if (!t)
       return connectedTiles;
-    worklist.push_back({*t, {0, 0}});
+    worklist.push_back({*t, allIds(), false});
 
     while (!worklist.empty()) {
       PacketConnection t = worklist.back();
       worklist.pop_back();
       PortConnection portConnection = t.portConnection;
-      MaskValue maskValue = t.mv;
       Operation *other = portConnection.op;
       Port otherPort = portConnection.port;
       if (other && other->hasTrait<IsFlowEndPoint>()) {
         // If we got to a tile, then add it to the result.
         connectedTiles.push_back(t);
       } else if (auto switchOp = dyn_cast_or_null<SwitchboxOp>(other)) {
-        std::vector<PortMaskValue> nextPortMaskValues =
-            getConnectionsThroughSwitchbox(switchOp.getConnections(),
-                                           otherPort);
-        std::vector<PacketConnection> newWorkList =
-            maskSwitchboxConnections(switchOp, nextPortMaskValues, maskValue);
+        std::vector<PortIdSet> nextPortIdSets = getConnectionsThroughSwitchbox(
+            switchOp.getConnections(), otherPort);
+        std::vector<PacketConnection> newWorkList = maskSwitchboxConnections(
+            switchOp, nextPortIdSets, t.ids, t.isPacket);
         // append to the worklist
         worklist.insert(worklist.end(), newWorkList.begin(), newWorkList.end());
-        if (!nextPortMaskValues.empty() && newWorkList.empty()) {
+        if (!nextPortIdSets.empty() && newWorkList.empty()) {
           // No rule matched some incoming packet.  This is likely a
           // configuration error.
           LLVM_DEBUG(llvm::dbgs() << "No rule matched incoming packet here: ");
           LLVM_DEBUG(other->dump());
         }
       } else if (auto switchOp = dyn_cast_or_null<ShimMuxOp>(other)) {
-        std::vector<PortMaskValue> nextPortMaskValues =
-            getConnectionsThroughSwitchbox(switchOp.getConnections(),
-                                           otherPort);
-        std::vector<PacketConnection> newWorkList =
-            maskSwitchboxConnections(switchOp, nextPortMaskValues, maskValue);
+        std::vector<PortIdSet> nextPortIdSets = getConnectionsThroughSwitchbox(
+            switchOp.getConnections(), otherPort);
+        std::vector<PacketConnection> newWorkList = maskSwitchboxConnections(
+            switchOp, nextPortIdSets, t.ids, t.isPacket);
         // append to the worklist
         worklist.insert(worklist.end(), newWorkList.begin(), newWorkList.end());
-        if (!nextPortMaskValues.empty() && newWorkList.empty()) {
+        if (!nextPortIdSets.empty() && newWorkList.empty()) {
           // No rule matched some incoming packet.  This is likely a
           // configuration error.
           LLVM_DEBUG(llvm::dbgs() << "No rule matched incoming packet here: ");
@@ -243,16 +266,20 @@ static void findFlowsFrom(TileOp op, ConnectivityAnalysis &analysis,
 
       for (PacketConnection &c : tiles) {
         PortConnection portConnection = c.portConnection;
-        MaskValue maskValue = c.mv;
         Operation *destOp = portConnection.op;
         Port destPort = portConnection.port;
-        if (maskValue.mask == 0) {
+        if (!c.isPacket) {
           FlowOp::create(rewriter, Op->getLoc(), Op->getResult(0), bundle, i,
                          destOp->getResult(0), destPort.bundle,
                          destPort.channel);
         } else {
-          auto flowOp = PacketFlowOp::create(rewriter, Op->getLoc(),
-                                             maskValue.value, nullptr, nullptr);
+          // A route carries a set of ids, but PacketFlowOp names one. Take the
+          // lowest reaching here. With relaxed masks that can be an id no
+          // source sends, so treat the name as identifying the route rather
+          // than a specific packet.
+          auto flowOp =
+              PacketFlowOp::create(rewriter, Op->getLoc(),
+                                   llvm::countr_zero(c.ids), nullptr, nullptr);
           PacketFlowOp::ensureTerminator(flowOp.getPorts(), rewriter,
                                          Op->getLoc());
           OpBuilder::InsertPoint ip = rewriter.saveInsertionPoint();

@@ -1,0 +1,14 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// A single-column design whose memtile slave rules overlap, so packet id 14 is
+// claimed by the id-10 rule. aiecc must reject it rather than emit a binary that
+// misroutes on hardware. README.md records the measured hardware behaviour from
+// before the rule set was rejected, and how to reproduce it.
+//
+// REQUIRES: peano
+//
+// RUN: cp %S/aie.mlir aie_arch.mlir
+// RUN: sed 's/NPUDEVICE/npu1_1col/g' -i aie_arch.mlir
+// RUN: not %aiecc --get-xclbin --get-npu-insts --xclbin-name=aie.xclbin --npu-insts-name=insts.bin ./aie_arch.mlir 2>&1 | FileCheck %s
+// CHECK: 'aie.rule' op is shadowed for packet id 10

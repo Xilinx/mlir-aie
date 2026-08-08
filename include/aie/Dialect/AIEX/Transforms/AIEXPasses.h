@@ -59,6 +59,8 @@ createAIELowerCoreResetPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIEVerifyRuntimeRearmPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
+createAIEVerifyPacketRulesPass();
+std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIETransformBfpTypesPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIETxnToControlPacketPass();
