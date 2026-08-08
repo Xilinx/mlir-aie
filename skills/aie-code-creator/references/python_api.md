@@ -1,3 +1,8 @@
+<!--
+Copyright (C) 2026 Advanced Micro Devices, Inc.
+SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+-->
+
 # IRON Python API Reference
 
 This reference documents **mlir-aie 1.4.0**. Version 1.4.0 reworked the `Runtime`/`Program` API (upstream commit `cd9d998ffcd`, "[dyn-seq] Rework IRON Runtime as an eager callback body"); older pinned versions (e.g. `v1.3.4`) are out of scope here — see `patterns.md` and `complete_examples.md` for the one exception, the `amd/IRON` operator-framework pattern, which still pins an older wheel and intentionally keeps the old API.

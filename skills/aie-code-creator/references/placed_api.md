@@ -1,3 +1,8 @@
+<!--
+Copyright (C) 2026 Advanced Micro Devices, Inc.
+SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+-->
+
 # Low-Level (Placed) API — explicit tiles
 
 Use this only when you need explicit tile coordinates, custom routing, or features not exposed in the high-level API. For everything else, prefer `Program` / `Worker` / `ObjectFifo` from the high-level API.

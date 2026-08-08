@@ -1,3 +1,8 @@
+<!--
+Copyright (C) 2026 Advanced Micro Devices, Inc.
+SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+-->
+
 # Complete Copy-Paste IRON Examples
 
 Nine runnable designs, from the one-screen library form through hand-built topologies to a full reusable `MLIROperator`. Pick the closest one and adapt. Examples 0–7 run on the base `mlir_aie` wheel; example 8 (`MLIROperator`) needs the downstream **`amd/IRON`** repo — see the note there.
