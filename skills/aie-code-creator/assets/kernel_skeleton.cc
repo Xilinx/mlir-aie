@@ -1,3 +1,8 @@
+//
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+
 // Templated, vectorized AIE kernel skeleton.
 // Adapt:
 //   - the templated `impl` function for your op (currently element-wise add)
