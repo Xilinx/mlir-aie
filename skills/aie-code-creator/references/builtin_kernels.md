@@ -1,3 +1,8 @@
+<!--
+Copyright (C) 2026 Advanced Micro Devices, Inc.
+SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+-->
+
 # Built-in Kernels and Algorithm Templates
 
 Before writing a line of C++, check whether mlir-aie already ships the kernel and the

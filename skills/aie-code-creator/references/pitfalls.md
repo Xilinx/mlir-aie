@@ -1,3 +1,8 @@
+<!--
+Copyright (C) 2026 Advanced Micro Devices, Inc.
+SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+-->
+
 # Pitfalls and Anti-Patterns
 
 Each entry: **the bad pattern, why it breaks, and the fix.**

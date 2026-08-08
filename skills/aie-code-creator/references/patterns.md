@@ -1,3 +1,8 @@
+<!--
+Copyright (C) 2026 Advanced Micro Devices, Inc.
+SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+-->
+
 # IRON Design Patterns
 
 Copy a skeleton, adapt the dtype / size / kernel name. All examples use the high-level API with `bfloat16` and target `NPU2` unless noted.
