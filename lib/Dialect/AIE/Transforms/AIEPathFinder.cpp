@@ -463,7 +463,7 @@ void Pathfinder::buildRoutingGraph() {
             if (sb.srcPorts[i] == src.port &&
                 sb.connectivity[i][j] == Connectivity::AVAILABLE)
               dests.push_back({{src.coords, sb.dstPorts[j]},
-                                /*isSrcRole=*/false});
+                               /*isSrcRole=*/false});
       }
     } else {
       // Departing this tile: continue over the physical wire to the
