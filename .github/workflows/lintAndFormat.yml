@@ -528,9 +528,8 @@ jobs:
             echo '<details><summary>Coverage of the changed files by the full test suite'
             echo '(whole-file, not diff-only)</summary>'
             echo
-            echo '```'
-            cat $REPORT/summary.txt
-            echo '```'
+            python utils/format-coverage-comment.py $REPORT/coverage.lcov \
+              --restrict "${{ steps.changed-files.outputs.changed-files }}"
             echo
             echo '</details>'
           } > $COMMENT
