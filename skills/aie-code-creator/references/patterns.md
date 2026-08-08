@@ -6,22 +6,22 @@ Copy a skeleton, adapt the dtype / size / kernel name. All examples use the high
 
 ```
         Element-wise (single core)            Element-wise (multi-core, distribute/join)
-                                                                                            
-   host ──fill──▶ of_in ──▶ Worker ──▶ of_out ──drain──▶ host                              
-                                                                                            
-                                              ┌─▶ sub_in0 ─▶ Worker0 ─▶ sub_out0 ─┐         
+
+   host ──fill──▶ of_in ──▶ Worker ──▶ of_out ──drain──▶ host
+
+                                              ┌─▶ sub_in0 ─▶ Worker0 ─▶ sub_out0 ─┐
    host ──fill──▶ of_in (split) ──────────────┼─▶ sub_in1 ─▶ Worker1 ─▶ sub_out1 ─┤(join)──▶ of_out ──drain──▶ host
-                                              └─▶ sub_inN ─▶ WorkerN ─▶ sub_outN ─┘         
-                                                                                            
-        Broadcast (1-to-N, same data)         Producer-consumer pipeline                   
-                                                                                            
-                  ┌─▶ Worker0 ─▶ of_out0 ─┐                                                
-   host ─▶ of_in ─┼─▶ Worker1 ─▶ of_out1 ─┤(join)─▶ host                                   
-                  └─▶ WorkerN ─▶ of_outN ─┘                                                
+                                              └─▶ sub_inN ─▶ WorkerN ─▶ sub_outN ─┘
+
+        Broadcast (1-to-N, same data)         Producer-consumer pipeline
+
+                  ┌─▶ Worker0 ─▶ of_out0 ─┐
+   host ─▶ of_in ─┼─▶ Worker1 ─▶ of_out1 ─┤(join)─▶ host
+                  └─▶ WorkerN ─▶ of_outN ─┘
                                               host ─▶ of_in ─▶ Worker_s1 ─▶ of_mid ─▶ Worker_s2 ─▶ of_out ─▶ host
-        Reduction (multi-core then combine)                                                
-                                                                                            
-   host ─▶ of_in (split) ─▶ Worker_red[i] ─▶ partials ─▶ Worker_combine ─▶ of_out ─▶ host  
+        Reduction (multi-core then combine)
+
+   host ─▶ of_in (split) ─▶ Worker_red[i] ─▶ partials ─▶ Worker_combine ─▶ of_out ─▶ host
 ```
 
 ---
