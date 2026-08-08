@@ -35,4 +35,3 @@ Using the aie-code-creator skill, generate an MMUL-based matmul kernel and the m
 ```text
 Using the aie-code-creator skill, add a broadcast ObjectFifo to this design so all four workers see the same weights
 ```
-

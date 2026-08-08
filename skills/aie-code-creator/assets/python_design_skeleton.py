@@ -34,15 +34,16 @@ def build_design(
 ):
     """Build a data-parallel element-wise design and return the MLIR module."""
 
-    assert tensor_size % (n_workers * tile_size) == 0, \
-        "tensor_size must be divisible by n_workers * tile_size"
+    assert (
+        tensor_size % (n_workers * tile_size) == 0
+    ), "tensor_size must be divisible by n_workers * tile_size"
 
     DTYPE = bfloat16
     tensor_ty = np.ndarray[(tensor_size,), np.dtype[DTYPE]]
-    tile_ty   = np.ndarray[(tile_size,),   np.dtype[DTYPE]]
+    tile_ty = np.ndarray[(tile_size,), np.dtype[DTYPE]]
 
     # Top-level FIFOs, split/joined across n_workers
-    of_in_top  = ObjectFifo(tensor_ty, name="in")
+    of_in_top = ObjectFifo(tensor_ty, name="in")
     of_out_top = ObjectFifo(tensor_ty, name="out")
 
     chunk = tensor_size // n_workers
@@ -67,11 +68,11 @@ def build_design(
     kernel_fn = Kernel(
         kernel_fn_name,
         kernel_obj_file,
-        [chunk_ty, chunk_ty, np.int32],   # signature: (in, out, n_elements)
+        [chunk_ty, chunk_ty, np.int32],  # signature: (in, out, n_elements)
     )
 
     def core_fn(of_in, of_out, kfn):
-        e_in  = of_in.acquire(1)
+        e_in = of_in.acquire(1)
         e_out = of_out.acquire(1)
         kfn(e_in, e_out, chunk)
         of_in.release(1)
@@ -112,7 +113,7 @@ if __name__ == "__main__":
         print(build_design())
     else:
         N = 8192
-        inp  = iron.randint(0, 100, (N,), dtype=bfloat16, device="npu")
+        inp = iron.randint(0, 100, (N,), dtype=bfloat16, device="npu")
         outp = iron.zeros_like(inp)
         my_op(inp, outp, tensor_size=N)
         print("first 8 outputs:", outp.numpy()[:8])
