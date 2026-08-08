@@ -173,9 +173,9 @@ struct AIEAssignBufferDescriptorIDsPass
           for (auto &bdRegion : bdRegions) {
             auto &block = bdRegion.getBlocks().front();
             DMABDOp bd = *block.getOps<DMABDOp>().begin();
-            if (bd.getBdId().has_value()) {
+            if (auto existingBdId = bd.getBdId()) {
               assert(
-                  gen.bdIdAlreadyAssigned(bd.getBdId().value()) &&
+                  gen.bdIdAlreadyAssigned(*existingBdId) &&
                   "bdId assigned by user but not found during previous walk");
             } else {
               std::optional<int32_t> nextId =
@@ -188,7 +188,7 @@ struct AIEAssignBufferDescriptorIDsPass
                     << " available for channel " << channelIndex << ").";
                 return signalPassFailure();
               }
-              bd.setBdId(*nextId);
+              bd.setBdId(nextId);
             }
           }
         }
@@ -216,8 +216,8 @@ struct AIEAssignBufferDescriptorIDsPass
             continue;
           assert(blockChannelMap.count(&block));
           DMABDOp bd = (*block.getOps<DMABDOp>().begin());
-          if (bd.getBdId().has_value()) {
-            assert(gen.bdIdAlreadyAssigned(bd.getBdId().value()) &&
+          if (auto existingBdId = bd.getBdId()) {
+            assert(gen.bdIdAlreadyAssigned(*existingBdId) &&
                    "bdId assigned by user but not found during previous walk");
           } else {
             std::optional<int32_t> nextId =
@@ -230,7 +230,7 @@ struct AIEAssignBufferDescriptorIDsPass
                   << " available for channel " << channelIndex << ").";
               return signalPassFailure();
             }
-            bd.setBdId(*nextId);
+            bd.setBdId(nextId);
           }
         }
       }
@@ -265,9 +265,10 @@ struct AIEAssignBufferDescriptorIDsPass
           if (block.getOps<DMABDOp>().empty())
             continue;
           DMABDOp bd = *block.getOps<DMABDOp>().begin();
-          assert(bd.getBdId().has_value() &&
+          auto bdId = bd.getBdId();
+          assert(bdId.has_value() &&
                  "DMABDOp should have bd_id assigned by now");
-          blockBdIdMap[&block] = bd.getBdId().value();
+          blockBdIdMap[&block] = *bdId;
         }
 
         for (Block &block : memOp.getOperation()->getRegion(0)) {

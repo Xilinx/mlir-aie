@@ -20,7 +20,7 @@ ruff
 # (compile_commands.json) to run -- see utils/run_clang_tidy.sh. Pin matches
 # clang-format's pinned version (aminya/setup-cpp in lintAndFormat.yml) so
 # this repo tracks one clang-tool version instead of two.
-clang-tidy==17.0.1
+clang-tidy==20.1.0
 # Computes per-PR diff coverage from the llvm-cov lcov export in the
 # code-coverage CI job (.github/workflows/lintAndFormat.yml).
 diff-cover
