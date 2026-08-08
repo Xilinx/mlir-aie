@@ -449,7 +449,8 @@ class ObjectFifo(Resolvable):
                         self._pad_value,
                         np.dtype(np_ndarray_type_get_dtype(self._obj_type)).itemsize,
                     )
-                    or None
+                    if self._pad_value
+                    else None
                 ),
                 iter_count=self._iter_count,
                 disable_synchronization=self._disable_synchronization or None,
