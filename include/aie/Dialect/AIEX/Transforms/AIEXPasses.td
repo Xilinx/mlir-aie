@@ -287,9 +287,9 @@ def AIEUnrollRuntimeSequenceLoops
     appear inside `aie.runtime_sequence` bodies.
 
     Runs before `aie-assign-runtime-sequence-bd-ids` so BD-ID allocation sees
-    straight-line IR: configure operations in each loop iteration can receive 
+    straight-line IR: configure operations in each loop iteration can receive
     individual BD IDs after unrolling.
-    
+
     Runtime-bound loops (non-constant trip count) are left in place for the
     dynamic EmitC lowering path.
   }];
@@ -425,6 +425,26 @@ def AIEVerifyRuntimeRearm : Pass<"aie-verify-runtime-rearm", "AIE::DeviceOp"> {
                 "objectFIFO lock is never re-armed (a necessary, not sufficient, "
                 "condition for a safe reset)";
   let constructor = "xilinx::AIEX::createAIEVerifyRuntimeRearmPass()";
+  let dependentDialects = [
+    "xilinx::AIE::AIEDialect",
+    "xilinx::AIEX::AIEXDialect",
+  ];
+}
+
+def AIEVerifyPacketRules : Pass<"aie-verify-packet-rules", "AIE::DeviceOp"> {
+  let summary = "Reject packet rules that send a live packet id to two routes";
+  let description = [{
+    A stream switch matches a slave port's `aie.rule` entries in order and
+    routes on the first hit. Two rules that both match a packet id the device
+    actually produces therefore send it to whichever rule comes first, and the
+    later rule never sees it.
+
+    Only ids some op in the device injects are considered. Rules routinely
+    overlap on ids nothing sends: a slave port has a fixed number of slots, so
+    the router relaxes masks to merge several ids into one rule, and a relaxed
+    rule claims ids no flow uses.
+  }];
+  let constructor = "xilinx::AIEX::createAIEVerifyPacketRulesPass()";
   let dependentDialects = [
     "xilinx::AIE::AIEDialect",
     "xilinx::AIEX::AIEXDialect",

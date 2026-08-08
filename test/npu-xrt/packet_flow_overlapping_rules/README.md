@@ -134,8 +134,9 @@ nothing. This is precisely the report in #437.
 
 ## How it is caught
 
-`PacketRulesOp::verify()` rejects a rule set in which two rules pointing at
-different amsels match a common id, naming the lowest one:
+`-aie-verify-packet-rules` rejects a rule set in which two rules taking
+different routes both match a packet id the device actually produces, naming
+the lowest such id:
 
 ```
 $ aiecc ... aie_arch.mlir
@@ -145,9 +146,16 @@ match
         aie.rule(24, 8, %1)
 ```
 
-That is an op verifier, so it runs at parse time and after every pass: this
-design cannot reach hardware by any route, which is why `run.lit` asserts the
+The pass runs in `aiecc`'s routing pipeline, on hand-written switchboxes as
+well as routed-here ones, and while the runtime sequence still names its packet
+ids — which is where a hand-routed design's ids live. `run.lit` asserts the
 diagnostic rather than running anything.
+
+Only *live* ids are checked. Rules routinely overlap on ids nothing sends: a
+slave port has `getNumSlaveSlots()` slots, so the router relaxes masks to merge
+ids into one rule, and a relaxed rule claims ids no flow uses. Rejecting those
+would break designs that currently fit — see the second case in
+`test/create-packet-flows/overlapping_rules_reject.mlir`.
 
 `-aie-find-flows` tracks reachable packet ids as an explicit set rather than a
 `(mask, value)` cube and walks a port's rules in order, so a rule claims only

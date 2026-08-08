@@ -748,6 +748,10 @@ getRoutingPipeline(mlir::MLIRContext *ctx) {
   auto pm = std::make_unique<mlir::PassManager>(ctx);
   pm->nest<xilinx::AIE::DeviceOp>().addPass(
       xilinx::AIE::createAIEPathfinderPass());
+  // Runs on both routed-here and hand-written switchboxes, and while the
+  // runtime sequence still names its packet ids.
+  pm->nest<xilinx::AIE::DeviceOp>().addPass(
+      xilinx::AIEX::createAIEVerifyPacketRulesPass());
   return pm;
 }
 

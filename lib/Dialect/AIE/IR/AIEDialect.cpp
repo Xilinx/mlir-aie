@@ -1768,43 +1768,13 @@ TileOp ShimDMAOp::getTileOp() {
   return cast<TileElement>(this->getOperation()).getTileOp();
 }
 
+// Overlapping rules are checked by -aie-verify-packet-rules, not here: whether
+// an overlap misroutes depends on which packet ids the device actually
+// produces, which is not knowable from one op. Relaxed masks that overlap only
+// on ids nothing sends are how the router fits a port's flows into its slots.
 LogicalResult PacketRulesOp::verify() {
-  Region &body = getRules();
-  if (body.empty())
+  if (Region &body = getRules(); body.empty())
     return emitOpError("should have non-empty body");
-
-  // Two rules take the same route, and so may safely overlap, when their amsels
-  // name the same (arbiter, msel). Distinct AMSelOps can spell the same pair.
-  auto sameRoute = [](PacketRuleOp a, PacketRuleOp b) {
-    if (a.getAmsel() == b.getAmsel())
-      return true;
-    auto amselA = a.getAmsel().getDefiningOp<AMSelOp>();
-    auto amselB = b.getAmsel().getDefiningOp<AMSelOp>();
-    return amselA && amselB && amselA.arbiterIndex() == amselB.arbiterIndex() &&
-           amselA.getMselValue() == amselB.getMselValue();
-  };
-
-  // Rules are matched in order and the first hit wins, so two rules that both
-  // match some id route it to whichever comes first, leaving the later rule
-  // dead for that id.
-  SmallVector<PacketRuleOp, 4> rules(body.front().getOps<PacketRuleOp>());
-  for (size_t i = 0; i < rules.size(); i++)
-    for (size_t j = i + 1; j < rules.size(); j++) {
-      if (sameRoute(rules[i], rules[j]))
-        continue;
-      int maskI = rules[i].maskInt(), valueI = rules[i].valueInt();
-      int maskJ = rules[j].maskInt(), valueJ = rules[j].valueInt();
-      // Lowest id in the intersection of the two (mask, value) cubes, if any.
-      // A rule whose value has bits outside its mask matches nothing, so this
-      // has to be confirmed against both rules rather than assumed.
-      int id = (valueI & maskI) | (valueJ & maskJ);
-      if ((id & maskI) != valueI || (id & maskJ) != valueJ)
-        continue;
-      return rules[j].emitOpError("is shadowed for packet id ")
-             << id
-             << ": an earlier rule matches it too, and the switch "
-                "routes on the first match";
-    }
   return success();
 }
 
