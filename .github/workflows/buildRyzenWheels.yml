@@ -87,7 +87,7 @@ jobs:
           large-packages: true
           swap-storage: false
 
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           submodules: "true"
           fetch-depth: 0
@@ -281,7 +281,7 @@ jobs:
       SMOKE_PYTHON_VERSION: "3.12"
       SMOKE_ENABLE_RTTI: "ON"
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           submodules: "true"
 
@@ -383,7 +383,7 @@ jobs:
             ENABLE_RTTI: OFF
 
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           submodules: "true"
           fetch-depth: 0
@@ -647,7 +647,7 @@ jobs:
       PIP_CACHE_DIR: ${{ github.workspace }}\.pip-cache-${{ github.run_id }}
       MPLBACKEND: Agg
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           submodules: "true"
 
@@ -715,7 +715,7 @@ jobs:
       actions: read
     steps:
       - name: Checkout rehearsal script + ci-tools.lock
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           sparse-checkout: |
             utils/mlir_aie_wheels/scripts/pypi_rehearsal.sh
