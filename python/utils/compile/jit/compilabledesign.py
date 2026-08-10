@@ -855,12 +855,12 @@ class CompilableDesign:
 
     @staticmethod
     def _resolve_fold_ddr_addr_offset() -> bool:
-        """Active backend's DDR-patch fold ABI (see
-        :func:`aie.utils.npu_runtime_folds_ddr_addr_offset`).
+        """Active backend's DDR-patch fold ABI.
 
-        Kept in one place, and resolved from the backend's
-        ``FOLDS_DDR_ADDR_OFFSET`` class attribute, so the cache key and the aiecc
-        invocation always agree on whether ``insts.bin`` is folded.
+        See :func:`aie.utils.npu_runtime_folds_ddr_addr_offset`. Kept in one
+        place, and resolved from the backend's ``FOLDS_DDR_ADDR_OFFSET`` class
+        attribute, so the cache key and the aiecc invocation always agree on
+        whether ``insts.bin`` is folded.
         """
         from aie.utils import npu_runtime_folds_ddr_addr_offset
 

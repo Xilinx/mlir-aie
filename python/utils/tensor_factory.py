@@ -126,8 +126,7 @@ else:
 
 
 def npu_runtime_folds_ddr_addr_offset() -> bool:
-    """Whether the active backend expects the AIE DDR aperture offset folded into
-    the compiled ``insts.bin``.
+    """Whether the active backend folds the DDR aperture offset into ``insts.bin``.
 
     ``True`` for XRT and the CPU default (the firmware-translated ABI); ``False``
     for HRX, whose runtime adds the aperture offset for every argument itself and
