@@ -10886,6 +10886,7 @@ operation.</p>
 <tr><td><code>loop</code></td><td>::mlir::BoolAttr</td><td>bool attribute</td></tr>
 <tr><td><code>repeat_count</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 <tr><td><code>sym_name</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
+<tr><td><code>pad_value</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 </table>
 
 <h4 id="results_3">Results:<a class="headerlink" href="#results_3" title="Permanent link">&para;</a></h4>
@@ -10912,8 +10913,7 @@ operation.</p>
 <a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a>              ( `sizes` `=` custom&lt;DynamicIndexList&gt;($sizes, $static_sizes)^ )?
 <a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a>              ( `strides` `=` custom&lt;DynamicIndexList&gt;($strides, $static_strides)^ )?
 <a id="__codelineno-18-6" name="__codelineno-18-6" href="#__codelineno-18-6"></a>              ( `pad` $pad_dimensions^ )?
-<a id="__codelineno-18-7" name="__codelineno-18-7" href="#__codelineno-18-7"></a>              ( `pad_value` `=` $pad_value^ )?
-<a id="__codelineno-18-8" name="__codelineno-18-8" href="#__codelineno-18-8"></a>              `)` attr-dict
+<a id="__codelineno-18-7" name="__codelineno-18-7" href="#__codelineno-18-7"></a>              `)` attr-dict
 </code></pre></div>
 <p>This operation describes a buffer descriptor for DMA operations. In particular, it specifies
 what buffer to use, and optionally:</p>
@@ -10995,8 +10995,8 @@ elements:</p>
 <p>AIE-ML devices can apply constant padding at the buffer descriptor level, described with pairs of padding
 counts before and after a dimension, to all dimensions in the data layout transformations. The padding
 counts can be supplied to the <code>dma_bd</code> through an optional argument, an array of "tuple-like" attributes
-<code>bd_pad_layout&lt;const_pad_before, const_pad_after&gt;</code>, followed by an optional argument <code>const_val</code> (default
-is 0). All counts are expressed in multiples of the element width.</p>
+<code>bd_pad_layout&lt;const_pad_before, const_pad_after&gt;</code>. The pad value is specified on a per-channel basis
+rather than on each BD. All counts are expressed in multiples of the element width.</p>
 <p>Traits: <code>AttrSizedOperandSegments</code></p>
 <h4 id="attributes_8">Attributes:<a class="headerlink" href="#attributes_8" title="Permanent link">&para;</a></h4>
 <table>
@@ -11006,7 +11006,6 @@ is 0). All counts are expressed in multiples of the element width.</p>
 <tr><td><code>static_sizes</code></td><td>::mlir::DenseI64ArrayAttr</td><td>i64 dense array attribute</td></tr>
 <tr><td><code>static_strides</code></td><td>::mlir::DenseI64ArrayAttr</td><td>i64 dense array attribute</td></tr>
 <tr><td><code>pad_dimensions</code></td><td>::xilinx::AIE::BDPadLayoutArrayAttr</td><td></td></tr>
-<tr><td><code>pad_value</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 <tr><td><code>bd_id</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 <tr><td><code>packet</code></td><td>::xilinx::AIE::PacketInfoAttr</td><td>
     Tuple encoding the type and header of a packet;
@@ -11095,6 +11094,14 @@ A channel is defined by a direction (i.e., MM2S or S2MM) and an index.</p>
 <p>Conceptually, the aie.dma_start operation is a terminator that either passes
 control to a basic block containing DMA operations (through its first successor)
 or to a basic block for another dma_start, to an aie.end operation.</p>
+<p>On a MemTile MM2S channel, the optional <code>pad_value</code> attribute (default 0) sets the
+constant value the DMA inserts wherever a BD on this channel applies padding (the pad
+geometry lives per-BD on <code>aie.dma_bd</code>). It is a per-channel property in hardware -- one
+<code>CONSTANT_PAD_VALUE</code> register per MM2S channel. The value is the raw 32-bit stream word
+inserted for each padded word; for sub-32-bit element types pre-pack it across the word
+(e.g. <code>0x07070707</code> to fill an <code>i8</code> region with <code>0x07</code>). The register is present only on
+targets that provide it (e.g. AIE2P) and only on MM2S channels; the verifier rejects a
+nonzero <code>pad_value</code> elsewhere.</p>
 <p>Traits: <code>HasParent&lt;MemOp, MemTileDMAOp, mlir::func::FuncOp, ShimDMAOp&gt;</code>, <code>Terminator</code></p>
 <p>Interfaces: <code>InferTypeOpInterface</code></p>
 <h4 id="attributes_10">Attributes:<a class="headerlink" href="#attributes_10" title="Permanent link">&para;</a></h4>
@@ -11103,6 +11110,7 @@ or to a basic block for another dma_start, to an aie.end operation.</p>
 <tr><td><code>channel_dir</code></td><td>xilinx::AIE::DMAChannelDirAttr</td><td>DMA Channel direction</td></tr>
 <tr><td><code>channel_index</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0</td></tr>
 <tr><td><code>repeat_count</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>pad_value</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 </table>
 
 <h4 id="results_4">Results:<a class="headerlink" href="#results_4" title="Permanent link">&para;</a></h4>
@@ -11716,6 +11724,7 @@ When <code>repeat_count == 1</code>, this simplifies to <code>iter_count * elemN
 <tr><td><code>cons_dma_channels</code></td><td>::mlir::DenseI32ArrayAttr</td><td>i32 dense array attribute</td></tr>
 <tr><td><code>initValues</code></td><td>::mlir::ArrayAttr</td><td>array of ElementsAttr</td></tr>
 <tr><td><code>padDimensions</code></td><td>::xilinx::AIE::BDPadLayoutArrayAttr</td><td></td></tr>
+<tr><td><code>padValue</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 <tr><td><code>iter_count</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 </table>
 
