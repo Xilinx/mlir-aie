@@ -9,9 +9,16 @@ Two halves so callers can distinguish "recipe changed" from "rebuild needed":
 
 * :func:`_compute_recipe_hash`   — generator identity + compile_kwargs +
   aiecc/compile flags. Target-independent design identity.
-* :func:`_compute_artifact_hash` — source / object mtimes + tool mtimes +
+* :func:`_compute_artifact_hash` — source / object content + tool content +
   target device.  Captures things that change the *output* of compilation
   without changing the *recipe*.
+
+Every file input is identified by its **content**, never by its mtime.  mtime
+is not a property of a file, it is a property of how the file arrived: a fresh
+clone, a `pip install`, a `cp` or a `touch` all restamp it without changing a
+byte.  Keying on it made the cache miss for reasons that have nothing to do
+with the build, and made it impossible for two checkouts — or two machines — to
+share an entry at all.
 
 :func:`_compute_hash` composes both into the 24-hex cache-key
 ``CompilableDesign`` uses to address ``$NPU_CACHE_HOME``.
@@ -31,6 +38,58 @@ from types import CodeType
 from typing import Any, Callable, Mapping
 
 logger = logging.getLogger(__name__)
+
+# Read granularity for content digests.  Bounded so a multi-megabyte input (an
+# in-tree example already carries an 8 MB generated LUT header) is streamed
+# rather than materialised, which also keeps MemoryError off this path.
+_DIGEST_CHUNK = 1 << 20
+
+# Digests of tool binaries, memoized per process.  A tool does not change
+# underneath a running compile, and re-reading it once per design would put a
+# fixed cost on every cache lookup.  Keyed on the resolved path.
+_tool_digest_cache: dict[str, str] = {}
+
+
+def _content_digest(path: Path | str) -> str:
+    """Digest a file by content, streamed.
+
+    Returns a marker instead of raising: an input we cannot read is still an
+    input, and it must not silently collapse onto the same key as an input we
+    can.  The marker embeds the error class so "missing" and "unreadable" stay
+    distinguishable, which keeps a later fail-closed change a pure policy edit
+    rather than a re-plumbing.
+    """
+    h = hashlib.sha256()
+    try:
+        with open(path, "rb") as fh:
+            while chunk := fh.read(_DIGEST_CHUNK):
+                h.update(chunk)
+    except (OSError, ValueError) as exc:
+        return f"<unreadable:{type(exc).__name__}>"
+    return h.hexdigest()
+
+
+def _tool_identity(path: Path | str) -> str:
+    """Identity of a compiler-side file, content-addressed and memoized.
+
+    Same input the key already used — the resolved tool path — identified by
+    what it contains rather than when it was installed, so a reinstall of the
+    same toolchain no longer invalidates every entry.
+
+    Scope, stated because it is narrower than it looks: this identifies the
+    file it is given.  A driver that dynamically loads its codegen (Peano's
+    ``clang++`` is a small driver in front of ``libLLVM``) is only as
+    discriminating as the driver.  That is exactly the reach the previous
+    mtime-based key had, so this is a strict improvement rather than a new
+    guarantee; widening it to the loaded libraries is a separate change with
+    its own cost argument (hashing ~157 MB is not free on a lookup path).
+    """
+    key = str(path)
+    cached = _tool_digest_cache.get(key)
+    if cached is None:
+        cached = _content_digest(path)
+        _tool_digest_cache[key] = cached
+    return cached
 
 
 def _device_identity_key(device) -> tuple[str, str, str, str]:
@@ -100,10 +159,7 @@ def _compute_recipe_hash(
 
     if isinstance(generator, Path):
         h.update(str(generator).encode())
-        try:
-            h.update(str(generator.stat().st_mtime).encode())
-        except FileNotFoundError:
-            pass
+        h.update(_content_digest(generator).encode())
     else:
         h.update(_code_identity(generator.__code__))
         h.update(getattr(generator, "__qualname__", "").encode())
@@ -151,27 +207,23 @@ def _compute_artifact_hash(
     source_files: list[Path] | tuple[Path, ...],
     object_files: list[Path] | tuple[Path, ...],
 ) -> str:
-    """Hash of the "artifacts": source/object mtimes + tool mtimes + target device.
+    """Hash of the "artifacts": source/object content + tool content + device.
 
     Captures everything that can change the *output* of compilation without
     changing the *recipe*: edited C++ kernels, swapped object files, upgraded
     Peano / aiecc, retargeted device.
+
+    Which inputs are keyed is unchanged here; only how each one is identified.
     """
     h = hashlib.sha256()
 
     for sf in sorted(source_files, key=str):
         h.update(str(sf).encode())
-        try:
-            h.update(str(Path(sf).stat().st_mtime).encode())
-        except (FileNotFoundError, OSError):
-            pass
+        h.update(_content_digest(sf).encode())
 
     for of in sorted(object_files, key=str):
         h.update(str(of).encode())
-        try:
-            h.update(str(Path(of).stat().st_mtime).encode())
-        except (FileNotFoundError, OSError):
-            pass
+        h.update(_content_digest(of).encode())
 
     # Static .mlir is target-agnostic; compiled kernels need a device identifier.
     # Missing components collapse to a constant + WARNING log so cross-target
@@ -196,7 +248,7 @@ def _compute_artifact_hash(
             from aie.utils import config as _config
 
             peano_cxx = _config.peano_cxx_path()
-            peano_mtime = str(Path(peano_cxx).stat().st_mtime)
+            peano_id = _tool_identity(peano_cxx)
         except (
             ImportError,
             AttributeError,
@@ -207,7 +259,7 @@ def _compute_artifact_hash(
             try:
                 from aie.utils import config as _config
 
-                peano_mtime = f"path:{_config.peano_install_dir()}"
+                peano_id = f"path:{_config.peano_install_dir()}"
                 logger.warning(
                     "_compute_artifact_hash: peano cxx unavailable (%s); "
                     "keying on install dir path only",
@@ -215,7 +267,7 @@ def _compute_artifact_hash(
                 )
             except (ImportError, AttributeError, RuntimeError) as exc2:
                 logger.warning("_compute_artifact_hash: peano absent (%s)", exc2)
-                peano_mtime = "absent"
+                peano_id = "absent"
 
         try:
             from aie.utils import config as _config
@@ -223,7 +275,7 @@ def _compute_artifact_hash(
             # Resolve aiecc the way the compile does.  Probing PATH instead
             # misses the bundled bin/aiecc that _run_aiecc actually invokes,
             # and then every aiecc aliases onto the constant below.
-            aiecc_mtime = str(Path(_config.aiecc_path()).stat().st_mtime)
+            aiecc_id = _tool_identity(_config.aiecc_path())
         except (
             ImportError,
             AttributeError,
@@ -232,11 +284,11 @@ def _compute_artifact_hash(
             RuntimeError,
         ) as exc:
             logger.warning("_compute_artifact_hash: aiecc absent (%s)", exc)
-            aiecc_mtime = "absent"
+            aiecc_id = "absent"
 
         h.update(
             f"target_arch={target_arch}|target_device={target_device!r}|"
-            f"peano_mtime={peano_mtime}|aiecc_mtime={aiecc_mtime}".encode()
+            f"peano_id={peano_id}|aiecc_id={aiecc_id}".encode()
         )
 
     return h.hexdigest()
