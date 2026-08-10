@@ -584,6 +584,7 @@ class object_fifo(ObjectFifoCreateOp):
         via_DMA=None,
         plio=None,
         padDimensions=None,
+        padValue=None,
         disable_synchronization=None,
         iter_count=None,
         consumer_datatype=None,
@@ -623,6 +624,7 @@ class object_fifo(ObjectFifoCreateOp):
             via_DMA=via_DMA,
             plio=plio,
             padDimensions=padDimensions,
+            padValue=padValue,
             disable_synchronization=disable_synchronization,
             initValues=initValues,
             iter_count=iter_count,
@@ -843,6 +845,7 @@ def dma(
     loop=None,
     repeat_count=None,
     sym_name=None,
+    pad_value: int = 0,
     loc=None,
     ip=None,
 ):
@@ -856,6 +859,7 @@ def dma(
         loop=loop,
         repeat_count=repeat_count,
         sym_name=sym_name,
+        pad_value=pad_value or None,
         loc=loc,
         ip=ip,
     )
@@ -882,6 +886,7 @@ class DMAStartOp(DMAStartOp):
         dest: Successor | Block | None = None,
         chain: Successor | Block | None = None,
         repeat_count: int | None = None,
+        pad_value: int | None = None,
         loc=None,
         ip=None,
     ):
@@ -899,6 +904,7 @@ class DMAStartOp(DMAStartOp):
             dest,
             chain,
             repeat_count=repeat_count,
+            pad_value=pad_value,
             loc=loc,
             ip=ip,
         )
@@ -919,6 +925,7 @@ def dma_start(
     dest: Successor | Block | ContextManagedBlock | None = None,
     chain: Successor | Block | ContextManagedBlock | None = None,
     repeat_count: int = 0,
+    pad_value: int = 0,
     loc=None,
     ip=None,
 ):
@@ -932,6 +939,7 @@ def dma_start(
         loc=loc,
         ip=ip,
         repeat_count=repeat_count,
+        pad_value=pad_value or None,
     )
     return op.dest, op.chain
 
