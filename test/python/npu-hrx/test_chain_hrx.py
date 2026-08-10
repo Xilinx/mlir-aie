@@ -76,6 +76,38 @@ def add_one(input_buf: In, output_buf: Out, *, N: CompileTime[int]):
     return _add_one_design(input_buf, output_buf, N=N)
 
 
+def _add_two_design(input_buf: In, output_buf: Out, N: CompileTime[int]):
+    """Add 2 to every element -- a second, distinct executable (see add_one)."""
+    tile_ty = np.ndarray[(_TILE,), np.dtype[np.int32]]
+    tensor_ty = np.ndarray[(N,), np.dtype[np.int32]]
+
+    of_in = ObjectFifo(tile_ty, name="in")
+    of_out = ObjectFifo(tile_ty, name="out")
+
+    def core_body(of_in, of_out):
+        for _ in range_(N // _TILE):
+            elem_in = of_in.acquire(1)
+            elem_out = of_out.acquire(1)
+            for i in range_(_TILE):
+                elem_out[i] = elem_in[i] + 2
+            of_in.release(1)
+            of_out.release(1)
+
+    worker = Worker(core_body, fn_args=[of_in.cons(), of_out.prod()])
+
+    def sequence(a, b, in_h, out_h):
+        in_h.fill(a)
+        out_h.drain(b, wait=True)
+
+    rt = Runtime(sequence, [tensor_ty, tensor_ty, of_in.prod(), of_out.cons()])
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
+
+
+@compileconfig
+def add_two(input_buf: In, output_buf: Out, *, N: CompileTime[int]):
+    return _add_two_design(input_buf, output_buf, N=N)
+
+
 def _hrx_runtime():
     """The default NPU runtime, which is the HRX runtime under NPU_RUNTIME=hrx.
 
@@ -143,3 +175,45 @@ def test_deep_chain(hrx_kernel):
     for k, st in enumerate(stages):
         st.to("cpu")
         np.testing.assert_array_equal(st.numpy(), base + (k + 1))
+
+
+def test_chain_survives_executable_eviction():
+    """A run_chain handle must outlive eviction of its executable cache entry.
+
+    The executable cache holds a single libhrx reference per executable and
+    drops it on LRU eviction. A chain keeps every step's handle live for the
+    whole batched dispatch, so if a later load evicts an earlier step's entry
+    the handle must still own the executable -- otherwise the dispatch touches a
+    freed executable (hrx_stream_dispatch: base_executable == NULL). We force
+    the eviction by shrinking the cache to one entry and loading two distinct
+    executables, then chaining across both. Without the per-handle retain this
+    dispatches a freed executable and fails; with it the chain runs correctly.
+    """
+    rt = _hrx_runtime()
+
+    xa, ia = add_one.specialize(N=_SIZE).compile()
+    xb, ib = add_two.specialize(N=_SIZE).compile()
+    ka = NPUKernel(str(xa), str(ia), kernel_name="MLIR_AIE")
+    kb = NPUKernel(str(xb), str(ib), kernel_name="MLIR_AIE")
+
+    saved_size = rt._cache_size
+    rt._cache_size = 1
+    try:
+        h_add1 = rt.load(ka)  # cache: {add_one}
+        h_add2 = rt.load(kb)  # size==1 -> evicts + releases add_one's executable
+        # h_add1 now references an executable the cache no longer keeps alive.
+
+        base = np.arange(1, _SIZE + 1, dtype=np.int32)
+        a1 = iron.tensor(base, dtype=np.int32, device="npu")
+        c1 = iron.zeros(_SIZE, dtype=np.int32, device="npu")
+        a2 = iron.tensor(base, dtype=np.int32, device="npu")
+        c2 = iron.zeros(_SIZE, dtype=np.int32, device="npu")
+
+        rt.run_chain([(h_add1, [a1, c1]), (h_add2, [a2, c2])])
+
+        c1.to("cpu")
+        c2.to("cpu")
+        np.testing.assert_array_equal(c1.numpy(), base + 1)
+        np.testing.assert_array_equal(c2.numpy(), base + 2)
+    finally:
+        rt._cache_size = saved_size
