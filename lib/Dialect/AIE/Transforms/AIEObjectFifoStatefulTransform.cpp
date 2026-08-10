@@ -811,12 +811,19 @@ struct AIEObjectFifoStatefulTransformPass
             // Try neighbor with more remaining capacity first to avoid
             // blocking adjacent MemTiles that also need spill space.
             if (!neighborTiles.empty()) {
+              // GCC 12's libstdc++ (the Ubuntu 22.04 CI image) marks
+              // std::get_temporary_buffer deprecated but std::stable_sort
+              // still calls it internally; fixed in GCC 13+. Suppress the
+              // false positive rather than give up sort stability.
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
               llvm::stable_sort(neighborTiles, [&](TileOp a, TileOp b) {
                 return calculateCurrentUsedMemory(a, state.buffersPerFifo,
                                                   buffers) <
                        calculateCurrentUsedMemory(b, state.buffersPerFifo,
                                                   buffers);
               });
+#pragma GCC diagnostic pop
               for (auto &tile : neighborTiles) {
                 int neighborUsedMemory = calculateCurrentUsedMemory(
                     tile, state.buffersPerFifo, buffers);
@@ -2206,10 +2213,14 @@ struct AIEObjectFifoStatefulTransformPass
           memTileFifos.push_back(sortedCreateOps[i]);
         }
       }
+      // See the neighborTiles stable_sort above for why this is wrapped.
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
       llvm::stable_sort(memTileFifos,
                         [&](ObjectFifoCreateOp a, ObjectFifoCreateOp b) {
                           return getBufSize(a) > getBufSize(b);
                         });
+#pragma GCC diagnostic pop
       for (size_t i = 0; i < memTileSlots.size(); i++)
         sortedCreateOps[memTileSlots[i]] = memTileFifos[i];
     }
