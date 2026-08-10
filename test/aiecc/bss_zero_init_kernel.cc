@@ -11,8 +11,7 @@
 #include <stdint.h>
 
 // forces a PROGBITS .data in the same segment as .bss
-__attribute__((used, retain))
-volatile uint8_t initialised[4096] = {1};
+__attribute__((used, retain)) volatile uint8_t initialised[4096] = {1};
 
 // C++ guarantees this reads as zero before first use ([basic.start.static])
 volatile uint8_t zero_state[512];
