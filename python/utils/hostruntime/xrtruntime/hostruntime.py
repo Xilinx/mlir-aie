@@ -475,9 +475,25 @@ class CachedXRTRuntime(XRTHostRuntime):
     # processes trying to create contexts (as in parallel CI jobs) can be flaky.
     # TODO: use some sort of file system artifact or figure out how to query the driver
     # for the state of the cache, and how to make loading operations atomic between processes.
+    # I got these values through experimentation on two machines
+    # These values are primarily determined by the hardware/driver, and could change
+    # in the future. But currently, if you exceed these sizes, you will fail to be
+    # able to create a new context. At the driver level, the cached contexts are
+    # a system-wide constrained resource, so caching on systems with many concurrent
+    # processes trying to create contexts (as in parallel CI jobs) can be flaky.
+    #
+    # The values mirror the driver's per-device hwctx_limit (amdxdna npu*_regs.c):
+    # npu1 (Phoenix) = 6, npu4/npu5/npu6 (Strix / Strix Halo / Krackan) = 16. They are
+    # also reported live by the driver via QUERY_RESOURCE_INFO (npu_task_max).
+    # Exceeding the pool makes CREATE_HWCTX fail with MGMT_ERT_NOAVAIL (0x2000003);
+    # the retry-eviction loop cannot recover when other processes hold the remaining
+    # slots, so on machines where several processes create contexts concurrently,
+    # set XRT_CONTEXT_CACHE_SIZE to a per-process share (e.g. 2) instead.
+    # TODO: use some sort of file system artifact or figure out how to query the driver
+    # for the state of the cache, and how to make loading operations atomic between processes.
     NPU_CONTEXT_CACHE_SIZE = {
         "npu1": 6,
-        "npu2": 32,
+        "npu2": 16,
     }
 
     def __init__(self):
