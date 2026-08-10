@@ -256,7 +256,8 @@ patchCoreElfFiles(mlir::ModuleOp src,
 //===----------------------------------------------------------------------===//
 
 // Strip LLVM-23-only features Peano's older opt/llc can't parse.
-inline std::string downgradeIRForPeano(llvm::StringRef ir) {
+inline std::string downgradeIRForPeano(llvm::StringRef ir,
+                                       bool stripAlign = true) {
   std::string result = ir.str();
   auto erasePattern = [&](llvm::StringRef pat, auto trail) {
     for (size_t p = 0; (p = result.find(pat.str(), p)) != std::string::npos;) {
@@ -373,10 +374,12 @@ inline std::string downgradeIRForPeano(llvm::StringRef ir) {
   // program memory and overflowing AIE core memory. Do not remove without
   // confirming the i8 matmul still fits program memory.
   //
-  // Applies after the merge too: llvm-link reprints the module and reintroduces
-  // `align` (with ABI defaults) on the very instructions this stripped before
-  // linking, so a merged core would otherwise reach opt fully annotated.
-  {
+  // Pre-link only. The merged module keeps its `align`: the kernel arrives
+  // already annotated by its own clang, and re-stripping demotes an
+  // over-aligned alloca to the type's ABI alignment (an `aie::linear_approx`
+  // LUT falls from 64 to 4) and drops the load/store alignment the kernel was
+  // compiled against, which miscompiles the core.
+  if (stripAlign) {
     const std::string alignPat = ", align ";
     size_t pos = 0;
     while ((pos = result.find(alignPat, pos)) != std::string::npos) {
