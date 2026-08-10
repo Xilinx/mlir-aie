@@ -32,8 +32,6 @@
 #include <numeric>
 #include <set>
 
-#include <iostream>
-
 namespace xilinx::AIE {
 #define GEN_PASS_DEF_AIEOBJECTFIFOSTATEFULTRANSFORM
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h.inc"
@@ -44,8 +42,6 @@ using namespace xilinx;
 using namespace xilinx::AIE;
 
 #define DEBUG_TYPE "aie-objectFifo-stateful-transform"
-
-#define LOOP_VAR_DEPENDENCY (-2)
 
 // Marker for `memref.alloca`s emitted by this pass for bookkeeping only (number
 // of locks held, current buffer index). We use memrefs for these bookkeeping
@@ -1564,81 +1560,10 @@ struct AIEObjectFifoStatefulTransformPass
     return success();
   }
 
-  /// Function used to create a UseLockOp based on input parameters.
-  /// acc is an accumulator map that tracks the indices of the next locks to
-  /// acquire (or release). Uses op to find index of acc for next lockID.
-  /// Updates acc.
-  void createUseLocks(OpBuilder &builder, ObjectFifoCreateOp op,
-                      ObjectFifoPort port,
-                      DenseMap<std::pair<ObjectFifoCreateOp, int>, int> &acc,
-                      int numLocks, LockAction lockAction,
-                      ObjectFifoState &state) {
-    ObjectFifoCreateOp target = op;
-    auto portNum = port == ObjectFifoPort::Produce ? 0 : 1;
-    if (auto linkOp = getOptionalLinkOp(op))
-      if (state.objFifoLinks.find(*linkOp) != state.objFifoLinks.end())
-        target = state.objFifoLinks[*linkOp];
-
-    auto dev = op->getParentOfType<DeviceOp>();
-    if (!dev.getTargetModel().hasProperty(AIETargetModel::UsesSemaphoreLocks)) {
-
-      if (state.locksPerFifo[target].empty()) {
-        for (int i = 0; i < numLocks; i++) {
-          int lockID = acc[{op, portNum}];
-          acc[{op, portNum}] =
-              (lockID + 1) % op.size(); // update to next objFifo elem
-        }
-        return;
-      }
-
-      int lockMode = 0;
-      if ((port == ObjectFifoPort::Produce &&
-           lockAction == LockAction::Release) ||
-          (port == ObjectFifoPort::Consume &&
-           lockAction == LockAction::Acquire))
-        lockMode = 1;
-      for (int i = 0; i < numLocks; i++) {
-        int lockID = acc[{op, portNum}];
-        UseLockOp::create(builder, op.getLoc(),
-                          state.locksPerFifo[target][lockID], lockAction,
-                          lockMode);
-        acc[{op, portNum}] =
-            (lockID + 1) % op.size(); // update to next objFifo elem
-      }
-    } else {
-      if (numLocks == 0)
-        return;
-
-      if (state.locksPerFifo[target].empty()) {
-        acc[{op, portNum}] = (acc[{op, portNum}] + numLocks) %
-                             op.size(); // update to next objFifo elem
-        return;
-      }
-
-      // search for the correct lock based on the port of the acq/rel
-      // operation e.g. acq as consumer is the read lock (second)
-      LockOp lock;
-      if (lockAction == LockAction::AcquireGreaterEqual) {
-        if (port == ObjectFifoPort::Produce)
-          lock = state.locksPerFifo[target][0];
-        else
-          lock = state.locksPerFifo[target][1];
-      } else {
-        if (port == ObjectFifoPort::Produce)
-          lock = state.locksPerFifo[target][1];
-        else
-          lock = state.locksPerFifo[target][0];
-      }
-      UseLockOp::create(builder, op.getLoc(), lock, lockAction, numLocks);
-      acc[{op, portNum}] = (acc[{op, portNum}] + numLocks) %
-                           op.size(); // update to next objFifo elem
-    }
-  }
-
   /// Emit a UseLockOp whose lock value is a runtime-computed SSA i32.
-  void createUseLocksRuntime(OpBuilder &builder, ObjectFifoCreateOp op,
-                             ObjectFifoPort port, Value count,
-                             LockAction lockAction, ObjectFifoState &state) {
+  void createUseLocksSemaphore(OpBuilder &builder, ObjectFifoCreateOp op,
+                               ObjectFifoPort port, Value count,
+                               LockAction lockAction, ObjectFifoState &state) {
     ObjectFifoCreateOp target = op;
     if (auto linkOp = getOptionalLinkOp(op))
       if (state.objFifoLinks.find(*linkOp) != state.objFifoLinks.end())
@@ -1647,8 +1572,8 @@ struct AIEObjectFifoStatefulTransformPass
     if (state.locksPerFifo[target].empty())
       return;
 
-    // Select the correct lock based on the port and action, mirroring the
-    // semaphore-lock branch of createUseLocks().
+    // locks[0] is the producer lock, locks[1] the consumer lock. A producer
+    // acquires the former and releases the latter; a consumer does the reverse.
     LockOp lock;
     if (lockAction == LockAction::AcquireGreaterEqual) {
       if (port == ObjectFifoPort::Produce)
@@ -1674,11 +1599,10 @@ struct AIEObjectFifoStatefulTransformPass
   /// constant and each switch collapses to a single concrete lock.
   /// `baseOffset` is the offset (within the
   /// rotation) of the first lock relative to the counter.
-  void createUseLocksDynamicBinary(OpBuilder &builder, ObjectFifoCreateOp op,
-                                   ObjectFifoPort port, Value counterSlot,
-                                   int baseOffset, int numLocks,
-                                   LockAction lockAction,
-                                   ObjectFifoState &state) {
+  void createUseLocksBinary(OpBuilder &builder, ObjectFifoCreateOp op,
+                            ObjectFifoPort port, Value counterSlot,
+                            int baseOffset, int numLocks, LockAction lockAction,
+                            ObjectFifoState &state) {
     if (numLocks == 0)
       return;
     ObjectFifoCreateOp target = op;
@@ -1691,7 +1615,8 @@ struct AIEObjectFifoStatefulTransformPass
       return;
     int size = op.size();
 
-    // Binary lock mode, mirroring the non-semaphore branch of createUseLocks().
+    // AIE1 binary lock value: 1 for a producer release or consumer acquire,
+    // 0 for a producer acquire or consumer release.
     int lockMode = 0;
     if ((port == ObjectFifoPort::Produce &&
          lockAction == LockAction::Release) ||
@@ -2652,12 +2577,6 @@ struct AIEObjectFifoStatefulTransformPass
       DenseMap<ObjectFifoAcquireOp, std::vector<BufferOp *>>
           subviews; // maps each "subview" to its buffer references (subviews
       // are created by AcquireOps)
-      DenseMap<std::pair<ObjectFifoCreateOp, int>, int>
-          acqPerFifo; // maps each objFifo to its next index to acquire within
-      // this CoreOp
-      DenseMap<std::pair<ObjectFifoCreateOp, int>, int>
-          relPerFifo; // maps each objFifo to its next index to release within
-      // this CoreOp
 
       //===----------------------------------------------------------------===//
       // Dynamic lock bookkeeping setup
@@ -2757,19 +2676,28 @@ struct AIEObjectFifoStatefulTransformPass
         // account for repetition
         if (op.getRepeatCount().has_value())
           numLocks *= op.getRepeatCount().value();
-        if (usesBinaryLockBookkeeping &&
-            currentObjectBookkeepingMemref.count({op, portNum})) {
+        if (usesBinaryLockBookkeeping) {
           // Binary locks (AIE1): the released locks are those of the oldest
           // held elements, at rotation offset 0 relative to the counter (which
           // still points at the next element to release; the counter is
-          // advanced afterwards by the buffer-addressing bookkeeping).
-          createUseLocksDynamicBinary(
+          // advanced afterwards by the buffer-addressing bookkeeping). The
+          // counter is created by the matching acquire, so a release with none
+          // is releasing elements that were never acquired on this tile.
+          if (!currentObjectBookkeepingMemref.count({op, portNum})) {
+            releaseOp->emitOpError(
+                "objectFifo release has no corresponding acquire on this tile");
+            return WalkResult::interrupt();
+          }
+          createUseLocksBinary(
               builder, op, port,
               currentObjectBookkeepingMemref[{op, portNum}].getResult(),
               /*baseOffset=*/0, numLocks, LockAction::Release, state);
         } else {
-          createUseLocks(builder, op, port, relPerFifo, numLocks,
-                         LockAction::Release, state);
+          // Semaphore locks (AIE2+): bump the counterpart lock by the count.
+          Value count = arith::ConstantOp::create(
+              builder, releaseOp.getLoc(), builder.getI32IntegerAttr(numLocks));
+          createUseLocksSemaphore(builder, op, port, count, LockAction::Release,
+                                  state);
         }
 
         // For semaphore-lock tiles, decrement the runtime "held" counter by
@@ -2820,9 +2748,6 @@ struct AIEObjectFifoStatefulTransformPass
           return WalkResult::interrupt();
         }
 
-        // index of next element to acquire for this objectFifo
-        int start = acqPerFifo[{op, portNum}];
-
         // if objFifo was linked with others, find which objFifos
         // elements to use
         ObjectFifoCreateOp target = op;
@@ -2857,23 +2782,18 @@ struct AIEObjectFifoStatefulTransformPass
             delta = arith::MulIOp::create(builder, acquireOp.getLoc(), delta,
                                           repeatVal);
           }
-          createUseLocksRuntime(builder, op, port, delta,
-                                LockAction::AcquireGreaterEqual, state);
+          createUseLocksSemaphore(builder, op, port, delta,
+                                  LockAction::AcquireGreaterEqual, state);
           Value newHeld =
               arith::AddIOp::create(builder, acquireOp.getLoc(), held, delta);
           memref::StoreOp::create(builder, acquireOp.getLoc(), newHeld, slot,
                                   ValueRange{});
 
-          // Build the subview buffer references (used by the subview.access
-          // replacement below for size-1 fifos).
-          std::vector<BufferOp *> subviewRefs;
-          subviewRefs.reserve(acqNum);
-          for (int i = 0; i < acqNum; i++) {
-            subviewRefs.push_back(&state.buffersPerFifo[target][start]);
-            start = (start + 1) % op.size();
-          }
+          // size-1 fifos read buffer 0; larger fifos have their subview.access
+          // already replaced by the runtime index_switch.
+          std::vector<BufferOp *> subviewRefs(acqNum,
+                                              &state.buffersPerFifo[target][0]);
           subviews[acquireOp] = subviewRefs;
-          acqPerFifo[{op, portNum}] = start;
           return WalkResult::advance();
         }
 
@@ -2889,7 +2809,7 @@ struct AIEObjectFifoStatefulTransformPass
           builder.setInsertionPointAfter(acquireOp);
           int acqNum = acquireOp.acqNumber();
           int repeat = op.getRepeatCount().value_or(1);
-          createUseLocksDynamicBinary(
+          createUseLocksBinary(
               builder, op, port,
               currentObjectBookkeepingMemref[{op, portNum}].getResult(),
               /*baseOffset=*/0, acqNum * repeat, LockAction::Acquire, state);
