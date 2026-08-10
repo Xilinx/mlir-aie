@@ -8,7 +8,7 @@
 """Unit tests for CompilableDesign pure-logic surfaces — no NPU required.
 
 Tests that exercise compile() or end-to-end kernel execution live in
-test/python/npu-xrt/test_iron_jit_e2e.py (requires xrt_python_bindings).
+test/python/npu/test_iron_jit_e2e.py (requires a host runtime backend).
 """
 
 import json
