@@ -5,7 +5,7 @@ index 4f2be11c..7bc5baaf 100644
 @@ -706,22 +706,6 @@ static inline void _XAie_AppendMaskPollBusy32(XAie_DevInst *DevInst,
  	Hdr->OpHdr.Op = (u8)XAIE_IO_MASKPOLL_BUSY;
  }
-
+ 
 -static inline void _XAie_AppendBlockWrite32(XAie_DevInst *DevInst,
 -		XAie_TxnCmd *Cmd, u8 *TxnPtr)
 -{
@@ -41,6 +41,6 @@ index 4f2be11c..7bc5baaf 100644
 -	memcpy((void *)Payload, (void *)Cmd->DataPtr,
 -			Cmd->Size * sizeof(u32));
 -}
-
+ 
  static inline void _XAie_AppendBlockSet32_opt(XAie_TxnCmd *Cmd, u8 *TxnPtr)
  {

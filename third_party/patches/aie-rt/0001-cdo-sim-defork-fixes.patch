@@ -10,7 +10,7 @@ index aa353c51..d06a5882 100644
 +	/* add new op here */
 +	XAIE_IO_CUSTOM_OP_MAX
  } XAie_TxnOpcode;
-
+ 
  struct XAie_TxnCmd {
 diff --git a/driver/src/core/xaie_core_aie.c b/driver/src/core/xaie_core_aie.c
 index 188071fb..fdbc42ce 100644
@@ -34,7 +34,7 @@ index 83a1cebe..e55e7511 100644
 @@ -242,7 +242,7 @@ AieRC XAie_CfgInitialize(XAie_DevInst *InstPtr, XAie_Config *ConfigPtr)
  	memcpy(&InstPtr->PartProp, &ConfigPtr->PartProp,
  		sizeof(ConfigPtr->PartProp));
-
+ 
 -	RC = XAie_IOInit(InstPtr);
 +	RC = XAie_IOInit(InstPtr, ConfigPtr->Backend);
  	if(RC != XAIE_OK) {
@@ -59,16 +59,16 @@ index 3529ea33..aad00440 100644
  	XAie_PartitionProp PartProp;
 +	XAie_BackendType Backend;
  } XAie_Config;
-
+ 
  /*
 diff --git a/driver/src/io_backend/ext/xaie_cdo.c b/driver/src/io_backend/ext/xaie_cdo.c
 index 157ccbf8..c34c94d9 100644
 --- a/driver/src/io_backend/ext/xaie_cdo.c
 +++ b/driver/src/io_backend/ext/xaie_cdo.c
 @@ -30,7 +30,13 @@
-
+ 
  #ifdef __AIECDO__ /* AIE simulator */
-
+ 
 -#include "cdo_rts.h"
 +#include "stdint.h"
 +
@@ -77,17 +77,17 @@ index 157ccbf8..c34c94d9 100644
 +void cdo_MaskPoll(uint64_t , uint32_t, uint32_t, uint32_t);
 +void cdo_BlockWrite32(uint64_t, const uint32_t*, uint32_t);
 +void cdo_BlockSet32(uint64_t, uint32_t, uint32_t);
-
+ 
  #endif
-
+ 
 diff --git a/driver/src/io_backend/ext/xaie_sim.c b/driver/src/io_backend/ext/xaie_sim.c
 index 64391b93..a01db97e 100644
 --- a/driver/src/io_backend/ext/xaie_sim.c
 +++ b/driver/src/io_backend/ext/xaie_sim.c
 @@ -35,7 +35,16 @@
-
+ 
  #ifdef __AIESIM__ /* AIE simulator */
-
+ 
 -#include "main_rts.h"
 +#include <stdint.h>
 +
@@ -99,9 +99,9 @@ index 64391b93..a01db97e 100644
 +
 +void ess_NpiWrite32(uint64_t Addr, uint Data);
 +uint ess_NpiRead32(uint64_t Addr);
-
+ 
  #endif
-
+ 
 diff --git a/driver/src/io_backend/xaie_io.c b/driver/src/io_backend/xaie_io.c
 index b3aa3753..247e17aa 100644
 --- a/driver/src/io_backend/xaie_io.c
@@ -123,7 +123,7 @@ index b3aa3753..247e17aa 100644
 +	}
 +
 +	Backend = IOBackend[backend];
-
+ 
  	RC = Backend->Ops.Init(DevInst);
  	if(RC != XAIE_OK) {
 diff --git a/driver/src/io_backend/xaie_io.h b/driver/src/io_backend/xaie_io.h
@@ -132,10 +132,10 @@ index f2795377..d667274e 100644
 +++ b/driver/src/io_backend/xaie_io.h
 @@ -174,7 +174,7 @@ struct XAie_Backend {
  };
-
+ 
  /************************** Function Prototypes  *****************************/
 -AieRC XAie_IOInit(XAie_DevInst *DevInst);
 +AieRC XAie_IOInit(XAie_DevInst *DevInst, XAie_BackendType backend);
-
+ 
  #endif	/* End of protection macro */
-
+ 
