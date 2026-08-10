@@ -482,15 +482,13 @@ bool AIE1TargetModel::isLegalTileConnection(int col, int row,
   if (isShimNOCorPLTile(col, row)) {
     if (srcBundle == WireBundle::Trace)
       return dstBundle == WireBundle::South;
-    else
-      return true;
+    return true;
   }
   // Coretile
-  else if (isCoreTile(col, row)) {
+  if (isCoreTile(col, row)) {
     if (srcBundle == WireBundle::Trace)
       return dstBundle == WireBundle::South;
-    else
-      return true;
+    return true;
   }
   // NOLINTEND(bugprone-branch-clone)
   return false;
@@ -1138,7 +1136,7 @@ bool AIE2TargetModel::isLegalTileConnection(int col, int row,
     }
   }
   // Coretile
-  else if (isCoreTile(col, row)) {
+  if (isCoreTile(col, row)) {
     if (isBundleInList(srcBundle,
                        {WireBundle::DMA, WireBundle::FIFO, WireBundle::South,
                         WireBundle::West, WireBundle::North, WireBundle::East}))

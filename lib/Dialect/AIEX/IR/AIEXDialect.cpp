@@ -457,8 +457,8 @@ struct LinearizeContiguousTransfer
 } // namespace
 
 void AIEX::NpuDmaMemcpyNdOp::getCanonicalizationPatterns(
-    mlir::RewritePatternSet &patterns, mlir::MLIRContext *context) {
-  patterns.add<LinearizeContiguousTransfer>(context);
+    mlir::RewritePatternSet &results, mlir::MLIRContext *context) {
+  results.add<LinearizeContiguousTransfer>(context);
 }
 
 // Helper method to check if a requested burst length is supported by the target

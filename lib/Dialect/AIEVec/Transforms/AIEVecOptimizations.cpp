@@ -65,7 +65,7 @@ static bool canFoldAIEShiftAndBroadcast(aievec::BroadcastOp op,
   int32_t shiftBytes = cast<IntegerAttr>(constOp.getValue()).getInt();
   idx = shiftBytes * 8 / elemSize + op.getIdx();
 
-  return !(idx <= 0 || idx >= (int32_t)getVectorLaneSize(vType));
+  return idx > 0 && idx < (int32_t)getVectorLaneSize(vType);
 }
 
 template <typename AIEv1MACLikeOp,

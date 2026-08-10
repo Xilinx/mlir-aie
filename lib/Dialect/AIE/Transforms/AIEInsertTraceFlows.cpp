@@ -68,10 +68,9 @@ struct ShimInfo {
 // maximum capacity, not the runtime data size. Any non-memref block argument
 // marks it.
 static bool isDynamicRuntimeSequence(RuntimeSequenceOp seq) {
-  for (BlockArgument arg : seq.getBody().getArguments())
-    if (!isa<MemRefType>(arg.getType()))
-      return true;
-  return false;
+  return llvm::any_of(seq.getBody().getArguments(), [](BlockArgument arg) {
+    return !isa<MemRefType>(arg.getType());
+  });
 }
 
 struct AIEInsertTraceFlowsPass

@@ -4414,11 +4414,10 @@ struct ShiftClampTruncToSRSPattern : OpConversionPattern<arith::TruncIOp> {
 
     VectorType paddedSrcType = srcType;
     VectorType paddedDstType = dstType;
-    unsigned paddedLanes = laneSize;
 
     if (needsPadding) {
       // Round up to nearest multiple of 16
-      paddedLanes = ((laneSize + 15) / 16) * 16;
+      unsigned paddedLanes = ((laneSize + 15) / 16) * 16;
       paddedSrcType = createVectorType(paddedLanes, srcScalarType);
       paddedDstType = createVectorType(paddedLanes, dstScalarType);
 
@@ -5367,9 +5366,9 @@ static void configureAIEVecCommonLegalizations(ConversionTarget &target) {
       // (the compound pattern consumes it via the trunci anchor)
       if (auto intType = dyn_cast<IntegerType>(rsOp.getLhs().getType()))
         if (intType.getWidth() == 32) {
-          if (shrsiUsedByCompoundSRS(rsOp))
-            return true; // legal — compound pattern will handle
-          return false;  // illegal — individual pattern promotes
+          // legal (compound pattern will handle) iff feeding a compound SRS;
+          // otherwise illegal so the individual pattern promotes it
+          return shrsiUsedByCompoundSRS(rsOp);
         }
       return true;
     }
@@ -5463,11 +5462,9 @@ static void configureAIEVecV2PLegalizations(ConversionTarget &target) {
   // Scalar f32 and vector f32 rsqrt are legal (lowered in AIEVecToLLVM pass)
   target.addDynamicallyLegalOp<math::RsqrtOp>([](math::RsqrtOp rsqrtOp) {
     auto vecType = dyn_cast<VectorType>(rsqrtOp.getOperand().getType());
-    // Vector bf16 rsqrt is illegal
-    if (vecType && vecType.getElementType().isBF16())
-      return false;
-    // Everything else is legal (scalar f32, vector f32)
-    return true;
+    // Vector bf16 rsqrt is illegal; everything else is legal (scalar f32,
+    // vector f32)
+    return !vecType || !vecType.getElementType().isBF16();
   });
 
   // AIE2P-specific legalization for exp with LLVMIR backend
@@ -5519,9 +5516,8 @@ static void configureAIEVecV2PLegalizations(ConversionTarget &target) {
     // Scalar f32 case - check for exactly 1.0
     if (srcType.isF32()) {
       auto floatAttr = dyn_cast<FloatAttr>(constOp.getValue());
-      if (floatAttr && floatAttr.getValue().isExactlyValue(1.0))
-        return false; // illegal - will be converted to aievec.inv
-      return true;
+      // illegal (will be converted to aievec.inv) iff exactly 1.0
+      return !floatAttr || !floatAttr.getValue().isExactlyValue(1.0);
     }
 
     // Vector f32 case - check for splat of exactly 1.0
@@ -5554,7 +5550,7 @@ static void configureAIEVecV2PLegalizations(ConversionTarget &target) {
 
     unsigned srcLaneSize = getVectorLaneSize(srcType);
     unsigned dstLaneSize = getVectorLaneSize(dstType);
-    return !((srcLaneSize % 16 == 0) && (dstLaneSize % 16 == 0));
+    return (srcLaneSize % 16 != 0) || (dstLaneSize % 16 != 0);
   });
 
   // AIE2P-specific legalization: TruncFOp on vector is always illegal
@@ -5571,7 +5567,7 @@ static void configureAIEVecV2PLegalizations(ConversionTarget &target) {
 
     unsigned srcLaneSize = getVectorLaneSize(srcType);
     unsigned dstLaneSize = getVectorLaneSize(dstType);
-    return !((srcLaneSize % 16 == 0) && (dstLaneSize % 16 == 0));
+    return (srcLaneSize % 16 != 0) || (dstLaneSize % 16 != 0);
   });
 
   // AIE2P-specific legalization: ExtSIOp on vector is always illegal
@@ -5588,7 +5584,7 @@ static void configureAIEVecV2PLegalizations(ConversionTarget &target) {
 
     unsigned srcLaneSize = getVectorLaneSize(srcType);
     unsigned dstLaneSize = getVectorLaneSize(dstType);
-    return !((srcLaneSize % 16 == 0) && (dstLaneSize % 16 == 0));
+    return (srcLaneSize % 16 != 0) || (dstLaneSize % 16 != 0);
   });
 
   // AIE2P-specific legalization: TruncIOp on vector is always illegal
@@ -5611,7 +5607,7 @@ static void configureAIEVecV2PLegalizations(ConversionTarget &target) {
 
     unsigned srcLaneSize = getVectorLaneSize(srcType);
     unsigned dstLaneSize = getVectorLaneSize(dstType);
-    return !((srcLaneSize % 16 == 0) && (dstLaneSize % 16 == 0));
+    return (srcLaneSize % 16 != 0) || (dstLaneSize % 16 != 0);
   });
 
   // AIE2P-specific legalization: Override AddFOp to support laneSize==32 for
@@ -5777,9 +5773,9 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target) {
       if (auto intType = dyn_cast<IntegerType>(op.getType())) {
         unsigned w = intType.getWidth();
         if (w == 8 || w == 16 || w == 32) {
-          if (scalarClampInCompoundSRS(op))
-            return true; // legal — compound pattern consumes
-          return false;  // illegal — individual pattern promotes
+          // legal (compound pattern consumes) iff feeding a compound SRS;
+          // otherwise illegal so the individual pattern promotes it
+          return scalarClampInCompoundSRS(op);
         }
       }
       return true;
@@ -5798,9 +5794,9 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target) {
       if (auto intType = dyn_cast<IntegerType>(op.getType())) {
         unsigned w = intType.getWidth();
         if (w == 8 || w == 16 || w == 32) {
-          if (scalarClampInCompoundSRS(op))
-            return true; // legal — compound pattern consumes
-          return false;  // illegal — individual pattern promotes
+          // legal (compound pattern consumes) iff feeding a compound SRS;
+          // otherwise illegal so the individual pattern promotes it
+          return scalarClampInCompoundSRS(op);
         }
       }
       return true;
@@ -5980,7 +5976,7 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target) {
 
     unsigned srcLaneSize = getVectorLaneSize(srcType);
     unsigned dstLaneSize = getVectorLaneSize(dstType);
-    return !((srcLaneSize % 16 == 0) && (dstLaneSize % 16 == 0));
+    return (srcLaneSize % 16 != 0) || (dstLaneSize % 16 != 0);
   });
 
   // AIE2-specific legalization: TruncFOp on vector is always illegal
@@ -5997,7 +5993,7 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target) {
 
     unsigned srcLaneSize = getVectorLaneSize(srcType);
     unsigned dstLaneSize = getVectorLaneSize(dstType);
-    return !((srcLaneSize % 16 == 0) && (dstLaneSize % 16 == 0));
+    return (srcLaneSize % 16 != 0) || (dstLaneSize % 16 != 0);
   });
 
   // AIE2-specific legalization: ExtSIOp on vector is always illegal
@@ -6014,7 +6010,7 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target) {
 
     unsigned srcLaneSize = getVectorLaneSize(srcType);
     unsigned dstLaneSize = getVectorLaneSize(dstType);
-    return !((srcLaneSize % 16 == 0) && (dstLaneSize % 16 == 0));
+    return (srcLaneSize % 16 != 0) || (dstLaneSize % 16 != 0);
   });
 
   // AIE2-specific legalization: TruncIOp on vector is always illegal
@@ -6037,7 +6033,7 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target) {
 
     unsigned srcLaneSize = getVectorLaneSize(srcType);
     unsigned dstLaneSize = getVectorLaneSize(dstType);
-    return !((srcLaneSize % 16 == 0) && (dstLaneSize % 16 == 0));
+    return (srcLaneSize % 16 != 0) || (dstLaneSize % 16 != 0);
   });
 
   target.addIllegalOp<vector::ContractionOp, vector::TransposeOp,

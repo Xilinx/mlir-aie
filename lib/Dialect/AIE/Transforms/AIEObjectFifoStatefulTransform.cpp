@@ -2066,7 +2066,6 @@ struct AIEObjectFifoStatefulTransformPass
     for (auto createOp : createFifoOps) {
       std::vector<ObjectFifoCreateOp> splitConsumerFifos;
       int consumerIndex = 0;
-      int consumerDepth = createOp.size();
       ArrayRef<BDDimLayoutArrayAttr> consumerDims =
           createOp.getDimensionsFromStreamPerConsumer();
 
@@ -2080,6 +2079,7 @@ struct AIEObjectFifoStatefulTransformPass
       for (auto consumerTile : createOp.getConsumerTiles()) {
         auto consumerTileOp = cast<TileOp>(consumerTile.getDefiningOp());
 
+        int consumerDepth;
         if (isa<ArrayAttr>(createOp.getElemNumber())) {
           // +1 to account for 1st depth (producer)
           consumerDepth = createOp.size(consumerIndex + 1);

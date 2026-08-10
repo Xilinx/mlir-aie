@@ -153,7 +153,9 @@ struct SplitIRAction {
 
     std::vector<std::pair<std::string, OpInModule<KeyOp>>> out;
     out.reserve(matches.size());
-    for (auto &[key, target] : matches) {
+    for (auto &match : matches) {
+      std::string &key = match.first;
+      size_t target = match.second;
       mlir::OwningOpRef<mlir::ModuleOp> clone = srcModule.clone();
       KeyOp clonedOp;
       size_t cur = 0;

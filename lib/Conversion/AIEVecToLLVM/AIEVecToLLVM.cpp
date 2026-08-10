@@ -473,7 +473,8 @@ public:
       // FP32 add_elem
       if (laneSize == 16) {
         return {DecodedAddElemOp::Kind::FP32_FP32_FP32_16x1x1x1, /*conf*/ 60};
-      } else if (laneSize == 32) {
+      }
+      if (laneSize == 32) {
         return {DecodedAddElemOp::Kind::FP32_FP32_FP32_32x1x1x1, /*conf*/ 60};
       }
     }
@@ -617,7 +618,8 @@ public:
       // FP32 sub_elem
       if (laneSize == 16) {
         return {DecodedSubElemOp::Kind::FP32_FP32_FP32_16x1x1x1, /*conf*/ 60};
-      } else if (laneSize == 32) {
+      }
+      if (laneSize == 32) {
         return {DecodedSubElemOp::Kind::FP32_FP32_FP32_32x1x1x1, /*conf*/ 60};
       }
     }
@@ -950,7 +952,8 @@ public:
                     /*variant=*/1, /*zero_acc=*/0, /*shift16=*/0,
                     /*sub_mul=*/0, /*sub_acc1=*/0, /*sub_acc2=*/0,
                     /*sub_mask=*/0)};
-      } else if (lhsBitWidth == 32) {
+      }
+      if (lhsBitWidth == 32) {
         // emulated I32 mul_elem
         return {DecodedMulElemOp::Kind::I32_I32_I64_32x1x2x1, -1};
       }
@@ -1400,10 +1403,12 @@ public:
       if (lhsLanes == 16) {
         // 16-lane         bfloat16 uses I512.I512.ACC512 intrinsic
         return {DecodedMulElemOp::Kind::BF16_BF16_FP32_16x1x1x1, /*conf*/ 60};
-      } else if (lhsLanes == 32) {
+      }
+      if (lhsLanes == 32) {
         // 32-lane         bfloat16 uses I512.I512.ACC1024 intrinsic
         return {DecodedMulElemOp::Kind::BF16_BF16_FP32_32x1x2x1, /*conf*/ 60};
-      } else if (lhsLanes == 64) {
+      }
+      if (lhsLanes == 64) {
         // 64-lane         bfloat16 uses I1024.I1024.ACC2048 intrinsic
         return {DecodedMulElemOp::Kind::BF16_BF16_FP32_64x1x2x1, /*conf*/ 60};
       }
@@ -4383,26 +4388,24 @@ class MatMulOpConversion
                     /*variant=*/0, /*zero_acc=*/0, /*shift16=*/0,
                     /*sub_mul=*/0, /*sub_acc1=*/0, /*sub_acc2=*/0,
                     /*sub_mask=*/0)};
-
-      } else {
-        if (rhsBitWidth == 8) {
-          // <4x4xi16> x <4x8xi8> + <4x8xi32>
-          return {DecodedMatMulOp::Kind::I32, lhs, rhs, acc,
-                  aiev2_vmac_compute_control(
-                      /*sgn_x=*/signX, /*sgn_y=*/signY, /*amode=*/0,
-                      /*bmode=*/2,
-                      /*variant=*/0, /*zero_acc=*/0, /*shift16=*/0,
-                      /*sub_mul=*/0, /*sub_acc1=*/0, /*sub_acc2=*/0,
-                      /*sub_mask=*/0)};
-        } // <4x2xi16> x <2x8xi16> + <4x8xi32>
+      }
+      if (rhsBitWidth == 8) {
+        // <4x4xi16> x <4x8xi8> + <4x8xi32>
         return {DecodedMatMulOp::Kind::I32, lhs, rhs, acc,
                 aiev2_vmac_compute_control(
                     /*sgn_x=*/signX, /*sgn_y=*/signY, /*amode=*/0,
-                    /*bmode=*/3,
+                    /*bmode=*/2,
                     /*variant=*/0, /*zero_acc=*/0, /*shift16=*/0,
                     /*sub_mul=*/0, /*sub_acc1=*/0, /*sub_acc2=*/0,
                     /*sub_mask=*/0)};
-      }
+      } // <4x2xi16> x <2x8xi16> + <4x8xi32>
+      return {DecodedMatMulOp::Kind::I32, lhs, rhs, acc,
+              aiev2_vmac_compute_control(
+                  /*sgn_x=*/signX, /*sgn_y=*/signY, /*amode=*/0,
+                  /*bmode=*/3,
+                  /*variant=*/0, /*zero_acc=*/0, /*shift16=*/0,
+                  /*sub_mul=*/0, /*sub_acc1=*/0, /*sub_acc2=*/0,
+                  /*sub_mask=*/0)};
     }
 
     if (lhsBitWidth == 16) {
@@ -4825,21 +4828,21 @@ class MatMulOpAIE2pConversion
       }
       // Special case for 4x8x8 matmul: <4x8xbf16>         x <8x8xbf16> +
       // <4x8xf32>
-      else if (lhsLanes == 32 && rhsLanes == 64 && accLanes == 32) {
+      if (lhsLanes == 32 && rhsLanes == 64 && accLanes == 32) {
         // Uses BFP16 format via mac_8x8_8x8T_conf
         return {DecodedMatMulOp::Kind::BF16_4x8x8_I1024_ACC1024, lhs, rhs, acc,
                 780};
       }
       // Special case for 8x1x8 matmul:         <8x1xbf16> x <1x8xbf16> +
       // <8x8xf32>
-      else if (lhsLanes == 8 && rhsLanes == 8 && accLanes == 64) {
+      if (lhsLanes == 8 && rhsLanes == 8 && accLanes == 64) {
         // Outer product: transpose+replicate         LHS, replicate RHS, use
         // mac_elem_64_conf
         return {DecodedMatMulOp::Kind::BF16_8x1x8_I512_ACC2048, lhs, rhs, acc,
                 60};
       }
       // I1024 inputs (64         lanes each)
-      else if (lhsLanes == 64 && rhsLanes == 64 && accLanes == 64) {
+      if (lhsLanes == 64 && rhsLanes == 64 && accLanes == 64) {
         // Uses I1024.I1024.ACC2048 (64 lanes of f32)
         return {DecodedMatMulOp::Kind::BF16_8x8x8_I1024_ACC2048, lhs, rhs, acc,
                 60};

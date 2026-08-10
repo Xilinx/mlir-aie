@@ -98,13 +98,40 @@ jobs:
             -DLLVM_EXTERNAL_LIT=$(which lit) \
             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 
-          # MLIRAIEPassIncGen: generates AIEPasses.h.inc (Transforms pass
-          # registration tablegen). Not covered by aie-headers/mlir-headers --
+          # Pass/op tablegen targets not covered by aie-headers/mlir-headers --
           # needed so clang-tidy (below) can actually parse pass source files
           # instead of erroring on a missing generated header. Extend this
           # list as the clang-tidy file set (see the "clang-tidy" step below)
           # grows into dialects/passes with their own IncGen targets.
-          ninja aie-headers mlir-headers MLIRAIEPassIncGen
+          #   MLIRAIEPassIncGen             -> AIEPasses.h.inc
+          #   MLIRAIEXPassIncGen            -> AIEXPasses.h.inc
+          #   MLIRAIEVecPassIncGen          -> AIEVec Transforms/Passes.h.inc
+          #   MLIRAIEVecAnalysisPassIncGen  -> AIEVec Analysis/Passes.h.inc
+          #   MLIRAIEVecTransformOpsIncGen  -> AIEVecTransformOps.h.inc
+          #   MLIRAIEConversionPassIncGen   -> Conversion Passes.h.inc,
+          #                                    PassesEnums.h.inc
+          #   MLIRXLLVMOpsIncGen            -> XLLVMOps.h.inc
+          #   MLIRXLLVMConversionsIncGen    -> XLLVMConversions.inc
+          #   MLIRAIEVecAttributesIncGen    -> AIEVecEnums.h.inc,
+          #                                    AIEVecAttributes.h.inc
+          #   MLIRAIENormalizeAddressSpacesIncGen -> AIENormalizeAddressSpaces.inc
+          #   xaienginecdo_static-headers   -> vendored xaiengine/*.h used by
+          #                                    the CDO backend (AIETargets,
+          #                                    AIEToConfiguration)
+          #   aiecc_version                 -> aiecc/AIECCVersion.h
+          ninja aie-headers mlir-headers \
+            MLIRAIEPassIncGen \
+            MLIRAIEXPassIncGen \
+            MLIRAIEVecPassIncGen \
+            MLIRAIEVecAnalysisPassIncGen \
+            MLIRAIEVecTransformOpsIncGen \
+            MLIRAIEConversionPassIncGen \
+            MLIRXLLVMOpsIncGen \
+            MLIRXLLVMConversionsIncGen \
+            MLIRAIEVecAttributesIncGen \
+            MLIRAIENormalizeAddressSpacesIncGen \
+            xaienginecdo_static-headers \
+            aiecc_version
 
           # Assemble the Python package sources (hand-written + tablegen'd op/enum
           # wrappers) into build/python/aie. This needs only tablegen, not a full

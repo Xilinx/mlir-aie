@@ -14,9 +14,9 @@
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
 
+#include "llvm/ADT/APInt.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/Support/Debug.h"
-#include <llvm/ADT/APInt.h>
-#include <llvm/ADT/DenseSet.h>
 
 extern "C" {
 #include "xaiengine/xaiegbl_defs.h"
@@ -303,7 +303,7 @@ parseTransactionBinary(const std::vector<uint8_t> &data,
         return std::nullopt;
       }
 
-      ops.push_back(std::move(op));
+      ops.push_back(op);
     }
   } else if (major == 1 && minor == 0) {
     while (i < data.size()) {
@@ -427,7 +427,7 @@ parseTransactionBinary(const std::vector<uint8_t> &data,
         return std::nullopt;
       }
 
-      ops.push_back(std::move(op));
+      ops.push_back(op);
     }
   } else {
     llvm::errs() << "Unsupported TXN binary version: " << major << "." << minor
@@ -785,8 +785,8 @@ xilinx::AIE::convertTransactionBinaryToMLIR(mlir::MLIRContext *ctx,
 
 LogicalResult xilinx::AIE::generateAndInsertConfigOps(
     OpBuilder &builder, xilinx::AIE::DeviceOp device, llvm::StringRef clElfDir,
-    AIE::AIEToConfigurationOutputType outputType, std::string blockwrite_prefix,
-    bool skipCtrlPktOverlay) {
+    AIE::AIEToConfigurationOutputType outputType,
+    const std::string &blockwrite_prefix, bool skipCtrlPktOverlay) {
   const AIETargetModel &targetModel =
       (const AIETargetModel &)device.getTargetModel();
 
@@ -838,7 +838,7 @@ LogicalResult xilinx::AIE::generateAndInsertConfigOps(
   }
 
   if (failed(convertTransactionOpsToMLIR(builder, outputType, operations,
-                                         std::move(blockwrite_prefix)))) {
+                                         blockwrite_prefix))) {
     return failure();
   }
 

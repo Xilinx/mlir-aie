@@ -2720,14 +2720,14 @@ struct FoldConstantBDDimList : public mlir::OpRewritePattern<DMABDOp> {
 };
 } // namespace
 
-void DMABDOp::getCanonicalizationPatterns(RewritePatternSet &patterns,
+void DMABDOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                           MLIRContext *context) {
-  patterns.add<FoldConstantBDDimList, LinearizeContiguousBDTransfer>(context);
+  results.add<FoldConstantBDDimList, LinearizeContiguousBDTransfer>(context);
 }
 
-void DMAStartOp::getCanonicalizationPatterns(RewritePatternSet &patterns,
+void DMAStartOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                              MLIRContext *context) {
-  patterns.add(FoldDMAStartOp);
+  results.add(FoldDMAStartOp);
 }
 
 //===----------------------------------------------------------------------===//

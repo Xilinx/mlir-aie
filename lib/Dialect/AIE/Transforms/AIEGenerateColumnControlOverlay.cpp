@@ -52,8 +52,8 @@ DenseMap<int, int> getRowToShimChanMap(const AIETargetModel &targetModel,
       shimTile.col = 0;
       shimTile.row++;
     }
-    assert(!(shimTile.col == targetModel.columns() &&
-             shimTile.row == targetModel.rows()));
+    assert(shimTile.col != targetModel.columns() ||
+           shimTile.row != targetModel.rows());
   }
 
   int numShimChans = targetModel.getNumSourceShimMuxConnections(

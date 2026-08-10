@@ -617,12 +617,7 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   const std::string &devFilter = deviceName.getValue();
   std::string inputFile = getInputFilename();
 
-  // Chess/xbridge toolchain locations
-  std::string aietoolsRoot = discoverAietoolsDir(aietoolsDir.getValue());
-  std::string installDir = getInstallDir();
   std::string workDirStr = getWorkDir();
-  // xchesscc_wrapper scratch dir
-  std::string chessWork = workDirStr + "/chess_work";
   std::string lldPath = ShellCommand::resolveTool("ld.lld");
 
   auto matchesDeviceFilter = [devFilter](DeviceOp d) {

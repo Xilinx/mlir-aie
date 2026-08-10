@@ -321,7 +321,7 @@ static Value collapseInnerMostShapeDims(PatternRewriter &b, Location loc,
   // numDims dims merged into one, so this is always a valid collapse.
   auto reassocIndicesOpt = getReassociationIndicesForCollapse(shape, newShape);
   assert(reassocIndicesOpt && "newShape must be a valid collapse of shape");
-  auto reassocIndices = *reassocIndicesOpt;
+  const auto &reassocIndices = *reassocIndicesOpt;
   // Let CollapseShapeOp::inferResultType compute the correct result type,
   // which preserves strided layout and dynamic offset from the source.
   auto newMemRefTy =

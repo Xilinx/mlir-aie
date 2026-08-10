@@ -19,6 +19,7 @@
 #include "mlir/Dialect/UB/IR/UBOps.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Debug.h"
 
 #define DEBUG_TYPE "fold-mul-add-chain-to-conv"
@@ -215,11 +216,10 @@ struct LongestConvMACChainAnalysis {
     const auto &groups = getGroupsInChain();
     if (groups.empty())
       return false;
-    for (const auto &group : groups)
-      if (group.signalShift == -1 || group.bcastShift == -1 ||
-          group.bcastDist == -1)
-        return false;
-    return true;
+    return llvm::all_of(groups, [](const auto &group) {
+      return group.signalShift != -1 && group.bcastShift != -1 &&
+             group.bcastDist != -1;
+    });
   }
 
   std::unique_ptr<ConvMac> getConvMacFromMulOp(arith::MulIOp mulOp) {
@@ -347,13 +347,12 @@ struct LongestConvMACChainAnalysis {
           convMac->topOfChainMulConv = std::move(convMac2);
           convMac->acc = acc;
           return convMac;
-        } else {
-          // WARNING: In this situation, the         chain is ambiguous and
-          // picking one WARNING: option over the         other may result in a
-          // successful WARNING: and/or better replacement.         Here, we are
-          // assuming that WARNING: is going to be either         one or the
-          // other, or it won't WARNING: matter.
         }
+        // WARNING: In this situation, the         chain is ambiguous and
+        // picking one WARNING: option over the         other may result in a
+        // successful WARNING: and/or better replacement.         Here, we are
+        // assuming that WARNING: is going to be either         one or the
+        // other, or it won't WARNING: matter.
       } else {
         convMac->topOfChainMulConv = std::move(convMac2);
       }

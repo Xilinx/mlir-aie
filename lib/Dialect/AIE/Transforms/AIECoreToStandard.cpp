@@ -690,8 +690,6 @@ struct AIEEventOpToStdLowering : OpConversionPattern<EventOp> {
           rewriter, op.getLoc(), rewriter.getI32Type(),
           rewriter.getI32IntegerAttr(op.getVal())));
       break;
-    default:
-      return op->emitOpError("Unsupported AIEArch for EventOp lowering");
     }
     auto eventFunc = module.lookupSymbol<func::FuncOp>(funcName);
     if (!eventFunc)

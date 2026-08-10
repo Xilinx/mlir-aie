@@ -376,8 +376,6 @@ xilinx::AIE::AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output,
   case AIEArch::AIE2p:
     device = AIE2p_device;
     break;
-  default:
-    return module.emitOpError("Unsupported aie.device");
   }
   output << "  ctx->XAieConfig->AieGen = " << device << ";\n";
   output << "  ctx->XAieConfig->BaseAddr = 0x20000000000;\n";

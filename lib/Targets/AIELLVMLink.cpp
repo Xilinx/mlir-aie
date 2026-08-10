@@ -118,11 +118,10 @@ static mlir::LogicalResult linkFiles(const std::vector<std::string> &Files,
   return mlir::success();
 }
 
-mlir::LogicalResult
-xilinx::AIE::AIELLVMLink(llvm::raw_ostream &output,
-                         std::vector<std::string> Files, bool DisableDITypeMap,
-                         bool NoVerify, bool Internalize, bool OnlyNeeded,
-                         bool PreserveAssemblyUseListOrder, bool Verbose) {
+mlir::LogicalResult xilinx::AIE::AIELLVMLink(
+    llvm::raw_ostream &output, const std::vector<std::string> &Files,
+    bool DisableDITypeMap, bool NoVerify, bool Internalize, bool OnlyNeeded,
+    bool PreserveAssemblyUseListOrder, bool Verbose) {
   LLVMContext Context;
 
   if (!DisableDITypeMap)
@@ -136,8 +135,8 @@ xilinx::AIE::AIELLVMLink(llvm::raw_ostream &output,
     Flags |= Linker::Flags::LinkOnlyNeeded;
 
   // First add all the regular input files
-  if (failed(linkFiles(std::move(Files), Context, L, Flags, DisableDITypeMap,
-                       NoVerify, Internalize, Verbose)))
+  if (failed(linkFiles(Files, Context, L, Flags, DisableDITypeMap, NoVerify,
+                       Internalize, Verbose)))
     return mlir::failure();
 
   Composite->print(output, nullptr, PreserveAssemblyUseListOrder);
