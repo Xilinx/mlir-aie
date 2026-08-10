@@ -20,7 +20,7 @@
 
 // RUN: rm -rf %t && mkdir -p %t
 // RUN: aiecc --tmpdir %t %s
-// RUN: FileCheck %s --check-prefix=LINKED --input-file %t/peano-linked_main_core_0_2.ll --implicit-check-not=nocreateundeforpoison --implicit-check-not=", align "
+// RUN: FileCheck %s --check-prefix=LINKED --input-file %t/peano-linked_main_core_0_2.ll --implicit-check-not=nocreateundeforpoison
 // RUN: FileCheck %s --check-prefix=OPTED --input-file %t/opted_main_core_0_2.ll --implicit-check-not=@merge_kernel
 
 // The kernel arrived, and the merged text is back in a dialect Peano parses: no
@@ -32,6 +32,16 @@
 // LINKED-DAG: call void @llvm.lifetime.end.p0(i64 -1,
 // LINKED-DAG: declare void @llvm.lifetime.start.p0(i64 immarg,
 // LINKED-DAG: declare void @llvm.lifetime.end.p0(i64 immarg,
+
+// The merged module keeps its `align`, unlike the pre-link downgrade (see
+// peano_compat_align_strip.mlir). Stripping it here demotes the kernel's
+// over-aligned scratch buffer to the type's ABI alignment (64 -> 4) and drops
+// the load/store alignment the kernel was compiled against, which miscompiles
+// the core: an inline attention kernel built that way hangs its tile. Both
+// halves are pinned -- exempting only the alloca still miscompiles it.
+// LINKED-DAG: alloca [4 x float], align 64
+// LINKED-DAG: store float %{{.*}}, ptr %{{.*}}, align 64
+// LINKED-DAG: load float, ptr %{{.*}}, align 64
 
 // Peano's opt then folds the alwaysinline kernel in and dead-strips the
 // linkonce_odr definition: no `@merge_kernel` survives (--implicit-check-not
