@@ -23,7 +23,7 @@
 // Precondition: the segment really is mixed, otherwise the test is vacuous and
 // would pass even with the bug present (a p_filesz == 0 segment takes aie-rt's
 // separate, correct calloc path).
-// RUN: llvm-readelf -lW %t.d/prj/elfs_main_core_0_2/elfs_main_core_0_2.elf | awk '/^  LOAD/ && $7=="RW" {if (strtonum($6) > strtonum($5)) f=1} END {exit !f}'
+// RUN: llvm-readelf -lW %t.d/prj/elfs_main_core_0_2/elfs_main_core_0_2.elf | awk 'function hex2dec(s,   i,c,v,n){gsub(/^0[xX]/,"",s);n=0;for(i=1;i<=length(s);i++){c=tolower(substr(s,i,1));v=index("0123456789abcdef",c)-1;n=n*16+v}return n} /^  LOAD/ && $7=="RW" {if (hex2dec($6) > hex2dec($5)) f=1} END {exit !f}'
 
 // The configuration image must not carry ELF metadata: those bytes would be
 // written over .bss on the device.
