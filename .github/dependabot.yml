@@ -56,6 +56,21 @@ updates:
         patterns: ["*"]
         group-by: dependency-name
 
+  # third_party/aie-rt tracks upstream Xilinx/aie-rt release/main_aig (see
+  # .gitmodules and third_party/patches/aie-rt/README.md). Scoped to aie-rt
+  # only: third_party/bootgen isn't covered by this effort and a vendored
+  # patch has needed hand-adjustment on past bumps, so treat these as
+  # PRs to review and build, not to auto-merge.
+  - package-ecosystem: "gitsubmodule"
+    directory: "/"
+    schedule:
+      interval: "cron"
+      cronjob: "0 6 8,22 * *"
+    cooldown:
+      default-days: 7
+    ignore:
+      - dependency-name: "third_party/bootgen"
+
   - package-ecosystem: "pre-commit"
     directory: "/"
     schedule:
