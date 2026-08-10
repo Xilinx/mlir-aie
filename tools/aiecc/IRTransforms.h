@@ -444,6 +444,11 @@ inline std::string downgradeIRForPeano(llvm::StringRef ir) {
   // constant invalid for type") in both the typed position ('float
   // 1.100000e-01') and the bare operand one ('fmul float %x, 1.100000e-01').
   //
+  // llvm/llvm-project@41c214f0b115 ("[AsmWriter] Change the output syntax of
+  // floating-point literals", #190649) moved that round-trip check onto the
+  // value's own semantics and retired the legacy '0x<16hex>' spelling for
+  // 'f0x', which the pass below this one rewrites.
+  //
   // A bare operand takes its type from the instruction, so tokenize and track
   // the last type keyword seen on the line. That also keeps a mixed-type line
   // ('call void @f(float 1.1, double 2.2)') from being rewritten under the
