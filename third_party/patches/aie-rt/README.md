@@ -17,3 +17,9 @@ upstream yet, applied automatically at CMake configure time (see
   `lib/Targets/AIERT.cpp` depends on to select the CDO backend, and carries a
   few minor build/warning fixes. None of this is present upstream as of the
   pinned commit.
+- `0002-remove-dead-blockwrite32-append-fns.patch`: deletes
+  `_XAie_AppendBlockWrite32`/`_opt` in `xaie_txn.c`, two `static inline`
+  functions left over from an upstream TXN-serialization refactor that no
+  caller references anymore (block-write commands now go through
+  `_XAie_AppendBWToTxnBuff`/`_XAie_AppendBWToBlockwriteBuff` instead). GCC
+  doesn't flag this, but clang's `-Werror=unused` (used in CI) does.
