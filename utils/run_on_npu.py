@@ -170,6 +170,7 @@ def run_command(command: list[str]) -> tuple[int, str]:
 #     same host also touches the device.
 # AIE_NPU_MAX_CONCURRENT_DISPATCH overrides the bound; 1 serializes dispatch.
 # AIE_NPU_NO_DEVICE_LOCK=1 opts out entirely, for tests that exercise concurrency.
+# AIE_NPU_EXCLUSIVE_DEVICE=1 takes the whole device rather than a slot.
 #
 # npu1 gets 1: the driver caps it at 6 hardware contexts against npu4's 16 and
 # enables frame-boundary preemption (AIE2_PREEMPT) only on npu4, so it cannot
@@ -178,6 +179,26 @@ def run_command(command: list[str]) -> tuple[int, str]:
 # of failing. Anything between 1 and 8 is unmeasured there.
 DEFAULT_MAX_CONCURRENT_DISPATCH = {"npu1": 1, "npu2": 8}
 FALLBACK_MAX_CONCURRENT_DISPATCH = 1
+
+
+def take_slot(lock_dir: str, npu_kind: str, slots: int) -> int:
+    # Blocking on one chosen file instead would queue behind that holder while
+    # another slot sat idle.
+    while True:
+        for i in range(slots):
+            path = os.path.join(lock_dir, f"mlir-aie-npu-{npu_kind}.{i}.lock")
+            fd = os.open(path, os.O_CREAT | os.O_RDWR, 0o666)
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                return fd
+            except OSError as e:
+                os.close(fd)
+                # Only contention means "try the next slot". Anything else --
+                # a lock_dir whose filesystem has no flock, say -- would spin
+                # here forever, which is the wedged job this lock exists to avoid.
+                if e.errno not in (errno.EWOULDBLOCK, errno.EAGAIN, errno.EACCES):
+                    raise
+        time.sleep(0.01)
 
 
 @contextlib.contextmanager
@@ -200,35 +221,29 @@ def device_lock(npu_kind: str):
             slots = FALLBACK_MAX_CONCURRENT_DISPATCH
     slots = max(1, slots)
     lock_dir = os.environ.get("XDG_RUNTIME_DIR") or tempfile.gettempdir()
-    # A counting semaphore built from `slots` lock files: probe each without
-    # blocking and take the first that is free. Blocking on one chosen file
-    # instead would queue behind that holder while another slot sat idle.
+    # An exclusive run needs no other hardware context to EXIST: opening one
+    # clears a core tile's data memory under a run that is idle between
+    # dispatches, no dispatch required. A slot count only bounds dispatch.
+    exclusive = bool(os.environ.get("AIE_NPU_EXCLUSIVE_DEVICE"))
+    gate_path = os.path.join(lock_dir, f"mlir-aie-npu-{npu_kind}.gate.lock")
+    gate = os.open(gate_path, os.O_CREAT | os.O_RDWR, 0o666)
     fd = None
     t0 = time.perf_counter()
-    while fd is None:
-        for i in range(slots):
-            path = os.path.join(lock_dir, f"mlir-aie-npu-{npu_kind}.{i}.lock")
-            candidate = os.open(path, os.O_CREAT | os.O_RDWR, 0o666)
-            try:
-                fcntl.flock(candidate, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                fd = candidate
-                break
-            except OSError as e:
-                os.close(candidate)
-                # Only contention means "try the next slot". Anything else --
-                # a lock_dir whose filesystem has no flock, say -- would spin
-                # here forever, which is the wedged job this lock exists to avoid.
-                if e.errno not in (errno.EWOULDBLOCK, errno.EAGAIN, errno.EACCES):
-                    raise
-        if fd is None:
-            time.sleep(0.01)
-    waited = time.perf_counter() - t0
-    if waited > 1.0:
-        log(f"waited {waited:.1f}s for a free {npu_kind} device slot ({slots} total)")
     try:
+        # Gate then slot is the only pair held at once, so the order cannot
+        # deadlock. flock is not FIFO-fair: slot holders can delay an exclusive.
+        fcntl.flock(gate, fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH)
+        if not exclusive:
+            fd = take_slot(lock_dir, npu_kind, slots)
+        waited = time.perf_counter() - t0
+        if waited > 1.0:
+            wanted = "the device" if exclusive else f"a free slot ({slots} total)"
+            log(f"waited {waited:.1f}s for {wanted} on {npu_kind}")
         yield
     finally:
-        os.close(fd)  # releases the slot
+        if fd is not None:
+            os.close(fd)
+        os.close(gate)
 
 
 def main() -> int:
