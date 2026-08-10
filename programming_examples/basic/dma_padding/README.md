@@ -43,7 +43,7 @@ the harness so each file isolates only the API-specific design code.
 
 Each file sweeps all of its `--api` modes across all `--pad` cases and verifies:
 ```shell
-python3 objectfifo.py      # forward + split, all pad cases
+python3 objectfifo.py      # forward + split + link, all pad cases
 python3 tile_dma.py        # dma_channel, all pad cases
 ```
 
