@@ -467,7 +467,8 @@ inline std::string downgradeIRForPeano(llvm::StringRef ir) {
         continue;
       }
       // Copy quoted strings verbatim: they can hold anything that looks like a
-      // literal (a version string, an escaped byte array).
+      // literal (a version string, an escaped byte array). A quote inside one
+      // is printed as `\22`, never `\"`, so the next bare quote terminates it.
       if (c == '"') {
         size_t end = result.find('"', i + 1);
         end = (end == std::string::npos) ? result.size() : end + 1;
