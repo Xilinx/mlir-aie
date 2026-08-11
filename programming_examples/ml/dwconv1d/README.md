@@ -23,22 +23,11 @@ a cross-correlation (no kernel flip) over `x` zero-padded by `(kernel_size - 1) 
 
 1. `dwconv1d.cc`: AIE2P kernel, pulled from [`aie_kernels/aie2p/`](../../../aie_kernels/aie2p/). Vectorized 16-outputs/iteration: two aligned 256-bit loads build a 32-lane window and `aie::sliding_mul_ops<16, K, 1, 1, 1, bfloat16, bfloat16>` runs the K-tap correlation over it into one `accfloat` accumulator.
 
-1. `test.cpp`: C++ testbench. Loads the compiled XCLBIN + `insts.bin` via `setup_and_run_aie`, recomputes the reference directly from the already-padded input buffer (the same convolution the kernel itself performs, so no separate host-side padding step), and bit-compares the output against it. The compare is exact rather than a tolerance: device measurement across every `(bias, kernel_size)` combination this suite exercises is bit-exact (max abs err 0) for both the `bias=True` and `bias=False` paths, so a tolerance would only hide a regression.
-
 ## Usage
-
-### Standalone JIT verification
 
 ```shell
 python3 dwconv1d.py --dev npu2
 python3 dwconv1d.py --dev npu2 -k 5 --no_bias
 ```
 
-### C++ Testbench
-
-```shell
-make
-make run
-```
-
-Override `channels`, `seq_len`, `kernel_size`, `n_cores`, or `bias` (0/1) on the `make` command line, e.g. `make kernel_size=5 bias=0`.
+Override `channels`, `seq_len`, `kernel_size`, `n_cores`, or `bias` on the command line; see `--help`.
