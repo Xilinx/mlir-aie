@@ -181,7 +181,9 @@ buildObjectSubgraph(EdgeWithTypedOutput<ModRef> &lowered,
       .input()
       .output("-o");
   auto &peanoCompat =
-      llvmIR.map<std::string>("peano-compat_{0}.ll", downgradeIRForPeano);
+      llvmIR.map<std::string>("peano-compat_{0}.ll", [](llvm::StringRef ir) {
+        return downgradeIRForPeano(ir);
+      });
   // Merge the core's merge-mode link artifacts (`link_merge_files`) into the
   // downgraded core IR before opt; with the kernel marked alwaysinline that
   // inlines its body into the core, leaving no func.call and no separate kernel
@@ -262,7 +264,7 @@ buildObjectSubgraph(EdgeWithTypedOutput<ModRef> &lowered,
                                << out.filePath << "': " << ec.message() << "\n";
                   return mlir::failure();
                 }
-                os << downgradeIRForPeano(merged);
+                os << downgradeIRForPeano(merged, /*stripAlign=*/false);
                 out.value = File{};
                 return mlir::success();
               })
