@@ -805,8 +805,19 @@ struct AIEDMATasksToNPUPass
            isContiguousTransfer(input_sizes, input_strides));
 
       if (dims->size() > 2) {
+        // `input_sizes` is innermost-first (built by the reversal loop
+        // above), matching the convention `d0size`/`d1size` below read from
+        // `sizes[0]`/`sizes[1]`; `(*dims)` is the original outermost-first
+        // list and indexing it with 2 does not name the same dimension
+        // (e.g. for a 4-element outermost-first list, `(*dims)[2]` is D1,
+        // not D2). Note that d2_size is currently a dead field regardless
+        // of this fix: AIEDmaToNpu.cpp's memtile word-packing never writes
+        // it (see its `// TODO: D2Size`), with the real D2 repeat count
+        // carried entirely by buffer_length, same as on shim tiles. Fixing
+        // the index here has no effect on lowered output today, but keeps
+        // this value correct for whenever D2Size does get wired up.
         d2size = (target_model.isMemTile(tile.getCol(), tile.getRow()))
-                     ? (*dims)[2].getSize()
+                     ? input_sizes[2]
                      : 0;
       }
       if (padDims.has_value()) {
