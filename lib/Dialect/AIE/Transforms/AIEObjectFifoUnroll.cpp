@@ -29,42 +29,23 @@ using namespace xilinx::AIE;
 
 namespace {
 
-// The unroll factor for a loop is the value of the `aie.unroll_hint` attribute
-// attached by AIEObjectFifoStatefulTransform (the least common multiple of the
-// depths of the objectFifos accessed within the loop). Loops without the hint
-// carry no objectFifo access and are not unrolled (factor 1).
-static int64_t unrollFactorForLoop(scf::ForOp forOp) {
-  if (auto hint =
-          forOp->getAttrOfType<IntegerAttr>(kObjectFifoUnrollHintAttrName))
-    return hint.getInt();
-  return 1;
-}
-
 // Statically known trip count of a loop, or nullopt if it cannot be computed.
-static std::optional<int64_t> staticTripCount(scf::ForOp forOp) {
+static std::optional<int64_t> getStaticTripCount(scf::ForOp forOp) {
   if (forOp.getSingleLowerBound() && forOp.getSingleUpperBound() &&
-      forOp.getSingleStep())
-    if (std::optional<llvm::APInt> tc = forOp.getStaticTripCount())
+      forOp.getSingleStep()) {
+    if (std::optional<llvm::APInt> tc = forOp.getStaticTripCount()) {
       return tc->getSExtValue();
+    }
+  }
   return std::nullopt;
-}
-
-// True if the loop carries an objectFifo access, i.e. it was annotated with the
-// unroll hint by the objectFifo stateful transform.
-static bool loopHasObjectFifoOp(scf::ForOp forOp) {
-  return forOp->hasAttr(kObjectFifoUnrollHintAttrName);
 }
 
 // Remove redundant AIE1 binary-lock acquires.
 //
 // The dynamic lowering acquires the whole sliding window ([counter, counter +
 // acqNumber)) on every loop iteration; after unrolling and constant folding
-// that expands to an explicit `Acquire` of each element's lock. But an AIE1
-// binary lock that is already held (acquired earlier with no intervening
-// release) must not be re-acquired -- `Acquire, N` means "hold N elements
-// total", so re-acquiring an element already in the window is a no-op at best
-// and a hang at worst. Dropping those leaves only the newly available
-// leading-edge lock(s) acquired each rotation.
+// that expands to an explicit `Acquire` of each element's lock.
+// This drops the needless re-acquire of locks already held.
 //
 // The analysis is block-local and conservatively assumes nothing is held on
 // block entry. That keeps the very first acquire of each unrolled loop body
@@ -76,19 +57,22 @@ static void removeRedundantBinaryAcquires(DeviceOp device) {
     SmallVector<UseLockOp> toErase;
     for (Operation &op : *block) {
       auto useLock = dyn_cast<UseLockOp>(&op);
-      if (!useLock)
+      if (!useLock) {
         continue;
+      }
       Value lock = useLock.getLock();
       if (useLock.acquire()) {
         // A binary `Acquire` of a lock already in the held set is redundant.
-        if (!held.insert(lock).second)
+        if (!held.insert(lock).second) {
           toErase.push_back(useLock);
+        }
       } else if (useLock.release()) {
         held.erase(lock);
       }
     }
-    for (UseLockOp op : toErase)
+    for (UseLockOp op : toErase) {
       op.erase();
+    }
   });
 }
 
@@ -102,15 +86,27 @@ struct AIEObjectFifoUnrollPass
   void runOnOperation() override {
     DeviceOp device = getOperation();
 
-    for (auto coreOp : device.getOps<CoreOp>()) {
-      // Collect every scf.for loop that carries an objectFifo access (i.e. was
-      // annotated with the unroll hint). Ancestor loops are annotated too, so
-      // they are naturally included.
-      SmallVector<scf::ForOp> loops;
-      coreOp.walk([&](scf::ForOp forOp) {
-        if (loopHasObjectFifoOp(forOp))
-          loops.push_back(forOp);
+    // Global dynamic lowering: leave every loop rolled and just drop the hints,
+    // preserving the runtime (loop-preserving) form the stateful transform
+    // emitted.
+    if (clDynamicObjectFifos) {
+      device.walk([&](scf::ForOp forOp) {
+        forOp->removeAttr(kObjectFifoUnrollHintAttrName);
       });
+      return;
+    }
+
+    for (auto coreOp : device.getOps<CoreOp>()) {
+      // A core can opt into the dynamic form via its `dynamic_objfifo_lowering`
+      // attribute; leave its loops rolled (drop the hints, skip unrolling).
+      if (coreOp.getDynamicObjfifoLowering().value_or(false)) {
+        coreOp.walk([&](scf::ForOp forOp) {
+          forOp->removeAttr(kObjectFifoUnrollHintAttrName);
+        });
+        continue;
+      }
+      SmallVector<scf::ForOp> loops;
+      coreOp.walk([&](scf::ForOp forOp) { loops.push_back(forOp); });
 
       // Operation::walk uses post-order traversal by default, so a nested loop
       // is visited before its enclosing loop; iterating the list in order thus
@@ -118,11 +114,16 @@ struct AIEObjectFifoUnrollPass
       // avoids invalidating references to inner loops when an outer loop (which
       // duplicates its nested loops) is unrolled.
       for (scf::ForOp forOp : loops) {
-        int64_t unrollFactor = unrollFactorForLoop(forOp);
-        if (unrollFactor <= 1)
+        // Loops without the objectFifo unroll hint (the LCM of the accessed
+        // fifo depths) carry no objectFifo access; factor 1 leaves them rolled.
+        auto hint =
+            forOp->getAttrOfType<IntegerAttr>(kObjectFifoUnrollHintAttrName);
+        int64_t unrollFactor = hint ? hint.getInt() : 1;
+        if (unrollFactor <= 1) {
           continue;
+        }
 
-        std::optional<int64_t> trip = staticTripCount(forOp);
+        std::optional<int64_t> trip = getStaticTripCount(forOp);
         // When the loop performs fewer iterations than a full rotation of the
         // objectFifos, unroll it completely: every iteration must map to an
         // explicit buffer/lock slot.
@@ -152,9 +153,7 @@ struct AIEObjectFifoUnrollPass
         // buffer/lock rotation slot. This is best-effort: an epilogue with a
         // non-constant trip count cannot be fully unrolled and is left rolled.
         if (info->epilogueLoopOp) {
-          scf::ForOp epilogue = *info->epilogueLoopOp;
-          if (loopHasObjectFifoOp(epilogue))
-            (void)mlir::loopUnrollFull(epilogue);
+          (void)mlir::loopUnrollFull(*info->epilogueLoopOp);
         }
       }
 
@@ -168,17 +167,17 @@ struct AIEObjectFifoUnrollPass
     // bookkeeping counters to loop-carried SSA values. Once the loops have been
     // unrolled by their rotation period those counters become loop-invariant,
     // so every buffer selection (scf.index_switch) and lock value collapses to
-    // a constant. Run that fold here as a scoped sub-pipeline instead of
-    // relying on the caller to chain the passes: canonicalize exposes the
-    // constants, SCCP propagates them across any remainder loop that survives a
-    // partial unroll, and a final canonicalize deletes the now-dead counter
-    // arithmetic and iter_args.
+    // a constant. Run that fold here as a scoped sub-pipeline: canonicalize
+    // exposes the constants, SCCP propagates them across any remainder loop
+    // that survives a partial unroll, and a final canonicalize deletes the
+    // now-dead counter arithmetic and iter_args.
     OpPassManager foldPipeline(DeviceOp::getOperationName());
     foldPipeline.addPass(mlir::createCanonicalizerPass());
     foldPipeline.addPass(mlir::createSCCPPass());
     foldPipeline.addPass(mlir::createCanonicalizerPass());
-    if (failed(runPipeline(foldPipeline, device)))
+    if (failed(runPipeline(foldPipeline, device))) {
       return signalPassFailure();
+    }
 
     // With the window acquires now folded to concrete per-lock `Acquire` ops,
     // drop the ones that re-acquire an already-held AIE1 binary lock, then run
@@ -186,8 +185,9 @@ struct AIEObjectFifoUnrollPass
     removeRedundantBinaryAcquires(device);
     OpPassManager cleanupPipeline(DeviceOp::getOperationName());
     cleanupPipeline.addPass(mlir::createCanonicalizerPass());
-    if (failed(runPipeline(cleanupPipeline, device)))
+    if (failed(runPipeline(cleanupPipeline, device))) {
       return signalPassFailure();
+    }
   }
 };
 

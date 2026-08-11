@@ -364,10 +364,9 @@ def AIEObjectFifoStatefulTransform : Pass<"aie-objectFifo-stateful-transform", "
 
     If the producer and consumer tiles of an aie.objectFifo.createObjectFifo operation are not adjacent, the
     pass also establised aie.flow and aie.dma operations to enable communication between the tiles.
-    Extend the body of each loop that contains operations on objectFifos such that it is unrolled
-    based on the number of elements in the objectFifos. If the number of iterations of the loop
-    cannot be divided pefectly by the unrolling factor, the pass duplicates the loop body after
-    the original loop.
+    ObjectFifo accesses inside loops are lowered to runtime buffer/lock bookkeeping, and each such loop is
+    annotated with an `aie.unroll_hint`; the separate `aie-objectFifo-unroll` pass consumes that hint to
+    unroll the loop and fold the bookkeeping into a static lowering.
   }];
 
   let constructor = "xilinx::AIE::createAIEObjectFifoStatefulTransformPass()";
@@ -380,13 +379,6 @@ def AIEObjectFifoStatefulTransform : Pass<"aie-objectFifo-stateful-transform", "
   ];
 
   let options = [
-    // Default true: dynamic (loop-preserving) lowering. This matches the aiecc
-    // driver default (tools/aiecc/aiecc.cpp) so standalone `aie-opt` and a full
-    // compile agree on the lowering a design gets. Pass dynamic-objFifos=false to
-    // select static LCM-based loop unrolling instead.
-    Option<"clDynamicObjectFifos", "dynamic-objFifos", "bool", /*default=*/"true",
-           "Use dynamic (loop-preserving) object fifo lowering in cores. When "
-           "false, use static loop unrolling instead.">,
     Option<"clPacketSwObjectFifos", "packet-sw-objFifos", "bool", /*default=*/"false",
            "Flag to enable aie.packetflow lowering from objectfifos.">,
   ];
@@ -404,14 +396,21 @@ def AIEObjectFifoUnroll : Pass<"aie-objectFifo-unroll", "DeviceOp"> {
     subsequent `mem2reg`/`canonicalize` the runtime buffer/lock bookkeeping folds
     into constant buffer references and constant lock counts.
 
-    This pass is intended to run after `aie-objectFifo-stateful-transform` (which
-    emits the dynamic bookkeeping and sets the `aie.unroll_hint` attribute this
-    pass consumes) and is only used when dynamic objectFifos are disabled
-    (`--dynamic-objFifos=false`).
+    This pass runs after `aie-objectFifo-stateful-transform` (which emits the
+    dynamic bookkeeping and annotates every objectFifo loop with the
+    `aie.unroll_hint` attribute this pass consumes). When `dynamic-objFifos` is
+    true the pass is a no-op that only strips the hints, leaving the dynamic
+    (loop-preserving) lowering in place; individual cores can opt into the
+    dynamic form regardless via their `dynamic_objfifo_lowering` attribute.
   }];
 
   let constructor = "xilinx::AIE::createAIEObjectFifoUnrollPass()";
   let dependentDialects = ["mlir::scf::SCFDialect", "xilinx::AIE::AIEDialect",
+  ];
+  let options = [
+    Option<"clDynamicObjectFifos", "dynamic-objFifos", "bool", /*default=*/"false",
+           "Leave objectFifo loops rolled (dynamic lowering) instead of "
+           "unrolling them.">,
   ];
 }
 
