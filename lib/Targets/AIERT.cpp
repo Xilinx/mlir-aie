@@ -561,12 +561,17 @@ static LogicalResult configureBdInBlock(const AIE::AIETargetModel &targetModel,
 
 LogicalResult xilinx::AIE::AIERTControl::pushToBdQueueAndEnable(
     Operation &op, int col, int row, int chNum, const DMAChannelDir &channelDir,
-    int bdId, int repeatCount) {
+    int bdId, int repeatCount, uint32_t padValue) {
   TxnLocBracket bracket(*this, op.getLoc());
   XAie_DmaDirection direction =
       channelDir == DMAChannelDir::S2MM ? DMA_S2MM : DMA_MM2S;
   auto tileLoc = XAie_TileLoc(col, row);
   auto enTokenIssue = tileLoc.Row == 0 && direction == DMA_S2MM;
+  if (padValue != 0 && direction == DMA_MM2S &&
+      targetModel.isMemTile(col, row)) {
+    TRY_XAIE_API_EMIT_ERROR(op, XAie_DmaSetPadValue, &aiert->devInst, tileLoc,
+                            static_cast<uint8_t>(chNum), padValue);
+  }
   // in english repeat_count==0 means "do it once" and don't repeat but
   // libxaie treats repeat_count=1 as do it once.
   repeatCount += 1;
@@ -869,9 +874,8 @@ xilinx::AIE::AIERTControl::addInitConfig(DeviceOp &targetOp,
                "bd_id assigned by configureLocksAndBd above");
         if (failed(pushToBdQueueAndEnable(
                 *dmaOp.getOperation(), col, row, dmaOp.getChannelIndex(),
-                dmaOp.getChannelDir(),
-                *bdId, // NOLINT(bugprone-unchecked-optional-access)
-                dmaOp.getRepeatCount())))
+                dmaOp.getChannelDir(), bd.getBdId().value(),
+                dmaOp.getRepeatCount(), dmaOp.getPadValue())))
           return failure();
       }
     else
@@ -880,13 +884,9 @@ xilinx::AIE::AIERTControl::addInitConfig(DeviceOp &targetOp,
           DMABDOp bd = *op.getDest()->getOps<DMABDOp>().begin();
           int chNum = op.getChannelIndex();
           auto channelDir = op.getChannelDir();
-          auto bdId = bd.getBdId();
-          assert(bdId.has_value() &&
-                 "bd_id assigned by configureLocksAndBd above");
           if (failed(pushToBdQueueAndEnable(
                   *bd.getOperation(), col, row, chNum, channelDir,
-                  *bdId, // NOLINT(bugprone-unchecked-optional-access)
-                  op.getRepeatCount())))
+                  bd.getBdId().value(), op.getRepeatCount(), op.getPadValue())))
             return failure();
         }
       }

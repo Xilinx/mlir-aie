@@ -1015,8 +1015,8 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
     AIE-ML devices can apply constant padding at the buffer descriptor level, described with pairs of padding
     counts before and after a dimension, to all dimensions in the data layout transformations. The padding
     counts can be supplied to the `dma_bd` through an optional argument, an array of "tuple-like" attributes
-    `bd_pad_layout<const_pad_before, const_pad_after>`, followed by an optional argument `const_val` (default
-    is 0). All counts are expressed in multiples of the element width.
+    `bd_pad_layout<const_pad_before, const_pad_after>`. The pad value is specified on a per-channel basis
+    rather than on each BD. All counts are expressed in multiples of the element width.
   }];
 
   let arguments = (
@@ -1038,7 +1038,6 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
         OptionalAttr<DenseI64ArrayAttr>:$static_sizes,
         OptionalAttr<DenseI64ArrayAttr>:$static_strides,
         OptionalAttr<BDPadLayoutArrayAttr>:$pad_dimensions,
-        DefaultValuedOptionalAttr<AIEI32Attr, "0">:$pad_value,
         OptionalAttr<AIEI32Attr>:$bd_id,
         OptionalAttr<PacketInfoAttr>:$packet,
         DefaultValuedOptionalAttr<AIEI32Attr, "0">:$burst_length,
@@ -1060,7 +1059,6 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
     ( `sizes` `=` custom<DynamicIndexList>($sizes, $static_sizes)^ )?
     ( `strides` `=` custom<DynamicIndexList>($strides, $static_strides)^ )?
     ( `pad` $pad_dimensions^ )?
-    ( `pad_value` `=` $pad_value^ )?
     `)` attr-dict
   }];
 
@@ -1224,13 +1222,23 @@ def AIE_DMAStartOp: AIE_Op<"dma_start", [
     Conceptually, the aie.dma_start operation is a terminator that either passes
     control to a basic block containing DMA operations (through its first successor)
     or to a basic block for another dma_start, to an aie.end operation.
+
+    On a MemTile MM2S channel, the optional `pad_value` attribute (default 0) sets the
+    constant value the DMA inserts wherever a BD on this channel applies padding (the pad
+    geometry lives per-BD on `aie.dma_bd`). It is a per-channel property in hardware -- one
+    `CONSTANT_PAD_VALUE` register per MM2S channel. The value is the raw 32-bit stream word
+    inserted for each padded word; for sub-32-bit element types pre-pack it across the word
+    (e.g. `0x07070707` to fill an `i8` region with `0x07`). The register is present only on
+    targets that provide it (e.g. AIE2P) and only on MM2S channels; the verifier rejects a
+    nonzero `pad_value` elsewhere.
   }];
 
   let arguments = (
     ins DMAChannelDir:$channel_dir,
         ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$channel_index,
         // repeat_count==0 means "do it once" and don't repeat
-        DefaultValuedAttr<AIEI32Attr, "0">:$repeat_count
+        DefaultValuedAttr<AIEI32Attr, "0">:$repeat_count,
+        DefaultValuedOptionalAttr<AIEI32Attr, "0">:$pad_value
   );
   let successors = (successor AnySuccessor:$dest, AnySuccessor:$chain);
   let assemblyFormat = [{
@@ -1243,6 +1251,7 @@ def AIE_DMAStartOp: AIE_Op<"dma_start", [
   }];
 
   let hasCanonicalizer = 1;
+  let hasVerifier = 1;
 }
 
 def AIE_DMAOp: AIE_Op<"dma", [
@@ -1260,7 +1269,9 @@ def AIE_DMAOp: AIE_Op<"dma", [
         DefaultValuedAttr<BoolAttr, "true">:$loop,
         // repeat_count==0 means "do it once" and don't repeat
         DefaultValuedAttr<AIEI32Attr, "0">:$repeat_count,
-        OptionalAttr<StrAttr>:$sym_name
+        OptionalAttr<StrAttr>:$sym_name,
+        // Region form of aie.dma_start's pad_value; see its semantics there.
+        DefaultValuedOptionalAttr<AIEI32Attr, "0">:$pad_value
   );
   let regions = (region VariadicRegion<SizedRegion<1>>:$bds);
   let assemblyFormat = [{
@@ -2039,6 +2050,8 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
         OptionalAttr<DenseI32ArrayAttr>:$cons_dma_channels,
         InitValuesArrayAttr:$initValues,
         OptionalAttr<BDPadLayoutArrayAttr>:$padDimensions,
+        // Lowered onto the memtile MM2S channel; see aie.dma_start's pad_value.
+        DefaultValuedOptionalAttr<AIEI32Attr, "0">:$padValue,
         OptionalAttr<AIEI32Attr>:$iter_count
   );
 
