@@ -23,3 +23,15 @@ upstream yet, applied automatically at CMake configure time (see
   caller references anymore (block-write commands now go through
   `_XAie_AppendBWToTxnBuff`/`_XAie_AppendBWToBlockwriteBuff` instead). GCC
   doesn't flag this, but clang's `-Werror=unused` (used in CI) does.
+- `0003-fix-aie1-tiledma-intrleavecount-underflow.patch`: fixes an unsigned
+  underflow in the AIE1 tile-DMA BD writer. `_XAie_TileDmaWriteBd` guards each
+  BD field with `_XAie_CheckPrecisionExceeds(Lsb, _XAie_MaxBitsNeeded(v), 32)`,
+  and passes `IntrleaveCount - 1U` for the interleave-count field. Interleaving
+  is off by default, so `IntrleaveCount` is 0 and the subtraction wraps to
+  `0xFFFFFFFF`, making `_XAie_MaxBitsNeeded` return 32 and the guard trip for
+  any nonzero `Lsb`. The BD write then bails out with `XAIE_ERR` before
+  programming a single word, so every AIE1 tile DMA silently goes
+  unconfigured. The neighbouring `XAie_SetField` that actually writes the
+  field masks the wrapped value, which is why only the new check is affected.
+  Clamp the checked value to 0 when interleaving is disabled. Reported
+  upstream; drop this once it lands.
