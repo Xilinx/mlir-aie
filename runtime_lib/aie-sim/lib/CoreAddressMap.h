@@ -21,6 +21,8 @@
 #include "aiesim/Components.h"
 
 #include <cstdint>
+#include <iterator>
+#include <optional>
 
 namespace aiesim {
 
@@ -44,6 +46,34 @@ constexpr MemBand kAIE2Bands[] = {
 };
 
 constexpr uint32_t kBandSize = 0x10000;
+
+/// A lock id as the core issues it: which module it names, and the index within
+/// that module.
+struct LockBand {
+  MemDirection dir;
+  uint32_t local;
+};
+
+/// Split a core-issued lock id into its band and local index.
+///
+/// The lock id space bands by direction exactly as the memory windows do, and
+/// in the same order. The authority is `AIETargetModel::getLockLocalBaseIndex`,
+/// which for a core tile returns `getNumLocks() * {0,1,2,3}` for South, West,
+/// North and East -- so with 16 locks per core tile, 48 is the tile's OWN lock
+/// 0, not an out-of-range id. Deriving the band width from the module's own
+/// `count()` rather than a literal 16 keeps this right if a device reports a
+/// different number.
+///
+/// Returns nullopt for an id past the last band, which is a genuine fault: the
+/// core named a module that does not exist.
+inline std::optional<LockBand> splitLockId(uint32_t id, uint32_t numLocks) {
+  if (numLocks == 0)
+    return std::nullopt;
+  const uint32_t band = id / numLocks;
+  if (band >= std::size(kAIE2Bands))
+    return std::nullopt;
+  return LockBand{kAIE2Bands[band].dir, id % numLocks};
+}
 
 } // namespace aiesim
 
