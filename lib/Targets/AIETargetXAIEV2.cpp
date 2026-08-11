@@ -108,6 +108,7 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
     int BaseAddrA = 0;
     int elementWidthInBytes = 0;
     int ndims = 0;
+    int iterSize = 0, iterStride = 0, iterCurr = 0;
     ArrayRef<BDDimLayoutAttr> dims;
     // Owning storage for the folded dims; must outlive `dims` (used far below).
     SmallVector<BDDimLayoutAttr> dimsStorage;
@@ -133,6 +134,11 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
       lenA = op.getLenInBytes();
       offsetA = op.getOffsetInBytes();
       elementWidthInBytes = op.getBufferElementTypeWidthInBytes();
+      if (auto s = op.getIterationSize())
+        iterSize = *s;
+      if (auto s = op.getIterationStride())
+        iterStride = *s;
+      iterCurr = op.getIterationCurrent();
       if (!op.getMixedSizes().empty()) {
         // Runtime-valued sizes/strides are not supported on this static path.
         for (mlir::OpFoldResult s : op.getMixedSizes())
@@ -259,6 +265,14 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
         generateXAieDmaSetMultiDimAddr(output, ndims, dims, col, row, bdNum,
                                        BaseAddrA, offsetA, lenA,
                                        elementWidthInBytes, "1");
+
+      if (iterSize > 1 && iterStride > 0) {
+        int stepInWords =
+            static_cast<int>(iterStride * (elementWidthInBytes / 4.0));
+        output << "__mlir_aie_try(XAie_DmaSetBdIteration("
+               << tileDMAInstRefStr(col, row, bdNum) << ", " << stepInWords
+               << ", " << iterSize << ", " << iterCurr << "));\n";
+      }
 
       if (block->getNumSuccessors() > 0) {
         Block *nextBlock = block->getSuccessors()[0]; // should have only one
