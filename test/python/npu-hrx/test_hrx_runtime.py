@@ -22,6 +22,7 @@ an on-hardware test (gated by ``hrx_python_bindings`` + ``hrx_npu2``).
 
 import os
 import time
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -42,6 +43,7 @@ from aie.utils.npukernel import NPUKernel
 from aie.utils.hostruntime.hrxruntime.hostruntime import (
     CachedHRXRuntime,
     HRXHostRuntime,
+    HostRuntimeError,
 )
 
 _TILE = 16
@@ -87,6 +89,18 @@ def kernels():
     kernel_a = NPUKernel(str(xa), str(ia), kernel_name="MLIR_AIE")
     kernel_b = NPUKernel(str(xb), str(ib), kernel_name="MLIR_AIE")
     return kernel_a, kernel_b
+
+
+@pytest.fixture(scope="module")
+def kernel_c():
+    """A third distinct kernel (different N -> different xclbin) for LRU tests."""
+    xc, ic = add_one.specialize(N=256).compile()
+    return NPUKernel(str(xc), str(ic), kernel_name="MLIR_AIE")
+
+
+def _xclbin_key(npu_kernel):
+    """The cache-key xclbin component (resolved path) for a kernel."""
+    return str(Path(npu_kernel.xclbin_path).resolve())
 
 
 @pytest.fixture
@@ -181,6 +195,80 @@ def test_cached_run_correct(cached, kernels):
     cached.run(handle, [in_a, out])
     out.to("cpu")
     np.testing.assert_array_equal(out.numpy(), base + 1)
+
+
+def test_cached_load_returns_fresh_handle_each_call(cached, kernels):
+    """Each load() returns a new handle wrapper even when the executable is reused."""
+    kernel_a, _ = kernels
+    h1 = cached.load(kernel_a)
+    h2 = cached.load(kernel_a)
+    assert h1 is not h2  # a fresh handle object per call ...
+    assert h1.executable is h2.executable  # ... over one cached executable
+
+
+def test_cached_executable_released_on_eviction(cached, kernels, monkeypatch):
+    """Evicting an entry releases its amdxdna executable, not just the dict slot."""
+    kernel_a, kernel_b = kernels
+    cached._cache_size = 1
+
+    released = []
+    monkeypatch.setattr(cached, "_release_executable", released.append)
+
+    h_a = cached.load(kernel_a)
+    cached.load(kernel_b)  # exceeds cache size -> evicts kernel_a's entry
+    assert released == [h_a.executable]
+
+
+def test_cached_lru_recency_orders_eviction(cached, kernels, kernel_c):
+    """Eviction is LRU: a recently reused entry survives over an older one."""
+    kernel_a, kernel_b = kernels
+    cached._cache_size = 2
+
+    cached.load(kernel_a)
+    cached.load(kernel_b)  # cache order: [a, b]
+    cached.load(kernel_a)  # touch a -> order: [b, a]
+    cached.load(kernel_c)  # size 2 -> evict LRU (b); keep a + c
+    assert len(cached._exe_cache) == 2
+
+    cached_paths = {key[0] for key in cached._exe_cache}
+    assert _xclbin_key(kernel_a) in cached_paths  # reused -> survived
+    assert _xclbin_key(kernel_c) in cached_paths  # newest -> present
+    assert _xclbin_key(kernel_b) not in cached_paths  # LRU -> evicted
+
+
+def test_cached_load_exception_leaves_cache_intact(cached, kernels, monkeypatch):
+    """A failed executable build propagates and does not corrupt the cache."""
+    kernel_a, kernel_b = kernels
+    cached.load(kernel_a)
+    assert len(cached._exe_cache) == 1
+
+    def _boom(*args, **kwargs):
+        raise HostRuntimeError("simulated build failure")
+
+    monkeypatch.setattr(cached, "_build_executable", _boom)
+    with pytest.raises(HostRuntimeError):
+        cached.load(kernel_b)
+
+    # The previously cached entry is untouched; no half-built entry was added.
+    assert len(cached._exe_cache) == 1
+    assert _xclbin_key(kernel_a) in {key[0] for key in cached._exe_cache}
+
+
+def test_cached_reuse_run_correct(cached, kernels):
+    """Re-dispatching a reused cached executable stays correct across runs."""
+    kernel_a, _ = kernels
+    first = cached.load(kernel_a)
+
+    for offset in (0, 1000):
+        base = np.arange(1 + offset, 1025 + offset, dtype=np.int32)
+        in_a = iron.tensor(base, dtype=np.int32, device="npu")
+        out = iron.zeros(1024, dtype=np.int32, device="npu")
+
+        handle = cached.load(kernel_a)  # cache hit -> same executable as `first`
+        assert handle.executable is first.executable
+        cached.run(handle, [in_a, out])
+        out.to("cpu")
+        np.testing.assert_array_equal(out.numpy(), base + 1)
 
 
 # --- HRXHostRuntime (uncached) ---------------------------------------------

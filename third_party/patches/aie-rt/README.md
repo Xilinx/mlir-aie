@@ -17,13 +17,26 @@ upstream yet, applied automatically at CMake configure time (see
   `lib/Targets/AIERT.cpp` depends on to select the CDO backend, and carries a
   few minor build/warning fixes. None of this is present upstream as of the
   pinned commit.
-- `0002-remove-dead-blockwrite32-append-fns.patch`: deletes
+- `0002-elfloader-zero-bss-gap.patch`: `_XAie_LoadDataMemSection` wrote
+  `p_memsz` bytes from a buffer (`ElfMem + p_offset`) holding only `p_filesz`
+  valid ones, substituting a zeroed buffer only when `p_filesz == 0`. That
+  covers a pure-data segment and a pure-bss segment, but not the ordinary mixed
+  `.data`+`.bss` segment (`0 < p_filesz < p_memsz`) that any link with both
+  initialised and zero-initialised globals produces -- for those it read past
+  the segment's file contents and wrote the following ELF bytes (`.comment`,
+  `.symtab`) into tile data memory, where zero-initialised statics live. The
+  System V gABI defines those trailing bytes to hold zero; that is how `.bss` is
+  represented in a loadable segment. The patch allocates a `p_memsz` zeroed
+  buffer whenever `p_memsz > p_filesz` and copies the initialised prefix into
+  it. Regression test: `test/aiecc/bss_zero_init.mlir`. Not fixed upstream as of
+  the pinned commit.
+- `0003-remove-dead-blockwrite32-append-fns.patch`: deletes
   `_XAie_AppendBlockWrite32`/`_opt` in `xaie_txn.c`, two `static inline`
   functions left over from an upstream TXN-serialization refactor that no
   caller references anymore (block-write commands now go through
   `_XAie_AppendBWToTxnBuff`/`_XAie_AppendBWToBlockwriteBuff` instead). GCC
   doesn't flag this, but clang's `-Werror=unused` (used in CI) does.
-- `0003-fix-aie1-tiledma-intrleavecount-underflow.patch`: fixes an unsigned
+- `0004-fix-aie1-tiledma-intrleavecount-underflow.patch`: fixes an unsigned
   underflow in the AIE1 tile-DMA BD writer. `_XAie_TileDmaWriteBd` guards each
   BD field with `_XAie_CheckPrecisionExceeds(Lsb, _XAie_MaxBitsNeeded(v), 32)`,
   and passes `IntrleaveCount - 1U` for the interleave-count field. Interleaving

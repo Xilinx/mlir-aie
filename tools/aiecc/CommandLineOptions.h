@@ -218,6 +218,18 @@ inline cl::opt<std::string> npuInstsName(
     cl::desc("Output NPU insts filename template (use {0} for multi-device)"),
     cl::init("insts_{0}.bin"));
 
+// DDR-patch ABI: XRT (and CPU) consume the folded firmware ABI; HRX consumes
+// the producer-independent (unfolded) insts.bin and adds the AIE DDR aperture
+// offset for every arg itself. cl::opt defaults to true, so only pass the
+// flag when unfolding is requested.
+inline cl::opt<bool> foldDDRAddrOffsetOpt(
+    "fold-ddr-addr-offset",
+    cl::desc("Fold the AIE DDR-aperture offset into arg_plus for args >= 5 "
+             "(xclbin/instruction-buffer runtime ABI). Set false for the "
+             "producer-independent HRX ABI (raw offsets; runtime adds the "
+             "aperture offset for all args)."),
+    cl::init(true));
+
 // Emit the per-core ELFs as an output. Cores are still compiled on demand for
 // any artifact that embeds them (e.g. --get-xclbin); this flag additionally
 // writes them out. (Request the pre-link objects instead with

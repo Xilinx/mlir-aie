@@ -52,7 +52,8 @@ struct AIERTControl {
   mlir::LogicalResult pushToBdQueueAndEnable(mlir::Operation &op, int col,
                                              int row, int chNum,
                                              const DMAChannelDir &channelDir,
-                                             int bdId, int repeatCount);
+                                             int bdId, int repeatCount,
+                                             uint32_t padValue = 0);
   mlir::LogicalResult configureLocksAndBd(mlir::Block &block, int col, int row);
   mlir::LogicalResult initLocks(DeviceOp &targetOp);
   mlir::LogicalResult initBuffers(DeviceOp &targetOp);
