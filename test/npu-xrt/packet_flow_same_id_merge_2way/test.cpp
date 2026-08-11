@@ -19,6 +19,8 @@
 // shows up here as a doubled histogram bucket.
 
 #include <algorithm>
+#include <chrono>
+#include <condition_variable>
 #include <cstdint>
 #include <iostream>
 #include <map>

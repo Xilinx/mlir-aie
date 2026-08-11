@@ -14,9 +14,14 @@
 // checks a histogram of sentinel values rather than positions.
 //
 // The router gives each id-0 stream its own path into the shim (North:0 and
-// North:1), with a single amsel driving a single master port. Compare
-// packet_flow_same_id_merge_3way, where a third same-id source makes the router
-// fan one amsel out to two ports and duplicate the payload.
+// North:1), with a single amsel driving a single master port. That is what
+// #3472 guarantees: same-id flows never share a link they would later have to
+// be split apart on.
+//
+// Before #3472 the router could merge two same-id streams onto one amsel and
+// then fan that amsel out to two master ports, delivering a payload twice.
+// packet_flow_same_id_merge_3way scales this shape to three sources; it also
+// routes to disjoint paths and is likewise expected to pass.
 
 module {
   aie.device(npu1) {

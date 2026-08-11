@@ -14,6 +14,8 @@
 // again -- the failure mode fixed by PR #3472.
 
 #include <algorithm>
+#include <chrono>
+#include <condition_variable>
 #include <cstdint>
 #include <iostream>
 #include <vector>

@@ -5,20 +5,26 @@
 //
 //===----------------------------------------------------------------------===//
 
-// Host check for a same-packet-id fan-in.
+// Host check for a DISTINCT-packet-id fan-in. This is the control for the
+// same-id tests alongside it.
 //
-// N source tiles each send one CHUNK-byte packet carrying packet id 0, all to
-// the same shim S2MM channel. The arbiter interleaves same-id packets in an
-// order the compiler does not control, so this test deliberately does NOT check
-// positions -- it histograms the output by sentinel value. Source i fills its
-// buffer with the byte (i + 1).
+// N source tiles each send one CHUNK-byte packet, carrying packet ids 0..N-1,
+// all to the same shim S2MM channel. Distinct ids are the case the router is
+// always free to merge onto a shared link, because the ids let a downstream
+// switch tell the streams apart again.
+//
+// The arbiter still interleaves them in an order the compiler does not control,
+// so this test deliberately does NOT check positions -- it histograms the
+// output by sentinel value. Source i fills its buffer with the byte (i + 1).
 //
 // Correct behaviour: exactly CHUNK bytes of each sentinel 1..N, nothing else.
-// A router that merges two same-id streams onto one amsel and then fans that
-// amsel out to two master ports delivers some source's payload twice, which
-// shows up here as a doubled histogram bucket.
+// Sharing the same shape as the same-id tests is the point: if a same-id test
+// regresses while this one still passes, the fault is the shared packet id and
+// not the fan-in width.
 
 #include <algorithm>
+#include <chrono>
+#include <condition_variable>
 #include <cstdint>
 #include <iostream>
 #include <map>
