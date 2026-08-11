@@ -136,7 +136,7 @@ def bf16_exp(tile_size: int = 1024) -> ExternalFunction:
     )
 
 
-def exp2f_vec(tile_size: int = 1024) -> ExternalFunction:
+def exp2f_vec(tile_size: int = 1024, min_x: float = -111.0) -> ExternalFunction:
     """Software f32 ``2**x`` kernel: a degree-5 minimax poly, not a LUT.
 
     An accuracy-tradeoff alternative to the LUT-based [`bf16_exp`]
@@ -151,17 +151,29 @@ def exp2f_vec(tile_size: int = 1024) -> ExternalFunction:
     Args:
         tile_size: Number of elements per tile; must be a multiple of 16
             (the kernel's vector width).
+        min_x: Input is clamped to this before evaluation. The default
+            -111 is the lowest exponent that still holds the kernel's
+            8.9e-5 relative error; -126 is the hard floor (one f32
+            exponent field), reachable at up to 6.5e-3. See
+            ``aie_kernels/aie2p/exp2f_vec.cc`` for the measured table.
 
     Returns:
         ExternalFunction configured for the exp2f_vec kernel.
 
     Raises:
         NotImplementedError: On aie2 (this kernel has not been ported).
-        ValueError: If tile_size is not a multiple of 16.
+        ValueError: If tile_size is not a multiple of 16, or min_x is
+            below -126.
     """
     if tile_size % 16 != 0:
         raise ValueError(
             f"exp2f_vec: tile_size must be a multiple of 16, got {tile_size}"
+        )
+    if min_x < -126.0:
+        raise ValueError(
+            f"exp2f_vec: min_x must be >= -126 (the kernel builds 2**k in the "
+            f"f32 exponent field, whose smallest normal exponent is -126), "
+            f"got {min_x}"
         )
     arch = _detect_arch()
     if arch != "aie2p":
@@ -171,7 +183,12 @@ def exp2f_vec(tile_size: int = 1024) -> ExternalFunction:
         )
     source = _default_source_path("exp2f_vec.cc")
     tile_ty = np.ndarray[(tile_size,), np.dtype[np.float32]]
-    return _make_extern("exp2f_vec_f32", source, [tile_ty, tile_ty, np.int32])
+    return _make_extern(
+        "exp2f_vec_f32",
+        source,
+        [tile_ty, tile_ty, np.int32],
+        compile_flags=[f"-DEXP2F_VEC_MIN_X={float(min_x)!r}f"],
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -235,7 +252,7 @@ def exp2f_vec_ref(x):
     """numpy reference for [`exp2f_vec`][iron.kernels.activation.exp2f_vec]: exact ``2**x``.
 
     Unlike the LUT-based refs above, this is float64 ``2**x`` (not a
-    reimplementation of the on-device poly): the kernel targets ~8.5e-5
+    reimplementation of the on-device poly): the kernel targets ~8.9e-5
     relative error by design, several orders tighter than the LUT-based
     kernels' 12.8% default, so pair with a correspondingly tight
     tolerance (e.g. ``rtol=1e-3``) rather than the LUT default.

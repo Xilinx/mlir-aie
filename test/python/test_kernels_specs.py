@@ -299,6 +299,7 @@ KERNEL_SPECS: list[KernelSpec] = [
         requires_npu2=True,
         invalid_kwargs=[
             (dict(tile_size=1000), "multiple of 16"),
+            (dict(tile_size=1024, min_x=-127.0), "min_x must be >= -126"),
         ],
         shape_checks=[
             (dict(tile_size=32), 0, (32,)),
