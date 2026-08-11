@@ -24,6 +24,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "aiesim/Components.h"
+#include "CoreAddressMap.h"
 
 #include <cstdio>
 #include <cstring>
@@ -32,26 +33,6 @@ using namespace aiesim;
 
 namespace {
 
-/// Core-local program memory, which starts the core's address map.
-constexpr uint32_t kProgramBase = 0x00000;
-
-/// One 64 KB window onto some tile's data memory, as the core addresses it.
-struct MemBand {
-  uint32_t base;
-  MemDirection dir;
-};
-
-// AIE2/AIE2P. `getMemInternalBaseAddress` returns East unconditionally on this
-// generation, so East is the tile's OWN memory and the other three are
-// neighbours -- not a symmetric four-way split.
-constexpr MemBand kAIE2Bands[] = {
-    {0x40000, MemDirection::South},
-    {0x50000, MemDirection::West},
-    {0x60000, MemDirection::North},
-    {0x70000, MemDirection::Own},
-};
-
-constexpr uint32_t kBandSize = 0x10000;
 
 class TileCorePort final : public CoreMemoryPort {
 public:
