@@ -10,6 +10,7 @@ set(AIE_SIM_TESTS
   memory_test
   readings_test
   region_map_test
+  elf_loader_test
   lock_test
   dma_test
   stream_switch_test

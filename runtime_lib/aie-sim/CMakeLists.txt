@@ -40,6 +40,7 @@ add_library(aie-sim STATIC
   lib/CoreModule.cpp
   lib/Device.cpp
   lib/Dma.cpp
+  lib/ElfLoader.cpp
   lib/EssAbi.cpp
   lib/Lock.cpp
   lib/Memory.cpp
