@@ -24,12 +24,11 @@ module {
 // -----
 
 // Three sources fanning in to shim S2MM 1 while the shim also sources and sinks
-// other flows: the arbiter assignment reaches a master/slave pairing the shim
-// stream switch cannot express. A router limitation rather than an invalid
-// design -- pinned so a change in behaviour is noticed.
+// other flows: the combined congestion leaves one source unroutable. A router
+// limitation rather than an invalid design -- pinned so a change in behaviour
+// is noticed.
 module {
   aie.device(npu1_1col) {
-    // expected-error@+1 {{'aie.amsel' op illegal stream switch connection}}
     %t00 = aie.tile(0, 0)
     %t01 = aie.tile(0, 1)
     %t02 = aie.tile(0, 2)
@@ -38,6 +37,7 @@ module {
     aie.packet_flow(13) { aie.packet_source<%t02, DMA : 0>  aie.packet_dest<%t01, DMA : 2> }
     aie.packet_flow(31) { aie.packet_source<%t03, DMA : 1>  aie.packet_dest<%t00, DMA : 0> }
     aie.packet_flow(28) { aie.packet_source<%t03, DMA : 0>  aie.packet_dest<%t00, DMA : 1> }
+    // expected-error@+1 {{packet flow source (0, 5) DMA0 could not be routed to destination (0, 0) DMA1; the pathfinder produced an incomplete routing for this placement.}}
     aie.packet_flow(6) { aie.packet_source<%t05, DMA : 0>  aie.packet_dest<%t00, DMA : 1> }
     aie.packet_flow(2) { aie.packet_source<%t00, DMA : 1>  aie.packet_dest<%t01, DMA : 1> }
     aie.packet_flow(27) { aie.packet_source<%t02, DMA : 1>  aie.packet_dest<%t00, DMA : 1> }
