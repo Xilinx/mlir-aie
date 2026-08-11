@@ -3,6 +3,12 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
+# REQUIRES: ryzen_ai_npu2, peano, xrt_python_bindings
+#
+# Default (iteration_current = 0), a nonzero start, and the disabling falsifier:
+# RUN: %run_on_npu2% %python %s -d npu2
+# RUN: %run_on_npu2% %python %s -d npu2 --start 1
+# RUN: not %run_on_npu2% %python %s -d npu2 --slots 1
 """BD iteration: one buffer descriptor advancing its base address per execution.
 
 The BD iteration fields (``iteration_size`` / ``iteration_stride``) make a
