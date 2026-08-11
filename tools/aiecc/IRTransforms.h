@@ -848,37 +848,26 @@ inline std::unique_ptr<mlir::PassManager> getInputWithAddressesPipeline(
   mlir::OpPassManager &dpm = pm->nest<DeviceOp>();
   dpm.addPass(createAIEAssignLockIDsPass());
   // The stateful transform always emits the dynamic (runtime) buffer addressing
-  // and lock bookkeeping. When dynamic objectFifos are disabled we then
-  // statically unroll the loops that carry objectFifo accesses; the subsequent
-  // mem2reg + canonicalize folds the (now loop-invariant) runtime bookkeeping
-  // into a static, unrolled lowering.
+  // and lock bookkeeping. When dynamic objectFifos are disabled, the
+  // aie-objectFifo-unroll pass below unrolls the loops that carry objectFifo
+  // accesses and folds the (now loop-invariant) runtime bookkeeping into a
+  // static, unrolled lowering.
   if (mlir::failed(mlir::parsePassPipeline(
-          llvm::formatv("aie-objectFifo-stateful-transform{{dynamic-objFifos="
-                        "{0} packet-sw-objFifos={1}}",
-                        dynamicObjFifos, packetSwObjFifos)
+          llvm::formatv("aie-objectFifo-stateful-transform{{packet-sw-objFifos="
+                        "{0}}",
+                        packetSwObjFifos)
               .str(),
           dpm)))
     return nullptr;
-  // Unroll the objectFifo loops after the dynamic codegen so that each unrolled
-  // iteration maps to a fixed rotation of buffers/locks.
-  if (!dynamicObjFifos)
-    dpm.addPass(createAIEObjectFifoUnrollPass());
-  // The stateful transform already promoted its own objectFifo bookkeeping
-  // counters to SSA. This mem2reg + canonicalize is general cleanup: it
-  // promotes any other promotable allocas (e.g. exposed once the loops are
-  // unrolled) and simplifies the IR so the SCCP-based constant folding below
-  // can collapse the now loop-invariant buffer/lock bookkeeping.
-  dpm.addPass(mlir::createMem2Reg());
-  dpm.addPass(mlir::createCanonicalizerPass());
-  if (!dynamicObjFifos) {
-    // After unrolling by the objectFifo rotation period, the rotating
-    // buffer/lock counter returns to its entry value each iteration, i.e. it is
-    // loop-invariant. SCCP proves this and propagates the constant, after which
-    // canonicalize folds every buffer/lock index_switch and the counter
-    // arithmetic away, yielding the static unrolled lowering.
-    dpm.addPass(mlir::createSCCPPass());
-    dpm.addPass(mlir::createCanonicalizerPass());
-  }
+  // Unroll the objectFifo loops (folding the runtime bookkeeping into the
+  // static lowering). `dynamic-objFifos=true` makes the pass a no-op that keeps
+  // the loop-preserving form; either way it strips the unroll hints.
+  if (mlir::failed(mlir::parsePassPipeline(
+          llvm::formatv("aie-objectFifo-unroll{{dynamic-objFifos={0}}",
+                        dynamicObjFifos)
+              .str(),
+          dpm)))
+    return nullptr;
   dpm.addPass(createAIEAssignBufferDescriptorIDsPass());
   dpm.addPass(createAIELowerCascadeFlowsPass());
   dpm.addPass(X::createAIEBroadcastPacketPass());
