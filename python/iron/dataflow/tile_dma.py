@@ -109,6 +109,11 @@ class Bd:
     # const_pad_after) pair per dimension, outermost first, matching the
     # sizes/strides layout. The fill value is per-channel (DmaChannel.pad_value).
     pad_dimensions: list[Sequence[int]] | None = None
+    # BD iteration pattern: one BD covers N sub-buffers over N executions
+    # instead of an N-deep chain. iteration_stride is in element width.
+    iteration_size: int | None = None
+    iteration_stride: int | None = None
+    iteration_current: int | None = None
 
 
 @dataclass
@@ -294,6 +299,12 @@ class TileDma(Resolvable):
                             bd_kwargs["transfer_len"] = bd.length
                         if bd.pad_dimensions is not None:
                             bd_kwargs["pad_dimensions"] = bd.pad_dimensions
+                        if bd.iteration_size is not None:
+                            bd_kwargs["iteration_size"] = bd.iteration_size
+                        if bd.iteration_stride is not None:
+                            bd_kwargs["iteration_stride"] = bd.iteration_stride
+                        if bd.iteration_current is not None:
+                            bd_kwargs["iteration_current"] = bd.iteration_current
                         # A packet header must be a distinct aie.dma_bd_packet op
                         # placed BEFORE the aie.dma_bd: the CDO/xclbin backends
                         # (AIERT / AIETargetXAIEV2) read the header only from that
