@@ -144,7 +144,7 @@ AIEX::verifyStridesWraps(mlir::Operation *forOp,
 
   uint32_t wrap_bits = 0;
   uint32_t step_bits = 0;
-  uint32_t iter_bits = 6;
+  uint32_t iter_bits = targetModel.getDmaBdIterBits(tileCol, tileRow);
   if (targetModel.isShimNOCTile(tileCol, tileRow)) {
     step_bits = 20; // XAIEMLGBL_NOC_MODULE_DMA_BD0_3_D0_STEPSIZE_WIDTH
     wrap_bits = 10; // XAIEMLGBL_NOC_MODULE_DMA_BD0_3_D0_WRAP_WIDTH
@@ -215,21 +215,21 @@ AIEX::verifyStridesWraps(mlir::Operation *forOp,
     return forOp->emitOpError(
         "Size 1 exceeds the [0:" + std::to_string((1 << wrap_bits) - 1) +
         "] range.");
-  if (hardwareSizes[3] > (1 << iter_bits))
+  if (hardwareSizes[3] > (1 << iter_bits) - 1)
     return forOp->emitOpError(
         "Size 3 exceeds the [1:" + std::to_string(1 << iter_bits) + "] range.");
-  if (hardwareStrides[0] > (1 << step_bits))
+  if (hardwareStrides[0] > (1 << step_bits) - 1)
     return forOp->emitOpError("Stride 0 exceeds the [1:" +
                               std::to_string(1 << step_bits) + "] range.");
-  if (hardwareStrides[1] > (1 << step_bits))
+  if (hardwareStrides[1] > (1 << step_bits) - 1)
     return forOp->emitOpError("Stride 1 exceeds the [1:" +
                               std::to_string(1 << step_bits) + "] range.");
-  if (hardwareStrides[2] > (1 << step_bits))
+  if (hardwareStrides[2] > (1 << step_bits) - 1)
     return forOp->emitOpError("Stride 2 exceeds the [1:" +
                               std::to_string(1 << step_bits) + "] range.");
   // strides[3] exceeding the range is ok iff the sizes[3] is one, which is
   // checked below
-  if (hardwareStrides[3] > (1 << step_bits) && hardwareSizes[3] > 0)
+  if (hardwareStrides[3] > (1 << step_bits) - 1 && hardwareSizes[3] > 0)
     return forOp->emitOpError("Stride 3 exceeds the [1:" +
                               std::to_string(1 << step_bits) + "] range.");
 
@@ -756,22 +756,41 @@ LogicalResult AIEX::NpuWriteBdOp::verify() {
     return emitOpError("Packet ID exceeds the maximum supported by 5 bits.");
   if (getPacketType() > 7)
     return emitOpError("Packet Type exceeds the maximum supported by 3 bits.");
-  if (!isLinearTransfer && getD0Size() > 0x3FF)
-    return emitOpError("D0 Size exceeds the [0:1023] range.");
-  if (getD0Stride() > 0xFFFFF)
-    return emitOpError("D0 Stride exceeds the [0:1M-1] range.");
-  if (getD1Size() > 0x3FF)
-    return emitOpError("D1 Size exceeds the [0:1023] range.");
-  if (getD1Stride() > 0xFFFFF)
-    return emitOpError("D1 Stride exceeds the [0:1M-1] range.");
-  if (getD2Stride() > 0xFFFFF)
-    return emitOpError("D2 Stride exceeds the [0:1M-1] range.");
-  if (getIterationSize() > 0x3F)
-    return emitOpError("Iteration Size exceeds the [0:63] range.");
+
+  // Every value on this op is already the hardware-encoded field value (wrap
+  // fields unbiased, stepsize/iteration fields biased actual-1), so the
+  // legal encoded range for a B-bit field is simply [0, 2^B - 1] regardless
+  // of which kind of field it is. The field widths themselves are tile-type
+  // specific (e.g. on AIE2: core-tile wrap is 8-bit vs. 10-bit for mem/shim,
+  // core-tile stepsize is 13-bit, mem-tile 17-bit, shim-tile 20-bit), so
+  // derive them from the target model instead of hardcoding shim-sized
+  // constants for every tile type.
   AIE::AIETileType tileType = targetModel.getTileType(getColumn(), getRow());
-  uint32_t maxIterStride = (1u << targetModel.getDmaBdStepBits(tileType)) - 1;
-  if (static_cast<uint32_t>(getIterationStride()) > maxIterStride)
-    return emitOpError() << "Iteration Stride exceeds the [0:" << maxIterStride
+  uint32_t wrapBits = targetModel.getDmaBdWrapBits(tileType);
+  uint32_t stepBits = targetModel.getDmaBdStepBits(tileType);
+  uint32_t iterBits = targetModel.getDmaBdIterBits(tileType);
+  uint32_t maxWrap = wrapBits > 0 ? (1u << wrapBits) - 1 : 0;
+  uint32_t maxStep = stepBits > 0 ? (1u << stepBits) - 1 : 0;
+  uint32_t maxIter = iterBits > 0 ? (1u << iterBits) - 1 : 0;
+
+  if (!isLinearTransfer && getD0Size() > maxWrap)
+    return emitOpError() << "D0 Size exceeds the [0:" << maxWrap << "] range.";
+  if (getD0Stride() > maxStep)
+    return emitOpError() << "D0 Stride exceeds the [0:" << maxStep
+                         << "] range.";
+  if (getD1Size() > maxWrap)
+    return emitOpError() << "D1 Size exceeds the [0:" << maxWrap << "] range.";
+  if (getD1Stride() > maxStep)
+    return emitOpError() << "D1 Stride exceeds the [0:" << maxStep
+                         << "] range.";
+  if (getD2Stride() > maxStep)
+    return emitOpError() << "D2 Stride exceeds the [0:" << maxStep
+                         << "] range.";
+  if (getIterationSize() > maxIter)
+    return emitOpError() << "Iteration Size exceeds the [0:" << maxIter
+                         << "] range.";
+  if (static_cast<uint32_t>(getIterationStride()) > maxStep)
+    return emitOpError() << "Iteration Stride exceeds the [0:" << maxStep
                          << "] range.";
   if (targetModel.isShimNOCTile(getColumn(), getRow()) && getD2Size() != 0)
     return emitOpError("ShimTile only supports 3 dimensions of sizes.");
@@ -780,6 +799,30 @@ LogicalResult AIEX::NpuWriteBdOp::verify() {
        getD1ZeroBefore() != 0 || getD1ZeroAfter() != 0 ||
        getD2ZeroBefore() != 0 || getD2ZeroAfter() != 0))
     return emitOpError("ShimTile doesn't support zero padding.");
+
+  // Pad field widths (AIE2P ArchSpec Table 3-34, in 32-bit words): D0 is a
+  // 6-bit field (max 63), D1 a 5-bit field (max 31), D2 a 4-bit field (max
+  // 15). These are currently checked nowhere and silently masked
+  // (`& 0x3F` / `& 0x1F` / `& 0xF`) at word-packing time in AIEDmaToNpu.cpp.
+  //
+  // Placement note (deliberate compromise): DMABDOp::verify() would be the
+  // better home for this check, since its diagnostic would point at the
+  // user's own `aie.dma_bd`. But DMABDOp::verify() early-returns for BDs
+  // nested inside `aiex.dma_configure_task`, and the only case with
+  // hardware evidence for this defect is on that task path -- a check
+  // placed only in DMABDOp::verify() would miss it. NpuWriteBdOp is where
+  // both the static and task runtime paths converge, so putting it here
+  // covers both, at the cost of the diagnostic pointing at this
+  // compiler-generated op rather than the user-written BD. This check
+  // should migrate to DMABDOp::verify() once BD iteration becomes an
+  // explicit `aie.dma_bd` field and that early-return can be removed.
+  if (getD0ZeroBefore() > 0x3F || getD0ZeroAfter() > 0x3F)
+    return emitOpError("D0 pad_before/pad_after exceeds the [0:63] range.");
+  if (getD1ZeroBefore() > 0x1F || getD1ZeroAfter() > 0x1F)
+    return emitOpError("D1 pad_before/pad_after exceeds the [0:31] range.");
+  if (getD2ZeroBefore() > 0xF || getD2ZeroAfter() > 0xF)
+    return emitOpError("D2 pad_before/pad_after exceeds the [0:15] range.");
+
   if (!targetModel.isShimNOCTile(getColumn(), getRow()) &&
       getBurstLength() != 0)
     return emitOpError("Only ShimTiles support burst length.");
