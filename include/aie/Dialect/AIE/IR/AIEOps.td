@@ -1020,12 +1020,13 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
 
     ## BD iteration
 
-    On devices that support it, a BD can advance its own base address on each
-    execution: execution `k` reads from `base + k * iteration_stride` (in
-    elements), with `k` running over `iteration_size` executions before the
-    offset resets and the cycle repeats. `iteration_current` sets the starting
-    step (default 0). `iteration_stride` is given in element width and is scaled
-    to whole 32-bit words during lowering. Unset attributes (or
+    On devices that support it, a BD can advance the address it accesses on each
+    execution: execution `k` adds an offset of
+    `((iteration_current + k) % iteration_size) * iteration_stride` (in
+    elements) to its configured address. The offset advances for `iteration_size`
+    executions (with wrapping); `iteration_current` selects the starting step
+    (default 0). `iteration_stride` is given in element width and is scaled to
+    whole 32-bit words during lowering. Unset attributes (or
     `iteration_size <= 1`) disable this.
   }];
 

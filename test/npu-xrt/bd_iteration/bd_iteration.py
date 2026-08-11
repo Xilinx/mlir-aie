@@ -13,16 +13,22 @@ that otherwise takes an N-deep BD chain (one descriptor per offset).
 
 This program is a minimal end-to-end check of the mechanism on device. A shim
 tile streams a 256-element buffer into a MemTile buffer in four 64-element
-bites; a single self-chained S2MM ``aie.dma_bd`` with ``iteration_size=4`` and
+chunks. A single S2MM ``aie.dma_bd`` with ``iteration_size=4`` and
 ``iteration_stride=64`` receives them, its base advancing one 64-element slot
-per bite (``iteration_current`` defaults to 0). The MemTile buffer is read back
-to the host unmodified.
+per chunk. The MemTile buffer is read back to the host unmodified.
 
-The check is exact against a slot-distinct input, and the ``--slots`` knob
-falsifies it: ``iteration_size=1`` makes every bite land at offset 0 (each
-execution overwriting the last) and the run fails.
+The BD is self-chained (``next="self"``), so loops indefinitely. What bounds it
+to four executions here is the handshake (four chunks), not the descriptor.
 
-No compute tile: this is a pure DMA-placement test.
+``iteration_current`` is the initial value of a per-BD register that the DMA
+advances each execution and wraps at ``iteration_size``, independent of its
+position in a BD chain. It defaults to 0; the ``--start`` knob sets it nonzero
+so chunk ``k`` lands at slot ``(start + k) % iteration_size``.
+
+The ``--slots`` knob falsifies this test: ``iteration_size=1`` makes every chunk
+land at offset 0 (each execution overwriting the last) and the run fails.
+
+No compute tile.
 """
 
 import argparse
@@ -65,7 +71,7 @@ from aie.utils.verify import assert_pass
 
 CHUNK = 64  # elements (int32) moved by one BD execution
 N_CHUNKS = 4  # number of BD executions -- fixed by the input stream length
-N_SLOTS = N_CHUNKS  # default iteration_size: one distinct slot per bite
+N_SLOTS = N_CHUNKS  # default iteration_size: one distinct slot per chunk
 TOTAL = CHUNK * N_CHUNKS  # backing-buffer size in elements
 
 
@@ -76,6 +82,7 @@ def bd_iteration(
     *,
     col: CompileTime[int] = 0,
     n_slots: CompileTime[int] = N_SLOTS,
+    start: CompileTime[int] = 0,
 ):
     vector_ty = np.ndarray[(TOTAL,), np.dtype[np.int32]]
 
@@ -89,9 +96,9 @@ def bd_iteration(
         initial_value=np.zeros(TOTAL, dtype=np.int32),
     )
 
-    # slot_credit starts with one credit per bite, so the receive BD runs
-    # exactly N_CHUNKS times. The readback waits for all N_CHUNKS fills,
-    # so it never drains a partial buffer.
+    # The receive BD is self-chained, so slot_credit (one credit per chunk) and
+    # the finite input stream are what bound it to N_CHUNKS executions. The
+    # readback waits for all N_CHUNKS fills, so it never drains a partial buffer.
     slot_credit = Lock(tile=mem_tile, lock_id=0, init=N_CHUNKS, name="slot_credit")
     fill_count = Lock(tile=mem_tile, lock_id=1, init=0, name="fill_count")
 
@@ -112,8 +119,8 @@ def bd_iteration(
         dst_channel=0,
     )
 
-    # One self-chained S2MM BD receives the stream in CHUNK-sized bites;
-    # bite k lands at offset (k % n_slots) * CHUNK -- one BD, no BD chain.
+    # One self-chained S2MM BD receives the stream in CHUNK-sized chunks; chunk k
+    # lands at offset ((start + k) % n_slots) * CHUNK -- one BD, no BD chain.
     mem_dma = TileDma(
         tile=mem_tile,
         channels=[
@@ -127,6 +134,7 @@ def bd_iteration(
                         length=CHUNK,
                         iteration_size=n_slots,
                         iteration_stride=CHUNK,
+                        iteration_current=start,
                         acquires=[Acquire(slot_credit, value=1, greater_equal=True)],
                         releases=[Release(fill_count, value=1)],
                         next="self",
@@ -194,16 +202,16 @@ def _input_data() -> np.ndarray:
     return a_np
 
 
-def _expected(a_np: np.ndarray, n_slots: int) -> np.ndarray:
+def _expected(a_np: np.ndarray, n_slots: int, start: int) -> np.ndarray:
     buf = np.zeros(TOTAL, dtype=np.int32)
     for k in range(N_CHUNKS):
-        off = (k % n_slots) * CHUNK
+        off = ((start + k) % n_slots) * CHUNK
         buf[off : off + CHUNK] = a_np[k * CHUNK : (k + 1) * CHUNK]
     return buf
 
 
 def _compile_kwargs(opts):
-    return dict(col=opts.col, n_slots=opts.slots)
+    return dict(col=opts.col, n_slots=opts.slots, start=opts.start)
 
 
 def _run_and_verify(opts):
@@ -213,7 +221,7 @@ def _run_and_verify(opts):
 
     bd_iteration(a_t, c_t, **_compile_kwargs(opts))
 
-    expected = _expected(a_np, N_CHUNKS)
+    expected = _expected(a_np, N_CHUNKS, opts.start)
     assert_pass(
         c_t.numpy(), expected, fail_msg="BD iteration sub-buffer placement mismatch"
     )
@@ -229,8 +237,17 @@ def main():
         type=int,
         default=N_SLOTS,
         help=(
-            "BD iteration_size (default: %(default)s, one slot per bite). "
-            "Set to 1 to falsify: all bites collapse onto slot 0."
+            "BD iteration_size (default: %(default)s, one slot per chunk). "
+            "Set to 1 to falsify: all chunks collapse onto slot 0."
+        ),
+    )
+    p.add_argument(
+        "--start",
+        type=int,
+        default=0,
+        help=(
+            "BD iteration_current (default: %(default)s). Nonzero shifts chunk k "
+            "to slot (start + k) mod iteration_size."
         ),
     )
     opts = p.parse_args()
