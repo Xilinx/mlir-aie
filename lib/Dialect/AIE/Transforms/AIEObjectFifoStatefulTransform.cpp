@@ -366,6 +366,9 @@ struct LoweringContext {
            memref::AllocaOp>
       heldCountBookkeeping;
   bool sawError = false;
+
+  LoweringContext(ObjectFifoState &state, bool usesSemaphoreLocks)
+      : state(state), usesSemaphoreLocks(usesSemaphoreLocks) {}
 };
 
 /// Lower an objectFifo.release to its runtime lock bookkeeping and advance the
@@ -2553,15 +2556,15 @@ struct AIEObjectFifoStatefulTransformPass
         if (clPacketSwObjectFifos) {
           // create packet flow
           builder.setInsertionPointAfter(producer);
-          packetflow = builder.create<PacketFlowOp>(
-              producer.getLoc(),
+          packetflow = PacketFlowOp::create(
+              builder, producer.getLoc(),
               builder.getIntegerAttr(builder.getI8Type(), bdPacket->getPktId()),
               nullptr, nullptr);
           {
             OpBuilder::InsertionGuard g(builder);
             builder.setInsertionPointToStart(
                 &packetflow.getRegion().emplaceBlock());
-            builder.create<EndOp>(producer.getLoc());
+            EndOp::create(builder, producer.getLoc());
           }
         }
       }
@@ -2614,9 +2617,9 @@ struct AIEObjectFifoStatefulTransformPass
 
           if (clPacketSwObjectFifos) {
             builder.setInsertionPointToStart(&packetflow.getPorts().front());
-            builder.create<PacketDestOp>(consumer.getLoc(),
-                                         consumer.getProducerTile(),
-                                         WireBundle::DMA, consumerChan.channel);
+            PacketDestOp::create(builder, consumer.getLoc(),
+                                 consumer.getProducerTile(), WireBundle::DMA,
+                                 consumerChan.channel);
           }
         }
 
