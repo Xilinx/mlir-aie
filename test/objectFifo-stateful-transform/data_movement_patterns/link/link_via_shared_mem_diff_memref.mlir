@@ -7,7 +7,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll %s | FileCheck %s
 
 // CHECK:  aie.device(xcve2302) {
 // CHECK:    %{{.*}}tile_2_0 = aie.tile(2, 0)

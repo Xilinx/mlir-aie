@@ -27,7 +27,9 @@
 // CHECK: scf.if
 // Both the unconditional and conditional acquires lower to a plain
 // AcquireGreaterEqual(1) / Release(1) pair; no hoisted peel-acquire appears.
+// CHECK: %{{.*}} = arith.constant 1 : i32
 // CHECK: aie.use_lock(%{{.*}}_cons_cons_lock_0, AcquireGreaterEqual, %{{.*}})
+// CHECK: %{{.*}} = arith.constant 1 : i32
 // CHECK: aie.use_lock(%{{.*}}_cons_prod_lock_0, Release, %{{.*}})
 
 module {

@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll %s | FileCheck %s
 
 // CHECK:     %mem_0_2 = aie.mem(%tile_0_2) {
 // CHECK:       %0 = aie.dma_start(MM2S, 0, ^bb1, ^bb3)

@@ -9,30 +9,44 @@
 // and pushes them into L1 memory, shared with the adjacent consumer tile.
 // The consumer consumes {1, 2, 1} elements, in that order.
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll %s | FileCheck %s
 // CHECK: module @aie2_cyclostatic_L1 {
 // CHECK:   aie.device(xcve2302) {
-// CHECK:     %[[t0:.*]] = aie.tile(2, 2)
-// CHECK:     %[[t1:.*]] = aie.tile(2, 3)
+// CHECK-DAG:     %[[t0:.*]] = aie.tile(2, 2)
+// CHECK-DAG:     %[[t1:.*]] = aie.tile(2, 3)
 // CHECK:     %[[PL:.*]] = aie.lock(%[[t0]], 0) {init = 4 : i32, sym_name = "fifo_prod_lock_0"}
 // CHECK:     %[[CL:.*]] = aie.lock(%[[t0]], 1) {init = 0 : i32, sym_name = "fifo_cons_lock_0"}
 // CHECK:     %[[c0:.*]] = aie.core(%[[t0]]) {
+// CHECK:       %{{.*}} = arith.constant 1 : i32
 // CHECK:       aie.use_lock(%[[PL]], AcquireGreaterEqual, %{{.*}})
+// CHECK:       %{{.*}} = arith.constant 1 : i32
 // CHECK:       aie.use_lock(%[[CL]], Release, %{{.*}})
+// CHECK:       %{{.*}} = arith.constant 1 : i32
 // CHECK:       aie.use_lock(%[[PL]], AcquireGreaterEqual, %{{.*}})
+// CHECK:       %{{.*}} = arith.constant 1 : i32
 // CHECK:       aie.use_lock(%[[CL]], Release, %{{.*}})
+// CHECK:       %{{.*}} = arith.constant 1 : i32
 // CHECK:       aie.use_lock(%[[PL]], AcquireGreaterEqual, %{{.*}})
+// CHECK:       %{{.*}} = arith.constant 1 : i32
 // CHECK:       aie.use_lock(%[[CL]], Release, %{{.*}})
+// CHECK:       %{{.*}} = arith.constant 1 : i32
 // CHECK:       aie.use_lock(%[[PL]], AcquireGreaterEqual, %{{.*}})
+// CHECK:       %{{.*}} = arith.constant 1 : i32
 // CHECK:       aie.use_lock(%[[CL]], Release, %{{.*}})
 // CHECK:       aie.end
 // CHECK:     }
 // CHECK:     %[[c1:.*]] = aie.core(%[[t1]]) {
+// CHECK:       %{{.*}} = arith.constant 1 : i32
 // CHECK:       aie.use_lock(%[[CL]], AcquireGreaterEqual, %{{.*}})
+// CHECK:       %{{.*}} = arith.constant 1 : i32
 // CHECK:       aie.use_lock(%[[PL]], Release, %{{.*}})
+// CHECK:       %{{.*}} = arith.constant 2 : i32
 // CHECK:       aie.use_lock(%[[CL]], AcquireGreaterEqual, %{{.*}})
+// CHECK:       %{{.*}} = arith.constant 2 : i32
 // CHECK:       aie.use_lock(%[[PL]], Release, %{{.*}})
+// CHECK:       %{{.*}} = arith.constant 1 : i32
 // CHECK:       aie.use_lock(%[[CL]], AcquireGreaterEqual, %{{.*}})
+// CHECK:       %{{.*}} = arith.constant 1 : i32
 // CHECK:       aie.use_lock(%[[PL]], Release, %{{.*}})
 // CHECK:       aie.end
 // CHECK:     }
