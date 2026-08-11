@@ -1,0 +1,80 @@
+# Copyright (C) 2022-2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
+
+# RUN: %run_on_npu1_xrt% %pytest %s
+# RUN: %run_on_npu2_xrt% %pytest %s
+# RUN: %run_on_npu2_hrx% %pytest %s
+# REQUIRES: xrt_python_bindings || hrx_python_bindings
+
+import pytest
+import numpy as np
+import aie.iron as iron
+
+from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker
+from aie.iron.controlflow import range_
+
+
+@iron.jit
+def vector_vector_add(
+    input0: In,
+    input1: In,
+    output: Out,
+    *,
+    num_elements: CompileTime[int],
+    dtype: CompileTime[object] = np.int32,
+):
+    n = 16
+    N_div_n = num_elements // n
+
+    # Define tensor types
+    tensor_ty = np.ndarray[(num_elements,), np.dtype[dtype]]
+    tile_ty = np.ndarray[(n,), np.dtype[dtype]]
+
+    # AIE-array data movement with object fifos
+    of_in1 = ObjectFifo(tile_ty, name="in1")
+    of_in2 = ObjectFifo(tile_ty, name="in2")
+    of_out = ObjectFifo(tile_ty, name="out")
+
+    # Define a task that will run on a compute tile
+    def core_body(of_in1, of_in2, of_out):
+        # Number of sub-vector "tile" iterations
+        for _ in range_(N_div_n):
+            elem_in1 = of_in1.acquire(1)
+            elem_in2 = of_in2.acquire(1)
+            elem_out = of_out.acquire(1)
+            for i in range_(n):
+                elem_out[i] = elem_in1[i] + elem_in2[i]
+            of_in1.release(1)
+            of_in2.release(1)
+            of_out.release(1)
+
+    # Create a worker to run the task on a compute tile
+    worker = Worker(core_body, fn_args=[of_in1.cons(), of_in2.cons(), of_out.prod()])
+
+    # Runtime operations to move data to/from the AIE-array
+    def sequence(A, B, C, in1_h, in2_h, out_h):
+        in1_h.fill(A)
+        in2_h.fill(B)
+        out_h.drain(C, wait=True)
+
+    rt = Runtime(
+        sequence,
+        [tensor_ty, tensor_ty, tensor_ty, of_in1.prod(), of_in2.prod(), of_out.cons()],
+    )
+
+    # Place program components (assign them resources on the device) and generate an MLIR module
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
+
+
+@pytest.mark.parametrize("num_elements", [16, 64])
+@pytest.mark.parametrize("dtype", [np.int32])
+def test_multiple_jit_compilations(num_elements, dtype):
+    # Construct two input random tensors and an output zeroed tensor
+    input0 = iron.randint(1, 100, (num_elements,), dtype=dtype, device="npu")
+    input1 = iron.randint(1, 100, (num_elements,), dtype=dtype, device="npu")
+    output = iron.zeros_like(input0)
+
+    # JIT-compile the kernel then launch the kernel with the given arguments
+    vector_vector_add(input0, input1, output, num_elements=num_elements)
+    assert np.array_equal(input0.numpy() + input1.numpy(), output.numpy())

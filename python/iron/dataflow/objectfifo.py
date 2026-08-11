@@ -24,6 +24,7 @@ from ...helpers.util import (
     np_ndarray_type_get_dtype,
     np_ndarray_type_get_shape,
     np_ndarray_type_to_memref_type,
+    pack_pad_value,
     single_elem_or_list_to_list,
 )
 from ..device import AnyMemTile, Tile
@@ -79,6 +80,7 @@ class ObjectFifo(Resolvable):
         dims_from_stream_per_cons: StreamDims | None = None,
         plio: bool = False,
         pad_dimensions: PadDims | None = None,
+        pad_value: int = 0,
         disable_synchronization: bool = False,
         repeat_count: int | None = None,
         delegate_tile: Tile | None = None,
@@ -105,6 +107,10 @@ class ObjectFifo(Resolvable):
                 buffer, described as ``(pad_before, pad_after)`` pairs from highest to lowest
                 dimension. Lowers to the ``padDimensions`` attribute on the underlying
                 ``aie.objectfifo`` op. Defaults to None.
+            pad_value (int, optional): Per-element constant value used to fill the region created
+                by ``pad_dimensions``. Packed into the raw 32-bit CONSTANT_PAD_VALUE register
+                using this fifo's element width. Only valid together with ``pad_dimensions`` (MemTile
+                padding). Defaults to 0.
             disable_synchronization (bool, optional): When True, disables lock-based
                 synchronization on the ObjectFifo. Defaults to False.
             repeat_count (int | None, optional): If set, causes the MemTile DMA to replay the
@@ -152,6 +158,7 @@ class ObjectFifo(Resolvable):
         self._dims_from_stream_per_cons = dims_from_stream_per_cons
         self._plio = plio
         self._pad_dimensions = pad_dimensions
+        self._pad_value = pad_value
         if name is None:
             self.name = f"of{next(ObjectFifo._of_index)}"
         else:
@@ -437,6 +444,14 @@ class ObjectFifo(Resolvable):
                 dimensionsFromStreamPerConsumer=dims_from_stream_per_cons,
                 plio=self._plio,
                 padDimensions=self._pad_dimensions,
+                padValue=(
+                    pack_pad_value(
+                        self._pad_value,
+                        np.dtype(np_ndarray_type_get_dtype(self._obj_type)).itemsize,
+                    )
+                    if self._pad_value
+                    else None
+                ),
                 iter_count=self._iter_count,
                 disable_synchronization=self._disable_synchronization or None,
                 via_DMA=self._via_DMA or None,
@@ -951,6 +966,8 @@ class ObjectFifoHandle(Resolvable):
         dims_from_stream: list[StreamDims] | None = None,
         plio: bool = False,
         repeat_counts: list[int | None] | None = None,
+        pad_dimensions: list[PadDims | None] | None = None,
+        pad_value: list[int] | None = None,
     ) -> list[ObjectFifo]:
         """Split the data from an ObjectFifoConsumer handle by sending it to producers in N newly constructed ObjectFifos.
 
@@ -966,6 +983,8 @@ class ObjectFifoHandle(Resolvable):
             dims_from_stream (list[StreamDims] | None, optional): The dimensions from stream for each new ObjectFifo. Defaults to None.
             plio (bool, optional): Set plio on each new ObjectFifo. Defaults to False.
             repeat_counts (list[int | None] | None, optional): Per-sub-fifo MemTile DMA repeat count (see ObjectFifo.repeat_count). Defaults to None.
+            pad_dimensions (list[PadDims | None] | None, optional): Per-sub-fifo (before, after) pad counts (see ObjectFifo.pad_dimensions). Defaults to None.
+            pad_value (list[int] | None, optional): Per-sub-fifo per-element pad fill value (see ObjectFifo.pad_value). Defaults to None.
 
         Raises:
             ValueError: Arguments are validated.
@@ -1010,6 +1029,18 @@ class ObjectFifoHandle(Resolvable):
         elif len(repeat_counts) != num_subfifos:
             raise ValueError("Number of repeat_counts does not match number of offsets")
 
+        if pad_dimensions is None:
+            pad_dimensions = [None for _ in range(num_subfifos)]
+        elif len(pad_dimensions) != num_subfifos:
+            raise ValueError(
+                "Number of pad_dimensions does not match number of offsets"
+            )
+
+        if pad_value is None:
+            pad_value = [0 for _ in range(num_subfifos)]
+        elif len(pad_value) != num_subfifos:
+            raise ValueError("Number of pad_value does not match number of offsets")
+
         # Create subfifos
         subfifos = []
         for i in range(num_subfifos):
@@ -1022,6 +1053,8 @@ class ObjectFifoHandle(Resolvable):
                     dims_from_stream_per_cons=dims_from_stream[i],
                     plio=plio,
                     repeat_count=repeat_counts[i],
+                    pad_dimensions=pad_dimensions[i],
+                    pad_value=pad_value[i],
                 )
             )
 
@@ -1040,6 +1073,8 @@ class ObjectFifoHandle(Resolvable):
         dims_from_stream: StreamDims | None = None,
         plio: bool = False,
         repeat_count: int | None = None,
+        pad_dimensions: PadDims | None = None,
+        pad_value: int = 0,
     ) -> ObjectFifo:
         """Forward an ObjectFifoHandle of type consumer to a newly-constructed ObjectFifo.
 
@@ -1055,6 +1090,10 @@ class ObjectFifoHandle(Resolvable):
             dims_from_stream (StreamDims | None, optional): The dimensions from stream for the new ObjectFifo. Defaults to None.
             plio (bool, optional): Set plio on each new ObjectFifo. Defaults to False.
             repeat_count (int | None, optional): MemTile DMA repeat count for the new ObjectFifo (see ObjectFifo.repeat_count). Defaults to None.
+            pad_dimensions (PadDims | None, optional): Per-dimension (before, after) constant-pad
+                counts for the forwarded (memtile) ObjectFifo. Defaults to None.
+            pad_value (int, optional): Per-element constant fill value for pad_dimensions (see
+                ObjectFifo.pad_value). Defaults to 0.
 
         Raises:
             ValueError: Arguments are Validated
@@ -1080,6 +1119,8 @@ class ObjectFifoHandle(Resolvable):
             dims_from_stream=dims_from_stream_arg,
             plio=plio,
             repeat_counts=[repeat_count] if repeat_count is not None else None,
+            pad_dimensions=[pad_dimensions] if pad_dimensions is not None else None,
+            pad_value=[pad_value] if pad_value else None,
         )
         return forward_fifo[0]
 

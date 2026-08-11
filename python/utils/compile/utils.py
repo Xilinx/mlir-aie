@@ -424,6 +424,7 @@ def compile_mlir_module(
     options=None,
     use_chess: bool = False,
     device=None,
+    fold_ddr_addr_offset: bool = True,
 ):
     """Compile an MLIR module to instruction, PDI, ELF, and/or xclbin files using the aiecc module.
 
@@ -484,6 +485,12 @@ def compile_mlir_module(
             args.extend(["--get-npu-insts", f"--npu-insts-name={insts_path}"])
         if xclbin_path:
             args.extend(["--get-xclbin", f"--xclbin-name={xclbin_path}"])
+    # DDR-patch ABI: XRT (and CPU) consume the folded firmware ABI; HRX consumes
+    # the producer-independent (unfolded) insts.bin and adds the AIE DDR aperture
+    # offset for every arg itself. cl::opt defaults to true, so only pass the
+    # flag when unfolding is requested.
+    if not fold_ddr_addr_offset:
+        args.append("--fold-ddr-addr-offset=false")
     if pdi_path:
         args.extend(["--get-pdi", f"--pdi-name={pdi_path}"])
     if elf_path:

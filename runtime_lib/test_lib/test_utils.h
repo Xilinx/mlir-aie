@@ -29,6 +29,7 @@
 namespace xrt {
 class device;
 class kernel;
+class xclbin;
 } // namespace xrt
 
 namespace test_utils {
@@ -43,6 +44,14 @@ void parse_options(int argc, const char *argv[], cxxopts::Options &options,
 
 std::vector<uint32_t> load_instr_sequence(std::string instr_path);
 std::vector<uint32_t> load_instr_binary(std::string instr_path);
+
+// Resolve the full name of the first kernel in `xclbin` whose name starts with
+// `name_prefix`, which is what a host's -k argument carries (the packaged name
+// is decorated, e.g. -k MLIR_AIE matches "MLIR_AIE:{...}"), so xrt::xclbin's
+// own exact-match get_kernel() does not serve. Throws with the available
+// kernel names listed if nothing matches.
+std::string get_kernel_name(const xrt::xclbin &xclbin,
+                            const std::string &name_prefix, int verbosity = 0);
 
 void init_xrt_load_kernel(xrt::device &device, xrt::kernel &kernel,
                           int verbosity, std::string xclbinFileName,

@@ -489,6 +489,14 @@ LogicalResult ObjectFifoCreateOp::verify() {
       return emitError("`repeat_count` unavailable for shim tiles");
   }
 
+  if (getPadValue() != 0) {
+    if (!getPadDimensions().has_value())
+      return emitError("`padValue` requires `padDimensions`");
+    if (!getTargetModel(getOperation()).isMemTilePadValueSupported())
+      return emitError("`padValue` requires the CONSTANT_PAD_VALUE register, "
+                       "unavailable on this target");
+  }
+
   if (getAieStreamPort().has_value()) {
     if (!getAieStream().has_value())
       return emitError("`aie_stream` must be defined");
@@ -2070,6 +2078,15 @@ LogicalResult DMAOp::verify() {
       return emitOpError(
           "DMAOp regions/blocks must have exactly two UseLock ops");
   }
+  if (getPadValue() != 0) {
+    if (!isa<MemTileDMAOp>(parentOp))
+      return emitOpError("pad_value is only supported on memtile DMA channels");
+    if (getChannelDir() != DMAChannelDir::MM2S)
+      return emitOpError("pad_value is only supported on MM2S DMA channels");
+    if (!getTargetModel(getOperation()).isMemTilePadValueSupported())
+      return emitOpError("pad_value requires the CONSTANT_PAD_VALUE register, "
+                         "unavailable on this target");
+  }
   return success();
 }
 
@@ -2166,7 +2183,6 @@ void DMABDOp::buildMixed(mlir::OpBuilder &builder, mlir::OperationState &state,
         /*static_sizes=*/staticSizesAttr,
         /*static_strides=*/staticStridesAttr,
         /*pad_dimensions=*/padDims,
-        /*pad_value=*/nullptr,
         /*bd_id=*/nullptr,
         /*packet=*/packet,
         /*burst_length=*/nullptr,
@@ -2713,6 +2729,19 @@ void DMABDOp::getCanonicalizationPatterns(RewritePatternSet &patterns,
 void DMAStartOp::getCanonicalizationPatterns(RewritePatternSet &patterns,
                                              MLIRContext *context) {
   patterns.add(FoldDMAStartOp);
+}
+
+LogicalResult DMAStartOp::verify() {
+  if (getPadValue() != 0) {
+    if (!isa<MemTileDMAOp>(getOperation()->getParentOp()))
+      return emitOpError("pad_value is only supported on memtile DMA channels");
+    if (getChannelDir() != DMAChannelDir::MM2S)
+      return emitOpError("pad_value is only supported on MM2S DMA channels");
+    if (!getTargetModel(getOperation()).isMemTilePadValueSupported())
+      return emitOpError("pad_value requires the CONSTANT_PAD_VALUE register, "
+                         "unavailable on this target");
+  }
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
