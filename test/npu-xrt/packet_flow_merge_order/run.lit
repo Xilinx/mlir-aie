@@ -1,13 +1,22 @@
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// REQUIRES: ryzen_ai_npu1, peano
+// REQUIRES: ryzen_ai, peano
 //
 // Deterministic merge verified by arrival order: the schedule demands a
 // permutation (2,1,3) that free arbitration does not produce (1,3,2), so this
 // test goes red if the feature stops reaching the hardware. It cannot deadlock
 // -- every packet has a destination BD either way.
 //
-// RUN: %aiecc --get-npu-insts --get-xclbin --xclbin-name=aie.xclbin --npu-insts-name=insts.bin %S/aie.mlir
+// The switchbox configuration is pinned rather than routed, so it is identical
+// on both parts, and the assertion is the PROGRAMMED order rather than the
+// natural one -- neither depends on which device runs it. Deterministic merge
+// is an AIE2 property: npu1 and npu2 both expose two arbiters with four slots.
+//
+// RUN: cp %S/aie.mlir aie_arch.mlir
+// RUN: %run_on_npu1% sed 's/NPUDEVICE/npu1/g' -i aie_arch.mlir
+// RUN: %run_on_npu2% sed 's/NPUDEVICE/npu2/g' -i aie_arch.mlir
+// RUN: %aiecc --get-npu-insts --get-xclbin --xclbin-name=aie.xclbin --npu-insts-name=insts.bin ./aie_arch.mlir
 // RUN: %host_clang %S/test.cpp -o test.exe -std=c++17 -Wall %xrt_flags %host_link_flags %test_utils_flags
 // RUN: %run_on_npu1% ./test.exe aie.xclbin
+// RUN: %run_on_npu2% ./test.exe aie.xclbin

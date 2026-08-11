@@ -5,7 +5,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-translate --aie-generate-xaie %s | FileCheck %s
+// RUN: sed 's/NPUDEVICE/npu1/g' %s | aie-translate --aie-generate-xaie | FileCheck %s
+// RUN: sed 's/NPUDEVICE/npu2/g' %s | aie-translate --aie-generate-xaie | FileCheck %s
 
 // The `deterministic_merge` schedule on an amsel must reach the libxaie
 // configuration. This backend previously dropped it silently, which is the
@@ -16,6 +17,10 @@
 // come last -- writing it resets the feature's internal state, so it has to
 // follow the slot configuration.
 //
+// Run for both parts: deterministic merge is an AIE2 property, and npu1 and
+// npu2 both expose two arbiters with four slots each, so the same schedule must
+// verify and emit on either.
+//
 // See test/npu-xrt/packet_flow_merge_order for the hardware test proving the
 // arbiter actually honours a programmed order.
 
@@ -24,7 +29,7 @@
 // CHECK-NEXT: XAie_StrmSwDeterministicMergeEnable({{.*}}, /* arbiter */ 0)
 
 module {
-  aie.device(npu1) {
+  aie.device(NPUDEVICE) {
     %t = aie.tile(0, 3)
     aie.switchbox(%t) {
       %a0 = aie.amsel<0> (0) deterministic_merge [<North : 1, 1>, <DMA : 0, 3>]
