@@ -14,35 +14,35 @@
 // the entire point of packet flows, and it stays legal here precisely because
 // the ids differ:
 //
-//   tile_0_3  merges its own DMA:0 (id 1) with the incoming North:1 (id 2)
+//   tile_0_2  merges its own DMA:0 (id 0) with the incoming North:2 (id 2)
 //             onto a SINGLE amsel and a single link  -- sharing, allowed
-//   tile_0_2  splits that shared link back apart BY ID:
-//             rule(31, 2) -> its own amsel -> South:3
-//             rule(31, 1) -> its own amsel -> South:1
+//             (id 1, arriving on North:0, stays on its own amsel/link)
+//   tile_0_3  keeps id 1 (its own DMA:0) and id 2 (incoming North:0) apart,
+//             each on its own amsel and its own output port
 //
-// Two same-id flows could not be split like this, which is why the id-gating
+// Two same-id flows could not be merged like this, which is why the id-gating
 // added in #3472 forces them onto disjoint paths instead. Note that no amsel
 // drives more than one master port in either test -- that invariant holds
 // regardless of whether links are shared.
 
 // CHECK-LABEL: aie.device(npu1)
 
-// (Checks follow the order the switchboxes are emitted in, so the split point
-// at tile_0_2 is pinned before the merge point at tile_0_3 even though the data
-// flows the other way: tile_0_4 -> tile_0_3 -> tile_0_2 -> shim.)
+// (Checks follow the order the switchboxes are emitted in, so the merge point
+// at tile_0_2 is pinned before tile_0_3 even though the data flows the other
+// way: tile_0_4 -> tile_0_3 -> tile_0_2 -> shim.)
 
-// The split point: the shared link is demultiplexed by packet id, each id onto
-// its own amsel and its own output port.
+// The merge point: id 0 (own DMA) and id 2 (incoming) share one amsel and one
+// link; id 1 (incoming) stays on its own.
 // CHECK:      %[[tile_0_2:.*]] = aie.tile(0, 2)
 // CHECK:      aie.switchbox(%[[tile_0_2]]) {
 // CHECK-NEXT:   %[[a0:.*]] = aie.amsel<0> (0)
 // CHECK-NEXT:   %[[a1:.*]] = aie.amsel<1> (0)
-// CHECK-NEXT:   %[[a2:.*]] = aie.amsel<2> (0)
 // CHECK-NEXT:   aie.masterset(South : 0, %[[a0]])
 // CHECK-NEXT:   aie.masterset(South : 1, %[[a1]])
-// CHECK-NEXT:   aie.masterset(South : 3, %[[a2]])
-// CHECK-NEXT:   aie.packet_rules(North : 1) {
-// CHECK-NEXT:     aie.rule(31, 2, %[[a2]])
+// CHECK-NEXT:   aie.packet_rules(North : 2) {
+// CHECK-NEXT:     aie.rule(31, 2, %[[a0]])
+// CHECK-NEXT:   }
+// CHECK-NEXT:   aie.packet_rules(North : 0) {
 // CHECK-NEXT:     aie.rule(31, 1, %[[a1]])
 // CHECK-NEXT:   }
 // CHECK-NEXT:   aie.packet_rules(DMA : 0) {
@@ -50,16 +50,19 @@
 // CHECK-NEXT:   }
 // CHECK-NEXT: }
 
-// The merge point: two flows with different ids share one amsel and one link.
+// The split-apart hop: id 1 (own DMA) and id 2 (incoming) stay on separate
+// amsels and separate output ports.
 // CHECK:      %[[tile_0_3:.*]] = aie.tile(0, 3)
 // CHECK:      aie.switchbox(%[[tile_0_3]]) {
-// CHECK-NEXT:   %[[m:.*]] = aie.amsel<0> (0)
-// CHECK-NEXT:   aie.masterset(South : 1, %[[m]])
-// CHECK-NEXT:   aie.packet_rules(North : 1) {
-// CHECK-NEXT:     aie.rule(31, 2, %[[m]])
+// CHECK-NEXT:   %[[b0:.*]] = aie.amsel<0> (0)
+// CHECK-NEXT:   %[[b1:.*]] = aie.amsel<1> (0)
+// CHECK-NEXT:   aie.masterset(South : 0, %[[b0]])
+// CHECK-NEXT:   aie.masterset(South : 2, %[[b1]])
+// CHECK-NEXT:   aie.packet_rules(North : 0) {
+// CHECK-NEXT:     aie.rule(31, 2, %[[b1]])
 // CHECK-NEXT:   }
 // CHECK-NEXT:   aie.packet_rules(DMA : 0) {
-// CHECK-NEXT:     aie.rule(31, 1, %[[m]])
+// CHECK-NEXT:     aie.rule(31, 1, %[[b0]])
 // CHECK-NEXT:   }
 // CHECK-NEXT: }
 
