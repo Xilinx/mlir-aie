@@ -134,11 +134,23 @@ int main() {
   array.setDiagnosticHandler(nullptr);
   AIESIM_CHECK(tile->locks() != nullptr);
   if (tile->locks()) {
+    // A core-issued lock id is BANDED by direction like an address, so the
+    // tile's own lock 0 is id 3*count (48 with 16 locks per module), not 0.
     // Acquire-with-0 on a fresh lock succeeds; the port must not invent its
     // own lock state.
-    AIESIM_CHECK(port->tryAcquireLock(0, 0));
-    port->releaseLock(0, 1);
+    const uint32_t own0 = 3 * tile->locks()->count();
+    AIESIM_CHECK(port->tryAcquireLock(own0, 0));
+    port->releaseLock(own0, 1);
     AIESIM_CHECK_EQ(tile->locks()->value(0), 1);
+  }
+
+  // A neighbour's band and an id past the last band are both faults, not a
+  // false return: false means "not yet" and the core would retry forever.
+  {
+    const uint32_t count = tile->locks()->count();
+    AIESIM_CHECK(faulted(array, [&] { port->tryAcquireLock(0, 0); }));
+    AIESIM_CHECK(faulted(array, [&] { port->tryAcquireLock(4 * count, 0); }));
+    AIESIM_CHECK(faulted(array, [&] { port->releaseLock(count, 1); }));
   }
 
   return aiesim_test::summarize("tile_core_port_test");

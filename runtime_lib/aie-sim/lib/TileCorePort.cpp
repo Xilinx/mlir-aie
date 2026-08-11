@@ -28,6 +28,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <optional>
 
 using namespace aiesim;
 
@@ -62,13 +63,41 @@ public:
   }
 
   bool tryAcquireLock(uint32_t lockId, int32_t value) override {
-    LockModule *locks = tile.locks();
-    return locks && locks->tryAcquire(lockId, value);
+    if (std::optional<uint32_t> local = resolveLock(lockId, "acquire"))
+      return tile.locks()->tryAcquire(*local, value);
+    return false;
   }
 
   void releaseLock(uint32_t lockId, int32_t value) override {
-    if (LockModule *locks = tile.locks())
-      locks->release(lockId, value);
+    if (std::optional<uint32_t> local = resolveLock(lockId, "release"))
+      tile.locks()->release(*local, value);
+  }
+
+  /// A core-issued lock id names a module by band, exactly as an address does.
+  /// Resolve it to an index in THIS tile's module, or fault -- returning false
+  /// would be wrong here, because false means "not available yet" and the core
+  /// would retry a lock that can never come.
+  std::optional<uint32_t> resolveLock(uint32_t lockId, const char *what) {
+    LockModule *locks = tile.locks();
+    if (!locks) {
+      fault("core tried to %s lock %u on a tile with no lock module", what,
+            lockId);
+      return std::nullopt;
+    }
+    std::optional<LockBand> band = splitLockId(lockId, locks->count());
+    if (!band) {
+      fault("core tried to %s lock %u, past the last band (%u locks per "
+            "module, %zu bands)",
+            what, lockId, locks->count(), std::size(kAIE2Bands));
+      return std::nullopt;
+    }
+    if (band->dir != MemDirection::Own) {
+      fault("core tried to %s lock %u, which is the %s neighbour's lock %u; "
+            "only a tile's own (east) band is modelled",
+            what, lockId, directionName(band->dir), band->local);
+      return std::nullopt;
+    }
+    return band->local;
   }
 
   // Core stream and cascade ports are not wired to the stream switch yet.
