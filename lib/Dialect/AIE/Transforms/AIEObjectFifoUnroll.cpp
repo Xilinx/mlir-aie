@@ -86,9 +86,7 @@ struct AIEObjectFifoUnrollPass
   void runOnOperation() override {
     DeviceOp device = getOperation();
 
-    // Global dynamic lowering: leave every loop rolled and just drop the hints,
-    // preserving the runtime (loop-preserving) form the stateful transform
-    // emitted.
+    // Global dynamic lowering: leave every loop rolled and just drop the hints.
     if (clDynamicObjectFifos) {
       device.walk([&](scf::ForOp forOp) {
         forOp->removeAttr(kObjectFifoUnrollHintAttrName);

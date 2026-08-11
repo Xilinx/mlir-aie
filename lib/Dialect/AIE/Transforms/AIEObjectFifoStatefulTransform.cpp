@@ -1555,16 +1555,25 @@ struct AIEObjectFifoStatefulTransformPass
     return success();
   }
 
+  /// The FIFO that owns `op`'s buffers and locks: for a fifo joined or
+  /// distributed through an ObjectFifoLinkOp that is the link's shared target,
+  /// otherwise `op` itself.
+  ObjectFifoCreateOp getLinkTarget(ObjectFifoCreateOp op,
+                                   ObjectFifoState &state) {
+    if (auto linkOp = getOptionalLinkOp(op)) {
+      auto it = state.objFifoLinks.find(*linkOp);
+      if (it != state.objFifoLinks.end()) {
+        return it->second;
+      }
+    }
+    return op;
+  }
+
   /// Emit a UseLockOp whose lock value is a runtime-computed SSA i32.
   void createUseLockSemaphore(OpBuilder &builder, ObjectFifoCreateOp op,
                               ObjectFifoPort port, Value count,
                               LockAction lockAction, ObjectFifoState &state) {
-    ObjectFifoCreateOp target = op;
-    if (auto linkOp = getOptionalLinkOp(op)) {
-      if (state.objFifoLinks.find(*linkOp) != state.objFifoLinks.end()) {
-        target = state.objFifoLinks[*linkOp];
-      }
-    }
+    ObjectFifoCreateOp target = getLinkTarget(op, state);
 
     if (state.locksPerFifo[target].size() == 0) {
       return;
@@ -1605,12 +1614,7 @@ struct AIEObjectFifoStatefulTransformPass
     if (numLocks == 0) {
       return;
     }
-    ObjectFifoCreateOp target = op;
-    if (auto linkOp = getOptionalLinkOp(op)) {
-      if (state.objFifoLinks.find(*linkOp) != state.objFifoLinks.end()) {
-        target = state.objFifoLinks[*linkOp];
-      }
-    }
+    ObjectFifoCreateOp target = getLinkTarget(op, state);
 
     auto &locks = state.locksPerFifo[target];
     if (locks.empty()) {
@@ -1675,27 +1679,8 @@ struct AIEObjectFifoStatefulTransformPass
       builder.setInsertionPointAfter(releaseOp);
       ObjectFifoCreateOp op = releaseOp.getObjectFifo();
       auto port = releaseOp.getPort();
-      int portNum = port == ObjectFifoPort::Produce ? 0 : 1;
-      auto core = releaseOp->getParentOfType<CoreOp>();
-
-      if (auto linkOp = getOptionalLinkOp(op)) {
-        if (core.getTile() == *linkOp->getOptionalSharedTile()) {
-          releaseOp->emitOpError("currently cannot access objectFifo used in "
-                                 "ObjectFifoLinkOp");
-          return WalkResult::interrupt();
-        }
-      }
-
-      if (op.getAieStream().has_value()) {
-        int streamEnd = op.getAieStream().value();
-        if (streamEnd == 2 || streamEnd == portNum) {
-          releaseOp->emitOpError("cannot release from objectfifo stream port");
-        }
-        return WalkResult::interrupt();
-      }
 
       int numLocks = releaseOp.relNumber();
-      // account for repetition
       if (op.getRepeatCount().has_value()) {
         numLocks *= op.getRepeatCount().value();
       }
@@ -1743,7 +1728,7 @@ struct AIEObjectFifoStatefulTransformPass
 
   /// Lower this core's objectFifo.acquire ops to the runtime lock bookkeeping,
   /// recording each acquire's buffer references in `subviews`.
-  LogicalResult lowerAcquireOps(
+  void lowerAcquireOps(
       CoreOp coreOp, bool usesSemaphoreLocks, OpBuilder &builder,
       DenseMap<std::pair<ObjectFifoCreateOp, ObjectFifoPort>, memref::AllocaOp>
           &currentObjectBookkeepingMemref,
@@ -1751,37 +1736,11 @@ struct AIEObjectFifoStatefulTransformPass
           &heldCountBookkeepingMemref,
       DenseMap<ObjectFifoAcquireOp, std::vector<BufferOp *>> &subviews,
       ObjectFifoState &state) {
-    WalkResult res = coreOp.walk([&](ObjectFifoAcquireOp acquireOp) {
+    coreOp.walk([&](ObjectFifoAcquireOp acquireOp) {
       ObjectFifoCreateOp op = acquireOp.getObjectFifo();
       builder.setInsertionPointAfter(acquireOp);
       auto port = acquireOp.getPort();
-      int portNum = port == ObjectFifoPort::Produce ? 0 : 1;
-      auto core = acquireOp->getParentOfType<CoreOp>();
-
-      auto linkOp = getOptionalLinkOp(op);
-      if (linkOp) {
-        if (core.getTile() == *linkOp->getOptionalSharedTile()) {
-          acquireOp->emitOpError("currently cannot access objectFifo used in "
-                                 "ObjectFifoLinkOp");
-          return WalkResult::interrupt();
-        }
-      }
-
-      if (op.getAieStream().has_value()) {
-        int streamEnd = op.getAieStream().value();
-        if (streamEnd == 2 || streamEnd == portNum) {
-          acquireOp->emitOpError("cannot acquire from objectfifo stream port");
-        }
-        return WalkResult::interrupt();
-      }
-
-      // if objFifo was linked with others, find which objFifos elements to use
-      ObjectFifoCreateOp target = op;
-      if (linkOp) {
-        if (state.objFifoLinks.find(*linkOp) != state.objFifoLinks.end()) {
-          target = state.objFifoLinks[*linkOp];
-        }
-      }
+      ObjectFifoCreateOp target = getLinkTarget(op, state);
 
       int acqNum = acquireOp.acqNumber();
       int repeat = op.getRepeatCount().value_or(1);
@@ -1837,52 +1796,22 @@ struct AIEObjectFifoStatefulTransformPass
       std::vector<BufferOp *> subviewRefs(acqNum,
                                           &state.buffersPerFifo[target][0]);
       subviews[acquireOp] = subviewRefs;
-      return WalkResult::advance();
     });
-    return res.wasInterrupted() ? failure() : success();
   }
 
   /// Replace this core's objectFifo.subview.access ops with the concrete buffer
   /// references recorded by `lowerAcquireOps` in `subviews`.
-  LogicalResult lowerSubviewAccessOps(
+  void lowerSubviewAccessOps(
       CoreOp coreOp,
-      DenseMap<ObjectFifoAcquireOp, std::vector<BufferOp *>> &subviews,
-      ObjectFifoState &state) {
-    WalkResult res = coreOp.walk([&](ObjectFifoSubviewAccessOp accessOp) {
-      // Verifier guarantees the defining op is a direct acquire.
+      DenseMap<ObjectFifoAcquireOp, std::vector<BufferOp *>> &subviews) {
+    coreOp.walk([&](ObjectFifoSubviewAccessOp accessOp) {
+      // The verifier guarantees the subview is defined by a direct acquire.
       auto acqOp = accessOp.getSubview().getDefiningOp<ObjectFifoAcquireOp>();
       assert(acqOp && "ObjectFifoSubviewAccessOp verifier should reject "
                       "non-direct subview operands");
-      if (ObjectFifoCreateOp op = acqOp.getObjectFifo()) {
-        if (auto linkOp = getOptionalLinkOp(op); linkOp.has_value()) {
-          if (!linkOp->isDistribute() && !linkOp->isJoin()) {
-            for (auto consumerTile : op.getConsumerTiles()) {
-              if (auto consumerTileOp =
-                      dyn_cast<TileOp>(consumerTile.getDefiningOp())) {
-                int share_dir_value = 0;
-                bool sharing = isSharedMemory(op.getProducerTileOp(),
-                                              consumerTileOp, &share_dir_value);
-                if (!sharing) {
-                  accessOp->emitOpError(
-                      "currently cannot access objectFifo used in "
-                      "ObjectFifoLinkOp if the tiles don't share memory");
-                  return WalkResult::interrupt();
-                }
-              }
-            }
-          } else {
-            accessOp->emitOpError("currently cannot access objectFifo used in "
-                                  "ObjectFifoLinkOp if it is a distribute or "
-                                  "join link");
-            return WalkResult::interrupt();
-          }
-        }
-      }
       accessOp.getOutput().replaceAllUsesWith(
           subviews[acqOp][accessOp.getIndex()]->getBuffer());
-      return WalkResult::advance();
     });
-    return res.wasInterrupted() ? failure() : success();
   }
 
   /// Function used to add an external buffer to the externalBuffersPerFifo map.
@@ -2218,6 +2147,42 @@ struct AIEObjectFifoStatefulTransformPass
       }
       return success();
     };
+    // A subview.access inherits its FIFO from the acquire that defines it. A
+    // linked FIFO is only accessible when it is neither a distribute nor a join
+    // and its producer/consumer tiles share memory.
+    auto validateSubviewAccess =
+        [&](ObjectFifoSubviewAccessOp accessOp) -> LogicalResult {
+      auto acqOp = accessOp.getSubview().getDefiningOp<ObjectFifoAcquireOp>();
+      assert(acqOp && "ObjectFifoSubviewAccessOp verifier should reject "
+                      "non-direct subview operands");
+      ObjectFifoCreateOp op = acqOp.getObjectFifo();
+      if (!op) {
+        return success();
+      }
+      auto linkOp = getOptionalLinkOp(op);
+      if (!linkOp.has_value()) {
+        return success();
+      }
+      if (linkOp->isDistribute() || linkOp->isJoin()) {
+        return accessOp->emitOpError(
+            "currently cannot access objectFifo used "
+            "in ObjectFifoLinkOp if it is a distribute "
+            "or join link");
+      }
+      for (auto consumerTile : op.getConsumerTiles()) {
+        if (auto consumerTileOp =
+                dyn_cast<TileOp>(consumerTile.getDefiningOp())) {
+          int share_dir_value = 0;
+          if (!isSharedMemory(op.getProducerTileOp(), consumerTileOp,
+                              &share_dir_value)) {
+            return accessOp->emitOpError("currently cannot access objectFifo "
+                                         "used in ObjectFifoLinkOp if "
+                                         "the tiles don't share memory");
+          }
+        }
+      }
+      return success();
+    };
     for (auto coreOp : device.getOps<CoreOp>()) {
       WalkResult vres = coreOp.walk([&](Operation *o) {
         if (auto acq = dyn_cast<ObjectFifoAcquireOp>(o)) {
@@ -2228,6 +2193,10 @@ struct AIEObjectFifoStatefulTransformPass
         } else if (auto rel = dyn_cast<ObjectFifoReleaseOp>(o)) {
           if (failed(validateAccess(rel, rel.getObjectFifo(), rel.getPort(),
                                     coreOp, "release from"))) {
+            return WalkResult::interrupt();
+          }
+        } else if (auto sub = dyn_cast<ObjectFifoSubviewAccessOp>(o)) {
+          if (failed(validateSubviewAccess(sub))) {
             return WalkResult::interrupt();
           }
         }
@@ -2912,15 +2881,10 @@ struct AIEObjectFifoStatefulTransformPass
                                  heldCountBookkeepingMemref, state))) {
         return signalPassFailure();
       }
-      if (failed(lowerAcquireOps(coreOp, usesSemaphoreLocks, builder,
-                                 currentObjectBookkeepingMemref,
-                                 heldCountBookkeepingMemref, subviews,
-                                 state))) {
-        return signalPassFailure();
-      }
-      if (failed(lowerSubviewAccessOps(coreOp, subviews, state))) {
-        return signalPassFailure();
-      }
+      lowerAcquireOps(coreOp, usesSemaphoreLocks, builder,
+                      currentObjectBookkeepingMemref,
+                      heldCountBookkeepingMemref, subviews, state);
+      lowerSubviewAccessOps(coreOp, subviews);
     }
 
     //===------------------------------------------------------------------===//
