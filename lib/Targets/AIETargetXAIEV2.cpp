@@ -267,8 +267,12 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
                                        elementWidthInBytes, "1");
 
       if (iterSize > 1 && iterStride > 0) {
-        int stepInWords =
-            static_cast<int>(iterStride * (elementWidthInBytes / 4.0));
+        int64_t strideInBytes =
+            static_cast<int64_t>(iterStride) * elementWidthInBytes;
+        if (strideInBytes % 4)
+          return memOp.emitError(
+              "iteration_stride must result in a stride aligned to 32-bit words");
+        int stepInWords = static_cast<int>(strideInBytes / 4);
         output << "__mlir_aie_try(XAie_DmaSetBdIteration("
                << tileDMAInstRefStr(col, row, bdNum) << ", " << stepInWords
                << ", " << iterSize << ", " << iterCurr << "));\n";
