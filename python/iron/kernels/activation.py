@@ -249,7 +249,7 @@ def bf16_exp_ref(x):
 
 
 def exp2f_vec_ref(x):
-    """numpy reference for [`exp2f_vec`][iron.kernels.activation.exp2f_vec]: exact ``2**x``.
+    """Numpy reference for [`exp2f_vec`][iron.kernels.activation.exp2f_vec]: exact ``2**x``.
 
     Unlike the LUT-based refs above, this is float64 ``2**x`` (not a
     reimplementation of the on-device poly): the kernel targets ~8.9e-5

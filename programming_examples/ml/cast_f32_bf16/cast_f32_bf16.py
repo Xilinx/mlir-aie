@@ -40,7 +40,11 @@ def _cast_extern(chunk_in_ty, chunk_out_ty):
     return ExternalFunction(
         "cast_f32_bf16_row",
         source_file=str(_KERNEL_DIR / "cast_f32_bf16.cc"),
-        arg_types=[chunk_in_ty, chunk_out_ty, np.int32],
+        arg_types=[
+            chunk_in_ty,
+            chunk_out_ty,
+            np.int32,  # pyright: ignore[reportArgumentType]
+        ],
         include_dirs=[config.cxx_header_path()],
     )
 

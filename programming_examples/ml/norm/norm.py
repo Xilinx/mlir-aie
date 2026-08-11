@@ -154,7 +154,12 @@ def _norm_affine_extern(op, chunk_in_ty, chunk_gb_ty, chunk_out_ty):
     return ExternalFunction(
         sym,
         source_file=str(src),
-        arg_types=[chunk_in_ty, chunk_gb_ty, chunk_out_ty, np.int32],
+        arg_types=[
+            chunk_in_ty,
+            chunk_gb_ty,
+            chunk_out_ty,
+            np.int32,  # pyright: ignore[reportArgumentType]
+        ],
         include_dirs=[config.cxx_header_path()],
     )
 

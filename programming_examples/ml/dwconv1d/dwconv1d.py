@@ -47,7 +47,12 @@ def _dwconv1d_extern(chunk_in_ty, w_ty, chunk_out_ty, kernel_size, bias):
     return ExternalFunction(
         "dwconv1d_bf16",
         source_file=str(_KERNEL_SRC),
-        arg_types=[chunk_in_ty, w_ty, chunk_out_ty, np.int32],
+        arg_types=[
+            chunk_in_ty,
+            w_ty,
+            chunk_out_ty,
+            np.int32,  # pyright: ignore[reportArgumentType]
+        ],
         include_dirs=[config.cxx_header_path()],
         compile_flags=[
             f"-DDWCONV_K={kernel_size}",
