@@ -365,11 +365,10 @@ def AIE_ShimDMAOp: AIE_Op<"shim_dma", [
   }];
 }
 
-def AIE_CoreOp
-    : AIE_Op<"core", [IsFlowEndPoint, IsCoreTile, TileElement,
-                      AutomaticAllocationScope,
-                      DeclareOpInterfaceMethods<InferTypeOpInterface>]>,
-      Results<(outs Index)> {
+def AIE_CoreOp: AIE_Op<"core", [
+    IsFlowEndPoint, IsCoreTile, TileElement, AutomaticAllocationScope,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>
+  ]>, Results<(outs Index)> {
   let arguments = (
     ins Index:$tile,
     // Absent means "use this target's default"; read getEffectiveStackSize().

@@ -378,9 +378,10 @@ def AIEObjectFifoStatefulTransform : Pass<"aie-objectFifo-stateful-transform", "
     "xilinx::AIE::AIEDialect",
   ];
 
-  let options = [
-    Option<"clPacketSwObjectFifos", "packet-sw-objFifos", "bool", /*default=*/"false",
-           "Flag to enable aie.packetflow lowering from objectfifos.">,
+  let options =
+      [Option<"clPacketSwObjectFifos", "packet-sw-objFifos", "bool",
+              /*default=*/"false",
+              "Flag to enable aie.packetflow lowering from objectfifos.">,
   ];
 }
 
@@ -407,10 +408,11 @@ def AIEObjectFifoUnroll : Pass<"aie-objectFifo-unroll", "DeviceOp"> {
   let constructor = "xilinx::AIE::createAIEObjectFifoUnrollPass()";
   let dependentDialects = ["mlir::scf::SCFDialect", "xilinx::AIE::AIEDialect",
   ];
-  let options = [
-    Option<"clDynamicObjectFifos", "dynamic-objFifos", "bool", /*default=*/"false",
-           "Leave objectFifo loops rolled (dynamic lowering) instead of "
-           "unrolling them.">,
+  let options =
+      [Option<"clDynamicObjectFifos", "dynamic-objFifos", "bool",
+              /*default=*/"false",
+              "Leave objectFifo loops rolled (dynamic lowering) instead of "
+              "unrolling them.">,
   ];
 }
 
