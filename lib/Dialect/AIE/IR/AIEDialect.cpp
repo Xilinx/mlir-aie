@@ -2182,6 +2182,9 @@ void DMABDOp::buildMixed(mlir::OpBuilder &builder, mlir::OperationState &state,
         /*bd_id=*/nullptr,
         /*packet=*/packet,
         /*burst_length=*/nullptr,
+        /*iteration_size=*/nullptr,
+        /*iteration_stride=*/nullptr,
+        /*iteration_current=*/nullptr,
         /*offset_parameter=*/nullptr,
         /*offset_state_table_idx=*/nullptr,
         /*next_bd_id=*/nullptr);
@@ -2508,6 +2511,51 @@ LogicalResult DMABDOp::verify() {
   if (getBurstLength() != 0 && !parentTile.isShimNOCTile())
     return emitOpError("Burst length is only supported in Shim NOC tiles that "
                        "are connected to the memory-mapped NOC.");
+
+  // bd iteration bounds checking. note: aie-rt encodes (value - 1).
+  bool usesIteration = getIterationSize().has_value() ||
+                       getIterationStride().has_value() ||
+                       (*this)->hasAttr(getIterationCurrentAttrName());
+  if (usesIteration) {
+    if (!targetModel.hasProperty(AIETargetModel::UsesBDIteration))
+      return emitOpError("BD iteration is not supported on this target");
+
+    if (getIterationStride() && !getIterationSize())
+      return emitOpError("iteration_stride requires iteration_size to be set");
+
+    if (auto sz = getIterationSize())
+      if (*sz < 1 || *sz > 64) // 64 = aie-rt IterWrapMax + 1
+        return emitOpError("iteration_size must be in [1, 64]");
+
+    if (auto st = getIterationStride()) {
+      int64_t strideInBytes =
+          static_cast<int64_t>(*st) * getBufferElementTypeWidthInBytes();
+      if (strideInBytes % 4)
+        return emitOpError(
+            "iteration_stride must result in a stride aligned to 32-bit words");
+
+      int64_t stepInWords = strideInBytes / 4;
+      int64_t maxStep =
+          1LL << targetModel.getDmaBdStepBits(parentTile.getTileType());
+      if (stepInWords < 1 || stepInWords > maxStep)
+        return emitOpError() << "iteration_stride must be in [1, " << maxStep
+                             << "] 32-bit words";
+    }
+
+    if (auto sz = getIterationSize())
+      if (*sz > 1 && !getIterationStride())
+        return emitOpError(
+            "iteration_stride must be set when iteration_size > 1");
+
+    if ((*this)->hasAttr(getIterationCurrentAttrName()) && !getIterationSize())
+      return emitOpError("iteration_current requires iteration_size to be set");
+
+    if (auto sz = getIterationSize()) {
+      int32_t cur = getIterationCurrent();
+      if (cur < 0 || cur >= *sz)
+        return emitOpError("iteration_current must be in [0, iteration_size)");
+    }
+  }
 
   return success();
 }

@@ -1017,6 +1017,16 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
     counts can be supplied to the `dma_bd` through an optional argument, an array of "tuple-like" attributes
     `bd_pad_layout<const_pad_before, const_pad_after>`. The pad value is specified on a per-channel basis
     rather than on each BD. All counts are expressed in multiples of the element width.
+
+    ## BD iteration
+
+    On devices that support it, a BD can advance its own base address on each
+    execution: execution `k` reads from `base + k * iteration_stride` (in
+    elements), with `k` running over `iteration_size` executions before the
+    offset resets and the cycle repeats. `iteration_current` sets the starting
+    step (default 0). `iteration_stride` is given in element width and is scaled
+    to whole 32-bit words during lowering. Unset attributes (or
+    `iteration_size <= 1`) disable this.
   }];
 
   let arguments = (
@@ -1041,6 +1051,12 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
         OptionalAttr<AIEI32Attr>:$bd_id,
         OptionalAttr<PacketInfoAttr>:$packet,
         DefaultValuedOptionalAttr<AIEI32Attr, "0">:$burst_length,
+        // Lower to XAie_DmaSetBdIteration(iteration_stride, iteration_size,
+        // iteration_current). These hold the true stride/count; aie-rt encodes
+        // the (value - 1) the hardware fields store.
+        OptionalAttr<AIEI32Attr>:$iteration_size,
+        OptionalAttr<AIEI32Attr>:$iteration_stride,
+        DefaultValuedOptionalAttr<AIEI32Attr, "0">:$iteration_current,
         // if set, the aiex.scratchpad_parameter value added to the BD's address as an offset
         OptionalAttr<FlatSymbolRefAttr>:$offset_parameter,
         // Set by --aie-lower-scratchpad-parameters from $offset_parameter: the scratchpad
