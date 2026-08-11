@@ -41,11 +41,13 @@
 #include "mlir/Target/LLVMIR/Export.h"
 #include "mlir/Transforms/Passes.h"
 
+#include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
+#include "llvm/Support/Error.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -434,6 +436,140 @@ inline std::string downgradeIRForPeano(llvm::StringRef ir) {
         pos = hexEnd;
       }
     }
+  }
+  // LLVM 24 prints a 'float'/'half' constant as a short decimal whenever that
+  // decimal round-trips in the *narrow* type; older LLVM required it to round
+  // trip as a double and printed hex otherwise. Peano's parser still demands
+  // exact representability, so it rejects what LLVM 24 prints ("floating point
+  // constant invalid for type") in both the typed position ('float
+  // 1.100000e-01') and the bare operand one ('fmul float %x, 1.100000e-01').
+  //
+  // llvm/llvm-project@41c214f0b115 ("[AsmWriter] Change the output syntax of
+  // floating-point literals", #190649) moved that round-trip check onto the
+  // value's own semantics and retired the legacy '0x<16hex>' spelling for
+  // 'f0x', which the pass below this one rewrites.
+  //
+  // A bare operand takes its type from the instruction, so tokenize and track
+  // the last type keyword seen on the line. That also keeps a mixed-type line
+  // ('call void @f(float 1.1, double 2.2)') from being rewritten under the
+  // wrong semantics. 'bfloat' and 'double' set the type but are left alone:
+  // double decimals always round-trip, and bfloat is handled below.
+  {
+    enum class FPTy { None, Float, Half };
+    std::string out;
+    out.reserve(result.size());
+    FPTy lineTy = FPTy::None;
+    size_t i = 0;
+    auto isNameChar = [](char c) {
+      return std::isalnum(static_cast<unsigned char>(c)) || c == '_' ||
+             c == '.' || c == '$' || c == '-';
+    };
+    while (i < result.size()) {
+      char c = result[i];
+      if (c == '\n') {
+        lineTy = FPTy::None;
+        out += c;
+        ++i;
+        continue;
+      }
+      // Copy quoted strings verbatim: they can hold anything that looks like a
+      // literal (a version string, an escaped byte array). A quote inside one
+      // is printed as `\22`, never `\"`, so the next bare quote terminates it.
+      if (c == '"') {
+        size_t end = result.find('"', i + 1);
+        end = (end == std::string::npos) ? result.size() : end + 1;
+        out.append(result, i, end - i);
+        i = end;
+        continue;
+      }
+      // Names (%v, @g, !12) and keywords are consumed whole, so a digit inside
+      // one is never mistaken for a constant, and 'bfloat' never matches as
+      // 'float'.
+      if (c == '%' || c == '@' || c == '!' || c == '#' ||
+          std::isalpha(static_cast<unsigned char>(c)) || c == '_') {
+        size_t end = i + 1;
+        while (end < result.size() && isNameChar(result[end]))
+          ++end;
+        llvm::StringRef word(result.data() + i, end - i);
+        if (word == "float")
+          lineTy = FPTy::Float;
+        else if (word == "half")
+          lineTy = FPTy::Half;
+        else if (word == "bfloat" || word == "double")
+          lineTy = FPTy::None;
+        out.append(result, i, end - i);
+        i = end;
+        continue;
+      }
+      bool isNumStart =
+          std::isdigit(static_cast<unsigned char>(c)) ||
+          ((c == '-' || c == '+') && i + 1 < result.size() &&
+           std::isdigit(static_cast<unsigned char>(result[i + 1])));
+      if (!isNumStart) {
+        out += c;
+        ++i;
+        continue;
+      }
+      size_t end = i + 1;
+      while (end < result.size() &&
+             (std::isalnum(static_cast<unsigned char>(result[end])) ||
+              result[end] == '.' ||
+              ((result[end] == '+' || result[end] == '-') &&
+               (result[end - 1] == 'e' || result[end - 1] == 'E'))))
+        ++end;
+      llvm::StringRef num(result.data() + i, end - i);
+      // Only decimals are at risk; the hex forms already say exactly what they
+      // mean, and an integer is not a float constant.
+      bool isDecimal =
+          num.contains('.') || num.contains('e') || num.contains('E');
+      if (lineTy == FPTy::None || !isDecimal || num.starts_with("0x")) {
+        out.append(num.data(), num.size());
+        i = end;
+        continue;
+      }
+      const llvm::fltSemantics &sem = lineTy == FPTy::Half
+                                          ? llvm::APFloat::IEEEhalf()
+                                          : llvm::APFloat::IEEEsingle();
+      llvm::APFloat val(llvm::APFloat::IEEEdouble());
+      auto parsed =
+          val.convertFromString(num, llvm::APFloat::rmNearestTiesToEven);
+      if (!parsed) {
+        llvm::consumeError(parsed.takeError());
+        out.append(num.data(), num.size());
+        i = end;
+        continue;
+      }
+      bool lost = false;
+      llvm::APFloat narrow = val;
+      narrow.convert(sem, llvm::APFloat::rmNearestTiesToEven, &lost);
+      if (!lost) {
+        // Exactly representable, so Peano accepts the decimal as printed.
+        out.append(num.data(), num.size());
+        i = end;
+        continue;
+      }
+      // 'half' takes its own 16-bit hex form; 'float' is spelled as the double
+      // it widens to.
+      uint64_t bits;
+      int digits;
+      if (lineTy == FPTy::Half) {
+        out += "0xH";
+        bits = narrow.bitcastToAPInt().getZExtValue();
+        digits = 4;
+      } else {
+        bool ignored = false;
+        llvm::APFloat wide = narrow;
+        wide.convert(llvm::APFloat::IEEEdouble(),
+                     llvm::APFloat::rmNearestTiesToEven, &ignored);
+        out += "0x";
+        bits = wide.bitcastToAPInt().getZExtValue();
+        digits = 16;
+      }
+      for (int shift = (digits - 1) * 4; shift >= 0; shift -= 4)
+        out += "0123456789ABCDEF"[(bits >> shift) & 0xFu];
+      i = end;
+    }
+    result = std::move(out);
   }
   // Rewrite decimal bfloat16 literals ('bfloat N.NNe+NN', an LLVM 23 printing
   // form) to the bit-exact '0xR<4hex>' form Peano's older LLVM only accepts.
