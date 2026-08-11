@@ -385,6 +385,13 @@ public:
                                         AIE::DMAChannelDir direction) const = 0;
 
   virtual uint32_t getNumMemTileRows() const = 0;
+  /// Return how many of a stream switch's arbiters support deterministic merge
+  /// mode. Arbiters [0, N) support it; returning 0 means the target has no such
+  /// feature at all. See the `deterministic_merge` attribute on AMSelOp.
+  virtual uint32_t getNumDeterministicMergeArbiters() const = 0;
+  /// Return how many merge slots a deterministic merge arbiter has, i.e. the
+  /// widest merge that can be programmed. Zero when the feature is unavailable.
+  virtual uint32_t getNumDeterministicMergeSlots() const = 0;
   /// Return the size (in bytes) of a MemTile.
   virtual uint32_t getMemTileSize() const = 0;
   /// Return the number of memory banks of a given tile.
@@ -566,6 +573,10 @@ public:
                                 AIE::DMAChannelDir direction) const override;
 
   uint32_t getNumMemTileRows() const override { return 0; }
+  // AIE1 stream switches have no deterministic merge feature; the AIE2 mode is
+  // defined to behave exactly like AIE1 when it is disabled.
+  uint32_t getNumDeterministicMergeArbiters() const override { return 0; }
+  uint32_t getNumDeterministicMergeSlots() const override { return 0; }
   uint32_t getMemTileSize() const override { return 0; }
   uint32_t getNumBanks(int col, int row) const override { return 4; }
 
@@ -612,6 +623,11 @@ public:
     addModelProperty(AIETargetModel::UsesSemaphoreLocks);
     addModelProperty(AIETargetModel::UsesMultiDimensionalBDs);
   }
+
+  // AIE2 exposes deterministic merge on 2 of the 6 stream switch arbiters,
+  // with 4 merge slots each (so at most a 4-to-1 merge per arbiter).
+  uint32_t getNumDeterministicMergeArbiters() const override { return 2; }
+  uint32_t getNumDeterministicMergeSlots() const override { return 4; }
 
   AIEArch getTargetArch() const override;
 

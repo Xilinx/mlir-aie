@@ -767,6 +767,29 @@ xilinx::AIE::AIERTControl::configureSwitches(DeviceOp &targetOp,
         slot++;
       }
     }
+
+    // Deterministic merge: an arbiter may be told to grant its slaves in a
+    // programmed order instead of arbitrating freely. The schedule is carried
+    // on one amsel per arbiter (see AMSelOp's verifier) and must be written
+    // before the enable, which resets the feature's internal state.
+    for (auto amselOp : b.getOps<AMSelOp>()) {
+      auto slots = amselOp.getDeterministicMerge();
+      if (!slots)
+        continue;
+      TxnLocBracket bracket(*this, amselOp.getLoc());
+      int arbiter = amselOp.arbiterIndex();
+      int position = 0;
+      for (auto mergeSlot : *slots) {
+        TRY_XAIE_API_EMIT_ERROR(
+            amselOp, XAie_StrmSwDeterministicMergeConfig, &aiert->devInst,
+            tileLoc, arbiter,
+            WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(mergeSlot.getSlaveBundle()),
+            mergeSlot.getSlaveChannel(), mergeSlot.getPacketCount(), position);
+        position++;
+      }
+      TRY_XAIE_API_EMIT_ERROR(amselOp, XAie_StrmSwDeterministicMergeEnable,
+                              &aiert->devInst, tileLoc, arbiter);
+    }
   }
 
   for (auto muxOp : targetOp.getOps<ShimMuxOp>()) {
