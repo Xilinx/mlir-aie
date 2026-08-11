@@ -12,6 +12,15 @@ dispatches them through ``libhrx``:
 
 libhrx patches the buffer addresses into the control code from binding order +
 the TXN's own DDR-patch ops (npu4 COMMAND_CHAIN path).
+
+Producer-independent DDR-patch ABI: the ``insts.bin`` consumed here is compiled
+*unfolded* (aiecc ``--fold-ddr-addr-offset=false``; the JIT picks this whenever
+NPU_RUNTIME=hrx), so each DDR patch's ``arg_plus`` carries only the raw
+intra-buffer offset. libhrx adds the AIE DDR aperture offset (0x80000000) for
+every argument itself, exactly once -- it does not depend on the firmware's
+first-5-args translation cutoff. This is what lets designs with more than five
+host buffers dispatch correctly (the XRT/instruction-buffer path instead folds
+the aperture offset into ``arg_plus`` for args >= 5 to match its firmware).
 """
 
 import atexit
