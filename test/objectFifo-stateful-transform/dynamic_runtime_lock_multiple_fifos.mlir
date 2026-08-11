@@ -48,39 +48,39 @@
 // CHECK:           %[[VAL_22:.*]] = aie.core(%[[VAL_1]]) {
 // CHECK:             %[[VAL_23:.*]] = arith.constant -2 : i32
 // CHECK:             %[[VAL_24:.*]] = arith.constant -3 : i32
-// CHECK:             %[[VAL_25:.*]] = arith.constant 1 : i32
-// CHECK:             %[[VAL_26:.*]] = arith.constant 2 : i32
-// CHECK:             %[[VAL_27:.*]] = arith.constant 0 : i32
-// CHECK:             %[[VAL_28:.*]] = arith.constant 4 : i32
-// CHECK:             %[[VAL_29:.*]] = arith.constant 3 : i32
+// CHECK:             %[[VAL_25:.*]] = arith.constant 4 : i32
+// CHECK:             %[[VAL_26:.*]] = arith.constant 1 : i32
+// CHECK:             %[[VAL_27:.*]] = arith.constant 2 : i32
+// CHECK:             %[[VAL_28:.*]] = arith.constant 3 : i32
+// CHECK:             %[[VAL_29:.*]] = arith.constant 0 : i32
 // CHECK:             %[[VAL_30:.*]] = arith.constant 0 : index
 // CHECK:             %[[VAL_31:.*]] = arith.constant 1 : index
 // CHECK:             %[[VAL_32:.*]] = arith.constant 14 : index
-// CHECK:             %[[VAL_33:.*]]:4 = scf.for %[[VAL_34:.*]] = %[[VAL_30]] to %[[VAL_32]] step %[[VAL_31]] iter_args(%[[VAL_35:.*]] = %[[VAL_27]], %[[VAL_36:.*]] = %[[VAL_27]], %[[VAL_37:.*]] = %[[VAL_27]], %[[VAL_38:.*]] = %[[VAL_27]]) -> (i32, i32, i32, i32) {
-// CHECK:               %[[VAL_39:.*]] = arith.subi %[[VAL_29]], %[[VAL_35]] : i32
-// CHECK:               %[[VAL_40:.*]] = arith.maxsi %[[VAL_39]], %[[VAL_27]] : i32
+// CHECK:             %[[VAL_33:.*]]:4 = scf.for %[[VAL_34:.*]] = %[[VAL_30]] to %[[VAL_32]] step %[[VAL_31]] iter_args(%[[VAL_35:.*]] = %[[VAL_29]], %[[VAL_36:.*]] = %[[VAL_29]], %[[VAL_37:.*]] = %[[VAL_29]], %[[VAL_38:.*]] = %[[VAL_29]]) -> (i32, i32, i32, i32) {
+// CHECK:               %[[VAL_39:.*]] = arith.subi %[[VAL_28]], %[[VAL_37]] : i32
+// CHECK:               %[[VAL_40:.*]] = arith.maxsi %[[VAL_39]], %[[VAL_29]] : i32
 // CHECK:               aie.use_lock(%[[VAL_16]], AcquireGreaterEqual, %[[VAL_40]])
-// CHECK:               %[[VAL_41:.*]] = arith.addi %[[VAL_35]], %[[VAL_40]] : i32
-// CHECK:               %[[VAL_42:.*]] = arith.subi %[[VAL_26]], %[[VAL_36]] : i32
-// CHECK:               %[[VAL_43:.*]] = arith.maxsi %[[VAL_42]], %[[VAL_27]] : i32
+// CHECK:               %[[VAL_41:.*]] = arith.addi %[[VAL_37]], %[[VAL_40]] : i32
+// CHECK:               %[[VAL_42:.*]] = arith.subi %[[VAL_27]], %[[VAL_38]] : i32
+// CHECK:               %[[VAL_43:.*]] = arith.maxsi %[[VAL_42]], %[[VAL_29]] : i32
 // CHECK:               aie.use_lock(%[[VAL_6]], AcquireGreaterEqual, %[[VAL_43]])
-// CHECK:               %[[VAL_44:.*]] = arith.addi %[[VAL_36]], %[[VAL_43]] : i32
-// CHECK:               aie.use_lock(%[[VAL_15]], Release, %[[VAL_25]])
-// CHECK:               %[[VAL_45:.*]] = arith.subi %[[VAL_41]], %[[VAL_25]] : i32
-// CHECK:               %[[VAL_46:.*]] = arith.addi %[[VAL_37]], %[[VAL_25]] : i32
-// CHECK:               %[[VAL_47:.*]] = arith.cmpi sge, %[[VAL_46]], %[[VAL_28]] : i32
-// CHECK:               %[[VAL_48:.*]] = arith.addi %[[VAL_37]], %[[VAL_24]] : i32
+// CHECK:               %[[VAL_44:.*]] = arith.addi %[[VAL_38]], %[[VAL_43]] : i32
+// CHECK:               aie.use_lock(%[[VAL_15]], Release, %[[VAL_26]])
+// CHECK:               %[[VAL_45:.*]] = arith.subi %[[VAL_41]], %[[VAL_26]] : i32
+// CHECK:               %[[VAL_46:.*]] = arith.addi %[[VAL_35]], %[[VAL_26]] : i32
+// CHECK:               %[[VAL_47:.*]] = arith.cmpi sge, %[[VAL_46]], %[[VAL_25]] : i32
+// CHECK:               %[[VAL_48:.*]] = arith.addi %[[VAL_35]], %[[VAL_24]] : i32
 // CHECK:               %[[VAL_49:.*]] = arith.select %[[VAL_47]], %[[VAL_48]], %[[VAL_46]] : i32
-// CHECK:               aie.use_lock(%[[VAL_5]], Release, %[[VAL_25]])
-// CHECK:               %[[VAL_50:.*]] = arith.subi %[[VAL_44]], %[[VAL_25]] : i32
-// CHECK:               %[[VAL_51:.*]] = arith.addi %[[VAL_38]], %[[VAL_25]] : i32
-// CHECK:               %[[VAL_52:.*]] = arith.cmpi sge, %[[VAL_51]], %[[VAL_29]] : i32
-// CHECK:               %[[VAL_53:.*]] = arith.addi %[[VAL_38]], %[[VAL_23]] : i32
+// CHECK:               aie.use_lock(%[[VAL_5]], Release, %[[VAL_26]])
+// CHECK:               %[[VAL_50:.*]] = arith.subi %[[VAL_44]], %[[VAL_26]] : i32
+// CHECK:               %[[VAL_51:.*]] = arith.addi %[[VAL_36]], %[[VAL_26]] : i32
+// CHECK:               %[[VAL_52:.*]] = arith.cmpi sge, %[[VAL_51]], %[[VAL_28]] : i32
+// CHECK:               %[[VAL_53:.*]] = arith.addi %[[VAL_36]], %[[VAL_23]] : i32
 // CHECK:               %[[VAL_54:.*]] = arith.select %[[VAL_52]], %[[VAL_53]], %[[VAL_51]] : i32
-// CHECK:               scf.yield %[[VAL_45]], %[[VAL_50]], %[[VAL_49]], %[[VAL_54]] : i32, i32, i32, i32
+// CHECK:               scf.yield %[[VAL_49]], %[[VAL_54]], %[[VAL_45]], %[[VAL_50]] : i32, i32, i32, i32
 // CHECK:             }
-// CHECK:             aie.use_lock(%[[VAL_15]], Release, %[[VAL_26]])
-// CHECK:             aie.use_lock(%[[VAL_5]], Release, %[[VAL_25]])
+// CHECK:             aie.use_lock(%[[VAL_15]], Release, %[[VAL_27]])
+// CHECK:             aie.use_lock(%[[VAL_5]], Release, %[[VAL_26]])
 // CHECK:             aie.end
 // CHECK:           }
 // CHECK:           %[[VAL_55:.*]] = aie.memtile_dma(%[[VAL_0]]) {

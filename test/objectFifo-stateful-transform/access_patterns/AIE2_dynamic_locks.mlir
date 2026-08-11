@@ -46,21 +46,21 @@
 // CHECK:           %[[VAL_7:.*]] = aie.lock(%[[VAL_0]], 1) {init = 0 : i32, sym_name = "fifo_cons_lock_0"}
 // CHECK:           aie.flow(%[[VAL_0]], DMA : 0, %[[VAL_1]], DMA : 0)
 // CHECK:           %[[VAL_8:.*]] = aie.core(%[[VAL_0]]) {
-// CHECK:             %[[VAL_9:.*]] = arith.constant 1 : i64
-// CHECK:             %[[VAL_10:.*]] = arith.constant 3 : index
-// CHECK:             %[[VAL_11:.*]] = arith.constant 1 : index
-// CHECK:             %[[VAL_12:.*]] = arith.constant 0 : index
-// CHECK:             %[[VAL_13:.*]] = arith.constant 1 : i32
+// CHECK:             %[[VAL_9:.*]] = arith.constant 1 : i32
+// CHECK:             %[[VAL_10:.*]] = arith.constant 1 : i64
+// CHECK:             %[[VAL_11:.*]] = arith.constant 3 : index
+// CHECK:             %[[VAL_12:.*]] = arith.constant 1 : index
+// CHECK:             %[[VAL_13:.*]] = arith.constant 0 : index
 // CHECK:             %[[VAL_14:.*]] = arith.constant 0 : i32
-// CHECK:             aie.use_lock(%[[VAL_6]], AcquireGreaterEqual, %[[VAL_13]])
-// CHECK:             %[[VAL_15:.*]] = scf.for %[[VAL_16:.*]] = %[[VAL_12]] to %[[VAL_10]] step %[[VAL_11]] iter_args(%[[VAL_17:.*]] = %[[VAL_13]]) -> (i32) {
-// CHECK:               %[[VAL_18:.*]] = arith.subi %[[VAL_13]], %[[VAL_17]] : i32
+// CHECK:             aie.use_lock(%[[VAL_6]], AcquireGreaterEqual, %[[VAL_9]])
+// CHECK:             %[[VAL_15:.*]] = scf.for %[[VAL_16:.*]] = %[[VAL_13]] to %[[VAL_11]] step %[[VAL_12]] iter_args(%[[VAL_17:.*]] = %[[VAL_9]]) -> (i32) {
+// CHECK:               %[[VAL_18:.*]] = arith.subi %[[VAL_9]], %[[VAL_17]] : i32
 // CHECK:               %[[VAL_19:.*]] = arith.maxsi %[[VAL_18]], %[[VAL_14]] : i32
 // CHECK:               aie.use_lock(%[[VAL_6]], AcquireGreaterEqual, %[[VAL_19]])
 // CHECK:               %[[VAL_20:.*]] = arith.addi %[[VAL_17]], %[[VAL_19]] : i32
-// CHECK:               memref.store %[[VAL_9]], %[[VAL_5]][] : memref<i64>
-// CHECK:               aie.use_lock(%[[VAL_7]], Release, %[[VAL_13]])
-// CHECK:               %[[VAL_21:.*]] = arith.subi %[[VAL_20]], %[[VAL_13]] : i32
+// CHECK:               memref.store %[[VAL_10]], %[[VAL_5]][] : memref<i64>
+// CHECK:               aie.use_lock(%[[VAL_7]], Release, %[[VAL_9]])
+// CHECK:               %[[VAL_21:.*]] = arith.subi %[[VAL_20]], %[[VAL_9]] : i32
 // CHECK:               scf.yield %[[VAL_21]] : i32
 // CHECK:             }
 // CHECK:             aie.end

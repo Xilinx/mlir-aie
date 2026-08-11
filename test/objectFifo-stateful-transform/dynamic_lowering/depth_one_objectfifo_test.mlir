@@ -30,30 +30,36 @@
 // CHECK:           aie.flow(%[[VAL_1]], DMA : 0, %[[VAL_2]], DMA : 0)
 // CHECK:           %[[VAL_9:.*]] = aie.core(%[[VAL_2]]) {
 // CHECK:             %[[VAL_10:.*]] = arith.constant 0 : i32
-// CHECK:             %[[VAL_11:.*]] = arith.constant 0 : i32
-// CHECK:             %[[VAL_12:.*]] = arith.constant 1 : i32
-// CHECK:             %[[VAL_13:.*]] = arith.constant 0 : index
-// CHECK:             %[[VAL_14:.*]] = arith.constant 1 : index
-// CHECK:             %[[VAL_15:.*]] = arith.constant 10 : index
-// CHECK:             %[[VAL_16:.*]]:2 = scf.for %[[VAL_17:.*]] = %[[VAL_13]] to %[[VAL_15]] step %[[VAL_14]] iter_args(%[[VAL_18:.*]] = %[[VAL_10]], %[[VAL_19:.*]] = %[[VAL_11]]) -> (i32, i32) {
-// CHECK:               %[[VAL_20:.*]] = arith.constant 1 : i32
-// CHECK:               %[[VAL_21:.*]] = arith.constant 0 : i32
-// CHECK:               %[[VAL_22:.*]] = arith.subi %[[VAL_20]], %[[VAL_18]] : i32
-// CHECK:               %[[VAL_23:.*]] = arith.maxsi %[[VAL_22]], %[[VAL_21]] : i32
-// CHECK:               aie.use_lock(%[[VAL_6]], AcquireGreaterEqual, %[[VAL_23]])
-// CHECK:               %[[VAL_24:.*]] = arith.addi %[[VAL_18]], %[[VAL_23]] : i32
-// CHECK:               func.call @passthrough_10_i32(%[[VAL_4]]) : (memref<10xi32>) -> ()
+// CHECK:             %[[VAL_11:.*]] = arith.constant 0 : index
+// CHECK:             %[[VAL_12:.*]] = arith.constant 1 : index
+// CHECK:             %[[VAL_13:.*]] = arith.constant 10 : index
+// CHECK:             %[[VAL_14:.*]]:2 = scf.for %[[VAL_15:.*]] = %[[VAL_11]] to %[[VAL_13]] step %[[VAL_12]] iter_args(%[[VAL_16:.*]] = %[[VAL_10]], %[[VAL_17:.*]] = %[[VAL_10]]) -> (i32, i32) {
+// CHECK:               %[[VAL_18:.*]] = arith.constant 1 : i32
+// CHECK:               %[[VAL_19:.*]] = arith.constant 0 : i32
+// CHECK:               %[[VAL_20:.*]] = arith.subi %[[VAL_18]], %[[VAL_17]] : i32
+// CHECK:               %[[VAL_21:.*]] = arith.maxsi %[[VAL_20]], %[[VAL_19]] : i32
+// CHECK:               aie.use_lock(%[[VAL_6]], AcquireGreaterEqual, %[[VAL_21]])
+// CHECK:               %[[VAL_22:.*]] = arith.addi %[[VAL_17]], %[[VAL_21]] : i32
+// CHECK:               %[[VAL_23:.*]] = arith.index_cast %[[VAL_16]] : i32 to index
+// CHECK:               %[[VAL_24:.*]] = scf.index_switch %[[VAL_23]] -> memref<10xi32>
+// CHECK:               case 0 {
+// CHECK:                 scf.yield %[[VAL_4]] : memref<10xi32>
+// CHECK:               }
+// CHECK:               default {
+// CHECK:                 scf.yield %[[VAL_4]] : memref<10xi32>
+// CHECK:               }
+// CHECK:               func.call @passthrough_10_i32(%[[VAL_24]]) : (memref<10xi32>) -> ()
 // CHECK:               %[[VAL_25:.*]] = arith.constant 1 : i32
 // CHECK:               aie.use_lock(%[[VAL_5]], Release, %[[VAL_25]])
-// CHECK:               %[[VAL_26:.*]] = arith.constant 1 : i32
-// CHECK:               %[[VAL_27:.*]] = arith.subi %[[VAL_24]], %[[VAL_26]] : i32
+// CHECK:               %[[VAL_26:.*]] = arith.subi %[[VAL_22]], %[[VAL_25]] : i32
+// CHECK:               %[[VAL_27:.*]] = arith.constant 1 : i32
 // CHECK:               %[[VAL_28:.*]] = arith.constant 1 : i32
-// CHECK:               %[[VAL_29:.*]] = arith.addi %[[VAL_19]], %[[VAL_28]] : i32
-// CHECK:               %[[VAL_30:.*]] = arith.cmpi sge, %[[VAL_29]], %[[VAL_12]] : i32
-// CHECK:               %[[VAL_31:.*]] = arith.subi %[[VAL_29]], %[[VAL_12]] : i32
+// CHECK:               %[[VAL_29:.*]] = arith.addi %[[VAL_16]], %[[VAL_28]] : i32
+// CHECK:               %[[VAL_30:.*]] = arith.cmpi sge, %[[VAL_29]], %[[VAL_27]] : i32
+// CHECK:               %[[VAL_31:.*]] = arith.subi %[[VAL_29]], %[[VAL_27]] : i32
 // CHECK:               %[[VAL_32:.*]] = arith.select %[[VAL_30]], %[[VAL_31]], %[[VAL_29]] : i32
-// CHECK:               scf.yield %[[VAL_27]], %[[VAL_32]] : i32, i32
-// CHECK:             }
+// CHECK:               scf.yield %[[VAL_32]], %[[VAL_26]] : i32, i32
+// CHECK:             } {aie.unroll_hint = 1 : i64}
 // CHECK:             aie.end
 // CHECK:           } {dynamic_objfifo_lowering = true}
 // CHECK:           aie.shim_dma_allocation @input_fifo_shim_alloc(%[[VAL_1]], MM2S, 0)

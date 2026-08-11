@@ -69,8 +69,8 @@
 // CHECK:             %[[VAL_44:.*]] = arith.constant 4 : index
 // CHECK:             %[[VAL_45:.*]] = arith.constant 1 : index
 // CHECK:             %[[VAL_46:.*]] = arith.constant 8 : index
-// CHECK:             %[[VAL_47:.*]] = arith.constant 2 : i32
-// CHECK:             %[[VAL_48:.*]] = arith.constant 0 : i32
+// CHECK:             %[[VAL_47:.*]] = arith.constant 0 : i32
+// CHECK:             %[[VAL_48:.*]] = arith.constant 2 : i32
 // CHECK:             %[[VAL_49:.*]] = arith.constant 128 : index
 // CHECK:             %[[VAL_50:.*]] = arith.constant -1 : i32
 // CHECK:             aie.use_lock(%[[VAL_11]], AcquireGreaterEqual, %[[VAL_40]])
@@ -79,12 +79,12 @@
 // CHECK:             aie.use_lock(%[[VAL_15]], Release, %[[VAL_40]])
 // CHECK:             %[[VAL_52:.*]]:2 = scf.for %[[VAL_53:.*]] = %[[VAL_42]] to %[[VAL_41]] step %[[VAL_49]] iter_args(%[[VAL_54:.*]] = %[[VAL_50]], %[[VAL_55:.*]] = %[[VAL_50]]) -> (i32, i32) {
 // CHECK:               %[[VAL_56:.*]] = arith.subi %[[VAL_40]], %[[VAL_54]] : i32
-// CHECK:               %[[VAL_57:.*]] = arith.maxsi %[[VAL_56]], %[[VAL_48]] : i32
+// CHECK:               %[[VAL_57:.*]] = arith.maxsi %[[VAL_56]], %[[VAL_47]] : i32
 // CHECK:               aie.use_lock(%[[VAL_32]], AcquireGreaterEqual, %[[VAL_57]])
 // CHECK:               %[[VAL_58:.*]] = arith.addi %[[VAL_54]], %[[VAL_57]] : i32
 // CHECK:               %[[VAL_59:.*]] = memref.reinterpret_cast %[[VAL_30]] to offset: [0], sizes: [8, 8, 4, 8], strides: [256, 32, 8, 1] : memref<32x64xi32, 1> to memref<8x8x4x8xi32, 1>
 // CHECK:               %[[VAL_60:.*]] = arith.subi %[[VAL_40]], %[[VAL_55]] : i32
-// CHECK:               %[[VAL_61:.*]] = arith.maxsi %[[VAL_60]], %[[VAL_48]] : i32
+// CHECK:               %[[VAL_61:.*]] = arith.maxsi %[[VAL_60]], %[[VAL_47]] : i32
 // CHECK:               aie.use_lock(%[[VAL_16]], AcquireGreaterEqual, %[[VAL_61]])
 // CHECK:               %[[VAL_62:.*]] = arith.addi %[[VAL_55]], %[[VAL_61]] : i32
 // CHECK:               %[[VAL_63:.*]] = memref.reinterpret_cast %[[VAL_14]] to offset: [0], sizes: [4, 8, 8, 8], strides: [512, 64, 8, 1] : memref<64x32xi32, 1> to memref<4x8x8x8xi32, 1>
@@ -110,13 +110,13 @@
 // CHECK:               %[[VAL_75:.*]] = arith.subi %[[VAL_58]], %[[VAL_40]] : i32
 // CHECK:               aie.use_lock(%[[VAL_15]], Release, %[[VAL_40]])
 // CHECK:               %[[VAL_76:.*]] = arith.subi %[[VAL_62]], %[[VAL_40]] : i32
-// CHECK:               %[[VAL_77:.*]] = arith.subi %[[VAL_47]], %[[VAL_58]] : i32
-// CHECK:               %[[VAL_78:.*]] = arith.maxsi %[[VAL_77]], %[[VAL_48]] : i32
+// CHECK:               %[[VAL_77:.*]] = arith.subi %[[VAL_48]], %[[VAL_58]] : i32
+// CHECK:               %[[VAL_78:.*]] = arith.maxsi %[[VAL_77]], %[[VAL_47]] : i32
 // CHECK:               aie.use_lock(%[[VAL_32]], AcquireGreaterEqual, %[[VAL_78]])
 // CHECK:               %[[VAL_79:.*]] = arith.addi %[[VAL_75]], %[[VAL_78]] : i32
 // CHECK:               %[[VAL_80:.*]] = memref.reinterpret_cast %[[VAL_29]] to offset: [0], sizes: [8, 8, 4, 8], strides: [256, 32, 8, 1] : memref<32x64xi32, 1> to memref<8x8x4x8xi32, 1>
-// CHECK:               %[[VAL_81:.*]] = arith.subi %[[VAL_47]], %[[VAL_62]] : i32
-// CHECK:               %[[VAL_82:.*]] = arith.maxsi %[[VAL_81]], %[[VAL_48]] : i32
+// CHECK:               %[[VAL_81:.*]] = arith.subi %[[VAL_48]], %[[VAL_62]] : i32
+// CHECK:               %[[VAL_82:.*]] = arith.maxsi %[[VAL_81]], %[[VAL_47]] : i32
 // CHECK:               aie.use_lock(%[[VAL_16]], AcquireGreaterEqual, %[[VAL_82]])
 // CHECK:               %[[VAL_83:.*]] = arith.addi %[[VAL_76]], %[[VAL_82]] : i32
 // CHECK:               %[[VAL_84:.*]] = memref.reinterpret_cast %[[VAL_13]] to offset: [0], sizes: [4, 8, 8, 8], strides: [512, 64, 8, 1] : memref<64x32xi32, 1> to memref<4x8x8x8xi32, 1>
