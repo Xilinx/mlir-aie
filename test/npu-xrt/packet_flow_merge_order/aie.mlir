@@ -36,7 +36,7 @@
 // configuration untouched by the router.
 
 module {
-  aie.device(npu1) {
+  aie.device(NPUDEVICE) {
     %shim_noc_tile_0_0 = aie.tile(0, 0)
     %shim_mux_0_0 = aie.shim_mux(%shim_noc_tile_0_0) {
       aie.connect<North : 2, DMA : 0>
