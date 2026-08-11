@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <condition_variable>
 #include <cstdint>
 #include <cstring>
 #include <iostream>
@@ -38,10 +39,10 @@ int main(int argc, const char *argv[]) {
   auto device = xrt::device(0);
   xrt::xclbin xclbin(std::string("aie.xclbin"));
   auto xkernels = xclbin.get_kernels();
-  auto xkernel = *std::find_if(
-      xkernels.begin(), xkernels.end(), [](xrt::xclbin::kernel &k) {
-        return k.get_name().rfind("MLIR_AIE", 0) == 0;
-      });
+  auto xkernel = *std::find_if(xkernels.begin(), xkernels.end(),
+                               [](xrt::xclbin::kernel &k) {
+                                 return k.get_name().rfind("MLIR_AIE", 0) == 0;
+                               });
   device.register_xclbin(xclbin);
   xrt::hw_context context(device, xclbin.get_uuid());
   auto kernel = xrt::kernel(context, xkernel.get_name());
