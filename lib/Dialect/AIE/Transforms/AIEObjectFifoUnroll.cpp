@@ -86,18 +86,13 @@ struct AIEObjectFifoUnrollPass
   void runOnOperation() override {
     DeviceOp device = getOperation();
 
-    // Global dynamic lowering: leave every loop rolled and just drop the hints.
-    if (clDynamicObjectFifos) {
-      device.walk([&](scf::ForOp forOp) {
-        forOp->removeAttr(kObjectFifoUnrollHintAttrName);
-      });
-      return;
-    }
-
     for (auto coreOp : device.getOps<CoreOp>()) {
-      // A core can opt into the dynamic form via its `dynamic_objfifo_lowering`
-      // attribute; leave its loops rolled (drop the hints, skip unrolling).
-      if (coreOp.getDynamicObjfifoLowering().value_or(false)) {
+      // `default-dynamic` picks the lowering for cores that do not pin their
+      // own choice; a core's `dynamic_objfifo_lowering` attribute overrides it
+      // in either direction. Dynamic cores keep their loops rolled (drop the
+      // hints, skip unrolling); their runtime bookkeeping is tidied by the
+      // shared fold/cleanup pipeline below.
+      if (coreOp.getDynamicObjfifoLowering().value_or(clDefaultDynamic)) {
         coreOp.walk([&](scf::ForOp forOp) {
           forOp->removeAttr(kObjectFifoUnrollHintAttrName);
         });

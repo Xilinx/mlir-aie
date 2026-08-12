@@ -10,19 +10,64 @@
 // buffer at run time via scf.index_switch rather than statically binding each
 // access to a fixed buffer.
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll="dynamic-objFifos=true" %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll="default-dynamic=true" %s | FileCheck %s
 
 // Consumer pattern {1,2,1} over a depth-4 fifo: each acquire resolves its buffer
 // through a runtime index_switch (the hallmark of dynamic lowering).
-// CHECK:      %core_2_3 = aie.core
-// CHECK:        %{{.*}} = arith.constant 1 : i32
-// CHECK:        aie.use_lock(%{{.*}}, AcquireGreaterEqual, %{{.*}})
-// CHECK:        scf.index_switch
-// CHECK:        %{{.*}} = arith.constant 2 : i32
-// CHECK:        aie.use_lock(%{{.*}}, AcquireGreaterEqual, %{{.*}})
-// CHECK:        scf.index_switch
-// CHECK:        scf.index_switch
-// CHECK:        aie.end
+// CHECK-LABEL:   aie.device(xcve2302) {
+// CHECK:           %[[T22:.*]] = aie.tile(2, 2)
+// CHECK:           %[[T23:.*]] = aie.tile(2, 3)
+// CHECK:           %[[B0:.*]] = aie.buffer(%[[T22]]) {sym_name = "fifo_buff_0"} : memref<i32>
+// CHECK:           %[[B1:.*]] = aie.buffer(%[[T22]]) {sym_name = "fifo_buff_1"} : memref<i32>
+// CHECK:           %[[B2:.*]] = aie.buffer(%[[T22]]) {sym_name = "fifo_buff_2"} : memref<i32>
+// CHECK:           %[[B3:.*]] = aie.buffer(%[[T22]]) {sym_name = "fifo_buff_3"} : memref<i32>
+// CHECK:           %[[PROD:.*]] = aie.lock(%[[T22]], 0) {init = 4 : i32, sym_name = "fifo_prod_lock_0"}
+// CHECK:           %[[CONS:.*]] = aie.lock(%[[T22]], 1) {init = 0 : i32, sym_name = "fifo_cons_lock_0"}
+// CHECK:           %[[BUF23:.*]] = aie.buffer(%[[T23]]) {sym_name = "buf23"} : memref<4xi32>
+// CHECK:           %{{.*}} = aie.core(%[[T22]]) {
+// CHECK:             %[[C1I:.*]] = arith.constant 1 : i32
+// CHECK:             %[[C88:.*]] = arith.constant 88 : i32
+// CHECK:             %[[C77:.*]] = arith.constant 77 : i32
+// CHECK:             %[[C66:.*]] = arith.constant 66 : i32
+// CHECK:             %[[C55:.*]] = arith.constant 55 : i32
+// CHECK:             aie.use_lock(%[[PROD]], AcquireGreaterEqual, %[[C1I]])
+// CHECK:             memref.store %[[C55]], %[[B0]][] : memref<i32>
+// CHECK:             aie.use_lock(%[[CONS]], Release, %[[C1I]])
+// CHECK:             aie.use_lock(%[[PROD]], AcquireGreaterEqual, %[[C1I]])
+// CHECK:             memref.store %[[C66]], %[[B1]][] : memref<i32>
+// CHECK:             aie.use_lock(%[[CONS]], Release, %[[C1I]])
+// CHECK:             aie.use_lock(%[[PROD]], AcquireGreaterEqual, %[[C1I]])
+// CHECK:             memref.store %[[C77]], %[[B2]][] : memref<i32>
+// CHECK:             aie.use_lock(%[[CONS]], Release, %[[C1I]])
+// CHECK:             aie.use_lock(%[[PROD]], AcquireGreaterEqual, %[[C1I]])
+// CHECK:             memref.store %[[C88]], %[[B3]][] : memref<i32>
+// CHECK:             aie.use_lock(%[[CONS]], Release, %[[C1I]])
+// CHECK:             aie.end
+// CHECK:           }
+// CHECK:           %{{.*}} = aie.core(%[[T23]]) {
+// CHECK:             %[[D1I:.*]] = arith.constant 1 : i32
+// CHECK:             %[[C3:.*]] = arith.constant 3 : index
+// CHECK:             %[[C2:.*]] = arith.constant 2 : index
+// CHECK:             %[[C1:.*]] = arith.constant 1 : index
+// CHECK:             %[[C0:.*]] = arith.constant 0 : index
+// CHECK:             %[[C2I:.*]] = arith.constant 2 : i32
+// CHECK:             aie.use_lock(%[[CONS]], AcquireGreaterEqual, %[[D1I]])
+// CHECK:             %[[V0:.*]] = memref.load %[[B0]][] : memref<i32>
+// CHECK:             memref.store %[[V0]], %[[BUF23]]{{\[}}%[[C0]]] : memref<4xi32>
+// CHECK:             aie.use_lock(%[[PROD]], Release, %[[D1I]])
+// CHECK:             aie.use_lock(%[[CONS]], AcquireGreaterEqual, %[[C2I]])
+// CHECK:             %[[V1:.*]] = memref.load %[[B1]][] : memref<i32>
+// CHECK:             %[[V2:.*]] = memref.load %[[B2]][] : memref<i32>
+// CHECK:             memref.store %[[V1]], %[[BUF23]]{{\[}}%[[C1]]] : memref<4xi32>
+// CHECK:             memref.store %[[V2]], %[[BUF23]]{{\[}}%[[C2]]] : memref<4xi32>
+// CHECK:             aie.use_lock(%[[PROD]], Release, %[[C2I]])
+// CHECK:             aie.use_lock(%[[CONS]], AcquireGreaterEqual, %[[D1I]])
+// CHECK:             %[[V3:.*]] = memref.load %[[B3]][] : memref<i32>
+// CHECK:             memref.store %[[V3]], %[[BUF23]]{{\[}}%[[C3]]] : memref<4xi32>
+// CHECK:             aie.use_lock(%[[PROD]], Release, %[[D1I]])
+// CHECK:             aie.end
+// CHECK:           }
+// CHECK:         }
 
 module @aie2_cyclostatic_L1 {
     aie.device(xcve2302) {

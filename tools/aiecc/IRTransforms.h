@@ -860,10 +860,11 @@ inline std::unique_ptr<mlir::PassManager> getInputWithAddressesPipeline(
           dpm)))
     return nullptr;
   // Unroll the objectFifo loops (folding the runtime bookkeeping into the
-  // static lowering). `dynamic-objFifos=true` makes the pass a no-op that keeps
-  // the loop-preserving form; either way it strips the unroll hints.
+  // static lowering). `default-dynamic=true` flips the default to the
+  // loop-preserving form; per-core `dynamic_objfifo_lowering` attributes
+  // override it either way. Either way the unroll hints are stripped.
   if (mlir::failed(mlir::parsePassPipeline(
-          llvm::formatv("aie-objectFifo-unroll{{dynamic-objFifos={0}}",
+          llvm::formatv("aie-objectFifo-unroll{{default-dynamic={0}}",
                         dynamicObjFifos)
               .str(),
           dpm)))

@@ -399,20 +399,24 @@ def AIEObjectFifoUnroll : Pass<"aie-objectFifo-unroll", "DeviceOp"> {
 
     This pass runs after `aie-objectFifo-stateful-transform` (which emits the
     dynamic bookkeeping and annotates every objectFifo loop with the
-    `aie.unroll_hint` attribute this pass consumes). When `dynamic-objFifos` is
-    true the pass is a no-op that only strips the hints, leaving the dynamic
-    (loop-preserving) lowering in place; individual cores can opt into the
-    dynamic form regardless via their `dynamic_objfifo_lowering` attribute.
+    `aie.unroll_hint` attribute this pass consumes). The `default-dynamic`
+    option selects the lowering for cores that do not pin their own choice:
+    when false (the default) their loops are unrolled into the static lowering,
+    when true they are left rolled (dynamic, loop-preserving). A core overrides
+    the default in either direction via its `dynamic_objfifo_lowering`
+    attribute. Either way the hints are stripped and the runtime bookkeeping of
+    any dynamic core is tidied by a fold/cleanup sub-pipeline.
   }];
 
   let constructor = "xilinx::AIE::createAIEObjectFifoUnrollPass()";
   let dependentDialects = ["mlir::scf::SCFDialect", "xilinx::AIE::AIEDialect",
   ];
   let options =
-      [Option<"clDynamicObjectFifos", "dynamic-objFifos", "bool",
+      [Option<"clDefaultDynamic", "default-dynamic", "bool",
               /*default=*/"false",
-              "Leave objectFifo loops rolled (dynamic lowering) instead of "
-              "unrolling them.">,
+              "Default objectFifo lowering for cores that do not set the "
+              "dynamic_objfifo_lowering attribute: true leaves loops rolled "
+              "(dynamic), false unrolls them (static).">,
   ];
 }
 
