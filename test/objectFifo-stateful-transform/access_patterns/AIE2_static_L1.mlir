@@ -20,41 +20,27 @@
 // CHECK:     %[[PL:.*]] = aie.lock(%[[t0]], 0) {init = 4 : i32, sym_name = "fifo_prod_lock_0"}
 // CHECK:     %[[CL:.*]] = aie.lock(%[[t0]], 1) {init = 0 : i32, sym_name = "fifo_cons_lock_0"}
 // CHECK:     %[[c0:.*]] = aie.core(%[[t0]]) {
-// CHECK:         %{{.*}} = arith.constant 1 : i32
-// CHECK:         aie.use_lock(%[[PL]], AcquireGreaterEqual, %{{.*}})
-// CHECK:         %{{.*}} = arith.constant 1 : i32
-// CHECK:         aie.use_lock(%[[CL]], Release, %{{.*}})
-// CHECK:         %{{.*}} = arith.constant 1 : i32
-// CHECK:         aie.use_lock(%[[PL]], AcquireGreaterEqual, %{{.*}})
-// CHECK:         %{{.*}} = arith.constant 1 : i32
-// CHECK:         aie.use_lock(%[[CL]], Release, %{{.*}})
-// CHECK:         %{{.*}} = arith.constant 1 : i32
-// CHECK:         aie.use_lock(%[[PL]], AcquireGreaterEqual, %{{.*}})
-// CHECK:         %{{.*}} = arith.constant 1 : i32
-// CHECK:         aie.use_lock(%[[CL]], Release, %{{.*}})
-// CHECK:         %{{.*}} = arith.constant 1 : i32
-// CHECK:         aie.use_lock(%[[PL]], AcquireGreaterEqual, %{{.*}})
-// CHECK:         %{{.*}} = arith.constant 1 : i32
-// CHECK:         aie.use_lock(%[[CL]], Release, %{{.*}})
+// CHECK:         %[[C1:.*]] = arith.constant 1 : i32
+// CHECK:         aie.use_lock(%[[PL]], AcquireGreaterEqual, %[[C1]])
+// CHECK:         aie.use_lock(%[[CL]], Release, %[[C1]])
+// CHECK:         aie.use_lock(%[[PL]], AcquireGreaterEqual, %[[C1]])
+// CHECK:         aie.use_lock(%[[CL]], Release, %[[C1]])
+// CHECK:         aie.use_lock(%[[PL]], AcquireGreaterEqual, %[[C1]])
+// CHECK:         aie.use_lock(%[[CL]], Release, %[[C1]])
+// CHECK:         aie.use_lock(%[[PL]], AcquireGreaterEqual, %[[C1]])
+// CHECK:         aie.use_lock(%[[CL]], Release, %[[C1]])
 // CHECK:       aie.end
 // CHECK:     }
 // CHECK:     %[[c1:.*]] = aie.core(%[[t1]]) {
-// CHECK:         %{{.*}} = arith.constant 2 : i32
-// CHECK:         aie.use_lock(%[[CL]], AcquireGreaterEqual, %{{.*}})
-// CHECK:         %{{.*}} = arith.constant 2 : i32
-// CHECK:         aie.use_lock(%[[PL]], Release, %{{.*}})
-// CHECK:         %{{.*}} = arith.constant 2 : i32
-// CHECK:         aie.use_lock(%[[CL]], AcquireGreaterEqual, %{{.*}})
-// CHECK:         %{{.*}} = arith.constant 2 : i32
-// CHECK:         aie.use_lock(%[[PL]], Release, %{{.*}})
-// CHECK:         %{{.*}} = arith.constant 2 : i32
-// CHECK:         aie.use_lock(%[[CL]], AcquireGreaterEqual, %{{.*}})
-// CHECK:         %{{.*}} = arith.constant 2 : i32
-// CHECK:         aie.use_lock(%[[PL]], Release, %{{.*}})
-// CHECK:         %{{.*}} = arith.constant 2 : i32
-// CHECK:         aie.use_lock(%[[CL]], AcquireGreaterEqual, %{{.*}})
-// CHECK:         %{{.*}} = arith.constant 2 : i32
-// CHECK:         aie.use_lock(%[[PL]], Release, %{{.*}})
+// CHECK:         %[[C2:.*]] = arith.constant 2 : i32
+// CHECK:         aie.use_lock(%[[CL]], AcquireGreaterEqual, %[[C2]])
+// CHECK:         aie.use_lock(%[[PL]], Release, %[[C2]])
+// CHECK:         aie.use_lock(%[[CL]], AcquireGreaterEqual, %[[C2]])
+// CHECK:         aie.use_lock(%[[PL]], Release, %[[C2]])
+// CHECK:         aie.use_lock(%[[CL]], AcquireGreaterEqual, %[[C2]])
+// CHECK:         aie.use_lock(%[[PL]], Release, %[[C2]])
+// CHECK:         aie.use_lock(%[[CL]], AcquireGreaterEqual, %[[C2]])
+// CHECK:         aie.use_lock(%[[PL]], Release, %[[C2]])
 // CHECK:       }
 // CHECK:       aie.end
 // CHECK:     }
