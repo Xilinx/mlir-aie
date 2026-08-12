@@ -34,12 +34,12 @@
     // CHECK-DAG:   aie.flow(%[[COMP_TILE]], DMA : 0, %[[MEM_TILE]], DMA : 1)
     // CHECK-DAG:   aie.flow(%[[MEM_TILE]], DMA : 1, %[[SHIM_TILE]], DMA : 0)
     // CHECK:       %core_0_2 = aie.core(%[[COMP_TILE]]) {
+    // CHECK-DAG:         %c0 = arith.constant 0 : index
+    // CHECK-DAG:         %c1 = arith.constant 1 : index
+    // CHECK-DAG:         %c64 = arith.constant 64 : index
+    // CHECK-DAG:         %c12_i8 = arith.constant 12 : i8
     // CHECK:         aie.use_lock(%[[IN1_CONS_CONS_LOCK]], AcquireGreaterEqual, %{{.*}})
     // CHECK:         aie.use_lock(%[[OUT1_PROD_LOCK]], AcquireGreaterEqual, %{{.*}})
-    // CHECK:         %c0 = arith.constant 0 : index
-    // CHECK:         %c1 = arith.constant 1 : index
-    // CHECK:         %c64 = arith.constant 64 : index
-    // CHECK:         %c12_i8 = arith.constant 12 : i8
     // CHECK:         scf.for %arg0 = %c0 to %c64 step %c1 {
     // CHECK:           scf.for %arg1 = %c0 to %c64 step %c1 {
     // CHECK:             %0 = memref.load %[[IN1_CONS_BUFF_0]][%arg0, %arg1] : memref<64x64xi8>
@@ -52,8 +52,8 @@
     // CHECK:         aie.end
     // CHECK:       }
     // CHECK:       aie.runtime_sequence(%arg0: memref<61x56xi8>, %arg1: memref<32xi8>, %arg2: memref<64x64xi8>) {
-    // CHECK:         aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][1, 1, 61, 56][0, 0, 56, 1]) {id = 0 : i64, metadata = @objFifo_in0_shim_alloc} : memref<61x56xi8>
-    // CHECK:         aiex.npu.dma_memcpy_nd(%arg2[0, 0, 0, 0][1, 1, 64, 64][0, 0, 64, 1]) {id = 1 : i64, issue_token = true, metadata = @objFifo_out0_shim_alloc} : memref<64x64xi8>
+    // CHECK:         aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][1, 1, 1, 3416][0, 0, 0, 1]) {id = 0 : i64, metadata = @objFifo_in0_shim_alloc} : memref<61x56xi8>
+    // CHECK:         aiex.npu.dma_memcpy_nd(%arg2[0, 0, 0, 0][1, 1, 1, 4096][0, 0, 0, 1]) {id = 1 : i64, issue_token = true, metadata = @objFifo_out0_shim_alloc} : memref<64x64xi8>
     // CHECK:         aiex.npu.dma_wait {symbol = @objFifo_out0_shim_alloc}
     // CHECK:       }
     // CHECK:       aie.shim_dma_allocation @objFifo_in0_shim_alloc(%shim_noc_tile_0_0, MM2S, 0)
