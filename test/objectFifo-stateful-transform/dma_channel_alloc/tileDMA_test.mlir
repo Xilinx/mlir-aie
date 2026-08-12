@@ -32,10 +32,9 @@
 // CHECK:             return
 // CHECK:           }
 // CHECK:           %[[VAL_17:.*]] = aie.core(%[[VAL_0]]) {
-// CHECK:             %[[VAL_18:.*]] = arith.constant 0 : index
-// CHECK:             %[[VAL_19:.*]] = arith.constant 1 : index
-// CHECK:             %[[VAL_20:.*]] = arith.constant 12 : index
-// CHECK:             %[[VAL_21:.*]] = arith.constant 2 : index
+// CHECK-DAG:             %[[VAL_18:.*]] = arith.constant 0 : index
+// CHECK-DAG:             %[[VAL_20:.*]] = arith.constant 12 : index
+// CHECK-DAG:             %[[VAL_21:.*]] = arith.constant 2 : index
 // CHECK:             scf.for %[[VAL_22:.*]] = %[[VAL_18]] to %[[VAL_20]] step %[[VAL_21]] {
 // CHECK:               aie.use_lock(%[[VAL_8]], Acquire, %{{.*}})
 // CHECK:               func.call @some_work(%[[VAL_6]]) : (memref<16xi32>) -> ()
