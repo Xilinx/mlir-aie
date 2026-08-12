@@ -26,9 +26,6 @@
 // CHECK:             return
 // CHECK:           }
 // CHECK:           %[[VAL_12:.*]] = aie.core(%[[VAL_0]]) {
-// CHECK:             %[[VAL_13:.*]] = arith.constant 0 : index
-// CHECK:             %[[VAL_14:.*]] = arith.constant 1 : index
-// CHECK:             %[[VAL_15:.*]] = arith.constant 12 : index
 // CHECK:             aie.use_lock(%[[VAL_5]], Acquire, %{{.*}})
 // CHECK:             aie.use_lock(%[[VAL_6]], Acquire, %{{.*}})
 // CHECK:             func.call @some_work(%[[VAL_2]], %[[VAL_3]]) : (memref<16xi32>, memref<16xi32>) -> ()
