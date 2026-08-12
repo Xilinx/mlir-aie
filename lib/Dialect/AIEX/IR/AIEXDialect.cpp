@@ -768,8 +768,11 @@ LogicalResult AIEX::NpuWriteBdOp::verify() {
     return emitOpError("D2 Stride exceeds the [0:1M-1] range.");
   if (getIterationSize() > 0x3F)
     return emitOpError("Iteration Size exceeds the [0:63] range.");
-  if (getIterationStride() > 0xFFFFF)
-    return emitOpError("Iteration Stride exceeds the [0:1M-1] range.");
+  AIE::AIETileType tileType = targetModel.getTileType(getColumn(), getRow());
+  uint32_t maxIterStride = (1u << targetModel.getDmaBdStepBits(tileType)) - 1;
+  if (static_cast<uint32_t>(getIterationStride()) > maxIterStride)
+    return emitOpError() << "Iteration Stride exceeds the [0:" << maxIterStride
+                         << "] range.";
   if (targetModel.isShimNOCTile(getColumn(), getRow()) && getD2Size() != 0)
     return emitOpError("ShimTile only supports 3 dimensions of sizes.");
   if (targetModel.isShimNOCTile(getColumn(), getRow()) &&
@@ -1128,6 +1131,14 @@ verifyTaskBDDimensions(const AIE::AIETargetModel &targetModel, int col, int row,
     // The BD's own verifier skips it here, so nothing has yet established that
     // its mixed sizes/strides lists are safe to read.
     if (failed(bd.verifyMixedSizesAndStrides())) {
+      result = failure();
+      return;
+    }
+    if (bd.getIteration()) {
+      // See aie.dma_bd's ## BD iteration doc in AIEOps.td.
+      bd.emitOpError() << "the iteration attribute is not supported on the "
+                          "runtime-sequence path; express iteration via the "
+                          "outermost sizes/strides dimension instead";
       result = failure();
       return;
     }

@@ -1017,6 +1017,33 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
     counts can be supplied to the `dma_bd` through an optional argument, an array of "tuple-like" attributes
     `bd_pad_layout<const_pad_before, const_pad_after>`. The pad value is specified on a per-channel basis
     rather than on each BD. All counts are expressed in multiples of the element width.
+
+    ## BD iteration
+
+    On devices that support it, a BD can advance the address it accesses on each
+    execution, via the optional `iteration` attribute
+    (`#aie.bd_iteration<size, stride, current>`): execution `k` adds an offset of
+    `((current + k) % size) * stride` (in elements) to its configured address.
+    The offset advances for `size` executions (with wrapping); `current` selects
+    the starting step (default 0). `stride` is given in element width and is
+    scaled to whole 32-bit words during lowering. Omitting the attribute (or
+    `size <= 1`) disables iteration. Lowers to
+    `XAie_DmaSetBdIteration(stride, size, current)`.
+
+    #### Important gotcha regarding APIs for raw register writes
+
+    The SAME hardware iteration register is also written by `aiex.npu.writebd`
+    and the runtime-sequence (DMA-task) lowering, through an `iteration_*`
+    family with the SAME names but a DIFFERENT convention; those are RAW
+    register values, i.e., stored off by one (`iteration_size = 3` means four
+    executions), `iteration_stride` in 32-bit words, no bounds/alignment help.
+    `aie.dma_bd` uses TRUE / element values and the lowering applies the `-1`
+    bias and the element->word scaling.
+
+    Do NOT copy an iteration number between the two ops: e.g. `size = 1` disables
+    iteration here, but `iteration_size = 1` means *two* executions on
+    `writebd`. The `iteration` attribute is rejected on the other path; express
+    iteration there via the outermost `sizes`/`strides` dimension instead.
   }];
 
   let arguments = (
@@ -1041,6 +1068,8 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
         OptionalAttr<AIEI32Attr>:$bd_id,
         OptionalAttr<PacketInfoAttr>:$packet,
         DefaultValuedOptionalAttr<AIEI32Attr, "0">:$burst_length,
+        // The BD's iteration state; see the "## BD iteration" section above.
+        OptionalAttr<BDIterationAttr>:$iteration,
         // if set, the aiex.scratchpad_parameter value added to the BD's address as an offset
         OptionalAttr<FlatSymbolRefAttr>:$offset_parameter,
         // Set by --aie-lower-scratchpad-parameters from $offset_parameter: the scratchpad
