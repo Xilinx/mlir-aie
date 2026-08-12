@@ -8,7 +8,7 @@
 // Verifies that --convert-aie-to-transaction preserves source op locations
 // across the aie-rt round-trip. AIERTControl::TxnLocBracket scopes capture
 // the lock op's loc around the XAie_LockSetValue call; AIEToConfiguration
-// then reads ctl.getTxnInstrLocs() and applies those locations to the
+// then reads ctl.getTxnOpLocs() and applies those locations to the
 // re-emitted aiex.npu.write32 ops instead of the device fallback location.
 
 // RUN: aie-opt --convert-aie-to-transaction="elf-dir=%S/convert_aie_to_ctrl_pkts_elfs/" --mlir-print-debuginfo %s | FileCheck %s
