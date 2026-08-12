@@ -181,8 +181,8 @@ LogicalResult emitDynamicShimBdWordOverrides(
     OpBuilder &builder, Location loc, const AIE::AIETargetModel &targetModel,
     int tileCol, int tileRow, OpFoldResult bdId,
     ArrayRef<OpFoldResult> mixedSizes, ArrayRef<OpFoldResult> mixedStrides,
-    uint64_t elemWidth, uint32_t burstLength, Value bufLenOverride,
-    Value &repeatCountOut) {
+    uint64_t elemWidth, uint32_t burstLength, uint32_t axcache,
+    Value bufLenOverride, Value &repeatCountOut) {
   auto i32ty = builder.getIntegerType(32);
 
   // Compute the hardware sizes/strides as SSA values via the shared encoder.
@@ -307,9 +307,9 @@ LogicalResult emitDynamicShimBdWordOverrides(
                                  {{hwS[1], 0x3FF, 20}, {hwT[1], 0xFFFFF, 0}})));
     // word[5]: AXCache [27:24] (static), d2_stride [19:0]. Shim d2_size is
     //          always 0 (the template already has it), carried by bufLen.
-    Value axcache = createConstantI32(builder, loc, (2u & 0xf) << 24);
+    Value axcacheVal = createConstantI32(builder, loc, (axcache & 0xf) << 24);
     writeWord(5, arith::OrIOp::create(
-                     builder, loc, axcache,
+                     builder, loc, axcacheVal,
                      buildBdWord(builder, loc, {{hwT[2], 0xFFFFF, 0}})));
   }
   // word[6]: iteration_size [25:20], iteration_stride [19:0]. A zero outer

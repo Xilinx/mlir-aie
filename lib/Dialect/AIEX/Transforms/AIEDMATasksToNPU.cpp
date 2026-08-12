@@ -549,9 +549,9 @@ struct AIEDMATasksToNPUPass
       // constant-address blockwrite path can't be used. Emit the template words
       // as write32s instead -- register replay treats N write32s and an N-word
       // blockwrite identically, matching the static BD.
-      if (failed(emitShimTemplateWordOverrides(builder, loc, target_model, col,
-                                               row, bdIdOfr, f,
-                                               bd_op.getBurstLength())))
+      if (failed(emitShimTemplateWordOverrides(
+              builder, loc, target_model, col, row, bdIdOfr, f,
+              bd_op.getBurstLength(), bd_op.getAxcacheOrDefault())))
         return failure();
     } else {
       // Zero-template BD: constant fields baked in, size/stride words zeroed
@@ -568,7 +568,8 @@ struct AIEDMATasksToNPUPass
           f.lock_acq_enable, f.lock_acq_val, f.lock_acq_id,
           /*d0_zero_before=*/0,
           /*d1_zero_before=*/0, /*d2_zero_before=*/0, /*d0_zero_after=*/0,
-          /*d1_zero_after=*/0, /*d2_zero_after=*/0, bd_op.getBurstLength());
+          /*d1_zero_after=*/0, /*d2_zero_after=*/0, bd_op.getBurstLength(),
+          builder.getI32IntegerAttr(bd_op.getAxcacheOrDefault()));
     }
 
     // Normalize sizes/strides to a 4-element outermost-first mixed list (the
@@ -624,7 +625,8 @@ struct AIEDMATasksToNPUPass
     Value bdRepeatCount;
     if (failed(emitDynamicShimBdWordOverrides(
             builder, loc, target_model, col, row, bdIdOfr, sizes4, strides4,
-            elemWidth, bd_op.getBurstLength(), bufLen, bdRepeatCount)))
+            elemWidth, bd_op.getBurstLength(), bd_op.getAxcacheOrDefault(),
+            bufLen, bdRepeatCount)))
       return failure();
     return setAddressForSingleBD(builder, bd_op, tile, bdIdOfr);
   }
@@ -637,7 +639,7 @@ struct AIEDMATasksToNPUPass
   LogicalResult emitShimTemplateWordOverrides(
       OpBuilder &builder, Location loc, const AIE::AIETargetModel &target_model,
       int col, int row, OpFoldResult bdId, const BdTemplateFields &f,
-      uint32_t burstLength) {
+      uint32_t burstLength, uint32_t axcache) {
     Value bdBase =
         getBdRegisterBase(builder, loc, target_model, col, row, bdId);
     auto writeWord = [&](uint32_t wordIdx, uint32_t val) {
@@ -659,9 +661,9 @@ struct AIEDMATasksToNPUPass
     writeWord(4,
               (AIE::getShimBurstLengthEncoding(target_model, burstLength) & 0x3)
                   << 30);
-    // word[5] AXCache [27:24] = 2 (constant, enables NoC upsizing); d2_stride
-    // overlaid by the encoder in ND mode.
-    writeWord(5, (2u & 0xf) << 24);
+    // word[5] AXCache [27:24] (constant); d2_stride overlaid by the encoder in
+    // ND mode.
+    writeWord(5, (axcache & 0xf) << 24);
     // word[7] next_bd [30:27], use_next_bd [26], valid_bd [25], lock fields.
     uint32_t w7 = ((f.next_bd_id & 0xf) << 27) | ((f.use_next_bd & 0x1) << 26) |
                   (1u << 25) | ((f.lock_rel_val & 0x7f) << 18) |
@@ -930,7 +932,11 @@ struct AIEDMATasksToNPUPass
         /*d1_zero_before=*/padBefore[1], /*d2_zero_before=*/padBefore[2],
         /*d0_zero_after=*/padAfter[0], /*d1_zero_after=*/padAfter[1],
         /*d2_zero_after=*/padAfter[2],
-        /*burst_length=*/bd_op.getBurstLength());
+        /*burst_length=*/bd_op.getBurstLength(),
+        /*axcache=*/
+        target_model.isShimNOCTile(tile.getCol(), tile.getRow())
+            ? builder.getI32IntegerAttr(bd_op.getAxcacheOrDefault())
+            : IntegerAttr());
     return setAddressForSingleBD(builder, bd_op, tile);
   }
 

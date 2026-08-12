@@ -921,6 +921,9 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
         5. the number of zeros to pad before and after every dimension of an n-d tensor (described below);
         6. the burst length to use for the DMA operation. This option is only available for data movement between the host memory and Shim NOC tiles.
           The default value of 0 is interpreted as the maximum available burst length in the architecture.
+        7. the raw 4-bit AXI `AXCache` value to use for the DMA's AXI-MM transfers. This option is only available for
+          data movement between the host memory and Shim NOC tiles. If unset, `AIETargetModel::getDefaultAXCache()`
+          supplies the value.
 
     `offset`, `len`, `size`s and `stride`s are all denominated in element width; e.g., transferring the whole of
     `memref<512xi32>` means `len == 512`, and also while transferring the whole of `memref<512xi16>`, `len == 512`.
@@ -1069,6 +1072,10 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
         OptionalAttr<AIEI32Attr>:$bd_id,
         OptionalAttr<PacketInfoAttr>:$packet,
         DefaultValuedOptionalAttr<AIEI32Attr, "0">:$burst_length,
+        // AXCache is shim-NOC-only, like burst_length. It is left unset (rather than
+        // DefaultValuedOptionalAttr, whose value must be a TableGen literal) so that all backends
+        // can source a consistent default from AIETargetModel::getDefaultAXCache() when absent.
+        OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>, IntMaxValue<15>]>>:$axcache,
         // The BD's iteration state; see the "## BD iteration" section above.
         OptionalAttr<BDIterationAttr>:$iteration,
         // if set, the aiex.scratchpad_parameter value added to the BD's address as an offset
@@ -1183,6 +1190,11 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
       return static_cast<int64_t>(getConstantOffset().value_or(0)) *
              static_cast<int64_t>(getBufferElementTypeWidthInBytes());
     }
+
+    // $axcache, or the target's default when unset. The single place the
+    // fallback rule lives; every backend emitting an AXI-MM BD goes through
+    // this rather than repeating the value_or.
+    uint32_t getAxcacheOrDefault();
   }];
 
   let hasVerifier = 1;

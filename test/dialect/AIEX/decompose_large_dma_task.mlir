@@ -130,3 +130,40 @@ module {
     }
   }
 }
+
+
+// -----
+
+// Test 5: AXCACHE — every member of a sliced chain must inherit the template's
+// shim-only attributes. The first chunk is rewritten in place (so it keeps them
+// for free); the rest are freshly built and have to copy them explicitly, or a
+// single logical transfer ends up issuing AXI bursts under two different cache
+// attributes.
+//
+// RUN: aie-opt --pass-pipeline='any(aie.device(aie-decompose-large-dma-bd))' \
+// RUN:   --split-input-file %s | FileCheck %s --check-prefix=AXCACHE
+
+// AXCACHE-LABEL: @axcache_slice_task_bd
+// AXCACHE:         aie.dma_bd
+// AXCACHE-SAME:        sizes = [1, 1, 1023, 2]
+// AXCACHE-SAME:        axcache = 15 : i32
+// AXCACHE:         aie.next_bd
+// AXCACHE:         aie.dma_bd
+// AXCACHE-SAME:        sizes = [1, 1, 8, 2]
+// AXCACHE-SAME:        axcache = 15 : i32
+// AXCACHE:         aie.end
+module {
+  aie.device(npu2_1col) {
+    %t = aie.tile(0, 0)
+    aie.shim_dma_allocation @a (%t, MM2S, 0)
+    aie.runtime_sequence @axcache_slice_task_bd(%in: memref<4096xi32>) {
+      %tk = aiex.dma_configure_task_for @a {
+        aie.dma_bd(%in : memref<4096xi32> offset = 0 len = 2062 sizes = [1, 1, 1031, 2] strides = [0, 0, 3, 1])
+          {burst_length = 0 : i32, axcache = 15 : i32}
+        aie.end
+      } {issue_token = true}
+      aiex.dma_start_task(%tk)
+      aiex.dma_await_task(%tk)
+    }
+  }
+}

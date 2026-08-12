@@ -109,6 +109,7 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
     int elementWidthInBytes = 0;
     int ndims = 0;
     int iterSize = 0, iterStride = 0, iterCurr = 0;
+    uint32_t axcache = 0;
     ArrayRef<BDDimLayoutAttr> dims;
     // Owning storage for the folded dims; must outlive `dims` (used far below).
     SmallVector<BDDimLayoutAttr> dimsStorage;
@@ -139,6 +140,7 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
         iterStride = iter->getStride();
         iterCurr = iter->getCurrent();
       }
+      axcache = op.getAxcacheOrDefault();
       if (!op.getMixedSizes().empty()) {
         // Runtime-valued sizes/strides are not supported on this static path.
         for (mlir::OpFoldResult s : op.getMixedSizes())
@@ -251,7 +253,7 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
                  << "/* smid */ 0, "
                  << "/* burstlen */ 4, "
                  << "/* QoS */ 0, "
-                 << "/* Cache */ 0, "
+                 << "/* Cache */ " << axcache << ", "
                  << "/* Secure */ " << enable << "));\n";
         } else {
           if ((BaseAddrA + offsetA) % 4)

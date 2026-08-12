@@ -585,6 +585,10 @@ def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
     The burst length attribute specifies the burst length in bytes for the DMA operation. A value
     of 0 indicates that the burst length is not specified and the maximal burst length is used.
 
+    The `axcache` attribute specifies the raw 4-bit AXI `AXCache` value used for the shim DMA's
+    AXI-MM transfers to/from host memory. If unset, `AIETargetModel::getDefaultAXCache()` supplies
+    the value.
+
     #### `metadata` -- Specifying Tile, Channel, Direction and Linking a `dma_memcpy_nd` to its Other Half
 
     The `metadata` attribute must point to a symbol referencing a
@@ -671,6 +675,7 @@ def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
         DefaultValuedOptionalAttr<I64Attr, "0">:$d1_zero_after,
         DefaultValuedOptionalAttr<I64Attr, "0">:$d2_zero_after,
         DefaultValuedOptionalAttr<I64Attr, "0">:$burst_length,
+        OptionalAttr<ConfinedAttr<I64Attr, [IntMinValue<0>, IntMaxValue<15>]>>:$axcache,
         // if set, the aiex.scratchpad_parameter value added to the BD's address as an offset
         OptionalAttr<FlatSymbolRefAttr>:$offset_parameter,
         // Set by --aie-lower-scratchpad-parameters from $offset_parameter: the scratchpad
@@ -708,6 +713,11 @@ def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
     llvm::LogicalResult verifyDynamicSizesStrides(
         const xilinx::AIE::AIETargetModel &targetModel,
         mlir::BaseMemRefType buffer);
+
+    /* $axcache, or the target's default when unset. The single place the
+       fallback rule lives; every backend emitting an AXI-MM BD goes through
+       this rather than repeating the value_or. */
+    uint32_t getAxcacheOrDefault();
   }];
 
   let extraClassDefinition = [{
@@ -1228,11 +1238,18 @@ def AIE_NpuWriteBdOp: AIEX_Op<"npu.writebd", []> {
         I32Attr:$d0_zero_after,
         I32Attr:$d1_zero_after,
         I32Attr:$d2_zero_after,
-        DefaultValuedOptionalAttr<I32Attr, "0">:$burst_length
+        DefaultValuedOptionalAttr<I32Attr, "0">:$burst_length,
+        OptionalAttr<ConfinedAttr<I32Attr, [IntMinValue<0>, IntMaxValue<15>]>>:$axcache
   );
   let results = (outs );
   let assemblyFormat = [{ attr-dict }];
   let hasVerifier = 1;
+  let extraClassDeclaration = [{
+    /* $axcache, or the target's default when unset. The single place the
+       fallback rule lives; every backend emitting an AXI-MM BD goes through
+       this rather than repeating the value_or. */
+    uint32_t getAxcacheOrDefault();
+  }];
   let description = [{
     Write a complete buffer descriptor (all fields explicit) to a BD slot.
 

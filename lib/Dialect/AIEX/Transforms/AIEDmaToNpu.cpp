@@ -316,6 +316,7 @@ public:
     auto d1_zero_after = zero;
     auto d2_zero_after = zero;
     auto burst_length = zero;
+    auto axcache = zero;
 
     auto issue_token = BoolAttr::get(ctx, false);
     auto repeat_count = zero;
@@ -445,6 +446,13 @@ public:
     // burst_size
     burst_length = IntegerAttr::get(i32ty, op.getBurstLength());
 
+    // axcache; only meaningful on the AXI-MM side, so left unset elsewhere to
+    // match the dma_task path (and NpuWriteBdOp's verifier).
+    if (targetModel.isShimNOCTile(tileCol, tileRow))
+      axcache = IntegerAttr::get(i32ty, op.getAxcacheOrDefault());
+    else
+      axcache = IntegerAttr();
+
     // Set the issue_token
     issue_token = BoolAttr::get(ctx, op.getIssueToken());
     // Earlier, all S2MM channels were implicitly assumed to issue a token.
@@ -468,7 +476,7 @@ public:
         iteration_size, iteration_stride, next_bd, row, use_next_bd, valid_bd,
         lock_rel_val, lock_rel_id, lock_acq_enable, lock_acq_val, lock_acq_id,
         d0_zero_before, d1_zero_before, d2_zero_before, d0_zero_after,
-        d1_zero_after, d2_zero_after, burst_length);
+        d1_zero_after, d2_zero_after, burst_length, axcache);
 
     // Resolve the buffer's runtime-sequence arg and emit the address patch
     // (plus any offset-state update).
@@ -608,7 +616,8 @@ public:
         /*d1_zero_before=*/zero, /*d2_zero_before=*/zero,
         /*d0_zero_after=*/zero,
         /*d1_zero_after=*/zero, /*d2_zero_after=*/zero,
-        /*burst_length=*/IntegerAttr::get(i32ty, op.getBurstLength()));
+        /*burst_length=*/IntegerAttr::get(i32ty, op.getBurstLength()),
+        /*axcache=*/IntegerAttr::get(i32ty, op.getAxcacheOrDefault()));
 
     // Emit the runtime size/stride BD-word overrides (shared with dma_task).
     // buffer_length is the size-product here, so pass no override (null); the
@@ -618,7 +627,7 @@ public:
             rewriter, loc, targetModel, tileCol, tileRow,
             rewriter.getI32IntegerAttr(op.getId()), op.getMixedSizes(),
             op.getMixedStrides(), op.getElementTypeBitwidth(),
-            op.getBurstLength(),
+            op.getBurstLength(), op.getAxcacheOrDefault(),
             /*bufLenOverride=*/Value(), repeatCount)))
       return failure();
 
@@ -754,7 +763,7 @@ public:
 
       // DMA_BDX_5
       // TODO: SIMID, AXQoS
-      words[5] |= (2 & 0xf) << 24; // AXCache = 2 to enable upsizing in NoC
+      words[5] |= (op.getAxcacheOrDefault() & 0xf) << 24;
       words[5] |= op.getD2Stride() & 0xfffff;
 
       // DMA_BDX_6
