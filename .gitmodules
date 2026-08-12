@@ -12,6 +12,7 @@
 	path = third_party/aie-rt
 	url = https://github.com/Xilinx/aie-rt.git
 	ignore = dirty
+	branch = release/main_aig
 [submodule "third_party/bootgen"]
 	path = third_party/bootgen
 	url = https://github.com/Xilinx/bootgen.git
