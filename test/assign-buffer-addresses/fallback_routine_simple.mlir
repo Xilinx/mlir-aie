@@ -28,10 +28,10 @@
 // CHECK:       %act_3_4_buff_1 = aie.buffer(%tile_1_2) {address = 16448 : i32, sym_name = "act_3_4_buff_1"} : memref<8xi32>
 // CHECK:       %act_3_4_buff_2 = aie.buffer(%tile_1_2) {address = 16480 : i32, sym_name = "act_3_4_buff_2"} : memref<8xi32>
 // CHECK:       %act_3_4_buff_3 = aie.buffer(%tile_1_2) {address = 16512 : i32, sym_name = "act_3_4_buff_3"} : memref<8xi32>
-// CHECK:       %act_3_4_lock_0 = aie.lock(%tile_1_2, 0) {init = 0 : i32, sym_name = "act_3_4_lock_0"}
-// CHECK:       %act_3_4_lock_1 = aie.lock(%tile_1_2, 1) {init = 0 : i32, sym_name = "act_3_4_lock_1"}
-// CHECK:       %act_3_4_lock_2 = aie.lock(%tile_1_2, 2) {init = 0 : i32, sym_name = "act_3_4_lock_2"}
-// CHECK:       %act_3_4_lock_3 = aie.lock(%tile_1_2, 3) {init = 0 : i32, sym_name = "act_3_4_lock_3"}
+// CHECK:       %act_3_4_lock_0 = aie.lock(%tile_1_2) {init = 0 : i32, sym_name = "act_3_4_lock_0"}
+// CHECK:       %act_3_4_lock_1 = aie.lock(%tile_1_2) {init = 0 : i32, sym_name = "act_3_4_lock_1"}
+// CHECK:       %act_3_4_lock_2 = aie.lock(%tile_1_2) {init = 0 : i32, sym_name = "act_3_4_lock_2"}
+// CHECK:       %act_3_4_lock_3 = aie.lock(%tile_1_2) {init = 0 : i32, sym_name = "act_3_4_lock_3"}
 // CHECK:     }
 // CHECK:   }
 

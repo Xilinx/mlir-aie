@@ -18,14 +18,14 @@
 // Compute tile buffers use the output (padded) size
 // CHECK: %[[OUT_BUF0:.*]] = aie.buffer(%{{.*}}tile_0_2) {sym_name = "of_out_cons_buff_0"} : memref<512xi32>
 // CHECK: %[[OUT_BUF1:.*]] = aie.buffer(%{{.*}}tile_0_2) {sym_name = "of_out_cons_buff_1"} : memref<512xi32>
-// CHECK: %[[OUT_PROD:.*]] = aie.lock(%{{.*}}tile_0_2, 0) {init = 2 : i32, sym_name = "of_out_cons_prod_lock_0"}
-// CHECK: %[[OUT_CONS:.*]] = aie.lock(%{{.*}}tile_0_2, 1) {init = 0 : i32, sym_name = "of_out_cons_cons_lock_0"}
+// CHECK: %[[OUT_PROD:.*]] = aie.lock(%{{.*}}tile_0_2) {init = 2 : i32, sym_name = "of_out_cons_prod_lock_0"}
+// CHECK: %[[OUT_CONS:.*]] = aie.lock(%{{.*}}tile_0_2) {init = 0 : i32, sym_name = "of_out_cons_cons_lock_0"}
 
 // MemTile buffers use the input (smaller) size — NOT the output size
 // CHECK: %[[MT_BUF0:.*]] = aie.buffer(%{{.*}}tile_0_1) {sym_name = "of_in_cons_buff_0"} : memref<256xi32>
 // CHECK: %[[MT_BUF1:.*]] = aie.buffer(%{{.*}}tile_0_1) {sym_name = "of_in_cons_buff_1"} : memref<256xi32>
-// CHECK: %[[MT_PROD:.*]] = aie.lock(%{{.*}}tile_0_1, 0) {init = 2 : i32, sym_name = "of_in_cons_prod_lock_0"}
-// CHECK: %[[MT_CONS:.*]] = aie.lock(%{{.*}}tile_0_1, 1) {init = 0 : i32, sym_name = "of_in_cons_cons_lock_0"}
+// CHECK: %[[MT_PROD:.*]] = aie.lock(%{{.*}}tile_0_1) {init = 2 : i32, sym_name = "of_in_cons_prod_lock_0"}
+// CHECK: %[[MT_CONS:.*]] = aie.lock(%{{.*}}tile_0_1) {init = 0 : i32, sym_name = "of_in_cons_cons_lock_0"}
 
 // CHECK: aie.flow(%{{.*}}tile_0_0, DMA : 0, %{{.*}}tile_0_1, DMA : 0)
 // CHECK: aie.flow(%{{.*}}tile_0_1, DMA : 0, %{{.*}}tile_0_2, DMA : 0)

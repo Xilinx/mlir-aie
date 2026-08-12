@@ -840,7 +840,6 @@ inline std::unique_ptr<mlir::PassManager> getInputWithAddressesPipeline(
   }
 
   mlir::OpPassManager &dpm = pm->nest<DeviceOp>();
-  dpm.addPass(createAIEAssignLockIDsPass());
   // The stateful transform always emits the dynamic (runtime) buffer addressing
   // and lock bookkeeping. When dynamic objectFifos are disabled, the
   // aie-objectFifo-unroll pass below unrolls the loops that carry objectFifo
@@ -863,6 +862,9 @@ inline std::unique_ptr<mlir::PassManager> getInputWithAddressesPipeline(
               .str(),
           dpm)))
     return nullptr;
+  // Assign IDs to the ID-less locks the objectFifo lowering creates (and to any
+  // user locks without an ID).
+  dpm.addPass(createAIEAssignLockIDsPass());
   dpm.addPass(createAIEAssignBufferDescriptorIDsPass());
   dpm.addPass(createAIELowerCascadeFlowsPass());
   dpm.addPass(X::createAIEBroadcastPacketPass());

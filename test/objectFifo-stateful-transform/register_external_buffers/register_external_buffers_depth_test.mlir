@@ -11,9 +11,9 @@
 // CHECK:               %{{.*}}tile_7_1 = aie.tile(7, 1)
 // CHECK:               %{{.*}}tile_7_0 = aie.tile(7, 0)
 // CHECK:               %[[VAL_0:.*]] = aie.buffer(%{{.*}}tile_7_1) {sym_name = "ext_of_cons_buff_0"} : memref<16xi32>
-// CHECK:               %[[VAL_1:.*]] = aie.lock(%{{.*}}tile_7_1, 0) {init = 0 : i32, sym_name = "ext_of_cons_lock_0"}
-// CHECK:               %[[VAL_2:.*]] = aie.lock(%{{.*}}tile_7_0, 0) {init = 0 : i32, sym_name = "ext_of_lock_0"}
-// CHECK:               %[[VAL_3:.*]] = aie.lock(%{{.*}}tile_7_0, 1) {init = 0 : i32, sym_name = "ext_of_lock_1"}
+// CHECK:               %[[VAL_1:.*]] = aie.lock(%{{.*}}tile_7_1) {init = 0 : i32, sym_name = "ext_of_cons_lock_0"}
+// CHECK:               %[[VAL_2:.*]] = aie.lock(%{{.*}}tile_7_0) {init = 0 : i32, sym_name = "ext_of_lock_0"}
+// CHECK:               %[[VAL_3:.*]] = aie.lock(%{{.*}}tile_7_0) {init = 0 : i32, sym_name = "ext_of_lock_1"}
 // CHECK:               aie.flow(%{{.*}}tile_7_0, DMA : 0, %{{.*}}tile_7_1, DMA : 0)
 // CHECK:               %ext_buffer_in0 = aie.external_buffer {sym_name = "ext_buffer_in0"} : memref<64xi32>
 // CHECK:               %ext_buffer_in1 = aie.external_buffer {sym_name = "ext_buffer_in1"} : memref<64xi32>

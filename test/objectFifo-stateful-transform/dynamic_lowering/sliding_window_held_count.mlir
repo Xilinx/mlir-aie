@@ -30,10 +30,10 @@
 // CHECK-LABEL:   aie.device(npu2) {
 // CHECK-DAG:       %[[T2:.*]] = aie.tile(0, 2)
 // CHECK-DAG:       %[[T3:.*]] = aie.tile(0, 3)
-// CHECK-DAG:       %[[BL_PROD:.*]] = aie.lock(%[[T3]], 0) {init = 3 : i32, sym_name = "acquire_before_loop_cons_prod_lock_0"}
-// CHECK-DAG:       %[[BL_CONS:.*]] = aie.lock(%[[T3]], 1) {init = 0 : i32, sym_name = "acquire_before_loop_cons_cons_lock_0"}
-// CHECK-DAG:       %[[IN_PROD:.*]] = aie.lock(%[[T2]], 0) {init = 3 : i32, sym_name = "acquire_in_loop_cons_prod_lock_0"}
-// CHECK-DAG:       %[[IN_CONS:.*]] = aie.lock(%[[T2]], 1) {init = 0 : i32, sym_name = "acquire_in_loop_cons_cons_lock_0"}
+// CHECK-DAG:       %[[BL_PROD:.*]] = aie.lock(%[[T3]]) {init = 3 : i32, sym_name = "acquire_before_loop_cons_prod_lock_0"}
+// CHECK-DAG:       %[[BL_CONS:.*]] = aie.lock(%[[T3]]) {init = 0 : i32, sym_name = "acquire_before_loop_cons_cons_lock_0"}
+// CHECK-DAG:       %[[IN_PROD:.*]] = aie.lock(%[[T2]]) {init = 3 : i32, sym_name = "acquire_in_loop_cons_prod_lock_0"}
+// CHECK-DAG:       %[[IN_CONS:.*]] = aie.lock(%[[T2]]) {init = 0 : i32, sym_name = "acquire_in_loop_cons_cons_lock_0"}
 
 // core_0_2 holds nothing on entry, so it computes how much to acquire.
 // CHECK:           %{{.*}} = aie.core(%[[T2]]) {

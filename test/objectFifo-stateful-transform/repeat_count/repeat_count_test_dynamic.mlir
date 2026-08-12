@@ -15,11 +15,11 @@
 // CHECK:           %[[T12:.*]] = aie.tile(1, 2)
 // CHECK:           %[[T13:.*]] = aie.tile(1, 3)
 // CHECK:           %[[CB0:.*]] = aie.buffer(%[[T13]]) {sym_name = "of1_cons_buff_0"} : memref<16xi32>
-// CHECK:           %[[CPROD:.*]] = aie.lock(%[[T13]], 0) {init = 1 : i32, sym_name = "of1_cons_prod_lock_0"}
-// CHECK:           %[[CCONS:.*]] = aie.lock(%[[T13]], 1) {init = 0 : i32, sym_name = "of1_cons_cons_lock_0"}
+// CHECK:           %[[CPROD:.*]] = aie.lock(%[[T13]]) {init = 1 : i32, sym_name = "of1_cons_prod_lock_0"}
+// CHECK:           %[[CCONS:.*]] = aie.lock(%[[T13]]) {init = 0 : i32, sym_name = "of1_cons_cons_lock_0"}
 // CHECK:           %[[B0:.*]] = aie.buffer(%[[T12]]) {sym_name = "of1_buff_0"} : memref<16xi32>
-// CHECK:           %[[PROD:.*]] = aie.lock(%[[T12]], 0) {init = 3 : i32, sym_name = "of1_prod_lock_0"}
-// CHECK:           %[[CONS:.*]] = aie.lock(%[[T12]], 1) {init = 0 : i32, sym_name = "of1_cons_lock_0"}
+// CHECK:           %[[PROD:.*]] = aie.lock(%[[T12]]) {init = 3 : i32, sym_name = "of1_prod_lock_0"}
+// CHECK:           %[[CONS:.*]] = aie.lock(%[[T12]]) {init = 0 : i32, sym_name = "of1_cons_lock_0"}
 // CHECK:           aie.flow(%[[T12]], DMA : 0, %[[T13]], DMA : 0)
 // CHECK:           func.func @some_work(%{{.*}}: memref<16xi32>) {
 // CHECK:             return

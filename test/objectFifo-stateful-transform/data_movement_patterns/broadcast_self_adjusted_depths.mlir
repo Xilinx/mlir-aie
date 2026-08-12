@@ -18,32 +18,32 @@
 // CHECK:           %[[VAL_4:.*]] = aie.tile(3, 3)
 // CHECK:           %[[VAL_5:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "broadcast_of_0_cons_buff_0"} : memref<16xi32>
 // CHECK:           %[[VAL_6:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "broadcast_of_0_cons_buff_1"} : memref<16xi32>
-// CHECK:           %[[VAL_7:.*]] = aie.lock(%[[VAL_0]], 0) {init = 0 : i32, sym_name = "broadcast_of_0_cons_lock_0"}
-// CHECK:           %[[VAL_8:.*]] = aie.lock(%[[VAL_0]], 1) {init = 0 : i32, sym_name = "broadcast_of_0_cons_lock_1"}
+// CHECK:           %[[VAL_7:.*]] = aie.lock(%[[VAL_0]]) {init = 0 : i32, sym_name = "broadcast_of_0_cons_lock_0"}
+// CHECK:           %[[VAL_8:.*]] = aie.lock(%[[VAL_0]]) {init = 0 : i32, sym_name = "broadcast_of_0_cons_lock_1"}
 // CHECK:           %[[VAL_9:.*]] = aie.buffer(%[[VAL_2]]) {sym_name = "broadcast_of_1_cons_buff_0"} : memref<16xi32>
 // CHECK:           %[[VAL_10:.*]] = aie.buffer(%[[VAL_2]]) {sym_name = "broadcast_of_1_cons_buff_1"} : memref<16xi32>
 // CHECK:           %[[VAL_11:.*]] = aie.buffer(%[[VAL_2]]) {sym_name = "broadcast_of_1_cons_buff_2"} : memref<16xi32>
-// CHECK:           %[[VAL_12:.*]] = aie.lock(%[[VAL_2]], 0) {init = 0 : i32, sym_name = "broadcast_of_1_cons_lock_0"}
-// CHECK:           %[[VAL_13:.*]] = aie.lock(%[[VAL_2]], 1) {init = 0 : i32, sym_name = "broadcast_of_1_cons_lock_1"}
-// CHECK:           %[[VAL_14:.*]] = aie.lock(%[[VAL_2]], 2) {init = 0 : i32, sym_name = "broadcast_of_1_cons_lock_2"}
+// CHECK:           %[[VAL_12:.*]] = aie.lock(%[[VAL_2]]) {init = 0 : i32, sym_name = "broadcast_of_1_cons_lock_0"}
+// CHECK:           %[[VAL_13:.*]] = aie.lock(%[[VAL_2]]) {init = 0 : i32, sym_name = "broadcast_of_1_cons_lock_1"}
+// CHECK:           %[[VAL_14:.*]] = aie.lock(%[[VAL_2]]) {init = 0 : i32, sym_name = "broadcast_of_1_cons_lock_2"}
 // CHECK:           %[[VAL_15:.*]] = aie.buffer(%[[VAL_3]]) {sym_name = "broadcast_of_2_cons_buff_0"} : memref<16xi32>
 // CHECK:           %[[VAL_16:.*]] = aie.buffer(%[[VAL_3]]) {sym_name = "broadcast_of_2_cons_buff_1"} : memref<16xi32>
 // CHECK:           %[[VAL_17:.*]] = aie.buffer(%[[VAL_3]]) {sym_name = "broadcast_of_2_cons_buff_2"} : memref<16xi32>
 // CHECK:           %[[VAL_18:.*]] = aie.buffer(%[[VAL_3]]) {sym_name = "broadcast_of_2_cons_buff_3"} : memref<16xi32>
-// CHECK:           %[[VAL_19:.*]] = aie.lock(%[[VAL_3]], 0) {init = 0 : i32, sym_name = "broadcast_of_2_cons_lock_0"}
-// CHECK:           %[[VAL_20:.*]] = aie.lock(%[[VAL_3]], 1) {init = 0 : i32, sym_name = "broadcast_of_2_cons_lock_1"}
-// CHECK:           %[[VAL_21:.*]] = aie.lock(%[[VAL_3]], 2) {init = 0 : i32, sym_name = "broadcast_of_2_cons_lock_2"}
-// CHECK:           %[[VAL_22:.*]] = aie.lock(%[[VAL_3]], 3) {init = 0 : i32, sym_name = "broadcast_of_2_cons_lock_3"}
+// CHECK:           %[[VAL_19:.*]] = aie.lock(%[[VAL_3]]) {init = 0 : i32, sym_name = "broadcast_of_2_cons_lock_0"}
+// CHECK:           %[[VAL_20:.*]] = aie.lock(%[[VAL_3]]) {init = 0 : i32, sym_name = "broadcast_of_2_cons_lock_1"}
+// CHECK:           %[[VAL_21:.*]] = aie.lock(%[[VAL_3]]) {init = 0 : i32, sym_name = "broadcast_of_2_cons_lock_2"}
+// CHECK:           %[[VAL_22:.*]] = aie.lock(%[[VAL_3]]) {init = 0 : i32, sym_name = "broadcast_of_2_cons_lock_3"}
 // CHECK:           %[[VAL_23:.*]] = aie.buffer(%[[VAL_4]]) {sym_name = "broadcast_of_3_cons_buff_0"} : memref<16xi32>
 // CHECK:           %[[VAL_24:.*]] = aie.buffer(%[[VAL_4]]) {sym_name = "broadcast_of_3_cons_buff_1"} : memref<16xi32>
 // CHECK:           %[[VAL_25:.*]] = aie.buffer(%[[VAL_4]]) {sym_name = "broadcast_of_3_cons_buff_2"} : memref<16xi32>
-// CHECK:           %[[VAL_26:.*]] = aie.lock(%[[VAL_4]], 0) {init = 0 : i32, sym_name = "broadcast_of_3_cons_lock_0"}
-// CHECK:           %[[VAL_27:.*]] = aie.lock(%[[VAL_4]], 1) {init = 0 : i32, sym_name = "broadcast_of_3_cons_lock_1"}
-// CHECK:           %[[VAL_28:.*]] = aie.lock(%[[VAL_4]], 2) {init = 0 : i32, sym_name = "broadcast_of_3_cons_lock_2"}
+// CHECK:           %[[VAL_26:.*]] = aie.lock(%[[VAL_4]]) {init = 0 : i32, sym_name = "broadcast_of_3_cons_lock_0"}
+// CHECK:           %[[VAL_27:.*]] = aie.lock(%[[VAL_4]]) {init = 0 : i32, sym_name = "broadcast_of_3_cons_lock_1"}
+// CHECK:           %[[VAL_28:.*]] = aie.lock(%[[VAL_4]]) {init = 0 : i32, sym_name = "broadcast_of_3_cons_lock_2"}
 // CHECK:           %[[VAL_29:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "broadcast_of_buff_0"} : memref<16xi32>
 // CHECK:           %[[VAL_30:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "broadcast_of_buff_1"} : memref<16xi32>
-// CHECK:           %[[VAL_31:.*]] = aie.lock(%[[VAL_1]], 0) {init = 0 : i32, sym_name = "broadcast_of_lock_0"}
-// CHECK:           %[[VAL_32:.*]] = aie.lock(%[[VAL_1]], 1) {init = 0 : i32, sym_name = "broadcast_of_lock_1"}
+// CHECK:           %[[VAL_31:.*]] = aie.lock(%[[VAL_1]]) {init = 0 : i32, sym_name = "broadcast_of_lock_0"}
+// CHECK:           %[[VAL_32:.*]] = aie.lock(%[[VAL_1]]) {init = 0 : i32, sym_name = "broadcast_of_lock_1"}
 // CHECK:           aie.flow(%[[VAL_1]], DMA : 0, %[[VAL_4]], DMA : 0)
 // CHECK:           aie.flow(%[[VAL_1]], DMA : 0, %[[VAL_3]], DMA : 0)
 // CHECK:           aie.flow(%[[VAL_1]], DMA : 0, %[[VAL_2]], DMA : 0)

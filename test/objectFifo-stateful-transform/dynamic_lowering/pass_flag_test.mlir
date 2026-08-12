@@ -20,30 +20,30 @@
 // CHECK:           %[[SHIM:.*]] = aie.tile(0, 0)
 // CHECK:           %[[T2:.*]] = aie.tile(0, 2)
 // CHECK:           %[[T4:.*]] = aie.tile(0, 4)
-// CHECK:           %{{.*}} = aie.lock(%[[SHIM]], 6) {init = 0 : i32, sym_name = "output_fifo2_cons_prod_lock_0"}
-// CHECK:           %{{.*}} = aie.lock(%[[SHIM]], 7) {init = 0 : i32, sym_name = "output_fifo2_cons_cons_lock_0"}
+// CHECK:           %{{.*}} = aie.lock(%[[SHIM]]) {init = 0 : i32, sym_name = "output_fifo2_cons_prod_lock_0"}
+// CHECK:           %{{.*}} = aie.lock(%[[SHIM]]) {init = 0 : i32, sym_name = "output_fifo2_cons_cons_lock_0"}
 // CHECK:           %[[OF2_B0:.*]] = aie.buffer(%[[T4]]) {sym_name = "output_fifo2_buff_0"} : memref<10xi32>
 // CHECK:           %[[OF2_B1:.*]] = aie.buffer(%[[T4]]) {sym_name = "output_fifo2_buff_1"} : memref<10xi32>
-// CHECK:           %[[OF2_PROD:.*]] = aie.lock(%[[T4]], 2) {init = 2 : i32, sym_name = "output_fifo2_prod_lock_0"}
-// CHECK:           %[[OF2_CONS:.*]] = aie.lock(%[[T4]], 3) {init = 0 : i32, sym_name = "output_fifo2_cons_lock_0"}
+// CHECK:           %[[OF2_PROD:.*]] = aie.lock(%[[T4]]) {init = 2 : i32, sym_name = "output_fifo2_prod_lock_0"}
+// CHECK:           %[[OF2_CONS:.*]] = aie.lock(%[[T4]]) {init = 0 : i32, sym_name = "output_fifo2_cons_lock_0"}
 // CHECK:           %[[IF2_B0:.*]] = aie.buffer(%[[T4]]) {sym_name = "input_fifo2_cons_buff_0"} : memref<10xi32>
 // CHECK:           %[[IF2_B1:.*]] = aie.buffer(%[[T4]]) {sym_name = "input_fifo2_cons_buff_1"} : memref<10xi32>
-// CHECK:           %[[IF2_PROD:.*]] = aie.lock(%[[T4]], 0) {init = 2 : i32, sym_name = "input_fifo2_cons_prod_lock_0"}
-// CHECK:           %[[IF2_CONS:.*]] = aie.lock(%[[T4]], 1) {init = 0 : i32, sym_name = "input_fifo2_cons_cons_lock_0"}
-// CHECK:           %{{.*}} = aie.lock(%[[SHIM]], 4) {init = 0 : i32, sym_name = "input_fifo2_prod_lock_0"}
-// CHECK:           %{{.*}} = aie.lock(%[[SHIM]], 5) {init = 0 : i32, sym_name = "input_fifo2_cons_lock_0"}
-// CHECK:           %{{.*}} = aie.lock(%[[SHIM]], 2) {init = 0 : i32, sym_name = "output_fifo_cons_prod_lock_0"}
-// CHECK:           %{{.*}} = aie.lock(%[[SHIM]], 3) {init = 0 : i32, sym_name = "output_fifo_cons_cons_lock_0"}
+// CHECK:           %[[IF2_PROD:.*]] = aie.lock(%[[T4]]) {init = 2 : i32, sym_name = "input_fifo2_cons_prod_lock_0"}
+// CHECK:           %[[IF2_CONS:.*]] = aie.lock(%[[T4]]) {init = 0 : i32, sym_name = "input_fifo2_cons_cons_lock_0"}
+// CHECK:           %{{.*}} = aie.lock(%[[SHIM]]) {init = 0 : i32, sym_name = "input_fifo2_prod_lock_0"}
+// CHECK:           %{{.*}} = aie.lock(%[[SHIM]]) {init = 0 : i32, sym_name = "input_fifo2_cons_lock_0"}
+// CHECK:           %{{.*}} = aie.lock(%[[SHIM]]) {init = 0 : i32, sym_name = "output_fifo_cons_prod_lock_0"}
+// CHECK:           %{{.*}} = aie.lock(%[[SHIM]]) {init = 0 : i32, sym_name = "output_fifo_cons_cons_lock_0"}
 // CHECK:           %[[OF_B0:.*]] = aie.buffer(%[[T2]]) {sym_name = "output_fifo_buff_0"} : memref<10xi32>
 // CHECK:           %[[OF_B1:.*]] = aie.buffer(%[[T2]]) {sym_name = "output_fifo_buff_1"} : memref<10xi32>
-// CHECK:           %[[OF_PROD:.*]] = aie.lock(%[[T2]], 2) {init = 2 : i32, sym_name = "output_fifo_prod_lock_0"}
-// CHECK:           %[[OF_CONS:.*]] = aie.lock(%[[T2]], 3) {init = 0 : i32, sym_name = "output_fifo_cons_lock_0"}
+// CHECK:           %[[OF_PROD:.*]] = aie.lock(%[[T2]]) {init = 2 : i32, sym_name = "output_fifo_prod_lock_0"}
+// CHECK:           %[[OF_CONS:.*]] = aie.lock(%[[T2]]) {init = 0 : i32, sym_name = "output_fifo_cons_lock_0"}
 // CHECK:           %[[IF_B0:.*]] = aie.buffer(%[[T2]]) {sym_name = "input_fifo_cons_buff_0"} : memref<10xi32>
 // CHECK:           %[[IF_B1:.*]] = aie.buffer(%[[T2]]) {sym_name = "input_fifo_cons_buff_1"} : memref<10xi32>
-// CHECK:           %[[IF_PROD:.*]] = aie.lock(%[[T2]], 0) {init = 2 : i32, sym_name = "input_fifo_cons_prod_lock_0"}
-// CHECK:           %[[IF_CONS:.*]] = aie.lock(%[[T2]], 1) {init = 0 : i32, sym_name = "input_fifo_cons_cons_lock_0"}
-// CHECK:           %{{.*}} = aie.lock(%[[SHIM]], 0) {init = 0 : i32, sym_name = "input_fifo_prod_lock_0"}
-// CHECK:           %{{.*}} = aie.lock(%[[SHIM]], 1) {init = 0 : i32, sym_name = "input_fifo_cons_lock_0"}
+// CHECK:           %[[IF_PROD:.*]] = aie.lock(%[[T2]]) {init = 2 : i32, sym_name = "input_fifo_cons_prod_lock_0"}
+// CHECK:           %[[IF_CONS:.*]] = aie.lock(%[[T2]]) {init = 0 : i32, sym_name = "input_fifo_cons_cons_lock_0"}
+// CHECK:           %{{.*}} = aie.lock(%[[SHIM]]) {init = 0 : i32, sym_name = "input_fifo_prod_lock_0"}
+// CHECK:           %{{.*}} = aie.lock(%[[SHIM]]) {init = 0 : i32, sym_name = "input_fifo_cons_lock_0"}
 // CHECK:           aie.flow(%[[SHIM]], DMA : 0, %[[T2]], DMA : 0)
 // CHECK:           aie.flow(%[[T2]], DMA : 0, %[[SHIM]], DMA : 0)
 // CHECK:           aie.flow(%[[SHIM]], DMA : 1, %[[T4]], DMA : 0)
