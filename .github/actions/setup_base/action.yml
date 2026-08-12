@@ -77,19 +77,19 @@ runs:
 
     - name: Install cross-compilation toolchain
       shell: bash
-      if: ${{ inputs.MATRIX_OS == 'ubuntu-22.04' && inputs.MATRIX_ARCH == 'aarch64' }}
+      if: ${{ inputs.MATRIX_OS == 'ubuntu-24.04' && inputs.MATRIX_ARCH == 'aarch64' }}
       run: |
         
         sudo apt-get update
         sudo apt-get install -y binutils-aarch64-linux-gnu \
-          g++-aarch64-linux-gnu gcc-aarch64-linux-gnu openssl libssl-dev
+          g++-aarch64-linux-gnu gcc-aarch64-linux-gnu openssl libssl-dev lld
 
     - name: pip install standard tools
       shell: bash
       run: pip install --require-hashes -r python/requirements_dev.lock
 
     - name: install rename
-      if: ${{ inputs.MATRIX_OS == 'ubuntu-22.04' || inputs.MATRIX_OS == 'macos-12' || inputs.MATRIX_OS == 'macos-14' }}
+      if: ${{ inputs.MATRIX_OS == 'ubuntu-24.04' || inputs.MATRIX_OS == 'macos-12' || inputs.MATRIX_OS == 'macos-14' }}
       shell: bash
       run: |
         
@@ -110,7 +110,7 @@ runs:
       shell: pwsh
 
     - run: echo "TEMP=/tmp" >> $GITHUB_ENV
-      if: ${{ inputs.MATRIX_OS == 'ubuntu-22.04' || inputs.MATRIX_OS == 'macos-12' || inputs.MATRIX_OS == 'macos-14' }}
+      if: ${{ inputs.MATRIX_OS == 'ubuntu-24.04' || inputs.MATRIX_OS == 'macos-12' || inputs.MATRIX_OS == 'macos-14' }}
       shell: bash
 
     - name: Set workspace root

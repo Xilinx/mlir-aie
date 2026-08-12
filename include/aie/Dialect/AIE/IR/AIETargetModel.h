@@ -449,6 +449,10 @@ public:
   // Returns true if the target model supports the given block format.
   virtual bool isSupportedBlockFormat(std::string const &format) const;
 
+  // Returns true if the target supports a constant pad value on MemTile MM2S
+  // DMA channels (register=CONSTANT_PAD_VALUE).
+  virtual bool isMemTilePadValueSupported() const { return false; }
+
   /// Register Database API - provides access to register and event information
   /// for trace configuration and low-level register access.
 
@@ -915,6 +919,8 @@ public:
   getShimBurstEncodingsAndLengths() const override;
 
   bool isSupportedBlockFormat(std::string const &format) const override;
+
+  bool isMemTilePadValueSupported() const override { return true; }
 
   static bool classof(const AIETargetModel *model) {
     return model->getKind() >= TK_AIE2_NPU2 &&

@@ -198,23 +198,30 @@ struct xilinx::AIE::AIERTControl::AIERtImpl {
   XAie_Config configPtr;
   XAie_DevInst devInst;
 
-  // One Location per recorded XAie_TxnCmd. Populated by TxnLocBracket scopes.
-  // Indexed by command position in the serialized transaction binary.
-  std::vector<mlir::Location> txnInstrLocs;
+  // One Location per recorded XAie_TxnCmd, indexed by position in
+  // XAie_TxnInst::CmdBuf. Populated by TxnLocBracket scopes.
+  std::vector<mlir::Location> txnCmdLocs;
+
+  // One Location per operation in the exported transaction binary. Derived
+  // from txnCmdLocs by exportSerializedTransaction().
+  std::vector<mlir::Location> txnOpLocs;
 };
 
 // Walk DevInst->TxnList to find the active XAie_TxnInst (single-threaded
-// compilation: at most one) and return its NumCmds. Returns 0 if no
-// transaction is being recorded. The XAie_TxnInst struct and TxnList layout
-// are part of aie-rt's public xaiegbl.h, so this only depends on the public
-// header.
-static uint32_t getActiveTxnNumCmds(XAie_DevInst &devInst) {
+// compilation: at most one). Returns null if no transaction is being
+// recorded. The XAie_TxnInst struct and TxnList layout are part of aie-rt's
+// public xaiegbl.h, so this only depends on the public header.
+static XAie_TxnInst *getActiveTxnInst(XAie_DevInst &devInst) {
   XAie_List *node = devInst.TxnList.Next;
   if (!node)
-    return 0;
-  XAie_TxnInst *inst = reinterpret_cast<XAie_TxnInst *>(
-      reinterpret_cast<char *>(node) - offsetof(XAie_TxnInst, Node));
-  return inst->NumCmds;
+    return nullptr;
+  return reinterpret_cast<XAie_TxnInst *>(reinterpret_cast<char *>(node) -
+                                          offsetof(XAie_TxnInst, Node));
+}
+
+static uint32_t getActiveTxnNumCmds(XAie_DevInst &devInst) {
+  XAie_TxnInst *inst = getActiveTxnInst(devInst);
+  return inst ? inst->NumCmds : 0;
 }
 
 xilinx::AIE::TxnLocBracket::TxnLocBracket(AIERTControl &c, mlir::Location l)
@@ -554,12 +561,17 @@ LogicalResult configureBdInBlock(const AIE::AIETargetModel &targetModel,
 
 LogicalResult xilinx::AIE::AIERTControl::pushToBdQueueAndEnable(
     Operation &op, int col, int row, int chNum, const DMAChannelDir &channelDir,
-    int bdId, int repeatCount) {
+    int bdId, int repeatCount, uint32_t padValue) {
   TxnLocBracket bracket(*this, op.getLoc());
   XAie_DmaDirection direction =
       channelDir == DMAChannelDir::S2MM ? DMA_S2MM : DMA_MM2S;
   auto tileLoc = XAie_TileLoc(col, row);
   auto enTokenIssue = tileLoc.Row == 0 && direction == DMA_S2MM;
+  if (padValue != 0 && direction == DMA_MM2S &&
+      targetModel.isMemTile(col, row)) {
+    TRY_XAIE_API_EMIT_ERROR(op, XAie_DmaSetPadValue, &aiert->devInst, tileLoc,
+                            static_cast<uint8_t>(chNum), padValue);
+  }
   // in english repeat_count==0 means "do it once" and don't repeat but
   // libxaie treats repeat_count=1 as do it once.
   repeatCount += 1;
@@ -858,7 +870,7 @@ xilinx::AIE::AIERTControl::addInitConfig(DeviceOp &targetOp,
         if (failed(pushToBdQueueAndEnable(
                 *dmaOp.getOperation(), col, row, dmaOp.getChannelIndex(),
                 dmaOp.getChannelDir(), bd.getBdId().value(),
-                dmaOp.getRepeatCount())))
+                dmaOp.getRepeatCount(), dmaOp.getPadValue())))
           return failure();
       }
     else
@@ -867,9 +879,9 @@ xilinx::AIE::AIERTControl::addInitConfig(DeviceOp &targetOp,
           DMABDOp bd = *op.getDest()->getOps<DMABDOp>().begin();
           int chNum = op.getChannelIndex();
           auto channelDir = op.getChannelDir();
-          if (failed(pushToBdQueueAndEnable(*bd.getOperation(), col, row, chNum,
-                                            channelDir, bd.getBdId().value(),
-                                            op.getRepeatCount())))
+          if (failed(pushToBdQueueAndEnable(
+                  *bd.getOperation(), col, row, chNum, channelDir,
+                  bd.getBdId().value(), op.getRepeatCount(), op.getPadValue())))
             return failure();
         }
       }
@@ -1091,9 +1103,62 @@ void xilinx::AIE::AIERTControl::dmaUpdateBdAddr(int col, int row, size_t addr,
 }
 
 void xilinx::AIE::AIERTControl::startTransaction() {
-  aiert->txnInstrLocs.clear();
+  aiert->txnCmdLocs.clear();
+  aiert->txnOpLocs.clear();
   TRY_XAIE_API_FATAL_ERROR(XAie_StartTransaction, &aiert->devInst,
                            XAIE_TRANSACTION_DISABLE_AUTO_FLUSH);
+}
+
+// Project the per-XAie_TxnCmd locations in `cmdLocs` onto the operations
+// aie-rt's serializer actually emits, mirroring _XAie_TxnExportSerialized's
+// command-to-operation mapping. That mapping is not 1:1: the serializer
+// buffers block writes and collapses a run of address-contiguous
+// XAIE_IO_BLOCKWRITE commands into a single block-write operation, holds that
+// pending run across intervening DDR-patch commands (so a patch is emitted
+// *before* the block write it follows in CmdBuf), and drops
+// XAIE_IO_LOAD_PM_END_INTERNAL entirely. Everything else emits one operation
+// in command order.
+static std::vector<mlir::Location>
+projectCmdLocsOntoSerializedOps(const XAie_TxnInst &inst,
+                                const std::vector<mlir::Location> &cmdLocs) {
+  std::vector<mlir::Location> opLocs;
+  opLocs.reserve(inst.NumCmds);
+
+  mlir::Location unknown = mlir::UnknownLoc::get(cmdLocs.front().getContext());
+  bool pendingBlockWrite = false;
+  mlir::Location pendingBlockWriteLoc = unknown;
+  uint64_t blockWriteEndOff = 0;
+
+  for (uint32_t i = 0; i < inst.NumCmds; ++i) {
+    const XAie_TxnCmd &cmd = inst.CmdBuf[i];
+    mlir::Location loc = i < cmdLocs.size() ? cmdLocs[i] : unknown;
+
+    if (cmd.Opcode == XAIE_IO_BLOCKWRITE) {
+      // A command that extends the run in flight emits nothing of its own;
+      // the run keeps the location of the command that started it.
+      if (!pendingBlockWrite || cmd.RegOff != blockWriteEndOff) {
+        if (pendingBlockWrite)
+          opLocs.push_back(pendingBlockWriteLoc);
+        pendingBlockWrite = true;
+        pendingBlockWriteLoc = loc;
+      }
+      blockWriteEndOff = cmd.RegOff + cmd.Size * sizeof(uint32_t);
+      continue;
+    }
+
+    if (cmd.Opcode == XAIE_IO_LOAD_PM_END_INTERNAL)
+      continue;
+
+    if (pendingBlockWrite && cmd.Opcode != XAIE_IO_CUSTOM_OP_DDR_PATCH) {
+      opLocs.push_back(pendingBlockWriteLoc);
+      pendingBlockWrite = false;
+    }
+    opLocs.push_back(loc);
+  }
+  if (pendingBlockWrite)
+    opLocs.push_back(pendingBlockWriteLoc);
+
+  return opLocs;
 }
 
 std::vector<uint8_t> xilinx::AIE::AIERTControl::exportSerializedTransaction() {
@@ -1101,12 +1166,21 @@ std::vector<uint8_t> xilinx::AIE::AIERTControl::exportSerializedTransaction() {
   uint8_t *txn_ptr = XAie_ExportSerializedTransaction(&aiert->devInst, 0, 0);
   XAie_TxnHeader *hdr = (XAie_TxnHeader *)txn_ptr;
   std::vector<uint8_t> txn_data(txn_ptr, txn_ptr + hdr->TxnSize);
+
+  // Exporting leaves the recorded commands intact, so the loc projection can
+  // still walk CmdBuf here. With nothing bracketed there is no location to
+  // project and every emitted op falls back to the device location.
+  XAie_TxnInst *inst = getActiveTxnInst(aiert->devInst);
+  if (inst && !aiert->txnCmdLocs.empty())
+    aiert->txnOpLocs =
+        projectCmdLocsOntoSerializedOps(*inst, aiert->txnCmdLocs);
+
   return txn_data;
 }
 
 const std::vector<mlir::Location> &
-xilinx::AIE::AIERTControl::getTxnInstrLocs() const {
-  return aiert->txnInstrLocs;
+xilinx::AIE::AIERTControl::getTxnOpLocs() const {
+  return aiert->txnOpLocs;
 }
 
 uint32_t xilinx::AIE::AIERTControl::getCurrentTxnNumCmds() const {
@@ -1118,9 +1192,8 @@ void xilinx::AIE::AIERTControl::recordTxnLocRange(uint32_t startCmds,
                                                   mlir::Location loc) {
   if (endCmds <= startCmds)
     return;
-  if (aiert->txnInstrLocs.size() < endCmds)
-    aiert->txnInstrLocs.resize(endCmds,
-                               mlir::UnknownLoc::get(loc.getContext()));
+  if (aiert->txnCmdLocs.size() < endCmds)
+    aiert->txnCmdLocs.resize(endCmds, mlir::UnknownLoc::get(loc.getContext()));
   for (uint32_t i = startCmds; i < endCmds; ++i)
-    aiert->txnInstrLocs[i] = loc;
+    aiert->txnCmdLocs[i] = loc;
 }

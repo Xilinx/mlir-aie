@@ -27,7 +27,7 @@ jobs:
 
     name: Python and C/C++ Lint
 
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
 
     permissions:
       contents: write
@@ -95,7 +95,16 @@ jobs:
             -DLLVM_EXTERNAL_LIT=$(which lit) \
             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 
-          ninja aie-headers mlir-headers
+          # aie-headers only aggregates the dialect/op/type tablegen targets;
+          # it does not pull in the Conversion pass enum header or the vendored
+          # xaiengine/*.h headers copied from third_party/aie-rt. Without these,
+          # clang-tidy fails to compile any touched file that includes
+          # aie/Conversion/Passes.h (e.g. lib/Conversion/**) or xaiengine/*.h
+          # (e.g. lib/Targets/AIERT.cpp) with a file-not-found error instead of
+          # a real lint finding.
+          ninja aie-headers mlir-headers \
+            MLIRAIEConversionPassIncGen \
+            xaienginecdo_static-headers
 
           # Assemble the Python package sources (hand-written + tablegen'd op/enum
           # wrappers) into build/python/aie. This needs only tablegen, not a full
