@@ -285,7 +285,7 @@ LogicalResult AIEX::BroadcastPacketOp::verify() {
 /* Calculates the offset value to be written to the
  */
 uint32_t AIEX::NpuDmaMemcpyNdOp::getAxcacheOrDefault() {
-  return getAxcache().value_or(AIE::getTargetModel(*this).getDefaultAXCache());
+  return getAxcache().value_or(AIE::getTargetModel(*this).getDefaultAxCache());
 }
 
 int64_t AIEX::NpuDmaMemcpyNdOp::getOffsetInBytes() {
@@ -792,13 +792,13 @@ LogicalResult AIEX::NpuWriteBdOp::verify() {
     return emitOpError(errorMessage.value());
   }
   if (!targetModel.isShimNOCTile(getColumn(), getRow()) && getAxcache())
-    return emitOpError("Only ShimTiles support AXCache configuration.");
+    return emitOpError("Only ShimTiles support AxCACHE configuration.");
 
   return success();
 }
 
 uint32_t AIEX::NpuWriteBdOp::getAxcacheOrDefault() {
-  return getAxcache().value_or(AIE::getTargetModel(*this).getDefaultAXCache());
+  return getAxcache().value_or(AIE::getTargetModel(*this).getDefaultAxCache());
 }
 
 std::optional<uint32_t> AIEX::getConstantIntOperand(mlir::Value v) {

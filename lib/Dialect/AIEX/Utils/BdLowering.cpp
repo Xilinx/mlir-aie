@@ -305,7 +305,7 @@ LogicalResult emitDynamicShimBdWordOverrides(
                      builder, loc, burst,
                      buildBdWord(builder, loc,
                                  {{hwS[1], 0x3FF, 20}, {hwT[1], 0xFFFFF, 0}})));
-    // word[5]: AXCache [27:24] (static), d2_stride [19:0]. Shim d2_size is
+    // word[5]: AxCACHE [27:24] (static), d2_stride [19:0]. Shim d2_size is
     //          always 0 (the template already has it), carried by bufLen.
     Value axcacheVal = createConstantI32(builder, loc, (axcache & 0xf) << 24);
     writeWord(5, arith::OrIOp::create(

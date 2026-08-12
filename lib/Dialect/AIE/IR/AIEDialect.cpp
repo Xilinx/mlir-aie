@@ -2528,7 +2528,7 @@ LogicalResult DMABDOp::verify() {
                        "are connected to the memory-mapped NOC.");
 
   if (getAxcache() && !parentTile.isShimNOCTile())
-    return emitOpError("AXCache is only supported in Shim NOC tiles that "
+    return emitOpError("AxCACHE is only supported in Shim NOC tiles that "
                        "are connected to the memory-mapped NOC.");
 
   // BD iteration bounds. Values are true/element (aie-rt encodes value-1);
@@ -2564,7 +2564,7 @@ LogicalResult DMABDOp::verify() {
 
 uint32_t DMABDOp::getAxcacheOrDefault() {
   return getAxcache().value_or(
-      getTargetModel(getOperation()).getDefaultAXCache());
+      getTargetModel(getOperation()).getDefaultAxCache());
 }
 
 //===----------------------------------------------------------------------===//

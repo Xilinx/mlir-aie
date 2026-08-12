@@ -6,7 +6,7 @@
 // RUN: aie-opt --aie-dma-tasks-to-npu %s | FileCheck %s
 
 // A configured $axcache on a task-path shim BD reaches the writebd; a memtile BD
-// leaves it unset, since AXCache only exists on the AXI-MM side.
+// leaves it unset, since AxCACHE only exists on the AXI-MM side.
 
 module {
   aie.device(npu1) {

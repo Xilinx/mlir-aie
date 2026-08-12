@@ -133,8 +133,8 @@ class NpuDmaMemcpyNd(NpuDmaMemcpyNdOp):
         sizes: The extent of data to be transferred across each dimension. There is a maximum of four size dimensions.
         strides (optional): Interval steps between data points in each dimension, useful for striding-across and reshaping data.
         burst_length (optional): The configuration of the burst length for the DMA task. If 0, defaults to the highest available value.
-        axcache (optional): The raw 4-bit AXI AXCache value for the DMA's AXI-MM transfers. If
-            omitted, the target model's default AXCache value is used.
+        axcache (optional): The raw 4-bit AxCACHE value for the DMA's AXI-MM transfers. If
+            omitted, the target model's default AxCACHE value is used.
 
     Note:
         Contiguous row-major access patterns are automatically folded to canonical linear form
@@ -343,8 +343,8 @@ def shim_dma_single_bd_task(
         strides (optional): Interval steps between data points in each dimension, useful for striding-across and reshaping data.
         issue_token (optional): If a token is issued, one may call dma_await_task on the returned task. Default is False.
         burst_length (optional): The configuration of the burst length for the DMA task. If 0, defaults to the highest available value.
-        axcache (optional): The raw 4-bit AXI AXCache value for the DMA's AXI-MM transfers. If
-            omitted, the target model's default AXCache value is used.
+        axcache (optional): The raw 4-bit AxCACHE value for the DMA's AXI-MM transfers. If
+            omitted, the target model's default AxCACHE value is used.
         packet (optional): The packet header information represented as a (packet_type, packet_id) tuple.
 
     Example:

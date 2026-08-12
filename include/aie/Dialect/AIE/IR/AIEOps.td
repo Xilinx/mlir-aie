@@ -921,8 +921,8 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
         5. the number of zeros to pad before and after every dimension of an n-d tensor (described below);
         6. the burst length to use for the DMA operation. This option is only available for data movement between the host memory and Shim NOC tiles.
           The default value of 0 is interpreted as the maximum available burst length in the architecture.
-        7. the raw 4-bit AXI `AXCache` value to use for the DMA's AXI-MM transfers. This option is only available for
-          data movement between the host memory and Shim NOC tiles. If unset, `AIETargetModel::getDefaultAXCache()`
+        7. the raw 4-bit `AxCACHE` value to use for the DMA's AXI-MM transfers. This option is only available for
+          data movement between the host memory and Shim NOC tiles. If unset, `AIETargetModel::getDefaultAxCache()`
           supplies the value.
 
     `offset`, `len`, `size`s and `stride`s are all denominated in element width; e.g., transferring the whole of
@@ -1072,9 +1072,9 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
         OptionalAttr<AIEI32Attr>:$bd_id,
         OptionalAttr<PacketInfoAttr>:$packet,
         DefaultValuedOptionalAttr<AIEI32Attr, "0">:$burst_length,
-        // AXCache is shim-NOC-only, like burst_length. It is left unset (rather than
+        // AxCACHE is shim-NOC-only, like burst_length. It is left unset (rather than
         // DefaultValuedOptionalAttr, whose value must be a TableGen literal) so that all backends
-        // can source a consistent default from AIETargetModel::getDefaultAXCache() when absent.
+        // can source a consistent default from AIETargetModel::getDefaultAxCache() when absent.
         OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>, IntMaxValue<15>]>>:$axcache,
         // The BD's iteration state; see the "## BD iteration" section above.
         OptionalAttr<BDIterationAttr>:$iteration,

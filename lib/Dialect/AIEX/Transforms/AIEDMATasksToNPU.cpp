@@ -634,7 +634,7 @@ struct AIEDMATasksToNPUPass
   // Emit the shim BD template words (those the size/stride encoder doesn't own)
   // as runtime-addressed write32s, for the runtime-bd_id path where a constant-
   // address zero-template blockwrite can't be formed. Layout mirrors
-  // WriteBdToBlockWritePattern. Words 4/5 carry constant burst_length/AXCache
+  // WriteBdToBlockWritePattern. Words 4/5 carry constant burst_length/AxCACHE
   // bits the encoder's later ND write32 overwrites by last-write; 1/2/7 unused.
   LogicalResult emitShimTemplateWordOverrides(
       OpBuilder &builder, Location loc, const AIE::AIETargetModel &target_model,
@@ -661,7 +661,7 @@ struct AIEDMATasksToNPUPass
     writeWord(4,
               (AIE::getShimBurstLengthEncoding(target_model, burstLength) & 0x3)
                   << 30);
-    // word[5] AXCache [27:24] (constant); d2_stride overlaid by the encoder in
+    // word[5] AxCACHE [27:24] (constant); d2_stride overlaid by the encoder in
     // ND mode.
     writeWord(5, (axcache & 0xf) << 24);
     // word[7] next_bd [30:27], use_next_bd [26], valid_bd [25], lock fields.

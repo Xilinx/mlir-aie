@@ -585,8 +585,8 @@ def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
     The burst length attribute specifies the burst length in bytes for the DMA operation. A value
     of 0 indicates that the burst length is not specified and the maximal burst length is used.
 
-    The `axcache` attribute specifies the raw 4-bit AXI `AXCache` value used for the shim DMA's
-    AXI-MM transfers to/from host memory. If unset, `AIETargetModel::getDefaultAXCache()` supplies
+    The `axcache` attribute specifies the raw 4-bit `AxCACHE` value used for the shim DMA's
+    AXI-MM transfers to/from host memory. If unset, `AIETargetModel::getDefaultAxCache()` supplies
     the value.
 
     #### `metadata` -- Specifying Tile, Channel, Direction and Linking a `dma_memcpy_nd` to its Other Half

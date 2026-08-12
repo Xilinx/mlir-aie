@@ -14,7 +14,7 @@ module {
     %m21 = aie.mem(%t21) {
       %srcDma = aie.dma_start(S2MM, 0, ^bd0, ^end)
         ^bd0:
-        // CHECK: AXCache is only supported in Shim NOC tiles that are connected to the memory-mapped NOC.
+        // CHECK: AxCACHE is only supported in Shim NOC tiles that are connected to the memory-mapped NOC.
         aie.dma_bd(%buf21_0 : memref<7168xi32> offset = 0 len = 7168){ axcache = 2 : i32 }
         aie.next_bd ^end
       ^end:

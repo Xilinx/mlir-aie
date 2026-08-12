@@ -225,7 +225,7 @@ module {
 
 // -----
 
-// AXCache is a raw 4-bit AXI field
+// AxCACHE is a raw 4-bit field
 
 module {
   aie.device(npu1) {

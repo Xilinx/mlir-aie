@@ -31,7 +31,7 @@ module {
 
 // -----
 
-// Unset axcache falls back to AIETargetModel::getDefaultAXCache() == 2, so
+// Unset axcache falls back to AIETargetModel::getDefaultAxCache() == 2, so
 // word[5] is 2 << 24 == 0x02000000 == 33554432.
 // CHECK: dense<[64, 0, 0, 0, -2147483648, 33554432, 0, 33554432]>
 // CHECK: aie.runtime_sequence @static_default
@@ -49,7 +49,7 @@ module {
 // -----
 
 // A runtime size on a strided (ND) transfer takes the dynamic encoder, which
-// rebuilds word[5] as an SSA or-tree seeded with the AXCache constant. The
+// rebuilds word[5] as an SSA or-tree seeded with the AxCACHE constant. The
 // configured value must survive that path too, not just the blockwrite
 // template.
 // CHECK: aie.runtime_sequence @dynamic_custom

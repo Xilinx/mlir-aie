@@ -8,7 +8,7 @@
 // RUN: aie-translate --aie-generate-xaie %s | FileCheck %s
 
 // A configured $axcache reaches the Cache argument of XAie_DmaSetAxi; an unset
-// one falls back to AIETargetModel::getDefaultAXCache() == 2.
+// one falls back to AIETargetModel::getDefaultAxCache() == 2.
 
 // CHECK-LABEL: int mlir_aie_configure_shimdma_70(aie_libxaie_ctx_t* ctx) {
 // CHECK: XAie_DmaSetAxi(&(dma_tile70_bd0), /* smid */ 0, /* burstlen */ 4, /* QoS */ 0, /* Cache */ 15, /* Secure */ XAIE_ENABLE)

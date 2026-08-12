@@ -448,14 +448,14 @@ public:
   virtual std::vector<std::pair<uint32_t, uint32_t>>
   getShimBurstEncodingsAndLengths() const = 0;
 
-  // Returns the default 4-bit AXI AXCache value used for shim NOC DMA AXI-MM
+  // Returns the default 4-bit AxCACHE value used for shim NOC DMA AXI-MM
   // transfers when a `dma_bd`/`npu.writebd`'s `axcache` attribute is unset.
   // Tuned to 2 to enable upsizing in the NoC. The runtime-sequence lowerings
   // always emitted 2 while the aie-rt/CDO and XAIEV2 backends hardcoded 0;
   // this unifies both on 2 for every architecture. No target currently needs
   // a different value, so this is a single non-pure-virtual default rather
   // than a per-architecture override.
-  virtual uint32_t getDefaultAXCache() const { return 2; }
+  virtual uint32_t getDefaultAxCache() const { return 2; }
 
   // Returns true if the target model supports the given block format.
   virtual bool isSupportedBlockFormat(std::string const &format) const;
