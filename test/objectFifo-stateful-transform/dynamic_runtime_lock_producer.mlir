@@ -21,26 +21,22 @@
 // CHECK:           %[[VAL_5:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "fifo_buff_3"} : memref<8xi8>
 // CHECK:           %[[VAL_6:.*]] = aie.lock(%[[VAL_0]], 0) {init = 4 : i32, sym_name = "fifo_prod_lock_0"}
 // CHECK:           %[[VAL_7:.*]] = aie.lock(%[[VAL_0]], 1) {init = 0 : i32, sym_name = "fifo_cons_lock_0"}
-// CHECK:           %[[VAL_8:.*]] = aie.buffer(%[[VAL_0]]) : memref<1xi32>
 // CHECK:           %[[VAL_9:.*]] = aie.core(%[[VAL_0]]) {
-// CHECK:             %[[VAL_10:.*]] = arith.constant 0 : i32
-// CHECK:             %[[VAL_11:.*]] = arith.constant 0 : i32
-// CHECK:             %[[VAL_12:.*]] = arith.constant 0 : index
-// CHECK:             %[[VAL_13:.*]] = arith.constant 4 : i32
-// CHECK:             memref.store %[[VAL_11]], %[[VAL_8]]{{\[}}%[[VAL_12]]] : memref<1xi32>
-// CHECK:             %[[VAL_14:.*]] = arith.constant 0 : index
-// CHECK:             %[[VAL_15:.*]] = arith.constant 1 : index
-// CHECK:             %[[VAL_16:.*]] = arith.constant 14 : index
-// CHECK:             %[[VAL_17:.*]] = scf.for %[[VAL_18:.*]] = %[[VAL_14]] to %[[VAL_16]] step %[[VAL_15]] iter_args(%[[VAL_19:.*]] = %[[VAL_10]]) -> (i32) {
-// CHECK:               %[[VAL_20:.*]] = arith.constant 1 : i32
-// CHECK:               %[[VAL_21:.*]] = arith.constant 0 : i32
-// CHECK:               %[[VAL_22:.*]] = arith.subi %[[VAL_20]], %[[VAL_19]] : i32
-// CHECK:               %[[VAL_23:.*]] = arith.maxsi %[[VAL_22]], %[[VAL_21]] : i32
-// CHECK:               aie.use_lock(%[[VAL_6]], AcquireGreaterEqual, %[[VAL_23]])
-// CHECK:               %[[VAL_24:.*]] = arith.addi %[[VAL_19]], %[[VAL_23]] : i32
-// CHECK:               %[[VAL_25:.*]] = memref.load %[[VAL_8]]{{\[}}%[[VAL_12]]] : memref<1xi32>
-// CHECK:               %[[VAL_26:.*]] = arith.index_cast %[[VAL_25]] : i32 to index
-// CHECK:               %[[VAL_27:.*]] = scf.index_switch %[[VAL_26]] -> memref<8xi8>
+// CHECK:             %[[INIT:.*]] = arith.constant 0 : i32
+// CHECK:             %[[LB:.*]] = arith.constant 0 : index
+// CHECK:             %[[STEP:.*]] = arith.constant 1 : index
+// CHECK:             %[[UB:.*]] = arith.constant 14 : index
+// The rotating buffer index and the held-object count are carried as loop
+// iter_args (mem2reg-promoted from bookkeeping allocas), not a memref.
+// CHECK:             %{{.*}}:2 = scf.for %{{.*}} = %[[LB]] to %[[UB]] step %[[STEP]] iter_args(%[[IDX:.*]] = %[[INIT]], %[[HELD:.*]] = %[[INIT]]) -> (i32, i32) {
+// CHECK:               %[[ONE:.*]] = arith.constant 1 : i32
+// CHECK:               %[[ZERO:.*]] = arith.constant 0 : i32
+// CHECK:               %[[SUB:.*]] = arith.subi %[[ONE]], %[[HELD]] : i32
+// CHECK:               %[[DELTA:.*]] = arith.maxsi %[[SUB]], %[[ZERO]] : i32
+// CHECK:               aie.use_lock(%[[VAL_6]], AcquireGreaterEqual, %[[DELTA]])
+// CHECK:               %[[NEWHELD:.*]] = arith.addi %[[HELD]], %[[DELTA]] : i32
+// CHECK:               %[[IDXCAST:.*]] = arith.index_cast %[[IDX]] : i32 to index
+// CHECK:               %{{.*}} = scf.index_switch %[[IDXCAST]] -> memref<8xi8>
 // CHECK:               case 0 {
 // CHECK:                 scf.yield %[[VAL_2]] : memref<8xi8>
 // CHECK:               }
@@ -56,18 +52,16 @@
 // CHECK:               default {
 // CHECK:                 scf.yield %[[VAL_2]] : memref<8xi8>
 // CHECK:               }
-// CHECK:               %[[VAL_28:.*]] = arith.constant 1 : i32
-// CHECK:               aie.use_lock(%[[VAL_7]], Release, %[[VAL_28]])
-// CHECK:               %[[VAL_29:.*]] = arith.constant 1 : i32
-// CHECK:               %[[VAL_30:.*]] = arith.subi %[[VAL_24]], %[[VAL_29]] : i32
-// CHECK:               %[[VAL_31:.*]] = memref.load %[[VAL_8]]{{\[}}%[[VAL_12]]] : memref<1xi32>
-// CHECK:               %[[VAL_32:.*]] = arith.constant 1 : i32
-// CHECK:               %[[VAL_33:.*]] = arith.addi %[[VAL_31]], %[[VAL_32]] : i32
-// CHECK:               %[[VAL_34:.*]] = arith.cmpi sge, %[[VAL_33]], %[[VAL_13]] : i32
-// CHECK:               %[[VAL_35:.*]] = arith.subi %[[VAL_33]], %[[VAL_13]] : i32
-// CHECK:               %[[VAL_36:.*]] = arith.select %[[VAL_34]], %[[VAL_35]], %[[VAL_33]] : i32
-// CHECK:               memref.store %[[VAL_36]], %[[VAL_8]]{{\[}}%[[VAL_12]]] : memref<1xi32>
-// CHECK:               scf.yield %[[VAL_30]] : i32
+// CHECK:               %[[ONE2:.*]] = arith.constant 1 : i32
+// CHECK:               aie.use_lock(%[[VAL_7]], Release, %[[ONE2]])
+// CHECK:               %[[RELHELD:.*]] = arith.subi %[[NEWHELD]], %[[ONE2]] : i32
+// CHECK:               %[[FOUR:.*]] = arith.constant 4 : i32
+// CHECK:               %[[ONE3:.*]] = arith.constant 1 : i32
+// CHECK:               %[[NEXTIDX:.*]] = arith.addi %[[IDX]], %[[ONE3]] : i32
+// CHECK:               %[[WRAP:.*]] = arith.cmpi sge, %[[NEXTIDX]], %[[FOUR]] : i32
+// CHECK:               %[[WRAPPED:.*]] = arith.subi %[[NEXTIDX]], %[[FOUR]] : i32
+// CHECK:               %[[SEL:.*]] = arith.select %[[WRAP]], %[[WRAPPED]], %[[NEXTIDX]] : i32
+// CHECK:               scf.yield %[[SEL]], %[[RELHELD]] : i32, i32
 // CHECK:             }
 // CHECK:             aie.end
 // CHECK:           }
