@@ -136,7 +136,14 @@ jobs:
         id: clang-tidy-fixes
         run: |
           git fetch origin main
-          git diff -U0 origin/main | clang-tidy-diff -p1 -path build -export-fixes fixes.yml
+
+          # See utils/get_lintable_changed_files.py: don't hand clang-tidy-diff
+          # changed files it has no compile command for.
+          LINTABLE_FILES=$(python3 utils/get_lintable_changed_files.py build/compile_commands.json)
+          if [ -n "$LINTABLE_FILES" ]; then
+            git diff -U0 origin/main -- $LINTABLE_FILES | clang-tidy-diff -p1 -path build -export-fixes fixes.yml
+          fi
+
           if [ -f fixes.yml ]; then
             echo "FIXES=true" | tee $GITHUB_OUTPUT
           fi
