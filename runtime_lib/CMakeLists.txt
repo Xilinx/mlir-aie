@@ -146,6 +146,7 @@ add_aiert_headers(xaienginecdo_static
         ${AIE_BINARY_DIR}/include/xaienginecdo_static
         ${CMAKE_INSTALL_PREFIX}/include/xaienginecdo_static
 )
+add_dependencies(aie-headers xaienginecdo_static-headers)
 add_aiert_library(xaienginecdo_static ${XAIE_SOURCE_DIR} STATIC)
 
 target_link_libraries(xaienginecdo_static PRIVATE cdo_driver_mlir_aie)
