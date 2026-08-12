@@ -30,10 +30,9 @@
 // CHECK:             return
 // CHECK:           }
 // CHECK:           %[[VAL_15:.*]] = aie.core(%[[VAL_0]]) {
-// CHECK:             %[[VAL_16:.*]] = arith.constant 0 : index
-// CHECK:             %[[VAL_17:.*]] = arith.constant 1 : index
-// CHECK:             %[[VAL_18:.*]] = arith.constant 12 : index
-// CHECK:             %[[VAL_19:.*]] = arith.constant 2 : index
+// CHECK-DAG:             %[[VAL_16:.*]] = arith.constant 0 : index
+// CHECK-DAG:             %[[VAL_18:.*]] = arith.constant 12 : index
+// CHECK-DAG:             %[[VAL_19:.*]] = arith.constant 2 : index
 // CHECK:             scf.for %[[VAL_20:.*]] = %[[VAL_16]] to %[[VAL_18]] step %[[VAL_19]] {
 // CHECK:               aie.use_lock(%[[VAL_12]], Acquire, %{{.*}})
 // CHECK:               func.call @some_work(%[[VAL_10]]) : (memref<16xi32>) -> ()
@@ -45,10 +44,9 @@
 // CHECK:             aie.end
 // CHECK:           }
 // CHECK:           %[[VAL_21:.*]] = aie.core(%[[VAL_1]]) {
-// CHECK:             %[[VAL_22:.*]] = arith.constant 0 : index
-// CHECK:             %[[VAL_23:.*]] = arith.constant 1 : index
-// CHECK:             %[[VAL_24:.*]] = arith.constant 12 : index
-// CHECK:             %[[VAL_25:.*]] = arith.constant 4 : index
+// CHECK-DAG:             %[[VAL_22:.*]] = arith.constant 0 : index
+// CHECK-DAG:             %[[VAL_24:.*]] = arith.constant 12 : index
+// CHECK-DAG:             %[[VAL_25:.*]] = arith.constant 4 : index
 // CHECK:             scf.for %[[VAL_26:.*]] = %[[VAL_22]] to %[[VAL_24]] step %[[VAL_25]] {
 // CHECK:               aie.use_lock(%[[VAL_6]], Acquire, %{{.*}})
 // CHECK:               aie.use_lock(%[[VAL_7]], Acquire, %{{.*}})
