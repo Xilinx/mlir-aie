@@ -134,11 +134,11 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
       lenA = op.getLenInBytes();
       offsetA = op.getOffsetInBytes();
       elementWidthInBytes = op.getBufferElementTypeWidthInBytes();
-      if (auto s = op.getIterationSize())
-        iterSize = *s;
-      if (auto s = op.getIterationStride())
-        iterStride = *s;
-      iterCurr = op.getIterationCurrent();
+      if (auto iter = op.getIteration()) {
+        iterSize = iter->getSize();
+        iterStride = iter->getStride();
+        iterCurr = iter->getCurrent();
+      }
       if (!op.getMixedSizes().empty()) {
         // Runtime-valued sizes/strides are not supported on this static path.
         for (mlir::OpFoldResult s : op.getMixedSizes())

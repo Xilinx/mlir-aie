@@ -58,6 +58,7 @@ from aie.dialects.aiex import (
 from aie.iron import (
     Acquire,
     Bd,
+    BdIteration,
     Buffer,
     CompileTime,
     DmaChannel,
@@ -138,9 +139,9 @@ def bd_iteration(
                         buffer=mem_buf,
                         offset=0,
                         length=CHUNK,
-                        iteration_size=n_slots,
-                        iteration_stride=CHUNK,
-                        iteration_current=start,
+                        iteration=BdIteration(
+                            size=n_slots, stride=CHUNK, current=start
+                        ),
                         acquires=[Acquire(slot_credit, value=1, greater_equal=True)],
                         releases=[Release(fill_count, value=1)],
                         next="self",

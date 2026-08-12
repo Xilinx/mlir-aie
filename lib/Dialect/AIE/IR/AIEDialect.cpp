@@ -2182,9 +2182,7 @@ void DMABDOp::buildMixed(mlir::OpBuilder &builder, mlir::OperationState &state,
         /*bd_id=*/nullptr,
         /*packet=*/packet,
         /*burst_length=*/nullptr,
-        /*iteration_size=*/nullptr,
-        /*iteration_stride=*/nullptr,
-        /*iteration_current=*/nullptr,
+        /*iteration=*/nullptr,
         /*offset_parameter=*/nullptr,
         /*offset_state_table_idx=*/nullptr,
         /*next_bd_id=*/nullptr);
@@ -2294,6 +2292,30 @@ bool xilinx::AIE::isContiguousBDTransfer(llvm::ArrayRef<BDDimLayoutAttr> dims) {
       return false;
   }
   return true;
+}
+
+LogicalResult xilinx::AIE::verifyBDIteration(
+    llvm::function_ref<InFlightDiagnostic()> emitError,
+    const AIETargetModel &targetModel, AIETileType tileType, uint32_t size,
+    uint32_t stepInWords, uint32_t current) {
+  // Values are true/unbiased (aie-rt / the NPU path encode value-1).
+  // size<=1 disables iteration (step ignored). Bounds are tile-correct
+  // (6-bit wrap, tile-specific step width).
+
+  if (size < 1 || size > 64) // 64 = aie-rt IterWrapMax + 1
+    return emitError() << "BD iteration size must be in [1, 64]";
+
+  if (size > 1) {
+    int64_t maxStep = 1LL << targetModel.getDmaBdStepBits(tileType);
+    if (stepInWords < 1 || stepInWords > maxStep)
+      return emitError() << "BD iteration stride must be in [1, " << maxStep
+                         << "] 32-bit words";
+  }
+
+  if (current >= size)
+    return emitError() << "BD iteration current must be in [0, size)";
+
+  return success();
 }
 
 LogicalResult DMABDOp::verify() {
@@ -2512,49 +2534,22 @@ LogicalResult DMABDOp::verify() {
     return emitOpError("Burst length is only supported in Shim NOC tiles that "
                        "are connected to the memory-mapped NOC.");
 
-  // bd iteration bounds checking. note: aie-rt encodes (value - 1).
-  bool usesIteration = getIterationSize().has_value() ||
-                       getIterationStride().has_value() ||
-                       (*this)->hasAttr(getIterationCurrentAttrName());
-  if (usesIteration) {
+  // BD iteration bounds.
+  if (auto iter = getIteration()) {
     if (!targetModel.hasProperty(AIETargetModel::UsesBDIteration))
       return emitOpError("BD iteration is not supported on this target");
 
-    if (getIterationStride() && !getIterationSize())
-      return emitOpError("iteration_stride requires iteration_size to be set");
+    int64_t strideInBytes = static_cast<int64_t>(iter->getStride()) *
+                            getBufferElementTypeWidthInBytes();
 
-    if (auto sz = getIterationSize())
-      if (*sz < 1 || *sz > 64) // 64 = aie-rt IterWrapMax + 1
-        return emitOpError("iteration_size must be in [1, 64]");
+    if (iter->getSize() > 1 && strideInBytes % 4)
+      return emitOpError("BD iteration stride must be aligned to 32-bit words");
 
-    if (auto st = getIterationStride()) {
-      int64_t strideInBytes =
-          static_cast<int64_t>(*st) * getBufferElementTypeWidthInBytes();
-      if (strideInBytes % 4)
-        return emitOpError(
-            "iteration_stride must result in a stride aligned to 32-bit words");
-
-      int64_t stepInWords = strideInBytes / 4;
-      int64_t maxStep =
-          1LL << targetModel.getDmaBdStepBits(parentTile.getTileType());
-      if (stepInWords < 1 || stepInWords > maxStep)
-        return emitOpError() << "iteration_stride must be in [1, " << maxStep
-                             << "] 32-bit words";
-    }
-
-    if (auto sz = getIterationSize())
-      if (*sz > 1 && !getIterationStride())
-        return emitOpError(
-            "iteration_stride must be set when iteration_size > 1");
-
-    if ((*this)->hasAttr(getIterationCurrentAttrName()) && !getIterationSize())
-      return emitOpError("iteration_current requires iteration_size to be set");
-
-    if (auto sz = getIterationSize()) {
-      int32_t cur = getIterationCurrent();
-      if (cur < 0 || cur >= *sz)
-        return emitOpError("iteration_current must be in [0, iteration_size)");
-    }
+    if (failed(verifyBDIteration([&]() { return emitOpError(); }, targetModel,
+                                 parentTile.getTileType(), iter->getSize(),
+                                 static_cast<uint32_t>(strideInBytes / 4),
+                                 iter->getCurrent())))
+      return failure();
   }
 
   return success();

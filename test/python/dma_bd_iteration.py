@@ -3,12 +3,12 @@
 
 # RUN: %python %s | FileCheck %s
 
-"""Test that Bd.iteration_size/iteration_stride/iteration_current forward the BD
-iteration attributes to the underlying aie.dma_bd op."""
+"""Test that Bd.iteration forwards the BD iteration state to the underlying
+aie.dma_bd op as an #aie.bd_iteration attribute."""
 
 import numpy as np
 
-from aie.iron import Bd, Buffer, DmaChannel, Program, Runtime, TileDma
+from aie.iron import Bd, BdIteration, Buffer, DmaChannel, Program, Runtime, TileDma
 from aie.iron.device import NPU2Col1, Tile
 from aie.dialects._aie_enum_gen import AIETileType, DMAChannelDir
 
@@ -33,9 +33,7 @@ def emit_iteration_bd():
                         length=n,
                         sizes=[16, 16],
                         strides=[16, 1],
-                        iteration_size=4,
-                        iteration_stride=16,
-                        iteration_current=2,
+                        iteration=BdIteration(size=4, stride=16, current=2),
                         next="self",
                     ),
                 ],
@@ -53,7 +51,5 @@ def emit_iteration_bd():
 
 
 # CHECK: aie.dma_bd({{.*}} : memref<256xi32> len = {{.*}} sizes = [16, 16] strides = [16, 1])
-# CHECK-SAME: iteration_current = 2
-# CHECK-SAME: iteration_size = 4
-# CHECK-SAME: iteration_stride = 16
+# CHECK-SAME: iteration = #aie.bd_iteration<size = 4, stride = 16, current = 2>
 print(emit_iteration_bd())

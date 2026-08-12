@@ -16,7 +16,7 @@ module @aie_module {
     %m01 = aie.memtile_dma(%t01) {
       %s = aie.dma_start(S2MM, 0, ^bd0, ^end)
     ^bd0:
-      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 64 sizes = [2, 2, 2, 2] strides = [8, 4, 2, 1]) { iteration_size = 4 : i32, iteration_stride = 16 : i32 }
+      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 64 sizes = [2, 2, 2, 2] strides = [8, 4, 2, 1]) { iteration = #aie.bd_iteration<size = 4, stride = 16, current = 0> }
       aie.next_bd ^end
     ^end:
       aie.end
@@ -35,7 +35,7 @@ module @aie_module {
     %m01 = aie.memtile_dma(%t01) {
       %s = aie.dma_start(S2MM, 0, ^bd0, ^end)
     ^bd0:
-      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 64) { iteration_size = 4 : i32, iteration_stride = 16 : i32, iteration_current = 2 : i32 }
+      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 64) { iteration = #aie.bd_iteration<size = 4, stride = 16, current = 2> }
       aie.next_bd ^end
     ^end:
       aie.end
@@ -54,7 +54,7 @@ module @aie_module {
     %m01 = aie.memtile_dma(%t01) {
       %s = aie.dma_start(S2MM, 0, ^bd0, ^end)
     ^bd0:
-      aie.dma_bd(%buf : memref<256xi64> offset = 0 len = 64) { iteration_size = 4 : i32, iteration_stride = 4 : i32 }
+      aie.dma_bd(%buf : memref<256xi64> offset = 0 len = 64) { iteration = #aie.bd_iteration<size = 4, stride = 4, current = 0> }
       aie.next_bd ^end
     ^end:
       aie.end
@@ -73,7 +73,7 @@ module @aie_module {
     %m22 = aie.mem(%t22) {
       %s = aie.dma_start(S2MM, 0, ^bd0, ^end)
     ^bd0:
-      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 64) { iteration_size = 4 : i32, iteration_stride = 16 : i32 }
+      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 64) { iteration = #aie.bd_iteration<size = 4, stride = 16, current = 0> }
       aie.next_bd ^end
     ^end:
       aie.end

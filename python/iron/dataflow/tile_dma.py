@@ -75,6 +75,24 @@ class Release:
 
 
 @dataclass
+class BdIteration:
+    """Iteration state of a buffer descriptor for aie.dma_bd.
+
+    Lets one BD cover ``size`` sub-buffers over ``size`` executions instead of an
+    N-deep chain. Values are true/element: the base advances by ``stride``
+    elements each execution and wraps after ``size`` executions; ``current`` is
+    the starting step (default 0). The lowering applies the hardware ``-1`` bias
+    and element->word scaling. NOTE: the identically-named ``iteration_*`` family
+    on the runtime-sequence path uses RAW register values instead -- do not copy
+    numbers between them.
+    """
+
+    size: int
+    stride: int
+    current: int = 0
+
+
+@dataclass
 class Bd:
     """A single buffer-descriptor entry in a [`DmaChannel`][iron.DmaChannel]'s chain.
 
@@ -109,11 +127,9 @@ class Bd:
     # const_pad_after) pair per dimension, outermost first, matching the
     # sizes/strides layout. The fill value is per-channel (DmaChannel.pad_value).
     pad_dimensions: list[Sequence[int]] | None = None
-    # BD iteration pattern: one BD covers N sub-buffers over N executions
-    # instead of an N-deep chain. iteration_stride is in element width.
-    iteration_size: int | None = None
-    iteration_stride: int | None = None
-    iteration_current: int | None = None
+    # BD iteration state: one BD covers N sub-buffers over N executions instead
+    # of an N-deep chain. See BdIteration. Absent = iteration disabled.
+    iteration: BdIteration | None = None
 
 
 @dataclass
@@ -299,12 +315,9 @@ class TileDma(Resolvable):
                             bd_kwargs["transfer_len"] = bd.length
                         if bd.pad_dimensions is not None:
                             bd_kwargs["pad_dimensions"] = bd.pad_dimensions
-                        if bd.iteration_size is not None:
-                            bd_kwargs["iteration_size"] = bd.iteration_size
-                        if bd.iteration_stride is not None:
-                            bd_kwargs["iteration_stride"] = bd.iteration_stride
-                        if bd.iteration_current is not None:
-                            bd_kwargs["iteration_current"] = bd.iteration_current
+                        if bd.iteration is not None:
+                            it = bd.iteration
+                            bd_kwargs["iteration"] = (it.size, it.stride, it.current)
                         # A packet header must be a distinct aie.dma_bd_packet op
                         # placed BEFORE the aie.dma_bd: the CDO/xclbin backends
                         # (AIERT / AIETargetXAIEV2) read the header only from that

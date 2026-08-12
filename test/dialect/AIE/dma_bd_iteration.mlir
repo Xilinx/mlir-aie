@@ -16,10 +16,8 @@ module {
       %s = aie.dma_start(S2MM, 0, ^bd0, ^end)
     ^bd0:
       // CHECK: aie.dma_bd
-      // CHECK-SAME: iteration_current = 2
-      // CHECK-SAME: iteration_size = 4
-      // CHECK-SAME: iteration_stride = 16
-      aie.dma_bd(%b : memref<256xi32> offset = 0 len = 64 sizes = [4, 4] strides = [4, 1]) { iteration_size = 4 : i32, iteration_stride = 16 : i32, iteration_current = 2 : i32 }
+      // CHECK-SAME: iteration = #aie.bd_iteration<size = 4, stride = 16, current = 2>
+      aie.dma_bd(%b : memref<256xi32> offset = 0 len = 64 sizes = [4, 4] strides = [4, 1]) { iteration = #aie.bd_iteration<size = 4, stride = 16, current = 2> }
       aie.next_bd ^end
     ^end:
       aie.end
