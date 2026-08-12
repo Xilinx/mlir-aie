@@ -881,8 +881,8 @@ xilinx::AIE::AIERTControl::addInitConfig(DeviceOp &targetOp,
                "bd_id assigned by configureLocksAndBd above");
         if (failed(pushToBdQueueAndEnable(
                 *dmaOp.getOperation(), col, row, dmaOp.getChannelIndex(),
-                dmaOp.getChannelDir(), bd.getBdId().value(),
-                dmaOp.getRepeatCount(), dmaOp.getPadValue())))
+                dmaOp.getChannelDir(), bdId.value(), dmaOp.getRepeatCount(),
+                dmaOp.getPadValue())))
           return failure();
       }
     else
@@ -891,9 +891,12 @@ xilinx::AIE::AIERTControl::addInitConfig(DeviceOp &targetOp,
           DMABDOp bd = *op.getDest()->getOps<DMABDOp>().begin();
           int chNum = op.getChannelIndex();
           auto channelDir = op.getChannelDir();
+          auto bdId = bd.getBdId();
+          assert(bdId.has_value() &&
+                 "bd_id assigned by configureLocksAndBd above");
           if (failed(pushToBdQueueAndEnable(
-                  *bd.getOperation(), col, row, chNum, channelDir,
-                  bd.getBdId().value(), op.getRepeatCount(), op.getPadValue())))
+                  *bd.getOperation(), col, row, chNum, channelDir, bdId.value(),
+                  op.getRepeatCount(), op.getPadValue())))
             return failure();
         }
       }
