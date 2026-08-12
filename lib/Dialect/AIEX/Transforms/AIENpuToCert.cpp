@@ -647,21 +647,18 @@ struct MergeConsecutiveCertUcDmaWriteDesSyncOps
 
     // Compute the size of the current and previous chains. If their combined
     // data size is greater than the cert page size, then we cannot merge them.
-    uint32_t prevChainSize = 0;
-    for (auto &o : prevChain.getBody().front().getOperations()) {
-      auto bdOp = dyn_cast<AIEX::CertUcDmaBdOp>(o);
-      if (!bdOp)
-        continue;
-      prevChainSize += bdOp.getLength() * sizeof(int);
-    }
-    uint32_t currChainSize = 0;
-    for (auto &o : chain.getBody().front().getOperations()) {
-      auto bdOp = dyn_cast<AIEX::CertUcDmaBdOp>(o);
-      if (!bdOp)
-        continue;
-      currChainSize += bdOp.getLength() * sizeof(int);
-    }
-    if ((currChainSize + prevChainSize) >= cert_page_size)
+    //
+    // A chain costs 16 bytes of descriptor per BD on top of the BD's payload --
+    // the same accounting updateCostForOp (the page splitter's authoritative
+    // cost model) uses. Charging payload only under-reports a chain by 16 bytes
+    // per BD, which for many small BDs is most of its real size.
+    auto chainSize = [](AIEX::CertUcDmaChainOp c) {
+      uint32_t size = 0;
+      for (auto bdOp : c.getBody().front().getOps<AIEX::CertUcDmaBdOp>())
+        size += bdOp.getLength() * sizeof(int) + 16; // payload + bd descriptor
+      return size;
+    };
+    if ((chainSize(chain) + chainSize(prevChain)) >= cert_page_size)
       return failure();
 
     IRMapping map;
@@ -1009,10 +1006,12 @@ struct AIENpuToCertPass
     if (failed(applyPartialConversion(currentDevice, target, std::move(p2))))
       return signalPassFailure();
 
-    // Add the merge pattern for CertUcDmaWriteDesSyncOps
-    RewritePatternSet p3(&getContext());
-    p3.insert<MergeConsecutiveCertUcDmaWriteDesSyncOps>(&getContext());
-    if (failed(applyPatternsGreedily(currentDevice, std::move(p3))))
+    // Run the greedy driver with no patterns, purely for its DCE: p2
+    // leaves each converted blockwrite's memref.get_global (and any constant
+    // feeding it) dead, since the new op references the global by symbol
+    // rather than by SSA value. CertJobOp's verifier rejects those ops
+    RewritePatternSet cleanup(&getContext());
+    if (failed(applyPatternsGreedily(getOperation(), std::move(cleanup))))
       return signalPassFailure();
 
     // Convert referenced devices to cert.sections
