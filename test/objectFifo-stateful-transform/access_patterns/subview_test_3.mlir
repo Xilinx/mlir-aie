@@ -31,67 +31,44 @@
 // CHECK:             return
 // CHECK:           }
 // CHECK:           %[[VAL_17:.*]] = aie.core(%[[VAL_0]]) {
-// CHECK:             %{{.*}} = arith.constant 0 : i32
 // CHECK:             aie.use_lock(%[[VAL_12]], Acquire, %{{.*}})
-// CHECK:             %{{.*}} = arith.constant 0 : i32
 // CHECK:             aie.use_lock(%[[VAL_13]], Acquire, %{{.*}})
 // CHECK:             func.call @some_work(%[[VAL_8]]) : (memref<16xi32>) -> ()
 // CHECK:             func.call @some_work(%[[VAL_9]]) : (memref<16xi32>) -> ()
-// CHECK:             %{{.*}} = arith.constant 1 : i32
 // CHECK:             aie.use_lock(%[[VAL_5]], Acquire, %{{.*}})
 // CHECK:             func.call @some_work(%[[VAL_2]]) : (memref<16xi32>) -> ()
-// CHECK:             %{{.*}} = arith.constant 1 : i32
 // CHECK:             aie.use_lock(%[[VAL_12]], Release, %{{.*}})
-// CHECK:             %{{.*}} = arith.constant 0 : i32
 // CHECK:             aie.use_lock(%[[VAL_14]], Acquire, %{{.*}})
-// CHECK:             %{{.*}} = arith.constant 0 : i32
 // CHECK:             aie.use_lock(%[[VAL_15]], Acquire, %{{.*}})
 // CHECK:             func.call @some_work(%[[VAL_9]]) : (memref<16xi32>) -> ()
 // CHECK:             func.call @some_work(%[[VAL_10]]) : (memref<16xi32>) -> ()
 // CHECK:             func.call @some_work(%[[VAL_11]]) : (memref<16xi32>) -> ()
-// CHECK:             %{{.*}} = arith.constant 1 : i32
 // CHECK:             aie.use_lock(%[[VAL_13]], Release, %{{.*}})
-// CHECK:             %{{.*}} = arith.constant 1 : i32
 // CHECK:             aie.use_lock(%[[VAL_14]], Release, %{{.*}})
-// CHECK:             %{{.*}} = arith.constant 1 : i32
 // CHECK:             aie.use_lock(%[[VAL_15]], Release, %{{.*}})
-// CHECK:             %{{.*}} = arith.constant 0 : i32
 // CHECK:             aie.use_lock(%[[VAL_5]], Release, %{{.*}})
-// CHECK:             %{{.*}} = arith.constant 1 : i32
 // CHECK:             aie.use_lock(%[[VAL_6]], Acquire, %{{.*}})
-// CHECK:             %{{.*}} = arith.constant 1 : i32
 // CHECK:             aie.use_lock(%[[VAL_7]], Acquire, %{{.*}})
 // CHECK:             func.call @some_work(%[[VAL_3]]) : (memref<16xi32>) -> ()
 // CHECK:             func.call @some_work(%[[VAL_4]]) : (memref<16xi32>) -> ()
-// CHECK:             %{{.*}} = arith.constant 0 : i32
 // CHECK:             aie.use_lock(%[[VAL_6]], Release, %{{.*}})
 // CHECK:             aie.end
 // CHECK:           }
 // CHECK:           %[[VAL_18:.*]] = aie.core(%[[VAL_1]]) {
-// CHECK:             %{{.*}} = arith.constant 1 : i32
 // CHECK:             aie.use_lock(%[[VAL_12]], Acquire, %{{.*}})
 // CHECK:             func.call @some_work(%[[VAL_8]]) : (memref<16xi32>) -> ()
-// CHECK:             %{{.*}} = arith.constant 0 : i32
 // CHECK:             aie.use_lock(%[[VAL_5]], Acquire, %{{.*}})
-// CHECK:             %{{.*}} = arith.constant 0 : i32
 // CHECK:             aie.use_lock(%[[VAL_6]], Acquire, %{{.*}})
 // CHECK:             func.call @some_work(%[[VAL_2]]) : (memref<16xi32>) -> ()
 // CHECK:             func.call @some_work(%[[VAL_3]]) : (memref<16xi32>) -> ()
-// CHECK:             %{{.*}} = arith.constant 1 : i32
 // CHECK:             aie.use_lock(%[[VAL_5]], Release, %{{.*}})
-// CHECK:             %{{.*}} = arith.constant 1 : i32
 // CHECK:             aie.use_lock(%[[VAL_6]], Release, %{{.*}})
-// CHECK:             %{{.*}} = arith.constant 0 : i32
 // CHECK:             aie.use_lock(%[[VAL_12]], Release, %{{.*}})
-// CHECK:             %{{.*}} = arith.constant 1 : i32
 // CHECK:             aie.use_lock(%[[VAL_13]], Acquire, %{{.*}})
-// CHECK:             %{{.*}} = arith.constant 1 : i32
 // CHECK:             aie.use_lock(%[[VAL_14]], Acquire, %{{.*}})
 // CHECK:             func.call @some_work(%[[VAL_9]]) : (memref<16xi32>) -> ()
 // CHECK:             func.call @some_work(%[[VAL_10]]) : (memref<16xi32>) -> ()
-// CHECK:             %{{.*}} = arith.constant 0 : i32
 // CHECK:             aie.use_lock(%[[VAL_13]], Release, %{{.*}})
-// CHECK:             %{{.*}} = arith.constant 0 : i32
 // CHECK:             aie.use_lock(%[[VAL_14]], Release, %{{.*}})
 // CHECK:             aie.end
 // CHECK:           }
