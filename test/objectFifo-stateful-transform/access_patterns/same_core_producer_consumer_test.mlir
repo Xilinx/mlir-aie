@@ -20,25 +20,20 @@
 // CHECK:             return
 // CHECK:           }
 // CHECK:           %[[VAL_7:.*]] = aie.core(%[[VAL_0]]) {
-// CHECK:             %{{.*}} = arith.constant 2 : i32
-// CHECK:             aie.use_lock(%[[VAL_4]], AcquireGreaterEqual, %{{.*}})
+// CHECK-DAG:             %[[C2:.*]] = arith.constant 2 : i32
+// CHECK-DAG:             %[[C1:.*]] = arith.constant 1 : i32
+// CHECK:             aie.use_lock(%[[VAL_4]], AcquireGreaterEqual, %[[C2]])
 // CHECK:             func.call @some_work(%[[VAL_1]]) : (memref<16xi32>) -> ()
 // CHECK:             func.call @some_work(%[[VAL_2]]) : (memref<16xi32>) -> ()
-// CHECK:             %{{.*}} = arith.constant 1 : i32
-// CHECK:             aie.use_lock(%[[VAL_5]], Release, %{{.*}})
-// CHECK:             %{{.*}} = arith.constant 1 : i32
-// CHECK:             aie.use_lock(%[[VAL_5]], AcquireGreaterEqual, %{{.*}})
+// CHECK:             aie.use_lock(%[[VAL_5]], Release, %[[C1]])
+// CHECK:             aie.use_lock(%[[VAL_5]], AcquireGreaterEqual, %[[C1]])
 // CHECK:             func.call @some_work(%[[VAL_1]]) : (memref<16xi32>) -> ()
-// CHECK:             %{{.*}} = arith.constant 1 : i32
-// CHECK:             aie.use_lock(%[[VAL_4]], Release, %{{.*}})
+// CHECK:             aie.use_lock(%[[VAL_4]], Release, %[[C1]])
 // CHECK:             func.call @some_work(%[[VAL_2]]) : (memref<16xi32>) -> ()
-// CHECK:             %{{.*}} = arith.constant 1 : i32
-// CHECK:             aie.use_lock(%[[VAL_5]], Release, %{{.*}})
-// CHECK:             %{{.*}} = arith.constant 1 : i32
-// CHECK:             aie.use_lock(%[[VAL_5]], AcquireGreaterEqual, %{{.*}})
+// CHECK:             aie.use_lock(%[[VAL_5]], Release, %[[C1]])
+// CHECK:             aie.use_lock(%[[VAL_5]], AcquireGreaterEqual, %[[C1]])
 // CHECK:             func.call @some_work(%[[VAL_2]]) : (memref<16xi32>) -> ()
-// CHECK:             %{{.*}} = arith.constant 1 : i32
-// CHECK:             aie.use_lock(%[[VAL_4]], Release, %{{.*}})
+// CHECK:             aie.use_lock(%[[VAL_4]], Release, %[[C1]])
 // CHECK:             aie.end
 // CHECK:           }
 // CHECK:         }

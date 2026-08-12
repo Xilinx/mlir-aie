@@ -15,7 +15,7 @@
 // rewrite this to step 2 and emit two acquire/release bodies).
 // CHECK:      %[[C1:.*]] = arith.constant 1 : index
 // CHECK:      %[[C4:.*]] = arith.constant 4 : index
-// CHECK:      scf.for %{{.*}} = %{{.*}} to %[[C4]] step %[[C1]] {
+// CHECK:      scf.for %{{.*}} = %{{.*}} to %[[C4]] step %[[C1]] {{.*}}
 // CHECK:        %{{.*}} = arith.constant 0 : i32
 // CHECK:        aie.use_lock(%{{.*}}, Acquire, %{{.*}})
 // Runtime buffer selection via index_switch is the hallmark of dynamic lowering.
