@@ -236,15 +236,6 @@ void collectBuffers(
 // linearized by the compiler.
 bool isContiguousBDTransfer(llvm::ArrayRef<BDDimLayoutAttr> dims);
 
-// Bounds check for BD iteration state using TRUE (unbiased) values with the
-// step already in whole 32-bit words. The caller checks word-alignment first.
-// Used by aie.dma_bd; aiex.npu.writebd enforces the same tile-correct limit
-// inline (via getDmaBdStepBits) in its own raw-register terms.
-mlir::LogicalResult
-verifyBDIteration(llvm::function_ref<mlir::InFlightDiagnostic()> emitError,
-                  const AIETargetModel &targetModel, AIETileType tileType,
-                  uint32_t size, uint32_t stepInWords, uint32_t current);
-
 } // namespace xilinx::AIE
 
 namespace llvm {
