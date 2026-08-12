@@ -4079,6 +4079,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#iron.dataflow.tile_dma.BdIteration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        BdIteration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#iron.dataflow.tile_dma.Bd" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -6436,6 +6447,17 @@
     <span class="md-ellipsis">
       
         Release
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#iron.dataflow.tile_dma.BdIteration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        BdIteration
       
     </span>
   </a>
@@ -18132,6 +18154,64 @@ locks.</p>
 
 
 
+<h2 id="iron.dataflow.tile_dma.BdIteration" class="doc doc-heading">
+            <span class="doc doc-object-name doc-class-name">BdIteration</span>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-dataclass"><code>dataclass</code></small>
+  </span>
+
+<a href="#iron.dataflow.tile_dma.BdIteration" class="headerlink" title="Permanent link">&para;</a></h2>
+<div class="doc-signature highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">BdIteration</span><span class="p">(</span><span class="n">size</span><span class="p">:</span> <span class="n"><span title="int">int</span></span><span class="p">,</span> <span class="n">stride</span><span class="p">:</span> <span class="n"><span title="int">int</span></span><span class="p">,</span> <span class="n">current</span><span class="p">:</span> <span class="n"><span title="int">int</span></span> <span class="o">=</span> <span class="mi">0</span><span class="p">)</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+
+
+        <p>Iteration state of a buffer descriptor for aie.dma_bd.</p>
+<p>Lets one BD cover <code>size</code> sub-buffers over <code>size</code> executions instead of an
+N-deep chain. Values are true/element: the base advances by <code>stride</code>
+elements each execution and wraps after <code>size</code> executions; <code>current</code> is
+the starting step (default 0). The lowering applies the hardware <code>-1</code> bias
+and element-&gt;word scaling. NOTE: the identically-named <code>iteration_*</code> family
+on the runtime-sequence path uses RAW register values instead -- do not copy
+numbers between them.</p>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
 <h2 id="iron.dataflow.tile_dma.Bd" class="doc doc-heading">
             <span class="doc doc-object-name doc-class-name">Bd</span>
 
@@ -18162,7 +18242,13 @@ locks.</p>
 <a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>    <span class="n">sizes</span><span class="p">:</span> <span class="n"><span title="list">list</span></span> <span class="o">=</span> <span class="n"><span title="list">list</span></span><span class="p">(),</span>
 <a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>    <span class="n">strides</span><span class="p">:</span> <span class="n"><span title="list">list</span></span> <span class="o">=</span> <span class="n"><span title="list">list</span></span><span class="p">(),</span>
 <a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>    <span class="n">pad_dimensions</span><span class="p">:</span> <span class="n"><span title="list">list</span></span><span class="p">[</span><span class="n"><span title="typing.Sequence">Sequence</span></span><span class="p">[</span><span class="n"><span title="int">int</span></span><span class="p">]]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="p">)</span>
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>    <span class="n">iteration</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="BdIteration
+
+
+  
+      dataclass
+   (iron.dataflow.tile_dma.BdIteration)" href="#iron.dataflow.tile_dma.BdIteration">BdIteration</a></span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="p">)</span>
 </code></pre></div>
 
     <div class="doc doc-contents ">
@@ -18444,13 +18530,13 @@ releases + an <code>aie.next_bd</code>. The <code>next</code> field selects what
 
                   <details class="mkdocstrings-source">
                     <summary>Source code in <code>python/iron/dataflow/tile_dma.py</code></summary>
-                    <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-170">170</a></span>
-<span class="normal"><a href="#__codelineno-0-171">171</a></span>
-<span class="normal"><a href="#__codelineno-0-172">172</a></span>
-<span class="normal"><a href="#__codelineno-0-173">173</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-170" name="__codelineno-0-170"></a><span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tile</span><span class="p">:</span> <span class="n">Tile</span><span class="p">,</span> <span class="n">channels</span><span class="p">:</span> <span class="n">Iterable</span><span class="p">[</span><span class="n">DmaChannel</span><span class="p">]):</span>
-<a id="__codelineno-0-171" name="__codelineno-0-171"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_tile</span> <span class="o">=</span> <span class="n">tile</span>
-<a id="__codelineno-0-172" name="__codelineno-0-172"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_channels</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">DmaChannel</span><span class="p">]</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">channels</span><span class="p">)</span>
-<a id="__codelineno-0-173" name="__codelineno-0-173"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_resolved</span> <span class="o">=</span> <span class="kc">False</span>
+                    <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-191">191</a></span>
+<span class="normal"><a href="#__codelineno-0-192">192</a></span>
+<span class="normal"><a href="#__codelineno-0-193">193</a></span>
+<span class="normal"><a href="#__codelineno-0-194">194</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-191" name="__codelineno-0-191"></a><span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tile</span><span class="p">:</span> <span class="n">Tile</span><span class="p">,</span> <span class="n">channels</span><span class="p">:</span> <span class="n">Iterable</span><span class="p">[</span><span class="n">DmaChannel</span><span class="p">]):</span>
+<a id="__codelineno-0-192" name="__codelineno-0-192"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_tile</span> <span class="o">=</span> <span class="n">tile</span>
+<a id="__codelineno-0-193" name="__codelineno-0-193"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_channels</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">DmaChannel</span><span class="p">]</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">channels</span><span class="p">)</span>
+<a id="__codelineno-0-194" name="__codelineno-0-194"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_resolved</span> <span class="o">=</span> <span class="kc">False</span>
 </code></pre></div></td></tr></table></div>
                   </details>
 
@@ -18486,35 +18572,35 @@ releases + an <code>aie.next_bd</code>. The <code>next</code> field selects what
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>python/iron/dataflow/tile_dma.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-182">182</a></span>
-<span class="normal"><a href="#__codelineno-0-183">183</a></span>
-<span class="normal"><a href="#__codelineno-0-184">184</a></span>
-<span class="normal"><a href="#__codelineno-0-185">185</a></span>
-<span class="normal"><a href="#__codelineno-0-186">186</a></span>
-<span class="normal"><a href="#__codelineno-0-187">187</a></span>
-<span class="normal"><a href="#__codelineno-0-188">188</a></span>
-<span class="normal"><a href="#__codelineno-0-189">189</a></span>
-<span class="normal"><a href="#__codelineno-0-190">190</a></span>
-<span class="normal"><a href="#__codelineno-0-191">191</a></span>
-<span class="normal"><a href="#__codelineno-0-192">192</a></span>
-<span class="normal"><a href="#__codelineno-0-193">193</a></span>
-<span class="normal"><a href="#__codelineno-0-194">194</a></span>
-<span class="normal"><a href="#__codelineno-0-195">195</a></span>
-<span class="normal"><a href="#__codelineno-0-196">196</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-182" name="__codelineno-0-182"></a><span class="k">def</span><span class="w"> </span><span class="nf">all_buffers_and_locks</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<a id="__codelineno-0-183" name="__codelineno-0-183"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Iterate every Buffer + Lock this program touches.</span>
-<a id="__codelineno-0-184" name="__codelineno-0-184"></a>
-<a id="__codelineno-0-185" name="__codelineno-0-185"></a><span class="sd">    Program uses this to make sure they&#39;re all resolved before us.</span>
-<a id="__codelineno-0-186" name="__codelineno-0-186"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-187" name="__codelineno-0-187"></a>    <span class="n">seen_buffers</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">Buffer</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
-<a id="__codelineno-0-188" name="__codelineno-0-188"></a>    <span class="n">seen_locks</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">Lock</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
-<a id="__codelineno-0-189" name="__codelineno-0-189"></a>    <span class="k">for</span> <span class="n">ch</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_channels</span><span class="p">:</span>
-<a id="__codelineno-0-190" name="__codelineno-0-190"></a>        <span class="k">for</span> <span class="n">bd</span> <span class="ow">in</span> <span class="n">ch</span><span class="o">.</span><span class="n">bds</span><span class="p">:</span>
-<a id="__codelineno-0-191" name="__codelineno-0-191"></a>            <span class="k">if</span> <span class="n">bd</span><span class="o">.</span><span class="n">buffer</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">seen_buffers</span><span class="p">:</span>
-<a id="__codelineno-0-192" name="__codelineno-0-192"></a>                <span class="n">seen_buffers</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">bd</span><span class="o">.</span><span class="n">buffer</span><span class="p">)</span>
-<a id="__codelineno-0-193" name="__codelineno-0-193"></a>            <span class="k">for</span> <span class="n">use</span> <span class="ow">in</span> <span class="p">(</span><span class="o">*</span><span class="n">bd</span><span class="o">.</span><span class="n">acquires</span><span class="p">,</span> <span class="o">*</span><span class="n">bd</span><span class="o">.</span><span class="n">releases</span><span class="p">):</span>
-<a id="__codelineno-0-194" name="__codelineno-0-194"></a>                <span class="k">if</span> <span class="n">use</span><span class="o">.</span><span class="n">lock</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">seen_locks</span><span class="p">:</span>
-<a id="__codelineno-0-195" name="__codelineno-0-195"></a>                    <span class="n">seen_locks</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">use</span><span class="o">.</span><span class="n">lock</span><span class="p">)</span>
-<a id="__codelineno-0-196" name="__codelineno-0-196"></a>    <span class="k">return</span> <span class="n">seen_buffers</span><span class="p">,</span> <span class="n">seen_locks</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-203">203</a></span>
+<span class="normal"><a href="#__codelineno-0-204">204</a></span>
+<span class="normal"><a href="#__codelineno-0-205">205</a></span>
+<span class="normal"><a href="#__codelineno-0-206">206</a></span>
+<span class="normal"><a href="#__codelineno-0-207">207</a></span>
+<span class="normal"><a href="#__codelineno-0-208">208</a></span>
+<span class="normal"><a href="#__codelineno-0-209">209</a></span>
+<span class="normal"><a href="#__codelineno-0-210">210</a></span>
+<span class="normal"><a href="#__codelineno-0-211">211</a></span>
+<span class="normal"><a href="#__codelineno-0-212">212</a></span>
+<span class="normal"><a href="#__codelineno-0-213">213</a></span>
+<span class="normal"><a href="#__codelineno-0-214">214</a></span>
+<span class="normal"><a href="#__codelineno-0-215">215</a></span>
+<span class="normal"><a href="#__codelineno-0-216">216</a></span>
+<span class="normal"><a href="#__codelineno-0-217">217</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-203" name="__codelineno-0-203"></a><span class="k">def</span><span class="w"> </span><span class="nf">all_buffers_and_locks</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<a id="__codelineno-0-204" name="__codelineno-0-204"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Iterate every Buffer + Lock this program touches.</span>
+<a id="__codelineno-0-205" name="__codelineno-0-205"></a>
+<a id="__codelineno-0-206" name="__codelineno-0-206"></a><span class="sd">    Program uses this to make sure they&#39;re all resolved before us.</span>
+<a id="__codelineno-0-207" name="__codelineno-0-207"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-208" name="__codelineno-0-208"></a>    <span class="n">seen_buffers</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">Buffer</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+<a id="__codelineno-0-209" name="__codelineno-0-209"></a>    <span class="n">seen_locks</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">Lock</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+<a id="__codelineno-0-210" name="__codelineno-0-210"></a>    <span class="k">for</span> <span class="n">ch</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_channels</span><span class="p">:</span>
+<a id="__codelineno-0-211" name="__codelineno-0-211"></a>        <span class="k">for</span> <span class="n">bd</span> <span class="ow">in</span> <span class="n">ch</span><span class="o">.</span><span class="n">bds</span><span class="p">:</span>
+<a id="__codelineno-0-212" name="__codelineno-0-212"></a>            <span class="k">if</span> <span class="n">bd</span><span class="o">.</span><span class="n">buffer</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">seen_buffers</span><span class="p">:</span>
+<a id="__codelineno-0-213" name="__codelineno-0-213"></a>                <span class="n">seen_buffers</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">bd</span><span class="o">.</span><span class="n">buffer</span><span class="p">)</span>
+<a id="__codelineno-0-214" name="__codelineno-0-214"></a>            <span class="k">for</span> <span class="n">use</span> <span class="ow">in</span> <span class="p">(</span><span class="o">*</span><span class="n">bd</span><span class="o">.</span><span class="n">acquires</span><span class="p">,</span> <span class="o">*</span><span class="n">bd</span><span class="o">.</span><span class="n">releases</span><span class="p">):</span>
+<a id="__codelineno-0-215" name="__codelineno-0-215"></a>                <span class="k">if</span> <span class="n">use</span><span class="o">.</span><span class="n">lock</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">seen_locks</span><span class="p">:</span>
+<a id="__codelineno-0-216" name="__codelineno-0-216"></a>                    <span class="n">seen_locks</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">use</span><span class="o">.</span><span class="n">lock</span><span class="p">)</span>
+<a id="__codelineno-0-217" name="__codelineno-0-217"></a>    <span class="k">return</span> <span class="n">seen_buffers</span><span class="p">,</span> <span class="n">seen_locks</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>

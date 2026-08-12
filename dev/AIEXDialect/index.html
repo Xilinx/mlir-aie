@@ -4945,7 +4945,18 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="aiex.npu.writebd (::xilinx::AIEX::NpuWriteBdOp)">
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#iteration-convention-raw-register-values" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Iteration convention: raw register values
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Iteration convention: raw register values">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -8392,7 +8403,18 @@
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="aiex.npu.writebd (::xilinx::AIEX::NpuWriteBdOp)">
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#iteration-convention-raw-register-values" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Iteration convention: raw register values
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Iteration convention: raw register values">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -10236,7 +10258,8 @@ and <a href="../programming_guide/section-3/">Section 3 - My First Program</a>.<
 <li><a href="#operands_24">Operands:</a></li>
 </ul>
 </li>
-<li><a href="#aiexnpuwritebd-xilinxaiexnpuwritebdop">aiex.npu.writebd (::xilinx::AIEX::NpuWriteBdOp)</a><ul>
+<li><a href="#aiexnpuwritebd-xilinxaiexnpuwritebdop">aiex.npu.writebd (::xilinx::AIEX::NpuWriteBdOp)</a></li>
+<li><a href="#iteration-convention-raw-register-values">Iteration convention: raw register values</a><ul>
 <li><a href="#attributes_45">Attributes:</a></li>
 </ul>
 </li>
@@ -12150,7 +12173,14 @@ If 'buffer' is not present and 'column' and 'row' are not present then
 <p>Syntax:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-77-1" name="__codelineno-77-1" href="#__codelineno-77-1"></a>operation ::= `aiex.npu.writebd` attr-dict
 </code></pre></div>
-<p>writebd operator</p>
+<p>Write a complete buffer descriptor (all fields explicit) to a BD slot.</p>
+<h3 id="iteration-convention-raw-register-values">Iteration convention: raw register values<a class="headerlink" href="#iteration-convention-raw-register-values" title="Permanent link">&para;</a></h3>
+<p>The <code>iteration_*</code> attributes here are RAW register values: stored off by one
+(<code>iteration_size = 3</code> means four executions) and <code>iteration_stride</code> in
+32-bit words. The iteration state on <code>aie.dma_bd</code> (<code>#aie.bd_iteration&lt;...&gt;</code>)
+holds TRUE / element values; the lowering applies the <code>-1</code> bias and the
+element-&gt;word scaling there. Do NOT copy an iteration number between the
+two ops. See the "## BD iteration" section of <code>aie.dma_bd</code> for more details.</p>
 <h4 id="attributes_45">Attributes:<a class="headerlink" href="#attributes_45" title="Permanent link">&para;</a></h4>
 <table>
 <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
