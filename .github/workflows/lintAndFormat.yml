@@ -99,8 +99,8 @@ jobs:
             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 
           # Pass/op tablegen targets not covered by aie-headers/mlir-headers --
-          # needed so clang-tidy (below) can actually parse pass source files
-          # instead of erroring on a missing generated header. Extend this
+          # needed so clang-tidy (below) can parse pass source files
+          # that include generated headers. Extend this
           # list as the clang-tidy file set (see the "clang-tidy" step below)
           # grows into dialects/passes with their own IncGen targets.
           #   MLIRAIEPassIncGen             -> AIEPasses.h.inc
