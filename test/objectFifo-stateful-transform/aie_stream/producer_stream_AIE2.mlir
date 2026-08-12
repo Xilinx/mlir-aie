@@ -9,9 +9,9 @@
 
 // CHECK: module @producer_stream_AIE2 {
 // CHECK:   aie.device(xcve2302) {
-// CHECK-DAG:     %[[VAL_0:.*]] = aie.tile(1, 2)
-// CHECK-DAG:     %[[VAL_1:.*]] = aie.tile(1, 3)
-// CHECK-DAG:     %[[VAL_2:.*]] = aie.tile(3, 3)
+// CHECK:     %[[VAL_0:.*]] = aie.tile(1, 2)
+// CHECK:     %[[VAL_1:.*]] = aie.tile(1, 3)
+// CHECK:     %[[VAL_2:.*]] = aie.tile(3, 3)
 // CHECK:     %of_producer_stream_cons_buff_0 = aie.buffer(%tile_1_3) {sym_name = "of_producer_stream_cons_buff_0"} : memref<16xi32>
 // CHECK:     %of_producer_stream_cons_buff_1 = aie.buffer(%tile_1_3) {sym_name = "of_producer_stream_cons_buff_1"} : memref<16xi32>
 // CHECK:     %of_producer_stream_cons_buff_2 = aie.buffer(%tile_1_3) {sym_name = "of_producer_stream_cons_buff_2"} : memref<16xi32>

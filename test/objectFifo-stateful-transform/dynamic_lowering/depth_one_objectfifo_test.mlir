@@ -12,9 +12,9 @@
 // CHECK:      func.func @passthrough_10_i32(%arg0: memref<10xi32>) {
 // CHECK:        return
 // CHECK:      }
-// CHECK-DAG:      %{{.*}}tile_0_0 = aie.tile(0, 0)
-// CHECK-DAG:      %{{.*}}tile_0_2 = aie.tile(0, 2)
-// CHECK-DAG:      %{{.*}}tile_0_4 = aie.tile(0, 4)
+// CHECK:      %{{.*}}tile_0_0 = aie.tile(0, 0)
+// CHECK:      %{{.*}}tile_0_2 = aie.tile(0, 2)
+// CHECK:      %{{.*}}tile_0_4 = aie.tile(0, 4)
 // CHECK:      %[[VAL_0:.*]] = aie.buffer(%{{.*}}tile_0_2) {sym_name = "input_fifo_cons_buff_0"} : memref<10xi32>
 // CHECK:      %[[VAL_1:.*]] = aie.lock(%{{.*}}tile_0_2, 0) {init = 1 : i32, sym_name = "input_fifo_cons_prod_lock_0"}
 // CHECK:      %[[VAL_2:.*]] = aie.lock(%{{.*}}tile_0_2, 1) {init = 0 : i32, sym_name = "input_fifo_cons_cons_lock_0"}
@@ -23,7 +23,7 @@
 // CHECK:      %core_0_2 = aie.core(%{{.*}}tile_0_2) {
 // CHECK:        %c0_i32 = arith.constant 0 : i32
 // CHECK:        %{{.*}} = arith.constant 0 : i32
-// CHECK-DAG:        %c0 = arith.constant 0 : index
+// CHECK:        %c0 = arith.constant 0 : index
 // CHECK:        %c1_i32 = arith.constant 1 : i32
 // CHECK:        memref.store %{{.*}}, %buffer_0_2[%c0] : memref<1xi32>
 // CHECK:        %{{.*}} = arith.constant 0 : index

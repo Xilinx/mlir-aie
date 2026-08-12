@@ -9,9 +9,9 @@
 
 // CHECK: module @full_stream_AIE2 {
 // CHECK:   aie.device(xcve2302) {
-// CHECK-DAG:     %[[VAL_0:.*]] = aie.tile(1, 2)
-// CHECK-DAG:     %[[VAL_1:.*]] = aie.tile(1, 3)
-// CHECK-DAG:     %[[VAL_2:.*]] = aie.tile(3, 3)
+// CHECK:     %[[VAL_0:.*]] = aie.tile(1, 2)
+// CHECK:     %[[VAL_1:.*]] = aie.tile(1, 3)
+// CHECK:     %[[VAL_2:.*]] = aie.tile(3, 3)
 // CHECK:     aie.flow(%tile_1_2, Core : 1, %tile_3_3, Core : 1)
 // CHECK:   }
 // CHECK: }

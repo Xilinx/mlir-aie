@@ -9,8 +9,8 @@
 
 // RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll %s | FileCheck %s
 
-// CHECK-DAG:           %[[VAL_0:.*]] = aie.tile(0, 0)
-// CHECK-DAG:           %[[VAL_1:.*]] = aie.tile(0, 2)
+// CHECK:           %[[VAL_0:.*]] = aie.tile(0, 0)
+// CHECK:           %[[VAL_1:.*]] = aie.tile(0, 2)
 // CHECK:           %[[VAL_4:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "outC_buff_0"} : memref<16x16xi16>
 // CHECK:           %[[VAL_5:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "outC_buff_1"} : memref<16x16xi16>
 // CHECK:           %[[VAL_6:.*]] = aie.lock(%[[VAL_1]], 4) {init = 2 : i32, sym_name = "outC_prod_lock_0"}

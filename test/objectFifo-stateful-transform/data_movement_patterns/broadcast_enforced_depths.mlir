@@ -11,11 +11,11 @@
 // RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll %s | FileCheck %s
 
 // CHECK-LABEL:   aie.device(xcvc1902) {
-// CHECK-DAG:           %[[VAL_0:.*]] = aie.tile(1, 2)
-// CHECK-DAG:           %[[VAL_1:.*]] = aie.tile(1, 3)
-// CHECK-DAG:           %[[VAL_2:.*]] = aie.tile(1, 4)
-// CHECK-DAG:           %[[VAL_3:.*]] = aie.tile(3, 2)
-// CHECK-DAG:           %[[VAL_4:.*]] = aie.tile(3, 3)
+// CHECK:           %[[VAL_0:.*]] = aie.tile(1, 2)
+// CHECK:           %[[VAL_1:.*]] = aie.tile(1, 3)
+// CHECK:           %[[VAL_2:.*]] = aie.tile(1, 4)
+// CHECK:           %[[VAL_3:.*]] = aie.tile(3, 2)
+// CHECK:           %[[VAL_4:.*]] = aie.tile(3, 3)
 // CHECK:           %[[VAL_5:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "broadcast_of_0_cons_buff_0"} : memref<16xi32>
 // CHECK:           %[[VAL_6:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "broadcast_of_0_cons_buff_1"} : memref<16xi32>
 // CHECK:           %[[VAL_7:.*]] = aie.lock(%[[VAL_0]], 0) {init = 0 : i32, sym_name = "broadcast_of_0_cons_lock_0"}

@@ -11,8 +11,8 @@
 // RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll %s | FileCheck %s
 
 // CHECK-LABEL:   aie.device(xcvc1902) {
-// CHECK-DAG:           %[[VAL_0:.*]] = aie.tile(1, 2)
-// CHECK-DAG:           %[[VAL_1:.*]] = aie.tile(3, 3)
+// CHECK:           %[[VAL_0:.*]] = aie.tile(1, 2)
+// CHECK:           %[[VAL_1:.*]] = aie.tile(3, 3)
 // CHECK:           %[[VAL_2:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "objfifo_cons_buff_0"} : memref<16xi32>
 // CHECK:           %[[VAL_3:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "objfifo_cons_buff_1"} : memref<16xi32>
 // CHECK:           %[[VAL_4:.*]] = aie.lock(%[[VAL_1]], 0) {init = 0 : i32, sym_name = "objfifo_cons_lock_0"}

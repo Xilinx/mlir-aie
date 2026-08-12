@@ -11,8 +11,8 @@
 // CHECK:           func.func @add_10_i32(%[[VAL_0:.*]]: memref<10xi32>, %[[VAL_1:.*]]: memref<10xi32>, %[[VAL_2:.*]]: memref<10xi32>) {
 // CHECK:             return
 // CHECK:           }
-// CHECK-DAG:           %[[VAL_3:.*]] = aie.tile(0, 0)
-// CHECK-DAG:           %[[VAL_4:.*]] = aie.tile(0, 2)
+// CHECK:           %[[VAL_3:.*]] = aie.tile(0, 0)
+// CHECK:           %[[VAL_4:.*]] = aie.tile(0, 2)
 // CHECK:           %[[VAL_5:.*]] = aie.lock(%[[VAL_3]], 2) {init = 0 : i32, sym_name = "output_fifo_cons_prod_lock_0"}
 // CHECK:           %[[VAL_6:.*]] = aie.lock(%[[VAL_3]], 3) {init = 0 : i32, sym_name = "output_fifo_cons_cons_lock_0"}
 // CHECK:           %[[VAL_7:.*]] = aie.buffer(%[[VAL_4]]) {sym_name = "output_fifo_buff_0"} : memref<10xi32>

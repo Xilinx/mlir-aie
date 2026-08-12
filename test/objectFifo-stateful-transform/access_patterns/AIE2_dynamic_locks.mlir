@@ -29,8 +29,8 @@
 
 // CHECK: module @aie2_dynamic_locks {
 // CHECK:   aie.device(xcve2302) {
-// CHECK-DAG:     %[[tile23:.*]] = aie.tile(2, 2)
-// CHECK-DAG:     %[[tile43:.*]] = aie.tile(4, 3)
+// CHECK:     %[[tile23:.*]] = aie.tile(2, 2)
+// CHECK:     %[[tile43:.*]] = aie.tile(4, 3)
 
 // The setup for flows, locks, and buffers can be the same in the dynamic case:
 // CHECK:     %[[fifo_buff_0:.*]] = aie.buffer(%[[tile23]]) {sym_name = "fifo_buff_0"} : memref<i64>
@@ -42,10 +42,10 @@
 // CHECK:     aie.flow(%[[tile23]], DMA : 0, %[[tile43]], DMA : 0)
 
 // CHECK:     %[[ssa8:.*]] = aie.core(%[[tile23]]) {
-// CHECK-DAG:       %c0 = arith.constant 0 : index
-// CHECK-DAG:       %c1 = arith.constant 1 : index
-// CHECK-DAG:       %c3 = arith.constant 3 : index
-// CHECK-DAG:       %c16 = arith.constant 16 : index
+// CHECK:       %c0 = arith.constant 0 : index
+// CHECK:       %c1 = arith.constant 1 : index
+// CHECK:       %c3 = arith.constant 3 : index
+// CHECK:       %c16 = arith.constant 16 : index
 // CHECK:       %c1_i64 = arith.constant 1 : i64
 
 // We need a SSA value that keeps track of the number of objects currently

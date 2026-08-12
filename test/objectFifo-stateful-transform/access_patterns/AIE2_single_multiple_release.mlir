@@ -7,9 +7,9 @@
 
 // RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll %s | FileCheck %s
 
-// CHECK-DAG:      %[[VAL_0:.*]] = aie.tile(0, 0)
-// CHECK-DAG:      %[[VAL_1:.*]] = aie.tile(0, 2)
-// CHECK-DAG:      %[[VAL_2:.*]] = aie.tile(0, 3)
+// CHECK:      %[[VAL_0:.*]] = aie.tile(0, 0)
+// CHECK:      %[[VAL_1:.*]] = aie.tile(0, 2)
+// CHECK:      %[[VAL_2:.*]] = aie.tile(0, 3)
 // CHECK:      %[[VAL_3:.*]] = aie.buffer(%[[VAL_2]]) {sym_name = "of2_cons_buff_0"} : memref<16xi32>
 // CHECK:      %[[VAL_4:.*]] = aie.buffer(%[[VAL_2]]) {sym_name = "of2_cons_buff_1"} : memref<16xi32>
 // CHECK:      %[[VAL_5:.*]] = aie.buffer(%[[VAL_2]]) {sym_name = "of2_cons_buff_2"} : memref<16xi32>

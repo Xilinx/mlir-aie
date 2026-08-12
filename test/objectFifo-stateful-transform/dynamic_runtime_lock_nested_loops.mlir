@@ -13,8 +13,8 @@
 // RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll="dynamic-objFifos=true" %s | FileCheck %s
 
 // CHECK-LABEL:   aie.device(npu2) {
-// CHECK-DAG:           %[[VAL_0:.*]] = aie.tile(0, 1)
-// CHECK-DAG:           %[[VAL_1:.*]] = aie.tile(0, 2)
+// CHECK:           %[[VAL_0:.*]] = aie.tile(0, 1)
+// CHECK:           %[[VAL_1:.*]] = aie.tile(0, 2)
 // CHECK:           %[[VAL_2:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "inOF_X_cons_buff_0"} : memref<8xi8>
 // CHECK:           %[[VAL_3:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "inOF_X_cons_buff_1"} : memref<8xi8>
 // CHECK:           %[[VAL_4:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "inOF_X_cons_buff_2"} : memref<8xi8>

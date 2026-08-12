@@ -10,10 +10,10 @@
 // RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll %s | FileCheck %s
 
 // CHECK-LABEL:   aie.device(xcve2302) {
-// CHECK-DAG:           %[[VAL_0:.*]] = aie.tile(0, 0)
-// CHECK-DAG:           %[[VAL_1:.*]] = aie.tile(0, 1)
-// CHECK-DAG:           %[[VAL_2:.*]] = aie.tile(0, 2)
-// CHECK-DAG:           %[[VAL_3:.*]] = aie.tile(0, 3)
+// CHECK:           %[[VAL_0:.*]] = aie.tile(0, 0)
+// CHECK:           %[[VAL_1:.*]] = aie.tile(0, 1)
+// CHECK:           %[[VAL_2:.*]] = aie.tile(0, 2)
+// CHECK:           %[[VAL_3:.*]] = aie.tile(0, 3)
 // CHECK:           %[[VAL_4:.*]] = aie.buffer(%[[VAL_3]]) {sym_name = "mem_out_cons_buff_0"} : memref<3000xi32>
 // CHECK:           %[[VAL_5:.*]] = aie.buffer(%[[VAL_3]]) {sym_name = "mem_out_cons_buff_1"} : memref<3000xi32>
 // CHECK:           %[[VAL_6:.*]] = aie.buffer(%[[VAL_3]]) {sym_name = "mem_out_cons_buff_2"} : memref<3000xi32>

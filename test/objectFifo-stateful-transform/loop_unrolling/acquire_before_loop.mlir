@@ -12,8 +12,8 @@
 
 // CHECK-LABEL: module {
 // CHECK:         aie.device(xcvc1902) {
-// CHECK-DAG:           %[[VAL_0:.*]] = aie.tile(1, 2)
-// CHECK-DAG:           %[[VAL_1:.*]] = aie.tile(1, 3)
+// CHECK:           %[[VAL_0:.*]] = aie.tile(1, 2)
+// CHECK:           %[[VAL_1:.*]] = aie.tile(1, 3)
 // CHECK:           %[[VAL_2:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "loop_of_buff_0"} : memref<16xi32>
 // CHECK:           %[[VAL_3:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "loop_of_buff_1"} : memref<16xi32>
 // CHECK:           %[[VAL_4:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "loop_of_buff_2"} : memref<16xi32>

@@ -9,9 +9,9 @@
 
 // CHECK: module @disable_sync {
 // CHECK:   aie.device(xcvc1902) {
-// CHECK-DAG:     %{{.*}}tile_1_2 = aie.tile(1, 2)
-// CHECK-DAG:     %{{.*}}tile_1_3 = aie.tile(1, 3)
-// CHECK-DAG:     %{{.*}}tile_3_3 = aie.tile(3, 3)
+// CHECK:     %{{.*}}tile_1_2 = aie.tile(1, 2)
+// CHECK:     %{{.*}}tile_1_3 = aie.tile(1, 3)
+// CHECK:     %{{.*}}tile_3_3 = aie.tile(3, 3)
 // CHECK:     %[[VAL_0:.*]] = aie.buffer(%{{.*}}tile_3_3) {sym_name = "of1_cons_buff_0"} : memref<16xi32>
 // CHECK:     %[[VAL_1:.*]] = aie.buffer(%{{.*}}tile_3_3) {sym_name = "of1_cons_buff_1"} : memref<16xi32>
 // CHECK:     %[[VAL_2:.*]] = aie.buffer(%{{.*}}tile_1_2) {sym_name = "of1_buff_0"} : memref<16xi32>
