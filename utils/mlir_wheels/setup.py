@@ -85,6 +85,13 @@ def get_cross_cmake_args():
             cmake_args["CMAKE_C_COMPILER"] = "aarch64-linux-gnu-gcc"
             cmake_args["CMAKE_CXX_COMPILER"] = "aarch64-linux-gnu-g++"
             cmake_args["CMAKE_CXX_FLAGS"] = "-static-libgcc -static-libstdc++"
+            # GNU ld fails to insert AArch64 long-branch veneers for the fully
+            # static mlir-opt/mlir-translate binaries, causing "relocation
+            # truncated to fit: R_AARCH64_CALL26" inside libstdc++.a itself.
+            # lld handles arbitrarily large binaries correctly.
+            cmake_args["CMAKE_EXE_LINKER_FLAGS_INIT"] = "-fuse-ld=lld"
+            cmake_args["CMAKE_MODULE_LINKER_FLAGS_INIT"] = "-fuse-ld=lld"
+            cmake_args["CMAKE_SHARED_LINKER_FLAGS_INIT"] = "-fuse-ld=lld"
             native_tools()
         elif ARCH == "X86":
             cmake_args["LLVM_DEFAULT_TARGET_TRIPLE"] = "x86_64-unknown-linux-gnu"
