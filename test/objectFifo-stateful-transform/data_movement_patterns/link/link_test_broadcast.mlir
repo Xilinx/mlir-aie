@@ -37,15 +37,15 @@
 // CHECK:           aie.flow(%[[VAL_0]], DMA : 0, %[[VAL_2]], DMA : 0)
 // CHECK:           aie.flow(%[[VAL_1]], DMA : 0, %[[VAL_3]], DMA : 0)
 // CHECK:           %[[VAL_25:.*]] = aie.core(%[[VAL_2]]) {
-// CHECK:             %[[VAL_26:.*]] = arith.constant 11 : i32
-// CHECK:             %[[VAL_27:.*]] = arith.constant 0 : index
+// CHECK-DAG:             %[[VAL_26:.*]] = arith.constant 11 : i32
+// CHECK-DAG:             %[[VAL_27:.*]] = arith.constant 0 : index
 // CHECK:             aie.use_lock(%[[VAL_13]], AcquireGreaterEqual, %{{.*}})
 // CHECK:             memref.store %[[VAL_26]], %[[VAL_10]]{{\[}}%[[VAL_27]]] : memref<3000xi32>
 // CHECK:             aie.end
 // CHECK:           }
 // CHECK:           %[[VAL_28:.*]] = aie.core(%[[VAL_3]]) {
-// CHECK:             %[[VAL_29:.*]] = arith.constant 11 : i32
-// CHECK:             %[[VAL_30:.*]] = arith.constant 0 : index
+// CHECK-DAG:             %[[VAL_29:.*]] = arith.constant 11 : i32
+// CHECK-DAG:             %[[VAL_30:.*]] = arith.constant 0 : index
 // CHECK:             aie.use_lock(%[[VAL_9]], AcquireGreaterEqual, %{{.*}})
 // CHECK:             memref.store %[[VAL_29]], %[[VAL_4]]{{\[}}%[[VAL_30]]] : memref<3000xi32>
 // CHECK:             aie.end
