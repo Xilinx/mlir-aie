@@ -33,10 +33,12 @@
 #define AIESIM_TXN_REPLAY_H
 
 #include "aiesim/Array.h"
+#include "aiesim/Components.h"
 
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 namespace aiesim {
 
@@ -66,6 +68,30 @@ inline uint64_t argumentBase(uint32_t argIdx) {
   return static_cast<uint64_t>(argIdx) * kArgumentStride;
 }
 
+/// A TCT wait that gave up, and what it was waiting on.
+///
+/// Kept per occurrence rather than only counted: a design's waits are not
+/// interchangeable, and "4 of 8 timed out" names neither which channel stalled
+/// nor whether the whole wait or one tile of it was the problem. Same reason the
+/// DMA diagnostics name their tile and BD -- a fault somewhere is not a location.
+struct SyncTimeout {
+  /// The tile the descriptor names, which is where the wait's rectangle starts.
+  uint32_t col = 0, row = 0;
+  DmaDirection dir = DmaDirection::S2MM;
+  uint32_t channel = 0;
+  /// Tiles in the wait's rectangle that exist and have a DMA, and how many of
+  /// those never completed a BD on that channel. `unsatisfied < targets` is a
+  /// PARTIAL stall -- some tiles delivered and others did not, which is a
+  /// different fault from a channel nothing ever ran.
+  uint32_t targets = 0, unsatisfied = 0;
+  /// Completions already on the counter when the wait STARTED, summed over its
+  /// targets, and the same sum when it gave up. Equal and non-zero means the
+  /// BD this wait exists for had already completed before the wait began -- so
+  /// the wait is asking for a SECOND completion that was never coming, which is
+  /// a different fault from a channel that never ran.
+  uint32_t completedBefore = 0, completedAfter = 0;
+};
+
 /// What a replay did, per opcode. Reported rather than asserted, for the reason
 /// CdoReplayStats gives: a sequence with no shim BD in it is a fact about the
 /// design, not a failure, and a caller that only saw "ok" could not tell.
@@ -90,6 +116,8 @@ struct TxnReplayStats {
   /// legitimately never reach it. The count is what says so out loud.
   uint32_t maskPollTimedOut = 0;
   uint32_t syncTimedOut = 0;
+  /// One entry per timed-out TCT, in sequence order. Size equals syncTimedOut.
+  std::vector<SyncTimeout> syncTimeouts;
 };
 
 /// Cycles one wait (a MASKPOLL or a TCT) may spin before it gives up and is
