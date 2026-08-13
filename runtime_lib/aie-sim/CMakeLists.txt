@@ -48,6 +48,7 @@ add_library(aie-sim STATIC
   lib/Readings.cpp
   lib/RegionMap.cpp
   lib/RegisterFile.cpp
+  lib/ShimMux.cpp
   lib/StreamSwitch.cpp
 )
 

@@ -433,17 +433,12 @@ public:
   void onChannelWrite(uint32_t off, uint32_t value);
   uint32_t onStatusRead(uint32_t off) const;
 
-  // Test-only hook. Production code (installDma) never calls this. Lock.cpp
-  // and StreamSwitch.cpp are both real now, so every Core/MemTile DMA test
-  // drives the genuinely-installed LockModule/StreamSwitchModule through
-  // register writes, same as production. The one exception is a Shim tile's
-  // DMA bundle: aie-rt's Aie2PShimStrmMstr/Slv give it NumPorts == 0
-  // (third_party/aie-rt/driver/src/global/xaie2pgbl_reginit.c:304-307,
-  // 348-351), so `tile.streamSwitch()->slavePort(PortBundle::DMA, ch)` has
-  // no valid index to return on a Shim tile at all (shim DMA reaches the NoC
-  // through a mechanism this stream-switch model does not have a port for).
-  // A Shim DMA test therefore has no real port to attach to and keeps this
-  // hook; see dma_test.cpp's testShimDdr.
+  // Test-only hook. Production code (installDma) never calls this. Lock.cpp,
+  // StreamSwitch.cpp and ShimMux.cpp are all real now, so a DMA test on any
+  // tile type can drive the genuinely-installed modules through register
+  // writes, same as production -- including a shim, which reaches the fabric
+  // through its mux (see effectivePort). The hook stays for the tests that
+  // want a channel in isolation, without a route to observe it through.
   void setTestPort(DmaDirection dir, uint32_t ch, StreamPort *port);
 
 private:
@@ -462,7 +457,12 @@ private:
   uint64_t computeAddress(const DecodedBd &bd, uint32_t beat) const;
   LockModule *effectiveLocks(uint32_t &id) const;
   Memory *effectiveMemory(uint64_t &addr) const;
-  StreamPort *effectivePort(DmaDirection dir, uint32_t ch, ChannelState &c);
+  /// Null when this channel has nowhere to move data. `why` is then set to
+  /// the specific reason, which the caller reports -- rather than this
+  /// reporting it itself, because moveOneWord() has a fallback message and two
+  /// diagnostics for one failure would bury the informative one.
+  StreamPort *effectivePort(DmaDirection dir, uint32_t ch, ChannelState &c,
+                            std::string &why);
   bool stepChannel(ChannelState &c, DmaDirection dir, uint32_t ch);
   bool moveOneWord(ChannelState &c, DmaDirection dir, uint32_t ch);
   void wakeStreamSwitch();
@@ -559,15 +559,50 @@ void DmaModuleImpl::wakeStreamSwitch() {
     tile.getArray().wake(ss);
 }
 
+// A shim tile has no DMA bundle on its stream switch (Aie2PShimStrmMstr/Slv
+// give it NumPorts == 0). Its DMA reaches the fabric through the PL-interface
+// mux instead, which steers four of the switch's SOUTH ports between the PL,
+// the shim DMA and the NoC -- so the port a shim channel uses is a south port,
+// and only while the design has pointed that port at the DMA. See
+// shimDmaSouthPort() for which port, and ShimMux.cpp for the register.
 StreamPort *DmaModuleImpl::effectivePort(DmaDirection dir, uint32_t ch,
-                                         ChannelState &c) {
+                                         ChannelState &c, std::string &why) {
   if (c.testPort)
     return c.testPort;
   StreamSwitchModule *ss = tile.streamSwitch();
   if (!ss)
     return nullptr;
-  return dir == DmaDirection::MM2S ? ss->slavePort(PortBundle::DMA, ch)
-                                   : ss->masterPort(PortBundle::DMA, ch);
+
+  if (kind != TileType::Shim)
+    return dir == DmaDirection::MM2S ? ss->slavePort(PortBundle::DMA, ch)
+                                     : ss->masterPort(PortBundle::DMA, ch);
+
+  ShimMuxModule *mux = tile.shimMux();
+  int port = shimDmaSouthPort(dir, ch);
+  if (!mux || port < 0)
+    return nullptr;
+  uint32_t index = static_cast<uint32_t>(port);
+
+  ShimPortEndpoint facing = dir == DmaDirection::MM2S
+                                ? mux->slaveEndpoint(index)
+                                : mux->masterEndpoint(index);
+  if (facing != ShimPortEndpoint::ShimDma) {
+    // Not a modelling gap: the design ran a shim DMA channel whose port it
+    // steered somewhere else, so on hardware the data would go to or come from
+    // that endpoint instead. The message names the port and what it faces,
+    // because the interesting case is a mux write that never happened (leaving
+    // the reset value, PL) rather than one that chose wrong.
+    why = where(c.curBd) + "shim DMA " +
+          (dir == DmaDirection::MM2S ? "MM2S" : "S2MM") + " channel " +
+          std::to_string(ch) + " runs against south port " +
+          std::to_string(index) +
+          ", which the mux/demux register points at the " +
+          shimPortEndpointName(facing) + " rather than the shim DMA";
+    return nullptr;
+  }
+
+  return dir == DmaDirection::MM2S ? ss->slavePort(PortBundle::South, index)
+                                   : ss->masterPort(PortBundle::South, index);
 }
 
 void DmaModuleImpl::pushTask(DmaDirection dir, uint32_t ch, uint8_t startBd,
@@ -916,12 +951,14 @@ bool DmaModuleImpl::moveOneWord(ChannelState &c, DmaDirection dir,
   // 32-byte "beat" would need to invent a wider StreamPort operation that
   // Components.h does not define; a sub-word grain has no addressable
   // meaning at this layer.
-  StreamPort *port = effectivePort(dir, ch, c);
+  std::string why;
+  StreamPort *port = effectivePort(dir, ch, c, why);
   if (!port) {
     tile.getArray().error(
-        "DMA channel needs a stream port but none is available (no "
-        "StreamSwitchModule installed on this tile, and no test port set "
-        "via dmaTestSetPort)");
+        why.empty() ? "DMA channel needs a stream port but none is available "
+                      "(no StreamSwitchModule installed on this tile, and no "
+                      "test port set via dmaTestSetPort)"
+                    : why);
     return false;
   }
 

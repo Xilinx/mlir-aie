@@ -123,6 +123,9 @@ void Tile::setLocks(std::unique_ptr<LockModule> m) { lockModule = std::move(m); 
 void Tile::setStreamSwitch(std::unique_ptr<StreamSwitchModule> m) {
   switchModule = std::move(m);
 }
+void Tile::setShimMux(std::unique_ptr<ShimMuxModule> m) {
+  muxModule = std::move(m);
+}
 void Tile::setDma(std::unique_ptr<DmaModule> m) { dmaModule = std::move(m); }
 void Tile::setRegionMap(RegionMap map) {
   regions = std::make_unique<RegionMap>(std::move(map));
@@ -150,9 +153,10 @@ Array::Array(const DeviceModel &dev, std::unique_ptr<CoreEngineFactory> engines)
       tiles[static_cast<size_t>(row) * dev.numCols + col] =
           std::make_unique<Tile>(*this, col, row, dev.tileTypeAt(row));
 
-  // Installation order matters: DMA looks up locks and stream ports, and the
-  // core looks up all three. Steppable registration order follows, which is
-  // what makes the cycle-by-cycle interleaving reproducible. Memory has no
+  // Installation order matters: DMA looks up locks, stream ports and (on a
+  // shim) the mux that says which stream port it comes out of, and the core
+  // looks up the rest. Steppable registration order follows, which is what
+  // makes the cycle-by-cycle interleaving reproducible. Memory has no
   // dependency on the others and none on it, so it goes first.
   for (auto &t : tiles)
     installMemory(*t);
@@ -160,6 +164,8 @@ Array::Array(const DeviceModel &dev, std::unique_ptr<CoreEngineFactory> engines)
     installLocks(*t);
   for (auto &t : tiles)
     installStreamSwitch(*t);
+  for (auto &t : tiles)
+    installShimMux(*t);
   for (auto &t : tiles)
     installDma(*t);
   for (auto &t : tiles)

@@ -235,6 +235,7 @@ public:
   /// Each kind is set once, by its installer in Components.h.
   void setLocks(std::unique_ptr<class LockModule> m);
   void setStreamSwitch(std::unique_ptr<class StreamSwitchModule> m);
+  void setShimMux(std::unique_ptr<class ShimMuxModule> m);
   void setDma(std::unique_ptr<class DmaModule> m);
   /// What drives this tile's core from CORE_CONTROL. A plain Steppable slot
   /// rather than its own module type: everything a caller needs to observe
@@ -244,6 +245,8 @@ public:
 
   class LockModule *locks() { return lockModule.get(); }
   class StreamSwitchModule *streamSwitch() { return switchModule.get(); }
+  /// The PL-interface mux, or null on anything but a shim tile.
+  class ShimMuxModule *shimMux() { return muxModule.get(); }
   class DmaModule *dma() { return dmaModule.get(); }
 
   /// This tile's core engine, created on FIRST USE from the array's factory.
@@ -277,6 +280,7 @@ private:
   std::unique_ptr<Memory> progMem;
   std::unique_ptr<class LockModule> lockModule;
   std::unique_ptr<class StreamSwitchModule> switchModule;
+  std::unique_ptr<class ShimMuxModule> muxModule;
   std::unique_ptr<class DmaModule> dmaModule;
   // Members destruct in reverse declaration order, and each of these three
   // depends on the one above it: the engine holds a reference to the port, and
