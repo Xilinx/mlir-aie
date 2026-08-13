@@ -174,6 +174,11 @@ endif()
 add_executable(register_coverage tools/register_coverage.cpp)
 target_link_libraries(register_coverage PRIVATE aie-sim)
 
+# Reports how far real compiled kernels get. Needs a corpus and a core engine,
+# so it is a tool the way register_coverage is, not a test.
+add_executable(elf_frontier tools/elf_frontier.cpp)
+target_link_libraries(elf_frontier PRIVATE aie-sim)
+
 if(BUILD_TESTING)
   add_subdirectory(test)
 endif()
