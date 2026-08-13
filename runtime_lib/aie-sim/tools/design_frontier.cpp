@@ -42,6 +42,7 @@
 #include "aiesim/TxnReplay.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -80,6 +81,36 @@ const char *bucketName(Bucket b) {
   return "?";
 }
 
+/// A diagnostic with its hex literals blanked, which is the key repeated faults
+/// group under. Only hex is blanked: an address is what varies per access,
+/// whereas tile coordinates and lock ids print as decimal and genuinely name
+/// different sites, so folding those together would report one fault where the
+/// model found several.
+std::string diagKey(const std::string &m) {
+  std::string key;
+  for (size_t i = 0; i < m.size();) {
+    if (m[i] == '0' && i + 1 < m.size() && (m[i + 1] == 'x' || m[i + 1] == 'X')) {
+      size_t end = i + 2;
+      while (end < m.size() && std::isxdigit(static_cast<unsigned char>(m[end])))
+        end++;
+      if (end > i + 2) {
+        key += "0x#";
+        i = end;
+        continue;
+      }
+    }
+    key += m[i++];
+  }
+  return key;
+}
+
+struct DiagGroup {
+  std::string key;
+  std::string first;
+  std::string last;
+  size_t count = 0;
+};
+
 struct CoreResult {
   uint32_t col = 0, row = 0;
   Bucket bucket = Bucket::Empty;
@@ -103,7 +134,14 @@ struct DesignResult {
   uint64_t arrayCycles = 0;
   bool quiescent = false;
   std::vector<CoreResult> cores;
-  std::vector<std::string> diagnostics;
+  /// Diagnostics grouped by message, keeping the first and last of each group.
+  /// A core walking a bad pointer faults once per ACCESS, so one runaway loop
+  /// is thousands of messages that differ only in the address -- which both
+  /// buries every other diagnostic and grows with the budget rather than with
+  /// the design. The first and last carry the range the walk covered; the
+  /// stride is left to the reader, because nothing here checks that a group
+  /// has a uniform one.
+  std::vector<DiagGroup> diagnostics;
   size_t unclaimedSites = 0;
   /// Tiles whose DMA still has work outstanding when the run ends, and BDs
   /// completed across the array. Together they separate "the configuration
@@ -240,8 +278,17 @@ bool run(const std::string &deviceName, const std::string &init,
   // configures something this model does not have IS the result being
   // measured, so it has to land in the report next to the others rather than
   // taking the whole sweep down.
-  array.setDiagnosticHandler(
-      [&out](const std::string &m) { out.diagnostics.push_back(m); });
+  array.setDiagnosticHandler([&out](const std::string &m) {
+    std::string key = diagKey(m);
+    for (DiagGroup &g : out.diagnostics) {
+      if (g.key != key)
+        continue;
+      g.last = m;
+      g.count++;
+      return;
+    }
+    out.diagnostics.push_back({std::move(key), m, m, 1});
+  });
 
   // The CDO addresses tiles from 0 with no base; this array decodes against
   // the host base its DeviceModel carries.
@@ -504,11 +551,17 @@ int main(int argc, char **argv) {
         std::printf("    tile (%u, %u) %-10s pc=0x%X engine=%llu %s\n", c.col,
                     c.row, bucketName(c.bucket), c.pc,
                     (unsigned long long)c.engineCycles, c.detail.c_str());
-      for (const std::string &m : d.diagnostics)
-        std::printf("    diag: %s\n", m.c_str());
+      for (const DiagGroup &g : d.diagnostics) {
+        std::printf("    diag: %s\n", g.first.c_str());
+        if (g.count > 1)
+          std::printf("          x%zu, last: %s\n", g.count, g.last.c_str());
+      }
     } else if (!d.diagnostics.empty()) {
-      std::printf("    %zu diagnostic(s); first: %s\n", d.diagnostics.size(),
-                  d.diagnostics.front().c_str());
+      size_t total = 0;
+      for (const DiagGroup &g : d.diagnostics)
+        total += g.count;
+      std::printf("    %zu diagnostic(s) in %zu group(s); first: %s\n", total,
+                  d.diagnostics.size(), d.diagnostics.front().first.c_str());
     }
   }
 
