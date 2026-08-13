@@ -91,20 +91,32 @@ CoreEngine *Tile::ensureCoreEngine() {
   return coreEngine.get();
 }
 
-void aiesim::installMemory(Tile &tile) {
-  Memory *mem = tile.memory();
-  if (!mem)
-    return;
-  RegisterFile &regs = tile.regs();
+// Map one Memory onto [base, base + mem->size()) of the tile's register window.
+static void mapMemory(RegisterFile &regs, Memory *mem, uint32_t base) {
   uint32_t size = mem->size();
-  regs.onRead(0, size, [mem](uint32_t off) -> uint32_t {
+  regs.onRead(base, base + size, [mem, base](uint32_t off) -> uint32_t {
     uint32_t value = 0;
-    mem->read(off, &value, sizeof(value));
+    mem->read(off - base, &value, sizeof(value));
     return value;
   });
-  regs.onWrite(0, size, [mem](uint32_t off, uint32_t value) {
-    mem->write(off, &value, sizeof(value));
+  regs.onWrite(base, base + size, [mem, base](uint32_t off, uint32_t value) {
+    mem->write(off - base, &value, sizeof(value));
   });
+}
+
+void aiesim::installMemory(Tile &tile) {
+  RegisterFile &regs = tile.regs();
+  if (Memory *mem = tile.memory())
+    mapMemory(regs, mem, 0);
+  // Program memory sits in the same window at ProgMemHostOffset, and this is
+  // the only way anything outside the tile reaches it: aie-rt's ELF loader
+  // (_XAie_LoadProgMemSection, xaie_elfloader.c) and a design's own ELF CDO
+  // blob both write it as ordinary register traffic. Without the claim,
+  // replaying a real configuration loads no program at all and the write is
+  // merely RECORDED as unmodelled -- which is the failure this claim exists to
+  // stop being silent.
+  if (Memory *prog = tile.programMemory())
+    mapMemory(regs, prog, tile.getArray().device().progMemHostOffset);
 }
 
 void Tile::setLocks(std::unique_ptr<LockModule> m) { lockModule = std::move(m); }

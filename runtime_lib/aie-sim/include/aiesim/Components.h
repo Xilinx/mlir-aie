@@ -131,9 +131,9 @@ public:
 ///
 /// Each claims its own register ranges via Tile::regs().onWrite / onRead,
 /// adopts its state onto the tile, and registers itself as a Steppable.
-/// installMemory claims the whole data memory so it is reachable through the
-/// register bus -- docs/AIESimulator.md 8a.2 for why that is not a layering
-/// violation.
+/// installMemory claims the whole data memory, and program memory at
+/// DeviceModel::progMemHostOffset, so both are reachable through the register
+/// bus -- docs/AIESimulator.md 8a.2 for why that is not a layering violation.
 void installMemory(Tile &tile);
 void installLocks(Tile &tile);
 void installStreamSwitch(Tile &tile);
