@@ -5,19 +5,10 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// An unpinned shim feeding a MemTile that is pinned to a column, where that
-// same MemTile also carries unrelated traffic to cores in far-away columns.
-// The shim's destination is the memtile, and the memtile's column is known,
-// so the shim belongs in that column.
-//
-// The centroid used to resolve only CoreTile peers, so a memtile peer with a
-// known column was discarded and the search fell through to the memtile's
-// downstream cores. That returns the union of every column the memtile
-// touches -- here {0, 6, 7} -- placing the shim near their mean instead of
-// next to the memtile it actually feeds.
-//
-// Reduced from the weight feed of the fused LLM decode designs in mlir-air,
-// where a shim feeding a col-1 memtile was placed on col 3.
+// An unpinned shim feeding a col-pinned MemTile that also carries unrelated
+// traffic to distant cores. Resolving past the memtile to those cores collects
+// {0, 6, 7} and places the shim near their mean; the memtile's own column is
+// the answer. Reduced from an mlir-air LLM decode weight feed.
 
 // RUN: aie-opt --aie-place-tiles %s | FileCheck %s
 

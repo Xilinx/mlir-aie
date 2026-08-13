@@ -1145,15 +1145,9 @@ int SequentialPlacer::computeCentroidColumn(LogicalTileOp logicalTile,
   if (ltoIt == flowIndex.ltoFlows.end())
     return 0;
 
-  // The column of a peer, when it is already known. A core is known by
-  // construction (physical, or placed in an earlier phase). A non-core peer --
-  // a memtile or shim -- is known only if it carries an explicit col or was
-  // already placed; when it is, that peer IS this flow's destination and the
-  // core indirection below must not run. Resolving past a known memtile
-  // over-collects: a memtile typically serves several unrelated flows, so
-  // walking to its cores returns the union of every column it touches. A shim
-  // feeding a memtile pinned to col 1 was pulled to col 3 that way, because
-  // that memtile also carried packet flows reaching cols 0, 2, 5, 6 and 7.
+  // A peer's column when already known. A known non-core peer IS the
+  // destination; resolving past it over-collects, since a memtile usually
+  // serves several unrelated flows.
   auto resolvePeerCol = [&](Value v) -> std::optional<int> {
     Operation *defOp = v.getDefiningOp();
     if (!defOp)
