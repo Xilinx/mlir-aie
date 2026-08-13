@@ -75,6 +75,41 @@ inline std::optional<LockBand> splitLockId(uint32_t id, uint32_t numLocks) {
   return LockBand{kAIE2Bands[band].dir, id % numLocks};
 }
 
+/// The tile whose data memory and locks a band names, or null where the
+/// hardware puts nothing.
+///
+/// `AIE2TargetModel::getMem{South,West,North,East}`
+/// (lib/Dialect/AIE/IR/AIETargetModel.cpp:752-784), keeping both exclusions: a
+/// band that would leave the array has no backing, and a core tile's SOUTH band
+/// is empty when the tile below is a memtile, which `isLegalMemAffinity` states
+/// separately (`IsMemSouth && !isMemTile(memCol, memRow)`).
+///
+/// The generated linker scripts say the same from the other side, which is what
+/// makes this checkable rather than asserted: `op2_ElementwiseAdd`'s row-2 core
+/// carries `/* No tile with memory exists to the south. */` and leaves 0x4xxxx
+/// empty, while the identical kernel one row up places objectFIFO buffers at
+/// 0x40400 because row 3 does have a core tile below it.
+inline Tile *bandTile(Tile &core, MemDirection dir) {
+  Array &array = core.getArray();
+  const uint32_t col = core.getCol();
+  const uint32_t row = core.getRow();
+  // Array::tile bounds-checks against the partition, so the wrap at col 0 or
+  // row 0 lands outside it and answers null.
+  switch (dir) {
+  case MemDirection::Own:
+    return &core;
+  case MemDirection::West:
+    return array.tile(col - 1, row);
+  case MemDirection::North:
+    return array.tile(col, row + 1);
+  case MemDirection::South:
+    if (Tile *south = array.tile(col, row - 1))
+      return south->getType() == TileType::Core ? south : nullptr;
+    return nullptr;
+  }
+  return nullptr;
+}
+
 } // namespace aiesim
 
 #endif // AIESIM_CORE_ADDRESS_MAP_H

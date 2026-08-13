@@ -488,9 +488,10 @@ have been produced. Each is a decision, not a gap:
   llvm-aie models those bits as separate named registers (`crSat`, `crRnd`, ...), so one offset would
   have to be assembled from several. Both are vector-phase work, and guessing either produces a
   plausible wrong number, which is the one failure the fault contract cannot catch.
-* **`makeTileCorePort` faults on the three neighbour bands and the core stream/cascade ports** rather
-  than stalling, so a design that reaches one fails loudly instead of hanging or reading a plausible
-  wrong word.
+* **`makeTileCorePort` faults on the core stream and cascade ports** rather than stalling, so a design
+  that reaches one fails loudly instead of hanging or reading a plausible wrong word. The four data
+  bands are routed (`bandTile`, `lib/CoreAddressMap.h`), which is what an objectFIFO spanning two core
+  tiles needs -- it puts its buffers and its locks in the neighbour's module, not the producer's.
 * **`CoreEngine::opcodeCoverage()` defaults to empty.** An engine that does not track coverage is not
   broken, so callers must distinguish "not tracked" from "no gaps".
 
