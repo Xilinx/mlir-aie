@@ -115,6 +115,42 @@ enum class DmaDirection {
   MM2S, ///< Memory to stream.
 };
 
+/// What a shim tile's mux/demux register connects one of its stream switch's
+/// south ports to on the outside. Values are the register encoding
+/// (XAIE_MUX_DEMUX_CONFIG_TYPE_*, xaie_plif.c:37-39).
+enum class ShimPortEndpoint : uint32_t {
+  PL = 0,
+  ShimDma = 1,
+  NoC = 2,
+};
+
+const char *shimPortEndpointName(ShimPortEndpoint endpoint);
+
+/// A shim tile's PL-interface mux and demux (aie.shim_mux; aie-rt's
+/// XAie_PlIfMod ShimNocMux / ShimNocDeMux), which decide what the tile's south
+/// stream-switch ports face.
+///
+/// Of the three endpoints only ShimDma is a thing this model has: there is no
+/// PL and no NoC here. So a port facing either of those has no producer and no
+/// consumer, which is the correct simulation of a design that steered it away
+/// from the DMA -- not a gap being papered over.
+///
+/// Not a Steppable: it holds no data and moves none. It answers a question the
+/// DMA asks about where its channels come out.
+class ShimMuxModule {
+public:
+  virtual ~ShimMuxModule() = default;
+  /// What feeds south SLAVE port `index` of this tile's stream switch.
+  virtual ShimPortEndpoint slaveEndpoint(uint32_t index) const = 0;
+  /// What south MASTER port `index` of this tile's stream switch drains into.
+  virtual ShimPortEndpoint masterEndpoint(uint32_t index) const = 0;
+};
+
+/// The south stream-switch port a shim DMA channel reaches the fabric through,
+/// or -1 for a channel the hardware gives no such port. A MASTER port index for
+/// S2MM, a SLAVE port index for MM2S.
+int shimDmaSouthPort(DmaDirection dir, uint32_t channel);
+
 /// The per-tile DMA. Buffer descriptors and channel control live in the tile
 /// register file; this observes progress without reaching into them.
 class DmaModule : public Steppable {
@@ -126,8 +162,9 @@ public:
 };
 
 /// Installers. Each is called once per tile of the appropriate type during
-/// array construction, in this order: memory, locks, stream switch, DMA,
-/// core. Later components may look up earlier ones through the Tile accessors.
+/// array construction, in this order: memory, locks, stream switch, shim mux,
+/// DMA, core. Later components may look up earlier ones through the Tile
+/// accessors.
 ///
 /// Each claims its own register ranges via Tile::regs().onWrite / onRead,
 /// adopts its state onto the tile, and registers itself as a Steppable.
@@ -137,6 +174,7 @@ public:
 void installMemory(Tile &tile);
 void installLocks(Tile &tile);
 void installStreamSwitch(Tile &tile);
+void installShimMux(Tile &tile);
 void installDma(Tile &tile);
 void installCore(Tile &tile);
 

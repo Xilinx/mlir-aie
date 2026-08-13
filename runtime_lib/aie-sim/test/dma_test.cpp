@@ -32,16 +32,17 @@
 //    (non-wired) stream-switch bundle and reading that bundle's port
 //    directly, exactly as test/stream_switch_test.cpp does.
 //
-//  * The one place a hand-written test double is still unavoidable:
-//    testShimDdr. aie-rt's Aie2PShimStrmMstr/Aie2PShimStrmSlv both give the
-//    DMA bundle NumPorts == 0 on a Shim tile
+//    A Shim tile takes one more step to wire than the others. Its stream
+//    switch has no DMA bundle at all -- Aie2PShimStrmMstr/Aie2PShimStrmSlv
+//    give it NumPorts == 0
 //    (third_party/aie-rt/driver/src/global/xaie2pgbl_reginit.c:304-307,
-//    348-351) -- a Shim's DMA reaches the NoC through a mechanism this
-//    stream-switch model has no port for at all, so
-//    `streamSwitch()->slavePort(PortBundle::DMA, ch)` has no valid index to
-//    return on a Shim tile in the real module either. `dmaTestSetPort`
-//    stands in for that missing port, not for a placeholder that no longer
-//    exists.
+//    348-351) -- because a shim DMA reaches the fabric through the tile's
+//    PL-interface MUX, on one of the switch's SOUTH ports. So a shim test
+//    configures the mux as well as the switch; see testShimMm2sThroughMux.
+//
+//  * `dmaTestSetPort` therefore stands in for nothing missing any more. It
+//    stays because a channel is sometimes worth testing without a route to
+//    observe it through -- testShimDdr uses it that way.
 //
 //===----------------------------------------------------------------------===//
 
@@ -737,6 +738,170 @@ void testShimDdr() {
 }
 
 //===----------------------------------------------------------------------===//
+// Test 6b: the same transfer with no test double -- DDR out through the real
+// shim DMA, the real mux and the real stream switch.
+//
+// Shim stream-switch offsets differ from a core tile's because a shim has no
+// Core or DMA bundle: Ctrl master is 0x3F000 and South slave 0 is 0x3F108
+// (Aie2PShimStrmMstr/Slv, xaie2pgbl_reginit.c:298-380). SlvConfigBaseAddr is
+// 0x3F100 as on a core tile (:1371), so physIdx() applies unchanged.
+//===----------------------------------------------------------------------===//
+
+namespace ShimSsRegs {
+constexpr uint32_t kMstrCtrl = 0x0003F000;   // MASTER_CONFIG_TILE_CTRL
+constexpr uint32_t kMstrSouth0 = 0x0003F008; // MASTER_CONFIG_SOUTH0
+constexpr uint32_t kSlvCtrl = 0x0003F100;    // SLAVE_CONFIG_TILE_CTRL
+constexpr uint32_t kSlvSouth0 = 0x0003F108;  // SLAVE_CONFIG_SOUTH_0
+} // namespace ShimSsRegs
+
+// The mux/demux words, packed the way ShimMux.cpp decodes them.
+// MUX_CONFIG_SOUTH{2,3,6,7}_LSB = 8,10,12,14; DEMUX_CONFIG_SOUTH{2,3,4,5}_LSB
+// = 4,6,8,10 (xaie2pgbl_params.h:19158-19192). Type DMA = 1 (xaie_plif.c:38).
+constexpr uint32_t kMuxConfig = 0x0001F000;
+constexpr uint32_t kDemuxConfig = 0x0001F004;
+uint32_t packMuxDma(uint32_t southPort) {
+  uint32_t field = southPort > 3 ? southPort - 4 : southPort - 2;
+  return 1u << (8 + 2 * field);
+}
+uint32_t packDemuxDma(uint32_t southPort) {
+  return 1u << (4 + 2 * (southPort - 2));
+}
+
+void testShimMm2sThroughMux() {
+  Array array(makeTestDevice(), nullptr);
+  ErrorCapture err;
+  array.setDiagnosticHandler(err.handler());
+
+  Tile *shim = array.tile(0, 0);
+  const uint64_t ddrAddr = 0x2'0002'0000ull;
+  uint32_t src[4] = {0xBBBB0000u, 0xBBBB0001u, 0xBBBB0002u, 0xBBBB0003u};
+  AIESIM_CHECK(array.ddrWrite(ddrAddr, src, sizeof(src)));
+
+  BdSpec spec;
+  spec.shimByteAddr = ddrAddr;
+  spec.lengthWords = 4;
+  writeShimBd(*shim, /*bdId=*/0, spec);
+
+  // MM2S channel 0 comes out on south SLAVE 3. Point the mux at the DMA, then
+  // circuit-switch that slave into the Ctrl master, a local bundle with no
+  // inter-tile wire to drain it (the same trick wireMm2sToCtrl uses).
+  const uint32_t port = static_cast<uint32_t>(
+      shimDmaSouthPort(DmaDirection::MM2S, 0));
+  shim->regs().write(kMuxConfig, packMuxDma(port));
+  uint32_t slvReg = ShimSsRegs::kSlvSouth0 + 4 * port;
+  shim->regs().write(slvReg, packSlaveEnable(/*packetMode=*/false));
+  shim->regs().write(ShimSsRegs::kMstrCtrl, packMasterCircuit(physIdx(slvReg)));
+
+  StreamPort *sink = shim->streamSwitch()->masterPort(PortBundle::Ctrl, 0);
+  AIESIM_CHECK(sink != nullptr);
+
+  startQueue(*shim, ShimRegs::kCtrlBase, ShimRegs::kCtrlStride,
+            ShimRegs::kNumCh, DmaDirection::MM2S, 0, /*startBd=*/0);
+
+  std::vector<uint32_t> words;
+  std::vector<bool> tlasts;
+  drainInterleaved(array, *sink, 4, words, tlasts, /*maxCycles=*/500);
+
+  AIESIM_CHECK(err.message.empty());
+  AIESIM_CHECK_EQ(words.size(), static_cast<size_t>(4));
+  for (uint32_t i = 0; i < 4 && i < words.size(); ++i)
+    AIESIM_CHECK_EQ(words[i], src[i]);
+  AIESIM_CHECK_EQ(shim->dma()->completedBds(DmaDirection::MM2S, 0), 1u);
+  AIESIM_CHECK_EQ(array.streamTraffic().ddrRead, static_cast<uint64_t>(16));
+}
+
+//===----------------------------------------------------------------------===//
+// Test 6c: the return direction. Words pushed into the switch land in DDR
+// through S2MM channel 0, which the DEMUX steers -- a different register and a
+// different port from the outbound test above.
+//===----------------------------------------------------------------------===//
+
+void testShimS2mmThroughDemux() {
+  Array array(makeTestDevice(), nullptr);
+  ErrorCapture err;
+  array.setDiagnosticHandler(err.handler());
+
+  Tile *shim = array.tile(0, 0);
+  const uint64_t ddrAddr = 0x3'0003'0000ull;
+
+  BdSpec spec;
+  spec.shimByteAddr = ddrAddr;
+  spec.lengthWords = 4;
+  writeShimBd(*shim, /*bdId=*/1, spec);
+
+  // S2MM channel 0 drains from south MASTER 2. Point the demux at the DMA and
+  // feed that master from the Ctrl slave, which nothing else drives.
+  const uint32_t port = static_cast<uint32_t>(
+      shimDmaSouthPort(DmaDirection::S2MM, 0));
+  shim->regs().write(kDemuxConfig, packDemuxDma(port));
+  shim->regs().write(ShimSsRegs::kSlvCtrl, packSlaveEnable(false));
+  shim->regs().write(ShimSsRegs::kMstrSouth0 + 4 * port,
+                     packMasterCircuit(physIdx(ShimSsRegs::kSlvCtrl)));
+
+  StreamPort *source = shim->streamSwitch()->slavePort(PortBundle::Ctrl, 0);
+  AIESIM_CHECK(source != nullptr);
+
+  startQueue(*shim, ShimRegs::kCtrlBase, ShimRegs::kCtrlStride,
+            ShimRegs::kNumCh, DmaDirection::S2MM, 0, /*startBd=*/1);
+
+  // Feed as the port accepts: the switch's per-port FIFO is two deep
+  // (StreamSwitch.cpp's kFifoDepth), so pushing all four up front would drop
+  // the tail.
+  uint32_t src[4] = {0xCCCC0000u, 0xCCCC0001u, 0xCCCC0002u, 0xCCCC0003u};
+  uint32_t pushed = 0;
+  for (uint32_t cyc = 0; cyc < 500 && pushed < 4; ++cyc) {
+    if (source->canPush()) {
+      source->push(src[pushed], /*tlast=*/pushed == 3);
+      ++pushed;
+    }
+    array.advance(1);
+  }
+  AIESIM_CHECK_EQ(pushed, 4u);
+  AIESIM_CHECK(array.runUntilQuiescent(500));
+
+  AIESIM_CHECK(err.message.empty());
+  uint32_t got[4] = {};
+  AIESIM_CHECK(array.ddrRead(ddrAddr, got, sizeof(got)));
+  for (uint32_t i = 0; i < 4; ++i)
+    AIESIM_CHECK_EQ(got[i], src[i]);
+  AIESIM_CHECK_EQ(shim->dma()->completedBds(DmaDirection::S2MM, 0), 1u);
+}
+
+//===----------------------------------------------------------------------===//
+// Test 6d: a channel started against a port the mux did NOT steer to the DMA
+// is reported, not silently run. Reset state is PL, so this is exactly the
+// case of a design that programmed a shim BD and forgot the mux -- which
+// would otherwise move data along a wire the hardware has not connected.
+//===----------------------------------------------------------------------===//
+
+void testShimChannelWithoutItsMuxIsReported() {
+  Array array(makeTestDevice(), nullptr);
+  ErrorCapture err;
+  array.setDiagnosticHandler(err.handler());
+
+  Tile *shim = array.tile(0, 0);
+  BdSpec spec;
+  spec.shimByteAddr = 0x4'0004'0000ull;
+  spec.lengthWords = 4;
+  writeShimBd(*shim, /*bdId=*/0, spec);
+
+  // Switch wired exactly as the working test, mux left at its reset value.
+  const uint32_t port = static_cast<uint32_t>(
+      shimDmaSouthPort(DmaDirection::MM2S, 0));
+  uint32_t slvReg = ShimSsRegs::kSlvSouth0 + 4 * port;
+  shim->regs().write(slvReg, packSlaveEnable(/*packetMode=*/false));
+  shim->regs().write(ShimSsRegs::kMstrCtrl, packMasterCircuit(physIdx(slvReg)));
+
+  startQueue(*shim, ShimRegs::kCtrlBase, ShimRegs::kCtrlStride,
+            ShimRegs::kNumCh, DmaDirection::MM2S, 0, /*startBd=*/0);
+  array.runUntilQuiescent(200);
+
+  AIESIM_CHECK(err.message.find("south port 3") != std::string::npos);
+  AIESIM_CHECK(err.message.find("PL") != std::string::npos);
+  AIESIM_CHECK_EQ(array.streamTraffic().ddrRead, static_cast<uint64_t>(0));
+}
+
+//===----------------------------------------------------------------------===//
 // Test 7: the Iteration dimension. One BD executed N times by the task
 // queue's repeat count walks its own base by Iter.StepSize each execution --
 // the rolled form of an N-deep BD chain, which is what Xilinx/mlir-aie#3538
@@ -909,6 +1074,9 @@ int main() {
   testZeroLengthBdMovesNoDataStillLocks();
   testS2mmMove();
   testShimDdr();
+  testShimMm2sThroughMux();
+  testShimS2mmThroughDemux();
+  testShimChannelWithoutItsMuxIsReported();
   testBdIterationWalksItsOwnBase();
   testBdIterationStartsWhereIterCurrSaid();
   testMemTileStartsAboveBd15();

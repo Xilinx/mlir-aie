@@ -15,6 +15,7 @@ set(AIE_SIM_TESTS
   lock_test
   dma_test
   stream_switch_test
+  shim_mux_test
   scheduler_test
   core_window_test
   # The only test that crosses into llvm-aie. Reports SKIP rather than PASS
