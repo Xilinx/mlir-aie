@@ -9,6 +9,7 @@
 // to ops that can be translated to a sequence of valid AIEVec ops.
 //===----------------------------------------------------------------------===//
 
+#include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIEVec/AIE1/IR/AIEVecAIE1Ops.h"
 #include "aie/Dialect/AIEVec/AIEVecUtils.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecOps.h"
@@ -6102,7 +6103,7 @@ struct LowerVectorToAIEVec : PassWrapper<LowerVectorToAIEVec, OperationPass<>> {
         .insert<affine::AffineDialect, xilinx::aievec::aie1::AIEVecAIE1Dialect,
                 xilinx::aievec::AIEVecDialect, arith::ArithDialect,
                 memref::MemRefDialect, scf::SCFDialect, vector::VectorDialect,
-                emitc::EmitCDialect>();
+                emitc::EmitCDialect, xilinx::AIE::AIEDialect>();
   }
 
   Option<std::string> aieTarget{
@@ -6117,6 +6118,15 @@ struct LowerVectorToAIEVec : PassWrapper<LowerVectorToAIEVec, OperationPass<>> {
     MLIRContext *context = &getContext();
     RewritePatternSet patterns(context);
     ConversionTarget target(*context);
+
+    // `aie.runtime_sequence` bodies are host-side control code (either NPU
+    // instruction streams or C++ TXN builders), not AIE-core compute. Vector
+    // and AIEVec ops are meaningless there, so leave anything nested inside a
+    // runtime sequence untouched regardless of the legalizations configured
+    // below.
+    target.addLegalOp<xilinx::AIE::RuntimeSequenceOp>();
+    target.markOpRecursivelyLegal<xilinx::AIE::RuntimeSequenceOp>();
+
     auto aieVersion = AIEArch::AIE;
     if (!aieTarget.empty()) {
       std::string targetStr = aieTarget;
