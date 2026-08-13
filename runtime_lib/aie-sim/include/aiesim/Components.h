@@ -221,8 +221,9 @@ uint32_t ownMemoryBandBase(Generation gen);
 uint32_t memoryBandSize();
 
 /// The CoreMemoryPort a real tile presents to its engine: core-local program
-/// memory and the tile's own data memory in the east band. The other three
-/// bands and the core's stream/cascade ports fault rather than stall --
+/// memory, and the four data bands routed to the tiles they name -- own memory
+/// in the east band, the south/west/north neighbour's in the other three. The
+/// core's stream and cascade ports fault rather than stall --
 /// docs/AIESimulator.md 8a.1.
 std::unique_ptr<CoreMemoryPort> makeTileCorePort(Tile &tile);
 
