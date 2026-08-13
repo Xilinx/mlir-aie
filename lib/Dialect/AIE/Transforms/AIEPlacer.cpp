@@ -1152,23 +1152,14 @@ int SequentialPlacer::computeCentroidColumn(LogicalTileOp logicalTile,
     Operation *defOp = v.getDefiningOp();
     if (!defOp)
       return std::nullopt;
-    if (auto tileOp = dyn_cast<TileOp>(defOp)) {
-      if (targetModel->getTileType(tileOp.getCol(), tileOp.getRow()) ==
-          AIETileType::CoreTile)
-        return tileOp.getCol();
-      return std::nullopt;
-    }
+    // A physical tile's column is fixed by construction, whatever its type.
+    if (auto tileOp = dyn_cast<TileOp>(defOp))
+      return tileOp.getCol();
     auto lto = dyn_cast<LogicalTileOp>(defOp);
     if (!lto)
       return std::nullopt;
-    if (lto.getTileType() == AIETileType::CoreTile) {
-      auto it = result.find(defOp);
-      if (it != result.end())
-        return it->second.col;
-      return std::nullopt;
-    }
     if (auto c = lto.tryGetCol())
-      return *c;
+      return c;
     auto it = result.find(defOp);
     if (it != result.end())
       return it->second.col;
@@ -1370,8 +1361,6 @@ void TileAvailability::removeTile(TileID tile, AIETileType type) {
   case AIETileType::ShimNOCTile:
   case AIETileType::ShimPLTile:
     removeFromVector(nonCompTiles);
-    break;
-  default:
     break;
   }
 }
