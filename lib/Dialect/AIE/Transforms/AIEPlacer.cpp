@@ -1145,9 +1145,9 @@ int SequentialPlacer::computeCentroidColumn(LogicalTileOp logicalTile,
   if (ltoIt == flowIndex.ltoFlows.end())
     return 0;
 
-  // A peer's column when already known. A known non-core peer IS the
-  // destination; resolving past it over-collects, since a memtile usually
-  // serves several unrelated flows.
+  // Column of a flow endpoint, or nullopt if not yet fixed. A memtile that
+  // already knows its column answers here; looking past it to its cores
+  // would pick up the other flows it carries.
   auto resolvePeerCol = [&](Value v) -> std::optional<int> {
     Operation *defOp = v.getDefiningOp();
     if (!defOp)
