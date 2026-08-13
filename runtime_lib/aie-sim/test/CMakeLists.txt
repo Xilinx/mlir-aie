@@ -12,6 +12,7 @@ set(AIE_SIM_TESTS
   region_map_test
   elf_loader_test
   cdo_replay_test
+  txn_replay_test
   lock_test
   dma_test
   stream_switch_test
