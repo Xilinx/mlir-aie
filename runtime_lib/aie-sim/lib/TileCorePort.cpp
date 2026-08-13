@@ -63,27 +63,35 @@ public:
   }
 
   bool tryAcquireLock(uint32_t lockId, int32_t value) override {
-    if (std::optional<uint32_t> local = resolveLock(lockId, "acquire"))
-      return tile.locks()->tryAcquire(*local, value);
+    if (std::optional<ResolvedLock> lock = resolveLock(lockId, "acquire"))
+      return lock->module->tryAcquire(lock->id, value);
     return false;
   }
 
   void releaseLock(uint32_t lockId, int32_t value) override {
-    if (std::optional<uint32_t> local = resolveLock(lockId, "release"))
-      tile.locks()->release(*local, value);
+    if (std::optional<ResolvedLock> lock = resolveLock(lockId, "release"))
+      lock->module->release(lock->id, value);
   }
 
+  /// Which lock module a core-issued id lands in, and its index there.
+  struct ResolvedLock {
+    LockModule *module;
+    uint32_t id;
+  };
+
   /// A core-issued lock id names a module by band, exactly as an address does.
-  /// Resolve it to an index in THIS tile's module, or fault -- returning false
-  /// would be wrong here, because false means "not available yet" and the core
-  /// would retry a lock that can never come.
-  std::optional<uint32_t> resolveLock(uint32_t lockId, const char *what) {
+  /// Resolve it, or fault -- returning false would be wrong here, because false
+  /// means "not available yet" and the core would retry a lock that can never
+  /// come.
+  std::optional<ResolvedLock> resolveLock(uint32_t lockId, const char *what) {
     LockModule *locks = tile.locks();
     if (!locks) {
       fault("core tried to %s lock %u on a tile with no lock module", what,
             lockId);
       return std::nullopt;
     }
+    // The band width is the ISSUING tile's lock count, not the target's:
+    // getLockLocalBaseIndex bands by getNumLocks(localCol, localRow).
     std::optional<LockBand> band = splitLockId(lockId, locks->count());
     if (!band) {
       fault("core tried to %s lock %u, past the last band (%u locks per "
@@ -91,13 +99,15 @@ public:
             what, lockId, locks->count(), std::size(kAIE2Bands));
       return std::nullopt;
     }
-    if (band->dir != MemDirection::Own) {
-      fault("core tried to %s lock %u, which is the %s neighbour's lock %u; "
-            "only a tile's own (east) band is modelled",
+    Tile *owner = bandTile(tile, band->dir);
+    LockModule *module = owner ? owner->locks() : nullptr;
+    if (!module) {
+      fault("core tried to %s lock %u, the %s band's lock %u, where this tile "
+            "has no neighbour",
             what, lockId, directionName(band->dir), band->local);
       return std::nullopt;
     }
-    return band->local;
+    return ResolvedLock{module, band->local};
   }
 
   // Core stream and cascade ports are not wired to the stream switch yet.
@@ -155,17 +165,23 @@ private:
       if (addr < band.base || addr >= band.base + kBandSize)
         continue;
       regionBase = band.base;
-      if (band.dir != MemDirection::Own) {
-        fault("core accessed the %s neighbour band at 0x%08X; only a tile's "
-              "own (east) band is modelled",
+      Tile *owner = bandTile(tile, band.dir);
+      Memory *mem = owner ? owner->memory() : nullptr;
+      if (!mem) {
+        // Not a gap: the band exists in the address map on every core tile, but
+        // the tile it names does not exist on this one, so hardware would not
+        // have answered either. A row-2 core reaching into 0x4xxxx is the case
+        // that shows up in practice -- its south neighbour is the memtile.
+        fault("core accessed the %s band at 0x%08X, which names no memory from "
+              "this tile",
               directionName(band.dir), addr);
         return nullptr;
       }
-      Memory *mem = tile.memory();
-      if (mem && mem->inRange(addr - band.base, size))
+      if (mem->inRange(addr - band.base, size))
         return mem;
-      fault("core accessed 0x%08X, past this tile's %u bytes of data memory",
-            addr, mem ? mem->size() : 0u);
+      fault("core accessed 0x%08X, past the %u bytes of data memory in tile "
+            "(%u, %u)",
+            addr, mem->size(), owner->getCol(), owner->getRow());
       return nullptr;
     }
 
