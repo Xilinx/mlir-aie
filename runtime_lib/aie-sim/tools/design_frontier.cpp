@@ -39,6 +39,7 @@
 #include "aiesim/Components.h"
 #include "aiesim/CoreEngine.h"
 #include "aiesim/Device.h"
+#include "aiesim/TxnReplay.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -90,6 +91,14 @@ struct CoreResult {
 struct DesignResult {
   std::string name;
   CdoReplayStats cdo;
+  TxnReplayStats txn;
+  /// The runtime sequence this group was run with, or empty if the build
+  /// emitted none. Reported, because a design replayed from its CDO alone has
+  /// no shim BD and therefore cannot move a byte -- so which of the two a
+  /// number came from is not a detail.
+  std::string txnPath;
+  /// Why the sequence was not applied, when it was found but declined.
+  std::string txnDeclined;
   Array::StreamTraffic traffic;
   uint64_t arrayCycles = 0;
   bool quiescent = false;
@@ -155,6 +164,40 @@ std::string sibling(const std::string &init, const char *kind) {
   return fileExists(path) ? path : std::string{};
 }
 
+/// The runtime instruction sequence belonging to a CDO group, or empty if the
+/// build emitted none.
+///
+/// Two layouts, because aiecc names this file differently depending on how the
+/// design was built, and a group has to find its OWN sequence -- pairing a
+/// design with another one's would program shim BDs for a configuration that is
+/// not loaded:
+///
+///   fused      <prj>/op1_GEMV_aie_cdo_init.bin -> <prj>/op1_GEMV_sequence.bin
+///   standalone <prj>/main_aie_cdo_init.bin     -> <prj>/../<design>.bin
+///
+/// The standalone form is the odd one: its sequence sits OUTSIDE the .prj,
+/// named after the design rather than after the group, so it is only reachable
+/// from the directory name.
+std::string txnFor(const std::string &init) {
+  std::string stem = init.substr(0, init.size() - (sizeof(kInitSuffix) - 1));
+  std::string path = stem + "_sequence.bin";
+  if (fileExists(path))
+    return path;
+
+  size_t slash = stem.rfind('/');
+  if (slash == std::string::npos)
+    return {};
+  std::string dir = stem.substr(0, slash);
+  if (stem.substr(slash + 1) != "main")
+    return {};
+  // `<...>/NAME.mlir.prj` -> `<...>/NAME.bin`.
+  const std::string kPrjSuffix = ".mlir.prj";
+  if (!endsWith(dir, kPrjSuffix))
+    return {};
+  path = dir.substr(0, dir.size() - kPrjSuffix.size()) + ".bin";
+  return fileExists(path) ? path : std::string{};
+}
+
 /// True if anything was loaded into this tile's program memory. A design
 /// enables every core tile in its column, including ones it put no code on, and
 /// those are not parked -- they never started. Same test CoreModule.cpp uses to
@@ -196,6 +239,31 @@ bool run(const std::string &deviceName, const std::string &init,
       continue; // A design with no cores emits no elfs/enable blob.
     if (!replayCdoFile(array, blob, dev.baseAddr, out.cdo, error))
       return false;
+  }
+
+  // Then the runtime sequence, which is where the shim BDs are. It runs the
+  // array as it goes: its task-completion waits block until the DMA they were
+  // pushed onto finishes, exactly as the host blocks on hardware. So by the
+  // time this returns, a design whose data path works has already moved its
+  // bytes -- runUntilQuiescent below is what drains whatever is still in
+  // flight, not what does the work.
+  out.txnPath = txnFor(init);
+  if (!out.txnPath.empty()) {
+    switch (replayTxnFile(array, out.txnPath, dev.baseAddr, out.txn, error,
+                          budget)) {
+    case TxnOutcome::Applied:
+      break;
+    case TxnOutcome::Declined:
+      // Still a measurable design -- it just was not driven by its sequence,
+      // so it measures what the CDO alone reaches. Recorded as the reason next
+      // to the numbers, since without it the result reads as a design that
+      // moves no bytes rather than one that was never started.
+      out.txnDeclined = error;
+      error.clear();
+      break;
+    case TxnOutcome::Malformed:
+      return false;
+    }
   }
 
   out.quiescent = array.runUntilQuiescent(budget);
@@ -369,6 +437,20 @@ int main(int argc, char **argv) {
           d.cdo.write32, d.cdo.maskWrite32, d.cdo.blockWrite32,
           (unsigned long long)d.cdo.blockWriteWords, d.cdo.maskPoll,
           d.cdo.maskPollTimedOut, d.cdo.noOp);
+      if (d.txnPath.empty())
+        std::printf("    txn: none emitted for this group\n");
+      else if (!d.txnDeclined.empty())
+        std::printf("    txn: NOT APPLIED -- %s\n", d.txnDeclined.c_str());
+      else
+        std::printf("    txn: write=%u maskwrite=%u block=%u(%llu words) "
+                    "patch=%u(%u preload mismatch) sync=%u(%u timed out) "
+                    "poll=%u(%u timed out) pdi=%u preempt=%u [%s]\n",
+                    d.txn.write32, d.txn.maskWrite32, d.txn.blockWrite32,
+                    (unsigned long long)d.txn.blockWriteWords,
+                    d.txn.addressPatch, d.txn.addressPatchPreloadMismatch,
+                    d.txn.sync, d.txn.syncTimedOut, d.txn.maskPoll,
+                    d.txn.maskPollTimedOut, d.txn.loadPdi, d.txn.preempt,
+                    d.txnPath.c_str());
       std::printf("    dma: %u tile(s) still have work outstanding, %llu BD(s) "
                   "completed\n",
                   d.dmaTilesBusy, (unsigned long long)d.dmaBdsCompleted);

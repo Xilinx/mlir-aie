@@ -50,6 +50,7 @@ add_library(aie-sim STATIC
   lib/RegisterFile.cpp
   lib/ShimMux.cpp
   lib/StreamSwitch.cpp
+  lib/TxnReplay.cpp
 )
 
 target_include_directories(aie-sim PUBLIC
