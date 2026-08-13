@@ -18,8 +18,13 @@
 // core_0_3 acquires one element before the loop and never releases it, so it
 // enters the loop already holding 1 -- exactly what it holds at the end of every
 // iteration. `h` never changes, so each iteration acquires the constant 1.
+//
+// Unrolling does not change this. The second run below unrolls both loops:
+// core_0_2 still computes `acq` at run time, because unrolling does not change
+// how many elements the core holds when it enters the loop.
 
 // RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll="default-dynamic=true" %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll %s | FileCheck %s --check-prefix=UNROLL
 
 // CHECK-LABEL:   aie.device(npu2) {
 // CHECK-DAG:       %[[T2:.*]] = aie.tile(0, 2)
@@ -57,6 +62,24 @@
 // CHECK-NOT:           arith.maxsi
 // CHECK:             }
 // CHECK:             aie.end
+
+// UNROLL-DAG:      %[[X_T2:.*]] = aie.tile(0, 2)
+// UNROLL-DAG:      %[[X_T3:.*]] = aie.tile(0, 3)
+
+// Unrolled, core_0_2 still carries the count and computes each acquire.
+// UNROLL:          %{{.*}} = aie.core(%[[X_T2]]) {
+// UNROLL:            %{{.*}} = scf.for %{{.*}} iter_args(%[[X_HELD:.*]] = %{{.*}}) -> (i32) {
+// UNROLL:              %[[X_DELTA:.*]] = arith.subi %{{.*}}, %[[X_HELD]] : i32
+// UNROLL:              %[[X_ACQ:.*]] = arith.maxsi %[[X_DELTA]], %{{.*}} : i32
+// UNROLL:              aie.use_lock(%{{.*}}, AcquireGreaterEqual, %[[X_ACQ]])
+// UNROLL:            }
+// UNROLL:            aie.end
+
+// Unrolled, core_0_3 carries nothing and every acquire is constant.
+// UNROLL:          %{{.*}} = aie.core(%[[X_T3]]) {
+// UNROLL-NOT:        iter_args
+// UNROLL-NOT:        arith.maxsi
+// UNROLL:            aie.end
 
 module {
   aie.device(npu2) {
