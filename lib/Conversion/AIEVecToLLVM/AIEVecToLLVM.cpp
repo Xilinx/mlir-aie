@@ -732,6 +732,106 @@ public:
   }
 };
 
+// AIE2 version of NegOp conversion.
+//
+// aievec.neg operates on an accumulator. For floats the accumulator is
+// v16accfloat, which is carried as vector<16xf32> in AIEVec and as <8 x i64>
+// at the intrinsic boundary, so this maps directly onto the ACC512 accfloat
+// negate.
+class NegOpAIE2Conversion : public mlir::ConvertOpToLLVMPattern<aievec::NegOp> {
+public:
+  using ConvertOpToLLVMPattern<aievec::NegOp>::ConvertOpToLLVMPattern;
+
+  LogicalResult
+  matchAndRewrite(aievec::NegOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+    auto srcVecTy = cast<VectorType>(adaptor.getSource().getType());
+    auto srcScaTy = srcVecTy.getElementType();
+
+    // Only the float accumulator (v16accfloat) is wired up. Integer
+    // accumulators would need the ACC1024 acc32/acc64 negates instead.
+    if (!isa<FloatType>(srcScaTy) || srcScaTy.getIntOrFloatBitWidth() != 32 ||
+        srcVecTy.getNumElements() != 16) {
+      op.emitWarning() << "aievec.neg conversion is not supported.\n";
+      return failure();
+    }
+
+    auto v8i64Ty = VectorType::get({8}, rewriter.getI64Type());
+    // conf selects the fp32 accumulator datapath. Matches the AIE API's
+    // neg(v16accfloat): aiev2_compute_control(0, 0, /*amode=*/2, /*bmode=*/3,
+    // 0, 0, 0, 0, 0, 0, 0) == (2 << 1) | (3 << 3) == 28.
+    auto confCst = LLVM::ConstantOp::create(
+        rewriter, loc, rewriter.getI32Type(), rewriter.getI32IntegerAttr(28));
+    SmallVector<Value> operands({adaptor.getSource(), confCst});
+
+    auto negOp = xllvm::NegACC512AccFloatAIE2IntrOp::create(
+        rewriter, loc, v8i64Ty,
+        forceCastOperandsToSignature(rewriter, loc, operands,
+                                     {v8i64Ty, rewriter.getI32Type()}));
+
+    auto resultVal =
+        forceCastValueToType(rewriter, loc, negOp, op.getResult().getType());
+    rewriter.replaceOp(op, resultVal);
+    return success();
+  }
+};
+
+// AIE2p version of NegOp conversion.
+//
+// AIE2p only exposes the negate on the 2048-bit accumulator, so a
+// v16accfloat operand is widened to <64 x float>, negated, and the low 16
+// lanes extracted back out. This mirrors AddElemOpAIE2pConversion.
+class NegOpAIE2pConversion
+    : public mlir::ConvertOpToLLVMPattern<aievec::NegOp> {
+public:
+  using ConvertOpToLLVMPattern<aievec::NegOp>::ConvertOpToLLVMPattern;
+
+  LogicalResult
+  matchAndRewrite(aievec::NegOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+    auto srcVecTy = cast<VectorType>(adaptor.getSource().getType());
+    auto srcScaTy = srcVecTy.getElementType();
+    unsigned laneSize = srcVecTy.getNumElements();
+
+    if (!isa<FloatType>(srcScaTy) || srcScaTy.getIntOrFloatBitWidth() != 32 ||
+        (laneSize != 16 && laneSize != 32)) {
+      op.emitWarning() << "aievec.neg conversion is not supported.\n";
+      return failure();
+    }
+
+    auto v64f32Ty = VectorType::get({64}, rewriter.getF32Type());
+
+    // Widen the accumulator to ACC2048, filling the unused lanes with poison.
+    SmallVector<int64_t> expandMask;
+    for (unsigned i = 0; i < laneSize; ++i)
+      expandMask.push_back(i);
+    for (unsigned i = laneSize; i < 64; ++i)
+      expandMask.push_back(-1);
+    auto srcExpanded = vector::ShuffleOp::create(
+        rewriter, loc, adaptor.getSource(), adaptor.getSource(), expandMask);
+
+    // conf selects the fp32 accumulator datapath, matching the ACC2048
+    // accfloat add/sub lowerings and the AIE API's neg(v64accfloat):
+    // aie2p_compute_control(0, 0, /*amode=*/2, /*bmode=*/3, /*variant=*/1,
+    // 0, 0, 0, 0, 0, 0) == (2 << 1) | (3 << 3) | (1 << 5) == 60.
+    auto confCst = LLVM::ConstantOp::create(
+        rewriter, loc, rewriter.getI32Type(), rewriter.getI32IntegerAttr(60));
+    auto negResult = xllvm::NegACC2048AccFloatAIE2pIntrOp::create(
+        rewriter, loc, v64f32Ty, srcExpanded, confCst);
+
+    SmallVector<int64_t> extractMask;
+    for (unsigned i = 0; i < laneSize; ++i)
+      extractMask.push_back(i);
+    auto finalResult = vector::ShuffleOp::create(rewriter, loc, negResult,
+                                                 negResult, extractMask);
+
+    rewriter.replaceOp(op, finalResult);
+    return success();
+  }
+};
+
 class SubOpConversion
     : public mlir::ConvertOpToLLVMPattern<aievec::aie1::SubOp> {
 public:
@@ -5647,6 +5747,7 @@ static void populateAIEVecToLLVMAIE2ConversionPatterns(
     Aie2Fp32Emulation aie2Fp32EmulationOption) {
   // Patterns specific to AIE2 backend
   patterns.add<AddElemOpAIE2Conversion, SubElemOpAIE2Conversion>(converter);
+  patterns.add<NegOpAIE2Conversion>(converter);
   patterns.add<MulElemOpConversion>(converter, aie2Fp32EmulationOption);
   patterns.add<UPSOpAIE2Conversion, SRSOpAIE2Conversion>(converter);
   patterns.add<ShiftOpConversion>(converter);
@@ -5746,6 +5847,7 @@ void populateAIEVecToLLVMAIE2pConversionPatterns(
     mlir::LLVMTypeConverter &converter, mlir::RewritePatternSet &patterns) {
   // Patterns specific to AIE2p backend
   patterns.add<AddElemOpAIE2pConversion, SubElemOpAIE2pConversion>(converter);
+  patterns.add<NegOpAIE2pConversion>(converter);
   patterns.add<MulElemOpAIE2pConversion>(converter);
   patterns.add<FMAElemOpAIE2pConversion>(converter);
   patterns.add<UPSOpAIE2pConversion, SRSOpAIE2pConversion>(converter);
