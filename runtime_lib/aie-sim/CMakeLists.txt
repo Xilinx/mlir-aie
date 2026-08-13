@@ -180,6 +180,15 @@ target_link_libraries(register_coverage PRIVATE aie-sim)
 add_executable(elf_frontier tools/elf_frontier.cpp)
 target_link_libraries(elf_frontier PRIVATE aie-sim)
 
+# The same question one level up: how far a whole design gets once its own CDO
+# configuration is replayed. Needs a build tree's *.mlir.prj directories.
+# POSIX-only: it walks a directory through <dirent.h>, which MSVC does not have.
+# The library itself stays portable; only this tool is skipped.
+if(NOT WIN32)
+  add_executable(design_frontier tools/design_frontier.cpp)
+  target_link_libraries(design_frontier PRIVATE aie-sim)
+endif()
+
 if(BUILD_TESTING)
   add_subdirectory(test)
 endif()
