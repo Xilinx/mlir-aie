@@ -112,6 +112,17 @@ struct DesignResult {
   /// the core's own pc.
   uint32_t dmaTilesBusy = 0;
   uint64_t dmaBdsCompleted = 0;
+  /// Per-channel BD completions on the SHIM row, which is where a design's
+  /// bytes enter and leave. The array-wide total above cannot say which of a
+  /// design's several host-facing channels ran, and when a wait times out that
+  /// is the whole question.
+  struct ShimChannel {
+    uint32_t col;
+    DmaDirection dir;
+    uint32_t channel;
+    uint32_t completed;
+  };
+  std::vector<ShimChannel> shimChannels;
 };
 
 constexpr char kInitSuffix[] = "_aie_cdo_init.bin";
@@ -296,10 +307,19 @@ bool run(const std::string &deviceName, const std::string &init,
       case TileType::Invalid:
         break;
       }
-      for (uint32_t ch = 0; ch < s2mm; ++ch)
-        out.dmaBdsCompleted += dma->completedBds(DmaDirection::S2MM, ch);
-      for (uint32_t ch = 0; ch < mm2s; ++ch)
-        out.dmaBdsCompleted += dma->completedBds(DmaDirection::MM2S, ch);
+      const bool isShim = dev.tileTypeAt(row) == TileType::Shim;
+      for (uint32_t ch = 0; ch < s2mm; ++ch) {
+        uint32_t n = dma->completedBds(DmaDirection::S2MM, ch);
+        out.dmaBdsCompleted += n;
+        if (isShim && n)
+          out.shimChannels.push_back({col, DmaDirection::S2MM, ch, n});
+      }
+      for (uint32_t ch = 0; ch < mm2s; ++ch) {
+        uint32_t n = dma->completedBds(DmaDirection::MM2S, ch);
+        out.dmaBdsCompleted += n;
+        if (isShim && n)
+          out.shimChannels.push_back({col, DmaDirection::MM2S, ch, n});
+      }
     }
 
   for (uint32_t row = 0; row < dev.numRows; ++row) {
@@ -451,9 +471,27 @@ int main(int argc, char **argv) {
                     d.txn.sync, d.txn.syncTimedOut, d.txn.maskPoll,
                     d.txn.maskPollTimedOut, d.txn.loadPdi, d.txn.preempt,
                     d.txnPath.c_str());
+      // A timed-out wait names its channel, because the syncs of one design are
+      // not interchangeable and a partial stall (some tiles delivered, others
+      // did not) is a different fault from a channel nothing ever ran.
+      for (const SyncTimeout &s : d.txn.syncTimeouts)
+        std::printf("    txn stall: %s channel %u at tile (%u, %u), %u of %u "
+                    "tile(s) completed no BD (completions %u at entry, %u at "
+                    "giving up)\n",
+                    s.dir == DmaDirection::MM2S ? "MM2S" : "S2MM", s.channel,
+                    s.col, s.row, s.unsatisfied, s.targets, s.completedBefore,
+                    s.completedAfter);
       std::printf("    dma: %u tile(s) still have work outstanding, %llu BD(s) "
                   "completed\n",
                   d.dmaTilesBusy, (unsigned long long)d.dmaBdsCompleted);
+      if (!d.shimChannels.empty()) {
+        std::printf("    shim:");
+        for (const DesignResult::ShimChannel &c : d.shimChannels)
+          std::printf(" (%u,0)%s%u=%u", c.col,
+                      c.dir == DmaDirection::MM2S ? "MM2S" : "S2MM", c.channel,
+                      c.completed);
+        std::printf("\n");
+      }
       std::printf("    bytes: l1 %llu/%llu l2 %llu/%llu ddr %llu/%llu "
                   "(read/write), unclaimed sites %zu\n",
                   (unsigned long long)d.traffic.l1Read,

@@ -28,6 +28,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -168,6 +169,10 @@ TxnOutcome aiesim::replayTxn(Array &array, const void *image, size_t sizeBytes,
   }
 
   uint32_t applied = 0;
+  // Task-completion tokens this sequence has already spent, keyed by
+  // (col, row, direction, channel). Lives for the whole replay because a token
+  // outlives the wait that could have taken it -- see the kOpTct case.
+  std::map<uint64_t, uint32_t> tctConsumed;
   size_t pos = kHeaderBytes;
   while (pos < d.size()) {
     const uint8_t op = d[pos];
@@ -319,9 +324,21 @@ TxnOutcome aiesim::replayTxn(Array &array, const void *image, size_t sizeBytes,
       // follows a queue push that set it (0x80000001 -- bit 31 is qEnToken),
       // so the two coincide there; a design that waited on a channel whose BDs
       // did not enable tokens would hang on hardware and would not here.
+      //
+      // A token is EMITTED by a completing BD and CONSUMED by a wait, so what a
+      // wait needs is a completion this sequence has not already spent -- which
+      // is why `tctConsumed` is carried across the whole replay rather than the
+      // count being resampled per wait. Testing "did the counter change while I
+      // waited" instead is EDGE-triggered, and wrong in exactly the case that
+      // matters: op2_ElementwiseAdd pushes one BD per shim channel and issues
+      // eight waits, and by the time the last four ran, their BDs had completed
+      // during the earlier waits' spinning. Those four then waited for a SECOND
+      // completion that was never coming, while the data they were waiting for
+      // sat finished in DDR -- reported as a data-path stall for a design whose
+      // data path had moved all 24 of its BDs and every byte, both directions.
       struct Target {
         DmaModule *dma;
-        uint32_t before;
+        uint64_t key;
       };
       std::vector<Target> targets;
       for (uint32_t c = 0; c < colCount; ++c) {
@@ -329,20 +346,46 @@ TxnOutcome aiesim::replayTxn(Array &array, const void *image, size_t sizeBytes,
           Tile *t = array.tile(col + c, row + w);
           if (!t || !t->dma())
             continue;
-          targets.push_back({t->dma(), t->dma()->completedBds(dir, channel)});
+          uint64_t key = (static_cast<uint64_t>(col + c) << 24) |
+                         (static_cast<uint64_t>(row + w) << 16) |
+                         (static_cast<uint64_t>(dir == DmaDirection::MM2S)
+                          << 8) |
+                         channel;
+          targets.push_back({t->dma(), key});
         }
       }
       uint64_t deadline = array.cycle() + waitCycles;
-      auto satisfied = [&targets, dir, channel]() {
+      auto satisfied = [&]() {
         for (const Target &t : targets)
-          if (t.dma->completedBds(dir, channel) == t.before)
+          if (t.dma->completedBds(dir, channel) <= tctConsumed[t.key])
             return false;
         return true;
       };
       while (!satisfied() && array.cycle() < deadline)
         array.advance(1);
-      if (!satisfied())
+      if (satisfied()) {
+        // One token per target, since the wait is satisfied by one completion
+        // from each. Nothing is consumed on a timeout: no token was observed,
+        // and spending one would hide the next wait's own stall.
+        for (const Target &t : targets)
+          ++tctConsumed[t.key];
+      } else {
         ++stats.syncTimedOut;
+        SyncTimeout rec;
+        rec.col = col;
+        rec.row = row;
+        rec.dir = dir;
+        rec.channel = channel;
+        rec.targets = static_cast<uint32_t>(targets.size());
+        for (const Target &t : targets) {
+          uint32_t now = t.dma->completedBds(dir, channel);
+          if (now <= tctConsumed[t.key])
+            ++rec.unsatisfied;
+          rec.completedBefore += tctConsumed[t.key];
+          rec.completedAfter += now;
+        }
+        stats.syncTimeouts.push_back(rec);
+      }
       ++stats.sync;
       break;
     }
