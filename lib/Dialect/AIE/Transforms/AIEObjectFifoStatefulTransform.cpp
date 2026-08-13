@@ -388,10 +388,7 @@ struct LowerObjectFifoRelease : OpRewritePattern<ObjectFifoReleaseOp> {
     memref::AllocaOp bufferCounter =
         ctx.bufferIndexBookkeeping.lookup({core.getOperation(), fifo, port});
 
-    int numLocks = releaseOp.relNumber();
-    if (fifo.getRepeatCount().has_value()) {
-      numLocks *= fifo.getRepeatCount().value();
-    }
+    int numLocks = releaseOp.relNumber() * fifo.getRepeatCount().value_or(1);
 
     rewriter.setInsertionPointAfter(releaseOp);
     Location loc = releaseOp.getLoc();
@@ -723,7 +720,7 @@ struct AIEObjectFifoStatefulTransformPass
 
   ObjectFifoCreateOp
   createObjectFifo(OpBuilder &builder, Location loc, AIEObjectFifoType datatype,
-                   std::string name, Value prodTile, Value consTile,
+                   const std::string &name, Value prodTile, Value consTile,
                    Attribute depth, BDDimLayoutArrayAttr dimensionsToStream,
                    BDDimLayoutArrayArrayAttr dimensionsFromStreamPerConsumer) {
     auto ofName = builder.getStringAttr(name);
@@ -745,9 +742,11 @@ struct AIEObjectFifoStatefulTransformPass
       return locks;
     // Static-init no-link producer cycled via iter_count: source side needs
     // no sync; skip allocation to free the lock IDs.
-    if (op.getInitValues().has_value() && op.getIterCount().has_value() &&
-        op.getIterCount().value() > 1 && !getOptionalLinkOp(op).has_value() &&
-        static_cast<int>(op.getInitValues().value().size()) == numElem)
+    auto initValues = op.getInitValues();
+    auto iterCount = op.getIterCount();
+    if (initValues && iterCount && *iterCount > 1 &&
+        !getOptionalLinkOp(op).has_value() &&
+        static_cast<int>(initValues->size()) == numElem)
       return locks;
     auto dev = op->getParentOfType<DeviceOp>();
     auto &target = dev.getTargetModel();
@@ -924,7 +923,7 @@ struct AIEObjectFifoStatefulTransformPass
     // Find the last buffer operation after the host tile
     Operation *insertAfter = hostTile.getOperation();
     Operation *nextOp = insertAfter->getNextNode();
-    while (nextOp && isa<BufferOp>(nextOp)) {
+    while (isa_and_nonnull<BufferOp>(nextOp)) {
       insertAfter = nextOp;
       nextOp = nextOp->getNextNode();
     }
@@ -1218,11 +1217,11 @@ struct AIEObjectFifoStatefulTransformPass
     // the second pass. Back-pressure to the downstream consumer is handled
     // by the DMA stream's flow control; source-side locking is unnecessary
     // for correctness in this configuration.
+    auto iterCount = op.getIterCount();
     bool isCycledStaticInitProducer =
         channelDir == DMAChannelDir::MM2S && op.getInitValues().has_value() &&
-        op.getIterCount().has_value() && op.getIterCount().value() > 1 &&
-        !getOptionalLinkOp(op).has_value();
-    if (state.locksPerFifo[op].size() > 0 && !isCycledStaticInitProducer) {
+        iterCount && *iterCount > 1 && !getOptionalLinkOp(op).has_value();
+    if (!state.locksPerFifo[op].empty() && !isCycledStaticInitProducer) {
       auto dev = op->getParentOfType<DeviceOp>();
       if (auto &target = dev.getTargetModel();
           target.getTargetArch() == AIEArch::AIE1) {
@@ -1297,9 +1296,7 @@ struct AIEObjectFifoStatefulTransformPass
     int len = elemType.getNumElements();
 
     // check for repeat count
-    int repeatCount = 1;
-    if (op.getRepeatCount().has_value())
-      repeatCount = op.getRepeatCount().value();
+    int repeatCount = op.getRepeatCount().value_or(1);
 
     // search for the buffers/locks (based on if this objFifo has a link)
     ObjectFifoCreateOp target = op;
@@ -1308,9 +1305,9 @@ struct AIEObjectFifoStatefulTransformPass
       if (state.objFifoLinks.find(linkOp.value()) != state.objFifoLinks.end()) {
         target = state.objFifoLinks[linkOp.value()];
         if (target == op) {
-          if (linkOp->getRepeatCount().has_value()) {
-            acqNum *= linkOp->getRepeatCount().value();
-            relNum *= linkOp->getRepeatCount().value();
+          if (auto linkRepeatCount = linkOp->getRepeatCount()) {
+            acqNum *= *linkRepeatCount;
+            relNum *= *linkRepeatCount;
           }
         }
       }
@@ -1476,9 +1473,7 @@ struct AIEObjectFifoStatefulTransformPass
     int relNum = 1;
 
     // check for repeat count
-    int repeatCount = 1;
-    if (op.getRepeatCount().has_value())
-      repeatCount = op.getRepeatCount().value();
+    int repeatCount = op.getRepeatCount().value_or(1);
 
     // check for BD chain repeat count
     auto bdChainIterCount = op.getIterCount();
@@ -1498,10 +1493,10 @@ struct AIEObjectFifoStatefulTransformPass
         auto srcOffsets = linkOp->getSrcOffsets();
         auto dstOffsets = linkOp->getDstOffsets();
 
-        if (linkOp->getRepeatCount().has_value())
+        if (auto linkRepeatCount = linkOp->getRepeatCount())
           if (linkOp->getInputObjectFifos()[0] == op) {
-            acqNum *= linkOp->getRepeatCount().value();
-            relNum *= linkOp->getRepeatCount().value();
+            acqNum *= *linkRepeatCount;
+            relNum *= *linkRepeatCount;
           }
 
         if (linkOp->isJoin()) {
@@ -1516,7 +1511,7 @@ struct AIEObjectFifoStatefulTransformPass
                 break;
               i++;
             }
-            extraOffset = *getConstantIntValue(srcOffsets[i]);
+            extraOffset = getConstantIntValue(srcOffsets[i]).value_or(0);
             lenOut = linkOp->getJoinTransferLengths()[i];
             joinDistribLockIndex = i;
           }
@@ -1532,7 +1527,7 @@ struct AIEObjectFifoStatefulTransformPass
                 break;
               i++;
             }
-            extraOffset = *getConstantIntValue(dstOffsets[i]);
+            extraOffset = getConstantIntValue(dstOffsets[i]).value_or(0);
             lenOut = linkOp->getDistributeTransferLengths()[i];
             joinDistribLockIndex = i;
           }
@@ -1641,10 +1636,12 @@ struct AIEObjectFifoStatefulTransformPass
           distribOrJoin = true;
           if (target == op) {
             if (isDistribute) {
-              offset = *getConstantIntValue(linkOp->getDstOffsets()[r]);
+              offset =
+                  getConstantIntValue(linkOp->getDstOffsets()[r]).value_or(0);
               lenOut = linkOp->getDistributeTransferLengths()[r];
             } else {
-              offset = *getConstantIntValue(linkOp->getSrcOffsets()[r]);
+              offset =
+                  getConstantIntValue(linkOp->getSrcOffsets()[r]).value_or(0);
               lenOut = linkOp->getJoinTransferLengths()[r];
             }
             lockIndex = r % joinDistribFactor;
@@ -1762,7 +1759,7 @@ struct AIEObjectFifoStatefulTransformPass
         originalOp->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName());
     auto newSymbol =
         newOp->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName());
-    for (auto user : tile->getUsers())
+    for (auto *user : tile->getUsers())
       if (isa<CoreOp>(user))
         if (auto res =
                 SymbolTable::replaceAllSymbolUses(original, newSymbol, user);
@@ -2265,7 +2262,7 @@ struct AIEObjectFifoStatefulTransformPass
     LockAnalysis lockAnalysis(device);
     DMAChannelAnalysis dmaAnalysis(device);
     OpBuilder builder = OpBuilder::atBlockTerminator(device.getBody());
-    auto ctx = device->getContext();
+    auto *ctx = device->getContext();
     auto producerWireType = WireBundle::DMA;
     auto consumerWireType = WireBundle::DMA;
     std::set<TileOp>
@@ -2289,7 +2286,6 @@ struct AIEObjectFifoStatefulTransformPass
     for (auto createOp : createFifoOps) {
       std::vector<ObjectFifoCreateOp> splitConsumerFifos;
       int consumerIndex = 0;
-      int consumerDepth = createOp.size();
       ArrayRef<BDDimLayoutArrayAttr> consumerDims =
           createOp.getDimensionsFromStreamPerConsumer();
 
@@ -2303,6 +2299,7 @@ struct AIEObjectFifoStatefulTransformPass
       for (auto consumerTile : createOp.getConsumerTiles()) {
         auto consumerTileOp = cast<TileOp>(consumerTile.getDefiningOp());
 
+        int consumerDepth;
         if (isa<ArrayAttr>(createOp.getElemNumber())) {
           // +1 to account for 1st depth (producer)
           consumerDepth = createOp.size(consumerIndex + 1);
