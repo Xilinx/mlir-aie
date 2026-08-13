@@ -90,6 +90,8 @@ public:
     IsVirtualized = 1U << 2,
     // Device uses multi-dimensional buffer descriptors.
     UsesMultiDimensionalBDs = 1U << 3,
+    // Device supports BD per-execution base address advance.
+    UsesBDIteration = 1U << 4,
   };
 
 private:
@@ -591,7 +593,7 @@ public:
 
   std::optional<uint32_t> getStreamSwitchPortIndex(int col, int row,
                                                    WireBundle bundle,
-                                                   uint32_t channel,
+                                                   uint32_t port_num,
                                                    bool master) const override;
 
   uint32_t getColumnShift() const override { return 23; }
@@ -615,6 +617,7 @@ public:
     // Device properties initialization
     addModelProperty(AIETargetModel::UsesSemaphoreLocks);
     addModelProperty(AIETargetModel::UsesMultiDimensionalBDs);
+    addModelProperty(AIETargetModel::UsesBDIteration);
   }
 
   AIEArch getTargetArch() const override;
@@ -742,7 +745,7 @@ public:
 
   std::optional<uint32_t> getStreamSwitchPortIndex(int col, int row,
                                                    WireBundle bundle,
-                                                   uint32_t channel,
+                                                   uint32_t port_num,
                                                    bool master) const override;
 
   uint32_t getColumnShift() const override { return 25; }

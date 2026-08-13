@@ -98,7 +98,7 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
   llvm::SetVector<Block *> blockVector =
       getOrderedChainOfBlocks(&memOp.getBody());
 
-  for (auto block : blockVector) {
+  for (auto *block : blockVector) {
     bool foundBdPacket = false;
     int packetType = 0;
     int packetID = 0;
@@ -108,6 +108,7 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
     int BaseAddrA = 0;
     int elementWidthInBytes = 0;
     int ndims = 0;
+    int iterSize = 0, iterStride = 0, iterCurr = 0;
     ArrayRef<BDDimLayoutAttr> dims;
     // Owning storage for the folded dims; must outlive `dims` (used far below).
     SmallVector<BDDimLayoutAttr> dimsStorage;
@@ -115,9 +116,9 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
     for (auto op : block->getOps<DMABDOp>()) {
       foundBd = true;
       if (!targetModel.isShimNOCTile(col, row)) {
-        assert(op.getBufferOp().getAddress() &&
-               "buffer must have address assigned");
-        BaseAddrA = op.getBufferOp().getAddress().value();
+        std::optional<int32_t> bufferAddr = op.getBufferOp().getAddress();
+        assert(bufferAddr && "buffer must have address assigned");
+        BaseAddrA = *bufferAddr;
         int bufferCol = op.getBufferOp().getTileOp().colIndex();
         int bufferRow = op.getBufferOp().getTileOp().rowIndex();
 
@@ -133,6 +134,11 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
       lenA = op.getLenInBytes();
       offsetA = op.getOffsetInBytes();
       elementWidthInBytes = op.getBufferElementTypeWidthInBytes();
+      if (auto iter = op.getIteration()) {
+        iterSize = iter->getSize();
+        iterStride = iter->getStride();
+        iterCurr = iter->getCurrent();
+      }
       if (!op.getMixedSizes().empty()) {
         // Runtime-valued sizes/strides are not supported on this static path.
         for (mlir::OpFoldResult s : op.getMixedSizes())
@@ -189,7 +195,7 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
         auto value = op.getConstantValue();
         if (failed(value))
           return failure();
-        acqValue = *value;
+        acqValue = *value; // NOLINT(bugprone-unchecked-optional-access)
         if (op.acquireGE())
           acqValue = -acqValue;
       } else if (op.release()) {
@@ -198,7 +204,7 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
         auto value = op.getConstantValue();
         if (failed(value))
           return failure();
-        relValue = *value;
+        relValue = *value; // NOLINT(bugprone-unchecked-optional-access)
       } else {
         // unreachable for current targets
         return op.emitOpError("unsupported lock action");
@@ -260,6 +266,18 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
                                        BaseAddrA, offsetA, lenA,
                                        elementWidthInBytes, "1");
 
+      if (iterSize > 1 && iterStride > 0) {
+        int64_t strideInBytes =
+            static_cast<int64_t>(iterStride) * elementWidthInBytes;
+        if (strideInBytes % 4)
+          return memOp.emitError("iteration_stride must result in a stride "
+                                 "aligned to 32-bit words");
+        int stepInWords = static_cast<int>(strideInBytes / 4);
+        output << "__mlir_aie_try(XAie_DmaSetBdIteration("
+               << tileDMAInstRefStr(col, row, bdNum) << ", " << stepInWords
+               << ", " << iterSize << ", " << iterCurr << "));\n";
+      }
+
       if (block->getNumSuccessors() > 0) {
         Block *nextBlock = block->getSuccessors()[0]; // should have only one
                                                       // successor block
@@ -289,7 +307,7 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
     }
   }
 
-  for (auto block : blockVector) {
+  for (auto *block : blockVector) {
     for (auto op : block->getOps<DMAStartOp>()) {
       int bdNum = blockMap[op.getDest()];
       StringRef dmaDir = stringifyDMAChannelDir(op.getChannelDir());
@@ -376,8 +394,6 @@ xilinx::AIE::AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output,
   case AIEArch::AIE2p:
     device = AIE2p_device;
     break;
-  default:
-    return module.emitOpError("Unsupported aie.device");
   }
   output << "  ctx->XAieConfig->AieGen = " << device << ";\n";
   output << "  ctx->XAieConfig->BaseAddr = 0x20000000000;\n";
@@ -503,10 +519,10 @@ xilinx::AIE::AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output,
       for (auto op : block.getOps<DMAStartOp>()) {
         int chNum = op.getChannelIndex();
         channelMap[&block] = chNum;
-        auto dest = op.getDest();
+        auto *dest = op.getDest();
         while (dest) {
           channelMap[dest] = chNum;
-          if (dest->getSuccessors().size() < 1)
+          if (dest->getSuccessors().empty())
             break;
           dest = dest->getSuccessors()[0];
           if (channelMap.count(dest))

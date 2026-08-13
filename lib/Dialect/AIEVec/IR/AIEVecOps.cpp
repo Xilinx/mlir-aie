@@ -228,7 +228,7 @@ OpFoldResult CastOp::fold(FoldAdaptor adaptor) {
 
 // SRS fold method. It will fold with a preceding UPS operation.
 OpFoldResult SRSOp::fold(FoldAdaptor adaptor) {
-  auto srcDefOp = getSource().getDefiningOp();
+  auto *srcDefOp = getSource().getDefiningOp();
   if (!srcDefOp)
     return nullptr;
 
@@ -236,7 +236,7 @@ OpFoldResult SRSOp::fold(FoldAdaptor adaptor) {
   if (!upsOp)
     return nullptr;
 
-  auto shiftDefOp = getShift().getDefiningOp();
+  auto *shiftDefOp = getShift().getDefiningOp();
   if (!shiftDefOp)
     return nullptr;
 
@@ -303,10 +303,9 @@ LogicalResult SRSOp::verify() {
   if (isa<IntegerType>(atype) && stypeWidth >= atypeWidth)
     return emitError("the element type of source accumulator must be "
                      "wider than that of the result vector");
-  else if (isa<FloatType>(atype) && stypeWidth != 16 &&
-           stypeWidth != atypeWidth)
-    return emitError("the element type of source accumulator must be "
-                     "same as the result vector");
+  if (isa<FloatType>(atype) && stypeWidth != 16 && stypeWidth != atypeWidth)
+    return emitError("the element type of         source accumulator must be "
+                     "same as the result         vector");
 
   return success();
 }
@@ -365,7 +364,7 @@ OpFoldResult UPSOp::fold(FoldAdaptor adaptor) {
   // TODO: ignored here. Somebody should take a careful look at it.
   // TODO: In next llvm version: auto srsDefOp =
   // adaptor.getSource().getDefiningOp();
-  auto srcDefOp = getSource().getDefiningOp();
+  auto *srcDefOp = getSource().getDefiningOp();
   if (!srcDefOp)
     return nullptr;
   auto srsOp = llvm::dyn_cast<SRSOp>(srcDefOp);
@@ -673,7 +672,7 @@ void aievec::FMAElemOp::print(OpAsmPrinter &p) {
 
 // Verify MulElem and FMAElem op.
 template <typename T>
-LogicalResult verifyMulFMAElemOp(T op) {
+static LogicalResult verifyMulFMAElemOp(T op) {
   // Verify the types
   auto lhsType = llvm::dyn_cast<VectorType>(op.getLhs().getType());
   auto rhsType = llvm::dyn_cast<VectorType>(op.getRhs().getType());
@@ -736,8 +735,9 @@ LogicalResult aievec::FMAElemOp::verify() {
 }
 
 // Parse MulElem and FMAElem op.
-ParseResult parseMulFMAElemOp(OpAsmParser &parser, OperationState &result,
-                              bool isFMAElemOp = true) {
+static ParseResult parseMulFMAElemOp(OpAsmParser &parser,
+                                     OperationState &result,
+                                     bool isFMAElemOp = true) {
   llvm::SMLoc typesLoc;
   SmallVector<Type, 3> types;
   OpAsmParser::UnresolvedOperand lhs, rhs, acc;
@@ -1015,7 +1015,7 @@ void UnpackOp::print(OpAsmPrinter &p) { printPackUnpackOp<UnpackOp>(p, *this); }
 
 // Verify Pack and Unpack op.
 template <typename T>
-LogicalResult verifyPackUnpackOp(T op) {
+static LogicalResult verifyPackUnpackOp(T op) {
   // Verify the types
   auto sourceType = llvm::dyn_cast<VectorType>(op.getSource().getType());
   auto resultType = llvm::dyn_cast<VectorType>(op.getResult().getType());
@@ -1069,7 +1069,8 @@ LogicalResult PackOp::verify() { return verifyPackUnpackOp<PackOp>(*this); }
 LogicalResult UnpackOp::verify() { return verifyPackUnpackOp<UnpackOp>(*this); }
 
 // Parse Pack and Unpack op.
-ParseResult parsePackUnpackOp(OpAsmParser &parser, OperationState &result) {
+static ParseResult parsePackUnpackOp(OpAsmParser &parser,
+                                     OperationState &result) {
   llvm::SMLoc typesLoc;
   SmallVector<Type, 2> types;
   OpAsmParser::UnresolvedOperand source;
@@ -1460,7 +1461,7 @@ void aievec::FMAConvOp::print(OpAsmPrinter &p) {
 
 // Verify MulConv and FMAConv op.
 template <typename T>
-LogicalResult verifyMulFMAConvOp(T op) {
+static LogicalResult verifyMulFMAConvOp(T op) {
   // Verify the types
   auto lhsType = llvm::dyn_cast<VectorType>(op.getLhs().getType());
   auto rhsType = llvm::dyn_cast<VectorType>(op.getRhs().getType());
@@ -1529,8 +1530,9 @@ LogicalResult aievec::FMAConvOp::verify() {
 }
 
 // Parse MulConv and FMAConv op.
-ParseResult parseMulFMAConvOp(OpAsmParser &parser, OperationState &result,
-                              bool isFMAConvOp = true) {
+static ParseResult parseMulFMAConvOp(OpAsmParser &parser,
+                                     OperationState &result,
+                                     bool isFMAConvOp = true) {
   llvm::SMLoc typesLoc;
   SmallVector<Type, 3> types;
   OpAsmParser::UnresolvedOperand lhs, rhs, acc;

@@ -18,6 +18,7 @@ extern "C" {
 MLIR_DECLARE_CAPI_DIALECT_REGISTRATION(AIE, aie);
 MLIR_DECLARE_CAPI_DIALECT_REGISTRATION(AIEVec, aievec);
 MLIR_DECLARE_CAPI_DIALECT_REGISTRATION(AIEX, aiex);
+MLIR_DECLARE_CAPI_DIALECT_REGISTRATION(XLLVM, xllvm);
 
 //===---------------------------------------------------------------------===//
 // ObjectFifoType

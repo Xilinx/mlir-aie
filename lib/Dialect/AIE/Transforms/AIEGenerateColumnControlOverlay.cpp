@@ -27,22 +27,6 @@ using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
 
-int getUnusedPacketIdFrom(DeviceOp device) {
-  int unusedPacketIdFrom = 0;
-  device.walk([&](AIE::PacketFlowOp pOp) {
-    unusedPacketIdFrom = std::max(unusedPacketIdFrom, pOp.IDInt());
-  });
-  device.walk([&](AIE::TileOp tOp) {
-    if (!tOp->hasAttr("controller_id"))
-      return;
-    auto controllerIdPkt =
-        tOp->getAttrOfType<AIE::PacketInfoAttr>("controller_id");
-    unusedPacketIdFrom =
-        std::max(unusedPacketIdFrom, (int)controllerIdPkt.getPktId());
-  });
-  return unusedPacketIdFrom + 1;
-}
-
 // Delegate to AIETargetModel::getTileToControllerIdMap.
 DenseMap<AIE::TileID, int>
 getTileToControllerIdMap(bool clColumnWiseUniqueIDs,
@@ -68,8 +52,8 @@ DenseMap<int, int> getRowToShimChanMap(const AIETargetModel &targetModel,
       shimTile.col = 0;
       shimTile.row++;
     }
-    assert(!(shimTile.col == targetModel.columns() &&
-             shimTile.row == targetModel.rows()));
+    assert(shimTile.col != targetModel.columns() ||
+           shimTile.row != targetModel.rows());
   }
 
   int numShimChans = targetModel.getNumSourceShimMuxConnections(
@@ -422,7 +406,7 @@ struct AIEGenerateColumnControlOverlayPass
     DenseMap<int, AIE::FlowOp> flowOpUsers;
     const auto &targetModel = device.getTargetModel();
 
-    for (auto user : shimTile.getResult().getUsers()) {
+    for (auto *user : shimTile.getResult().getUsers()) {
       auto fOp = dyn_cast<AIE::FlowOp>(user);
       if (!fOp)
         continue;
@@ -452,7 +436,7 @@ struct AIEGenerateColumnControlOverlayPass
   // dma
   LogicalResult generatePacketFlowsForControl(
       OpBuilder builder, DeviceOp device, TileOp shimTile,
-      WireBundle shimWireBundle, SmallVector<AIE::TileOp> ctrlTiles,
+      WireBundle shimWireBundle, const SmallVector<AIE::TileOp> &ctrlTiles,
       WireBundle ctrlWireBundle, int coreOrMemChanId,
       DenseMap<TileID, int> tileIDMap, bool isShimMM2S) {
     int ctrlPktFlowID = 0;

@@ -690,7 +690,7 @@ def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
 
   let extraClassDeclaration = [{
     static unsigned getOffsetSizeAndStrideStartOperandIndex();
-    static std::array<unsigned, 3> getArrayAttrMaxRanks();
+    std::array<unsigned, 3> getArrayAttrMaxRanks();
 
     /* Returns the data transfer offset in bytes, i.e. the first N bytes of the
        target buffer will be skipped. In the IR, offsets are expressed in units
@@ -1234,7 +1234,16 @@ def AIE_NpuWriteBdOp: AIEX_Op<"npu.writebd", []> {
   let assemblyFormat = [{ attr-dict }];
   let hasVerifier = 1;
   let description = [{
-    writebd operator
+    Write a complete buffer descriptor (all fields explicit) to a BD slot.
+
+    ###  Iteration convention: raw register values
+
+    The `iteration_*` attributes here are RAW register values: stored off by one
+    (`iteration_size = 3` means four executions) and `iteration_stride` in
+    32-bit words. The iteration state on `aie.dma_bd` (`#aie.bd_iteration<...>`)
+    holds TRUE / element values; the lowering applies the `-1` bias and the
+    element->word scaling there. Do NOT copy an iteration number between the
+    two ops. See the "## BD iteration" section of `aie.dma_bd` for more details.
   }];
 }
 
