@@ -24,7 +24,7 @@
 using namespace llvm;
 using namespace mlir;
 
-void version_printer(raw_ostream &os) {
+static void version_printer(raw_ostream &os) {
   os << "aie-opt " << AIE_GIT_COMMIT << "\n";
 }
 

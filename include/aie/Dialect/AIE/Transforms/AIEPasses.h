@@ -96,7 +96,7 @@ struct AIEPathfinderPass
 
   typedef std::pair<TileID, Port> PhysPort;
 
-  bool findPathToDest(SwitchSettings settings, TileID currTile,
+  bool findPathToDest(const SwitchSettings &settings, TileID currTile,
                       WireBundle currDestBundle, int currDestChannel,
                       TileID finalTile, WireBundle finalDestBundle,
                       int finalDestChannel);

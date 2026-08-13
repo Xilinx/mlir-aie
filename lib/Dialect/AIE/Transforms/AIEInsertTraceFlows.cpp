@@ -68,10 +68,9 @@ struct ShimInfo {
 // maximum capacity, not the runtime data size. Any non-memref block argument
 // marks it.
 static bool isDynamicRuntimeSequence(RuntimeSequenceOp seq) {
-  for (BlockArgument arg : seq.getBody().getArguments())
-    if (!isa<MemRefType>(arg.getType()))
-      return true;
-  return false;
+  return llvm::any_of(seq.getBody().getArguments(), [](BlockArgument arg) {
+    return !isa<MemRefType>(arg.getType());
+  });
 }
 
 struct AIEInsertTraceFlowsPass
@@ -294,7 +293,7 @@ struct AIEInsertTraceFlowsPass
         if (auto packetOp = dyn_cast<TracePacketOp>(op)) {
           existingPacketOp = packetOp;
           if (auto explicitId = packetOp.getId())
-            packetId = *explicitId;
+            packetId = explicitId;
           packetType = packetOp.getType();
           break;
         }
@@ -358,12 +357,12 @@ struct AIEInsertTraceFlowsPass
         if (auto startOp = dyn_cast<TraceStartEventOp>(op)) {
           hasStartConfig = true;
           if (startOp.getBroadcast())
-            startBroadcast = *startOp.getBroadcast();
+            startBroadcast = startOp.getBroadcast();
         }
         if (auto stopOp = dyn_cast<TraceStopEventOp>(op)) {
           hasStopConfig = true;
           if (stopOp.getBroadcast())
-            stopBroadcast = *stopOp.getBroadcast();
+            stopBroadcast = stopOp.getBroadcast();
         }
       }
 

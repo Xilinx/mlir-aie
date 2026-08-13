@@ -98,7 +98,7 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
   llvm::SetVector<Block *> blockVector =
       getOrderedChainOfBlocks(&memOp.getBody());
 
-  for (auto block : blockVector) {
+  for (auto *block : blockVector) {
     bool foundBdPacket = false;
     int packetType = 0;
     int packetID = 0;
@@ -116,9 +116,9 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
     for (auto op : block->getOps<DMABDOp>()) {
       foundBd = true;
       if (!targetModel.isShimNOCTile(col, row)) {
-        assert(op.getBufferOp().getAddress() &&
-               "buffer must have address assigned");
-        BaseAddrA = op.getBufferOp().getAddress().value();
+        std::optional<int32_t> bufferAddr = op.getBufferOp().getAddress();
+        assert(bufferAddr && "buffer must have address assigned");
+        BaseAddrA = *bufferAddr;
         int bufferCol = op.getBufferOp().getTileOp().colIndex();
         int bufferRow = op.getBufferOp().getTileOp().rowIndex();
 
@@ -195,7 +195,7 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
         auto value = op.getConstantValue();
         if (failed(value))
           return failure();
-        acqValue = *value;
+        acqValue = *value; // NOLINT(bugprone-unchecked-optional-access)
         if (op.acquireGE())
           acqValue = -acqValue;
       } else if (op.release()) {
@@ -204,7 +204,7 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
         auto value = op.getConstantValue();
         if (failed(value))
           return failure();
-        relValue = *value;
+        relValue = *value; // NOLINT(bugprone-unchecked-optional-access)
       } else {
         // unreachable for current targets
         return op.emitOpError("unsupported lock action");
@@ -307,7 +307,7 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
     }
   }
 
-  for (auto block : blockVector) {
+  for (auto *block : blockVector) {
     for (auto op : block->getOps<DMAStartOp>()) {
       int bdNum = blockMap[op.getDest()];
       StringRef dmaDir = stringifyDMAChannelDir(op.getChannelDir());
@@ -394,8 +394,6 @@ xilinx::AIE::AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output,
   case AIEArch::AIE2p:
     device = AIE2p_device;
     break;
-  default:
-    return module.emitOpError("Unsupported aie.device");
   }
   output << "  ctx->XAieConfig->AieGen = " << device << ";\n";
   output << "  ctx->XAieConfig->BaseAddr = 0x20000000000;\n";
@@ -521,10 +519,10 @@ xilinx::AIE::AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output,
       for (auto op : block.getOps<DMAStartOp>()) {
         int chNum = op.getChannelIndex();
         channelMap[&block] = chNum;
-        auto dest = op.getDest();
+        auto *dest = op.getDest();
         while (dest) {
           channelMap[dest] = chNum;
-          if (dest->getSuccessors().size() < 1)
+          if (dest->getSuccessors().empty())
             break;
           dest = dest->getSuccessors()[0];
           if (channelMap.count(dest))

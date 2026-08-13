@@ -2437,8 +2437,8 @@ def AIE_RuntimeSequenceOp : AIE_Op<"runtime_sequence", [
   let hasVerifier = 1;
   let extraClassDeclaration = [{
     static llvm::StringRef getDefaultRuntimeSequenceName() { return "sequence"; }
-    static RuntimeSequenceOp getForSymbolInDevice(DeviceOp module, llvm::StringRef symbol);
-    static RuntimeSequenceOp getForSymbolInDeviceOrError(DeviceOp module, llvm::StringRef symbol);
+    static RuntimeSequenceOp getForSymbolInDevice(DeviceOp deviceOp, llvm::StringRef symbol);
+    static RuntimeSequenceOp getForSymbolInDeviceOrError(DeviceOp deviceOp, llvm::StringRef symbol);
     llvm::LogicalResult verifyBeforeMaterialization();
   }];
   let extraClassDefinition = [{
