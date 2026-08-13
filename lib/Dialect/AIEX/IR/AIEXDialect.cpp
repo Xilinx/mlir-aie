@@ -303,7 +303,11 @@ int64_t AIEX::NpuDmaMemcpyNdOp::getOffsetInBytes() {
   for (size_t i = 0; i < R; i++) {
     if (offsets[i] == 0)
       continue;
-    offset += offsets[i] * getConstantIntValue(strides[i]).value() * S;
+    auto strideConst = getConstantIntValue(strides[i]);
+    assert(strideConst &&
+           "verifier requires a stride paired with a non-zero offset to be "
+           "constant");
+    offset += offsets[i] * (*strideConst) * S;
   }
   return offset;
 }
@@ -453,8 +457,8 @@ struct LinearizeContiguousTransfer
 } // namespace
 
 void AIEX::NpuDmaMemcpyNdOp::getCanonicalizationPatterns(
-    mlir::RewritePatternSet &patterns, mlir::MLIRContext *context) {
-  patterns.add<LinearizeContiguousTransfer>(context);
+    mlir::RewritePatternSet &results, mlir::MLIRContext *context) {
+  results.add<LinearizeContiguousTransfer>(context);
 }
 
 // Helper method to check if a requested burst length is supported by the target
@@ -819,15 +823,15 @@ static std::optional<uint32_t> getAbsoluteAddress(T *op,
 
   // If blockwrite references a buffer, the given address is understood to be
   // relative to the buffer's start address.
-  if (op->getBuffer()) {
-    AIE::BufferOp buffer = device.lookupSymbol<AIE::BufferOp>(*op->getBuffer());
+  if (auto bufferSym = op->getBuffer()) {
+    AIE::BufferOp buffer = device.lookupSymbol<AIE::BufferOp>(*bufferSym);
     if (!buffer) {
-      op->emitError() << "buffer '" << *op->getBuffer()
-                      << "' not found in device";
+      op->emitError() << "buffer '" << *bufferSym << "' not found in device";
       return std::nullopt;
     }
 
-    if (!buffer.getAddress()) {
+    auto bufferAddress = buffer.getAddress();
+    if (!bufferAddress) {
       mlir::InFlightDiagnostic err =
           op->emitError("referenced buffer must have address assigned");
       err.attachNote(buffer.getLoc()) << "This buffer must have an address.";
@@ -836,7 +840,7 @@ static std::optional<uint32_t> getAbsoluteAddress(T *op,
 
     uint32_t col = buffer.getTileOp().getCol();
     uint32_t row = buffer.getTileOp().getRow();
-    address = static_cast<uint32_t>(*buffer.getAddress()) +
+    address = static_cast<uint32_t>(*bufferAddress) +
               addressOffset * sizeof(uint32_t);
     address = ((col & 0xff) << tm.getColumnShift()) |
               ((row & 0xff) << tm.getRowShift()) | (address & 0xfffff);
@@ -1076,10 +1080,7 @@ std::optional<uint32_t> AIEX::DMAConfigureTaskOp::getFirstBdId() {
     return std::nullopt;
   }
   AIE::DMABDOp bd = *bd_ops.begin();
-  if (!bd.getBdId().has_value()) {
-    return std::nullopt;
-  }
-  return bd.getBdId().value();
+  return bd.getBdId();
 }
 
 LogicalResult
@@ -1088,8 +1089,7 @@ AIEX::DMAConfigureTaskOp::canonicalize(AIEX::DMAConfigureTaskOp op,
   // Remove blocks that contain nothing but a terminator
   Region &body = op.getBody();
   bool did_rewrite = false;
-  for (auto it = body.begin(); it != body.end(); ++it) {
-    Block &block = *it;
+  for (auto &block : body) {
     if (block.empty()) {
       continue;
     }
@@ -1165,8 +1165,7 @@ LogicalResult AIEX::DMAConfigureTaskOp::verify() {
       failed(verifyTaskBDDimensions(targetModel, *col, *row, getBody())))
     return failure();
   Region &body = getBody();
-  for (auto it = body.begin(); it != body.end(); ++it) {
-    Block &block = *it;
+  for (auto &block : body) {
     if (block.empty()) {
       continue;
     }

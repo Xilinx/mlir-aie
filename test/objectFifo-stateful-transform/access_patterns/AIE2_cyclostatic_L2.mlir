@@ -32,7 +32,7 @@
 //   object-by-object. If the consumer needs more than one object at once, it
 //   acquires the consumer locks multiple times.
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=false" %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll %s | FileCheck %s
 
 // CHECK: module @aie2_cyclostatic_L2 {
 // CHECK:   aie.device(xcve2302) {
@@ -86,7 +86,7 @@
 // ////////////////////////////////////////////////////////////////////////// //
 
 // CHECK:     %[[c0:.*]] = aie.core(%[[t0]]) {
-// CHECK:       %c0 = arith.constant 0 : index
+// CHECK-DAG:       %c0 = arith.constant 0 : index
 // CHECK:       aie.use_lock(%[[fifo0_prod_lock]], AcquireGreaterEqual, %{{.*}})
 // CHECK:       memref.store %c55_i32, %[[fifo0_buff_0]][%c0] : memref<1xi32>
 // CHECK:       aie.use_lock(%[[fifo0_cons_lock]], Release, %{{.*}})
@@ -108,10 +108,10 @@
 // ////////////////////////////////////////////////////////////////////////// //
 
 // CHECK:     %[[c2:.*]] = aie.core(%[[t2]]) {
-// CHECK:       %c0 = arith.constant 0 : index
-// CHECK:       %c1 = arith.constant 1 : index
-// CHECK:       %c2 = arith.constant 2 : index
-// CHECK:       %c3 = arith.constant 3 : index
+// CHECK-DAG:       %c0 = arith.constant 0 : index
+// CHECK-DAG:       %c1 = arith.constant 1 : index
+// CHECK-DAG:       %c2 = arith.constant 2 : index
+// CHECK-DAG:       %c3 = arith.constant 3 : index
 
 // The fifo1_cons_cons_lock will be released with a value of 1 whenever the
 // DMA received an object from the stream and wrote it to the buffer. First,

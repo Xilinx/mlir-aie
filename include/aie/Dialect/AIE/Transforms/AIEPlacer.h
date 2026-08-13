@@ -60,7 +60,7 @@ public:
   Placer() = default;
   virtual ~Placer() = default;
 
-  virtual void initialize(const AIETargetModel &targetModel);
+  virtual void initialize(const AIETargetModel &tm);
 
   virtual mlir::LogicalResult place(DeviceOp device) = 0;
 

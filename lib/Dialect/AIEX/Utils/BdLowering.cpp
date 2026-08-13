@@ -105,9 +105,12 @@ Value buildArgPlusValue(OpBuilder &builder, Location loc,
                   });
   if (allConst) {
     int64_t bytes = baseByteOffset;
-    for (auto [o, s] : llvm::zip(elementOffsets, strides))
-      bytes +=
-          *getConstantIntValue(o) * *getConstantIntValue(s) * elemWidthBytes;
+    for (auto [o, s] : llvm::zip(elementOffsets, strides)) {
+      auto oc = getConstantIntValue(o);
+      auto sc = getConstantIntValue(s);
+      assert(oc && sc && "allConst already verified these are constant");
+      bytes += (*oc) * (*sc) * elemWidthBytes;
+    }
     return arith::ConstantOp::create(builder, loc,
                                      IntegerAttr::get(i32ty, bytes));
   }
@@ -214,12 +217,12 @@ LogicalResult emitDynamicShimBdWordOverrides(
     auto sz0 = cst(sizesRev[0]);
     auto d1sz = cst(sizesRev[1]);
     auto d1st = cst(stridesRev[1]);
-    if (!(d1sz && *d1sz == 1))
+    if (!d1sz || *d1sz != 1)
       if (!sz0 || !d1st || *d1st != *sz0)
         return false;
     auto d2sz = cst(sizesRev[2]);
     auto d2st = cst(stridesRev[2]);
-    if (!(d2sz && *d2sz == 1)) {
+    if (!d2sz || *d2sz != 1) {
       auto prod01 =
           (sz0 && d1sz) ? std::optional<int64_t>(*sz0 * *d1sz) : std::nullopt;
       if (!prod01 || !d2st || *d2st != *prod01)

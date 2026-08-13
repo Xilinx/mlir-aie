@@ -690,7 +690,7 @@ def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
 
   let extraClassDeclaration = [{
     static unsigned getOffsetSizeAndStrideStartOperandIndex();
-    static std::array<unsigned, 3> getArrayAttrMaxRanks();
+    std::array<unsigned, 3> getArrayAttrMaxRanks();
 
     /* Returns the data transfer offset in bytes, i.e. the first N bytes of the
        target buffer will be skipped. In the IR, offsets are expressed in units

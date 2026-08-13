@@ -50,9 +50,9 @@ static StringRef getArchIntrinsicString(AIEArch arch) {
   llvm::report_fatal_error("unsupported arch");
 }
 
-typedef std::tuple<const char *, std::vector<Type>, std::vector<Type>>
-    IntrinsicDecl;
-typedef std::vector<IntrinsicDecl> IntrinsicDecls;
+using IntrinsicDecl =
+    std::tuple<const char *, std::vector<Type>, std::vector<Type>>;
+using IntrinsicDecls = std::vector<IntrinsicDecl>;
 
 static auto getAIE1Intrinsics(OpBuilder &builder) {
   Type int32Type = IntegerType::get(builder.getContext(), 32);
@@ -151,7 +151,7 @@ static auto getAIE2pIntrinsics(OpBuilder &builder) {
 }
 
 static void declareAIEIntrinsics(AIEArch arch, OpBuilder &builder) {
-  auto registerIntrinsics = [&builder](IntrinsicDecls functions) {
+  auto registerIntrinsics = [&builder](const IntrinsicDecls &functions) {
     for (auto &i : functions) {
       auto [name, argTypes, retTypes] = i;
       func::FuncOp::create(
@@ -650,7 +650,7 @@ struct AIECoreToStandardFunc : OpConversionPattern<CoreOp> {
 
 // Move all the ops with OpTy inside device, to just before the device.
 template <typename OpTy>
-void outlineOps(DeviceOp device) {
+static void outlineOps(DeviceOp device) {
   SmallVector<OpTy, 16> ops;
   for (const auto &op : device.getOps<OpTy>())
     ops.push_back(op);
@@ -690,8 +690,6 @@ struct AIEEventOpToStdLowering : OpConversionPattern<EventOp> {
           rewriter, op.getLoc(), rewriter.getI32Type(),
           rewriter.getI32IntegerAttr(op.getVal())));
       break;
-    default:
-      return op->emitOpError("Unsupported AIEArch for EventOp lowering");
     }
     auto eventFunc = module.lookupSymbol<func::FuncOp>(funcName);
     if (!eventFunc)

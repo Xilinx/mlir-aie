@@ -257,7 +257,8 @@ patchCoreElfFiles(mlir::ModuleOp src,
 // LLVM-IR text post-processing
 //===----------------------------------------------------------------------===//
 
-// Strip LLVM-23-only features Peano's older opt/llc can't parse.
+// Strip newer-LLVM features Peano's older opt/llc can't parse. aiecc's LLVM is
+// 24; Peano's is 21, so the text handed between them needs the gap patched.
 inline std::string downgradeIRForPeano(llvm::StringRef ir,
                                        bool stripAlign = true) {
   std::string result = ir.str();
@@ -267,12 +268,6 @@ inline std::string downgradeIRForPeano(llvm::StringRef ir,
       while (end < result.size() && trail(result[end]))
         ++end;
       result.erase(p, end - p);
-    }
-  };
-  auto replaceAll = [&](llvm::StringRef from, llvm::StringRef to) {
-    for (size_t p = 0; (p = result.find(from.str(), p)) != std::string::npos;) {
-      result.replace(p, from.size(), to.str());
-      p += to.size();
     }
   };
   // Newer LLVM prints special floats as 'inf'/'-inf'/'nan'; Peano's opt only
@@ -292,7 +287,6 @@ inline std::string downgradeIRForPeano(llvm::StringRef ir,
       }
     }
   };
-  replaceAll("getelementptr inbounds nuw", "getelementptr inbounds");
   erasePattern("nocreateundeforpoison",
                [](char c) { return c == ' ' || c == '\t'; });
   // LLVM 23 dropped the size operand of `llvm.lifetime.start`/`.end`; Peano
@@ -847,10 +841,25 @@ inline std::unique_ptr<mlir::PassManager> getInputWithAddressesPipeline(
 
   mlir::OpPassManager &dpm = pm->nest<DeviceOp>();
   dpm.addPass(createAIEAssignLockIDsPass());
+  // The stateful transform always emits the dynamic (runtime) buffer addressing
+  // and lock bookkeeping. When dynamic objectFifos are disabled, the
+  // aie-objectFifo-unroll pass below unrolls the loops that carry objectFifo
+  // accesses and folds the (now loop-invariant) runtime bookkeeping into a
+  // static, unrolled lowering.
   if (mlir::failed(mlir::parsePassPipeline(
-          llvm::formatv("aie-objectFifo-stateful-transform{{dynamic-objFifos="
-                        "{0} packet-sw-objFifos={1}}",
-                        dynamicObjFifos, packetSwObjFifos)
+          llvm::formatv("aie-objectFifo-stateful-transform{{packet-sw-objFifos="
+                        "{0}}",
+                        packetSwObjFifos)
+              .str(),
+          dpm)))
+    return nullptr;
+  // Unroll the objectFifo loops (folding the runtime bookkeeping into the
+  // static lowering). `default-dynamic=true` flips the default to the
+  // loop-preserving form; per-core `dynamic_objfifo_lowering` attributes
+  // override it either way. Either way the unroll hints are stripped.
+  if (mlir::failed(mlir::parsePassPipeline(
+          llvm::formatv("aie-objectFifo-unroll{{default-dynamic={0}}",
+                        dynamicObjFifos)
               .str(),
           dpm)))
     return nullptr;

@@ -182,9 +182,11 @@ struct AIEDMATasksToNPUPass
       error.attachNote(block.getParentOp()->getLoc())
           << "Error encountered while lowering this BD configuration.";
       return failure();
-    } else if (n_bd_ops > 1) {
+    }
+    if (n_bd_ops > 1) {
       auto error = block.getTerminator()->emitOpError(
-          "This block contains multiple aie.dma_bd operations. Exactly one is "
+          "This block contains multiple aie.dma_bd operations. Exactly one     "
+          "    is "
           "required.");
       auto it = bd_ops.begin();
       ++it;
@@ -354,13 +356,14 @@ struct AIEDMATasksToNPUPass
     } else if (AIE::BufferOp buffer =
                    llvm::dyn_cast<AIE::BufferOp>(buf.getDefiningOp())) {
       uint64_t buf_addr;
-      if (!buffer.getAddress().has_value()) {
+      std::optional<uint32_t> bufferAddr = buffer.getAddress();
+      if (!bufferAddr.has_value()) {
         return bd_op->emitOpError(
             "Cannot lower buffer without associated address. Run pass "
             "--aie-assign-buffer-addresses first or manually assign an "
             "address.");
       }
-      buf_addr = *buffer.getAddress();
+      buf_addr = *bufferAddr;
       buf_addr += bd_op.getOffsetInBytes();
       if (target_model.isCoreTile(col, row)) {
         NpuMaskWrite32Op::create(
@@ -445,8 +448,8 @@ struct AIEDMATasksToNPUPass
                          const AIE::AIETargetModel &target_model,
                          std::optional<xilinx::AIE::PacketInfoAttr> packet) {
     BdTemplateFields f;
-    if (bd_op.getNextBdId().has_value()) {
-      f.next_bd_id = bd_op.getNextBdId().value();
+    if (std::optional<uint32_t> nextBdId = bd_op.getNextBdId()) {
+      f.next_bd_id = *nextBdId;
       f.use_next_bd = 1;
     }
 
@@ -463,12 +466,14 @@ struct AIEDMATasksToNPUPass
       AIE::LockOp acq_lock = acquire_op.getLockOp();
       AIE::LockOp rel_lock = release_op.getLockOp();
 
-      if (acq_lock.getLockID().has_value()) {
-        f.lock_acq_id = acq_lock.getLockID().value();
-        auto value = acquire_op.getConstantValue();
+      if (std::optional<int32_t> acqLockId = acq_lock.getLockID()) {
+        f.lock_acq_id = *acqLockId;
+        FailureOr<int32_t> value = acquire_op.getConstantValue();
         if (failed(value))
           return failure();
-        f.lock_acq_val = *value;
+        // failed() above guards the deref; FailureOr hides std::optional's
+        // has_value(), so the checker cannot see the guard (suppressed below).
+        f.lock_acq_val = *value; // NOLINT
         // For AcquireGreaterEqual, negate the value to signal the hardware to
         // use >= comparison instead of == comparison.
         if (acquire_op.acquireGE())
@@ -476,12 +481,13 @@ struct AIEDMATasksToNPUPass
         f.lock_acq_enable = 1;
       }
 
-      if (rel_lock.getLockID().has_value()) {
-        f.lock_rel_id = rel_lock.getLockID().value();
-        auto value = release_op.getConstantValue();
+      if (std::optional<int32_t> relLockId = rel_lock.getLockID()) {
+        f.lock_rel_id = *relLockId;
+        FailureOr<int32_t> value = release_op.getConstantValue();
         if (failed(value))
           return failure();
-        f.lock_rel_val = *value;
+        // failed() above guards the deref; see note in the acquire branch.
+        f.lock_rel_val = *value; // NOLINT
       }
 
       // For memtile, add lock offset using getLockLocalBaseIndex. This matches
@@ -520,14 +526,23 @@ struct AIEDMATasksToNPUPass
         gatherBdTemplateFields(block, bd_op, tile, target_model, packet);
     if (failed(fieldsOr))
       return failure();
-    BdTemplateFields f = *fieldsOr;
+    // failed() above guards the deref; FailureOr hides the std::optional base's
+    // has_value(), so the checker cannot see the guard (suppressed below).
+    BdTemplateFields f = *fieldsOr; // NOLINT
 
     // The bd_id as an OpFoldResult: the runtime pool value if present, else the
-    // pinned constant attribute.
+    // pinned constant attribute. On the non-runtime path verifyBdInBlock (run
+    // for every block before any lowering, with hasRuntimeBdId == !runtimeBdId)
+    // has already required the attribute, so the access is guaranteed set here.
+    std::optional<uint32_t> staticBdId;
+    if (!runtimeBdId) {
+      staticBdId = bd_op.getBdId();
+      assert(staticBdId && "static bd_id must be assigned (checked by "
+                           "verifyBdInBlock before lowering)");
+    }
     OpFoldResult bdIdOfr =
-        runtimeBdId
-            ? OpFoldResult(runtimeBdId)
-            : OpFoldResult(builder.getI32IntegerAttr(bd_op.getBdId().value()));
+        runtimeBdId ? OpFoldResult(runtimeBdId)
+                    : OpFoldResult(builder.getI32IntegerAttr(*staticBdId));
 
     if (runtimeBdId) {
       // A runtime bd_id makes the register block's address runtime, so the
@@ -542,7 +557,7 @@ struct AIEDMATasksToNPUPass
       // Zero-template BD: constant fields baked in, size/stride words zeroed
       // for the write32 overrides to fill. valid_bd = 1.
       NpuWriteBdOp::create(
-          builder, loc, col, bd_op.getBdId().value(), /*buffer_length=*/0,
+          builder, loc, col, *staticBdId, /*buffer_length=*/0,
           /*buffer_offset=*/0, f.enable_packet, /*out_of_order_id=*/0,
           f.packet_id, f.packet_type, /*d0_size=*/0, /*d0_stride=*/0,
           /*d1_size=*/0,
@@ -580,12 +595,22 @@ struct AIEDMATasksToNPUPass
         static_cast<uint64_t>(bd_op.getBufferElementTypeWidthInBytes()) * 8;
     uint32_t gran = target_model.getAddressGenGranularity();
     // len as OpFoldResult: the runtime operand if present, else the static_len
-    // attr (a constant BD with runtime sizes/strides still reaches here).
+    // attr (a constant BD with runtime sizes/strides still reaches here). The
+    // dynamic shim encoder needs an explicit transfer length; unlike the static
+    // path it cannot infer one from the buffer's shape, so a BD that carries
+    // neither a len operand nor a static_len attribute is unsupported here
+    // rather than a crash.
     OpFoldResult lenOfr;
-    if (Value lenOperand = bd_op.getLen())
+    if (Value lenOperand = bd_op.getLen()) {
       lenOfr = lenOperand;
-    else
-      lenOfr = builder.getI32IntegerAttr(bd_op.getConstantLen().value());
+    } else {
+      std::optional<int32_t> constLen = bd_op.getConstantLen();
+      if (!constLen)
+        return bd_op->emitOpError(
+            "runtime-valued BD requires an explicit transfer length; provide a "
+            "`len` for this buffer descriptor.");
+      lenOfr = builder.getI32IntegerAttr(*constLen);
+    }
     Value lenVal = getAsValue(builder, loc, lenOfr, i32ty);
     Value bufLen = arith::DivUIOp::create(
         builder, loc,
@@ -698,7 +723,13 @@ struct AIEDMATasksToNPUPass
 
     // Static path: bd_id is a pinned attribute (the dynamic/runtime-bd_id path
     // returned above) and the offset is constant (runtime offset routed above).
-    uint32_t bd_id = bd_op.getBdId().value();
+    // verifyBdInBlock (run for every block before lowering, with the static
+    // path implying hasRuntimeBdId == false) has already required the
+    // attribute.
+    std::optional<uint32_t> bdIdAttr = bd_op.getBdId();
+    assert(bdIdAttr && "static bd_id must be assigned (checked by "
+                       "verifyBdInBlock before lowering)");
+    uint32_t bd_id = *bdIdAttr;
     int64_t offset = bd_op.getOffsetInBytes();
     uint64_t len = bd_op.getLenInBytes();
     uint64_t len_addr_granularity = len * 8 / addr_granularity;
@@ -744,7 +775,7 @@ struct AIEDMATasksToNPUPass
     auto iteration_size = 0;
     auto iteration_stride = 0;
 
-    if (dims && dims->size() > 0) {
+    if (dims && !dims->empty()) {
       llvm::SmallVector<int64_t, 4> input_sizes =
           llvm::SmallVector<int64_t, 4>(4, 1);
       llvm::SmallVector<int64_t, 4> input_strides =
@@ -863,15 +894,18 @@ struct AIEDMATasksToNPUPass
         return bd_op->emitOpError()
                << "Padding requires n-d data layouts expressed as "
                << "wrap(s) and stride(s).";
-      } else if (padDims) {
-        return bd_op->emitOpError() << "Padding is supported only on MemTiles.";
+      }
+      if (padDims) {
+        return bd_op->emitOpError()
+               << "        Padding is supported only on MemTiles.";
       }
     }
     auto fieldsOr =
         gatherBdTemplateFields(block, bd_op, tile, target_model, packet);
     if (failed(fieldsOr))
       return failure();
-    BdTemplateFields f = *fieldsOr;
+    // failed() above guards the deref; see note in rewriteSingleBDDynamic.
+    BdTemplateFields f = *fieldsOr; // NOLINT
 
     NpuWriteBdOp::create(
         builder, bd_op.getLoc(), tile.getCol(), bd_id, len_addr_granularity,
@@ -902,8 +936,7 @@ struct AIEDMATasksToNPUPass
 
   LogicalResult hoistNextBdOpsIntoAttrs(DMAConfigureTaskOp op) {
     Region &body = op.getBody();
-    for (auto it = body.begin(); it != body.end(); ++it) {
-      Block &block = *it;
+    for (auto &block : body) {
       if (shouldSkipBlock(block)) {
         continue;
       }
@@ -925,7 +958,7 @@ struct AIEDMATasksToNPUPass
                    .has_value()); // Next BD should have assigned ID, and this
                                   // should have been checked by earlier
                                   // verifyBdInBlock() call
-        bd_op.setNextBdId(next_dma_bd_op.getBdId().value());
+        bd_op.setNextBdId(next_dma_bd_op.getBdId());
         OpBuilder builder(next_bd_op);
         AIE::EndOp::create(builder, next_bd_op.getLoc());
         next_bd_op.erase();
@@ -943,8 +976,8 @@ struct AIEDMATasksToNPUPass
     if (!op.use_empty()) {
       auto err = op.emitOpError("Cannot lower while op still has uses.");
       mlir::Operation::use_range uses = op.getOperation()->getUses();
-      for (auto it = uses.begin(); it != uses.end(); ++it) {
-        err.attachNote(it->getOwner()->getLoc()) << "Used here.";
+      for (auto &use : uses) {
+        err.attachNote(use.getOwner()->getLoc()) << "Used here.";
       }
       return failure();
     }
@@ -954,17 +987,17 @@ struct AIEDMATasksToNPUPass
 
     // Verify each BD block first; subsequent functions rely on them being
     // well-formed
-    for (auto it = body.begin(); it != body.end(); ++it) {
-      if (shouldSkipBlock(*it)) {
+    for (auto &it : body) {
+      if (shouldSkipBlock(it)) {
         continue;
       }
-      if (failed(verifyNoUnsupportedOpsInBlock(*it))) {
+      if (failed(verifyNoUnsupportedOpsInBlock(it))) {
         return failure();
       }
-      if (failed(verifyBdInBlock(*it, hasRuntimeBdId))) {
+      if (failed(verifyBdInBlock(it, hasRuntimeBdId))) {
         return failure();
       }
-      if (failed(verifyOptionalLocksInBlock(*it))) {
+      if (failed(verifyOptionalLocksInBlock(it))) {
         return failure();
       }
     }
@@ -981,8 +1014,7 @@ struct AIEDMATasksToNPUPass
     Value runtimeBdId = op.getBdIdVal();
 
     // Lower all BDs
-    for (auto it = body.begin(); it != body.end(); ++it) {
-      Block &block = *it;
+    for (auto &block : body) {
       if (shouldSkipBlock(block)) {
         continue;
       }

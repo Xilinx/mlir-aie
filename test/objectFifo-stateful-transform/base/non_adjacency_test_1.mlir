@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=false" %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll %s | FileCheck %s
 
 // CHECK-LABEL:   aie.device(xcvc1902) {
 // CHECK:           %[[VAL_0:.*]] = aie.tile(1, 2)
@@ -26,10 +26,9 @@
 // CHECK:             return
 // CHECK:           }
 // CHECK:           %[[VAL_11:.*]] = aie.core(%[[VAL_0]]) {
-// CHECK:             %[[VAL_12:.*]] = arith.constant 0 : index
-// CHECK:             %[[VAL_13:.*]] = arith.constant 1 : index
-// CHECK:             %[[VAL_14:.*]] = arith.constant 12 : index
-// CHECK:             %[[VAL_15:.*]] = arith.constant 2 : index
+// CHECK-DAG:             %[[VAL_12:.*]] = arith.constant 0 : index
+// CHECK-DAG:             %[[VAL_14:.*]] = arith.constant 12 : index
+// CHECK-DAG:             %[[VAL_15:.*]] = arith.constant 2 : index
 // CHECK:             scf.for %[[VAL_16:.*]] = %[[VAL_12]] to %[[VAL_14]] step %[[VAL_15]] {
 // CHECK:               aie.use_lock(%[[VAL_8]], Acquire, %{{.*}})
 // CHECK:               func.call @some_work(%[[VAL_6]]) : (memref<16xi32>) -> ()
@@ -41,10 +40,9 @@
 // CHECK:             aie.end
 // CHECK:           }
 // CHECK:           %[[VAL_17:.*]] = aie.core(%[[VAL_1]]) {
-// CHECK:             %[[VAL_18:.*]] = arith.constant 0 : index
-// CHECK:             %[[VAL_19:.*]] = arith.constant 1 : index
-// CHECK:             %[[VAL_20:.*]] = arith.constant 12 : index
-// CHECK:             %[[VAL_21:.*]] = arith.constant 2 : index
+// CHECK-DAG:             %[[VAL_18:.*]] = arith.constant 0 : index
+// CHECK-DAG:             %[[VAL_20:.*]] = arith.constant 12 : index
+// CHECK-DAG:             %[[VAL_21:.*]] = arith.constant 2 : index
 // CHECK:             scf.for %[[VAL_22:.*]] = %[[VAL_18]] to %[[VAL_20]] step %[[VAL_21]] {
 // CHECK:               aie.use_lock(%[[VAL_4]], Acquire, %{{.*}})
 // CHECK:               func.call @some_work(%[[VAL_2]]) : (memref<16xi32>) -> ()

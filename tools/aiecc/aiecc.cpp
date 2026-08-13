@@ -93,7 +93,7 @@ EdgeWithTypedOutput<Directory> &
 buildObjectSubgraph(EdgeWithTypedOutput<ModRef> &lowered,
                     EdgeWithTypedOutput<std::string> &arches,
                     EdgeWithTypedOutput<std::vector<std::string>> &irLinkFiles,
-                    std::string objName) {
+                    const std::string &objName) {
   std::string installDir = getInstallDir();
   std::string aietoolsRoot = discoverAietoolsDir(aietoolsDir.getValue());
 
@@ -368,7 +368,7 @@ buildAiesimSubgraph(mlir::MLIRContext &context,
                     EdgeWithTypedOutput<std::string> &aieInc) {
   std::string installDir = getInstallDir();
   std::string aietoolsRoot = discoverAietoolsDir(aietoolsDir.getValue());
-  std::string devFilter = deviceName.getValue();
+  const std::string &devFilter = deviceName.getValue();
 
   // graph.xpe / aieshim_solution.aiesol / scsim_config.json: in-process
   // translations of the per-device module.
@@ -601,8 +601,9 @@ EdgeWithTypedOutput<NpuProgram> &buildNpuProgramSubgraph(
 // Assemble the full compilation artifact graph into `g` and return the list of
 // requested output edges. Edges named via `--cut` are appended to `cutEdges`
 // (and built) so a `--checkpoint` can capture them as its cut points.
-std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
-                                       std::vector<EdgeBase *> &cutEdges) {
+static std::vector<EdgeBase *>
+buildMainGraph(mlir::MLIRContext &context, Graph &g,
+               std::vector<EdgeBase *> &cutEdges) {
 
   //--------------------------------------------------------------------------//
   // Helpers
@@ -614,15 +615,10 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
   using xilinx::AIE::TileOp;
   using ModRef = mlir::OwningOpRef<mlir::ModuleOp>;
 
-  std::string devFilter = deviceName.getValue();
+  const std::string &devFilter = deviceName.getValue();
   std::string inputFile = getInputFilename();
 
-  // Chess/xbridge toolchain locations
-  std::string aietoolsRoot = discoverAietoolsDir(aietoolsDir.getValue());
-  std::string installDir = getInstallDir();
   std::string workDirStr = getWorkDir();
-  // xchesscc_wrapper scratch dir
-  std::string chessWork = workDirStr + "/chess_work";
   std::string lldPath = ShellCommand::resolveTool("ld.lld");
 
   auto matchesDeviceFilter = [devFilter](DeviceOp d) {
@@ -1255,7 +1251,7 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
   // --xclbin-input flow: dump the existing xclbin's AIE_PARTITION, append this
   // design's first PDI to it, then re-emit with the merged partition and our
   // kernel
-  std::string inXclbin = xclbinInput.getValue();
+  const std::string &inXclbin = xclbinInput.getValue();
   // xclbinutil can only emit the section to a file; lift it into a parsed JSON
   // payload (via the json Deserializer) so the merge below works on the
   // in-memory object.
@@ -1971,11 +1967,14 @@ int main(int argc, char **argv) {
   // materialized artifact.)
   if (wantAiesim && !dryRun) {
     std::string script = getWorkDir() + "/aiesim.sh";
-    if (llvm::sys::fs::exists(script))
-      llvm::sys::fs::setPermissions(script,
-                                    llvm::sys::fs::perms::owner_all |
-                                        llvm::sys::fs::perms::group_exe |
-                                        llvm::sys::fs::perms::others_exe);
+    if (llvm::sys::fs::exists(script)) {
+      if (std::error_code ec = llvm::sys::fs::setPermissions(
+              script, llvm::sys::fs::perms::owner_all |
+                          llvm::sys::fs::perms::group_exe |
+                          llvm::sys::fs::perms::others_exe))
+        llvm::errs() << "aiecc: cannot make '" << script
+                     << "' executable: " << ec.message() << "\n";
+    }
   }
 
   return 0;

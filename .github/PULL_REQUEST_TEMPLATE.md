@@ -11,3 +11,4 @@
 - [ ] Docs / docstrings updated if the change is user-facing
 - [ ] Code is formatted (`clang-format` for C++, `black` for Python — see [CONTRIBUTING](../CONTRIBUTING.md))
 - [ ] `ruff check` and `pyright` pass locally for any touched Python file in their covered paths (see [CONTRIBUTING](../CONTRIBUTING.md#linting-python))
+- [ ] `clang-tidy` passes locally for any touched file on the enabled list (see [CONTRIBUTING](../CONTRIBUTING.md#static-analysis-for-c-clang-tidy))

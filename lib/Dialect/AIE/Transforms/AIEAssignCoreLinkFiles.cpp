@@ -172,7 +172,7 @@ struct AIEAssignCoreLinkFilesPass
     bool conflict = false;
     for (CoreLinkFiles &files : coreFiles)
       for (StringRef path : files.mergeFiles) {
-        auto it = linkedBy.find(path);
+        auto *it = linkedBy.find(path);
         if (it == linkedBy.end())
           continue;
         conflict = true;

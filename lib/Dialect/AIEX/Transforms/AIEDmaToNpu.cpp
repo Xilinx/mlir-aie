@@ -123,14 +123,15 @@ struct RtpToWrite32Pattern : OpConversionPattern<NpuWriteRTPOp> {
       return failure();
     }
 
-    if (!buffer.getAddress()) {
+    auto bufferAddress = buffer.getAddress();
+    if (!bufferAddress) {
       op->emitError("buffer must have address assigned");
       return failure();
     }
     AIE::TileOp tile = buffer.getTileOp();
 
     uint32_t idx = op.getIndex() * sizeof(uint32_t);
-    uint32_t address = buffer.getAddress().value() + idx;
+    uint32_t address = *bufferAddress + idx;
 
     NpuWrite32Op::create(rewriter, op->getLoc(),
                          createConstantI32(rewriter, op->getLoc(), address),

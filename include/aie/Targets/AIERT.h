@@ -65,8 +65,7 @@ struct AIERTControl {
   mlir::LogicalResult addAieElf(uint8_t col, uint8_t row,
                                 const mlir::StringRef elfPath, bool aieSim);
   mlir::LogicalResult addAieElfs(DeviceOp &targetOp,
-                                 const mlir::StringRef workDirPath,
-                                 bool aieSim);
+                                 const mlir::StringRef elfPath, bool aieSim);
   void startTransaction();
   void dmaUpdateBdAddr(int col, int row, size_t addr, size_t bdId);
   std::vector<uint8_t> exportSerializedTransaction();

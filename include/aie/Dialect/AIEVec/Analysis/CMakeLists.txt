@@ -7,5 +7,6 @@
 set(LLVM_TARGET_DEFINITIONS Passes.td)
 mlir_tablegen(Passes.h.inc -gen-pass-decls -name AIEVecAnalysis)
 add_public_tablegen_target(MLIRAIEVecAnalysisPassIncGen)
+add_dependencies(aie-headers MLIRAIEVecAnalysisPassIncGen)
 
 add_mlir_doc(Passes AIEVecAnalysisPasses ./ -gen-pass-doc)

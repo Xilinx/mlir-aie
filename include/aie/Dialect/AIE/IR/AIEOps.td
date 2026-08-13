@@ -365,10 +365,11 @@ def AIE_ShimDMAOp: AIE_Op<"shim_dma", [
   }];
 }
 
-def AIE_CoreOp: AIE_Op<"core", [
-    IsFlowEndPoint, IsCoreTile, TileElement,
-    DeclareOpInterfaceMethods<InferTypeOpInterface>
-  ]>, Results<(outs Index)> {
+def AIE_CoreOp
+    : AIE_Op<"core", [IsFlowEndPoint, IsCoreTile, TileElement,
+                      AutomaticAllocationScope,
+                      DeclareOpInterfaceMethods<InferTypeOpInterface>]>,
+      Results<(outs Index)> {
   let arguments = (
     ins Index:$tile,
     // Absent means "use this target's default"; read getEffectiveStackSize().
@@ -1548,6 +1549,7 @@ def AIE_UseLockOp: AIE_Op<"use_lock", []> {
   }];
 
   let hasVerifier = 1;
+  let hasCanonicalizeMethod = 1;
   let builders = [
     OpBuilder<(ins "mlir::Value":$lock,
                    "xilinx::AIE::LockAction":$action,
@@ -2437,8 +2439,8 @@ def AIE_RuntimeSequenceOp : AIE_Op<"runtime_sequence", [
   let hasVerifier = 1;
   let extraClassDeclaration = [{
     static llvm::StringRef getDefaultRuntimeSequenceName() { return "sequence"; }
-    static RuntimeSequenceOp getForSymbolInDevice(DeviceOp module, llvm::StringRef symbol);
-    static RuntimeSequenceOp getForSymbolInDeviceOrError(DeviceOp module, llvm::StringRef symbol);
+    static RuntimeSequenceOp getForSymbolInDevice(DeviceOp deviceOp, llvm::StringRef symbol);
+    static RuntimeSequenceOp getForSymbolInDeviceOrError(DeviceOp deviceOp, llvm::StringRef symbol);
     llvm::LogicalResult verifyBeforeMaterialization();
   }];
   let extraClassDefinition = [{
