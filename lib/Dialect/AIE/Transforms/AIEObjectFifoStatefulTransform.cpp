@@ -297,9 +297,14 @@ static void emitAdvanceBufferIndexCounter(OpBuilder &builder, Location loc,
   Value sum = arith::AddIOp::create(builder, loc, oldCounter, val);
   Value isGreaterEqual =
       arith::CmpIOp::create(builder, loc, arith::CmpIPredicate::sge, sum, size);
-  Value newCounter = arith::SelectOp::create(
-      builder, loc, isGreaterEqual,
-      arith::SubIOp::create(builder, loc, sum, size), sum);
+  // The counter stays in [0, depth), so releasing a single element can only
+  // ever wrap to exactly 0.
+  Value wrapped = relSize == 1
+                      ? Value(arith::ConstantOp::create(
+                            builder, loc, builder.getI32IntegerAttr(0)))
+                      : Value(arith::SubIOp::create(builder, loc, sum, size));
+  Value newCounter =
+      arith::SelectOp::create(builder, loc, isGreaterEqual, wrapped, sum);
   memref::StoreOp::create(builder, loc, newCounter, counterSlot, ValueRange{});
 }
 

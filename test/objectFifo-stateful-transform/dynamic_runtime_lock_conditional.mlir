@@ -37,7 +37,6 @@
 // CHECK:             %[[C3I:.*]] = arith.constant 3 : i32
 // CHECK:             %[[C1I:.*]] = arith.constant 1 : i32
 // CHECK:             %[[C4I:.*]] = arith.constant 4 : i32
-// CHECK:             %[[NEG3:.*]] = arith.constant -3 : i32
 // CHECK:             %{{.*}}:2 = scf.for %{{.*}} = %[[C0]] to %[[C14]] step %[[C1]] iter_args(%[[IDX:.*]] = %[[C0I]], %[[HELD:.*]] = %[[C0I]]) -> (i32, i32) {
 // CHECK:               %[[SUB:.*]] = arith.subi %[[C3I]], %[[HELD]] : i32
 // CHECK:               %[[DELTA:.*]] = arith.maxsi %[[SUB]], %[[C0I]] : i32
@@ -47,8 +46,7 @@
 // CHECK:               %[[RH:.*]] = arith.subi %[[NH]], %[[C1I]] : i32
 // CHECK:               %[[NX:.*]] = arith.addi %[[IDX]], %[[C1I]] : i32
 // CHECK:               %[[CMP:.*]] = arith.cmpi sge, %[[NX]], %[[C4I]] : i32
-// CHECK:               %[[WR:.*]] = arith.addi %[[IDX]], %[[NEG3]] : i32
-// CHECK:               %[[SEL:.*]] = arith.select %[[CMP]], %[[WR]], %[[NX]] : i32
+// CHECK:               %[[SEL:.*]] = arith.select %[[CMP]], %[[C0I]], %[[NX]] : i32
 // CHECK:               scf.yield %[[SEL]], %[[RH]] : i32, i32
 // CHECK:             }
 // CHECK:             aie.end

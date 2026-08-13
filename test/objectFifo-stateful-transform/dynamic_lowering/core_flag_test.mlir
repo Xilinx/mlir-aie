@@ -53,7 +53,6 @@
 // CHECK-DAG:             %[[I0:.*]] = arith.constant 0 : i32
 // CHECK-DAG:             %[[I1:.*]] = arith.constant 1 : i32
 // CHECK-DAG:             %[[I2:.*]] = arith.constant 2 : i32
-// CHECK-DAG:             %[[IM1:.*]] = arith.constant -1 : i32
 // CHECK:             %{{.*}}:2 = scf.for %{{.*}} = %[[C0]] to %[[C10]] step %[[C1]] iter_args(%[[OIDX:.*]] = %[[I0]], %[[IIDX:.*]] = %[[I0]]) -> (i32, i32) {
 // CHECK:               aie.use_lock(%[[OF_PROD]], AcquireGreaterEqual, %[[I1]])
 // CHECK:               %[[OC:.*]] = arith.index_cast %[[OIDX]] : i32 to index
@@ -83,13 +82,11 @@
 // CHECK:               aie.use_lock(%[[IF_PROD]], Release, %[[I1]])
 // CHECK:               %[[IN:.*]] = arith.addi %[[IIDX]], %[[I1]] : i32
 // CHECK:               %[[ICMP:.*]] = arith.cmpi sge, %[[IN]], %[[I2]] : i32
-// CHECK:               %[[IW:.*]] = arith.addi %[[IIDX]], %[[IM1]] : i32
-// CHECK:               %[[ISEL:.*]] = arith.select %[[ICMP]], %[[IW]], %[[IN]] : i32
+// CHECK:               %[[ISEL:.*]] = arith.select %[[ICMP]], %[[I0]], %[[IN]] : i32
 // CHECK:               aie.use_lock(%[[OF_CONS]], Release, %[[I1]])
 // CHECK:               %[[ON:.*]] = arith.addi %[[OIDX]], %[[I1]] : i32
 // CHECK:               %[[OCMP:.*]] = arith.cmpi sge, %[[ON]], %[[I2]] : i32
-// CHECK:               %[[OW:.*]] = arith.addi %[[OIDX]], %[[IM1]] : i32
-// CHECK:               %[[OSEL:.*]] = arith.select %[[OCMP]], %[[OW]], %[[ON]] : i32
+// CHECK:               %[[OSEL:.*]] = arith.select %[[OCMP]], %[[I0]], %[[ON]] : i32
 // CHECK:               scf.yield %[[OSEL]], %[[ISEL]] : i32, i32
 // CHECK:             }
 // CHECK:             aie.end

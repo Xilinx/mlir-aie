@@ -42,8 +42,6 @@
 // CHECK:             %[[C0I:.*]] = arith.constant 0 : i32
 // CHECK:             %[[C2I:.*]] = arith.constant 2 : i32
 // CHECK:             %[[C3I:.*]] = arith.constant 3 : i32
-// CHECK:             %[[NEG2:.*]] = arith.constant -2 : i32
-// CHECK:             %[[NEG1:.*]] = arith.constant -1 : i32
 // CHECK:             aie.use_lock(%[[OF_PROD]], AcquireGreaterEqual, %[[C1I]])
 // CHECK:             aie.use_lock(%[[IF_CONS]], AcquireGreaterEqual, %[[C1I]])
 // CHECK:             func.call @add_10_i32(%[[IF_B0]], %[[IF_B0]], %[[OF_B0]]) : (memref<10xi32>, memref<10xi32>, memref<10xi32>) -> ()
@@ -94,13 +92,11 @@
 // CHECK:               aie.use_lock(%[[IF_PROD]], Release, %[[C1I]])
 // CHECK:               %[[IN:.*]] = arith.addi %[[IIDX]], %[[C1I]] : i32
 // CHECK:               %[[ICMP:.*]] = arith.cmpi sge, %[[IN]], %[[C3I]] : i32
-// CHECK:               %[[IW:.*]] = arith.addi %[[IIDX]], %[[NEG2]] : i32
-// CHECK:               %[[ISEL:.*]] = arith.select %[[ICMP]], %[[IW]], %[[IN]] : i32
+// CHECK:               %[[ISEL:.*]] = arith.select %[[ICMP]], %[[C0I]], %[[IN]] : i32
 // CHECK:               aie.use_lock(%[[OF_CONS]], Release, %[[C1I]])
 // CHECK:               %[[ON:.*]] = arith.addi %[[OIDX]], %[[C1I]] : i32
 // CHECK:               %[[OCMP:.*]] = arith.cmpi sge, %[[ON]], %[[C2I]] : i32
-// CHECK:               %[[OW:.*]] = arith.addi %[[OIDX]], %[[NEG1]] : i32
-// CHECK:               %[[OSEL:.*]] = arith.select %[[OCMP]], %[[OW]], %[[ON]] : i32
+// CHECK:               %[[OSEL:.*]] = arith.select %[[OCMP]], %[[C0I]], %[[ON]] : i32
 // CHECK:               scf.yield %[[OSEL]], %[[ISEL]] : i32, i32
 // CHECK:             }
 // CHECK:             aie.use_lock(%[[OF_PROD]], AcquireGreaterEqual, %[[C1I]])

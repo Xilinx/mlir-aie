@@ -7,10 +7,11 @@
 
 // RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll="default-dynamic=true" %s | FileCheck %s
 
-// The pass-level `default-dynamic=true` flag applies dynamic lowering to every
-// core; both cores keep a rolled loop with 4 iter_args (output/input buffer
-// indices and held counts). core_0_2's per-core `dynamic_objfifo_lowering =
-// false` attribute is preserved on the op but does not override the pass flag.
+// `default-dynamic=true` sets the lowering for cores that do not carry an
+// explicit `dynamic_objfifo_lowering` attribute. core_0_2 sets that attribute to
+// false and so is statically unrolled (loop step 2, buffers bound directly),
+// while core_0_4 follows the dynamic default and keeps a rolled loop carrying
+// the output/input buffer indices as iter_args.
 
 // CHECK-LABEL:   aie.device(npu1_1col) {
 // CHECK:           func.func @passthrough_10_i32(%{{.*}}: memref<10xi32>, %{{.*}}: memref<10xi32>) {
@@ -73,7 +74,6 @@
 // CHECK:             %[[E_C0I:.*]] = arith.constant 0 : i32
 // CHECK:             %[[E_C1I:.*]] = arith.constant 1 : i32
 // CHECK:             %[[E_C2I:.*]] = arith.constant 2 : i32
-// CHECK:             %[[E_NEG1:.*]] = arith.constant -1 : i32
 // CHECK:             %{{.*}}:2 = scf.for %{{.*}} = %[[E_C0]] to %[[E_C10]] step %[[E_C1]] iter_args(%[[OIDX:.*]] = %[[E_C0I]], %[[IIDX:.*]] = %[[E_C0I]]) -> (i32, i32) {
 // CHECK:               aie.use_lock(%[[OF2_PROD]], AcquireGreaterEqual, %[[E_C1I]])
 // CHECK:               %[[OC:.*]] = arith.index_cast %[[OIDX]] : i32 to index
@@ -103,13 +103,11 @@
 // CHECK:               aie.use_lock(%[[IF2_PROD]], Release, %[[E_C1I]])
 // CHECK:               %[[IN:.*]] = arith.addi %[[IIDX]], %[[E_C1I]] : i32
 // CHECK:               %[[ICMP:.*]] = arith.cmpi sge, %[[IN]], %[[E_C2I]] : i32
-// CHECK:               %[[IW:.*]] = arith.addi %[[IIDX]], %[[E_NEG1]] : i32
-// CHECK:               %[[ISEL:.*]] = arith.select %[[ICMP]], %[[IW]], %[[IN]] : i32
+// CHECK:               %[[ISEL:.*]] = arith.select %[[ICMP]], %[[E_C0I]], %[[IN]] : i32
 // CHECK:               aie.use_lock(%[[OF2_CONS]], Release, %[[E_C1I]])
 // CHECK:               %[[ON:.*]] = arith.addi %[[OIDX]], %[[E_C1I]] : i32
 // CHECK:               %[[OCMP:.*]] = arith.cmpi sge, %[[ON]], %[[E_C2I]] : i32
-// CHECK:               %[[OW:.*]] = arith.addi %[[OIDX]], %[[E_NEG1]] : i32
-// CHECK:               %[[OSEL:.*]] = arith.select %[[OCMP]], %[[OW]], %[[ON]] : i32
+// CHECK:               %[[OSEL:.*]] = arith.select %[[OCMP]], %[[E_C0I]], %[[ON]] : i32
 // CHECK:               scf.yield %[[OSEL]], %[[ISEL]] : i32, i32
 // CHECK:             }
 // CHECK:             aie.end

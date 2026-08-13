@@ -8,7 +8,9 @@
 // Dynamic counterpart of AIE2_cyclostatic_L1.mlir. Under dynamic lowering (the
 // aiecc driver default) a cyclostatic acquire/release pattern selects the active
 // buffer at run time via scf.index_switch rather than statically binding each
-// access to a fixed buffer.
+// access to a fixed buffer. However, after canonicalization, CSE and constant
+// folding, this becomes a static access pattern again even without loop
+// unrolling (dynamic mode), since there are no loops in this test.
 
 // RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll="default-dynamic=true" %s | FileCheck %s
 

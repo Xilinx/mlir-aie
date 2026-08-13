@@ -29,7 +29,6 @@
 // CHECK:             %[[C0I:.*]] = arith.constant 0 : i32
 // CHECK:             %[[C1I:.*]] = arith.constant 1 : i32
 // CHECK:             %[[C2I:.*]] = arith.constant 2 : i32
-// CHECK:             %[[NEG1:.*]] = arith.constant -1 : i32
 // CHECK:             %{{.*}} = scf.for %[[IV:.*]] = %[[C0]] to %[[C4]] step %[[C1]] iter_args(%[[IDX:.*]] = %[[C0I]]) -> (i32) {
 // CHECK:               %[[LC0:.*]] = arith.index_cast %[[IDX]] : i32 to index
 // CHECK:               %[[LSEL:.*]] = scf.index_switch %[[LC0]] -> index
@@ -69,8 +68,7 @@
 // CHECK:               aie.use_lock(%[[RSEL]], Release, %[[C1I]])
 // CHECK:               %[[NX:.*]] = arith.addi %[[IDX]], %[[C1I]] : i32
 // CHECK:               %[[CMP:.*]] = arith.cmpi sge, %[[NX]], %[[C2I]] : i32
-// CHECK:               %[[WR:.*]] = arith.addi %[[IDX]], %[[NEG1]] : i32
-// CHECK:               %[[SEL:.*]] = arith.select %[[CMP]], %[[WR]], %[[NX]] : i32
+// CHECK:               %[[SEL:.*]] = arith.select %[[CMP]], %[[C0I]], %[[NX]] : i32
 // CHECK:               scf.yield %[[SEL]] : i32
 // CHECK:             }
 // CHECK:             aie.end

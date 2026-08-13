@@ -46,8 +46,6 @@
 // CHECK:             %[[C2I:.*]] = arith.constant 2 : i32
 // CHECK:             %[[C1I:.*]] = arith.constant 1 : i32
 // CHECK:             %[[C4I:.*]] = arith.constant 4 : i32
-// CHECK:             %[[NEG3:.*]] = arith.constant -3 : i32
-// CHECK:             %[[NEG2:.*]] = arith.constant -2 : i32
 // CHECK:             %{{.*}}:4 = scf.for %{{.*}} = %[[C0]] to %[[C14]] step %[[C1]] iter_args(%[[XI:.*]] = %[[C0I]], %[[YI:.*]] = %[[C0I]], %[[XH:.*]] = %[[C0I]], %[[YH:.*]] = %[[C0I]]) -> (i32, i32, i32, i32) {
 // CHECK:               %[[XS:.*]] = arith.subi %[[C3I]], %[[XH]] : i32
 // CHECK:               %[[XD:.*]] = arith.maxsi %[[XS]], %[[C0I]] : i32
@@ -61,14 +59,12 @@
 // CHECK:               %[[XRH:.*]] = arith.subi %[[XNH]], %[[C1I]] : i32
 // CHECK:               %[[XNX:.*]] = arith.addi %[[XI]], %[[C1I]] : i32
 // CHECK:               %[[XCMP:.*]] = arith.cmpi sge, %[[XNX]], %[[C4I]] : i32
-// CHECK:               %[[XWR:.*]] = arith.addi %[[XI]], %[[NEG3]] : i32
-// CHECK:               %[[XSEL:.*]] = arith.select %[[XCMP]], %[[XWR]], %[[XNX]] : i32
+// CHECK:               %[[XSEL:.*]] = arith.select %[[XCMP]], %[[C0I]], %[[XNX]] : i32
 // CHECK:               aie.use_lock(%[[YCPROD]], Release, %[[C1I]])
 // CHECK:               %[[YRH:.*]] = arith.subi %[[YNH]], %[[C1I]] : i32
 // CHECK:               %[[YNX:.*]] = arith.addi %[[YI]], %[[C1I]] : i32
 // CHECK:               %[[YCMP:.*]] = arith.cmpi sge, %[[YNX]], %[[C3I]] : i32
-// CHECK:               %[[YWR:.*]] = arith.addi %[[YI]], %[[NEG2]] : i32
-// CHECK:               %[[YSEL:.*]] = arith.select %[[YCMP]], %[[YWR]], %[[YNX]] : i32
+// CHECK:               %[[YSEL:.*]] = arith.select %[[YCMP]], %[[C0I]], %[[YNX]] : i32
 // CHECK:               scf.yield %[[XSEL]], %[[YSEL]], %[[XRH]], %[[YRH]] : i32, i32, i32, i32
 // CHECK:             }
 // CHECK:             aie.use_lock(%[[XCPROD]], Release, %[[C2I]])

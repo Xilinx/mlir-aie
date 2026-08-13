@@ -37,7 +37,6 @@
 // CHECK:             %[[C1I:.*]] = arith.constant 1 : i32
 // CHECK:             %[[C4I:.*]] = arith.constant 4 : i32
 // CHECK:             %[[C2I:.*]] = arith.constant 2 : i32
-// CHECK:             %[[NEG3:.*]] = arith.constant -3 : i32
 // CHECK:             %[[W:.*]]:3 = scf.while (%[[A0:.*]] = %[[C0]], %[[A1:.*]] = %[[C0I]], %[[A2:.*]] = %[[C0I]]) : (index, i32, i32) -> (index, i32, i32) {
 // CHECK:               %[[CND:.*]] = arith.cmpi slt, %[[A0]], %[[C14]] : index
 // CHECK:               scf.condition(%[[CND]]) %[[A0]], %[[A1]], %[[A2]] : index, i32, i32
@@ -51,8 +50,7 @@
 // CHECK:               %[[RH:.*]] = arith.subi %[[NH]], %[[C1I]] : i32
 // CHECK:               %[[NX:.*]] = arith.addi %[[BA1]], %[[C1I]] : i32
 // CHECK:               %[[CMP:.*]] = arith.cmpi sge, %[[NX]], %[[C4I]] : i32
-// CHECK:               %[[WR:.*]] = arith.addi %[[BA1]], %[[NEG3]] : i32
-// CHECK:               %[[SEL:.*]] = arith.select %[[CMP]], %[[WR]], %[[NX]] : i32
+// CHECK:               %[[SEL:.*]] = arith.select %[[CMP]], %[[C0I]], %[[NX]] : i32
 // CHECK:               %[[INC:.*]] = arith.addi %[[BA0]], %[[C1]] : index
 // CHECK:               scf.yield %[[INC]], %[[SEL]], %[[RH]] : index, i32, i32
 // CHECK:             }
