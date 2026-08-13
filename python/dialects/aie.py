@@ -270,6 +270,15 @@ def packet_info_attr_builder(tups: Tuple[int] | List[int], context=None):
     )
 
 
+@register_attribute_builder("BDIterationAttr")
+def bd_iteration_attr_builder(tup: Tuple[int] | List[int], context=None):
+    assert (isinstance(tup, list) or isinstance(tup, tuple)) and len(tup) == 3
+    return Attribute.parse(
+        f"#aie.bd_iteration<size = {tup[0]}, stride = {tup[1]}, current = {tup[2]}>",
+        context=context,
+    )
+
+
 @register_attribute_builder("BDDimLayoutArrayAttr")
 def bd_dim_layout_array_attr_builder(tups: List[Attribute | Tuple[int]], context=None):
     if isinstance(tups, list) and all(isinstance(t, tuple) for t in tups):
