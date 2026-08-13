@@ -3367,6 +3367,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#static-analysis-for-c-clang-tidy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Static analysis for C++ (clang-tidy)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#type-checking-python" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3564,6 +3575,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#static-analysis-for-c-clang-tidy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Static analysis for C++ (clang-tidy)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#type-checking-python" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3745,6 +3767,9 @@ formatting or lint issue. To run them by hand:</p>
   committed.</li>
 <li><strong>Python lint</strong> — <a href="https://docs.astral.sh/ruff/"><code>ruff check</code></a> (see
   <a href="#linting-python">Linting Python</a> below).</li>
+<li><strong>C++ static analysis</strong> — <a href="https://clang.llvm.org/extra/clang-tidy/"><code>clang-tidy</code></a>,
+  scoped to a growing list of files (see
+  <a href="#static-analysis-for-c-clang-tidy">Static analysis for C++</a> below).</li>
 <li><strong>Baseline hygiene</strong> — trailing whitespace, end-of-file, merge-conflict
   markers, and <a href="https://reuse.software/">REUSE</a> license-header compliance.</li>
 </ul>
@@ -3768,19 +3793,57 @@ documents, rule by rule, why anything is excluded from the default rule set;
 per-file exceptions live in <code>[lint.per-file-ignores]</code>, each with an inline
 justification. Follow that pattern if you need a new one — an unexplained
 exception won't pass review.</p>
+<h2 id="static-analysis-for-c-clang-tidy">Static analysis for C++ (clang-tidy)<a class="headerlink" href="#static-analysis-for-c-clang-tidy" title="Permanent link">&para;</a></h2>
+<p>C++ is checked with <a href="https://clang.llvm.org/extra/clang-tidy/">clang-tidy</a>
+(config in <code>.clang-tidy</code>), scoped to an explicit, growing list of files
+rather than the whole repo at once — currently just
+<code>lib/Dialect/AIE/Transforms/AIEAssignBufferDescriptorIDs.cpp</code>. Unlike
+clang-format, clang-tidy needs a real compile database
+(<code>compile_commands.json</code>) and the tablegen'd headers a file includes to parse
+anything, so it can't run as a bare per-file text check the way the
+formatting hooks do.</p>
+<p>If you already have a build (see <a href="../Building/">Building from source</a>),
+point the pre-push hook and CI at it — any build works, clang or GCC:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1"># If your build wasn&#39;t configured with -DCMAKE_EXPORT_COMPILE_COMMANDS=ON,</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="c1"># generate compile_commands.json in place:</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>ninja<span class="w"> </span>-C<span class="w"> </span>build<span class="w"> </span>-t<span class="w"> </span>compdb<span class="w"> </span>&gt;<span class="w"> </span>build/compile_commands.json
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="c1"># Defaults to build/ at the repo root; override if yours lives elsewhere:</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="nb">export</span><span class="w"> </span><span class="nv">MLIR_AIE_BUILD_DIR</span><span class="o">=</span>/path/to/build
+</code></pre></div>
+<p>The pre-push hook then runs it automatically on enabled files you've
+touched, via <code>utils/run_clang_tidy.sh</code> — a pinned <code>clang-tidy==20.1.0</code>
+(matching clang-format's pinned version, via <code>python/requirements_dev.txt</code>)
+rather than a bare <code>apt install clang-tidy</code>, so the version doesn't silently
+drift between your machine and CI. If there's no compile database yet, the
+hook fails with the setup hint above instead of silently skipping. To run it
+by hand:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>utils/run_clang_tidy.sh<span class="w"> </span>&lt;file&gt;...
+</code></pre></div>
+<p>CI mirrors this exactly (see the <code>clang-tidy</code> step in
+<code>.github/workflows/lintAndFormat.yml</code>), scoped to whichever enabled files a
+given PR actually touched — not the full enabled list every time, the way
+<code>pyright</code>/<code>ruff check</code> operate below. A PR that doesn't touch any enabled
+file passes trivially.</p>
+<p>Growing the enabled file list is the same three-part motion as extending
+ruff/pyright coverage: add the path to <code>CLANG_TIDY_FILES</code> in
+<code>lintAndFormat.yml</code>'s clang-tidy step, add it to the <code>files:</code> regex on the
+<code>clang-tidy</code> pre-commit hook (<code>.pre-commit-config.yaml</code> — the two must stay
+in sync, same convention <code>ruff-check</code> uses for <code>ruff.toml</code>'s <code>include</code>), and
+fix that file's findings.</p>
 <h2 id="type-checking-python">Type checking Python<a class="headerlink" href="#type-checking-python" title="Permanent link">&para;</a></h2>
 <p>The pure-Python package (<code>python/{iron,utils,helpers,compiler}</code>) and a growing
 set of <code>programming_examples/</code> directories (<code>pyrightconfig.json</code>'s <code>include</code>
 list at the repo root is the source of truth) are type-checked with
 <a href="https://github.com/microsoft/pyright">pyright</a> in <code>standard</code> mode, and CI
 fails on any error. After a normal build/install you can run:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>pyright
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>pyright
 </code></pre></div>
 <p>When a diagnostic points at a symbol that genuinely exists at runtime but comes
 from a compiled extension (<code>aie._mlir_libs</code>) or a tablegen-generated op/enum
 wildcard (<code>from aie.dialects... import *</code>), suppress just that line, naming the
 exact rule:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="k">with</span> <span class="n">Context</span><span class="p">()</span> <span class="k">as</span> <span class="n">ctx</span><span class="p">:</span>  <span class="c1"># pyright: ignore[reportUndefinedVariable]</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="k">with</span> <span class="n">Context</span><span class="p">()</span> <span class="k">as</span> <span class="n">ctx</span><span class="p">:</span>  <span class="c1"># pyright: ignore[reportUndefinedVariable]</span>
 </code></pre></div>
 <p>Reserve suppressions for these binding gaps. Fix real type issues at the source
 (add a <code>None</code> guard or <code>raise</code>, tighten an annotation, initialize before a
