@@ -1501,8 +1501,8 @@ def AIE_LockOp: AIE_Op<"lock", [
     }
   }];
 
-  let builders = [
-    OpBuilder<(ins "mlir::Value":$tile, "int":$lockID, "int":$init), [{
+  let builders = [OpBuilder<
+                      (ins "mlir::Value":$tile, "int":$lockID, "int":$init), [{
       build($_builder, $_state,
         $_builder.getIndexType(),
         tile,
@@ -1510,8 +1510,16 @@ def AIE_LockOp: AIE_Op<"lock", [
         $_builder.getI32IntegerAttr(init),
         nullptr
       );
-    }]>
-  ];
+    }]>,
+                  OpBuilder<(ins "mlir::Value":$tile, "int":$init), [{
+      build($_builder, $_state,
+        $_builder.getIndexType(),
+        tile,
+        /*lockID=*/nullptr,
+        $_builder.getI32IntegerAttr(init),
+        nullptr
+      );
+    }]>];
   let hasVerifier = 1;
 }
 

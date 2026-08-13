@@ -17,14 +17,14 @@
 // CHECK:           %[[VAL_3:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "objfifo_cons_buff_1"} : memref<16xi32>
 // CHECK:           %[[VAL_4:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "objfifo_cons_buff_2"} : memref<16xi32>
 // CHECK:           %[[VAL_5:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "objfifo_cons_buff_3"} : memref<16xi32>
-// CHECK:           %[[VAL_6:.*]] = aie.lock(%[[VAL_1]], 0) {init = 0 : i32, sym_name = "objfifo_cons_lock_0"}
-// CHECK:           %[[VAL_7:.*]] = aie.lock(%[[VAL_1]], 1) {init = 0 : i32, sym_name = "objfifo_cons_lock_1"}
-// CHECK:           %[[VAL_8:.*]] = aie.lock(%[[VAL_1]], 2) {init = 0 : i32, sym_name = "objfifo_cons_lock_2"}
-// CHECK:           %[[VAL_9:.*]] = aie.lock(%[[VAL_1]], 3) {init = 0 : i32, sym_name = "objfifo_cons_lock_3"}
+// CHECK:           %[[VAL_6:.*]] = aie.lock(%[[VAL_1]]) {init = 0 : i32, sym_name = "objfifo_cons_lock_0"}
+// CHECK:           %[[VAL_7:.*]] = aie.lock(%[[VAL_1]]) {init = 0 : i32, sym_name = "objfifo_cons_lock_1"}
+// CHECK:           %[[VAL_8:.*]] = aie.lock(%[[VAL_1]]) {init = 0 : i32, sym_name = "objfifo_cons_lock_2"}
+// CHECK:           %[[VAL_9:.*]] = aie.lock(%[[VAL_1]]) {init = 0 : i32, sym_name = "objfifo_cons_lock_3"}
 // CHECK:           %[[VAL_10:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "objfifo_buff_0"} : memref<16xi32>
 // CHECK:           %[[VAL_11:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "objfifo_buff_1"} : memref<16xi32>
-// CHECK:           %[[VAL_12:.*]] = aie.lock(%[[VAL_0]], 0) {init = 0 : i32, sym_name = "objfifo_lock_0"}
-// CHECK:           %[[VAL_13:.*]] = aie.lock(%[[VAL_0]], 1) {init = 0 : i32, sym_name = "objfifo_lock_1"}
+// CHECK:           %[[VAL_12:.*]] = aie.lock(%[[VAL_0]]) {init = 0 : i32, sym_name = "objfifo_lock_0"}
+// CHECK:           %[[VAL_13:.*]] = aie.lock(%[[VAL_0]]) {init = 0 : i32, sym_name = "objfifo_lock_1"}
 // CHECK:           aie.flow(%[[VAL_0]], DMA : 0, %[[VAL_1]], DMA : 0)
 // CHECK:           func.func @some_work(%[[VAL_14:.*]]: memref<16xi32>) {
 // CHECK:             return

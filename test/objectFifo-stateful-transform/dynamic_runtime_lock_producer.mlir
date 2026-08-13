@@ -18,8 +18,8 @@
 // CHECK:           %[[B1:.*]] = aie.buffer(%[[T2]]) {sym_name = "fifo_buff_1"} : memref<8xi8>
 // CHECK:           %[[B2:.*]] = aie.buffer(%[[T2]]) {sym_name = "fifo_buff_2"} : memref<8xi8>
 // CHECK:           %[[B3:.*]] = aie.buffer(%[[T2]]) {sym_name = "fifo_buff_3"} : memref<8xi8>
-// CHECK:           %[[PROD:.*]] = aie.lock(%[[T2]], 0) {init = 4 : i32, sym_name = "fifo_prod_lock_0"}
-// CHECK:           %[[CONS:.*]] = aie.lock(%[[T2]], 1) {init = 0 : i32, sym_name = "fifo_cons_lock_0"}
+// CHECK:           %[[PROD:.*]] = aie.lock(%[[T2]]) {init = 4 : i32, sym_name = "fifo_prod_lock_0"}
+// CHECK:           %[[CONS:.*]] = aie.lock(%[[T2]]) {init = 0 : i32, sym_name = "fifo_cons_lock_0"}
 // CHECK:           %{{.*}} = aie.core(%[[T2]]) {
 // CHECK:             %[[C14:.*]] = arith.constant 14 : index
 // CHECK:             %[[C1:.*]] = arith.constant 1 : index

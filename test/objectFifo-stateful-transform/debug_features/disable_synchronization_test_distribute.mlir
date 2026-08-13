@@ -15,11 +15,11 @@
 // CHECK:     %[[TILE_2_3:.*]] = aie.tile(2, 3)
 // CHECK-DAG: %[[LINK3_BUFF:.*]] = aie.buffer(%[[MEM_TILE]]) {sym_name = "link3_buff_0"} : memref<36xi32>
 // CHECK-DAG: %[[LINK2_BUFF:.*]] = aie.buffer(%[[TILE_2_3]]) {sym_name = "link2_buff_0"} : memref<20xi32>
-// CHECK-DAG: %[[LINK2_PROD_LOCK:.*]] = aie.lock(%[[TILE_2_3]], 0) {init = 1 : i32, sym_name = "link2_prod_lock_0"}
-// CHECK-DAG: %[[LINK2_CONS_LOCK:.*]] = aie.lock(%[[TILE_2_3]], 1) {init = 0 : i32, sym_name = "link2_cons_lock_0"}
+// CHECK-DAG: %[[LINK2_PROD_LOCK:.*]] = aie.lock(%[[TILE_2_3]]) {init = 1 : i32, sym_name = "link2_prod_lock_0"}
+// CHECK-DAG: %[[LINK2_CONS_LOCK:.*]] = aie.lock(%[[TILE_2_3]]) {init = 0 : i32, sym_name = "link2_cons_lock_0"}
 // CHECK-DAG: %[[LINK1_BUFF:.*]] = aie.buffer(%[[TILE_2_2]]) {sym_name = "link1_buff_0"} : memref<4x4xi32>
-// CHECK-DAG: %[[LINK1_PROD_LOCK:.*]] = aie.lock(%[[TILE_2_2]], 0) {init = 1 : i32, sym_name = "link1_prod_lock_0"}
-// CHECK-DAG: %[[LINK1_CONS_LOCK:.*]] = aie.lock(%[[TILE_2_2]], 1) {init = 0 : i32, sym_name = "link1_cons_lock_0"}
+// CHECK-DAG: %[[LINK1_PROD_LOCK:.*]] = aie.lock(%[[TILE_2_2]]) {init = 1 : i32, sym_name = "link1_prod_lock_0"}
+// CHECK-DAG: %[[LINK1_CONS_LOCK:.*]] = aie.lock(%[[TILE_2_2]]) {init = 0 : i32, sym_name = "link1_cons_lock_0"}
 // CHECK-DAG: aie.flow(%[[TILE_2_2]], DMA : 0, %[[MEM_TILE]], DMA : 0)
 // CHECK-DAG: aie.flow(%[[TILE_2_3]], DMA : 0, %[[MEM_TILE]], DMA : 1)
 // CHECK-DAG: aie.flow(%[[MEM_TILE]], DMA : 0, %[[SHIM_TILE]], DMA : 0)

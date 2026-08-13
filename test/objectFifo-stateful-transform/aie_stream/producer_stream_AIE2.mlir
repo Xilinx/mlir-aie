@@ -14,8 +14,8 @@
 // CHECK:     %of_producer_stream_cons_buff_0 = aie.buffer(%tile_1_3) {sym_name = "of_producer_stream_cons_buff_0"} : memref<16xi32>
 // CHECK:     %of_producer_stream_cons_buff_1 = aie.buffer(%tile_1_3) {sym_name = "of_producer_stream_cons_buff_1"} : memref<16xi32>
 // CHECK:     %of_producer_stream_cons_buff_2 = aie.buffer(%tile_1_3) {sym_name = "of_producer_stream_cons_buff_2"} : memref<16xi32>
-// CHECK:     %of_producer_stream_cons_prod_lock_0 = aie.lock(%tile_1_3, 0) {init = 3 : i32, sym_name = "of_producer_stream_cons_prod_lock_0"}
-// CHECK:     %of_producer_stream_cons_cons_lock_0 = aie.lock(%tile_1_3, 1) {init = 0 : i32, sym_name = "of_producer_stream_cons_cons_lock_0"}
+// CHECK:     %of_producer_stream_cons_prod_lock_0 = aie.lock(%tile_1_3) {init = 3 : i32, sym_name = "of_producer_stream_cons_prod_lock_0"}
+// CHECK:     %of_producer_stream_cons_cons_lock_0 = aie.lock(%tile_1_3) {init = 0 : i32, sym_name = "of_producer_stream_cons_cons_lock_0"}
 // CHECK:     aie.flow(%tile_1_2, Core : 0, %tile_1_3, DMA : 0)
 // CHECK:     %mem_1_3 = aie.mem(%tile_1_3) {
 // CHECK:       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb4)

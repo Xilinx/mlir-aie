@@ -21,13 +21,13 @@
 // CHECK:           %[[CB1:.*]] = aie.buffer(%[[T2]]) {sym_name = "fifo_cons_buff_1"} : memref<8xi8>
 // CHECK:           %[[CB2:.*]] = aie.buffer(%[[T2]]) {sym_name = "fifo_cons_buff_2"} : memref<8xi8>
 // CHECK:           %[[CB3:.*]] = aie.buffer(%[[T2]]) {sym_name = "fifo_cons_buff_3"} : memref<8xi8>
-// CHECK:           %[[CPROD:.*]] = aie.lock(%[[T2]], 0) {init = 4 : i32, sym_name = "fifo_cons_prod_lock_0"}
-// CHECK:           %[[CCONS:.*]] = aie.lock(%[[T2]], 1) {init = 0 : i32, sym_name = "fifo_cons_cons_lock_0"}
+// CHECK:           %[[CPROD:.*]] = aie.lock(%[[T2]]) {init = 4 : i32, sym_name = "fifo_cons_prod_lock_0"}
+// CHECK:           %[[CCONS:.*]] = aie.lock(%[[T2]]) {init = 0 : i32, sym_name = "fifo_cons_cons_lock_0"}
 // CHECK:           %[[B0:.*]] = aie.buffer(%[[MT]]) {sym_name = "fifo_buff_0"} : memref<8xi8>
 // CHECK:           %[[B1:.*]] = aie.buffer(%[[MT]]) {sym_name = "fifo_buff_1"} : memref<8xi8>
 // CHECK:           %[[B2:.*]] = aie.buffer(%[[MT]]) {sym_name = "fifo_buff_2"} : memref<8xi8>
-// CHECK:           %[[PROD:.*]] = aie.lock(%[[MT]], 0) {init = 3 : i32, sym_name = "fifo_prod_lock_0"}
-// CHECK:           %[[CONS:.*]] = aie.lock(%[[MT]], 1) {init = 0 : i32, sym_name = "fifo_cons_lock_0"}
+// CHECK:           %[[PROD:.*]] = aie.lock(%[[MT]]) {init = 3 : i32, sym_name = "fifo_prod_lock_0"}
+// CHECK:           %[[CONS:.*]] = aie.lock(%[[MT]]) {init = 0 : i32, sym_name = "fifo_cons_lock_0"}
 // CHECK:           aie.flow(%[[MT]], DMA : 0, %[[T2]], DMA : 0)
 // CHECK:           %{{.*}} = aie.core(%[[T2]]) {
 // CHECK:             %[[C14:.*]] = arith.constant 14 : index

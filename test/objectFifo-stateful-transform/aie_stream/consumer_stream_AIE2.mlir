@@ -13,8 +13,8 @@
 // CHECK:     %[[VAL_2:.*]] = aie.tile(3, 3)
 // CHECK:     %of_consumer_stream_buff_0 = aie.buffer(%tile_1_2) {sym_name = "of_consumer_stream_buff_0"} : memref<16xi32>
 // CHECK:     %of_consumer_stream_buff_1 = aie.buffer(%tile_1_2) {sym_name = "of_consumer_stream_buff_1"} : memref<16xi32>
-// CHECK:     %of_consumer_stream_prod_lock_0 = aie.lock(%tile_1_2, 0) {init = 2 : i32, sym_name = "of_consumer_stream_prod_lock_0"}
-// CHECK:     %of_consumer_stream_cons_lock_0 = aie.lock(%tile_1_2, 1) {init = 0 : i32, sym_name = "of_consumer_stream_cons_lock_0"}
+// CHECK:     %of_consumer_stream_prod_lock_0 = aie.lock(%tile_1_2) {init = 2 : i32, sym_name = "of_consumer_stream_prod_lock_0"}
+// CHECK:     %of_consumer_stream_cons_lock_0 = aie.lock(%tile_1_2) {init = 0 : i32, sym_name = "of_consumer_stream_cons_lock_0"}
 // CHECK:     aie.flow(%tile_1_2, DMA : 0, %tile_3_3, Core : 0)
 // CHECK:     %mem_1_2 = aie.mem(%tile_1_2) {
 // CHECK:       %0 = aie.dma_start(MM2S, 0, ^bb1, ^bb3)
