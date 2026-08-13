@@ -128,6 +128,18 @@ constexpr uint32_t kCtrlStride = 0x8;
 constexpr uint32_t kNumCh = 2;
 } // namespace ShimRegs
 
+namespace MemTileRegs {
+constexpr uint32_t kBdBase = 0xA0000;
+constexpr uint32_t kBdStride = 0x20;
+constexpr uint32_t kCtrlBase = 0xA0600;
+constexpr uint32_t kCtrlStride = 0x8;
+constexpr uint32_t kNumCh = 6;
+// SIX bits here where the other two tile kinds have four, because 48 BDs do
+// not fit in four: XAIE2PGBL_MEM_TILE_MODULE_DMA_S2MM_0_START_QUEUE_
+// START_BD_ID_MASK is 0x3F against MEMORY_MODULE's and NOC_MODULE's 0x0F.
+constexpr uint32_t kStartBdMask = 0x3Fu;
+} // namespace MemTileRegs
+
 // Core-tile stream-switch register offsets, AIE2P. Independently duplicated
 // from StreamSwitch.cpp's kCoreLayout (and from stream_switch_test.cpp's
 // own copy of the same numbers) rather than shared: this test target does
@@ -321,12 +333,50 @@ uint32_t statusOff(uint32_t statusBase, uint32_t statusDirStride,
   return statusBase + ch * 4 + dirOff;
 }
 
+// `startBdMask` is a parameter and not a constant because the field is not the
+// same width on every tile kind -- see MemTileRegs::kStartBdMask. Masking here
+// rather than trusting the caller is what makes this write what the hardware
+// register can actually hold.
 void startQueue(Tile &tile, uint32_t ctrlBase, uint32_t ctrlStride,
-               uint32_t numCh, DmaDirection dir, uint32_t ch,
-               uint8_t startBd, uint32_t repeatCount = 1) {
-  uint32_t v = (startBd & 0xFu) |
+               uint32_t numCh, DmaDirection dir, uint32_t ch, uint32_t startBd,
+               uint32_t repeatCount = 1, uint32_t startBdMask = 0xFu) {
+  uint32_t v = (startBd & startBdMask) |
               (((repeatCount - 1) & 0xFFu) << 16); // enToken = 0.
   tile.regs().write(ctrlQueueOff(ctrlBase, ctrlStride, numCh, dir, ch), v);
+}
+
+// A memtile BD is 8 words with its own field placement, mirroring
+// lib/Dma.cpp's kMemTileLayout. Only the fields these tests set are packed;
+// the rest stay at the harmless "not used" zero, as with the core and shim
+// writers above.
+void writeMemTileBd(Tile &tile, uint32_t bdId, const BdSpec &s) {
+  uint32_t base = MemTileRegs::kBdBase + bdId * MemTileRegs::kBdStride;
+  uint32_t w0 = s.lengthWords & 0x1FFFFu;
+  uint32_t w1 = (s.addrWordOffset & 0x7FFFFu) |
+               ((s.useNextBd ? 1u : 0u) << 19) |
+               ((static_cast<uint32_t>(s.nextBd) & 0x3Fu) << 20);
+  uint32_t w2 =
+      (s.stepSizeMinus1[0] & 0x1FFFFu) | ((s.wrap[0] & 0x3FFu) << 17);
+  uint32_t w3 =
+      (s.stepSizeMinus1[1] & 0x1FFFFu) | ((s.wrap[1] & 0x3FFu) << 17);
+  uint32_t w4 = s.stepSizeMinus1[2] & 0x1FFFFu;
+  uint32_t w6 = (s.iterStepSizeMinus1 & 0x1FFFFu) |
+               ((s.iterWrapMinus1 & 0x3Fu) << 17) |
+               ((s.iterCurr & 0x1Fu) << 23);
+  uint32_t w7 = (static_cast<uint32_t>(s.lockAcqId) & 0xFFu) |
+               ((static_cast<uint32_t>(s.lockAcqVal) & 0x7Fu) << 8) |
+               ((s.lockAcqEn ? 1u : 0u) << 15) |
+               ((static_cast<uint32_t>(s.lockRelId) & 0xFFu) << 16) |
+               ((static_cast<uint32_t>(s.lockRelVal) & 0x7Fu) << 24) |
+               ((s.validBd ? 1u : 0u) << 31);
+  tile.regs().write(base + 0, w0);
+  tile.regs().write(base + 4, w1);
+  tile.regs().write(base + 8, w2);
+  tile.regs().write(base + 12, w3);
+  tile.regs().write(base + 16, w4);
+  tile.regs().write(base + 20, 0); // D3 step size: unused.
+  tile.regs().write(base + 24, w6);
+  tile.regs().write(base + 28, w7);
 }
 
 // Fails the check and records the message rather than letting Array's
@@ -781,6 +831,75 @@ void testBdIterationStartsWhereIterCurrSaid() {
   AIESIM_CHECK_EQ(readCoreIterCurr(*core, 1), 3u);
 }
 
+//===----------------------------------------------------------------------===//
+// Test 9: a memtile channel started above BD 15 runs the BD it named.
+//
+// The start-BD field is six bits on a memtile and four everywhere else, so a
+// four-bit read of a start at 24 silently aliases onto BD 8 -- a descriptor
+// the design never wrote. Two decoy BDs at 8 and 9 hold different data, so
+// this fails on the CONTENT rather than on a fault, which is what catches the
+// aliasing even when the aliased-to BD happens to be valid.
+//===----------------------------------------------------------------------===//
+
+void testMemTileStartsAboveBd15() {
+  Array array(makeTestDevice(), nullptr);
+  ErrorCapture err;
+  array.setDiagnosticHandler(err.handler());
+
+  Tile *mem = array.tile(0, 1);
+  AIESIM_CHECK(mem != nullptr);
+  AIESIM_CHECK(mem->getType() == TileType::MemTile);
+
+  uint32_t src[8] = {70, 71, 72, 73, 74, 75, 76, 77};
+  AIESIM_CHECK(mem->memory()->write(0, src, sizeof(src)));
+  uint32_t decoy[4] = {900, 901, 902, 903};
+  AIESIM_CHECK(mem->memory()->write(64, decoy, sizeof(decoy)));
+
+  // A memtile BD address indexes a west/own/east space, so the tile's OWN
+  // memory starts one whole memtile up rather than at zero (Dma.cpp's
+  // effectiveMemory). Byte 0 here would name the west neighbour.
+  constexpr uint32_t kOwn = 0x80000 / 4;
+
+  BdSpec real;
+  real.addrWordOffset = kOwn;
+  real.lengthWords = 8;
+  // No lock traffic: a memtile BD's lock ids are banded the same west/own/east
+  // way as its addresses, so the default id 0 would name a neighbour this
+  // one-column test device does not have. Which BD ran is the question here.
+  real.lockRelVal = 0;
+  writeMemTileBd(*mem, /*bdId=*/24, real);
+
+  BdSpec fake;
+  fake.addrWordOffset = kOwn + 16; // Byte 64.
+  fake.lengthWords = 4;
+  fake.lockRelVal = 0;
+  writeMemTileBd(*mem, /*bdId=*/8, fake);
+  writeMemTileBd(*mem, /*bdId=*/9, fake);
+
+  // Memtile switch: slave DMA_0 (0xB0100, the MM2S output side) into the Ctrl
+  // master (0xB0018), the same local-bundle trick wireMm2sToCtrl uses on a
+  // core tile. Configuration names the slave by physical index, which is
+  // (0xB0100 - SlvConfigBaseAddr 0xB0100) / 4 = 0.
+  mem->regs().write(0x000B0100, packSlaveEnable(/*packetMode=*/false));
+  mem->regs().write(0x000B0018, packMasterCircuit(0));
+  StreamPort *sink = mem->streamSwitch()->masterPort(PortBundle::Ctrl, 0);
+  AIESIM_CHECK(sink != nullptr);
+
+  startQueue(*mem, MemTileRegs::kCtrlBase, MemTileRegs::kCtrlStride,
+            MemTileRegs::kNumCh, DmaDirection::MM2S, 0, /*startBd=*/24,
+            /*repeatCount=*/1, MemTileRegs::kStartBdMask);
+
+  std::vector<uint32_t> words;
+  std::vector<bool> tlasts;
+  drainInterleaved(array, *sink, 8, words, tlasts, /*maxCycles=*/500);
+
+  AIESIM_CHECK(err.message.empty());
+  AIESIM_CHECK_EQ(words.size(), static_cast<size_t>(8));
+  for (uint32_t i = 0; i < 8 && i < words.size(); ++i)
+    AIESIM_CHECK_EQ(words[i], src[i]);
+  AIESIM_CHECK_EQ(mem->dma()->completedBds(DmaDirection::MM2S, 0), 1u);
+}
+
 } // namespace
 
 int main() {
@@ -792,5 +911,6 @@ int main() {
   testShimDdr();
   testBdIterationWalksItsOwnBase();
   testBdIterationStartsWhereIterCurrSaid();
+  testMemTileStartsAboveBd15();
   return aiesim_test::summarize("dma");
 }
