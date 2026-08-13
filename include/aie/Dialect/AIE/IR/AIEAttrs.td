@@ -180,7 +180,7 @@ def BDDimLayoutArrayArrayAttr : ArrayOfAttr<
 def BDPadLayoutAttr : AttrDef<AIE_Dialect, "BDPadLayout", []> {
   let mnemonic = "bd_pad_layout";
   let summary = [{
-    Tuple encoding number of zeros before and after on that dimension in an AIE2 
+    Tuple encoding number of zeros before and after on that dimension in an AIE2
     n-dimensional buffer descriptor;
   }];
 
@@ -208,6 +208,22 @@ def PacketInfoAttr : AttrDef<AIE_Dialect, "PacketInfo", []> {
   let parameters = (ins
     "uint16_t" : $pkt_type,
     "uint16_t" : $pkt_id
+  );
+
+  let assemblyFormat = "`<` struct(params) `>`";
+}
+
+def BDIterationAttr : AttrDef<AIE_Dialect, "BDIteration", []> {
+  let mnemonic = "bd_iteration";
+  let summary = [{
+    Tuple encoding the iteration state of a buffer descriptor in
+    true (element) values;
+  }];
+
+  let parameters = (ins
+    "uint32_t" : $size,
+    "uint32_t" : $stride,
+    "uint32_t" : $current
   );
 
   let assemblyFormat = "`<` struct(params) `>`";
