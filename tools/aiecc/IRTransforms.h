@@ -841,10 +841,25 @@ inline std::unique_ptr<mlir::PassManager> getInputWithAddressesPipeline(
 
   mlir::OpPassManager &dpm = pm->nest<DeviceOp>();
   dpm.addPass(createAIEAssignLockIDsPass());
+  // The stateful transform always emits the dynamic (runtime) buffer addressing
+  // and lock bookkeeping. When dynamic objectFifos are disabled, the
+  // aie-objectFifo-unroll pass below unrolls the loops that carry objectFifo
+  // accesses and folds the (now loop-invariant) runtime bookkeeping into a
+  // static, unrolled lowering.
   if (mlir::failed(mlir::parsePassPipeline(
-          llvm::formatv("aie-objectFifo-stateful-transform{{dynamic-objFifos="
-                        "{0} packet-sw-objFifos={1}}",
-                        dynamicObjFifos, packetSwObjFifos)
+          llvm::formatv("aie-objectFifo-stateful-transform{{packet-sw-objFifos="
+                        "{0}}",
+                        packetSwObjFifos)
+              .str(),
+          dpm)))
+    return nullptr;
+  // Unroll the objectFifo loops (folding the runtime bookkeeping into the
+  // static lowering). `default-dynamic=true` flips the default to the
+  // loop-preserving form; per-core `dynamic_objfifo_lowering` attributes
+  // override it either way. Either way the unroll hints are stripped.
+  if (mlir::failed(mlir::parsePassPipeline(
+          llvm::formatv("aie-objectFifo-unroll{{default-dynamic={0}}",
+                        dynamicObjFifos)
               .str(),
           dpm)))
     return nullptr;

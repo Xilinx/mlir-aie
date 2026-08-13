@@ -25,7 +25,7 @@
 // This tests ensures that locks are acquired correctly to preserve these
 // semantics.
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=false" %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll %s | FileCheck %s
 
 // CHECK: module @AIE2_delayed_release {
 // CHECK:   aie.device(xcve2302) {
@@ -39,59 +39,51 @@
 // CHECK:     %[[fifo_cons_lock:.*]] = aie.lock(%[[tile0]], 1) {init = 0 : i32, sym_name = "fifo_cons_lock_0"}
 // CHECK:     %[[buf23:.*]] = aie.buffer(%[[tile1]]) {sym_name = "buf23"} : memref<4xi32>
 // CHECK:     %[[core0:.*]] = aie.core(%[[tile0]]) {
-// CHECK:       %c99_i32 = arith.constant 99 : i32
-// CHECK:       %c0 = arith.constant 0 : index
-// CHECK:       %c1 = arith.constant 1 : index
-// CHECK:       %c4 = arith.constant 4 : index
+// CHECK-DAG:       %[[C1:.*]] = arith.constant 1 : i32
+// CHECK-DAG:       %c99_i32 = arith.constant 99 : i32
 
 // # Objects Held: 0     # Objects Requested: 1    # Acquire Needed: 1
-// CHECK:       %{{.*}} = arith.constant 1 : i32
-// CHECK:       aie.use_lock(%[[fifo_prod_lock]], AcquireGreaterEqual, %{{.*}})
+// CHECK:       aie.use_lock(%[[fifo_prod_lock]], AcquireGreaterEqual, %[[C1]])
 // # Objects Held: 1
 // CHECK:       memref.store %c99_i32, %[[fifo_buff_0]][] : memref<i32>
-// CHECK:       %{{.*}} = arith.constant 1 : i32
-// CHECK:       aie.use_lock(%[[fifo_cons_lock]], Release, %{{.*}})
+// CHECK:       aie.use_lock(%[[fifo_cons_lock]], Release, %[[C1]])
 // # Objects Held: 0   (After release)
 
 // # Objects Held: 0     # Objects Requested: 1    # Acquire Needed: 1
-// CHECK:       %{{.*}} = arith.constant 1 : i32
-// CHECK:       aie.use_lock(%[[fifo_prod_lock]], AcquireGreaterEqual, %{{.*}})
+// CHECK:       aie.use_lock(%[[fifo_prod_lock]], AcquireGreaterEqual, %[[C1]])
 // # Objects Held: 1
 // CHECK:       memref.store %c99_i32, %[[fifo_buff_1]][] : memref<i32>
-// CHECK:       %{{.*}} = arith.constant 1 : i32
-// CHECK:       aie.use_lock(%[[fifo_cons_lock]], Release, %{{.*}})
+// CHECK:       aie.use_lock(%[[fifo_cons_lock]], Release, %[[C1]])
 // # Objects Held: 0   (After release)
 
 // # Objects Held: 0     # Objects Requested: 1    # Acquire Needed: 1
-// CHECK:       %{{.*}} = arith.constant 1 : i32
-// CHECK:       aie.use_lock(%[[fifo_prod_lock]], AcquireGreaterEqual, %{{.*}})
+// CHECK:       aie.use_lock(%[[fifo_prod_lock]], AcquireGreaterEqual, %[[C1]])
 // # Objects Held: 1
 // CHECK:       memref.store %c99_i32, %[[fifo_buff_2]][] : memref<i32>
-// CHECK:       %{{.*}} = arith.constant 1 : i32
-// CHECK:       aie.use_lock(%[[fifo_cons_lock]], Release, %{{.*}})
+// CHECK:       aie.use_lock(%[[fifo_cons_lock]], Release, %[[C1]])
 // # Objects Held: 0   (After release)
 
 // # Objects Held: 0     # Objects Requested: 1    # Acquire Needed: 1
-// CHECK:       %{{.*}} = arith.constant 1 : i32
-// CHECK:       aie.use_lock(%[[fifo_prod_lock]], AcquireGreaterEqual, %{{.*}})
+// CHECK:       aie.use_lock(%[[fifo_prod_lock]], AcquireGreaterEqual, %[[C1]])
 // # Objects Held: 1
 // CHECK:       memref.store %c99_i32, %[[fifo_buff_3]][] : memref<i32>
-// CHECK:       %{{.*}} = arith.constant 1 : i32
-// CHECK:       aie.use_lock(%[[fifo_cons_lock]], Release, %{{.*}})
+// CHECK:       aie.use_lock(%[[fifo_cons_lock]], Release, %[[C1]])
 // # Objects Held: 0   (After release)
 // CHECK:       aie.end
 // CHECK:     }
 
 // CHECK:     %[[core1:.*]] = aie.core(%[[tile1]]) {
-// CHECK:       %c0 = arith.constant 0 : index
-// CHECK:       %c1 = arith.constant 1 : index
-// CHECK:       %c2 = arith.constant 2 : index
-// CHECK:       %c3 = arith.constant 3 : index
+// CHECK-DAG:       %c0 = arith.constant 0 : index
+// CHECK-DAG:       %c1 = arith.constant 1 : index
+// CHECK-DAG:       %c2 = arith.constant 2 : index
+// CHECK-DAG:       %c3 = arith.constant 3 : index
+// CHECK-DAG:       %[[CC1:.*]] = arith.constant 1 : i32
+// CHECK-DAG:       %[[CC2:.*]] = arith.constant 2 : i32
+// CHECK-DAG:       %[[CC3:.*]] = arith.constant 3 : i32
 
 // -- Requested: 2 --
 // # Objects Held: 0     # Objects Requested: 2    # Acquire Needed: 2
-// CHECK:       %{{.*}} = arith.constant 2 : i32
-// CHECK:       aie.use_lock(%[[fifo_cons_lock]], AcquireGreaterEqual, %{{.*}})
+// CHECK:       aie.use_lock(%[[fifo_cons_lock]], AcquireGreaterEqual, %[[CC2]])
 // # Objects Held: 2
 
 // CHECK:       %[[VAL_11:.*]] = memref.load %[[fifo_buff_0]][] : memref<i32>
@@ -106,8 +98,7 @@
 // -- Requested: 3 --
 // Since we already hold 2 and are requesting 3, we expect one acquire here.
 // # Objects Held: 2     # Objects Requested: 3    # Acquire Needed: 1
-// CHECK:       %{{.*}} = arith.constant 1 : i32
-// CHECK:       aie.use_lock(%[[fifo_cons_lock]], AcquireGreaterEqual, %{{.*}})
+// CHECK:       aie.use_lock(%[[fifo_cons_lock]], AcquireGreaterEqual, %[[CC1]])
 // # Objects Held: 3
 // CHECK:       %[[VAL_13:.*]] = memref.load %[[fifo_buff_0]][] : memref<i32>
 // CHECK:       memref.store %[[VAL_13]], %[[buf23]][%c2] : memref<4xi32>
@@ -118,8 +109,7 @@
 // CHECK:       memref.store %[[VAL_14]], %[[buf23]][%c3] : memref<4xi32>
 
 // These releases should all succeed.
-// CHECK:       %{{.*}} = arith.constant 3 : i32
-// CHECK:       aie.use_lock(%[[fifo_prod_lock]], Release, %{{.*}})
+// CHECK:       aie.use_lock(%[[fifo_prod_lock]], Release, %[[CC3]])
 // CHECK:       aie.end
 // CHECK:     }
 // CHECK:   }

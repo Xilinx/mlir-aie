@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=false" %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll %s | FileCheck %s
 
 // CHECK: module @repeatCount {
 // CHECK:   aie.device(npu1) {
@@ -22,9 +22,9 @@
 // CHECK:       return
 // CHECK:     }
 // CHECK:     %core_1_2 = aie.core(%{{.*}}tile_1_2) {
-// CHECK:       %c0 = arith.constant 0 : index
-// CHECK:       %c1 = arith.constant 1 : index
-// CHECK:       %c12 = arith.constant 12 : index
+// CHECK-DAG:       %c0 = arith.constant 0 : index
+// CHECK-DAG:       %c1 = arith.constant 1 : index
+// CHECK-DAG:       %c12 = arith.constant 12 : index
 // CHECK:       scf.for %arg0 = %c0 to %c12 step %c1 {
 // CHECK:         aie.use_lock(%[[VAL_4]], AcquireGreaterEqual, %{{.*}})
 // CHECK:         func.call @some_work(%[[VAL_3]]) : (memref<16xi32>) -> ()

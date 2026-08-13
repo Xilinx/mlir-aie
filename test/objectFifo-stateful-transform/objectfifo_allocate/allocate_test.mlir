@@ -5,12 +5,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=false" %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll %s | FileCheck %s
 
 // CHECK-LABEL:   aie.device(xcve2302) {
 // CHECK:           %[[VAL_0:.*]] = aie.tile(1, 2)
 // CHECK:           %[[VAL_1:.*]] = aie.tile(1, 3)
-// CHECK:           %[[VAL_2:.*]] = aie.tile(2, 2)
 // CHECK:           %of2_buff_0 = aie.buffer(%tile_1_2) {sym_name = "of2_buff_0"} : memref<16xi32>
 // CHECK:           %of2_prod_lock_0 = aie.lock(%tile_1_2, 0) {init = 1 : i32, sym_name = "of2_prod_lock_0"}
 // CHECK:           %of2_cons_lock_0 = aie.lock(%tile_1_2, 1) {init = 0 : i32, sym_name = "of2_cons_lock_0"}
