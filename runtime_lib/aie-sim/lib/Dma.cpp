@@ -23,6 +23,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <deque>
+#include <string>
 #include <vector>
 
 using namespace aiesim;
@@ -242,7 +243,14 @@ DmaTileLayout makeMemTileLayout() {
   // XAIEMLGBL_MEM_TILE_MODULE_DMA_S2MM_CURRENT_WRITE_COUNT_0.
   l.writeCountBase = 0xA06B0;
 
-  l.qStartBd = {0, 0, 0x0000000Fu};
+  // SIX bits, not the four a core tile and a shim use: a memtile has 48 BDs to
+  // name, so START_BD_ID and CUR_BD are both widened
+  // (XAIE2PGBL_MEM_TILE_MODULE_DMA_S2MM_0_START_QUEUE_START_BD_ID_MASK
+  // 0x3F, ..._STATUS_0_CUR_BD_MASK 0x3F000000, against 0x0F/0x0F000000 on the
+  // other two). Truncating to four silently aliased every start above 15 onto
+  // a BD the design never wrote -- 24 read back as 8 -- which surfaced as a
+  // ValidBd=0 fault on a design whose descriptors were all valid.
+  l.qStartBd = {0, 0, 0x0000003Fu};
   l.qRepeatCountM1 = {0, 16, 0x00FF0000u};
   l.qEnToken = {0, 31, 0x80000000u};
 
@@ -254,7 +262,7 @@ DmaTileLayout makeMemTileLayout() {
   l.stTaskQOverflow = {0, 18, 0x00040000u};
   l.stChannelRunning = {0, 19, 0x00080000u};
   l.stTaskQSize = {0, 20, 0x00700000u};
-  l.stCurBd = {0, 24, 0x0F000000u};
+  l.stCurBd = {0, 24, 0x3F000000u};
   return l;
 }
 
@@ -442,6 +450,11 @@ private:
   ChannelState &channel(DmaDirection dir, uint32_t ch);
   const ChannelState &channel(DmaDirection dir, uint32_t ch) const;
 
+  /// "tile (c, r) BD n": which descriptor on which tile a diagnostic is about.
+  /// One design configures hundreds of BDs across thirty tiles, so an error
+  /// that names none of them says only that something is wrong somewhere.
+  std::string where(uint32_t bdId) const;
+
   void pushTask(DmaDirection dir, uint32_t ch, uint8_t startBd,
                 uint32_t repeatCount, bool enToken);
   DecodedBd fetchBd(uint32_t bdId) const;
@@ -472,6 +485,11 @@ const ChannelState &DmaModuleImpl::channel(DmaDirection dir,
 void DmaModuleImpl::setTestPort(DmaDirection dir, uint32_t ch,
                                 StreamPort *port) {
   channel(dir, ch).testPort = port;
+}
+
+std::string DmaModuleImpl::where(uint32_t bdId) const {
+  return "tile (" + std::to_string(tile.getCol()) + ", " +
+         std::to_string(tile.getRow()) + ") BD " + std::to_string(bdId) + ": ";
 }
 
 // A MemTile's DMA-BD lock fields index a 3*count() space, not just this
@@ -634,8 +652,8 @@ uint32_t DmaModuleImpl::onStatusRead(uint32_t off) const {
 DecodedBd DmaModuleImpl::fetchBd(uint32_t bdId) const {
   DecodedBd bd;
   if (bdId >= layout.numBds) {
-    tile.getArray().error(
-        "DMA: BD id out of range for this tile's DMA channel");
+    tile.getArray().error(where(bdId) +
+                          "BD id out of range for this tile's DMA channel");
     return bd;
   }
   uint32_t words[8] = {};
@@ -766,6 +784,7 @@ bool DmaModuleImpl::stepChannel(ChannelState &c, DmaDirection dir,
     c.bd = fetchBd(c.curBd);
     if (!c.bd.validBd) {
       tile.getArray().error(
+          where(c.curBd) +
           "DMA channel started a BD with ValidBd=0 (host must call "
           "XAie_DmaEnableBd, or equivalent, before queueing it)");
       c.running = false;
@@ -773,6 +792,7 @@ bool DmaModuleImpl::stepChannel(ChannelState &c, DmaDirection dir,
     }
     if (c.bd.pktEn) {
       tile.getArray().error(
+          where(c.curBd) +
           "DMA BD has packet-header mode enabled (PktEn=1); this DMA "
           "model does not know the on-wire packet header word format "
           "(not grounded from source) and refuses to move data without "
