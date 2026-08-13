@@ -44,9 +44,16 @@ constexpr uint32_t kOwnBase = 0x70000;
 /// Runs `body` with diagnostics captured instead of aborting, and reports
 /// whether one fired. The port signals an unmodelled access by diagnosing, so
 /// "did this fault" is the property under test.
+///
+/// The flag is STATIC because the handler installed here outlives this call:
+/// Array has no way to remove one, and every check below deliberately faults
+/// again outside a faulted() call. Capturing a local by reference left the
+/// handler writing a byte into a dead frame -- harmless under -O2, and under
+/// -O0 it landed on a saved rbp and crashed with SIGBUS.
 bool faulted(Array &array, const std::function<void()> &body) {
-  bool fired = false;
-  array.setDiagnosticHandler([&](const std::string &) { fired = true; });
+  static bool fired;
+  fired = false;
+  array.setDiagnosticHandler([](const std::string &) { fired = true; });
   body();
   return fired;
 }
