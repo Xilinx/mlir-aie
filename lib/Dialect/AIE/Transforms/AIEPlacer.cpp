@@ -1145,7 +1145,16 @@ int SequentialPlacer::computeCentroidColumn(LogicalTileOp logicalTile,
   if (ltoIt == flowIndex.ltoFlows.end())
     return 0;
 
-  auto resolveCoreCol = [&](Value v) -> std::optional<int> {
+  // The column of a peer, when it is already known. A core is known by
+  // construction (physical, or placed in an earlier phase). A non-core peer --
+  // a memtile or shim -- is known only if it carries an explicit col or was
+  // already placed; when it is, that peer IS this flow's destination and the
+  // core indirection below must not run. Resolving past a known memtile
+  // over-collects: a memtile typically serves several unrelated flows, so
+  // walking to its cores returns the union of every column it touches. A shim
+  // feeding a memtile pinned to col 1 was pulled to col 3 that way, because
+  // that memtile also carried packet flows reaching cols 0, 2, 5, 6 and 7.
+  auto resolvePeerCol = [&](Value v) -> std::optional<int> {
     Operation *defOp = v.getDefiningOp();
     if (!defOp)
       return std::nullopt;
@@ -1155,17 +1164,26 @@ int SequentialPlacer::computeCentroidColumn(LogicalTileOp logicalTile,
         return tileOp.getCol();
       return std::nullopt;
     }
-    if (auto lto = dyn_cast<LogicalTileOp>(defOp);
-        lto && lto.getTileType() == AIETileType::CoreTile) {
+    auto lto = dyn_cast<LogicalTileOp>(defOp);
+    if (!lto)
+      return std::nullopt;
+    if (lto.getTileType() == AIETileType::CoreTile) {
       auto it = result.find(defOp);
       if (it != result.end())
         return it->second.col;
+      return std::nullopt;
     }
+    if (auto c = lto.tryGetCol())
+      return *c;
+    auto it = result.find(defOp);
+    if (it != result.end())
+      return it->second.col;
     return std::nullopt;
   };
 
-  // One level of indirection for shim->memtile->core. Multi-level memtile
-  // chains aren't currently produced by mlir-aie.
+  // One level of indirection for shim->memtile->core, used only when the
+  // memtile's own column is still unknown. Multi-level memtile chains aren't
+  // currently produced by mlir-aie.
   auto resolveLtoCoreCols = [&](Value v) {
     SmallVector<int> out;
     auto it = flowIndex.ltoFlows.find(v);
@@ -1173,7 +1191,7 @@ int SequentialPlacer::computeCentroidColumn(LogicalTileOp logicalTile,
       return out;
     for (auto &peerList : it->second)
       for (Value p : peerList)
-        if (auto col = resolveCoreCol(p))
+        if (auto col = resolvePeerCol(p))
           out.push_back(*col);
     return out;
   };
@@ -1182,7 +1200,7 @@ int SequentialPlacer::computeCentroidColumn(LogicalTileOp logicalTile,
   for (auto &peers : ltoIt->second) {
     SmallVector<int> dests;
     for (Value p : peers) {
-      if (auto col = resolveCoreCol(p)) {
+      if (auto col = resolvePeerCol(p)) {
         dests.push_back(*col);
         continue;
       }
