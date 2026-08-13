@@ -616,13 +616,28 @@ from first principles. `AIETargetShared.cpp:86-133` (`generateXAieDmaSetMultiDim
 dimension order -- MLIR lists dims outermost-first, D0 is always the last entry -- and that stepsize and
 wrap are 32-bit-word granular, matching the doc comment at `xaie_dma.c:443-447`.
 
+**The Iteration dimension** (IterCurr/Iter.Wrap/Iter.StepSize) is modelled, and is the one place where
+this model makes a claim about hardware that no source line settles. `XAie_DmaSetBdIteration`
+(`xaie_dma.c:490-493`, repeated on the AIE-ML implementation at `xaie_dma_aieml.c:1470-1473`) states both
+halves: "StepSize: Offset applied at each execution of the BD" and "IterCurr: Current iteration step. This
+field is incremented by the hardware after BD is loaded." So the model applies `IterCurr * Iter.StepSize`
+32-bit words to the whole BD, once per execution -- per queue repeat and per chain re-entry alike, because
+each reloads the BD -- and advances IterCurr modulo Wrap. It advances it **in the register**, not in
+channel state, which makes the counter per-BD rather than per-channel and makes it visible to a host
+read-back.
+
+That visibility is exactly the open review question on
+[Xilinx/mlir-aie#3538](https://github.com/Xilinx/mlir-aie/pull/3538): whether `iteration_current` is a
+counter the hardware advances or only a settable starting offset. aie-rt's doc comment says both, and a
+doc comment is not silicon. Modelling it this way is what makes the difference measurable -- a
+differential run that reads the BD word back after one execution separates the two readings, and the
+address stream alone never can.
+
 **Not modelled**, either ungrounded or out of scope; each ungrounded case is a hard error at the point it
 would matter rather than a silent guess:
 
 * **Packet-switched header insertion.** PktEn/PktType/PktId are decoded, but the on-wire header word
   format was not grounded from source, so a BD with `PktEn=1` errors.
-* **The Iteration dimension's address offset** (IterCurr/Iter.Wrap/Iter.StepSize). Decoded, but used only
-  to detect the case where it would matter (`IterWrap>1` or `IterCurr!=0`), which errors.
 * **Zero-padding** (memtile D0-D2 pad before/after): not in the required field list, not decoded.
 * **AXI/NoC shim properties** (SMID, AxCache, AxQoS, BurstLen, SecureAccess), compression, out-of-order
   completion, FoT mode, controller ID, channel reset: no bus or compute modelling here needs them, so

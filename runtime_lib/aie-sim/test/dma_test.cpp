@@ -237,6 +237,12 @@ struct BdSpec {
   // {0,0,0} is "unconfigured" (StepSize=1, Wrap=0) for every dim.
   uint32_t stepSizeMinus1[3] = {0, 0, 0};
   uint32_t wrap[3] = {0, 0, 0};
+  // Iteration dimension. Unlike the address dims above, its wrap is stored
+  // minus-one too (xaie_dma_aieml.c:362), so {0,0,0} here is StepSize=1,
+  // Wrap=1, IterCurr=0 -- one execution at offset 0, the untouched default.
+  uint32_t iterStepSizeMinus1 = 0;
+  uint32_t iterWrapMinus1 = 0;
+  uint32_t iterCurr = 0;
   uint8_t nextBd = 0;
   bool useNextBd = false;
   bool validBd = true;
@@ -266,12 +272,15 @@ void writeCoreBd(Tile &tile, uint32_t bdId, const BdSpec &s) {
                ((s.stepSizeMinus1[1] & 0x1FFFu) << 13);
   uint32_t w3 = (s.stepSizeMinus1[2] & 0x1FFFu) |
                ((s.wrap[0] & 0xFFu) << 13) | ((s.wrap[1] & 0xFFu) << 21);
+  uint32_t w4 = (s.iterStepSizeMinus1 & 0x1FFFu) |
+               ((s.iterWrapMinus1 & 0x3Fu) << 13) |
+               ((s.iterCurr & 0x3Fu) << 19);
   uint32_t w5 = packLockAndControlWord(s);
   tile.regs().write(base + 0, w0);
-  tile.regs().write(base + 4, 0);  // packet/out-of-order-bd-id: unused.
+  tile.regs().write(base + 4, 0); // packet/out-of-order-bd-id: unused.
   tile.regs().write(base + 8, w2);
   tile.regs().write(base + 12, w3);
-  tile.regs().write(base + 16, 0); // iteration dimension: left default.
+  tile.regs().write(base + 16, w4);
   tile.regs().write(base + 20, w5);
 }
 
@@ -284,6 +293,9 @@ void writeShimBd(Tile &tile, uint32_t bdId, const BdSpec &s) {
   uint32_t w4 =
       (s.stepSizeMinus1[1] & 0xFFFFFu) | ((s.wrap[1] & 0x3FFu) << 20);
   uint32_t w5 = s.stepSizeMinus1[2] & 0xFFFFFu;
+  uint32_t w6 = (s.iterStepSizeMinus1 & 0xFFFFFu) |
+               ((s.iterWrapMinus1 & 0x3Fu) << 20) |
+               ((s.iterCurr & 0x3Fu) << 26);
   uint32_t w7 = packLockAndControlWord(s);
   tile.regs().write(base + 0, s.lengthWords);
   tile.regs().write(base + 4, w1);
@@ -291,7 +303,7 @@ void writeShimBd(Tile &tile, uint32_t bdId, const BdSpec &s) {
   tile.regs().write(base + 12, w3);
   tile.regs().write(base + 16, w4);
   tile.regs().write(base + 20, w5);
-  tile.regs().write(base + 24, 0); // iteration dimension: left default.
+  tile.regs().write(base + 24, w6);
   tile.regs().write(base + 28, w7);
 }
 
@@ -311,8 +323,9 @@ uint32_t statusOff(uint32_t statusBase, uint32_t statusDirStride,
 
 void startQueue(Tile &tile, uint32_t ctrlBase, uint32_t ctrlStride,
                uint32_t numCh, DmaDirection dir, uint32_t ch,
-               uint8_t startBd) {
-  uint32_t v = startBd & 0xFu; // repeatCount-1 = 0 (one shot), enToken = 0.
+               uint8_t startBd, uint32_t repeatCount = 1) {
+  uint32_t v = (startBd & 0xFu) |
+              (((repeatCount - 1) & 0xFFu) << 16); // enToken = 0.
   tile.regs().write(ctrlQueueOff(ctrlBase, ctrlStride, numCh, dir, ch), v);
 }
 
@@ -673,6 +686,101 @@ void testShimDdr() {
   AIESIM_CHECK_EQ(shim->dma()->completedBds(DmaDirection::MM2S, 0), 1u);
 }
 
+//===----------------------------------------------------------------------===//
+// Test 7: the Iteration dimension. One BD executed N times by the task
+// queue's repeat count walks its own base by Iter.StepSize each execution --
+// the rolled form of an N-deep BD chain, which is what Xilinx/mlir-aie#3538
+// exposes on `aie.dma_bd`. Both halves aie-rt documents are pinned here: the
+// address walk, and IterCurr advancing in the register.
+//===----------------------------------------------------------------------===//
+
+uint32_t readCoreIterCurr(Tile &tile, uint32_t bdId) {
+  uint32_t w =
+      tile.regs().read(CoreRegs::kBdBase + bdId * CoreRegs::kBdStride + 16);
+  return (w & 0x01F80000u) >> 19;
+}
+
+void testBdIterationWalksItsOwnBase() {
+  Array array(makeTestDevice(), nullptr);
+  ErrorCapture err;
+  array.setDiagnosticHandler(err.handler());
+
+  Tile *core = array.tile(0, 2);
+  uint32_t src[32];
+  for (uint32_t i = 0; i < 32; ++i)
+    src[i] = i;
+  AIESIM_CHECK(core->memory()->write(0, src, sizeof(src)));
+
+  // 4 words per execution, base advancing 4 words per execution, wrapping
+  // after 4: one BD covering the same 16 words a 4-deep chain would.
+  BdSpec spec;
+  spec.lengthWords = 4;
+  spec.iterStepSizeMinus1 = 4 - 1;
+  spec.iterWrapMinus1 = 4 - 1;
+  writeCoreBd(*core, /*bdId=*/1, spec);
+
+  wireMm2sToCtrl(*core);
+  StreamPort *sink = core->streamSwitch()->masterPort(PortBundle::Ctrl, 0);
+  startQueue(*core, CoreRegs::kCtrlBase, CoreRegs::kCtrlStride,
+            CoreRegs::kNumCh, DmaDirection::MM2S, 0, /*startBd=*/1,
+            /*repeatCount=*/4);
+
+  std::vector<uint32_t> words;
+  std::vector<bool> tlasts;
+  drainInterleaved(array, *sink, 16, words, tlasts, /*maxCycles=*/2000);
+
+  AIESIM_CHECK(err.message.empty());
+  AIESIM_CHECK_EQ(words.size(), static_cast<size_t>(16));
+  for (uint32_t i = 0; i < 16 && i < words.size(); ++i)
+    AIESIM_CHECK_EQ(words[i], i);
+
+  // Read the counter back out of the REGISTER, not out of channel state:
+  // that read-back is the observable separating "a counter the hardware
+  // advances" from "a settable starting offset", which is the open review
+  // question on #3538. Four executions at Wrap=4 return it to 0.
+  AIESIM_CHECK_EQ(readCoreIterCurr(*core, 1), 0u);
+  AIESIM_CHECK_EQ(core->dma()->completedBds(DmaDirection::MM2S, 0), 1u);
+}
+
+//===----------------------------------------------------------------------===//
+// Test 8: IterCurr is also a settable STARTING offset -- a BD written with
+// IterCurr=2 begins two iteration steps in, and leaves 3 behind.
+//===----------------------------------------------------------------------===//
+
+void testBdIterationStartsWhereIterCurrSaid() {
+  Array array(makeTestDevice(), nullptr);
+  ErrorCapture err;
+  array.setDiagnosticHandler(err.handler());
+
+  Tile *core = array.tile(0, 2);
+  uint32_t src[32];
+  for (uint32_t i = 0; i < 32; ++i)
+    src[i] = i;
+  AIESIM_CHECK(core->memory()->write(0, src, sizeof(src)));
+
+  BdSpec spec;
+  spec.lengthWords = 4;
+  spec.iterStepSizeMinus1 = 4 - 1;
+  spec.iterWrapMinus1 = 4 - 1;
+  spec.iterCurr = 2;
+  writeCoreBd(*core, /*bdId=*/1, spec);
+
+  wireMm2sToCtrl(*core);
+  StreamPort *sink = core->streamSwitch()->masterPort(PortBundle::Ctrl, 0);
+  startQueue(*core, CoreRegs::kCtrlBase, CoreRegs::kCtrlStride,
+            CoreRegs::kNumCh, DmaDirection::MM2S, 0, /*startBd=*/1);
+
+  std::vector<uint32_t> words;
+  std::vector<bool> tlasts;
+  drainInterleaved(array, *sink, 4, words, tlasts, /*maxCycles=*/2000);
+
+  AIESIM_CHECK(err.message.empty());
+  AIESIM_CHECK_EQ(words.size(), static_cast<size_t>(4));
+  for (uint32_t i = 0; i < 4 && i < words.size(); ++i)
+    AIESIM_CHECK_EQ(words[i], 2 * 4 + i);
+  AIESIM_CHECK_EQ(readCoreIterCurr(*core, 1), 3u);
+}
+
 } // namespace
 
 int main() {
@@ -682,5 +790,7 @@ int main() {
   testZeroLengthBdMovesNoDataStillLocks();
   testS2mmMove();
   testShimDdr();
+  testBdIterationWalksItsOwnBase();
+  testBdIterationStartsWhereIterCurrSaid();
   return aiesim_test::summarize("dma");
 }
