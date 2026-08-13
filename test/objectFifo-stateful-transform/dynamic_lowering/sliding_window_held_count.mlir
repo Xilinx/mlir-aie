@@ -19,9 +19,10 @@
 // enters the loop already holding 1 -- exactly what it holds at the end of every
 // iteration. `h` never changes, so each iteration acquires the constant 1.
 //
-// Unrolling does not change this. The second run below unrolls both loops:
-// core_0_2 still computes `acq` at run time, because unrolling does not change
-// how many elements the core holds when it enters the loop.
+// Unrolling alone does not change this, because it does not change how many
+// elements the core holds when it enters the loop. The second run below unrolls
+// both loops, which also peels core_0_2's first iteration so that the rest of
+// its loop starts holding 1 and its acquires become constant too.
 
 // RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll="default-dynamic=true" %s | FileCheck %s
 // RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll %s | FileCheck %s --check-prefix=UNROLL
@@ -66,12 +67,17 @@
 // UNROLL-DAG:      %[[X_T2:.*]] = aie.tile(0, 2)
 // UNROLL-DAG:      %[[X_T3:.*]] = aie.tile(0, 3)
 
-// Unrolled, core_0_2 still carries the count and computes each acquire.
+// Unrolled, core_0_2 is peeled so that the remaining loop starts holding 1 and
+// every acquire is constant; the peeled iteration acquires 2 up front.
 // UNROLL:          %{{.*}} = aie.core(%[[X_T2]]) {
-// UNROLL:            %{{.*}} = scf.for %{{.*}} iter_args(%[[X_HELD:.*]] = %{{.*}}) -> (i32) {
-// UNROLL:              %[[X_DELTA:.*]] = arith.subi %{{.*}}, %[[X_HELD]] : i32
-// UNROLL:              %[[X_ACQ:.*]] = arith.maxsi %[[X_DELTA]], %{{.*}} : i32
-// UNROLL:              aie.use_lock(%{{.*}}, AcquireGreaterEqual, %[[X_ACQ]])
+// UNROLL-DAG:        %[[X_C1:.*]] = arith.constant 1 : i32
+// UNROLL-DAG:        %[[X_C2:.*]] = arith.constant 2 : i32
+// UNROLL:            aie.use_lock(%{{.*}}, AcquireGreaterEqual, %[[X_C2]])
+// UNROLL-NOT:        iter_args
+// UNROLL-NOT:        arith.maxsi
+// UNROLL:            scf.for
+// UNROLL:              aie.use_lock(%{{.*}}, AcquireGreaterEqual, %[[X_C1]])
+// UNROLL-NOT:          arith.maxsi
 // UNROLL:            }
 // UNROLL:            aie.end
 

@@ -406,6 +406,13 @@ def AIEObjectFifoUnroll : Pass<"aie-objectFifo-unroll", "DeviceOp"> {
     the default in either direction via its `dynamic_objfifo_lowering`
     attribute. Either way the hints are stripped and the runtime bookkeeping of
     any dynamic core is tidied by a fold/cleanup sub-pipeline.
+
+    A loop entered holding fewer objectFifo elements than it holds in steady
+    state computes its first acquire differently from every later one, which
+    keeps that count in a loop-carried value. `peel-first-iteration` peels one
+    iteration so that the rest of the loop starts in the steady state. Peeling
+    costs a copy of the loop body, so each peel is kept only where it turns the
+    loop's lock values into constants.
   }];
 
   let constructor = "xilinx::AIE::createAIEObjectFifoUnrollPass()";
@@ -417,6 +424,12 @@ def AIEObjectFifoUnroll : Pass<"aie-objectFifo-unroll", "DeviceOp"> {
               "Default objectFifo lowering for cores that do not set the "
               "dynamic_objfifo_lowering attribute: true leaves loops rolled "
               "(dynamic), false unrolls them (static).">,
+       Option<"clPeelFirstIteration", "peel-first-iteration", "std::string",
+              /*default=*/"\"auto\"",
+              "Peel the first iteration off objectFifo loops whose lock values "
+              "are computed at run time, keeping the peel where it makes them "
+              "constant: \"true\", \"false\", or \"auto\" (peel unless "
+              "default-dynamic is set).">,
   ];
 }
 

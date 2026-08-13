@@ -45,55 +45,35 @@
 // CHECK:             aie.use_lock(%[[VAL_7]], Release, %[[ONE]])
 // CHECK:             aie.end
 // CHECK:           }
-// Consumer: cyclostatic {1,3,...} sliding window. The held-object count is
-// carried as a loop iter_arg; AcquireGreaterEqual amounts are computed at
-// runtime (subi/maxsi). Element data is unused so buffer selection is DCE'd.
+// Consumer: cyclostatic {1,3,...} sliding window. The consumer enters its loop
+// holding nothing but holds 2 elements at the end of every iteration, so
+// peeling the first iteration lets the rest start in the steady state and every
+// acquire folds to a constant. Element data is unused so buffer selection is
+// DCE'd.
 // CHECK:           %[[VAL_9:.*]] = aie.core(%[[VAL_1]]) {
-// CHECK-DAG:             %[[D1:.*]] = arith.constant 1 : i32
-// CHECK-DAG:             %[[D0IDX:.*]] = arith.constant 0 : index
-// CHECK-DAG:             %[[D0:.*]] = arith.constant 0 : i32
-// CHECK-DAG:             %[[D4:.*]] = arith.constant 4 : i32
-// CHECK-DAG:             %[[D8IDX:.*]] = arith.constant 8 : index
-// CHECK-DAG:             %[[D4IDX:.*]] = arith.constant 4 : index
-// CHECK-DAG:             %[[D3:.*]] = arith.constant 3 : i32
-// CHECK-DAG:             %[[D2:.*]] = arith.constant 2 : i32
+// CHECK-DAG:         %[[D1:.*]] = arith.constant 1 : i32
+// CHECK-DAG:         %[[D2:.*]] = arith.constant 2 : i32
+// CHECK-DAG:         %[[D3:.*]] = arith.constant 3 : i32
 // CHECK:             aie.use_lock(%[[VAL_7]], AcquireGreaterEqual, %[[D1]])
 // CHECK:             aie.use_lock(%[[VAL_6]], Release, %[[D1]])
-// CHECK:             %{{.*}} = scf.for %{{.*}} = %[[D0IDX]] to %[[D8IDX]] step %[[D4IDX]] iter_args(%[[HELD:.*]] = %[[D0]]) -> (i32) {
-// CHECK:               %[[S0:.*]] = arith.subi %[[D3]], %[[HELD]] : i32
-// CHECK:               %[[M0:.*]] = arith.maxsi %[[S0]], %[[D0]] : i32
-// CHECK:               aie.use_lock(%[[VAL_7]], AcquireGreaterEqual, %[[M0]])
-// CHECK:               %[[H0:.*]] = arith.addi %[[HELD]], %[[M0]] : i32
-// CHECK:               aie.use_lock(%[[VAL_6]], Release, %[[D1]])
-// CHECK:               %[[R0:.*]] = arith.subi %[[H0]], %[[D1]] : i32
-// CHECK:               %[[S1:.*]] = arith.subi %[[D4]], %[[H0]] : i32
-// CHECK:               %[[M1:.*]] = arith.maxsi %[[S1]], %[[D0]] : i32
-// CHECK:               aie.use_lock(%[[VAL_7]], AcquireGreaterEqual, %[[M1]])
-// CHECK:               %[[H1:.*]] = arith.addi %[[R0]], %[[M1]] : i32
-// CHECK:               aie.use_lock(%[[VAL_6]], Release, %[[D1]])
-// CHECK:               %[[R1:.*]] = arith.subi %[[H1]], %[[D1]] : i32
-// CHECK:               %[[S2:.*]] = arith.subi %[[D4]], %[[H1]] : i32
-// CHECK:               %[[M2:.*]] = arith.maxsi %[[S2]], %[[D0]] : i32
-// CHECK:               aie.use_lock(%[[VAL_7]], AcquireGreaterEqual, %[[M2]])
-// CHECK:               %[[H2:.*]] = arith.addi %[[R1]], %[[M2]] : i32
-// CHECK:               aie.use_lock(%[[VAL_6]], Release, %[[D1]])
-// CHECK:               %[[R2:.*]] = arith.subi %[[H2]], %[[D1]] : i32
-// CHECK:               %[[S3:.*]] = arith.subi %[[D4]], %[[H2]] : i32
-// CHECK:               %[[M3:.*]] = arith.maxsi %[[S3]], %[[D0]] : i32
-// CHECK:               aie.use_lock(%[[VAL_7]], AcquireGreaterEqual, %[[M3]])
-// CHECK:               %[[H3:.*]] = arith.addi %[[R2]], %[[M3]] : i32
-// CHECK:               aie.use_lock(%[[VAL_6]], Release, %[[D1]])
-// CHECK:               %[[R3:.*]] = arith.subi %[[H3]], %[[D1]] : i32
-// CHECK:               scf.yield %[[R3]] : i32
-// CHECK:             }
-// CHECK:             %[[E0:.*]] = arith.subi %[[D3]], %{{.*}} : i32
-// CHECK:             %[[EM0:.*]] = arith.maxsi %[[E0]], %[[D0]] : i32
-// CHECK:             aie.use_lock(%[[VAL_7]], AcquireGreaterEqual, %[[EM0]])
-// CHECK:             %[[EH:.*]] = arith.addi %{{.*}}, %[[EM0]] : i32
+// CHECK:             aie.use_lock(%[[VAL_7]], AcquireGreaterEqual, %[[D3]])
 // CHECK:             aie.use_lock(%[[VAL_6]], Release, %[[D1]])
-// CHECK:             %[[E1:.*]] = arith.subi %[[D3]], %[[EH]] : i32
-// CHECK:             %[[EM1:.*]] = arith.maxsi %[[E1]], %[[D0]] : i32
-// CHECK:             aie.use_lock(%[[VAL_7]], AcquireGreaterEqual, %[[EM1]])
+// CHECK:             aie.use_lock(%[[VAL_7]], AcquireGreaterEqual, %[[D1]])
+// CHECK:             aie.use_lock(%[[VAL_6]], Release, %[[D1]])
+// CHECK:             aie.use_lock(%[[VAL_7]], AcquireGreaterEqual, %[[D1]])
+// CHECK:             aie.use_lock(%[[VAL_6]], Release, %[[D1]])
+// CHECK:             aie.use_lock(%[[VAL_7]], AcquireGreaterEqual, %[[D1]])
+// CHECK:             aie.use_lock(%[[VAL_6]], Release, %[[D1]])
+// CHECK:             aie.use_lock(%[[VAL_7]], AcquireGreaterEqual, %[[D1]])
+// CHECK:             aie.use_lock(%[[VAL_6]], Release, %[[D1]])
+// CHECK:             aie.use_lock(%[[VAL_7]], AcquireGreaterEqual, %[[D1]])
+// CHECK:             aie.use_lock(%[[VAL_6]], Release, %[[D1]])
+// CHECK:             aie.use_lock(%[[VAL_7]], AcquireGreaterEqual, %[[D1]])
+// CHECK:             aie.use_lock(%[[VAL_6]], Release, %[[D1]])
+// CHECK:             aie.use_lock(%[[VAL_7]], AcquireGreaterEqual, %[[D1]])
+// CHECK:             aie.use_lock(%[[VAL_6]], Release, %[[D1]])
+// CHECK:             aie.use_lock(%[[VAL_7]], AcquireGreaterEqual, %[[D1]])
+// CHECK:             aie.use_lock(%[[VAL_6]], Release, %[[D1]])
 // CHECK:             aie.use_lock(%[[VAL_6]], Release, %[[D2]])
 // CHECK:             aie.end
 // CHECK:           }

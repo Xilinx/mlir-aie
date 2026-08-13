@@ -9,7 +9,10 @@
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 
 #include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/Dialect/SCF/Transforms/Transforms.h"
 #include "mlir/Dialect/SCF/Utils/Utils.h"
+#include "mlir/Dialect/Utils/StaticValueUtils.h"
+#include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
@@ -76,6 +79,23 @@ static void removeRedundantBinaryAcquires(DeviceOp device) {
   });
 }
 
+// Marks a loop already offered to the peeling trial below, so that neither the
+// peeled loop nor the reverted copy is considered again.
+static constexpr llvm::StringLiteral kPeelTriedAttrName = "aie.peel_tried";
+
+// Number of `use_lock` ops in `op` whose lock value is not a compile-time
+// constant. UseLockOp::getConstantValue() reports an error when it fails, so
+// this probes the value directly.
+static int64_t countRuntimeLockValues(Operation *op) {
+  int64_t count = 0;
+  op->walk([&](UseLockOp useLockOp) {
+    if (!getConstantIntValue(useLockOp.getValue())) {
+      count++;
+    }
+  });
+  return count;
+}
+
 struct AIEObjectFifoUnrollPass
     : xilinx::AIE::impl::AIEObjectFifoUnrollBase<AIEObjectFifoUnrollPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
@@ -83,8 +103,110 @@ struct AIEObjectFifoUnrollPass
     registry.insert<scf::SCFDialect>();
   }
 
+  /// Peel the first iteration off each loop whose lock values are still
+  /// computed at run time, keeping a peel only where it makes them constant.
+  ///
+  /// Whether a peel pays off depends on foldings that cannot be predicted from
+  /// the objectFifo access pattern alone (a conditional acquire may or may not
+  /// collapse, for instance), so each candidate is peeled for real and the
+  /// result measured. While the fold pipeline runs, the unpeeled core is held
+  /// aside as a detached clone, so exactly one version of the loop is ever
+  /// live; that clone is swapped back in when the peel bought nothing, and
+  /// destroyed otherwise.
+  ///
+  /// The measurement is a per-core count, so attributing a change to a peel
+  /// needs one peel per core per fold; the loop below drains the candidates one
+  /// round at a time, peeling every core in parallel so a round costs a single
+  /// run of the fold pipeline. Candidates are marked before they are tried and
+  /// never unmarked while draining, so the number of rounds is bounded by the
+  /// most objectFifo loops in any one core.
+  LogicalResult peelObjectFifoLoops(DeviceOp device) {
+    OpPassManager foldPipeline(DeviceOp::getOperationName());
+    foldPipeline.addPass(mlir::createCanonicalizerPass());
+    foldPipeline.addPass(mlir::createSCCPPass());
+    foldPipeline.addPass(mlir::createCanonicalizerPass());
+
+    IRRewriter rewriter(device.getContext());
+    struct Trial {
+      CoreOp core;
+      Operation *unpeeled;
+      int64_t runtimeLocksBefore;
+    };
+
+    while (true) {
+      SmallVector<Trial> trials;
+      for (CoreOp core : SmallVector<CoreOp>(device.getOps<CoreOp>())) {
+        scf::ForOp target;
+        // Post-order, so the innermost untried loop is taken first.
+        core.walk([&](scf::ForOp forOp) {
+          if (forOp->hasAttr(kPeelTriedAttrName) ||
+              countRuntimeLockValues(forOp) == 0) {
+            return WalkResult::advance();
+          }
+          // A single-iteration loop has nothing to peel off.
+          std::optional<int64_t> trip = getStaticTripCount(forOp);
+          if (trip && *trip <= 1) {
+            return WalkResult::advance();
+          }
+          target = forOp;
+          return WalkResult::interrupt();
+        });
+        if (!target) {
+          continue;
+        }
+        // Marked before the core is cloned, so neither the peeled loop nor the
+        // fallback copy is offered as a candidate again.
+        target->setAttr(kPeelTriedAttrName, rewriter.getUnitAttr());
+
+        Trial trial{core, core->clone(), countRuntimeLockValues(core)};
+        scf::ForOp firstIteration;
+        if (failed(scf::peelForLoopFirstIteration(rewriter, target,
+                                                  firstIteration))) {
+          trial.unpeeled->erase();
+          continue;
+        }
+        trials.push_back(trial);
+      }
+      if (trials.empty()) {
+        break;
+      }
+
+      if (failed(runPipeline(foldPipeline, device))) {
+        for (Trial &trial : trials) {
+          trial.unpeeled->erase();
+        }
+        return failure();
+      }
+
+      for (Trial &trial : trials) {
+        if (countRuntimeLockValues(trial.core) < trial.runtimeLocksBefore) {
+          trial.unpeeled->erase();
+          continue;
+        }
+        rewriter.setInsertionPoint(trial.core);
+        Operation *restored = rewriter.insert(trial.unpeeled);
+        rewriter.replaceOp(trial.core, restored->getResults());
+      }
+    }
+
+    device.walk(
+        [&](scf::ForOp forOp) { forOp->removeAttr(kPeelTriedAttrName); });
+    return success();
+  }
+
   void runOnOperation() override {
     DeviceOp device = getOperation();
+
+    bool peelFirstIteration = false;
+    if (clPeelFirstIteration == "auto") {
+      peelFirstIteration = !clDefaultDynamic;
+    } else if (clPeelFirstIteration == "true") {
+      peelFirstIteration = true;
+    } else if (clPeelFirstIteration != "false") {
+      device.emitOpError("invalid peel-first-iteration value '")
+          << clPeelFirstIteration << R"('; expected "true", "false" or "auto")";
+      return signalPassFailure();
+    }
 
     for (auto coreOp : device.getOps<CoreOp>()) {
       // `default-dynamic` picks the lowering for cores that do not pin their
@@ -169,6 +291,10 @@ struct AIEObjectFifoUnrollPass
     foldPipeline.addPass(mlir::createSCCPPass());
     foldPipeline.addPass(mlir::createCanonicalizerPass());
     if (failed(runPipeline(foldPipeline, device))) {
+      return signalPassFailure();
+    }
+
+    if (peelFirstIteration && failed(peelObjectFifoLoops(device))) {
       return signalPassFailure();
     }
 
