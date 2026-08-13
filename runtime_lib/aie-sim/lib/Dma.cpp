@@ -13,8 +13,8 @@
 // identical at every field used here, and aie-rt itself runs both through the
 // same C functions. Provenance for the offsets and the BD word packing, plus
 // the list of what this file deliberately does not model, is
-// docs/AIESimulator.md 8a.5. The ungrounded cases (packet headers, a
-// non-trivial Iteration dimension) error at the point they would matter.
+// docs/AIESimulator.md 8a.5. The ungrounded cases (packet headers) error at
+// the point they would matter.
 //
 //===----------------------------------------------------------------------===//
 
@@ -363,7 +363,12 @@ struct DecodedBd {
   int32_t lockAcqVal = 0;
   int32_t lockRelVal = 0;
   uint32_t iterCurr = 0;
-  uint32_t iterWrap = 1; // Decoded value is already +1 (register is Wrap-1).
+  uint32_t iterWrap = 1;     // Decoded value is already +1 (register is Wrap-1).
+  uint32_t iterStepSize = 1; // Likewise (register is StepSize-1).
+  // Not a register field: the Iteration dimension's word offset for THIS
+  // execution of the BD, resolved from iterCurr when the BD loads. See
+  // stepChannel.
+  uint64_t iterOffsetWords = 0;
 };
 
 //===----------------------------------------------------------------------===//
@@ -440,6 +445,7 @@ private:
   void pushTask(DmaDirection dir, uint32_t ch, uint8_t startBd,
                 uint32_t repeatCount, bool enToken);
   DecodedBd fetchBd(uint32_t bdId) const;
+  void advanceBdIteration(uint32_t bdId, const DecodedBd &bd);
   uint64_t computeAddress(const DecodedBd &bd, uint32_t beat) const;
   LockModule *effectiveLocks(uint32_t &id) const;
   Memory *effectiveMemory(uint64_t &addr) const;
@@ -670,7 +676,30 @@ DecodedBd DmaModuleImpl::fetchBd(uint32_t bdId) const {
 
   bd.iterCurr = getField(words, layout.iterCurr);
   bd.iterWrap = getField(words, layout.iterWrap) + 1;
+  bd.iterStepSize = getField(words, layout.iterStepSize) + 1;
   return bd;
+}
+
+void DmaModuleImpl::advanceBdIteration(uint32_t bdId, const DecodedBd &bd) {
+  // Advance IterCurr IN THE REGISTER, not in channel state. Two things follow
+  // that shadow state would get wrong, and both are what the hardware does if
+  // the aie-rt doc comment quoted in stepChannel is right: the counter is per
+  // BD rather than per channel (two channels chaining through the same BD id
+  // share it), and it survives the channel going idle between tasks. It is
+  // also architecturally visible: a host read-back of the BD sees the ADVANCED
+  // value, because the increment is documented as happening at load.
+  //
+  // That visibility is exactly the open question on Xilinx/mlir-aie#3538 --
+  // whether `iteration_current` is a counter the hardware advances or only a
+  // settable starting offset. aie-rt's own doc comment says both (settable
+  // through the API, incremented by hardware), which is documentation and not
+  // silicon; no register read-back on hardware has confirmed it. Modelling it
+  // this way is what makes the difference measurable: a differential run
+  // against the device that reads the BD word back after one execution
+  // separates the two readings, and the address stream alone never can.
+  uint32_t off = layout.bdBase + bdId * layout.bdStride + layout.iterCurr.word * 4;
+  uint32_t next = (bd.iterCurr + 1) % bd.iterWrap;
+  tile.regs().write(off, setField(tile.regs().read(off), layout.iterCurr, next));
 }
 
 uint64_t DmaModuleImpl::computeAddress(const DecodedBd &bd,
@@ -713,7 +742,10 @@ uint64_t DmaModuleImpl::computeAddress(const DecodedBd &bd,
   // never wraps within one BD: whatever remains is its digit.
   wordOffset +=
       static_cast<uint64_t>(rem) * bd.stepSize[layout.numAddrDims - 1];
-  return bd.baseAddr + wordOffset * 4;
+  // The Iteration dimension sits outside the mixed-radix counter entirely: it
+  // is constant across every beat of one execution and steps only between
+  // executions, which is what makes one BD stand in for an N-deep chain.
+  return bd.baseAddr + (bd.iterOffsetWords + wordOffset) * 4;
 }
 
 bool DmaModuleImpl::stepChannel(ChannelState &c, DmaDirection dir,
@@ -748,15 +780,20 @@ bool DmaModuleImpl::stepChannel(ChannelState &c, DmaDirection dir,
       c.running = false;
       return false;
     }
-    if (c.bd.iterWrap > 1 || c.bd.iterCurr != 0) {
-      tile.getArray().error(
-          "DMA BD has a non-trivial Iteration dimension configured "
-          "(IterCurr != 0 or Iter.Wrap > 1); this DMA model does not "
-          "apply the per-repeat iteration address offset and refuses to "
-          "silently produce a possibly-wrong address rather than guess");
-      c.running = false;
-      return false;
-    }
+    // The Iteration dimension. `XAie_DmaSetBdIteration` (xaie_dma.c:490-493,
+    // repeated verbatim on the AIE-ML implementation at
+    // xaie_dma_aieml.c:1470-1473) documents both halves of it: "StepSize:
+    // Offset applied at each execution of the BD" and "IterCurr: Current
+    // iteration step. This field is incremented by the hardware after BD is
+    // loaded." So the offset is IterCurr * Iter.StepSize 32-bit words, applied
+    // whole-BD, and IterCurr advances once per execution -- per repeat and per
+    // chain re-entry alike, both of which land here because each reloads the BD.
+    // Wrap bounds the counter; the write side stores Wrap-1 and StepSize-1
+    // (xaie_dma_aieml.c:362,365), which fetchBd already undoes.
+    c.bd.iterOffsetWords =
+        static_cast<uint64_t>(c.bd.iterCurr) * c.bd.iterStepSize;
+    if (c.bd.iterWrap > 1 || c.bd.iterCurr != 0)
+      advanceBdIteration(c.curBd, c.bd);
     c.bdLoaded = true;
     c.beatsDone = 0;
     c.lockAcquired = !c.bd.lockAcqEn;
