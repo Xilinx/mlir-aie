@@ -7,6 +7,13 @@ name: Lint and Format
 permissions:
   contents: read
 
+concurrency:
+  # A PR number if a pull request and otherwise the commit hash. This cancels
+  # queued and in-progress runs for the same PR (presubmit) or commit
+  # (postsubmit).
+  group: ci-lint-and-format-${{ github.event.number || github.sha }}-${{ github.event_name }}
+  cancel-in-progress: true
+
 on:
   pull_request:
     types: [assigned, opened, synchronize, reopened]
