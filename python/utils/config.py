@@ -50,7 +50,20 @@ def root_path():
 
 
 def aiecc_path():
-    """Return the aiecc executable used by JIT compilation."""
+    """Return the aiecc executable used by JIT compilation.
+
+    Resolution order: the AIECC_PATH environment variable (for consumers,
+    e.g. IRON, that need to point at a specific aiecc without relying on
+    PATH search order), then the MLIR-AIE bin directory, then PATH.
+    """
+    env_aiecc = os.environ.get("AIECC_PATH")
+    if env_aiecc:
+        if not os.path.isfile(env_aiecc):
+            raise RuntimeError(
+                f"AIECC_PATH is set to {env_aiecc}, but no such file exists."
+            )
+        return env_aiecc
+
     bundled_aiecc = os.path.join(root_path(), "bin", _executable_name("aiecc"))
     if os.path.isfile(bundled_aiecc):
         return bundled_aiecc
@@ -60,8 +73,8 @@ def aiecc_path():
         return path_aiecc
 
     raise RuntimeError(
-        "Could not find aiecc. Expected it under the MLIR-AIE bin directory "
-        "or on PATH."
+        "Could not find aiecc. Expected it under the MLIR-AIE bin directory, "
+        "on PATH, or set via the AIECC_PATH environment variable."
     )
 
 
