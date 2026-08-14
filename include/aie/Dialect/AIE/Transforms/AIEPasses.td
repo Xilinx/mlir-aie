@@ -451,6 +451,36 @@ def AIEObjectFifoLowerDMAs : Pass<"aie-objectfifo-lower-dmas", "DeviceOp"> {
   let dependentDialects = ["xilinx::AIE::AIEDialect"];
 }
 
+def AIEObjectFifoLowerCores : Pass<"aie-objectfifo-lower-cores", "DeviceOp"> {
+  let summary = "Turn core acquires and releases into lock operations";
+  let description = [{
+    Replace each core's `aie.objectfifo.acquire`, `aie.objectfifo.release` and
+    `aie.objectfifo.subview.access` with the locks its endpoint guards and the
+    object its rotating index selects. Loops carrying accesses are annotated
+    with the unroll factor that folds those indices to constants.
+
+    Consumes `aie.objectfifo.core_endpoint`.
+  }];
+
+  let constructor = "xilinx::AIE::createAIEObjectFifoLowerCoresPass()";
+  let dependentDialects = ["xilinx::AIE::AIEDialect",
+                           "mlir::arith::ArithDialect",
+                           "mlir::memref::MemRefDialect",
+                           "mlir::scf::SCFDialect"];
+}
+
+def AIEObjectFifoErasePools : Pass<"aie-objectfifo-erase-pools", "DeviceOp"> {
+  let summary = "Drop pools that no endpoint works any more";
+  let description = [{
+    Erase every `aie.objectfifo.pool` no endpoint refers to. A lowered pool is
+    inert, but it still records which buffers and locks belong to which
+    objectFifo, so keeping it is a reasonable choice and this pass is separate.
+  }];
+
+  let constructor = "xilinx::AIE::createAIEObjectFifoErasePoolsPass()";
+  let dependentDialects = ["xilinx::AIE::AIEDialect"];
+}
+
 def AIEObjectFifoUnroll : Pass<"aie-objectFifo-unroll", "DeviceOp"> {
   let summary = "Unroll scf.for loops that contain objectFifo operations";
   let description = [{

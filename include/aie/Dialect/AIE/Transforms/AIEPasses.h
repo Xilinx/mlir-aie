@@ -68,6 +68,10 @@ std::unique_ptr<mlir::OperationPass<DeviceOp>>
 createAIEObjectFifoAllocatePass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>>
 createAIEObjectFifoLowerDMAsPass();
+std::unique_ptr<mlir::OperationPass<DeviceOp>>
+createAIEObjectFifoLowerCoresPass();
+std::unique_ptr<mlir::OperationPass<DeviceOp>>
+createAIEObjectFifoErasePoolsPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIELowerCascadeFlowsPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>>
 createAIEAssignBufferDescriptorIDsPass();

@@ -28,6 +28,8 @@ add_mlir_dialect_library(
   AIEDMAChannelAnalysis.cpp
   AIEObjectFifoAllocate.cpp
   AIEObjectFifoLowerDMAs.cpp
+  AIEObjectFifoLowerCores.cpp
+  AIEObjectFifoErasePools.cpp
   AIEObjectFifoSplit.cpp
   AIEObjectFifoVerify.cpp
   AIEObjectFifoUnroll.cpp
