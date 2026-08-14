@@ -170,12 +170,12 @@ struct AIEObjectFifoSplitPass
       segments.push_back(ObjectFifoSegmentAttr::get(
           builder.getContext(), offset, size, nullptr, nullptr));
 
+    std::optional<int32_t> iterCount = from.getIterCount();
     return ObjectFifoPoolOp::create(
         builder, loc, name, tile, depth, elemType, /*buffers=*/ArrayAttr(),
         builder.getArrayAttr(segments), /*locks=*/ArrayAttr(),
         repeatCount ? builder.getI32IntegerAttr(*repeatCount) : IntegerAttr(),
-        from.getIterCount() ? builder.getI32IntegerAttr(*from.getIterCount())
-                            : IntegerAttr(),
+        iterCount ? builder.getI32IntegerAttr(*iterCount) : IntegerAttr(),
         from.getDisableSynchronization(),
         builder.getStringAttr(from.name().getValue()),
         holdsInitialContents ? from.getInitValuesAttr() : ArrayAttr());
@@ -196,6 +196,7 @@ struct AIEObjectFifoSplitPass
       std::optional<int> pinnedChannel, std::optional<int> streamPort,
       std::optional<int> acqRelCount, std::optional<int> repeatCount,
       std::optional<int> transferSize) {
+    std::optional<int32_t> iterCount = from.getIterCount();
     return ObjectFifoDmaEndpointOp::create(
         builder, loc, builder.getStringAttr(name), tile,
         ref ? ObjectFifoRoleAttr::get(builder.getContext(), role)
@@ -215,8 +216,7 @@ struct AIEObjectFifoSplitPass
         from.getRepeatCount() && repeatCount
             ? builder.getI32IntegerAttr(*repeatCount)
             : IntegerAttr(),
-        from.getIterCount() ? builder.getI32IntegerAttr(*from.getIterCount())
-                            : IntegerAttr(),
+        iterCount ? builder.getI32IntegerAttr(*iterCount) : IntegerAttr(),
         acqRelCount && *acqRelCount > 1
             ? builder.getI32IntegerAttr(*acqRelCount)
             : IntegerAttr(),

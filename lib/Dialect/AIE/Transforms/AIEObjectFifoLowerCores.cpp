@@ -109,8 +109,8 @@ struct LoweringContext {
   bool usesSemaphoreLocks;
   /// Per-(core, endpoint) runtime bookkeeping: the rotating object index and,
   /// where locks count, the number of objects currently held.
-  DenseMap<std::pair<Operation *, Operation *>, memref::AllocaOp> objectIndex;
-  DenseMap<std::pair<Operation *, Operation *>, memref::AllocaOp> heldCount;
+  DenseMap<std::pair<Operation *, Operation *>, memref::AllocaOp> objectIndex{};
+  DenseMap<std::pair<Operation *, Operation *>, memref::AllocaOp> heldCount{};
   bool sawError = false;
 
   ObjectFifoCoreEndpointOp endpointOf(Operation *op, StringRef name) {

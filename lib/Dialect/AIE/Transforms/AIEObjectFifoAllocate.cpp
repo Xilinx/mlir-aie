@@ -314,14 +314,21 @@ struct AIEObjectFifoAllocatePass
 
     builder.setInsertionPointToStart(&ports);
     PacketSourceOp::create(builder, flow.getLoc(), source.getTile(),
-                           WireBundle::DMA, source.getChannel()->getIndex());
+                           WireBundle::DMA, channelOf(source).getIndex());
     for (auto destName :
          flow.getDestinations().getAsRange<FlatSymbolRefAttr>()) {
       auto dest = lookupEndpoint(destName);
       PacketDestOp::create(builder, flow.getLoc(), dest.getTile(),
-                           WireBundle::DMA, dest.getChannel()->getIndex());
+                           WireBundle::DMA, channelOf(dest).getIndex());
     }
     return success();
+  }
+
+  /// Assigned before flows are lowered, so every endpoint has one by now.
+  ObjectFifoChannelAttr channelOf(ObjectFifoDmaEndpointOp endpoint) {
+    std::optional<ObjectFifoChannelAttr> channel = endpoint.getChannel();
+    assert(channel && "channels are assigned before flows are lowered");
+    return *channel;
   }
 
   ObjectFifoDmaEndpointOp lookupEndpoint(FlatSymbolRefAttr name) {
@@ -342,12 +349,12 @@ struct AIEObjectFifoAllocatePass
         continue;
       }
 
-      auto sourceChannel = *source.getChannel();
+      auto sourceChannel = channelOf(source);
       builder.setInsertionPoint(flow);
       for (auto destName :
            flow.getDestinations().getAsRange<FlatSymbolRefAttr>()) {
         auto dest = lookupEndpoint(destName);
-        auto destChannel = *dest.getChannel();
+        auto destChannel = channelOf(dest);
         FlowOp::create(builder, flow.getLoc(), source.getTile(),
                        wireFor(source), sourceChannel.getIndex(),
                        dest.getTile(), wireFor(dest), destChannel.getIndex());
@@ -385,13 +392,13 @@ struct AIEObjectFifoAllocatePass
       SmallVector<int32_t> channelDirs, channelIndices, lockInits;
 
       for (auto endpoint : device.getOps<ObjectFifoDmaEndpointOp>()) {
+        std::optional<ObjectFifoChannelAttr> channel = endpoint.getChannel();
         if (endpoint.getFifoName() != fifoName ||
-            endpoint.getTileOp().isShimTile() || !endpoint.getChannel())
+            endpoint.getTileOp().isShimTile() || !channel)
           continue;
         channelTiles.push_back(endpoint.getTile());
-        channelDirs.push_back(
-            static_cast<int32_t>(endpoint.getChannel()->getDirection()));
-        channelIndices.push_back(endpoint.getChannel()->getIndex());
+        channelDirs.push_back(static_cast<int32_t>(channel->getDirection()));
+        channelIndices.push_back(channel->getIndex());
       }
       for (auto pool : device.getOps<ObjectFifoPoolOp>()) {
         if (pool.getFifoName() != fifoName || pool.getTileOp().isShimTile())
@@ -435,12 +442,11 @@ struct AIEObjectFifoAllocatePass
   void emitShimAllocations() {
     builder.setInsertionPoint(device.getBody()->getTerminator());
     for (auto endpoint : device.getOps<ObjectFifoDmaEndpointOp>()) {
-      if (!endpoint.getTileOp().isShimTile() || !endpoint.getFifoName())
+      std::optional<StringRef> fifoName = endpoint.getFifoName();
+      std::optional<ObjectFifoChannelAttr> channel = endpoint.getChannel();
+      if (!endpoint.getTileOp().isShimTile() || !fifoName || !channel)
         continue;
-      auto channel = endpoint.getChannel();
-      if (!channel)
-        continue;
-      std::string name = (*endpoint.getFifoName() + "_shim_alloc").str();
+      std::string name = (*fifoName + "_shim_alloc").str();
       if (!SymbolTable::lookupNearestSymbolFrom<ShimDMAAllocationOp>(
               device, builder.getStringAttr(name)))
         ShimDMAAllocationOp::create(

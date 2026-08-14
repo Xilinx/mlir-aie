@@ -93,8 +93,7 @@ struct AIEObjectFifoLowerDMAsPass
   /// Buffer-major, segment-minor: the DMA walks the objects in turn, and within
   /// each object the slices this endpoint is responsible for.
   SmallVector<Descriptor> descriptorsFor(ObjectFifoDmaEndpointOp endpoint,
-                                         ArrayRef<Value> buffers) {
-    bool drains = endpoint.getChannel()->getDirection() == DMAChannelDir::MM2S;
+                                         ArrayRef<Value> buffers, bool drains) {
     SmallVector<ObjectFifoSegmentAttr> segments =
         endpoint.getSelectedSegments();
     int64_t override = endpoint.getTransferSize().value_or(0);
@@ -113,9 +112,8 @@ struct AIEObjectFifoLowerDMAsPass
 
   void emitDescriptor(ObjectFifoDmaEndpointOp endpoint, ObjectFifoPoolOp pool,
                       Descriptor &descriptor, Block *successor,
-                      bool binaryLocks) {
+                      bool binaryLocks, bool drains) {
     Location loc = endpoint.getLoc();
-    bool drains = endpoint.getChannel()->getDirection() == DMAChannelDir::MM2S;
     int count = endpoint.getAcqRelCount().value_or(1);
 
     LockOp acquireLock, releaseLock;
@@ -160,18 +158,20 @@ struct AIEObjectFifoLowerDMAsPass
     NextBDOp::create(builder, loc, successor);
   }
 
-  void lowerEndpoint(ObjectFifoDmaEndpointOp endpoint) {
+  void lowerEndpoint(ObjectFifoDmaEndpointOp endpoint,
+                     ObjectFifoChannelAttr channel) {
+    bool drains = channel.getDirection() == DMAChannelDir::MM2S;
     ObjectFifoPoolOp pool = endpoint.getPoolOp();
     SmallVector<Value> buffers = buffersOf(pool);
     if (buffers.empty())
       return;
 
-    SmallVector<Descriptor> descriptors = descriptorsFor(endpoint, buffers);
+    SmallVector<Descriptor> descriptors =
+        descriptorsFor(endpoint, buffers, drains);
     if (descriptors.empty())
       return;
 
     Location loc = endpoint.getLoc();
-    auto channel = *endpoint.getChannel();
     int repeat = endpoint.getRepeatCount().value_or(1);
     // Only a MemTile's DMA runs a chain a fixed number of times.
     auto iterCount = endpoint.getTileOp().isMemTile() ? endpoint.getIterCount()
@@ -215,7 +215,8 @@ struct AIEObjectFifoLowerDMAsPass
           successor = bdBlock;
         }
         builder.setInsertionPointToStart(current);
-        emitDescriptor(endpoint, pool, descriptor, successor, binaryLocks);
+        emitDescriptor(endpoint, pool, descriptor, successor, binaryLocks,
+                       drains);
         current = successor;
         emitted++;
       }
@@ -228,13 +229,14 @@ struct AIEObjectFifoLowerDMAsPass
     SmallVector<ObjectFifoDmaEndpointOp> endpoints(
         device.getOps<ObjectFifoDmaEndpointOp>());
     for (ObjectFifoDmaEndpointOp endpoint : endpoints) {
-      if (!endpoint.getChannel()) {
+      std::optional<ObjectFifoChannelAttr> channel = endpoint.getChannel();
+      if (!channel) {
         endpoint.emitOpError("has no channel; run --aie-objectfifo-allocate");
         return signalPassFailure();
       }
       // A raw stream port bypasses the DMA entirely.
       if (!endpoint.getStreamPort())
-        lowerEndpoint(endpoint);
+        lowerEndpoint(endpoint, *channel);
       endpoint.erase();
     }
   }
