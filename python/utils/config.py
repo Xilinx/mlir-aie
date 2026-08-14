@@ -73,8 +73,8 @@ def aiecc_path():
         return path_aiecc
 
     raise RuntimeError(
-        "Could not find aiecc. Expected it under the MLIR-AIE bin directory, "
-        "on PATH, or set via the AIECC_PATH environment variable."
+        "Could not find aiecc. Resolves in the order of the AIECC_PATH "
+        "environment variable, MLIR-AIE bin directory, then PATH."
     )
 
 
