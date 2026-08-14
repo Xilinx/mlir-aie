@@ -205,6 +205,35 @@ const AIETargetModel &xilinx::AIE::getTargetModel(Operation *op) {
   return VC1902model;
 }
 
+bool xilinx::AIE::isSharedMemory(TileOp a, TileOp b, int *shareDirection) {
+  const auto &targetModel = getTargetModel(a.getOperation());
+
+  // A shim or mem tile's memory module is only ever reachable from its own
+  // kind, so tiles of different kinds share nothing.
+  if (a.isShimTile() != b.isShimTile() ||
+      targetModel.isMemTile(a.getCol(), a.getRow()) !=
+          targetModel.isMemTile(b.getCol(), b.getRow())) {
+    *shareDirection = 0;
+    return false;
+  }
+
+  bool rightShared = targetModel.isLegalMemAffinity(a.colIndex(), a.rowIndex(),
+                                                    b.colIndex(), b.rowIndex());
+  bool leftShared = targetModel.isLegalMemAffinity(b.colIndex(), b.rowIndex(),
+                                                   a.colIndex(), a.rowIndex());
+
+  if (leftShared && rightShared)
+    *shareDirection = 2;
+  else if (leftShared)
+    *shareDirection = -1;
+  else if (rightShared)
+    *shareDirection = 1;
+  else
+    *shareDirection = 0;
+
+  return leftShared || rightShared;
+}
+
 const AIETargetModel &xilinx::AIE::getTargetModel(AIEDevice device) {
   switch (device) {
   case AIEDevice::xcvc1902:
@@ -613,12 +642,18 @@ int64_t ObjectFifoPoolOp::getObjectSize() {
 }
 
 LogicalResult ObjectFifoPoolOp::verify() {
-  if (getSegments().has_value() == getLocks().has_value())
-    return emitOpError("must carry exactly one of 'segments' or 'locks'");
+  auto &target = (*this)->getParentOfType<DeviceOp>().getTargetModel();
+  bool semaphoreLocks = target.hasProperty(AIETargetModel::UsesSemaphoreLocks);
 
-  if (auto locks = getLocks())
+  // A binary lock travels with the buffer it guards; a semaphore lock counts
+  // objects for a whole segment.
+  if (auto locks = getLocks()) {
+    if (semaphoreLocks)
+      return emitOpError("'locks' names binary locks, which this device has "
+                         "no use for");
     if (static_cast<int64_t>(locks->size()) != getDepth())
       return emitOpError("expects one lock per buffer");
+  }
 
   if (auto buffers = getBuffers())
     if (static_cast<int64_t>(buffers->size()) != getDepth())
@@ -633,13 +668,14 @@ LogicalResult ObjectFifoPoolOp::verify() {
       if (static_cast<int64_t>(segment.getOffset()) <= previous)
         return emitOpError("segments must be ordered by increasing offset");
       previous = segment.getOffset();
+      if (!semaphoreLocks &&
+          (segment.getProduceLock() || segment.getConsumeLock()))
+        return emitOpError("segment locks are counting locks, which this "
+                           "device has no use for");
     }
 
-    if (segments->size() > 1) {
-      auto &target = (*this)->getParentOfType<DeviceOp>().getTargetModel();
-      if (!target.hasProperty(AIETargetModel::UsesSemaphoreLocks))
-        return emitOpError("multiple segments require semaphore locks");
-    }
+    if (segments->size() > 1 && !semaphoreLocks)
+      return emitOpError("multiple segments require semaphore locks");
   }
 
   return success();
@@ -705,8 +741,9 @@ LogicalResult ObjectFifoDmaEndpointOp::verify() {
     return emitOpError("must name a role together with a pool");
 
   if (!poolName) {
-    if (!getTileOp().isShimTile())
-      return emitOpError("only a shim endpoint may omit its pool");
+    if (!getTileOp().isShimTile() && !getStreamPort())
+      return emitOpError("only a shim or stream-port endpoint may omit its "
+                         "pool");
     return success();
   }
 

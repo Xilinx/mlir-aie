@@ -2278,6 +2278,11 @@ def AIE_ObjectFifoPoolOp
       OptionalAttr<FlatSymbolRefArrayAttr>:$buffers,
       OptionalAttr<ObjectFifoSegmentArrayAttr>:$segments,
       OptionalAttr<FlatSymbolRefArrayAttr>:$locks,
+      // Times the pool is cycled through per outer iteration; lock initialisers
+      // scale with it.
+      OptionalAttr<AIEI32Attr>:$repeatCount,
+      // Outer iterations the DMA chain runs for.
+      OptionalAttr<AIEI32Attr>:$iterCount,
       // No locks are created for this pool; its actors are unsynchronised.
       DefaultValuedAttr<BoolAttr, "false">:$disableSynchronization,
       InitValuesArrayAttr:$initValues);
@@ -2353,6 +2358,8 @@ def AIE_ObjectFifoDmaEndpointOp
       OptionalAttr<ObjectFifoRole>:$role, OptionalAttr<FlatSymbolRefAttr>:$pool,
       OptionalAttr<DenseI32ArrayAttr>:$segments,
       OptionalAttr<ObjectFifoChannelAttr>:$channel,
+      // Channel the user demands, claimed before any is auto-assigned.
+      OptionalAttr<AIEI32Attr>:$pinnedChannel,
       // Shape of this endpoint's own buffer descriptors.
       OptionalAttr<BDDimLayoutArrayAttr>:$dimensions,
       OptionalAttr<BDPadLayoutArrayAttr>:$padDimensions,

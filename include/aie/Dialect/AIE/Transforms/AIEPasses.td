@@ -421,6 +421,22 @@ def AIEObjectFifoVerify : Pass<"aie-objectfifo-verify", "DeviceOp"> {
   let dependentDialects = ["xilinx::AIE::AIEDialect"];
 }
 
+def AIEObjectFifoAllocate : Pass<"aie-objectfifo-allocate", "DeviceOp"> {
+  let summary = "Give pools and endpoints their buffers, locks and channels";
+  let description = [{
+    Fill in the resources a pool and endpoint design leaves open: the buffers
+    holding a pool's objects, the locks guarding each segment, and the DMA
+    channel each endpoint drives. `aie.objectfifo.flow` becomes `aie.flow`, and
+    a shim endpoint gains the `aie.shim_dma_allocation` the runtime resolves.
+
+    Whatever is already written down is kept, so hand-placed buffers and pinned
+    channels survive.
+  }];
+
+  let constructor = "xilinx::AIE::createAIEObjectFifoAllocatePass()";
+  let dependentDialects = ["xilinx::AIE::AIEDialect"];
+}
+
 def AIEObjectFifoUnroll : Pass<"aie-objectFifo-unroll", "DeviceOp"> {
   let summary = "Unroll scf.for loops that contain objectFifo operations";
   let description = [{

@@ -25,6 +25,8 @@ add_mlir_dialect_library(
   AIEVectorTransferLowering.cpp
   AIEHoistVectorTransferPointers.cpp
   AIEObjectFifoStatefulTransform.cpp
+  AIEDMAChannelAnalysis.cpp
+  AIEObjectFifoAllocate.cpp
   AIEObjectFifoSplit.cpp
   AIEObjectFifoVerify.cpp
   AIEObjectFifoUnroll.cpp
