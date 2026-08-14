@@ -1182,6 +1182,19 @@ static uint32_t estimateCost(AIEX::CertPageOp op, uint32_t split_target,
           split_job = job;
           split_iter = next;
           found_split_point = true;
+        } else if (!isa<AIE::EndOp>(o) &&
+                   current != job.getBody().front().begin()) {
+          // The op that crossed the target is this job's last real op, so
+          // "cut after it" is not a split at all. Cut immediately before it
+          // instead: everything ahead of it was under the target and its own
+          // cost is what pushed the page over, so both halves are strictly
+          // smaller than the whole. NB the `!isa<AIE::EndOp>(o)` guard: this
+          // loop also visits the terminator, and cutting before *it* would put
+          // the whole job on the earlier page and an empty job on the later
+          // one -- a no-op "split" the greedy driver repeats forever.
+          split_job = job;
+          split_iter = current;
+          found_split_point = true;
         }
       }
     }
@@ -1237,9 +1250,16 @@ static bool cutSeparatesBarrier(const std::map<int, std::pair<int, int>> &spans,
   });
 }
 
-// Search for an interior split point (a position inside some job, with at least
-// one op before it in that job and a real op at/after it) whose cut keeps every
-// local_barrier group intact. Among the legal candidates pick the one whose
+// Search for a split point whose cut keeps every local_barrier group intact.
+// Two kinds of position qualify, and the splitter can execute either:
+//   - interior cut: at least one op of the same job precedes the position, so
+//     the job is partitioned into an earlier and a later half;
+//   - job-boundary cut: the position is a job's first op while an earlier job
+//     already carries content, so that job moves whole to the later page and no
+//     job is partitioned at all.
+// What is never legal is a cut ahead of everything on the page: it leaves the
+// earlier page empty, so the "split" makes no progress and the greedy driver
+// repeats it forever. Among the legal candidates pick the one whose
 // earlier-page cost is closest to `split_target`. Returns false if no legal
 // split point exists (the caller then leaves the page intact).
 static bool findLegalSplitPoint(AIEX::CertPageOp page, uint32_t split_target,
@@ -1252,6 +1272,9 @@ static bool findLegalSplitPoint(AIEX::CertPageOp page, uint32_t split_target,
   uint32_t data_cost = 0;
   bool found = false;
   uint32_t best_delta = 0;
+  // Whether some job already visited holds a real op, i.e. whether cutting at
+  // the current job's first op would leave content on the earlier page.
+  bool sawOpInEarlierJob = false;
   for (auto job : page.getBody().front().getOps<AIEX::CertJobOp>()) {
     text_cost += cert_job_start_cost; // mirrors estimateCost
     bool sawOpInJob = false;
@@ -1259,9 +1282,12 @@ static bool findLegalSplitPoint(AIEX::CertPageOp page, uint32_t split_target,
       if (isa<AIE::EndOp>(o))
         continue;
       Block::iterator current(&o);
-      // Candidate: cut before `o`. Only interior points are valid (at least one
-      // op precedes `o` in this job), matching what the splitter can execute.
-      if (sawOpInJob) {
+      // Candidate: cut before `o`, legal as an interior cut when an op of this
+      // job precedes it, or as a job-boundary cut when an earlier job does.
+      // Admitting the latter matters for a page built of small jobs whose sizes
+      // only sum over the limit: no job has an interior point worth cutting at,
+      // yet a cut between two whole jobs splits it perfectly well.
+      if (sawOpInJob || sawOpInEarlierJob) {
         auto fi = flatIndex.find(&o);
         int p = fi == flatIndex.end() ? 0 : fi->second;
         if (!cutSeparatesBarrier(spans, p)) {
@@ -1280,6 +1306,7 @@ static bool findLegalSplitPoint(AIEX::CertPageOp page, uint32_t split_target,
       sawOpInJob = true;
     }
     text_cost += cert_job_end_cost; // mirrors estimateCost
+    sawOpInEarlierJob |= sawOpInJob;
   }
   return found;
 }
@@ -1482,19 +1509,39 @@ struct SplitCertPageOpPattern : OpRewritePattern<AIEX::CertPageOp> {
     if (cost < split_threshold)
       return failure();
 
-    // Over the split trigger but with nowhere to cut. A split point must fall
-    // inside a job with at least one op ahead of it, so a page whose bulk sits
-    // in a single one-op job offers none. Leave the page alone -- but if it is
-    // also over the hard limit, it will not load, so say so instead of emitting
-    // a page the firmware will reject.
+    bool isImplicit = op->hasAttr("cert.implicit");
+
+    std::map<Operation *, int> flatIndex;
+    std::map<int, std::pair<int, int>> barrierSpans;
+    computeBarrierSpans(op, flatIndex, barrierSpans);
+
+    // estimateCost's search is greedy: it retains only the first position at
+    // which the running cost crosses split_target and never backtracks, and it
+    // only ever considers positions interior to the one job the crossing
+    // happened in. So a page can be reported as offering no split point when a
+    // cut is plainly available -- the crossing op alone in its job while an
+    // earlier job has several ops, or a page of small jobs whose sizes merely
+    // sum over the limit, where the cut belongs on a job boundary. Fall back to
+    // the exhaustive search, which considers every position in the page and
+    // keeps the barrier-legal one closest to split_target, before giving up.
+    if (!found_split_point)
+      found_split_point =
+          findLegalSplitPoint(op, cert_page_size / 2, flatIndex, barrierSpans,
+                              split_job, split_iter);
+
+    // Over the split trigger but with nowhere to cut. Every cut has to leave at
+    // least one op on each side, so a page whose bulk sits in a single one-op
+    // job offers none. Leave the page alone -- but if it is also over the hard
+    // limit, it will not load, so say so instead of emitting a page the
+    // firmware will reject.
     if (!found_split_point) {
       if (cost > cert_page_limit) {
         op.emitError() << "cert.page is an estimated " << cost
                        << " bytes, over the " << cert_page_limit
                        << "-byte microcontroller page limit, and offers no "
-                          "split point (a split must fall inside a job, after "
-                          "at least one of its ops); break the oversized job "
-                          "into smaller jobs";
+                          "split point (a split must leave at least one op on "
+                          "each page); break the oversized job into smaller "
+                          "jobs";
         *hadError = true;
       }
       return failure();
@@ -1508,11 +1555,6 @@ struct SplitCertPageOpPattern : OpRewritePattern<AIEX::CertPageOp> {
     // be cooperatively scheduled together; an explicit page is a user-authored
     // boundary. This governs the wording of the diagnostics below (the remedy
     // differs), not whether they fire.
-    bool isImplicit = op->hasAttr("cert.implicit");
-
-    std::map<Operation *, int> flatIndex;
-    std::map<int, std::pair<int, int>> barrierSpans;
-    computeBarrierSpans(op, flatIndex, barrierSpans);
     if (!barrierSpans.empty()) {
       auto fi = flatIndex.find(&*split_iter);
       int p = fi == flatIndex.end() ? 0 : fi->second;
@@ -1577,21 +1619,42 @@ struct SplitCertPageOpPattern : OpRewritePattern<AIEX::CertPageOp> {
     // .eop is backward (earlier page -> later page), which is legal (G-fwd). In
     // particular splitting a wait_tcts from its earlier uc_dma enqueues is
     // allowed: the enqueues land on the earlier page and the wait on the later
-    // page (a backward dependency). split_iter is always interior to split_job
-    // (estimateCost / findLegalSplitPoint guarantee at least one op precedes
-    // it), so the earlier page is never empty.
-    assert(split_iter != split_job.getBody().front().begin() &&
-           "split_iter must be interior: at least one op stays on the earlier "
-           "page, preserving producer-before-consumer order");
+    // page (a backward dependency).
+    //
+    // split_iter at split_job's first op means the cut falls on a job boundary:
+    // split_job is not partitioned at all, it moves whole to the later page and
+    // the earlier page is made of the jobs ahead of it. That is a real split
+    // only because some earlier job carries content; the searches guarantee it,
+    // and cutting ahead of everything would leave an empty earlier page and no
+    // progress. Otherwise the cut is interior to split_job and, again by
+    // construction, at least one op stays behind on the earlier page. Either
+    // way the earlier page is non-empty and the split strictly makes progress.
+    bool jobBoundaryCut = split_iter == split_job.getBody().front().begin();
+    [[maybe_unused]] auto earlierJobHasRealOp = [&]() {
+      for (auto job : op.getBody().front().getOps<AIEX::CertJobOp>()) {
+        if (job == split_job)
+          break;
+        for (auto &o : job.getBody().front().getOperations())
+          if (!isa<AIE::EndOp>(o))
+            return true;
+      }
+      return false;
+    };
+    assert((!jobBoundaryCut || earlierJobHasRealOp()) &&
+           "a job-boundary cut needs a preceding job with content, else the "
+           "earlier page is empty and the split makes no progress");
 
     // NOTE: the device-wide job-id shift below only keeps job ids unique per
     // page; job_id is a label, not an order, so it does not affect
     // emission/execution order, which is textual. A device-wide job-id renumber
-    // is left for a follow-up.
-    op->getParentOfType<AIE::DeviceOp>().walk([&](AIEX::CertJobOp certJobOp) {
-      if (certJobOp.getJobId() > split_job.getJobId())
-        certJobOp.setJobId(certJobOp.getJobId() + 1);
-    });
+    // is left for a follow-up. A job-boundary cut creates no new job -- every
+    // job keeps its id, just on a different page -- so there is nothing to
+    // renumber and the walk is skipped.
+    if (!jobBoundaryCut)
+      op->getParentOfType<AIE::DeviceOp>().walk([&](AIEX::CertJobOp certJobOp) {
+        if (certJobOp.getJobId() > split_job.getJobId())
+          certJobOp.setJobId(certJobOp.getJobId() + 1);
+      });
 
     auto cloneJobRange = [&](AIEX::CertJobOp sourceJob, uint32_t jobId,
                              Block::iterator begin, Block::iterator end) {
@@ -1633,6 +1696,14 @@ struct SplitCertPageOpPattern : OpRewritePattern<AIEX::CertPageOp> {
 
     for (auto job : op.getBody().front().getOps<AIEX::CertJobOp>()) {
       if (job == split_job) {
+        if (jobBoundaryCut) {
+          // Whole job to the later page: partitioning it at its own first op
+          // would leave an empty half behind on the earlier page.
+          rewriter.setInsertionPointToEnd(newPageBlock1);
+          cloneJobRange(job, job.getJobId(), job.getBody().front().begin(),
+                        job.getBody().front().end());
+          continue;
+        }
         rewriter.setInsertionPointToEnd(newPageBlock0);
         cloneJobRange(job, job.getJobId(), job.getBody().front().begin(),
                       split_iter);
