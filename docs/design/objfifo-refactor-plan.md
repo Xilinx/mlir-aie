@@ -105,6 +105,12 @@ Existing negative tests (`aie_stream/bad_*.mlir`, `dma_channel_alloc/*_bad.mlir`
 `data_movement_patterns/broadcast_error_test.mlir`) must emit the same
 diagnostics.
 
+The pass stays out of the default pipeline. Most of the existing corpus declares
+fifos without cores to exercise DMA and lock emission alone, so under the
+completeness rules those designs are partial by construction: 96 of 128 report a
+segment with no filler or no drainer. That is the pass working, not a rule that
+is too strong.
+
 ## 3. `--aie-objectfifo-allocate`
 
 Moves: `createObjectFifoElements`, `createObjectFifoLocks`,

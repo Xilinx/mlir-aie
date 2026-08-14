@@ -26,6 +26,7 @@ add_mlir_dialect_library(
   AIEHoistVectorTransferPointers.cpp
   AIEObjectFifoStatefulTransform.cpp
   AIEObjectFifoSplit.cpp
+  AIEObjectFifoVerify.cpp
   AIEObjectFifoUnroll.cpp
   AIELowerCascadeFlows.cpp
   AIEGenerateColumnControlOverlay.cpp

@@ -193,8 +193,7 @@
 //
 // Checked by the op verifiers, and therefore true of every well-formed module:
 //
-//  - a pool's segments are in increasing offset order, do not overlap, and cover
-//    the element type exactly
+//  - a pool's segments are in increasing offset order
 //  - every segment states offset and size
 //  - exactly one of `locks` or `segments` is present on a pool, matching the
 //    device's lock kind
@@ -213,6 +212,7 @@
 //
 // Checked by --aie-objectfifo-verify, which a partial design may decline to run:
 //
+//  - a pool's segments do not overlap and cover the element type exactly
 //  - each of a pool's segments has one filling endpoint and one draining
 //    endpoint. A filler may be absent when the lock initialisers mark the
 //    objects as starting full
@@ -245,7 +245,6 @@
 //  - tests for join and distribute with core participants: over shared memory
 //    with no DMA at all, over DMAs where the many side is a core, and with one
 //    core taking several parts
-//  - verifier for the segment coverage rules
 //  - replace !aie.objectfifosubview and aie.objectfifo.subview.access with
 //    variadic results on aie.objectfifo.acquire
 //

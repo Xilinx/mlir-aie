@@ -405,6 +405,22 @@ def AIEObjectFifoSplit : Pass<"aie-objectfifo-split", "DeviceOp"> {
   let dependentDialects = ["xilinx::AIE::AIEDialect"];
 }
 
+def AIEObjectFifoVerify : Pass<"aie-objectfifo-verify", "DeviceOp"> {
+  let summary = "Check that a pool and endpoint design is complete";
+  let description = [{
+    Check the properties an op verifier cannot: that a pool's segments tile its
+    element type, that each segment has one endpoint filling it and one draining
+    it, that every DMA endpoint is connected by exactly one flow, and that no
+    loop body releases more objects than it acquires.
+
+    These are completeness rules, so a design that is deliberately partial --
+    one whose other half is supplied elsewhere -- may decline to run this pass.
+  }];
+
+  let constructor = "xilinx::AIE::createAIEObjectFifoVerifyPass()";
+  let dependentDialects = ["xilinx::AIE::AIEDialect"];
+}
+
 def AIEObjectFifoUnroll : Pass<"aie-objectFifo-unroll", "DeviceOp"> {
   let summary = "Unroll scf.for loops that contain objectFifo operations";
   let description = [{
