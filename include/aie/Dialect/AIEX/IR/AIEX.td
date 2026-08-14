@@ -655,34 +655,31 @@ def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
 
   }];
 
-  let arguments = (
-    ins AnyRankedOrUnrankedMemRef:$memref,
-        // NOTE: these are in reverse order: offset3, offset2, ...
-        Variadic<I64>:$offsets,
-        Variadic<I64>:$sizes,
-        Variadic<I64>:$strides,
-        ConfinedAttr<DenseI64ArrayAttr, [DenseArrayCount<4>]>:$static_offsets,
-        ConfinedAttr<DenseI64ArrayAttr, [DenseArrayCount<4>]>:$static_sizes,
-        ConfinedAttr<DenseI64ArrayAttr, [DenseArrayCount<4>]>:$static_strides,
-        OptionalAttr<PacketInfoAttr>:$packet,
-        SymbolRefAttr:$metadata,
-        I64Attr:$id,
-        DefaultValuedOptionalAttr<BoolAttr, "false">:$issue_token,
-        DefaultValuedOptionalAttr<I64Attr, "0">:$d0_zero_before,
-        DefaultValuedOptionalAttr<I64Attr, "0">:$d1_zero_before,
-        DefaultValuedOptionalAttr<I64Attr, "0">:$d2_zero_before,
-        DefaultValuedOptionalAttr<I64Attr, "0">:$d0_zero_after,
-        DefaultValuedOptionalAttr<I64Attr, "0">:$d1_zero_after,
-        DefaultValuedOptionalAttr<I64Attr, "0">:$d2_zero_after,
-        DefaultValuedOptionalAttr<I64Attr, "0">:$burst_length,
-        OptionalAttr<ConfinedAttr<I64Attr, [IntMinValue<0>, IntMaxValue<15>]>>:$axcache,
-        // if set, the aiex.scratchpad_parameter value added to the BD's address as an offset
-        OptionalAttr<FlatSymbolRefAttr>:$offset_parameter,
-        // Set by --aie-lower-scratchpad-parameters from $offset_parameter: the scratchpad
-        // state-table index whose value is used as the BD address offset.
-        // After lowering, $offset_parameter is removed in favor of this attribute.
-        OptionalAttr<UI8Attr>:$offset_state_table_idx
-  );
+  let arguments = (ins AnyRankedOrUnrankedMemRef:$memref,
+      // NOTE: these are in reverse order: offset3, offset2, ...
+      Variadic<I64>:$offsets, Variadic<I64>:$sizes, Variadic<I64>:$strides,
+      ConfinedAttr<DenseI64ArrayAttr, [DenseArrayCount<4>]>:$static_offsets,
+      ConfinedAttr<DenseI64ArrayAttr, [DenseArrayCount<4>]>:$static_sizes,
+      ConfinedAttr<DenseI64ArrayAttr, [DenseArrayCount<4>]>:$static_strides,
+      OptionalAttr<PacketInfoAttr>:$packet, SymbolRefAttr:$metadata,
+      I64Attr:$id, DefaultValuedOptionalAttr<BoolAttr, "false">:$issue_token,
+      DefaultValuedOptionalAttr<I64Attr, "0">:$d0_zero_before,
+      DefaultValuedOptionalAttr<I64Attr, "0">:$d1_zero_before,
+      DefaultValuedOptionalAttr<I64Attr, "0">:$d2_zero_before,
+      DefaultValuedOptionalAttr<I64Attr, "0">:$d0_zero_after,
+      DefaultValuedOptionalAttr<I64Attr, "0">:$d1_zero_after,
+      DefaultValuedOptionalAttr<I64Attr, "0">:$d2_zero_after,
+      DefaultValuedOptionalAttr<I64Attr, "0">:$burst_length,
+      OptionalAttr<ConfinedAttr<I64Attr, [IntMinValue<0>,
+                                          IntMaxValue<15>]>>:$axcache,
+      // if set, the aiex.scratchpad_parameter value added to the BD's address
+      // as an offset
+      OptionalAttr<FlatSymbolRefAttr>:$offset_parameter,
+      // Set by --aie-lower-scratchpad-parameters from $offset_parameter: the
+      // scratchpad state-table index whose value is used as the BD address
+      // offset. After lowering, $offset_parameter is removed in favor of this
+      // attribute.
+      OptionalAttr<UI8Attr>:$offset_state_table_idx);
 
   let assemblyFormat = [{
     `(` $memref ``
@@ -1205,42 +1202,20 @@ def AIE_NpuControlPacketOp: AIEX_Op<"control_packet", []> {
 // NPU Bd Write operation
 def AIE_NpuWriteBdOp: AIEX_Op<"npu.writebd", []> {
   let summary = "dma operator";
-  let arguments = (
-    ins I32Attr:$column,
-        I32Attr:$bd_id,
-        I32Attr:$buffer_length,
-        I32Attr:$buffer_offset,
-        I32Attr:$enable_packet,
-        I32Attr:$out_of_order_id,
-        I32Attr:$packet_id,
-        I32Attr:$packet_type,
-        I32Attr:$d0_size,
-        I32Attr:$d0_stride,
-        I32Attr:$d1_size,
-        I32Attr:$d1_stride,
-        I32Attr:$d2_size,
-        I32Attr:$d2_stride,
-        I32Attr:$iteration_current,
-        I32Attr:$iteration_size,
-        I32Attr:$iteration_stride,
-        I32Attr:$next_bd,
-        I32Attr:$row,
-        I32Attr:$use_next_bd,
-        I32Attr:$valid_bd,
-        I32Attr:$lock_rel_val,
-        I32Attr:$lock_rel_id,
-        I32Attr:$lock_acq_enable,
-        I32Attr:$lock_acq_val,
-        I32Attr:$lock_acq_id,
-        I32Attr:$d0_zero_before,
-        I32Attr:$d1_zero_before,
-        I32Attr:$d2_zero_before,
-        I32Attr:$d0_zero_after,
-        I32Attr:$d1_zero_after,
-        I32Attr:$d2_zero_after,
-        DefaultValuedOptionalAttr<I32Attr, "0">:$burst_length,
-        OptionalAttr<ConfinedAttr<I32Attr, [IntMinValue<0>, IntMaxValue<15>]>>:$axcache
-  );
+  let arguments = (ins I32Attr:$column, I32Attr:$bd_id, I32Attr:$buffer_length,
+      I32Attr:$buffer_offset, I32Attr:$enable_packet, I32Attr:$out_of_order_id,
+      I32Attr:$packet_id, I32Attr:$packet_type, I32Attr:$d0_size,
+      I32Attr:$d0_stride, I32Attr:$d1_size, I32Attr:$d1_stride,
+      I32Attr:$d2_size, I32Attr:$d2_stride, I32Attr:$iteration_current,
+      I32Attr:$iteration_size, I32Attr:$iteration_stride, I32Attr:$next_bd,
+      I32Attr:$row, I32Attr:$use_next_bd, I32Attr:$valid_bd,
+      I32Attr:$lock_rel_val, I32Attr:$lock_rel_id, I32Attr:$lock_acq_enable,
+      I32Attr:$lock_acq_val, I32Attr:$lock_acq_id, I32Attr:$d0_zero_before,
+      I32Attr:$d1_zero_before, I32Attr:$d2_zero_before, I32Attr:$d0_zero_after,
+      I32Attr:$d1_zero_after, I32Attr:$d2_zero_after,
+      DefaultValuedOptionalAttr<I32Attr, "0">:$burst_length,
+      OptionalAttr<ConfinedAttr<I32Attr, [IntMinValue<0>,
+                                          IntMaxValue<15>]>>:$axcache);
   let results = (outs );
   let assemblyFormat = [{ attr-dict }];
   let hasVerifier = 1;

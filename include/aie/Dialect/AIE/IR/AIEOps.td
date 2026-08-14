@@ -1050,43 +1050,42 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
     iteration there via the outermost `sizes`/`strides` dimension instead.
   }];
 
-  let arguments = (
-    ins AnyRankedOrUnrankedMemRef:$buffer,
-        // offset/len are denominated in element width (not bytes).
-        // Can be given as a static attribute or a runtime SSA value. If neither
-        // are given, we assume zero for the offset and the memref's full buffer
-        // length for the length.
-        Optional<I32>:$offset,
-        Optional<I32>:$len,
-        OptionalAttr<AIEI32Attr>:$static_offset,
-        OptionalAttr<AIEI32Attr>:$static_len,
-        // n-d tensor addressing: sizes/strides as a mixed static/dynamic index
-        // list (DynamicIndexList), mirroring aiex.npu.dma_memcpy_nd. A constant
-        // lands in static_sizes/static_strides; a runtime value becomes an
-        // operand. Outermost dimension first.
-        Variadic<I64>:$sizes,
-        Variadic<I64>:$strides,
-        OptionalAttr<DenseI64ArrayAttr>:$static_sizes,
-        OptionalAttr<DenseI64ArrayAttr>:$static_strides,
-        OptionalAttr<BDPadLayoutArrayAttr>:$pad_dimensions,
-        OptionalAttr<AIEI32Attr>:$bd_id,
-        OptionalAttr<PacketInfoAttr>:$packet,
-        DefaultValuedOptionalAttr<AIEI32Attr, "0">:$burst_length,
-        // AxCACHE is shim-NOC-only, like burst_length. It is left unset (rather than
-        // DefaultValuedOptionalAttr, whose value must be a TableGen literal) so that all backends
-        // can source a consistent default from AIETargetModel::getDefaultAxCache() when absent.
-        OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>, IntMaxValue<15>]>>:$axcache,
-        // The BD's iteration state; see the "## BD iteration" section above.
-        OptionalAttr<BDIterationAttr>:$iteration,
-        // if set, the aiex.scratchpad_parameter value added to the BD's address as an offset
-        OptionalAttr<FlatSymbolRefAttr>:$offset_parameter,
-        // Set by --aie-lower-scratchpad-parameters from $offset_parameter: the scratchpad
-        // state-table index whose value is used as the BD address offset.
-        // After lowering, $offset_parameter is removed in favor of this attribute.
-        OptionalAttr<UI8Attr>:$offset_state_table_idx,
-        // should never be assigned by user...
-        OptionalAttr<AIEI32Attr>:$next_bd_id
-  );
+  let arguments = (ins AnyRankedOrUnrankedMemRef:$buffer,
+      // offset/len are denominated in element width (not bytes).
+      // Can be given as a static attribute or a runtime SSA value. If neither
+      // are given, we assume zero for the offset and the memref's full buffer
+      // length for the length.
+      Optional<I32>:$offset, Optional<I32>:$len,
+      OptionalAttr<AIEI32Attr>:$static_offset,
+      OptionalAttr<AIEI32Attr>:$static_len,
+      // n-d tensor addressing: sizes/strides as a mixed static/dynamic index
+      // list (DynamicIndexList), mirroring aiex.npu.dma_memcpy_nd. A constant
+      // lands in static_sizes/static_strides; a runtime value becomes an
+      // operand. Outermost dimension first.
+      Variadic<I64>:$sizes, Variadic<I64>:$strides,
+      OptionalAttr<DenseI64ArrayAttr>:$static_sizes,
+      OptionalAttr<DenseI64ArrayAttr>:$static_strides,
+      OptionalAttr<BDPadLayoutArrayAttr>:$pad_dimensions,
+      OptionalAttr<AIEI32Attr>:$bd_id, OptionalAttr<PacketInfoAttr>:$packet,
+      DefaultValuedOptionalAttr<AIEI32Attr, "0">:$burst_length,
+      // AxCACHE is shim-NOC-only, like burst_length. It is left unset (rather
+      // than DefaultValuedOptionalAttr, whose value must be a TableGen literal)
+      // so that all backends can source a consistent default from
+      // AIETargetModel::getDefaultAxCache() when absent.
+      OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>,
+                                             IntMaxValue<15>]>>:$axcache,
+      // The BD's iteration state; see the "## BD iteration" section above.
+      OptionalAttr<BDIterationAttr>:$iteration,
+      // if set, the aiex.scratchpad_parameter value added to the BD's address
+      // as an offset
+      OptionalAttr<FlatSymbolRefAttr>:$offset_parameter,
+      // Set by --aie-lower-scratchpad-parameters from $offset_parameter: the
+      // scratchpad state-table index whose value is used as the BD address
+      // offset. After lowering, $offset_parameter is removed in favor of this
+      // attribute.
+      OptionalAttr<UI8Attr>:$offset_state_table_idx,
+      // should never be assigned by user...
+      OptionalAttr<AIEI32Attr>:$next_bd_id);
 
   let hasVerifier = 1;
   let assemblyFormat = [{
