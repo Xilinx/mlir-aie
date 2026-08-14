@@ -490,6 +490,9 @@ LogicalResult ObjectFifoCreateOp::verify() {
         "cannot pin a DMA channel on an objectfifo that also uses aie_stream "
         "(stream ports bypass DMA channels)");
 
+  if (getPacketId() && !getPacket())
+    return emitOpError("packet_id is only meaningful on a packet objectfifo");
+
   // Helper to get tile interface from Value
   auto getTileLikeFromValue = [](Value v) -> TileLike {
     return llvm::dyn_cast<TileLike>(v.getDefiningOp());
@@ -847,6 +850,9 @@ LogicalResult ObjectFifoDmaEndpointOp::verify() {
 LogicalResult ObjectFifoFlowOp::verify() {
   if (getDestinations().empty())
     return emitOpError("expects at least one destination");
+
+  if (getPacketId() && !getPacket())
+    return emitOpError("packet_id is only meaningful on a packet flow");
 
   auto device = (*this)->getParentOfType<DeviceOp>();
   auto lookup = [&](StringRef name) {

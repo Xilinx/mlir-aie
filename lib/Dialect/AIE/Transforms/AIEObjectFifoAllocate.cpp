@@ -290,21 +290,21 @@ struct AIEObjectFifoAllocatePass
                : WireBundle::DMA;
   }
 
-  /// Packet IDs already spoken for elsewhere in the device.
-  int nextPacketID() {
-    int next = 0;
-    device.walk(
-        [&](PacketFlowOp flow) { next = std::max<int>(next, flow.IDInt() + 1); });
-    return next;
+  /// Packet IDs already spoken for, by an existing packet flow or by a flow
+  /// that pinned one.
+  llvm::SmallDenseSet<int> takenPacketIDs() {
+    llvm::SmallDenseSet<int> taken;
+    device.walk([&](PacketFlowOp flow) { taken.insert(flow.IDInt()); });
+    for (auto flow : device.getOps<ObjectFifoFlowOp>())
+      if (auto pinned = flow.getPacketId())
+        taken.insert(*pinned);
+    return taken;
   }
 
   /// A packet-switched flow shares the stream with others, so every buffer
   /// descriptor the source emits has to carry the packet header.
   LogicalResult lowerPacketFlow(ObjectFifoFlowOp flow,
                                 ObjectFifoDmaEndpointOp source, int packetID) {
-    if (packetID > 31)
-      return device.emitOpError("max number of packet IDs reached");
-
 
     auto info =
         PacketInfoAttr::get(builder.getContext(), /*pkt_type=*/0, packetID);
@@ -345,14 +345,34 @@ struct AIEObjectFifoAllocatePass
   }
 
   LogicalResult lowerFlows() {
-    int packetID = nextPacketID();
+    // A packet header carries five bits of id.
+    constexpr int maxPacketID = 31;
+    llvm::SmallDenseSet<int> taken = takenPacketIDs();
+    int nextFree = 0;
     SmallVector<Operation *> toErase;
     for (auto flow : device.getOps<ObjectFifoFlowOp>()) {
       auto source = lookupEndpoint(flow.getSourceAttr());
       toErase.push_back(flow);
 
-      if (clPacketSwObjectFifos) {
-        if (failed(lowerPacketFlow(flow, source, packetID++)))
+      // The pass flag is a default for flows that express no preference, so a
+      // device may mix circuit- and packet-switched connections.
+      if (flow.getPacket() || clPacketSwObjectFifos) {
+        int packetID;
+        if (auto pinned = flow.getPacketId()) {
+          packetID = *pinned;
+          if (packetID > maxPacketID)
+            return flow.emitOpError("packet_id ")
+                   << packetID << " is out of range (max " << maxPacketID
+                   << ")";
+        } else {
+          while (taken.contains(nextFree))
+            nextFree++;
+          if (nextFree > maxPacketID)
+            return flow.emitOpError("max number of packet IDs reached");
+          packetID = nextFree;
+          taken.insert(packetID);
+        }
+        if (failed(lowerPacketFlow(flow, source, packetID)))
           return failure();
         continue;
       }

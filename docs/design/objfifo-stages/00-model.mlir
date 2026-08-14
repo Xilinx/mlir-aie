@@ -102,6 +102,15 @@
 // route. --aie-objectfifo-allocate turns a flow into a channel on each endpoint
 // plus an aie.flow, and consumes it.
 //
+// A flow marked `packet` becomes an aie.packet_flow instead, sharing the stream
+// rather than reserving a circuit; the two kinds coexist in one device. The
+// choice sits on the flow because a packet route is one id agreed by the source
+// and every destination -- per-endpoint marks could disagree with each other.
+// `packet_id` pins that id; otherwise allocation picks the lowest one no other
+// flow uses. The source endpoint's `packet` attribute is the consequence, not
+// the request: it is the header its buffer descriptors stamp, written by
+// allocation.
+//
 //===----------------------------------------------------------------------===//
 //
 // BD EMISSION

@@ -658,7 +658,9 @@ void AIEObjectFifoSplitPass::runOnOperation() {
     ObjectFifoFlowOp::create(
         builder, loc,
         FlatSymbolRefAttr::get(builder.getContext(), prodDma.getSymName()),
-        builder.getArrayAttr(destinations));
+        builder.getArrayAttr(destinations),
+        fifo.getPacket() ? builder.getUnitAttr() : UnitAttr(),
+        fifo.getPacketIdAttr());
   }
 
   SmallVector<Operation *> toErase;
