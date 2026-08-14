@@ -90,24 +90,15 @@ void emitAdvanceObjectIndex(OpBuilder &builder, Location loc, Value slot,
 /// filler waits on free objects and hands back full ones, a drainer the
 /// reverse.
 SmallVector<FlatSymbolRefAttr>
-segmentLocksFor(ObjectFifoCoreEndpointOp endpoint, ObjectFifoPoolOp pool,
-                LockAction action) {
+segmentLocksFor(ObjectFifoCoreEndpointOp endpoint, LockAction action) {
   bool acquiring = action == LockAction::AcquireGreaterEqual;
   bool wantsProduce = acquiring != endpoint.drains();
 
   SmallVector<FlatSymbolRefAttr> locks;
-  auto segments = pool.getSegments();
-  if (!segments)
-    return locks;
-  auto selected = endpoint.getSegments();
-  for (auto [index, segment] :
-       llvm::enumerate(segments->getAsRange<ObjectFifoSegmentAttr>())) {
-    if (selected && !llvm::is_contained(*selected, (int32_t)index))
-      continue;
+  for (ObjectFifoSegmentAttr segment : endpoint.getSelectedSegments())
     if (auto lock =
             wantsProduce ? segment.getProduceLock() : segment.getConsumeLock())
       locks.push_back(lock);
-  }
   return locks;
 }
 
@@ -129,15 +120,6 @@ struct LoweringContext {
 
   LockOp lockOf(FlatSymbolRefAttr name) {
     return SymbolTable::lookupNearestSymbolFrom<LockOp>(device, name);
-  }
-
-  SmallVector<BufferOp> buffersOf(ObjectFifoPoolOp pool) {
-    SmallVector<BufferOp> buffers;
-    if (auto names = pool.getBuffers())
-      for (auto name : names->getAsRange<FlatSymbolRefAttr>())
-        buffers.push_back(
-            SymbolTable::lookupNearestSymbolFrom<BufferOp>(device, name));
-    return buffers;
   }
 };
 
@@ -196,10 +178,7 @@ struct LowerRelease : OpRewritePattern<ObjectFifoReleaseOp> {
         ctx.sawError = true;
         return failure();
       }
-      SmallVector<LockOp> locks;
-      if (auto names = pool.getLocks())
-        for (auto name : names->getAsRange<FlatSymbolRefAttr>())
-          locks.push_back(ctx.lockOf(name));
+      SmallVector<LockOp> locks = pool.getLockOps();
       emitBinaryUseLocks(rewriter, loc, locks, pool.getDepth(),
                          endpoint.drains(), index.getResult(), count,
                          LockAction::Release);
@@ -207,7 +186,7 @@ struct LowerRelease : OpRewritePattern<ObjectFifoReleaseOp> {
       Value amount = arith::ConstantOp::create(
           rewriter, loc, rewriter.getI32IntegerAttr(count));
       for (FlatSymbolRefAttr name :
-           segmentLocksFor(endpoint, pool, LockAction::Release))
+           segmentLocksFor(endpoint, LockAction::Release))
         UseLockOp::create(rewriter, loc, ctx.lockOf(name), LockAction::Release,
                           amount);
 
@@ -253,10 +232,7 @@ struct LowerAcquire : OpRewritePattern<ObjectFifoAcquireOp> {
       // still-held locks are pruned after unrolling.
       memref::AllocaOp index = ctx.objectIndex.lookup(key);
       assert(index && "a rotation counter is created for every acquire");
-      SmallVector<LockOp> locks;
-      if (auto names = pool.getLocks())
-        for (auto name : names->getAsRange<FlatSymbolRefAttr>())
-          locks.push_back(ctx.lockOf(name));
+      SmallVector<LockOp> locks = pool.getLockOps();
       emitBinaryUseLocks(rewriter, loc, locks, pool.getDepth(),
                          endpoint.drains(), index.getResult(), wanted * repeat,
                          LockAction::Acquire);
@@ -281,7 +257,7 @@ struct LowerAcquire : OpRewritePattern<ObjectFifoAcquireOp> {
       delta = arith::MulIOp::create(rewriter, loc, delta, repeatVal);
     }
     for (FlatSymbolRefAttr name :
-         segmentLocksFor(endpoint, pool, LockAction::AcquireGreaterEqual))
+         segmentLocksFor(endpoint, LockAction::AcquireGreaterEqual))
       UseLockOp::create(rewriter, loc, ctx.lockOf(name),
                         LockAction::AcquireGreaterEqual, delta);
 
@@ -296,7 +272,7 @@ struct LowerAcquire : OpRewritePattern<ObjectFifoAcquireOp> {
                                    ObjectFifoPoolOp pool,
                                    std::pair<Operation *, Operation *> key,
                                    PatternRewriter &rewriter) const {
-    SmallVector<BufferOp> buffers = ctx.buffersOf(pool);
+    SmallVector<Value> buffers = pool.getObjects();
     if (buffers.empty())
       return success();
     memref::AllocaOp index = ctx.objectIndex.lookup(key);
@@ -309,11 +285,9 @@ struct LowerAcquire : OpRewritePattern<ObjectFifoAcquireOp> {
                                            rewriter.getIndexType(), counter);
     int depth = pool.getDepth();
     for (auto [base, result] : llvm::enumerate(acquireOp.getObjects())) {
-      Value object =
-          buildRotatingSwitch(rewriter, loc, idx, buffers[0].getType(), depth,
-                              [&, base = base](int c) {
-                                return buffers[(base + c) % depth].getResult();
-                              });
+      Value object = buildRotatingSwitch(
+          rewriter, loc, idx, buffers[0].getType(), depth,
+          [&, base = base](int c) { return buffers[(base + c) % depth]; });
       rewriter.replaceAllUsesWith(result, object);
     }
     return success();

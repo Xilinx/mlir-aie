@@ -2299,6 +2299,21 @@ def AIE_ObjectFifoPoolOp
 
     /// Byte-agnostic element count of one object, taken from the element type.
     int64_t getObjectSize();
+
+    /// One entry per way the object is divided; a pool with no `segments` is
+    /// one whole object.
+    llvm::SmallVector<ObjectFifoSegmentAttr> getSegmentAttrs();
+
+    /// The objects themselves, empty until --aie-objectfifo-allocate has run.
+    /// A shim pool's objects are external buffers rather than aie.buffers.
+    llvm::SmallVector<mlir::Value> getObjects();
+
+    /// Every lock the pool holds, whichever form the device uses.
+    llvm::SmallVector<LockOp> getLockOps();
+
+    /// The pool's name without the end marker, which buffers and locks are
+    /// named after.
+    llvm::StringRef getBaseName();
   }];
 }
 
@@ -2332,6 +2347,10 @@ def AIE_ObjectFifoCoreEndpointOp
     TileOp getTileOp();
     ObjectFifoPoolOp getPoolOp();
     bool drains() { return getRole() == ObjectFifoRole::Drain; }
+
+    /// Segments this endpoint is responsible for, all of the pool's when it
+    /// names none.
+    llvm::SmallVector<ObjectFifoSegmentAttr> getSelectedSegments();
   }];
 }
 
@@ -2391,6 +2410,10 @@ def AIE_ObjectFifoDmaEndpointOp
     /// Null on a shim endpoint.
     ObjectFifoPoolOp getPoolOp();
     bool drains() { return getRole() == ObjectFifoRole::Drain; }
+
+    /// Segments this endpoint is responsible for, all of the pool's when it
+    /// names none.
+    llvm::SmallVector<ObjectFifoSegmentAttr> getSelectedSegments();
   }];
 }
 

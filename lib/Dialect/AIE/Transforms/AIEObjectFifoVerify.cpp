@@ -22,17 +22,6 @@ namespace xilinx::AIE {
 
 namespace {
 
-/// Segments an endpoint works, defaulting to all of its pool's.
-SmallVector<int32_t> selectedSegments(Operation *endpoint,
-                                      std::optional<ArrayRef<int32_t>> segments,
-                                      ObjectFifoPoolOp pool) {
-  if (segments)
-    return SmallVector<int32_t>(*segments);
-  auto poolSegments = pool.getSegments();
-  int64_t count = poolSegments ? poolSegments->size() : 1;
-  return llvm::to_vector(llvm::seq<int32_t>(0, count));
-}
-
 struct SegmentActors {
   SmallVector<Operation *> fillers;
   SmallVector<Operation *> drainers;
@@ -45,12 +34,8 @@ struct AIEObjectFifoVerifyPass
   /// Segments must tile the element type: a gap has no filler, and an overlap
   /// gives two actors the same bytes under different locks.
   LogicalResult verifyCoverage(ObjectFifoPoolOp pool) {
-    auto segments = pool.getSegments();
-    if (!segments)
-      return success();
-
     int64_t expected = 0;
-    for (auto segment : segments->getAsRange<ObjectFifoSegmentAttr>()) {
+    for (ObjectFifoSegmentAttr segment : pool.getSegmentAttrs()) {
       if (static_cast<int64_t>(segment.getOffset()) != expected)
         return pool.emitOpError("segments must be contiguous, but segment at "
                                 "offset ")
@@ -109,24 +94,26 @@ struct AIEObjectFifoVerifyPass
     for (auto pool : device.getOps<ObjectFifoPoolOp>()) {
       if (failed(verifyCoverage(pool)))
         return signalPassFailure();
-      auto poolSegments = pool.getSegments();
-      actorsPerPool[pool].resize(poolSegments ? poolSegments->size() : 1);
+      actorsPerPool[pool].resize(pool.getSegmentAttrs().size());
     }
 
-    auto record = [&](Operation *endpoint, ObjectFifoPoolOp pool,
-                      std::optional<ArrayRef<int32_t>> segments, bool drains) {
+    auto record = [&](auto endpoint) {
+      ObjectFifoPoolOp pool = endpoint.getPoolOp();
+      if (!pool)
+        return;
       auto &actors = actorsPerPool[pool];
-      for (int32_t index : selectedSegments(endpoint, segments, pool))
-        (drains ? actors[index].drainers : actors[index].fillers)
+      SmallVector<ObjectFifoSegmentAttr> all = pool.getSegmentAttrs();
+      for (ObjectFifoSegmentAttr segment : endpoint.getSelectedSegments()) {
+        size_t index = llvm::find(all, segment) - all.begin();
+        (endpoint.drains() ? actors[index].drainers : actors[index].fillers)
             .push_back(endpoint);
+      }
     };
 
     for (auto endpoint : device.getOps<ObjectFifoCoreEndpointOp>())
-      record(endpoint, endpoint.getPoolOp(), endpoint.getSegments(),
-             endpoint.drains());
+      record(endpoint);
     for (auto endpoint : device.getOps<ObjectFifoDmaEndpointOp>())
-      if (ObjectFifoPoolOp pool = endpoint.getPoolOp())
-        record(endpoint, pool, endpoint.getSegments(), endpoint.drains());
+      record(endpoint);
 
     for (auto pool : device.getOps<ObjectFifoPoolOp>())
       if (failed(verifyActors(pool, actorsPerPool[pool])))

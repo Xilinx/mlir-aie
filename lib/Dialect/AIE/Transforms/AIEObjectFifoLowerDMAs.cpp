@@ -25,7 +25,7 @@ namespace {
 /// One buffer descriptor's worth of work: which object, which slice of it, and
 /// the locks guarding that slice.
 struct Descriptor {
-  Operation *buffer;
+  Value buffer;
   int64_t offset;
   int64_t size;
   FlatSymbolRefAttr acquireLock;
@@ -86,47 +86,21 @@ struct AIEObjectFifoLowerDMAsPass
   }
 
   /// Objects the endpoint moves.
-  SmallVector<Operation *> buffersOf(ObjectFifoPoolOp pool) {
-    SmallVector<Operation *> buffers;
-    if (pool)
-      if (auto names = pool.getBuffers())
-        for (auto name : names->getAsRange<FlatSymbolRefAttr>())
-          buffers.push_back(
-              SymbolTable::lookupNearestSymbolFrom(device, name.getAttr()));
-    return buffers;
+  SmallVector<Value> buffersOf(ObjectFifoPoolOp pool) {
+    return pool ? pool.getObjects() : SmallVector<Value>{};
   }
 
   /// Buffer-major, segment-minor: the DMA walks the objects in turn, and within
   /// each object the slices this endpoint is responsible for.
   SmallVector<Descriptor> descriptorsFor(ObjectFifoDmaEndpointOp endpoint,
-                                         ObjectFifoPoolOp pool,
-                                         ArrayRef<Operation *> buffers) {
+                                         ArrayRef<Value> buffers) {
     bool drains = endpoint.getChannel()->getDirection() == DMAChannelDir::MM2S;
-
-    SmallVector<ObjectFifoSegmentAttr> segments;
-    if (pool)
-      if (auto all = pool.getSegments()) {
-        if (auto selected = endpoint.getSegments())
-          for (int32_t index : *selected)
-            segments.push_back(cast<ObjectFifoSegmentAttr>((*all)[index]));
-        else
-          for (auto segment : all->getAsRange<ObjectFifoSegmentAttr>())
-            segments.push_back(segment);
-      }
+    SmallVector<ObjectFifoSegmentAttr> segments =
+        endpoint.getSelectedSegments();
+    int64_t override = endpoint.getTransferSize().value_or(0);
 
     SmallVector<Descriptor> descriptors;
-    int64_t override = endpoint.getTransferSize().value_or(0);
-    for (auto [index, buffer] : llvm::enumerate(buffers)) {
-      if (segments.empty()) {
-        auto type = cast<MemRefType>(buffer->getResult(0).getType());
-        descriptors.push_back({buffer,
-                               0,
-                               override ? override : type.getNumElements(),
-                               {},
-                               {},
-                               static_cast<int64_t>(index)});
-        continue;
-      }
+    for (auto [index, buffer] : llvm::enumerate(buffers))
       for (ObjectFifoSegmentAttr segment : segments)
         descriptors.push_back(
             {buffer, segment.getOffset(),
@@ -134,12 +108,11 @@ struct AIEObjectFifoLowerDMAsPass
              drains ? segment.getConsumeLock() : segment.getProduceLock(),
              drains ? segment.getProduceLock() : segment.getConsumeLock(),
              static_cast<int64_t>(index)});
-    }
     return descriptors;
   }
 
   void emitDescriptor(ObjectFifoDmaEndpointOp endpoint, ObjectFifoPoolOp pool,
-                      const Descriptor &descriptor, Block *successor,
+                      Descriptor &descriptor, Block *successor,
                       bool binaryLocks) {
     Location loc = endpoint.getLoc();
     bool drains = endpoint.getChannel()->getDirection() == DMAChannelDir::MM2S;
@@ -151,14 +124,13 @@ struct AIEObjectFifoLowerDMAsPass
     if (binaryLocks) {
       // One lock travels with the buffer, and the direction is carried in the
       // value rather than in a second lock.
-      if (auto locks = pool ? pool.getLocks() : std::nullopt)
-        if (descriptor.binaryLock < (int64_t)locks->size()) {
-          acquireLock = releaseLock = lookup<LockOp>(
-              cast<FlatSymbolRefAttr>((*locks)[descriptor.binaryLock]));
-          acquireValue = drains ? 1 : 0;
-          releaseValue = drains ? 0 : 1;
-          action = LockAction::Acquire;
-        }
+      SmallVector<LockOp> locks = pool.getLockOps();
+      if (descriptor.binaryLock < (int64_t)locks.size()) {
+        acquireLock = releaseLock = locks[descriptor.binaryLock];
+        acquireValue = drains ? 1 : 0;
+        releaseValue = drains ? 0 : 1;
+        action = LockAction::Acquire;
+      }
     } else if (descriptor.acquireLock) {
       acquireLock = lookup<LockOp>(descriptor.acquireLock);
       releaseLock = lookup<LockOp>(descriptor.releaseLock);
@@ -173,14 +145,14 @@ struct AIEObjectFifoLowerDMAsPass
     auto dims = endpoint.getDimensionsAttr();
     auto pad = drains ? endpoint.getPadDimensionsAttr() : nullptr;
     if (dims && pad)
-      DMABDOp::create(builder, loc, descriptor.buffer->getResult(0),
-                      descriptor.offset, descriptor.size, dims, pad);
+      DMABDOp::create(builder, loc, descriptor.buffer, descriptor.offset,
+                      descriptor.size, dims, pad);
     else if (dims)
-      DMABDOp::create(builder, loc, descriptor.buffer->getResult(0),
-                      descriptor.offset, descriptor.size, dims);
+      DMABDOp::create(builder, loc, descriptor.buffer, descriptor.offset,
+                      descriptor.size, dims);
     else
-      DMABDOp::create(builder, loc, descriptor.buffer->getResult(0),
-                      descriptor.offset, descriptor.size);
+      DMABDOp::create(builder, loc, descriptor.buffer, descriptor.offset,
+                      descriptor.size);
 
     if (releaseLock)
       UseLockOp::create(builder, loc, releaseLock, LockAction::Release,
@@ -190,12 +162,11 @@ struct AIEObjectFifoLowerDMAsPass
 
   void lowerEndpoint(ObjectFifoDmaEndpointOp endpoint) {
     ObjectFifoPoolOp pool = endpoint.getPoolOp();
-    SmallVector<Operation *> buffers = buffersOf(pool);
+    SmallVector<Value> buffers = buffersOf(pool);
     if (buffers.empty())
       return;
 
-    SmallVector<Descriptor> descriptors =
-        descriptorsFor(endpoint, pool, buffers);
+    SmallVector<Descriptor> descriptors = descriptorsFor(endpoint, buffers);
     if (descriptors.empty())
       return;
 
@@ -230,7 +201,7 @@ struct AIEObjectFifoLowerDMAsPass
     size_t total = descriptors.size() * copies;
     size_t emitted = 0;
     Block *current = bdBlock;
-    for (const Descriptor &descriptor : descriptors)
+    for (Descriptor &descriptor : descriptors)
       for (int copy = 0; copy < copies; copy++) {
         Block *successor;
         if (emitted + 1 < total) {

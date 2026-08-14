@@ -173,11 +173,13 @@ New behaviour, with tests:
   all, over DMAs where the many side is a core, and with one core taking several
   parts.
 
-Erases `core_endpoint`s, and pools once their last endpoint is gone.
+Erases `core_endpoint`s. `--aie-objectfifo-erase-pools` drops pools no endpoint
+names any more; it is a pass of its own because the record of which buffers and
+locks belong to which fifo is worth keeping for consumers that want it.
 
 ## 6. Drop `--aie-objectFifo-stateful-transform`
 
-The name becomes a pipeline over the five new passes, forwarding
+The name becomes a pipeline over the new passes, forwarding
 `dynamic-objFifos` and `packet-sw-objFifos` to the members that read them, and
 the monolith is deleted. The 160 existing tests move onto the new pipeline here;
 their expected output is what proves the two agree.

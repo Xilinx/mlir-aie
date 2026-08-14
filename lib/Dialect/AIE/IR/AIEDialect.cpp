@@ -638,6 +638,21 @@ TileOp ObjectFifoCreateOp::getProducerTileOp() {
 // ObjectFifoPoolOp
 //===----------------------------------------------------------------------===//
 
+namespace {
+/// Resolve a list of symbol names to the ops they name, skipping any that are
+/// not yet declared.
+template <typename OpTy>
+SmallVector<OpTy> lookupAll(Operation *from, std::optional<ArrayAttr> names) {
+  SmallVector<OpTy> ops;
+  if (names)
+    for (auto name : names->getAsRange<FlatSymbolRefAttr>())
+      if (auto op = SymbolTable::lookupNearestSymbolFrom<OpTy>(from, name))
+        ops.push_back(op);
+  return ops;
+}
+
+} // namespace
+
 TileOp ObjectFifoPoolOp::getTileOp() {
   return cast<TileOp>(getTile().getDefiningOp());
 }
@@ -686,6 +701,44 @@ LogicalResult ObjectFifoPoolOp::verify() {
   return success();
 }
 
+SmallVector<ObjectFifoSegmentAttr> ObjectFifoPoolOp::getSegmentAttrs() {
+  SmallVector<ObjectFifoSegmentAttr> segments;
+  if (auto attrs = getSegments())
+    for (auto segment : attrs->getAsRange<ObjectFifoSegmentAttr>())
+      segments.push_back(segment);
+  else
+    segments.push_back(ObjectFifoSegmentAttr::get(
+        getContext(), 0, getObjectSize(), nullptr, nullptr));
+  return segments;
+}
+
+SmallVector<Value> ObjectFifoPoolOp::getObjects() {
+  SmallVector<Value> objects;
+  if (auto names = getBuffers())
+    for (auto name : names->getAsRange<FlatSymbolRefAttr>())
+      if (Operation *op =
+              SymbolTable::lookupNearestSymbolFrom(*this, name.getAttr()))
+        objects.push_back(op->getResult(0));
+  return objects;
+}
+
+SmallVector<LockOp> ObjectFifoPoolOp::getLockOps() {
+  SmallVector<LockOp> locks = lookupAll<LockOp>(*this, getLocks());
+  for (ObjectFifoSegmentAttr segment : getSegmentAttrs())
+    for (FlatSymbolRefAttr name :
+         {segment.getProduceLock(), segment.getConsumeLock()})
+      if (name)
+        if (auto lock =
+                SymbolTable::lookupNearestSymbolFrom<LockOp>(*this, name))
+          locks.push_back(lock);
+  return locks;
+}
+
+StringRef ObjectFifoPoolOp::getBaseName() {
+  StringRef name = getSymName();
+  return name.consume_back("_pool") ? name : getSymName();
+}
+
 //===----------------------------------------------------------------------===//
 // ObjectFifo endpoints
 //===----------------------------------------------------------------------===//
@@ -716,12 +769,33 @@ ObjectFifoPoolOp lookupPool(Operation *op, StringRef name) {
 
 } // namespace
 
+/// The subset of `pool`'s segments `selected` names, or all of them.
+static SmallVector<ObjectFifoSegmentAttr>
+selectSegments(ObjectFifoPoolOp pool,
+               std::optional<ArrayRef<int32_t>> selected) {
+  if (!pool)
+    return {};
+  SmallVector<ObjectFifoSegmentAttr> all = pool.getSegmentAttrs();
+  if (!selected)
+    return all;
+  SmallVector<ObjectFifoSegmentAttr> chosen;
+  for (int32_t index : *selected)
+    if (index >= 0 && index < (int32_t)all.size())
+      chosen.push_back(all[index]);
+  return chosen;
+}
+
 TileOp ObjectFifoCoreEndpointOp::getTileOp() {
   return cast<TileOp>(getTile().getDefiningOp());
 }
 
 ObjectFifoPoolOp ObjectFifoCoreEndpointOp::getPoolOp() {
   return lookupPool(*this, getPool());
+}
+
+SmallVector<ObjectFifoSegmentAttr>
+ObjectFifoCoreEndpointOp::getSelectedSegments() {
+  return selectSegments(getPoolOp(), getSegments());
 }
 
 LogicalResult ObjectFifoCoreEndpointOp::verify() {
@@ -738,6 +812,11 @@ TileOp ObjectFifoDmaEndpointOp::getTileOp() {
 ObjectFifoPoolOp ObjectFifoDmaEndpointOp::getPoolOp() {
   auto name = getPool();
   return name ? lookupPool(*this, *name) : ObjectFifoPoolOp();
+}
+
+SmallVector<ObjectFifoSegmentAttr>
+ObjectFifoDmaEndpointOp::getSelectedSegments() {
+  return selectSegments(getPoolOp(), getSegments());
 }
 
 LogicalResult ObjectFifoDmaEndpointOp::verify() {

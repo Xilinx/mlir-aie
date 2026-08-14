@@ -24,13 +24,6 @@ namespace xilinx::AIE {
 
 namespace {
 
-/// A pool's symbol carries the fifo it came from plus an end marker; buffers
-/// and locks are named after the fifo alone.
-StringRef poolBaseName(ObjectFifoPoolOp pool) {
-  StringRef name = pool.getSymName();
-  return name.consume_back("_pool") ? name : pool.getSymName();
-}
-
 int64_t objectSizeInBytes(ObjectFifoPoolOp pool) {
   auto elemType = pool.getElemType();
   DataLayout layout = DataLayout::closest(pool);
@@ -117,7 +110,7 @@ struct AIEObjectFifoAllocatePass
     setInsertionPointBelowTiles();
     auto initValues = pool.getInitValues();
     int64_t sizeBytes = objectSizeInBytes(pool);
-    StringRef base = poolBaseName(pool);
+    StringRef base = pool.getBaseName();
 
     SmallVector<Attribute> names;
     for (int i = 0; i < pool.getDepth(); i++) {
@@ -147,7 +140,7 @@ struct AIEObjectFifoAllocatePass
     if (pool.getDisableSynchronization())
       return;
 
-    StringRef base = poolBaseName(pool);
+    StringRef base = pool.getBaseName();
     int depth = pool.getDepth();
     auto initValues = pool.getInitValues();
     int filled = initValues ? initValues->size() : 0;
@@ -221,15 +214,12 @@ struct AIEObjectFifoAllocatePass
   /// channels that see that neighbour's memory.
   bool reachesAdjacentTile(ObjectFifoDmaEndpointOp endpoint) {
     ObjectFifoPoolOp pool = endpoint.getPoolOp();
-    if (!pool || !pool.getBuffers())
+    if (!pool)
       return false;
-    for (auto name : pool.getBuffers()->getAsRange<FlatSymbolRefAttr>()) {
-      auto buffer =
-          SymbolTable::lookupNearestSymbolFrom<BufferOp>(device, name);
-      if (buffer && buffer.getTile() != pool.getTile())
-        return true;
-    }
-    return false;
+    return llvm::any_of(pool.getObjects(), [&](Value object) {
+      auto buffer = dyn_cast<BufferOp>(object.getDefiningOp());
+      return buffer && buffer.getTile() != pool.getTile();
+    });
   }
 
   LogicalResult assignChannels(DMAChannelAnalysis &channels) {
@@ -368,27 +358,6 @@ struct AIEObjectFifoAllocatePass
     return success();
   }
 
-  /// Every lock a pool holds, whichever form the device uses.
-  SmallVector<LockOp> locksOf(ObjectFifoPoolOp pool) {
-    SmallVector<LockOp> locks;
-    auto add = [&](FlatSymbolRefAttr name) {
-      if (auto lock =
-              SymbolTable::lookupNearestSymbolFrom<LockOp>(device, name))
-        locks.push_back(lock);
-    };
-    if (auto names = pool.getLocks())
-      for (auto name : names->getAsRange<FlatSymbolRefAttr>())
-        add(name);
-    if (auto segments = pool.getSegments())
-      for (auto segment : segments->getAsRange<ObjectFifoSegmentAttr>()) {
-        if (auto produce = segment.getProduceLock())
-          add(produce);
-        if (auto consume = segment.getConsumeLock())
-          add(consume);
-      }
-    return locks;
-  }
-
   /// An `aiex.dma_channel_reset_for` outlives the fifo it names, so record the
   /// channels and locks it has to re-arm and point it at that record. Shim
   /// endpoints are left out: the host re-pushes those itself.
@@ -427,7 +396,7 @@ struct AIEObjectFifoAllocatePass
       for (auto pool : device.getOps<ObjectFifoPoolOp>()) {
         if (pool.getFifoName() != fifoName || pool.getTileOp().isShimTile())
           continue;
-        for (LockOp lock : locksOf(pool)) {
+        for (LockOp lock : pool.getLockOps()) {
           lockValues.push_back(lock.getResult());
           lockInits.push_back(lock.getInit().value_or(0));
         }

@@ -151,12 +151,15 @@
 //                                 aie.flow, shim allocations
 //   --aie-objectfifo-lower-dmas   BD chains                  dma_endpoint
 //   --aie-objectfifo-lower-cores  lock/buffer accesses       core_endpoint,
-//                                                            acquire, release,
-//                                                            subview.access
+//                                                            acquire, release
+//   --aie-objectfifo-erase-pools  (nothing)                  unreferenced pools
 //   --aie-objectfifo-unroll       (existing pass)
 //
-// A pool is erased once its last endpoint is. Since each endpoint op has exactly
-// one consuming pass, lower-dmas and lower-cores are order-independent.
+// Pools outlive the endpoints that named them, so the annotation of which
+// buffers and locks belong to which fifo survives lowering. --aie-objectfifo-
+// erase-pools drops it for consumers that have no use for it. Since each
+// endpoint op has exactly one consuming pass, lower-dmas and lower-cores are
+// order-independent.
 //
 // Every pass is idempotent, because each erases what it consumes. Adding a new
 // aie.objectfifo to already-lowered IR and re-running the pipeline lowers it
@@ -195,8 +198,8 @@
 //
 //  - a pool's segments are in increasing offset order
 //  - every segment states offset and size
-//  - exactly one of `locks` or `segments` is present on a pool, matching the
-//    device's lock kind
+//  - a pool's locks match the device's lock kind: binary locks in `locks`,
+//    counting locks on the segments
 //  - an endpoint's segment indices are in range for its pool
 //  - an endpoint's tile is the pool's tile or shares a memory module with it
 //  - a pool with more than one segment requires semaphore locks
@@ -245,7 +248,5 @@
 //  - tests for join and distribute with core participants: over shared memory
 //    with no DMA at all, over DMAs where the many side is a core, and with one
 //    core taking several parts
-//  - replace !aie.objectfifosubview and aie.objectfifo.subview.access with
-//    variadic results on aie.objectfifo.acquire
 //
 //===----------------------------------------------------------------------===//
