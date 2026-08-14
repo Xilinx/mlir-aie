@@ -15,6 +15,24 @@ Target IR at each stage is documented in `docs/design/objfifo-stages/`. Read
 - Comments follow `docs/skills` / the code-commenting skill: no history, no
   before/after framing, no restating the adjacent line.
 
+### Idempotency
+
+Each pass erases what it consumes, so running the pipeline over its own output
+changes nothing. Every commit adds a test asserting it for the passes it owns:
+
+```
+// RUN: aie-opt --aie-objectfifo-<pass> %s -o %t1.mlir
+// RUN: aie-opt --aie-objectfifo-<pass> %t1.mlir -o %t2.mlir
+// RUN: diff %t1.mlir %t2.mlir
+```
+
+and one covering the whole pipeline. A second test appends a fresh
+`aie.objectfifo` to already-lowered IR and checks that re-running lowers it while
+leaving everything already lowered byte-identical.
+
+These are what keep the design honest: an op left behind by the pass that should
+have consumed it shows up as a diff rather than as silent growth.
+
 `--aie-objectFifo-stateful-transform` is registered as a pass pipeline from
 commit 1 so existing RUN lines keep working while the passes are peeled off. Its
 options (`dynamic-objFifos`, `packet-sw-objFifos`) forward to the members.
@@ -143,8 +161,12 @@ Nothing is left in it. `tools/aiecc` runs the pipeline; the pipeline
 registration is either kept as a convenience alias or removed and test RUN lines
 updated.
 
-Residual phases still to place before this commit can land: the dead-op cleanup
-and `computeTopologicalSorting`, which currently run at the end of the monolith.
+The bulk erase and `computeTopologicalSorting` at the end of the monolith do not
+move. Sorting exists only so that one sweep can erase a use-def chain — the
+`ObjectFifoSubviewAccessOp` reading its `ObjectFifoAcquireOp` — users before
+definitions. With each pass erasing what it consumes through rewrite patterns,
+there is nothing left over to sweep, and commit 7 removes the chain outright. The
+idempotency tests are what prove it.
 
 ## 7. Drop `aie.objectfifo.subview.access`
 
