@@ -33,9 +33,20 @@ leaving everything already lowered byte-identical.
 These are what keep the design honest: an op left behind by the pass that should
 have consumed it shows up as a diff rather than as silent growth.
 
-`--aie-objectFifo-stateful-transform` is registered as a pass pipeline from
-commit 1 so existing RUN lines keep working while the passes are peeled off. Its
-options (`dynamic-objFifos`, `packet-sw-objFifos`) forward to the members.
+## How the two pipelines coexist
+
+The monolith consumes `aie.objectfifo`; split destroys it. The two cannot be
+chained, so the new passes are built as a second, complete pipeline rather than
+by hollowing the monolith out from the inside. Commits 1–5 add one pass each,
+tested on its own IR, while `--aie-objectFifo-stateful-transform` keeps running
+unchanged. Commit 6 points that name at the new pipeline, ports the 160 existing
+RUN lines, and deletes the monolith.
+
+This means the gate below is trivially met for commits 1–5 and carries no
+information until commit 6, which is where the two pipelines are compared
+against the same expected output. The compensating discipline is that every pass
+ships with tests covering the patterns it handles, written against the design
+sketches rather than against whatever the monolith happens to emit.
 
 ## Source map
 
@@ -59,13 +70,16 @@ of a link owns the elements.
 `splitBecauseLink`, `objFifoLinks` and `linkTarget` disappear: pool identity
 answers what all three asked.
 
-The stateful transform keeps every remaining phase but is re-anchored — it walks
-pools and endpoints, and `ObjectFifoState`'s maps key on `ObjectFifoPoolOp`
-instead of `ObjectFifoCreateOp`. It still creates buffers, locks, channels, DMAs
-and core code exactly as now.
-
 Also here: the `@fifo` → shim symbol rewrite, since split is where the shim-side
-endpoint gets its identity.
+endpoint gets its identity. The endpoint keeps the fifo's name in a `fifoName`
+attribute so allocate can emit an `aie.shim_dma_allocation` under the name the
+runtime sequence expects.
+
+Segment coverage — segments tiling the element type exactly — is a completeness
+rule, so it belongs in the verify pass, not the pool's own verifier. The op
+verifier checks only ordering. `getDistributeTransferLengths` mixes element and
+byte units for ND distributes (`nd_dma_distribute_AIE2.mlir`), which is what
+makes the distinction matter in practice.
 
 New tests: `test/objectFifo-split/` — pool and endpoint IR for the seven patterns
 in the design sketches.
@@ -157,9 +171,10 @@ Erases `core_endpoint`s, and pools once their last endpoint is gone.
 
 ## 6. Drop `--aie-objectFifo-stateful-transform`
 
-Nothing is left in it. `tools/aiecc` runs the pipeline; the pipeline
-registration is either kept as a convenience alias or removed and test RUN lines
-updated.
+The name becomes a pipeline over the five new passes, forwarding
+`dynamic-objFifos` and `packet-sw-objFifos` to the members that read them, and
+the monolith is deleted. The 160 existing tests move onto the new pipeline here;
+their expected output is what proves the two agree.
 
 The bulk erase and `computeTopologicalSorting` at the end of the monolith do not
 move. Sorting exists only so that one sweep can erase a use-def chain — the
