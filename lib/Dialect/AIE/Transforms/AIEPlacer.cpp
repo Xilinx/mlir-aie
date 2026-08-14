@@ -1145,27 +1145,30 @@ int SequentialPlacer::computeCentroidColumn(LogicalTileOp logicalTile,
   if (ltoIt == flowIndex.ltoFlows.end())
     return 0;
 
-  auto resolveCoreCol = [&](Value v) -> std::optional<int> {
+  // Column of a flow endpoint, or nullopt if not yet fixed. A memtile that
+  // already knows its column answers here; looking past it to its cores
+  // would pick up the other flows it carries.
+  auto resolvePeerCol = [&](Value v) -> std::optional<int> {
     Operation *defOp = v.getDefiningOp();
     if (!defOp)
       return std::nullopt;
-    if (auto tileOp = dyn_cast<TileOp>(defOp)) {
-      if (targetModel->getTileType(tileOp.getCol(), tileOp.getRow()) ==
-          AIETileType::CoreTile)
-        return tileOp.getCol();
+    // A physical tile's column is fixed by construction, whatever its type.
+    if (auto tileOp = dyn_cast<TileOp>(defOp))
+      return tileOp.getCol();
+    auto lto = dyn_cast<LogicalTileOp>(defOp);
+    if (!lto)
       return std::nullopt;
-    }
-    if (auto lto = dyn_cast<LogicalTileOp>(defOp);
-        lto && lto.getTileType() == AIETileType::CoreTile) {
-      auto it = result.find(defOp);
-      if (it != result.end())
-        return it->second.col;
-    }
+    if (auto c = lto.tryGetCol())
+      return c;
+    auto it = result.find(defOp);
+    if (it != result.end())
+      return it->second.col;
     return std::nullopt;
   };
 
-  // One level of indirection for shim->memtile->core. Multi-level memtile
-  // chains aren't currently produced by mlir-aie.
+  // One level of indirection for shim->memtile->core, used only when the
+  // memtile's own column is still unknown. Multi-level memtile chains aren't
+  // currently produced by mlir-aie.
   auto resolveLtoCoreCols = [&](Value v) {
     SmallVector<int> out;
     auto it = flowIndex.ltoFlows.find(v);
@@ -1173,7 +1176,7 @@ int SequentialPlacer::computeCentroidColumn(LogicalTileOp logicalTile,
       return out;
     for (auto &peerList : it->second)
       for (Value p : peerList)
-        if (auto col = resolveCoreCol(p))
+        if (auto col = resolvePeerCol(p))
           out.push_back(*col);
     return out;
   };
@@ -1182,7 +1185,7 @@ int SequentialPlacer::computeCentroidColumn(LogicalTileOp logicalTile,
   for (auto &peers : ltoIt->second) {
     SmallVector<int> dests;
     for (Value p : peers) {
-      if (auto col = resolveCoreCol(p)) {
+      if (auto col = resolvePeerCol(p)) {
         dests.push_back(*col);
         continue;
       }
@@ -1358,8 +1361,6 @@ void TileAvailability::removeTile(TileID tile, AIETileType type) {
   case AIETileType::ShimNOCTile:
   case AIETileType::ShimPLTile:
     removeFromVector(nonCompTiles);
-    break;
-  default:
     break;
   }
 }
