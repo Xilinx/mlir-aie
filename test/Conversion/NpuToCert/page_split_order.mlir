@@ -6,20 +6,29 @@
 //===----------------------------------------------------------------------===//
 
 // the page splitter preserves IR (textual) order within and across the
-// two result pages. An oversized job with two uc_dma_write_des_sync enqueues
-// followed by a wait_tcts splits so the enqueues stay on the earlier page and
-// the wait_tcts lands on the later page (a legal backward dependency), with the
-// internal order of each page preserved.
+// result pages. An oversized job with two uc_dma_write_des_sync enqueues
+// followed by a wait_tcts splits so each enqueue and the wait land on pages in
+// their original order; splitting an enqueue from a later wait_tcts is a legal
+// backward dependency.
+//
+// The first cut lands before wait_tcts, leaving @c1 + @c2 (an estimated 8084
+// bytes) on the earlier page. That is still over the split trigger, so it is
+// cut again between the two enqueues -- the second cut relies on the splitter
+// being able to cut *before* the op that crosses the target when that op is its
+// job's last (see page_split_last_op.mlir).
 
 // RUN: aie-opt -cert-legalize-pages %s | FileCheck %s
 
 // CHECK: aiex.cert.page
 // CHECK: aiex.cert.job(1)
 // CHECK: aiex.cert.uc_dma_write_des_sync(@c1)
-// CHECK: aiex.cert.uc_dma_write_des_sync(@c2)
 // CHECK-NOT: aiex.cert.wait_tcts
 // CHECK: aiex.cert.page
 // CHECK: aiex.cert.job(2)
+// CHECK: aiex.cert.uc_dma_write_des_sync(@c2)
+// CHECK-NOT: aiex.cert.wait_tcts
+// CHECK: aiex.cert.page
+// CHECK: aiex.cert.job(3)
 // CHECK: aiex.cert.wait_tcts(0, 6, 1)
 
 module {
@@ -34,9 +43,8 @@ module {
       aiex.cert.uc_dma_bd @c2data, 0, 1100, false
     }
 
-    // Oversized single job. The cost-based cut lands before wait_tcts, so both
-    // enqueues stay on the earlier page and the wait moves to the later page;
-    // the two chains do not merge (combined size >= page size).
+    // Oversized single job; the two chains do not merge (combined size >= page
+    // size).
     aiex.cert.page {
       aiex.cert.job(1) {
         aiex.cert.uc_dma_write_des_sync(@c1)

@@ -115,18 +115,43 @@ aie.device(npu2) {
 
 // -----
 
-// Error: an oversized page whose bulk is a single one-op job. A split point has
-// to fall inside a job with at least one op ahead of it, so this page offers
-// none at all -- no barrier is involved. Over the 8192-byte limit, so it is an
-// error rather than a silent oversized page.
+// Error: an oversized page whose bulk is a single one-op job. Every cut has to
+// leave at least one op on each side and this page holds exactly one op, so it
+// offers no split point at all -- no barrier is involved. Over the 8192-byte
+// limit, so it is an error rather than a silent oversized page.
 aie.device(npu2) {
   memref.global "private" constant @d1 : memref<2500xi32> = dense<0>
   aiex.cert.uc_dma_chain @c1 {
     aiex.cert.uc_dma_bd @d1, 0, 2500, false
   }
-  // expected-error@+1 {{offers no split point (a split must fall inside a job, after at least one of its ops); break the oversized job into smaller jobs}}
+  // expected-error@+1 {{offers no split point (a split must leave at least one op on each page); break the oversized job into smaller jobs}}
   aiex.cert.job(1) {
     aiex.cert.uc_dma_write_des_sync(@c1)
+  }
+}
+
+// -----
+
+// Remark, not an error: two one-op jobs, each individually fine and jointly over
+// the limit, grouped into one implicit page. The only cut available is the
+// boundary between them, which is a real split -- so this takes the ordinary
+// implicit-page serialization remark and not the "offers no split point" error.
+// See page_split_job_boundary.mlir for the explicit-page form of this shape.
+aie.device(npu2) {
+  memref.global "private" constant @d1 : memref<1200xi32> = dense<0>
+  memref.global "private" constant @d2 : memref<1200xi32> = dense<1>
+  aiex.cert.uc_dma_chain @c1 {
+    aiex.cert.uc_dma_bd @d1, 0, 1200, false
+  }
+  aiex.cert.uc_dma_chain @c2 {
+    aiex.cert.uc_dma_bd @d2, 0, 1200, false
+  }
+  // expected-remark@+1 {{auto-split of implicit cert.page serializes cooperatively-scheduled jobs}}
+  aiex.cert.job(1) {
+    aiex.cert.uc_dma_write_des_sync(@c1)
+  }
+  aiex.cert.job(2) {
+    aiex.cert.uc_dma_write_des_sync(@c2)
   }
 }
 
