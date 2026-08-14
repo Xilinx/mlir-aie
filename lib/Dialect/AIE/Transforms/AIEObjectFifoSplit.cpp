@@ -178,7 +178,9 @@ struct AIEObjectFifoSplitPass
   ObjectFifoDmaEndpointOp createDmaEndpoint(
       Location loc, StringRef name, Value tile, std::optional<PoolRef> ref,
       ObjectFifoRole role, ObjectFifoCreateOp from, BDDimLayoutArrayAttr dims,
-      std::optional<int> pinnedChannel, std::optional<int> streamPort) {
+      std::optional<int> pinnedChannel, std::optional<int> streamPort,
+      std::optional<int> acqRelCount, std::optional<int> repeatCount,
+      std::optional<int> transferSize) {
     return ObjectFifoDmaEndpointOp::create(
         builder, loc, builder.getStringAttr(name), tile,
         ref ? ObjectFifoRoleAttr::get(builder.getContext(), role)
@@ -195,16 +197,67 @@ struct AIEObjectFifoSplitPass
         from.getPadDimensionsAttr(),
         from.getPadValue() ? builder.getI32IntegerAttr(from.getPadValue())
                            : IntegerAttr(),
-        from.getRepeatCount()
-            ? builder.getI32IntegerAttr(*from.getRepeatCount())
+        from.getRepeatCount() && repeatCount
+            ? builder.getI32IntegerAttr(*repeatCount)
             : IntegerAttr(),
         from.getIterCount() ? builder.getI32IntegerAttr(*from.getIterCount())
                             : IntegerAttr(),
+        acqRelCount && *acqRelCount > 1
+            ? builder.getI32IntegerAttr(*acqRelCount)
+            : IntegerAttr(),
+        transferSize ? builder.getI32IntegerAttr(*transferSize) : IntegerAttr(),
         /*streamPort=*/
-            streamPort ? builder.getI32IntegerAttr(*streamPort) : IntegerAttr(),
+        streamPort ? builder.getI32IntegerAttr(*streamPort) : IntegerAttr(),
         from.getPlio() ? builder.getBoolAttr(true) : BoolAttr(),
         /*packet=*/PacketInfoAttr(),
         builder.getStringAttr(from.name().getValue()));
+  }
+
+  /// External buffers registered against a fifo's end on `tile` become the
+  /// objects of a pool there, since a shim tile has no memory of its own to
+  /// hold them.
+  std::optional<PoolRef> externalPool(ObjectFifoCreateOp fifo, Value tile,
+                                      StringRef name, MemRefType elemType) {
+    SmallVector<Attribute> names;
+    for (auto regOp : device.getOps<ObjectFifoRegisterExternalBuffersOp>()) {
+      if (regOp.getTile() != tile || regOp.getObjectFifo() != fifo)
+        continue;
+      for (Value buffer : regOp.getExternalBuffers()) {
+        auto external = cast<ExternalBufferOp>(buffer.getDefiningOp());
+        names.push_back(SymbolRefAttr::get(external.getSymNameAttr()));
+        // The registered buffer's own extent is what the DMA moves, which need
+        // not be the fifo's object size.
+        elemType = cast<MemRefType>(external.getType());
+      }
+    }
+    if (names.empty())
+      return std::nullopt;
+
+    auto pool = ObjectFifoPoolOp::create(
+        builder, fifo.getLoc(), name, tile, names.size(), elemType,
+        builder.getArrayAttr(names),
+        builder.getArrayAttr({ObjectFifoSegmentAttr::get(
+            builder.getContext(), 0, elemType.getNumElements(), nullptr,
+            nullptr)}),
+        /*locks=*/ArrayAttr(), /*repeatCount=*/IntegerAttr(),
+        /*iterCount=*/IntegerAttr(), fifo.getDisableSynchronization(),
+        /*initValues=*/ArrayAttr());
+    return PoolRef{pool, std::nullopt};
+  }
+
+  /// A link's two ends may disagree on an object's size. On a compute tile the
+  /// fifo moves its own; a MemTile moves whichever is larger, so that padding
+  /// applied on the way out has room.
+  std::optional<int> transferSizeInto(PoolRef ref, MemRefType elemType) {
+    if (ref.segment)
+      return std::nullopt;
+    int64_t own = elemType.getNumElements();
+    int64_t pooled = ref.pool.getObjectSize();
+    if (own == pooled)
+      return std::nullopt;
+    if (ref.pool.getTileOp().isMemTile() && own < pooled)
+      return std::nullopt;
+    return own;
   }
 
   /// Point a core's accesses at the endpoint it works through.
@@ -408,10 +461,19 @@ void AIEObjectFifoSplitPass::runOnOperation() {
 
     bool prodIsShim = cast<TileOp>(prodTile.getDefiningOp()).isShimTile();
     std::optional<PoolRef> prodRef;
+    // Objects entering a repeating link arrive that many at a time.
+    std::optional<int> prodAcqRel;
+    std::optional<int> consAcqRel;
+    std::optional<int> prodTransfer;
+    std::optional<int> consTransfer;
     if (auto linked = linkedProducerEnd.find(fifo);
         linked != linkedProducerEnd.end()) {
       prodRef = linked->second;
-    } else if (!prodIsShim && !prodStreamPort) {
+      prodTransfer = transferSizeInto(linked->second, elemType);
+    } else if (prodIsShim) {
+      prodRef =
+          externalPool(fifo, prodTile, (fifoName + "_pool").str(), elemType);
+    } else if (!prodStreamPort) {
       int depth = fifo.getInitValues() ? fifo.size()
                                        : objectCountOn(device, prodTile, fifo);
       auto pool =
@@ -428,10 +490,16 @@ void AIEObjectFifoSplitPass::runOnOperation() {
       retargetCoreAccesses(fifo, ObjectFifoPort::Produce, prodTile, name);
     }
 
-    auto prodDma = createDmaEndpoint(loc, (fifoName + "_prod_dma").str(),
-                                     prodTile, prodRef, ObjectFifoRole::Drain,
-                                     fifo, fifo.getDimensionsToStreamAttr(),
-                                     fifo.getProdDmaChannel(), prodStreamPort);
+    // A link that repeats gathers that many objects each time the pool is
+    // filled; draining it stays one object at a time.
+    std::optional<int> linkRepeat;
+    if (auto linkOp = getOptionalLinkOp(fifo))
+      linkRepeat = linkOp->getRepeatCount();
+    auto prodDma = createDmaEndpoint(
+        loc, (fifoName + "_prod_dma").str(), prodTile, prodRef,
+        ObjectFifoRole::Drain, fifo, fifo.getDimensionsToStreamAttr(),
+        fifo.getProdDmaChannel(), prodStreamPort, prodAcqRel,
+        fifo.getRepeatCount(), prodTransfer);
     if (prodIsShim)
       shimEndpointName[fifo] = prodDma.getSymName().str();
 
@@ -451,7 +519,13 @@ void AIEObjectFifoSplitPass::runOnOperation() {
           linked != linkedConsumerEnd.end() &&
           consumerTile == linked->second.pool.getTile()) {
         consRef = linked->second;
-      } else if (!consIsShim && !consStreamPort) {
+        consAcqRel = linkRepeat;
+        consTransfer = transferSizeInto(linked->second, consElemType);
+      } else if (consIsShim) {
+        consRef =
+            externalPool(fifo, consumerTile,
+                         (fifoName + suffix + "_pool").str(), consElemType);
+      } else if (!consStreamPort) {
         int depth = isa<ArrayAttr>(fifo.getElemNumber())
                         ? fifo.size(consumerIndex + 1)
                         : objectCountOn(device, consumerTile, fifo);
@@ -482,7 +556,8 @@ void AIEObjectFifoSplitPass::runOnOperation() {
                             consumerTile, consRef, ObjectFifoRole::Fill, fifo,
                             consumerDims.empty() ? BDDimLayoutArrayAttr()
                                                  : consumerDims[consumerIndex],
-                            pinned, consStreamPort);
+                            pinned, consStreamPort, consAcqRel,
+                            /*repeatCount=*/std::nullopt, consTransfer);
       destinations.push_back(
           FlatSymbolRefAttr::get(builder.getContext(), consDma.getSymName()));
       if (consIsShim)
@@ -509,6 +584,8 @@ void AIEObjectFifoSplitPass::runOnOperation() {
     toErase.push_back(linkOp);
   for (auto allocOp : device.getOps<ObjectFifoAllocateOp>())
     toErase.push_back(allocOp);
+  for (auto regOp : device.getOps<ObjectFifoRegisterExternalBuffersOp>())
+    toErase.push_back(regOp);
   for (Operation *op : toErase)
     op->erase();
 }

@@ -1,0 +1,277 @@
+//===- AIEObjectFifoLowerDMAs.cpp -------------------------------*- C++ -*-===//
+//
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+//===----------------------------------------------------------------------===//
+
+#include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Dialect/AIE/Transforms/AIEPasses.h"
+
+#include "mlir/IR/Attributes.h"
+#include "mlir/Pass/Pass.h"
+
+using namespace mlir;
+using namespace xilinx;
+using namespace xilinx::AIE;
+
+namespace xilinx::AIE {
+#define GEN_PASS_DEF_AIEOBJECTFIFOLOWERDMAS
+#include "aie/Dialect/AIE/Transforms/AIEPasses.h.inc"
+} // namespace xilinx::AIE
+
+namespace {
+
+/// One buffer descriptor's worth of work: which object, which slice of it, and
+/// the locks guarding that slice.
+struct Descriptor {
+  Operation *buffer;
+  int64_t offset;
+  int64_t size;
+  FlatSymbolRefAttr acquireLock;
+  FlatSymbolRefAttr releaseLock;
+  /// Index of the buffer's own binary lock, where the device uses those.
+  int64_t binaryLock;
+};
+
+Block *findEndOpBlock(Region &region) {
+  Block *endBlock = nullptr;
+  for (Block &block : region)
+    if (!block.getOps<EndOp>().empty())
+      endBlock = &block;
+  return endBlock;
+}
+
+struct AIEObjectFifoLowerDMAsPass
+    : public xilinx::AIE::impl::AIEObjectFifoLowerDMAsBase<
+          AIEObjectFifoLowerDMAsPass> {
+
+  DeviceOp device;
+  OpBuilder builder{static_cast<MLIRContext *>(nullptr)};
+
+  template <typename T>
+  T lookup(FlatSymbolRefAttr name) {
+    return SymbolTable::lookupNearestSymbolFrom<T>(device, name);
+  }
+
+  /// The DMA program of `tile`, created empty if the tile has none yet.
+  Operation *dmaProgramFor(TileOp tile, Location loc) {
+    auto matches = [&](Operation *op, Value tileOperand) {
+      return tileOperand == tile.getResult() ? op : nullptr;
+    };
+    for (auto op : device.getOps<MemOp>())
+      if (Operation *found = matches(op, op.getTile()))
+        return found;
+    for (auto op : device.getOps<MemTileDMAOp>())
+      if (Operation *found = matches(op, op.getTile()))
+        return found;
+    for (auto op : device.getOps<ShimDMAOp>())
+      if (Operation *found = matches(op, op.getTile()))
+        return found;
+
+    OpBuilder::InsertionGuard g(builder);
+    builder.setInsertionPoint(device.getBody()->getTerminator());
+    Operation *program;
+    if (tile.isShimTile())
+      program = ShimDMAOp::create(builder, loc, builder.getIndexType(),
+                                  tile.getResult());
+    else if (tile.isMemTile())
+      program = MemTileDMAOp::create(builder, loc, tile.getResult());
+    else
+      program = MemOp::create(builder, loc, tile.getResult());
+
+    builder.setInsertionPointToStart(&program->getRegion(0).emplaceBlock());
+    EndOp::create(builder, loc);
+    return program;
+  }
+
+  /// Objects the endpoint moves.
+  SmallVector<Operation *> buffersOf(ObjectFifoPoolOp pool) {
+    SmallVector<Operation *> buffers;
+    if (pool)
+      if (auto names = pool.getBuffers())
+        for (auto name : names->getAsRange<FlatSymbolRefAttr>())
+          buffers.push_back(
+              SymbolTable::lookupNearestSymbolFrom(device, name.getAttr()));
+    return buffers;
+  }
+
+  /// Buffer-major, segment-minor: the DMA walks the objects in turn, and within
+  /// each object the slices this endpoint is responsible for.
+  SmallVector<Descriptor> descriptorsFor(ObjectFifoDmaEndpointOp endpoint,
+                                         ObjectFifoPoolOp pool,
+                                         ArrayRef<Operation *> buffers) {
+    bool drains = endpoint.getChannel()->getDirection() == DMAChannelDir::MM2S;
+
+    SmallVector<ObjectFifoSegmentAttr> segments;
+    if (pool)
+      if (auto all = pool.getSegments()) {
+        if (auto selected = endpoint.getSegments())
+          for (int32_t index : *selected)
+            segments.push_back(cast<ObjectFifoSegmentAttr>((*all)[index]));
+        else
+          for (auto segment : all->getAsRange<ObjectFifoSegmentAttr>())
+            segments.push_back(segment);
+      }
+
+    SmallVector<Descriptor> descriptors;
+    int64_t override = endpoint.getTransferSize().value_or(0);
+    for (auto [index, buffer] : llvm::enumerate(buffers)) {
+      if (segments.empty()) {
+        auto type = cast<MemRefType>(buffer->getResult(0).getType());
+        descriptors.push_back({buffer,
+                               0,
+                               override ? override : type.getNumElements(),
+                               {},
+                               {},
+                               static_cast<int64_t>(index)});
+        continue;
+      }
+      for (ObjectFifoSegmentAttr segment : segments)
+        descriptors.push_back(
+            {buffer, segment.getOffset(),
+             override ? override : segment.getSize(),
+             drains ? segment.getConsumeLock() : segment.getProduceLock(),
+             drains ? segment.getProduceLock() : segment.getConsumeLock(),
+             static_cast<int64_t>(index)});
+    }
+    return descriptors;
+  }
+
+  void emitDescriptor(ObjectFifoDmaEndpointOp endpoint, ObjectFifoPoolOp pool,
+                      const Descriptor &descriptor, Block *successor,
+                      bool binaryLocks) {
+    Location loc = endpoint.getLoc();
+    bool drains = endpoint.getChannel()->getDirection() == DMAChannelDir::MM2S;
+    int count = endpoint.getAcqRelCount().value_or(1);
+
+    LockOp acquireLock, releaseLock;
+    int acquireValue = count, releaseValue = count;
+    auto action = LockAction::AcquireGreaterEqual;
+    if (binaryLocks) {
+      // One lock travels with the buffer, and the direction is carried in the
+      // value rather than in a second lock.
+      if (auto locks = pool ? pool.getLocks() : std::nullopt)
+        if (descriptor.binaryLock < (int64_t)locks->size()) {
+          acquireLock = releaseLock = lookup<LockOp>(
+              cast<FlatSymbolRefAttr>((*locks)[descriptor.binaryLock]));
+          acquireValue = drains ? 1 : 0;
+          releaseValue = drains ? 0 : 1;
+          action = LockAction::Acquire;
+        }
+    } else if (descriptor.acquireLock) {
+      acquireLock = lookup<LockOp>(descriptor.acquireLock);
+      releaseLock = lookup<LockOp>(descriptor.releaseLock);
+    }
+
+    if (acquireLock)
+      UseLockOp::create(builder, loc, acquireLock, action, acquireValue);
+    if (auto packet = endpoint.getPacket())
+      DMABDPACKETOp::create(builder, loc, packet->getPktType(),
+                            packet->getPktId());
+
+    auto dims = endpoint.getDimensionsAttr();
+    auto pad = drains ? endpoint.getPadDimensionsAttr() : nullptr;
+    if (dims && pad)
+      DMABDOp::create(builder, loc, descriptor.buffer->getResult(0),
+                      descriptor.offset, descriptor.size, dims, pad);
+    else if (dims)
+      DMABDOp::create(builder, loc, descriptor.buffer->getResult(0),
+                      descriptor.offset, descriptor.size, dims);
+    else
+      DMABDOp::create(builder, loc, descriptor.buffer->getResult(0),
+                      descriptor.offset, descriptor.size);
+
+    if (releaseLock)
+      UseLockOp::create(builder, loc, releaseLock, LockAction::Release,
+                        releaseValue);
+    NextBDOp::create(builder, loc, successor);
+  }
+
+  void lowerEndpoint(ObjectFifoDmaEndpointOp endpoint) {
+    ObjectFifoPoolOp pool = endpoint.getPoolOp();
+    SmallVector<Operation *> buffers = buffersOf(pool);
+    if (buffers.empty())
+      return;
+
+    SmallVector<Descriptor> descriptors =
+        descriptorsFor(endpoint, pool, buffers);
+    if (descriptors.empty())
+      return;
+
+    Location loc = endpoint.getLoc();
+    auto channel = *endpoint.getChannel();
+    int repeat = endpoint.getRepeatCount().value_or(1);
+    // Only a MemTile's DMA runs a chain a fixed number of times.
+    auto iterCount = endpoint.getTileOp().isMemTile() ? endpoint.getIterCount()
+                                                      : std::nullopt;
+
+    // A chain over one descriptor repeats in hardware rather than as copies of
+    // the same buffer descriptor.
+    bool repeatInHardware = repeat > 1 && descriptors.size() == 1 && !iterCount;
+    int taskCount =
+        iterCount ? *iterCount - 1 : (repeatInHardware ? repeat - 1 : 0);
+    int copies = repeatInHardware ? 1 : repeat;
+
+    Operation *program = dmaProgramFor(endpoint.getTileOp(), loc);
+    Block *endBlock = findEndOpBlock(program->getRegion(0));
+    Block *lastDmaBlock = endBlock->getSinglePredecessor();
+    Block *dmaBlock = builder.createBlock(endBlock);
+    Block *bdBlock = builder.createBlock(endBlock);
+
+    builder.setInsertionPointToStart(dmaBlock);
+    DMAStartOp::create(builder, loc, channel.getDirection(), channel.getIndex(),
+                       taskCount, endpoint.getPadValue(), bdBlock, endBlock);
+    if (lastDmaBlock)
+      lastDmaBlock->getTerminator()->setSuccessor(dmaBlock, 1);
+
+    bool binaryLocks = !device.getTargetModel().hasProperty(
+        AIETargetModel::UsesSemaphoreLocks);
+    size_t total = descriptors.size() * copies;
+    size_t emitted = 0;
+    Block *current = bdBlock;
+    for (const Descriptor &descriptor : descriptors)
+      for (int copy = 0; copy < copies; copy++) {
+        Block *successor;
+        if (emitted + 1 < total) {
+          successor = builder.createBlock(endBlock);
+        } else if (iterCount) {
+          // A chain that runs a fixed number of times ends rather than loops.
+          successor = builder.createBlock(endBlock);
+          builder.setInsertionPointToStart(successor);
+          EndOp::create(builder, loc);
+        } else {
+          successor = bdBlock;
+        }
+        builder.setInsertionPointToStart(current);
+        emitDescriptor(endpoint, pool, descriptor, successor, binaryLocks);
+        current = successor;
+        emitted++;
+      }
+  }
+
+  void runOnOperation() override {
+    device = getOperation();
+    builder = OpBuilder(device.getContext());
+
+    SmallVector<ObjectFifoDmaEndpointOp> endpoints(
+        device.getOps<ObjectFifoDmaEndpointOp>());
+    for (ObjectFifoDmaEndpointOp endpoint : endpoints) {
+      if (!endpoint.getChannel()) {
+        endpoint.emitOpError("has no channel; run --aie-objectfifo-allocate");
+        return signalPassFailure();
+      }
+      // A raw stream port bypasses the DMA entirely.
+      if (!endpoint.getStreamPort())
+        lowerEndpoint(endpoint);
+      endpoint.erase();
+    }
+  }
+};
+
+} // namespace
+
+std::unique_ptr<OperationPass<DeviceOp>>
+xilinx::AIE::createAIEObjectFifoLowerDMAsPass() {
+  return std::make_unique<AIEObjectFifoLowerDMAsPass>();
+}

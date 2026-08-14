@@ -2366,6 +2366,11 @@ def AIE_ObjectFifoDmaEndpointOp
       DefaultValuedOptionalAttr<AIEI32Attr, "0">:$padValue,
       OptionalAttr<AIEI32Attr>:$repeatCount,
       OptionalAttr<AIEI32Attr>:$iterCount,
+      // Objects taken and given back per buffer descriptor.
+      OptionalAttr<AIEI32Attr>:$acqRelCount,
+      // Elements moved per buffer descriptor, where that is not the whole
+      // segment: the two ends of a link may disagree on an object's size.
+      OptionalAttr<AIEI32Attr>:$transferSize,
       // Drives a Core stream port in place of a DMA channel.
       OptionalAttr<AIEI32Attr>:$streamPort,
       DefaultValuedAttr<BoolAttr, "false">:$plio,

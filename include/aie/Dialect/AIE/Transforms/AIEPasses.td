@@ -437,6 +437,20 @@ def AIEObjectFifoAllocate : Pass<"aie-objectfifo-allocate", "DeviceOp"> {
   let dependentDialects = ["xilinx::AIE::AIEDialect"];
 }
 
+def AIEObjectFifoLowerDMAs : Pass<"aie-objectfifo-lower-dmas", "DeviceOp"> {
+  let summary = "Turn DMA endpoints into buffer descriptor chains";
+  let description = [{
+    Program each DMA endpoint's channel: for every object in its pool, for
+    every segment it is responsible for, a buffer descriptor guarded by that
+    segment's locks.
+
+    Consumes `aie.objectfifo.dma_endpoint`.
+  }];
+
+  let constructor = "xilinx::AIE::createAIEObjectFifoLowerDMAsPass()";
+  let dependentDialects = ["xilinx::AIE::AIEDialect"];
+}
+
 def AIEObjectFifoUnroll : Pass<"aie-objectFifo-unroll", "DeviceOp"> {
   let summary = "Unroll scf.for loops that contain objectFifo operations";
   let description = [{

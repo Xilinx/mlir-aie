@@ -27,6 +27,7 @@ add_mlir_dialect_library(
   AIEObjectFifoStatefulTransform.cpp
   AIEDMAChannelAnalysis.cpp
   AIEObjectFifoAllocate.cpp
+  AIEObjectFifoLowerDMAs.cpp
   AIEObjectFifoSplit.cpp
   AIEObjectFifoVerify.cpp
   AIEObjectFifoUnroll.cpp

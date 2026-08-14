@@ -145,9 +145,6 @@ struct AIEObjectFifoAllocatePass
   void allocateLocks(ObjectFifoPoolOp pool) {
     if (pool.getDisableSynchronization())
       return;
-    TileOp home = pool.getTileOp();
-    if (home.isShimTile())
-      return;
 
     StringRef base = poolBaseName(pool);
     int depth = pool.getDepth();
@@ -328,15 +325,18 @@ struct AIEObjectFifoAllocatePass
       if (!channel)
         continue;
       std::string name = (*endpoint.getFifoName() + "_shim_alloc").str();
-      if (SymbolTable::lookupNearestSymbolFrom<ShimDMAAllocationOp>(
+      if (!SymbolTable::lookupNearestSymbolFrom<ShimDMAAllocationOp>(
               device, builder.getStringAttr(name)))
-        continue;
-      ShimDMAAllocationOp::create(
-          builder, endpoint.getLoc(), builder.getStringAttr(name),
-          endpoint.getTile(),
-          DMAChannelDirAttr::get(builder.getContext(), channel->getDirection()),
-          builder.getI64IntegerAttr(channel->getIndex()),
-          builder.getBoolAttr(endpoint.getPlio()), endpoint.getPacketAttr());
+        ShimDMAAllocationOp::create(
+            builder, endpoint.getLoc(), builder.getStringAttr(name),
+            endpoint.getTile(),
+            DMAChannelDirAttr::get(builder.getContext(),
+                                   channel->getDirection()),
+            builder.getI64IntegerAttr(channel->getIndex()),
+            builder.getBoolAttr(endpoint.getPlio()), endpoint.getPacketAttr());
+      // The runtime sequence reaches the fifo through this record.
+      (void)SymbolTable::replaceAllSymbolUses(
+          endpoint, builder.getStringAttr(name), device);
     }
   }
 
@@ -361,6 +361,7 @@ struct AIEObjectFifoAllocatePass
       pools[slot] = pool;
 
     for (ObjectFifoPoolOp pool : pools) {
+      setInsertionPointBelowTiles();
       allocateBuffers(pool);
       allocateLocks(pool);
     }
