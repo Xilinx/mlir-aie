@@ -39,6 +39,7 @@ from aie.iron import (
 )
 from aie.iron.controlflow import range_
 from aie.utils.npukernel import NPUKernel
+from aie.utils.hostruntime.hrxruntime.hostruntime import CachedHRXRuntime
 
 _TILE = 16
 _SIZE = 1024
@@ -188,15 +189,19 @@ def test_chain_survives_executable_eviction():
     the eviction by shrinking the cache to one entry and loading two distinct
     executables, then chaining across both. Without the per-handle retain this
     dispatches a freed executable and fails; with it the chain runs correctly.
+
+    Uses a fresh ``CachedHRXRuntime`` rather than the process-wide
+    ``DefaultNPURuntime`` singleton so the cache starts empty and eviction is
+    deterministic (a shared runtime could already hold entries, making the load
+    a cache hit or evicting an unrelated entry).
     """
-    rt = _hrx_runtime()
+    rt = CachedHRXRuntime()
 
     xa, ia = add_one.specialize(N=_SIZE).compile()
     xb, ib = add_two.specialize(N=_SIZE).compile()
     ka = NPUKernel(str(xa), str(ia), kernel_name="MLIR_AIE")
     kb = NPUKernel(str(xb), str(ib), kernel_name="MLIR_AIE")
 
-    saved_size = rt._cache_size
     rt._cache_size = 1
     try:
         h_add1 = rt.load(ka)  # cache: {add_one}
@@ -216,4 +221,4 @@ def test_chain_survives_executable_eviction():
         np.testing.assert_array_equal(c1.numpy(), base + 1)
         np.testing.assert_array_equal(c2.numpy(), base + 2)
     finally:
-        rt._cache_size = saved_size
+        rt.cleanup()
