@@ -30,7 +30,7 @@ aie.device(xcve2302) {
 
    %core23 = aie.core(%tile23) {
       aie.objectfifo.release @of_0(Produce) [1]
-         
+
       aie.end
    }
 }
@@ -47,7 +47,7 @@ aie.device(xcve2302) {
 
       %core12 = aie.core(%tile12) {
       aie.objectfifo.release @of_0(Consume) [1]
-         
+
       aie.end
    }
 }

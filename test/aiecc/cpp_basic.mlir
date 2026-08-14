@@ -29,31 +29,31 @@ module {
   aie.device(npu1_1col) {
     %tile_0_0 = aie.tile(0, 0)
     %tile_0_2 = aie.tile(0, 2)
-    
+
     aie.objectfifo @of_in(%tile_0_0, {%tile_0_2}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
     aie.objectfifo @of_out(%tile_0_2, {%tile_0_0}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
-    
+
     %core_0_2 = aie.core(%tile_0_2) {
       %c0 = arith.constant 0 : index
       %c1 = arith.constant 1 : index
       %c16 = arith.constant 16 : index
       %c1_i32 = arith.constant 1 : i32
-      
+
       %elem_in = aie.objectfifo.acquire @of_in(Consume) : memref<16xi32>
-      
+
       %elem_out = aie.objectfifo.acquire @of_out(Produce) : memref<16xi32>
-      
+
       scf.for %i = %c0 to %c16 step %c1 {
         %val = memref.load %elem_in[%i] : memref<16xi32>
         %result = arith.addi %val, %c1_i32 : i32
         memref.store %result, %elem_out[%i] : memref<16xi32>
       }
-      
+
       aie.objectfifo.release @of_in(Consume) [1]
       aie.objectfifo.release @of_out(Produce) [1]
       aie.end
     }
-    
+
     aie.runtime_sequence(%in : memref<16xi32>, %out : memref<16xi32>) {
       %c0 = arith.constant 0 : i64
       %c1 = arith.constant 1 : i64

@@ -65,7 +65,7 @@ module {
       %c0 = arith.constant 0 : index
       %c1 = arith.constant 1 : index
       %c2_32 = arith.constant 2 : i32
-  
+
       scf.for %steps = %c0 to %c8 step %c1 {
         %elem0 = aie.objectfifo.acquire @objFifo_in1(Consume) : memref<8xi32>
         %elem1 = aie.objectfifo.acquire @objFifo_out1(Produce) : memref<8xi32>

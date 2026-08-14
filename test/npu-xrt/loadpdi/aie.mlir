@@ -5,10 +5,10 @@ module {
 
         %t00 = aie.tile(0, 0)
         %t02 = aie.tile(0, 2)
-        
+
         aie.objectfifo @objfifo_in (%t00, {%t02}, 1 : i32) : !aie.objectfifo<memref<128xi32>>
         aie.objectfifo @objfifo_out(%t02, {%t00}, 1 : i32) : !aie.objectfifo<memref<128xi32>>
-        
+
         aie.core(%t02) {
             %c0 = arith.constant 0 : index
             %c1 = arith.constant 1 : index
@@ -33,7 +33,7 @@ module {
         }
 
         aie.runtime_sequence @sequence(%a : memref<512xi32>) {
-            
+
             // The "ID" attribute must match the ID given in "config.json".
             // During compilation, aiebu will package the PDI for this core together with this runtime sequence into a ELF file.
             // At runtime, XRT will load the PDI into memory and patch the address of this load_pdi to the correct address, so we can set 0 for the address.

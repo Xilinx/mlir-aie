@@ -11,7 +11,7 @@ module {
     %t00 = aie.tile(0, 0)
     %t01 = aie.tile(0, 1)
     %t02 = aie.tile(0, 2)
-  
+
     aie.objectfifo @objFifo_in0(%t00, {%t01}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
     aie.objectfifo @objFifo_in1(%t01, {%t02}, 2 : i32) : !aie.objectfifo<memref<8xi32>>
     aie.objectfifo.link [@objFifo_in0] -> [@objFifo_in1] ([] [])
@@ -19,7 +19,7 @@ module {
     aie.objectfifo @objFifo_out1(%t02, {%t01}, 2 : i32) : !aie.objectfifo<memref<8xi32>>
     aie.objectfifo @objFifo_out0(%t01, {%t00}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
     aie.objectfifo.link [@objFifo_out1] -> [@objFifo_out0] ([] [])
-  
+
     // Create 8 locks on tile 0,2 with init values 42 to 49
     // This is the data the core will read over the processor bus
     aie.lock(%t02, 8) {init = 42 : i32, sym_name = "lock8"}

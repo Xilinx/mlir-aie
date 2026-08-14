@@ -46,10 +46,10 @@ module {
 
         %t00 = aie.tile(0, 0)
         %t02 = aie.tile(0, 2)
-        
+
         aie.objectfifo @objfifo_in (%t00, {%t02}, 1 : i32) : !aie.objectfifo<memref<4xi32>>
         aie.objectfifo @objfifo_out(%t02, {%t00}, 1 : i32) : !aie.objectfifo<memref<4xi32>>
-        
+
         aie.core(%t02) {
             %c0 = arith.constant 0 : index
             %c1 = arith.constant 1 : index
@@ -74,7 +74,7 @@ module {
         }
 
         aie.runtime_sequence @add_two_sequence(%a : memref<4xi32>) {
-            
+
             %t_in = aiex.dma_configure_task_for @objfifo_in {
                 aie.dma_bd(%a : memref<4xi32> offset = 0 len = 4)
                 aie.end
@@ -94,10 +94,10 @@ module {
 
         %t00 = aie.tile(0, 0)
         %t02 = aie.tile(0, 2)
-        
+
         aie.objectfifo @objfifo_in (%t00, {%t02}, 1 : i32) : !aie.objectfifo<memref<4xi32>>
         aie.objectfifo @objfifo_out(%t02, {%t00}, 1 : i32) : !aie.objectfifo<memref<4xi32>>
-        
+
         aie.core(%t02) {
             %c0 = arith.constant 0 : index
             %c1 = arith.constant 1 : index
@@ -122,7 +122,7 @@ module {
         }
 
         aie.runtime_sequence @add_three_sequence(%a : memref<4xi32>) {
-            
+
             %t_in = aiex.dma_configure_task_for @objfifo_in {
                 aie.dma_bd(%a : memref<4xi32> offset = 0 len = 4)
                 aie.end

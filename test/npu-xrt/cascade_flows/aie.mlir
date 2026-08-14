@@ -15,7 +15,7 @@ module {
 
     aie.cascade_flow(%t03, %t13)
     aie.cascade_flow(%t13, %t12)
-  
+
     aie.objectfifo @objFifo_in0(%t00, {%t01}, 1 : i32) : !aie.objectfifo<memref<64xi32>>
     aie.objectfifo @objFifo_in1(%t01, {%t03}, 1 : i32) : !aie.objectfifo<memref<64xi32>>
     aie.objectfifo.link [@objFifo_in0] -> [@objFifo_in1] ([] [])

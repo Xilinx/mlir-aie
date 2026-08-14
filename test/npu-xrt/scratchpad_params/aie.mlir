@@ -52,7 +52,7 @@ module {
 
             aiex.dma_start_task(%t_out)
             aiex.dma_await_task(%t_out)
-        } 
+        }
 
     }
 }

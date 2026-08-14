@@ -10,7 +10,7 @@ module {
     %t00 = aie.tile(0, 0)
     %t01 = aie.tile(0, 1)
     %t02 = aie.tile(0, 2)
-  
+
     aie.objectfifo @objFifo_in0(%t00, {%t01}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
     aie.objectfifo @objFifo_in1(%t01, {%t02}, 2 : i32) : !aie.objectfifo<memref<8xi32>>
     aie.objectfifo.link [@objFifo_in0] -> [@objFifo_in1] ([] [])
@@ -18,13 +18,13 @@ module {
     aie.objectfifo @objFifo_out1(%t02, {%t01}, 2 : i32) : !aie.objectfifo<memref<8xi32>>
     aie.objectfifo @objFifo_out0(%t01, {%t00}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
     aie.objectfifo.link [@objFifo_out1] -> [@objFifo_out0] ([] [])
-  
+
     aie.core(%t02) {
       %c8 = arith.constant 8 : index
       %c0 = arith.constant 0 : index
       %c1 = arith.constant 1 : index
       %c1_32 = arith.constant 41 : i32
-  
+
       scf.for %steps = %c0 to %c8 step %c1 {
         %elem0 = aie.objectfifo.acquire @objFifo_in1(Consume) : memref<8xi32>
         %elem1 = aie.objectfifo.acquire @objFifo_out1(Produce) : memref<8xi32>

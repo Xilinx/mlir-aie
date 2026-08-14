@@ -5,29 +5,29 @@
 //
 //===----------------------------------------------------------------------===//
 
-// Declare this MLIR module. A block encapsulates all 
+// Declare this MLIR module. A block encapsulates all
 // AIE tiles, buffers, and communication in an AI Engine design
 module @passThroughLine_aie2 {
 
  	aie.device(npu) {
-        // declare kernel external kernel function 
+        // declare kernel external kernel function
         func.func private @passThroughLine(%in: memref<512xui8>, %out: memref<512xui8>, %tilewidth: i32) -> () attributes {link_with = "passThrough.cc.o"}
-        
+
         // Declare tile object of the AIE class located at position col 1, row 4
         %tile00 = aie.tile(0, 0)
         %tile02 = aie.tile(0, 2)
 
         aie.objectfifo @inOF(%tile00, {%tile02}, 2 : i32) : !aie.objectfifo<memref<512xui8>>
         aie.objectfifo @outOF(%tile02, {%tile00}, 2 : i32) : !aie.objectfifo<memref<512xui8>>
-       
-        // Define the algorithm for the core of tile(0,2) 
+
+        // Define the algorithm for the core of tile(0,2)
         %core02 = aie.core(%tile02) {
             %c0 = arith.constant 0 : index
             %c1 = arith.constant 1 : index
             %tileheight = arith.constant 9  : index
             %tilewidth  = arith.constant 512 : i32
-            
-            scf.for %iter = %c0 to %tileheight step %c1 { 
+
+            scf.for %iter = %c0 to %tileheight step %c1 {
                 // Acquire objectfifos and get subviews
                 %elemIn = aie.objectfifo.acquire @inOF(Consume) : memref<512xui8>
                 %elemOut = aie.objectfifo.acquire @outOF(Produce) : memref<512xui8>

@@ -5,14 +5,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-//┌─────────────────────────────────┐      
-//│Input:                           │      
-//│[                                │      
-//│[1, 1, 1, 1, ..., 1, 1, 1, 1],   │      
-//│[0, 0, 0, 0, ..., 0, 0, 0, 0],   │      
-//│ .............                   │      
-//│]                                │      
-//└─────────────────────────────────┘      
+//┌─────────────────────────────────┐
+//│Input:                           │
+//│[                                │
+//│[1, 1, 1, 1, ..., 1, 1, 1, 1],   │
+//│[0, 0, 0, 0, ..., 0, 0, 0, 0],   │
+//│ .............                   │
+//│]                                │
+//└─────────────────────────────────┘
 //┌───────────────────────────────────────┐
 //│Output:                                │
 //│[                                      │
@@ -38,15 +38,15 @@ module {
         %mem_tile_0_1 = aie.tile(0, 1)
         %tile_0_2 = aie.tile(0, 2)
 
-        aie.objectfifo @mem_In(%shim_noc_tile_0_0, {%mem_tile_0_1}, 1 : i32) : !aie.objectfifo<memref<16xi32>> 
-        aie.objectfifo @act_In(%mem_tile_0_1, {%tile_0_2}, 1 : i32) : !aie.objectfifo<memref<16xi32>> 
+        aie.objectfifo @mem_In(%shim_noc_tile_0_0, {%mem_tile_0_1}, 1 : i32) : !aie.objectfifo<memref<16xi32>>
+        aie.objectfifo @act_In(%mem_tile_0_1, {%tile_0_2}, 1 : i32) : !aie.objectfifo<memref<16xi32>>
         aie.objectfifo.link [@mem_In] -> [@act_In]([] [])
-        aie.objectfifo @out(%tile_0_2, {%mem_tile_0_1}, 1 : i32) : !aie.objectfifo<memref<16xi32>> 
-        aie.objectfifo @mem_out(%mem_tile_0_1, {%shim_noc_tile_0_0}, 1 : i32) : !aie.objectfifo<memref<16xi32>> 
+        aie.objectfifo @out(%tile_0_2, {%mem_tile_0_1}, 1 : i32) : !aie.objectfifo<memref<16xi32>>
+        aie.objectfifo @mem_out(%mem_tile_0_1, {%shim_noc_tile_0_0}, 1 : i32) : !aie.objectfifo<memref<16xi32>>
         aie.objectfifo.link [@out] -> [@mem_out]([] [])
 
         // Buffers used to hold runtime parameters
-        %rtp2 = aie.buffer(%tile_0_2) {sym_name = "rtp2"} : memref<16xi32> 
+        %rtp2 = aie.buffer(%tile_0_2) {sym_name = "rtp2"} : memref<16xi32>
 
         %core_0_2 = aie.core(%tile_0_2) {
             %c0 = arith.constant 0 : index
@@ -148,4 +148,3 @@ module {
         }
     }
 }
-
