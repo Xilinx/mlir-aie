@@ -65,28 +65,28 @@ DMAChannelAnalysis::DMAChannelAnalysis(DeviceOp &device) {
 /// Given a tile and DMAChannelDir, returns next usable channel index for
 /// that tile.
 int DMAChannelAnalysis::getDMAChannelIndex(
-    TileOp tileOp, DMAChannelDir dir, bool requiresAdjacentTileAccessChannels) {
+    TileLike tile, DMAChannelDir dir, bool requiresAdjacentTileAccessChannels) {
   int maxChannelNum = 0;
   if (dir == DMAChannelDir::MM2S)
-    maxChannelNum = tileOp.getNumSourceConnections(WireBundle::DMA);
+    maxChannelNum = tile.getNumSourceConnections(WireBundle::DMA);
   else
-    maxChannelNum = tileOp.getNumDestConnections(WireBundle::DMA);
+    maxChannelNum = tile.getNumDestConnections(WireBundle::DMA);
 
-  const auto &targetModel = getTargetModel(tileOp);
-  int maxChannelNumForAdjacentTile =
-      targetModel.getMaxChannelNumForAdjacentMemTile(tileOp.getCol(),
-                                                     tileOp.getRow());
-
-  // if requires adjacent tile access channels, only allocate on channel 0-3,
-  // and if cannot, return 0
-  if (requiresAdjacentTileAccessChannels) {
-    maxChannelNum = std::min(maxChannelNum, maxChannelNumForAdjacentTile);
+  // Reaching a neighbour's memory restricts the range, and which neighbour a
+  // tile has is only known once it is placed.
+  std::optional<int> col = tile.tryGetCol();
+  std::optional<int> row = tile.tryGetRow();
+  if (requiresAdjacentTileAccessChannels && col && row) {
+    const auto &targetModel = getTargetModel(tile);
+    maxChannelNum = std::min<int>(
+        maxChannelNum,
+        targetModel.getMaxChannelNumForAdjacentMemTile(*col, *row));
   }
 
+  Value result = tile->getResult(0);
   for (int i = 0; i < maxChannelNum; i++) {
-    if (int usageCnt = channelsPerTile[{tileOp.getResult(), dir, i}];
-        usageCnt == 0) {
-      channelsPerTile[{tileOp.getResult(), dir, i}] = 1;
+    if (int usageCnt = channelsPerTile[{result, dir, i}]; usageCnt == 0) {
+      channelsPerTile[{result, dir, i}] = 1;
       return i;
     }
   }
@@ -97,29 +97,31 @@ int DMAChannelAnalysis::getDMAChannelIndex(
 /// on success; returns -1 if the channel is out of range for the tile or is
 /// already in use (the caller emits a diagnostic). Reserving up-front ensures
 /// first-free auto-assignment never steals a pinned channel.
-int DMAChannelAnalysis::reservePinnedChannel(TileOp tileOp, DMAChannelDir dir,
+int DMAChannelAnalysis::reservePinnedChannel(TileLike tile, DMAChannelDir dir,
                                              int channel) {
   int maxChannelNum = (dir == DMAChannelDir::MM2S)
-                          ? tileOp.getNumSourceConnections(WireBundle::DMA)
-                          : tileOp.getNumDestConnections(WireBundle::DMA);
+                          ? tile.getNumSourceConnections(WireBundle::DMA)
+                          : tile.getNumDestConnections(WireBundle::DMA);
   if (channel < 0 || channel >= maxChannelNum)
     return -1;
-  if (channelsPerTile[{tileOp.getResult(), dir, channel}] != 0)
+  Value result = tile->getResult(0);
+  if (channelsPerTile[{result, dir, channel}] != 0)
     return -1;
-  channelsPerTile[{tileOp.getResult(), dir, channel}] = 1;
+  channelsPerTile[{result, dir, channel}] = 1;
   return channel;
 }
 
 /// Given a tile and DMAChannel, adds entry to aieStreamsPerTile or
 /// throws an error if the stream is already used.
-void DMAChannelAnalysis::checkAIEStreamIndex(TileOp tileOp, DMAChannel chan) {
-  if (aieStreamsPerTile.find({tileOp.getResult(), chan.direction,
-                              chan.channel}) == aieStreamsPerTile.end()) {
-    aieStreamsPerTile[{tileOp.getResult(), chan.direction, chan.channel}] = 1;
+void DMAChannelAnalysis::checkAIEStreamIndex(TileLike tile, DMAChannel chan) {
+  Value result = tile->getResult(0);
+  if (aieStreamsPerTile.find({result, chan.direction, chan.channel}) ==
+      aieStreamsPerTile.end()) {
+    aieStreamsPerTile[{result, chan.direction, chan.channel}] = 1;
   } else {
     if (chan.direction == DMAChannelDir::MM2S)
-      tileOp.emitOpError("number of output Core channels exceeded!");
+      tile->emitOpError("number of output Core channels exceeded!");
     else
-      tileOp.emitOpError("number of input Core channels exceeded!");
+      tile->emitOpError("number of input Core channels exceeded!");
   }
 }

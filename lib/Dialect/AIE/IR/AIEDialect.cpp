@@ -653,8 +653,8 @@ SmallVector<OpTy> lookupAll(Operation *from, std::optional<ArrayAttr> names) {
 
 } // namespace
 
-TileOp ObjectFifoPoolOp::getTileOp() {
-  return cast<TileOp>(getTile().getDefiningOp());
+TileLike ObjectFifoPoolOp::getTileLike() {
+  return dyn_cast<TileLike>(getTile().getDefiningOp());
 }
 
 int64_t ObjectFifoPoolOp::getObjectSize() {
@@ -785,8 +785,8 @@ selectSegments(ObjectFifoPoolOp pool,
   return chosen;
 }
 
-TileOp ObjectFifoCoreEndpointOp::getTileOp() {
-  return cast<TileOp>(getTile().getDefiningOp());
+TileLike ObjectFifoCoreEndpointOp::getTileLike() {
+  return dyn_cast<TileLike>(getTile().getDefiningOp());
 }
 
 ObjectFifoPoolOp ObjectFifoCoreEndpointOp::getPoolOp() {
@@ -805,8 +805,8 @@ LogicalResult ObjectFifoCoreEndpointOp::verify() {
   return verifyEndpoint(*this, pool, getSegments());
 }
 
-TileOp ObjectFifoDmaEndpointOp::getTileOp() {
-  return cast<TileOp>(getTile().getDefiningOp());
+TileLike ObjectFifoDmaEndpointOp::getTileLike() {
+  return dyn_cast<TileLike>(getTile().getDefiningOp());
 }
 
 ObjectFifoPoolOp ObjectFifoDmaEndpointOp::getPoolOp() {
@@ -825,7 +825,10 @@ LogicalResult ObjectFifoDmaEndpointOp::verify() {
     return emitOpError("must name a role together with a pool");
 
   if (!poolName) {
-    if (!getTileOp().isShimTile() && !getStreamPort())
+    TileLike tile = getTileLike();
+    if (!tile)
+      return emitOpError("tile operand is not an aie.tile or aie.logical_tile");
+    if (!tile.isShimTile() && !getStreamPort())
       return emitOpError("only a shim or stream-port endpoint may omit its "
                          "pool");
     return success();

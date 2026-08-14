@@ -271,7 +271,7 @@ struct AIEObjectFifoSplitPass
     int64_t pooled = ref.pool.getObjectSize();
     if (own == pooled)
       return std::nullopt;
-    if (ref.pool.getTileOp().isMemTile() && own < pooled)
+    if (ref.pool.getTileLike().isMemTile() && own < pooled)
       return std::nullopt;
     return own;
   }

@@ -2295,7 +2295,8 @@ def AIE_ObjectFifoPoolOp
   let hasVerifier = 1;
 
   let extraClassDeclaration = [{
-    TileOp getTileOp();
+    /// The tile op backing this op's tile operand; placed or logical.
+    TileLike getTileLike();
 
     /// Byte-agnostic element count of one object, taken from the element type.
     int64_t getObjectSize();
@@ -2344,7 +2345,8 @@ def AIE_ObjectFifoCoreEndpointOp
   let hasVerifier = 1;
 
   let extraClassDeclaration = [{
-    TileOp getTileOp();
+    /// The tile op backing this op's tile operand; placed or logical.
+    TileLike getTileLike();
     ObjectFifoPoolOp getPoolOp();
     bool drains() { return getRole() == ObjectFifoRole::Drain; }
 
@@ -2406,7 +2408,8 @@ def AIE_ObjectFifoDmaEndpointOp
   let hasVerifier = 1;
 
   let extraClassDeclaration = [{
-    TileOp getTileOp();
+    /// The tile op backing this op's tile operand; placed or logical.
+    TileLike getTileLike();
     /// Null on a shim endpoint.
     ObjectFifoPoolOp getPoolOp();
     bool drains() { return getRole() == ObjectFifoRole::Drain; }

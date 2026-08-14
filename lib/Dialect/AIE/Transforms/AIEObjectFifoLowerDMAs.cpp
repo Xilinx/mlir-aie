@@ -55,9 +55,9 @@ struct AIEObjectFifoLowerDMAsPass
   }
 
   /// The DMA program of `tile`, created empty if the tile has none yet.
-  Operation *dmaProgramFor(TileOp tile, Location loc) {
+  Operation *dmaProgramFor(TileLike tile, Location loc) {
     auto matches = [&](Operation *op, Value tileOperand) {
-      return tileOperand == tile.getResult() ? op : nullptr;
+      return tileOperand == tile->getResult(0) ? op : nullptr;
     };
     for (auto op : device.getOps<MemOp>())
       if (Operation *found = matches(op, op.getTile()))
@@ -74,11 +74,11 @@ struct AIEObjectFifoLowerDMAsPass
     Operation *program;
     if (tile.isShimTile())
       program = ShimDMAOp::create(builder, loc, builder.getIndexType(),
-                                  tile.getResult());
+                                  tile->getResult(0));
     else if (tile.isMemTile())
-      program = MemTileDMAOp::create(builder, loc, tile.getResult());
+      program = MemTileDMAOp::create(builder, loc, tile->getResult(0));
     else
-      program = MemOp::create(builder, loc, tile.getResult());
+      program = MemOp::create(builder, loc, tile->getResult(0));
 
     builder.setInsertionPointToStart(&program->getRegion(0).emplaceBlock());
     EndOp::create(builder, loc);
@@ -174,8 +174,9 @@ struct AIEObjectFifoLowerDMAsPass
     Location loc = endpoint.getLoc();
     int repeat = endpoint.getRepeatCount().value_or(1);
     // Only a MemTile's DMA runs a chain a fixed number of times.
-    auto iterCount = endpoint.getTileOp().isMemTile() ? endpoint.getIterCount()
-                                                      : std::nullopt;
+    auto iterCount = endpoint.getTileLike().isMemTile()
+                         ? endpoint.getIterCount()
+                         : std::nullopt;
 
     // A chain over one descriptor repeats in hardware rather than as copies of
     // the same buffer descriptor.
@@ -184,7 +185,7 @@ struct AIEObjectFifoLowerDMAsPass
         iterCount ? *iterCount - 1 : (repeatInHardware ? repeat - 1 : 0);
     int copies = repeatInHardware ? 1 : repeat;
 
-    Operation *program = dmaProgramFor(endpoint.getTileOp(), loc);
+    Operation *program = dmaProgramFor(endpoint.getTileLike(), loc);
     Block *endBlock = findEndOpBlock(program->getRegion(0));
     Block *lastDmaBlock = endBlock->getSinglePredecessor();
     Block *dmaBlock = builder.createBlock(endBlock);

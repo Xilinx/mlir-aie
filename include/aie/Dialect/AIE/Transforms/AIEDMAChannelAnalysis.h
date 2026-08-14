@@ -26,18 +26,18 @@ class DMAChannelAnalysis {
 public:
   DMAChannelAnalysis(DeviceOp &device);
 
-  /// Next free channel of `tileOp` in `dir`, or -1 when the tile has none left.
+  /// Next free channel of `tile` in `dir`, or -1 when the tile has none left.
   /// A channel reaching an adjacent MemTile's memory must come from the lower
-  /// half of the range.
-  int getDMAChannelIndex(TileOp tileOp, DMAChannelDir dir,
+  /// half of the range, which only a placed tile can bound.
+  int getDMAChannelIndex(TileLike tile, DMAChannelDir dir,
                          bool requiresAdjacentTileAccessChannels);
 
-  /// Claim `channel` for (`tileOp`, `dir`) so first-free assignment cannot take
+  /// Claim `channel` for (`tile`, `dir`) so first-free assignment cannot take
   /// it. Returns -1 when the channel is out of range or already claimed.
-  int reservePinnedChannel(TileOp tileOp, DMAChannelDir dir, int channel);
+  int reservePinnedChannel(TileLike tile, DMAChannelDir dir, int channel);
 
-  /// Claim a raw stream port, reporting on `tileOp` when it is already taken.
-  void checkAIEStreamIndex(TileOp tileOp, DMAChannel chan);
+  /// Claim a raw stream port, reporting on `tile` when it is already taken.
+  void checkAIEStreamIndex(TileLike tile, DMAChannel chan);
 };
 
 } // namespace xilinx::AIE
