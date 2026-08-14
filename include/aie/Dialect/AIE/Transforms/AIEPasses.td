@@ -385,6 +385,26 @@ def AIEObjectFifoStatefulTransform : Pass<"aie-objectFifo-stateful-transform", "
   ];
 }
 
+def AIEObjectFifoSplit : Pass<"aie-objectfifo-split", "DeviceOp"> {
+  let summary = "Split objectFifos into pools and endpoints";
+  let description = [{
+    Replace each `aie.objectfifo` and `aie.objectfifo.link` with the buffer pools
+    its objects live in and one endpoint per actor working through them.
+
+    A fifo whose ends reach one memory module becomes a single pool with a core
+    endpoint at each end. Any other fifo becomes one pool per tile, a DMA
+    endpoint alongside each core endpoint, and an `aie.objectfifo.flow`
+    connecting the two DMA ends. A link's participants meet on one pool, one
+    segment per participant.
+
+    Buffers, locks and channels are left unassigned; `--aie-objectfifo-allocate`
+    fills them in.
+  }];
+
+  let constructor = "xilinx::AIE::createAIEObjectFifoSplitPass()";
+  let dependentDialects = ["xilinx::AIE::AIEDialect"];
+}
+
 def AIEObjectFifoUnroll : Pass<"aie-objectFifo-unroll", "DeviceOp"> {
   let summary = "Unroll scf.for loops that contain objectFifo operations";
   let description = [{

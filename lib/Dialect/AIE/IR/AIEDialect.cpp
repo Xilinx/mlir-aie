@@ -600,6 +600,148 @@ TileOp ObjectFifoCreateOp::getProducerTileOp() {
   return cast<TileOp>(getProducerTile().getDefiningOp());
 }
 
+//===----------------------------------------------------------------------===//
+// ObjectFifoPoolOp
+//===----------------------------------------------------------------------===//
+
+TileOp ObjectFifoPoolOp::getTileOp() {
+  return cast<TileOp>(getTile().getDefiningOp());
+}
+
+int64_t ObjectFifoPoolOp::getObjectSize() {
+  return llvm::cast<MemRefType>(getElemType()).getNumElements();
+}
+
+LogicalResult ObjectFifoPoolOp::verify() {
+  if (getSegments().has_value() == getLocks().has_value())
+    return emitOpError("must carry exactly one of 'segments' or 'locks'");
+
+  if (auto locks = getLocks())
+    if (static_cast<int64_t>(locks->size()) != getDepth())
+      return emitOpError("expects one lock per buffer");
+
+  if (auto buffers = getBuffers())
+    if (static_cast<int64_t>(buffers->size()) != getDepth())
+      return emitOpError("expects 'depth' buffers");
+
+  if (auto segments = getSegments()) {
+    if (segments->empty())
+      return emitOpError("expects at least one segment");
+
+    int64_t previous = -1;
+    for (auto segment : segments->getAsRange<ObjectFifoSegmentAttr>()) {
+      if (static_cast<int64_t>(segment.getOffset()) <= previous)
+        return emitOpError("segments must be ordered by increasing offset");
+      previous = segment.getOffset();
+    }
+
+    if (segments->size() > 1) {
+      auto &target = (*this)->getParentOfType<DeviceOp>().getTargetModel();
+      if (!target.hasProperty(AIETargetModel::UsesSemaphoreLocks))
+        return emitOpError("multiple segments require semaphore locks");
+    }
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// ObjectFifo endpoints
+//===----------------------------------------------------------------------===//
+
+namespace {
+
+/// Shared checks for the two endpoint ops. `pool` is null on a shim endpoint.
+LogicalResult verifyEndpoint(Operation *op, ObjectFifoPoolOp pool,
+                             std::optional<ArrayRef<int32_t>> segments) {
+  if (!segments)
+    return success();
+  if (segments->empty())
+    return op->emitOpError("expects at least one segment index");
+
+  auto poolSegments = pool.getSegments();
+  int64_t numSegments = poolSegments ? poolSegments->size() : 1;
+  for (int32_t index : *segments)
+    if (index < 0 || index >= numSegments)
+      return op->emitOpError("segment index ") << index << " out of range";
+  return success();
+}
+
+ObjectFifoPoolOp lookupPool(Operation *op, StringRef name) {
+  auto device = op->getParentOfType<DeviceOp>();
+  return SymbolTable::lookupNearestSymbolFrom<ObjectFifoPoolOp>(
+      device, StringAttr::get(op->getContext(), name));
+}
+
+} // namespace
+
+TileOp ObjectFifoCoreEndpointOp::getTileOp() {
+  return cast<TileOp>(getTile().getDefiningOp());
+}
+
+ObjectFifoPoolOp ObjectFifoCoreEndpointOp::getPoolOp() {
+  return lookupPool(*this, getPool());
+}
+
+LogicalResult ObjectFifoCoreEndpointOp::verify() {
+  ObjectFifoPoolOp pool = getPoolOp();
+  if (!pool)
+    return emitOpError("references undefined pool '") << getPool() << "'";
+  return verifyEndpoint(*this, pool, getSegments());
+}
+
+TileOp ObjectFifoDmaEndpointOp::getTileOp() {
+  return cast<TileOp>(getTile().getDefiningOp());
+}
+
+ObjectFifoPoolOp ObjectFifoDmaEndpointOp::getPoolOp() {
+  auto name = getPool();
+  return name ? lookupPool(*this, *name) : ObjectFifoPoolOp();
+}
+
+LogicalResult ObjectFifoDmaEndpointOp::verify() {
+  auto poolName = getPool();
+  if (poolName.has_value() != getRole().has_value())
+    return emitOpError("must name a role together with a pool");
+
+  if (!poolName) {
+    if (!getTileOp().isShimTile())
+      return emitOpError("only a shim endpoint may omit its pool");
+    return success();
+  }
+
+  ObjectFifoPoolOp pool = getPoolOp();
+  if (!pool)
+    return emitOpError("references undefined pool '") << *poolName << "'";
+  return verifyEndpoint(*this, pool, getSegments());
+}
+
+//===----------------------------------------------------------------------===//
+// ObjectFifoFlowOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult ObjectFifoFlowOp::verify() {
+  if (getDestinations().empty())
+    return emitOpError("expects at least one destination");
+
+  auto device = (*this)->getParentOfType<DeviceOp>();
+  auto lookup = [&](StringRef name) {
+    return SymbolTable::lookupNearestSymbolFrom<ObjectFifoDmaEndpointOp>(
+        device, StringAttr::get(getContext(), name));
+  };
+
+  auto source = lookup(getSource());
+  if (!source)
+    return emitOpError("source '") << getSource() << "' is not a DMA endpoint";
+
+  for (auto destination : getDestinations().getAsRange<FlatSymbolRefAttr>())
+    if (!lookup(destination.getValue()))
+      return emitOpError("destination '")
+             << destination.getValue() << "' is not a DMA endpoint";
+
+  return success();
+}
+
 BDDimLayoutArrayAttr
 ObjectFifoCreateOp::getDimensionsFromStream(Value consumerTile) {
   int dimsIndex = 0;
@@ -1053,51 +1195,92 @@ ObjectFifoCreateOp ObjectFifoRegisterExternalBuffersOp::getObjectFifo() {
 // ObjectFifoAcquireOp
 //===----------------------------------------------------------------------===//
 
+namespace {
+
+/// Symbol an objectFifo access names: the fifo it belongs to, or the core
+/// endpoint it works through.
+Operation *lookupAccessTarget(Operation *op, StringRef name) {
+  for (Operation *parent = op->getParentOp(); parent;
+       parent = parent->getParentOp())
+    if (parent->hasTrait<OpTrait::SymbolTable>())
+      if (Operation *target = SymbolTable::lookupSymbolIn(parent, name))
+        return target;
+  return nullptr;
+}
+
+/// Element type an access sees, or a null type if the symbol names neither a
+/// fifo nor an endpoint.
+Type accessElementType(Operation *target) {
+  if (auto fifo = dyn_cast_or_null<ObjectFifoCreateOp>(target))
+    return llvm::cast<AIEObjectFifoType>(fifo.getElemType()).getElementType();
+  if (auto endpoint = dyn_cast_or_null<ObjectFifoCoreEndpointOp>(target))
+    if (auto pool = endpoint.getPoolOp())
+      return pool.getElemType();
+  return {};
+}
+
+/// A core may only reach a fifo end that is placed on its own tile.
+LogicalResult verifyAccessPlacement(Operation *op, Operation *target,
+                                    std::optional<ObjectFifoPort> port) {
+  auto core = op->getParentOfType<CoreOp>();
+  Value coreTile = core.getTile();
+
+  if (auto endpoint = dyn_cast_or_null<ObjectFifoCoreEndpointOp>(target)) {
+    if (port)
+      return op->emitOpError("port is implied by the endpoint's role");
+    if (endpoint.getTile() != coreTile)
+      return core.emitOpError(
+          "objectFifo endpoint accessed by core running on another tile");
+    return success();
+  }
+
+  auto fifo = dyn_cast_or_null<ObjectFifoCreateOp>(target);
+  if (!fifo)
+    return op->emitError("cannot retrieve associated object FIFO");
+  if (!port)
+    return op->emitOpError("port is required when accessing an objectFifo");
+
+  if (*port == ObjectFifoPort::Produce) {
+    if (coreTile != fifo.getProducerTile())
+      return core.emitOpError(
+          "producer port of objectFifo accessed by core running "
+          "on non-producer tile");
+  } else {
+    if (!llvm::is_contained(fifo.getConsumerTiles(), coreTile))
+      return core.emitOpError(
+          "consumer port of objectFifo accessed by core running "
+          "on non-consumer tile");
+  }
+  return success();
+}
+
+} // namespace
+
 LogicalResult ObjectFifoAcquireOp::verify() {
   auto parent = getOperation()->getParentOfType<CoreOp>();
   if (parent == nullptr)
     return emitOpError("must be called from inside a CoreOp");
 
-  auto coreTile = parent.getTile();
-  auto objFifo = getObjectFifo();
-  if (!objFifo)
-    return emitError("cannot retrieve associated object FIFO");
-  if (getPort() == ObjectFifoPort::Produce) {
-    if (coreTile != objFifo.getProducerTile())
-      return parent.emitOpError(
-          "producer port of objectFifo accessed by core running "
-          "on non-producer tile");
-  } else if (getPort() == ObjectFifoPort::Consume) {
-    bool found = false;
-    for (auto consumerTile : objFifo.getConsumerTiles()) {
-      if (coreTile == consumerTile) {
-        found = true;
-        break;
-      }
-    }
-    if (!found)
-      return parent.emitOpError(
-          "consumer port of objectFifo accessed by core running "
-          "on non-consumer tile");
-  }
+  Operation *target = lookupAccessTarget(*this, getObjFifoName());
+  if (failed(verifyAccessPlacement(*this, target, getPort())))
+    return failure();
 
-  auto objFifoElem =
-      llvm::cast<AIEObjectFifoType>(getObjectFifo().getElemType())
-          .getElementType();
-  auto objFifoSubviewElem =
-      llvm::cast<AIEObjectFifoSubviewType>(getResult().getType())
-          .getElementType();
-  // Also accept the consumer element type for asymmetric ObjectFifos
-  auto objFifoConsType = llvm::dyn_cast<AIEObjectFifoType>(
-      getObjectFifo().getConsumerElemTypeOrDefault());
-  if (!objFifoConsType)
-    return emitOpError("ObjectFifo consumer element type must be an "
-                       "!aie.objectfifo<memref<...>> type");
-  auto objFifoConsElem = objFifoConsType.getElementType();
-  if (objFifoElem != objFifoSubviewElem &&
-      objFifoConsElem != objFifoSubviewElem)
-    return emitOpError(
-        "ObjectFifo element and ObjectFifoSubview element must match.\n");
+  auto subviewElem = llvm::cast<AIEObjectFifoSubviewType>(getResult().getType())
+                         .getElementType();
+  Type elem = accessElementType(target);
+  if (elem && elem != subviewElem) {
+    // An asymmetric fifo hands the consumer a different element type.
+    auto fifo = dyn_cast<ObjectFifoCreateOp>(target);
+    auto consType = fifo ? llvm::dyn_cast<AIEObjectFifoType>(
+                               fifo.getConsumerElemTypeOrDefault())
+                         : nullptr;
+    if (fifo && !consType)
+      return emitOpError("ObjectFifo consumer element type must be an "
+                         "!aie.objectfifo<memref<...>> type");
+    if (!consType || consType.getElementType() != subviewElem)
+      return emitOpError(
+          "ObjectFifo element and ObjectFifoSubview element must match.\n");
+  }
 
   return success();
 }
@@ -1123,30 +1306,8 @@ LogicalResult ObjectFifoReleaseOp::verify() {
   if (parent == nullptr)
     return emitOpError("must be called from inside a CoreOp");
 
-  auto coreTile = parent.getTile();
-  auto objFifo = getObjectFifo();
-  if (!objFifo)
-    return emitError("cannot retrieve associated object FIFO");
-  if (getPort() == ObjectFifoPort::Produce) {
-    if (coreTile != objFifo.getProducerTile())
-      return parent.emitOpError(
-          "producer port of objectFifo accessed by core running "
-          "on non-producer tile");
-  } else if (getPort() == ObjectFifoPort::Consume) {
-    bool found = false;
-    for (auto consumerTile : objFifo.getConsumerTiles()) {
-      if (coreTile == consumerTile) {
-        found = true;
-        break;
-      }
-    }
-    if (!found)
-      return parent.emitOpError(
-          "consumer port of objectFifo accessed by core running "
-          "on non-consumer tile");
-  }
-
-  return success();
+  Operation *target = lookupAccessTarget(*this, getObjFifoName());
+  return verifyAccessPlacement(*this, target, getPort());
 }
 
 ObjectFifoCreateOp ObjectFifoReleaseOp::getObjectFifo() {

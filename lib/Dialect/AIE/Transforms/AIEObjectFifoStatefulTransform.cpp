@@ -351,7 +351,10 @@ struct LowerObjectFifoRelease : OpRewritePattern<ObjectFifoReleaseOp> {
   LogicalResult matchAndRewrite(ObjectFifoReleaseOp releaseOp,
                                 PatternRewriter &rewriter) const override {
     ObjectFifoCreateOp fifo = releaseOp.getObjectFifo();
-    ObjectFifoPort port = releaseOp.getPort();
+    ObjectFifoPortAttr portAttr = releaseOp.getPortAttr();
+    if (!portAttr)
+      return failure();
+    ObjectFifoPort port = portAttr.getValue();
     CoreOp core = releaseOp->getParentOfType<CoreOp>();
     ObjectFifoCreateOp target = ctx.linkTarget.lookup(fifo);
     std::vector<LockOp> &locks = ctx.state.locksPerFifo[target];
@@ -409,7 +412,10 @@ struct LowerObjectFifoAcquire : OpRewritePattern<ObjectFifoAcquireOp> {
   LogicalResult matchAndRewrite(ObjectFifoAcquireOp acquireOp,
                                 PatternRewriter &rewriter) const override {
     ObjectFifoCreateOp fifo = acquireOp.getObjectFifo();
-    ObjectFifoPort port = acquireOp.getPort();
+    ObjectFifoPortAttr portAttr = acquireOp.getPortAttr();
+    if (!portAttr)
+      return failure();
+    ObjectFifoPort port = portAttr.getValue();
     CoreOp core = acquireOp->getParentOfType<CoreOp>();
     ObjectFifoCreateOp target = ctx.linkTarget.lookup(fifo);
     std::vector<LockOp> &locks = ctx.state.locksPerFifo[target];
@@ -479,7 +485,10 @@ struct LowerObjectFifoSubviewAccess
       return failure();
     }
     ObjectFifoCreateOp fifo = acqOp.getObjectFifo();
-    ObjectFifoPort port = acqOp.getPort();
+    ObjectFifoPortAttr portAttr = acqOp.getPortAttr();
+    if (!portAttr)
+      return failure();
+    ObjectFifoPort port = portAttr.getValue();
     CoreOp core = accessOp->getParentOfType<CoreOp>();
     ObjectFifoCreateOp target = ctx.linkTarget.lookup(fifo);
     std::vector<BufferOp> &buffers = ctx.state.buffersPerFifo[target];
@@ -1652,7 +1661,7 @@ struct AIEObjectFifoStatefulTransformPass
     Operation *coreKey = coreOp.getOperation();
     coreOp.walk([&](ObjectFifoAcquireOp a) {
       std::tuple<Operation *, ObjectFifoCreateOp, ObjectFifoPort> key{
-          coreKey, a.getObjectFifo(), a.getPort()};
+          coreKey, a.getObjectFifo(), *a.getPort()};
       if (!ctx.bufferIndexBookkeeping.count(key)) {
         ctx.bufferIndexBookkeeping[key] = makeSlot();
       }
@@ -1669,10 +1678,10 @@ struct AIEObjectFifoStatefulTransformPass
       }
     };
     coreOp.walk([&](ObjectFifoAcquireOp a) {
-      addHeld(a.getObjectFifo(), a.getPort());
+      addHeld(a.getObjectFifo(), *a.getPort());
     });
     coreOp.walk([&](ObjectFifoReleaseOp r) {
-      addHeld(r.getObjectFifo(), r.getPort());
+      addHeld(r.getObjectFifo(), *r.getPort());
     });
   }
 
@@ -2062,12 +2071,12 @@ struct AIEObjectFifoStatefulTransformPass
     for (auto coreOp : device.getOps<CoreOp>()) {
       WalkResult vres = coreOp.walk([&](Operation *o) {
         if (auto acq = dyn_cast<ObjectFifoAcquireOp>(o)) {
-          if (failed(validateAccess(acq, acq.getObjectFifo(), acq.getPort(),
+          if (failed(validateAccess(acq, acq.getObjectFifo(), *acq.getPort(),
                                     coreOp, "acquire from"))) {
             return WalkResult::interrupt();
           }
         } else if (auto rel = dyn_cast<ObjectFifoReleaseOp>(o)) {
-          if (failed(validateAccess(rel, rel.getObjectFifo(), rel.getPort(),
+          if (failed(validateAccess(rel, rel.getObjectFifo(), *rel.getPort(),
                                     coreOp, "release from"))) {
             return WalkResult::interrupt();
           }
@@ -2124,7 +2133,7 @@ struct AIEObjectFifoStatefulTransformPass
         llvm::DenseSet<std::pair<ObjectFifoCreateOp, ObjectFifoPort>>
             spansNestedLoop;
         forOp.getBody()->walk([&](ObjectFifoAcquireOp a) {
-          auto key = std::make_pair(a.getObjectFifo(), a.getPort());
+          auto key = std::make_pair(a.getObjectFifo(), *a.getPort());
           if (!directlyIn(a)) {
             spansNestedLoop.insert(key);
             return;
@@ -2135,7 +2144,7 @@ struct AIEObjectFifoStatefulTransformPass
           }
         });
         forOp.getBody()->walk([&](ObjectFifoReleaseOp r) {
-          auto key = std::make_pair(r.getObjectFifo(), r.getPort());
+          auto key = std::make_pair(r.getObjectFifo(), *r.getPort());
           if (!directlyIn(r)) {
             spansNestedLoop.insert(key);
             return;

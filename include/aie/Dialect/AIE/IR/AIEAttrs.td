@@ -233,6 +233,46 @@ def InitValuesArrayAttr
   : OptionalAttr<TypedArrayAttrBase<ElementsAttr, "array of ElementsAttr">>;
 
 //===----------------------------------------------------------------------===//
+// ObjectFifo pools and endpoints
+//===----------------------------------------------------------------------===//
+
+def ObjectFifoRole
+    : I32EnumAttr<"ObjectFifoRole",
+                  "What an objectFifo endpoint does to its pool's buffers",
+                  [I32EnumAttrCase<"Fill", 0, "fills">,
+                   I32EnumAttrCase<"Drain", 1, "drains">]> {
+  let cppNamespace = "xilinx::AIE";
+}
+
+def ObjectFifoSegmentAttr : AttrDef<AIE_Dialect, "ObjectFifoSegment", []> {
+  let mnemonic = "objectfifo_segment";
+  let summary = [{
+    A region of every buffer in an objectFifo pool, and the locks guarding it.
+  }];
+
+  let parameters = (ins "uint32_t":$offset, "uint32_t":$size,
+      OptionalParameter<"mlir::FlatSymbolRefAttr">:$produceLock,
+      OptionalParameter<"mlir::FlatSymbolRefAttr">:$consumeLock);
+
+  let assemblyFormat = "`<` struct(params) `>`";
+}
+
+def ObjectFifoSegmentArrayAttr
+    : TypedArrayAttrBase<ObjectFifoSegmentAttr, "array of objectFifo segments">;
+
+def ObjectFifoChannelAttr : AttrDef<AIE_Dialect, "ObjectFifoChannel", []> {
+  let mnemonic = "objectfifo_channel";
+  let summary = [{
+    The DMA channel serving an objectFifo endpoint.
+  }];
+
+  let parameters = (ins "xilinx::AIE::DMAChannelDir":$direction,
+      "uint32_t":$index);
+
+  let assemblyFormat = "`<` $direction `:` $index `>`";
+}
+
+//===----------------------------------------------------------------------===//
 // Generated AIE event enumerations
 //===----------------------------------------------------------------------===//
 

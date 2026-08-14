@@ -2244,10 +2244,175 @@ def AIE_ObjectFifoLinkOp: AIE_Op<"objectfifo.link", [HasParent<"DeviceOp">]> {
   }];
 }
 
-def AIE_ObjectFifoRegisterExternalBuffersOp: AIE_Op<"objectfifo.register_external_buffers", [
-    HasParent<"DeviceOp">, TileElement, IsShimNOCTile
-  ]> {
-  let summary = "Registers external buffers to an objectFifo's shim tile(s) for use in the associated shim DMA(s)";
+def AIE_ObjectFifoPoolOp
+    : AIE_Op<"objectfifo.pool", [HasParent<"DeviceOp">, Symbol]> {
+  let summary = "A rotating set of buffers and the locks guarding them";
+  let description = [{
+    A pool holds `depth` buffers of `elemType` on one tile, together with the
+    segments its objects are divided into and the locks guarding each segment.
+
+    Segments partition an object; buffers rotate. Every buffer carries every
+    segment, so a segment's offset and size address all of them. An ordinary
+    pool has a single segment spanning the whole object; a pool that several
+    endpoints fill or drain independently has one segment per participant.
+
+    Devices with binary locks carry `locks`, one per buffer, in place of
+    `segments`.
+
+    `buffers`, `locks` and the segments' lock references are filled in by
+    `--aie-objectfifo-allocate`, which leaves alone whatever is already named.
+
+    Example:
+    ```
+      aie.objectfifo.pool @pool(%tile) {
+        depth = 2 : i32,
+        buffers = [@buff_0, @buff_1],
+        segments = [#aie.objectfifo_segment<offset = 0, size = 16,
+                                            produceLock = @prod, consumeLock = @cons>]
+      } : memref<16xi32>
+    ```
+  }];
+
+  let arguments = (ins SymbolNameAttr:$sym_name, Index:$tile, AIEI32Attr:$depth,
+      TypeAttrOf<AnyMemRef>:$elemType,
+      OptionalAttr<FlatSymbolRefArrayAttr>:$buffers,
+      OptionalAttr<ObjectFifoSegmentArrayAttr>:$segments,
+      OptionalAttr<FlatSymbolRefArrayAttr>:$locks,
+      // No locks are created for this pool; its actors are unsynchronised.
+      DefaultValuedAttr<BoolAttr, "false">:$disableSynchronization,
+      InitValuesArrayAttr:$initValues);
+
+  let assemblyFormat = [{
+    $sym_name `(` $tile `)` attr-dict `:` $elemType
+  }];
+
+  let hasVerifier = 1;
+
+  let extraClassDeclaration = [{
+    TileOp getTileOp();
+
+    /// Byte-agnostic element count of one object, taken from the element type.
+    int64_t getObjectSize();
+  }];
+}
+
+def AIE_ObjectFifoCoreEndpointOp
+    : AIE_Op<"objectfifo.core_endpoint", [HasParent<"DeviceOp">, Symbol]> {
+  let summary = "What a core needs to fill or drain the next object in a pool";
+  let description = [{
+    Names the pool a core works through, whether it fills or drains it, and which
+    of the pool's segments it handles. Omitting `segments` selects all of them.
+
+    A core's `aie.objectfifo.acquire` and `aie.objectfifo.release` name this op,
+    so they carry no direction of their own.
+
+    Example:
+    ```
+      aie.objectfifo.core_endpoint @reader(%tile) drains @pool
+    ```
+  }];
+
+  let arguments = (ins SymbolNameAttr:$sym_name, Index:$tile,
+      ObjectFifoRole:$role, FlatSymbolRefAttr:$pool,
+      OptionalAttr<DenseI32ArrayAttr>:$segments);
+
+  let assemblyFormat = [{
+    $sym_name `(` $tile `)` $role $pool attr-dict
+  }];
+
+  let hasVerifier = 1;
+
+  let extraClassDeclaration = [{
+    TileOp getTileOp();
+    ObjectFifoPoolOp getPoolOp();
+    bool drains() { return getRole() == ObjectFifoRole::Drain; }
+  }];
+}
+
+def AIE_ObjectFifoDmaEndpointOp
+    : AIE_Op<"objectfifo.dma_endpoint", [HasParent<"DeviceOp">, Symbol]> {
+  let summary =
+      "What a DMA channel needs to fill or drain the next object in a pool";
+  let description = [{
+    Names the pool a DMA channel works through, whether it fills or drains it,
+    which of the pool's segments it handles, and the channel itself. Omitting
+    `segments` selects all of them.
+
+    An endpoint on a shim tile names no pool: there are no buffers and no locks
+    at the boundary to DDR, and its record is an `aie.shim_dma_allocation`.
+
+    Example:
+    ```
+      aie.objectfifo.dma_endpoint @out(%tile) drains @pool {
+        channel = #aie.objectfifo_channel<MM2S : 0>
+      }
+    ```
+  }];
+
+  let arguments = (ins SymbolNameAttr:$sym_name, Index:$tile,
+      OptionalAttr<ObjectFifoRole>:$role, OptionalAttr<FlatSymbolRefAttr>:$pool,
+      OptionalAttr<DenseI32ArrayAttr>:$segments,
+      OptionalAttr<ObjectFifoChannelAttr>:$channel,
+      // Shape of this endpoint's own buffer descriptors.
+      OptionalAttr<BDDimLayoutArrayAttr>:$dimensions,
+      OptionalAttr<BDPadLayoutArrayAttr>:$padDimensions,
+      DefaultValuedOptionalAttr<AIEI32Attr, "0">:$padValue,
+      OptionalAttr<AIEI32Attr>:$repeatCount,
+      OptionalAttr<AIEI32Attr>:$iterCount,
+      // Drives a Core stream port in place of a DMA channel.
+      OptionalAttr<AIEI32Attr>:$streamPort,
+      DefaultValuedAttr<BoolAttr, "false">:$plio,
+      OptionalAttr<PacketInfoAttr>:$packet,
+      // Name of the objectFifo this endpoint was split from, for the shim
+      // allocation symbol the runtime sequence resolves.
+      OptionalAttr<StrAttr>:$fifoName);
+
+  let assemblyFormat = [{
+    $sym_name `(` $tile `)` ($role^ $pool)? attr-dict
+  }];
+
+  let hasVerifier = 1;
+
+  let extraClassDeclaration = [{
+    TileOp getTileOp();
+    /// Null on a shim endpoint.
+    ObjectFifoPoolOp getPoolOp();
+    bool drains() { return getRole() == ObjectFifoRole::Drain; }
+  }];
+}
+
+def AIE_ObjectFifoFlowOp : AIE_Op<"objectfifo.flow", [HasParent<"DeviceOp">]> {
+  let summary = "A stream connection between DMA endpoints";
+  let description = [{
+    Connects one draining DMA endpoint to the filling endpoints it feeds. Several
+    destinations describe a broadcast: one source channel feeding a multicast
+    route.
+
+    `--aie-objectfifo-allocate` assigns a channel to each endpoint, emits the
+    corresponding `aie.flow`, and consumes this op.
+
+    Example:
+    ```
+      aie.objectfifo.flow from @src to [@dst0, @dst1]
+    ```
+  }];
+
+  let arguments = (ins FlatSymbolRefAttr:$source,
+      FlatSymbolRefArrayAttr:$destinations);
+
+  let assemblyFormat = [{
+    `from` $source `to` $destinations attr-dict
+  }];
+
+  let hasVerifier = 1;
+}
+
+def AIE_ObjectFifoRegisterExternalBuffersOp
+    : AIE_Op<"objectfifo.register_external_buffers", [HasParent<"DeviceOp">,
+                                                      TileElement,
+                                                      IsShimNOCTile]> {
+  let summary = "Registers external buffers to an objectFifo's shim tile(s) "
+                "for use in the associated shim DMA(s)";
   let description = [{
     The `aie.objectfifo.register_external_buffers` operation is used to register one or multiple external buffers
     to the shim tile(s) used in an `objectFifo` creation. During the `objectFifo` lowering pass, shim DMAs that are
@@ -2304,16 +2469,14 @@ def AIE_ObjectFifoAcquireOp: AIE_Op<"objectfifo.acquire", []> {
     port and returns a subview of the acquired objects.
   }];
 
-  let arguments = (
-    ins ObjectFifoPort:$port,
-        FlatSymbolRefAttr:$objFifo_name,
-        ConfinedAttr<AIEI32Attr, [IntMinValue<1>]>:$size
-  );
+  let arguments = (ins OptionalAttr<ObjectFifoPort>:$port,
+      FlatSymbolRefAttr:$objFifo_name,
+      ConfinedAttr<AIEI32Attr, [IntMinValue<1>]>:$size);
 
   let results = (outs AIE_ObjectFifoSubviewType:$subview);
 
   let assemblyFormat = [{
-    attr-dict $objFifo_name `(` $port `,` $size `)` `:` qualified(type($subview))
+    attr-dict $objFifo_name `(` ($port^ `,`)? `` $size `)` `:` qualified(type($subview))
   }];
 
   let hasVerifier = 1;
@@ -2340,14 +2503,12 @@ def AIE_ObjectFifoReleaseOp: AIE_Op<"objectfifo.release", []> {
     This operation releases the lock of the next object in the `objectFifo` named `@of1` from producer port.
   }];
 
-  let arguments = (
-    ins ObjectFifoPort:$port,
-        FlatSymbolRefAttr:$objFifo_name,
-        ConfinedAttr<AIEI32Attr, [IntMinValue<1>]>:$size
-  );
+  let arguments = (ins OptionalAttr<ObjectFifoPort>:$port,
+      FlatSymbolRefAttr:$objFifo_name,
+      ConfinedAttr<AIEI32Attr, [IntMinValue<1>]>:$size);
 
   let assemblyFormat = [{
-    attr-dict $objFifo_name `(` $port `,` $size `)`
+    attr-dict $objFifo_name `(` ($port^ `,`)? `` $size `)`
   }];
 
   let hasVerifier = 1;
