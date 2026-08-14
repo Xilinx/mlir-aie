@@ -1983,7 +1983,7 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
     the producer. Otherwise, the producer size will be applied. If a single size is specified, it will be
     applied to both producer and consumers.
 
-    This operation is then converted by the `AIEObjectFifoStatefulTransformPass` into `aie.buffers` and their associated
+    This operation is then converted by the `--aie-objectfifo-allocate` into `aie.buffer`s and their associated
     `aie.locks`. The pass also establishes Flow and DMA operations between the producer and consumer tiles if they are
     not adjacent.
 
@@ -2285,7 +2285,8 @@ def AIE_ObjectFifoPoolOp
       OptionalAttr<AIEI32Attr>:$iterCount,
       // No locks are created for this pool; its actors are unsynchronised.
       DefaultValuedAttr<BoolAttr, "false">:$disableSynchronization,
-      InitValuesArrayAttr:$initValues);
+      // Name of the objectFifo this pool holds the objects of.
+      OptionalAttr<StrAttr>:$fifoName, InitValuesArrayAttr:$initValues);
 
   let assemblyFormat = [{
     $sym_name `(` $tile `)` attr-dict `:` $elemType
@@ -2466,7 +2467,7 @@ def AIE_ObjectFifoAcquireOp: AIE_Op<"objectfifo.acquire", []> {
     (producer: acquire for write, consumer: acquire for read). Then, it returns a subview of
     the acquired objects which can be used to access them.
 
-    This operation is then converted by the `AIEObjectFifoStatefulTransformPass` into `aie.use_lock` operations on
+    This operation is then converted by the `--aie-objectfifo-lower-cores` into `aie.use_lock` operations on
     the locks of the `objectFifo` objects that will be acquired. Under the hood, the operation only performs
     new acquires if necessary. For example, if two objects have been acquired in the past and none have yet
     to be released by the same process, then performing another acquire operation on the same `objectFifo`
@@ -2506,7 +2507,7 @@ def AIE_ObjectFifoReleaseOp: AIE_Op<"objectfifo.release", []> {
     in the `objectFifo`. The mode it releases the locks in is chosen based on the `port`
     (producer: release for read, consumer: release for write).
 
-    This operation is then converted by the `AIEObjectFifoStatefulTransformPass` into `aie.use_lock` operations.
+    This operation is then converted by the `--aie-objectfifo-lower-cores` into `aie.use_lock` operations.
 
     Example:
     ```

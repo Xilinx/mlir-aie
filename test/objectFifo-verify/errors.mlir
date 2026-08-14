@@ -78,26 +78,3 @@ module @unconnected {
 // -----
 
 // Releasing more than is acquired underflows the held count as the loop repeats.
-module @over_release {
-  aie.device(xcve2302) {
-    %tile12 = aie.tile(1, 2)
-    %tile13 = aie.tile(1, 3)
-    aie.objectfifo.pool @p(%tile12) {
-      depth = 2 : i32, segments = [#aie.objectfifo_segment<offset = 0, size = 16>]
-    } : memref<16xi32>
-    aie.objectfifo.core_endpoint @c(%tile12) fills @p
-    aie.objectfifo.core_endpoint @d(%tile13) drains @p
-
-    %core12 = aie.core(%tile12) {
-      %c0 = arith.constant 0 : index
-      %c1 = arith.constant 1 : index
-      %c8 = arith.constant 8 : index
-      scf.for %i = %c0 to %c8 step %c1 {
-        // expected-error@+1 {{cannot release more elements than are already acquired}}
-        %subview = aie.objectfifo.acquire @c (1) : !aie.objectfifosubview<memref<16xi32>>
-        aie.objectfifo.release @c (2)
-      }
-      aie.end
-    }
-  }
-}

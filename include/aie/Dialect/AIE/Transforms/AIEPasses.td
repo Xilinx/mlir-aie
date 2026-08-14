@@ -354,37 +354,6 @@ def AIEHoistVectorTransferPointers : Pass<"aie-hoist-vector-transfer-pointers", 
   let constructor = "xilinx::AIE::createAIEHoistVectorTransferPointersPass()";
 }
 
-def AIEObjectFifoStatefulTransform : Pass<"aie-objectFifo-stateful-transform", "DeviceOp"> {
-  let summary = "Instantiate the buffers and locks of aie.objectFifo.createObjectFifo operations";
-  let description = [{
-    Replace each aie.objectFifo.createObjectFifo operation with aie.buffer and aie.lock operations in the
-    producer tile. Convert aie.objectFifo.acquire, aie.objectFifo.release and aie.objectFifo.subviewAccess
-    operations into useLock operations by keeping track of acquire/release operations on each objectFifo by
-    each process.
-
-    If the producer and consumer tiles of an aie.objectFifo.createObjectFifo operation are not adjacent, the
-    pass also establised aie.flow and aie.dma operations to enable communication between the tiles.
-    ObjectFifo accesses inside loops are lowered to runtime buffer/lock bookkeeping, and each such loop is
-    annotated with an `aie.unroll_hint`; the separate `aie-objectFifo-unroll` pass consumes that hint to
-    unroll the loop and fold the bookkeeping into a static lowering.
-  }];
-
-  let constructor = "xilinx::AIE::createAIEObjectFifoStatefulTransformPass()";
-  let dependentDialects = [
-    "mlir::scf::SCFDialect",
-    "mlir::func::FuncDialect",
-    "mlir::arith::ArithDialect",
-    "mlir::memref::MemRefDialect",
-    "xilinx::AIE::AIEDialect",
-  ];
-
-  let options =
-      [Option<"clPacketSwObjectFifos", "packet-sw-objFifos", "bool",
-              /*default=*/"false",
-              "Flag to enable aie.packetflow lowering from objectfifos.">,
-  ];
-}
-
 def AIEObjectFifoSplit : Pass<"aie-objectfifo-split", "DeviceOp"> {
   let summary = "Split objectFifos into pools and endpoints";
   let description = [{
@@ -435,6 +404,12 @@ def AIEObjectFifoAllocate : Pass<"aie-objectfifo-allocate", "DeviceOp"> {
 
   let constructor = "xilinx::AIE::createAIEObjectFifoAllocatePass()";
   let dependentDialects = ["xilinx::AIE::AIEDialect"];
+
+  let options =
+      [Option<"clPacketSwObjectFifos", "packet-sw-objFifos", "bool",
+              /*default=*/"false",
+              "Flag to enable aie.packetflow lowering from objectfifos.">,
+  ];
 }
 
 def AIEObjectFifoLowerDMAs : Pass<"aie-objectfifo-lower-dmas", "DeviceOp"> {

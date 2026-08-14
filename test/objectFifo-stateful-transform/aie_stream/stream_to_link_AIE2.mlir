@@ -7,49 +7,46 @@
 
 // RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll %s | FileCheck %s
 
-// CHECK: module @stream_to_link_AIE2 {
-// CHECK:   aie.device(xcve2302) {
-// CHECK:     %shim_pl_tile_1_0 = aie.tile(1, 0)
-// CHECK:     %mem_tile_1_1 = aie.tile(1, 1)
-// CHECK:     %tile_3_3 = aie.tile(3, 3)
-// CHECK:     %of_out_cons_prod_lock_0 = aie.lock(%shim_pl_tile_1_0) {init = 0 : i32, sym_name = "of_out_cons_prod_lock_0"}
-// CHECK:     %of_out_cons_cons_lock_0 = aie.lock(%shim_pl_tile_1_0) {init = 0 : i32, sym_name = "of_out_cons_cons_lock_0"}
-// CHECK:     %of_stream_cons_buff_0 = aie.buffer(%mem_tile_1_1) {sym_name = "of_stream_cons_buff_0"} : memref<16xi32>
-// CHECK:     %of_stream_cons_buff_1 = aie.buffer(%mem_tile_1_1) {sym_name = "of_stream_cons_buff_1"} : memref<16xi32>
-// CHECK:     %of_stream_cons_prod_lock_0 = aie.lock(%mem_tile_1_1) {init = 2 : i32, sym_name = "of_stream_cons_prod_lock_0"}
-// CHECK:     %of_stream_cons_cons_lock_0 = aie.lock(%mem_tile_1_1) {init = 0 : i32, sym_name = "of_stream_cons_cons_lock_0"}
-// CHECK:     aie.flow(%tile_3_3, Core : 0, %mem_tile_1_1, DMA : 0)
-// CHECK:     aie.flow(%mem_tile_1_1, DMA : 0, %shim_pl_tile_1_0, DMA : 0)
-// CHECK:     %memtile_dma_1_1 = aie.memtile_dma(%mem_tile_1_1) {
-// CHECK:       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
-// CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb2
-// CHECK:       aie.use_lock(%of_stream_cons_prod_lock_0, AcquireGreaterEqual, %{{.*}})
-// CHECK:       aie.dma_bd(%of_stream_cons_buff_0 : memref<16xi32> offset = {{.*}} len = {{.*}})
-// CHECK:       aie.use_lock(%of_stream_cons_cons_lock_0, Release, %{{.*}})
-// CHECK:       aie.next_bd ^bb2
-// CHECK:     ^bb2:  // pred: ^bb1
-// CHECK:       aie.use_lock(%of_stream_cons_prod_lock_0, AcquireGreaterEqual, %{{.*}})
-// CHECK:       aie.dma_bd(%of_stream_cons_buff_1 : memref<16xi32> offset = {{.*}} len = {{.*}})
-// CHECK:       aie.use_lock(%of_stream_cons_cons_lock_0, Release, %{{.*}})
-// CHECK:       aie.next_bd ^bb1
-// CHECK:     ^bb3:  // pred: ^bb0
-// CHECK:       %1 = aie.dma_start(MM2S, 0, ^bb4, ^bb6)
-// CHECK:     ^bb4:  // 2 preds: ^bb3, ^bb5
-// CHECK:       aie.use_lock(%of_stream_cons_cons_lock_0, AcquireGreaterEqual, %{{.*}})
-// CHECK:       aie.dma_bd(%of_stream_cons_buff_0 : memref<16xi32> offset = {{.*}} len = {{.*}})
-// CHECK:       aie.use_lock(%of_stream_cons_prod_lock_0, Release, %{{.*}})
-// CHECK:       aie.next_bd ^bb5
-// CHECK:     ^bb5:  // pred: ^bb4
-// CHECK:       aie.use_lock(%of_stream_cons_cons_lock_0, AcquireGreaterEqual, %{{.*}})
-// CHECK:       aie.dma_bd(%of_stream_cons_buff_1 : memref<16xi32> offset = {{.*}} len = {{.*}})
-// CHECK:       aie.use_lock(%of_stream_cons_prod_lock_0, Release, %{{.*}})
-// CHECK:       aie.next_bd ^bb4
-// CHECK:     ^bb6:  // pred: ^bb3
-// CHECK:       aie.end
-// CHECK:     }
-// CHECK:     aie.shim_dma_allocation @of_out_shim_alloc(%shim_pl_tile_1_0, S2MM, 0)
-// CHECK:   }
-// CHECK: }
+// CHECK-LABEL:   aie.device(xcve2302) {
+// CHECK:           %[[VAL_0:.*]] = aie.tile(1, 0)
+// CHECK:           %[[VAL_1:.*]] = aie.tile(1, 1)
+// CHECK:           %[[VAL_2:.*]] = aie.tile(3, 3)
+// CHECK:           %[[VAL_3:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "of_stream_cons_buff_0"} : memref<16xi32>
+// CHECK:           %[[VAL_4:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "of_stream_cons_buff_1"} : memref<16xi32>
+// CHECK:           %[[VAL_5:.*]] = aie.lock(%[[VAL_1]]) {init = 2 : i32, sym_name = "of_stream_cons_prod_lock_0"}
+// CHECK:           %[[VAL_6:.*]] = aie.lock(%[[VAL_1]]) {init = 0 : i32, sym_name = "of_stream_cons_cons_lock_0"}
+// CHECK:           aie.flow(%[[VAL_2]], Core : 0, %[[VAL_1]], DMA : 0)
+// CHECK:           aie.flow(%[[VAL_1]], DMA : 0, %[[VAL_0]], DMA : 0)
+// CHECK:           aie.shim_dma_allocation @of_out_shim_alloc(%[[VAL_0]], S2MM, 0)
+// CHECK:           %[[VAL_7:.*]] = aie.memtile_dma(%[[VAL_1]]) {
+// CHECK:             %[[VAL_8:.*]] = arith.constant 1 : i32
+// CHECK:             %[[VAL_9:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
+// CHECK:           ^bb1:
+// CHECK:             aie.use_lock(%[[VAL_5]], AcquireGreaterEqual, %[[VAL_8]])
+// CHECK:             aie.dma_bd(%[[VAL_3]] : memref<16xi32> offset = 0 len = 16)
+// CHECK:             aie.use_lock(%[[VAL_6]], Release, %[[VAL_8]])
+// CHECK:             aie.next_bd ^bb2
+// CHECK:           ^bb2:
+// CHECK:             aie.use_lock(%[[VAL_5]], AcquireGreaterEqual, %[[VAL_8]])
+// CHECK:             aie.dma_bd(%[[VAL_4]] : memref<16xi32> offset = 0 len = 16)
+// CHECK:             aie.use_lock(%[[VAL_6]], Release, %[[VAL_8]])
+// CHECK:             aie.next_bd ^bb1
+// CHECK:           ^bb3:
+// CHECK:             %[[VAL_10:.*]] = aie.dma_start(MM2S, 0, ^bb4, ^bb6)
+// CHECK:           ^bb4:
+// CHECK:             aie.use_lock(%[[VAL_6]], AcquireGreaterEqual, %[[VAL_8]])
+// CHECK:             aie.dma_bd(%[[VAL_3]] : memref<16xi32> offset = 0 len = 16)
+// CHECK:             aie.use_lock(%[[VAL_5]], Release, %[[VAL_8]])
+// CHECK:             aie.next_bd ^bb5
+// CHECK:           ^bb5:
+// CHECK:             aie.use_lock(%[[VAL_6]], AcquireGreaterEqual, %[[VAL_8]])
+// CHECK:             aie.dma_bd(%[[VAL_4]] : memref<16xi32> offset = 0 len = 16)
+// CHECK:             aie.use_lock(%[[VAL_5]], Release, %[[VAL_8]])
+// CHECK:             aie.next_bd ^bb4
+// CHECK:           ^bb6:
+// CHECK:             aie.end
+// CHECK:           }
+// CHECK:         }
 
 module @stream_to_link_AIE2 {
  aie.device(xcve2302) {

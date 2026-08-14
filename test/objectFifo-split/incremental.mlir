@@ -26,7 +26,7 @@ module @incremental {
 // CHECK:   aie.objectfifo.pool @done_pool
 // CHECK:   aie.objectfifo.core_endpoint @done_prod
 // CHECK:   aie.objectfifo.core_endpoint @done_cons
-// CHECK:   aie.objectfifo.pool @fresh_pool({{.*}}) {depth = 2 : i32, segments = [#aie.objectfifo_segment<offset = 0, size = 8>]} : memref<8xi32>
+// CHECK:   aie.objectfifo.pool @fresh_pool({{.*}}) {depth = 2 : i32, fifoName = "fresh", segments = [#aie.objectfifo_segment<offset = 0, size = 8>]} : memref<8xi32>
 // CHECK:   aie.objectfifo.dma_endpoint @fresh_prod_dma({{.*}}) drains @fresh_pool
 // CHECK:   aie.objectfifo.pool @fresh_cons_pool
 // CHECK:   aie.objectfifo.dma_endpoint @fresh_cons_dma({{.*}}) fills @fresh_cons_pool

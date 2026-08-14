@@ -10,7 +10,7 @@
 // Two fifos pin the same MM2S channel on the same producer tile. The second
 // reservation collides and is rejected.
 
-// CHECK: error: 'aie.objectfifo' op pinned MM2S DMA channel 0 is out of range or already in use on this tile
+// CHECK: error: 'aie.objectfifo.dma_endpoint' op pinned MM2S DMA channel 0 is out of range or already in use on this tile
 
 module @bad_channel_collision {
  aie.device(xcve2302) {

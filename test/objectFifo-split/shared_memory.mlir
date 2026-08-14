@@ -33,7 +33,7 @@ module @shared_memory {
 // CHECK-LABEL: @shared_memory
 // CHECK-DAG:   %[[T12:.*]] = aie.tile(1, 2)
 // CHECK-DAG:   %[[T13:.*]] = aie.tile(1, 3)
-// CHECK:   aie.objectfifo.pool @of0_pool(%[[T12]]) {depth = 4 : i32, segments = [#aie.objectfifo_segment<offset = 0, size = 16>]} : memref<16xi32>
+// CHECK:   aie.objectfifo.pool @of0_pool(%[[T12]]) {depth = 4 : i32, fifoName = "of0", segments = [#aie.objectfifo_segment<offset = 0, size = 16>]} : memref<16xi32>
 // CHECK:   aie.objectfifo.core_endpoint @of0_prod(%[[T12]]) fills @of0_pool
 // CHECK:   aie.objectfifo.core_endpoint @of0_cons(%[[T13]]) drains @of0_pool
 // CHECK-NOT: aie.objectfifo.dma_endpoint

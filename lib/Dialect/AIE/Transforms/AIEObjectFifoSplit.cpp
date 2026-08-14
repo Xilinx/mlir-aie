@@ -43,6 +43,32 @@ std::optional<ObjectFifoLinkOp> getOptionalLinkOp(ObjectFifoCreateOp op) {
   return {};
 }
 
+/// The aie.objectfifo.allocate naming `op`, if any. Reports when several claim
+/// the same fifo, since only one delegate tile can hold its objects.
+std::optional<ObjectFifoAllocateOp>
+getOptionalAllocateOp(ObjectFifoCreateOp op) {
+  std::optional<ObjectFifoAllocateOp> found;
+  for (auto alloc :
+       op->getParentOfType<DeviceOp>().getOps<ObjectFifoAllocateOp>()) {
+    if (alloc.getObjFifoName() != op.name().getValue())
+      continue;
+    if (found)
+      op.emitOpError("has more than one allocate operation");
+    found = alloc;
+  }
+  return found;
+}
+
+/// Whether `delegate`'s memory module is reachable from both ends of `op`.
+bool delegateReachesBothEnds(ObjectFifoCreateOp op, TileOp delegate) {
+  auto consumerTileOp = cast<TileOp>(op.getConsumerTiles()[0].getDefiningOp());
+  int toProducer = 0, toConsumer = 0;
+  isSharedMemory(delegate, op.getProducerTileOp(), &toProducer);
+  isSharedMemory(delegate, consumerTileOp, &toConsumer);
+  return (toProducer == -1 || toProducer == 2) &&
+         (toConsumer == -1 || toConsumer == 2);
+}
+
 /// A fifo needs DMAs unless both ends reach one memory module and neither end
 /// asks the DMA to reshape the data on the way.
 bool requiresDMAs(ObjectFifoCreateOp createOp, int &shareDirection) {
@@ -71,20 +97,8 @@ bool requiresDMAs(ObjectFifoCreateOp createOp, int &shareDirection) {
   // aie.objectfifo.allocate names a delegate tile whose memory both ends of
   // this fifo can reach directly.
   if (getOptionalLinkOp(createOp)) {
-    for (auto allocOp :
-         createOp->getParentOfType<DeviceOp>().getOps<ObjectFifoAllocateOp>()) {
-      if (allocOp.getObjFifoName() != createOp.name().getValue())
-        continue;
-      TileOp delegate = allocOp.getDelegateTileOp();
-      auto consumerTileOp =
-          cast<TileOp>(createOp.getConsumerTiles()[0].getDefiningOp());
-      int toProducer = 0, toConsumer = 0;
-      isSharedMemory(delegate, createOp.getProducerTileOp(), &toProducer);
-      isSharedMemory(delegate, consumerTileOp, &toConsumer);
-      if ((toProducer == -1 || toProducer == 2) &&
-          (toConsumer == -1 || toConsumer == 2))
-        return false;
-    }
+    if (auto alloc = getOptionalAllocateOp(createOp))
+      return !delegateReachesBothEnds(createOp, alloc->getDelegateTileOp());
     return true;
   }
 
@@ -163,6 +177,7 @@ struct AIEObjectFifoSplitPass
         from.getIterCount() ? builder.getI32IntegerAttr(*from.getIterCount())
                             : IntegerAttr(),
         from.getDisableSynchronization(),
+        builder.getStringAttr(from.name().getValue()),
         holdsInitialContents ? from.getInitValuesAttr() : ArrayAttr());
   }
 
@@ -241,6 +256,7 @@ struct AIEObjectFifoSplitPass
             nullptr)}),
         /*locks=*/ArrayAttr(), /*repeatCount=*/IntegerAttr(),
         /*iterCount=*/IntegerAttr(), fifo.getDisableSynchronization(),
+        builder.getStringAttr(fifo.name().getValue()),
         /*initValues=*/ArrayAttr());
     return PoolRef{pool, std::nullopt};
   }
@@ -285,9 +301,72 @@ struct AIEObjectFifoSplitPass
 
   void runOnOperation() override;
 
+  /// Every pool sits on a concrete tile, so the fifo's ends must be placed.
+  LogicalResult verifyTilesArePlaced() {
+    for (auto fifo : device.getOps<ObjectFifoCreateOp>()) {
+      auto placed = [](Value tile) {
+        return isa_and_nonnull<TileOp>(tile.getDefiningOp());
+      };
+      if (!placed(fifo.getProducerTile()))
+        return fifo.emitOpError("producer tile is not a placed aie.tile; run "
+                                "--aie-place-tiles before this pass");
+      for (Value consumer : fifo.getConsumerTiles())
+        if (!placed(consumer))
+          return fifo.emitOpError("consumer tile is not a placed aie.tile; run "
+                                  "--aie-place-tiles before this pass");
+    }
+    return success();
+  }
+
+  /// A delegate tile can only hold a fifo's objects if both ends reach its
+  /// memory module. A fifo that meets a link elsewhere has no objects of its
+  /// own to place, so its delegate is moot.
+  LogicalResult verifyAllocateDelegates() {
+    for (auto fifo : device.getOps<ObjectFifoCreateOp>()) {
+      if (getOptionalLinkOp(fifo) && !linkPoolOwner.contains(fifo))
+        continue;
+      auto alloc = getOptionalAllocateOp(fifo);
+      if (alloc && !delegateReachesBothEnds(fifo, alloc->getDelegateTileOp()))
+        return alloc->emitOpError("objectfifo has no shared memory access to "
+                                  "delegate tile's memory module");
+    }
+    return success();
+  }
+
+  /// A fifo end wired to a Core stream port holds no objects, so there is
+  /// nothing for a core to acquire or release there.
+  LogicalResult verifyStreamPortAccesses() {
+    auto check = [&](Operation *op, ObjectFifoCreateOp fifo,
+                     std::optional<ObjectFifoPort> port, StringRef verb) {
+      if (!fifo || !port || !fifo.getAieStream())
+        return success();
+      int streamEnd = *fifo.getAieStream();
+      int end = *port == ObjectFifoPort::Produce ? 0 : 1;
+      if (streamEnd != 2 && streamEnd != end)
+        return success();
+      return LogicalResult(op->emitOpError("cannot ")
+                           << verb << " objectfifo stream port");
+    };
+    for (auto coreOp : device.getOps<CoreOp>()) {
+      auto result = coreOp.walk([&](Operation *op) {
+        LogicalResult ok = success();
+        if (auto acq = dyn_cast<ObjectFifoAcquireOp>(op))
+          ok = check(op, acq.getObjectFifo(), acq.getPort(), "acquire from");
+        else if (auto rel = dyn_cast<ObjectFifoReleaseOp>(op))
+          ok = check(op, rel.getObjectFifo(), rel.getPort(), "release from");
+        return failed(ok) ? WalkResult::interrupt() : WalkResult::advance();
+      });
+      if (result.wasInterrupted())
+        return failure();
+    }
+    return success();
+  }
+
   /// Ends of a linked fifo that resolve to the link's shared pool.
   DenseMap<Operation *, PoolRef> linkedProducerEnd;
   DenseMap<Operation *, PoolRef> linkedConsumerEnd;
+  /// Fifos whose own objects a link's shared pool holds.
+  DenseSet<Operation *> linkPoolOwner;
   /// Shim endpoint each fifo is driven through, where it has one.
   DenseMap<Operation *, std::string> shimEndpointName;
 
@@ -372,6 +451,7 @@ void AIEObjectFifoSplitPass::createLinkPools() {
     auto pool = createPool(
         linkOp.getLoc(), name, *sharedTile, depth, elemType, owner, extents,
         /*holdsInitialContents=*/ownerIsOutput, linkOp.getRepeatCount());
+    linkPoolOwner.insert(owner);
 
     for (auto [index, in] : llvm::enumerate(ins))
       linkedConsumerEnd[in] =
@@ -389,7 +469,13 @@ void AIEObjectFifoSplitPass::runOnOperation() {
 
   SmallVector<ObjectFifoCreateOp> fifos(device.getOps<ObjectFifoCreateOp>());
 
+  if (failed(verifyTilesArePlaced()) || failed(verifyStreamPortAccesses()))
+    return signalPassFailure();
+
   createLinkPools();
+
+  if (failed(verifyAllocateDelegates()))
+    return signalPassFailure();
 
   for (ObjectFifoCreateOp fifo : fifos) {
     builder.setInsertionPoint(fifo);
@@ -417,10 +503,14 @@ void AIEObjectFifoSplitPass::runOnOperation() {
                                          : fifo.getProducerTile();
         // An aie.objectfifo.allocate names the tile whose memory is to hold the
         // objects, in place of either end's own.
-        for (auto allocOp : device.getOps<ObjectFifoAllocateOp>())
-          if (allocOp.getObjFifoName() == fifoName)
-            tile = allocOp.getDelegateTile();
-
+        if (auto alloc = getOptionalAllocateOp(fifo)) {
+          if (!delegateReachesBothEnds(fifo, alloc->getDelegateTileOp())) {
+            alloc->emitOpError("objectfifo has no shared memory access to "
+                               "delegate tile's memory module");
+            return signalPassFailure();
+          }
+          tile = alloc->getDelegateTile();
+        }
         ref = PoolRef{
             createPool(loc, (fifoName + "_pool").str(), tile, fifo.size(),
                        elemType, fifo, {{0, elemType.getNumElements()}},

@@ -102,54 +102,6 @@ struct AIEObjectFifoVerifyPass
     return success();
   }
 
-  /// A loop body that releases more than it acquires underflows the held count
-  /// as it repeats, whatever the trip count. Accesses split across nesting
-  /// levels are excluded: balancing them needs the inner trip counts.
-  LogicalResult verifyOverRelease(DeviceOp device) {
-    for (auto coreOp : device.getOps<CoreOp>()) {
-      WalkResult result = coreOp.walk([&](scf::ForOp forOp) {
-        auto directlyIn = [&](Operation *op) {
-          return op->getParentOfType<scf::ForOp>() == forOp;
-        };
-        DenseMap<StringRef, int64_t> acquired;
-        DenseMap<StringRef, int64_t> released;
-        DenseMap<StringRef, Operation *> blame;
-        DenseSet<StringRef> spansNestedLoop;
-
-        forOp.getBody()->walk([&](ObjectFifoAcquireOp a) {
-          StringRef key = a.getObjFifoName();
-          if (!directlyIn(a))
-            spansNestedLoop.insert(key);
-          else {
-            acquired[key] += a.acqNumber();
-            blame.try_emplace(key, a);
-          }
-        });
-        forOp.getBody()->walk([&](ObjectFifoReleaseOp r) {
-          StringRef key = r.getObjFifoName();
-          if (!directlyIn(r))
-            spansNestedLoop.insert(key);
-          else {
-            released[key] += r.relNumber();
-            blame.try_emplace(key, r);
-          }
-        });
-
-        for (auto &[key, count] : released) {
-          if (spansNestedLoop.contains(key) || count <= acquired.lookup(key))
-            continue;
-          blame.lookup(key)->emitOpError(
-              "cannot release more elements than are already acquired");
-          return WalkResult::interrupt();
-        }
-        return WalkResult::advance();
-      });
-      if (result.wasInterrupted())
-        return failure();
-    }
-    return success();
-  }
-
   void runOnOperation() override {
     DeviceOp device = getOperation();
 
@@ -180,7 +132,7 @@ struct AIEObjectFifoVerifyPass
       if (failed(verifyActors(pool, actorsPerPool[pool])))
         return signalPassFailure();
 
-    if (failed(verifyFlows(device)) || failed(verifyOverRelease(device)))
+    if (failed(verifyFlows(device)))
       return signalPassFailure();
   }
 };

@@ -485,6 +485,11 @@ LogicalResult ObjectFifoCreateOp::verify() {
                          "and for each consumer.");
   }
 
+  if (getAieStream() && (getProdDmaChannel() || getConsDmaChannels()))
+    return emitOpError(
+        "cannot pin a DMA channel on an objectfifo that also uses aie_stream "
+        "(stream ports bypass DMA channels)");
+
   // Helper to get tile interface from Value
   auto getTileLikeFromValue = [](Value v) -> TileLike {
     return llvm::dyn_cast<TileLike>(v.getDefiningOp());
@@ -1002,6 +1007,26 @@ LogicalResult ObjectFifoLinkOp::verify() {
   if (isJoin() && isDistribute())
     return emitError("ObjectFifoLinkOp does not support 'join' and "
                      "'distribute' at the same time");
+
+  auto participants = [](ObjectFifoLinkOp link) {
+    std::vector<ObjectFifoCreateOp> all = link.getInputObjectFifos();
+    std::vector<ObjectFifoCreateOp> outs = link.getOutputObjectFifos();
+    all.insert(all.end(), outs.begin(), outs.end());
+    return all;
+  };
+
+  // A fifo passes its objects to exactly one place, so it belongs to at most
+  // one link.
+  for (auto other :
+       (*this)->getParentOfType<DeviceOp>().getOps<ObjectFifoLinkOp>()) {
+    if (other == *this)
+      break;
+    for (ObjectFifoCreateOp mine : participants(*this))
+      for (ObjectFifoCreateOp theirs : participants(other))
+        if (mine == theirs)
+          return mine.emitOpError(
+              "objectfifo cannot be in more than one ObjectFifoLinkOp");
+  }
 
   auto sharedTile = getOptionalSharedTile();
   if (!sharedTile)

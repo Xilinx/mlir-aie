@@ -41,6 +41,7 @@ int64_t objectSizeInBytes(ObjectFifoPoolOp pool) {
 struct AIEObjectFifoAllocatePass
     : public xilinx::AIE::impl::AIEObjectFifoAllocateBase<
           AIEObjectFifoAllocatePass> {
+  using Base::Base;
 
   DeviceOp device;
   OpBuilder builder{static_cast<MLIRContext *>(nullptr)};
@@ -249,8 +250,9 @@ struct AIEObjectFifoAllocatePass
         int channel =
             channels.reservePinnedChannel(endpoint.getTileOp(), dir, *pinned);
         if (channel < 0)
-          return endpoint.emitOpError("pinned DMA channel ")
-                 << *pinned << " is out of range or already in use";
+          return endpoint.emitOpError("pinned ")
+                 << stringifyDMAChannelDir(dir) << " DMA channel " << *pinned
+                 << " is out of range or already in use on this tile";
         endpoint.setChannelAttr(
             ObjectFifoChannelAttr::get(builder.getContext(), dir, channel));
         continue;
@@ -290,28 +292,173 @@ struct AIEObjectFifoAllocatePass
                : WireBundle::DMA;
   }
 
-  void lowerFlows() {
+  /// Packet IDs already spoken for elsewhere in the device.
+  int nextPacketID() {
+    int next = 0;
+    device.walk([&](PacketFlowOp flow) {
+      next = std::max<int>(next, flow.IDInt() + 1);
+    });
+    return next;
+  }
+
+  /// A packet-switched flow shares the stream with others, so every buffer
+  /// descriptor the source emits has to carry the packet header.
+  LogicalResult lowerPacketFlow(ObjectFifoFlowOp flow,
+                                ObjectFifoDmaEndpointOp source, int packetID) {
+    if (packetID > 31)
+      return device.emitOpError("max number of packet IDs reached");
+
+    auto info =
+        PacketInfoAttr::get(builder.getContext(), /*pkt_type=*/0, packetID);
+    source.setPacketAttr(info);
+
+    builder.setInsertionPoint(flow);
+    auto packetFlow = PacketFlowOp::create(
+        builder, flow.getLoc(),
+        builder.getIntegerAttr(builder.getI8Type(), packetID), nullptr,
+        nullptr);
+    OpBuilder::InsertionGuard g(builder);
+    Block &ports = packetFlow.getRegion().emplaceBlock();
+    builder.setInsertionPointToStart(&ports);
+    EndOp::create(builder, flow.getLoc());
+
+    builder.setInsertionPointToStart(&ports);
+    PacketSourceOp::create(builder, flow.getLoc(), source.getTile(),
+                           WireBundle::DMA, source.getChannel()->getIndex());
+    for (auto destName :
+         flow.getDestinations().getAsRange<FlatSymbolRefAttr>()) {
+      auto dest = lookupEndpoint(destName);
+      PacketDestOp::create(builder, flow.getLoc(), dest.getTile(),
+                           WireBundle::DMA, dest.getChannel()->getIndex());
+    }
+    return success();
+  }
+
+  ObjectFifoDmaEndpointOp lookupEndpoint(FlatSymbolRefAttr name) {
+    return SymbolTable::lookupNearestSymbolFrom<ObjectFifoDmaEndpointOp>(device,
+                                                                         name);
+  }
+
+  LogicalResult lowerFlows() {
+    int packetID = nextPacketID();
     SmallVector<Operation *> toErase;
     for (auto flow : device.getOps<ObjectFifoFlowOp>()) {
-      auto source =
-          SymbolTable::lookupNearestSymbolFrom<ObjectFifoDmaEndpointOp>(
-              device, flow.getSourceAttr());
+      auto source = lookupEndpoint(flow.getSourceAttr());
+      toErase.push_back(flow);
+
+      if (clPacketSwObjectFifos) {
+        if (failed(lowerPacketFlow(flow, source, packetID++)))
+          return failure();
+        continue;
+      }
+
       auto sourceChannel = *source.getChannel();
       builder.setInsertionPoint(flow);
       for (auto destName :
            flow.getDestinations().getAsRange<FlatSymbolRefAttr>()) {
-        auto dest =
-            SymbolTable::lookupNearestSymbolFrom<ObjectFifoDmaEndpointOp>(
-                device, destName);
+        auto dest = lookupEndpoint(destName);
         auto destChannel = *dest.getChannel();
         FlowOp::create(builder, flow.getLoc(), source.getTile(),
                        wireFor(source), sourceChannel.getIndex(),
                        dest.getTile(), wireFor(dest), destChannel.getIndex());
       }
-      toErase.push_back(flow);
     }
     for (Operation *op : toErase)
       op->erase();
+    return success();
+  }
+
+  /// Every lock a pool holds, whichever form the device uses.
+  SmallVector<LockOp> locksOf(ObjectFifoPoolOp pool) {
+    SmallVector<LockOp> locks;
+    auto add = [&](FlatSymbolRefAttr name) {
+      if (auto lock =
+              SymbolTable::lookupNearestSymbolFrom<LockOp>(device, name))
+        locks.push_back(lock);
+    };
+    if (auto names = pool.getLocks())
+      for (auto name : names->getAsRange<FlatSymbolRefAttr>())
+        add(name);
+    if (auto segments = pool.getSegments())
+      for (auto segment : segments->getAsRange<ObjectFifoSegmentAttr>()) {
+        if (auto produce = segment.getProduceLock())
+          add(produce);
+        if (auto consume = segment.getConsumeLock())
+          add(consume);
+      }
+    return locks;
+  }
+
+  /// An `aiex.dma_channel_reset_for` outlives the fifo it names, so record the
+  /// channels and locks it has to re-arm and point it at that record. Shim
+  /// endpoints are left out: the host re-pushes those itself.
+  LogicalResult bindRearmTargets() {
+    llvm::StringMap<SmallVector<Operation *>> usersByFifo;
+    device.walk([&](Operation *op) {
+      if (op->getName().getStringRef() != "aiex.dma_channel_reset_for")
+        return;
+      auto sym = op->getAttrOfType<FlatSymbolRefAttr>("objfifo");
+      if (!sym)
+        return;
+      // Split may already have pointed this at the fifo's shim endpoint.
+      StringRef name = sym.getValue();
+      if (auto endpoint = lookupEndpoint(sym))
+        if (auto fifoName = endpoint.getFifoName())
+          name = *fifoName;
+      usersByFifo[name].push_back(op);
+    });
+    if (usersByFifo.empty())
+      return success();
+
+    builder.setInsertionPoint(device.getBody()->getTerminator());
+    for (auto &[fifoName, users] : usersByFifo) {
+      SmallVector<Value> channelTiles, lockValues;
+      SmallVector<int32_t> channelDirs, channelIndices, lockInits;
+
+      for (auto endpoint : device.getOps<ObjectFifoDmaEndpointOp>()) {
+        if (endpoint.getFifoName() != fifoName ||
+            endpoint.getTileOp().isShimTile() || !endpoint.getChannel())
+          continue;
+        channelTiles.push_back(endpoint.getTile());
+        channelDirs.push_back(
+            static_cast<int32_t>(endpoint.getChannel()->getDirection()));
+        channelIndices.push_back(endpoint.getChannel()->getIndex());
+      }
+      for (auto pool : device.getOps<ObjectFifoPoolOp>()) {
+        if (pool.getFifoName() != fifoName || pool.getTileOp().isShimTile())
+          continue;
+        for (LockOp lock : locksOf(pool)) {
+          lockValues.push_back(lock.getResult());
+          lockInits.push_back(lock.getInit().value_or(0));
+        }
+      }
+
+      if (channelTiles.empty() && lockValues.empty()) {
+        for (Operation *user : users)
+          user->emitOpError() << "objectFIFO '" << fifoName
+                              << "' has no resident core/mem DMA channels or "
+                                 "locks to re-arm";
+        return failure();
+      }
+
+      std::string name = (fifoName + "_rearm").str();
+      for (unsigned suffix = 0; device.lookupSymbol(name); suffix++)
+        name = (fifoName + "_rearm_" + std::to_string(suffix)).str();
+
+      // head_bd_ids and repeat_counts are filled in by --aie-assign-bd-ids.
+      ObjectFifoRearmBindingOp::create(
+          builder, device.getLoc(), builder.getStringAttr(name),
+          ValueRange(channelTiles), ValueRange(lockValues),
+          builder.getDenseI32ArrayAttr(channelDirs),
+          builder.getDenseI32ArrayAttr(channelIndices),
+          builder.getDenseI32ArrayAttr(lockInits),
+          /*head_bd_ids=*/DenseI32ArrayAttr(),
+          /*repeat_counts=*/DenseI32ArrayAttr());
+      auto target = FlatSymbolRefAttr::get(builder.getContext(), name);
+      for (Operation *user : users)
+        user->setAttr("objfifo", target);
+    }
+    return success();
   }
 
   /// A shim endpoint has no memory of its own, so the runtime needs its channel
@@ -371,7 +518,10 @@ struct AIEObjectFifoAllocatePass
     if (failed(assignChannels(channels)))
       return signalPassFailure();
 
-    lowerFlows();
+    if (failed(bindRearmTargets()))
+      return signalPassFailure();
+    if (failed(lowerFlows()))
+      return signalPassFailure();
     emitShimAllocations();
   }
 };
@@ -381,4 +531,11 @@ struct AIEObjectFifoAllocatePass
 std::unique_ptr<OperationPass<DeviceOp>>
 xilinx::AIE::createAIEObjectFifoAllocatePass() {
   return std::make_unique<AIEObjectFifoAllocatePass>();
+}
+
+std::unique_ptr<OperationPass<DeviceOp>>
+xilinx::AIE::createAIEObjectFifoAllocatePass(bool packetSwitched) {
+  AIEObjectFifoAllocateOptions options;
+  options.clPacketSwObjectFifos = packetSwitched;
+  return std::make_unique<AIEObjectFifoAllocatePass>(options);
 }
