@@ -8,9 +8,9 @@
 // RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll %s | FileCheck %s
 
 // CHECK-LABEL:   aie.device(npu1) {
+// CHECK:           %[[VAL_2:.*]] = aie.tile(1, 1)
 // CHECK:           %[[VAL_0:.*]] = aie.tile(0, 0)
 // CHECK:           %[[VAL_1:.*]] = aie.tile(0, 1)
-// CHECK:           %[[VAL_2:.*]] = aie.tile(1, 1)
 // CHECK:           %[[VAL_3:.*]] = aie.tile(0, 2)
 // CHECK:           %[[VAL_4:.*]] = aie.buffer(%[[VAL_3]]) {sym_name = "out1_buff_0"} : memref<8xi32>
 // CHECK:           %[[VAL_5:.*]] = aie.buffer(%[[VAL_3]]) {sym_name = "out1_buff_1"} : memref<8xi32>

@@ -36,15 +36,17 @@ struct AIEObjectFifoVerifyPass
   LogicalResult verifyCoverage(ObjectFifoPoolOp pool) {
     int64_t expected = 0;
     for (ObjectFifoSegmentAttr segment : pool.getSegmentAttrs()) {
-      if (static_cast<int64_t>(segment.getOffset()) != expected)
+      if (static_cast<int64_t>(segment.getOffset()) != expected) {
         return pool.emitOpError("segments must be contiguous, but segment at "
                                 "offset ")
                << segment.getOffset() << " follows " << expected;
+      }
       expected += segment.getSize();
     }
-    if (expected != pool.getObjectSize())
+    if (expected != pool.getObjectSize()) {
       return pool.emitOpError("segments cover ")
              << expected << " of " << pool.getObjectSize() << " elements";
+    }
     return success();
   }
 
@@ -53,16 +55,20 @@ struct AIEObjectFifoVerifyPass
   LogicalResult verifyActors(ObjectFifoPoolOp pool,
                              ArrayRef<SegmentActors> actors) {
     for (auto [index, segment] : llvm::enumerate(actors)) {
-      if (segment.fillers.size() > 1)
+      if (segment.fillers.size() > 1) {
         return pool.emitOpError("segment ")
                << index << " is filled by more than one endpoint";
-      if (segment.drainers.size() > 1)
+      }
+      if (segment.drainers.size() > 1) {
         return pool.emitOpError("segment ")
                << index << " is drained by more than one endpoint";
-      if (segment.drainers.empty())
+      }
+      if (segment.drainers.empty()) {
         return pool.emitOpError("segment ") << index << " has no drainer";
-      if (segment.fillers.empty() && !pool.getInitValues())
+      }
+      if (segment.fillers.empty() && !pool.getInitValues()) {
         return pool.emitOpError("segment ") << index << " has no filler";
+      }
     }
     return success();
   }
@@ -72,17 +78,20 @@ struct AIEObjectFifoVerifyPass
     DenseMap<StringRef, int> appearances;
     for (auto flow : device.getOps<ObjectFifoFlowOp>()) {
       appearances[flow.getSource()]++;
-      for (auto dest : flow.getDestinations().getAsRange<FlatSymbolRefAttr>())
+      for (auto dest : flow.getDestinations().getAsRange<FlatSymbolRefAttr>()) {
         appearances[dest.getValue()]++;
+      }
     }
 
     for (auto endpoint : device.getOps<ObjectFifoDmaEndpointOp>()) {
       int count = appearances.lookup(endpoint.getSymName());
-      if (count == 0)
+      if (count == 0) {
         return endpoint.emitOpError("is not connected by any flow");
-      if (count > 1)
+      }
+      if (count > 1) {
         return endpoint.emitOpError("appears in ")
                << count << " flows; a DMA endpoint drives one channel";
+      }
     }
     return success();
   }
@@ -92,15 +101,17 @@ struct AIEObjectFifoVerifyPass
 
     DenseMap<Operation *, SmallVector<SegmentActors>> actorsPerPool;
     for (auto pool : device.getOps<ObjectFifoPoolOp>()) {
-      if (failed(verifyCoverage(pool)))
+      if (failed(verifyCoverage(pool))) {
         return signalPassFailure();
+      }
       actorsPerPool[pool].resize(pool.getSegmentAttrs().size());
     }
 
     auto record = [&](auto endpoint) {
       ObjectFifoPoolOp pool = endpoint.getPoolOp();
-      if (!pool)
+      if (!pool) {
         return;
+      }
       auto &actors = actorsPerPool[pool];
       SmallVector<ObjectFifoSegmentAttr> all = pool.getSegmentAttrs();
       for (ObjectFifoSegmentAttr segment : endpoint.getSelectedSegments()) {
@@ -110,17 +121,22 @@ struct AIEObjectFifoVerifyPass
       }
     };
 
-    for (auto endpoint : device.getOps<ObjectFifoCoreEndpointOp>())
+    for (auto endpoint : device.getOps<ObjectFifoCoreEndpointOp>()) {
       record(endpoint);
-    for (auto endpoint : device.getOps<ObjectFifoDmaEndpointOp>())
+    }
+    for (auto endpoint : device.getOps<ObjectFifoDmaEndpointOp>()) {
       record(endpoint);
+    }
 
-    for (auto pool : device.getOps<ObjectFifoPoolOp>())
-      if (failed(verifyActors(pool, actorsPerPool[pool])))
+    for (auto pool : device.getOps<ObjectFifoPoolOp>()) {
+      if (failed(verifyActors(pool, actorsPerPool[pool]))) {
         return signalPassFailure();
+      }
+    }
 
-    if (failed(verifyFlows(device)))
+    if (failed(verifyFlows(device))) {
       return signalPassFailure();
+    }
   }
 };
 

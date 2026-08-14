@@ -13,52 +13,41 @@ using namespace xilinx;
 using namespace xilinx::AIE;
 
 DMAChannelAnalysis::DMAChannelAnalysis(DeviceOp &device) {
-  // go over the channels used for each tile and update channel map
-  for (auto memOp : device.getOps<MemOp>()) {
-    Region &r = memOp.getBody();
-    for (auto &bl : r.getBlocks()) {
-      for (auto op : bl.getOps<DMAStartOp>()) {
-        channelsPerTile[{memOp.getTile(), op.getChannelDir(),
-                         op.getChannelIndex()}] = 1;
+  // Every DMA program already in the module has claimed the channels it starts.
+  auto claimStarted = [&](auto programs) {
+    for (auto program : programs) {
+      for (Block &block : program.getBody()) {
+        for (auto start : block.template getOps<DMAStartOp>()) {
+          usedChannels.insert({program.getTile(), start.getChannelDir(),
+                               start.getChannelIndex()});
+        }
       }
     }
-  }
-  for (auto memOp : device.getOps<MemTileDMAOp>()) {
-    Region &r = memOp.getBody();
-    for (auto &bl : r.getBlocks()) {
-      for (auto op : bl.getOps<DMAStartOp>()) {
-        channelsPerTile[{memOp.getTile(), op.getChannelDir(),
-                         op.getChannelIndex()}] = 1;
-      }
-    }
-  }
-  for (auto memOp : device.getOps<ShimDMAOp>()) {
-    Region &r = memOp.getBody();
-    for (auto &bl : r.getBlocks()) {
-      for (auto op : bl.getOps<DMAStartOp>()) {
-        channelsPerTile[{memOp.getTile(), op.getChannelDir(),
-                         op.getChannelIndex()}] = 1;
-      }
-    }
-  }
+  };
+  claimStarted(device.getOps<MemOp>());
+  claimStarted(device.getOps<MemTileDMAOp>());
+  claimStarted(device.getOps<ShimDMAOp>());
+
   for (auto flowOp : device.getOps<FlowOp>()) {
-    if (flowOp.getSourceBundle() == WireBundle::Core)
-      aieStreamsPerTile[{flowOp.getSource(), DMAChannelDir::MM2S,
-                         flowOp.getSourceChannel()}] = 1;
-    if (flowOp.getDestBundle() == WireBundle::Core)
-      aieStreamsPerTile[{flowOp.getDest(), DMAChannelDir::S2MM,
-                         flowOp.getDestChannel()}] = 1;
+    if (flowOp.getSourceBundle() == WireBundle::Core) {
+      usedStreams.insert(
+          {flowOp.getSource(), DMAChannelDir::MM2S, flowOp.getSourceChannel()});
+    }
+    if (flowOp.getDestBundle() == WireBundle::Core) {
+      usedStreams.insert(
+          {flowOp.getDest(), DMAChannelDir::S2MM, flowOp.getDestChannel()});
+    }
   }
-  // Scan ShimDMAAllocationOps so that channels already claimed (e.g. by
-  // the control packet overlay) are marked used in channelsPerTile and are
-  // therefore skipped by getDMAChannelIndex when it auto-assigns channels
-  // for objectFIFO lowering.
+
+  // A channel spoken for elsewhere, e.g. by the control packet overlay, must
+  // not be handed out again.
   for (auto allocOp : device.getOps<ShimDMAAllocationOp>()) {
     auto tile = allocOp.getTileOp();
-    if (!tile)
+    if (!tile) {
       continue;
-    channelsPerTile[{tile.getResult(), allocOp.getChannelDir(),
-                     (int)allocOp.getChannelIndex()}] = 1;
+    }
+    usedChannels.insert({tile.getResult(), allocOp.getChannelDir(),
+                         (int)allocOp.getChannelIndex()});
   }
 }
 
@@ -66,13 +55,11 @@ DMAChannelAnalysis::DMAChannelAnalysis(DeviceOp &device) {
 /// that tile.
 int DMAChannelAnalysis::getDMAChannelIndex(
     TileLike tile, DMAChannelDir dir, bool requiresAdjacentTileAccessChannels) {
-  int maxChannelNum = 0;
-  if (dir == DMAChannelDir::MM2S)
-    maxChannelNum = tile.getNumSourceConnections(WireBundle::DMA);
-  else
-    maxChannelNum = tile.getNumDestConnections(WireBundle::DMA);
+  int maxChannelNum = (dir == DMAChannelDir::MM2S)
+                          ? tile.getNumSourceConnections(WireBundle::DMA)
+                          : tile.getNumDestConnections(WireBundle::DMA);
 
-  // Reaching a neighbour's memory restricts the range, and which neighbour a
+  // Reaching a neighbor's memory restricts the range, and which neighbor a
   // tile has is only known once it is placed.
   std::optional<int> col = tile.tryGetCol();
   std::optional<int> row = tile.tryGetRow();
@@ -83,45 +70,39 @@ int DMAChannelAnalysis::getDMAChannelIndex(
         targetModel.getMaxChannelNumForAdjacentMemTile(*col, *row));
   }
 
-  Value result = tile->getResult(0);
   for (int i = 0; i < maxChannelNum; i++) {
-    if (int usageCnt = channelsPerTile[{result, dir, i}]; usageCnt == 0) {
-      channelsPerTile[{result, dir, i}] = 1;
+    if (reservePinnedChannel(tile, dir, i) >= 0) {
       return i;
     }
   }
   return -1;
 }
 
-/// Reserve a user-pinned DMA channel for (tileOp, dir). Returns the channel
-/// on success; returns -1 if the channel is out of range for the tile or is
-/// already in use (the caller emits a diagnostic). Reserving up-front ensures
-/// first-free auto-assignment never steals a pinned channel.
+/// Reserving up-front ensures first-free auto-assignment never steals a pinned
+/// channel. Returns -1 rather than emitting a diagnostic because the caller
+/// knows which endpoint asked, and says so.
 int DMAChannelAnalysis::reservePinnedChannel(TileLike tile, DMAChannelDir dir,
                                              int channel) {
   int maxChannelNum = (dir == DMAChannelDir::MM2S)
                           ? tile.getNumSourceConnections(WireBundle::DMA)
                           : tile.getNumDestConnections(WireBundle::DMA);
-  if (channel < 0 || channel >= maxChannelNum)
+  if (channel < 0 || channel >= maxChannelNum) {
     return -1;
-  Value result = tile->getResult(0);
-  if (channelsPerTile[{result, dir, channel}] != 0)
-    return -1;
-  channelsPerTile[{result, dir, channel}] = 1;
-  return channel;
+  }
+  return usedChannels.insert({tile->getResult(0), dir, channel}).second
+             ? channel
+             : -1;
 }
 
-/// Given a tile and DMAChannel, adds entry to aieStreamsPerTile or
-/// throws an error if the stream is already used.
+/// Claims a raw stream port, reporting on `tile` when it is already taken.
 void DMAChannelAnalysis::checkAIEStreamIndex(TileLike tile, DMAChannel chan) {
-  Value result = tile->getResult(0);
-  if (aieStreamsPerTile.find({result, chan.direction, chan.channel}) ==
-      aieStreamsPerTile.end()) {
-    aieStreamsPerTile[{result, chan.direction, chan.channel}] = 1;
+  if (usedStreams.insert({tile->getResult(0), chan.direction, chan.channel})
+          .second) {
+    return;
+  }
+  if (chan.direction == DMAChannelDir::MM2S) {
+    tile->emitOpError("number of output Core channels exceeded!");
   } else {
-    if (chan.direction == DMAChannelDir::MM2S)
-      tile->emitOpError("number of output Core channels exceeded!");
-    else
-      tile->emitOpError("number of input Core channels exceeded!");
+    tile->emitOpError("number of input Core channels exceeded!");
   }
 }

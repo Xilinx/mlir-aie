@@ -24,7 +24,7 @@ module @chain {
       segments = [#aie.objectfifo_segment<offset = 0, size = 16,
                                           produceLock = @free, consumeLock = @full>]
     } : memref<16xi32>
-    aie.objectfifo.dma_endpoint @prod_dma(%tile12) drains @prod_pool {
+    aie.objectfifo.dma_endpoint @prod_dma(%tile12) drains of @prod_pool {
       channel = #aie.objectfifo_channel<MM2S : 0>
     }
 
@@ -37,7 +37,7 @@ module @chain {
       segments = [#aie.objectfifo_segment<offset = 0, size = 16,
                                           produceLock = @cfree, consumeLock = @cfull>]
     } : memref<16xi32>
-    aie.objectfifo.dma_endpoint @cons_dma(%tile33) fills @cons_pool {
+    aie.objectfifo.dma_endpoint @cons_dma(%tile33) fills of @cons_pool {
       channel = #aie.objectfifo_channel<S2MM : 1>
     }
   }

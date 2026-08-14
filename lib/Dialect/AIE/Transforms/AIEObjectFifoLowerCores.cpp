@@ -47,8 +47,9 @@ Value buildRotatingSwitch(OpBuilder &builder, Location loc, Value idx,
                           Type resultTy, int n,
                           llvm::function_ref<Value(int)> elem) {
   SmallVector<int64_t, 4> caseValues;
-  for (int c = 0; c < n; ++c)
+  for (int c = 0; c < n; ++c) {
     caseValues.push_back(c);
+  }
   auto cases = DenseI64ArrayAttr::get(builder.getContext(), caseValues);
   auto switchOp = scf::IndexSwitchOp::create(builder, loc, TypeRange{resultTy},
                                              idx, cases, n);
@@ -95,10 +96,12 @@ segmentLocksFor(ObjectFifoCoreEndpointOp endpoint, LockAction action) {
   bool wantsProduce = acquiring != endpoint.drains();
 
   SmallVector<FlatSymbolRefAttr> locks;
-  for (ObjectFifoSegmentAttr segment : endpoint.getSelectedSegments())
-    if (auto lock =
-            wantsProduce ? segment.getProduceLock() : segment.getConsumeLock())
+  for (ObjectFifoSegmentAttr segment : endpoint.getSelectedSegments()) {
+    if (auto lock = wantsProduce ? segment.getProduceLock()
+                                 : segment.getConsumeLock()) {
       locks.push_back(lock);
+    }
+  }
   return locks;
 }
 
@@ -130,8 +133,9 @@ struct LoweringContext {
 void emitBinaryUseLocks(OpBuilder &builder, Location loc,
                         MutableArrayRef<LockOp> locks, int depth, bool drains,
                         Value counterSlot, int count, LockAction action) {
-  if (count == 0 || locks.empty())
+  if (count == 0 || locks.empty()) {
     return;
+  }
   // The value carries the direction: 1 for a filler's release or a drainer's
   // acquire, 0 for the opposite.
   bool full = (!drains && action == LockAction::Release) ||
@@ -158,8 +162,9 @@ struct LowerRelease : OpRewritePattern<ObjectFifoReleaseOp> {
   LogicalResult matchAndRewrite(ObjectFifoReleaseOp releaseOp,
                                 PatternRewriter &rewriter) const override {
     auto endpoint = ctx.endpointOf(releaseOp, releaseOp.getObjFifoName());
-    if (!endpoint)
+    if (!endpoint) {
       return failure();
+    }
     ObjectFifoPoolOp pool = endpoint.getPoolOp();
     CoreOp core = releaseOp->getParentOfType<CoreOp>();
     auto key = std::make_pair(core.getOperation(), endpoint.getOperation());
@@ -186,9 +191,10 @@ struct LowerRelease : OpRewritePattern<ObjectFifoReleaseOp> {
       Value amount = arith::ConstantOp::create(
           rewriter, loc, rewriter.getI32IntegerAttr(count));
       for (FlatSymbolRefAttr name :
-           segmentLocksFor(endpoint, LockAction::Release))
+           segmentLocksFor(endpoint, LockAction::Release)) {
         UseLockOp::create(rewriter, loc, ctx.lockOf(name), LockAction::Release,
                           amount);
+      }
 
       memref::AllocaOp held = ctx.heldCount.lookup(key);
       assert(held && "a held counter is created for every released endpoint");
@@ -199,9 +205,10 @@ struct LowerRelease : OpRewritePattern<ObjectFifoReleaseOp> {
                               ValueRange{});
     }
 
-    if (index)
+    if (index) {
       emitAdvanceObjectIndex(rewriter, loc, index.getResult(), pool.getDepth(),
                              releaseOp.getSize());
+    }
     return success();
   }
 };
@@ -214,8 +221,9 @@ struct LowerAcquire : OpRewritePattern<ObjectFifoAcquireOp> {
   LogicalResult matchAndRewrite(ObjectFifoAcquireOp acquireOp,
                                 PatternRewriter &rewriter) const override {
     auto endpoint = ctx.endpointOf(acquireOp, acquireOp.getObjFifoName());
-    if (!endpoint)
+    if (!endpoint) {
       return failure();
+    }
     ObjectFifoPoolOp pool = endpoint.getPoolOp();
     CoreOp core = acquireOp->getParentOfType<CoreOp>();
     auto key = std::make_pair(core.getOperation(), endpoint.getOperation());
@@ -257,9 +265,10 @@ struct LowerAcquire : OpRewritePattern<ObjectFifoAcquireOp> {
       delta = arith::MulIOp::create(rewriter, loc, delta, repeatVal);
     }
     for (FlatSymbolRefAttr name :
-         segmentLocksFor(endpoint, LockAction::AcquireGreaterEqual))
+         segmentLocksFor(endpoint, LockAction::AcquireGreaterEqual)) {
       UseLockOp::create(rewriter, loc, ctx.lockOf(name),
                         LockAction::AcquireGreaterEqual, delta);
+    }
 
     Value next = arith::AddIOp::create(rewriter, loc, current, delta);
     memref::StoreOp::create(rewriter, loc, next, held.getResult(),
@@ -273,8 +282,9 @@ struct LowerAcquire : OpRewritePattern<ObjectFifoAcquireOp> {
                                    std::pair<Operation *, Operation *> key,
                                    PatternRewriter &rewriter) const {
     SmallVector<Value> buffers = pool.getObjects();
-    if (buffers.empty())
+    if (buffers.empty()) {
       return success();
+    }
     memref::AllocaOp index = ctx.objectIndex.lookup(key);
     assert(index && "a rotation counter is created for every acquire");
 
@@ -298,7 +308,7 @@ struct AIEObjectFifoLowerCoresPass
     : public xilinx::AIE::impl::AIEObjectFifoLowerCoresBase<
           AIEObjectFifoLowerCoresPass> {
 
-  /// A rank-0 `memref.alloca` initialised to 0, which mem2reg later threads
+  /// A rank-0 `memref.alloca` initialized to 0, which mem2reg later threads
   /// through the enclosing loops as an iter_arg.
   memref::AllocaOp makeSlot(OpBuilder &builder, Location loc, Value zero) {
     auto scalarTy =
@@ -318,22 +328,26 @@ struct AIEObjectFifoLowerCoresPass
                                memref::AllocaOp> &slots,
                       StringRef name) {
       auto endpoint = ctx.endpointOf(coreOp, name);
-      if (!endpoint)
+      if (!endpoint) {
         return;
+      }
       auto key = std::make_pair(core, endpoint.getOperation());
-      if (slots.count(key))
+      if (slots.count(key)) {
         return;
-      if (!zero)
+      }
+      if (!zero) {
         zero = arith::ConstantOp::create(builder, coreOp.getLoc(),
                                          builder.getI32IntegerAttr(0));
+      }
       slots[key] = makeSlot(builder, coreOp.getLoc(), zero);
     };
 
     coreOp.walk([&](ObjectFifoAcquireOp a) {
       record(ctx.objectIndex, a.getObjFifoName());
     });
-    if (!ctx.usesSemaphoreLocks)
+    if (!ctx.usesSemaphoreLocks) {
       return;
+    }
     coreOp.walk([&](ObjectFifoAcquireOp a) {
       record(ctx.heldCount, a.getObjFifoName());
     });
@@ -348,16 +362,18 @@ struct AIEObjectFifoLowerCoresPass
   /// this one, so an ancestor is not over-unrolled.
   void annotateUnrollHints(DeviceOp device, LoweringContext &ctx,
                            OpBuilder &builder) {
-    for (auto coreOp : device.getOps<CoreOp>())
+    for (auto coreOp : device.getOps<CoreOp>()) {
       coreOp.walk([&](scf::ForOp forOp) {
         int64_t period = 1;
         bool touched = false;
         auto account = [&](Operation *op, StringRef name) {
-          if (op->getParentOfType<scf::ForOp>() != forOp)
+          if (op->getParentOfType<scf::ForOp>() != forOp) {
             return;
+          }
           auto endpoint = ctx.endpointOf(op, name);
-          if (!endpoint)
+          if (!endpoint) {
             return;
+          }
           touched = true;
           period = std::lcm(period, (int64_t)endpoint.getPoolOp().getDepth());
         };
@@ -365,10 +381,12 @@ struct AIEObjectFifoLowerCoresPass
             [&](ObjectFifoAcquireOp a) { account(a, a.getObjFifoName()); });
         forOp.getBody()->walk(
             [&](ObjectFifoReleaseOp r) { account(r, r.getObjFifoName()); });
-        if (touched)
+        if (touched) {
           forOp->setAttr(kObjectFifoUnrollHintAttrName,
                          builder.getI64IntegerAttr(period));
+        }
       });
+    }
   }
 
   /// The bookkeeping slots exist only to reach SSA form; nothing downstream
@@ -376,12 +394,14 @@ struct AIEObjectFifoLowerCoresPass
   LogicalResult promoteBookkeepingSlots(DeviceOp device) {
     SmallVector<PromotableAllocationOpInterface> allocators;
     device.walk([&](memref::AllocaOp allocaOp) {
-      if (allocaOp->hasAttr(kBookkeepingSlotAttrName))
+      if (allocaOp->hasAttr(kBookkeepingSlotAttrName)) {
         allocators.push_back(
             cast<PromotableAllocationOpInterface>(allocaOp.getOperation()));
+      }
     });
-    if (allocators.empty())
+    if (allocators.empty()) {
       return success();
+    }
 
     DataLayout dataLayout = DataLayout::closest(device);
     DominanceInfo dominance(device);
@@ -389,8 +409,9 @@ struct AIEObjectFifoLowerCoresPass
     (void)tryToPromoteMemorySlots(allocators, builder, dataLayout, dominance);
 
     WalkResult leftover = device.walk([&](memref::AllocaOp allocaOp) {
-      if (!allocaOp->hasAttr(kBookkeepingSlotAttrName))
+      if (!allocaOp->hasAttr(kBookkeepingSlotAttrName)) {
         return WalkResult::advance();
+      }
       allocaOp.emitOpError()
           << "objectFifo bookkeeping slot could not be promoted to SSA "
              "(mem2reg left it in place); the objectFifo lowering requires "
@@ -418,34 +439,36 @@ struct AIEObjectFifoLowerCoresPass
 
         forOp.getBody()->walk([&](ObjectFifoAcquireOp a) {
           StringRef key = a.getObjFifoName();
-          if (!directlyIn(a))
+          if (!directlyIn(a)) {
             spansNestedLoop.insert(key);
-          else {
+          } else {
             acquired[key] += a.acqNumber();
             blame.try_emplace(key, a);
           }
         });
         forOp.getBody()->walk([&](ObjectFifoReleaseOp r) {
           StringRef key = r.getObjFifoName();
-          if (!directlyIn(r))
+          if (!directlyIn(r)) {
             spansNestedLoop.insert(key);
-          else {
+          } else {
             released[key] += r.relNumber();
             blame.try_emplace(key, r);
           }
         });
 
         for (auto &[key, count] : released) {
-          if (spansNestedLoop.contains(key) || count <= acquired.lookup(key))
+          if (spansNestedLoop.contains(key) || count <= acquired.lookup(key)) {
             continue;
+          }
           blame.lookup(key)->emitOpError(
               "cannot release more elements than are already acquired");
           return WalkResult::interrupt();
         }
         return WalkResult::advance();
       });
-      if (result.wasInterrupted())
+      if (result.wasInterrupted()) {
         return failure();
+      }
     }
     return success();
   }
@@ -454,38 +477,44 @@ struct AIEObjectFifoLowerCoresPass
     DeviceOp device = getOperation();
     OpBuilder builder(device.getContext());
 
-    if (failed(verifyOverRelease(device)))
+    if (failed(verifyOverRelease(device))) {
       return signalPassFailure();
+    }
 
     LoweringContext ctx{device, device.getTargetModel().hasProperty(
                                     AIETargetModel::UsesSemaphoreLocks)};
 
     annotateUnrollHints(device, ctx, builder);
-    for (auto coreOp : device.getOps<CoreOp>())
+    for (auto coreOp : device.getOps<CoreOp>()) {
       emitCounters(coreOp, ctx, builder);
+    }
 
     RewritePatternSet patterns(device.getContext());
     patterns.insert<LowerAcquire, LowerRelease>(device.getContext(), ctx);
     walkAndApplyPatterns(device, std::move(patterns));
-    if (ctx.sawError)
+    if (ctx.sawError) {
       return signalPassFailure();
+    }
 
     SmallVector<Operation *> toErase;
     device.walk([&](Operation *op) {
-      if (isa<ObjectFifoAcquireOp, ObjectFifoReleaseOp>(op))
+      if (isa<ObjectFifoAcquireOp, ObjectFifoReleaseOp>(op)) {
         toErase.push_back(op);
+      }
     });
     for (Operation *op : toErase) {
       op->dropAllUses();
       op->erase();
     }
 
-    for (auto endpoint :
-         llvm::make_early_inc_range(device.getOps<ObjectFifoCoreEndpointOp>()))
+    for (auto endpoint : llvm::make_early_inc_range(
+             device.getOps<ObjectFifoCoreEndpointOp>())) {
       endpoint.erase();
+    }
 
-    if (failed(promoteBookkeepingSlots(device)))
+    if (failed(promoteBookkeepingSlots(device))) {
       return signalPassFailure();
+    }
   }
 };
 

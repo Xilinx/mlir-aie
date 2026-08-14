@@ -28,16 +28,16 @@ module @link_distribute {
 // CHECK-DAG:   %[[T23:.*]] = aie.tile(2, 3)
 
 // CHECK:   aie.objectfifo.pool @in_cons_pool(%[[T21]]) {depth = 2 : i32, fifoName = "in", segments = [#aie.objectfifo_segment<offset = 0, size = 16>, #aie.objectfifo_segment<offset = 16, size = 32>]} : memref<48xi32>
-// CHECK:   aie.objectfifo.dma_endpoint @in_prod_dma(%[[T20]]) {fifoName = "in"}
-// CHECK:   aie.objectfifo.dma_endpoint @in_cons_dma(%[[T21]]) fills @in_cons_pool {fifoName = "in"}
+// CHECK:   aie.objectfifo.dma_endpoint @in_prod_dma(%[[T20]]) drains {fifoName = "in"}
+// CHECK:   aie.objectfifo.dma_endpoint @in_cons_dma(%[[T21]]) fills of @in_cons_pool {fifoName = "in"}
 // CHECK:   aie.objectfifo.flow from @in_prod_dma to [@in_cons_dma]
 
 // Each output drains one segment of the memtile pool.
-// CHECK:   aie.objectfifo.dma_endpoint @out0_prod_dma(%[[T21]]) drains @in_cons_pool {fifoName = "out0", segments = array<i32: 0>}
+// CHECK:   aie.objectfifo.dma_endpoint @out0_prod_dma(%[[T21]]) drains of @in_cons_pool {fifoName = "out0", segments = array<i32: 0>}
 // CHECK:   aie.objectfifo.pool @out0_cons_pool(%[[T22]]) {depth = 2 : i32, fifoName = "out0", segments = [#aie.objectfifo_segment<offset = 0, size = 16>]} : memref<16xi32>
-// CHECK:   aie.objectfifo.dma_endpoint @out0_cons_dma(%[[T22]]) fills @out0_cons_pool
+// CHECK:   aie.objectfifo.dma_endpoint @out0_cons_dma(%[[T22]]) fills of @out0_cons_pool
 // CHECK:   aie.objectfifo.flow from @out0_prod_dma to [@out0_cons_dma]
-// CHECK:   aie.objectfifo.dma_endpoint @out1_prod_dma(%[[T21]]) drains @in_cons_pool {fifoName = "out1", segments = array<i32: 1>}
+// CHECK:   aie.objectfifo.dma_endpoint @out1_prod_dma(%[[T21]]) drains of @in_cons_pool {fifoName = "out1", segments = array<i32: 1>}
 // CHECK:   aie.objectfifo.pool @out1_cons_pool(%[[T23]]) {depth = 2 : i32, fifoName = "out1", segments = [#aie.objectfifo_segment<offset = 0, size = 32>]} : memref<32xi32>
-// CHECK:   aie.objectfifo.dma_endpoint @out1_cons_dma(%[[T23]]) fills @out1_cons_pool
+// CHECK:   aie.objectfifo.dma_endpoint @out1_cons_dma(%[[T23]]) fills of @out1_cons_pool
 // CHECK:   aie.objectfifo.flow from @out1_prod_dma to [@out1_cons_dma]

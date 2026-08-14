@@ -2284,12 +2284,12 @@ def AIE_ObjectFifoPoolOp
       OptionalAttr<FlatSymbolRefArrayAttr>:$buffers,
       OptionalAttr<ObjectFifoSegmentArrayAttr>:$segments,
       OptionalAttr<FlatSymbolRefArrayAttr>:$locks,
-      // Times the pool is cycled through per outer iteration; lock initialisers
+      // Times the pool is cycled through per outer iteration; lock initializers
       // scale with it.
       OptionalAttr<AIEI32Attr>:$repeatCount,
       // Outer iterations the DMA chain runs for.
       OptionalAttr<AIEI32Attr>:$iterCount,
-      // No locks are created for this pool; its actors are unsynchronised.
+      // No locks are created for this pool; its actors are unsynchronized.
       DefaultValuedAttr<BoolAttr, "false">:$disableSynchronization,
       // Name of the objectFifo this pool holds the objects of.
       OptionalAttr<StrAttr>:$fifoName, InitValuesArrayAttr:$initValues);
@@ -2306,6 +2306,9 @@ def AIE_ObjectFifoPoolOp
 
     /// Byte-agnostic element count of one object, taken from the element type.
     int64_t getObjectSize();
+
+    /// Size of one object in bytes, under the closest data layout.
+    int64_t getObjectSizeInBytes();
 
     /// One entry per way the object is divided; a pool with no `segments` is
     /// one whole object.
@@ -2383,7 +2386,7 @@ def AIE_ObjectFifoDmaEndpointOp
   }];
 
   let arguments = (ins SymbolNameAttr:$sym_name, Index:$tile,
-      OptionalAttr<ObjectFifoRole>:$role, OptionalAttr<FlatSymbolRefAttr>:$pool,
+      ObjectFifoRole:$role, OptionalAttr<FlatSymbolRefAttr>:$pool,
       OptionalAttr<DenseI32ArrayAttr>:$segments,
       OptionalAttr<ObjectFifoChannelAttr>:$channel,
       // Channel the user demands, claimed before any is auto-assigned.
@@ -2408,7 +2411,7 @@ def AIE_ObjectFifoDmaEndpointOp
       OptionalAttr<StrAttr>:$fifoName);
 
   let assemblyFormat = [{
-    $sym_name `(` $tile `)` ($role^ $pool)? attr-dict
+    $sym_name `(` $tile `)` $role (`of` $pool^)? attr-dict
   }];
 
   let hasVerifier = 1;

@@ -28,17 +28,17 @@ struct AIEObjectFifoErasePoolsPass
   void runOnOperation() override {
     DeviceOp device = getOperation();
 
-    DenseSet<StringRef> claimed;
-    for (auto endpoint : device.getOps<ObjectFifoDmaEndpointOp>())
-      if (auto pool = endpoint.getPool())
-        claimed.insert(*pool);
-    for (auto endpoint : device.getOps<ObjectFifoCoreEndpointOp>())
-      claimed.insert(endpoint.getPool());
+    // Any op may name a pool, so ask the symbol table who still does rather
+    // than enumerating the op kinds we happen to know about.
+    SymbolTableCollection symbolTables;
+    SymbolUserMap users(symbolTables, device);
 
     for (auto pool :
-         llvm::make_early_inc_range(device.getOps<ObjectFifoPoolOp>()))
-      if (!claimed.contains(pool.getSymName()))
+         llvm::make_early_inc_range(device.getOps<ObjectFifoPoolOp>())) {
+      if (users.getUsers(pool).empty()) {
         pool.erase();
+      }
+    }
   }
 };
 

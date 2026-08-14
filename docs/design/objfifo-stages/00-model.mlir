@@ -140,7 +140,8 @@
 // which gives three shapes:
 //
 //   one segment spanning the object   -> the buffer itself
-//   one segment that is a strict slice -> a memref.subview at its offset
+//   one segment that is a strict slice -> a memref.subview at its offset,
+//                                         not emitted yet and so rejected
 //   every segment of a partitioned object -> the buffer itself, after N acquires
 //
 // A core endpoint's selection is fixed, so every acquire on it yields the same
@@ -226,7 +227,7 @@
 //
 //  - a pool's segments do not overlap and cover the element type exactly
 //  - each of a pool's segments has one filling endpoint and one draining
-//    endpoint. A filler may be absent when the lock initialisers mark the
+//    endpoint. A filler may be absent when the lock initializers mark the
 //    objects as starting full
 //  - every flow reaches a destination
 //
@@ -239,16 +240,18 @@
 //
 // IMPLEMENTATION NOTES
 //
-// 1. A core endpoint whose segments do not span the whole buffer needs a
-//    memref.subview at the segment offset before the object is handed over. Do
-//    not assume elementType == buffer type on a core endpoint.
+// 1. A core endpoint whose segments do not span the whole buffer would need a
+//    memref.subview at the segment offset before the object is handed over.
+//    That is not emitted yet, so the verifier rejects such an endpoint rather
+//    than handing over the whole buffer; implementing it is what would let
+//    cores take part in a join or distribute.
 //
 // 2. A multi-segment core acquire takes one lock per segment before the object
 //    may be touched. The delta computation is unchanged; it is applied to each.
 //
 // 3. Pre-filled fifos desugar during split: the initial contents become
-//    initialisers on the aie.buffer ops, and "N objects start full" becomes the
-//    pool's lock initialisers.
+//    initializers on the aie.buffer ops, and "N objects start full" becomes the
+//    pool's lock initializers.
 //
 //===----------------------------------------------------------------------===//
 //

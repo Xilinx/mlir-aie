@@ -18,8 +18,8 @@ module {
     %mem = aie.logical_tile<MemTile>(?, ?)
 
     aie.objectfifo.pool @p(%mem) {depth = 2 : i32, segments = [#aie.objectfifo_segment<offset = 0, size = 16>]} : memref<16xi32>
-    aie.objectfifo.dma_endpoint @src(%shim) {fifoName = "of"}
-    aie.objectfifo.dma_endpoint @dst(%mem) fills @p {fifoName = "of"}
+    aie.objectfifo.dma_endpoint @src(%shim) drains {fifoName = "of"}
+    aie.objectfifo.dma_endpoint @dst(%mem) fills of @p {fifoName = "of"}
     aie.objectfifo.flow from @src to [@dst]
   }
 }
@@ -31,8 +31,8 @@ module {
 // CHECK:       aie.buffer(%[[MEM]]) {sym_name = "p_buff_1"}
 // CHECK:       aie.lock(%[[MEM]]) {init = 2 : i32, sym_name = "p_prod_lock_0"}
 // CHECK:       aie.lock(%[[MEM]]) {init = 0 : i32, sym_name = "p_cons_lock_0"}
-// CHECK:       aie.objectfifo.dma_endpoint @src(%[[SHIM]]) {channel = #aie.objectfifo_channel<MM2S : 0>
-// CHECK:       aie.objectfifo.dma_endpoint @dst(%[[MEM]]) fills @p {channel = #aie.objectfifo_channel<S2MM : 0>
+// CHECK:       aie.objectfifo.dma_endpoint @src(%[[SHIM]]) drains {channel = #aie.objectfifo_channel<MM2S : 0>
+// CHECK:       aie.objectfifo.dma_endpoint @dst(%[[MEM]]) fills of @p {channel = #aie.objectfifo_channel<S2MM : 0>
 // CHECK:       aie.flow(%[[SHIM]], DMA : 0, %[[MEM]], DMA : 0)
 // CHECK:       aie.shim_dma_allocation @of_shim_alloc(%[[SHIM]], MM2S, 0)
 

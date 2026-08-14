@@ -18,10 +18,10 @@ namespace xilinx::AIE {
 /// Which DMA channels of each tile are already spoken for, so that a channel is
 /// handed out at most once across everything that programs one.
 class DMAChannelAnalysis {
-  mlir::DenseMap<std::tuple<mlir::Value, DMAChannelDir, int>, int>
-      channelsPerTile;
-  mlir::DenseMap<std::tuple<mlir::Value, DMAChannelDir, int>, int>
-      aieStreamsPerTile;
+  /// A channel or stream port is either spoken for or free, so membership is
+  /// the whole state.
+  mlir::DenseSet<std::tuple<mlir::Value, DMAChannelDir, int>> usedChannels;
+  mlir::DenseSet<std::tuple<mlir::Value, DMAChannelDir, int>> usedStreams;
 
 public:
   DMAChannelAnalysis(DeviceOp &device);
@@ -33,7 +33,8 @@ public:
                          bool requiresAdjacentTileAccessChannels);
 
   /// Claim `channel` for (`tile`, `dir`) so first-free assignment cannot take
-  /// it. Returns -1 when the channel is out of range or already claimed.
+  /// it. Returns the channel, or -1 when it is out of range or already
+  /// claimed; the caller reports, since it knows which endpoint asked.
   int reservePinnedChannel(TileLike tile, DMAChannelDir dir, int channel);
 
   /// Claim a raw stream port, reporting on `tile` when it is already taken.

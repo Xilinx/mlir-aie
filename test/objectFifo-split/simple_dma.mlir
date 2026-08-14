@@ -32,9 +32,9 @@ module @simple_dma {
 // CHECK-DAG:   %[[T33:.*]] = aie.tile(3, 3)
 // CHECK:   aie.objectfifo.pool @of1_pool(%[[T12]]) {depth = 2 : i32, fifoName = "of1", segments = [#aie.objectfifo_segment<offset = 0, size = 16>]} : memref<16xi32>
 // CHECK:   aie.objectfifo.core_endpoint @of1_prod(%[[T12]]) fills @of1_pool
-// CHECK:   aie.objectfifo.dma_endpoint @of1_prod_dma(%[[T12]]) drains @of1_pool {fifoName = "of1"}
+// CHECK:   aie.objectfifo.dma_endpoint @of1_prod_dma(%[[T12]]) drains of @of1_pool {fifoName = "of1"}
 // CHECK:   aie.objectfifo.pool @of1_cons_pool(%[[T33]]) {depth = 2 : i32, fifoName = "of1", segments = [#aie.objectfifo_segment<offset = 0, size = 16>]} : memref<16xi32>
 // CHECK:   aie.objectfifo.core_endpoint @of1_cons(%[[T33]]) drains @of1_cons_pool
-// CHECK:   aie.objectfifo.dma_endpoint @of1_cons_dma(%[[T33]]) fills @of1_cons_pool {fifoName = "of1"}
+// CHECK:   aie.objectfifo.dma_endpoint @of1_cons_dma(%[[T33]]) fills of @of1_cons_pool {fifoName = "of1"}
 // CHECK:   aie.objectfifo.flow from @of1_prod_dma to [@of1_cons_dma]
 // CHECK-NOT: aie.objectfifo @

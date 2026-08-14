@@ -36,9 +36,11 @@ struct Descriptor {
 
 Block *findEndOpBlock(Region &region) {
   Block *endBlock = nullptr;
-  for (Block &block : region)
-    if (!block.getOps<EndOp>().empty())
+  for (Block &block : region) {
+    if (!block.getOps<EndOp>().empty()) {
       endBlock = &block;
+    }
+  }
   return endBlock;
 }
 
@@ -49,36 +51,37 @@ struct AIEObjectFifoLowerDMAsPass
   DeviceOp device;
   OpBuilder builder{static_cast<MLIRContext *>(nullptr)};
 
-  template <typename T>
-  T lookup(FlatSymbolRefAttr name) {
-    return SymbolTable::lookupNearestSymbolFrom<T>(device, name);
-  }
-
   /// The DMA program of `tile`, created empty if the tile has none yet.
   Operation *dmaProgramFor(TileLike tile, Location loc) {
-    auto matches = [&](Operation *op, Value tileOperand) {
-      return tileOperand == tile->getResult(0) ? op : nullptr;
+    Value wanted = tile->getResult(0);
+    auto existing = [&]<typename OpTy>() -> Operation * {
+      for (auto op : device.getOps<OpTy>()) {
+        if (op.getTile() == wanted) {
+          return op;
+        }
+      }
+      return nullptr;
     };
-    for (auto op : device.getOps<MemOp>())
-      if (Operation *found = matches(op, op.getTile()))
-        return found;
-    for (auto op : device.getOps<MemTileDMAOp>())
-      if (Operation *found = matches(op, op.getTile()))
-        return found;
-    for (auto op : device.getOps<ShimDMAOp>())
-      if (Operation *found = matches(op, op.getTile()))
-        return found;
+    if (Operation *found = existing.template operator()<MemOp>()) {
+      return found;
+    }
+    if (Operation *found = existing.template operator()<MemTileDMAOp>()) {
+      return found;
+    }
+    if (Operation *found = existing.template operator()<ShimDMAOp>()) {
+      return found;
+    }
 
     OpBuilder::InsertionGuard g(builder);
     builder.setInsertionPoint(device.getBody()->getTerminator());
     Operation *program;
-    if (tile.isShimTile())
-      program = ShimDMAOp::create(builder, loc, builder.getIndexType(),
-                                  tile->getResult(0));
-    else if (tile.isMemTile())
-      program = MemTileDMAOp::create(builder, loc, tile->getResult(0));
-    else
-      program = MemOp::create(builder, loc, tile->getResult(0));
+    if (tile.isShimTile()) {
+      program = ShimDMAOp::create(builder, loc, builder.getIndexType(), wanted);
+    } else if (tile.isMemTile()) {
+      program = MemTileDMAOp::create(builder, loc, wanted);
+    } else {
+      program = MemOp::create(builder, loc, wanted);
+    }
 
     builder.setInsertionPointToStart(&program->getRegion(0).emplaceBlock());
     EndOp::create(builder, loc);
@@ -99,14 +102,16 @@ struct AIEObjectFifoLowerDMAsPass
     int64_t override = endpoint.getTransferSize().value_or(0);
 
     SmallVector<Descriptor> descriptors;
-    for (auto [index, buffer] : llvm::enumerate(buffers))
-      for (ObjectFifoSegmentAttr segment : segments)
+    for (auto [index, buffer] : llvm::enumerate(buffers)) {
+      for (ObjectFifoSegmentAttr segment : segments) {
         descriptors.push_back(
             {buffer, segment.getOffset(),
              override ? override : segment.getSize(),
              drains ? segment.getConsumeLock() : segment.getProduceLock(),
              drains ? segment.getProduceLock() : segment.getConsumeLock(),
              static_cast<int64_t>(index)});
+      }
+    }
     return descriptors;
   }
 
@@ -130,31 +135,37 @@ struct AIEObjectFifoLowerDMAsPass
         action = LockAction::Acquire;
       }
     } else if (descriptor.acquireLock) {
-      acquireLock = lookup<LockOp>(descriptor.acquireLock);
-      releaseLock = lookup<LockOp>(descriptor.releaseLock);
+      acquireLock = SymbolTable::lookupNearestSymbolFrom<LockOp>(
+          device, descriptor.acquireLock);
+      releaseLock = SymbolTable::lookupNearestSymbolFrom<LockOp>(
+          device, descriptor.releaseLock);
     }
 
-    if (acquireLock)
+    if (acquireLock) {
       UseLockOp::create(builder, loc, acquireLock, action, acquireValue);
-    if (auto packet = endpoint.getPacket())
+    }
+    if (auto packet = endpoint.getPacket()) {
       DMABDPACKETOp::create(builder, loc, packet->getPktType(),
                             packet->getPktId());
+    }
 
     auto dims = endpoint.getDimensionsAttr();
     auto pad = drains ? endpoint.getPadDimensionsAttr() : nullptr;
-    if (dims && pad)
+    if (dims && pad) {
       DMABDOp::create(builder, loc, descriptor.buffer, descriptor.offset,
                       descriptor.size, dims, pad);
-    else if (dims)
+    } else if (dims) {
       DMABDOp::create(builder, loc, descriptor.buffer, descriptor.offset,
                       descriptor.size, dims);
-    else
+    } else {
       DMABDOp::create(builder, loc, descriptor.buffer, descriptor.offset,
                       descriptor.size);
+    }
 
-    if (releaseLock)
+    if (releaseLock) {
       UseLockOp::create(builder, loc, releaseLock, LockAction::Release,
                         releaseValue);
+    }
     NextBDOp::create(builder, loc, successor);
   }
 
@@ -163,21 +174,26 @@ struct AIEObjectFifoLowerDMAsPass
     bool drains = channel.getDirection() == DMAChannelDir::MM2S;
     ObjectFifoPoolOp pool = endpoint.getPoolOp();
     SmallVector<Value> buffers = buffersOf(pool);
-    if (buffers.empty())
+    if (buffers.empty()) {
       return;
+    }
 
     SmallVector<Descriptor> descriptors =
         descriptorsFor(endpoint, buffers, drains);
-    if (descriptors.empty())
+    if (descriptors.empty()) {
       return;
+    }
 
     Location loc = endpoint.getLoc();
     int repeat = endpoint.getRepeatCount().value_or(1);
-    // Only a MemTile's DMA runs a chain a fixed number of times.
-    auto iterCount = endpoint.getTileLike().isMemTile()
-                         ? endpoint.getIterCount()
-                         : std::nullopt;
+    // Only a MemTile's DMA runs a chain a fixed number of times; the verifier
+    // rejects iter_count anywhere else rather than dropping it here.
+    std::optional<int32_t> iterCount = endpoint.getIterCount();
 
+    // FIXME: repeat_count and iter_count are tangled here. Deriving one from
+    // the other, and silently dropping iter_count off a MemTile, is confusing:
+    // each should mean one thing and be honored or rejected, not reinterpreted.
+    //
     // A chain over one descriptor repeats in hardware rather than as copies of
     // the same buffer descriptor.
     bool repeatInHardware = repeat > 1 && descriptors.size() == 1 && !iterCount;
@@ -194,15 +210,16 @@ struct AIEObjectFifoLowerDMAsPass
     builder.setInsertionPointToStart(dmaBlock);
     DMAStartOp::create(builder, loc, channel.getDirection(), channel.getIndex(),
                        taskCount, endpoint.getPadValue(), bdBlock, endBlock);
-    if (lastDmaBlock)
+    if (lastDmaBlock) {
       lastDmaBlock->getTerminator()->setSuccessor(dmaBlock, 1);
+    }
 
     bool binaryLocks = !device.getTargetModel().hasProperty(
         AIETargetModel::UsesSemaphoreLocks);
     size_t total = descriptors.size() * copies;
     size_t emitted = 0;
     Block *current = bdBlock;
-    for (Descriptor &descriptor : descriptors)
+    for (Descriptor &descriptor : descriptors) {
       for (int copy = 0; copy < copies; copy++) {
         Block *successor;
         if (emitted + 1 < total) {
@@ -221,6 +238,7 @@ struct AIEObjectFifoLowerDMAsPass
         current = successor;
         emitted++;
       }
+    }
   }
 
   void runOnOperation() override {
@@ -236,8 +254,9 @@ struct AIEObjectFifoLowerDMAsPass
         return signalPassFailure();
       }
       // A raw stream port bypasses the DMA entirely.
-      if (!endpoint.getStreamPort())
+      if (!endpoint.getStreamPort()) {
         lowerEndpoint(endpoint, *channel);
+      }
       endpoint.erase();
     }
   }

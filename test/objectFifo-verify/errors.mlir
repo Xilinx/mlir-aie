@@ -71,7 +71,7 @@ module @unconnected {
     } : memref<16xi32>
     aie.objectfifo.core_endpoint @c(%tile12) fills @p
     // expected-error@+1 {{is not connected by any flow}}
-    aie.objectfifo.dma_endpoint @d(%tile12) drains @p
+    aie.objectfifo.dma_endpoint @d(%tile12) drains of @p
   }
 }
 

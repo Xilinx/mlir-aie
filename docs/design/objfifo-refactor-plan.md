@@ -10,8 +10,8 @@ Target IR at each stage is documented in `docs/design/objfifo-stages/`. Read
 
 - `test/objectFifo-stateful-transform` stays green: 159 pass, 1 XFAIL.
 - Existing tests are unchanged, or changed only mechanically (RUN lines, op
-  spellings). A behavioural diff in an expected output means the commit is wrong.
-- New behaviour ships with new tests in the same commit.
+  spellings). A behavioral diff in an expected output means the commit is wrong.
+- New behavior ships with new tests in the same commit.
 - Comments follow `docs/skills` / the code-commenting skill: no history, no
   before/after framing, no restating the adjacent line.
 
@@ -163,7 +163,7 @@ The unroll hint and the alloca-to-SSA promotion belong to this pass: the hint
 preserves fifo-level information the lowering discards, and the allocas exist
 only to reach SSA form.
 
-New behaviour, with tests:
+New behavior, with tests:
 
 - an acquire on an endpoint selecting several segments takes one lock per
   segment, all with the same delta, before the object is handed over;
@@ -200,7 +200,7 @@ an aie.objectfifo.acquire" verifier and
 `test/objectFifo-stateful-transform/subview_escape_via_iter_args.mlir` all go.
 
 Mechanical but wide: most objectFifo tests use `subview.access`. Land it last so
-it never blocks a behavioural commit.
+it never blocks a behavioral commit.
 
 ---
 

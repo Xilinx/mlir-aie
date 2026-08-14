@@ -24,13 +24,6 @@ namespace xilinx::AIE {
 
 namespace {
 
-int64_t objectSizeInBytes(ObjectFifoPoolOp pool) {
-  auto elemType = pool.getElemType();
-  DataLayout layout = DataLayout::closest(pool);
-  return elemType.getNumElements() *
-         layout.getTypeSizeInBits(elemType.getElementType()) / 8;
-}
-
 struct AIEObjectFifoAllocatePass
     : public xilinx::AIE::impl::AIEObjectFifoAllocateBase<
           AIEObjectFifoAllocatePass> {
@@ -42,82 +35,89 @@ struct AIEObjectFifoAllocatePass
   /// Bytes already committed to `tile` by every buffer placed so far.
   int64_t usedMemory(Value tile) {
     int64_t total = 0;
-    for (auto buffer : device.getOps<BufferOp>())
-      if (buffer.getTile() == tile)
+    for (auto buffer : device.getOps<BufferOp>()) {
+      if (buffer.getTile() == tile) {
         total += buffer.getAllocationSize();
+      }
+    }
     return total;
   }
 
-  TileOp findOrCreateTile(TileLike host, int col, int row) {
-    for (auto tile : device.getOps<TileOp>())
-      if (tile.getCol() == col && tile.getRow() == row)
-        return tile;
-
-    OpBuilder::InsertionGuard g(builder);
-    Operation *insertAfter = host.getOperation();
-    while (isa_and_nonnull<BufferOp>(insertAfter->getNextNode()))
-      insertAfter = insertAfter->getNextNode();
-    builder.setInsertionPointAfter(insertAfter);
-    return TileOp::create(builder, host.getLoc(), col, row);
-  }
-
-  /// A MemTile buffer that does not fit at home spills to whichever neighbour
+  /// FIXME: choosing which tile a buffer lives on is the buffer allocator's
+  /// job, not this pass's. Tracking used memory here to make that choice
+  /// breaks the separation of concerns; --aie-assign-buffer-addresses should
+  /// instead be free to move buffers between tiles that share a memory module.
+  /// Carried over from the monolithic lowering rather than introduced here.
+  ///
+  /// A MemTile buffer that does not fit at home spills to whichever neighbor
   /// its DMAs can still reach, preferring the emptier one so adjacent MemTiles
-  /// keep room for their own spills. Which tiles neighbour an unplaced one is
+  /// keep room for their own spills. Which tiles neighbor an unplaced one is
   /// not yet known, so its buffers stay at home.
   Value placementFor(TileLike home, int64_t sizeBytes) {
     auto &target = device.getTargetModel();
     Value homeTile = home->getResult(0);
     if (!home.isMemTile() ||
-        usedMemory(homeTile) + sizeBytes <= target.getMemTileSize())
+        usedMemory(homeTile) + sizeBytes <= target.getMemTileSize()) {
       return homeTile;
+    }
 
     auto homeOp = dyn_cast<TileOp>(home.getOperation());
-    if (!homeOp)
+    if (!homeOp) {
       return homeTile;
-
-    SmallVector<TileOp> neighbours;
-    for (int col : {homeOp.getCol() - 1, homeOp.getCol() + 1}) {
-      if (col < 0 || col >= target.columns())
-        continue;
-      TileOp neighbour = findOrCreateTile(home, col, homeOp.getRow());
-      int direction = 0;
-      if (isSharedMemory(homeOp, neighbour, &direction) &&
-          (direction == 1 || direction == 2))
-        neighbours.push_back(neighbour);
     }
-    llvm::stable_sort(neighbours, [&](TileOp a, TileOp b) {
+
+    SmallVector<TileOp> neighbors;
+    for (int col : {homeOp.getCol() - 1, homeOp.getCol() + 1}) {
+      if (col < 0 || col >= target.columns()) {
+        continue;
+      }
+      TileOp neighbor =
+          TileOp::getOrCreate(builder, device, col, homeOp.getRow());
+      int direction = 0;
+      if (isSharedMemory(homeOp, neighbor, &direction) &&
+          (direction == 1 || direction == 2)) {
+        neighbors.push_back(neighbor);
+      }
+    }
+    llvm::stable_sort(neighbors, [&](TileOp a, TileOp b) {
       return usedMemory(a.getResult()) < usedMemory(b.getResult());
     });
-    for (TileOp neighbour : neighbours)
-      if (usedMemory(neighbour.getResult()) + sizeBytes <=
-          target.getMemTileSize())
-        return neighbour.getResult();
+    for (TileOp neighbor : neighbors) {
+      if (usedMemory(neighbor.getResult()) + sizeBytes <=
+          target.getMemTileSize()) {
+        return neighbor.getResult();
+      }
+    }
     return homeTile;
   }
 
   /// Buffers and locks live directly below the tile declarations.
   void setInsertionPointBelowTiles() {
     Operation *lastTile = nullptr;
-    for (Operation &op : *device.getBody())
-      if (isa<TileLike>(op))
+    for (Operation &op : *device.getBody()) {
+      if (isa<TileLike>(op)) {
         lastTile = &op;
-    if (lastTile)
+      }
+    }
+    if (lastTile) {
       builder.setInsertionPointAfter(lastTile);
-    else
+    } else {
       builder.setInsertionPointToStart(device.getBody());
+    }
   }
 
   void allocateBuffers(ObjectFifoPoolOp pool) {
-    if (pool.getBuffers())
+    if (pool.getBuffers()) {
       return;
+    }
     TileLike home = pool.getTileLike();
-    if (home.isShimTile())
+    if (home.isShimTile()) {
       return;
+    }
 
     setInsertionPointBelowTiles();
     auto initValues = pool.getInitValues();
-    int64_t sizeBytes = objectSizeInBytes(pool);
+    int64_t sizeBytes = pool.getObjectSizeInBytes();
     StringRef base = pool.getBaseName();
 
     SmallVector<Attribute> names;
@@ -145,8 +145,9 @@ struct AIEObjectFifoAllocatePass
   /// gives each segment a counting pair, the producer's lock counting free
   /// objects and the consumer's counting full ones.
   void allocateLocks(ObjectFifoPoolOp pool) {
-    if (pool.getDisableSynchronization())
+    if (pool.getDisableSynchronization()) {
       return;
+    }
 
     StringRef base = pool.getBaseName();
     int depth = pool.getDepth();
@@ -155,14 +156,16 @@ struct AIEObjectFifoAllocatePass
     int repeat = pool.getRepeatCount().value_or(1);
 
     // A pool that starts full and is re-read each outer iteration is never
-    // written again, so nothing needs synchronising.
+    // written again, so nothing needs synchronizing.
     auto iterCount = pool.getIterCount();
-    if (filled == depth && filled > 0 && iterCount && *iterCount > 1)
+    if (filled == depth && filled > 0 && iterCount && *iterCount > 1) {
       return;
+    }
 
     if (device.getTargetModel().getTargetArch() == AIEArch::AIE1) {
-      if (pool.getLocks())
+      if (pool.getLocks()) {
         return;
+      }
       SmallVector<Attribute> names;
       for (int i = 0; i < depth; i++) {
         std::string name = (base + "_lock_" + std::to_string(i)).str();
@@ -174,8 +177,9 @@ struct AIEObjectFifoAllocatePass
     }
 
     auto segments = pool.getSegments();
-    if (!segments)
+    if (!segments) {
       return;
+    }
 
     SmallVector<Attribute> updated;
     for (auto [index, segment] :
@@ -198,32 +202,19 @@ struct AIEObjectFifoAllocatePass
     pool.setSegmentsAttr(builder.getArrayAttr(updated));
   }
 
-  /// Which way an endpoint moves data. A shim endpoint has no pool and so no
-  /// role, but its side of the flow says the same thing: a source sends memory
-  /// out onto the stream, a destination writes what the stream delivers.
-  DenseMap<StringRef, DMAChannelDir> directions;
-
-  void collectDirections() {
-    for (auto flow : device.getOps<ObjectFifoFlowOp>()) {
-      directions[flow.getSource()] = DMAChannelDir::MM2S;
-      for (auto dest : flow.getDestinations().getAsRange<FlatSymbolRefAttr>())
-        directions[dest.getValue()] = DMAChannelDir::S2MM;
-    }
-  }
-
+  /// Which way an endpoint moves data: a filler writes what the stream
+  /// delivers, a drainer sends memory out onto it.
   DMAChannelDir directionOf(ObjectFifoDmaEndpointOp endpoint) {
-    auto found = directions.find(endpoint.getSymName());
-    if (found != directions.end())
-      return found->second;
     return endpoint.drains() ? DMAChannelDir::MM2S : DMAChannelDir::S2MM;
   }
 
-  /// A pool whose buffers spilled onto a neighbour can only be reached by the
-  /// channels that see that neighbour's memory.
+  /// A pool whose buffers spilled onto a neighbor can only be reached by the
+  /// channels that see that neighbor's memory.
   bool reachesAdjacentTile(ObjectFifoDmaEndpointOp endpoint) {
     ObjectFifoPoolOp pool = endpoint.getPoolOp();
-    if (!pool)
+    if (!pool) {
       return false;
+    }
     return llvm::any_of(pool.getObjects(), [&](Value object) {
       auto buffer = dyn_cast<BufferOp>(object.getDefiningOp());
       return buffer && buffer.getTile() != pool.getTile();
@@ -233,8 +224,9 @@ struct AIEObjectFifoAllocatePass
   LogicalResult assignChannels(DMAChannelAnalysis &channels) {
     SmallVector<ObjectFifoDmaEndpointOp> pending;
     for (auto endpoint : device.getOps<ObjectFifoDmaEndpointOp>()) {
-      if (endpoint.getChannel())
+      if (endpoint.getChannel()) {
         continue;
+      }
       DMAChannelDir dir = directionOf(endpoint);
       // A Core stream port is named by the user, not drawn from the tile's
       // DMA channels.
@@ -247,10 +239,11 @@ struct AIEObjectFifoAllocatePass
       if (auto pinned = endpoint.getPinnedChannel()) {
         int channel =
             channels.reservePinnedChannel(endpoint.getTileLike(), dir, *pinned);
-        if (channel < 0)
+        if (channel < 0) {
           return endpoint.emitOpError("pinned ")
                  << stringifyDMAChannelDir(dir) << " DMA channel " << *pinned
                  << " is out of range or already in use on this tile";
+        }
         endpoint.setChannelAttr(
             ObjectFifoChannelAttr::get(builder.getContext(), dir, channel));
         continue;
@@ -269,11 +262,12 @@ struct AIEObjectFifoAllocatePass
       DMAChannelDir dir = directionOf(endpoint);
       int channel = channels.getDMAChannelIndex(endpoint.getTileLike(), dir,
                                                 reachesAdjacentTile(endpoint));
-      if (channel < 0)
+      if (channel < 0) {
         return endpoint.getTileLike().emitOpError(
             dir == DMAChannelDir::MM2S
                 ? "number of output DMA channel exceeded!"
                 : "number of input DMA channel exceeded!");
+      }
       endpoint.setChannelAttr(
           ObjectFifoChannelAttr::get(builder.getContext(), dir, channel));
     }
@@ -283,21 +277,29 @@ struct AIEObjectFifoAllocatePass
   /// Which wire an endpoint's channel sits on: a raw stream port on the core,
   /// PLIO at a shim boundary, or an ordinary DMA channel.
   WireBundle wireFor(ObjectFifoDmaEndpointOp endpoint) {
-    if (endpoint.getStreamPort())
+    if (endpoint.getStreamPort()) {
       return WireBundle::Core;
+    }
     return endpoint.getPlio() && endpoint.getTileLike().isShimTile()
                ? WireBundle::PLIO
                : WireBundle::DMA;
   }
 
+  /// FIXME: assigning packet IDs does not belong in this pass. The shape it
+  /// wants is an `%id = aie.packet_id` value that `aie.packet_flow` takes as an
+  /// argument, concretized by a pass of its own; this set then becomes that
+  /// pass's analysis.
+  ///
   /// Packet IDs already spoken for, by an existing packet flow or by a flow
   /// that pinned one.
   llvm::SmallDenseSet<int> takenPacketIDs() {
     llvm::SmallDenseSet<int> taken;
     device.walk([&](PacketFlowOp flow) { taken.insert(flow.IDInt()); });
-    for (auto flow : device.getOps<ObjectFifoFlowOp>())
-      if (auto pinned = flow.getPacketId())
+    for (auto flow : device.getOps<ObjectFifoFlowOp>()) {
+      if (auto pinned = flow.getPacketId()) {
         taken.insert(*pinned);
+      }
+    }
     return taken;
   }
 
@@ -360,20 +362,24 @@ struct AIEObjectFifoAllocatePass
         int packetID;
         if (auto pinned = flow.getPacketId()) {
           packetID = *pinned;
-          if (packetID > maxPacketID)
+          if (packetID > maxPacketID) {
             return flow.emitOpError("packet_id ")
                    << packetID << " is out of range (max " << maxPacketID
                    << ")";
+          }
         } else {
-          while (taken.contains(nextFree))
+          while (taken.contains(nextFree)) {
             nextFree++;
-          if (nextFree > maxPacketID)
+          }
+          if (nextFree > maxPacketID) {
             return flow.emitOpError("max number of packet IDs reached");
+          }
           packetID = nextFree;
           taken.insert(packetID);
         }
-        if (failed(lowerPacketFlow(flow, source, packetID)))
+        if (failed(lowerPacketFlow(flow, source, packetID))) {
           return failure();
+        }
         continue;
       }
 
@@ -388,8 +394,9 @@ struct AIEObjectFifoAllocatePass
                        dest.getTile(), wireFor(dest), destChannel.getIndex());
       }
     }
-    for (Operation *op : toErase)
+    for (Operation *op : toErase) {
       op->erase();
+    }
     return success();
   }
 
@@ -399,20 +406,25 @@ struct AIEObjectFifoAllocatePass
   LogicalResult bindRearmTargets() {
     llvm::StringMap<SmallVector<Operation *>> usersByFifo;
     device.walk([&](Operation *op) {
-      if (op->getName().getStringRef() != "aiex.dma_channel_reset_for")
+      if (op->getName().getStringRef() != "aiex.dma_channel_reset_for") {
         return;
+      }
       auto sym = op->getAttrOfType<FlatSymbolRefAttr>("objfifo");
-      if (!sym)
+      if (!sym) {
         return;
+      }
       // Split may already have pointed this at the fifo's shim endpoint.
       StringRef name = sym.getValue();
-      if (auto endpoint = lookupEndpoint(sym))
-        if (auto fifoName = endpoint.getFifoName())
+      if (auto endpoint = lookupEndpoint(sym)) {
+        if (auto fifoName = endpoint.getFifoName()) {
           name = *fifoName;
+        }
+      }
       usersByFifo[name].push_back(op);
     });
-    if (usersByFifo.empty())
+    if (usersByFifo.empty()) {
       return success();
+    }
 
     builder.setInsertionPoint(device.getBody()->getTerminator());
     for (auto &[fifoName, users] : usersByFifo) {
@@ -422,15 +434,17 @@ struct AIEObjectFifoAllocatePass
       for (auto endpoint : device.getOps<ObjectFifoDmaEndpointOp>()) {
         std::optional<ObjectFifoChannelAttr> channel = endpoint.getChannel();
         if (endpoint.getFifoName() != fifoName ||
-            endpoint.getTileLike().isShimTile() || !channel)
+            endpoint.getTileLike().isShimTile() || !channel) {
           continue;
+        }
         channelTiles.push_back(endpoint.getTile());
         channelDirs.push_back(static_cast<int32_t>(channel->getDirection()));
         channelIndices.push_back(channel->getIndex());
       }
       for (auto pool : device.getOps<ObjectFifoPoolOp>()) {
-        if (pool.getFifoName() != fifoName || pool.getTileLike().isShimTile())
+        if (pool.getFifoName() != fifoName || pool.getTileLike().isShimTile()) {
           continue;
+        }
         for (LockOp lock : pool.getLockOps()) {
           lockValues.push_back(lock.getResult());
           lockInits.push_back(lock.getInit().value_or(0));
@@ -438,16 +452,18 @@ struct AIEObjectFifoAllocatePass
       }
 
       if (channelTiles.empty() && lockValues.empty()) {
-        for (Operation *user : users)
+        for (Operation *user : users) {
           user->emitOpError() << "objectFIFO '" << fifoName
                               << "' has no resident core/mem DMA channels or "
                                  "locks to re-arm";
+        }
         return failure();
       }
 
       std::string name = (fifoName + "_rearm").str();
-      for (unsigned suffix = 0; device.lookupSymbol(name); suffix++)
+      for (unsigned suffix = 0; device.lookupSymbol(name); suffix++) {
         name = (fifoName + "_rearm_" + std::to_string(suffix)).str();
+      }
 
       // head_bd_ids and repeat_counts are filled in by --aie-assign-bd-ids.
       ObjectFifoRearmBindingOp::create(
@@ -459,8 +475,9 @@ struct AIEObjectFifoAllocatePass
           /*head_bd_ids=*/DenseI32ArrayAttr(),
           /*repeat_counts=*/DenseI32ArrayAttr());
       auto target = FlatSymbolRefAttr::get(builder.getContext(), name);
-      for (Operation *user : users)
+      for (Operation *user : users) {
         user->setAttr("objfifo", target);
+      }
     }
     return success();
   }
@@ -472,11 +489,12 @@ struct AIEObjectFifoAllocatePass
     for (auto endpoint : device.getOps<ObjectFifoDmaEndpointOp>()) {
       std::optional<StringRef> fifoName = endpoint.getFifoName();
       std::optional<ObjectFifoChannelAttr> channel = endpoint.getChannel();
-      if (!endpoint.getTileLike().isShimTile() || !fifoName || !channel)
+      if (!endpoint.getTileLike().isShimTile() || !fifoName || !channel) {
         continue;
+      }
       std::string name = (*fifoName + "_shim_alloc").str();
       if (!SymbolTable::lookupNearestSymbolFrom<ShimDMAAllocationOp>(
-              device, builder.getStringAttr(name)))
+              device, builder.getStringAttr(name))) {
         ShimDMAAllocationOp::create(
             builder, endpoint.getLoc(), builder.getStringAttr(name),
             endpoint.getTile(),
@@ -484,6 +502,7 @@ struct AIEObjectFifoAllocatePass
                                    channel->getDirection()),
             builder.getI64IntegerAttr(channel->getIndex()),
             builder.getBoolAttr(endpoint.getPlio()), endpoint.getPacketAttr());
+      }
       // The runtime sequence reaches the fifo through this record.
       (void)SymbolTable::replaceAllSymbolUses(
           endpoint, builder.getStringAttr(name), device);
@@ -495,20 +514,22 @@ struct AIEObjectFifoAllocatePass
     builder = OpBuilder(device.getContext());
 
     // MemTile pools are served largest-first so the big buffers claim home
-    // placement before smaller ones consume the neighbours they would spill to.
+    // placement before smaller ones consume the neighbors they would spill to.
     SmallVector<ObjectFifoPoolOp> pools(device.getOps<ObjectFifoPoolOp>());
     SmallVector<size_t> memTileSlots;
     SmallVector<ObjectFifoPoolOp> memTilePools;
-    for (auto [index, pool] : llvm::enumerate(pools))
+    for (auto [index, pool] : llvm::enumerate(pools)) {
       if (pool.getTileLike().isMemTile()) {
         memTileSlots.push_back(index);
         memTilePools.push_back(pool);
       }
+    }
     llvm::stable_sort(memTilePools, [](ObjectFifoPoolOp a, ObjectFifoPoolOp b) {
-      return objectSizeInBytes(a) > objectSizeInBytes(b);
+      return a.getObjectSizeInBytes() > b.getObjectSizeInBytes();
     });
-    for (auto [slot, pool] : llvm::zip(memTileSlots, memTilePools))
+    for (auto [slot, pool] : llvm::zip(memTileSlots, memTilePools)) {
       pools[slot] = pool;
+    }
 
     for (ObjectFifoPoolOp pool : pools) {
       setInsertionPointBelowTiles();
@@ -517,14 +538,16 @@ struct AIEObjectFifoAllocatePass
     }
 
     DMAChannelAnalysis channels(device);
-    collectDirections();
-    if (failed(assignChannels(channels)))
+    if (failed(assignChannels(channels))) {
       return signalPassFailure();
+    }
 
-    if (failed(bindRearmTargets()))
+    if (failed(bindRearmTargets())) {
       return signalPassFailure();
-    if (failed(lowerFlows()))
+    }
+    if (failed(lowerFlows())) {
       return signalPassFailure();
+    }
     emitShimAllocations();
   }
 };

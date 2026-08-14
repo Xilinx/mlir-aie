@@ -1358,7 +1358,7 @@ LogicalResult AIEX::DmaChannelResetForOp::verify() {
   AIE::DeviceOp dev = getOperation()->getParentOfType<AIE::DeviceOp>();
   if (!dev)
     return success();
-  // The resident re-arm relies on the aie2p behaviour that a DMA channel has no
+  // The resident re-arm relies on the aie2p behavior that a DMA channel has no
   // enable bit, so the only way to restart it is a START_QUEUE push. AIE1 DMA
   // channels have an enable bit and are armed differently, so the trio this op
   // lowers to would not re-arm them correctly.
