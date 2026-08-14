@@ -50,6 +50,8 @@ jobs:
     # in python/aie_lit_utils/lit_config_helpers.py); JIT-style Python
     # examples (@iron.jit) still run and cover the NPU end to end.
     runs-on: [self-hosted, windows, ryzenai, npu2]
+    # Normal exec is 19-21 min; observed hang on this job 71.4 min (2026-08-04).
+    timeout-minutes: 90
     env:
       NPU_CACHE_HOME: ${{ github.workspace }}\iron-cache-${{ github.run_id }}
       PIP_CACHE_DIR: ${{ github.workspace }}\.pip-cache-${{ github.run_id }}
