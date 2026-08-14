@@ -2254,16 +2254,22 @@ def AIE_ObjectFifoPoolOp
     : AIE_Op<"objectfifo.pool", [HasParent<"DeviceOp">, Symbol]> {
   let summary = "A rotating set of buffers and the locks guarding them";
   let description = [{
-    A pool holds `depth` buffers of `elemType` on one tile, together with the
-    segments its objects are divided into and the locks guarding each segment.
+    A set of buffers and the locks that guard how they are accessed.
 
-    Segments partition an object; buffers rotate. Every buffer carries every
-    segment, so a segment's offset and size address all of them. An ordinary
-    pool has a single segment spanning the whole object; a pool that several
-    endpoints fill or drain independently has one segment per participant.
+    A pool holds `depth` buffers of `elemType` on one tile. The buffers are
+    used in rotation, and each one is what an objectFifo calls an object, so
+    `depth` is the fifo's object count.
 
-    Devices with binary locks carry `locks`, one per buffer, in place of
-    `segments`.
+    `segments` divides a buffer into the slices that are guarded separately.
+    Every buffer is divided the same way, so a segment's offset and size
+    address all of them. An ordinary pool has one segment spanning the whole
+    buffer; a pool that several endpoints fill or drain independently has one
+    segment per participant, which is what makes a join or a distribute
+    nothing more than several endpoints on one pool.
+
+    On AIE1 a buffer is guarded by a single binary lock that rotates with it,
+    with no way to guard part of a buffer; such a pool carries `locks`, one
+    per buffer, and cannot be divided into more than one segment.
 
     `buffers`, `locks` and the segments' lock references are filled in by
     `--aie-objectfifo-allocate`, which leaves alone whatever is already named.
@@ -2334,8 +2340,8 @@ def AIE_ObjectFifoCoreEndpointOp
     Names the pool a core works through, whether it fills or drains it, and which
     of the pool's segments it handles. Omitting `segments` selects all of them.
 
-    A core's `aie.objectfifo.acquire` and `aie.objectfifo.release` name this op,
-    so they carry no direction of their own.
+    A core's `aie.objectfifo.acquire` and `aie.objectfifo.release` refer to this
+    op, so they carry no direction of their own.
 
     Example:
     ```

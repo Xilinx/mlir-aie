@@ -316,6 +316,9 @@ struct AIEObjectFifoSplitPass
   void retargetCoreAccesses(ObjectFifoCreateOp fifo, ObjectFifoPort port,
                             Value tile, StringRef endpointName) {
     auto name = FlatSymbolRefAttr::get(builder.getContext(), endpointName);
+    // Each access moves to the endpoint for the port it named, so this cannot
+    // be a blanket replaceAllSymbolUses: the two ports of one fifo become two
+    // different symbols.
     for (auto coreOp : device.getOps<CoreOp>()) {
       if (coreOp.getTile() != tile) {
         continue;

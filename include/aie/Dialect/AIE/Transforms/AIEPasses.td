@@ -360,8 +360,11 @@ def AIEObjectFifoSplit : Pass<"aie-objectfifo-split", "DeviceOp"> {
     Replace each `aie.objectfifo` and `aie.objectfifo.link` with the buffer pools
     its objects live in and one endpoint per actor working through them.
 
-    A fifo whose ends reach one memory module becomes a single pool with a core
-    endpoint at each end. Any other fifo becomes one pool per tile, a DMA
+    A fifo whose ends reach one memory module, and which asks for nothing that
+    a DMA has to carry out, becomes a single pool with a core endpoint at each
+    end. Reshaping the data on the way -- a layout transformation on either
+    side, a link, a repeat count, an asymmetric consumer type -- puts it back
+    on DMAs, as does the explicit `via_DMA` switch. Any other fifo becomes one pool per tile, a DMA
     endpoint alongside each core endpoint, and an `aie.objectfifo.flow`
     connecting the two DMA ends. A link's participants meet on one pool, one
     segment per participant.
@@ -398,8 +401,9 @@ def AIEObjectFifoAllocate : Pass<"aie-objectfifo-allocate", "DeviceOp"> {
     channel each endpoint drives. `aie.objectfifo.flow` becomes `aie.flow`, and
     a shim endpoint gains the `aie.shim_dma_allocation` the runtime resolves.
 
-    Whatever is already written down is kept, so hand-placed buffers and pinned
-    channels survive.
+    Whatever is already written down is kept, so hand-placed buffers,
+    hand-written locks and pinned channels all survive; each is filled in only
+    where it is absent.
   }];
 
   let constructor = "xilinx::AIE::createAIEObjectFifoAllocatePass()";
@@ -447,9 +451,9 @@ def AIEObjectFifoLowerCores : Pass<"aie-objectfifo-lower-cores", "DeviceOp"> {
 def AIEObjectFifoErasePools : Pass<"aie-objectfifo-erase-pools", "DeviceOp"> {
   let summary = "Drop pools that no endpoint works any more";
   let description = [{
-    Erase every `aie.objectfifo.pool` no endpoint refers to. A lowered pool is
-    inert, but it still records which buffers and locks belong to which
-    objectFifo, so keeping it is a reasonable choice and this pass is separate.
+    Erase every `aie.objectfifo.pool` nothing refers to any more. Users may
+    choose to skip this pass to retain the metadata about which buffers and
+    locks belong to which lowered objectFifo.
   }];
 
   let constructor = "xilinx::AIE::createAIEObjectFifoErasePoolsPass()";

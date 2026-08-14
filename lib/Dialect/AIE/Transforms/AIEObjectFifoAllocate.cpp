@@ -92,6 +92,12 @@ struct AIEObjectFifoAllocatePass
   }
 
   /// Buffers and locks live directly below the tile declarations.
+  /// Buffers and locks live directly below the tile declarations.
+  ///
+  /// FIXME: this depends on the tiles a pool's buffers refer to being declared
+  /// before anything that uses those buffers. Inserting each buffer below its
+  /// own tile instead would not, and is the better shape; it moves ~90
+  /// expected outputs, so it wants to be its own change.
   void setInsertionPointBelowTiles() {
     Operation *lastTile = nullptr;
     for (Operation &op : *device.getBody()) {
