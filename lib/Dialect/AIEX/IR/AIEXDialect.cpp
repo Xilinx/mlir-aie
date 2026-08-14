@@ -1398,6 +1398,35 @@ LogicalResult AIEX::CoreResetOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// NpuReadRegOp
+//===----------------------------------------------------------------------===//
+
+std::optional<uint32_t> AIEX::NpuReadRegOp::getAbsoluteAddress() {
+  auto tile = dyn_cast_or_null<AIE::TileOp>(getTile().getDefiningOp());
+  if (!tile)
+    return std::nullopt;
+  AIE::DeviceOp device = (*this)->getParentOfType<AIE::DeviceOp>();
+  if (!device)
+    return std::nullopt;
+  const AIE::AIETargetModel &tm = device.getTargetModel();
+  uint32_t col = tile.getCol();
+  uint32_t row = tile.getRow();
+  return ((col & 0xff) << tm.getColumnShift()) |
+         ((row & 0xff) << tm.getRowShift()) | (getOffset() & 0xfffff);
+}
+
+LogicalResult AIEX::NpuReadRegOp::verify() {
+  auto tile = dyn_cast_or_null<AIE::TileOp>(getTile().getDefiningOp());
+  if (!tile)
+    return emitOpError() << "tile operand must be produced by an aie.tile op";
+  // Tile coordinates are bounded by aie.tile's own verifier, so this op does
+  // not re-check them for range. Unlike core_reset/dma_channel_reset there is
+  // no tile-type restriction: core, mem, and shim tiles all have readable
+  // registers.
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // BlockFloatingPointType
 //===----------------------------------------------------------------------===//
 uint64_t AIEX::BlockFloatType::getTotalSizeInBits() const {

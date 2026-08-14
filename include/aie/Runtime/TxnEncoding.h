@@ -161,6 +161,26 @@ inline void txn_append_sync(std::vector<uint32_t> &txn, uint32_t col,
       ((nrow & 0xff) << 8) | ((ncol & 0xff) << 16) | ((chan & 0xff) << 24);
 }
 
+// Append a 4-word read_regs instruction reading ONE register at `addr`.
+//
+// Word layout is REASONED from the sibling custom-op encoders in this file
+// (opcode word, size-in-bytes word, then payload -- see txn_append_sync above
+// and txn_append_address_patch below), not confirmed against firmware: this
+// opcode number (TXN_OPC_READ_REGS) was reserved above but, before this
+// function, never emitted by any encoder here. `count` is always 1 -- one
+// aiex.npu.read_reg lowers to one entry; batching several addresses into a
+// single entry (as XDP's read_register_op_t does) is not implemented.
+// Device-verify the whole custom op before trusting values read this way; see
+// aiex.npu.read_reg's op doc for what is and is not confirmed.
+inline void txn_append_read_reg(std::vector<uint32_t> &txn, uint32_t addr) {
+  size_t pos = txn.size();
+  txn.resize(pos + 4, 0);
+  txn[pos + 0] = TXN_OPC_READ_REGS;
+  txn[pos + 1] = 4 * sizeof(uint32_t); // operation size
+  txn[pos + 2] = 1;                    // count (single-register form only)
+  txn[pos + 3] = addr;
+}
+
 // Append a variable-length blockwrite instruction.
 // `data` points to `count` uint32_t words of payload.
 //
