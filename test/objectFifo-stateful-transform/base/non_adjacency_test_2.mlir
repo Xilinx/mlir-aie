@@ -124,10 +124,9 @@ module @non_adjacency {
             %height = arith.constant 12 : index
 
             scf.for %indexInHeight = %c0 to %height step %c1 {
-                %subview = aie.objectfifo.acquire @objfifo (Produce, 1) : !aie.objectfifosubview<memref<16xi32>>
-                %elem0 = aie.objectfifo.subview.access %subview[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+                %elem0 = aie.objectfifo.acquire @objfifo(Produce) : memref<16xi32>
                 func.call @some_work(%elem0) : (memref<16xi32>) -> ()
-                aie.objectfifo.release @objfifo (Produce, 1)
+                aie.objectfifo.release @objfifo(Produce) [1]
             }
 
             aie.end
@@ -139,12 +138,9 @@ module @non_adjacency {
             %height = arith.constant 12 : index
 
             scf.for %indexInHeight = %c0 to %height step %c1 {
-                %subview = aie.objectfifo.acquire @objfifo (Consume, 3) : !aie.objectfifosubview<memref<16xi32>>
-                %elem0 = aie.objectfifo.subview.access %subview[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
-                %elem1 = aie.objectfifo.subview.access %subview[1] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
-                %elem2 = aie.objectfifo.subview.access %subview[2] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+                %elem0, %elem1, %elem2 = aie.objectfifo.acquire @objfifo(Consume) : memref<16xi32>, memref<16xi32>, memref<16xi32>
                 func.call @some_work(%elem0) : (memref<16xi32>) -> ()
-                aie.objectfifo.release @objfifo (Consume, 1)
+                aie.objectfifo.release @objfifo(Consume) [1]
             }
 
             aie.end

@@ -105,23 +105,20 @@ module {
       %c21 = arith.constant 21 : index
       %cmax = arith.constant 0xFFFFFFFF : index
       scf.for %arg0 = %c0 to %cmax step %c1 {
-        %subviewTop0 = aie.objectfifo.acquire @loop_of (Produce, 1) : !aie.objectfifosubview<memref<16xi32>>
-        %elemTop0 = aie.objectfifo.subview.access %subviewTop0[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+        %elemTop0 = aie.objectfifo.acquire @loop_of(Produce) : memref<16xi32>
         %reinterpret_cast_0 = memref.reinterpret_cast %elemTop0 to offset: [0], sizes: [4, 4], strides: [4, 1] : memref<16xi32> to memref<4x4xi32>
         func.call @some_work(%reinterpret_cast_0, %c0) : (memref<4x4xi32>, index) -> ()
-        aie.objectfifo.release @loop_of (Produce, 1)
+        aie.objectfifo.release @loop_of(Produce) [1]
         scf.for %indexInHeight = %c1 to %c21 step %c1 {
-          %subview = aie.objectfifo.acquire @loop_of (Produce, 1) : !aie.objectfifosubview<memref<16xi32>>
-          %elem0 = aie.objectfifo.subview.access %subview[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+          %elem0 = aie.objectfifo.acquire @loop_of(Produce) : memref<16xi32>
           %reinterpret_cast_1 = memref.reinterpret_cast %elem0 to offset: [0], sizes: [4, 4], strides: [4, 1] : memref<16xi32> to memref<4x4xi32>
           func.call @some_work(%reinterpret_cast_1, %indexInHeight) : (memref<4x4xi32>, index) -> ()
-          aie.objectfifo.release @loop_of (Produce, 1)
+          aie.objectfifo.release @loop_of(Produce) [1]
         }
-        %subviewTop1 = aie.objectfifo.acquire @loop_of (Produce, 1) : !aie.objectfifosubview<memref<16xi32>>
-        %elemTop1 = aie.objectfifo.subview.access %subviewTop1[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+        %elemTop1 = aie.objectfifo.acquire @loop_of(Produce) : memref<16xi32>
         %reinterpret_cast_2 = memref.reinterpret_cast %elemTop1 to offset: [0], sizes: [4, 4], strides: [4, 1] : memref<16xi32> to memref<4x4xi32>
         func.call @some_work(%reinterpret_cast_2, %c0) : (memref<4x4xi32>, index) -> ()
-        aie.objectfifo.release @loop_of (Produce, 1)
+        aie.objectfifo.release @loop_of(Produce) [1]
       }
       aie.end
     }

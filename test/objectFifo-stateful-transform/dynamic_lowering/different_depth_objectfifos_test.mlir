@@ -70,8 +70,7 @@
 // CHECK:               default {
 // CHECK:                 scf.yield %[[VAL_9]] : memref<10xi32>
 // CHECK:               }
-// CHECK:               %[[VAL_30:.*]] = arith.index_cast %[[VAL_25]] : i32 to index
-// CHECK:               %[[VAL_31:.*]] = scf.index_switch %[[VAL_30]] -> memref<10xi32>
+// CHECK:               %[[VAL_30:.*]] = scf.index_switch %[[VAL_28]] -> memref<10xi32>
 // CHECK:               case 0 {
 // CHECK:                 scf.yield %[[VAL_10]] : memref<10xi32>
 // CHECK:               }
@@ -84,20 +83,20 @@
 // CHECK:               default {
 // CHECK:                 scf.yield %[[VAL_10]] : memref<10xi32>
 // CHECK:               }
-// CHECK:               func.call @add_10_i32(%[[VAL_29]], %[[VAL_31]], %[[VAL_27]]) : (memref<10xi32>, memref<10xi32>, memref<10xi32>) -> ()
+// CHECK:               func.call @add_10_i32(%[[VAL_29]], %[[VAL_30]], %[[VAL_27]]) : (memref<10xi32>, memref<10xi32>, memref<10xi32>) -> ()
 // CHECK:               aie.use_lock(%[[VAL_12]], Release, %[[VAL_15]])
-// CHECK:               %[[VAL_32:.*]] = arith.addi %[[VAL_25]], %[[VAL_15]] : i32
-// CHECK:               %[[VAL_33:.*]] = arith.cmpi sge, %[[VAL_32]], %[[VAL_21]] : i32
-// CHECK:               %[[VAL_34:.*]] = arith.select %[[VAL_33]], %[[VAL_19]], %[[VAL_32]] : i32
+// CHECK:               %[[VAL_31:.*]] = arith.addi %[[VAL_25]], %[[VAL_15]] : i32
+// CHECK:               %[[VAL_32:.*]] = arith.cmpi sge, %[[VAL_31]], %[[VAL_21]] : i32
+// CHECK:               %[[VAL_33:.*]] = arith.select %[[VAL_32]], %[[VAL_19]], %[[VAL_31]] : i32
 // CHECK:               aie.use_lock(%[[VAL_8]], Release, %[[VAL_15]])
-// CHECK:               %[[VAL_35:.*]] = arith.addi %[[VAL_24]], %[[VAL_15]] : i32
-// CHECK:               %[[VAL_36:.*]] = arith.cmpi sge, %[[VAL_35]], %[[VAL_20]] : i32
-// CHECK:               %[[VAL_37:.*]] = arith.select %[[VAL_36]], %[[VAL_19]], %[[VAL_35]] : i32
-// CHECK:               scf.yield %[[VAL_37]], %[[VAL_34]] : i32, i32
+// CHECK:               %[[VAL_34:.*]] = arith.addi %[[VAL_24]], %[[VAL_15]] : i32
+// CHECK:               %[[VAL_35:.*]] = arith.cmpi sge, %[[VAL_34]], %[[VAL_20]] : i32
+// CHECK:               %[[VAL_36:.*]] = arith.select %[[VAL_35]], %[[VAL_19]], %[[VAL_34]] : i32
+// CHECK:               scf.yield %[[VAL_36]], %[[VAL_33]] : i32, i32
 // CHECK:             }
 // CHECK:             aie.use_lock(%[[VAL_7]], AcquireGreaterEqual, %[[VAL_15]])
-// CHECK:             %[[VAL_38:.*]] = arith.index_cast %[[VAL_39:.*]]#0 : i32 to index
-// CHECK:             %[[VAL_40:.*]] = scf.index_switch %[[VAL_38]] -> memref<10xi32>
+// CHECK:             %[[VAL_37:.*]] = arith.index_cast %[[VAL_38:.*]]#0 : i32 to index
+// CHECK:             %[[VAL_39:.*]] = scf.index_switch %[[VAL_37]] -> memref<10xi32>
 // CHECK:             case 0 {
 // CHECK:               scf.yield %[[VAL_5]] : memref<10xi32>
 // CHECK:             }
@@ -108,8 +107,8 @@
 // CHECK:               scf.yield %[[VAL_5]] : memref<10xi32>
 // CHECK:             }
 // CHECK:             aie.use_lock(%[[VAL_13]], AcquireGreaterEqual, %[[VAL_15]])
-// CHECK:             %[[VAL_41:.*]] = arith.index_cast %[[VAL_39]]#1 : i32 to index
-// CHECK:             %[[VAL_42:.*]] = scf.index_switch %[[VAL_41]] -> memref<10xi32>
+// CHECK:             %[[VAL_40:.*]] = arith.index_cast %[[VAL_38]]#1 : i32 to index
+// CHECK:             %[[VAL_41:.*]] = scf.index_switch %[[VAL_40]] -> memref<10xi32>
 // CHECK:             case 0 {
 // CHECK:               scf.yield %[[VAL_9]] : memref<10xi32>
 // CHECK:             }
@@ -122,8 +121,7 @@
 // CHECK:             default {
 // CHECK:               scf.yield %[[VAL_9]] : memref<10xi32>
 // CHECK:             }
-// CHECK:             %[[VAL_43:.*]] = arith.index_cast %[[VAL_39]]#1 : i32 to index
-// CHECK:             %[[VAL_44:.*]] = scf.index_switch %[[VAL_43]] -> memref<10xi32>
+// CHECK:             %[[VAL_42:.*]] = scf.index_switch %[[VAL_40]] -> memref<10xi32>
 // CHECK:             case 0 {
 // CHECK:               scf.yield %[[VAL_10]] : memref<10xi32>
 // CHECK:             }
@@ -136,42 +134,42 @@
 // CHECK:             default {
 // CHECK:               scf.yield %[[VAL_10]] : memref<10xi32>
 // CHECK:             }
-// CHECK:             func.call @add_10_i32(%[[VAL_42]], %[[VAL_44]], %[[VAL_40]]) : (memref<10xi32>, memref<10xi32>, memref<10xi32>) -> ()
+// CHECK:             func.call @add_10_i32(%[[VAL_41]], %[[VAL_42]], %[[VAL_39]]) : (memref<10xi32>, memref<10xi32>, memref<10xi32>) -> ()
 // CHECK:             aie.use_lock(%[[VAL_12]], Release, %[[VAL_20]])
 // CHECK:             aie.use_lock(%[[VAL_8]], Release, %[[VAL_15]])
 // CHECK:             aie.end
 // CHECK:           }
 // CHECK:           aie.shim_dma_allocation @input_fifo_shim_alloc(%[[VAL_3]], MM2S, 0)
 // CHECK:           aie.shim_dma_allocation @output_fifo_shim_alloc(%[[VAL_3]], S2MM, 0)
-// CHECK:           %[[VAL_45:.*]] = aie.mem(%[[VAL_4]]) {
-// CHECK:             %[[VAL_46:.*]] = arith.constant 1 : i32
-// CHECK:             %[[VAL_47:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
+// CHECK:           %[[VAL_43:.*]] = aie.mem(%[[VAL_4]]) {
+// CHECK:             %[[VAL_44:.*]] = arith.constant 1 : i32
+// CHECK:             %[[VAL_45:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
 // CHECK:           ^bb1:
-// CHECK:             aie.use_lock(%[[VAL_12]], AcquireGreaterEqual, %[[VAL_46]])
+// CHECK:             aie.use_lock(%[[VAL_12]], AcquireGreaterEqual, %[[VAL_44]])
 // CHECK:             aie.dma_bd(%[[VAL_9]] : memref<10xi32> offset = 0 len = 10)
-// CHECK:             aie.use_lock(%[[VAL_13]], Release, %[[VAL_46]])
+// CHECK:             aie.use_lock(%[[VAL_13]], Release, %[[VAL_44]])
 // CHECK:             aie.next_bd ^bb2
 // CHECK:           ^bb2:
-// CHECK:             aie.use_lock(%[[VAL_12]], AcquireGreaterEqual, %[[VAL_46]])
+// CHECK:             aie.use_lock(%[[VAL_12]], AcquireGreaterEqual, %[[VAL_44]])
 // CHECK:             aie.dma_bd(%[[VAL_10]] : memref<10xi32> offset = 0 len = 10)
-// CHECK:             aie.use_lock(%[[VAL_13]], Release, %[[VAL_46]])
+// CHECK:             aie.use_lock(%[[VAL_13]], Release, %[[VAL_44]])
 // CHECK:             aie.next_bd ^bb3
 // CHECK:           ^bb3:
-// CHECK:             aie.use_lock(%[[VAL_12]], AcquireGreaterEqual, %[[VAL_46]])
+// CHECK:             aie.use_lock(%[[VAL_12]], AcquireGreaterEqual, %[[VAL_44]])
 // CHECK:             aie.dma_bd(%[[VAL_11]] : memref<10xi32> offset = 0 len = 10)
-// CHECK:             aie.use_lock(%[[VAL_13]], Release, %[[VAL_46]])
+// CHECK:             aie.use_lock(%[[VAL_13]], Release, %[[VAL_44]])
 // CHECK:             aie.next_bd ^bb1
 // CHECK:           ^bb4:
-// CHECK:             %[[VAL_48:.*]] = aie.dma_start(MM2S, 0, ^bb5, ^bb7)
+// CHECK:             %[[VAL_46:.*]] = aie.dma_start(MM2S, 0, ^bb5, ^bb7)
 // CHECK:           ^bb5:
-// CHECK:             aie.use_lock(%[[VAL_8]], AcquireGreaterEqual, %[[VAL_46]])
+// CHECK:             aie.use_lock(%[[VAL_8]], AcquireGreaterEqual, %[[VAL_44]])
 // CHECK:             aie.dma_bd(%[[VAL_5]] : memref<10xi32> offset = 0 len = 10)
-// CHECK:             aie.use_lock(%[[VAL_7]], Release, %[[VAL_46]])
+// CHECK:             aie.use_lock(%[[VAL_7]], Release, %[[VAL_44]])
 // CHECK:             aie.next_bd ^bb6
 // CHECK:           ^bb6:
-// CHECK:             aie.use_lock(%[[VAL_8]], AcquireGreaterEqual, %[[VAL_46]])
+// CHECK:             aie.use_lock(%[[VAL_8]], AcquireGreaterEqual, %[[VAL_44]])
 // CHECK:             aie.dma_bd(%[[VAL_6]] : memref<10xi32> offset = 0 len = 10)
-// CHECK:             aie.use_lock(%[[VAL_7]], Release, %[[VAL_46]])
+// CHECK:             aie.use_lock(%[[VAL_7]], Release, %[[VAL_44]])
 // CHECK:             aie.next_bd ^bb5
 // CHECK:           ^bb7:
 // CHECK:             aie.end
@@ -194,32 +192,24 @@ module {
       %c1 = arith.constant 1 : index
       %c8 = arith.constant 9 : index
 
-      %0 = aie.objectfifo.acquire @output_fifo(Produce, 1) : !aie.objectfifosubview<memref<10xi32>>
-      %1 = aie.objectfifo.subview.access %0[0] : !aie.objectfifosubview<memref<10xi32>> -> memref<10xi32>
-      %2 = aie.objectfifo.acquire @input_fifo(Consume, 1) : !aie.objectfifosubview<memref<10xi32>>
-      %3 = aie.objectfifo.subview.access %2[0] : !aie.objectfifosubview<memref<10xi32>> -> memref<10xi32>
+      %1 = aie.objectfifo.acquire @output_fifo(Produce) : memref<10xi32>
+      %3 = aie.objectfifo.acquire @input_fifo(Consume) : memref<10xi32>
       func.call @add_10_i32(%3, %3, %1) : (memref<10xi32>, memref<10xi32>, memref<10xi32>) -> ()
-      aie.objectfifo.release @output_fifo(Produce, 1)
+      aie.objectfifo.release @output_fifo(Produce) [1]
 
       scf.for %arg0 = %c0 to %c8 step %c1 {
-        %4 = aie.objectfifo.acquire @output_fifo(Produce, 1) : !aie.objectfifosubview<memref<10xi32>>
-        %5 = aie.objectfifo.subview.access %4[0] : !aie.objectfifosubview<memref<10xi32>> -> memref<10xi32>
-        %6 = aie.objectfifo.acquire @input_fifo(Consume, 2) : !aie.objectfifosubview<memref<10xi32>>
-        %7 = aie.objectfifo.subview.access %6[0] : !aie.objectfifosubview<memref<10xi32>> -> memref<10xi32>
-        %8 = aie.objectfifo.subview.access %6[1] : !aie.objectfifosubview<memref<10xi32>> -> memref<10xi32>
+        %5 = aie.objectfifo.acquire @output_fifo(Produce) : memref<10xi32>
+        %7, %8 = aie.objectfifo.acquire @input_fifo(Consume) : memref<10xi32>, memref<10xi32>
         func.call @add_10_i32(%7, %8, %5) : (memref<10xi32>, memref<10xi32>, memref<10xi32>) -> ()
-        aie.objectfifo.release @input_fifo(Consume, 1)
-        aie.objectfifo.release @output_fifo(Produce, 1)
+        aie.objectfifo.release @input_fifo(Consume) [1]
+        aie.objectfifo.release @output_fifo(Produce) [1]
       }
 
-      %9 = aie.objectfifo.acquire @output_fifo(Produce, 1) : !aie.objectfifosubview<memref<10xi32>>
-      %10 = aie.objectfifo.subview.access %9[0] : !aie.objectfifosubview<memref<10xi32>> -> memref<10xi32>
-      %11 = aie.objectfifo.acquire @input_fifo(Consume, 2) : !aie.objectfifosubview<memref<10xi32>>
-      %12 = aie.objectfifo.subview.access %11[0] : !aie.objectfifosubview<memref<10xi32>> -> memref<10xi32>
-      %13 = aie.objectfifo.subview.access %11[1] : !aie.objectfifosubview<memref<10xi32>> -> memref<10xi32>
+      %10 = aie.objectfifo.acquire @output_fifo(Produce) : memref<10xi32>
+      %12, %13 = aie.objectfifo.acquire @input_fifo(Consume) : memref<10xi32>, memref<10xi32>
       func.call @add_10_i32(%12, %13, %10) : (memref<10xi32>, memref<10xi32>, memref<10xi32>) -> ()
-      aie.objectfifo.release @input_fifo(Consume, 2)
-      aie.objectfifo.release @output_fifo(Produce, 1)
+      aie.objectfifo.release @input_fifo(Consume) [2]
+      aie.objectfifo.release @output_fifo(Produce) [1]
 
       aie.end
     }

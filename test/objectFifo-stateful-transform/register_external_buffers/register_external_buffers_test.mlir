@@ -90,11 +90,9 @@ module @register_external_buffers {
         %c1 = arith.constant 1 : index
         %height = arith.constant 12 : index
 
-        %subview = aie.objectfifo.acquire @ext_of (Consume, 2) : !aie.objectfifosubview<memref<16xi32>>
-        %elem0 = aie.objectfifo.subview.access %subview[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
-        %elem1 = aie.objectfifo.subview.access %subview[1] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+        %elem0, %elem1 = aie.objectfifo.acquire @ext_of(Consume) : memref<16xi32>, memref<16xi32>
         func.call @some_work(%elem0, %elem1) : (memref<16xi32>, memref<16xi32>) -> ()
-        aie.objectfifo.release @ext_of (Consume, 1)
+        aie.objectfifo.release @ext_of(Consume) [1]
 
         aie.end
     }

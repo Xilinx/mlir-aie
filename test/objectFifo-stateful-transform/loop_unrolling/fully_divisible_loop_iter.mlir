@@ -51,10 +51,9 @@ module {
       %c1 = arith.constant 1 : index
       %c4 = arith.constant 4 : index
       scf.for %indexInHeight = %c0 to %c4 step %c1 {
-        %subview = aie.objectfifo.acquire @loop_of (Produce, 1) : !aie.objectfifosubview<memref<16xi32>>
-        %elem0 = aie.objectfifo.subview.access %subview[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+        %elem0 = aie.objectfifo.acquire @loop_of(Produce) : memref<16xi32>
         func.call @some_work(%elem0,%indexInHeight) : (memref<16xi32>,index) -> ()
-        aie.objectfifo.release @loop_of (Produce, 1)
+        aie.objectfifo.release @loop_of(Produce) [1]
       }
       aie.end
     }

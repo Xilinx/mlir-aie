@@ -32,19 +32,17 @@ module {
       %c1 = arith.constant 1 : index
       %c32 = arith.constant 32 : index
 
-      %subview_in = aie.objectfifo.acquire @in(Consume, 1) : !aie.objectfifosubview<memref<32xi32>>
-      %elem_in = aie.objectfifo.subview.access %subview_in[0] : !aie.objectfifosubview<memref<32xi32>> -> memref<32xi32>
+      %elem_in = aie.objectfifo.acquire @in(Consume) : memref<32xi32>
 
-      %subview_out = aie.objectfifo.acquire @out(Produce, 1) : !aie.objectfifosubview<memref<32xi32>>
-      %elem_out = aie.objectfifo.subview.access %subview_out[0] : !aie.objectfifosubview<memref<32xi32>> -> memref<32xi32>
+      %elem_out = aie.objectfifo.acquire @out(Produce) : memref<32xi32>
 
       scf.for %i = %c0 to %c32 step %c1 {
         %val = memref.load %elem_in[%i] : memref<32xi32>
         memref.store %val, %elem_out[%i] : memref<32xi32>
       }
 
-      aie.objectfifo.release @in(Consume, 1)
-      aie.objectfifo.release @out(Produce, 1)
+      aie.objectfifo.release @in(Consume) [1]
+      aie.objectfifo.release @out(Produce) [1]
       aie.end
     }
 

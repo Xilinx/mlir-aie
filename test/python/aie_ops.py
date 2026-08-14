@@ -173,7 +173,7 @@ def objFifoLink():
 # CHECK: %[[VAL_0:.*]] = aie.tile(6, 6)
 # CHECK: %[[VAL_1:.*]] = aie.tile(2, 2)
 # CHECK: aie.objectfifo @[[VAL_2:.*]](%[[VAL_0]], {%[[VAL_1]]}, 2 : i32) : !aie.objectfifo<memref<12xf16>>
-# CHECK: %[[VAL_3:.*]] = aie.objectfifo.acquire @[[VAL_2]](Consume, 1) : !aie.objectfifosubview<memref<12xf16>>
+# CHECK: %[[VAL_3:.*]] = aie.objectfifo.acquire @[[VAL_2]](Consume) : memref<12xf16>
 @construct_and_print_module
 def objFifoAcquire():
     dev = Device(AIEDevice.xcvc1902)
@@ -194,8 +194,7 @@ def objFifoAcquire():
 # CHECK: %[[VAL_0:.*]] = aie.tile(6, 6)
 # CHECK: %[[VAL_1:.*]] = aie.tile(2, 2)
 # CHECK: aie.objectfifo @[[VAL_2:.*]](%[[VAL_0]], {%[[VAL_1]]}, 2 : i32) : !aie.objectfifo<memref<12xf16>>
-# CHECK: %[[VAL_3:.*]] = aie.objectfifo.acquire @[[VAL_2]](Consume, 1) : !aie.objectfifosubview<memref<12xf16>>
-# CHECK: %[[VAL_4:.*]] = aie.objectfifo.subview.access %[[VAL_3]][0] : !aie.objectfifosubview<memref<12xf16>> -> memref<12xf16>
+# CHECK: %[[VAL_3:.*]] = aie.objectfifo.acquire @[[VAL_2]](Consume) : memref<12xf16>
 @construct_and_print_module
 def objFifoSubviewAccess():
     dev = Device(AIEDevice.xcvc1902)
@@ -218,7 +217,7 @@ def objFifoSubviewAccess():
 # CHECK: %[[VAL_0:.*]] = aie.tile(6, 6)
 # CHECK: %[[VAL_1:.*]] = aie.tile(2, 2)
 # CHECK: aie.objectfifo @[[VAL_2:.*]](%[[VAL_0]], {%[[VAL_1]]}, 2 : i32) : !aie.objectfifo<memref<12xf16>>
-# CHECK: aie.objectfifo.release @[[VAL_2]](Produce, 1)
+# CHECK: aie.objectfifo.release @[[VAL_2]](Produce) [1]
 @construct_and_print_module
 def objFifoRelease():
     dev = Device(AIEDevice.xcvc1902)

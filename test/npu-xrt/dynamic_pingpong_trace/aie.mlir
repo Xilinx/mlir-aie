@@ -41,10 +41,8 @@ module {
       %cmax = arith.constant 9223372036854775807 : index
       %c1 = arith.constant 1 : index
       scf.for %arg0 = %c0 to %cmax step %c1 {
-        %1 = aie.objectfifo.acquire @of_out(Produce, 1) : !aie.objectfifosubview<memref<256xi32>>
-        %2 = aie.objectfifo.subview.access %1[0] : !aie.objectfifosubview<memref<256xi32>> -> memref<256xi32>
-        %3 = aie.objectfifo.acquire @of_in(Consume, 1) : !aie.objectfifosubview<memref<256xi32>>
-        %4 = aie.objectfifo.subview.access %3[0] : !aie.objectfifosubview<memref<256xi32>> -> memref<256xi32>
+        %2 = aie.objectfifo.acquire @of_out(Produce) : memref<256xi32>
+        %4 = aie.objectfifo.acquire @of_in(Consume) : memref<256xi32>
         %c0_1 = arith.constant 0 : index
         %c256 = arith.constant 256 : index
         %c1_2 = arith.constant 1 : index
@@ -52,8 +50,8 @@ module {
           %5 = memref.load %4[%arg1] : memref<256xi32>
           memref.store %5, %2[%arg1] : memref<256xi32>
         }
-        aie.objectfifo.release @of_in(Consume, 1)
-        aie.objectfifo.release @of_out(Produce, 1)
+        aie.objectfifo.release @of_in(Consume) [1]
+        aie.objectfifo.release @of_out(Produce) [1]
       }
       aie.end
     }

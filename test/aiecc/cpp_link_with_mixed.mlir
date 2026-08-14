@@ -34,10 +34,9 @@ module {
     // Core carries deprecated core-level link_with AND calls a func with its own.
     // expected-warning@+1 {{link_with on aie.core is deprecated; attach link_with to the func.func declaration instead}}
     %core_0_2 = aie.core(%tile_0_2) {
-      %buf = aie.objectfifo.acquire @of(Consume, 1) : !aie.objectfifosubview<memref<16xi32>>
-      %elem = aie.objectfifo.subview.access %buf[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+      %elem = aie.objectfifo.acquire @of(Consume) : memref<16xi32>
       func.call @ext(%elem) : (memref<16xi32>) -> ()
-      aie.objectfifo.release @of(Consume, 1)
+      aie.objectfifo.release @of(Consume) [1]
       aie.end
     } {link_with = "core_only.o"}
 

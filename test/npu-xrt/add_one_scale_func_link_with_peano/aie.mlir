@@ -35,18 +35,16 @@ module {
       %n  = arith.constant 8 : i32
 
       scf.for %i = %c0 to %c8 step %c1 {
-        %sub_in  = aie.objectfifo.acquire @of_in(Consume, 1)  : !aie.objectfifosubview<memref<8xi32>>
-        %elem_in = aie.objectfifo.subview.access %sub_in[0]   : !aie.objectfifosubview<memref<8xi32>> -> memref<8xi32>
-        %sub_out = aie.objectfifo.acquire @of_out(Produce, 1) : !aie.objectfifosubview<memref<8xi32>>
-        %elem_out = aie.objectfifo.subview.access %sub_out[0] : !aie.objectfifosubview<memref<8xi32>> -> memref<8xi32>
+        %elem_in = aie.objectfifo.acquire @of_in(Consume) : memref<8xi32>
+        %elem_out = aie.objectfifo.acquire @of_out(Produce) : memref<8xi32>
 
         // Step 1: add_one_kernel.o — out[i] = in[i] + 1
         func.call @add_one(%elem_in, %elem_out, %n) : (memref<8xi32>, memref<8xi32>, i32) -> ()
         // Step 2: scale_kernel.o — out[i] = out[i] * 2 (in-place via two-pointer form)
         func.call @scale_by_two(%elem_out, %elem_out, %n) : (memref<8xi32>, memref<8xi32>, i32) -> ()
 
-        aie.objectfifo.release @of_in(Consume, 1)
-        aie.objectfifo.release @of_out(Produce, 1)
+        aie.objectfifo.release @of_in(Consume) [1]
+        aie.objectfifo.release @of_out(Produce) [1]
       }
       aie.end
     }

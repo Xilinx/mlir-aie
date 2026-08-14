@@ -260,7 +260,7 @@ struct LowerAcquire : OpRewritePattern<ObjectFifoAcquireOp> {
       emitBinaryUseLocks(rewriter, loc, locks, pool.getDepth(),
                          endpoint.drains(), index.getResult(), wanted * repeat,
                          LockAction::Acquire);
-      return success();
+      return replaceWithObjects(acquireOp, pool, key, rewriter);
     }
 
     // An acquire names every object the core wants to hold, so only the ones
@@ -288,46 +288,34 @@ struct LowerAcquire : OpRewritePattern<ObjectFifoAcquireOp> {
     Value next = arith::AddIOp::create(rewriter, loc, current, delta);
     memref::StoreOp::create(rewriter, loc, next, held.getResult(),
                             ValueRange{});
-    return success();
+    return replaceWithObjects(acquireOp, pool, key, rewriter);
   }
-};
 
-/// Hand over the object the rotating index selects.
-struct LowerSubviewAccess : OpRewritePattern<ObjectFifoSubviewAccessOp> {
-  LoweringContext &ctx;
-  LowerSubviewAccess(MLIRContext *context, LoweringContext &ctx)
-      : OpRewritePattern(context), ctx(ctx) {}
-
-  LogicalResult matchAndRewrite(ObjectFifoSubviewAccessOp accessOp,
-                                PatternRewriter &rewriter) const override {
-    auto acquireOp = accessOp.getSubview().getDefiningOp<ObjectFifoAcquireOp>();
-    if (!acquireOp)
-      return failure();
-    auto endpoint = ctx.endpointOf(acquireOp, acquireOp.getObjFifoName());
-    if (!endpoint)
-      return failure();
-    ObjectFifoPoolOp pool = endpoint.getPoolOp();
-    CoreOp core = accessOp->getParentOfType<CoreOp>();
-    memref::AllocaOp index = ctx.objectIndex.lookup(
-        std::make_pair(core.getOperation(), endpoint.getOperation()));
-    assert(index && "a rotation counter is created for every acquire");
-
+  /// Hand back the objects the rotating index selects, one per result.
+  LogicalResult replaceWithObjects(ObjectFifoAcquireOp acquireOp,
+                                   ObjectFifoPoolOp pool,
+                                   std::pair<Operation *, Operation *> key,
+                                   PatternRewriter &rewriter) const {
     SmallVector<BufferOp> buffers = ctx.buffersOf(pool);
     if (buffers.empty())
-      return failure();
+      return success();
+    memref::AllocaOp index = ctx.objectIndex.lookup(key);
+    assert(index && "a rotation counter is created for every acquire");
 
-    rewriter.setInsertionPointAfter(accessOp);
-    Location loc = accessOp.getLoc();
+    Location loc = acquireOp.getLoc();
     Value counter =
         memref::LoadOp::create(rewriter, loc, index.getResult(), ValueRange{});
     Value idx = arith::IndexCastOp::create(rewriter, loc,
                                            rewriter.getIndexType(), counter);
     int depth = pool.getDepth();
-    int base = accessOp.getIndex();
-    Value object = buildRotatingSwitch(
-        rewriter, loc, idx, buffers[0].getType(), depth,
-        [&](int c) { return buffers[(base + c) % depth].getResult(); });
-    rewriter.replaceAllUsesWith(accessOp.getOutput(), object);
+    for (auto [base, result] : llvm::enumerate(acquireOp.getObjects())) {
+      Value object =
+          buildRotatingSwitch(rewriter, loc, idx, buffers[0].getType(), depth,
+                              [&, base = base](int c) {
+                                return buffers[(base + c) % depth].getResult();
+                              });
+      rewriter.replaceAllUsesWith(result, object);
+    }
     return success();
   }
 };
@@ -503,23 +491,20 @@ struct AIEObjectFifoLowerCoresPass
       emitCounters(coreOp, ctx, builder);
 
     RewritePatternSet patterns(device.getContext());
-    patterns.insert<LowerAcquire, LowerRelease, LowerSubviewAccess>(
-        device.getContext(), ctx);
+    patterns.insert<LowerAcquire, LowerRelease>(device.getContext(), ctx);
     walkAndApplyPatterns(device, std::move(patterns));
     if (ctx.sawError)
       return signalPassFailure();
 
     SmallVector<Operation *> toErase;
     device.walk([&](Operation *op) {
-      if (isa<ObjectFifoSubviewAccessOp, ObjectFifoAcquireOp,
-              ObjectFifoReleaseOp>(op))
+      if (isa<ObjectFifoAcquireOp, ObjectFifoReleaseOp>(op))
         toErase.push_back(op);
     });
-    // Accesses read the subview their acquire produced, so they go first.
-    for (Operation *op : llvm::reverse(toErase))
+    for (Operation *op : toErase) {
       op->dropAllUses();
-    for (Operation *op : toErase)
       op->erase();
+    }
 
     for (auto endpoint :
          llvm::make_early_inc_range(device.getOps<ObjectFifoCoreEndpointOp>()))

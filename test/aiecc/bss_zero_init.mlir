@@ -40,10 +40,9 @@ module {
     func.func private @bss_probe(memref<512xi8>) attributes {link_with = "bss_zero_init_kernel.o"}
 
     %core_0_2 = aie.core(%tile_0_2) {
-      %sv = aie.objectfifo.acquire @of_out(Produce, 1) : !aie.objectfifosubview<memref<512xi8>>
-      %e = aie.objectfifo.subview.access %sv[0] : !aie.objectfifosubview<memref<512xi8>> -> memref<512xi8>
+      %e = aie.objectfifo.acquire @of_out(Produce) : memref<512xi8>
       func.call @bss_probe(%e) : (memref<512xi8>) -> ()
-      aie.objectfifo.release @of_out(Produce, 1)
+      aie.objectfifo.release @of_out(Produce) [1]
       aie.end
     }
 

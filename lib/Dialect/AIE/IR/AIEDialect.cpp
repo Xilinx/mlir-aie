@@ -1327,22 +1327,25 @@ LogicalResult ObjectFifoAcquireOp::verify() {
   if (failed(verifyAccessPlacement(*this, target, getPort())))
     return failure();
 
-  auto subviewElem = llvm::cast<AIEObjectFifoSubviewType>(getResult().getType())
-                         .getElementType();
+  if (getObjects().empty())
+    return emitOpError("must acquire at least one object");
+
   Type elem = accessElementType(target);
-  if (elem && elem != subviewElem) {
-    // An asymmetric fifo hands the consumer a different element type.
-    auto fifo = dyn_cast<ObjectFifoCreateOp>(target);
-    auto consType = fifo ? llvm::dyn_cast<AIEObjectFifoType>(
-                               fifo.getConsumerElemTypeOrDefault())
-                         : nullptr;
-    if (fifo && !consType)
-      return emitOpError("ObjectFifo consumer element type must be an "
-                         "!aie.objectfifo<memref<...>> type");
-    if (!consType || consType.getElementType() != subviewElem)
-      return emitOpError(
-          "ObjectFifo element and ObjectFifoSubview element must match.\n");
-  }
+  if (!elem)
+    return success();
+  // An asymmetric fifo hands the consumer a different element type.
+  auto fifo = dyn_cast<ObjectFifoCreateOp>(target);
+  auto consType = fifo ? llvm::dyn_cast<AIEObjectFifoType>(
+                             fifo.getConsumerElemTypeOrDefault())
+                       : nullptr;
+  if (fifo && !consType)
+    return emitOpError("ObjectFifo consumer element type must be an "
+                       "!aie.objectfifo<memref<...>> type");
+
+  for (Type object : getObjects().getTypes())
+    if (object != elem && (!consType || consType.getElementType() != object))
+      return emitOpError("acquired object type ")
+             << object << " does not match the objectFifo's " << elem;
 
   return success();
 }
@@ -1382,34 +1385,6 @@ ObjectFifoCreateOp ObjectFifoReleaseOp::getObjectFifo() {
     }
   }
   return {};
-}
-
-//===----------------------------------------------------------------------===//
-// ObjectFifoSubviewAccessOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult ObjectFifoSubviewAccessOp::verify() {
-  if (auto parent = getOperation()->getParentOfType<CoreOp>();
-      parent == nullptr)
-    return emitOpError("must be called from inside a CoreOp");
-
-  // The subview operand must be the direct SSA result of an
-  // aie.objectfifo.acquire. Flowing it through scf.yield / iter_args / any
-  // other region boundary loses the link to the originating acquire that
-  // every downstream pass needs (the acquire's size for the bounds check
-  // here, and the (fifo, port) identity for lock lowering). Reject here
-  // rather than crashing on a null defining op later.
-  auto acqOp = getSubview().getDefiningOp<ObjectFifoAcquireOp>();
-  if (!acqOp)
-    return emitOpError("subview operand must be the direct result of an "
-                       "aie.objectfifo.acquire; flowing the subview through "
-                       "scf.yield / iter_args / region results is not "
-                       "supported");
-  if (getIndex() >= acqOp.acqNumber())
-    return emitOpError("accessed farther than number of acquired elements "
-                       "(index out of bounds).");
-
-  return success();
 }
 
 //===----------------------------------------------------------------------===//

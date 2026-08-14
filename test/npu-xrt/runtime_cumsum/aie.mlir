@@ -54,20 +54,18 @@ module {
             %c1 = arith.constant 1 : index
 
             scf.for %arg0 = %c0 to %cmax step %c1 {
-                %Out = aie.objectfifo.acquire @out(Produce, 1) : !aie.objectfifosubview<memref<16xi32>>
-                %elemout = aie.objectfifo.subview.access %Out[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+                %elemout = aie.objectfifo.acquire @out(Produce) : memref<16xi32>
 
                 func.call @zero(%elemout) : (memref<16xi32>) -> ()
 
                 //A simple “do-while” loop can be represented by reducing the “after” block to a simple forwarder.
                 scf.while (%arg1 = %c1) : (index) -> (index) {
 
-                    %In = aie.objectfifo.acquire @act_In(Consume, 1) : !aie.objectfifosubview<memref<16xi32>>
-                    %elemin = aie.objectfifo.subview.access %In[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+                    %elemin = aie.objectfifo.acquire @act_In(Consume) : memref<16xi32>
 
                     func.call @sum(%elemin, %elemout) : (memref<16xi32>, memref<16xi32>) -> ()
 
-                    aie.objectfifo.release @act_In(Consume, 1)
+                    aie.objectfifo.release @act_In(Consume) [1]
 
                     // load the rtp
                     %loopnumber = memref.load %rtp2[%arg0] : memref<16xi32>
@@ -81,7 +79,7 @@ module {
                 ^bb0(%arg2: index):
                     scf.yield %arg2: index
                 }
-                aie.objectfifo.release @out(Produce, 1)
+                aie.objectfifo.release @out(Produce) [1]
             }
             aie.end
         }

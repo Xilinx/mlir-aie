@@ -185,13 +185,11 @@ module {
       %c10 = arith.constant 10 : index
 
       scf.for %arg0 = %c0 to %c10 step %c1 {
-        %0 = aie.objectfifo.acquire @output_fifo(Produce, 1) : !aie.objectfifosubview<memref<10xi32>>
-        %1 = aie.objectfifo.subview.access %0[0] : !aie.objectfifosubview<memref<10xi32>> -> memref<10xi32>
-        %2 = aie.objectfifo.acquire @input_fifo(Consume, 1) : !aie.objectfifosubview<memref<10xi32>>
-        %3 = aie.objectfifo.subview.access %2[0] : !aie.objectfifosubview<memref<10xi32>> -> memref<10xi32>
+        %1 = aie.objectfifo.acquire @output_fifo(Produce) : memref<10xi32>
+        %3 = aie.objectfifo.acquire @input_fifo(Consume) : memref<10xi32>
         func.call @passthrough_10_i32(%3, %1) : (memref<10xi32>, memref<10xi32>) -> ()
-        aie.objectfifo.release @input_fifo(Consume, 1)
-        aie.objectfifo.release @output_fifo(Produce, 1)
+        aie.objectfifo.release @input_fifo(Consume) [1]
+        aie.objectfifo.release @output_fifo(Produce) [1]
       }
 
       aie.end
@@ -203,13 +201,11 @@ module {
       %c10 = arith.constant 10 : index
 
       scf.for %arg0 = %c0 to %c10 step %c1 {
-        %0 = aie.objectfifo.acquire @output_fifo2(Produce, 1) : !aie.objectfifosubview<memref<10xi32>>
-        %1 = aie.objectfifo.subview.access %0[0] : !aie.objectfifosubview<memref<10xi32>> -> memref<10xi32>
-        %2 = aie.objectfifo.acquire @input_fifo2(Consume, 1) : !aie.objectfifosubview<memref<10xi32>>
-        %3 = aie.objectfifo.subview.access %2[0] : !aie.objectfifosubview<memref<10xi32>> -> memref<10xi32>
+        %1 = aie.objectfifo.acquire @output_fifo2(Produce) : memref<10xi32>
+        %3 = aie.objectfifo.acquire @input_fifo2(Consume) : memref<10xi32>
         func.call @passthrough_10_i32(%3, %1) : (memref<10xi32>, memref<10xi32>) -> ()
-        aie.objectfifo.release @input_fifo2(Consume, 1)
-        aie.objectfifo.release @output_fifo2(Produce, 1)
+        aie.objectfifo.release @input_fifo2(Consume) [1]
+        aie.objectfifo.release @output_fifo2(Produce) [1]
       }
 
       aie.end

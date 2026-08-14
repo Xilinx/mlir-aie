@@ -33,17 +33,15 @@ module {
     func.func private @kernelB(memref<16xi32>) attributes {link_with = "kernelB.o"}
 
     %core_0_2 = aie.core(%tile_0_2) {
-      %subview_in = aie.objectfifo.acquire @of_in(Consume, 1) : !aie.objectfifosubview<memref<16xi32>>
-      %elem_in = aie.objectfifo.subview.access %subview_in[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+      %elem_in = aie.objectfifo.acquire @of_in(Consume) : memref<16xi32>
 
-      %subview_out = aie.objectfifo.acquire @of_out(Produce, 1) : !aie.objectfifosubview<memref<16xi32>>
-      %elem_out = aie.objectfifo.subview.access %subview_out[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+      %elem_out = aie.objectfifo.acquire @of_out(Produce) : memref<16xi32>
 
       func.call @kernelA(%elem_in) : (memref<16xi32>) -> ()
       func.call @kernelB(%elem_out) : (memref<16xi32>) -> ()
 
-      aie.objectfifo.release @of_in(Consume, 1)
-      aie.objectfifo.release @of_out(Produce, 1)
+      aie.objectfifo.release @of_in(Consume) [1]
+      aie.objectfifo.release @of_out(Produce) [1]
       aie.end
     }
 

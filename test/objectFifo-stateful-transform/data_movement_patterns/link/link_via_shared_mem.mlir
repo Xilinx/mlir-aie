@@ -97,10 +97,9 @@ module @link_AIE2 {
         }
 
         %core22 = aie.core(%tile22) {
-            %subview = aie.objectfifo.acquire @of2 (Consume, 1) : !aie.objectfifosubview<memref<16xi32>>
-            %elem0 = aie.objectfifo.subview.access %subview[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+            %elem0 = aie.objectfifo.acquire @of2(Consume) : memref<16xi32>
             func.call @some_work(%elem0) : (memref<16xi32>) -> ()
-            aie.objectfifo.release @of2 (Consume, 1)
+            aie.objectfifo.release @of2(Consume) [1]
             aie.end
         }
     }

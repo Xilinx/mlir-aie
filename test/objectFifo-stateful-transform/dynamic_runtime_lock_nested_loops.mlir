@@ -177,15 +177,15 @@ module {
       %c1 = arith.constant 1 : index
       %c14 = arith.constant 14 : index
       scf.for %arg0 = %c0 to %c14 step %c1 {
-        %w = aie.objectfifo.acquire @inOF_W(Consume, 2) : !aie.objectfifosubview<memref<8xi8>>
+        %w_obj0, %w_obj1 = aie.objectfifo.acquire @inOF_W(Consume) : memref<8xi8>, memref<8xi8>
         scf.for %arg1 = %c0 to %c14 step %c1 {
-          %x = aie.objectfifo.acquire @inOF_X(Consume, 3) : !aie.objectfifosubview<memref<8xi8>>
-          aie.objectfifo.release @inOF_X(Consume, 1)
+          %x_obj0, %x_obj1, %x_obj2 = aie.objectfifo.acquire @inOF_X(Consume) : memref<8xi8>, memref<8xi8>, memref<8xi8>
+          aie.objectfifo.release @inOF_X(Consume) [1]
         }
-        aie.objectfifo.release @inOF_X(Consume, 2)
-        aie.objectfifo.release @inOF_W(Consume, 1)
+        aie.objectfifo.release @inOF_X(Consume) [2]
+        aie.objectfifo.release @inOF_W(Consume) [1]
       }
-      aie.objectfifo.release @inOF_W(Consume, 1)
+      aie.objectfifo.release @inOF_W(Consume) [1]
       aie.end
     }
   }

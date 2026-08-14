@@ -33,15 +33,14 @@ module {
       %c1 = arith.constant 1 : index
       %c64 = arith.constant 64 : index
 
-      %subview = aie.objectfifo.acquire @data(Consume, 1) : !aie.objectfifosubview<memref<64xi32>>
-      %elem = aie.objectfifo.subview.access %subview[0] : !aie.objectfifosubview<memref<64xi32>> -> memref<64xi32>
+      %elem = aie.objectfifo.acquire @data(Consume) : memref<64xi32>
 
       scf.for %i = %c0 to %c64 step %c1 {
         %val = memref.load %elem[%i] : memref<64xi32>
         memref.store %val, %elem[%i] : memref<64xi32>
       }
 
-      aie.objectfifo.release @data(Consume, 1)
+      aie.objectfifo.release @data(Consume) [1]
       aie.end
     }
 

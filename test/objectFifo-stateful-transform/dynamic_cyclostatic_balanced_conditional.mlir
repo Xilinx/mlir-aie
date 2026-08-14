@@ -93,12 +93,12 @@ module {
       %true = arith.constant true
       scf.for %arg0 = %c0 to %c14 step %c1 {
         // Unconditional, balanced: acquire 1, release 1 -> net 0.
-        %a = aie.objectfifo.acquire @fifo(Consume, 1) : !aie.objectfifosubview<memref<8xi8>>
-        aie.objectfifo.release @fifo(Consume, 1)
+        %a_obj0 = aie.objectfifo.acquire @fifo(Consume) : memref<8xi8>
+        aie.objectfifo.release @fifo(Consume) [1]
         // Conditional, balanced: acquire 1, release 1 -> net 0 per branch.
         scf.if %true {
-          %b = aie.objectfifo.acquire @fifo(Consume, 1) : !aie.objectfifosubview<memref<8xi8>>
-          aie.objectfifo.release @fifo(Consume, 1)
+          %b_obj0 = aie.objectfifo.acquire @fifo(Consume) : memref<8xi8>
+          aie.objectfifo.release @fifo(Consume) [1]
         }
       }
       aie.end

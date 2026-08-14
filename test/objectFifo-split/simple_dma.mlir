@@ -14,16 +14,14 @@ module @simple_dma {
     aie.objectfifo @of1 (%tile12, {%tile33}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
 
     %core12 = aie.core(%tile12) {
-      %subview = aie.objectfifo.acquire @of1 (Produce, 1) : !aie.objectfifosubview<memref<16xi32>>
-      %elem = aie.objectfifo.subview.access %subview[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
-      aie.objectfifo.release @of1 (Produce, 1)
+      %elem = aie.objectfifo.acquire @of1(Produce) : memref<16xi32>
+      aie.objectfifo.release @of1(Produce) [1]
       aie.end
     }
 
     %core33 = aie.core(%tile33) {
-      %subview = aie.objectfifo.acquire @of1 (Consume, 1) : !aie.objectfifosubview<memref<16xi32>>
-      %elem = aie.objectfifo.subview.access %subview[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
-      aie.objectfifo.release @of1 (Consume, 1)
+      %elem = aie.objectfifo.acquire @of1(Consume) : memref<16xi32>
+      aie.objectfifo.release @of1(Consume) [1]
       aie.end
     }
   }

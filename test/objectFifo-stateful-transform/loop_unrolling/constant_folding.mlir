@@ -59,10 +59,9 @@ module {
       %c1 = arith.constant 1 : index
       %c4 = arith.constant 4 : index
       scf.for %arg0 = %c0 to %c4 step %c1 {
-        %a = aie.objectfifo.acquire @fifo(Consume, 1) : !aie.objectfifosubview<memref<8xi8>>
-        %e = aie.objectfifo.subview.access %a[0] : !aie.objectfifosubview<memref<8xi8>> -> memref<8xi8>
+        %e = aie.objectfifo.acquire @fifo(Consume) : memref<8xi8>
         func.call @work(%e) : (memref<8xi8>) -> ()
-        aie.objectfifo.release @fifo(Consume, 1)
+        aie.objectfifo.release @fifo(Consume) [1]
       }
       aie.end
     }

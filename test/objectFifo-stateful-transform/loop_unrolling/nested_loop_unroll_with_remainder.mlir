@@ -126,15 +126,13 @@ module {
       %c9 = arith.constant 9 : index
 
       scf.for %indexInHeight = %c0 to %c9 step %c1 {
-        %subviewOut = aie.objectfifo.acquire @of_2 (Produce, 1) : !aie.objectfifosubview<memref<16xi32>>
+        %elemOut = aie.objectfifo.acquire @of_2(Produce) : memref<16xi32>
         scf.for %indexInHeight1 = %c0 to %c8 step %c1 {
-            %subviewIn = aie.objectfifo.acquire @of_1 (Consume, 1) : !aie.objectfifosubview<memref<16xi32>>
-            %elemIn = aie.objectfifo.subview.access %subviewIn[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
-            %elemOut = aie.objectfifo.subview.access %subviewOut[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+            %elemIn = aie.objectfifo.acquire @of_1(Consume) : memref<16xi32>
             func.call @some_work(%elemIn, %elemOut, %indexInHeight, %indexInHeight1) : (memref<16xi32>, memref<16xi32>, index, index) -> ()
-            aie.objectfifo.release @of_1 (Consume, 1)
+            aie.objectfifo.release @of_1(Consume) [1]
         }
-        aie.objectfifo.release @of_2 (Produce, 1)
+        aie.objectfifo.release @of_2(Produce) [1]
       }
 
       aie.end

@@ -72,10 +72,9 @@ module @repeatCount {
       %height = arith.constant 12 : index
 
       scf.for %indexInHeight = %c0 to %height step %c1 {
-         %subview = aie.objectfifo.acquire @of1 (Produce, 1) : !aie.objectfifosubview<memref<16xi32>>
-         %elem0 = aie.objectfifo.subview.access %subview[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+         %elem0 = aie.objectfifo.acquire @of1(Produce) : memref<16xi32>
          func.call @some_work(%elem0) : (memref<16xi32>) -> ()
-         aie.objectfifo.release @of1 (Produce, 1)
+         aie.objectfifo.release @of1(Produce) [1]
       }
 
       aie.end

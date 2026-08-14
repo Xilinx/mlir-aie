@@ -2462,41 +2462,40 @@ def AIE_ObjectFifoRegisterExternalBuffersOp
 def AIE_ObjectFifoAcquireOp: AIE_Op<"objectfifo.acquire", []> {
   let summary = "Acquire operation to lock and return objects of an ObjectFifo";
   let description = [{
-    The `aie.objectFifo.acquire` operation first acquires the locks of the next given number
-    of objects in the `objectFifo`. The mode it acquires the locks in is chosen based on the port
-    (producer: acquire for write, consumer: acquire for read). Then, it returns a subview of
-    the acquired objects which can be used to access them.
+    The `aie.objectFifo.acquire` operation acquires the locks of the next objects
+    in the `objectFifo` and returns one memref per object. The mode it acquires
+    the locks in is chosen based on the port (producer: acquire for write,
+    consumer: acquire for read).
 
     This operation is then converted by the `--aie-objectfifo-lower-cores` into `aie.use_lock` operations on
-    the locks of the `objectFifo` objects that will be acquired. Under the hood, the operation only performs
-    new acquires if necessary. For example, if two objects have been acquired in the past and none have yet
-    to be released by the same process, then performing another acquire operation on the same `objectFifo`
-    within the same process of size two or less will not result in any new use_lock operations (and for size
-    greater than two, only (size - 2) use_lock operations will be performed).
+    the locks of the `objectFifo` objects that will be acquired. The acquire names every object the process
+    wants to hold, so only the ones it does not hold already are taken. For example, if two objects have been
+    acquired in the past and none have yet to be released by the same process, then performing another acquire
+    operation on the same `objectFifo` within the same process of size two or less will not result in any new
+    use_lock operations (and for size greater than two, only (size - 2) use_lock operations will be performed).
 
     Example:
     ```
-      %subview = aie.objectfifo.acquire @of1 (Consume, 2) : !aie.objectfifosubview<memref<16xi32>>
+      %a, %b = aie.objectfifo.acquire @of1 (Consume) : memref<16xi32>, memref<16xi32>
     ```
     This operation acquires the locks of the next two objects in the `objectFifo` named `@of1` from its consumer
-    port and returns a subview of the acquired objects.
+    port and returns them.
   }];
 
   let arguments = (ins OptionalAttr<ObjectFifoPort>:$port,
-      FlatSymbolRefAttr:$objFifo_name,
-      ConfinedAttr<AIEI32Attr, [IntMinValue<1>]>:$size);
+      FlatSymbolRefAttr:$objFifo_name);
 
-  let results = (outs AIE_ObjectFifoSubviewType:$subview);
+  let results = (outs Variadic<AnyMemRef>:$objects);
 
   let assemblyFormat = [{
-    attr-dict $objFifo_name `(` ($port^ `,`)? `` $size `)` `:` qualified(type($subview))
+    attr-dict $objFifo_name (`(` $port^ `)`)? `:` type($objects)
   }];
 
   let hasVerifier = 1;
 
   let extraClassDeclaration = [{
     ObjectFifoCreateOp getObjectFifo();
-    int acqNumber() { return getSize(); }
+    int acqNumber() { return getObjects().size(); }
   }];
 }
 
@@ -2521,7 +2520,7 @@ def AIE_ObjectFifoReleaseOp: AIE_Op<"objectfifo.release", []> {
       ConfinedAttr<AIEI32Attr, [IntMinValue<1>]>:$size);
 
   let assemblyFormat = [{
-    attr-dict $objFifo_name `(` ($port^ `,`)? `` $size `)`
+    attr-dict $objFifo_name (`(` $port^ `)`)? `[` $size `]`
   }];
 
   let hasVerifier = 1;
@@ -2531,41 +2530,6 @@ def AIE_ObjectFifoReleaseOp: AIE_Op<"objectfifo.release", []> {
     int relNumber() { return getSize(); }
   }];
 }
-
-def AIE_ObjectFifoSubviewAccessOp : AIE_Op<"objectfifo.subview.access", []> {
-  let summary = "ObjectFifoSubview type accessor method";
-  let description = [{
-    Access the Nth element of a value of `ObjectFifoSubview` type.
-
-    Example:
-    ```
-      %subview = aie.objectfifo.acquire @of1 (Produce, 3) : !aie.objectfifosubview<memref<16xi32>>
-      %elem = aie.objectfifo.subview.access %subview[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
-    ```
-    In this example, `%elem` is the first object of the subview. Note that this may not correspond to the first element of
-    the `objectFifo` if other acquire operations took place beforehand.
-
-    The `$subview` operand must be the direct SSA result of an
-    `aie.objectfifo.acquire`; flowing the subview through region results
-    (e.g. `scf.yield` / `iter_args`) drops the link to the originating
-    acquire that downstream lowering requires, and is rejected by the
-    verifier.
-  }];
-
-  let arguments = (
-    ins AIE_ObjectFifoSubviewType:$subview,
-        ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$index
-  );
-
-  let hasVerifier = 1;
-
-  let results = (outs AnyMemRef:$output);
-
-  let assemblyFormat = [{
-    $subview `[` $index `]` attr-dict `:` qualified(type($subview)) `->` qualified(type($output))
-  }];
-}
-
 
 def AIE_BDChainOp: AIE_Op<"bd_chain", [Symbol, SkipAccessibilityCheckTrait]> {
   let summary = "Definition of a Parametrizable Chain of Buffer Descriptors";

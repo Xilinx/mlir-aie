@@ -26,17 +26,15 @@ module {
       %c1_32 = arith.constant 1 : i32
 
       scf.for %steps = %c0 to %c8 step %c1 {
-        %subview0 = aie.objectfifo.acquire @objFifo_in1(Consume, 1) : !aie.objectfifosubview<memref<8xi32>>
-        %elem0 = aie.objectfifo.subview.access %subview0[0] : !aie.objectfifosubview<memref<8xi32>> -> memref<8xi32>
-        %subview1 = aie.objectfifo.acquire @objFifo_out1(Produce, 1) : !aie.objectfifosubview<memref<8xi32>>
-        %elem1 = aie.objectfifo.subview.access %subview1[0] : !aie.objectfifosubview<memref<8xi32>> -> memref<8xi32>
+        %elem0 = aie.objectfifo.acquire @objFifo_in1(Consume) : memref<8xi32>
+        %elem1 = aie.objectfifo.acquire @objFifo_out1(Produce) : memref<8xi32>
         scf.for %arg3 = %c0 to %c8 step %c1 {
             %0 = memref.load %elem0[%arg3] : memref<8xi32>
             %1 = arith.addi %0, %c1_32 : i32
             memref.store %1, %elem1[%arg3] : memref<8xi32>
         }
-        aie.objectfifo.release @objFifo_in1(Consume, 1)
-        aie.objectfifo.release @objFifo_out1(Produce, 1)
+        aie.objectfifo.release @objFifo_in1(Consume) [1]
+        aie.objectfifo.release @objFifo_out1(Produce) [1]
       }
       aie.end
     }
@@ -69,17 +67,15 @@ module {
       %c2_32 = arith.constant 2 : i32
   
       scf.for %steps = %c0 to %c8 step %c1 {
-        %subview0 = aie.objectfifo.acquire @objFifo_in1(Consume, 1) : !aie.objectfifosubview<memref<8xi32>>
-        %elem0 = aie.objectfifo.subview.access %subview0[0] : !aie.objectfifosubview<memref<8xi32>> -> memref<8xi32>
-        %subview1 = aie.objectfifo.acquire @objFifo_out1(Produce, 1) : !aie.objectfifosubview<memref<8xi32>>
-        %elem1 = aie.objectfifo.subview.access %subview1[0] : !aie.objectfifosubview<memref<8xi32>> -> memref<8xi32>
+        %elem0 = aie.objectfifo.acquire @objFifo_in1(Consume) : memref<8xi32>
+        %elem1 = aie.objectfifo.acquire @objFifo_out1(Produce) : memref<8xi32>
         scf.for %arg3 = %c0 to %c8 step %c1 {
             %0 = memref.load %elem0[%arg3] : memref<8xi32>
             %1 = arith.addi %0, %c2_32 : i32
             memref.store %1, %elem1[%arg3] : memref<8xi32>
         }
-        aie.objectfifo.release @objFifo_in1(Consume, 1)
-        aie.objectfifo.release @objFifo_out1(Produce, 1)
+        aie.objectfifo.release @objFifo_in1(Consume) [1]
+        aie.objectfifo.release @objFifo_out1(Produce) [1]
       }
       aie.end
     }

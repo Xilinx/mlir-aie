@@ -86,25 +86,21 @@ module @aie2_cyclostatic_L1 {
             %c77 = arith.constant 77 : i32
             %c88 = arith.constant 88 : i32
 
-            %subview0 = aie.objectfifo.acquire @fifo (Produce, 1) : !aie.objectfifosubview<memref<i32>>
-            %subview0_obj = aie.objectfifo.subview.access %subview0[0] : !aie.objectfifosubview<memref<i32>> -> memref<i32>
+            %subview0_obj = aie.objectfifo.acquire @fifo(Produce) : memref<i32>
             memref.store %c55, %subview0_obj[] : memref<i32>
-            aie.objectfifo.release @fifo (Produce, 1)
+            aie.objectfifo.release @fifo(Produce) [1]
 
-            %subview1 = aie.objectfifo.acquire @fifo (Produce, 1) : !aie.objectfifosubview<memref<i32>>
-            %subview1_obj = aie.objectfifo.subview.access %subview1[0] : !aie.objectfifosubview<memref<i32>> -> memref<i32>
+            %subview1_obj = aie.objectfifo.acquire @fifo(Produce) : memref<i32>
             memref.store %c66, %subview1_obj[] : memref<i32>
-            aie.objectfifo.release @fifo (Produce, 1)
+            aie.objectfifo.release @fifo(Produce) [1]
 
-            %subview2 = aie.objectfifo.acquire @fifo (Produce, 1) : !aie.objectfifosubview<memref<i32>>
-            %subview2_obj = aie.objectfifo.subview.access %subview2[0] : !aie.objectfifosubview<memref<i32>> -> memref<i32>
+            %subview2_obj = aie.objectfifo.acquire @fifo(Produce) : memref<i32>
             memref.store %c77, %subview2_obj[] : memref<i32>
-            aie.objectfifo.release @fifo (Produce, 1)
+            aie.objectfifo.release @fifo(Produce) [1]
 
-            %subview3 = aie.objectfifo.acquire @fifo (Produce, 1) : !aie.objectfifosubview<memref<i32>>
-            %subview3_obj = aie.objectfifo.subview.access %subview3[0] : !aie.objectfifosubview<memref<i32>> -> memref<i32>
+            %subview3_obj = aie.objectfifo.acquire @fifo(Produce) : memref<i32>
             memref.store %c88, %subview3_obj[] : memref<i32>
-            aie.objectfifo.release @fifo (Produce, 1)
+            aie.objectfifo.release @fifo(Produce) [1]
 
             aie.end
         }
@@ -115,26 +111,22 @@ module @aie2_cyclostatic_L1 {
             %i2 = arith.constant 2 : index
             %i3 = arith.constant 3 : index
 
-            %subview0 = aie.objectfifo.acquire @fifo (Consume, 1) : !aie.objectfifosubview<memref<i32>>
-            %subview0_obj = aie.objectfifo.subview.access %subview0[0] : !aie.objectfifosubview<memref<i32>> -> memref<i32>
+            %subview0_obj = aie.objectfifo.acquire @fifo(Consume) : memref<i32>
             %v55 = memref.load %subview0_obj[] : memref<i32>
             memref.store %v55, %buf23[%i0] : memref<4xi32>
-            aie.objectfifo.release @fifo (Consume, 1)
+            aie.objectfifo.release @fifo(Consume) [1]
 
-            %subview1 = aie.objectfifo.acquire @fifo (Consume, 2) : !aie.objectfifosubview<memref<i32>>
-            %subview1_obj0 = aie.objectfifo.subview.access %subview1[0] : !aie.objectfifosubview<memref<i32>> -> memref<i32>
-            %subview1_obj1 = aie.objectfifo.subview.access %subview1[1] : !aie.objectfifosubview<memref<i32>> -> memref<i32>
+            %subview1_obj0, %subview1_obj1 = aie.objectfifo.acquire @fifo(Consume) : memref<i32>, memref<i32>
             %v66 = memref.load %subview1_obj0[] : memref<i32>
             %v77 = memref.load %subview1_obj1[] : memref<i32>
             memref.store %v66, %buf23[%i1] : memref<4xi32>
             memref.store %v77, %buf23[%i2] : memref<4xi32>
-            aie.objectfifo.release @fifo (Consume, 2)
+            aie.objectfifo.release @fifo(Consume) [2]
 
-            %subview2 = aie.objectfifo.acquire @fifo (Consume, 1) : !aie.objectfifosubview<memref<i32>>
-            %subview2_obj = aie.objectfifo.subview.access %subview2[0] : !aie.objectfifosubview<memref<i32>> -> memref<i32>
+            %subview2_obj = aie.objectfifo.acquire @fifo(Consume) : memref<i32>
             %v88 = memref.load %subview2_obj[] : memref<i32>
             memref.store %v88, %buf23[%i3] : memref<4xi32>
-            aie.objectfifo.release @fifo (Consume, 1)
+            aie.objectfifo.release @fifo(Consume) [1]
 
             aie.end
         }

@@ -190,8 +190,7 @@ module @link_test_broadcast {
             %v11 = arith.constant 11 : i32
             %c0 = arith.constant 0 : index
 
-            %subview = aie.objectfifo.acquire @mem_in (Consume, 1) : !aie.objectfifosubview<memref<3000xi32>>
-            %subview_obj = aie.objectfifo.subview.access %subview[0] : !aie.objectfifosubview<memref<3000xi32>> -> memref<3000xi32>
+            %subview_obj = aie.objectfifo.acquire @mem_in(Consume) : memref<3000xi32>
             memref.store %v11, %subview_obj[%c0] : memref<3000xi32>
             aie.end
         }
@@ -200,8 +199,7 @@ module @link_test_broadcast {
             %v11 = arith.constant 11 : i32
             %c0 = arith.constant 0 : index
 
-            %subview = aie.objectfifo.acquire @mem_out (Consume, 3) : !aie.objectfifosubview<memref<3000xi32>>
-            %subview_obj = aie.objectfifo.subview.access %subview[0] : !aie.objectfifosubview<memref<3000xi32>> -> memref<3000xi32>
+            %subview_obj, %subview_obj1, %subview_obj2 = aie.objectfifo.acquire @mem_out(Consume) : memref<3000xi32>, memref<3000xi32>, memref<3000xi32>
             memref.store %v11, %subview_obj[%c0] : memref<3000xi32>
             aie.end
         }

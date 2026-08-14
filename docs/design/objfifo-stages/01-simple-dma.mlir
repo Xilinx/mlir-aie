@@ -26,19 +26,17 @@ module @stage0 {
     %core12 = aie.core(%tile12) {
       %c0 = arith.constant 0 : index
       %v  = arith.constant 42 : i32
-      %sv = aie.objectfifo.acquire @of1 (Produce, 1) : !aie.objectfifosubview<memref<16xi32>>
-      %e  = aie.objectfifo.subview.access %sv[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+      %e = aie.objectfifo.acquire @of1(Produce) : memref<16xi32>
       memref.store %v, %e[%c0] : memref<16xi32>
-      aie.objectfifo.release @of1 (Produce, 1)
+      aie.objectfifo.release @of1(Produce) [1]
       aie.end
     }
 
     %core33 = aie.core(%tile33) {
       %c0 = arith.constant 0 : index
-      %sv = aie.objectfifo.acquire @of1 (Consume, 1) : !aie.objectfifosubview<memref<16xi32>>
-      %e  = aie.objectfifo.subview.access %sv[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+      %e = aie.objectfifo.acquire @of1(Consume) : memref<16xi32>
       %v  = memref.load %e[%c0] : memref<16xi32>
-      aie.objectfifo.release @of1 (Consume, 1)
+      aie.objectfifo.release @of1(Consume) [1]
       aie.end
     }
   }
@@ -78,19 +76,17 @@ module @stage1 {
     %core12 = aie.core(%tile12) {
       %c0 = arith.constant 0 : index
       %v  = arith.constant 42 : i32
-      %sv = aie.objectfifo.acquire @of1_prod_core (1) : !aie.objectfifosubview<memref<16xi32>>
-      %e  = aie.objectfifo.subview.access %sv[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+      %e = aie.objectfifo.acquire @of1_prod_core : memref<16xi32>
       memref.store %v, %e[%c0] : memref<16xi32>
-      aie.objectfifo.release @of1_prod_core (1)
+      aie.objectfifo.release @of1_prod_core [1]
       aie.end
     }
 
     %core33 = aie.core(%tile33) {
       %c0 = arith.constant 0 : index
-      %sv = aie.objectfifo.acquire @of1_cons_core (1) : !aie.objectfifosubview<memref<16xi32>>
-      %e  = aie.objectfifo.subview.access %sv[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+      %e = aie.objectfifo.acquire @of1_cons_core : memref<16xi32>
       %v  = memref.load %e[%c0] : memref<16xi32>
-      aie.objectfifo.release @of1_cons_core (1)
+      aie.objectfifo.release @of1_cons_core [1]
       aie.end
     }
   }

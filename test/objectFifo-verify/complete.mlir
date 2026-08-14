@@ -29,9 +29,8 @@ module @complete {
     aie.objectfifo.flow from @prod_dma to [@cons_dma]
 
     %core12 = aie.core(%tile12) {
-      %subview = aie.objectfifo.acquire @prod_core (1) : !aie.objectfifosubview<memref<16xi32>>
-      %elem = aie.objectfifo.subview.access %subview[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
-      aie.objectfifo.release @prod_core (1)
+      %elem = aie.objectfifo.acquire @prod_core : memref<16xi32>
+      aie.objectfifo.release @prod_core [1]
       aie.end
     }
   }

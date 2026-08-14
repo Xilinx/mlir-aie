@@ -73,10 +73,9 @@ module @aie2_static_L1 {
             scf.for %idx = %i_c0 to %i_c16 step %i_c1 {
                 %val0 = memref.load %srcbuf22[] : memref<i32>
                 // Produce 1 elements, so acquire 1 element
-                %subview = aie.objectfifo.acquire @fifo (Produce, 1) : !aie.objectfifosubview<memref<i32>>
-                %elem = aie.objectfifo.subview.access %subview[0] : !aie.objectfifosubview<memref<i32>> -> memref<i32>
+                %elem = aie.objectfifo.acquire @fifo(Produce) : memref<i32>
                 memref.store %val0, %elem[] : memref<i32>
-                aie.objectfifo.release @fifo (Produce, 1)
+                aie.objectfifo.release @fifo(Produce) [1]
                 // Increment
                 %val1 = arith.addi %c1, %val0 : i32
                 memref.store %val1, %srcbuf22[] : memref<i32>
@@ -89,15 +88,13 @@ module @aie2_static_L1 {
         %core23 = aie.core(%tile23) {
             scf.for %idx = %i_c0 to %i_c16 step %i_c2 {
                 // Consume _two_ elements at once (cyclo static)
-                %subview = aie.objectfifo.acquire @fifo (Consume, 2) : !aie.objectfifosubview<memref<i32>>
-                %elem0 = aie.objectfifo.subview.access %subview[0] : !aie.objectfifosubview<memref<i32>> -> memref<i32>
-                %elem1 = aie.objectfifo.subview.access %subview[1] : !aie.objectfifosubview<memref<i32>> -> memref<i32>
+                %elem0, %elem1 = aie.objectfifo.acquire @fifo(Consume) : memref<i32>, memref<i32>
                 %val0 = memref.load %elem0[] : memref<i32>
                 %val1 = memref.load %elem1[] : memref<i32>
                 // Pass through to destination buffer
                 func.call @store2(%val0, %val1, %idx, %dstbuf23) : (i32, i32, index, memref<16xi32>) -> ()
                 // Release consumed objects
-                aie.objectfifo.release @fifo (Consume, 2)
+                aie.objectfifo.release @fifo(Consume) [2]
             }
 
             aie.end
