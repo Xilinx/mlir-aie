@@ -1797,6 +1797,82 @@ LogicalResult PacketRulesOp::verify() {
   return success();
 }
 
+LogicalResult AMSelOp::verify() {
+  auto slots = getDeterministicMerge();
+  if (!slots)
+    return success();
+
+  const auto &tm = getTargetModel(*this);
+  uint32_t numArbiters = tm.getNumDeterministicMergeArbiters();
+  if (numArbiters == 0)
+    return emitOpError("deterministic merge is not supported by this device");
+  if (static_cast<uint32_t>(arbiterIndex()) >= numArbiters)
+    return emitOpError("arbiter ")
+           << arbiterIndex()
+           << " does not support deterministic merge; this device supports "
+              "arbiters [0, "
+           << numArbiters << ")";
+
+  uint32_t numSlots = tm.getNumDeterministicMergeSlots();
+  if (slots->size() > numSlots)
+    return emitOpError("has ")
+           << slots->size() << " merge slots but this device provides only "
+           << numSlots;
+  // The hardware marks an unused slot with a packet count of zero, and slots 0
+  // and 1 may never be zero, so the narrowest legal configuration is 2-to-1.
+  if (slots->size() < 2)
+    return emitOpError("needs at least 2 merge slots (a 2-to-1 merge); got ")
+           << slots->size();
+
+  // packet_count is a 6-bit field and a zero count is how the hardware marks an
+  // unused slot, so an explicit slot must be in 1..63.
+  for (auto slot : *slots)
+    if (slot.getPacketCount() < 1 || slot.getPacketCount() > 63)
+      return emitOpError("merge slot packet_count must be in 1..63; got ")
+             << (int)slot.getPacketCount();
+
+  auto switchbox = (*this)->getParentOfType<SwitchboxOp>();
+  if (!switchbox)
+    return success();
+
+  // Deterministic merge is scoped to a whole arbiter, but several amsels may
+  // name the same arbiter, so exactly one of them may carry the schedule.
+  for (auto other : switchbox.getOps<AMSelOp>())
+    if (other != *this && other.arbiterIndex() == arbiterIndex() &&
+        other.getDeterministicMerge())
+      return emitOpError("arbiter ")
+             << arbiterIndex()
+             << " already has a deterministic merge schedule on another amsel; "
+                "the schedule covers the whole arbiter, so it must appear once";
+
+  // Every slave routed to this arbiter must hold a slot: once the feature is
+  // enabled the arbiter grants only the slaves it names, so an omitted slave is
+  // starved forever.
+  llvm::SmallSet<std::pair<int, int>, 8> scheduled;
+  for (auto slot : *slots)
+    scheduled.insert({static_cast<int>(slot.getSlaveBundle()),
+                      static_cast<int>(slot.getSlaveChannel())});
+
+  for (auto rules : switchbox.getOps<PacketRulesOp>()) {
+    bool feedsThisArbiter = false;
+    for (auto rule : rules.getRules().front().getOps<PacketRuleOp>())
+      if (auto amsel = dyn_cast<AMSelOp>(rule.getAmsel().getDefiningOp());
+          amsel && amsel.arbiterIndex() == arbiterIndex())
+        feedsThisArbiter = true;
+    if (!feedsThisArbiter)
+      continue;
+    if (!scheduled.count(
+            {static_cast<int>(rules.getSourceBundle()), rules.sourceIndex()}))
+      return emitOpError("deterministic merge on arbiter ")
+             << arbiterIndex() << " does not schedule slave port "
+             << stringifyWireBundle(rules.getSourceBundle()) << " : "
+             << rules.sourceIndex()
+             << ", which is routed to that arbiter and would never be granted";
+  }
+
+  return success();
+}
+
 LogicalResult PacketFlowOp::verify() {
   Region &body = getPorts();
   if (body.empty())

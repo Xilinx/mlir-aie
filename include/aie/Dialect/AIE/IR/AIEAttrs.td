@@ -199,6 +199,39 @@ def BDPadLayoutArrayAttr : ArrayOfAttr<
     /*eltName*/BDPadLayoutAttr.cppClassName
 >;
 
+def MergeSlotAttr : AttrDef<AIE_Dialect, "MergeSlot", []> {
+  let mnemonic = "merge_slot";
+  let summary = [{
+    One slot of a stream switch arbiter's deterministic merge sequence;
+  }];
+  let description = [{
+    A slave port, and how many packets the arbiter grants it before advancing to
+    the next slot. Used as an element of the `deterministic_merge` attribute on
+    [AMSelOp](#aieamsel-xilinxaieamselop), which documents the mode as a whole.
+
+    The same slave may appear in more than one slot, which is how an uneven
+    service ratio is expressed.
+  }];
+
+  let parameters = (ins
+    EnumParameter<WireBundle> : $slave_bundle,
+    AttrParameter<"uint32_t", "channel index within the slave bundle">
+      : $slave_channel,
+    AttrParameter<"uint32_t",
+                  "packets granted on each visit to this slot; 1..63">
+      : $packet_count
+  );
+
+  let assemblyFormat = "`<` $slave_bundle `:` $slave_channel `,` $packet_count `>`";
+}
+
+def MergeSlotArrayAttr : ArrayOfAttr<
+    /*dialect*/AIE_Dialect,
+    /*attrName*/"MergeSlotArray",
+    /*attrMnemonic*/"merge_slot_array",
+    /*eltName*/MergeSlotAttr.cppClassName
+>;
+
 def PacketInfoAttr : AttrDef<AIE_Dialect, "PacketInfo", []> {
   let mnemonic = "packet_info";
   let summary = [{

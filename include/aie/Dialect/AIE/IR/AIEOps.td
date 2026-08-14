@@ -602,7 +602,8 @@ def AIE_AMSelOp: AIE_Op<"amsel", [
   ]>, Results<(outs Index)> {
   let arguments = (
     ins ConfinedAttr<AIEI8Attr, [IntMinValue<0>, IntMaxValue<5>]>:$arbiterID,
-        ConfinedAttr<AIEI8Attr, [IntMinValue<0>, IntMaxValue<3>]>:$msel
+        ConfinedAttr<AIEI8Attr, [IntMinValue<0>, IntMaxValue<3>]>:$msel,
+        OptionalAttr<MergeSlotArrayAttr>:$deterministic_merge
   );
   let summary = "Declare an arbiter of a switchbox with a master select value (arbiter + msel)";
   let description = [{
@@ -623,11 +624,55 @@ def AIE_AMSelOp: AIE_Op<"amsel", [
     See also [MasterSetOp](#aiemasterset-xilinxaiemastersetop),
     [PacketRulesOp](#aiepacket_rules-xilinxaiepacketrulesop), and
     [PacketRuleOp](#aierule-xilinxaiepacketruleop) for more information.
+
+    ### Deterministic merge
+
+    The optional `deterministic_merge` attribute puts this op's *arbiter* into
+    deterministic merge mode. By default a packet-switched arbiter grants its
+    pending slave ports in an order the compiler does not control, so the
+    interleaving of a many-to-one merge is an emergent property of path
+    latencies and arbiter state. With the attribute set, the arbiter instead
+    walks the given sequence of merge slots: it grants only the slave named by
+    slot 0, `packet_count` times, then moves to slot 1, and so on, wrapping
+    after the last slot.
+
+    That makes the merge order a declared contract rather than an accident, and
+    it reserves bandwidth: a slave holding a slot cannot be starved by another
+    slave with a large backlog, because the arbiter will not grant that other
+    slave while it is on a slot that is not its own. The contract binds both
+    ways -- the arbiter waits at a slot for its slave, so a slot must only be
+    given to a stream that will actually produce the programmed packets.
+
+    The feature is scoped to a whole arbiter, not to an (arbiter, msel) pair.
+    Because several `aie.amsel` ops may name the same arbiter, at most one of
+    them may carry this attribute, and its slots must name every slave port
+    routed to that arbiter -- a slave feeding the arbiter with no slot of its
+    own is never granted. Both rules are checked by the verifier.
+
+    Only some arbiters support this; query the target model with
+    `getNumDeterministicMergeArbiters()`. It is unavailable on AIE1.
+
+    Example:
+    ```
+      aie.switchbox(%tile_0_3) {
+        %a0 = aie.amsel<0> (0) deterministic_merge [<North : 1, 1>, <DMA : 0, 1>]
+        aie.masterset(South : 1, %a0)
+        aie.packet_rules(North : 1) { aie.rule(31, 2, %a0) }
+        aie.packet_rules(DMA : 0)   { aie.rule(31, 1, %a0) }
+      }
+    ```
+
+    Each slot reads `<slave_bundle : slave_channel, packet_count>`, so the
+    schedule above grants `North : 1` one packet, then `DMA : 0` one packet,
+    then repeats.
   }];
 
   let assemblyFormat = [{
-    `<` $arbiterID `>` `(` $msel `)` attr-dict
+    `<` $arbiterID `>` `(` $msel `)`
+    (`deterministic_merge` $deterministic_merge^)? attr-dict
   }];
+
+  let hasVerifier = 1;
 
   let extraClassDeclaration = [{
     int arbiterIndex() { return getArbiterID(); }
@@ -639,7 +684,8 @@ def AIE_AMSelOp: AIE_Op<"amsel", [
     [{
       build($_builder, $_state, $_builder.getIndexType(),
             $_builder.getI8IntegerAttr(arbiterID),
-            $_builder.getI8IntegerAttr(msel));
+            $_builder.getI8IntegerAttr(msel),
+            /*deterministic_merge=*/nullptr);
     }]>
   ];
 }
