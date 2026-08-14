@@ -275,6 +275,9 @@ buildObjectSubgraph(EdgeWithTypedOutput<ModRef> &lowered,
       .value("--march=")
       .arg("--function-sections")
       .arg("--filetype=obj")
+      // Per-function frame size into a `.stack_sizes` section, so the link-time
+      // stack-size gate below (see peanoElfsChecked) has something to read.
+      .arg("--stack-size-section")
       .output("-o");
   EdgeWithTypedOutput<Directory> &peanoObject =
       bundle(opted.out, arches.out)
@@ -898,11 +901,83 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                   .output("-o"))
           .threadSafe();
 
+  // Link-time stack-size gate (peano only), mirroring iree-amd-aie's
+  // XCLBinGen.cpp getMaxStackSizeFromExecutable. CoreOp::verify() only rejects
+  // a stack_size that alone exceeds local memory; it cannot see whether the
+  // compiled code fits the reservation, and the linker places the stack
+  // directly below this tile's buffers with no clearance, so an overrun
+  // corrupts them silently instead of faulting.
+  auto &stackSizeReports =
+      peanoElfs
+          .map<File>("stacksizes_{0}.txt", ShellCommand{"llvm-readelf"}
+                                               .arg("--stack-sizes")
+                                               .input()
+                                               .captureStdout())
+          .threadSafe();
+  EdgeWithTypedOutput<Directory> &peanoElfsChecked =
+      bundle(stackSizeReports.out, peanoElfs.out, perCore.out)
+          .map<Directory>(
+              "elfs_{0}.elf.stackchecked",
+              [](const Item<File> &report, const Item<Directory> &elf,
+                 const Item<OpInModule<CoreOp>> &coreItem,
+                 Item<Directory> &out) -> mlir::LogicalResult {
+                CoreOp core = coreItem.get().op;
+                auto tile = mlir::cast<TileOp>(core.getTile().getDefiningOp());
+                // Under -n the readelf above only printed its command line, so
+                // there is no report to gate on.
+                if (dryRun) {
+                  out.value = elf.get();
+                  out.filePath = elf.filePath;
+                  return mlir::success();
+                }
+                auto buf = llvm::MemoryBuffer::getFile(report.asFile());
+                if (!buf) {
+                  llvm::errs() << "aiecc: could not read stack-size report '"
+                               << report.asFile()
+                               << "': " << buf.getError().message() << "\n";
+                  return mlir::failure();
+                }
+                std::optional<uint32_t> upperBound =
+                    parseStackSizesUpperBound((*buf)->getBuffer());
+                if (!upperBound) {
+                  llvm::errs() << "aiecc: could not parse llvm-readelf "
+                                  "--stack-sizes output for core ("
+                               << tile.getCol() << ", " << tile.getRow()
+                               << ") from '" << report.asFile() << "'\n";
+                  return mlir::failure();
+                }
+                uint32_t reserved = core.getEffectiveStackSize();
+                if (*upperBound > reserved) {
+                  llvm::errs()
+                      << "aiecc: core (" << tile.getCol() << ", "
+                      << tile.getRow()
+                      << ")'s compiled frames sum to an upper bound of "
+                      << *upperBound << " bytes of stack, more than the "
+                      << reserved
+                      << " bytes reserved (stack_size on the aie.core, or "
+                         "the target's default if unset). The linker places "
+                         "the stack directly below this tile's buffers with "
+                         "no clearance, so this overrun corrupts them "
+                         "silently instead of faulting. Raise stack_size on "
+                         "the core.\n";
+                  return mlir::failure();
+                }
+                out.value = elf.get();
+                out.filePath = elf.filePath;
+                return mlir::success();
+              })
+          .threadSafe();
+  // No new artifact -- this re-exposes peanoElfs's own ELF under a gate, same
+  // as preBakedElfs re-exposing an externally-built one (see its
+  // producesFiles=false above). Without this the engine's duplicate-output
+  // check trips: two edges, both producesFiles=true, claiming the same path.
+  peanoElfsChecked.producesFiles = false;
+
   // Fresh per-core ELFs (Chess/xbridge or Peano). Cores that already carry an
   // `elf_file` attribute are handled separately by `preBakedElfs` and merged
   // into `physicalWithElfs`.
   EdgeWithTypedOutput<Directory> &compiledElfs =
-      xbridge ? chessElfs : peanoElfs;
+      xbridge ? chessElfs : peanoElfsChecked;
 
   // --- Per-device configuration artifacts ---------------------------------
 

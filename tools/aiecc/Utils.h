@@ -25,6 +25,8 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <limits>
+#include <optional>
 #include <string>
 #include <system_error>
 #include <vector>
@@ -186,6 +188,48 @@ inline std::vector<std::string> parseBcfIncludeFiles(llvm::StringRef bcf) {
     }
   }
   return files;
+}
+
+// Parse `llvm-readelf --stack-sizes`'s report into an upper bound on the
+// program's stack usage: the sum of every function's frame. Without the call
+// graph, a caller's frame could be sitting under any of the others, so the
+// sum is the only sound bound. Expected shape:
+//
+//   Stack Sizes:
+//        Size     Functions
+//          64     core_0_5, main
+//          32     some_func
+//
+// Returns nullopt on a shape this parser does not recognize: a loud build
+// failure beats a silent under-report.
+inline std::optional<uint32_t>
+parseStackSizesUpperBound(llvm::StringRef report) {
+  llvm::SmallVector<llvm::StringRef> lines;
+  report.split(lines, '\n');
+  size_t i = 0;
+  for (; i < lines.size() && lines[i].trim().empty(); ++i) {
+  }
+  if (i >= lines.size() || !lines[i].trim().starts_with("Stack Sizes:"))
+    return std::nullopt;
+  // The banner is followed by a "Size Functions" header. Check it rather than
+  // skipping two lines blind, so a report shaped otherwise is unparsable
+  // rather than short by its first row.
+  if (++i >= lines.size() || !lines[i].trim().starts_with("Size"))
+    return std::nullopt;
+  ++i;
+  uint64_t total = 0;
+  for (; i < lines.size(); ++i) {
+    llvm::StringRef line = lines[i].trim();
+    if (line.empty())
+      continue;
+    unsigned long long size;
+    if (line.split(' ').first.getAsInteger(10, size))
+      return std::nullopt;
+    total += size;
+  }
+  if (total > std::numeric_limits<uint32_t>::max())
+    return std::nullopt; // implausible; unparsable rather than silently wrapped
+  return static_cast<uint32_t>(total);
 }
 
 // Discover the aietools (Vitis AIE / Chess) install directory. Search order:

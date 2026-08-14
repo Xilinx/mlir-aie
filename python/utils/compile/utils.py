@@ -316,6 +316,10 @@ def compile_cxx_core_function(
             "-Wno-empty-body",
             "-O2",
             "-DNDEBUG",
+            # Per-function frame sizes into .stack_sizes, so aiecc's link-time
+            # stack check covers kernel objects and not just the core code it
+            # compiles itself.
+            "-fstack-size-section",
             # Have the compiler report what it actually read, the way ninja and
             # ccache learn a translation unit's real inputs.
             "-MD",

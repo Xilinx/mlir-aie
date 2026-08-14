@@ -201,6 +201,10 @@ struct ShellCommand {
 
   std::string tool;
   std::vector<Part> parts;
+  // When set, the tool's stdout is written to the output file itself instead
+  // of the hidden diagnostics log -- for tools whose answer IS their stdout
+  // and that take no -o flag (e.g. `llvm-readelf --stack-sizes`).
+  bool captureStdoutToOutput = false;
 
   inline static std::vector<std::string> searchPaths;
   inline static std::map<std::string, std::string> toolPathCache;
@@ -362,6 +366,12 @@ struct ShellCommand {
     return *this;
   }
 
+  // Redirect the tool's stdout to the output file (see captureStdoutToOutput).
+  ShellCommand &captureStdout() {
+    captureStdoutToOutput = true;
+    return *this;
+  }
+
   // Uniform entry: takes any number of input Items (in bundle declaration
   // order) followed by the Item<File> output. Each input/value part consumes
   // the next source in order.
@@ -515,10 +525,13 @@ private:
       llvm::sys::Process::SafelyCloseFileDescriptor(logFd);
       capture = llvm::StringRef(logPath);
     }
+    std::optional<llvm::StringRef> stdoutTarget =
+        captureStdoutToOutput ? std::optional<llvm::StringRef>(outputFile)
+                              : capture;
     std::array<std::optional<llvm::StringRef>, 3> redirects = {
-        std::nullopt, capture, capture};
+        std::nullopt, stdoutTarget, capture};
     llvm::ArrayRef<std::optional<llvm::StringRef>> redirectRef;
-    if (capture)
+    if (capture || captureStdoutToOutput)
       redirectRef = redirects;
     int rc = llvm::sys::ExecuteAndWait(cmd[0], argv, std::nullopt, redirectRef,
                                        0, 0, &errMsg);
