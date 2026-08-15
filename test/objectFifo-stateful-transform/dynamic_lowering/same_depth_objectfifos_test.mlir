@@ -18,14 +18,14 @@
 // CHECK:           }
 // CHECK:           %[[VAL_3:.*]] = aie.tile(0, 0)
 // CHECK:           %[[VAL_4:.*]] = aie.tile(0, 2)
-// CHECK:           %[[VAL_5:.*]] = aie.buffer(%[[VAL_4]]) {sym_name = "output_fifo_buff_0"} : memref<10xi32>
-// CHECK:           %[[VAL_6:.*]] = aie.buffer(%[[VAL_4]]) {sym_name = "output_fifo_buff_1"} : memref<10xi32>
-// CHECK:           %[[VAL_7:.*]] = aie.lock(%[[VAL_4]]) {init = 2 : i32, sym_name = "output_fifo_prod_lock_0"}
-// CHECK:           %[[VAL_8:.*]] = aie.lock(%[[VAL_4]]) {init = 0 : i32, sym_name = "output_fifo_cons_lock_0"}
-// CHECK:           %[[VAL_9:.*]] = aie.buffer(%[[VAL_4]]) {sym_name = "input_fifo_cons_buff_0"} : memref<10xi32>
-// CHECK:           %[[VAL_10:.*]] = aie.buffer(%[[VAL_4]]) {sym_name = "input_fifo_cons_buff_1"} : memref<10xi32>
-// CHECK:           %[[VAL_11:.*]] = aie.lock(%[[VAL_4]]) {init = 2 : i32, sym_name = "input_fifo_cons_prod_lock_0"}
-// CHECK:           %[[VAL_12:.*]] = aie.lock(%[[VAL_4]]) {init = 0 : i32, sym_name = "input_fifo_cons_cons_lock_0"}
+// CHECK:           %[[VAL_5:.*]] = aie.buffer(%[[VAL_4]]) {sym_name = "input_fifo_cons_buff_0"} : memref<10xi32>
+// CHECK:           %[[VAL_6:.*]] = aie.buffer(%[[VAL_4]]) {sym_name = "input_fifo_cons_buff_1"} : memref<10xi32>
+// CHECK:           %[[VAL_7:.*]] = aie.lock(%[[VAL_4]]) {init = 2 : i32, sym_name = "input_fifo_cons_prod_lock_0"}
+// CHECK:           %[[VAL_8:.*]] = aie.lock(%[[VAL_4]]) {init = 0 : i32, sym_name = "input_fifo_cons_cons_lock_0"}
+// CHECK:           %[[VAL_9:.*]] = aie.buffer(%[[VAL_4]]) {sym_name = "output_fifo_buff_0"} : memref<10xi32>
+// CHECK:           %[[VAL_10:.*]] = aie.buffer(%[[VAL_4]]) {sym_name = "output_fifo_buff_1"} : memref<10xi32>
+// CHECK:           %[[VAL_11:.*]] = aie.lock(%[[VAL_4]]) {init = 2 : i32, sym_name = "output_fifo_prod_lock_0"}
+// CHECK:           %[[VAL_12:.*]] = aie.lock(%[[VAL_4]]) {init = 0 : i32, sym_name = "output_fifo_cons_lock_0"}
 // CHECK:           aie.flow(%[[VAL_3]], DMA : 0, %[[VAL_4]], DMA : 0)
 // CHECK:           aie.flow(%[[VAL_4]], DMA : 0, %[[VAL_3]], DMA : 0)
 // CHECK:           %[[VAL_13:.*]] = aie.core(%[[VAL_4]]) {
@@ -35,14 +35,26 @@
 // CHECK:             %[[VAL_17:.*]] = arith.constant 0 : index
 // CHECK:             %[[VAL_18:.*]] = arith.constant 0 : i32
 // CHECK:             %[[VAL_19:.*]] = arith.constant 2 : i32
-// CHECK:             aie.use_lock(%[[VAL_7]], AcquireGreaterEqual, %[[VAL_14]])
-// CHECK:             aie.use_lock(%[[VAL_12]], AcquireGreaterEqual, %[[VAL_14]])
-// CHECK:             func.call @add_10_i32(%[[VAL_9]], %[[VAL_9]], %[[VAL_5]]) : (memref<10xi32>, memref<10xi32>, memref<10xi32>) -> ()
-// CHECK:             aie.use_lock(%[[VAL_8]], Release, %[[VAL_14]])
+// CHECK:             aie.use_lock(%[[VAL_11]], AcquireGreaterEqual, %[[VAL_14]])
+// CHECK:             aie.use_lock(%[[VAL_8]], AcquireGreaterEqual, %[[VAL_14]])
+// CHECK:             func.call @add_10_i32(%[[VAL_5]], %[[VAL_5]], %[[VAL_9]]) : (memref<10xi32>, memref<10xi32>, memref<10xi32>) -> ()
+// CHECK:             aie.use_lock(%[[VAL_12]], Release, %[[VAL_14]])
 // CHECK:             %[[VAL_20:.*]]:2 = scf.for %[[VAL_21:.*]] = %[[VAL_17]] to %[[VAL_15]] step %[[VAL_16]] iter_args(%[[VAL_22:.*]] = %[[VAL_14]], %[[VAL_23:.*]] = %[[VAL_18]]) -> (i32, i32) {
-// CHECK:               aie.use_lock(%[[VAL_7]], AcquireGreaterEqual, %[[VAL_14]])
+// CHECK:               aie.use_lock(%[[VAL_11]], AcquireGreaterEqual, %[[VAL_14]])
 // CHECK:               %[[VAL_24:.*]] = arith.index_cast %[[VAL_22]] : i32 to index
 // CHECK:               %[[VAL_25:.*]] = scf.index_switch %[[VAL_24]] -> memref<10xi32>
+// CHECK:               case 0 {
+// CHECK:                 scf.yield %[[VAL_9]] : memref<10xi32>
+// CHECK:               }
+// CHECK:               case 1 {
+// CHECK:                 scf.yield %[[VAL_10]] : memref<10xi32>
+// CHECK:               }
+// CHECK:               default {
+// CHECK:                 scf.yield %[[VAL_9]] : memref<10xi32>
+// CHECK:               }
+// CHECK:               aie.use_lock(%[[VAL_8]], AcquireGreaterEqual, %[[VAL_14]])
+// CHECK:               %[[VAL_26:.*]] = arith.index_cast %[[VAL_23]] : i32 to index
+// CHECK:               %[[VAL_27:.*]] = scf.index_switch %[[VAL_26]] -> memref<10xi32>
 // CHECK:               case 0 {
 // CHECK:                 scf.yield %[[VAL_5]] : memref<10xi32>
 // CHECK:               }
@@ -52,42 +64,42 @@
 // CHECK:               default {
 // CHECK:                 scf.yield %[[VAL_5]] : memref<10xi32>
 // CHECK:               }
-// CHECK:               aie.use_lock(%[[VAL_12]], AcquireGreaterEqual, %[[VAL_14]])
-// CHECK:               %[[VAL_26:.*]] = arith.index_cast %[[VAL_23]] : i32 to index
-// CHECK:               %[[VAL_27:.*]] = scf.index_switch %[[VAL_26]] -> memref<10xi32>
-// CHECK:               case 0 {
-// CHECK:                 scf.yield %[[VAL_9]] : memref<10xi32>
-// CHECK:               }
-// CHECK:               case 1 {
-// CHECK:                 scf.yield %[[VAL_10]] : memref<10xi32>
-// CHECK:               }
-// CHECK:               default {
-// CHECK:                 scf.yield %[[VAL_9]] : memref<10xi32>
-// CHECK:               }
 // CHECK:               %[[VAL_28:.*]] = scf.index_switch %[[VAL_26]] -> memref<10xi32>
 // CHECK:               case 0 {
-// CHECK:                 scf.yield %[[VAL_10]] : memref<10xi32>
+// CHECK:                 scf.yield %[[VAL_6]] : memref<10xi32>
 // CHECK:               }
 // CHECK:               case 1 {
-// CHECK:                 scf.yield %[[VAL_9]] : memref<10xi32>
+// CHECK:                 scf.yield %[[VAL_5]] : memref<10xi32>
 // CHECK:               }
 // CHECK:               default {
-// CHECK:                 scf.yield %[[VAL_10]] : memref<10xi32>
+// CHECK:                 scf.yield %[[VAL_6]] : memref<10xi32>
 // CHECK:               }
 // CHECK:               func.call @add_10_i32(%[[VAL_27]], %[[VAL_28]], %[[VAL_25]]) : (memref<10xi32>, memref<10xi32>, memref<10xi32>) -> ()
-// CHECK:               aie.use_lock(%[[VAL_11]], Release, %[[VAL_14]])
+// CHECK:               aie.use_lock(%[[VAL_7]], Release, %[[VAL_14]])
 // CHECK:               %[[VAL_29:.*]] = arith.addi %[[VAL_23]], %[[VAL_14]] : i32
 // CHECK:               %[[VAL_30:.*]] = arith.cmpi sge, %[[VAL_29]], %[[VAL_19]] : i32
 // CHECK:               %[[VAL_31:.*]] = arith.select %[[VAL_30]], %[[VAL_18]], %[[VAL_29]] : i32
-// CHECK:               aie.use_lock(%[[VAL_8]], Release, %[[VAL_14]])
+// CHECK:               aie.use_lock(%[[VAL_12]], Release, %[[VAL_14]])
 // CHECK:               %[[VAL_32:.*]] = arith.addi %[[VAL_22]], %[[VAL_14]] : i32
 // CHECK:               %[[VAL_33:.*]] = arith.cmpi sge, %[[VAL_32]], %[[VAL_19]] : i32
 // CHECK:               %[[VAL_34:.*]] = arith.select %[[VAL_33]], %[[VAL_18]], %[[VAL_32]] : i32
 // CHECK:               scf.yield %[[VAL_34]], %[[VAL_31]] : i32, i32
 // CHECK:             }
-// CHECK:             aie.use_lock(%[[VAL_7]], AcquireGreaterEqual, %[[VAL_14]])
+// CHECK:             aie.use_lock(%[[VAL_11]], AcquireGreaterEqual, %[[VAL_14]])
 // CHECK:             %[[VAL_35:.*]] = arith.index_cast %[[VAL_36:.*]]#0 : i32 to index
 // CHECK:             %[[VAL_37:.*]] = scf.index_switch %[[VAL_35]] -> memref<10xi32>
+// CHECK:             case 0 {
+// CHECK:               scf.yield %[[VAL_9]] : memref<10xi32>
+// CHECK:             }
+// CHECK:             case 1 {
+// CHECK:               scf.yield %[[VAL_10]] : memref<10xi32>
+// CHECK:             }
+// CHECK:             default {
+// CHECK:               scf.yield %[[VAL_9]] : memref<10xi32>
+// CHECK:             }
+// CHECK:             aie.use_lock(%[[VAL_8]], AcquireGreaterEqual, %[[VAL_14]])
+// CHECK:             %[[VAL_38:.*]] = arith.index_cast %[[VAL_36]]#1 : i32 to index
+// CHECK:             %[[VAL_39:.*]] = scf.index_switch %[[VAL_38]] -> memref<10xi32>
 // CHECK:             case 0 {
 // CHECK:               scf.yield %[[VAL_5]] : memref<10xi32>
 // CHECK:             }
@@ -97,31 +109,19 @@
 // CHECK:             default {
 // CHECK:               scf.yield %[[VAL_5]] : memref<10xi32>
 // CHECK:             }
-// CHECK:             aie.use_lock(%[[VAL_12]], AcquireGreaterEqual, %[[VAL_14]])
-// CHECK:             %[[VAL_38:.*]] = arith.index_cast %[[VAL_36]]#1 : i32 to index
-// CHECK:             %[[VAL_39:.*]] = scf.index_switch %[[VAL_38]] -> memref<10xi32>
-// CHECK:             case 0 {
-// CHECK:               scf.yield %[[VAL_9]] : memref<10xi32>
-// CHECK:             }
-// CHECK:             case 1 {
-// CHECK:               scf.yield %[[VAL_10]] : memref<10xi32>
-// CHECK:             }
-// CHECK:             default {
-// CHECK:               scf.yield %[[VAL_9]] : memref<10xi32>
-// CHECK:             }
 // CHECK:             %[[VAL_40:.*]] = scf.index_switch %[[VAL_38]] -> memref<10xi32>
 // CHECK:             case 0 {
-// CHECK:               scf.yield %[[VAL_10]] : memref<10xi32>
+// CHECK:               scf.yield %[[VAL_6]] : memref<10xi32>
 // CHECK:             }
 // CHECK:             case 1 {
-// CHECK:               scf.yield %[[VAL_9]] : memref<10xi32>
+// CHECK:               scf.yield %[[VAL_5]] : memref<10xi32>
 // CHECK:             }
 // CHECK:             default {
-// CHECK:               scf.yield %[[VAL_10]] : memref<10xi32>
+// CHECK:               scf.yield %[[VAL_6]] : memref<10xi32>
 // CHECK:             }
 // CHECK:             func.call @add_10_i32(%[[VAL_39]], %[[VAL_40]], %[[VAL_37]]) : (memref<10xi32>, memref<10xi32>, memref<10xi32>) -> ()
-// CHECK:             aie.use_lock(%[[VAL_11]], Release, %[[VAL_19]])
-// CHECK:             aie.use_lock(%[[VAL_8]], Release, %[[VAL_14]])
+// CHECK:             aie.use_lock(%[[VAL_7]], Release, %[[VAL_19]])
+// CHECK:             aie.use_lock(%[[VAL_12]], Release, %[[VAL_14]])
 // CHECK:             aie.end
 // CHECK:           }
 // CHECK:           aie.shim_dma_allocation @input_fifo_shim_alloc(%[[VAL_3]], MM2S, 0)
@@ -130,26 +130,26 @@
 // CHECK:             %[[VAL_42:.*]] = arith.constant 1 : i32
 // CHECK:             %[[VAL_43:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
 // CHECK:           ^bb1:
-// CHECK:             aie.use_lock(%[[VAL_11]], AcquireGreaterEqual, %[[VAL_42]])
-// CHECK:             aie.dma_bd(%[[VAL_9]] : memref<10xi32> offset = 0 len = 10)
-// CHECK:             aie.use_lock(%[[VAL_12]], Release, %[[VAL_42]])
+// CHECK:             aie.use_lock(%[[VAL_7]], AcquireGreaterEqual, %[[VAL_42]])
+// CHECK:             aie.dma_bd(%[[VAL_5]] : memref<10xi32> offset = 0 len = 10)
+// CHECK:             aie.use_lock(%[[VAL_8]], Release, %[[VAL_42]])
 // CHECK:             aie.next_bd ^bb2
 // CHECK:           ^bb2:
-// CHECK:             aie.use_lock(%[[VAL_11]], AcquireGreaterEqual, %[[VAL_42]])
-// CHECK:             aie.dma_bd(%[[VAL_10]] : memref<10xi32> offset = 0 len = 10)
-// CHECK:             aie.use_lock(%[[VAL_12]], Release, %[[VAL_42]])
+// CHECK:             aie.use_lock(%[[VAL_7]], AcquireGreaterEqual, %[[VAL_42]])
+// CHECK:             aie.dma_bd(%[[VAL_6]] : memref<10xi32> offset = 0 len = 10)
+// CHECK:             aie.use_lock(%[[VAL_8]], Release, %[[VAL_42]])
 // CHECK:             aie.next_bd ^bb1
 // CHECK:           ^bb3:
 // CHECK:             %[[VAL_44:.*]] = aie.dma_start(MM2S, 0, ^bb4, ^bb6)
 // CHECK:           ^bb4:
-// CHECK:             aie.use_lock(%[[VAL_8]], AcquireGreaterEqual, %[[VAL_42]])
-// CHECK:             aie.dma_bd(%[[VAL_5]] : memref<10xi32> offset = 0 len = 10)
-// CHECK:             aie.use_lock(%[[VAL_7]], Release, %[[VAL_42]])
+// CHECK:             aie.use_lock(%[[VAL_12]], AcquireGreaterEqual, %[[VAL_42]])
+// CHECK:             aie.dma_bd(%[[VAL_9]] : memref<10xi32> offset = 0 len = 10)
+// CHECK:             aie.use_lock(%[[VAL_11]], Release, %[[VAL_42]])
 // CHECK:             aie.next_bd ^bb5
 // CHECK:           ^bb5:
-// CHECK:             aie.use_lock(%[[VAL_8]], AcquireGreaterEqual, %[[VAL_42]])
-// CHECK:             aie.dma_bd(%[[VAL_6]] : memref<10xi32> offset = 0 len = 10)
-// CHECK:             aie.use_lock(%[[VAL_7]], Release, %[[VAL_42]])
+// CHECK:             aie.use_lock(%[[VAL_12]], AcquireGreaterEqual, %[[VAL_42]])
+// CHECK:             aie.dma_bd(%[[VAL_10]] : memref<10xi32> offset = 0 len = 10)
+// CHECK:             aie.use_lock(%[[VAL_11]], Release, %[[VAL_42]])
 // CHECK:             aie.next_bd ^bb4
 // CHECK:           ^bb6:
 // CHECK:             aie.end

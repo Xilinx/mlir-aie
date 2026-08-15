@@ -15,35 +15,93 @@
 
 // RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll %s | FileCheck %s
 
-// CHECK:     %[[t0:.*]] = aie.tile(2, 2)
-// CHECK:     %[[t1:.*]] = aie.tile(2, 3)
-// CHECK:     %[[PL:.*]] = aie.lock(%[[t0]]) {init = 4 : i32, sym_name = "fifo_prod_lock_0"}
-// CHECK:     %[[CL:.*]] = aie.lock(%[[t0]]) {init = 0 : i32, sym_name = "fifo_cons_lock_0"}
-// CHECK:     %[[c0:.*]] = aie.core(%[[t0]]) {
-// CHECK:         %[[C1:.*]] = arith.constant 1 : i32
-// CHECK:         aie.use_lock(%[[PL]], AcquireGreaterEqual, %[[C1]])
-// CHECK:         aie.use_lock(%[[CL]], Release, %[[C1]])
-// CHECK:         aie.use_lock(%[[PL]], AcquireGreaterEqual, %[[C1]])
-// CHECK:         aie.use_lock(%[[CL]], Release, %[[C1]])
-// CHECK:         aie.use_lock(%[[PL]], AcquireGreaterEqual, %[[C1]])
-// CHECK:         aie.use_lock(%[[CL]], Release, %[[C1]])
-// CHECK:         aie.use_lock(%[[PL]], AcquireGreaterEqual, %[[C1]])
-// CHECK:         aie.use_lock(%[[CL]], Release, %[[C1]])
-// CHECK:       aie.end
-// CHECK:     }
-// CHECK:     %[[c1:.*]] = aie.core(%[[t1]]) {
-// CHECK:         %[[C2:.*]] = arith.constant 2 : i32
-// CHECK:         aie.use_lock(%[[CL]], AcquireGreaterEqual, %[[C2]])
-// CHECK:         aie.use_lock(%[[PL]], Release, %[[C2]])
-// CHECK:         aie.use_lock(%[[CL]], AcquireGreaterEqual, %[[C2]])
-// CHECK:         aie.use_lock(%[[PL]], Release, %[[C2]])
-// CHECK:         aie.use_lock(%[[CL]], AcquireGreaterEqual, %[[C2]])
-// CHECK:         aie.use_lock(%[[PL]], Release, %[[C2]])
-// CHECK:         aie.use_lock(%[[CL]], AcquireGreaterEqual, %[[C2]])
-// CHECK:         aie.use_lock(%[[PL]], Release, %[[C2]])
-// CHECK:       }
-// CHECK:       aie.end
-// CHECK:     }
+// CHECK-LABEL:   aie.device(xcve2302) {
+// CHECK:           %[[VAL_0:.*]] = arith.constant 16 : index
+// CHECK:           %[[VAL_1:.*]] = arith.constant 2 : index
+// CHECK:           %[[VAL_2:.*]] = arith.constant 0 : index
+// CHECK:           %[[VAL_3:.*]] = aie.tile(2, 2)
+// CHECK:           %[[VAL_4:.*]] = aie.buffer(%[[VAL_3]]) {sym_name = "fifo_buff_0"} : memref<i32>
+// CHECK:           %[[VAL_5:.*]] = aie.buffer(%[[VAL_3]]) {sym_name = "fifo_buff_1"} : memref<i32>
+// CHECK:           %[[VAL_6:.*]] = aie.buffer(%[[VAL_3]]) {sym_name = "fifo_buff_2"} : memref<i32>
+// CHECK:           %[[VAL_7:.*]] = aie.buffer(%[[VAL_3]]) {sym_name = "fifo_buff_3"} : memref<i32>
+// CHECK:           %[[VAL_8:.*]] = aie.lock(%[[VAL_3]]) {init = 4 : i32, sym_name = "fifo_prod_lock_0"}
+// CHECK:           %[[VAL_9:.*]] = aie.lock(%[[VAL_3]]) {init = 0 : i32, sym_name = "fifo_cons_lock_0"}
+// CHECK:           %[[VAL_10:.*]] = aie.buffer(%[[VAL_3]]) {sym_name = "srcbuf22"} : memref<i32>
+// CHECK:           %[[VAL_11:.*]] = aie.tile(2, 3)
+// CHECK:           %[[VAL_12:.*]] = aie.buffer(%[[VAL_11]]) {sym_name = "dstbuf22"} : memref<16xi32>
+// CHECK:           %[[VAL_13:.*]] = aie.core(%[[VAL_3]]) {
+// CHECK:             %[[VAL_14:.*]] = arith.constant 1 : i32
+// CHECK:             %[[VAL_15:.*]] = arith.constant 0 : i32
+// CHECK:             %[[VAL_16:.*]] = arith.constant 4 : index
+// CHECK:             memref.store %[[VAL_15]], %[[VAL_10]][] : memref<i32>
+// CHECK:             scf.for %[[VAL_17:.*]] = %[[VAL_2]] to %[[VAL_0]] step %[[VAL_16]] {
+// CHECK:               %[[VAL_18:.*]] = memref.load %[[VAL_10]][] : memref<i32>
+// CHECK:               aie.use_lock(%[[VAL_8]], AcquireGreaterEqual, %[[VAL_14]])
+// CHECK:               memref.store %[[VAL_18]], %[[VAL_4]][] : memref<i32>
+// CHECK:               aie.use_lock(%[[VAL_9]], Release, %[[VAL_14]])
+// CHECK:               %[[VAL_19:.*]] = arith.addi %[[VAL_18]], %[[VAL_14]] : i32
+// CHECK:               memref.store %[[VAL_19]], %[[VAL_10]][] : memref<i32>
+// CHECK:               %[[VAL_20:.*]] = memref.load %[[VAL_10]][] : memref<i32>
+// CHECK:               aie.use_lock(%[[VAL_8]], AcquireGreaterEqual, %[[VAL_14]])
+// CHECK:               memref.store %[[VAL_20]], %[[VAL_5]][] : memref<i32>
+// CHECK:               aie.use_lock(%[[VAL_9]], Release, %[[VAL_14]])
+// CHECK:               %[[VAL_21:.*]] = arith.addi %[[VAL_20]], %[[VAL_14]] : i32
+// CHECK:               memref.store %[[VAL_21]], %[[VAL_10]][] : memref<i32>
+// CHECK:               %[[VAL_22:.*]] = memref.load %[[VAL_10]][] : memref<i32>
+// CHECK:               aie.use_lock(%[[VAL_8]], AcquireGreaterEqual, %[[VAL_14]])
+// CHECK:               memref.store %[[VAL_22]], %[[VAL_6]][] : memref<i32>
+// CHECK:               aie.use_lock(%[[VAL_9]], Release, %[[VAL_14]])
+// CHECK:               %[[VAL_23:.*]] = arith.addi %[[VAL_22]], %[[VAL_14]] : i32
+// CHECK:               memref.store %[[VAL_23]], %[[VAL_10]][] : memref<i32>
+// CHECK:               %[[VAL_24:.*]] = memref.load %[[VAL_10]][] : memref<i32>
+// CHECK:               aie.use_lock(%[[VAL_8]], AcquireGreaterEqual, %[[VAL_14]])
+// CHECK:               memref.store %[[VAL_24]], %[[VAL_7]][] : memref<i32>
+// CHECK:               aie.use_lock(%[[VAL_9]], Release, %[[VAL_14]])
+// CHECK:               %[[VAL_25:.*]] = arith.addi %[[VAL_24]], %[[VAL_14]] : i32
+// CHECK:               memref.store %[[VAL_25]], %[[VAL_10]][] : memref<i32>
+// CHECK:             }
+// CHECK:             aie.end
+// CHECK:           }
+// CHECK:           %[[VAL_26:.*]] = aie.core(%[[VAL_11]]) {
+// CHECK:             %[[VAL_27:.*]] = arith.constant 8 : index
+// CHECK:             %[[VAL_28:.*]] = arith.constant 2 : i32
+// CHECK:             %[[VAL_29:.*]] = arith.constant 4 : index
+// CHECK:             %[[VAL_30:.*]] = arith.constant 6 : index
+// CHECK:             scf.for %[[VAL_31:.*]] = %[[VAL_2]] to %[[VAL_0]] step %[[VAL_27]] {
+// CHECK:               aie.use_lock(%[[VAL_9]], AcquireGreaterEqual, %[[VAL_28]])
+// CHECK:               %[[VAL_32:.*]] = memref.load %[[VAL_4]][] : memref<i32>
+// CHECK:               %[[VAL_33:.*]] = memref.load %[[VAL_5]][] : memref<i32>
+// CHECK:               func.call @store2(%[[VAL_32]], %[[VAL_33]], %[[VAL_31]], %[[VAL_12]]) : (i32, i32, index, memref<16xi32>) -> ()
+// CHECK:               aie.use_lock(%[[VAL_8]], Release, %[[VAL_28]])
+// CHECK:               %[[VAL_34:.*]] = arith.addi %[[VAL_31]], %[[VAL_1]] : index
+// CHECK:               aie.use_lock(%[[VAL_9]], AcquireGreaterEqual, %[[VAL_28]])
+// CHECK:               %[[VAL_35:.*]] = memref.load %[[VAL_6]][] : memref<i32>
+// CHECK:               %[[VAL_36:.*]] = memref.load %[[VAL_7]][] : memref<i32>
+// CHECK:               func.call @store2(%[[VAL_35]], %[[VAL_36]], %[[VAL_34]], %[[VAL_12]]) : (i32, i32, index, memref<16xi32>) -> ()
+// CHECK:               aie.use_lock(%[[VAL_8]], Release, %[[VAL_28]])
+// CHECK:               %[[VAL_37:.*]] = arith.addi %[[VAL_31]], %[[VAL_29]] : index
+// CHECK:               aie.use_lock(%[[VAL_9]], AcquireGreaterEqual, %[[VAL_28]])
+// CHECK:               %[[VAL_38:.*]] = memref.load %[[VAL_4]][] : memref<i32>
+// CHECK:               %[[VAL_39:.*]] = memref.load %[[VAL_5]][] : memref<i32>
+// CHECK:               func.call @store2(%[[VAL_38]], %[[VAL_39]], %[[VAL_37]], %[[VAL_12]]) : (i32, i32, index, memref<16xi32>) -> ()
+// CHECK:               aie.use_lock(%[[VAL_8]], Release, %[[VAL_28]])
+// CHECK:               %[[VAL_40:.*]] = arith.addi %[[VAL_31]], %[[VAL_30]] : index
+// CHECK:               aie.use_lock(%[[VAL_9]], AcquireGreaterEqual, %[[VAL_28]])
+// CHECK:               %[[VAL_41:.*]] = memref.load %[[VAL_6]][] : memref<i32>
+// CHECK:               %[[VAL_42:.*]] = memref.load %[[VAL_7]][] : memref<i32>
+// CHECK:               func.call @store2(%[[VAL_41]], %[[VAL_42]], %[[VAL_40]], %[[VAL_12]]) : (i32, i32, index, memref<16xi32>) -> ()
+// CHECK:               aie.use_lock(%[[VAL_8]], Release, %[[VAL_28]])
+// CHECK:             }
+// CHECK:             aie.end
+// CHECK:           }
+// CHECK:           func.func @store2(%[[VAL_43:.*]]: i32, %[[VAL_44:.*]]: i32, %[[VAL_45:.*]]: index, %[[VAL_46:.*]]: memref<16xi32>) {
+// CHECK:             %[[VAL_47:.*]] = arith.constant 1 : index
+// CHECK:             %[[VAL_48:.*]] = index.add %[[VAL_45]], %[[VAL_47]]
+// CHECK:             memref.store %[[VAL_43]], %[[VAL_46]]{{\[}}%[[VAL_45]]] : memref<16xi32>
+// CHECK:             memref.store %[[VAL_44]], %[[VAL_46]]{{\[}}%[[VAL_48]]] : memref<16xi32>
+// CHECK:             return
+// CHECK:           }
+// CHECK:         }
 
 module @aie2_static_L1 {
     aie.device(xcve2302) {

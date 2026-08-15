@@ -9,16 +9,16 @@
 
 // CHECK-LABEL:   aie.device(xcve2302) {
 // CHECK:           %[[VAL_0:.*]] = aie.tile(1, 2)
-// CHECK:           %[[VAL_1:.*]] = aie.tile(1, 3)
-// CHECK:           %of2_buff_0 = aie.buffer(%tile_1_2) {sym_name = "of2_buff_0"} : memref<16xi32>
-// CHECK:           %of2_prod_lock_0 = aie.lock(%tile_1_2) {init = 1 : i32, sym_name = "of2_prod_lock_0"}
-// CHECK:           %of2_cons_lock_0 = aie.lock(%tile_1_2) {init = 0 : i32, sym_name = "of2_cons_lock_0"}
-// CHECK:           %of1_buff_0 = aie.buffer(%tile_1_3) {sym_name = "of1_buff_0"} : memref<16xi32>
-// CHECK:           %of1_prod_lock_0 = aie.lock(%tile_1_3) {init = 1 : i32, sym_name = "of1_prod_lock_0"}
-// CHECK:           %of1_cons_lock_0 = aie.lock(%tile_1_3) {init = 0 : i32, sym_name = "of1_cons_lock_0"}
-// CHECK:           %of0_buff_0 = aie.buffer(%tile_1_3) {sym_name = "of0_buff_0"} : memref<16xi32>
-// CHECK:           %of0_prod_lock_0 = aie.lock(%tile_1_3) {init = 1 : i32, sym_name = "of0_prod_lock_0"}
-// CHECK:           %of0_cons_lock_0 = aie.lock(%tile_1_3) {init = 0 : i32, sym_name = "of0_cons_lock_0"}
+// CHECK:           %[[VAL_1:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "of2_buff_0"} : memref<16xi32>
+// CHECK:           %[[VAL_2:.*]] = aie.lock(%[[VAL_0]]) {init = 1 : i32, sym_name = "of2_prod_lock_0"}
+// CHECK:           %[[VAL_3:.*]] = aie.lock(%[[VAL_0]]) {init = 0 : i32, sym_name = "of2_cons_lock_0"}
+// CHECK:           %[[VAL_4:.*]] = aie.tile(1, 3)
+// CHECK:           %[[VAL_5:.*]] = aie.buffer(%[[VAL_4]]) {sym_name = "of0_buff_0"} : memref<16xi32>
+// CHECK:           %[[VAL_6:.*]] = aie.lock(%[[VAL_4]]) {init = 1 : i32, sym_name = "of0_prod_lock_0"}
+// CHECK:           %[[VAL_7:.*]] = aie.lock(%[[VAL_4]]) {init = 0 : i32, sym_name = "of0_cons_lock_0"}
+// CHECK:           %[[VAL_8:.*]] = aie.buffer(%[[VAL_4]]) {sym_name = "of1_buff_0"} : memref<16xi32>
+// CHECK:           %[[VAL_9:.*]] = aie.lock(%[[VAL_4]]) {init = 1 : i32, sym_name = "of1_prod_lock_0"}
+// CHECK:           %[[VAL_10:.*]] = aie.lock(%[[VAL_4]]) {init = 0 : i32, sym_name = "of1_cons_lock_0"}
 // CHECK:         }
 
 module @allocate {

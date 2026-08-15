@@ -27,93 +27,55 @@
 
 // RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll %s | FileCheck %s
 
-// CHECK: module @AIE2_delayed_release {
-// CHECK:   aie.device(xcve2302) {
-// CHECK:     %[[tile0:.*]] = aie.tile(2, 2)
-// CHECK:     %[[tile1:.*]] = aie.tile(2, 3)
-// CHECK:     %[[fifo_buff_0:.*]] = aie.buffer(%[[tile0]]) {sym_name = "fifo_buff_0"} : memref<i32>
-// CHECK:     %[[fifo_buff_1:.*]] = aie.buffer(%[[tile0]]) {sym_name = "fifo_buff_1"} : memref<i32>
-// CHECK:     %[[fifo_buff_2:.*]] = aie.buffer(%[[tile0]]) {sym_name = "fifo_buff_2"} : memref<i32>
-// CHECK:     %[[fifo_buff_3:.*]] = aie.buffer(%[[tile0]]) {sym_name = "fifo_buff_3"} : memref<i32>
-// CHECK:     %[[fifo_prod_lock:.*]] = aie.lock(%[[tile0]]) {init = 4 : i32, sym_name = "fifo_prod_lock_0"}
-// CHECK:     %[[fifo_cons_lock:.*]] = aie.lock(%[[tile0]]) {init = 0 : i32, sym_name = "fifo_cons_lock_0"}
-// CHECK:     %[[buf23:.*]] = aie.buffer(%[[tile1]]) {sym_name = "buf23"} : memref<4xi32>
-// CHECK:     %[[core0:.*]] = aie.core(%[[tile0]]) {
-// CHECK-DAG:       %[[C1:.*]] = arith.constant 1 : i32
-// CHECK-DAG:       %c99_i32 = arith.constant 99 : i32
-
-// # Objects Held: 0     # Objects Requested: 1    # Acquire Needed: 1
-// CHECK:       aie.use_lock(%[[fifo_prod_lock]], AcquireGreaterEqual, %[[C1]])
-// # Objects Held: 1
-// CHECK:       memref.store %c99_i32, %[[fifo_buff_0]][] : memref<i32>
-// CHECK:       aie.use_lock(%[[fifo_cons_lock]], Release, %[[C1]])
-// # Objects Held: 0   (After release)
-
-// # Objects Held: 0     # Objects Requested: 1    # Acquire Needed: 1
-// CHECK:       aie.use_lock(%[[fifo_prod_lock]], AcquireGreaterEqual, %[[C1]])
-// # Objects Held: 1
-// CHECK:       memref.store %c99_i32, %[[fifo_buff_1]][] : memref<i32>
-// CHECK:       aie.use_lock(%[[fifo_cons_lock]], Release, %[[C1]])
-// # Objects Held: 0   (After release)
-
-// # Objects Held: 0     # Objects Requested: 1    # Acquire Needed: 1
-// CHECK:       aie.use_lock(%[[fifo_prod_lock]], AcquireGreaterEqual, %[[C1]])
-// # Objects Held: 1
-// CHECK:       memref.store %c99_i32, %[[fifo_buff_2]][] : memref<i32>
-// CHECK:       aie.use_lock(%[[fifo_cons_lock]], Release, %[[C1]])
-// # Objects Held: 0   (After release)
-
-// # Objects Held: 0     # Objects Requested: 1    # Acquire Needed: 1
-// CHECK:       aie.use_lock(%[[fifo_prod_lock]], AcquireGreaterEqual, %[[C1]])
-// # Objects Held: 1
-// CHECK:       memref.store %c99_i32, %[[fifo_buff_3]][] : memref<i32>
-// CHECK:       aie.use_lock(%[[fifo_cons_lock]], Release, %[[C1]])
-// # Objects Held: 0   (After release)
-// CHECK:       aie.end
-// CHECK:     }
-
-// CHECK:     %[[core1:.*]] = aie.core(%[[tile1]]) {
-// CHECK-DAG:       %c0 = arith.constant 0 : index
-// CHECK-DAG:       %c1 = arith.constant 1 : index
-// CHECK-DAG:       %c2 = arith.constant 2 : index
-// CHECK-DAG:       %c3 = arith.constant 3 : index
-// CHECK-DAG:       %[[CC1:.*]] = arith.constant 1 : i32
-// CHECK-DAG:       %[[CC2:.*]] = arith.constant 2 : i32
-// CHECK-DAG:       %[[CC3:.*]] = arith.constant 3 : i32
-
-// -- Requested: 2 --
-// # Objects Held: 0     # Objects Requested: 2    # Acquire Needed: 2
-// CHECK:       aie.use_lock(%[[fifo_cons_lock]], AcquireGreaterEqual, %[[CC2]])
-// # Objects Held: 2
-
-// CHECK:       %[[VAL_11:.*]] = memref.load %[[fifo_buff_0]][] : memref<i32>
-// CHECK:       memref.store %[[VAL_11]], %[[buf23]][%c0] : memref<4xi32>
-
-// -- Requested: 1 --
-// Since we already hold 2, we expect not to see any lock acquires here.
-// # Objects Held: 2     # Objects Requested: 1    # Acquire Needed: 0
-// CHECK:       %[[VAL_12:.*]] = memref.load %[[fifo_buff_0]][] : memref<i32>
-// CHECK:       memref.store %[[VAL_12]], %[[buf23]][%c1] : memref<4xi32>
-
-// -- Requested: 3 --
-// Since we already hold 2 and are requesting 3, we expect one acquire here.
-// # Objects Held: 2     # Objects Requested: 3    # Acquire Needed: 1
-// CHECK:       aie.use_lock(%[[fifo_cons_lock]], AcquireGreaterEqual, %[[CC1]])
-// # Objects Held: 3
-// CHECK:       %[[VAL_13:.*]] = memref.load %[[fifo_buff_0]][] : memref<i32>
-// CHECK:       memref.store %[[VAL_13]], %[[buf23]][%c2] : memref<4xi32>
-
-// -- Requested: 1 --
-// # Objects Held: 3     # Objects Requested: 1    # Acquire Needed: 0
-// CHECK:       %[[VAL_14:.*]] = memref.load %[[fifo_buff_0]][] : memref<i32>
-// CHECK:       memref.store %[[VAL_14]], %[[buf23]][%c3] : memref<4xi32>
-
-// These releases should all succeed.
-// CHECK:       aie.use_lock(%[[fifo_prod_lock]], Release, %[[CC3]])
-// CHECK:       aie.end
-// CHECK:     }
-// CHECK:   }
-// CHECK: }
+// CHECK-LABEL:   aie.device(xcve2302) {
+// CHECK:           %[[VAL_0:.*]] = aie.tile(2, 2)
+// CHECK:           %[[VAL_1:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "fifo_buff_0"} : memref<i32>
+// CHECK:           %[[VAL_2:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "fifo_buff_1"} : memref<i32>
+// CHECK:           %[[VAL_3:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "fifo_buff_2"} : memref<i32>
+// CHECK:           %[[VAL_4:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "fifo_buff_3"} : memref<i32>
+// CHECK:           %[[VAL_5:.*]] = aie.lock(%[[VAL_0]]) {init = 4 : i32, sym_name = "fifo_prod_lock_0"}
+// CHECK:           %[[VAL_6:.*]] = aie.lock(%[[VAL_0]]) {init = 0 : i32, sym_name = "fifo_cons_lock_0"}
+// CHECK:           %[[VAL_7:.*]] = aie.tile(2, 3)
+// CHECK:           %[[VAL_8:.*]] = aie.buffer(%[[VAL_7]]) {sym_name = "buf23"} : memref<4xi32>
+// CHECK:           %[[VAL_9:.*]] = aie.core(%[[VAL_0]]) {
+// CHECK:             %[[VAL_10:.*]] = arith.constant 1 : i32
+// CHECK:             %[[VAL_11:.*]] = arith.constant 99 : i32
+// CHECK:             aie.use_lock(%[[VAL_5]], AcquireGreaterEqual, %[[VAL_10]])
+// CHECK:             memref.store %[[VAL_11]], %[[VAL_1]][] : memref<i32>
+// CHECK:             aie.use_lock(%[[VAL_6]], Release, %[[VAL_10]])
+// CHECK:             aie.use_lock(%[[VAL_5]], AcquireGreaterEqual, %[[VAL_10]])
+// CHECK:             memref.store %[[VAL_11]], %[[VAL_2]][] : memref<i32>
+// CHECK:             aie.use_lock(%[[VAL_6]], Release, %[[VAL_10]])
+// CHECK:             aie.use_lock(%[[VAL_5]], AcquireGreaterEqual, %[[VAL_10]])
+// CHECK:             memref.store %[[VAL_11]], %[[VAL_3]][] : memref<i32>
+// CHECK:             aie.use_lock(%[[VAL_6]], Release, %[[VAL_10]])
+// CHECK:             aie.use_lock(%[[VAL_5]], AcquireGreaterEqual, %[[VAL_10]])
+// CHECK:             memref.store %[[VAL_11]], %[[VAL_4]][] : memref<i32>
+// CHECK:             aie.use_lock(%[[VAL_6]], Release, %[[VAL_10]])
+// CHECK:             aie.end
+// CHECK:           }
+// CHECK:           %[[VAL_12:.*]] = aie.core(%[[VAL_7]]) {
+// CHECK:             %[[VAL_13:.*]] = arith.constant 2 : i32
+// CHECK:             %[[VAL_14:.*]] = arith.constant 3 : index
+// CHECK:             %[[VAL_15:.*]] = arith.constant 2 : index
+// CHECK:             %[[VAL_16:.*]] = arith.constant 1 : index
+// CHECK:             %[[VAL_17:.*]] = arith.constant 0 : index
+// CHECK:             %[[VAL_18:.*]] = arith.constant 3 : i32
+// CHECK:             %[[VAL_19:.*]] = arith.constant 1 : i32
+// CHECK:             aie.use_lock(%[[VAL_6]], AcquireGreaterEqual, %[[VAL_13]])
+// CHECK:             %[[VAL_20:.*]] = memref.load %[[VAL_1]][] : memref<i32>
+// CHECK:             memref.store %[[VAL_20]], %[[VAL_8]]{{\[}}%[[VAL_17]]] : memref<4xi32>
+// CHECK:             %[[VAL_21:.*]] = memref.load %[[VAL_1]][] : memref<i32>
+// CHECK:             memref.store %[[VAL_21]], %[[VAL_8]]{{\[}}%[[VAL_16]]] : memref<4xi32>
+// CHECK:             aie.use_lock(%[[VAL_6]], AcquireGreaterEqual, %[[VAL_19]])
+// CHECK:             %[[VAL_22:.*]] = memref.load %[[VAL_1]][] : memref<i32>
+// CHECK:             memref.store %[[VAL_22]], %[[VAL_8]]{{\[}}%[[VAL_15]]] : memref<4xi32>
+// CHECK:             %[[VAL_23:.*]] = memref.load %[[VAL_1]][] : memref<i32>
+// CHECK:             memref.store %[[VAL_23]], %[[VAL_8]]{{\[}}%[[VAL_14]]] : memref<4xi32>
+// CHECK:             aie.use_lock(%[[VAL_5]], Release, %[[VAL_18]])
+// CHECK:             aie.end
+// CHECK:           }
+// CHECK:         }
 
 module @AIE2_delayed_release {
     aie.device(xcve2302) {

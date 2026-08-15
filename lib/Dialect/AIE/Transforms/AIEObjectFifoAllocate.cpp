@@ -31,6 +31,8 @@ struct AIEObjectFifoAllocatePass
 
   DeviceOp device;
   OpBuilder builder{static_cast<MLIRContext *>(nullptr)};
+  /// The last buffer or lock this pass placed on each tile.
+  DenseMap<Value, Operation *> lastPlaced;
 
   /// Bytes already committed to `tile` by every buffer placed so far.
   int64_t usedMemory(Value tile) {
@@ -94,19 +96,15 @@ struct AIEObjectFifoAllocatePass
   /// Buffers and locks live directly below the tile declarations.
   /// Buffers and locks live directly below the tile declarations.
   ///
-  /// FIXME: this depends on the tiles a pool's buffers refer to being declared
-  /// before anything that uses those buffers. Inserting each buffer below its
-  /// own tile instead would not, and is the better shape; it moves ~90
-  /// expected outputs, so it wants to be its own change.
-  void setInsertionPointBelowTiles() {
-    Operation *lastTile = nullptr;
-    for (Operation &op : *device.getBody()) {
-      if (isa<TileLike>(op)) {
-        lastTile = &op;
-      }
+  /// Buffers and locks sit directly below the tile whose memory holds them,
+  /// after whatever this pass has already put there.
+  void setInsertionPointOn(Value tile) {
+    Operation *after = lastPlaced.lookup(tile);
+    if (!after) {
+      after = tile.getDefiningOp();
     }
-    if (lastTile) {
-      builder.setInsertionPointAfter(lastTile);
+    if (after) {
+      builder.setInsertionPointAfter(after);
     } else {
       builder.setInsertionPointToStart(device.getBody());
     }
@@ -121,7 +119,6 @@ struct AIEObjectFifoAllocatePass
       return;
     }
 
-    setInsertionPointBelowTiles();
     auto initValues = pool.getInitValues();
     int64_t sizeBytes = pool.getObjectSizeInBytes();
     StringRef base = pool.getBaseName();
@@ -131,17 +128,21 @@ struct AIEObjectFifoAllocatePass
       ElementsAttr init =
           initValues ? cast<ElementsAttr>((*initValues)[i]) : nullptr;
       std::string name = (base + "_buff_" + std::to_string(i)).str();
-      BufferOp::create(builder, pool.getLoc(), pool.getElemType(),
-                       placementFor(home, sizeBytes),
-                       builder.getStringAttr(name), /*address=*/nullptr, init,
-                       /*mem_bank=*/nullptr, /*aligned=*/nullptr);
+      Value placement = placementFor(home, sizeBytes);
+      setInsertionPointOn(placement);
+      lastPlaced[placement] = BufferOp::create(
+          builder, pool.getLoc(), pool.getElemType(), placement,
+          builder.getStringAttr(name), /*address=*/nullptr, init,
+          /*mem_bank=*/nullptr, /*aligned=*/nullptr);
       names.push_back(FlatSymbolRefAttr::get(builder.getContext(), name));
     }
     pool.setBuffersAttr(builder.getArrayAttr(names));
   }
 
   LockOp createLock(ObjectFifoPoolOp pool, StringRef name, int value) {
+    setInsertionPointOn(pool.getTile());
     auto lock = LockOp::create(builder, pool.getLoc(), pool.getTile(), value);
+    lastPlaced[pool.getTile()] = lock;
     lock->setAttr(SymbolTable::getSymbolAttrName(),
                   builder.getStringAttr(name));
     return lock;
@@ -523,7 +524,6 @@ struct AIEObjectFifoAllocatePass
     }
 
     for (ObjectFifoPoolOp pool : pools) {
-      setInsertionPointBelowTiles();
       allocateBuffers(pool);
       allocateLocks(pool);
     }

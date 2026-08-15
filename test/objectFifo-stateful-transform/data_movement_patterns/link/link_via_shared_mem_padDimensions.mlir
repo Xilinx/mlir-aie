@@ -11,72 +11,66 @@
 // than the input. MemTile buffers should use the input (smaller) size since
 // padding is applied on-the-fly by the DMA during MM2S transfer.
 
-// CHECK: %{{.*}}tile_0_0 = aie.tile(0, 0)
-// CHECK: %{{.*}}tile_0_1 = aie.tile(0, 1)
-// CHECK: %{{.*}}tile_0_2 = aie.tile(0, 2)
-
-// Compute tile buffers use the output (padded) size
-// CHECK: %[[OUT_BUF0:.*]] = aie.buffer(%{{.*}}tile_0_2) {sym_name = "of_out_cons_buff_0"} : memref<512xi32>
-// CHECK: %[[OUT_BUF1:.*]] = aie.buffer(%{{.*}}tile_0_2) {sym_name = "of_out_cons_buff_1"} : memref<512xi32>
-// CHECK: %[[OUT_PROD:.*]] = aie.lock(%{{.*}}tile_0_2) {init = 2 : i32, sym_name = "of_out_cons_prod_lock_0"}
-// CHECK: %[[OUT_CONS:.*]] = aie.lock(%{{.*}}tile_0_2) {init = 0 : i32, sym_name = "of_out_cons_cons_lock_0"}
-
-// MemTile buffers use the input (smaller) size — NOT the output size
-// CHECK: %[[MT_BUF0:.*]] = aie.buffer(%{{.*}}tile_0_1) {sym_name = "of_in_cons_buff_0"} : memref<256xi32>
-// CHECK: %[[MT_BUF1:.*]] = aie.buffer(%{{.*}}tile_0_1) {sym_name = "of_in_cons_buff_1"} : memref<256xi32>
-// CHECK: %[[MT_PROD:.*]] = aie.lock(%{{.*}}tile_0_1) {init = 2 : i32, sym_name = "of_in_cons_prod_lock_0"}
-// CHECK: %[[MT_CONS:.*]] = aie.lock(%{{.*}}tile_0_1) {init = 0 : i32, sym_name = "of_in_cons_cons_lock_0"}
-
-// CHECK: aie.flow(%{{.*}}tile_0_0, DMA : 0, %{{.*}}tile_0_1, DMA : 0)
-// CHECK: aie.flow(%{{.*}}tile_0_1, DMA : 0, %{{.*}}tile_0_2, DMA : 0)
-
-// MemTile DMA: S2MM receives 256 elements (input size)
-// CHECK: %memtile_dma_0_1 = aie.memtile_dma(%{{.*}}tile_0_1) {
-// CHECK:   %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
-// CHECK: ^bb1:
-// CHECK:   aie.use_lock(%[[MT_PROD]], AcquireGreaterEqual, %{{.*}})
-// CHECK:   aie.dma_bd(%[[MT_BUF0]] : memref<256xi32> offset = {{.*}} len = {{.*}})
-// CHECK:   aie.use_lock(%[[MT_CONS]], Release, %{{.*}})
-// CHECK:   aie.next_bd ^bb2
-// CHECK: ^bb2:
-// CHECK:   aie.use_lock(%[[MT_PROD]], AcquireGreaterEqual, %{{.*}})
-// CHECK:   aie.dma_bd(%[[MT_BUF1]] : memref<256xi32> offset = {{.*}} len = {{.*}})
-// CHECK:   aie.use_lock(%[[MT_CONS]], Release, %{{.*}})
-// CHECK:   aie.next_bd ^bb1
-
-// MemTile DMA: MM2S sends 512 elements with padding (output size)
-// CHECK: ^bb3:
-// CHECK:   %1 = aie.dma_start(MM2S, 0, ^bb4, ^bb6)
-// CHECK: ^bb4:
-// CHECK:   aie.use_lock(%[[MT_CONS]], AcquireGreaterEqual, %{{.*}})
-// CHECK:   aie.dma_bd(%[[MT_BUF0]] : memref<256xi32> offset = {{.*}} len = {{.*}})
-// CHECK:   aie.use_lock(%[[MT_PROD]], Release, %{{.*}})
-// CHECK:   aie.next_bd ^bb5
-// CHECK: ^bb5:
-// CHECK:   aie.use_lock(%[[MT_CONS]], AcquireGreaterEqual, %{{.*}})
-// CHECK:   aie.dma_bd(%[[MT_BUF1]] : memref<256xi32> offset = {{.*}} len = {{.*}})
-// CHECK:   aie.use_lock(%[[MT_PROD]], Release, %{{.*}})
-// CHECK:   aie.next_bd ^bb4
-// CHECK: ^bb6:
-// CHECK:   aie.end
-// CHECK: }
-
-// Compute tile DMA: S2MM receives 512 elements (full padded size)
-// CHECK: %mem_0_2 = aie.mem(%{{.*}}tile_0_2) {
-// CHECK:   %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
-// CHECK: ^bb1:
-// CHECK:   aie.use_lock(%[[OUT_PROD]], AcquireGreaterEqual, %{{.*}})
-// CHECK:   aie.dma_bd(%[[OUT_BUF0]] : memref<512xi32> offset = {{.*}} len = {{.*}})
-// CHECK:   aie.use_lock(%[[OUT_CONS]], Release, %{{.*}})
-// CHECK:   aie.next_bd ^bb2
-// CHECK: ^bb2:
-// CHECK:   aie.use_lock(%[[OUT_PROD]], AcquireGreaterEqual, %{{.*}})
-// CHECK:   aie.dma_bd(%[[OUT_BUF1]] : memref<512xi32> offset = {{.*}} len = {{.*}})
-// CHECK:   aie.use_lock(%[[OUT_CONS]], Release, %{{.*}})
-// CHECK:   aie.next_bd ^bb1
-// CHECK: ^bb3:
-// CHECK:   aie.end
-// CHECK: }
+// CHECK-LABEL:   aie.device(npu1_1col) {
+// CHECK:           %[[VAL_0:.*]] = aie.tile(0, 0)
+// CHECK:           %[[VAL_1:.*]] = aie.tile(0, 1)
+// CHECK:           %[[VAL_2:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "of_in_cons_buff_0"} : memref<256xi32>
+// CHECK:           %[[VAL_3:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "of_in_cons_buff_1"} : memref<256xi32>
+// CHECK:           %[[VAL_4:.*]] = aie.lock(%[[VAL_1]]) {init = 2 : i32, sym_name = "of_in_cons_prod_lock_0"}
+// CHECK:           %[[VAL_5:.*]] = aie.lock(%[[VAL_1]]) {init = 0 : i32, sym_name = "of_in_cons_cons_lock_0"}
+// CHECK:           %[[VAL_6:.*]] = aie.tile(0, 2)
+// CHECK:           %[[VAL_7:.*]] = aie.buffer(%[[VAL_6]]) {sym_name = "of_out_cons_buff_0"} : memref<512xi32>
+// CHECK:           %[[VAL_8:.*]] = aie.buffer(%[[VAL_6]]) {sym_name = "of_out_cons_buff_1"} : memref<512xi32>
+// CHECK:           %[[VAL_9:.*]] = aie.lock(%[[VAL_6]]) {init = 2 : i32, sym_name = "of_out_cons_prod_lock_0"}
+// CHECK:           %[[VAL_10:.*]] = aie.lock(%[[VAL_6]]) {init = 0 : i32, sym_name = "of_out_cons_cons_lock_0"}
+// CHECK:           aie.flow(%[[VAL_0]], DMA : 0, %[[VAL_1]], DMA : 0)
+// CHECK:           aie.flow(%[[VAL_1]], DMA : 0, %[[VAL_6]], DMA : 0)
+// CHECK:           aie.shim_dma_allocation @of_in_shim_alloc(%[[VAL_0]], MM2S, 0)
+// CHECK:           %[[VAL_11:.*]] = aie.memtile_dma(%[[VAL_1]]) {
+// CHECK:             %[[VAL_12:.*]] = arith.constant 1 : i32
+// CHECK:             %[[VAL_13:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
+// CHECK:           ^bb1:
+// CHECK:             aie.use_lock(%[[VAL_4]], AcquireGreaterEqual, %[[VAL_12]])
+// CHECK:             aie.dma_bd(%[[VAL_2]] : memref<256xi32> offset = 0 len = 256)
+// CHECK:             aie.use_lock(%[[VAL_5]], Release, %[[VAL_12]])
+// CHECK:             aie.next_bd ^bb2
+// CHECK:           ^bb2:
+// CHECK:             aie.use_lock(%[[VAL_4]], AcquireGreaterEqual, %[[VAL_12]])
+// CHECK:             aie.dma_bd(%[[VAL_3]] : memref<256xi32> offset = 0 len = 256)
+// CHECK:             aie.use_lock(%[[VAL_5]], Release, %[[VAL_12]])
+// CHECK:             aie.next_bd ^bb1
+// CHECK:           ^bb3:
+// CHECK:             %[[VAL_14:.*]] = aie.dma_start(MM2S, 0, ^bb4, ^bb6)
+// CHECK:           ^bb4:
+// CHECK:             aie.use_lock(%[[VAL_5]], AcquireGreaterEqual, %[[VAL_12]])
+// CHECK:             aie.dma_bd(%[[VAL_2]] : memref<256xi32> offset = 0 len = 512 sizes = [64, 4] strides = [4, 1] pad [<const_pad_before = 0, const_pad_after = 0>, <const_pad_before = 0, const_pad_after = 4>])
+// CHECK:             aie.use_lock(%[[VAL_4]], Release, %[[VAL_12]])
+// CHECK:             aie.next_bd ^bb5
+// CHECK:           ^bb5:
+// CHECK:             aie.use_lock(%[[VAL_5]], AcquireGreaterEqual, %[[VAL_12]])
+// CHECK:             aie.dma_bd(%[[VAL_3]] : memref<256xi32> offset = 0 len = 512 sizes = [64, 4] strides = [4, 1] pad [<const_pad_before = 0, const_pad_after = 0>, <const_pad_before = 0, const_pad_after = 4>])
+// CHECK:             aie.use_lock(%[[VAL_4]], Release, %[[VAL_12]])
+// CHECK:             aie.next_bd ^bb4
+// CHECK:           ^bb6:
+// CHECK:             aie.end
+// CHECK:           }
+// CHECK:           %[[VAL_15:.*]] = aie.mem(%[[VAL_6]]) {
+// CHECK:             %[[VAL_16:.*]] = arith.constant 1 : i32
+// CHECK:             %[[VAL_17:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
+// CHECK:           ^bb1:
+// CHECK:             aie.use_lock(%[[VAL_9]], AcquireGreaterEqual, %[[VAL_16]])
+// CHECK:             aie.dma_bd(%[[VAL_7]] : memref<512xi32> offset = 0 len = 512)
+// CHECK:             aie.use_lock(%[[VAL_10]], Release, %[[VAL_16]])
+// CHECK:             aie.next_bd ^bb2
+// CHECK:           ^bb2:
+// CHECK:             aie.use_lock(%[[VAL_9]], AcquireGreaterEqual, %[[VAL_16]])
+// CHECK:             aie.dma_bd(%[[VAL_8]] : memref<512xi32> offset = 0 len = 512)
+// CHECK:             aie.use_lock(%[[VAL_10]], Release, %[[VAL_16]])
+// CHECK:             aie.next_bd ^bb1
+// CHECK:           ^bb3:
+// CHECK:             aie.end
+// CHECK:           }
+// CHECK:         }
 
 module @link_padDimensions_size_mismatch {
   aie.device(npu1_1col) {

@@ -15,58 +15,58 @@
 // CHECK-LABEL:   aie.device(xcve2302) {
 // CHECK:           %[[VAL_0:.*]] = aie.tile(2, 0)
 // CHECK:           %[[VAL_1:.*]] = aie.tile(1, 2)
-// CHECK:           %[[VAL_2:.*]] = aie.tile(2, 2)
-// CHECK:           %[[VAL_3:.*]] = aie.buffer(%[[VAL_2]]) {sym_name = "of2_cons_buff_0"} : memref<16xi32>
-// CHECK:           %[[VAL_4:.*]] = aie.buffer(%[[VAL_2]]) {sym_name = "of2_cons_buff_1"} : memref<16xi32>
-// CHECK:           %[[VAL_5:.*]] = aie.lock(%[[VAL_2]]) {init = 2 : i32, sym_name = "of2_cons_prod_lock_0"}
-// CHECK:           %[[VAL_6:.*]] = aie.lock(%[[VAL_2]]) {init = 0 : i32, sym_name = "of2_cons_cons_lock_0"}
-// CHECK:           %[[VAL_7:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "of1_cons_buff_0"} : memref<16xi32>
-// CHECK:           %[[VAL_8:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "of1_cons_buff_1"} : memref<16xi32>
-// CHECK:           %[[VAL_9:.*]] = aie.lock(%[[VAL_1]]) {init = 2 : i32, sym_name = "of1_cons_prod_lock_0"}
-// CHECK:           %[[VAL_10:.*]] = aie.lock(%[[VAL_1]]) {init = 0 : i32, sym_name = "of1_cons_cons_lock_0"}
+// CHECK:           %[[VAL_2:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "of1_cons_buff_0"} : memref<16xi32>
+// CHECK:           %[[VAL_3:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "of1_cons_buff_1"} : memref<16xi32>
+// CHECK:           %[[VAL_4:.*]] = aie.lock(%[[VAL_1]]) {init = 2 : i32, sym_name = "of1_cons_prod_lock_0"}
+// CHECK:           %[[VAL_5:.*]] = aie.lock(%[[VAL_1]]) {init = 0 : i32, sym_name = "of1_cons_cons_lock_0"}
+// CHECK:           %[[VAL_6:.*]] = aie.tile(2, 2)
+// CHECK:           %[[VAL_7:.*]] = aie.buffer(%[[VAL_6]]) {sym_name = "of2_cons_buff_0"} : memref<16xi32>
+// CHECK:           %[[VAL_8:.*]] = aie.buffer(%[[VAL_6]]) {sym_name = "of2_cons_buff_1"} : memref<16xi32>
+// CHECK:           %[[VAL_9:.*]] = aie.lock(%[[VAL_6]]) {init = 2 : i32, sym_name = "of2_cons_prod_lock_0"}
+// CHECK:           %[[VAL_10:.*]] = aie.lock(%[[VAL_6]]) {init = 0 : i32, sym_name = "of2_cons_cons_lock_0"}
 // CHECK:           aie.flow(%[[VAL_0]], DMA : 0, %[[VAL_1]], DMA : 0)
-// CHECK:           aie.flow(%[[VAL_1]], DMA : 0, %[[VAL_2]], DMA : 0)
+// CHECK:           aie.flow(%[[VAL_1]], DMA : 0, %[[VAL_6]], DMA : 0)
 // CHECK:           aie.shim_dma_allocation @of1_shim_alloc(%[[VAL_0]], MM2S, 0)
 // CHECK:           %[[VAL_11:.*]] = aie.mem(%[[VAL_1]]) {
 // CHECK:             %[[VAL_12:.*]] = arith.constant 1 : i32
 // CHECK:             %[[VAL_13:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
 // CHECK:           ^bb1:
-// CHECK:             aie.use_lock(%[[VAL_9]], AcquireGreaterEqual, %[[VAL_12]])
-// CHECK:             aie.dma_bd(%[[VAL_7]] : memref<16xi32> offset = 0 len = 16)
-// CHECK:             aie.use_lock(%[[VAL_10]], Release, %[[VAL_12]])
+// CHECK:             aie.use_lock(%[[VAL_4]], AcquireGreaterEqual, %[[VAL_12]])
+// CHECK:             aie.dma_bd(%[[VAL_2]] : memref<16xi32> offset = 0 len = 16)
+// CHECK:             aie.use_lock(%[[VAL_5]], Release, %[[VAL_12]])
 // CHECK:             aie.next_bd ^bb2
 // CHECK:           ^bb2:
-// CHECK:             aie.use_lock(%[[VAL_9]], AcquireGreaterEqual, %[[VAL_12]])
-// CHECK:             aie.dma_bd(%[[VAL_8]] : memref<16xi32> offset = 0 len = 16)
-// CHECK:             aie.use_lock(%[[VAL_10]], Release, %[[VAL_12]])
+// CHECK:             aie.use_lock(%[[VAL_4]], AcquireGreaterEqual, %[[VAL_12]])
+// CHECK:             aie.dma_bd(%[[VAL_3]] : memref<16xi32> offset = 0 len = 16)
+// CHECK:             aie.use_lock(%[[VAL_5]], Release, %[[VAL_12]])
 // CHECK:             aie.next_bd ^bb1
 // CHECK:           ^bb3:
 // CHECK:             %[[VAL_14:.*]] = aie.dma_start(MM2S, 0, ^bb4, ^bb6)
 // CHECK:           ^bb4:
-// CHECK:             aie.use_lock(%[[VAL_10]], AcquireGreaterEqual, %[[VAL_12]])
-// CHECK:             aie.dma_bd(%[[VAL_7]] : memref<16xi32> offset = 0 len = 16)
-// CHECK:             aie.use_lock(%[[VAL_9]], Release, %[[VAL_12]])
+// CHECK:             aie.use_lock(%[[VAL_5]], AcquireGreaterEqual, %[[VAL_12]])
+// CHECK:             aie.dma_bd(%[[VAL_2]] : memref<16xi32> offset = 0 len = 16)
+// CHECK:             aie.use_lock(%[[VAL_4]], Release, %[[VAL_12]])
 // CHECK:             aie.next_bd ^bb5
 // CHECK:           ^bb5:
-// CHECK:             aie.use_lock(%[[VAL_10]], AcquireGreaterEqual, %[[VAL_12]])
-// CHECK:             aie.dma_bd(%[[VAL_8]] : memref<16xi32> offset = 0 len = 16)
-// CHECK:             aie.use_lock(%[[VAL_9]], Release, %[[VAL_12]])
+// CHECK:             aie.use_lock(%[[VAL_5]], AcquireGreaterEqual, %[[VAL_12]])
+// CHECK:             aie.dma_bd(%[[VAL_3]] : memref<16xi32> offset = 0 len = 16)
+// CHECK:             aie.use_lock(%[[VAL_4]], Release, %[[VAL_12]])
 // CHECK:             aie.next_bd ^bb4
 // CHECK:           ^bb6:
 // CHECK:             aie.end
 // CHECK:           }
-// CHECK:           %[[VAL_15:.*]] = aie.mem(%[[VAL_2]]) {
+// CHECK:           %[[VAL_15:.*]] = aie.mem(%[[VAL_6]]) {
 // CHECK:             %[[VAL_16:.*]] = arith.constant 1 : i32
 // CHECK:             %[[VAL_17:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
 // CHECK:           ^bb1:
-// CHECK:             aie.use_lock(%[[VAL_5]], AcquireGreaterEqual, %[[VAL_16]])
-// CHECK:             aie.dma_bd(%[[VAL_3]] : memref<16xi32> offset = 0 len = 16)
-// CHECK:             aie.use_lock(%[[VAL_6]], Release, %[[VAL_16]])
+// CHECK:             aie.use_lock(%[[VAL_9]], AcquireGreaterEqual, %[[VAL_16]])
+// CHECK:             aie.dma_bd(%[[VAL_7]] : memref<16xi32> offset = 0 len = 16)
+// CHECK:             aie.use_lock(%[[VAL_10]], Release, %[[VAL_16]])
 // CHECK:             aie.next_bd ^bb2
 // CHECK:           ^bb2:
-// CHECK:             aie.use_lock(%[[VAL_5]], AcquireGreaterEqual, %[[VAL_16]])
-// CHECK:             aie.dma_bd(%[[VAL_4]] : memref<16xi32> offset = 0 len = 16)
-// CHECK:             aie.use_lock(%[[VAL_6]], Release, %[[VAL_16]])
+// CHECK:             aie.use_lock(%[[VAL_9]], AcquireGreaterEqual, %[[VAL_16]])
+// CHECK:             aie.dma_bd(%[[VAL_8]] : memref<16xi32> offset = 0 len = 16)
+// CHECK:             aie.use_lock(%[[VAL_10]], Release, %[[VAL_16]])
 // CHECK:             aie.next_bd ^bb1
 // CHECK:           ^bb3:
 // CHECK:             aie.end
