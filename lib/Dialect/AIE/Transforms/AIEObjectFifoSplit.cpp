@@ -231,13 +231,22 @@ struct AIEObjectFifoSplitPass
     }
     return ObjectFifoDmaEndpointOp::create(
         builder, loc, builder.getStringAttr(name), tile,
-        ObjectFifoRoleAttr::get(builder.getContext(), role),
+        ref ? ObjectFifoRoleAttr::get(builder.getContext(), role)
+            : ObjectFifoRoleAttr(),
         ref ? FlatSymbolRefAttr::get(builder.getContext(),
                                      ref->pool.getSymName())
             : FlatSymbolRefAttr(),
         ref && ref->segment ? builder.getDenseI32ArrayAttr({*ref->segment})
                             : DenseI32ArrayAttr(),
-        /*channel=*/ObjectFifoChannelAttr(),
+        // A stream port is not drawn from the tile's DMA channels: the
+        // index is the port the fifo named, and the direction follows the side
+        // this end sits on, so it is settled here rather than in allocation.
+        streamPort ? ObjectFifoChannelAttr::get(builder.getContext(),
+                                                role == ObjectFifoRole::Drain
+                                                    ? DMAChannelDir::MM2S
+                                                    : DMAChannelDir::S2MM,
+                                                *streamPort)
+                   : ObjectFifoChannelAttr(),
         pinnedChannel ? builder.getI32IntegerAttr(*pinnedChannel)
                       : IntegerAttr(),
         dims && !dims.empty() ? dims : BDDimLayoutArrayAttr(),
@@ -260,10 +269,12 @@ struct AIEObjectFifoSplitPass
   }
 
   /// External buffers registered against a fifo's end on `tile` become the
-  /// objects of a pool there, since a shim tile has no memory of its own to
-  /// hold them.
-  std::optional<PoolRef> externalPool(ObjectFifoCreateOp fifo, Value tile,
-                                      StringRef name, MemRefType elemType) {
+  /// objects of a pool there. A shim end holds its objects in DDR rather than
+  /// on the tile, so the pool names external buffers where the design
+  /// registered them and stays empty where the runtime supplies the address at
+  /// dispatch; either way the end has a pool, like every other end.
+  PoolRef shimPool(ObjectFifoCreateOp fifo, Value tile, StringRef name,
+                   MemRefType elemType) {
     SmallVector<Attribute> names;
     for (auto regOp : device.getOps<ObjectFifoRegisterExternalBuffersOp>()) {
       if (regOp.getTile() != tile || regOp.getObjectFifo() != fifo) {
@@ -277,13 +288,11 @@ struct AIEObjectFifoSplitPass
         elemType = cast<MemRefType>(external.getType());
       }
     }
-    if (names.empty()) {
-      return std::nullopt;
-    }
 
     auto pool = ObjectFifoPoolOp::create(
-        builder, fifo.getLoc(), name, tile, names.size(), elemType,
-        builder.getArrayAttr(names),
+        builder, fifo.getLoc(), name, tile,
+        names.empty() ? fifo.size() : (int)names.size(), elemType,
+        names.empty() ? ArrayAttr() : builder.getArrayAttr(names),
         builder.getArrayAttr({ObjectFifoSegmentAttr::get(
             builder.getContext(), 0, elemType.getNumElements(), nullptr,
             nullptr)}),
@@ -619,8 +628,7 @@ void AIEObjectFifoSplitPass::runOnOperation() {
       prodRef = linked->second;
       prodTransfer = transferSizeInto(linked->second, elemType);
     } else if (prodIsShim) {
-      prodRef =
-          externalPool(fifo, prodTile, (fifoName + "_pool").str(), elemType);
+      prodRef = shimPool(fifo, prodTile, (fifoName + "_pool").str(), elemType);
     } else if (!prodStreamPort) {
       int depth = fifo.getInitValues() ? fifo.size()
                                        : objectCountOn(device, prodTile, fifo);
@@ -672,9 +680,8 @@ void AIEObjectFifoSplitPass::runOnOperation() {
         consAcqRel = linkRepeat;
         consTransfer = transferSizeInto(linked->second, consElemType);
       } else if (consIsShim) {
-        consRef =
-            externalPool(fifo, consumerTile,
-                         (fifoName + suffix + "_pool").str(), consElemType);
+        consRef = shimPool(fifo, consumerTile,
+                           (fifoName + suffix + "_pool").str(), consElemType);
       } else if (!consStreamPort) {
         int depth = isa<ArrayAttr>(fifo.getElemNumber())
                         ? fifo.size(consumerIndex + 1)

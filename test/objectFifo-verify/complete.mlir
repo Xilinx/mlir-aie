@@ -18,12 +18,12 @@ module @complete {
       depth = 2 : i32, segments = [#aie.objectfifo_segment<offset = 0, size = 16>]
     } : memref<16xi32>
     aie.objectfifo.core_endpoint @prod_core(%tile12) fills @prod_pool
-    aie.objectfifo.dma_endpoint @prod_dma(%tile12) drains of @prod_pool
+    aie.objectfifo.dma_endpoint @prod_dma(%tile12) drains @prod_pool
 
     aie.objectfifo.pool @cons_pool(%tile33) {
       depth = 2 : i32, segments = [#aie.objectfifo_segment<offset = 0, size = 16>]
     } : memref<16xi32>
-    aie.objectfifo.dma_endpoint @cons_dma(%tile33) fills of @cons_pool
+    aie.objectfifo.dma_endpoint @cons_dma(%tile33) fills @cons_pool
     aie.objectfifo.core_endpoint @cons_core(%tile33) drains @cons_pool
 
     aie.objectfifo.flow from @prod_dma to [@cons_dma]

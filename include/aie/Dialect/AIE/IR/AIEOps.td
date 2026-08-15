@@ -2380,8 +2380,10 @@ def AIE_ObjectFifoDmaEndpointOp
     which of the pool's segments it handles, and the channel itself. Omitting
     `segments` selects all of them.
 
-    An endpoint on a shim tile names no pool: there are no buffers and no locks
-    at the boundary to DDR, and its record is an `aie.shim_dma_allocation`.
+    A shim endpoint's pool holds its objects in DDR rather than on the tile:
+    it names external buffers where the design registered them, and is empty
+    where the runtime supplies the address at dispatch. Its record for the
+    runtime is an `aie.shim_dma_allocation`.
 
     Example:
     ```
@@ -2392,7 +2394,7 @@ def AIE_ObjectFifoDmaEndpointOp
   }];
 
   let arguments = (ins SymbolNameAttr:$sym_name, Index:$tile,
-      ObjectFifoRole:$role, OptionalAttr<FlatSymbolRefAttr>:$pool,
+      OptionalAttr<ObjectFifoRole>:$role, OptionalAttr<FlatSymbolRefAttr>:$pool,
       OptionalAttr<DenseI32ArrayAttr>:$segments,
       OptionalAttr<ObjectFifoChannelAttr>:$channel,
       // Channel the user demands, claimed before any is auto-assigned.
@@ -2417,7 +2419,7 @@ def AIE_ObjectFifoDmaEndpointOp
       OptionalAttr<StrAttr>:$fifoName);
 
   let assemblyFormat = [{
-    $sym_name `(` $tile `)` $role (`of` $pool^)? attr-dict
+    $sym_name `(` $tile `)` ($role^ $pool)? attr-dict
   }];
 
   let hasVerifier = 1;

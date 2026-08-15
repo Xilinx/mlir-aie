@@ -879,14 +879,15 @@ ObjectFifoDmaEndpointOp::getSelectedSegments() {
 
 LogicalResult ObjectFifoDmaEndpointOp::verify() {
   auto poolName = getPool();
+  if (poolName.has_value() != getRole().has_value()) {
+    return emitOpError("must name a role together with a pool");
+  }
+
+  // Everything that drives a DMA has buffers to drive it from; only a raw
+  // stream port, which bypasses the DMA entirely, has none.
   if (!poolName) {
-    TileLike tile = getTileLike();
-    if (!tile) {
-      return emitOpError("tile operand is not an aie.tile or aie.logical_tile");
-    }
-    if (!tile.isShimTile() && !getStreamPort()) {
-      return emitOpError("only a shim or stream-port endpoint may omit its "
-                         "pool");
+    if (!getStreamPort()) {
+      return emitOpError("only a stream-port endpoint may omit its pool");
     }
     return success();
   }
