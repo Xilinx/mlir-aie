@@ -73,7 +73,7 @@ struct AIEObjectFifoVerifyPass
     return success();
   }
 
-  /// A DMA endpoint that is not connected carries data nowhere.
+  /// An endpoint that is not connected carries data nowhere.
   LogicalResult verifyFlows(DeviceOp device) {
     DenseMap<StringRef, int> appearances;
     for (auto flow : device.getOps<ObjectFifoFlowOp>()) {
@@ -83,14 +83,15 @@ struct AIEObjectFifoVerifyPass
       }
     }
 
-    for (auto endpoint : device.getOps<ObjectFifoDmaEndpointOp>()) {
-      int count = appearances.lookup(endpoint.getSymName());
+    for (auto endpoint : device.getOps<ObjectFifoFlowEndpoint>()) {
+      int count = appearances.lookup(
+          cast<SymbolOpInterface>(*endpoint).getName());
       if (count == 0) {
-        return endpoint.emitOpError("is not connected by any flow");
+        return endpoint->emitOpError("is not connected by any flow");
       }
       if (count > 1) {
-        return endpoint.emitOpError("appears in ")
-               << count << " flows; a DMA endpoint drives one channel";
+        return endpoint->emitOpError("appears in ")
+               << count << " flows; an endpoint drives one channel";
       }
     }
     return success();

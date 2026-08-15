@@ -325,6 +325,7 @@ def AIE_ShimMuxOp: AIE_Op<"shim_mux", [
 
 def AIE_ShimDMAOp: AIE_Op<"shim_dma", [
     IsFlowEndPoint, TileElement, HasValidBDs,
+    DeclareOpInterfaceMethods<DmaBody>,
     HasValidDMAChannels, IsShimNOCTile,
     DeclareOpInterfaceMethods<InferTypeOpInterface>
   ]>, Results<(outs Index)> {
@@ -1323,6 +1324,7 @@ def AIE_DMAOp: AIE_Op<"dma", [
 def AIE_MemOp: AIE_Op<"mem", [
     TileElement, IsFlowEndPoint,
     IsCoreTile, HasValidBDs, HasValidDMAChannels,
+    DeclareOpInterfaceMethods<DmaBody>,
     DeclareOpInterfaceMethods<InferTypeOpInterface>
   ]>, Results<(outs Index)> {
   let summary = "Declare a memory op";
@@ -1361,6 +1363,7 @@ def AIE_MemOp: AIE_Op<"mem", [
 
 def AIE_MemTileDMAOp: AIE_Op<"memtile_dma", [
     TileElement, IsFlowEndPoint,
+    DeclareOpInterfaceMethods<DmaBody>,
     IsMemTile, HasValidBDs, HasValidDMAChannels,
     DeclareOpInterfaceMethods<InferTypeOpInterface>
   ]>, Results<(outs Index)> {
@@ -2372,7 +2375,9 @@ def AIE_ObjectFifoCoreEndpointOp
 }
 
 def AIE_ObjectFifoDmaEndpointOp
-    : AIE_Op<"objectfifo.dma_endpoint", [HasParent<"DeviceOp">, Symbol]> {
+    : AIE_Op<"objectfifo.dma_endpoint",
+             [HasParent<"DeviceOp">, Symbol,
+              DeclareOpInterfaceMethods<ObjectFifoFlowEndpoint>]> {
   let summary =
       "What a DMA channel needs to fill or drain the next object in a pool";
   let description = [{
@@ -2380,25 +2385,25 @@ def AIE_ObjectFifoDmaEndpointOp
     which of the pool's segments it handles, and the channel itself. Omitting
     `segments` selects all of them.
 
-    A shim endpoint's pool holds its objects in DDR rather than on the tile:
-    it names external buffers where the design registered them, and is empty
-    where the runtime supplies the address at dispatch. Its record for the
-    runtime is an `aie.shim_dma_allocation`.
+    `--aie-objectfifo-lower-dmas` turns this into the buffer descriptor chain
+    that walks the pool's buffers, and consumes it. An end of a stream that this
+    compiler does not program -- one the host runtime drives, or a core's raw
+    stream port -- is an `aie.objectfifo.dangling_endpoint` instead.
+
+    `channelIndex` is the DMA channel this endpoint drives; the direction
+    follows its role. Leaving it out lets `--aie-objectfifo-allocate` pick one,
+    and writing it down pins it.
 
     Example:
     ```
-      aie.objectfifo.dma_endpoint @out(%tile) drains @pool {
-        channel = #aie.objectfifo_channel<MM2S : 0>
-      }
+      aie.objectfifo.dma_endpoint @out(%tile) drains @pool {channelIndex = 0}
     ```
   }];
 
   let arguments = (ins SymbolNameAttr:$sym_name, Index:$tile,
-      OptionalAttr<ObjectFifoRole>:$role, OptionalAttr<FlatSymbolRefAttr>:$pool,
+      ObjectFifoRole:$role, FlatSymbolRefAttr:$pool,
       OptionalAttr<DenseI32ArrayAttr>:$segments,
-      OptionalAttr<ObjectFifoChannelAttr>:$channel,
-      // Channel the user demands, claimed before any is auto-assigned.
-      OptionalAttr<AIEI32Attr>:$pinnedChannel,
+      OptionalAttr<AIEI32Attr>:$channelIndex,
       // Shape of this endpoint's own buffer descriptors.
       OptionalAttr<BDDimLayoutArrayAttr>:$dimensions,
       OptionalAttr<BDPadLayoutArrayAttr>:$padDimensions,
@@ -2410,16 +2415,13 @@ def AIE_ObjectFifoDmaEndpointOp
       // Elements moved per buffer descriptor, where that is not the whole
       // segment: the two ends of a link may disagree on an object's size.
       OptionalAttr<AIEI32Attr>:$transferSize,
-      // Drives a Core stream port in place of a DMA channel.
-      OptionalAttr<AIEI32Attr>:$streamPort,
-      DefaultValuedAttr<BoolAttr, "false">:$plio,
       OptionalAttr<PacketInfoAttr>:$packet,
-      // Name of the objectFifo this endpoint was split from, for the shim
-      // allocation symbol the runtime sequence resolves.
+      // Name of the objectFifo this endpoint was split from, for the runtime
+      // records that address it by that name.
       OptionalAttr<StrAttr>:$fifoName);
 
   let assemblyFormat = [{
-    $sym_name `(` $tile `)` ($role^ $pool)? attr-dict
+    $sym_name `(` $tile `)` $role $pool attr-dict
   }];
 
   let hasVerifier = 1;
@@ -2427,13 +2429,55 @@ def AIE_ObjectFifoDmaEndpointOp
   let extraClassDeclaration = [{
     /// The tile op backing this op's tile operand; placed or logical.
     TileLike getTileLike();
-    /// Null on a shim endpoint.
     ObjectFifoPoolOp getPoolOp();
     bool drains() { return getRole() == ObjectFifoRole::Drain; }
 
     /// Segments this endpoint is responsible for, all of the pool's when it
     /// names none.
     llvm::SmallVector<ObjectFifoSegmentAttr> getSelectedSegments();
+  }];
+}
+
+def AIE_ObjectFifoDanglingEndpointOp
+    : AIE_Op<"objectfifo.dangling_endpoint",
+             [HasParent<"DeviceOp">, Symbol,
+              DeclareOpInterfaceMethods<ObjectFifoFlowEndpoint>]> {
+  let summary = "One end of a stream that this compiler does not program";
+  let description = [{
+    Holds a tile, a direction and a port, and nothing else: enough for
+    `--aie-objectfifo-allocate` to route a flow to it, and no buffers to move
+    data into or out of.
+
+    Two ends look like this. A shim end whose transfers the host runtime issues,
+    where all the design needs from the compiler is the channel to address --
+    recorded as an `aie.shim_dma_allocation` under `fifoName`. And a core's raw
+    stream port, which the core reads and writes directly, bypassing memory.
+    `bundle` tells them apart.
+
+    Example:
+    ```
+      aie.objectfifo.dangling_endpoint @in(%shim) MM2S DMA {fifoName = "in"}
+      aie.objectfifo.dangling_endpoint @out(%tile) S2MM Core {channelIndex = 0}
+    ```
+  }];
+
+  let arguments = (ins SymbolNameAttr:$sym_name, Index:$tile,
+      DMAChannelDir:$channelDir, WireBundle:$bundle,
+      OptionalAttr<AIEI32Attr>:$channelIndex,
+      OptionalAttr<PacketInfoAttr>:$packet,
+      // Name of the objectFifo this endpoint was split from, for the shim
+      // allocation symbol the runtime sequence resolves.
+      OptionalAttr<StrAttr>:$fifoName);
+
+  let assemblyFormat = [{
+    $sym_name `(` $tile `)` $channelDir $bundle attr-dict
+  }];
+
+  let hasVerifier = 1;
+
+  let extraClassDeclaration = [{
+    /// The tile op backing this op's tile operand; placed or logical.
+    TileLike getTileLike();
   }];
 }
 

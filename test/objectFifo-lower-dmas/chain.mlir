@@ -25,7 +25,7 @@ module @chain {
                                           produceLock = @free, consumeLock = @full>]
     } : memref<16xi32>
     aie.objectfifo.dma_endpoint @prod_dma(%tile12) drains @prod_pool {
-      channel = #aie.objectfifo_channel<MM2S : 0>
+      channelIndex = 0 : i32
     }
 
     %c0 = aie.buffer(%tile33) {sym_name = "c0"} : memref<16xi32>
@@ -38,7 +38,7 @@ module @chain {
                                           produceLock = @cfree, consumeLock = @cfull>]
     } : memref<16xi32>
     aie.objectfifo.dma_endpoint @cons_dma(%tile33) fills @cons_pool {
-      channel = #aie.objectfifo_channel<S2MM : 1>
+      channelIndex = 1 : i32
     }
   }
 }

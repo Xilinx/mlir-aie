@@ -154,6 +154,49 @@ def TileElement : OpInterface<"TileElement", [
   }];
 }
 
+def ObjectFifoFlowEndpoint : OpInterface<"ObjectFifoFlowEndpoint"> {
+  let description = [{
+    Interface for the ops an `aie.objectfifo.flow` connects. Gives
+    `--aie-objectfifo-allocate` the switchbox port each end occupies, whether
+    that end drives a DMA channel or hands the stream straight to a core.
+  }];
+  let cppNamespace = "::xilinx::AIE";
+  let methods = [
+    InterfaceMethod<[{Which way this end moves data.}],
+      "DMAChannelDir", "getFlowDirection", (ins)>,
+    InterfaceMethod<[{The switchbox bundle this end occupies.}],
+      "WireBundle", "getFlowBundle", (ins)>,
+    InterfaceMethod<[{The port within that bundle, once assigned.}],
+      "std::optional<int>", "getFlowChannel", (ins)>,
+    InterfaceMethod<[{Record the port this end was given.}],
+      "void", "setFlowChannel", (ins "int":$channel)>,
+    InterfaceMethod<[{The tile this end sits on.}],
+      "mlir::Value", "getTile", (ins), [{}], [{ return $_op.getTile(); }]>,
+    InterfaceMethod<[{The objectFifo this end was split from, if it came from
+      one; the name runtime records address it by.}],
+      "std::optional<llvm::StringRef>", "getFifoName", (ins), [{}],
+      [{ return $_op.getFifoName(); }]>,
+    InterfaceMethod<[{Stamp a packet header on this end.}],
+      "void", "setFlowPacket", (ins "PacketInfoAttr":$packet), [{}],
+      [{ $_op.setPacketAttr(packet); }]>,
+  ];
+}
+
+def DmaBody : OpInterface<"DmaBody", [TileElement]> {
+  let description = [{
+    Interface for the ops whose region holds one tile's DMA program: the
+    `aie.dma_start` chains and the buffer descriptors they run.
+  }];
+  let cppNamespace = "::xilinx::AIE";
+  let methods = [
+    InterfaceMethod<[{Return the region holding the DMA program.}],
+      "mlir::Region &", "getDmaBody", (ins), [{}], [{
+        return $_op.getBody();
+      }]
+    >,
+  ];
+}
+
 def Interconnect : OpInterface<"Interconnect", [TileElement]> {
   let description = [{
     Interface for operations that have interconnect-like properties,

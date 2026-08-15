@@ -52,29 +52,17 @@ struct AIEObjectFifoLowerDMAsPass
   OpBuilder builder{static_cast<MLIRContext *>(nullptr)};
 
   /// The DMA program of `tile`, created empty if the tile has none yet.
-  Operation *dmaProgramFor(TileLike tile, Location loc) {
+  DmaBody dmaProgramFor(TileLike tile, Location loc) {
     Value wanted = tile->getResult(0);
-    auto existing = [&]<typename OpTy>() -> Operation * {
-      for (auto op : device.getOps<OpTy>()) {
-        if (op.getTile() == wanted) {
-          return op;
-        }
+    for (auto program : device.getOps<DmaBody>()) {
+      if (program.getTile() == wanted) {
+        return program;
       }
-      return nullptr;
-    };
-    if (Operation *found = existing.template operator()<MemOp>()) {
-      return found;
-    }
-    if (Operation *found = existing.template operator()<MemTileDMAOp>()) {
-      return found;
-    }
-    if (Operation *found = existing.template operator()<ShimDMAOp>()) {
-      return found;
     }
 
     OpBuilder::InsertionGuard g(builder);
     builder.setInsertionPoint(device.getBody()->getTerminator());
-    Operation *program;
+    DmaBody program;
     if (tile.isShimTile()) {
       program = ShimDMAOp::create(builder, loc, builder.getIndexType(), wanted);
     } else if (tile.isMemTile()) {
@@ -83,7 +71,7 @@ struct AIEObjectFifoLowerDMAsPass
       program = MemOp::create(builder, loc, wanted);
     }
 
-    builder.setInsertionPointToStart(&program->getRegion(0).emplaceBlock());
+    builder.setInsertionPointToStart(&program.getDmaBody().emplaceBlock());
     EndOp::create(builder, loc);
     return program;
   }
@@ -169,9 +157,8 @@ struct AIEObjectFifoLowerDMAsPass
     NextBDOp::create(builder, loc, successor);
   }
 
-  void lowerEndpoint(ObjectFifoDmaEndpointOp endpoint,
-                     ObjectFifoChannelAttr channel) {
-    bool drains = channel.getDirection() == DMAChannelDir::MM2S;
+  void lowerEndpoint(ObjectFifoDmaEndpointOp endpoint, int channel) {
+    bool drains = endpoint.drains();
     ObjectFifoPoolOp pool = endpoint.getPoolOp();
     SmallVector<Value> buffers = buffersOf(pool);
     if (buffers.empty()) {
@@ -201,14 +188,14 @@ struct AIEObjectFifoLowerDMAsPass
         iterCount ? *iterCount - 1 : (repeatInHardware ? repeat - 1 : 0);
     int copies = repeatInHardware ? 1 : repeat;
 
-    Operation *program = dmaProgramFor(endpoint.getTileLike(), loc);
-    Block *endBlock = findEndOpBlock(program->getRegion(0));
+    DmaBody program = dmaProgramFor(endpoint.getTileLike(), loc);
+    Block *endBlock = findEndOpBlock(program.getDmaBody());
     Block *lastDmaBlock = endBlock->getSinglePredecessor();
     Block *dmaBlock = builder.createBlock(endBlock);
     Block *bdBlock = builder.createBlock(endBlock);
 
     builder.setInsertionPointToStart(dmaBlock);
-    DMAStartOp::create(builder, loc, channel.getDirection(), channel.getIndex(),
+    DMAStartOp::create(builder, loc, endpoint.getFlowDirection(), channel,
                        taskCount, endpoint.getPadValue(), bdBlock, endBlock);
     if (lastDmaBlock) {
       lastDmaBlock->getTerminator()->setSuccessor(dmaBlock, 1);
@@ -248,16 +235,20 @@ struct AIEObjectFifoLowerDMAsPass
     SmallVector<ObjectFifoDmaEndpointOp> endpoints(
         device.getOps<ObjectFifoDmaEndpointOp>());
     for (ObjectFifoDmaEndpointOp endpoint : endpoints) {
-      std::optional<ObjectFifoChannelAttr> channel = endpoint.getChannel();
+      std::optional<int> channel = endpoint.getChannelIndex();
       if (!channel) {
         endpoint.emitOpError("has no channel; run --aie-objectfifo-allocate");
         return signalPassFailure();
       }
-      // A raw stream port bypasses the DMA entirely.
-      if (!endpoint.getStreamPort()) {
-        lowerEndpoint(endpoint, *channel);
-      }
+      lowerEndpoint(endpoint, *channel);
       endpoint.erase();
+    }
+
+    // Nothing to program at the far end of these; the flows they asked for
+    // have been drawn.
+    for (auto dangling : llvm::make_early_inc_range(
+             device.getOps<ObjectFifoDanglingEndpointOp>())) {
+      dangling.erase();
     }
   }
 };

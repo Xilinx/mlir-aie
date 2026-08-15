@@ -260,18 +260,6 @@ def ObjectFifoSegmentAttr : AttrDef<AIE_Dialect, "ObjectFifoSegment", []> {
 def ObjectFifoSegmentArrayAttr
     : TypedArrayAttrBase<ObjectFifoSegmentAttr, "array of objectFifo segments">;
 
-def ObjectFifoChannelAttr : AttrDef<AIE_Dialect, "ObjectFifoChannel", []> {
-  let mnemonic = "objectfifo_channel";
-  let summary = [{
-    The DMA channel serving an objectFifo endpoint.
-  }];
-
-  let parameters = (ins "xilinx::AIE::DMAChannelDir":$direction,
-      "uint32_t":$index);
-
-  let assemblyFormat = "`<` $direction `:` $index `>`";
-}
-
 //===----------------------------------------------------------------------===//
 // Generated AIE event enumerations
 //===----------------------------------------------------------------------===//

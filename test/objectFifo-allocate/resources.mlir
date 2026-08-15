@@ -44,8 +44,8 @@ module @resources {
 // CHECK-DAG:   aie.lock(%[[T33]]) {init = 0 : i32, sym_name = "cons_cons_lock_0"}
 
 // CHECK:   aie.objectfifo.pool @prod_pool({{.*}}) {buffers = [@prod_buff_0, @prod_buff_1], depth = 2 : i32, segments = [#aie.objectfifo_segment<offset = 0, size = 16, produceLock = @prod_prod_lock_0, consumeLock = @prod_cons_lock_0>]}
-// CHECK:   aie.objectfifo.dma_endpoint @prod_dma({{.*}}) drains @prod_pool {channel = #aie.objectfifo_channel<MM2S : 0>}
+// CHECK:   aie.objectfifo.dma_endpoint @prod_dma({{.*}}) drains @prod_pool {channelIndex = 0 : i32}
 // CHECK:   aie.objectfifo.pool @cons_pool({{.*}}) {buffers = [@cons_buff_0, @cons_buff_1, @cons_buff_2], depth = 3 : i32, segments = [#aie.objectfifo_segment<offset = 0, size = 16, produceLock = @cons_prod_lock_0, consumeLock = @cons_cons_lock_0>]}
-// CHECK:   aie.objectfifo.dma_endpoint @cons_dma({{.*}}) fills @cons_pool {channel = #aie.objectfifo_channel<S2MM : 0>}
+// CHECK:   aie.objectfifo.dma_endpoint @cons_dma({{.*}}) fills @cons_pool {channelIndex = 0 : i32}
 // CHECK:   aie.flow(%[[T12]], DMA : 0, %[[T33]], DMA : 0)
 // CHECK-NOT: aie.objectfifo.flow

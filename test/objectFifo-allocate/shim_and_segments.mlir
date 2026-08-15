@@ -3,17 +3,15 @@
 // Copyright (C) 2025 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-// A shim tile holds no objects, so its endpoint gets no buffers and no locks --
-// only the allocation record the runtime sequence resolves.
+// A shim end the runtime drives holds no objects, so it gets no buffers and no
+// locks -- only the allocation record the runtime sequence resolves.
 
 module @shim_and_segments {
   aie.device(npu1) {
     %shim = aie.tile(0, 0)
     %memtile = aie.tile(0, 1)
 
-    // A shim end's objects live in DDR; the pool names none of its own.
-    aie.objectfifo.pool @in_shim_pool(%shim) {depth = 2 : i32, segments = [#aie.objectfifo_segment<offset = 0, size = 32>]} : memref<32xi32>
-    aie.objectfifo.dma_endpoint @in_shim(%shim) drains @in_shim_pool {fifoName = "in"}
+    aie.objectfifo.dangling_endpoint @in_shim(%shim) MM2S DMA {fifoName = "in"}
 
     // Two participants writing one object need a lock pair each.
     aie.objectfifo.pool @in_pool(%memtile) {
@@ -38,6 +36,6 @@ module @shim_and_segments {
 // CHECK:   aie.lock(%[[MT]]) {init = 0 : i32, sym_name = "in_cons_lock_0"}
 // CHECK:   aie.lock(%[[MT]]) {init = 2 : i32, sym_name = "in_prod_lock_1"}
 // CHECK:   aie.lock(%[[MT]]) {init = 0 : i32, sym_name = "in_cons_lock_1"}
-// CHECK:   aie.objectfifo.dma_endpoint @in_shim(%[[SHIM]]) drains @in_shim_pool {channel = #aie.objectfifo_channel<MM2S : 0>, fifoName = "in"}
+// CHECK:   aie.objectfifo.dangling_endpoint @in_shim(%[[SHIM]]) MM2S DMA {channelIndex = 0 : i32, fifoName = "in"}
 // CHECK:   aie.flow(%[[SHIM]], DMA : 0, %[[MT]], DMA : 0)
 // CHECK:   aie.shim_dma_allocation @in_shim_alloc(%[[SHIM]], MM2S, 0)

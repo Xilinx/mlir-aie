@@ -13,20 +13,14 @@ using namespace xilinx;
 using namespace xilinx::AIE;
 
 DMAChannelAnalysis::DMAChannelAnalysis(DeviceOp &device) {
-  // Every DMA program already in the module has claimed the channels it starts.
-  auto claimStarted = [&](auto programs) {
-    for (auto program : programs) {
-      for (Block &block : program.getBody()) {
-        for (auto start : block.template getOps<DMAStartOp>()) {
-          usedChannels.insert({program.getTile(), start.getChannelDir(),
-                               start.getChannelIndex()});
-        }
+  for (auto program : device.getOps<DmaBody>()) {
+    for (Block &block : program.getDmaBody()) {
+      for (auto start : block.getOps<DMAStartOp>()) {
+        usedChannels.insert({program.getTile(), start.getChannelDir(),
+                             start.getChannelIndex()});
       }
     }
-  };
-  claimStarted(device.getOps<MemOp>());
-  claimStarted(device.getOps<MemTileDMAOp>());
-  claimStarted(device.getOps<ShimDMAOp>());
+  }
 
   for (auto flowOp : device.getOps<FlowOp>()) {
     if (flowOp.getSourceBundle() == WireBundle::Core) {

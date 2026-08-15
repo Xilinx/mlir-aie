@@ -27,12 +27,12 @@ module @segments {
 
     // The gathering end fills one slice of every object.
     aie.objectfifo.dma_endpoint @part(%memtile) fills @pool {
-      channel = #aie.objectfifo_channel<S2MM : 0>, segments = array<i32: 1>
+      channelIndex = 0 : i32, segments = array<i32: 1>
     }
 
     // The forwarding end drains all of them.
     aie.objectfifo.dma_endpoint @whole(%memtile) drains @pool {
-      channel = #aie.objectfifo_channel<MM2S : 0>
+      channelIndex = 0 : i32
     }
   }
 }

@@ -22,7 +22,7 @@ module @hand_written {
       segments = [#aie.objectfifo_segment<offset = 0, size = 16,
                                           produceLock = @free, consumeLock = @full>]
     } : memref<16xi32>
-    aie.objectfifo.dma_endpoint @prod_dma(%tile12) drains @prod_pool {pinnedChannel = 1 : i32}
+    aie.objectfifo.dma_endpoint @prod_dma(%tile12) drains @prod_pool {channelIndex = 1 : i32}
 
     aie.objectfifo.pool @cons_pool(%tile33) {
       depth = 2 : i32, segments = [#aie.objectfifo_segment<offset = 0, size = 16>]
@@ -37,5 +37,5 @@ module @hand_written {
 // CHECK-NOT: prod_buff_0
 // CHECK-NOT: prod_prod_lock_0
 // CHECK: aie.objectfifo.pool @prod_pool({{.*}}) {buffers = [@mine_0, @mine_1], depth = 2 : i32, segments = [#aie.objectfifo_segment<offset = 0, size = 16, produceLock = @free, consumeLock = @full>]}
-// CHECK: aie.objectfifo.dma_endpoint @prod_dma({{.*}}) drains @prod_pool {channel = #aie.objectfifo_channel<MM2S : 1>, pinnedChannel = 1 : i32}
+// CHECK: aie.objectfifo.dma_endpoint @prod_dma({{.*}}) drains @prod_pool {channelIndex = 1 : i32}
 // CHECK: aie.flow({{.*}}, DMA : 1, {{.*}}, DMA : 0)

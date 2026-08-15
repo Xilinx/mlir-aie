@@ -868,8 +868,7 @@ TileLike ObjectFifoDmaEndpointOp::getTileLike() {
 }
 
 ObjectFifoPoolOp ObjectFifoDmaEndpointOp::getPoolOp() {
-  auto name = getPool();
-  return name ? lookupPool(*this, *name) : ObjectFifoPoolOp();
+  return lookupPool(*this, getPool());
 }
 
 SmallVector<ObjectFifoSegmentAttr>
@@ -877,33 +876,72 @@ ObjectFifoDmaEndpointOp::getSelectedSegments() {
   return selectSegments(getPoolOp(), getSegments());
 }
 
+DMAChannelDir ObjectFifoDmaEndpointOp::getFlowDirection() {
+  return drains() ? DMAChannelDir::MM2S : DMAChannelDir::S2MM;
+}
+
+WireBundle ObjectFifoDmaEndpointOp::getFlowBundle() { return WireBundle::DMA; }
+
+std::optional<int> ObjectFifoDmaEndpointOp::getFlowChannel() {
+  return getChannelIndex();
+}
+
+void ObjectFifoDmaEndpointOp::setFlowChannel(int channel) {
+  setChannelIndex(channel);
+}
+
 LogicalResult ObjectFifoDmaEndpointOp::verify() {
-  auto poolName = getPool();
-  if (poolName.has_value() != getRole().has_value()) {
-    return emitOpError("must name a role together with a pool");
-  }
-
-  // Everything that drives a DMA has buffers to drive it from; only a raw
-  // stream port, which bypasses the DMA entirely, has none.
-  if (!poolName) {
-    if (!getStreamPort()) {
-      return emitOpError("only a stream-port endpoint may omit its pool");
-    }
-    return success();
-  }
-
   ObjectFifoPoolOp pool = getPoolOp();
   if (!pool) {
-    return emitOpError("references undefined pool '") << *poolName << "'";
+    return emitOpError("references undefined pool '") << getPool() << "'";
   }
 
   // Only a MemTile's DMA runs its chain a fixed number of times, so an
-  // iter_count anywhere else would be silently dropped.
+  // iter_count anywhere else would be dropped without saying so.
   if (getIterCount() && !getTileLike().isMemTile()) {
     return emitOpError("iter_count is only supported on a MemTile");
   }
 
   return verifyEndpoint(*this, pool, getSegments());
+}
+
+TileLike ObjectFifoDanglingEndpointOp::getTileLike() {
+  return dyn_cast<TileLike>(getTile().getDefiningOp());
+}
+
+DMAChannelDir ObjectFifoDanglingEndpointOp::getFlowDirection() {
+  return getChannelDir();
+}
+
+WireBundle ObjectFifoDanglingEndpointOp::getFlowBundle() {
+  return getBundle();
+}
+
+std::optional<int> ObjectFifoDanglingEndpointOp::getFlowChannel() {
+  return getChannelIndex();
+}
+
+void ObjectFifoDanglingEndpointOp::setFlowChannel(int channel) {
+  setChannelIndex(channel);
+}
+
+LogicalResult ObjectFifoDanglingEndpointOp::verify() {
+  TileLike tile = getTileLike();
+  if (!tile) {
+    return emitOpError("tile operand is not an aie.tile or aie.logical_tile");
+  }
+  switch (getBundle()) {
+  case WireBundle::DMA:
+  case WireBundle::PLIO:
+    if (!tile.isShimTile()) {
+      return emitOpError("a DMA or PLIO end the runtime drives is on a shim");
+    }
+    return success();
+  case WireBundle::Core:
+    return success();
+  default:
+    return emitOpError("bundle must be DMA, PLIO or Core");
+  }
 }
 
 //===----------------------------------------------------------------------===//
@@ -921,19 +959,19 @@ LogicalResult ObjectFifoFlowOp::verify() {
 
   auto device = (*this)->getParentOfType<DeviceOp>();
   auto lookup = [&](StringRef name) {
-    return SymbolTable::lookupNearestSymbolFrom<ObjectFifoDmaEndpointOp>(
-        device, StringAttr::get(getContext(), name));
+    return dyn_cast_or_null<ObjectFifoFlowEndpoint>(
+        SymbolTable::lookupNearestSymbolFrom(
+            device, StringAttr::get(getContext(), name)));
   };
 
-  auto source = lookup(getSource());
-  if (!source) {
-    return emitOpError("source '") << getSource() << "' is not a DMA endpoint";
+  if (!lookup(getSource())) {
+    return emitOpError("source '") << getSource() << "' is not an endpoint";
   }
 
   for (auto destination : getDestinations().getAsRange<FlatSymbolRefAttr>()) {
     if (!lookup(destination.getValue())) {
       return emitOpError("destination '")
-             << destination.getValue() << "' is not a DMA endpoint";
+             << destination.getValue() << "' is not an endpoint";
     }
   }
 

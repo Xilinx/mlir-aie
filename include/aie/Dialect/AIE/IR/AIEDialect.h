@@ -72,9 +72,6 @@ verifyOffsetSizeAndStrideOp(mlir::OffsetSizeAndStrideOpInterface op);
 
 } // namespace xilinx::AIE
 
-// Include the generated interface declarations.
-#include "aie/Dialect/AIE/IR/AIEInterfaces.h.inc"
-
 namespace xilinx::AIE {
 mlir::LogicalResult
 myVerifyOffsetSizeAndStrideOp(mlir::OffsetSizeAndStrideOpInterface op);
@@ -116,6 +113,9 @@ void registerAIETranslations();
 
 #define GET_ATTRDEF_CLASSES
 #include "aie/Dialect/AIE/IR/AIEAttrs.h.inc"
+
+// Interfaces come after the attributes and types their methods traffic in.
+#include "aie/Dialect/AIE/IR/AIEInterfaces.h.inc"
 
 ////////////////////////////////////////////////////////////////////////////////
 //////////////////// Custom Operations for the Dialect /////////////////////////

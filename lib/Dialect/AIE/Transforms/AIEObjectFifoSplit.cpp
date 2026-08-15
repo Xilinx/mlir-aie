@@ -215,12 +215,13 @@ struct AIEObjectFifoSplitPass
                     : DenseI32ArrayAttr());
   }
 
-  ObjectFifoDmaEndpointOp createDmaEndpoint(
-      Location loc, StringRef name, Value tile, std::optional<PoolRef> ref,
-      ObjectFifoRole role, ObjectFifoCreateOp from, BDDimLayoutArrayAttr dims,
-      std::optional<int> pinnedChannel, std::optional<int> streamPort,
-      std::optional<int> acqRelCount, std::optional<int> repeatCount,
-      std::optional<int> transferSize) {
+  ObjectFifoDmaEndpointOp
+  createDmaEndpoint(Location loc, StringRef name, Value tile, PoolRef ref,
+                    ObjectFifoRole role, ObjectFifoCreateOp from,
+                    BDDimLayoutArrayAttr dims, std::optional<int> channelIndex,
+                    std::optional<int> acqRelCount,
+                    std::optional<int> repeatCount,
+                    std::optional<int> transferSize) {
     // Only a MemTile's DMA runs its chain a fixed number of times, so the
     // count is recorded only where it is honored.
     std::optional<int32_t> iterCount;
@@ -231,24 +232,11 @@ struct AIEObjectFifoSplitPass
     }
     return ObjectFifoDmaEndpointOp::create(
         builder, loc, builder.getStringAttr(name), tile,
-        ref ? ObjectFifoRoleAttr::get(builder.getContext(), role)
-            : ObjectFifoRoleAttr(),
-        ref ? FlatSymbolRefAttr::get(builder.getContext(),
-                                     ref->pool.getSymName())
-            : FlatSymbolRefAttr(),
-        ref && ref->segment ? builder.getDenseI32ArrayAttr({*ref->segment})
-                            : DenseI32ArrayAttr(),
-        // A stream port is not drawn from the tile's DMA channels: the
-        // index is the port the fifo named, and the direction follows the side
-        // this end sits on, so it is settled here rather than in allocation.
-        streamPort ? ObjectFifoChannelAttr::get(builder.getContext(),
-                                                role == ObjectFifoRole::Drain
-                                                    ? DMAChannelDir::MM2S
-                                                    : DMAChannelDir::S2MM,
-                                                *streamPort)
-                   : ObjectFifoChannelAttr(),
-        pinnedChannel ? builder.getI32IntegerAttr(*pinnedChannel)
-                      : IntegerAttr(),
+        ObjectFifoRoleAttr::get(builder.getContext(), role),
+        FlatSymbolRefAttr::get(builder.getContext(), ref.pool.getSymName()),
+        ref.segment ? builder.getDenseI32ArrayAttr({*ref.segment})
+                    : DenseI32ArrayAttr(),
+        channelIndex ? builder.getI32IntegerAttr(*channelIndex) : IntegerAttr(),
         dims && !dims.empty() ? dims : BDDimLayoutArrayAttr(),
         from.getPadDimensionsAttr(),
         from.getPadValue() ? builder.getI32IntegerAttr(from.getPadValue())
@@ -261,20 +249,32 @@ struct AIEObjectFifoSplitPass
             ? builder.getI32IntegerAttr(*acqRelCount)
             : IntegerAttr(),
         transferSize ? builder.getI32IntegerAttr(*transferSize) : IntegerAttr(),
-        /*streamPort=*/
-        streamPort ? builder.getI32IntegerAttr(*streamPort) : IntegerAttr(),
-        from.getPlio() ? builder.getBoolAttr(true) : BoolAttr(),
         /*packet=*/PacketInfoAttr(),
         builder.getStringAttr(from.name().getValue()));
   }
 
-  /// External buffers registered against a fifo's end on `tile` become the
-  /// objects of a pool there. A shim end holds its objects in DDR rather than
-  /// on the tile, so the pool names external buffers where the design
-  /// registered them and stays empty where the runtime supplies the address at
-  /// dispatch; either way the end has a pool, like every other end.
-  PoolRef shimPool(ObjectFifoCreateOp fifo, Value tile, StringRef name,
-                   MemRefType elemType) {
+  /// An end with no pool behind it: a shim whose transfers the runtime issues,
+  /// a PLIO boundary, or a core's raw stream port.
+  ObjectFifoDanglingEndpointOp
+  createDanglingEndpoint(Location loc, StringRef name, Value tile,
+                         DMAChannelDir dir, WireBundle bundle,
+                         std::optional<int> channelIndex,
+                         ObjectFifoCreateOp from) {
+    return ObjectFifoDanglingEndpointOp::create(
+        builder, loc, builder.getStringAttr(name), tile,
+        DMAChannelDirAttr::get(builder.getContext(), dir),
+        WireBundleAttr::get(builder.getContext(), bundle),
+        channelIndex ? builder.getI32IntegerAttr(*channelIndex) : IntegerAttr(),
+        /*packet=*/PacketInfoAttr(),
+        builder.getStringAttr(from.name().getValue()));
+  }
+
+  /// External buffers registered against a fifo's shim end become the objects
+  /// of a pool there, held in DDR rather than on the tile. Where the design
+  /// registered none, the runtime supplies the address at dispatch and there
+  /// is nothing to pool.
+  std::optional<PoolRef> registeredPool(ObjectFifoCreateOp fifo, Value tile,
+                                        StringRef name, MemRefType elemType) {
     SmallVector<Attribute> names;
     for (auto regOp : device.getOps<ObjectFifoRegisterExternalBuffersOp>()) {
       if (regOp.getTile() != tile || regOp.getObjectFifo() != fifo) {
@@ -288,11 +288,13 @@ struct AIEObjectFifoSplitPass
         elemType = cast<MemRefType>(external.getType());
       }
     }
+    if (names.empty()) {
+      return std::nullopt;
+    }
 
     auto pool = ObjectFifoPoolOp::create(
-        builder, fifo.getLoc(), name, tile,
-        names.empty() ? fifo.size() : (int)names.size(), elemType,
-        names.empty() ? ArrayAttr() : builder.getArrayAttr(names),
+        builder, fifo.getLoc(), name, tile, (int)names.size(), elemType,
+        builder.getArrayAttr(names),
         builder.getArrayAttr({ObjectFifoSegmentAttr::get(
             builder.getContext(), 0, elemType.getNumElements(), nullptr,
             nullptr)}),
@@ -628,7 +630,10 @@ void AIEObjectFifoSplitPass::runOnOperation() {
       prodRef = linked->second;
       prodTransfer = transferSizeInto(linked->second, elemType);
     } else if (prodIsShim) {
-      prodRef = shimPool(fifo, prodTile, (fifoName + "_pool").str(), elemType);
+      if (!fifo.getPlio()) {
+        prodRef =
+            registeredPool(fifo, prodTile, (fifoName + "_pool").str(), elemType);
+      }
     } else if (!prodStreamPort) {
       int depth = fifo.getInitValues() ? fifo.size()
                                        : objectCountOn(device, prodTile, fifo);
@@ -652,13 +657,23 @@ void AIEObjectFifoSplitPass::runOnOperation() {
     if (auto linkOp = getOptionalLinkOp(fifo)) {
       linkRepeat = linkOp->getRepeatCount();
     }
-    auto prodDma = createDmaEndpoint(
-        loc, (fifoName + "_prod_dma").str(), prodTile, prodRef,
-        ObjectFifoRole::Drain, fifo, fifo.getDimensionsToStreamAttr(),
-        fifo.getProdDmaChannel(), prodStreamPort, prodAcqRel,
-        fifo.getRepeatCount(), prodTransfer);
+    std::string prodDmaName = (fifoName + "_prod_dma").str();
+    if (prodRef) {
+      createDmaEndpoint(loc, prodDmaName, prodTile, *prodRef,
+                        ObjectFifoRole::Drain, fifo,
+                        fifo.getDimensionsToStreamAttr(),
+                        fifo.getProdDmaChannel(), prodAcqRel,
+                        fifo.getRepeatCount(), prodTransfer);
+    } else {
+      createDanglingEndpoint(
+          loc, prodDmaName, prodTile, DMAChannelDir::MM2S,
+          prodStreamPort   ? WireBundle::Core
+          : fifo.getPlio() ? WireBundle::PLIO
+                           : WireBundle::DMA,
+          prodStreamPort ? prodStreamPort : fifo.getProdDmaChannel(), fifo);
+    }
     if (prodIsShim) {
-      shimEndpointName[fifo] = prodDma.getSymName().str();
+      shimEndpointName[fifo] = prodDmaName;
     }
 
     // Consumer ends.
@@ -680,8 +695,11 @@ void AIEObjectFifoSplitPass::runOnOperation() {
         consAcqRel = linkRepeat;
         consTransfer = transferSizeInto(linked->second, consElemType);
       } else if (consIsShim) {
-        consRef = shimPool(fifo, consumerTile,
-                           (fifoName + suffix + "_pool").str(), consElemType);
+        if (!fifo.getPlio()) {
+          consRef = registeredPool(fifo, consumerTile,
+                                   (fifoName + suffix + "_pool").str(),
+                                   consElemType);
+        }
       } else if (!consStreamPort) {
         int depth = isa<ArrayAttr>(fifo.getElemNumber())
                         ? fifo.size(consumerIndex + 1)
@@ -709,24 +727,32 @@ void AIEObjectFifoSplitPass::runOnOperation() {
         pinned = (*consChannels)[consumerIndex];
       }
 
-      auto consDma =
-          createDmaEndpoint(loc, (fifoName + suffix + "_dma").str(),
-                            consumerTile, consRef, ObjectFifoRole::Fill, fifo,
-                            consumerDims.empty() ? BDDimLayoutArrayAttr()
-                                                 : consumerDims[consumerIndex],
-                            pinned, consStreamPort, consAcqRel,
-                            /*repeatCount=*/std::nullopt, consTransfer);
+      std::string consDmaName = (fifoName + suffix + "_dma").str();
+      if (consRef) {
+        createDmaEndpoint(loc, consDmaName, consumerTile, *consRef,
+                          ObjectFifoRole::Fill, fifo,
+                          consumerDims.empty() ? BDDimLayoutArrayAttr()
+                                               : consumerDims[consumerIndex],
+                          pinned, consAcqRel,
+                          /*repeatCount=*/std::nullopt, consTransfer);
+      } else {
+        createDanglingEndpoint(loc, consDmaName, consumerTile,
+                               DMAChannelDir::S2MM,
+                               consStreamPort   ? WireBundle::Core
+                               : fifo.getPlio() ? WireBundle::PLIO
+                                                : WireBundle::DMA,
+                               consStreamPort ? consStreamPort : pinned, fifo);
+      }
       destinations.push_back(
-          FlatSymbolRefAttr::get(builder.getContext(), consDma.getSymName()));
+          FlatSymbolRefAttr::get(builder.getContext(), consDmaName));
       if (consIsShim) {
-        shimEndpointName[fifo] = consDma.getSymName().str();
+        shimEndpointName[fifo] = consDmaName;
       }
       consumerIndex++;
     }
 
     ObjectFifoFlowOp::create(
-        builder, loc,
-        FlatSymbolRefAttr::get(builder.getContext(), prodDma.getSymName()),
+        builder, loc, FlatSymbolRefAttr::get(builder.getContext(), prodDmaName),
         builder.getArrayAttr(destinations),
         fifo.getPacket() ? builder.getUnitAttr() : UnitAttr(),
         fifo.getPacketIdAttr());
