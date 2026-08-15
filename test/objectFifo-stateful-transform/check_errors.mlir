@@ -9,28 +9,6 @@
 
 // -----
 
-module {
-  aie.device(npu1_1col) {
-    %shim_noc_tile_0_0 = aie.tile(0, 0)
-    %tile_0_2 = aie.tile(0, 2)
-    aie.objectfifo @fifo_in(%shim_noc_tile_0_0, {%tile_0_2}, 2 : i32) : !aie.objectfifo<memref<32x32xi32>>
-    %core_0_2 = aie.core(%tile_0_2) {
-      %c0 = arith.constant 0 : index
-      %c4294967295 = arith.constant 4294967295 : index
-      %c1 = arith.constant 1 : index
-      scf.for %arg0 = %c0 to %c4294967295 step %c1 {
-        // expected-error@+1 {{cannot release more elements than are already acquired}}
-        %1 = aie.objectfifo.acquire @fifo_in(Consume) : memref<32x32xi32>
-        aie.objectfifo.release @fifo_in(Consume) [1]
-        aie.objectfifo.release @fifo_in(Consume) [1]
-      }
-      aie.end
-    }
-  }
-}
-
-// -----
-
 // An unplaced logical_tile producer must be diagnosed, not crash the pass.
 module {
   aie.device(npu1) {

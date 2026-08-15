@@ -118,23 +118,18 @@ bool requiresDMAs(ObjectFifoCreateOp createOp,
 }
 
 /// Objects a fifo needs on `tile`: enough to cover the largest acquire made
-/// there, plus one so a core can hold an object while the next arrives.
+/// there, plus one so a core can hold an object while the next arrives. This is
+/// the depth the pool on `tile` is given, and it is the only place a fifo's
+/// declared size is read; nothing of the sort survives this pass.
 int objectCountOn(DeviceOp device, Value tile, ObjectFifoCreateOp objFifo) {
   if (objFifo.size() == 0) {
     return 0;
   }
 
-  auto tileOp = cast<TileOp>(tile.getDefiningOp());
-  if (tileOp.isMemTile()) {
+  // A MemTile only passes objects along, so it holds as many as the fifo asks
+  // for.
+  if (cast<TileOp>(tile.getDefiningOp()).isMemTile()) {
     return objFifo.size();
-  }
-
-  if (tileOp.isShimTile()) {
-    for (auto regOp : device.getOps<ObjectFifoRegisterExternalBuffersOp>()) {
-      if (regOp.getTile() == tile) {
-        return regOp.getExternalBuffers().size();
-      }
-    }
   }
 
   int maxAcquire = 0;
