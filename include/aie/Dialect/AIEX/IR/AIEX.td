@@ -1554,8 +1554,10 @@ def AIEX_SetLockOp: AIEX_Op<"set_lock", [HasAncestor<"AIE::RuntimeSequenceOp">, 
   let summary = "Set the value of a lock";
   let description = [{
     This operation sets the value of `lock` inside of a RuntimeSequenceOp.
-    Ancestor rather than parent: it lowers to a single write32, so a rolled
-    runtime-bound loop can hold one the same way it holds a DMA configure.
+    Ancestor rather than parent: `aie-lower-set-lock` rewrites this into a
+    single `aiex.npu.write32`, which is legal anywhere inside the sequence, so
+    a runtime-bound `scf.for` may hold one just as it holds an
+    `aiex.dma_configure_task`.
     The operation is non blocking and does not offer any synchronization guarantees.
     Should be used in combination with blocking operations.
 
