@@ -34,7 +34,7 @@ module @stage0 {
 // locks; one flow lists every destination, matching the one source channel that
 // feeds the multicast route.
 //
-// The two shim endpoints have no pool.
+// The two shim ends are dangling.
 //===----------------------------------------------------------------------===//
 
 module @stage1 {
@@ -47,7 +47,7 @@ module @stage1 {
     aie.objectfifo.pool @bc_pool(%t02)     {depth = 2 : i32, segments = [<offset = 0, size = 16>]} : memref<16xi32>
     aie.objectfifo.pool @bc_c0_pool(%t03)  {depth = 2 : i32, segments = [<offset = 0, size = 16>]} : memref<16xi32>
 
-    aie.objectfifo.dma_endpoint @in_shim(%shim) {}
+    aie.objectfifo.dangling_endpoint @in_shim(%shim) MM2S DMA
 
     aie.objectfifo.dma_endpoint  @in_dma(%t02)   fills  @in_pool
     aie.objectfifo.core_endpoint @in_core(%t02)  drains @in_pool
@@ -58,7 +58,7 @@ module @stage1 {
     aie.objectfifo.dma_endpoint  @bc_c0_in(%t03)   fills  @bc_c0_pool
     aie.objectfifo.core_endpoint @bc_c0_core(%t03) drains @bc_c0_pool
 
-    aie.objectfifo.dma_endpoint @bc_c1_shim(%shim) {}
+    aie.objectfifo.dangling_endpoint @bc_c1_shim(%shim) S2MM DMA
 
     aie.objectfifo.flow from @in_shim to [@in_dma]
     aie.objectfifo.flow from @bc_out  to [@bc_c0_in, @bc_c1_shim]
@@ -87,7 +87,7 @@ module @stage2 {
                    offset = 0, size = 16>]
     } : memref<16xi32>
 
-    aie.objectfifo.dma_endpoint  @in_dma(%t02)  fills  @in_pool {channel = S2MM 0}
+    aie.objectfifo.dma_endpoint  @in_dma(%t02)  fills  @in_pool {channelIndex = 0}
     aie.objectfifo.core_endpoint @in_core(%t02) drains @in_pool
 
     aie.flow(%shim, DMA : 0, %t02,  DMA : 0)
@@ -102,9 +102,9 @@ module @stage2 {
 //===----------------------------------------------------------------------===//
 // STAGE 3 -- after --aie-objectfifo-lower-dmas
 //
-// Endpoints with a pool emit their BD chains. The shim endpoints have none to
-// emit; their record is the shim allocation, and the runtime sequence programs
-// the transfer itself.
+// Every dma_endpoint emits its BD chain. A dangling end has none to emit; its
+// record is the shim allocation, and the runtime sequence programs the
+// transfer itself.
 //===----------------------------------------------------------------------===//
 
 //===----------------------------------------------------------------------===//

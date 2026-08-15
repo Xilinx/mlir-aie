@@ -49,7 +49,6 @@ struct AIEObjectFifoAllocatePass
   /// job, not this pass's. Tracking used memory here to make that choice
   /// breaks the separation of concerns; --aie-assign-buffer-addresses should
   /// instead be free to move buffers between tiles that share a memory module.
-  /// Carried over from the monolithic lowering rather than introduced here.
   ///
   /// A MemTile buffer that does not fit at home spills to whichever neighbor
   /// its DMAs can still reach, preferring the emptier one so adjacent MemTiles
@@ -164,6 +163,9 @@ struct AIEObjectFifoAllocatePass
 
     // A pool that starts full and is re-read each outer iteration is never
     // written again, so nothing needs synchronizing.
+    // FIXME: this stands in for "no endpoint fills this pool", which is what
+    // actually decides it. Asking that question directly is a follow-on
+    // change; see the follow-up list on the PR that introduced these passes.
     auto iterCount = pool.getIterCount();
     if (filled == depth && filled > 0 && iterCount && *iterCount > 1) {
       return;
@@ -244,7 +246,8 @@ struct AIEObjectFifoAllocatePass
       }
 
       if (channel) {
-        if (channels.reservePinnedChannel(tileOf(endpoint), dir, *channel) < 0) {
+        if (channels.reservePinnedChannel(tileOf(endpoint), dir, *channel) <
+            0) {
           return endpoint->emitOpError("pinned ")
                  << stringifyDMAChannelDir(dir) << " DMA channel " << *channel
                  << " is out of range or already in use on this tile";
@@ -256,10 +259,10 @@ struct AIEObjectFifoAllocatePass
 
     // Endpoints reaching a spilled buffer draw from the restricted low half of
     // the range, so they are served before the unrestricted ones.
-    llvm::stable_sort(pending, [&](ObjectFifoFlowEndpoint a,
-                                   ObjectFifoFlowEndpoint b) {
-      return reachesAdjacentTile(a) && !reachesAdjacentTile(b);
-    });
+    llvm::stable_sort(
+        pending, [&](ObjectFifoFlowEndpoint a, ObjectFifoFlowEndpoint b) {
+          return reachesAdjacentTile(a) && !reachesAdjacentTile(b);
+        });
 
     for (auto endpoint : pending) {
       DMAChannelDir dir = endpoint.getFlowDirection();

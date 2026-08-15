@@ -18,9 +18,12 @@
 //   aie.objectfifo.core_endpoint  everything a core needs to fill or drain the
 //                                 next object in a pool
 //   aie.objectfifo.dma_endpoint   the same for a DMA channel
-//   aie.objectfifo.flow           a stream connection between two DMA endpoints
+//   aie.objectfifo.dangling_endpoint  one end of a stream this compiler does
+//                                 not program, holding only the tile,
+//                                 direction and port a flow needs
+//   aie.objectfifo.flow           a stream connection between endpoints
 //
-// All four are transient. They are introduced by --aie-objectfifo-split and are
+// All five are transient. They are introduced by --aie-objectfifo-split and are
 // gone by the end of the pipeline; what survives is ordinary AIE IR --
 // aie.buffer, aie.lock, aie.flow, aie.mem / aie.memtile_dma / aie.shim_dma, and
 // aie.shim_dma_allocation.
@@ -56,7 +59,7 @@
 //
 //   aie.objectfifo.core_endpoint @c(%tile) fills  @P
 //   aie.objectfifo.core_endpoint @c(%tile) drains @P {segments = [0]}
-//   aie.objectfifo.dma_endpoint  @d(%tile) drains @P {channel = MM2S 0}
+//   aie.objectfifo.dma_endpoint  @d(%tile) drains @P {channelIndex = 0}
 //
 // `fills` and `drains` state what the actor does to the pool's buffers. The
 // endpoint's own tile is where the actor is, which for shared memory differs
@@ -70,10 +73,11 @@
 // end; a pool with several fillers is a join; one with several drainers is a
 // distribute.
 //
-// A dma_endpoint on a shim tile has no pool: there are no buffers and no locks
-// at the shim/DDR boundary. It carries a channel, and lowers to an
+// A shim end whose transfers the runtime sequence issues has nothing to pool:
+// the addresses arrive at dispatch. It is a dangling_endpoint, and lowers to an
 // aie.shim_dma_allocation recording the tile, direction and channel for the
-// runtime sequence.
+// runtime sequence. A shim end that registers external buffers does have a
+// pool, and is an ordinary dma_endpoint.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -212,10 +216,10 @@
 //  - an endpoint's segment indices are in range for its pool
 //  - an endpoint's tile is the pool's tile or shares a memory module with it
 //  - a pool with more than one segment requires semaphore locks
-//  - a flow connects DMA endpoints; a dma_endpoint appears in at most one flow
+//  - a flow connects endpoints; an endpoint appears in at most one flow
 //  - across a flow, the source's per-object size is an integer multiple of each
 //    destination's
-//  - a dma_endpoint without a pool is on a shim tile
+//  - a dangling_endpoint on a DMA or PLIO port is on a shim tile
 //  - a core's acquire names a core_endpoint on its own tile
 //
 //===----------------------------------------------------------------------===//

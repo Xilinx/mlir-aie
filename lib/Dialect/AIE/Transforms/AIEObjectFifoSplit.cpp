@@ -211,13 +211,11 @@ struct AIEObjectFifoSplitPass
                     : DenseI32ArrayAttr());
   }
 
-  ObjectFifoDmaEndpointOp
-  createDmaEndpoint(Location loc, StringRef name, Value tile, PoolRef ref,
-                    ObjectFifoRole role, ObjectFifoCreateOp from,
-                    BDDimLayoutArrayAttr dims, std::optional<int> channelIndex,
-                    std::optional<int> acqRelCount,
-                    std::optional<int> repeatCount,
-                    std::optional<int> transferSize) {
+  ObjectFifoDmaEndpointOp createDmaEndpoint(
+      Location loc, StringRef name, Value tile, PoolRef ref,
+      ObjectFifoRole role, ObjectFifoCreateOp from, BDDimLayoutArrayAttr dims,
+      std::optional<int> channelIndex, std::optional<int> acqRelCount,
+      std::optional<int> repeatCount, std::optional<int> transferSize) {
     // Only a MemTile's DMA runs its chain a fixed number of times, so the
     // count is recorded only where it is honored.
     std::optional<int32_t> iterCount;
@@ -628,8 +626,8 @@ void AIEObjectFifoSplitPass::runOnOperation() {
       prodTransfer = transferSizeInto(linked->second, elemType);
     } else if (prodIsShim) {
       if (!fifo.getPlio()) {
-        prodRef =
-            registeredPool(fifo, prodTile, (fifoName + "_pool").str(), elemType);
+        prodRef = registeredPool(fifo, prodTile, (fifoName + "_pool").str(),
+                                 elemType);
       }
     } else if (!prodStreamPort) {
       int depth = fifo.getInitValues() ? fifo.size()
@@ -656,11 +654,10 @@ void AIEObjectFifoSplitPass::runOnOperation() {
     }
     std::string prodDmaName = (fifoName + "_prod_dma").str();
     if (prodRef) {
-      createDmaEndpoint(loc, prodDmaName, prodTile, *prodRef,
-                        ObjectFifoRole::Drain, fifo,
-                        fifo.getDimensionsToStreamAttr(),
-                        fifo.getProdDmaChannel(), prodAcqRel,
-                        fifo.getRepeatCount(), prodTransfer);
+      createDmaEndpoint(
+          loc, prodDmaName, prodTile, *prodRef, ObjectFifoRole::Drain, fifo,
+          fifo.getDimensionsToStreamAttr(), fifo.getProdDmaChannel(),
+          prodAcqRel, fifo.getRepeatCount(), prodTransfer);
     } else {
       createDanglingEndpoint(
           loc, prodDmaName, prodTile, DMAChannelDir::MM2S,
@@ -693,9 +690,9 @@ void AIEObjectFifoSplitPass::runOnOperation() {
         consTransfer = transferSizeInto(linked->second, consElemType);
       } else if (consIsShim) {
         if (!fifo.getPlio()) {
-          consRef = registeredPool(fifo, consumerTile,
-                                   (fifoName + suffix + "_pool").str(),
-                                   consElemType);
+          consRef =
+              registeredPool(fifo, consumerTile,
+                             (fifoName + suffix + "_pool").str(), consElemType);
         }
       } else if (!consStreamPort) {
         int depth = isa<ArrayAttr>(fifo.getElemNumber())

@@ -52,7 +52,7 @@ module @stage1 {
     aie.objectfifo.pool @out2_pool(%tile23) {depth = 2 : i32, segments = [<offset = 0, size = 20>]} : memref<20xi32>
     aie.objectfifo.pool @out3_pool(%tile33) {depth = 2 : i32, segments = [<offset = 0, size = 12>]} : memref<12xi32>
 
-    aie.objectfifo.dma_endpoint @shim_out(%tile20) {}
+    aie.objectfifo.dangling_endpoint @shim_out(%tile20) MM2S DMA
 
     aie.objectfifo.dma_endpoint @mt_in(%tile21)   fills  @mt_pool
     aie.objectfifo.dma_endpoint @mt_out1(%tile21) drains @mt_pool {segments = [0]}
@@ -103,10 +103,10 @@ module @stage2 {
                    offset = 36, size = 12>]
     } : memref<48xi32>
 
-    aie.objectfifo.dma_endpoint @mt_in(%tile21)   fills  @mt_pool {channel = S2MM 0}
-    aie.objectfifo.dma_endpoint @mt_out1(%tile21) drains @mt_pool {segments = [0], channel = MM2S 0}
-    aie.objectfifo.dma_endpoint @mt_out2(%tile21) drains @mt_pool {segments = [1], channel = MM2S 1}
-    aie.objectfifo.dma_endpoint @mt_out3(%tile21) drains @mt_pool {segments = [2], channel = MM2S 2}
+    aie.objectfifo.dma_endpoint @mt_in(%tile21)   fills  @mt_pool {channelIndex = 0}
+    aie.objectfifo.dma_endpoint @mt_out1(%tile21) drains @mt_pool {segments = [0], channelIndex = 0}
+    aie.objectfifo.dma_endpoint @mt_out2(%tile21) drains @mt_pool {segments = [1], channelIndex = 1}
+    aie.objectfifo.dma_endpoint @mt_out3(%tile21) drains @mt_pool {segments = [2], channelIndex = 2}
 
     aie.shim_dma_allocation @in_shim_alloc(%tile20, MM2S, 0)
   }

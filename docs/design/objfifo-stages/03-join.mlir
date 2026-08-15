@@ -42,7 +42,7 @@ module @stage0 {
 //
 // The MemTile carries ONE pool of three segments. Three DMA endpoints fill it,
 // one per segment; a fourth drains all three. The source tiles have ordinary
-// single-segment pools of their own, and the shim endpoint has no pool.
+// single-segment pools of their own, and the shim end is dangling.
 //===----------------------------------------------------------------------===//
 
 module @stage1 {
@@ -76,7 +76,7 @@ module @stage1 {
     aie.objectfifo.dma_endpoint @mt_in3(%tile21) fills  @mt_pool {segments = [2]}
     aie.objectfifo.dma_endpoint @mt_out(%tile21) drains @mt_pool
 
-    aie.objectfifo.dma_endpoint @shim_in(%tile20) {}
+    aie.objectfifo.dangling_endpoint @shim_in(%tile20) S2MM DMA
 
     aie.objectfifo.flow from @link1_out to [@mt_in1]
     aie.objectfifo.flow from @link2_out to [@mt_in2]
@@ -89,8 +89,8 @@ module @stage1 {
 // STAGE 2 -- after --aie-objectfifo-allocate
 //
 // The MemTile pool gets two buffers sized for the whole object and one lock pair
-// per segment. Channels and flows follow, and the shim endpoint becomes a
-// shim allocation.
+// per segment. Channels and flows follow, and the shim end becomes a shim
+// allocation.
 //===----------------------------------------------------------------------===//
 
 module @stage2 {
@@ -117,10 +117,10 @@ module @stage2 {
 
     // source-tile pools are ordinary and private, one per tile
 
-    aie.objectfifo.dma_endpoint @mt_in1(%tile21) fills  @mt_pool {segments = [0], channel = S2MM 0}
-    aie.objectfifo.dma_endpoint @mt_in2(%tile21) fills  @mt_pool {segments = [1], channel = S2MM 1}
-    aie.objectfifo.dma_endpoint @mt_in3(%tile21) fills  @mt_pool {segments = [2], channel = S2MM 2}
-    aie.objectfifo.dma_endpoint @mt_out(%tile21) drains @mt_pool {channel = MM2S 0}
+    aie.objectfifo.dma_endpoint @mt_in1(%tile21) fills  @mt_pool {segments = [0], channelIndex = 0}
+    aie.objectfifo.dma_endpoint @mt_in2(%tile21) fills  @mt_pool {segments = [1], channelIndex = 1}
+    aie.objectfifo.dma_endpoint @mt_in3(%tile21) fills  @mt_pool {segments = [2], channelIndex = 2}
+    aie.objectfifo.dma_endpoint @mt_out(%tile21) drains @mt_pool {channelIndex = 0}
 
     aie.flow(%tile22, DMA : 0, %tile21, DMA : 0)
     aie.flow(%tile23, DMA : 0, %tile21, DMA : 1)

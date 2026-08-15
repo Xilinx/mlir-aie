@@ -132,8 +132,8 @@ module @stage2 {
     } : memref<16xi32>
 
     aie.objectfifo.core_endpoint @of1_prod_core(%tile12) fills  @of1_prod_pool
-    aie.objectfifo.dma_endpoint  @of1_prod_dma(%tile12)  drains @of1_prod_pool {channel = MM2S 0}
-    aie.objectfifo.dma_endpoint  @of1_cons_dma(%tile33)  fills  @of1_cons_pool  {channel = S2MM 0}
+    aie.objectfifo.dma_endpoint  @of1_prod_dma(%tile12)  drains @of1_prod_pool {channelIndex = 0}
+    aie.objectfifo.dma_endpoint  @of1_cons_dma(%tile33)  fills  @of1_cons_pool  {channelIndex = 0}
     aie.objectfifo.core_endpoint @of1_cons_core(%tile33) drains @of1_cons_pool
 
     aie.flow(%tile12, DMA : 0, %tile33, DMA : 0)

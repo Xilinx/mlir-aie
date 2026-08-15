@@ -84,8 +84,8 @@ struct AIEObjectFifoVerifyPass
     }
 
     for (auto endpoint : device.getOps<ObjectFifoFlowEndpoint>()) {
-      int count = appearances.lookup(
-          cast<SymbolOpInterface>(*endpoint).getName());
+      int count =
+          appearances.lookup(cast<SymbolOpInterface>(*endpoint).getName());
       if (count == 0) {
         return endpoint->emitOpError("is not connected by any flow");
       }

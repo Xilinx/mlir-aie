@@ -323,12 +323,12 @@ def AIE_ShimMuxOp: AIE_Op<"shim_mux", [
   }];
 }
 
-def AIE_ShimDMAOp: AIE_Op<"shim_dma", [
-    IsFlowEndPoint, TileElement, HasValidBDs,
-    DeclareOpInterfaceMethods<DmaBody>,
-    HasValidDMAChannels, IsShimNOCTile,
-    DeclareOpInterfaceMethods<InferTypeOpInterface>
-  ]>, Results<(outs Index)> {
+def AIE_ShimDMAOp
+    : AIE_Op<"shim_dma", [IsFlowEndPoint, TileElement, HasValidBDs,
+                          DeclareOpInterfaceMethods<DmaBody>,
+                          HasValidDMAChannels, IsShimNOCTile,
+                          DeclareOpInterfaceMethods<InferTypeOpInterface>]>,
+      Results<(outs Index)> {
   let arguments = (
     ins Index:$tile
   );
@@ -1321,12 +1321,11 @@ def AIE_DMAOp: AIE_Op<"dma", [
   }];
 }
 
-def AIE_MemOp: AIE_Op<"mem", [
-    TileElement, IsFlowEndPoint,
-    IsCoreTile, HasValidBDs, HasValidDMAChannels,
-    DeclareOpInterfaceMethods<DmaBody>,
-    DeclareOpInterfaceMethods<InferTypeOpInterface>
-  ]>, Results<(outs Index)> {
+def AIE_MemOp
+    : AIE_Op<"mem", [TileElement, IsFlowEndPoint, IsCoreTile, HasValidBDs,
+                     HasValidDMAChannels, DeclareOpInterfaceMethods<DmaBody>,
+                     DeclareOpInterfaceMethods<InferTypeOpInterface>]>,
+      Results<(outs Index)> {
   let summary = "Declare a memory op";
   let description = [{
     This operation creates a Memory module that belongs to a tile.
@@ -1361,12 +1360,12 @@ def AIE_MemOp: AIE_Op<"mem", [
   }];
 }
 
-def AIE_MemTileDMAOp: AIE_Op<"memtile_dma", [
-    TileElement, IsFlowEndPoint,
-    DeclareOpInterfaceMethods<DmaBody>,
-    IsMemTile, HasValidBDs, HasValidDMAChannels,
-    DeclareOpInterfaceMethods<InferTypeOpInterface>
-  ]>, Results<(outs Index)> {
+def AIE_MemTileDMAOp
+    : AIE_Op<"memtile_dma", [TileElement, IsFlowEndPoint,
+                             DeclareOpInterfaceMethods<DmaBody>, IsMemTile,
+                             HasValidBDs, HasValidDMAChannels,
+                             DeclareOpInterfaceMethods<InferTypeOpInterface>]>,
+      Results<(outs Index)> {
   let summary = "Declare a memtile_dma op";
   let description = [{
     This operation describes a DMA inside an AIE2 MemTile.
@@ -1596,10 +1595,11 @@ def AIE_UseLockOp: AIE_Op<"use_lock", []> {
   }];
 }
 
-def AIE_BufferOp: AIE_Op<"buffer", [
-    TileElement, IsTileWithMemory,
-    DeclareOpInterfaceMethods<BufferLike, ["getBufferTile"]>
-  ]>, Results<(outs AnyMemRef)> {
+def AIE_BufferOp
+    : AIE_Op<
+          "buffer", [TileElement, IsTileWithMemory,
+                     DeclareOpInterfaceMethods<BufferLike, ["getBufferTile"]>]>,
+      Results<(outs AnyMemRef)> {
   let summary = "Declare a buffer";
   let description = [{
     This operation instantiates a buffer that belongs to a Memory Module of a tile.
@@ -1665,10 +1665,11 @@ def AIE_BufferOp: AIE_Op<"buffer", [
   }];
 }
 
-def AIE_ExternalBufferOp: AIE_Op<"external_buffer", [
-    BufferLike,
-    DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>
-  ]>, Results<(outs AnyMemRef)> {
+def AIE_ExternalBufferOp
+    : AIE_Op<"external_buffer", [BufferLike,
+                                 DeclareOpInterfaceMethods<
+                                     OpAsmOpInterface, ["getAsmResultNames"]>]>,
+      Results<(outs AnyMemRef)> {
   let summary = "Declare a buffer in external memory";
   let description = [{
     This operation represents a buffer that exists in some physical
@@ -2326,7 +2327,7 @@ def AIE_ObjectFifoPoolOp
     llvm::SmallVector<ObjectFifoSegmentAttr> getSegmentAttrs();
 
     /// The objects themselves, empty until --aie-objectfifo-allocate has run.
-    /// A shim pool's objects are external buffers rather than aie.buffers.
+    /// Buffers registered against a shim end are aie.external_buffer.
     llvm::SmallVector<BufferLike> getBufferOps();
 
     /// Every lock the pool holds, whichever form the device uses.
@@ -2389,9 +2390,9 @@ def AIE_ObjectFifoCoreEndpointOp
 }
 
 def AIE_ObjectFifoDmaEndpointOp
-    : AIE_Op<"objectfifo.dma_endpoint",
-             [HasParent<"DeviceOp">, Symbol,
-              DeclareOpInterfaceMethods<ObjectFifoFlowEndpoint>]> {
+    : AIE_Op<"objectfifo.dma_endpoint", [HasParent<"DeviceOp">, Symbol,
+                                         DeclareOpInterfaceMethods<
+                                             ObjectFifoFlowEndpoint>]> {
   let summary =
       "What a DMA channel needs to fill or drain the next object in a pool";
   let description = [{
@@ -2424,10 +2425,16 @@ def AIE_ObjectFifoDmaEndpointOp
       DefaultValuedOptionalAttr<AIEI32Attr, "0">:$padValue,
       OptionalAttr<AIEI32Attr>:$repeatCount,
       OptionalAttr<AIEI32Attr>:$iterCount,
-      // Objects taken and given back per buffer descriptor.
+      // Objects taken and given back per buffer descriptor. A link that
+      // gathers `repeat_count` objects before passing them on takes that many
+      // locks at once, so its filling end waits for the whole batch rather
+      // than one object at a time.
       OptionalAttr<AIEI32Attr>:$acqRelCount,
       // Elements moved per buffer descriptor, where that is not the whole
-      // segment: the two ends of a link may disagree on an object's size.
+      // segment. Both ends of a link work through one pool, and the two fifos
+      // it joins may declare different object sizes: a fifo of memref<8xi32>
+      // linked into one of memref<16xi32> shares the larger object, and the
+      // smaller end's descriptors move 8 elements out of it.
       OptionalAttr<AIEI32Attr>:$transferSize,
       OptionalAttr<PacketInfoAttr>:$packet,
       // Name of the objectFifo this endpoint was split from, for the runtime
@@ -2453,9 +2460,9 @@ def AIE_ObjectFifoDmaEndpointOp
 }
 
 def AIE_ObjectFifoDanglingEndpointOp
-    : AIE_Op<"objectfifo.dangling_endpoint",
-             [HasParent<"DeviceOp">, Symbol,
-              DeclareOpInterfaceMethods<ObjectFifoFlowEndpoint>]> {
+    : AIE_Op<"objectfifo.dangling_endpoint", [HasParent<"DeviceOp">, Symbol,
+                                              DeclareOpInterfaceMethods<
+                                                  ObjectFifoFlowEndpoint>]> {
   let summary = "One end of a stream that this compiler does not program";
   let description = [{
     Holds a tile, a direction and a port, and nothing else: enough for

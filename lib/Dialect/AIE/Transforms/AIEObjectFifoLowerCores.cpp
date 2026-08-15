@@ -300,11 +300,10 @@ struct LowerAcquire : OpRewritePattern<ObjectFifoAcquireOp> {
     if (accessType != pool.getElemType()) {
       auto [offset, size] = endpoint.getExtent();
       for (Value &buffer : buffers) {
-        buffer = memref::SubViewOp::create(rewriter, loc, accessType, buffer,
-                                           ArrayRef<OpFoldResult>{
-                                               rewriter.getIndexAttr(offset)},
-                                           {rewriter.getIndexAttr(size)},
-                                           {rewriter.getIndexAttr(1)});
+        buffer = memref::SubViewOp::create(
+            rewriter, loc, accessType, buffer,
+            ArrayRef<OpFoldResult>{rewriter.getIndexAttr(offset)},
+            {rewriter.getIndexAttr(size)}, {rewriter.getIndexAttr(1)});
       }
     }
     Value counter =
@@ -442,7 +441,6 @@ struct AIEObjectFifoLowerCoresPass
   void runOnOperation() override {
     DeviceOp device = getOperation();
     OpBuilder builder(device.getContext());
-
 
     LoweringContext ctx{device, device.getTargetModel().hasProperty(
                                     AIETargetModel::UsesSemaphoreLocks)};

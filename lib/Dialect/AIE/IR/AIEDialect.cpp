@@ -899,9 +899,7 @@ DMAChannelDir ObjectFifoDanglingEndpointOp::getFlowDirection() {
   return getChannelDir();
 }
 
-WireBundle ObjectFifoDanglingEndpointOp::getFlowBundle() {
-  return getBundle();
-}
+WireBundle ObjectFifoDanglingEndpointOp::getFlowBundle() { return getBundle(); }
 
 std::optional<int> ObjectFifoDanglingEndpointOp::getFlowChannel() {
   return getChannelIndex();
