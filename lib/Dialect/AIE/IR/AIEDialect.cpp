@@ -817,19 +817,36 @@ LogicalResult ObjectFifoCoreEndpointOp::verify() {
     return failure();
   }
 
-  // A core is handed whole buffers, so a segment subset would need a
-  // memref.subview at the segment offset that the lowering does not yet emit.
-  // FIXME: emit that subview and drop this restriction; it is what would let
-  // cores take part in a join or distribute.
-  int64_t covered = 0;
+  // The core sees one memref, so the segments it selects have to be a single
+  // run of the object.
+  int64_t next = -1;
   for (ObjectFifoSegmentAttr segment : getSelectedSegments()) {
-    covered += segment.getSize();
-  }
-  if (covered != pool.getObjectSize()) {
-    return emitOpError("a core endpoint must cover its pool's whole object; "
-                       "selecting a subset of segments is not supported yet");
+    if (next >= 0 && segment.getOffset() != next) {
+      return emitOpError("a core endpoint's segments must be contiguous");
+    }
+    next = segment.getOffset() + segment.getSize();
   }
   return success();
+}
+
+std::pair<int64_t, int64_t> ObjectFifoCoreEndpointOp::getExtent() {
+  SmallVector<ObjectFifoSegmentAttr> selected = getSelectedSegments();
+  if (selected.empty()) {
+    return {0, 0};
+  }
+  int64_t offset = selected.front().getOffset();
+  int64_t end = selected.back().getOffset() + selected.back().getSize();
+  return {offset, end - offset};
+}
+
+MemRefType ObjectFifoCoreEndpointOp::getAccessType() {
+  MemRefType elemType = getPoolOp().getElemType();
+  auto [offset, size] = getExtent();
+  if (offset == 0 && size == elemType.getNumElements()) {
+    return elemType;
+  }
+  return cast<MemRefType>(memref::SubViewOp::inferRankReducedResultType(
+      {size}, elemType, {offset}, {size}, {1}));
 }
 
 TileLike ObjectFifoDmaEndpointOp::getTileLike() {
@@ -1447,8 +1464,8 @@ Type accessElementType(Operation *target) {
     return llvm::cast<AIEObjectFifoType>(fifo.getElemType()).getElementType();
   }
   if (auto endpoint = dyn_cast_or_null<ObjectFifoCoreEndpointOp>(target)) {
-    if (auto pool = endpoint.getPoolOp()) {
-      return pool.getElemType();
+    if (endpoint.getPoolOp()) {
+      return endpoint.getAccessType();
     }
   }
   return {};

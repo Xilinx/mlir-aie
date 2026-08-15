@@ -244,7 +244,7 @@ struct LowerAcquire : OpRewritePattern<ObjectFifoAcquireOp> {
       emitBinaryUseLocks(rewriter, loc, locks, pool.getDepth(),
                          endpoint.drains(), index.getResult(), wanted * repeat,
                          LockAction::Acquire);
-      return replaceWithObjects(acquireOp, pool, key, rewriter);
+      return replaceWithObjects(acquireOp, endpoint, key, rewriter);
     }
 
     // An acquire names every object the core wants to hold, so only the ones
@@ -273,14 +273,15 @@ struct LowerAcquire : OpRewritePattern<ObjectFifoAcquireOp> {
     Value next = arith::AddIOp::create(rewriter, loc, current, delta);
     memref::StoreOp::create(rewriter, loc, next, held.getResult(),
                             ValueRange{});
-    return replaceWithObjects(acquireOp, pool, key, rewriter);
+    return replaceWithObjects(acquireOp, endpoint, key, rewriter);
   }
 
   /// Hand back the objects the rotating index selects, one per result.
   LogicalResult replaceWithObjects(ObjectFifoAcquireOp acquireOp,
-                                   ObjectFifoPoolOp pool,
+                                   ObjectFifoCoreEndpointOp endpoint,
                                    std::pair<Operation *, Operation *> key,
                                    PatternRewriter &rewriter) const {
+    ObjectFifoPoolOp pool = endpoint.getPoolOp();
     SmallVector<Value> buffers;
     for (BufferLike buffer : pool.getBufferOps()) {
       buffers.push_back(buffer.getBuffer());
@@ -292,6 +293,20 @@ struct LowerAcquire : OpRewritePattern<ObjectFifoAcquireOp> {
     assert(index && "a rotation counter is created for every acquire");
 
     Location loc = acquireOp.getLoc();
+
+    // An endpoint holding one side of a join or distribute reaches only its
+    // own run of each object.
+    MemRefType accessType = endpoint.getAccessType();
+    if (accessType != pool.getElemType()) {
+      auto [offset, size] = endpoint.getExtent();
+      for (Value &buffer : buffers) {
+        buffer = memref::SubViewOp::create(rewriter, loc, accessType, buffer,
+                                           ArrayRef<OpFoldResult>{
+                                               rewriter.getIndexAttr(offset)},
+                                           {rewriter.getIndexAttr(size)},
+                                           {rewriter.getIndexAttr(1)});
+      }
+    }
     Value counter =
         memref::LoadOp::create(rewriter, loc, index.getResult(), ValueRange{});
     Value idx = arith::IndexCastOp::create(rewriter, loc,

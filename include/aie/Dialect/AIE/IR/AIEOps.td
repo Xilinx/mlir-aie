@@ -2348,6 +2348,10 @@ def AIE_ObjectFifoCoreEndpointOp
     A core's `aie.objectfifo.acquire` and `aie.objectfifo.release` refer to this
     op, so they carry no direction of their own.
 
+    An endpoint covering only part of an object hands the core a
+    `memref.subview` of the run its segments span, so a core can take one side
+    of a join or distribute.
+
     Example:
     ```
       aie.objectfifo.core_endpoint @reader(%tile) drains @pool
@@ -2373,6 +2377,14 @@ def AIE_ObjectFifoCoreEndpointOp
     /// Segments this endpoint is responsible for, all of the pool's when it
     /// names none.
     llvm::SmallVector<ObjectFifoSegmentAttr> getSelectedSegments();
+
+    /// The run of elements this endpoint's segments span, as an offset into
+    /// the pool's object and a length.
+    std::pair<int64_t, int64_t> getExtent();
+
+    /// The memref a core acquires through this endpoint: the pool's own type
+    /// where it covers the whole object, and a view into it otherwise.
+    mlir::MemRefType getAccessType();
   }];
 }
 

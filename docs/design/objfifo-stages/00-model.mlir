@@ -140,8 +140,7 @@
 // which gives three shapes:
 //
 //   one segment spanning the object   -> the buffer itself
-//   one segment that is a strict slice -> a memref.subview at its offset,
-//                                         not emitted yet and so rejected
+//   a run of segments short of it     -> a memref.subview over that run
 //   every segment of a partitioned object -> the buffer itself, after N acquires
 //
 // A core endpoint's selection is fixed, so every acquire on it yields the same
@@ -240,11 +239,9 @@
 //
 // IMPLEMENTATION NOTES
 //
-// 1. A core endpoint whose segments do not span the whole buffer would need a
-//    memref.subview at the segment offset before the object is handed over.
-//    That is not emitted yet, so the verifier rejects such an endpoint rather
-//    than handing over the whole buffer; implementing it is what would let
-//    cores take part in a join or distribute.
+// 1. A core sees one memref, so a core endpoint's segments must be a single
+//    run of the object. The subview it is handed carries the run's offset in
+//    its layout, giving a type like memref<16xi32, strided<[1], offset: 16>>.
 //
 // 2. A multi-segment core acquire takes one lock per segment before the object
 //    may be touched. The delta computation is unchanged; it is applied to each.
