@@ -189,10 +189,8 @@ using DMAChannel = struct DMAChannel {
 const AIETargetModel &getTargetModel(mlir::Operation *op);
 const AIETargetModel &getTargetModel(AIEDevice device);
 
-/// Whether `a` and `b` reach a common memory module, and whose it is:
-/// `shareDirection` becomes 2 when either tile's module will do, -1 for `a`'s,
-/// 1 for `b`'s, and 0 when they share none.
-bool isSharedMemory(TileOp a, TileOp b, int *shareDirection);
+/// Which of `a`'s and `b`'s memory modules both tiles can address.
+AIETargetModel::SharedMemory sharedMemory(TileOp a, TileOp b);
 
 mlir::ParseResult
 parseObjectFifoProducerTile(mlir::OpAsmParser &parser,

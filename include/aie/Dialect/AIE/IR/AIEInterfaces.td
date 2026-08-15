@@ -154,6 +154,21 @@ def TileElement : OpInterface<"TileElement", [
   }];
 }
 
+def BufferLike : OpInterface<"BufferLike"> {
+  let description = [{
+    Interface for the ops that declare storage a DMA or a core can address:
+    `aie.buffer` in a tile's memory module and `aie.external_buffer` in DDR.
+  }];
+  let cppNamespace = "::xilinx::AIE";
+  let methods = [
+    InterfaceMethod<[{The memref this op declares.}],
+      "mlir::Value", "getBuffer", (ins), [{}], [{ return $_op.getBuffer(); }]>,
+    InterfaceMethod<[{The tile whose memory module holds this buffer, null
+      where it lives outside the array.}],
+      "mlir::Value", "getBufferTile", (ins), [{}], [{ return nullptr; }]>,
+  ];
+}
+
 def ObjectFifoFlowEndpoint : OpInterface<"ObjectFifoFlowEndpoint"> {
   let description = [{
     Interface for the ops an `aie.objectfifo.flow` connects. Gives

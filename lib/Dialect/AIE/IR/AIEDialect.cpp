@@ -205,34 +205,9 @@ const AIETargetModel &xilinx::AIE::getTargetModel(Operation *op) {
   return VC1902model;
 }
 
-bool xilinx::AIE::isSharedMemory(TileOp a, TileOp b, int *shareDirection) {
-  const auto &targetModel = getTargetModel(a.getOperation());
-
-  // A shim or mem tile's memory module is only ever reachable from its own
-  // kind, so tiles of different kinds share nothing.
-  if (a.isShimTile() != b.isShimTile() ||
-      targetModel.isMemTile(a.getCol(), a.getRow()) !=
-          targetModel.isMemTile(b.getCol(), b.getRow())) {
-    *shareDirection = 0;
-    return false;
-  }
-
-  bool rightShared = targetModel.isLegalMemAffinity(a.colIndex(), a.rowIndex(),
-                                                    b.colIndex(), b.rowIndex());
-  bool leftShared = targetModel.isLegalMemAffinity(b.colIndex(), b.rowIndex(),
-                                                   a.colIndex(), a.rowIndex());
-
-  if (leftShared && rightShared) {
-    *shareDirection = 2;
-  } else if (leftShared) {
-    *shareDirection = -1;
-  } else if (rightShared) {
-    *shareDirection = 1;
-  } else {
-    *shareDirection = 0;
-  }
-
-  return leftShared || rightShared;
+AIETargetModel::SharedMemory xilinx::AIE::sharedMemory(TileOp a, TileOp b) {
+  return getTargetModel(a.getOperation())
+      .getSharedMemory({a.getCol(), a.getRow()}, {b.getCol(), b.getRow()});
 }
 
 const AIETargetModel &xilinx::AIE::getTargetModel(AIEDevice device) {
@@ -652,7 +627,8 @@ SmallVector<OpTy> lookupAll(Operation *from, std::optional<ArrayAttr> names) {
   SmallVector<OpTy> ops;
   if (names) {
     for (auto name : names->getAsRange<FlatSymbolRefAttr>()) {
-      if (auto op = SymbolTable::lookupNearestSymbolFrom<OpTy>(from, name)) {
+      if (auto op = dyn_cast_or_null<OpTy>(
+              SymbolTable::lookupNearestSymbolFrom(from, name.getAttr()))) {
         ops.push_back(op);
       }
     }
@@ -738,17 +714,10 @@ SmallVector<ObjectFifoSegmentAttr> ObjectFifoPoolOp::getSegmentAttrs() {
   return segments;
 }
 
-SmallVector<Value> ObjectFifoPoolOp::getObjects() {
-  SmallVector<Value> objects;
-  if (auto names = getBuffers()) {
-    for (auto name : names->getAsRange<FlatSymbolRefAttr>()) {
-      if (Operation *op =
-              SymbolTable::lookupNearestSymbolFrom(*this, name.getAttr())) {
-        objects.push_back(op->getResult(0));
-      }
-    }
-  }
-  return objects;
+Value BufferOp::getBufferTile() { return getTile(); }
+
+SmallVector<BufferLike> ObjectFifoPoolOp::getBufferOps() {
+  return lookupAll<BufferLike>(*this, getBuffers());
 }
 
 SmallVector<LockOp> ObjectFifoPoolOp::getLockOps() {

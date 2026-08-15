@@ -281,7 +281,10 @@ struct LowerAcquire : OpRewritePattern<ObjectFifoAcquireOp> {
                                    ObjectFifoPoolOp pool,
                                    std::pair<Operation *, Operation *> key,
                                    PatternRewriter &rewriter) const {
-    SmallVector<Value> buffers = pool.getObjects();
+    SmallVector<Value> buffers;
+    for (BufferLike buffer : pool.getBufferOps()) {
+      buffers.push_back(buffer.getBuffer());
+    }
     if (buffers.empty()) {
       return success();
     }

@@ -1597,7 +1597,8 @@ def AIE_UseLockOp: AIE_Op<"use_lock", []> {
 }
 
 def AIE_BufferOp: AIE_Op<"buffer", [
-    TileElement, IsTileWithMemory
+    TileElement, IsTileWithMemory,
+    DeclareOpInterfaceMethods<BufferLike, ["getBufferTile"]>
   ]>, Results<(outs AnyMemRef)> {
   let summary = "Declare a buffer";
   let description = [{
@@ -1665,6 +1666,7 @@ def AIE_BufferOp: AIE_Op<"buffer", [
 }
 
 def AIE_ExternalBufferOp: AIE_Op<"external_buffer", [
+    BufferLike,
     DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>
   ]>, Results<(outs AnyMemRef)> {
   let summary = "Declare a buffer in external memory";
@@ -2325,7 +2327,7 @@ def AIE_ObjectFifoPoolOp
 
     /// The objects themselves, empty until --aie-objectfifo-allocate has run.
     /// A shim pool's objects are external buffers rather than aie.buffers.
-    llvm::SmallVector<mlir::Value> getObjects();
+    llvm::SmallVector<BufferLike> getBufferOps();
 
     /// Every lock the pool holds, whichever form the device uses.
     llvm::SmallVector<LockOp> getLockOps();

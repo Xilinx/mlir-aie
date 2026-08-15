@@ -73,9 +73,9 @@ struct AIEObjectFifoAllocatePass
       }
       TileOp neighbor =
           TileOp::getOrCreate(builder, device, col, homeOp.getRow());
-      int direction = 0;
-      if (isSharedMemory(homeOp, neighbor, &direction) &&
-          (direction == 1 || direction == 2)) {
+      using SharedMemory = AIETargetModel::SharedMemory;
+      SharedMemory shared = sharedMemory(homeOp, neighbor);
+      if (shared == SharedMemory::Second || shared == SharedMemory::Either) {
         neighbors.push_back(neighbor);
       }
     }
@@ -216,9 +216,9 @@ struct AIEObjectFifoAllocatePass
       return false;
     }
     ObjectFifoPoolOp pool = dma.getPoolOp();
-    return pool && llvm::any_of(pool.getObjects(), [&](Value object) {
-             auto buffer = dyn_cast<BufferOp>(object.getDefiningOp());
-             return buffer && buffer.getTile() != pool.getTile();
+    return pool && llvm::any_of(pool.getBufferOps(), [&](BufferLike buffer) {
+             Value tile = buffer.getBufferTile();
+             return tile && tile != pool.getTile();
            });
   }
 

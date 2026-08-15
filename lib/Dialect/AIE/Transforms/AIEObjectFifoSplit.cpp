@@ -68,31 +68,32 @@ getOptionalAllocateOp(ObjectFifoCreateOp op) {
 /// Whether `delegate`'s memory module is reachable from both ends of `op`.
 bool delegateReachesBothEnds(ObjectFifoCreateOp op, TileOp delegate) {
   auto consumerTileOp = cast<TileOp>(op.getConsumerTiles()[0].getDefiningOp());
-  int toProducer = 0, toConsumer = 0;
-  isSharedMemory(delegate, op.getProducerTileOp(), &toProducer);
-  isSharedMemory(delegate, consumerTileOp, &toConsumer);
-  return (toProducer == -1 || toProducer == 2) &&
-         (toConsumer == -1 || toConsumer == 2);
+  auto reachesDelegate = [&](TileOp end) {
+    using SharedMemory = AIETargetModel::SharedMemory;
+    SharedMemory shared = sharedMemory(delegate, end);
+    return shared == SharedMemory::First || shared == SharedMemory::Either;
+  };
+  return reachesDelegate(op.getProducerTileOp()) &&
+         reachesDelegate(consumerTileOp);
 }
 
 /// A fifo needs DMAs unless both ends reach one memory module and neither end
 /// asks the DMA to reshape the data on the way.
-bool requiresDMAs(ObjectFifoCreateOp createOp, int &shareDirection) {
+bool requiresDMAs(ObjectFifoCreateOp createOp,
+                  AIETargetModel::SharedMemory &shared) {
   if (createOp.getVia_DMA() || createOp.getRepeatCount() ||
       createOp.getAieStream() || createOp.getConsumerElemType()) {
     return true;
   }
 
-  bool hasSharedMemory = false;
   if (createOp.getConsumerTiles().size() == 1 &&
       createOp.getDimensionsToStream().empty()) {
     auto consumerTileOp =
         cast<TileOp>(createOp.getConsumerTiles()[0].getDefiningOp());
-    hasSharedMemory = isSharedMemory(createOp.getProducerTileOp(),
-                                     consumerTileOp, &shareDirection);
+    shared = sharedMemory(createOp.getProducerTileOp(), consumerTileOp);
   }
 
-  if (!hasSharedMemory) {
+  if (shared == AIETargetModel::SharedMemory::None) {
     return true;
   }
 
@@ -554,8 +555,8 @@ void AIEObjectFifoSplitPass::runOnOperation() {
         cast<AIEObjectFifoType>(fifo.getConsumerElemTypeOrDefault())
             .getElementType());
 
-    int shareDirection = 0;
-    bool shared = !requiresDMAs(fifo, shareDirection);
+    auto sharedModule = AIETargetModel::SharedMemory::None;
+    bool shared = !requiresDMAs(fifo, sharedModule);
 
     if (shared) {
       PoolRef ref;
@@ -566,8 +567,9 @@ void AIEObjectFifoSplitPass::runOnOperation() {
                  linked != linkedConsumerEnd.end()) {
         ref = linked->second;
       } else {
-        Value tile = shareDirection == 1 ? fifo.getConsumerTiles()[0]
-                                         : fifo.getProducerTile();
+        Value tile = sharedModule == AIETargetModel::SharedMemory::Second
+                         ? fifo.getConsumerTiles()[0]
+                         : fifo.getProducerTile();
         // An aie.objectfifo.allocate names the tile whose memory is to hold the
         // objects, in place of either end's own.
         if (auto alloc = getOptionalAllocateOp(fifo)) {

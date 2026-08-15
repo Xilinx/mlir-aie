@@ -78,7 +78,11 @@ struct AIEObjectFifoLowerDMAsPass
 
   /// Objects the endpoint moves.
   SmallVector<Value> buffersOf(ObjectFifoPoolOp pool) {
-    return pool ? pool.getObjects() : SmallVector<Value>{};
+    SmallVector<Value> buffers;
+    for (BufferLike buffer : pool.getBufferOps()) {
+      buffers.push_back(buffer.getBuffer());
+    }
+    return buffers;
   }
 
   /// Buffer-major, segment-minor: the DMA walks the objects in turn, and within
