@@ -1550,7 +1550,8 @@ def AIE_DMAStartBdChainForOp: AIEX_Op<"dma_start_bd_chain_for", [HasParent<"AIE:
   }];
 }
 
-def AIEX_SetLockOp: AIEX_Op<"set_lock", [HasAncestor<"AIE::RuntimeSequenceOp">, SkipAccessibilityCheckTrait]> {
+def AIEX_SetLockOp : AIEX_Op<"set_lock", [HasAncestor<"AIE::RuntimeSequenceOp">,
+                                          SkipAccessibilityCheckTrait]> {
   let summary = "Set the value of a lock";
   let description = [{
     This operation sets the value of `lock` inside of a RuntimeSequenceOp.
