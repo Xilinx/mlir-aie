@@ -622,16 +622,26 @@ struct MergeConsecutiveCertUcDmaWriteDesSyncOps
 
   LogicalResult matchAndRewrite(AIEX::CertUcDmaWriteDesSyncOp op,
                                 PatternRewriter &rewriter) const override {
+    // Fusing the two enqueues sinks the earlier one to the later one's position
+    // in the job, so every op scanned over is an op the earlier DMA is moved
+    // past. Only ops with no architectural effect at all may be crossed; this
+    // is an allowlist rather than a denylist so a cert op added to this dialect
+    // later blocks the merge by default instead of silently becoming
+    // reorderable with respect to a DMA enqueue. cert.nop is the only such op
+    // today: it emits padding and carries no ordering, sync or side effect.
+    auto isTransparentToMerge = [](Operation *o) {
+      return isa<AIEX::CertNopOp>(o);
+    };
+
     // Get the previous operation in the block
     Block::iterator it(op);
     AIEX::CertUcDmaWriteDesSyncOp prevWriteDesSync = nullptr;
     while (it != op->getBlock()->begin() && !prevWriteDesSync) {
       --it;
       Operation *prevOp = &*it;
-      if (isa<AIEX::CertWrite32Op, AIEX::CertMaskWrite32Op,
-              AIEX::CertApplyOffset57Op, AIEX::CertWaitTCTSOp>(prevOp))
-        return failure();
       prevWriteDesSync = dyn_cast<AIEX::CertUcDmaWriteDesSyncOp>(prevOp);
+      if (!prevWriteDesSync && !isTransparentToMerge(prevOp))
+        return failure();
     }
     if (!prevWriteDesSync)
       return failure();
@@ -645,6 +655,21 @@ struct MergeConsecutiveCertUcDmaWriteDesSyncOps
         prevWriteDesSync->getParentOfType<AIE::DeviceOp>().lookupSymbol(
             prev_sym_name));
     if (!chain || !prevChain)
+      return failure();
+
+    // The merge rewrites @chain's BD list in place and deletes @prevChain, so
+    // both symbols must be private to this pair of enqueues. Cert IR that is
+    // hand-authored rather than lowered from npu ops may enqueue one chain from
+    // several places: folding into a shared @chain would silently change those
+    // other enqueues, and erasing a shared @prevChain would leave a dangling
+    // symbol reference that neither the verifier nor the page cost model
+    // notices. Decline the merge instead.
+    auto deviceOp = op->getParentOfType<AIE::DeviceOp>();
+    auto isSingleUse = [&](AIEX::CertUcDmaChainOp c) {
+      auto uses = SymbolTable::getSymbolUses(c, deviceOp);
+      return uses && llvm::hasSingleElement(*uses);
+    };
+    if (!isSingleUse(chain) || !isSingleUse(prevChain))
       return failure();
 
     // Compute the size of the current and previous chains. If their combined
