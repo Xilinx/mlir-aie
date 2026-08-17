@@ -137,8 +137,9 @@ aie.device(npu2) {
 
 // -----
 
-// Case 4: a boundary cut is still subject to T5.1, and here it is the only cut
-// that obeys it. The local_barrier group spans jobs 2 and 3, so every interior
+// Case 4: a boundary cut is still subject to local_barrier co-location
+// (G-localbar), and here it is the only cut that obeys it. The local_barrier
+// group spans jobs 2 and 3, so every interior
 // position inside them separates its participants; the boundary between job 1
 // and job 2 sits just ahead of the group and keeps it whole. Cutting there is
 // the difference between splitting this page and refusing to (the cost search's
