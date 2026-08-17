@@ -15,7 +15,9 @@
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 #include <map>
+#include <set>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 namespace xilinx::AIEX {
@@ -1319,6 +1321,18 @@ namespace {
 struct IsolateFullPageOpsPattern : OpRewritePattern<AIEX::CertJobOp> {
   using OpRewritePattern::OpRewritePattern;
 
+  // Create an empty, terminated cert.page directly after `after`, in the same
+  // block. Staying in `after`'s block is what keeps a page that was moved into
+  // a cert.attach_to_group by placement lowering on its uC.
+  static AIEX::CertPageOp makePageAfter(PatternRewriter &rewriter,
+                                        Operation *after, Location loc) {
+    rewriter.setInsertionPointAfter(after);
+    auto page = AIEX::CertPageOp::create(rewriter, loc);
+    page.getBody().push_back(new Block());
+    AIEX::CertPageOp::ensureTerminator(page.getBody(), rewriter, loc);
+    return page;
+  }
+
   LogicalResult matchAndRewrite(AIEX::CertJobOp jobOp,
                                 PatternRewriter &rewriter) const override {
 
@@ -1337,148 +1351,102 @@ struct IsolateFullPageOpsPattern : OpRewritePattern<AIEX::CertJobOp> {
     if (!fullPageOp)
       return failure(); // No full-page op in this job
 
-    // Check if this job ONLY contains the full-page op (and terminator)
+    auto parentPage = jobOp->getParentOfType<AIEX::CertPageOp>();
+    if (!parentPage)
+      return failure(); // No parent page (unusual but skip)
+
+    // Real ops in this job (the terminator does not count).
     size_t opCount = 0;
-    for (Operation &op : jobOp.getBody().front().getOperations()) {
+    for (Operation &op : jobOp.getBody().front().getOperations())
       if (!isa<AIE::EndOp>(op))
         opCount++;
+
+    // Pages execute in order, so the rewrite has to preserve this job's
+    // position among its *siblings*, not just relative to the parent page:
+    // anchoring every new page on the parent page's boundary hoists the jobs
+    // that surround this one across the isolated load_pdi/preempt. Nothing
+    // downstream checks op order, so that reordering is silent.
+    SmallVector<Operation *> leadingSiblings, trailingSiblings;
+    bool pastSelf = false;
+    for (Operation &op : parentPage.getBody().front()) {
+      if (isa<AIE::EndOp>(op))
+        continue;
+      if (&op == jobOp.getOperation()) {
+        pastSelf = true;
+        continue;
+      }
+      (pastSelf ? trailingSiblings : leadingSiblings).push_back(&op);
     }
+
+    // Already properly isolated: sole op of the sole job of its page.
+    if (opCount == 1 && leadingSiblings.empty() && trailingSiblings.empty())
+      return failure();
+
+    auto loc = jobOp.getLoc();
+
+    // The parent page stays where it is and keeps the leading siblings; every
+    // page created below is chained after it, in program order.
+    Operation *anchor = parentPage.getOperation();
 
     if (opCount == 1) {
-      // Job only contains full-page op - check if it's in its own page
-      auto parentPage = jobOp->getParentOfType<AIEX::CertPageOp>();
-      if (!parentPage)
-        return failure(); // No parent page (unusual but skip)
+      // The job is exactly the full-page op: it just needs a page of its own.
+      auto isolatedPage = makePageAfter(rewriter, anchor, loc);
+      jobOp->moveBefore(isolatedPage.getBody().front().getTerminator());
+      anchor = isolatedPage;
+    } else {
+      // Mixed job: split it into up to three jobs, each on its own page, in
+      // source order (ops before the full-page op, it, then the ops after).
+      auto parentDevice = jobOp->getParentOfType<AIE::DeviceOp>();
+      uint32_t maxJobId = 0;
+      parentDevice.walk([&](AIEX::CertJobOp certJobOp) {
+        maxJobId = std::max(maxJobId, certJobOp.getJobId());
+      });
+      uint32_t beforeJobId = jobOp.getJobId();
+      uint32_t fullPageJobId = maxJobId + 1;
+      uint32_t afterJobId = maxJobId + 2;
 
-      // Count jobs in parent page
-      size_t jobCount = 0;
-      for (Operation &op : parentPage.getBody().front().getOperations()) {
-        if (isa<AIEX::CertJobOp>(op))
-          jobCount++;
-      }
+      SmallVector<Operation *> beforeOps, afterOps;
+      for (Block::iterator it = jobOp.getBody().front().begin();
+           it != fullPageOpIter; ++it)
+        if (!isa<AIE::EndOp>(*it))
+          beforeOps.push_back(&*it);
+      Block::iterator afterStart = std::next(fullPageOpIter);
+      for (Block::iterator it = afterStart; it != jobOp.getBody().front().end();
+           ++it)
+        if (!isa<AIE::EndOp>(*it))
+          afterOps.push_back(&*it);
 
-      if (jobCount == 1)
-        return failure(); // Already properly isolated
+      auto emitJobPage = [&](uint32_t jobId, ArrayRef<Operation *> ops) {
+        auto page = makePageAfter(rewriter, anchor, loc);
+        rewriter.setInsertionPoint(page.getBody().front().getTerminator());
+        auto job = AIEX::CertJobOp::create(rewriter, loc, jobId);
+        job.getBody().push_back(new Block());
+        AIEX::CertJobOp::ensureTerminator(job.getBody(), rewriter, loc);
+        for (Operation *op : ops)
+          op->moveBefore(job.getBody().front().getTerminator());
+        anchor = page;
+      };
 
-      // Job is isolated but shares page - need to move to own page
-      auto loc = jobOp.getLoc();
-      rewriter.setInsertionPointAfter(parentPage);
+      if (!beforeOps.empty())
+        emitJobPage(beforeJobId, beforeOps);
+      emitJobPage(fullPageJobId, {fullPageOp});
+      if (!afterOps.empty())
+        emitJobPage(afterJobId, afterOps);
 
-      // Create new page for this job
-      auto newPageOp = AIEX::CertPageOp::create(rewriter, loc);
-      Block *newPageBlock = new Block();
-      newPageOp.getBody().push_back(newPageBlock);
-
-      // Move the job to the new page
-      rewriter.setInsertionPointToStart(newPageBlock);
-      jobOp->moveBefore(newPageBlock, newPageBlock->begin());
-
-      AIEX::CertPageOp::ensureTerminator(newPageOp.getBody(), rewriter, loc);
-
-      return success();
+      rewriter.eraseOp(jobOp);
     }
 
-    // Job contains full-page op mixed with other operations - need to split
-    auto loc = jobOp.getLoc();
-    auto parentDevice = jobOp->getParentOfType<AIE::DeviceOp>();
-
-    // Assign new job IDs
-    uint32_t maxJobId = 0;
-    parentDevice.walk([&](AIEX::CertJobOp certJobOp) {
-      maxJobId = std::max(maxJobId, certJobOp.getJobId());
-    });
-
-    uint32_t beforeJobId = jobOp.getJobId();
-    uint32_t fullPageJobId = maxJobId + 1;
-    uint32_t afterJobId = maxJobId + 2;
-
-    // Collect operations before full-page op
-    SmallVector<Operation *> beforeOps;
-    for (Block::iterator it = jobOp.getBody().front().begin();
-         it != fullPageOpIter; ++it) {
-      if (!isa<AIE::EndOp>(*it))
-        beforeOps.push_back(&*it);
+    // The trailing siblings cannot stay on the parent page, which now precedes
+    // the isolated page, so they move to a page of their own behind it.
+    if (!trailingSiblings.empty()) {
+      auto tailPage = makePageAfter(rewriter, anchor, loc);
+      for (Operation *op : trailingSiblings)
+        op->moveBefore(tailPage.getBody().front().getTerminator());
     }
 
-    // Collect operations after full-page op
-    SmallVector<Operation *> afterOps;
-    Block::iterator afterStart = fullPageOpIter;
-    ++afterStart; // Skip the full-page op itself
-    for (Block::iterator it = afterStart; it != jobOp.getBody().front().end();
-         ++it) {
-      if (!isa<AIE::EndOp>(*it))
-        afterOps.push_back(&*it);
-    }
-
-    // Get parent page to insert new pages after it
-    auto parentPage = jobOp->getParentOfType<AIEX::CertPageOp>();
-    rewriter.setInsertionPoint(parentPage);
-
-    // Create first page with operations before full-page op (if any)
-    if (!beforeOps.empty()) {
-      auto page1 = AIEX::CertPageOp::create(rewriter, loc);
-      Block *page1Block = new Block();
-      page1.getBody().push_back(page1Block);
-      rewriter.setInsertionPointToStart(page1Block);
-
-      auto job1 = AIEX::CertJobOp::create(rewriter, loc, beforeJobId);
-      Block *job1Block = new Block();
-      job1.getBody().push_back(job1Block);
-      rewriter.setInsertionPointToStart(job1Block);
-
-      for (Operation *op : beforeOps) {
-        op->moveBefore(job1Block, job1Block->end());
-      }
-
-      AIEX::CertJobOp::ensureTerminator(job1.getBody(), rewriter, loc);
-      AIEX::CertPageOp::ensureTerminator(page1.getBody(), rewriter, loc);
-    }
-
-    // Create page with full-page op in its own job
-    rewriter.setInsertionPointAfter(parentPage);
-    auto page2 = AIEX::CertPageOp::create(rewriter, loc);
-    Block *page2Block = new Block();
-    page2.getBody().push_back(page2Block);
-    rewriter.setInsertionPointToStart(page2Block);
-
-    auto job2 = AIEX::CertJobOp::create(rewriter, loc, fullPageJobId);
-    Block *job2Block = new Block();
-    job2.getBody().push_back(job2Block);
-    rewriter.setInsertionPointToStart(job2Block);
-
-    fullPageOp->moveBefore(job2Block, job2Block->end());
-
-    AIEX::CertJobOp::ensureTerminator(job2.getBody(), rewriter, loc);
-    AIEX::CertPageOp::ensureTerminator(page2.getBody(), rewriter, loc);
-
-    // Create third page with operations after full-page op (if any)
-    if (!afterOps.empty()) {
-      rewriter.setInsertionPointAfter(page2);
-      auto page3 = AIEX::CertPageOp::create(rewriter, loc);
-      Block *page3Block = new Block();
-      page3.getBody().push_back(page3Block);
-      rewriter.setInsertionPointToStart(page3Block);
-
-      auto job3 = AIEX::CertJobOp::create(rewriter, loc, afterJobId);
-      Block *job3Block = new Block();
-      job3.getBody().push_back(job3Block);
-      rewriter.setInsertionPointToStart(job3Block);
-
-      for (Operation *op : afterOps) {
-        op->moveBefore(job3Block, job3Block->end());
-      }
-
-      AIEX::CertJobOp::ensureTerminator(job3.getBody(), rewriter, loc);
-      AIEX::CertPageOp::ensureTerminator(page3.getBody(), rewriter, loc);
-    }
-
-    // Erase the original job and page
-    rewriter.eraseOp(jobOp);
-    if (parentPage.getBody().front().empty() ||
-        llvm::all_of(parentPage.getBody().front(),
-                     [](Operation &op) { return isa<AIE::EndOp>(op); })) {
+    if (llvm::all_of(parentPage.getBody().front(),
+                     [](Operation &op) { return isa<AIE::EndOp>(op); }))
       rewriter.eraseOp(parentPage);
-    }
 
     return success();
   }
@@ -1792,7 +1760,25 @@ static void formImplicitPagesInBlock(Block *body, OpBuilder &builder) {
     return page;
   };
 
+  // The (tile, channel) actors a job wait_tcts on, keyed exactly as
+  // AIECertVerify's G-tct check (checkWaitTctsUniqueness) keys them so the two
+  // stay consistent.
+  auto waitTctsActors = [](AIEX::CertJobOp job) {
+    std::set<std::pair<int, int>> actors;
+    job.walk([&](AIEX::CertWaitTCTSOp wait) {
+      actors.insert({wait.getTileId(), wait.getChannelId()});
+    });
+    return actors;
+  };
+
   AIEX::CertPageOp currentPage; // null => no open implicit page
+  // Actors already waited on by the jobs accumulated into `currentPage`.
+  std::set<std::pair<int, int>> pageActors;
+  auto closePage = [&]() {
+    currentPage = nullptr;
+    pageActors.clear();
+  };
+
   for (Operation *op : topOps) {
     if (auto job = dyn_cast<AIEX::CertJobOp>(op)) {
       if (job->hasAttr("cert.configure")) {
@@ -1803,15 +1789,28 @@ static void formImplicitPagesInBlock(Block *body, OpBuilder &builder) {
         // config transaction is large enough to split (and it usually is).
         auto page = openPage(job.getLoc(), job, /*implicit=*/false);
         job->moveBefore(page.getBody().front().getTerminator());
-        currentPage = nullptr;
+        closePage();
         continue;
       }
+      // G-tct: at most one job per page may wait on a given actor. Two jobs
+      // that each legally wait on the same (tile, channel) -- an ordinary shape
+      // for two runtime sequences sharing a shim channel -- are only legal
+      // while they sit on separate pages, so grouping them would manufacture a
+      // verifier error out of valid input. Cut a page boundary instead, exactly
+      // as an over-size job would.
+      auto actors = waitTctsActors(job);
+      if (currentPage &&
+          llvm::any_of(actors, [&](const std::pair<int, int> &actor) {
+            return pageActors.count(actor);
+          }))
+        closePage();
       if (!currentPage)
         currentPage = openPage(job.getLoc(), job, /*implicit=*/true);
       job->moveBefore(currentPage.getBody().front().getTerminator());
+      pageActors.insert(actors.begin(), actors.end());
     } else if (isa<AIEX::CertPageOp>(op)) {
       // An explicit page delimits the current implicit run.
-      currentPage = nullptr;
+      closePage();
     }
     // All other ops (structural / control containers) do not delimit a run.
   }
