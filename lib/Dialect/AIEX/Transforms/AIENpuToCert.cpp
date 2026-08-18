@@ -1083,6 +1083,8 @@ static void updateCostForOp(Operation &o, AIE::DeviceOp deviceOp,
     text_cost += 8; // local barrier
   } else if (isa<AIEX::CertRemoteBarrierOp>(o)) {
     text_cost += 8; // remote barrier
+  } else if (isa<AIEX::CertRelAcqSyncOp>(o)) {
+    text_cost += 12; // ISA_OPSIZE_REL_ACQ_SYNC
   } else if (isa<AIEX::CertWaitTCTSOp>(o)) {
     text_cost += 8; // wait tct
   } else if (isa<AIEX::CertMaskWrite32Op>(o)) {

@@ -265,6 +265,35 @@ def AIE_CertRemoteBarrierOp: AIEX_Op<"cert.remote_barrier", [HasParent<"CertJobO
   }];
 }
 
+def AIE_CertRelAcqSyncOp: AIEX_Op<"cert.rel_acq_sync", [HasParent<"CertJobOp">]> {
+  let summary = "Release-acquire global barrier on an AIE lock";
+  let description = [{
+    Releases the lock at rel_address, then busy-waits acquiring the lock at
+    acq_address. Both addresses must refer to the same AIE lock; the
+    release/acquire operation and its operand are encoded in the address bits.
+
+    The acquire is a non-yielding busy-wait and never times out. No other job
+    on the same microcontroller can progress while this operation waits, so the
+    caller must avoid dependencies on work that microcontroller still owes.
+
+    A symmetric N-participant barrier uses rel(+1) followed by acq_eq(N).
+    Alternating that with rel(-1) followed by acq_eq(0) lets one lock serve
+    repeated barriers without an explicit reset.
+
+    Operand order is release then acquire, matching the aiebu assembler.
+
+    Example:
+      cert.rel_acq_sync(0x00016004, 0x00016208)
+  }];
+  let arguments = (
+    ins UI32Attr:$rel_address,
+        UI32Attr:$acq_address
+  );
+  let assemblyFormat = [{
+    `(` $rel_address `,` $acq_address `)` attr-dict
+  }];
+}
+
 def AIE_CertPreemptOp: AIEX_Op<"cert.preempt", [HasParent<"CertJobOp">]> {
   let summary = "Preemption point with save/restore control code references";
   let description = [{
