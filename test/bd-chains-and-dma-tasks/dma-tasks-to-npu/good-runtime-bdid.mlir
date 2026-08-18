@@ -10,22 +10,29 @@
 // A dma_configure_task carrying a RUNTIME bd_id (the dynamic free-list pool's
 // dma_bd_pool_pop result, on the configure's bd_id_val operand). The BD register
 // block address is then runtime -- getDmaBdAddress(col,row,bd_id) is linear in
-// bd_id, so it becomes 118784 + bd_id*32 -- and the whole BD cannot be a
-// constant-address blockwrite. Instead every word is a write32 at that runtime
-// base: the template words (buffer_offset word 1, packet word 2, valid/lock
-// word 7) plus the size/stride words from the encoder, and the buffer
-// address_patch takes a runtime addr operand. The queue push uses the runtime
-// bd_id directly.
+// bd_id, so it becomes 118784 + bd_id*32 -- so WriteBdToBlockWritePattern's
+// constant-address blockwrite cannot be formed.
+//
+// Instead the whole 8-word register block is packed into ONE
+// npu.blockwrite_values at that runtime base, whose payload mixes the constant
+// template words (buffer_offset word 1, packet word 2, valid/lock word 7) with
+// the encoder's runtime size/stride words -- so no per-word write32 remains for
+// this BD. Emitting a real block-write is required for a downstream ELF/TXN
+// consumer that only allows an address_patch to target a range covered by a
+// preceding block-write (e.g. aiebu); it also writes the words in ascending
+// order, so valid_bd (word 7) lands last as on the static path.
+//
+// The buffer address_patch then takes a runtime addr operand pointing INSIDE
+// that range (base + 4, word 1), and the queue push uses the runtime bd_id.
 
 // CHECK-LABEL: @runtime_bdid
 // The runtime BD register base: 118784 + bd_id*32.
 // CHECK: %[[POP:.*]] = aiex.dma_bd_pool_pop(0, 0) : i32
 // CHECK: %[[MUL:.*]] = arith.muli %[[POP]], %{{.*}} : i32
 // CHECK: %[[BASE:.*]] = arith.addi %{{.*}}, %[[MUL]] : i32
-// Template + size/stride words are write32s at that runtime base (not a
-// constant-address blockwrite).
-// CHECK-NOT: aiex.npu.blockwrite
-// CHECK: aiex.npu.write32
+// One packed blockwrite carries all 8 words; no write32 configures this BD.
+// CHECK: aiex.npu.blockwrite_values(%[[BASE]] : i32) values
+// CHECK-NOT: aiex.npu.write32
 // The buffer pointer patch targets the runtime register address.
 // CHECK: aiex.npu.address_patch(%{{.*}} : i32) addr %{{.*}} : i32
 // The queue push launches the runtime bd_id.

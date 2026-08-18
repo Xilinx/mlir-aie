@@ -431,6 +431,17 @@ LogicalResult xilinx::AIE::AIETranslateNpuToBinary(
             pushLocEntry(locmap, before, byteOffset(), "BLOCKWRITE",
                          op->getName().getStringRef(), addr, op, tm);
           })
+          .Case<NpuBlockWriteValuesOp>([&](auto op) {
+            // A runtime-computed blockwrite payload has no static encoding;
+            // this op only reaches the EmitC (C++ TXN) target. Diagnose rather
+            // than fall through to the default (which would silently drop it
+            // from the binary).
+            op.emitOpError("cannot translate a runtime-valued blockwrite "
+                           "payload to a static TXN binary; this op is "
+                           "supported only by the C++ TXN target "
+                           "(--aie-npu-to-cpp)");
+            result = failure();
+          })
           .Case<NpuMaskWrite32Op>([&](auto op) {
             count++;
             uint32_t before = byteOffset();

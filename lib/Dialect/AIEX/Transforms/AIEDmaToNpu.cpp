@@ -610,17 +610,32 @@ public:
         /*d1_zero_after=*/zero, /*d2_zero_after=*/zero,
         /*burst_length=*/IntegerAttr::get(i32ty, op.getBurstLength()));
 
-    // Emit the runtime size/stride BD-word overrides (shared with dma_task).
+    // Compute the runtime size/stride BD words (shared with dma_task); this
+    // bd_id is always a compile-time constant, so the template fields above
+    // already cover words 1/2/7 via the blockwrite fold -- only the
+    // size/stride words (0/3/4/5/6) are overridden here, as before.
     // buffer_length is the size-product here, so pass no override (null); the
     // encoder returns the hw repeat_count for the queue push.
+    SmallVector<Value> words;
     Value repeatCount;
-    if (failed(emitDynamicShimBdWordOverrides(
-            rewriter, loc, targetModel, tileCol, tileRow,
-            rewriter.getI32IntegerAttr(op.getId()), op.getMixedSizes(),
-            op.getMixedStrides(), op.getElementTypeBitwidth(),
-            op.getBurstLength(),
-            /*bufLenOverride=*/Value(), repeatCount)))
+    if (failed(
+            buildShimBdWords(rewriter, loc, targetModel, BdTemplateFields{},
+                             op.getMixedSizes(), op.getMixedStrides(),
+                             op.getElementTypeBitwidth(), op.getBurstLength(),
+                             /*bufLenOverride=*/Value(), repeatCount, words)))
       return failure();
+    // bd_id is always constant here, so getBdRegisterBase already folds to a
+    // literal; fold the per-word offset in too rather than emit an arith.addi
+    // (NpuWrite32Op::getAbsoluteAddress requires a literal to translate
+    // through the static binary target).
+    uint64_t bdBaseAddr =
+        targetModel.getDmaBdAddress(tileCol, tileRow, op.getId());
+    for (uint32_t idx : {0u, 3u, 4u, 5u, 6u}) {
+      Value addr = createConstantI32(
+          rewriter, loc, static_cast<uint32_t>(bdBaseAddr + idx * 4));
+      NpuWrite32Op::create(rewriter, loc, addr, words[idx], nullptr, nullptr,
+                           nullptr);
+    }
 
     // Address patch for the buffer pointer; emitBufferAddressPatch folds a
     // constant offset or builds a runtime arg_plus with arith as needed.

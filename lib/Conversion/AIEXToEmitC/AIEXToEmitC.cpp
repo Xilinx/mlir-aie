@@ -211,6 +211,10 @@ private:
           convertBlockWrite(b, loc, bw);
           countOp(b, loc, count);
         })
+        .Case<AIEX::NpuBlockWriteValuesOp>([&](auto bw) {
+          convertBlockWriteValues(b, loc, bw);
+          countOp(b, loc, count);
+        })
         .Case<AIEX::NpuAssertBdFieldOp>([&](auto g) {
           // Host-side bounds guard: if the runtime value overflows its narrow
           // BD field, the builder yields no stream (std::nullopt) rather than a
@@ -352,6 +356,44 @@ private:
                 {u32Literal(b, loc, addr), arrVar.getResult(),
                  u32Literal(b, loc, static_cast<uint32_t>(n)),
                  u32Literal(b, loc, colVal), u32Literal(b, loc, rowVal)});
+  }
+
+  // A blockwrite whose payload is computed at TXN-build time (the dynamic
+  // BD-pool path): stage the words into a local C++ array, then hand that array
+  // to one txn_append_blockwrite. Unlike convertBlockWrite there is no constant
+  // memref to inline, so the slots are filled by assignment from the operand
+  // values, which convert-arith-to-emitc lowers in place afterwards.
+  void convertBlockWriteValues(OpBuilder &b, Location loc,
+                               AIEX::NpuBlockWriteValuesOp bw) {
+    MLIRContext *ctx = b.getContext();
+    ValueRange words = bw.getValues();
+    int64_t n = static_cast<int64_t>(words.size());
+    if (n == 0) {
+      fail(bw, "blockwrite_values must carry at least one payload word");
+      return;
+    }
+
+    // Declare the staging array (zero-initialized; every slot is assigned
+    // below). Typed emitc.variable, matching convertBlockWrite's array.
+    auto arrTy =
+        emitc::ArrayType::get(ctx, SmallVector<int64_t>{n}, getU32Type(ctx));
+    auto arrVar = emitc::VariableOp::create(b, loc, arrTy,
+                                            emitc::OpaqueAttr::get(ctx, "{}"));
+
+    // Fill the slots. Emitted as verbatim assignments (the same mechanism the
+    // runtime guards above use to reference a not-yet-lowered SSA value): the
+    // i32 words convert to the array's uint32_t elementwise, which is the
+    // intended two's-complement reinterpretation of the packed BD fields.
+    for (int64_t i = 0; i < n; i++)
+      emitc::VerbatimOp::create(b, loc, "{}[" + std::to_string(i) + "] = {};",
+                                ValueRange{arrVar.getResult(), words[i]});
+
+    // The address is a genuine runtime value (the BD register base over a
+    // popped pool id); col/row are 0 since it is already a flat address.
+    emitTxnCall(b, loc, "txn_append_blockwrite", txnVec,
+                {bw.getAddress(), arrVar.getResult(),
+                 u32Literal(b, loc, static_cast<uint32_t>(n)),
+                 u32Literal(b, loc, 0), u32Literal(b, loc, 0)});
   }
 
   emitc::FuncOp funcOp;

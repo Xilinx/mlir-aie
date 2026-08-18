@@ -177,13 +177,37 @@ Value getBdRegisterBase(OpBuilder &builder, Location loc,
                             createConstantI32(builder, loc, bdStride)));
 }
 
-LogicalResult emitDynamicShimBdWordOverrides(
-    OpBuilder &builder, Location loc, const AIE::AIETargetModel &targetModel,
-    int tileCol, int tileRow, OpFoldResult bdId,
-    ArrayRef<OpFoldResult> mixedSizes, ArrayRef<OpFoldResult> mixedStrides,
-    uint64_t elemWidth, uint32_t burstLength, Value bufLenOverride,
-    Value &repeatCountOut) {
+LogicalResult buildShimBdWords(OpBuilder &builder, Location loc,
+                               const AIE::AIETargetModel &targetModel,
+                               const BdTemplateFields &f,
+                               ArrayRef<OpFoldResult> mixedSizes,
+                               ArrayRef<OpFoldResult> mixedStrides,
+                               uint64_t elemWidth, uint32_t burstLength,
+                               Value bufLenOverride, Value &repeatCountOut,
+                               SmallVectorImpl<Value> &wordsOut) {
   auto i32ty = builder.getIntegerType(32);
+
+  // Shim-NOC BDs are 8 registers wide; slots not set below stay zero.
+  wordsOut.assign(8, createConstantI32(builder, loc, 0));
+  // word[1] buffer_offset stays 0 (the address patch supplies the pointer).
+  // word[2] enable_packet [30], packet_id [23:19], packet_type [18:16].
+  wordsOut[2] = createConstantI32(builder, loc,
+                                  ((f.enable_packet & 0x1) << 30) |
+                                      ((f.packet_id & 0x1f) << 19) |
+                                      ((f.packet_type & 0x7) << 16));
+  // word[4] burst_length [31:30]; d1 fields overlaid below in ND mode.
+  wordsOut[4] = createConstantI32(
+      builder, loc,
+      (AIE::getShimBurstLengthEncoding(targetModel, burstLength) & 0x3) << 30);
+  // word[5] AXCache [27:24] = 2; d2_stride overlaid below in ND mode.
+  wordsOut[5] = createConstantI32(builder, loc, (2u & 0xf) << 24);
+  // word[7] next_bd [30:27], use_next_bd [26], valid_bd [25], lock fields.
+  wordsOut[7] = createConstantI32(
+      builder, loc,
+      ((f.next_bd_id & 0xf) << 27) | ((f.use_next_bd & 0x1) << 26) |
+          (1u << 25) | ((f.lock_rel_val & 0x7f) << 18) |
+          ((f.lock_rel_id & 0xf) << 13) | ((f.lock_acq_enable & 0x1) << 12) |
+          ((f.lock_acq_val & 0x7f) << 5) | (f.lock_acq_id & 0xf));
 
   // Compute the hardware sizes/strides as SSA values via the shared encoder.
   uint32_t gran = targetModel.getAddressGenGranularity();
@@ -265,24 +289,8 @@ LogicalResult emitDynamicShimBdWordOverrides(
   for (int i = 1; i < 4; i++)
     guardDivisible(stridesRev[i], inT[i], /*allowUnit=*/false);
 
-  // The shim BD register block is at getDmaBdAddress(col,row,bd_id). A constant
-  // bd_id folds to the literal the static path uses; a runtime bd_id (dynamic
-  // free-list pool) yields an arith expression base + bd_id*bdStride, so each
-  // override targets that base + wordIdx*4.
-  Value bdBase =
-      getBdRegisterBase(builder, loc, targetModel, tileCol, tileRow, bdId);
-  std::optional<int64_t> constBase = getConstantIntValue(bdBase);
   auto writeWord = [&](uint32_t wordIdx, Value val) {
-    // Fold the address to a literal for a constant base, so the static/pinned
-    // path emits the same single constant it always has.
-    Value addr =
-        constBase
-            ? createConstantI32(builder, loc,
-                                static_cast<uint32_t>(*constBase + wordIdx * 4))
-            : arith::AddIOp::create(
-                  builder, loc, bdBase,
-                  createConstantI32(builder, loc, wordIdx * 4));
-    NpuWrite32Op::create(builder, loc, addr, val, nullptr, nullptr, nullptr);
+    wordsOut[wordIdx] = val;
   };
 
   // word[0] buffer_length is always overridden (it carries the runtime element

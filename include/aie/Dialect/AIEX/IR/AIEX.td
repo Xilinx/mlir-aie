@@ -973,6 +973,40 @@ def AIE_NpuBlockWriteOp: AIEX_Op<"npu.blockwrite", []> {
   }];
 }
 
+// BLOCKWRITE_VALUES
+def AIE_NpuBlockWriteValuesOp: AIEX_Op<"npu.blockwrite_values", []> {
+  let summary = "blockwrite operator with a runtime-computed payload";
+  let arguments = (
+    ins I32:$address,
+        Variadic<I32>:$values
+  );
+  let results = (outs );
+  let assemblyFormat = [{
+    `(` $address `:` type($address) `)` (`values` $values^ `:` type($values))?
+    attr-dict
+  }];
+  let description = [{
+    Writes `values`, in order, as a single contiguous block-write of words
+    starting at the runtime `address`. Unlike `npu.blockwrite`, whose payload
+    is a compile-time-constant memref, this op's payload is itself computed at
+    TXN-build time -- e.g. the dynamic free-list BD-pool lowering, where the
+    BD register base is runtime and the payload words mix compile-time
+    template fields with runtime size/stride/length values, so neither a
+    constant-address blockwrite nor a compile-time-constant payload can
+    represent it.
+
+    Folding the whole BD register range into one block-write (rather than a
+    write32 per word) is required so that a downstream ELF/TXN consumer that
+    only allows an `npu.address_patch` to target a range covered by a
+    preceding block-write (e.g. aiebu) accepts the stream.
+
+    This op only ever appears on the dynamic (runtime-BD-pool) DMA lowering
+    path and is only supported by the EmitC (C++ TXN) target; the static
+    binary target has no representation for a runtime-valued block-write
+    payload and rejects it.
+  }];
+}
+
 // OP_SYNC
 def AIE_NpuSyncOp: AIEX_Op<"npu.sync", []> {
   let summary = "sync operator";
