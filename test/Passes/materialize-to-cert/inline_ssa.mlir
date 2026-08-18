@@ -8,7 +8,7 @@
 // RUN: aie-opt --aie-materialize-runtime-sequences --convert-aie-to-transaction --aie-assign-lock-ids --aie-lower-set-lock --aie-npu-to-cert %s | FileCheck %s
 
 // Test that SSA values like locks and tiles are inlined into the calling
-// calling runtime sequence.
+// runtime sequence.
 
 module {
   aie.device(npu2) {
