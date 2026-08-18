@@ -54,6 +54,9 @@ struct AIEObjectFifoVerifyPass
   /// reads. A segment may go unfilled when the pool's objects start full.
   LogicalResult verifyActors(ObjectFifoPoolOp pool,
                              ArrayRef<SegmentActors> actors) {
+    bool external = llvm::any_of(pool.getBufferOps(), [](BufferLike buffer) {
+      return isa<ExternalBufferOp>(buffer.getOperation());
+    });
     for (auto [index, segment] : llvm::enumerate(actors)) {
       if (segment.fillers.size() > 1) {
         return pool.emitOpError("segment ")
@@ -63,10 +66,11 @@ struct AIEObjectFifoVerifyPass
         return pool.emitOpError("segment ")
                << index << " is drained by more than one endpoint";
       }
-      if (segment.drainers.empty()) {
+      if (segment.drainers.empty() && !(external && !segment.fillers.empty())) {
         return pool.emitOpError("segment ") << index << " has no drainer";
       }
-      if (segment.fillers.empty() && !pool.getInitValues()) {
+      if (segment.fillers.empty() && !pool.getInitValues() &&
+          !(external && !segment.drainers.empty())) {
         return pool.emitOpError("segment ") << index << " has no filler";
       }
     }

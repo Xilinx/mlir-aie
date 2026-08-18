@@ -478,20 +478,7 @@ void AIEObjectFifoSplitPass::createLinkPools() {
         extents.emplace_back(offset, size);
       }
     } else {
-      int64_t inSize =
-          cast<MemRefType>(
-              cast<AIEObjectFifoType>(ins[0].getElemType()).getElementType())
-              .getNumElements();
-      int64_t outSize =
-          cast<MemRefType>(
-              cast<AIEObjectFifoType>(outs[0].getElemType()).getElementType())
-              .getNumElements();
-      int64_t commonSize = std::min(inSize, outSize);
-      extents.emplace_back(0, commonSize);
-      if (elemType.getNumElements() > commonSize) {
-        extents.emplace_back(commonSize,
-                             elemType.getNumElements() - commonSize);
-      }
+      extents.emplace_back(0, elemType.getNumElements());
     }
 
     bool ownerIsOutput = llvm::is_contained(outs, owner);
@@ -524,25 +511,13 @@ void AIEObjectFifoSplitPass::createLinkPools() {
     }
     for (auto [index, in] : llvm::enumerate(ins)) {
       linkedConsumerEnd[in] = PoolRef{
-          pool,
-          isJoin
-              ? SmallVector<int32_t>{static_cast<int32_t>(index)}
-              : (cast<MemRefType>(
-                     cast<AIEObjectFifoType>(in.getElemType()).getElementType())
-                             .getNumElements() == elemType.getNumElements()
-                     ? allSegments
-                     : SmallVector<int32_t>{0})};
+          pool, isJoin ? SmallVector<int32_t>{static_cast<int32_t>(index)}
+                       : allSegments};
     }
     for (auto [index, out] : llvm::enumerate(outs)) {
       linkedProducerEnd[out] = PoolRef{
-          pool,
-          isDistribute
-              ? SmallVector<int32_t>{static_cast<int32_t>(index)}
-              : (cast<MemRefType>(cast<AIEObjectFifoType>(out.getElemType())
-                                      .getElementType())
-                             .getNumElements() == elemType.getNumElements()
-                     ? allSegments
-                     : SmallVector<int32_t>{0})};
+          pool, isDistribute ? SmallVector<int32_t>{static_cast<int32_t>(index)}
+                             : allSegments};
     }
   }
 }
