@@ -747,22 +747,29 @@ StringRef ObjectFifoPoolOp::getBaseName() {
 
 namespace {
 
-/// Shared checks for the two endpoint ops. `pool` is null on a shim endpoint.
 LogicalResult verifyEndpoint(Operation *op, ObjectFifoPoolOp pool,
                              std::optional<ArrayRef<int32_t>> segments) {
+  int64_t numSegments = pool.getSegmentAttrs().size();
   if (!segments) {
+    if (numSegments > 1) {
+      return op->emitOpError(
+          "must list segments explicitly for a multi-segment pool");
+    }
     return success();
   }
   if (segments->empty()) {
     return op->emitOpError("expects at least one segment index");
   }
 
-  auto poolSegments = pool.getSegments();
-  int64_t numSegments = poolSegments ? poolSegments->size() : 1;
+  int32_t previous = -1;
   for (int32_t index : *segments) {
     if (index < 0 || index >= numSegments) {
       return op->emitOpError("segment index ") << index << " out of range";
     }
+    if (index <= previous) {
+      return op->emitOpError("segment indices must be strictly increasing");
+    }
+    previous = index;
   }
   return success();
 }
@@ -775,7 +782,8 @@ ObjectFifoPoolOp lookupPool(Operation *op, StringRef name) {
 
 } // namespace
 
-/// The subset of `pool`'s segments `selected` names, or all of them.
+/// The subset of `pool`'s segments `selected` names. Omission selects segment
+/// zero.
 static SmallVector<ObjectFifoSegmentAttr>
 selectSegments(ObjectFifoPoolOp pool,
                std::optional<ArrayRef<int32_t>> selected) {
@@ -784,7 +792,7 @@ selectSegments(ObjectFifoPoolOp pool,
   }
   SmallVector<ObjectFifoSegmentAttr> all = pool.getSegmentAttrs();
   if (!selected) {
-    return all;
+    return {all.front()};
   }
   SmallVector<ObjectFifoSegmentAttr> chosen;
   for (int32_t index : *selected) {
@@ -888,7 +896,58 @@ LogicalResult ObjectFifoDmaEndpointOp::verify() {
     return emitOpError("iter_count is only supported on a MemTile");
   }
 
-  return verifyEndpoint(*this, pool, getSegments());
+  if (failed(verifyEndpoint(*this, pool, getSegments()))) {
+    return failure();
+  }
+
+  std::optional<ArrayRef<int32_t>> segmentIndices = getSegments();
+  size_t selectedCount = segmentIndices ? segmentIndices->size() : 1;
+  auto dimensions = getDimensions();
+  if (dimensions && dimensions->size() != selectedCount) {
+    return emitOpError("dimensions has ")
+           << dimensions->size() << " entries for " << selectedCount
+           << " selected segments";
+  }
+  auto padding = getPadDimensions();
+  if (padding && padding->size() != selectedCount) {
+    return emitOpError("padDimensions has ")
+           << padding->size() << " entries for " << selectedCount
+           << " selected segments";
+  }
+  if (padding && !drains()) {
+    return emitOpError("padDimensions is only valid on a draining endpoint");
+  }
+  if (getPadValue() != 0 &&
+      (!padding || llvm::none_of(*padding, [](BDPadLayoutArrayAttr entry) {
+        return !entry.empty();
+      }))) {
+    return emitOpError("nonzero padValue requires a non-empty padDimensions "
+                       "entry");
+  }
+
+  SmallVector<ObjectFifoSegmentAttr> selected = getSelectedSegments();
+  for (size_t position = 0; position < selectedCount; ++position) {
+    BDDimLayoutArrayAttr dims =
+        dimensions ? (*dimensions)[position] : BDDimLayoutArrayAttr();
+    BDPadLayoutArrayAttr pads =
+        padding ? (*padding)[position] : BDPadLayoutArrayAttr();
+    if (pads && !pads.empty() && (!dims || dims.empty())) {
+      return emitOpError("padDimensions entry ")
+             << position << " requires dimensions for the same segment";
+    }
+    if (dims && pads && !pads.empty() && dims.size() != pads.size()) {
+      return emitOpError("dimensions and padDimensions entry ")
+             << position << " have different ranks";
+    }
+    if (dims && !dims.empty() &&
+        getDimsMaxIdx(dims) >= selected[position].getSize()) {
+      return emitOpError("dimensions entry ")
+             << position << " exceeds selected segment "
+             << segmentIndices.value_or(ArrayRef<int32_t>{0})[position]
+             << " of size " << selected[position].getSize();
+    }
+  }
+  return success();
 }
 
 TileLike ObjectFifoDanglingEndpointOp::getTileLike() {

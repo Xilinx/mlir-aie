@@ -2344,7 +2344,8 @@ def AIE_ObjectFifoCoreEndpointOp
   let summary = "What a core needs to fill or drain the next object in a pool";
   let description = [{
     Names the pool a core works through, whether it fills or drains it, and which
-    of the pool's segments it handles. Omitting `segments` selects all of them.
+    of the pool's segments it handles. Omitting `segments` selects segment zero
+    and is only valid for a single-segment pool.
 
     A core's `aie.objectfifo.acquire` and `aie.objectfifo.release` refer to this
     op, so they carry no direction of their own.
@@ -2375,8 +2376,7 @@ def AIE_ObjectFifoCoreEndpointOp
     ObjectFifoPoolOp getPoolOp();
     bool drains() { return getRole() == ObjectFifoRole::Drain; }
 
-    /// Segments this endpoint is responsible for, all of the pool's when it
-    /// names none.
+    /// Segments this endpoint is responsible for.
     llvm::SmallVector<ObjectFifoSegmentAttr> getSelectedSegments();
 
     /// The run of elements this endpoint's segments span, as an offset into
@@ -2398,7 +2398,12 @@ def AIE_ObjectFifoDmaEndpointOp
   let description = [{
     Names the pool a DMA channel works through, whether it fills or drains it,
     which of the pool's segments it handles, and the channel itself. Omitting
-    `segments` selects all of them.
+    `segments` selects segment zero and is only valid for a single-segment pool.
+
+    `dimensions` and `padDimensions` are positional: entry N describes the
+    segment selected by `segments[N]`. When present, either attribute must have
+    exactly as many entries as `segments`; an empty inner array means no
+    transformation or padding for that segment.
 
     `--aie-objectfifo-lower-dmas` turns this into the buffer descriptor chain
     that walks the pool's buffers, and consumes it. An end of a stream that this
@@ -2419,24 +2424,11 @@ def AIE_ObjectFifoDmaEndpointOp
       ObjectFifoRole:$role, FlatSymbolRefAttr:$pool,
       OptionalAttr<DenseI32ArrayAttr>:$segments,
       OptionalAttr<AIEI32Attr>:$channelIndex,
-      // Shape of this endpoint's own buffer descriptors.
-      OptionalAttr<BDDimLayoutArrayAttr>:$dimensions,
-      OptionalAttr<BDPadLayoutArrayAttr>:$padDimensions,
+      OptionalAttr<BDDimLayoutArrayArrayAttr>:$dimensions,
+      OptionalAttr<BDPadLayoutArrayArrayAttr>:$padDimensions,
       DefaultValuedOptionalAttr<AIEI32Attr, "0">:$padValue,
       OptionalAttr<AIEI32Attr>:$repeatCount,
-      OptionalAttr<AIEI32Attr>:$iterCount,
-      // Objects taken and given back per buffer descriptor. A link that
-      // gathers `repeat_count` objects before passing them on takes that many
-      // locks at once, so its filling end waits for the whole batch rather
-      // than one object at a time.
-      OptionalAttr<AIEI32Attr>:$acqRelCount,
-      // Elements moved per buffer descriptor, where that is not the whole
-      // segment. Both ends of a link work through one pool, and the two fifos
-      // it joins may declare different object sizes: a fifo of memref<8xi32>
-      // linked into one of memref<16xi32> shares the larger object, and the
-      // smaller end's descriptors move 8 elements out of it.
-      OptionalAttr<AIEI32Attr>:$transferSize,
-      OptionalAttr<PacketInfoAttr>:$packet,
+      OptionalAttr<AIEI32Attr>:$iterCount, OptionalAttr<PacketInfoAttr>:$packet,
       // Name of the objectFifo this endpoint was split from, for the runtime
       // records that address it by that name.
       OptionalAttr<StrAttr>:$fifoName);
@@ -2453,8 +2445,7 @@ def AIE_ObjectFifoDmaEndpointOp
     ObjectFifoPoolOp getPoolOp();
     bool drains() { return getRole() == ObjectFifoRole::Drain; }
 
-    /// Segments this endpoint is responsible for, all of the pool's when it
-    /// names none.
+    /// Segments this endpoint is responsible for.
     llvm::SmallVector<ObjectFifoSegmentAttr> getSelectedSegments();
   }];
 }

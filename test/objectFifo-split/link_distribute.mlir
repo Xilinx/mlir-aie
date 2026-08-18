@@ -29,7 +29,7 @@ module @link_distribute {
 
 // CHECK:   aie.objectfifo.pool @in_cons_pool(%[[T21]]) {depth = 2 : i32, fifoName = "in", segments = [#aie.objectfifo_segment<offset = 0, size = 16>, #aie.objectfifo_segment<offset = 16, size = 32>]} : memref<48xi32>
 // CHECK:   aie.objectfifo.dangling_endpoint @in_prod_dma(%[[T20]]) MM2S DMA {fifoName = "in"}
-// CHECK:   aie.objectfifo.dma_endpoint @in_cons_dma(%[[T21]]) fills @in_cons_pool {fifoName = "in"}
+// CHECK:   aie.objectfifo.dma_endpoint @in_cons_dma(%[[T21]]) fills @in_cons_pool {fifoName = "in", segments = array<i32: 0, 1>}
 // CHECK:   aie.objectfifo.flow from @in_prod_dma to [@in_cons_dma]
 
 // Each output drains one segment of the memtile pool.

@@ -19,7 +19,7 @@ module @shim_and_segments {
       segments = [#aie.objectfifo_segment<offset = 0, size = 16>,
                   #aie.objectfifo_segment<offset = 16, size = 32>]
     } : memref<48xi32>
-    aie.objectfifo.dma_endpoint @in_dma(%memtile) fills @in_pool
+    aie.objectfifo.dma_endpoint @in_dma(%memtile) fills @in_pool {segments = array<i32: 0, 1>}
 
     aie.objectfifo.flow from @in_shim to [@in_dma]
   }

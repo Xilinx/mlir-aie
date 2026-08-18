@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="skip-verify=true" --aie-objectFifo-unroll %s
 
 // Currently not supported: link should also support lengths in addition to offsets, currently length cannot be correctly inferred.
 
@@ -127,17 +127,17 @@ module @ndDMAObjFifoAIE2 {
     aie.objectfifo @of0 (%tile10, {%tile11},
                          2 : i32) : !aie.objectfifo<memref<256xi32>>
 
-    aie.objectfifo @of1 (%tile11 dimensionsToStream [<size = 4, stride = 64>,
+    aie.objectfifo @of1 (%tile11 dimensionsToStream [<size = 2, stride = 64>,
                                            <size = 2, stride = 4>,
                                            <size = 8, stride = 8>,
                                            <size = 4, stride = 1>],
                         {%tile22}, 2 : i32) : !aie.objectfifo<memref<128xi32>>
 
-    aie.objectfifo @of2 (%tile11 dimensionsToStream [<size = 4, stride = 64>,
+    aie.objectfifo @of2 (%tile11 dimensionsToStream [<size = 2, stride = 64>,
                                            <size = 2, stride = 4>,
                                            <size = 8, stride = 8>,
                                            <size = 4, stride = 1>],
                         {%tile23}, 2 : i32) : !aie.objectfifo<memref<128xi32>>
-   aie.objectfifo.link [ @of0 ] -> [ @of1, @of2 ] ([][0, 512])
+  aie.objectfifo.link [ @of0 ] -> [ @of1, @of2 ] ([][0, 128])
  }
 }

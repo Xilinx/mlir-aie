@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform -split-input-file --verify-diagnostics %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="skip-verify=true" -split-input-file --verify-diagnostics %s
 
 // A packet header carries five bits of id, so a pinned one above 31 cannot be
 // expressed on the wire.

@@ -74,7 +74,7 @@ module @stage1 {
     aie.objectfifo.dma_endpoint @mt_in1(%tile21) fills  @mt_pool {segments = [0]}
     aie.objectfifo.dma_endpoint @mt_in2(%tile21) fills  @mt_pool {segments = [1]}
     aie.objectfifo.dma_endpoint @mt_in3(%tile21) fills  @mt_pool {segments = [2]}
-    aie.objectfifo.dma_endpoint @mt_out(%tile21) drains @mt_pool
+    aie.objectfifo.dma_endpoint @mt_out(%tile21) drains @mt_pool {segments = [0, 1, 2]}
 
     aie.objectfifo.dangling_endpoint @shim_in(%tile20) S2MM DMA
 
@@ -120,7 +120,7 @@ module @stage2 {
     aie.objectfifo.dma_endpoint @mt_in1(%tile21) fills  @mt_pool {segments = [0], channelIndex = 0}
     aie.objectfifo.dma_endpoint @mt_in2(%tile21) fills  @mt_pool {segments = [1], channelIndex = 1}
     aie.objectfifo.dma_endpoint @mt_in3(%tile21) fills  @mt_pool {segments = [2], channelIndex = 2}
-    aie.objectfifo.dma_endpoint @mt_out(%tile21) drains @mt_pool {channelIndex = 0}
+    aie.objectfifo.dma_endpoint @mt_out(%tile21) drains @mt_pool {segments = [0, 1, 2], channelIndex = 0}
 
     aie.flow(%tile22, DMA : 0, %tile21, DMA : 0)
     aie.flow(%tile23, DMA : 0, %tile21, DMA : 1)
@@ -233,7 +233,7 @@ module @stage3 {
 //
 //   aie.objectfifo.core_endpoint @a(%t22) fills  @mt_pool {segments = [0]}
 //   aie.objectfifo.core_endpoint @b(%t23) fills  @mt_pool {segments = [1]}
-//   aie.objectfifo.core_endpoint @c(%t21) drains @mt_pool
+//   aie.objectfifo.core_endpoint @c(%t21) drains @mt_pool {segments = [0, 1]}
 //
 // @a and @b each hold a strict slice of the shared buffers, so their objects are
 // memref.subviews at the segment offset. @c covers every segment, whose union is

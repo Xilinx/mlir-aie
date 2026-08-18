@@ -226,7 +226,8 @@
 //
 // COMPLETENESS VERIFICATION
 //
-// Checked by --aie-objectfifo-verify, which a partial design may decline to run:
+// Checked by --aie-objectfifo-verify. The composite pipeline runs it unless
+// invoked with skip-verify=true:
 //
 //  - a pool's segments do not overlap and cover the element type exactly
 //  - each of a pool's segments has one filling endpoint and one draining

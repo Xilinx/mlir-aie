@@ -32,7 +32,7 @@ module @segments {
 
     // The forwarding end drains all of them.
     aie.objectfifo.dma_endpoint @whole(%memtile) drains @pool {
-      channelIndex = 0 : i32
+      channelIndex = 0 : i32, segments = array<i32: 0, 1>
     }
   }
 }

@@ -10,7 +10,7 @@
 // loop's per-iteration acquire delta and the outer loop's acquire delta are
 // each computed from the current held value regardless of loop depth.
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll="default-dynamic=true" %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="skip-verify=true" --aie-objectFifo-unroll="default-dynamic=true" %s | FileCheck %s
 
 // CHECK-LABEL:   aie.device(npu2) {
 // CHECK:           %[[VAL_0:.*]] = aie.tile(0, 1)

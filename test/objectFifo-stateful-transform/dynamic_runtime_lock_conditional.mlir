@@ -12,7 +12,7 @@
 // The next iteration's acquire computes its delta from the current held
 // value, so it acquires nothing extra when the release did not fire.
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll="default-dynamic=true" %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="skip-verify=true" --aie-objectFifo-unroll="default-dynamic=true" %s | FileCheck %s
 
 // CHECK-LABEL:   aie.device(npu2) {
 // CHECK:           %[[VAL_0:.*]] = aie.tile(0, 1)

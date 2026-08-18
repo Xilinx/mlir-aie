@@ -78,9 +78,10 @@ aie.objectfifo.dma_endpoint  @d(%tile) drains @P {channelIndex = 0 : i32}
 ```
 
 `fills` and `drains` state what the actor does to the pool's buffers, and
-`segments` selects which of the pool's segments it handles -- omitting it selects
-all of them. The endpoint's own tile is where the actor is, which for shared
-memory differs from the pool's tile.
+`segments` selects which of the pool's segments it handles. Omitting it selects
+segment zero and is only valid for a single-segment pool. The endpoint's own
+tile is where the actor is, which for shared memory differs from the pool's
+tile.
 
 Every segment has exactly one filler and exactly one drainer. A pool whose
 segments each have one core filling and one DMA draining is an ordinary fifo
@@ -157,7 +158,7 @@ aie.objectfifo.pool @out_pool(%t21) {
 
 aie.objectfifo.dma_endpoint @fill_0(%t21)    fills  @out_pool {segments = array<i32: 0>}
 aie.objectfifo.dma_endpoint @fill_1(%t21)    fills  @out_pool {segments = array<i32: 1>}
-aie.objectfifo.dma_endpoint @drain_all(%t21) drains @out_pool
+aie.objectfifo.dma_endpoint @drain_all(%t21) drains @out_pool {segments = array<i32: 0, 1>}
 ```
 
 Two DMAs fill different segments of the same pool, each segment ordered by its
@@ -217,9 +218,10 @@ Checks the completeness rules -- every segment has one filler and one drainer,
 segments tile the object exactly, every endpoint is reached by exactly one flow,
 and no loop body releases more than it acquires.
 
-It is a debugging tool and is kept out of the default pipeline, so that
-incomplete definitions stay legal and a design can implement part of an
-objectFifo at a lower level.
+The composite `--aie-objectFifo-stateful-transform` pipeline runs this check
+after splitting. A partial design or compatibility flow may pass
+`skip-verify=true` and lower the explicit pool/endpoint IR without the
+completeness check.
 
 ### 3. `--aie-objectfifo-allocate`
 

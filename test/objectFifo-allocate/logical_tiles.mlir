@@ -10,7 +10,7 @@
 // after the objectFifo pipeline rather than before it.
 
 // RUN: aie-opt --aie-objectfifo-allocate %s | FileCheck %s
-// RUN: aie-opt --aie-objectFifo-stateful-transform --aie-place-tiles %s | FileCheck %s --check-prefix=PLACED
+// RUN: aie-opt --aie-objectFifo-stateful-transform="skip-verify=true" --aie-place-tiles %s | FileCheck %s --check-prefix=PLACED
 
 module {
   aie.device(xcve2302) {

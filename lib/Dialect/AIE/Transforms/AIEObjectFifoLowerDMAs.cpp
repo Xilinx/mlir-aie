@@ -28,11 +28,26 @@ struct Descriptor {
   Value buffer;
   int64_t offset;
   int64_t size;
+  BDDimLayoutArrayAttr dimensions;
+  BDPadLayoutArrayAttr padding;
   FlatSymbolRefAttr acquireLock;
   FlatSymbolRefAttr releaseLock;
   /// Index of the buffer's own binary lock, where the device uses those.
   int64_t binaryLock;
 };
+
+int64_t paddedSize(BDDimLayoutArrayAttr dimensions,
+                   BDPadLayoutArrayAttr padding, int64_t fallback) {
+  if (!dimensions || dimensions.empty() || !padding || padding.empty()) {
+    return fallback;
+  }
+  int64_t size = 1;
+  for (auto [dimension, pad] : llvm::zip(dimensions, padding)) {
+    size *=
+        dimension.getSize() + pad.getConstPadBefore() + pad.getConstPadAfter();
+  }
+  return size;
+}
 
 Block *findEndOpBlock(Region &region) {
   Block *endBlock = nullptr;
@@ -91,14 +106,24 @@ struct AIEObjectFifoLowerDMAsPass
                                          ArrayRef<Value> buffers, bool drains) {
     SmallVector<ObjectFifoSegmentAttr> segments =
         endpoint.getSelectedSegments();
-    int64_t override = endpoint.getTransferSize().value_or(0);
+    SmallVector<BDDimLayoutArrayAttr> dimensions;
+    if (auto allDimensions = endpoint.getDimensions()) {
+      llvm::append_range(dimensions, *allDimensions);
+    }
+    SmallVector<BDPadLayoutArrayAttr> padding;
+    if (auto allPadding = endpoint.getPadDimensions()) {
+      llvm::append_range(padding, *allPadding);
+    }
 
     SmallVector<Descriptor> descriptors;
     for (auto [index, buffer] : llvm::enumerate(buffers)) {
-      for (ObjectFifoSegmentAttr segment : segments) {
+      for (auto [position, segment] : llvm::enumerate(segments)) {
         descriptors.push_back(
-            {buffer, segment.getOffset(),
-             override ? override : segment.getSize(),
+            {buffer, segment.getOffset(), segment.getSize(),
+             position < dimensions.size() ? dimensions[position]
+                                          : BDDimLayoutArrayAttr(),
+             position < padding.size() ? padding[position]
+                                       : BDPadLayoutArrayAttr(),
              drains ? segment.getConsumeLock() : segment.getProduceLock(),
              drains ? segment.getProduceLock() : segment.getConsumeLock(),
              static_cast<int64_t>(index)});
@@ -111,7 +136,7 @@ struct AIEObjectFifoLowerDMAsPass
                       Descriptor &descriptor, Block *successor,
                       bool binaryLocks, bool drains) {
     Location loc = endpoint.getLoc();
-    int count = endpoint.getAcqRelCount().value_or(1);
+    int count = drains ? 1 : pool.getRepeatCount().value_or(1);
 
     LockOp acquireLock, releaseLock;
     int acquireValue = count, releaseValue = count;
@@ -141,14 +166,14 @@ struct AIEObjectFifoLowerDMAsPass
                             packet->getPktId());
     }
 
-    auto dims = endpoint.getDimensionsAttr();
-    auto pad = drains ? endpoint.getPadDimensionsAttr() : nullptr;
-    if (dims && pad) {
+    if (descriptor.dimensions && drains && descriptor.padding) {
       DMABDOp::create(builder, loc, descriptor.buffer, descriptor.offset,
-                      descriptor.size, dims, pad);
-    } else if (dims) {
+                      paddedSize(descriptor.dimensions, descriptor.padding,
+                                 descriptor.size),
+                      descriptor.dimensions, descriptor.padding);
+    } else if (descriptor.dimensions) {
       DMABDOp::create(builder, loc, descriptor.buffer, descriptor.offset,
-                      descriptor.size, dims);
+                      descriptor.size, descriptor.dimensions);
     } else {
       DMABDOp::create(builder, loc, descriptor.buffer, descriptor.offset,
                       descriptor.size);

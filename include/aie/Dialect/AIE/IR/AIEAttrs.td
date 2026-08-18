@@ -199,6 +199,13 @@ def BDPadLayoutArrayAttr : ArrayOfAttr<
     /*eltName*/BDPadLayoutAttr.cppClassName
 >;
 
+def BDPadLayoutArrayArrayAttr
+    : ArrayOfAttr<
+          /*dialect*/ AIE_Dialect,
+          /*attrName*/ "BDPadLayoutArrayArray",
+          /*attrMnemonic*/ "bd_pad_layout_array_array",
+          /*eltName*/ BDPadLayoutArrayAttr.cppClassName>;
+
 def PacketInfoAttr : AttrDef<AIE_Dialect, "PacketInfo", []> {
   let mnemonic = "packet_info";
   let summary = [{

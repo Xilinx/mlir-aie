@@ -54,7 +54,7 @@ module @stage1 {
 
     aie.objectfifo.dangling_endpoint @shim_out(%tile20) MM2S DMA
 
-    aie.objectfifo.dma_endpoint @mt_in(%tile21)   fills  @mt_pool
+    aie.objectfifo.dma_endpoint @mt_in(%tile21)   fills  @mt_pool {segments = [0, 1, 2]}
     aie.objectfifo.dma_endpoint @mt_out1(%tile21) drains @mt_pool {segments = [0]}
     aie.objectfifo.dma_endpoint @mt_out2(%tile21) drains @mt_pool {segments = [1]}
     aie.objectfifo.dma_endpoint @mt_out3(%tile21) drains @mt_pool {segments = [2]}
@@ -103,7 +103,7 @@ module @stage2 {
                    offset = 36, size = 12>]
     } : memref<48xi32>
 
-    aie.objectfifo.dma_endpoint @mt_in(%tile21)   fills  @mt_pool {channelIndex = 0}
+    aie.objectfifo.dma_endpoint @mt_in(%tile21)   fills  @mt_pool {segments = [0, 1, 2], channelIndex = 0}
     aie.objectfifo.dma_endpoint @mt_out1(%tile21) drains @mt_pool {segments = [0], channelIndex = 0}
     aie.objectfifo.dma_endpoint @mt_out2(%tile21) drains @mt_pool {segments = [1], channelIndex = 1}
     aie.objectfifo.dma_endpoint @mt_out3(%tile21) drains @mt_pool {segments = [2], channelIndex = 2}

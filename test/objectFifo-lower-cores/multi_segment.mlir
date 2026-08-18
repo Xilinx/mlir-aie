@@ -23,7 +23,7 @@ module @multi_segment {
                   #aie.objectfifo_segment<offset = 16, size = 32,
                                           produceLock = @f1, consumeLock = @u1>]
     } : memref<48xi32>
-    aie.objectfifo.core_endpoint @reader(%tile12) drains @pool
+    aie.objectfifo.core_endpoint @reader(%tile12) drains @pool {segments = array<i32: 0, 1>}
 
     %core = aie.core(%tile12) {
       %e = aie.objectfifo.acquire @reader : memref<48xi32>

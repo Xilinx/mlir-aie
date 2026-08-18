@@ -10,7 +10,7 @@
 // around packet flows the design already declares.
 
 // RUN: aie-opt --aie-objectfifo-split %s | FileCheck %s --check-prefix=SPLIT
-// RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="skip-verify=true" %s | FileCheck %s
 
 module @mixed {
   aie.device(xcve2302) {

@@ -27,7 +27,7 @@ namespace {
 /// that end occupies.
 struct PoolRef {
   ObjectFifoPoolOp pool;
-  std::optional<int32_t> segment;
+  SmallVector<int32_t> segments;
 };
 
 std::optional<ObjectFifoLinkOp> getOptionalLinkOp(ObjectFifoCreateOp op) {
@@ -205,17 +205,19 @@ struct AIEObjectFifoSplitPass
   ObjectFifoCoreEndpointOp createCoreEndpoint(Location loc, StringRef name,
                                               Value tile, PoolRef ref,
                                               ObjectFifoRole role) {
-    return ObjectFifoCoreEndpointOp::create(
-        builder, loc, name, tile, role, ref.pool.getSymName(),
-        ref.segment ? builder.getDenseI32ArrayAttr({*ref.segment})
-                    : DenseI32ArrayAttr());
+    DenseI32ArrayAttr segments;
+    if (ref.pool.getSegmentAttrs().size() > 1) {
+      segments = builder.getDenseI32ArrayAttr(ref.segments);
+    }
+    return ObjectFifoCoreEndpointOp::create(builder, loc, name, tile, role,
+                                            ref.pool.getSymName(), segments);
   }
 
-  ObjectFifoDmaEndpointOp createDmaEndpoint(
-      Location loc, StringRef name, Value tile, PoolRef ref,
-      ObjectFifoRole role, ObjectFifoCreateOp from, BDDimLayoutArrayAttr dims,
-      std::optional<int> channelIndex, std::optional<int> acqRelCount,
-      std::optional<int> repeatCount, std::optional<int> transferSize) {
+  ObjectFifoDmaEndpointOp
+  createDmaEndpoint(Location loc, StringRef name, Value tile, PoolRef ref,
+                    ObjectFifoRole role, ObjectFifoCreateOp from,
+                    BDDimLayoutArrayAttr dims, std::optional<int> channelIndex,
+                    std::optional<int> repeatCount) {
     // Only a MemTile's DMA runs its chain a fixed number of times, so the
     // count is recorded only where it is honored.
     std::optional<int32_t> iterCount;
@@ -224,25 +226,40 @@ struct AIEObjectFifoSplitPass
         iterCount = from.getIterCount();
       }
     }
+    DenseI32ArrayAttr segments;
+    if (ref.pool.getSegmentAttrs().size() > 1) {
+      segments = builder.getDenseI32ArrayAttr(ref.segments);
+    }
+
+    BDDimLayoutArrayArrayAttr dimensions;
+    if (dims && !dims.empty()) {
+      SmallVector<BDDimLayoutArrayAttr> perSegment(ref.segments.size(), dims);
+      dimensions =
+          BDDimLayoutArrayArrayAttr::get(builder.getContext(), perSegment);
+    }
+
+    BDPadLayoutArrayArrayAttr padding;
+    if (role == ObjectFifoRole::Drain && from.getPadDimensions() &&
+        !from.getPadDimensions()->empty()) {
+      SmallVector<BDPadLayoutArrayAttr> perSegment(ref.segments.size(),
+                                                   from.getPadDimensionsAttr());
+      padding =
+          BDPadLayoutArrayArrayAttr::get(builder.getContext(), perSegment);
+    }
+
     return ObjectFifoDmaEndpointOp::create(
         builder, loc, builder.getStringAttr(name), tile,
         ObjectFifoRoleAttr::get(builder.getContext(), role),
         FlatSymbolRefAttr::get(builder.getContext(), ref.pool.getSymName()),
-        ref.segment ? builder.getDenseI32ArrayAttr({*ref.segment})
-                    : DenseI32ArrayAttr(),
+        segments,
         channelIndex ? builder.getI32IntegerAttr(*channelIndex) : IntegerAttr(),
-        dims && !dims.empty() ? dims : BDDimLayoutArrayAttr(),
-        from.getPadDimensionsAttr(),
+        dimensions, padding,
         from.getPadValue() ? builder.getI32IntegerAttr(from.getPadValue())
                            : IntegerAttr(),
         from.getRepeatCount() && repeatCount
             ? builder.getI32IntegerAttr(*repeatCount)
             : IntegerAttr(),
         iterCount ? builder.getI32IntegerAttr(*iterCount) : IntegerAttr(),
-        acqRelCount && *acqRelCount > 1
-            ? builder.getI32IntegerAttr(*acqRelCount)
-            : IntegerAttr(),
-        transferSize ? builder.getI32IntegerAttr(*transferSize) : IntegerAttr(),
         /*packet=*/PacketInfoAttr(),
         builder.getStringAttr(from.name().getValue()));
   }
@@ -296,25 +313,7 @@ struct AIEObjectFifoSplitPass
         /*iterCount=*/IntegerAttr(), fifo.getDisableSynchronization(),
         builder.getStringAttr(fifo.name().getValue()),
         /*initValues=*/ArrayAttr());
-    return PoolRef{pool, std::nullopt};
-  }
-
-  /// A link's two ends may disagree on an object's size. On a compute tile the
-  /// fifo moves its own; a MemTile moves whichever is larger, so that padding
-  /// applied on the way out has room.
-  std::optional<int> transferSizeInto(PoolRef ref, MemRefType elemType) {
-    if (ref.segment) {
-      return std::nullopt;
-    }
-    int64_t own = elemType.getNumElements();
-    int64_t pooled = ref.pool.getObjectSize();
-    if (own == pooled) {
-      return std::nullopt;
-    }
-    if (ref.pool.getTileLike().isMemTile() && own < pooled) {
-      return std::nullopt;
-    }
-    return own;
+    return PoolRef{pool, {0}};
   }
 
   /// Point a core's accesses at the endpoint it works through.
@@ -481,7 +480,20 @@ void AIEObjectFifoSplitPass::createLinkPools() {
         extents.emplace_back(offset, size);
       }
     } else {
-      extents.emplace_back(0, elemType.getNumElements());
+      int64_t inSize =
+          cast<MemRefType>(
+              cast<AIEObjectFifoType>(ins[0].getElemType()).getElementType())
+              .getNumElements();
+      int64_t outSize =
+          cast<MemRefType>(
+              cast<AIEObjectFifoType>(outs[0].getElemType()).getElementType())
+              .getNumElements();
+      int64_t commonSize = std::min(inSize, outSize);
+      extents.emplace_back(0, commonSize);
+      if (elemType.getNumElements() > commonSize) {
+        extents.emplace_back(commonSize,
+                             elemType.getNumElements() - commonSize);
+      }
     }
 
     // The pool is one end of the owning fifo, and is named and sized as that
@@ -510,13 +522,31 @@ void AIEObjectFifoSplitPass::createLinkPools() {
         /*holdsInitialContents=*/ownerIsOutput, linkOp.getRepeatCount());
     linkPoolOwner.insert(owner);
 
+    SmallVector<int32_t> allSegments;
+    for (int32_t index = 0; index < (int32_t)extents.size(); ++index) {
+      allSegments.push_back(index);
+    }
     for (auto [index, in] : llvm::enumerate(ins)) {
-      linkedConsumerEnd[in] =
-          PoolRef{pool, isJoin ? std::optional<int32_t>(index) : std::nullopt};
+      linkedConsumerEnd[in] = PoolRef{
+          pool,
+          isJoin
+              ? SmallVector<int32_t>{static_cast<int32_t>(index)}
+              : (cast<MemRefType>(
+                     cast<AIEObjectFifoType>(in.getElemType()).getElementType())
+                             .getNumElements() == elemType.getNumElements()
+                     ? allSegments
+                     : SmallVector<int32_t>{0})};
     }
     for (auto [index, out] : llvm::enumerate(outs)) {
       linkedProducerEnd[out] = PoolRef{
-          pool, isDistribute ? std::optional<int32_t>(index) : std::nullopt};
+          pool,
+          isDistribute
+              ? SmallVector<int32_t>{static_cast<int32_t>(index)}
+              : (cast<MemRefType>(cast<AIEObjectFifoType>(out.getElemType())
+                                      .getElementType())
+                             .getNumElements() == elemType.getNumElements()
+                     ? allSegments
+                     : SmallVector<int32_t>{0})};
     }
   }
 }
@@ -577,7 +607,7 @@ void AIEObjectFifoSplitPass::runOnOperation() {
             createPool(loc, (fifoName + "_pool").str(), tile, fifo.size(),
                        elemType, fifo, {{0, elemType.getNumElements()}},
                        /*holdsInitialContents=*/true, fifo.getRepeatCount()),
-            std::nullopt};
+            {0}};
       }
 
       if (hasCoreAccess(device, fifo.getProducerTile(), fifo,
@@ -616,14 +646,9 @@ void AIEObjectFifoSplitPass::runOnOperation() {
     bool prodIsShim = cast<TileOp>(prodTile.getDefiningOp()).isShimTile();
     std::optional<PoolRef> prodRef;
     // Objects entering a repeating link arrive that many at a time.
-    std::optional<int> prodAcqRel;
-    std::optional<int> consAcqRel;
-    std::optional<int> prodTransfer;
-    std::optional<int> consTransfer;
     if (auto linked = linkedProducerEnd.find(fifo);
         linked != linkedProducerEnd.end()) {
       prodRef = linked->second;
-      prodTransfer = transferSizeInto(linked->second, elemType);
     } else if (prodIsShim) {
       if (!fifo.getPlio()) {
         prodRef = registeredPool(fifo, prodTile, (fifoName + "_pool").str(),
@@ -636,7 +661,7 @@ void AIEObjectFifoSplitPass::runOnOperation() {
           createPool(loc, (fifoName + "_pool").str(), prodTile, depth, elemType,
                      fifo, {{0, elemType.getNumElements()}},
                      /*holdsInitialContents=*/true, fifo.getRepeatCount());
-      prodRef = PoolRef{pool, std::nullopt};
+      prodRef = PoolRef{pool, {0}};
     }
 
     if (prodRef &&
@@ -646,18 +671,12 @@ void AIEObjectFifoSplitPass::runOnOperation() {
       retargetCoreAccesses(fifo, ObjectFifoPort::Produce, prodTile, name);
     }
 
-    // A link that repeats gathers that many objects each time the pool is
-    // filled; draining it stays one object at a time.
-    std::optional<int> linkRepeat;
-    if (auto linkOp = getOptionalLinkOp(fifo)) {
-      linkRepeat = linkOp->getRepeatCount();
-    }
     std::string prodDmaName = (fifoName + "_prod_dma").str();
     if (prodRef) {
-      createDmaEndpoint(
-          loc, prodDmaName, prodTile, *prodRef, ObjectFifoRole::Drain, fifo,
-          fifo.getDimensionsToStreamAttr(), fifo.getProdDmaChannel(),
-          prodAcqRel, fifo.getRepeatCount(), prodTransfer);
+      createDmaEndpoint(loc, prodDmaName, prodTile, *prodRef,
+                        ObjectFifoRole::Drain, fifo,
+                        fifo.getDimensionsToStreamAttr(),
+                        fifo.getProdDmaChannel(), fifo.getRepeatCount());
     } else {
       createDanglingEndpoint(
           loc, prodDmaName, prodTile, DMAChannelDir::MM2S,
@@ -686,8 +705,6 @@ void AIEObjectFifoSplitPass::runOnOperation() {
           linked != linkedConsumerEnd.end() &&
           consumerTile == linked->second.pool.getTile()) {
         consRef = linked->second;
-        consAcqRel = linkRepeat;
-        consTransfer = transferSizeInto(linked->second, consElemType);
       } else if (consIsShim) {
         if (!fifo.getPlio()) {
           consRef =
@@ -703,7 +720,7 @@ void AIEObjectFifoSplitPass::runOnOperation() {
                                {{0, consElemType.getNumElements()}},
                                /*holdsInitialContents=*/false,
                                /*repeatCount=*/std::nullopt);
-        consRef = PoolRef{pool, std::nullopt};
+        consRef = PoolRef{pool, {0}};
       }
 
       if (consRef &&
@@ -727,8 +744,7 @@ void AIEObjectFifoSplitPass::runOnOperation() {
                           ObjectFifoRole::Fill, fifo,
                           consumerDims.empty() ? BDDimLayoutArrayAttr()
                                                : consumerDims[consumerIndex],
-                          pinned, consAcqRel,
-                          /*repeatCount=*/std::nullopt, consTransfer);
+                          pinned, /*repeatCount=*/std::nullopt);
       } else {
         createDanglingEndpoint(loc, consDmaName, consumerTile,
                                DMAChannelDir::S2MM,

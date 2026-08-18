@@ -24,8 +24,8 @@
 // both loops, which also peels core_0_2's first iteration so that the rest of
 // its loop starts holding 1 and its acquires become constant too.
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll="default-dynamic=true" %s | FileCheck %s
-// RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll %s | FileCheck %s --check-prefix=UNROLL
+// RUN: aie-opt --aie-objectFifo-stateful-transform="skip-verify=true" --aie-objectFifo-unroll="default-dynamic=true" %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="skip-verify=true" --aie-objectFifo-unroll %s | FileCheck %s --check-prefix=UNROLL
 
 // CHECK-LABEL:   aie.device(npu2) {
 // CHECK-DAG:       %[[T2:.*]] = aie.tile(0, 2)

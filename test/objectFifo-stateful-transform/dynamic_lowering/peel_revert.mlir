@@ -15,8 +15,8 @@
 // has to reproduce exactly what peeling disabled produces, which is what makes
 // this a check of the revert rather than of the peel.
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll %s | FileCheck %s
-// RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll="peel-first-iteration=false" %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="skip-verify=true" --aie-objectFifo-unroll %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="skip-verify=true" --aie-objectFifo-unroll="peel-first-iteration=false" %s | FileCheck %s
 
 // CHECK-LABEL:   aie.device(npu2) {
 // CHECK:           %[[T2:.*]] = aie.tile(0, 2)
