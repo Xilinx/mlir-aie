@@ -104,6 +104,16 @@ void emitRemoteBarrier(CertRemoteBarrierOp op, std::string &text) {
   text += std::to_string(op.getPartyMask()) + "\n";
 }
 
+// REL_ACQ_SYNC        0x0205720c, 0x02057004
+void emitRelAcqSync(CertRelAcqSyncOp op, std::string &text) {
+  std::string s;
+  llvm::raw_string_ostream ss(s);
+  ss << "  REL_ACQ_SYNC           ";
+  ss << llvm::format("0x%08x, ", op.getRelAddress());
+  ss << llvm::format("0x%08x\n", op.getAcqAddress());
+  text += ss.str();
+}
+
 // LOAD_PDI            1, @device_config
 void emitLoadPdi(CertLoadPdiOp op, std::string &text) {
   text += "  LOAD_PDI               ";
@@ -140,6 +150,7 @@ LogicalResult emitJob(CertJobOp jobOp, std::string &text, std::string &data) {
         .Case<CertPreemptOp>([&](auto op) { emitPreempt(op, text); })
         .Case<CertRemoteBarrierOp>(
             [&](auto op) { emitRemoteBarrier(op, text); })
+        .Case<CertRelAcqSyncOp>([&](auto op) { emitRelAcqSync(op, text); })
         .Case<CertMaskWrite32Op>([&](auto op) { emitMaskWrite32(op, text); })
         .Case<CertNopOp>([&](auto op) { emitNop(op, text); })
         .Case<CertUcDmaWriteDesSyncOp>(
