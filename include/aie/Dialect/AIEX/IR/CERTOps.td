@@ -313,7 +313,9 @@ def AIE_CertRelAcqSyncOp: AIEX_Op<"cert.rel_acq_sync", [HasParent<"CertJobOp">]>
     Operand order is release then acquire, matching the aiebu assembler.
 
     Example:
+    ```
       cert.rel_acq_sync(0x00016004, 0x00016208)
+    ```
   }];
   let arguments = (
     ins UI32Attr:$rel_address,
