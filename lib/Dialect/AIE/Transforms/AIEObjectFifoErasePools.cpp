@@ -28,8 +28,7 @@ struct AIEObjectFifoErasePoolsPass
   void runOnOperation() override {
     DeviceOp device = getOperation();
 
-    // Any op may name a pool, so ask the symbol table who still does rather
-    // than enumerating the op kinds we happen to know about.
+    // Pool users are open-ended because any symbol user may retain the pool.
     SymbolTableCollection symbolTables;
     SymbolUserMap users(symbolTables, device);
 

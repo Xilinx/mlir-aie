@@ -99,6 +99,9 @@ inline cl::opt<bool> dynamicObjFifos("dynamic-objFifos",
                                      cl::init(true));
 inline cl::opt<bool> packetSwObjFifos("packet-sw-objFifos",
                                       cl::desc("Packet-switched objectFIFOs"));
+inline cl::opt<bool> skipObjectFifoVerify(
+    "skip-objectFifo-verify",
+    cl::desc("Skip structural verification of split objectFifo IR"));
 inline cl::opt<bool>
     ctrlPktOverlay("generate-ctrl-pkt-overlay",
                    cl::desc("Route shim-to-tile control overlay"));

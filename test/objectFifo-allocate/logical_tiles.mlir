@@ -6,8 +6,8 @@
 //===----------------------------------------------------------------------===//
 
 // Pools and endpoints name a tile through the TileLike interface, so a design
-// whose tiles are not placed yet lowers just as far. Placement can then run
-// after the objectFifo pipeline rather than before it.
+// whose tiles are not placed yet lowers just as far. Placement may run after
+// the objectFifo pipeline.
 
 // RUN: aie-opt --aie-objectfifo-allocate %s | FileCheck %s
 // RUN: aie-opt --aie-objectFifo-stateful-transform="skip-verify=true" --aie-place-tiles %s | FileCheck %s --check-prefix=PLACED

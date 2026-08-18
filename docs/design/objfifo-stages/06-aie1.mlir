@@ -19,9 +19,8 @@
 //
 //   locks = [@of1_lock_0, @of1_lock_1]      locks[i] guards buffers[i]
 //
-// Both actors take the same lock for a given buffer, and fill or drain is
-// carried in the lock VALUE rather than in which lock is taken: 1 for a
-// fill-release or a drain-acquire, 0 otherwise.
+// Both actors take the same lock for a given buffer. The lock value identifies
+// ownership: 1 for a fill-release or a drain-acquire, 0 otherwise.
 //
 // A pool carries either `locks` or `segments`, matching the device's lock kind.
 // The two are indexed on different axes -- `locks` follows the buffer rotation,

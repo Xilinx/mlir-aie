@@ -50,8 +50,8 @@ struct AIEObjectFifoAllocatePass
   /// breaks the separation of concerns; --aie-assign-buffer-addresses should
   /// instead be free to move buffers between tiles that share a memory module.
   ///
-  /// A MemTile buffer that does not fit at home spills to whichever neighbor
-  /// its DMAs can still reach, preferring the emptier one so adjacent MemTiles
+  /// A MemTile buffer that does not fit at home spills to a neighbor reachable
+  /// by its DMAs, preferring the emptier one so adjacent MemTiles
   /// keep room for their own spills. Which tiles neighbor an unplaced one is
   /// not yet known, so its buffers stay at home.
   Value placementFor(TileLike home, int64_t sizeBytes) {
@@ -161,11 +161,9 @@ struct AIEObjectFifoAllocatePass
     int filled = initValues ? initValues->size() : 0;
     int repeat = pool.getRepeatCount().value_or(1);
 
-    // A pool that starts full and is re-read each outer iteration is never
-    // written again, so nothing needs synchronizing.
-    // FIXME: this stands in for "no endpoint fills this pool", which is what
-    // actually decides it. Asking that question directly is a follow-on
-    // change; see the follow-up list on the PR that introduced these passes.
+    // FIXME: decide this from the absence of a filling endpoint. The current
+    // condition identifies constant pools through their initialization and
+    // iteration attributes.
     auto iterCount = pool.getIterCount();
     if (filled == depth && filled > 0 && iterCount && *iterCount > 1) {
       return;

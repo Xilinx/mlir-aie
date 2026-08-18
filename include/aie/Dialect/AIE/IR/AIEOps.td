@@ -2088,10 +2088,8 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
                                              IntMaxValue<2>]>>:$aie_stream,
       OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>,
                                              IntMaxValue<1>]>>:$aie_stream_port,
-      // Pin the DMA channel for an endpoint instead of first-free assignment.
-      // prod_dma_channel pins the producer endpoint's channel;
-      // cons_dma_channels holds one entry per consumer (-1 = auto-assign that
-      // consumer).
+      // Requested endpoint channels. A -1 consumer entry requests automatic
+      // assignment.
       OptionalAttr<ConfinedAttr<
           AIEI32Attr, [IntMinValue<0>]>>:$prod_dma_channel,
       OptionalAttr<DenseI32ArrayAttr>:$cons_dma_channels,
@@ -2100,9 +2098,8 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
       // Lowered onto the memtile MM2S channel; see aie.dma_start's pad_value.
       DefaultValuedOptionalAttr<AIEI32Attr, "0">:$padValue,
       OptionalAttr<AIEI32Attr>:$iter_count,
-      // Route this fifo's stream connections as packet flows rather than
-      // reserving a circuit for each. packet_id pins the header; without it
-      // one is assigned that no other flow uses.
+      // packet selects packet-switched routing. packet_id pins the header;
+      // allocation chooses an unused id when it is absent.
       UnitAttr:$packet,
       OptionalAttr<ConfinedAttr<AIEI8Attr, [IntMinValue<0>]>>:$packet_id);
 
@@ -2429,8 +2426,7 @@ def AIE_ObjectFifoDmaEndpointOp
       DefaultValuedOptionalAttr<AIEI32Attr, "0">:$padValue,
       OptionalAttr<AIEI32Attr>:$repeatCount,
       OptionalAttr<AIEI32Attr>:$iterCount, OptionalAttr<PacketInfoAttr>:$packet,
-      // Name of the objectFifo this endpoint was split from, for the runtime
-      // records that address it by that name.
+      // ObjectFifo name used by runtime records.
       OptionalAttr<StrAttr>:$fifoName);
 
   let assemblyFormat = [{
@@ -2477,8 +2473,7 @@ def AIE_ObjectFifoDanglingEndpointOp
       DMAChannelDir:$channelDir, WireBundle:$bundle,
       OptionalAttr<AIEI32Attr>:$channelIndex,
       OptionalAttr<PacketInfoAttr>:$packet,
-      // Name of the objectFifo this endpoint was split from, for the shim
-      // allocation symbol the runtime sequence resolves.
+      // ObjectFifo name used by the shim allocation symbol.
       OptionalAttr<StrAttr>:$fifoName);
 
   let assemblyFormat = [{

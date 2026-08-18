@@ -661,18 +661,20 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
           .map<ModRef>("traced.mlir", PassPipeline{getTracePipeline(&context)})
           .map<ModRef>(
               "input_with_addresses.mlir",
-              PassPipeline{&context,
-                           [scheme = allocScheme.getValue(),
-                            dyn = dynamicObjFifos.getValue(),
-                            pkt = packetSwObjFifos.getValue(),
-                            ctrl = ctrlPktOverlay.getValue() ||
-                                   loadPdiToCtrlPkt.getValue(),
-                            ldpdi = loadPdiToCtrlPkt.getValue(),
-                            bf16 = bf16Emulation.getValue()](
-                               mlir::MLIRContext *ctx, mlir::ModuleOp mod) {
-                             return getInputWithAddressesPipeline(
-                                 ctx, mod, scheme, dyn, pkt, ctrl, bf16, ldpdi);
-                           }});
+              PassPipeline{
+                  &context, [scheme = allocScheme.getValue(),
+                             dyn = dynamicObjFifos.getValue(),
+                             pkt = packetSwObjFifos.getValue(),
+                             ctrl = ctrlPktOverlay.getValue() ||
+                                    loadPdiToCtrlPkt.getValue(),
+                             ldpdi = loadPdiToCtrlPkt.getValue(),
+                             bf16 = bf16Emulation.getValue(),
+                             skipVerify = skipObjectFifoVerify.getValue()](
+                                mlir::MLIRContext *ctx, mlir::ModuleOp mod) {
+                    return getInputWithAddressesPipeline(ctx, mod, scheme, dyn,
+                                                         pkt, ctrl, bf16, ldpdi,
+                                                         skipVerify);
+                  }});
 
   // Scratchpad run-time parameters sidecar file
   auto &paramsFile = withAddresses.map<std::string>(

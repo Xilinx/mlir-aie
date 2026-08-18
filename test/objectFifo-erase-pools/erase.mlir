@@ -3,8 +3,7 @@
 // Copyright (C) 2025 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-// A pool no endpoint refers to is gone; one still worked by an endpoint stays,
-// along with the buffers and locks both name.
+// Pools with symbol users remain available with their buffers and locks.
 
 module @erase {
   aie.device(xcve2302) {

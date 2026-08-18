@@ -23,8 +23,8 @@
 //                                 direction and port a flow needs
 //   aie.objectfifo.flow           a stream connection between endpoints
 //
-// All five are transient. They are introduced by --aie-objectfifo-split and are
-// gone by the end of the pipeline; what survives is ordinary AIE IR --
+// --aie-objectfifo-split creates these transient operations. The completed
+// pipeline contains ordinary AIE IR:
 // aie.buffer, aie.lock, aie.flow, aie.mem / aie.memtile_dma / aie.shim_dma, and
 // aie.shim_dma_allocation.
 //
@@ -106,8 +106,8 @@
 // route. --aie-objectfifo-allocate turns a flow into a channel on each endpoint
 // plus an aie.flow, and consumes it.
 //
-// A flow marked `packet` becomes an aie.packet_flow instead, sharing the stream
-// rather than reserving a circuit; the two kinds coexist in one device. The
+// A flow marked `packet` becomes an aie.packet_flow and shares a stream. Circuit
+// flows reserve their stream. The two kinds coexist in one device. The
 // choice sits on the flow because a packet route is one id agreed by the source
 // and every destination -- per-endpoint marks could disagree with each other.
 // `packet_id` pins that id; otherwise allocation picks the lowest one no other
@@ -199,9 +199,8 @@
 //   - a segment whose filler or drainer is implemented elsewhere has no endpoint
 //     for it here
 //
-// The last of these is why completeness is checked by a pass rather than by an
-// op verifier: absence of an endpoint carries no information about whether the
-// actor exists.
+// Completeness is an optional pass because absence of an endpoint carries no
+// information about whether a BD-level actor exists.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -248,8 +247,8 @@
 //    run of the object. The subview it is handed carries the run's offset in
 //    its layout, giving a type like memref<16xi32, strided<[1], offset: 16>>.
 //
-// 2. A multi-segment core acquire takes one lock per segment before the object
-//    may be touched. The delta computation is unchanged; it is applied to each.
+// 2. A multi-segment core acquire applies the held-object delta to every
+//    segment lock before the object may be touched.
 //
 // 3. Pre-filled fifos desugar during split: the initial contents become
 //    initializers on the aie.buffer ops, and "N objects start full" becomes the

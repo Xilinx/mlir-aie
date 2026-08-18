@@ -280,10 +280,8 @@ struct AIEObjectFifoSplitPass
         builder.getStringAttr(from.name().getValue()));
   }
 
-  /// External buffers registered against a fifo's shim end become the objects
-  /// of a pool there, held in DDR rather than on the tile. Where the design
-  /// registered none, the runtime supplies the address at dispatch and there
-  /// is nothing to pool.
+  /// External buffers registered against a fifo's shim end form a pool in DDR.
+  /// An unregistered end receives its address from the runtime at dispatch.
   std::optional<PoolRef> registeredPool(ObjectFifoCreateOp fifo, Value tile,
                                         StringRef name, MemRefType elemType) {
     SmallVector<Attribute> names;
@@ -496,8 +494,6 @@ void AIEObjectFifoSplitPass::createLinkPools() {
       }
     }
 
-    // The pool is one end of the owning fifo, and is named and sized as that
-    // end would be, so the owner's other end keeps its own name.
     bool ownerIsOutput = llvm::is_contained(outs, owner);
     std::string name;
     int depth;

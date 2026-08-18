@@ -142,8 +142,7 @@ struct AIEObjectFifoLowerDMAsPass
     int acquireValue = count, releaseValue = count;
     auto action = LockAction::AcquireGreaterEqual;
     if (binaryLocks) {
-      // One lock travels with the buffer, and the direction is carried in the
-      // value rather than in a second lock.
+      // A binary lock's value encodes which side owns the buffer.
       SmallVector<LockOp> locks = pool.getLockOps();
       if (descriptor.binaryLock < (int64_t)locks.size()) {
         acquireLock = releaseLock = locks[descriptor.binaryLock];
@@ -202,16 +201,14 @@ struct AIEObjectFifoLowerDMAsPass
 
     Location loc = endpoint.getLoc();
     int repeat = endpoint.getRepeatCount().value_or(1);
-    // Only a MemTile's DMA runs a chain a fixed number of times; the verifier
-    // rejects iter_count anywhere else rather than dropping it here.
+    // iter_count is valid only for MemTile endpoints.
     std::optional<int32_t> iterCount = endpoint.getIterCount();
 
     // FIXME: repeat_count and iter_count are tangled here. Deriving one from
     // the other, and silently dropping iter_count off a MemTile, is confusing:
     // each should mean one thing and be honored or rejected, not reinterpreted.
     //
-    // A chain over one descriptor repeats in hardware rather than as copies of
-    // the same buffer descriptor.
+    // A single-descriptor chain can use the DMA start queue's repeat count.
     bool repeatInHardware = repeat > 1 && descriptors.size() == 1 && !iterCount;
     int taskCount =
         iterCount ? *iterCount - 1 : (repeatInHardware ? repeat - 1 : 0);
@@ -241,7 +238,7 @@ struct AIEObjectFifoLowerDMAsPass
         if (emitted + 1 < total) {
           successor = builder.createBlock(endBlock);
         } else if (iterCount) {
-          // A chain that runs a fixed number of times ends rather than loops.
+          // A bounded chain exits after its final iteration.
           successor = builder.createBlock(endBlock);
           builder.setInsertionPointToStart(successor);
           EndOp::create(builder, loc);

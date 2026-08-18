@@ -406,8 +406,6 @@ struct AIEObjectFifoLowerCoresPass
     }
   }
 
-  /// The bookkeeping slots exist only to reach SSA form; nothing downstream
-  /// should see them.
   LogicalResult promoteBookkeepingSlots(DeviceOp device) {
     SmallVector<PromotableAllocationOpInterface> allocators;
     device.walk([&](memref::AllocaOp allocaOp) {

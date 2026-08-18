@@ -33,8 +33,7 @@ DMAChannelAnalysis::DMAChannelAnalysis(DeviceOp &device) {
     }
   }
 
-  // A channel spoken for elsewhere, e.g. by the control packet overlay, must
-  // not be handed out again.
+  // Shim allocations reserve channels outside the DMA bodies above.
   for (auto allocOp : device.getOps<ShimDMAAllocationOp>()) {
     auto tile = allocOp.getTileOp();
     if (!tile) {
@@ -72,9 +71,8 @@ int DMAChannelAnalysis::getDMAChannelIndex(
   return -1;
 }
 
-/// Reserving up-front ensures first-free auto-assignment never steals a pinned
-/// channel. Returns -1 rather than emitting a diagnostic because the caller
-/// knows which endpoint asked, and says so.
+/// Reserve `channel`, returning -1 when it is unavailable. The caller owns the
+/// endpoint-specific diagnostic.
 int DMAChannelAnalysis::reservePinnedChannel(TileLike tile, DMAChannelDir dir,
                                              int channel) {
   int maxChannelNum = (dir == DMAChannelDir::MM2S)
