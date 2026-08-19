@@ -378,8 +378,14 @@ def AIE_CoreOp
     // .bss) need, beyond the stack. The buffer allocator keeps a contiguous
     // run at least this large free, because the generated linker script hands
     // the core compiler exactly one region: the largest gap left between the
-    // stack and the placed buffers. Populated by the aiecc driver from a probe
-    // link of the compiled core; absent means "unknown, reserve nothing".
+    // stack and the placed buffers. An explicit value (including 0) always
+    // wins: the aiecc driver auto-populates this from the .data/.rodata/.bss
+    // size of the core's `link_files` objects (plus a small margin) only when
+    // it is absent, and `--no-auto-reserved-data` disables that entirely.
+    // Auto-measurement only sees `link_files` (already-compiled objects), not
+    // `link_merge_files` (bitcode merged into the core's own module at
+    // compile time) or the core's own compiled globals -- absent still means
+    // "unknown, reserve nothing" whenever there is nothing to measure.
     OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>>:$reserved_data_size,
     // Deprecated: attach link_with to func.func declarations instead and run
     // aie-assign-core-link-files to populate link_files.

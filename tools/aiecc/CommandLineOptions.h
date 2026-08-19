@@ -146,6 +146,11 @@ inline cl::opt<bool> unified(
 inline cl::opt<bool> noUnified(
     "no-unified",
     cl::desc("Compile cores independently (negates --unified; the default)"));
+inline cl::opt<bool> noAutoReservedData(
+    "no-auto-reserved-data",
+    cl::desc("Skip auto-measuring reserved_data_size from each core's "
+             "link_files objects; cores without an explicit value keep "
+             "reserving nothing"));
 
 //===----------------------------------------------------------------------===//
 // Runtime sequence to compile (empty = all). Filters the per-sequence NPU

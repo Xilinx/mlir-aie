@@ -660,27 +660,54 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   std::vector<EdgeBase *> outputs;
   auto &input = g.fileInput(inputFile, "input.mlir");
 
-  auto &withAddresses =
+  auto &traced =
       input
           .map<ModRef>("placed.mlir",
                        PassPipeline{getPlacementPipeline(
                            &context, coresPerCol.getValue(),
                            placerType.getValue(), saSeed.getValue())})
-          .map<ModRef>("traced.mlir", PassPipeline{getTracePipeline(&context)})
-          .map<ModRef>(
-              "input_with_addresses.mlir",
-              PassPipeline{&context,
-                           [scheme = allocScheme.getValue(),
-                            dyn = dynamicObjFifos.getValue(),
-                            pkt = packetSwObjFifos.getValue(),
-                            ctrl = ctrlPktOverlay.getValue() ||
-                                   loadPdiToCtrlPkt.getValue(),
-                            ldpdi = loadPdiToCtrlPkt.getValue(),
-                            bf16 = bf16Emulation.getValue()](
-                               mlir::MLIRContext *ctx, mlir::ModuleOp mod) {
-                             return getInputWithAddressesPipeline(
-                                 ctx, mod, scheme, dyn, pkt, ctrl, bf16, ldpdi);
-                           }});
+          .map<ModRef>("traced.mlir", PassPipeline{getTracePipeline(&context)});
+
+  // link_files must be known before reserved_data_size can be auto-measured
+  // from it, so aie-assign-core-link-files runs here rather than where it
+  // used to sit inside getInputWithAddressesPipeline (after buffer address
+  // assignment). It's a pure call-graph analysis over func.func/func.call --
+  // nothing about it depends on addresses, so moving it earlier is safe.
+  auto &withLinkFiles = traced.map<ModRef>(
+      "with_link_files.mlir",
+      PassPipeline{&context, [](mlir::MLIRContext *ctx, mlir::ModuleOp) {
+                     auto pm = std::make_unique<mlir::PassManager>(ctx);
+                     pm->nest<DeviceOp>().addPass(
+                         xilinx::AIE::createAIEAssignCoreLinkFilesPass());
+                     return pm;
+                   }});
+
+  // Measure each core's link_files objects and auto-populate
+  // reserved_data_size where the user hasn't set it explicitly. File I/O
+  // (opening the linked objects) happens here in the driver, not inside an
+  // MLIR pass -- the same reasoning as resolveExternalPath's other callers.
+  auto &withReservedData = withLinkFiles.map<ModRef>(
+      "reserved_data.mlir",
+      [inputFile, workDirStr,
+       skip = noAutoReservedData.getValue()](const ModRef &mod) -> ModRef {
+        if (skip)
+          return ModRef(mod.get().clone());
+        return populateReservedDataSize(mod.get(), inputFile, workDirStr);
+      });
+
+  auto &withAddresses = withReservedData.map<ModRef>(
+      "input_with_addresses.mlir",
+      PassPipeline{
+          &context,
+          [scheme = allocScheme.getValue(), dyn = dynamicObjFifos.getValue(),
+           pkt = packetSwObjFifos.getValue(),
+           ctrl = ctrlPktOverlay.getValue() || loadPdiToCtrlPkt.getValue(),
+           ldpdi = loadPdiToCtrlPkt.getValue(),
+           bf16 = bf16Emulation.getValue()](mlir::MLIRContext *ctx,
+                                            mlir::ModuleOp mod) {
+            return getInputWithAddressesPipeline(ctx, mod, scheme, dyn, pkt,
+                                                 ctrl, bf16, ldpdi);
+          }});
 
   // Scratchpad run-time parameters sidecar file
   auto &paramsFile = withAddresses.map<std::string>(
