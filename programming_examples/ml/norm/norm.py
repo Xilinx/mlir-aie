@@ -125,9 +125,7 @@ def norm(
     # --stack-sizes), which is exactly the target default, so the core
     # overruns the reservation into the buffers the linker places above it.
     workers = [
-        Worker(
-            core_fn, [of_ins[i].cons(), of_outs[i].prod(), norm_fn], stack_size=2048
-        )
+        Worker(core_fn, [of_ins[i].cons(), of_outs[i].prod(), norm_fn], stack_size=2048)
         for i in range(n_cores)
     ]
 
