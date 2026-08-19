@@ -41,6 +41,12 @@ SEEDS = 200
 MIN_SOLVED = 200  # of SEEDS; seeds are fixed, so this is exact
 MAX_NEEDLESS_CROSSINGS = 2
 MAX_BANK_IMBALANCE = 0.70  # mean (max-min)/bankSize over banks in use
+# Fragmentation: the fraction of the free bytes that survive as ONE run. The
+# generated linker script hands the core compiler a single region -- the
+# largest gap left between the stack and the buffers -- so this, not the total
+# free space, is what decides whether a core's own .data/.bss fit. 1.0 would
+# mean perfectly contiguous.
+MIN_MEAN_CONTIGUITY = 0.55
 
 DEVICES = [
     dict(name="core", dev="npu2", tile=(0, 2), cap=65536, banks=4, bus=32, stack=1024),
@@ -177,6 +183,23 @@ def legality_violations(cfg, blocks, placed):
     return out
 
 
+def largest_free_run(cfg, placed):
+    """(largest contiguous free run, total free bytes) above the stack."""
+    cap, stack = cfg["cap"], cfg["stack"]
+    taken = sorted((a, a + s) for a, s, _ in placed.values() if s)
+    best = total = 0
+    cursor = stack
+    for lo, hi in taken:
+        if lo > cursor:
+            best = max(best, lo - cursor)
+            total += lo - cursor
+        cursor = max(cursor, hi)
+    if cursor < cap:
+        best = max(best, cap - cursor)
+        total += cap - cursor
+    return best, total
+
+
 def quality(cfg, blocks, placed):
     bank = cfg["cap"] // cfg["banks"]
     by_name = {b["name"]: b for b in blocks}
@@ -198,7 +221,7 @@ def quality(cfg, blocks, placed):
 def main():
     workdir = Path(tempfile.mkdtemp(prefix="aie-alloc-props-"))
     solved = total = needless = nondet = 0
-    imbalances, illegal = [], []
+    imbalances, contiguity, illegal = [], [], []
     for seed in range(SEEDS):
         cfg = DEVICES[seed % len(DEVICES)]
         mlir, blocks = build_design(random.Random(seed), cfg)
@@ -215,10 +238,14 @@ def main():
         n, imb = quality(cfg, blocks, placed)
         needless += n
         imbalances.append(imb)
+        run, free = largest_free_run(cfg, placed)
+        if free:
+            contiguity.append(run / free)
         if allocate(mlir, workdir) != placed:
             nondet += 1
 
     mean_imb = sum(imbalances) / len(imbalances) if imbalances else 0.0
+    mean_contig = sum(contiguity) / len(contiguity) if contiguity else 1.0
     for line in illegal[:10]:
         print("ILLEGAL:", line)
 
@@ -238,6 +265,11 @@ def main():
         mean_imb <= MAX_BANK_IMBALANCE,
         f"mean imbalance {mean_imb:.2f} (max {MAX_BANK_IMBALANCE})",
     )
+    report(
+        "contiguity",
+        mean_contig >= MIN_MEAN_CONTIGUITY,
+        f"mean largest-run/free {mean_contig:.2f} (min {MIN_MEAN_CONTIGUITY})",
+    )
     return 0
 
 
@@ -247,6 +279,7 @@ def main():
 # CHECK: completeness: {{.*}} : OK
 # CHECK: bank-splitting: {{.*}} : OK
 # CHECK: bank-balance: {{.*}} : OK
+# CHECK: contiguity: {{.*}} : OK
 # CHECK-NOT: REGRESSION
 
 if __name__ == "__main__":
