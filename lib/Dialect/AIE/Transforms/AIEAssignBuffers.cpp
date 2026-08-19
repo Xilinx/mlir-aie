@@ -110,6 +110,27 @@ static bool checkAndPrintOverlapStackframe(int stacksize,
   return true;
 }
 
+// Basic-sequential packs every buffer contiguously right above the stack, so
+// (unlike bank-aware, which may leave gaps between banks) the only free run
+// left for the core's own data is whatever sits above the last buffer. A
+// reservation the bump-pointer packing can't honour must fail cleanly here
+// too -- otherwise a design whose bank-aware attempt happens to fail for an
+// unrelated reason (e.g. a mem_bank constraint) and falls back to
+// basic-sequential would silently lose the reservation check, and the
+// shortfall would only surface much later as a linker region-overflow error.
+static bool checkAndPrintReservedData(TileOp tile, int64_t highWater,
+                                      int64_t maxDataMemorySize,
+                                      int64_t reservedData) {
+  int64_t freeSpace = maxDataMemorySize - highWater;
+  if (freeSpace >= reservedData)
+    return true;
+  tile.emitWarning("buffers leave only ")
+      << freeSpace
+      << " contiguous bytes for the core's data sections, which need "
+      << reservedData << " bytes.";
+  return false;
+}
+
 //===----------------------------------------------------------------------===//
 // BasicAllocation : sequential alloc from largest to smallest
 //===----------------------------------------------------------------------===//
@@ -192,9 +213,12 @@ static bool basicAllocation(TileOp tile) {
   // the bottom for stack.
   int64_t stacksize = 0;
   int64_t address = 0;
+  int64_t reservedData = 0;
   if (auto core = tile.getCoreOp()) {
     stacksize = core.getEffectiveStackSize();
     address += stacksize;
+    // Space the core's own compiled sections need; see reserved_data_size.
+    reservedData = core.getReservedDataSize().value_or(0);
   }
 
   // Ensure alignment of preallocated buffer
@@ -262,7 +286,9 @@ static bool basicAllocation(TileOp tile) {
   return (checkAndPrintOverlapStackframe(stacksize, allBuffers_on_tile) &&
           checkAndPrintBufferOverlap(allBuffers_on_tile, tileAlignBitWidth) &&
           checkAndPrintOverflow(tile, highWater, maxDataMemorySize, stacksize,
-                                allBuffers_on_tile));
+                                allBuffers_on_tile) &&
+          checkAndPrintReservedData(tile, highWater, maxDataMemorySize,
+                                    reservedData));
 }
 
 //===----------------------------------------------------------------------===//
