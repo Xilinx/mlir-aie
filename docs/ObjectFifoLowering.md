@@ -3,52 +3,49 @@
 
 # ObjectFifo Lowering
 
-An `aie.objectfifo` describes a data movement in one line: a rotating set of
-objects, the tiles that produce and consume them, and the ordering between the
-two. Turning that into hardware configuration means deciding many smaller
-things — where the buffers live, which locks guard them, which DMA channels move
-them, which stream route connects those channels, and what buffer descriptor
-chain each channel runs.
+An `aie.objectfifo` enables data movement at object-size granularity in a
+first-in-first-out manner, either between two tiles (1:1), as a broadcast (1:N),
+or, using `aie.objectfifo.link`, as join and distribute patterns (N:M). The
+ObjectFifo provides buffering, and users may acquire and hold multiple objects
+at a time (e.g. sliding windows). The current implementation provides
+buffering using a rotating set of `aie.buffer`s, synchronization between
+producers and consumers using `aie.lock`s, routing using `aie.flow` or
+`aie.packet_flow`, movement of data either using shared memory or DMA programs
+(`aie.mem`, `aie.memtile_dma` and `aie.shim_dma`), and object access on cores.
 
-A pipeline of passes makes those decisions, and each pass writes its answers
-back into the IR. This page describes the operations that carry those answers
-and the pass that produces each one.
+This page documents how we arrive at a concrete lowering for a given high-level
+ObjectFifo in multiple passes. Users requiring lower-level control may find the
+intermediate levels useful.
 
-It is written for two readers: someone working on the lowering, and someone who
-wants to enter the pipeline partway through with hand-written IR.
-
-## Why the state is in the IR
-
-The lowering used to be one pass. It was all or nothing: a design that needed
-one decision made differently had to abandon the whole thing and write buffers,
-locks, DMA programs and flows by hand.
-
-Now every decision lands in the IR as an operation or an attribute, so a design
-can start at any point in the pipeline and every pass respects what it finds.
-Being specific is optional but honored: write down a DMA channel and it is kept;
-leave it out and one is chosen.
-
-The same property keeps the passes honest. Each pass erases what it consumes, so
-running the pipeline over its own output is a no-op. Anything a pass forgot to
-record would show up as a leftover operation instead of a silently lost side
-table. This is tested directly.
-
-## The operations
+## Frontend operations
 
 | Operation | What it holds |
 | --- | --- |
-| `aie.objectfifo.pool` | A rotating set of buffers, the segments they may be accessed in, and the locks guarding those segments. |
+| `aie.objectfifo` | The whole data movement: element type, depth, producer tile and consumer tiles. |
+| `aie.objectfifo.link` | Two or more fifos meeting on one tile, optionally with the offsets that make it a join or a distribute. |
+| `aie.objectfifo.acquire` / `.release` | A core taking objects out of a fifo and giving them back. |
+| `aie.objectfifo.allocate` | A delegate tile whose memory holds the objects. |
+| `aie.objectfifo.register_external_buffers` | DDR buffers backing a shim end. |
+
+## Operations after splitting
+
+`--aie-objectfifo-split` replaces the frontend operations with these:
+
+| Operation | What it holds |
+| --- | --- |
+| `aie.objectfifo.pool` | A set of buffers and the contract for accessing them: the segments they may be accessed in, and the locks to acquire and release. |
 | `aie.objectfifo.core_endpoint` | What a core needs to fill or drain the next object in a pool. |
 | `aie.objectfifo.dma_endpoint` | The same for a DMA channel. |
 | `aie.objectfifo.dangling_endpoint` | One end of a stream this compiler does not program: a shim the host runtime drives, a PLIO boundary, or a core's raw stream port. |
 | `aie.objectfifo.flow` | A circuit- or packet-switched connection from one draining endpoint to the filling endpoints it feeds. |
 
-All of them are transient. `--aie-objectfifo-split` introduces them and they are
-gone by the end of the pipeline. What survives is ordinary AIE IR: `aie.buffer`,
+These are transient. By the end of the pipeline what remains is `aie.buffer`,
 `aie.lock`, `aie.flow`, `aie.mem` / `aie.memtile_dma` / `aie.shim_dma`, and
 `aie.shim_dma_allocation`.
 
 ### Pools
+
+A pool is a set of buffers and the contract for accessing them.
 
 ```mlir
 aie.objectfifo.pool @P(%tile) {
@@ -63,15 +60,26 @@ The tile is where the buffers live and `depth` is how many of them rotate.
 
 **Buffers and segments are different axes.** Buffers are the rotation axis:
 `depth` objects taking turns. Segments partition a *single* object, and every
-buffer carries every segment. Segments are listed in increasing offset order, do
-not overlap, and together cover the element type exactly.
+buffer carries every segment. Segments are listed in increasing offset order,
+do not overlap, and together cover the element type exactly.
 
-An ordinary pool has one segment spanning the whole object. Only a joined or
-distributed pool has more.
+An ordinary pool has one segment spanning the whole object. A joined or
+distributed pool has one per participant.
 
-On devices with binary locks a pool carries `locks` — one per buffer, following
-the rotation axis — instead of per-segment locks, and has a single implicit
-segment. A pool carries either `locks` or `segments`, never both.
+On devices with binary locks a pool carries `locks`, one per buffer, and has a
+single implicit segment.
+
+### The access contract
+
+A segment's `produceLock` is taken by whoever fills it and its `consumeLock` by
+whoever drains it:
+
+- filling actor: acquire `produceLock`, release `consumeLock`
+- draining actor: acquire `consumeLock`, release `produceLock`
+
+With semaphore locks the value counts how many objects are claimed. With binary
+locks one lock per buffer serves both directions, and the direction is carried
+in the lock value.
 
 ### Endpoints
 
@@ -86,30 +94,25 @@ aie.objectfifo.dma_endpoint  @d(%tile) drains @P {channelIndex = 0 : i32}
 endpoint's own tile is where the actor is, which for shared memory differs from
 the pool's tile.
 
-**Every segment has exactly one filler and exactly one drainer.** A pool whose
-segments each have one core filling and one DMA draining is an ordinary fifo
-end. A pool with several fillers is a join; one with several drainers is a
-distribute.
+**Every segment has exactly one filler and exactly one drainer.** A pool with
+several fillers is a join; one with several drainers is a distribute.
 
 #### Selecting segments
 
-`segments` picks which of the pool's segments an actor handles:
+`segments` picks which of the pool's segments an actor handles. Indices are
+strictly increasing. Omitting the attribute selects segment zero, and is valid
+on a single-segment pool.
 
 ```mlir
 aie.objectfifo.dma_endpoint @d(%tile) fills @P {segments = array<i32: 0, 1>}
 ```
 
-Indices must be strictly increasing. Omitting the attribute means segment zero,
-and is only valid on a single-segment pool. There is no "all segments"
-shorthand: on a partitioned pool that would hide which slices an actor really
-touches.
-
 #### Per-segment transforms
 
 A DMA endpoint may carry `dimensions` (a strided access pattern) and
 `padDimensions`. Both are **positional**: entry N describes the segment named by
-`segments[N]`. When present, either attribute must have exactly as many entries
-as `segments`. An empty inner array means no transform for that segment.
+`segments[N]`, and each must have exactly as many entries as `segments`. An
+empty inner array means no transform for that segment.
 
 ```mlir
 aie.objectfifo.dma_endpoint @d(%tile) drains @P {
@@ -120,36 +123,22 @@ aie.objectfifo.dma_endpoint @d(%tile) drains @P {
 }
 ```
 
-Padding only appears on a draining endpoint, since padding is added as data goes
-out on the stream.
+Padding applies on a draining endpoint, where data goes out on the stream.
 
 #### Dangling endpoints
 
 An end with no pool behind it is a `dangling_endpoint`. It holds a tile, a
-direction and a port — enough for a flow to reach it — and nothing else:
+direction and a port, which is what a flow needs to reach it:
 
 ```mlir
 aie.objectfifo.dangling_endpoint @in(%shim) MM2S DMA  {fifoName = "of_in"}
 aie.objectfifo.dangling_endpoint @s(%tile)  MM2S Core {channelIndex = 0 : i32}
 ```
 
-A shim whose transfers the runtime sequence issues has nothing to pool, because
-the addresses only arrive at dispatch; it lowers to an `aie.shim_dma_allocation`
+A shim whose transfers the runtime sequence issues has nothing to pool, since
+the addresses arrive at dispatch; it lowers to an `aie.shim_dma_allocation`
 recording the tile, direction and channel. A shim that registers external
-buffers *does* have a pool and is an ordinary `dma_endpoint` with a real BD
-chain.
-
-### Locks
-
-A segment's `produceLock` is taken by whoever fills it and its `consumeLock` by
-whoever drains it:
-
-- filling actor: acquire `produceLock`, release `consumeLock`
-- draining actor: acquire `consumeLock`, release `produceLock`
-
-With semaphore locks the value counts how many objects are claimed. With binary
-locks one lock per buffer serves both directions, and the distinction is carried
-in the lock value.
+buffers has a pool and is an ordinary `dma_endpoint` with a BD chain.
 
 ### Flows
 
@@ -160,12 +149,9 @@ aie.objectfifo.flow from @d1 to [@d2, @d3]
 Several destinations are a broadcast: one source channel feeding a multicast
 route.
 
-A flow marked `packet` becomes an `aie.packet_flow` and shares the stream
-instead of reserving a circuit; the two kinds coexist in one device. The choice
-sits on the flow, not on an endpoint, because a packet route is one id agreed by
-the source and every destination — per-endpoint marks could disagree.
-`packet_id` pins that id, otherwise allocation picks the lowest one no other flow
-uses.
+A flow marked `packet` becomes an `aie.packet_flow` and shares the stream;
+circuit flows reserve theirs. Both kinds coexist in one device. `packet_id`
+pins the id; otherwise allocation picks the lowest id no other flow uses.
 
 ```mlir
 aie.objectfifo.flow from @d1 to [@d2] {packet, packet_id = 7 : i8}
@@ -192,10 +178,10 @@ aie.objectfifo.flow from @prod_dma to [@cons_dma]
 
 Two pools, one per tile, joined by a stream.
 
-### No DMAs at all
+### Shared memory
 
 A fifo used within one core, or across neighboring cores that share memory, is
-one pool with two core endpoints — no flow and no BD chains:
+one pool with two core endpoints:
 
 ```mlir
 aie.objectfifo.pool @smem(%t02) {depth = 4 : i32,
@@ -215,10 +201,10 @@ aie.objectfifo.dma_endpoint @link_in(%t21)  fills  @link_pool
 aie.objectfifo.dma_endpoint @link_out(%t21) drains @link_pool
 ```
 
-The two ends may move different amounts per transfer. That sets the stream
-granularity; it does not partition the pool.
+The two ends may move different amounts per transfer, which sets the stream
+granularity. The pool keeps one segment.
 
-### Join
+### Join and distribute
 
 ```mlir
 aie.objectfifo.pool @out_pool(%t21) {
@@ -231,14 +217,12 @@ aie.objectfifo.dma_endpoint @fill_1(%t21)    fills  @out_pool {segments = array<
 aie.objectfifo.dma_endpoint @drain_all(%t21) drains @out_pool {segments = array<i32: 0, 1>}
 ```
 
-Two DMAs fill different segments of the same pool, each ordered by its own
-locks, and one DMA drains the whole object. That is what joining the data means.
-Distribute is the same picture reversed: one endpoint fills the whole object and
-N endpoints each drain one segment.
+Two DMAs fill different segments of one pool, each ordered by its own locks, and
+one DMA drains the whole object. Distribute is the same picture reversed: one
+endpoint fills the whole object and N endpoints each drain one segment.
 
-A link point needs a memory module to hold the shared object, and a device with
-counting locks to guard each slice independently. A MemTile or a compute tile
-satisfies both; a shim tile does not.
+A link point needs a memory module for the shared object and a device with
+counting locks: a MemTile or a compute tile.
 
 ## The pipeline
 
@@ -255,10 +239,12 @@ packet-switched.
 | `--aie-objectfifo-lower-cores` | `use_lock` and buffer selection | `core_endpoint`, `acquire`, `release` |
 | `--aie-objectfifo-erase-pools` | — | unreferenced pools |
 
-Each endpoint op has exactly one consuming pass, so `lower-dmas` and
-`lower-cores` are order-independent. Pools outlive the endpoints that named
-them, so the record of which buffers and locks belong to which fifo survives
-lowering; `erase-pools` drops it for consumers that do not want it.
+Each pass replaces the operations it consumes, so the pipeline is idempotent:
+lower, edit the result, and re-run. Adding a new `aie.objectfifo` to lowered IR
+and re-running lowers the new one and leaves the rest alone.
+
+Each endpoint has exactly one consuming pass, so `lower-dmas` and `lower-cores`
+are order-independent.
 
 ### 1. `--aie-objectfifo-split`
 
@@ -284,19 +270,21 @@ aie.objectfifo.flow from @of1_prod_dma to [@of1_cons_dma]
 %e = aie.objectfifo.acquire @of1_prod : memref<16xi32>
 ```
 
-A core's `acquire` and `release` name the endpoint they work through and carry
-no `Produce`/`Consume` port. The endpoint's role already says which end, so the
-two cannot disagree.
+A core's `acquire` and `release` name the endpoint they work through; the
+endpoint's role gives the direction.
 
-This pass also picks pool depth: enough to cover the largest acquire a core on
-that tile makes, plus one so the core can hold an object while the next arrives.
-A tile no core touches gets the fifo's declared size.
+Pool depth covers the largest acquire a core on that tile makes, plus one so the
+core can hold an object while the next arrives. A tile no core touches gets the
+fifo's declared size.
+
+Writing pools, endpoints and flows by hand and starting the pipeline at step 3
+gives access to shapes beyond what the frontend expresses, such as a custom
+segment partition.
 
 ### 2. `--aie-objectfifo-verify`
 
-Checks completeness (listed below). It is a separate pass so incomplete designs
-stay legal: a missing endpoint says nothing about whether a BD-level actor
-exists elsewhere.
+Checks the completeness rules listed below. Designs that supply an endpoint by
+hand at BD level lower with `skip-verify=true`.
 
 ### 3. `--aie-objectfifo-allocate`
 
@@ -317,13 +305,14 @@ aie.objectfifo.dma_endpoint @of1_prod_dma(%tile_0_2) drains @of1_pool {channelIn
 aie.flow(%tile_0_2, DMA : 0, %tile_2_5, DMA : 0)
 ```
 
-Anything already written down is left alone: hand-placed buffers, locks already
-on a segment, a pinned channel.
+Attributes already present are kept, so writing `aie.buffer` ops and naming them
+in the pool, attaching locks to a segment, or setting `channelIndex` on an
+endpoint overrides that choice; this pass fills in the rest.
 
 ### 4. `--aie-objectfifo-lower-dmas`
 
-Turns each `dma_endpoint` into the BD chain that walks its pool's buffers. One
-rule, buffer-major and segment-minor:
+Turns each `dma_endpoint` into the BD chain that walks its pool's buffers,
+buffer-major and segment-minor:
 
 ```
 for each buffer b in pool.buffers:
@@ -345,8 +334,12 @@ for each buffer b in pool.buffers:
   ...
 ```
 
-A join's draining endpoint selects every segment and so emits `depth × segments`
+A join's draining endpoint selects every segment and emits `depth × segments`
 descriptors; each filling endpoint selects one and emits `depth`.
+
+To supply your own BD chain, write the `aie.mem` block and omit the
+`dma_endpoint`; the pool and its locks are still generated, and your chain uses
+those locks. A channel an existing `aie.dma_start` programs is an error here.
 
 ### 5. `--aie-objectfifo-lower-cores`
 
@@ -363,56 +356,19 @@ case 1 { scf.yield %of1_buff_1 : memref<16xi32> }
 
 The `index_switch` folds to a concrete buffer once the loops unroll.
 
-A core sees one memref, so a core endpoint's segments must be a contiguous run
-of the object. It is handed the buffer itself when that run is the whole object
-and a `memref.subview` otherwise. An acquire emits one `AcquireGreaterEqual` per
-selected segment, all with the same delta.
+A core sees one memref, so a core endpoint's segments are a contiguous run of
+the object. It is handed the buffer itself when that run is the whole object,
+and a `memref.subview` for a shorter run. An acquire emits one
+`AcquireGreaterEqual` per selected segment, all with the same delta.
 
 ### 6. `--aie-objectfifo-erase-pools`
 
-Drops pool metadata once nothing refers to it. Optional: knowing which buffers
-and locks belong to which fifo is often worth keeping, and a pool still named by
-something else — a re-arm binding in a runtime sequence, say — stays.
-
-## Entering the pipeline partway
-
-Every pass respects what it finds, which is what makes partial designs work.
-Implementing one half of a fifo by hand at BD level and letting the other half
-be generated is a supported shape, not a degenerate one:
-
-- a pool that already names buffers and locks keeps them
-- an endpoint that already names a channel keeps it
-- a channel a hand-written `aie.dma_start` already programs is not programmed
-  again — that is an error, not a silent overwrite
-- a segment whose filler or drainer lives elsewhere simply has no endpoint here
-
-Some things this enables:
-
-**Substitute your own DMA program.** Write the `aie.mem` block yourself and leave
-out the `dma_endpoint`. The pool, its locks and the other endpoints are still
-generated, and your BD chain uses the same locks.
-
-**Pin placement or channels.** Write the `aie.buffer` ops and name them in the
-pool, or set `channelIndex` on an endpoint. Allocation fills in only what is
-missing.
-
-**Start from pools instead of `aie.objectfifo`.** Skip `split` and write pools,
-endpoints and flows directly. This is the level at which shapes the frontend
-cannot express — an unusual segment partition, a mixed core and DMA join —
-become writable.
-
-**Keep the frontend but change one decision.** Run the passes one at a time,
-edit the IR in between, and carry on.
-
-Because each pass erases what it consumes, adding a new `aie.objectfifo` to
-already-lowered IR and re-running the whole pipeline lowers only the new one and
-leaves everything else untouched.
+Drops pool metadata once nothing refers to it. A pool still named by something
+else, such as a re-arm binding in a runtime sequence, stays.
 
 ## What is checked
 
 ### By the op verifiers
-
-True of every well-formed module.
 
 Pools:
 
@@ -423,19 +379,19 @@ Pools:
 
 Endpoints:
 
-- segment indices are in range and strictly increasing, and there is at least one
-- omitted `segments` is only valid on a single-segment pool
 - the named pool exists
+- segment indices are in range and strictly increasing, and there is at least one
+- omitting `segments` is valid on a single-segment pool
 - a core endpoint's segments are contiguous
-- `dimensions` and `padDimensions` have one entry per selected segment, with matching ranks, and stay within segment bounds
-- `padDimensions` appears only on a draining endpoint, and a nonzero `padValue` needs one
-- `iter_count` is only supported on a MemTile
+- `dimensions` and `padDimensions` have one entry per selected segment, with matching ranks, within segment bounds
+- `padDimensions` appears on a draining endpoint, and a nonzero `padValue` requires one
+- `iter_count` is supported on a MemTile
 - a dangling DMA or PLIO end is on a shim tile, and its bundle is DMA, PLIO or Core
 
 Flows and core accesses:
 
 - a flow has at least one destination, and its source and destinations are endpoints
-- `packet_id` is only meaningful on a packet flow
+- `packet_id` requires a packet flow
 - `acquire` and `release` sit inside a core, and `acquire` takes at least one object of the pool's element type
 
 ### By `--aie-objectfifo-verify`
@@ -444,24 +400,9 @@ Flows and core accesses:
 - each segment has one filling and one draining endpoint. A filler may be absent
   when lock initializers mark the objects as starting full, and a pool over
   external buffers has a host-side actor with no op
-- every DMA and dangling endpoint appears in exactly one flow, since an endpoint
-  drives one channel
+- every DMA and dangling endpoint appears in exactly one flow
 - no loop body releases more than it acquires
 
 ### By `--aie-objectfifo-lower-dmas`
 
-- a `dma_endpoint` whose channel an existing `aie.dma_start` already programs is
-  an error
-
-## What the IR cannot say
-
-Some combinations the old representation allowed are gone:
-
-- **A fifo with several producers and no consumer.** Every segment needs exactly
-  one filler and one drainer.
-- **A core `acquire` whose port disagrees with the end it is on.** The
-  endpoint's role is the only place that is written down.
-- **A DMA endpoint with no buffers behind it.** An end this compiler does not
-  program is a `dangling_endpoint`; a `dma_endpoint` always names a pool and
-  always lowers to a BD chain.
-- **A subview of an acquired object.** `acquire` returns the objects asked for.
+- a `dma_endpoint` whose channel an existing `aie.dma_start` already programs
