@@ -7,12 +7,14 @@
 
 // RUN: aie-opt --split-input-file --verify-diagnostics --aie-assign-buffer-addresses %s
 
-// buffer "a" allocate the whole 16kB on bank_id 1. Thus, when buffer "b" tried to allocated a piece on bank1, it failed.
-// This trigger a fallback to basic sequential allocation.
+// Buffer "b" is pinned inside bank 1, so the whole-bank buffer "a" can no
+// longer have the bank it asked for. There is deliberately no fallback here:
+// basic sequential allocation ignores mem_bank, so retrying there would
+// "succeed" by putting "a" in a bank the design never asked for.
 module @test2 {
   aie.device(npu1) {
 
-    // expected-warning @below {{Bank-aware allocation failed, trying basic sequential allocation.}}
+    // expected-error @below {{'aie.tile' op Bank-aware allocation failed.}}
     %tile34 = aie.tile(3, 4)
     // expected-error @below {{'aie.buffer' op would override existing mem_bank}}
     %buf0 = aie.buffer(%tile34) { sym_name = "a", mem_bank = 1 : i32 } : memref<4096xi32> // use the whole buffer

@@ -10,19 +10,18 @@
 // The front-end (place/allocate) only runs if some artifact roots it; request
 // input_with_addresses so the buffer-allocation diagnostics below are emitted
 // without invoking any core compiler.
-// RUN: %aiecc -v --get-input-with-addresses %s 2>&1 | FileCheck %s
+// RUN: not %aiecc -v --get-input-with-addresses %s 2>&1 | FileCheck %s
 
 // Buffer "a" is 16384 bytes and asks for bank 1, which is only 8192 bytes on
-// this device. An explicit mem_bank is a hard constraint, so bank-aware
-// allocation cannot satisfy it and falls back to the basic sequential scheme,
-// which ignores mem_bank. That fallback is what makes the pass emit the
-// diagnostics this test is looking for.
+// this device, so the mem_bank it requests cannot be honoured. That is
+// reported rather than retried: basic sequential allocation ignores mem_bank,
+// so falling back to it would place "a" in a bank the design never asked for.
 //
 // "a" previously carried no mem_bank and merely being larger than one bank was
 // enough to defeat bank-aware allocation. That is no longer so: a buffer that
 // fits in no single bank now straddles bank boundaries rather than failing.
 // CHECK: error: 'aie.buffer' op would override existing mem_bank
-// CHECK: warning: Bank-aware allocation failed, trying basic sequential allocation.
+// CHECK: error: 'aie.tile' op Bank-aware allocation failed.
 
 module @test {
  aie.device(xcvc1902) {
