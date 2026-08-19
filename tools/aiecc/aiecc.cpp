@@ -274,6 +274,14 @@ buildObjectSubgraph(EdgeWithTypedOutput<ModRef> &lowered,
       .arg("-O" + std::to_string(optLevel.getValue()))
       .value("--march=")
       .arg("--function-sections")
+      // Record each function's frame size in a `.stack_sizes` section, which
+      // the emitted linker script already has an output rule for. Chess ships
+      // the equivalent as `.stackinfo`; without this, peano builds carry no
+      // stack accounting at all, so a core's `stack_size` cannot be checked
+      // against what it actually needs and an overflow is only visible as
+      // corruption of whatever buffer sits above the stack. The section is
+      // metadata (no SHF_ALLOC), so it costs no data memory.
+      .arg("-stack-size-section")
       .arg("--filetype=obj")
       .output("-o");
   EdgeWithTypedOutput<Directory> &peanoObject =
