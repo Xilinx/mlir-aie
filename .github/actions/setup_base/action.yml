@@ -32,7 +32,7 @@ outputs:
     description: ''
     value: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
 
-description: ''
+description: 'Prepare the workspace, toolchain and optional tmate debug session shared by the distro build jobs.'
 
 runs:
   using: "composite"

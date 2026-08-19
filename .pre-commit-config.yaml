@@ -88,6 +88,19 @@ repos:
       args: [--fix=lf]
       exclude: *generated_exclude
 
+# Workflow files are linted too: they are the one thing in this repo that
+# gates everything else and had nothing checking it.
+- repo: https://github.com/rhysd/actionlint
+  rev: 914e7df21a07ef503a81201c76d2b11c789d3fca  # frozen: v1.7.12
+  hooks:
+    - id: actionlint
+      # actionlint shells out to shellcheck/pyflakes for inline `run:` blocks
+      # whenever it finds them on PATH -- which the GitHub runner images do
+      # ship. That reports 142 findings on this tree (96 of them SC2086) and
+      # is a separate cleanup; keep this hook on workflow schema, expression
+      # and runner-label checking until that lands.
+      args: [-shellcheck=, -pyflakes=]
+
 # Regenerate hash-pinned lockfiles when their source manifests change.
 # Only fires if you've staged one of the source files below; if uv is missing
 # locally the hook fails with a clear install hint (the script does the check).

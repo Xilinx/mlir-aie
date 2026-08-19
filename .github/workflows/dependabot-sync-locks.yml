@@ -64,6 +64,11 @@ jobs:
         run: utils/regenerate_lockfiles.sh
 
       - name: Commit regenerated lockfiles
+        # HEAD_REF goes through the environment rather than being interpolated
+        # into the script: a branch name is attacker-controlled text, and this
+        # job holds contents: write.
+        env:
+          HEAD_REF: ${{ github.head_ref }}
         run: |
           if git diff --quiet; then
             echo "Lockfiles already in sync; nothing to commit."
@@ -72,4 +77,4 @@ jobs:
           git config user.name "dependabot[bot]"
           git config user.email "49699333+dependabot[bot]@users.noreply.github.com"
           git commit -am "Regenerate lockfiles [dependabot skip]"
-          git push origin HEAD:"${{ github.head_ref }}"
+          git push origin HEAD:"$HEAD_REF"
