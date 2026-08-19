@@ -19,7 +19,7 @@ outputs:
     description: ''
     value: ${{ steps.configure_ccache_dir_on_host.outputs.HOST_CCACHE_DIR }}
 
-description: ''
+description: 'Restore and configure a ccache instance for the calling build job.'
 
 runs:
   using: "composite"
