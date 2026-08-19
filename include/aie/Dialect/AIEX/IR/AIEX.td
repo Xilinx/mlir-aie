@@ -974,13 +974,10 @@ def AIE_NpuBlockWriteOp: AIEX_Op<"npu.blockwrite", []> {
 }
 
 // BLOCKWRITE_VALUES
-def AIE_NpuBlockWriteValuesOp: AIEX_Op<"npu.blockwrite_values", []> {
+def AIE_NpuBlockWriteValuesOp : AIEX_Op<"npu.blockwrite_values", []> {
   let summary = "blockwrite operator with a runtime-computed payload";
-  let arguments = (
-    ins I32:$address,
-        Variadic<I32>:$values
-  );
-  let results = (outs );
+  let arguments = (ins I32:$address, Variadic<I32>:$values);
+  let results = (outs);
   let assemblyFormat = [{
     `(` $address `:` type($address) `)` (`values` $values^ `:` type($values))?
     attr-dict
