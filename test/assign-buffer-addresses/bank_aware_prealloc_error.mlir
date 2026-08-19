@@ -88,3 +88,21 @@ module @test5 {
     } {stack_size = 1024 : i32}
   }
 }
+
+// -----
+
+// A reservation larger than any run the tile can offer is reported against the
+// tile rather than silently producing a layout the core cannot link into.
+module @test6 {
+  aie.device(npu2) {
+    // expected-warning @below {{buffers leave only 52224 contiguous bytes for the core's data sections, which need 60000 bytes}}
+    // expected-error @below {{'aie.tile' op Bank-aware allocation failed.}}
+    %tile_0_2 = aie.tile(0, 2)
+    %a = aie.buffer(%tile_0_2) {sym_name = "a"} : memref<4096xi8>
+    %b = aie.buffer(%tile_0_2) {sym_name = "b"} : memref<4096xi8>
+    %c = aie.buffer(%tile_0_2) {sym_name = "c"} : memref<4096xi8>
+    aie.core(%tile_0_2) {
+      aie.end
+    } {stack_size = 1024 : i32, reserved_data_size = 60000 : i32}
+  }
+}

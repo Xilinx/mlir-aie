@@ -347,6 +347,25 @@ public:
     return best;
   }
 
+  // Size of the biggest run of free bytes in [lo, hi). The generated linker
+  // script gives the core compiler exactly this one run for its own sections,
+  // so it is the number that decides whether the core links.
+  int64_t largestFreeGap(int64_t lo, int64_t hi) const {
+    lo = std::max<int64_t>(lo, 0);
+    hi = std::min(hi, size());
+    int64_t best = 0;
+    for (int64_t cursor = lo; cursor < hi;) {
+      int gapStart = occupied.find_first_unset_in(cursor, hi);
+      if (gapStart == -1)
+        break;
+      int nextTaken = occupied.find_first_in(gapStart, hi);
+      int64_t gapEnd = nextTaken == -1 ? hi : nextTaken;
+      best = std::max(best, gapEnd - gapStart);
+      cursor = gapEnd;
+    }
+    return best;
+  }
+
 private:
   llvm::BitVector occupied;
 };
@@ -509,7 +528,7 @@ static void printMemMap(TileOp tile, SmallVector<BufferOp> &allocatedBuffers,
 // which buffer failed.
 static bool setBufferAddress(BufferOp buffer, int numBanks,
                              uint32_t tileAlignBitWidth, int &startBankIndex,
-                             bool preferBankAligned,
+                             bool preferBankAligned, bool spreadAcrossBanks,
                              const RequiredBanks &requiredBanks,
                              MemoryOccupancy &occupancy,
                              std::vector<BankLimits> &bankLimits) {
@@ -538,12 +557,18 @@ static bool setBufferAddress(BufferOp buffer, int numBanks,
     return true;
   }
 
-  for (int i = 0; i < numBanks; i++) {
-    int bank = (startBankIndex + i) % numBanks;
-    if (auto startAddr =
-            occupancy.findGap(bankLimits[bank].startAddr,
-                              bankLimits[bank].endAddr, size, alignBytes))
-      return place(*startAddr, bank);
+  // Spreading buffers over banks limits DMA contention, but it also chops the
+  // free space into per-bank holes. When the core needs a large contiguous run
+  // for its own data, the caller turns spreading off and everything packs from
+  // the bottom instead.
+  if (spreadAcrossBanks) {
+    for (int i = 0; i < numBanks; i++) {
+      int bank = (startBankIndex + i) % numBanks;
+      if (auto startAddr =
+              occupancy.findGap(bankLimits[bank].startAddr,
+                                bankLimits[bank].endAddr, size, alignBytes))
+        return place(*startAddr, bank);
+    }
   }
 
   // No single bank can hold it; straddle banks rather than give up. Search
@@ -577,7 +602,7 @@ static bool setBufferAddress(BufferOp buffer, int numBanks,
 // attempt can be rolled back.
 static BufferOp placeFreeBuffers(SmallVector<BufferOp> &buffersToAlloc,
                                  int numBanks, uint32_t tileAlignBitWidth,
-                                 bool preferBankAligned,
+                                 bool preferBankAligned, bool spreadAcrossBanks,
                                  const RequiredBanks &requiredBanks,
                                  MemoryOccupancy &occupancy,
                                  std::vector<BankLimits> &bankLimits,
@@ -585,8 +610,8 @@ static BufferOp placeFreeBuffers(SmallVector<BufferOp> &buffersToAlloc,
   int startBankIndex = 0;
   for (auto buffer : buffersToAlloc) {
     if (!setBufferAddress(buffer, numBanks, tileAlignBitWidth, startBankIndex,
-                          preferBankAligned, requiredBanks, occupancy,
-                          bankLimits))
+                          preferBankAligned, spreadAcrossBanks, requiredBanks,
+                          occupancy, bankLimits))
       return buffer;
     placed.push_back(buffer);
   }
@@ -637,10 +662,13 @@ static BankAwareResult simpleBankAwareAllocation(TileOp tile) {
   // AIE1 and 0x10000 in AIE2, but we need room at
   // the bottom for stack.
   int stacksize = 0;
+  int64_t reservedData = 0;
   MemoryOccupancy occupancy(maxDataMemorySize);
   if (auto core = tile.getCoreOp()) {
     stacksize = core.getEffectiveStackSize();
     occupancy.markOccupied(0, std::min<int64_t>(stacksize, maxDataMemorySize));
+    // Space the core's own compiled sections need; see reserved_data_size.
+    reservedData = core.getReservedDataSize().value_or(0);
   }
   fillBankLimits(numBanks, bankSize, bankLimits);
 
@@ -712,13 +740,21 @@ static BankAwareResult simpleBankAwareAllocation(TileOp tile) {
   // home, placing it later stops it bisecting a free run that spans banks --
   // and whether a straddling buffer starts on a bank boundary, which touches
   // the fewest banks but strands the space ahead of it.
+  // The last entry gives up bank spreading entirely and packs from the bottom;
+  // it is the only one that can leave a large contiguous run for the core's own
+  // data, so it is what a tight `reserved_data_size` falls back to.
   static constexpr struct {
     bool bankConstrainedFirst;
     bool preferBankAligned;
-  } strategies[] = {{true, true}, {true, false}, {false, false}};
+    bool spreadAcrossBanks;
+  } strategies[] = {{true, true, true},
+                    {true, false, true},
+                    {false, false, true},
+                    {true, false, false}};
 
   MemoryOccupancy pinnedOnly = occupancy;
   BufferOp failed = nullptr;
+  bool reservationUnmet = false;
   for (auto strategy : strategies) {
     deAllocationBuffers(allocatedBuffers, requiredBanks);
     allocatedBuffers.clear();
@@ -730,10 +766,28 @@ static BankAwareResult simpleBankAwareAllocation(TileOp tile) {
       return a.getAllocationSize() > b.getAllocationSize();
     });
     failed = placeFreeBuffers(buffersToAlloc, numBanks, tileAlignBitWidth,
-                              strategy.preferBankAligned, requiredBanks,
+                              strategy.preferBankAligned,
+                              strategy.spreadAcrossBanks, requiredBanks,
                               occupancy, bankLimits, allocatedBuffers);
-    if (!failed)
+    // Placing every buffer is not enough: the core compiler is handed the
+    // largest gap left over, so a layout that fits but strands the core's own
+    // data is no good either. Both must hold before a strategy is accepted.
+    reservationUnmet =
+        !failed && occupancy.largestFreeGap(0, occupancy.size()) < reservedData;
+    if (!failed && !reservationUnmet)
       break;
+  }
+  if (reservationUnmet) {
+    // Every buffer fit, but not with enough contiguous room left over for the
+    // core's own data, which the linker script hands out as a single region.
+    tile.emitWarning("buffers leave only ")
+        << occupancy.largestFreeGap(0, occupancy.size())
+        << " contiguous bytes for the core's data sections, which need "
+        << reservedData
+        << " bytes. Every buffer was placed, so the memory map is not the "
+           "interesting part; the free space is simply too broken up.";
+    deAllocationBuffers(allocatedBuffers, requiredBanks);
+    return BankAwareResult::OutOfMemory;
   }
   if (failed) {
     // A buffer pinned to a bank that cannot hold it is a constraint the user

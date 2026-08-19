@@ -374,6 +374,13 @@ def AIE_CoreOp
     ins Index:$tile,
     // Absent means "use this target's default"; read getEffectiveStackSize().
     OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<1>]>>:$stack_size,
+    // Bytes of data memory this core's own compiled sections (.data/.rodata/
+    // .bss) need, beyond the stack. The buffer allocator keeps a contiguous
+    // run at least this large free, because the generated linker script hands
+    // the core compiler exactly one region: the largest gap left between the
+    // stack and the placed buffers. Populated by the aiecc driver from a probe
+    // link of the compiled core; absent means "unknown, reserve nothing".
+    OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>>:$reserved_data_size,
     // Deprecated: attach link_with to func.func declarations instead and run
     // aie-assign-core-link-files to populate link_files.
     OptionalAttr<StrAttr>:$link_with,
