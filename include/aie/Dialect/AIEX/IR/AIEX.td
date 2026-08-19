@@ -986,16 +986,11 @@ def AIE_NpuBlockWriteValuesOp : AIEX_Op<"npu.blockwrite_values", []> {
     Writes `values`, in order, as a single contiguous block-write of words
     starting at the runtime `address`. Unlike `npu.blockwrite`, whose payload
     is a compile-time-constant memref, this op's payload is itself computed at
-    TXN-build time -- e.g. the dynamic free-list BD-pool lowering, where the
-    BD register base is runtime and the payload words mix compile-time
-    template fields with runtime size/stride/length values, so neither a
-    constant-address blockwrite nor a compile-time-constant payload can
-    represent it.
+    TXN-build time, by reference to calculated SSA values.
 
-    Folding the whole BD register range into one block-write (rather than a
-    write32 per word) is required so that a downstream ELF/TXN consumer that
-    only allows an `npu.address_patch` to target a range covered by a
-    preceding block-write (e.g. aiebu) accepts the stream.
+    This is used for BD register configuration. aiebu expects one blockwrite 
+    per BD configuration; it applies `npu.address_patch` instructions to the 
+    last preceding BD-configuration-blockwrite, erroring if there's none.
 
     This op only ever appears on the dynamic (runtime-BD-pool) DMA lowering
     path and is only supported by the EmitC (C++ TXN) target; the static

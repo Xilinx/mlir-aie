@@ -358,8 +358,8 @@ private:
                  u32Literal(b, loc, colVal), u32Literal(b, loc, rowVal)});
   }
 
-  // A blockwrite whose payload is computed at TXN-build time (the dynamic
-  // BD-pool path): stage the words into a local C++ array, then hand that array
+  // A blockwrite whose payload is computed at TXN-build time:
+  // stage the words into a local C++ array, then hand that array
   // to one txn_append_blockwrite. Unlike convertBlockWrite there is no constant
   // memref to inline, so the slots are filled by assignment from the operand
   // values, which convert-arith-to-emitc lowers in place afterwards.
