@@ -15,6 +15,10 @@ on:
   pull_request:
     paths:
       - '.github/workflows/mlirDistro.yml'
+      - '.github/actions/setup_base/**'
+      - '.github/actions/setup_ccache/**'
+      - 'utils/mlir_wheels/**'
+      - 'python/requirements_dev.lock'
   workflow_dispatch:
     inputs:
       DEBUG_ENABLED:
