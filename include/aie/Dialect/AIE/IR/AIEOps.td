@@ -2224,6 +2224,9 @@ def AIE_ObjectFifoLinkOp: AIE_Op<"objectfifo.link", [HasParent<"DeviceOp">]> {
     In the cases of the join and distribute patterns, the link has some special restrictions on `toStream` and `fromStream` dimensions:
     - join: the `toStream` dimensions of the output `objectFifo` cannot access an index beyond the length of the minimum transfer length in the src_offsets.
     - distribute: the `fromStream` dimensions of the input `objectFifo` cannot access an index beyond the length of the minimum transfer length in dst_offsets.
+
+    Join and distribute hand each participant its own slice of the shared object, so the link point must have a memory module
+    to hold that object and the device must have counting locks to guard the slices independently.
   }];
 
   let arguments = (

@@ -1277,10 +1277,17 @@ LogicalResult ObjectFifoLinkOp::verify() {
   TileLike tile = llvm::dyn_cast<TileLike>(sharedTile.value().getDefiningOp());
   if (!tile)
     return emitError("shared tile must implement TileLike interface");
-  if (!tile.isMemTile()) {
-    if (isJoin() || isDistribute())
+  // Each participant occupies its own slice of the shared object, so the link
+  // point needs a memory module to hold that object and one counting lock pair
+  // per slice.
+  if (isJoin() || isDistribute()) {
+    if (tile.isShimTile())
       return emitError("ObjectFifoLinkOp join and distribute are "
-                       "unavailable on compute or shim tiles");
+                       "unavailable on shim tiles");
+    if (!getTargetModel(getOperation())
+             .hasProperty(AIETargetModel::UsesSemaphoreLocks))
+      return emitError("ObjectFifoLinkOp join and distribute require "
+                       "semaphore locks, which this device lacks");
   }
 
   if (isJoin()) {

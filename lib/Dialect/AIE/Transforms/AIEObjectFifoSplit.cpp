@@ -126,12 +126,6 @@ int objectCountOn(DeviceOp device, Value tile, ObjectFifoCreateOp objFifo) {
     return 0;
   }
 
-  // A MemTile only passes objects along, so it holds as many as the fifo asks
-  // for.
-  if (cast<TileOp>(tile.getDefiningOp()).isMemTile()) {
-    return objFifo.size();
-  }
-
   int maxAcquire = 0;
   for (auto coreOp : device.getOps<CoreOp>()) {
     if (coreOp.getTile() == tile) {
@@ -413,6 +407,33 @@ struct AIEObjectFifoSplitPass
     return success();
   }
 
+  /// The DMAs on either side of a link own the shared pool between them, so a
+  /// core sharing the link point has no claim on the objects passing through.
+  LogicalResult verifyLinkAccesses() {
+    for (auto linkOp : device.getOps<ObjectFifoLinkOp>()) {
+      auto sharedTile = linkOp.getOptionalSharedTile();
+      if (!sharedTile) {
+        continue;
+      }
+      auto reject = [&](ObjectFifoCreateOp fifo) {
+        return LogicalResult(
+            linkOp.emitOpError("core on the shared tile cannot access '")
+            << fifo.name().getValue() << "': a link moves objects by DMA");
+      };
+      for (ObjectFifoCreateOp in : linkOp.getInputObjectFifos()) {
+        if (hasCoreAccess(device, *sharedTile, in, ObjectFifoPort::Consume)) {
+          return reject(in);
+        }
+      }
+      for (ObjectFifoCreateOp out : linkOp.getOutputObjectFifos()) {
+        if (hasCoreAccess(device, *sharedTile, out, ObjectFifoPort::Produce)) {
+          return reject(out);
+        }
+      }
+    }
+    return success();
+  }
+
   /// Ends of a linked fifo that resolve to the link's shared pool.
   DenseMap<Operation *, PoolRef> linkedProducerEnd;
   DenseMap<Operation *, PoolRef> linkedConsumerEnd;
@@ -529,7 +550,8 @@ void AIEObjectFifoSplitPass::runOnOperation() {
 
   SmallVector<ObjectFifoCreateOp> fifos(device.getOps<ObjectFifoCreateOp>());
 
-  if (failed(verifyTilesArePlaced()) || failed(verifyStreamPortAccesses())) {
+  if (failed(verifyTilesArePlaced()) || failed(verifyStreamPortAccesses()) ||
+      failed(verifyLinkAccesses())) {
     return signalPassFailure();
   }
 
