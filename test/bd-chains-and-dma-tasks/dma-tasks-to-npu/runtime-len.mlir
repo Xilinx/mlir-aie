@@ -6,17 +6,16 @@
 // RUN: aie-opt --aie-dma-tasks-to-npu %s | FileCheck %s
 
 // A runtime-valued dma_bd len on a shim-NOC tile lowers through the dynamic
-// BD-word encoder: a zero-template writebd (folded to one blockwrite later)
-// plus per-word write32 overrides. buffer_length carries the runtime len as
-// len * elemWidth / addressGranularity; the size/stride words carry the
-// (here constant) ND layout.
+// BD-word encoder into one npu.blockwrite_values carrying the whole register
+// block (bd_id is pinned here, so the address is constant). buffer_length
+// carries the runtime len as len * elemWidth / addressGranularity; the
+// size/stride words carry the (here constant) ND layout.
 
 // CHECK-LABEL: aie.runtime_sequence
-// CHECK: aiex.npu.writebd {{.*}}buffer_length = 0{{.*}}valid_bd = 1
-// buffer_length override derived from the runtime %len operand:
+// buffer_length derived from the runtime %len operand:
 // CHECK: %[[MUL:.*]] = arith.muli %arg1, %{{.*}}
-// CHECK: arith.divui %[[MUL]], %{{.*}}
-// CHECK: aiex.npu.write32
+// CHECK: %[[LEN:.*]] = arith.divui %[[MUL]], %{{.*}}
+// CHECK: aiex.npu.blockwrite_values(%{{.*}} : i32) values %[[LEN]]
 // CHECK: aiex.npu.address_patch
 
 module {

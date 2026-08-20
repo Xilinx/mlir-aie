@@ -973,6 +973,7 @@ struct AIENpuToCertPass
     }
 
     target.addIllegalOp<AIEX::NpuBlockWriteOp>();
+    target.addIllegalOp<AIEX::NpuBlockWriteValuesOp>();
     target.addIllegalOp<AIEX::NpuMaskWrite32Op>();
     target.addIllegalOp<AIEX::NpuSyncOp>();
     target.addIllegalOp<AIEX::NpuWrite32Op>();
