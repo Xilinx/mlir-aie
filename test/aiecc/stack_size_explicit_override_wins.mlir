@@ -13,6 +13,13 @@
 // an internal symbol the user never declared in MLIR becomes coverable at
 // all -- they only ever need to name the kernel entry point they already
 // wrote, not whatever recurses inside it.
+//
+// The core also declares its own explicit stack_size (comfortably above the
+// kernel's 4096-byte override plus its own frame): an explicit stack_size is
+// the per-core opt-out from the later, more complete sufficiency check (see
+// stack_size_absent_insufficient_error.mlir) exactly as reserved_data_size's
+// explicit values are -- never touched, only ever warned about, never a
+// hard failure.
 
 // REQUIRES: peano
 // RUN: rm -rf %t.d && mkdir -p %t.d
@@ -37,7 +44,7 @@ module {
       func.call @recursive_touch(%e) : (memref<512xi8>) -> ()
       aie.objectfifo.release @of_out(Produce, 1)
       aie.end
-    }
+    } { stack_size = 8192 : i32 }
 
     aie.runtime_sequence(%out : memref<512xi8>) {
       %c0 = arith.constant 0 : i64

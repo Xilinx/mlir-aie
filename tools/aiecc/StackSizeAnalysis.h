@@ -531,6 +531,28 @@ computeStackRequirement(const StackGraph &graph,
   return {best, {}};
 }
 
+// Measure one function's own frame size from a compiled object, without any
+// call-graph walk -- used to read back the MLIR-generated core object's own
+// top-level frame (symbol `core_<col>_<row>`, see AIECoreToStandard.cpp)
+// after it has been compiled, the one number StackGraph/computeStackRequirement
+// above cannot see (it only knows about a core's *callees*, not the core
+// body's own code). Returns nullopt if `path` is not a plain relocatable
+// object or `symbol` has no `.stack_sizes` entry -- the same unmeasurable
+// bucket as everywhere else in this analysis.
+inline std::optional<int64_t> measureFunctionFrameSize(llvm::StringRef path,
+                                                       llvm::StringRef symbol) {
+  llvm::StringSet<> known;
+  if (!collectDefinedFunctionNames(path, known))
+    return std::nullopt;
+  StackGraph graph;
+  if (!addObjectToStackGraph(path, known, graph))
+    return std::nullopt;
+  auto it = graph.nodes.find(symbol);
+  if (it == graph.nodes.end() || it->second.frameSize < 0)
+    return std::nullopt;
+  return it->second.frameSize;
+}
+
 } // namespace xilinx::aiecc
 
 #endif // AIECC_STACKSIZEANALYSIS_H
