@@ -730,11 +730,6 @@ struct AIEDMATasksToNPUPass
           (target_model.isShimNOCTile(tile.getCol(), tile.getRow()) &&
            isContiguousTransfer(input_sizes, input_strides));
 
-      if (dims->size() > 2) {
-        d2size = (target_model.isMemTile(tile.getCol(), tile.getRow()))
-                     ? (*dims)[2].getSize()
-                     : 0;
-      }
       if (padDims.has_value()) {
         if (!target_model.isMemTile(tile.getCol(), tile.getRow()))
           return bd_op->emitOpError()
@@ -780,7 +775,13 @@ struct AIEDMATasksToNPUPass
 
         // d2_stride
         d2stride = strides[2];
-        // d2_size set elsewhere
+
+        // TODO: d2_size is a dead field; AIEDmaToNpu.cpp memtile word-packing
+        // never writes it (see its `// TODO: D2Size`); the real D2 repeat
+        // count is carried entirely by buffer_length, same as on shim tiles.
+        d2size = (target_model.isMemTile(tile.getCol(), tile.getRow()))
+                     ? sizes[2]
+                     : 0;
       }
       if (input_sizes[3] > 1 && input_strides[3] == 0) {
         // We allow users to encode the repeat_count as a dimension 3 stride
