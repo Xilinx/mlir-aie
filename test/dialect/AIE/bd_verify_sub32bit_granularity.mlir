@@ -130,3 +130,23 @@ module {
     }
   }
 }
+
+// -----
+
+// Positive: all dims have size 1 with a sub-32-bit element type and unit
+// strides. Stride is never stepped and innermost size is 1, so word-
+// granularity alignment is not required (matches test/python/dma_op.py).
+module {
+  aie.device(npu2) {
+    %t1 = aie.tile(1, 1)
+    %buf = aie.buffer(%t1) : memref<2xi16>
+    aie.memtile_dma(%t1) {
+      aie.dma_start(MM2S, 0, ^bd0, ^end)
+      ^bd0:
+        aie.dma_bd(%buf : memref<2xi16> offset = 0 len = 2 sizes = [1, 1, 1, 1] strides = [1, 1, 1, 1])
+        aie.next_bd ^end
+      ^end:
+        aie.end
+    }
+  }
+}

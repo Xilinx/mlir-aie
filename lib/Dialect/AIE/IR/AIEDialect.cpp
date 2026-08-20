@@ -2490,6 +2490,9 @@ LogicalResult DMABDOp::verify() {
     // "element width not a multiple of 4 bytes" rather than "< 4 bytes" so
     // that this also covers the `bfp` block-floating-point types, whose
     // widths (9 and 17 bytes) are >4 bytes but still not word multiples.
+    // Dimensions with size == 1 are skipped: the loop runs once so stride is
+    // never stepped and that dimension's size/stride do not affect hardware
+    // address generation; word alignment is not required for them.
     int32_t elementWidthInBytes = getBufferElementTypeWidthInBytes();
     if (elementWidthInBytes % 4 != 0) {
       for (size_t i = 0; i < dims->size(); i++) {
@@ -2497,7 +2500,7 @@ LogicalResult DMABDOp::verify() {
         if (i + 1 == dims->size()) {
           // Innermost dim: the size (element count transferred at this
           // level) must itself be a whole number of 32-bit words.
-          if ((dim.getSize() * elementWidthInBytes) % 4)
+          if (dim.getSize() > 1 && (dim.getSize() * elementWidthInBytes) % 4)
             return emitOpError()
                    << "Innermost dim size (" << dim.getSize() << ") * "
                    << elementWidthInBytes << "-byte element width = "
@@ -2508,7 +2511,7 @@ LogicalResult DMABDOp::verify() {
         } else {
           // Non-innermost dim: the stride (address step between elements
           // at this level) must itself be a whole number of 32-bit words.
-          if ((dim.getStride() * elementWidthInBytes) % 4)
+          if (dim.getSize() > 1 && (dim.getStride() * elementWidthInBytes) % 4)
             return emitOpError()
                    << "Dim " << i << " stride (" << dim.getStride() << ") * "
                    << elementWidthInBytes << "-byte element width = "
