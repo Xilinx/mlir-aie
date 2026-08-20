@@ -329,6 +329,14 @@ def compile_cxx_core_function(
             "-D__AIE_API_AIE_ADF_HPP__",
             f"--target={target_arch}-none-unknown-elf",
         ]
+        if not inline:
+            # Record each function's frame size in a `.stack_sizes` section,
+            # matching the flag aiecc's own core-object `llc` invocation
+            # passes (tools/aiecc/aiecc.cpp). Without this, kernel objects
+            # carry no stack accounting at all -- and kernels are where large
+            # frames actually live. Only meaningful for object codegen; the
+            # inline path emits textual LLVM IR with no frame layout yet.
+            cmd.append("-fstack-size-section")
 
     # Add include directories
     if include_dirs:
