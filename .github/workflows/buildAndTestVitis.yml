@@ -61,6 +61,7 @@ jobs:
   build-tests:
     name: Run Tests on Vitis
     runs-on: ${{ matrix.runner_type }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:

@@ -322,6 +322,10 @@ public:
   /// descriptor for the given tile type.
   virtual uint32_t getDmaBdStepBits(AIETileType tileType) const = 0;
 
+  /// Return the bit width of the iteration (repeat) wrap/stride fields in a
+  /// DMA buffer descriptor for the given tile type.
+  virtual uint32_t getDmaBdIterBits(AIETileType tileType) const = 0;
+
   /// Get stream switch port index for a given port specification
   /// Return port index for Stream_Switch_Event_Port_Selection register, or
   /// nullopt if invalid
@@ -351,6 +355,10 @@ public:
 
   uint32_t getDmaBdStepBits(int col, int row) const {
     return getDmaBdStepBits(getTileType(col, row));
+  }
+
+  uint32_t getDmaBdIterBits(int col, int row) const {
+    return getDmaBdIterBits(getTileType(col, row));
   }
 
   /// Return the number of buffer descriptors accessible on channel `channel`
@@ -567,6 +575,10 @@ public:
     // AIE1 core tiles have 13-bit step fields; shim tiles have 20-bit.
     return tileType == AIETileType::CoreTile ? 13 : 20;
   }
+  uint32_t getDmaBdIterBits(AIETileType tileType) const override {
+    // AIE1 core and shim tiles both have a 6-bit Iteration_Wrap field.
+    return 6;
+  }
   bool isBdChannelAccessible(int col, int row, uint32_t bd_id,
                              int channel) const override {
     return true;
@@ -707,6 +719,10 @@ public:
     default:
       return 13;
     }
+  }
+  uint32_t getDmaBdIterBits(AIETileType tileType) const override {
+    // Core, mem, and shim tiles all have a 6-bit Iteration_Wrap field.
+    return 6;
   }
 
   bool isBdChannelAccessible(int col, int row, uint32_t bd_id,
