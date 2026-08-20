@@ -166,6 +166,10 @@ static AIE::DMABDOp createTaskBd(PatternRewriter &rewriter, Location loc,
     bd.setBurstLengthAttr(tmpl.getBurstLengthAttr());
   if (tmpl.getOffsetParameterAttr())
     bd.setOffsetParameterAttr(tmpl.getOffsetParameterAttr());
+  // Every split piece must carry out_of_order_id, or the tail pieces silently
+  // land in slot 0.
+  if (tmpl.getOutOfOrderIdAttr())
+    bd.setOutOfOrderIdAttr(tmpl.getOutOfOrderIdAttr());
   return bd;
 }
 

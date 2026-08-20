@@ -20,6 +20,7 @@
 #include "mlir/Interfaces/ViewLikeInterface.h"
 #include "mlir/Transforms/InliningUtils.h"
 
+#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/TypeSwitch.h"
 
@@ -2071,6 +2072,44 @@ TileOp MemTileDMAOp::getTileOp() {
 // DMAOp
 //===----------------------------------------------------------------------===//
 
+static bool isBdPacketEnabled(DMABDOp bd) {
+  if (bd.getPacket().has_value())
+    return true;
+  if (Block *blk = bd->getBlock())
+    return !blk->getOps<DMABDPACKETOp>().empty();
+  return false;
+}
+
+static LogicalResult verifyOutOfOrderChannel(Operation *op, DMAChannelDir dir,
+                                             bool outOfOrder,
+                                             ArrayRef<DMABDOp> bds) {
+  if (!outOfOrder)
+    return success();
+  if (dir != DMAChannelDir::S2MM)
+    return op->emitOpError("out_of_order is only valid on an S2MM channel");
+  if (!getTargetModel(op).hasProperty(AIETargetModel::SupportsOutOfOrderDMA))
+    return op->emitOpError(
+        "out_of_order S2MM DMA is not supported on this device");
+  // No receive BD means nowhere to place incoming packets; the channel stalls.
+  if (bds.empty())
+    return op->emitOpError("out-of-order S2MM channel must have at least one "
+                           "receive buffer descriptor");
+  // Placement reads the incoming packet header, so every receive BD must be
+  // packet-enabled.
+  for (DMABDOp bd : bds) {
+    if (!isBdPacketEnabled(bd))
+      return bd.emitOpError(
+          "out-of-order S2MM receive buffer descriptor must be packet-enabled");
+    // out_of_order_id is a sender field; receivers place by bd_id, so it is a
+    // don't-care here.
+    if (bd.getOutOfOrderId().has_value())
+      return bd.emitOpError("out_of_order_id belongs on the sender buffer "
+                            "descriptor, not an out-of-order S2MM receive "
+                            "buffer descriptor");
+  }
+  return success();
+}
+
 LogicalResult DMAOp::verify() {
   auto *parentOp = getOperation()->getParentOp();
   if (parentOp->getRegion(0).getBlocks().size() > 1)
@@ -2099,7 +2138,11 @@ LogicalResult DMAOp::verify() {
       return emitOpError("pad_value requires the CONSTANT_PAD_VALUE register, "
                          "unavailable on this target");
   }
-  return success();
+  SmallVector<DMABDOp> bds;
+  for (auto &bdRegion : getBds())
+    llvm::append_range(bds, bdRegion.front().getOps<DMABDOp>());
+  return verifyOutOfOrderChannel(getOperation(), getChannelDir(),
+                                 getOutOfOrder(), bds);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2197,6 +2240,7 @@ void DMABDOp::buildMixed(mlir::OpBuilder &builder, mlir::OperationState &state,
         /*pad_dimensions=*/padDims,
         /*bd_id=*/nullptr,
         /*packet=*/packet,
+        /*out_of_order_id=*/nullptr,
         /*burst_length=*/nullptr,
         /*iteration=*/nullptr,
         /*offset_parameter=*/nullptr,
@@ -2517,6 +2561,16 @@ LogicalResult DMABDOp::verify() {
       return emitOpError("Packet ID field can only hold 5 bits.");
   }
 
+  if (std::optional<int32_t> oooId = getOutOfOrderId(); oooId.has_value()) {
+    if (!targetModel.hasProperty(AIETargetModel::SupportsOutOfOrderDMA))
+      return emitOpError("out_of_order_id is not supported on this device");
+    if (!isBdPacketEnabled(*this))
+      return emitOpError("out_of_order_id requires a packet-enabled BD");
+    uint32_t maxOooId = targetModel.getMaxOutOfOrderId();
+    if (*oooId < 0 || static_cast<uint32_t>(*oooId) > maxOooId)
+      return emitOpError("out_of_order_id must be in [0, ") << maxOooId << "]";
+  }
+
   // A runtime len operand or the static_len attribute both count as having a
   // length here.
   if (!hasLen() && !getBuffer().getType().hasStaticShape())
@@ -2785,7 +2839,17 @@ LogicalResult DMAStartOp::verify() {
       return emitOpError("pad_value requires the CONSTANT_PAD_VALUE register, "
                          "unavailable on this target");
   }
-  return success();
+  SmallVector<DMABDOp> bds;
+  if (getOutOfOrder()) {
+    // The out-of-order BD chain may be cyclic (chained only for
+    // configuration), so track visited blocks.
+    llvm::SmallPtrSet<Block *, 8> visited;
+    for (Block *b = getDest(); b && visited.insert(b).second;
+         b = b->getNumSuccessors() > 0 ? b->getSuccessor(0) : nullptr)
+      llvm::append_range(bds, b->getOps<DMABDOp>());
+  }
+  return verifyOutOfOrderChannel(getOperation(), getChannelDir(),
+                                 getOutOfOrder(), bds);
 }
 
 //===----------------------------------------------------------------------===//

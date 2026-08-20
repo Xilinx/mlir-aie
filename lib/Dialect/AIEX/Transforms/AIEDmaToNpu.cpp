@@ -371,7 +371,9 @@ public:
       packet_id = IntegerAttr::get(i32ty, packetInfo->getPktId());
     }
 
-    // out_of_order_id
+    // npu.dma_memcpy_nd cannot stamp an out-of-order id, so it always targets
+    // merge slot 0; author out-of-order senders with an explicit aie.dma_bd
+    // (or aiex.dma_configure_task / aiex.npu.writebd).
 
     if (!isLinear) {
       // d0_size, d0_stride

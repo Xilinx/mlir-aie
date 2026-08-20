@@ -437,6 +437,7 @@ struct AIEDMATasksToNPUPass
   struct BdTemplateFields {
     uint32_t use_next_bd = 0, next_bd_id = 0;
     int32_t enable_packet = 0, packet_id = 0, packet_type = 0;
+    int32_t out_of_order_id = 0;
     int32_t lock_rel_val = 0, lock_rel_id = 0;
     int32_t lock_acq_enable = 0, lock_acq_val = 0, lock_acq_id = 0;
   };
@@ -459,6 +460,10 @@ struct AIEDMATasksToNPUPass
       f.packet_type = info.getPktType();
       f.packet_id = info.getPktId();
     }
+
+    // Carry out_of_order_id through instead of dropping it to 0.
+    if (std::optional<int32_t> oooId = bd_op.getOutOfOrderId())
+      f.out_of_order_id = *oooId;
 
     auto lock_ops = getOptionalLockOpsForBlock(block);
     if (lock_ops) {
@@ -558,8 +563,8 @@ struct AIEDMATasksToNPUPass
       // for the write32 overrides to fill. valid_bd = 1.
       NpuWriteBdOp::create(
           builder, loc, col, *staticBdId, /*buffer_length=*/0,
-          /*buffer_offset=*/0, f.enable_packet, /*out_of_order_id=*/0,
-          f.packet_id, f.packet_type, /*d0_size=*/0, /*d0_stride=*/0,
+          /*buffer_offset=*/0, f.enable_packet, f.out_of_order_id, f.packet_id,
+          f.packet_type, /*d0_size=*/0, /*d0_stride=*/0,
           /*d1_size=*/0,
           /*d1_stride=*/0, /*d2_size=*/0, /*d2_stride=*/0,
           /*iteration_current=*/0,
@@ -652,6 +657,7 @@ struct AIEDMATasksToNPUPass
     // word[2] enable_packet [30], out_of_order_id [29:24], packet_id [23:19],
     // packet_type [18:16].
     uint32_t w2 = ((f.enable_packet & 0x1) << 30) |
+                  ((f.out_of_order_id & 0x3f) << 24) |
                   ((f.packet_id & 0x1f) << 19) | ((f.packet_type & 0x7) << 16);
     writeWord(2, w2);
     // word[4] burst_length [31:30] (constant); d1_size/stride overlaid by the
@@ -765,7 +771,6 @@ struct AIEDMATasksToNPUPass
     std::fill(padBefore.begin(), padBefore.end(), 0);
     std::fill(padAfter.begin(), padAfter.end(), 0);
 
-    auto out_of_order_id = 0;
     auto d0size = 0;
     auto d0stride = 0;
     auto d1size = 0;
@@ -911,7 +916,7 @@ struct AIEDMATasksToNPUPass
         builder, bd_op.getLoc(), tile.getCol(), bd_id, len_addr_granularity,
         offset,
         /*enable_packet=*/f.enable_packet,
-        /*out_of_order_id=*/out_of_order_id,
+        /*out_of_order_id=*/f.out_of_order_id,
         /*packet_id=*/f.packet_id,
         /*packet_type=*/f.packet_type,
         /*d0_size=*/d0size, /*d0_stride=*/d0stride,

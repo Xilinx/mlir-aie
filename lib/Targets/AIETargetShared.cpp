@@ -156,4 +156,18 @@ llvm::SetVector<Block *> getOrderedChainOfBlocks(Region *region) {
   return blockVector;
 }
 
+llvm::SmallPtrSet<Block *, 8>
+collectOutOfOrderBlocks(const llvm::SetVector<Block *> &blockVector) {
+  llvm::SmallPtrSet<Block *, 8> oooBlocks;
+  for (Block *block : blockVector)
+    for (auto startOp : block->getOps<DMAStartOp>()) {
+      if (!startOp.getOutOfOrder())
+        continue;
+      Block *b = startOp.getDest();
+      while (b && oooBlocks.insert(b).second && b->getNumSuccessors() > 0)
+        b = b->getSuccessor(0);
+    }
+  return oooBlocks;
+}
+
 } // namespace xilinx::AIE

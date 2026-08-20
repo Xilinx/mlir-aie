@@ -94,9 +94,13 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
   int row = memOp.rowIndex();
 
   // Get the region's entry block, then start traversing through the chain of
-  // blocks.
+  // blocks. This backend handles only the block form (aie.dma_start); the
+  // region form (aie.dma) is emitted only by the CDO backend.
   llvm::SetVector<Block *> blockVector =
       getOrderedChainOfBlocks(&memOp.getBody());
+
+  llvm::SmallPtrSet<Block *, 8> oooBlocks =
+      collectOutOfOrderBlocks(blockVector);
 
   for (auto *block : blockVector) {
     bool foundBdPacket = false;
@@ -109,6 +113,7 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
     int elementWidthInBytes = 0;
     int ndims = 0;
     int iterSize = 0, iterStride = 0, iterCurr = 0;
+    std::optional<int> oooId;
     ArrayRef<BDDimLayoutAttr> dims;
     // Owning storage for the folded dims; must outlive `dims` (used far below).
     SmallVector<BDDimLayoutAttr> dimsStorage;
@@ -139,6 +144,7 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
         iterStride = iter->getStride();
         iterCurr = iter->getCurrent();
       }
+      oooId = op.getOutOfOrderId();
       if (!op.getMixedSizes().empty()) {
         // Runtime-valued sizes/strides are not supported on this static path.
         for (mlir::OpFoldResult s : op.getMixedSizes())
@@ -285,6 +291,8 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
         int enableNextBd = 1;
         if (!nextBlock->getOps<EndOp>().empty())
           enableNextBd = 0;
+        if (oooBlocks.contains(block))
+          enableNextBd = 0;
 
         int nextBdNum = blockMap[nextBlock];
         output << "__mlir_aie_try(XAie_DmaSetNextBd("
@@ -297,6 +305,11 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
         output << "__mlir_aie_try(XAie_DmaSetPkt("
                << tileDMAInstRefStr(col, row, bdNum) << ", "
                << packetStr(packetID, packetType) << "));\n";
+      }
+      if (oooId.has_value()) {
+        output << "__mlir_aie_try(XAie_DmaSetOutofOrderBdId("
+               << tileDMAInstRefStr(col, row, bdNum) << ", " << *oooId
+               << "));\n";
       }
       output << "__mlir_aie_try(XAie_DmaEnableBd("
              << tileDMAInstRefStr(col, row, bdNum) << "));\n";
@@ -321,6 +334,31 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
                // TODO: interim handling until the physical dialect changes.
                << "/* dmaDir */ DMA_" << dmaDir << ", "
                << "/* BdNum */" << bdNum << "));\n";
+      } else if (op.getOutOfOrder()) {
+        // in english repeat_count==0 means "do it once" and don't repeat but
+        // libxaie treats repeat_count=1 as do it once.
+        int repeatCount = op.getRepeatCount() + 1;
+        // Arm out-of-order mode while idle, then push the start queue via the
+        // generic path: StartBd is ignored and the in-order validity check
+        // skipped.
+        output << "XAie_DmaChannelDesc ooo_desc_" << chNum << ";\n";
+        output << "__mlir_aie_try(XAie_DmaChannelDescInit(" << deviceInstRef
+               << ", &ooo_desc_" << chNum << ", " << tileLocStr(col, row)
+               << "));\n";
+        output << "__mlir_aie_try(XAie_DmaChannelEnOutofOrder(&ooo_desc_"
+               << chNum << ", " << enable << "));\n";
+        output << "__mlir_aie_try(XAie_DmaWriteChannel(" << deviceInstRef
+               << ", &ooo_desc_" << chNum << ", " << tileLocStr(col, row)
+               << ", /* ChNum */" << chNum << ", /* dmaDir */ DMA_" << dmaDir
+               << "));\n";
+        output << "XAie_DmaDeclareQueueConfig(ooo_queue_" << chNum
+               << ", /* StartBd */ 0, /* Repeat */ " << repeatCount
+               << ", /* EnToken */ " << disable << ", /* EnOutOfOrder */ "
+               << enable << ");\n";
+        output << "__mlir_aie_try(XAie_DmaChannelSetStartQueueGeneric("
+               << deviceInstRef << ", " << tileLocStr(col, row)
+               << ", /* ChNum */" << chNum << ", /* dmaDir */ DMA_" << dmaDir
+               << ", &ooo_queue_" << chNum << "));\n";
       } else {
         // in english repeat_count==0 means "do it once" and don't repeat but
         // libxaie treats repeat_count=1 as do it once.
