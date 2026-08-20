@@ -150,3 +150,30 @@ module {
     }
   }
 }
+
+// -----
+
+// Positive: trailing size-1 dims after the dim that actually does the
+// sub-32b work (the shape from matrix_multiplication/cascade on i16). Dim 1
+// (size=32, stride=1) is the last dim with size > 1, so it is the effective
+// innermost dim and is checked by size (32 * 2 bytes = 64 bytes, a whole
+// number of words): 32 contiguous i16 reads, expressible in hardware. Dim 0
+// (size=32, stride=32) sits outside the effective innermost dim and is
+// checked by stride (32 * 2 bytes = 64 bytes, also word-aligned). Dims 2 and
+// 3 have size == 1 and are skipped regardless of their position. Checking
+// dim 1 by array position instead (as the non-innermost stride, 1 * 2 = 2
+// bytes) would incorrectly reject this shape.
+module {
+  aie.device(npu2) {
+    %t1 = aie.tile(1, 1)
+    %buf = aie.buffer(%t1) : memref<1024xi16>
+    aie.memtile_dma(%t1) {
+      aie.dma_start(MM2S, 0, ^bd0, ^end)
+      ^bd0:
+        aie.dma_bd(%buf : memref<1024xi16> offset = 0 len = 2048 sizes = [32, 32, 1, 1] strides = [32, 1, 32, 1])
+        aie.next_bd ^end
+      ^end:
+        aie.end
+    }
+  }
+}

@@ -2493,32 +2493,47 @@ LogicalResult DMABDOp::verify() {
     // Dimensions with size == 1 are skipped: the loop runs once so stride is
     // never stepped and that dimension's size/stride do not affect hardware
     // address generation; word alignment is not required for them.
+    //
+    // Which dim is "innermost" is determined by the last dim with size > 1,
+    // not by array position: `dims` is outermost-first, and trailing dims
+    // with size == 1 (which never step) do not change which dim actually
+    // performs the finest-granularity access. If every dim has size == 1,
+    // there is no innermost dim to check and the whole block is skipped.
     int32_t elementWidthInBytes = getBufferElementTypeWidthInBytes();
     if (elementWidthInBytes % 4 != 0) {
-      for (size_t i = 0; i < dims->size(); i++) {
-        BDDimLayoutAttr dim = (*dims)[i];
-        if (i + 1 == dims->size()) {
-          // Innermost dim: the size (element count transferred at this
-          // level) must itself be a whole number of 32-bit words.
-          if (dim.getSize() > 1 && (dim.getSize() * elementWidthInBytes) % 4)
-            return emitOpError()
-                   << "Innermost dim size (" << dim.getSize() << ") * "
-                   << elementWidthInBytes << "-byte element width = "
-                   << (dim.getSize() * elementWidthInBytes)
-                   << " bytes: innermost dim size must be a multiple of 4 "
-                      "bytes for sub-32b element types (the hardware size "
-                      "register is 32-bit-word granularity).";
-        } else {
-          // Non-innermost dim: the stride (address step between elements
-          // at this level) must itself be a whole number of 32-bit words.
-          if (dim.getSize() > 1 && (dim.getStride() * elementWidthInBytes) % 4)
-            return emitOpError()
-                   << "Dim " << i << " stride (" << dim.getStride() << ") * "
-                   << elementWidthInBytes << "-byte element width = "
-                   << (dim.getStride() * elementWidthInBytes)
-                   << " bytes: non-innermost dim stride must be a multiple "
-                      "of 4 bytes for sub-32b element types (the hardware "
-                      "stepsize register is 32-bit-word granularity).";
+      std::optional<size_t> effectiveInnermost;
+      for (size_t i = 0; i < dims->size(); i++)
+        if ((*dims)[i].getSize() > 1)
+          effectiveInnermost = i;
+      if (effectiveInnermost.has_value()) {
+        for (size_t i = 0; i < dims->size(); i++) {
+          BDDimLayoutAttr dim = (*dims)[i];
+          if (dim.getSize() <= 1)
+            continue;
+          if (i == *effectiveInnermost) {
+            // Effective innermost dim: the size (element count transferred
+            // at this level) must itself be a whole number of 32-bit words.
+            if ((dim.getSize() * elementWidthInBytes) % 4)
+              return emitOpError()
+                     << "Innermost dim size (" << dim.getSize() << ") * "
+                     << elementWidthInBytes << "-byte element width = "
+                     << (dim.getSize() * elementWidthInBytes)
+                     << " bytes: innermost dim size must be a multiple of 4 "
+                        "bytes for sub-32b element types (the hardware size "
+                        "register is 32-bit-word granularity).";
+          } else {
+            // Dim outside the effective innermost dim: the stride (address
+            // step between elements at this level) must itself be a whole
+            // number of 32-bit words.
+            if ((dim.getStride() * elementWidthInBytes) % 4)
+              return emitOpError()
+                     << "Dim " << i << " stride (" << dim.getStride() << ") * "
+                     << elementWidthInBytes << "-byte element width = "
+                     << (dim.getStride() * elementWidthInBytes)
+                     << " bytes: non-innermost dim stride must be a multiple "
+                        "of 4 bytes for sub-32b element types (the hardware "
+                        "stepsize register is 32-bit-word granularity).";
+          }
         }
       }
     }
