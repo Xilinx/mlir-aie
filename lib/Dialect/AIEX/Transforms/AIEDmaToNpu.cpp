@@ -550,19 +550,15 @@ public:
     return success();
   }
 
-  // Lower a shim-NOC dma_memcpy_nd carrying runtime (SSA) sizes/strides. Emit
-  // the same NpuWriteBdOp as the static path but with zeros in every
-  // size/stride-bearing field (still folded to one blockwrite), then override
-  // each size/stride word with an npu.write32 from the shared encoder -- same
-  // arithmetic as the static path, so a runtime value equal to a constant
-  // reproduces the same word. The write32s follow in program order at fixed
-  // addresses, so ordering needs no grouping.
+  // Lower a shim-NOC dma_memcpy_nd carrying runtime (SSA) offsets/sizes/
+  // strides. The encoder runs the same arithmetic as the static path, so a
+  // runtime value equal to a constant yields the same word. aiebu requires the
+  // block-write to precede the address patch and cover the patched word.
   LogicalResult lowerDynamic(NpuDmaMemcpyNdOp op, OpAdaptor adaptor,
                              ConversionPatternRewriter &rewriter) const {
     const auto &targetModel = AIE::getTargetModel(op);
     auto *ctx = op->getContext();
     auto i32ty = IntegerType::get(ctx, 32);
-    auto zero = IntegerAttr::get(i32ty, 0);
     Location loc = op->getLoc();
 
     auto dev = op->getParentOfType<AIE::DeviceOp>();
@@ -584,44 +580,30 @@ public:
     // Packet / token setup (identical to the static path).
     auto column = IntegerAttr::get(i32ty, tileCol);
     auto row = IntegerAttr::get(i32ty, tileRow);
-    auto enable_packet = zero, packet_id = zero, packet_type = zero;
+    BdTemplateFields fields;
     if (auto packetInfo = op.getPacket()) {
-      enable_packet = IntegerAttr::get(i32ty, 1);
-      packet_type = IntegerAttr::get(i32ty, packetInfo->getPktType());
-      packet_id = IntegerAttr::get(i32ty, packetInfo->getPktId());
+      fields.enable_packet = 1;
+      fields.packet_type = packetInfo->getPktType();
+      fields.packet_id = packetInfo->getPktId();
     }
     auto issue_token = BoolAttr::get(ctx, op.getIssueToken());
     if (!isMM2S)
       issue_token = BoolAttr::get(ctx, true);
 
-    // Emit the BD template with zeros in every size/stride word; the write32
-    // overrides below supply the runtime values. valid_bd = 1.
-    NpuWriteBdOp::create(
-        rewriter, loc, column, /*bd_id=*/IntegerAttr::get(i32ty, op.getId()),
-        /*buffer_length=*/zero, /*buffer_offset=*/zero, enable_packet,
-        /*out_of_order_id=*/zero, packet_id, packet_type, /*d0_size=*/zero,
-        /*d0_stride=*/zero, /*d1_size=*/zero, /*d1_stride=*/zero,
-        /*d2_size=*/zero, /*d2_stride=*/zero, /*iteration_current=*/zero,
-        /*iteration_size=*/zero, /*iteration_stride=*/zero, /*next_bd=*/zero,
-        row, /*use_next_bd=*/zero, /*valid_bd=*/IntegerAttr::get(i32ty, 1),
-        /*lock_rel_val=*/zero, /*lock_rel_id=*/zero, /*lock_acq_enable=*/zero,
-        /*lock_acq_val=*/zero, /*lock_acq_id=*/zero, /*d0_zero_before=*/zero,
-        /*d1_zero_before=*/zero, /*d2_zero_before=*/zero,
-        /*d0_zero_after=*/zero,
-        /*d1_zero_after=*/zero, /*d2_zero_after=*/zero,
-        /*burst_length=*/IntegerAttr::get(i32ty, op.getBurstLength()));
-
-    // Emit the runtime size/stride BD-word overrides (shared with dma_task).
-    // buffer_length is the size-product here, so pass no override (null); the
-    // encoder returns the hw repeat_count for the queue push.
+    // buffer_length is the size-product here, hence no override; the encoder
+    // returns the hw repeat_count for the queue push.
+    SmallVector<Value> words;
     Value repeatCount;
-    if (failed(emitDynamicShimBdWordOverrides(
-            rewriter, loc, targetModel, tileCol, tileRow,
-            rewriter.getI32IntegerAttr(op.getId()), op.getMixedSizes(),
-            op.getMixedStrides(), op.getElementTypeBitwidth(),
-            op.getBurstLength(),
-            /*bufLenOverride=*/Value(), repeatCount)))
+    if (failed(
+            buildShimBdWords(rewriter, loc, targetModel, fields,
+                             op.getMixedSizes(), op.getMixedStrides(),
+                             op.getElementTypeBitwidth(), op.getBurstLength(),
+                             /*bufLenOverride=*/Value(), repeatCount, words)))
       return failure();
+    Value bdBase =
+        getBdRegisterBase(rewriter, loc, targetModel, tileCol, tileRow,
+                          rewriter.getI32IntegerAttr(op.getId()));
+    NpuBlockWriteValuesOp::create(rewriter, loc, bdBase, words);
 
     // Address patch for the buffer pointer; emitBufferAddressPatch folds a
     // constant offset or builds a runtime arg_plus with arith as needed.
