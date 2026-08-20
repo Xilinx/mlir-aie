@@ -1,0 +1,19 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// A compute core (not a memtile) is the out-of-order S2MM merge consumer, with
+// on-chip completion and backpressure expressed as ordinary locks on the
+// out-of-order receive BDs. Two designs:
+//   * release_only  -- completion is a release-only counter the egress acquires;
+//   * backpressure  -- two generations through one reused buffer with a throttled
+//                      consumer, guarded by an ooo_prod credit (no overrun).
+//
+// REQUIRES: ryzen_ai_npu2, peano, xrt_python_bindings
+//
+// RUN: cp %S/core_merge_release_only.mlir m1.mlir
+// RUN: %aiecc --get-xclbin --get-npu-insts --xclbin-name=m1.xclbin --npu-insts-name=m1.bin ./m1.mlir
+// RUN: %run_on_npu2% %python %S/test.py --xclbin m1.xclbin -k MLIR_AIE --instr m1.bin --design release_only
+//
+// RUN: cp %S/core_merge_backpressure.mlir m2.mlir
+// RUN: %aiecc --get-xclbin --get-npu-insts --xclbin-name=m2.xclbin --npu-insts-name=m2.bin ./m2.mlir
+// RUN: %run_on_npu2% %python %S/test.py --xclbin m2.xclbin -k MLIR_AIE --instr m2.bin --design backpressure

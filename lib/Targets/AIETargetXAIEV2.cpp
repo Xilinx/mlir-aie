@@ -338,27 +338,29 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
         // in english repeat_count==0 means "do it once" and don't repeat but
         // libxaie treats repeat_count=1 as do it once.
         int repeatCount = op.getRepeatCount() + 1;
-        // Arm out-of-order mode while idle, then push the start queue via the
-        // generic path: StartBd is ignored and the in-order validity check
-        // skipped.
-        output << "XAie_DmaChannelDesc ooo_desc_" << chNum << ";\n";
+        // XAie_DmaChannelSetStartQueueGeneric: StartBd is ignored and the
+        // in-order validity check is skipped.
+        std::string oooSuffix = std::to_string(col) + "_" +
+                                std::to_string(row) + "_" +
+                                std::to_string(chNum);
+        output << "XAie_DmaChannelDesc ooo_desc_" << oooSuffix << ";\n";
         output << "__mlir_aie_try(XAie_DmaChannelDescInit(" << deviceInstRef
-               << ", &ooo_desc_" << chNum << ", " << tileLocStr(col, row)
+               << ", &ooo_desc_" << oooSuffix << ", " << tileLocStr(col, row)
                << "));\n";
         output << "__mlir_aie_try(XAie_DmaChannelEnOutofOrder(&ooo_desc_"
-               << chNum << ", " << enable << "));\n";
+               << oooSuffix << ", " << enable << "));\n";
         output << "__mlir_aie_try(XAie_DmaWriteChannel(" << deviceInstRef
-               << ", &ooo_desc_" << chNum << ", " << tileLocStr(col, row)
+               << ", &ooo_desc_" << oooSuffix << ", " << tileLocStr(col, row)
                << ", /* ChNum */" << chNum << ", /* dmaDir */ DMA_" << dmaDir
                << "));\n";
-        output << "XAie_DmaDeclareQueueConfig(ooo_queue_" << chNum
+        output << "XAie_DmaDeclareQueueConfig(ooo_queue_" << oooSuffix
                << ", /* StartBd */ 0, /* Repeat */ " << repeatCount
                << ", /* EnToken */ " << disable << ", /* EnOutOfOrder */ "
                << enable << ");\n";
         output << "__mlir_aie_try(XAie_DmaChannelSetStartQueueGeneric("
                << deviceInstRef << ", " << tileLocStr(col, row)
                << ", /* ChNum */" << chNum << ", /* dmaDir */ DMA_" << dmaDir
-               << ", &ooo_queue_" << chNum << "));\n";
+               << ", &ooo_queue_" << oooSuffix << "));\n";
       } else {
         // in english repeat_count==0 means "do it once" and don't repeat but
         // libxaie treats repeat_count=1 as do it once.

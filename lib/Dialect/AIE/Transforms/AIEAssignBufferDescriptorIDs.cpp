@@ -161,9 +161,6 @@ struct AIEAssignBufferDescriptorIDsPass
       int row = memOp.getTileID().row;
 
       BdIdGenerator gen(col, row, targetModel);
-      // A pinned bd_id is only reachable from channels owning that half of the
-      // tile's BD pool (odd memtile channels start at 24); reject an
-      // unreachable one instead of lowering it.
       auto checkBdChannelAccessible = [&](DMABDOp bd, int bdId,
                                           int channelIndex) -> bool {
         if (targetModel.isBdChannelAccessible(col, row, bdId, channelIndex))
@@ -178,9 +175,6 @@ struct AIEAssignBufferDescriptorIDsPass
         if (!bd.getBdId().has_value())
           return;
         uint32_t bdId = bd.getBdId().value();
-        // Two BDs pinned to the same bd_id share one hardware slot and
-        // silently corrupt each other; reject here instead of the debug-only
-        // assert in assignBdId.
         if (gen.bdIdAlreadyAssigned(bdId)) {
           bd.emitOpError() << "assigned bd_id " << bdId
                            << " is already used by another BD on this tile";

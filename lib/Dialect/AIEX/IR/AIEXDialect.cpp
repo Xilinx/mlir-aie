@@ -756,6 +756,11 @@ LogicalResult AIEX::NpuWriteBdOp::verify() {
     return emitOpError("Packet ID exceeds the maximum supported by 5 bits.");
   if (getPacketType() > 7)
     return emitOpError("Packet Type exceeds the maximum supported by 3 bits.");
+  int64_t oooId = getOutOfOrderId();
+  if (oooId < 0 ||
+      static_cast<uint64_t>(oooId) > targetModel.getMaxOutOfOrderId())
+    return emitOpError("out_of_order_id must be in [0, ")
+           << targetModel.getMaxOutOfOrderId() << "].";
   if (!isLinearTransfer && getD0Size() > 0x3FF)
     return emitOpError("D0 Size exceeds the [0:1023] range.");
   if (getD0Stride() > 0xFFFFF)
@@ -1191,6 +1196,9 @@ LogicalResult AIEX::DMAConfigureTaskOp::verify() {
                        "are connected to the memory-mapped NOC.");
         result = failure();
       }
+      // DMABDOp::verify skips task BDs, so validate out_of_order_id here too.
+      if (failed(AIE::verifyDMABDOutOfOrderId(bd)))
+        result = failure();
     });
     if (failed(result)) {
       return result;

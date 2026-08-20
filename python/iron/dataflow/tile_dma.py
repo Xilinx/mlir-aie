@@ -125,11 +125,7 @@ class Bd:
     # Stamps the packet header's out-of-order id: the slot a receiving
     # out-of-order S2MM channel places this BD's data into.
     out_of_order_id: int | None = None
-    # Explicit BD id. On an out-of-order channel this is the slot id a sender's
-    # out_of_order_id must match (defaults to the BD's position); set it to give
-    # two out-of-order channels on a tile disjoint ids. Ignored on ordinary
-    # channels. The position default is inaccessible on odd memtile channels
-    # (whose bd ids start at 24), so set it explicitly there.
+    # Explicit id (other ids are auto-assigned around it).
     bd_id: int | None = None
     # Strided access pattern, outermost dimension first; each entry is a
     # constant int or a runtime Value. Empty (default) emits a contiguous
@@ -159,8 +155,8 @@ class DmaChannel:
         out_of_order: put the channel into out-of-order mode (S2MM only).
             Incoming packets select BD slots by `out_of_order_id`; the BD chain
             is ignored. Every BD must be packet-enabled and the ingress flow
-            must set `keep_pkt_header=True`. Multiple out-of-order channels can
-            share a tile if their BD ids are disjoint.
+            must set `keep_pkt_header=True`. Multiple out-of-order channels
+            must have disjoint BD ids.
     """
 
     direction: DMAChannelDir
@@ -270,7 +266,6 @@ class TileDma(Resolvable):
         channels = self._channels
 
         def _ooo_slot_id(bd: Bd, pos: int) -> int:
-            # Slot id: explicit bd_id, else the BD's position.
             return bd.bd_id if bd.bd_id is not None else pos
 
         pinned_bd_ids: dict[int, int] = {}  # slot id -> owning channel
@@ -376,9 +371,10 @@ class TileDma(Resolvable):
                         if bd.iteration is not None:
                             it = bd.iteration
                             bd_kwargs["iteration"] = (it.size, it.stride, it.current)
-                        # Pin the receive BD id a sender's header must match.
-                        if ch.out_of_order:
-                            bd_kwargs["bd_id"] = _ooo_slot_id(bd, bd_pos)
+                        if bd.bd_id is not None:
+                            bd_kwargs["bd_id"] = bd.bd_id
+                        elif ch.out_of_order:
+                            bd_kwargs["bd_id"] = bd_pos
                         if bd.out_of_order_id is not None:
                             bd_kwargs["out_of_order_id"] = bd.out_of_order_id
                         # A packet header must be a distinct aie.dma_bd_packet op

@@ -356,8 +356,8 @@ configureLocksInBdBlock(const AIE::AIETargetModel &targetModel,
     }
   }
 
-  // An out-of-order receive BD needs only a release: it gives completion
-  // without a token or done-channel, and any acquire is satisfied externally.
+  // Allow release-only mode for out-of-order receive BDs. Not required, but
+  // enables completion semantics (lock-driven) without a token or done-channel.
   if (outOfOrder) {
     if (!relValue || !relLockId)
       return (*block.getOps<AIE::UseLockOp>().begin())
@@ -381,9 +381,10 @@ configureLocksInBdBlock(const AIE::AIETargetModel &targetModel,
   // no RelEn in the arch spec even though the API requires you to set it?
   bool relEn = false;
   if (outOfOrder && !acqLockId) {
+    // Release-only out-of-order BD: point the disabled acquire lock at the
+    // release lock so XAie_LockInit gets a valid id.
     acqLockId = relLockId;
     acqValue = 0;
-    acqEn = false;
   }
   assert(acqLockId && acqValue && relLockId && relValue &&
          "lock values must be resolved before init");
@@ -608,9 +609,6 @@ LogicalResult xilinx::AIE::AIERTControl::pushToBdQueueAndEnable(
   XAie_DmaDirection direction =
       channelDir == DMAChannelDir::S2MM ? DMA_S2MM : DMA_MM2S;
   auto tileLoc = XAie_TileLoc(col, row);
-  // An out-of-order channel's header lookup id aliases the task-complete-token
-  // bits, so the two cannot coexist: never arm token issue for out-of-order.
-  auto enTokenIssue = !outOfOrder && tileLoc.Row == 0 && direction == DMA_S2MM;
   if (padValue != 0 && direction == DMA_MM2S &&
       targetModel.isMemTile(col, row)) {
     TRY_XAIE_API_EMIT_ERROR(op, XAie_DmaSetPadValue, &aiert->devInst, tileLoc,
@@ -635,6 +633,9 @@ LogicalResult xilinx::AIE::AIERTControl::pushToBdQueueAndEnable(
                             &aiert->devInst, tileLoc, chNum, direction,
                             &startQueueCfg);
   } else {
+    // Only an in-order shim S2MM issues a task-complete-token; out-of-order
+    // never does (its header lookup id aliases the token bits).
+    bool enTokenIssue = tileLoc.Row == 0 && direction == DMA_S2MM;
     TRY_XAIE_API_EMIT_ERROR(op, XAie_DmaChannelSetStartQueue, &aiert->devInst,
                             tileLoc, chNum, direction, bdId, repeatCount,
                             enTokenIssue);

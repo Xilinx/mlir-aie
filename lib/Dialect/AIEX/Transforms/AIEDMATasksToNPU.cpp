@@ -461,7 +461,6 @@ struct AIEDMATasksToNPUPass
       f.packet_id = info.getPktId();
     }
 
-    // Carry out_of_order_id through instead of dropping it to 0.
     if (std::optional<int32_t> oooId = bd_op.getOutOfOrderId())
       f.out_of_order_id = *oooId;
 
