@@ -1,0 +1,20 @@
+//===- stack_sizes_makefile_kernel.test -------------------------*- - -*-===//
+//
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+//===----------------------------------------------------------------------===//
+
+// PEANOWRAP2P_FLAGS (programming_examples/makefile-common) is used directly
+// by Makefile-driven examples (e.g. programming_examples/ml/magika/Makefile)
+// to compile kernel objects outside the IRON JIT flow. Confirm it carries
+// -mllvm -stack-size-section, so those kernel objects get the same stack
+// accounting the MLIR-generated core object already gets from aiecc.
+
+// REQUIRES: peano
+// RUN: rm -rf %t.d && mkdir -p %t.d
+// RUN: make -f %S/stack_sizes_makefile_kernel.mk kernel \
+// RUN:   SRC=%S/stack_sizes_makefile_kernel_kernel.cc OUT=%t.d/kernel.o
+// RUN: llvm-readelf -S %t.d/kernel.o | FileCheck %s
+
+// CHECK: .stack_sizes
