@@ -289,13 +289,12 @@ LogicalResult buildShimBdWords(OpBuilder &builder, Location loc,
   for (int i = 1; i < 4; i++)
     guardDivisible(stridesRev[i], inT[i], /*allowUnit=*/false);
 
-  // word[0] buffer_length always carries the element count (linear and ND
-  // alike).
+  // word[0] buffer_length
   wordsOut[0] = bufLen;
 
-  // Linear mode leaves the d0/d1/d2 size/stride fields at zero (only
-  // buffer_length + iteration matter); ND mode ORs them into words 3/4/5, on
-  // top of the static burst_length / AXCache bits set above.
+  // Linear mode needs only buffer_length + iteration, so the d0/d1/d2
+  // size/stride fields stay zero; words 4/5 OR onto the burst_length / AXCache
+  // bits set above.
   if (!isLinear) {
     // word[3]: d0_size [29:20], d0_stride [19:0].
     wordsOut[3] =

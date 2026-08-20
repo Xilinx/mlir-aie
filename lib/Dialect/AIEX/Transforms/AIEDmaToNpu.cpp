@@ -550,12 +550,9 @@ public:
   }
 
   // Lower a shim-NOC dma_memcpy_nd carrying runtime (SSA) offsets/sizes/
-  // strides. Builds the whole 8-word BD register block as SSA values with the
-  // shared encoder -- same arithmetic as the static path, so a runtime value
-  // equal to a constant reproduces the same word -- and packs it into one
-  // `npu.blockwrite_values`, the same shape the dma_task dynamic path emits.
-  // The block-write precedes the address patch and covers the patched word,
-  // which is what an ELF/TXN consumer like aiebu requires.
+  // strides. The encoder runs the same arithmetic as the static path, so a
+  // runtime value equal to a constant yields the same word. aiebu requires the
+  // block-write to precede the address patch and cover the patched word.
   LogicalResult lowerDynamic(NpuDmaMemcpyNdOp op, OpAdaptor adaptor,
                              ConversionPatternRewriter &rewriter) const {
     const auto &targetModel = AIE::getTargetModel(op);
@@ -592,9 +589,8 @@ public:
     if (!isMM2S)
       issue_token = BoolAttr::get(ctx, true);
 
-    // Build the BD register block (shared with dma_task). buffer_length is the
-    // size-product here, so pass no override (null); the encoder returns the hw
-    // repeat_count for the queue push.
+    // buffer_length is the size-product here, hence no override; the encoder
+    // returns the hw repeat_count for the queue push.
     SmallVector<Value> words;
     Value repeatCount;
     if (failed(
@@ -603,7 +599,6 @@ public:
                              op.getElementTypeBitwidth(), op.getBurstLength(),
                              /*bufLenOverride=*/Value(), repeatCount, words)))
       return failure();
-    // The bd_id is pinned here, so the register base folds to a literal.
     Value bdBase =
         getBdRegisterBase(rewriter, loc, targetModel, tileCol, tileRow,
                           rewriter.getI32IntegerAttr(op.getId()));

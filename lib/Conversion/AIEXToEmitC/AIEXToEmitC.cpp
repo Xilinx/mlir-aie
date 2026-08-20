@@ -499,8 +499,7 @@ private:
       if (auto d = bw.getDataWords())
         resolved.blockWriteData[clone] = d;
     } else if (auto bwv = dyn_cast<AIEX::NpuBlockWriteValuesOp>(orig)) {
-      // Already an absolute address (no buffer/col/row folding); a pinned BD id
-      // makes it constant, a pool-drawn one leaves it runtime.
+      // Already absolute: no buffer/col/row to fold in.
       if (auto a = AIEX::getConstantIntOperand(bwv.getAddress()))
         resolved.absoluteAddr[clone] = *a;
     }
