@@ -591,13 +591,7 @@ struct AIEDMATasksToNPUPass
                                 bdRepeatCount, bdWords)))
       return failure();
 
-    // One blockwrite carries the whole register block -- required so a
-    // downstream ELF/TXN consumer that only allows an address_patch to target
-    // a range covered by a preceding block-write (e.g. aiebu) accepts the
-    // stream, and it writes the words in ascending order so valid_bd (word 7)
-    // lands last, matching the static path. Emitted before
-    // setAddressForSingleBD's address_patch, which targets a word inside this
-    // same range.
+    // One blockwrite carries the whole register block for BD configuration.
     Value bdBase =
         getBdRegisterBase(builder, loc, target_model, col, row, bdIdOfr);
     NpuBlockWriteValuesOp::create(builder, loc, bdBase, bdWords);

@@ -17,10 +17,9 @@
 // npu.blockwrite_values at that runtime base, whose payload mixes the constant
 // template words (buffer_offset word 1, packet word 2, valid/lock word 7) with
 // the encoder's runtime size/stride words -- so no per-word write32 remains for
-// this BD. Emitting a real block-write is required for a downstream ELF/TXN
-// consumer that only allows an address_patch to target a range covered by a
-// preceding block-write (e.g. aiebu); it also writes the words in ascending
-// order, so valid_bd (word 7) lands last as on the static path.
+// this BD. Emitting a real block-write is required for aiebu: it folds a
+// following address_patch instruction into an ELF relocation on the 
+// blockwrite.
 //
 // The buffer address_patch then takes a runtime addr operand pointing INSIDE
 // that range (base + 4, word 1), and the queue push uses the runtime bd_id.

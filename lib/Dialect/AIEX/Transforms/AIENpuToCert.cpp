@@ -973,7 +973,6 @@ struct AIENpuToCertPass
     }
 
     target.addIllegalOp<AIEX::NpuBlockWriteOp>();
-    // Illegal with no pattern: unconverted it would drop the BD configuration.
     target.addIllegalOp<AIEX::NpuBlockWriteValuesOp>();
     target.addIllegalOp<AIEX::NpuMaskWrite32Op>();
     target.addIllegalOp<AIEX::NpuSyncOp>();
