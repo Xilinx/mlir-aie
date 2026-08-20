@@ -3,6 +3,29 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
+# REQUIRES: ryzen_ai_npu2, peano
+#
+# RUN: %run_on_npu2% %python %s --recv-tile mem  --channels 1 -n 1
+# RUN: %run_on_npu2% %python %s --recv-tile core --channels 1 -n 1
+# RUN: %run_on_npu2% %python %s --recv-tile mem  --channels 1 -n 8
+# RUN: %run_on_npu2% %python %s --recv-tile core --channels 1 -n 8
+# RUN: %run_on_npu2% %python %s --recv-tile mem  --channels 2 -n 8
+# RUN: %run_on_npu2% %python %s --recv-tile core --channels 2 -n 7
+# RUN: %run_on_npu2% %python %s --recv-tile mem  --channels 1 -n 4 --packets 8
+# RUN: %run_on_npu2% %python %s --recv-tile core --channels 1 -n 4 --packets 8
+# RUN: %run_on_npu2% %python %s --recv-tile mem  --channels 2 -n 4 --packets 4
+# RUN: %run_on_npu2% %python %s --recv-tile mem  --channels 1 -n 4 --nonuniform
+# RUN: %run_on_npu2% %python %s --recv-tile core --channels 1 -n 4 --nonuniform
+# RUN: %run_on_npu2% %python %s --recv-tile mem  --channels 1 -n 2 --repeat-count 8
+# RUN: %run_on_npu2% %python %s --recv-tile core --channels 1 -n 4 --repeat-count 2
+# RUN: %run_on_npu2% %python %s --recv-tile mem  --channels 2 -n 8 --repeat-count 2
+# RUN: %run_on_npu2% %python %s --recv-tile core --channels 2 -n 6 --repeat-count 1
+# RUN: %run_on_npu2% %python %s --recv-tile mem  --channels 1 -n 4 --packets 2 --repeat-count 2
+# RUN: %run_on_npu2% %python %s --recv-tile mem  --channels 1 -n 4 --nonuniform --repeat-count 2
+# RUN: %run_on_npu2% %python %s --recv-tile mem  --channels 1 -n 1 --repeat-count 8 --recv-backpressure
+# RUN: %run_on_npu2% %python %s --recv-tile core --channels 1 -n 1 --repeat-count 8 --recv-backpressure
+# RUN: %run_on_npu2% %python %s --recv-tile mem  --channels 1 -n 1 --packets 2 --repeat-count 8 --recv-backpressure
+#
 """Out-of-order S2MM merge demo: N senders stream into one S2MM channel and each
 packet lands in a fixed slot chosen by its header out-of-order id, not by arrival
 order. This is the many-to-one packet merge primitive.
