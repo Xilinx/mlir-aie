@@ -3,66 +3,12 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""Out-of-order S2MM merge: many senders into one channel, placed by header id.
+"""Out-of-order S2MM merge demo: N senders stream into one S2MM channel and each
+packet lands in a fixed slot chosen by its header out-of-order id, not by arrival
+order. This is the many-to-one merge primitive.
 
-`N` compute cores each stream a slice of data into one S2MM channel that runs in
-out-of-order mode. Each packet carries an *out-of-order id* in its header, and the
-receiver writes the packet into the slot whose pinned `bd_id` matches that id. A
-packet always lands in the same slot because its header id picks the destination,
-not its arrival order. This is the many-to-one merge primitive.
-
-The senders occupy the bottom compute row, one per column. The receiver sits at
-the center of that row (column `n//2`) because a centered receiver splits the
-incoming traffic to both sides. Centering is necessary because a stream-switch
-port holds only four packet rules, and a one-sided funnel would overflow a port
-past `n=6`.
-
-Each sender routes a distinct packet id to the one merge channel, while the
-receiver places by the separate out-of-order id. Distinct route ids are needed
-because sharing one id across the senders over-subscribes a compute tile's
-switchbox arbiter. Every sender generates its own data and stamps the id on a
-dataflow BD (`Bd(out_of_order_id=...)`), which avoids any runtime writebd.
-
-Completion happens on-chip, with no host round-trip and no completion token. Each
-receive BD releases a counting lock, and the egress MM2S must acquire the total
-packet count before it drains. The drain cannot start early because that acquire
-blocks until every packet has landed. The host only moves each merged buffer to
-the output with a high-level shim DMA task.
-
-The test proves placement follows the header id. Sender `s` targets slot
-`(s + shift) % n`, which rotates the merged buffer by `shift`, and the verifier
-checks every non-identity rotation. An in-order channel could match at most one
-rotation by luck. Because the receive slots use non-sequential `bd_id`s, a correct
-result cannot be explained by slot position.
-
-Options (one file covers the whole matrix):
-
-  --recv-tile core|mem   Merge (receiver) tile type.
-  --channels 1|2         Out-of-order channels on the receiver tile. Two channels
-                         share one tile with disjoint pinned bd_ids, and each
-                         sender fans a distinct sub-slice to each channel.
-  -n / --sources 1..8    Merge width (n=1 is a degenerate one-way merge).
-  --packets m            Sub-buffers per source. Each source sends m packets, one
-                         distinct sub-slice each, via a send-side BD iteration.
-  --nonuniform           Give slot j the count j+1, a different packet count per
-                         slot in one merge. Overrides --packets.
-  --repeat-count k       Run k+1 merge rounds reusing the one buffer. The rounds
-                         are separated by a sender-side credit-token barrier
-                         because a single out-of-order channel is a FIFO. Within a
-                         round the senders still race.
-  --recv-backpressure    For a single producer (n=1), gate reuse with a
-                         receiver-side credit instead of the sender-side barrier.
-                         Cheaper because it needs no token, but single-producer
-                         only.
-
-See README.md for the resource limits and the bound formulas.
-
-Invocation (standard 3-mode CLI):
-  emit MLIR:    python dma_s2mm_ooo.py --recv-tile core --channels 2 -n 4 --emit-mlir
-  run + verify: python dma_s2mm_ooo.py --recv-tile mem --channels 2 -n 8
-  run + verify: python dma_s2mm_ooo.py --recv-tile mem --channels 1 -n 4 --packets 4
-  run + verify: python dma_s2mm_ooo.py --recv-tile mem --channels 1 -n 4 --nonuniform
-  run + verify: python dma_s2mm_ooo.py --recv-tile mem --channels 1 -n 2 --repeat-count 2
+See README.md for the design, the resource limits, and the bound formulas. Run
+with --help for the options, or --emit-mlir to print the design without running.
 """
 
 import argparse
@@ -239,12 +185,12 @@ def dma_s2mm_ooo(
     if k > 0 and recv_is_core and c == 2 and n > 6:
         raise ValueError(
             f"core receiver, 2 channels, repeat_count>0 supports at most 6 senders "
-            f"(got n={n}): 2n receive + 3 drain/token BDs must fit the 16-BD budget"
+            f"(got n={n}): 2n receive + 3 drain/token BDs must fit the 16-BD core tile budget"
         )
     if recv_is_core and c == 2 and n > 7:
         raise ValueError(
             f"core receiver with 2 channels supports at most 7 senders (got n={n}): "
-            "c*(n+1) receive+egress BDs must fit the 16-BD core-tile budget"
+            "c*(n+1) receive+egress BDs must fit the 16-BD core tile budget"
         )
     if recv_backpressure:
         # Receiver-side backpressure gates buffer reuse locally for one producer.
@@ -831,8 +777,8 @@ def main():
     p.add_argument(
         "--nonuniform",
         action="store_true",
-        help="give slot j iteration size j+1 (different m per slot); "
-        "overrides --packets",
+        help="give slot j iteration size j+1 (a different m per slot); "
+        "leave --packets at 1",
     )
     p.add_argument(
         "--repeat-count",

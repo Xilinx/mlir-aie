@@ -371,8 +371,8 @@ public:
       packet_id = IntegerAttr::get(i32ty, packetInfo->getPktId());
     }
 
-    // out_of_order_id logic omitted: it stays 0 (merge slot 0). Senders
-    // stamp it via aie.dma_bd / dma_configure_task / npu.writebd.
+    // out_of_order_id - stays 0; senders stamp it via aie.dma_bd,
+    // dma_configure_task, or npu.writebd
 
     if (!isLinear) {
       // d0_size, d0_stride

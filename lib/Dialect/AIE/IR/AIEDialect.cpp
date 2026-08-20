@@ -2080,14 +2080,15 @@ static bool isBdPacketEnabled(DMABDOp bd) {
   return false;
 }
 
-LogicalResult xilinx::AIE::verifyDMABDOutOfOrderId(DMABDOp bd) {
+LogicalResult
+xilinx::AIE::verifyDMABDOutOfOrderId(DMABDOp bd, bool packetEnabledByContext) {
   std::optional<int32_t> oooId = bd.getOutOfOrderId();
   if (!oooId.has_value())
     return success();
   const AIETargetModel &targetModel = getTargetModel(bd.getOperation());
   if (!targetModel.hasProperty(AIETargetModel::SupportsOutOfOrderDMA))
     return bd.emitOpError("out_of_order_id is not supported on this device");
-  if (!isBdPacketEnabled(bd))
+  if (!packetEnabledByContext && !isBdPacketEnabled(bd))
     return bd.emitOpError("out_of_order_id requires a packet-enabled BD");
   uint32_t maxOooId = targetModel.getMaxOutOfOrderId();
   if (*oooId < 0 || static_cast<uint32_t>(*oooId) > maxOooId)
@@ -2118,7 +2119,7 @@ static LogicalResult verifyOutOfOrderChannel(Operation *op, DMAChannelDir dir,
     return op->emitOpError("out_of_order is only valid on an S2MM channel");
   if (!getTargetModel(op).hasProperty(AIETargetModel::SupportsOutOfOrderDMA))
     return op->emitOpError(
-        "out_of_order S2MM DMA is not supported on this device");
+        "out-of-order S2MM DMA is not supported on this device");
   if (bds.empty())
     return op->emitOpError("out-of-order S2MM channel must have at least one "
                            "receive buffer descriptor"); // else stall
@@ -2127,10 +2128,11 @@ static LogicalResult verifyOutOfOrderChannel(Operation *op, DMAChannelDir dir,
       return bd.emitOpError(
           "out-of-order S2MM receive buffer descriptor must be packet-enabled");
     if (bd.getOutOfOrderId().has_value())
-      return bd.emitOpError("out_of_order_id belongs on the sender BD, not an "
-                            "out-of-order S2MM receive BD");
+      return bd.emitOpError(
+          "out_of_order_id belongs on the sender buffer descriptor, not an "
+          "out-of-order S2MM receive buffer descriptor");
   }
-  // prevent inter-BD dependency (arrival order is unknown); can deadlock.
+  // an inter-BD lock dependency can deadlock because arrival order is unknown
   DenseMap<Operation *, Operation *> releasedByRecvBd;
   for (DMABDOp bd : bds)
     for (auto useLock : bd->getBlock()->getOps<UseLockOp>())

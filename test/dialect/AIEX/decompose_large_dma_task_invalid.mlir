@@ -28,22 +28,3 @@ module {
     }
   }
 }
-
-// -----
-
-// A small out-of-order task BD needs no splitting, so it is left untouched.
-module {
-  aie.device(npu2_1col) {
-    %t = aie.tile(0, 0)
-    aie.shim_dma_allocation @a (%t, MM2S, 0)
-    aie.runtime_sequence @ooo_small(%in: memref<8xi32>) {
-      %tk = aiex.dma_configure_task_for @a {
-        aie.dma_bd(%in : memref<8xi32> offset = 0 len = 8 sizes = [1, 1, 1, 8] strides = [0, 0, 0, 1])
-          {burst_length = 0 : i32, packet = #aie.packet_info<pkt_type = 0, pkt_id = 1>, out_of_order_id = 5 : i32}
-        aie.end
-      } {issue_token = true}
-      aiex.dma_start_task(%tk)
-      aiex.dma_await_task(%tk)
-    }
-  }
-}

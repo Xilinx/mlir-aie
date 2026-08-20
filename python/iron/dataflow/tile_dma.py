@@ -107,8 +107,8 @@ class Bd:
     - `None` — emit no `next_bd` (rarely useful; this leaves the
       basic block without a terminator).
 
-    `next` is ignored on an out-of-order channel: those BDs are chained only
-    for configuration and the hardware selects by header id (see
+    `next` is ignored on an out-of-order channel because those BDs are chained
+    only for configuration and the hardware selects by header id (see
     [`DmaChannel.out_of_order`][iron.DmaChannel]).
     """
 
@@ -122,8 +122,8 @@ class Bd:
     # (pkt_type, pkt_id).  Pairs with a PacketFlow that uses
     # the same pkt_id so the routing fabric dispatches correctly.
     packet: tuple[int, int] | None = None
-    # Stamps the packet header's out-of-order id: the slot a receiving
-    # out-of-order S2MM channel places this BD's data into.
+    # The out-of-order id stamped into the packet header. Names the slot a
+    # receiving out-of-order S2MM channel places this BD's data into.
     out_of_order_id: int | None = None
     # Explicit id (other ids are auto-assigned around it).
     bd_id: int | None = None
@@ -154,14 +154,14 @@ class DmaChannel:
         repeat_count: extra repeats of the task (0 = run once), where the task
             is the BD chain (in-order) or a merge round (out-of-order).
         out_of_order: put the channel into out-of-order mode (S2MM only).
-            Each BD receives the packet with `bd.bd_id == pkt.out_of_order_id`;
-            the BD chain (next bd) is ignored. Each BD receives its own
+            Each BD receives the packet with `bd.bd_id == pkt.out_of_order_id`,
+            and the BD chain (next bd) is ignored. Each BD receives its own
             `BdIteration.size` packets per merge round. Every BD must be
             packet-enabled and the ingress flow must set `keep_pkt_header=True`.
             Multiple out-of-order channels must have disjoint BD ids.
-            Note: at the hardware level, repeat_count signifies the total
-            number of packets to accept (0-based). This class internally handles
-            conversion from repeated merge rounds to total packet count.
+            At the hardware level, repeat_count is the total number of packets
+            to accept (0-based). This class converts repeated merge rounds to
+            that total.
     """
 
     direction: DMAChannelDir
@@ -200,13 +200,21 @@ def _channel_pad_word(ch: "DmaChannel") -> int | None:
     return pack_pad_value(ch.pad_value, elem_sizes.pop())
 
 
-def _ooo_packets_per_round(ch: "DmaChannel") -> int:
-    """Packets one out-of-order merge round receives.
+def _dma_start_repeat_count(ch: "DmaChannel") -> int:
+    """Lowered ``repeat_count`` for a channel's ``dma_start``.
 
-    One packet per receive-BD execution, so each BD contributes its iteration
-    size (or 1, if not specified).
+    Out-of-order mode's hardware repeat_count is the 0-based number of packets
+    to receive, so a merge of ``ch.repeat_count + 1`` rounds lowers to
+    ``packets_per_round * (ch.repeat_count + 1) - 1``. In-order mode passes
+    ``ch.repeat_count`` through unchanged.
     """
-    return sum(bd.iteration.size if bd.iteration else 1 for bd in ch.bds)
+    if ch.out_of_order:
+        return (
+            sum(bd.iteration.size if bd.iteration else 1 for bd in ch.bds)
+            * (ch.repeat_count + 1)
+            - 1
+        )
+    return ch.repeat_count
 
 
 class TileDma(Resolvable):
@@ -349,15 +357,7 @@ class TileDma(Resolvable):
                 dest=block[chan_head_idx[0]],
                 chain=block[chan_chain_idx[0]],
                 pad_value=_channel_pad_word(ch) or 0,
-                # In out-of-order mode, the hardware repeat_count value
-                # signifies the number of *packets* to receive and is 0-based.
-                # The semantic lowering of repeat_count from "one merge" to
-                # "number of packets" is done here.
-                repeat_count=(
-                    _ooo_packets_per_round(ch) * (ch.repeat_count + 1) - 1
-                    if ch.out_of_order
-                    else ch.repeat_count
-                ),
+                repeat_count=_dma_start_repeat_count(ch),
                 out_of_order=ch.out_of_order,
             )
             # Chain blocks: dma_start for channels 1..N-1
@@ -370,11 +370,7 @@ class TileDma(Resolvable):
                         dest=block[chan_head_idx[i]],
                         chain=block[chan_chain_idx[i]],
                         pad_value=_channel_pad_word(ch_i) or 0,
-                        repeat_count=(
-                            _ooo_packets_per_round(ch_i) * (ch_i.repeat_count + 1) - 1
-                            if ch_i.out_of_order
-                            else ch_i.repeat_count
-                        ),
+                        repeat_count=_dma_start_repeat_count(ch_i),
                         out_of_order=ch_i.out_of_order,
                     )
 
@@ -397,10 +393,10 @@ class TileDma(Resolvable):
                         if bd.iteration is not None:
                             it = bd.iteration
                             bd_kwargs["iteration"] = (it.size, it.stride, it.current)
-                        if bd.bd_id is not None:
+                        if ch.out_of_order:
+                            bd_kwargs["bd_id"] = _ooo_slot_id(bd, bd_pos)
+                        elif bd.bd_id is not None:
                             bd_kwargs["bd_id"] = bd.bd_id
-                        elif ch.out_of_order:
-                            bd_kwargs["bd_id"] = bd_pos
                         if bd.out_of_order_id is not None:
                             bd_kwargs["out_of_order_id"] = bd.out_of_order_id
                         # A packet header must be a distinct aie.dma_bd_packet op

@@ -6,8 +6,8 @@
 // RUN: aie-opt --aie-dma-tasks-to-npu %s | FileCheck %s
 
 // A runtime DMA task BD that stamps an out_of_order_id must carry that id into
-// the emitted npu.writebd. It used to be dropped to 0, sending every packet to
-// slot 0. The contrast BD, with no out_of_order_id, must still emit 0.
+// the emitted npu.writebd. The contrast BD, with no out_of_order_id, must
+// emit 0.
 
 module {
   aie.device(npu2) {
@@ -27,6 +27,13 @@ module {
         aie.end
       }
       aiex.dma_start_task(%t2)
+
+      // CHECK: aiex.npu.writebd {{.*}}bd_id = 6 : i32{{.*}}out_of_order_id = 6 : i32
+      %t3 = aiex.dma_configure_task(%tile_0_0, MM2S, 0, <pkt_type = 0, pkt_id = 1>) {
+        aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8) {bd_id = 6 : i32, out_of_order_id = 6 : i32}
+        aie.end
+      }
+      aiex.dma_start_task(%t3)
     }
   }
 }

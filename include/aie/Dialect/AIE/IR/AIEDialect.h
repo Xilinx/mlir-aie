@@ -238,7 +238,8 @@ bool isContiguousBDTransfer(llvm::ArrayRef<BDDimLayoutAttr> dims);
 
 // Validate the sender-side out_of_order_id field on a single BD. Callable from
 // the AIEX dialect, whose runtime-sequence task BDs skip DMABDOp::verify.
-mlir::LogicalResult verifyDMABDOutOfOrderId(DMABDOp bd);
+mlir::LogicalResult
+verifyDMABDOutOfOrderId(DMABDOp bd, bool packetEnabledByContext = false);
 
 } // namespace xilinx::AIE
 

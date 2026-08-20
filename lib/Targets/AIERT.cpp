@@ -356,8 +356,7 @@ configureLocksInBdBlock(const AIE::AIETargetModel &targetModel,
     }
   }
 
-  // Allow release-only mode for out-of-order receive BDs. Not required, but
-  // enables lock-driven completion semantics without a token or done-channel.
+  // Allow release-only for out-of-order's lock-driven completion mechanism.
   if (outOfOrder) {
     if (!relValue || !relLockId)
       return (*block.getOps<AIE::UseLockOp>().begin())
@@ -618,18 +617,19 @@ LogicalResult xilinx::AIE::AIERTControl::pushToBdQueueAndEnable(
   // libxaie treats repeat_count=1 as do it once.
   repeatCount += 1;
   if (outOfOrder) {
-    // Arm out-of-order mode while idle (before enabling it).
     XAie_DmaChannelDesc dmaChannelDesc;
     TRY_XAIE_API_EMIT_ERROR(op, XAie_DmaChannelDescInit, &aiert->devInst,
                             &dmaChannelDesc, tileLoc);
     TRY_XAIE_API_EMIT_ERROR(op, XAie_DmaChannelEnOutofOrder, &dmaChannelDesc,
-                            (u8)XAIE_ENABLE);
+                            static_cast<uint8_t>(XAIE_ENABLE));
     TRY_XAIE_API_EMIT_ERROR(op, XAie_DmaWriteChannel, &aiert->devInst,
-                            &dmaChannelDesc, tileLoc, (u8)chNum, direction);
+                            &dmaChannelDesc, tileLoc,
+                            static_cast<uint8_t>(chNum), direction);
     // StartBd=0 (ignored) and skip the BD/channel validity check.
-    // Disable TCT; bd lookup id aliases token bits.
+    // Disable TCT because the bd lookup id aliases the token bits.
     XAie_DmaDeclareQueueConfig(startQueueCfg, /*StartBd=*/0, repeatCount,
-                               /*EnToken=*/(u8)XAIE_DISABLE, (u8)XAIE_ENABLE);
+                               /*EnToken=*/static_cast<uint8_t>(XAIE_DISABLE),
+                               static_cast<uint8_t>(XAIE_ENABLE));
     TRY_XAIE_API_EMIT_ERROR(op, XAie_DmaChannelSetStartQueueGeneric,
                             &aiert->devInst, tileLoc, chNum, direction,
                             &startQueueCfg);

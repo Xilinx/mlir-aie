@@ -1189,6 +1189,8 @@ LogicalResult AIEX::DMAConfigureTaskOp::verify() {
     // dialect. The normal DMABDOp verify operation will skip over any BD inside
     // a DMAConfigureTaskOp
     LogicalResult result = success();
+    // A task-level packet supplies the header for every BD in the task.
+    bool taskHasPacket = getPacket().has_value();
     block.walk([&](AIE::DMABDOp bd) {
       if (bd.getBurstLength() != 0 &&
           !targetModel.isShimNOCTile(getTileID().col, getTileID().row)) {
@@ -1197,7 +1199,7 @@ LogicalResult AIEX::DMAConfigureTaskOp::verify() {
         result = failure();
       }
       // DMABDOp::verify skips task BDs, so validate out_of_order_id here too.
-      if (failed(AIE::verifyDMABDOutOfOrderId(bd)))
+      if (failed(AIE::verifyDMABDOutOfOrderId(bd, taskHasPacket)))
         result = failure();
     });
     if (failed(result)) {

@@ -337,8 +337,7 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
         // in english repeat_count==0 means "do it once" and don't repeat but
         // libxaie treats repeat_count=1 as do it once.
         int repeatCount = op.getRepeatCount() + 1;
-        // XAie_DmaChannelSetStartQueueGeneric: StartBd is ignored and the
-        // in-order validity check is skipped.
+        // StartBd is ignored and the in-order validity check is skipped.
         std::string oooSuffix = std::to_string(col) + "_" +
                                 std::to_string(row) + "_" +
                                 std::to_string(chNum);

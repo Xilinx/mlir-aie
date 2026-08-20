@@ -54,7 +54,7 @@ module {
     %t = aie.tile(2, 2)
     %b = aie.buffer(%t) : memref<8xi32>
     aie.mem(%t) {
-        // expected-error@+1 {{out_of_order S2MM DMA is not supported on this device}}
+        // expected-error@+1 {{out-of-order S2MM DMA is not supported on this device}}
         aie.dma_start(S2MM, 0, ^bd0, ^end) { out_of_order }
       ^bd0:
         aie.dma_bd(%b : memref<8xi32> offset = 0 len = 4) { bd_id = 0 : i32 }
@@ -132,7 +132,7 @@ module {
         aie.dma_start(S2MM, 0, ^bd0, ^end) { out_of_order }
       ^bd0:
         aie.dma_bd_packet(0, 0)
-        // expected-error@+1 {{out_of_order_id belongs on the sender BD}}
+        // expected-error@+1 {{out_of_order_id belongs on the sender buffer descriptor}}
         aie.dma_bd(%b : memref<8xi32> offset = 0 len = 4) { bd_id = 0 : i32, out_of_order_id = 3 : i32 }
         aie.next_bd ^end
       ^end:
@@ -155,7 +155,7 @@ module {
       %0 = aie.dma(S2MM, 0) { out_of_order } [{
         aie.use_lock(%l0, AcquireGreaterEqual, %c1)
         aie.dma_bd_packet(0, 0)
-        // expected-error@+1 {{out_of_order_id belongs on the sender BD}}
+        // expected-error@+1 {{out_of_order_id belongs on the sender buffer descriptor}}
         aie.dma_bd(%b : memref<8xi32> offset = 0 len = 4) { bd_id = 0 : i32, out_of_order_id = 3 : i32 }
         aie.use_lock(%l1, Release, %c1)
       }]

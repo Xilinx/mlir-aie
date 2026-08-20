@@ -1068,7 +1068,7 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
         OptionalAttr<BDPadLayoutArrayAttr>:$pad_dimensions,
         OptionalAttr<AIEI32Attr>:$bd_id,
         OptionalAttr<PacketInfoAttr>:$packet,
-        // Sender-side id stamped into the packet header; selects which receive
+        // Sender-side id stamped into the packet header. Selects which receive
         // BD (by bd id) an out-of-order S2MM channel places this data into.
         OptionalAttr<AIEI32Attr>:$out_of_order_id,
         DefaultValuedOptionalAttr<AIEI32Attr, "0">:$burst_length,

@@ -52,7 +52,7 @@ wrong slot.
 | `--channels`  | `1`, `2`      | Out-of-order channels on the receiver tile. |
 | `-n`/`--sources` | `1..8`     | Merge width (`n=1` is a degenerate 1-way merge). |
 | `--packets`   | `m` (default 1) | Packets per source; fills `n*m` sub-buffers. |
-| `--nonuniform`| flag          | Slot `j` gets `j+1` packets (per-slot count). Overrides `--packets`. |
+| `--nonuniform`| flag          | Slot `j` gets `j+1` packets (per-slot count). Leave `--packets` at 1. |
 | `--repeat-count` | `k` (default 0) | Extra merge rounds; the receiver runs `k+1` rounds reusing the one buffer. |
 | `--recv-backpressure` | flag | Single-producer (`n=1`) reuse via a receiver-side credit instead of the sender-side barrier. |
 
@@ -86,7 +86,7 @@ drain MM2S, which means it needs no extra channel. It composes with `--channels`
 |--------|---------|-------|
 | `mem`, 1 or 2 channels | 8 | full width |
 | `core`, 1 channel      | 8 | full width |
-| `core`, 2 channels     | 7 | 16-BD core-tile budget |
+| `core`, 2 channels     | 7 | 16-BD core tile budget |
 
 - **BD budget.** Each channel needs `n` receive BDs plus 1 egress BD, which
   requires `c*(n+1) <= 16` on a core tile. Two channels at `n=8` need 18 BDs, and
