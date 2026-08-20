@@ -7,8 +7,6 @@ import atexit
 import gc
 import logging
 import os
-import shutil
-import subprocess
 import time
 import weakref
 from collections import OrderedDict
@@ -18,6 +16,7 @@ from typing import TYPE_CHECKING
 import pyxrt  # pyright: ignore[reportMissingImports]
 
 from ..hostruntime import HostRuntime, HostRuntimeError, KernelHandle, KernelResult
+from .device import acquire_device
 
 if TYPE_CHECKING:
     from aie.iron.device import Device
@@ -97,53 +96,7 @@ class XRTHostRuntime(HostRuntime):
 
     def __init__(self):
         """Initialize the XRTHostRuntime."""
-        # Retry logic for device acquisition to handle transient failures
-        max_retries = 5
-        for attempt in range(max_retries):
-            try:
-                self._device = pyxrt.device(0)
-                break
-            except RuntimeError as e:
-                logger.warning(
-                    "XRTHostRuntime: Failed to acquire device (attempt %d/%d): %s",
-                    attempt + 1,
-                    max_retries,
-                    e,
-                )
-
-                # Debugging info
-                try:
-                    if os.path.exists("/dev/accel/accel0"):
-                        logger.debug("/dev/accel/accel0 exists")
-                        # Stat it
-                        st = os.stat("/dev/accel/accel0")
-                        logger.debug("Stat: %s", st)
-                    else:
-                        logger.debug("/dev/accel/accel0 does not exist")
-
-                    # Try running xrt-smi examine
-                    xrt_bin = shutil.which("xrt-smi")
-                    if xrt_bin is None:
-                        xrt_base = os.environ.get("XILINX_XRT", "/opt/xilinx/xrt")
-                        xrt_bin = xrt_base + "/bin/xrt-smi"
-                    if os.path.exists(xrt_bin):
-                        logger.debug("Running %s examine", xrt_bin)
-                        result = subprocess.run(
-                            [xrt_bin, "examine"],
-                            timeout=5,
-                            capture_output=True,
-                            text=True,
-                        )
-                        logger.debug("xrt-smi stdout:\n%s", result.stdout)
-                        logger.debug("xrt-smi stderr:\n%s", result.stderr)
-                except Exception as debug_e:
-                    logger.debug("Failed to run debug checks: %s", debug_e)
-
-                if attempt == max_retries - 1:
-                    raise e
-
-                gc.collect()  # Make sure contexts are garbage collected.
-                time.sleep(1.0 * (attempt + 1))  # Exponential backoff
+        self._device = acquire_device()
 
         self._device_type_str = self._device.get_info(pyxrt.xrt_info_device.name)
 
