@@ -30,6 +30,7 @@ module {
     %t = aie.tile(0, 2)
     %b = aie.buffer(%t) : memref<8xi32>
     aie.mem(%t) {
+      // maximum repeat_count => ok
       aie.dma_start(S2MM, 0, ^bd0, ^end, repeat_count = 255)
     ^bd0:
       aie.dma_bd(%b : memref<8xi32> offset = 0 len = 8) { bd_id = 0 : i32 }

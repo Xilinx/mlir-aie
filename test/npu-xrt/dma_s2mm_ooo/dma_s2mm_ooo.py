@@ -5,7 +5,7 @@
 #
 """Out-of-order S2MM merge demo: N senders stream into one S2MM channel and each
 packet lands in a fixed slot chosen by its header out-of-order id, not by arrival
-order. This is the many-to-one merge primitive.
+order. This is the many-to-one packet merge primitive.
 
 See README.md for the design, the resource limits, and the bound formulas. Run
 with --help for the options, or --emit-mlir to print the design without running.
@@ -193,9 +193,6 @@ def dma_s2mm_ooo(
             "c*(n+1) receive+egress BDs must fit the 16-BD core tile budget"
         )
     if recv_backpressure:
-        # Receiver-side backpressure gates buffer reuse locally for one producer.
-        # Because it cannot hold per-round grouping across sources, it is
-        # single-producer (n=1), single-channel, and meaningful only with reuse (k>0).
         if n != 1:
             raise ValueError(
                 "recv_backpressure supports only a single producer (n=1); use the "

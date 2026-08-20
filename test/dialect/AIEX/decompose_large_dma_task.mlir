@@ -134,11 +134,9 @@ module {
 
 // -----
 
-// Test 5: OOO_FACTOR -- an oversized out-of-order task BD whose extent factors
-// into hardware-legal dimensions (2046 = 2 x 1023) is rewritten in place to a
-// single BD that keeps its out_of_order_id and packet header. A next_bd chain
-// (which would collapse the merge into one slot) is rejected instead, see
-// decompose_large_dma_task_invalid.mlir.
+// Test 5: OOO_FACTOR — oversized out-of-order task BD whose extent factors
+// into hardware-legal dimensions (2046 = 2 x 1023) is rewritten to a single BD
+// that keeps out_of_order_id and packet header.
 //
 // RUN: aie-opt --pass-pipeline='any(aie.device(aie-decompose-large-dma-bd))' \
 // RUN:   --split-input-file %s | FileCheck %s --check-prefix=OOO-FACTOR

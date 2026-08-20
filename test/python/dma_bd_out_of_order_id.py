@@ -3,22 +3,22 @@
 
 # RUN: %python %s | FileCheck %s
 
-"""Test the IRON sender-side out-of-order id: Bd(out_of_order_id=slot) forwards
-the id through the real producer (aie.iron.Bd -> aie.dma_bd's out_of_order_id
-attribute), so a sending BD can be expressed entirely in dataflow instead of
-dropping to the runtime aiex.npu.writebd descriptor. Each BD is packet-enabled
-(the id rides the packet header), emitted as a sibling aie.dma_bd_packet op."""
+"""Test the IRON sender-side out-of-order id.
+
+Bd(out_of_order_id=slot) forwards the id through the real producer (aie.iron.Bd
+-> aie.dma_bd's out_of_order_id attribute), so a sending BD can be expressed
+entirely without runtime aiex.npu.writebd. Each BD is packet-enabled (the id
+rides the packet header), emitted as a sibling aie.dma_bd_packet op.
+"""
 
 import numpy as np
-
+from aie.dialects._aie_enum_gen import AIETileType, DMAChannelDir
 from aie.iron import Bd, Buffer, DmaChannel, Program, Runtime, TileDma
 from aie.iron.device import NPU2Col1, Tile
-from aie.dialects._aie_enum_gen import AIETileType, DMAChannelDir
 
 tile = Tile(col=0, row=2, tile_type=AIETileType.CoreTile)
-buf = Buffer(tile=tile, type=np.ndarray[(16,), np.dtype[np.int32]], name="buf")
+buf = Buffer(tile=tile, type=np.ndarray[(2,), np.dtype[np.int32]], name="buf")
 
-# Two sending BDs, each stamping a distinct out-of-order id (its target slot).
 bds = [
     Bd(buffer=buf, offset=4 * i, length=4, packet=(0, 0), out_of_order_id=i)
     for i in range(2)
@@ -33,7 +33,7 @@ def sequence(_):
     pass
 
 
-rt = Runtime(sequence, [np.ndarray[(16,), np.dtype[np.int32]]])
+rt = Runtime(sequence, [np.ndarray[(2,), np.dtype[np.int32]]])
 rt.add_tile_dma(tile_dma)
 
 # Each sending BD carries a packet header (dma_bd_packet) and the matching

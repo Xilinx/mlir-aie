@@ -5,13 +5,11 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// aie-decompose-large-dma-bd rejects an out-of-order BD that needs splitting:
-// every slice would reuse one out_of_order_id and collapse into one merge slot.
+// aie-decompose-large-dma-bd rejects an out-of-order BD that needs splitting.
 
 // RUN: aie-opt --pass-pipeline='any(aie.device(aie-decompose-large-dma-bd))' \
 // RUN:   --split-input-file --verify-diagnostics %s
 
-// Oversized out-of-order sender (prime dim 1031 > 1023) can't slice: rejected.
 module {
   aie.device(npu2_1col) {
     %t = aie.tile(0, 0)
@@ -20,7 +18,7 @@ module {
       %tk = aiex.dma_configure_task_for @a {
         // expected-error@+1 {{splitting an out-of-order buffer descriptor into multiple descriptors is not implemented}}
         aie.dma_bd(%in : memref<4096xi32> offset = 0 len = 2062 sizes = [1, 1, 1031, 2] strides = [0, 0, 3, 1])
-          {burst_length = 0 : i32, packet = #aie.packet_info<pkt_type = 0, pkt_id = 1>, out_of_order_id = 5 : i32}
+          {packet = #aie.packet_info<pkt_type = 0, pkt_id = 1>, out_of_order_id = 5 : i32}
         aie.end
       } {issue_token = true}
       aiex.dma_start_task(%tk)

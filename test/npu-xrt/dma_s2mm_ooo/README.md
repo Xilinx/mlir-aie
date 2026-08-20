@@ -7,7 +7,8 @@
 
 # Out-of-order S2MM
 
-A deterministic many-to-one merge. `N` senders stream into one S2MM channel, and
+A deterministic out-of-order merge (not to be confused with deterministic merge
+*mode* in packet arbitration). `N` senders stream into one S2MM channel, and
 each packet lands in a fixed destination slot chosen by its packet header rather
 than by the order it arrives in.
 
@@ -27,7 +28,7 @@ The design has four stages.
 
 3. **Receiver.** A compute **core** or a **memtile** puts its S2MM channel in
    `out_of_order` mode. The receiver writes each incoming packet to the receive BD
-   whose pinned `bd_id` equals the packet's out-of-order id. Placement follows the
+   whose `bd_id` equals the packet's out-of-order id. Placement follows the
    id, not the arrival order and not the slot's position in the BD list.
 
 4. **Completion and drain.** A counting lock gates completion on-chip (see
@@ -69,16 +70,8 @@ iteration sizes, and each slot begins right after the previous one (slot `j`'s
 offset is the sum of the earlier slots' sizes).
 
 **`--repeat-count k`.** Runs `k+1` merge rounds that reuse the one buffer, each a
-genuine `n`-way out-of-order merge. A receiver-side lock cannot separate the rounds
-because a single out-of-order channel is a FIFO. A shared counter miscounts a fast
-source's next-round packet, and a per-slot lock head-of-line deadlocks. The barrier
-is therefore sender-side. After draining round `r` the receiver broadcasts a
-one-word credit token, and each sender waits for it before sending round `r+1`.
-There is no cycle to deadlock because round 0 starts on an initial credit. The `n`
-senders still race within a round, which keeps each round a true out-of-order
-merge. See [Multiple rounds](#multiple-rounds). The token packet-shares channel 0's
-drain MM2S, which means it needs no extra channel. It composes with `--channels`,
-`--packets`, and `--nonuniform`.
+genuine `n`-way out-of-order merge. See [Multiple rounds](#multiple-rounds).
+It composes with `--channels`, `--packets`, and `--nonuniform`.
 
 ## Limits
 
@@ -93,7 +86,7 @@ drain MM2S, which means it needs no extra channel. It composes with `--channels`
   `n=7` fits.
 - **Routing.** A stream-switch slave port holds at most 4 packet rules. Centering
   the receiver at column `N//2` splits the funnel and keeps every port under 4
-  rules through `n=8`.
+  rules.
 - **Packet count.** The total must stay `<= 63` because the egress lock acquires
   the total packet count and a lock value is 6-bit.
 - **Multi-round (`--repeat-count k`).** Let `M` be the per-round packet count
@@ -109,7 +102,7 @@ memtile odd channel requires `bd_id >= 24`).
 
 ## Receiver API
 
-The receiver is expressed entirely with the first-class IRON API:
+The receiver is expressed with the following API:
 
 ```python
 DmaChannel(
@@ -132,9 +125,8 @@ DmaChannel(
 - reads `iteration=BdIteration(size=m, stride=tile_words)` on each BD to spread a
   source's `m` packets across `m` consecutive sub-buffers
 - reads `repeat_count = k` as `k` extra merge rounds. The hardware field is the
-  all-rounds packet count `M*(k+1) - 1` (`M = n*m`, or `sum(ms)` under
-  `--nonuniform`), which the channel derives from the receive BDs and
-  `repeat_count` (see [Multiple rounds](#multiple-rounds))
+  all-rounds packet count `M*(k+1) - 1`, which the channel derives from the
+  receive BDs and `repeat_count` (see [Multiple rounds](#multiple-rounds))
 
 ## Multiple rounds
 
@@ -154,14 +146,11 @@ The barrier is therefore **sender-side**. The receiver carries a dedicated MM2S
 that broadcasts a one-word credit token once all channels have drained the round (a
 `both` join across the `c` drains). Each sender's send gates on a `go` credit that a
 worker seeds for round 0 and the token replenishes for every round after. No sender
-starts round `r+1` until round `r` has drained on every channel, and round 0's
-initial credit removes any cross-round cycle that could deadlock. The `n` senders
+starts round `r+1` until round `r` has drained on every channel. The `n` senders
 still race within a round, which keeps each round a genuine `n`-way out-of-order
-merge. The host drains each round to its own output region, round-major (every
-channel of round `r` before round `r+1`), because the per-round barrier across the
-channels must hold. The token needs no channel of its own because it packet-shares
-channel 0's drain MM2S under a distinct `pkt_id` (chained after the drain), which
-fits multi-round onto a core tile's two MM2S even at `--channels 2`.
+merge. The token needs no channel of its own because it packet-shares channel 0's
+drain MM2S under a distinct `pkt_id` (chained after the drain), which fits
+multi-round onto a core tile's two MM2S even at `--channels 2`.
 
 ### Single producer: receiver-side backpressure
 

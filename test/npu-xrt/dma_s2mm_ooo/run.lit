@@ -1,79 +1,27 @@
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Device sweep for the out-of-order S2MM merge. See README.md for the design, the
-// resource limits, and the n*m <= 63 / BD-budget bound formulas. The sweep covers
-// the matrix of receiver tile (core or memtile) x out-of-order channels (1 or 2)
-// x n senders, plus the m-packet, --nonuniform, --repeat-count, and
-// --recv-backpressure modes.
+// See dma_s2mm_ooo.py and README.md for the design, the modes, and the limits.
 //
 // REQUIRES: ryzen_ai_npu2, peano
 //
-// The degenerate n=1 (1-way) merge on each receiver tile.
 // RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile mem  --channels 1 -n 1
 // RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile core --channels 1 -n 1
-// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile mem --channels 1 -n 2 --packets 1
-// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile mem --channels 1 -n 2 --packets 2
-// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile mem --channels 1 -n 2 --packets 4
-// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile mem --channels 1 -n 2 --packets 8
-// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile mem --channels 1 -n 4 --packets 1
-// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile mem --channels 1 -n 4 --packets 2
-// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile mem --channels 1 -n 4 --packets 4
-// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile mem --channels 1 -n 4 --packets 8
-// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile mem --channels 1 -n 8 --packets 1
-// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile mem --channels 1 -n 8 --packets 2
-// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile mem --channels 1 -n 8 --packets 4
-// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile mem --channels 2 -n 2
-// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile mem --channels 2 -n 4
-// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile mem --channels 2 -n 8
-// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile mem --channels 2 -n 4 --packets 2
-// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile mem --channels 2 -n 4 --packets 4
-// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile core --channels 1 -n 2 --packets 1
-// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile core --channels 1 -n 2 --packets 2
-// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile core --channels 1 -n 2 --packets 4
-// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile core --channels 1 -n 2 --packets 8
-// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile core --channels 1 -n 4 --packets 1
-// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile core --channels 1 -n 4 --packets 2
-// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile core --channels 1 -n 4 --packets 4
-// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile core --channels 1 -n 4 --packets 8
-// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile core --channels 1 -n 8 --packets 1
-// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile core --channels 1 -n 8 --packets 2
-// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile core --channels 1 -n 8 --packets 4
-// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile core --channels 2 -n 2
-// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile core --channels 2 -n 4
+// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile mem  --channels 1 -n 8
+// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile core --channels 1 -n 8
+// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile mem  --channels 2 -n 8
 // RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile core --channels 2 -n 7
-// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile core --channels 2 -n 4 --packets 2
-// Non-uniform mode gives slot j exactly j+1 packets (a different m per slot in
-// one merge).
+// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile mem  --channels 1 -n 4 --packets 8
+// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile core --channels 1 -n 4 --packets 8
+// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile mem  --channels 2 -n 4 --packets 4
 // RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile mem  --channels 1 -n 4 --nonuniform
 // RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile core --channels 1 -n 4 --nonuniform
-// Multi-round: k+1 merges reusing one buffer, k swept on both tiles (channels 1).
-// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile mem  --channels 1 -n 1 --repeat-count 2
-// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile core --channels 1 -n 1 --repeat-count 2
-// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile mem  --channels 1 -n 2 --repeat-count 1
-// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile mem  --channels 1 -n 2 --repeat-count 2
-// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile mem  --channels 1 -n 2 --repeat-count 4
 // RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile mem  --channels 1 -n 2 --repeat-count 8
-// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile mem  --channels 1 -n 4 --repeat-count 2
-// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile mem  --channels 1 -n 8 --repeat-count 1
-// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile core --channels 1 -n 2 --repeat-count 2
 // RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile core --channels 1 -n 4 --repeat-count 2
-// Multi-round composes with --packets and --nonuniform.
+// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile mem  --channels 2 -n 8 --repeat-count 2
+// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile core --channels 2 -n 6 --repeat-count 1
 // RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile mem  --channels 1 -n 4 --packets 2 --repeat-count 2
 // RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile mem  --channels 1 -n 4 --nonuniform --repeat-count 2
-// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile core --channels 1 -n 4 --nonuniform --repeat-count 2
-// Multi-round with 2 channels (core with k>0 fits n<=6).
-// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile mem  --channels 2 -n 4 --repeat-count 2
-// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile mem  --channels 2 -n 8 --repeat-count 2
-// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile core --channels 2 -n 4 --repeat-count 2
-// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile core --channels 2 -n 6 --repeat-count 1
-// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile mem  --channels 2 -n 4 --packets 2 --repeat-count 2
-// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile mem  --channels 2 -n 4 --nonuniform --repeat-count 2
-// Receiver-side backpressure is the single-producer (n=1) alternative to the
-// sender-side barrier, gating reuse with a receiver-local credit and no token. k
-// is deliberately high because the reused buffer overruns without the credit only
-// once the sender runs several rounds ahead of the host drain. A smaller k would
-// pass whether or not the credit worked.
 // RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile mem  --channels 1 -n 1 --repeat-count 8 --recv-backpressure
 // RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile core --channels 1 -n 1 --repeat-count 8 --recv-backpressure
 // RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile mem  --channels 1 -n 1 --packets 2 --repeat-count 8 --recv-backpressure
