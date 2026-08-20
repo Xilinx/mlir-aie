@@ -151,6 +151,10 @@ inline cl::opt<bool> noUnified(
     "no-unified",
     cl::desc("Lower each core independently, against its own clone of the "
              "design (negates --unified; the default)"));
+inline cl::opt<bool> noAutoStackSize(
+    "no-auto-stack-size",
+    cl::desc("Skip validating each core's stack_size against its call "
+             "tree's computed requirement; cores are not checked at all"));
 
 //===----------------------------------------------------------------------===//
 // Runtime sequence to compile (empty = all). Filters the per-sequence NPU

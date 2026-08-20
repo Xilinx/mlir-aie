@@ -659,29 +659,58 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   std::vector<EdgeBase *> outputs;
   auto &input = g.fileInput(inputFile, "input.mlir");
 
-  auto &withAddresses =
+  auto &traced =
       input
           .map<ModRef>("placed.mlir",
                        PassPipeline{getPlacementPipeline(
                            &context, coresPerCol.getValue(),
                            placerType.getValue(), saSeed.getValue())})
-          .map<ModRef>("traced.mlir", PassPipeline{getTracePipeline(&context)})
-          .map<ModRef>(
-              "input_with_addresses.mlir",
-              PassPipeline{
-                  &context, [scheme = allocScheme.getValue(),
-                             dyn = dynamicObjFifos.getValue(),
-                             pkt = packetSwObjFifos.getValue(),
-                             ctrl = ctrlPktOverlay.getValue() ||
-                                    loadPdiToCtrlPkt.getValue(),
-                             ldpdi = loadPdiToCtrlPkt.getValue(),
-                             bf16 = bf16Emulation.getValue(),
-                             skipVerify = skipObjectFifoVerify.getValue()](
-                                mlir::MLIRContext *ctx, mlir::ModuleOp mod) {
-                    return getInputWithAddressesPipeline(ctx, mod, scheme, dyn,
-                                                         pkt, ctrl, bf16, ldpdi,
-                                                         skipVerify);
-                  }});
+          .map<ModRef>("traced.mlir", PassPipeline{getTracePipeline(&context)});
+
+  // The stack-size check below walks each core's link_files objects, so
+  // link_files has to exist before it runs. aie-assign-core-link-files moves
+  // here from inside getInputWithAddressesPipeline, where it used to sit
+  // after buffer address assignment. It's a pure call-graph analysis over
+  // func.func/func.call -- nothing about it depends on addresses, so moving
+  // it earlier is safe.
+  auto &withLinkFiles = traced.map<ModRef>(
+      "with_link_files.mlir",
+      PassPipeline{&context, [](mlir::MLIRContext *ctx, mlir::ModuleOp) {
+                     auto pm = std::make_unique<mlir::PassManager>(ctx);
+                     pm->nest<DeviceOp>().addPass(
+                         xilinx::AIE::createAIEAssignCoreLinkFilesPass());
+                     return pm;
+                   }});
+
+  // Validate each core's stack_size against what its call tree actually
+  // needs, from the link_files objects the edge above populated. Unlike the
+  // other analysis edges this one can fail the whole run: a cycle, or an
+  // unmeasurable symbol with no stack_size_override, is an error rather than
+  // a warning -- see checkStackSizeRequirements.
+  auto &withStackSizeChecked = withLinkFiles.map<ModRef>(
+      "stack_size_checked.mlir",
+      [inputFile, workDirStr, skip = noAutoStackSize.getValue()](
+          const Item<ModRef> &in, Item<ModRef> &out) -> mlir::LogicalResult {
+        out.value = ModRef(in.get().get().clone());
+        if (skip)
+          return mlir::success();
+        return checkStackSizeRequirements(out.value->get(), inputFile,
+                                          workDirStr);
+      });
+
+  auto &withAddresses = withStackSizeChecked.map<ModRef>(
+      "input_with_addresses.mlir",
+      PassPipeline{
+          &context,
+          [scheme = allocScheme.getValue(), dyn = dynamicObjFifos.getValue(),
+           pkt = packetSwObjFifos.getValue(),
+           ctrl = ctrlPktOverlay.getValue() || loadPdiToCtrlPkt.getValue(),
+           ldpdi = loadPdiToCtrlPkt.getValue(), bf16 = bf16Emulation.getValue(),
+           skipVerify = skipObjectFifoVerify.getValue()](mlir::MLIRContext *ctx,
+                                                         mlir::ModuleOp mod) {
+            return getInputWithAddressesPipeline(ctx, mod, scheme, dyn, pkt,
+                                                 ctrl, bf16, ldpdi, skipVerify);
+          }});
 
   // Scratchpad run-time parameters sidecar file
   auto &paramsFile = withAddresses.map<std::string>(

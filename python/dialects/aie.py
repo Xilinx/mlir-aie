@@ -203,6 +203,17 @@ class external_func(FuncOp):
             the core's LLVM module with ``llvm-link`` before codegen instead of
             object-linking it.  Requires ``link_with``.  When omitted, the
             artifact is object-linked, whatever its suffix.
+        stack_size_override: Optional declared upper bound, in bytes, on the
+            stack this function's call subtree needs. aiecc's automatic stack
+            analysis (a call-graph walk of this function and its linked
+            object's internal calls) treats this as the answer for the whole
+            subtree and does not descend into it -- the escape hatch for
+            recursion or indirect (function-pointer) calls, which cannot be
+            sized automatically, and for kernels compiled without the
+            `.stack_sizes` metadata the analysis needs (e.g. via Chess). An
+            explicit value here always wins over whatever the analysis would
+            otherwise compute, even if smaller: it is a declaration, not a
+            clamp. ``0`` is a legal value.
     """
 
     def __init__(
@@ -213,6 +224,7 @@ class external_func(FuncOp):
         visibility="private",
         link_with=None,
         link_with_mode=None,
+        stack_size_override=None,
     ):
         # Validate before building the op so a rejected declaration never lands
         # in the IR at the current insertion point.
@@ -227,6 +239,11 @@ class external_func(FuncOp):
                     f"external_func '{name}': invalid link_with_mode "
                     f"'{link_with_mode}'; the only supported value is 'merge'."
                 )
+        if stack_size_override is not None and stack_size_override < 0:
+            raise ValueError(
+                f"external_func '{name}': stack_size_override must be >= 0, "
+                f"got {stack_size_override}."
+            )
         if outputs is None:
             outputs = []
         for i, ty in enumerate(inputs):
@@ -244,6 +261,10 @@ class external_func(FuncOp):
             self.operation.attributes["link_with"] = StringAttr.get(link_with)
         if link_with_mode is not None:
             self.operation.attributes["link_with_mode"] = StringAttr.get(link_with_mode)
+        if stack_size_override is not None:
+            self.operation.attributes["stack_size_override"] = IntegerAttr.get(
+                IntegerType.get_signless(32), stack_size_override
+            )
 
     def __call__(self, *call_args):
         return call(self, call_args)
