@@ -24,6 +24,22 @@ using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
 
+// aiecc's call-graph stack analysis (tools/aiecc/StackSizeAnalysis.h) stamps
+// this internal attribute on a CoreOp with the stack requirement it computed
+// from that core's callees, before this pass ever runs. Surfaced in the
+// memory-map diagnostics below so a user sees it alongside the stack region,
+// reserved_data_size, and free space in one place, instead of having to
+// cross-reference a separate warning emitted earlier in the build log.
+static std::optional<int64_t> getComputedStackRequirement(TileOp tile) {
+  CoreOp core = tile.getCoreOp();
+  if (!core)
+    return std::nullopt;
+  if (auto attr =
+          core->getAttrOfType<IntegerAttr>("aiecc.computed_stack_requirement"))
+    return attr.getInt();
+  return std::nullopt;
+}
+
 static bool isBufferPreAllocated(BufferOp buffer) {
   auto addr = buffer.getAddress();
   auto memBank = buffer.getMemBank();
@@ -151,6 +167,9 @@ static bool checkAndPrintOverflow(TileOp tile, int address,
       printbuffer("(stack)", 0, stacksize);
     else
       error << "(no stack allocated)\n";
+    if (auto computed = getComputedStackRequirement(tile))
+      note << "\t(call-graph analysis computed this core's callees need >= "
+           << *computed << " bytes of stack)\n";
 
     for (auto buffer : buffers) {
       auto bufferAddrOpt = buffer.getAddress();
@@ -517,6 +536,9 @@ static void printMemMap(TileOp tile, SmallVector<BufferOp> &allocatedBuffers,
         printbuffer("(stack)", 0, stacksize);
       else
         note << "(no stack allocated)\n";
+      if (auto computed = getComputedStackRequirement(tile))
+        note << "\t(call-graph analysis computed this core's callees need >= "
+             << *computed << " bytes of stack)\n";
     }
     note << "\t"
          << "bank : " << i << "\t"
