@@ -246,6 +246,7 @@ class Kernel(BaseKernel):
         arg_types: list[type[np.ndarray] | np.dtype] | None = None,
         *,
         link_with_mode: str | None = None,
+        stack_size_override: int | None = None,
     ) -> None:
         """Construct a Kernel backed by a pre-compiled object file.
 
@@ -258,10 +259,23 @@ class Kernel(BaseKernel):
             link_with_mode: Optional link policy emitted alongside
                 ``link_with``.  ``"merge"`` routes the artifact through aiecc's
                 ``llvm-link`` merge path; None (the default) object-links it.
+            stack_size_override: Optional declared upper bound, in bytes, on
+                the stack this kernel's call subtree needs. aiecc's automatic
+                stack analysis treats this as the answer for the whole
+                subtree and does not descend into it -- the escape hatch for
+                recursion or indirect (function-pointer) calls inside this
+                kernel, which cannot be sized automatically, and the only way
+                to give the analysis any information at all about a
+                ``link_with_mode="merge"`` kernel (merged into the core's own
+                module before codegen, so the analysis cannot see it as a
+                separate object). An explicit value here always wins over
+                whatever the analysis would otherwise compute, even if
+                smaller -- it is a declaration, not a clamp. ``0`` is legal.
         """
         super().__init__(name, arg_types)
         self._object_file_name = object_file_name
         self._link_with_mode = link_with_mode
+        self._stack_size_override = stack_size_override
 
     @property
     def object_file_name(self) -> str:
@@ -272,6 +286,12 @@ class Kernel(BaseKernel):
     def link_with_mode(self) -> str | None:
         """Link policy emitted with ``link_with``, or None for object linking."""
         return self._link_with_mode
+
+    @property
+    def stack_size_override(self) -> int | None:
+        """Declared upper bound on this kernel's call-subtree stack use, or
+        None to let aiecc's automatic analysis compute it."""
+        return self._stack_size_override
 
     def resolve(
         self,
@@ -284,6 +304,7 @@ class Kernel(BaseKernel):
                 inputs=self._arg_types,
                 link_with=self._object_file_name,
                 link_with_mode=self._link_with_mode,
+                stack_size_override=self._stack_size_override,
             )
 
 
@@ -324,6 +345,7 @@ class ExternalFunction(Kernel):
         symbol_prefix: str | None = None,
         use_chess: bool = False,
         inline: bool = False,
+        stack_size_override: int | None = None,
     ) -> None:
         """Construct an ExternalFunction compiled from C/C++ source at JIT time.
 
@@ -363,6 +385,13 @@ class ExternalFunction(Kernel):
                 object-linking a separate ``.o``. Removes the ``func.call``
                 boundary and the separate object. Peano path only (the
                 Chess/xchesscc toolchain cannot llvm-link).
+            stack_size_override: Optional declared upper bound, in bytes, on
+                the stack this kernel's call subtree needs -- see
+                [`Kernel.stack_size_override`][iron.Kernel.stack_size_override].
+                With ``inline=True`` this is the only way to give aiecc's
+                automatic stack analysis any information about this kernel at
+                all, since a merged kernel has no separate object for the
+                analysis to inspect.
         """
         if inline and use_chess:
             raise ValueError(
@@ -408,6 +437,7 @@ class ExternalFunction(Kernel):
             object_file_name,
             arg_types,
             link_with_mode="merge" if inline else None,
+            stack_size_override=stack_size_override,
         )
 
         if source_file is not None:
