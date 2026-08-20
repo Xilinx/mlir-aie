@@ -106,6 +106,12 @@ foreach(target ${AIE_RUNTIME_TARGETS})
   set(enableTestLibProject OFF)
   if (DEFINED VITIS_ROOT OR DEFINED LibXAIE_${target}_DIR)
     set(enableTestLibProject ON)
+  elseif (NOT WIN32 AND TARGET xaiengine_${target})
+    # test_lib needs xaiengine, not Vitis. Gating it on VITIS_ROOT meant a
+    # Vitis-free build got no test_lib at all, and so no
+    # libmemory_allocator_sim_aie.a -- which is exactly what aiecc --get-sim
+    # links, and --get-sim exists to work without Vitis.
+    set(enableTestLibProject ON)
   elseif (WIN32 AND ${target} STREQUAL "x86_64" AND NOT DEFINED LibXAIE_${target}_DIR AND LibXAIE_FOUND)
     set(enableTestLibProject ON)
   endif()
@@ -118,6 +124,11 @@ foreach(target ${AIE_RUNTIME_TARGETS})
       BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/${target}/test_lib/lib
       CMAKE_CACHE_ARGS
           -DCMAKE_MODULE_PATH:STRING=${CMAKE_MODULE_PATH}
+          # test_lib's find_package(XRT QUIET) is optional, but a broken system
+          # XRT package raises FATAL_ERROR from inside its own config file,
+          # which QUIET does not suppress. A nested project should honour the
+          # parent's package-disable either way.
+          -DCMAKE_DISABLE_FIND_PACKAGE_XRT:BOOL=${CMAKE_DISABLE_FIND_PACKAGE_XRT}
       CMAKE_ARGS
           -DCMAKE_TOOLCHAIN_FILE=${${target}_TOOLCHAIN_FILE}
           -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}

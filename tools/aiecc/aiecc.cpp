@@ -326,7 +326,11 @@ buildHostExeSubgraph(EdgeWithTypedOutput<std::string> &aieInc,
               if (hostTarget == "aarch64-linux-gnu")
                 cmd.arg("--gcc-toolchain=" + sysroot + "/usr");
             }
-            cmd.arg(rt.memoryAllocator)
+            // The open simulator needs the allocator that routes through
+            // ess_WriteGM/ess_ReadGM rather than the ION one, and the array
+            // model itself to define the ess_* symbols that the host-side
+            // libxaienginecdo (built with __AIESIM__) leaves undefined.
+            cmd.arg(wantSim ? rt.simMemoryAllocator : rt.memoryAllocator)
                 .arg("-I" + rt.xaiengineInclude)
                 .arg("-L" + rt.xaiengineLib)
                 .arg("-Wl,-R" + rt.xaiengineLib)
@@ -334,6 +338,19 @@ buildHostExeSubgraph(EdgeWithTypedOutput<std::string> &aieInc,
                 .arg("-fuse-ld=lld")
                 .arg("-lm")
                 .arg("-lxaienginecdo");
+            // The array model itself, which defines the ess_* symbols the
+            // host-side libxaienginecdo (built with __AIESIM__) leaves
+            // undefined. After -lxaienginecdo: static link order matters.
+            // --whole-archive: the ess_* symbols are undefined in the SHARED
+            // libxaienginecdo, and a static archive is not searched to satisfy
+            // a shared library's undefined symbols, so they must be pulled in
+            // unconditionally or the link fails under
+            // --no-allow-shlib-undefined.
+            if (wantSim)
+              cmd.arg("-L" + rt.aieSimLib)
+                  .arg("-Wl,--whole-archive")
+                  .arg("-laie-sim")
+                  .arg("-Wl,--no-whole-archive");
             cmd.arg(aieArchDefine(arch));
             for (const auto &d : hostIncludeDirs)
               cmd.arg("-I" + d);
@@ -1625,7 +1642,8 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   // Host executable: only when explicitly requested and host sources exist.
   if (doCompileHost) {
     if (!hasHostSourceFiles())
-      llvm::errs() << "aiecc: --get-host given but no host source files "
+      llvm::errs() << "aiecc: " << (wantSim ? "--get-sim" : "--get-host")
+                   << " given but no host source files "
                       "were provided; skipping host compilation\n";
     else
       outputs.push_back(&hostExe);

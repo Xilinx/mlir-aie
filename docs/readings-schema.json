@@ -1,0 +1,523 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Xilinx/mlir-aie/docs/readings-schema.json",
+  "title": "aie-sim readings record",
+  "description": "One simulation run, observed. A record is produced by a single deterministic run and is the unit that gets attached to a PR, diffed against another run, and read by an agent. Shapes are a CLOSED set: each has exactly one viewer, so new instrumentation emits into an existing shape rather than growing the frontend. See docs/Readings.md.",
+  "type": "object",
+  "required": ["schemaVersion", "kind", "run", "provenance", "summary", "shapes"],
+  "additionalProperties": false,
+
+  "properties": {
+    "$schema": { "type": "string" },
+
+    "schemaVersion": {
+      "description": "Semver of THIS schema. A consumer must refuse a major it does not know rather than guess.",
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+
+    "kind": { "const": "aie-sim-readings" },
+
+    "diffIgnore": {
+      "description": "JSON Pointers a differ must skip. Everything else is byte-stable for identical inputs: keys are emitted in a fixed order and no wall-clock value appears outside these paths. Without this, every diff is noise and an agent burns context on reordering churn.",
+      "type": "array",
+      "items": { "type": "string" },
+      "default": ["/provenance/recordedAt", "/provenance/host", "/provenance/argv"]
+    },
+
+    "run": {
+      "description": "What was simulated.",
+      "type": "object",
+      "required": ["id", "device", "cycles"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "Stable within a sweep. Content-derived, never a timestamp, or the record stops being byte-stable.",
+          "type": "string"
+        },
+        "design": { "type": "string", "description": "Design or test name." },
+        "device": {
+          "type": "string",
+          "minLength": 1,
+          "description": "AIE_SIM_DEVICE, e.g. npu2. Non-empty: a record that cannot say which device it describes is not comparable to another."
+        },
+        "generation": { "enum": ["AIE2", "AIE2P"] },
+        "cycles": { "type": "integer", "minimum": 0, "description": "Simulated cycles elapsed." },
+        "quiescent": {
+          "type": "boolean",
+          "description": "False means the cycle budget ran out, i.e. the design deadlocked. Every other reading in a non-quiescent run is a partial observation and must be reported as such."
+        },
+        "params": {
+          "description": "The swept parameters that produced this run. Key set is identical across a sweep so the frontend can build axes from it.",
+          "type": "object",
+          "additionalProperties": { "type": ["string", "number", "boolean"] }
+        }
+      }
+    },
+
+    "provenance": {
+      "description": "A reading without its pin is worthless. This is the half that makes a number citable a month later.",
+      "type": "object",
+      "required": ["simVersion"],
+      "additionalProperties": false,
+      "properties": {
+        "simVersion": { "type": "string", "description": "aie-sim version or build id." },
+        "gitSha": { "type": "string" },
+        "gitDirty": { "type": "boolean", "description": "True invalidates gitSha as an identifier; say so rather than hiding it." },
+        "toolchainLock": { "type": "string", "description": "Hash of toolchain.lock, so the artifact names the toolchain that built the design." },
+        "engine": { "type": "string", "description": "Core engine library path/version, or empty when no engine was attached." },
+        "recordedAt": { "type": "string", "format": "date-time" },
+        "host": { "type": "string" },
+        "argv": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+
+    "summary": {
+      "description": "The agent tier. Read this FIRST and descend only into the shape the question needs; a full interval record for a 48-tile array does not fit in a context window. Keep this a few KB.",
+      "type": "object",
+      "required": ["headline", "verdicts", "index"],
+      "additionalProperties": false,
+      "properties": {
+        "headline": {
+          "description": "The handful of scalars worth knowing before any drill-down.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/scalarObservation" }
+        },
+        "verdicts": {
+          "description": "Counts by outcome, so a consumer can branch without reading every verdict.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "pass": { "type": "integer", "minimum": 0 },
+            "fail": { "type": "integer", "minimum": 0 },
+            "unknown": { "type": "integer", "minimum": 0, "description": "Not evaluated (missing input), which is NOT a pass." }
+          }
+        },
+        "index": {
+          "description": "One line per observation present in `shapes`: what it is and how big, so a consumer can choose what to fetch. This is the pointer layer.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "shape", "label"],
+            "additionalProperties": false,
+            "properties": {
+              "id": { "$ref": "#/$defs/observationId" },
+              "shape": { "$ref": "#/$defs/shapeName" },
+              "label": { "type": "string" },
+              "points": { "type": "integer", "minimum": 0, "description": "Rough element count, so a consumer can predict cost before fetching." },
+              "unit": { "type": "string" }
+            }
+          }
+        },
+        "topN": {
+          "description": "Precomputed largest contributors per observation, so the common question needs no full fetch.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "entries"],
+            "additionalProperties": false,
+            "properties": {
+              "id": { "$ref": "#/$defs/observationId" },
+              "entries": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["key", "quantity"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "key": { "type": "string" },
+                    "quantity": { "$ref": "#/$defs/quantity" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+
+    "verdicts": {
+      "description": "Judgments computed by CODE, not left to the reader. The characteristic failure of a consumer reading raw metrics is deciding for itself that a number is acceptable; shipping the verdict turns that into reporting. This is also where a doctrine invariant (\"inside a block the stream never leaves L2\") becomes a mechanical check.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/verdict" }
+    },
+
+    "shapes": {
+      "description": "The closed set. Each shape has exactly one viewer.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "scalar": {
+          "description": "VIEWER: table + run-to-run diff. One value per run.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/scalarObservation" }
+        },
+        "containment": {
+          "description": "VIEWER: treemap. For a quantity that is CONSERVED and STRICTLY NESTED -- memory is the honest case. Do not force concurrent time in here; it does not nest.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/containmentObservation" }
+        },
+        "flow": {
+          "description": "VIEWER: Sankey. Conserved and directional: bytes L3->L2->L1, tile to tile.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/flowObservation" }
+        },
+        "interval": {
+          "description": "VIEWER: timeline / flame. Concurrent, not nested: occupancy, stall attribution, BDs in flight. Export to Chrome Trace Event JSON rather than building a timeline widget.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/intervalObservation" }
+        },
+        "series": {
+          "description": "VIEWER: line, or heatmap when entities are many. Lock values, FIFO depth over time.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/seriesObservation" }
+        },
+        "graph": {
+          "description": "VIEWER: node-link. Topology rather than magnitude: objectFIFO structure, stream-switch routing. A graph DIFF between runs is often the finding.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/graphObservation" }
+        },
+        "coverage": {
+          "description": "VIEWER: heatmap or list. A set with a seen/unseen mark: unclaimed registers, opcode semantics coverage. This is what turns \"unmodelled\" from a surprise into a number.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/coverageObservation" }
+        }
+      }
+    }
+  },
+
+  "$defs": {
+    "shapeName": {
+      "enum": ["scalar", "containment", "flow", "interval", "series", "graph", "coverage"]
+    },
+
+    "observationId": {
+      "description": "Stable, citable, resolvable later: `<shape>/<slug>`, e.g. `containment/tile-memory`. A log note or PR comment links this instead of copying the number, matching the KB rule that a number lives once.",
+      "type": "string",
+      "pattern": "^(scalar|containment|flow|interval|series|graph|coverage)/[a-z0-9][a-z0-9-]*$"
+    },
+
+    "quantity": {
+      "description": "A number that cannot be misreported. A bare number in a record is the same defect as a bare constant in source: `6.0` could be anything, so the unit and the derivation travel with it.",
+      "type": "object",
+      "required": ["value", "unit"],
+      "additionalProperties": false,
+      "properties": {
+        "value": { "type": "number" },
+        "unit": {
+          "description": "Free text but conventional: bytes, cycles, GB/s, count, ratio, MAC/cycle, percent.",
+          "type": "string"
+        },
+        "derivedFrom": {
+          "description": "How it was computed, when it is not a direct count. Omit for a raw count.",
+          "type": "string"
+        },
+        "inputs": {
+          "description": "The values the derivation consumed, so a consumer can recheck the arithmetic instead of trusting it.",
+          "type": "object",
+          "additionalProperties": { "type": ["number", "string"] }
+        }
+      }
+    },
+
+    "verdict": {
+      "type": "object",
+      "required": ["id", "label", "outcome", "why"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+        "label": { "type": "string" },
+        "outcome": {
+          "enum": ["pass", "fail", "unknown"],
+          "description": "`unknown` when the inputs were not available. Never collapse unknown into pass."
+        },
+        "severity": { "enum": ["info", "warn", "error"], "default": "warn" },
+        "why": {
+          "description": "One sentence stating the fact behind the outcome, with the number in it. This is what a consumer quotes.",
+          "type": "string"
+        },
+        "evidence": {
+          "description": "Observation ids backing the claim, so the judgment is traceable to data in this same record.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/observationId" }
+        },
+        "threshold": { "$ref": "#/$defs/quantity" },
+        "observed": { "$ref": "#/$defs/quantity" }
+      }
+    },
+
+    "observationBase": {
+      "type": "object",
+      "required": ["id", "label"],
+      "properties": {
+        "id": { "$ref": "#/$defs/observationId" },
+        "label": { "type": "string" },
+        "description": { "type": "string" },
+        "tags": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Free-form facets the frontend can filter on: tile type, block name, phase."
+        }
+      }
+    },
+
+    "scalarObservation": {
+      "allOf": [{ "$ref": "#/$defs/observationBase" }],
+      "type": "object",
+      "required": ["id", "label", "quantity"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/observationId" },
+        "label": { "type": "string" },
+        "description": { "type": "string" },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "quantity": { "$ref": "#/$defs/quantity" },
+        "betterWhen": {
+          "enum": ["lower", "higher", "neither"],
+          "default": "neither",
+          "description": "Lets the diff view colour a change without a per-metric rule in the frontend."
+        }
+      }
+    },
+
+    "containmentNode": {
+      "type": "object",
+      "required": ["name"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "value": {
+          "type": "number",
+          "description": "LEAVES ONLY. A parent's value is the sum of its children; carrying both invites them to disagree."
+        },
+        "capacity": {
+          "type": "number",
+          "description": "Total space at this node, when it is bounded (a tile's 64 KB). Capacity minus the children's sum is the FREE GAP, which is the number that makes a stack-versus-buffer collision visible."
+        },
+        "attrs": {
+          "type": "object",
+          "additionalProperties": { "type": ["string", "number", "boolean"] }
+        },
+        "children": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/containmentNode" }
+        }
+      }
+    },
+
+    "containmentObservation": {
+      "type": "object",
+      "required": ["id", "label", "unit", "root"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/observationId" },
+        "label": { "type": "string" },
+        "description": { "type": "string" },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "unit": { "type": "string" },
+        "root": { "$ref": "#/$defs/containmentNode" }
+      }
+    },
+
+    "flowObservation": {
+      "type": "object",
+      "required": ["id", "label", "unit", "nodes", "edges"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/observationId" },
+        "label": { "type": "string" },
+        "description": { "type": "string" },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "unit": { "type": "string" },
+        "nodes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id"],
+            "additionalProperties": false,
+            "properties": {
+              "id": { "type": "string" },
+              "label": { "type": "string" },
+              "level": { "type": "string", "description": "Memory level or stage, e.g. L1/L2/L3. Gives the Sankey its column order." }
+            }
+          }
+        },
+        "edges": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["from", "to", "value"],
+            "additionalProperties": false,
+            "properties": {
+              "from": { "type": "string" },
+              "to": { "type": "string" },
+              "value": { "type": "number" },
+              "label": { "type": "string" },
+              "attrs": { "type": "object", "additionalProperties": { "type": ["string", "number", "boolean"] } }
+            }
+          }
+        }
+      }
+    },
+
+    "intervalObservation": {
+      "type": "object",
+      "required": ["id", "label", "timeUnit", "tracks"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/observationId" },
+        "label": { "type": "string" },
+        "description": { "type": "string" },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "timeUnit": { "type": "string", "default": "cycle" },
+        "categories": {
+          "description": "The closed set of span classes, with display colours decided once here rather than per viewer. Stall REASONS belong here: lock, backpressure, bd-dependency, memory-conflict.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string" },
+              "color": { "type": "string" },
+              "productive": { "type": "boolean", "description": "False marks the category as lost time, which is what an occupancy summary sums." }
+            }
+          }
+        },
+        "tracks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["entity", "spans"],
+            "additionalProperties": false,
+            "properties": {
+              "entity": { "type": "string", "description": "Usually tile:col,row or tile:col,row/dma:s2mm0." },
+              "spans": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["start", "end", "category"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "start": { "type": "integer", "minimum": 0 },
+                    "end": { "type": "integer", "minimum": 0 },
+                    "category": { "type": "string" },
+                    "label": { "type": "string" },
+                    "attrs": { "type": "object", "additionalProperties": { "type": ["string", "number", "boolean"] } }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+
+    "seriesObservation": {
+      "type": "object",
+      "required": ["id", "label", "unit", "series"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/observationId" },
+        "label": { "type": "string" },
+        "description": { "type": "string" },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "unit": { "type": "string" },
+        "timeUnit": { "type": "string", "default": "cycle" },
+        "series": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["entity", "points"],
+            "additionalProperties": false,
+            "properties": {
+              "entity": { "type": "string" },
+              "points": {
+                "description": "[t, value] pairs, ascending in t. Pair form rather than objects: these are the largest arrays in a record and key repetition would dominate it.",
+                "type": "array",
+                "items": {
+                  "type": "array",
+                  "minItems": 2,
+                  "maxItems": 2,
+                  "items": { "type": "number" }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+
+    "graphObservation": {
+      "type": "object",
+      "required": ["id", "label", "nodes", "edges"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/observationId" },
+        "label": { "type": "string" },
+        "description": { "type": "string" },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "directed": { "type": "boolean", "default": true },
+        "nodes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id"],
+            "additionalProperties": false,
+            "properties": {
+              "id": { "type": "string" },
+              "label": { "type": "string" },
+              "kind": { "type": "string", "description": "tile, objectfifo, port, buffer." },
+              "attrs": { "type": "object", "additionalProperties": { "type": ["string", "number", "boolean"] } }
+            }
+          }
+        },
+        "edges": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["from", "to"],
+            "additionalProperties": false,
+            "properties": {
+              "from": { "type": "string" },
+              "to": { "type": "string" },
+              "label": { "type": "string" },
+              "kind": { "type": "string" },
+              "attrs": { "type": "object", "additionalProperties": { "type": ["string", "number", "boolean"] } }
+            }
+          }
+        }
+      }
+    },
+
+    "coverageObservation": {
+      "type": "object",
+      "required": ["id", "label", "items"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/observationId" },
+        "label": { "type": "string" },
+        "description": { "type": "string" },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "universe": {
+          "type": "integer",
+          "description": "Size of the set being covered, when it is known. Omit rather than guess: a coverage percentage against an invented denominator is worse than no percentage."
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["key", "seen"],
+            "additionalProperties": false,
+            "properties": {
+              "key": { "type": "string" },
+              "seen": { "type": "boolean" },
+              "count": { "type": "integer", "minimum": 0 },
+              "attrs": { "type": "object", "additionalProperties": { "type": ["string", "number", "boolean"] } }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -456,9 +456,16 @@ xilinx::AIE::AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output,
                     "`elf_file` for this core. Compile cores first.";
         }
         output << "{\n"
-               << "AieRC RC = XAie_LoadElf(" << deviceInstRef << ", "
+  // XAie_LoadElfPartial, not XAie_LoadElf. Under __AIESIM__ the latter first
+  // opens "<elf>.map" and parses it for a Chess-linker stack line, and returns
+  // WITHOUT loading anything if that fails (xaie_elfloader.c:682-728). Nothing
+  // in this build emits such a file for either backend, so the ELF would
+  // silently never load and the assert below would fire. LoadElfPartial with
+  // XAIE_LOAD_ELF_ALL is exactly what LoadElf does after that block, so this is
+  // behaviour-preserving for the hardware path.
+               << "AieRC RC = XAie_LoadElfPartial(" << deviceInstRef << ", "
                << tileLocStr(col, row) << ", "
-               << "(const char*)\"" << fileName << "\",0);\n";
+               << "(const char*)\"" << fileName << "\", XAIE_LOAD_ELF_ALL);\n";
         output << "if (RC != XAIE_OK)\n"
                << "    __mlir_aie_verbose(fprintf(stderr, \"Failed to load elf "
                   "for Core[%d,%d], ret is %d\\n\", "

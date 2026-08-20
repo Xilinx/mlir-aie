@@ -53,8 +53,13 @@ else()
         set_target_properties(xaienginecdo PROPERTIES OUTPUT_NAME xaiengine)
         target_compile_definitions(xaienginecdo PRIVATE __AIECDO__)
     else()
+        # No __AIECDO__: xaie_io.c picks the default backend with __AIESIM__
+        # ahead of __AIECDO__, so the define cannot select the CDO backend
+        # here, and only pulls in xaie_cdo.c and its undefined cdo_* symbols.
+        # CDO generation is a compiler-side job and belongs to
+        # xaienginecdo_static, which links cdo_driver_mlir_aie.
         add_aiert_library(xaienginecdo ${XAIE_SOURCE_DIR})
-        target_compile_definitions(xaienginecdo PRIVATE __AIECDO__ __AIESIM__)
+        target_compile_definitions(xaienginecdo PRIVATE __AIESIM__)
     endif()
     target_include_directories(xaienginecdo SYSTEM PRIVATE ${BOOTGEN_SOURCE_DIR}/cdo-driver)
     install(TARGETS xaienginecdo
