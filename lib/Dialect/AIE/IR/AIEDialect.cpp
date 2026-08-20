@@ -2095,13 +2095,17 @@ LogicalResult xilinx::AIE::verifyDMABDOutOfOrderId(DMABDOp bd) {
   return success();
 }
 
-// repeat_count is 0-based and lowers to a fixed-width field; keep it in range.
 static LogicalResult verifyDMARepeatCount(Operation *op, int32_t repeatCount) {
   uint32_t maxRepeat = getTargetModel(op).getMaxRepeatCount();
+  if (maxRepeat == 0) {
+    if (repeatCount != 0)
+      return op->emitOpError("repeat_count is not supported on this target");
+    return success();
+  }
   if (repeatCount < 0 || static_cast<uint32_t>(repeatCount) > maxRepeat)
     return op->emitOpError("repeat_count ")
            << repeatCount << " is out of range [0, " << maxRepeat
-           << "] for this target (the task runs repeat_count + 1 times)";
+           << "] for this target";
   return success();
 }
 

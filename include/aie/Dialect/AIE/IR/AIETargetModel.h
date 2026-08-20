@@ -421,7 +421,7 @@ public:
   virtual uint32_t getMaxPacketId() const = 0;
   /// Return the largest out-of-order BD id (unsupported = 0).
   virtual uint32_t getMaxOutOfOrderId() const = 0;
-  /// Return the largest DMA task repeat_count value (0-based; unsupported = 0).
+  /// Return the largest DMA task repeat count (unsupported = 0).
   virtual uint32_t getMaxRepeatCount() const = 0;
 
   // Return true if the stream switch connection is legal, false otherwise.

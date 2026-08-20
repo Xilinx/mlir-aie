@@ -149,16 +149,19 @@ class DmaChannel:
         direction: `DMAChannelDir.S2MM` (host→tile) or `DMAChannelDir.MM2S`
             (tile→host).
         channel: hardware channel index.
-        bds: ordered list of [`Bd`][iron.Bd] entries that form the chain.
-        repeat_count: extra repeats of the task -- it runs ``repeat_count + 1``
-            times (0 = run once). The task is the BD chain in-order, or one merge
-            round (``len(bds)`` x each BD's ``BdIteration`` size packets)
-            out-of-order, where the width comes from the BDs, not this.
+        bds: ordered list of [`Bd`][iron.Bd] entries that form the chain
+            (in-order) or n-way merge (out-of-order).
+        repeat_count: extra repeats of the task (0 = run once), where the task
+            is the BD chain (in-order) or a merge round (out-of-order).
         out_of_order: put the channel into out-of-order mode (S2MM only).
-            Incoming packets select BD slots by `out_of_order_id`; the BD chain
-            is ignored. Every BD must be packet-enabled and the ingress flow
-            must set `keep_pkt_header=True`. Multiple out-of-order channels
-            must have disjoint BD ids.
+            Each BD receives the packet with `bd.bd_id == pkt.out_of_order_id`;
+            the BD chain (next bd) is ignored. Each BD receives its own
+            `BdIteration.size` packets per merge round. Every BD must be
+            packet-enabled and the ingress flow must set `keep_pkt_header=True`.
+            Multiple out-of-order channels must have disjoint BD ids.
+            Note: at the hardware level, repeat_count signifies the total
+            number of packets to accept (0-based). This class internally handles
+            conversion from repeated merge rounds to total packet count.
     """
 
     direction: DMAChannelDir
@@ -201,7 +204,7 @@ def _ooo_packets_per_round(ch: "DmaChannel") -> int:
     """Packets one out-of-order merge round receives.
 
     One packet per receive-BD execution, so each BD contributes its iteration
-    size (a BD without iteration contributes 1).
+    size (or 1, if not specified).
     """
     return sum(bd.iteration.size if bd.iteration else 1 for bd in ch.bds)
 
@@ -346,7 +349,10 @@ class TileDma(Resolvable):
                 dest=block[chan_head_idx[0]],
                 chain=block[chan_chain_idx[0]],
                 pad_value=_channel_pad_word(ch) or 0,
-                # OoO derives its packet count from the BDs; see repeat_count.
+                # In out-of-order mode, the hardware repeat_count value
+                # signifies the number of *packets* to receive and is 0-based.
+                # The semantic lowering of repeat_count from "one merge" to
+                # "number of packets" is done here.
                 repeat_count=(
                     _ooo_packets_per_round(ch) * (ch.repeat_count + 1) - 1
                     if ch.out_of_order

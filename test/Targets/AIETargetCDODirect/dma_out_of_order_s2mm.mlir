@@ -31,20 +31,20 @@
 // CHECK: Address: 0x000000000021D014 {{.*}} is: 0x02000000
 // CHECK: (BlockWrite-DMAWriteCmd): Start Address: 0x000000000021D060
 // CHECK: Address: 0x000000000021D064 {{.*}} is: 0x40000000
+// CHECK: Address: 0x000000000021D070 {{.*}} is: 0x00000000
 // CHECK: Address: 0x000000000021D074 {{.*}} is: 0x02000000
 // CHECK: (BlockWrite-DMAWriteCmd): Start Address: 0x000000000021D0E0
 // CHECK: Address: 0x000000000021D0E4 {{.*}} is: 0x40000000
+// CHECK: Address: 0x000000000021D0F0 {{.*}} is: 0x00000000
 // CHECK: Address: 0x000000000021D0F4 {{.*}} is: 0x02000000
 
 // Out-of-order is enabled (bit 3), and the start queue has repeat count=0x3.
 // CHECK: (Write64): Address:  0x000000000021DE00 Data:  0x00000008
 // CHECK: (Write64): Address:  0x000000000021DE04 Data:  0x00030000
 
-// Compute tile (1,2): a single out-of-order receive BD (bd_id 0) that also
-// iterates over 2 sub-buffers (an m-packet BD, size = 2, stride = 4 elements).
+// Compute tile (1,2): a 1-way, 2-packet receive BD (bd_id 0).
 // - The iteration word (block + 0x10) packs (wrap-1) at bit 13 and
-// (step_in_words-1) at bit 0: wrap-1 = size-1 = 1, step-1 = stride-1 = 3,
-// giving 0x00002003.
+// (step_in_words-1) at bit 0: wrap-1 = size-1 = 1, step-1 = stride-1 = 3.
 // - Out-of-order is enabled (bit 3) same as the other channels.
 // CHECK: (BlockWrite-DMAWriteCmd): Start Address: 0x000000000221D000
 // CHECK: Address: 0x000000000221D010 {{.*}} is: 0x00002003

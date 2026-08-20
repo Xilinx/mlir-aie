@@ -25,9 +25,7 @@
 // CHECK: XAie_DmaDeclareQueueConfig(ooo_queue_0_2_0, {{.*}}0, {{.*}}3, {{.*}}XAIE_DISABLE, {{.*}}XAIE_ENABLE)
 // CHECK: XAie_DmaChannelSetStartQueueGeneric(ctx->XAieDevInst, XAie_TileLoc(0,2),{{.*}}0,{{.*}}DMA_S2MM, &ooo_queue_0_2_0)
 
-// Tile (1,2)'s receive BD also iterates (an m-packet BD): size=2 -> Wrap=2,
-// stride=4 elements -> StepSize=4 words (elements == 32-bit words for i32),
-// current=0.
+// Tile (1,2)'s receive BD also iterates (an m-packet BD).
 // CHECK: XAie_DmaSetBdIteration(&(dma_tile12_bd0), 4, 2, 0)
 // CHECK: XAie_DmaChannelEnOutofOrder(&ooo_desc_1_2_0, XAIE_ENABLE)
 

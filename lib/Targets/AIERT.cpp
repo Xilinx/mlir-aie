@@ -627,14 +627,13 @@ LogicalResult xilinx::AIE::AIERTControl::pushToBdQueueAndEnable(
     TRY_XAIE_API_EMIT_ERROR(op, XAie_DmaWriteChannel, &aiert->devInst,
                             &dmaChannelDesc, tileLoc, (u8)chNum, direction);
     // StartBd=0 (ignored) and skip the BD/channel validity check.
+    // Disable TCT; bd lookup id aliases token bits.
     XAie_DmaDeclareQueueConfig(startQueueCfg, /*StartBd=*/0, repeatCount,
                                /*EnToken=*/(u8)XAIE_DISABLE, (u8)XAIE_ENABLE);
     TRY_XAIE_API_EMIT_ERROR(op, XAie_DmaChannelSetStartQueueGeneric,
                             &aiert->devInst, tileLoc, chNum, direction,
                             &startQueueCfg);
   } else {
-    // Only an in-order shim S2MM issues a task-complete-token; out-of-order
-    // never does (its header lookup id aliases the token bits).
     bool enTokenIssue = tileLoc.Row == 0 && direction == DMA_S2MM;
     TRY_XAIE_API_EMIT_ERROR(op, XAie_DmaChannelSetStartQueue, &aiert->devInst,
                             tileLoc, chNum, direction, bdId, repeatCount,
