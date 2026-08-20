@@ -6,15 +6,17 @@
 """Test the IRON out-of-order S2MM channel API: DmaChannel(out_of_order=True)
 lowers to an aie.dma_start with the out_of_order attribute, pins each receive
 BD's id to its position (so it equals the header out-of-order id that selects
-it), forwards repeat_count, and auto-chains the receive BDs (the BDs below set
-no `next`). Also checks: out_of_order rejected on a non-S2MM channel; a receive
-BD that is not packet-enabled; a bd_id COLLISION between two out-of-order
-channels on a tile; and that two out-of-order channels DO share a tile when
-their bd_ids are disjoint (default ids on one, explicit Bd.bd_id on the other)."""
+it), auto-chains the receive BDs (the BDs below set no `next`), and derives the
+merge's packets-per-round from the receive BDs -- the sum of each BD's
+BdIteration size -- repeated (repeat_count + 1) times (the OoO packet count).
+Also checks: out_of_order rejected on a non-S2MM channel; a receive BD that is
+not packet-enabled; a bd_id COLLISION between two out-of-order channels on a
+tile; and that two out-of-order channels DO share a tile when their bd_ids are
+disjoint."""
 
 import numpy as np
 
-from aie.iron import Bd, Buffer, DmaChannel, Program, Runtime, TileDma
+from aie.iron import Bd, BdIteration, Buffer, DmaChannel, Program, Runtime, TileDma
 from aie.iron.device import NPU2Col1, Tile
 from aie.dialects._aie_enum_gen import AIETileType, DMAChannelDir
 
@@ -25,8 +27,11 @@ def emit(channels):
     chans = []
     for spec in channels:
         direction, channel, nbds, ooo, repeat, pkt = spec[:6]
-        # Optional 7th element: explicit bd_ids for this channel's BDs.
+        # Optional 7th element: explicit bd_ids; 8th: iteration size, an int
+        # (same for every BD) or a per-BD list.
         bd_ids = spec[6] if len(spec) > 6 else [None] * nbds
+        it = spec[7] if len(spec) > 7 else 1
+        its = it if isinstance(it, list) else [it] * nbds
         # No `next` set: an out-of-order channel auto-chains its receive BDs.
         bds = [
             Bd(
@@ -35,6 +40,7 @@ def emit(channels):
                 length=4,
                 packet=(0, 0) if pkt else None,
                 bd_id=bd_ids[i],
+                iteration=BdIteration(size=its[i], stride=1) if its[i] > 1 else None,
             )
             for i in range(nbds)
         ]
@@ -57,12 +63,28 @@ def emit(channels):
     return Program(NPU2Col1(), rt).resolve_program()
 
 
-# A single out-of-order S2MM channel: the attribute is on the dma_start, the
-# receive BDs are pinned to bd_id 0 and 1, and repeat_count is forwarded.
-# CHECK: aie.dma_start(S2MM, 0, {{.*}}, repeat_count = 3) {out_of_order}
+# A single out-of-order S2MM channel: the attribute is on the dma_start and the
+# receive BDs are pinned to bd_id 0 and 1. The packet count is DERIVED from the
+# receive BDs -- 2 BDs, no iteration -> 2 packets -> repeat_count 1 (0-based).
+# CHECK: aie.dma_start(S2MM, 0, {{.*}}, repeat_count = 1) {out_of_order}
 # CHECK: aie.dma_bd({{.*}}) {bd_id = 0 : i32
 # CHECK: aie.dma_bd({{.*}}) {bd_id = 1 : i32
-print(emit([(DMAChannelDir.S2MM, 0, 2, True, 3, True)]))
+print(emit([(DMAChannelDir.S2MM, 0, 2, True, 0, True)]))
+
+# The derived count folds in each BD's iteration: 2 BDs x BdIteration(size=3) =
+# 6 packets -> repeat_count 5 (0-based).
+# CHECK: aie.dma_start(S2MM, 0, {{.*}}, repeat_count = 5) {out_of_order}
+print(emit([(DMAChannelDir.S2MM, 0, 2, True, 0, True, [None, None], 3)]))
+
+# The receive BDs of one merge may iterate by different amounts: sizes 2 and 3
+# sum to 5 packets -> repeat_count 4 (0-based).
+# CHECK: aie.dma_start(S2MM, 0, {{.*}}, repeat_count = 4) {out_of_order}
+print(emit([(DMAChannelDir.S2MM, 0, 2, True, 0, True, [None, None], [2, 3])]))
+
+# repeat_count repeats the whole round: 2 BDs (2 packets/round) x (1+1) rounds
+# = 4 packets -> repeat_count 3 (0-based).
+# CHECK: aie.dma_start(S2MM, 0, {{.*}}, repeat_count = 3) {out_of_order}
+print(emit([(DMAChannelDir.S2MM, 0, 2, True, 1, True)]))
 
 # out_of_order is rejected on an MM2S channel.
 # CHECK: REJECT MM2S: out_of_order is only valid for an S2MM DmaChannel
@@ -104,8 +126,8 @@ print("TWO OOO OK")
 print(
     emit(
         [
-            (DMAChannelDir.S2MM, 0, 2, True, 2, True),
-            (DMAChannelDir.S2MM, 1, 2, True, 2, True, [2, 3]),
+            (DMAChannelDir.S2MM, 0, 2, True, 0, True),
+            (DMAChannelDir.S2MM, 1, 2, True, 0, True, [2, 3]),
         ]
     )
 )

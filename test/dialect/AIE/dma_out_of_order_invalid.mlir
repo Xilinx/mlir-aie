@@ -179,7 +179,7 @@ module {
         %c1 = arith.constant 1 : i32
         aie.use_lock(%lA, AcquireGreaterEqual, %c1)
         aie.dma_bd_packet(0, 0)
-        // expected-error@+1 {{may not acquire a lock released by another receive BD}}
+        // expected-error@+1 {{out-of-order S2MM prohibits inter-BD lock dependencies; can deadlock}}
         aie.dma_bd(%b0 : memref<8xi32> offset = 0 len = 4) { bd_id = 0 : i32 }
         aie.next_bd ^bd1
       ^bd1:

@@ -421,6 +421,8 @@ public:
   virtual uint32_t getMaxPacketId() const = 0;
   /// Return the largest out-of-order BD id (unsupported = 0).
   virtual uint32_t getMaxOutOfOrderId() const = 0;
+  /// Return the largest DMA task repeat_count value (0-based; unsupported = 0).
+  virtual uint32_t getMaxRepeatCount() const = 0;
 
   // Return true if the stream switch connection is legal, false otherwise.
   virtual bool isLegalTileConnection(int col, int row, WireBundle srcBundle,
@@ -501,6 +503,7 @@ public:
   uint32_t getNumSlaveSlots() const override { return 4; }
   uint32_t getMaxPacketId() const override { return 31; }
   uint32_t getMaxOutOfOrderId() const override { return 0; }
+  uint32_t getMaxRepeatCount() const override { return 0; }
 
   std::optional<TileID> getMemWest(TileID src) const override;
   std::optional<TileID> getMemEast(TileID src) const override;
@@ -633,6 +636,7 @@ public:
   uint32_t getNumSlaveSlots() const override { return 4; }
   uint32_t getMaxPacketId() const override { return 31; }
   uint32_t getMaxOutOfOrderId() const override { return 63; }
+  uint32_t getMaxRepeatCount() const override { return 255; }
 
   std::optional<TileID> getMemWest(TileID src) const override;
   std::optional<TileID> getMemEast(TileID src) const override;

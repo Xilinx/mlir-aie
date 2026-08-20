@@ -6,19 +6,48 @@
 // with self-generating core senders and non-positional pinned bd_ids. The
 // receiver is centered at col n//2 so packets funnel in from both sides; every
 // config reaches the full-width n=8 except a core receiver with 2 channels,
-// which tops out at n=7 (c*(n+1) = 2*8 = 16-BD core tile budget).
+// which tops out at n=7 (c*(n+1) = 2*8 = 16-BD core tile budget). 1-channel
+// configs (both receiver tiles) sweep m in {1,2,4,8} packets per source (n*m
+// sub-buffers); 2-channel configs are mostly m=1 (m is orthogonal to the routing
+// wall) plus a few m>1 spot-checks that exercise the multi-channel sender chain
+// under iteration. The merge is bounded by n*m <= 63 (the out-of-order
+// completion lock counts n*m releases and an AIE lock value is 6-bit, max 63),
+// so an n=8 1-channel config tops out at m=4 (n*m=32); n=8,m=8 (n*m=64) is out
+// of range and omitted.
 //
 // REQUIRES: ryzen_ai_npu2, peano
 //
-// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile mem --channels 1 -n 2
-// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile mem --channels 1 -n 4
-// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile mem --channels 1 -n 8
+// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile mem --channels 1 -n 2 --packets 1
+// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile mem --channels 1 -n 2 --packets 2
+// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile mem --channels 1 -n 2 --packets 4
+// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile mem --channels 1 -n 2 --packets 8
+// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile mem --channels 1 -n 4 --packets 1
+// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile mem --channels 1 -n 4 --packets 2
+// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile mem --channels 1 -n 4 --packets 4
+// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile mem --channels 1 -n 4 --packets 8
+// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile mem --channels 1 -n 8 --packets 1
+// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile mem --channels 1 -n 8 --packets 2
+// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile mem --channels 1 -n 8 --packets 4
 // RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile mem --channels 2 -n 2
 // RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile mem --channels 2 -n 4
 // RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile mem --channels 2 -n 8
-// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile core --channels 1 -n 2
-// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile core --channels 1 -n 4
-// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile core --channels 1 -n 8
+// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile mem --channels 2 -n 4 --packets 2
+// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile mem --channels 2 -n 4 --packets 4
+// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile core --channels 1 -n 2 --packets 1
+// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile core --channels 1 -n 2 --packets 2
+// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile core --channels 1 -n 2 --packets 4
+// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile core --channels 1 -n 2 --packets 8
+// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile core --channels 1 -n 4 --packets 1
+// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile core --channels 1 -n 4 --packets 2
+// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile core --channels 1 -n 4 --packets 4
+// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile core --channels 1 -n 4 --packets 8
+// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile core --channels 1 -n 8 --packets 1
+// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile core --channels 1 -n 8 --packets 2
+// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile core --channels 1 -n 8 --packets 4
 // RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile core --channels 2 -n 2
 // RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile core --channels 2 -n 4
 // RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile core --channels 2 -n 7
+// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile core --channels 2 -n 4 --packets 2
+// Non-uniform: slot j receives j+1 packets (different m per slot in one merge).
+// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile mem  --channels 1 -n 4 --nonuniform
+// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile core --channels 1 -n 4 --nonuniform

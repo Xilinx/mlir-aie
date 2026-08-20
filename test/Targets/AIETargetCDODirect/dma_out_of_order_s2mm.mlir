@@ -24,8 +24,10 @@
 // - Each control word (block + 0x14) is 0x02000000: valid (bit 25) but UNCHAINED
 // (use_next_bd bit 26 clear).
 // - Packet-enabled (bit 30 of block + 0x04).
+// - The iteration word (block + 0x10) is 0: these BDs do not iterate.
 // CHECK: (BlockWrite-DMAWriteCmd): Start Address: 0x000000000021D000
 // CHECK: Address: 0x000000000021D004 {{.*}} is: 0x40000000
+// CHECK: Address: 0x000000000021D010 {{.*}} is: 0x00000000
 // CHECK: Address: 0x000000000021D014 {{.*}} is: 0x02000000
 // CHECK: (BlockWrite-DMAWriteCmd): Start Address: 0x000000000021D060
 // CHECK: Address: 0x000000000021D064 {{.*}} is: 0x40000000
@@ -34,9 +36,19 @@
 // CHECK: Address: 0x000000000021D0E4 {{.*}} is: 0x40000000
 // CHECK: Address: 0x000000000021D0F4 {{.*}} is: 0x02000000
 
-// Out-of-order is enabed (bit 3), and the start queue has repeat count=0x3.
+// Out-of-order is enabled (bit 3), and the start queue has repeat count=0x3.
 // CHECK: (Write64): Address:  0x000000000021DE00 Data:  0x00000008
 // CHECK: (Write64): Address:  0x000000000021DE04 Data:  0x00030000
+
+// Compute tile (1,2): a single out-of-order receive BD (bd_id 0) that also
+// iterates over 2 sub-buffers (an m-packet BD, size = 2, stride = 4 elements).
+// - The iteration word (block + 0x10) packs (wrap-1) at bit 13 and
+// (step_in_words-1) at bit 0: wrap-1 = size-1 = 1, step-1 = stride-1 = 3,
+// giving 0x00002003.
+// - Out-of-order is enabled (bit 3) same as the other channels.
+// CHECK: (BlockWrite-DMAWriteCmd): Start Address: 0x000000000221D000
+// CHECK: Address: 0x000000000221D010 {{.*}} is: 0x00002003
+// CHECK: (Write64): Address:  0x000000000221DE00 Data:  0x00000008
 
 // Memtile (0,1), different register layout:
 // - Packet-enable is bit 31 of the first word (0x80000004 = enable + len 4).
@@ -79,6 +91,17 @@ module {
       aie.dma_bd(%b01 : memref<16 x i32> offset = 4 len = 4) { bd_id = 1 : i32 }
       aie.next_bd ^end1
     ^end1:
+      aie.end
+  }
+  %t12 = aie.tile(1, 2)
+  %b12 = aie.buffer(%t12) { sym_name = "b12" } : memref<8 x i32>
+  aie.mem(%t12) {
+      aie.dma_start(S2MM, 0, ^i0, ^end2, repeat_count = 2) { out_of_order }
+    ^i0:
+      aie.dma_bd_packet(0, 0)
+      aie.dma_bd(%b12 : memref<8 x i32> offset = 0 len = 4) { bd_id = 0 : i32, iteration = #aie.bd_iteration<size = 2, stride = 4, current = 0> }
+      aie.next_bd ^end2
+    ^end2:
       aie.end
   }
  }

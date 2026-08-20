@@ -94,8 +94,7 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
   int row = memOp.rowIndex();
 
   // Get the region's entry block, then start traversing through the chain of
-  // blocks. This backend handles only the block form (aie.dma_start); the
-  // region form (aie.dma) is emitted only by the CDO backend.
+  // blocks.
   llvm::SetVector<Block *> blockVector =
       getOrderedChainOfBlocks(&memOp.getBody());
 

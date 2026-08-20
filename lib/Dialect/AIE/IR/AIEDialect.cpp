@@ -2095,6 +2095,16 @@ LogicalResult xilinx::AIE::verifyDMABDOutOfOrderId(DMABDOp bd) {
   return success();
 }
 
+// repeat_count is 0-based and lowers to a fixed-width field; keep it in range.
+static LogicalResult verifyDMARepeatCount(Operation *op, int32_t repeatCount) {
+  uint32_t maxRepeat = getTargetModel(op).getMaxRepeatCount();
+  if (repeatCount < 0 || static_cast<uint32_t>(repeatCount) > maxRepeat)
+    return op->emitOpError("repeat_count ")
+           << repeatCount << " is out of range [0, " << maxRepeat
+           << "] for this target (the task runs repeat_count + 1 times)";
+  return success();
+}
+
 static LogicalResult verifyOutOfOrderChannel(Operation *op, DMAChannelDir dir,
                                              bool outOfOrder,
                                              ArrayRef<DMABDOp> bds) {
@@ -2130,8 +2140,8 @@ static LogicalResult verifyOutOfOrderChannel(Operation *op, DMAChannelDir dir,
           auto it = releasedByRecvBd.find(lockDef);
           if (it != releasedByRecvBd.end() && it->second != bd.getOperation())
             return bd.emitOpError(
-                "out-of-order S2MM receive BD may not acquire a lock released "
-                "by another receive BD on the same channel");
+                "out-of-order S2MM prohibits inter-BD lock dependencies; "
+                "can deadlock");
         }
   return success();
 }
@@ -2164,6 +2174,8 @@ LogicalResult DMAOp::verify() {
       return emitOpError("pad_value requires the CONSTANT_PAD_VALUE register, "
                          "unavailable on this target");
   }
+  if (failed(verifyDMARepeatCount(getOperation(), getRepeatCount())))
+    return failure();
   SmallVector<DMABDOp> bds;
   for (auto &bdRegion : getBds())
     llvm::append_range(bds, bdRegion.front().getOps<DMABDOp>());
@@ -2858,6 +2870,8 @@ LogicalResult DMAStartOp::verify() {
       return emitOpError("pad_value requires the CONSTANT_PAD_VALUE register, "
                          "unavailable on this target");
   }
+  if (failed(verifyDMARepeatCount(getOperation(), getRepeatCount())))
+    return failure();
   SmallVector<DMABDOp> bds;
   if (getOutOfOrder()) {
     llvm::SmallPtrSet<Block *, 8> visited;

@@ -357,7 +357,7 @@ configureLocksInBdBlock(const AIE::AIETargetModel &targetModel,
   }
 
   // Allow release-only mode for out-of-order receive BDs. Not required, but
-  // enables completion semantics (lock-driven) without a token or done-channel.
+  // enables lock-driven completion semantics without a token or done-channel.
   if (outOfOrder) {
     if (!relValue || !relLockId)
       return (*block.getOps<AIE::UseLockOp>().begin())
@@ -618,7 +618,7 @@ LogicalResult xilinx::AIE::AIERTControl::pushToBdQueueAndEnable(
   // libxaie treats repeat_count=1 as do it once.
   repeatCount += 1;
   if (outOfOrder) {
-    // Arm out-of-order mode while idle, before enabling it.
+    // Arm out-of-order mode while idle (before enabling it).
     XAie_DmaChannelDesc dmaChannelDesc;
     TRY_XAIE_API_EMIT_ERROR(op, XAie_DmaChannelDescInit, &aiert->devInst,
                             &dmaChannelDesc, tileLoc);

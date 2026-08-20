@@ -150,8 +150,10 @@ class DmaChannel:
             (tile→host).
         channel: hardware channel index.
         bds: ordered list of [`Bd`][iron.Bd] entries that form the chain.
-        repeat_count: how many times the channel runs its BD chain (0 = run
-            once). In out-of-order mode, interpreted as an n-way merge.
+        repeat_count: extra repeats of the task -- it runs ``repeat_count + 1``
+            times (0 = run once). The task is the BD chain in-order, or one merge
+            round (``len(bds)`` x each BD's ``BdIteration`` size packets)
+            out-of-order, where the width comes from the BDs, not this.
         out_of_order: put the channel into out-of-order mode (S2MM only).
             Incoming packets select BD slots by `out_of_order_id`; the BD chain
             is ignored. Every BD must be packet-enabled and the ingress flow
@@ -193,6 +195,15 @@ def _channel_pad_word(ch: "DmaChannel") -> int | None:
             f"but they have differing element sizes {sorted(elem_sizes)}."
         )
     return pack_pad_value(ch.pad_value, elem_sizes.pop())
+
+
+def _ooo_packets_per_round(ch: "DmaChannel") -> int:
+    """Packets one out-of-order merge round receives.
+
+    One packet per receive-BD execution, so each BD contributes its iteration
+    size (a BD without iteration contributes 1).
+    """
+    return sum(bd.iteration.size if bd.iteration else 1 for bd in ch.bds)
 
 
 class TileDma(Resolvable):
@@ -335,7 +346,12 @@ class TileDma(Resolvable):
                 dest=block[chan_head_idx[0]],
                 chain=block[chan_chain_idx[0]],
                 pad_value=_channel_pad_word(ch) or 0,
-                repeat_count=ch.repeat_count,
+                # OoO derives its packet count from the BDs; see repeat_count.
+                repeat_count=(
+                    _ooo_packets_per_round(ch) * (ch.repeat_count + 1) - 1
+                    if ch.out_of_order
+                    else ch.repeat_count
+                ),
                 out_of_order=ch.out_of_order,
             )
             # Chain blocks: dma_start for channels 1..N-1
@@ -348,7 +364,11 @@ class TileDma(Resolvable):
                         dest=block[chan_head_idx[i]],
                         chain=block[chan_chain_idx[i]],
                         pad_value=_channel_pad_word(ch_i) or 0,
-                        repeat_count=ch_i.repeat_count,
+                        repeat_count=(
+                            _ooo_packets_per_round(ch_i) * (ch_i.repeat_count + 1) - 1
+                            if ch_i.out_of_order
+                            else ch_i.repeat_count
+                        ),
                         out_of_order=ch_i.out_of_order,
                     )
 
