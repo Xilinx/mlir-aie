@@ -5,28 +5,23 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// aiebu block-write-covers-patch invariant on the DYNAMIC BD-pool path, checked
+// aiebu block-write-covers-patch invariant on the DYNAMIC BD paths, checked
 // against the REAL downstream tool. aiebu (the ELF packager) rejects any TXN
 // stream where a DDR_PATCH targets an address not covered by a PRECEDING
 // block-write; plain XRT dispatch does not enforce this, so the dynamic BD
-// lowering could regress silently. The dynamic lowering emits each runtime BD
-// as a zero-template block-write over the BD's register block plus a DDR_PATCH
-// into that block.
+// lowering could regress silently. The dynamic lowering emits each BD as one
+// block-write over the BD's register block plus a DDR_PATCH into that block.
 //
-// This test lowers a dynamic BD-pool sequence, generates the C++ builder,
-// compiles a tiny host program that writes the returned word stream to a raw
-// blob, and runs `aiebu-asm -t aie2txn` on it -- exit 0 means aiebu accepted
-// the stream. Two shapes are exercised:
-//   * straight-line dynamic BD  (Inputs/dma_task_pool_bdid_dyn.mlir)
-//   * rolled dynamic scf.for    (this file's @rolled)
+// Each shape below is lowered, turned into a C++ builder, compiled into a tiny
+// host program that writes the returned word stream to a raw blob, and fed to
+// `aiebu-asm -t aie2txn` -- exit 0 means aiebu accepted the stream:
+//   * straight-line dynamic BD pool (Inputs/dma_task_pool_bdid_dyn.mlir)
+//   * rolled dynamic scf.for        (this file's @rolled)
+//   * dynamic dma_memcpy_nd         (memcpy_nd_dynamic_size.mlir)
 //
 // NEGATIVE control: a hand-built stream with a patch and no covering
 // block-write (the pre-fix shape) is fed to the SAME aiebu and asserted to be
 // REJECTED with aiebu's own diagnostic -- so a PASS above cannot be vacuous.
-//
-// A fast, dependency-free independent parser (Inputs/blockwrite_patch_check.
-// cpp) runs first as a smoke check; it agrees with aiebu on both accept and
-// reject. aiebu is the authority.
 //
 //===----------------------------------------------------------------------===//
 
@@ -42,28 +37,12 @@
 // RUN:   %S/Inputs/dma_task_pool_bdid_dyn.mlir -o %t.d/straight.mlir
 // RUN: aie-translate --aie-npu-to-cpp %t.d/straight.mlir > %t.d/gen_straight.h
 
-// Fast independent smoke check (parser reimplementation of the invariant).
-// RUN: %host_clang -std=c++17 -I%S/../../../../include \
-// RUN:   -DGEN_HDR='"%t.d/gen_straight.h"' \
-// RUN:   -DGEN_FN=generate_txn_main_pool_dynamic -DARGVAL=0 \
-// RUN:   %S/Inputs/blockwrite_patch_check.cpp %host_link_flags \
-// RUN:   -o %t.d/straight_check.exe
-// RUN: %t.d/straight_check.exe | FileCheck %s --check-prefix=SMOKE
-
-// Authoritative check: dump the real word stream and assemble it with aiebu.
 // RUN: %host_clang -std=c++17 -I%S/../../../../include \
 // RUN:   -DGEN_HDR='"%t.d/gen_straight.h"' \
 // RUN:   -DGEN_FN=generate_txn_main_pool_dynamic -DARGVAL=0 \
 // RUN:   %S/Inputs/dump_txn_blob.cpp %host_link_flags -o %t.d/dump_straight.exe
 // RUN: %t.d/dump_straight.exe %t.d/straight.bin
 // RUN: %aiebu_asm -t aie2txn -c %t.d/straight.bin -o %t.d/straight.elf
-
-// SMOKE: self-test negA: correctly rejected
-// SMOKE: self-test negB: correctly rejected
-// SMOKE: self-test negC: correctly rejected
-// SMOKE: self-test posCtl: correctly accepted
-// SMOKE: OK: DDR_PATCH
-// SMOKE: PASS: block-write-covers-patch invariant holds
 
 // ========================================================================
 // Shape 2: rolled dynamic scf.for
@@ -75,20 +54,22 @@
 // RUN: %host_clang -std=c++17 -I%S/../../../../include \
 // RUN:   -DGEN_HDR='"%t.d/gen_rolled.h"' \
 // RUN:   -DGEN_FN=generate_txn_main_rolled -DARGVAL=3 \
-// RUN:   %S/Inputs/blockwrite_patch_check.cpp %host_link_flags \
-// RUN:   -o %t.d/rolled_check.exe
-// RUN: %t.d/rolled_check.exe | FileCheck %s --check-prefix=SMOKEROLL
-
-// RUN: %host_clang -std=c++17 -I%S/../../../../include \
-// RUN:   -DGEN_HDR='"%t.d/gen_rolled.h"' \
-// RUN:   -DGEN_FN=generate_txn_main_rolled -DARGVAL=3 \
 // RUN:   %S/Inputs/dump_txn_blob.cpp %host_link_flags -o %t.d/dump_rolled.exe
 // RUN: %t.d/dump_rolled.exe %t.d/rolled.bin
 // RUN: %aiebu_asm -t aie2txn -c %t.d/rolled.bin -o %t.d/rolled.elf
 
-// SMOKEROLL: self-test negC: correctly rejected
-// SMOKEROLL: OK: DDR_PATCH
-// SMOKEROLL: PASS: block-write-covers-patch invariant holds
+// ========================================================================
+// Shape 3: dynamic dma_memcpy_nd (runtime size, pinned bd_id)
+// ========================================================================
+// RUN: aie-opt --aie-dma-to-npu %S/memcpy_nd_dynamic_size.mlir -o %t.d/nd.mlir
+// RUN: aie-translate --aie-npu-to-cpp %t.d/nd.mlir > %t.d/gen_nd.h
+
+// RUN: %host_clang -std=c++17 -I%S/../../../../include \
+// RUN:   -DGEN_HDR='"%t.d/gen_nd.h"' \
+// RUN:   -DGEN_FN=generate_txn_main_nd_dynamic -DARGVAL=4 \
+// RUN:   %S/Inputs/dump_txn_blob.cpp %host_link_flags -o %t.d/dump_nd.exe
+// RUN: %t.d/dump_nd.exe %t.d/nd.bin
+// RUN: %aiebu_asm -t aie2txn -c %t.d/nd.bin -o %t.d/nd.elf
 
 // ========================================================================
 // NEGATIVE control: aiebu MUST reject an uncovered-patch stream.

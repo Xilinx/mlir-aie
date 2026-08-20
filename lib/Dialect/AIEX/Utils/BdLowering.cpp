@@ -289,36 +289,25 @@ LogicalResult buildShimBdWords(OpBuilder &builder, Location loc,
   for (int i = 1; i < 4; i++)
     guardDivisible(stridesRev[i], inT[i], /*allowUnit=*/false);
 
-  auto writeWord = [&](uint32_t wordIdx, Value val) {
-    wordsOut[wordIdx] = val;
-  };
+  // word[0] buffer_length always carries the element count (linear and ND
+  // alike).
+  wordsOut[0] = bufLen;
 
-  // word[0] buffer_length is always overridden (it carries the runtime element
-  // count in both linear and ND modes).
-  writeWord(0, bufLen);
-
-  // Linear mode leaves the d0/d1/d2 size/stride words at their zero template
-  // (only buffer_length + iteration matter); ND mode overrides them.
+  // Linear mode leaves the d0/d1/d2 size/stride fields at zero (only
+  // buffer_length + iteration matter); ND mode ORs them into words 3/4/5, on
+  // top of the static burst_length / AXCache bits set above.
   if (!isLinear) {
     // word[3]: d0_size [29:20], d0_stride [19:0].
-    writeWord(3, buildBdWord(builder, loc,
-                             {{hwS[0], 0x3FF, 20}, {hwT[0], 0xFFFFF, 0}}));
-    // word[4]: burst_length [31:30] (static), d1_size [29:20], d1_stride
-    // [19:0].
-    Value burst = createConstantI32(
-        builder, loc,
-        (AIE::getShimBurstLengthEncoding(targetModel, burstLength) & 0x3)
-            << 30);
-    writeWord(4, arith::OrIOp::create(
-                     builder, loc, burst,
-                     buildBdWord(builder, loc,
-                                 {{hwS[1], 0x3FF, 20}, {hwT[1], 0xFFFFF, 0}})));
-    // word[5]: AXCache [27:24] (static), d2_stride [19:0]. Shim d2_size is
-    //          always 0 (the template already has it), carried by bufLen.
-    Value axcache = createConstantI32(builder, loc, (2u & 0xf) << 24);
-    writeWord(5, arith::OrIOp::create(
-                     builder, loc, axcache,
-                     buildBdWord(builder, loc, {{hwT[2], 0xFFFFF, 0}})));
+    wordsOut[3] =
+        buildBdWord(builder, loc, {{hwS[0], 0x3FF, 20}, {hwT[0], 0xFFFFF, 0}});
+    // word[4]: d1_size [29:20], d1_stride [19:0].
+    wordsOut[4] = arith::OrIOp::create(
+        builder, loc, wordsOut[4],
+        buildBdWord(builder, loc, {{hwS[1], 0x3FF, 20}, {hwT[1], 0xFFFFF, 0}}));
+    // word[5]: d2_stride [19:0]. Shim d2_size is always 0, carried by bufLen.
+    wordsOut[5] =
+        arith::OrIOp::create(builder, loc, wordsOut[5],
+                             buildBdWord(builder, loc, {{hwT[2], 0xFFFFF, 0}}));
   }
   // word[6]: iteration_size [25:20], iteration_stride [19:0]. A zero outer
   // stride is a pure repeat (carried by repeat_count), so both fields must be 0
@@ -329,8 +318,8 @@ LogicalResult buildShimBdWords(OpBuilder &builder, Location loc,
       builder, loc, arith::CmpIPredicate::sgt, inT[3], zeroI32);
   Value iterSizeField =
       arith::SelectOp::create(builder, loc, iterStridePos, hwS[3], zeroI32);
-  writeWord(6, buildBdWord(builder, loc,
-                           {{iterSizeField, 0x3F, 20}, {hwT[3], 0xFFFFF, 0}}));
+  wordsOut[6] = buildBdWord(builder, loc,
+                            {{iterSizeField, 0x3F, 20}, {hwT[3], 0xFFFFF, 0}});
 
   // repeat_count for the queue push is the biased outer size (N > 1 ? N - 1 :
   // 0), matching the static path. A constant folds so the static push_queue

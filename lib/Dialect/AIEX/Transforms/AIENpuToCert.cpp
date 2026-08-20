@@ -973,6 +973,9 @@ struct AIENpuToCertPass
     }
 
     target.addIllegalOp<AIEX::NpuBlockWriteOp>();
+    // No cert lowering exists for a runtime-valued block-write; leaving it
+    // legal would silently drop the BD configuration from the cert stream.
+    target.addIllegalOp<AIEX::NpuBlockWriteValuesOp>();
     target.addIllegalOp<AIEX::NpuMaskWrite32Op>();
     target.addIllegalOp<AIEX::NpuSyncOp>();
     target.addIllegalOp<AIEX::NpuWrite32Op>();

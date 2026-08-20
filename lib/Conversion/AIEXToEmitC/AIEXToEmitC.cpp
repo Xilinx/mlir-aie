@@ -366,12 +366,14 @@ private:
   void convertBlockWriteValues(OpBuilder &b, Location loc,
                                AIEX::NpuBlockWriteValuesOp bw) {
     MLIRContext *ctx = b.getContext();
-    ValueRange words = bw.getValues();
-    int64_t n = static_cast<int64_t>(words.size());
-    if (n == 0) {
-      fail(bw, "blockwrite_values must carry at least one payload word");
+    Value addrV = runtimeOrResolvedAddr(b, loc, bw, bw.getAddress());
+    if (!addrV) {
+      fail(bw, "cannot convert a symbolic/unresolved blockwrite_values address "
+               "to the C++ TXN target");
       return;
     }
+    ValueRange words = bw.getValues();
+    int64_t n = static_cast<int64_t>(words.size());
 
     // Declare the staging array (zero-initialized; every slot is assigned
     // below). Typed emitc.variable, matching convertBlockWrite's array.
@@ -388,10 +390,9 @@ private:
       emitc::VerbatimOp::create(b, loc, "{}[" + std::to_string(i) + "] = {};",
                                 ValueRange{arrVar.getResult(), words[i]});
 
-    // The address is a genuine runtime value (the BD register base over a
-    // popped pool id); col/row are 0 since it is already a flat address.
+    // col/row are 0: the address is already flat (as for npu.blockwrite).
     emitTxnCall(b, loc, "txn_append_blockwrite", txnVec,
-                {bw.getAddress(), arrVar.getResult(),
+                {addrV, arrVar.getResult(),
                  u32Literal(b, loc, static_cast<uint32_t>(n)),
                  u32Literal(b, loc, 0), u32Literal(b, loc, 0)});
   }
@@ -497,6 +498,11 @@ private:
         resolved.absoluteAddr[clone] = *a;
       if (auto d = bw.getDataWords())
         resolved.blockWriteData[clone] = d;
+    } else if (auto bwv = dyn_cast<AIEX::NpuBlockWriteValuesOp>(orig)) {
+      // Already an absolute address (no buffer/col/row folding); a pinned BD id
+      // makes it constant, a pool-drawn one leaves it runtime.
+      if (auto a = AIEX::getConstantIntOperand(bwv.getAddress()))
+        resolved.absoluteAddr[clone] = *a;
     }
   }
 

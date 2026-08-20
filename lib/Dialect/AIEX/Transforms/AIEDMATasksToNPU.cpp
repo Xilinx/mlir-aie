@@ -494,11 +494,10 @@ struct AIEDMATasksToNPUPass
   }
 
   // Dynamic (runtime SSA size/stride/len/bd_id) shim-NOC BD lowering, the
-  // dma_task sibling of DmaToNpuPattern::lowerDynamic. Builds the whole 8-word
-  // register block as SSA values and packs it into ONE `npu.blockwrite_values`
-  // at the BD's register base -- constant when bd_id is pinned, runtime when
-  // drawn from the free-list pool -- rather than folding a static
-  // `NpuWriteBdOp` and overriding individual words. One path regardless of
+  // dma_task sibling of DmaToNpuPattern::lowerDynamic and identical in shape:
+  // build the whole 8-word register block as SSA values and pack it into ONE
+  // `npu.blockwrite_values` at the BD's register base -- constant when bd_id is
+  // pinned, runtime when drawn from the free-list pool. One path regardless of
   // which field is runtime: reaching this function at all means the design
   // targets the EmitC (C++ TXN) builder, never the static binary target (a
   // design meant for the binary target is unrolled to all-constant before
