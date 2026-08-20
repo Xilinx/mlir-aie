@@ -54,6 +54,7 @@ wrong slot.
 | `--packets`   | `m` (default 1) | Packets per source; fills `n*m` sub-buffers. |
 | `--nonuniform`| flag          | Slot `j` gets `j+1` packets (per-slot count). Overrides `--packets`. |
 | `--repeat-count` | `k` (default 0) | Extra merge rounds; the receiver runs `k+1` rounds reusing the one buffer. |
+| `--recv-backpressure` | flag | Single-producer (`n=1`) reuse via a receiver-side credit instead of the sender-side barrier. |
 
 **`--packets m`.** Each source sends `m` packets carrying `m` distinct
 `tile_words`-sized sub-slices. A receive-side BD iteration advances the write
@@ -162,6 +163,30 @@ channels must hold. The token needs no channel of its own because it packet-shar
 channel 0's drain MM2S under a distinct `pkt_id` (chained after the drain), which
 fits multi-round onto a core tile's two MM2S even at `--channels 2`.
 
+### Single producer: receiver-side backpressure
+
+The barrier above is *sender-side backpressure* -- the receiver tells the sources
+when to proceed. For a single producer (`--recv-backpressure`, `n=1`) a cheaper
+*receiver-side backpressure* suffices, with no token at all. Each receive BD
+acquires a free-slot credit before writing, and the egress returns the round's
+credits after draining. The stalled receive DMA then backpressures the one sender
+through the stream:
+
+```python
+# --recv-backpressure (single producer, ooo_prod init M):
+recv_bd  = Bd(..., packet=(0, route),
+              acquires=[Acquire(ooo_prod, 1)], releases=[Release(ooo_cons, 1)])
+egress   = Bd(..., acquires=[Acquire(ooo_cons, M)],
+              releases=[Release(ooo_prod, M)])
+```
+
+This works only for one producer, because the round-agnostic credit cannot hold
+per-round grouping across several sources -- a fast source would spend a whole
+round's credits on its own packets. Because the one sender's launch credit is a
+single 6-bit lock, this mode also requires `M*(k+1) <= 63`. The test drives it at a
+high `--repeat-count` so the reused buffer would overrun without the credit, which
+keeps the credit load-bearing rather than inert.
+
 ## Sender side
 
 Each sender is a compute core. Its buffer is preloaded with the source slice, and a
@@ -181,7 +206,6 @@ Each receive BD holds a **release-only** lock, and the egress BD acquires the to
 packet count of it:
 
 ```python
-# completion only (this example):
 recv_bd  = Bd(..., packet=(0, route), releases=[Release(ooo_cons, 1)])
 egress   = Bd(..., acquires=[Acquire(ooo_cons, M)])   # M = total packet count
 ```
@@ -190,23 +214,6 @@ As packets land, the counter climbs to the total and the egress drains, on-chip,
 with no host round-trip or completion token. The receive BDs only release and never
 acquire each other's locks, which removes any inter-BD dependency that could
 deadlock. The total must stay `<= 63` because a lock value is 6-bit.
-
-A receiver-side credit lock adds backpressure when a single producer refills the
-buffer. Each receive BD acquires a free slot before writing, and the egress
-releases the credits after draining:
-
-```python
-# + backpressure for a single refilling producer (free init M):
-recv_bd  = Bd(..., packet=(0, route),
-              acquires=[Acquire(ooo_prod, 1)], releases=[Release(ooo_cons, 1)])
-egress   = Bd(..., acquires=[Acquire(ooo_cons, M)],
-              releases=[Release(ooo_prod, M)])
-```
-
-This does **not** extend to the multi-source multi-round merge, because the credit
-is round-agnostic and a fast source can spend a whole round's credits on its own
-packets. Multi-round (`--repeat-count`) uses a sender-side barrier instead (see
-[Multiple rounds](#multiple-rounds)).
 
 ## Running
 

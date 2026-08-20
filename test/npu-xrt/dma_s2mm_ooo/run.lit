@@ -90,3 +90,11 @@
 // RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile core --channels 2 -n 6 --repeat-count 1
 // RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile mem  --channels 2 -n 4 --packets 2 --repeat-count 2
 // RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile mem  --channels 2 -n 4 --nonuniform --repeat-count 2
+// Receiver-side backpressure is the single-producer (n=1) alternative to the
+// sender-side barrier, gating reuse with a receiver-local credit and no token. k
+// is deliberately high because the reused buffer overruns without the credit only
+// once the sender runs several rounds ahead of the host drain. A smaller k would
+// pass whether or not the credit worked.
+// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile mem  --channels 1 -n 1 --repeat-count 8 --recv-backpressure
+// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile core --channels 1 -n 1 --repeat-count 8 --recv-backpressure
+// RUN: %run_on_npu2% %python %S/dma_s2mm_ooo.py --recv-tile mem  --channels 1 -n 1 --packets 2 --repeat-count 8 --recv-backpressure

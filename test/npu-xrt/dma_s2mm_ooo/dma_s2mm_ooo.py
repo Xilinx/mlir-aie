@@ -21,7 +21,7 @@ Each sender routes a distinct packet id to the one merge channel, while the
 receiver places by the separate out-of-order id. Distinct route ids are needed
 because sharing one id across the senders over-subscribes a compute tile's
 switchbox arbiter. Every sender generates its own data and stamps the id on a
-dataflow BD (`Bd(out_of_order_id=...)`), so no runtime writebd is involved.
+dataflow BD (`Bd(out_of_order_id=...)`), which avoids any runtime writebd.
 
 Completion happens on-chip, with no host round-trip and no completion token. Each
 receive BD releases a counting lock, and the egress MM2S must acquire the total
@@ -50,6 +50,10 @@ Options (one file covers the whole matrix):
                          are separated by a sender-side credit-token barrier
                          because a single out-of-order channel is a FIFO. Within a
                          round the senders still race.
+  --recv-backpressure    For a single producer (n=1), gate reuse with a
+                         receiver-side credit instead of the sender-side barrier.
+                         Cheaper because it needs no token, but single-producer
+                         only.
 
 See README.md for the resource limits and the bound formulas.
 
@@ -185,6 +189,7 @@ def dma_s2mm_ooo(
     packets: CompileTime[int] = 1,
     nonuniform: CompileTime[int] = 0,
     repeat_count: CompileTime[int] = 0,
+    recv_backpressure: CompileTime[int] = 0,
 ):
     tw = tile_words
     c = channels
@@ -241,11 +246,32 @@ def dma_s2mm_ooo(
             f"core receiver with 2 channels supports at most 7 senders (got n={n}): "
             "c*(n+1) receive+egress BDs must fit the 16-BD core-tile budget"
         )
+    if recv_backpressure:
+        # Receiver-side backpressure gates buffer reuse locally for one producer.
+        # Because it cannot hold per-round grouping across sources, it is
+        # single-producer (n=1), single-channel, and meaningful only with reuse (k>0).
+        if n != 1:
+            raise ValueError(
+                "recv_backpressure supports only a single producer (n=1); use the "
+                "default sender-side barrier for n>1"
+            )
+        if c != 1:
+            raise ValueError("recv_backpressure supports only a single channel")
+        if k == 0:
+            raise ValueError(
+                "recv_backpressure needs repeat_count>0 (it gates buffer reuse)"
+            )
+        if M * rounds > MAX_LOCK_VALUE:
+            raise ValueError(
+                f"recv_backpressure launch credit M*(k+1) = {M * rounds} exceeds the "
+                f"6-bit lock ceiling {MAX_LOCK_VALUE} (the sender streams every round "
+                "from one credit)"
+            )
 
     index = _perm(n, shift)
 
-    # Tiles. Senders fill the bottom compute row; the receiver is centered on that
-    # row (see the module docstring for why); the egress is the shim NOC tile.
+    # Tiles. Senders fill the bottom compute row. The receiver is centered on that
+    # row (see the module docstring for why). The egress is the shim NOC tile.
     egress = Tile(col=0, row=0, tile_type=AIETileType.ShimNOCTile)
     rc = n // 2
     if recv_is_core:
@@ -385,6 +411,110 @@ def dma_s2mm_ooo(
                     shim_symbol=f"egress{kc}",
                 )
             )
+    elif recv_backpressure:
+        # Single-producer alternative (n=1, one channel). Gate buffer reuse with a
+        # receiver-side credit pair instead of the cross-tile token. Each receive BD
+        # acquires a free-slot credit before it writes, and the egress returns the
+        # round's credits after draining. The stalled receive DMA then backpressures
+        # the one sender through the stream. This drops the token flow, the `go` and
+        # `tok_free` locks, and the token buffers. It works only for a single
+        # producer because the round-agnostic credit cannot hold per-round grouping
+        # across sources.
+
+        # Receiver: one out-of-order receive BD plus the draining egress, with the
+        # ooo_prod free-slot credit that gates reuse.
+        ids = _slot_ids(recv_is_core, 0, n)
+        prod = Lock(receiver, init=M, name="ooo_prod")  # free slots, init full
+        recv_locks = [prod]
+        recv_bd = Bd(
+            buffer=bufs[0],
+            offset=0,
+            length=tw,
+            bd_id=ids[0],
+            packet=(0, 0),
+            iteration=BdIteration(size=M, stride=tw),
+            acquires=[Acquire(prod, value=1)],  # a free slot per packet
+            releases=[Release(cons[0], value=1)],
+        )
+        egress_bd = Bd(
+            buffer=bufs[0],
+            offset=0,
+            length=M * tw,
+            acquires=[Acquire(cons[0], value=M)],
+            releases=[Release(prod, value=M)],  # return the round's slots
+            next=0,
+        )
+        recv_dma = TileDma(
+            tile=receiver,
+            channels=[
+                DmaChannel(
+                    direction=DMAChannelDir.S2MM,
+                    channel=0,
+                    bds=[recv_bd],
+                    out_of_order=True,
+                    repeat_count=k,
+                ),
+                DmaChannel(
+                    direction=DMAChannelDir.MM2S,
+                    channel=0,
+                    bds=[egress_bd],
+                    repeat_count=k,
+                ),
+            ],
+        )
+
+        # Sender. One BD streams every round. A worker seeds the whole stream's
+        # credit once, and the receiver's credit paces it. No token is needed.
+        pat = _source_pat(0, M, M, rounds, c, tw)
+        sbuf = Buffer(initial_value=pat, name="sbuf0", tile=senders[0])
+        go = Lock(senders[0], init=0, name="go0")
+        sender_locks += [go]
+
+        def make_body(reps):
+            def body(g):
+                g.release(reps)
+
+            return body
+
+        workers.append(
+            Worker(make_body(M * rounds), [go], tile=senders[0], while_true=False)
+        )
+        send_bd = Bd(
+            buffer=sbuf,
+            offset=0,
+            length=tw,
+            iteration=BdIteration(size=M * rounds, stride=tw),
+            packet=(0, pkt_id(0, 0)),
+            out_of_order_id=ids[0] & OOO_ID_MASK,
+            acquires=[Acquire(go, value=1)],  # one credit per packet
+            releases=[Release(go, value=0)],  # dummy; go is seeded once by the worker
+            next=0,
+        )
+        sender_dmas.append(
+            TileDma(
+                tile=senders[0],
+                channels=[
+                    DmaChannel(
+                        direction=DMAChannelDir.MM2S,
+                        channel=0,
+                        bds=[send_bd],
+                        repeat_count=M * rounds - 1,
+                    )
+                ],
+            )
+        )
+
+        # Flows: the sender packet in, then the egress drain.
+        add_sender_flows()
+        flows.append(
+            Flow(
+                src=receiver,
+                dst=egress,
+                src_channel=0,
+                dst_channel=0,
+                shim_symbol="egress0",
+            )
+        )
     else:
         # Multi-round (repeat_count > 0). This runs k+1 true n-way out-of-order
         # merges through the one reused buffer. A receiver lock cannot group the
@@ -613,6 +743,7 @@ def _compile_kwargs(opts):
         packets=opts.packets,
         nonuniform=1 if opts.nonuniform else 0,
         repeat_count=opts.repeat_count,
+        recv_backpressure=1 if opts.recv_backpressure else 0,
     )
 
 
@@ -642,6 +773,7 @@ def _run_and_verify(opts):
             packets=m,
             nonuniform=1 if opts.nonuniform else 0,
             repeat_count=k,
+            recv_backpressure=1 if opts.recv_backpressure else 0,
         )
         # In region (round r, channel kc), slot j holds source (j-shift)%n's chunk
         # for that channel and round. Because the chunks are distinct per channel
@@ -708,6 +840,12 @@ def main():
         default=0,
         help="extra merge rounds (k); the receiver runs k+1 rounds, default 0",
     )
+    p.add_argument(
+        "--recv-backpressure",
+        action="store_true",
+        help="single-producer reuse via a receiver-side credit instead of the "
+        "sender-side barrier (requires -n 1, --channels 1, --repeat-count > 0)",
+    )
     opts = p.parse_args()
     if not (1 <= opts.sources <= 8):
         sys.exit("--sources must be between 1 and 8")
@@ -769,6 +907,23 @@ def main():
             f"send BD iteration size max(ms)*(k+1) = {cnt_max * rounds} "
             f"must be <= {MAX_BD_ITER} (the sender walks all rounds from one BD)"
         )
+    if opts.recv_backpressure:
+        if opts.sources != 1:
+            sys.exit(
+                "--recv-backpressure supports only a single producer (-n 1); use the "
+                "default sender-side barrier for more sources"
+            )
+        if opts.channels != 1:
+            sys.exit("--recv-backpressure supports only a single channel")
+        if opts.repeat_count == 0:
+            sys.exit(
+                "--recv-backpressure needs --repeat-count > 0 (it gates buffer reuse)"
+            )
+        if total * rounds > MAX_LOCK_VALUE:
+            sys.exit(
+                f"--recv-backpressure launch credit M*(k+1) = {total * rounds} must "
+                f"be <= {MAX_LOCK_VALUE} (the sender streams every round from one credit)"
+            )
     run_design_cli(
         dma_s2mm_ooo,
         opts,
