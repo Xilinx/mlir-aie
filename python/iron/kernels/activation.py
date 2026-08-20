@@ -6,11 +6,12 @@
 """Activation kernel factories + numpy reference implementations.
 
 Factories (each returns an [`ExternalFunction`][iron.ExternalFunction]):
-  softmax, gelu, silu, swiglu, bf16_exp.
+  softmax, gelu, silu, swiglu, bf16_exp, exp2f_vec.
 
 Companion numpy reference implementations for host-side verification:
   [`relu_ref`][iron.kernels.activation.relu_ref], [`silu_ref`][iron.kernels.activation.silu_ref], [`gelu_ref`][iron.kernels.activation.gelu_ref],
-  [`bf16_exp_ref`][iron.kernels.activation.bf16_exp_ref], [`softmax_ref`][iron.kernels.activation.softmax_ref].  These compute the AIE
+  [`bf16_exp_ref`][iron.kernels.activation.bf16_exp_ref], [`softmax_ref`][iron.kernels.activation.softmax_ref],
+  [`exp2f_vec_ref`][iron.kernels.activation.exp2f_vec_ref].  These compute the AIE
   kernel's op in float32 so designs don't each reimplement the math
   in their verify path.  Pair with
   `count_mismatches` (rtol=0.128 is the
@@ -25,9 +26,11 @@ from aie.iron.kernel import ExternalFunction
 from ml_dtypes import bfloat16
 
 from ._common import (
+    _default_source_path,
     _detect_arch,
     _include_dirs,
     _kernel_source,
+    _make_extern,
     _require_fixed_tile_size,
 )
 
@@ -133,6 +136,61 @@ def bf16_exp(tile_size: int = 1024) -> ExternalFunction:
     )
 
 
+def exp2f_vec(tile_size: int = 1024, min_x: float = -111.0) -> ExternalFunction:
+    """Software f32 ``2**x`` kernel: a degree-5 minimax poly, not a LUT.
+
+    An accuracy-tradeoff alternative to the LUT-based [`bf16_exp`]
+    [iron.kernels.activation.bf16_exp] path for callers (softmax, sigmoid)
+    that need better than the LUT's domain-dependent error (worst on
+    negative inputs, which is exactly softmax's range). See
+    ``aie_kernels/aie2p/exp2f_vec.cc`` for the accuracy rationale and the
+    ``noinline`` codegen hazard this kernel carries.
+
+    aie2p only for now; not characterized on aie2.
+
+    Args:
+        tile_size: Number of elements per tile; must be a multiple of 16
+            (the kernel's vector width).
+        min_x: Input is clamped to this before evaluation. The default
+            -111 is the lowest exponent that still holds the kernel's
+            8.9e-5 relative error; -126 is the hard floor (one f32
+            exponent field), reachable at up to 6.5e-3. See
+            ``aie_kernels/aie2p/exp2f_vec.cc`` for the measured table.
+
+    Returns:
+        ExternalFunction configured for the exp2f_vec kernel.
+
+    Raises:
+        NotImplementedError: On aie2 (this kernel has not been ported).
+        ValueError: If tile_size is not a multiple of 16, or min_x is
+            below -126.
+    """
+    if tile_size % 16 != 0:
+        raise ValueError(
+            f"exp2f_vec: tile_size must be a multiple of 16, got {tile_size}"
+        )
+    if min_x < -126.0:
+        raise ValueError(
+            f"exp2f_vec: min_x must be >= -126 (the kernel builds 2**k in the "
+            f"f32 exponent field, whose smallest normal exponent is -126), "
+            f"got {min_x}"
+        )
+    arch = _detect_arch()
+    if arch != "aie2p":
+        raise NotImplementedError(
+            "exp2f_vec is aie2p-only for now; it has not been characterized "
+            "or ported to aie2"
+        )
+    source = _default_source_path("exp2f_vec.cc")
+    tile_ty = np.ndarray[(tile_size,), np.dtype[np.float32]]
+    return _make_extern(
+        "exp2f_vec_f32",
+        source,
+        [tile_ty, tile_ty, np.int32],
+        compile_flags=[f"-DEXP2F_VEC_MIN_X={float(min_x)!r}f"],
+    )
+
+
 # ---------------------------------------------------------------------------
 # Reference (numpy) implementations
 # ---------------------------------------------------------------------------
@@ -188,6 +246,19 @@ def bf16_exp_ref(x):
     xf = x.astype(np.float32)
     with np.errstate(over="ignore", invalid="ignore"):
         return np.exp(xf).astype(x.dtype)
+
+
+def exp2f_vec_ref(x):
+    """Numpy reference for [`exp2f_vec`][iron.kernels.activation.exp2f_vec]: exact ``2**x``.
+
+    Unlike the LUT-based refs above, this is float64 ``2**x`` (not a
+    reimplementation of the on-device poly): the kernel targets ~8.9e-5
+    relative error by design, several orders tighter than the LUT-based
+    kernels' 12.8% default, so pair with a correspondingly tight
+    tolerance (e.g. ``rtol=1e-3``) rather than the LUT default.
+    """
+    xf = x.astype(np.float64)
+    return np.exp2(xf).astype(x.dtype)
 
 
 def softmax_ref(x, *, tile_size: int = 1024):
