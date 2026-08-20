@@ -759,12 +759,7 @@ LogicalResult AIEX::NpuWriteBdOp::verify() {
 
   // Every value on this op is already the hardware-encoded field value (wrap
   // fields unbiased, stepsize/iteration fields biased actual-1), so the
-  // legal encoded range for a B-bit field is simply [0, 2^B - 1] regardless
-  // of which kind of field it is. The field widths themselves are tile-type
-  // specific (e.g. on AIE2: core-tile wrap is 8-bit vs. 10-bit for mem/shim,
-  // core-tile stepsize is 13-bit, mem-tile 17-bit, shim-tile 20-bit), so
-  // derive them from the target model instead of hardcoding shim-sized
-  // constants for every tile type.
+  // legal encoded range for a B-bit field is simply [0, 2^B - 1].
   AIE::AIETileType tileType = targetModel.getTileType(getColumn(), getRow());
   uint32_t wrapBits = targetModel.getDmaBdWrapBits(tileType);
   uint32_t stepBits = targetModel.getDmaBdStepBits(tileType);
@@ -802,10 +797,9 @@ LogicalResult AIEX::NpuWriteBdOp::verify() {
 
   // Pad field widths (AIE2P ArchSpec Table 3-34, in 32-bit words): D0 is a
   // 6-bit field (max 63), D1 a 5-bit field (max 31), D2 a 4-bit field (max
-  // 15). These are currently checked nowhere and silently masked
-  // (`& 0x3F` / `& 0x1F` / `& 0xF`) at word-packing time in AIEDmaToNpu.cpp.
+  // 15).
   //
-  // Placement note (deliberate compromise): DMABDOp::verify() would be the
+  // Placement is a deliberate compromise. DMABDOp::verify() would be the
   // better home for this check, since its diagnostic would point at the
   // user's own `aie.dma_bd`. But DMABDOp::verify() early-returns for BDs
   // nested inside `aiex.dma_configure_task`, and the only case with
@@ -813,9 +807,10 @@ LogicalResult AIEX::NpuWriteBdOp::verify() {
   // placed only in DMABDOp::verify() would miss it. NpuWriteBdOp is where
   // both the static and task runtime paths converge, so putting it here
   // covers both, at the cost of the diagnostic pointing at this
-  // compiler-generated op rather than the user-written BD. This check
-  // should migrate to DMABDOp::verify() once BD iteration becomes an
-  // explicit `aie.dma_bd` field and that early-return can be removed.
+  // compiler-generated op rather than the user-written BD.
+  //
+  // TODO: migrate this check to DMABDOp::verify() once BD iteration becomes
+  // an explicit `aie.dma_bd` field and that early-return can be removed.
   if (getD0ZeroBefore() > 0x3F || getD0ZeroAfter() > 0x3F)
     return emitOpError("D0 pad_before/pad_after exceeds the [0:63] range.");
   if (getD1ZeroBefore() > 0x1F || getD1ZeroAfter() > 0x1F)
