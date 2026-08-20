@@ -695,7 +695,23 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
         return populateReservedDataSize(mod.get(), inputFile, workDirStr);
       });
 
-  auto &withAddresses = withReservedData.map<ModRef>(
+  // Validate each core's stack_size against what its call tree actually
+  // needs, from the same link_files objects reserved_data_size just
+  // measured. Unlike that edge, this one can fail the whole run (a cycle or
+  // an unmeasurable symbol with no stack_size_override is an error, not a
+  // warning) -- see checkStackSizeRequirements.
+  auto &withStackSizeChecked = withReservedData.map<ModRef>(
+      "stack_size_checked.mlir",
+      [inputFile, workDirStr, skip = noAutoStackSize.getValue()](
+          const Item<ModRef> &in, Item<ModRef> &out) -> mlir::LogicalResult {
+        out.value = ModRef(in.get().get().clone());
+        if (skip)
+          return mlir::success();
+        return checkStackSizeRequirements(out.value->get(), inputFile,
+                                          workDirStr);
+      });
+
+  auto &withAddresses = withStackSizeChecked.map<ModRef>(
       "input_with_addresses.mlir",
       PassPipeline{
           &context,

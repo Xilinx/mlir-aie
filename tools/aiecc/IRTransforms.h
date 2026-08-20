@@ -14,6 +14,7 @@
 #define AIECC_IRTRANSFORMS_H
 
 #include "Graph.h"
+#include "StackSizeAnalysis.h"
 #include "Utils.h"
 
 #include "aie/Conversion/Passes.h"
@@ -32,6 +33,7 @@
 #include "mlir/Conversion/UBToLLVM/UBToLLVM.h"
 #include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVMPass.h"
 #include "mlir/Dialect/Arith/Transforms/Passes.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Pass/PassManager.h"
@@ -292,6 +294,141 @@ populateReservedDataSize(mlir::ModuleOp src, llvm::StringRef inputFile,
         b.getI32IntegerAttr(static_cast<int32_t>(total)));
   });
   return cloned;
+}
+
+// Validate each core's `stack_size` (explicit, or the target's default via
+// CoreOp::getEffectiveStackSize()) against what its call tree actually
+// needs: a call-graph walk (see StackSizeAnalysis.h) starting from the
+// symbols the core body directly calls, through their `link_files`
+// objects. Never mutates the module -- this is validate/warn only, unlike
+// reserved_data_size's auto-population, because the computed number is a
+// LOWER BOUND: it accounts for the callees' subtrees but not the core
+// body's own top-level frame, which is only measurable after the core's own
+// codegen (much later in the pipeline than this runs, in
+// buildObjectSubgraph). A computed value that exceeds stack_size is
+// therefore a proven problem worth a warning; a computed value that fits
+// proves nothing about the full picture, so nothing is reported.
+//
+// A cycle (recursion) or a symbol this analysis cannot measure (missing
+// `.stack_sizes`, an archive/bitcode link_files entry, a Chess-compiled
+// object, or a `link_merge_files` dependency -- out of reach the same way
+// reserved_data_size's own measurement cannot see it) fails the whole
+// aiecc run for that core, naming the affected root and requiring
+// `stack_size_override` on its `external_func()`/func.func declaration:
+// unlike reserved_data_size, silently treating "unmeasurable" as "assume 0"
+// would be unsafe in the wrong direction (undercounting stack corrupts
+// memory rather than merely over-reserving data).
+inline mlir::LogicalResult checkStackSizeRequirements(mlir::ModuleOp module,
+                                                      llvm::StringRef inputFile,
+                                                      llvm::StringRef workDir) {
+  // stack_size_override is looked up by callee name regardless of which
+  // core/device actually calls it, so collect it once for the whole module.
+  llvm::StringMap<int64_t> overrides;
+  module.walk([&](mlir::func::FuncOp funcOp) {
+    if (auto attr =
+            funcOp->getAttrOfType<mlir::IntegerAttr>("stack_size_override"))
+      overrides[funcOp.getName()] = attr.getInt();
+  });
+
+  mlir::LogicalResult result = mlir::success();
+  module.walk([&](xilinx::AIE::CoreOp coreOp) {
+    // Roots: symbols the core body directly calls (mirrors the walk in
+    // AIEAssignCoreLinkFilesPass).
+    llvm::SmallVector<llvm::StringRef, 4> roots;
+    llvm::StringSet<> seenRoots;
+    coreOp.walk([&](mlir::func::CallOp call) {
+      if (seenRoots.insert(call.getCallee()).second)
+        roots.push_back(call.getCallee());
+    });
+    if (roots.empty())
+      return; // Nothing calls out; the core body's own stack use is out of
+              // this analysis's scope entirely (see above).
+
+    auto filesAttr = coreOp.getLinkFiles();
+    if (!filesAttr)
+      return; // No link_files: every root must be either overridden or
+              // unmeasurable (e.g. only reachable via link_merge_files),
+              // and there is nothing to scan either way.
+
+    std::vector<std::string> resolved;
+    for (auto f : filesAttr->getAsRange<mlir::StringAttr>())
+      resolved.push_back(resolveExternalPath(f.getValue(), inputFile, workDir));
+
+    llvm::StringSet<> knownFunctions;
+    for (const std::string &path : resolved)
+      xilinx::aiecc::collectDefinedFunctionNames(path, knownFunctions);
+
+    xilinx::aiecc::StackGraph graph;
+    std::vector<std::string> skipped;
+    for (const std::string &path : resolved)
+      if (!xilinx::aiecc::addObjectToStackGraph(path, knownFunctions, graph))
+        skipped.push_back(path);
+    xilinx::aiecc::resolveIndirectCallEdges(graph);
+
+    auto stackRes =
+        xilinx::aiecc::computeStackRequirement(graph, roots, overrides);
+    if (!stackRes.bytes) {
+      // A cycle is fundamentally unbounded and always demands an override.
+      // A merely-unmeasurable symbol (the overwhelmingly common case during
+      // rollout: most existing kernel objects predate this analysis, or are
+      // Chess-compiled) gets the same treatment reserved_data_size already
+      // gives an unmeasurable artifact -- a warning, not a build failure.
+      if (stackRes.failureKind ==
+          xilinx::aiecc::StackRequirementFailure::Cycle) {
+        coreOp.emitError()
+            << "cannot determine this core's stack requirement: "
+            << stackRes.error
+            << "; set stack_size_override on the affected kernel's "
+               "external_func()/func.func declaration, or pass "
+               "--no-auto-stack-size to skip this check entirely";
+        result = mlir::failure();
+      } else {
+        coreOp.emitWarning()
+            << "cannot determine this core's stack requirement: "
+            << stackRes.error
+            << "; stack_size is not being validated for this core. Set "
+               "stack_size_override on the affected kernel's "
+               "external_func()/func.func declaration to enable it";
+      }
+      return;
+    }
+
+    if (!skipped.empty()) {
+      // computeStackRequirement only fails for symbols actually reached in
+      // the graph, so a skipped object whose symbols were never called is
+      // silently fine -- but warn regardless so an incomplete picture is
+      // visible rather than assumed exhaustive.
+      auto diag = coreOp.emitWarning()
+                  << "stack requirement computed as " << *stackRes.bytes
+                  << " bytes, but " << skipped.size()
+                  << " link_files artifact(s) could not be inspected "
+                     "(archive, bitcode, or unreadable), so this may be "
+                     "incomplete: ";
+      for (size_t i = 0; i < skipped.size(); ++i)
+        diag << (i ? ", " : "") << skipped[i];
+    }
+
+    // Stamp the computed value on the CoreOp -- an aiecc-internal
+    // implementation detail, not user-facing API -- so AIEAssignBuffers'
+    // memory-map diagnostics (which run later, after this whole edge, inside
+    // the withAddresses pipeline) can show it alongside the stack region,
+    // reserved_data_size, and free space in one place instead of a user
+    // having to cross-reference this warning with a separate one further
+    // along in the build log.
+    mlir::Builder b(module.getContext());
+    coreOp->setAttr("aiecc.computed_stack_requirement",
+                    b.getI32IntegerAttr(static_cast<int32_t>(*stackRes.bytes)));
+
+    uint32_t effective = coreOp.getEffectiveStackSize();
+    if (static_cast<int64_t>(effective) < *stackRes.bytes)
+      coreOp.emitWarning()
+          << "this core's callees need at least " << *stackRes.bytes
+          << " bytes of stack (not counting the core body's own frame), but "
+          << (coreOp.getStackSizeAttr() ? "stack_size is only "
+                                        : "the default stack_size is only ")
+          << effective << " bytes";
+  });
+  return result;
 }
 
 // Clone `src` and replace each matched CoreOp with a stub that carries
