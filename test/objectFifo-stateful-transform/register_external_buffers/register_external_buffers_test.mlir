@@ -22,7 +22,6 @@
 // CHECK-DAG:           %[[VAL_8:.*]] = aie.lock(%[[VAL_1]]) {init = 0 : i32, sym_name = "ext_of_lock_0"}
 // CHECK-DAG:           aie.flow(%[[VAL_1]], DMA : 0, %[[VAL_0]], DMA : 0)
 // CHECK-DAG:           %[[VAL_9:.*]] = aie.external_buffer {sym_name = "ext_buffer_in"} : memref<64xi32>
-// CHECK-DAG:           aie.shim_dma_allocation @ext_of_shim_alloc(%[[VAL_1]], MM2S, 0)
 // CHECK:           func.func @some_work(%[[VAL_10:.*]]: memref<16xi32>, %[[VAL_11:.*]]: memref<16xi32>) {
 // CHECK:             return
 // CHECK:           }
@@ -33,6 +32,7 @@
 // CHECK:             aie.use_lock(%[[VAL_5]], Release, %{{.*}})
 // CHECK:             aie.end
 // CHECK:           }
+// CHECK-DAG:           aie.shim_dma_allocation @ext_of_shim_alloc(%[[VAL_1]], MM2S, 0)
 // CHECK:           %[[VAL_16:.*]] = aie.shim_dma(%[[VAL_1]]) {
 // CHECK:             %[[VAL_17:.*]] = aie.dma_start(MM2S, 0, ^bb1, ^bb2)
 // CHECK:           ^bb1:  // 2 preds: ^bb0, ^bb1

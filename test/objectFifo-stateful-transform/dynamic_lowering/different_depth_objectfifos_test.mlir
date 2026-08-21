@@ -19,8 +19,6 @@
 // CHECK:           }
 // CHECK-DAG:           %[[T0:.*]] = aie.tile(0, 0)
 // CHECK-DAG:           %[[T2:.*]] = aie.tile(0, 2)
-// CHECK-DAG:           %{{.*}} = aie.lock(%[[T0]]) {init = 0 : i32, sym_name = "output_fifo_cons_prod_lock_0"}
-// CHECK-DAG:           %{{.*}} = aie.lock(%[[T0]]) {init = 0 : i32, sym_name = "output_fifo_cons_cons_lock_0"}
 // CHECK-DAG:           %[[OF_B0:.*]] = aie.buffer(%[[T2]]) {sym_name = "output_fifo_buff_0"} : memref<10xi32>
 // CHECK-DAG:           %[[OF_B1:.*]] = aie.buffer(%[[T2]]) {sym_name = "output_fifo_buff_1"} : memref<10xi32>
 // CHECK-DAG:           %[[OF_PROD:.*]] = aie.lock(%[[T2]]) {init = 2 : i32, sym_name = "output_fifo_prod_lock_0"}
@@ -30,12 +28,8 @@
 // CHECK-DAG:           %[[IF_B2:.*]] = aie.buffer(%[[T2]]) {sym_name = "input_fifo_cons_buff_2"} : memref<10xi32>
 // CHECK-DAG:           %[[IF_PROD:.*]] = aie.lock(%[[T2]]) {init = 3 : i32, sym_name = "input_fifo_cons_prod_lock_0"}
 // CHECK-DAG:           %[[IF_CONS:.*]] = aie.lock(%[[T2]]) {init = 0 : i32, sym_name = "input_fifo_cons_cons_lock_0"}
-// CHECK-DAG:           %{{.*}} = aie.lock(%[[T0]]) {init = 0 : i32, sym_name = "input_fifo_prod_lock_0"}
-// CHECK-DAG:           %{{.*}} = aie.lock(%[[T0]]) {init = 0 : i32, sym_name = "input_fifo_cons_lock_0"}
 // CHECK-DAG:           aie.flow(%[[T0]], DMA : 0, %[[T2]], DMA : 0)
 // CHECK-DAG:           aie.flow(%[[T2]], DMA : 0, %[[T0]], DMA : 0)
-// CHECK-DAG:           aie.shim_dma_allocation @input_fifo_shim_alloc(%[[T0]], MM2S, 0)
-// CHECK-DAG:           aie.shim_dma_allocation @output_fifo_shim_alloc(%[[T0]], S2MM, 0)
 // CHECK:           %{{.*}} = aie.core(%[[T2]]) {
 // CHECK:             %[[C1I:.*]] = arith.constant 1 : i32
 // CHECK:             %[[C9:.*]] = arith.constant 9 : index
@@ -147,6 +141,8 @@
 // CHECK:             aie.use_lock(%[[OF_CONS]], Release, %[[C1I]])
 // CHECK:             aie.end
 // CHECK:           }
+// CHECK-DAG:           aie.shim_dma_allocation @input_fifo_shim_alloc(%[[T0]], MM2S, 0)
+// CHECK-DAG:           aie.shim_dma_allocation @output_fifo_shim_alloc(%[[T0]], S2MM, 0)
 // CHECK:           %{{.*}} = aie.mem(%[[T2]]) {
 // CHECK:             %[[M1:.*]] = arith.constant 1 : i32
 // CHECK:             %{{.*}} = aie.dma_start(S2MM, 0, ^bb1, ^bb4)

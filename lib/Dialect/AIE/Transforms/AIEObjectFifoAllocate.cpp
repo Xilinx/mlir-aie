@@ -164,6 +164,11 @@ struct AIEObjectFifoAllocatePass
 
     // A pool that starts full, is never refilled and is read more than once
     // holds constants: its readers have nothing to wait for.
+    //
+    // FIXME: revisit whether the pass count belongs in that test. Nothing
+    // refills this pool however often it is read, so the locks look like dead
+    // weight either way; dropping the clause also frees every `init_values`
+    // fifo of its locks, which wants looking at on its own.
     if (filled == depth && filled > 0 && !filledPools.contains(pool) &&
         drainerIterations.lookup(pool) > 1) {
       return;

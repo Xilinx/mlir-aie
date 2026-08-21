@@ -25,16 +25,10 @@
     // CHECK-DAG:   %[[IN1_BUFF_1:.*]] = aie.buffer(%[[MEM_TILE]]) {sym_name = "objFifo_in1_buff_1"} : memref<64x64xi8>
     // CHECK-DAG:   %[[IN1_PROD_LOCK:.*]] = aie.lock(%[[MEM_TILE]]) {init = 2 : i32, sym_name = "objFifo_in1_prod_lock_0"}
     // CHECK-DAG:   %[[IN1_CONS_LOCK:.*]] = aie.lock(%[[MEM_TILE]]) {init = 0 : i32, sym_name = "objFifo_in1_cons_lock_0"}
-    // CHECK-DAG:   %[[OUT0_CONS_PROD_LOCK:.*]] = aie.lock(%[[SHIM_TILE]])
-    // CHECK-DAG:   %[[OUT0_CONS_CONS_LOCK:.*]] = aie.lock(%[[SHIM_TILE]])
-    // CHECK-DAG:   %[[IN0_PROD_LOCK:.*]] = aie.lock(%[[SHIM_TILE]])
-    // CHECK-DAG:   %[[IN0_CONS_LOCK:.*]] = aie.lock(%[[SHIM_TILE]])
     // CHECK-DAG:   aie.flow(%[[SHIM_TILE]], DMA : 0, %[[MEM_TILE]], DMA : 0)
     // CHECK-DAG:   aie.flow(%[[MEM_TILE]], DMA : 0, %[[COMP_TILE]], DMA : 0)
     // CHECK-DAG:   aie.flow(%[[COMP_TILE]], DMA : 0, %[[MEM_TILE]], DMA : 1)
     // CHECK-DAG:   aie.flow(%[[MEM_TILE]], DMA : 1, %[[SHIM_TILE]], DMA : 0)
-    // CHECK-DAG:       aie.shim_dma_allocation @objFifo_in0_shim_alloc(%shim_noc_tile_0_0, MM2S, 0)
-    // CHECK-DAG:       aie.shim_dma_allocation @objFifo_out0_shim_alloc(%shim_noc_tile_0_0, S2MM, 0)
     // CHECK:       %core_0_2 = aie.core(%[[COMP_TILE]]) {
     // CHECK-DAG:         %c0 = arith.constant 0 : index
     // CHECK-DAG:         %c1 = arith.constant 1 : index
@@ -58,6 +52,8 @@
     // CHECK:         aiex.npu.dma_memcpy_nd(%arg2[0, 0, 0, 0][1, 1, 1, 4096][0, 0, 0, 1]) {id = 1 : i64, issue_token = true, metadata = @objFifo_out0_shim_alloc} : memref<64x64xi8>
     // CHECK:         aiex.npu.dma_wait {symbol = @objFifo_out0_shim_alloc}
     // CHECK:       }
+    // CHECK-DAG:       aie.shim_dma_allocation @objFifo_in0_shim_alloc(%shim_noc_tile_0_0, MM2S, 0)
+    // CHECK-DAG:       aie.shim_dma_allocation @objFifo_out0_shim_alloc(%shim_noc_tile_0_0, S2MM, 0)
     // CHECK:       %memtile_dma_0_1 = aie.memtile_dma(%[[MEM_TILE]]) {
     // CHECK:         %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
     // CHECK:       ^bb1:

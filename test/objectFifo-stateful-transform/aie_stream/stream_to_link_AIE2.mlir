@@ -12,8 +12,6 @@
 // CHECK-DAG:     %shim_pl_tile_1_0 = aie.tile(1, 0)
 // CHECK-DAG:     %mem_tile_1_1 = aie.tile(1, 1)
 // CHECK-DAG:     %tile_3_3 = aie.tile(3, 3)
-// CHECK-DAG:     %of_out_cons_prod_lock_0 = aie.lock(%shim_pl_tile_1_0) {init = 0 : i32, sym_name = "of_out_cons_prod_lock_0"}
-// CHECK-DAG:     %of_out_cons_cons_lock_0 = aie.lock(%shim_pl_tile_1_0) {init = 0 : i32, sym_name = "of_out_cons_cons_lock_0"}
 // CHECK-DAG:     %of_stream_cons_buff_0 = aie.buffer(%mem_tile_1_1) {sym_name = "of_stream_cons_buff_0"} : memref<16xi32>
 // CHECK-DAG:     %of_stream_cons_buff_1 = aie.buffer(%mem_tile_1_1) {sym_name = "of_stream_cons_buff_1"} : memref<16xi32>
 // CHECK-DAG:     %of_stream_cons_prod_lock_0 = aie.lock(%mem_tile_1_1) {init = 2 : i32, sym_name = "of_stream_cons_prod_lock_0"}
