@@ -122,9 +122,6 @@ class Bd:
     # (pkt_type, pkt_id).  Pairs with a PacketFlow that uses
     # the same pkt_id so the routing fabric dispatches correctly.
     packet: tuple[int, int] | None = None
-    # The out-of-order id stamped into the packet header. Names the slot a
-    # receiving out-of-order S2MM channel places this BD's data into.
-    out_of_order_id: int | None = None
     # Explicit id (other ids are auto-assigned around it).
     bd_id: int | None = None
     # Strided access pattern, outermost dimension first; each entry is a
@@ -139,6 +136,9 @@ class Bd:
     # BD iteration state: one BD covers N sub-buffers over N executions instead
     # of an N-deep chain. See BdIteration. Absent = iteration disabled.
     iteration: BdIteration | None = None
+    # The out-of-order id stamped into the packet header. Names the slot a
+    # receiving out-of-order S2MM channel places this BD's data into.
+    out_of_order_id: int | None = None
 
 
 @dataclass
