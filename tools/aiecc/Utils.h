@@ -220,8 +220,14 @@ measureObjectDataSectionBytes(llvm::StringRef path) {
       continue;
     }
     if (nameOrErr->starts_with(".data") || nameOrErr->starts_with(".rodata") ||
-        nameOrErr->starts_with(".bss"))
+        nameOrErr->starts_with(".bss")) {
+      // The final link places these sections back to back in one region
+      // (see AIETargetLdScript.cpp), padding each to its own alignment; a
+      // plain sum of sizes would under-count that padding, the wrong
+      // direction for a reservation meant to be a safe upper bound.
+      total = llvm::alignTo(total, sec.getAlignment());
       total += sec.getSize();
+    }
   }
   return total;
 }

@@ -54,6 +54,7 @@ set(LIBS
   MLIRLLVMToLLVMIRTranslation
   MLIRBuiltinToLLVMIRTranslation
   AIE
+  AIEAnalysis
   AIETargets
   AIETransforms
   AIEX

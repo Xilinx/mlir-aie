@@ -8,7 +8,7 @@
 // PEANOWRAP2P_FLAGS (programming_examples/makefile-common) is used directly
 // by Makefile-driven examples (e.g. programming_examples/ml/magika/Makefile)
 // to compile kernel objects outside the IRON JIT flow. Confirm it carries
-// -mllvm -stack-size-section, so those kernel objects get the same stack
+// -fstack-size-section, so those kernel objects get the same stack
 // accounting the MLIR-generated core object already gets from aiecc.
 
 // REQUIRES: peano

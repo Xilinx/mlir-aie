@@ -14,10 +14,11 @@
 #define AIECC_IRTRANSFORMS_H
 
 #include "Graph.h"
-#include "StackSizeAnalysis.h"
 #include "Utils.h"
 
+#include "aie/Analysis/StackSizeAnalysis.h"
 #include "aie/Conversion/Passes.h"
+#include "aie/Dialect/AIE/IR/AIECoreMemory.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 #include "aie/Dialect/AIEVec/Transforms/Passes.h"
@@ -230,6 +231,25 @@ collectDeviceIRLinkFiles(xilinx::AIE::DeviceOp deviceOp,
   return result;
 }
 
+// Clone `src` and set `stack_size = defaultStackSize` on every CoreOp that
+// doesn't already carry `stack_size` explicitly -- a design-wide way to say
+// "every core gets N bytes" in place of the target's built-in default
+// (AIETargetModel::getDefaultCoreStackSize(), read by
+// CoreOp::getEffectiveStackSize() whenever the attribute is absent). An
+// explicit `stack_size` always wins and is never touched, the same rule as
+// reserved_data_size and every other check in this analysis.
+inline mlir::OwningOpRef<mlir::ModuleOp>
+populateDefaultStackSize(mlir::ModuleOp src, int64_t defaultStackSize) {
+  mlir::OwningOpRef<mlir::ModuleOp> cloned = src.clone();
+  mlir::Builder b(cloned->getContext());
+  cloned->walk([&](xilinx::AIE::CoreOp coreOp) {
+    if (!coreOp.getStackSizeAttr())
+      coreOp.setStackSizeAttr(
+          b.getI32IntegerAttr(static_cast<int32_t>(defaultStackSize)));
+  });
+  return cloned;
+}
+
 // Empirically, the sum of a core's link_files objects' .data/.rodata/.bss
 // undercounts the final linked ELF's usage by a small, roughly fixed amount
 // (~37 bytes observed on a real design) contributed by runtime objects the
@@ -238,6 +258,17 @@ collectDeviceIRLinkFiles(xilinx::AIE::DeviceOp deviceOp,
 // (over-reserve) without needing per-design tuning; revisit if a design shows
 // this isn't enough.
 constexpr int64_t kReservedDataMargin = 256;
+
+// Appends a comma-joined list of skipped-artifact paths to a diagnostic the
+// caller has already introduced (e.g. "...could not inspect N artifact(s): ").
+// Shared by populateReservedDataSize and checkStackSizeRequirements, whose
+// warnings differ in what they measured but agree on how they report what
+// they couldn't.
+inline void appendSkippedArtifacts(mlir::InFlightDiagnostic &diag,
+                                   llvm::ArrayRef<std::string> skipped) {
+  for (size_t i = 0; i < skipped.size(); ++i)
+    diag << (i ? ", " : "") << skipped[i];
+}
 
 // Clone `src` and populate `reserved_data_size` on every CoreOp that doesn't
 // already carry it explicitly (an explicit value, including 0, always wins --
@@ -286,8 +317,7 @@ populateReservedDataSize(mlir::ModuleOp src, llvm::StringRef inputFile,
                   << " bytes from link_files, but could not inspect "
                   << skipped.size() << " artifact(s) (archive, bitcode, or "
                   << "unreadable), so this estimate may be incomplete: ";
-      for (size_t i = 0; i < skipped.size(); ++i)
-        diag << (i ? ", " : "") << skipped[i];
+      appendSkippedArtifacts(diag, skipped);
     }
     mlir::Builder b(cloned->getContext());
     coreOp.setReservedDataSizeAttr(
@@ -309,15 +339,21 @@ populateReservedDataSize(mlir::ModuleOp src, llvm::StringRef inputFile,
 // therefore a proven problem worth a warning; a computed value that fits
 // proves nothing about the full picture, so nothing is reported.
 //
-// A cycle (recursion) or a symbol this analysis cannot measure (missing
-// `.stack_sizes`, an archive/bitcode link_files entry, a Chess-compiled
-// object, or a `link_merge_files` dependency -- out of reach the same way
-// reserved_data_size's own measurement cannot see it) fails the whole
+// The two ways this analysis cannot produce a number get different
+// severities, not the same one. A cycle (recursion) is fundamentally
+// unbounded -- there is no safe number to assume -- so it fails the whole
 // aiecc run for that core, naming the affected root and requiring
-// `stack_size_override` on its `external_func()`/func.func declaration:
-// unlike reserved_data_size, silently treating "unmeasurable" as "assume 0"
-// would be unsafe in the wrong direction (undercounting stack corrupts
-// memory rather than merely over-reserving data).
+// `stack_size_override` on its `external_func()`/func.func declaration. A
+// symbol this analysis merely cannot measure (missing `.stack_sizes`, an
+// archive/bitcode link_files entry, a Chess-compiled object, or a
+// `link_merge_files` dependency -- out of reach the same way
+// reserved_data_size's own measurement cannot see it) only warns and leaves
+// stack_size unvalidated for that core, the same "haven't measured this
+// artifact yet" severity reserved_data_size already gives an unmeasurable
+// input: this is overwhelmingly the common case during rollout (most
+// existing kernel objects predate this analysis, or are Chess-compiled), so
+// failing every such core outright would break essentially every
+// pre-existing design on first contact with a newer aiecc.
 inline mlir::LogicalResult checkStackSizeRequirements(mlir::ModuleOp module,
                                                       llvm::StringRef inputFile,
                                                       llvm::StringRef workDir) {
@@ -329,6 +365,17 @@ inline mlir::LogicalResult checkStackSizeRequirements(mlir::ModuleOp module,
             funcOp->getAttrOfType<mlir::IntegerAttr>("stack_size_override"))
       overrides[funcOp.getName()] = attr.getInt();
   });
+
+  // Pass 1's output (which functions a path *defines*) depends only on the
+  // object itself, so it is safe to cache across cores that happen to share a
+  // link_files entry -- a common kernel object linked into many cores would
+  // otherwise be reparsed once per core for no new information. Pass 2 (below)
+  // is deliberately NOT cached the same way: its output also depends on the
+  // calling core's own `knownFunctions` closure (a cross-object reference
+  // resolves differently depending on what the *whole* set of link_files
+  // defines), which can differ core to core, so a path-keyed cache could
+  // silently reuse a result computed against the wrong closure.
+  llvm::StringMap<llvm::StringSet<>> definedFunctionsByPath;
 
   mlir::LogicalResult result = mlir::success();
   module.walk([&](xilinx::AIE::CoreOp coreOp) {
@@ -355,8 +402,19 @@ inline mlir::LogicalResult checkStackSizeRequirements(mlir::ModuleOp module,
       resolved.push_back(resolveExternalPath(f.getValue(), inputFile, workDir));
 
     llvm::StringSet<> knownFunctions;
-    for (const std::string &path : resolved)
-      xilinx::aiecc::collectDefinedFunctionNames(path, knownFunctions);
+    for (const std::string &path : resolved) {
+      auto it = definedFunctionsByPath.find(path);
+      if (it == definedFunctionsByPath.end())
+        it = definedFunctionsByPath
+                 .try_emplace(path, [&] {
+                   llvm::StringSet<> names;
+                   xilinx::aiecc::collectDefinedFunctionNames(path, names);
+                   return names;
+                 }())
+                 .first;
+      for (const auto &name : it->second)
+        knownFunctions.insert(name.first());
+    }
 
     xilinx::aiecc::StackGraph graph;
     std::vector<std::string> skipped;
@@ -379,7 +437,8 @@ inline mlir::LogicalResult checkStackSizeRequirements(mlir::ModuleOp module,
             << "cannot determine this core's stack requirement: "
             << stackRes.error
             << "; set stack_size_override on the affected kernel's "
-               "external_func()/func.func declaration, or pass "
+               "external_func()/func.func declaration (Kernel(...)/"
+               "ExternalFunction(...) in IRON), or pass "
                "--no-auto-stack-size to skip this check entirely";
         result = mlir::failure();
       } else {
@@ -388,7 +447,8 @@ inline mlir::LogicalResult checkStackSizeRequirements(mlir::ModuleOp module,
             << stackRes.error
             << "; stack_size is not being validated for this core. Set "
                "stack_size_override on the affected kernel's "
-               "external_func()/func.func declaration to enable it";
+               "external_func()/func.func declaration (Kernel(...)/"
+               "ExternalFunction(...) in IRON) to enable it";
       }
       return;
     }
@@ -404,8 +464,7 @@ inline mlir::LogicalResult checkStackSizeRequirements(mlir::ModuleOp module,
                   << " link_files artifact(s) could not be inspected "
                      "(archive, bitcode, or unreadable), so this may be "
                      "incomplete: ";
-      for (size_t i = 0; i < skipped.size(); ++i)
-        diag << (i ? ", " : "") << skipped[i];
+      appendSkippedArtifacts(diag, skipped);
     }
 
     // Stamp the computed value on the CoreOp -- an aiecc-internal
@@ -416,7 +475,7 @@ inline mlir::LogicalResult checkStackSizeRequirements(mlir::ModuleOp module,
     // having to cross-reference this warning with a separate one further
     // along in the build log.
     mlir::Builder b(module.getContext());
-    coreOp->setAttr("aiecc.computed_stack_requirement",
+    coreOp->setAttr(xilinx::AIE::kComputedStackRequirementAttrName,
                     b.getI32IntegerAttr(static_cast<int32_t>(*stackRes.bytes)));
 
     uint32_t effective = coreOp.getEffectiveStackSize();

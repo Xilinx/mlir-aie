@@ -666,12 +666,19 @@ struct Engine {
   // which must be produced (and captured) without moving them out from under
   // the downstream consumers that reference them by path (e.g. core ELFs the
   // CDO step loads).
+  //
+  // `writtenOutputPaths`, if non-null, is filled with every path written for
+  // an `outputs` edge (not `buildAlso`/intermediates) -- e.g. so a caller
+  // whose own later check fails the build can remove the final artifacts a
+  // successful run just placed in outputDir, rather than leave them looking
+  // complete under an exit code the caller might not check.
   mlir::LogicalResult
   run(Graph &g, const std::vector<EdgeBase *> &outputs,
       const llvm::DenseMap<EdgeBase *, RestoredNode> &satisfied =
           llvm::DenseMap<EdgeBase *, RestoredNode>{},
       const DeserializeContext &deserCtx = {},
-      const std::vector<EdgeBase *> &buildAlso = {}) {
+      const std::vector<EdgeBase *> &buildAlso = {},
+      std::vector<std::string> *writtenOutputPaths = nullptr) {
     llvm::sys::fs::create_directories(opts.workDir);
     if (!opts.outputDir.empty())
       llvm::sys::fs::create_directories(opts.outputDir);
@@ -738,6 +745,11 @@ struct Engine {
       e->writeOutput();
       if (opts.verbose)
         llvm::errs() << "aiecc: wrote edge '" << displayName(e.get()) << "'\n";
+      if (writtenOutputPaths && isOutput(e.get())) {
+        auto paths = e->outputPaths();
+        writtenOutputPaths->insert(writtenOutputPaths->end(), paths.begin(),
+                                   paths.end());
+      }
     }
 
     // --profile: report each edge's execution time, slowest first, plus total.
