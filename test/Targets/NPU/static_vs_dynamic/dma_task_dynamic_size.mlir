@@ -8,10 +8,11 @@
 // Static-vs-dynamic equivalence for a genuinely runtime size on the DMA-task
 // path (aiex.dma_configure_task / aie.dma_bd), the sibling of
 // memcpy_nd_dynamic_size.mlir. This exercises the dma_task dynamic BD-word
-// encoder (rewriteSingleBDDynamic): a runtime dma_bd size lowers to a
-// zero-template writebd + write32 overrides, register-equivalent (not
-// byte-equal) to the static baked writebd. Compiled with -DDYN_STRUCTURAL so
-// the comparator replays both streams into register state.
+// encoder (rewriteSingleBDDynamic): a runtime dma_bd size lowers to one
+// blockwrite_values whose payload is assembled at TXN-build time,
+// register-equivalent (not byte-equal) to the static baked writebd. Compiled
+// with -DDYN_STRUCTURAL so the comparator replays both streams into register
+// state.
 //
 // @task_static bakes the d2 size = 4; @task_dynamic takes it as %n.
 //

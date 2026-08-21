@@ -7,9 +7,10 @@
 //
 // Static-vs-dynamic equivalence for a RUNTIME bd_id drawn from the dynamic
 // free-list pool. @pool_dynamic draws its BD id at runtime via
-// dma_bd_pool_pop (aie-lower-dynamic-bd-pool), so the whole BD is emitted as
-// write32s at bdBase + bd_id*0x20 rather than a constant-address blockwrite.
-// @pool_static bakes the same descriptor at a pinned bd_id = 0.
+// dma_bd_pool_pop (aie-lower-dynamic-bd-pool), so the BD's register block is
+// written by one blockwrite_values at the runtime base bdBase + bd_id*0x20
+// rather than a constant-address blockwrite. @pool_static bakes the same
+// descriptor at a pinned bd_id = 0.
 //
 // A fresh pool pops id 0 first, so the runtime id equals the pinned id and the
 // two program the SAME final BD registers -- proven by replaying both streams

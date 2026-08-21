@@ -246,39 +246,41 @@ mlir::Value getBdRegisterBase(mlir::OpBuilder &builder, mlir::Location loc,
                               int tileCol, int tileRow,
                               mlir::OpFoldResult bdId);
 
-// Emit the per-word `npu.write32` overrides that carry a shim-NOC BD's runtime
-// sizes/strides, on top of a zero-template blockwrite whose size/stride words
-// were left at 0. Shared by the dma_memcpy_nd and dma_task dynamic lowering
-// paths, which converge on the identical shim BD-word layout (words 0/3/4/5/6);
-// only the descriptor template (locks, next_bd, packet) and the queue push
-// differ, and those stay with each caller.
+// Always-constant BD fields (locks, packet, next_bd), gathered by the caller
+// from the DMA structure and baked into the template words.
+struct BdTemplateFields {
+  uint32_t use_next_bd = 0, next_bd_id = 0;
+  int32_t enable_packet = 0, packet_id = 0, packet_type = 0;
+  int32_t lock_rel_val = 0, lock_rel_id = 0;
+  int32_t lock_acq_enable = 0, lock_acq_val = 0, lock_acq_id = 0;
+};
+
+// Build a shim-NOC BD's full 8-word register block as i32 SSA values, for the
+// dynamic lowering shared by dma_memcpy_nd and dma_task. Every word is written
+// (unset slots are zero), so a BD slot reused from the runtime pool cannot
+// inherit a stale field.
 //
 // `mixedSizes`/`mixedStrides` are outermost-first (d3..d0), matching
 // NpuDmaMemcpyNdOp::getMixedSizes and AIE::DMABDOp::getMixedSizes.
-// `bufLenOverride`, if non-null, is written verbatim into buffer_length
-// (word 0) -- dma_task passes its runtime `len`; dma_memcpy_nd passes null, so
-// buffer_length is computed as the d0*d1*d2 hardware-unit size-product. Emits
-// `npu.assert_bd_field` guards for runtime values landing in narrow fields
-// (d0/d1 wrap 10-bit in ND mode, iteration wrap 6-bit always). The op verifier
-// is expected to have enforced the supported scope (shim NOC, innermost stride
-// == 1) already.
+// `bufLenOverride`, if non-null, becomes buffer_length (word 0) -- dma_task
+// passes its runtime `len`; dma_memcpy_nd passes null, so buffer_length is the
+// d0*d1*d2 hardware-unit size-product. Emits `npu.assert_bd_field` /
+// `npu.assert_bd_divisible` guards for runtime values that a constant would
+// have had verified at compile time. `repeatCountOut` receives the outer-dim
+// hardware repeat for the caller's queue push.
 //
-// On success `repeatCountOut` receives the hardware iteration/repeat value for
-// the outer (d3) dimension, which the caller feeds to its queue push (this is
-// the biased hw value, matching the static path's `repeat_count = sizes[3]`).
-//
-// `bdId` may be a compile-time constant (the static/pinned case: the override
-// addresses fold to literals, byte-identical to before) or a runtime SSA value
-// (the dynamic free-list pool case: the BD register base becomes
-// `getDmaBdAddress(col,row,0) + bdId*0x20` -- linear in bdId -- and each
-// override address is emitted as arith over that base).
-mlir::LogicalResult emitDynamicShimBdWordOverrides(
-    mlir::OpBuilder &builder, mlir::Location loc,
-    const xilinx::AIE::AIETargetModel &targetModel, int tileCol, int tileRow,
-    mlir::OpFoldResult bdId, llvm::ArrayRef<mlir::OpFoldResult> mixedSizes,
-    llvm::ArrayRef<mlir::OpFoldResult> mixedStrides, uint64_t elemWidth,
-    uint32_t burstLength, uint32_t axcache, mlir::Value bufLenOverride,
-    mlir::Value &repeatCountOut);
+// The words do not depend on the BD id -- only the register ADDRESS does, and
+// that is the caller's `getBdRegisterBase` + `npu.blockwrite_values` -- so one
+// routine serves both a pinned bd_id and one drawn from the runtime pool.
+mlir::LogicalResult
+buildShimBdWords(mlir::OpBuilder &builder, mlir::Location loc,
+                 const xilinx::AIE::AIETargetModel &targetModel,
+                 const BdTemplateFields &fields,
+                 llvm::ArrayRef<mlir::OpFoldResult> mixedSizes,
+                 llvm::ArrayRef<mlir::OpFoldResult> mixedStrides,
+                 uint64_t elemWidth, uint32_t burstLength, uint32_t axcache,
+                 mlir::Value bufLenOverride, mlir::Value &repeatCountOut,
+                 llvm::SmallVectorImpl<mlir::Value> &wordsOut);
 
 } // namespace xilinx::AIEX
 

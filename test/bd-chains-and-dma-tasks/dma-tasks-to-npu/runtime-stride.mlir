@@ -11,8 +11,8 @@
 // dma_memcpy_nd path.
 
 // CHECK-LABEL: aie.runtime_sequence
-// CHECK: aiex.npu.writebd
 // CHECK: aiex.npu.assert_bd_divisible(%{{.*}}) {allow_unit, divisor = 4 : i32}
+// CHECK: aiex.npu.blockwrite_values
 
 module {
   aie.device(npu1) {
