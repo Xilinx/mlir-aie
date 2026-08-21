@@ -60,8 +60,10 @@ module @memtile_exhaustion {
     %mem4 = aie.logical_tile<MemTile>(?, ?)
     %mem5 = aie.logical_tile<MemTile>(?, ?)
     %mem6 = aie.logical_tile<MemTile>(?, ?)
-    // CHECK: error: no MemTile has sufficient DMA capacity for {{[0-9]+ input/[0-9]+ output channels}}
-    // CHECK: note: to fix, pin this MemTile
+    // Global exhaustion: npu1_1col has exactly one MemTile, and it is
+    // already fully booked, so no column pin could ever help.
+    // CHECK: error: no MemTile on the device has {{[0-9]+ input/[0-9]+ output}} DMA channel(s) free: all 1 MemTile(s) are at {{[0-9]+/[0-9]+}} input, {{[0-9]+/[0-9]+}} output channels used
+    // CHECK: note: this is the device's total MemTile DMA budget
     %mem7 = aie.logical_tile<MemTile>(?, ?)
 
     aie.objectfifo @of1 (%mem1, {%core1}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
@@ -144,8 +146,10 @@ module @shimnoc_exhaustion {
     // First two shims merge, using 2 output channels
     %shim1 = aie.logical_tile<ShimNOCTile>(?, ?)
     %shim2 = aie.logical_tile<ShimNOCTile>(?, ?)
-    // CHECK: error: no ShimNOCTile has sufficient DMA capacity for {{[0-9]+ input/[0-9]+ output channels}}
-    // CHECK: note: to fix, pin this ShimNOCTile
+    // Global exhaustion: npu1_1col has exactly one ShimNOCTile, and it is
+    // already fully booked, so no column pin could ever help.
+    // CHECK: error: no ShimNOCTile on the device has {{[0-9]+ input/[0-9]+ output}} DMA channel(s) free: all 1 ShimNOCTile(s) are at {{[0-9]+/[0-9]+}} input, {{[0-9]+/[0-9]+}} output channels used
+    // CHECK: note: this is the device's total ShimNOCTile DMA budget
     %shim3 = aie.logical_tile<ShimNOCTile>(?, ?)
 
     aie.objectfifo @of1 (%shim1, {%core1}, 2 : i32) : !aie.objectfifo<memref<16xi32>>

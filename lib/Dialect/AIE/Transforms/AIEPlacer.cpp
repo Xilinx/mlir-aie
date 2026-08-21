@@ -1253,19 +1253,38 @@ LogicalResult SequentialPlacer::placeNonCoreTileByCentroid(
                                         numInputChannels, numOutputChannels,
                                         logicalTile.getTileType());
   if (!maybeTile) {
-    StringRef tileTypeName = stringifyAIETileType(logicalTile.getTileType());
+    AIETileType requestedType = logicalTile.getTileType();
+    StringRef tileTypeName = stringifyAIETileType(requestedType);
     auto diag = logicalTile.emitError();
-    diag << "no " << tileTypeName << " has sufficient DMA capacity for "
-         << numInputChannels << " input/" << numOutputChannels
-         << " output channels ";
-    if (colConstraint)
-      diag << "at column " << *colConstraint;
-    else
-      diag << "near centroid column " << centroidCol;
-    diag.attachNote() << "to fix, pin this " << tileTypeName
-                      << " to a column with available DMA budget, or rebalance "
-                         "compute peers so the centroid lands on a less-busy "
-                         "column";
+    CapacityDiagnosis diagnosis = diagnoseCapacityExhaustion(
+        requestedType, numInputChannels, numOutputChannels);
+    if (!diagnosis.capacityExistsSomewhere) {
+      diag << "no " << tileTypeName << " on the device has " << numInputChannels
+           << " input/" << numOutputChannels
+           << " output DMA channel(s) free: all " << diagnosis.tilesOfType
+           << " " << tileTypeName << "(s) are at " << diagnosis.inUsed << "/"
+           << diagnosis.inMax << " input, " << diagnosis.outUsed << "/"
+           << diagnosis.outMax << " output channels used";
+      diag.attachNote() << "this is the device's total " << tileTypeName
+                        << " DMA budget, not a placement choice -- no column "
+                           "has spare capacity to pin to; fan traffic "
+                           "through a MemTile, or reduce the number of "
+                           "DMA-attached ObjectFIFOs feeding this tile";
+    } else {
+      diag << "no " << tileTypeName << " has sufficient DMA capacity for "
+           << numInputChannels << " input/" << numOutputChannels
+           << " output channels ";
+      if (colConstraint)
+        diag << "at column " << *colConstraint;
+      else
+        diag << "near centroid column " << centroidCol;
+      diag.attachNote() << "every " << tileTypeName
+                        << " with spare DMA capacity already hosts a "
+                           "different logical tile (merge-logical-tiles is "
+                           "off); enable merging, or pin logical tiles "
+                           "one-per-column if fewer of them than physical "
+                        << tileTypeName << "s remain unclaimed";
+    }
     return failure();
   }
 
@@ -1321,6 +1340,34 @@ std::optional<TileID> SequentialPlacer::findTileWithCapacity(
   }
 
   return best;
+}
+
+SequentialPlacer::CapacityDiagnosis
+SequentialPlacer::diagnoseCapacityExhaustion(AIETileType requestedType,
+                                             int requiredInputChannels,
+                                             int requiredOutputChannels) {
+  // Walk the device directly rather than `availability.nonCompTiles`: a
+  // fully-exhausted tile is meant to stay enumerable here even if a future
+  // fix makes `updateChannelUsage`'s prune (see its `removeTile` call)
+  // actually fire, which today it structurally cannot.
+  CapacityDiagnosis diagnosis;
+  for (int col = 0, numCols = targetModel->columns(); col < numCols; ++col) {
+    for (int row = 0, numRows = targetModel->rows(); row < numRows; ++row) {
+      if (targetModel->getTileType(col, row) != requestedType)
+        continue;
+      TileID tile{col, row};
+      ++diagnosis.tilesOfType;
+      auto [maxIn, maxOut] = getDMACapacity(*targetModel, tile);
+      diagnosis.inMax += maxIn;
+      diagnosis.outMax += maxOut;
+      diagnosis.inUsed += availability.inputChannelsUsed.lookup(tile);
+      diagnosis.outUsed += availability.outputChannelsUsed.lookup(tile);
+      if (hasAvailableChannels(tile, requiredInputChannels,
+                               requiredOutputChannels))
+        diagnosis.capacityExistsSomewhere = true;
+    }
+  }
+  return diagnosis;
 }
 
 void SequentialPlacer::updateChannelUsage(TileID tile, DmaDir direction,
