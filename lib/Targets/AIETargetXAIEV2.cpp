@@ -536,13 +536,15 @@ xilinx::AIE::AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output,
   for (auto memOp : targetOp.getOps<MemOp>()) {
     DenseMap<Block *, int> blockMap;
 
-    // Assign each block a BD number
+    // Use bd_ids, if specified.
     int bdNum = 0;
     for (auto &block : memOp.getBody()) {
-      if (!block.getOps<DMABDOp>().empty()) {
-        blockMap[&block] = bdNum;
-        bdNum++;
-      }
+      auto bdOps = block.getOps<DMABDOp>();
+      if (bdOps.empty())
+        continue;
+      std::optional<int32_t> id = (*bdOps.begin()).getBdId();
+      blockMap[&block] = id.has_value() ? *id : bdNum;
+      bdNum++;
     }
     auto result = generateDMAConfig(memOp, output, targetModel, blockMap);
     if (result.failed())
@@ -569,14 +571,17 @@ xilinx::AIE::AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output,
       }
     }
 
-    // Assign each block a BD number
+    // Assign each block a BD number, if unassigned
     int evenBdNum = 0;
     int oddBdNum = 24;
     for (auto &block : memOp.getBody()) {
-      if (block.getOps<DMABDOp>().empty())
+      auto bdOps = block.getOps<DMABDOp>();
+      if (bdOps.empty())
         continue;
       assert(channelMap.count(&block));
-      if (channelMap[&block] & 1)
+      if (std::optional<int32_t> id = (*bdOps.begin()).getBdId())
+        blockMap[&block] = *id;
+      else if (channelMap[&block] & 1)
         blockMap[&block] = oddBdNum++;
       else
         blockMap[&block] = evenBdNum++;
@@ -616,29 +621,30 @@ xilinx::AIE::AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output,
 
     DenseMap<Block *, int> blockMap;
     {
-      // Assign each block a BD number
+      // Assign each block a BD number, if unassigned
       int bdNum = 0;
       for (auto &block : op.getBody()) {
-        if (!block.getOps<DMABDOp>().empty()) {
-          blockMap[&block] = bdNum;
-          uint64_t offset = 0;
-          for (auto op : block.getOps<DMABDOp>()) {
-            offset = op.getOffsetInBytes();
-            auto buffer =
-                cast<ExternalBufferOp>(op.getBuffer().getDefiningOp());
+        auto bdOps = block.getOps<DMABDOp>();
+        if (bdOps.empty())
+          continue;
+        std::optional<int32_t> id = (*bdOps.begin()).getBdId();
+        int slot = id.has_value() ? *id : bdNum;
+        blockMap[&block] = slot;
+        uint64_t offset = 0;
+        for (auto op : block.getOps<DMABDOp>()) {
+          offset = op.getOffsetInBytes();
+          auto buffer = cast<ExternalBufferOp>(op.getBuffer().getDefiningOp());
 
-            output << "u64 mlir_aie_external_get_addr_myBuffer_" << col << row
-                   << "_" << bdNum << "(void) {\n"
-                   << "    assert(_mlir_aie_external_set_"
-                   << buffer.name().getValue() << ");\n"
-                   << "    return _mlir_aie_external_"
-                   << buffer.name().getValue() << " + "
-                   << llvm::utohexstr(offset) << ";\n"
-                   << "}\n";
-          }
-
-          bdNum++;
+          output << "u64 mlir_aie_external_get_addr_myBuffer_" << col << row
+                 << "_" << slot << "(void) {\n"
+                 << "    assert(_mlir_aie_external_set_"
+                 << buffer.name().getValue() << ");\n"
+                 << "    return _mlir_aie_external_" << buffer.name().getValue()
+                 << " + " << llvm::utohexstr(offset) << ";\n"
+                 << "}\n";
         }
+
+        bdNum++;
       }
     }
 
