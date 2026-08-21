@@ -207,19 +207,13 @@ struct AIEObjectFifoSplitPass
                                             ref.pool.getSymName(), segments);
   }
 
-  ObjectFifoDmaEndpointOp
-  createDmaEndpoint(Location loc, StringRef name, Value tile, PoolRef ref,
-                    ObjectFifoRole role, ObjectFifoCreateOp from,
-                    BDDimLayoutArrayAttr dims, std::optional<int> channelIndex,
-                    std::optional<int> repeatCount) {
-    // Only a MemTile's DMA runs its chain a fixed number of times, so the
-    // count is recorded only where it is honored.
-    std::optional<int32_t> iterCount;
-    if (auto tileLike = dyn_cast<TileLike>(tile.getDefiningOp())) {
-      if (tileLike.isMemTile()) {
-        iterCount = from.getIterCount();
-      }
-    }
+  ObjectFifoDmaEndpointOp createDmaEndpoint(Location loc, StringRef name,
+                                            Value tile, PoolRef ref,
+                                            ObjectFifoRole role,
+                                            ObjectFifoCreateOp from,
+                                            BDDimLayoutArrayAttr dims,
+                                            std::optional<int> channelIndex) {
+    std::optional<int32_t> iterCount = from.getIterCount();
     DenseI32ArrayAttr segments;
     if (ref.pool.getSegmentAttrs().size() > 1) {
       segments = builder.getDenseI32ArrayAttr(ref.segments);
@@ -250,9 +244,6 @@ struct AIEObjectFifoSplitPass
         dimensions, padding,
         from.getPadValue() ? builder.getI32IntegerAttr(from.getPadValue())
                            : IntegerAttr(),
-        from.getRepeatCount() && repeatCount
-            ? builder.getI32IntegerAttr(*repeatCount)
-            : IntegerAttr(),
         iterCount ? builder.getI32IntegerAttr(*iterCount) : IntegerAttr(),
         /*packet=*/PacketInfoAttr(),
         builder.getStringAttr(from.name().getValue()));
@@ -666,10 +657,9 @@ void AIEObjectFifoSplitPass::runOnOperation() {
 
     std::string prodDmaName = (fifoName + "_prod_dma").str();
     if (prodRef) {
-      createDmaEndpoint(loc, prodDmaName, prodTile, *prodRef,
-                        ObjectFifoRole::Drain, fifo,
-                        fifo.getDimensionsToStreamAttr(),
-                        fifo.getProdDmaChannel(), fifo.getRepeatCount());
+      createDmaEndpoint(
+          loc, prodDmaName, prodTile, *prodRef, ObjectFifoRole::Drain, fifo,
+          fifo.getDimensionsToStreamAttr(), fifo.getProdDmaChannel());
     } else {
       createDanglingEndpoint(
           loc, prodDmaName, prodTile, DMAChannelDir::MM2S,
@@ -737,7 +727,7 @@ void AIEObjectFifoSplitPass::runOnOperation() {
                           ObjectFifoRole::Fill, fifo,
                           consumerDims.empty() ? BDDimLayoutArrayAttr()
                                                : consumerDims[consumerIndex],
-                          pinned, /*repeatCount=*/std::nullopt);
+                          pinned);
       } else {
         createDanglingEndpoint(loc, consDmaName, consumerTile,
                                DMAChannelDir::S2MM,

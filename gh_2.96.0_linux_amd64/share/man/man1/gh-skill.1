@@ -1,0 +1,90 @@
+.nh
+.TH "GH-SKILL" "1" "Jul 2026" "GitHub CLI 2.96.0" "GitHub CLI manual"
+
+.SH NAME
+gh-skill - Install and manage agent skills (preview)
+
+
+.SH SYNOPSIS
+\fBgh skill <command> [flags]\fR
+
+
+.SH DESCRIPTION
+Install and manage agent skills from GitHub repositories.
+
+.PP
+Working with agent skills in the GitHub CLI is in preview and
+subject to change without notice.
+
+
+.SH AVAILABLE COMMANDS
+.TP
+\fBgh-skill-install(1)\fR
+Install agent skills from a GitHub repository (preview)
+
+.TP
+\fBgh-skill-list(1)\fR
+List installed skills (preview)
+
+.TP
+\fBgh-skill-preview(1)\fR
+Preview a skill from a GitHub repository (preview)
+
+.TP
+\fBgh-skill-publish(1)\fR
+Validate and publish skills to a GitHub repository (preview)
+
+.TP
+\fBgh-skill-search(1)\fR
+Search for skills across GitHub (preview)
+
+.TP
+\fBgh-skill-update(1)\fR
+Update installed skills to their latest versions (preview)
+
+
+.SH ALIASES
+gh skills
+
+
+.SH EXIT CODES
+0: Successful execution
+
+.PP
+1: Error
+
+.PP
+2: Command canceled
+
+.PP
+4: Authentication required
+
+.PP
+NOTE: Specific commands may have additional exit codes. Refer to the command's help for more information.
+
+
+.SH EXAMPLE
+.EX
+# Search for skills
+$ gh skill search terraform
+
+# Install a skill
+$ gh skill install github/awesome-copilot documentation-writer
+
+# List installed skills
+$ gh skill list
+
+# Preview a skill before installing
+$ gh skill preview github/awesome-copilot documentation-writer
+
+# Update all installed skills
+$ gh skill update --all
+
+# Validate skills for publishing
+$ gh skill publish --dry-run
+
+.EE
+
+
+.SH SEE ALSO
+\fBgh(1)\fR

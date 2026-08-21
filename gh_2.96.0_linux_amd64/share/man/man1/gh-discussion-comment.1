@@ -1,0 +1,99 @@
+.nh
+.TH "GH-DISCUSSION-COMMENT" "1" "Jul 2026" "GitHub CLI 2.96.0" "GitHub CLI manual"
+
+.SH NAME
+gh-discussion-comment - Add, edit, or delete a comment or a reply on a discussion (preview)
+
+
+.SH SYNOPSIS
+\fBgh discussion comment {<number> | <discussion-url> | <comment-id> | <comment-url>} [flags]\fR
+
+
+.SH DESCRIPTION
+Manage comments or replies on a GitHub discussion.
+
+.PP
+The positional argument can be a discussion number or URL (to add a new
+top-level comment), or a comment node ID or comment URL (to reply, edit,
+or delete that comment).
+
+.PP
+When the argument is a discussion number or URL, the default action is to
+add a new top-level comment. Likewise, if the argument is a comment URL or ID
+the default action is to add a reply.
+
+.PP
+Use \fB--edit\fR to update the comment/reply body, or \fB--delete\fR to remove it.
+
+.PP
+The body can be supplied via \fB--body\fR, \fB--body-file\fR, or interactively
+through an editor.
+
+
+.SH OPTIONS
+.TP
+\fB-b\fR, \fB--body\fR \fB<string>\fR
+Comment body text
+
+.TP
+\fB-F\fR, \fB--body-file\fR \fB<string>\fR
+Read body text from file (use "-" to read from standard input)
+
+.TP
+\fB--delete\fR
+Delete the specified comment
+
+.TP
+\fB--edit\fR
+Edit the specified comment
+
+.TP
+\fB-R\fR, \fB--repo\fR \fB<[HOST/]OWNER/REPO>\fR
+Select another repository using the [HOST/]OWNER/REPO format
+
+.TP
+\fB--yes\fR
+Skip the delete confirmation prompt
+
+
+.SH EXIT CODES
+0: Successful execution
+
+.PP
+1: Error
+
+.PP
+2: Command canceled
+
+.PP
+4: Authentication required
+
+.PP
+NOTE: Specific commands may have additional exit codes. Refer to the command's help for more information.
+
+
+.SH EXAMPLE
+.EX
+# Add a top-level comment to discussion #123
+$ gh discussion comment 123 --body 'Thanks'
+
+# Reply to a comment using its URL
+$ gh discussion comment 'https://github.com/OWNER/REPO/discussions/123#discussioncomment-456' --body 'Thanks'
+
+# Reply to a comment using its node ID
+$ gh discussion comment DC_abc123 --body 'Thanks'
+
+# Edit a comment/reply
+$ gh discussion comment 'https://github.com/OWNER/REPO/discussions/123#discussioncomment-456' --edit --body 'Thanks'
+
+# Delete a comment/reply
+$ gh discussion comment 'https://github.com/OWNER/REPO/discussions/123#discussioncomment-456' --delete
+
+# Delete a comment/reply without confirmation prompt
+$ gh discussion comment 'https://github.com/OWNER/REPO/discussions/123#discussioncomment-456' --delete --yes
+
+.EE
+
+
+.SH SEE ALSO
+\fBgh-discussion(1)\fR

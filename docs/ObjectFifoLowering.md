@@ -4,10 +4,10 @@
 # ObjectFifo Lowering
 
 An `aie.objectfifo` enables data movement at object-size granularity in a
-first-in-first-out manner, either between two tiles (1:1), as a broadcast (1:N),
-or, using `aie.objectfifo.link`, as join and distribute patterns (N:M). The
+first-in-first-out manner, either between two tiles, as a broadcast,
+or, using `aie.objectfifo.link`, as join and distribute patterns. The
 ObjectFifo provides buffering, and users may acquire and hold multiple objects
-at a time (e.g. sliding windows). The current implementation provides
+at a time (e.g., sliding windows). The current implementation provides
 buffering using a rotating set of `aie.buffer`s, synchronization between
 producers and consumers using `aie.lock`s, routing using `aie.flow` or
 `aie.packet_flow`, movement of data either using shared memory or DMA programs
@@ -21,10 +21,10 @@ intermediate levels useful.
 
 | Operation | What it holds |
 | --- | --- |
-| `aie.objectfifo` | The whole data movement: element type, depth, producer tile and consumer tiles. |
-| `aie.objectfifo.link` | Two or more fifos meeting on one tile, optionally with the offsets that make it a join or a distribute. |
+| `aie.objectfifo` | A data movement pipe between producer and consumer tiles, with the capacity to buffer `depth` objects of the given element type. |
+| `aie.objectfifo.link` | A connection between two or more fifos meeting on one tile; multiple input or output fifos describe a join or distribute, respectively. |
 | `aie.objectfifo.acquire` / `.release` | A core taking objects out of a fifo and giving them back. |
-| `aie.objectfifo.allocate` | A delegate tile whose memory holds the objects. |
+| `aie.objectfifo.allocate` | An (optional) manual allocation indicating on which tile the objects of the fifo should be held. |
 | `aie.objectfifo.register_external_buffers` | DDR buffers backing a shim end. |
 
 ## Operations after splitting
@@ -33,9 +33,9 @@ intermediate levels useful.
 
 | Operation | What it holds |
 | --- | --- |
-| `aie.objectfifo.pool` | A set of buffers and the contract for accessing them: the segments they may be accessed in, and the locks to acquire and release. |
-| `aie.objectfifo.core_endpoint` | What a core needs to fill or drain the next object in a pool. |
-| `aie.objectfifo.dma_endpoint` | The same for a DMA channel. |
+| `aie.objectfifo.pool` | A set of buffers and the rules for accessing them: how the buffers are sliced into segments, and which locks users must acquire/release to access the segments. |
+| `aie.objectfifo.core_endpoint` | Information the `acquire` and `release` operations on a core need to fill or drain the next object in a pool. |
+| `aie.objectfifo.dma_endpoint` | A DMA channel and a reference to a pool; lowers to a DMA program that fills or drains the buffer pool from/onto the given channel. |
 | `aie.objectfifo.dangling_endpoint` | One end of a stream this compiler does not program: a shim the host runtime drives, a PLIO boundary, or a core's raw stream port. |
 | `aie.objectfifo.flow` | A circuit- or packet-switched connection from one draining endpoint to the filling endpoints it feeds. |
 
@@ -61,38 +61,39 @@ The tile is where the buffers live and `depth` is how many of them rotate.
 **Buffers and segments are different axes.** Buffers are the rotation axis:
 `depth` objects taking turns. Segments partition a *single* object, and every
 buffer carries every segment. Segments are listed in increasing offset order,
-do not overlap, and together cover the element type exactly.
+do not overlap, and together cover the entire buffer.
 
 An ordinary pool has one segment spanning the whole object. A joined or
 distributed pool has one per participant.
 
-On devices with binary locks a pool carries `locks`, one per buffer, and has a
-single implicit segment.
+On devices with binary locks (AIE1) a pool carries `locks`, one per buffer, and
+has a single implicit segment. Join/distribute is not supported on AIE1.
 
 ### The access contract
 
-A segment's `produceLock` is taken by whoever fills it and its `consumeLock` by
-whoever drains it:
+On AIE2 (semaphore locks), users of a pool are expected to acquire locks as
+follows before reading from or writing to buffers in the pool:
 
 - filling actor: acquire `produceLock`, release `consumeLock`
 - draining actor: acquire `consumeLock`, release `produceLock`
 
-With semaphore locks the value counts how many objects are claimed. With binary
-locks one lock per buffer serves both directions, and the direction is carried
-in the lock value.
+With semaphore locks the value counts how many objects are claimed.
+
+AIE1 uses binary locks, which are supplied in the `locks` attribute. Producers
+and consumers toggle the same lock with opposite values (0/1).
 
 ### Endpoints
 
 An endpoint is an actor: something that fills or drains a pool.
 
+Endpoints lower to code (DMA program or core code) that accesses the buffers
+in the referenced pool in sequence, following its expected synchronization
+protocol (lock acquire/releases).
+
 ```mlir
 aie.objectfifo.core_endpoint @c(%tile) fills  @P
 aie.objectfifo.dma_endpoint  @d(%tile) drains @P {channelIndex = 0 : i32}
 ```
-
-`fills` and `drains` say what the actor does to the pool's buffers. The
-endpoint's own tile is where the actor is, which for shared memory differs from
-the pool's tile.
 
 **Every segment has exactly one filler and exactly one drainer.** A pool with
 several fillers is a join; one with several drainers is a distribute.
@@ -105,6 +106,7 @@ on a single-segment pool.
 
 ```mlir
 aie.objectfifo.dma_endpoint @d(%tile) fills @P {segments = array<i32: 0, 1>}
+// Results in a DMA program that accesses the first two segments of buffers in @P.
 ```
 
 #### Per-segment transforms
@@ -119,7 +121,7 @@ aie.objectfifo.dma_endpoint @d(%tile) drains @P {
   segments   = array<i32: 0, 1>,
   dimensions = #aie<bd_dim_layout_array_array[
     [<size = 4, stride = 4>, <size = 4, stride = 1>],   // segment 0
-    []]>                                               // segment 1, linear
+    []]>                                                // segment 1, linear
 }
 ```
 
@@ -127,20 +129,20 @@ Padding applies on a draining endpoint, where data goes out on the stream.
 
 #### Dangling endpoints
 
-An end with no pool behind it is a `dangling_endpoint`. It holds a tile, a
-direction and a port, which is what a flow needs to reach it:
+The `dangling_endpoint` is an atypical endpoint that does not name a pool:
+It is an escape hatch for endpoints that do not want to use the pool abstraction,
+as a stand-in for the other end of a `objectfifo.flow`. It names only a DMA
+channel on a tile, which a user can then program in other ways.
 
 ```mlir
 aie.objectfifo.dangling_endpoint @in(%shim) MM2S DMA  {fifoName = "of_in"}
 aie.objectfifo.dangling_endpoint @s(%tile)  MM2S Core {channelIndex = 0 : i32}
 ```
 
-A shim whose transfers the runtime sequence issues has nothing to pool, since
-the addresses arrive at dispatch; it lowers to an `aie.shim_dma_allocation`
-recording the tile, direction and channel. A shim that registers external
-buffers has a pool and is an ordinary `dma_endpoint` with a BD chain.
-
 ### Flows
+
+Flows name two endpoints and lower to a circuit- or packet-switched route
+between them.
 
 ```mlir
 aie.objectfifo.flow from @d1 to [@d2, @d3]
@@ -160,9 +162,9 @@ aie.objectfifo.flow from @d1 to [@d2] {packet, packet_id = 7 : i8}
 At the frontend this is chosen per fifo, with the same two attributes on
 `aie.objectfifo`, or `ObjectFifo(..., packet=True, packet_id=7)` in IRON.
 
-## Shapes
+## Examples
 
-### Through DMAs
+### Core-to-Core FIFO via DMAs
 
 ```mlir
 aie.objectfifo.pool @producer_pool(%t02) ...
@@ -178,7 +180,7 @@ aie.objectfifo.flow from @prod_dma to [@cons_dma]
 
 Two pools, one per tile, joined by a stream.
 
-### Shared memory
+### Core-to-Core FIFO via Shared Memory
 
 A fifo used within one core, or across neighboring cores that share memory, is
 one pool with two core endpoints:
@@ -190,7 +192,7 @@ aie.objectfifo.core_endpoint @prod(%t02) fills  @smem
 aie.objectfifo.core_endpoint @cons(%t03) drains @smem
 ```
 
-### Passthrough
+### Buffered Pass-through via DMA
 
 A one-to-one `aie.objectfifo.link` is a single pool with a DMA filling it and
 another draining it:
@@ -204,7 +206,7 @@ aie.objectfifo.dma_endpoint @link_out(%t21) drains @link_pool
 The two ends may move different amounts per transfer, which sets the stream
 granularity. The pool keeps one segment.
 
-### Join and distribute
+### 2:1 Join via DMA
 
 ```mlir
 aie.objectfifo.pool @out_pool(%t21) {
@@ -221,9 +223,6 @@ Two DMAs fill different segments of one pool, each ordered by its own locks, and
 one DMA drains the whole object. Distribute is the same picture reversed: one
 endpoint fills the whole object and N endpoints each drain one segment.
 
-A link point needs a memory module for the shared object and a device with
-counting locks: a MemTile or a compute tile.
-
 ## The pipeline
 
 `--aie-objectFifo-stateful-transform` runs these in order. Its options:
@@ -234,7 +233,7 @@ packet-switched.
 | --- | --- | --- |
 | `--aie-objectfifo-split` | pools, endpoints, flows | `aie.objectfifo`, `aie.objectfifo.link` |
 | `--aie-objectfifo-verify` | diagnostics only | — |
-| `--aie-objectfifo-allocate` | `aie.buffer`, `aie.lock`, channel indices, `aie.flow` / `aie.packet_flow`, `aie.shim_dma_allocation` | `aie.objectfifo.flow` |
+| `--aie-objectfifo-allocate` | `pool`s with buffer/lock attributes, `aie.buffer`, `aie.lock`, channel indices, `aie.flow` / `aie.packet_flow`, `aie.shim_dma_allocation` | `aie.objectfifo.flow`, `pool`s without buffer/lock attributes |
 | `--aie-objectfifo-lower-dmas` | BD chains | `dma_endpoint`, `dangling_endpoint` |
 | `--aie-objectfifo-lower-cores` | `use_lock` and buffer selection | `core_endpoint`, `acquire`, `release` |
 | `--aie-objectfifo-erase-pools` | — | unreferenced pools |
@@ -242,9 +241,6 @@ packet-switched.
 Each pass replaces the operations it consumes, so the pipeline is idempotent:
 lower, edit the result, and re-run. Adding a new `aie.objectfifo` to lowered IR
 and re-running lowers the new one and leaves the rest alone.
-
-Each endpoint has exactly one consuming pass, so `lower-dmas` and `lower-cores`
-are order-independent.
 
 ### 1. `--aie-objectfifo-split`
 
@@ -277,10 +273,6 @@ Pool depth covers the largest acquire a core on that tile makes, plus one so the
 core can hold an object while the next arrives. A tile no core touches gets the
 fifo's declared size.
 
-Writing pools, endpoints and flows by hand and starting the pipeline at step 3
-gives access to shapes beyond what the frontend expresses, such as a custom
-segment partition.
-
 ### 2. `--aie-objectfifo-verify`
 
 Checks the completeness rules listed below. Designs that supply an endpoint by
@@ -297,10 +289,12 @@ shim allocations.
 %of1_prod_lock_0 = aie.lock(%tile_0_2) {init = 2 : i32, sym_name = "of1_prod_lock_0"}
 %of1_cons_lock_0 = aie.lock(%tile_0_2) {init = 0 : i32, sym_name = "of1_cons_lock_0"}
 
-aie.objectfifo.pool @of1_pool(%tile_0_2) {buffers = [@of1_buff_0, @of1_buff_1],
+aie.objectfifo.pool @of1_pool(%tile_0_2) {
     depth = 2 : i32, fifoName = "of1",
+    buffers = [@of1_buff_0, @of1_buff_1],
     segments = [#aie.objectfifo_segment<offset = 0, size = 16,
                  produceLock = @of1_prod_lock_0, consumeLock = @of1_cons_lock_0>]} : memref<16xi32>
+// Note the set buffer and lock attributes.
 aie.objectfifo.dma_endpoint @of1_prod_dma(%tile_0_2) drains @of1_pool {channelIndex = 0 : i32, fifoName = "of1"}
 aie.flow(%tile_0_2, DMA : 0, %tile_2_5, DMA : 0)
 ```
@@ -334,16 +328,10 @@ for each buffer b in pool.buffers:
   ...
 ```
 
-A join's draining endpoint selects every segment and emits `depth × segments`
-descriptors; each filling endpoint selects one and emits `depth`.
-
-To supply your own BD chain, write the `aie.mem` block and omit the
-`dma_endpoint`; the pool and its locks are still generated, and your chain uses
-those locks. A channel an existing `aie.dma_start` programs is an error here.
-
 ### 5. `--aie-objectfifo-lower-cores`
 
-Turns `acquire` and `release` into `use_lock` plus a rotating buffer selection.
+Turns `acquire` and `release` operations in AIE core code into `use_lock`
+and a rotating buffer selection.
 
 ```mlir
 %0 = arith.subi %c1_i32, %c0_i32 : i32   // acquire(N) is absolute:
@@ -355,11 +343,6 @@ case 1 { scf.yield %of1_buff_1 : memref<16xi32> }
 ```
 
 The `index_switch` folds to a concrete buffer once the loops unroll.
-
-A core sees one memref, so a core endpoint's segments are a contiguous run of
-the object. It is handed the buffer itself when that run is the whole object,
-and a `memref.subview` for a shorter run. An acquire emits one
-`AcquireGreaterEqual` per selected segment, all with the same delta.
 
 ### 6. `--aie-objectfifo-erase-pools`
 
@@ -385,7 +368,6 @@ Endpoints:
 - a core endpoint's segments are contiguous
 - `dimensions` and `padDimensions` have one entry per selected segment, with matching ranks, within segment bounds
 - `padDimensions` appears on a draining endpoint, and a nonzero `padValue` requires one
-- `iter_count` is supported on a MemTile
 - a dangling DMA or PLIO end is on a shim tile, and its bundle is DMA, PLIO or Core
 
 Flows and core accesses:

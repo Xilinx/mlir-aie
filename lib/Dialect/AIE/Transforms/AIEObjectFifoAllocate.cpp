@@ -92,9 +92,6 @@ struct AIEObjectFifoAllocatePass
     return homeTile;
   }
 
-  /// Buffers and locks live directly below the tile declarations.
-  /// Buffers and locks live directly below the tile declarations.
-  ///
   /// Buffers and locks sit directly below the tile whose memory holds them,
   /// after whatever this pass has already put there.
   void setInsertionPointOn(Value tile) {
@@ -339,8 +336,8 @@ struct AIEObjectFifoAllocatePass
   }
 
   LogicalResult lowerFlows() {
-    // A packet header carries five bits of id.
-    constexpr int maxPacketID = 31;
+    int maxPacketID =
+        static_cast<int>(device.getTargetModel().getMaxPacketId());
     llvm::SmallDenseSet<int> taken = takenPacketIDs();
     int nextFree = 0;
     SmallVector<Operation *> toErase;

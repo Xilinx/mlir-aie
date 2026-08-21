@@ -1,0 +1,77 @@
+.nh
+.TH "GH-RELEASE-VERIFY-ASSET" "1" "Jul 2026" "GitHub CLI 2.96.0" "GitHub CLI manual"
+
+.SH NAME
+gh-release-verify-asset - Verify that a given asset originated from a release
+
+
+.SH SYNOPSIS
+\fBgh release verify-asset [<tag>] <file-path> [flags]\fR
+
+
+.SH DESCRIPTION
+Verify that a given asset file originated from a specific GitHub Release using cryptographically signed attestations.
+
+.PP
+An attestation is a claim made by GitHub regarding a release and its assets.
+
+.EX
+	This command checks that the asset you provide matches a valid attestation for the specified release (or the latest release, if no tag is given).
+.EE
+
+.PP
+It ensures the asset's integrity by validating that the asset's digest matches the subject in the attestation and that the attestation is associated with the release.
+
+
+.SH OPTIONS
+.TP
+\fB--format\fR \fB<string>\fR
+Output format: {json}
+
+.TP
+\fB-q\fR, \fB--jq\fR \fB<expression>\fR
+Filter JSON output using a jq expression
+
+.TP
+\fB-t\fR, \fB--template\fR \fB<string>\fR
+Format JSON output using a Go template; see "gh help formatting"
+
+
+.SH OPTIONS INHERITED FROM PARENT COMMANDS
+.TP
+\fB-R\fR, \fB--repo\fR \fB<[HOST/]OWNER/REPO>\fR
+Select another repository using the [HOST/]OWNER/REPO format
+
+
+.SH EXIT CODES
+0: Successful execution
+
+.PP
+1: Error
+
+.PP
+2: Command canceled
+
+.PP
+4: Authentication required
+
+.PP
+NOTE: Specific commands may have additional exit codes. Refer to the command's help for more information.
+
+
+.SH EXAMPLE
+.EX
+# Verify an asset from the latest release
+$ gh release verify-asset ./dist/my-asset.zip
+
+# Verify an asset from a specific release tag
+$ gh release verify-asset v1.2.3 ./dist/my-asset.zip
+
+# Verify an asset from a specific release tag and output the attestation in JSON format
+$ gh release verify-asset v1.2.3 ./dist/my-asset.zip --format json
+
+.EE
+
+
+.SH SEE ALSO
+\fBgh-release(1)\fR

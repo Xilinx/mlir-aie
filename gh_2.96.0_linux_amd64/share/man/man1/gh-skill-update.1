@@ -1,0 +1,109 @@
+.nh
+.TH "GH-SKILL-UPDATE" "1" "Jul 2026" "GitHub CLI 2.96.0" "GitHub CLI manual"
+
+.SH NAME
+gh-skill-update - Update installed skills to their latest versions (preview)
+
+
+.SH SYNOPSIS
+\fBgh skill update [<skill>...] [flags]\fR
+
+
+.SH DESCRIPTION
+Checks installed skills for available updates by comparing the local
+tree SHA (from \fBSKILL.md\fR frontmatter) against the remote repository.
+
+.PP
+Scans all known agent host directories (Copilot, Claude, Cursor, Codex,
+Gemini, Antigravity) in both project and user scope automatically.
+
+.PP
+Without arguments, checks all installed skills. With skill names,
+checks only those specific skills.
+
+.PP
+Pinned skills (installed with \fB--pin\fR) are skipped with a notice.
+Use \fB--unpin\fR to clear the pinned version and include those skills
+in the update.
+
+.PP
+Skills without GitHub metadata (e.g. installed manually or by another
+tool) are prompted for their source repository in interactive mode.
+With \fB--all\fR or in non-interactive mode, they are skipped with a notice.
+The update re-downloads the skill with metadata injected, so future
+updates work automatically.
+
+.PP
+With \fB--force\fR, re-downloads skills even when the remote version matches
+the local tree SHA. This overwrites locally modified skill files with
+their original content, but does not remove extra files added locally.
+
+.PP
+In interactive mode, shows which skills have updates and asks for
+confirmation before proceeding. With \fB--all\fR, updates without prompting.
+With \fB--dry-run\fR, reports available updates without modifying any files.
+
+
+.SH OPTIONS
+.TP
+\fB--all\fR
+Update all skills without prompting
+
+.TP
+\fB--dir\fR \fB<string>\fR
+Scan a custom directory for installed skills
+
+.TP
+\fB--dry-run\fR
+Report available updates without modifying files
+
+.TP
+\fB--force\fR
+Re-download even if already up to date
+
+.TP
+\fB--unpin\fR
+Clear pinned version and include pinned skills in update
+
+
+.SH EXIT CODES
+0: Successful execution
+
+.PP
+1: Error
+
+.PP
+2: Command canceled
+
+.PP
+4: Authentication required
+
+.PP
+NOTE: Specific commands may have additional exit codes. Refer to the command's help for more information.
+
+
+.SH EXAMPLE
+.EX
+# Check and update all skills interactively
+$ gh skill update
+
+# Update specific skills
+$ gh skill update mcp-cli git-commit
+
+# Update all without prompting
+$ gh skill update --all
+
+# Re-download all skills (restore locally modified files)
+$ gh skill update --force --all
+
+# Check for updates without applying (read-only)
+$ gh skill update --dry-run
+
+# Unpin skills and update them to latest
+$ gh skill update --unpin
+
+.EE
+
+
+.SH SEE ALSO
+\fBgh-skill(1)\fR

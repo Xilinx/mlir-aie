@@ -200,13 +200,14 @@ struct AIEObjectFifoLowerDMAsPass
     }
 
     Location loc = endpoint.getLoc();
-    int repeat = endpoint.getRepeatCount().value_or(1);
-    // iter_count is valid only for MemTile endpoints.
+    // Only the draining end replays; the filling end covers the batch in one
+    // acquire, which is why emitDescriptor scales its lock count instead.
+    int repeat = drains ? pool.getRepeatCount().value_or(1) : 1;
     std::optional<int32_t> iterCount = endpoint.getIterCount();
 
     // FIXME: repeat_count and iter_count are tangled here. Deriving one from
-    // the other, and silently dropping iter_count off a MemTile, is confusing:
-    // each should mean one thing and be honored or rejected, not reinterpreted.
+    // the other is confusing: each should mean one thing and be honored or
+    // rejected, not reinterpreted.
     //
     // A single-descriptor chain can use the DMA start queue's repeat count.
     bool repeatInHardware = repeat > 1 && descriptors.size() == 1 && !iterCount;

@@ -1,0 +1,90 @@
+.nh
+.TH "GH-SEARCH" "1" "Jul 2026" "GitHub CLI 2.96.0" "GitHub CLI manual"
+
+.SH NAME
+gh-search - Search for repositories, issues, and pull requests
+
+
+.SH SYNOPSIS
+\fBgh search <command> [flags]\fR
+
+
+.SH DESCRIPTION
+Search across all of GitHub.
+
+.PP
+Excluding search results that match a qualifier
+
+.PP
+In a browser, the GitHub search syntax supports excluding results that match a search qualifier
+by prefixing the qualifier with a hyphen. For example, to search for issues that
+do not have the label "bug", you would use \fB-label:bug\fR as a search qualifier.
+
+.PP
+\fBgh\fR supports this syntax in \fBgh search\fR as well, but it requires extra
+command line arguments to avoid the hyphen being interpreted as a command line flag because it begins with a hyphen.
+
+.PP
+On Unix-like systems, you can use the \fB--\fR argument to indicate that
+the arguments that follow are not a flag, but rather a query string. For example:
+
+.PP
+$ gh search issues -- "my-search-query -label:bug"
+
+.PP
+On PowerShell, you must use both the \fB--%\fR argument and the \fB--\fR argument to
+produce the same effect. For example:
+
+.PP
+$ gh --% search issues -- "my search query -label:bug"
+
+.PP
+See the following for more information:
+- GitHub search syntax: 
+\[la]https://docs.github.com/en/search\-github/getting\-started\-with\-searching\-on\-github/understanding\-the\-search\-syntax#exclude\-results\-that\-match\-a\-qualifier\[ra]
+- The PowerShell stop parse flag \fB--%\fR: 
+\[la]https://learn.microsoft.com/en\-us/powershell/module/microsoft.powershell.core/about/about_parsing?view=powershell\-7.5#the\-stop\-parsing\-token\[ra]
+- The Unix-like \fB--\fR argument: 
+\[la]https://www.gnu.org/software/bash/manual/bash.html#Shell\-Builtin\-Commands\-1\[ra]
+
+
+.SH AVAILABLE COMMANDS
+.TP
+\fBgh-search-code(1)\fR
+Search within code
+
+.TP
+\fBgh-search-commits(1)\fR
+Search for commits
+
+.TP
+\fBgh-search-issues(1)\fR
+Search for issues
+
+.TP
+\fBgh-search-prs(1)\fR
+Search for pull requests
+
+.TP
+\fBgh-search-repos(1)\fR
+Search for repositories
+
+
+.SH EXIT CODES
+0: Successful execution
+
+.PP
+1: Error
+
+.PP
+2: Command canceled
+
+.PP
+4: Authentication required
+
+.PP
+NOTE: Specific commands may have additional exit codes. Refer to the command's help for more information.
+
+
+.SH SEE ALSO
+\fBgh(1)\fR

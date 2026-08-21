@@ -1,0 +1,77 @@
+.nh
+.TH "GH-COPILOT" "1" "Jul 2026" "GitHub CLI 2.96.0" "GitHub CLI manual"
+
+.SH NAME
+gh-copilot - Run the GitHub Copilot CLI (preview)
+
+
+.SH SYNOPSIS
+\fBgh copilot [flags] [args]\fR
+
+
+.SH DESCRIPTION
+Runs the GitHub Copilot CLI.
+
+.PP
+Executing the Copilot CLI through \fBgh\fR is currently in preview and subject to change.
+
+.PP
+If already installed, \fBgh\fR will execute the Copilot CLI found in your \fBPATH\fR\&.
+If the Copilot CLI is not installed, it will be downloaded to /home/runner/.local/share/gh/copilot.
+
+.PP
+Use \fB--remove\fR to remove the downloaded Copilot CLI.
+
+.PP
+This command is only supported on Windows, Linux, and Darwin, on amd64/x64
+or arm64 architectures.
+
+.PP
+To prevent \fBgh\fR from interpreting flags intended for Copilot,
+use \fB--\fR before Copilot flags and args.
+
+.PP
+Learn more at https://gh.io/copilot-cli
+
+
+.SH OPTIONS
+.TP
+\fB--remove\fR
+Remove the downloaded Copilot CLI
+
+
+.SH EXIT CODES
+0: Successful execution
+
+.PP
+1: Error
+
+.PP
+2: Command canceled
+
+.PP
+4: Authentication required
+
+.PP
+NOTE: Specific commands may have additional exit codes. Refer to the command's help for more information.
+
+
+.SH EXAMPLE
+.EX
+# Download and run the Copilot CLI
+$ gh copilot
+
+# Run the Copilot CLI
+$ gh copilot -p "Summarize this week's commits" --allow-tool 'shell(git)'
+
+# Remove the Copilot CLI (if installed through gh)
+$ gh copilot --remove
+
+# Run the Copilot CLI help command
+$ gh copilot -- --help
+
+.EE
+
+
+.SH SEE ALSO
+\fBgh(1)\fR

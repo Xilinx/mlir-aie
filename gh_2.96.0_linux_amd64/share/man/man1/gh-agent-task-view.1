@@ -1,0 +1,87 @@
+.nh
+.TH "GH-AGENT-TASK-VIEW" "1" "Jul 2026" "GitHub CLI 2.96.0" "GitHub CLI manual"
+
+.SH NAME
+gh-agent-task-view - View an agent task session (preview)
+
+
+.SH SYNOPSIS
+\fBgh agent-task view [<session-id> | <pr-number> | <pr-url> | <pr-branch>] [flags]\fR
+
+
+.SH DESCRIPTION
+View an agent task session.
+
+
+.SH OPTIONS
+.TP
+\fB--follow\fR
+Follow agent session logs
+
+.TP
+\fB-q\fR, \fB--jq\fR \fB<expression>\fR
+Filter JSON output using a jq expression
+
+.TP
+\fB--json\fR \fB<fields>\fR
+Output JSON with the specified fields
+
+.TP
+\fB--log\fR
+Show agent session logs
+
+.TP
+\fB-R\fR, \fB--repo\fR \fB<[HOST/]OWNER/REPO>\fR
+Select another repository using the [HOST/]OWNER/REPO format
+
+.TP
+\fB-t\fR, \fB--template\fR \fB<string>\fR
+Format JSON output using a Go template; see "gh help formatting"
+
+.TP
+\fB-w\fR, \fB--web\fR
+Open agent task in the browser
+
+
+.SH JSON FIELDS
+\fBcompletedAt\fR, \fBcreatedAt\fR, \fBid\fR, \fBname\fR, \fBpullRequestNumber\fR, \fBpullRequestState\fR, \fBpullRequestTitle\fR, \fBpullRequestUrl\fR, \fBrepository\fR, \fBstate\fR, \fBupdatedAt\fR, \fBuser\fR
+
+
+.SH EXIT CODES
+0: Successful execution
+
+.PP
+1: Error
+
+.PP
+2: Command canceled
+
+.PP
+4: Authentication required
+
+.PP
+NOTE: Specific commands may have additional exit codes. Refer to the command's help for more information.
+
+
+.SH EXAMPLE
+.EX
+# View an agent task by session ID
+$ gh agent-task view e2fa49d2-f164-4a56-ab99-498090b8fcdf
+
+# View an agent task by pull request number in current repo
+$ gh agent-task view 12345
+
+# View an agent task by pull request number
+$ gh agent-task view --repo OWNER/REPO 12345
+
+# View an agent task by pull request reference
+$ gh agent-task view OWNER/REPO#12345
+
+# View a pull request agents tasks in the browser
+$ gh agent-task view 12345 --web
+
+.EE
+
+
+.SH SEE ALSO
+\fBgh-agent-task(1)\fR

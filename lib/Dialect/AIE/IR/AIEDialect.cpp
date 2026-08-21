@@ -569,20 +569,6 @@ LogicalResult ObjectFifoCreateOp::verify() {
     int iterCount = *iterCountAttr;
     if (iterCount < 1 || iterCount > 256)
       return emitError("`iter_count` must be between 1 and 256");
-
-    // Check that either producer or at least one consumer is a MemTile
-    bool hasMemTile = producerTile.isMemTile();
-    if (!hasMemTile) {
-      for (auto consTileVal : getConsumerTiles()) {
-        TileLike consTile = getTileLikeFromValue(consTileVal);
-        if (consTile && consTile.isMemTile()) {
-          hasMemTile = true;
-          break;
-        }
-      }
-    }
-    if (!hasMemTile)
-      return emitError("`iter_count` is currently only supported on MemTiles");
   }
 
   if (auto consumerElemType = getConsumerElemType()) {
@@ -687,7 +673,8 @@ LogicalResult ObjectFifoPoolOp::verify() {
     }
 
     if (segments->size() > 1 && !semaphoreLocks) {
-      return emitOpError("multiple segments require semaphore locks");
+      return emitOpError(
+          "multi-segment pools are unsupported on binary lock architectures");
     }
   }
 
@@ -888,12 +875,6 @@ LogicalResult ObjectFifoDmaEndpointOp::verify() {
   ObjectFifoPoolOp pool = getPoolOp();
   if (!pool) {
     return emitOpError("references undefined pool '") << getPool() << "'";
-  }
-
-  // Only a MemTile's DMA runs its chain a fixed number of times, so an
-  // iter_count anywhere else would be dropped without saying so.
-  if (getIterCount() && !getTileLike().isMemTile()) {
-    return emitOpError("iter_count is only supported on a MemTile");
   }
 
   if (failed(verifyEndpoint(*this, pool, getSegments()))) {

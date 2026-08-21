@@ -1,0 +1,104 @@
+.nh
+.TH "GH-SKILL-PUBLISH" "1" "Jul 2026" "GitHub CLI 2.96.0" "GitHub CLI manual"
+
+.SH NAME
+gh-skill-publish - Validate and publish skills to a GitHub repository (preview)
+
+
+.SH SYNOPSIS
+\fBgh skill publish [<directory>] [flags]\fR
+
+
+.SH DESCRIPTION
+Validate a local repository's skills against the Agent Skills specification
+and publish them by creating a GitHub release.
+
+.PP
+Skills are discovered using the same conventions as install:
+.IP \(bu 2
+\fBskills/*/SKILL.md\fR
+.IP \(bu 2
+\fBskills/{scope}/*/SKILL.md\fR
+.IP \(bu 2
+\fB*/SKILL.md\fR (root-level)
+.IP \(bu 2
+\fBplugins/{scope}/skills/*/SKILL.md\fR
+
+.PP
+Validation checks include:
+.IP \(bu 2
+Skill names match the strict agentskills.io naming rules
+.IP \(bu 2
+Each skill name matches its directory name
+.IP \(bu 2
+Required frontmatter fields (name, description) are present
+.IP \(bu 2
+allowed-tools is a string, not an array
+.IP \(bu 2
+Install metadata (\fBmetadata.github-*\fR) is stripped if present
+
+.PP
+After validation passes, publish will interactively guide you through:
+.IP \(bu 2
+Adding the \fBagent-skills\fR topic to the repository
+.IP \(bu 2
+Choosing a version tag (semver recommended)
+.IP \(bu 2
+Creating a GitHub release with auto-generated notes
+
+.PP
+Use \fB--dry-run\fR to validate without publishing.
+Use \fB--tag\fR to publish non-interactively with a specific tag.
+Use \fB--fix\fR to automatically strip install metadata from committed files
+without publishing. Review and commit the changes, then run publish again.
+
+
+.SH OPTIONS
+.TP
+\fB--dry-run\fR
+Validate without publishing
+
+.TP
+\fB--fix\fR
+Auto-fix issues where possible without publishing (e.g. strip install metadata)
+
+.TP
+\fB--tag\fR \fB<string>\fR
+Version tag for the release (e.g. v1.0.0)
+
+
+.SH EXIT CODES
+0: Successful execution
+
+.PP
+1: Error
+
+.PP
+2: Command canceled
+
+.PP
+4: Authentication required
+
+.PP
+NOTE: Specific commands may have additional exit codes. Refer to the command's help for more information.
+
+
+.SH EXAMPLE
+.EX
+# Validate and publish interactively
+$ gh skill publish
+
+# Publish with a specific tag (non-interactive)
+$ gh skill publish --tag v1.0.0
+
+# Validate only (no publish)
+$ gh skill publish --dry-run
+
+# Strip install metadata without publishing
+$ gh skill publish --fix
+
+.EE
+
+
+.SH SEE ALSO
+\fBgh-skill(1)\fR

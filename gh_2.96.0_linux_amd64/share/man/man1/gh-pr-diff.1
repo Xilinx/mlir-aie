@@ -1,0 +1,90 @@
+.nh
+.TH "GH-PR-DIFF" "1" "Jul 2026" "GitHub CLI 2.96.0" "GitHub CLI manual"
+
+.SH NAME
+gh-pr-diff - View changes in a pull request
+
+
+.SH SYNOPSIS
+\fBgh pr diff [<number> | <url> | <branch>] [flags]\fR
+
+
+.SH DESCRIPTION
+View changes in a pull request.
+
+.PP
+Without an argument, the pull request that belongs to the current branch
+is selected.
+
+.PP
+With \fB--web\fR flag, open the pull request diff in a web browser instead.
+
+.PP
+Use \fB--exclude\fR to filter out files matching a glob pattern. The pattern
+uses forward slashes as path separators on all platforms. You can repeat
+the flag to exclude multiple patterns.
+
+
+.SH OPTIONS
+.TP
+\fB--color\fR \fB<string> (default "auto")\fR
+Use color in diff output: {always|never|auto}
+
+.TP
+\fB-e\fR, \fB--exclude\fR \fB<patterns>\fR
+Exclude files matching glob patterns from the diff
+
+.TP
+\fB--name-only\fR
+Display only names of changed files
+
+.TP
+\fB--patch\fR
+Display diff in patch format
+
+.TP
+\fB-w\fR, \fB--web\fR
+Open the pull request diff in the browser
+
+
+.SH OPTIONS INHERITED FROM PARENT COMMANDS
+.TP
+\fB-R\fR, \fB--repo\fR \fB<[HOST/]OWNER/REPO>\fR
+Select another repository using the [HOST/]OWNER/REPO format
+
+
+.SH EXIT CODES
+0: Successful execution
+
+.PP
+1: Error
+
+.PP
+2: Command canceled
+
+.PP
+4: Authentication required
+
+.PP
+NOTE: Specific commands may have additional exit codes. Refer to the command's help for more information.
+
+
+.SH EXAMPLE
+.EX
+# See diff for current branch
+$ gh pr diff
+
+# See diff for a specific PR
+$ gh pr diff 123
+
+# Exclude files from diff output
+$ gh pr diff --exclude '*.yml' --exclude 'generated/*'
+
+# Exclude matching files by name
+$ gh pr diff --name-only --exclude '*.generated.*'
+
+.EE
+
+
+.SH SEE ALSO
+\fBgh-pr(1)\fR

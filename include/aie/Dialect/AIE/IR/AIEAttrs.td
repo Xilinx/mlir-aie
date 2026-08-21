@@ -199,6 +199,7 @@ def BDPadLayoutArrayAttr : ArrayOfAttr<
     /*eltName*/BDPadLayoutAttr.cppClassName
 >;
 
+// Per-segment, per-dimension padding for an objectFifo DMA endpoint.
 def BDPadLayoutArrayArrayAttr
     : ArrayOfAttr<
           /*dialect*/ AIE_Dialect,
@@ -254,7 +255,7 @@ def ObjectFifoRole
 def ObjectFifoSegmentAttr : AttrDef<AIE_Dialect, "ObjectFifoSegment", []> {
   let mnemonic = "objectfifo_segment";
   let summary = [{
-    A region of every buffer in an objectFifo pool, and the locks guarding it.
+    A slice of every buffer in an objectFifo pool, and the locks guarding it.
   }];
 
   let parameters = (ins "uint32_t":$offset, "uint32_t":$size,

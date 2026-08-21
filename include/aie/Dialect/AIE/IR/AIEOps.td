@@ -2063,45 +2063,48 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
     When `repeat_count == 1`, this simplifies to `iter_count * elemNumber`.
   }];
 
-  let arguments = (ins SymbolNameAttr:$sym_name, Index:$producerTile,
-      Variadic<Index>:$consumerTiles, AIE_ObjectFifo_Depth:$elemNumber,
-      TypeAttrOf<AIE_ObjectFifoType>:$elemType,
-      // Optional consumer element type for asymmetric transfer granularity.
-      // Producer sends elemType-sized transfers, consumer receives
-      // consumerElemType-sized transfers. Producer element size must be
-      // an integer multiple of consumer element size.
-      OptionalAttr<TypeAttrOf<AIE_ObjectFifoType>>:$consumerElemType,
-      BDDimLayoutArrayAttr:$dimensionsToStream,
-      BDDimLayoutArrayArrayAttr:$dimensionsFromStreamPerConsumer,
-      DefaultValuedAttr<BoolAttr, "false">:$via_DMA,
-      DefaultValuedAttr<BoolAttr, "false">:$plio,
-      // disable_synchronization==true will skip lock generation for
-      // objectfifo synchronous accesses
-      DefaultValuedAttr<BoolAttr, "false">:$disable_synchronization,
-      // repeat_count==1 means "do it once"
-      OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<1>]>>:$repeat_count,
-      // aie_stream==0 means enable aie stream port on producer tile
-      // aie_stream==1 means enable aie stream port on consumer tile
-      // aie_stream==2 means enable aie stream ports on producer and consumer
-      // tiles
-      OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>,
-                                             IntMaxValue<2>]>>:$aie_stream,
-      OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>,
-                                             IntMaxValue<1>]>>:$aie_stream_port,
-      // Requested endpoint channels. A -1 consumer entry requests automatic
-      // assignment.
-      OptionalAttr<ConfinedAttr<
-          AIEI32Attr, [IntMinValue<0>]>>:$prod_dma_channel,
-      OptionalAttr<DenseI32ArrayAttr>:$cons_dma_channels,
-      InitValuesArrayAttr:$initValues,
-      OptionalAttr<BDPadLayoutArrayAttr>:$padDimensions,
-      // Lowered onto the memtile MM2S channel; see aie.dma_start's pad_value.
-      DefaultValuedOptionalAttr<AIEI32Attr, "0">:$padValue,
-      OptionalAttr<AIEI32Attr>:$iter_count,
-      // packet selects packet-switched routing. packet_id pins the header;
-      // allocation chooses an unused id when it is absent.
-      UnitAttr:$packet,
-      OptionalAttr<ConfinedAttr<AIEI8Attr, [IntMinValue<0>]>>:$packet_id);
+  // clang-format off
+  let arguments = (
+    ins SymbolNameAttr:$sym_name,
+        Index:$producerTile,
+        Variadic<Index>:$consumerTiles,
+        AIE_ObjectFifo_Depth:$elemNumber,
+        TypeAttrOf<AIE_ObjectFifoType>:$elemType,
+        // Optional consumer element type for asymmetric transfer granularity.
+        // Producer sends elemType-sized transfers, consumer receives
+        // consumerElemType-sized transfers. Producer element size must be
+        // an integer multiple of consumer element size.
+        OptionalAttr<TypeAttrOf<AIE_ObjectFifoType>>:$consumerElemType,
+        BDDimLayoutArrayAttr:$dimensionsToStream,
+        BDDimLayoutArrayArrayAttr:$dimensionsFromStreamPerConsumer,
+        DefaultValuedAttr<BoolAttr, "false">:$via_DMA,
+        DefaultValuedAttr<BoolAttr, "false">:$plio,
+        // disable_synchronization==true will skip lock generation for
+        // objectfifo synchronous accesses
+        DefaultValuedAttr<BoolAttr, "false">:$disable_synchronization,
+        // repeat_count==1 means "do it once"
+        OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<1>]>>:$repeat_count,
+        // aie_stream==0 means enable aie stream port on producer tile
+        // aie_stream==1 means enable aie stream port on consumer tile
+        // aie_stream==2 means enable aie stream ports on producer and consumer tiles
+        OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>, IntMaxValue<2>]>>:$aie_stream,
+        OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>, IntMaxValue<1>]>>:$aie_stream_port,
+        // Pin the DMA channel for an endpoint instead of first-free assignment.
+        // prod_dma_channel pins the producer endpoint's channel; cons_dma_channels
+        // holds one entry per consumer (-1 = auto-assign that consumer).
+        OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>>:$prod_dma_channel,
+        OptionalAttr<DenseI32ArrayAttr>:$cons_dma_channels,
+        InitValuesArrayAttr:$initValues,
+        OptionalAttr<BDPadLayoutArrayAttr>:$padDimensions,
+        // Lowered onto the memtile MM2S channel; see aie.dma_start's pad_value.
+        DefaultValuedOptionalAttr<AIEI32Attr, "0">:$padValue,
+        OptionalAttr<AIEI32Attr>:$iter_count,
+        // packet selects packet-switched routing. packet_id pins the header;
+        // allocation chooses an unused id when it is absent.
+        UnitAttr:$packet,
+        OptionalAttr<ConfinedAttr<AIEI8Attr, [IntMinValue<0>]>>:$packet_id
+  );
+  // clang-format on
 
   let assemblyFormat = [{
     $sym_name
@@ -2266,12 +2269,11 @@ def AIE_ObjectFifoPoolOp
     used in rotation, and each one is what an objectFifo calls an object, so
     `depth` is the fifo's object count.
 
-    `segments` divides a buffer into the slices that are guarded separately.
-    Every buffer is divided the same way, so a segment's offset and size
-    address all of them. An ordinary pool has one segment spanning the whole
+    `segments` divides a buffer into separately-guarded slices.
+    Every buffer is divided into the same set of segments.
+    An ordinary pool has one segment spanning the whole
     buffer; a pool that several endpoints fill or drain independently has one
-    segment per participant, which is what makes a join or a distribute
-    nothing more than several endpoints on one pool.
+    segment per participant.
 
     On AIE1 a buffer is guarded by a single binary lock that rotates with it,
     with no way to guard part of a buffer; such a pool carries `locks`, one
@@ -2406,9 +2408,7 @@ def AIE_ObjectFifoDmaEndpointOp
     transformation or padding for that segment.
 
     `--aie-objectfifo-lower-dmas` turns this into the buffer descriptor chain
-    that walks the pool's buffers, and consumes it. An end of a stream that this
-    compiler does not program -- one the host runtime drives, or a core's raw
-    stream port -- is an `aie.objectfifo.dangling_endpoint` instead.
+    that walks the pool's buffers, and consumes it.
 
     `channelIndex` is the DMA channel this endpoint drives; the direction
     follows its role. Leaving it out lets `--aie-objectfifo-allocate` pick one,
@@ -2427,7 +2427,6 @@ def AIE_ObjectFifoDmaEndpointOp
       OptionalAttr<BDDimLayoutArrayArrayAttr>:$dimensions,
       OptionalAttr<BDPadLayoutArrayArrayAttr>:$padDimensions,
       DefaultValuedOptionalAttr<AIEI32Attr, "0">:$padValue,
-      OptionalAttr<AIEI32Attr>:$repeatCount,
       OptionalAttr<AIEI32Attr>:$iterCount, OptionalAttr<PacketInfoAttr>:$packet,
       // ObjectFifo name used by runtime records.
       OptionalAttr<StrAttr>:$fifoName);

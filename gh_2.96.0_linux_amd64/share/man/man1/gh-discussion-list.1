@@ -1,0 +1,127 @@
+.nh
+.TH "GH-DISCUSSION-LIST" "1" "Jul 2026" "GitHub CLI 2.96.0" "GitHub CLI manual"
+
+.SH NAME
+gh-discussion-list - List discussions in a repository (preview)
+
+
+.SH SYNOPSIS
+\fBgh discussion list [flags]\fR
+
+
+.SH DESCRIPTION
+List discussions in a GitHub repository. By default, only open discussions
+are shown.
+
+
+.SH OPTIONS
+.TP
+\fB--after\fR \fB<string>\fR
+Cursor for the next page of results
+
+.TP
+\fB--answered\fR
+Filter by answered state
+
+.TP
+\fB-A\fR, \fB--author\fR \fB<string>\fR
+Filter by author
+
+.TP
+\fB-c\fR, \fB--category\fR \fB<string>\fR
+Filter by category name or slug
+
+.TP
+\fB-q\fR, \fB--jq\fR \fB<expression>\fR
+Filter JSON output using a jq expression
+
+.TP
+\fB--json\fR \fB<fields>\fR
+Output JSON with the specified fields
+
+.TP
+\fB-l\fR, \fB--label\fR \fB<strings>\fR
+Filter by label
+
+.TP
+\fB-L\fR, \fB--limit\fR \fB<int> (default 30)\fR
+Maximum number of discussions to fetch
+
+.TP
+\fB--order\fR \fB<string> (default "desc")\fR
+Order of results: {asc|desc}
+
+.TP
+\fB-R\fR, \fB--repo\fR \fB<[HOST/]OWNER/REPO>\fR
+Select another repository using the [HOST/]OWNER/REPO format
+
+.TP
+\fB-S\fR, \fB--search\fR \fB<query>\fR
+Search discussions with query
+
+.TP
+\fB--sort\fR \fB<string> (default "updated")\fR
+Sort by field: {created|updated}
+
+.TP
+\fB-s\fR, \fB--state\fR \fB<string> (default "open")\fR
+Filter by state: {open|closed|all}
+
+.TP
+\fB-t\fR, \fB--template\fR \fB<string>\fR
+Format JSON output using a Go template; see "gh help formatting"
+
+.TP
+\fB-w\fR, \fB--web\fR
+List discussions in the web browser
+
+
+.SH ALIASES
+gh discussion ls
+
+
+.SH JSON FIELDS
+\fBanswerChosenAt\fR, \fBanswerChosenBy\fR, \fBanswered\fR, \fBauthor\fR, \fBbody\fR, \fBcategory\fR, \fBclosed\fR, \fBclosedAt\fR, \fBcreatedAt\fR, \fBid\fR, \fBlabels\fR, \fBlocked\fR, \fBnumber\fR, \fBstateReason\fR, \fBtitle\fR, \fBupdatedAt\fR, \fBurl\fR
+
+
+.SH EXIT CODES
+0: Successful execution
+
+.PP
+1: Error
+
+.PP
+2: Command canceled
+
+.PP
+4: Authentication required
+
+.PP
+NOTE: Specific commands may have additional exit codes. Refer to the command's help for more information.
+
+
+.SH EXAMPLE
+.EX
+# List open discussions
+$ gh discussion list
+
+# List discussions with a specific category
+$ gh discussion list --category General
+
+# List closed discussions by author
+$ gh discussion list --state closed --author monalisa
+
+# List all discussions (closed or open) by label
+$ gh discussion list --state all --label bug,enhancement
+
+# List answered Q&A discussions as JSON
+$ gh discussion list --answered --json number,title,url
+
+# List unanswered Q&A discussions as JSON
+$ gh discussion list --answered=false --json number,title,url
+
+.EE
+
+
+.SH SEE ALSO
+\fBgh-discussion(1)\fR

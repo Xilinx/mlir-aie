@@ -1,0 +1,80 @@
+.nh
+.TH "GH-AGENT-TASK-CREATE" "1" "Jul 2026" "GitHub CLI 2.96.0" "GitHub CLI manual"
+
+.SH NAME
+gh-agent-task-create - Create an agent task (preview)
+
+
+.SH SYNOPSIS
+\fBgh agent-task create [<task description>] [flags]\fR
+
+
+.SH OPTIONS
+.TP
+\fB-b\fR, \fB--base\fR \fB<string>\fR
+Base branch for the pull request (use default branch if not provided)
+
+.TP
+\fB-a\fR, \fB--custom-agent\fR \fB<string>\fR
+Use a custom agent for the task. e.g., use 'my-agent' for the 'my-agent.md' agent
+
+.TP
+\fB--follow\fR
+Follow agent session logs
+
+.TP
+\fB-F\fR, \fB--from-file\fR \fB<file>\fR
+Read task description from file (use "-" to read from standard input)
+
+.TP
+\fB-R\fR, \fB--repo\fR \fB<[HOST/]OWNER/REPO>\fR
+Select another repository using the [HOST/]OWNER/REPO format
+
+
+.SH EXIT CODES
+0: Successful execution
+
+.PP
+1: Error
+
+.PP
+2: Command canceled
+
+.PP
+4: Authentication required
+
+.PP
+NOTE: Specific commands may have additional exit codes. Refer to the command's help for more information.
+
+
+.SH EXAMPLE
+.EX
+# Create a task from an inline description
+$ gh agent-task create "build me a new app"
+
+# Create a task from an inline description and follow logs
+$ gh agent-task create "build me a new app" --follow
+
+# Create a task from a file
+$ gh agent-task create -F task-desc.md
+
+# Create a task with problem statement from stdin
+$ echo "build me a new app" | gh agent-task create -F -
+
+# Create a task with an editor
+$ gh agent-task create
+
+# Create a task with an editor and a file as a template
+$ gh agent-task create -F task-desc.md
+
+# Select a different base branch for the PR
+$ gh agent-task create "fix errors" --base branch
+
+# Create a task using the custom agent defined in '.github/agents/my-agent.md'
+$ gh agent-task create "build me a new app" --custom-agent my-agent
+
+.EE
+
+
+.SH SEE ALSO
+\fBgh-agent-task(1)\fR

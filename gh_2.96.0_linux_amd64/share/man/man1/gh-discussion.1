@@ -1,0 +1,72 @@
+.nh
+.TH "GH-DISCUSSION" "1" "Jul 2026" "GitHub CLI 2.96.0" "GitHub CLI manual"
+
+.SH NAME
+gh-discussion - Work with GitHub Discussions (preview)
+
+
+.SH SYNOPSIS
+\fBgh discussion <command> [flags]\fR
+
+
+.SH DESCRIPTION
+Working with discussions in the GitHub CLI is in preview and subject to change without notice.
+
+
+.SH GENERAL COMMANDS
+.TP
+\fBgh-discussion-create(1)\fR
+Create a new discussion (preview)
+
+.TP
+\fBgh-discussion-list(1)\fR
+List discussions in a repository (preview)
+
+
+.SH TARGETED COMMANDS
+.TP
+\fBgh-discussion-comment(1)\fR
+Add, edit, or delete a comment or a reply on a discussion (preview)
+
+.TP
+\fBgh-discussion-edit(1)\fR
+Edit a discussion (preview)
+
+.TP
+\fBgh-discussion-view(1)\fR
+View a discussion (preview)
+
+
+.SH OPTIONS
+.TP
+\fB-R\fR, \fB--repo\fR \fB<[HOST/]OWNER/REPO>\fR
+Select another repository using the [HOST/]OWNER/REPO format
+
+
+.SH EXIT CODES
+0: Successful execution
+
+.PP
+1: Error
+
+.PP
+2: Command canceled
+
+.PP
+4: Authentication required
+
+.PP
+NOTE: Specific commands may have additional exit codes. Refer to the command's help for more information.
+
+
+.SH EXAMPLE
+.EX
+$ gh discussion list
+$ gh discussion create --category "General" --title "Hello" --body "Hello World!"
+$ gh discussion view 123
+
+.EE
+
+
+.SH SEE ALSO
+\fBgh(1)\fR

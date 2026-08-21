@@ -74,9 +74,6 @@ layers are here for advanced designs, op-by-op construction, and compiler work.
 The compiler layer beneath the Python API. See the dialect and pass reference
 pages in the **MLIR / C++** group of this section:
 
-- [ObjectFifo Lowering](../ObjectFifoLowering.md) — how an `aie.objectfifo`
-  becomes buffers, locks, flows and DMA programs, and how to enter that
-  pipeline partway with hand-written IR.
 - [AIE Dialect](../AIEDialect.md), [AIEX Dialect](../AIEXDialect.md),
   [AIEVec Dialect](../AIEVecDialect.md) — op-by-op reference.
 - [AIE Passes](../AIEPasses.md), [AIEX Passes](../AIEXPasses.md),

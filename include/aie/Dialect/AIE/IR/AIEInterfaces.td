@@ -173,9 +173,7 @@ def BufferLike : OpInterface<"BufferLike"> {
 
 def ObjectFifoFlowEndpoint : OpInterface<"ObjectFifoFlowEndpoint"> {
   let description = [{
-    Interface for the ops an `aie.objectfifo.flow` connects. Gives
-    `--aie-objectfifo-allocate` the switchbox port each end occupies, whether
-    that end drives a DMA channel or hands the stream straight to a core.
+    Interface for the ops an `aie.objectfifo.flow` connects.
   }];
   let cppNamespace = "::xilinx::AIE";
   let methods =
