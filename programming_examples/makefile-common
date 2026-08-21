@@ -30,11 +30,9 @@ CHESS_FLAGS = -P ${AIE_INCLUDE_DIR}
 CHESSCCWRAP1_FLAGS = aie -I ${AIETOOLS_DIR}/include
 CHESSCCWRAP2_FLAGS = aie2 -I ${AIETOOLS_DIR}/include
 CHESSCCWRAP2P_FLAGS = aie2p -I ${AIETOOLS_DIR}/include
-# -fstack-size-section records each function's frame size in a
-# `.stack_sizes` section, matching the flag aiecc's own core-object `llc`
-# invocation passes (tools/aiecc/aiecc.cpp). Without this, kernel objects
-# compiled outside the IRON JIT flow carry no stack accounting at all --
-# and kernels are where large frames actually live.
+# -fstack-size-section matches aiecc's own core-object llc invocation; without
+# it these kernel objects (where large frames actually live) carry no stack
+# accounting at all.
 PEANOWRAP2_FLAGS = -O2 -std=c++20 --target=aie2-none-unknown-elf ${WARNING_FLAGS} -DNDEBUG -I ${MLIR_AIE_DIR}/include ${NO_ADF_FLAGS} -fstack-size-section
 PEANOWRAP2P_FLAGS = -O2 -std=c++20 --target=aie2p-none-unknown-elf ${WARNING_FLAGS} -DNDEBUG -I ${MLIR_AIE_DIR}/include ${NO_ADF_FLAGS} -fstack-size-section
 

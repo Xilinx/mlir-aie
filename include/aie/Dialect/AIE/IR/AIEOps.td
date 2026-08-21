@@ -416,9 +416,15 @@ def AIE_CoreOp
     are always stored in the local core memory, to avoid conflicts with static data
     allocations in other cores.
 
-    The reservation is not checked against the core's actual frames, and the stack sits
-    directly below the objectFIFO buffers with no clearance, so a design with large frames
-    must set this attribute or it will overwrite them silently.
+    The stack sits directly below the buffers with no clearance, so a `stack_size` too
+    small for the core's actual usage overwrites them silently.  The aiecc driver checks
+    this: it computes each core's requirement from a call-graph walk of its callees plus
+    (once the core is compiled) the core body's own frame, and fails the build -- naming
+    the exact value to set -- if the requirement exceeds `stack_size`, explicit or
+    defaulted.  `--no-auto-stack-size` skips this check entirely.  A kernel symbol the
+    analysis cannot size on its own (recursion, an indirect call, a Chess-compiled object,
+    or one merged via `link_merge_files`) can declare its own contribution with a
+    `stack_size_override` attribute on its `func.func`.
 
     This op has an optional `dynamic_objfifo_lowering` attribute, to finely control whether the
     objectfifos in this core should be lowered using the dynamic runtime lowering.

@@ -6,7 +6,7 @@
 # Support file for stack_sizes_makefile_kernel.test. Pulls in the real
 # programming_examples/makefile-common (not a hand-copied mirror of its
 # flags) so this test breaks if PEANOWRAP2P_FLAGS ever drops
-# -mllvm -stack-size-section, the same way every example Makefile that
+# -fstack-size-section, the same way every example Makefile that
 # includes it would.
 
 include $(dir $(lastword $(MAKEFILE_LIST)))../../programming_examples/makefile-common

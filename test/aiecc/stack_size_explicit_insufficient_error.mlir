@@ -1,41 +1,38 @@
-//===- stack_size_absent_insufficient_error.mlir ------------------*- MLIR -*-===//
+//===- stack_size_explicit_insufficient_error.mlir ----------------*- MLIR -*-===//
 //
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
-// stack_size is absent (the common case -- most designs never set it), and
-// entry_a's real frame (~4160 bytes, see stack_size_max_not_sum_kernel.cc)
-// exceeds the device default (0x400 = 1024 bytes) that this core's buffers
-// were placed against. Today this silently corrupts memory at runtime;
-// instead, once the core's own compiled frame is known (only possible after
-// this build has already run to completion), the build must fail with the
-// exact value to declare -- never silently pick one itself, the same
-// "compiler measures and reports, user declares and rebuilds" rule as every
-// other check in this analysis.
+// An explicit stack_size is never overwritten, but it is not exempt from the
+// post-build sufficiency check either: unlike the early check
+// (checkStackSizeRequirements), which only has a lower bound and so can only
+// warn even when that bound already exceeds stack_size, this later check
+// reads the core's actual compiled frame back from its object and so has the
+// TRUE requirement. An explicit value that is provably too small is exactly
+// as wrong as an absent one defaulting to too little -- shipping it as a
+// warning would ship a proven overflow, so it is a hard build failure too,
+// just as stack_size_absent_insufficient_error.mlir is for the absent case.
 
 // REQUIRES: peano
 // RUN: rm -rf %t.d && mkdir -p %t.d
 // RUN: clang++ --target=aie2p-none-unknown-elf -std=c++20 -O0 -DNDEBUG -fstack-size-section -c %S/stack_size_max_not_sum_kernel.cc -o %t.d/stack_size_max_not_sum_kernel.o
 // RUN: cd %t.d && not %aiecc --get-xclbin --xclbin-name=final.xclbin --output-dir=%t.out %s 2>&1 | FileCheck %s
 
-// CHECK: error: stack_size is absent (this core's buffers were placed assuming the device default of 1024 bytes), but this core's real requirement is {{[0-9]+}} bytes; set stack_size = {{[0-9]+}} explicitly on this aie.core (Worker(stack_size=...) in IRON) and rebuild, or pass --no-auto-stack-size to skip this check
+// CHECK: error: stack_size = 1024 is insufficient (this core's buffers were placed assuming 1024 bytes), but this core's real requirement is {{[0-9]+}} bytes; increase stack_size to {{[0-9]+}} (Worker(stack_size=...) in IRON) and rebuild, or pass --no-auto-stack-size to skip this check
 
-// The xclbin this failed build wrote before the post-build check ran must not
-// be left behind looking complete: a caller that doesn't check aiecc's exit
-// code (or `make`, on the next invocation) would otherwise pick up a binary
-// whose buffers were placed against a stack_size now proven insufficient.
+// Same artifact-cleanliness guarantee as the absent case: a proven-insufficient
+// build must not leave a complete-looking xclbin behind.
 // RUN: not ls %t.out/final.xclbin
 
-// --no-auto-stack-size skips this check entirely, same as the earlier
-// warning it complements -- the build must complete despite the same
-// underlying insufficiency.
+// --no-auto-stack-size skips this check entirely, the same escape hatch that
+// skips the absent case.
 // RUN: rm -rf %t.noauto.d && mkdir -p %t.noauto.d
 // RUN: cp %t.d/stack_size_max_not_sum_kernel.o %t.noauto.d/
 // RUN: cd %t.noauto.d && %aiecc --no-auto-stack-size %s 2>&1 | FileCheck --check-prefix=NOAUTO --allow-empty %s
 
-// NOAUTO-NOT: stack_size is absent
+// NOAUTO-NOT: stack_size = 1024 is insufficient
 
 module {
   aie.device(npu2) {
@@ -52,7 +49,7 @@ module {
       func.call @entry_a(%e) : (memref<512xi8>) -> ()
       aie.objectfifo.release @of_out(Produce, 1)
       aie.end
-    }
+    } { stack_size = 1024 : i32 }
 
     aie.runtime_sequence(%out : memref<512xi8>) {
       %c0 = arith.constant 0 : i64
