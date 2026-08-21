@@ -567,8 +567,6 @@ template <typename T, typename U, typename JoinFn>
 struct JoinEdge;
 template <typename In, typename Out, typename SplitFn>
 struct SplitEdge;
-template <typename In, typename Out, typename ExpandFn>
-struct ExpandEdge;
 template <typename T, typename FilterFn>
 struct FilterEdge;
 template <typename P, typename S, typename KeyFn>
@@ -681,18 +679,12 @@ struct EdgeWithTypedOutput : EdgeBase {
         out, std::move(name), std::move(fn));
   }
 
+  // Fan each input item out into zero or more keyed output items. Runs over
+  // every item, so it works on a singleton node and on a node that already
+  // holds one item per device.
   template <typename U, typename SplitFn>
   SplitEdge<Out, U, SplitFn> &split(std::string name, SplitFn fn) {
     return graph.template addEdge<SplitEdge<Out, U, SplitFn>>(
-        out, std::move(name), std::move(fn));
-  }
-
-  // Like `split`, but over a node that already holds many items: `fn` runs per
-  // input item and the per-item results are concatenated. `split` is the
-  // singleton-input case, and asserts as much.
-  template <typename U, typename ExpandFn>
-  ExpandEdge<Out, U, ExpandFn> &expand(std::string name, ExpandFn fn) {
-    return graph.template addEdge<ExpandEdge<Out, U, ExpandFn>>(
         out, std::move(name), std::move(fn));
   }
 
@@ -840,34 +832,10 @@ struct SplitEdge : Edge<In, Out> {
       : Edge<In, Out>(src, std::move(name)), fn(std::move(f)) {}
 
   mlir::LogicalResult execute() override {
-    assert(this->in.items.size() == 1 &&
-           "SplitEdge requires a singleton input node");
-    auto produced = fn(this->in.get());
-    if (mlir::failed(produced))
-      return mlir::failure();
     this->out.items.clear();
-    this->out.items.reserve(produced->size());
-    for (auto &[key, value] : *produced) {
-      Item<Out> outItem = this->prepareItem(key);
-      outItem.value = std::move(value);
-      this->out.items.push_back(std::move(outItem));
-    }
-    return mlir::success();
-  }
-};
-
-// ExpandEdge — fan every item of a multi-item node out into zero or more
-// keyed items. `fn` receives the whole input Item so it can key its outputs off
-// the input's key (a device's cores are keyed <device>_core_<col>_<row>).
-template <typename In, typename Out, typename ExpandFn>
-struct ExpandEdge : Edge<In, Out> {
-  ExpandFn fn;
-
-  ExpandEdge(Node<In> &src, std::string name, ExpandFn f)
-      : Edge<In, Out>(src, std::move(name)), fn(std::move(f)) {}
-
-  mlir::LogicalResult execute() override {
-    this->out.items.clear();
+    // `fn` gets the whole Item, not just the payload: with more than one input
+    // the outputs have to be keyed off which one they came from (a device's
+    // cores are keyed <device>_core_<col>_<row>).
     for (const auto &src : this->in.items) {
       auto produced = fn(src);
       if (mlir::failed(produced))

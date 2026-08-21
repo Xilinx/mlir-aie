@@ -754,7 +754,7 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   // except that `perCore` drops cores that already carry an `elf_file`, so
   // filter the carved set to match or the object subgraph joins on a key its
   // other inputs do not have.
-  auto &unifiedPerCoreLowered = physicalPerDevice.expand<ModRef>(
+  auto &unifiedPerCoreLowered = physicalPerDevice.split<ModRef>(
       "lowered_{0}.mlir", [](const Item<OpInModule<DeviceOp>> &dev) {
         // Same predicate as the `perCoreCompile` filter above: a core with an
         // `elf_file` is used verbatim, so it must not appear here either.
