@@ -214,7 +214,11 @@ class external_func(FuncOp):
             `.stack_sizes` metadata the analysis needs (e.g. via Chess). An
             explicit value here always wins over whatever the analysis would
             otherwise compute, even if smaller: it is a declaration, not a
-            clamp. ``0`` is a legal value.
+            clamp. ``0`` is a legal value. It lives on this func.func rather than
+            on the core because the same kernel is often linked into multiple
+            cores and the actually problematic symbol is usually internal to a
+            kernel object MLIR never saw, so the override has to be addressable at
+            the one granularity MLIR does see.
     """
 
     def __init__(
@@ -240,11 +244,19 @@ class external_func(FuncOp):
                     f"external_func '{name}': invalid link_with_mode "
                     f"'{link_with_mode}'; the only supported value is 'merge'."
                 )
-        if stack_size_override is not None and stack_size_override < 0:
-            raise ValueError(
-                f"external_func '{name}': stack_size_override must be >= 0, "
-                f"got {stack_size_override}."
-            )
+        if stack_size_override is not None:
+            if not isinstance(stack_size_override, int) or isinstance(
+                stack_size_override, bool
+            ):
+                raise ValueError(
+                    f"external_func '{name}': stack_size_override must be an int, "
+                    f"got {type(stack_size_override).__name__}."
+                )
+            if stack_size_override < 0:
+                raise ValueError(
+                    f"external_func '{name}': stack_size_override must be >= 0, "
+                    f"got {stack_size_override}."
+                )
         if outputs is None:
             outputs = []
         for i, ty in enumerate(inputs):
@@ -447,7 +459,12 @@ Device = DeviceOp
 class Core(CoreOp):
     # Until https://github.com/llvm/llvm-project/pull/73620 gets figured out.
     def __init__(
-        self, tile, link_with=None, dynamic_objfifo_lowering=None, stack_size=None
+        self,
+        tile,
+        link_with=None,
+        dynamic_objfifo_lowering=None,
+        stack_size=None,
+        reserved_data_size=None,
     ):
         if link_with is not None:
             raise TypeError(
@@ -459,6 +476,7 @@ class Core(CoreOp):
             result=T.index(),
             tile=tile,
             stack_size=stack_size,
+            reserved_data_size=reserved_data_size,
             link_with=None,
             dynamic_objfifo_lowering=dynamic_objfifo_lowering,
         )
@@ -478,6 +496,7 @@ class buffer(BufferOp):
         datatype: MemRefType | type[np.ndarray],
         name: str | None = None,
         address=None,
+        mem_bank=None,
         initial_value: np.ndarray | None = None,
         use_write_rtp: bool = False,
         loc=None,
@@ -497,6 +516,7 @@ class buffer(BufferOp):
             tile=tile,
             sym_name=name,
             address=address,
+            mem_bank=mem_bank,
             initial_value=initial_value,
             loc=loc,
             ip=ip,

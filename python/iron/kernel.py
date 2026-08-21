@@ -271,6 +271,11 @@ class Kernel(BaseKernel):
                 separate object). An explicit value here always wins over
                 whatever the analysis would otherwise compute, even if
                 smaller -- it is a declaration, not a clamp. ``0`` is legal.
+                It lives here, on the kernel, rather than on the core because the
+                same kernel is often linked into multiple cores and the actually
+                problematic symbol is usually internal to a kernel object MLIR never
+                saw, so the override has to be addressable at the one granularity
+                MLIR does see.
         """
         super().__init__(name, arg_types)
         self._object_file_name = object_file_name

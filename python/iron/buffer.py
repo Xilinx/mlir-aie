@@ -41,6 +41,7 @@ class Buffer(Resolvable):
         tile: Tile | None = None,
         use_write_rtp: bool = False,
         address: int | None = None,
+        mem_bank: int | None = None,
     ):
         """Declare a memory region at the top-level of the design.
 
@@ -61,6 +62,10 @@ class Buffer(Resolvable):
             address (int | None, optional): Pin the buffer to a fixed L1 address. Needed
                 for host-written RTP buffers the runtime pokes at a hardcoded address.
                 Defaults to None (compiler-assigned).
+            mem_bank (int | None, optional): Pin the buffer to a specific L1 memory bank.
+                A hard placement constraint: the buffer allocator errors rather than
+                silently placing the buffer in another bank. Defaults to None
+                (compiler-assigned).
 
         Raises:
             ValueError: If neither ``type`` nor ``initial_value`` is provided.
@@ -78,6 +83,7 @@ class Buffer(Resolvable):
             self._name = f"buf_{next(Buffer._gbuf_index)}"
         self._use_write_rtp = use_write_rtp
         self._address = address
+        self._mem_bank = mem_bank
         self._tile = tile
         # Whether the user pinned this Buffer to an explicit tile at
         # construction.  A Worker may auto-pin _tile later as a
@@ -149,6 +155,7 @@ class Buffer(Resolvable):
                 datatype=self._arr_type,
                 name=self._name,
                 address=self._address,
+                mem_bank=self._mem_bank,
                 initial_value=self._initial_value,
                 use_write_rtp=self._use_write_rtp,
             )
