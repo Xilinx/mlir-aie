@@ -10993,6 +10993,7 @@ operation.</p>
 <tr><td><code>repeat_count</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 <tr><td><code>sym_name</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
 <tr><td><code>pad_value</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>out_of_order</code></td><td>::mlir::UnitAttr</td><td>unit attribute</td></tr>
 </table>
 
 <h4 id="results_3">Results:<a class="headerlink" href="#results_3" title="Permanent link">&para;</a></h4>
@@ -11138,6 +11139,7 @@ iteration there via the outermost <code>sizes</code>/<code>strides</code> dimens
 <tr><td><code>packet</code></td><td>::xilinx::AIE::PacketInfoAttr</td><td>
     Tuple encoding the type and header of a packet;
   </td></tr>
+<tr><td><code>out_of_order_id</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 <tr><td><code>burst_length</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 <tr><td><code>iteration</code></td><td>::xilinx::AIE::BDIterationAttr</td><td>
     Tuple encoding the iteration state of a buffer descriptor in
@@ -11243,6 +11245,7 @@ nonzero <code>pad_value</code> elsewhere.</p>
 <tr><td><code>channel_index</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0</td></tr>
 <tr><td><code>repeat_count</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 <tr><td><code>pad_value</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>out_of_order</code></td><td>::mlir::UnitAttr</td><td>unit attribute</td></tr>
 </table>
 
 <h4 id="results_4">Results:<a class="headerlink" href="#results_4" title="Permanent link">&para;</a></h4>
