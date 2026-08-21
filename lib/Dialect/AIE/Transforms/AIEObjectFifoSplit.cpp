@@ -213,7 +213,15 @@ struct AIEObjectFifoSplitPass
                                             ObjectFifoCreateOp from,
                                             BDDimLayoutArrayAttr dims,
                                             std::optional<int> channelIndex) {
-    std::optional<int32_t> iterCount = from.getIterCount();
+    // A fifo's `iter_count` names the MemTile's chain. The far end runs a chain
+    // of its own, and a `repeat_count` drainer replays, so the two ends need
+    // not iterate the same number of times.
+    std::optional<int32_t> iterCount;
+    if (auto tileLike = dyn_cast<TileLike>(tile.getDefiningOp())) {
+      if (tileLike.isMemTile()) {
+        iterCount = from.getIterCount();
+      }
+    }
     DenseI32ArrayAttr segments;
     if (ref.pool.getSegmentAttrs().size() > 1) {
       segments = builder.getDenseI32ArrayAttr(ref.segments);

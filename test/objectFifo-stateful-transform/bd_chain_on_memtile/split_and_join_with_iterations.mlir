@@ -111,8 +111,8 @@
 // CHECK:       aie.end
 // CHECK:     }
 // CHECK:     %mem_0_2 = aie.mem(%tile_0_2) {
-// CHECK:       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb4, repeat_count = 7)
-// CHECK:     ^bb1:  // pred: ^bb0
+// CHECK:       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
+// CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb2
 // CHECK:       aie.use_lock(%split_0_cons_prod_lock_0, AcquireGreaterEqual, %{{.*}})
 // CHECK:       aie.dma_bd(%split_0_cons_buff_0 : memref<512xui8> offset = {{.*}} len = {{.*}})
 // CHECK:       aie.use_lock(%split_0_cons_cons_lock_0, Release, %{{.*}})
@@ -121,29 +121,25 @@
 // CHECK:       aie.use_lock(%split_0_cons_prod_lock_0, AcquireGreaterEqual, %{{.*}})
 // CHECK:       aie.dma_bd(%split_0_cons_buff_1 : memref<512xui8> offset = {{.*}} len = {{.*}})
 // CHECK:       aie.use_lock(%split_0_cons_cons_lock_0, Release, %{{.*}})
-// CHECK:       aie.next_bd ^bb3
-// CHECK:     ^bb3:  // pred: ^bb2
-// CHECK:       aie.end
-// CHECK:     ^bb4:  // pred: ^bb0
-// CHECK:       %1 = aie.dma_start(MM2S, 0, ^bb5, ^bb8, repeat_count = 7)
-// CHECK:     ^bb5:  // pred: ^bb4
+// CHECK:       aie.next_bd ^bb1
+// CHECK:     ^bb3:  // pred: ^bb0
+// CHECK:       %1 = aie.dma_start(MM2S, 0, ^bb4, ^bb6)
+// CHECK:     ^bb4:  // 2 preds: ^bb3, ^bb5
 // CHECK:       aie.use_lock(%join_0_cons_lock_0, AcquireGreaterEqual, %{{.*}})
 // CHECK:       aie.dma_bd(%join_0_buff_0 : memref<512xui8> offset = {{.*}} len = {{.*}})
 // CHECK:       aie.use_lock(%join_0_prod_lock_0, Release, %{{.*}})
-// CHECK:       aie.next_bd ^bb6
-// CHECK:     ^bb6:  // pred: ^bb5
+// CHECK:       aie.next_bd ^bb5
+// CHECK:     ^bb5:  // pred: ^bb4
 // CHECK:       aie.use_lock(%join_0_cons_lock_0, AcquireGreaterEqual, %{{.*}})
 // CHECK:       aie.dma_bd(%join_0_buff_1 : memref<512xui8> offset = {{.*}} len = {{.*}})
 // CHECK:       aie.use_lock(%join_0_prod_lock_0, Release, %{{.*}})
-// CHECK:       aie.next_bd ^bb7
-// CHECK:     ^bb7:  // pred: ^bb6
-// CHECK:       aie.end
-// CHECK:     ^bb8:  // pred: ^bb4
+// CHECK:       aie.next_bd ^bb4
+// CHECK:     ^bb6:  // pred: ^bb3
 // CHECK:       aie.end
 // CHECK:     }
 // CHECK:     %mem_0_3 = aie.mem(%tile_0_3) {
-// CHECK:       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb4, repeat_count = 7)
-// CHECK:     ^bb1:  // pred: ^bb0
+// CHECK:       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
+// CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb2
 // CHECK:       aie.use_lock(%split_1_cons_prod_lock_0, AcquireGreaterEqual, %{{.*}})
 // CHECK:       aie.dma_bd(%split_1_cons_buff_0 : memref<512xui8> offset = {{.*}} len = {{.*}})
 // CHECK:       aie.use_lock(%split_1_cons_cons_lock_0, Release, %{{.*}})
@@ -152,28 +148,22 @@
 // CHECK:       aie.use_lock(%split_1_cons_prod_lock_0, AcquireGreaterEqual, %{{.*}})
 // CHECK:       aie.dma_bd(%split_1_cons_buff_1 : memref<512xui8> offset = {{.*}} len = {{.*}})
 // CHECK:       aie.use_lock(%split_1_cons_cons_lock_0, Release, %{{.*}})
-// CHECK:       aie.next_bd ^bb3
-// CHECK:     ^bb3:  // pred: ^bb2
-// CHECK:       aie.end
-// CHECK:     ^bb4:  // pred: ^bb0
-// CHECK:       %1 = aie.dma_start(MM2S, 0, ^bb5, ^bb8, repeat_count = 7)
-// CHECK:     ^bb5:  // pred: ^bb4
+// CHECK:       aie.next_bd ^bb1
+// CHECK:     ^bb3:  // pred: ^bb0
+// CHECK:       %1 = aie.dma_start(MM2S, 0, ^bb4, ^bb6)
+// CHECK:     ^bb4:  // 2 preds: ^bb3, ^bb5
 // CHECK:       aie.use_lock(%join_1_cons_lock_0, AcquireGreaterEqual, %{{.*}})
 // CHECK:       aie.dma_bd(%join_1_buff_0 : memref<512xui8> offset = {{.*}} len = {{.*}})
 // CHECK:       aie.use_lock(%join_1_prod_lock_0, Release, %{{.*}})
-// CHECK:       aie.next_bd ^bb6
-// CHECK:     ^bb6:  // pred: ^bb5
+// CHECK:       aie.next_bd ^bb5
+// CHECK:     ^bb5:  // pred: ^bb4
 // CHECK:       aie.use_lock(%join_1_cons_lock_0, AcquireGreaterEqual, %{{.*}})
 // CHECK:       aie.dma_bd(%join_1_buff_1 : memref<512xui8> offset = {{.*}} len = {{.*}})
 // CHECK:       aie.use_lock(%join_1_prod_lock_0, Release, %{{.*}})
-// CHECK:       aie.next_bd ^bb7
-// CHECK:     ^bb7:  // pred: ^bb6
-// CHECK:       aie.end
-// CHECK:     ^bb8:  // pred: ^bb4
+// CHECK:       aie.next_bd ^bb4
+// CHECK:     ^bb6:  // pred: ^bb3
 // CHECK:       aie.end
 // CHECK:     }
-// CHECK:   }
-// CHECK: }
 
 module {
   aie.device(npu1_1col) {

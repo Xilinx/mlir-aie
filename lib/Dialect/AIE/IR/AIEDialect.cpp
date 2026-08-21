@@ -569,6 +569,23 @@ LogicalResult ObjectFifoCreateOp::verify() {
     int iterCount = *iterCountAttr;
     if (iterCount < 1 || iterCount > 256)
       return emitError("`iter_count` must be between 1 and 256");
+
+    // A fifo has a chain at each end and they need not run the same number of
+    // times: a `repeat_count` drainer replays, so it moves that many times more
+    // objects than its filler. The count therefore names one chain, and the
+    // MemTile's is the one this attribute has always meant.
+    bool hasMemTile = producerTile.isMemTile();
+    if (!hasMemTile) {
+      for (auto consTileVal : getConsumerTiles()) {
+        TileLike consTile = getTileLikeFromValue(consTileVal);
+        if (consTile && consTile.isMemTile()) {
+          hasMemTile = true;
+          break;
+        }
+      }
+    }
+    if (!hasMemTile)
+      return emitError("`iter_count` is currently only supported on MemTiles");
   }
 
   if (auto consumerElemType = getConsumerElemType()) {

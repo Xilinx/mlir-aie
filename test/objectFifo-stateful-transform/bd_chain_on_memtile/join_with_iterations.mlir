@@ -8,8 +8,8 @@
 // RUN: aie-opt --aie-objectFifo-stateful-transform="skip-verify=true" --aie-objectFifo-unroll %s | FileCheck %s
 
 // CHECK:     %mem_0_2 = aie.mem(%tile_0_2) {
-// CHECK:       %0 = aie.dma_start(MM2S, 0, ^bb1, ^bb4, repeat_count = 3)
-// CHECK:     ^bb1:  // pred: ^bb0
+// CHECK:       %0 = aie.dma_start(MM2S, 0, ^bb1, ^bb3)
+// CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb2
 // CHECK:       aie.use_lock(%input_small_cons_lock_0, AcquireGreaterEqual, %{{.*}})
 // CHECK:       aie.dma_bd(%input_small_buff_0 : memref<256xui8> offset = {{.*}} len = {{.*}})
 // CHECK:       aie.use_lock(%input_small_prod_lock_0, Release, %{{.*}})
@@ -18,10 +18,8 @@
 // CHECK:       aie.use_lock(%input_small_cons_lock_0, AcquireGreaterEqual, %{{.*}})
 // CHECK:       aie.dma_bd(%input_small_buff_1 : memref<256xui8> offset = {{.*}} len = {{.*}})
 // CHECK:       aie.use_lock(%input_small_prod_lock_0, Release, %{{.*}})
-// CHECK:       aie.next_bd ^bb3
-// CHECK:     ^bb3:  // pred: ^bb2
-// CHECK:       aie.end
-// CHECK:     ^bb4:  // pred: ^bb0
+// CHECK:       aie.next_bd ^bb1
+// CHECK:     ^bb3:  // pred: ^bb0
 // CHECK:       aie.end
 // CHECK:     }
 // CHECK:     %memtile_dma_0_1 = aie.memtile_dma(%mem_tile_0_1) {
@@ -102,8 +100,8 @@
 // CHECK:       aie.end
 // CHECK:     }
 // CHECK:     %mem_0_3 = aie.mem(%tile_0_3) {
-// CHECK:       %0 = aie.dma_start(MM2S, 0, ^bb1, ^bb4, repeat_count = 5)
-// CHECK:     ^bb1:  // pred: ^bb0
+// CHECK:       %0 = aie.dma_start(MM2S, 0, ^bb1, ^bb3)
+// CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb2
 // CHECK:       aie.use_lock(%input_medium_cons_lock_0, AcquireGreaterEqual, %{{.*}})
 // CHECK:       aie.dma_bd(%input_medium_buff_0 : memref<384xui8> offset = {{.*}} len = {{.*}})
 // CHECK:       aie.use_lock(%input_medium_prod_lock_0, Release, %{{.*}})
@@ -112,15 +110,13 @@
 // CHECK:       aie.use_lock(%input_medium_cons_lock_0, AcquireGreaterEqual, %{{.*}})
 // CHECK:       aie.dma_bd(%input_medium_buff_1 : memref<384xui8> offset = {{.*}} len = {{.*}})
 // CHECK:       aie.use_lock(%input_medium_prod_lock_0, Release, %{{.*}})
-// CHECK:       aie.next_bd ^bb3
-// CHECK:     ^bb3:  // pred: ^bb2
-// CHECK:       aie.end
-// CHECK:     ^bb4:  // pred: ^bb0
+// CHECK:       aie.next_bd ^bb1
+// CHECK:     ^bb3:  // pred: ^bb0
 // CHECK:       aie.end
 // CHECK:     }
 // CHECK:     %mem_0_4 = aie.mem(%tile_0_4) {
-// CHECK:       %0 = aie.dma_start(MM2S, 0, ^bb1, ^bb4, repeat_count = 7)
-// CHECK:     ^bb1:  // pred: ^bb0
+// CHECK:       %0 = aie.dma_start(MM2S, 0, ^bb1, ^bb3)
+// CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb2
 // CHECK:       aie.use_lock(%input_large_cons_lock_0, AcquireGreaterEqual, %{{.*}})
 // CHECK:       aie.dma_bd(%input_large_buff_0 : memref<384xui8> offset = {{.*}} len = {{.*}})
 // CHECK:       aie.use_lock(%input_large_prod_lock_0, Release, %{{.*}})
@@ -129,14 +125,10 @@
 // CHECK:       aie.use_lock(%input_large_cons_lock_0, AcquireGreaterEqual, %{{.*}})
 // CHECK:       aie.dma_bd(%input_large_buff_1 : memref<384xui8> offset = {{.*}} len = {{.*}})
 // CHECK:       aie.use_lock(%input_large_prod_lock_0, Release, %{{.*}})
-// CHECK:       aie.next_bd ^bb3
-// CHECK:     ^bb3:  // pred: ^bb2
-// CHECK:       aie.end
-// CHECK:     ^bb4:  // pred: ^bb0
+// CHECK:       aie.next_bd ^bb1
+// CHECK:     ^bb3:  // pred: ^bb0
 // CHECK:       aie.end
 // CHECK:     }
-// CHECK:   }
-// CHECK: }
 
 module {
   aie.device(npu1_1col) {
