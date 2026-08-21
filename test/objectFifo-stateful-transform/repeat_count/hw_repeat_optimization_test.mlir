@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform="skip-verify=true" --aie-objectFifo-unroll --split-input-file %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll --split-input-file %s | FileCheck %s
 
 // Test: Hardware repeat optimization for repeat_count with single buffer (depth=1).
 // When numBlocks == 1 and repeat_count > 1, the stateful transform generates

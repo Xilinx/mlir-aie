@@ -5,33 +5,34 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform="skip-verify=true" --aie-objectFifo-unroll %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll %s | FileCheck %s
 
-// CHECK-LABEL:   aie.device(xcve2302) {
-// CHECK:           %[[VAL_0:.*]] = aie.tile(1, 2)
-// CHECK:           %[[VAL_1:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "of_consumer_stream_buff_0"} : memref<16xi32>
-// CHECK:           %[[VAL_2:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "of_consumer_stream_buff_1"} : memref<16xi32>
-// CHECK:           %[[VAL_3:.*]] = aie.lock(%[[VAL_0]]) {init = 2 : i32, sym_name = "of_consumer_stream_prod_lock_0"}
-// CHECK:           %[[VAL_4:.*]] = aie.lock(%[[VAL_0]]) {init = 0 : i32, sym_name = "of_consumer_stream_cons_lock_0"}
-// CHECK:           %[[VAL_5:.*]] = aie.tile(3, 3)
-// CHECK:           aie.flow(%[[VAL_0]], DMA : 0, %[[VAL_5]], Core : 0)
-// CHECK:           %[[VAL_6:.*]] = aie.mem(%[[VAL_0]]) {
-// CHECK:             %[[VAL_7:.*]] = arith.constant 1 : i32
-// CHECK:             %[[VAL_8:.*]] = aie.dma_start(MM2S, 0, ^bb1, ^bb3)
-// CHECK:           ^bb1:
-// CHECK:             aie.use_lock(%[[VAL_4]], AcquireGreaterEqual, %[[VAL_7]])
-// CHECK:             aie.dma_bd(%[[VAL_1]] : memref<16xi32> offset = 0 len = 16)
-// CHECK:             aie.use_lock(%[[VAL_3]], Release, %[[VAL_7]])
-// CHECK:             aie.next_bd ^bb2
-// CHECK:           ^bb2:
-// CHECK:             aie.use_lock(%[[VAL_4]], AcquireGreaterEqual, %[[VAL_7]])
-// CHECK:             aie.dma_bd(%[[VAL_2]] : memref<16xi32> offset = 0 len = 16)
-// CHECK:             aie.use_lock(%[[VAL_3]], Release, %[[VAL_7]])
-// CHECK:             aie.next_bd ^bb1
-// CHECK:           ^bb3:
-// CHECK:             aie.end
-// CHECK:           }
-// CHECK:         }
+// CHECK: module @consumer_stream_AIE2 {
+// CHECK:   aie.device(xcve2302) {
+// CHECK-DAG:     %[[VAL_0:.*]] = aie.tile(1, 2)
+// CHECK-DAG:     %[[VAL_2:.*]] = aie.tile(3, 3)
+// CHECK-DAG:     %of_consumer_stream_buff_0 = aie.buffer(%tile_1_2) {sym_name = "of_consumer_stream_buff_0"} : memref<16xi32>
+// CHECK-DAG:     %of_consumer_stream_buff_1 = aie.buffer(%tile_1_2) {sym_name = "of_consumer_stream_buff_1"} : memref<16xi32>
+// CHECK-DAG:     %of_consumer_stream_prod_lock_0 = aie.lock(%tile_1_2) {init = 2 : i32, sym_name = "of_consumer_stream_prod_lock_0"}
+// CHECK-DAG:     %of_consumer_stream_cons_lock_0 = aie.lock(%tile_1_2) {init = 0 : i32, sym_name = "of_consumer_stream_cons_lock_0"}
+// CHECK-DAG:     aie.flow(%tile_1_2, DMA : 0, %tile_3_3, Core : 0)
+// CHECK:     %mem_1_2 = aie.mem(%tile_1_2) {
+// CHECK:       %0 = aie.dma_start(MM2S, 0, ^bb1, ^bb3)
+// CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb2
+// CHECK:       aie.use_lock(%of_consumer_stream_cons_lock_0, AcquireGreaterEqual, %{{.*}})
+// CHECK:       aie.dma_bd(%of_consumer_stream_buff_0 : memref<16xi32> offset = {{.*}} len = {{.*}})
+// CHECK:       aie.use_lock(%of_consumer_stream_prod_lock_0, Release, %{{.*}})
+// CHECK:       aie.next_bd ^bb2
+// CHECK:     ^bb2:  // pred: ^bb1
+// CHECK:       aie.use_lock(%of_consumer_stream_cons_lock_0, AcquireGreaterEqual, %{{.*}})
+// CHECK:       aie.dma_bd(%of_consumer_stream_buff_1 : memref<16xi32> offset = {{.*}} len = {{.*}})
+// CHECK:       aie.use_lock(%of_consumer_stream_prod_lock_0, Release, %{{.*}})
+// CHECK:       aie.next_bd ^bb1
+// CHECK:     ^bb3:  // pred: ^bb0
+// CHECK:       aie.end
+// CHECK:     }
+// CHECK:   }
+// CHECK: }
 
 module @consumer_stream_AIE2 {
  aie.device(xcve2302) {

@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform="skip-verify=true" --aie-objectFifo-unroll %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll %s | FileCheck %s
 
 // ObjectFifo with asymmetric element types (producer 40xi32, consumer 10xi32).
 // Producer sends 40 elements per BD, consumer receives 10 at a time (4:1 ratio).
@@ -17,7 +17,7 @@
 // CHECK-DAG: aie.buffer(%{{.*}}) {sym_name = "test_wts_buff_0"} : memref<40xi32>
 
 // Flow connecting producer DMA to consumer DMA
-// CHECK: aie.flow
+// CHECK-DAG: aie.flow
 
 // Producer DMA sends 40 elements per BD
 // CHECK: aie.memtile_dma

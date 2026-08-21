@@ -198,7 +198,7 @@ aie.device(xcve2302) {
    %tile22 = aie.tile(2, 2)
    %tile23 = aie.tile(2, 3)
 
-   aie.objectfifo @of_in1 (%tile22, {%tile11}, 2 : i32) : !aie.objectfifo<memref<12xi32>>
+   aie.objectfifo @of_in1 (%tile22, {%tile11}, 2 : i32) : !aie.objectfifo<memref<12xi32>> 
    aie.objectfifo @of_in2 (%tile23, {%tile11}, 2 : i32) : !aie.objectfifo<memref<12xi32>>
    aie.objectfifo @of_out (%tile11 dimensionsToStream [<size = 8, stride = 1>,
                                            <size = 3, stride = 8>],

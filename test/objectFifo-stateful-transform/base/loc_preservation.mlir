@@ -5,11 +5,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-// Verifies that --aie-objectFifo-stateful-transform="skip-verify=true" forwards the source
+// Verifies that --aie-objectFifo-stateful-transform forwards the source
 // objectfifo.create op's Location onto the synthesized buffer / lock ops.
 // See docs/SourceLocations.md for the broader plan.
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform="skip-verify=true" --aie-objectFifo-unroll --mlir-print-debuginfo %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll --mlir-print-debuginfo %s | FileCheck %s
 
 #user_loc = loc("user_design.py":42:4)
 

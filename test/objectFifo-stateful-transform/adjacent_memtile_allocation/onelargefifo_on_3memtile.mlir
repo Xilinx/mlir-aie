@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform="skip-verify=true" --aie-objectFifo-unroll %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll %s | FileCheck %s
 
 // CHECK-DAG: %[[SHIM_NOC_TILE_1_0:.*]] = aie.tile(1, 0)
 // CHECK-DAG: %[[MEM_TILE_1_1:.*]] = aie.tile(1, 1)
@@ -29,10 +29,10 @@
 // CHECK-DAG: %[[IN0_CONS_BUFF_2:.*]] = aie.buffer(%[[MEM_TILE_2_1]]) {sym_name = "in0_cons_buff_2"} : memref<96000xi32>
 // CHECK-DAG: %[[IN0_CONS_PROD_LOCK_0:.*]] = aie.lock(%[[MEM_TILE_1_1]]) {init = 3 : i32, sym_name = "in0_cons_prod_lock_0"}
 // CHECK-DAG: %[[IN0_CONS_CONS_LOCK_0:.*]] = aie.lock(%[[MEM_TILE_1_1]]) {init = 0 : i32, sym_name = "in0_cons_cons_lock_0"}
-// CHECK: aie.flow(%[[SHIM_NOC_TILE_1_0]], DMA : 0, %[[MEM_TILE_1_1]], DMA : 0)
-// CHECK: aie.flow(%[[MEM_TILE_1_1]], DMA : 0, %[[TILE_1_2]], DMA : 0)
-// CHECK: aie.flow(%[[MEM_TILE_1_1]], DMA : 1, %[[SHIM_NOC_TILE_1_0]], DMA : 0)
-// CHECK: aie.flow(%[[TILE_1_2]], DMA : 0, %[[MEM_TILE_1_1]], DMA : 1)
+// CHECK-DAG: aie.flow(%[[SHIM_NOC_TILE_1_0]], DMA : 0, %[[MEM_TILE_1_1]], DMA : 0)
+// CHECK-DAG: aie.flow(%[[MEM_TILE_1_1]], DMA : 0, %[[TILE_1_2]], DMA : 0)
+// CHECK-DAG: aie.flow(%[[MEM_TILE_1_1]], DMA : 1, %[[SHIM_NOC_TILE_1_0]], DMA : 0)
+// CHECK-DAG: aie.flow(%[[TILE_1_2]], DMA : 0, %[[MEM_TILE_1_1]], DMA : 1)
 
 module {
   aie.device(npu1) {

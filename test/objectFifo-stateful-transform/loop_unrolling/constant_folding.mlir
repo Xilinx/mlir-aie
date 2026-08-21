@@ -22,13 +22,13 @@
 //   * the arith.subi / arith.maxsi bookkeeping disappears, and
 //   * the scf.index_switch collapses to a constant buffer per unrolled body.
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform="skip-verify=true" --aie-objectFifo-unroll %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll %s | FileCheck %s
 
 // CHECK-LABEL:   aie.device(npu2) {
-// CHECK:           %[[CONS_BUFF0:.*]] = aie.buffer(%{{.*}}) {sym_name = "fifo_cons_buff_0"} : memref<8xi8>
-// CHECK:           %[[CONS_BUFF1:.*]] = aie.buffer(%{{.*}}) {sym_name = "fifo_cons_buff_1"} : memref<8xi8>
-// CHECK:           %[[PROD_LOCK:.*]] = aie.lock(%{{.*}}) {init = 2 : i32, sym_name = "fifo_cons_prod_lock_0"}
-// CHECK:           %[[CONS_LOCK:.*]] = aie.lock(%{{.*}}) {init = 0 : i32, sym_name = "fifo_cons_cons_lock_0"}
+// CHECK-DAG:           %[[CONS_BUFF0:.*]] = aie.buffer(%{{.*}}) {sym_name = "fifo_cons_buff_0"} : memref<8xi8>
+// CHECK-DAG:           %[[CONS_BUFF1:.*]] = aie.buffer(%{{.*}}) {sym_name = "fifo_cons_buff_1"} : memref<8xi8>
+// CHECK-DAG:           %[[PROD_LOCK:.*]] = aie.lock(%{{.*}}) {init = 2 : i32, sym_name = "fifo_cons_prod_lock_0"}
+// CHECK-DAG:           %[[CONS_LOCK:.*]] = aie.lock(%{{.*}}) {init = 0 : i32, sym_name = "fifo_cons_cons_lock_0"}
 // CHECK:           aie.core
 // The runtime-computed acquire amount folds to a single constant...
 // CHECK:             %[[C1:.*]] = arith.constant 1 : i32

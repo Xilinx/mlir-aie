@@ -9,51 +9,51 @@
 // honored under dynamic lowering (the aiecc driver default): the producer
 // acquire/release reflect the repeat count, and the consumer loop is preserved.
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform="skip-verify=true" --aie-objectFifo-unroll="default-dynamic=true" %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll="default-dynamic=true" %s | FileCheck %s
 
 // CHECK-LABEL:   aie.device(npu1) {
-// CHECK:           %[[VAL_0:.*]] = aie.tile(1, 2)
-// CHECK:           %[[VAL_1:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "of1_buff_0"} : memref<16xi32>
-// CHECK:           %[[VAL_2:.*]] = aie.lock(%[[VAL_0]]) {init = 3 : i32, sym_name = "of1_prod_lock_0"}
-// CHECK:           %[[VAL_3:.*]] = aie.lock(%[[VAL_0]]) {init = 0 : i32, sym_name = "of1_cons_lock_0"}
-// CHECK:           %[[VAL_4:.*]] = aie.tile(1, 3)
-// CHECK:           %[[VAL_5:.*]] = aie.buffer(%[[VAL_4]]) {sym_name = "of1_cons_buff_0"} : memref<16xi32>
-// CHECK:           %[[VAL_6:.*]] = aie.lock(%[[VAL_4]]) {init = 1 : i32, sym_name = "of1_cons_prod_lock_0"}
-// CHECK:           %[[VAL_7:.*]] = aie.lock(%[[VAL_4]]) {init = 0 : i32, sym_name = "of1_cons_cons_lock_0"}
-// CHECK:           aie.flow(%[[VAL_0]], DMA : 0, %[[VAL_4]], DMA : 0)
-// CHECK:           func.func @some_work(%[[VAL_8:.*]]: memref<16xi32>) {
+// CHECK-DAG:           %[[T12:.*]] = aie.tile(1, 2)
+// CHECK-DAG:           %[[T13:.*]] = aie.tile(1, 3)
+// CHECK-DAG:           %[[CB0:.*]] = aie.buffer(%[[T13]]) {sym_name = "of1_cons_buff_0"} : memref<16xi32>
+// CHECK-DAG:           %[[CPROD:.*]] = aie.lock(%[[T13]]) {init = 1 : i32, sym_name = "of1_cons_prod_lock_0"}
+// CHECK-DAG:           %[[CCONS:.*]] = aie.lock(%[[T13]]) {init = 0 : i32, sym_name = "of1_cons_cons_lock_0"}
+// CHECK-DAG:           %[[B0:.*]] = aie.buffer(%[[T12]]) {sym_name = "of1_buff_0"} : memref<16xi32>
+// CHECK-DAG:           %[[PROD:.*]] = aie.lock(%[[T12]]) {init = 3 : i32, sym_name = "of1_prod_lock_0"}
+// CHECK-DAG:           %[[CONS:.*]] = aie.lock(%[[T12]]) {init = 0 : i32, sym_name = "of1_cons_lock_0"}
+// CHECK-DAG:           aie.flow(%[[T12]], DMA : 0, %[[T13]], DMA : 0)
+// CHECK:           func.func @some_work(%{{.*}}: memref<16xi32>) {
 // CHECK:             return
 // CHECK:           }
-// CHECK:           %[[VAL_9:.*]] = aie.core(%[[VAL_0]]) {
-// CHECK:             %[[VAL_10:.*]] = arith.constant 12 : index
-// CHECK:             %[[VAL_11:.*]] = arith.constant 1 : index
-// CHECK:             %[[VAL_12:.*]] = arith.constant 0 : index
-// CHECK:             %[[VAL_13:.*]] = arith.constant 3 : i32
-// CHECK:             scf.for %[[VAL_14:.*]] = %[[VAL_12]] to %[[VAL_10]] step %[[VAL_11]] {
-// CHECK:               aie.use_lock(%[[VAL_2]], AcquireGreaterEqual, %[[VAL_13]])
-// CHECK:               func.call @some_work(%[[VAL_1]]) : (memref<16xi32>) -> ()
-// CHECK:               aie.use_lock(%[[VAL_3]], Release, %[[VAL_13]])
+// CHECK:           %{{.*}} = aie.core(%[[T12]]) {
+// CHECK:             %[[C12:.*]] = arith.constant 12 : index
+// CHECK:             %[[C1:.*]] = arith.constant 1 : index
+// CHECK:             %[[C0:.*]] = arith.constant 0 : index
+// CHECK:             %[[C3I:.*]] = arith.constant 3 : i32
+// CHECK:             scf.for %{{.*}} = %[[C0]] to %[[C12]] step %[[C1]] {
+// CHECK:               aie.use_lock(%[[PROD]], AcquireGreaterEqual, %[[C3I]])
+// CHECK:               func.call @some_work(%[[B0]]) : (memref<16xi32>) -> ()
+// CHECK:               aie.use_lock(%[[CONS]], Release, %[[C3I]])
 // CHECK:             }
 // CHECK:             aie.end
 // CHECK:           }
-// CHECK:           %[[VAL_15:.*]] = aie.mem(%[[VAL_0]]) {
-// CHECK:             %[[VAL_16:.*]] = arith.constant 1 : i32
-// CHECK:             %[[VAL_17:.*]] = aie.dma_start(MM2S, 0, ^bb1, ^bb2, repeat_count = 2)
+// CHECK:           %{{.*}} = aie.mem(%[[T12]]) {
+// CHECK:             %[[M1:.*]] = arith.constant 1 : i32
+// CHECK:             %{{.*}} = aie.dma_start(MM2S, 0, ^bb1, ^bb2, repeat_count = 2)
 // CHECK:           ^bb1:
-// CHECK:             aie.use_lock(%[[VAL_3]], AcquireGreaterEqual, %[[VAL_16]])
-// CHECK:             aie.dma_bd(%[[VAL_1]] : memref<16xi32> offset = 0 len = 16)
-// CHECK:             aie.use_lock(%[[VAL_2]], Release, %[[VAL_16]])
+// CHECK:             aie.use_lock(%[[CONS]], AcquireGreaterEqual, %[[M1]])
+// CHECK:             aie.dma_bd(%[[B0]] : memref<16xi32> offset = {{.*}} len = {{.*}})
+// CHECK:             aie.use_lock(%[[PROD]], Release, %[[M1]])
 // CHECK:             aie.next_bd ^bb1
 // CHECK:           ^bb2:
 // CHECK:             aie.end
 // CHECK:           }
-// CHECK:           %[[VAL_18:.*]] = aie.mem(%[[VAL_4]]) {
-// CHECK:             %[[VAL_19:.*]] = arith.constant 1 : i32
-// CHECK:             %[[VAL_20:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb2)
+// CHECK:           %{{.*}} = aie.mem(%[[T13]]) {
+// CHECK:             %[[N1:.*]] = arith.constant 1 : i32
+// CHECK:             %{{.*}} = aie.dma_start(S2MM, 0, ^bb1, ^bb2)
 // CHECK:           ^bb1:
-// CHECK:             aie.use_lock(%[[VAL_6]], AcquireGreaterEqual, %[[VAL_19]])
-// CHECK:             aie.dma_bd(%[[VAL_5]] : memref<16xi32> offset = 0 len = 16)
-// CHECK:             aie.use_lock(%[[VAL_7]], Release, %[[VAL_19]])
+// CHECK:             aie.use_lock(%[[CPROD]], AcquireGreaterEqual, %[[N1]])
+// CHECK:             aie.dma_bd(%[[CB0]] : memref<16xi32> offset = {{.*}} len = {{.*}})
+// CHECK:             aie.use_lock(%[[CCONS]], Release, %[[N1]])
 // CHECK:             aie.next_bd ^bb1
 // CHECK:           ^bb2:
 // CHECK:             aie.end

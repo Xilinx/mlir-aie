@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --split-input-file --aie-objectFifo-stateful-transform="skip-verify=true" %s | FileCheck %s
+// RUN: aie-opt --split-input-file --aie-objectFifo-stateful-transform %s | FileCheck %s
 
 // A fifo targeted by aiex.dma_channel_reset_for gets an
 // aie.objectfifo_rearm_binding recording its non-shim DMA endpoints and locks,
@@ -56,7 +56,7 @@ module @no_rearm {
 // The shim producer's locks are also skipped (host-managed) -- only the two core
 // consumer locks are re-armed, not the shim prod/cons locks.
 // CHECK-LABEL: @shim_producer
-// CHECK: %[[C:.*]] = aie.tile(0, 2)
+// CHECK-DAG: %[[C:.*]] = aie.tile(0, 2)
 // CHECK: aiex.dma_channel_reset_for(@of_in_rearm)
 // CHECK: aie.objectfifo_rearm_binding @of_in_rearm channels(%[[C]] : index) locks(%[[PL:.*]], %[[CL:.*]] : index, index) {channel_dirs = array<i32: 0>, channel_indices = array<i32: 0>, lock_inits = array<i32: 2, 0>}
 module @shim_producer {

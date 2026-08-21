@@ -5,14 +5,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform="skip-verify=true" --aie-objectFifo-unroll %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll %s | FileCheck %s
 
 // A producer and consumer are both pinned to DMA channel 1. First-free
 // assignment would pick channel 0 for each; the pins force channel 1 on both
 // the MM2S (producer) and S2MM (consumer) sides and on the flow between them.
 
 // CHECK-LABEL:   aie.device(xcve2302) {
-// CHECK:           aie.flow(%{{.*}}tile_1_2, DMA : 1, %{{.*}}tile_3_3, DMA : 1)
+// CHECK-DAG:           aie.flow(%{{.*}}tile_1_2, DMA : 1, %{{.*}}tile_3_3, DMA : 1)
 // CHECK:           %mem_1_2 = aie.mem(%{{.*}}tile_1_2) {
 // CHECK:             aie.dma_start(MM2S, 1,
 // CHECK:           %mem_3_3 = aie.mem(%{{.*}}tile_3_3) {

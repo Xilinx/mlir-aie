@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform="skip-verify=true" -split-input-file --verify-diagnostics %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform -split-input-file --verify-diagnostics %s
 
 aie.device(npu1) {
    %tile12 = aie.tile(1, 2)

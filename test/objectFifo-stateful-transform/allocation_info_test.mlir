@@ -7,20 +7,20 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform="skip-verify=true" --aie-objectFifo-unroll %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll %s | FileCheck %s
 
 // CHECK-LABEL:   aie.device(xcve2302) {
-// CHECK:           %[[VAL_0:.*]] = aie.tile(2, 0)
-// CHECK:           %[[VAL_1:.*]] = aie.tile(2, 2)
-// CHECK:           %[[VAL_2:.*]] = aie.tile(2, 3)
-// CHECK:           aie.flow(%[[VAL_0]], DMA : 0, %[[VAL_1]], DMA : 0)
-// CHECK:           aie.flow(%[[VAL_1]], DMA : 0, %[[VAL_0]], DMA : 0)
-// CHECK:           aie.flow(%[[VAL_0]], DMA : 1, %[[VAL_2]], DMA : 0)
-// CHECK:           aie.flow(%[[VAL_2]], DMA : 0, %[[VAL_0]], DMA : 1)
-// CHECK:           aie.shim_dma_allocation @of_in_0_shim_alloc(%[[VAL_0]], MM2S, 0)
-// CHECK:           aie.shim_dma_allocation @of_out_0_shim_alloc(%[[VAL_0]], S2MM, 0)
-// CHECK:           aie.shim_dma_allocation @of_in_1_shim_alloc(%[[VAL_0]], MM2S, 1)
-// CHECK:           aie.shim_dma_allocation @of_out_1_shim_alloc(%[[VAL_0]], S2MM, 1)
+// CHECK-DAG:           %[[VAL_0:.*]] = aie.tile(2, 0)
+// CHECK-DAG:           %[[VAL_1:.*]] = aie.tile(2, 2)
+// CHECK-DAG:           %[[VAL_2:.*]] = aie.tile(2, 3)
+// CHECK-DAG:           aie.flow(%[[VAL_0]], DMA : 0, %[[VAL_1]], DMA : 0)
+// CHECK-DAG:           aie.flow(%[[VAL_1]], DMA : 0, %[[VAL_0]], DMA : 0)
+// CHECK-DAG:           aie.flow(%[[VAL_0]], DMA : 1, %[[VAL_2]], DMA : 0)
+// CHECK-DAG:           aie.flow(%[[VAL_2]], DMA : 0, %[[VAL_0]], DMA : 1)
+// CHECK-DAG:           aie.shim_dma_allocation @of_in_0_shim_alloc(%[[VAL_0]], MM2S, 0)
+// CHECK-DAG:           aie.shim_dma_allocation @of_out_0_shim_alloc(%[[VAL_0]], S2MM, 0)
+// CHECK-DAG:           aie.shim_dma_allocation @of_in_1_shim_alloc(%[[VAL_0]], MM2S, 1)
+// CHECK-DAG:           aie.shim_dma_allocation @of_out_1_shim_alloc(%[[VAL_0]], S2MM, 1)
 // CHECK:         }
 
 module @alloc {

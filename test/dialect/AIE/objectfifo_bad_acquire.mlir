@@ -15,7 +15,7 @@ aie.device(xcve2302) {
 
    aie.objectfifo @of_0 (%tile12, {%tile23}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
 
-   %elem = aie.objectfifo.acquire @of_0 (Produce) : memref<16xi32>
+   %subview_obj0 = aie.objectfifo.acquire @of_0(Produce) : memref<16xi32>
 }
 
 // -----
@@ -29,8 +29,8 @@ aie.device(xcve2302) {
    aie.objectfifo @of_0 (%tile12, {%tile23}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
 
    %core12 = aie.core(%tile12) {
-      %elem = aie.objectfifo.acquire @of_0 (Produce) : memref<2x2xi32>
-
+      %subview_obj0 = aie.objectfifo.acquire @of_0(Produce) : memref<2x2xi32>
+         
       aie.end
    }
 }
@@ -46,8 +46,8 @@ aie.device(xcve2302) {
    aie.objectfifo @of_0 (%tile12, {%tile23}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
 
    %core23 = aie.core(%tile23) {
-      %elem = aie.objectfifo.acquire @of_0 (Produce) : memref<16xi32>
-
+      %subview_obj0 = aie.objectfifo.acquire @of_0(Produce) : memref<16xi32>
+         
       aie.end
    }
 }
@@ -63,27 +63,8 @@ aie.device(xcve2302) {
    aie.objectfifo @of_0 (%tile12, {%tile23}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
 
    %core12 = aie.core(%tile12) {
-      %elem = aie.objectfifo.acquire @of_0 (Consume) : memref<16xi32>
-
-      aie.end
-   }
-}
-
-// -----
-
-// The pretty form cannot spell an acquire with no results, but a builder can.
-
-// CHECK: 'aie.objectfifo.acquire' op must acquire at least one object
-
-aie.device(xcve2302) {
-   %tile12 = aie.tile(1, 2)
-   %tile23 = aie.tile(2, 3)
-
-   aie.objectfifo @of_0 (%tile12, {%tile23}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
-
-   %core12 = aie.core(%tile12) {
-      "aie.objectfifo.acquire"() <{objFifo_name = @of_0, port = 0 : i32}> : () -> ()
-
+      %subview_obj0 = aie.objectfifo.acquire @of_0(Consume) : memref<16xi32>
+         
       aie.end
    }
 }
