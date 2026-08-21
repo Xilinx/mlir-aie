@@ -60,14 +60,14 @@ module @multi_depth {
             %iter_max = arith.constant 4 : index
 
             scf.for %iter = %c0 to %iter_max step %c1 {
-                %elemIn = aie.objectfifo.acquire @of_in(Consume) : memref<32xi32>
+                %elemIn = aie.objectfifo.acquire @of_in (Consume, 1) : memref<32xi32>
 
-                %elemOut = aie.objectfifo.acquire @of_inter(Produce) : memref<32xi32>
+                %elemOut = aie.objectfifo.acquire @of_inter (Produce, 1) : memref<32xi32>
 
                 func.call @add_one(%elemIn, %elemOut) : (memref<32xi32>, memref<32xi32>) -> ()
 
-                aie.objectfifo.release @of_in(Consume) [1]
-                aie.objectfifo.release @of_inter(Produce) [1]
+                aie.objectfifo.release @of_in (Consume, 1)
+                aie.objectfifo.release @of_inter (Produce, 1)
             }
 
             aie.end
@@ -86,14 +86,14 @@ module @multi_depth {
             aie.use_lock(%lock_out, Acquire, %c0_ul1)
 
             scf.for %iter = %c0 to %iter_max step %c1 {
-                %elemIn_21 = aie.objectfifo.acquire @of_in(Consume) : memref<32xi32>
+                %elemIn_21 = aie.objectfifo.acquire @of_in (Consume, 1) : memref<32xi32>
 
-                %elemIn_22 = aie.objectfifo.acquire @of_inter(Consume) : memref<32xi32>
+                %elemIn_22 = aie.objectfifo.acquire @of_inter (Consume, 1) : memref<32xi32>
 
                 func.call @add_store(%elemIn_21, %elemIn_22, %buff_out, %iter) : (memref<32xi32>, memref<32xi32>, memref<4x32xi32>, index) -> ()
 
-                aie.objectfifo.release @of_in(Consume) [1]
-                aie.objectfifo.release @of_inter(Consume) [1]
+                aie.objectfifo.release @of_in (Consume, 1)
+                aie.objectfifo.release @of_inter (Consume, 1)
             }
 
             %c1_ul2 = arith.constant 1 : i32

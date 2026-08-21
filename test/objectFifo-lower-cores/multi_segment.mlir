@@ -26,8 +26,8 @@ module @multi_segment {
     aie.objectfifo.core_endpoint @reader(%tile12) drains @pool {segments = array<i32: 0, 1>}
 
     %core = aie.core(%tile12) {
-      %e = aie.objectfifo.acquire @reader : memref<48xi32>
-      aie.objectfifo.release @reader [1]
+      %e = aie.objectfifo.acquire @reader (1) : memref<48xi32>
+      aie.objectfifo.release @reader (1)
       aie.end
     }
   }

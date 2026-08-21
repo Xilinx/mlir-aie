@@ -136,10 +136,10 @@ module {
                 }
                 %cond0 = arith.cmpi "eq", %arg2, %c0 : index
                 scf.if %cond0 {
-                  %6 = aie.objectfifo.acquire @of0(Produce) : memref<1xi32>
+                  %6 = aie.objectfifo.acquire @of0 (Produce, 1) : memref<1xi32>
                   %7 = memref.load %subview_9[%c0, %c0, %arg3, %arg4] : memref<1x1x4x4xi32, strided<[64, 16, 4, 1], offset: ?>, 2 : i32>
                   memref.store %7, %6[%c0] : memref<1xi32>
-                  aie.objectfifo.release @of0(Produce) [1]
+                  aie.objectfifo.release @of0 (Produce, 1)
                 }
               }
             }
@@ -220,10 +220,10 @@ module {
               scf.for %arg4 = %c0 to %c4 step %c1 {
                 %cond0 = arith.cmpi "eq", %arg2, %c0 : index
                 scf.if %cond0 {
-                  %6 = aie.objectfifo.acquire @of0(Consume) : memref<1xi32>
+                  %6 = aie.objectfifo.acquire @of0 (Consume, 1) : memref<1xi32>
                   %7 = memref.load %6[%c0] : memref<1xi32>
                   memref.store %7, %subview_9[%c0, %c0, %arg3, %arg4] : memref<1x1x4x4xi32, strided<[64, 16, 4, 1], offset: ?>, 2 : i32>
-                  aie.objectfifo.release @of0(Consume) [1]
+                  aie.objectfifo.release @of0 (Consume, 1)
                 }
                 scf.for %arg5 = %c0 to %c4 step %c1 {
                   %0 = memref.load %subview[%c0, %c0, %arg3, %arg5] : memref<1x1x4x4xi32, strided<[64, 16, 4, 1], offset: ?>, 2 : i32>
@@ -235,10 +235,10 @@ module {
                 }
                 %cond1 = arith.cmpi "eq", %arg2, %c0 : index
                 scf.if %cond1 {
-                  %9 = aie.objectfifo.acquire @of1(Produce) : memref<1xi32>
+                  %9 = aie.objectfifo.acquire @of1 (Produce, 1) : memref<1xi32>
                   %10 = memref.load %subview_9[%c0, %c0, %arg3, %arg4] : memref<1x1x4x4xi32, strided<[64, 16, 4, 1], offset: ?>, 2 : i32>
                   memref.store %10, %9[%c0] : memref<1xi32>
-                  aie.objectfifo.release @of1(Produce) [1]
+                  aie.objectfifo.release @of1 (Produce, 1)
                 }
               }
             }
@@ -319,10 +319,10 @@ module {
               scf.for %arg4 = %c0 to %c4 step %c1 {
                 %cond0 = arith.cmpi "eq", %arg2, %c0 : index
                 scf.if %cond0 {
-                  %6 = aie.objectfifo.acquire @of1(Consume) : memref<1xi32>
+                  %6 = aie.objectfifo.acquire @of1 (Consume, 1) : memref<1xi32>
                   %7 = memref.load %6[%c0] : memref<1xi32>
                   memref.store %7, %subview_9[%c0, %c0, %arg3, %arg4] : memref<1x1x4x4xi32, strided<[64, 16, 4, 1], offset: ?>, 2 : i32>
-                  aie.objectfifo.release @of1(Consume) [1]
+                  aie.objectfifo.release @of1 (Consume, 1)
                 }
                 scf.for %arg5 = %c0 to %c4 step %c1 {
                   %0 = memref.load %subview[%c0, %c0, %arg3, %arg5] : memref<1x1x4x4xi32, strided<[64, 16, 4, 1], offset: ?>, 2 : i32>
@@ -334,10 +334,10 @@ module {
                 }
                 %cond1 = arith.cmpi "eq", %arg2, %c0 : index
                 scf.if %cond1 {
-                  %9 = aie.objectfifo.acquire @of2(Produce) : memref<1xi32>
+                  %9 = aie.objectfifo.acquire @of2 (Produce, 1) : memref<1xi32>
                   %10 = memref.load %subview_9[%c0, %c0, %arg3, %arg4] : memref<1x1x4x4xi32, strided<[64, 16, 4, 1], offset: ?>, 2 : i32>
                   memref.store %10, %9[%c0] : memref<1xi32>
-                  aie.objectfifo.release @of2(Produce) [1]
+                  aie.objectfifo.release @of2 (Produce, 1)
                 }
               }
             }
@@ -429,10 +429,10 @@ module {
               scf.for %arg4 = %c0 to %c4 step %c1 {
                 %cond0 = arith.cmpi "eq", %arg2, %c0 : index
                 scf.if %cond0 {
-                  %6 = aie.objectfifo.acquire @of2(Consume) : memref<1xi32>
+                  %6 = aie.objectfifo.acquire @of2 (Consume, 1) : memref<1xi32>
                   %7 = memref.load %6[%c0] : memref<1xi32>
                   memref.store %7, %subview_9[%c0, %c0, %arg3, %arg4] : memref<1x1x4x4xi32, strided<[64, 16, 4, 1], offset: ?>, 2 : i32>
-                  aie.objectfifo.release @of2(Consume) [1]
+                  aie.objectfifo.release @of2 (Consume, 1)
                 }
                 scf.for %arg5 = %c0 to %c4 step %c1 {
                   %0 = memref.load %subview[%c0, %c0, %arg3, %arg5] : memref<1x1x4x4xi32, strided<[64, 16, 4, 1], offset: ?>, 2 : i32>

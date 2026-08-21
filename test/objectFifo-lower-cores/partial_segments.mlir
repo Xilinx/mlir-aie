@@ -22,8 +22,8 @@ module {
                     #aie.objectfifo_segment<offset = 16, size = 16, produceLock = @pl, consumeLock = @cl>]} : memref<32xi32>
     aie.objectfifo.core_endpoint @half(%t) fills @p {segments = array<i32: 1>}
     %c = aie.core(%t) {
-      %e = aie.objectfifo.acquire @half : memref<16xi32, strided<[1], offset: 16>>
-      aie.objectfifo.release @half [1]
+      %e = aie.objectfifo.acquire @half (1) : memref<16xi32, strided<[1], offset: 16>>
+      aie.objectfifo.release @half (1)
       aie.end
     }
   }

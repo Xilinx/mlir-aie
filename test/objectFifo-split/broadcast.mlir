@@ -15,20 +15,20 @@ module @broadcast {
     aie.objectfifo @bc (%tile12, {%tile33, %tile13}, [2, 2, 3]) : !aie.objectfifo<memref<16xi32>>
 
     %core12 = aie.core(%tile12) {
-      %elem = aie.objectfifo.acquire @bc(Produce) : memref<16xi32>
-      aie.objectfifo.release @bc(Produce) [1]
+      %elem = aie.objectfifo.acquire @bc (Produce, 1) : memref<16xi32>
+      aie.objectfifo.release @bc (Produce, 1)
       aie.end
     }
 
     %core33 = aie.core(%tile33) {
-      %elem = aie.objectfifo.acquire @bc(Consume) : memref<16xi32>
-      aie.objectfifo.release @bc(Consume) [1]
+      %elem = aie.objectfifo.acquire @bc (Consume, 1) : memref<16xi32>
+      aie.objectfifo.release @bc (Consume, 1)
       aie.end
     }
 
     %core13 = aie.core(%tile13) {
-      %elem = aie.objectfifo.acquire @bc(Consume) : memref<16xi32>
-      aie.objectfifo.release @bc(Consume) [1]
+      %elem = aie.objectfifo.acquire @bc (Consume, 1) : memref<16xi32>
+      aie.objectfifo.release @bc (Consume, 1)
       aie.end
     }
   }

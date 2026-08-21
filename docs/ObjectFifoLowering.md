@@ -250,7 +250,7 @@ flows, deciding which tiles hold objects and which ends need DMAs.
 ```mlir
 // before
 aie.objectfifo @of1 (%tile02, {%tile25}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
-%e = aie.objectfifo.acquire @of1(Produce) : memref<16xi32>
+%e = aie.objectfifo.acquire @of1 (Produce, 1) : memref<16xi32>
 
 // after
 aie.objectfifo.pool @of1_pool(%tile_0_2) {depth = 2 : i32, fifoName = "of1",
@@ -263,7 +263,7 @@ aie.objectfifo.core_endpoint @of1_cons(%tile_2_5) drains @of1_cons_pool
 aie.objectfifo.dma_endpoint @of1_cons_dma(%tile_2_5) fills @of1_cons_pool {fifoName = "of1"}
 aie.objectfifo.flow from @of1_prod_dma to [@of1_cons_dma]
 
-%e = aie.objectfifo.acquire @of1_prod : memref<16xi32>
+%e = aie.objectfifo.acquire @of1_prod (1) : memref<16xi32>
 ```
 
 A core's `acquire` and `release` name the endpoint they work through; the

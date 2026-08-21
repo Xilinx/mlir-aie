@@ -20,8 +20,8 @@ module @core_consumes_link_input {
     aie.objectfifo.link [@in] -> [@out] ([][])
 
     %core02 = aie.core(%tile02) {
-      %e = aie.objectfifo.acquire @in(Consume) : memref<16xi32>
-      aie.objectfifo.release @in(Consume) [1]
+      %e = aie.objectfifo.acquire @in (Consume, 1) : memref<16xi32>
+      aie.objectfifo.release @in (Consume, 1)
       aie.end
     }
   }
@@ -42,8 +42,8 @@ module @core_produces_link_output {
     aie.objectfifo.link [@in] -> [@out] ([][])
 
     %core02 = aie.core(%tile02) {
-      %e = aie.objectfifo.acquire @out(Produce) : memref<16xi32>
-      aie.objectfifo.release @out(Produce) [1]
+      %e = aie.objectfifo.acquire @out (Produce, 1) : memref<16xi32>
+      aie.objectfifo.release @out (Produce, 1)
       aie.end
     }
   }

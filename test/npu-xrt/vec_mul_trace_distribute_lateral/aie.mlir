@@ -54,20 +54,20 @@ module {
       %c_inf = arith.constant 9223372036854775807 : index
       %c1 = arith.constant 1 : index
       scf.for %arg0 = %c0 to %c_inf step %c1 {
-        %1 = aie.objectfifo.acquire @infactor_fwd(Consume) : memref<1xi32>
+        %1 = aie.objectfifo.acquire @infactor_fwd (Consume, 1) : memref<1xi32>
         %c0_0 = arith.constant 0 : index
         %c4 = arith.constant 4 : index
         %c1_1 = arith.constant 1 : index
         scf.for %arg1 = %c0_0 to %c4 step %c1_1 {
-          %3 = aie.objectfifo.acquire @out(Produce) : memref<1024xi32>
-          %5 = aie.objectfifo.acquire @in_fwd(Consume) : memref<1024xi32>
+          %3 = aie.objectfifo.acquire @out (Produce, 1) : memref<1024xi32>
+          %5 = aie.objectfifo.acquire @in_fwd (Consume, 1) : memref<1024xi32>
           %c1024_i32 = arith.constant 1024 : i32
           func.call @vector_scalar_mul_aie_scalar(%5, %3, %1, %c1024_i32)
               : (memref<1024xi32>, memref<1024xi32>, memref<1xi32>, i32) -> ()
-          aie.objectfifo.release @in_fwd(Consume) [1]
-          aie.objectfifo.release @out(Produce) [1]
+          aie.objectfifo.release @in_fwd (Consume, 1)
+          aie.objectfifo.release @out (Produce, 1)
         }
-        aie.objectfifo.release @infactor_fwd(Consume) [1]
+        aie.objectfifo.release @infactor_fwd (Consume, 1)
       }
       aie.end
     }

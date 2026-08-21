@@ -19,15 +19,15 @@ module {
             %c_intmax = arith.constant 0xFFFFFE : index
 
             scf.for %niter = %c0 to %c_intmax step %c1 {
-            %elem_in = aie.objectfifo.acquire @objfifo_in(Consume) : memref<128xi32>
-            %elem_out = aie.objectfifo.acquire @objfifo_out(Produce) : memref<128xi32>
+            %elem_in = aie.objectfifo.acquire @objfifo_in (Consume, 1) : memref<128xi32>
+            %elem_out = aie.objectfifo.acquire @objfifo_out (Produce, 1) : memref<128xi32>
             scf.for %i = %c0 to %c128 step %c1 {
                 %0 = memref.load %elem_in[%i] : memref<128xi32>
                 %1 = arith.addi %0, %c2_i32 : i32
                 memref.store %1, %elem_out[%i] : memref<128xi32>
             }
-            aie.objectfifo.release @objfifo_in(Consume) [1]
-            aie.objectfifo.release @objfifo_out(Produce) [1]
+            aie.objectfifo.release @objfifo_in (Consume, 1)
+            aie.objectfifo.release @objfifo_out (Produce, 1)
             }
             aie.end
         }

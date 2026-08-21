@@ -273,9 +273,9 @@ module @broadcast {
         %height = arith.constant 12 : index
 
         scf.for %indexInHeight = %c0 to %height step %c1 {
-            %elem0 = aie.objectfifo.acquire @broadcast_of(Produce) : memref<16xi32>
+            %elem0 = aie.objectfifo.acquire @broadcast_of (Produce, 1) : memref<16xi32>
             func.call @some_work(%elem0) : (memref<16xi32>) -> ()
-            aie.objectfifo.release @broadcast_of(Produce) [1]
+            aie.objectfifo.release @broadcast_of (Produce, 1)
         }
 
         aie.end
@@ -287,9 +287,9 @@ module @broadcast {
         %height = arith.constant 12 : index
 
         scf.for %indexInHeight = %c0 to %height step %c1 {
-            %elem0 = aie.objectfifo.acquire @broadcast_of(Consume) : memref<16xi32>
+            %elem0 = aie.objectfifo.acquire @broadcast_of (Consume, 1) : memref<16xi32>
             func.call @some_work(%elem0) : (memref<16xi32>) -> ()
-            aie.objectfifo.release @broadcast_of(Consume) [1]
+            aie.objectfifo.release @broadcast_of (Consume, 1)
         }
 
         aie.end
@@ -301,10 +301,10 @@ module @broadcast {
         %height = arith.constant 12 : index
 
         scf.for %indexInHeight = %c0 to %height step %c1 {
-            %elem0, %elem1 = aie.objectfifo.acquire @broadcast_of(Consume) : memref<16xi32>, memref<16xi32>
+            %elem0, %elem1 = aie.objectfifo.acquire @broadcast_of (Consume, 2) : memref<16xi32>, memref<16xi32>
             func.call @some_work(%elem0) : (memref<16xi32>) -> ()
             func.call @some_work(%elem1) : (memref<16xi32>) -> ()
-            aie.objectfifo.release @broadcast_of(Consume) [2]
+            aie.objectfifo.release @broadcast_of (Consume, 2)
         }
 
         aie.end
@@ -316,11 +316,11 @@ module @broadcast {
         %height = arith.constant 12 : index
 
         scf.for %indexInHeight = %c0 to %height step %c1 {
-            %elem0, %elem1, %elem2 = aie.objectfifo.acquire @broadcast_of(Consume) : memref<16xi32>, memref<16xi32>, memref<16xi32>
+            %elem0, %elem1, %elem2 = aie.objectfifo.acquire @broadcast_of (Consume, 3) : memref<16xi32>, memref<16xi32>, memref<16xi32>
             func.call @some_work(%elem0) : (memref<16xi32>) -> ()
             func.call @some_work(%elem1) : (memref<16xi32>) -> ()
             func.call @some_work(%elem2) : (memref<16xi32>) -> ()
-            aie.objectfifo.release @broadcast_of(Consume) [1]
+            aie.objectfifo.release @broadcast_of (Consume, 1)
         }
 
         aie.end
@@ -332,10 +332,10 @@ module @broadcast {
         %height = arith.constant 12 : index
 
         scf.for %indexInHeight = %c0 to %height step %c1 {
-            %elem0, %elem1 = aie.objectfifo.acquire @broadcast_of(Consume) : memref<16xi32>, memref<16xi32>
+            %elem0, %elem1 = aie.objectfifo.acquire @broadcast_of (Consume, 2) : memref<16xi32>, memref<16xi32>
             func.call @some_work(%elem0) : (memref<16xi32>) -> ()
             func.call @some_work(%elem1) : (memref<16xi32>) -> ()
-            aie.objectfifo.release @broadcast_of(Consume) [1]
+            aie.objectfifo.release @broadcast_of (Consume, 1)
         }
 
         aie.end

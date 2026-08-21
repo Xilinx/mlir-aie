@@ -1058,6 +1058,81 @@ void xilinx::AIE::printObjectFifoProducerTile(OpAsmPrinter &printer,
   }
 }
 
+ParseResult
+xilinx::AIE::parseObjectFifoAcquireObjects(OpAsmParser &parser,
+                                           ObjectFifoPortAttr &port,
+                                           SmallVectorImpl<Type> &objects) {
+  if (parser.parseLParen())
+    return failure();
+
+  StringRef portName;
+  SMLoc portLoc = parser.getCurrentLocation();
+  if (succeeded(parser.parseOptionalKeyword(&portName))) {
+    std::optional<ObjectFifoPort> parsed = symbolizeObjectFifoPort(portName);
+    if (!parsed)
+      return parser.emitError(portLoc, "invalid objectFifo port: ") << portName;
+    port = ObjectFifoPortAttr::get(parser.getContext(), *parsed);
+    if (parser.parseComma())
+      return failure();
+  }
+
+  int64_t count;
+  SMLoc countLoc = parser.getCurrentLocation();
+  if (parser.parseInteger(count) || parser.parseRParen() ||
+      parser.parseColon() || parser.parseTypeList(objects))
+    return failure();
+
+  if (count != static_cast<int64_t>(objects.size()))
+    return parser.emitError(countLoc, "acquires ")
+           << count << " objects but names " << objects.size() << " of them";
+  return success();
+}
+
+void xilinx::AIE::printObjectFifoAcquireObjects(OpAsmPrinter &printer,
+                                                Operation *op,
+                                                ObjectFifoPortAttr port,
+                                                TypeRange objects) {
+  printer << "(";
+  if (port)
+    printer << stringifyObjectFifoPort(port.getValue()) << ", ";
+  printer << objects.size() << ") : ";
+  llvm::interleaveComma(objects, printer);
+}
+
+ParseResult xilinx::AIE::parseObjectFifoReleaseCount(OpAsmParser &parser,
+                                                     ObjectFifoPortAttr &port,
+                                                     IntegerAttr &size) {
+  if (parser.parseLParen())
+    return failure();
+
+  StringRef portName;
+  SMLoc portLoc = parser.getCurrentLocation();
+  if (succeeded(parser.parseOptionalKeyword(&portName))) {
+    std::optional<ObjectFifoPort> parsed = symbolizeObjectFifoPort(portName);
+    if (!parsed)
+      return parser.emitError(portLoc, "invalid objectFifo port: ") << portName;
+    port = ObjectFifoPortAttr::get(parser.getContext(), *parsed);
+    if (parser.parseComma())
+      return failure();
+  }
+
+  int64_t count;
+  if (parser.parseInteger(count) || parser.parseRParen())
+    return failure();
+  size = parser.getBuilder().getI32IntegerAttr(count);
+  return success();
+}
+
+void xilinx::AIE::printObjectFifoReleaseCount(OpAsmPrinter &printer,
+                                              Operation *op,
+                                              ObjectFifoPortAttr port,
+                                              IntegerAttr size) {
+  printer << "(";
+  if (port)
+    printer << stringifyObjectFifoPort(port.getValue()) << ", ";
+  printer << size.getInt() << ")";
+}
+
 ParseResult xilinx::AIE::parseObjectFifoConsumerTiles(
     OpAsmParser &parser, SmallVectorImpl<OpAsmParser::UnresolvedOperand> &tiles,
     BDDimLayoutArrayArrayAttr &dimensions) {

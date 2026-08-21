@@ -139,19 +139,19 @@ module @matmul {
       scf.for %reps = %c0 to %intmax step %c1 {
 
         scf.for %arg2 = %c0 to %c4 step %c1 {
-          %elem2 = aie.objectfifo.acquire @outC(Produce) : memref<16x16xi16>
+          %elem2 = aie.objectfifo.acquire @outC (Produce, 1) : memref<16x16xi16>
           func.call @zero_scalar_i16(%elem2) : (memref<16x16xi16>) -> ()
 
           scf.for %arg3 = %c0 to %c4 step %c1 {
-            %elem0 = aie.objectfifo.acquire @inA(Consume) : memref<16x8xi16>
-            %elem1 = aie.objectfifo.acquire @inB(Consume) : memref<8x16xi16>
+            %elem0 = aie.objectfifo.acquire @inA (Consume, 1) : memref<16x8xi16>
+            %elem1 = aie.objectfifo.acquire @inB (Consume, 1) : memref<8x16xi16>
 
             func.call @matmul_scalar_i16_i16(%elem0, %elem1, %elem2) : (memref<16x8xi16>, memref<8x16xi16>, memref<16x16xi16>) -> ()
 
-            aie.objectfifo.release @inA(Consume) [1]
-            aie.objectfifo.release @inB(Consume) [1]
+            aie.objectfifo.release @inA (Consume, 1)
+            aie.objectfifo.release @inB (Consume, 1)
           }
-          aie.objectfifo.release @outC(Produce) [1]
+          aie.objectfifo.release @outC (Produce, 1)
         }
       }
       aie.end

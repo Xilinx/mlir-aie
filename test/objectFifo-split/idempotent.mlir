@@ -23,8 +23,8 @@ module @idempotent {
     aie.objectfifo.link [@in0, @in1] -> [@out] ([0, 16][])
 
     %core22 = aie.core(%tile22) {
-      %elem = aie.objectfifo.acquire @shared(Produce) : memref<16xi32>
-      aie.objectfifo.release @shared(Produce) [1]
+      %elem = aie.objectfifo.acquire @shared (Produce, 1) : memref<16xi32>
+      aie.objectfifo.release @shared (Produce, 1)
       aie.end
     }
   }

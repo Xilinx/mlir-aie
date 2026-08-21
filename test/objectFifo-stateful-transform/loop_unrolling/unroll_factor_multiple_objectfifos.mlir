@@ -95,11 +95,11 @@ module {
       %c12 = arith.constant 12 : index
 
       scf.for %indexInHeight = %c0 to %c12 step %c1 {
-        %elemIn = aie.objectfifo.acquire @of_1(Consume) : memref<16xi32>
-        %elemOut = aie.objectfifo.acquire @of_2(Produce) : memref<16xi32>
+        %elemIn = aie.objectfifo.acquire @of_1 (Consume, 1) : memref<16xi32>
+        %elemOut = aie.objectfifo.acquire @of_2 (Produce, 1) : memref<16xi32>
         func.call @some_work(%elemIn, %elemOut, %indexInHeight) : (memref<16xi32>, memref<16xi32>, index) -> ()
-        aie.objectfifo.release @of_1(Consume) [1]
-        aie.objectfifo.release @of_2(Produce) [1]
+        aie.objectfifo.release @of_1 (Consume, 1)
+        aie.objectfifo.release @of_2 (Produce, 1)
       }
 
       aie.end

@@ -46,9 +46,9 @@ module {
       %c14 = arith.constant 14 : index
       scf.for %arg0 = %c0 to %c14 step %c1 {
         %dyn = arith.cmpi slt, %arg0, %c7 : index
-        %x_obj0, %x_obj1, %x_obj2 = aie.objectfifo.acquire @fifo(Consume) : memref<8xi8>, memref<8xi8>, memref<8xi8>
+        %x_obj0, %x_obj1, %x_obj2 = aie.objectfifo.acquire @fifo (Consume, 3) : memref<8xi8>, memref<8xi8>, memref<8xi8>
         scf.if %dyn {
-          aie.objectfifo.release @fifo(Consume) [1]
+          aie.objectfifo.release @fifo (Consume, 1)
         }
       }
       aie.end

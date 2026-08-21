@@ -2580,10 +2580,15 @@ def AIE_ObjectFifoAcquireOp: AIE_Op<"objectfifo.acquire", []> {
 
     Example:
     ```
-      %a, %b = aie.objectfifo.acquire @of1 (Consume) : memref<16xi32>, memref<16xi32>
+      %a, %b = aie.objectfifo.acquire @of1 (Consume, 2) : memref<16xi32>, memref<16xi32>
     ```
     This operation acquires the locks of the next two objects in the `objectFifo` named `@of1` from its consumer
     port and returns them.
+
+    The port is omitted when the target is an endpoint, whose role already fixes the direction:
+    ```
+      %a = aie.objectfifo.acquire @of1_prod (1) : memref<16xi32>
+    ```
   }];
 
   let arguments = (ins OptionalAttr<ObjectFifoPort>:$port,
@@ -2592,7 +2597,7 @@ def AIE_ObjectFifoAcquireOp: AIE_Op<"objectfifo.acquire", []> {
   let results = (outs Variadic<AnyMemRef>:$objects);
 
   let assemblyFormat = [{
-    attr-dict $objFifo_name (`(` $port^ `)`)? `:` type($objects)
+    attr-dict $objFifo_name custom<ObjectFifoAcquireObjects>($port, type($objects))
   }];
 
   let hasVerifier = 1;
@@ -2617,6 +2622,11 @@ def AIE_ObjectFifoReleaseOp: AIE_Op<"objectfifo.release", []> {
       aie.objectfifo.release @of1 (Produce, 1)
     ```
     This operation releases the lock of the next object in the `objectFifo` named `@of1` from producer port.
+
+    The port is omitted when the target is an endpoint, whose role already fixes the direction:
+    ```
+      aie.objectfifo.release @of1_prod (1)
+    ```
   }];
 
   let arguments = (ins OptionalAttr<ObjectFifoPort>:$port,
@@ -2624,7 +2634,7 @@ def AIE_ObjectFifoReleaseOp: AIE_Op<"objectfifo.release", []> {
       ConfinedAttr<AIEI32Attr, [IntMinValue<1>]>:$size);
 
   let assemblyFormat = [{
-    attr-dict $objFifo_name (`(` $port^ `)`)? `[` $size `]`
+    attr-dict $objFifo_name custom<ObjectFifoReleaseCount>($port, $size)
   }];
 
   let hasVerifier = 1;

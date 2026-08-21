@@ -27,8 +27,8 @@ module @counting {
     aie.objectfifo.core_endpoint @writer(%tile12) fills @pool
 
     %core = aie.core(%tile12) {
-      %e = aie.objectfifo.acquire @writer : memref<16xi32>
-      aie.objectfifo.release @writer [1]
+      %e = aie.objectfifo.acquire @writer (1) : memref<16xi32>
+      aie.objectfifo.release @writer (1)
       aie.end
     }
   }

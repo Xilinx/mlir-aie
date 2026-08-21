@@ -51,8 +51,8 @@ module {
       %c1 = arith.constant 1 : index
       %c14 = arith.constant 14 : index
       scf.for %arg0 = %c0 to %c14 step %c1 {
-        %e = aie.objectfifo.acquire @fifo(Produce) : memref<8xi8>
-        aie.objectfifo.release @fifo(Produce) [1]
+        %e = aie.objectfifo.acquire @fifo (Produce, 1) : memref<8xi8>
+        aie.objectfifo.release @fifo (Produce, 1)
       }
       aie.end
     }

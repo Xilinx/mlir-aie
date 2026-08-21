@@ -29,14 +29,14 @@ module @passThroughLine_aie2 {
 
             scf.for %iter = %c0 to %tileheight step %c1 {
                 // Acquire objectfifos and get subviews
-                %elemIn = aie.objectfifo.acquire @inOF(Consume) : memref<1920xui8>
-                %elemOut = aie.objectfifo.acquire @outOF(Produce) : memref<1920xui8>
+                %elemIn = aie.objectfifo.acquire @inOF (Consume, 1) : memref<1920xui8>
+                %elemOut = aie.objectfifo.acquire @outOF (Produce, 1) : memref<1920xui8>
 
                 func.call @passThroughLine(%elemIn, %elemOut, %tilewidth) : (memref<1920xui8>, memref<1920xui8>, i32) -> ()
 
                 // Release objectfifos
-                aie.objectfifo.release @inOF(Consume) [1]
-                aie.objectfifo.release @outOF(Produce) [1]
+                aie.objectfifo.release @inOF (Consume, 1)
+                aie.objectfifo.release @outOF (Produce, 1)
             }
             aie.end
         } // indicate kernel object name used by this core

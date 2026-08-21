@@ -92,9 +92,9 @@ module @cyclostatic {
             %c9 = arith.constant 9 : index
 
             scf.for %indexInHeight = %c0 to %c9 step %c1 {
-                %subview1_obj = aie.objectfifo.acquire @fifo0(Produce) : memref<16xi32>
+                %subview1_obj = aie.objectfifo.acquire @fifo0 (Produce, 1) : memref<16xi32>
                 memref.store %v11, %subview1_obj[%c0] : memref<16xi32>
-                aie.objectfifo.release @fifo0(Produce) [1]
+                aie.objectfifo.release @fifo0 (Produce, 1)
             }
 
             aie.end
@@ -105,22 +105,22 @@ module @cyclostatic {
             %c1 = arith.constant 1 : index
             %c9 = arith.constant 9 : index
 
-            %subview0_obj = aie.objectfifo.acquire @fifo0(Consume) : memref<16xi32>
+            %subview0_obj = aie.objectfifo.acquire @fifo0 (Consume, 1) : memref<16xi32>
             %v0 = memref.load %subview0_obj[%c0] : memref<16xi32>
-            aie.objectfifo.release @fifo0(Consume) [1]
+            aie.objectfifo.release @fifo0 (Consume, 1)
 
             scf.for %indexInHeight = %c0 to %c9 step %c1 {
-                %subview1_obj, %subview1_obj1, %subview1_obj2 = aie.objectfifo.acquire @fifo0(Consume) : memref<16xi32>, memref<16xi32>, memref<16xi32>
+                %subview1_obj, %subview1_obj1, %subview1_obj2 = aie.objectfifo.acquire @fifo0 (Consume, 3) : memref<16xi32>, memref<16xi32>, memref<16xi32>
                 %v1 = memref.load %subview1_obj[%c0] : memref<16xi32>
                 %v2 = memref.load %subview1_obj1[%c0] : memref<16xi32>
                 %v3 = memref.load %subview1_obj2[%c0] : memref<16xi32>
-                aie.objectfifo.release @fifo0(Consume) [1]
+                aie.objectfifo.release @fifo0 (Consume, 1)
             }
 
-            %subview2_obj, %subview2_obj1 = aie.objectfifo.acquire @fifo0(Consume) : memref<16xi32>, memref<16xi32>
+            %subview2_obj, %subview2_obj1 = aie.objectfifo.acquire @fifo0 (Consume, 2) : memref<16xi32>, memref<16xi32>
             %v4 = memref.load %subview2_obj[%c0] : memref<16xi32>
             %v5 = memref.load %subview2_obj1[%c0] : memref<16xi32>
-            aie.objectfifo.release @fifo0(Consume) [2]
+            aie.objectfifo.release @fifo0 (Consume, 2)
 
             aie.end
         }

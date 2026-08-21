@@ -68,28 +68,28 @@ module {
       scf.for %indexInHeight = %c0 to %c12 step %c1 {
 
         scf.for %indexInWidth = %c0 to %c13 step %c1 {
-          %elemIn = aie.objectfifo.acquire @of_1(Consume) : memref<16xi32>
+          %elemIn = aie.objectfifo.acquire @of_1 (Consume, 1) : memref<16xi32>
 
           scf.for %i = %c0 to %c13 step %c1 {
-            %elemOut = aie.objectfifo.acquire @of_2(Produce) : memref<16xi32>
+            %elemOut = aie.objectfifo.acquire @of_2 (Produce, 1) : memref<16xi32>
             func.call @some_work(%elemIn, %elemOut, %indexInHeight, %indexInWidth) : (memref<16xi32>, memref<16xi32>, index, index) -> ()
-            aie.objectfifo.release @of_2(Produce) [1]
+            aie.objectfifo.release @of_2 (Produce, 1)
           }
 
-          aie.objectfifo.release @of_1(Consume) [1]
+          aie.objectfifo.release @of_1 (Consume, 1)
         }
       }
 
       scf.for %indexInWidth = %c0 to %c13 step %c1 {
-        %elemIn = aie.objectfifo.acquire @of_1(Consume) : memref<16xi32>
+        %elemIn = aie.objectfifo.acquire @of_1 (Consume, 1) : memref<16xi32>
 
         scf.for %i = %c0 to %c13 step %c1 {
-          %elemOut = aie.objectfifo.acquire @of_2(Produce) : memref<16xi32>
+          %elemOut = aie.objectfifo.acquire @of_2 (Produce, 1) : memref<16xi32>
           func.call @some_work(%elemIn, %elemOut, %c0, %indexInWidth) : (memref<16xi32>, memref<16xi32>, index, index) -> ()
-          aie.objectfifo.release @of_2(Produce) [1]
+          aie.objectfifo.release @of_2 (Produce, 1)
         }
 
-        aie.objectfifo.release @of_1(Consume) [1]
+        aie.objectfifo.release @of_1 (Consume, 1)
       }
 
       aie.end

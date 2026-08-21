@@ -32,9 +32,9 @@ module @AIE2_delayed_release {
             %i4 = arith.constant 4 : index
             scf.for %it = %i0 to %i4 step %i1 {
                 // Produce one 1 element (acquire producer lock) ...
-                %subview_obj = aie.objectfifo.acquire @fifo(Produce) : memref<i32>
+                %subview_obj = aie.objectfifo.acquire @fifo (Produce, 1) : memref<i32>
                 memref.store %c99, %subview_obj[] : memref<i32>
-                aie.objectfifo.release @fifo(Produce) [1]
+                aie.objectfifo.release @fifo (Produce, 1)
                 // ... done producing (release consumer lock)
             }
             aie.end
@@ -46,7 +46,7 @@ module @AIE2_delayed_release {
             %i0 = arith.constant 0 : index
             // Begin consuming 2 elements (acquire consumer lock with value 2)
             // expected-error@+1 {{op must be called from inside a CoreOp}}
-            %subview0_obj, %subview0_obj1 = aie.objectfifo.acquire @fifo(Consume) : memref<i32>, memref<i32>
+            %subview0_obj, %subview0_obj1 = aie.objectfifo.acquire @fifo (Consume, 2) : memref<i32>, memref<i32>
             %v0 = memref.load %subview0_obj[] : memref<i32>
             memref.store %v0, %buf[%i0] : memref<4xi32>
             return
@@ -56,7 +56,7 @@ module @AIE2_delayed_release {
             %i1 = arith.constant 1 : index
             // For the next step, we only need one element (this could be a subroutine that acquires 1, not knowing that we already acquired 2)
             // expected-error@+1 {{op must be called from inside a CoreOp}}
-            %subview1_obj = aie.objectfifo.acquire @fifo(Consume) : memref<i32>
+            %subview1_obj = aie.objectfifo.acquire @fifo (Consume, 1) : memref<i32>
             %v1 = memref.load %subview1_obj[] : memref<i32>
             memref.store %v1, %buf[%i1] : memref<4xi32>
             return
@@ -66,7 +66,7 @@ module @AIE2_delayed_release {
             %i2 = arith.constant 2 : index
             // Actually, give us the two from before and one more for three objects total (consumer lock should increase by one)
             // expected-error@+1 {{op must be called from inside a CoreOp}}
-            %subview2_obj, %subview2_obj1, %subview2_obj2 = aie.objectfifo.acquire @fifo(Consume) : memref<i32>, memref<i32>, memref<i32>
+            %subview2_obj, %subview2_obj1, %subview2_obj2 = aie.objectfifo.acquire @fifo (Consume, 3) : memref<i32>, memref<i32>, memref<i32>
             %v2 = memref.load %subview2_obj[] : memref<i32>
             memref.store %v2, %buf[%i2] : memref<4xi32>
             return
@@ -76,7 +76,7 @@ module @AIE2_delayed_release {
             %i3 = arith.constant 3 : index
             // Now let's just work on one element (consumer lock should not change value)
             // expected-error@+1 {{op must be called from inside a CoreOp}}
-            %subview3_obj = aie.objectfifo.acquire @fifo(Consume) : memref<i32>
+            %subview3_obj = aie.objectfifo.acquire @fifo (Consume, 1) : memref<i32>
             %v3 = memref.load %subview3_obj[] : memref<i32>
             memref.store %v3, %buf[%i3] : memref<4xi32>
             return
@@ -90,7 +90,7 @@ module @AIE2_delayed_release {
             func.call @step4(%buf23) : (memref<4xi32>) -> ()
 
             // Done, let's release everything we hold (we hold 3 objects from our max acquire)
-            aie.objectfifo.release @fifo(Consume) [3]
+            aie.objectfifo.release @fifo (Consume, 3)
 
             aie.end
         }

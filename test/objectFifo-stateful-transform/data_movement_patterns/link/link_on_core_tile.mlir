@@ -24,13 +24,13 @@ module @distribute_on_core {
     aie.objectfifo.link [@in] -> [@out0, @out1] ([][0, 16])
 
     %core04 = aie.core(%tile04) {
-      %e = aie.objectfifo.acquire @out0(Consume) : memref<16xi32>
-      aie.objectfifo.release @out0(Consume) [1]
+      %e = aie.objectfifo.acquire @out0 (Consume, 1) : memref<16xi32>
+      aie.objectfifo.release @out0 (Consume, 1)
       aie.end
     }
     %core05 = aie.core(%tile05) {
-      %e = aie.objectfifo.acquire @out1(Consume) : memref<16xi32>
-      aie.objectfifo.release @out1(Consume) [1]
+      %e = aie.objectfifo.acquire @out1 (Consume, 1) : memref<16xi32>
+      aie.objectfifo.release @out1 (Consume, 1)
       aie.end
     }
   }

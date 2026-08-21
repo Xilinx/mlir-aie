@@ -44,8 +44,8 @@ aie.device(xcvc1902) {
             ^bb0(%arg2: i32):
             %next = func.call @payload(%arg2) : (i32) -> i32
 
-            %input = aie.objectfifo.acquire @of_in(Consume) : memref<256xi32>
-            %output = aie.objectfifo.acquire @of_out(Produce) : memref<256xi32>
+            %input = aie.objectfifo.acquire @of_in (Consume, 1) : memref<256xi32>
+            %output = aie.objectfifo.acquire @of_out (Produce, 1) : memref<256xi32>
 
 
             scf.for %indexInHeight = %c0 to %height step %c1 {
@@ -53,8 +53,8 @@ aie.device(xcvc1902) {
                 memref.store %d1, %output[%indexInHeight] : memref<256xi32>
             }
 
-            aie.objectfifo.release @of_in(Consume) [1]
-            aie.objectfifo.release @of_out(Produce) [1]
+            aie.objectfifo.release @of_in (Consume, 1)
+            aie.objectfifo.release @of_out (Produce, 1)
 
             scf.yield %next : i32
         }

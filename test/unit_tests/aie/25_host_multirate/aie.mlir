@@ -49,8 +49,8 @@ aie.device(xcvc1902) {
             %c1_ul0 = arith.constant 1 : i32
             aie.use_lock(%hostLock, Acquire, %c1_ul0)
 
-            %input = aie.objectfifo.acquire @of_in(Consume) : memref<64xi32>
-            %output = aie.objectfifo.acquire @of_out(Produce) : memref<64xi32>
+            %input = aie.objectfifo.acquire @of_in (Consume, 1) : memref<64xi32>
+            %output = aie.objectfifo.acquire @of_out (Produce, 1) : memref<64xi32>
 
 
             scf.for %indexInHeight = %c0 to %height step %c1 {
@@ -58,8 +58,8 @@ aie.device(xcvc1902) {
                 memref.store %d1, %output[%indexInHeight] : memref<64xi32>
             }
 
-            aie.objectfifo.release @of_in(Consume) [1]
-            aie.objectfifo.release @of_out(Produce) [1]
+            aie.objectfifo.release @of_in (Consume, 1)
+            aie.objectfifo.release @of_out (Produce, 1)
 
             %c0_ul1 = arith.constant 0 : i32
             aie.use_lock(%hostLock, Release, %c0_ul1)

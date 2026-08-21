@@ -50,22 +50,22 @@ module @same_core {
 
         %core12 = aie.core(%tile12) {
             // this acquires 2 elements
-            %elem00, %elem01 = aie.objectfifo.acquire @of(Produce) : memref<16xi32>, memref<16xi32>
+            %elem00, %elem01 = aie.objectfifo.acquire @of (Produce, 2) : memref<16xi32>, memref<16xi32>
             func.call @some_work(%elem00) : (memref<16xi32>) -> ()
             func.call @some_work(%elem01) : (memref<16xi32>) -> ()
-            aie.objectfifo.release @of(Produce) [1]
+            aie.objectfifo.release @of (Produce, 1)
 
-            %elem10 = aie.objectfifo.acquire @of(Consume) : memref<16xi32>
+            %elem10 = aie.objectfifo.acquire @of (Consume, 1) : memref<16xi32>
             func.call @some_work(%elem10) : (memref<16xi32>) -> ()
-            aie.objectfifo.release @of(Consume) [1]
+            aie.objectfifo.release @of (Consume, 1)
 
-            %elem20 = aie.objectfifo.acquire @of(Produce) : memref<16xi32>
+            %elem20 = aie.objectfifo.acquire @of (Produce, 1) : memref<16xi32>
             func.call @some_work(%elem20) : (memref<16xi32>) -> ()
-            aie.objectfifo.release @of(Produce) [1]
+            aie.objectfifo.release @of (Produce, 1)
 
-            %elem30 = aie.objectfifo.acquire @of(Consume) : memref<16xi32>
+            %elem30 = aie.objectfifo.acquire @of (Consume, 1) : memref<16xi32>
             func.call @some_work(%elem30) : (memref<16xi32>) -> ()
-            aie.objectfifo.release @of(Consume) [1]
+            aie.objectfifo.release @of (Consume, 1)
 
             aie.end
         }

@@ -74,9 +74,9 @@ module {
       %c4 = arith.constant 4 : index
       %c21 = arith.constant 21 : index
       scf.for %indexInHeight = %c1 to %c21 step %c2 {
-        %elem0 = aie.objectfifo.acquire @loop_of(Produce) : memref<16xi32>
+        %elem0 = aie.objectfifo.acquire @loop_of (Produce, 1) : memref<16xi32>
         func.call @some_work(%elem0,%indexInHeight) : (memref<16xi32>,index) -> ()
-        aie.objectfifo.release @loop_of(Produce) [1]
+        aie.objectfifo.release @loop_of (Produce, 1)
       }
       aie.end
     }

@@ -15,7 +15,7 @@ aie.device(xcve2302) {
 
    aie.objectfifo @of_0 (%tile12, {%tile23}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
 
-   %subview_obj0 = aie.objectfifo.acquire @of_0(Produce) : memref<16xi32>
+   %subview_obj0 = aie.objectfifo.acquire @of_0 (Produce, 1) : memref<16xi32>
 }
 
 // -----
@@ -29,7 +29,7 @@ aie.device(xcve2302) {
    aie.objectfifo @of_0 (%tile12, {%tile23}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
 
    %core12 = aie.core(%tile12) {
-      %subview_obj0 = aie.objectfifo.acquire @of_0(Produce) : memref<2x2xi32>
+      %subview_obj0 = aie.objectfifo.acquire @of_0 (Produce, 1) : memref<2x2xi32>
          
       aie.end
    }
@@ -46,7 +46,7 @@ aie.device(xcve2302) {
    aie.objectfifo @of_0 (%tile12, {%tile23}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
 
    %core23 = aie.core(%tile23) {
-      %subview_obj0 = aie.objectfifo.acquire @of_0(Produce) : memref<16xi32>
+      %subview_obj0 = aie.objectfifo.acquire @of_0 (Produce, 1) : memref<16xi32>
          
       aie.end
    }
@@ -63,7 +63,7 @@ aie.device(xcve2302) {
    aie.objectfifo @of_0 (%tile12, {%tile23}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
 
    %core12 = aie.core(%tile12) {
-      %subview_obj0 = aie.objectfifo.acquire @of_0(Consume) : memref<16xi32>
+      %subview_obj0 = aie.objectfifo.acquire @of_0 (Consume, 1) : memref<16xi32>
          
       aie.end
    }

@@ -59,9 +59,9 @@ module {
             %val = arith.shrui %raw_val, %c2_i32 : i32
 
             // Output the recovered value
-            %out_buf = aie.objectfifo.acquire @objfifo_out(Produce) : memref<1xi32>
+            %out_buf = aie.objectfifo.acquire @objfifo_out (Produce, 1) : memref<1xi32>
             memref.store %val, %out_buf[%c0] : memref<1xi32>
-            aie.objectfifo.release @objfifo_out(Produce) [1]
+            aie.objectfifo.release @objfifo_out (Produce, 1)
 
             aie.end
         }

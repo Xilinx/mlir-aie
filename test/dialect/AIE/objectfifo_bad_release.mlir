@@ -15,7 +15,7 @@ aie.device(xcve2302) {
 
    aie.objectfifo @of_0 (%tile12, {%tile23}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
 
-   aie.objectfifo.release @of_0(Produce) [1]
+   aie.objectfifo.release @of_0 (Produce, 1)
 }
 
 // -----
@@ -29,7 +29,7 @@ aie.device(xcve2302) {
    aie.objectfifo @of_0 (%tile12, {%tile23}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
 
    %core23 = aie.core(%tile23) {
-      aie.objectfifo.release @of_0(Produce) [1]
+      aie.objectfifo.release @of_0 (Produce, 1)
          
       aie.end
    }
@@ -46,7 +46,7 @@ aie.device(xcve2302) {
    aie.objectfifo @of_0 (%tile12, {%tile23}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
 
       %core12 = aie.core(%tile12) {
-      aie.objectfifo.release @of_0(Consume) [1]
+      aie.objectfifo.release @of_0 (Consume, 1)
          
       aie.end
    }

@@ -23,8 +23,8 @@ module @linear {
     aie.objectfifo.link [@wide] -> [@narrow] ([] [])
 
     %c = aie.core(%core) {
-      %object = aie.objectfifo.acquire @narrow(Consume) : memref<8xi32>
-      aie.objectfifo.release @narrow(Consume) [1]
+      %object = aie.objectfifo.acquire @narrow (Consume, 1) : memref<8xi32>
+      aie.objectfifo.release @narrow (Consume, 1)
       aie.end
     }
   }
@@ -53,8 +53,8 @@ module @dimensions {
     aie.objectfifo.link [@wide] -> [@narrow] ([] [])
 
     %c = aie.core(%core) {
-      %object = aie.objectfifo.acquire @narrow(Consume) : memref<40xi32>
-      aie.objectfifo.release @narrow(Consume) [1]
+      %object = aie.objectfifo.acquire @narrow (Consume, 1) : memref<40xi32>
+      aie.objectfifo.release @narrow (Consume, 1)
       aie.end
     }
   }

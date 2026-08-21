@@ -201,6 +201,23 @@ void printObjectFifoProducerTile(mlir::OpAsmPrinter &printer,
                                  mlir::Operation *op, mlir::Value operand,
                                  BDDimLayoutArrayAttr dimensions);
 
+mlir::ParseResult
+parseObjectFifoAcquireObjects(mlir::OpAsmParser &parser,
+                              ObjectFifoPortAttr &port,
+                              llvm::SmallVectorImpl<mlir::Type> &objects);
+
+void printObjectFifoAcquireObjects(mlir::OpAsmPrinter &printer,
+                                   mlir::Operation *op, ObjectFifoPortAttr port,
+                                   mlir::TypeRange objects);
+
+mlir::ParseResult parseObjectFifoReleaseCount(mlir::OpAsmParser &parser,
+                                              ObjectFifoPortAttr &port,
+                                              mlir::IntegerAttr &size);
+
+void printObjectFifoReleaseCount(mlir::OpAsmPrinter &printer,
+                                 mlir::Operation *op, ObjectFifoPortAttr port,
+                                 mlir::IntegerAttr size);
+
 mlir::ParseResult parseObjectFifoConsumerTiles(
     mlir::OpAsmParser &parser,
     llvm::SmallVectorImpl<mlir::OpAsmParser::UnresolvedOperand> &tiles,

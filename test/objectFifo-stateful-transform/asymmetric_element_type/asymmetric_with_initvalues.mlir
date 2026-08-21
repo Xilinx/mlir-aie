@@ -49,8 +49,8 @@ module {
       %c1 = arith.constant 1 : index
       %c8 = arith.constant 8 : index
       scf.for %i = %c0 to %c8 step %c1 {
-        %elem = aie.objectfifo.acquire @wts(Consume) : memref<10xi32>
-        aie.objectfifo.release @wts(Consume) [1]
+        %elem = aie.objectfifo.acquire @wts (Consume, 1) : memref<10xi32>
+        aie.objectfifo.release @wts (Consume, 1)
       }
       aie.end
     }

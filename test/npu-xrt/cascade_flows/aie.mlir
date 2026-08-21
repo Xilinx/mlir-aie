@@ -29,11 +29,11 @@ module {
     func.func private @extern_kernel3(%b: memref<64xi32>, %size: i32) -> () attributes {link_with = "kernel3.o"}
 
     %core02 = aie.core(%t03) {
-      %subview0_obj0 = aie.objectfifo.acquire @objFifo_in1(Consume) : memref<64xi32>
+      %subview0_obj0 = aie.objectfifo.acquire @objFifo_in1 (Consume, 1) : memref<64xi32>
 
       func.call @extern_kernel1() : () -> ()
 
-      aie.objectfifo.release @objFifo_in1(Consume) [1]
+      aie.objectfifo.release @objFifo_in1 (Consume, 1)
 
       aie.end
     }
@@ -47,11 +47,11 @@ module {
     %core12 = aie.core(%t12) {
       %size = arith.constant 64 : i32
 
-      %elem1 = aie.objectfifo.acquire @objFifo_out1(Produce) : memref<64xi32>
+      %elem1 = aie.objectfifo.acquire @objFifo_out1 (Produce, 1) : memref<64xi32>
 
       func.call @extern_kernel3(%elem1, %size) : (memref<64xi32>, i32) -> ()
 
-      aie.objectfifo.release @objFifo_out1(Produce) [1]
+      aie.objectfifo.release @objFifo_out1 (Produce, 1)
       aie.end
     }
 

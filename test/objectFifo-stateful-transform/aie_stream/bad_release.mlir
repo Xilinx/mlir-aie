@@ -16,7 +16,7 @@ module @bad_release {
 
     %core33 = aie.core(%tile33) {
       // expected-error@+1 {{'aie.objectfifo.release' op cannot release from objectfifo stream port}}
-      aie.objectfifo.release @of_stream(Consume) [1]
+      aie.objectfifo.release @of_stream (Consume, 1)
       aie.end
     }
   }

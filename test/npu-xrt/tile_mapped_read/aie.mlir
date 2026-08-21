@@ -39,11 +39,11 @@ module {
       %stride = arith.constant 0x10 : i32
       %addr = arith.constant 0x0001F080 : i32
       scf.for %steps = %c0 to %c8 step %c1 {
-        %elem0 = aie.objectfifo.acquire @objFifo_in1(Consume) : memref<8xi32>
-        %elem1 = aie.objectfifo.acquire @objFifo_out1(Produce) : memref<8xi32>
+        %elem0 = aie.objectfifo.acquire @objFifo_in1 (Consume, 1) : memref<8xi32>
+        %elem1 = aie.objectfifo.acquire @objFifo_out1 (Produce, 1) : memref<8xi32>
         func.call @read_processor_bus(%elem1, %addr, %size, %stride) : (memref<8xi32>, i32, i32, i32) -> ()
-        aie.objectfifo.release @objFifo_in1(Consume) [1]
-        aie.objectfifo.release @objFifo_out1(Produce) [1]
+        aie.objectfifo.release @objFifo_in1 (Consume, 1)
+        aie.objectfifo.release @objFifo_out1 (Produce, 1)
       }
       aie.end
     }
