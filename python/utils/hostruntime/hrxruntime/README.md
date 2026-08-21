@@ -104,13 +104,12 @@ PY
 `aiecc` packages the final `.xclbin` by shelling out to a bare `xclbinutil`.
 Upstream that tool ships with XRT (and pulls in Boost + a full XRT install). This
 branch can instead build a self-contained, **XRT-free / Boost-free** `xclbinutil`
-from the `third_party/hrx-xclbinutil` submodule and install it as `xclbinutil`
+from the in-tree `third_party/hrx-xclbinutil` sources and install it as `xclbinutil`
 next to `aiecc` in the wheel's `bin/`, so packaging needs no system XRT.
 
 Enable it when building MLIR-AIE from source:
 
 ```bash
-git submodule update --init third_party/hrx-xclbinutil
 cmake … -DAIE_BUILD_HRXXCLBINUTIL=ON     # add to your normal mlir-aie configure
 ```
 
