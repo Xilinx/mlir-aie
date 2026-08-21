@@ -133,6 +133,25 @@ public:
   /// Return the number of rows in the device.
   virtual int rows() const = 0;
 
+  /// Number of microcontrollers (CERT job-runners) per column. Each uC runs an
+  /// independent CERT control-code stream (its own ".attach_to_group"), so in
+  /// the CERT firmware model a group *is* a uC. Defaults to one per column, in
+  /// which case the uC index is just the column index; targets with more than
+  /// one controller per column override this.
+  virtual uint32_t getNumMicrocontrollersPerColumn() const { return 1; }
+
+  /// CERT ".attach_to_group" index (microcontroller id) for the `half`-th uC of
+  /// column `col`. Single source of truth for the space axis of CERT placement,
+  /// so front-ends never hardcode group numbers. With one controller per column
+  /// this reduces to `col`.
+  uint32_t getUcGroupId(int col, int half = 0) const {
+    assert(half >= 0 &&
+           static_cast<uint32_t>(half) < getNumMicrocontrollersPerColumn() &&
+           "microcontroller half index out of range for this target");
+    return static_cast<uint32_t>(col) * getNumMicrocontrollersPerColumn() +
+           static_cast<uint32_t>(half);
+  }
+
   /// Return the tile type for the given tile coordinates.
   /// - CoreTile: tiles with a Core, TileDMA, tile memory, and stream
   /// connections.
