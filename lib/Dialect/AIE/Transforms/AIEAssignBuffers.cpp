@@ -33,8 +33,8 @@ static std::optional<int64_t> getComputedStackRequirement(TileOp tile) {
   CoreOp core = tile.getCoreOp();
   if (!core)
     return std::nullopt;
-  if (auto attr = core->getAttrOfType<IntegerAttr>(
-          kComputedStackRequirementAttrName))
+  if (auto attr =
+          core->getAttrOfType<IntegerAttr>(kComputedStackRequirementAttrName))
     return attr.getInt();
   return std::nullopt;
 }
@@ -147,7 +147,8 @@ static bool checkAndPrintReservedData(TileOp tile, int64_t freeRun,
   if (freeRun >= reservedData)
     return true;
   tile.emitWarning("buffers leave only ")
-      << freeRun << " contiguous bytes for the core's data sections, which need "
+      << freeRun
+      << " contiguous bytes for the core's data sections, which need "
       << reservedData << " bytes.";
   return false;
 }
@@ -450,11 +451,9 @@ static void placeBuffer(BufferOp buffer, int64_t startAddr, int bank,
 // rejects the same pins for its own reasons except the mem_bank/address
 // disagreement, which it would "honour" by silently ignoring the requested
 // bank.
-static FailureOr<bool>
-checkAndAddBufferWithAddress(BufferOp buffer, int numBanks,
-                             uint32_t tileAlignBitWidth,
-                             MemoryOccupancy &occupancy,
-                             ArrayRef<BankLimits> bankLimits) {
+static FailureOr<bool> checkAndAddBufferWithAddress(
+    BufferOp buffer, int numBanks, uint32_t tileAlignBitWidth,
+    MemoryOccupancy &occupancy, ArrayRef<BankLimits> bankLimits) {
   auto addrOpt = buffer.getAddress();
   if (!addrOpt)
     return false;

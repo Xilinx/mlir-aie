@@ -1757,13 +1757,14 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
 //
 // This never auto-adjusts anything -- consistent with every other check in
 // this analysis (and reserved_data_size before it): the compiler measures
-// and reports, the user declares and rebuilds. Unlike checkStackSizeRequirements
-// earlier in the pipeline -- which only warns on an explicit value, because
-// its number is a lower bound that proves nothing when it happens to fit --
-// this later check has the TRUE total, so an explicit `stack_size` that is
-// provably too small fails the build exactly like an absent one: a warning
-// here would ship a proven overflow. `--no-auto-stack-size` skips this check
-// entirely, the same escape hatch that skips the earlier warning.
+// and reports, the user declares and rebuilds. Unlike
+// checkStackSizeRequirements earlier in the pipeline -- which only warns on an
+// explicit value, because its number is a lower bound that proves nothing when
+// it happens to fit -- this later check has the TRUE total, so an explicit
+// `stack_size` that is provably too small fails the build exactly like an
+// absent one: a warning here would ship a proven overflow.
+// `--no-auto-stack-size` skips this check entirely, the same escape hatch that
+// skips the earlier warning.
 //
 // Re-derives the early, cheap pipeline stages (placement/trace/link-files
 // assignment/stack-check -- ordinary MLIR passes, not a recompile) on a
@@ -1842,8 +1843,8 @@ checkStackSizeIsSufficient(mlir::MLIRContext &context,
                                 &context, coresPerCol.getValue(),
                                 placerType.getValue(), saSeed.getValue())))
       return std::move(err);
-    if (auto err =
-            runStage("trace pipeline", xilinx::aiecc::getTracePipeline(&context)))
+    if (auto err = runStage("trace pipeline",
+                            xilinx::aiecc::getTracePipeline(&context)))
       return std::move(err);
     {
       auto pm = std::make_unique<mlir::PassManager>(&context);

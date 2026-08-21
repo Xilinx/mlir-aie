@@ -1,4 +1,5 @@
-//===- stack_size_cross_object_callee.cc --------------------------*- C++ -*-===//
+//===- stack_size_cross_object_callee.cc --------------------------*- C++
+//-*-===//
 //
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception

@@ -319,8 +319,8 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
                << "/* ChNum */" << chNum
                << ", "
                // TODO: interim handling until the physical dialect changes.
-               << "/* dmaDir */ DMA_" << dmaDir << ", "
-               << "/* BdNum */" << bdNum << "));\n";
+               << "/* dmaDir */ DMA_" << dmaDir << ", " << "/* BdNum */"
+               << bdNum << "));\n";
       } else {
         // in english repeat_count==0 means "do it once" and don't repeat but
         // libxaie treats repeat_count=1 as do it once.

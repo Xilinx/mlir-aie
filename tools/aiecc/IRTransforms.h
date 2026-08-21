@@ -406,11 +406,13 @@ inline mlir::LogicalResult checkStackSizeRequirements(mlir::ModuleOp module,
       auto it = definedFunctionsByPath.find(path);
       if (it == definedFunctionsByPath.end())
         it = definedFunctionsByPath
-                 .try_emplace(path, [&] {
-                   llvm::StringSet<> names;
-                   xilinx::aiecc::collectDefinedFunctionNames(path, names);
-                   return names;
-                 }())
+                 .try_emplace(path,
+                              [&] {
+                                llvm::StringSet<> names;
+                                xilinx::aiecc::collectDefinedFunctionNames(
+                                    path, names);
+                                return names;
+                              }())
                  .first;
       for (const auto &name : it->second)
         knownFunctions.insert(name.first());
