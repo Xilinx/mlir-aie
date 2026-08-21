@@ -14,12 +14,13 @@
 // all -- they only ever need to name the kernel entry point they already
 // wrote, not whatever recurses inside it.
 //
-// The core also declares its own explicit stack_size (comfortably above the
-// kernel's 4096-byte override plus its own frame): an explicit stack_size is
-// the per-core opt-out from the later, more complete sufficiency check (see
-// stack_size_absent_insufficient_error.mlir) exactly as reserved_data_size's
-// explicit values are -- never touched, only ever warned about, never a
-// hard failure.
+// The core also declares its own explicit stack_size, comfortably above the
+// kernel's 4096-byte override plus its own frame: an explicit stack_size is
+// never touched, exactly as reserved_data_size's explicit values are -- but
+// unlike reserved_data_size, it is not exempt from the later, more complete
+// sufficiency check (see stack_size_absent_insufficient_error.mlir and
+// stack_size_explicit_insufficient_error.mlir): here it simply is enough, so
+// that check has nothing to say either.
 
 // REQUIRES: peano
 // RUN: rm -rf %t.d && mkdir -p %t.d

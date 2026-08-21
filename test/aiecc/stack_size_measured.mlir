@@ -12,16 +12,24 @@
 // requirement always exceeds it, without pinning an exact byte count that
 // would be fragile across compiler versions -- only that a warning fires
 // naming both numbers, and that --no-auto-stack-size suppresses it entirely.
+//
+// A 1-byte stack is also caught by the later, more complete post-build check
+// (see stack_size_explicit_insufficient_error.mlir): the early warning here is
+// only a lower bound (the core body's own frame is not yet known), but the
+// post-build check has the true total, so the build fails outright rather
+// than merely warning and shipping a stack that provably overflows.
 
 // REQUIRES: peano
 // RUN: rm -rf %t.d && mkdir -p %t.d
 // RUN: clang++ --target=aie2p-none-unknown-elf -std=c++20 -O0 -DNDEBUG -fstack-size-section -c %S/stack_size_measured_kernel.cc -o %t.d/stack_size_measured_kernel.o
-// RUN: cd %t.d && %aiecc %s 2>&1 | FileCheck %s
+// RUN: cd %t.d && not %aiecc %s 2>&1 | FileCheck %s
 // RUN: cd %t.d && %aiecc --no-auto-stack-size %s 2>&1 | FileCheck --check-prefix=NOAUTO --allow-empty %s
 
 // CHECK: warning: this core's callees need at least {{[0-9]+}} bytes of stack (not counting the core body's own frame), but stack_size is only 1 bytes
+// CHECK: error: stack_size = 1 is insufficient (this core's buffers were placed assuming 1 bytes), but this core's real requirement is {{[0-9]+}} bytes; increase stack_size to {{[0-9]+}} (Worker(stack_size=...) in IRON) and rebuild, or pass --no-auto-stack-size to skip this check
 
 // NOAUTO-NOT: this core's callees need at least
+// NOAUTO-NOT: is insufficient
 
 module {
   aie.device(npu2) {

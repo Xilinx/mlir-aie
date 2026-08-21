@@ -6,6 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "aie/Dialect/AIE/IR/AIECoreSymbols.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecDialect.h"
@@ -541,8 +542,7 @@ struct AIECoreToStandardFunc : OpConversionPattern<CoreOp> {
     // The parent should be an AIE.device op.
     rewriter.setInsertionPointAfter(op->getParentOp());
 
-    std::string coreName("core_" + std::to_string(col) + "_" +
-                         std::to_string(row));
+    std::string coreName = coreFrameSymbolName(col, row);
     auto coreFunc =
         func::FuncOp::create(rewriter, op.getLoc(), coreName,
                              FunctionType::get(rewriter.getContext(), {}, {}));
