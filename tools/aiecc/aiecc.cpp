@@ -78,11 +78,10 @@ namespace {
 using ModRef = mlir::OwningOpRef<mlir::ModuleOp>;
 using xilinx::AIE::DeviceOp;
 
-// Produce a per-key object (.o) -- these are the core program memories, either
-// as per-core objects or a single unified object (only difference is
-// cardinality of the input module/arches edges). We define a chess path and a
-// peano path; the `xchesscc` command-line flag selects which output edge is
-// returned.
+// Produce a per-key object (.o) -- these are the core program memories. Both
+// lowering strategies feed this per core; they differ only in how the modules
+// arriving here were produced. We define a chess path and a peano path; the
+// `xchesscc` command-line flag selects which output edge is returned.
 //
 // `irLinkFiles` carries, per key, the merge-mode kernel artifacts (the core's
 // `link_merge_files`, i.e. `link_with_mode = "merge"`) to llvm-link into that
@@ -750,17 +749,18 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
       "perDeviceArches_{0}.txt", [](const OpInModule<DeviceOp> &dev) {
         return detectAIETarget(dev.module.get(), DeviceOp(dev.op).getSymName());
       });
-  auto &unifiedLowered = physicalPerDevice.map<ModRef>(
-      "unifiedLowered_{0}.mlir",
-      [](const Item<OpInModule<DeviceOp>> &item, Item<ModRef> &out) {
-        DeviceOp d = item.get().op;
-        return loweringPipeline(item.get().module.get(), d.getSymName(), -1, -1,
-                                out);
+  // Lower once per device, then carve out one module per core. Keyed like
+  // `perCore`, so the per-core arches and link files below apply unchanged --
+  // except that `perCore` drops cores that already carry an `elf_file`, so
+  // filter the carved set to match or the object subgraph joins on a key its
+  // other inputs do not have.
+  auto &unifiedPerCoreLowered = physicalPerDevice.expand<ModRef>(
+      "lowered_{0}.mlir", [](const Item<OpInModule<DeviceOp>> &dev) {
+        // Same predicate as the `perCoreCompile` filter above: a core with an
+        // `elf_file` is used verbatim, so it must not appear here either.
+        return splitLoweredCores(
+            dev, [](CoreOp c) { return !c.getElfFileAttr() || xbridge; });
       });
-  // One module per core, carved out of the device's. Keyed like `perCore`, so
-  // the per-core arches and link files below apply unchanged.
-  auto &unifiedPerCoreLowered =
-      unifiedLowered.expand<ModRef>("lowered_{0}.mlir", splitLoweredCores);
 
   // Per-core strategy
   auto &perCoreLowered = perCore.map<ModRef>(

@@ -947,33 +947,97 @@ loweringPipeline(mlir::ModuleOp src, llvm::StringRef devName, int col, int row,
   return mlir::success();
 }
 
-// Carve one core out of a device's unified lowered module. The other cores'
-// functions are erased and symbol DCE takes whatever that orphans -- their
-// buffers, their private helpers -- with them. Keys are built to match
-// `coreKey`, so the results drop into the per-core object subgraph unchanged.
+// Lower a device once and carve the result into one module per core.
+//
+// Two things have to happen in the same place. The lowering is what we want to
+// run once -- per-core lowering re-runs it against a clone of the whole design
+// and throws away every core but one. The carve then needs to know which tile
+// owns each buffer, and that is only legible before lowering: `memref.global`
+// loses any attribute we might hang on it when it becomes `llvm.mlir.global`.
+// So this takes the pre-lowering DeviceOp, reads ownership off its BufferOps,
+// and applies it after.
+//
+// Ownership matters because `AIEBufferToStandard` drops the initializer for
+// buffers a core does not own, so the data lands in exactly one core's object.
+// It keys that off the tile coordinates it was given, and unified lowering
+// gives it none, so every carved module starts with every initializer and the
+// globals are public -- symbol DCE will not touch them. Reproducing the drop
+// here is what keeps a core's object carrying only its own data.
+//
+// Cores the caller says it will not compile -- a pre-baked `elf_file` is used
+// verbatim -- are skipped, so this keys the same set as `perCore`.
+//
+// Keys match `coreKey`, so the results feed the per-core object subgraph.
 inline mlir::FailureOr<
     std::vector<std::pair<std::string, mlir::OwningOpRef<mlir::ModuleOp>>>>
-splitLoweredCores(const Item<mlir::OwningOpRef<mlir::ModuleOp>> &devItem) {
-  mlir::ModuleOp src = devItem.get().get();
-  std::string devName = devItem.key;
+splitLoweredCores(const Item<OpInModule<xilinx::AIE::DeviceOp>> &devItem,
+                  llvm::function_ref<bool(xilinx::AIE::CoreOp)> shouldCompile) {
+  xilinx::AIE::DeviceOp dev = devItem.get().op;
+  std::string devName = dev.getSymName().str();
+
+  // Cores this device will actually compile, by coordinate.
+  llvm::DenseSet<std::pair<int, int>> compiled;
+  dev.walk([&](xilinx::AIE::CoreOp c) {
+    if (!shouldCompile(c))
+      return;
+    auto tile = mlir::cast<xilinx::AIE::TileOp>(c.getTile().getDefiningOp());
+    compiled.insert({tile.getCol(), tile.getRow()});
+  });
+
+  // Buffer symbol -> owning tile, read before the lowering erases the tiles.
+  llvm::StringMap<std::pair<int, int>> owner;
+  dev.walk([&](xilinx::AIE::BufferOp buf) {
+    auto tile = mlir::cast<xilinx::AIE::TileOp>(buf.getTile().getDefiningOp());
+    owner[buf.name().getValue()] = {tile.getCol(), tile.getRow()};
+  });
+
+  Item<mlir::OwningOpRef<mlir::ModuleOp>> lowered;
+  if (mlir::failed(loweringPipeline(devItem.get().module.get(), devName, -1, -1,
+                                    lowered)))
+    return mlir::failure();
+
+  // `core_<col>_<row>` is what AIECoreToStandardFunc emits. Match the shape
+  // rather than the prefix: a hand-written `core_helper` is not a core.
+  auto coreCoords =
+      [](llvm::StringRef name) -> std::optional<std::pair<int, int>> {
+    if (!name.consume_front("core_"))
+      return std::nullopt;
+    llvm::StringRef colStr, rowStr;
+    std::tie(colStr, rowStr) = name.split('_');
+    int col, row;
+    if (colStr.empty() || rowStr.empty() || colStr.getAsInteger(10, col) ||
+        rowStr.getAsInteger(10, row))
+      return std::nullopt;
+    return std::make_pair(col, row);
+  };
 
   llvm::SmallVector<std::string> coreNames;
-  src.walk([&](mlir::LLVM::LLVMFuncOp f) {
-    if (f.getSymName().starts_with("core_"))
+  lowered.get().get().walk([&](mlir::LLVM::LLVMFuncOp f) {
+    auto coords = coreCoords(f.getSymName());
+    if (coords && compiled.contains(*coords))
       coreNames.push_back(f.getSymName().str());
   });
 
   std::vector<std::pair<std::string, mlir::OwningOpRef<mlir::ModuleOp>>> out;
   out.reserve(coreNames.size());
   for (llvm::StringRef keep : coreNames) {
-    mlir::OwningOpRef<mlir::ModuleOp> clone = src.clone();
+    auto keepCoords = *coreCoords(keep);
+    mlir::OwningOpRef<mlir::ModuleOp> clone = lowered.get().get().clone();
+
     llvm::SmallVector<mlir::Operation *> drop;
     clone->walk([&](mlir::LLVM::LLVMFuncOp f) {
-      if (f.getSymName().starts_with("core_") && f.getSymName() != keep)
+      if (coreCoords(f.getSymName()) && f.getSymName() != keep)
         drop.push_back(f);
     });
     for (mlir::Operation *op : drop)
       op->erase();
+
+    clone->walk([&](mlir::LLVM::GlobalOp g) {
+      auto it = owner.find(g.getSymName());
+      if (it != owner.end() && it->second != keepCoords)
+        g.removeValueAttr();
+    });
+
     mlir::PassManager pm(clone->getContext());
     pm.addPass(mlir::createSymbolDCEPass());
     if (mlir::failed(pm.run(*clone)))
