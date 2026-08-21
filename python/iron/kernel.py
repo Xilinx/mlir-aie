@@ -289,8 +289,10 @@ class Kernel(BaseKernel):
 
     @property
     def stack_size_override(self) -> int | None:
-        """Declared upper bound on this kernel's call-subtree stack use, or
-        None to let aiecc's automatic analysis compute it."""
+        """Declared upper bound on this kernel's call-subtree stack use.
+
+        None lets aiecc's automatic analysis compute it instead.
+        """
         return self._stack_size_override
 
     def resolve(
@@ -387,7 +389,7 @@ class ExternalFunction(Kernel):
                 Chess/xchesscc toolchain cannot llvm-link).
             stack_size_override: Optional declared upper bound, in bytes, on
                 the stack this kernel's call subtree needs -- see
-                [`Kernel.stack_size_override`][iron.Kernel.stack_size_override].
+                [`Kernel.stack_size_override`][iron.kernel.Kernel.stack_size_override].
                 With ``inline=True`` this is the only way to give aiecc's
                 automatic stack analysis any information about this kernel at
                 all, since a merged kernel has no separate object for the
