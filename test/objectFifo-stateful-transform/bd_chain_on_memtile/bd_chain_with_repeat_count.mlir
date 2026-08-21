@@ -42,13 +42,15 @@
 // CHECK:       aie.end
 // CHECK:     }
 // CHECK:     %mem_1_3 = aie.mem(%{{.*}}tile_1_3) {
-// CHECK:       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb2)
-// CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb1
+// CHECK:       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb3, repeat_count = 14)
+// CHECK:     ^bb1:  // pred: ^bb0
 // CHECK:       aie.use_lock(%[[VAL_1]], AcquireGreaterEqual, %{{.*}})
 // CHECK:       aie.dma_bd(%[[VAL_0]] : memref<16xi32> offset = {{.*}} len = {{.*}})
 // CHECK:       aie.use_lock(%[[VAL_2]], Release, %{{.*}})
-// CHECK:       aie.next_bd ^bb1
-// CHECK:     ^bb2:  // pred: ^bb0
+// CHECK:       aie.next_bd ^bb2
+// CHECK:     ^bb2:  // pred: ^bb1
+// CHECK:       aie.end
+// CHECK:     ^bb3:  // pred: ^bb0
 // CHECK:       aie.end
 // CHECK:     }
 // CHECK:   }

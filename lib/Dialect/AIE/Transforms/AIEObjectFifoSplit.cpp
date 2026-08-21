@@ -185,12 +185,10 @@ struct AIEObjectFifoSplitPass
           builder.getContext(), offset, size, nullptr, nullptr));
     }
 
-    std::optional<int32_t> iterCount = from.getIterCount();
     return ObjectFifoPoolOp::create(
         builder, loc, name, tile, depth, elemType, /*buffers=*/ArrayAttr(),
         builder.getArrayAttr(segments), /*locks=*/ArrayAttr(),
         repeatCount ? builder.getI32IntegerAttr(*repeatCount) : IntegerAttr(),
-        iterCount ? builder.getI32IntegerAttr(*iterCount) : IntegerAttr(),
         from.getDisableSynchronization(),
         builder.getStringAttr(from.name().getValue()),
         holdsInitialContents ? from.getInitValuesAttr() : ArrayAttr());
@@ -213,14 +211,14 @@ struct AIEObjectFifoSplitPass
                                             ObjectFifoCreateOp from,
                                             BDDimLayoutArrayAttr dims,
                                             std::optional<int> channelIndex) {
-    // A fifo's `iter_count` names the MemTile's chain. The far end runs a chain
-    // of its own, and a `repeat_count` drainer replays, so the two ends need
-    // not iterate the same number of times.
+    // Both ends of the fifo carry `depth * repeat_count * iter_count` objects.
+    // The draining end spends `repeat_count` on descriptors, replaying each
+    // object in one pass of its chain; the filling end spends it on passes.
     std::optional<int32_t> iterCount;
-    if (auto tileLike = dyn_cast<TileLike>(tile.getDefiningOp())) {
-      if (tileLike.isMemTile()) {
-        iterCount = from.getIterCount();
-      }
+    if (std::optional<int32_t> fifoIterations = from.getIterCount()) {
+      iterCount = role == ObjectFifoRole::Drain
+                      ? *fifoIterations
+                      : *fifoIterations * from.getRepeatCount().value_or(1);
     }
     DenseI32ArrayAttr segments;
     if (ref.pool.getSegmentAttrs().size() > 1) {
@@ -301,7 +299,7 @@ struct AIEObjectFifoSplitPass
             builder.getContext(), 0, elemType.getNumElements(), nullptr,
             nullptr)}),
         /*locks=*/ArrayAttr(), /*repeatCount=*/IntegerAttr(),
-        /*iterCount=*/IntegerAttr(), fifo.getDisableSynchronization(),
+        fifo.getDisableSynchronization(),
         builder.getStringAttr(fifo.name().getValue()),
         /*initValues=*/ArrayAttr());
     return PoolRef{pool, {0}};

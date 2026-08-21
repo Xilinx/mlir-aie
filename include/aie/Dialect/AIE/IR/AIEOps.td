@@ -2298,11 +2298,10 @@ def AIE_ObjectFifoPoolOp
       OptionalAttr<FlatSymbolRefArrayAttr>:$buffers,
       OptionalAttr<ObjectFifoSegmentArrayAttr>:$segments,
       OptionalAttr<FlatSymbolRefArrayAttr>:$locks,
-      // Times the pool is cycled through per outer iteration; lock initializers
-      // scale with it.
+      // Times this pool's drainer replays each object onto the stream. Its
+      // filler therefore takes and gives back this many lock units at once,
+      // and the lock initializers scale with it.
       OptionalAttr<AIEI32Attr>:$repeatCount,
-      // Outer iterations the DMA chain runs for.
-      OptionalAttr<AIEI32Attr>:$iterCount,
       // No locks are created for this pool; its actors are unsynchronized.
       DefaultValuedAttr<BoolAttr, "false">:$disableSynchronization,
       // Name of the objectFifo this pool holds the objects of.
@@ -2427,6 +2426,10 @@ def AIE_ObjectFifoDmaEndpointOp
       OptionalAttr<BDDimLayoutArrayArrayAttr>:$dimensions,
       OptionalAttr<BDPadLayoutArrayArrayAttr>:$padDimensions,
       DefaultValuedOptionalAttr<AIEI32Attr, "0">:$padValue,
+      // Times this endpoint's chain runs before it stops; unbounded when
+      // absent. The two ends of a fifo carry the same number of objects, so a
+      // drainer replaying each of them `repeat_count` times needs that many
+      // fewer passes than the filler opposite it.
       OptionalAttr<AIEI32Attr>:$iterCount, OptionalAttr<PacketInfoAttr>:$packet,
       // ObjectFifo name used by runtime records.
       OptionalAttr<StrAttr>:$fifoName);

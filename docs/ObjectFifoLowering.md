@@ -82,6 +82,27 @@ With semaphore locks the value counts how many objects are claimed.
 AIE1 uses binary locks, which are supplied in the `locks` attribute. Producers
 and consumers toggle the same lock with opposite values (0/1).
 
+### Replication and iteration
+
+`repeatCount` sits on the pool the data leaves from. It makes that pool's
+draining end put each object on the stream that many times, and the filling end
+covers a whole batch in one go: it takes and gives back `repeatCount` lock units
+at a time, with the lock initializers scaled to match.
+
+`iterCount` sits on each DMA endpoint and says how many passes its chain makes.
+Both ends of a fifo carry `depth * repeat_count * iter_count` objects, so
+`--aie-objectfifo-split` resolves the fifo's `iter_count` differently for each:
+
+| endpoint | descriptors in its chain | passes it makes |
+| --- | --- | --- |
+| draining | `depth * repeat_count` | `iter_count` |
+| filling | `depth` | `repeat_count * iter_count` |
+
+A chain given an `iterCount` ends in `aie.end` and carries `iterCount - 1` on
+its channel start queue. A chain without one loops back on itself and runs
+until the design stops. Locks gate every descriptor either way, so a bounded
+chain simply stops asking once it has made its passes.
+
 ### Endpoints
 
 An endpoint is an actor: something that fills or drains a pool.

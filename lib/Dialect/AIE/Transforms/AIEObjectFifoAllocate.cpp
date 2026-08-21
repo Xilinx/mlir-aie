@@ -33,6 +33,10 @@ struct AIEObjectFifoAllocatePass
   OpBuilder builder{static_cast<MLIRContext *>(nullptr)};
   /// The last buffer or lock this pass placed on each tile.
   DenseMap<Value, Operation *> lastPlaced;
+  /// Pools some endpoint writes into.
+  DenseSet<Operation *> filledPools;
+  /// Passes the longest-running drainer of each pool makes over it.
+  DenseMap<Operation *, int> drainerIterations;
 
   /// Bytes already committed to `tile` by every buffer placed so far.
   int64_t usedMemory(Value tile) {
@@ -158,11 +162,10 @@ struct AIEObjectFifoAllocatePass
     int filled = initValues ? initValues->size() : 0;
     int repeat = pool.getRepeatCount().value_or(1);
 
-    // FIXME: decide this from the absence of a filling endpoint. The current
-    // condition identifies constant pools through their initialization and
-    // iteration attributes.
-    auto iterCount = pool.getIterCount();
-    if (filled == depth && filled > 0 && iterCount && *iterCount > 1) {
+    // A pool that starts full, is never refilled and is read more than once
+    // holds constants: its readers have nothing to wait for.
+    if (filled == depth && filled > 0 && !filledPools.contains(pool) &&
+        drainerIterations.lookup(pool) > 1) {
       return;
     }
 
@@ -519,6 +522,20 @@ struct AIEObjectFifoAllocatePass
     });
     for (auto [slot, pool] : llvm::zip(memTileSlots, memTilePools)) {
       pools[slot] = pool;
+    }
+
+    for (auto endpoint : device.getOps<ObjectFifoCoreEndpointOp>()) {
+      if (!endpoint.drains()) {
+        filledPools.insert(endpoint.getPoolOp());
+      }
+    }
+    for (auto endpoint : device.getOps<ObjectFifoDmaEndpointOp>()) {
+      if (!endpoint.drains()) {
+        filledPools.insert(endpoint.getPoolOp());
+        continue;
+      }
+      int &iterations = drainerIterations[endpoint.getPoolOp()];
+      iterations = std::max(iterations, endpoint.getIterCount().value_or(1));
     }
 
     for (ObjectFifoPoolOp pool : pools) {
