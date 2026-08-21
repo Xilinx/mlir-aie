@@ -761,6 +761,8 @@ LogicalResult AIEX::NpuWriteBdOp::verify() {
       static_cast<uint64_t>(oooId) > targetModel.getMaxOutOfOrderId())
     return emitOpError("out_of_order_id must be in [0, ")
            << targetModel.getMaxOutOfOrderId() << "].";
+  if (oooId != 0 && getEnablePacket() == 0)
+    return emitOpError("out_of_order_id requires a packet-enabled BD");
 
   // Every value on this op is already the hardware-encoded field value (wrap
   // fields unbiased, stepsize/iteration fields biased actual-1), so the
