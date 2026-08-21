@@ -32,6 +32,7 @@
 #include "mlir/Conversion/UBToLLVM/UBToLLVM.h"
 #include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVMPass.h"
 #include "mlir/Dialect/Arith/Transforms/Passes.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Pass/PassManager.h"
@@ -182,50 +183,6 @@ collectCoreIRLinkFiles(xilinx::AIE::CoreOp coreOp, llvm::StringRef inputFile,
     for (auto f : mergeAttr->getAsRange<mlir::StringAttr>())
       files.push_back(resolveExternalPath(f.getValue(), inputFile, workDir));
   return files;
-}
-
-// Collect the deduplicated merge-mode link artifacts across every core of
-// `deviceOp`, for the unified-object path where the device's cores share one
-// LLVM module that is llvm-linked once. Duplicate references across cores
-// merge cleanly (the kernels are linkonce_odr) and each is inlined into its
-// caller.
-//
-// Fails if any path is merge-mode on one core and an ordinary link input on
-// another core of the same device: with one shared module the merged copy and
-// the object-linked copy would both define the kernel's symbols. The pass that
-// builds these lists normally diagnoses that, but aiecc can also be handed
-// pre-populated IR, so the check is repeated here.
-inline mlir::LogicalResult
-collectDeviceIRLinkFiles(xilinx::AIE::DeviceOp deviceOp,
-                         llvm::StringRef inputFile, llvm::StringRef workDir,
-                         std::vector<std::string> &files) {
-  files.clear();
-  llvm::StringSet<> merged;
-  deviceOp.walk([&](xilinx::AIE::CoreOp coreOp) {
-    for (auto &f : collectCoreIRLinkFiles(coreOp, inputFile, workDir))
-      if (merged.insert(f).second)
-        files.push_back(std::move(f));
-  });
-
-  mlir::LogicalResult result = mlir::success();
-  deviceOp.walk([&](xilinx::AIE::CoreOp coreOp) {
-    auto filesAttr = coreOp.getLinkFiles();
-    if (!filesAttr)
-      return;
-    for (auto f : filesAttr->getAsRange<mlir::StringAttr>()) {
-      if (!merged.contains(
-              resolveExternalPath(f.getValue(), inputFile, workDir)))
-        continue;
-      coreOp.emitError() << "link artifact '" << f.getValue()
-                         << "' is listed in link_files here but requested with "
-                            "link_with_mode = \"merge\" elsewhere in this "
-                            "device; a path cannot be both llvm-linked into "
-                            "the shared core module and object-linked, or its "
-                            "symbols are defined twice";
-      result = mlir::failure();
-    }
-  });
-  return result;
 }
 
 // Clone `src` and replace each matched CoreOp with a stub that carries
@@ -988,6 +945,42 @@ loweringPipeline(mlir::ModuleOp src, llvm::StringRef devName, int col, int row,
     return mlir::failure();
   out.value = std::move(clone);
   return mlir::success();
+}
+
+// Carve one core out of a device's unified lowered module. The other cores'
+// functions are erased and symbol DCE takes whatever that orphans -- their
+// buffers, their private helpers -- with them. Keys are built to match
+// `coreKey`, so the results drop into the per-core object subgraph unchanged.
+inline mlir::FailureOr<
+    std::vector<std::pair<std::string, mlir::OwningOpRef<mlir::ModuleOp>>>>
+splitLoweredCores(const Item<mlir::OwningOpRef<mlir::ModuleOp>> &devItem) {
+  mlir::ModuleOp src = devItem.get().get();
+  std::string devName = devItem.key;
+
+  llvm::SmallVector<std::string> coreNames;
+  src.walk([&](mlir::LLVM::LLVMFuncOp f) {
+    if (f.getSymName().starts_with("core_"))
+      coreNames.push_back(f.getSymName().str());
+  });
+
+  std::vector<std::pair<std::string, mlir::OwningOpRef<mlir::ModuleOp>>> out;
+  out.reserve(coreNames.size());
+  for (llvm::StringRef keep : coreNames) {
+    mlir::OwningOpRef<mlir::ModuleOp> clone = src.clone();
+    llvm::SmallVector<mlir::Operation *> drop;
+    clone->walk([&](mlir::LLVM::LLVMFuncOp f) {
+      if (f.getSymName().starts_with("core_") && f.getSymName() != keep)
+        drop.push_back(f);
+    });
+    for (mlir::Operation *op : drop)
+      op->erase();
+    mlir::PassManager pm(clone->getContext());
+    pm.addPass(mlir::createSymbolDCEPass());
+    if (mlir::failed(pm.run(*clone)))
+      return mlir::failure();
+    out.emplace_back(devName + "_" + keep.str(), std::move(clone));
+  }
+  return out;
 }
 
 // DMA→NPU lowering. Expects runtime sequences to already be materialized

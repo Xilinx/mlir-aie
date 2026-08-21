@@ -735,10 +735,13 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
             core.op->getParentOfType<DeviceOp>().getSymName());
       });
 
-  // Per-core .o node. Two strategies selectable:
-  //   * unified: compile all cores of a device into one shared object, then
-  //     re-key that device-wide object onto each of the device's cores;
-  //   * per-core: compile each core's own module to its own object.
+  // Per-core .o node. Two strategies selectable, differing only in how many
+  // times the lowering pipeline runs:
+  //   * unified: lower once per device, then carve that module into one module
+  //     per core;
+  //   * per-core: lower once per core, each run on a clone of the whole design.
+  // Either way every core compiles its own object, so the object stage keeps
+  // its per-core parallelism.
 
   // Unified strategy
   auto &physicalPerDevice = splitPerDevice(
@@ -754,31 +757,10 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
         return loweringPipeline(item.get().module.get(), d.getSymName(), -1, -1,
                                 out);
       });
-  // Merge-mode link artifacts for the device's whole core set, deduplicated
-  // (the shared unified module is llvm-linked once). See buildObjectSubgraph.
-  auto &perDeviceIRLinkFiles = physicalPerDevice.map<std::vector<std::string>>(
-      "perDeviceIRLinkFiles_{0}.txt",
-      [inputFile,
-       workDirStr](const Item<OpInModule<DeviceOp>> &dev,
-                   Item<std::vector<std::string>> &out) -> mlir::LogicalResult {
-        std::vector<std::string> files;
-        if (mlir::failed(collectDeviceIRLinkFiles(
-                DeviceOp(dev.get().op), inputFile, workDirStr, files)))
-          return mlir::failure();
-        out.value = std::move(files);
-        return mlir::success();
-      });
-  auto &unifiedObjects =
-      buildObjectSubgraph(unifiedLowered, perDeviceArches, perDeviceIRLinkFiles,
-                          "unifiedObjects_{0}.o");
-  // Each core links against its device's shared object: re-key the device-keyed
-  // unified objects onto the per-core keys.
-  EdgeWithTypedOutput<Directory> &unifiedCoreObjects =
-      perCore.rekeyFrom<Directory>(
-          "objects_{0}.o", unifiedObjects.out,
-          [](const OpInModule<CoreOp> &core) {
-            return core.op->getParentOfType<DeviceOp>().getSymName().str();
-          });
+  // One module per core, carved out of the device's. Keyed like `perCore`, so
+  // the per-core arches and link files below apply unchanged.
+  auto &unifiedPerCoreLowered =
+      unifiedLowered.expand<ModRef>("lowered_{0}.mlir", splitLoweredCores);
 
   // Per-core strategy
   auto &perCoreLowered = perCore.map<ModRef>(
@@ -799,8 +781,12 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   EdgeWithTypedOutput<Directory> &perCoreObjects = buildObjectSubgraph(
       perCoreLowered, perCoreArches, perCoreIRLinkFiles, "objects_{0}.o");
 
+  EdgeWithTypedOutput<Directory> &unifiedObjects =
+      buildObjectSubgraph(unifiedPerCoreLowered, perCoreArches,
+                          perCoreIRLinkFiles, "objects_{0}.o");
+
   EdgeWithTypedOutput<Directory> &objects =
-      doUnified ? unifiedCoreObjects : perCoreObjects;
+      doUnified ? unifiedObjects : perCoreObjects;
 
   // ld scripts (with link_files absolutized so INPUT() is cwd-invariant).
   auto &ldScripts = perCore.map<std::string>(
