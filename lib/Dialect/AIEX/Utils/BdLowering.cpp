@@ -177,15 +177,13 @@ Value getBdRegisterBase(OpBuilder &builder, Location loc,
                             createConstantI32(builder, loc, bdStride)));
 }
 
-LogicalResult buildShimBdWords(OpBuilder &builder, Location loc,
-                               const AIE::AIETargetModel &targetModel,
-                               const BdTemplateFields &f,
-                               ArrayRef<OpFoldResult> mixedSizes,
-                               ArrayRef<OpFoldResult> mixedStrides,
-                               uint64_t elemWidth, uint32_t burstLength,
-                               uint32_t axcache, Value bufLenOverride,
-                               Value &repeatCountOut,
-                               SmallVectorImpl<Value> &wordsOut) {
+LogicalResult
+buildShimBdWords(OpBuilder &builder, Location loc,
+                 const AIE::AIETargetModel &targetModel,
+                 const BdTemplateFields &f, ArrayRef<OpFoldResult> mixedSizes,
+                 ArrayRef<OpFoldResult> mixedStrides, uint64_t elemWidth,
+                 uint32_t burstLength, uint32_t axcache, Value bufLenOverride,
+                 Value &repeatCountOut, SmallVectorImpl<Value> &wordsOut) {
   auto i32ty = builder.getIntegerType(32);
 
   // Shim-NOC BDs are 8 registers wide; slots not set below stay zero.
