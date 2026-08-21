@@ -128,3 +128,23 @@ module @zero_sized_buffer_on_full_tile {
     } {stack_size = 1024 : i32}
   }
 }
+
+// -----
+
+// Same, but the zero-sized buffer also pins the bank it wants, and that bank is
+// exactly full. A requested mem_bank is a hard constraint, but a buffer that
+// covers no bytes cannot exhaust one: the bank search fails only for want of a
+// free byte it will never use. It must still land inside the bank it asked for
+// rather than be rejected as overriding an existing mem_bank.
+// CHECK-LABEL: module @zero_sized_buffer_pinned_to_full_bank
+// CHECK: %empty = aie.buffer(%tile_0_2) {address = 16384 : i32, mem_bank = 1 : i32, sym_name = "empty"} : memref<0xi32>
+module @zero_sized_buffer_pinned_to_full_bank {
+  aie.device(npu2) {
+    %tile_0_2 = aie.tile(0, 2)
+    %b1 = aie.buffer(%tile_0_2) {address = 16384 : i32, sym_name = "b1"} : memref<16384xi8>
+    %empty = aie.buffer(%tile_0_2) {sym_name = "empty", mem_bank = 1 : i32} : memref<0xi32>
+    aie.core(%tile_0_2) {
+      aie.end
+    } {stack_size = 1024 : i32}
+  }
+}

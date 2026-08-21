@@ -12,8 +12,10 @@
 # This checks the properties that matter across many generated designs:
 #
 #   legality      -- placements never overlap, escape the tile, land in the
-#                    stack, break alignment, move a pinned address, or leave
-#                    the bank a design asked for
+#                    stack, break alignment, move a pinned address, leave the
+#                    bank a design asked for, or (when reserved_data_size was
+#                    set) leave too little contiguous room for it despite the
+#                    allocator reporting success
 #   completeness  -- a design that provably fits is actually placed
 #   determinism   -- the same input twice gives the same addresses
 #   quality       -- buffers spread over banks, and a buffer that fits inside
@@ -60,8 +62,27 @@ def align_up(v, a):
     return ((v + a - 1) // a) * a
 
 
+def oracle_largest_free_run(cap, stack, blocks):
+    """Largest contiguous free run above the stack in the as-constructed
+    (pre-hide) oracle layout -- used to cap a randomly chosen
+    reserved_data_size to something the oracle's own placement can support."""
+    taken = sorted((b["addr"], b["addr"] + b["size"]) for b in blocks if b["size"])
+    best, cursor = 0, stack
+    for lo, hi in taken:
+        if lo > cursor:
+            best = max(best, lo - cursor)
+        cursor = max(cursor, hi)
+    return max(best, cap - cursor)
+
+
 def build_design(rng, cfg):
-    """A random valid layout, then hide part of it. Returns (mlir, blocks)."""
+    """A random valid layout, then hide part of it.
+
+    Returns (mlir, blocks, reserved): `reserved` is the reserved_data_size
+    (bytes) requested on the core, or 0 if none (only ever set for a "core"
+    config -- reserved_data_size is a CoreOp attribute, and the memtile config
+    has no aie.core at all).
+    """
     cap, bus, stack = cfg["cap"], cfg["bus"], cfg["stack"]
     bank = cap // cfg["banks"]
     cursor, blocks = stack, []
@@ -72,9 +93,11 @@ def build_design(rng, cfg):
         if aligned:
             cursor = align_up(cursor, bus)
         roll = rng.random()
-        if roll < 0.55:
+        if roll < 0.10:  # zero-sized: covers no bytes, placeable anywhere
+            size = 0
+        elif roll < 0.60:
             size = rng.randint(1, 8) * bus
-        elif roll < 0.85:
+        elif roll < 0.88:
             size = rng.randint(1, max(1, bank // (2 * bus))) * bus
         else:  # deliberately larger than one bank
             size = rng.randint(bank + 1, min(3 * bank, cap - stack))
@@ -83,11 +106,16 @@ def build_design(rng, cfg):
         blocks.append(dict(addr=cursor, size=size, aligned=aligned))
         cursor += size
     if not blocks:
-        return None, None
+        return None, None, 0
 
     for i, b in enumerate(blocks):
         b["name"] = f"b{i}"
-        inside_one_bank = (b["addr"] // bank) == ((b["addr"] + b["size"] - 1) // bank)
+        # A zero-sized block covers no bytes, so it can never actually leave a
+        # bank; the naive addr/(addr+size-1) span is off by one at size 0 and
+        # would wrongly disqualify it from the "bank" role at a bank boundary.
+        inside_one_bank = b["size"] == 0 or (
+            (b["addr"] // bank) == ((b["addr"] + b["size"] - 1) // bank)
+        )
         roll = rng.random()
         if roll < 0.30:
             b["role"] = "pin"
@@ -97,6 +125,21 @@ def build_design(rng, cfg):
             b["role"] = "bank"
         else:
             b["role"] = "free"
+
+    # reserved_data_size: exercise the allocator's tight-packing strategy and
+    # its reservation acceptance test, only feasible on a config with a core.
+    # Capped to a fraction of the *oracle's own* largest contiguous gap (not
+    # total free space) so the construct-then-hide guarantee keeps holding:
+    # the real allocator reorders blocks (largest-first, then by strategy),
+    # so it is not guaranteed to reproduce the oracle's exact packing, but it
+    # should get close -- leaving margin below the oracle's own number keeps
+    # this a legality question (is the allocator's own bookkeeping honoured?)
+    # rather than a fresh feasibility question this generator cannot answer.
+    reserved = 0
+    if cfg["stack"] and rng.random() < 0.35:
+        oracle_run = oracle_largest_free_run(cap, stack, blocks)
+        if oracle_run > 1:
+            reserved = rng.randint(1, max(1, int(oracle_run * 0.7)))
 
     lines = [
         "module {",
@@ -116,11 +159,14 @@ def build_design(rng, cfg):
             f'    : memref<{b["size"]}xi8>'
         )
     if cfg["stack"]:
-        lines.append(f"    aie.core(%t) {{ aie.end }} {{stack_size = {stack} : i32}}")
+        core_attrs = f"stack_size = {stack} : i32"
+        if reserved:
+            core_attrs += f", reserved_data_size = {reserved} : i32"
+        lines.append(f"    aie.core(%t) {{ aie.end }} {{{core_attrs}}}")
     else:
         lines.append("    aie.memtile_dma(%t) { aie.end }")
     lines += ["  }", "}", ""]
-    return "\n".join(lines), blocks
+    return "\n".join(lines), blocks, reserved
 
 
 def allocate(mlir, workdir):
@@ -219,58 +265,80 @@ def quality(cfg, blocks, placed):
 
 
 def main():
-    workdir = Path(tempfile.mkdtemp(prefix="aie-alloc-props-"))
-    solved = total = needless = nondet = 0
-    imbalances, contiguity, illegal = [], [], []
-    for seed in range(SEEDS):
-        cfg = DEVICES[seed % len(DEVICES)]
-        mlir, blocks = build_design(random.Random(seed), cfg)
-        if mlir is None:
-            continue
-        total += 1
-        placed = allocate(mlir, workdir)
-        if placed is None:
-            continue
-        solved += 1
-        bad = legality_violations(cfg, blocks, placed)
-        if bad:
-            illegal.append(f"seed {seed} ({cfg['name']}): {bad[0]}")
-        n, imb = quality(cfg, blocks, placed)
-        needless += n
-        imbalances.append(imb)
-        run, free = largest_free_run(cfg, placed)
-        if free:
-            contiguity.append(run / free)
-        if allocate(mlir, workdir) != placed:
-            nondet += 1
+    with tempfile.TemporaryDirectory(prefix="aie-alloc-props-") as workdir_str:
+        workdir = Path(workdir_str)
+        solved = total = needless = nondet = 0
+        imbalances, contiguity, illegal = [], [], []
+        for seed in range(SEEDS):
+            cfg = DEVICES[seed % len(DEVICES)]
+            mlir, blocks, reserved = build_design(random.Random(seed), cfg)
+            if mlir is None:
+                continue
+            total += 1
+            placed = allocate(mlir, workdir)
+            if placed is None:
+                continue
+            solved += 1
+            bad = legality_violations(cfg, blocks, placed)
+            run, free = largest_free_run(cfg, placed)
+            # The allocator reported success, so its own reservation
+            # acceptance test claims this run is big enough; if it isn't,
+            # that check is broken, not just this one design.
+            if reserved and run < reserved:
+                bad.append(
+                    f"reserved_data_size {reserved} not honored, largest "
+                    f"contiguous run is only {run}"
+                )
+            if bad:
+                illegal.append(f"seed {seed} ({cfg['name']}): {bad[0]}")
+            n, imb = quality(cfg, blocks, placed)
+            needless += n
+            imbalances.append(imb)
+            if free:
+                contiguity.append(run / free)
+            if allocate(mlir, workdir) != placed:
+                nondet += 1
 
-    mean_imb = sum(imbalances) / len(imbalances) if imbalances else 0.0
-    mean_contig = sum(contiguity) / len(contiguity) if contiguity else 1.0
-    for line in illegal[:10]:
-        print("ILLEGAL:", line)
+        # A metric that never accumulated any samples despite solving designs
+        # is suspicious on its own -- silently defaulting it to "pass" would
+        # hide that the property was never actually exercised.
+        imb_has_data = bool(imbalances) or solved == 0
+        contig_has_data = bool(contiguity) or solved == 0
+        mean_imb = sum(imbalances) / len(imbalances) if imbalances else 0.0
+        mean_contig = sum(contiguity) / len(contiguity) if contiguity else 0.0
+        for line in illegal[:10]:
+            print("ILLEGAL:", line)
 
-    def report(label, ok, detail):
-        print(f"{label}: {detail} : {'OK' if ok else 'REGRESSION'}")
+        def report(label, ok, detail):
+            print(f"{label}: {detail} : {'OK' if ok else 'REGRESSION'}")
 
-    report("legality", not illegal, f"{len(illegal)} illegal of {solved} placed")
-    report("determinism", nondet == 0, f"{nondet} unstable")
-    report("completeness", solved >= MIN_SOLVED, f"{solved}/{total} solved")
-    report(
-        "bank-splitting",
-        needless <= MAX_NEEDLESS_CROSSINGS,
-        f"{needless} needless (max {MAX_NEEDLESS_CROSSINGS})",
-    )
-    report(
-        "bank-balance",
-        mean_imb <= MAX_BANK_IMBALANCE,
-        f"mean imbalance {mean_imb:.2f} (max {MAX_BANK_IMBALANCE})",
-    )
-    report(
-        "contiguity",
-        mean_contig >= MIN_MEAN_CONTIGUITY,
-        f"mean largest-run/free {mean_contig:.2f} (min {MIN_MEAN_CONTIGUITY})",
-    )
-    return 0
+        report("legality", not illegal, f"{len(illegal)} illegal of {solved} placed")
+        report("determinism", nondet == 0, f"{nondet} unstable")
+        report("completeness", solved >= MIN_SOLVED, f"{solved}/{total} solved")
+        report(
+            "bank-splitting",
+            needless <= MAX_NEEDLESS_CROSSINGS,
+            f"{needless} needless (max {MAX_NEEDLESS_CROSSINGS})",
+        )
+        report(
+            "bank-balance",
+            imb_has_data and mean_imb <= MAX_BANK_IMBALANCE,
+            (
+                f"mean imbalance {mean_imb:.2f} (max {MAX_BANK_IMBALANCE})"
+                if imb_has_data
+                else "0 samples despite solved designs"
+            ),
+        )
+        report(
+            "contiguity",
+            contig_has_data and mean_contig >= MIN_MEAN_CONTIGUITY,
+            (
+                f"mean largest-run/free {mean_contig:.2f} (min {MIN_MEAN_CONTIGUITY})"
+                if contig_has_data
+                else "0 samples despite solved designs"
+            ),
+        )
+        return 0
 
 
 # Every property must report OK; any REGRESSION fails the test.

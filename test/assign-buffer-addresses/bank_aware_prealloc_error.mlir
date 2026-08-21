@@ -106,3 +106,30 @@ module @test6 {
     } {stack_size = 1024 : i32, reserved_data_size = 60000 : i32}
   }
 }
+
+// -----
+
+// A pinned address that is not aligned to the tile's load/store bus, on a
+// buffer that did not opt out of alignment. Reported against the buffer, and
+// terminal: an error has been emitted, so there is nothing left to retry.
+module @unaligned_pinned_address {
+  aie.device(npu1) {
+    // expected-error@+1 {{'aie.tile' op Bank-aware allocation failed.}}
+    %tile34 = aie.tile(3, 4)
+    // expected-error@+1 {{'aie.buffer' op address attribute value must be aligned to tile load/store bus width when aligned attribute is set}}
+    %buf0 = aie.buffer(%tile34) { sym_name = "a", address = 1028 : i32 } : memref<16xi32>
+  }
+}
+
+// -----
+
+// A pinned address at or beyond the end of tile memory falls outside every
+// bank, so it is rejected before the past-the-end check can even measure it.
+module @pinned_address_outside_all_banks {
+  aie.device(npu1) {
+    // expected-error@+1 {{'aie.tile' op Bank-aware allocation failed.}}
+    %tile34 = aie.tile(3, 4)
+    // expected-error@+1 {{'aie.buffer' op address attribute does not fall within any bank range}}
+    %buf0 = aie.buffer(%tile34) { sym_name = "a", address = 65536 : i32 } : memref<16xi32>
+  }
+}
