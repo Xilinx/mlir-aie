@@ -1131,7 +1131,7 @@ struct XmlReader {
       if (haveAttrs)
         node.push_back({"<xmlattr>", attrs});
       return;
-    }    // <x/>
+    } // <x/>
     ++i; // '>'
     if (haveAttrs)
       node.push_back({"<xmlattr>", attrs});
