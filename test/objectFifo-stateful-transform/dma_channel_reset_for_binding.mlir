@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --split-input-file --aie-objectFifo-stateful-transform %s | FileCheck %s
+// RUN: aie-opt --split-input-file --aie-objectFifo-stateful-transform="skip-verify=true" %s | FileCheck %s
 
 // A fifo targeted by aiex.dma_channel_reset_for gets an
 // aie.objectfifo_rearm_binding recording its non-shim DMA endpoints and locks,

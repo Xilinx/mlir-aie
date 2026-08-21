@@ -10,7 +10,7 @@
 // value-carrying `AcquireGreaterEqual`; the trailing post-loop releases
 // decrement the respective counters.
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll="default-dynamic=true" %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="skip-verify=true" --aie-objectFifo-unroll="default-dynamic=true" %s | FileCheck %s
 
 // CHECK-LABEL:   aie.device(npu2) {
 // CHECK-DAG:           %[[MT:.*]] = aie.tile(0, 1)

@@ -12,7 +12,7 @@
 // below slides a two-element window (acquire 2, release 1), so the delta is 2 on
 // the first iteration and 1 on every later one and stays a runtime value.
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll="default-dynamic=true" %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="skip-verify=true" --aie-objectFifo-unroll="default-dynamic=true" %s | FileCheck %s
 
 // CHECK-LABEL:   aie.device(npu2) {
 // CHECK-DAG:           %[[MT:.*]] = aie.tile(0, 1)

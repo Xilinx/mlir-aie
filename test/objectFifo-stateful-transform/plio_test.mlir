@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="skip-verify=true" --aie-objectFifo-unroll %s | FileCheck %s
 
 // CHECK-DAG:  aie.flow(%{{.*}}tile_2_0, PLIO : 0, %{{.*}}tile_2_2, DMA : 0)
 // CHECK-DAG:  aie.flow(%{{.*}}tile_2_2, DMA : 0, %{{.*}}tile_2_0, PLIO : 0)

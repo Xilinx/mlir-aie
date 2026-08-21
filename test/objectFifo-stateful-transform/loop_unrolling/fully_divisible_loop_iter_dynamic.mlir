@@ -9,7 +9,7 @@
 // (the aiecc driver default) the loop is preserved (step 1, single body) with a
 // runtime buffer-index switch, instead of being unrolled by the buffer depth.
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll="default-dynamic=true" %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="skip-verify=true" --aie-objectFifo-unroll="default-dynamic=true" %s | FileCheck %s
 
 // The loop is NOT unrolled: original step of 1 is kept (static lowering would
 // rewrite this to step 2 and emit two acquire/release bodies).

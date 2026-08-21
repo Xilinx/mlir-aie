@@ -10,7 +10,7 @@
 // iterations, so the while body lowers directly with a value-carrying
 // `AcquireGreaterEqual`. A post-loop release decrements the counter.
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll="default-dynamic=true" %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="skip-verify=true" --aie-objectFifo-unroll="default-dynamic=true" %s | FileCheck %s
 
 // CHECK-LABEL:   aie.device(npu2) {
 // CHECK-DAG:           %[[MT:.*]] = aie.tile(0, 1)

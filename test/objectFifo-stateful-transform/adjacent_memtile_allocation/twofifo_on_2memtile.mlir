@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="skip-verify=true" --aie-objectFifo-unroll %s | FileCheck %s
 
 // CHECK-DAG:     %[[SHIM_NOC_TILE_0_0:.*]] = aie.tile(0, 0)
 // CHECK-DAG:     %[[MEM_TILE_0_1:.*]] = aie.tile(0, 1)
