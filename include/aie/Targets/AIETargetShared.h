@@ -10,6 +10,8 @@
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 
+#include "llvm/ADT/SmallPtrSet.h"
+
 namespace xilinx {
 namespace AIE {
 
@@ -39,6 +41,11 @@ void generateXAieDmaSetMultiDimAddr(llvm::raw_ostream &output, int ndims,
                                     const char *errorRet);
 
 llvm::SetVector<mlir::Block *> getOrderedChainOfBlocks(mlir::Region *region);
+
+/// Collect every BD block reached from an out-of-order aie.dma_start channel.
+/// These BDs use use_next_bd=0 (placement is by header id, not the chain).
+llvm::SmallPtrSet<mlir::Block *, 8>
+collectOutOfOrderBlocks(const llvm::SetVector<mlir::Block *> &blockVector);
 
 } // namespace AIE
 } // namespace xilinx

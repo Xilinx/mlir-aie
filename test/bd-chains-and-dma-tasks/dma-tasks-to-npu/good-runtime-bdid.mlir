@@ -18,7 +18,7 @@
 // template words (buffer_offset word 1, packet word 2, valid/lock word 7) with
 // the encoder's runtime size/stride words -- so no per-word write32 remains for
 // this BD. Emitting a real block-write is required for aiebu: it folds a
-// following address_patch instruction into an ELF relocation on the 
+// following address_patch instruction into an ELF relocation on the
 // blockwrite.
 //
 // The buffer address_patch then takes a runtime addr operand pointing INSIDE
