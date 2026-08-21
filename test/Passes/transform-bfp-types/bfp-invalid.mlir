@@ -35,7 +35,7 @@ module {
     %tile_1_2 = aie.tile(1, 2)
     aie.objectfifo @in1(%shim_noc_tile_1_0, {%tile_1_2}, 2 : i32) : !aie.objectfifo<memref<16x!aiex.bfp<"v8bfp16ebs8">>>
     %core_1_2 = aie.core(%tile_1_2) {
-      %1 = aie.objectfifo.acquire @in1 (Consume, 1) : memref<16x!aiex.bfp<"v8bfp16ebs8">>
+      %1 = aie.objectfifo.acquire @in1(Consume, 1) : memref<16x!aiex.bfp<"v8bfp16ebs8">>
       aie.end
     }
   }

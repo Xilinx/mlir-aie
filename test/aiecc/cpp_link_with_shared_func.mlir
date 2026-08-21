@@ -34,16 +34,16 @@ module {
     func.func private @kernel(memref<16xi32>) attributes {link_with = "k.o"}
 
     %core_0_2 = aie.core(%tile_0_2) {
-      %elem = aie.objectfifo.acquire @dummy_in (Consume, 1) : memref<16xi32>
+      %elem = aie.objectfifo.acquire @dummy_in(Consume, 1) : memref<16xi32>
       func.call @kernel(%elem) : (memref<16xi32>) -> ()
-      aie.objectfifo.release @dummy_in (Consume, 1)
+      aie.objectfifo.release @dummy_in(Consume, 1)
       aie.end
     }
 
     %core_0_3 = aie.core(%tile_0_3) {
-      %elem = aie.objectfifo.acquire @dummy_in2 (Consume, 1) : memref<16xi32>
+      %elem = aie.objectfifo.acquire @dummy_in2(Consume, 1) : memref<16xi32>
       func.call @kernel(%elem) : (memref<16xi32>) -> ()
-      aie.objectfifo.release @dummy_in2 (Consume, 1)
+      aie.objectfifo.release @dummy_in2(Consume, 1)
       aie.end
     }
 

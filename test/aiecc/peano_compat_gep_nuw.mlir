@@ -42,9 +42,9 @@ module {
       // Looping the acquire/release keeps the fifo selectors live, so the
       // state accesses survive into the emitted IR.
       scf.for %iter = %c0 to %c4 step %c1 {
-        %elem_in = aie.objectfifo.acquire @of_in (Consume, 1) : memref<16xi32>
+        %elem_in = aie.objectfifo.acquire @of_in(Consume, 1) : memref<16xi32>
 
-        %elem_out = aie.objectfifo.acquire @of_out (Produce, 1) : memref<16xi32>
+        %elem_out = aie.objectfifo.acquire @of_out(Produce, 1) : memref<16xi32>
 
         scf.for %i = %c0 to %c16 step %c1 {
           %val = memref.load %elem_in[%i] : memref<16xi32>
@@ -52,8 +52,8 @@ module {
           memref.store %result, %elem_out[%i] : memref<16xi32>
         }
 
-        aie.objectfifo.release @of_in (Consume, 1)
-        aie.objectfifo.release @of_out (Produce, 1)
+        aie.objectfifo.release @of_in(Consume, 1)
+        aie.objectfifo.release @of_out(Produce, 1)
       }
       aie.end
     }

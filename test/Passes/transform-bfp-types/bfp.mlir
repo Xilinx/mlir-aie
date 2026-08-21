@@ -20,7 +20,7 @@ module {
     %core_1_2 = aie.core(%tile_1_2) {
         // Proper conversion of the acquired objects
         // CHECK: : memref<16xi72>
-        %obj = aie.objectfifo.acquire @in1 (Consume, 1) : memref<16x!aiex.bfp<"v8bfp16ebs8">>
+        %obj = aie.objectfifo.acquire @in1(Consume, 1) : memref<16x!aiex.bfp<"v8bfp16ebs8">>
       aie.end
     }
   }
@@ -42,7 +42,7 @@ module {
     %core_1_2 = aie.core(%tile_1_2) {
         // Proper conversion of the acquired objects
         // CHECK: : memref<16xi136>
-        %obj = aie.objectfifo.acquire @in1 (Consume, 1) : memref<16x!aiex.bfp<"v16bfp16ebs16">>
+        %obj = aie.objectfifo.acquire @in1(Consume, 1) : memref<16x!aiex.bfp<"v16bfp16ebs16">>
       aie.end
     }
   }

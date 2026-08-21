@@ -124,13 +124,13 @@ module {
         scf.condition(%cond) %arg0 : index
       } do {
       ^bb0(%arg1: index):
-        %x_obj0, %x_obj1, %x_obj2 = aie.objectfifo.acquire @fifo (Consume, 3) : memref<8xi8>, memref<8xi8>, memref<8xi8>
-        aie.objectfifo.release @fifo (Consume, 1)
+        %x_obj0, %x_obj1, %x_obj2 = aie.objectfifo.acquire @fifo(Consume, 3) : memref<8xi8>, memref<8xi8>, memref<8xi8>
+        aie.objectfifo.release @fifo(Consume, 1)
         %next = arith.addi %arg1, %c1 : index
         scf.yield %next : index
       }
       memref.store %r, %buf[%c0] : memref<1xindex>
-      aie.objectfifo.release @fifo (Consume, 2)
+      aie.objectfifo.release @fifo(Consume, 2)
       aie.end
     }
   }

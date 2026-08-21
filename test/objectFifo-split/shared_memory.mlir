@@ -38,7 +38,7 @@ module @shared_memory {
 // CHECK-NOT: aie.objectfifo.flow
 // CHECK:   aie.core(%[[T12]])
 // CHECK:     aie.objectfifo.acquire @of0_prod
-// CHECK:     aie.objectfifo.release @of0_prod (1)
+// CHECK:     aie.objectfifo.release @of0_prod(1)
 // CHECK:   aie.core(%[[T13]])
 // CHECK:     aie.objectfifo.acquire @of0_cons
-// CHECK:     aie.objectfifo.release @of0_cons (1)
+// CHECK:     aie.objectfifo.release @of0_cons(1)

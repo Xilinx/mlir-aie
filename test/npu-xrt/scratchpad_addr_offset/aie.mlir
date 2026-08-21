@@ -43,7 +43,7 @@ module {
                 memref.store %v, %out_buf[%i] : memref<8xi32>
             }
 
-            aie.objectfifo.release @objfifo_in (Consume, 1)
+            aie.objectfifo.release @objfifo_in  (Consume, 1)
             aie.objectfifo.release @objfifo_out (Produce, 1)
 
             aie.end

@@ -51,5 +51,4 @@ module @counting {
 
 // CHECK-NOT: aie.objectfifo.acquire
 // CHECK-NOT: aie.objectfifo.release
-// CHECK-NOT: aie.objectfifo.subview.access
 // CHECK-NOT: aie.objectfifo.core_endpoint

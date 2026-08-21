@@ -101,8 +101,8 @@ module {
       %c1 = arith.constant 1 : index
       %c14 = arith.constant 14 : index
       scf.for %arg0 = %c0 to %c14 step %c1 {
-        %e0, %e1 = aie.objectfifo.acquire @acquire_in_loop (Consume, 2) : memref<8xi8>, memref<8xi8>
-        aie.objectfifo.release @acquire_in_loop (Consume, 1)
+        %e0, %e1 = aie.objectfifo.acquire @acquire_in_loop(Consume, 2) : memref<8xi8>, memref<8xi8>
+        aie.objectfifo.release @acquire_in_loop(Consume, 1)
       }
       aie.end
     }
@@ -111,10 +111,10 @@ module {
       %c0 = arith.constant 0 : index
       %c1 = arith.constant 1 : index
       %c14 = arith.constant 14 : index
-      %pe = aie.objectfifo.acquire @acquire_before_loop (Consume, 1) : memref<8xi8>
+      %pe = aie.objectfifo.acquire @acquire_before_loop(Consume, 1) : memref<8xi8>
       scf.for %arg0 = %c0 to %c14 step %c1 {
-        %e0, %e1 = aie.objectfifo.acquire @acquire_before_loop (Consume, 2) : memref<8xi8>, memref<8xi8>
-        aie.objectfifo.release @acquire_before_loop (Consume, 1)
+        %e0, %e1 = aie.objectfifo.acquire @acquire_before_loop(Consume, 2) : memref<8xi8>, memref<8xi8>
+        aie.objectfifo.release @acquire_before_loop(Consume, 1)
       }
       aie.end
     }

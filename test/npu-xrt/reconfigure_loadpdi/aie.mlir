@@ -61,14 +61,14 @@ module {
 
             scf.for %niter = %c0 to %c_intmax step %c1 {
             %elem_in = aie.objectfifo.acquire @objfifo_in (Consume, 1) : memref<4xi32>
-            %elem_out = aie.objectfifo.acquire @objfifo_out (Produce, 1) : memref<4xi32>
+            %elem_out = aie.objectfifo.acquire @objfifo_out(Produce, 1) : memref<4xi32>
             scf.for %i = %c0 to %c4 step %c1 {
                 %0 = memref.load %elem_in[%i] : memref<4xi32>
                 %1 = arith.addi %0, %c2_i32 : i32
                 memref.store %1, %elem_out[%i] : memref<4xi32>
             }
             aie.objectfifo.release @objfifo_in (Consume, 1)
-            aie.objectfifo.release @objfifo_out (Produce, 1)
+            aie.objectfifo.release @objfifo_out(Produce, 1)
             }
             aie.end
         }
@@ -109,14 +109,14 @@ module {
 
             scf.for %niter = %c0 to %c_intmax step %c1 {
             %elem_in = aie.objectfifo.acquire @objfifo_in (Consume, 1) : memref<4xi32>
-            %elem_out = aie.objectfifo.acquire @objfifo_out (Produce, 1) : memref<4xi32>
+            %elem_out = aie.objectfifo.acquire @objfifo_out(Produce, 1) : memref<4xi32>
             scf.for %i = %c0 to %c4 step %c1 {
                 %0 = memref.load %elem_in[%i] : memref<4xi32>
                 %1 = arith.addi %0, %c3_i32 : i32
                 memref.store %1, %elem_out[%i] : memref<4xi32>
             }
             aie.objectfifo.release @objfifo_in (Consume, 1)
-            aie.objectfifo.release @objfifo_out (Produce, 1)
+            aie.objectfifo.release @objfifo_out(Produce, 1)
             }
             aie.end
         }

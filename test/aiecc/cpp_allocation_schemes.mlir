@@ -32,14 +32,14 @@ module {
       %c1 = arith.constant 1 : index
       %c128 = arith.constant 128 : index
 
-      %elem = aie.objectfifo.acquire @fifo (Consume, 1) : memref<128xi32>
+      %elem = aie.objectfifo.acquire @fifo(Consume, 1) : memref<128xi32>
 
       scf.for %i = %c0 to %c128 step %c1 {
         %val = memref.load %elem[%i] : memref<128xi32>
         memref.store %val, %elem[%i] : memref<128xi32>
       }
 
-      aie.objectfifo.release @fifo (Consume, 1)
+      aie.objectfifo.release @fifo(Consume, 1)
       aie.end
     }
 

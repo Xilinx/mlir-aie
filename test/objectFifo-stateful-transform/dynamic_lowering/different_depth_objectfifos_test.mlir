@@ -197,24 +197,24 @@ module {
       %c1 = arith.constant 1 : index
       %c8 = arith.constant 9 : index
 
-      %1 = aie.objectfifo.acquire @output_fifo (Produce, 1) : memref<10xi32>
-      %3 = aie.objectfifo.acquire @input_fifo (Consume, 1) : memref<10xi32>
+      %1 = aie.objectfifo.acquire @output_fifo(Produce, 1) : memref<10xi32>
+      %3 = aie.objectfifo.acquire @input_fifo(Consume, 1) : memref<10xi32>
       func.call @add_10_i32(%3, %3, %1) : (memref<10xi32>, memref<10xi32>, memref<10xi32>) -> ()
-      aie.objectfifo.release @output_fifo (Produce, 1)
+      aie.objectfifo.release @output_fifo(Produce, 1)
 
       scf.for %arg0 = %c0 to %c8 step %c1 {
-        %5 = aie.objectfifo.acquire @output_fifo (Produce, 1) : memref<10xi32>
-        %7, %8 = aie.objectfifo.acquire @input_fifo (Consume, 2) : memref<10xi32>, memref<10xi32>
+        %5 = aie.objectfifo.acquire @output_fifo(Produce, 1) : memref<10xi32>
+        %7, %8 = aie.objectfifo.acquire @input_fifo(Consume, 2) : memref<10xi32>, memref<10xi32>
         func.call @add_10_i32(%7, %8, %5) : (memref<10xi32>, memref<10xi32>, memref<10xi32>) -> ()
-        aie.objectfifo.release @input_fifo (Consume, 1)
-        aie.objectfifo.release @output_fifo (Produce, 1)
+        aie.objectfifo.release @input_fifo(Consume, 1)
+        aie.objectfifo.release @output_fifo(Produce, 1)
       }
 
-      %10 = aie.objectfifo.acquire @output_fifo (Produce, 1) : memref<10xi32>
-      %12, %13 = aie.objectfifo.acquire @input_fifo (Consume, 2) : memref<10xi32>, memref<10xi32>
+      %10 = aie.objectfifo.acquire @output_fifo(Produce, 1) : memref<10xi32>
+      %12, %13 = aie.objectfifo.acquire @input_fifo(Consume, 2) : memref<10xi32>, memref<10xi32>
       func.call @add_10_i32(%12, %13, %10) : (memref<10xi32>, memref<10xi32>, memref<10xi32>) -> ()
-      aie.objectfifo.release @input_fifo (Consume, 2)
-      aie.objectfifo.release @output_fifo (Produce, 1)
+      aie.objectfifo.release @input_fifo(Consume, 2)
+      aie.objectfifo.release @output_fifo(Produce, 1)
 
       aie.end
     }

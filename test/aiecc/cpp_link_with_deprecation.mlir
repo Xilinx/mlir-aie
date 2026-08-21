@@ -29,8 +29,8 @@ module {
 
     // expected-warning@+1 {{link_with on aie.core is deprecated; attach link_with to the func.func declaration instead}}
     %core_0_2 = aie.core(%tile_0_2) {
-      %buf_obj0 = aie.objectfifo.acquire @of (Consume, 1) : memref<16xi32>
-      aie.objectfifo.release @of (Consume, 1)
+      %buf_obj0 = aie.objectfifo.acquire @of(Consume, 1) : memref<16xi32>
+      aie.objectfifo.release @of(Consume, 1)
       aie.end
     } {link_with = "legacy.o"}
 

@@ -53,15 +53,15 @@ module {
       %st = arith.constant 1 : index
       %val = arith.constant 1 : i32
       scf.for %s = %lb to %ub step %st {
-        %e0 = aie.objectfifo.acquire @inc0 (Consume, 1) : memref<8xi32>
-        %e1 = aie.objectfifo.acquire @outc0 (Produce, 1) : memref<8xi32>
+        %e0 = aie.objectfifo.acquire @inc0(Consume, 1) : memref<8xi32>
+        %e1 = aie.objectfifo.acquire @outc0(Produce, 1) : memref<8xi32>
         scf.for %i = %lb to %ub step %st {
           %0 = memref.load %e0[%i] : memref<8xi32>
           %1 = arith.addi %0, %val : i32
           memref.store %1, %e1[%i] : memref<8xi32>
         }
-        aie.objectfifo.release @inc0 (Consume, 1)
-        aie.objectfifo.release @outc0 (Produce, 1)
+        aie.objectfifo.release @inc0(Consume, 1)
+        aie.objectfifo.release @outc0(Produce, 1)
       }
       aie.end
     }
@@ -71,15 +71,15 @@ module {
       %st = arith.constant 1 : index
       %val = arith.constant 1 : i32
       scf.for %s = %lb to %ub step %st {
-        %e0 = aie.objectfifo.acquire @inc1 (Consume, 1) : memref<8xi32>
-        %e1 = aie.objectfifo.acquire @outc1 (Produce, 1) : memref<8xi32>
+        %e0 = aie.objectfifo.acquire @inc1(Consume, 1) : memref<8xi32>
+        %e1 = aie.objectfifo.acquire @outc1(Produce, 1) : memref<8xi32>
         scf.for %i = %lb to %ub step %st {
           %0 = memref.load %e0[%i] : memref<8xi32>
           %1 = arith.addi %0, %val : i32
           memref.store %1, %e1[%i] : memref<8xi32>
         }
-        aie.objectfifo.release @inc1 (Consume, 1)
-        aie.objectfifo.release @outc1 (Produce, 1)
+        aie.objectfifo.release @inc1(Consume, 1)
+        aie.objectfifo.release @outc1(Produce, 1)
       }
       aie.end
     }
@@ -89,15 +89,15 @@ module {
       %st = arith.constant 1 : index
       %val = arith.constant 1 : i32
       scf.for %s = %lb to %ub step %st {
-        %e0 = aie.objectfifo.acquire @inc2 (Consume, 1) : memref<8xi32>
-        %e1 = aie.objectfifo.acquire @outc2 (Produce, 1) : memref<8xi32>
+        %e0 = aie.objectfifo.acquire @inc2(Consume, 1) : memref<8xi32>
+        %e1 = aie.objectfifo.acquire @outc2(Produce, 1) : memref<8xi32>
         scf.for %i = %lb to %ub step %st {
           %0 = memref.load %e0[%i] : memref<8xi32>
           %1 = arith.addi %0, %val : i32
           memref.store %1, %e1[%i] : memref<8xi32>
         }
-        aie.objectfifo.release @inc2 (Consume, 1)
-        aie.objectfifo.release @outc2 (Produce, 1)
+        aie.objectfifo.release @inc2(Consume, 1)
+        aie.objectfifo.release @outc2(Produce, 1)
       }
       aie.end
     }
@@ -154,15 +154,15 @@ module {
       %st = arith.constant 1 : index
       %val = arith.constant 2 : i32
       scf.for %s = %lb to %ub step %st {
-        %e0 = aie.objectfifo.acquire @inc0 (Consume, 1) : memref<8xi32>
-        %e1 = aie.objectfifo.acquire @outc0 (Produce, 1) : memref<8xi32>
+        %e0 = aie.objectfifo.acquire @inc0(Consume, 1) : memref<8xi32>
+        %e1 = aie.objectfifo.acquire @outc0(Produce, 1) : memref<8xi32>
         scf.for %i = %lb to %ub step %st {
           %0 = memref.load %e0[%i] : memref<8xi32>
           %1 = arith.addi %0, %val : i32
           memref.store %1, %e1[%i] : memref<8xi32>
         }
-        aie.objectfifo.release @inc0 (Consume, 1)
-        aie.objectfifo.release @outc0 (Produce, 1)
+        aie.objectfifo.release @inc0(Consume, 1)
+        aie.objectfifo.release @outc0(Produce, 1)
       }
       aie.end
     }
@@ -172,15 +172,15 @@ module {
       %st = arith.constant 1 : index
       %val = arith.constant 2 : i32
       scf.for %s = %lb to %ub step %st {
-        %e0 = aie.objectfifo.acquire @inc1 (Consume, 1) : memref<8xi32>
-        %e1 = aie.objectfifo.acquire @outc1 (Produce, 1) : memref<8xi32>
+        %e0 = aie.objectfifo.acquire @inc1(Consume, 1) : memref<8xi32>
+        %e1 = aie.objectfifo.acquire @outc1(Produce, 1) : memref<8xi32>
         scf.for %i = %lb to %ub step %st {
           %0 = memref.load %e0[%i] : memref<8xi32>
           %1 = arith.addi %0, %val : i32
           memref.store %1, %e1[%i] : memref<8xi32>
         }
-        aie.objectfifo.release @inc1 (Consume, 1)
-        aie.objectfifo.release @outc1 (Produce, 1)
+        aie.objectfifo.release @inc1(Consume, 1)
+        aie.objectfifo.release @outc1(Produce, 1)
       }
       aie.end
     }
@@ -190,15 +190,15 @@ module {
       %st = arith.constant 1 : index
       %val = arith.constant 2 : i32
       scf.for %s = %lb to %ub step %st {
-        %e0 = aie.objectfifo.acquire @inc2 (Consume, 1) : memref<8xi32>
-        %e1 = aie.objectfifo.acquire @outc2 (Produce, 1) : memref<8xi32>
+        %e0 = aie.objectfifo.acquire @inc2(Consume, 1) : memref<8xi32>
+        %e1 = aie.objectfifo.acquire @outc2(Produce, 1) : memref<8xi32>
         scf.for %i = %lb to %ub step %st {
           %0 = memref.load %e0[%i] : memref<8xi32>
           %1 = arith.addi %0, %val : i32
           memref.store %1, %e1[%i] : memref<8xi32>
         }
-        aie.objectfifo.release @inc2 (Consume, 1)
-        aie.objectfifo.release @outc2 (Produce, 1)
+        aie.objectfifo.release @inc2(Consume, 1)
+        aie.objectfifo.release @outc2(Produce, 1)
       }
       aie.end
     }

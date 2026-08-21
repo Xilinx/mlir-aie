@@ -2597,7 +2597,7 @@ def AIE_ObjectFifoAcquireOp: AIE_Op<"objectfifo.acquire", []> {
   let results = (outs Variadic<AnyMemRef>:$objects);
 
   let assemblyFormat = [{
-    attr-dict $objFifo_name custom<ObjectFifoAcquireObjects>($port, type($objects))
+    attr-dict $objFifo_name `` custom<ObjectFifoAcquireObjects>($port, type($objects))
   }];
 
   let hasVerifier = 1;
@@ -2634,7 +2634,7 @@ def AIE_ObjectFifoReleaseOp: AIE_Op<"objectfifo.release", []> {
       ConfinedAttr<AIEI32Attr, [IntMinValue<1>]>:$size);
 
   let assemblyFormat = [{
-    attr-dict $objFifo_name custom<ObjectFifoReleaseCount>($port, $size)
+    attr-dict $objFifo_name `` custom<ObjectFifoReleaseCount>($port, $size)
   }];
 
   let hasVerifier = 1;

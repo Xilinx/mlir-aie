@@ -61,11 +61,11 @@ module {
     func.func private @merge_kernel(memref<16xi32>, memref<16xi32>) attributes {link_with = "Inputs/peano_merge_intrinsics_kernel.ll", link_with_mode = "merge"}
 
     %core_0_2 = aie.core(%tile_0_2) {
-      %elem_in = aie.objectfifo.acquire @of_in (Consume, 1) : memref<16xi32>
-      %elem_out = aie.objectfifo.acquire @of_out (Produce, 1) : memref<16xi32>
+      %elem_in = aie.objectfifo.acquire @of_in(Consume, 1) : memref<16xi32>
+      %elem_out = aie.objectfifo.acquire @of_out(Produce, 1) : memref<16xi32>
       func.call @merge_kernel(%elem_in, %elem_out) : (memref<16xi32>, memref<16xi32>) -> ()
-      aie.objectfifo.release @of_in (Consume, 1)
-      aie.objectfifo.release @of_out (Produce, 1)
+      aie.objectfifo.release @of_in(Consume, 1)
+      aie.objectfifo.release @of_out(Produce, 1)
       aie.end
     }
   }

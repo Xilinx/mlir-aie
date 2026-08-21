@@ -433,10 +433,10 @@ def AIEObjectFifoLowerDMAs : Pass<"aie-objectfifo-lower-dmas", "DeviceOp"> {
 def AIEObjectFifoLowerCores : Pass<"aie-objectfifo-lower-cores", "DeviceOp"> {
   let summary = "Turn core acquires and releases into lock operations";
   let description = [{
-    Replace each core's `aie.objectfifo.acquire`, `aie.objectfifo.release` and
-    `aie.objectfifo.subview.access` with the locks its endpoint guards and the
-    object its rotating index selects. Loops carrying accesses are annotated
-    with the unroll factor that folds those indices to constants.
+    Replace each core's `aie.objectfifo.acquire` and `aie.objectfifo.release`
+    with the locks its endpoint guards and the objects its rotating index
+    selects. Loops carrying accesses are annotated with the unroll factor that
+    folds those indices to constants.
 
     Consumes `aie.objectfifo.core_endpoint`.
   }];

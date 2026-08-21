@@ -65,25 +65,25 @@ module @single_multiple_release {
         }
 
         %core12 = aie.core(%tile02) {
-            %1, %2 = aie.objectfifo.acquire @of (Consume, 2) : memref<16xi32>, memref<16xi32>
+            %1, %2 = aie.objectfifo.acquire @of(Consume, 2) : memref<16xi32>, memref<16xi32>
             func.call @some_work(%1) : (memref<16xi32>) -> ()
             func.call @some_work(%2) : (memref<16xi32>) -> ()
-            aie.objectfifo.release @of (Consume, 2)
-            %4 = aie.objectfifo.acquire @of (Consume, 1) : memref<16xi32>
+            aie.objectfifo.release @of(Consume, 2)
+            %4 = aie.objectfifo.acquire @of(Consume, 1) : memref<16xi32>
             func.call @some_work(%4) : (memref<16xi32>) -> ()
-            aie.objectfifo.release @of (Consume, 1)
+            aie.objectfifo.release @of(Consume, 1)
             aie.end
         }
 
         %core13 = aie.core(%tile03) {
-            %1, %2 = aie.objectfifo.acquire @of2 (Consume, 2) : memref<16xi32>, memref<16xi32>
+            %1, %2 = aie.objectfifo.acquire @of2(Consume, 2) : memref<16xi32>, memref<16xi32>
             func.call @some_work(%1) : (memref<16xi32>) -> ()
             func.call @some_work(%2) : (memref<16xi32>) -> ()
-            aie.objectfifo.release @of2 (Consume, 1)
-            aie.objectfifo.release @of2 (Consume, 1)
-            %4 = aie.objectfifo.acquire @of2 (Consume, 1) : memref<16xi32>
+            aie.objectfifo.release @of2(Consume, 1)
+            aie.objectfifo.release @of2(Consume, 1)
+            %4 = aie.objectfifo.acquire @of2(Consume, 1) : memref<16xi32>
             func.call @some_work(%4) : (memref<16xi32>) -> ()
-            aie.objectfifo.release @of2 (Consume, 1)
+            aie.objectfifo.release @of2(Consume, 1)
             aie.end
         }
     }

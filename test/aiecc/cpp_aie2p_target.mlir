@@ -32,17 +32,17 @@ module {
       %c1 = arith.constant 1 : index
       %c32 = arith.constant 32 : index
 
-      %elem_in = aie.objectfifo.acquire @in (Consume, 1) : memref<32xi32>
+      %elem_in = aie.objectfifo.acquire @in(Consume, 1) : memref<32xi32>
 
-      %elem_out = aie.objectfifo.acquire @out (Produce, 1) : memref<32xi32>
+      %elem_out = aie.objectfifo.acquire @out(Produce, 1) : memref<32xi32>
 
       scf.for %i = %c0 to %c32 step %c1 {
         %val = memref.load %elem_in[%i] : memref<32xi32>
         memref.store %val, %elem_out[%i] : memref<32xi32>
       }
 
-      aie.objectfifo.release @in (Consume, 1)
-      aie.objectfifo.release @out (Produce, 1)
+      aie.objectfifo.release @in(Consume, 1)
+      aie.objectfifo.release @out(Produce, 1)
       aie.end
     }
 
