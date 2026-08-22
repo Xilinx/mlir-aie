@@ -138,7 +138,7 @@ def link(args):
         # and an overlay is a function, not a program.
         "-nostdlib",
         "-nostartfiles",
-        args.object,
+        *args.object,
         f"-Wl,-T,{script}",
         # Without an entry, --gc-sections has no root and silently produces an
         # empty .text.
@@ -148,7 +148,7 @@ def link(args):
         args.output,
     ]
     if subprocess.run(cmd).returncode:
-        sys.exit(f"linking {args.object} into the slot failed")
+        sys.exit(f"linking {' '.join(args.object)} into the slot failed")
 
     _verify(args)
 
@@ -232,12 +232,47 @@ def check(args):
     print(f"resident stable across passes ({len(a)} symbols)")
 
 
+def sizes(args):
+    """Report what the design would need if it were all resident at once.
+
+    The point of overlays is that this total is not bounded by program memory.
+    Printing it keeps the claim honest: if a design's total is comfortably under
+    the limit, overlays are not buying it anything yet.
+    """
+    _, sections = _read_elf(find_core_elf(args.resident))
+    resident = sum(sz for n, _, sz, fl, _ in sections if n == ".text" and fl & 0x2)
+
+    total = resident
+    print(f"  resident            {resident:6d} bytes")
+    for e in args.overlays:
+        n = len(text_words(e)) * 4
+        total += n
+        print(f"  {os.path.basename(e):<18} {n:6d} bytes")
+    print(
+        f"  {'total':<18} {total:6d} bytes of {args.program_memory} "
+        f"({100.0 * total / args.program_memory:.0f}% of program memory)"
+    )
+
+    if args.require_exceeds and total <= args.program_memory:
+        sys.exit(
+            f"this design totals {total} bytes, which still fits in "
+            f"{args.program_memory}: it no longer demonstrates a program larger "
+            f"than program memory. Add or enlarge a kernel."
+        )
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     sub = p.add_subparsers(dest="cmd", required=True)
 
     lk = sub.add_parser("link", help="link a kernel object into the slot")
-    lk.add_argument("--object", required=True)
+    lk.add_argument(
+        "--object",
+        required=True,
+        action="append",
+        help="object to link into the slot; repeat for the wrapper plus the "
+        "kernel it calls",
+    )
     lk.add_argument(
         "--resident",
         required=True,
@@ -249,6 +284,17 @@ def main():
     lk.add_argument("--target", default="aie2p-none-unknown-elf")
     lk.add_argument("--output", required=True)
     lk.set_defaults(func=link)
+
+    sz = sub.add_parser("sizes", help="report resident + overlay code size")
+    sz.add_argument("--resident", required=True)
+    sz.add_argument("--overlays", required=True, nargs="+")
+    sz.add_argument("--program-memory", type=lambda v: int(v, 0), default=0x4000)
+    sz.add_argument(
+        "--require-exceeds",
+        action="store_true",
+        help="fail unless the total exceeds program memory",
+    )
+    sz.set_defaults(func=sizes)
 
     ck = sub.add_parser("check", help="the resident did not move between passes")
     ck.add_argument("a", help="pass 1 core ELF or aiecc tmpdir")

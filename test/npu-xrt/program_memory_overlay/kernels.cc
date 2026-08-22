@@ -5,36 +5,39 @@
 //
 //===----------------------------------------------------------------------===//
 
-// The overlay kernels. One source, compiled once per OVL_ID, each producing a
-// different computation behind the same entry symbol -- the resident calls a
-// single fixed address, and which kernel is there is decided at run time by
-// writing program memory.
+// The overlay kernels: thin wrappers giving three real aie_kernels a common
+// entry signature, since the resident calls one fixed address and which kernel
+// is behind it is decided at run time by writing program memory.
 //
-// Each is linked on its own at the slot address (see overlay.py), so unlike the
-// pairs in ../pm_write_while_running these are ordinary code: they may branch,
-// call resident helpers, and be any size that fits the slot.
+// One source, compiled once per OVL_ID. Each is linked on its own at the slot
+// address (overlay.py), so unlike the interchangeable pairs in
+// ../pm_write_while_running these are ordinary library kernels: they branch,
+// call, and are whatever size they are.
 
 #include <cstdint>
+
+#include "aie_kernel_utils.h"
+#include <aie_api/aie.hpp>
 
 #ifndef OVL_ID
 #error "OVL_ID must be defined; each overlay is a separate compilation"
 #endif
 
-// Supplied by the resident image and resolved through --just-symbols, so an
-// overlay can call back into code that is always present rather than carrying
-// its own copy.
-extern "C" int32_t ovl_bias(void);
+// From aie_kernels/aie2p. silu_bf16 and gelu_bf16 have the tile size baked in,
+// which is why TILE_ELEMS below has to match them.
+extern "C" void silu_bf16(bfloat16 *restrict in, bfloat16 *restrict out);
+extern "C" void gelu_bf16(bfloat16 *restrict in, bfloat16 *restrict out);
+extern "C" void softmax_bf16(bfloat16 *restrict in, bfloat16 *restrict out,
+                             int32_t n);
 
-extern "C" void overlay_entry(int32_t *in, int32_t *out, int32_t n) {
-  for (int32_t i = 0; i < n; i++) {
+extern "C" void overlay_entry(bfloat16 *in, bfloat16 *out, int32_t n) {
 #if OVL_ID == 0
-    out[i] = in[i] + ovl_bias();
+  silu_bf16(in, out);
 #elif OVL_ID == 1
-    out[i] = in[i] * 3;
+  gelu_bf16(in, out);
 #elif OVL_ID == 2
-    out[i] = -in[i];
+  softmax_bf16(in, out, n);
 #else
 #error "unknown OVL_ID"
 #endif
-  }
 }

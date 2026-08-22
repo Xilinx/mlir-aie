@@ -4,9 +4,9 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 
-# Run three different kernels on one core by rewriting its program memory
-# between phases, so the program the core executes over its lifetime is larger
-# than the 16 KB it can hold at once.
+# Run three real aie_kernels -- silu, gelu, softmax -- on one core by rewriting
+# its program memory between phases, so which kernel the core runs is decided at
+# run time rather than at link time.
 #
 # Program memory is split into a resident half and an overlay slot:
 #
@@ -34,26 +34,31 @@
 # RUN: %aiecc --tmpdir=p1 --get-xclbin --xclbin-name=p1.xclbin --get-npu-insts --npu-insts-name=p1.bin ./design.mlir
 #
 # Each overlay: compile, then link it at the slot address against the resident.
-# RUN: %run_on_npu1% %PEANO_INSTALL_DIR/bin/clang++ --target=aie2-none-unknown-elf -O2 -DOVL_ID=0 -c %S/kernels.cc -o ./k0.o
-# RUN: %run_on_npu2% %PEANO_INSTALL_DIR/bin/clang++ --target=aie2p-none-unknown-elf -O2 -DOVL_ID=0 -c %S/kernels.cc -o ./k0.o
-# RUN: %run_on_npu1% %PEANO_INSTALL_DIR/bin/clang++ --target=aie2-none-unknown-elf -O2 -DOVL_ID=1 -c %S/kernels.cc -o ./k1.o
-# RUN: %run_on_npu2% %PEANO_INSTALL_DIR/bin/clang++ --target=aie2p-none-unknown-elf -O2 -DOVL_ID=1 -c %S/kernels.cc -o ./k1.o
-# RUN: %run_on_npu1% %PEANO_INSTALL_DIR/bin/clang++ --target=aie2-none-unknown-elf -O2 -DOVL_ID=2 -c %S/kernels.cc -o ./k2.o
-# RUN: %run_on_npu2% %PEANO_INSTALL_DIR/bin/clang++ --target=aie2p-none-unknown-elf -O2 -DOVL_ID=2 -c %S/kernels.cc -o ./k2.o
-# RUN: %python %S/overlay.py link --object k0.o --resident p1 --slot 0x2000 --slot-size 0x2000 --output ovl0.elf
-# RUN: %python %S/overlay.py link --object k1.o --resident p1 --slot 0x2000 --slot-size 0x2000 --output ovl1.elf
-# RUN: %python %S/overlay.py link --object k2.o --resident p1 --slot 0x2000 --slot-size 0x2000 --output ovl2.elf
+# RUN: %run_on_npu1% %PEANO_INSTALL_DIR/bin/clang++ --target=aie2-none-unknown-elf -O2 -std=c++20 -DNDEBUG -D__AIE_API_AIE_ADF_HPP__ -I %S/../../../include -I %S/../../../third_party/aie_api/include -I %S/../../../aie_kernels -DOVL_ID=0 -c %S/kernels.cc -o ./k0.o
+# RUN: %run_on_npu2% %PEANO_INSTALL_DIR/bin/clang++ --target=aie2p-none-unknown-elf -O2 -std=c++20 -DNDEBUG -D__AIE_API_AIE_ADF_HPP__ -I %S/../../../include -I %S/../../../third_party/aie_api/include -I %S/../../../aie_kernels -DOVL_ID=0 -c %S/kernels.cc -o ./k0.o
+# RUN: %run_on_npu1% %PEANO_INSTALL_DIR/bin/clang++ --target=aie2-none-unknown-elf -O2 -std=c++20 -DNDEBUG -D__AIE_API_AIE_ADF_HPP__ -I %S/../../../include -I %S/../../../third_party/aie_api/include -I %S/../../../aie_kernels -DOVL_ID=1 -c %S/kernels.cc -o ./k1.o
+# RUN: %run_on_npu2% %PEANO_INSTALL_DIR/bin/clang++ --target=aie2p-none-unknown-elf -O2 -std=c++20 -DNDEBUG -D__AIE_API_AIE_ADF_HPP__ -I %S/../../../include -I %S/../../../third_party/aie_api/include -I %S/../../../aie_kernels -DOVL_ID=1 -c %S/kernels.cc -o ./k1.o
+# RUN: %run_on_npu1% %PEANO_INSTALL_DIR/bin/clang++ --target=aie2-none-unknown-elf -O2 -std=c++20 -DNDEBUG -D__AIE_API_AIE_ADF_HPP__ -I %S/../../../include -I %S/../../../third_party/aie_api/include -I %S/../../../aie_kernels -DOVL_ID=2 -c %S/kernels.cc -o ./k2.o
+# RUN: %run_on_npu2% %PEANO_INSTALL_DIR/bin/clang++ --target=aie2p-none-unknown-elf -O2 -std=c++20 -DNDEBUG -D__AIE_API_AIE_ADF_HPP__ -I %S/../../../include -I %S/../../../third_party/aie_api/include -I %S/../../../aie_kernels -DOVL_ID=2 -c %S/kernels.cc -o ./k2.o
+# RUN: %run_on_npu2% %PEANO_INSTALL_DIR/bin/clang++ --target=aie2p-none-unknown-elf -O2 -std=c++20 -DNDEBUG -D__AIE_API_AIE_ADF_HPP__ -I %S/../../../include -I %S/../../../third_party/aie_api/include -I %S/../../../aie_kernels -c %S/../../../aie_kernels/aie2p/silu.cc -o ./silu.o
+# RUN: %run_on_npu2% %PEANO_INSTALL_DIR/bin/clang++ --target=aie2p-none-unknown-elf -O2 -std=c++20 -DNDEBUG -D__AIE_API_AIE_ADF_HPP__ -I %S/../../../include -I %S/../../../third_party/aie_api/include -I %S/../../../aie_kernels -c %S/../../../aie_kernels/aie2p/gelu.cc -o ./gelu.o
+# RUN: %run_on_npu2% %PEANO_INSTALL_DIR/bin/clang++ --target=aie2p-none-unknown-elf -O2 -std=c++20 -DNDEBUG -D__AIE_API_AIE_ADF_HPP__ -I %S/../../../include -I %S/../../../third_party/aie_api/include -I %S/../../../aie_kernels -c %S/../../../aie_kernels/aie2p/softmax.cc -o ./softmax.o
+# RUN: %python %S/overlay.py link --object k0.o --object silu.o --resident p1 --slot 0x2000 --slot-size 0x2000 --output ovl0.elf
+# RUN: %python %S/overlay.py link --object k1.o --object gelu.o --resident p1 --slot 0x2000 --slot-size 0x2000 --output ovl1.elf
+# RUN: %python %S/overlay.py link --object k2.o --object softmax.o --resident p1 --slot 0x2000 --slot-size 0x2000 --output ovl2.elf
 #
 # RUN: %run_on_npu1% %python %S/aie2.py --dev npu1 --overlays ovl0.elf,ovl1.elf,ovl2.elf --out final.mlir
 # RUN: %run_on_npu2% %python %S/aie2.py --dev npu2 --overlays ovl0.elf,ovl1.elf,ovl2.elf --out final.mlir
 # RUN: %aiecc --tmpdir=p2 --get-xclbin --xclbin-name=aie.xclbin --get-npu-insts --npu-insts-name=insts.bin ./final.mlir
 # RUN: %python %S/overlay.py check p1 p2
+# RUN: %python %S/overlay.py sizes --resident p1 --overlays ovl0.elf ovl1.elf ovl2.elf
 # RUN: %host_clang %S/test.cpp -o test.exe -std=c++17 -Wall %xrt_flags %host_link_flags %test_utils_flags
 # RUN: %run_on_npu1% ./test.exe -x aie.xclbin -k MLIR_AIE -i insts.bin
 # RUN: %run_on_npu2% ./test.exe -x aie.xclbin -k MLIR_AIE -i insts.bin
 
 import argparse
 
+from ml_dtypes import bfloat16
 import numpy as np
 
 from aie.dialects.aie import T
@@ -84,7 +89,9 @@ PROG_MEM_HOST_OFFSET = 0x20000
 SLOT = 0x2000
 SLOT_SIZE = 0x2000
 
-N_ELEMS = 16  # elements per phase
+# silu_bf16 and gelu_bf16 in aie_kernels/aie2p have this baked in, so it is not
+# free to choose.
+N_ELEMS = 1024
 # Fixed, not derived from how many overlays were passed: both passes must build
 # a byte-identical resident, because the overlays are linked against pass 1's
 # symbol addresses and pass 2 recompiles the core.
@@ -101,12 +108,12 @@ phases."""
 
 def build(dev, overlays):
     """Build the design with IRON and return the resolved MLIR module."""
-    i32 = np.dtype[np.int32]
-    tile_ty = np.ndarray[(N_ELEMS,), i32]
-    word_ty = np.ndarray[(1,), i32]
-    host_in_ty = np.ndarray[(N_ELEMS,), i32]
+    bf16 = np.dtype[bfloat16]
+    tile_ty = np.ndarray[(N_ELEMS,), bf16]
+    word_ty = np.ndarray[(1,), np.dtype[np.int32]]
+    host_in_ty = np.ndarray[(N_ELEMS,), bf16]
     host_out_shape = (N_PHASES, N_ELEMS)
-    host_out_ty = np.ndarray[host_out_shape, i32]
+    host_out_ty = np.ndarray[host_out_shape, bf16]
 
     compute_tile = Tile(CORE_COL, CORE_ROW)
 

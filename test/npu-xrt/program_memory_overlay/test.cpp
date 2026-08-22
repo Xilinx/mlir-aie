@@ -5,15 +5,20 @@
 //
 //===----------------------------------------------------------------------===//
 
-// Host side of the program-memory overlay example. One core runs three
-// different kernels in turn, each written into its program memory just before
-// it runs, so the output rows can only all be right if all three were really
+// Host side of the program-memory overlay example. One core runs three real
+// aie_kernels in turn, each written into its program memory just before it
+// runs, so the output rows can only all be right if all three were really
 // loaded and executed.
 //
-//   row 0   out = in + 100   (the overlay calls back into the resident for 100)
-//   row 1   out = in * 3
-//   row 2   out = -in
+//   row 0   silu     x * sigmoid(x)
+//   row 1   gelu     tanh approximation
+//   row 2   softmax  over the whole row
+//
+// The kernels use tanh/exp approximations in bfloat16, so the references here
+// are checked to a tolerance rather than exactly.
 
+#include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <iostream>
 #include <vector>
@@ -24,17 +29,41 @@
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
 
-constexpr int N_ELEMS = 16;
+constexpr int N_ELEMS = 1024; // baked into silu_bf16 / gelu_bf16
 constexpr int N_PHASES = 3;
+// bfloat16 carries about three decimal digits, and both kernels approximate
+// tanh, so compare on a relative tolerance.
+constexpr float TOL = 2e-2f;
 
-static int32_t expected(int phase, int32_t in) {
+using test_utils::bfloat16_t;
+// bfloat16_t is std::bfloat16_t only where the toolchain has it; otherwise it is
+// a bare uint16_t holding the bits, and a plain float() cast silently converts
+// the bit pattern instead of the value. Always go through the helper.
+using test_utils::bfloat16_to_float;
+
+static void reference(int phase, const std::vector<float> &in,
+                      std::vector<float> &out) {
   switch (phase) {
-  case 0:
-    return in + 100;
-  case 1:
-    return in * 3;
-  default:
-    return -in;
+  case 0: // silu
+    for (int i = 0; i < N_ELEMS; i++)
+      out[i] = in[i] / (1.0f + std::exp(-in[i]));
+    break;
+  case 1: // gelu, tanh approximation
+    for (int i = 0; i < N_ELEMS; i++) {
+      float x = in[i];
+      float inner = 0.7978845608f * (x + 0.044715f * x * x * x);
+      out[i] = 0.5f * x * (1.0f + std::tanh(inner));
+    }
+    break;
+  default: { // softmax
+    float mx = *std::max_element(in.begin(), in.end());
+    float sum = 0.0f;
+    for (int i = 0; i < N_ELEMS; i++)
+      sum += std::exp(in[i] - mx);
+    for (int i = 0; i < N_ELEMS; i++)
+      out[i] = std::exp(in[i] - mx) / sum;
+    break;
+  }
   }
 }
 
@@ -62,17 +91,22 @@ int main(int argc, const char *argv[]) {
 
   auto bo_instr = xrt::bo(device, instr_v.size() * sizeof(int),
                           XCL_BO_FLAGS_CACHEABLE, kernel.group_id(1));
-  auto bo_in = xrt::bo(device, N_ELEMS * sizeof(int32_t),
+  auto bo_in = xrt::bo(device, N_ELEMS * sizeof(bfloat16_t),
                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
-  auto bo_out = xrt::bo(device, N_PHASES * N_ELEMS * sizeof(int32_t),
+  auto bo_out = xrt::bo(device, N_PHASES * N_ELEMS * sizeof(bfloat16_t),
                         XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
 
   memcpy(bo_instr.map<void *>(), instr_v.data(), instr_v.size() * sizeof(int));
   bo_instr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
-  int32_t *bufIn = bo_in.map<int32_t *>();
-  for (int i = 0; i < N_ELEMS; i++)
-    bufIn[i] = i - 5; // straddle zero so the negate phase is not a no-op
+  bfloat16_t *bufIn = bo_in.map<bfloat16_t *>();
+  std::vector<float> inF(N_ELEMS);
+  for (int i = 0; i < N_ELEMS; i++) {
+    // Straddle zero and stay in a range where the approximations are valid.
+    inF[i] = -4.0f + 8.0f * (float(i) / float(N_ELEMS - 1));
+    bufIn[i] = test_utils::bfloat16_from_float(inF[i]);
+    inF[i] = bfloat16_to_float(bufIn[i]); // what the device actually got
+  }
   bo_in.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
   if (verbosity >= 1)
@@ -86,18 +120,21 @@ int main(int argc, const char *argv[]) {
   }
 
   bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
-  int32_t *bufOut = bo_out.map<int32_t *>();
+  bfloat16_t *bufOut = bo_out.map<bfloat16_t *>();
 
+  static const char *kNames[] = {"silu", "gelu", "softmax"};
   int errors = 0;
+  std::vector<float> want(N_ELEMS);
   for (int phase = 0; phase < N_PHASES; phase++) {
+    reference(phase, inF, want);
     for (int i = 0; i < N_ELEMS; i++) {
-      int32_t got = bufOut[phase * N_ELEMS + i];
-      int32_t want = expected(phase, bufIn[i]);
-      if (got == want)
+      float got = bfloat16_to_float(bufOut[phase * N_ELEMS + i]);
+      float tol = TOL * std::max(1.0f, std::fabs(want[i]));
+      if (std::fabs(got - want[i]) <= tol)
         continue;
       if (errors < 8)
-        std::cout << "phase " << phase << " [" << i << "]: got " << got
-                  << ", expected " << want << "\n";
+        std::cout << "phase " << phase << " (" << kNames[phase] << ") [" << i
+                  << "]: got " << got << ", expected " << want[i] << "\n";
       errors++;
     }
   }

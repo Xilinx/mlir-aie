@@ -7,9 +7,9 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 An AIE core holds 16 KB of code and there is no I-cache, no paging and no spill,
 so a design whose kernels do not collectively fit has to split across tiles,
-shrink, or reconfigure the whole device. This runs three different kernels on one
-core by rewriting its program memory between phases: the code the core executes
-over its lifetime is not bounded by what it can hold at once.
+shrink, or reconfigure the whole device. This runs three real `aie_kernels` --
+`silu`, `gelu`, `softmax` -- on one core by rewriting its program memory between
+phases: which kernel the core runs is decided at run time, not at link time.
 
 ```
 0x0000  resident   the wait loop, anything overlays call back into, and the
@@ -18,8 +18,8 @@ over its lifetime is not bounded by what it can hold at once.
 ```
 
 Phase *k* writes overlay *k* into the slot, releases the core, and collects a
-row of output. All three rows are checked, so they can only all be right if all
-three kernels were really loaded and run.
+row of output. All three rows are checked against references, so they can only
+all be right if all three kernels were really loaded and run.
 
 ## Why the split is where it is
 
@@ -49,10 +49,11 @@ The mechanism needs no compiler changes.
 
    No definition is ever linked. The body arrives at run time.
 
-2. **Each overlay is linked at that address** against the resident's symbols, so
-   it can call back into code that is always present rather than carrying its own
-   copy — `overlay.py link`. Overlay 0 does exactly that, calling `ovl_bias()` in
-   the resident.
+2. **Each overlay is linked at that address** — `overlay.py link` — from its
+   wrapper plus the kernel it calls, against the resident's *defined* symbols.
+   That last part is why an overlay can call back into always-present code
+   instead of carrying its own copy; absolute symbols are excluded, or the slot
+   symbol itself would collide with the overlay's definition of it.
 
 3. **The bytes are embedded and written.** `aie2.py` reads each overlay's `.text`
    into a `memref.global` and emits an `aiex.npu.blockwrite` to
@@ -79,17 +80,37 @@ are the ways an overlay silently misbehaves rather than failing to build:
   there, the core jumps into the middle of something.
 - **static constructors** — would never run.
 
-The negative control is direct: corrupting a single word of overlay 1's payload
-in the instruction stream makes phase 1 fail and leaves phases 0 and 2 passing.
+The negative control is direct: corrupting a single word inside overlay 1's
+payload in the instruction stream makes the run fail. Note that the payload has
+to be located by a multi-word signature -- a single word matches elsewhere in the
+instruction stream and corrupts a header instead, which the test does not notice.
 
 ## What this does *not* yet show
 
-The resident is 384 bytes and each overlay 192, so this design totals about 1 KB
-— it demonstrates the mechanism, not the capacity win. Making the point properly
-needs a kernel set that genuinely exceeds 16 KB; the yolo26n layer library
-(38 objects, 94.8 KB of `.text`) is the motivating real example, with its largest
-single kernel at 9376 bytes — bigger than one 8 KB slot, so kernels that large
-still need the halt/stall path rather than this one.
+`overlay.py sizes` reports what the design would need if it were all resident at
+once, and the number is the honest state of things:
+
+```
+  resident               544 bytes
+  ovl0.elf               208 bytes    silu
+  ovl1.elf               304 bytes    gelu
+  ovl2.elf               752 bytes    softmax
+  total                 1808 bytes of 16384 (11% of program memory)
+```
+
+**This set does not exceed program memory**, so it demonstrates the mechanism
+rather than the capacity win. That is not a shortcut: AIE kernels are genuinely
+small. The whole of `aie_kernels/aie2p` compiles to roughly 14 KB, so no handful
+of activations reaches 16 KB — the entire library barely would.
+
+Getting past the limit needs either many shapes of one kernel (`mm.cc` is about
+900 bytes per tile shape after `--gc-sections`, so on the order of eighteen of
+them) or a real application's layer library. yolo26n is the motivating case:
+38 kernel objects totalling 94.8 KB of `.text`, nearly six times program memory.
+Its largest single kernel is 9376 bytes, which is bigger than one 8 KB slot, so
+kernels that large need the halt/stall path rather than this one. `overlay.py
+sizes --require-exceeds` fails the build if a design that claims to exceed
+program memory stops doing so.
 
 Also not addressed here: only one slot, so the load cannot overlap compute. A
 balanced two-slot ping-pong is possible — a write to the half not being executed
