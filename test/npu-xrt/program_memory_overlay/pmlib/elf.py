@@ -91,6 +91,47 @@ def text_words(path):
     sys.exit(f"{path}: no .text")
 
 
+def stack_frames(path):
+    """Per-function stack frame sizes from .stack_sizes, or None if absent.
+
+    Needs -fstack-size-section at compile time. The section is a sequence of
+    (address, ULEB128 frame size) pairs, the address being target-pointer sized
+    -- four bytes here.
+
+    This is the only way to see an overlay's stack demand from outside it. The
+    resident's stack is sized when the resident links, and an overlay linked
+    separately afterwards is invisible to that: nothing connects the two, so an
+    overlay with a frame larger than the budget overruns into whatever sits
+    below the stack. Silently -- the symptom is scattered wrong values in
+    another buffer, not a fault.
+    """
+    _, sections = read_elf(path)
+    blob = next((b for n, _, _, _, b in sections if n == ".stack_sizes"), None)
+    if blob is None:
+        return None
+
+    frames, i = [], 0
+    while i + 4 < len(blob):
+        addr = int.from_bytes(blob[i : i + 4], "little")
+        i += 4
+        size, shift = 0, 0
+        while i < len(blob):
+            byte = blob[i]
+            i += 1
+            size |= (byte & 0x7F) << shift
+            if not byte & 0x80:
+                break
+            shift += 7
+        frames.append((addr, size))
+    return frames
+
+
+def max_stack_frame(path):
+    """The largest single frame, or None if the object carries no sizes."""
+    frames = stack_frames(path)
+    return max((sz for _, sz in frames), default=0) if frames is not None else None
+
+
 def defined_symbols(path):
     """Symbols an overlay may bind to: defined, neither undefined nor absolute."""
     symbols, _ = read_elf(path)

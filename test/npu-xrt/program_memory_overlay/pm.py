@@ -24,7 +24,7 @@ import sys
 
 from pmlib import design as pmdesign
 from pmlib import workload as pmworkload
-from pmlib.elf import find_core_elf, text_size, text_words
+from pmlib.elf import find_core_elf, max_stack_frame, text_size, text_words
 from pmlib.geometry import GeometryError, RECIPES, recipe
 from pmlib.link import OverlayError, link as pmlink
 
@@ -206,6 +206,40 @@ def cmd_verify_payload(args):
     print(f"@{args.symbol}: {len(blob)} bytes, byte-identical to {args.elf}")
 
 
+def cmd_stack(args):
+    """The overlays fit in the stack the resident was linked with.
+
+    The resident's stack size is fixed when the resident links. Overlays link
+    separately and afterwards, so nothing connects an overlay's frame to that
+    budget -- an overlay that needs more overruns into whatever sits below the
+    stack, and the symptom is scattered wrong values in another buffer rather
+    than a fault. In an overlay design the damage also outlives the phase that
+    caused it.
+    """
+    missing = [p for p in [args.resident] + args.overlays if max_stack_frame(p) is None]
+    if missing:
+        sys.exit(
+            f"no .stack_sizes in {', '.join(missing)}; compile with "
+            f"-fstack-size-section or this check silently measures nothing"
+        )
+
+    resident = max_stack_frame(args.resident)
+    worst = max(((max_stack_frame(p), p) for p in args.overlays), default=(0, None))
+    need = resident + worst[0]
+    print(
+        f"  resident frame {resident}, deepest overlay frame {worst[0]} "
+        f"({worst[1]}), need {need} of {args.stack_size}"
+    )
+    if need > args.stack_size:
+        sys.exit(
+            f"the deepest overlay needs {need} bytes of stack but the resident "
+            f"was linked with {args.stack_size}. Raise the Worker's stack_size: "
+            f"overrunning it corrupts whatever is below the stack, without a "
+            f"fault, and in an overlay design the damage outlives the phase that "
+            f"caused it."
+        )
+
+
 def cmd_sizes(args):
     g = recipe(args.recipe)
     resident = text_size(find_core_elf(args.resident, *g.tile))
@@ -280,6 +314,12 @@ def main():
     vp.add_argument("elf")
     vp.add_argument("--symbol", required=True)
     vp.set_defaults(func=cmd_verify_payload)
+
+    st = sub.add_parser("stack")
+    st.add_argument("--resident", required=True)
+    st.add_argument("--overlays", required=True, nargs="+")
+    st.add_argument("--stack-size", required=True, type=lambda v: int(v, 0))
+    st.set_defaults(func=cmd_stack)
 
     s = sub.add_parser("sizes")
     s.add_argument("--resident", required=True)
