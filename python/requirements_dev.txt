@@ -11,7 +11,7 @@ cibuildwheel
 # no Windows binary wheel and falls over building from source; gate the
 # marker explicitly so pip-compile carries it through to the lockfile.
 patchelf; platform_system == "Linux"
-pre-commit>=4.6.1,<5.0
+pre-commit>=4.6.2,<5.0
 black[jupyter]
 pyright
 ruff
