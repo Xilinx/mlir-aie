@@ -184,13 +184,13 @@ pip==26.2.1 \
     --hash=sha256:71138adf1f4ca900cdb7d289c21b7494329f2332b6d85f0e1c42108c0384ed3e \
     --hash=sha256:f6ad667e89a1fe78046c8f13232b247200f5258d7828f3f7883d660878e0813f
     # via -r requirements.txt
-pybind11==3.0.4 \
-    --hash=sha256:3286b59c8a774b9ee650169302dd5a4eedc30a8617905a0560dd8ee44775130c \
-    --hash=sha256:961720ee652da51d531b7b2451a6bd2bc042b0106e6d9baa48ecb7d58034ce63
+pybind11==3.1.0 \
+    --hash=sha256:a1cc06b524ab3edca51f8ad3895f9c4fa20b8b19283173dff4ae781449dc9639 \
+    --hash=sha256:b8488090f8acffbcb6b5d6a85571a6827a0a2981ffb75e5a0b27b87c4a6b7dd0
     # via -r requirements.txt
-pybind11-global==3.0.4 \
-    --hash=sha256:95b693c3d646c6b7217a97156a36b6d40305505d4a5a728082da6fe75ada29f5 \
-    --hash=sha256:a73e2ebd29f4ee5d7c754b495d555cd703f2cd26c84abe360ee56411dcd7834d
+pybind11-global==3.1.0 \
+    --hash=sha256:ae4ce119e9f0d7a2ef2372a6bd70d7906073a67a7d7c759023601a629c4bbd36 \
+    --hash=sha256:ba63ced81e1ae5c7b4f704d6adedec6ce1d80fbf9a2ab557a2ca380f29eb3320
     # via pybind11
 pygments==2.20.0 \
     --hash=sha256:6757cd03768053ff99f3039c1a36d6c0aa0b263438fcab17520b30a303a82b5f \
