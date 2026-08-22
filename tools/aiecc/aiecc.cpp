@@ -69,8 +69,6 @@
 using namespace xilinx::aiecc;
 using namespace xilinx::aiecc::cli;
 
-namespace {
-
 //===----------------------------------------------------------------------===//
 // Shared subgraphs
 //===----------------------------------------------------------------------===//
@@ -89,7 +87,7 @@ using xilinx::AIE::DeviceOp;
 // key's module before codegen. Keys with an empty list get the plain compile
 // flow. Only the peano path can merge them; the chess path consumes the same
 // edge solely to reject a non-empty list with a diagnostic.
-EdgeWithTypedOutput<Directory> &
+static EdgeWithTypedOutput<Directory> &
 buildObjectSubgraph(EdgeWithTypedOutput<ModRef> &lowered,
                     EdgeWithTypedOutput<std::string> &arches,
                     EdgeWithTypedOutput<std::vector<std::string>> &irLinkFiles,
@@ -295,7 +293,7 @@ buildObjectSubgraph(EdgeWithTypedOutput<ModRef> &lowered,
 
 // Host-compilation subgraph. Compiles the user's host sources against the
 // per-device `aie_inc.cpp` array configuration source (shared with aiesim).
-EdgeWithTypedOutput<File> &
+static EdgeWithTypedOutput<File> &
 buildHostExeSubgraph(EdgeWithTypedOutput<std::string> &aieInc,
                      EdgeWithTypedOutput<std::string> &arches) {
   // clang++ edge: produce a single host executable.
@@ -370,7 +368,7 @@ buildHostExeSubgraph(EdgeWithTypedOutput<std::string> &aieInc,
 //
 // Multiple devices would collide on the fixed `sim/` layout; the engine's
 // duplicate-path guard surfaces that (aiesim targets a single device).
-EdgeWithTypedOutput<File> &
+static EdgeWithTypedOutput<File> &
 buildAiesimSubgraph(mlir::MLIRContext &context,
                     EdgeWithTypedOutput<OpInModule<DeviceOp>> &staticPerDevice,
                     EdgeWithTypedOutput<std::string> &aieInc) {
@@ -575,7 +573,7 @@ aiesimulator --pkg-dir=${prj_name}/sim --dump-vcd ${vcd_filename}
 // the producer-independent (unfolded) insts.bin and adds the AIE DDR aperture
 // offset for every arg itself. cl::opt defaults to true, so only pass the
 // flag when unfolding is requested.
-EdgeWithTypedOutput<NpuProgram> &buildNpuProgramSubgraph(
+static EdgeWithTypedOutput<NpuProgram> &buildNpuProgramSubgraph(
     EdgeWithTypedOutput<OpInModule<xilinx::AIE::RuntimeSequenceOp>> &perSeq,
     std::string programName, bool foldDDRAddrOffset) {
   auto &npuProgram = perSeq.map<NpuProgram>(
@@ -599,8 +597,6 @@ EdgeWithTypedOutput<NpuProgram> &buildNpuProgramSubgraph(
   npuProgram.producesFiles = false;
   return npuProgram;
 }
-
-} // namespace
 
 //===----------------------------------------------------------------------===//
 // Main compilation graph

@@ -175,6 +175,7 @@ static void declareAIEIntrinsics(AIEArch arch, OpBuilder &builder) {
   llvm::report_fatal_error("unsupported arch");
 }
 
+namespace {
 template <typename MyAIEOp>
 struct AIEOpRemoval : OpConversionPattern<MyAIEOp> {
   using OpConversionPattern<MyAIEOp>::OpConversionPattern;
@@ -792,6 +793,7 @@ struct AIECoreToStandardPass
       return signalPassFailure();
   }
 };
+} // namespace
 
 std::unique_ptr<OperationPass<ModuleOp>> AIE::createAIECoreToStandardPass() {
   return std::make_unique<AIECoreToStandardPass>();
