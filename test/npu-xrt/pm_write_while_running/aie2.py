@@ -140,7 +140,11 @@ CORE_COL, CORE_ROW = 0, 2
 # One output word per overlay pair. A run patches exactly one of them, so the
 # rest are controls in every single run.
 BATCH = len(PAIR_DISTANCES)
-ROUNDS = 2
+# Round 0 unpatched, round 1 right after the write, round 2 a plain re-run with
+# no further write. Round 2 is what separates "the write never reached memory"
+# from "it reached memory but round 1 executed bytes the core had already
+# fetched": only the second leaves round 2 reading the patched value.
+ROUNDS = 3
 PATCH_SYM = "pm_patch"
 
 VARIANTS = {
@@ -345,10 +349,19 @@ def build(dev, variant, pair, spin, block, elf):
                 set_ctrl_bit0(CORE_CONTROL, 1)
         release_flag()
 
-        # Round 1: the patched half reads 9 if the write landed, 7 if not.
+        # Round 1: the patched pair reads 9 if the write took effect, 7 if not.
         tg1 = TaskGroup()
         out_cons.drain(host, round_tap(1), wait=True, group=tg1)
         tg1.finish()
+
+        # Round 2: no further write, just run the same code again. If round 1
+        # read 7 but this reads 9, the write did land in program memory and
+        # round 1 merely executed a stale copy.
+        release_gate()
+        release_flag()
+        tg2 = TaskGroup()
+        out_cons.drain(host, round_tap(2), wait=True, group=tg2)
+        tg2.finish()
 
     rt = Runtime(sequence, [host_ty, of_out.cons(tile=AnyShimTile)])
     module = Program(dev, rt, workers=[worker]).resolve_program()

@@ -161,6 +161,33 @@ pair instead, clamped to the pair's half, with the same observable.
 
 A 4 KB cross-half write lands every time with the core running.
 
+### Dropped, or executed stale?
+
+A same-half write could fail two ways: the write never reaches program memory, or
+it reaches it and the core executes bytes it had already fetched. These have
+opposite design consequences -- the second would be recoverable by forcing a
+refetch, which would make same-half writes usable.
+
+Round 2 tells them apart. It re-runs the same code with **no further write**, so
+it can only differ from round 1 if memory had already changed.
+
+| Case | Took effect at once | Reached memory, round 1 stale | Never reached memory |
+|---|---|---|---|
+| 32 B, 64 from PC (30 runs) | 20 | **0** | 10 |
+| 32 B, 1280 from PC (20 runs) | 14 | **0** | 6 |
+| 1 KB block (20 runs) | 6 | **0** | 14 |
+
+**Zero stale cases in 70 runs.** A same-half write is discarded outright; the bytes
+are simply not there afterwards. So the constraint does not soften -- there is no
+refetch, fence or delay that recovers it.
+
+The bigger write also fails more often (14/20 dropped at 1 KB versus 10/30 at
+32 B), which is what per-transaction arbitration would look like: more words
+written means more chances to lose one. Note this measurement cannot see whether a
+*part* of a block lands, because the block is rebuilt from the current program
+memory with only the target's bytes changed, so every other byte in it is
+identical either way.
+
 Every run patches exactly one pair, so the rest are controls; they read 7 in every
 run of every table above.
 
@@ -175,10 +202,10 @@ lands.**
   the PC while holding addresses fixed flips them back.
 - **A write to the other half lands every time with the core running** — no halt,
   no disable, no stall. That is the geometry a real overlay load has.
-- **A same-half write is a coin flip** at any distance, from 64 bytes to 6336. It
-  never hangs and never returns a torn value; the new bytes simply do not take
-  effect, which reads as the core having already fetched them rather than the
-  write being dropped.
+- **A same-half write is a coin flip** at any distance, from 64 bytes to 6336, and
+  it is **discarded rather than delayed**: re-running the same code afterwards
+  still shows the old bytes, in 70 runs out of 70. It never hangs and never
+  returns a torn value -- the write simply does not happen.
 - **It is not ECC.** The ECC-check-disabled mirror at `0x24000` races identically.
 - **Halting, disabling or stalling fixes the same-half case**, so those remain the
   fallback when a layout cannot avoid the conflict.

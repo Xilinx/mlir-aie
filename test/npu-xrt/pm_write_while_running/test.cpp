@@ -29,7 +29,8 @@
 constexpr int DISTANCES[] = {64,   384,  512,  640,  768,  896,  960,
                              1024, 1152, 1280, 1408, 2048, 4160, 8320};
 constexpr int BATCH = sizeof(DISTANCES) / sizeof(DISTANCES[0]);
-constexpr int OUT_SIZE = 2 * BATCH; // round0 || round1
+constexpr int ROUNDS = 3;
+constexpr int OUT_SIZE = ROUNDS * BATCH;
 constexpr uint32_t SEL_A = 7;
 constexpr uint32_t SEL_B = 9;
 
@@ -103,8 +104,8 @@ int main(int argc, const char *argv[]) {
 
   int errors = 0;
 
-  print_round(bufOut, 0);
-  print_round(bufOut, 1);
+  for (int r = 0; r < ROUNDS; r++)
+    print_round(bufOut, r);
 
   for (int i = 0; i < BATCH; i++) {
     if (bufOut[i] != SEL_A) {
@@ -113,19 +114,24 @@ int main(int argc, const char *argv[]) {
                 << ": the design is broken independently of the patch\n";
       errors++;
     }
-    uint32_t got = bufOut[BATCH + i];
-    uint32_t want = (i == patched) ? SEL_B : SEL_A;
-    if (got == want)
-      continue;
-    std::cout << "round1 d" << DISTANCES[i] << ": ";
-    if (got == SEL_A)
-      std::cout << "program memory write did not take effect\n";
-    else if (got == SEL_B)
-      std::cout << "program memory was patched when it should not have been\n";
-    else
-      std::cout << "got " << got << ", neither " << SEL_A << " nor " << SEL_B
-                << ": the write landed partially or corrupted the line\n";
-    errors++;
+    // Rounds 1 and 2 must both show the patch: a write that took effect stays
+    // in effect, and one that never landed never appears.
+    for (int r = 1; r < ROUNDS; r++) {
+      uint32_t got = bufOut[r * BATCH + i];
+      uint32_t want = (i == patched) ? SEL_B : SEL_A;
+      if (got == want)
+        continue;
+      std::cout << "round" << r << " d" << DISTANCES[i] << ": ";
+      if (got == SEL_A)
+        std::cout << "program memory write did not take effect\n";
+      else if (got == SEL_B)
+        std::cout
+            << "program memory was patched when it should not have been\n";
+      else
+        std::cout << "got " << got << ", neither " << SEL_A << " nor " << SEL_B
+                  << ": the write landed partially or corrupted the line\n";
+      errors++;
+    }
   }
 
   if (!errors) {
