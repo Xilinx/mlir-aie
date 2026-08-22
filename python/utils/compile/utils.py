@@ -329,6 +329,11 @@ def compile_cxx_core_function(
             "-D__AIE_API_AIE_ADF_HPP__",
             f"--target={target_arch}-none-unknown-elf",
         ]
+        if not inline:
+            # Matches the -stack-size-section aiecc's own core-object llc
+            # invocation passes; without it, kernel objects (where large
+            # frames actually live) carry no stack accounting at all.
+            cmd.append("-fstack-size-section")
 
     # Add include directories
     if include_dirs:

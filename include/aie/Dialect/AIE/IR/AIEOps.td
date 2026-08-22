@@ -370,32 +370,45 @@ def AIE_CoreOp
                       AutomaticAllocationScope,
                       DeclareOpInterfaceMethods<InferTypeOpInterface>]>,
       Results<(outs Index)> {
-  let arguments = (
-    ins Index:$tile,
-    // Absent means "use this target's default"; read getEffectiveStackSize().
-    OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<1>]>>:$stack_size,
-    // Deprecated: attach link_with to func.func declarations instead and run
-    // aie-assign-core-link-files to populate link_files.
-    OptionalAttr<StrAttr>:$link_with,
-    // Populated by aie-assign-core-link-files; consumed by BCF/ldscript emitters
-    // and the aiecc driver.  Specifying both link_with and link_files is an error.
-    // These artifacts are ordinary inputs to the core's final link.
-    OptionalAttr<StrArrayAttr>:$link_files,
-    // Populated by aie-assign-core-link-files from func.func declarations that
-    // carry `link_with_mode = "merge"`.  These artifacts are merged into the
-    // core's LLVM module (llvm-link) before codegen instead of being handed to
-    // the final link.  May coexist with link_files, but a given path must not
-    // appear in both.
-    OptionalAttr<StrArrayAttr>:$link_merge_files,
-    OptionalAttr<StrAttr>:$elf_file,
-    OptionalAttr<BoolAttr>:$dynamic_objfifo_lowering,
-    // If set to false, suppresses automatic insertion of the parameter-sync
-    // preamble (use_lock acquire) by `--aie-lower-scratchpad-parameters`.  Defaults to
-    // true when any `aiex.read_scratchpad_parameter` op is present in the
-    // core body.
-    // Set to false automatically after the preamble has been emitted.
-    OptionalAttr<BoolAttr>:$emit_parameter_sync_preamble
-  );
+  let arguments = (ins Index:$tile,
+      // Absent means "use this target's default"; read getEffectiveStackSize().
+      OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<1>]>>:$stack_size,
+      // Bytes of data memory this core's own compiled sections (.data/.rodata/
+      // .bss) need, beyond the stack. The buffer allocator keeps a contiguous
+      // run at least this large free, because the generated linker script hands
+      // the core compiler exactly one region: the largest gap left between the
+      // stack and the placed buffers. An explicit value (including 0) always
+      // wins: the aiecc driver auto-populates this from the .data/.rodata/.bss
+      // size of the core's `link_files` objects (plus a small margin) only when
+      // it is absent, and `--no-auto-reserved-data` disables that entirely.
+      // Auto-measurement only sees `link_files` (already-compiled objects), not
+      // `link_merge_files` (bitcode merged into the core's own module at
+      // compile time) or the core's own compiled globals -- absent still means
+      // "unknown, reserve nothing" whenever there is nothing to measure.
+      OptionalAttr<ConfinedAttr<
+          AIEI32Attr, [IntMinValue<0>]>>:$reserved_data_size,
+      // Deprecated: attach link_with to func.func declarations instead and run
+      // aie-assign-core-link-files to populate link_files.
+      OptionalAttr<StrAttr>:$link_with,
+      // Populated by aie-assign-core-link-files; consumed by BCF/ldscript
+      // emitters and the aiecc driver.  Specifying both link_with and
+      // link_files is an error. These artifacts are ordinary inputs to the
+      // core's final link.
+      OptionalAttr<StrArrayAttr>:$link_files,
+      // Populated by aie-assign-core-link-files from func.func declarations
+      // that carry `link_with_mode = "merge"`.  These artifacts are merged into
+      // the core's LLVM module (llvm-link) before codegen instead of being
+      // handed to the final link.  May coexist with link_files, but a given
+      // path must not appear in both.
+      OptionalAttr<StrArrayAttr>:$link_merge_files,
+      OptionalAttr<StrAttr>:$elf_file,
+      OptionalAttr<BoolAttr>:$dynamic_objfifo_lowering,
+      // If set to false, suppresses automatic insertion of the parameter-sync
+      // preamble (use_lock acquire) by `--aie-lower-scratchpad-parameters`.
+      // Defaults to true when any `aiex.read_scratchpad_parameter` op is
+      // present in the core body. Set to false automatically after the preamble
+      // has been emitted.
+      OptionalAttr<BoolAttr>:$emit_parameter_sync_preamble);
   let summary = "Declare a core module";
   let description = [{
     This operation represents an AIEngine processor core belonging to a tile.
@@ -415,9 +428,25 @@ def AIE_CoreOp
     are always stored in the local core memory, to avoid conflicts with static data
     allocations in other cores.
 
-    The reservation is not checked against the core's actual frames, and the stack sits
-    directly below the objectFIFO buffers with no clearance, so a design with large frames
-    must set this attribute or it will overwrite them silently.
+    The stack sits directly below the buffers with no clearance, so a `stack_size` too
+    small for the core's actual usage overwrites them silently.  The aiecc driver checks
+    this: it computes each core's requirement from a call-graph walk of its callees plus
+    (once the core is compiled) the core body's own frame, and fails the build -- naming
+    the exact value to set -- if the requirement exceeds `stack_size`, explicit or
+    defaulted.  `--no-auto-stack-size` skips this check entirely.  A kernel symbol the
+    analysis cannot size on its own (recursion, an indirect call, a Chess-compiled object,
+    or one merged via `link_merge_files`) can declare its own contribution with a
+    `stack_size_override` attribute on its `func.func`.
+
+    This op has an optional `reserved_data_size` attribute, stating how many contiguous
+    bytes of data memory the core's own compiled sections (`.data`/`.rodata`/`.bss`) need
+    beyond the stack.  Contiguity is the point: the generated linker script hands the core
+    compiler exactly one region -- the largest gap the buffer allocator left between the
+    stack and the placed buffers -- so a design can have plenty of free memory in total and
+    still fail to link because no single run is large enough.  The aiecc driver
+    auto-measures this from the `.data`/`.rodata`/`.bss` sizes of the core's `link_files`
+    objects when the attribute is absent; an explicit value, including an explicit `0`, is
+    never overwritten.  `--no-auto-reserved-data` disables auto-measurement entirely.
 
     This op has an optional `dynamic_objfifo_lowering` attribute, to finely control whether the
     objectfifos in this core should be lowered using the dynamic runtime lowering.

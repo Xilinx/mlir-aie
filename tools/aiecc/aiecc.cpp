@@ -275,6 +275,14 @@ buildObjectSubgraph(EdgeWithTypedOutput<ModRef> &lowered,
       .arg("-O" + std::to_string(optLevel.getValue()))
       .value("--march=")
       .arg("--function-sections")
+      // Record each function's frame size in a `.stack_sizes` section, which
+      // the emitted linker script already has an output rule for. Chess ships
+      // the equivalent as `.stackinfo`; without this, peano builds carry no
+      // stack accounting at all, so a core's `stack_size` cannot be checked
+      // against what it actually needs and an overflow is only visible as
+      // corruption of whatever buffer sits above the stack. The section is
+      // metadata (no SHF_ALLOC), so it costs no data memory.
+      .arg("-stack-size-section")
       .arg("--filetype=obj")
       .output("-o");
   EdgeWithTypedOutput<Directory> &peanoObject =
@@ -652,27 +660,84 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   std::vector<EdgeBase *> outputs;
   auto &input = g.fileInput(inputFile, "input.mlir");
 
-  auto &withAddresses =
+  auto &traced =
       input
           .map<ModRef>("placed.mlir",
                        PassPipeline{getPlacementPipeline(
                            &context, coresPerCol.getValue(),
                            placerType.getValue(), saSeed.getValue())})
-          .map<ModRef>("traced.mlir", PassPipeline{getTracePipeline(&context)})
-          .map<ModRef>(
-              "input_with_addresses.mlir",
-              PassPipeline{&context,
-                           [scheme = allocScheme.getValue(),
-                            dyn = dynamicObjFifos.getValue(),
-                            pkt = packetSwObjFifos.getValue(),
-                            ctrl = ctrlPktOverlay.getValue() ||
-                                   loadPdiToCtrlPkt.getValue(),
-                            ldpdi = loadPdiToCtrlPkt.getValue(),
-                            bf16 = bf16Emulation.getValue()](
-                               mlir::MLIRContext *ctx, mlir::ModuleOp mod) {
-                             return getInputWithAddressesPipeline(
-                                 ctx, mod, scheme, dyn, pkt, ctrl, bf16, ldpdi);
-                           }});
+          .map<ModRef>("traced.mlir", PassPipeline{getTracePipeline(&context)});
+
+  // --default-stack-size: a design-wide stand-in for the target's built-in
+  // stack_size default, for any core that leaves stack_size absent. Needs
+  // nothing but the parsed module, so it runs as early as possible -- before
+  // link_files assignment, and so before every consumer of
+  // CoreOp::getEffectiveStackSize() downstream (buffer placement, the stack
+  // and reserved-data checks, and the core/BCF/ldscript emitters).
+  auto &withDefaultStackSize = traced.map<ModRef>(
+      "default_stack_size.mlir",
+      [stackSize = defaultStackSize.getValue()](const ModRef &mod) -> ModRef {
+        if (stackSize <= 0)
+          return ModRef(mod.get().clone());
+        return populateDefaultStackSize(mod.get(), stackSize);
+      });
+
+  // link_files must be known before reserved_data_size can be auto-measured
+  // from it, so aie-assign-core-link-files runs here rather than where it
+  // used to sit inside getInputWithAddressesPipeline (after buffer address
+  // assignment). It's a pure call-graph analysis over func.func/func.call --
+  // nothing about it depends on addresses, so moving it earlier is safe.
+  auto &withLinkFiles = withDefaultStackSize.map<ModRef>(
+      "with_link_files.mlir",
+      PassPipeline{&context, [](mlir::MLIRContext *ctx, mlir::ModuleOp) {
+                     auto pm = std::make_unique<mlir::PassManager>(ctx);
+                     pm->nest<DeviceOp>().addPass(
+                         xilinx::AIE::createAIEAssignCoreLinkFilesPass());
+                     return pm;
+                   }});
+
+  // Measure each core's link_files objects and auto-populate
+  // reserved_data_size where the user hasn't set it explicitly. File I/O
+  // (opening the linked objects) happens here in the driver, not inside an
+  // MLIR pass -- the same reasoning as resolveExternalPath's other callers.
+  auto &withReservedData = withLinkFiles.map<ModRef>(
+      "reserved_data.mlir",
+      [inputFile, workDirStr,
+       skip = noAutoReservedData.getValue()](const ModRef &mod) -> ModRef {
+        if (skip)
+          return ModRef(mod.get().clone());
+        return populateReservedDataSize(mod.get(), inputFile, workDirStr);
+      });
+
+  // Validate each core's stack_size against what its call tree actually
+  // needs, from the same link_files objects reserved_data_size just
+  // measured. Unlike that edge, this one can fail the whole run (a cycle or
+  // an unmeasurable symbol with no stack_size_override is an error, not a
+  // warning) -- see checkStackSizeRequirements.
+  auto &withStackSizeChecked = withReservedData.map<ModRef>(
+      "stack_size_checked.mlir",
+      [inputFile, workDirStr, skip = noAutoStackSize.getValue()](
+          const Item<ModRef> &in, Item<ModRef> &out) -> mlir::LogicalResult {
+        out.value = ModRef(in.get().get().clone());
+        if (skip)
+          return mlir::success();
+        return checkStackSizeRequirements(out.value->get(), inputFile,
+                                          workDirStr);
+      });
+
+  auto &withAddresses = withStackSizeChecked.map<ModRef>(
+      "input_with_addresses.mlir",
+      PassPipeline{
+          &context,
+          [scheme = allocScheme.getValue(), dyn = dynamicObjFifos.getValue(),
+           pkt = packetSwObjFifos.getValue(),
+           ctrl = ctrlPktOverlay.getValue() || loadPdiToCtrlPkt.getValue(),
+           ldpdi = loadPdiToCtrlPkt.getValue(),
+           bf16 = bf16Emulation.getValue()](mlir::MLIRContext *ctx,
+                                            mlir::ModuleOp mod) {
+            return getInputWithAddressesPipeline(ctx, mod, scheme, dyn, pkt,
+                                                 ctrl, bf16, ldpdi);
+          }});
 
   // Scratchpad run-time parameters sidecar file
   auto &paramsFile = withAddresses.map<std::string>(
@@ -1677,6 +1742,180 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
 }
 
 //===----------------------------------------------------------------------===//
+// Post-build stack-size sufficiency check
+//===----------------------------------------------------------------------===//
+
+// After a normal build completes, check whether any core's `stack_size` --
+// explicit or the device default -- is smaller than its TRUE requirement:
+// the core body's own top-level frame (only knowable now, from the
+// just-compiled core object) plus the already-computed kernel-side bound
+// (checkStackSizeRequirements's `aiecc.computed_stack_requirement`). If so,
+// that build's placed buffers are wrong: exactly the silent-corruption gap
+// this whole check exists to close (real usage exceeds what was assumed when
+// buffers were placed, and nothing before this point ever validated
+// `stack_size` against actual usage rather than a lower bound).
+//
+// This never auto-adjusts anything -- consistent with every other check in
+// this analysis (and reserved_data_size before it): the compiler measures
+// and reports, the user declares and rebuilds. Unlike
+// checkStackSizeRequirements earlier in the pipeline -- which only warns on an
+// explicit value, because its number is a lower bound that proves nothing when
+// it happens to fit -- this later check has the TRUE total, so an explicit
+// `stack_size` that is provably too small fails the build exactly like an
+// absent one: a warning here would ship a proven overflow.
+// `--no-auto-stack-size` skips this check entirely, the same escape hatch that
+// skips the earlier warning.
+//
+// Re-derives the early, cheap pipeline stages (placement/trace/link-files
+// assignment/stack-check -- ordinary MLIR passes, not a recompile) on a
+// fresh parse of the input, since the full build graph doesn't expose its
+// intermediate module as a reusable in-memory result once `engine.run` has
+// returned. The compiled core object itself is not rebuilt here -- it is
+// read back from where the just-finished build already wrote it. Returns
+// true if any core's requirement was insufficient (the caller must fail the
+// build); an `llvm::Error` reports a mechanical failure of this check itself.
+static llvm::Expected<bool>
+checkStackSizeIsSufficient(mlir::MLIRContext &context,
+                           llvm::StringRef inputFile) {
+  if (noAutoStackSize.getValue())
+    return false;
+
+  // This check re-derives placement from a fresh parse rather than reusing
+  // the real build's module (see the comment above), so it depends on
+  // placement being reproducible from the same flags. `--placer=sa_placer
+  // --sa-seed=0` is explicitly non-deterministic (CommandLineOptions.h), so a
+  // re-derived tile assignment can disagree with the one buffers were
+  // actually placed against; `coreKey`/the object path computed below would
+  // then silently name the wrong core's object, and measureFunctionFrameSize
+  // would simply fail to find it -- a false negative, not a diagnosable
+  // mismatch. Warn and skip rather than risk missing a real overflow.
+  if (placerType.getValue() == xilinx::AIE::PlacerType::SAPlacer &&
+      saSeed.getValue() == 0) {
+    llvm::errs() << "aiecc: stack_size check: skipped -- "
+                    "--placer=sa_placer --sa-seed=0 is non-deterministic, so "
+                    "this check's re-derived placement cannot be trusted to "
+                    "match the build's; pass a nonzero --sa-seed, or "
+                    "--no-auto-stack-size to silence this note\n";
+    return false;
+  }
+
+  mlir::OwningOpRef<mlir::ModuleOp> module =
+      mlir::parseSourceFile<mlir::ModuleOp>(inputFile, &context);
+  if (!module)
+    return llvm::createStringError(llvm::inconvertibleErrorCode(),
+                                   "could not reparse input file '%s' to "
+                                   "check stack_size sufficiency",
+                                   inputFile.str().c_str());
+
+  // Reproduce --default-stack-size's population too: if it ran during the
+  // real build, `assumed` below must reflect the same value the buffers were
+  // actually placed against, not the target's built-in default.
+  if (defaultStackSize.getValue() > 0)
+    module = xilinx::aiecc::populateDefaultStackSize(
+        module.get(), defaultStackSize.getValue());
+
+  // Reproduce exactly the pipeline stages checkStackSizeRequirements' result
+  // depends on: placement (tile assignment), trace flows, and link_files
+  // assignment. All cheap MLIR passes, not a recompile.
+  auto runStage = [&](llvm::StringRef stage,
+                      std::unique_ptr<mlir::PassManager> pm) -> llvm::Error {
+    if (mlir::failed(pm->run(*module)))
+      return llvm::createStringError(llvm::inconvertibleErrorCode(),
+                                     "%s failed while re-deriving "
+                                     "stack-size state",
+                                     stage.str().c_str());
+    return llvm::Error::success();
+  };
+
+  // Every diagnostic in this block was already shown once during the real
+  // build that produced the object this check reads back (or is a mechanical
+  // re-derivation failure reported as the llvm::Error below, whose text never
+  // depends on what an MLIR diagnostic said) -- printing it again here would
+  // just be noise. The diagnostics this function exists to produce (the
+  // "is insufficient"/"is absent" errors below) are emitted after this
+  // handler goes out of scope.
+  {
+    mlir::ScopedDiagnosticHandler suppress(
+        &context, [](mlir::Diagnostic &) { return mlir::success(); });
+
+    if (auto err = runStage("placement pipeline",
+                            xilinx::aiecc::getPlacementPipeline(
+                                &context, coresPerCol.getValue(),
+                                placerType.getValue(), saSeed.getValue())))
+      return std::move(err);
+    if (auto err = runStage("trace pipeline",
+                            xilinx::aiecc::getTracePipeline(&context)))
+      return std::move(err);
+    {
+      auto pm = std::make_unique<mlir::PassManager>(&context);
+      pm->nest<xilinx::AIE::DeviceOp>().addPass(
+          xilinx::AIE::createAIEAssignCoreLinkFilesPass());
+      if (auto err = runStage("link-files assignment", std::move(pm)))
+        return std::move(err);
+    }
+    if (mlir::failed(xilinx::aiecc::checkStackSizeRequirements(
+            *module, inputFile, getWorkDir())))
+      return llvm::createStringError(llvm::inconvertibleErrorCode(),
+                                     "stack-size check failed while "
+                                     "re-deriving stack-size state");
+  }
+
+  bool anyInsufficient = false;
+  module->walk([&](xilinx::AIE::CoreOp coreOp) {
+    auto boundAttr = coreOp->getAttrOfType<mlir::IntegerAttr>(
+        xilinx::AIE::kComputedStackRequirementAttrName);
+    if (!boundAttr)
+      return; // No trustworthy kernel-side number -- don't guess.
+
+    auto tile =
+        mlir::cast<xilinx::AIE::TileOp>(coreOp.getTile().getDefiningOp());
+    auto dev = coreOp->getParentOfType<xilinx::AIE::DeviceOp>();
+    std::string key = xilinx::aiecc::coreKey(coreOp);
+    std::string symbol =
+        xilinx::AIE::coreFrameSymbolName(tile.getCol(), tile.getRow());
+    // Must match the object this core's real compile actually wrote: the
+    // "objects_{0}.o"/"unifiedObjects_{0}.o" edges above, keyed the same way
+    // (per-core `key`, or the device's symbol name when --unified), each
+    // materialized as Actions.h's stem-named-subdirectory convention
+    // (objects_<key>/objects_<key>.o). If either edge's name or key ever
+    // changes, this must change with it, or measureFunctionFrameSize below
+    // silently finds nothing and this check silently no-ops for that core.
+    std::string objPath =
+        doUnified ? getWorkDir() + "/unifiedObjects_" + dev.getSymName().str() +
+                        "/unifiedObjects_" + dev.getSymName().str() + ".o"
+                  : getWorkDir() + "/objects_" + key + "/objects_" + key + ".o";
+    auto ownFrame = xilinx::aiecc::measureFunctionFrameSize(objPath, symbol);
+    if (!ownFrame)
+      return; // Can't measure the core's own frame -- leave as-is; today's
+              // behavior, not a regression.
+
+    int64_t trueTotal = *ownFrame + boundAttr.getInt();
+    uint32_t assumed = coreOp.getEffectiveStackSize();
+    if (trueTotal <= static_cast<int64_t>(assumed))
+      return;
+
+    anyInsufficient = true;
+    if (coreOp.getStackSizeAttr())
+      coreOp.emitError()
+          << "stack_size = " << assumed
+          << " is insufficient (this core's buffers were placed assuming "
+          << assumed << " bytes), but this core's real requirement is "
+          << trueTotal << " bytes; increase stack_size to " << trueTotal
+          << " (Worker(stack_size=...) in IRON) and rebuild, or pass "
+             "--no-auto-stack-size to skip this check";
+    else
+      coreOp.emitError()
+          << "stack_size is absent (this core's buffers were placed "
+             "assuming the device default of "
+          << assumed << " bytes), but this core's real requirement is "
+          << trueTotal << " bytes; set stack_size = " << trueTotal
+          << " explicitly on this aie.core (Worker(stack_size=...) in IRON) "
+             "and rebuild, or pass --no-auto-stack-size to skip this check";
+  });
+  return anyInsufficient;
+}
+
+//===----------------------------------------------------------------------===//
 // Main
 //===----------------------------------------------------------------------===//
 
@@ -1932,8 +2171,16 @@ int main(int argc, char **argv) {
   const std::vector<EdgeBase *> noOutputs;
   const std::vector<EdgeBase *> &runOutputs =
       cutEdges.empty() ? outputs : noOutputs;
+  // Captured so a later check (the stack-size sufficiency check below) that
+  // fails the build can remove these again: without this, a build whose
+  // stack_size turns out insufficient still leaves a complete-looking xclbin
+  // in outputDir, and a caller that doesn't check aiecc's exit code -- e.g.
+  // `make`, which then sees an up-to-date target on the next invocation --
+  // picks up a binary with buffers placed against the wrong stack size.
+  std::vector<std::string> writtenOutputPaths;
   if (mlir::failed(engine.run(g, runOutputs, satisfied,
-                              DeserializeContext{&context}, cutEdges))) {
+                              DeserializeContext{&context}, cutEdges,
+                              &writtenOutputPaths))) {
     // On-failure reproducer ("repeater"): dump a checkpoint of the failed
     // edge's already-computed inputs and print a command that reloads them and
     // re-runs just the failed edge. Opt-in via --enable-repeater-scripts.
@@ -1961,6 +2208,35 @@ int main(int argc, char **argv) {
   // --resume can reload it and continue.
   if (!checkpointDir.empty())
     writeCheckpoint(cutEdges, checkpointDir, graphArgv);
+
+  // The stack_size sufficiency check needs a real, complete build (a
+  // compiled core object to read back) -- skip it for a --cut early stop or
+  // a --dry-run, neither of which produced one.
+  if (cutEdges.empty() && !dryRun) {
+    llvm::Expected<bool> insufficient =
+        checkStackSizeIsSufficient(context, getInputFilename());
+    if (!insufficient) {
+      llvm::errs() << "aiecc: stack_size check: "
+                   << llvm::toString(insufficient.takeError()) << "\n";
+      return 1;
+    }
+    if (*insufficient) {
+      // The build just placed this design's buffers against a stack_size
+      // that is now proven too small -- the artifacts engine.run wrote are
+      // exactly the silent-corruption case this check exists to catch, so
+      // leaving them in outputDir would let a caller that doesn't check
+      // aiecc's exit code (or `make`, which would see an up-to-date target
+      // next time) pick up a binary that corrupts memory at runtime.
+      for (const std::string &path : writtenOutputPaths) {
+        std::error_code ec = llvm::sys::fs::remove(path);
+        if (ec && ec != std::errc::no_such_file_or_directory)
+          llvm::errs() << "aiecc: warning: could not remove invalid output '"
+                       << path << "': " << ec.message() << "\n";
+      }
+      llvm::errs() << "aiecc: pipeline failed\n";
+      return 1;
+    }
+  }
 
   // aiesim.sh is produced as a plain-text Item; make it launchable. (The Item
   // abstraction has no notion of an executable bit, so set it here on the

@@ -17,6 +17,8 @@
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Object/ObjectFile.h"
+#include "llvm/Support/Error.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Path.h"
@@ -25,6 +27,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <optional>
 #include <string>
 #include <system_error>
 #include <vector>
@@ -186,6 +189,47 @@ inline std::vector<std::string> parseBcfIncludeFiles(llvm::StringRef bcf) {
     }
   }
   return files;
+}
+
+// Sum the size of every section in `path` whose name matches the linker
+// script's `*(.data*)`/`*(.rodata*)`/`*(.bss*)` globs (see
+// AIETargetLdScript.cpp) -- i.e. what a core's compiled sections actually
+// need from the region a `reserved_data_size` reservation carves out.
+//
+// Returns nullopt if `path` isn't a plain relocatable object file: an archive
+// or bitcode input isn't an ObjectFile at all (createObjectFile fails), and a
+// shared object fails the isRelocatableObject check. Summing an archive's
+// members would over-count by everything the linker doesn't actually pull in
+// for this link, which is not the safe direction to be wrong in, so those
+// inputs are left unmeasured rather than approximated.
+inline std::optional<int64_t>
+measureObjectDataSectionBytes(llvm::StringRef path) {
+  auto binOrErr = llvm::object::ObjectFile::createObjectFile(path);
+  if (!binOrErr) {
+    llvm::consumeError(binOrErr.takeError());
+    return std::nullopt;
+  }
+  llvm::object::ObjectFile &obj = *binOrErr->getBinary();
+  if (!obj.isRelocatableObject())
+    return std::nullopt;
+  int64_t total = 0;
+  for (const llvm::object::SectionRef &sec : obj.sections()) {
+    auto nameOrErr = sec.getName();
+    if (!nameOrErr) {
+      llvm::consumeError(nameOrErr.takeError());
+      continue;
+    }
+    if (nameOrErr->starts_with(".data") || nameOrErr->starts_with(".rodata") ||
+        nameOrErr->starts_with(".bss")) {
+      // The final link places these sections back to back in one region
+      // (see AIETargetLdScript.cpp), padding each to its own alignment; a
+      // plain sum of sizes would under-count that padding, the wrong
+      // direction for a reservation meant to be a safe upper bound.
+      total = llvm::alignTo(total, sec.getAlignment());
+      total += sec.getSize();
+    }
+  }
+  return total;
 }
 
 // Discover the aietools (Vitis AIE / Chess) install directory. Search order:

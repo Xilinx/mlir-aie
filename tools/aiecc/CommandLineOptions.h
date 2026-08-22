@@ -146,6 +146,22 @@ inline cl::opt<bool> unified(
 inline cl::opt<bool> noUnified(
     "no-unified",
     cl::desc("Compile cores independently (negates --unified; the default)"));
+inline cl::opt<bool> noAutoReservedData(
+    "no-auto-reserved-data",
+    cl::desc("Skip auto-measuring reserved_data_size from each core's "
+             "link_files objects; cores without an explicit value keep "
+             "reserving nothing"));
+inline cl::opt<bool> noAutoStackSize(
+    "no-auto-stack-size",
+    cl::desc("Skip validating each core's stack_size against its call "
+             "tree's computed requirement; cores are not checked at all"));
+inline cl::opt<int> defaultStackSize(
+    "default-stack-size",
+    cl::desc("Stack size in bytes to assume for any core that leaves "
+             "stack_size absent, in place of the target's built-in default "
+             "(AIETargetModel::getDefaultCoreStackSize()). A core with an "
+             "explicit stack_size is never affected."),
+    cl::init(0));
 
 //===----------------------------------------------------------------------===//
 // Runtime sequence to compile (empty = all). Filters the per-sequence NPU
