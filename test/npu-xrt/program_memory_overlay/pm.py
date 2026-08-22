@@ -120,6 +120,50 @@ def cmd_link(args):
         sys.exit(f"{args.output}: expected to be refused, but it linked cleanly")
 
 
+def cmd_order(args):
+    """Every payload write precedes the release that lets the core run it.
+
+    Walked programmatically rather than checked with FileCheck. A plain CHECK
+    matches anywhere after the previous one, so a "write, then release" pattern
+    is satisfied by the *next* phase's release and keeps passing with the two
+    swapped -- which is exactly how the first version of this test passed
+    against a deliberately inverted design.
+    """
+    events = []
+    for n, line in enumerate(open(args.mlir), 1):
+        s = line.strip()
+        if s.startswith("aiex.npu.blockwrite") and f"address = {args.pm_address}" in s:
+            events.append((n, "write"))
+        elif s.startswith("aiex.npu.rtp_write(@flag"):
+            events.append((n, "release"))
+
+    writes = sum(1 for _, k in events if k == "write")
+    releases = sum(1 for _, k in events if k == "release")
+    if not writes or not releases:
+        sys.exit(
+            f"{args.mlir}: found {writes} payload write(s) to {args.pm_address} and "
+            f"{releases} release(s); expected at least one of each. If the lowering "
+            f"changed, this test is no longer looking at the right ops."
+        )
+
+    # The core may only be released once the slot holds a payload it has not
+    # already consumed.
+    pending = 0
+    for line_no, kind in events:
+        if kind == "write":
+            pending += 1
+            continue
+        if pending == 0:
+            sys.exit(
+                f"{args.mlir}:{line_no}: the core is released before the payload "
+                f"for that phase has been written. It would jump into whatever "
+                f"the slot held previously."
+            )
+        pending -= 1
+
+    print(f"{writes} payload write(s), {releases} release(s), correctly ordered")
+
+
 def cmd_sizes(args):
     g = recipe(args.recipe)
     resident = text_size(find_core_elf(args.resident, *g.tile))
@@ -176,6 +220,12 @@ def main():
     l.add_argument("--output", required=True)
     l.add_argument("--expect-rejected", action="store_true")
     l.set_defaults(func=cmd_link)
+
+    o = sub.add_parser("order")
+    o.add_argument("mlir")
+    # 0x22000: program-memory host offset 0x20000 plus the slot at 0x2000.
+    o.add_argument("--pm-address", default="139264")
+    o.set_defaults(func=cmd_order)
 
     s = sub.add_parser("sizes")
     s.add_argument("--resident", required=True)
