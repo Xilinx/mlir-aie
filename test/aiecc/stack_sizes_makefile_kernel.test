@@ -11,7 +11,7 @@
 // -fstack-size-section, so those kernel objects get the same stack
 // accounting the MLIR-generated core object already gets from aiecc.
 
-// REQUIRES: peano
+// REQUIRES: peano, makefile_examples
 // RUN: rm -rf %t.d && mkdir -p %t.d
 // RUN: make -f %S/stack_sizes_makefile_kernel.mk kernel \
 // RUN:   SRC=%S/stack_sizes_makefile_kernel_kernel.cc OUT=%t.d/kernel.o
