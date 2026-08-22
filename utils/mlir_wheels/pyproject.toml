@@ -8,7 +8,7 @@ requires = [
     "ninja",
     # i have no clue why but 3.28 will cause cmake to segfault when detecting ABI compatibility
     "cmake==4.4.2",
-    "pybind11[global]>=3.0.4",
+    "pybind11[global]>=3.1.0",
     "numpy",
     "dataclasses",
     "mlir-native-tools",
