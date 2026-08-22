@@ -973,6 +973,33 @@ def AIE_NpuBlockWriteOp: AIEX_Op<"npu.blockwrite", []> {
   }];
 }
 
+// BLOCKWRITE_VALUES
+def AIE_NpuBlockWriteValuesOp : AIEX_Op<"npu.blockwrite_values", []> {
+  let summary = "blockwrite operator with a runtime-computed payload";
+  let arguments = (ins I32:$address, Variadic<I32>:$values);
+  let results = (outs);
+  let assemblyFormat = [{
+    `(` $address `:` type($address) `)` `values` $values `:` type($values)
+    attr-dict
+  }];
+  let description = [{
+    Writes `values`, in order, as a single contiguous block-write of words
+    starting at `address`. Unlike `npu.blockwrite`, whose address is a
+    compile-time attribute and whose payload is a compile-time-constant memref,
+    both are SSA operands here, so the payload is itself computed at TXN-build
+    time, by reference to calculated SSA values.
+
+    This is used for BD register configuration. aiebu expects one blockwrite
+    per BD configuration; it applies `npu.address_patch` instructions to the
+    last preceding BD-configuration-blockwrite, erroring if there's none.
+
+    This op appears only on the dynamic DMA lowering path (a runtime
+    size/stride/length or a runtime BD id) and is supported only by the EmitC
+    (C++ TXN) target; the static binary target has no representation for a
+    runtime-valued block-write and rejects it.
+  }];
+}
+
 // OP_SYNC
 def AIE_NpuSyncOp: AIEX_Op<"npu.sync", []> {
   let summary = "sync operator";
@@ -1559,7 +1586,8 @@ def AIE_DMAStartBdChainForOp: AIEX_Op<"dma_start_bd_chain_for", [HasParent<"AIE:
   }];
 }
 
-def AIEX_SetLockOp: AIEX_Op<"set_lock", [HasParent<"AIE::RuntimeSequenceOp">, SkipAccessibilityCheckTrait]> {
+def AIEX_SetLockOp : AIEX_Op<"set_lock", [HasAncestor<"AIE::RuntimeSequenceOp">,
+                                          SkipAccessibilityCheckTrait]> {
   let summary = "Set the value of a lock";
   let description = [{
     This operation sets the value of `lock` inside of a RuntimeSequenceOp.

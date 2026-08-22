@@ -39,27 +39,27 @@ runs:
   steps:
     - name: Setup tmate session
       if: ${{ inputs.DEBUG_ENABLED && inputs.DEBUG_OS == inputs.MATRIX_OS && inputs.DEBUG_ARCH == inputs.MATRIX_ARCH }}
-      uses: mxschmitt/action-tmate@v3
+      uses: mxschmitt/action-tmate@35b54afac29c97fb54faba5b513f8fbd1882f113  # v3
       with:
         limit-access-to-actor: true
         detached: ${{ inputs.DEBUG_DETACHED }}
 
-    - uses: ilammy/msvc-dev-cmd@v1.4.1
+    - uses: ilammy/msvc-dev-cmd@ed94116c4d30d2091601b81f339a2eaa1c2ba0a6  # v1.4.1
       if: ${{ inputs.MATRIX_OS == 'windows-2022' }}
 
     - name: Set up Visual Studio shell
       if: ${{ inputs.MATRIX_OS == 'windows-2022' }}
-      uses: egor-tensin/vs-shell@v2
+      uses: egor-tensin/vs-shell@54e4148eac794e4580591c2e0b7750f14b7891fc  # v2
       with:
         arch: x64
 
     - name: MS Build
       if: ${{ inputs.MATRIX_OS == 'windows-2022' }}
-      uses: microsoft/setup-msbuild@v1.1
+      uses: microsoft/setup-msbuild@34cfbaee7f672c76950673338facd8a73f637506  # v1.1
 
     - name: Free disk space
       if: contains(inputs.MATRIX_OS, 'ubuntu')
-      uses: descriptinc/free-disk-space@main
+      uses: descriptinc/free-disk-space@1b4b157593c6801212a2ed488c205e0a810b4592  # main
       with:
         tool-cache: true
         android: true
@@ -68,7 +68,7 @@ runs:
         large-packages: true
         swap-storage: false # This frees space on the wrong partition.
 
-    - uses: actions/setup-python@v5
+    - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
       with:
         python-version: '3.12'
 
@@ -79,7 +79,7 @@ runs:
       shell: bash
       if: ${{ inputs.MATRIX_OS == 'ubuntu-24.04' && inputs.MATRIX_ARCH == 'aarch64' }}
       run: |
-        
+
         sudo apt-get update
         sudo apt-get install -y binutils-aarch64-linux-gnu \
           g++-aarch64-linux-gnu gcc-aarch64-linux-gnu openssl libssl-dev lld
@@ -92,7 +92,7 @@ runs:
       if: ${{ inputs.MATRIX_OS == 'ubuntu-24.04' || inputs.MATRIX_OS == 'macos-12' || inputs.MATRIX_OS == 'macos-14' }}
       shell: bash
       run: |
-        
+
         if [ x"${{ inputs.MATRIX_OS }}" == x"macos-12" ] || [ x"${{ inputs.MATRIX_OS }}" == x"macos-14" ]; then
           brew install rename
         else
@@ -118,25 +118,25 @@ runs:
       shell: bash
       working-directory: ${{ env.TEMP }}
       run: |
-        
+
         if [ x"${{ inputs.MATRIX_OS }}" == x"windows-2022" ]; then
           WORKSPACE_ROOT="/C/a"
         else
           WORKSPACE_ROOT=$GITHUB_WORKSPACE
         fi
-        
+
         if [[ -d "$WORKSPACE_ROOT" ]]; then
           ls -la "$WORKSPACE_ROOT"
           rm -rf "$WORKSPACE_ROOT"
-        fi 
-        
+        fi
+
         git clone --recursive -b ${{ github.event.pull_request.head.ref || github.ref_name }} https://github.com/${{ github.event.pull_request.head.repo.full_name || github.repository }}.git "$WORKSPACE_ROOT"
         ls "$WORKSPACE_ROOT"
-        
+
         if [ x"${{ inputs.MATRIX_OS }}" == x"windows-2022" ]; then
           WORKSPACE_ROOT="C:\a"
         fi
-        
+
         echo "WORKSPACE_ROOT=$WORKSPACE_ROOT" | tee -a $GITHUB_OUTPUT
 
     - name: Docker prune

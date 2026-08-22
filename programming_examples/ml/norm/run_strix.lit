@@ -6,3 +6,4 @@
 // RUN: %run_on_npu2% %python %S/norm.py -d npu2 -o rms
 // RUN: %run_on_npu2% %python %S/norm.py -d npu2 -o layer
 // RUN: %run_on_npu2% %python %S/norm.py -d npu2 -o layer_f32 -e 2048
+// RUN: %run_on_npu2% %python %S/norm.py -d npu2 -o layer_affine_cast -e 1024
