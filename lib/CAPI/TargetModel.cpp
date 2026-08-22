@@ -134,6 +134,18 @@ uint32_t aieTargetModelGetLocalMemorySize(AieTargetModel targetModel) {
   return unwrap(targetModel).getLocalMemorySize();
 }
 
+uint32_t aieTargetModelGetProgramMemorySize(AieTargetModel targetModel) {
+  return unwrap(targetModel).getProgramMemorySize();
+}
+
+uint32_t aieTargetModelGetProgramMemoryHostOffset(AieTargetModel targetModel) {
+  return unwrap(targetModel).getProgramMemoryHostOffset();
+}
+
+uint32_t aieTargetModelGetProgramMemoryWriteGranule(AieTargetModel targetModel) {
+  return unwrap(targetModel).getProgramMemoryWriteGranule().value_or(0);
+}
+
 uint32_t aieTargetModelGetNumLocks(AieTargetModel targetModel, int col,
                                    int row) {
   return unwrap(targetModel).getNumLocks(col, row);
