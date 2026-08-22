@@ -67,7 +67,9 @@ updates:
   # .gitmodules and third_party/patches/aie-rt/README.md). Scoped to aie-rt
   # only: third_party/bootgen isn't covered by this effort and a vendored
   # patch has needed hand-adjustment on past bumps, so treat these as
-  # PRs to review and build, not to auto-merge.
+  # PRs to review and build, not to auto-merge. platforms/boards (XilinxBoardStore)
+  # is also excluded: it's pulled in for board support files only and isn't
+  # tracked for updates.
   - package-ecosystem: "gitsubmodule"
     directory: "/"
     schedule:
@@ -77,6 +79,7 @@ updates:
       default-days: 7
     ignore:
       - dependency-name: "third_party/bootgen"
+      - dependency-name: "platforms/boards"
 
   - package-ecosystem: "pre-commit"
     directory: "/"
