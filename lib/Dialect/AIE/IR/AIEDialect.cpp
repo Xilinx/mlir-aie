@@ -937,7 +937,16 @@ TileLike ObjectFifoDanglingEndpointOp::getTileLike() {
 }
 
 DMAChannelDir ObjectFifoDanglingEndpointOp::getFlowDirection() {
-  return getChannelDir();
+  // A flow runs from its source, so an end named there sends and every other
+  // end receives.
+  auto device = getOperation()->getParentOfType<DeviceOp>();
+  StringRef name = getSymName();
+  for (auto flow : device.getOps<ObjectFifoFlowOp>()) {
+    if (flow.getSource() == name) {
+      return DMAChannelDir::MM2S;
+    }
+  }
+  return DMAChannelDir::S2MM;
 }
 
 WireBundle ObjectFifoDanglingEndpointOp::getFlowBundle() { return getBundle(); }

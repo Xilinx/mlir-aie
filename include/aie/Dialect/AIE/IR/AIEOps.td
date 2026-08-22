@@ -2063,48 +2063,47 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
     When `repeat_count == 1`, this simplifies to `iter_count * elemNumber`.
   }];
 
-  // clang-format off
-  let arguments = (
-    ins SymbolNameAttr:$sym_name,
-        Index:$producerTile,
-        Variadic<Index>:$consumerTiles,
-        AIE_ObjectFifo_Depth:$elemNumber,
-        TypeAttrOf<AIE_ObjectFifoType>:$elemType,
-        // Optional consumer element type for asymmetric transfer granularity.
-        // Producer sends elemType-sized transfers, consumer receives
-        // consumerElemType-sized transfers. Producer element size must be
-        // an integer multiple of consumer element size.
-        OptionalAttr<TypeAttrOf<AIE_ObjectFifoType>>:$consumerElemType,
-        BDDimLayoutArrayAttr:$dimensionsToStream,
-        BDDimLayoutArrayArrayAttr:$dimensionsFromStreamPerConsumer,
-        DefaultValuedAttr<BoolAttr, "false">:$via_DMA,
-        DefaultValuedAttr<BoolAttr, "false">:$plio,
-        // disable_synchronization==true will skip lock generation for
-        // objectfifo synchronous accesses
-        DefaultValuedAttr<BoolAttr, "false">:$disable_synchronization,
-        // repeat_count==1 means "do it once"
-        OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<1>]>>:$repeat_count,
-        // aie_stream==0 means enable aie stream port on producer tile
-        // aie_stream==1 means enable aie stream port on consumer tile
-        // aie_stream==2 means enable aie stream ports on producer and consumer tiles
-        OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>, IntMaxValue<2>]>>:$aie_stream,
-        OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>, IntMaxValue<1>]>>:$aie_stream_port,
-        // Pin the DMA channel for an endpoint instead of first-free assignment.
-        // prod_dma_channel pins the producer endpoint's channel; cons_dma_channels
-        // holds one entry per consumer (-1 = auto-assign that consumer).
-        OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>>:$prod_dma_channel,
-        OptionalAttr<DenseI32ArrayAttr>:$cons_dma_channels,
-        InitValuesArrayAttr:$initValues,
-        OptionalAttr<BDPadLayoutArrayAttr>:$padDimensions,
-        // Lowered onto the memtile MM2S channel; see aie.dma_start's pad_value.
-        DefaultValuedOptionalAttr<AIEI32Attr, "0">:$padValue,
-        OptionalAttr<AIEI32Attr>:$iter_count,
-        // packet selects packet-switched routing. packet_id pins the header;
-        // allocation chooses an unused id when it is absent.
-        UnitAttr:$packet,
-        OptionalAttr<ConfinedAttr<AIEI8Attr, [IntMinValue<0>]>>:$packet_id
-  );
-  // clang-format on
+  let arguments = (ins SymbolNameAttr:$sym_name, Index:$producerTile,
+      Variadic<Index>:$consumerTiles, AIE_ObjectFifo_Depth:$elemNumber,
+      TypeAttrOf<AIE_ObjectFifoType>:$elemType,
+      // Optional consumer element type for asymmetric transfer granularity.
+      // Producer sends elemType-sized transfers, consumer receives
+      // consumerElemType-sized transfers. Producer element size must be
+      // an integer multiple of consumer element size.
+      OptionalAttr<TypeAttrOf<AIE_ObjectFifoType>>:$consumerElemType,
+      BDDimLayoutArrayAttr:$dimensionsToStream,
+      BDDimLayoutArrayArrayAttr:$dimensionsFromStreamPerConsumer,
+      DefaultValuedAttr<BoolAttr, "false">:$via_DMA,
+      DefaultValuedAttr<BoolAttr, "false">:$plio,
+      // disable_synchronization==true will skip lock generation for
+      // objectfifo synchronous accesses
+      DefaultValuedAttr<BoolAttr, "false">:$disable_synchronization,
+      // repeat_count==1 means "do it once"
+      OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<1>]>>:$repeat_count,
+      // aie_stream==0 means enable aie stream port on producer tile
+      // aie_stream==1 means enable aie stream port on consumer tile
+      // aie_stream==2 means enable aie stream ports on producer and consumer
+      // tiles
+      OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>,
+                                             IntMaxValue<2>]>>:$aie_stream,
+      OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>,
+                                             IntMaxValue<1>]>>:$aie_stream_port,
+      // Pin the DMA channel for an endpoint instead of first-free assignment.
+      // prod_dma_channel pins the producer endpoint's channel;
+      // cons_dma_channels holds one entry per consumer (-1 = auto-assign that
+      // consumer).
+      OptionalAttr<ConfinedAttr<
+          AIEI32Attr, [IntMinValue<0>]>>:$prod_dma_channel,
+      OptionalAttr<DenseI32ArrayAttr>:$cons_dma_channels,
+      InitValuesArrayAttr:$initValues,
+      OptionalAttr<BDPadLayoutArrayAttr>:$padDimensions,
+      // Lowered onto the memtile MM2S channel; see aie.dma_start's pad_value.
+      DefaultValuedOptionalAttr<AIEI32Attr, "0">:$padValue,
+      OptionalAttr<AIEI32Attr>:$iter_count,
+      // packet selects packet-switched routing. packet_id pins the header;
+      // allocation chooses an unused id when it is absent.
+      UnitAttr:$packet,
+      OptionalAttr<ConfinedAttr<AIEI8Attr, [IntMinValue<0>]>>:$packet_id);
 
   let assemblyFormat = [{
     $sym_name
@@ -2348,8 +2347,7 @@ def AIE_ObjectFifoCoreEndpointOp
     of the pool's segments it handles. Omitting `segments` selects segment zero
     and is only valid for a single-segment pool.
 
-    A core's `aie.objectfifo.acquire` and `aie.objectfifo.release` refer to this
-    op, so they carry no direction of their own.
+    A core's `aie.objectfifo.acquire` and `aie.objectfifo.release` refer to this op.
 
     An endpoint covering only part of an object hands the core a
     `memref.subview` of the run its segments span, so a core can take one side
@@ -2457,9 +2455,10 @@ def AIE_ObjectFifoDanglingEndpointOp
                                                   ObjectFifoFlowEndpoint>]> {
   let summary = "One end of a stream that this compiler does not program";
   let description = [{
-    Holds a tile, a direction and a port, and nothing else: enough for
+    Holds a tile and a port, and nothing else: enough for
     `--aie-objectfifo-allocate` to route a flow to it, and no buffers to move
-    data into or out of.
+    data into or out of. The direction comes from the side of the
+    `aie.objectfifo.flow` this end is named on.
 
     Two ends look like this. A shim end whose transfers the host runtime issues,
     where all the design needs from the compiler is the channel to address --
@@ -2469,20 +2468,19 @@ def AIE_ObjectFifoDanglingEndpointOp
 
     Example:
     ```
-      aie.objectfifo.dangling_endpoint @in(%shim) MM2S DMA {fifoName = "in"}
-      aie.objectfifo.dangling_endpoint @out(%tile) S2MM Core {channelIndex = 0}
+      aie.objectfifo.dangling_endpoint @in(%shim) DMA {fifoName = "in"}
+      aie.objectfifo.dangling_endpoint @out(%tile) Core {channelIndex = 0}
     ```
   }];
 
   let arguments = (ins SymbolNameAttr:$sym_name, Index:$tile,
-      DMAChannelDir:$channelDir, WireBundle:$bundle,
-      OptionalAttr<AIEI32Attr>:$channelIndex,
+      WireBundle:$bundle, OptionalAttr<AIEI32Attr>:$channelIndex,
       OptionalAttr<PacketInfoAttr>:$packet,
       // ObjectFifo name used by the shim allocation symbol.
       OptionalAttr<StrAttr>:$fifoName);
 
   let assemblyFormat = [{
-    $sym_name `(` $tile `)` $channelDir $bundle attr-dict
+    $sym_name `(` $tile `)` $bundle attr-dict
   }];
 
   let hasVerifier = 1;

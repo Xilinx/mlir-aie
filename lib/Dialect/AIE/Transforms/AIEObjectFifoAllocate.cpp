@@ -35,6 +35,9 @@ struct AIEObjectFifoAllocatePass
   DenseMap<Value, Operation *> lastPlaced;
   /// Pools some endpoint writes into.
   DenseSet<Operation *> filledPools;
+  /// Flows already lowered. A dangling endpoint reads its direction off the
+  /// flow naming it, so these outlive the walk that replaces them.
+  SmallVector<Operation *> loweredFlows;
   /// Passes the longest-running drainer of each pool makes over it.
   DenseMap<Operation *, int> drainerIterations;
 
@@ -348,10 +351,9 @@ struct AIEObjectFifoAllocatePass
         static_cast<int>(device.getTargetModel().getMaxPacketId());
     llvm::SmallDenseSet<int> taken = takenPacketIDs();
     int nextFree = 0;
-    SmallVector<Operation *> toErase;
     for (auto flow : device.getOps<ObjectFifoFlowOp>()) {
       auto source = lookupEndpoint(flow.getSourceAttr());
-      toErase.push_back(flow);
+      loweredFlows.push_back(flow);
 
       // The pass flag is a default for flows that express no preference, so a
       // device may mix circuit- and packet-switched connections.
@@ -389,9 +391,6 @@ struct AIEObjectFifoAllocatePass
                        source.getFlowBundle(), sourceChannel, dest.getTile(),
                        dest.getFlowBundle(), channelOf(dest));
       }
-    }
-    for (Operation *op : toErase) {
-      op->erase();
     }
     return success();
   }
@@ -560,6 +559,9 @@ struct AIEObjectFifoAllocatePass
       return signalPassFailure();
     }
     emitShimAllocations();
+    for (Operation *flow : loweredFlows) {
+      flow->erase();
+    }
   }
 };
 

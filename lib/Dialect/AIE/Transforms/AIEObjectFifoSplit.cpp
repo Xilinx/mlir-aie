@@ -259,12 +259,10 @@ struct AIEObjectFifoSplitPass
   /// a PLIO boundary, or a core's raw stream port.
   ObjectFifoDanglingEndpointOp
   createDanglingEndpoint(Location loc, StringRef name, Value tile,
-                         DMAChannelDir dir, WireBundle bundle,
-                         std::optional<int> channelIndex,
+                         WireBundle bundle, std::optional<int> channelIndex,
                          ObjectFifoCreateOp from) {
     return ObjectFifoDanglingEndpointOp::create(
         builder, loc, builder.getStringAttr(name), tile,
-        DMAChannelDirAttr::get(builder.getContext(), dir),
         WireBundleAttr::get(builder.getContext(), bundle),
         channelIndex ? builder.getI32IntegerAttr(*channelIndex) : IntegerAttr(),
         /*packet=*/PacketInfoAttr(),
@@ -619,7 +617,6 @@ void AIEObjectFifoSplitPass::runOnOperation() {
       continue;
     }
 
-    // Producer end.
     Value prodTile = fifo.getProducerTile();
     // A fifo end wired straight to a Core stream port has no objects of its
     // own: whatever the core writes goes out on the port.
@@ -668,7 +665,7 @@ void AIEObjectFifoSplitPass::runOnOperation() {
           fifo.getDimensionsToStreamAttr(), fifo.getProdDmaChannel());
     } else {
       createDanglingEndpoint(
-          loc, prodDmaName, prodTile, DMAChannelDir::MM2S,
+          loc, prodDmaName, prodTile,
           prodStreamPort   ? WireBundle::Core
           : fifo.getPlio() ? WireBundle::PLIO
                            : WireBundle::DMA,
@@ -678,7 +675,6 @@ void AIEObjectFifoSplitPass::runOnOperation() {
       shimEndpointName[fifo] = prodDmaName;
     }
 
-    // Consumer ends.
     SmallVector<Attribute> destinations;
     ArrayRef<BDDimLayoutArrayAttr> consumerDims =
         fifo.getDimensionsFromStreamPerConsumer();
@@ -736,7 +732,6 @@ void AIEObjectFifoSplitPass::runOnOperation() {
                           pinned);
       } else {
         createDanglingEndpoint(loc, consDmaName, consumerTile,
-                               DMAChannelDir::S2MM,
                                consStreamPort   ? WireBundle::Core
                                : fifo.getPlio() ? WireBundle::PLIO
                                                 : WireBundle::DMA,

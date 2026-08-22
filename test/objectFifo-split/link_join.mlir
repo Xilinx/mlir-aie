@@ -41,6 +41,6 @@ module @link_join {
 // The memtile holds one pool whose segments are the pieces the inputs write.
 // CHECK:   aie.objectfifo.pool @out_pool(%[[T21]]) {depth = 2 : i32, fifoName = "out", segments = [#aie.objectfifo_segment<offset = 0, size = 16>, #aie.objectfifo_segment<offset = 16, size = 32>]} : memref<48xi32>
 // CHECK:   aie.objectfifo.dma_endpoint @out_prod_dma(%[[T21]]) drains @out_pool {fifoName = "out", segments = array<i32: 0, 1>}
-// CHECK:   aie.objectfifo.dangling_endpoint @out_cons_dma(%[[T20]]) S2MM DMA {fifoName = "out"}
+// CHECK:   aie.objectfifo.dangling_endpoint @out_cons_dma(%[[T20]]) DMA {fifoName = "out"}
 // CHECK:   aie.objectfifo.flow from @out_prod_dma to [@out_cons_dma]
 // CHECK-NOT: aie.objectfifo.link

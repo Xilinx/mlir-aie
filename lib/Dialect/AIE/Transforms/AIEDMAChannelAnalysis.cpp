@@ -44,8 +44,6 @@ DMAChannelAnalysis::DMAChannelAnalysis(DeviceOp &device) {
   }
 }
 
-/// Given a tile and DMAChannelDir, returns next usable channel index for
-/// that tile.
 int DMAChannelAnalysis::getDMAChannelIndex(
     TileLike tile, DMAChannelDir dir, bool requiresAdjacentTileAccessChannels) {
   int maxChannelNum = (dir == DMAChannelDir::MM2S)
@@ -71,8 +69,6 @@ int DMAChannelAnalysis::getDMAChannelIndex(
   return -1;
 }
 
-/// Reserve `channel`, returning -1 when it is unavailable. The caller owns the
-/// endpoint-specific diagnostic.
 int DMAChannelAnalysis::reservePinnedChannel(TileLike tile, DMAChannelDir dir,
                                              int channel) {
   int maxChannelNum = (dir == DMAChannelDir::MM2S)
@@ -86,7 +82,6 @@ int DMAChannelAnalysis::reservePinnedChannel(TileLike tile, DMAChannelDir dir,
              : -1;
 }
 
-/// Claims a raw stream port, reporting on `tile` when it is already taken.
 void DMAChannelAnalysis::checkAIEStreamIndex(TileLike tile, DMAChannel chan) {
   if (usedStreams.insert({tile->getResult(0), chan.direction, chan.channel})
           .second) {

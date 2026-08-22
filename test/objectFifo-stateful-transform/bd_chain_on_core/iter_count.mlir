@@ -7,14 +7,12 @@
 
 // RUN: aie-opt --aie-objectfifo-allocate --aie-objectfifo-lower-dmas %s | FileCheck %s
 
-// A bounded BD chain is not a MemTile property: `iterCount` on a compute tile's
-// DMA endpoint ends the chain after its final iteration and carries the count
-// on the channel's start queue.
+// `iterCount` on a compute tile's DMA endpoint ends the chain after its final
+// iteration and carries the count on the channel's start queue.
 //
-// The count sits on the endpoint rather than on `aie.objectfifo` because it
-// names one chain. The two ends of a fifo run chains of their own, and a
-// `repeat_count` drainer replays, so they need not iterate the same number of
-// times.
+// It counts the passes of one chain, and the two ends of a fifo run chains of
+// their own: a `repeat_count` drainer replays each object, so it makes fewer
+// passes than the filler opposite it.
 
 module @iter_count_on_core {
   aie.device(npu1) {
@@ -25,7 +23,7 @@ module @iter_count_on_core {
         segments = [#aie.objectfifo_segment<offset = 0, size = 16>]} : memref<16xi32>
     aie.objectfifo.core_endpoint @fill(%tile02) fills @p
     aie.objectfifo.dma_endpoint @drain(%tile02) drains @p {iterCount = 4 : i32}
-    aie.objectfifo.dangling_endpoint @sink(%shim) S2MM DMA
+    aie.objectfifo.dangling_endpoint @sink(%shim) DMA
     aie.objectfifo.flow from @drain to [@sink]
   }
 }

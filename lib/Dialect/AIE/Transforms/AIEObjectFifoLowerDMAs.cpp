@@ -205,10 +205,6 @@ struct AIEObjectFifoLowerDMAsPass
     int repeat = drains ? pool.getRepeatCount().value_or(1) : 1;
     std::optional<int32_t> iterCount = endpoint.getIterCount();
 
-    // FIXME: repeat_count and iter_count are tangled here. Deriving one from
-    // the other is confusing: each should mean one thing and be honored or
-    // rejected, not reinterpreted.
-    //
     // A single-descriptor chain can use the DMA start queue's repeat count.
     bool repeatInHardware = repeat > 1 && descriptors.size() == 1 && !iterCount;
     int taskCount =
@@ -223,7 +219,8 @@ struct AIEObjectFifoLowerDMAsPass
 
     builder.setInsertionPointToStart(dmaBlock);
     DMAStartOp::create(builder, loc, endpoint.getFlowDirection(), channel,
-                       taskCount, endpoint.getPadValue(), bdBlock, endBlock);
+                       taskCount, endpoint.getPadValue(),
+                       /*out_of_order=*/false, bdBlock, endBlock);
     if (lastDmaBlock) {
       lastDmaBlock->getTerminator()->setSuccessor(dmaBlock, 1);
     }
