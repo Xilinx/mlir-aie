@@ -2601,9 +2601,15 @@ LogicalResult DMABDOp::verify() {
     return emitOpError("Burst length is only supported in Shim NOC tiles that "
                        "are connected to the memory-mapped NOC.");
 
-  if (getAxcache() && !parentTile.isShimNOCTile())
-    return emitOpError("AxCACHE is only supported in Shim NOC tiles that "
-                       "are connected to the memory-mapped NOC.");
+  if (auto axcache = getAxcache()) {
+    if (!parentTile.isShimNOCTile()) {
+        return emitOpError("AxCACHE is only supported in Shim NOC tiles "
+                       "that are connected to the memory-mapped NOC.");
+    }
+    if (axcache > 0xF) {
+      return emitOpError("AxCache value out of 4-bit range.");
+    }
+  }
 
   // BD iteration bounds. Values are true/element (aie-rt encodes value-1);
   // size <= 1 disables iteration (stride ignored). The stride is checked in
