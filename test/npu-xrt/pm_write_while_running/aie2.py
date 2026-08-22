@@ -84,6 +84,15 @@
 # RUN: %python %S/overlay_elf.py --check p1 pCf
 # RUN: %run_on_npu1% env PM_PATCHED_DIST=8320 ./test.exe -x aieCf.xclbin -k MLIR_AIE -i instsCf.bin
 # RUN: %run_on_npu2% env PM_PATCHED_DIST=8320 ./test.exe -x aieCf.xclbin -k MLIR_AIE -i instsCf.bin
+#
+# A realistically sized load: 4 KB written into the other half while the core
+# runs, rather than the 32-byte poke every other case uses.
+# RUN: %run_on_npu1% %python %S/aie2.py --dev npu1 --variant B --pair 8320 --block 4096 --elf p1 --out final_Blk.mlir
+# RUN: %run_on_npu2% %python %S/aie2.py --dev npu2 --variant B --pair 8320 --block 4096 --elf p1 --out final_Blk.mlir
+# RUN: %aiecc --tmpdir=pBlk --get-xclbin --xclbin-name=aieBlk.xclbin --get-npu-insts --npu-insts-name=instsBlk.bin ./final_Blk.mlir
+# RUN: %python %S/overlay_elf.py --check p1 pBlk
+# RUN: %run_on_npu1% env PM_PATCHED_DIST=8320 ./test.exe -x aieBlk.xclbin -k MLIR_AIE -i instsBlk.bin
+# RUN: %run_on_npu2% env PM_PATCHED_DIST=8320 ./test.exe -x aieBlk.xclbin -k MLIR_AIE -i instsBlk.bin
 
 import argparse
 
@@ -123,6 +132,7 @@ from overlay_elf import (
     PROG_MEM_BASE,
     PROG_MEM_ECC_BYPASS_BASE,
     find_core_elf,
+    overlay_block,
     overlay_pair,
 )
 
@@ -158,7 +168,7 @@ that moment; --pair selects how far the write lands from the program counter.
 See README.md."""
 
 
-def build(dev, variant, pair, spin, elf):
+def build(dev, variant, pair, spin, block, elf):
     """Build the design with IRON and return the resolved MLIR module.
 
     Args:
@@ -168,12 +178,23 @@ def build(dev, variant, pair, spin, elf):
             from ovl_wait.
         spin: "" for the spin loop at the top of .text, "_lo" for the one at the
             bottom. Moves the program counter without moving any pair.
+        block: patch this many bytes of program memory around the pair instead of
+            just the pair's 32, to time a realistically sized overlay load. 0
+            patches the pair alone.
         elf: path to the pass-1 core ELF the patch is derived from, or None.
     """
     # The core calls every pair each round and reports one word each, so a
     # single build serves every (variant, distance) combination and the pairs
     # that were not patched act as controls within the same run.
-    patch = overlay_pair(elf, f"sel_d{pair}_a", f"sel_d{pair}_b") if elf else None
+    if elf:
+        victim, donor = f"sel_d{pair}_a", f"sel_d{pair}_b"
+        patch = (
+            overlay_block(elf, victim, donor, block)
+            if block
+            else overlay_pair(elf, victim, donor)
+        )
+    else:
+        patch = None
     i32 = np.dtype[np.int32]
     host_shape = (ROUNDS, BATCH)  # one row per round
     host_ty = np.ndarray[host_shape, i32]
@@ -348,6 +369,12 @@ def main():
     p.add_argument("--dev", required=True, help="npu1 or npu2")
     p.add_argument("--variant", choices=sorted(VARIANTS), help="omit for pass 1")
     p.add_argument(
+        "--block",
+        type=int,
+        default=0,
+        help="patch this many bytes around the pair (0 = just the pair)",
+    )
+    p.add_argument(
         "--spin",
         choices=("hi", "lo"),
         default="hi",
@@ -369,7 +396,14 @@ def main():
 
     elf = find_core_elf(args.elf, CORE_COL, CORE_ROW) if args.elf else None
     spin = "" if args.spin == "hi" else "_lo"
-    module = build(from_name(args.dev, n_cols=1), args.variant, args.pair, spin, elf)
+    module = build(
+        from_name(args.dev, n_cols=1),
+        args.variant,
+        args.pair,
+        spin,
+        args.block,
+        elf,
+    )
     with open(args.out, "w") as f:
         print(module, file=f)
 

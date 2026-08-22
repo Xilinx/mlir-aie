@@ -128,6 +128,39 @@ The decisive comparison is the middle two rows against the fourth: a target
 **6336 bytes away races** while one **7104 bytes away is perfect**, because the
 first is in the same 8 KB half as the PC and the second is not.
 
+### Across the whole 16 KB
+
+Everything above fits in the bottom 9.5 KB, so only the split at `0x2000` had been
+exercised — while a real ping-pong slot B lives in the top half. `-DPM_SHIFT_FILL=3`
+pushes the design up to 15808 bytes of `.text`, filling program memory, and puts
+the spin loop at 15632.
+
+| Address | Half | 4 KB region | Predicted (8 KB / 4 KB) | Landed |
+|---|---|---|---|---|
+| 15568 | same | same | race / race | 7/20 |
+| 13584 | same | same | race / race | 9/20 |
+| **11472** | **same** | **different** | **race** / land | **9/20** |
+| 7312 | different | different | land / land | 20/20 |
+
+The third row rules out a boundary at `0x3000`: the top half is one region, not
+two. The fourth is the ping-pong geometry itself — the core executing at the very
+top of program memory while the other half is rewritten underneath it.
+
+### A realistically sized load
+
+Every case above writes the pair's 32 bytes. A real overlay load moves kilobytes,
+takes proportionally longer, and has correspondingly more opportunity to collide
+with instruction fetch. `--block N` patches N bytes of program memory around the
+pair instead, clamped to the pair's half, with the same observable.
+
+| Write size | Landed |
+|---|---|
+| 32 B | 20/20 |
+| 1 KB | 20/20 |
+| 4 KB | 20/20 |
+
+A 4 KB cross-half write lands every time with the core running.
+
 Every run patches exactly one pair, so the rest are controls; they read 7 in every
 run of every table above.
 
@@ -168,12 +201,10 @@ ping-ponged at all and has to fall back to the halt/stall path.
 
 ### Not established
 
-- Whether there are further boundaries above `0x2510`. The design only spans about
-  9.5 KB, so every measurement sits in `0x0000`-`0x2510`; only the split at
-  `0x2000` has been exercised. A 16 KB design might reveal more structure.
-- Whether the same split holds on other AIE generations.
+- Whether the same split holds on other AIE generations, or on npu1.
 - Whether a *partially* overlapping write (a slot straddling the boundary, with
   only part of it in the executing half) fails proportionally or wholly.
+  `overlay_block` refuses to build one, since the design rule forbids it anyway.
 - Whether `CORE_STATUS` (`0x32004`) bit 21 `CORE_PROCESSOR_BUS_STALL` is set during
   a same-region write, which would give a direct mechanical read on arbitration.
 - Whether what matters is the *dynamic* PC at the instant the write arrives, or

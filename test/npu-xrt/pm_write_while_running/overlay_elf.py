@@ -40,6 +40,10 @@ PROG_MEM_ECC_BYPASS_BASE = 0x24000
 # PROGRAM_MEMORY_WIDTH is 128 bits, so this is both the ECC granule and the most
 # a single control packet can carry.
 PROG_MEM_LINE = 16
+# Program memory behaves as two halves; a write to the half the core is fetching
+# from races. An overlay slot -- and so any block written as one -- must stay
+# inside one half. See README.md.
+PROG_MEM_HALF = 0x2000
 
 # Distances in bytes from ovl_wait (where the core spins) to each overlay pair.
 # ovl.cc lays the pairs out to hit these exactly; check_pairs() verifies it.
@@ -170,6 +174,48 @@ def overlay_pair(elf_path, victim, donor):
         sys.exit(f"{donor} at 0x{d_addr:x} is not contained in .text")
 
     return v_addr, list(struct.unpack(f"<{d_size // 4}I", body))
+
+
+def overlay_block(elf_path, victim, donor, block_bytes):
+    """A whole-block patch containing the pair, for a realistically sized write.
+
+    The 32-byte pair alone is the smallest observable write; a real overlay load
+    moves kilobytes, takes proportionally longer, and has correspondingly more
+    opportunity to collide with instruction fetch. This returns the program
+    memory around the pair with the donor's bytes substituted in, so the write is
+    block-sized while the observable stays exactly the same.
+
+    Returns (block address, words), block-aligned and clipped to .text.
+    """
+    v_addr, donor_words = overlay_pair(elf_path, victim, donor)
+    symbols, (text_addr, text_bytes) = _read_elf(elf_path)
+    donor_bytes = len(donor_words) * 4
+
+    if block_bytes < donor_bytes or block_bytes % PROG_MEM_LINE:
+        sys.exit(
+            f"block size {block_bytes} must be at least {donor_bytes} and a "
+            f"multiple of {PROG_MEM_LINE}"
+        )
+
+    # Centre the block on the pair, then clamp it into both .text (so every byte
+    # written is real code) and the victim's half of program memory (so the write
+    # cannot spill into the half the core may be executing from).
+    half_lo = (v_addr // PROG_MEM_HALF) * PROG_MEM_HALF
+    lo = max(text_addr, half_lo)
+    hi = min(text_addr + len(text_bytes), half_lo + PROG_MEM_HALF)
+    if hi - lo < block_bytes:
+        sys.exit(
+            f"a {block_bytes}-byte block around {victim} does not fit in "
+            f"[{lo}, {hi}) -- the half it lives in, clipped to .text"
+        )
+    start = v_addr - (block_bytes - donor_bytes) // 2
+    start = max(lo, min(start, hi - block_bytes))
+    start -= start % PROG_MEM_LINE
+
+    body = bytearray(text_bytes[start - text_addr : start - text_addr + block_bytes])
+    off = v_addr - start
+    body[off : off + donor_bytes] = struct.pack(f"<{len(donor_words)}I", *donor_words)
+    return start, list(struct.unpack(f"<{block_bytes // 4}I", bytes(body)))
 
 
 def check_pairs(elfs):

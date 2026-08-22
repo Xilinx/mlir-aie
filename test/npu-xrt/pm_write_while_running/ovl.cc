@@ -74,15 +74,23 @@
   FILL64(n##0)                                                                 \
   FILL64(n##1)
 
-// Shifts every absolute address up without changing any pair's distance from
-// ovl_wait. Set to confirm that what matters is which 4 KB region of program
-// memory a write lands in, not how far it is from the program counter: with a
-// shift, the same distance falls on the other side of a region boundary.
+// Shifts every absolute address up, in units of 2048 bytes, without changing
+// any pair's distance from ovl_wait. Two uses: confirming that what matters is
+// which half of program memory a write lands in rather than how far it is from
+// the program counter, and pushing the whole design up so it spans the full 16
+// KB -- the top half is where a real ping-pong slot B would live, and is
+// otherwise never exercised here.
 #ifndef PM_SHIFT_FILL
 #define PM_SHIFT_FILL 0
 #endif
-#if PM_SHIFT_FILL
-FILL64(z);
+#if PM_SHIFT_FILL >= 1
+FILL64(z0);
+#endif
+#if PM_SHIFT_FILL >= 2
+FILL64(z1);
+#endif
+#if PM_SHIFT_FILL >= 3
+FILL64(z2);
 #endif
 
 // A second spin loop, emitted near the bottom of .text so it sits in a
