@@ -8,20 +8,22 @@
 # fetching? See README.md for the variant matrix and the measured answer.
 #
 # Run twice. The first pass (no --elf) emits the design, which aiecc compiles
-# into a core ELF. The second pass (--elf <tmpdir>) reads sel_a/sel_b out of that
-# ELF and emits the same design plus a program-memory patch aimed at sel_a's
-# address. The second build recompiles the core rather than reusing the first
+# into a core ELF. The second pass (--elf <tmpdir>) reads the chosen sel_*_a /
+# sel_*_b pair out of that ELF and emits the same design plus a program-memory
+# patch aimed at that pair's address. The second build recompiles the core rather than reusing the first
 # ELF, so each variant is followed by `overlay_elf.py --check`, which fails if
 # the core moved and the patch would land on the wrong address.
 #
 # Only the variants that are deterministic on hardware are checked here:
-#   A  no write                 -> round1 == 7 (negative control)
-#   C  write while debug-halted -> round1 == 9
-#   D  write while disabled     -> round1 == 9
-#   F  write while lock-stalled -> round1 == 9
-# B and E write while the core is actively fetching, which lands only about half
-# the time. Asserting either way would make this test flaky, so they are left out
-# -- but --variant still builds them so the measurement can be reproduced.
+#   A  no write                       -> neither half changes
+#   C  near write, core debug-halted  -> near half becomes 9
+#   D  near write, core disabled      -> near half becomes 9
+#   F  near write, core lock-stalled  -> near half becomes 9
+#   G  far write, core running        -> far half becomes 9
+#   H  far write, core debug-halted   -> far half becomes 9
+# B and E write next to the program counter while the core runs, which lands only
+# about half the time. Asserting either way would make this test flaky, so they
+# are left out -- but --variant still builds them to reproduce the measurement.
 #
 # The generation steps write via --out rather than shell redirection: the
 # %run_on_npuN% guard for the other device expands to "echo", and a redirect
@@ -41,29 +43,43 @@
 # RUN: %run_on_npu2% %python %S/aie2.py --dev npu2 --variant A --elf p1 --out final_A.mlir
 # RUN: %aiecc --tmpdir=pA --get-xclbin --xclbin-name=aieA.xclbin --get-npu-insts --npu-insts-name=instsA.bin ./final_A.mlir
 # RUN: %python %S/overlay_elf.py --check p1 pA
-# RUN: %run_on_npu1% env PM_EXPECT_ROUND1=7 ./test.exe -x aieA.xclbin -k MLIR_AIE -i instsA.bin
-# RUN: %run_on_npu2% env PM_EXPECT_ROUND1=7 ./test.exe -x aieA.xclbin -k MLIR_AIE -i instsA.bin
+# RUN: %run_on_npu1% env PM_EXPECT_NEAR1=7 PM_EXPECT_FAR1=7 ./test.exe -x aieA.xclbin -k MLIR_AIE -i instsA.bin
+# RUN: %run_on_npu2% env PM_EXPECT_NEAR1=7 PM_EXPECT_FAR1=7 ./test.exe -x aieA.xclbin -k MLIR_AIE -i instsA.bin
 #
 # RUN: %run_on_npu1% %python %S/aie2.py --dev npu1 --variant C --elf p1 --out final_C.mlir
 # RUN: %run_on_npu2% %python %S/aie2.py --dev npu2 --variant C --elf p1 --out final_C.mlir
 # RUN: %aiecc --tmpdir=pC --get-xclbin --xclbin-name=aieC.xclbin --get-npu-insts --npu-insts-name=instsC.bin ./final_C.mlir
 # RUN: %python %S/overlay_elf.py --check p1 pC
-# RUN: %run_on_npu1% env PM_EXPECT_ROUND1=9 ./test.exe -x aieC.xclbin -k MLIR_AIE -i instsC.bin
-# RUN: %run_on_npu2% env PM_EXPECT_ROUND1=9 ./test.exe -x aieC.xclbin -k MLIR_AIE -i instsC.bin
+# RUN: %run_on_npu1% env PM_EXPECT_NEAR1=9 PM_EXPECT_FAR1=7 ./test.exe -x aieC.xclbin -k MLIR_AIE -i instsC.bin
+# RUN: %run_on_npu2% env PM_EXPECT_NEAR1=9 PM_EXPECT_FAR1=7 ./test.exe -x aieC.xclbin -k MLIR_AIE -i instsC.bin
 #
 # RUN: %run_on_npu1% %python %S/aie2.py --dev npu1 --variant D --elf p1 --out final_D.mlir
 # RUN: %run_on_npu2% %python %S/aie2.py --dev npu2 --variant D --elf p1 --out final_D.mlir
 # RUN: %aiecc --tmpdir=pD --get-xclbin --xclbin-name=aieD.xclbin --get-npu-insts --npu-insts-name=instsD.bin ./final_D.mlir
 # RUN: %python %S/overlay_elf.py --check p1 pD
-# RUN: %run_on_npu1% env PM_EXPECT_ROUND1=9 ./test.exe -x aieD.xclbin -k MLIR_AIE -i instsD.bin
-# RUN: %run_on_npu2% env PM_EXPECT_ROUND1=9 ./test.exe -x aieD.xclbin -k MLIR_AIE -i instsD.bin
+# RUN: %run_on_npu1% env PM_EXPECT_NEAR1=9 PM_EXPECT_FAR1=7 ./test.exe -x aieD.xclbin -k MLIR_AIE -i instsD.bin
+# RUN: %run_on_npu2% env PM_EXPECT_NEAR1=9 PM_EXPECT_FAR1=7 ./test.exe -x aieD.xclbin -k MLIR_AIE -i instsD.bin
 #
 # RUN: %run_on_npu1% %python %S/aie2.py --dev npu1 --variant F --elf p1 --out final_F.mlir
 # RUN: %run_on_npu2% %python %S/aie2.py --dev npu2 --variant F --elf p1 --out final_F.mlir
 # RUN: %aiecc --tmpdir=pF --get-xclbin --xclbin-name=aieF.xclbin --get-npu-insts --npu-insts-name=instsF.bin ./final_F.mlir
 # RUN: %python %S/overlay_elf.py --check p1 pF
-# RUN: %run_on_npu1% env PM_EXPECT_ROUND1=9 ./test.exe -x aieF.xclbin -k MLIR_AIE -i instsF.bin
-# RUN: %run_on_npu2% env PM_EXPECT_ROUND1=9 ./test.exe -x aieF.xclbin -k MLIR_AIE -i instsF.bin
+# RUN: %run_on_npu1% env PM_EXPECT_NEAR1=9 PM_EXPECT_FAR1=7 ./test.exe -x aieF.xclbin -k MLIR_AIE -i instsF.bin
+# RUN: %run_on_npu2% env PM_EXPECT_NEAR1=9 PM_EXPECT_FAR1=7 ./test.exe -x aieF.xclbin -k MLIR_AIE -i instsF.bin
+#
+# RUN: %run_on_npu1% %python %S/aie2.py --dev npu1 --variant G --elf p1 --out final_G.mlir
+# RUN: %run_on_npu2% %python %S/aie2.py --dev npu2 --variant G --elf p1 --out final_G.mlir
+# RUN: %aiecc --tmpdir=pG --get-xclbin --xclbin-name=aieG.xclbin --get-npu-insts --npu-insts-name=instsG.bin ./final_G.mlir
+# RUN: %python %S/overlay_elf.py --check p1 pG
+# RUN: %run_on_npu1% env PM_EXPECT_NEAR1=7 PM_EXPECT_FAR1=9 ./test.exe -x aieG.xclbin -k MLIR_AIE -i instsG.bin
+# RUN: %run_on_npu2% env PM_EXPECT_NEAR1=7 PM_EXPECT_FAR1=9 ./test.exe -x aieG.xclbin -k MLIR_AIE -i instsG.bin
+#
+# RUN: %run_on_npu1% %python %S/aie2.py --dev npu1 --variant H --elf p1 --out final_H.mlir
+# RUN: %run_on_npu2% %python %S/aie2.py --dev npu2 --variant H --elf p1 --out final_H.mlir
+# RUN: %aiecc --tmpdir=pH --get-xclbin --xclbin-name=aieH.xclbin --get-npu-insts --npu-insts-name=instsH.bin ./final_H.mlir
+# RUN: %python %S/overlay_elf.py --check p1 pH
+# RUN: %run_on_npu1% env PM_EXPECT_NEAR1=7 PM_EXPECT_FAR1=9 ./test.exe -x aieH.xclbin -k MLIR_AIE -i instsH.bin
+# RUN: %run_on_npu2% env PM_EXPECT_NEAR1=7 PM_EXPECT_FAR1=9 ./test.exe -x aieH.xclbin -k MLIR_AIE -i instsH.bin
 
 import argparse
 
@@ -106,7 +122,8 @@ from overlay_elf import (
 )
 
 CORE_COL, CORE_ROW = 0, 2
-BATCH = 8  # words collected per round
+BATCH = 8  # words collected per round: HALF for the near pair, HALF for the far
+HALF = BATCH // 2
 ROUNDS = 2
 PATCH_SYM = "pm_patch"
 
@@ -117,7 +134,14 @@ VARIANTS = {
     "D": "as B, but bracketed by a core disable/enable (CORE_CONTROL bit 0)",
     "E": "as B, but through the ECC-bypass alias at 0x24000",
     "F": "write while the core is enabled but stalled on a lock acquire",
+    "G": "as B, but the write lands far from the PC -- real overlay geometry",
+    "H": "control for G: same far write, but with the core debug-halted",
 }
+
+# B writes next to the spin loop; G writes thousands of bytes away. Comparing
+# them separates "a config write contends with fetch anywhere" from "the core
+# had already fetched the bytes being overwritten".
+FAR_VARIANTS = {"G", "H"}
 
 OVL_OBJ = "ovl.o"  # built from ovl.cc by the RUN lines above
 
@@ -127,10 +151,12 @@ DESCRIPTION = """\
 Emit the program-memory-write experiment as MLIR.
 
 The core runs two rounds, spinning in ovl_wait() each round until the host
-releases it, then calling sel_a(). Round 0 reads 7. Between the rounds the
-runtime sequence overwrites sel_a's program memory with sel_b's bytes, so round 1
-reads 9 if the write took effect. The variant selects the core's state at the
-moment of the write. See README.md."""
+releases it, then calling both sel_near_a() and sel_far_a() and reporting them in
+separate halves of the output. Both read 7 unpatched. Between the rounds the
+runtime sequence overwrites one pair's program memory with its partner's bytes,
+so that half reads 9 if the write took effect and the other half is a control.
+The variant selects the core's state and how far the write lands from the
+program counter. See README.md."""
 
 
 def build(dev, variant, elf):
@@ -141,7 +167,11 @@ def build(dev, variant, elf):
         variant: key into VARIANTS, or None for pass 1 (no patch emitted).
         elf: path to the pass-1 core ELF the patch is derived from, or None.
     """
-    patch = overlay_pair(elf) if elf else None
+    # The core calls both pairs every round and reports them in separate halves
+    # of the output, so one build serves every variant and a single run shows
+    # the near and far cases side by side under identical conditions.
+    pair = "far" if variant in FAR_VARIANTS else "near"
+    patch = overlay_pair(elf, f"sel_{pair}_a", f"sel_{pair}_b") if elf else None
     i32 = np.dtype[np.int32]
     host_shape = (ROUNDS, BATCH)  # one row per round
     host_ty = np.ndarray[host_shape, i32]
@@ -154,7 +184,8 @@ def build(dev, variant, elf):
     # @iron.jit, and this design is handed to aiecc directly. The RUN lines
     # compile ovl.cc to ovl.o first; both symbols live in it.
     ovl_wait = Kernel("ovl_wait", OVL_OBJ, [word_ty])
-    sel_a = Kernel("sel_a", OVL_OBJ, [word_ty])
+    sel_near = Kernel("sel_near_a", OVL_OBJ, [word_ty])
+    sel_far = Kernel("sel_far_a", OVL_OBJ, [word_ty])
 
     # Host-driven, one release per round. Holding it back is what parks the core
     # on a lock acquire instead of in ovl_wait's fetch loop.
@@ -175,20 +206,24 @@ def build(dev, variant, elf):
 
     of_out = ObjectFifo(batch_ty, name="out")
 
-    def core_fn(out_prod, gate, flag, sel_out, ovl_wait, sel_a):
+    def core_fn(out_prod, gate, flag, sel_out, ovl_wait, sel_near, sel_far):
         for _ in range_(ROUNDS):
             gate.acquire(1)
             ovl_wait(flag)
-            sel_a(sel_out)
-            v = sel_out[0]
             elem = out_prod.acquire(1)
-            for i in range_(BATCH):
-                elem[i] = v
+            # Lower half reports the near pair, upper half the far pair. The
+            # indices are plain Python ints, so these unroll into constant
+            # stores rather than needing index arithmetic on an SSA value.
+            for sel, base in ((sel_near, 0), (sel_far, HALF)):
+                sel(sel_out)
+                v = sel_out[0]
+                for i in range(HALF):
+                    elem[base + i] = v
             out_prod.release(1)
 
     worker = Worker(
         core_fn,
-        [of_out.prod(), gate, flag, sel_out, ovl_wait, sel_a],
+        [of_out.prod(), gate, flag, sel_out, ovl_wait, sel_near, sel_far],
         tile=compute_tile,
         while_true=False,
     )
@@ -198,17 +233,17 @@ def build(dev, variant, elf):
         set_lock(gate.op, 1)
 
     def release_flag():
-        """Let the core out of ovl_wait and into sel_a.
+        """Let the core out of ovl_wait and into the sel_* calls.
 
         This must come after the write in every variant: it is what turns the
         core loose on the patched code, so arming it early lets round 1 run
-        sel_a before the write arrives and every variant reports a false
+        the sel_* calls before the write arrives and every variant reports a false
         negative.
         """
         flag[0] = 1
 
     def blockwrite(base):
-        """Overwrite sel_a's program memory with sel_b's bytes.
+        """Overwrite the selected pair's program memory with its partner's bytes.
 
         Called at most once per design -- a second call would emit a duplicate
         PATCH_SYM global.
@@ -251,7 +286,7 @@ def build(dev, variant, elf):
         # at the end of the sequence, and round 1 -- and the patch -- would run
         # before round 0 was ever collected.
 
-        # Round 0: unpatched. Arm the core and collect sel_a() == 7.
+        # Round 0: unpatched. Arm the core; both halves must read 7.
         release_gate()
         release_flag()
         tg0 = TaskGroup()
@@ -267,8 +302,17 @@ def build(dev, variant, elf):
             release_gate()
         else:
             release_gate()
-            if variant == "B":
+            if variant in ("B", "G"):
+                # Identical sequences; they differ only in which pair `pair`
+                # selected, i.e. how far the write lands from the PC.
                 blockwrite(PROG_MEM_BASE)
+            elif variant == "H":
+                # Control for G: same far target, but with the core halted. If
+                # this lands and G does not, G's result is about the core's
+                # state, not about the far write being malformed.
+                set_ctrl_bit0(DEBUG_CONTROL0, 1)
+                blockwrite(PROG_MEM_BASE)
+                set_ctrl_bit0(DEBUG_CONTROL0, 0)
             elif variant == "E":
                 blockwrite(PROG_MEM_ECC_BYPASS_BASE)
             elif variant == "C":
@@ -282,7 +326,7 @@ def build(dev, variant, elf):
                 set_ctrl_bit0(CORE_CONTROL, 1)
         release_flag()
 
-        # Round 1: collect sel_a() -- 9 if the write landed, 7 if not.
+        # Round 1: the patched half reads 9 if the write landed, 7 if not.
         tg1 = TaskGroup()
         out_cons.drain(host, round_tap(1), wait=True, group=tg1)
         tg1.finish()

@@ -15,7 +15,7 @@
 Two entry points, both used by aie2.py:
 
   * ``overlay_pair`` (imported) turns a first-pass ELF into the patch aie2.py
-    emits -- sel_a's address, and sel_b's bytes to write over it.
+    emits -- the victim's address, and the donor's bytes to write over it.
   * ``--check A B`` (command line) compares two builds and fails if the core
     moved between them, which would leave the patch aimed at the wrong address.
 
@@ -109,7 +109,7 @@ def _read_elf(path):
     return symbols, text
 
 
-def overlay_pair(elf_path, victim="sel_a", donor="sel_b"):
+def overlay_pair(elf_path, victim, donor):
     """Validate the overlay pair and return (victim address, donor words).
 
     The donor's bytes are copied verbatim over the victim, so the two have to be
@@ -167,16 +167,34 @@ def main():
     p.add_argument("--row", type=int, default=2)
     args = p.parse_args()
 
-    a, b = (overlay_pair(find_core_elf(d, args.col, args.row)) for d in args.check)
-    if a != b:
+    elfs = [find_core_elf(d, args.col, args.row) for d in args.check]
+
+    for pair in ("near", "far"):
+        victim, donor = f"sel_{pair}_a", f"sel_{pair}_b"
+        a, b = (overlay_pair(e, victim, donor) for e in elfs)
+        if a != b:
+            sys.exit(
+                f"core drifted between builds: {args.check[0]} put {victim} at "
+                f"0x{a[0]:x} with patch {[hex(w) for w in a[1]]}, but "
+                f"{args.check[1]} put it at 0x{b[0]:x} with "
+                f"{[hex(w) for w in b[1]]}. The emitted patch targets the wrong "
+                f"address."
+            )
+
+    # The whole point of the near/far split is the distance from the spin loop,
+    # so report it rather than trusting the source ordering to have worked.
+    symbols, _ = _read_elf(elfs[0])
+    spin = symbols["ovl_wait"][0]
+    dists = {pair: abs(symbols[f"sel_{pair}_a"][0] - spin) for pair in ("near", "far")}
+    if dists["far"] <= dists["near"]:
         sys.exit(
-            f"core drifted between builds: {args.check[0]} put sel_a at "
-            f"0x{a[0]:x} with patch {[hex(w) for w in a[1]]}, but "
-            f"{args.check[1]} put it at 0x{b[0]:x} with "
-            f"{[hex(w) for w in b[1]]}. The emitted patch targets the wrong "
-            f"address."
+            f"far pair is not farther from ovl_wait than the near pair "
+            f"({dists}); the filler in ovl.cc is not separating them"
         )
-    print(f"core stable: sel_a at 0x{a[0]:x}, {len(a[1]) * 4} bytes")
+    print(
+        f"core stable: sel_near_a {dists['near']} bytes from ovl_wait, "
+        f"sel_far_a {dists['far']} bytes"
+    )
 
 
 if __name__ == "__main__":

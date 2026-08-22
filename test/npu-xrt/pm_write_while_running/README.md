@@ -59,50 +59,63 @@ lock acquire -- enabled but *not fetching*. `flag` is always released last, so
 
 AMD Strix (`npu2_1col`), XRT 2.20.0, amdxdna 2.20.0, 20 runs per variant.
 
-| | Core state at the write | Landed | Verdict |
-|---|---|---|---|
-| **A** | no write (negative control) | 0/20 | control is clean |
-| **B** | enabled, **actively fetching** | **11/20** | **races, silently** |
-| **C** | debug-halted (`DEBUG_CONTROL0` bit 0) | 20/20 | reliable |
-| **D** | disabled (`CORE_CONTROL` bit 0) | 20/20 | reliable |
-| **E** | actively fetching, via the ECC-bypass alias `0x24000` | **13/20** | same race |
-| **F** | enabled, **stalled on a lock acquire** | 20/20 | **reliable** |
+| | Core state | Write target | Landed | Verdict |
+|---|---|---|---|---|
+| **A** | fetching | no write (control) | 0/20 | control is clean |
+| **B** | **fetching** | **near** (64 B from the PC) | **10/20** | **races, silently** |
+| **C** | debug-halted | near | 20/20 | reliable |
+| **D** | disabled | near | 20/20 | reliable |
+| **E** | fetching | near, via ECC-bypass `0x24000` | **10/20** | same race |
+| **F** | lock-stalled | near | 20/20 | reliable |
+| **G** | **fetching** | **far** (8320 B from the PC) | **20/20** | **reliable** |
+| **H** | debug-halted | far | 20/20 | reliable |
 
-B and E are genuinely nondeterministic: an earlier revision of this design, with a
-hand-written tile DMA instead of an ObjectFifo, measured 8/20 and 7/20. A, C, D and
-F were 0/20 and 20/20 in both revisions.
+Every variant patches exactly one of two interchangeable pairs, so the other half
+of each round is a per-run control. It read 7 in all 140 runs above: the write is
+surgical, and the harness is not simply corrupting program memory.
+
+B and E are genuinely nondeterministic — the rate wanders between builds and runs
+(8/20, 10/20, 11/20, 12/20, 13/20 across revisions). A, C, D, F, G, H were 0/20 or
+20/20 every time.
 
 ## What this means
 
-**Program memory writes are reliable exactly when the core is not fetching.**
+**What decides the outcome is the write's distance from the program counter, not
+whether the core is running.**
 
-- **Writing PM under a running core is a race, not a hard block.** Variant B landed
-  about half the time, and the rate moves between builds. It never hung, never
-  corrupted a line, never returned a value that was neither 7 nor 9 -- the write is
-  simply dropped, silently. This is the worst possible failure mode: a naive
-  ping-pong design will look correct in a short test and produce wrong answers in
-  the field. Any overlay mechanism built on this must be interlocked, not fired
-  blindly.
-- **It is not ECC.** Variant E drives the identical write through
+- **A write far from the PC lands every time, with the core running.** Variant G
+  writes 8320 bytes from the spin loop while the core is fetching, and lands 20/20
+  — no halt, no disable, no stall. This is the geometry a real overlay load has:
+  you write the *inactive* slot, never the code you are executing.
+- **A write next to the PC is a coin flip.** Variant B is identical to G except the
+  target sits 64 bytes from the spin loop, and it lands about half the time. It
+  never hangs and never returns a torn value; the new bytes simply do not take
+  effect. The natural reading is that the core had already fetched them — a
+  staleness effect, not a dropped write.
+- **It is not ECC.** Variant E drives the identical near write through
   `PROGRAM_MEMORY_ERROR_INJECTION` at `0x24000`, the ECC-check-disabled mirror of
-  PM, and races at the same rate as B. The mechanism is arbitration against the
-  core's instruction fetch, not a checkbit read-modify-write.
-- **A lock stall is enough.** This is the useful finding. Variant F lands 20/20 with
-  the core still *enabled* -- merely blocked on `aie.use_lock(..., AcquireGreaterEqual)`.
-  No halt, no disable, no reset; the PC, all registers, data memory, and DMA state
-  survive untouched. That is precisely the state an objectFIFO consumer sits in
-  while it waits for its next buffer, so an overlay load can be hidden inside a
-  stall the design already has.
-- **Halt is the cheaper fallback to a disable.** If a stall cannot be arranged,
-  `XAie_CoreDebugHalt` (C) is as reliable as a full disable (D) and preserves the PC
-  and registers, which a reset does not. Both are expressible today as two
-  `aiex.npu.maskwrite32` ops with no dialect work.
+  PM, and races at the same rate as B.
+- **Stalling or halting fixes the near case** (C, D, F all 20/20), which is worth
+  knowing, but G shows it is not required when the write is far away.
 
-So double-buffered program memory is reachable on AIE2P, but not as
-"stream into the idle slot while the core runs". The correct shape is
-**"stream into the idle slot while the core is stalled on the lock it was going to
-wait on anyway"** -- the load has to be a participant in the design's existing
-synchronization, not a background transfer.
+So **double-buffered ("ping-pong") program memory works on AIE2P**: the load can
+overlap compute, because the slot being written is by construction far from the
+slot being executed. The rule is not "interlock the load with a stall" — it is
+**"never write near the program counter"**.
+
+### The one number this experiment does not give you
+
+**Where the boundary between "near" and "far" is.** 64 bytes races, 8320 bytes does
+not; everything between is unmeasured. That matters for a real design: with two
+adjacent slots, a PC at the end of slot A is only a few bytes from the start of
+slot B. Until the threshold is measured, keep a guard band between slots — or put
+the resident region between them — rather than assuming any non-zero distance is
+enough.
+
+Two other things worth pinning down before relying on this: whether
+`CORE_STATUS` (`0x32004`) bit 21 `CORE_PROCESSOR_BUS_STALL` is set during a write
+(direct evidence for or against fetch arbitration), and whether the effect depends
+on the *dynamic* PC at the instant of the write rather than static distance.
 
 ## Layout
 

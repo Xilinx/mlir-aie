@@ -6,14 +6,13 @@
 //===----------------------------------------------------------------------===//
 
 // Host side of the program-memory-write-while-running experiment. The single
-// runtime sequence collects two batches into one 16-element buffer, each the
-// return value of sel_a() fanned across 8 words:
-//   round0 = arg0[0:8]   before the program-memory write, always 7
-//   round1 = arg0[8:16]  after it, 9 if the write took effect
+// runtime sequence collects two rounds into one 16-element buffer. Each round
+// is two halves: the first four words are sel_near_a()'s result, the last four
+// are sel_far_a()'s. Both read 7 unpatched, and 9 where the write took effect.
 //
-// The expected round1 value is read from PM_EXPECT_ROUND1 so the same binary
-// serves the negative control (variant A, expects 7) and the write variants
-// (B-F, expect 9). See README.md.
+// A variant patches exactly one of the two pairs, so the untouched half is a
+// per-run control. PM_EXPECT_NEAR1 / PM_EXPECT_FAR1 say which to expect; both
+// default to 7 (unpatched). See README.md.
 
 #include <cstdint>
 #include <cstdlib>
@@ -27,9 +26,24 @@
 #include "xrt/xrt_kernel.h"
 
 constexpr int BATCH = 8;
+constexpr int HALF = BATCH / 2;     // [0,HALF) near pair, [HALF,BATCH) far pair
 constexpr int OUT_SIZE = 2 * BATCH; // round0 || round1
 constexpr uint32_t SEL_A = 7;
 constexpr uint32_t SEL_B = 9;
+
+// One half of one round: every word must agree (the core fans a single result
+// across it, so a mixed half is a torn read, not a half-applied patch).
+static uint32_t read_half(const uint32_t *out, int round, int base,
+                          const char *what, int &errors) {
+  const uint32_t *p = out + round * BATCH + base;
+  for (int i = 1; i < HALF; i++)
+    if (p[i] != p[0]) {
+      std::cout << "round" << round << " " << what << "[" << i << "] = " << p[i]
+                << " != " << p[0] << "\n";
+      errors++;
+    }
+  return p[0];
+}
 
 int main(int argc, const char *argv[]) {
   cxxopts::Options options("pm_write_while_running");
@@ -38,9 +52,13 @@ int main(int argc, const char *argv[]) {
   cxxopts::ParseResult vm;
   test_utils::parse_options(argc, argv, options, vm);
 
-  uint32_t expect1 = SEL_B;
-  if (const char *e = std::getenv("PM_EXPECT_ROUND1"))
-    expect1 = static_cast<uint32_t>(std::atoi(e));
+  // Which half the variant patches; the other must stay untouched.
+  auto expect = [](const char *var) {
+    const char *e = std::getenv(var);
+    return e ? static_cast<uint32_t>(std::atoi(e)) : SEL_A;
+  };
+  uint32_t expectNear = expect("PM_EXPECT_NEAR1");
+  uint32_t expectFar = expect("PM_EXPECT_FAR1");
 
   std::vector<uint32_t> instr_v =
       test_utils::load_instr_binary(vm["instr"].as<std::string>());
@@ -84,40 +102,38 @@ int main(int argc, const char *argv[]) {
 
   int errors = 0;
 
-  // Each round must be internally uniform: the core fans one sel_a() result
-  // across the whole buffer, so a mixed batch means a torn read, not a
-  // half-applied patch.
-  uint32_t r0 = bufOut[0];
-  uint32_t r1 = bufOut[BATCH];
-  for (int i = 0; i < BATCH; i++) {
-    if (bufOut[i] != r0) {
-      std::cout << "round0[" << i << "] = " << bufOut[i] << " != " << r0
-                << "\n";
-      errors++;
-    }
-    if (bufOut[BATCH + i] != r1) {
-      std::cout << "round1[" << i << "] = " << bufOut[BATCH + i] << " != " << r1
-                << "\n";
-      errors++;
-    }
-  }
+  uint32_t near0 = read_half(bufOut, 0, 0, "near", errors);
+  uint32_t far0 = read_half(bufOut, 0, HALF, "far", errors);
+  uint32_t near1 = read_half(bufOut, 1, 0, "near", errors);
+  uint32_t far1 = read_half(bufOut, 1, HALF, "far", errors);
 
-  std::cout << "round0 = " << r0 << " (sel_a, unpatched)\n";
-  std::cout << "round1 = " << r1 << " (expected " << expect1 << ")\n";
+  std::cout << "round0 near = " << near0 << "  far = " << far0
+            << "  (unpatched)\n";
+  std::cout << "round1 near = " << near1 << "  far = " << far1
+            << "  (expected near " << expectNear << ", far " << expectFar
+            << ")\n";
 
-  if (r0 != SEL_A) {
+  if (near0 != SEL_A || far0 != SEL_A) {
     std::cout << "round0 must be " << SEL_A
-              << ": the design is broken independently of the patch\n";
+              << " in both halves: the design is broken independently of the "
+                 "patch\n";
     errors++;
   }
 
-  if (r1 != expect1) {
-    if (r1 == SEL_A)
+  struct {
+    const char *what;
+    uint32_t got, want;
+  } checks[] = {{"near", near1, expectNear}, {"far", far1, expectFar}};
+  for (auto &c : checks) {
+    if (c.got == c.want)
+      continue;
+    std::cout << c.what << " half: ";
+    if (c.got == SEL_A)
       std::cout << "program memory write did not take effect\n";
-    else if (r1 == SEL_B)
+    else if (c.got == SEL_B)
       std::cout << "program memory was patched when it should not have been\n";
     else
-      std::cout << "round1 is neither " << SEL_A << " nor " << SEL_B
+      std::cout << "got " << c.got << ", neither " << SEL_A << " nor " << SEL_B
                 << ": the write landed partially or corrupted the line\n";
     errors++;
   }
