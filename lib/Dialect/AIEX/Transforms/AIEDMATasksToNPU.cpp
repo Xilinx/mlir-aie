@@ -429,18 +429,6 @@ struct AIEDMATasksToNPUPass
     return success();
   }
 
-  // Compile-time BD template fields shared by the static and dynamic lowering
-  // paths (only sizes/strides/len can be runtime on a dma_bd; everything here
-  // is always constant). The dynamic path bakes these into its zero-template
-  // NpuWriteBdOp exactly as the static path does, so a runtime BD keeps its
-  // locks, packet header and next_bd chaining.
-  struct BdTemplateFields {
-    uint32_t use_next_bd = 0, next_bd_id = 0;
-    int32_t enable_packet = 0, packet_id = 0, packet_type = 0;
-    int32_t lock_rel_val = 0, lock_rel_id = 0;
-    int32_t lock_acq_enable = 0, lock_acq_val = 0, lock_acq_id = 0;
-  };
-
   // Gather the constant lock / packet / next_bd fields for a BD block. Returns
   // failure if a lock carries a non-constant value.
   FailureOr<BdTemplateFields>
@@ -459,6 +447,9 @@ struct AIEDMATasksToNPUPass
       f.packet_type = info.getPktType();
       f.packet_id = info.getPktId();
     }
+
+    if (std::optional<int32_t> oooId = bd_op.getOutOfOrderId())
+      f.out_of_order_id = *oooId;
 
     auto lock_ops = getOptionalLockOpsForBlock(block);
     if (lock_ops) {
@@ -505,12 +496,12 @@ struct AIEDMATasksToNPUPass
     return f;
   }
 
-  // Dynamic (runtime SSA size/stride/len) shim-NOC BD lowering, the dma_task
-  // sibling of DmaToNpuPattern::lowerDynamic. Emits a zero-template
-  // NpuWriteBdOp (constant locks/packet/next_bd baked in, size/stride words
-  // zeroed) folded to one blockwrite, then per-word write32 overrides via the
-  // shared encoder. Scope (shim NOC, no padding, realizability) is enforced by
-  // the caller.
+  // Dynamic (runtime SSA size/stride/len/bd_id) shim-NOC BD lowering, the
+  // dma_task sibling of DmaToNpuPattern::lowerDynamic. Reaching this function
+  // at all means the design targets the EmitC (C++ TXN) builder, never the
+  // static binary target: a design meant for the binary target is unrolled to
+  // all-constant before this pass runs. Scope (shim NOC, no padding,
+  // realizability) is enforced by the caller.
   LogicalResult
   rewriteSingleBDDynamic(OpBuilder &builder, Block &block, AIE::DMABDOp bd_op,
                          AIE::TileOp &tile,
@@ -534,41 +525,14 @@ struct AIEDMATasksToNPUPass
     // pinned constant attribute. On the non-runtime path verifyBdInBlock (run
     // for every block before any lowering, with hasRuntimeBdId == !runtimeBdId)
     // has already required the attribute, so the access is guaranteed set here.
-    std::optional<uint32_t> staticBdId;
-    if (!runtimeBdId) {
-      staticBdId = bd_op.getBdId();
+    OpFoldResult bdIdOfr;
+    if (runtimeBdId) {
+      bdIdOfr = runtimeBdId;
+    } else {
+      std::optional<uint32_t> staticBdId = bd_op.getBdId();
       assert(staticBdId && "static bd_id must be assigned (checked by "
                            "verifyBdInBlock before lowering)");
-    }
-    OpFoldResult bdIdOfr =
-        runtimeBdId ? OpFoldResult(runtimeBdId)
-                    : OpFoldResult(builder.getI32IntegerAttr(*staticBdId));
-
-    if (runtimeBdId) {
-      // A runtime bd_id makes the register block's address runtime, so the
-      // constant-address blockwrite path can't be used. Emit the template words
-      // as write32s instead -- register replay treats N write32s and an N-word
-      // blockwrite identically, matching the static BD.
-      if (failed(emitShimTemplateWordOverrides(builder, loc, target_model, col,
-                                               row, bdIdOfr, f,
-                                               bd_op.getBurstLength())))
-        return failure();
-    } else {
-      // Zero-template BD: constant fields baked in, size/stride words zeroed
-      // for the write32 overrides to fill. valid_bd = 1.
-      NpuWriteBdOp::create(
-          builder, loc, col, *staticBdId, /*buffer_length=*/0,
-          /*buffer_offset=*/0, f.enable_packet, /*out_of_order_id=*/0,
-          f.packet_id, f.packet_type, /*d0_size=*/0, /*d0_stride=*/0,
-          /*d1_size=*/0,
-          /*d1_stride=*/0, /*d2_size=*/0, /*d2_stride=*/0,
-          /*iteration_current=*/0,
-          /*iteration_size=*/0, /*iteration_stride=*/0, f.next_bd_id, row,
-          f.use_next_bd, /*valid_bd=*/1, f.lock_rel_val, f.lock_rel_id,
-          f.lock_acq_enable, f.lock_acq_val, f.lock_acq_id,
-          /*d0_zero_before=*/0,
-          /*d1_zero_before=*/0, /*d2_zero_before=*/0, /*d0_zero_after=*/0,
-          /*d1_zero_after=*/0, /*d2_zero_after=*/0, bd_op.getBurstLength());
+      bdIdOfr = builder.getI32IntegerAttr(*staticBdId);
     }
 
     // Normalize sizes/strides to a 4-element outermost-first mixed list (the
@@ -621,55 +585,20 @@ struct AIEDMATasksToNPUPass
     // The BD-level repeat_count (encoder output) is unused here: the dma_task
     // queue push is emitted separately by DMAStartTaskOpPattern from the task
     // op's repeat_count, not the BD's outer dim.
+    assert(target_model.isShimNOCTile(col, row) &&
+           "dynamic BD lowering is shim-NOC only (enforced by caller)");
+    SmallVector<Value> bdWords;
     Value bdRepeatCount;
-    if (failed(emitDynamicShimBdWordOverrides(
-            builder, loc, target_model, col, row, bdIdOfr, sizes4, strides4,
-            elemWidth, bd_op.getBurstLength(), bufLen, bdRepeatCount)))
+    if (failed(buildShimBdWords(builder, loc, target_model, f, sizes4, strides4,
+                                elemWidth, bd_op.getBurstLength(), bufLen,
+                                bdRepeatCount, bdWords)))
       return failure();
-    return setAddressForSingleBD(builder, bd_op, tile, bdIdOfr);
-  }
 
-  // Emit the shim BD template words (those the size/stride encoder doesn't own)
-  // as runtime-addressed write32s, for the runtime-bd_id path where a constant-
-  // address zero-template blockwrite can't be formed. Layout mirrors
-  // WriteBdToBlockWritePattern. Words 4/5 carry constant burst_length/AXCache
-  // bits the encoder's later ND write32 overwrites by last-write; 1/2/7 unused.
-  LogicalResult emitShimTemplateWordOverrides(
-      OpBuilder &builder, Location loc, const AIE::AIETargetModel &target_model,
-      int col, int row, OpFoldResult bdId, const BdTemplateFields &f,
-      uint32_t burstLength) {
+    // One blockwrite carries the whole register block for BD configuration.
     Value bdBase =
-        getBdRegisterBase(builder, loc, target_model, col, row, bdId);
-    auto writeWord = [&](uint32_t wordIdx, uint32_t val) {
-      Value addr = arith::AddIOp::create(
-          builder, loc, bdBase, createConstantI32(builder, loc, wordIdx * 4));
-      NpuWrite32Op::create(builder, loc, addr,
-                           createConstantI32(builder, loc, val), nullptr,
-                           nullptr, nullptr);
-    };
-    // word[1] buffer_offset: 0 (the address patch supplies the buffer pointer).
-    writeWord(1, 0);
-    // word[2] enable_packet [30], out_of_order_id [29:24], packet_id [23:19],
-    // packet_type [18:16].
-    uint32_t w2 = ((f.enable_packet & 0x1) << 30) |
-                  ((f.packet_id & 0x1f) << 19) | ((f.packet_type & 0x7) << 16);
-    writeWord(2, w2);
-    // word[4] burst_length [31:30] (constant); d1_size/stride overlaid by the
-    // encoder in ND mode.
-    writeWord(4,
-              (AIE::getShimBurstLengthEncoding(target_model, burstLength) & 0x3)
-                  << 30);
-    // word[5] AXCache [27:24] = 2 (constant, enables NoC upsizing); d2_stride
-    // overlaid by the encoder in ND mode.
-    writeWord(5, (2u & 0xf) << 24);
-    // word[7] next_bd [30:27], use_next_bd [26], valid_bd [25], lock fields.
-    uint32_t w7 = ((f.next_bd_id & 0xf) << 27) | ((f.use_next_bd & 0x1) << 26) |
-                  (1u << 25) | ((f.lock_rel_val & 0x7f) << 18) |
-                  ((f.lock_rel_id & 0xf) << 13) |
-                  ((f.lock_acq_enable & 0x1) << 12) |
-                  ((f.lock_acq_val & 0x7f) << 5) | (f.lock_acq_id & 0xf);
-    writeWord(7, w7);
-    return success();
+        getBdRegisterBase(builder, loc, target_model, col, row, bdIdOfr);
+    NpuBlockWriteValuesOp::create(builder, loc, bdBase, bdWords);
+    return setAddressForSingleBD(builder, bd_op, tile, bdIdOfr);
   }
 
   LogicalResult
@@ -765,7 +694,6 @@ struct AIEDMATasksToNPUPass
     std::fill(padBefore.begin(), padBefore.end(), 0);
     std::fill(padAfter.begin(), padAfter.end(), 0);
 
-    auto out_of_order_id = 0;
     auto d0size = 0;
     auto d0stride = 0;
     auto d1size = 0;
@@ -804,11 +732,6 @@ struct AIEDMATasksToNPUPass
           (target_model.isShimNOCTile(tile.getCol(), tile.getRow()) &&
            isContiguousTransfer(input_sizes, input_strides));
 
-      if (dims->size() > 2) {
-        d2size = (target_model.isMemTile(tile.getCol(), tile.getRow()))
-                     ? (*dims)[2].getSize()
-                     : 0;
-      }
       if (padDims.has_value()) {
         if (!target_model.isMemTile(tile.getCol(), tile.getRow()))
           return bd_op->emitOpError()
@@ -854,7 +777,13 @@ struct AIEDMATasksToNPUPass
 
         // d2_stride
         d2stride = strides[2];
-        // d2_size set elsewhere
+
+        // TODO: d2_size is a dead field; AIEDmaToNpu.cpp memtile word-packing
+        // never writes it (see its `// TODO: D2Size`); the real D2 repeat
+        // count is carried entirely by buffer_length, same as on shim tiles.
+        d2size = (target_model.isMemTile(tile.getCol(), tile.getRow()))
+                     ? sizes[2]
+                     : 0;
       }
       if (input_sizes[3] > 1 && input_strides[3] == 0) {
         // We allow users to encode the repeat_count as a dimension 3 stride
@@ -911,7 +840,7 @@ struct AIEDMATasksToNPUPass
         builder, bd_op.getLoc(), tile.getCol(), bd_id, len_addr_granularity,
         offset,
         /*enable_packet=*/f.enable_packet,
-        /*out_of_order_id=*/out_of_order_id,
+        /*out_of_order_id=*/f.out_of_order_id,
         /*packet_id=*/f.packet_id,
         /*packet_type=*/f.packet_type,
         /*d0_size=*/d0size, /*d0_stride=*/d0stride,

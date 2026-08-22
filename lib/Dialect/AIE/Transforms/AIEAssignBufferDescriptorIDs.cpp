@@ -161,10 +161,30 @@ struct AIEAssignBufferDescriptorIDsPass
       int row = memOp.getTileID().row;
 
       BdIdGenerator gen(col, row, targetModel);
+      auto checkBdChannelAccessible = [&](DMABDOp bd, int bdId,
+                                          int channelIndex) -> bool {
+        if (targetModel.isBdChannelAccessible(col, row, bdId, channelIndex))
+          return true;
+        bd.emitOpError() << "assigned bd_id " << bdId
+                         << " is not accessible from channel " << channelIndex
+                         << " on this tile";
+        return false;
+      };
+      bool bdIdCollision = false;
       memOp->walk<WalkOrder::PreOrder>([&](DMABDOp bd) {
-        if (bd.getBdId().has_value())
-          gen.assignBdId(bd.getBdId().value());
+        if (!bd.getBdId().has_value())
+          return;
+        uint32_t bdId = bd.getBdId().value();
+        if (gen.bdIdAlreadyAssigned(bdId)) {
+          bd.emitOpError() << "assigned bd_id " << bdId
+                           << " is already used by another BD on this tile";
+          bdIdCollision = true;
+          return;
+        }
+        gen.assignBdId(bdId);
       });
+      if (bdIdCollision)
+        return signalPassFailure();
 
       auto dmaOps = memOp.getOperation()->getRegion(0).getOps<DMAOp>();
       if (!dmaOps.empty()) {
@@ -177,6 +197,9 @@ struct AIEAssignBufferDescriptorIDsPass
               assert(
                   gen.bdIdAlreadyAssigned(*existingBdId) &&
                   "bdId assigned by user but not found during previous walk");
+              int channelIndex = dmaOp.getChannelIndex();
+              if (!checkBdChannelAccessible(bd, *existingBdId, channelIndex))
+                return signalPassFailure();
             } else {
               std::optional<int32_t> nextId =
                   gen.nextBdId(dmaOp.getChannelIndex());
@@ -219,6 +242,9 @@ struct AIEAssignBufferDescriptorIDsPass
           if (auto existingBdId = bd.getBdId()) {
             assert(gen.bdIdAlreadyAssigned(*existingBdId) &&
                    "bdId assigned by user but not found during previous walk");
+            int channelIndex = blockChannelMap[&block];
+            if (!checkBdChannelAccessible(bd, *existingBdId, channelIndex))
+              return signalPassFailure();
           } else {
             std::optional<int32_t> nextId =
                 gen.nextBdId(blockChannelMap[&block]);

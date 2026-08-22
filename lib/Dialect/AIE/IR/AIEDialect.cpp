@@ -20,6 +20,7 @@
 #include "mlir/Interfaces/ViewLikeInterface.h"
 #include "mlir/Transforms/InliningUtils.h"
 
+#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/TypeSwitch.h"
 
@@ -2071,6 +2072,86 @@ TileOp MemTileDMAOp::getTileOp() {
 // DMAOp
 //===----------------------------------------------------------------------===//
 
+static bool isBdPacketEnabled(DMABDOp bd) {
+  if (bd.getPacket().has_value())
+    return true;
+  if (Block *blk = bd->getBlock())
+    return !blk->getOps<DMABDPACKETOp>().empty();
+  return false;
+}
+
+LogicalResult
+xilinx::AIE::verifyDMABDOutOfOrderId(DMABDOp bd, bool packetEnabledByContext) {
+  std::optional<int32_t> oooId = bd.getOutOfOrderId();
+  if (!oooId.has_value())
+    return success();
+  const AIETargetModel &targetModel = getTargetModel(bd.getOperation());
+  if (!targetModel.hasProperty(AIETargetModel::SupportsOutOfOrderDMA))
+    return bd.emitOpError("out_of_order_id is not supported on this device");
+  if (!packetEnabledByContext && !isBdPacketEnabled(bd))
+    return bd.emitOpError("out_of_order_id requires a packet-enabled BD");
+  uint32_t maxOooId = targetModel.getMaxOutOfOrderId();
+  if (*oooId < 0 || static_cast<uint32_t>(*oooId) > maxOooId)
+    return bd.emitOpError("out_of_order_id must be in [0, ") << maxOooId << "]";
+  return success();
+}
+
+static LogicalResult verifyDMARepeatCount(Operation *op, int32_t repeatCount) {
+  uint32_t maxRepeat = getTargetModel(op).getMaxRepeatCount();
+  if (maxRepeat == 0) {
+    if (repeatCount != 0)
+      return op->emitOpError("repeat_count is not supported on this target");
+    return success();
+  }
+  if (repeatCount < 0 || static_cast<uint32_t>(repeatCount) > maxRepeat)
+    return op->emitOpError("repeat_count ")
+           << repeatCount << " is out of range [0, " << maxRepeat
+           << "] for this target";
+  return success();
+}
+
+static LogicalResult verifyOutOfOrderChannel(Operation *op, DMAChannelDir dir,
+                                             bool outOfOrder,
+                                             ArrayRef<DMABDOp> bds) {
+  if (!outOfOrder)
+    return success();
+  if (dir != DMAChannelDir::S2MM)
+    return op->emitOpError("out_of_order is only valid on an S2MM channel");
+  if (!getTargetModel(op).hasProperty(AIETargetModel::SupportsOutOfOrderDMA))
+    return op->emitOpError(
+        "out-of-order S2MM DMA is not supported on this device");
+  if (bds.empty())
+    return op->emitOpError("out-of-order S2MM channel must have at least one "
+                           "receive buffer descriptor"); // else stall
+  for (DMABDOp bd : bds) {
+    if (!isBdPacketEnabled(bd))
+      return bd.emitOpError(
+          "out-of-order S2MM receive buffer descriptor must be packet-enabled");
+    if (bd.getOutOfOrderId().has_value())
+      return bd.emitOpError(
+          "out_of_order_id belongs on the sender buffer descriptor, not an "
+          "out-of-order S2MM receive buffer descriptor");
+  }
+  // an inter-BD lock dependency can deadlock because arrival order is unknown
+  DenseMap<Operation *, Operation *> releasedByRecvBd;
+  for (DMABDOp bd : bds)
+    for (auto useLock : bd->getBlock()->getOps<UseLockOp>())
+      if (useLock.release())
+        if (Operation *lockDef = useLock.getLock().getDefiningOp())
+          releasedByRecvBd.try_emplace(lockDef, bd.getOperation());
+  for (DMABDOp bd : bds)
+    for (auto useLock : bd->getBlock()->getOps<UseLockOp>())
+      if (useLock.acquire() || useLock.acquireGE())
+        if (Operation *lockDef = useLock.getLock().getDefiningOp()) {
+          auto it = releasedByRecvBd.find(lockDef);
+          if (it != releasedByRecvBd.end() && it->second != bd.getOperation())
+            return bd.emitOpError(
+                "out-of-order S2MM prohibits inter-BD lock dependencies; "
+                "can deadlock");
+        }
+  return success();
+}
+
 LogicalResult DMAOp::verify() {
   auto *parentOp = getOperation()->getParentOp();
   if (parentOp->getRegion(0).getBlocks().size() > 1)
@@ -2099,7 +2180,13 @@ LogicalResult DMAOp::verify() {
       return emitOpError("pad_value requires the CONSTANT_PAD_VALUE register, "
                          "unavailable on this target");
   }
-  return success();
+  if (failed(verifyDMARepeatCount(getOperation(), getRepeatCount())))
+    return failure();
+  SmallVector<DMABDOp> bds;
+  for (auto &bdRegion : getBds())
+    llvm::append_range(bds, bdRegion.front().getOps<DMABDOp>());
+  return verifyOutOfOrderChannel(getOperation(), getChannelDir(),
+                                 getOutOfOrder(), bds);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2197,6 +2284,7 @@ void DMABDOp::buildMixed(mlir::OpBuilder &builder, mlir::OperationState &state,
         /*pad_dimensions=*/padDims,
         /*bd_id=*/nullptr,
         /*packet=*/packet,
+        /*out_of_order_id=*/nullptr,
         /*burst_length=*/nullptr,
         /*iteration=*/nullptr,
         /*offset_parameter=*/nullptr,
@@ -2439,6 +2527,20 @@ LogicalResult DMABDOp::verify() {
     bool skipSizeCheck =
         parentTile.isShimTile() && xilinx::AIE::isContiguousBDTransfer(*dims);
 
+    // The wrap (size) and step (stride) field widths are tile-type specific
+    // (e.g. on AIE2: core tiles have an 8-bit wrap, mem/shim tiles 10-bit).
+    // Wrap fields are unbiased, so a W-bit wrap field admits sizes up to
+    // 2^W - 1. Step fields are hardware-encoded as actual-1, so an S-bit
+    // step field admits actual (unbiased, as declared here) strides up to
+    // 2^S. Deriving the limits from the target model (instead of a single
+    // hardcoded shim-sized constant) keeps this check correct for all tile
+    // types, and computing the message from the same value it checks
+    // against means the two can never disagree again.
+    uint32_t wrapBits = targetModel.getDmaBdWrapBits(parentTile.getTileType());
+    uint32_t stepBits = targetModel.getDmaBdStepBits(parentTile.getTileType());
+    uint64_t maxSize = wrapBits > 0 ? (1ULL << wrapBits) - 1 : 0;
+    uint64_t maxStride = stepBits > 0 ? (1ULL << stepBits) : 0;
+
     for (BDDimLayoutAttr dim : *dims) {
       if (0 == dim.getStride())
         return emitOpError()
@@ -2447,10 +2549,10 @@ LogicalResult DMABDOp::verify() {
         return emitOpError() << "Step size " << std::to_string(dim.getStride())
                              << " exceeds memref size "
                              << std::to_string(buffer.getNumElements());
-      if (!skipSizeCheck && dim.getSize() >= (1UL << 9) + 1)
-        return emitOpError() << "Size may not exceed 1023.";
-      if (dim.getStride() >= (1UL << 19))
-        return emitOpError() << "Stride may not exceed " << (1 << 20);
+      if (!skipSizeCheck && dim.getSize() > maxSize)
+        return emitOpError() << "Size may not exceed " << maxSize << ".";
+      if (dim.getStride() > maxStride)
+        return emitOpError() << "Stride may not exceed " << maxStride << ".";
     }
 
     // Since streams read 32b words, there's no way to read eg 16b with stride
@@ -2463,6 +2565,66 @@ LogicalResult DMABDOp::verify() {
     if (getBufferElementTypeWidthInBytes() > 4 && dims->back().getStride() != 1)
       return emitOpError(
           "For >32b width datatypes, inner-most dim stride must be 1");
+
+    // The hardware stepsize/wrap registers are denominated in 32-bit words.
+    // lib/Targets/AIERT.cpp's static/CDO lowering converts element-
+    // granularity strides/sizes to words by scaling by
+    // elementWidthInBytes/4.0 and truncating via an unguarded static_cast;
+    // when that scale factor isn't an integer, a declared value that isn't
+    // itself a whole number of words is silently replaced by a different,
+    // hardware-expressible value instead of being rejected. Reject those
+    // values here instead, since they are genuinely inexpressible in the
+    // hardware's word-granularity registers. The trigger condition is
+    // "element width not a multiple of 4 bytes" rather than "< 4 bytes" so
+    // that this also covers the `bfp` block-floating-point types, whose
+    // widths (9 and 17 bytes) are >4 bytes but still not word multiples.
+    // Dimensions with size == 1 are skipped: the loop runs once so stride is
+    // never stepped and that dimension's size/stride do not affect hardware
+    // address generation; word alignment is not required for them.
+    //
+    // Which dim is "innermost" is determined by the last dim with size > 1,
+    // not by array position: `dims` is outermost-first, and trailing dims
+    // with size == 1 (which never step) do not change which dim actually
+    // performs the finest-granularity access. If every dim has size == 1,
+    // there is no innermost dim to check and the whole block is skipped.
+    int32_t elementWidthInBytes = getBufferElementTypeWidthInBytes();
+    if (elementWidthInBytes % 4 != 0) {
+      std::optional<size_t> effectiveInnermost;
+      for (size_t i = 0; i < dims->size(); i++)
+        if ((*dims)[i].getSize() > 1)
+          effectiveInnermost = i;
+      if (effectiveInnermost.has_value()) {
+        for (size_t i = 0; i < dims->size(); i++) {
+          BDDimLayoutAttr dim = (*dims)[i];
+          if (dim.getSize() <= 1)
+            continue;
+          if (i == *effectiveInnermost) {
+            // Effective innermost dim: the size (element count transferred
+            // at this level) must itself be a whole number of 32-bit words.
+            if ((dim.getSize() * elementWidthInBytes) % 4)
+              return emitOpError()
+                     << "Innermost dim size (" << dim.getSize() << ") * "
+                     << elementWidthInBytes << "-byte element width = "
+                     << (dim.getSize() * elementWidthInBytes)
+                     << " bytes: innermost dim size must be a multiple of 4 "
+                        "bytes for sub-32b element types (the hardware size "
+                        "register is 32-bit-word granularity).";
+          } else {
+            // Dim outside the effective innermost dim: the stride (address
+            // step between elements at this level) must itself be a whole
+            // number of 32-bit words.
+            if ((dim.getStride() * elementWidthInBytes) % 4)
+              return emitOpError()
+                     << "Dim " << i << " stride (" << dim.getStride() << ") * "
+                     << elementWidthInBytes << "-byte element width = "
+                     << (dim.getStride() * elementWidthInBytes)
+                     << " bytes: non-innermost dim stride must be a multiple "
+                        "of 4 bytes for sub-32b element types (the hardware "
+                        "stepsize register is 32-bit-word granularity).";
+          }
+        }
+      }
+    }
   }
   if (auto paddims = getPadDimensions(); paddims.has_value()) {
     if (!dims.has_value())
@@ -2516,6 +2678,9 @@ LogicalResult DMABDOp::verify() {
         getTargetModel(getOperation()).getMaxPacketId())
       return emitOpError("Packet ID field can only hold 5 bits.");
   }
+
+  if (failed(verifyDMABDOutOfOrderId(*this)))
+    return failure();
 
   // A runtime len operand or the static_len attribute both count as having a
   // length here.
@@ -2785,7 +2950,17 @@ LogicalResult DMAStartOp::verify() {
       return emitOpError("pad_value requires the CONSTANT_PAD_VALUE register, "
                          "unavailable on this target");
   }
-  return success();
+  if (failed(verifyDMARepeatCount(getOperation(), getRepeatCount())))
+    return failure();
+  SmallVector<DMABDOp> bds;
+  if (getOutOfOrder()) {
+    llvm::SmallPtrSet<Block *, 8> visited;
+    for (Block *b = getDest(); b && visited.insert(b).second;
+         b = b->getNumSuccessors() > 0 ? b->getSuccessor(0) : nullptr)
+      llvm::append_range(bds, b->getOps<DMABDOp>());
+  }
+  return verifyOutOfOrderChannel(getOperation(), getChannelDir(),
+                                 getOutOfOrder(), bds);
 }
 
 //===----------------------------------------------------------------------===//

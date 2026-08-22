@@ -1093,6 +1093,9 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
       OptionalAttr<DenseI64ArrayAttr>:$static_strides,
       OptionalAttr<BDPadLayoutArrayAttr>:$pad_dimensions,
       OptionalAttr<AIEI32Attr>:$bd_id, OptionalAttr<PacketInfoAttr>:$packet,
+      // Sender-side id stamped into the packet header. Selects which receive
+      // BD (by bd id) an out-of-order S2MM channel places this data into.
+      OptionalAttr<AIEI32Attr>:$out_of_order_id,
       DefaultValuedOptionalAttr<AIEI32Attr, "0">:$burst_length,
       // The BD's iteration state; see the "## BD iteration" section above.
       OptionalAttr<BDIterationAttr>:$iteration,
@@ -1293,7 +1296,9 @@ def AIE_DMAStartOp: AIE_Op<"dma_start", [
       ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$channel_index,
       // repeat_count==0 means "do it once" and don't repeat
       DefaultValuedAttr<AIEI32Attr, "0">:$repeat_count,
-      DefaultValuedOptionalAttr<AIEI32Attr, "0">:$pad_value);
+      DefaultValuedOptionalAttr<AIEI32Attr, "0">:$pad_value,
+      // Put the channel into out-of-order mode (S2MM only).
+      UnitAttr:$out_of_order);
   let successors = (successor AnySuccessor:$dest, AnySuccessor:$chain);
   let assemblyFormat = [{
     `(` $channel_dir `,` $channel_index `,` $dest `,` $chain (`,` `repeat_count` `=` $repeat_count^)? `)` attr-dict
@@ -1324,7 +1329,9 @@ def AIE_DMAOp: AIE_Op<"dma", [
       DefaultValuedAttr<AIEI32Attr, "0">:$repeat_count,
       OptionalAttr<StrAttr>:$sym_name,
       // Region form of aie.dma_start's pad_value; see its semantics there.
-      DefaultValuedOptionalAttr<AIEI32Attr, "0">:$pad_value);
+      DefaultValuedOptionalAttr<AIEI32Attr, "0">:$pad_value,
+      // Put the channel into out-of-order mode (S2MM only).
+      UnitAttr:$out_of_order);
   let regions = (region VariadicRegion<SizedRegion<1>>:$bds);
   let assemblyFormat = [{
     `(` $channel_dir `,` $channel_index `)`

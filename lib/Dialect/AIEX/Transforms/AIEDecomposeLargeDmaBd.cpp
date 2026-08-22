@@ -166,6 +166,7 @@ static AIE::DMABDOp createTaskBd(PatternRewriter &rewriter, Location loc,
     bd.setBurstLengthAttr(tmpl.getBurstLengthAttr());
   if (tmpl.getOffsetParameterAttr())
     bd.setOffsetParameterAttr(tmpl.getOffsetParameterAttr());
+  // out_of_order_id is not copied because slicing an OoO BD is rejected above.
   return bd;
 }
 
@@ -417,6 +418,12 @@ struct DecomposeLargeDmaBdTaskPattern : OpRewritePattern<AIE::DMABDOp> {
       });
       return success();
     }
+
+    // A chain split would make every slice reuse the one out_of_order_id slot.
+    // TODO: BD iteration plus padding may enable this feature.
+    if (op.getOutOfOrderId().has_value())
+      return op.emitOpError() << "splitting an out-of-order buffer descriptor "
+                                 "into multiple descriptors is not implemented";
 
     Region *body = getTaskBody(taskOp);
     if (!body || body->empty())
