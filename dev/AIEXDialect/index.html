@@ -11824,6 +11824,9 @@ This <code>issue_token</code> attribute is set to <code>false</code> by default 
 and <strong>is always set to true for</strong> <code>S2MM</code> channels.
 The burst length attribute specifies the burst length in bytes for the DMA operation. A value
 of 0 indicates that the burst length is not specified and the maximal burst length is used.</p>
+<p>The <code>axcache</code> attribute specifies the raw 4-bit <code>AxCACHE</code> value used for the shim DMA's
+AXI-MM transfers to/from host memory. If unset, <code>AIETargetModel::getDefaultAxCache()</code> supplies
+the value.</p>
 <h4 id="metadata----specifying-tile-channel-direction-and-linking-a-dma_memcpy_nd-to-its-other-half"><code>metadata</code> -- Specifying Tile, Channel, Direction and Linking a <code>dma_memcpy_nd</code> to its Other Half<a class="headerlink" href="#metadata----specifying-tile-channel-direction-and-linking-a-dma_memcpy_nd-to-its-other-half" title="Permanent link">&para;</a></h4>
 <p>The <code>metadata</code> attribute must point to a symbol referencing a
 <a href="./AIEDialect.html#aiedma_bd-xilinxaiedmabdop"><code>aie.shim_dma_allocation</code> operation</a>.
@@ -11891,6 +11894,7 @@ The packet header is used to guide arbitration throughout a packet-routed data f
 <tr><td><code>d1_zero_after</code></td><td>::mlir::IntegerAttr</td><td>64-bit signless integer attribute</td></tr>
 <tr><td><code>d2_zero_after</code></td><td>::mlir::IntegerAttr</td><td>64-bit signless integer attribute</td></tr>
 <tr><td><code>burst_length</code></td><td>::mlir::IntegerAttr</td><td>64-bit signless integer attribute</td></tr>
+<tr><td><code>axcache</code></td><td>::mlir::IntegerAttr</td><td>64-bit signless integer attribute whose minimum value is 0 whose maximum value is 15</td></tr>
 <tr><td><code>offset_parameter</code></td><td>::mlir::FlatSymbolRefAttr</td><td>flat symbol reference attribute</td></tr>
 <tr><td><code>offset_state_table_idx</code></td><td>::mlir::IntegerAttr</td><td>8-bit unsigned integer attribute</td></tr>
 </table>
@@ -12314,6 +12318,7 @@ two ops. See the "## BD iteration" section of <code>aie.dma_bd</code> for more d
 <tr><td><code>d1_zero_after</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 <tr><td><code>d2_zero_after</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 <tr><td><code>burst_length</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>axcache</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0 whose maximum value is 15</td></tr>
 </table>
 
 <h3 id="aiexread_scratchpad_parameter-xilinxaiexreadscratchpadparameterop"><code>aiex.read_scratchpad_parameter</code> (::xilinx::AIEX::ReadScratchpadParameterOp)<a class="headerlink" href="#aiexread_scratchpad_parameter-xilinxaiexreadscratchpadparameterop" title="Permanent link">&para;</a></h3>

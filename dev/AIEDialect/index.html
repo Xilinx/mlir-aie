@@ -11031,6 +11031,9 @@ what buffer to use, and optionally:</p>
 5. the number of zeros to pad before and after every dimension of an n-d tensor (described below);
 6. the burst length to use for the DMA operation. This option is only available for data movement between the host memory and Shim NOC tiles.
   The default value of 0 is interpreted as the maximum available burst length in the architecture.
+7. the raw 4-bit `AxCACHE` value to use for the DMA&#39;s AXI-MM transfers. This option is only available for
+  data movement between the host memory and Shim NOC tiles. If unset, `AIETargetModel::getDefaultAxCache()`
+  supplies the value.
 </code></pre></div>
 <p><code>offset</code>, <code>len</code>, <code>size</code>s and <code>stride</code>s are all denominated in element width; e.g., transferring the whole of
 <code>memref&lt;512xi32&gt;</code> means <code>len == 512</code>, and also while transferring the whole of <code>memref&lt;512xi16&gt;</code>, <code>len == 512</code>.</p>
@@ -11141,6 +11144,7 @@ iteration there via the outermost <code>sizes</code>/<code>strides</code> dimens
   </td></tr>
 <tr><td><code>out_of_order_id</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 <tr><td><code>burst_length</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>axcache</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0 whose maximum value is 15</td></tr>
 <tr><td><code>iteration</code></td><td>::xilinx::AIE::BDIterationAttr</td><td>
     Tuple encoding the iteration state of a buffer descriptor in
     true (element) values;
