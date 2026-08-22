@@ -36,13 +36,25 @@
 // match POISON_TAG in pmlib/design.py.
 constexpr int32_t POISON_TAG = 0x7BAD;
 
+// "11,22,33" -> those three; "11*123" -> 123 copies of 11. The repeat form
+// mirrors --phases, and exists so a run with a hundred-odd phases stays legible
+// in a RUN line.
 static std::vector<int32_t> parse_tags(const std::string &s) {
   std::vector<int32_t> out;
   std::stringstream ss(s);
   std::string item;
-  while (std::getline(ss, item, ','))
-    if (!item.empty())
+  while (std::getline(ss, item, ',')) {
+    if (item.empty())
+      continue;
+    const size_t star = item.find('*');
+    if (star == std::string::npos) {
       out.push_back(std::stoi(item));
+      continue;
+    }
+    const int32_t tag = std::stoi(item.substr(0, star));
+    const int count = std::stoi(item.substr(star + 1));
+    out.insert(out.end(), count, tag);
+  }
   return out;
 }
 

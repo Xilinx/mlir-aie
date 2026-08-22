@@ -1,0 +1,51 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// The core executing immediately below the slot, while the slot is written.
+//
+// This is the case the layout actually depends on and the one no measurement
+// covered. ../../pm_write_while_running established that a write to the 8 KB
+// granule the core is fetching from is silently dropped about half the time,
+// and that a write to the other granule always lands -- but every point in that
+// experiment kept the program counter at least 1.2 KB from the boundary. The
+// interesting geometry is the tight one: if the fetch unit reads ahead across
+// the granule boundary, then "which granule is the core fetching from" is
+// ambiguous exactly where this design puts the wait loop, and slot.ld's ASSERT
+// happily permits a resident ending at 0x1fff.
+//
+// 123 phases fills the resident to 8176 bytes, which puts ovl_wait at 0x1f40 --
+// the core spins 192 bytes below the slot, and stays there while each of the
+// 123 payloads is written. One run is 123 samples; a boundary effect of the
+// magnitude measured elsewhere (roughly half of writes dropped) could not
+// survive that quietly.
+//
+// If this ever fails, the ASSERT needs a measured guard band rather than
+// SIZEOF(.text) <= slot, and this test is where that number comes from.
+//
+// REQUIRES: ryzen_ai_npu2, peano
+//
+// RUN: rm -rf %t && mkdir -p %t
+// RUN: %PEANO_INSTALL_DIR/bin/clang++ --target=aie2p-none-unknown-elf -O2 -c %S/../resident.cc -o %t/resident.o
+// RUN: %python %S/../pm.py emit --recipe one_slot_tight --slot-ld %t/slot.ld --phases 0*123 --out %t/d1.mlir
+// RUN: cd %t && %aiecc --tmpdir=%t/p1 --get-xclbin --xclbin-name=%t/p1.xclbin --get-npu-insts --npu-insts-name=%t/p1.bin %t/d1.mlir
+//
+// The premise of the test: the wait loop really is just below the slot. Without
+// this the resident could shrink and the test would quietly stop covering the
+// boundary while still passing.
+// RUN: %PEANO_INSTALL_DIR/bin/llvm-readelf -s %t/p1/elfs_main_core_0_2/elfs_main_core_0_2.elf | FileCheck %s --check-prefix=NEAR
+// NEAR: 00001f{{[0-9a-f][0-9a-f]}} {{.*}} ovl_wait
+//
+// RUN: %python %S/../pm.py workload --tag 88 --size 0x400 --output %t/w.o --workdir %t
+// RUN: %python %S/../pm.py workload --tag 31661 --size 0x400 --output %t/poison.o --workdir %t
+// RUN: %python %S/../pm.py link --object %t/w.o --resident %t/p1 --recipe one_slot_tight --output %t/ovl.elf
+// RUN: %python %S/../pm.py link --object %t/poison.o --resident %t/p1 --recipe one_slot_tight --output %t/poison.elf
+// RUN: %python %S/../pm.py emit --recipe one_slot_tight --phases 0*123 --payload %t/ovl.elf --poison %t/poison.elf --out %t/d2.mlir
+// RUN: cd %t && %aiecc --tmpdir=%t/p2 --get-xclbin --xclbin-name=%t/aie.xclbin --get-npu-insts --npu-insts-name=%t/insts.bin %t/d2.mlir
+// RUN: %python %S/../pm.py check %t/p1 %t/p2 --overlays %t/ovl.elf
+//
+// All 123 writes land, with the core spinning 192 bytes below the slot throughout.
+// RUN: %host_clang %S/../host.cpp -o %t/host.exe -std=c++17 -Wall %xrt_flags %host_link_flags %test_utils_flags
+// RUN: %t/host.exe -x %t/aie.xclbin -k MLIR_AIE -i %t/insts.bin --tags 88*123 | FileCheck %s
+// CHECK: phase 0: overlay 88 ok
+// CHECK: phase 122: overlay 88 ok
+// CHECK: PASS!
