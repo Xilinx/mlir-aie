@@ -20,7 +20,7 @@ ruff
 # (compile_commands.json) to run -- see utils/run_clang_tidy.sh. Pin matches
 # clang-format's pinned version (aminya/setup-cpp in lintAndFormat.yml) so
 # this repo tracks one clang-tool version instead of two.
-clang-tidy==20.1.0
+clang-tidy==22.1.8
 # nanobind ABI-couples to the prebuilt mlir distro wheel (built against the
 # same version); a mismatch breaks Value-subclass recognition at runtime. Keep
 # this constraint identical to utils/mlir_wheels/requirements.in and
