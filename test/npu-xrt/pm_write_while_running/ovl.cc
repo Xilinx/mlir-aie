@@ -85,6 +85,17 @@
 FILL64(z);
 #endif
 
+// A second spin loop, emitted near the bottom of .text so it sits in a
+// different program-memory region than ovl_wait at the top. Selecting which one
+// the core spins in moves the program counter without moving any of the pairs,
+// which is what distinguishes "the conflict follows the PC" from "the conflict
+// is a property of the addresses".
+extern "C" void ovl_wait_lo(volatile int32_t *f) {
+  while (*f == 0)
+    ;
+  *f = 0;
+}
+
 // Emitted farthest-first: .text follows source order and ovl_wait is last, so
 // each pair's distance is the total size of everything after it.
 PAIR(8320)

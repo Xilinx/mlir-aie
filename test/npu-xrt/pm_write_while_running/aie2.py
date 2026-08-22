@@ -158,14 +158,16 @@ that moment; --pair selects how far the write lands from the program counter.
 See README.md."""
 
 
-def build(dev, variant, pair, elf):
+def build(dev, variant, pair, spin, elf):
     """Build the design with IRON and return the resolved MLIR module.
 
     Args:
         dev: the target Device.
         variant: key into VARIANTS, or None for pass 1 (no patch emitted).
         pair: which PAIR_DISTANCES entry to patch, i.e. how far the write lands
-            from the program counter.
+            from ovl_wait.
+        spin: "" for the spin loop at the top of .text, "_lo" for the one at the
+            bottom. Moves the program counter without moving any pair.
         elf: path to the pass-1 core ELF the patch is derived from, or None.
     """
     # The core calls every pair each round and reports one word each, so a
@@ -183,7 +185,7 @@ def build(dev, variant, pair, elf):
     # Kernel, not ExternalFunction: ExternalFunction's source_file is built by
     # @iron.jit, and this design is handed to aiecc directly. The RUN lines
     # compile ovl.cc to ovl.o first; both symbols live in it.
-    ovl_wait = Kernel("ovl_wait", OVL_OBJ, [word_ty])
+    ovl_wait = Kernel(f"ovl_wait{spin}", OVL_OBJ, [word_ty])
     sels = [Kernel(f"sel_d{d}_a", OVL_OBJ, [word_ty]) for d in PAIR_DISTANCES]
 
     # Host-driven, one release per round. Holding it back is what parks the core
@@ -346,6 +348,12 @@ def main():
     p.add_argument("--dev", required=True, help="npu1 or npu2")
     p.add_argument("--variant", choices=sorted(VARIANTS), help="omit for pass 1")
     p.add_argument(
+        "--spin",
+        choices=("hi", "lo"),
+        default="hi",
+        help="which spin loop the core waits in, i.e. where the PC sits",
+    )
+    p.add_argument(
         "--pair",
         type=int,
         choices=PAIR_DISTANCES,
@@ -360,7 +368,8 @@ def main():
         p.error("--variant and --elf go together: both for pass 2, neither for pass 1")
 
     elf = find_core_elf(args.elf, CORE_COL, CORE_ROW) if args.elf else None
-    module = build(from_name(args.dev, n_cols=1), args.variant, args.pair, elf)
+    spin = "" if args.spin == "hi" else "_lo"
+    module = build(from_name(args.dev, n_cols=1), args.variant, args.pair, spin, elf)
     with open(args.out, "w") as f:
         print(module, file=f)
 

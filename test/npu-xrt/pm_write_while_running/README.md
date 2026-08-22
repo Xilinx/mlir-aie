@@ -76,10 +76,9 @@ AMD Strix (`npu2_1col`), XRT 2.20.0, amdxdna 2.20.0, 20 runs per variant.
 
 ### Write distance from the PC, core running
 
-`ovl_wait` (where the core spins) at `0x2510`; the 4 KB boundary below it is
-`0x2000`, i.e. 1296 bytes away.
+Core spinning in `ovl_wait` at 9488; the `0x2000` boundary is 1296 bytes below.
 
-| Distance | Address | 4 KB region vs PC | Landed |
+| Distance | Address | Half vs PC | Landed |
 |---|---|---|---|
 | 64 | 9168 | same | 12/20 |
 | 384 | 8848 | same | 13/20 |
@@ -96,13 +95,13 @@ AMD Strix (`npu2_1col`), XRT 2.20.0, amdxdna 2.20.0, 20 runs per variant.
 boundary, and that is where the behaviour changes — not at any particular
 distance.
 
-### The same distances, with every address shifted up 2048 bytes
+### Same distances, every address shifted up 2048 bytes
 
 Built with `-DPM_SHIFT_FILL=1`, which pads the top of `.text` so absolute
 addresses move while every pair's distance from the PC stays identical. The
 boundary now sits 3344 bytes from the PC instead of 1296:
 
-| Distance | Region vs PC (before → after) | Landed (before → after) |
+| Distance | Half vs PC (before → after) | Landed (before → after) |
 |---|---|---|
 | 1408 | different → **same** | 20/20 → **7/20** |
 | 2048 | different → **same** | 20/20 → **9/20** |
@@ -110,46 +109,71 @@ boundary now sits 3344 bytes from the PC instead of 1296:
 
 Identical distances, opposite outcomes. Distance is not the variable.
 
+### Moving the program counter instead of the targets
+
+`--spin lo` parks the core in a second spin loop near the bottom of `.text`, so
+the PC moves while every pair stays where it was. This is what fixes the region
+size: with the PC at 1168, an 8 KB split and a 4 KB split predict opposite results
+for the middle pairs.
+
+| Address | Distance from PC | 8 KB half | 4 KB region | Predicted (8 KB / 4 KB) | Landed |
+|---|---|---|---|---|---|
+| 1232 | 64 | same | same | race / race | 8/20 |
+| **5392** | **4224** | **same** | different | **race** / land | **14/20** |
+| **7504** | **6336** | **same** | different | **race** / land | **8/20** |
+| 8272 | 7104 | different | different | land / land | 20/20 |
+| 9488 | 8320 | different | different | land / land | 20/20 |
+
+The decisive comparison is the middle two rows against the fourth: a target
+**6336 bytes away races** while one **7104 bytes away is perfect**, because the
+first is in the same 8 KB half as the PC and the second is not.
+
 Every run patches exactly one pair, so the rest are controls; they read 7 in every
 run of every table above.
 
 ## What this means
 
-**Program memory behaves as four 4 KB regions. A write to the region the core is
-currently fetching from races; a write to any other region always lands.**
+**Program memory behaves as two 8 KB halves, split at `0x2000`. A write to the
+half the core is currently fetching from races; a write to the other half always
+lands.**
 
-- **It is a region conflict, not a distance.** The shift experiment is the proof:
-  moving the code without changing any distance flips 1408 and 2048 from perfect
-  to racing, exactly as their region membership flips.
-- **A write to a different region lands every time with the core running** — no
-  halt, no disable, no stall. That is the geometry a real overlay load has.
-- **A same-region write is a coin flip.** It never hangs and never returns a torn
-  value; the new bytes simply do not take effect, which reads as the core having
-  already fetched them rather than the write being dropped.
+- **It is a half conflict, not a distance.** Two independent experiments show it:
+  shifting every address while holding distances fixed flips outcomes, and moving
+  the PC while holding addresses fixed flips them back.
+- **A write to the other half lands every time with the core running** — no halt,
+  no disable, no stall. That is the geometry a real overlay load has.
+- **A same-half write is a coin flip** at any distance, from 64 bytes to 6336. It
+  never hangs and never returns a torn value; the new bytes simply do not take
+  effect, which reads as the core having already fetched them rather than the
+  write being dropped.
 - **It is not ECC.** The ECC-check-disabled mirror at `0x24000` races identically.
-- **Halting, disabling or stalling fixes the same-region case**, so those remain
-  the fallback when a layout cannot avoid the conflict.
+- **Halting, disabling or stalling fixes the same-half case**, so those remain the
+  fallback when a layout cannot avoid the conflict.
 
 So **double-buffered ("ping-pong") program memory works on AIE2P**, and the design
 rule is precise:
 
-> An overlay slot must not share a 4 KB region of program memory with the code
-> that is executing while it is written.
+> An overlay slot must not share an 8 KB half of program memory with the code that
+> is executing while it is written.
 
-With 16 KB of program memory that is four regions to allocate — for example
-resident in region 0, slot A in region 1, slot B in region 2. Slots larger than
-4 KB have to occupy whole regions disjoint from the executing slot's, which caps
-how big a ping-pong slot can be: two 4 KB slots plus a 4 KB resident fits with one
-region to spare, but a single kernel needing three regions cannot be ping-ponged
-at all and must fall back to the halt/stall path.
+With 16 KB there are exactly two halves, so a ping-pong design puts one slot in
+each. The code that waits for the swap and dispatches into the slot has to live in
+the *executing* half too, which means it is duplicated into both halves rather
+than sitting in a shared resident region -- a shared region would, by definition,
+be in the same half as one of the slots.
+
+So a balanced ping-pong slot is **just under 8 KB**: half the program memory,
+minus the per-half dispatch stub. A kernel larger than that cannot be
+ping-ponged at all and has to fall back to the halt/stall path.
 
 ### Not established
 
-- Whether the region size is exactly 4 KB on other AIE generations, or whether
-  AIE2P's program memory is literally banked that way — only that 4 KB predicts
-  every measurement here, across two different code layouts.
-- Whether a *partially* overlapping write (a slot straddling a boundary, with only
-  part of it in the executing region) fails proportionally or wholly.
+- Whether there are further boundaries above `0x2510`. The design only spans about
+  9.5 KB, so every measurement sits in `0x0000`-`0x2510`; only the split at
+  `0x2000` has been exercised. A 16 KB design might reveal more structure.
+- Whether the same split holds on other AIE generations.
+- Whether a *partially* overlapping write (a slot straddling the boundary, with
+  only part of it in the executing half) fails proportionally or wholly.
 - Whether `CORE_STATUS` (`0x32004`) bit 21 `CORE_PROCESSOR_BUS_STALL` is set during
   a same-region write, which would give a direct mechanical read on arbitration.
 - Whether what matters is the *dynamic* PC at the instant the write arrives, or
@@ -160,9 +184,9 @@ at all and must fall back to the halt/stall path.
 
 | | |
 |---|---|
-| `aie2.py` | the design, in IRON, and the lit RUN lines. Emits pass 1 (no `--elf`) or a patched case (`--variant X --pair N --elf <tmpdir>`). |
+| `aie2.py` | the design, in IRON, and the lit RUN lines. Emits pass 1 (no `--elf`) or a patched case (`--variant X --pair N --elf <tmpdir>`). `--spin lo` moves the program counter to the bottom of `.text` without moving any pair. |
 | `overlay_elf.py` | reads a pair out of a core ELF, checks the two halves are interchangeable, and owns `PAIR_DISTANCES`. Also `--check A B`, the drift guard. |
-| `ovl.cc` | the `sel_dN_*` pairs, the filler that spaces them, and `ovl_wait`. `-DPM_SHIFT_FILL=1` shifts every address without changing any distance. |
+| `ovl.cc` | the `sel_dN_*` pairs, the filler that spaces them, and two spin loops. `-DPM_SHIFT_FILL=1` shifts every address without changing any distance. |
 | `test.cpp` | host side; the pair to expect patched comes from `PM_PATCHED_DIST` (a distance, not an index). |
 
 The design is ordinary IRON -- `ObjectFifo`, `Worker`, `Lock`, `Buffer`, `Kernel`,
