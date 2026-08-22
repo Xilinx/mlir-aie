@@ -92,6 +92,8 @@ public:
     UsesMultiDimensionalBDs = 1U << 3,
     // Device supports BD per-execution base address advance.
     UsesBDIteration = 1U << 4,
+    // Device supports out-of-order S2MM DMA.
+    SupportsOutOfOrderDMA = 1U << 5,
   };
 
 private:
@@ -425,6 +427,10 @@ public:
   virtual uint32_t getNumSlaveSlots() const = 0;
   /// Return the largest packet id the stream switch can route.
   virtual uint32_t getMaxPacketId() const = 0;
+  /// Return the largest out-of-order BD id (unsupported = 0).
+  virtual uint32_t getMaxOutOfOrderId() const = 0;
+  /// Return the largest DMA task repeat count (unsupported = 0).
+  virtual uint32_t getMaxRepeatCount() const = 0;
 
   // Return true if the stream switch connection is legal, false otherwise.
   virtual bool isLegalTileConnection(int col, int row, WireBundle srcBundle,
@@ -504,6 +510,8 @@ public:
 
   uint32_t getNumSlaveSlots() const override { return 4; }
   uint32_t getMaxPacketId() const override { return 31; }
+  uint32_t getMaxOutOfOrderId() const override { return 0; }
+  uint32_t getMaxRepeatCount() const override { return 0; }
 
   std::optional<TileID> getMemWest(TileID src) const override;
   std::optional<TileID> getMemEast(TileID src) const override;
@@ -630,6 +638,7 @@ public:
     addModelProperty(AIETargetModel::UsesSemaphoreLocks);
     addModelProperty(AIETargetModel::UsesMultiDimensionalBDs);
     addModelProperty(AIETargetModel::UsesBDIteration);
+    addModelProperty(AIETargetModel::SupportsOutOfOrderDMA);
   }
 
   AIEArch getTargetArch() const override;
@@ -638,6 +647,8 @@ public:
 
   uint32_t getNumSlaveSlots() const override { return 4; }
   uint32_t getMaxPacketId() const override { return 31; }
+  uint32_t getMaxOutOfOrderId() const override { return 63; }
+  uint32_t getMaxRepeatCount() const override { return 255; }
 
   std::optional<TileID> getMemWest(TileID src) const override;
   std::optional<TileID> getMemEast(TileID src) const override;

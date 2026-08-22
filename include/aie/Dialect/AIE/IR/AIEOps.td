@@ -1047,39 +1047,39 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
     iteration there via the outermost `sizes`/`strides` dimension instead.
   }];
 
-  let arguments = (
-    ins AnyRankedOrUnrankedMemRef:$buffer,
-        // offset/len are denominated in element width (not bytes).
-        // Can be given as a static attribute or a runtime SSA value. If neither
-        // are given, we assume zero for the offset and the memref's full buffer
-        // length for the length.
-        Optional<I32>:$offset,
-        Optional<I32>:$len,
-        OptionalAttr<AIEI32Attr>:$static_offset,
-        OptionalAttr<AIEI32Attr>:$static_len,
-        // n-d tensor addressing: sizes/strides as a mixed static/dynamic index
-        // list (DynamicIndexList), mirroring aiex.npu.dma_memcpy_nd. A constant
-        // lands in static_sizes/static_strides; a runtime value becomes an
-        // operand. Outermost dimension first.
-        Variadic<I64>:$sizes,
-        Variadic<I64>:$strides,
-        OptionalAttr<DenseI64ArrayAttr>:$static_sizes,
-        OptionalAttr<DenseI64ArrayAttr>:$static_strides,
-        OptionalAttr<BDPadLayoutArrayAttr>:$pad_dimensions,
-        OptionalAttr<AIEI32Attr>:$bd_id,
-        OptionalAttr<PacketInfoAttr>:$packet,
-        DefaultValuedOptionalAttr<AIEI32Attr, "0">:$burst_length,
-        // The BD's iteration state; see the "## BD iteration" section above.
-        OptionalAttr<BDIterationAttr>:$iteration,
-        // if set, the aiex.scratchpad_parameter value added to the BD's address as an offset
-        OptionalAttr<FlatSymbolRefAttr>:$offset_parameter,
-        // Set by --aie-lower-scratchpad-parameters from $offset_parameter: the scratchpad
-        // state-table index whose value is used as the BD address offset.
-        // After lowering, $offset_parameter is removed in favor of this attribute.
-        OptionalAttr<UI8Attr>:$offset_state_table_idx,
-        // should never be assigned by user...
-        OptionalAttr<AIEI32Attr>:$next_bd_id
-  );
+  let arguments = (ins AnyRankedOrUnrankedMemRef:$buffer,
+      // offset/len are denominated in element width (not bytes).
+      // Can be given as a static attribute or a runtime SSA value. If neither
+      // are given, we assume zero for the offset and the memref's full buffer
+      // length for the length.
+      Optional<I32>:$offset, Optional<I32>:$len,
+      OptionalAttr<AIEI32Attr>:$static_offset,
+      OptionalAttr<AIEI32Attr>:$static_len,
+      // n-d tensor addressing: sizes/strides as a mixed static/dynamic index
+      // list (DynamicIndexList), mirroring aiex.npu.dma_memcpy_nd. A constant
+      // lands in static_sizes/static_strides; a runtime value becomes an
+      // operand. Outermost dimension first.
+      Variadic<I64>:$sizes, Variadic<I64>:$strides,
+      OptionalAttr<DenseI64ArrayAttr>:$static_sizes,
+      OptionalAttr<DenseI64ArrayAttr>:$static_strides,
+      OptionalAttr<BDPadLayoutArrayAttr>:$pad_dimensions,
+      OptionalAttr<AIEI32Attr>:$bd_id, OptionalAttr<PacketInfoAttr>:$packet,
+      // Sender-side id stamped into the packet header. Selects which receive
+      // BD (by bd id) an out-of-order S2MM channel places this data into.
+      OptionalAttr<AIEI32Attr>:$out_of_order_id,
+      DefaultValuedOptionalAttr<AIEI32Attr, "0">:$burst_length,
+      // The BD's iteration state; see the "## BD iteration" section above.
+      OptionalAttr<BDIterationAttr>:$iteration,
+      // if set, the aiex.scratchpad_parameter value added to the BD's address
+      // as an offset
+      OptionalAttr<FlatSymbolRefAttr>:$offset_parameter,
+      // Set by --aie-lower-scratchpad-parameters from $offset_parameter: the
+      // scratchpad state-table index whose value is used as the BD address
+      // offset. After lowering, $offset_parameter is removed in favor of this
+      // attribute.
+      OptionalAttr<UI8Attr>:$offset_state_table_idx,
+      // should never be assigned by user...
+      OptionalAttr<AIEI32Attr>:$next_bd_id);
 
   let hasVerifier = 1;
   let assemblyFormat = [{
@@ -1263,13 +1263,13 @@ def AIE_DMAStartOp: AIE_Op<"dma_start", [
     nonzero `pad_value` elsewhere.
   }];
 
-  let arguments = (
-    ins DMAChannelDir:$channel_dir,
-        ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$channel_index,
-        // repeat_count==0 means "do it once" and don't repeat
-        DefaultValuedAttr<AIEI32Attr, "0">:$repeat_count,
-        DefaultValuedOptionalAttr<AIEI32Attr, "0">:$pad_value
-  );
+  let arguments = (ins DMAChannelDir:$channel_dir,
+      ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$channel_index,
+      // repeat_count==0 means "do it once" and don't repeat
+      DefaultValuedAttr<AIEI32Attr, "0">:$repeat_count,
+      DefaultValuedOptionalAttr<AIEI32Attr, "0">:$pad_value,
+      // Put the channel into out-of-order mode (S2MM only).
+      UnitAttr:$out_of_order);
   let successors = (successor AnySuccessor:$dest, AnySuccessor:$chain);
   let assemblyFormat = [{
     `(` $channel_dir `,` $channel_index `,` $dest `,` $chain (`,` `repeat_count` `=` $repeat_count^)? `)` attr-dict
@@ -1293,16 +1293,16 @@ def AIE_DMAOp: AIE_Op<"dma", [
 
   let summary = "An op to describe a set of DMA operations.";
 
-  let arguments = (
-    ins DMAChannelDir:$channel_dir,
-        ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$channel_index,
-        DefaultValuedAttr<BoolAttr, "true">:$loop,
-        // repeat_count==0 means "do it once" and don't repeat
-        DefaultValuedAttr<AIEI32Attr, "0">:$repeat_count,
-        OptionalAttr<StrAttr>:$sym_name,
-        // Region form of aie.dma_start's pad_value; see its semantics there.
-        DefaultValuedOptionalAttr<AIEI32Attr, "0">:$pad_value
-  );
+  let arguments = (ins DMAChannelDir:$channel_dir,
+      ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$channel_index,
+      DefaultValuedAttr<BoolAttr, "true">:$loop,
+      // repeat_count==0 means "do it once" and don't repeat
+      DefaultValuedAttr<AIEI32Attr, "0">:$repeat_count,
+      OptionalAttr<StrAttr>:$sym_name,
+      // Region form of aie.dma_start's pad_value; see its semantics there.
+      DefaultValuedOptionalAttr<AIEI32Attr, "0">:$pad_value,
+      // Put the channel into out-of-order mode (S2MM only).
+      UnitAttr:$out_of_order);
   let regions = (region VariadicRegion<SizedRegion<1>>:$bds);
   let assemblyFormat = [{
     `(` $channel_dir `,` $channel_index `)`
