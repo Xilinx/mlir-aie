@@ -1,0 +1,59 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// An overlay calls back into the resident.
+//
+// Half the reason for exporting the resident's symbols to each overlay link is
+// that an overlay need not be self-contained: code every overlay needs can live
+// once, in the always-present part of program memory, rather than being
+// duplicated into every payload. Until now only the *data* path was exercised.
+//
+// Code fails differently from data. A data symbol bound to the wrong address
+// corrupts memory; a code symbol bound to the wrong address sends the core into
+// arbitrary bytes.
+//
+// And the resident helper has a failure mode of its own. Nothing in the
+// resident calls it -- the only caller is an overlay, linked separately and
+// afterwards -- so the resident's own link graph has no edge to it and
+// --gc-sections collects it unless it carries `retain`. The overlay holds pass
+// 1's address for it, so it would jump to whatever moved in.
+//
+// REQUIRES: ryzen_ai_npu2, peano
+//
+// RUN: rm -rf %t && mkdir -p %t
+// RUN: %PEANO_INSTALL_DIR/bin/clang++ --target=aie2p-none-unknown-elf -O2 -c %S/../resident.cc -o %t/resident.o
+// RUN: %python %S/../pm.py emit --recipe one_slot --slot-ld %t/slot.ld --phases 0 --out %t/d1.mlir
+// RUN: cd %t && %aiecc --tmpdir=%t/p1 --get-xclbin --xclbin-name=%t/p1.xclbin --get-npu-insts --npu-insts-name=%t/p1.bin %t/d1.mlir
+//
+// RUN: %PEANO_INSTALL_DIR/bin/clang++ --target=aie2p-none-unknown-elf -O2 -c %S/resident_call_overlay.cc -o %t/rc.o
+// RUN: %python %S/../pm.py link --object %t/rc.o --resident %t/p1 --recipe one_slot --output %t/ovl.elf
+// RUN: %python %S/../pm.py workload --tag 31661 --size 0x400 --output %t/poison.o --workdir %t
+// RUN: %python %S/../pm.py link --object %t/poison.o --resident %t/p1 --recipe one_slot --output %t/poison.elf
+//
+// The call is a direct jump to the resident's address for ovl_bias, not an
+// indirect one, and not a copy of the function inlined into the payload.
+// RUN: %PEANO_INSTALL_DIR/bin/llvm-readelf -s %t/p1/elfs_main_core_0_2/elfs_main_core_0_2.elf | FileCheck %s --check-prefix=RESIDENT
+// RESIDENT: FUNC {{ *}}GLOBAL {{ *}}DEFAULT {{.*}} ovl_bias
+//
+// RUN: %python %S/../pm.py emit --recipe one_slot --phases 0 --payload %t/ovl.elf --poison %t/poison.elf --out %t/d2.mlir
+// RUN: cd %t && %aiecc --tmpdir=%t/p2 --get-xclbin --xclbin-name=%t/aie.xclbin --get-npu-insts --npu-insts-name=%t/insts.bin %t/d2.mlir
+//
+// check is given the overlay, so it verifies the symbols the overlay imports
+// still exist in pass 2 -- not just that the ones present in both agree.
+// RUN: %python %S/../pm.py check %t/p1 %t/p2 --overlays %t/ovl.elf
+//
+// 77 from the overlay plus 100 from the resident helper.
+// RUN: %host_clang %S/../host.cpp -o %t/host.exe -std=c++17 -Wall %xrt_flags %host_link_flags %test_utils_flags
+// RUN: %t/host.exe -x %t/aie.xclbin -k MLIR_AIE -i %t/insts.bin --tags 177 | FileCheck %s
+// CHECK: phase 0: overlay 177 ok
+// CHECK: PASS!
+//
+// Without `retain` the helper is collected in pass 2 and the overlay is left
+// pointing at whatever took its address. The build has to catch that; the run
+// would not.
+// RUN: %PEANO_INSTALL_DIR/bin/clang++ --target=aie2p-none-unknown-elf -O2 -DPM_OVERLAY_NO_RETAIN -c %S/../resident.cc -o %t/resident.o
+// RUN: %python %S/../pm.py emit --recipe one_slot --phases 0 --payload %t/ovl.elf --poison %t/poison.elf --out %t/d3.mlir
+// RUN: cd %t && %aiecc --tmpdir=%t/p3 --get-xclbin --xclbin-name=%t/p3.xclbin --get-npu-insts --npu-insts-name=%t/p3.bin %t/d3.mlir
+// RUN: not %python %S/../pm.py check %t/p1 %t/p3 --overlays %t/ovl.elf 2>&1 | FileCheck %s --check-prefix=GONE
+// GONE: ovl_bias
+// GONE-SAME: imported by an overlay but are gone from pass 2

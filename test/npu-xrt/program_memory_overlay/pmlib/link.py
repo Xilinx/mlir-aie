@@ -22,6 +22,7 @@ from .elf import (
     find_core_elf,
     peano,
     read_elf,
+    undefined_symbols,
 )
 from .geometry import PROG_MEM_LINE, GeometryError
 
@@ -96,6 +97,19 @@ def link(
     ]
     if subprocess.run(cmd).returncode:
         raise OverlayError(f"linking {' '.join(objects)} into the slot failed")
+
+    # Record which resident symbols this overlay bound to, because the linked
+    # overlay no longer says. Every import was resolved to an absolute address
+    # here, so the finished ELF has no undefined symbols at all -- the
+    # information exists only in the input objects, and only at this moment.
+    # `check` needs it to notice a resident symbol that disappeared in pass 2,
+    # which is invisible to a comparison of the symbols the two passes share.
+    resident_syms = defined_symbols(resident_elf)
+    imports = set()
+    for obj in objects:
+        imports |= undefined_symbols(obj) & resident_syms.keys()
+    with open(f"{output}.imports", "w") as f:
+        f.write("\n".join(sorted(imports)))
 
     return verify(output, slot_base, slot_size, entry, geometry)
 

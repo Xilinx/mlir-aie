@@ -231,18 +231,20 @@ def cmd_check(args):
     a = defined_symbols(find_core_elf(args.a, *args.tile))
     b = defined_symbols(find_core_elf(args.b, *args.tile))
 
-    moved = sorted(
-        n for n, addr in a.items() if n in b and b[n] != addr and not n.startswith(".L")
-    )
-    if moved:
-        sys.exit(
-            f"the resident moved between passes: {moved[:8]} changed address, so "
-            f"every overlay referring to them is aimed at the wrong code"
-        )
-
+    # Read the imports recorded when each overlay was linked. The linked
+    # overlay itself cannot be asked: every import was resolved to an absolute
+    # address at that point, so it has no undefined symbols left.
     wanted = set()
     for e in args.overlays or []:
-        wanted |= undefined_symbols(e)
+        try:
+            with open(f"{e}.imports") as f:
+                wanted |= {n for n in f.read().split() if n}
+        except FileNotFoundError:
+            sys.exit(
+                f"{e}.imports is missing; it is written by `pm.py link`. Without "
+                f"it this check cannot tell which resident symbols the overlay "
+                f"needs, and a symbol that vanished in pass 2 would pass."
+            )
     vanished = sorted(n for n in wanted if n in a and n not in b)
     if vanished:
         sys.exit(
@@ -250,6 +252,18 @@ def cmd_check(args):
             f"from pass 2. A resident function called only from an overlay has no "
             f"caller in the resident's own link graph, so --gc-sections collects "
             f"it unless it is marked `retain`."
+        )
+
+    # After the vanished check: losing a resident symbol shrinks the image and
+    # moves everything below it, so reporting the movement first would name the
+    # symptom and bury the cause.
+    moved = sorted(
+        n for n, addr in a.items() if n in b and b[n] != addr and not n.startswith(".L")
+    )
+    if moved:
+        sys.exit(
+            f"the resident moved between passes: {moved[:8]} changed address, so "
+            f"every overlay referring to them is aimed at the wrong code"
         )
 
     print(
