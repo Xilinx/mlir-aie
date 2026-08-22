@@ -41,6 +41,25 @@ PROG_MEM_ECC_BYPASS_BASE = 0x24000
 # a single control packet can carry.
 PROG_MEM_LINE = 16
 
+# Distances in bytes from ovl_wait (where the core spins) to each overlay pair.
+# ovl.cc lays the pairs out to hit these exactly; check_pairs() verifies it.
+PAIR_DISTANCES = (
+    64,
+    384,
+    512,
+    640,
+    768,
+    896,
+    960,
+    1024,
+    1152,
+    1280,
+    1408,
+    2048,
+    4160,
+    8320,
+)
+
 CORE_CONTROL = 0x32000  # bit 0 ENABLE, bit 1 RESET
 DEBUG_CONTROL0 = 0x32010  # bit 0 DEBUG_HALT
 
@@ -153,8 +172,33 @@ def overlay_pair(elf_path, victim, donor):
     return v_addr, list(struct.unpack(f"<{d_size // 4}I", body))
 
 
+def check_pairs(elfs):
+    """Every pair is interchangeable in both builds and sits where it claims to."""
+    for d in PAIR_DISTANCES:
+        victim, donor = f"sel_d{d}_a", f"sel_d{d}_b"
+        vals = [overlay_pair(e, victim, donor) for e in elfs]
+        if len(set(map(str, vals))) != 1:
+            sys.exit(
+                f"core drifted between builds: {victim} is not identical across "
+                f"{elfs}; the emitted patch would target the wrong address"
+            )
+
+    # The distances are the whole point, so verify rather than trust ovl.cc's
+    # filler arithmetic to have survived a compiler change.
+    symbols, _ = _read_elf(elfs[0])
+    spin = symbols["ovl_wait"][0]
+    for d in PAIR_DISTANCES:
+        actual = spin - symbols[f"sel_d{d}_a"][0]
+        if actual != d:
+            sys.exit(
+                f"sel_d{d}_a is {actual} bytes from ovl_wait, not {d}; the "
+                f"filler in ovl.cc no longer produces the intended spacing"
+            )
+    print(f"core stable; pair distances verified: {list(PAIR_DISTANCES)}")
+
+
 def main():
-    """`--check A B`: the two builds agree on where the patch goes and what it is.
+    """`--check A B`: the two builds agree on where each patch goes and what it is.
 
     The design is emitted twice -- once to produce the core ELF, once with the
     patch derived from it -- and the second build recompiles the core rather than
@@ -167,34 +211,7 @@ def main():
     p.add_argument("--row", type=int, default=2)
     args = p.parse_args()
 
-    elfs = [find_core_elf(d, args.col, args.row) for d in args.check]
-
-    for pair in ("near", "far"):
-        victim, donor = f"sel_{pair}_a", f"sel_{pair}_b"
-        a, b = (overlay_pair(e, victim, donor) for e in elfs)
-        if a != b:
-            sys.exit(
-                f"core drifted between builds: {args.check[0]} put {victim} at "
-                f"0x{a[0]:x} with patch {[hex(w) for w in a[1]]}, but "
-                f"{args.check[1]} put it at 0x{b[0]:x} with "
-                f"{[hex(w) for w in b[1]]}. The emitted patch targets the wrong "
-                f"address."
-            )
-
-    # The whole point of the near/far split is the distance from the spin loop,
-    # so report it rather than trusting the source ordering to have worked.
-    symbols, _ = _read_elf(elfs[0])
-    spin = symbols["ovl_wait"][0]
-    dists = {pair: abs(symbols[f"sel_{pair}_a"][0] - spin) for pair in ("near", "far")}
-    if dists["far"] <= dists["near"]:
-        sys.exit(
-            f"far pair is not farther from ovl_wait than the near pair "
-            f"({dists}); the filler in ovl.cc is not separating them"
-        )
-    print(
-        f"core stable: sel_near_a {dists['near']} bytes from ovl_wait, "
-        f"sel_far_a {dists['far']} bytes"
-    )
+    check_pairs([find_core_elf(d, args.col, args.row) for d in args.check])
 
 
 if __name__ == "__main__":

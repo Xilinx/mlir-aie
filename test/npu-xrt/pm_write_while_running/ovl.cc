@@ -5,29 +5,29 @@
 //
 //===----------------------------------------------------------------------===//
 
-// Resident code for the program-memory-write-while-running experiment.
+// Resident code for the program-memory-write experiment.
 //
-// sel_*_a and sel_*_b are the "overlay" pairs. Peano compiles each to a single
-// 32-byte, 16-byte-aligned, branch-free block that differs in exactly one word
-// (the `mova r0, #N` feeding the store), so sel_b's bytes can be copied over
-// sel_a's address with no relinking -- AIE2P encodes data as inline immediates
-// and only control transfers as absolute addresses. 32 bytes is two whole
-// program-memory lines, so the write cannot straddle an ECC granule.
+// Each sel_dN_a / sel_dN_b is an "overlay" pair. Peano compiles each to a
+// single 32-byte, 16-byte-aligned, branch-free block that differs in exactly
+// one word (the `mova r0, #N` feeding the store), so sel_dN_b's bytes can be
+// copied over sel_dN_a's address with no relinking -- AIE2P encodes data as
+// inline immediates and only control transfers as absolute addresses. 32 bytes
+// is two whole program-memory lines, so the write cannot straddle an ECC
+// granule.
 //
-// There are two pairs because "can program memory be written under a running
-// core" turned out to depend on *where*. The near pair sits next to the spin
-// loop; the far pair sits thousands of bytes away, which is the geometry a real
-// overlay load has. See README.md.
-//
-// They write through an out-pointer rather than returning a value because
-// iron.ExternalFunction declares argument types only; it has no return type.
+// There are several pairs because whether a write lands turned out to depend on
+// how far it is from the program counter, not on the core's state. The N in
+// each name is the intended distance in bytes from ovl_wait, where the core
+// spins; overlay_elf.py checks the linked addresses actually match. The fillers
+// between them exist only to create that spacing.
 //
 // The attributes are all load-bearing:
 //   noinline, weak  keep the caller from constant-propagating the stored value
 //                   (`noinline` alone does not stop IPSCCP; without `weak` the
 //                   call site folds to `mova r0, #0x7` and patching does
 //                   nothing observable)
-//   used, retain    keep sel_b, which nothing calls, alive against
+//   used, retain    keep the sel_dN_b halves, which nothing calls, alive
+//   against
 //                   -Wl,--gc-sections (emits SHF_GNU_RETAIN)
 
 #include <cstdint>
@@ -38,17 +38,14 @@
     *out = val;                                                                \
   }
 
-// Two interchangeable pairs at opposite ends of the program, so a variant can
-// choose how far the write lands from the program counter. Emitted before the
-// filler, so these come first in .text and end up thousands of bytes below the
-// spin loop.
-SEL(sel_far_a, 7)
-SEL(sel_far_b, 9)
+#define PAIR(d)                                                                \
+  SEL(sel_d##d##_a, 7)                                                         \
+  SEL(sel_d##d##_b, 9)
 
-// Filler, purely to separate the two pairs. Each is a distinct retained
-// function, so the linker cannot fold them together. The trailing `;` on each
-// invocation is an empty-declaration; without it clang-format runs the
-// following declarations on as if they were one expression.
+// Filler. Each is a distinct retained function, so the linker cannot fold them
+// together. FILL8 is 8 * 32 = 256 bytes. The trailing `;` on each invocation is
+// an empty-declaration; without it clang-format runs the following declarations
+// on as if they were one expression.
 #define FILL8(n)                                                               \
   SEL(fill_##n##0, 1)                                                          \
   SEL(fill_##n##1, 1)                                                          \
@@ -59,24 +56,64 @@ SEL(sel_far_b, 9)
   SEL(fill_##n##6, 1)                                                          \
   SEL(fill_##n##7, 1)
 
-#define FILL64(n)                                                              \
+#define FILL2(n)                                                               \
+  SEL(fill_##n##0, 1)                                                          \
+  SEL(fill_##n##1, 1)
+
+#define FILL32(n)                                                              \
   FILL8(n##0)                                                                  \
   FILL8(n##1)                                                                  \
   FILL8(n##2)                                                                  \
-  FILL8(n##3)                                                                  \
-  FILL8(n##4)                                                                  \
-  FILL8(n##5)                                                                  \
-  FILL8(n##6)                                                                  \
-  FILL8(n##7)
+  FILL8(n##3)
 
-FILL64(a);
+#define FILL64(n)                                                              \
+  FILL32(n##0)                                                                 \
+  FILL32(n##1)
+
+#define FILL128(n)                                                             \
+  FILL64(n##0)                                                                 \
+  FILL64(n##1)
+
+// Shifts every absolute address up without changing any pair's distance from
+// ovl_wait. Set to confirm that what matters is which 4 KB region of program
+// memory a write lands in, not how far it is from the program counter: with a
+// shift, the same distance falls on the other side of a region boundary.
+#ifndef PM_SHIFT_FILL
+#define PM_SHIFT_FILL 0
+#endif
+#if PM_SHIFT_FILL
+FILL64(z);
+#endif
+
+// Emitted farthest-first: .text follows source order and ovl_wait is last, so
+// each pair's distance is the total size of everything after it.
+PAIR(8320)
+FILL128(a);
+PAIR(4160)
 FILL64(b);
-FILL64(c);
-FILL64(d);
-
-// Emitted last, so these land immediately below ovl_wait -- the adjacent case.
-SEL(sel_near_a, 7)
-SEL(sel_near_b, 9)
+PAIR(2048)
+FILL8(c0);
+FILL8(c1);
+FILL2(c2);
+PAIR(1408)
+FILL2(c3);
+PAIR(1280)
+FILL2(c4);
+PAIR(1152)
+FILL2(c5);
+PAIR(1024)
+PAIR(960)
+PAIR(896)
+FILL2(d);
+PAIR(768)
+FILL2(e);
+PAIR(640)
+FILL2(f);
+PAIR(512)
+FILL2(g);
+PAIR(384)
+FILL8(h);
+PAIR(64)
 
 // Spin until the host sets the flag, then clear it for the next round. The
 // pointer must be volatile: this has to stay a real fetch loop so that the core

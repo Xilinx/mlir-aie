@@ -5,25 +5,29 @@
 #
 
 # Can an AIE core's program memory be rewritten while the core is enabled and
-# fetching? See README.md for the variant matrix and the measured answer.
+# fetching? See README.md for the full matrix and the measured answer.
+#
+# Two independent axes:
+#   --variant  what the core is doing when the write lands (A no write,
+#              B running, C debug-halted, D disabled, E ECC-bypass alias,
+#              F stalled on a lock)
+#   --pair     how far the write lands from the program counter, in bytes
+#
+# Distance is what actually decides the outcome, so the interesting cases are
+# B at the largest distance (a running core, written far away) versus B at the
+# smallest. The core calls every pair each round and reports one word each, so
+# whichever pairs a run does not patch are controls within that same run.
 #
 # Run twice. The first pass (no --elf) emits the design, which aiecc compiles
-# into a core ELF. The second pass (--elf <tmpdir>) reads the chosen sel_*_a /
-# sel_*_b pair out of that ELF and emits the same design plus a program-memory
-# patch aimed at that pair's address. The second build recompiles the core rather than reusing the first
-# ELF, so each variant is followed by `overlay_elf.py --check`, which fails if
+# into a core ELF. The second pass (--elf <tmpdir>) reads the chosen pair out of
+# that ELF and emits the same design plus a program-memory patch aimed at that
+# pair's address. The second build recompiles the core rather than reusing the
+# first ELF, so each case is followed by `overlay_elf.py --check`, which fails if
 # the core moved and the patch would land on the wrong address.
 #
-# Only the variants that are deterministic on hardware are checked here:
-#   A  no write                       -> neither half changes
-#   C  near write, core debug-halted  -> near half becomes 9
-#   D  near write, core disabled      -> near half becomes 9
-#   F  near write, core lock-stalled  -> near half becomes 9
-#   G  far write, core running        -> far half becomes 9
-#   H  far write, core debug-halted   -> far half becomes 9
-# B and E write next to the program counter while the core runs, which lands only
-# about half the time. Asserting either way would make this test flaky, so they
-# are left out -- but --variant still builds them to reproduce the measurement.
+# Only cases that are deterministic on hardware are asserted here. Writes close
+# to the program counter land about half the time; --pair still builds them so
+# the sweep in README.md can be reproduced.
 #
 # The generation steps write via --out rather than shell redirection: the
 # %run_on_npuN% guard for the other device expands to "echo", and a redirect
@@ -39,47 +43,47 @@
 # RUN: %run_on_npu2% %python %S/aie2.py --dev npu2 --out design.mlir
 # RUN: %aiecc --tmpdir=p1 --get-xclbin --xclbin-name=p1.xclbin --get-npu-insts --npu-insts-name=p1.bin ./design.mlir
 #
-# RUN: %run_on_npu1% %python %S/aie2.py --dev npu1 --variant A --elf p1 --out final_A.mlir
-# RUN: %run_on_npu2% %python %S/aie2.py --dev npu2 --variant A --elf p1 --out final_A.mlir
+# RUN: %run_on_npu1% %python %S/aie2.py --dev npu1 --variant A --pair 64 --elf p1 --out final_A.mlir
+# RUN: %run_on_npu2% %python %S/aie2.py --dev npu2 --variant A --pair 64 --elf p1 --out final_A.mlir
 # RUN: %aiecc --tmpdir=pA --get-xclbin --xclbin-name=aieA.xclbin --get-npu-insts --npu-insts-name=instsA.bin ./final_A.mlir
 # RUN: %python %S/overlay_elf.py --check p1 pA
-# RUN: %run_on_npu1% env PM_EXPECT_NEAR1=7 PM_EXPECT_FAR1=7 ./test.exe -x aieA.xclbin -k MLIR_AIE -i instsA.bin
-# RUN: %run_on_npu2% env PM_EXPECT_NEAR1=7 PM_EXPECT_FAR1=7 ./test.exe -x aieA.xclbin -k MLIR_AIE -i instsA.bin
+# RUN: %run_on_npu1% env PM_PATCHED_DIST=-1 ./test.exe -x aieA.xclbin -k MLIR_AIE -i instsA.bin
+# RUN: %run_on_npu2% env PM_PATCHED_DIST=-1 ./test.exe -x aieA.xclbin -k MLIR_AIE -i instsA.bin
 #
-# RUN: %run_on_npu1% %python %S/aie2.py --dev npu1 --variant C --elf p1 --out final_C.mlir
-# RUN: %run_on_npu2% %python %S/aie2.py --dev npu2 --variant C --elf p1 --out final_C.mlir
-# RUN: %aiecc --tmpdir=pC --get-xclbin --xclbin-name=aieC.xclbin --get-npu-insts --npu-insts-name=instsC.bin ./final_C.mlir
-# RUN: %python %S/overlay_elf.py --check p1 pC
-# RUN: %run_on_npu1% env PM_EXPECT_NEAR1=9 PM_EXPECT_FAR1=7 ./test.exe -x aieC.xclbin -k MLIR_AIE -i instsC.bin
-# RUN: %run_on_npu2% env PM_EXPECT_NEAR1=9 PM_EXPECT_FAR1=7 ./test.exe -x aieC.xclbin -k MLIR_AIE -i instsC.bin
+# RUN: %run_on_npu1% %python %S/aie2.py --dev npu1 --variant C --pair 64 --elf p1 --out final_Cn.mlir
+# RUN: %run_on_npu2% %python %S/aie2.py --dev npu2 --variant C --pair 64 --elf p1 --out final_Cn.mlir
+# RUN: %aiecc --tmpdir=pCn --get-xclbin --xclbin-name=aieCn.xclbin --get-npu-insts --npu-insts-name=instsCn.bin ./final_Cn.mlir
+# RUN: %python %S/overlay_elf.py --check p1 pCn
+# RUN: %run_on_npu1% env PM_PATCHED_DIST=64 ./test.exe -x aieCn.xclbin -k MLIR_AIE -i instsCn.bin
+# RUN: %run_on_npu2% env PM_PATCHED_DIST=64 ./test.exe -x aieCn.xclbin -k MLIR_AIE -i instsCn.bin
 #
-# RUN: %run_on_npu1% %python %S/aie2.py --dev npu1 --variant D --elf p1 --out final_D.mlir
-# RUN: %run_on_npu2% %python %S/aie2.py --dev npu2 --variant D --elf p1 --out final_D.mlir
-# RUN: %aiecc --tmpdir=pD --get-xclbin --xclbin-name=aieD.xclbin --get-npu-insts --npu-insts-name=instsD.bin ./final_D.mlir
-# RUN: %python %S/overlay_elf.py --check p1 pD
-# RUN: %run_on_npu1% env PM_EXPECT_NEAR1=9 PM_EXPECT_FAR1=7 ./test.exe -x aieD.xclbin -k MLIR_AIE -i instsD.bin
-# RUN: %run_on_npu2% env PM_EXPECT_NEAR1=9 PM_EXPECT_FAR1=7 ./test.exe -x aieD.xclbin -k MLIR_AIE -i instsD.bin
+# RUN: %run_on_npu1% %python %S/aie2.py --dev npu1 --variant D --pair 64 --elf p1 --out final_Dn.mlir
+# RUN: %run_on_npu2% %python %S/aie2.py --dev npu2 --variant D --pair 64 --elf p1 --out final_Dn.mlir
+# RUN: %aiecc --tmpdir=pDn --get-xclbin --xclbin-name=aieDn.xclbin --get-npu-insts --npu-insts-name=instsDn.bin ./final_Dn.mlir
+# RUN: %python %S/overlay_elf.py --check p1 pDn
+# RUN: %run_on_npu1% env PM_PATCHED_DIST=64 ./test.exe -x aieDn.xclbin -k MLIR_AIE -i instsDn.bin
+# RUN: %run_on_npu2% env PM_PATCHED_DIST=64 ./test.exe -x aieDn.xclbin -k MLIR_AIE -i instsDn.bin
 #
-# RUN: %run_on_npu1% %python %S/aie2.py --dev npu1 --variant F --elf p1 --out final_F.mlir
-# RUN: %run_on_npu2% %python %S/aie2.py --dev npu2 --variant F --elf p1 --out final_F.mlir
-# RUN: %aiecc --tmpdir=pF --get-xclbin --xclbin-name=aieF.xclbin --get-npu-insts --npu-insts-name=instsF.bin ./final_F.mlir
-# RUN: %python %S/overlay_elf.py --check p1 pF
-# RUN: %run_on_npu1% env PM_EXPECT_NEAR1=9 PM_EXPECT_FAR1=7 ./test.exe -x aieF.xclbin -k MLIR_AIE -i instsF.bin
-# RUN: %run_on_npu2% env PM_EXPECT_NEAR1=9 PM_EXPECT_FAR1=7 ./test.exe -x aieF.xclbin -k MLIR_AIE -i instsF.bin
+# RUN: %run_on_npu1% %python %S/aie2.py --dev npu1 --variant F --pair 64 --elf p1 --out final_Fn.mlir
+# RUN: %run_on_npu2% %python %S/aie2.py --dev npu2 --variant F --pair 64 --elf p1 --out final_Fn.mlir
+# RUN: %aiecc --tmpdir=pFn --get-xclbin --xclbin-name=aieFn.xclbin --get-npu-insts --npu-insts-name=instsFn.bin ./final_Fn.mlir
+# RUN: %python %S/overlay_elf.py --check p1 pFn
+# RUN: %run_on_npu1% env PM_PATCHED_DIST=64 ./test.exe -x aieFn.xclbin -k MLIR_AIE -i instsFn.bin
+# RUN: %run_on_npu2% env PM_PATCHED_DIST=64 ./test.exe -x aieFn.xclbin -k MLIR_AIE -i instsFn.bin
 #
-# RUN: %run_on_npu1% %python %S/aie2.py --dev npu1 --variant G --elf p1 --out final_G.mlir
-# RUN: %run_on_npu2% %python %S/aie2.py --dev npu2 --variant G --elf p1 --out final_G.mlir
-# RUN: %aiecc --tmpdir=pG --get-xclbin --xclbin-name=aieG.xclbin --get-npu-insts --npu-insts-name=instsG.bin ./final_G.mlir
-# RUN: %python %S/overlay_elf.py --check p1 pG
-# RUN: %run_on_npu1% env PM_EXPECT_NEAR1=7 PM_EXPECT_FAR1=9 ./test.exe -x aieG.xclbin -k MLIR_AIE -i instsG.bin
-# RUN: %run_on_npu2% env PM_EXPECT_NEAR1=7 PM_EXPECT_FAR1=9 ./test.exe -x aieG.xclbin -k MLIR_AIE -i instsG.bin
+# RUN: %run_on_npu1% %python %S/aie2.py --dev npu1 --variant B --pair 8320 --elf p1 --out final_Bf.mlir
+# RUN: %run_on_npu2% %python %S/aie2.py --dev npu2 --variant B --pair 8320 --elf p1 --out final_Bf.mlir
+# RUN: %aiecc --tmpdir=pBf --get-xclbin --xclbin-name=aieBf.xclbin --get-npu-insts --npu-insts-name=instsBf.bin ./final_Bf.mlir
+# RUN: %python %S/overlay_elf.py --check p1 pBf
+# RUN: %run_on_npu1% env PM_PATCHED_DIST=8320 ./test.exe -x aieBf.xclbin -k MLIR_AIE -i instsBf.bin
+# RUN: %run_on_npu2% env PM_PATCHED_DIST=8320 ./test.exe -x aieBf.xclbin -k MLIR_AIE -i instsBf.bin
 #
-# RUN: %run_on_npu1% %python %S/aie2.py --dev npu1 --variant H --elf p1 --out final_H.mlir
-# RUN: %run_on_npu2% %python %S/aie2.py --dev npu2 --variant H --elf p1 --out final_H.mlir
-# RUN: %aiecc --tmpdir=pH --get-xclbin --xclbin-name=aieH.xclbin --get-npu-insts --npu-insts-name=instsH.bin ./final_H.mlir
-# RUN: %python %S/overlay_elf.py --check p1 pH
-# RUN: %run_on_npu1% env PM_EXPECT_NEAR1=7 PM_EXPECT_FAR1=9 ./test.exe -x aieH.xclbin -k MLIR_AIE -i instsH.bin
-# RUN: %run_on_npu2% env PM_EXPECT_NEAR1=7 PM_EXPECT_FAR1=9 ./test.exe -x aieH.xclbin -k MLIR_AIE -i instsH.bin
+# RUN: %run_on_npu1% %python %S/aie2.py --dev npu1 --variant C --pair 8320 --elf p1 --out final_Cf.mlir
+# RUN: %run_on_npu2% %python %S/aie2.py --dev npu2 --variant C --pair 8320 --elf p1 --out final_Cf.mlir
+# RUN: %aiecc --tmpdir=pCf --get-xclbin --xclbin-name=aieCf.xclbin --get-npu-insts --npu-insts-name=instsCf.bin ./final_Cf.mlir
+# RUN: %python %S/overlay_elf.py --check p1 pCf
+# RUN: %run_on_npu1% env PM_PATCHED_DIST=8320 ./test.exe -x aieCf.xclbin -k MLIR_AIE -i instsCf.bin
+# RUN: %run_on_npu2% env PM_PATCHED_DIST=8320 ./test.exe -x aieCf.xclbin -k MLIR_AIE -i instsCf.bin
 
 import argparse
 
@@ -115,6 +119,7 @@ from aie.ir import (
 from overlay_elf import (
     CORE_CONTROL,
     DEBUG_CONTROL0,
+    PAIR_DISTANCES,
     PROG_MEM_BASE,
     PROG_MEM_ECC_BYPASS_BASE,
     find_core_elf,
@@ -122,8 +127,9 @@ from overlay_elf import (
 )
 
 CORE_COL, CORE_ROW = 0, 2
-BATCH = 8  # words collected per round: HALF for the near pair, HALF for the far
-HALF = BATCH // 2
+# One output word per overlay pair. A run patches exactly one of them, so the
+# rest are controls in every single run.
+BATCH = len(PAIR_DISTANCES)
 ROUNDS = 2
 PATCH_SYM = "pm_patch"
 
@@ -134,14 +140,7 @@ VARIANTS = {
     "D": "as B, but bracketed by a core disable/enable (CORE_CONTROL bit 0)",
     "E": "as B, but through the ECC-bypass alias at 0x24000",
     "F": "write while the core is enabled but stalled on a lock acquire",
-    "G": "as B, but the write lands far from the PC -- real overlay geometry",
-    "H": "control for G: same far write, but with the core debug-halted",
 }
-
-# B writes next to the spin loop; G writes thousands of bytes away. Comparing
-# them separates "a config write contends with fetch anywhere" from "the core
-# had already fetched the bytes being overwritten".
-FAR_VARIANTS = {"G", "H"}
 
 OVL_OBJ = "ovl.o"  # built from ovl.cc by the RUN lines above
 
@@ -151,27 +150,28 @@ DESCRIPTION = """\
 Emit the program-memory-write experiment as MLIR.
 
 The core runs two rounds, spinning in ovl_wait() each round until the host
-releases it, then calling both sel_near_a() and sel_far_a() and reporting them in
-separate halves of the output. Both read 7 unpatched. Between the rounds the
-runtime sequence overwrites one pair's program memory with its partner's bytes,
-so that half reads 9 if the write took effect and the other half is a control.
-The variant selects the core's state and how far the write lands from the
-program counter. See README.md."""
+releases it, then calling every sel_dN_a() and reporting one word each. All read
+7 unpatched. Between the rounds the runtime sequence overwrites one pair's
+program memory with its partner's bytes, so that word reads 9 if the write took
+effect and the others are controls. --variant selects what the core is doing at
+that moment; --pair selects how far the write lands from the program counter.
+See README.md."""
 
 
-def build(dev, variant, elf):
+def build(dev, variant, pair, elf):
     """Build the design with IRON and return the resolved MLIR module.
 
     Args:
         dev: the target Device.
         variant: key into VARIANTS, or None for pass 1 (no patch emitted).
+        pair: which PAIR_DISTANCES entry to patch, i.e. how far the write lands
+            from the program counter.
         elf: path to the pass-1 core ELF the patch is derived from, or None.
     """
-    # The core calls both pairs every round and reports them in separate halves
-    # of the output, so one build serves every variant and a single run shows
-    # the near and far cases side by side under identical conditions.
-    pair = "far" if variant in FAR_VARIANTS else "near"
-    patch = overlay_pair(elf, f"sel_{pair}_a", f"sel_{pair}_b") if elf else None
+    # The core calls every pair each round and reports one word each, so a
+    # single build serves every (variant, distance) combination and the pairs
+    # that were not patched act as controls within the same run.
+    patch = overlay_pair(elf, f"sel_d{pair}_a", f"sel_d{pair}_b") if elf else None
     i32 = np.dtype[np.int32]
     host_shape = (ROUNDS, BATCH)  # one row per round
     host_ty = np.ndarray[host_shape, i32]
@@ -184,8 +184,7 @@ def build(dev, variant, elf):
     # @iron.jit, and this design is handed to aiecc directly. The RUN lines
     # compile ovl.cc to ovl.o first; both symbols live in it.
     ovl_wait = Kernel("ovl_wait", OVL_OBJ, [word_ty])
-    sel_near = Kernel("sel_near_a", OVL_OBJ, [word_ty])
-    sel_far = Kernel("sel_far_a", OVL_OBJ, [word_ty])
+    sels = [Kernel(f"sel_d{d}_a", OVL_OBJ, [word_ty]) for d in PAIR_DISTANCES]
 
     # Host-driven, one release per round. Holding it back is what parks the core
     # on a lock acquire instead of in ovl_wait's fetch loop.
@@ -206,24 +205,21 @@ def build(dev, variant, elf):
 
     of_out = ObjectFifo(batch_ty, name="out")
 
-    def core_fn(out_prod, gate, flag, sel_out, ovl_wait, sel_near, sel_far):
+    def core_fn(out_prod, gate, flag, sel_out, ovl_wait, *sels):
         for _ in range_(ROUNDS):
             gate.acquire(1)
             ovl_wait(flag)
             elem = out_prod.acquire(1)
-            # Lower half reports the near pair, upper half the far pair. The
-            # indices are plain Python ints, so these unroll into constant
+            # Plain Python enumerate, so these unroll into constant-index
             # stores rather than needing index arithmetic on an SSA value.
-            for sel, base in ((sel_near, 0), (sel_far, HALF)):
+            for i, sel in enumerate(sels):
                 sel(sel_out)
-                v = sel_out[0]
-                for i in range(HALF):
-                    elem[base + i] = v
+                elem[i] = sel_out[0]
             out_prod.release(1)
 
     worker = Worker(
         core_fn,
-        [of_out.prod(), gate, flag, sel_out, ovl_wait, sel_near, sel_far],
+        [of_out.prod(), gate, flag, sel_out, ovl_wait, *sels],
         tile=compute_tile,
         while_true=False,
     )
@@ -349,6 +345,13 @@ def main():
     )
     p.add_argument("--dev", required=True, help="npu1 or npu2")
     p.add_argument("--variant", choices=sorted(VARIANTS), help="omit for pass 1")
+    p.add_argument(
+        "--pair",
+        type=int,
+        choices=PAIR_DISTANCES,
+        default=PAIR_DISTANCES[0],
+        help="bytes from the program counter to the write; see README.md",
+    )
     p.add_argument("--elf", help="pass-1 core ELF, or the aiecc tmpdir holding it")
     p.add_argument("--out", required=True, help="where to write the MLIR")
     args = p.parse_args()
@@ -357,7 +360,7 @@ def main():
         p.error("--variant and --elf go together: both for pass 2, neither for pass 1")
 
     elf = find_core_elf(args.elf, CORE_COL, CORE_ROW) if args.elf else None
-    module = build(from_name(args.dev, n_cols=1), args.variant, elf)
+    module = build(from_name(args.dev, n_cols=1), args.variant, args.pair, elf)
     with open(args.out, "w") as f:
         print(module, file=f)
 

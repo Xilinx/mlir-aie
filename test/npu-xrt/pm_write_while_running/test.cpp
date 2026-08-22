@@ -25,24 +25,19 @@
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
 
-constexpr int BATCH = 8;
-constexpr int HALF = BATCH / 2;     // [0,HALF) near pair, [HALF,BATCH) far pair
+// Must match PAIR_DISTANCES in overlay_elf.py.
+constexpr int DISTANCES[] = {64,   384,  512,  640,  768,  896,  960,
+                             1024, 1152, 1280, 1408, 2048, 4160, 8320};
+constexpr int BATCH = sizeof(DISTANCES) / sizeof(DISTANCES[0]);
 constexpr int OUT_SIZE = 2 * BATCH; // round0 || round1
 constexpr uint32_t SEL_A = 7;
 constexpr uint32_t SEL_B = 9;
 
-// One half of one round: every word must agree (the core fans a single result
-// across it, so a mixed half is a torn read, not a half-applied patch).
-static uint32_t read_half(const uint32_t *out, int round, int base,
-                          const char *what, int &errors) {
-  const uint32_t *p = out + round * BATCH + base;
-  for (int i = 1; i < HALF; i++)
-    if (p[i] != p[0]) {
-      std::cout << "round" << round << " " << what << "[" << i << "] = " << p[i]
-                << " != " << p[0] << "\n";
-      errors++;
-    }
-  return p[0];
+static void print_round(const uint32_t *out, int round) {
+  std::cout << "round" << round << ":";
+  for (int i = 0; i < BATCH; i++)
+    std::cout << "  d" << DISTANCES[i] << "=" << out[round * BATCH + i];
+  std::cout << "\n";
 }
 
 int main(int argc, const char *argv[]) {
@@ -52,13 +47,19 @@ int main(int argc, const char *argv[]) {
   cxxopts::ParseResult vm;
   test_utils::parse_options(argc, argv, options, vm);
 
-  // Which half the variant patches; the other must stay untouched.
-  auto expect = [](const char *var) {
-    const char *e = std::getenv(var);
-    return e ? static_cast<uint32_t>(std::atoi(e)) : SEL_A;
-  };
-  uint32_t expectNear = expect("PM_EXPECT_NEAR1");
-  uint32_t expectFar = expect("PM_EXPECT_FAR1");
+  // The pair this run patches, named by distance; every other pair is a
+  // control.
+  const char *distEnv = std::getenv("PM_PATCHED_DIST");
+  int patchedDist = distEnv ? std::atoi(distEnv) : -1;
+  int patched = -1;
+  for (int i = 0; i < BATCH; i++)
+    if (DISTANCES[i] == patchedDist)
+      patched = i;
+  if (patchedDist >= 0 && patched < 0) {
+    std::cout << "PM_PATCHED_DIST=" << patchedDist
+              << " is not one of the sweep distances\n";
+    return 1;
+  }
 
   std::vector<uint32_t> instr_v =
       test_utils::load_instr_binary(vm["instr"].as<std::string>());
@@ -102,38 +103,27 @@ int main(int argc, const char *argv[]) {
 
   int errors = 0;
 
-  uint32_t near0 = read_half(bufOut, 0, 0, "near", errors);
-  uint32_t far0 = read_half(bufOut, 0, HALF, "far", errors);
-  uint32_t near1 = read_half(bufOut, 1, 0, "near", errors);
-  uint32_t far1 = read_half(bufOut, 1, HALF, "far", errors);
+  print_round(bufOut, 0);
+  print_round(bufOut, 1);
 
-  std::cout << "round0 near = " << near0 << "  far = " << far0
-            << "  (unpatched)\n";
-  std::cout << "round1 near = " << near1 << "  far = " << far1
-            << "  (expected near " << expectNear << ", far " << expectFar
-            << ")\n";
-
-  if (near0 != SEL_A || far0 != SEL_A) {
-    std::cout << "round0 must be " << SEL_A
-              << " in both halves: the design is broken independently of the "
-                 "patch\n";
-    errors++;
-  }
-
-  struct {
-    const char *what;
-    uint32_t got, want;
-  } checks[] = {{"near", near1, expectNear}, {"far", far1, expectFar}};
-  for (auto &c : checks) {
-    if (c.got == c.want)
+  for (int i = 0; i < BATCH; i++) {
+    if (bufOut[i] != SEL_A) {
+      std::cout << "round0 d" << DISTANCES[i] << " = " << bufOut[i] << ", must "
+                << "be " << SEL_A
+                << ": the design is broken independently of the patch\n";
+      errors++;
+    }
+    uint32_t got = bufOut[BATCH + i];
+    uint32_t want = (i == patched) ? SEL_B : SEL_A;
+    if (got == want)
       continue;
-    std::cout << c.what << " half: ";
-    if (c.got == SEL_A)
+    std::cout << "round1 d" << DISTANCES[i] << ": ";
+    if (got == SEL_A)
       std::cout << "program memory write did not take effect\n";
-    else if (c.got == SEL_B)
+    else if (got == SEL_B)
       std::cout << "program memory was patched when it should not have been\n";
     else
-      std::cout << "got " << c.got << ", neither " << SEL_A << " nor " << SEL_B
+      std::cout << "got " << got << ", neither " << SEL_A << " nor " << SEL_B
                 << ": the write landed partially or corrupted the line\n";
     errors++;
   }
