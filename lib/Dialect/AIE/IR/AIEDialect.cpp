@@ -2694,8 +2694,8 @@ LogicalResult DMABDOp::verify() {
 
   if (auto axcache = getAxcache()) {
     if (!parentTile.isShimNOCTile()) {
-        return emitOpError("AxCACHE is only supported in Shim NOC tiles "
-                       "that are connected to the memory-mapped NOC.");
+      return emitOpError("AxCACHE is only supported in Shim NOC tiles "
+                         "that are connected to the memory-mapped NOC.");
     }
     if (axcache > 0xF) {
       return emitOpError("AxCache value out of 4-bit range.");
