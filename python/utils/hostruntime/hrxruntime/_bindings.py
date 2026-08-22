@@ -347,6 +347,7 @@ class _HrxLib:
             _status_t,
             [_handle, ctypes.c_char_p, ctypes.POINTER(ctypes.c_uint32)],
         )
+        self.hrx_executable_retain = decl("hrx_executable_retain", None, [_handle])
         self.hrx_executable_release = decl("hrx_executable_release", None, [_handle])
 
         # Dispatch / sync

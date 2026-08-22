@@ -188,11 +188,15 @@ static DenseIntElementsAttr cachedBlockWriteData(
   return data;
 }
 
-void appendBlockWrite(
+LogicalResult appendBlockWrite(
     std::vector<uint32_t> &instructions, NpuBlockWriteOp op,
     mlir::SymbolTable &symTab,
     llvm::DenseMap<mlir::StringAttr, DenseIntElementsAttr> &dataCache) {
   std::optional<uint32_t> address = op.getAbsoluteAddress();
+  if (!address)
+    return op.emitOpError(
+        "Cannot translate blockwrite with unresolved address to a static TXN "
+        "binary");
   DenseIntElementsAttr data = cachedBlockWriteData(op, symTab, dataCache);
 
   // Resolve the payload words via the (cached) data attribute, then hand off to
@@ -213,6 +217,7 @@ void appendBlockWrite(
   }
   aie_runtime::txn_append_blockwrite(instructions, *address, payload.data(),
                                      payload.size(), colVal, rowVal);
+  return success();
 }
 
 void appendPreempt(std::vector<uint32_t> &instructions, NpuPreemptOp op) {
@@ -239,8 +244,12 @@ void appendCreateScratchpad(std::vector<uint32_t> &instructions,
   words[3] = 0;
 }
 
-void appendUpdateRegFromScratchpad(std::vector<uint32_t> &instructions,
-                                   NpuUpdateFromScratchpadOp op) {
+LogicalResult appendUpdateRegFromScratchpad(std::vector<uint32_t> &instructions,
+                                            NpuUpdateFromScratchpadOp op) {
+  std::optional<uint32_t> address = op.getAbsoluteAddress();
+  if (!address)
+    return op.emitOpError("Cannot translate update_from_scratchpad with "
+                          "unresolved address to a static TXN binary");
   // TXN_OPC_UPDATE_REG encoding (3 words = 12 bytes):
   // Byte 0: Opcode (12)
   // Byte 1: StateTableIdx
@@ -254,7 +263,8 @@ void appendUpdateRegFromScratchpad(std::vector<uint32_t> &instructions,
   words[0] |= (static_cast<uint32_t>(op.getStateTableIdx()) << 8);
   words[0] |= (static_cast<uint32_t>(op.getFunc()) << 16);
   words[1] = op.getFuncArg();
-  words[2] = *op.getAbsoluteAddress();
+  words[2] = *address;
+  return success();
 }
 
 } // namespace
@@ -415,9 +425,20 @@ LogicalResult xilinx::AIE::AIETranslateNpuToBinary(
             count++;
             uint32_t before = byteOffset();
             uint64_t addr = op.getAbsoluteAddress().value_or(0);
-            appendBlockWrite(instructions, op, symTab, blockWriteDataCache);
+            if (failed(appendBlockWrite(instructions, op, symTab,
+                                        blockWriteDataCache)))
+              result = failure();
             pushLocEntry(locmap, before, byteOffset(), "BLOCKWRITE",
                          op->getName().getStringRef(), addr, op, tm);
+          })
+          .Case<NpuBlockWriteValuesOp>([&](auto op) {
+            // A runtime-computed blockwrite payload has no static encoding;
+            // this op only reaches the EmitC (C++ TXN) target.
+            op.emitOpError("cannot translate a runtime-valued blockwrite "
+                           "payload to a static TXN binary; this op is "
+                           "supported only by the C++ TXN target "
+                           "(--aie-npu-to-cpp)");
+            result = failure();
           })
           .Case<NpuMaskWrite32Op>([&](auto op) {
             count++;
@@ -460,7 +481,8 @@ LogicalResult xilinx::AIE::AIETranslateNpuToBinary(
           .Case<NpuUpdateFromScratchpadOp>([&](auto op) {
             count++;
             uint32_t before = byteOffset();
-            appendUpdateRegFromScratchpad(instructions, op);
+            if (failed(appendUpdateRegFromScratchpad(instructions, op)))
+              result = failure();
             pushLocEntry(locmap, before, byteOffset(), "UPDATE_FROM_SCRATCHPAD",
                          op->getName().getStringRef(), std::nullopt, op, tm);
           });
@@ -512,8 +534,9 @@ LogicalResult xilinx::AIE::AIETranslateControlPacketsToUI32Vec(
     // stream switch parses the embedded packet headers from the data stream.
     auto words = reserveAndGetTail(instructions, 2 + size);
 
-    if (!data && packetOp.getLength())
-      size = *packetOp.getLength();
+    std::optional<uint32_t> length = packetOp.getLength();
+    if (!data && length)
+      size = *length;
 
     auto parity = [](uint32_t n) {
       uint32_t p = 0;
@@ -545,9 +568,13 @@ LogicalResult xilinx::AIE::AIETranslateControlPacketsToUI32Vec(
     words[1] = hdr | (0x1 & parity(hdr)) << 31;
 
     // configuration data
-    if (opc == 0x0 || opc == 0x2)
+    if (opc == 0x0 || opc == 0x2) {
+      if (!data)
+        return packetOp.emitOpError(
+            "control packet with a write opcode requires a data payload");
       for (unsigned i = 0; i < size; i++)
-        words[i + 2] = data.value()[i];
+        words[i + 2] = (*data)[i];
+    }
 
     uint32_t after =
         static_cast<uint32_t>(instructions.size() * sizeof(uint32_t));

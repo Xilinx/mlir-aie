@@ -27,7 +27,7 @@ using namespace mlir;
 namespace aie {
 // We redefine the MLIR -> LLVM IR translation to include our AIE intrinsics
 // translations.
-void registerToLLVMIRTranslation() {
+static void registerToLLVMIRTranslation() {
   TranslateFromMLIRRegistration registration(
       "mlir-to-llvmir", "Translate MLIR to LLVMIR",
       [](Operation *op, raw_ostream &output) {
@@ -47,7 +47,7 @@ void registerToLLVMIRTranslation() {
 }
 } // namespace aie
 
-void version_printer(raw_ostream &os) {
+static void version_printer(raw_ostream &os) {
   os << "aie-translate " << AIE_GIT_COMMIT << "\n";
 }
 

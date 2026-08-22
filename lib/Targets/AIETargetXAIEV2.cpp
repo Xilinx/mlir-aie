@@ -98,7 +98,10 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
   llvm::SetVector<Block *> blockVector =
       getOrderedChainOfBlocks(&memOp.getBody());
 
-  for (auto block : blockVector) {
+  llvm::SmallPtrSet<Block *, 8> oooBlocks =
+      collectOutOfOrderBlocks(blockVector);
+
+  for (auto *block : blockVector) {
     bool foundBdPacket = false;
     int packetType = 0;
     int packetID = 0;
@@ -109,6 +112,8 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
     int elementWidthInBytes = 0;
     int ndims = 0;
     int iterSize = 0, iterStride = 0, iterCurr = 0;
+    uint32_t axcache = 0;
+    std::optional<int> oooId;
     ArrayRef<BDDimLayoutAttr> dims;
     // Owning storage for the folded dims; must outlive `dims` (used far below).
     SmallVector<BDDimLayoutAttr> dimsStorage;
@@ -116,9 +121,9 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
     for (auto op : block->getOps<DMABDOp>()) {
       foundBd = true;
       if (!targetModel.isShimNOCTile(col, row)) {
-        assert(op.getBufferOp().getAddress() &&
-               "buffer must have address assigned");
-        BaseAddrA = op.getBufferOp().getAddress().value();
+        std::optional<int32_t> bufferAddr = op.getBufferOp().getAddress();
+        assert(bufferAddr && "buffer must have address assigned");
+        BaseAddrA = *bufferAddr;
         int bufferCol = op.getBufferOp().getTileOp().colIndex();
         int bufferRow = op.getBufferOp().getTileOp().rowIndex();
 
@@ -139,6 +144,8 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
         iterStride = iter->getStride();
         iterCurr = iter->getCurrent();
       }
+      axcache = op.getAxcacheOrDefault();
+      oooId = op.getOutOfOrderId();
       if (!op.getMixedSizes().empty()) {
         // Runtime-valued sizes/strides are not supported on this static path.
         for (mlir::OpFoldResult s : op.getMixedSizes())
@@ -195,7 +202,7 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
         auto value = op.getConstantValue();
         if (failed(value))
           return failure();
-        acqValue = *value;
+        acqValue = *value; // NOLINT(bugprone-unchecked-optional-access)
         if (op.acquireGE())
           acqValue = -acqValue;
       } else if (op.release()) {
@@ -204,7 +211,7 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
         auto value = op.getConstantValue();
         if (failed(value))
           return failure();
-        relValue = *value;
+        relValue = *value; // NOLINT(bugprone-unchecked-optional-access)
       } else {
         // unreachable for current targets
         return op.emitOpError("unsupported lock action");
@@ -251,7 +258,7 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
                  << "/* smid */ 0, "
                  << "/* burstlen */ 4, "
                  << "/* QoS */ 0, "
-                 << "/* Cache */ 0, "
+                 << "/* Cache */ " << axcache << ", "
                  << "/* Secure */ " << enable << "));\n";
         } else {
           if ((BaseAddrA + offsetA) % 4)
@@ -285,6 +292,8 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
         int enableNextBd = 1;
         if (!nextBlock->getOps<EndOp>().empty())
           enableNextBd = 0;
+        if (oooBlocks.contains(block))
+          enableNextBd = 0;
 
         int nextBdNum = blockMap[nextBlock];
         output << "__mlir_aie_try(XAie_DmaSetNextBd("
@@ -298,6 +307,11 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
                << tileDMAInstRefStr(col, row, bdNum) << ", "
                << packetStr(packetID, packetType) << "));\n";
       }
+      if (oooId.has_value()) {
+        output << "__mlir_aie_try(XAie_DmaSetOutofOrderBdId("
+               << tileDMAInstRefStr(col, row, bdNum) << ", " << *oooId
+               << "));\n";
+      }
       output << "__mlir_aie_try(XAie_DmaEnableBd("
              << tileDMAInstRefStr(col, row, bdNum) << "));\n";
       output << "__mlir_aie_try(XAie_DmaWriteBd(" << deviceInstRef << ", "
@@ -307,7 +321,7 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
     }
   }
 
-  for (auto block : blockVector) {
+  for (auto *block : blockVector) {
     for (auto op : block->getOps<DMAStartOp>()) {
       int bdNum = blockMap[op.getDest()];
       StringRef dmaDir = stringifyDMAChannelDir(op.getChannelDir());
@@ -321,6 +335,32 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
                // TODO: interim handling until the physical dialect changes.
                << "/* dmaDir */ DMA_" << dmaDir << ", "
                << "/* BdNum */" << bdNum << "));\n";
+      } else if (op.getOutOfOrder()) {
+        // in english repeat_count==0 means "do it once" and don't repeat but
+        // libxaie treats repeat_count=1 as do it once.
+        int repeatCount = op.getRepeatCount() + 1;
+        // StartBd is ignored and the in-order validity check is skipped.
+        std::string oooSuffix = std::to_string(col) + "_" +
+                                std::to_string(row) + "_" +
+                                std::to_string(chNum);
+        output << "XAie_DmaChannelDesc ooo_desc_" << oooSuffix << ";\n";
+        output << "__mlir_aie_try(XAie_DmaChannelDescInit(" << deviceInstRef
+               << ", &ooo_desc_" << oooSuffix << ", " << tileLocStr(col, row)
+               << "));\n";
+        output << "__mlir_aie_try(XAie_DmaChannelEnOutofOrder(&ooo_desc_"
+               << oooSuffix << ", " << enable << "));\n";
+        output << "__mlir_aie_try(XAie_DmaWriteChannel(" << deviceInstRef
+               << ", &ooo_desc_" << oooSuffix << ", " << tileLocStr(col, row)
+               << ", /* ChNum */" << chNum << ", /* dmaDir */ DMA_" << dmaDir
+               << "));\n";
+        output << "XAie_DmaDeclareQueueConfig(ooo_queue_" << oooSuffix
+               << ", /* StartBd */ 0, /* Repeat */ " << repeatCount
+               << ", /* EnToken */ " << disable << ", /* EnOutOfOrder */ "
+               << enable << ");\n";
+        output << "__mlir_aie_try(XAie_DmaChannelSetStartQueueGeneric("
+               << deviceInstRef << ", " << tileLocStr(col, row)
+               << ", /* ChNum */" << chNum << ", /* dmaDir */ DMA_" << dmaDir
+               << ", &ooo_queue_" << oooSuffix << "));\n";
       } else {
         // in english repeat_count==0 means "do it once" and don't repeat but
         // libxaie treats repeat_count=1 as do it once.
@@ -394,8 +434,6 @@ xilinx::AIE::AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output,
   case AIEArch::AIE2p:
     device = AIE2p_device;
     break;
-  default:
-    return module.emitOpError("Unsupported aie.device");
   }
   output << "  ctx->XAieConfig->AieGen = " << device << ";\n";
   output << "  ctx->XAieConfig->BaseAddr = 0x20000000000;\n";
@@ -500,13 +538,15 @@ xilinx::AIE::AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output,
   for (auto memOp : targetOp.getOps<MemOp>()) {
     DenseMap<Block *, int> blockMap;
 
-    // Assign each block a BD number
+    // Use bd_ids, if specified.
     int bdNum = 0;
     for (auto &block : memOp.getBody()) {
-      if (!block.getOps<DMABDOp>().empty()) {
-        blockMap[&block] = bdNum;
-        bdNum++;
-      }
+      auto bdOps = block.getOps<DMABDOp>();
+      if (bdOps.empty())
+        continue;
+      std::optional<int32_t> id = (*bdOps.begin()).getBdId();
+      blockMap[&block] = id.has_value() ? *id : bdNum;
+      bdNum++;
     }
     auto result = generateDMAConfig(memOp, output, targetModel, blockMap);
     if (result.failed())
@@ -521,10 +561,10 @@ xilinx::AIE::AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output,
       for (auto op : block.getOps<DMAStartOp>()) {
         int chNum = op.getChannelIndex();
         channelMap[&block] = chNum;
-        auto dest = op.getDest();
+        auto *dest = op.getDest();
         while (dest) {
           channelMap[dest] = chNum;
-          if (dest->getSuccessors().size() < 1)
+          if (dest->getSuccessors().empty())
             break;
           dest = dest->getSuccessors()[0];
           if (channelMap.count(dest))
@@ -533,14 +573,17 @@ xilinx::AIE::AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output,
       }
     }
 
-    // Assign each block a BD number
+    // Assign each block a BD number, if unassigned
     int evenBdNum = 0;
     int oddBdNum = 24;
     for (auto &block : memOp.getBody()) {
-      if (block.getOps<DMABDOp>().empty())
+      auto bdOps = block.getOps<DMABDOp>();
+      if (bdOps.empty())
         continue;
       assert(channelMap.count(&block));
-      if (channelMap[&block] & 1)
+      if (std::optional<int32_t> id = (*bdOps.begin()).getBdId())
+        blockMap[&block] = *id;
+      else if (channelMap[&block] & 1)
         blockMap[&block] = oddBdNum++;
       else
         blockMap[&block] = evenBdNum++;
@@ -580,29 +623,30 @@ xilinx::AIE::AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output,
 
     DenseMap<Block *, int> blockMap;
     {
-      // Assign each block a BD number
+      // Assign each block a BD number, if unassigned
       int bdNum = 0;
       for (auto &block : op.getBody()) {
-        if (!block.getOps<DMABDOp>().empty()) {
-          blockMap[&block] = bdNum;
-          uint64_t offset = 0;
-          for (auto op : block.getOps<DMABDOp>()) {
-            offset = op.getOffsetInBytes();
-            auto buffer =
-                cast<ExternalBufferOp>(op.getBuffer().getDefiningOp());
+        auto bdOps = block.getOps<DMABDOp>();
+        if (bdOps.empty())
+          continue;
+        std::optional<int32_t> id = (*bdOps.begin()).getBdId();
+        int slot = id.has_value() ? *id : bdNum;
+        blockMap[&block] = slot;
+        uint64_t offset = 0;
+        for (auto op : block.getOps<DMABDOp>()) {
+          offset = op.getOffsetInBytes();
+          auto buffer = cast<ExternalBufferOp>(op.getBuffer().getDefiningOp());
 
-            output << "u64 mlir_aie_external_get_addr_myBuffer_" << col << row
-                   << "_" << bdNum << "(void) {\n"
-                   << "    assert(_mlir_aie_external_set_"
-                   << buffer.name().getValue() << ");\n"
-                   << "    return _mlir_aie_external_"
-                   << buffer.name().getValue() << " + "
-                   << llvm::utohexstr(offset) << ";\n"
-                   << "}\n";
-          }
-
-          bdNum++;
+          output << "u64 mlir_aie_external_get_addr_myBuffer_" << col << row
+                 << "_" << slot << "(void) {\n"
+                 << "    assert(_mlir_aie_external_set_"
+                 << buffer.name().getValue() << ");\n"
+                 << "    return _mlir_aie_external_" << buffer.name().getValue()
+                 << " + " << llvm::utohexstr(offset) << ";\n"
+                 << "}\n";
         }
+
+        bdNum++;
       }
     }
 

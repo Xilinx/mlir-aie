@@ -53,8 +53,10 @@ struct AIERTControl {
                                              int row, int chNum,
                                              const DMAChannelDir &channelDir,
                                              int bdId, int repeatCount,
-                                             uint32_t padValue = 0);
-  mlir::LogicalResult configureLocksAndBd(mlir::Block &block, int col, int row);
+                                             uint32_t padValue = 0,
+                                             bool outOfOrder = false);
+  mlir::LogicalResult configureLocksAndBd(mlir::Block &block, int col, int row,
+                                          bool outOfOrder = false);
   mlir::LogicalResult initLocks(DeviceOp &targetOp);
   mlir::LogicalResult initBuffers(DeviceOp &targetOp);
   mlir::LogicalResult configureSwitches(DeviceOp &targetOp,
@@ -65,8 +67,7 @@ struct AIERTControl {
   mlir::LogicalResult addAieElf(uint8_t col, uint8_t row,
                                 const mlir::StringRef elfPath, bool aieSim);
   mlir::LogicalResult addAieElfs(DeviceOp &targetOp,
-                                 const mlir::StringRef workDirPath,
-                                 bool aieSim);
+                                 const mlir::StringRef elfPath, bool aieSim);
   void startTransaction();
   void dmaUpdateBdAddr(int col, int row, size_t addr, size_t bdId);
   std::vector<uint8_t> exportSerializedTransaction();

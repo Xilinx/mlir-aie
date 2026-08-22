@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=false" %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll %s | FileCheck %s
 
 // CHECK: module @link_to_stream_AIE2 {
 // CHECK:   aie.device(xcve2302) {
@@ -14,10 +14,10 @@
 // CHECK:     %tile_3_3 = aie.tile(3, 3)
 // CHECK:     %of_in_cons_buff_0 = aie.buffer(%mem_tile_1_1) {sym_name = "of_in_cons_buff_0"} : memref<16xi32>
 // CHECK:     %of_in_cons_buff_1 = aie.buffer(%mem_tile_1_1) {sym_name = "of_in_cons_buff_1"} : memref<16xi32>
-// CHECK:     %of_in_cons_prod_lock_0 = aie.lock(%mem_tile_1_1, 0) {init = 2 : i32, sym_name = "of_in_cons_prod_lock_0"}
-// CHECK:     %of_in_cons_cons_lock_0 = aie.lock(%mem_tile_1_1, 1) {init = 0 : i32, sym_name = "of_in_cons_cons_lock_0"}
-// CHECK:     %of_in_prod_lock_0 = aie.lock(%shim_pl_tile_1_0, 0) {init = 0 : i32, sym_name = "of_in_prod_lock_0"}
-// CHECK:     %of_in_cons_lock_0 = aie.lock(%shim_pl_tile_1_0, 1) {init = 0 : i32, sym_name = "of_in_cons_lock_0"}
+// CHECK:     %of_in_cons_prod_lock_0 = aie.lock(%mem_tile_1_1) {init = 2 : i32, sym_name = "of_in_cons_prod_lock_0"}
+// CHECK:     %of_in_cons_cons_lock_0 = aie.lock(%mem_tile_1_1) {init = 0 : i32, sym_name = "of_in_cons_cons_lock_0"}
+// CHECK:     %of_in_prod_lock_0 = aie.lock(%shim_pl_tile_1_0) {init = 0 : i32, sym_name = "of_in_prod_lock_0"}
+// CHECK:     %of_in_cons_lock_0 = aie.lock(%shim_pl_tile_1_0) {init = 0 : i32, sym_name = "of_in_cons_lock_0"}
 // CHECK:     aie.flow(%shim_pl_tile_1_0, DMA : 0, %mem_tile_1_1, DMA : 0)
 // CHECK:     aie.flow(%mem_tile_1_1, DMA : 0, %tile_3_3, Core : 0)
 // CHECK:     aie.shim_dma_allocation @of_in_shim_alloc(%shim_pl_tile_1_0, MM2S, 0)

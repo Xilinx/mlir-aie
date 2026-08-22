@@ -106,13 +106,31 @@ class HRXKernelHandle(KernelHandle):
     """Handle for a loaded HRX executable (one XADX export)."""
 
     def __init__(
-        self, executable, export_ordinal, kernel_name, xclbin_path, insts_path
+        self, executable, export_ordinal, kernel_name, xclbin_path, insts_path, ctx=None
     ):
         self.executable = executable
         self.export_ordinal = export_ordinal
         self.kernel_name = kernel_name
         self.xclbin_path = xclbin_path
         self.insts_path = insts_path
+        # Own an independent libhrx reference to the executable. The executable
+        # cache holds only a single reference and drops it on LRU eviction; a
+        # live handle (e.g. every step of a batched run_chain, kept in the
+        # sequence callable for the whole dispatch) must not be left dangling
+        # when an unrelated load evicts its cache entry. Balanced in __del__.
+        self._ctx = ctx
+        if ctx is not None and executable:
+            ctx.retain_executable(executable)
+
+    def __del__(self):
+        ctx = getattr(self, "_ctx", None)
+        exe = getattr(self, "executable", None)
+        if ctx is not None and exe:
+            try:
+                ctx.release_executable(exe)
+            except Exception:
+                pass
+            self.executable = None
 
 
 class HRXKernelResult(KernelResult):
@@ -216,7 +234,9 @@ class HRXHostRuntime(HostRuntime):
         xclbin_path, insts_path, kernel_name = self._resolve_kernel(npu_kernel)
         exe, ordv = self._build_executable(xclbin_path, insts_path, kernel_name)
         self._executables.append(exe)
-        return HRXKernelHandle(exe, ordv, kernel_name, xclbin_path, insts_path)
+        return HRXKernelHandle(
+            exe, ordv, kernel_name, xclbin_path, insts_path, ctx=self._ctx
+        )
 
     def _prepare_bindings(self, args):
         """Validate/sync a run's args and return its HRX dispatch bindings.
@@ -453,7 +473,9 @@ class CachedHRXRuntime(HRXHostRuntime):
         if key in self._exe_cache:
             self._exe_cache.move_to_end(key)
             exe, ordv = self._exe_cache[key]
-            return HRXKernelHandle(exe, ordv, kernel_name, xclbin_path, insts_path)
+            return HRXKernelHandle(
+                exe, ordv, kernel_name, xclbin_path, insts_path, ctx=self._ctx
+            )
 
         exe, ordv = self._build_executable(xclbin_path, insts_path, kernel_name)
 
@@ -462,7 +484,9 @@ class CachedHRXRuntime(HRXHostRuntime):
             self._release_executable(old_exe)
         self._exe_cache[key] = (exe, ordv)
 
-        return HRXKernelHandle(exe, ordv, kernel_name, xclbin_path, insts_path)
+        return HRXKernelHandle(
+            exe, ordv, kernel_name, xclbin_path, insts_path, ctx=self._ctx
+        )
 
     def cleanup(self) -> None:
         """Release cached executables, then any tracked by the base runtime."""

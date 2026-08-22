@@ -211,6 +211,10 @@ private:
           convertBlockWrite(b, loc, bw);
           countOp(b, loc, count);
         })
+        .Case<AIEX::NpuBlockWriteValuesOp>([&](auto bw) {
+          convertBlockWriteValues(b, loc, bw);
+          countOp(b, loc, count);
+        })
         .Case<AIEX::NpuAssertBdFieldOp>([&](auto g) {
           // Host-side bounds guard: if the runtime value overflows its narrow
           // BD field, the builder yields no stream (std::nullopt) rather than a
@@ -344,14 +348,53 @@ private:
                                             emitc::OpaqueAttr::get(ctx, init));
 
     uint32_t colVal = 0, rowVal = 0;
-    if (bw.getColumn() && bw.getRow()) {
-      colVal = *bw.getColumn();
-      rowVal = *bw.getRow();
+    if (auto col = bw.getColumn(), row = bw.getRow(); col && row) {
+      colVal = *col;
+      rowVal = *row;
     }
     emitTxnCall(b, loc, "txn_append_blockwrite", txnVec,
                 {u32Literal(b, loc, addr), arrVar.getResult(),
                  u32Literal(b, loc, static_cast<uint32_t>(n)),
                  u32Literal(b, loc, colVal), u32Literal(b, loc, rowVal)});
+  }
+
+  // A blockwrite whose payload is computed at TXN-build time:
+  // stage the words into a local C++ array, then hand that array
+  // to one txn_append_blockwrite. Unlike convertBlockWrite there is no constant
+  // memref to inline, so the slots are filled by assignment from the operand
+  // values, which convert-arith-to-emitc lowers in place afterwards.
+  void convertBlockWriteValues(OpBuilder &b, Location loc,
+                               AIEX::NpuBlockWriteValuesOp bw) {
+    MLIRContext *ctx = b.getContext();
+    Value addrV = runtimeOrResolvedAddr(b, loc, bw, bw.getAddress());
+    if (!addrV) {
+      fail(bw, "cannot convert a symbolic/unresolved blockwrite_values address "
+               "to the C++ TXN target");
+      return;
+    }
+    ValueRange words = bw.getValues();
+    int64_t n = static_cast<int64_t>(words.size());
+
+    // Declare the staging array (zero-initialized; every slot is assigned
+    // below). Typed emitc.variable, matching convertBlockWrite's array.
+    auto arrTy =
+        emitc::ArrayType::get(ctx, SmallVector<int64_t>{n}, getU32Type(ctx));
+    auto arrVar = emitc::VariableOp::create(b, loc, arrTy,
+                                            emitc::OpaqueAttr::get(ctx, "{}"));
+
+    // Fill the slots. Emitted as verbatim assignments (the same mechanism the
+    // runtime guards above use to reference a not-yet-lowered SSA value): the
+    // i32 words convert to the array's uint32_t elementwise, which is the
+    // intended two's-complement reinterpretation of the packed BD fields.
+    for (int64_t i = 0; i < n; i++)
+      emitc::VerbatimOp::create(b, loc, "{}[" + std::to_string(i) + "] = {};",
+                                ValueRange{arrVar.getResult(), words[i]});
+
+    // col/row are 0: the address is already flat (as for npu.blockwrite).
+    emitTxnCall(b, loc, "txn_append_blockwrite", txnVec,
+                {addrV, arrVar.getResult(),
+                 u32Literal(b, loc, static_cast<uint32_t>(n)),
+                 u32Literal(b, loc, 0), u32Literal(b, loc, 0)});
   }
 
   emitc::FuncOp funcOp;
@@ -409,15 +452,15 @@ struct ConvertAIEXToEmitCPass
     builder.setInsertionPointToStart(moduleOp.getBody());
     emitc::IncludeOp::create(builder, moduleOp.getLoc(),
                              "aie/Runtime/TxnEncoding.h",
-                             /*is_standard=*/false);
+                             /*is_standard_include=*/false);
     emitc::IncludeOp::create(builder, moduleOp.getLoc(), "cstdint",
-                             /*is_standard=*/true);
+                             /*is_standard_include=*/true);
     emitc::IncludeOp::create(builder, moduleOp.getLoc(), "vector",
-                             /*is_standard=*/true);
+                             /*is_standard_include=*/true);
     // The builder returns std::optional: a runtime scalar that would overflow a
     // narrow BD field yields std::nullopt instead of a truncated stream.
     emitc::IncludeOp::create(builder, moduleOp.getLoc(), "optional",
-                             /*is_standard=*/true);
+                             /*is_standard_include=*/true);
   }
 
   // Run the upstream arith-to-emitc and scf-to-emitc conversions over the
@@ -455,6 +498,10 @@ private:
         resolved.absoluteAddr[clone] = *a;
       if (auto d = bw.getDataWords())
         resolved.blockWriteData[clone] = d;
+    } else if (auto bwv = dyn_cast<AIEX::NpuBlockWriteValuesOp>(orig)) {
+      // Already absolute: no buffer/col/row to fold in.
+      if (auto a = AIEX::getConstantIntOperand(bwv.getAddress()))
+        resolved.absoluteAddr[clone] = *a;
     }
   }
 

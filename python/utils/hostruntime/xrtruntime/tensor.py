@@ -12,6 +12,7 @@ from aie.helpers.util import np_ndarray_type_get_shape
 
 from ..buffer import Storage, Transport
 from ..tensor_class import NpuTensor
+from .device import acquire_device
 
 
 class XrtTransport(Transport):
@@ -89,10 +90,12 @@ class XRTTensor(NpuTensor):
             flags (optional): XRT buffer object flags. Defaults to xrt.bo.host_only.
             group_id (int, optional): XRT buffer object group ID. Defaults to 0.
             xrt_device (optional): Existing PyXRT device handle to use for BO allocation.
-                When omitted, a new handle for device index 0 is opened for this tensor.
+                When omitted, the process's handle on device 0 is used. Opening
+                one per tensor instead closes and reopens the device as tensors
+                come and go; see :mod:`.device`.
         """
         super().__init__(shape_or_data, dtype=dtype, device=device)
-        self.xrt_device = xrt_device if xrt_device is not None else xrt.device(0)
+        self.xrt_device = xrt_device if xrt_device is not None else acquire_device()
 
         np_data = None
         # Extract the shape

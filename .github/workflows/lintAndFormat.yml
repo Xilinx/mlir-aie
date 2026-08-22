@@ -7,6 +7,13 @@ name: Lint and Format
 permissions:
   contents: read
 
+concurrency:
+  # A PR number if a pull request and otherwise the commit hash. This cancels
+  # queued and in-progress runs for the same PR (presubmit) or commit
+  # (postsubmit).
+  group: ci-lint-and-format-${{ github.event.number || github.sha }}-${{ github.event_name }}
+  cancel-in-progress: true
+
 on:
   pull_request:
     types: [assigned, opened, synchronize, reopened]
@@ -39,10 +46,10 @@ jobs:
           fetch-depth: 2
           submodules: "true"
 
-      - name: Install clang-tidy
+      - name: Install C/C++ toolchain
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang-tidy ninja-build clang libelf-dev
+          sudo apt-get install -y ninja-build clang libelf-dev
 
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
@@ -57,6 +64,9 @@ jobs:
               --requirements python/requirements.txt \
               --install-non-eudsl
           python -m pip install --require-hashes -r python/requirements_dev.lock
+          # clang-tidy comes from this lockfile (see python/requirements_dev.txt),
+          # pinned to match clang-format's pin below -- not a system apt package,
+          # so its version doesn't silently drift across CI runs.
 
       - name: Get MLIR
         id: mlir-wheels
@@ -95,16 +105,40 @@ jobs:
             -DLLVM_EXTERNAL_LIT=$(which lit) \
             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 
-          # aie-headers only aggregates the dialect/op/type tablegen targets;
-          # it does not pull in the Conversion pass enum header or the vendored
-          # xaiengine/*.h headers copied from third_party/aie-rt. Without these,
-          # clang-tidy fails to compile any touched file that includes
-          # aie/Conversion/Passes.h (e.g. lib/Conversion/**) or xaiengine/*.h
-          # (e.g. lib/Targets/AIERT.cpp) with a file-not-found error instead of
-          # a real lint finding.
+          # Pass/op tablegen targets not covered by aie-headers/mlir-headers --
+          # needed so clang-tidy (below) can parse pass source files
+          # that include generated headers. Extend this
+          # list as the clang-tidy file set (see the "clang-tidy" step below)
+          # grows into dialects/passes with their own IncGen targets.
+          #   MLIRAIEPassIncGen             -> AIEPasses.h.inc
+          #   MLIRAIEXPassIncGen            -> AIEXPasses.h.inc
+          #   MLIRAIEVecPassIncGen          -> AIEVec Transforms/Passes.h.inc
+          #   MLIRAIEVecAnalysisPassIncGen  -> AIEVec Analysis/Passes.h.inc
+          #   MLIRAIEVecTransformOpsIncGen  -> AIEVecTransformOps.h.inc
+          #   MLIRAIEConversionPassIncGen   -> Conversion Passes.h.inc,
+          #                                    PassesEnums.h.inc
+          #   MLIRXLLVMOpsIncGen            -> XLLVMOps.h.inc
+          #   MLIRXLLVMConversionsIncGen    -> XLLVMConversions.inc
+          #   MLIRAIEVecAttributesIncGen    -> AIEVecEnums.h.inc,
+          #                                    AIEVecAttributes.h.inc
+          #   MLIRAIENormalizeAddressSpacesIncGen -> AIENormalizeAddressSpaces.inc
+          #   xaienginecdo_static-headers   -> vendored xaiengine/*.h used by
+          #                                    the CDO backend (AIETargets,
+          #                                    AIEToConfiguration)
+          #   aiecc_version                 -> aiecc/AIECCVersion.h
           ninja aie-headers mlir-headers \
+            MLIRAIEPassIncGen \
+            MLIRAIEXPassIncGen \
+            MLIRAIEVecPassIncGen \
+            MLIRAIEVecAnalysisPassIncGen \
+            MLIRAIEVecTransformOpsIncGen \
             MLIRAIEConversionPassIncGen \
-            xaienginecdo_static-headers
+            MLIRXLLVMOpsIncGen \
+            MLIRXLLVMConversionsIncGen \
+            MLIRAIEVecAttributesIncGen \
+            MLIRAIENormalizeAddressSpacesIncGen \
+            xaienginecdo_static-headers \
+            aiecc_version
 
           # Assemble the Python package sources (hand-written + tablegen'd op/enum
           # wrappers) into build/python/aie. This needs only tablegen, not a full
@@ -141,21 +175,145 @@ jobs:
       - name: Lint Python (ruff)
         run: ruff check
 
-      - name: Analyze
-        id: clang-tidy-fixes
+      - name: Lint C/C++ (clang-tidy)
         run: |
+          # Currently-enabled file(s) -- keep this in sync with the `files:`
+          # regex on the `clang-tidy` pre-commit hook (.pre-commit-config.yaml),
+          # same convention ruff-check's hook uses to stay in sync with
+          # ruff.toml's `include`. Grows one file at a time.
+          #
+          # Unlike pyright/ruff (which always check their whole configured
+          # set), this only checks enabled files that this PR actually
+          # touched -- as the enabled list grows, most PRs don't touch C++
+          # passes at all, and re-linting the full set on every push would be
+          # wasted time. A PR that doesn't touch any enabled file passes
+          # trivially; one that does gets that file fully re-checked (not
+          # just the changed lines).
+          CLANG_TIDY_FILES=(
+            lib/CAPI/Dialects.cpp
+            lib/CAPI/Registration.cpp
+            lib/CAPI/TargetModel.cpp
+            lib/CAPI/Translation.cpp
+            lib/Conversion/AIEToConfiguration/AIEToConfiguration.cpp
+            lib/Conversion/AIEVecToLLVM/AIEVecToLLVM.cpp
+            lib/Conversion/AIEXToEmitC/AIEXToEmitC.cpp
+            lib/Dialect/AIE/IR/AIEDialect.cpp
+            lib/Dialect/AIE/IR/AIETargetModel.cpp
+            lib/Dialect/AIE/IR/AIETraceOps.cpp
+            lib/Dialect/AIE/Transforms/AIEAssignBufferDescriptorIDs.cpp
+            lib/Dialect/AIE/Transforms/AIEAssignBuffers.cpp
+            lib/Dialect/AIE/Transforms/AIEAssignCoreLinkFiles.cpp
+            lib/Dialect/AIE/Transforms/AIEAssignLockIDs.cpp
+            lib/Dialect/AIE/Transforms/AIECanonicalizeDevice.cpp
+            lib/Dialect/AIE/Transforms/AIECoreToStandard.cpp
+            lib/Dialect/AIE/Transforms/AIECreatePathFindFlows.cpp
+            lib/Dialect/AIE/Transforms/AIEFindFlows.cpp
+            lib/Dialect/AIE/Transforms/AIEGenerateColumnControlOverlay.cpp
+            lib/Dialect/AIE/Transforms/AIEHoistVectorTransferPointers.cpp
+            lib/Dialect/AIE/Transforms/AIEInsertTraceFlows.cpp
+            lib/Dialect/AIE/Transforms/AIELocalizeLocks.cpp
+            lib/Dialect/AIE/Transforms/AIELowerCascadeFlows.cpp
+            lib/Dialect/AIE/Transforms/AIENormalizeAddressSpaces.cpp
+            lib/Dialect/AIE/Transforms/AIEObjectFifoLiveness.cpp
+            lib/Dialect/AIE/Transforms/AIEObjectFifoStatefulTransform.cpp
+            lib/Dialect/AIE/Transforms/AIEPathFinder.cpp
+            lib/Dialect/AIE/Transforms/AIEPlacer.cpp
+            lib/Dialect/AIE/Transforms/AIEPlaceTiles.cpp
+            lib/Dialect/AIE/Transforms/AIESAPlacer.cpp
+            lib/Dialect/AIE/Transforms/AIETraceToConfig.cpp
+            lib/Dialect/AIE/Transforms/AIEVectorToPointerLoops.cpp
+            lib/Dialect/AIE/Transforms/AIEVectorTransferLowering.cpp
+            lib/Dialect/AIE/Util/AIERegisterDatabase.cpp
+            lib/Dialect/AIEVec/IR/AIE1/AIEVecAIE1Ops.cpp
+            lib/Dialect/AIEVec/IR/AIEVecOps.cpp
+            lib/Dialect/AIEVec/IR/AIEVecTypes.cpp
+            lib/Dialect/AIEVec/TransformOps/AIEVecTransformOps.cpp
+            lib/Dialect/AIEVec/TransformOps/DialectExtension.cpp
+            lib/Dialect/AIEVec/Transforms/AIEVecOptimizations.cpp
+            lib/Dialect/AIEVec/Transforms/ConvertVectorToAIEVec.cpp
+            lib/Dialect/AIEVec/Transforms/CopyRemoval.cpp
+            lib/Dialect/AIEVec/Transforms/DynamicSizeNoImplicitBroadcast.cpp
+            lib/Dialect/AIEVec/Transforms/FoldMulAddChainToConvOp.cpp
+            lib/Dialect/AIEVec/Transforms/SplitVectorLoadUpsChains.cpp
+            lib/Dialect/AIEVec/Transforms/VectorToAIEVecConversions.cpp
+            lib/Dialect/AIEVec/Transforms/VectorToVectorConversions.cpp
+            lib/Dialect/AIEVec/Utils/Utils.cpp
+            lib/Dialect/AIEX/IR/AIEXDialect.cpp
+            lib/Dialect/AIEX/IR/DmaDecomposition.cpp
+            lib/Dialect/AIEX/Transforms/AIEAssignRuntimeSequenceBDIDs.cpp
+            lib/Dialect/AIEX/Transforms/AIECreateBroadcastPacket.cpp
+            lib/Dialect/AIEX/Transforms/AIECreateCores.cpp
+            lib/Dialect/AIEX/Transforms/AIECreateLocks.cpp
+            lib/Dialect/AIEX/Transforms/AIECtrlPacketToDma.cpp
+            lib/Dialect/AIEX/Transforms/AIEDecomposeLargeDmaBd.cpp
+            lib/Dialect/AIEX/Transforms/AIEDMATasksToNPU.cpp
+            lib/Dialect/AIEX/Transforms/AIEDmaToNpu.cpp
+            lib/Dialect/AIEX/Transforms/AIEExpandLoadPdi.cpp
+            lib/Dialect/AIEX/Transforms/AIEInlineTraceConfig.cpp
+            lib/Dialect/AIEX/Transforms/AIELowerCoreReset.cpp
+            lib/Dialect/AIEX/Transforms/AIELowerDmaChannelReset.cpp
+            lib/Dialect/AIEX/Transforms/AIELowerDynamicBDPool.cpp
+            lib/Dialect/AIEX/Transforms/AIELowerMemcpy.cpp
+            lib/Dialect/AIEX/Transforms/AIELowerMulticast.cpp
+            lib/Dialect/AIEX/Transforms/AIELowerScratchpadParameters.cpp
+            lib/Dialect/AIEX/Transforms/AIELowerSetLock.cpp
+            lib/Dialect/AIEX/Transforms/AIEMaterializeBDChains.cpp
+            lib/Dialect/AIEX/Transforms/AIEMaterializeRuntimeSequences.cpp
+            lib/Dialect/AIEX/Transforms/AIENpuToCert.cpp
+            lib/Dialect/AIEX/Transforms/AIESCFToControlFlow.cpp
+            lib/Dialect/AIEX/Transforms/AIESubstituteShimDMAAllocations.cpp
+            lib/Dialect/AIEX/Transforms/AIETransformBfpTypes.cpp
+            lib/Dialect/AIEX/Transforms/AIETxnToControlPacket.cpp
+            lib/Dialect/AIEX/Transforms/AIEUnrollRuntimeSequenceLoops.cpp
+            lib/Dialect/AIEX/Transforms/AIEVerifyRuntimeRearm.cpp
+            lib/Dialect/AIEX/Transforms/AIEXToStandard.cpp
+            lib/Dialect/AIEX/Utils/AIETokenAnalysis.cpp
+            lib/Dialect/AIEX/Utils/AIEUtils.cpp
+            lib/Dialect/AIEX/Utils/BdLowering.cpp
+            lib/Dialect/XLLVM/XLLVMOps.cpp
+            lib/Target/LLVMIR/Dialect/XLLVM/XLLVMToLLVMIRTranslation.cpp
+            lib/Targets/AIEFlowsToJSON.cpp
+            lib/Targets/AIELLVMLink.cpp
+            lib/Targets/AIERT.cpp
+            lib/Targets/AIETargetBCF.cpp
+            lib/Targets/AIETargetCDODirect.cpp
+            lib/Targets/AIETargetCppTxn.cpp
+            lib/Targets/AIETargetLdScript.cpp
+            lib/Targets/AIETargetNPU.cpp
+            lib/Targets/AIETargets.cpp
+            lib/Targets/AIETargetShared.cpp
+            lib/Targets/AIETargetSimulationFiles.cpp
+            lib/Targets/AIETargetUcCert.cpp
+            lib/Targets/AIETargetXAIEV2.cpp
+            tools/aiecc/aiecc.cpp
+            tools/aie-lsp-server/aie-lsp-server.cpp
+            tools/aie-opt/aie-opt.cpp
+            tools/aie-reset/aie-reset.cpp
+            tools/aie-translate/aie-translate.cpp
+            tools/aie-visualize/aie-visualize.cpp
+            tools/bootgen/bootgen_c_api.cpp
+          )
+
           git fetch origin main
-          git diff -U0 origin/main | clang-tidy-diff -p1 -path build -export-fixes fixes.yml
-          if [ -f fixes.yml ]; then
-            echo "FIXES=true" | tee $GITHUB_OUTPUT
+          mapfile -t changed < <(git diff --name-only origin/main HEAD)
+
+          to_check=()
+          for f in "${CLANG_TIDY_FILES[@]}"; do
+            for c in "${changed[@]}"; do
+              if [ "$f" = "$c" ]; then
+                to_check+=("$f")
+                break
+              fi
+            done
+          done
+
+          if [ "${#to_check[@]}" -eq 0 ]; then
+            echo "No enabled clang-tidy file changed in this PR -- skipping."
+            exit 0
           fi
 
-      - name: Upload clang-tidy fixes
-        if: ${{ steps.clang-tidy-fixes.outputs.FIXES }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
-        with:
-          path: fixes.yml
-          name: clang-tidy-fixes.yml
+          echo "Running clang-tidy on: ${to_check[*]}"
+          MLIR_AIE_BUILD_DIR="$PWD/build" utils/run_clang_tidy.sh "${to_check[@]}"
 
 
   formatting:
@@ -178,7 +336,7 @@ jobs:
       - name: Install clang-format
         uses: aminya/setup-cpp@8170d66c458f4a045220b7b0966c10940bb2a15d  # v1.8.1
         with:
-          clangformat: 17.0.1
+          clangformat: 20.1.0
 
       - name: Setup Python env
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
@@ -251,174 +409,6 @@ jobs:
           tool_name: black
           level: error
           fail_level: any
-
-  code-coverage:
-
-    name: C/C++ test code coverage
-
-    runs-on: ubuntu-latest
-
-    permissions:
-      contents: read
-      checks: write
-      issues: write
-      pull-requests: write
-
-    steps:
-
-      - name: Free disk space
-        uses: descriptinc/free-disk-space@1b4b157593c6801212a2ed488c205e0a810b4592  # main
-        with:
-          tool-cache: true
-          android: true
-          dotnet: true
-          haskell: true
-          large-packages: true
-          swap-storage: false
-
-      - name: Get the project repository
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
-        with:
-          fetch-depth: 2
-          submodules: "true"
-
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
-        with:
-          python-version: '3.12'
-
-      - name: Install Python and other packages
-        run: |
-          pip install --upgrade pip
-          python utils/mlir_aie_wheels/vendor_eudsl.py \
-              --requirements python/requirements.txt \
-              --install-non-eudsl
-          python -m pip install --require-hashes -r python/requirements_dev.lock
-
-      - name: Install packages
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ninja-build clang lld llvm libelf-dev
-
-      - name: Get changed files
-        id: changed-files
-        run: |
-          git fetch origin main
-          # Because for the life of me I cannot figure out how to read the output of git diff into a bash array.
-          CHANGED_FILES=$(python utils/get_git_changed_files.py)
-          echo "changed-files=${CHANGED_FILES}" | tee $GITHUB_OUTPUT
-
-      - name: Get MLIR
-        id: mlir-wheels
-        run: |
-
-          VERSION=$(utils/clone-llvm.sh --get-wheel-version)
-          pip -q download mlir==$VERSION \
-            -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro
-          unzip -q mlir-*.whl
-
-      - name: Ccache for C++ compilation
-        if: steps.changed-files.outputs.changed-files != ''
-        uses: hendrikmuhs/ccache-action@d62db5f07c26379fc4b4e0916f098a92573c3b03  # v1.2.23
-        with:
-          key: ${{ runner.os }}-${{ matrix.ubuntu_version }}-${{ steps.get-llvm-commit-hash.outputs.hash }}-code-cov
-          max-size: 1G
-
-      # Compare the compiler by content, not mtime, so the cache hits across
-      # runs on ephemeral runners. Matches .github/actions/setup_ccache.
-      - name: Configure ccache
-        if: steps.changed-files.outputs.changed-files != ''
-        shell: bash
-        run: |
-          ccache --set-config=compiler_check=content
-          ccache --set-config=sloppiness=locale,time_macros
-
-      - name: Install our python reqs
-        if: steps.changed-files.outputs.changed-files != ''
-        run: |
-          pip install --upgrade pip
-          python utils/mlir_aie_wheels/vendor_eudsl.py \
-              --requirements python/requirements.txt \
-              --install-non-eudsl
-          python -m pip install --require-hashes -r python/requirements_dev.lock
-
-      - name: Build and generate coverage (Release)
-        if: steps.changed-files.outputs.changed-files != ''
-        run: |
-
-          mkdir -p build_release/install
-          cd build_release
-
-          cmake .. \
-            -GNinja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_PLATFORM_NO_VERSIONED_SONAME=ON \
-            -DCMAKE_VISIBILITY_INLINES_HIDDEN=ON \
-            -DCMAKE_C_VISIBILITY_PRESET=hidden \
-            -DCMAKE_CXX_VISIBILITY_PRESET=hidden \
-            -DCMAKE_INSTALL_PREFIX=$PWD/install \
-            -DAIE_COMPILER=NONE \
-            -DAIE_LINKER=NONE \
-            -DHOST_COMPILER=NONE \
-            -DLLVM_ENABLE_ASSERTIONS=OFF \
-            -DLLVM_ENABLE_RTTI=ON \
-            -DCMAKE_MODULE_PATH=$PWD/../cmake/modulesXilinx \
-            -DMLIR_DIR=$PWD/../mlir/lib/cmake/mlir \
-            -DLLVM_DIR=$PWD/../mlir/lib/cmake/llvm \
-            -DLLVM_USE_LINKER=lld \
-            -DLLVM_EXTERNAL_LIT=$(which lit) \
-            \
-            -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
-            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
-            -DCMAKE_EXE_LINKER_FLAGS_INIT="-fuse-ld=lld" -DCMAKE_MODULE_LINKER_FLAGS_INIT="-fuse-ld=lld" -DCMAKE_SHARED_LINKER_FLAGS_INIT="-fuse-ld=lld" \
-            -DBUILD_INSTRUMENTED_COVERAGE=ON \
-            -DINSTRUMENTED_COVERAGE_FILES="${{ steps.changed-files.outputs.changed-files }}"
-
-          # filter out slow tests (e.g. create-flows/vecmul_4x4_slow_test.mlir) due to timeout.
-          export LIT_OPTS="-sv --timeout 600 --filter-out slow_test"
-          ninja && ninja generate-aie-coverage-report
-
-          cat "$GITHUB_WORKSPACE/build_release/report/summary.txt"
-
-      - name: Build coverage comment
-        if: steps.changed-files.outputs.changed-files != ''
-        id: format-report
-        working-directory: ${{ github.workspace }}
-        run: |
-          REPORT=build_release/report
-          COMMENT=$REPORT/comment.md
-
-          # Diff coverage: which of the lines this PR added/changed are exercised
-          # by the test suite. Run from the repo root so diff-cover can resolve the
-          # lcov's absolute source paths against `git diff origin/main`.
-          diff-cover $REPORT/coverage.lcov \
-            --compare-branch origin/main \
-            --format markdown:$REPORT/diffcov.md || true
-
-          # Hidden marker lets find-create-or-update-comment replace its own comment.
-          {
-            echo '<!-- aie-coverage-report -->'
-            echo '## Code coverage'
-            echo
-            cat $REPORT/diffcov.md
-            echo
-            echo '<details><summary>Coverage of the changed files by the full test suite'
-            echo '(whole-file, not diff-only)</summary>'
-            echo
-            python utils/format-coverage-comment.py $REPORT/coverage.lcov \
-              --restrict "${{ steps.changed-files.outputs.changed-files }}"
-            echo
-            echo '</details>'
-          } > $COMMENT
-
-      - name: Update PR with coverage results
-        if: steps.changed-files.outputs.changed-files != '' && github.event.pull_request.head.repo.full_name == github.repository
-        uses: edumserrano/find-create-or-update-comment@82880b65c8a3a6e4c70aa05a204995b6c9696f53  # v3
-        with:
-          issue-number: ${{ github.event.pull_request.number }}
-          body-includes: '<!-- aie-coverage-report -->'
-          comment-author: 'github-actions[bot]'
-          body-path: ${{ github.workspace }}/build_release/report/comment.md
-          edit-mode: replace
 
   license-compliance:
     name: License Compliance Check

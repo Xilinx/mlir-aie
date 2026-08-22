@@ -263,6 +263,8 @@ jobs:
     # nightly still get full from-source NPU coverage via buildAndTestRyzenAI.
     needs: build-repo
     runs-on: ${{ matrix.runner_type }}
+    # Normal exec is ~1 min; cap well below the sibling smoke job's 192.6-min hang.
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -642,6 +644,8 @@ jobs:
     # 3.13 matches the runner's pre-provisioned interpreter (docs/buildHostWinNative.md).
     needs: build-windows
     runs-on: [self-hosted, windows, ryzenai, npu2]
+    # Normal exec is 3-6 min; observed hang 192.6 min on this job (2026-08-04).
+    timeout-minutes: 20
     env:
       NPU_CACHE_HOME: ${{ github.workspace }}\iron-cache-${{ github.run_id }}
       PIP_CACHE_DIR: ${{ github.workspace }}\.pip-cache-${{ github.run_id }}

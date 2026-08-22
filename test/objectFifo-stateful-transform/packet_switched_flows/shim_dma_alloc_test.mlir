@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform="packet-sw-objFifos dynamic-objFifos=false" %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="packet-sw-objFifos=true" --aie-objectFifo-unroll %s | FileCheck %s
 
 // CHECK: module @shim_dma_alloc {
 // CHECK:   aie.device(xcve2302) {
@@ -13,8 +13,8 @@
 // CHECK:     %[[VAL_2:.*]] = aie.tile(3, 3)
 // CHECK:     %[[VAL_3:.*]] = aie.buffer(%[[VAL_2]]) {sym_name = "of1_cons_buff_0"} : memref<16xi32>
 // CHECK:     %[[VAL_4:.*]] = aie.buffer(%[[VAL_2]]) {sym_name = "of1_cons_buff_1"} : memref<16xi32>
-// CHECK:     %[[VAL_5:.*]] = aie.lock(%[[VAL_2]], 0) {init = 2 : i32, sym_name = "of1_cons_prod_lock_0"}
-// CHECK:     %[[VAL_6:.*]] = aie.lock(%[[VAL_2]], 1) {init = 0 : i32, sym_name = "of1_cons_cons_lock_0"}
+// CHECK:     %[[VAL_5:.*]] = aie.lock(%[[VAL_2]]) {init = 2 : i32, sym_name = "of1_cons_prod_lock_0"}
+// CHECK:     %[[VAL_6:.*]] = aie.lock(%[[VAL_2]]) {init = 0 : i32, sym_name = "of1_cons_cons_lock_0"}
 // CHECK:     aie.packet_flow(0) {
 // CHECK:        aie.packet_source<%[[VAL_0]], DMA : 0>
 // CHECK:        aie.packet_dest<%[[VAL_2]], DMA : 0>

@@ -90,7 +90,7 @@ mlir::LogicalResult AIETranslateToBCF(mlir::ModuleOp module,
                                       int tileRow,
                                       llvm::StringRef deviceName = "");
 mlir::LogicalResult
-AIELLVMLink(llvm::raw_ostream &output, std::vector<std::string> Files,
+AIELLVMLink(llvm::raw_ostream &output, const std::vector<std::string> &Files,
             bool DisableDITypeMap = false, bool NoVerify = false,
             bool Internalize = false, bool OnlyNeeded = false,
             bool PreserveAssemblyUseListOrder = false, bool Verbose = false);

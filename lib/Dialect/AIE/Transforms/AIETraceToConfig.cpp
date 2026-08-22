@@ -53,8 +53,9 @@ struct AIETraceToConfigPass
 
       // Insert trace.config after trace declaration
       builder.setInsertionPointAfter(trace);
-      auto configOp = builder.create<TraceConfigOp>(
-          trace.getLoc(), trace.getTile(), builder.getStringAttr(configName),
+      auto configOp = TraceConfigOp::create(
+          builder, trace.getLoc(), trace.getTile(),
+          builder.getStringAttr(configName),
           TracePacketTypeAttr::get(builder.getContext(), packetType));
 
       // Build register writes inside config body
@@ -121,23 +122,26 @@ struct AIETraceToConfigPass
           }
 
           // Emit Combo_event_inputs register fields
-          configBuilder.create<TraceRegOp>(
-              comboOp.getLoc(), builder.getStringAttr("Combo_event_inputs"),
-              builder.getStringAttr(eventAField), comboOp.getEventA(),
-              /*mask=*/nullptr,
-              builder.getStringAttr("combo" + std::to_string(slot) +
-                                    " eventA"));
+          TraceRegOp::create(configBuilder, comboOp.getLoc(),
+                             builder.getStringAttr("Combo_event_inputs"),
+                             builder.getStringAttr(eventAField),
+                             comboOp.getEventA(),
+                             /*mask=*/nullptr,
+                             builder.getStringAttr(
+                                 "combo" + std::to_string(slot) + " eventA"));
 
-          configBuilder.create<TraceRegOp>(
-              comboOp.getLoc(), builder.getStringAttr("Combo_event_inputs"),
-              builder.getStringAttr(eventBField), comboOp.getEventB(),
-              /*mask=*/nullptr,
-              builder.getStringAttr("combo" + std::to_string(slot) +
-                                    " eventB"));
+          TraceRegOp::create(configBuilder, comboOp.getLoc(),
+                             builder.getStringAttr("Combo_event_inputs"),
+                             builder.getStringAttr(eventBField),
+                             comboOp.getEventB(),
+                             /*mask=*/nullptr,
+                             builder.getStringAttr(
+                                 "combo" + std::to_string(slot) + " eventB"));
 
           // Emit Combo_event_control register field
-          configBuilder.create<TraceRegOp>(
-              comboOp.getLoc(), builder.getStringAttr("Combo_event_control"),
+          TraceRegOp::create(
+              configBuilder, comboOp.getLoc(),
+              builder.getStringAttr("Combo_event_control"),
               builder.getStringAttr(controlField),
               builder.getI32IntegerAttr(static_cast<uint32_t>(logic)),
               /*mask=*/nullptr,
@@ -177,8 +181,8 @@ struct AIETraceToConfigPass
                                        : "Edge_Detection_1_Trigger_Falling";
 
           // Source event
-          configBuilder.create<TraceRegOp>(
-              edgeOp.getLoc(),
+          TraceRegOp::create(
+              configBuilder, edgeOp.getLoc(),
               builder.getStringAttr("Edge_Detection_event_control"),
               builder.getStringAttr(eventField), edgeOp.getEvent(),
               /*mask=*/nullptr,
@@ -190,16 +194,16 @@ struct AIETraceToConfigPass
           bool falling =
               (trigger == EdgeTrigger::FALLING || trigger == EdgeTrigger::BOTH);
 
-          configBuilder.create<TraceRegOp>(
-              edgeOp.getLoc(),
+          TraceRegOp::create(
+              configBuilder, edgeOp.getLoc(),
               builder.getStringAttr("Edge_Detection_event_control"),
               builder.getStringAttr(risingField),
               builder.getI32IntegerAttr(rising ? 1 : 0),
               /*mask=*/nullptr,
               builder.getStringAttr("edge" + std::to_string(slot) + " rising"));
 
-          configBuilder.create<TraceRegOp>(
-              edgeOp.getLoc(),
+          TraceRegOp::create(
+              configBuilder, edgeOp.getLoc(),
               builder.getStringAttr("Edge_Detection_event_control"),
               builder.getStringAttr(fallingField),
               builder.getI32IntegerAttr(falling ? 1 : 0),
@@ -214,8 +218,8 @@ struct AIETraceToConfigPass
       for (auto &op : trace.getBody().getOps()) {
         if (auto startOp = dyn_cast<TraceStartEventOp>(op)) {
           uint32_t startEvent = 0;
-          if (startOp.getBroadcast()) {
-            uint32_t broadcastNum = *startOp.getBroadcast();
+          if (auto broadcast = startOp.getBroadcast()) {
+            uint32_t broadcastNum = *broadcast;
             // Resolve broadcast channel to hardware event ID
             std::string eventName;
             if (tile.isShimTile()) {
@@ -250,17 +254,18 @@ struct AIETraceToConfigPass
             }
           }
 
-          configBuilder.create<TraceRegOp>(
-              trace.getLoc(), builder.getStringAttr("Trace_Control0"),
-              builder.getStringAttr("Trace_Start_Event"),
-              builder.getI32IntegerAttr(startEvent),
-              /*mask=*/nullptr, builder.getStringAttr("start event"));
+          TraceRegOp::create(configBuilder, trace.getLoc(),
+                             builder.getStringAttr("Trace_Control0"),
+                             builder.getStringAttr("Trace_Start_Event"),
+                             builder.getI32IntegerAttr(startEvent),
+                             /*mask=*/nullptr,
+                             builder.getStringAttr("start event"));
         }
 
         if (auto stopOp = dyn_cast<TraceStopEventOp>(op)) {
           uint32_t stopEvent = 0;
-          if (stopOp.getBroadcast()) {
-            uint32_t broadcastNum = *stopOp.getBroadcast();
+          if (auto broadcast = stopOp.getBroadcast()) {
+            uint32_t broadcastNum = *broadcast;
             // Resolve broadcast channel to hardware event ID
             std::string eventName;
             if (tile.isShimTile()) {
@@ -294,11 +299,12 @@ struct AIETraceToConfigPass
             }
           }
 
-          configBuilder.create<TraceRegOp>(
-              trace.getLoc(), builder.getStringAttr("Trace_Control0"),
-              builder.getStringAttr("Trace_Stop_Event"),
-              builder.getI32IntegerAttr(stopEvent),
-              /*mask=*/nullptr, builder.getStringAttr("stop event"));
+          TraceRegOp::create(configBuilder, trace.getLoc(),
+                             builder.getStringAttr("Trace_Control0"),
+                             builder.getStringAttr("Trace_Stop_Event"),
+                             builder.getI32IntegerAttr(stopEvent),
+                             /*mask=*/nullptr,
+                             builder.getStringAttr("stop event"));
         }
 
         // Emit mode if present.
@@ -306,33 +312,36 @@ struct AIETraceToConfigPass
         // Memory, memory_tile, and shim modules do not have the Mode field.
         bool isCore = (packetType == TracePacketType::Core);
         if (auto modeOp = dyn_cast<TraceModeOp>(op); modeOp && isCore) {
-          configBuilder.create<TraceRegOp>(
-              trace.getLoc(), builder.getStringAttr("Trace_Control0"),
-              builder.getStringAttr("Mode"),
-              builder.getI32IntegerAttr(
-                  static_cast<uint32_t>(modeOp.getMode())),
-              /*mask=*/nullptr, builder.getStringAttr("trace mode"));
+          TraceRegOp::create(configBuilder, trace.getLoc(),
+                             builder.getStringAttr("Trace_Control0"),
+                             builder.getStringAttr("Mode"),
+                             builder.getI32IntegerAttr(
+                                 static_cast<uint32_t>(modeOp.getMode())),
+                             /*mask=*/nullptr,
+                             builder.getStringAttr("trace mode"));
         }
 
         // Emit packet config if present. -aie-insert-trace-flows runs
         // before this pass and materializes the id, so getId() is set
         // here.
         if (auto packetOp = dyn_cast<TracePacketOp>(op)) {
-          assert(packetOp.getId().has_value() &&
+          auto packetId = packetOp.getId();
+          assert(packetId.has_value() &&
                  "TracePacketOp id should be assigned by "
                  "-aie-insert-trace-flows");
-          configBuilder.create<TraceRegOp>(
-              trace.getLoc(), builder.getStringAttr("Trace_Control1"),
-              builder.getStringAttr("ID"),
-              builder.getI32IntegerAttr(*packetOp.getId()),
+          TraceRegOp::create(
+              configBuilder, trace.getLoc(),
+              builder.getStringAttr("Trace_Control1"),
+              builder.getStringAttr("ID"), builder.getI32IntegerAttr(*packetId),
               /*mask=*/nullptr, builder.getStringAttr("packet ID"));
 
-          configBuilder.create<TraceRegOp>(
-              trace.getLoc(), builder.getStringAttr("Trace_Control1"),
-              builder.getStringAttr("Packet_Type"),
-              builder.getI32IntegerAttr(
-                  static_cast<uint32_t>(packetOp.getType())),
-              /*mask=*/nullptr, builder.getStringAttr("packet type"));
+          TraceRegOp::create(configBuilder, trace.getLoc(),
+                             builder.getStringAttr("Trace_Control1"),
+                             builder.getStringAttr("Packet_Type"),
+                             builder.getI32IntegerAttr(
+                                 static_cast<uint32_t>(packetOp.getType())),
+                             /*mask=*/nullptr,
+                             builder.getStringAttr("packet type"));
         }
       }
 
@@ -360,21 +369,23 @@ struct AIETraceToConfigPass
               (portOp.getDirection() == DMAChannelDir::S2MM) ? 1 : 0;
 
           // Emit Port_N_ID field
-          configBuilder.create<TraceRegOp>(
-              portOp.getLoc(), builder.getStringAttr(registerName),
+          TraceRegOp::create(
+              configBuilder, portOp.getLoc(),
+              builder.getStringAttr(registerName),
               builder.getStringAttr(idFieldName),
               builder.getStringAttr(portValue), // "NORTH:1" format
               /*mask=*/nullptr,
               builder.getStringAttr("port " + std::to_string(slot) + " ID"));
 
           // Emit Port_N_Master_Slave field
-          configBuilder.create<TraceRegOp>(
-              portOp.getLoc(), builder.getStringAttr(registerName),
-              builder.getStringAttr(masterSlaveFieldName),
-              builder.getI32IntegerAttr(masterSlaveValue),
-              /*mask=*/nullptr,
-              builder.getStringAttr("port " + std::to_string(slot) +
-                                    " master/slave"));
+          TraceRegOp::create(configBuilder, portOp.getLoc(),
+                             builder.getStringAttr(registerName),
+                             builder.getStringAttr(masterSlaveFieldName),
+                             builder.getI32IntegerAttr(masterSlaveValue),
+                             /*mask=*/nullptr,
+                             builder.getStringAttr("port " +
+                                                   std::to_string(slot) +
+                                                   " master/slave"));
         }
       }
 
@@ -408,15 +419,15 @@ struct AIETraceToConfigPass
         std::string fieldName = "Trace_Event" + std::to_string(i);
 
         // Emit register write with event number as integer
-        configBuilder.create<TraceRegOp>(
-            trace.getLoc(), builder.getStringAttr(registerName),
+        TraceRegOp::create(
+            configBuilder, trace.getLoc(), builder.getStringAttr(registerName),
             builder.getStringAttr(fieldName),
             events[i].getEvent(), // builder.getI32IntegerAttr(*eventNum),
             /*mask=*/nullptr, builder.getStringAttr(eventName));
       }
 
       // Add terminator
-      configBuilder.create<EndOp>(trace.getLoc());
+      EndOp::create(configBuilder, trace.getLoc());
 
       // Update all trace.start_config references
       device.walk([&](TraceStartConfigOp startConfig) {
@@ -598,11 +609,11 @@ struct AIETraceRegPackWritesPass
         uint32_t shiftedValue = targetModel.encodeFieldValue(*fieldInfo, value);
         // Create new operation with mask
         builder.setInsertionPoint(regOp);
-        builder.create<TraceRegOp>(regOp.getLoc(), regOp.getRegNameAttr(),
-                                   nullptr, // no field
-                                   builder.getI32IntegerAttr(shiftedValue),
-                                   builder.getI32IntegerAttr(*mask),
-                                   regOp.getCommentAttr());
+        TraceRegOp::create(builder, regOp.getLoc(), regOp.getRegNameAttr(),
+                           nullptr, // no field
+                           builder.getI32IntegerAttr(shiftedValue),
+                           builder.getI32IntegerAttr(*mask),
+                           regOp.getCommentAttr());
 
         // Remove old operation
         regOp.erase();
@@ -671,8 +682,8 @@ struct AIETraceRegPackWritesPass
               comment += reg2.getComment()->str();
             }
 
-            builder.create<TraceRegOp>(
-                reg1.getLoc(), reg1.getRegNameAttr(), nullptr,
+            TraceRegOp::create(
+                builder, reg1.getLoc(), reg1.getRegNameAttr(), nullptr,
                 builder.getI32IntegerAttr(mergedValue),
                 builder.getI32IntegerAttr(mergedMask),
                 comment.empty() ? nullptr : builder.getStringAttr(comment));

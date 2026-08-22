@@ -364,10 +364,9 @@ def AIEObjectFifoStatefulTransform : Pass<"aie-objectFifo-stateful-transform", "
 
     If the producer and consumer tiles of an aie.objectFifo.createObjectFifo operation are not adjacent, the
     pass also establised aie.flow and aie.dma operations to enable communication between the tiles.
-    Extend the body of each loop that contains operations on objectFifos such that it is unrolled
-    based on the number of elements in the objectFifos. If the number of iterations of the loop
-    cannot be divided pefectly by the unrolling factor, the pass duplicates the loop body after
-    the original loop.
+    ObjectFifo accesses inside loops are lowered to runtime buffer/lock bookkeeping, and each such loop is
+    annotated with an `aie.unroll_hint`; the separate `aie-objectFifo-unroll` pass consumes that hint to
+    unroll the loop and fold the bookkeeping into a static lowering.
   }];
 
   let constructor = "xilinx::AIE::createAIEObjectFifoStatefulTransformPass()";
@@ -379,19 +378,60 @@ def AIEObjectFifoStatefulTransform : Pass<"aie-objectFifo-stateful-transform", "
     "xilinx::AIE::AIEDialect",
   ];
 
-  let options = [
-    // Default true: dynamic (loop-preserving) lowering. This matches the aiecc
-    // driver default (tools/aiecc/aiecc.cpp) so standalone `aie-opt` and a full
-    // compile agree on the lowering a design gets. Pass dynamic-objFifos=false to
-    // select static LCM-based loop unrolling instead.
-    Option<"clDynamicObjectFifos", "dynamic-objFifos", "bool", /*default=*/"true",
-           "Use dynamic (loop-preserving) object fifo lowering in cores. When "
-           "false, use static loop unrolling instead.">,
-    Option<"clPacketSwObjectFifos", "packet-sw-objFifos", "bool", /*default=*/"false",
-           "Flag to enable aie.packetflow lowering from objectfifos.">,
+  let options =
+      [Option<"clPacketSwObjectFifos", "packet-sw-objFifos", "bool",
+              /*default=*/"false",
+              "Flag to enable aie.packetflow lowering from objectfifos.">,
   ];
 }
 
+def AIEObjectFifoUnroll : Pass<"aie-objectFifo-unroll", "DeviceOp"> {
+  let summary = "Unroll scf.for loops that contain objectFifo operations";
+  let description = [{
+    Unroll each `scf.for` loop (and its ancestor loops) inside an `aie.core`
+    that contains `aie.objectfifo.acquire`/`aie.objectfifo.release` operations,
+    using the standard `scf` loop unrolling infrastructure.
+
+    Each such loop is unrolled by the least common multiple of the depths of the
+    objectFifos it accesses, so that after the objectFifo stateful transform and
+    subsequent `mem2reg`/`canonicalize` the runtime buffer/lock bookkeeping folds
+    into constant buffer references and constant lock counts.
+
+    This pass runs after `aie-objectFifo-stateful-transform` (which emits the
+    dynamic bookkeeping and annotates every objectFifo loop with the
+    `aie.unroll_hint` attribute this pass consumes). The `default-dynamic`
+    option selects the lowering for cores that do not pin their own choice:
+    when false (the default) their loops are unrolled into the static lowering,
+    when true they are left rolled (dynamic, loop-preserving). A core overrides
+    the default in either direction via its `dynamic_objfifo_lowering`
+    attribute. Either way the hints are stripped and the runtime bookkeeping of
+    any dynamic core is tidied by a fold/cleanup sub-pipeline.
+
+    A loop entered holding fewer objectFifo elements than it holds in steady
+    state computes its first acquire differently from every later one, which
+    keeps that count in a loop-carried value. `peel-first-iteration` peels one
+    iteration so that the rest of the loop starts in the steady state. Peeling
+    costs a copy of the loop body, so each peel is kept only where it turns the
+    loop's lock values into constants.
+  }];
+
+  let constructor = "xilinx::AIE::createAIEObjectFifoUnrollPass()";
+  let dependentDialects = ["mlir::scf::SCFDialect", "xilinx::AIE::AIEDialect",
+  ];
+  let options =
+      [Option<"clDefaultDynamic", "default-dynamic", "bool",
+              /*default=*/"false",
+              "Default objectFifo lowering for cores that do not set the "
+              "dynamic_objfifo_lowering attribute: true leaves loops rolled "
+              "(dynamic), false unrolls them (static).">,
+       Option<"clPeelFirstIteration", "peel-first-iteration", "std::string",
+              /*default=*/"\"auto\"",
+              "Peel the first iteration off objectFifo loops whose lock values "
+              "are computed at run time, keeping the peel where it makes them "
+              "constant: \"true\", \"false\", or \"auto\" (peel unless "
+              "default-dynamic is set).">,
+  ];
+}
 
 def AIELowerCascadeFlows : Pass<"aie-lower-cascade-flows", "DeviceOp"> {
   let summary = "Lower aie.cascade_flow operations through `aie.configure_cascade` operations";

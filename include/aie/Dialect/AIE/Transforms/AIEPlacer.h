@@ -60,7 +60,7 @@ public:
   Placer() = default;
   virtual ~Placer() = default;
 
-  virtual void initialize(const AIETargetModel &targetModel);
+  virtual void initialize(const AIETargetModel &tm);
 
   virtual mlir::LogicalResult place(DeviceOp device) = 0;
 
@@ -246,6 +246,24 @@ private:
                                              int requiredInputChannels,
                                              int requiredOutputChannels,
                                              AIETileType requestedType);
+
+  // Diagnosis for a failed findTileWithCapacity() call. `findTileWithCapacity`
+  // scans every tile of `requestedType` on the device -- `targetCol` orders
+  // candidates, it does not exclude any -- so a failure is either (a) no
+  // tile of this type has the requested channels free ANYWHERE (device-wide
+  // DMA exhaustion: pinning a column cannot create capacity), or (b) at
+  // least one tile has them free but is already claimed by a different
+  // non-core logical tile (only possible under merge-logical-tiles=false).
+  // `capacityExistsSomewhere` selects between the two; the totals let the
+  // caller report the real budget instead of guessing at it.
+  struct CapacityDiagnosis {
+    bool capacityExistsSomewhere = false;
+    int tilesOfType = 0;
+    int inUsed = 0, inMax = 0, outUsed = 0, outMax = 0;
+  };
+  CapacityDiagnosis diagnoseCapacityExhaustion(AIETileType requestedType,
+                                               int requiredInputChannels,
+                                               int requiredOutputChannels);
 
   void updateChannelUsage(TileID tile, DmaDir direction, int numChannels);
 
