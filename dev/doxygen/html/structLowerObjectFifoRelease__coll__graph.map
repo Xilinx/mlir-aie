@@ -1,0 +1,29 @@
+<map id="LowerObjectFifoRelease" name="LowerObjectFifoRelease">
+<area shape="rect" id="Node000001" title="Lower an objectFifo.release to its runtime lock bookkeeping and advance the rotating buffer&#45;index cou..." alt="" coords="1168,278,1347,303"/>
+<area shape="rect" id="Node000002" href="$classOpRewritePattern.html" title=" " alt="" coords="901,243,1095,283"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="1109,272,1168,278,1168,284,1108,277"/>
+<area shape="rect" id="Node000003" href="$structLoweringContext.html" title="Context required for the lowering patterns for acquire/release/subview ops." alt="" coords="932,307,1064,333"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="1077,308,1168,298,1168,303,1078,314"/>
+<area shape="rect" id="Node000004" href="$structObjectFifoState.html" title="Struct to hold per&#45;device state for the objectFifo transformation." alt="" coords="515,221,637,246"/>
+<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="651,223,704,223,762,228,822,240,879,263,887,270,892,278,896,286,903,292,933,306,931,311,900,297,892,289,887,281,883,274,876,268,821,245,762,233,703,228,651,229"/>
+<area shape="rect" id="Node000005" title=" " alt="" coords="25,5,244,45"/>
+<area shape="poly" id="edge4_Node000004_Node000005" title=" " alt="" coords="258,43,349,69,395,87,439,108,478,135,515,166,566,219,562,222,511,170,475,139,436,113,393,92,347,74,256,48"/>
+<area shape="rect" id="Node000006" title=" " alt="" coords="22,70,247,125"/>
+<area shape="poly" id="edge5_Node000004_Node000006" title=" " alt="" coords="262,120,349,142,438,169,500,194,551,218,549,223,498,199,436,175,348,147,260,126"/>
+<area shape="rect" id="Node000007" title=" " alt="" coords="27,149,242,189"/>
+<area shape="poly" id="edge6_Node000004_Node000007" title=" " alt="" coords="256,184,515,222,514,227,255,189"/>
+<area shape="rect" id="Node000008" title=" " alt="" coords="5,213,264,253"/>
+<area shape="poly" id="edge7_Node000004_Node000008" title=" " alt="" coords="278,231,514,231,514,236,278,236"/>
+<area shape="rect" id="Node000009" title=" " alt="" coords="25,277,244,347"/>
+<area shape="poly" id="edge8_Node000004_Node000009" title=" " alt="" coords="257,288,514,241,515,247,258,293"/>
+<area shape="rect" id="Node000010" title=" " alt="" coords="35,371,234,411"/>
+<area shape="poly" id="edge9_Node000004_Node000010" title=" " alt="" coords="231,365,263,356,315,346,356,340,394,330,436,303,443,294,447,283,450,272,460,261,485,246,513,237,515,242,488,251,463,265,455,274,452,285,448,296,439,307,396,334,357,345,315,351,265,361,233,370"/>
+<area shape="rect" id="Node000011" title=" " alt="" coords="25,435,245,461"/>
+<area shape="poly" id="edge10_Node000004_Node000011" title=" " alt="" coords="258,444,306,437,353,423,398,401,435,370,444,357,448,344,446,317,445,289,449,275,459,261,485,243,513,234,515,239,487,248,463,265,454,277,450,290,452,317,453,345,449,359,439,374,400,405,355,428,307,442,259,450"/>
+<area shape="rect" id="Node000012" title=" " alt="" coords="551,275,601,301"/>
+<area shape="poly" id="edge11_Node000003_Node000012" title=" " alt="" coords="615,288,932,312,932,318,615,294"/>
+<area shape="rect" id="Node000013" title=" " alt="" coords="469,325,683,365"/>
+<area shape="poly" id="edge12_Node000003_Node000013" title=" " alt="" coords="697,343,877,335,931,328,932,333,878,340,697,348"/>
+<area shape="rect" id="Node000014" title=" " alt="" coords="461,389,691,459"/>
+<area shape="poly" id="edge13_Node000003_Node000014" title=" " alt="" coords="704,411,790,397,877,376,930,354,974,331,977,335,932,359,878,381,791,403,705,416"/>
+</map>
