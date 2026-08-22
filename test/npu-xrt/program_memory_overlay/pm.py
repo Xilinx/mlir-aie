@@ -74,7 +74,7 @@ def parse_phases(spec):
 def cmd_emit(args):
     g = recipe(args.recipe)
     if args.slot_ld:
-        pmdesign.emit_slot_ld(g, args.slot_ld)
+        pmdesign.emit_slot_ld(g, args.slot_ld, assert_budget=not args.no_assert)
     payloads = tuple(text_words(p) for p in args.payload) if args.payload else ()
     poison = text_words(args.poison) if args.poison else ()
     cfg = pmdesign.Config(
@@ -164,6 +164,48 @@ def cmd_order(args):
     print(f"{writes} payload write(s), {releases} release(s), correctly ordered")
 
 
+def cmd_verify_payload(args):
+    """The bytes embedded in the design are the bytes in the overlay's .text.
+
+    Between the ELF and the instruction stream the payload is unpacked into
+    32-bit words, viewed as signed, and re-serialized by MLIR. Every step there
+    is a chance to swap endianness or lose the top bit of a word, and every one
+    of those is silent at build time -- the design compiles, the xclbin loads,
+    and the core executes subtly wrong instructions. Cheaper to compare the
+    bytes than to debug that on hardware.
+    """
+    want = b"".join(w.to_bytes(4, "little") for w in text_words(args.elf))
+
+    blob = None
+    for line in open(args.mlir):
+        if f"@{args.symbol} " in line and "dense<" in line:
+            hexpart = line.split('dense<"0x', 1)[1].split('"', 1)[0]
+            blob = bytes.fromhex(hexpart)
+            break
+    if blob is None:
+        sys.exit(
+            f"{args.mlir}: no memref.global named @{args.symbol} with a dense "
+            f"initializer. The payload is not being embedded under the name this "
+            f"check expects."
+        )
+
+    if blob != want:
+        first = next(
+            (i for i in range(min(len(blob), len(want))) if blob[i] != want[i]), None
+        )
+        sys.exit(
+            f"@{args.symbol}: embedded payload differs from {args.elf}. "
+            f"{len(blob)} bytes embedded vs {len(want)} in .text"
+            + (
+                f"; first difference at byte {first}: "
+                f"0x{blob[first]:02x} vs 0x{want[first]:02x}"
+                if first is not None
+                else ""
+            )
+        )
+    print(f"@{args.symbol}: {len(blob)} bytes, byte-identical to {args.elf}")
+
+
 def cmd_sizes(args):
     g = recipe(args.recipe)
     resident = text_size(find_core_elf(args.resident, *g.tile))
@@ -202,6 +244,12 @@ def main():
     e = sub.add_parser("emit")
     e.add_argument("--recipe", default="one_slot")
     e.add_argument("--slot-ld")
+    e.add_argument(
+        "--no-assert",
+        action="store_true",
+        help="omit slot.ld's resident-budget ASSERT, to reach the "
+        "program-memory region overflow underneath it",
+    )
     e.add_argument("--payload", action="append")
     e.add_argument("--poison")
     e.add_argument("--phases", default="0")
@@ -226,6 +274,12 @@ def main():
     # 0x22000: program-memory host offset 0x20000 plus the slot at 0x2000.
     o.add_argument("--pm-address", default="139264")
     o.set_defaults(func=cmd_order)
+
+    vp = sub.add_parser("verify-payload")
+    vp.add_argument("mlir")
+    vp.add_argument("elf")
+    vp.add_argument("--symbol", required=True)
+    vp.set_defaults(func=cmd_verify_payload)
 
     s = sub.add_parser("sizes")
     s.add_argument("--resident", required=True)
