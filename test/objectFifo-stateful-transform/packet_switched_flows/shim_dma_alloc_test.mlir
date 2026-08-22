@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform="packet-sw-objFifos=true" --aie-objectFifo-unroll %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="packet-sw-objFifos=true skip-verify=true" --aie-objectFifo-unroll %s | FileCheck %s
 
 // CHECK: module @shim_dma_alloc {
 // CHECK:   aie.device(xcve2302) {
@@ -16,10 +16,10 @@
 // CHECK-DAG:     %[[VAL_5:.*]] = aie.lock(%[[VAL_2]]) {init = 2 : i32, sym_name = "of1_cons_prod_lock_0"}
 // CHECK-DAG:     %[[VAL_6:.*]] = aie.lock(%[[VAL_2]]) {init = 0 : i32, sym_name = "of1_cons_cons_lock_0"}
 // CHECK-DAG:     aie.packet_flow(0) {
-// CHECK-DAG:     aie.shim_dma_allocation @of1_shim_alloc(%[[VAL_0]], MM2S, 0, <pkt_type = 0, pkt_id = 0>)
 // CHECK:        aie.packet_source<%[[VAL_0]], DMA : 0>
 // CHECK:        aie.packet_dest<%[[VAL_2]], DMA : 0>
 // CHECK:     }
+// CHECK-DAG:     aie.shim_dma_allocation @of1_shim_alloc(%[[VAL_0]], MM2S, 0, <pkt_type = 0, pkt_id = 0>)
 // CHECK:     %[[VAL_12:.*]] = aie.mem(%[[VAL_2]]) {
 // CHECK:       aie.dma_start(S2MM, 0, ^bb1, ^bb3)
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb2

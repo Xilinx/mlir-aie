@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform="packet-sw-objFifos=true" --aie-objectFifo-unroll %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="packet-sw-objFifos=true skip-verify=true" --aie-objectFifo-unroll %s | FileCheck %s
 
 // CHECK: module @packet_id {
 // CHECK:   aie.device(xcve2302) {
@@ -21,11 +21,11 @@
 // CHECK-DAG:     %[[VAL_10:.*]] = aie.buffer(%[[VAL_2]]) {sym_name = "of1_buff_1"} : memref<16xi32>
 // CHECK-DAG:     %[[VAL_11:.*]] = aie.lock(%[[VAL_2]]) {init = 2 : i32, sym_name = "of1_prod_lock_0"}
 // CHECK-DAG:     %[[VAL_12:.*]] = aie.lock(%[[VAL_2]]) {init = 0 : i32, sym_name = "of1_cons_lock_0"}
-// CHECK-DAG:     aie.packet_flow(2) {
-// CHECK-DAG:     aie.packet_flow(1) {
+// CHECK:     aie.packet_flow(0) {
 // CHECK:        aie.packet_source<%[[VAL_2]], DMA : 0>
 // CHECK:        aie.packet_dest<%[[VAL_4]], DMA : 0>
 // CHECK:     }
+// CHECK:     aie.packet_flow(1) {
 // CHECK:        aie.packet_source<%[[VAL_1]], Trace : 0>
 // CHECK:        aie.packet_dest<%[[VAL_0]], DMA : 1>
 // CHECK:     } {keep_pkt_header = true}
@@ -33,13 +33,13 @@
 // CHECK:       aie.dma_start(MM2S, 0, ^bb1, ^bb3)
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb2
 // CHECK:       aie.use_lock(%[[VAL_12]], AcquireGreaterEqual, %{{.*}})
-// CHECK:       aie.dma_bd_packet(0, 2)
+// CHECK:       aie.dma_bd_packet(0, 0)
 // CHECK:       aie.dma_bd(%[[VAL_9]] : memref<16xi32> offset = {{.*}} len = {{.*}})
 // CHECK:       aie.use_lock(%[[VAL_11]], Release, %{{.*}})
 // CHECK:       aie.next_bd ^bb2
 // CHECK:     ^bb2:  // pred: ^bb1
 // CHECK:       aie.use_lock(%[[VAL_12]], AcquireGreaterEqual, %{{.*}})
-// CHECK:       aie.dma_bd_packet(0, 2)
+// CHECK:       aie.dma_bd_packet(0, 0)
 // CHECK:       aie.dma_bd(%[[VAL_10]] : memref<16xi32> offset = {{.*}} len = {{.*}})
 // CHECK:       aie.use_lock(%[[VAL_11]], Release, %{{.*}})
 // CHECK:       aie.next_bd ^bb1

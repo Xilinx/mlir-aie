@@ -9,8 +9,8 @@
 
 // Both fifos have depth [2, 2]. The consumer slides a 2-element window
 // (acquire 2, release 1), so the runtime lowering peels the first iteration
-// (index 0), threads the output/input buffer indices and held counts through a
-// 4-way iter_args loop, then peels the final iteration.
+// (index 0), threads the output and input buffer indices through the loop as
+// iter_args, then peels the final iteration.
 
 // CHECK-LABEL:   aie.device(npu1_1col) {
 // CHECK:           func.func @add_10_i32(%{{.*}}: memref<10xi32>, %{{.*}}: memref<10xi32>, %{{.*}}: memref<10xi32>) {
@@ -64,8 +64,7 @@
 // CHECK:               default {
 // CHECK:                 scf.yield %[[IF_B0]] : memref<10xi32>
 // CHECK:               }
-// CHECK:               %[[IC2:.*]] = arith.index_cast %[[IIDX]] : i32 to index
-// CHECK:               %[[IB1:.*]] = scf.index_switch %[[IC2]] -> memref<10xi32>
+// CHECK:               %[[IB1:.*]] = scf.index_switch %[[IC]] -> memref<10xi32>
 // CHECK:               case 0 {
 // CHECK:                 scf.yield %[[IF_B1]] : memref<10xi32>
 // CHECK:               }
@@ -110,8 +109,7 @@
 // CHECK:             default {
 // CHECK:               scf.yield %[[IF_B0]] : memref<10xi32>
 // CHECK:             }
-// CHECK:             %[[EIC2:.*]] = arith.index_cast %[[LOOP]]#1 : i32 to index
-// CHECK:             %[[EIB1:.*]] = scf.index_switch %[[EIC2]] -> memref<10xi32>
+// CHECK:             %[[EIB1:.*]] = scf.index_switch %[[EIC]] -> memref<10xi32>
 // CHECK:             case 0 {
 // CHECK:               scf.yield %[[IF_B1]] : memref<10xi32>
 // CHECK:             }
