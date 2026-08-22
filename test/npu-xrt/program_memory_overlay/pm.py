@@ -81,13 +81,14 @@ def parse_phases(spec):
 def cmd_emit(args):
     g = recipe(args.recipe)
     if args.slot_ld:
-        pmdesign.emit_slot_ld(g, args.slot_ld, assert_budget=not args.no_assert)
+        pmdesign.emit_slot_ld(g, args.slot_ld, assert_budget=args.legacy_assert)
     payloads = tuple(text_words(p) for p in args.payload) if args.payload else ()
     poison = text_words(args.poison) if args.poison else ()
     cfg = pmdesign.Config(
         geometry=g,
         n_elems=args.n_elems,
         dtype=args.dtype,
+        reserve=not args.no_reserve,
         phases=parse_phases(args.phases),
         payloads=payloads,
         poison=poison,
@@ -347,10 +348,16 @@ def main():
     e.add_argument("--recipe", default="one_slot")
     e.add_argument("--slot-ld")
     e.add_argument(
-        "--no-assert",
+        "--no-reserve",
         action="store_true",
-        help="omit slot.ld's resident-budget ASSERT, to reach the "
-        "program-memory region overflow underneath it",
+        help="do not set program_memory_reserved, so the linker's program "
+        "region is the whole of program memory",
+    )
+    e.add_argument(
+        "--legacy-assert",
+        action="store_true",
+        help="also emit slot.ld's resident-budget ASSERT, which the core's "
+        "program_memory_reserved attribute otherwise makes redundant",
     )
     e.add_argument("--payload", action="append")
     e.add_argument("--poison")

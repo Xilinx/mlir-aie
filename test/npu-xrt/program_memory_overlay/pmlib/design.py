@@ -62,6 +62,8 @@ class Config:
     # scalar byte loop is miscompiled on the pinned Peano and int32 stores are
     # not -- see ../peano_scalar_store_canary.
     dtype: str = "i32"
+    # Off only for the test that exercises the whole-program-memory overflow.
+    reserve: bool = True
     # phase -> overlay index. Permutation, replay and "run one twice" all fall
     # out of this one knob rather than three code paths.
     phases: tuple = (0,)
@@ -155,11 +157,20 @@ def build(cfg):
             in_cons.release(1)
             out_prod.release(1)
 
+    # Everything from the lowest slot upward belongs to code written at run
+    # time. Declaring it shortens the linker's program region, so a resident
+    # that grew into a slot is an ordinary link error naming the section and the
+    # overrun -- rather than an ASSERT smuggled in through a link_with fragment,
+    # which is what this used to rely on.
+    reserved = (
+        g.program_memory_size - min(s.base for s in g.slots) if cfg.reserve else None
+    )
     worker = Worker(
         core_fn,
         [of_in.cons(), of_out.prod(), flag, ovl_wait, *entries],
         tile=compute_tile,
         while_true=False,
+        program_memory_reserved=reserved,
     )
 
     def write_payload(words, slot_base, index, suffix="", delta=0):
@@ -222,14 +233,20 @@ def build(cfg):
     ).resolve_program()
 
 
-def emit_slot_ld(geometry, path, entry=ENTRY, assert_budget=True):
+def emit_slot_ld(geometry, path, entry=ENTRY, assert_budget=False):
     """The one place a slot's address is stated to the linker.
 
     Rides into the resident's link as a link_files entry, which the generated ld
     script turns into an INPUT() -- and ld.lld parses an input it does not
-    recognise as a linker script. The ASSERT is what stops the resident growing
-    into the slot; without it the overrun is silent until the core jumps into
-    its own code.
+    recognise as a linker script.
+
+    Symbol assignments only. The resident-must-not-grow-into-the-slot rule used
+    to be an ASSERT in here too, which meant the one thing standing between a
+    growing resident and the core overwriting its own code was a side effect of
+    how lld treats an unrecognised input. That is now the core's
+    program_memory_reserved attribute, so the linker enforces it directly.
+    assert_budget re-adds the ASSERT, for the test that shows the two
+    mechanisms catching the same overrun.
     """
     with open(path, "w") as f:
         f.write(

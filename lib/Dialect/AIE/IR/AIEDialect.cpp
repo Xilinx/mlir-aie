@@ -1860,6 +1860,24 @@ LogicalResult CoreOp::verify() {
                  << "' appears in both 'link_files' and 'link_merge_files'; an "
                     "artifact must be either merged or linked, not both";
     }
+  if (auto reservedAttr = getProgramMemoryReserved()) {
+    // Confined to a minimum of 1, so the cast is safe.
+    uint32_t reserved = static_cast<uint32_t>(*reservedAttr);
+    const auto &tm = getTargetModel(*this);
+    uint32_t progMem = tm.getProgramMemorySize();
+    if (reserved >= progMem)
+      return emitOpError("program_memory_reserved ")
+             << reserved << " leaves no program memory for this core's code ("
+             << progMem << " bytes total)";
+    // The reservation is where run-time writes land, and such a write has to
+    // start on a whole program-memory line, so a reservation that does not is
+    // unusable for the thing it exists for.
+    if (uint32_t line = tm.getProgramMemoryLine(); reserved % line)
+      return emitOpError("program_memory_reserved ")
+             << reserved << " is not a multiple of the " << line
+             << "-byte program-memory line, so code written into it could not "
+                "start on a line boundary";
+  }
   // Checked last so it does not pre-empt the diagnostics above on an op with
   // more than one defect.
   if (uint32_t stackSize = getEffectiveStackSize(),
@@ -1885,6 +1903,15 @@ TileOp CoreOp::getTileOp() {
 uint32_t CoreOp::getEffectiveStackSize() {
   return getStackSize().value_or(
       getTargetModel(*this).getDefaultCoreStackSize());
+}
+
+uint32_t CoreOp::getReservedProgramMemory() {
+  return getProgramMemoryReserved().value_or(0);
+}
+
+uint32_t CoreOp::getProgramMemoryCeiling() {
+  return getTargetModel(*this).getProgramMemorySize() -
+         getReservedProgramMemory();
 }
 
 //===----------------------------------------------------------------------===//

@@ -267,6 +267,12 @@ public:
   /// core cannot read or write its program memory as data.
   virtual uint32_t getProgramMemoryHostOffset() const = 0;
 
+  /// Return the width (in bytes) of a program-memory line, i.e. the granularity
+  /// at which a configuration write addresses program memory. Program memory is
+  /// 128 bits wide on every generation so far, so a write starting or ending off
+  /// a multiple of this straddles lines.
+  virtual uint32_t getProgramMemoryLine() const { return 16; }
+
   /// Return the size (in bytes) of the program-memory region within which a
   /// configuration write conflicts with the core's instruction fetch.
   ///

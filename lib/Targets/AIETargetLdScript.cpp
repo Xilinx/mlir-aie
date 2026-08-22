@@ -128,12 +128,21 @@ LogicalResult xilinx::AIE::AIETranslateToLdScript(ModuleOp module,
       // core whose .text overflowed link cleanly and then fail much later, in
       // aie-rt's ELF loader, with a bare "Overflow of program memory" and no
       // indication of which core.
+      //
+      // A core reserving program memory for code written at run time gets a
+      // correspondingly shorter region, so growing into the reservation is an
+      // ordinary link error naming the section and the overrun. That is what
+      // the attribute is for: otherwise the boundary can only be enforced by an
+      // ASSERT smuggled in through a link_with fragment, which depends on
+      // ld.lld parsing an unrecognised INPUT() as a linker script.
+      uint32_t programLength = core ? core.getProgramMemoryCeiling()
+                                    : targetModel.getProgramMemorySize();
       output << R"THESCRIPT(
 MEMORY
 {
 )THESCRIPT";
       output << "   program (RX) : ORIGIN = 0, LENGTH = 0x"
-             << llvm::utohexstr(targetModel.getProgramMemorySize()) << "\n";
+             << llvm::utohexstr(programLength) << "\n";
       output << "   data (!RX) : ORIGIN = 0x" << llvm::utohexstr(origin)
              << ", LENGTH = 0x" << llvm::utohexstr(length);
       output << R"THESCRIPT(
