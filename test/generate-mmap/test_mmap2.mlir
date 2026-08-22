@@ -30,4 +30,3 @@ module @test_mmap1 {
   %bufsame = aie.buffer(%tsame) { sym_name = "a", address = 0x0 : i32 } : memref<4xi32>
  }
 }
-
