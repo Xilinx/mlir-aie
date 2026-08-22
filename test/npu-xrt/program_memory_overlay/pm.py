@@ -87,6 +87,7 @@ def cmd_emit(args):
     cfg = pmdesign.Config(
         geometry=g,
         n_elems=args.n_elems,
+        dtype=args.dtype,
         phases=parse_phases(args.phases),
         payloads=payloads,
         poison=poison,
@@ -355,6 +356,7 @@ def main():
     e.add_argument("--poison")
     e.add_argument("--phases", default="0")
     e.add_argument("--n-elems", type=int, default=256)
+    e.add_argument("--dtype", choices=["i32", "bf16"], default="i32")
     e.add_argument("--corrupt", action="append", metavar="PHASE:WORD")
     e.add_argument("--skip-write", action="append", metavar="PHASE")
     e.add_argument("--wrong-address", action="append", metavar="PHASE:DELTA")

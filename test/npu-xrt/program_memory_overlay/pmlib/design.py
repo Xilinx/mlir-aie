@@ -18,6 +18,7 @@ the word being corrupted is known exactly.
 
 from dataclasses import dataclass, field
 
+from ml_dtypes import bfloat16
 import numpy as np
 
 from aie.dialects.aie import T
@@ -56,6 +57,11 @@ POISON_TAG = 0x7BAD
 class Config:
     geometry: Geometry
     n_elems: int = 256
+    # Real AIE kernels mostly work in bfloat16, and the tile type has to match
+    # what they were compiled for. The dummy workloads use int32 because a
+    # scalar byte loop is miscompiled on the pinned Peano and int32 stores are
+    # not -- see ../peano_scalar_store_canary.
+    dtype: str = "i32"
     # phase -> overlay index. Permutation, replay and "run one twice" all fall
     # out of this one knob rather than three code paths.
     phases: tuple = (0,)
@@ -103,12 +109,12 @@ def build(cfg):
     col, row = g.tile
     n_phases = len(cfg.phases)
 
-    i32 = np.dtype[np.int32]
-    tile_ty = np.ndarray[(cfg.n_elems,), i32]
+    elem = np.dtype[bfloat16] if cfg.dtype == "bf16" else np.dtype[np.int32]
+    tile_ty = np.ndarray[(cfg.n_elems,), elem]
     word_ty = np.ndarray[(1,), np.dtype[np.int32]]
-    host_in_ty = np.ndarray[(cfg.n_elems,), i32]
+    host_in_ty = np.ndarray[(cfg.n_elems,), elem]
     host_out_shape = (n_phases, cfg.n_elems)
-    host_out_ty = np.ndarray[host_out_shape, i32]
+    host_out_ty = np.ndarray[host_out_shape, elem]
 
     compute_tile = Tile(col, row)
 
