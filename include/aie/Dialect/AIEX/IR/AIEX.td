@@ -1247,9 +1247,7 @@ def AIE_NpuWriteBdOp: AIEX_Op<"npu.writebd", []> {
   let assemblyFormat = [{ attr-dict }];
   let hasVerifier = 1;
   let extraClassDeclaration = [{
-    /* $axcache, or the target's default when unset. The single place the
-       fallback rule lives; every backend emitting an AXI-MM BD goes through
-       this rather than repeating the value_or. */
+    /* $axcache, or the target's default when unset. */
     uint32_t getAxcacheOrDefault();
   }];
   let description = [{
