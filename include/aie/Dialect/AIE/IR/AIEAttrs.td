@@ -199,6 +199,14 @@ def BDPadLayoutArrayAttr : ArrayOfAttr<
     /*eltName*/BDPadLayoutAttr.cppClassName
 >;
 
+// Per-segment, per-dimension padding for an objectFifo DMA endpoint.
+def BDPadLayoutArrayArrayAttr
+    : ArrayOfAttr<
+          /*dialect*/ AIE_Dialect,
+          /*attrName*/ "BDPadLayoutArrayArray",
+          /*attrMnemonic*/ "bd_pad_layout_array_array",
+          /*eltName*/ BDPadLayoutArrayAttr.cppClassName>;
+
 def PacketInfoAttr : AttrDef<AIE_Dialect, "PacketInfo", []> {
   let mnemonic = "packet_info";
   let summary = [{
@@ -231,6 +239,34 @@ def BDIterationAttr : AttrDef<AIE_Dialect, "BDIteration", []> {
 
 def InitValuesArrayAttr
   : OptionalAttr<TypedArrayAttrBase<ElementsAttr, "array of ElementsAttr">>;
+
+//===----------------------------------------------------------------------===//
+// ObjectFifo pools and endpoints
+//===----------------------------------------------------------------------===//
+
+def ObjectFifoRole
+    : I32EnumAttr<"ObjectFifoRole",
+                  "What an objectFifo endpoint does to its pool's buffers",
+                  [I32EnumAttrCase<"Fill", 0, "fills">,
+                   I32EnumAttrCase<"Drain", 1, "drains">]> {
+  let cppNamespace = "xilinx::AIE";
+}
+
+def ObjectFifoSegmentAttr : AttrDef<AIE_Dialect, "ObjectFifoSegment", []> {
+  let mnemonic = "objectfifo_segment";
+  let summary = [{
+    A slice of every buffer in an objectFifo pool, and the locks guarding it.
+  }];
+
+  let parameters = (ins "uint32_t":$offset, "uint32_t":$size,
+      OptionalParameter<"mlir::FlatSymbolRefAttr">:$produceLock,
+      OptionalParameter<"mlir::FlatSymbolRefAttr">:$consumeLock);
+
+  let assemblyFormat = "`<` struct(params) `>`";
+}
+
+def ObjectFifoSegmentArrayAttr
+    : TypedArrayAttrBase<ObjectFifoSegmentAttr, "array of objectFifo segments">;
 
 //===----------------------------------------------------------------------===//
 // Generated AIE event enumerations

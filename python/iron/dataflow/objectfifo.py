@@ -88,6 +88,8 @@ class ObjectFifo(Resolvable):
         init_values: list[np.ndarray] | None = None,
         consumer_obj_type: type[np.ndarray] | None = None,
         aie_stream: tuple[int, int] | None = None,
+        packet: bool = False,
+        packet_id: int | None = None,
     ):
         """Construct an ObjectFifo.
 
@@ -144,6 +146,14 @@ class ObjectFifo(Resolvable):
                 attributes ``(end, port)`` on the underlying ``aie.objectfifo`` op. Use with
                 kernels that emit on the wire via ``put_ms()`` instead of going through an L1
                 buffer. Defaults to None.
+            packet (bool, optional): Route this ObjectFifo as an ``aie.packet_flow``, sharing
+                the stream with other packet flows instead of reserving a circuit for it.
+                Decided per fifo, so a design may mix packet- and circuit-switched fifos.
+                Defaults to False.
+            packet_id (int | None, optional): Pin the 5-bit header the source stamps, for
+                designs that route on the id (e.g. a MemTile dispatching to one of several
+                cores). Requires ``packet``; when absent, allocation picks an id no other
+                flow is using. Defaults to None.
 
         Raises:
             ValueError: If ``depth`` is provided and is less than 1.
@@ -178,6 +188,8 @@ class ObjectFifo(Resolvable):
         self._init_values: list[np.ndarray] | None = init_values
         self._consumer_obj_type: type[np.ndarray] | None = consumer_obj_type
         self._aie_stream: tuple[int, int] | None = aie_stream
+        self._packet: bool = packet
+        self._packet_id: int | None = packet_id
 
     @property
     def depth(self) -> int | None:
@@ -457,6 +469,8 @@ class ObjectFifo(Resolvable):
                 via_DMA=self._via_DMA or None,
                 initValues=self._init_values,
                 consumer_datatype=consumer_datatype,
+                packet=self._packet or None,
+                packet_id=self._packet_id,
             )
             self._op = op
 

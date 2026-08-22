@@ -278,7 +278,7 @@ struct AIEObjectFifoUnrollPass
       });
     }
 
-    // AIEObjectFifoStatefulTransform promotes the buffer-selection and lock
+    // --aie-objectfifo-lower-cores promotes the buffer-selection and lock
     // bookkeeping counters to loop-carried SSA values. Once the loops have been
     // unrolled by their rotation period those counters become loop-invariant,
     // so every buffer selection (scf.index_switch) and lock value collapses to

@@ -8,7 +8,6 @@ from __future__ import annotations
 from .ir import Operation, DialectRegistry, Type
 
 __all__ = [
-    "ObjectFifoSubviewType",
     "ObjectFifoType",
     "aie_llvm_link",
     "generate_bcf",
@@ -42,16 +41,6 @@ class ObjectFifoType:
     def get(type: Type) -> ObjectFifoType:
         """
         Create an ObjectFifoType type
-        """
-
-    @staticmethod
-    def isinstance(other: Type) -> bool: ...
-
-class ObjectFifoSubviewType:
-    @staticmethod
-    def get(type: Type) -> ObjectFifoSubviewType:
-        """
-        Create an ObjectFifoSubviewType type
         """
 
     @staticmethod

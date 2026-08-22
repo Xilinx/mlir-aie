@@ -166,7 +166,6 @@ repos:
           lib/Dialect/AIE/Transforms/AIELowerCascadeFlows\.cpp|
           lib/Dialect/AIE/Transforms/AIENormalizeAddressSpaces\.cpp|
           lib/Dialect/AIE/Transforms/AIEObjectFifoLiveness\.cpp|
-          lib/Dialect/AIE/Transforms/AIEObjectFifoStatefulTransform\.cpp|
           lib/Dialect/AIE/Transforms/AIEPathFinder\.cpp|
           lib/Dialect/AIE/Transforms/AIEPlacer\.cpp|
           lib/Dialect/AIE/Transforms/AIEPlaceTiles\.cpp|

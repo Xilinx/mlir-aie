@@ -267,6 +267,7 @@ nav:
       - Host Runtime: api/hostruntime.md
       - C++ AIE kernels: api/aie_kernels.md
     - MLIR / C++:
+      - ObjectFifo Lowering: ObjectFifoLowering.md
       - AIE Dialect: AIEDialect.md
       - AIEX Dialect: AIEXDialect.md
       - AIEVec Dialect: AIEVecDialect.md

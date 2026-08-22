@@ -231,6 +231,40 @@ public:
   virtual bool isLegalMemAffinity(int coreCol, int coreRow, int memCol,
                                   int memRow) const = 0;
 
+  /// Which of two tiles' memory modules both of them can address.
+  enum class SharedMemory {
+    /// Neither tile can address the other's memory module.
+    None,
+    /// Only the first tile's module.
+    First,
+    /// Only the second tile's module.
+    Second,
+    /// Either will do.
+    Either
+  };
+
+  /// Return the memory module `a` and `b` can both reach, if any.
+  SharedMemory getSharedMemory(TileID a, TileID b) const {
+    // A shim or mem tile's memory module is only ever reachable from its own
+    // kind, so tiles of different kinds share nothing.
+    if (isShimNOCorPLTile(a.col, a.row) != isShimNOCorPLTile(b.col, b.row) ||
+        isMemTile(a.col, a.row) != isMemTile(b.col, b.row)) {
+      return SharedMemory::None;
+    }
+    bool aReachesB = isLegalMemAffinity(a.col, a.row, b.col, b.row);
+    bool bReachesA = isLegalMemAffinity(b.col, b.row, a.col, a.row);
+    if (aReachesB && bReachesA) {
+      return SharedMemory::Either;
+    }
+    if (bReachesA) {
+      return SharedMemory::First;
+    }
+    if (aReachesB) {
+      return SharedMemory::Second;
+    }
+    return SharedMemory::None;
+  }
+
   /// Return the base address in the local address map for a core.
   virtual uint32_t getMemInternalBaseAddress(TileID src) const = 0;
   /// Return the base address in the local address map for a core.

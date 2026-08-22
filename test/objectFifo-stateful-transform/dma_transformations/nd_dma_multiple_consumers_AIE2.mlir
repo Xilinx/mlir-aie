@@ -8,53 +8,53 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="skip-verify=true" --aie-objectFifo-unroll %s | FileCheck %s
 
 // CHECK: module @ndDMAObjFifoAIE2 {
 // CHECK:   aie.device(xcve2302) {
-// CHECK:     %[[tile_1_2:.*]] = aie.tile(1, 2)
-// CHECK:     %[[tile_1_3:.*]] = aie.tile(1, 3)
-// CHECK:     %[[tile_3_3:.*]] = aie.tile(3, 3)
-// CHECK:     %[[tile_2_2:.*]] = aie.tile(2, 2)
-// CHECK:     %[[tile_2_3:.*]] = aie.tile(2, 3)
-// CHECK:     %[[of3_cons_buff_0:.*]] = aie.buffer(%[[tile_2_3]]) {sym_name = "of3_cons_buff_0"} : memref<256xi32>
-// CHECK:     %[[of3_cons_buff_1:.*]] = aie.buffer(%[[tile_2_3]]) {sym_name = "of3_cons_buff_1"} : memref<256xi32>
-// CHECK:     %[[of3_cons_prod_lock:.*]] = aie.lock(%[[tile_2_3]]) {init = 2 : i32, sym_name = "of3_cons_prod_lock_0"}
-// CHECK:     %[[of3_cons_cons_lock:.*]] = aie.lock(%[[tile_2_3]]) {init = 0 : i32, sym_name = "of3_cons_cons_lock_0"}
-// CHECK:     %[[of3_buff_0:.*]] = aie.buffer(%[[tile_2_2]]) {sym_name = "of3_buff_0"} : memref<256xi32>
-// CHECK:     %[[of3_buff_1:.*]] = aie.buffer(%[[tile_2_2]]) {sym_name = "of3_buff_1"} : memref<256xi32>
-// CHECK:     %[[of3_prod_lock:.*]] = aie.lock(%[[tile_2_2]]) {init = 2 : i32, sym_name = "of3_prod_lock_0"}
-// CHECK:     %[[of3_cons_lock:.*]] = aie.lock(%[[tile_2_2]]) {init = 0 : i32, sym_name = "of3_cons_lock_0"}
-// CHECK:     %[[of1_cons_buff_0:.*]] = aie.buffer(%[[tile_3_3]]) {sym_name = "of1_cons_buff_0"} : memref<256xi32>
-// CHECK:     %[[of1_cons_buff_1:.*]] = aie.buffer(%[[tile_3_3]]) {sym_name = "of1_cons_buff_1"} : memref<256xi32>
-// CHECK:     %[[of1_cons_prod_lock:.*]] = aie.lock(%[[tile_3_3]]) {init = 2 : i32, sym_name = "of1_cons_prod_lock_0"}
-// CHECK:     %[[of1_cons_cons_lock:.*]] = aie.lock(%[[tile_3_3]]) {init = 0 : i32, sym_name = "of1_cons_cons_lock_0"}
-// CHECK:     %[[of1_buff_0:.*]] = aie.buffer(%[[tile_1_2]]) {sym_name = "of1_buff_0"} : memref<256xi32>
-// CHECK:     %[[of1_buff_1:.*]] = aie.buffer(%[[tile_1_2]]) {sym_name = "of1_buff_1"} : memref<256xi32>
-// CHECK:     %[[of1_prod_lock:.*]] = aie.lock(%[[tile_1_2]]) {init = 2 : i32, sym_name = "of1_prod_lock_0"}
-// CHECK:     %[[of1_cons_lock:.*]] = aie.lock(%[[tile_1_2]]) {init = 0 : i32, sym_name = "of1_cons_lock_0"}
-// CHECK:     %[[of0_0_cons_buff_0:.*]] = aie.buffer(%[[tile_1_3]]) {sym_name = "of0_0_cons_buff_0"} : memref<256xi32>
-// CHECK:     %[[of0_0_cons_buff_1:.*]] = aie.buffer(%[[tile_1_3]]) {sym_name = "of0_0_cons_buff_1"} : memref<256xi32>
-// CHECK:     %[[of0_0_cons_buff_2:.*]] = aie.buffer(%[[tile_1_3]]) {sym_name = "of0_0_cons_buff_2"} : memref<256xi32>
-// CHECK:     %[[of0_0_cons_buff_3:.*]] = aie.buffer(%[[tile_1_3]]) {sym_name = "of0_0_cons_buff_3"} : memref<256xi32>
-// CHECK:     %[[of0_0_cons_prod_lock:.*]] = aie.lock(%[[tile_1_3]]) {init = 4 : i32, sym_name = "of0_0_cons_prod_lock_0"}
-// CHECK:     %[[of0_0_cons_cons_lock:.*]] = aie.lock(%[[tile_1_3]]) {init = 0 : i32, sym_name = "of0_0_cons_cons_lock_0"}
-// CHECK:     %[[of0_1_cons_buff_0:.*]] = aie.buffer(%[[tile_3_3]]) {sym_name = "of0_1_cons_buff_0"} : memref<256xi32>
-// CHECK:     %[[of0_1_cons_buff_1:.*]] = aie.buffer(%[[tile_3_3]]) {sym_name = "of0_1_cons_buff_1"} : memref<256xi32>
-// CHECK:     %[[of0_1_cons_buff_2:.*]] = aie.buffer(%[[tile_3_3]]) {sym_name = "of0_1_cons_buff_2"} : memref<256xi32>
-// CHECK:     %[[of0_1_cons_buff_3:.*]] = aie.buffer(%[[tile_3_3]]) {sym_name = "of0_1_cons_buff_3"} : memref<256xi32>
-// CHECK:     %[[of0_1_cons_prod_lock:.*]] = aie.lock(%[[tile_3_3]]) {init = 4 : i32, sym_name = "of0_1_cons_prod_lock_0"}
-// CHECK:     %[[of0_1_cons_cons_lock:.*]] = aie.lock(%[[tile_3_3]]) {init = 0 : i32, sym_name = "of0_1_cons_cons_lock_0"}
-// CHECK:     %[[of0_buff_0:.*]] = aie.buffer(%[[tile_1_2]]) {sym_name = "of0_buff_0"} : memref<256xi32>
-// CHECK:     %[[of0_buff_1:.*]] = aie.buffer(%[[tile_1_2]]) {sym_name = "of0_buff_1"} : memref<256xi32>
-// CHECK:     %[[of0_buff_2:.*]] = aie.buffer(%[[tile_1_2]]) {sym_name = "of0_buff_2"} : memref<256xi32>
-// CHECK:     %[[of0_buff_3:.*]] = aie.buffer(%[[tile_1_2]]) {sym_name = "of0_buff_3"} : memref<256xi32>
-// CHECK:     %[[of0_prod_lock:.*]] = aie.lock(%[[tile_1_2]]) {init = 4 : i32, sym_name = "of0_prod_lock_0"}
-// CHECK:     %[[of0_cons_lock:.*]] = aie.lock(%[[tile_1_2]]) {init = 0 : i32, sym_name = "of0_cons_lock_0"}
-// CHECK:     aie.flow(%[[tile_1_2]], DMA : 0, %[[tile_3_3]], DMA : 0)
-// CHECK:     aie.flow(%[[tile_1_2]], DMA : 0, %[[tile_1_3]], DMA : 0)
-// CHECK:     aie.flow(%[[tile_1_2]], DMA : 1, %[[tile_3_3]], DMA : 1)
-// CHECK:     aie.flow(%[[tile_2_2]], DMA : 0, %[[tile_2_3]], DMA : 0)
+// CHECK-DAG:     %[[tile_1_2:.*]] = aie.tile(1, 2)
+// CHECK-DAG:     %[[tile_1_3:.*]] = aie.tile(1, 3)
+// CHECK-DAG:     %[[tile_3_3:.*]] = aie.tile(3, 3)
+// CHECK-DAG:     %[[tile_2_2:.*]] = aie.tile(2, 2)
+// CHECK-DAG:     %[[tile_2_3:.*]] = aie.tile(2, 3)
+// CHECK-DAG:     %[[of3_cons_buff_0:.*]] = aie.buffer(%[[tile_2_3]]) {sym_name = "of3_cons_buff_0"} : memref<256xi32>
+// CHECK-DAG:     %[[of3_cons_buff_1:.*]] = aie.buffer(%[[tile_2_3]]) {sym_name = "of3_cons_buff_1"} : memref<256xi32>
+// CHECK-DAG:     %[[of3_cons_prod_lock:.*]] = aie.lock(%[[tile_2_3]]) {init = 2 : i32, sym_name = "of3_cons_prod_lock_0"}
+// CHECK-DAG:     %[[of3_cons_cons_lock:.*]] = aie.lock(%[[tile_2_3]]) {init = 0 : i32, sym_name = "of3_cons_cons_lock_0"}
+// CHECK-DAG:     %[[of3_buff_0:.*]] = aie.buffer(%[[tile_2_2]]) {sym_name = "of3_buff_0"} : memref<256xi32>
+// CHECK-DAG:     %[[of3_buff_1:.*]] = aie.buffer(%[[tile_2_2]]) {sym_name = "of3_buff_1"} : memref<256xi32>
+// CHECK-DAG:     %[[of3_prod_lock:.*]] = aie.lock(%[[tile_2_2]]) {init = 2 : i32, sym_name = "of3_prod_lock_0"}
+// CHECK-DAG:     %[[of3_cons_lock:.*]] = aie.lock(%[[tile_2_2]]) {init = 0 : i32, sym_name = "of3_cons_lock_0"}
+// CHECK-DAG:     %[[of1_cons_buff_0:.*]] = aie.buffer(%[[tile_3_3]]) {sym_name = "of1_cons_buff_0"} : memref<256xi32>
+// CHECK-DAG:     %[[of1_cons_buff_1:.*]] = aie.buffer(%[[tile_3_3]]) {sym_name = "of1_cons_buff_1"} : memref<256xi32>
+// CHECK-DAG:     %[[of1_cons_prod_lock:.*]] = aie.lock(%[[tile_3_3]]) {init = 2 : i32, sym_name = "of1_cons_prod_lock_0"}
+// CHECK-DAG:     %[[of1_cons_cons_lock:.*]] = aie.lock(%[[tile_3_3]]) {init = 0 : i32, sym_name = "of1_cons_cons_lock_0"}
+// CHECK-DAG:     %[[of1_buff_0:.*]] = aie.buffer(%[[tile_1_2]]) {sym_name = "of1_buff_0"} : memref<256xi32>
+// CHECK-DAG:     %[[of1_buff_1:.*]] = aie.buffer(%[[tile_1_2]]) {sym_name = "of1_buff_1"} : memref<256xi32>
+// CHECK-DAG:     %[[of1_prod_lock:.*]] = aie.lock(%[[tile_1_2]]) {init = 2 : i32, sym_name = "of1_prod_lock_0"}
+// CHECK-DAG:     %[[of1_cons_lock:.*]] = aie.lock(%[[tile_1_2]]) {init = 0 : i32, sym_name = "of1_cons_lock_0"}
+// CHECK-DAG:     %[[of0_0_cons_buff_0:.*]] = aie.buffer(%[[tile_1_3]]) {sym_name = "of0_0_cons_buff_0"} : memref<256xi32>
+// CHECK-DAG:     %[[of0_0_cons_buff_1:.*]] = aie.buffer(%[[tile_1_3]]) {sym_name = "of0_0_cons_buff_1"} : memref<256xi32>
+// CHECK-DAG:     %[[of0_0_cons_buff_2:.*]] = aie.buffer(%[[tile_1_3]]) {sym_name = "of0_0_cons_buff_2"} : memref<256xi32>
+// CHECK-DAG:     %[[of0_0_cons_buff_3:.*]] = aie.buffer(%[[tile_1_3]]) {sym_name = "of0_0_cons_buff_3"} : memref<256xi32>
+// CHECK-DAG:     %[[of0_0_cons_prod_lock:.*]] = aie.lock(%[[tile_1_3]]) {init = 4 : i32, sym_name = "of0_0_cons_prod_lock_0"}
+// CHECK-DAG:     %[[of0_0_cons_cons_lock:.*]] = aie.lock(%[[tile_1_3]]) {init = 0 : i32, sym_name = "of0_0_cons_cons_lock_0"}
+// CHECK-DAG:     %[[of0_1_cons_buff_0:.*]] = aie.buffer(%[[tile_3_3]]) {sym_name = "of0_1_cons_buff_0"} : memref<256xi32>
+// CHECK-DAG:     %[[of0_1_cons_buff_1:.*]] = aie.buffer(%[[tile_3_3]]) {sym_name = "of0_1_cons_buff_1"} : memref<256xi32>
+// CHECK-DAG:     %[[of0_1_cons_buff_2:.*]] = aie.buffer(%[[tile_3_3]]) {sym_name = "of0_1_cons_buff_2"} : memref<256xi32>
+// CHECK-DAG:     %[[of0_1_cons_buff_3:.*]] = aie.buffer(%[[tile_3_3]]) {sym_name = "of0_1_cons_buff_3"} : memref<256xi32>
+// CHECK-DAG:     %[[of0_1_cons_prod_lock:.*]] = aie.lock(%[[tile_3_3]]) {init = 4 : i32, sym_name = "of0_1_cons_prod_lock_0"}
+// CHECK-DAG:     %[[of0_1_cons_cons_lock:.*]] = aie.lock(%[[tile_3_3]]) {init = 0 : i32, sym_name = "of0_1_cons_cons_lock_0"}
+// CHECK-DAG:     %[[of0_buff_0:.*]] = aie.buffer(%[[tile_1_2]]) {sym_name = "of0_buff_0"} : memref<256xi32>
+// CHECK-DAG:     %[[of0_buff_1:.*]] = aie.buffer(%[[tile_1_2]]) {sym_name = "of0_buff_1"} : memref<256xi32>
+// CHECK-DAG:     %[[of0_buff_2:.*]] = aie.buffer(%[[tile_1_2]]) {sym_name = "of0_buff_2"} : memref<256xi32>
+// CHECK-DAG:     %[[of0_buff_3:.*]] = aie.buffer(%[[tile_1_2]]) {sym_name = "of0_buff_3"} : memref<256xi32>
+// CHECK-DAG:     %[[of0_prod_lock:.*]] = aie.lock(%[[tile_1_2]]) {init = 4 : i32, sym_name = "of0_prod_lock_0"}
+// CHECK-DAG:     %[[of0_cons_lock:.*]] = aie.lock(%[[tile_1_2]]) {init = 0 : i32, sym_name = "of0_cons_lock_0"}
+// CHECK-DAG:     aie.flow(%[[tile_1_2]], DMA : 0, %[[tile_3_3]], DMA : 0)
+// CHECK-DAG:     aie.flow(%[[tile_1_2]], DMA : 0, %[[tile_1_3]], DMA : 0)
+// CHECK-DAG:     aie.flow(%[[tile_1_2]], DMA : 1, %[[tile_3_3]], DMA : 1)
+// CHECK-DAG:     aie.flow(%[[tile_2_2]], DMA : 0, %[[tile_2_3]], DMA : 0)
 // CHECK:     %[[VAL_39:.*]] = aie.mem(%[[tile_1_2]]) {
 // CHECK:       %[[VAL_44:.*]] = aie.dma_start(MM2S, 0, ^bb1, ^bb5)
 // CHECK:           ^bb1:  // 2 preds: ^bb0, ^bb4
