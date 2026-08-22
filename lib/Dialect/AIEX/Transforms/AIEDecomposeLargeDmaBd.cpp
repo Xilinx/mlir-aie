@@ -164,6 +164,8 @@ static AIE::DMABDOp createTaskBd(PatternRewriter &rewriter, Location loc,
     bd.setPacketAttr(tmpl.getPacketAttr());
   if (tmpl.getBurstLengthAttr())
     bd.setBurstLengthAttr(tmpl.getBurstLengthAttr());
+  if (tmpl.getAxcacheAttr())
+    bd.setAxcacheAttr(tmpl.getAxcacheAttr());
   if (tmpl.getOffsetParameterAttr())
     bd.setOffsetParameterAttr(tmpl.getOffsetParameterAttr());
   // out_of_order_id is not copied because slicing an OoO BD is rejected above.
@@ -241,7 +243,7 @@ static NpuDmaMemcpyNdOp createDecomposedOp(PatternRewriter &rewriter,
       rewriter.getBoolAttr(issueToken), op.getD0ZeroBeforeAttr(),
       op.getD1ZeroBeforeAttr(), op.getD2ZeroBeforeAttr(),
       op.getD0ZeroAfterAttr(), op.getD1ZeroAfterAttr(), op.getD2ZeroAfterAttr(),
-      op.getBurstLengthAttr(), op.getOffsetParameterAttr(),
+      op.getBurstLengthAttr(), op.getAxcacheAttr(), op.getOffsetParameterAttr(),
       op.getOffsetStateTableIdxAttr());
 }
 
@@ -313,7 +315,7 @@ struct DecomposeLargeDmaBdPattern : OpRewritePattern<NpuDmaMemcpyNdOp> {
           op.getIssueTokenAttr(), op.getD0ZeroBeforeAttr(),
           op.getD1ZeroBeforeAttr(), op.getD2ZeroBeforeAttr(),
           op.getD0ZeroAfterAttr(), op.getD1ZeroAfterAttr(),
-          op.getD2ZeroAfterAttr(), op.getBurstLengthAttr(),
+          op.getD2ZeroAfterAttr(), op.getBurstLengthAttr(), op.getAxcacheAttr(),
           op.getOffsetParameterAttr(), op.getOffsetStateTableIdxAttr());
       return success();
     }

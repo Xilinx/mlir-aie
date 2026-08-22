@@ -222,3 +222,18 @@ module {
     aie.shim_dma_allocation @objectfifo (%tile_0_0, MM2S, 0)
   }
 }
+
+// -----
+
+// AxCACHE is a raw 4-bit field
+
+module {
+  aie.device(npu1) {
+    aie.runtime_sequence(%a : memref<8xi32>) {
+      // expected-error@+1 {{attribute 'axcache' failed to satisfy constraint}}
+      aiex.npu.dma_memcpy_nd (%a[0,0,0,0][1,1,1,8][0,0,0,1]) { metadata = @objectfifo, id = 1 : i64, axcache = 16 : i64 } : memref<8xi32>
+    }
+    %tile_0_0 = aie.tile(0, 0)
+    aie.shim_dma_allocation @objectfifo (%tile_0_0, MM2S, 0)
+  }
+}
