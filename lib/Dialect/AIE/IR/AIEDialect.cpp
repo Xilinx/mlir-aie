@@ -1663,8 +1663,26 @@ LogicalResult ObjectFifoAcquireOp::verify() {
   if (!elem) {
     return success();
   }
-  // An asymmetric fifo hands the consumer a different element type.
   auto fifo = dyn_cast<ObjectFifoCreateOp>(target);
+  if (fifo) {
+    // A fifo may state a depth per endpoint, the producer first.
+    int index = 0;
+    if (getPort() == ObjectFifoPort::Consume) {
+      for (auto [position, consumer] :
+           llvm::enumerate(fifo.getConsumerTiles())) {
+        if (consumer == parent.getTile()) {
+          index = position + 1;
+          break;
+        }
+      }
+    }
+    if (static_cast<int>(getObjects().size()) > fifo.size(index)) {
+      return emitOpError("acquires ")
+             << getObjects().size() << " objects from an objectFifo that holds "
+             << fifo.size(index);
+    }
+  }
+  // An asymmetric fifo hands the consumer a different element type.
   auto consType = fifo ? llvm::dyn_cast<AIEObjectFifoType>(
                              fifo.getConsumerElemTypeOrDefault())
                        : nullptr;

@@ -2053,14 +2053,13 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
     ```
 
     The behavior of the objectFifo is further controlled by optional parameters.
-    The `repeat_count` parameter specifies the number of times each individual
-    object is repeated during transfer. When `repeat_count == 1`, each object
-    is transferred once.
+    Senders replicate each object `repeat_count` times before moving on to the
+    next one. When `repeat_count == 1`, each object is transferred once.
 
-    The `iter_count` parameter specifies the number of iterations of
-    the buffer descriptor chain generated at the lower level. The total number
-    of objects transferred is calculated as `iter_count * elemNumber * repeat_count`.
-    When `repeat_count == 1`, this simplifies to `iter_count * elemNumber`.
+    For bounded execution, `iter_count` states how many times each end cycles
+    through all of its buffers. The total number of objects transferred is
+    `iter_count * elemNumber * repeat_count`, which for `repeat_count == 1`
+    simplifies to `iter_count * elemNumber`.
   }];
 
   let arguments = (ins SymbolNameAttr:$sym_name, Index:$producerTile,
@@ -2297,13 +2296,14 @@ def AIE_ObjectFifoPoolOp
       OptionalAttr<FlatSymbolRefArrayAttr>:$buffers,
       OptionalAttr<ObjectFifoSegmentArrayAttr>:$segments,
       OptionalAttr<FlatSymbolRefArrayAttr>:$locks,
-      // Times this pool's drainer replays each object onto the stream. Its
-      // filler therefore takes and gives back this many lock units at once,
-      // and the lock initializers scale with it.
+      // Senders replicate each object `repeatCount` times before moving on to
+      // the next one. Receivers take and give back that many lock units at
+      // once, and the lock initializers scale with it.
       OptionalAttr<AIEI32Attr>:$repeatCount,
       // No locks are created for this pool; its actors are unsynchronized.
       DefaultValuedAttr<BoolAttr, "false">:$disableSynchronization,
-      // Name of the objectFifo this pool holds the objects of.
+      // If lowered from a high-level ObjectFifo, the name of that fifo.
+      // Used to group ops lowered by the same ObjectFifo.
       OptionalAttr<StrAttr>:$fifoName, InitValuesArrayAttr:$initValues);
 
   let assemblyFormat = [{
@@ -2424,10 +2424,10 @@ def AIE_ObjectFifoDmaEndpointOp
       OptionalAttr<BDDimLayoutArrayArrayAttr>:$dimensions,
       OptionalAttr<BDPadLayoutArrayArrayAttr>:$padDimensions,
       DefaultValuedOptionalAttr<AIEI32Attr, "0">:$padValue,
-      // Times this endpoint's chain runs before it stops; unbounded when
-      // absent. The two ends of a fifo carry the same number of objects, so a
-      // drainer replaying each of them `repeat_count` times needs that many
-      // fewer passes than the filler opposite it.
+      // For bounded execution: this endpoint stops after cycling through all
+      // buffers this many times, and runs forever when absent. A sender
+      // replicating each object `repeat_count` times covers the same objects
+      // in that many fewer cycles than the receiver opposite it.
       OptionalAttr<AIEI32Attr>:$iterCount, OptionalAttr<PacketInfoAttr>:$packet,
       // ObjectFifo name used by runtime records.
       OptionalAttr<StrAttr>:$fifoName);

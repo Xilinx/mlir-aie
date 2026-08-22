@@ -112,7 +112,7 @@ module @non_adjacency {
         %tile12 = aie.tile(1, 2)
         %tile33 = aie.tile(3, 3)
 
-        aie.objectfifo @objfifo (%tile12, {%tile33}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+        aie.objectfifo @objfifo (%tile12, {%tile33}, 3 : i32) : !aie.objectfifo<memref<16xi32>>
 
         func.func @some_work(%lineOut : memref<16xi32>) -> () {
             return

@@ -261,7 +261,7 @@ module @broadcast {
     %tile32 = aie.tile(3, 2)
     %tile33 = aie.tile(3, 3)
 
-    aie.objectfifo @broadcast_of (%tile13, {%tile12, %tile14, %tile32, %tile33}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @broadcast_of (%tile13, {%tile12, %tile14, %tile32, %tile33}, 4 : i32) : !aie.objectfifo<memref<16xi32>>
 
     func.func @some_work(%lineOut : memref<16xi32>) -> () {
         return

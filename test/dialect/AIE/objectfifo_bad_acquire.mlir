@@ -68,3 +68,39 @@ aie.device(xcve2302) {
       aie.end
    }
 }
+
+// -----
+
+// CHECK: 'aie.objectfifo.acquire' op acquires 3 objects from an objectFifo that holds 2
+
+aie.device(xcve2302) {
+   %tile12 = aie.tile(1, 2)
+   %tile23 = aie.tile(2, 3)
+
+   aie.objectfifo @of_0 (%tile12, {%tile23}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+
+   %core23 = aie.core(%tile23) {
+      %obj0, %obj1, %obj2 = aie.objectfifo.acquire @of_0 (Consume, 3) : memref<16xi32>, memref<16xi32>, memref<16xi32>
+
+      aie.end
+   }
+}
+
+// -----
+
+// A fifo may state a depth per endpoint; the consumer's own depth is the bound.
+
+// CHECK: 'aie.objectfifo.acquire' op acquires 4 objects from an objectFifo that holds 3
+
+aie.device(xcve2302) {
+   %tile12 = aie.tile(1, 2)
+   %tile23 = aie.tile(2, 3)
+
+   aie.objectfifo @of_0 (%tile12, {%tile23}, [2, 3]) : !aie.objectfifo<memref<16xi32>>
+
+   %core23 = aie.core(%tile23) {
+      %obj0, %obj1, %obj2, %obj3 = aie.objectfifo.acquire @of_0 (Consume, 4) : memref<16xi32>, memref<16xi32>, memref<16xi32>, memref<16xi32>
+
+      aie.end
+   }
+}

@@ -118,9 +118,8 @@ bool requiresDMAs(ObjectFifoCreateOp createOp,
 }
 
 /// Objects a fifo needs on `tile`: enough to cover the largest acquire made
-/// there, plus one so a core can hold an object while the next arrives. This is
-/// the depth the pool on `tile` is given, and it is the only place a fifo's
-/// declared size is read; nothing of the sort survives this pass.
+/// there, plus one so a core can hold an object while the next arrives. A fifo
+/// that states a depth per endpoint is taken at its word instead.
 int objectCountOn(DeviceOp device, Value tile, ObjectFifoCreateOp objFifo) {
   if (objFifo.size() == 0) {
     return 0;
