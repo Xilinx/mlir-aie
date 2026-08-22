@@ -448,6 +448,9 @@ struct AIEDMATasksToNPUPass
       f.packet_id = info.getPktId();
     }
 
+    if (std::optional<int32_t> oooId = bd_op.getOutOfOrderId())
+      f.out_of_order_id = *oooId;
+
     auto lock_ops = getOptionalLockOpsForBlock(block);
     if (lock_ops) {
       auto [acquire_op, release_op] = *lock_ops;
@@ -692,7 +695,6 @@ struct AIEDMATasksToNPUPass
     std::fill(padBefore.begin(), padBefore.end(), 0);
     std::fill(padAfter.begin(), padAfter.end(), 0);
 
-    auto out_of_order_id = 0;
     auto d0size = 0;
     auto d0stride = 0;
     auto d1size = 0;
@@ -839,7 +841,7 @@ struct AIEDMATasksToNPUPass
         builder, bd_op.getLoc(), tile.getCol(), bd_id, len_addr_granularity,
         offset,
         /*enable_packet=*/f.enable_packet,
-        /*out_of_order_id=*/out_of_order_id,
+        /*out_of_order_id=*/f.out_of_order_id,
         /*packet_id=*/f.packet_id,
         /*packet_type=*/f.packet_type,
         /*d0_size=*/d0size, /*d0_stride=*/d0stride,

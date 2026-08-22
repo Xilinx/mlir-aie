@@ -1310,7 +1310,8 @@ struct AIEObjectFifoStatefulTransformPass
     int bdRepeatCount = useHwRepeat ? 1 : repeatCount;
     builder.setInsertionPointToStart(dmaBlock);
     DMAStartOp::create(builder, op.getLoc(), channelDir, channelIndex,
-                       dmaRepeatCount, /*pad_value*/ 0, bdBlock, endBlock);
+                       dmaRepeatCount, /*pad_value*/ 0, /*out_of_order*/ false,
+                       bdBlock, endBlock);
     if (lastDmaBlock != nullptr)
       lastDmaBlock->getTerminator()->setSuccessor(dmaBlock, 1);
 
@@ -1386,7 +1387,8 @@ struct AIEObjectFifoStatefulTransformPass
     // create DMA channel
     builder.setInsertionPointToStart(dmaBlock);
     DMAStartOp::create(builder, op.getLoc(), channelDir, channelIndex,
-                       /*repeat_count*/ 0, /*pad_value*/ 0, bdBlock, endBlock);
+                       /*repeat_count*/ 0, /*pad_value*/ 0,
+                       /*out_of_order*/ false, bdBlock, endBlock);
     if (lastDmaBlock != nullptr)
       lastDmaBlock->getTerminator()->setSuccessor(dmaBlock, 1);
 
@@ -1560,7 +1562,8 @@ struct AIEObjectFifoStatefulTransformPass
       taskCount = repeatCount - 1;
     int bdRepeatFactor = useHwRepeat ? 1 : repeatCount;
     DMAStartOp::create(builder, op.getLoc(), channelDir, channelIndex,
-                       taskCount, padValue, bdBlock, endBlock);
+                       taskCount, padValue, /*out_of_order*/ false, bdBlock,
+                       endBlock);
     if (lastDmaBlock != nullptr)
       lastDmaBlock->getTerminator()->setSuccessor(dmaBlock, 1);
 

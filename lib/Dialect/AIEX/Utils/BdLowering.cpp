@@ -189,11 +189,12 @@ buildShimBdWords(OpBuilder &builder, Location loc,
   // Shim-NOC BDs are 8 registers wide; slots not set below stay zero.
   wordsOut.assign(8, createConstantI32(builder, loc, 0));
   // word[1] buffer_offset stays 0 (the address patch supplies the pointer).
-  // word[2] enable_packet [30], packet_id [23:19], packet_type [18:16].
-  wordsOut[2] = createConstantI32(builder, loc,
-                                  ((f.enable_packet & 0x1) << 30) |
-                                      ((f.packet_id & 0x1f) << 19) |
-                                      ((f.packet_type & 0x7) << 16));
+  // word[2] enable_packet [30], out_of_order_id [29:24], packet_id [23:19],
+  // packet_type [18:16].
+  wordsOut[2] = createConstantI32(
+      builder, loc,
+      ((f.enable_packet & 0x1) << 30) | ((f.out_of_order_id & 0x3f) << 24) |
+          ((f.packet_id & 0x1f) << 19) | ((f.packet_type & 0x7) << 16));
   // word[4] burst_length [31:30]; d1 fields overlaid below in ND mode.
   wordsOut[4] = createConstantI32(
       builder, loc,

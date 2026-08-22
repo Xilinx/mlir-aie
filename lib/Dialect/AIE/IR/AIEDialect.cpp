@@ -20,6 +20,7 @@
 #include "mlir/Interfaces/ViewLikeInterface.h"
 #include "mlir/Transforms/InliningUtils.h"
 
+#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/TypeSwitch.h"
 
@@ -2071,6 +2072,86 @@ TileOp MemTileDMAOp::getTileOp() {
 // DMAOp
 //===----------------------------------------------------------------------===//
 
+static bool isBdPacketEnabled(DMABDOp bd) {
+  if (bd.getPacket().has_value())
+    return true;
+  if (Block *blk = bd->getBlock())
+    return !blk->getOps<DMABDPACKETOp>().empty();
+  return false;
+}
+
+LogicalResult
+xilinx::AIE::verifyDMABDOutOfOrderId(DMABDOp bd, bool packetEnabledByContext) {
+  std::optional<int32_t> oooId = bd.getOutOfOrderId();
+  if (!oooId.has_value())
+    return success();
+  const AIETargetModel &targetModel = getTargetModel(bd.getOperation());
+  if (!targetModel.hasProperty(AIETargetModel::SupportsOutOfOrderDMA))
+    return bd.emitOpError("out_of_order_id is not supported on this device");
+  if (!packetEnabledByContext && !isBdPacketEnabled(bd))
+    return bd.emitOpError("out_of_order_id requires a packet-enabled BD");
+  uint32_t maxOooId = targetModel.getMaxOutOfOrderId();
+  if (*oooId < 0 || static_cast<uint32_t>(*oooId) > maxOooId)
+    return bd.emitOpError("out_of_order_id must be in [0, ") << maxOooId << "]";
+  return success();
+}
+
+static LogicalResult verifyDMARepeatCount(Operation *op, int32_t repeatCount) {
+  uint32_t maxRepeat = getTargetModel(op).getMaxRepeatCount();
+  if (maxRepeat == 0) {
+    if (repeatCount != 0)
+      return op->emitOpError("repeat_count is not supported on this target");
+    return success();
+  }
+  if (repeatCount < 0 || static_cast<uint32_t>(repeatCount) > maxRepeat)
+    return op->emitOpError("repeat_count ")
+           << repeatCount << " is out of range [0, " << maxRepeat
+           << "] for this target";
+  return success();
+}
+
+static LogicalResult verifyOutOfOrderChannel(Operation *op, DMAChannelDir dir,
+                                             bool outOfOrder,
+                                             ArrayRef<DMABDOp> bds) {
+  if (!outOfOrder)
+    return success();
+  if (dir != DMAChannelDir::S2MM)
+    return op->emitOpError("out_of_order is only valid on an S2MM channel");
+  if (!getTargetModel(op).hasProperty(AIETargetModel::SupportsOutOfOrderDMA))
+    return op->emitOpError(
+        "out-of-order S2MM DMA is not supported on this device");
+  if (bds.empty())
+    return op->emitOpError("out-of-order S2MM channel must have at least one "
+                           "receive buffer descriptor"); // else stall
+  for (DMABDOp bd : bds) {
+    if (!isBdPacketEnabled(bd))
+      return bd.emitOpError(
+          "out-of-order S2MM receive buffer descriptor must be packet-enabled");
+    if (bd.getOutOfOrderId().has_value())
+      return bd.emitOpError(
+          "out_of_order_id belongs on the sender buffer descriptor, not an "
+          "out-of-order S2MM receive buffer descriptor");
+  }
+  // an inter-BD lock dependency can deadlock because arrival order is unknown
+  DenseMap<Operation *, Operation *> releasedByRecvBd;
+  for (DMABDOp bd : bds)
+    for (auto useLock : bd->getBlock()->getOps<UseLockOp>())
+      if (useLock.release())
+        if (Operation *lockDef = useLock.getLock().getDefiningOp())
+          releasedByRecvBd.try_emplace(lockDef, bd.getOperation());
+  for (DMABDOp bd : bds)
+    for (auto useLock : bd->getBlock()->getOps<UseLockOp>())
+      if (useLock.acquire() || useLock.acquireGE())
+        if (Operation *lockDef = useLock.getLock().getDefiningOp()) {
+          auto it = releasedByRecvBd.find(lockDef);
+          if (it != releasedByRecvBd.end() && it->second != bd.getOperation())
+            return bd.emitOpError(
+                "out-of-order S2MM prohibits inter-BD lock dependencies; "
+                "can deadlock");
+        }
+  return success();
+}
+
 LogicalResult DMAOp::verify() {
   auto *parentOp = getOperation()->getParentOp();
   if (parentOp->getRegion(0).getBlocks().size() > 1)
@@ -2099,7 +2180,13 @@ LogicalResult DMAOp::verify() {
       return emitOpError("pad_value requires the CONSTANT_PAD_VALUE register, "
                          "unavailable on this target");
   }
-  return success();
+  if (failed(verifyDMARepeatCount(getOperation(), getRepeatCount())))
+    return failure();
+  SmallVector<DMABDOp> bds;
+  for (auto &bdRegion : getBds())
+    llvm::append_range(bds, bdRegion.front().getOps<DMABDOp>());
+  return verifyOutOfOrderChannel(getOperation(), getChannelDir(),
+                                 getOutOfOrder(), bds);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2197,6 +2284,7 @@ void DMABDOp::buildMixed(mlir::OpBuilder &builder, mlir::OperationState &state,
         /*pad_dimensions=*/padDims,
         /*bd_id=*/nullptr,
         /*packet=*/packet,
+        /*out_of_order_id=*/nullptr,
         /*burst_length=*/nullptr,
         /*axcache=*/nullptr,
         /*iteration=*/nullptr,
@@ -2592,6 +2680,9 @@ LogicalResult DMABDOp::verify() {
       return emitOpError("Packet ID field can only hold 5 bits.");
   }
 
+  if (failed(verifyDMABDOutOfOrderId(*this)))
+    return failure();
+
   // A runtime len operand or the static_len attribute both count as having a
   // length here.
   if (!hasLen() && !getBuffer().getType().hasStaticShape())
@@ -2875,7 +2966,17 @@ LogicalResult DMAStartOp::verify() {
       return emitOpError("pad_value requires the CONSTANT_PAD_VALUE register, "
                          "unavailable on this target");
   }
-  return success();
+  if (failed(verifyDMARepeatCount(getOperation(), getRepeatCount())))
+    return failure();
+  SmallVector<DMABDOp> bds;
+  if (getOutOfOrder()) {
+    llvm::SmallPtrSet<Block *, 8> visited;
+    for (Block *b = getDest(); b && visited.insert(b).second;
+         b = b->getNumSuccessors() > 0 ? b->getSuccessor(0) : nullptr)
+      llvm::append_range(bds, b->getOps<DMABDOp>());
+  }
+  return verifyOutOfOrderChannel(getOperation(), getChannelDir(),
+                                 getOutOfOrder(), bds);
 }
 
 //===----------------------------------------------------------------------===//

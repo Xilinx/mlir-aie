@@ -79,7 +79,7 @@ runs:
       shell: bash
       if: ${{ inputs.MATRIX_OS == 'ubuntu-24.04' && inputs.MATRIX_ARCH == 'aarch64' }}
       run: |
-        
+
         sudo apt-get update
         sudo apt-get install -y binutils-aarch64-linux-gnu \
           g++-aarch64-linux-gnu gcc-aarch64-linux-gnu openssl libssl-dev lld
@@ -92,7 +92,7 @@ runs:
       if: ${{ inputs.MATRIX_OS == 'ubuntu-24.04' || inputs.MATRIX_OS == 'macos-12' || inputs.MATRIX_OS == 'macos-14' }}
       shell: bash
       run: |
-        
+
         if [ x"${{ inputs.MATRIX_OS }}" == x"macos-12" ] || [ x"${{ inputs.MATRIX_OS }}" == x"macos-14" ]; then
           brew install rename
         else
@@ -118,25 +118,25 @@ runs:
       shell: bash
       working-directory: ${{ env.TEMP }}
       run: |
-        
+
         if [ x"${{ inputs.MATRIX_OS }}" == x"windows-2022" ]; then
           WORKSPACE_ROOT="/C/a"
         else
           WORKSPACE_ROOT=$GITHUB_WORKSPACE
         fi
-        
+
         if [[ -d "$WORKSPACE_ROOT" ]]; then
           ls -la "$WORKSPACE_ROOT"
           rm -rf "$WORKSPACE_ROOT"
-        fi 
-        
+        fi
+
         git clone --recursive -b ${{ github.event.pull_request.head.ref || github.ref_name }} https://github.com/${{ github.event.pull_request.head.repo.full_name || github.repository }}.git "$WORKSPACE_ROOT"
         ls "$WORKSPACE_ROOT"
-        
+
         if [ x"${{ inputs.MATRIX_OS }}" == x"windows-2022" ]; then
           WORKSPACE_ROOT="C:\a"
         fi
-        
+
         echo "WORKSPACE_ROOT=$WORKSPACE_ROOT" | tee -a $GITHUB_OUTPUT
 
     - name: Docker prune

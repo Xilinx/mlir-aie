@@ -760,6 +760,13 @@ LogicalResult AIEX::NpuWriteBdOp::verify() {
     return emitOpError("Packet ID exceeds the maximum supported by 5 bits.");
   if (getPacketType() > 7)
     return emitOpError("Packet Type exceeds the maximum supported by 3 bits.");
+  int64_t oooId = getOutOfOrderId();
+  if (oooId < 0 ||
+      static_cast<uint64_t>(oooId) > targetModel.getMaxOutOfOrderId())
+    return emitOpError("out_of_order_id must be in [0, ")
+           << targetModel.getMaxOutOfOrderId() << "].";
+  if (oooId != 0 && getEnablePacket() == 0)
+    return emitOpError("out_of_order_id requires a packet-enabled BD");
 
   // Every value on this op is already the hardware-encoded field value (wrap
   // fields unbiased, stepsize/iteration fields biased actual-1), so the
@@ -1232,6 +1239,8 @@ LogicalResult AIEX::DMAConfigureTaskOp::verify() {
     // dialect. The normal DMABDOp verify operation will skip over any BD inside
     // a DMAConfigureTaskOp
     LogicalResult result = success();
+    // A task-level packet supplies the header for every BD in the task.
+    bool taskHasPacket = getPacket().has_value();
     block.walk([&](AIE::DMABDOp bd) {
       if (bd.getBurstLength() != 0 &&
           !targetModel.isShimNOCTile(getTileID().col, getTileID().row)) {
@@ -1239,6 +1248,9 @@ LogicalResult AIEX::DMAConfigureTaskOp::verify() {
                        "are connected to the memory-mapped NOC.");
         result = failure();
       }
+      // DMABDOp::verify skips task BDs, so validate out_of_order_id here too.
+      if (failed(AIE::verifyDMABDOutOfOrderId(bd, taskHasPacket)))
+        result = failure();
     });
     if (failed(result)) {
       return result;
