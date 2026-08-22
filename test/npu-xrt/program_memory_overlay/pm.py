@@ -24,7 +24,14 @@ import sys
 
 from pmlib import design as pmdesign
 from pmlib import workload as pmworkload
-from pmlib.elf import find_core_elf, max_stack_frame, text_size, text_words
+from pmlib.elf import (
+    defined_symbols,
+    find_core_elf,
+    max_stack_frame,
+    text_size,
+    text_words,
+    undefined_symbols,
+)
 from pmlib.geometry import GeometryError, RECIPES, recipe
 from pmlib.link import OverlayError, link as pmlink
 
@@ -206,6 +213,52 @@ def cmd_verify_payload(args):
     print(f"@{args.symbol}: {len(blob)} bytes, byte-identical to {args.elf}")
 
 
+def cmd_check(args):
+    """The resident the overlays were linked against is the one that got built.
+
+    Both passes emit the same design, but pass 2 recompiles the core rather than
+    reusing pass 1's ELF. Every overlay holds pass 1's addresses for the resident
+    symbols it uses, so if the resident moved, those references now point at
+    whatever took that address.
+
+    Checking only that shared symbols agree is not enough. A resident helper
+    called *only* from an overlay has no caller inside the resident's own link
+    graph, so --gc-sections collects it unless it carries `retain` -- and a
+    symbol that vanished in pass 2 is absent from the comparison entirely and
+    passes. So overlays are consulted for what they actually import, and every
+    one of those has to still be there.
+    """
+    a = defined_symbols(find_core_elf(args.a, *args.tile))
+    b = defined_symbols(find_core_elf(args.b, *args.tile))
+
+    moved = sorted(
+        n for n, addr in a.items() if n in b and b[n] != addr and not n.startswith(".L")
+    )
+    if moved:
+        sys.exit(
+            f"the resident moved between passes: {moved[:8]} changed address, so "
+            f"every overlay referring to them is aimed at the wrong code"
+        )
+
+    wanted = set()
+    for e in args.overlays or []:
+        wanted |= undefined_symbols(e)
+    vanished = sorted(n for n in wanted if n in a and n not in b)
+    if vanished:
+        sys.exit(
+            f"resident symbols {vanished} are imported by an overlay but are gone "
+            f"from pass 2. A resident function called only from an overlay has no "
+            f"caller in the resident's own link graph, so --gc-sections collects "
+            f"it unless it is marked `retain`."
+        )
+
+    print(
+        f"resident stable across passes ({len(a)} symbols"
+        + (f", {len(wanted & set(a))} imported by overlays" if wanted else "")
+        + ")"
+    )
+
+
 def cmd_stack(args):
     """The overlays fit in the stack the resident was linked with.
 
@@ -314,6 +367,13 @@ def main():
     vp.add_argument("elf")
     vp.add_argument("--symbol", required=True)
     vp.set_defaults(func=cmd_verify_payload)
+
+    ck = sub.add_parser("check")
+    ck.add_argument("a", help="pass 1 core ELF or aiecc tmpdir")
+    ck.add_argument("b", help="pass 2 core ELF or aiecc tmpdir")
+    ck.add_argument("--tile", nargs=2, type=int, default=(0, 2))
+    ck.add_argument("--overlays", nargs="+", help="overlays whose imports must survive")
+    ck.set_defaults(func=cmd_check)
 
     st = sub.add_parser("stack")
     st.add_argument("--resident", required=True)
