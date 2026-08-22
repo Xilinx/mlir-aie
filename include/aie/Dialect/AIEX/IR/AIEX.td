@@ -711,9 +711,7 @@ def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
         const xilinx::AIE::AIETargetModel &targetModel,
         mlir::BaseMemRefType buffer);
 
-    /* $axcache, or the target's default when unset. The single place the
-       fallback rule lives; every backend emitting an AXI-MM BD goes through
-       this rather than repeating the value_or. */
+    /* $axcache, or the target's default when unset. */
     uint32_t getAxcacheOrDefault();
   }];
 
