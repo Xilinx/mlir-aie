@@ -65,12 +65,17 @@ RESOURCE_DIR=$(clang++ -print-resource-dir)
 # importing its broken wrapper (see note above); fall back to plain
 # `clang-tidy` on PATH for a system install that has no such wrapper.
 CLANG_TIDY_BIN=$(python3 - <<'PYEOF'
-import sysconfig, glob
+import sysconfig, os
 for p in set(sysconfig.get_paths().values()):
-    matches = glob.glob(p + "/clang_tidy/data/bin/clang-tidy*")
-    if matches:
-        print(matches[0])
-        break
+    # Match the binary itself only -- clang_tidy/data/bin/ also ships
+    # clang-tidy-diff.py, run-clang-tidy.py, clang-apply-replacements, etc.,
+    # and an unanchored glob can pick one of those instead (glob.glob order
+    # isn't alphabetical, it's directory-iteration order).
+    for name in ("clang-tidy", "clang-tidy.exe"):
+        candidate = os.path.join(p, "clang_tidy", "data", "bin", name)
+        if os.path.isfile(candidate):
+            print(candidate)
+            raise SystemExit
 PYEOF
 )
 CLANG_TIDY_BIN="${CLANG_TIDY_BIN:-clang-tidy}"
