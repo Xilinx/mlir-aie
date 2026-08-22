@@ -509,6 +509,12 @@ struct AIEObjectFifoAllocatePass
   void runOnOperation() override {
     device = getOperation();
     builder = OpBuilder(device.getContext());
+    // One pass instance serves every device in the module, and none of this
+    // state means anything outside the device it was gathered from.
+    lastPlaced.clear();
+    filledPools.clear();
+    loweredFlows.clear();
+    drainerIterations.clear();
 
     // MemTile pools are served largest-first so the big buffers claim home
     // placement before smaller ones consume the neighbors they would spill to.
