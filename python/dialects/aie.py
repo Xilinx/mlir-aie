@@ -853,6 +853,7 @@ def dma(
     num_blocks=1,
     loop=None,
     repeat_count=None,
+    out_of_order=False,
     sym_name=None,
     pad_value: int = 0,
     loc=None,
@@ -867,6 +868,7 @@ def dma(
         num_bds=num_blocks,
         loop=loop,
         repeat_count=repeat_count,
+        out_of_order=out_of_order,
         sym_name=sym_name,
         pad_value=pad_value or None,
         loc=loc,
@@ -896,6 +898,7 @@ class DMAStartOp(DMAStartOp):
         chain: Successor | Block | None = None,
         repeat_count: int | None = None,
         pad_value: int | None = None,
+        out_of_order: bool = False,
         loc=None,
         ip=None,
     ):
@@ -914,6 +917,7 @@ class DMAStartOp(DMAStartOp):
             chain,
             repeat_count=repeat_count,
             pad_value=pad_value,
+            out_of_order=out_of_order,
             loc=loc,
             ip=ip,
         )
@@ -935,6 +939,7 @@ def dma_start(
     chain: Successor | Block | ContextManagedBlock | None = None,
     repeat_count: int = 0,
     pad_value: int = 0,
+    out_of_order: bool = False,
     loc=None,
     ip=None,
 ):
@@ -949,6 +954,7 @@ def dma_start(
         ip=ip,
         repeat_count=repeat_count,
         pad_value=pad_value or None,
+        out_of_order=out_of_order,
     )
     return op.dest, op.chain
 
