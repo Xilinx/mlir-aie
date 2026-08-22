@@ -1,0 +1,56 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// A program larger than program memory, running on one core.
+//
+// This is the claim the feature exists to make. Four overlays of 4 KB plus the
+// resident come to more than the 16 KB a core holds, so this design cannot be
+// statically linked onto a core at all -- and it runs, because only one overlay
+// is resident at a time.
+//
+// --require-exceeds fails the build if the total ever stops exceeding program
+// memory, so the test cannot quietly degrade into a demonstration of the
+// mechanism at a size that would have fit anyway. It is gated here and nowhere
+// else: elsewhere the size table is printed but not asserted on, because a
+// codegen improvement that shrinks a kernel should not turn a correctness test
+// red for a reason that has nothing to do with correctness.
+//
+// Dummy workloads make the sizes exact rather than incidental -- padding is
+// emitted in 32-byte blocks -- so "4 KB each" is 4096, not about 4000.
+//
+// REQUIRES: ryzen_ai_npu2, peano
+//
+// RUN: rm -rf %t && mkdir -p %t
+// RUN: %PEANO_INSTALL_DIR/bin/clang++ --target=aie2p-none-unknown-elf -O2 -c %S/../resident.cc -o %t/resident.o
+// RUN: %python %S/../pm.py emit --recipe one_slot --slot-ld %t/slot.ld --phases 0,1,2,3 --out %t/d1.mlir
+// RUN: cd %t && %aiecc --tmpdir=%t/p1 --get-xclbin --xclbin-name=%t/p1.xclbin --get-npu-insts --npu-insts-name=%t/p1.bin %t/d1.mlir
+//
+// RUN: %python %S/../pm.py workload --tag 101 --size 0x1000 --output %t/w0.o --workdir %t
+// RUN: %python %S/../pm.py workload --tag 102 --size 0x1000 --output %t/w1.o --workdir %t
+// RUN: %python %S/../pm.py workload --tag 103 --size 0x1000 --output %t/w2.o --workdir %t
+// RUN: %python %S/../pm.py workload --tag 104 --size 0x1000 --output %t/w3.o --workdir %t
+// RUN: %python %S/../pm.py workload --tag 31661 --size 0x400 --output %t/poison.o --workdir %t
+// RUN: %python %S/../pm.py link --object %t/w0.o --resident %t/p1 --recipe one_slot --output %t/ovl0.elf
+// RUN: %python %S/../pm.py link --object %t/w1.o --resident %t/p1 --recipe one_slot --output %t/ovl1.elf
+// RUN: %python %S/../pm.py link --object %t/w2.o --resident %t/p1 --recipe one_slot --output %t/ovl2.elf
+// RUN: %python %S/../pm.py link --object %t/w3.o --resident %t/p1 --recipe one_slot --output %t/ovl3.elf
+// RUN: %python %S/../pm.py link --object %t/poison.o --resident %t/p1 --recipe one_slot --output %t/poison.elf
+//
+// The premise, asserted: this will not fit.
+// RUN: %python %S/../pm.py sizes --resident %t/p1 --recipe one_slot --overlays %t/ovl0.elf %t/ovl1.elf %t/ovl2.elf %t/ovl3.elf --require-exceeds | FileCheck %s --check-prefix=SIZES
+// SIZES: ovl0.elf 4096 bytes
+// The percentage is what matters, not the exact byte count -- the resident's
+// size is codegen's business. --require-exceeds is the real gate; this just
+// makes the number visible in the log.
+// SIZES: total {{[0-9]+}} bytes of 16384 (1{{[0-9][0-9]}}%)
+//
+// RUN: %python %S/../pm.py emit --recipe one_slot --phases 0,1,2,3 --payload %t/ovl0.elf --payload %t/ovl1.elf --payload %t/ovl2.elf --payload %t/ovl3.elf --poison %t/poison.elf --out %t/d2.mlir
+// RUN: cd %t && %aiecc --tmpdir=%t/p2 --get-xclbin --xclbin-name=%t/aie.xclbin --get-npu-insts --npu-insts-name=%t/insts.bin %t/d2.mlir
+// RUN: %python %S/../pm.py check %t/p1 %t/p2
+// RUN: %host_clang %S/../host.cpp -o %t/host.exe -std=c++17 -Wall %xrt_flags %host_link_flags %test_utils_flags
+// RUN: %t/host.exe -x %t/aie.xclbin -k MLIR_AIE -i %t/insts.bin --tags 101,102,103,104 | FileCheck %s
+// CHECK: phase 0: overlay 101 ok
+// CHECK: phase 1: overlay 102 ok
+// CHECK: phase 2: overlay 103 ok
+// CHECK: phase 3: overlay 104 ok
+// CHECK: PASS!

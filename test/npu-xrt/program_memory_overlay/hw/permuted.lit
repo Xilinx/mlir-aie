@@ -1,0 +1,50 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// What a phase computes depends on which overlay is loaded, and nothing else.
+//
+// Data memory is not swapped with the code, so everything an overlay leaves
+// behind is still there for the next one. A layer that writes only the elements
+// its shape covers leaves the gaps holding the previous layer's output, and a
+// result that depends on execution history is the kind of bug that reproduces
+// only in a full run and never in isolation.
+//
+// Running the same overlays in a different order, and running one twice, is the
+// cheap way to catch that: if any overlay leaked state into another, the
+// permuted run diverges from what the tags predict. --phases expresses both --
+// permutation and replay are the same knob -- so this needs no extra machinery,
+// just a different argument.
+//
+// The replay half also pins something the negative controls showed: writing the
+// same slot twice with the same payload has to work, not just writing it once.
+//
+// REQUIRES: ryzen_ai_npu2, peano
+//
+// RUN: rm -rf %t && mkdir -p %t
+// RUN: %PEANO_INSTALL_DIR/bin/clang++ --target=aie2p-none-unknown-elf -O2 -c %S/../resident.cc -o %t/resident.o
+// RUN: %python %S/../pm.py emit --recipe one_slot --slot-ld %t/slot.ld --phases 0,1,2,3,4 --out %t/d1.mlir
+// RUN: cd %t && %aiecc --tmpdir=%t/p1 --get-xclbin --xclbin-name=%t/p1.xclbin --get-npu-insts --npu-insts-name=%t/p1.bin %t/d1.mlir
+// RUN: %python %S/../pm.py workload --tag 11 --size 0x400 --output %t/w0.o --workdir %t
+// RUN: %python %S/../pm.py workload --tag 22 --size 0x800 --output %t/w1.o --workdir %t
+// RUN: %python %S/../pm.py workload --tag 33 --size 0x1000 --output %t/w2.o --workdir %t
+// RUN: %python %S/../pm.py workload --tag 31661 --size 0x400 --output %t/poison.o --workdir %t
+// RUN: %python %S/../pm.py link --object %t/w0.o --resident %t/p1 --recipe one_slot --output %t/ovl0.elf
+// RUN: %python %S/../pm.py link --object %t/w1.o --resident %t/p1 --recipe one_slot --output %t/ovl1.elf
+// RUN: %python %S/../pm.py link --object %t/w2.o --resident %t/p1 --recipe one_slot --output %t/ovl2.elf
+// RUN: %python %S/../pm.py link --object %t/poison.o --resident %t/p1 --recipe one_slot --output %t/poison.elf
+// RUN: %host_clang %S/../host.cpp -o %t/host.exe -std=c++17 -Wall %xrt_flags %host_link_flags %test_utils_flags
+//
+// Reverse order, with overlay 0 run twice and in different positions. The
+// overlays are also three different sizes, so a swap has to shrink the resident
+// image as well as grow it -- writing a smaller overlay over a larger one
+// leaves the tail of the old one behind, which must not matter.
+// RUN: %python %S/../pm.py emit --recipe one_slot --phases 2,1,0,0,2 --payload %t/ovl0.elf --payload %t/ovl1.elf --payload %t/ovl2.elf --poison %t/poison.elf --out %t/d2.mlir
+// RUN: cd %t && %aiecc --tmpdir=%t/p2 --get-xclbin --xclbin-name=%t/aie.xclbin --get-npu-insts --npu-insts-name=%t/insts.bin %t/d2.mlir
+// RUN: %python %S/../pm.py check %t/p1 %t/p2
+// RUN: %t/host.exe -x %t/aie.xclbin -k MLIR_AIE -i %t/insts.bin --tags 33,22,11,11,33 | FileCheck %s
+// CHECK: phase 0: overlay 33 ok
+// CHECK: phase 1: overlay 22 ok
+// CHECK: phase 2: overlay 11 ok
+// CHECK: phase 3: overlay 11 ok
+// CHECK: phase 4: overlay 33 ok
+// CHECK: PASS!
