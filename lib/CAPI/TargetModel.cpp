@@ -151,9 +151,9 @@ uint32_t aieTargetModelGetMemTileSize(AieTargetModel targetModel) {
   return unwrap(targetModel).getMemTileSize();
 }
 
-uint32_t aieTargetModelGetNumBanks(AieTargetModel targetModel, int col,
-                                   int row) {
-  return unwrap(targetModel).getNumBanks(col, row);
+uint32_t aieTargetModelGetNumDataMemoryBanks(AieTargetModel targetModel,
+                                             int col, int row) {
+  return unwrap(targetModel).getNumDataMemoryBanks(col, row);
 }
 
 uint32_t aieTargetModelGetNumDestSwitchboxConnections(

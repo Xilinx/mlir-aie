@@ -143,8 +143,8 @@ aieTargetModelGetNumMemTileRows(AieTargetModel targetModel);
 MLIR_CAPI_EXPORTED uint32_t
 aieTargetModelGetMemTileSize(AieTargetModel targetModel);
 
-MLIR_CAPI_EXPORTED uint32_t
-aieTargetModelGetNumBanks(AieTargetModel targetModel, int col, int row);
+MLIR_CAPI_EXPORTED uint32_t aieTargetModelGetNumDataMemoryBanks(
+    AieTargetModel targetModel, int col, int row);
 
 MLIR_CAPI_EXPORTED uint32_t aieTargetModelGetMaxChannelNumForAdjacentTile(
     AieTargetModel targetModel, int col, int row);

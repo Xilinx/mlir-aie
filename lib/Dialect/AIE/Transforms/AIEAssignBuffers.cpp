@@ -547,7 +547,8 @@ static bool simpleBankAwareAllocation(TileOp tile) {
     tileAlignBitWidth = targetModel.getComputeTileLoadStoreBusWidth();
   }
 
-  int numBanks = targetModel.getNumBanks(tile.getCol(), tile.getRow());
+  int numBanks =
+      targetModel.getNumDataMemoryBanks(tile.getCol(), tile.getRow());
   int bankSize = maxDataMemorySize / numBanks;
 
   // Address range owned by the MemTile is 0x80000.

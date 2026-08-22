@@ -399,8 +399,11 @@ public:
   virtual uint32_t getNumMemTileRows() const = 0;
   /// Return the size (in bytes) of a MemTile.
   virtual uint32_t getMemTileSize() const = 0;
-  /// Return the number of memory banks of a given tile.
-  virtual uint32_t getNumBanks(int col, int row) const = 0;
+  /// Return the number of *data* memory banks of a given tile: the local
+  /// memory of a compute tile, or a MemTile's memory. Bank size is the
+  /// corresponding memory size divided by this. Program memory is a separate
+  /// address space and is not described by this.
+  virtual uint32_t getNumDataMemoryBanks(int col, int row) const = 0;
 
   virtual uint32_t getMaxChannelNumForAdjacentMemTile(int col,
                                                       int row) const = 0;
@@ -593,7 +596,7 @@ public:
 
   uint32_t getNumMemTileRows() const override { return 0; }
   uint32_t getMemTileSize() const override { return 0; }
-  uint32_t getNumBanks(int col, int row) const override { return 4; }
+  uint32_t getNumDataMemoryBanks(int col, int row) const override { return 4; }
 
   uint32_t getMaxChannelNumForAdjacentMemTile(int col, int row) const override {
     return 0;
@@ -750,7 +753,7 @@ public:
 
   uint32_t getMemTileSize() const override { return 0x00080000; }
 
-  uint32_t getNumBanks(int col, int row) const override {
+  uint32_t getNumDataMemoryBanks(int col, int row) const override {
     return getTileType(col, row) == AIETileType::MemTile ? 8 : 4;
   }
 
