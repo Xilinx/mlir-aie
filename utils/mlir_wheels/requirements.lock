@@ -198,9 +198,9 @@ pybind11-global==3.1.0 \
     --hash=sha256:ae4ce119e9f0d7a2ef2372a6bd70d7906073a67a7d7c759023601a629c4bbd36 \
     --hash=sha256:ba63ced81e1ae5c7b4f704d6adedec6ce1d80fbf9a2ab557a2ca380f29eb3320
     # via pybind11
-setuptools==83.0.0 \
-    --hash=sha256:025bccbbf0fa05b6192bc64ae1e7b16e001fd6d6d4d5de03c97b1c1ade523bef \
-    --hash=sha256:29b23c360f22f414dc7336bb39178cc7bcbf6021ed2733cde173f09dba19abb3
+setuptools==84.0.0 \
+    --hash=sha256:51a52592b3b99e102b609654876bd65f19f999935166d1352678931132b0c670 \
+    --hash=sha256:f4695c21257f0d9b537ec2692c941d02ee143b7cc1276941349a546573b2ef73
     # via -r requirements.in
 wheel==0.47.0 \
     --hash=sha256:212281cab4dff978f6cedd499cd893e1f620791ca6ff7107cf270781e587eced \
