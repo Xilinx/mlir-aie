@@ -279,7 +279,7 @@ buildShimBdWords(mlir::OpBuilder &builder, mlir::Location loc,
                  const BdTemplateFields &fields,
                  llvm::ArrayRef<mlir::OpFoldResult> mixedSizes,
                  llvm::ArrayRef<mlir::OpFoldResult> mixedStrides,
-                 uint64_t elemWidth, uint32_t burstLength,
+                 uint64_t elemWidth, uint32_t burstLength, uint32_t axcache,
                  mlir::Value bufLenOverride, mlir::Value &repeatCountOut,
                  llvm::SmallVectorImpl<mlir::Value> &wordsOut);
 
