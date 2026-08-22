@@ -680,8 +680,21 @@ struct SplitNpuBlockWriteOpPattern : OpRewritePattern<AIEX::NpuBlockWriteOp> {
 
     auto loc = op.getLoc();
 
-    // Calculate split point (split roughly in half)
-    uint32_t splitElements = dataSize / 2;
+    // Calculate split point (split roughly in half), rounded down to a whole
+    // 128-bit line.
+    //
+    // Halving the element count alone is not enough. A blockwrite into a core's
+    // program memory has to start on a 16-byte line, because program memory is
+    // 128 bits wide, and dataSize/2 is only guaranteed to be a multiple of two
+    // words. An 8048-byte payload -- 2012 words, and a legal overlay, since it
+    // is a multiple of 16 bytes -- splits at word 1006, which is byte 4024, or
+    // 8 past a line boundary. Rounding down costs at most three words of
+    // imbalance between the halves, and is harmless for the non-program-memory
+    // targets, which are word-addressed anyway.
+    constexpr uint32_t wordsPerLine = 4; // 16 bytes / sizeof(int)
+    uint32_t splitElements = (dataSize / 2) & ~(wordsPerLine - 1);
+    if (splitElements == 0)
+      return failure();
     uint32_t firstChunkSize = splitElements;
     uint32_t secondChunkSize = dataSize - splitElements;
 
