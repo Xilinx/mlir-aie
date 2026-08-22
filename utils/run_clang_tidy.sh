@@ -80,6 +80,11 @@ PYEOF
 )
 CLANG_TIDY_BIN="${CLANG_TIDY_BIN:-clang-tidy}"
 
+# clang-tidy 22 flipped --header-filter's default from '' (main file only) to
+# '.*' (every non-system header), so without this it now also lints whatever
+# MLIR/LLVM headers each file transitively includes. Pin it back to the old
+# default: this project's incremental clang-tidy rollout only wants findings
+# in the file list below, not in vendored headers.
 printf '%s\n' "$@" | xargs -P "$(nproc)" -I{} \
   "$CLANG_TIDY_BIN" -p "$BUILD_DIR" --extra-arg="-resource-dir=$RESOURCE_DIR" \
-  --warnings-as-errors='*' {}
+  --header-filter='' --warnings-as-errors='*' {}
