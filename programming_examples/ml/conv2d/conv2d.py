@@ -82,7 +82,7 @@ def conv2d(
             output_channels=out_channels,
             act_dtype=np.int8,
         )
-        stack_size = 0xA00
+        stack_size = 0xA80
     else:
         conv_fn = kernels.conv2dk1_i8(
             input_width=width,
