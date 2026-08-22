@@ -37,10 +37,12 @@ def ScratchpadParameterKind : I32EnumAttr<"ScratchpadParameterKind",
 def AIEX_ExpandNone : I32EnumAttrCase<"none", 0>;
 def AIEX_ExpandWrite32 : I32EnumAttrCase<"write32", 1>;
 def AIEX_ExpandCtrlPkt : I32EnumAttrCase<"ctrlpkt", 2>;
+def AIEX_ExpandRegReset : I32EnumAttrCase<"regreset", 3>;
 
 def AIEX_ExpandMode
     : I32EnumAttr<"ExpandMode", "How to expand a load_pdi op",
-                  [AIEX_ExpandNone, AIEX_ExpandWrite32, AIEX_ExpandCtrlPkt]> {
+                  [AIEX_ExpandNone, AIEX_ExpandWrite32, AIEX_ExpandCtrlPkt,
+                   AIEX_ExpandRegReset]> {
   let cppNamespace = "::xilinx::AIEX";
 }
 
