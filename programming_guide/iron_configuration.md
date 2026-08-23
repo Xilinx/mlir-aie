@@ -113,7 +113,7 @@ backend is used:
 | `auto` (default) | Use XRT when `pyxrt` imports, else fall back to CPU-only tensors. Never selects HRX or HSA. |
 | `xrt` | Force the XRT backend (falls back to CPU tensors if `pyxrt` is missing). |
 | `hrx` | Force the [HRX](../python/utils/hostruntime/hrxruntime/README.md) (amdxdna / `libhrx`) backend. Errors at import if `libhrx.so` cannot be located. |
-| `hsa` | Force the [HSA/ROCR](../python/utils/hostruntime/hsaruntime/README.md) backend. Errors at import if `libhsa-runtime64.so` cannot be located. |
+| `hsa` | Force the [HSA/ROCR](hsa_runtime.md) backend. Errors at import if `libhsa-runtime64.so` cannot be located. |
 
 An unset value defaults to `auto`; an explicitly invalid value is a hard error
 (a typo must not silently resolve to another backend). `NPU_RUNTIME` is read
@@ -171,9 +171,8 @@ NPU_RUNTIME=hrx IRON_HRX_DEVICE=npu2 HRX_EXE_CACHE_SIZE=8 \
 ## HSA/ROCR Runtime Configuration
 
 These variables apply when the HSA backend is active (`NPU_RUNTIME=hsa`). See
-the [HSA Runtime (ROCR)](hsa_runtime.md) overview for the architecture, and the
-[HSA runtime README](../python/utils/hostruntime/hsaruntime/README.md) for the
-full step-by-step flow.
+[HSA Runtime (ROCR)](hsa_runtime.md) for the architecture and the full
+step-by-step flow.
 
 ### Getting ROCm
 
