@@ -9,8 +9,8 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 | Family | Architecture | NPU columns × rows (compute) | IRON device class |
 |--------|--------------|------------------------------|-------------------|
-| Phoenix / Hawk Point | **AIE2** | 4 × 4 (NPU1) | `NPU1`, `NPU1Col1`, `NPU1Col2`, `NPU1Col4` |
-| Strix / Krackan Point | **AIE2P** | 8 × 4 (NPU2) | `NPU2`, `NPU2Col1`, `NPU2Col4`, `NPU2Col8` |
+| Phoenix / Hawk Point | **AIE2** a.k.a. XDNA | 4 × 4 (NPU1) | `NPU1`, `NPU1Col1`, `NPU1Col2`, `NPU1Col4` |
+| Strix / Krackan Point | **AIE2P** a.k.a. XDNA2 | 8 × 4 (NPU2) | `NPU2`, `NPU2Col1`, `NPU2Col4`, `NPU2Col8` |
 
 ```python
 from aie.iron.device import NPU1, NPU1Col1, NPU2, NPU2Col4
@@ -32,7 +32,7 @@ Bottom to top:
 | 1 | **Mem** | L2 scratchpad shared between Shim and the column's compute tiles |
 | 2..5 | **Compute** | The actual cores running C++ kernels; each has a small L1 |
 
-Throughout these skills, **compute tile**, **core**, and **AIE tile** all refer to this row-2..5 tile.
+Throughout these skills, **compute tile**, **core**, and **AIE tile** all refer to these row-2..5 tiles.
 
 Use `tile(col, row)` (lower-level API) only when you need explicit coordinates. In the high-level API, the compiler picks placement; you control parallelism by spawning N `Worker`s.
 
@@ -134,4 +134,9 @@ Multiply per-tile peak by `(rows × columns)` for the full array. You won't hit 
   3 dimensions, you have no fourth to spend — route L3→L2→L1 and put the reshape on the
   mem-tile `split()`/`join()`/`forward()` instead. For access patterns beyond the limit, chain
   multiple BDs or use runtime repeat counts.
+
+  DMA transforms aren't the only way to reshape/translate data, though: `aie::vshuffle`
+  can do in-register lane permutation on the compute tile itself, and being a vector op it
+  can overlap with (be masked by) concurrent/pipelined `MAC`s — worth considering as an
+  alternative to an extra DMA hop when the reshape is small enough to fit in a shuffle.
 - **Workers per Program**: bounded by available compute tiles (16 on NPU1, 32 on NPU2).

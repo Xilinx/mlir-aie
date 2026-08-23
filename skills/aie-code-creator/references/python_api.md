@@ -5,7 +5,15 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 # IRON Python API Reference
 
-This reference documents **mlir-aie 1.4.0**. Version 1.4.0 reworked the `Runtime`/`Program` API (upstream commit `cd9d998ffcd`, "[dyn-seq] Rework IRON Runtime as an eager callback body"); older pinned versions (e.g. `v1.3.4`) are out of scope here — see `patterns.md` and `complete_examples.md` for the one exception, the `amd/IRON` operator-framework pattern, which still pins an older wheel and intentionally keeps the old API.
+This reference tracks the current `aie.iron` API as installed. The one exception is the
+`amd/IRON` operator-framework pattern in `patterns.md`/`complete_examples.md`, which
+intentionally pins an older wheel and keeps that generation's `Runtime`/`Program` shape.
+
+The docstrings in the installed `aie.iron` package are kept up to date — if something here
+looks stale or you need a detail this file doesn't cover, check the installed package
+directly (e.g. `python3 -c "import aie.iron as iron; help(iron.Program)"`, or read the
+source under the active Python environment's `site-packages/aie/iron/`) rather than
+assuming this reference is current.
 
 All imports come from `aie.iron`, `aie.iron.device`, and `aie.iron.controlflow`.
 
@@ -302,6 +310,8 @@ def sequence(a_in, c_out, in_h, out_h):
 ```
 
 Reach for `Buffer(..., use_write_rtp=True)` + `WorkerRuntimeBarrier` for the common case (matches most existing examples); use `ScratchpadParameter` when you specifically want to avoid a dedicated RTP buffer/lock.
+
+Note that `ScratchpadParameter`s depend on the full-ELF flow (`aiecc --get-full-elf`) and are not available on the Phoenix/Hawk Point architectures.
 
 ## Program — finalize the design
 

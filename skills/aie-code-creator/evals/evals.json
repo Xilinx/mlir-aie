@@ -5,7 +5,7 @@
       "id": 0,
       "name": "eltwise-scale-relu-multicore",
       "prompt": "Write an IRON design that scales a bfloat16 vector of 8192 elements by 2.0 and applies ReLU, split across 4 cores on NPU2",
-      "expected_output": "A Python IRON design file and a C++ kernel file. The Python design must use the mlir-aie 1.4.0 Runtime/Program API: Runtime(seq_fn, fn_args) with fill/drain called as methods on ObjectFifoHandle objects obtained from .prod()/.cons(), and Program(device, rt, workers=[...]) (not the old Runtime()/rt.sequence()/rt.fill()/rt.start() or 2-arg Program() style). It should split the 8192-element tensor across 4 workers (data-parallel), and the kernel should perform scale-by-2.0 then ReLU on bfloat16 data, vectorized via the AIE API.",
+      "expected_output": "A Python IRON design file and a C++ kernel file. The Python design must use the current IRON Runtime/Program API: Runtime(seq_fn, fn_args) with fill/drain called as methods on ObjectFifoHandle objects obtained from .prod()/.cons(), and Program(device, rt, workers=[...]) (not the older Runtime()/rt.sequence()/rt.fill()/rt.start() or 2-arg Program() style). It should split the 8192-element tensor across 4 workers (data-parallel), and the kernel should perform scale-by-2.0 then ReLU on bfloat16 data, vectorized via the AIE API.",
       "files": [],
       "assertions": [
         "Runtime is constructed as Runtime(seq_fn, fn_args) with a plain function passed as the sequence body, not via Runtime() then rt.sequence()",
@@ -22,7 +22,7 @@
       "id": 1,
       "name": "two-stage-pipeline",
       "prompt": "I need a two-stage IRON pipeline: first kernel does elementwise add of two int32 vectors, second kernel does elementwise multiply by a constant. Should run on NPU2",
-      "expected_output": "A Python IRON design wiring two Worker stages together via an intermediate ObjectFifo (producer-consumer pipeline pattern), each running its own C++ kernel (add, then multiply-by-constant), using the mlir-aie 1.4.0 Runtime/Program API.",
+      "expected_output": "A Python IRON design wiring two Worker stages together via an intermediate ObjectFifo (producer-consumer pipeline pattern), each running its own C++ kernel (add, then multiply-by-constant), using the current IRON Runtime/Program API.",
       "files": [],
       "assertions": [
         "Runtime is constructed as Runtime(seq_fn, fn_args) with fill/drain called as ObjectFifoHandle methods, not the old rt.sequence()/rt.fill()/rt.start() style",
@@ -38,7 +38,7 @@
       "id": 2,
       "name": "tiled-matmul-mmul",
       "prompt": "Write an IRON design for a tiled bf16 matmul (256x256 x 256x256) on NPU2 using MMUL, with output verification against numpy",
-      "expected_output": "A Python IRON design tiling a 256x256 x 256x256 bfloat16 matmul across NPU2 cores, a C++ kernel using aie::mmul for the tile-level multiply-accumulate, using the mlir-aie 1.4.0 Runtime/Program API, plus a small numpy-based verification harness comparing NPU output to a reference matmul.",
+      "expected_output": "A Python IRON design tiling a 256x256 x 256x256 bfloat16 matmul across NPU2 cores, a C++ kernel using aie::mmul for the tile-level multiply-accumulate, using the current IRON Runtime/Program API, plus a small numpy-based verification harness comparing NPU output to a reference matmul.",
       "files": [],
       "assertions": [
         "Runtime is constructed as Runtime(seq_fn, fn_args) with fill/drain called as ObjectFifoHandle methods, not the old rt.sequence()/rt.fill()/rt.start() style",
@@ -53,7 +53,7 @@
       "id": 3,
       "name": "cascade-accumulator-4core",
       "prompt": "Write an IRON design on NPU2 that computes a running-sum accumulator across 4 adjacent cores using the AIE cascade interconnect: each core adds its own local partial sum of an int32 vector into the incoming cascade value and passes the result to the next core in the chain, with the final core's cascade output DMA'd back to the host.",
-      "expected_output": "A Python IRON design with 4 Worker instances chained via CascadeFlow(src=..., dst=...) along the cascade interconnect (not through an ObjectFifo), each running a C++ kernel that reads the incoming cascade value with get_scd, adds its local partial sum, and writes the result onward with put_mcd, using the mlir-aie 1.4.0 Runtime/Program API for the surrounding data movement.",
+      "expected_output": "A Python IRON design with 4 Worker instances chained via CascadeFlow(src=..., dst=...) along the cascade interconnect (not through an ObjectFifo), each running a C++ kernel that reads the incoming cascade value with get_scd, adds its local partial sum, and writes the result onward with put_mcd, using the current IRON Runtime/Program API for the surrounding data movement.",
       "files": [],
       "assertions": [
         "Runtime is constructed as Runtime(seq_fn, fn_args) with fill/drain called as ObjectFifoHandle methods, not the old rt.sequence()/rt.fill()/rt.start() style",
@@ -68,7 +68,7 @@
       "id": 4,
       "name": "packet-switched-broadcast",
       "prompt": "I need explicit low-level control over routing on NPU2: broadcast one shim tile's DMA output to 3 different compute tiles using packet switching with a specific packet id, rather than the default ObjectFifo broadcast pattern.",
-      "expected_output": "A Python IRON/low-level design that constructs a PacketFlow with a caller-chosen packet id routing one shim tile's output to a primary destination plus 2 extra destinations via extra_dsts=[PacketDest(...), PacketDest(...)], explicitly registered with the Runtime so it gets resolved, using the mlir-aie 1.4.0 Runtime/Program API for the rest of the design.",
+      "expected_output": "A Python IRON/low-level design that constructs a PacketFlow with a caller-chosen packet id routing one shim tile's output to a primary destination plus 2 extra destinations via extra_dsts=[PacketDest(...), PacketDest(...)], explicitly registered with the Runtime so it gets resolved, using the current IRON Runtime/Program API for the rest of the design.",
       "files": [],
       "assertions": [
         "PacketFlow is constructed with the packet id as the first positional argument (e.g. PacketFlow(1, src_tile, dst_tile, ...)), not as a trailing pkt_id= keyword argument after src/dst",
