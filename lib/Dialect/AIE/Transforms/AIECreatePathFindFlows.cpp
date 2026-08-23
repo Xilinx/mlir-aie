@@ -15,6 +15,7 @@
 #include "mlir/Pass/Pass.h"
 #include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallBitVector.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/Support/Debug.h"
@@ -219,7 +220,8 @@ struct AIEOpRemoval : OpConversionPattern<MyOp> {
   }
 };
 
-bool AIEPathfinderPass::findPathToDest(SwitchSettings settings, TileID currTile,
+bool AIEPathfinderPass::findPathToDest(const SwitchSettings &settings,
+                                       TileID currTile,
                                        WireBundle currDestBundle,
                                        int currDestChannel, TileID finalTile,
                                        WireBundle finalDestBundle,
@@ -357,12 +359,7 @@ computeSubcubeCover(const SmallVector<int, 4> &matchIds,
   const int idMask = numIds - 1;
 
   auto hitsAvoid = [&](int mask, int value) {
-    for (int o : avoidIds) {
-      if ((o & mask) == value) {
-        return true;
-      }
-    }
-    return false;
+    return llvm::any_of(avoidIds, [&](int o) { return (o & mask) == value; });
   };
 
   llvm::SmallBitVector matchMask(numIds);

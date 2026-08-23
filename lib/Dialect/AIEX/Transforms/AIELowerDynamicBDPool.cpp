@@ -188,7 +188,10 @@ struct AIELowerDynamicBDPoolPass
         rewriter, newInits,
         /*replaceInitOperandUsesInLoop=*/false, newYields);
     assert(succeeded(newLoop) && "scf.for additional-yields rewrite failed");
-    auto newFor = cast<scf::ForOp>(newLoop->getOperation());
+    // The assert above already guards this; the checker just doesn't
+    // associate succeeded() with FailureOr's std::optional base.
+    auto newFor = cast<scf::ForOp>(
+        newLoop->getOperation()); // NOLINT(bugprone-unchecked-optional-access)
 
     for (auto [i, k] : llvm::enumerate(carried)) {
       // The rewrite gave the loop new block args/results; migrate task-ness

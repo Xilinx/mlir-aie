@@ -93,6 +93,18 @@ ever editing the source.
 
 The IRON jit feature caches compiled objects in a directory defined by ```NPU_CACHE_HOME```. By default this value is the user's home directory.
 
+## aiecc Executable Override (`AIECC_PATH`)
+
+`aie.utils.config.aiecc_path()` resolves the `aiecc` executable used by JIT
+compilation: the `AIECC_PATH` environment variable first (an explicit full
+path to the `aiecc` executable), then the MLIR-AIE bin directory, then
+`PATH`. Set `AIECC_PATH` when a consumer needs to pin a specific `aiecc`
+without relying on `PATH` search order.
+
+```bash
+AIECC_PATH=/path/to/aiecc python my_script.py
+```
+
 ## IRON XRT Runtime Cache Size
 
 The `CachedXRTRuntime` caches XRT contexts to improve performance. The size of this cache can be configured using the `XRT_CONTEXT_CACHE_SIZE` environment variable. This is particularly useful in CI environments where multiple tests run in parallel and might exhaust the available NPU contexts.

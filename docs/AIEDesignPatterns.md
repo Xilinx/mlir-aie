@@ -461,7 +461,7 @@ Another lowering technique generates MLIR operations that ensure the acquire / r
 	aie.end
 }
 ```
-This lowering can be enabled for each core by setting the `dynamic_objfifo_lowering` attribute of the CoreOp to true, or enabled for all the cores in the design at once by setting the `dynamic-objFifos` flag of aiecc (which is then passed to the --aie-objectFifo-stateful-transform lowering pass).
+This lowering can be made the default for every core by passing the `--dynamic-objFifos` flag of aiecc (forwarded to the `default-dynamic` option of the `--aie-objectFifo-unroll` pass). Individual cores override that default in either direction by setting the `dynamic_objfifo_lowering` attribute of the CoreOp: `true` keeps the core's loops rolled (dynamic), `false` unrolls them (static).
 
 ObjectFIFOs can be established between tiles on the shim row and AIE tiles in order to bring data in from or out to external memory locations. These external memory locations are pointed to using AIE.external_buffer operations and they need to be explicitly registered to an objectFIFO so that it knows where the data has been allocated externally (in this case, the objectFIFO lowering will only allocate memory elements required by AIE tiles):
 ```

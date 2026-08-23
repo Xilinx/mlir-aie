@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=false" %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll %s | FileCheck %s
 
 // CHECK-LABEL:   aie.device(xcve2302) {
 // CHECK-DAG:     %[[TILE_1_0:.+]] = aie.tile(1, 0)
@@ -16,26 +16,26 @@
 // CHECK-DAG:     %[[TILE_2_3:.+]] = aie.tile(2, 3)
 // CHECK-DAG:     %[[OF2_0_CONS_BUFF_0:.+]] = aie.buffer(%[[TILE_1_3]])
 // CHECK-DAG:     %[[OF2_0_CONS_BUFF_1:.+]] = aie.buffer(%[[TILE_1_3]])
-// CHECK-DAG:     %[[OF2_0_CONS_PROD_LOCK:.+]] = aie.lock(%[[TILE_1_3]], 0) {init = 2 : i32
-// CHECK-DAG:     %[[OF2_0_CONS_CONS_LOCK:.+]] = aie.lock(%[[TILE_1_3]], 1) {init = 0 : i32
+// CHECK-DAG:     %[[OF2_0_CONS_PROD_LOCK:.+]] = aie.lock(%[[TILE_1_3]]) {init = 2 : i32
+// CHECK-DAG:     %[[OF2_0_CONS_CONS_LOCK:.+]] = aie.lock(%[[TILE_1_3]]) {init = 0 : i32
 // CHECK-DAG:     %[[OF2_1_CONS_BUFF_0:.+]] = aie.buffer(%[[TILE_2_3]])
 // CHECK-DAG:     %[[OF2_1_CONS_BUFF_1:.+]] = aie.buffer(%[[TILE_2_3]])
-// CHECK-DAG:     %[[OF2_1_CONS_PROD_LOCK:.+]] = aie.lock(%[[TILE_2_3]], 0) {init = 2 : i32
-// CHECK-DAG:     %[[OF2_1_CONS_CONS_LOCK:.+]] = aie.lock(%[[TILE_2_3]], 1) {init = 0 : i32
+// CHECK-DAG:     %[[OF2_1_CONS_PROD_LOCK:.+]] = aie.lock(%[[TILE_2_3]]) {init = 2 : i32
+// CHECK-DAG:     %[[OF2_1_CONS_CONS_LOCK:.+]] = aie.lock(%[[TILE_2_3]]) {init = 0 : i32
 // CHECK-DAG:     %[[OF1_0_CONS_BUFF_0:.+]] = aie.buffer(%[[TILE_1_2]])
 // CHECK-DAG:     %[[OF1_0_CONS_BUFF_1:.+]] = aie.buffer(%[[TILE_1_2]])
-// CHECK-DAG:     %[[OF1_0_CONS_PROD_LOCK:.+]] = aie.lock(%[[TILE_1_2]], 0) {init = 2 : i32
-// CHECK-DAG:     %[[OF1_0_CONS_CONS_LOCK:.+]] = aie.lock(%[[TILE_1_2]], 1) {init = 0 : i32
+// CHECK-DAG:     %[[OF1_0_CONS_PROD_LOCK:.+]] = aie.lock(%[[TILE_1_2]]) {init = 2 : i32
+// CHECK-DAG:     %[[OF1_0_CONS_CONS_LOCK:.+]] = aie.lock(%[[TILE_1_2]]) {init = 0 : i32
 // CHECK-DAG:     %[[OF1_1_CONS_BUFF_0:.+]] = aie.buffer(%[[TILE_2_2]])
 // CHECK-DAG:     %[[OF1_1_CONS_BUFF_1:.+]] = aie.buffer(%[[TILE_2_2]])
-// CHECK-DAG:     %[[OF1_1_CONS_PROD_LOCK:.+]] = aie.lock(%[[TILE_2_2]], 0) {init = 2 : i32
-// CHECK-DAG:     %[[OF1_1_CONS_CONS_LOCK:.+]] = aie.lock(%[[TILE_2_2]], 1) {init = 0 : i32
+// CHECK-DAG:     %[[OF1_1_CONS_PROD_LOCK:.+]] = aie.lock(%[[TILE_2_2]]) {init = 2 : i32
+// CHECK-DAG:     %[[OF1_1_CONS_CONS_LOCK:.+]] = aie.lock(%[[TILE_2_2]]) {init = 0 : i32
 // CHECK-DAG:     %[[OF0_CONS_BUFF_0:.+]] = aie.buffer(%[[TILE_1_1]])
 // CHECK-DAG:     %[[OF0_CONS_BUFF_1:.+]] = aie.buffer(%[[TILE_1_1]])
-// CHECK-DAG:     %[[OF0_CONS_PROD_LOCK_0:.+]] = aie.lock(%[[TILE_1_1]], 0) {init = 2 : i32
-// CHECK-DAG:     %[[OF0_CONS_CONS_LOCK_0:.+]] = aie.lock(%[[TILE_1_1]], 1) {init = 0 : i32
-// CHECK-DAG:     %[[OF0_CONS_PROD_LOCK_1:.+]] = aie.lock(%[[TILE_1_1]], 2) {init = 2 : i32
-// CHECK-DAG:     %[[OF0_CONS_CONS_LOCK_1:.+]] = aie.lock(%[[TILE_1_1]], 3) {init = 0 : i32
+// CHECK-DAG:     %[[OF0_CONS_PROD_LOCK_0:.+]] = aie.lock(%[[TILE_1_1]]) {init = 2 : i32
+// CHECK-DAG:     %[[OF0_CONS_CONS_LOCK_0:.+]] = aie.lock(%[[TILE_1_1]]) {init = 0 : i32
+// CHECK-DAG:     %[[OF0_CONS_PROD_LOCK_1:.+]] = aie.lock(%[[TILE_1_1]]) {init = 2 : i32
+// CHECK-DAG:     %[[OF0_CONS_CONS_LOCK_1:.+]] = aie.lock(%[[TILE_1_1]]) {init = 0 : i32
 // CHECK-DAG:     aie.flow(%[[TILE_1_0]], DMA : 0, %[[TILE_1_1]], DMA : 0)
 // CHECK-DAG:     aie.flow(%[[TILE_1_1]], DMA : 0, %[[TILE_2_2]], DMA : 0)
 // CHECK-DAG:     aie.flow(%[[TILE_1_1]], DMA : 0, %[[TILE_1_2]], DMA : 0)

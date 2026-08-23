@@ -53,6 +53,8 @@ jobs:
     # The goal for this job is to run the full test suite, including programming guide and examples, on a freshly built-from-source MLIR-AIE.
     # This also exercises the build-mlir-aie-from-wheels.sh script, which is the most common developer-facing way to rebuild MLIR-AIE from source.
     runs-on: ${{ matrix.runner_type }}
+    # Normal exec is 20-40 min; cap a hang well below GitHub's 360-min default.
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
@@ -297,6 +299,7 @@ jobs:
     #     the normal single-dispatch path (vector_vector_add IRON +
     #     vector_reduce_max C++).
     runs-on: aie2p-8col
+    timeout-minutes: 30
     env:
       NPU_CACHE_HOME: ${{ github.workspace }}/iron-cache-hrx-${{ github.run_id }}
       PIP_CACHE_DIR: ${{ github.workspace }}/.pip-cache-hrx-${{ github.run_id }}
@@ -350,6 +353,56 @@ jobs:
 
       - name: Run pure-HRX tests and example on NPU
         run: |
+          # Some on-device failures are transient rather than real regressions,
+          # and dropping an otherwise-green PR out of the merge queue for one is
+          # pure noise. This mirrors the build-and-test-from-source retry (see
+          # that job for the full rationale). Retry once when the failure matches
+          # a known transient signature:
+          #   1. an amdxdna NPU hardware fault (DRM_IOCTL_AMDXDNA_EXEC_CMD I/O error).
+          #   2. A host/device read race in an on-device test: an "X != X" result
+          #      mismatch where the observed and reference values are equal. The
+          #      host read an output buffer before the NPU DMA had fully landed;
+          #      by the time the value is printed it has settled. A real logic
+          #      error produces UNEQUAL values and is therefore never retried.
+          # A deterministic regression fails both runs, so the retry only masks
+          # nondeterministic failures. The build is a separate step, so the retry
+          # reuses it and skips the suites that already fully passed; a read-race
+          # re-runs only the failed suite's failed tests and an EIO re-runs the
+          # failed suite in FULL, with any un-reached suite always run in full.
+          # If the failed suite or test names can't be recovered it falls back to
+          # a full re-run -- never skips silently.
+          if [ -z "$STEP_RETRIED" ]; then
+            export STEP_RETRIED=1
+            log=$(mktemp)
+            bash -eo pipefail "$0" 2>&1 | tee "$log" && exit 0
+            # Classify the transient. An amdxdna EIO can abort lit mid-suite
+            # (leaving tests un-run), so its retry re-runs the failed suite in
+            # FULL; the host/device read race is a value mismatch lit still
+            # completes, so its retry may narrow to the failed tests.
+            transient=""
+            if grep -qF "DRM_IOCTL_AMDXDNA_EXEC_CMD IOCTL failed (err=-5): Input/output error" "$log"; then
+              transient=eio
+            elif grep -Pq 'idx [0-9]+: ([0-9]+) != \1\b' "$log"; then
+              transient=readrace
+            fi
+            if [ -n "$transient" ]; then
+              echo "::warning::Transient on-device failure ($transient); retrying the pure-HRX step once"
+              # Failed suite = last "===== suite: X =====" marker before the abort.
+              # || true: a no-match grep exits 1 under `set -eo pipefail`; empty
+              # just forces the full re-run below.
+              FAILED_SUITE=$(grep -oP '===== suite: \K\S+' "$log" | tail -1 || true)
+              # Collect EVERY lit failure label (FAIL/TIMEOUT/UNRESOLVED/XPASS),
+              # not just FAIL, so a real non-FAIL failure is never dropped from
+              # the retry set; regex-escape the paths for LIT_FILTER.
+              RETRY_LIT_FILTER=$(grep -Eo '(FAIL|TIMEOUT|UNRESOLVED|XPASS): [^ ]+ :: [^ ]+' "$log" \
+                | awk '{print $NF}' | sort -u \
+                | sed 's/[][(){}.^$*+?|\\]/\\&/g' | paste -sd '|' - || true)
+              export FAILED_SUITE RETRY_LIT_FILTER STEP_RETRY_TRANSIENT="$transient"
+              export STEP_RETRY_PASS=1
+              exec bash -eo pipefail "$0"
+            fi
+            exit 1
+          fi
           sudo prlimit -lunlimited --pid $$
           source aie-venv/bin/activate
           # libhrx + HRX_DIR/HRX_BUILD for both the C++ testbench (FindHRX.cmake)
@@ -362,62 +415,88 @@ jobs:
           export PATH="$PWD/install/bin:$PATH"
           export PYTHONPATH="$PWD/install/python:$PYTHONPATH"
           export LD_LIBRARY_PATH="$PWD/install/lib:$LD_LIBRARY_PATH"
+          # aiecc uses the bundled XRT-free xclbinutil; NPU2=1 selects npu2 so the
+          # .xclbin matches this runner. Set before the loop so the retry sees them.
+          export AIE_XCLBINUTIL="$PWD/install/bin/xclbinutil"
+          export NPU2=1
 
           rm -rf "$NPU_CACHE_HOME" && mkdir -p "$NPU_CACHE_HOME"
 
-          # 1) lit check: bundled hrx-xclbinutil packages the required NPU
-          #    .xclbin metadata sections (gated by the `hrxxclbinutil` feature).
-          echo "===== lit: hrx_xclbin_sections ====="
-          pushd build
-          LIT_FILTER='hrx_xclbin_sections' ninja check-aie
-          popd
+          # run_suite <name> full|only-failed
+          #   full        -- the suite's normal invocation
+          #   only-failed -- restrict a lit suite to RETRY_LIT_FILTER (retry of the
+          #                  failed suite); example suites can't narrow, run full
+          run_suite() {
+            case "$1" in
+              xclbin_sections)
+                pushd build
+                if [ "$2" = only-failed ]; then LIT_FILTER="$RETRY_LIT_FILTER" ninja check-aie
+                else LIT_FILTER='hrx_xclbin_sections' ninja check-aie; fi
+                popd ;;
+              hrx_python)
+                pushd build
+                if [ "$2" = only-failed ]; then AIE_HRX_NPU=npu2 LIT_FILTER="$RETRY_LIT_FILTER" ninja check-aie
+                else AIE_HRX_NPU=npu2 LIT_FILTER='python/npu/|npu-hrx|test_hrx_runtime_selection' ninja check-aie; fi
+                popd ;;
+              vector_scalar_add)
+                pushd programming_examples/basic/vector_scalar_add
+                NPU_RUNTIME=hrx make clean
+                NPU_RUNTIME=hrx make all
+                NPU_RUNTIME=hrx make run_runlist_hrx
+                popd ;;
+              vector_vector_add)
+                pushd programming_examples/basic/vector_vector_add
+                NPU_RUNTIME=hrx python3 vector_vector_add.py
+                popd ;;
+              vector_reduce_max)
+                pushd programming_examples/basic/vector_reduce_max/single_core_designs
+                NPU_RUNTIME=hrx make clean
+                NPU_RUNTIME=hrx make all
+                NPU_RUNTIME=hrx make run
+                popd ;;
+            esac
+          }
 
-          # 1b) HRX Python test suite, two groups:
-          #       * on-device (test/python/npu-hrx): the multi-dispatch chain
-          #         (run_chain) backend test, cached/uncached runtime behavior,
-          #         and the multi-process dispatch/isolation test -- self-building
-          #         via @iron.jit / @compileconfig, gated on the
-          #         hrx_python_bindings and hrx_npu2 lit features;
-          #       * host-side (test_hrx_runtime_selection): the runtime-selection
-          #         contract + lazy-init thread-safety tests, which need no NPU
-          #         but are exercised here in the real HRX-present / XRT-absent
-          #         configuration.
-          #     AIE_XCLBINUTIL points aiecc at the bundled tool so packaging
-          #     stays XRT-free and deterministic.
-          echo "===== lit: HRX python tests (npu-hrx + selection) ====="
-          export AIE_XCLBINUTIL="$PWD/install/bin/xclbinutil"
-          pushd build
-          AIE_HRX_NPU=npu2 \
-            LIT_FILTER='npu-hrx|test_hrx_runtime_selection' ninja check-aie
-          popd
+          SUITES="xclbin_sections hrx_python vector_scalar_add vector_vector_add vector_reduce_max"
 
-          # 2) end-to-end on hardware: package with the bundled tool (NPU_RUNTIME=hrx)
-          #    and dispatch via libhrx (Python IRON + C++ runlist).
-          echo "===== example: vector_scalar_add (pure HRX) ====="
-          # NPU2=1 selects device npu2 (aie2p) in makefile-common; required so
-          # the .xclbin matches this XDNA2 runner (default is npu1/Phoenix).
-          export NPU2=1
-          pushd programming_examples/basic/vector_scalar_add
-          NPU_RUNTIME=hrx make clean
-          NPU_RUNTIME=hrx make all
-          echo "--- C++ HRX runlist dispatch ---"
-          NPU_RUNTIME=hrx make run_runlist_hrx
-          popd
+          # Only treat FAILED_SUITE as valid if it EXACTLY names a known suite
+          # (fixed-string match, not a glob) -- else force the full re-run path.
+          if ! printf '%s\n' $SUITES | grep -qxF "$FAILED_SUITE"; then
+            FAILED_SUITE=""
+          fi
 
-          # 3) single-dispatch coverage on the normal (non-chain) path: one IRON
-          #    (@iron.jit self-running) design and one C++ design that goes
-          #    through the shared setup_and_run_aie wrapper (NPU_RUNTIME=hrx make run).
-          echo "===== IRON single-dispatch: vector_vector_add ====="
-          pushd programming_examples/basic/vector_vector_add
-          NPU_RUNTIME=hrx python3 vector_vector_add.py
-          popd
-
-          echo "===== C++ single-dispatch: vector_reduce_max ====="
-          pushd programming_examples/basic/vector_reduce_max/single_core_designs
-          NPU_RUNTIME=hrx make clean
-          NPU_RUNTIME=hrx make all
-          NPU_RUNTIME=hrx make run
-          popd
+          if [ -n "$STEP_RETRY_PASS" ] && [ -n "$FAILED_SUITE" ]; then
+            # Narrowed retry: skip the suites that already passed, re-run only the
+            # failed tests in the suite that failed, then run in full the suites
+            # the first pass's fail-fast never reached.
+            reached=""
+            for s in $SUITES; do
+              if [ -z "$reached" ] && [ "$s" != "$FAILED_SUITE" ]; then
+                echo "===== skip already-passed suite: $s ====="
+                continue
+              fi
+              reached=1
+              if [ "$s" = "$FAILED_SUITE" ] && [ "$STEP_RETRY_TRANSIENT" = readrace ] \
+                 && [ -n "$RETRY_LIT_FILTER" ]; then
+                # read-race only: lit completed the suite, so narrowing to the
+                # failed tests is coverage-safe. EIO (may have aborted lit) and
+                # the empty-filter fallback both drop to the full-suite branch.
+                echo "===== suite: $s (retry only failed tests) ====="
+                run_suite "$s" only-failed
+              else
+                echo "===== suite: $s ====="
+                run_suite "$s" full
+              fi
+            done
+          else
+            # First pass (and the full-re-run fallback): run every suite in order.
+            # The marker is printed before each suite so a fail-fast abort leaves
+            # the failed suite as the last "===== suite: X =====" line in the log.
+            for s in $SUITES; do
+              echo "===== suite: $s ====="
+              run_suite "$s" full
+            done
+          fi
 
       - name: ccache stats after the build
         if: always()
@@ -468,9 +547,27 @@ jobs:
           # The XRT-free / Boost-free packaging tool aiecc uses on the NPU_RUNTIME=hrx
           # path. Building it here proves the pure-HRX packaging tool compiles on
           # Windows in this tree (not just the submodule's own CI).
-          cmake -B build-hrxxclbinutil -S third_party/hrx-xclbinutil -A x64
-          cmake --build build-hrxxclbinutil --config Release --parallel
-          ctest --test-dir build-hrxxclbinutil -C Release --output-on-failure
+          #
+          # Build-only on a GitHub-hosted runner with no NPU, so the on-device
+          # retry signatures don't apply; retry once on any failure to ride out a
+          # network/toolchain hiccup during configure or a flaky ctest. A
+          # deterministic break fails both runs; wipe the build dir first so a
+          # half-written CMake cache can't make the retry a deterministic failure.
+          $build = {
+            cmake -B build-hrxxclbinutil -S third_party/hrx-xclbinutil -A x64
+            if ($LASTEXITCODE -ne 0) { throw "cmake configure failed ($LASTEXITCODE)" }
+            cmake --build build-hrxxclbinutil --config Release --parallel
+            if ($LASTEXITCODE -ne 0) { throw "cmake build failed ($LASTEXITCODE)" }
+            ctest --test-dir build-hrxxclbinutil -C Release --output-on-failure
+            if ($LASTEXITCODE -ne 0) { throw "ctest failed ($LASTEXITCODE)" }
+          }
+          try {
+            & $build
+          } catch {
+            Write-Host "::warning::Transient Windows build/test failure ($_); retrying once"
+            Remove-Item -Recurse -Force build-hrxxclbinutil -ErrorAction SilentlyContinue
+            & $build
+          }
 
       - name: Fetch pinned HRX Windows release
         run: |

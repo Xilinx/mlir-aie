@@ -279,6 +279,10 @@ class HRXContext:
         )
         return ordv.value
 
+    def retain_executable(self, exe):
+        if exe:
+            lib.hrx_executable_retain(exe)
+
     def release_executable(self, exe):
         if exe:
             lib.hrx_executable_release(exe)

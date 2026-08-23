@@ -3,12 +3,12 @@
 
 [build-system]
 requires = [
-    "setuptools>=83.0.0",
+    "setuptools>=84.0.0",
     "wheel",
     "ninja",
     # i have no clue why but 3.28 will cause cmake to segfault when detecting ABI compatibility
-    "cmake==4.4.0",
-    "pybind11[global]>=3.0.4",
+    "cmake==4.4.2",
+    "pybind11[global]>=3.1.0",
     "numpy",
     "dataclasses",
     "mlir-native-tools",

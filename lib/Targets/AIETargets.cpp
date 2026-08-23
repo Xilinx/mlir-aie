@@ -48,7 +48,7 @@ using namespace mlir::vector;
 using namespace xilinx;
 using namespace xilinx::AIE;
 
-llvm::json::Value attrToJSON(Attribute &attr) {
+static llvm::json::Value attrToJSON(Attribute &attr) {
   if (auto a = llvm::dyn_cast<StringAttr>(attr))
     return {a.getValue().str()};
 
@@ -99,7 +99,7 @@ static void registerDialects(DialectRegistry &registry) {
 
 // Output the buffer map for the given buffer operations, with the given offset.
 // The offset is different depending on where the buffers are accessed from.
-void writeBufferMap(raw_ostream &output, BufferOp buf, int offset) {
+static void writeBufferMap(raw_ostream &output, BufferOp buf, int offset) {
   std::string bufName(buf.name().getValue());
   int bufferBaseAddr = getBufferBaseAddress(buf);
   int numBytes = buf.getAllocationSize();

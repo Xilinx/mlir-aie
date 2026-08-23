@@ -41,11 +41,13 @@
 #include "mlir/Target/LLVMIR/Export.h"
 #include "mlir/Transforms/Passes.h"
 
+#include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
+#include "llvm/Support/Error.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -255,8 +257,10 @@ patchCoreElfFiles(mlir::ModuleOp src,
 // LLVM-IR text post-processing
 //===----------------------------------------------------------------------===//
 
-// Strip LLVM-23-only features Peano's older opt/llc can't parse.
-inline std::string downgradeIRForPeano(llvm::StringRef ir) {
+// Strip newer-LLVM features Peano's older opt/llc can't parse. aiecc's LLVM is
+// 24; Peano's is 21, so the text handed between them needs the gap patched.
+inline std::string downgradeIRForPeano(llvm::StringRef ir,
+                                       bool stripAlign = true) {
   std::string result = ir.str();
   auto erasePattern = [&](llvm::StringRef pat, auto trail) {
     for (size_t p = 0; (p = result.find(pat.str(), p)) != std::string::npos;) {
@@ -264,12 +268,6 @@ inline std::string downgradeIRForPeano(llvm::StringRef ir) {
       while (end < result.size() && trail(result[end]))
         ++end;
       result.erase(p, end - p);
-    }
-  };
-  auto replaceAll = [&](llvm::StringRef from, llvm::StringRef to) {
-    for (size_t p = 0; (p = result.find(from.str(), p)) != std::string::npos;) {
-      result.replace(p, from.size(), to.str());
-      p += to.size();
     }
   };
   // Newer LLVM prints special floats as 'inf'/'-inf'/'nan'; Peano's opt only
@@ -289,7 +287,6 @@ inline std::string downgradeIRForPeano(llvm::StringRef ir) {
       }
     }
   };
-  replaceAll("getelementptr inbounds nuw", "getelementptr inbounds");
   erasePattern("nocreateundeforpoison",
                [](char c) { return c == ' ' || c == '\t'; });
   // LLVM 23 dropped the size operand of `llvm.lifetime.start`/`.end`; Peano
@@ -373,10 +370,12 @@ inline std::string downgradeIRForPeano(llvm::StringRef ir) {
   // program memory and overflowing AIE core memory. Do not remove without
   // confirming the i8 matmul still fits program memory.
   //
-  // Applies after the merge too: llvm-link reprints the module and reintroduces
-  // `align` (with ABI defaults) on the very instructions this stripped before
-  // linking, so a merged core would otherwise reach opt fully annotated.
-  {
+  // Pre-link only. The merged module keeps its `align`: the kernel arrives
+  // already annotated by its own clang, and re-stripping demotes an
+  // over-aligned alloca to the type's ABI alignment (an `aie::linear_approx`
+  // LUT falls from 64 to 4) and drops the load/store alignment the kernel was
+  // compiled against, which miscompiles the core.
+  if (stripAlign) {
     const std::string alignPat = ", align ";
     size_t pos = 0;
     while ((pos = result.find(alignPat, pos)) != std::string::npos) {
@@ -434,6 +433,140 @@ inline std::string downgradeIRForPeano(llvm::StringRef ir) {
         pos = hexEnd;
       }
     }
+  }
+  // LLVM 24 prints a 'float'/'half' constant as a short decimal whenever that
+  // decimal round-trips in the *narrow* type; older LLVM required it to round
+  // trip as a double and printed hex otherwise. Peano's parser still demands
+  // exact representability, so it rejects what LLVM 24 prints ("floating point
+  // constant invalid for type") in both the typed position ('float
+  // 1.100000e-01') and the bare operand one ('fmul float %x, 1.100000e-01').
+  //
+  // llvm/llvm-project@41c214f0b115 ("[AsmWriter] Change the output syntax of
+  // floating-point literals", #190649) moved that round-trip check onto the
+  // value's own semantics and retired the legacy '0x<16hex>' spelling for
+  // 'f0x', which the pass below this one rewrites.
+  //
+  // A bare operand takes its type from the instruction, so tokenize and track
+  // the last type keyword seen on the line. That also keeps a mixed-type line
+  // ('call void @f(float 1.1, double 2.2)') from being rewritten under the
+  // wrong semantics. 'bfloat' and 'double' set the type but are left alone:
+  // double decimals always round-trip, and bfloat is handled below.
+  {
+    enum class FPTy { None, Float, Half };
+    std::string out;
+    out.reserve(result.size());
+    FPTy lineTy = FPTy::None;
+    size_t i = 0;
+    auto isNameChar = [](char c) {
+      return std::isalnum(static_cast<unsigned char>(c)) || c == '_' ||
+             c == '.' || c == '$' || c == '-';
+    };
+    while (i < result.size()) {
+      char c = result[i];
+      if (c == '\n') {
+        lineTy = FPTy::None;
+        out += c;
+        ++i;
+        continue;
+      }
+      // Copy quoted strings verbatim: they can hold anything that looks like a
+      // literal (a version string, an escaped byte array). A quote inside one
+      // is printed as `\22`, never `\"`, so the next bare quote terminates it.
+      if (c == '"') {
+        size_t end = result.find('"', i + 1);
+        end = (end == std::string::npos) ? result.size() : end + 1;
+        out.append(result, i, end - i);
+        i = end;
+        continue;
+      }
+      // Names (%v, @g, !12) and keywords are consumed whole, so a digit inside
+      // one is never mistaken for a constant, and 'bfloat' never matches as
+      // 'float'.
+      if (c == '%' || c == '@' || c == '!' || c == '#' ||
+          std::isalpha(static_cast<unsigned char>(c)) || c == '_') {
+        size_t end = i + 1;
+        while (end < result.size() && isNameChar(result[end]))
+          ++end;
+        llvm::StringRef word(result.data() + i, end - i);
+        if (word == "float")
+          lineTy = FPTy::Float;
+        else if (word == "half")
+          lineTy = FPTy::Half;
+        else if (word == "bfloat" || word == "double")
+          lineTy = FPTy::None;
+        out.append(result, i, end - i);
+        i = end;
+        continue;
+      }
+      bool isNumStart =
+          std::isdigit(static_cast<unsigned char>(c)) ||
+          ((c == '-' || c == '+') && i + 1 < result.size() &&
+           std::isdigit(static_cast<unsigned char>(result[i + 1])));
+      if (!isNumStart) {
+        out += c;
+        ++i;
+        continue;
+      }
+      size_t end = i + 1;
+      while (end < result.size() &&
+             (std::isalnum(static_cast<unsigned char>(result[end])) ||
+              result[end] == '.' ||
+              ((result[end] == '+' || result[end] == '-') &&
+               (result[end - 1] == 'e' || result[end - 1] == 'E'))))
+        ++end;
+      llvm::StringRef num(result.data() + i, end - i);
+      // Only decimals are at risk; the hex forms already say exactly what they
+      // mean, and an integer is not a float constant.
+      bool isDecimal =
+          num.contains('.') || num.contains('e') || num.contains('E');
+      if (lineTy == FPTy::None || !isDecimal || num.starts_with("0x")) {
+        out.append(num.data(), num.size());
+        i = end;
+        continue;
+      }
+      const llvm::fltSemantics &sem = lineTy == FPTy::Half
+                                          ? llvm::APFloat::IEEEhalf()
+                                          : llvm::APFloat::IEEEsingle();
+      llvm::APFloat val(llvm::APFloat::IEEEdouble());
+      auto parsed =
+          val.convertFromString(num, llvm::APFloat::rmNearestTiesToEven);
+      if (!parsed) {
+        llvm::consumeError(parsed.takeError());
+        out.append(num.data(), num.size());
+        i = end;
+        continue;
+      }
+      bool lost = false;
+      llvm::APFloat narrow = val;
+      narrow.convert(sem, llvm::APFloat::rmNearestTiesToEven, &lost);
+      if (!lost) {
+        // Exactly representable, so Peano accepts the decimal as printed.
+        out.append(num.data(), num.size());
+        i = end;
+        continue;
+      }
+      // 'half' takes its own 16-bit hex form; 'float' is spelled as the double
+      // it widens to.
+      uint64_t bits;
+      int digits;
+      if (lineTy == FPTy::Half) {
+        out += "0xH";
+        bits = narrow.bitcastToAPInt().getZExtValue();
+        digits = 4;
+      } else {
+        bool ignored = false;
+        llvm::APFloat wide = narrow;
+        wide.convert(llvm::APFloat::IEEEdouble(),
+                     llvm::APFloat::rmNearestTiesToEven, &ignored);
+        out += "0x";
+        bits = wide.bitcastToAPInt().getZExtValue();
+        digits = 16;
+      }
+      for (int shift = (digits - 1) * 4; shift >= 0; shift -= 4)
+        out += "0123456789ABCDEF"[(bits >> shift) & 0xFu];
+      i = end;
+    }
+    result = std::move(out);
   }
   // Rewrite decimal bfloat16 literals ('bfloat N.NNe+NN', an LLVM 23 printing
   // form) to the bit-exact '0xR<4hex>' form Peano's older LLVM only accepts.
@@ -707,14 +840,31 @@ inline std::unique_ptr<mlir::PassManager> getInputWithAddressesPipeline(
   }
 
   mlir::OpPassManager &dpm = pm->nest<DeviceOp>();
-  dpm.addPass(createAIEAssignLockIDsPass());
+  // The stateful transform always emits the dynamic (runtime) buffer addressing
+  // and lock bookkeeping. When dynamic objectFifos are disabled, the
+  // aie-objectFifo-unroll pass below unrolls the loops that carry objectFifo
+  // accesses and folds the (now loop-invariant) runtime bookkeeping into a
+  // static, unrolled lowering.
   if (mlir::failed(mlir::parsePassPipeline(
-          llvm::formatv("aie-objectFifo-stateful-transform{{dynamic-objFifos="
-                        "{0} packet-sw-objFifos={1}}",
-                        dynamicObjFifos, packetSwObjFifos)
+          llvm::formatv("aie-objectFifo-stateful-transform{{packet-sw-objFifos="
+                        "{0}}",
+                        packetSwObjFifos)
               .str(),
           dpm)))
     return nullptr;
+  // Unroll the objectFifo loops (folding the runtime bookkeeping into the
+  // static lowering). `default-dynamic=true` flips the default to the
+  // loop-preserving form; per-core `dynamic_objfifo_lowering` attributes
+  // override it either way. Either way the unroll hints are stripped.
+  if (mlir::failed(mlir::parsePassPipeline(
+          llvm::formatv("aie-objectFifo-unroll{{default-dynamic={0}}",
+                        dynamicObjFifos)
+              .str(),
+          dpm)))
+    return nullptr;
+  // Assign IDs to the ID-less locks the objectFifo lowering creates (and to any
+  // user locks without an ID).
+  dpm.addPass(createAIEAssignLockIDsPass());
   dpm.addPass(createAIEAssignBufferDescriptorIDsPass());
   dpm.addPass(createAIELowerCascadeFlowsPass());
   dpm.addPass(X::createAIEBroadcastPacketPass());

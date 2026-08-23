@@ -21,7 +21,7 @@ using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
 
-Type memRefToDefaultAddressSpace(Type t) {
+static Type memRefToDefaultAddressSpace(Type t) {
   if (auto memRefType = llvm::dyn_cast<MemRefType>(t);
       memRefType && memRefType.getMemorySpace() != nullptr) {
     // Preserve ptr::GenericSpaceAttr - it's needed for ptr dialect

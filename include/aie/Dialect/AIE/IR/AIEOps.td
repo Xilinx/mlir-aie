@@ -365,10 +365,11 @@ def AIE_ShimDMAOp: AIE_Op<"shim_dma", [
   }];
 }
 
-def AIE_CoreOp: AIE_Op<"core", [
-    IsFlowEndPoint, IsCoreTile, TileElement,
-    DeclareOpInterfaceMethods<InferTypeOpInterface>
-  ]>, Results<(outs Index)> {
+def AIE_CoreOp
+    : AIE_Op<"core", [IsFlowEndPoint, IsCoreTile, TileElement,
+                      AutomaticAllocationScope,
+                      DeclareOpInterfaceMethods<InferTypeOpInterface>]>,
+      Results<(outs Index)> {
   let arguments = (
     ins Index:$tile,
     // Absent means "use this target's default"; read getEffectiveStackSize().
@@ -920,6 +921,9 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
         5. the number of zeros to pad before and after every dimension of an n-d tensor (described below);
         6. the burst length to use for the DMA operation. This option is only available for data movement between the host memory and Shim NOC tiles.
           The default value of 0 is interpreted as the maximum available burst length in the architecture.
+        7. the raw 4-bit `AxCACHE` value to use for the DMA's AXI-MM transfers. This option is only available for
+          data movement between the host memory and Shim NOC tiles. If unset, `AIETargetModel::getDefaultAxCache()`
+          supplies the value.
 
     `offset`, `len`, `size`s and `stride`s are all denominated in element width; e.g., transferring the whole of
     `memref<512xi32>` means `len == 512`, and also while transferring the whole of `memref<512xi16>`, `len == 512`.
@@ -1015,42 +1019,76 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
     AIE-ML devices can apply constant padding at the buffer descriptor level, described with pairs of padding
     counts before and after a dimension, to all dimensions in the data layout transformations. The padding
     counts can be supplied to the `dma_bd` through an optional argument, an array of "tuple-like" attributes
-    `bd_pad_layout<const_pad_before, const_pad_after>`, followed by an optional argument `const_val` (default
-    is 0). All counts are expressed in multiples of the element width.
+    `bd_pad_layout<const_pad_before, const_pad_after>`. The pad value is specified on a per-channel basis
+    rather than on each BD. All counts are expressed in multiples of the element width.
+
+    ## BD iteration
+
+    On devices that support it, a BD can advance the address it accesses on each
+    execution, via the optional `iteration` attribute
+    (`#aie.bd_iteration<size, stride, current>`): execution `k` adds an offset of
+    `((current + k) % size) * stride` (in elements) to its configured address.
+    The offset advances for `size` executions (with wrapping); `current` selects
+    the starting step (default 0). `stride` is given in element width and is
+    scaled to whole 32-bit words during lowering. Omitting the attribute (or
+    `size <= 1`) disables iteration. Lowers to
+    `XAie_DmaSetBdIteration(stride, size, current)`.
+
+    #### Important gotcha regarding APIs for raw register writes
+
+    The SAME hardware iteration register is also written by `aiex.npu.writebd`
+    and the runtime-sequence (DMA-task) lowering, through an `iteration_*`
+    family with the SAME names but a DIFFERENT convention; those are RAW
+    register values, i.e., stored off by one (`iteration_size = 3` means four
+    executions), `iteration_stride` in 32-bit words, no bounds/alignment help.
+    `aie.dma_bd` uses TRUE / element values and the lowering applies the `-1`
+    bias and the element->word scaling.
+
+    Do NOT copy an iteration number between the two ops: e.g. `size = 1` disables
+    iteration here, but `iteration_size = 1` means *two* executions on
+    `writebd`. The `iteration` attribute is rejected on the other path; express
+    iteration there via the outermost `sizes`/`strides` dimension instead.
   }];
 
-  let arguments = (
-    ins AnyRankedOrUnrankedMemRef:$buffer,
-        // offset/len are denominated in element width (not bytes).
-        // Can be given as a static attribute or a runtime SSA value. If neither
-        // are given, we assume zero for the offset and the memref's full buffer
-        // length for the length.
-        Optional<I32>:$offset,
-        Optional<I32>:$len,
-        OptionalAttr<AIEI32Attr>:$static_offset,
-        OptionalAttr<AIEI32Attr>:$static_len,
-        // n-d tensor addressing: sizes/strides as a mixed static/dynamic index
-        // list (DynamicIndexList), mirroring aiex.npu.dma_memcpy_nd. A constant
-        // lands in static_sizes/static_strides; a runtime value becomes an
-        // operand. Outermost dimension first.
-        Variadic<I64>:$sizes,
-        Variadic<I64>:$strides,
-        OptionalAttr<DenseI64ArrayAttr>:$static_sizes,
-        OptionalAttr<DenseI64ArrayAttr>:$static_strides,
-        OptionalAttr<BDPadLayoutArrayAttr>:$pad_dimensions,
-        DefaultValuedOptionalAttr<AIEI32Attr, "0">:$pad_value,
-        OptionalAttr<AIEI32Attr>:$bd_id,
-        OptionalAttr<PacketInfoAttr>:$packet,
-        DefaultValuedOptionalAttr<AIEI32Attr, "0">:$burst_length,
-        // if set, the aiex.scratchpad_parameter value added to the BD's address as an offset
-        OptionalAttr<FlatSymbolRefAttr>:$offset_parameter,
-        // Set by --aie-lower-scratchpad-parameters from $offset_parameter: the scratchpad
-        // state-table index whose value is used as the BD address offset.
-        // After lowering, $offset_parameter is removed in favor of this attribute.
-        OptionalAttr<UI8Attr>:$offset_state_table_idx,
-        // should never be assigned by user...
-        OptionalAttr<AIEI32Attr>:$next_bd_id
-  );
+  let arguments = (ins AnyRankedOrUnrankedMemRef:$buffer,
+      // offset/len are denominated in element width (not bytes).
+      // Can be given as a static attribute or a runtime SSA value. If neither
+      // are given, we assume zero for the offset and the memref's full buffer
+      // length for the length.
+      Optional<I32>:$offset, Optional<I32>:$len,
+      OptionalAttr<AIEI32Attr>:$static_offset,
+      OptionalAttr<AIEI32Attr>:$static_len,
+      // n-d tensor addressing: sizes/strides as a mixed static/dynamic index
+      // list (DynamicIndexList), mirroring aiex.npu.dma_memcpy_nd. A constant
+      // lands in static_sizes/static_strides; a runtime value becomes an
+      // operand. Outermost dimension first.
+      Variadic<I64>:$sizes, Variadic<I64>:$strides,
+      OptionalAttr<DenseI64ArrayAttr>:$static_sizes,
+      OptionalAttr<DenseI64ArrayAttr>:$static_strides,
+      OptionalAttr<BDPadLayoutArrayAttr>:$pad_dimensions,
+      OptionalAttr<AIEI32Attr>:$bd_id, OptionalAttr<PacketInfoAttr>:$packet,
+      // Sender-side id stamped into the packet header. Selects which receive
+      // BD (by bd id) an out-of-order S2MM channel places this data into.
+      OptionalAttr<AIEI32Attr>:$out_of_order_id,
+      DefaultValuedOptionalAttr<AIEI32Attr, "0">:$burst_length,
+      // AxCACHE is shim-NOC-only, like burst_length. It is left unset (rather
+      // than DefaultValuedOptionalAttr, whose value must be a TableGen literal)
+      // so that all backends can source a consistent default from
+      // AIETargetModel::getDefaultAxCache() when absent.
+      OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>,
+                                             IntMaxValue<15>]>>:$axcache,
+      // The BD's iteration state; see the "## BD iteration" section above.
+      OptionalAttr<BDIterationAttr>:$iteration,
+      // if set, the aiex.scratchpad_parameter value added to the BD's address
+      // as an offset
+      OptionalAttr<FlatSymbolRefAttr>:$offset_parameter,
+      // Set by --aie-lower-scratchpad-parameters from $offset_parameter: the
+      // scratchpad state-table index whose value is used as the BD address
+      // offset. After lowering, $offset_parameter is removed in favor of this
+      // attribute.
+      OptionalAttr<UI8Attr>:$offset_state_table_idx,
+      // should never be assigned by user...
+      OptionalAttr<AIEI32Attr>:$next_bd_id);
 
   let hasVerifier = 1;
   let assemblyFormat = [{
@@ -1060,7 +1098,6 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
     ( `sizes` `=` custom<DynamicIndexList>($sizes, $static_sizes)^ )?
     ( `strides` `=` custom<DynamicIndexList>($strides, $static_strides)^ )?
     ( `pad` $pad_dimensions^ )?
-    ( `pad_value` `=` $pad_value^ )?
     `)` attr-dict
   }];
 
@@ -1155,6 +1192,11 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
       return static_cast<int64_t>(getConstantOffset().value_or(0)) *
              static_cast<int64_t>(getBufferElementTypeWidthInBytes());
     }
+
+    // $axcache, or the target's default when unset. The single place the
+    // fallback rule lives; every backend emitting an AXI-MM BD goes through
+    // this rather than repeating the value_or.
+    uint32_t getAxcacheOrDefault();
   }];
 
   let hasVerifier = 1;
@@ -1224,14 +1266,24 @@ def AIE_DMAStartOp: AIE_Op<"dma_start", [
     Conceptually, the aie.dma_start operation is a terminator that either passes
     control to a basic block containing DMA operations (through its first successor)
     or to a basic block for another dma_start, to an aie.end operation.
+
+    On a MemTile MM2S channel, the optional `pad_value` attribute (default 0) sets the
+    constant value the DMA inserts wherever a BD on this channel applies padding (the pad
+    geometry lives per-BD on `aie.dma_bd`). It is a per-channel property in hardware -- one
+    `CONSTANT_PAD_VALUE` register per MM2S channel. The value is the raw 32-bit stream word
+    inserted for each padded word; for sub-32-bit element types pre-pack it across the word
+    (e.g. `0x07070707` to fill an `i8` region with `0x07`). The register is present only on
+    targets that provide it (e.g. AIE2P) and only on MM2S channels; the verifier rejects a
+    nonzero `pad_value` elsewhere.
   }];
 
-  let arguments = (
-    ins DMAChannelDir:$channel_dir,
-        ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$channel_index,
-        // repeat_count==0 means "do it once" and don't repeat
-        DefaultValuedAttr<AIEI32Attr, "0">:$repeat_count
-  );
+  let arguments = (ins DMAChannelDir:$channel_dir,
+      ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$channel_index,
+      // repeat_count==0 means "do it once" and don't repeat
+      DefaultValuedAttr<AIEI32Attr, "0">:$repeat_count,
+      DefaultValuedOptionalAttr<AIEI32Attr, "0">:$pad_value,
+      // Put the channel into out-of-order mode (S2MM only).
+      UnitAttr:$out_of_order);
   let successors = (successor AnySuccessor:$dest, AnySuccessor:$chain);
   let assemblyFormat = [{
     `(` $channel_dir `,` $channel_index `,` $dest `,` $chain (`,` `repeat_count` `=` $repeat_count^)? `)` attr-dict
@@ -1243,6 +1295,7 @@ def AIE_DMAStartOp: AIE_Op<"dma_start", [
   }];
 
   let hasCanonicalizer = 1;
+  let hasVerifier = 1;
 }
 
 def AIE_DMAOp: AIE_Op<"dma", [
@@ -1254,14 +1307,16 @@ def AIE_DMAOp: AIE_Op<"dma", [
 
   let summary = "An op to describe a set of DMA operations.";
 
-  let arguments = (
-    ins DMAChannelDir:$channel_dir,
-        ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$channel_index,
-        DefaultValuedAttr<BoolAttr, "true">:$loop,
-        // repeat_count==0 means "do it once" and don't repeat
-        DefaultValuedAttr<AIEI32Attr, "0">:$repeat_count,
-        OptionalAttr<StrAttr>:$sym_name
-  );
+  let arguments = (ins DMAChannelDir:$channel_dir,
+      ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$channel_index,
+      DefaultValuedAttr<BoolAttr, "true">:$loop,
+      // repeat_count==0 means "do it once" and don't repeat
+      DefaultValuedAttr<AIEI32Attr, "0">:$repeat_count,
+      OptionalAttr<StrAttr>:$sym_name,
+      // Region form of aie.dma_start's pad_value; see its semantics there.
+      DefaultValuedOptionalAttr<AIEI32Attr, "0">:$pad_value,
+      // Put the channel into out-of-order mode (S2MM only).
+      UnitAttr:$out_of_order);
   let regions = (region VariadicRegion<SizedRegion<1>>:$bds);
   let assemblyFormat = [{
     `(` $channel_dir `,` $channel_index `)`
@@ -1460,8 +1515,8 @@ def AIE_LockOp: AIE_Op<"lock", [
     }
   }];
 
-  let builders = [
-    OpBuilder<(ins "mlir::Value":$tile, "int":$lockID, "int":$init), [{
+  let builders = [OpBuilder<
+                      (ins "mlir::Value":$tile, "int":$lockID, "int":$init), [{
       build($_builder, $_state,
         $_builder.getIndexType(),
         tile,
@@ -1469,8 +1524,16 @@ def AIE_LockOp: AIE_Op<"lock", [
         $_builder.getI32IntegerAttr(init),
         nullptr
       );
-    }]>
-  ];
+    }]>,
+                  OpBuilder<(ins "mlir::Value":$tile, "int":$init), [{
+      build($_builder, $_state,
+        $_builder.getIndexType(),
+        tile,
+        /*lockID=*/nullptr,
+        $_builder.getI32IntegerAttr(init),
+        nullptr
+      );
+    }]>];
   let hasVerifier = 1;
 }
 
@@ -1508,6 +1571,7 @@ def AIE_UseLockOp: AIE_Op<"use_lock", []> {
   }];
 
   let hasVerifier = 1;
+  let hasCanonicalizeMethod = 1;
   let builders = [
     OpBuilder<(ins "mlir::Value":$lock,
                    "xilinx::AIE::LockAction":$action,
@@ -2039,6 +2103,8 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
         OptionalAttr<DenseI32ArrayAttr>:$cons_dma_channels,
         InitValuesArrayAttr:$initValues,
         OptionalAttr<BDPadLayoutArrayAttr>:$padDimensions,
+        // Lowered onto the memtile MM2S channel; see aie.dma_start's pad_value.
+        DefaultValuedOptionalAttr<AIEI32Attr, "0">:$padValue,
         OptionalAttr<AIEI32Attr>:$iter_count
   );
 
@@ -2395,8 +2461,8 @@ def AIE_RuntimeSequenceOp : AIE_Op<"runtime_sequence", [
   let hasVerifier = 1;
   let extraClassDeclaration = [{
     static llvm::StringRef getDefaultRuntimeSequenceName() { return "sequence"; }
-    static RuntimeSequenceOp getForSymbolInDevice(DeviceOp module, llvm::StringRef symbol);
-    static RuntimeSequenceOp getForSymbolInDeviceOrError(DeviceOp module, llvm::StringRef symbol);
+    static RuntimeSequenceOp getForSymbolInDevice(DeviceOp deviceOp, llvm::StringRef symbol);
+    static RuntimeSequenceOp getForSymbolInDeviceOrError(DeviceOp deviceOp, llvm::StringRef symbol);
     llvm::LogicalResult verifyBeforeMaterialization();
   }];
   let extraClassDefinition = [{

@@ -144,7 +144,7 @@ AIEX::verifyStridesWraps(mlir::Operation *forOp,
 
   uint32_t wrap_bits = 0;
   uint32_t step_bits = 0;
-  uint32_t iter_bits = 6;
+  uint32_t iter_bits = targetModel.getDmaBdIterBits(tileCol, tileRow);
   if (targetModel.isShimNOCTile(tileCol, tileRow)) {
     step_bits = 20; // XAIEMLGBL_NOC_MODULE_DMA_BD0_3_D0_STEPSIZE_WIDTH
     wrap_bits = 10; // XAIEMLGBL_NOC_MODULE_DMA_BD0_3_D0_WRAP_WIDTH
@@ -215,21 +215,21 @@ AIEX::verifyStridesWraps(mlir::Operation *forOp,
     return forOp->emitOpError(
         "Size 1 exceeds the [0:" + std::to_string((1 << wrap_bits) - 1) +
         "] range.");
-  if (hardwareSizes[3] > (1 << iter_bits))
+  if (hardwareSizes[3] > (1 << iter_bits) - 1)
     return forOp->emitOpError(
         "Size 3 exceeds the [1:" + std::to_string(1 << iter_bits) + "] range.");
-  if (hardwareStrides[0] > (1 << step_bits))
+  if (hardwareStrides[0] > (1 << step_bits) - 1)
     return forOp->emitOpError("Stride 0 exceeds the [1:" +
                               std::to_string(1 << step_bits) + "] range.");
-  if (hardwareStrides[1] > (1 << step_bits))
+  if (hardwareStrides[1] > (1 << step_bits) - 1)
     return forOp->emitOpError("Stride 1 exceeds the [1:" +
                               std::to_string(1 << step_bits) + "] range.");
-  if (hardwareStrides[2] > (1 << step_bits))
+  if (hardwareStrides[2] > (1 << step_bits) - 1)
     return forOp->emitOpError("Stride 2 exceeds the [1:" +
                               std::to_string(1 << step_bits) + "] range.");
   // strides[3] exceeding the range is ok iff the sizes[3] is one, which is
   // checked below
-  if (hardwareStrides[3] > (1 << step_bits) && hardwareSizes[3] > 0)
+  if (hardwareStrides[3] > (1 << step_bits) - 1 && hardwareSizes[3] > 0)
     return forOp->emitOpError("Stride 3 exceeds the [1:" +
                               std::to_string(1 << step_bits) + "] range.");
 
@@ -284,6 +284,10 @@ LogicalResult AIEX::BroadcastPacketOp::verify() {
 
 /* Calculates the offset value to be written to the
  */
+uint32_t AIEX::NpuDmaMemcpyNdOp::getAxcacheOrDefault() {
+  return getAxcache().value_or(AIE::getTargetModel(*this).getDefaultAxCache());
+}
+
 int64_t AIEX::NpuDmaMemcpyNdOp::getOffsetInBytes() {
   llvm::SmallVector<int64_t, 4> offsets =
       llvm::map_to_vector(llvm::reverse(getMixedOffsets()), [](OpFoldResult s) {
@@ -303,7 +307,11 @@ int64_t AIEX::NpuDmaMemcpyNdOp::getOffsetInBytes() {
   for (size_t i = 0; i < R; i++) {
     if (offsets[i] == 0)
       continue;
-    offset += offsets[i] * getConstantIntValue(strides[i]).value() * S;
+    auto strideConst = getConstantIntValue(strides[i]);
+    assert(strideConst &&
+           "verifier requires a stride paired with a non-zero offset to be "
+           "constant");
+    offset += offsets[i] * (*strideConst) * S;
   }
   return offset;
 }
@@ -445,7 +453,7 @@ struct LinearizeContiguousTransfer
         op.getIssueTokenAttr(), op.getD0ZeroBeforeAttr(),
         op.getD1ZeroBeforeAttr(), op.getD2ZeroBeforeAttr(),
         op.getD0ZeroAfterAttr(), op.getD1ZeroAfterAttr(),
-        op.getD2ZeroAfterAttr(), op.getBurstLengthAttr(),
+        op.getD2ZeroAfterAttr(), op.getBurstLengthAttr(), op.getAxcacheAttr(),
         op.getOffsetParameterAttr(), op.getOffsetStateTableIdxAttr());
     return mlir::success();
   }
@@ -453,8 +461,8 @@ struct LinearizeContiguousTransfer
 } // namespace
 
 void AIEX::NpuDmaMemcpyNdOp::getCanonicalizationPatterns(
-    mlir::RewritePatternSet &patterns, mlir::MLIRContext *context) {
-  patterns.add<LinearizeContiguousTransfer>(context);
+    mlir::RewritePatternSet &results, mlir::MLIRContext *context) {
+  results.add<LinearizeContiguousTransfer>(context);
 }
 
 // Helper method to check if a requested burst length is supported by the target
@@ -752,20 +760,44 @@ LogicalResult AIEX::NpuWriteBdOp::verify() {
     return emitOpError("Packet ID exceeds the maximum supported by 5 bits.");
   if (getPacketType() > 7)
     return emitOpError("Packet Type exceeds the maximum supported by 3 bits.");
-  if (!isLinearTransfer && getD0Size() > 0x3FF)
-    return emitOpError("D0 Size exceeds the [0:1023] range.");
-  if (getD0Stride() > 0xFFFFF)
-    return emitOpError("D0 Stride exceeds the [0:1M-1] range.");
-  if (getD1Size() > 0x3FF)
-    return emitOpError("D1 Size exceeds the [0:1023] range.");
-  if (getD1Stride() > 0xFFFFF)
-    return emitOpError("D1 Stride exceeds the [0:1M-1] range.");
-  if (getD2Stride() > 0xFFFFF)
-    return emitOpError("D2 Stride exceeds the [0:1M-1] range.");
-  if (getIterationSize() > 0x3F)
-    return emitOpError("Iteration Size exceeds the [0:63] range.");
-  if (getIterationStride() > 0xFFFFF)
-    return emitOpError("Iteration Stride exceeds the [0:1M-1] range.");
+  int64_t oooId = getOutOfOrderId();
+  if (oooId < 0 ||
+      static_cast<uint64_t>(oooId) > targetModel.getMaxOutOfOrderId())
+    return emitOpError("out_of_order_id must be in [0, ")
+           << targetModel.getMaxOutOfOrderId() << "].";
+  if (oooId != 0 && getEnablePacket() == 0)
+    return emitOpError("out_of_order_id requires a packet-enabled BD");
+
+  // Every value on this op is already the hardware-encoded field value (wrap
+  // fields unbiased, stepsize/iteration fields biased actual-1), so the
+  // legal encoded range for a B-bit field is simply [0, 2^B - 1].
+  AIE::AIETileType tileType = targetModel.getTileType(getColumn(), getRow());
+  uint32_t wrapBits = targetModel.getDmaBdWrapBits(tileType);
+  uint32_t stepBits = targetModel.getDmaBdStepBits(tileType);
+  uint32_t iterBits = targetModel.getDmaBdIterBits(tileType);
+  uint32_t maxWrap = wrapBits > 0 ? (1u << wrapBits) - 1 : 0;
+  uint32_t maxStep = stepBits > 0 ? (1u << stepBits) - 1 : 0;
+  uint32_t maxIter = iterBits > 0 ? (1u << iterBits) - 1 : 0;
+
+  if (!isLinearTransfer && getD0Size() > maxWrap)
+    return emitOpError() << "D0 Size exceeds the [0:" << maxWrap << "] range.";
+  if (getD0Stride() > maxStep)
+    return emitOpError() << "D0 Stride exceeds the [0:" << maxStep
+                         << "] range.";
+  if (getD1Size() > maxWrap)
+    return emitOpError() << "D1 Size exceeds the [0:" << maxWrap << "] range.";
+  if (getD1Stride() > maxStep)
+    return emitOpError() << "D1 Stride exceeds the [0:" << maxStep
+                         << "] range.";
+  if (getD2Stride() > maxStep)
+    return emitOpError() << "D2 Stride exceeds the [0:" << maxStep
+                         << "] range.";
+  if (getIterationSize() > maxIter)
+    return emitOpError() << "Iteration Size exceeds the [0:" << maxIter
+                         << "] range.";
+  if (static_cast<uint32_t>(getIterationStride()) > maxStep)
+    return emitOpError() << "Iteration Stride exceeds the [0:" << maxStep
+                         << "] range.";
   if (targetModel.isShimNOCTile(getColumn(), getRow()) && getD2Size() != 0)
     return emitOpError("ShimTile only supports 3 dimensions of sizes.");
   if (targetModel.isShimNOCTile(getColumn(), getRow()) &&
@@ -773,6 +805,30 @@ LogicalResult AIEX::NpuWriteBdOp::verify() {
        getD1ZeroBefore() != 0 || getD1ZeroAfter() != 0 ||
        getD2ZeroBefore() != 0 || getD2ZeroAfter() != 0))
     return emitOpError("ShimTile doesn't support zero padding.");
+
+  // Pad field widths (AIE2P ArchSpec Table 3-34, in 32-bit words): D0 is a
+  // 6-bit field (max 63), D1 a 5-bit field (max 31), D2 a 4-bit field (max
+  // 15).
+  //
+  // Placement is a deliberate compromise. DMABDOp::verify() would be the
+  // better home for this check, since its diagnostic would point at the
+  // user's own `aie.dma_bd`. But DMABDOp::verify() early-returns for BDs
+  // nested inside `aiex.dma_configure_task`, and the only case with
+  // hardware evidence for this defect is on that task path -- a check
+  // placed only in DMABDOp::verify() would miss it. NpuWriteBdOp is where
+  // both the static and task runtime paths converge, so putting it here
+  // covers both, at the cost of the diagnostic pointing at this
+  // compiler-generated op rather than the user-written BD.
+  //
+  // TODO: migrate this check to DMABDOp::verify() once BD iteration becomes
+  // an explicit `aie.dma_bd` field and that early-return can be removed.
+  if (getD0ZeroBefore() > 0x3F || getD0ZeroAfter() > 0x3F)
+    return emitOpError("D0 pad_before/pad_after exceeds the [0:63] range.");
+  if (getD1ZeroBefore() > 0x1F || getD1ZeroAfter() > 0x1F)
+    return emitOpError("D1 pad_before/pad_after exceeds the [0:31] range.");
+  if (getD2ZeroBefore() > 0xF || getD2ZeroAfter() > 0xF)
+    return emitOpError("D2 pad_before/pad_after exceeds the [0:15] range.");
+
   if (!targetModel.isShimNOCTile(getColumn(), getRow()) &&
       getBurstLength() != 0)
     return emitOpError("Only ShimTiles support burst length.");
@@ -780,8 +836,14 @@ LogicalResult AIEX::NpuWriteBdOp::verify() {
   if (errorMessage.has_value()) {
     return emitOpError(errorMessage.value());
   }
+  if (!targetModel.isShimNOCTile(getColumn(), getRow()) && getAxcache())
+    return emitOpError("Only ShimTiles support AxCACHE configuration.");
 
   return success();
+}
+
+uint32_t AIEX::NpuWriteBdOp::getAxcacheOrDefault() {
+  return getAxcache().value_or(AIE::getTargetModel(*this).getDefaultAxCache());
 }
 
 std::optional<uint32_t> AIEX::getConstantIntOperand(mlir::Value v) {
@@ -816,15 +878,15 @@ static std::optional<uint32_t> getAbsoluteAddress(T *op,
 
   // If blockwrite references a buffer, the given address is understood to be
   // relative to the buffer's start address.
-  if (op->getBuffer()) {
-    AIE::BufferOp buffer = device.lookupSymbol<AIE::BufferOp>(*op->getBuffer());
+  if (auto bufferSym = op->getBuffer()) {
+    AIE::BufferOp buffer = device.lookupSymbol<AIE::BufferOp>(*bufferSym);
     if (!buffer) {
-      op->emitError() << "buffer '" << *op->getBuffer()
-                      << "' not found in device";
+      op->emitError() << "buffer '" << *bufferSym << "' not found in device";
       return std::nullopt;
     }
 
-    if (!buffer.getAddress()) {
+    auto bufferAddress = buffer.getAddress();
+    if (!bufferAddress) {
       mlir::InFlightDiagnostic err =
           op->emitError("referenced buffer must have address assigned");
       err.attachNote(buffer.getLoc()) << "This buffer must have an address.";
@@ -833,7 +895,7 @@ static std::optional<uint32_t> getAbsoluteAddress(T *op,
 
     uint32_t col = buffer.getTileOp().getCol();
     uint32_t row = buffer.getTileOp().getRow();
-    address = static_cast<uint32_t>(*buffer.getAddress()) +
+    address = static_cast<uint32_t>(*bufferAddress) +
               addressOffset * sizeof(uint32_t);
     address = ((col & 0xff) << tm.getColumnShift()) |
               ((row & 0xff) << tm.getRowShift()) | (address & 0xfffff);
@@ -1073,10 +1135,7 @@ std::optional<uint32_t> AIEX::DMAConfigureTaskOp::getFirstBdId() {
     return std::nullopt;
   }
   AIE::DMABDOp bd = *bd_ops.begin();
-  if (!bd.getBdId().has_value()) {
-    return std::nullopt;
-  }
-  return bd.getBdId().value();
+  return bd.getBdId();
 }
 
 LogicalResult
@@ -1085,8 +1144,7 @@ AIEX::DMAConfigureTaskOp::canonicalize(AIEX::DMAConfigureTaskOp op,
   // Remove blocks that contain nothing but a terminator
   Region &body = op.getBody();
   bool did_rewrite = false;
-  for (auto it = body.begin(); it != body.end(); ++it) {
-    Block &block = *it;
+  for (auto &block : body) {
     if (block.empty()) {
       continue;
     }
@@ -1131,6 +1189,14 @@ verifyTaskBDDimensions(const AIE::AIETargetModel &targetModel, int col, int row,
       result = failure();
       return;
     }
+    if (bd.getIteration()) {
+      // See aie.dma_bd's ## BD iteration doc in AIEOps.td.
+      bd.emitOpError() << "the iteration attribute is not supported on the "
+                          "runtime-sequence path; express iteration via the "
+                          "outermost sizes/strides dimension instead";
+      result = failure();
+      return;
+    }
     size_t numDims = bd.getMixedSizes().size();
     if (numDims > maxNDims) {
       bd.emitOpError() << "Cannot give more than " << std::to_string(maxNDims)
@@ -1154,8 +1220,7 @@ LogicalResult AIEX::DMAConfigureTaskOp::verify() {
       failed(verifyTaskBDDimensions(targetModel, *col, *row, getBody())))
     return failure();
   Region &body = getBody();
-  for (auto it = body.begin(); it != body.end(); ++it) {
-    Block &block = *it;
+  for (auto &block : body) {
     if (block.empty()) {
       continue;
     }
@@ -1174,6 +1239,8 @@ LogicalResult AIEX::DMAConfigureTaskOp::verify() {
     // dialect. The normal DMABDOp verify operation will skip over any BD inside
     // a DMAConfigureTaskOp
     LogicalResult result = success();
+    // A task-level packet supplies the header for every BD in the task.
+    bool taskHasPacket = getPacket().has_value();
     block.walk([&](AIE::DMABDOp bd) {
       if (bd.getBurstLength() != 0 &&
           !targetModel.isShimNOCTile(getTileID().col, getTileID().row)) {
@@ -1181,6 +1248,9 @@ LogicalResult AIEX::DMAConfigureTaskOp::verify() {
                        "are connected to the memory-mapped NOC.");
         result = failure();
       }
+      // DMABDOp::verify skips task BDs, so validate out_of_order_id here too.
+      if (failed(AIE::verifyDMABDOutOfOrderId(bd, taskHasPacket)))
+        result = failure();
     });
     if (failed(result)) {
       return result;

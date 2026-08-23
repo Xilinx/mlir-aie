@@ -270,6 +270,15 @@ def packet_info_attr_builder(tups: Tuple[int] | List[int], context=None):
     )
 
 
+@register_attribute_builder("BDIterationAttr")
+def bd_iteration_attr_builder(tup: Tuple[int] | List[int], context=None):
+    assert (isinstance(tup, list) or isinstance(tup, tuple)) and len(tup) == 3
+    return Attribute.parse(
+        f"#aie.bd_iteration<size = {tup[0]}, stride = {tup[1]}, current = {tup[2]}>",
+        context=context,
+    )
+
+
 @register_attribute_builder("BDDimLayoutArrayAttr")
 def bd_dim_layout_array_attr_builder(tups: List[Attribute | Tuple[int]], context=None):
     if isinstance(tups, list) and all(isinstance(t, tuple) for t in tups):
@@ -584,6 +593,7 @@ class object_fifo(ObjectFifoCreateOp):
         via_DMA=None,
         plio=None,
         padDimensions=None,
+        padValue=None,
         disable_synchronization=None,
         iter_count=None,
         consumer_datatype=None,
@@ -623,6 +633,7 @@ class object_fifo(ObjectFifoCreateOp):
             via_DMA=via_DMA,
             plio=plio,
             padDimensions=padDimensions,
+            padValue=padValue,
             disable_synchronization=disable_synchronization,
             initValues=initValues,
             iter_count=iter_count,
@@ -842,7 +853,9 @@ def dma(
     num_blocks=1,
     loop=None,
     repeat_count=None,
+    out_of_order=False,
     sym_name=None,
+    pad_value: int = 0,
     loc=None,
     ip=None,
 ):
@@ -855,7 +868,9 @@ def dma(
         num_bds=num_blocks,
         loop=loop,
         repeat_count=repeat_count,
+        out_of_order=out_of_order,
         sym_name=sym_name,
+        pad_value=pad_value or None,
         loc=loc,
         ip=ip,
     )
@@ -882,6 +897,8 @@ class DMAStartOp(DMAStartOp):
         dest: Successor | Block | None = None,
         chain: Successor | Block | None = None,
         repeat_count: int | None = None,
+        pad_value: int | None = None,
+        out_of_order: bool = False,
         loc=None,
         ip=None,
     ):
@@ -899,6 +916,8 @@ class DMAStartOp(DMAStartOp):
             dest,
             chain,
             repeat_count=repeat_count,
+            pad_value=pad_value,
+            out_of_order=out_of_order,
             loc=loc,
             ip=ip,
         )
@@ -919,6 +938,8 @@ def dma_start(
     dest: Successor | Block | ContextManagedBlock | None = None,
     chain: Successor | Block | ContextManagedBlock | None = None,
     repeat_count: int = 0,
+    pad_value: int = 0,
+    out_of_order: bool = False,
     loc=None,
     ip=None,
 ):
@@ -932,6 +953,8 @@ def dma_start(
         loc=loc,
         ip=ip,
         repeat_count=repeat_count,
+        pad_value=pad_value or None,
+        out_of_order=out_of_order,
     )
     return op.dest, op.chain
 

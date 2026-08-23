@@ -150,12 +150,18 @@ def _compute_artifact_hash(
     generator: Callable | Path,
     source_files: list[Path] | tuple[Path, ...],
     object_files: list[Path] | tuple[Path, ...],
+    fold_ddr_addr_offset: bool,
 ) -> str:
     """Hash of the "artifacts": source/object mtimes + tool mtimes + target device.
 
     Captures everything that can change the *output* of compilation without
     changing the *recipe*: edited C++ kernels, swapped object files, upgraded
     Peano / aiecc, retargeted device.
+
+    ``fold_ddr_addr_offset`` is the active backend's DDR-patch ABI: XRT/CPU emit
+    a folded ``insts.bin`` and HRX an unfolded one, so the two must never share a
+    cache entry. It is resolved once by the caller and passed in explicitly (no
+    silent default) so the cache key and the compilation can never disagree.
     """
     h = hashlib.sha256()
 
@@ -172,6 +178,8 @@ def _compute_artifact_hash(
             h.update(str(Path(of).stat().st_mtime).encode())
         except (FileNotFoundError, OSError):
             pass
+
+    h.update(f"fold_ddr_addr_offset={fold_ddr_addr_offset}".encode())
 
     # Static .mlir is target-agnostic; compiled kernels need a device identifier.
     # Missing components collapse to a constant + WARNING log so cross-target
@@ -250,10 +258,13 @@ def _compute_hash(
     aiecc_flags: list[str] | tuple[str, ...],
     compile_flags: list[str] | tuple[str, ...],
     full_elf: bool = False,
+    fold_ddr_addr_offset: bool = True,
 ) -> str:
     """Stable 24-hex SHA-256 cache key combining recipe + artifact hashes."""
     recipe = _compute_recipe_hash(
         generator, compile_kwargs, aiecc_flags, compile_flags, full_elf
     )
-    artifact = _compute_artifact_hash(generator, source_files, object_files)
+    artifact = _compute_artifact_hash(
+        generator, source_files, object_files, fold_ddr_addr_offset
+    )
     return hashlib.sha256(f"{recipe}|{artifact}".encode()).hexdigest()[:24]

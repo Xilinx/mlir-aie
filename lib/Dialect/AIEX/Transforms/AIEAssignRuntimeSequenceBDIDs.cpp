@@ -192,7 +192,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
                    "reuse BDs.";
             return WalkResult::interrupt();
           }
-          bd_op.setBdId(*next_id);
+          bd_op.setBdId(next_id);
           return WalkResult::advance();
         });
     if (result.wasInterrupted())

@@ -1,0 +1,10 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// REQUIRES: ryzen_ai
+//
+// RUN: cp %S/aie.mlir aie_arch.mlir
+// RUN: sed 's/NPUDEVICE/npu2_1col/g' -i aie_arch.mlir
+// RUN: %aiecc --get-npu-insts --get-xclbin --xclbin-name=aie.xclbin --npu-insts-name=insts.bin ./aie_arch.mlir
+// RUN: %host_clang %S/test.cpp -o test.exe -std=c++17 -Wall %xrt_flags %host_link_flags %test_utils_flags
+// RUN: %run_on_npu2% ./test.exe -x aie.xclbin -k MLIR_AIE -i insts.bin
