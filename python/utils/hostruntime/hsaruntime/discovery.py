@@ -23,20 +23,31 @@ ROCm installations are looked for in three places, in this order:
 2. The pip-installed ROCm above, whose runtime tree lives in a platform package
    inside site-packages.
 3. A system install, conventionally ``/opt/rocm``.
+
+**Platform support.** ROCR's AIE agent exists only on Linux today, so that is
+the only platform with a library layout to probe.
 """
 
 import importlib.util
 import os
+import platform
 from collections.abc import Iterator
 from pathlib import Path
 
 __all__ = ["find_hsa_include_dir", "find_libhsa", "hsa_available"]
 
+_IS_LINUX = platform.system() == "Linux"
+
 # Explicit user-chosen root. ROCM_PATH is the ROCm-wide convention.
 _ENV_ROOT_VARS = ("ROCM_PATH",)
 
-# Conventional system install location.
-_SYSTEM_ROOTS = (Path("/opt/rocm"),)
+# Library file names to look for under ``<root>/lib``, most preferred first.
+# The unversioned developer symlink is preferred; ``libhsa-runtime64.so.*``
+# catches the SONAME, which is all TheRock's symlink-free wheels ship.
+_LIBHSA_PATTERNS: tuple[str, ...] = ("libhsa-runtime64.so", "libhsa-runtime64.so.*") if _IS_LINUX else ()
+
+# Conventional system install locations. POSIX-only, hence platform-gated.
+_SYSTEM_ROOTS: tuple[Path, ...] = (Path("/opt/rocm"),) if _IS_LINUX else ()
 
 # TheRock's pure-python shim, whose platform sibling holds the actual ROCm tree.
 _WHEEL_CORE_PACKAGE = "_rocm_sdk_core"
@@ -88,19 +99,18 @@ def _rocm_roots() -> Iterator[Path]:
 def _libhsa_under(root: Path) -> str | None:
     """The HSA runtime inside one ROCm root, or None.
 
-    Prefers the unversioned developer symlink, but falls back to the SONAME:
-    TheRock's runtime wheels contain no symlinks at all, so a pip-installed ROCm
-    ships only ``libhsa-runtime64.so.1``.
+    Patterns are tried in ``_LIBHSA_PATTERNS`` order, so the unversioned
+    developer symlink wins over the SONAME: TheRock's runtime wheels contain no
+    symlinks at all, so a pip-installed ROCm ships only
+    ``libhsa-runtime64.so.1``. Within one pattern, sorting puts the bare SONAME
+    (``.so.1``) ahead of fully-versioned siblings (``.so.1.21.0``), which is the
+    one whose dependencies are expected to resolve.
     """
     lib_dir = root / "lib"
-    unversioned = lib_dir / "libhsa-runtime64.so"
-    if unversioned.exists():
-        return str(unversioned)
-    # Sorting puts the bare SONAME (.so.1) ahead of fully-versioned siblings
-    # (.so.1.21.0), which is the one whose dependencies are expected to resolve.
-    for candidate in sorted(lib_dir.glob("libhsa-runtime64.so.*")):
-        if candidate.exists():
-            return str(candidate)
+    for pattern in _LIBHSA_PATTERNS:
+        for candidate in sorted(lib_dir.glob(pattern)):
+            if candidate.exists():
+                return str(candidate)
     return None
 
 
