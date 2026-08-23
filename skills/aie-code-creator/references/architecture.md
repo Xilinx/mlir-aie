@@ -34,7 +34,7 @@ Bottom to top:
 
 Throughout these skills, **compute tile**, **core**, and **AIE tile** all refer to this row-2..5 tile.
 
-Use `tile(col, row)` (placed API) only when you need explicit coordinates. In the high-level API, the compiler picks placement; you control parallelism by spawning N `Worker`s.
+Use `tile(col, row)` (lower-level API) only when you need explicit coordinates. In the high-level API, the compiler picks placement; you control parallelism by spawning N `Worker`s.
 
 ## Memory hierarchy & sizes (rule-of-thumb)
 

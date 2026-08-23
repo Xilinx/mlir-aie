@@ -38,7 +38,7 @@ If the user does not specify, assume:
 - **Data type**: `bfloat16` (best balance of accuracy and throughput on AIE).
 - **Parallelism**: multi-core (data-parallel split across all available compute tiles in 1+ columns).
 
-Drop low-level (placed) API only when the user needs explicit tile coordinates, custom routing, or hand-tuned placement.
+Drop to the lower-level API only when the user needs a hand-scripted DMA channel body, a custom flow not covered by `iron.Flow`/`iron.PacketFlow`, or is porting an existing MLIR-AIE example 1:1.
 
 ## Workflow when generating a design
 
@@ -72,9 +72,9 @@ Load the ones you need; don't pre-read all of them.
 | [`references/python_api.md`](references/python_api.md) | `Program`, `Worker`, `ObjectFifo`, `Runtime`, `Kernel`, `Buffer`, `iron.jit` signatures and examples |
 | [`references/patterns.md`](references/patterns.md) | Copy-ready Python skeletons: single-core, multi-core data-parallel, broadcast, split/join, producer-consumer pipeline, reduction, RTP+barrier |
 | [`references/kernel_intrinsics.md`](references/kernel_intrinsics.md) | C++ kernel cheatsheet: `aie::add/mul/mac`, `aie::load_v/store_v`, MMUL/accumulator, reductions, broadcast — with template skeletons |
-| [`references/build_and_test.md`](references/build_and_test.md) | `iron.jit` invocation, test harness patterns, enabling trace, running on hardware |
+| [`programming_guide/section-3/README.md`](../../programming_guide/section-3/README.md) / [`section-4b`](../../programming_guide/section-4/section-4b/README.md) | Building/running a design end-to-end, enabling trace |
 | [`references/pitfalls.md`](references/pitfalls.md) | Anti-patterns: deadlocks, bad placement, alignment, restrict misuse, divisibility, RTP races |
-| [`references/placed_api.md`](references/placed_api.md) | Low-level placed API (`@device`, `@core`, explicit `tile(col,row)`) — only when high-level is insufficient |
+| [`references/low_level_api.md`](references/low_level_api.md) | Lower-level API (`@device`, `@core`, explicit `tile(col,row)`) — only when the high-level API is insufficient |
 | [`references/complete_examples.md`](references/complete_examples.md) | Nine full runnable designs: library form (no C++) → passthrough → inline `source_string` kernel → precompiled Kernel → TAP/task_group → split/join → ReLU jit → two-stage pipeline → MLIROperator pattern (last one is `amd/IRON`-only; see below) |
 | [`assets/python_design_skeleton.py`](assets/python_design_skeleton.py) | Drop-in template for a JIT-compiled multi-core design |
 | [`assets/kernel_skeleton.cc`](assets/kernel_skeleton.cc) | Drop-in template for a templated, vectorized C++ kernel |
@@ -133,9 +133,9 @@ mechanism you haven't built before** instead of debugging it inside the full des
 | "Split a big tensor across N workers" | [`patterns.md`](references/patterns.md) §Distribute/Join |
 | "Two-stage pipeline (kernel1 → kernel2)" | [`patterns.md`](references/patterns.md) §Producer-consumer pipeline |
 | "Tunable parameter from host" | [`patterns.md`](references/patterns.md) §RTP + WorkerRuntimeBarrier |
-| "Deadlock / hang" | [`pitfalls.md`](references/pitfalls.md) §Mismatched acquire/release |
+| "Deadlock / hang" | [`pitfalls.md`](references/pitfalls.md) §Forgetting the trailing release after a sliding-window loop |
 | "Wrong results / garbage output" | [`pitfalls.md`](references/pitfalls.md) §Vector size divisibility + §MMUL divisibility + §ObjectFifo type vs. kernel signature |
 | "Output is all zeros" | [`pitfalls.md`](references/pitfalls.md) §Device name doesn't match the hardware |
 | "My fix changed nothing" | [`pitfalls.md`](references/pitfalls.md) §Stale JIT/xclbin cache |
 | "Slow / not pipelining" | [`pitfalls.md`](references/pitfalls.md) §Missing __restrict + §Relying on AIE_PREPARE_FOR_PIPELINING alone |
-| "How do I run / test this?" | [`build_and_test.md`](references/build_and_test.md) |
+| "How do I run / test this?" | [`programming_guide/section-3/README.md`](../../programming_guide/section-3/README.md) |

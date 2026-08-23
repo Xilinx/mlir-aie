@@ -18,7 +18,10 @@
 #include <cstdint>
 #include <type_traits>
 
-#include "../aie_kernel_utils.h"
+// Copy `aie_kernels/aie_kernel_utils.h` from the mlir-aie repo next to this
+// file (or adjust the path below to wherever it ends up relative to your
+// kernel source).
+#include "aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 
 // ---------------------------------------------------------------------------
@@ -53,11 +56,15 @@ static inline void eltwise_add_impl(const T_in *__restrict a,
 // ---------------------------------------------------------------------------
 extern "C" {
 
-void eltwise_add_bf16_vector(bfloat16 *a, bfloat16 *b, bfloat16 *c) {
+void eltwise_add_bf16_vector(const bfloat16 *__restrict a,
+                              const bfloat16 *__restrict b,
+                              bfloat16 *__restrict c) {
   eltwise_add_impl<bfloat16, bfloat16, /*N=*/1024>(a, b, c);
 }
 
-void eltwise_add_i32_vector(int32_t *a, int32_t *b, int32_t *c) {
+void eltwise_add_i32_vector(const int32_t *__restrict a,
+                             const int32_t *__restrict b,
+                             int32_t *__restrict c) {
   eltwise_add_impl<int32_t, int32_t, /*N=*/1024>(a, b, c);
 }
 

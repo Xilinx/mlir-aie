@@ -14,7 +14,10 @@ kernel covers your op/dtype.
 Adapt:
   - TENSOR_SIZE, TILE_SIZE, N_WORKERS
   - DTYPE
-  - kernel name + .o file in `Kernel(...)`
+  - kernel name + .o file in `Kernel(...)` — the placeholder `my_unary_kernel`
+    assumes a unary `(in, out, n_elements)` signature; if you're wiring in a
+    binary kernel like `eltwise_add_bf16_vector` (see kernel_intrinsics.md),
+    drop the trailing size arg and adjust `core_fn` to acquire/pass two inputs
   - the body of `core_fn` if you need a different kernel-call pattern
 """
 
@@ -32,8 +35,8 @@ def build_design(
     tensor_size: int = 8192,
     tile_size: int = 1024,
     n_workers: int = 4,
-    kernel_fn_name: str = "eltwise_add_bf16_vector",
-    kernel_obj_file: str = "add.o",
+    kernel_fn_name: str = "my_unary_kernel",
+    kernel_obj_file: str = "kernel.o",
 ):
     """Build a data-parallel element-wise design and return the MLIR module."""
 

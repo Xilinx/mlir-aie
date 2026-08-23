@@ -18,7 +18,7 @@ All code targets `aie_api/aie.hpp`. Always include `aie_kernel_utils.h` for port
 #define NOCPP
 #include <cstdint>
 #include <type_traits>
-#include "../aie_kernel_utils.h"     // adjust path if your kernel lives elsewhere
+#include "aie_kernel_utils.h"        // copy from aie_kernels/aie_kernel_utils.h, or adjust path
 #include <aie_api/aie.hpp>
 
 // Templated implementation
@@ -43,8 +43,13 @@ static inline void eltwise_add_impl(const T_in *__restrict a,
 }
 
 // extern "C" wrapper(s) — these names go into the IRON Kernel(...) declaration
+// Keep __restrict (and const on inputs) on the wrapper itself, not just the
+// templated impl — this is the symbol IRON links against, and __restrict here
+// is what lets the compiler pipeline the loop.
 extern "C" {
-void eltwise_add_bf16_vector(bfloat16 *a, bfloat16 *b, bfloat16 *c) {
+void eltwise_add_bf16_vector(const bfloat16 *__restrict a,
+                              const bfloat16 *__restrict b,
+                              bfloat16 *__restrict c) {
     eltwise_add_impl<bfloat16, bfloat16, 1024>(a, b, c);
 }
 } // extern "C"

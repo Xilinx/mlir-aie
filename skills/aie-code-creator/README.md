@@ -7,7 +7,7 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 ## Description
 
-This skill teaches how to write efficient designs for AMD XDNA NPUs (AIE2 in Phoenix / Hawk Point, AIE2P in Strix / Krackan Point) using the IRON (Interface Representation for hands-ON) Python API together with the C++ AIE kernels that run on the compute tiles.
+This skill teaches how to write efficient designs for AMD XDNA NPUs (AIE2 in Phoenix / Hawk Point, AIE2P in Strix / Krackan Point) using the IRON Python API together with the C++ AIE kernels that run on the compute tiles.
 
 An IRON design has two halves, and this skill covers both:
 

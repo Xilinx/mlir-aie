@@ -163,7 +163,7 @@ Hardware constraints, all checked at lowering rather than construction (so a bad
 - **No shim/mem participation**: ShimTiles and MemTiles have no cascade interface, so the last core in a chain must land its result in L1 for a normal ObjectFifo DMA — the cascade cannot itself reach the host.
 - **Width**: the accumulator cascade is 512 bits on AIE2/AIE2P (384 on AIE1, where cascade isn't supported by this API anyway) — e.g. a `v16int32` payload. See `programming_examples/basic/matrix_multiplication/cascade/` for a worked example (a row-accumulator chain across 4 cores).
 
-Unlike `Flow`/`PacketFlow` (`placed_api.md`), constructing a `CascadeFlow` self-registers it on `src`'s outgoing-cascade list — there's no separate `rt.add_flow(...)` call needed.
+Unlike `Flow`/`PacketFlow` (`low_level_api.md`), constructing a `CascadeFlow` self-registers it on `src`'s outgoing-cascade list — there's no separate `rt.add_flow(...)` call needed.
 
 ## Kernel — external C++ function
 
@@ -320,7 +320,8 @@ later turns those into concrete `aie.tile` ops. To constrain placement, pin the 
 multi-device modules, not for placement.
 
 If the default placement genuinely fails to route, the escape hatch is a build-time flag
-(`--placer=sa_placer`), not a Python object — see [`build_and_test.md`](build_and_test.md).
+(`--placer=sa_placer`), not a Python object — see
+[`programming_guide/section-1/README.md`](../../../programming_guide/section-1/README.md) (SA placer section).
 
 ### Tracing
 

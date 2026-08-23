@@ -9,20 +9,34 @@ Each entry: **the bad pattern, why it breaks, and the fix.**
 
 ---
 
-## ❌ Mismatched `acquire` / `release` → deadlock
+## ❌ Forgetting the trailing `release` after a sliding-window loop → deadlock
+
+`acquire(n)` means "after this call, ensure I hold `n` objects" — **not** "acquire `n`
+additional objects." So `acquire(2)` + `release(1)` every iteration is a legitimate
+cyclostatic/sliding-window pattern: on the first iteration it acquires 2 new objects: on
+every subsequent iteration it acquires only 1 new one (the other was already held from
+the previous iteration's un-released slot), then releases 1 to advance the window:
 
 ```python
-# BAD
+# GOOD — sliding window over pairs of elements
 def core(of_in, of_out, k):
     for _ in range_(N):
-        e = of_in.acquire(2)        # acquires 2
+        e = of_in.acquire(2)     # 2 new on iter 0, then 1 new + 1 carried per iter after
         k(e[0], e[1], out_tmp)
-        of_in.release(1)             # releases 1 — leaks one slot per iteration
+        of_in.release(1)          # advance the window by 1
+    of_in.release(1)              # BAD if omitted: release the still-held final object
 ```
 
-After `depth` iterations the FIFO is full of un-released objects; the producer blocks forever.
+The actual bug is **omitting that trailing `release(1)` after the loop** — the last
+acquired-but-unreleased object is never returned to the producer, so after `depth`
+launches the FIFO is permanently short one free slot and the producer blocks forever.
 
-**Fix**: every `acquire(n)` must be balanced by `release(n)` on the same handle, on every path through the function (early returns count).
+**Fix**: track how many objects are still held when a loop like this exits, and release
+them explicitly afterward. This isn't the same rule as "every `acquire(n)` must be
+matched by a same-call `release(n)`" — sliding-window code intentionally holds objects
+across iterations; the invariant to check is that the *total* acquired count equals the
+*total* released count once the handle is done being used (including after the loop, and
+on every early-return path).
 
 ---
 
@@ -244,7 +258,7 @@ For the final output you almost always want `wait=True`. Use `wait=False` only w
 
 ---
 
-## ❌ Hand-placed tiles that violate column routing (low-level API)
+## ❌ Hand-pinned tiles that violate column routing (lower-level API)
 
 ```python
 # BAD — broadcasting across distant columns may exceed switchbox capacity

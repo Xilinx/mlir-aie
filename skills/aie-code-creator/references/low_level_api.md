@@ -3,9 +3,15 @@ Copyright (C) 2026 Advanced Micro Devices, Inc.
 SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 -->
 
-# Low-Level (Placed) API — explicit tiles
+# Lower-Level API — explicit tiles
 
-Use this only when you need explicit tile coordinates, custom routing, or features not exposed in the high-level API. For everything else, prefer `Program` / `Worker` / `ObjectFifo` from the high-level API.
+Use this only when you need explicit tile coordinates, custom routing, or features not
+exposed in the high-level API. In practice this is rarely needed: `Worker` plus
+`ObjectFifo` covers the large majority of designs, including custom DMA access patterns
+(see `python_api.md`), and all current examples are written against the high-level API.
+Reach for the lower-level primitives below only for a genuine gap — a `@mem(tile)` body
+to script DMA channels by hand, or porting an existing MLIR-AIE example 1:1 — not as a
+default starting point.
 
 ## Skeleton
 
@@ -54,9 +60,9 @@ with mlir_mod_ctx() as ctx:
     print(ctx.module)
 ```
 
-## Key differences from high-level API
+## Key differences from the high-level API
 
-| | High-level | Placed (low-level) |
+| | High-level | Lower-level |
 |---|------------|---------------------|
 | Tile reference | implicit (`AnyComputeTile`) or by `Tile(col,row)` | explicit `tile(col, row)` |
 | Core definition | `Worker(fn, args)` | `@core(tile) def core_body()` |
@@ -66,12 +72,17 @@ with mlir_mod_ctx() as ctx:
 | Compilation | `Program(dev, rt, workers=[...]).resolve_program()` | wrapped in `mlir_mod_ctx()` |
 | Verification | implicit | call `ctx.module.operation.verify()` |
 
-## When the placed API is justified
+## When dropping to the lower-level API is justified
 
-- You need a tile at a specific column for board-level routing reasons.
-- You need a custom inter-tile flow (`flow(src, src_bundle, src_ch, dst, ...)`) that the placer doesn't generate.
 - You want to write a `@mem(tile)` body to script the DMA channels explicitly.
 - You're porting an existing MLIR-AIE example and want to keep its structure 1:1.
+- You need a custom inter-tile flow (`flow(src, src_bundle, src_ch, dst, ...)`) that isn't
+  covered by `iron.Flow`/`iron.PacketFlow` below (which already work from the high-level
+  API — check there first).
+
+Explicit tile coordinates alone are not a reason to drop to this level: the high-level API
+takes a `tile=Tile(col, row)` pin on `Worker`/`Buffer` when you need to constrain
+placement.
 
 ## Routing helpers (when you need them)
 
