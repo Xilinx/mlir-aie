@@ -2076,6 +2076,8 @@
       
         
       
+        
+      
     
     
     
@@ -2324,6 +2326,67 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#hsarocr-runtime-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        HSA/ROCR Runtime Configuration
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="HSA/ROCR Runtime Configuration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#getting-rocm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Getting ROCm
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rocm-discovery" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ROCm discovery
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#runtime-behavior_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Runtime behavior
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#limitations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Limitations
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#diagnostic-output-and-log-level" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2419,6 +2482,34 @@
     
   
     HRX Runtime (amdxdna)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../hsa_runtime/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HSA Runtime (ROCR)
   
 
     
@@ -3748,6 +3839,67 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#hsarocr-runtime-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        HSA/ROCR Runtime Configuration
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="HSA/ROCR Runtime Configuration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#getting-rocm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Getting ROCm
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rocm-discovery" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ROCm discovery
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#runtime-behavior_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Runtime behavior
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#limitations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Limitations
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#diagnostic-output-and-log-level" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3915,7 +4067,7 @@
 <h1 id="iron-python-configurations">IRON Python Configurations<a class="headerlink" href="#iron-python-configurations" title="Permanent link">&para;</a></h1>
 <p>There are several options that exist to configure the IRON Python programming environment.</p>
 <h2 id="default-iron-tensor-class">Default IRON Tensor Class<a class="headerlink" href="#default-iron-tensor-class" title="Permanent link">&para;</a></h2>
-<p>This is a variable that controls the types of <a href="https://github.com/Xilinx/mlir-aie/blob/main/python/utils/hostruntime/tensor_class.py"><code>aie.utils.NpuTensor</code></a>s that are produced by the utility functions <code>tensor</code>, <code>ones</code>, etc. Right now there are three tensor implementations: <a href="https://github.com/Xilinx/mlir-aie/blob/main/python/utils/hostruntime/tensor_class.py"><code>CPUOnlyTensor</code></a>, <a href="https://github.com/Xilinx/mlir-aie/blob/main/python/utils/hostruntime/xrtruntime/tensor.py"><code>XRTTensor</code></a> and <a href="https://github.com/Xilinx/mlir-aie/blob/main/python/utils/hostruntime/hrxruntime/tensor.py"><code>HRXTensor</code></a>.</p>
+<p>This is a variable that controls the types of <a href="https://github.com/Xilinx/mlir-aie/blob/main/python/utils/hostruntime/tensor_class.py"><code>aie.utils.NpuTensor</code></a>s that are produced by the utility functions <code>tensor</code>, <code>ones</code>, etc. The available tensor implementations are <a href="https://github.com/Xilinx/mlir-aie/blob/main/python/utils/hostruntime/tensor_class.py"><code>CPUOnlyTensor</code></a>, <a href="https://github.com/Xilinx/mlir-aie/blob/main/python/utils/hostruntime/xrtruntime/tensor.py"><code>XRTTensor</code></a>, <a href="https://github.com/Xilinx/mlir-aie/blob/main/python/utils/hostruntime/hrxruntime/tensor.py"><code>HRXTensor</code></a> and <a href="https://github.com/Xilinx/mlir-aie/blob/main/python/utils/hostruntime/hsaruntime/tensor.py"><code>HSATensor</code></a>; the last two are selected via <a href="#host-runtime-backend-selection-npu_runtime"><code>NPU_RUNTIME</code></a>.</p>
 <p>By default, if <code>pyxrt</code> is available, the <code>DEFAULT_TENSOR_CLASS</code> is set to <code>XRTTensor</code>. <code>HRXTensor</code> is never selected automatically: it is chosen only by setting <code>NPU_RUNTIME=hrx</code> explicitly (see <a href="../hrx_runtime/">HRX runtime</a>). You can also set the class directly through <code>set_tensor_class()</code>, e.g.:
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="o">&gt;&gt;&gt;</span> <span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="o">&gt;&gt;&gt;</span> <span class="nb">print</span><span class="p">(</span><span class="n">aie</span><span class="o">.</span><span class="n">utils</span><span class="o">.</span><span class="n">tensor</span><span class="o">.</span><span class="n">DEFAULT_TENSOR_CLASS</span><span class="o">.</span><span class="vm">__name__</span><span class="p">)</span>
@@ -3992,8 +4144,9 @@ without relying on <code>PATH</code> search order.</p>
 </code></pre></div>
 <h2 id="host-runtime-backend-selection-npu_runtime">Host-runtime backend selection (<code>NPU_RUNTIME</code>)<a class="headerlink" href="#host-runtime-backend-selection-npu_runtime" title="Permanent link">&para;</a></h2>
 <p>IRON dispatches designs through a host runtime that consumes the <code>aiecc</code>
-artifacts (<code>final.xclbin</code> + <code>insts.bin</code>). <code>NPU_RUNTIME</code> selects which backend
-is used:</p>
+artifacts. XRT and HRX load <code>final.xclbin</code> + <code>insts.bin</code>; HSA loads the PDI
+(<code>main.pdi</code>) + <code>insts.bin</code> from the same build. <code>NPU_RUNTIME</code> selects which
+backend is used:</p>
 <table>
 <thead>
 <tr>
@@ -4004,7 +4157,7 @@ is used:</p>
 <tbody>
 <tr>
 <td><code>auto</code> (default)</td>
-<td>Use XRT when <code>pyxrt</code> imports, else fall back to CPU-only tensors. Never selects HRX.</td>
+<td>Use XRT when <code>pyxrt</code> imports, else fall back to CPU-only tensors. Never selects HRX or HSA.</td>
 </tr>
 <tr>
 <td><code>xrt</code></td>
@@ -4014,19 +4167,25 @@ is used:</p>
 <td><code>hrx</code></td>
 <td>Force the <a href="https://github.com/Xilinx/mlir-aie/blob/main/python/utils/hostruntime/hrxruntime/README.md">HRX</a> (amdxdna / <code>libhrx</code>) backend. Errors at import if <code>libhrx.so</code> cannot be located.</td>
 </tr>
+<tr>
+<td><code>hsa</code></td>
+<td>Force the <a href="../hsa_runtime/">HSA/ROCR</a> backend. Errors at import if <code>libhsa-runtime64.so</code> cannot be located.</td>
+</tr>
 </tbody>
 </table>
 <p>An unset value defaults to <code>auto</code>; an explicitly invalid value is a hard error
 (a typo must not silently resolve to another backend). <code>NPU_RUNTIME</code> is read
 <em>before</em> any capability probe, so a forced backend only probes itself (<code>hrx</code>
-never imports <code>pyxrt</code>, and <code>xrt</code>/<code>auto</code> never run HRX discovery).</p>
+and <code>hsa</code> never import <code>pyxrt</code>, and <code>xrt</code>/<code>auto</code> never run HRX or HSA
+discovery).</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="nv">NPU_RUNTIME</span><span class="o">=</span>hrx<span class="w"> </span>python<span class="w"> </span>my_script.py
 </code></pre></div>
 <p><code>NPU_RUNTIME</code> is a single selector shared with the C++ example <code>make</code> flow: the
 same <code>NPU_RUNTIME=hrx</code> also builds the HRX host stack (<code>-DUSE_HRX=ON</code>) for
 <code>make</code>-driven examples (see <code>programming_examples/makefile-common</code>). The <code>auto</code>
 and <code>cpu</code> values are meaningful only to the Python flow; the build system treats
-an unset selector as <code>xrt</code>.</p>
+an unset selector as <code>xrt</code>. <code>hsa</code> is a Python-flow backend only; there is no
+C++ host stack for it, so <code>make</code>-driven examples ignore it.</p>
 <h2 id="hrx-runtime-amdxdna-configuration">HRX Runtime (amdxdna) Configuration<a class="headerlink" href="#hrx-runtime-amdxdna-configuration" title="Permanent link">&para;</a></h2>
 <p>These variables apply when the HRX backend is active (<code>NPU_RUNTIME=hrx</code>). See
 the <a href="../hrx_runtime/">HRX Runtime (amdxdna)</a> overview for the architecture and
@@ -4091,24 +4250,113 @@ are high-priority hints (checked in this order), mirroring <code>FindHRX.cmake</
 <a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="nv">NPU_RUNTIME</span><span class="o">=</span>hrx<span class="w"> </span><span class="nv">IRON_HRX_DEVICE</span><span class="o">=</span>npu2<span class="w"> </span><span class="nv">HRX_EXE_CACHE_SIZE</span><span class="o">=</span><span class="m">8</span><span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">  </span><span class="nv">IRON_HRX_TIMEOUT</span><span class="o">=</span><span class="m">30</span><span class="w"> </span>python<span class="w"> </span>my_script.py
 </code></pre></div>
+<h2 id="hsarocr-runtime-configuration">HSA/ROCR Runtime Configuration<a class="headerlink" href="#hsarocr-runtime-configuration" title="Permanent link">&para;</a></h2>
+<p>These variables apply when the HSA backend is active (<code>NPU_RUNTIME=hsa</code>). See
+<a href="../hsa_runtime/">HSA Runtime (ROCR)</a> for the architecture and the full
+step-by-step flow.</p>
+<h3 id="getting-rocm">Getting ROCm<a class="headerlink" href="#getting-rocm" title="Permanent link">&para;</a></h3>
+<p>The recommended source is the pip wheel from
+<a href="https://github.com/ROCm/TheRock/blob/main/RELEASES.md">TheRock</a>, installed into
+the environment you run designs from:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>pip<span class="w"> </span>install<span class="w"> </span>--index-url<span class="w"> </span>https://rocm.nightlies.amd.com/whl-multi-arch/<span class="w"> </span>rocm
+</code></pre></div>
+<p>The base <code>rocm</code> package is enough: it pulls <code>rocm-sdk-core</code>, which carries
+<code>libhsa-runtime64.so</code> with the AIE support this backend needs. The
+<code>[libraries]</code> and <code>[device-gfx…]</code> extras are for GPU workloads and are not
+required for the NPU. Discovery finds it in site-packages with nothing to
+configure.</p>
+<h3 id="rocm-discovery">ROCm discovery<a class="headerlink" href="#rocm-discovery" title="Permanent link">&para;</a></h3>
+<p><code>libhsa-runtime64.so</code> is located inside a ROCm <em>installation root</em>, looked for
+in three places, in this order:</p>
+<table>
+<thead>
+<tr>
+<th>Source</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ROCM_PATH</code></td>
+<td>An explicit installation root, overriding the wheel. It names a ROCm tree, not a library file, so the same variable serves every ROCm component.</td>
+</tr>
+<tr>
+<td>pip-installed ROCm</td>
+<td>The wheel above, whose runtime tree ships inside site-packages.</td>
+</tr>
+<tr>
+<td>System install</td>
+<td><code>/opt/rocm</code>.</td>
+</tr>
+</tbody>
+</table>
+<p>The first root that actually contains the library wins. Both the unversioned
+<code>libhsa-runtime64.so</code> and the bare SONAME <code>libhsa-runtime64.so.1</code> are accepted:
+TheRock's runtime wheels contain no symlinks, so a pip-installed ROCm provides
+only the versioned name.</p>
+<blockquote>
+<p><strong>With no wheel and no <code>ROCM_PATH</code>, a system <code>/opt/rocm</code> is what you get.</strong> If
+it predates AIE support, the failure surfaces later as an opaque HSA error
+rather than a version complaint. Installing the wheel avoids this; set
+<code>ROCM_PATH</code> only when you need a specific ROCm instead.</p>
+</blockquote>
+<h3 id="runtime-behavior_1">Runtime behavior<a class="headerlink" href="#runtime-behavior_1" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Default</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>IRON_HSA_DEVICE</code></td>
+<td>auto-detect</td>
+<td>Force the device generation (<code>npu1</code> / <code>npu2</code>) instead of detecting it from the HSA agent name. ROCR names the agent after its ISA (<code>aie2</code> = Phoenix/npu1, <code>aie2p</code> = Strix/npu2); an unrecognized name is an error rather than a guess, because a wrong generation compiles for the wrong architecture and wedges the NPU.</td>
+</tr>
+<tr>
+<td><code>HSA_EXE_CACHE_SIZE</code></td>
+<td><code>32</code></td>
+<td>Max number of loaded designs the <code>CachedHSAHostRuntime</code> keeps (LRU). A non-integer value is ignored, with a warning, in favour of the default.</td>
+</tr>
+<tr>
+<td><code>IRON_HSA_TIMEOUT</code></td>
+<td><code>0</code> (disabled)</td>
+<td>Timeout, in seconds, bounding the two waits IRON itself performs: the completion-signal wait and the full-queue wait in <code>enqueue</code>. <code>0</code>, unset, or an invalid value disables it. Implemented with <code>hsa_signal_wait</code>'s own timeout, so arming it costs nothing per dispatch. On expiry a diagnosable error is raised (the underlying dispatch cannot be cancelled). <strong>This is not a watchdog for a wedged dispatch:</strong> ROCR's AIE doorbell submits <em>and blocks until completion</em>, so a hung dispatch stalls inside the doorbell store — before either bounded wait is reached — on an internal wait this setting cannot reach.</td>
+</tr>
+</tbody>
+</table>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="c1"># Point at a specific ROCm, force npu2, cap the cache, bound IRON&#39;s waits at 30s.</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="nv">NPU_RUNTIME</span><span class="o">=</span>hsa<span class="w"> </span><span class="nv">ROCM_PATH</span><span class="o">=</span>/opt/rocm-7.0<span class="w"> </span><span class="nv">IRON_HSA_DEVICE</span><span class="o">=</span>npu2<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="w">  </span><span class="nv">HSA_EXE_CACHE_SIZE</span><span class="o">=</span><span class="m">8</span><span class="w"> </span><span class="nv">IRON_HSA_TIMEOUT</span><span class="o">=</span><span class="m">30</span><span class="w"> </span>python<span class="w"> </span>my_script.py
+</code></pre></div>
+<h3 id="limitations">Limitations<a class="headerlink" href="#limitations" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Trace capture is not supported.</strong> A design with a <code>trace_config</code> is rejected
+  up front; use <code>NPU_RUNTIME=xrt</code> for trace-enabled designs.</li>
+<li><strong>Dispatches must be serialized.</strong> The single in-order AIE queue and its
+  doorbell are not safe for concurrent dispatch from multiple threads (the same
+  constraint HRX documents).</li>
+</ul>
 <h2 id="diagnostic-output-and-log-level">Diagnostic Output and Log Level<a class="headerlink" href="#diagnostic-output-and-log-level" title="Permanent link">&para;</a></h2>
 <p>The <code>aie</code> library uses Python's standard <code>logging</code> module for all diagnostic output. Set
 <code>AIE_LOG_LEVEL</code> to control verbosity. Valid values: <code>DEBUG</code>, <code>INFO</code>, <code>WARNING</code>
 (default), <code>ERROR</code>, <code>CRITICAL</code>.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="nv">AIE_LOG_LEVEL</span><span class="o">=</span>DEBUG<span class="w"> </span>python<span class="w"> </span>my_script.py<span class="w">    </span><span class="c1"># show debug messages</span>
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="nv">AIE_LOG_LEVEL</span><span class="o">=</span>INFO<span class="w"> </span>python<span class="w"> </span>my_script.py<span class="w">     </span><span class="c1"># show info and above</span>
-<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="nv">AIE_LOG_LEVEL</span><span class="o">=</span>ERROR<span class="w"> </span>python<span class="w"> </span>my_script.py<span class="w">    </span><span class="c1"># errors only</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="nv">AIE_LOG_LEVEL</span><span class="o">=</span>DEBUG<span class="w"> </span>python<span class="w"> </span>my_script.py<span class="w">    </span><span class="c1"># show debug messages</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="nv">AIE_LOG_LEVEL</span><span class="o">=</span>INFO<span class="w"> </span>python<span class="w"> </span>my_script.py<span class="w">     </span><span class="c1"># show info and above</span>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="nv">AIE_LOG_LEVEL</span><span class="o">=</span>ERROR<span class="w"> </span>python<span class="w"> </span>my_script.py<span class="w">    </span><span class="c1"># errors only</span>
 </code></pre></div>
 <p>For per-module control or routing to a file, use the <code>logging</code> API directly:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
-<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>
-<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">&quot;aie&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">ERROR</span><span class="p">)</span>
-<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>
-<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="c1"># Route aie logs to a file instead of the console</span>
-<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="n">handler</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">FileHandler</span><span class="p">(</span><span class="s2">&quot;aie.log&quot;</span><span class="p">)</span>
-<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="n">handler</span><span class="o">.</span><span class="n">setFormatter</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">Formatter</span><span class="p">(</span><span class="s2">&quot;</span><span class="si">%(asctime)s</span><span class="s2"> </span><span class="si">%(name)s</span><span class="s2"> </span><span class="si">%(levelname)s</span><span class="s2"> </span><span class="si">%(message)s</span><span class="s2">&quot;</span><span class="p">))</span>
-<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a><span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">&quot;aie&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">addHandler</span><span class="p">(</span><span class="n">handler</span><span class="p">)</span>
-<a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a><span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">&quot;aie&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">propagate</span> <span class="o">=</span> <span class="kc">False</span>  <span class="c1"># don&#39;t also send to root logger</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">&quot;aie&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">ERROR</span><span class="p">)</span>
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a><span class="c1"># Route aie logs to a file instead of the console</span>
+<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a><span class="n">handler</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">FileHandler</span><span class="p">(</span><span class="s2">&quot;aie.log&quot;</span><span class="p">)</span>
+<a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a><span class="n">handler</span><span class="o">.</span><span class="n">setFormatter</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">Formatter</span><span class="p">(</span><span class="s2">&quot;</span><span class="si">%(asctime)s</span><span class="s2"> </span><span class="si">%(name)s</span><span class="s2"> </span><span class="si">%(levelname)s</span><span class="s2"> </span><span class="si">%(message)s</span><span class="s2">&quot;</span><span class="p">))</span>
+<a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a><span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">&quot;aie&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">addHandler</span><span class="p">(</span><span class="n">handler</span><span class="p">)</span>
+<a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a><span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">&quot;aie&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">propagate</span> <span class="o">=</span> <span class="kc">False</span>  <span class="c1"># don&#39;t also send to root logger</span>
 </code></pre></div>
 <h2 id="helper-utilities-cheat-sheet">Helper utilities cheat-sheet<a class="headerlink" href="#helper-utilities-cheat-sheet" title="Permanent link">&para;</a></h2>
 <p>The helpers most designs reach for, grouped by where they live.  Each
@@ -4225,18 +4473,18 @@ generators, helper functions reused across designs — want to inject
 values <em>through</em> a helper that doesn't take them as explicit kwargs.
 <code>compile_context</code> opens a per-thread context that <code>get_compile_arg</code>
 can read out:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aie.iron</span><span class="w"> </span><span class="kn">import</span> <span class="n">compile_context</span><span class="p">,</span> <span class="n">get_compile_arg</span>
-<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>
-<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="k">def</span><span class="w"> </span><span class="nf">make_fifo_pair</span><span class="p">(</span><span class="n">line_ty</span><span class="p">):</span>
-<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>    <span class="c1"># Helper has no name_prefix kwarg, but can read one from context.</span>
-<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>    <span class="n">prefix</span> <span class="o">=</span> <span class="n">get_compile_arg</span><span class="p">(</span><span class="s2">&quot;prefix&quot;</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">)</span>
-<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>    <span class="k">return</span> <span class="p">(</span><span class="n">ObjectFifo</span><span class="p">(</span><span class="n">line_ty</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s2">in&quot;</span><span class="p">),</span>
-<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a>            <span class="n">ObjectFifo</span><span class="p">(</span><span class="n">line_ty</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s2">out&quot;</span><span class="p">))</span>
-<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a>
-<a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a><span class="k">with</span> <span class="n">compile_context</span><span class="p">(</span><span class="n">prefix</span><span class="o">=</span><span class="s2">&quot;layer1_&quot;</span><span class="p">):</span>
-<a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a>    <span class="n">of_in</span><span class="p">,</span> <span class="n">of_out</span> <span class="o">=</span> <span class="n">make_fifo_pair</span><span class="p">(</span><span class="n">line_ty</span><span class="p">)</span>        <span class="c1"># layer1_in, layer1_out</span>
-<a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a>
-<a id="__codelineno-10-12" name="__codelineno-10-12" href="#__codelineno-10-12"></a><span class="n">of_in</span><span class="p">,</span> <span class="n">of_out</span> <span class="o">=</span> <span class="n">make_fifo_pair</span><span class="p">(</span><span class="n">line_ty</span><span class="p">)</span>            <span class="c1"># in, out (default)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aie.iron</span><span class="w"> </span><span class="kn">import</span> <span class="n">compile_context</span><span class="p">,</span> <span class="n">get_compile_arg</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="k">def</span><span class="w"> </span><span class="nf">make_fifo_pair</span><span class="p">(</span><span class="n">line_ty</span><span class="p">):</span>
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a>    <span class="c1"># Helper has no name_prefix kwarg, but can read one from context.</span>
+<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a>    <span class="n">prefix</span> <span class="o">=</span> <span class="n">get_compile_arg</span><span class="p">(</span><span class="s2">&quot;prefix&quot;</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">)</span>
+<a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a>    <span class="k">return</span> <span class="p">(</span><span class="n">ObjectFifo</span><span class="p">(</span><span class="n">line_ty</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s2">in&quot;</span><span class="p">),</span>
+<a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a>            <span class="n">ObjectFifo</span><span class="p">(</span><span class="n">line_ty</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s2">out&quot;</span><span class="p">))</span>
+<a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a>
+<a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a><span class="k">with</span> <span class="n">compile_context</span><span class="p">(</span><span class="n">prefix</span><span class="o">=</span><span class="s2">&quot;layer1_&quot;</span><span class="p">):</span>
+<a id="__codelineno-12-10" name="__codelineno-12-10" href="#__codelineno-12-10"></a>    <span class="n">of_in</span><span class="p">,</span> <span class="n">of_out</span> <span class="o">=</span> <span class="n">make_fifo_pair</span><span class="p">(</span><span class="n">line_ty</span><span class="p">)</span>        <span class="c1"># layer1_in, layer1_out</span>
+<a id="__codelineno-12-11" name="__codelineno-12-11" href="#__codelineno-12-11"></a>
+<a id="__codelineno-12-12" name="__codelineno-12-12" href="#__codelineno-12-12"></a><span class="n">of_in</span><span class="p">,</span> <span class="n">of_out</span> <span class="o">=</span> <span class="n">make_fifo_pair</span><span class="p">(</span><span class="n">line_ty</span><span class="p">)</span>            <span class="c1"># in, out (default)</span>
 </code></pre></div>
 <p>Contexts nest — inner values shadow outer ones for the duration of the
 inner <code>with</code> block.  Implemented on top of <code>contextvars</code>, so it is

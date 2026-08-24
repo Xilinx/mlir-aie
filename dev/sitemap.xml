@@ -165,6 +165,10 @@
          <lastmod>2026-08-24</lastmod>
     </url>
     <url>
+         <loc>https://xilinx.github.io/mlir-aie/dev/programming_guide/hsa_runtime/</loc>
+         <lastmod>2026-08-24</lastmod>
+    </url>
+    <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/programming_guide/implicit_mlir_context/</loc>
          <lastmod>2026-08-24</lastmod>
     </url>
