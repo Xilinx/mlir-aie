@@ -190,8 +190,7 @@ static LogicalResult checkPreemptConsistency(AIE::DeviceOp device) {
 // checks (e.g. the remote-barrier mask shift) free of undefined behavior.
 static LogicalResult checkGroupIds(AIE::DeviceOp device) {
   const AIE::AIETargetModel &tm = device.getTargetModel();
-  int64_t numUcs =
-      (int64_t)tm.columns() * (int64_t)tm.getNumMicrocontrollersPerColumn();
+  int64_t numUcs = tm.getNumControllers();
   LogicalResult result = success();
   auto checkId = [&](Operation *op, int64_t id, llvm::StringRef what) {
     if (id < 0 || id >= numUcs || id >= 32) {

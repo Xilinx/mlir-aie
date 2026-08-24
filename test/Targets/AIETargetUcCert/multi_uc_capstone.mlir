@@ -12,7 +12,7 @@
 //  - uC0 releases its core, rendezvous with col1 via a remote barrier, then
 //    waits for TCTs -- all in one page (release before WAIT_TCTS, no forward
 //    dependency);
-//  - col1's controller (uC2, via placement=2) rendezvous on the same remote
+//  - col1's controller (uC1, via placement=1) rendezvous on the same remote
 //    barrier and releases its core;
 //  - the two uCs form independent ordered streams;
 //  - aie-cert-verify accepts it (matching rendezvous, valid ids).
@@ -20,10 +20,10 @@
 // The design verifies cleanly (no diagnostics => aie-opt exits 0).
 // RUN: aie-opt -cert-legalize-pages -aie-cert-verify %s | FileCheck %s
 
-// Config page is first on uC0; col1 work is grouped under uC 2.
+// Config page is first on uC0; col1 work is grouped under uC 1.
 // CHECK: aiex.cert.job(1)
 // CHECK: aiex.cert.write32(393216, 1)
-// CHECK: aiex.cert.attach_to_group(2)
+// CHECK: aiex.cert.attach_to_group(1)
 
 // RUN: aie-opt -cert-legalize-pages %s | aie-translate --aie-cert-to-asm | FileCheck %s --check-prefix=ASM
 
@@ -36,12 +36,12 @@
 // ASM-NOT: .eop
 // ASM: REMOTE_BARRIER
 // ASM: WAIT_TCTS
-// uC2 stream: rendezvous then release col1's core.
-// ASM: .attach_to_group 2
+// uC1 stream: rendezvous then release col1's core.
+// ASM: .attach_to_group 1
 // ASM: REMOTE_BARRIER
 // ASM: WRITE_32{{.*}}0x026ae050
 
-aie.device(npu2) {
+aie.device(xcve3858) {
   // Configuration job (forced first on uC0).
   aiex.cert.job(1) {
     aiex.cert.write32(0x60000, 1)
@@ -51,16 +51,16 @@ aie.device(npu2) {
   aiex.cert.page {
     aiex.cert.job(2) {
       aiex.cert.write32(0x7AE050, 1)
-      aiex.cert.remote_barrier(1, 0x5)
+      aiex.cert.remote_barrier(1, 0x3)
       aiex.cert.wait_tcts(0, 0, 1)
     }
   }
 
-  // uC2 (col1 controller): rendezvous, then release col1 core.
+  // uC1 (col1 controller): rendezvous, then release col1 core.
   aiex.cert.page {
     aiex.cert.job(3) {
-      aiex.cert.remote_barrier(1, 0x5)
+      aiex.cert.remote_barrier(1, 0x3)
       aiex.cert.write32(0x26AE050, 1)
     }
-  } {placement = 2 : i32}
+  } {placement = 1 : i32}
 }
