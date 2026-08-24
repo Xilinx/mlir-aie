@@ -312,7 +312,7 @@ When the overflow is because the *kernel* genuinely needs more simultaneous stat
 
 ---
 
-## ❌ Device name doesn't match the physical hardware → silent all-zero output
+## ❌ Device name doesn't match the physical hardware → silent all-zero output or timeout
 
 Running an `npu1` xclbin on a Strix (`npu2`) board can return an all-zero buffer **without erroring**. If your output is uniformly zero and the design looks right, check the target before debugging the design:
 
