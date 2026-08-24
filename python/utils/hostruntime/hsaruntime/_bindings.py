@@ -6,8 +6,7 @@
 This module owns everything at the C-ABI boundary: the enum/flag constants and
 ``ctypes`` struct mirrors from ``hsa.h`` / ``hsa_ext_amd.h``, library discovery
 + ``dlopen``, and the bound ``hsa_*`` entry points. The higher-level device /
-memory / queue orchestration lives alongside :class:`HSAContext` in the package
-``__init__``.
+memory / queue orchestration lives in :mod:`.context`, on :class:`HSAContext`.
 
 Importing this module is side-effect-free: it performs no ``dlopen`` and no
 device init. Binding is deferred to :meth:`_HsaLib._ensure`, which the first
@@ -18,6 +17,7 @@ stay as cheap and safe as a plain import.
 
 import ctypes
 import logging
+import math
 import os
 import threading
 
@@ -195,17 +195,28 @@ class _HsaLib:
 
     def _bind(self):
         cdll = _load_libhsa()
-        self._cdll = cdll
+
+        # Collected here rather than setattr'd as each resolves: a half-applied
+        # bind would leave the already-resolved names as instance attributes,
+        # which shadow __getattr__ and so never re-trigger _ensure() -- letting a
+        # caller run against a partially bound library.
+        bound = {}
 
         def decl(fn, restype, argtypes):
-            f = getattr(cdll, fn)
+            try:
+                f = getattr(cdll, fn)
+            except AttributeError as e:
+                raise HSAError(
+                    f"libhsa-runtime64 does not export {fn!r}, so this ROCm is "
+                    f"too old for the AIE/NPU path. Install a newer ROCm (e.g. "
+                    f"TheRock's `rocm` wheel) or point ROCM_PATH at one."
+                ) from e
             f.restype = restype
             f.argtypes = argtypes
-            setattr(self, fn, f)
+            bound[fn] = f
 
         decl("hsa_init", ctypes.c_int, [])
         decl("hsa_system_get_info", ctypes.c_int, [ctypes.c_int, ctypes.c_void_p])
-        decl("hsa_shut_down", ctypes.c_int, [])
         decl(
             "hsa_iterate_agents",
             ctypes.c_int,
@@ -309,7 +320,6 @@ class _HsaLib:
                 ctypes.POINTER(ctypes.POINTER(HsaQueue)),
             ],
         )
-        decl("hsa_queue_destroy", ctypes.c_int, [ctypes.POINTER(HsaQueue)])
         decl(
             "hsa_queue_load_write_index_relaxed",
             ctypes.c_uint64,
@@ -342,6 +352,11 @@ class _HsaLib:
             [hsa_signal_t, ctypes.c_int, ctypes.c_int64, ctypes.c_uint64, ctypes.c_int],
         )
 
+        # Every symbol resolved -- publish the whole set as one step.
+        self._cdll = cdll
+        for name, fn in bound.items():
+            setattr(self, name, fn)
+
 
 lib = _HsaLib()
 
@@ -357,7 +372,15 @@ def _hsa_sync_timeout_s() -> float:
     if not raw:
         return 0.0
     try:
-        return max(0.0, float(raw))
+        value = float(raw)
     except ValueError:
         logger.warning("Ignoring invalid IRON_HSA_TIMEOUT=%r (want seconds)", raw)
         return 0.0
+    # "inf"/"nan" parse fine but are not usable as a duration: the caller turns
+    # seconds into wait ticks with int(timeout * frequency), and a non-finite
+    # value raises OverflowError there -- turning a config typo into a failed
+    # dispatch instead of the documented "invalid value disables it".
+    if not math.isfinite(value):
+        logger.warning("Ignoring non-finite IRON_HSA_TIMEOUT=%r (want seconds)", raw)
+        return 0.0
+    return max(0.0, value)

@@ -19,6 +19,7 @@ via the queue order plus the packets' system-scope fences).
 
 import atexit
 import ctypes
+import logging
 import os
 import time
 from collections import OrderedDict
@@ -32,21 +33,46 @@ from .tensor import HSATensor
 if TYPE_CHECKING:
     from aie.iron.device import Device
 
+_logger = logging.getLogger(__name__)
+
 _TRACE_UNSUPPORTED_MSG = (
     "Trace capture is not supported on the HSA backend. Re-run without a "
     "trace_config, or use the XRT backend (NPU_RUNTIME=xrt) for trace-enabled "
     "designs."
 )
 
+_DEFAULT_EXE_CACHE_SIZE = 32
+
+
+def _exe_cache_size() -> int:
+    """Read the optional HSA_EXE_CACHE_SIZE (LRU cap on loaded designs).
+
+    A malformed value warns and falls back to the default rather than raising,
+    mirroring ``_hsa_sync_timeout_s``. Raising here would surface as an opaque
+    failure from ``aie.utils.__getattr__`` during runtime construction, far from
+    the variable that caused it.
+    """
+    raw = os.environ.get("HSA_EXE_CACHE_SIZE")
+    if raw is None:
+        return _DEFAULT_EXE_CACHE_SIZE
+    try:
+        return int(raw)
+    except ValueError:
+        _logger.warning(
+            "Ignoring invalid HSA_EXE_CACHE_SIZE=%r (want an integer); using %d.",
+            raw,
+            _DEFAULT_EXE_CACHE_SIZE,
+        )
+        return _DEFAULT_EXE_CACHE_SIZE
+
 
 class HSAKernelHandle(KernelHandle):
     """Handle for a loaded HSA kernel (PDI + insts in region memory)."""
 
-    def __init__(self, pdi_ptr, insts_ptr, insts_size, kernel_name):
+    def __init__(self, pdi_ptr, insts_ptr, insts_size):
         self.pdi_ptr = pdi_ptr
         self.insts_ptr = insts_ptr
         self.insts_size = insts_size
-        self.kernel_name = kernel_name
 
 
 class HSAKernelResult(KernelResult):
@@ -104,7 +130,7 @@ class HSAHostRuntime(HostRuntime):
         pdi_path = self._find_pdi(xclbin_path)
         return insts_path, pdi_path, kernel_name
 
-    def _build_handle(self, insts_path, pdi_path, kernel_name) -> HSAKernelHandle:
+    def _build_handle(self, insts_path, pdi_path) -> HSAKernelHandle:
         """Copy insts + PDI into fresh device-heap allocations and wrap in a handle."""
         insts_bytes = insts_path.read_bytes()
         if len(insts_bytes) % 4 != 0:
@@ -119,15 +145,15 @@ class HSAHostRuntime(HostRuntime):
         except BaseException:
             self._ctx.free_dev(insts_ptr)
             raise
-        return HSAKernelHandle(pdi_ptr, insts_ptr, len(insts_bytes), kernel_name)
+        return HSAKernelHandle(pdi_ptr, insts_ptr, len(insts_bytes))
 
     def _free_handle(self, handle) -> None:
         self._ctx.free_dev(handle.pdi_ptr)
         self._ctx.free_dev(handle.insts_ptr)
 
     def load(self, npu_kernel, **kwargs) -> HSAKernelHandle:
-        insts_path, pdi_path, kernel_name = self._resolve_kernel(npu_kernel)
-        handle = self._build_handle(insts_path, pdi_path, kernel_name)
+        insts_path, pdi_path, _ = self._resolve_kernel(npu_kernel)
+        handle = self._build_handle(insts_path, pdi_path)
         self._handles.append(handle)
         return handle
 
@@ -136,7 +162,8 @@ class HSAHostRuntime(HostRuntime):
         """(device_va, logical byte size) per tensor, in dispatch order.
 
         The logical ``nbytes`` (not the granule-rounded allocation size) is what
-        the kernarg block must carry, matching ROCR's dispatch.cc."""
+        the kernarg block must carry, matching ROCR's dispatch.cc.
+        """
         return [(t.buffer_object(), t.nbytes) for t in kept]
 
     def _release_dispatch(self, failed, overflows):
@@ -146,18 +173,25 @@ class HSAHostRuntime(HostRuntime):
         fixed slot pool and the completion signal is reused. Only an
         over-capacity argument list allocates.
 
-        Any failure once packets may be in flight compromises the shared signal,
+        Any failure once packets have been rung compromises the shared signal,
         not just a timeout: `dispatch_chain` rings the packets it already wrote
         before propagating a non-timeout error, and those will decrement the
         signal whenever they complete. Reusing it would let the next dispatch's
-        wait see somebody else's decrements and return early. So on any failure
-        the signal is replaced, and the overflow buffers are leaked rather than
-        freed, since the device may still read them."""
-        if failed:
+        wait see somebody else's decrements and return early. So once the device
+        holds the signal it is replaced, and the overflow buffers are leaked
+        rather than freed, since the device may still read them.
+
+        A failure *before* any doorbell -- a rejected argument, a conversion
+        error, a failed kernarg allocation -- never reached the device. Both the
+        signal and the buffers are still ours, so both are kept: discarding there
+        would leak one signal (a kernel event) per failure, which a caller
+        retrying bad arguments in a loop turns into signal exhaustion.
+        """
+        if failed and self._ctx.signal_in_flight():
             self._ctx.discard_signal()
-        else:
-            for overflow in overflows:
-                self._ctx.vmem_free(*overflow)
+            return
+        for overflow in overflows:
+            self._ctx.vmem_free(*overflow)
 
     def _validate_args(self, args):
         kept = [a for a in args if not callable(a)]
@@ -168,6 +202,20 @@ class HSAHostRuntime(HostRuntime):
             )
         return kept
 
+    @staticmethod
+    def _mark_device_resident(tensors):
+        """Record that a completed dispatch wrote these tensors on-device.
+
+        The vmem mapping is CPU+AIE coherent, so unlike XRT and HRX there is no
+        stale host copy to invalidate and the sync hooks stay no-ops. The
+        residency marker still has to move: ``.device`` is public API, and
+        ``NpuTensor``'s ``out=`` check rejects a tensor whose residency does not
+        match the one requested. Leaving it at ``cpu`` made the same call
+        sequence succeed on XRT/HRX and fail here.
+        """
+        for t in tensors:
+            t.device = "npu"
+
     def run(
         self,
         kernel_handle,
@@ -177,10 +225,13 @@ class HSAHostRuntime(HostRuntime):
         only_if_loaded=False,
         **kwargs,
     ) -> HSAKernelResult:
-        """``fail_on_error`` is accepted for API compatibility but not honored:
+        """Dispatch one packet for ``kernel_handle`` and wait for it to complete.
+
+        ``fail_on_error`` is accepted for API compatibility but not honored:
         HSA always raises on failure via the context's ``_check`` (see the
         _release_dispatch note below for the one path where cleanup is
-        intentionally skipped rather than run unconditionally)."""
+        intentionally skipped rather than run unconditionally).
+        """
         assert isinstance(kernel_handle, HSAKernelHandle)
         if trace_config is not None:
             raise HostRuntimeError(_TRACE_UNSUPPORTED_MSG)
@@ -191,7 +242,7 @@ class HSAHostRuntime(HostRuntime):
         overflows = []
         signal = self._ctx.arm_signal(1)
         try:
-            start = time.time_ns()
+            start = time.perf_counter_ns()
             overflows = self._ctx.dispatch(
                 kernel_handle.pdi_ptr,
                 kernel_handle.insts_ptr,
@@ -200,13 +251,14 @@ class HSAHostRuntime(HostRuntime):
                 signal,
             )
             self._ctx.wait(signal)
-            stop = time.time_ns()
+            stop = time.perf_counter_ns()
         except BaseException:
             failed = True
             raise
         finally:
             self._release_dispatch(failed, overflows)
 
+        self._mark_device_resident(kept)
         return HSAKernelResult(stop - start, success=True)
 
     def run_chain(self, runs, fail_on_error: bool = True) -> HSAKernelResult:
@@ -232,33 +284,40 @@ class HSAHostRuntime(HostRuntime):
         if not runs:
             return HSAKernelResult(0, success=True)
 
+        # Built before the signal is armed, not inside the try: validation and
+        # argument conversion are host-side and reject bad input without ever
+        # reaching the device. Arming first would send every such rejection
+        # through the failure path, which discards (and leaks) the signal.
         items = []
+        tensors = []
+        for kernel_handle, args in runs:
+            assert isinstance(kernel_handle, HSAKernelHandle)
+            kept = self._validate_args(args)
+            tensors.extend(kept)
+            items.append(
+                (
+                    kernel_handle.pdi_ptr,
+                    kernel_handle.insts_ptr,
+                    kernel_handle.insts_size,
+                    self._arg_pairs(kept),
+                )
+            )
+
         failed = False
         overflows = []
         signal = self._ctx.arm_signal(len(runs))
         try:
-            for kernel_handle, args in runs:
-                assert isinstance(kernel_handle, HSAKernelHandle)
-                kept = self._validate_args(args)
-                items.append(
-                    (
-                        kernel_handle.pdi_ptr,
-                        kernel_handle.insts_ptr,
-                        kernel_handle.insts_size,
-                        self._arg_pairs(kept),
-                    )
-                )
-
-            start = time.time_ns()
+            start = time.perf_counter_ns()
             overflows = self._ctx.dispatch_chain(items, signal)
             self._ctx.wait(signal)
-            stop = time.time_ns()
+            stop = time.perf_counter_ns()
         except BaseException:
             failed = True
             raise
         finally:
             self._release_dispatch(failed, overflows)
 
+        self._mark_device_resident(tensors)
         return HSAKernelResult(stop - start, success=True)
 
     def load_and_run(self, npu_kernel, run_args, **kwargs):
@@ -299,7 +358,7 @@ class CachedHSAHostRuntime(HSAHostRuntime):
     def __init__(self):
         super().__init__()
         self._exe_cache = OrderedDict()
-        self._cache_size = int(os.environ.get("HSA_EXE_CACHE_SIZE", "32"))
+        self._cache_size = _exe_cache_size()
         atexit.register(self.cleanup)
 
     def load(self, npu_kernel, **kwargs) -> HSAKernelHandle:
@@ -315,7 +374,7 @@ class CachedHSAHostRuntime(HSAHostRuntime):
             self._exe_cache.move_to_end(key)
             return self._exe_cache[key]
 
-        handle = self._build_handle(insts_path, pdi_path, kernel_name)
+        handle = self._build_handle(insts_path, pdi_path)
         if self._cache_size <= 0:
             # Caching disabled. Track the handle so cleanup still frees it,
             # rather than never evicting (which is what a bare `>= size` test

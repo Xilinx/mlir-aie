@@ -44,7 +44,9 @@ _ENV_ROOT_VARS = ("ROCM_PATH",)
 # Library file names to look for under ``<root>/lib``, most preferred first.
 # The unversioned developer symlink is preferred; ``libhsa-runtime64.so.*``
 # catches the SONAME, which is all TheRock's symlink-free wheels ship.
-_LIBHSA_PATTERNS: tuple[str, ...] = ("libhsa-runtime64.so", "libhsa-runtime64.so.*") if _IS_LINUX else ()
+_LIBHSA_PATTERNS: tuple[str, ...] = (
+    ("libhsa-runtime64.so", "libhsa-runtime64.so.*") if _IS_LINUX else ()
+)
 
 # Conventional system install locations. POSIX-only, hence platform-gated.
 _SYSTEM_ROOTS: tuple[Path, ...] = (Path("/opt/rocm"),) if _IS_LINUX else ()
@@ -97,7 +99,7 @@ def _rocm_roots() -> Iterator[Path]:
 
 
 def _libhsa_under(root: Path) -> str | None:
-    """The HSA runtime inside one ROCm root, or None.
+    """Return the HSA runtime inside one ROCm root, or None.
 
     Patterns are tried in ``_LIBHSA_PATTERNS`` order, so the unversioned
     developer symlink wins over the SONAME: TheRock's runtime wheels contain no

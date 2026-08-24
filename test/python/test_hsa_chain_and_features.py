@@ -19,7 +19,20 @@ class HSAErrorForTest(Exception):
 
 @pytest.mark.parametrize(
     "value,expected",
-    [(None, 0.0), ("", 0.0), ("0", 0.0), ("1.5", 1.5), ("-3", 0.0), ("abc", 0.0)],
+    [
+        (None, 0.0),
+        ("", 0.0),
+        ("0", 0.0),
+        ("1.5", 1.5),
+        ("-3", 0.0),
+        ("abc", 0.0),
+        # inf/nan parse as floats but are not usable as a duration: the caller
+        # does int(timeout * frequency), where a non-finite value raises
+        # OverflowError and kills the dispatch on a config typo.
+        ("inf", 0.0),
+        ("-inf", 0.0),
+        ("nan", 0.0),
+    ],
 )
 def test_hsa_sync_timeout_parsing(monkeypatch, value, expected):
     if value is None:
@@ -79,13 +92,22 @@ def _make_fake_ctx_cls(overflows):
             self.armed = []
             self.discard_calls = 0
             self.vmem_free_calls = []
+            # Mirrors the real context: set by ring (modelled here on dispatch),
+            # cleared by arm. It is what tells a failure whether the device could
+            # still decrement the signal.
+            self._in_flight = False
 
         def arm_signal(self, value):
             self.armed.append(value)
+            self._in_flight = False
             return 42  # fake signal handle
+
+        def signal_in_flight(self):
+            return self._in_flight
 
         def discard_signal(self):
             self.discard_calls += 1
+            self._in_flight = False
 
         def vmem_free(self, handle, va, size):
             self.vmem_free_calls.append((handle, va, size))
@@ -94,10 +116,12 @@ def _make_fake_ctx_cls(overflows):
             pass
 
         def dispatch(self, pdi_ptr, insts_ptr, insts_size, arg_pairs, signal):
+            self._in_flight = True  # the real one has rung the doorbell by here
             return list(overflows)
 
         def dispatch_chain(self, items, signal):
             self.chained = len(items)
+            self._in_flight = True
             return list(overflows)
 
         def wait(self, signal):
@@ -115,9 +139,7 @@ def _run_with_fake_ctx(monkeypatch, overflows, timeout_on_wait):
         hrt.HSAContext, "get", classmethod(lambda c: cls(timeout_on_wait))
     )
     rt = hrt.HSAHostRuntime()
-    handle = hrt.HSAKernelHandle(
-        pdi_ptr=0x1, insts_ptr=0x2, insts_size=4, kernel_name="MLIR_AIE"
-    )
+    handle = hrt.HSAKernelHandle(pdi_ptr=0x1, insts_ptr=0x2, insts_size=4)
     return rt, handle
 
 
@@ -163,18 +185,39 @@ def test_non_timeout_failure_also_replaces_the_shared_signal(monkeypatch):
 
     class _BoomCtx(cls):
         def dispatch(self, *a):
+            # Models dispatch_chain's non-timeout path, which rings the packets
+            # it already wrote before propagating: the device holds the signal.
+            self._in_flight = True
             raise HSAErrorForTest("packet build failed after ringing")
 
     monkeypatch.setattr(
         hrt.HSAContext, "get", classmethod(lambda c: _BoomCtx(timeout_on_wait=False))
     )
     rt = hrt.HSAHostRuntime()
-    handle = hrt.HSAKernelHandle(
-        pdi_ptr=0x1, insts_ptr=0x2, insts_size=4, kernel_name="MLIR_AIE"
-    )
+    handle = hrt.HSAKernelHandle(pdi_ptr=0x1, insts_ptr=0x2, insts_size=4)
     with pytest.raises(HSAErrorForTest):
         rt.run(handle, [])
     assert rt._ctx.discard_calls == 1, "a non-timeout failure must not reuse the signal"
+
+
+def test_host_side_failure_keeps_the_shared_signal(monkeypatch):
+    """A failure before any doorbell must keep the signal, not discard it.
+
+    run_chain used to arm the shared signal before validating its arguments, so
+    a rejected argument took the in-flight path: a fresh signal every time with
+    the old one abandoned. Nothing was ever submitted there -- the device never
+    saw that signal -- and since nothing destroys one, a caller retrying bad
+    arguments in a loop leaked a kernel event per attempt until signal creation
+    itself failed.
+    """
+    from aie.utils.hostruntime.hostruntime import HostRuntimeError
+
+    rt, handle = _run_with_fake_ctx(monkeypatch, overflows=[], timeout_on_wait=False)
+    with pytest.raises(HostRuntimeError):
+        rt.run_chain([(handle, ["not-a-tensor"])])
+
+    assert rt._ctx.discard_calls == 0, "a signal the device never saw must be reused"
+    assert rt._ctx.armed == [], "arming must not precede argument validation"
 
 
 def test_cache_size_zero_disables_caching(monkeypatch):
@@ -198,7 +241,7 @@ def test_cache_size_zero_disables_caching(monkeypatch):
     monkeypatch.setattr(
         rt,
         "_build_handle",
-        lambda i, p, n: built.append(str(i)) or hrt.HSAKernelHandle(1, 2, 4, n),
+        lambda i, p: built.append(str(i)) or hrt.HSAKernelHandle(1, 2, 4),
     )
     monkeypatch.setattr(pathlib.Path, "stat", lambda self: _FakeStat())
     rt.load("a")
@@ -277,6 +320,7 @@ def test_enqueue_does_not_consume_an_index_it_cannot_fill(monkeypatch):
     ctx = object.__new__(ctx_mod.HSAContext)
     ctx.queue = object()
     ctx.queue_size = 64
+    ctx._poisoned = None  # a healthy context
 
     # A non-integer argument address fails conversion; that must happen before
     # the write index is reserved.
@@ -311,6 +355,7 @@ def test_dispatch_chain_flushes_pending_packets_on_failure():
     with pytest.raises(HSAErrorForTest):
         ctx_mod.HSAContext.dispatch_chain(ctx, items, 42)
     assert rings == [2], "the three packets written before the failure are rung"
+    assert not getattr(ctx, "_poisoned", None), "a healthy device stays usable"
 
 
 def test_dispatch_chain_does_not_ring_a_wedged_queue():
@@ -323,6 +368,33 @@ def test_dispatch_chain_does_not_ring_a_wedged_queue():
     with pytest.raises(HSATimeoutError):
         ctx_mod.HSAContext.dispatch_chain(ctx, items, 42)
     assert rings == [], "must not ring a queue the device is not draining"
+
+
+def test_dispatch_chain_timeout_retires_the_context():
+    """Un-rung packets left by a timeout must not be inherited by a later dispatch.
+
+    The timeout path deliberately does not ring, so the write index is left ahead
+    of everything ever submitted. A later, unrelated dispatch's doorbell would
+    sweep those stale packets up -- re-running old PDIs against reused kernarg
+    slots and decrementing a signal that dispatch never armed. Retire the context
+    instead of letting the next caller inherit the hazard.
+    """
+    from aie.utils.hostruntime.hsaruntime import context as ctx_mod
+    from aie.utils.hostruntime.hsaruntime._bindings import HSAError, HSATimeoutError
+
+    ctx, _ = _chain_ctx(_raise_at(3, HSATimeoutError("queue never drained")))
+    ctx._poisoned = None
+    items = [(0x1, 0x2, 4, []) for _ in range(10)]
+    with pytest.raises(HSATimeoutError):
+        ctx_mod.HSAContext.dispatch_chain(ctx, items, 42)
+    assert ctx._poisoned, "a chain that left un-rung packets must retire the context"
+
+    # And the retirement must actually block the next packet, at the one funnel
+    # every dispatch goes through.
+    later = object.__new__(ctx_mod.HSAContext)
+    later._poisoned = "a dispatch chain timed out leaving 3 un-rung packet(s)."
+    with pytest.raises(HSAError, match="no longer usable"):
+        later.enqueue(0x1, 0x2, 4, [], 42)
 
 
 def _chain_ctx(enqueue=None):
@@ -548,6 +620,7 @@ def test_enqueue_times_out_when_queue_never_drains(monkeypatch):
     ctx.queue = object()
     ctx.queue_size = 16  # wr_idx(64) - read(0) = 64 >= 16 -> always "full"
     ctx.queue_packets = None  # never reached (we time out before the write)
+    ctx._poisoned = None  # a healthy context
 
     with pytest.raises(HSATimeoutError):
         ctx.enqueue(0x1, 0x2, 4, [], 42)
@@ -657,3 +730,127 @@ def test_load_and_run_rejects_trace_before_touching_args(monkeypatch):
     with pytest.raises(HostRuntimeError):
         rt.load_and_run(_K(), run_args)
     assert run_args == [1, 2, 3]  # untouched on the error path
+
+
+@pytest.mark.parametrize(
+    "value,expected",
+    [(None, 32), ("8", 8), ("0", 0), ("none", 32), ("", 32), ("1.5", 32)],
+)
+def test_exe_cache_size_parsing(monkeypatch, value, expected):
+    """A malformed HSA_EXE_CACHE_SIZE warns and falls back rather than raising.
+
+    Calling int() straight off the environment turned a typo into a ValueError
+    raised from inside aie.utils.__getattr__ during runtime construction -- an
+    opaque failure far from the variable that caused it, and unlike the sibling
+    IRON_HSA_TIMEOUT parser, which warns and ignores bad input.
+    """
+    from aie.utils.hostruntime.hsaruntime import hostruntime as hrt
+
+    if value is None:
+        monkeypatch.delenv("HSA_EXE_CACHE_SIZE", raising=False)
+    else:
+        monkeypatch.setenv("HSA_EXE_CACHE_SIZE", value)
+    assert hrt._exe_cache_size() == expected
+
+
+def _fake_vmem_ctx(monkeypatch, freed=None):
+    """Point HSATensor at a fake context whose vmem is real, addressable memory.
+
+    Real memory (rather than an arbitrary address) keeps a stale read benign if
+    the lifetime under test ever regresses. The backing buffer is held by this
+    fake's closure, which the monkeypatched HSAContext.get keeps alive for the
+    test. Pass `freed` to record the vmem_free calls.
+    """
+    import ctypes
+
+    from aie.utils.hostruntime.hsaruntime import tensor as tensor_mod
+
+    backing = (ctypes.c_char * 4096)()
+
+    class _FakeVmemCtx:
+        def vmem_alloc(self, size):
+            return 0xCAFE, ctypes.addressof(backing), 4096
+
+        def vmem_free(self, handle, va, size):
+            if freed is not None:
+                freed.append(va)
+
+    monkeypatch.setattr(
+        tensor_mod.HSAContext, "get", classmethod(lambda c: _FakeVmemCtx())
+    )
+
+
+def test_tensor_mapping_outlives_the_tensor(monkeypatch):
+    """A numpy view must keep the vmem mapping alive after the tensor is gone.
+
+    numpy()/data/to_torch() hand out np.frombuffer views over a ctypes array
+    built with from_address, which owns nothing and does not reference the
+    tensor. With the free tied to the tensor's __del__, dropping the tensor while
+    an array still pointed into the range unmapped it under that array: a reader
+    then either segfaults or silently sees whatever next reserves the VA.
+    """
+    import gc
+
+    import numpy as np
+    from aie.utils.hostruntime.hsaruntime import tensor as tensor_mod
+
+    freed = []
+    _fake_vmem_ctx(monkeypatch, freed)
+
+    arr = tensor_mod.HSATensor((4,), dtype=np.int32).numpy()
+    gc.collect()  # the tensor is unreachable here; only `arr` holds the range
+    assert freed == [], "the mapping must survive while a view points into it"
+
+    del arr
+    gc.collect()
+    assert len(freed) == 1, "the mapping must be released once the last view is gone"
+
+
+def test_tensor_accepts_backend_specific_kwargs(monkeypatch):
+    """Tensor factories forward backend keywords, so unknown ones must be absorbed.
+
+    XRTTensor takes flags/group_id/xrt_device and HRXTensor documents **kwargs
+    for exactly this. Without it, iron.zeros((4,), group_id=1) -- fine on the
+    other two backends -- died with a TypeError under NPU_RUNTIME=hsa.
+    """
+    import numpy as np
+    from aie.utils.hostruntime.hsaruntime import tensor as tensor_mod
+
+    _fake_vmem_ctx(monkeypatch)
+    t = tensor_mod.HSATensor((4,), dtype=np.int32, group_id=1, flags=0)
+    assert t.shape == (4,)
+
+
+def test_bind_is_all_or_nothing_on_an_old_rocm(monkeypatch):
+    """A missing symbol must publish nothing and name what is wrong.
+
+    decl() used to setattr each entry point as it resolved, so a libhsa missing a
+    later symbol left the earlier ones as instance attributes -- and those shadow
+    __getattr__, so _ensure() never ran again and a caller could go on against a
+    partially bound library. The raw ctypes AttributeError also said nothing
+    about the ROCm version being the cause.
+    """
+    from aie.utils.hostruntime.hsaruntime._bindings import HSAError, _HsaLib
+
+    missing = "hsa_amd_vmem_handle_create"
+
+    class _FakeFn:
+        pass
+
+    class _PartialCdll:
+        def __getattr__(self, name):
+            if name == missing:
+                raise AttributeError(f"undefined symbol: {name}")
+            return _FakeFn()
+
+    monkeypatch.setattr(_bindings, "_load_libhsa", lambda: _PartialCdll())
+
+    lib = _HsaLib()
+    with pytest.raises(HSAError, match=missing):
+        lib._ensure()
+
+    assert not lib._ready, "a failed bind must not mark the library ready"
+    assert lib._cdll is None, "a failed bind must not publish the library handle"
+    # The decisive part: an entry point resolved before the failure must not be
+    # left behind, or it shadows __getattr__ and skips _ensure() forever after.
+    assert "hsa_init" not in vars(lib), "no entry point may survive a failed bind"

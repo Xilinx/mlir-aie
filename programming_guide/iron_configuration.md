@@ -228,11 +228,11 @@ only the versioned name.
 | Variable | Default | Meaning |
 |----------|---------|---------|
 | `IRON_HSA_DEVICE` | auto-detect | Force the device generation (`npu1` / `npu2`) instead of detecting it from the HSA agent name. ROCR names the agent after its ISA (`aie2` = Phoenix/npu1, `aie2p` = Strix/npu2); an unrecognized name is an error rather than a guess, because a wrong generation compiles for the wrong architecture and wedges the NPU. |
-| `HSA_EXE_CACHE_SIZE` | `32` | Max number of loaded designs the `CachedHSAHostRuntime` keeps (LRU). |
-| `IRON_HSA_TIMEOUT` | `0` (disabled) | Watchdog timeout, in seconds, bounding the completion wait. `0`, unset, or an invalid value disables it. Implemented with `hsa_signal_wait`'s own timeout, so arming it costs nothing per dispatch. On expiry a diagnosable error is raised (the underlying dispatch cannot be cancelled). |
+| `HSA_EXE_CACHE_SIZE` | `32` | Max number of loaded designs the `CachedHSAHostRuntime` keeps (LRU). A non-integer value is ignored, with a warning, in favour of the default. |
+| `IRON_HSA_TIMEOUT` | `0` (disabled) | Timeout, in seconds, bounding the two waits IRON itself performs: the completion-signal wait and the full-queue wait in `enqueue`. `0`, unset, or an invalid value disables it. Implemented with `hsa_signal_wait`'s own timeout, so arming it costs nothing per dispatch. On expiry a diagnosable error is raised (the underlying dispatch cannot be cancelled). **This is not a watchdog for a wedged dispatch:** ROCR's AIE doorbell submits *and blocks until completion*, so a hung dispatch stalls inside the doorbell store — before either bounded wait is reached — on an internal wait this setting cannot reach. |
 
 ```bash
-# Point at a specific ROCm, force npu2, cap the cache, fail a wedged wait after 30s.
+# Point at a specific ROCm, force npu2, cap the cache, bound IRON's waits at 30s.
 NPU_RUNTIME=hsa ROCM_PATH=/opt/rocm-7.0 IRON_HSA_DEVICE=npu2 \
   HSA_EXE_CACHE_SIZE=8 IRON_HSA_TIMEOUT=30 python my_script.py
 ```

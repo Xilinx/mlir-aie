@@ -77,6 +77,12 @@ _KERNARG_SLOT_SIZE = _MAX_POOLED_KERNARGS * 2 * 8
 # without a ring to drain it. The effective batch is clamped to the queue size.
 _MAX_DOORBELL_BATCH = 32
 
+# Poll interval for the full-queue backstop spin in `enqueue`. Every ring drains
+# the queue (ROCR's AIE doorbell submits synchronously), so that loop is a
+# correctness backstop rather than a hot path -- a real sleep costs nothing there
+# and keeps a device that has stopped draining from pegging a core.
+_QUEUE_FULL_POLL_S = 1e-4
+
 
 class HSAContext:
     """Process-wide singleton owning the HSA AIE device, memory, and queue.
@@ -164,6 +170,15 @@ class HSAContext:
         # rather than created and destroyed each time. Safe for the same reason
         # the single queue is: callers must serialize dispatches.
         self._signal = self.create_signal(0)
+        # True once a packet carrying the current signal has been rung, i.e. the
+        # device may decrement it independently of us. Only then does a failure
+        # make the signal unsafe to reuse (see `discard_signal`).
+        self._signal_published = False
+
+        # Set to a reason once the queue is left in a state no later dispatch may
+        # build on -- see `dispatch_chain`'s timeout path. Checked by `enqueue`,
+        # the single funnel through which every packet is written.
+        self._poisoned = None
 
     @classmethod
     def get(cls) -> "HSAContext":
@@ -451,9 +466,20 @@ class HSAContext:
         """Arm the shared completion signal to ``value`` and return it.
 
         ``value`` is the number of packets that will decrement it (1 for a single
-        dispatch, len(chain) for a chain), so a single wait covers the batch."""
+        dispatch, len(chain) for a chain), so a single wait covers the batch.
+        """
         lib.hsa_signal_store_screlease(self._signal, value)
+        self._signal_published = False
         return self._signal
+
+    def signal_in_flight(self) -> bool:
+        """Whether the device may still decrement the current completion signal.
+
+        True once :meth:`ring` has submitted a packet carrying it. A failure
+        before that point never reached the device, so the signal is still ours
+        and the next :meth:`arm_signal` can safely reuse it.
+        """
+        return self._signal_published
 
     def discard_signal(self):
         """Abandon the shared signal and install a fresh one.
@@ -462,8 +488,24 @@ class HSAContext:
         decrement the old signal at any point, which would corrupt the count of
         whatever dispatch armed it next, so it must never be reused. The old
         signal is deliberately leaked rather than destroyed -- the device still
-        owns it (see HSATimeoutError)."""
+        owns it (see HSATimeoutError).
+
+        Only call this when :meth:`signal_in_flight` is true. Discarding after a
+        host-side failure that never reached the queue leaks one signal -- a
+        kernel event -- per failure, which a caller retrying bad arguments in a
+        loop turns into signal exhaustion.
+        """
         self._signal = self.create_signal(0)
+        self._signal_published = False
+
+    def _check_usable(self):
+        """Refuse to build on a queue an earlier failure left unusable."""
+        if self._poisoned:
+            raise HSAError(
+                f"The HSA context is no longer usable: {self._poisoned} Recover "
+                f"the device (e.g. reload the amdxdna driver) and restart the "
+                f"process."
+            )
 
     # -- dispatch ----------------------------------------------------------
     def _fill_packet(
@@ -488,7 +530,8 @@ class HSAContext:
 
         Takes pre-converted ints so that this cannot raise -- it runs after the
         queue write index has been reserved, where a failure would be unrecoverable
-        (see :meth:`enqueue`)."""
+        (see :meth:`enqueue`).
+        """
         n = len(addrs)
         ka = (ctypes.c_uint64 * (2 * n)).from_address(va)
         for i in range(n):
@@ -516,11 +559,14 @@ class HSAContext:
         between them -- and the next doorbell would submit that garbage slot,
         killing the context for the rest of the process.
 
-        Spins while the queue is full so an in-flight batch drains (wrap-around),
-        yielding each iteration so it doesn't peg a core. When ``IRON_HSA_TIMEOUT``
-        is set, the spin is bounded by that timeout and raises
-        :class:`HSATimeoutError` (mirroring :meth:`wait`)."""
+        Polls while the queue is full so an in-flight batch drains (wrap-around),
+        sleeping ``_QUEUE_FULL_POLL_S`` between checks. When ``IRON_HSA_TIMEOUT``
+        is set the poll is bounded by that timeout and raises
+        :class:`HSATimeoutError`; with the timeout disabled it waits indefinitely,
+        mirroring :meth:`wait`'s unbounded default.
+        """
         # -- fallible section: nothing here has touched the queue yet ----------
+        self._check_usable()
         n = len(args)
         addrs = [int(va) for va, _ in args]
         sizes = [int(nbytes) for _, nbytes in args]
@@ -550,7 +596,9 @@ class HSAContext:
                     f"while enqueuing a dispatch. The device may be wedged; "
                     f"recover it (e.g. reload the amdxdna driver) if this persists."
                 )
-            time.sleep(0)  # yield so a full-queue spin doesn't peg a core
+            # A real sleep, not sleep(0): the latter only yields the GIL and
+            # returns immediately, which runs this loop at 100% of a core.
+            time.sleep(_QUEUE_FULL_POLL_S)
 
         overflow = self.vmem_alloc(2 * n * 8) if n > _MAX_POOLED_KERNARGS else None
 
@@ -571,13 +619,19 @@ class HSAContext:
         return wr_idx, overflow
 
     def ring(self, wr_idx):
+        """Submit every packet written up to ``wr_idx`` (synchronous on AIE)."""
+        # Marked before the store, not after: once the doorbell is written the
+        # device owns the completion signal those packets carry, and treating it
+        # as still ours would let a later dispatch's wait see their decrements.
+        self._signal_published = True
         lib.hsa_signal_store_screlease(self.queue_doorbell, wr_idx)
 
     def dispatch(self, pdi_ptr, insts_ptr, insts_size, args, signal):
         """Single dispatch: enqueue one packet and ring the doorbell.
 
         Returns the list of one-off kernarg allocations to free after the wait
-        (empty in the common pooled case)."""
+        (empty in the common pooled case).
+        """
         wr_idx, overflow = self.enqueue(pdi_ptr, insts_ptr, insts_size, args, signal)
         self.ring(wr_idx)
         return [overflow] if overflow is not None else []
@@ -625,7 +679,17 @@ class HSAContext:
         except HSATimeoutError:
             # The device is not draining the queue; ringing would block in the
             # synchronous submit, so leave the pending packets for whatever
-            # recovers the device.
+            # recovers the device. They stay written but un-rung, which leaves the
+            # write index ahead of everything ever submitted: a later, unrelated
+            # dispatch's doorbell would sweep them up and re-run stale PDIs
+            # against stale kernarg slots, decrementing a signal that dispatch
+            # never armed. Nothing can safely build on this queue again, so retire
+            # the context instead of letting the next caller inherit the hazard.
+            if pending:
+                self._poisoned = (
+                    f"a dispatch chain timed out leaving {pending} un-rung "
+                    f"packet(s) in the queue."
+                )
             raise
         except BaseException:
             # A packet failed to build, but the ones already written are valid and
@@ -664,8 +728,13 @@ class HSAContext:
         # Clamp the per-attempt hint to the longest wait the system supports; the
         # wall-clock deadline below, not the hint, is what bounds the total.
         ticks = int(timeout * self.timestamp_freq)
-        if self.signal_max_wait and ticks > self.signal_max_wait:
-            ticks = self.signal_max_wait
+        # Clamped unconditionally, not only when the system reports a maximum:
+        # the tick count is passed as a uint64, so a large (if finite) timeout on
+        # a host reporting SIGNAL_MAX_WAIT=0 would otherwise overflow that
+        # argument and fail the dispatch on a config value alone.
+        max_ticks = self.signal_max_wait or _HSA_WAIT_FOREVER
+        if ticks > max_ticks:
+            ticks = max_ticks
         deadline = time.monotonic() + timeout
         while True:
             if (
