@@ -27,6 +27,10 @@
 # -fix corrupted shared headers via overlapping cross-TU edits twice), and
 # per-site manual review/rename is a separate, much larger effort tracked
 # on its own. Re-enable once that renaming pass lands.
+# misc-override-with-different-visibility (new in clang-tidy 22) fires on
+# every MLIR pass: mlir::Pass declares runOnOperation() protected, and the
+# standard MLIR pass idiom is to override it public. That's the codebase's
+# convention, not a bug, so the check has no legitimate use here.
 Checks: >
   -*,
   clang-diagnostic-*,
@@ -38,6 +42,7 @@ Checks: >
   -misc-no-recursion,
   -misc-use-anonymous-namespace,
   -misc-include-cleaner,
+  -misc-override-with-different-visibility,
   -readability-identifier-naming,
   bugprone-argument-comment,
   bugprone-assert-side-effect,
