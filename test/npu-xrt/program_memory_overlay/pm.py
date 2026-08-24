@@ -96,6 +96,12 @@ def cmd_emit(args):
             tuple(int(v) for v in c.split(":")) for c in (args.corrupt or [])
         ),
         skip_write=tuple(int(v) for v in (args.skip_write or [])),
+        maskpoll_before=tuple(
+            tuple(int(v, 0) for v in x.split(":")) for x in (args.maskpoll or [])
+        ),
+        maskpoll_after=tuple(
+            tuple(int(v, 0) for v in x.split(":")) for x in (args.maskpoll_after or [])
+        ),
         preempt=tuple(
             tuple(int(v) for v in x.split(":")) for x in (args.preempt or [])
         ),
@@ -370,6 +376,8 @@ def main():
     e.add_argument("--corrupt", action="append", metavar="PHASE:WORD")
     e.add_argument("--skip-write", action="append", metavar="PHASE")
     e.add_argument("--preempt", action="append", metavar="PHASE:LEVEL")
+    e.add_argument("--maskpoll", action="append", metavar="PHASE:ADDR:VALUE:MASK")
+    e.add_argument("--maskpoll-after", action="append", metavar="PHASE:ADDR:VALUE:MASK")
     e.add_argument("--wrong-address", action="append", metavar="PHASE:DELTA")
     e.add_argument("--out", required=True)
     e.set_defaults(func=cmd_emit)

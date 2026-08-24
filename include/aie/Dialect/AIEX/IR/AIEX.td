@@ -944,6 +944,48 @@ def AIE_NpuMaskWrite32Op: AIEX_Op<"npu.maskwrite32", []> {
   }];
 }
 
+def AIE_NpuMaskPollOp: AIEX_Op<"npu.maskpoll", []> {
+  let summary = "Block until a masked 32-bit location reads an expected value";
+  let arguments = (
+    ins I32:$address,
+        I32:$value,
+        I32:$mask,
+        OptionalAttr<FlatSymbolRefAttr>:$buffer,
+        OptionalAttr<I32Attr>:$column,
+        OptionalAttr<I32Attr>:$row
+  );
+  let results = (outs );
+  let assemblyFormat = [{
+    `(` $address `,` $value `,` $mask `)` attr-dict `:` type($address) `,` type($value) `,` type($mask)
+  }];
+  let description = [{
+    Stall the instruction stream until `(*address & mask) == value`.
+
+    This is the only blocking primitive in a runtime sequence that does not wait
+    on a DMA. `aiex.set_lock` is explicitly non-blocking, and `npu.sync` and
+    `npu.dma_wait` both wait on data movement -- so this is the way for the host
+    to wait on something a *core* produced, such as a core signalling that it has
+    reached a particular point in its program.
+
+    That matters for program-memory overlays. Writing a region of program memory
+    is only safe while the core is fetching from a different region, so a design
+    with more than one overlay slot needs the host to know where the core is
+    before it writes. Nothing else can express that wait.
+
+    Addressing follows npu.maskwrite32: 'buffer' makes 'address' an offset into
+    that aie.buffer, 'column' and 'row' make it an offset into a tile's memory
+    space, and with neither it is a full address in the AIE array.
+
+    It blocks indefinitely. A condition no core ever satisfies hangs the
+    sequence, and on a shared device that is felt by everyone -- so poll only
+    for something a core is guaranteed to write.
+  }];
+  let extraClassDeclaration = [{
+    // Compile-time absolute address, or nullopt if 'address' is not constant.
+    std::optional<uint32_t> getAbsoluteAddress();
+  }];
+}
+
 // BLOCKWRITE
 def AIE_NpuBlockWriteOp: AIEX_Op<"npu.blockwrite", []> {
   let summary = "blockwrite operator";

@@ -22,7 +22,8 @@ from ml_dtypes import bfloat16
 import numpy as np
 
 from aie.dialects.aie import T
-from aie.dialects.aiex import npu_blockwrite, npu_preempt
+import aie.dialects.arith as arith
+from aie.dialects.aiex import npu_blockwrite, npu_maskpoll, npu_preempt
 import aie.dialects.memref as memref
 from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import Buffer, Kernel, ObjectFifo, Program, Runtime, TaskGroup, Worker
@@ -80,6 +81,11 @@ class Config:
     # that nothing in this tree documents -- aie-rt only records the
     # level in the transaction -- so it has to be measured.
     preempt: tuple = ()
+    # (phase, address, value, mask): block the sequence until the core
+    # has written something. The only way the host can wait on a core
+    # rather than on a DMA, which is what a second overlay slot needs.
+    maskpoll_before: tuple = ()
+    maskpoll_after: tuple = ()
 
     @property
     def slot(self):
@@ -204,6 +210,16 @@ def build(cfg):
                 slot = g.slots[phase % len(g.slots)]
                 write_payload(words, slot.base, ovl, f"_p{phase}", delta)
 
+            for p, addr, val, mask in cfg.maskpoll_before:
+                if p == phase:
+                    npu_maskpoll(
+                        arith.constant(T.i32(), addr),
+                        arith.constant(T.i32(), val),
+                        arith.constant(T.i32(), mask),
+                        column=col,
+                        row=row,
+                    )
+
             for p, level in cfg.preempt:
                 if p == phase:
                     npu_preempt(level)
@@ -212,6 +228,18 @@ def build(cfg):
             # ordered before this in the instruction stream, so the slot holds
             # this phase's kernel by the time the core jumps into it.
             flag[0] = 1
+
+            # After the release: waits on the core having reacted, which is the
+            # only kind of wait a runtime sequence cannot otherwise express.
+            for p, addr, val, mask in cfg.maskpoll_after:
+                if p == phase:
+                    npu_maskpoll(
+                        arith.constant(T.i32(), addr),
+                        arith.constant(T.i32(), val),
+                        arith.constant(T.i32(), mask),
+                        column=col,
+                        row=row,
+                    )
 
             tg = TaskGroup()
             in_prod.fill(host_in, group=tg)

@@ -1,0 +1,55 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// The host can wait on a core, not just on a DMA.
+//
+// This is the primitive a second overlay slot needs and the reason it did not
+// exist before. Writing a region of program memory is only safe while the core
+// is fetching from a different region, so a two-slot design needs the host to
+// know where the core *is* before it writes -- and nothing could express that
+// wait. `aiex.set_lock` is documented non-blocking; `npu.sync` and
+// `npu.dma_wait` both wait on data movement. `aiex.npu.maskpoll` waits on
+// memory, so it can wait on something a core wrote.
+//
+// Two cases, and the first one deliberately cannot hang: with a mask of 0 the
+// condition (x & 0) == 0 holds whatever memory contains, so it exercises the
+// opcode end to end without depending on any core behaviour. Worth having
+// separately, because if the firmware did not implement the opcode at all, the
+// second test's failure would look like a logic bug rather than a missing
+// feature.
+//
+// The second polls a real value: the host sets the flag to 1, ovl_wait clears
+// it to 0 on seeing it, so polling for 0 after the release waits on the core
+// having reacted.
+//
+// A caution that belongs with any use of this: it blocks indefinitely. A
+// condition no core ever satisfies hangs the sequence, and on a shared device
+// everybody feels it. Poll only for something a core is guaranteed to write.
+//
+// REQUIRES: ryzen_ai_npu2, peano
+//
+// RUN: rm -rf %t && mkdir -p %t
+// RUN: %PEANO_INSTALL_DIR/bin/clang++ --target=aie2p-none-unknown-elf -O2 -c %S/../resident.cc -o %t/resident.o
+// RUN: %python %S/../pm.py emit --recipe one_slot --slot-ld %t/slot.ld --phases 0,0 --out %t/d1.mlir
+// RUN: cd %t && %aiecc --tmpdir=%t/p1 --get-xclbin --xclbin-name=%t/p1.xclbin --get-npu-insts --npu-insts-name=%t/p1.bin %t/d1.mlir
+// RUN: %python %S/../pm.py workload --tag 11 --size 0x400 --output %t/w.o --workdir %t
+// RUN: %python %S/../pm.py workload --tag 31661 --size 0x400 --output %t/poison.o --workdir %t
+// RUN: %python %S/../pm.py link --object %t/w.o --resident %t/p1 --recipe one_slot --output %t/ovl.elf
+// RUN: %python %S/../pm.py link --object %t/poison.o --resident %t/p1 --recipe one_slot --output %t/poison.elf
+// RUN: %host_clang %S/../host.cpp -o %t/host.exe -std=c++17 -Wall %xrt_flags %host_link_flags %test_utils_flags
+//
+// Always-true: proves the firmware implements the opcode, and cannot hang.
+// RUN: %python %S/../pm.py emit --recipe one_slot --phases 0,0 --payload %t/ovl.elf --poison %t/poison.elf --skip-write 1 --maskpoll 0:0x2c00:0:0 --out %t/safe.mlir
+// RUN: cd %t && %aiecc --tmpdir=%t/s --get-xclbin --xclbin-name=%t/safe.xclbin --get-npu-insts --npu-insts-name=%t/safe.bin %t/safe.mlir
+// RUN: %t/host.exe -x %t/safe.xclbin -k MLIR_AIE -i %t/safe.bin --tags 11,11 | FileCheck %s --check-prefix=SAFE
+// SAFE: PASS!
+//
+// Real value: the flag at tile-relative 0x2c00, polled for the 0 the core
+// writes when it leaves the wait loop.
+// RUN: %python %S/../pm.py emit --recipe one_slot --phases 0,0 --payload %t/ovl.elf --poison %t/poison.elf --skip-write 1 --maskpoll-after 0:0x2c00:0:0xffffffff --out %t/blk.mlir
+// RUN: FileCheck %s --check-prefix=EMIT --input-file=%t/blk.mlir
+// EMIT: aiex.npu.maskpoll({{.*}}) {column = 0 : i32, row = 2 : i32}
+// RUN: cd %t && %aiecc --tmpdir=%t/b --get-xclbin --xclbin-name=%t/blk.xclbin --get-npu-insts --npu-insts-name=%t/blk.bin %t/blk.mlir
+// RUN: %t/host.exe -x %t/blk.xclbin -k MLIR_AIE -i %t/blk.bin --tags 11,11 | FileCheck %s --check-prefix=BLK
+// BLK: phase 0: overlay 11 ok
+// BLK: PASS!
