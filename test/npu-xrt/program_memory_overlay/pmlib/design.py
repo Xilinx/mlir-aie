@@ -73,8 +73,18 @@ class Config:
     payloads: tuple = ()
     poison: tuple = ()
     # Phases that write no payload, so the slot keeps whatever it held.
-    # Not a defect knob: reusing a slot is a real pattern, and it is how
-    # the tests ask what happens when a payload does not land.
+    #
+    # A test affordance, and worth being accurate about that. What makes it
+    # tolerable here and not in the same class as injecting a corrupt payload is
+    # that every design it produces is a *valid* one: reusing a slot rather than
+    # rewriting it is correct, and a real design would do it. A corrupted
+    # payload is not a design anyone would write.
+    #
+    # Most uses are the idiom `--phases 0,0 --skip-write 1`, which this file
+    # could derive -- the slot already holds that overlay. Deriving it would be
+    # a real optimization, but guard_band.lit needs the same payload written 123
+    # times to sample the granule boundary, so the knob would simply move to
+    # disabling the optimization instead.
     skip_write: tuple = ()
     # (phase, level): emit aiex.npu.preempt before this phase's release.
     # Whether program memory survives a yield is a firmware property
