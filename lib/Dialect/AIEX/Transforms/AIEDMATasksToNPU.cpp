@@ -118,7 +118,7 @@ static DMAConfigureTaskOp resolveConfigureThroughCF(Value task) {
   SmallVector<Value> worklist{task};
   while (!worklist.empty()) {
     Value v = worklist.pop_back_val();
-    if (!v || !seen.insert(v).second)
+    if (!seen.insert(v).second)
       continue;
     if (auto cfg = v.getDefiningOp<DMAConfigureTaskOp>())
       return cfg;
@@ -128,7 +128,7 @@ static DMAConfigureTaskOp resolveConfigureThroughCF(Value task) {
       regionBranchOp = res.getOwner();
     else
       regionBranchOp = cast<BlockArgument>(v).getOwner()->getParentOp();
-    auto rbi = dyn_cast_or_null<RegionBranchOpInterface>(regionBranchOp);
+    auto rbi = dyn_cast<RegionBranchOpInterface>(regionBranchOp);
     if (!rbi)
       continue;
 

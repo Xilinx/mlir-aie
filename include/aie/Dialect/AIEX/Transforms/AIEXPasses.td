@@ -287,9 +287,9 @@ def AIEUnrollRuntimeSequenceLoops
     appear inside `aie.runtime_sequence` bodies.
 
     Runs before `aie-assign-runtime-sequence-bd-ids` so BD-ID allocation sees
-    straight-line IR: configure operations in each loop iteration can receive 
+    straight-line IR: configure operations in each loop iteration can receive
     individual BD IDs after unrolling.
-    
+
     Runtime-bound loops (non-constant trip count) are left in place for the
     dynamic EmitC lowering path.
   }];
