@@ -196,6 +196,7 @@ struct AIECtrlPacketToDmaPass
                                  ArrayRef(staticSizes), ArrayRef(staticStrides),
                                  nullptr, metadata, 0, true, 0, 0, 0, 0, 0, 0,
                                  /*burst_length=*/0,
+                                 /*axcache=*/IntegerAttr(),
                                  /*offset_parameter=*/FlatSymbolRefAttr(),
                                  /*offset_state_table_idx=*/IntegerAttr());
 

@@ -1,0 +1,136 @@
+# Copyright (C) 2021 Xilinx, Inc.
+# Copyright (C) 2022-2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+name: Code Coverage
+
+permissions:
+  contents: read
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Runs at midnight (00:00) every day
+    - cron: '0 0 * * *'
+
+env:
+  # Run apt package manager in the CI in non-interactive mode.
+  # Otherwise, on Ubuntu 20.04 the installation of tzdata asking question
+  DEBIAN_FRONTEND: noninteractive
+
+jobs:
+
+  code-coverage:
+
+    name: C/C++ test code coverage
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Free disk space
+        uses: descriptinc/free-disk-space@1b4b157593c6801212a2ed488c205e0a810b4592  # main
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          swap-storage: false
+
+      - name: Get the project repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          submodules: "true"
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
+        with:
+          python-version: '3.12'
+
+      - name: Install Python and other packages
+        run: |
+          pip install --upgrade pip
+          python utils/mlir_aie_wheels/vendor_eudsl.py \
+              --requirements python/requirements.txt \
+              --install-non-eudsl
+          python -m pip install --require-hashes -r python/requirements_dev.lock
+
+      - name: Install packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build clang lld llvm libelf-dev
+
+      - name: Get MLIR
+        id: mlir-wheels
+        run: |
+
+          VERSION=$(utils/clone-llvm.sh --get-wheel-version)
+          pip -q download mlir==$VERSION \
+            -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro
+          unzip -q mlir-*.whl
+
+      # This job runs on schedule/workflow_dispatch (whole-repo, not a PR
+      # diff), so unlike lintAndFormat's other jobs there is no changed-files
+      # gate here -- every step below always runs.
+      - name: Ccache for C++ compilation
+        uses: hendrikmuhs/ccache-action@d62db5f07c26379fc4b4e0916f098a92573c3b03  # v1.2.23
+        with:
+          key: ${{ runner.os }}-code-cov
+          max-size: 1G
+
+      # Compare the compiler by content, not mtime, so the cache hits across
+      # runs on ephemeral runners. Matches .github/actions/setup_ccache.
+      - name: Configure ccache
+        shell: bash
+        run: |
+          ccache --set-config=compiler_check=content
+          ccache --set-config=sloppiness=locale,time_macros
+
+      - name: Build and generate coverage (Release)
+        run: |
+
+          mkdir -p build_release/install
+          cd build_release
+
+          cmake .. \
+            -GNinja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PLATFORM_NO_VERSIONED_SONAME=ON \
+            -DCMAKE_VISIBILITY_INLINES_HIDDEN=ON \
+            -DCMAKE_C_VISIBILITY_PRESET=hidden \
+            -DCMAKE_CXX_VISIBILITY_PRESET=hidden \
+            -DCMAKE_INSTALL_PREFIX=$PWD/install \
+            -DAIE_COMPILER=NONE \
+            -DAIE_LINKER=NONE \
+            -DHOST_COMPILER=NONE \
+            -DLLVM_ENABLE_ASSERTIONS=OFF \
+            -DLLVM_ENABLE_RTTI=ON \
+            -DCMAKE_MODULE_PATH=$PWD/../cmake/modulesXilinx \
+            -DMLIR_DIR=$PWD/../mlir/lib/cmake/mlir \
+            -DLLVM_DIR=$PWD/../mlir/lib/cmake/llvm \
+            -DLLVM_USE_LINKER=lld \
+            -DLLVM_EXTERNAL_LIT=$(which lit) \
+            \
+            -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_EXE_LINKER_FLAGS_INIT="-fuse-ld=lld" -DCMAKE_MODULE_LINKER_FLAGS_INIT="-fuse-ld=lld" -DCMAKE_SHARED_LINKER_FLAGS_INIT="-fuse-ld=lld" \
+            -DBUILD_INSTRUMENTED_COVERAGE=ON
+          # INSTRUMENTED_COVERAGE_FILES intentionally unset: CMakeLists.txt
+          # defaults it to lib/include/tools/python (see the option's default
+          # a few lines below its declaration), which is the whole-repo
+          # report this nightly run is for.
+
+          # filter out slow tests (e.g. create-flows/vecmul_4x4_slow_test.mlir) due to timeout.
+          export LIT_OPTS="-sv --timeout 600 --filter-out slow_test"
+          ninja && ninja generate-aie-coverage-report
+
+          cat "$GITHUB_WORKSPACE/build_release/report/summary.txt"
+
+      # No PR to comment on here (schedule/workflow_dispatch), so the report
+      # is an artifact instead of the PR comment lintAndFormat's PR-triggered
+      # jobs post.
+      - name: Upload coverage report
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
+        with:
+          path: build_release/report
+          name: coverage-report

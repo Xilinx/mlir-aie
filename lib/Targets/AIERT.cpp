@@ -10,6 +10,7 @@
 
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/Support/LogicalResult.h"
+#include "llvm/ADT/SmallPtrSet.h"
 
 extern "C" {
 #include "xaiengine/xaie_core.h"
@@ -316,8 +317,8 @@ LogicalResult xilinx::AIE::AIERTControl::setIOBackend(bool aieSim,
 
 static LogicalResult
 configureLocksInBdBlock(const AIE::AIETargetModel &targetModel,
-                        XAie_DmaDesc &dmaTileBd, Block &block, int col,
-                        int row) {
+                        XAie_DmaDesc &dmaTileBd, Block &block, int col, int row,
+                        bool outOfOrder) {
   LLVM_DEBUG(llvm::dbgs() << "\nstart configuring bds\n");
   std::optional<int> acqValue, relValue, acqLockId, relLockId;
   bool acqEn = false;
@@ -355,8 +356,17 @@ configureLocksInBdBlock(const AIE::AIETargetModel &targetModel,
     }
   }
 
-  assert(acqValue && relValue && acqLockId && relLockId &&
-         "expected both use_lock(acquire) and use_lock(release) with bd");
+  // Allow release-only for out-of-order's lock-driven completion mechanism.
+  if (outOfOrder) {
+    if (!relValue || !relLockId)
+      return (*block.getOps<AIE::UseLockOp>().begin())
+          .emitOpError("out-of-order buffer descriptor with a lock must have a "
+                       "use_lock(release)");
+  } else if (!acqValue || !relValue || !acqLockId || !relLockId) {
+    return (*block.getOps<AIE::UseLockOp>().begin())
+        .emitOpError("buffer descriptor with a lock must have both "
+                     "use_lock(acquire) and use_lock(release)");
+  }
 
   if (targetModel.isMemTile(col, row)) {
     auto lockOffset = targetModel.getLockLocalBaseIndex(
@@ -369,6 +379,14 @@ configureLocksInBdBlock(const AIE::AIETargetModel &targetModel,
 
   // no RelEn in the arch spec even though the API requires you to set it?
   bool relEn = false;
+  if (outOfOrder && !acqLockId) {
+    // Release-only out-of-order BD: point the disabled acquire lock at the
+    // release lock so XAie_LockInit gets a valid id.
+    acqLockId = relLockId;
+    acqValue = 0;
+  }
+  assert(acqLockId && acqValue && relLockId && relValue &&
+         "lock values must be resolved before init");
   XAie_Lock acqLock = XAie_LockInit(acqLockId.value(), acqValue.value());
   XAie_Lock relLock = XAie_LockInit(relLockId.value(), relValue.value());
   TRY_XAIE_API_EMIT_ERROR((*block.getOps<AIE::UseLockOp>().begin()),
@@ -403,7 +421,7 @@ static LogicalResult configureBdInBlock(const AIE::AIETargetModel &targetModel,
     uint32_t burstLen =
         getShimBurstLengthBytes(targetModel, bdOp.getBurstLength());
     uint8_t qOs = 0;
-    uint8_t cache = 0;
+    uint8_t cache = static_cast<uint8_t>(bdOp.getAxcacheOrDefault());
     uint8_t secure = 0;
     TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaSetAxi, &dmaTileBd, smid,
                             burstLen / 16, qOs, cache, secure);
@@ -572,6 +590,9 @@ static LogicalResult configureBdInBlock(const AIE::AIETargetModel &targetModel,
     TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaSetPkt, &dmaTileBd,
                             XAie_PacketInit(*packetID, *packetType));
   }
+  if (std::optional<int32_t> oooId = bdOp.getOutOfOrderId())
+    TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaSetOutofOrderBdId, &dmaTileBd,
+                            static_cast<uint8_t>(*oooId));
   TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaEnableBd, &dmaTileBd);
   auto tileLoc = XAie_TileLoc(col, row);
   TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaWriteBd, devInst, &dmaTileBd, tileLoc,
@@ -582,12 +603,11 @@ static LogicalResult configureBdInBlock(const AIE::AIETargetModel &targetModel,
 
 LogicalResult xilinx::AIE::AIERTControl::pushToBdQueueAndEnable(
     Operation &op, int col, int row, int chNum, const DMAChannelDir &channelDir,
-    int bdId, int repeatCount, uint32_t padValue) {
+    int bdId, int repeatCount, uint32_t padValue, bool outOfOrder) {
   TxnLocBracket bracket(*this, op.getLoc());
   XAie_DmaDirection direction =
       channelDir == DMAChannelDir::S2MM ? DMA_S2MM : DMA_MM2S;
   auto tileLoc = XAie_TileLoc(col, row);
-  auto enTokenIssue = tileLoc.Row == 0 && direction == DMA_S2MM;
   if (padValue != 0 && direction == DMA_MM2S &&
       targetModel.isMemTile(col, row)) {
     TRY_XAIE_API_EMIT_ERROR(op, XAie_DmaSetPadValue, &aiert->devInst, tileLoc,
@@ -596,16 +616,37 @@ LogicalResult xilinx::AIE::AIERTControl::pushToBdQueueAndEnable(
   // in english repeat_count==0 means "do it once" and don't repeat but
   // libxaie treats repeat_count=1 as do it once.
   repeatCount += 1;
-  TRY_XAIE_API_EMIT_ERROR(op, XAie_DmaChannelSetStartQueue, &aiert->devInst,
-                          tileLoc, chNum, direction, bdId, repeatCount,
-                          enTokenIssue);
+  if (outOfOrder) {
+    XAie_DmaChannelDesc dmaChannelDesc;
+    TRY_XAIE_API_EMIT_ERROR(op, XAie_DmaChannelDescInit, &aiert->devInst,
+                            &dmaChannelDesc, tileLoc);
+    TRY_XAIE_API_EMIT_ERROR(op, XAie_DmaChannelEnOutofOrder, &dmaChannelDesc,
+                            static_cast<uint8_t>(XAIE_ENABLE));
+    TRY_XAIE_API_EMIT_ERROR(op, XAie_DmaWriteChannel, &aiert->devInst,
+                            &dmaChannelDesc, tileLoc,
+                            static_cast<uint8_t>(chNum), direction);
+    // StartBd=0 (ignored) and skip the BD/channel validity check.
+    // Disable TCT because the bd lookup id aliases the token bits.
+    XAie_DmaDeclareQueueConfig(startQueueCfg, /*StartBd=*/0, repeatCount,
+                               /*EnToken=*/static_cast<uint8_t>(XAIE_DISABLE),
+                               static_cast<uint8_t>(XAIE_ENABLE));
+    TRY_XAIE_API_EMIT_ERROR(op, XAie_DmaChannelSetStartQueueGeneric,
+                            &aiert->devInst, tileLoc, chNum, direction,
+                            &startQueueCfg);
+  } else {
+    bool enTokenIssue = tileLoc.Row == 0 && direction == DMA_S2MM;
+    TRY_XAIE_API_EMIT_ERROR(op, XAie_DmaChannelSetStartQueue, &aiert->devInst,
+                            tileLoc, chNum, direction, bdId, repeatCount,
+                            enTokenIssue);
+  }
   TRY_XAIE_API_EMIT_ERROR(op, XAie_DmaChannelEnable, &aiert->devInst, tileLoc,
                           chNum, direction);
   return success();
 };
 
 LogicalResult xilinx::AIE::AIERTControl::configureLocksAndBd(Block &block,
-                                                             int col, int row) {
+                                                             int col, int row,
+                                                             bool outOfOrder) {
   DMABDOp bd = *block.getOps<DMABDOp>().begin();
   auto bdId = bd.getBdId();
   assert(bdId.has_value() &&
@@ -617,13 +658,18 @@ LogicalResult xilinx::AIE::AIERTControl::configureLocksAndBd(Block &block,
   TRY_XAIE_API_EMIT_ERROR(bd, XAie_DmaDescInit, &aiert->devInst, &dmaTileBd,
                           tileLoc);
   if (!block.getOps<UseLockOp>().empty() &&
-      failed(configureLocksInBdBlock(targetModel, dmaTileBd, block, col, row)))
+      failed(configureLocksInBdBlock(targetModel, dmaTileBd, block, col, row,
+                                     outOfOrder)))
     return failure();
+  // Out-of-order ignores Use_Next_BD; the IR chain exists only so every
+  // receive BD gets configured.
+  std::optional<int> nextBdId =
+      outOfOrder ? std::optional<int>() : bd.getNextBdId();
   if (!block.getOps<DMABDOp>().empty() &&
       failed(configureBdInBlock(
           targetModel, &aiert->devInst, dmaTileBd, block, col, row,
           *bdId, // NOLINT(bugprone-unchecked-optional-access)
-          bd.getNextBdId())))
+          nextBdId)))
     return failure();
   return success();
 }
@@ -867,6 +913,9 @@ xilinx::AIE::AIERTControl::addInitConfig(DeviceOp &targetOp,
     llvm::SetVector<Block *> blockVector =
         getOrderedChainOfBlocks(&memOp.getOperation()->getRegion(0));
 
+    llvm::SmallPtrSet<Block *, 8> oooBlocks =
+        collectOutOfOrderBlocks(blockVector);
+
     // handle DMA ops separately
     auto dmaOps = llvm::to_vector_of<DMAOp>(
         memOp.getOperation()->getRegion(0).getOps<DMAOp>());
@@ -874,14 +923,16 @@ xilinx::AIE::AIERTControl::addInitConfig(DeviceOp &targetOp,
       for (auto dmaOp : dmaOps)
         for (auto &bdRegion : dmaOp.getBds()) {
           Block &block = bdRegion.getBlocks().front();
-          if (failed(configureLocksAndBd(block, col, row)))
+          if (failed(
+                  configureLocksAndBd(block, col, row, dmaOp.getOutOfOrder())))
             return failure();
         }
     } else {
       for (Block *block : blockVector) {
         if (block->getOps<DMABDOp>().empty())
           continue;
-        if (failed(configureLocksAndBd(*block, col, row)))
+        if (failed(configureLocksAndBd(*block, col, row,
+                                       oooBlocks.contains(block))))
           return failure();
       }
     }
@@ -896,7 +947,7 @@ xilinx::AIE::AIERTControl::addInitConfig(DeviceOp &targetOp,
         if (failed(pushToBdQueueAndEnable(
                 *dmaOp.getOperation(), col, row, dmaOp.getChannelIndex(),
                 dmaOp.getChannelDir(), bdId.value(), dmaOp.getRepeatCount(),
-                dmaOp.getPadValue())))
+                dmaOp.getPadValue(), dmaOp.getOutOfOrder())))
           return failure();
       }
     else
@@ -910,7 +961,7 @@ xilinx::AIE::AIERTControl::addInitConfig(DeviceOp &targetOp,
                  "bd_id assigned by configureLocksAndBd above");
           if (failed(pushToBdQueueAndEnable(
                   *bd.getOperation(), col, row, chNum, channelDir, bdId.value(),
-                  op.getRepeatCount(), op.getPadValue())))
+                  op.getRepeatCount(), op.getPadValue(), op.getOutOfOrder())))
             return failure();
         }
       }

@@ -4,7 +4,14 @@
 version: 2
 updates:
   - package-ecosystem: "github-actions"
-    directory: "/"
+    # `/` covers .github/workflows. Composite actions are NOT covered by it --
+    # each one's own directory has to be listed, which is why the refs in
+    # .github/actions drifted unpinned and unbumped while every workflow file
+    # was kept current. Add a line here when a new composite action lands.
+    directories:
+      - "/"
+      - "/.github/actions/setup_base"
+      - "/.github/actions/setup_ccache"
     schedule:
       interval: "cron"
       cronjob: "0 6 8,22 * *"
@@ -60,7 +67,9 @@ updates:
   # .gitmodules and third_party/patches/aie-rt/README.md). Scoped to aie-rt
   # only: third_party/bootgen isn't covered by this effort and a vendored
   # patch has needed hand-adjustment on past bumps, so treat these as
-  # PRs to review and build, not to auto-merge.
+  # PRs to review and build, not to auto-merge. platforms/boards (XilinxBoardStore)
+  # is also excluded: it's pulled in for board support files only and isn't
+  # tracked for updates.
   - package-ecosystem: "gitsubmodule"
     directory: "/"
     schedule:
@@ -70,6 +79,7 @@ updates:
       default-days: 7
     ignore:
       - dependency-name: "third_party/bootgen"
+      - dependency-name: "platforms/boards"
 
   - package-ecosystem: "pre-commit"
     directory: "/"

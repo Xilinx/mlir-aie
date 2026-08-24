@@ -92,6 +92,8 @@ public:
     UsesMultiDimensionalBDs = 1U << 3,
     // Device supports BD per-execution base address advance.
     UsesBDIteration = 1U << 4,
+    // Device supports out-of-order S2MM DMA.
+    SupportsOutOfOrderDMA = 1U << 5,
   };
 
 private:
@@ -322,6 +324,10 @@ public:
   /// descriptor for the given tile type.
   virtual uint32_t getDmaBdStepBits(AIETileType tileType) const = 0;
 
+  /// Return the bit width of the iteration (repeat) wrap/stride fields in a
+  /// DMA buffer descriptor for the given tile type.
+  virtual uint32_t getDmaBdIterBits(AIETileType tileType) const = 0;
+
   /// Get stream switch port index for a given port specification
   /// Return port index for Stream_Switch_Event_Port_Selection register, or
   /// nullopt if invalid
@@ -351,6 +357,10 @@ public:
 
   uint32_t getDmaBdStepBits(int col, int row) const {
     return getDmaBdStepBits(getTileType(col, row));
+  }
+
+  uint32_t getDmaBdIterBits(int col, int row) const {
+    return getDmaBdIterBits(getTileType(col, row));
   }
 
   /// Return the number of buffer descriptors accessible on channel `channel`
@@ -417,6 +427,10 @@ public:
   virtual uint32_t getNumSlaveSlots() const = 0;
   /// Return the largest packet id the stream switch can route.
   virtual uint32_t getMaxPacketId() const = 0;
+  /// Return the largest out-of-order BD id (unsupported = 0).
+  virtual uint32_t getMaxOutOfOrderId() const = 0;
+  /// Return the largest DMA task repeat count (unsupported = 0).
+  virtual uint32_t getMaxRepeatCount() const = 0;
 
   // Return true if the stream switch connection is legal, false otherwise.
   virtual bool isLegalTileConnection(int col, int row, WireBundle srcBundle,
@@ -447,6 +461,13 @@ public:
   // their corresponding lengths in bytes (second).
   virtual std::vector<std::pair<uint32_t, uint32_t>>
   getShimBurstEncodingsAndLengths() const = 0;
+
+  // Returns the default 4-bit AxCACHE value used for shim NOC DMA AXI-MM
+  // transfers when a `dma_bd`/`npu.writebd`'s `axcache` attribute is unset.
+  // Tuned to 2 to enable upsizing in the NoC. No target currently needs
+  // a different value, so this is a single non-pure-virtual default rather
+  // than a per-architecture override.
+  virtual uint32_t getDefaultAxCache() const { return 2; }
 
   // Returns true if the target model supports the given block format.
   virtual bool isSupportedBlockFormat(std::string const &format) const;
@@ -496,6 +517,8 @@ public:
 
   uint32_t getNumSlaveSlots() const override { return 4; }
   uint32_t getMaxPacketId() const override { return 31; }
+  uint32_t getMaxOutOfOrderId() const override { return 0; }
+  uint32_t getMaxRepeatCount() const override { return 0; }
 
   std::optional<TileID> getMemWest(TileID src) const override;
   std::optional<TileID> getMemEast(TileID src) const override;
@@ -558,6 +581,10 @@ public:
     // AIE1 core tiles have 13-bit step fields; shim tiles have 20-bit.
     return tileType == AIETileType::CoreTile ? 13 : 20;
   }
+  uint32_t getDmaBdIterBits(AIETileType tileType) const override {
+    // AIE1 core and shim tiles both have a 6-bit Iteration_Wrap field.
+    return 6;
+  }
   bool isBdChannelAccessible(int col, int row, uint32_t bd_id,
                              int channel) const override {
     return true;
@@ -618,6 +645,7 @@ public:
     addModelProperty(AIETargetModel::UsesSemaphoreLocks);
     addModelProperty(AIETargetModel::UsesMultiDimensionalBDs);
     addModelProperty(AIETargetModel::UsesBDIteration);
+    addModelProperty(AIETargetModel::SupportsOutOfOrderDMA);
   }
 
   AIEArch getTargetArch() const override;
@@ -626,6 +654,8 @@ public:
 
   uint32_t getNumSlaveSlots() const override { return 4; }
   uint32_t getMaxPacketId() const override { return 31; }
+  uint32_t getMaxOutOfOrderId() const override { return 63; }
+  uint32_t getMaxRepeatCount() const override { return 255; }
 
   std::optional<TileID> getMemWest(TileID src) const override;
   std::optional<TileID> getMemEast(TileID src) const override;
@@ -698,6 +728,10 @@ public:
     default:
       return 13;
     }
+  }
+  uint32_t getDmaBdIterBits(AIETileType tileType) const override {
+    // Core, mem, and shim tiles all have a 6-bit Iteration_Wrap field.
+    return 6;
   }
 
   bool isBdChannelAccessible(int col, int row, uint32_t bd_id,
