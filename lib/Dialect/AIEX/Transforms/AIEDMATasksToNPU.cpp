@@ -448,6 +448,9 @@ struct AIEDMATasksToNPUPass
       f.packet_id = info.getPktId();
     }
 
+    if (std::optional<int32_t> oooId = bd_op.getOutOfOrderId())
+      f.out_of_order_id = *oooId;
+
     auto lock_ops = getOptionalLockOpsForBlock(block);
     if (lock_ops) {
       auto [acquire_op, release_op] = *lock_ops;
@@ -587,7 +590,8 @@ struct AIEDMATasksToNPUPass
     SmallVector<Value> bdWords;
     Value bdRepeatCount;
     if (failed(buildShimBdWords(builder, loc, target_model, f, sizes4, strides4,
-                                elemWidth, bd_op.getBurstLength(), bufLen,
+                                elemWidth, bd_op.getBurstLength(),
+                                bd_op.getAxcacheOrDefault(), bufLen,
                                 bdRepeatCount, bdWords)))
       return failure();
 
@@ -691,7 +695,6 @@ struct AIEDMATasksToNPUPass
     std::fill(padBefore.begin(), padBefore.end(), 0);
     std::fill(padAfter.begin(), padAfter.end(), 0);
 
-    auto out_of_order_id = 0;
     auto d0size = 0;
     auto d0stride = 0;
     auto d1size = 0;
@@ -838,7 +841,7 @@ struct AIEDMATasksToNPUPass
         builder, bd_op.getLoc(), tile.getCol(), bd_id, len_addr_granularity,
         offset,
         /*enable_packet=*/f.enable_packet,
-        /*out_of_order_id=*/out_of_order_id,
+        /*out_of_order_id=*/f.out_of_order_id,
         /*packet_id=*/f.packet_id,
         /*packet_type=*/f.packet_type,
         /*d0_size=*/d0size, /*d0_stride=*/d0stride,
@@ -857,7 +860,11 @@ struct AIEDMATasksToNPUPass
         /*d1_zero_before=*/padBefore[1], /*d2_zero_before=*/padBefore[2],
         /*d0_zero_after=*/padAfter[0], /*d1_zero_after=*/padAfter[1],
         /*d2_zero_after=*/padAfter[2],
-        /*burst_length=*/bd_op.getBurstLength());
+        /*burst_length=*/bd_op.getBurstLength(),
+        /*axcache=*/
+        target_model.isShimNOCTile(tile.getCol(), tile.getRow())
+            ? builder.getI32IntegerAttr(bd_op.getAxcacheOrDefault())
+            : IntegerAttr());
     return setAddressForSingleBD(builder, bd_op, tile);
   }
 

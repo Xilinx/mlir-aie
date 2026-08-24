@@ -7,6 +7,13 @@ name: Lint and Format
 permissions:
   contents: read
 
+concurrency:
+  # A PR number if a pull request and otherwise the commit hash. This cancels
+  # queued and in-progress runs for the same PR (presubmit) or commit
+  # (postsubmit).
+  group: ci-lint-and-format-${{ github.event.number || github.sha }}-${{ github.event_name }}
+  cancel-in-progress: true
+
 on:
   pull_request:
     types: [assigned, opened, synchronize, reopened]
@@ -402,174 +409,6 @@ jobs:
           tool_name: black
           level: error
           fail_level: any
-
-  code-coverage:
-
-    name: C/C++ test code coverage
-
-    runs-on: ubuntu-latest
-
-    permissions:
-      contents: read
-      checks: write
-      issues: write
-      pull-requests: write
-
-    steps:
-
-      - name: Free disk space
-        uses: descriptinc/free-disk-space@1b4b157593c6801212a2ed488c205e0a810b4592  # main
-        with:
-          tool-cache: true
-          android: true
-          dotnet: true
-          haskell: true
-          large-packages: true
-          swap-storage: false
-
-      - name: Get the project repository
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
-        with:
-          fetch-depth: 2
-          submodules: "true"
-
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
-        with:
-          python-version: '3.12'
-
-      - name: Install Python and other packages
-        run: |
-          pip install --upgrade pip
-          python utils/mlir_aie_wheels/vendor_eudsl.py \
-              --requirements python/requirements.txt \
-              --install-non-eudsl
-          python -m pip install --require-hashes -r python/requirements_dev.lock
-
-      - name: Install packages
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ninja-build clang lld llvm libelf-dev
-
-      - name: Get changed files
-        id: changed-files
-        run: |
-          git fetch origin main
-          # Because for the life of me I cannot figure out how to read the output of git diff into a bash array.
-          CHANGED_FILES=$(python utils/get_git_changed_files.py)
-          echo "changed-files=${CHANGED_FILES}" | tee $GITHUB_OUTPUT
-
-      - name: Get MLIR
-        id: mlir-wheels
-        run: |
-
-          VERSION=$(utils/clone-llvm.sh --get-wheel-version)
-          pip -q download mlir==$VERSION \
-            -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro
-          unzip -q mlir-*.whl
-
-      - name: Ccache for C++ compilation
-        if: steps.changed-files.outputs.changed-files != ''
-        uses: hendrikmuhs/ccache-action@d62db5f07c26379fc4b4e0916f098a92573c3b03  # v1.2.23
-        with:
-          key: ${{ runner.os }}-${{ matrix.ubuntu_version }}-${{ steps.get-llvm-commit-hash.outputs.hash }}-code-cov
-          max-size: 1G
-
-      # Compare the compiler by content, not mtime, so the cache hits across
-      # runs on ephemeral runners. Matches .github/actions/setup_ccache.
-      - name: Configure ccache
-        if: steps.changed-files.outputs.changed-files != ''
-        shell: bash
-        run: |
-          ccache --set-config=compiler_check=content
-          ccache --set-config=sloppiness=locale,time_macros
-
-      - name: Install our python reqs
-        if: steps.changed-files.outputs.changed-files != ''
-        run: |
-          pip install --upgrade pip
-          python utils/mlir_aie_wheels/vendor_eudsl.py \
-              --requirements python/requirements.txt \
-              --install-non-eudsl
-          python -m pip install --require-hashes -r python/requirements_dev.lock
-
-      - name: Build and generate coverage (Release)
-        if: steps.changed-files.outputs.changed-files != ''
-        run: |
-
-          mkdir -p build_release/install
-          cd build_release
-
-          cmake .. \
-            -GNinja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_PLATFORM_NO_VERSIONED_SONAME=ON \
-            -DCMAKE_VISIBILITY_INLINES_HIDDEN=ON \
-            -DCMAKE_C_VISIBILITY_PRESET=hidden \
-            -DCMAKE_CXX_VISIBILITY_PRESET=hidden \
-            -DCMAKE_INSTALL_PREFIX=$PWD/install \
-            -DAIE_COMPILER=NONE \
-            -DAIE_LINKER=NONE \
-            -DHOST_COMPILER=NONE \
-            -DLLVM_ENABLE_ASSERTIONS=OFF \
-            -DLLVM_ENABLE_RTTI=ON \
-            -DCMAKE_MODULE_PATH=$PWD/../cmake/modulesXilinx \
-            -DMLIR_DIR=$PWD/../mlir/lib/cmake/mlir \
-            -DLLVM_DIR=$PWD/../mlir/lib/cmake/llvm \
-            -DLLVM_USE_LINKER=lld \
-            -DLLVM_EXTERNAL_LIT=$(which lit) \
-            \
-            -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
-            -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
-            -DCMAKE_EXE_LINKER_FLAGS_INIT="-fuse-ld=lld" -DCMAKE_MODULE_LINKER_FLAGS_INIT="-fuse-ld=lld" -DCMAKE_SHARED_LINKER_FLAGS_INIT="-fuse-ld=lld" \
-            -DBUILD_INSTRUMENTED_COVERAGE=ON \
-            -DINSTRUMENTED_COVERAGE_FILES="${{ steps.changed-files.outputs.changed-files }}"
-
-          # filter out slow tests (e.g. create-flows/vecmul_4x4_slow_test.mlir) due to timeout.
-          export LIT_OPTS="-sv --timeout 600 --filter-out slow_test"
-          ninja && ninja generate-aie-coverage-report
-
-          cat "$GITHUB_WORKSPACE/build_release/report/summary.txt"
-
-      - name: Build coverage comment
-        if: steps.changed-files.outputs.changed-files != ''
-        id: format-report
-        working-directory: ${{ github.workspace }}
-        run: |
-          REPORT=build_release/report
-          COMMENT=$REPORT/comment.md
-
-          # Diff coverage: which of the lines this PR added/changed are exercised
-          # by the test suite. Run from the repo root so diff-cover can resolve the
-          # lcov's absolute source paths against `git diff origin/main`.
-          diff-cover $REPORT/coverage.lcov \
-            --compare-branch origin/main \
-            --format markdown:$REPORT/diffcov.md || true
-
-          # Hidden marker lets find-create-or-update-comment replace its own comment.
-          {
-            echo '<!-- aie-coverage-report -->'
-            echo '## Code coverage'
-            echo
-            cat $REPORT/diffcov.md
-            echo
-            echo '<details><summary>Coverage of the changed files by the full test suite'
-            echo '(whole-file, not diff-only)</summary>'
-            echo
-            python utils/format-coverage-comment.py $REPORT/coverage.lcov \
-              --restrict "${{ steps.changed-files.outputs.changed-files }}"
-            echo
-            echo '</details>'
-          } > $COMMENT
-
-      - name: Update PR with coverage results
-        if: steps.changed-files.outputs.changed-files != '' && github.event.pull_request.head.repo.full_name == github.repository
-        uses: edumserrano/find-create-or-update-comment@82880b65c8a3a6e4c70aa05a204995b6c9696f53  # v3
-        with:
-          issue-number: ${{ github.event.pull_request.number }}
-          body-includes: '<!-- aie-coverage-report -->'
-          comment-author: 'github-actions[bot]'
-          body-path: ${{ github.workspace }}/build_release/report/comment.md
-          edit-mode: replace
 
   license-compliance:
     name: License Compliance Check

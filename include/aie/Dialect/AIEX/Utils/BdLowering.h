@@ -251,6 +251,7 @@ mlir::Value getBdRegisterBase(mlir::OpBuilder &builder, mlir::Location loc,
 struct BdTemplateFields {
   uint32_t use_next_bd = 0, next_bd_id = 0;
   int32_t enable_packet = 0, packet_id = 0, packet_type = 0;
+  int32_t out_of_order_id = 0;
   int32_t lock_rel_val = 0, lock_rel_id = 0;
   int32_t lock_acq_enable = 0, lock_acq_val = 0, lock_acq_id = 0;
 };
@@ -278,7 +279,7 @@ buildShimBdWords(mlir::OpBuilder &builder, mlir::Location loc,
                  const BdTemplateFields &fields,
                  llvm::ArrayRef<mlir::OpFoldResult> mixedSizes,
                  llvm::ArrayRef<mlir::OpFoldResult> mixedStrides,
-                 uint64_t elemWidth, uint32_t burstLength,
+                 uint64_t elemWidth, uint32_t burstLength, uint32_t axcache,
                  mlir::Value bufLenOverride, mlir::Value &repeatCountOut,
                  llvm::SmallVectorImpl<mlir::Value> &wordsOut);
 

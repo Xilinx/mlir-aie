@@ -284,6 +284,10 @@ LogicalResult AIEX::BroadcastPacketOp::verify() {
 
 /* Calculates the offset value to be written to the
  */
+uint32_t AIEX::NpuDmaMemcpyNdOp::getAxcacheOrDefault() {
+  return getAxcache().value_or(AIE::getTargetModel(*this).getDefaultAxCache());
+}
+
 int64_t AIEX::NpuDmaMemcpyNdOp::getOffsetInBytes() {
   llvm::SmallVector<int64_t, 4> offsets =
       llvm::map_to_vector(llvm::reverse(getMixedOffsets()), [](OpFoldResult s) {
@@ -449,7 +453,7 @@ struct LinearizeContiguousTransfer
         op.getIssueTokenAttr(), op.getD0ZeroBeforeAttr(),
         op.getD1ZeroBeforeAttr(), op.getD2ZeroBeforeAttr(),
         op.getD0ZeroAfterAttr(), op.getD1ZeroAfterAttr(),
-        op.getD2ZeroAfterAttr(), op.getBurstLengthAttr(),
+        op.getD2ZeroAfterAttr(), op.getBurstLengthAttr(), op.getAxcacheAttr(),
         op.getOffsetParameterAttr(), op.getOffsetStateTableIdxAttr());
     return mlir::success();
   }
@@ -756,6 +760,13 @@ LogicalResult AIEX::NpuWriteBdOp::verify() {
     return emitOpError("Packet ID exceeds the maximum supported by 5 bits.");
   if (getPacketType() > 7)
     return emitOpError("Packet Type exceeds the maximum supported by 3 bits.");
+  int64_t oooId = getOutOfOrderId();
+  if (oooId < 0 ||
+      static_cast<uint64_t>(oooId) > targetModel.getMaxOutOfOrderId())
+    return emitOpError("out_of_order_id must be in [0, ")
+           << targetModel.getMaxOutOfOrderId() << "].";
+  if (oooId != 0 && getEnablePacket() == 0)
+    return emitOpError("out_of_order_id requires a packet-enabled BD");
 
   // Every value on this op is already the hardware-encoded field value (wrap
   // fields unbiased, stepsize/iteration fields biased actual-1), so the
@@ -825,8 +836,14 @@ LogicalResult AIEX::NpuWriteBdOp::verify() {
   if (errorMessage.has_value()) {
     return emitOpError(errorMessage.value());
   }
+  if (!targetModel.isShimNOCTile(getColumn(), getRow()) && getAxcache())
+    return emitOpError("Only ShimTiles support AxCACHE configuration.");
 
   return success();
+}
+
+uint32_t AIEX::NpuWriteBdOp::getAxcacheOrDefault() {
+  return getAxcache().value_or(AIE::getTargetModel(*this).getDefaultAxCache());
 }
 
 std::optional<uint32_t> AIEX::getConstantIntOperand(mlir::Value v) {
@@ -1222,6 +1239,8 @@ LogicalResult AIEX::DMAConfigureTaskOp::verify() {
     // dialect. The normal DMABDOp verify operation will skip over any BD inside
     // a DMAConfigureTaskOp
     LogicalResult result = success();
+    // A task-level packet supplies the header for every BD in the task.
+    bool taskHasPacket = getPacket().has_value();
     block.walk([&](AIE::DMABDOp bd) {
       if (bd.getBurstLength() != 0 &&
           !targetModel.isShimNOCTile(getTileID().col, getTileID().row)) {
@@ -1229,6 +1248,9 @@ LogicalResult AIEX::DMAConfigureTaskOp::verify() {
                        "are connected to the memory-mapped NOC.");
         result = failure();
       }
+      // DMABDOp::verify skips task BDs, so validate out_of_order_id here too.
+      if (failed(AIE::verifyDMABDOutOfOrderId(bd, taskHasPacket)))
+        result = failure();
     });
     if (failed(result)) {
       return result;

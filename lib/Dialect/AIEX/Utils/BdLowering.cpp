@@ -177,30 +177,30 @@ Value getBdRegisterBase(OpBuilder &builder, Location loc,
                             createConstantI32(builder, loc, bdStride)));
 }
 
-LogicalResult buildShimBdWords(OpBuilder &builder, Location loc,
-                               const AIE::AIETargetModel &targetModel,
-                               const BdTemplateFields &f,
-                               ArrayRef<OpFoldResult> mixedSizes,
-                               ArrayRef<OpFoldResult> mixedStrides,
-                               uint64_t elemWidth, uint32_t burstLength,
-                               Value bufLenOverride, Value &repeatCountOut,
-                               SmallVectorImpl<Value> &wordsOut) {
+LogicalResult
+buildShimBdWords(OpBuilder &builder, Location loc,
+                 const AIE::AIETargetModel &targetModel,
+                 const BdTemplateFields &f, ArrayRef<OpFoldResult> mixedSizes,
+                 ArrayRef<OpFoldResult> mixedStrides, uint64_t elemWidth,
+                 uint32_t burstLength, uint32_t axcache, Value bufLenOverride,
+                 Value &repeatCountOut, SmallVectorImpl<Value> &wordsOut) {
   auto i32ty = builder.getIntegerType(32);
 
   // Shim-NOC BDs are 8 registers wide; slots not set below stay zero.
   wordsOut.assign(8, createConstantI32(builder, loc, 0));
   // word[1] buffer_offset stays 0 (the address patch supplies the pointer).
-  // word[2] enable_packet [30], packet_id [23:19], packet_type [18:16].
-  wordsOut[2] = createConstantI32(builder, loc,
-                                  ((f.enable_packet & 0x1) << 30) |
-                                      ((f.packet_id & 0x1f) << 19) |
-                                      ((f.packet_type & 0x7) << 16));
+  // word[2] enable_packet [30], out_of_order_id [29:24], packet_id [23:19],
+  // packet_type [18:16].
+  wordsOut[2] = createConstantI32(
+      builder, loc,
+      ((f.enable_packet & 0x1) << 30) | ((f.out_of_order_id & 0x3f) << 24) |
+          ((f.packet_id & 0x1f) << 19) | ((f.packet_type & 0x7) << 16));
   // word[4] burst_length [31:30]; d1 fields overlaid below in ND mode.
   wordsOut[4] = createConstantI32(
       builder, loc,
       (AIE::getShimBurstLengthEncoding(targetModel, burstLength) & 0x3) << 30);
-  // word[5] AXCache [27:24] = 2; d2_stride overlaid below in ND mode.
-  wordsOut[5] = createConstantI32(builder, loc, (2u & 0xf) << 24);
+  // word[5] AXCache [27:24]; d2_stride overlaid below in ND mode.
+  wordsOut[5] = createConstantI32(builder, loc, (axcache & 0xf) << 24);
   // word[7] next_bd [30:27], use_next_bd [26], valid_bd [25], lock fields.
   wordsOut[7] = createConstantI32(
       builder, loc,
