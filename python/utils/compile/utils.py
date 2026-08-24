@@ -554,6 +554,55 @@ def _rename_symbol_in_object(object_path: str, old_name: str, new_name: str) -> 
         raise RuntimeError(f"Symbol rename failed: {result.stderr.decode()}")
 
 
+def prefix_symbols_in_object(object_path: str, prefix: str) -> None:
+    """Prefix every defined, external symbol in a compiled object file.
+
+    Used when linking multiple independently-compiled objects into one module
+    (e.g. IRON's operator fusion), to avoid symbol collisions between them:
+    every symbol an object defines is renamed to ``{prefix}{symbol}`` before
+    it is linked alongside sibling objects.
+
+    Internally this lists symbols with llvm-nm and bulk-renames them with a
+    single llvm-objcopy --redefine-syms= pass, done directly in Python
+    (rather than shelling out to sh/awk) so it behaves identically on POSIX
+    and Windows. nm's exit status is checked explicitly before objcopy ever
+    runs: silently ignoring an nm failure would produce an empty rename map,
+    turning this into a silent no-op that only surfaces later as a
+    confusing "undefined symbol: <prefix><sym>" at final link time.
+    """
+    nm = config.nm_path()
+    nm_result = subprocess.run(
+        [nm, "--defined-only", "--extern-only", str(object_path)],
+        capture_output=True,
+        check=False,
+    )
+    if nm_result.returncode != 0:
+        raise RuntimeError(f"Symbol listing failed: {nm_result.stderr.decode()}")
+
+    symbols = [
+        line.split()[-1]
+        for line in nm_result.stdout.decode().splitlines()
+        if len(line.split()) >= 3
+    ]
+
+    objcopy = config.objcopy_path()
+    map_file = f"{object_path}.symbol_map"
+    with open(map_file, "w") as f:
+        for symbol in symbols:
+            f.write(f"{symbol} {prefix}{symbol}\n")
+
+    try:
+        result = subprocess.run(
+            [objcopy, f"--redefine-syms={map_file}", str(object_path)],
+            capture_output=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(f"Symbol prefixing failed: {result.stderr.decode()}")
+    finally:
+        os.remove(map_file)
+
+
 def compile_external_kernel(func, kernel_dir, target_arch):
     """Compile an ExternalFunction to an object file in the kernel directory.
 
