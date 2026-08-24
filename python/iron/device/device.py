@@ -48,6 +48,12 @@ class Device(Resolvable):
         """AIE architecture of the device (AIE1, AIE2, or AIE2p)."""
         return AIEArch(self._tm.get_target_arch())
 
+    @property
+    def target_model(self):
+        """The underlying `AIETargetModel`, for queries `Device` does not wrap
+        itself (e.g. program-memory size/granule, used by `iron.overlay`)."""
+        return self._tm
+
     def _validate_coordinates(self, col, row):
         """Raise ValueError if coordinates are outside the device grid."""
         if col < 0 or col >= self._tm.columns() or row < 0 or row >= self._tm.rows():

@@ -1,0 +1,22 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// hw/pingpong.lit's exact scenario (two slots alternating, the bootstrap
+// park, on hardware), built with the `aie.iron.overlay` API instead of
+// pmlib's hand-driven pipeline. `ProgramMemorySlot.pingpong()` replaces the
+// hand-built Geometry/slot.ld/stub.cc wiring and the four separate
+// `pm.py link` calls (two overlays, the stub); `ProgramMemoryOverlayDesign`
+// replaces the two `pm.py emit` calls, `pm.py order`, and `pm.py check`.
+//
+// REQUIRES: ryzen_ai_npu2, peano
+//
+// RUN: rm -rf %t && mkdir -p %t
+// RUN: %python %S/../iron_api_pingpong.py --out %t
+//
+// RUN: %host_clang %S/../host.cpp -o %t/host.exe -std=c++17 -Wall %xrt_flags %host_link_flags %test_utils_flags
+// RUN: %t/host.exe -x %t/aie.xclbin -k MLIR_AIE -i %t/insts.bin --tags 21,42,21,42,21,42,21,42 | FileCheck %s
+// CHECK: phase 0: overlay 21 ok
+// CHECK: phase 1: overlay 42 ok
+// CHECK: phase 6: overlay 21 ok
+// CHECK: phase 7: overlay 42 ok
+// CHECK: PASS!

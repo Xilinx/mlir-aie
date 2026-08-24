@@ -187,6 +187,7 @@ class PacketFlow(Resolvable):
         dst_channel: int = 0,
         extra_dsts: Sequence[PacketDest] = (),
         keep_pkt_header: bool = False,
+        priority_route: bool = False,
         shim_symbol: str | None = None,
     ):
         """Construct a PacketFlow.
@@ -207,6 +208,10 @@ class PacketFlow(Resolvable):
             keep_pkt_header: If `True`, downstream tile receives the 4-byte
                 packet header alongside the payload (useful when the receiver
                 needs to re-emit with the same pkt_id). Defaults to `False`.
+            priority_route: If `True`, this flow is always allocated the same
+                master/slave ports and arbiters/msels across place-and-route
+                runs, rather than being free to share switchbox resources
+                with other flows. Defaults to `False`.
             shim_symbol: Same meaning as on [`Flow`][iron.Flow] — auto-emit a
                 matching `aie.shim_dma_allocation` when one endpoint is a
                 shim tile.
@@ -220,6 +225,7 @@ class PacketFlow(Resolvable):
         self._dst_channel = dst_channel
         self._extra_dsts: list[PacketDest] = list(extra_dsts)
         self._keep_pkt_header = keep_pkt_header
+        self._priority_route = priority_route
         self._shim_symbol = shim_symbol
         self._op = None
 
@@ -257,6 +263,7 @@ class PacketFlow(Resolvable):
             source_channel=self._src_channel,
             dests=dests,
             keep_pkt_header=self._keep_pkt_header,
+            priority_route=self._priority_route,
         )
         if self._shim_symbol is not None:
             _emit_shim_dma_alloc(
