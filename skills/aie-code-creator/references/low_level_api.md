@@ -8,10 +8,10 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 Use this only when you need explicit tile coordinates, custom routing, or features not
 exposed in the high-level API. In practice this is rarely needed: `Worker` plus
 `ObjectFifo` covers the large majority of designs, including custom DMA access patterns
-(see `python_api.md`), and all current examples are written against the high-level API.
-Reach for the lower-level primitives below only for a genuine gap — a `@mem(tile)` body
-to script DMA channels by hand, or porting an existing MLIR-AIE example 1:1 — not as a
-default starting point.
+(see `python_api.md`), and all current examples in this repo are written against the
+high-level API. Reach for the lower-level primitives below only for a genuine gap — a
+`@mem(tile)` body to script DMA channels by hand, or porting an existing external
+MLIR-AIE example 1:1 — not as a default starting point.
 
 ## Skeleton
 
@@ -74,8 +74,15 @@ with mlir_mod_ctx() as ctx:
 
 ## When dropping to the lower-level API is justified
 
-- You want to write a `@mem(tile)` body to script the DMA channels explicitly.
-- You're porting an existing MLIR-AIE example and want to keep its structure 1:1.
+This is genuinely rare — all current examples in this repo are written against the
+high-level API, and custom DMA access patterns are already possible there (see
+`python_api.md`) without a hand-scripted `@mem(tile)` body. Reach for the primitives below
+only when:
+
+- You're porting an *external*, pre-existing MLIR-AIE example (not from this repo) and
+  want to keep its structure 1:1 rather than rewrite it against `Worker`/`ObjectFifo`.
+- You've hit a genuine gap in the high-level API's DMA/flow support — in which case, also
+  consider raising it upstream rather than only working around it here.
 - You need a custom inter-tile flow (`flow(src, src_bundle, src_ch, dst, ...)`) that isn't
   covered by `iron.Flow`/`iron.PacketFlow` below (which already work from the high-level
   API — check there first).
