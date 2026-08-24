@@ -563,7 +563,9 @@ struct AIECoreToStandardFunc : OpConversionPattern<CoreOp> {
         hasSRS = true;
         // Check if this is an integer SRS (e.g., i32→i8) vs float SRS
         // (e.g., f32→bf16). Integer SRS needs positive_inf rounding to
-        // match C++ kernel behavior; float SRS works better with floor.
+        // match C++ kernel behavior. Float-only SRS is conv_even on AIE2
+        // and floor on AIE2P -- see the rounding-mode selection below,
+        // which carries the measurements that choice rests on.
         if (childOp->getNumResults() > 0) {
           auto resultType = childOp->getResult(0).getType();
           if (auto vecType = dyn_cast<VectorType>(resultType)) {
@@ -596,9 +598,13 @@ struct AIECoreToStandardFunc : OpConversionPattern<CoreOp> {
             Block &entryBlock = coreFunc.getBody().front();
             rewriter.setInsertionPointToStart(&entryBlock);
             Location loc = op.getLoc();
-            // Rounding register index differs between AIE2 and AIE2P:
-            //   AIE2:  crRnd=6
-            //   AIE2P: crRnd=1
+            // Register indices differ between AIE2 and AIE2P: crRnd is 6 on
+            // AIE2, 1 on AIE2P. The mode *values* do not -- 0/9/12 mean
+            // floor/positive_inf/conv_even on both, per llvm-aie's
+            // aiev2_defines.h and aie2p_defines.h. (Not on AIE1, where
+            // conv_even is 6; the AIE2/AIE2p check above is what keeps these
+            // literals valid.)
+            //
             // Saturation register uses AIE2 index (9) for both architectures.
             // On AIE2P, index 9 maps to crPackSize (no-op for saturation),
             // preserving the pre-existing behavior. The AIE2P crSat fix
@@ -614,14 +620,27 @@ struct AIECoreToStandardFunc : OpConversionPattern<CoreOp> {
             func::CallOp::create(rewriter, loc, ctrlRegFunc,
                                  ValueRange{cSatIdx, c1});
             // Rounding mode:
-            //  - conv_even (12) for bf16 matmul: eliminates systematic
-            //    negative bias from floor rounding in BFP16 arithmetic,
-            //    matching ::aie::set_rounding(aie::rounding_mode::conv_even)
-            //    used in external C++ matmul kernels.
-            //  - positive_inf (9) for integer SRS (shift-round-saturate on
-            //    integer data, e.g., i32→i8).
-            //  - floor (0) for float-only SRS (f32→bf16 truncation).
-            int roundingMode = hasBF16Matmul ? 12 : hasIntegerSRS ? 9 : 0;
+            //  - positive_inf (9) for integer SRS (i32->i8), matching the C++
+            //    kernels.
+            //  - conv_even (12) otherwise, i.e. for bf16 matmul and for
+            //    float-only SRS.
+            //
+            // The register is set once per core, so it cannot distinguish a
+            // deliberate f32->bf16 truncation (which wants floor) from an
+            // arithmetic result (which does not). Elementwise bf16 arithmetic
+            // is the common case: every add/sub/mul widens to an f32
+            // accumulator and narrows back through this SRS. Under floor that
+            // narrowing is directed, and the error is one-sided, so it
+            // accumulates across a reduction instead of cancelling -- on npu1,
+            // a 2048-element bf16 add matched the reference on 1538/2046
+            // elements with mean error -0.115 and error <= 0 everywhere, versus
+            // 2046/2046 under conv_even. Same argument as for bf16 matmul.
+            //
+            // AIE2P is included on extrapolation: the measurement is npu1-only,
+            // but the argument is arithmetic rather than architectural, and
+            // diverging would make identical source compute different numbers
+            // per generation. srs_rounding_mode_aie2p.mlir pins it.
+            int roundingMode = hasIntegerSRS && !hasBF16Matmul ? 9 : 12;
             auto cRndIdx = arith::ConstantOp::create(
                 rewriter, loc, rewriter.getI32IntegerAttr(rndRegIdx));
             auto cRoundingMode = arith::ConstantOp::create(
