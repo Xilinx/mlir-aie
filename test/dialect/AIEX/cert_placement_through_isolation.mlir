@@ -19,7 +19,7 @@
 // CHECK-NOT: aiex.cert.attach_to_group
 
 module {
-  aie.device(npu2) {
+  aie.device(xcve3858) {
     aiex.cert.section @save {
       aiex.cert.page {
         aiex.cert.job(10) {
