@@ -39,7 +39,7 @@ static inline void eltwise_add_impl(const T_in *__restrict a,
   event0();
   AIE_PREPARE_FOR_PIPELINING      // no-op under Peano; only Chess honors it
   AIE_LOOP_MIN_ITERATION_COUNT(F) // guaranteed minimum trip count of this loop
-  for (int32_t i = 0; i < F; ++i) {
+      for (int32_t i = 0; i < F; ++i) {
     aie::vector<T_in, VEC> va = aie::load_v<VEC>(a);
     a += VEC;
     aie::vector<T_in, VEC> vb = aie::load_v<VEC>(b);
