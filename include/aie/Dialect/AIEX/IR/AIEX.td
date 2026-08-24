@@ -113,6 +113,7 @@ Direct writes to addresses in the array. Address resolution follows the
 |----|--------------|------------|---------|
 | `aiex.npu.write32` | Write a 32-bit `value` to a resolved `address` in the array. | any address (shim, mem, core, array registers) | `aiex.npu.write32(%addr, %val) : i32, i32` |
 | `aiex.npu.maskwrite32` | Read-modify-write of a 32-bit word: only the bits set in `mask` take `value`, the rest are preserved. Use when a register packs several fields in one word. | any address | `aiex.npu.maskwrite32(%addr, %val, %mask) : i32, i32, i32` |
+| `aiex.npu.maskpoll` | Block until `(*address & mask) == value`. The only blocking wait that is not on a DMA, so the only way to wait on something a *core* wrote. Blocks indefinitely: poll only for something a core is guaranteed to write. | any address | `aiex.npu.maskpoll(%addr, %val, %mask) : i32, i32, i32` |
 | `aiex.npu.blockwrite` | Write a whole `memref` of words to the array starting at the resolved address, in one instruction. | any address | `aiex.npu.blockwrite(%data) {address = 119300 : ui32} : memref<8xi32>` |
 
 `address` and `value` are SSA operands: use `arith.constant` for a

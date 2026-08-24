@@ -4,16 +4,15 @@
 """The one IRON design every overlay test builds, parameterized by a Config.
 
 One design rather than several because the interesting axes -- how many slots,
-which overlay runs in which phase, how big the resident is, which defect is
-injected -- are orthogonal, and a test that reads `--recipe one_slot --phases
-0,1,2,1` says what it covers more clearly than one that carries six numbers.
+which overlay runs in which phase, how big the resident is -- are orthogonal,
+and a test that reads `--recipe one_slot --phases 0,1,2,1` says what it covers
+more clearly than one carrying six numbers.
 
-Defects are injected at *generation* time (`corrupt`, `skip_write`,
-`wrong_address`) rather than patched into the built artifact afterwards. That is
-deliberate: locating a payload in a finished instruction stream needs a
-multi-word signature, breaks whenever codegen shifts, and can land on padding
-that never reaches the output, turning a negative control into a coin flip. Here
-the word being corrupted is known exactly.
+This models a design and nothing else. There are no defect-injection modes: a
+corrupted payload is an ordinary payload built from a corrupted ELF (`pm.py
+corrupt`), so the defect belongs to the input rather than being a mode of the
+generator, and this file stays readable as a description of how an overlay
+design is assembled.
 """
 
 from dataclasses import dataclass, field
@@ -73,10 +72,10 @@ class Config:
     # ELFs. Empty means pass 1: build the resident with no payloads at all.
     payloads: tuple = ()
     poison: tuple = ()
-    # Defect injection, all generation-time.
-    corrupt: tuple = ()  # (phase, word_index)
-    skip_write: tuple = ()  # phase indices
-    wrong_address: tuple = ()  # (phase, byte_delta)
+    # Phases that write no payload, so the slot keeps whatever it held.
+    # Not a defect knob: reusing a slot is a real pattern, and it is how
+    # the tests ask what happens when a payload does not land.
+    skip_write: tuple = ()
     # (phase, level): emit aiex.npu.preempt before this phase's release.
     # Whether program memory survives a yield is a firmware property
     # that nothing in this tree documents -- aie-rt only records the
@@ -221,10 +220,10 @@ def build(cfg):
         program_memory_reserved=reserved,
     )
 
-    def write_payload(words, slot_base, index, suffix="", delta=0):
+    def write_payload(words, slot_base, index, suffix=""):
         memref_ty, sym = _payload_global(index, words, suffix)
         npu_blockwrite(
-            g.host_offset + slot_base + delta,
+            g.host_offset + slot_base,
             memref.get_global(memref_ty, sym),
             column=col,
             row=row,
@@ -266,12 +265,7 @@ def build(cfg):
                 )
 
             if cfg.payloads and phase not in cfg.skip_write:
-                delta = dict(cfg.wrong_address).get(phase, 0)
-                words = list(cfg.payloads[ovl])
-                for bad_phase, word in cfg.corrupt:
-                    if bad_phase == phase:
-                        words[word] ^= 0xFFFFFFFF
-                write_payload(words, slot.base, ovl, f"_p{phase}", delta)
+                write_payload(list(cfg.payloads[ovl]), slot.base, ovl, f"_p{phase}")
 
             for p, addr, val, mask in cfg.maskpoll_before:
                 if p == phase:

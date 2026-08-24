@@ -26,6 +26,8 @@ import sys
 from pmlib import design as pmdesign
 from pmlib import workload as pmworkload
 from pmlib.elf import (
+    read_elf,
+    section_file_offset,
     defined_symbols,
     find_core_elf,
     max_stack_frame,
@@ -123,9 +125,6 @@ def cmd_emit(args):
         poison=poison,
         stub=stub,
         parked_addr=parked_addr,
-        corrupt=tuple(
-            tuple(int(v) for v in c.split(":")) for c in (args.corrupt or [])
-        ),
         skip_write=tuple(int(v) for v in (args.skip_write or [])),
         maskpoll_before=tuple(
             tuple(int(v, 0) for v in x.split(":")) for x in (args.maskpoll or [])
@@ -135,9 +134,6 @@ def cmd_emit(args):
         ),
         preempt=tuple(
             tuple(int(v) for v in x.split(":")) for x in (args.preempt or [])
-        ),
-        wrong_address=tuple(
-            tuple(int(v, 0) for v in w.split(":")) for w in (args.wrong_address or [])
         ),
     )
     with open(args.out, "w") as f:
@@ -367,6 +363,39 @@ def cmd_stack(args):
         )
 
 
+def cmd_corrupt(args):
+    """Copy an overlay ELF with one word of its .text flipped.
+
+    A negative control has to be able to fail, and proving that needs a payload
+    that is wrong in a known way. Doing it here, on the ELF, rather than inside
+    the design generator keeps the defect a property of the input: the design
+    embeds this exactly as it embeds any other overlay and has no notion that
+    anything is amiss.
+
+    The word index is exact, which is the point. Hunting for a payload in a
+    finished instruction stream needs a multi-word signature, breaks whenever
+    codegen shifts, and can land on padding that never reaches the output --
+    turning a negative control into a coin flip. Word 0 is the entry
+    instruction, so corrupting it guarantees divergence.
+    """
+    blob = bytearray(open(args.elf, "rb").read())
+    _, sections = read_elf(args.elf)
+    for name, _, size, flags, _ in sections:
+        if name == ".text" and flags & 0x2 and size:
+            break
+    else:
+        sys.exit(f"{args.elf}: no .text to corrupt")
+
+    off = section_file_offset(args.elf, ".text") + args.word * 4
+    if off + 4 > len(blob):
+        sys.exit(f"{args.elf}: word {args.word} is past the end of .text")
+    for i in range(4):
+        blob[off + i] ^= 0xFF
+    with open(args.output, "wb") as f:
+        f.write(blob)
+    print(f"{args.output}: word {args.word} of .text flipped")
+
+
 def cmd_sizes(args):
     g = recipe(args.recipe)
     resident = text_size(find_core_elf(args.resident, *g.tile))
@@ -425,12 +454,10 @@ def main():
     e.add_argument("--phases", default="0")
     e.add_argument("--n-elems", type=int, default=256)
     e.add_argument("--dtype", choices=["i32", "bf16"], default="i32")
-    e.add_argument("--corrupt", action="append", metavar="PHASE:WORD")
     e.add_argument("--skip-write", action="append", metavar="PHASE")
     e.add_argument("--preempt", action="append", metavar="PHASE:LEVEL")
     e.add_argument("--maskpoll", action="append", metavar="PHASE:ADDR:VALUE:MASK")
     e.add_argument("--maskpoll-after", action="append", metavar="PHASE:ADDR:VALUE:MASK")
-    e.add_argument("--wrong-address", action="append", metavar="PHASE:DELTA")
     e.add_argument("--out", required=True)
     e.set_defaults(func=cmd_emit)
 
@@ -467,6 +494,12 @@ def main():
     st.add_argument("--overlays", required=True, nargs="+")
     st.add_argument("--stack-size", required=True, type=lambda v: int(v, 0))
     st.set_defaults(func=cmd_stack)
+
+    cr = sub.add_parser("corrupt")
+    cr.add_argument("elf")
+    cr.add_argument("--word", type=int, default=0)
+    cr.add_argument("--output", required=True)
+    cr.set_defaults(func=cmd_corrupt)
 
     s = sub.add_parser("sizes")
     s.add_argument("--resident", required=True)

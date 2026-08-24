@@ -69,6 +69,25 @@ def read_elf(path):
     return symbols, sections
 
 
+def section_file_offset(path, want):
+    """Byte offset of a section's contents within the file."""
+    with open(path, "rb") as f:
+        blob = f.read()
+    e_shoff, _, _, _, _, e_shentsize, e_shnum, e_shstrndx = struct.unpack_from(
+        "<IIHHHHHH", blob, 0x20
+    )
+    shdrs = [
+        struct.unpack_from("<10I", blob, e_shoff + i * e_shentsize)
+        for i in range(e_shnum)
+    ]
+    shstr = shdrs[e_shstrndx][4]
+    for nm, _, _, _, off, _, _, _, _, _ in shdrs:
+        end = blob.index(b"\0", shstr + nm)
+        if blob[shstr + nm : end].decode() == want:
+            return off
+    sys.exit(f"{path}: no section named {want}")
+
+
 def text_size(path):
     """Total allocatable .text* bytes, the measure of program-memory footprint."""
     _, sections = read_elf(path)
