@@ -22,7 +22,7 @@ from ml_dtypes import bfloat16
 import numpy as np
 
 from aie.dialects.aie import T
-from aie.dialects.aiex import npu_blockwrite
+from aie.dialects.aiex import npu_blockwrite, npu_preempt
 import aie.dialects.memref as memref
 from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import Buffer, Kernel, ObjectFifo, Program, Runtime, TaskGroup, Worker
@@ -75,6 +75,11 @@ class Config:
     corrupt: tuple = ()  # (phase, word_index)
     skip_write: tuple = ()  # phase indices
     wrong_address: tuple = ()  # (phase, byte_delta)
+    # (phase, level): emit aiex.npu.preempt before this phase's release.
+    # Whether program memory survives a yield is a firmware property
+    # that nothing in this tree documents -- aie-rt only records the
+    # level in the transaction -- so it has to be measured.
+    preempt: tuple = ()
 
     @property
     def slot(self):
@@ -198,6 +203,10 @@ def build(cfg):
                         words[word] ^= 0xFFFFFFFF
                 slot = g.slots[phase % len(g.slots)]
                 write_payload(words, slot.base, ovl, f"_p{phase}", delta)
+
+            for p, level in cfg.preempt:
+                if p == phase:
+                    npu_preempt(level)
 
             # Only now let the core out of ovl_wait. The blockwrite above is
             # ordered before this in the instruction stream, so the slot holds

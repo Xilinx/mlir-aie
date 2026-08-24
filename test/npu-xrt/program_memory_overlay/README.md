@@ -142,6 +142,24 @@ gives "Kernel did not complete", because the core jumps into whatever the
 previous xclbin left in program memory. npu-xrt runs serialized, so that outcome
 depends on which test ran last.
 
+## Preemption
+
+A yield point does not disturb an overlay, and the reason is worth knowing: nothing
+saves or restores program memory automatically. `ERT_START_NPU_PREEMPT` carries a
+`save_buffer` and a `restore_buffer` that the *submitter* supplies (see
+`ert_npu_preempt_data` in `xrt/detail/ert.h`), and plain `ERT_START_NPU` --
+what these designs use -- has neither. aie-rt agrees by omission: its
+`XAIE_IO_PREEMPT` records only the level and implements no save or restore.
+
+So the obvious worry, that firmware reloads program memory from the PDI and
+silently reverts a mutated slot, does not describe this stack. `hw/preempt.lit`
+pins the observed behaviour across all three levels against a no-yield control.
+
+The inverse hazard is the real one: a design submitted *with* a restore buffer
+would reinstate whatever program-memory state that buffer was built for, and one
+generated without knowledge of the reserved region would put back a stale slot.
+Guard the save/restore buffer, not the yield point.
+
 ## Ping-pong
 
 The geometry and both call sites are checked in

@@ -96,6 +96,9 @@ def cmd_emit(args):
             tuple(int(v) for v in c.split(":")) for c in (args.corrupt or [])
         ),
         skip_write=tuple(int(v) for v in (args.skip_write or [])),
+        preempt=tuple(
+            tuple(int(v) for v in x.split(":")) for x in (args.preempt or [])
+        ),
         wrong_address=tuple(
             tuple(int(v, 0) for v in w.split(":")) for w in (args.wrong_address or [])
         ),
@@ -366,6 +369,7 @@ def main():
     e.add_argument("--dtype", choices=["i32", "bf16"], default="i32")
     e.add_argument("--corrupt", action="append", metavar="PHASE:WORD")
     e.add_argument("--skip-write", action="append", metavar="PHASE")
+    e.add_argument("--preempt", action="append", metavar="PHASE:LEVEL")
     e.add_argument("--wrong-address", action="append", metavar="PHASE:DELTA")
     e.add_argument("--out", required=True)
     e.set_defaults(func=cmd_emit)

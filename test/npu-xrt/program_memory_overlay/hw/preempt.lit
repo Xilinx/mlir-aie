@@ -1,0 +1,83 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// A yield point does not disturb an overlay already written into the slot.
+//
+// The worry this settles: if preemption restored context by reloading program
+// memory from the PDI, an overlay-mutated slot would silently revert to the
+// image the xclbin was built with -- which for an overlay design is *empty* --
+// while data memory survived. That produces wrong answers rather than a hang,
+// which is the worst shape a bug can have.
+//
+// It does not work that way. Preemption in this stack is caller-driven, not
+// automatic: ERT_START_NPU_PREEMPT carries a save_buffer and a restore_buffer,
+// which are instruction sequences the *submitter* supplies (see
+// ert_npu_preempt_data in xrt/detail/ert.h). Nothing reloads program memory
+// from the PDI. A design submitted as plain ERT_START_NPU -- which is what
+// these tests and mlir-aie's runtime do -- has no save or restore buffer at
+// all, so nothing touches the slot.
+//
+// aie-rt agrees by omission: XAIE_IO_PREEMPT records only the level in the
+// transaction (xaie_txn.c), and implements no save or restore itself.
+//
+// So the hazard is the inverse of the one I looked for. Preemption does not
+// erase an overlay; but a design that ever *is* submitted with a restore buffer
+// would reinstate whatever program-memory state that buffer was built to
+// reinstate, and a restore buffer generated without knowledge of the reserved
+// region would put back a stale slot. The thing to guard is the save/restore
+// buffer, not the yield point.
+//
+// The probe: phase 1 does not write a payload, so it re-runs whatever the slot
+// holds -- which is phase 0's overlay. If a yield had reset program memory,
+// phase 1 would run something else, or nothing. Levels 1, 2 and 3 are all
+// covered because they differ in how much context a save/restore buffer would
+// be responsible for, and it is worth noticing if any of them ever starts
+// touching program memory on its own.
+//
+// What this does NOT establish: that a preemption actually fired. A yield point
+// only marks where the stream *may* be interrupted, and nothing available here
+// reports whether one happened -- the driver counters need privileges this test
+// does not have. Run under contention (25 iterations against a competing
+// 123-phase workload) the results were also all correct, but the header is the
+// stronger evidence, not the runs.
+//
+// REQUIRES: ryzen_ai_npu2, peano
+//
+// RUN: rm -rf %t && mkdir -p %t
+// RUN: %PEANO_INSTALL_DIR/bin/clang++ --target=aie2p-none-unknown-elf -O2 -c %S/../resident.cc -o %t/resident.o
+// RUN: %python %S/../pm.py emit --recipe one_slot --slot-ld %t/slot.ld --phases 0,0 --out %t/d1.mlir
+// RUN: cd %t && %aiecc --tmpdir=%t/p1 --get-xclbin --xclbin-name=%t/p1.xclbin --get-npu-insts --npu-insts-name=%t/p1.bin %t/d1.mlir
+// RUN: %python %S/../pm.py workload --tag 11 --size 0x400 --output %t/w.o --workdir %t
+// RUN: %python %S/../pm.py workload --tag 31661 --size 0x400 --output %t/poison.o --workdir %t
+// RUN: %python %S/../pm.py link --object %t/w.o --resident %t/p1 --recipe one_slot --output %t/ovl.elf
+// RUN: %python %S/../pm.py link --object %t/poison.o --resident %t/p1 --recipe one_slot --output %t/poison.elf
+// RUN: %host_clang %S/../host.cpp -o %t/host.exe -std=c++17 -Wall %xrt_flags %host_link_flags %test_utils_flags
+//
+// Control first: the same design with no yield point. Phase 1 re-runs overlay
+// 11 because the slot still holds it. Without this the test below could pass
+// for the wrong reason.
+// RUN: %python %S/../pm.py emit --recipe one_slot --phases 0,0 --payload %t/ovl.elf --poison %t/poison.elf --skip-write 1 --out %t/ctl.mlir
+// RUN: cd %t && %aiecc --tmpdir=%t/c --get-xclbin --xclbin-name=%t/c.xclbin --get-npu-insts --npu-insts-name=%t/c.bin %t/ctl.mlir
+// RUN: %t/host.exe -x %t/c.xclbin -k MLIR_AIE -i %t/c.bin --tags 11,11 | FileCheck %s --check-prefix=CTL
+// CTL: phase 1: overlay 11 ok
+// CTL: PASS!
+//
+// Level 1 -- mem tile.
+// RUN: %python %S/../pm.py emit --recipe one_slot --phases 0,0 --payload %t/ovl.elf --poison %t/poison.elf --skip-write 1 --preempt 1:1 --out %t/l1.mlir
+// RUN: cd %t && %aiecc --tmpdir=%t/a1 --get-xclbin --xclbin-name=%t/l1.xclbin --get-npu-insts --npu-insts-name=%t/l1.bin %t/l1.mlir
+// RUN: %t/host.exe -x %t/l1.xclbin -k MLIR_AIE -i %t/l1.bin --tags 11,11 | FileCheck %s --check-prefix=L1
+// L1: phase 1: overlay 11 ok
+//
+// Level 2 -- AIE tile. The one that would have mattered if program memory were
+// part of an automatic context save.
+// RUN: %python %S/../pm.py emit --recipe one_slot --phases 0,0 --payload %t/ovl.elf --poison %t/poison.elf --skip-write 1 --preempt 1:2 --out %t/l2.mlir
+// RUN: cd %t && %aiecc --tmpdir=%t/a2 --get-xclbin --xclbin-name=%t/l2.xclbin --get-npu-insts --npu-insts-name=%t/l2.bin %t/l2.mlir
+// RUN: %t/host.exe -x %t/l2.xclbin -k MLIR_AIE -i %t/l2.bin --tags 11,11 | FileCheck %s --check-prefix=L2
+// L2: phase 1: overlay 11 ok
+//
+// Level 3 -- AIE registers.
+// RUN: %python %S/../pm.py emit --recipe one_slot --phases 0,0 --payload %t/ovl.elf --poison %t/poison.elf --skip-write 1 --preempt 1:3 --out %t/l3.mlir
+// RUN: cd %t && %aiecc --tmpdir=%t/a3 --get-xclbin --xclbin-name=%t/l3.xclbin --get-npu-insts --npu-insts-name=%t/l3.bin %t/l3.mlir
+// RUN: %t/host.exe -x %t/l3.xclbin -k MLIR_AIE -i %t/l3.bin --tags 11,11 | FileCheck %s --check-prefix=L3
+// L3: phase 1: overlay 11 ok
+// L3: PASS!
