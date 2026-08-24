@@ -1011,17 +1011,20 @@ splitLoweredCores(const Item<OpInModule<xilinx::AIE::DeviceOp>> &devItem,
     return std::make_pair(col, row);
   };
 
-  llvm::SmallVector<std::string> coreNames;
+  // Name plus coordinates, so the loop below never has to re-parse the name
+  // and unwrap the optional a second time.
+  llvm::SmallVector<std::pair<std::string, std::pair<int, int>>> cores;
   lowered.get().get().walk([&](mlir::LLVM::LLVMFuncOp f) {
     auto coords = coreCoords(f.getSymName());
     if (coords && compiled.contains(*coords))
-      coreNames.push_back(f.getSymName().str());
+      cores.emplace_back(f.getSymName().str(), *coords);
   });
 
   std::vector<std::pair<std::string, mlir::OwningOpRef<mlir::ModuleOp>>> out;
-  out.reserve(coreNames.size());
-  for (llvm::StringRef keep : coreNames) {
-    auto keepCoords = *coreCoords(keep);
+  out.reserve(cores.size());
+  for (const auto &core : cores) {
+    llvm::StringRef keep = core.first;
+    std::pair<int, int> keepCoords = core.second;
     mlir::OwningOpRef<mlir::ModuleOp> clone = lowered.get().get().clone();
 
     llvm::SmallVector<mlir::Operation *> drop;
