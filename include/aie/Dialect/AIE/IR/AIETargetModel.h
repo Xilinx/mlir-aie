@@ -63,8 +63,7 @@ public:
     TK_AIE2_NPU1_1Col,
     TK_AIE2_NPU1_2Col,
     TK_AIE2_NPU1_3Col,
-    TK_AIE2_NPU1_4Col, // whole array must be last because of how we
-                       // cast/initialize the VirtualizedNPU1TargetModel class
+    TK_AIE2_NPU1_4Col,
     TK_AIE2_NPU1_Last,
     TK_AIE2_NPU2 = TK_AIE2_NPU1_Last,
     TK_AIE2_NPU2_1Col,
@@ -75,7 +74,9 @@ public:
     TK_AIE2_NPU2_6Col,
     TK_AIE2_NPU2_7Col,
     TK_AIE2_NPU2_Last,
-    TK_AIE2_Last = TK_AIE2_NPU2_Last,
+    TK_AIE2PS_VE3858 = TK_AIE2_NPU2_Last,
+    TK_AIE2PS_Last,
+    TK_AIE2_Last = TK_AIE2PS_Last,
   };
 
   // One-hot encoded list of target model properties.
@@ -83,7 +84,6 @@ public:
     // Device uses semaphore locks.
     UsesSemaphoreLocks = 1U << 0,
     // Device is an NPU-based device.
-    // There are several special cases for handling the NPU at the moment.
     IsNPU = 1U << 1,
     // Device model is virtualized.
     // This is used during CDO code generation to configure aie-rt properly.
@@ -134,6 +134,33 @@ public:
 
   /// Return the number of rows in the device.
   virtual int rows() const = 0;
+
+  /// Number of device-level microcontrollers (CERT job-runners). AIE2 and
+  /// AIE2P have one controller shared by the device; AIE1 and AIE2PS do not.
+  virtual uint32_t getNumControllersPerDevice() const { return 0; }
+
+  /// Number of microcontrollers per column. AIE2PS has one controller in each
+  /// shim tile; earlier architectures have no column-local controllers.
+  virtual uint32_t getNumControllersPerColumn() const { return 0; }
+
+  /// Total number of microcontrollers addressable as CERT groups.
+  uint32_t getNumControllers() const {
+    return getNumControllersPerDevice() +
+           static_cast<uint32_t>(columns()) * getNumControllersPerColumn();
+  }
+
+  /// CERT ".attach_to_group" index (microcontroller id) for the `half`-th uC of
+  /// column `col`. Device-level controllers occupy the first group ids,
+  /// followed by column-local controllers in column-major order.
+  uint32_t getUcGroupId(int col, int half = 0) const {
+    assert(col >= 0 && col < columns() && "column index out of range");
+    assert(half >= 0 &&
+           static_cast<uint32_t>(half) < getNumControllersPerColumn() &&
+           "microcontroller half index out of range for this target");
+    return getNumControllersPerDevice() +
+           static_cast<uint32_t>(col) * getNumControllersPerColumn() +
+           static_cast<uint32_t>(half);
+  }
 
   /// Return the tile type for the given tile coordinates.
   /// - CoreTile: tiles with a Core, TileDMA, tile memory, and stream
@@ -650,6 +677,8 @@ public:
 
   AIEArch getTargetArch() const override;
 
+  uint32_t getNumControllersPerDevice() const override { return 1; }
+
   uint32_t getAddressGenGranularity() const override { return 32; }
 
   uint32_t getNumSlaveSlots() const override { return 4; }
@@ -794,6 +823,90 @@ public:
   getShimBurstEncodingsAndLengths() const override;
 };
 
+// AIE2PS base model. Key differences from AIE2/AIE2P:
+//   - CERT microcontroller control plane
+//   - 57-bit external addresses (vs 48-bit in AIE2)
+//   - 512B burst support (added below)
+//   - Block floating point changed from bfp16 to MX9/MX6/MX4 formats
+class AIE2PSTargetModel : public AIE2TargetModel {
+public:
+  AIE2PSTargetModel(TargetModelKind k) : AIE2TargetModel(k) {
+    // AIE2PS is an NPU but uses CERT ELF, not CDO/xclbin.
+    addModelProperty(AIETargetModel::IsNPU);
+  }
+
+  AIEArch getTargetArch() const override { return AIEArch::AIE2ps; }
+
+  uint32_t getNumControllersPerDevice() const override { return 0; }
+  uint32_t getNumControllersPerColumn() const override { return 1; }
+
+  // AIE2PS supports 512B burst (same as AIE2P), unlike base AIE2 which
+  // only supports up to 256B.
+  std::vector<std::pair<uint32_t, uint32_t>>
+  getShimBurstEncodingsAndLengths() const override {
+    return {std::pair(0, 64), std::pair(1, 128), std::pair(2, 256),
+            std::pair(3, 512)};
+  }
+
+  // TODO(aie2ps): AIE2PS changed block floating point from bfp16 to
+  // MX9/MX6/MX4. isSupportedBlockFormat() currently returns false (inherited).
+  // Override with correct MX format strings when ML kernels need it.
+
+  // AIE2PS shim DMA registers are at different offsets than AIE2:
+  //   Shim BD base: 0x9000 (AIE2: 0x1D000), stride: 0x30 (AIE2: 0x20)
+  //   Shim S2MM ctrl: 0x9300 (AIE2: 0x1D200)
+  //   Shim MM2S ctrl: 0x9310 (AIE2: 0x1D210)
+  // Memtile and core tile DMA addresses are identical to AIE2.
+  uint64_t getDmaBdAddress(int col, int row, uint32_t bd_id, int channel,
+                           AIE::DMAChannelDir direction) const override;
+  uint32_t getDmaControlAddress(int col, int row, int channel,
+                                AIE::DMAChannelDir direction) const override;
+
+  // AIE2PS shim has a dedicated uController port (master index 22) for
+  // routing task-complete-tokens to the CERT microcontroller.
+  // This is a direct stream switch port, not through shim_mux.
+  uint32_t getNumDestSwitchboxConnections(int col, int row,
+                                          WireBundle bundle) const override;
+  uint32_t getNumSourceSwitchboxConnections(int col, int row,
+                                            WireBundle bundle) const override;
+  std::optional<uint32_t> getStreamSwitchPortIndex(int col, int row,
+                                                   WireBundle bundle,
+                                                   uint32_t channel,
+                                                   bool master) const override;
+
+  static bool classof(const AIETargetModel *model) {
+    return model->getKind() >= TK_AIE2PS_VE3858 &&
+           model->getKind() < TK_AIE2PS_Last;
+  }
+};
+
+// VE3858 target model (AIE2PS, xc2ve3858 on VEK385)
+// 36 columns, 7 rows: 1 shim + 2 memtile + 4 core
+class VE3858TargetModel : public AIE2PSTargetModel {
+public:
+  VE3858TargetModel() : AIE2PSTargetModel(TK_AIE2PS_VE3858) {}
+
+  int columns() const override { return 36; }
+  int rows() const override { return 7; }
+
+  // AIE2PS Shim-South tiles (cols 1-23) have both NoC and PL (via BLI).
+  // Shim-Global (col 0) has NoC only. Modeling all as ShimNOC is a working
+  // approximation for the CERT compilation path.
+  AIETileType getTileType(int col, int row) const override {
+    if (row == 0)
+      return AIETileType::ShimNOCTile;
+    if (row <= 2)
+      return AIETileType::MemTile;
+    return AIETileType::CoreTile;
+  }
+
+  uint32_t getNumMemTileRows() const override { return 2; }
+
+  static bool classof(const AIETargetModel *model) {
+    return model->getKind() == TK_AIE2PS_VE3858;
+  }
+};
+
 class VC1902TargetModel : public AIE1TargetModel {
   llvm::SmallDenseSet<unsigned, 16> nocColumns = {
       2, 3, 6, 7, 10, 11, 18, 19, 26, 27, 34, 35, 42, 43, 46, 47};
@@ -882,7 +995,6 @@ public:
 class BaseNPU1TargetModel : public AIE2TargetModel {
 public:
   BaseNPU1TargetModel(TargetModelKind k) : AIE2TargetModel(k) {
-    // Device properties initialization
     addModelProperty(AIETargetModel::IsNPU);
   }
 
@@ -932,7 +1044,6 @@ public:
 class BaseNPU2TargetModel : public AIE2TargetModel {
 public:
   BaseNPU2TargetModel(TargetModelKind k) : AIE2TargetModel(k) {
-    // Device properties initialization
     addModelProperty(AIETargetModel::IsNPU);
   }
 

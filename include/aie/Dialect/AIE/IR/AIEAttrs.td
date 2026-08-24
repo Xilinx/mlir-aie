@@ -49,11 +49,15 @@ def PLIOWire:   I32EnumAttrCase<"PLIO", 7>;
 def NOCWire:    I32EnumAttrCase<"NOC", 8>;
 def TraceWire:  I32EnumAttrCase<"Trace", 9>;
 def TileControlWire:  I32EnumAttrCase<"TileControl", 10>;
+// AIE2PS uC-Module stream switch port (hw master index 22, hw slave index 23).
+// Used for routing task-complete-tokens from tiles to the CERT microcontroller.
+def Controller32Wire: I32EnumAttrCase<"Controller32", 11>;
 
 def WireBundle: I32EnumAttr<"WireBundle", "Bundle of wires",
   [
     CoreWire, DMAWire, FIFOWire, SouthWire, WestWire, NorthWire,
-    EastWire, PLIOWire, NOCWire, TraceWire, TileControlWire
+    EastWire, PLIOWire, NOCWire, TraceWire, TileControlWire,
+    Controller32Wire
   ]> {
 
   let cppNamespace = "xilinx::AIE";
@@ -91,6 +95,7 @@ def AIEArch: I32EnumAttr<"AIEArch", "AIE Architecture",
     I32EnumAttrCase<"AIE1", 1>,
     I32EnumAttrCase<"AIE2", 2>,
     I32EnumAttrCase<"AIE2p", 3>,
+    I32EnumAttrCase<"AIE2ps", 4>,
   ]> {
 
   let cppNamespace = "xilinx::AIE";
@@ -124,6 +129,7 @@ def AIEDevice: I32EnumAttr<"AIEDevice", "AIE Device",
     I32EnumAttrCase<"npu2_5col", 13>,
     I32EnumAttrCase<"npu2_6col", 14>,
     I32EnumAttrCase<"npu2_7col", 15>,
+    I32EnumAttrCase<"xcve3858", 16>,
   ]> {
 
   let cppNamespace = "xilinx::AIE";
