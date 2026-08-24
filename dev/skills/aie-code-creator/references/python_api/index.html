@@ -1,0 +1,3972 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="IRON — a close-to-metal Python API for programming AMD Ryzen™ AI NPUs, built on an open-source MLIR-based compiler toolchain.">
+      
+      
+        <meta name="author" content="AMD Advanced Micro Devices">
+      
+      
+        <link rel="canonical" href="https://xilinx.github.io/mlir-aie/dev/skills/aie-code-creator/references/python_api/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../../assets/images/favicon.svg">
+      <meta name="generator" content="mkdocs-ProperDocs 1.6.7, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Python api - IRON / MLIR-AIE</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../../assets/_mkdocstrings.css">
+    
+      <link rel="stylesheet" href="../../../../assets/css/iron.css">
+    
+    <script>__md_scope=new URL("../../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="teal">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#iron-python-api-reference" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../../.." title="IRON / MLIR-AIE" class="md-header__button md-logo" aria-label="IRON / MLIR-AIE" data-md-component="logo">
+      
+  <img src="../../../../assets/images/favicon.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            IRON / MLIR-AIE
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Python api
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="teal"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="teal"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/Xilinx/mlir-aie" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Xilinx/mlir-aie
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../../getting-started/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Getting Started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../../programming_guide/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Programming Guide
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../agentic_programming/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Agentic Programming
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../../api/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  API & Internals
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../../UsedIn/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Community
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../../.." title="IRON / MLIR-AIE" class="md-nav__button md-logo" aria-label="IRON / MLIR-AIE" data-md-component="logo">
+      
+  <img src="../../../../assets/images/favicon.svg" alt="logo">
+
+    </a>
+    IRON / MLIR-AIE
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/Xilinx/mlir-aie" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Xilinx/mlir-aie
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../buildHostWin/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Windows (WSL)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../buildHostWinNative/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Windows (Native)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../buildHostLinNonUbuntu/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Non-Ubuntu Linux
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../Building/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Build from Source
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../Devices/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Devices
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../BuildingVersal/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Versal
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../Platform/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Platform Notes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../../../programming_guide/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Programming Guide
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3" id="__nav_3_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Programming Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../programming_guide/mini_tutorial/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Mini Tutorial
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../programming_guide/section-0/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Section 0: Prerequisites
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../programming_guide/section-1/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Section 1: Tiles and Buffers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_5" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../../../programming_guide/section-2/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Section 2: Data Movement
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3_5" id="__nav_3_5_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Section 2: Data Movement
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../programming_guide/section-2/section-2a/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    2a: Single-Tile Data Movement
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_5_3" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../../../programming_guide/section-2/section-2b/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    2b: ObjectFifo Patterns
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3_5_3" id="__nav_3_5_3_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_3_5_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_5_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    2b: ObjectFifo Patterns
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../programming_guide/section-2/section-2b/01_Reuse/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reuse
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../programming_guide/section-2/section-2b/02_Broadcast/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Broadcast
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../programming_guide/section-2/section-2b/03_Implicit_Copy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Implicit Copy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../programming_guide/section-2/section-2b/04_Repeat/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Repeat
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_5_4" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../../../programming_guide/section-2/section-2c/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    2c: Data Layout Transformations
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3_5_4" id="__nav_3_5_4_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_3_5_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_5_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    2c: Data Layout Transformations
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../programming_guide/section-2/section-2c/to_stream_transformations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    To Stream
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../programming_guide/section-2/section-2c/from_stream_transformations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    From Stream
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_5_5" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../../../programming_guide/section-2/section-2d/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    2d: DMA and Runtime Tasks
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3_5_5" id="__nav_3_5_5_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_3_5_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_5_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    2d: DMA and Runtime Tasks
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../programming_guide/section-2/section-2d/DMATasks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DMA Tasks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../programming_guide/section-2/section-2d/RuntimeTasks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Runtime Tasks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../programming_guide/section-2/section-2e/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    2e: Multiple Cores
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_5_7" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../../../programming_guide/section-2/section-2f/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    2f: Multi-Core Patterns
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3_5_7" id="__nav_3_5_7_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_3_5_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_5_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    2f: Multi-Core Patterns
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../programming_guide/section-2/section-2f/01_single_double_buffer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Single/Double Buffer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../programming_guide/section-2/section-2f/02_external_mem_to_core/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Ext Mem to Core
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../programming_guide/section-2/section-2f/03_external_mem_to_core_L2/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Ext Mem to Core (L2)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../programming_guide/section-2/section-2f/04_distribute_L2/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Distribute L2
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../programming_guide/section-2/section-2f/05_join_L2/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Join L2
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../programming_guide/section-2/section-2g/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    2g: Data Movement Without ObjectFifos
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../programming_guide/section-2/section-2h/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    2h: Tensor Access Patterns
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../programming_guide/section-3/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Section 3: My First Program
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_7" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../../../programming_guide/section-4/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Section 4: Performance
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3_7" id="__nav_3_7_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Section 4: Performance
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../programming_guide/section-4/section-4a/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    4a: Timers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../programming_guide/section-4/section-4b/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    4b: Tracing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../programming_guide/section-4/section-4c/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    4c: Vectorization
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../programming_guide/section-5/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Section 5: Example Designs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../programming_guide/section-6/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Section 6: ML Examples
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_10" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_10" id="__nav_3_10_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Extra References
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_10_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_10">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Extra References
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../programming_guide/iron_configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    IRON Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../programming_guide/hrx_runtime/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HRX Runtime (amdxdna)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../programming_guide/compilation_stages/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compilation Stages
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../programming_guide/implicit_mlir_context/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Implicit MLIR Context
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../programming_guide/kernels_library/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Kernel Library
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../../" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Agentic Programming
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_4" id="__nav_4_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Agentic Programming
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../agentic_programming/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Introduction
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../aie-model-baseline/SKILL/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Phase 1: Model Baseline
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../aie-dataflow-presim/SKILL/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Phase 2: Dataflow Pre-Sim
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../aie-hw-bringup/SKILL/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Phase 3: HW Bring-up
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../aie-kernel-opt/SKILL/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Phase 4: Kernel Optimization
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../aie-dataflow-opt/SKILL/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Phase 4: Dataflow Optimization
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../../../api/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API & Internals
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_5" id="__nav_5_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API & Internals
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_5_2" id="__nav_5_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Python API
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Python API
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../api/iron/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    IRON (aie.iron)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../api/dialect_wrappers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dialect op wrappers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../api/taplib/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tensor Access Patterns (taplib)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../api/kernels/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Python Kernel Library
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../api/hostruntime/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Host Runtime
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../api/aie_kernels/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    C++ AIE kernels
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_5_3" id="__nav_5_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MLIR / C++
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    MLIR / C++
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../AIEDialect/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AIE Dialect
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../AIEXDialect/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AIEX Dialect
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../AIEVecDialect/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AIEVec Dialect
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../AIEPasses/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AIE Passes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../AIEXPasses/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AIEX Passes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../AIEVecPasses/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AIEVec Passes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../api/cpp_doxygen/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    C++ API (Doxygen)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../aiecc/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    aiecc Compiler Driver
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Community
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Community
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../UsedIn/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Used in / Cited in
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../CONTRIBUTING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../ROADMAP/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../../SECURITY/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#standard-imports" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Standard imports
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#type-descriptors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Type descriptors
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#objectfifo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ObjectFifo
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="ObjectFifo">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#advanced-objectfifo-opt-in" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Advanced ObjectFifo (opt-in)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#worker" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Worker
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Worker">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#cascadeflow--direct-cascade-stream-link-between-two-workers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CascadeFlow — direct cascade-stream link between two Workers
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#kernel--external-c-function" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Kernel — external C++ function
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#buffer--l1-resident-scalars--accumulators--rtps" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Buffer — L1-resident scalars / accumulators / RTPs
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#runtime--host-side-control-flow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Runtime — host-side control flow
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Runtime — host-side control flow">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#task-groups--batch-fillsdrains-so-they-pipeline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task groups — batch fills/drains so they pipeline
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#non-contiguous-access-via-tensoraccesspattern" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Non-contiguous access via TensorAccessPattern
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#unmanaged-transfers--hand-rolled-software-pipelining" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Unmanaged transfers — hand-rolled software pipelining
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#runtime-parameters-rtp-and-the-worker-barrier" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Runtime parameters (RTP) and the worker barrier
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#scratchpad-parameters--an-alternative-to-rtp-buffers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scratchpad parameters — an alternative to RTP Buffers
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#program--finalize-the-design" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Program — finalize the design
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Program — finalize the design">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#tracing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tracing
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ironjit--compile-and-run-from-python" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        iron.jit — compile and run from Python
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#workerruntimebarrier--gate-workers-on-host-set-rtps" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        WorkerRuntimeBarrier — gate workers on host-set RTPs
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+                
+
+
+
+  
+
+
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<!--
+Copyright (C) 2026 Advanced Micro Devices, Inc.
+SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+-->
+
+<h1 id="iron-python-api-reference">IRON Python API Reference<a class="headerlink" href="#iron-python-api-reference" title="Permanent link">&para;</a></h1>
+<p>This reference tracks the current <code>aie.iron</code> API as installed. The one exception is the
+<code>amd/IRON</code> operator-framework pattern in <code>patterns.md</code>/<code>complete_examples.md</code>, which
+intentionally pins an older wheel and keeps that generation's <code>Runtime</code>/<code>Program</code> shape.</p>
+<p>The docstrings in the installed <code>aie.iron</code> package are kept up to date — if something here
+looks stale or you need a detail this file doesn't cover, check the installed package
+directly (e.g. <code>python3 -c "import aie.iron as iron; help(iron.Program)"</code>, or read the
+source under the active Python environment's <code>site-packages/aie/iron/</code>) rather than
+assuming this reference is current.</p>
+<p>All imports come from <code>aie.iron</code>, <code>aie.iron.device</code>, and <code>aie.iron.controlflow</code>.</p>
+<p>For the prebuilt kernel library (<code>aie.iron.kernels</code>), the whole-design templates
+(<code>aie.iron.algorithms</code>), and the <code>In</code>/<code>Out</code>/<code>CompileTime[T]</code> jit signature markers, see
+<a href="../builtin_kernels/"><code>builtin_kernels.md</code></a> — check there before hand-building any of the
+primitives documented here.</p>
+<h2 id="standard-imports">Standard imports<a class="headerlink" href="#standard-imports" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">ml_dtypes</span><span class="w"> </span><span class="kn">import</span> <span class="n">bfloat16</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aie.iron</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">Program</span><span class="p">,</span> <span class="n">Runtime</span><span class="p">,</span> <span class="n">Worker</span><span class="p">,</span> <span class="n">ObjectFifo</span><span class="p">,</span> <span class="n">Kernel</span><span class="p">,</span> <span class="n">Buffer</span><span class="p">,</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="n">WorkerRuntimeBarrier</span><span class="p">,</span> <span class="n">TaskGroup</span><span class="p">,</span> <span class="n">ScratchpadParameter</span><span class="p">,</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="p">)</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aie.iron.device</span><span class="w"> </span><span class="kn">import</span> <span class="n">NPU1</span><span class="p">,</span> <span class="n">NPU1Col1</span><span class="p">,</span> <span class="n">NPU2</span><span class="p">,</span> <span class="n">NPU2Col4</span><span class="p">,</span> <span class="n">Tile</span><span class="p">,</span> <span class="n">AnyComputeTile</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aie.iron.controlflow</span><span class="w"> </span><span class="kn">import</span> <span class="n">range_</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="kn">import</span><span class="w"> </span><span class="nn">aie.iron</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">iron</span>
+</code></pre></div>
+<p>There is <strong>no <code>aie.iron.placers</code> module and no <code>SequentialPlacer</code></strong> — tile placement is a
+compiler pass (<code>--aie-place-tiles</code>) that runs over the <code>aie.logical_tile</code> ops
+<code>resolve_program()</code> emits. If you see either name in older code or docs, it predates 1.4.0.</p>
+<h2 id="type-descriptors">Type descriptors<a class="headerlink" href="#type-descriptors" title="Permanent link">&para;</a></h2>
+<p>IRON uses NumPy-style type descriptors to declare tensor types passed between host, ObjectFifos, and kernels:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">N</span> <span class="o">=</span> <span class="mi">1024</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="n">tile_ty</span>   <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[(</span><span class="n">N</span><span class="p">,),</span>       <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">[</span><span class="n">bfloat16</span><span class="p">]]</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="n">mat_ty</span>    <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[(</span><span class="n">M</span><span class="p">,</span> <span class="n">N</span><span class="p">),</span>     <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">int8</span><span class="p">]]</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="n">scalar_ty</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[(</span><span class="mi">1</span><span class="p">,),</span>       <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">]]</span>
+</code></pre></div>
+<p>The C++ kernel's pointer type and the element count of the buffer it receives must match.</p>
+<h2 id="objectfifo">ObjectFifo<a class="headerlink" href="#objectfifo" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">of</span> <span class="o">=</span> <span class="n">ObjectFifo</span><span class="p">(</span><span class="n">elem_type</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">&quot;my_fifo&quot;</span><span class="p">,</span> <span class="n">depth</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="n">producer</span> <span class="o">=</span> <span class="n">of</span><span class="o">.</span><span class="n">prod</span><span class="p">()</span>              <span class="c1"># endpoint used on the producer side (or in the sequence&#39;s .fill())</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="n">consumer</span> <span class="o">=</span> <span class="n">of</span><span class="o">.</span><span class="n">cons</span><span class="p">()</span>              <span class="c1"># NEW consumer handle each call — for broadcast to N</span>
+</code></pre></div>
+<p><code>prod()</code>/<code>cons()</code> also take an optional <code>tile=</code> to pin the shim tile a runtime-driven endpoint binds to (<code>prod(tile=...)</code>, <code>cons(tile=..., dims_from_stream=...)</code>); leave it <code>None</code> (the default) unless you have a specific placement reason — IRON picks any available shim tile automatically.</p>
+<p>Inside a <code>Worker</code> body:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">elem</span> <span class="o">=</span> <span class="n">of</span><span class="o">.</span><span class="n">acquire</span><span class="p">(</span><span class="n">n</span><span class="p">)</span>              <span class="c1"># blocks until n objects available; returns scalar if n==1, list-like if n&gt;1</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="o">...</span> <span class="n">use</span> <span class="n">elem</span> <span class="o">...</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="n">of</span><span class="o">.</span><span class="n">release</span><span class="p">(</span><span class="n">n</span><span class="p">)</span>                     <span class="c1"># must match the acquire count</span>
+</code></pre></div>
+<p>Topology helpers (executed at design build time, not on the core):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="c1"># Distribute: split one input across N workers&#39; private FIFOs</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="n">of_offsets</span> <span class="o">=</span> <span class="p">[</span><span class="n">chunk</span> <span class="o">*</span> <span class="n">i</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">N</span><span class="p">)]</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="n">sub_fifos</span> <span class="o">=</span> <span class="n">of</span><span class="o">.</span><span class="n">cons</span><span class="p">()</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="n">of_offsets</span><span class="p">,</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>                            <span class="n">obj_types</span><span class="o">=</span><span class="p">[</span><span class="n">tile_ty</span><span class="p">]</span> <span class="o">*</span> <span class="n">N</span><span class="p">,</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>                            <span class="n">names</span><span class="o">=</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;sub</span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s2">&quot;</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">N</span><span class="p">)])</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="c1"># Join: aggregate N producer FIFOs into one output</span>
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="n">joined</span> <span class="o">=</span> <span class="n">of_out</span><span class="o">.</span><span class="n">prod</span><span class="p">()</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">of_offsets</span><span class="p">,</span>
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>                            <span class="n">obj_types</span><span class="o">=</span><span class="p">[</span><span class="n">tile_ty</span><span class="p">]</span> <span class="o">*</span> <span class="n">N</span><span class="p">,</span>
+<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a>                            <span class="n">names</span><span class="o">=</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;sub</span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s2">&quot;</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">N</span><span class="p">)])</span>
+<a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a>
+<a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a><span class="c1"># Forward: implicit copy through a mem tile</span>
+<a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a><span class="n">of_via_mem</span> <span class="o">=</span> <span class="n">of</span><span class="o">.</span><span class="n">forward</span><span class="p">(</span><span class="n">obj_type</span><span class="o">=</span><span class="n">tile_ty</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">&quot;forwarded&quot;</span><span class="p">)</span>
+</code></pre></div>
+<p><code>split()</code>/<code>join()</code>/<code>forward()</code> also accept <code>tile=</code> (which mem tile hosts the split/join/forward DMA; defaults to <code>AnyMemTile</code>), <code>depths=</code>/<code>depth=</code> (per-sub-fifo depth override, defaults to the parent's <code>depth</code>), <code>dims_to_stream=</code>/<code>dims_from_stream=</code> (per-sub-fifo stream-dimension reshaping), <code>plio=</code> (mark sub-fifos as PLIO), and <code>repeat_counts=</code>/<code>repeat_count=</code> (per-sub-fifo MemTile DMA repeat count). Defaults cover the common case above; reach for these only for custom placement or streaming layouts.</p>
+<p>The plain <code>ObjectFifo(...)</code> constructor itself also accepts <code>dims_to_stream=</code>/<code>dims_from_stream_per_cons=</code> — distinct from the per-sub-fifo kwargs above, this reshapes the <em>whole</em> fifo's stream dimensions before any split/join:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">of_out</span> <span class="o">=</span> <span class="n">ObjectFifo</span><span class="p">(</span><span class="n">data_ty</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">&quot;out&quot;</span><span class="p">,</span> <span class="n">dims_to_stream</span><span class="o">=</span><span class="n">dims</span><span class="p">)</span>
+</code></pre></div>
+<p><code>depth</code>: 2 gives ping-pong (double-buffering — the producer fills one slot while the consumer drains the other). For a pipeline where a stage holds a buffer while the next stage also holds one, set <code>depth ≥ producer_outstanding + consumer_outstanding</code>, where each term is the number of buffers that side holds acquired-but-not-released at once.</p>
+<h3 id="advanced-objectfifo-opt-in">Advanced ObjectFifo (opt-in)<a class="headerlink" href="#advanced-objectfifo-opt-in" title="Permanent link">&para;</a></h3>
+<p>These two constructor kwargs stay out of the way of simple designs; reach for them only when a plain fifo (or split/join) can't express what you need. They land on <code>aie.objectfifo</code> attributes.</p>
+<p><strong><code>consumer_obj_type=</code> — asymmetric transfer granularity.</strong> The producer sends <code>obj_type</code>-sized chunks; the consumer receives smaller <code>consumer_obj_type</code>-sized chunks. Producer element count must be an integer multiple of the consumer's. Use it when one DMA fan-out feeds consumers that each walk a sub-slice, avoiding a second fifo + join.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">prod_ty</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[(</span><span class="mi">40</span><span class="p">,),</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">]]</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="n">cons_ty</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[(</span><span class="mi">10</span><span class="p">,),</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">]]</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="n">wts</span> <span class="o">=</span> <span class="n">ObjectFifo</span><span class="p">(</span><span class="n">prod_ty</span><span class="p">,</span> <span class="n">depth</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">&quot;wts&quot;</span><span class="p">,</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>                 <span class="n">consumer_obj_type</span><span class="o">=</span><span class="n">cons_ty</span><span class="p">)</span>   <span class="c1"># 4:1 — one fill, four consumer acquires</span>
+</code></pre></div>
+<p><strong><code>aie_stream=(end, port)</code> — direct AIE-stream, no L1 buffer.</strong> Marks the producer side as wire-only; the consumer reads straight off the stream. Pair with a kernel that writes per-element via <code>aie::stream::put_ms(value)</code> — the core body never acquires/releases the producer handle.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="n">of_out</span> <span class="o">=</span> <span class="n">ObjectFifo</span><span class="p">(</span><span class="n">dout_ty</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">&quot;out&quot;</span><span class="p">,</span> <span class="n">depth</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">aie_stream</span><span class="o">=</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">))</span>
+</code></pre></div>
+<h2 id="worker">Worker<a class="headerlink" href="#worker" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">core_body</span><span class="p">(</span><span class="n">of_in</span><span class="p">,</span> <span class="n">of_out</span><span class="p">,</span> <span class="n">kernel_fn</span><span class="p">,</span> <span class="n">scale</span><span class="p">):</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>    <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="n">range_</span><span class="p">(</span><span class="n">num_iters</span><span class="p">):</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>        <span class="n">ein</span>  <span class="o">=</span> <span class="n">of_in</span><span class="o">.</span><span class="n">acquire</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>        <span class="n">eout</span> <span class="o">=</span> <span class="n">of_out</span><span class="o">.</span><span class="n">acquire</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>        <span class="n">kernel_fn</span><span class="p">(</span><span class="n">ein</span><span class="p">,</span> <span class="n">eout</span><span class="p">,</span> <span class="n">scale</span><span class="p">)</span>
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>        <span class="n">of_in</span><span class="o">.</span><span class="n">release</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a>        <span class="n">of_out</span><span class="o">.</span><span class="n">release</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a>
+<a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a><span class="n">w</span> <span class="o">=</span> <span class="n">Worker</span><span class="p">(</span>
+<a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a>    <span class="n">core_body</span><span class="p">,</span>
+<a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a>    <span class="n">fn_args</span><span class="o">=</span><span class="p">[</span><span class="n">of_in</span><span class="o">.</span><span class="n">cons</span><span class="p">(),</span> <span class="n">of_out</span><span class="o">.</span><span class="n">prod</span><span class="p">(),</span> <span class="n">kernel_fn</span><span class="p">,</span> <span class="mi">5</span><span class="p">],</span>
+<a id="__codelineno-8-12" name="__codelineno-8-12" href="#__codelineno-8-12"></a>    <span class="c1"># tile=Tile(col, row),             # optional: pin to a tile; default AnyComputeTile</span>
+<a id="__codelineno-8-13" name="__codelineno-8-13" href="#__codelineno-8-13"></a>    <span class="c1"># stack_size=0xD00,                # optional: bump if you get stack overflows</span>
+<a id="__codelineno-8-14" name="__codelineno-8-14" href="#__codelineno-8-14"></a>    <span class="c1"># while_true=False,                # optional: run core_body once instead of forever (default True)</span>
+<a id="__codelineno-8-15" name="__codelineno-8-15" href="#__codelineno-8-15"></a>    <span class="c1"># allocation_scheme=&quot;bank-aware&quot;,  # or &quot;basic-sequential&quot;; default bank-aware</span>
+<a id="__codelineno-8-16" name="__codelineno-8-16" href="#__codelineno-8-16"></a>    <span class="c1"># trace=8192,                      # optional: per-worker trace buffer size in bytes</span>
+<a id="__codelineno-8-17" name="__codelineno-8-17" href="#__codelineno-8-17"></a><span class="p">)</span>
+</code></pre></div>
+<p>The <code>fn_args</code> list is positional and must match <code>core_body</code>'s parameters.</p>
+<p>The placement kwarg is <strong><code>tile=</code></strong> (not <code>placement=</code>), and it defaults to <code>AnyComputeTile</code>,
+which leaves the choice to the <code>--aie-place-tiles</code> pass. Passing a non-compute tile raises
+<code>ValueError</code> at construction.</p>
+<p><code>while_true</code> (default <code>True</code>) wraps <code>core_body</code> in a <code>while(true)</code> loop so the core keeps servicing the fifo until reconfiguration; pass <code>False</code> for a core that should run exactly once (rare — most designs want the default forever-loop).</p>
+<p><code>stack_size</code> defaults to the target model's <code>getDefaultCoreStackSize()</code> (currently 1024 bytes) — bump it if a core overflows its stack. <code>dynamic_objfifo_lowering</code> is a per-core override of the ObjectFifo lowering strategy and is only honored when the global <code>--dynamic-objFifos</code> flag is false; leave it <code>None</code> unless you're specifically working around a lowering issue.</p>
+<h3 id="cascadeflow--direct-cascade-stream-link-between-two-workers">CascadeFlow — direct cascade-stream link between two Workers<a class="headerlink" href="#cascadeflow--direct-cascade-stream-link-between-two-workers" title="Permanent link">&para;</a></h3>
+<p>For designs that chain compute across adjacent tiles' cascade interconnect (e.g. an accumulator passed core-to-core) rather than through an ObjectFifo, connect two <code>Worker</code>s directly:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aie.iron</span><span class="w"> </span><span class="kn">import</span> <span class="n">CascadeFlow</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="n">cf</span> <span class="o">=</span> <span class="n">CascadeFlow</span><span class="p">(</span><span class="n">src</span><span class="o">=</span><span class="n">worker_a</span><span class="p">,</span> <span class="n">dst</span><span class="o">=</span><span class="n">worker_b</span><span class="p">)</span>   <span class="c1"># registers on worker_a; resolved when Program.resolve_program() places tiles</span>
+</code></pre></div>
+<p>The kernels on both sides must drive the stream themselves via the AIE API's <code>put_mcd</code>/<code>get_scd</code> intrinsics — <code>CascadeFlow</code> only declares the topology edge, not the data movement.</p>
+<p>Hardware constraints, all checked at lowering rather than construction (so a bad chain surfaces as an <code>aie.configure_cascade</code> verifier error, not a Python exception):</p>
+<ul>
+<li><strong>Direction is fixed.</strong> On AIE2/AIE2P the cascade input must come from <strong>North or West</strong> and the output must go <strong>South or East</strong>. A chain therefore has to descend in row or advance east — you cannot run it upward or westward. In practice this means pinning tiles (e.g. head at row 5 down to tail at row 2 within a column) rather than leaving the chain to <code>--aie-place-tiles</code>.</li>
+<li><strong>Adjacency</strong>: <code>src</code>/<code>dst</code> tiles must end up cardinally adjacent after placement.</li>
+<li><strong>Fan-in/out</strong>: each compute tile has at most one cascade input and one cascade output.</li>
+<li><strong>No shim/mem participation</strong>: ShimTiles and MemTiles have no cascade interface, so the last core in a chain must land its result in L1 for a normal ObjectFifo DMA — the cascade cannot itself reach the host.</li>
+<li><strong>Width</strong>: the accumulator cascade is 512 bits on AIE2/AIE2P (384 on AIE1, where cascade isn't supported by this API anyway) — e.g. a <code>v16int32</code> payload. See <code>programming_examples/basic/matrix_multiplication/cascade/</code> for a worked example (a row-accumulator chain across 4 cores).</li>
+</ul>
+<p>Unlike <code>Flow</code>/<code>PacketFlow</code> (<code>low_level_api.md</code>), constructing a <code>CascadeFlow</code> self-registers it on <code>src</code>'s outgoing-cascade list — there's no separate <code>rt.add_flow(...)</code> call needed.</p>
+<h2 id="kernel--external-c-function">Kernel — external C++ function<a class="headerlink" href="#kernel--external-c-function" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="n">kernel_fn</span> <span class="o">=</span> <span class="n">Kernel</span><span class="p">(</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>    <span class="s2">&quot;eltwise_add_bf16_vector&quot;</span><span class="p">,</span>           <span class="c1"># extern &quot;C&quot; name in the .o file</span>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>    <span class="s2">&quot;add.o&quot;</span><span class="p">,</span>                              <span class="c1"># path to compiled object</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>    <span class="p">[</span><span class="n">tile_ty</span><span class="p">,</span> <span class="n">tile_ty</span><span class="p">,</span> <span class="n">tile_ty</span><span class="p">],</span>          <span class="c1"># arg types: must match kernel signature</span>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="p">)</span>
+</code></pre></div>
+<p>For JIT designs you can use <code>iron.ExternalFunction</code> to compile a <code>.cc</code> source on-the-fly:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="n">kernel_fn</span> <span class="o">=</span> <span class="n">iron</span><span class="o">.</span><span class="n">ExternalFunction</span><span class="p">(</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>    <span class="s2">&quot;eltwise_add_bf16_vector&quot;</span><span class="p">,</span>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>    <span class="n">source_file</span><span class="o">=</span><span class="s2">&quot;add.cc&quot;</span><span class="p">,</span>
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>    <span class="n">arg_types</span><span class="o">=</span><span class="p">[</span><span class="n">tile_ty</span><span class="p">,</span> <span class="n">tile_ty</span><span class="p">,</span> <span class="n">tile_ty</span><span class="p">],</span>
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a>    <span class="n">compile_flags</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;-DBIT_WIDTH=16&quot;</span><span class="p">],</span>
+<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a><span class="p">)</span>
+</code></pre></div>
+<p>A kernel/<code>ExternalFunction</code> call silently inserts a <code>memref.collapse_shape</code> when an N-D contiguous memref argument (e.g. a 2-D ObjectFifo element) feeds a flat 1-D kernel signature with a matching element count and dtype — this is expected, not an error; a genuine shape/dtype mismatch still fails at MLIR verification.</p>
+<h2 id="buffer--l1-resident-scalars--accumulators--rtps">Buffer — L1-resident scalars / accumulators / RTPs<a class="headerlink" href="#buffer--l1-resident-scalars--accumulators--rtps" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="n">acc</span> <span class="o">=</span> <span class="n">Buffer</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[(</span><span class="mi">64</span><span class="p">,),</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">]],</span> <span class="n">name</span><span class="o">=</span><span class="s2">&quot;acc&quot;</span><span class="p">)</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="n">rtp</span> <span class="o">=</span> <span class="n">Buffer</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[(</span><span class="mi">16</span><span class="p">,),</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">]],</span> <span class="n">name</span><span class="o">=</span><span class="s2">&quot;rtp0&quot;</span><span class="p">,</span>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>             <span class="n">use_write_rtp</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>         <span class="c1"># host can write at runtime</span>
+</code></pre></div>
+<p>Pass <code>Buffer</code>s to <code>Worker.fn_args</code> to use them inside the core; pair with <code>WorkerRuntimeBarrier</code> if the host writes them during execution.</p>
+<p>By default a <code>Buffer</code> is pinned to whichever tile the <code>Worker</code> that uses it lands on. Pass <code>tile=</code> explicitly to pin a <code>Buffer</code> on a <em>different</em> tile than its consuming core — e.g. a lookup table that lives on a neighbor tile and is read directly through shared L1 memory:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="n">lut_buf</span> <span class="o">=</span> <span class="n">Buffer</span><span class="p">(</span><span class="n">tile</span><span class="o">=</span><span class="n">west_tile</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="n">lut_ty</span><span class="p">,</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>                  <span class="n">initial_value</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">lut_arr</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int16</span><span class="p">),</span> <span class="n">name</span><span class="o">=</span><span class="s2">&quot;lut_buf&quot;</span><span class="p">)</span>
+</code></pre></div>
+<p><code>Worker</code> preserves any explicit <code>tile=</code> placement; it only auto-pins <code>Buffer</code>s that were created without one. See <code>programming_examples/ml/magika/group2.py</code> for a design that spreads four LUTs across the four neighbor tiles of a compute core this way.</p>
+<h2 id="runtime--host-side-control-flow">Runtime — host-side control flow<a class="headerlink" href="#runtime--host-side-control-flow" title="Permanent link">&para;</a></h2>
+<p><code>Runtime</code> wraps a plain Python function — the <strong>sequence body</strong> — that describes the host-side data movement. Workers are <em>not</em> started from inside it; they're launched implicitly by being passed to <code>Program(..., workers=[...])</code>. Each entry in <code>Runtime</code>'s <code>fn_args</code> list is either:</p>
+<ul>
+<li>a <strong>type</strong> (a tensor type like <code>in_ty</code>, or a scalar type like <code>np.int32</code>) — declares a runtime input; the sequence body receives a live value for it (a <code>RuntimeData</code> handle for tensor types you can <code>.fill()</code>/<code>.drain()</code>, a bare SSA value for scalar types).</li>
+<li>a concrete <strong>int</strong> — also declares a runtime input, but folds it into a compile-time constant instead of a host-settable value (useful for <code>range_</code>/<code>if_</code> bounds that should specialize to a static path).</li>
+<li>anything else (an <code>ObjectFifoHandle</code> from <code>.prod()</code>/<code>.cons()</code>, a <code>Buffer</code>, a <code>Kernel</code>, a <code>WorkerRuntimeBarrier</code>, a <code>ScratchpadParameter</code>, ...) — passed through to the body unchanged, exactly like <code>Worker</code>'s <code>fn_args</code>.</li>
+</ul>
+<p><code>fill</code>/<code>drain</code> are now methods on the <code>ObjectFifoHandle</code> you get from <code>.prod()</code>/<code>.cons()</code>, called from inside the sequence body — there's no more <code>rt.fill</code>/<code>rt.drain</code>/<code>rt.start</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">sequence</span><span class="p">(</span><span class="n">a_in</span><span class="p">,</span> <span class="n">c_out</span><span class="p">,</span> <span class="n">in_h</span><span class="p">,</span> <span class="n">out_h</span><span class="p">):</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>    <span class="n">in_h</span><span class="o">.</span><span class="n">fill</span><span class="p">(</span><span class="n">a_in</span><span class="p">)</span>                       <span class="c1"># DMA host → AIE</span>
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>    <span class="n">out_h</span><span class="o">.</span><span class="n">drain</span><span class="p">(</span><span class="n">c_out</span><span class="p">,</span> <span class="n">wait</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>         <span class="c1"># DMA AIE → host</span>
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a>
+<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a><span class="n">rt</span> <span class="o">=</span> <span class="n">Runtime</span><span class="p">(</span><span class="n">sequence</span><span class="p">,</span> <span class="p">[</span><span class="n">in_ty</span><span class="p">,</span> <span class="n">out_ty</span><span class="p">,</span> <span class="n">of_in</span><span class="o">.</span><span class="n">prod</span><span class="p">(),</span> <span class="n">of_out</span><span class="o">.</span><span class="n">cons</span><span class="p">()])</span>
+<a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a>
+<a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a><span class="n">module</span> <span class="o">=</span> <span class="n">Program</span><span class="p">(</span><span class="n">NPU2Col1</span><span class="p">(),</span> <span class="n">rt</span><span class="p">,</span> <span class="n">workers</span><span class="o">=</span><span class="p">[</span><span class="n">w</span><span class="p">])</span><span class="o">.</span><span class="n">resolve_program</span><span class="p">()</span>
+</code></pre></div>
+<p><code>wait=True</code> blocks the sequence until that transfer completes; omit it (default <code>False</code>) to let it run asynchronously and rely on a <code>TaskGroup</code> (or a later <code>wait=True</code> transfer) to synchronize.</p>
+<h3 id="task-groups--batch-fillsdrains-so-they-pipeline">Task groups — batch fills/drains so they pipeline<a class="headerlink" href="#task-groups--batch-fillsdrains-so-they-pipeline" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">sequence</span><span class="p">(</span><span class="n">a_in</span><span class="p">,</span> <span class="n">c_out</span><span class="p">,</span> <span class="n">in_h</span><span class="p">,</span> <span class="n">out_h</span><span class="p">):</span>
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>    <span class="n">tg</span> <span class="o">=</span> <span class="n">TaskGroup</span><span class="p">()</span>
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a>    <span class="n">in_h</span><span class="o">.</span><span class="n">fill</span><span class="p">(</span><span class="n">a_in</span><span class="p">,</span> <span class="n">group</span><span class="o">=</span><span class="n">tg</span><span class="p">)</span>
+<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a>    <span class="n">out_h</span><span class="o">.</span><span class="n">drain</span><span class="p">(</span><span class="n">c_out</span><span class="p">,</span> <span class="n">wait</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">group</span><span class="o">=</span><span class="n">tg</span><span class="p">)</span>
+<a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a>    <span class="n">tg</span><span class="o">.</span><span class="n">finish</span><span class="p">()</span>                           <span class="c1"># awaits waited transfers first, then frees the rest</span>
+</code></pre></div>
+<p>Construct a <code>TaskGroup()</code> from inside the sequence body (it registers itself with the active sequence). Pass it as <code>group=</code> to <code>fill</code>/<code>drain</code>; call <code>.finish()</code> once all of the group's transfers have been issued. If you don't pass <code>group=</code> explicitly, <code>fill</code>/<code>drain</code> still enroll in the sequence's implicit default group — you don't need a <code>TaskGroup</code> at all for the common single-shot case above.</p>
+<h3 id="non-contiguous-access-via-tensoraccesspattern">Non-contiguous access via TensorAccessPattern<a class="headerlink" href="#non-contiguous-access-via-tensoraccesspattern" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aie.helpers.taplib</span><span class="w"> </span><span class="kn">import</span> <span class="n">TensorAccessPattern</span>
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a><span class="n">tap</span> <span class="o">=</span> <span class="n">TensorAccessPattern</span><span class="p">((</span><span class="mi">1</span><span class="p">,</span> <span class="n">total_size</span><span class="p">),</span>
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a>                          <span class="n">offset</span><span class="o">=</span><span class="n">col</span> <span class="o">*</span> <span class="n">chunk</span><span class="p">,</span>
+<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a>                          <span class="n">sizes</span><span class="o">=</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">chunk</span><span class="p">],</span>
+<a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a>                          <span class="n">strides</span><span class="o">=</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">])</span>
+<a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a><span class="n">in_h</span><span class="o">.</span><span class="n">fill</span><span class="p">(</span><span class="n">a_in</span><span class="p">,</span> <span class="n">tap</span><span class="o">=</span><span class="n">tap</span><span class="p">)</span>
+</code></pre></div>
+<p><code>tap</code> and the raw <code>sizes=</code>/<code>strides=</code>/<code>offset=</code>/<code>transfer_len=</code> kwargs are mutually exclusive — pass one style or the other, not both. Omit both and <code>fill</code>/<code>drain</code> default to a full linear transfer of the whole buffer.</p>
+<h3 id="unmanaged-transfers--hand-rolled-software-pipelining">Unmanaged transfers — hand-rolled software pipelining<a class="headerlink" href="#unmanaged-transfers--hand-rolled-software-pipelining" title="Permanent link">&para;</a></h3>
+<p>By default (<code>managed=True</code>) a transfer is enrolled in a <code>TaskGroup</code> that frees it automatically. Pass <code>managed=False</code> to own the returned <code>Task</code> yourself — e.g. to carry it across <code>scf.for</code> iterations as an iter_arg in a manually pipelined loop:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="n">task</span> <span class="o">=</span> <span class="n">in_h</span><span class="o">.</span><span class="n">fill</span><span class="p">(</span><span class="n">a_in</span><span class="p">,</span> <span class="n">managed</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a><span class="o">...</span>
+<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a><span class="n">task</span><span class="o">.</span><span class="n">await_</span><span class="p">()</span>
+<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a><span class="n">task</span><span class="o">.</span><span class="n">free</span><span class="p">()</span>
+</code></pre></div>
+<p><code>managed=False</code> and <code>group=</code> are mutually exclusive (an unmanaged transfer isn't part of a <code>TaskGroup</code>).</p>
+<h3 id="runtime-parameters-rtp-and-the-worker-barrier">Runtime parameters (RTP) and the worker barrier<a class="headerlink" href="#runtime-parameters-rtp-and-the-worker-barrier" title="Permanent link">&para;</a></h3>
+<p>RTP writes are now plain indexing on the <code>Buffer</code> inside the sequence body — there's no <code>rt.inline_ops</code>. <code>WorkerRuntimeBarrier.set(value)</code> replaces <code>rt.set_barrier</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">sequence</span><span class="p">(</span><span class="n">a_in</span><span class="p">,</span> <span class="n">c_out</span><span class="p">,</span> <span class="n">in_h</span><span class="p">,</span> <span class="n">out_h</span><span class="p">):</span>
+<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a>    <span class="n">rtp</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="mi">50</span>                           <span class="c1"># write directly into the Buffer</span>
+<a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a>    <span class="n">barrier</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>                        <span class="c1"># unblocks a worker&#39;s wait_for_value(1)</span>
+<a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a>    <span class="n">in_h</span><span class="o">.</span><span class="n">fill</span><span class="p">(</span><span class="n">a_in</span><span class="p">)</span>
+<a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a>    <span class="n">out_h</span><span class="o">.</span><span class="n">drain</span><span class="p">(</span><span class="n">c_out</span><span class="p">,</span> <span class="n">wait</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</code></pre></div>
+<p><code>rtp</code> and <code>barrier</code> don't need to appear in <code>Runtime</code>'s <code>fn_args</code> — they're captured directly from the enclosing Python scope. <code>fn_args</code> only needs entries for values that must become sequence-body parameters (host-supplied types) or objects the body doesn't already close over.</p>
+<h3 id="scratchpad-parameters--an-alternative-to-rtp-buffers">Scratchpad parameters — an alternative to RTP Buffers<a class="headerlink" href="#scratchpad-parameters--an-alternative-to-rtp-buffers" title="Permanent link">&para;</a></h3>
+<p><code>ScratchpadParameter</code> is a newer, simpler way to pass a named scalar from host to core, without a dedicated <code>Buffer</code>/lock pair:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="n">seq_len</span> <span class="o">=</span> <span class="n">ScratchpadParameter</span><span class="p">(</span><span class="s2">&quot;seq_len&quot;</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">)</span>
+<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a>
+<a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a><span class="k">def</span><span class="w"> </span><span class="nf">core_body</span><span class="p">(</span><span class="n">p</span><span class="p">,</span> <span class="n">of_in</span><span class="p">,</span> <span class="n">of_out</span><span class="p">,</span> <span class="n">k</span><span class="p">):</span>
+<a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a>    <span class="n">v</span> <span class="o">=</span> <span class="n">p</span><span class="o">.</span><span class="n">read</span><span class="p">()</span>                          <span class="c1"># inside the Worker core</span>
+<a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a>    <span class="o">...</span>
+<a id="__codelineno-19-6" name="__codelineno-19-6" href="#__codelineno-19-6"></a>
+<a id="__codelineno-19-7" name="__codelineno-19-7" href="#__codelineno-19-7"></a><span class="n">w</span> <span class="o">=</span> <span class="n">Worker</span><span class="p">(</span><span class="n">core_body</span><span class="p">,</span> <span class="p">[</span><span class="n">seq_len</span><span class="p">,</span> <span class="n">of_in</span><span class="o">.</span><span class="n">cons</span><span class="p">(),</span> <span class="n">of_out</span><span class="o">.</span><span class="n">prod</span><span class="p">(),</span> <span class="n">k</span><span class="p">])</span>
+<a id="__codelineno-19-8" name="__codelineno-19-8" href="#__codelineno-19-8"></a>
+<a id="__codelineno-19-9" name="__codelineno-19-9" href="#__codelineno-19-9"></a><span class="k">def</span><span class="w"> </span><span class="nf">sequence</span><span class="p">(</span><span class="n">a_in</span><span class="p">,</span> <span class="n">c_out</span><span class="p">,</span> <span class="n">in_h</span><span class="p">,</span> <span class="n">out_h</span><span class="p">):</span>
+<a id="__codelineno-19-10" name="__codelineno-19-10" href="#__codelineno-19-10"></a>    <span class="c1"># write seq_len via offset_parameter= on a fill/drain call, then:</span>
+<a id="__codelineno-19-11" name="__codelineno-19-11" href="#__codelineno-19-11"></a>    <span class="n">iron</span><span class="o">.</span><span class="n">sync_parameters</span><span class="p">()</span>                <span class="c1"># emits the host→scratchpad sync; call before workers read it</span>
+<a id="__codelineno-19-12" name="__codelineno-19-12" href="#__codelineno-19-12"></a>    <span class="n">in_h</span><span class="o">.</span><span class="n">fill</span><span class="p">(</span><span class="n">a_in</span><span class="p">)</span>
+<a id="__codelineno-19-13" name="__codelineno-19-13" href="#__codelineno-19-13"></a>    <span class="n">out_h</span><span class="o">.</span><span class="n">drain</span><span class="p">(</span><span class="n">c_out</span><span class="p">,</span> <span class="n">wait</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</code></pre></div>
+<p>Reach for <code>Buffer(..., use_write_rtp=True)</code> + <code>WorkerRuntimeBarrier</code> for the common case (matches most existing examples); use <code>ScratchpadParameter</code> when you specifically want to avoid a dedicated RTP buffer/lock.</p>
+<p>Note that <code>ScratchpadParameter</code>s depend on the full-ELF flow (<code>aiecc --get-full-elf</code>) and are not available on the Phoenix/Hawk Point architectures.</p>
+<h2 id="program--finalize-the-design">Program — finalize the design<a class="headerlink" href="#program--finalize-the-design" title="Permanent link">&para;</a></h2>
+<p>Workers are now passed explicitly to <code>Program</code>, not discovered from the runtime sequence:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a><span class="n">prog</span> <span class="o">=</span> <span class="n">Program</span><span class="p">(</span><span class="n">NPU2Col1</span><span class="p">(),</span> <span class="n">rt</span><span class="p">,</span> <span class="n">workers</span><span class="o">=</span><span class="p">[</span><span class="n">w1</span><span class="p">,</span> <span class="n">w2</span><span class="p">])</span>
+<a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a><span class="n">module</span> <span class="o">=</span> <span class="n">prog</span><span class="o">.</span><span class="n">resolve_program</span><span class="p">()</span>   <span class="c1"># MLIR module</span>
+</code></pre></div>
+<p><code>resolve_program(device_name="main")</code> takes no placer argument. It emits each tile as an
+<code>aie.logical_tile</code> op and runs MLIR verification; the <code>--aie-place-tiles</code> compilation pass
+later turns those into concrete <code>aie.tile</code> ops. To constrain placement, pin the individual
+<code>Worker</code>/<code>Buffer</code> with <code>tile=Tile(col, row)</code> rather than swapping a placer object. The
+<code>device_name</code> argument only names the emitted <code>aie.device</code> symbol — relevant for
+multi-device modules, not for placement.</p>
+<p>If the default placement genuinely fails to route, the escape hatch is a build-time flag
+(<code>--placer=sa_placer</code>), not a Python object — see
+<a href="../../../../programming_guide/section-1/"><code>programming_guide/section-1/README.md</code></a> (SA placer section).</p>
+<h3 id="tracing">Tracing<a class="headerlink" href="#tracing" title="Permanent link">&para;</a></h3>
+<p>Trace configuration now lives on <code>Program</code>, not <code>Runtime</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a><span class="n">prog</span> <span class="o">=</span> <span class="n">Program</span><span class="p">(</span><span class="n">NPU2Col1</span><span class="p">(),</span> <span class="n">rt</span><span class="p">,</span> <span class="n">workers</span><span class="o">=</span><span class="p">[</span><span class="n">w</span><span class="p">])</span>
+<a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a><span class="n">prog</span><span class="o">.</span><span class="n">enable_trace</span><span class="p">(</span><span class="n">trace_size</span><span class="o">=</span><span class="mi">8192</span><span class="p">,</span> <span class="n">workers</span><span class="o">=</span><span class="p">[</span><span class="n">w</span><span class="p">])</span>   <span class="c1"># workers=None traces every worker with `trace` set</span>
+<a id="__codelineno-21-3" name="__codelineno-21-3" href="#__codelineno-21-3"></a><span class="n">module</span> <span class="o">=</span> <span class="n">prog</span><span class="o">.</span><span class="n">resolve_program</span><span class="p">()</span>
+</code></pre></div>
+<p><code>enable_trace</code> also takes <code>reuse_output_buffer=</code> (write trace data into the tail of the last output buffer instead of appending a dedicated trace argument), <code>coretile_events=</code>/<code>coremem_events=</code>/<code>memtile_events=</code>/<code>shimtile_events=</code> (up to 8 trace events per tile type), and <code>egress_shim_col=</code> (which shim column egresses trace packets to DDR).</p>
+<h2 id="ironjit--compile-and-run-from-python">iron.jit — compile and run from Python<a class="headerlink" href="#ironjit--compile-and-run-from-python" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a><span class="nd">@iron</span><span class="o">.</span><span class="n">jit</span>
+<a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a><span class="k">def</span><span class="w"> </span><span class="nf">my_design</span><span class="p">(</span><span class="n">input_t</span><span class="p">:</span> <span class="n">In</span><span class="p">,</span> <span class="n">output_t</span><span class="p">:</span> <span class="n">Out</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">N</span><span class="p">:</span> <span class="n">CompileTime</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="mi">4096</span><span class="p">):</span>
+<a id="__codelineno-22-3" name="__codelineno-22-3" href="#__codelineno-22-3"></a>    <span class="c1"># ... build of, workers, runtime exactly as above ...</span>
+<a id="__codelineno-22-4" name="__codelineno-22-4" href="#__codelineno-22-4"></a>    <span class="k">return</span> <span class="n">Program</span><span class="p">(</span><span class="n">iron</span><span class="o">.</span><span class="n">get_current_device</span><span class="p">(),</span> <span class="n">rt</span><span class="p">,</span> <span class="n">workers</span><span class="o">=</span><span class="p">[</span><span class="n">w</span><span class="p">])</span><span class="o">.</span><span class="n">resolve_program</span><span class="p">()</span>
+<a id="__codelineno-22-5" name="__codelineno-22-5" href="#__codelineno-22-5"></a>
+<a id="__codelineno-22-6" name="__codelineno-22-6" href="#__codelineno-22-6"></a><span class="c1"># First call compiles to xclbin, caches; subsequent calls reuse it.</span>
+<a id="__codelineno-22-7" name="__codelineno-22-7" href="#__codelineno-22-7"></a><span class="n">my_design</span><span class="p">(</span><span class="n">input_array</span><span class="p">,</span> <span class="n">output_array</span><span class="p">,</span> <span class="n">N</span><span class="o">=</span><span class="mi">4096</span><span class="p">)</span>
+</code></pre></div>
+<p><code>use_cache</code> defaults to <code>True</code>, so <code>@iron.jit</code> bare is the normal form — pass
+<code>use_cache=False</code> only to force a rebuild. Other config keys: <code>source_files</code>,
+<code>object_files</code>, <code>compile_flags</code>, <code>include_paths</code>, <code>aiecc_flags</code>, <code>trace_config</code>, <code>full_elf</code>. Any other
+keyword is matched against a <code>CompileTime[T]</code> parameter name and raises <code>TypeError</code> at
+decoration time if it doesn't match one.</p>
+<p>Annotate tensor parameters with <code>In</code> / <code>Out</code> / <code>InOut</code> and specialization knobs as
+keyword-only <code>CompileTime[T]</code>; see <a href="../builtin_kernels/"><code>builtin_kernels.md</code></a> for the full
+signature rules and worked examples.</p>
+<p>If your inputs are already <code>iron.tensor(..., device="npu")</code> arrays, <code>jit</code> will route them through XRT automatically.</p>
+<h2 id="workerruntimebarrier--gate-workers-on-host-set-rtps">WorkerRuntimeBarrier — gate workers on host-set RTPs<a class="headerlink" href="#workerruntimebarrier--gate-workers-on-host-set-rtps" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a><span class="n">barrier</span> <span class="o">=</span> <span class="n">WorkerRuntimeBarrier</span><span class="p">()</span>
+<a id="__codelineno-23-2" name="__codelineno-23-2" href="#__codelineno-23-2"></a><span class="n">rtp</span> <span class="o">=</span> <span class="n">Buffer</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[(</span><span class="mi">8</span><span class="p">,),</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">]],</span> <span class="n">name</span><span class="o">=</span><span class="s2">&quot;rtp&quot;</span><span class="p">,</span> <span class="n">use_write_rtp</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-23-3" name="__codelineno-23-3" href="#__codelineno-23-3"></a>
+<a id="__codelineno-23-4" name="__codelineno-23-4" href="#__codelineno-23-4"></a><span class="k">def</span><span class="w"> </span><span class="nf">core</span><span class="p">(</span><span class="n">rtp</span><span class="p">,</span> <span class="n">barrier</span><span class="p">,</span> <span class="n">of_in</span><span class="p">,</span> <span class="n">of_out</span><span class="p">):</span>
+<a id="__codelineno-23-5" name="__codelineno-23-5" href="#__codelineno-23-5"></a>    <span class="n">barrier</span><span class="o">.</span><span class="n">wait_for_value</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>             <span class="c1"># block until host signals</span>
+<a id="__codelineno-23-6" name="__codelineno-23-6" href="#__codelineno-23-6"></a>    <span class="n">scale</span> <span class="o">=</span> <span class="n">rtp</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>                        <span class="c1"># now safe to read</span>
+<a id="__codelineno-23-7" name="__codelineno-23-7" href="#__codelineno-23-7"></a>    <span class="c1"># ... use scale ...</span>
+<a id="__codelineno-23-8" name="__codelineno-23-8" href="#__codelineno-23-8"></a>
+<a id="__codelineno-23-9" name="__codelineno-23-9" href="#__codelineno-23-9"></a><span class="n">w</span> <span class="o">=</span> <span class="n">Worker</span><span class="p">(</span><span class="n">core</span><span class="p">,</span> <span class="p">[</span><span class="n">rtp</span><span class="p">,</span> <span class="n">barrier</span><span class="p">,</span> <span class="n">of_in</span><span class="o">.</span><span class="n">cons</span><span class="p">(),</span> <span class="n">of_out</span><span class="o">.</span><span class="n">prod</span><span class="p">()])</span>
+<a id="__codelineno-23-10" name="__codelineno-23-10" href="#__codelineno-23-10"></a>
+<a id="__codelineno-23-11" name="__codelineno-23-11" href="#__codelineno-23-11"></a><span class="k">def</span><span class="w"> </span><span class="nf">sequence</span><span class="p">(</span><span class="n">a_in</span><span class="p">,</span> <span class="n">c_out</span><span class="p">,</span> <span class="n">in_h</span><span class="p">,</span> <span class="n">out_h</span><span class="p">):</span>
+<a id="__codelineno-23-12" name="__codelineno-23-12" href="#__codelineno-23-12"></a>    <span class="n">rtp</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="mi">5</span>
+<a id="__codelineno-23-13" name="__codelineno-23-13" href="#__codelineno-23-13"></a>    <span class="n">barrier</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+<a id="__codelineno-23-14" name="__codelineno-23-14" href="#__codelineno-23-14"></a>    <span class="n">in_h</span><span class="o">.</span><span class="n">fill</span><span class="p">(</span><span class="n">a_in</span><span class="p">)</span>
+<a id="__codelineno-23-15" name="__codelineno-23-15" href="#__codelineno-23-15"></a>    <span class="n">out_h</span><span class="o">.</span><span class="n">drain</span><span class="p">(</span><span class="n">c_out</span><span class="p">,</span> <span class="n">wait</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-23-16" name="__codelineno-23-16" href="#__codelineno-23-16"></a>
+<a id="__codelineno-23-17" name="__codelineno-23-17" href="#__codelineno-23-17"></a><span class="n">rt</span> <span class="o">=</span> <span class="n">Runtime</span><span class="p">(</span><span class="n">sequence</span><span class="p">,</span> <span class="p">[</span><span class="n">in_ty</span><span class="p">,</span> <span class="n">out_ty</span><span class="p">,</span> <span class="n">of_in</span><span class="o">.</span><span class="n">prod</span><span class="p">(),</span> <span class="n">of_out</span><span class="o">.</span><span class="n">cons</span><span class="p">()])</span>
+<a id="__codelineno-23-18" name="__codelineno-23-18" href="#__codelineno-23-18"></a><span class="n">module</span> <span class="o">=</span> <span class="n">Program</span><span class="p">(</span><span class="n">NPU2Col1</span><span class="p">(),</span> <span class="n">rt</span><span class="p">,</span> <span class="n">workers</span><span class="o">=</span><span class="p">[</span><span class="n">w</span><span class="p">])</span><span class="o">.</span><span class="n">resolve_program</span><span class="p">()</span>
+</code></pre></div>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Copyright © 2019–2021 Xilinx, Inc. | Copyright © 2022–2026 Advanced Micro Devices, Inc. Licensed under Apache 2.0 with LLVM exception.
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+    <a href="https://github.com/Xilinx/mlir-aie" target="_blank" rel="noopener" title="mlir-aie on GitHub" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+    
+    
+    
+    
+    <a href="https://discord.gg/UbXzGdXsR5" target="_blank" rel="noopener" title="Join us on the ROCm Discord (#ROCm-NPU)" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M492.5 69.8c-.2-.3-.4-.6-.8-.7-38.1-17.5-78.4-30-119.7-37.1-.4-.1-.8 0-1.1.1s-.6.4-.8.8c-5.5 9.9-10.5 20.2-14.9 30.6-44.6-6.8-89.9-6.8-134.4 0-4.5-10.5-9.5-20.7-15.1-30.6-.2-.3-.5-.6-.8-.8s-.7-.2-1.1-.2C162.5 39 122.2 51.5 84.1 69c-.3.1-.6.4-.8.7C7.1 183.5-13.8 294.6-3.6 404.2c0 .3.1.5.2.8s.3.4.5.6c44.4 32.9 94 58 146.8 74.2.4.1.8.1 1.1 0s.7-.4.9-.7c11.3-15.4 21.4-31.8 30-48.8.1-.2.2-.5.2-.8s0-.5-.1-.8-.2-.5-.4-.6-.4-.3-.7-.4c-15.8-6.1-31.2-13.4-45.9-21.9-.3-.2-.5-.4-.7-.6s-.3-.6-.3-.9 0-.6.2-.9.3-.5.6-.7c3.1-2.3 6.2-4.7 9.1-7.1.3-.2.6-.4.9-.4s.7 0 1 .1c96.2 43.9 200.4 43.9 295.5 0 .3-.1.7-.2 1-.2s.7.2.9.4c2.9 2.4 6 4.9 9.1 7.2.2.2.4.4.6.7s.2.6.2.9-.1.6-.3.9-.4.5-.6.6c-14.7 8.6-30 15.9-45.9 21.8-.2.1-.5.2-.7.4s-.3.4-.4.7-.1.5-.1.8.1.5.2.8c8.8 17 18.8 33.3 30 48.8.2.3.6.6.9.7s.8.1 1.1 0c52.9-16.2 102.6-41.3 147.1-74.2.2-.2.4-.4.5-.6s.2-.5.2-.8c12.3-126.8-20.5-236.9-86.9-334.5zm-302 267.7c-29 0-52.8-26.6-52.8-59.2s23.4-59.2 52.8-59.2c29.7 0 53.3 26.8 52.8 59.2 0 32.7-23.4 59.2-52.8 59.2m195.4 0c-29 0-52.8-26.6-52.8-59.2s23.4-59.2 52.8-59.2c29.7 0 53.3 26.8 52.8 59.2 0 32.7-23.2 59.2-52.8 59.2"/></svg>
+    </a>
+  
+    
+    
+    
+    
+    <a href="mailto:aup@amd.com" target="_blank" rel="noopener" title="AMD University Program" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M536.4-26.3c9.8-3.5 20.6-1 28 6.3s9.8 18.2 6.3 28l-178 496.9c-5 13.9-18.1 23.1-32.8 23.1-14.2 0-27-8.6-32.3-21.7l-64.2-158c-4.5-11-2.5-23.6 5.2-32.6l94.5-112.4c5.1-6.1 4.7-15-.9-20.6s-14.6-6-20.6-.9l-112.4 94.3c-9.1 7.6-21.6 9.6-32.6 5.2L38.1 216.8c-13.1-5.3-21.7-18.1-21.7-32.3 0-14.7 9.2-27.8 23.1-32.8z"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../../..", "features": ["navigation.tabs", "navigation.tabs.sticky", "navigation.sections", "navigation.indexes", "navigation.path", "navigation.top", "navigation.footer", "search.suggest", "search.highlight", "content.tabs.link", "content.code.copy", "content.code.annotate", "toc.follow"], "search": "../../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"alias": true, "default": "latest", "provider": "mike"}}</script>
+    
+    
+      <script src="../../../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

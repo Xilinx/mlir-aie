@@ -313,6 +313,46 @@
          <lastmod>2026-08-24</lastmod>
     </url>
     <url>
+         <loc>https://xilinx.github.io/mlir-aie/dev/skills/aie-code-creator/</loc>
+         <lastmod>2026-08-24</lastmod>
+    </url>
+    <url>
+         <loc>https://xilinx.github.io/mlir-aie/dev/skills/aie-code-creator/SKILL/</loc>
+         <lastmod>2026-08-24</lastmod>
+    </url>
+    <url>
+         <loc>https://xilinx.github.io/mlir-aie/dev/skills/aie-code-creator/references/architecture/</loc>
+         <lastmod>2026-08-24</lastmod>
+    </url>
+    <url>
+         <loc>https://xilinx.github.io/mlir-aie/dev/skills/aie-code-creator/references/builtin_kernels/</loc>
+         <lastmod>2026-08-24</lastmod>
+    </url>
+    <url>
+         <loc>https://xilinx.github.io/mlir-aie/dev/skills/aie-code-creator/references/complete_examples/</loc>
+         <lastmod>2026-08-24</lastmod>
+    </url>
+    <url>
+         <loc>https://xilinx.github.io/mlir-aie/dev/skills/aie-code-creator/references/kernel_intrinsics/</loc>
+         <lastmod>2026-08-24</lastmod>
+    </url>
+    <url>
+         <loc>https://xilinx.github.io/mlir-aie/dev/skills/aie-code-creator/references/low_level_api/</loc>
+         <lastmod>2026-08-24</lastmod>
+    </url>
+    <url>
+         <loc>https://xilinx.github.io/mlir-aie/dev/skills/aie-code-creator/references/patterns/</loc>
+         <lastmod>2026-08-24</lastmod>
+    </url>
+    <url>
+         <loc>https://xilinx.github.io/mlir-aie/dev/skills/aie-code-creator/references/pitfalls/</loc>
+         <lastmod>2026-08-24</lastmod>
+    </url>
+    <url>
+         <loc>https://xilinx.github.io/mlir-aie/dev/skills/aie-code-creator/references/python_api/</loc>
+         <lastmod>2026-08-24</lastmod>
+    </url>
+    <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/skills/aie-dataflow-opt/SKILL/</loc>
          <lastmod>2026-08-24</lastmod>
     </url>
