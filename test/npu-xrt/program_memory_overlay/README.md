@@ -39,21 +39,27 @@ rules it out by definition rather than by evidence.
 
 `hw/guard_band.lit` measures the case that rule leaves open: the core spinning
 192 bytes below the slot while 123 payloads are written to it. All 123 land, so
-the ASSERT stays at `SIZEOF(.text) <= slot` with no guard band.
+the boundary stays exactly at the slot, with no guard band.
 
 ## How a kernel becomes an overlay
 
-No compiler changes.
+1. **The core reserves the slot.** `Worker(program_memory_reserved=...)` puts the
+   reservation on `aie.core`, and the generated linker script shortens the
+   program region to match — so a resident growing into a slot is an ordinary
+   link error naming the section and the overrun.
 
-1. **The slot address reaches the linker as a symbol.** `slot.ld` says
-   `overlay_entry = 0x2000;`. It rides in as a `Kernel`'s `link_with`, the
-   generated ld script turns that into an `INPUT()`, and `ld.lld` parses an input
-   it does not recognise as a linker script. The core's call compiles to a bare
-   jump; no definition is ever linked.
-2. **Each overlay links at that address** against the resident's *defined*
+   This used to be an `ASSERT` smuggled into the core's link through a
+   `link_with` fragment, which works only because `ld.lld` parses an input it does
+   not recognise as a linker script. That made the one thing standing between a
+   growing resident and a core overwriting its own running program a side effect.
+2. **The slot address reaches the linker as a symbol.** `slot.ld` is now just
+   `overlay_entry = 0x2000;`, riding in through the same `link_with` path — a
+   plain symbol assignment, which is a use of that mechanism worth relying on.
+   The core's call compiles to a bare jump; no definition is ever linked.
+3. **Each overlay links at that address** against the resident's *defined*
    symbols, so it can call resident functions and reach resident buffers by name
    instead of carrying copies.
-3. **The bytes are embedded and written** as a `memref.global` and an
+4. **The bytes are embedded and written** as a `memref.global` and an
    `aiex.npu.blockwrite`, ordered before the release so the slot is populated by
    the time the core jumps into it.
 
