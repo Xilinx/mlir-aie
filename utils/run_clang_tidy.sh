@@ -66,7 +66,15 @@ RESOURCE_DIR=$(clang++ -print-resource-dir)
 # `clang-tidy` on PATH for a system install that has no such wrapper.
 CLANG_TIDY_BIN=$(python3 - <<'PYEOF'
 import sysconfig, os
-for p in set(sysconfig.get_paths().values()):
+paths = sysconfig.get_paths()
+# platlib/purelib only, in that order -- clang-tidy's wheel is a
+# platform-specific binary distribution, so platlib is where it normally
+# lands; purelib is a fallback for oddly-configured installs. Iterating a
+# fixed, ordered key list (rather than set(paths.values())) keeps this
+# deterministic: a set's iteration order isn't guaranteed, so if the binary
+# somehow existed under more than one path, the pick could vary run to run.
+for key in ("platlib", "purelib"):
+    p = paths[key]
     # Match the binary itself only -- clang_tidy/data/bin/ also ships
     # clang-tidy-diff.py, run-clang-tidy.py, clang-apply-replacements, etc.,
     # and an unanchored glob can pick one of those instead (glob.glob order
