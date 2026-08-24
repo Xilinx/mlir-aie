@@ -123,7 +123,7 @@ if __name__ == "__main__":
         print(build_design())
     else:
         N = 8192
-        inp = iron.randint(0, 100, (N,), dtype=bfloat16, device="npu")
+        inp = iron.rand((N,), dtype=np.dtype(bfloat16), device="npu")
         outp = iron.zeros_like(inp)
         my_op(inp, outp, tensor_size=N)
         print("first 8 outputs:", outp.numpy()[:8])
