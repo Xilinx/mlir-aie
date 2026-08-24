@@ -1,4 +1,7 @@
 ---
+# Copyright (C) 2018-2022 Xilinx, Inc.
+# Copyright (C) 2023 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: MIT
 # The following configuration was generated with --dump-config and then manually tweaked to suit XRT coding style.
 # The command line used to generate the global src/.clang-tidy is:
 # clang-tidy "-checks=cert-*,bugprone-*,clang-analyzer-*,concurrency-*,cppcoreguidelines-*,hicpp-*,modernize-*" --dump-config

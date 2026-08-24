@@ -1,3 +1,7 @@
+# Copyright (C) 2018-2022 Xilinx, Inc.
+# Copyright (C) 2023 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: MIT
+
 # Top-level CMakeLists.txt
 
 cmake_minimum_required(VERSION 3.10)

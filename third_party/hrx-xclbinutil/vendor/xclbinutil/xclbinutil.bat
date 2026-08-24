@@ -1,4 +1,7 @@
 @echo off
+REM Copyright (C) 2015-2024 Xilinx, Inc.
+REM Copyright (C) 2023-2026 Advanced Micro Devices, Inc.
+REM SPDX-License-Identifier: Apache-2.0
 setlocal
 
 REM Working variables

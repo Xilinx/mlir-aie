@@ -1,3 +1,8 @@
+/**
+ * Copyright (C) 2015-2024 Xilinx, Inc.
+ * Copyright (C) 2023-2026 Advanced Micro Devices, Inc.
+ * SPDX-License-Identifier: Apache-2.0
+ */
 
 #include "XclBinSignature.h"
 void signXclBinImage(const std::string& _fileOnDisk,

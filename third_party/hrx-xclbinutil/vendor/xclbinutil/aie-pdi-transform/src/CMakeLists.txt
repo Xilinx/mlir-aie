@@ -1,3 +1,7 @@
+# Copyright (C) 2018-2022 Xilinx, Inc.
+# Copyright (C) 2023 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: MIT
+
 # CMakeLists.txt in src/
 
 # The PDI header structs use C11 _Alignas/_Static_assert instead of compiler-specific
