@@ -48,26 +48,32 @@ _PRELUDE = """\
 """
 
 
-def source(tag, n_elems, pad_blocks):
+def source(tag, n_elems, pad_blocks, entry="overlay_entry"):
     """C++ for one dummy overlay: adds `tag` to every element, padded to size."""
     padding = "\n".join(f"SEL(pad_{tag}_{i}, {i})" for i in range(pad_blocks))
-    entry = (
+    body = (
         "// int32 stores, deliberately: a byte loop here would be miscompiled.\n"
-        'extern "C" void overlay_entry(int32_t *in, int32_t *out) {\n'
+        f'extern "C" void {entry}(int32_t *in, int32_t *out) {{\n'
         f"  for (int i = 0; i < {n_elems}; i++)\n"
         f"    out[i] = in[i] + {tag};\n"
         "}\n"
     )
-    return f"{_PRELUDE}\n{padding}\n\n{entry}"
+    return f"{_PRELUDE}\n{padding}\n\n{body}"
 
 
 def compile_overlay(
-    tag, n_elems, out_o, target="aie2p-none-unknown-elf", pad_blocks=0, workdir="."
+    tag,
+    n_elems,
+    out_o,
+    target="aie2p-none-unknown-elf",
+    pad_blocks=0,
+    workdir=".",
+    entry="overlay_entry",
 ):
     """Compile one dummy overlay object, returning its .text size."""
     src = os.path.join(workdir, f"dummy_{tag}.cc")
     with open(src, "w") as f:
-        f.write(source(tag, n_elems, pad_blocks))
+        f.write(source(tag, n_elems, pad_blocks, entry))
     cmd = [
         peano("clang++"),
         f"--target={target}",

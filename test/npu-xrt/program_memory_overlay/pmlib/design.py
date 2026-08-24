@@ -33,6 +33,7 @@ from aie.ir import DenseElementsAttr, InsertionPoint, MemRefType, TypeAttr
 from .geometry import Geometry
 
 ENTRY = "overlay_entry"
+STUB_ENTRY = "overlay_stub"
 
 
 def entry_name(geometry, i):
@@ -86,6 +87,11 @@ class Config:
     # rather than on a DMA, which is what a second overlay slot needs.
     maskpoll_before: tuple = ()
     maskpoll_after: tuple = ()
+    # Payload for the bootstrap park, written once during setup.
+    stub: tuple = ()
+    # Tile-relative address of ovl_parked, resolved from the resident
+    # ELF after pass 1. Needed to poll it.
+    parked_addr: int = 0
 
     @property
     def slot(self):
@@ -139,6 +145,9 @@ def build(cfg):
         Kernel(entry_name(g, i), "slot.ld", [tile_ty, tile_ty])
         for i in range(len(g.slots))
     ]
+    # The park is called with no arguments: it reaches flag and ovl_parked by
+    # symbol, like any other overlay reaches resident data.
+    stub_entry = Kernel(STUB_ENTRY, "slot.ld", []) if g.bootstrap is not None else None
 
     flag = Buffer(
         word_ty,
@@ -148,17 +157,40 @@ def build(cfg):
         use_write_rtp=True,
     )
 
+    # Written by the bootstrap park when the core reaches it, and polled by the
+    # host before it writes the granule the core just left. This is the only
+    # channel by which a runtime sequence can learn where a core is.
+    parked = Buffer(
+        word_ty,
+        initial_value=np.array([0], dtype=np.int32),
+        name="ovl_parked",
+        tile=compute_tile,
+    )
+
     of_in = ObjectFifo(tile_ty, name="in")
     of_out = ObjectFifo(tile_ty, name="out")
 
-    def core_fn(in_cons, out_prod, flag, ovl_wait, *entries):
+    def in_low_granule(slot):
+        return g.granule_of(slot.base) == g.granule_of(0)
+
+    def core_fn(in_cons, out_prod, flag, parked, ovl_wait, *rest):
+        entries = rest[: len(g.slots)]
+        stub = rest[len(g.slots)] if stub_entry is not None else None
         # A plain Python loop, not range_(): range_() emits an scf.for whose
         # size depends on whether LLVM's unroller expands it, which caps the
         # resident around 1.5 KB and then collapses back to ~900 bytes. Emitting
         # the bodies straight-line makes the resident's size linear in the phase
         # count -- about 80 bytes each -- and so a usable knob.
         for phase in range(n_phases):
-            ovl_wait(flag)
+            slot = g.slots[phase % len(g.slots)]
+            # Where the core waits decides which granule the host may write. A
+            # slot in the low granule -- the one the resident lives in -- can
+            # only be written while the core is somewhere else, and the only
+            # somewhere else is the bootstrap park.
+            if stub is not None and in_low_granule(slot):
+                stub()
+            else:
+                ovl_wait(flag)
             a = in_cons.acquire(1)
             c = out_prod.acquire(1)
             # Phases alternate between slots, so with two slots the loop is
@@ -178,7 +210,12 @@ def build(cfg):
     )
     worker = Worker(
         core_fn,
-        [of_in.cons(), of_out.prod(), flag, ovl_wait, *entries],
+        # parked is listed even though no core code reads it: only the bootstrap
+        # park writes it, and the park is an overlay, so without this the buffer
+        # is never materialised and the park fails to link against a symbol that
+        # does not exist.
+        [of_in.cons(), of_out.prod(), flag, parked, ovl_wait, *entries]
+        + ([stub_entry] if stub_entry is not None else []),
         tile=compute_tile,
         while_true=False,
         program_memory_reserved=reserved,
@@ -194,6 +231,14 @@ def build(cfg):
         )
 
     def sequence(host_in, host_out, in_prod, out_cons):
+        # The park goes in first, and it is safe to write now for a specific
+        # reason: the core is spinning in the resident, which is in the other
+        # granule. It is also why phase 0 must use a slot the core waits for in
+        # the resident -- if the first phase parked in the bootstrap, the core
+        # would jump there before anything had been written to it.
+        if cfg.stub and g.bootstrap is not None:
+            write_payload(cfg.stub, g.bootstrap.base, 0, suffix="_stub")
+
         # Poison every slot before the core can reach one, so a phase whose
         # payload never lands fails the same way every time.
         for i, s in enumerate(g.slots):
@@ -201,13 +246,31 @@ def build(cfg):
                 write_payload(cfg.poison, s.base, i, suffix="_poison")
 
         for phase, ovl in enumerate(cfg.phases):
+            slot = g.slots[phase % len(g.slots)]
+            # Before writing the granule the resident lives in, wait until the
+            # core says it has reached the park in the other granule. This is
+            # the whole reason npu.maskpoll exists: a runtime sequence can wait
+            # on a DMA, and otherwise only on memory, so without it there is no
+            # way to know where the core is.
+            if (
+                cfg.stub
+                and g.bootstrap is not None
+                and g.granule_of(slot.base) == g.granule_of(0)
+            ):
+                npu_maskpoll(
+                    arith.constant(T.i32(), cfg.parked_addr),
+                    arith.constant(T.i32(), 1),
+                    arith.constant(T.i32(), 0xFFFFFFFF),
+                    column=col,
+                    row=row,
+                )
+
             if cfg.payloads and phase not in cfg.skip_write:
                 delta = dict(cfg.wrong_address).get(phase, 0)
                 words = list(cfg.payloads[ovl])
                 for bad_phase, word in cfg.corrupt:
                     if bad_phase == phase:
                         words[word] ^= 0xFFFFFFFF
-                slot = g.slots[phase % len(g.slots)]
                 write_payload(words, slot.base, ovl, f"_p{phase}", delta)
 
             for p, addr, val, mask in cfg.maskpoll_before:
@@ -292,6 +355,8 @@ def emit_slot_ld(geometry, path, entry=ENTRY, assert_budget=False):
         )
         for i, s in enumerate(geometry.slots):
             f.write(f"{entry_name(geometry, i)} = 0x{s.base:x};\n")
+        if geometry.bootstrap is not None:
+            f.write(f"{STUB_ENTRY} = 0x{geometry.bootstrap.base:x};\n")
         # Omitted only so a test can reach the *program-memory region* overflow
         # underneath: this ASSERT is the tighter of the two guards and would
         # otherwise always fire first.

@@ -69,6 +69,15 @@ class Geometry:
     tile: tuple
     slots: tuple
     resident_budget: int
+    # A region written once during setup and never again: the park the core
+    # waits in while the *other* granule is written. It is an overlay in every
+    # mechanical sense, but its lifetime is the whole run, so it is not one of
+    # the slots and nothing schedules a payload into it.
+    #
+    # Ping-pong needs it because the core returns from a slot into the resident,
+    # which lives in granule 0 -- so on the phase where granule 0 is written the
+    # core would otherwise be executing the granule being written.
+    bootstrap: object = None
     # Set when a layout is deliberately invalid, so a test can say what it
     # expects to be rejected for.
     why_invalid: str = ""
@@ -152,6 +161,26 @@ class Geometry:
                     f"About half of those writes would be silently dropped."
                 )
 
+        if self.bootstrap is not None:
+            b = self.bootstrap
+            if b.base % PROG_MEM_LINE or b.size % PROG_MEM_LINE:
+                raise GeometryError(
+                    f"bootstrap {b} is not aligned to the {PROG_MEM_LINE}-byte "
+                    f"program-memory line"
+                )
+            if b.end > pm:
+                raise GeometryError(
+                    f"bootstrap {b} runs past the end of program memory " f"(0x{pm:x})"
+                )
+            for sl in self.slots:
+                if b.base < sl.end and sl.base < b.end:
+                    raise GeometryError(
+                        f"bootstrap {b} overlaps {sl}. It is written once and "
+                        f"then executed for the rest of the run, so a slot "
+                        f"payload landing on it would overwrite the only place "
+                        f"the core can wait."
+                    )
+
         for i, a in enumerate(self.slots):
             for b in self.slots[i + 1 :]:
                 if a.base < b.end and b.base < a.end:
@@ -171,6 +200,9 @@ class Geometry:
             f"resident-budget 0x{self.resident_budget:x}",
         ]
         out += [f"slot {s.name} 0x{s.base:x} 0x{s.size:x}" for s in self.slots]
+        if self.bootstrap is not None:
+            b = self.bootstrap
+            out.append(f"bootstrap {b.name} 0x{b.base:x} 0x{b.size:x}")
         return "\n".join(out)
 
 
@@ -200,10 +232,19 @@ RECIPES = {
     # is checkable now; the stub needs a mechanism that does not exist yet.
     "pingpong": _npu2(
         [
-            Slot("a", 0x0400, 0x1C00, core_in=0x2000),
-            Slot("b", 0x2000, 0x2000, core_in=0x0400),
+            # Listed first, and that is load-bearing: phase 0 uses the first
+            # slot, and the core has to park in the resident for it. A first
+            # phase that parked in the bootstrap would jump there before setup
+            # had written anything into it.
+            #
+            # Granule 1. Written while the core waits in the resident.
+            Slot("b", 0x2000, 0x1C00, core_in=0x0000),
+            # Granule 0, alongside the resident. Written while the core waits in
+            # the bootstrap park, which is in granule 1.
+            Slot("a", 0x0400, 0x1C00, core_in=0x3C00),
         ],
         resident_budget=0x0400,
+        bootstrap=Slot("stub", 0x3C00, 0x0400),
     ),
     # Deliberately invalid, one rule each.
     "bad_unaligned": _npu2(

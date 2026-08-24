@@ -20,6 +20,7 @@ Everything the RUN lines need, over pmlib. Subcommands:
 """
 
 import argparse
+import re
 import sys
 
 from pmlib import design as pmdesign
@@ -53,7 +54,12 @@ def cmd_geometry(args):
 
 def cmd_workload(args):
     n = pmworkload.compile_overlay_of_size(
-        args.tag, args.n_elems, args.output, args.size, workdir=args.workdir
+        args.tag,
+        args.n_elems,
+        args.output,
+        args.size,
+        workdir=args.workdir,
+        entry=args.entry,
     )
     print(f"overlay {args.tag}: {n} bytes")
 
@@ -83,6 +89,29 @@ def cmd_emit(args):
     if args.slot_ld:
         pmdesign.emit_slot_ld(g, args.slot_ld, assert_budget=args.legacy_assert)
     payloads = tuple(text_words(p) for p in args.payload) if args.payload else ()
+    stub = text_words(args.stub) if args.stub else ()
+
+    # The park's handshake word has to be polled by address, and the address is
+    # only known once the resident has been linked. Resolve it from pass 1's ELF
+    # and convert to tile-relative, which is what npu.maskpoll wants alongside
+    # column and row.
+    parked_addr = 0
+    if args.stub:
+        if not args.resident:
+            sys.exit("--stub needs --resident, to resolve ovl_parked's address")
+        syms = defined_symbols(find_core_elf(args.resident, *g.tile))
+        if "ovl_parked" not in syms:
+            sys.exit(
+                f"{args.resident}: no ovl_parked symbol. The design must declare "
+                f"that buffer for the park's handshake to be pollable."
+            )
+        # Tile-relative offset. The core's view of its own data memory starts
+        # at a whole multiple of the local memory size (0x70000 for a 0x10000
+        # memory on npu2), so masking off that multiple gives the offset --
+        # getMemInternalBaseAddress() would say it directly but has no Python
+        # binding, and this needs no new one.
+        local = g.target_model.get_local_memory_size()
+        parked_addr = syms["ovl_parked"] & (local - 1)
     poison = text_words(args.poison) if args.poison else ()
     cfg = pmdesign.Config(
         geometry=g,
@@ -92,6 +121,8 @@ def cmd_emit(args):
         phases=parse_phases(args.phases),
         payloads=payloads,
         poison=poison,
+        stub=stub,
+        parked_addr=parked_addr,
         corrupt=tuple(
             tuple(int(v) for v in c.split(":")) for c in (args.corrupt or [])
         ),
@@ -115,9 +146,16 @@ def cmd_emit(args):
 
 def cmd_link(args):
     g = recipe(args.recipe)
-    slot = next((s for s in g.slots if s.name == args.slot), None)
+    # The bootstrap park is linked exactly like a slot -- it differs only in
+    # lifetime, being written once instead of per phase -- so it is nameable
+    # here too.
+    regions = list(g.slots) + ([g.bootstrap] if g.bootstrap is not None else [])
+    slot = next((s for s in regions if s.name == args.slot), None)
     if slot is None:
-        sys.exit(f"{args.recipe} has no slot named {args.slot!r}")
+        sys.exit(
+            f"{args.recipe} has no region named {args.slot!r}; known: "
+            f"{', '.join(s.name for s in regions)}"
+        )
     try:
         pmlink(
             args.object,
@@ -125,9 +163,10 @@ def cmd_link(args):
             slot.base,
             slot.size,
             args.output,
+            entry=args.entry,
             col=g.tile[0],
             row=g.tile[1],
-            geometry=g,
+            geometry=g if slot in g.slots else None,
         )
     except OverlayError as e:
         if args.expect_rejected:
@@ -147,11 +186,20 @@ def cmd_order(args):
     swapped -- which is exactly how the first version of this test passed
     against a deliberately inverted design.
     """
+    # Count writes to every slot, and only to slots. A design with two slots
+    # writes two different addresses, and the bootstrap park is written once at
+    # setup with no release to pair against -- counting either wrongly makes the
+    # releases outnumber the writes and reports a false inversion.
+    g = recipe(args.recipe)
+    slot_addrs = {g.host_offset + sl.base for sl in g.slots}
+
     events = []
     for n, line in enumerate(open(args.mlir), 1):
         s = line.strip()
-        if s.startswith("aiex.npu.blockwrite") and f"address = {args.pm_address}" in s:
-            events.append((n, "write"))
+        if s.startswith("aiex.npu.blockwrite"):
+            m = re.search(r"address = (\d+)", s)
+            if m and int(m.group(1)) in slot_addrs:
+                events.append((n, "write"))
         elif s.startswith("aiex.npu.rtp_write(@flag"):
             events.append((n, "release"))
 
@@ -159,7 +207,8 @@ def cmd_order(args):
     releases = sum(1 for _, k in events if k == "release")
     if not writes or not releases:
         sys.exit(
-            f"{args.mlir}: found {writes} payload write(s) to {args.pm_address} and "
+            f"{args.mlir}: found {writes} payload write(s) to "
+            f"{sorted(hex(a) for a in slot_addrs)} and "
             f"{releases} release(s); expected at least one of each. If the lowering "
             f"changed, this test is no longer looking at the right ops."
         )
@@ -350,6 +399,7 @@ def main():
     w.add_argument("--size", type=lambda v: int(v, 0))
     w.add_argument("--n-elems", type=int, default=256)
     w.add_argument("--workdir", default=".")
+    w.add_argument("--entry", default="overlay_entry")
     w.add_argument("--output", required=True)
     w.set_defaults(func=cmd_workload)
 
@@ -370,6 +420,8 @@ def main():
     )
     e.add_argument("--payload", action="append")
     e.add_argument("--poison")
+    e.add_argument("--stub", help="payload for the bootstrap park")
+    e.add_argument("--resident", help="pass 1 tmpdir, to resolve ovl_parked")
     e.add_argument("--phases", default="0")
     e.add_argument("--n-elems", type=int, default=256)
     e.add_argument("--dtype", choices=["i32", "bf16"], default="i32")
@@ -387,14 +439,14 @@ def main():
     l.add_argument("--resident", required=True)
     l.add_argument("--recipe", default="one_slot")
     l.add_argument("--slot", default="a")
+    l.add_argument("--entry", default="overlay_entry")
     l.add_argument("--output", required=True)
     l.add_argument("--expect-rejected", action="store_true")
     l.set_defaults(func=cmd_link)
 
     o = sub.add_parser("order")
     o.add_argument("mlir")
-    # 0x22000: program-memory host offset 0x20000 plus the slot at 0x2000.
-    o.add_argument("--pm-address", default="139264")
+    o.add_argument("--recipe", default="one_slot")
     o.set_defaults(func=cmd_order)
 
     vp = sub.add_parser("verify-payload")

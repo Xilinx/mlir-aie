@@ -1,0 +1,89 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// Two slots, alternating, on hardware.
+//
+// Program memory is 0x4000 with an 0x2000 write granule, so there are exactly
+// two granules and two slots take one each. That is forced: a write to the
+// granule the core is fetching from is silently dropped about half the time, so
+// whichever slot is being written, the core has to be executing from the other.
+//
+// The hard part is not the geometry, it is that the core returns from a slot
+// into the resident, which lives at 0. On the phase where the low granule is
+// written the core would be executing the granule being written. So the design
+// needs somewhere else for the core to be, and the host needs to know it got
+// there:
+//
+//   0x0000  resident   the core body: waits, acquires, releases, call sites
+//   0x0400  slot a     granule 0 -- written while the core is in the park
+//   0x2000  slot b     granule 1 -- written while the core is in the resident
+//   0x3c00  park       granule 1 -- written once, then live for the whole run
+//
+// The core alternates where it waits, and the park is what makes the low
+// granule writable at all. The park is an overlay in every mechanical sense --
+// linked at a fixed address against the resident's symbols, delivered by a
+// blockwrite -- differing only in lifetime: one write, then it is the code the
+// core sits in for the rest of the run.
+//
+// The handshake needs npu.maskpoll, and needed it to be added. A runtime
+// sequence can wait on a DMA (npu.sync, npu.dma_wait) and `aiex.set_lock` is
+// documented non-blocking, so "wait until the core reaches point X" was
+// previously inexpressible. The park writes ovl_parked on arrival and the host
+// polls it before touching granule 0.
+//
+// Slot ordering is load-bearing. Phase 0 uses the first slot, and the core must
+// park in the *resident* for it -- a first phase that parked in the bootstrap
+// would jump there before setup had written anything into it. So the granule-1
+// slot is listed first.
+//
+// The resident is 304 + 64*N bytes for N phases against an 0x400 budget, so 11
+// alternations is the ceiling here, and program_memory_reserved is what turns
+// exceeding it into a link error rather than a core overwriting itself.
+//
+// REQUIRES: ryzen_ai_npu2, peano
+//
+// RUN: rm -rf %t && mkdir -p %t
+// RUN: %PEANO_INSTALL_DIR/bin/clang++ --target=aie2p-none-unknown-elf -O2 -c %S/../resident.cc -o %t/resident.o
+// RUN: %PEANO_INSTALL_DIR/bin/clang++ --target=aie2p-none-unknown-elf -O2 -c %S/../stub.cc -o %t/stub.o
+//
+// RUN: %python %S/../pm.py geometry pingpong | FileCheck %s --check-prefix=GEOM
+// GEOM: slot b 0x2000 0x1c00
+// GEOM: slot a 0x400 0x1c00
+// GEOM: bootstrap stub 0x3c00 0x400
+//
+// Both passes must emit the *same* design. The resident is 304 + 64*N bytes, so
+// a different phase count between passes moves every symbol after it and the
+// overlays, linked against pass 1, end up aimed at the wrong addresses. `pm.py
+// check` catches exactly that -- it caught this test getting it wrong.
+// RUN: %python %S/../pm.py emit --recipe pingpong --slot-ld %t/slot.ld --phases 0,1,0,1,0,1,0,1 --out %t/d1.mlir
+// RUN: cd %t && %aiecc --tmpdir=%t/p1 --get-xclbin --xclbin-name=%t/p1.xclbin --get-npu-insts --npu-insts-name=%t/p1.bin %t/d1.mlir
+//
+// Three direct call sites: one per slot, plus the park.
+// RUN: %PEANO_INSTALL_DIR/bin/llvm-objdump -d %t/p1/elfs_main_core_0_2/elfs_main_core_0_2.elf | FileCheck %s --check-prefix=JUMP
+// JUMP-DAG: jl {{.*}}#0x400
+// JUMP-DAG: jl {{.*}}#0x2000
+// JUMP-DAG: jl {{.*}}#0x3c00
+//
+// RUN: %python %S/../pm.py link --object %t/stub.o --resident %t/p1 --recipe pingpong --slot stub --entry overlay_stub --output %t/stub.elf
+// RUN: %python %S/../pm.py workload --tag 21 --size 0x400 --entry overlay_entry_b --output %t/wb.o --workdir %t
+// RUN: %python %S/../pm.py workload --tag 42 --size 0x400 --entry overlay_entry_a --output %t/wa.o --workdir %t
+// RUN: %python %S/../pm.py link --object %t/wb.o --resident %t/p1 --recipe pingpong --slot b --entry overlay_entry_b --output %t/ovl_b.elf
+// RUN: %python %S/../pm.py link --object %t/wa.o --resident %t/p1 --recipe pingpong --slot a --entry overlay_entry_a --output %t/ovl_a.elf
+//
+// RUN: %python %S/../pm.py emit --recipe pingpong --phases 0,1,0,1,0,1,0,1 --payload %t/ovl_b.elf --payload %t/ovl_a.elf --stub %t/stub.elf --resident %t/p1 --out %t/d2.mlir
+//
+// One poll per granule-0 write, and none before a granule-1 write -- writing
+// granule 1 needs no handshake because the core is in the resident either way.
+// RUN: %python %S/../pm.py order --recipe pingpong %t/d2.mlir
+// RUN: grep -c "npu.maskpoll" %t/d2.mlir | FileCheck %s --check-prefix=POLLS
+// POLLS: 4
+//
+// RUN: cd %t && %aiecc --tmpdir=%t/p2 --get-xclbin --xclbin-name=%t/aie.xclbin --get-npu-insts --npu-insts-name=%t/insts.bin %t/d2.mlir
+// RUN: %python %S/../pm.py check %t/p1 %t/p2 --overlays %t/ovl_a.elf %t/ovl_b.elf %t/stub.elf
+// RUN: %host_clang %S/../host.cpp -o %t/host.exe -std=c++17 -Wall %xrt_flags %host_link_flags %test_utils_flags
+// RUN: %t/host.exe -x %t/aie.xclbin -k MLIR_AIE -i %t/insts.bin --tags 21,42,21,42,21,42,21,42 | FileCheck %s
+// CHECK: phase 0: overlay 21 ok
+// CHECK: phase 1: overlay 42 ok
+// CHECK: phase 6: overlay 21 ok
+// CHECK: phase 7: overlay 42 ok
+// CHECK: PASS!
