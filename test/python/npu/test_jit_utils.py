@@ -12,11 +12,13 @@
 # Unit tests for compile_external_kernel and cache key utilities.
 
 import os
+import subprocess
 import tempfile
 import pytest
 import numpy as np
 
 import aie.iron as iron
+import aie.utils.config as config
 from aie.iron import ExternalFunction, ObjectFifo, Worker, Runtime, Program
 from aie.iron import CompileTime, In, Out
 from aie.iron.controlflow import range_
@@ -145,6 +147,75 @@ def test_compile_external_kernel_skip_if_object_file_exists(npu_target_arch):
         compile_external_kernel(func, kernel_dir, target_arch=npu_target_arch)
         with open(obj, "rb") as f:
             assert f.read() == b"placeholder"
+
+
+# ---------------------------------------------------------------------------
+# symbol_prefix: compile_external_kernel prefixes every defined symbol in the
+# object (via prefix_symbols_in_object), not just the entry point.
+# ---------------------------------------------------------------------------
+
+
+def _defined_extern_symbols(object_path):
+    result = subprocess.run(
+        [config.nm_path(), "--defined-only", "--extern-only", object_path],
+        capture_output=True,
+        check=True,
+    )
+    return {line.split()[-1] for line in result.stdout.decode().splitlines() if line}
+
+
+def test_compile_external_kernel_symbol_prefix_renames_every_defined_symbol(
+    npu_target_arch,
+):
+    """symbol_prefix must rename the entry point AND any extern "C" helper symbols."""
+    func = ExternalFunction(
+        "add_one",
+        source_string="""extern "C" {
+            void helper(int* a, int* b, int n) {
+                for (int i = 0; i < n; i++) b[i] = a[i];
+            }
+            void add_one(int* a, int* b, int n) {
+                helper(a, b, n);
+                for (int i = 0; i < n; i++) b[i] += 1;
+            }
+        }""",
+        symbol_prefix="op0",
+    )
+    with tempfile.TemporaryDirectory() as kernel_dir:
+        compile_external_kernel(func, kernel_dir, target_arch=npu_target_arch)
+        obj = os.path.join(kernel_dir, func.object_file_name)
+
+        symbols = _defined_extern_symbols(obj)
+        assert "add_one" not in symbols
+        assert "helper" not in symbols
+        assert "op0_add_one" in symbols
+        assert "op0_helper" in symbols
+        assert func._name == "op0_add_one"
+
+
+def test_compile_external_kernel_symbol_prefix_cache_hit_is_idempotent(
+    npu_target_arch,
+):
+    """Re-running compile_external_kernel against an already-prefixed on-disk
+    object (simulating a fresh process reusing a disk cache) must not
+    re-prefix the already-prefixed symbols."""
+    func = ExternalFunction(
+        "add_one",
+        source_string='extern "C" void add_one(int* a, int* b, int n) {}',
+        symbol_prefix="op0",
+    )
+    with tempfile.TemporaryDirectory() as kernel_dir:
+        compile_external_kernel(func, kernel_dir, target_arch=npu_target_arch)
+        obj = os.path.join(kernel_dir, func.object_file_name)
+        symbols_after_first_compile = _defined_extern_symbols(obj)
+
+        # Simulate a fresh process: _compiled reset, object file already on disk.
+        func._compiled = False
+        compile_external_kernel(func, kernel_dir, target_arch=npu_target_arch)
+
+        assert _defined_extern_symbols(obj) == symbols_after_first_compile
+        assert "op0_add_one" in symbols_after_first_compile
+        assert "op0_op0_add_one" not in _defined_extern_symbols(obj)
 
 
 # ---------------------------------------------------------------------------

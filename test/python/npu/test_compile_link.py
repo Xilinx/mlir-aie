@@ -140,6 +140,37 @@ def test_prefix_symbols_in_object():
         assert renamed_symbols == {f"op0_{s}" for s in original_symbols}
 
 
+def test_prefix_symbols_in_object_is_idempotent():
+    """Calling prefix_symbols_in_object again with the same prefix must not
+    re-prefix an already-prefixed symbol.
+
+    This matters for compile_external_kernel's symbol_prefix handling, which
+    re-applies the prefix on every cache hit (a disk-cached object may have
+    already been prefixed by an earlier process run).
+    """
+    with tempfile.TemporaryDirectory() as tmpdir:
+        source_path = os.path.join(tmpdir, "source.cpp")
+        output_path = os.path.join(tmpdir, "output.o")
+
+        with open(source_path, "w") as f:
+            f.write(SOURCE_STRING_MULTI)
+
+        compile_cxx_core_function(
+            source_path=source_path,
+            target_arch="aie2",
+            output_path=output_path,
+        )
+
+        prefix_symbols_in_object(output_path, "op0_")
+        once = _defined_extern_symbols(output_path)
+
+        prefix_symbols_in_object(output_path, "op0_")
+        twice = _defined_extern_symbols(output_path)
+
+        assert twice == once
+        assert "op0_op0_add_one" not in twice
+
+
 def test_prefix_symbols_in_object_raises_on_nm_failure():
     """A real llvm-nm failure (invalid input) must raise, not silently no-op.
 
