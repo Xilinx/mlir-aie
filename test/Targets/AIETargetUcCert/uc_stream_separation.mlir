@@ -20,7 +20,7 @@
 // CHECK: EOF
 
 module {
-  aie.device(npu2) {
+  aie.device(xcve3858) {
     // device-level page => uC 0
     aiex.cert.page {
       aiex.cert.job(0) {

@@ -26,7 +26,7 @@
 // ASM: START_JOB 1
 
 module {
-  aie.device(npu2) {
+  aie.device(xcve3858) {
     aiex.cert.page {
       aiex.cert.job(0) {
         aiex.cert.write32(0x1000, 42)

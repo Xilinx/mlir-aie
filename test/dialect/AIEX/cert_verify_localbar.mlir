@@ -11,7 +11,7 @@
 // RUN: aie-opt --aie-cert-verify --split-input-file --verify-diagnostics %s
 
 // Positive: both participants of local_barrier(0) are in the same page -> OK.
-aie.device(npu2) {
+aie.device(xcve3858) {
   aiex.cert.page {
     aiex.cert.job(0) {
       aiex.cert.local_barrier(0, 2)
@@ -25,7 +25,7 @@ aie.device(npu2) {
 // -----
 
 // Positive: same id in different pages but different uCs -> OK (per-uC scope).
-aie.device(npu2) {
+aie.device(xcve3858) {
   aiex.cert.attach_to_group(0) {
     aiex.cert.page {
       aiex.cert.job(0) {
@@ -45,7 +45,7 @@ aie.device(npu2) {
 // -----
 
 // Negative: local_barrier(0) split across two pages in the same uC -> error.
-aie.device(npu2) {
+aie.device(xcve3858) {
   aiex.cert.page {
     aiex.cert.job(0) {
       aiex.cert.local_barrier(0, 2)
@@ -64,7 +64,7 @@ aie.device(npu2) {
 // Negative: same id in two different standalone jobs (no page) is NOT
 // co-located -> error. Previously "no page" was treated as a shared page for
 // both, so this incorrectly passed.
-aie.device(npu2) {
+aie.device(xcve3858) {
   aiex.cert.job(0) {
     aiex.cert.local_barrier(0, 2)
   }

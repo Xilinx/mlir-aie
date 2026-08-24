@@ -10,7 +10,7 @@
 // RUN: aie-opt %s | aie-opt | FileCheck %s
 
 module {
-  aie.device(npu2) {
+  aie.device(xcve3858) {
     // A placed page carries its resolved group/uC id.
     // CHECK: aiex.cert.page {
     // CHECK:   aiex.cert.job(1)

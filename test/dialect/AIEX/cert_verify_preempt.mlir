@@ -10,7 +10,7 @@
 // RUN: aie-opt --aie-cert-verify --split-input-file --verify-diagnostics %s
 
 // Positive: both uCs expose preempt id 0 -> OK.
-aie.device(npu2) {
+aie.device(xcve3858) {
   aiex.cert.attach_to_group(0) {
     aiex.cert.job(0) {
       aiex.cert.preempt(0, @save0, @restore0)
@@ -26,7 +26,7 @@ aie.device(npu2) {
 // -----
 
 // Positive: device-level (uC 0) and group 2 both expose preempt id 0 -> OK.
-aie.device(npu2) {
+aie.device(xcve3858) {
   aiex.cert.job(0) {
     aiex.cert.preempt(0, @save0, @restore0)
   }
@@ -40,7 +40,7 @@ aie.device(npu2) {
 // -----
 
 // Negative: uC 0 exposes preempt 0 but group 2 exposes none -> error on group 2.
-aie.device(npu2) {
+aie.device(xcve3858) {
   aiex.cert.job(0) {
     aiex.cert.preempt(0, @save0, @restore0)
   }
