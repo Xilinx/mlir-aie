@@ -12,7 +12,7 @@ Use this skeleton when the topology is genuinely custom, or when no built-in
 kernel covers your op/dtype.
 
 Adapt:
-  - TENSOR_SIZE, TILE_SIZE, N_WORKERS
+  - TENSOR_SIZE, N_WORKERS
   - DTYPE
   - kernel name + .o file in `Kernel(...)` — the placeholder `my_unary_kernel`
     assumes a unary `(in, out, n_elements)` signature; if you're wiring in a
@@ -33,20 +33,16 @@ from aie.iron.device import NPU2
 
 def build_design(
     tensor_size: int = 4096,
-    tile_size: int = 1024,
     n_workers: int = 4,
     kernel_fn_name: str = "my_unary_kernel",
     kernel_obj_file: str = "kernel.o",
 ):
     """Build a data-parallel element-wise design and return the MLIR module."""
 
-    assert (
-        tensor_size % (n_workers * tile_size) == 0
-    ), "tensor_size must be divisible by n_workers * tile_size"
+    assert tensor_size % n_workers == 0, "tensor_size must be divisible by n_workers"
 
     DTYPE = bfloat16
     tensor_ty = np.ndarray[(tensor_size,), np.dtype[DTYPE]]
-    tile_ty = np.ndarray[(tile_size,), np.dtype[DTYPE]]
 
     # Top-level FIFOs, split/joined across n_workers
     of_in_top = ObjectFifo(tensor_ty, name="in")
@@ -69,7 +65,7 @@ def build_design(
 
     # Each worker consumes its chunk directly from sub_ins / produces to sub_outs.
     # If a chunk is too large for L1, add a per-worker inner ObjectFifo (depth=2)
-    # and forward the chunk through it in tile_size pieces.
+    # and forward the chunk through it in smaller pieces.
 
     kernel_fn = Kernel(
         kernel_fn_name,
