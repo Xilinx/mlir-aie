@@ -213,7 +213,11 @@ class external_func(FuncOp):
             `.stack_sizes` metadata the analysis needs (e.g. via Chess). An
             explicit value here always wins over whatever the analysis would
             otherwise compute, even if smaller: it is a declaration, not a
-            clamp. ``0`` is a legal value.
+            clamp. ``0`` is a legal value. It lives on this func.func rather than
+            on the core because the same kernel is often linked into multiple
+            cores and the actually problematic symbol is usually internal to a
+            kernel object MLIR never saw, so the override has to be addressable at
+            the one granularity MLIR does see.
     """
 
     def __init__(
@@ -239,11 +243,19 @@ class external_func(FuncOp):
                     f"external_func '{name}': invalid link_with_mode "
                     f"'{link_with_mode}'; the only supported value is 'merge'."
                 )
-        if stack_size_override is not None and stack_size_override < 0:
-            raise ValueError(
-                f"external_func '{name}': stack_size_override must be >= 0, "
-                f"got {stack_size_override}."
-            )
+        if stack_size_override is not None:
+            if not isinstance(stack_size_override, int) or isinstance(
+                stack_size_override, bool
+            ):
+                raise ValueError(
+                    f"external_func '{name}': stack_size_override must be an int, "
+                    f"got {type(stack_size_override).__name__}."
+                )
+            if stack_size_override < 0:
+                raise ValueError(
+                    f"external_func '{name}': stack_size_override must be >= 0, "
+                    f"got {stack_size_override}."
+                )
         if outputs is None:
             outputs = []
         for i, ty in enumerate(inputs):
