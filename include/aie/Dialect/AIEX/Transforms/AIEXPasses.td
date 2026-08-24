@@ -338,6 +338,7 @@ def AIEDMATasksToNPU : Pass<"aie-dma-tasks-to-npu", "AIE::DeviceOp"> {
   let constructor = "xilinx::AIEX::createAIEDMATasksToNPUPass()";
   let dependentDialects = [
     "mlir::arith::ArithDialect",
+    "mlir::ub::UBDialect",
     "xilinx::AIE::AIEDialect",
     "xilinx::AIEX::AIEXDialect",
   ];
