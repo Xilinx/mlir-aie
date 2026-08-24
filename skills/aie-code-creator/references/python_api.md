@@ -313,6 +313,8 @@ Reach for `Buffer(..., use_write_rtp=True)` + `WorkerRuntimeBarrier` for the com
 
 Note that `ScratchpadParameter`s depend on the full-ELF flow (`aiecc --get-full-elf`) and are not available on the Phoenix/Hawk Point architectures.
 
+Note that `ScratchpadParameter`s depend on the full-ELF flow (`aiecc --get-full-elf`) and are not available on the Phoenix/Hawk Point architectures.
+
 ## Program — finalize the design
 
 Workers are now passed explicitly to `Program`, not discovered from the runtime sequence:

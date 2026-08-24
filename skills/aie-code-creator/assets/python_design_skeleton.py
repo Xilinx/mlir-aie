@@ -32,7 +32,7 @@ from aie.iron.device import NPU2
 
 
 def build_design(
-    tensor_size: int = 8192,
+    tensor_size: int = 4096,
     tile_size: int = 1024,
     n_workers: int = 4,
     kernel_fn_name: str = "my_unary_kernel",
@@ -74,13 +74,13 @@ def build_design(
     kernel_fn = Kernel(
         kernel_fn_name,
         kernel_obj_file,
-        [chunk_ty, chunk_ty, np.int32],  # signature: (in, out, n_elements)
+        [chunk_ty, chunk_ty, chunk_ty],  # signature: (in0, in1, out) — this skeleton self-adds (in + in)
     )
 
     def core_fn(of_in, of_out, kfn):
         e_in = of_in.acquire(1)
         e_out = of_out.acquire(1)
-        kfn(e_in, e_out, chunk)
+        kfn(e_in, e_in, e_out)
         of_in.release(1)
         of_out.release(1)
 
