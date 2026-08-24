@@ -74,7 +74,11 @@ def build_design(
     kernel_fn = Kernel(
         kernel_fn_name,
         kernel_obj_file,
-        [chunk_ty, chunk_ty, chunk_ty],  # signature: (in0, in1, out) — this skeleton self-adds (in + in)
+        [
+            chunk_ty,
+            chunk_ty,
+            chunk_ty,
+        ],  # signature: (in0, in1, out) — this skeleton self-adds (in + in)
     )
 
     def core_fn(of_in, of_out, kfn):
