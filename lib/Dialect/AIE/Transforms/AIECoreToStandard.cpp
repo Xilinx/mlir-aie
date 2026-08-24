@@ -175,6 +175,18 @@ static void declareAIEIntrinsics(AIEArch arch, OpBuilder &builder) {
   llvm::report_fatal_error("unsupported arch");
 }
 
+// Move all the ops with OpTy inside device, to just before the device.
+template <typename OpTy>
+static void outlineOps(DeviceOp device) {
+  SmallVector<OpTy, 16> ops;
+  for (const auto &op : device.getOps<OpTy>())
+    ops.push_back(op);
+
+  for (const auto &op : ops)
+    op->moveBefore(device);
+}
+
+namespace {
 template <typename MyAIEOp>
 struct AIEOpRemoval : OpConversionPattern<MyAIEOp> {
   using OpConversionPattern<MyAIEOp>::OpConversionPattern;
@@ -648,17 +660,6 @@ struct AIECoreToStandardFunc : OpConversionPattern<CoreOp> {
   }
 };
 
-// Move all the ops with OpTy inside device, to just before the device.
-template <typename OpTy>
-static void outlineOps(DeviceOp device) {
-  SmallVector<OpTy, 16> ops;
-  for (const auto &op : device.getOps<OpTy>())
-    ops.push_back(op);
-
-  for (const auto &op : ops)
-    op->moveBefore(device);
-}
-
 // Lower AIE.event to llvm.aie.event intrinsic
 struct AIEEventOpToStdLowering : OpConversionPattern<EventOp> {
   using OpConversionPattern::OpConversionPattern;
@@ -792,6 +793,7 @@ struct AIECoreToStandardPass
       return signalPassFailure();
   }
 };
+} // namespace
 
 std::unique_ptr<OperationPass<ModuleOp>> AIE::createAIECoreToStandardPass() {
   return std::make_unique<AIECoreToStandardPass>();
