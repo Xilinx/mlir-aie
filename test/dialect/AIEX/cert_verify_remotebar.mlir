@@ -13,7 +13,7 @@
 
 // Positive: uCs 0 and 1 both have remote_barrier(1, 0x3); masks agree, own bits
 // set -> OK.
-aie.device(npu2) {
+aie.device(xcve3858) {
   aiex.cert.attach_to_group(0) {
     aiex.cert.job(0) {
       aiex.cert.remote_barrier(1, 0x3)
@@ -29,7 +29,7 @@ aie.device(npu2) {
 // -----
 
 // Negative: mask 0x5 references uC 2, which has no group -> error.
-aie.device(npu2) {
+aie.device(xcve3858) {
   aiex.cert.attach_to_group(0) {
     aiex.cert.job(0) {
       // expected-error@+1 {{party_mask references uC 2 which is not present in the design}}
@@ -47,7 +47,7 @@ aie.device(npu2) {
 
 // Negative (the key rendezvous check): uC 0 waits on remote_barrier(1, 0x3) but
 // uC 1 has no matching barrier -> uC 0 would wait forever.
-aie.device(npu2) {
+aie.device(xcve3858) {
   aiex.cert.attach_to_group(0) {
     aiex.cert.job(0) {
       // expected-error@+1 {{party_mask includes uC 1 but that uC has no matching remote_barrier(1) to rendezvous with}}
@@ -64,7 +64,7 @@ aie.device(npu2) {
 // -----
 
 // Negative: both uCs participate, but uC 0's own bit is not set in the mask.
-aie.device(npu2) {
+aie.device(xcve3858) {
   aiex.cert.attach_to_group(0) {
     aiex.cert.job(0) {
       // expected-error@+1 {{on uC 0 excludes its own uC from party_mask}}
