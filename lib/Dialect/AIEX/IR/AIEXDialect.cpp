@@ -1428,7 +1428,7 @@ LogicalResult AIEX::DmaChannelResetForOp::verify() {
   Operation *target = dev.lookupSymbol(getObjfifo());
   if (!target)
     return success(); // symbol resolved during a later pass; defer the check
-  if (!isa<AIE::ObjectFifoCreateOp, AIE::ObjectFifoFlowEndpoint,
+  if (!isa<AIE::ObjectFifoCreateOp, AIE::RouteEndpoint,
            AIE::ObjectFifoRearmBindingOp>(target))
     return emitOpError() << "'" << getObjfifo()
                          << "' must reference an aie.objectfifo (or its "

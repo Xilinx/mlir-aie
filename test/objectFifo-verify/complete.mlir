@@ -26,7 +26,7 @@ module @complete {
     aie.objectfifo.dma_endpoint @cons_dma(%tile33) fills @cons_pool
     aie.objectfifo.core_endpoint @cons_core(%tile33) drains @cons_pool
 
-    aie.objectfifo.flow from @prod_dma to [@cons_dma]
+    aie.route from @prod_dma to [@cons_dma]
 
     %core12 = aie.core(%tile12) {
       %elem = aie.objectfifo.acquire @prod_core (1) : memref<16xi32>
@@ -38,4 +38,4 @@ module @complete {
 
 // CHECK-LABEL: @complete
 // CHECK: aie.objectfifo.pool @prod_pool
-// CHECK: aie.objectfifo.flow from @prod_dma to [@cons_dma]
+// CHECK: aie.route from @prod_dma to [@cons_dma]

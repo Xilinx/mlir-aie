@@ -43,7 +43,7 @@ module @distribute_on_core {
 // CHECK-DAG:   %[[T05:.*]] = aie.tile(0, 5)
 
 // CHECK:   aie.objectfifo.pool @in_cons_pool(%[[T02]]) {depth = 2 : i32, fifoName = "in", segments = [#aie.objectfifo_segment<offset = 0, size = 16>, #aie.objectfifo_segment<offset = 16, size = 16>]} : memref<32xi32>
-// CHECK:   aie.objectfifo.dangling_endpoint @in_prod_dma(%[[T00]]) DMA {fifoName = "in"}
+// CHECK:   aie.route_endpoint @in_prod_dma(%[[T00]]) DMA {fifoName = "in"}
 // CHECK:   aie.objectfifo.dma_endpoint @in_cons_dma(%[[T02]]) fills @in_cons_pool {fifoName = "in", segments = array<i32: 0, 1>}
 
 // Each output drains its own segment of the shared object.
@@ -88,5 +88,5 @@ module @join_on_core {
 
 // CHECK:   aie.objectfifo.pool @out_pool(%[[U02]]) {depth = 2 : i32, fifoName = "out", segments = [#aie.objectfifo_segment<offset = 0, size = 16>, #aie.objectfifo_segment<offset = 16, size = 16>]} : memref<32xi32>
 // CHECK:   aie.objectfifo.dma_endpoint @out_prod_dma(%[[U02]]) drains @out_pool {fifoName = "out", segments = array<i32: 0, 1>}
-// CHECK:   aie.objectfifo.dangling_endpoint @out_cons_dma(%[[U00]]) DMA {fifoName = "out"}
+// CHECK:   aie.route_endpoint @out_cons_dma(%[[U00]]) DMA {fifoName = "out"}
 // CHECK-NOT: aie.objectfifo.link

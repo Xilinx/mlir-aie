@@ -86,10 +86,10 @@ aie.device(npu2) {
 
 // -----
 
-// The direction of a dangling end is read off the flow that names it, so a
+// The direction of a route endpoint is read off the route that names it, so a
 // second flow would leave it ambiguous.
 
-// CHECK: 'aie.objectfifo.dangling_endpoint' op is named 2 times by flows; an endpoint drives one channel
+// CHECK: 'aie.route_endpoint' op drives one channel, so at most one flow may name it, but it is named 2 times
 
 aie.device(npu1) {
   %tile02 = aie.tile(0, 2)
@@ -101,23 +101,23 @@ aie.device(npu1) {
   aie.objectfifo.core_endpoint @fill(%tile02) fills @p
   aie.objectfifo.dma_endpoint @drain(%tile02) drains @p
 
-  aie.objectfifo.dangling_endpoint @mid(%shim1) DMA
-  aie.objectfifo.dangling_endpoint @sink(%shim0) DMA
+  aie.route_endpoint @mid(%shim1) DMA
+  aie.route_endpoint @sink(%shim0) DMA
 
-  aie.objectfifo.flow from @drain to [@mid]
-  aie.objectfifo.flow from @mid to [@sink]
+  aie.route from @drain to [@mid]
+  aie.route from @mid to [@sink]
 }
 
 // -----
 
 // Both ends of one flow is the same ambiguity.
 
-// CHECK: 'aie.objectfifo.dangling_endpoint' op is named 2 times by flows; an endpoint drives one channel
+// CHECK: 'aie.route_endpoint' op drives one channel, so at most one flow may name it, but it is named 2 times
 
 aie.device(npu1) {
   %shim0 = aie.tile(0, 0)
 
-  aie.objectfifo.dangling_endpoint @loop(%shim0) DMA
+  aie.route_endpoint @loop(%shim0) DMA
 
-  aie.objectfifo.flow from @loop to [@loop]
+  aie.route from @loop to [@loop]
 }

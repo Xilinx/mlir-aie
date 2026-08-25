@@ -36,8 +36,8 @@ intermediate levels useful.
 | `aie.objectfifo.pool` | A set of buffers and the rules for accessing them: how the buffers are sliced into segments, and which locks users must acquire/release to access the segments. |
 | `aie.objectfifo.core_endpoint` | Information the `acquire` and `release` operations on a core need to fill or drain the next object in a pool. |
 | `aie.objectfifo.dma_endpoint` | A DMA channel and a reference to a pool; lowers to a DMA program that fills or drains the buffer pool from/onto the given channel. |
-| `aie.objectfifo.dangling_endpoint` | One end of a stream this compiler does not program: a shim the host runtime drives, a PLIO boundary, or a core's raw stream port. |
-| `aie.objectfifo.flow` | A circuit- or packet-switched connection from one draining endpoint to the filling endpoints it feeds. |
+| `aie.route_endpoint` | One end of a stream this compiler does not program: a shim the host runtime drives, a PLIO boundary, or a core's raw stream port. |
+| `aie.route` | A circuit- or packet-switched connection from one draining endpoint to the filling endpoints it feeds. |
 
 These are transient. By the end of the pipeline what remains is `aie.buffer`,
 `aie.lock`, `aie.flow`, `aie.mem` / `aie.memtile_dma` / `aie.shim_dma`, and
@@ -148,25 +148,26 @@ aie.objectfifo.dma_endpoint @d(%tile) drains @P {
 
 Padding applies on a draining endpoint, where data goes out on the stream.
 
-#### Dangling endpoints
+#### Route endpoints
 
-The `dangling_endpoint` is an atypical endpoint that does not name a pool:
+The `route_endpoint` is an atypical endpoint that does not name a pool:
 It is an escape hatch for endpoints that do not want to use the pool abstraction,
-as a stand-in for the other end of a `objectfifo.flow`. It names only a DMA
-channel on a tile, which a user can then program in other ways.
+as a stand-in for the other end of an `aie.route`. It names only a DMA
+channel on a tile, which a user can then program in other ways. Its direction
+comes from the side of the route it is named on.
 
 ```mlir
-aie.objectfifo.dangling_endpoint @in(%shim) MM2S DMA  {fifoName = "of_in"}
-aie.objectfifo.dangling_endpoint @s(%tile)  MM2S Core {channelIndex = 0 : i32}
+aie.route_endpoint @in(%shim) DMA  {fifoName = "of_in"}
+aie.route_endpoint @s(%tile)  Core {channelIndex = 0 : i32}
 ```
 
-### Flows
+### Routes
 
-Flows name two endpoints and lower to a circuit- or packet-switched route
+Routes name two endpoints and lower to a circuit- or packet-switched connection
 between them.
 
 ```mlir
-aie.objectfifo.flow from @d1 to [@d2, @d3]
+aie.route from @d1 to [@d2, @d3]
 ```
 
 Several destinations are a broadcast: one source channel feeding a multicast
@@ -177,7 +178,7 @@ circuit flows reserve theirs. Both kinds coexist in one device. `packet_id`
 pins the id; otherwise allocation picks the lowest id no other flow uses.
 
 ```mlir
-aie.objectfifo.flow from @d1 to [@d2] {packet, packet_id = 7 : i8}
+aie.route from @d1 to [@d2] {packet, packet_id = 7 : i8}
 ```
 
 At the frontend this is chosen per fifo, with the same two attributes on
@@ -196,7 +197,7 @@ aie.objectfifo.pool @consumer_pool(%t25) ...
 aie.objectfifo.dma_endpoint  @cons_dma(%t25)  fills  @consumer_pool
 aie.objectfifo.core_endpoint @cons_core(%t25) drains @consumer_pool
 
-aie.objectfifo.flow from @prod_dma to [@cons_dma]
+aie.route from @prod_dma to [@cons_dma]
 ```
 
 Two pools, one per tile, joined by a stream.
@@ -254,8 +255,8 @@ packet-switched.
 | --- | --- | --- |
 | `--aie-objectfifo-split` | pools, endpoints, flows | `aie.objectfifo`, `aie.objectfifo.link` |
 | `--aie-objectfifo-verify` | diagnostics only | — |
-| `--aie-objectfifo-allocate` | `pool`s with buffer/lock attributes, `aie.buffer`, `aie.lock`, channel indices, `aie.flow` / `aie.packet_flow`, `aie.shim_dma_allocation` | `aie.objectfifo.flow`, `pool`s without buffer/lock attributes |
-| `--aie-objectfifo-lower-dmas` | BD chains | `dma_endpoint`, `dangling_endpoint` |
+| `--aie-objectfifo-allocate` | `pool`s with buffer/lock attributes, `aie.buffer`, `aie.lock`, channel indices, `aie.flow` / `aie.packet_flow`, `aie.shim_dma_allocation` | `aie.route`, `pool`s without buffer/lock attributes |
+| `--aie-objectfifo-lower-dmas` | BD chains | `dma_endpoint`, `route_endpoint` |
 | `--aie-objectfifo-lower-cores` | `use_lock` and buffer selection | `core_endpoint`, `acquire`, `release` |
 | `--aie-objectfifo-erase-pools` | — | unreferenced pools |
 
@@ -282,7 +283,7 @@ aie.objectfifo.pool @of1_cons_pool(%tile_2_5) {depth = 2 : i32, fifoName = "of1"
     segments = [#aie.objectfifo_segment<offset = 0, size = 16>]} : memref<16xi32>
 aie.objectfifo.core_endpoint @of1_cons(%tile_2_5) drains @of1_cons_pool
 aie.objectfifo.dma_endpoint @of1_cons_dma(%tile_2_5) fills @of1_cons_pool {fifoName = "of1"}
-aie.objectfifo.flow from @of1_prod_dma to [@of1_cons_dma]
+aie.route from @of1_prod_dma to [@of1_cons_dma]
 
 %e = aie.objectfifo.acquire @of1_prod (1) : memref<16xi32>
 ```
@@ -389,7 +390,7 @@ Endpoints:
 - a core endpoint's segments are contiguous
 - `dimensions` and `padDimensions` have one entry per selected segment, with matching ranks, within segment bounds
 - `padDimensions` appears on a draining endpoint, and a nonzero `padValue` requires one
-- a dangling DMA or PLIO end is on a shim tile, and its bundle is DMA, PLIO or Core
+- a route endpoint with a DMA or PLIO bundle is on a shim tile, and its bundle is DMA, PLIO or Core
 
 Flows and core accesses:
 
@@ -403,7 +404,7 @@ Flows and core accesses:
 - each segment has one filling and one draining endpoint. A filler may be absent
   when lock initializers mark the objects as starting full, and a pool over
   external buffers has a host-side actor with no op
-- every DMA and dangling endpoint appears in exactly one flow
+- every DMA and route endpoint appears in exactly one route
 - no loop body releases more than it acquires
 
 ### By `--aie-objectfifo-lower-dmas`

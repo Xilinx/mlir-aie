@@ -83,22 +83,24 @@ struct AIEObjectFifoVerifyPass
   /// An endpoint that is not connected carries data nowhere.
   LogicalResult verifyFlows(DeviceOp device) {
     DenseMap<StringRef, int> appearances;
-    for (auto flow : device.getOps<ObjectFifoFlowOp>()) {
+    for (auto flow : device.getOps<RouteOp>()) {
       appearances[flow.getSource()]++;
       for (auto dest : flow.getDestinations().getAsRange<FlatSymbolRefAttr>()) {
         appearances[dest.getValue()]++;
       }
     }
 
-    for (auto endpoint : device.getOps<ObjectFifoFlowEndpoint>()) {
+    for (auto endpoint : device.getOps<RouteEndpoint>()) {
       int count =
           appearances.lookup(cast<SymbolOpInterface>(*endpoint).getName());
       if (count == 0) {
         return endpoint->emitOpError("is not connected by any flow");
       }
       if (count > 1) {
-        return endpoint->emitOpError("is named ")
-               << count << " times by flows; an endpoint drives one channel";
+        return endpoint->emitOpError(
+                   "drives one channel, so at most one flow may name it, but "
+                   "it is named ")
+               << count << " times";
       }
     }
     return success();

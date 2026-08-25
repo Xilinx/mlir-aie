@@ -365,7 +365,7 @@ def AIEObjectFifoSplit : Pass<"aie-objectfifo-split", "DeviceOp"> {
     end. Reshaping the data on the way -- a layout transformation on either
     side, a link, a repeat count, an asymmetric consumer type -- puts it back
     on DMAs, as does the explicit `via_DMA` switch. Any other fifo becomes one pool per tile, a DMA
-    endpoint alongside each core endpoint, and an `aie.objectfifo.flow`
+    endpoint alongside each core endpoint, and an `aie.route`
     connecting the two DMA ends. A link's participants meet on one pool, one
     segment per participant.
 
@@ -398,7 +398,7 @@ def AIEObjectFifoAllocate : Pass<"aie-objectfifo-allocate", "DeviceOp"> {
   let description = [{
     Fill in the resources a pool and endpoint design leaves open: the buffers
     holding a pool's objects, the locks guarding each segment, and the DMA
-    channel each endpoint drives. `aie.objectfifo.flow` becomes `aie.flow`, and
+    channel each endpoint drives. `aie.route` becomes `aie.flow`, and
     a shim endpoint gains the `aie.shim_dma_allocation` the runtime resolves.
 
     Whatever is already written down is kept, so hand-placed buffers,

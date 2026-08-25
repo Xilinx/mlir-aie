@@ -36,5 +36,5 @@ module @simple_dma {
 // CHECK:   aie.objectfifo.pool @of1_cons_pool(%[[T33]]) {depth = 2 : i32, fifoName = "of1", segments = [#aie.objectfifo_segment<offset = 0, size = 16>]} : memref<16xi32>
 // CHECK:   aie.objectfifo.core_endpoint @of1_cons(%[[T33]]) drains @of1_cons_pool
 // CHECK:   aie.objectfifo.dma_endpoint @of1_cons_dma(%[[T33]]) fills @of1_cons_pool {fifoName = "of1"}
-// CHECK:   aie.objectfifo.flow from @of1_prod_dma to [@of1_cons_dma]
+// CHECK:   aie.route from @of1_prod_dma to [@of1_cons_dma]
 // CHECK-NOT: aie.objectfifo @

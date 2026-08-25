@@ -35,7 +35,7 @@ module @shared_memory {
 // CHECK:   aie.objectfifo.core_endpoint @of0_prod(%[[T12]]) fills @of0_pool
 // CHECK:   aie.objectfifo.core_endpoint @of0_cons(%[[T13]]) drains @of0_pool
 // CHECK-NOT: aie.objectfifo.dma_endpoint
-// CHECK-NOT: aie.objectfifo.flow
+// CHECK-NOT: aie.route
 // CHECK:   aie.core(%[[T12]])
 // CHECK:     aie.objectfifo.acquire @of0_prod
 // CHECK:     aie.objectfifo.release @of0_prod(1)

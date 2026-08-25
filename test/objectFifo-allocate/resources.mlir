@@ -24,7 +24,7 @@ module @resources {
     } : memref<16xi32>
     aie.objectfifo.dma_endpoint @cons_dma(%tile33) fills @cons_pool
 
-    aie.objectfifo.flow from @prod_dma to [@cons_dma]
+    aie.route from @prod_dma to [@cons_dma]
   }
 }
 
@@ -48,4 +48,4 @@ module @resources {
 // CHECK:   aie.objectfifo.pool @cons_pool({{.*}}) {buffers = [@cons_buff_0, @cons_buff_1, @cons_buff_2], depth = 3 : i32, segments = [#aie.objectfifo_segment<offset = 0, size = 16, produceLock = @cons_prod_lock_0, consumeLock = @cons_cons_lock_0>]}
 // CHECK:   aie.objectfifo.dma_endpoint @cons_dma({{.*}}) fills @cons_pool {channelIndex = 0 : i32}
 // CHECK:   aie.flow(%[[T12]], DMA : 0, %[[T33]], DMA : 0)
-// CHECK-NOT: aie.objectfifo.flow
+// CHECK-NOT: aie.route

@@ -23,8 +23,8 @@ module @iter_count_on_core {
         segments = [#aie.objectfifo_segment<offset = 0, size = 16>]} : memref<16xi32>
     aie.objectfifo.core_endpoint @fill(%tile02) fills @p
     aie.objectfifo.dma_endpoint @drain(%tile02) drains @p {iterCount = 4 : i32}
-    aie.objectfifo.dangling_endpoint @sink(%shim) DMA
-    aie.objectfifo.flow from @drain to [@sink]
+    aie.route_endpoint @sink(%shim) DMA
+    aie.route from @drain to [@sink]
   }
 }
 

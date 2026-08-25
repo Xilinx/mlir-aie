@@ -218,7 +218,7 @@ struct AIEObjectFifoLowerDMAsPass
     Block *bdBlock = builder.createBlock(endBlock);
 
     builder.setInsertionPointToStart(dmaBlock);
-    DMAStartOp::create(builder, loc, endpoint.getFlowDirection(), channel,
+    DMAStartOp::create(builder, loc, endpoint.getRouteDirection(), channel,
                        taskCount, endpoint.getPadValue(),
                        /*out_of_order=*/false, bdBlock, endBlock);
     if (lastDmaBlock) {
@@ -268,11 +268,11 @@ struct AIEObjectFifoLowerDMAsPass
       endpoint.erase();
     }
 
-    // Nothing to program at the far end of these; the flows they asked for
+    // Nothing to program at the far end of these; the routes they asked for
     // have been drawn.
-    for (auto dangling : llvm::make_early_inc_range(
-             device.getOps<ObjectFifoDanglingEndpointOp>())) {
-      dangling.erase();
+    for (auto endpoint :
+         llvm::make_early_inc_range(device.getOps<RouteEndpointOp>())) {
+      endpoint.erase();
     }
   }
 };

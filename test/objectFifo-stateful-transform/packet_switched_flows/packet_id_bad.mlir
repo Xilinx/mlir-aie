@@ -17,7 +17,7 @@ module @packet_ids_exhausted {
     %tile12 = aie.tile(1, 2)
     %tile33 = aie.tile(3, 3)
 
-    // expected-error@+1 {{'aie.objectfifo.flow' op max number of packet IDs reached}}
+    // expected-error@+1 {{'aie.route' op max number of packet IDs reached}}
     aie.objectfifo @of1 (%tile12, {%tile33}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
 
     aie.packet_flow(0) {
@@ -191,7 +191,7 @@ module @packet_id_out_of_range {
     %tile12 = aie.tile(1, 2)
     %tile33 = aie.tile(3, 3)
 
-    // expected-error@+1 {{'aie.objectfifo.flow' op packet_id 32 is out of range (max 31)}}
+    // expected-error@+1 {{'aie.route' op packet_id 32 is out of range (max 31)}}
     aie.objectfifo @of1 (%tile12, {%tile33}, 2 : i32) {packet, packet_id = 32 : i8} : !aie.objectfifo<memref<16xi32>>
  }
 }

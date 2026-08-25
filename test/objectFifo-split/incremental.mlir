@@ -30,4 +30,4 @@ module @incremental {
 // CHECK:   aie.objectfifo.dma_endpoint @fresh_prod_dma({{.*}}) drains @fresh_pool
 // CHECK:   aie.objectfifo.pool @fresh_cons_pool
 // CHECK:   aie.objectfifo.dma_endpoint @fresh_cons_dma({{.*}}) fills @fresh_cons_pool
-// CHECK:   aie.objectfifo.flow from @fresh_prod_dma to [@fresh_cons_dma]
+// CHECK:   aie.route from @fresh_prod_dma to [@fresh_cons_dma]

@@ -22,7 +22,7 @@ module {
     aie.objectfifo.pool @shim_p(%shim) {depth = 2 : i32, segments = [#aie.objectfifo_segment<offset = 0, size = 16>]} : memref<16xi32>
     aie.objectfifo.dma_endpoint @src(%shim) drains @shim_p {fifoName = "of"}
     aie.objectfifo.dma_endpoint @dst(%mem) fills @p {fifoName = "of"}
-    aie.objectfifo.flow from @src to [@dst]
+    aie.route from @src to [@dst]
   }
 }
 

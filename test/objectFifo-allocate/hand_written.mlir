@@ -29,7 +29,7 @@ module @hand_written {
     } : memref<16xi32>
     aie.objectfifo.dma_endpoint @cons_dma(%tile33) fills @cons_pool
 
-    aie.objectfifo.flow from @prod_dma to [@cons_dma]
+    aie.route from @prod_dma to [@cons_dma]
   }
 }
 

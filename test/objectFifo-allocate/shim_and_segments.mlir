@@ -11,7 +11,7 @@ module @shim_and_segments {
     %shim = aie.tile(0, 0)
     %memtile = aie.tile(0, 1)
 
-    aie.objectfifo.dangling_endpoint @in_shim(%shim) DMA {fifoName = "in"}
+    aie.route_endpoint @in_shim(%shim) DMA {fifoName = "in"}
 
     // Two participants writing one object need a lock pair each.
     aie.objectfifo.pool @in_pool(%memtile) {
@@ -21,7 +21,7 @@ module @shim_and_segments {
     } : memref<48xi32>
     aie.objectfifo.dma_endpoint @in_dma(%memtile) fills @in_pool {segments = array<i32: 0, 1>}
 
-    aie.objectfifo.flow from @in_shim to [@in_dma]
+    aie.route from @in_shim to [@in_dma]
   }
 }
 
@@ -36,6 +36,6 @@ module @shim_and_segments {
 // CHECK:   aie.lock(%[[MT]]) {init = 0 : i32, sym_name = "in_cons_lock_0"}
 // CHECK:   aie.lock(%[[MT]]) {init = 2 : i32, sym_name = "in_prod_lock_1"}
 // CHECK:   aie.lock(%[[MT]]) {init = 0 : i32, sym_name = "in_cons_lock_1"}
-// CHECK:   aie.objectfifo.dangling_endpoint @in_shim(%[[SHIM]]) DMA {channelIndex = 0 : i32, fifoName = "in"}
+// CHECK:   aie.route_endpoint @in_shim(%[[SHIM]]) DMA {channelIndex = 0 : i32, fifoName = "in"}
 // CHECK:   aie.flow(%[[SHIM]], DMA : 0, %[[MT]], DMA : 0)
 // CHECK:   aie.shim_dma_allocation @in_shim_alloc(%[[SHIM]], MM2S, 0)

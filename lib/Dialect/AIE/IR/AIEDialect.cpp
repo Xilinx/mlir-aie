@@ -858,17 +858,17 @@ ObjectFifoDmaEndpointOp::getSelectedSegments() {
   return selectSegments(getPoolOp(), getSegments());
 }
 
-DMAChannelDir ObjectFifoDmaEndpointOp::getFlowDirection() {
+DMAChannelDir ObjectFifoDmaEndpointOp::getRouteDirection() {
   return drains() ? DMAChannelDir::MM2S : DMAChannelDir::S2MM;
 }
 
-WireBundle ObjectFifoDmaEndpointOp::getFlowBundle() { return WireBundle::DMA; }
+WireBundle ObjectFifoDmaEndpointOp::getRouteBundle() { return WireBundle::DMA; }
 
-std::optional<int> ObjectFifoDmaEndpointOp::getFlowChannel() {
+std::optional<int> ObjectFifoDmaEndpointOp::getRouteChannel() {
   return getChannelIndex();
 }
 
-void ObjectFifoDmaEndpointOp::setFlowChannel(int channel) {
+void ObjectFifoDmaEndpointOp::setRouteChannel(int channel) {
   setChannelIndex(channel);
 }
 
@@ -932,17 +932,17 @@ LogicalResult ObjectFifoDmaEndpointOp::verify() {
   return success();
 }
 
-TileLike ObjectFifoDanglingEndpointOp::getTileLike() {
+TileLike RouteEndpointOp::getTileLike() {
   return dyn_cast<TileLike>(getTile().getDefiningOp());
 }
 
-DMAChannelDir ObjectFifoDanglingEndpointOp::getFlowDirection() {
+DMAChannelDir RouteEndpointOp::getRouteDirection() {
   // A flow runs from its source, so an end named there sends and every other
   // end receives.
   auto device = getOperation()->getParentOfType<DeviceOp>();
   StringRef name = getSymName();
   bool named = false;
-  for (auto flow : device.getOps<ObjectFifoFlowOp>()) {
+  for (auto flow : device.getOps<RouteOp>()) {
     if (flow.getSource() == name) {
       return DMAChannelDir::MM2S;
     }
@@ -956,27 +956,24 @@ DMAChannelDir ObjectFifoDanglingEndpointOp::getFlowDirection() {
   return DMAChannelDir::S2MM;
 }
 
-WireBundle ObjectFifoDanglingEndpointOp::getFlowBundle() { return getBundle(); }
+WireBundle RouteEndpointOp::getRouteBundle() { return getBundle(); }
 
-std::optional<int> ObjectFifoDanglingEndpointOp::getFlowChannel() {
+std::optional<int> RouteEndpointOp::getRouteChannel() {
   return getChannelIndex();
 }
 
-void ObjectFifoDanglingEndpointOp::setFlowChannel(int channel) {
-  setChannelIndex(channel);
-}
+void RouteEndpointOp::setRouteChannel(int channel) { setChannelIndex(channel); }
 
-LogicalResult ObjectFifoDanglingEndpointOp::verify() {
+LogicalResult RouteEndpointOp::verify() {
   TileLike tile = getTileLike();
   if (!tile) {
     return emitOpError("tile operand is not an aie.tile or aie.logical_tile");
   }
-  // getFlowDirection() reads this end's direction off the flow naming it, so a
+  // getRouteDirection() reads this end's direction off the flow naming it, so a
   // second mention would leave it ambiguous, including both ends of one flow.
   StringRef name = getSymName();
   int flows = 0;
-  for (auto flow :
-       (*this)->getParentOfType<DeviceOp>().getOps<ObjectFifoFlowOp>()) {
+  for (auto flow : (*this)->getParentOfType<DeviceOp>().getOps<RouteOp>()) {
     if (flow.getSource() == name) {
       flows++;
     }
@@ -985,8 +982,9 @@ LogicalResult ObjectFifoDanglingEndpointOp::verify() {
         [&](FlatSymbolRefAttr dest) { return dest.getValue() == name; });
   }
   if (flows > 1) {
-    return emitOpError("is named ")
-           << flows << " times by flows; an endpoint drives one channel";
+    return emitOpError("drives one channel, so at most one flow may name it, "
+                       "but it is named ")
+           << flows << " times";
   }
   switch (getBundle()) {
   case WireBundle::DMA:
@@ -1003,10 +1001,10 @@ LogicalResult ObjectFifoDanglingEndpointOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
-// ObjectFifoFlowOp
+// RouteOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult ObjectFifoFlowOp::verify() {
+LogicalResult RouteOp::verify() {
   if (getDestinations().empty()) {
     return emitOpError("expects at least one destination");
   }
@@ -1017,9 +1015,8 @@ LogicalResult ObjectFifoFlowOp::verify() {
 
   auto device = (*this)->getParentOfType<DeviceOp>();
   auto lookup = [&](StringRef name) {
-    return dyn_cast_or_null<ObjectFifoFlowEndpoint>(
-        SymbolTable::lookupNearestSymbolFrom(
-            device, StringAttr::get(getContext(), name)));
+    return dyn_cast_or_null<RouteEndpoint>(SymbolTable::lookupNearestSymbolFrom(
+        device, StringAttr::get(getContext(), name)));
   };
 
   if (!lookup(getSource())) {

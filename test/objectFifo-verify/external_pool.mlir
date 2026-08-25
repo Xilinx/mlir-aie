@@ -17,8 +17,8 @@ module @input {
       segments = [#aie.objectfifo_segment<offset = 0, size = 32>]}
       : memref<32xi32>
     aie.objectfifo.dma_endpoint @dma(%shim) drains @pool
-    aie.objectfifo.dangling_endpoint @sink(%tile) Core {channelIndex = 0 : i32}
-    aie.objectfifo.flow from @dma to [@sink]
+    aie.route_endpoint @sink(%tile) Core {channelIndex = 0 : i32}
+    aie.route from @dma to [@sink]
   }
 }
 
@@ -34,8 +34,8 @@ module @output {
       segments = [#aie.objectfifo_segment<offset = 0, size = 32>]}
       : memref<32xi32>
     aie.objectfifo.dma_endpoint @dma(%shim) fills @pool
-    aie.objectfifo.dangling_endpoint @source(%tile) Core {channelIndex = 0 : i32}
-    aie.objectfifo.flow from @source to [@dma]
+    aie.route_endpoint @source(%tile) Core {channelIndex = 0 : i32}
+    aie.route from @source to [@dma]
   }
 }
 

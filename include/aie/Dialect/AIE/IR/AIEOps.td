@@ -1876,6 +1876,90 @@ def AIE_PutCascadeOp: AIE_Op<"put_cascade", []> {
   let assemblyFormat = [{ `(` $cascade_value `:` type($cascade_value) `)` attr-dict }];
 }
 
+//============================================================================//
+// Symbolic routes
+//============================================================================//
+
+def AIE_RouteEndpointOp
+    : AIE_Op<"route_endpoint", [HasParent<"DeviceOp">, Symbol,
+                                DeclareOpInterfaceMethods<RouteEndpoint>]> {
+  let summary = "A named end of a route that this compiler does not program";
+  let description = [{
+    Holds a tile and a port, and nothing else: enough for an `aie.route` to
+    reach it, and no buffers to move data into or out of. The direction comes
+    from the side of the route this end is named on.
+
+    Two ends look like this. A shim end whose transfers the host runtime issues,
+    where all the design needs from the compiler is the channel to address --
+    recorded as an `aie.shim_dma_allocation` under `fifoName`. And a core's raw
+    stream port, which the core reads and writes directly, bypassing memory.
+    `bundle` tells them apart.
+
+    Example:
+    ```
+      aie.route_endpoint @in(%shim) DMA {fifoName = "in"}
+      aie.route_endpoint @out(%tile) Core {channelIndex = 0}
+    ```
+  }];
+
+  let arguments = (ins SymbolNameAttr:$sym_name, Index:$tile,
+      WireBundle:$bundle, OptionalAttr<AIEI32Attr>:$channelIndex,
+      OptionalAttr<PacketInfoAttr>:$packet,
+      // If lowered from a high-level ObjectFifo, the name of that fifo.
+      // Used to group ops lowered by the same ObjectFifo.
+      OptionalAttr<StrAttr>:$fifoName);
+
+  let assemblyFormat = [{
+    $sym_name `(` $tile `)` $bundle attr-dict
+  }];
+
+  let hasVerifier = 1;
+
+  let extraClassDeclaration = [{
+    /// The tile op backing this op's tile operand; placed or logical.
+    TileLike getTileLike();
+  }];
+}
+
+def AIE_RouteOp : AIE_Op<"route", [HasParent<"DeviceOp">]> {
+  let summary = "A stream connection between endpoints named by symbol";
+  let description = [{
+    Connects one sending endpoint to the receiving endpoints it feeds, naming
+    each by symbol rather than spelling out a (tile, direction, channel) triple.
+    Several destinations describe a broadcast: one source channel feeding a
+    multicast route.
+
+    Any op implementing `RouteEndpoint` may take part, so a route says nothing
+    about where the data comes from. `aie.route_endpoint` carries no storage at
+    all, while the objectFifo endpoints carry a pool.
+
+    `--aie-objectfifo-allocate` assigns a channel to each endpoint, emits the
+    corresponding `aie.flow`, and consumes this op.
+
+    `packet` routes the connection as an `aie.packet_flow` instead, sharing the
+    stream with every other packet flow rather than reserving a circuit for it.
+    `packet_id` pins the header the source stamps; without it allocation picks
+    an id no other flow is using. Circuit- and packet-switched routes coexist in
+    one device.
+
+    Example:
+    ```
+      aie.route from @src to [@dst0, @dst1]
+      aie.route from @src to [@dst] {packet, packet_id = 3 : i8}
+    ```
+  }];
+
+  let arguments = (ins FlatSymbolRefAttr:$source,
+      FlatSymbolRefArrayAttr:$destinations, UnitAttr:$packet,
+      OptionalAttr<ConfinedAttr<AIEI8Attr, [IntMinValue<0>]>>:$packet_id);
+
+  let assemblyFormat = [{
+    `from` $source `to` $destinations attr-dict
+  }];
+
+  let hasVerifier = 1;
+}
+
 def AIE_ShimDMAAllocationOp : AIE_Op<"shim_dma_allocation", [HasParent<"DeviceOp">, Symbol]> {
   let summary = "Runtime allocation information for a single shim DMA";
   let description = [{
@@ -2405,7 +2489,7 @@ def AIE_ObjectFifoCoreEndpointOp
 def AIE_ObjectFifoDmaEndpointOp
     : AIE_Op<"objectfifo.dma_endpoint", [HasParent<"DeviceOp">, Symbol,
                                          DeclareOpInterfaceMethods<
-                                             ObjectFifoFlowEndpoint>]> {
+                                             RouteEndpoint>]> {
   let summary =
       "What a DMA channel needs to fill or drain the next object in a pool";
   let description = [{
@@ -2461,82 +2545,6 @@ def AIE_ObjectFifoDmaEndpointOp
     /// Segments this endpoint is responsible for.
     llvm::SmallVector<ObjectFifoSegmentAttr> getSelectedSegments();
   }];
-}
-
-def AIE_ObjectFifoDanglingEndpointOp
-    : AIE_Op<"objectfifo.dangling_endpoint", [HasParent<"DeviceOp">, Symbol,
-                                              DeclareOpInterfaceMethods<
-                                                  ObjectFifoFlowEndpoint>]> {
-  let summary = "One end of a stream that this compiler does not program";
-  let description = [{
-    Holds a tile and a port, and nothing else: enough for
-    `--aie-objectfifo-allocate` to route a flow to it, and no buffers to move
-    data into or out of. The direction comes from the side of the
-    `aie.objectfifo.flow` this end is named on.
-
-    Two ends look like this. A shim end whose transfers the host runtime issues,
-    where all the design needs from the compiler is the channel to address --
-    recorded as an `aie.shim_dma_allocation` under `fifoName`. And a core's raw
-    stream port, which the core reads and writes directly, bypassing memory.
-    `bundle` tells them apart.
-
-    Example:
-    ```
-      aie.objectfifo.dangling_endpoint @in(%shim) DMA {fifoName = "in"}
-      aie.objectfifo.dangling_endpoint @out(%tile) Core {channelIndex = 0}
-    ```
-  }];
-
-  let arguments = (ins SymbolNameAttr:$sym_name, Index:$tile,
-      WireBundle:$bundle, OptionalAttr<AIEI32Attr>:$channelIndex,
-      OptionalAttr<PacketInfoAttr>:$packet,
-      // ObjectFifo name used by the shim allocation symbol.
-      OptionalAttr<StrAttr>:$fifoName);
-
-  let assemblyFormat = [{
-    $sym_name `(` $tile `)` $bundle attr-dict
-  }];
-
-  let hasVerifier = 1;
-
-  let extraClassDeclaration = [{
-    /// The tile op backing this op's tile operand; placed or logical.
-    TileLike getTileLike();
-  }];
-}
-
-def AIE_ObjectFifoFlowOp : AIE_Op<"objectfifo.flow", [HasParent<"DeviceOp">]> {
-  let summary = "A stream connection between DMA endpoints";
-  let description = [{
-    Connects one draining DMA endpoint to the filling endpoints it feeds. Several
-    destinations describe a broadcast: one source channel feeding a multicast
-    route.
-
-    `--aie-objectfifo-allocate` assigns a channel to each endpoint, emits the
-    corresponding `aie.flow`, and consumes this op.
-
-    `packet` routes the connection as an `aie.packet_flow` instead, sharing the
-    stream with every other packet flow rather than reserving a circuit for it.
-    `packet_id` pins the header the source stamps; without it allocation picks
-    an id no other flow is using. Circuit- and packet-switched flows coexist in
-    one device.
-
-    Example:
-    ```
-      aie.objectfifo.flow from @src to [@dst0, @dst1]
-      aie.objectfifo.flow from @src to [@dst] {packet, packet_id = 3 : i8}
-    ```
-  }];
-
-  let arguments = (ins FlatSymbolRefAttr:$source,
-      FlatSymbolRefArrayAttr:$destinations, UnitAttr:$packet,
-      OptionalAttr<ConfinedAttr<AIEI8Attr, [IntMinValue<0>]>>:$packet_id);
-
-  let assemblyFormat = [{
-    `from` $source `to` $destinations attr-dict
-  }];
-
-  let hasVerifier = 1;
 }
 
 def AIE_ObjectFifoRegisterExternalBuffersOp

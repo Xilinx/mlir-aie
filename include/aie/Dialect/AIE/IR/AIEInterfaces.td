@@ -171,20 +171,20 @@ def BufferLike : OpInterface<"BufferLike"> {
   ];
 }
 
-def ObjectFifoFlowEndpoint : OpInterface<"ObjectFifoFlowEndpoint"> {
+def RouteEndpoint : OpInterface<"RouteEndpoint"> {
   let description = [{
-    Interface for the ops an `aie.objectfifo.flow` connects.
+    Interface for the ops an `aie.route` connects.
   }];
   let cppNamespace = "::xilinx::AIE";
   let methods =
       [InterfaceMethod<[{Which way this end moves data.}], "DMAChannelDir",
-                       "getFlowDirection", (ins)>,
+                       "getRouteDirection", (ins)>,
        InterfaceMethod<[{The switchbox bundle this end occupies.}],
-                       "WireBundle", "getFlowBundle", (ins)>,
+                       "WireBundle", "getRouteBundle", (ins)>,
        InterfaceMethod<[{The port within that bundle, once assigned.}],
-                       "std::optional<int>", "getFlowChannel", (ins)>,
+                       "std::optional<int>", "getRouteChannel", (ins)>,
        InterfaceMethod<[{Record the port this end was given.}], "void",
-                       "setFlowChannel", (ins "int":$channel)>,
+                       "setRouteChannel", (ins "int":$channel)>,
        InterfaceMethod<[{The tile this end sits on.}], "mlir::Value", "getTile",
                        (ins), [{}], [{ return $_op.getTile(); }]>,
        InterfaceMethod<
@@ -193,7 +193,7 @@ def ObjectFifoFlowEndpoint : OpInterface<"ObjectFifoFlowEndpoint"> {
            "std::optional<llvm::StringRef>", "getFifoName", (ins), [{}],
            [{ return $_op.getFifoName(); }]>,
        InterfaceMethod<[{Stamp a packet header on this end.}], "void",
-                       "setFlowPacket", (ins "PacketInfoAttr":$packet), [{}],
+                       "setRoutePacket", (ins "PacketInfoAttr":$packet), [{}],
                        [{ $_op.setPacketAttr(packet); }]>,
   ];
 }

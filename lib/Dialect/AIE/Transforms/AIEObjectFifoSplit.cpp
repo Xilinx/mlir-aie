@@ -232,8 +232,8 @@ struct AIEObjectFifoSplitPass
     }
 
     BDPadLayoutArrayArrayAttr padding;
-    if (role == ObjectFifoRole::Drain && from.getPadDimensions() &&
-        !from.getPadDimensions()->empty()) {
+    std::optional<ArrayRef<BDPadLayoutAttr>> padDims = from.getPadDimensions();
+    if (role == ObjectFifoRole::Drain && padDims && !padDims->empty()) {
       SmallVector<BDPadLayoutArrayAttr> perSegment(ref.segments.size(),
                                                    from.getPadDimensionsAttr());
       padding =
@@ -256,11 +256,11 @@ struct AIEObjectFifoSplitPass
 
   /// An end with no pool behind it: a shim whose transfers the runtime issues,
   /// a PLIO boundary, or a core's raw stream port.
-  ObjectFifoDanglingEndpointOp
-  createDanglingEndpoint(Location loc, StringRef name, Value tile,
-                         WireBundle bundle, std::optional<int> channelIndex,
-                         ObjectFifoCreateOp from) {
-    return ObjectFifoDanglingEndpointOp::create(
+  RouteEndpointOp createRouteEndpoint(Location loc, StringRef name, Value tile,
+                                      WireBundle bundle,
+                                      std::optional<int> channelIndex,
+                                      ObjectFifoCreateOp from) {
+    return RouteEndpointOp::create(
         builder, loc, builder.getStringAttr(name), tile,
         WireBundleAttr::get(builder.getContext(), bundle),
         channelIndex ? builder.getI32IntegerAttr(*channelIndex) : IntegerAttr(),
@@ -663,7 +663,7 @@ void AIEObjectFifoSplitPass::runOnOperation() {
           loc, prodDmaName, prodTile, *prodRef, ObjectFifoRole::Drain, fifo,
           fifo.getDimensionsToStreamAttr(), fifo.getProdDmaChannel());
     } else {
-      createDanglingEndpoint(
+      createRouteEndpoint(
           loc, prodDmaName, prodTile,
           prodStreamPort   ? WireBundle::Core
           : fifo.getPlio() ? WireBundle::PLIO
@@ -730,11 +730,11 @@ void AIEObjectFifoSplitPass::runOnOperation() {
                                                : consumerDims[consumerIndex],
                           pinned);
       } else {
-        createDanglingEndpoint(loc, consDmaName, consumerTile,
-                               consStreamPort   ? WireBundle::Core
-                               : fifo.getPlio() ? WireBundle::PLIO
-                                                : WireBundle::DMA,
-                               consStreamPort ? consStreamPort : pinned, fifo);
+        createRouteEndpoint(loc, consDmaName, consumerTile,
+                            consStreamPort   ? WireBundle::Core
+                            : fifo.getPlio() ? WireBundle::PLIO
+                                             : WireBundle::DMA,
+                            consStreamPort ? consStreamPort : pinned, fifo);
       }
       destinations.push_back(
           FlatSymbolRefAttr::get(builder.getContext(), consDmaName));
@@ -744,11 +744,11 @@ void AIEObjectFifoSplitPass::runOnOperation() {
       consumerIndex++;
     }
 
-    ObjectFifoFlowOp::create(
-        builder, loc, FlatSymbolRefAttr::get(builder.getContext(), prodDmaName),
-        builder.getArrayAttr(destinations),
-        fifo.getPacket() ? builder.getUnitAttr() : UnitAttr(),
-        fifo.getPacketIdAttr());
+    RouteOp::create(builder, loc,
+                    FlatSymbolRefAttr::get(builder.getContext(), prodDmaName),
+                    builder.getArrayAttr(destinations),
+                    fifo.getPacket() ? builder.getUnitAttr() : UnitAttr(),
+                    fifo.getPacketIdAttr());
   }
 
   SmallVector<Operation *> toErase;
