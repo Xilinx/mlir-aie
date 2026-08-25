@@ -1,4 +1,4 @@
-//===- incomplete_route_edge_merge.mlir ------------------------*- MLIR -*-===//
+//===- same_id_fanin_5way_memtile_dest.mlir --------------------*- MLIR -*-===//
 //
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
@@ -8,15 +8,25 @@
 // RUN: aie-opt --aie-create-pathfinder-flows %s | FileCheck %s
 
 // Regression test: the pathfinder must not drop a packet_source, silently or
-// otherwise.
+// otherwise. Companion to same_id_fanin_4way_core_dest.mlir, which is the same
+// bug at a core-tile destination; a mem tile has no East/West ports and
+// passes North<->South only on a matching channel, so the two exercise
+// different switchbox topologies.
 //
 // Five same-id packet sources merge into a single mem_tile S2MM DMA channel.
 // Same-id flows may not share a switch channel, so each source is pushed onto
 // its own crossbar entry into (0,1) DMA0. That congestion used to drive
-// Dijkstra onto a detour that leaves a switchbox on some "South N" and re-enters
-// the same switchbox on that same "South N" -- expressible only because a graph
-// node is (tile, bundle, channel) with no direction. The emitted route then
-// dead-ended and one source was reported unroutable.
+// Dijkstra onto a detour that leaves a switchbox on some "South N" and then
+// re-enters the same switchbox on that same "South N" -- expressible only
+// because a graph node is (tile, bundle, channel) with no direction. The
+// emitted route then dead-ended and one source was reported unroutable.
+//
+// This file used to be named incomplete_route_edge_merge.mlir and asserted that
+// error, on the assumption that no complete assignment existed here. One does:
+// the route below is found by a search that is strictly more constrained than
+// the one that failed, over an unchanged graph. The pass still reports a
+// genuinely unroutable design loudly -- see
+// create-flows/unreachable_dest_err_test.mlir.
 //
 // All five sources must arrive and merge onto DMA0.
 

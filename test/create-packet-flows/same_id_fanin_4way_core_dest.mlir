@@ -8,9 +8,9 @@
 // RUN: aie-opt --aie-create-pathfinder-flows %s | FileCheck %s
 
 // Second geometry for the direction-alias routing bug, next to
-// incomplete_route_edge_merge.mlir. That one gathers five shim sources into a
-// mem tile; this one gathers four into a core tile, which has a different
-// switchbox topology (a mem tile has no East/West ports and only passes
+// same_id_fanin_5way_memtile_dest.mlir. That one gathers five shim sources
+// into a mem tile; this one gathers four into a core tile, which has a
+// different switchbox topology (a mem tile has no East/West ports and passes
 // North<->South on a matching channel). Both used to fail, so pinning only one
 // would let a fix that over-fits its shape through.
 //
