@@ -19,8 +19,8 @@ include "mlir/IR/EnumAttr.td"
 // Overridden upstream attributes that return int instead of uint
 //===----------------------------------------------------------------------===//
 
-class
-    AIETypedSignlessIntegerAttrBase<I attrValType, string retType, string descr>
+class AIETypedSignlessIntegerAttrBase<I attrValType, string retType,
+                                      string descr>
     : SignlessIntegerAttrBase<attrValType, descr> {
   let returnType = retType;
   let convertFromStorage = "$_self.getValue().getSExtValue()";
@@ -56,10 +56,10 @@ def TraceWire : I32EnumAttrCase<"Trace", 9>;
 def TileControlWire : I32EnumAttrCase<"TileControl", 10>;
 def Controller32Wire : I32EnumAttrCase<"Controller32", 11>;
 
-def WireBundle : I32EnumAttr<"WireBundle", "Bundle of wires", [
-  CoreWire, DMAWire, FIFOWire, SouthWire, WestWire, NorthWire, EastWire,
-  PLIOWire, NOCWire, TraceWire, TileControlWire, Controller32Wire
-]> {
+def WireBundle : I32EnumAttr<"WireBundle", "Bundle of wires",
+                             [CoreWire, DMAWire, FIFOWire, SouthWire, WestWire,
+                              NorthWire, EastWire, PLIOWire, NOCWire, TraceWire,
+                              TileControlWire, Controller32Wire]> {
 
   let cppNamespace = "xilinx::AIE";
 }
@@ -70,67 +70,60 @@ def CascadeDir : I32EnumAttr<"CascadeDir", "Directions for cascade",
   let cppNamespace = "xilinx::AIE";
 }
 
-def LockAction : I32EnumAttr<"LockAction", "lock acquire/release", [
-  I32EnumAttrCase<"Acquire", 0>,
-  I32EnumAttrCase<"AcquireGreaterEqual", 2>,
-  I32EnumAttrCase<"Release", 1>,
+def LockAction : I32EnumAttr<"LockAction", "lock acquire/release",
+                             [I32EnumAttrCase<"Acquire", 0>,
+                              I32EnumAttrCase<"AcquireGreaterEqual", 2>,
+                              I32EnumAttrCase<"Release", 1>,
 ]> {
 
   let cppNamespace = "xilinx::AIE";
 }
 
-def LockBlocking : I32EnumAttr<"LockBlocking", "lock operation is blocking", [
-  I32EnumAttrCase<"NonBlocking", 0>, I32EnumAttrCase<"Blocking", 1>
+def LockBlocking : I32EnumAttr<"LockBlocking", "lock operation is blocking",
+                               [I32EnumAttrCase<"NonBlocking", 0>,
+                                I32EnumAttrCase<"Blocking", 1>]> {
+
+  let cppNamespace = "xilinx::AIE";
+}
+
+def AIEArch
+    : I32EnumAttr<"AIEArch", "AIE Architecture",
+                  [I32EnumAttrCase<"AIE1", 1>, I32EnumAttrCase<"AIE2", 2>,
+                   I32EnumAttrCase<"AIE2p", 3>, I32EnumAttrCase<"AIE2ps", 4>,
 ]> {
 
   let cppNamespace = "xilinx::AIE";
 }
 
-def AIEArch : I32EnumAttr<"AIEArch", "AIE Architecture", [
-  I32EnumAttrCase<"AIE1", 1>,
-  I32EnumAttrCase<"AIE2", 2>,
-  I32EnumAttrCase<"AIE2p", 3>,
-  I32EnumAttrCase<"AIE2ps", 4>,
+def AIETileType
+    : I32EnumAttr<
+          "AIETileType", "Type of AIE Tile",
+          [I32EnumAttrCase<"CoreTile", 0>, I32EnumAttrCase<"MemTile", 1>,
+           I32EnumAttrCase<"ShimNOCTile", 2>, I32EnumAttrCase<"ShimPLTile", 3>,
 ]> {
 
   let cppNamespace = "xilinx::AIE";
 }
 
-def AIETileType : I32EnumAttr<"AIETileType", "Type of AIE Tile", [
-  I32EnumAttrCase<"CoreTile", 0>,
-  I32EnumAttrCase<"MemTile", 1>,
-  I32EnumAttrCase<"ShimNOCTile", 2>,
-  I32EnumAttrCase<"ShimPLTile", 3>,
+def AIEDevice
+    : I32EnumAttr<
+          "AIEDevice", "AIE Device",
+          [I32EnumAttrCase<"xcvc1902", 1>, I32EnumAttrCase<"xcve2302", 2>,
+           I32EnumAttrCase<"xcve2802", 3>, I32EnumAttrCase<"npu1", 4>,
+           I32EnumAttrCase<"npu1_1col", 5>, I32EnumAttrCase<"npu1_2col", 6>,
+           I32EnumAttrCase<"npu1_3col", 7>, I32EnumAttrCase<"npu2", 8>,
+           I32EnumAttrCase<"npu2_1col", 9>, I32EnumAttrCase<"npu2_2col", 10>,
+           I32EnumAttrCase<"npu2_3col", 11>, I32EnumAttrCase<"npu2_4col", 12>,
+           I32EnumAttrCase<"npu2_5col", 13>, I32EnumAttrCase<"npu2_6col", 14>,
+           I32EnumAttrCase<"npu2_7col", 15>, I32EnumAttrCase<"xcve3858", 16>,
 ]> {
 
   let cppNamespace = "xilinx::AIE";
 }
 
-def AIEDevice : I32EnumAttr<"AIEDevice", "AIE Device", [
-  I32EnumAttrCase<"xcvc1902", 1>,
-  I32EnumAttrCase<"xcve2302", 2>,
-  I32EnumAttrCase<"xcve2802", 3>,
-  I32EnumAttrCase<"npu1", 4>,
-  I32EnumAttrCase<"npu1_1col", 5>,
-  I32EnumAttrCase<"npu1_2col", 6>,
-  I32EnumAttrCase<"npu1_3col", 7>,
-  I32EnumAttrCase<"npu2", 8>,
-  I32EnumAttrCase<"npu2_1col", 9>,
-  I32EnumAttrCase<"npu2_2col", 10>,
-  I32EnumAttrCase<"npu2_3col", 11>,
-  I32EnumAttrCase<"npu2_4col", 12>,
-  I32EnumAttrCase<"npu2_5col", 13>,
-  I32EnumAttrCase<"npu2_6col", 14>,
-  I32EnumAttrCase<"npu2_7col", 15>,
-  I32EnumAttrCase<"xcve3858", 16>,
-]> {
-
-  let cppNamespace = "xilinx::AIE";
-}
-
-def ObjectFifoPort : I32EnumAttr<"ObjectFifoPort", "Ports of an object FIFO", [
-  I32EnumAttrCase<"Produce", 0>, I32EnumAttrCase<"Consume", 1>
-]> {
+def ObjectFifoPort : I32EnumAttr<"ObjectFifoPort", "Ports of an object FIFO",
+                                 [I32EnumAttrCase<"Produce", 0>,
+                                  I32EnumAttrCase<"Consume", 1>]> {
   let cppNamespace = "xilinx::AIE";
 }
 
