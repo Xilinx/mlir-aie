@@ -21,6 +21,7 @@
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/TypeSwitch.h"
 
 namespace xilinx::AIEX {
@@ -692,8 +693,8 @@ struct AIEDMATasksToNPUPass
         llvm::SmallVector<int64_t, 4>(4, 0);
     llvm::SmallVector<int64_t, 4> padAfter =
         llvm::SmallVector<int64_t, 4>(4, 0);
-    std::fill(padBefore.begin(), padBefore.end(), 0);
-    std::fill(padAfter.begin(), padAfter.end(), 0);
+    llvm::fill(padBefore, 0);
+    llvm::fill(padAfter, 0);
 
     auto d0size = 0;
     auto d0stride = 0;

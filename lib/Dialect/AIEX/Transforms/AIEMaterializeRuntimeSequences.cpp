@@ -20,6 +20,7 @@
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "mlir/Transforms/WalkPatternRewriteDriver.h"
+#include "llvm/ADT/STLExtras.h"
 
 namespace xilinx::AIEX {
 #define GEN_PASS_DEF_AIEMATERIALIZERUNTIMESEQUENCES
@@ -216,8 +217,8 @@ copyReferencedSSAValues(PatternRewriter &rewriter,
       return errorReportOp->emitError()
              << "Referenced value is not defined by an operation";
     }
-    if (std::find(referencedOpsToClone.begin(), referencedOpsToClone.end(),
-                  definingOp) != referencedOpsToClone.end()) {
+    if (llvm::find(referencedOpsToClone, definingOp) !=
+        referencedOpsToClone.end()) {
       continue;
     }
 

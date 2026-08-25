@@ -8,6 +8,7 @@
 
 #include "aie/Dialect/AIE/IR/AIETargetModel.h"
 #include "aie/Dialect/AIE/Util/AIERegisterDatabase.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/ErrorHandling.h"
 #include <cstdint>
 #include <utility>
@@ -1080,7 +1081,7 @@ bool AIE2TargetModel::isLegalTileConnection(int col, int row,
   // Lambda function to check if a bundle is in a list
   auto isBundleInList = [](WireBundle bundle,
                            std::initializer_list<WireBundle> bundles) {
-    return std::find(bundles.begin(), bundles.end(), bundle) != bundles.end();
+    return llvm::find(bundles, bundle) != bundles.end();
   };
 
   // Memtile
