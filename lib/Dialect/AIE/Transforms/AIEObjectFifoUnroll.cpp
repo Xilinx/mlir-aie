@@ -267,8 +267,10 @@ struct AIEObjectFifoUnrollPass
         // it as well so that each of those iterations maps to an explicit
         // buffer/lock rotation slot. This is best-effort: an epilogue with a
         // non-constant trip count cannot be fully unrolled and is left rolled.
-        if (info->epilogueLoopOp) {
-          (void)mlir::loopUnrollFull(*info->epilogueLoopOp);
+        std::optional<scf::ForOp> epilogue =
+            info->epilogueLoopOp; // NOLINT(bugprone-unchecked-optional-access)
+        if (epilogue) {
+          (void)mlir::loopUnrollFull(*epilogue);
         }
       }
 
