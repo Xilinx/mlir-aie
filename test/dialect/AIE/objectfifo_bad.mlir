@@ -83,3 +83,27 @@ aie.device(npu2) {
 
    aie.objectfifo @of0 (%tile01, {%tile02}, 1 : i32) : !aie.objectfifo<memref<40xi32>> -> !aie.objectfifo<memref<0xi32>>
 }
+
+// -----
+
+// The direction of a dangling end is read off the flow that names it, so a
+// second flow would leave it ambiguous.
+
+// CHECK: 'aie.objectfifo.dangling_endpoint' op appears in 2 flows; an endpoint drives one channel
+
+aie.device(npu1) {
+  %tile02 = aie.tile(0, 2)
+  %shim0 = aie.tile(0, 0)
+  %shim1 = aie.tile(1, 0)
+
+  aie.objectfifo.pool @p(%tile02) {depth = 2 : i32,
+      segments = [#aie.objectfifo_segment<offset = 0, size = 16>]} : memref<16xi32>
+  aie.objectfifo.core_endpoint @fill(%tile02) fills @p
+  aie.objectfifo.dma_endpoint @drain(%tile02) drains @p
+
+  aie.objectfifo.dangling_endpoint @mid(%shim1) DMA
+  aie.objectfifo.dangling_endpoint @sink(%shim0) DMA
+
+  aie.objectfifo.flow from @drain to [@mid]
+  aie.objectfifo.flow from @mid to [@sink]
+}

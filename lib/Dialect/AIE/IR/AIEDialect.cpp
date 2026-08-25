@@ -964,6 +964,23 @@ LogicalResult ObjectFifoDanglingEndpointOp::verify() {
   if (!tile) {
     return emitOpError("tile operand is not an aie.tile or aie.logical_tile");
   }
+  // getFlowDirection() reads this end's direction off the flow naming it, so a
+  // second flow would leave it ambiguous.
+  StringRef name = getSymName();
+  int flows = 0;
+  for (auto flow :
+       (*this)->getParentOfType<DeviceOp>().getOps<ObjectFifoFlowOp>()) {
+    if (flow.getSource() == name ||
+        llvm::any_of(
+            flow.getDestinations().getAsRange<FlatSymbolRefAttr>(),
+            [&](FlatSymbolRefAttr dest) { return dest.getValue() == name; })) {
+      flows++;
+    }
+  }
+  if (flows > 1) {
+    return emitOpError("appears in ")
+           << flows << " flows; an endpoint drives one channel";
+  }
   switch (getBundle()) {
   case WireBundle::DMA:
   case WireBundle::PLIO:
