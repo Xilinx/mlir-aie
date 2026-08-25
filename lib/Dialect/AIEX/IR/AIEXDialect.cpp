@@ -284,6 +284,10 @@ LogicalResult AIEX::BroadcastPacketOp::verify() {
 
 /* Calculates the offset value to be written to the
  */
+uint32_t AIEX::NpuDmaMemcpyNdOp::getAxcacheOrDefault() {
+  return getAxcache().value_or(AIE::getTargetModel(*this).getDefaultAxCache());
+}
+
 int64_t AIEX::NpuDmaMemcpyNdOp::getOffsetInBytes() {
   llvm::SmallVector<int64_t, 4> offsets =
       llvm::map_to_vector(llvm::reverse(getMixedOffsets()), [](OpFoldResult s) {
@@ -449,7 +453,7 @@ struct LinearizeContiguousTransfer
         op.getIssueTokenAttr(), op.getD0ZeroBeforeAttr(),
         op.getD1ZeroBeforeAttr(), op.getD2ZeroBeforeAttr(),
         op.getD0ZeroAfterAttr(), op.getD1ZeroAfterAttr(),
-        op.getD2ZeroAfterAttr(), op.getBurstLengthAttr(),
+        op.getD2ZeroAfterAttr(), op.getBurstLengthAttr(), op.getAxcacheAttr(),
         op.getOffsetParameterAttr(), op.getOffsetStateTableIdxAttr());
     return mlir::success();
   }
@@ -832,8 +836,14 @@ LogicalResult AIEX::NpuWriteBdOp::verify() {
   if (errorMessage.has_value()) {
     return emitOpError(errorMessage.value());
   }
+  if (!targetModel.isShimNOCTile(getColumn(), getRow()) && getAxcache())
+    return emitOpError("Only ShimTiles support AxCACHE configuration.");
 
   return success();
+}
+
+uint32_t AIEX::NpuWriteBdOp::getAxcacheOrDefault() {
+  return getAxcache().value_or(AIE::getTargetModel(*this).getDefaultAxCache());
 }
 
 std::optional<uint32_t> AIEX::getConstantIntOperand(mlir::Value v) {

@@ -2858,6 +2858,7 @@ void DMABDOp::buildMixed(mlir::OpBuilder &builder, mlir::OperationState &state,
         /*packet=*/packet,
         /*out_of_order_id=*/nullptr,
         /*burst_length=*/nullptr,
+        /*axcache=*/nullptr,
         /*iteration=*/nullptr,
         /*offset_parameter=*/nullptr,
         /*offset_state_table_idx=*/nullptr,
@@ -3263,6 +3264,16 @@ LogicalResult DMABDOp::verify() {
     return emitOpError("Burst length is only supported in Shim NOC tiles that "
                        "are connected to the memory-mapped NOC.");
 
+  if (auto axcache = getAxcache()) {
+    if (!parentTile.isShimNOCTile()) {
+      return emitOpError("AxCACHE is only supported in Shim NOC tiles "
+                         "that are connected to the memory-mapped NOC.");
+    }
+    if (axcache > 0xF) {
+      return emitOpError("AxCache value out of 4-bit range.");
+    }
+  }
+
   // BD iteration bounds. Values are true/element (aie-rt encodes value-1);
   // size <= 1 disables iteration (stride ignored). The stride is checked in
   // whole 32-bit words against the tile-specific step field; the wrap is a
@@ -3292,6 +3303,11 @@ LogicalResult DMABDOp::verify() {
   }
 
   return success();
+}
+
+uint32_t DMABDOp::getAxcacheOrDefault() {
+  return getAxcache().value_or(
+      getTargetModel(getOperation()).getDefaultAxCache());
 }
 
 //===----------------------------------------------------------------------===//
