@@ -132,10 +132,11 @@ struct AIECtrlPacketToDmaPass
         // Calculate control packet size
         int64_t ctrlPktSize = 0;
         auto data = ctrlPktOp.getData();
+        auto length = ctrlPktOp.getLength();
         if (data)
           ctrlPktSize = data->size();
-        else if (ctrlPktOp.getLength())
-          ctrlPktSize = *ctrlPktOp.getLength();
+        else if (length)
+          ctrlPktSize = *length;
         ctrlPktSize++; // Ctrl info word
         ctrlPktSize++; // Packet header
 
