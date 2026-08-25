@@ -1648,9 +1648,7 @@ AIE2PSTargetModel::getDmaControlAddress(int col, int row, int channel,
   return AIE2TargetModel::getDmaControlAddress(col, row, channel, direction);
 }
 
-// AIE2PS shim tiles have uC stream switch port (master index 22, slave index
-// 23) for routing TCT to CERT uC. This is a direct connection on the stream
-// switch, not through the shim mux.
+// AIE2PS shim tiles have uC stream switch port for routing TCT to CERT uC.
 uint32_t
 AIE2PSTargetModel::getNumDestSwitchboxConnections(int col, int row,
                                                   WireBundle bundle) const {

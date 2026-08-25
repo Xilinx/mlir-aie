@@ -182,7 +182,7 @@ xilinx::AIE::myVerifyOffsetSizeAndStrideOp(OffsetSizeAndStrideOpInterface op) {
 static VC1902TargetModel VC1902model;
 static VE2302TargetModel VE2302model;
 static VE2802TargetModel VE2802model;
-static VE3858TargetModel VE3858model; // AIE2PS provisional
+static VE3858TargetModel VE3858model;
 static VirtualizedNPU1TargetModel NPUmodel1col(1);
 static VirtualizedNPU1TargetModel NPUmodel2col(2);
 static VirtualizedNPU1TargetModel NPUmodel3col(3);

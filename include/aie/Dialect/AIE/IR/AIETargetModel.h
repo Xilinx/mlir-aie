@@ -802,11 +802,7 @@ public:
   getShimBurstEncodingsAndLengths() const override;
 };
 
-// AIE2PS base model. Key differences from AIE2/AIE2P:
-//   - CERT microcontroller control plane
-//   - 57-bit external addresses (vs 48-bit in AIE2)
-//   - 512B burst support (added below)
-//   - Block floating point changed from bfp16 to MX9/MX6/MX4 formats
+// AIE2PS base model
 class AIE2PSTargetModel : public AIE2TargetModel {
 public:
   AIE2PSTargetModel(TargetModelKind k) : AIE2TargetModel(k) {
@@ -818,8 +814,7 @@ public:
 
   uint32_t getNumControllersPerColumn() const override { return 1; }
 
-  // AIE2PS supports 512B burst (same as AIE2P), unlike base AIE2 which
-  // only supports up to 256B.
+  // AIE2PS supports 512B burst (same as AIE2P)
   std::vector<std::pair<uint32_t, uint32_t>>
   getShimBurstEncodingsAndLengths() const override {
     return {std::pair(0, 64), std::pair(1, 128), std::pair(2, 256),
@@ -830,19 +825,11 @@ public:
   // MX9/MX6/MX4. isSupportedBlockFormat() currently returns false (inherited).
   // Override with correct MX format strings when ML kernels need it.
 
-  // AIE2PS shim DMA registers are at different offsets than AIE2:
-  //   Shim BD base: 0x9000 (AIE2: 0x1D000), stride: 0x30 (AIE2: 0x20)
-  //   Shim S2MM ctrl: 0x9300 (AIE2: 0x1D200)
-  //   Shim MM2S ctrl: 0x9310 (AIE2: 0x1D210)
-  // Memtile and core tile DMA addresses are identical to AIE2.
   uint64_t getDmaBdAddress(int col, int row, uint32_t bd_id, int channel,
                            AIE::DMAChannelDir direction) const override;
   uint32_t getDmaControlAddress(int col, int row, int channel,
                                 AIE::DMAChannelDir direction) const override;
 
-  // AIE2PS shim has a dedicated uController port (master index 22) for
-  // routing task-complete-tokens to the CERT microcontroller.
-  // This is a direct stream switch port, not through shim_mux.
   uint32_t getNumDestSwitchboxConnections(int col, int row,
                                           WireBundle bundle) const override;
   uint32_t getNumSourceSwitchboxConnections(int col, int row,
@@ -867,7 +854,7 @@ public:
   int columns() const override { return 36; }
   int rows() const override { return 7; }
 
-  // AIE2PS Shim-South tiles (cols 1-23) have both NoC and PL (via BLI).
+  // AIE2PS Shim-South tiles (cols 1-23) have both NoC and PL.
   // Shim-Global (col 0) has NoC only. Modeling all as ShimNOC is a working
   // approximation for the CERT compilation path.
   AIETileType getTileType(int col, int row) const override {
