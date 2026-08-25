@@ -941,11 +941,18 @@ DMAChannelDir ObjectFifoDanglingEndpointOp::getFlowDirection() {
   // end receives.
   auto device = getOperation()->getParentOfType<DeviceOp>();
   StringRef name = getSymName();
+  bool named = false;
   for (auto flow : device.getOps<ObjectFifoFlowOp>()) {
     if (flow.getSource() == name) {
       return DMAChannelDir::MM2S;
     }
+    named |= llvm::any_of(
+        flow.getDestinations().getAsRange<FlatSymbolRefAttr>(),
+        [&](FlatSymbolRefAttr dest) { return dest.getValue() == name; });
   }
+  assert(named && "endpoint is named by no flow, so it has no direction to "
+                  "read; --aie-objectfifo-verify rejects this");
+  (void)named;
   return DMAChannelDir::S2MM;
 }
 
@@ -965,21 +972,21 @@ LogicalResult ObjectFifoDanglingEndpointOp::verify() {
     return emitOpError("tile operand is not an aie.tile or aie.logical_tile");
   }
   // getFlowDirection() reads this end's direction off the flow naming it, so a
-  // second flow would leave it ambiguous.
+  // second mention would leave it ambiguous, including both ends of one flow.
   StringRef name = getSymName();
   int flows = 0;
   for (auto flow :
        (*this)->getParentOfType<DeviceOp>().getOps<ObjectFifoFlowOp>()) {
-    if (flow.getSource() == name ||
-        llvm::any_of(
-            flow.getDestinations().getAsRange<FlatSymbolRefAttr>(),
-            [&](FlatSymbolRefAttr dest) { return dest.getValue() == name; })) {
+    if (flow.getSource() == name) {
       flows++;
     }
+    flows += llvm::count_if(
+        flow.getDestinations().getAsRange<FlatSymbolRefAttr>(),
+        [&](FlatSymbolRefAttr dest) { return dest.getValue() == name; });
   }
   if (flows > 1) {
-    return emitOpError("appears in ")
-           << flows << " flows; an endpoint drives one channel";
+    return emitOpError("is named ")
+           << flows << " times by flows; an endpoint drives one channel";
   }
   switch (getBundle()) {
   case WireBundle::DMA:

@@ -94,8 +94,8 @@ struct AIEObjectFifoVerifyPass
         return endpoint->emitOpError("is not connected by any flow");
       }
       if (count > 1) {
-        return endpoint->emitOpError("appears in ")
-               << count << " flows; an endpoint drives one channel";
+        return endpoint->emitOpError("is named ")
+               << count << " times by flows; an endpoint drives one channel";
       }
     }
     return success();

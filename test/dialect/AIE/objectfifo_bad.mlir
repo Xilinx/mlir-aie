@@ -89,7 +89,7 @@ aie.device(npu2) {
 // The direction of a dangling end is read off the flow that names it, so a
 // second flow would leave it ambiguous.
 
-// CHECK: 'aie.objectfifo.dangling_endpoint' op appears in 2 flows; an endpoint drives one channel
+// CHECK: 'aie.objectfifo.dangling_endpoint' op is named 2 times by flows; an endpoint drives one channel
 
 aie.device(npu1) {
   %tile02 = aie.tile(0, 2)
@@ -106,4 +106,18 @@ aie.device(npu1) {
 
   aie.objectfifo.flow from @drain to [@mid]
   aie.objectfifo.flow from @mid to [@sink]
+}
+
+// -----
+
+// Both ends of one flow is the same ambiguity.
+
+// CHECK: 'aie.objectfifo.dangling_endpoint' op is named 2 times by flows; an endpoint drives one channel
+
+aie.device(npu1) {
+  %shim0 = aie.tile(0, 0)
+
+  aie.objectfifo.dangling_endpoint @loop(%shim0) DMA
+
+  aie.objectfifo.flow from @loop to [@loop]
 }
