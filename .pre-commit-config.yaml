@@ -148,7 +148,7 @@ repos:
     - id: clang-tidy
       name: clang-tidy
       language: python
-      additional_dependencies: ['clang-tidy==20.1.0']
+      additional_dependencies: ['clang-tidy==22.1.8']
       entry: utils/run_clang_tidy.sh
       files: |
         (?x)^(

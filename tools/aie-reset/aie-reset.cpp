@@ -32,15 +32,20 @@ static void devmemRW32(uint32_t address, uint32_t value, bool write) {
   uint32_t read_result;
   uint32_t offset = address - 0xF70A0000;
 
-  if ((fd = open("/dev/mem", O_RDWR | O_SYNC)) == -1)
+  if ((fd = open("/dev/mem", O_RDWR | O_SYNC)) == -1) {
     printf("ERROR!!!! open(devmem)\n");
+    return;
+  }
   printf("\n/dev/mem opened.\n");
   fflush(stdout);
 
   map_base = (uint32_t *)mmap(nullptr, MAP_SIZE, PROT_READ | PROT_WRITE,
                               MAP_SHARED, fd, 0xF70A0000);
-  if (map_base == (void *)-1)
+  if (map_base == (void *)-1) {
     printf("ERROR!!!! map_base\n");
+    close(fd);
+    return;
+  }
   printf("Memory mapped at address %p.\n", map_base);
   fflush(stdout);
 

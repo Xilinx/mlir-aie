@@ -20,6 +20,7 @@
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
 #include "mlir/Interfaces/FoldInterfaces.h"
 #include "mlir/Transforms/InliningUtils.h"
+#include "llvm/ADT/STLExtras.h"
 
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/TypeSize.h"
@@ -106,8 +107,8 @@ void AIEX::getHardwareStridesWraps(const AIE::AIETargetModel &targetModel,
   auto addressGranularity = targetModel.getAddressGenGranularity();
 
   // Output strides and sizes are default-initialized to 0
-  std::fill(sizes.begin(), sizes.end(), 0);
-  std::fill(strides.begin(), strides.end(), 0);
+  llvm::fill(sizes, 0);
+  llvm::fill(strides, 0);
 
   if (inputSizes[0] == 0) {
     // Illegal input, this won't transfer anything at all.
@@ -473,10 +474,9 @@ checkBurstLength(const xilinx::AIE::AIETargetModel &targetModel,
                  uint32_t requestedBurstLength) {
   if (requestedBurstLength != 0) {
     auto bel = targetModel.getShimBurstEncodingsAndLengths();
-    auto pair = std::find_if(bel.begin(), bel.end(),
-                             [=](const std::pair<uint32_t, uint32_t> &p) {
-                               return p.second == requestedBurstLength;
-                             });
+    auto pair = llvm::find_if(bel, [=](const std::pair<uint32_t, uint32_t> &p) {
+      return p.second == requestedBurstLength;
+    });
 
     if (pair == bel.end()) {
       std::string errorMessage =
