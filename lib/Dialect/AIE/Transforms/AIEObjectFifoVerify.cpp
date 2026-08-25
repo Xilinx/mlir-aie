@@ -66,11 +66,14 @@ struct AIEObjectFifoVerifyPass
         return pool.emitOpError("segment ")
                << index << " is drained by more than one endpoint";
       }
-      if (segment.drainers.empty() && !(external && !segment.fillers.empty())) {
+      // The host works an external pool's buffers, so it stands in for the end
+      // this device does not program.
+      bool hostDrains = external && !segment.fillers.empty();
+      bool hostFills = external && !segment.drainers.empty();
+      if (segment.drainers.empty() && !hostDrains) {
         return pool.emitOpError("segment ") << index << " has no drainer";
       }
-      if (segment.fillers.empty() && !pool.getInitValues() &&
-          !(external && !segment.drainers.empty())) {
+      if (segment.fillers.empty() && !pool.getInitValues() && !hostFills) {
         return pool.emitOpError("segment ") << index << " has no filler";
       }
     }
