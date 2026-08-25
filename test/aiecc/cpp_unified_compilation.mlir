@@ -11,10 +11,15 @@
 
 // RUN: aiecc --unified --get-npu-insts --get-core-elfs --verbose %s 2>&1 | FileCheck %s
 
-// Unified mode: single unified LLVM lowering + one unified object, then both
-// cores are linked from that unified object.
-// CHECK: ({{[0-9]+}}/{{[0-9]+}}) unifiedLowered_{{.*}}.mlir
-// CHECK: ({{[0-9]+}}/{{[0-9]+}}) unifiedObjects_{{.*}}.o
+// Unified mode splits the design per device and lowers each device once, then
+// carves that module into one module per core -- so the object stage stays as
+// wide as the core count. Pin both halves: the device split happens, and each
+// core still gets its own object. Merging the cores into one shared object
+// would serialize a stage that is otherwise fully parallel.
+// CHECK: ({{[0-9]+}}/{{[0-9]+}}) perDeviceCompile_{{.*}}.mlir
+// CHECK-NOT: unifiedObjects_
+// CHECK-DAG: objects_main_core_0_2
+// CHECK-DAG: objects_main_core_1_2
 // CHECK-DAG: exec:{{.*}}elfs_main_core_0_2.elf
 // CHECK-DAG: exec:{{.*}}elfs_main_core_1_2.elf
 // CHECK: wrote edge 'insts_
