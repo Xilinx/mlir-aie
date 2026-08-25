@@ -7,6 +7,7 @@
 
 #include "aie/Dialect/AIE/Transforms/AIEPlacer.h"
 #include "mlir/Interfaces/ViewLikeInterface.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/Debug.h"
 
@@ -265,35 +266,34 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
   // neighbors are then steered to those slots by `computePeerAdjacency`.
   SmallVector<LogicalTileOp> orderedTiles(logicalTiles.begin(),
                                           logicalTiles.end());
-  std::stable_sort(orderedTiles.begin(), orderedTiles.end(),
-                   [&](LogicalTileOp a, LogicalTileOp b) {
-                     auto rank = [](LogicalTileOp lt) {
-                       bool hasCol = lt.tryGetCol().has_value();
-                       bool hasRow = lt.tryGetRow().has_value();
-                       if (hasCol && hasRow)
-                         return 0; // fully pinned
-                       if (hasCol || hasRow)
-                         return 1; // partially constrained
-                       return 2;   // fully unpinned
-                     };
-                     int ra = rank(a), rb = rank(b);
-                     if (ra != rb)
-                       return ra < rb;
-                     // Same constraint level: high priority first. Priority
-                     // = max(self demand, highest peer demand) so a Worker's
-                     // compute-peer producers/consumers also rise to the
-                     // front and claim the Worker's neighbor tiles before
-                     // unrelated LTOs consume them.
-                     int pa = ctx.placementPriority(a.getOperation());
-                     int pb = ctx.placementPriority(b.getOperation());
-                     if (pa != pb)
-                       return pa > pb;
-                     // Among equal priority, place the high-demand LTO
-                     // itself first so its peers can be steered to its
-                     // neighbors immediately afterward.
-                     return ctx.neighborDemand(a.getOperation()) >
-                            ctx.neighborDemand(b.getOperation());
-                   });
+  llvm::stable_sort(orderedTiles, [&](LogicalTileOp a, LogicalTileOp b) {
+    auto rank = [](LogicalTileOp lt) {
+      bool hasCol = lt.tryGetCol().has_value();
+      bool hasRow = lt.tryGetRow().has_value();
+      if (hasCol && hasRow)
+        return 0; // fully pinned
+      if (hasCol || hasRow)
+        return 1; // partially constrained
+      return 2;   // fully unpinned
+    };
+    int ra = rank(a), rb = rank(b);
+    if (ra != rb)
+      return ra < rb;
+    // Same constraint level: high priority first. Priority
+    // = max(self demand, highest peer demand) so a Worker's
+    // compute-peer producers/consumers also rise to the
+    // front and claim the Worker's neighbor tiles before
+    // unrelated LTOs consume them.
+    int pa = ctx.placementPriority(a.getOperation());
+    int pb = ctx.placementPriority(b.getOperation());
+    if (pa != pb)
+      return pa > pb;
+    // Among equal priority, place the high-demand LTO
+    // itself first so its peers can be steered to its
+    // neighbors immediately afterward.
+    return ctx.neighborDemand(a.getOperation()) >
+           ctx.neighborDemand(b.getOperation());
+  });
 
   for (auto logicalTile : orderedTiles) {
     // Place fully constrained tiles at their specified coordinates
@@ -414,15 +414,13 @@ LogicalResult SequentialPlacer::placeNonCoreLogicalTiles(
       continue;
     nonCoreOrdered.push_back(logicalTile);
   }
-  std::stable_sort(nonCoreOrdered.begin(), nonCoreOrdered.end(),
-                   [&](LogicalTileOp a, LogicalTileOp b) {
-                     auto demand = [&](LogicalTileOp lt) {
-                       auto chans =
-                           channelRequirements.lookup(lt.getOperation());
-                       return chans.first + chans.second;
-                     };
-                     return demand(a) > demand(b);
-                   });
+  llvm::stable_sort(nonCoreOrdered, [&](LogicalTileOp a, LogicalTileOp b) {
+    auto demand = [&](LogicalTileOp lt) {
+      auto chans = channelRequirements.lookup(lt.getOperation());
+      return chans.first + chans.second;
+    };
+    return demand(a) > demand(b);
+  });
 
   FlowMembership flowIndex = buildFlowMembership(flows, pktFlows, objectFifos);
 
@@ -501,16 +499,15 @@ SequentialPlacer::findUnconstrainedCoreCandidate(
   SmallVector<TileID> orderedCandidates(availability.compTiles.begin(),
                                         availability.compTiles.end());
   if (neighborDemand(logicalTile.getOperation()) > 0) {
-    std::stable_sort(orderedCandidates.begin(), orderedCandidates.end(),
-                     [&](TileID a, TileID b) {
-                       if (a.col != b.col)
-                         return a.col < b.col;
-                       int na = computeNeighborCount(a);
-                       int nb = computeNeighborCount(b);
-                       if (na != nb)
-                         return na > nb;
-                       return a.row < b.row;
-                     });
+    llvm::stable_sort(orderedCandidates, [&](TileID a, TileID b) {
+      if (a.col != b.col)
+        return a.col < b.col;
+      int na = computeNeighborCount(a);
+      int nb = computeNeighborCount(b);
+      if (na != nb)
+        return na > nb;
+      return a.row < b.row;
+    });
   }
 
   // Two passes: first prefer candidates that aren't reserved for an
@@ -1220,8 +1217,8 @@ int SequentialPlacer::computeCentroidColumn(LogicalTileOp logicalTile,
       if (dests.size() == 1) {
         cost += std::abs(S - dests[0]);
       } else {
-        int lo = *std::min_element(dests.begin(), dests.end());
-        int hi = *std::max_element(dests.begin(), dests.end());
+        int lo = *llvm::min_element(dests);
+        int hi = *llvm::max_element(dests);
         if (S < lo)
           cost += lo - S;
         else if (S > hi)
