@@ -228,15 +228,30 @@ private:
     int j;
   };
 
+  // A `Port` is (bundle, channel) with no direction, so one dense node stands
+  // for both a switchbox port's input side and its output side. Dijkstra
+  // therefore searches over states, not nodes: a state is a node paired with
+  // the side of that port the stream is currently on. A stream enters a
+  // switchbox on an input port, crosses the crossbar once to an output port,
+  // and then rides the wire to the neighbour's input port -- so In only ever
+  // takes intra-switchbox edges and Out only ever takes inter-switchbox ones.
+  // Without the split, Dijkstra can chain two crossbar hops through one port
+  // and turn the stream around inside a switchbox; the settings it emits then
+  // dead-end and AIECreatePathFindFlows reports the flow as unroutable.
+  enum PortSide : int { In = 0, Out = 1 };
+  static int stateId(int nodeId, PortSide side) { return 2 * nodeId + side; }
+  static int stateNode(int stateId) { return stateId >> 1; }
+
   // Build the dense integer node numbering and per-node adjacency from `graph`
   // and `flows`. Topology is fixed across congestion iterations, so this runs
   // once. Edge order per node matches the legacy PathEndPoint-sorted order to
   // preserve identical routing output.
   void buildRoutingGraph();
 
-  // Dijkstra over the dense graph from dense node `srcId`. Fills `preds` (dense
-  // predecessor id per node, or -1) and `predEdge` (the edge taken to reach
-  // each node). Reuses the scratch buffers below.
+  // Dijkstra over the dense graph from dense node `srcId`, whose port is the
+  // stream's entry into its switchbox and so starts on the In side. Fills
+  // `preds` (predecessor state id, or -1) and `predEdge` (the edge taken to
+  // reach each state). Reuses the scratch buffers below.
   void dijkstraShortestPaths(int srcId);
 
   // Flows to be routed
@@ -254,7 +269,8 @@ private:
   std::vector<PathEndPoint> nodes;          // dense id -> PathEndPoint
   std::vector<std::vector<Edge>> adjacency; // dense id -> out-edges
 
-  // Dijkstra scratch, sized to nodes.size() and reused across calls.
+  // Dijkstra scratch, indexed by state id (2 * nodes.size()) and reused across
+  // calls.
   std::vector<double> distance;
   std::vector<uint64_t> indexInHeap;
   std::vector<int8_t> colors;

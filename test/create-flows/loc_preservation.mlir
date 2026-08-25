@@ -25,6 +25,9 @@ module {
 // Synthesized aie.connect ops inside switchboxes carry the FlowOp's loc.
 // CHECK-DAG: aie.connect<{{.*}}> loc(#[[FLOWLOC:loc[0-9]*]])
 // Synthesized aie.wire ops between switchboxes/tiles carry the tile's loc.
-// CHECK-DAG: aie.wire({{.*}}) loc(#[[TILELOC:loc[0-9]*]])
+// Name the tile: tiles the router synthesizes to complete a route have no
+// source loc, so an unanchored match would bind TILELOC to whichever wire the
+// chosen route happens to emit first.
+// CHECK-DAG: aie.wire(%tile_2_3 : Core, %switchbox_2_3 : Core) loc(#[[TILELOC:loc[0-9]*]])
 // CHECK-DAG: #[[FLOWLOC]] = loc("user_design.py":42:4)
 // CHECK-DAG: #[[TILELOC]] = loc("user_design.py":50:8)
