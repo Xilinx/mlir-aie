@@ -19,6 +19,7 @@
 #include "mlir/Interfaces/FoldInterfaces.h"
 #include "mlir/Interfaces/ViewLikeInterface.h"
 #include "mlir/Transforms/InliningUtils.h"
+#include "llvm/ADT/STLExtras.h"
 
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallSet.h"
@@ -117,15 +118,14 @@ getShimBurstLength(const xilinx::AIE::AIETargetModel &tm,
   // If we have the default burst length (no burst length was specified),
   // use the highest one available on our target model
   if (burstLength == 0) {
-    return *std::max_element(
-        bel.begin(), bel.end(),
-        [](auto pair1, auto pair2) { return pair1.second < pair2.second; });
+    return *llvm::max_element(bel, [](auto pair1, auto pair2) {
+      return pair1.second < pair2.second;
+    });
   }
 
   // Note that if we are given a burst size, we are checking its existence in
   // the pass verification already, so we can safely assume it exists.
-  return *std::find_if(bel.begin(), bel.end(),
-                       [=](auto p) { return p.second == burstLength; });
+  return *llvm::find_if(bel, [=](auto p) { return p.second == burstLength; });
 }
 
 uint32_t xilinx::AIE::getShimBurstLengthBytes(const AIE::AIETargetModel &tm,
