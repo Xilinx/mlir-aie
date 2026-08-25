@@ -49,8 +49,6 @@ def PLIOWire:   I32EnumAttrCase<"PLIO", 7>;
 def NOCWire:    I32EnumAttrCase<"NOC", 8>;
 def TraceWire:  I32EnumAttrCase<"Trace", 9>;
 def TileControlWire:  I32EnumAttrCase<"TileControl", 10>;
-// AIE2PS uC-Module stream switch port (hw master index 22, hw slave index 23).
-// Used for routing task-complete-tokens from tiles to the CERT microcontroller.
 def Controller32Wire: I32EnumAttrCase<"Controller32", 11>;
 
 def WireBundle: I32EnumAttr<"WireBundle", "Bundle of wires",

@@ -12,12 +12,10 @@
 
 using namespace xilinx;
 
-static void checkControllerTopology(AIE::AIEDevice device,
-                                         uint32_t perDevice, uint32_t perColumn,
-                                         uint32_t total) {
+static void checkControllerTopology(AIE::AIEDevice device, uint32_t perColumn,
+                                    uint32_t total) {
   const auto &model = AIE::getTargetModel(device);
-  if (model.getNumControllersPerDevice() != perDevice ||
-      model.getNumControllersPerColumn() != perColumn ||
+  if (model.getNumControllersPerColumn() != perColumn ||
       model.getNumControllers() != total) {
     throw std::runtime_error("Failed microcontroller topology check for " +
                              stringifyAIEDevice(device).str());
@@ -53,7 +51,7 @@ void test() {
   if (AIE::getTargetModel(AIE::AIEDevice::xcvc1902).rows() != 9) {
     throw std::runtime_error("Failed xcvc1902 rows");
   }
-  checkControllerTopology(AIE::AIEDevice::xcvc1902, 0, 0, 0);
+  checkControllerTopology(AIE::AIEDevice::xcvc1902, 0, 0);
 
   // AIEDevice::xcve2302
   if (!AIE::getTargetModel(AIE::AIEDevice::xcve2302)
@@ -82,7 +80,7 @@ void test() {
   if (AIE::getTargetModel(AIE::AIEDevice::xcve2302).rows() != 4) {
     throw std::runtime_error("Failed xcve2302 rows");
   }
-  checkControllerTopology(AIE::AIEDevice::xcve2302, 1, 0, 1);
+  checkControllerTopology(AIE::AIEDevice::xcve2302, 0, 0);
 
   // AIEDevice::xcve2802
   if (!AIE::getTargetModel(AIE::AIEDevice::xcve2802)
@@ -111,7 +109,7 @@ void test() {
   if (AIE::getTargetModel(AIE::AIEDevice::xcve2802).rows() != 11) {
     throw std::runtime_error("Failed xcve2802 rows");
   }
-  checkControllerTopology(AIE::AIEDevice::xcve2802, 1, 0, 1);
+  checkControllerTopology(AIE::AIEDevice::xcve2802, 0, 0);
 
   // AIEDevice::npu_1col, npu_2col, npu_3col, npu_4col
   llvm::DenseMap<AIE::AIEDevice, int> npu1_devs;
@@ -145,7 +143,7 @@ void test() {
     if (AIE::getTargetModel(dev).rows() != 6) {
       throw std::runtime_error("Failed npu1_ncol rows");
     }
-    checkControllerTopology(dev, 1, 0, 1);
+    checkControllerTopology(dev, 0, 0);
   }
 
   // AIEDevice::npu2
@@ -175,7 +173,7 @@ void test() {
   if (AIE::getTargetModel(AIE::AIEDevice::npu2).rows() != 6) {
     throw std::runtime_error("Failed npu2 rows");
   }
-  checkControllerTopology(AIE::AIEDevice::npu2, 1, 0, 1);
+  checkControllerTopology(AIE::AIEDevice::npu2, 0, 0);
 
   // AIEDevice::npu2_1col, npu2_2col, npu2_3col, npu2_4col, npu2_5col,
   // npu2_6col, npu2_7col
@@ -213,7 +211,7 @@ void test() {
     if (AIE::getTargetModel(dev).rows() != 6) {
       throw std::runtime_error("Failed npu2_ncol rows");
     }
-    checkControllerTopology(dev, 1, 0, 1);
+    checkControllerTopology(dev, 0, 0);
   }
 
   // AIEDevice::xcve3858 (AIE2PS)
@@ -230,9 +228,9 @@ void test() {
     throw std::runtime_error(
         "Failed xcve3858 property check for 'IsNPU' returns false");
   }
-  checkControllerTopology(AIE::AIEDevice::xcve3858, 0, 1, 36);
-  if (ve3858.getUcGroupId(0) != 0 || ve3858.getUcGroupId(35) != 35)
-    throw std::runtime_error("Failed xcve3858 uC group-id mapping");
+  checkControllerTopology(AIE::AIEDevice::xcve3858, 1, 36);
+  // if (ve3858.getUcGroupId(0) != 0 || ve3858.getUcGroupId(35) != 35)
+  //   throw std::runtime_error("Failed xcve3858 uC group-id mapping");
 
   if (ve3858.hasProperty(AIE::AIETargetModel::IsVirtualized)) {
     throw std::runtime_error(

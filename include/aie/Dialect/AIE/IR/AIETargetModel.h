@@ -135,31 +135,12 @@ public:
   /// Return the number of rows in the device.
   virtual int rows() const = 0;
 
-  /// Number of device-level microcontrollers (CERT job-runners). AIE2 and
-  /// AIE2P have one controller shared by the device; AIE1 and AIE2PS do not.
-  virtual uint32_t getNumControllersPerDevice() const { return 0; }
-
-  /// Number of microcontrollers per column. AIE2PS has one controller in each
-  /// shim tile; earlier architectures have no column-local controllers.
+  /// Number of aie2ps/aie4 microcontrollers (uC) per column
   virtual uint32_t getNumControllersPerColumn() const { return 0; }
 
-  /// Total number of microcontrollers addressable as CERT groups.
+  /// Total number of aie2ps/aie4 microcontrollers (uC) in the device.
   uint32_t getNumControllers() const {
-    return getNumControllersPerDevice() +
-           static_cast<uint32_t>(columns()) * getNumControllersPerColumn();
-  }
-
-  /// CERT ".attach_to_group" index (microcontroller id) for the `half`-th uC of
-  /// column `col`. Device-level controllers occupy the first group ids,
-  /// followed by column-local controllers in column-major order.
-  uint32_t getUcGroupId(int col, int half = 0) const {
-    assert(col >= 0 && col < columns() && "column index out of range");
-    assert(half >= 0 &&
-           static_cast<uint32_t>(half) < getNumControllersPerColumn() &&
-           "microcontroller half index out of range for this target");
-    return getNumControllersPerDevice() +
-           static_cast<uint32_t>(col) * getNumControllersPerColumn() +
-           static_cast<uint32_t>(half);
+    return static_cast<uint32_t>(columns()) * getNumControllersPerColumn();
   }
 
   /// Return the tile type for the given tile coordinates.
@@ -677,8 +658,6 @@ public:
 
   AIEArch getTargetArch() const override;
 
-  uint32_t getNumControllersPerDevice() const override { return 1; }
-
   uint32_t getAddressGenGranularity() const override { return 32; }
 
   uint32_t getNumSlaveSlots() const override { return 4; }
@@ -837,7 +816,6 @@ public:
 
   AIEArch getTargetArch() const override { return AIEArch::AIE2ps; }
 
-  uint32_t getNumControllersPerDevice() const override { return 0; }
   uint32_t getNumControllersPerColumn() const override { return 1; }
 
   // AIE2PS supports 512B burst (same as AIE2P), unlike base AIE2 which
