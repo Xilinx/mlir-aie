@@ -9,6 +9,7 @@
 #include "aie/Dialect/AIE/Transforms/AIEPathFinder.h"
 #include "d_ary_heap.h"
 
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_os_ostream.h"
 
@@ -47,8 +48,7 @@ LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
     if (sources.empty())
       return pktFlowOp.emitOpError("packet_flow has no packet_source");
 
-    bool priorityFlow =
-        pktFlowOp.getPriorityRoute() ? *pktFlowOp.getPriorityRoute() : false;
+    bool priorityFlow = pktFlowOp.getPriorityRoute().value_or(false);
     // Pass 2: add a flow from every source to every destination so
     // fan-in topologies are routed (not just the last source).
     for (Operation &Op : b.getOperations()) {
@@ -241,8 +241,7 @@ void Pathfinder::initialize(int maxCol, int maxRow,
             // wordaround for shimMux
             auto isBundleInList = [](WireBundle bundle,
                                      std::vector<WireBundle> bundles) {
-              return std::find(bundles.begin(), bundles.end(), bundle) !=
-                     bundles.end();
+              return llvm::find(bundles, bundle) != bundles.end();
             };
             const std::vector<WireBundle> bundles = {
                 WireBundle::DMA, WireBundle::NOC, WireBundle::PLIO};
@@ -311,9 +310,9 @@ void Pathfinder::addFlow(TileID srcCoords, Port srcPort, TileID dstCoords,
     if (src.coords == srcCoords && src.port == srcPort) {
       if (isPriorityFlow) {
         prioritized = true;
-        dsts.emplace(dsts.begin(), PathEndPoint{dstCoords, dstPort});
+        dsts.emplace(dsts.begin(), dstCoords, dstPort);
       } else
-        dsts.emplace_back(PathEndPoint{dstCoords, dstPort});
+        dsts.emplace_back(dstCoords, dstPort);
       return;
     }
   }
@@ -456,7 +455,7 @@ void Pathfinder::buildRoutingGraph() {
         for (size_t j = 0; j < sb.dstPorts.size(); j++)
           if (sb.srcPorts[i] == src.port &&
               sb.connectivity[i][j] == Connectivity::AVAILABLE)
-            dests.push_back(PathEndPoint{src.coords, sb.dstPorts[j]});
+            dests.emplace_back(src.coords, sb.dstPorts[j]);
     }
     std::vector<std::pair<TileID, Port>> neighbors = {
         {{src.coords.col, src.coords.row - 1},
@@ -472,9 +471,8 @@ void Pathfinder::buildRoutingGraph() {
       if (nIt != graph.end() &&
           src.port.bundle == getConnectingBundle(neighborPort.bundle)) {
         auto &sb = nIt->second;
-        if (std::find(sb.dstPorts.begin(), sb.dstPorts.end(), neighborPort) !=
-            sb.dstPorts.end())
-          dests.push_back({neighborCoords, neighborPort});
+        if (llvm::find(sb.dstPorts, neighborPort) != sb.dstPorts.end())
+          dests.emplace_back(neighborCoords, neighborPort);
       }
     }
     std::sort(dests.begin(), dests.end());
@@ -484,11 +482,9 @@ void Pathfinder::buildRoutingGraph() {
     for (auto &dest : dests) {
       auto &sb = graph[std::make_pair(src.coords, dest.coords)];
       int i = static_cast<int>(std::distance(
-          sb.srcPorts.begin(),
-          std::find(sb.srcPorts.begin(), sb.srcPorts.end(), src.port)));
+          sb.srcPorts.begin(), llvm::find(sb.srcPorts, src.port)));
       int j = static_cast<int>(std::distance(
-          sb.dstPorts.begin(),
-          std::find(sb.dstPorts.begin(), sb.dstPorts.end(), dest.port)));
+          sb.dstPorts.begin(), llvm::find(sb.dstPorts, dest.port)));
       assert(i < static_cast<int>(sb.srcPorts.size()));
       assert(j < static_cast<int>(sb.dstPorts.size()));
       int destId = getOrAddNodeId(dest);
@@ -521,18 +517,17 @@ void Pathfinder::buildRoutingGraph() {
 // keep output identical.
 void Pathfinder::dijkstraShortestPaths(int srcId) {
   size_t n = nodes.size();
-  std::fill(distance.begin(), distance.end(), INF);
-  std::fill(colors.begin(), colors.end(), static_cast<int8_t>(WHITE));
-  std::fill(preds.begin(), preds.end(), -1);
-  std::fill(indexInHeap.begin(), indexInHeap.end(), uint64_t{0});
+  llvm::fill(distance, INF);
+  llvm::fill(colors, static_cast<int8_t>(WHITE));
+  llvm::fill(preds, -1);
+  llvm::fill(indexInHeap, uint64_t{0});
   (void)n;
 
-  typedef d_ary_heap_indirect<
+  using MutableQueue = d_ary_heap_indirect<
       /*Value=*/int, /*Arity=*/4,
       /*IndexInHeapPropertyMap=*/std::vector<uint64_t> &,
       /*DistanceMap=*/std::vector<double> &,
-      /*Compare=*/std::less<>>
-      MutableQueue;
+      /*Compare=*/std::less<>>;
   MutableQueue Q(distance, indexInHeap);
 
   distance[srcId] = 0.0;
@@ -681,16 +676,24 @@ Pathfinder::findPaths(const int maxIterations) {
             // Packet flows in the same group may share a channel, but only if
             // their ids differ, so two same-id flows never merge onto a channel
             // and then fan back out to separate destinations.
-            if (packetGroupId >= 0 &&
-                (sb.packetGroupId[i][j] == -1 ||
-                 sb.packetGroupId[i][j] == packetGroupId) &&
-                sb.packetIds[i][j].count(*packetId) == 0) {
+            // packetGroupId only becomes >= 0 when packetId has a value (see
+            // Pathfinder::addFlow), so the dereferences below are safe; the
+            // checker just can't correlate the two across this while loop's
+            // back edge.
+            // NOLINTBEGIN(bugprone-unchecked-optional-access)
+            bool sameGroupUnseen = packetGroupId >= 0 && packetId.has_value() &&
+                                   (sb.packetGroupId[i][j] == -1 ||
+                                    sb.packetGroupId[i][j] == packetGroupId) &&
+                                   sb.packetIds[i][j].count(*packetId) == 0;
+            if (sameGroupUnseen) {
+              int packetIdValue = *packetId;
+              // NOLINTEND(bugprone-unchecked-optional-access)
               for (size_t k = 0; k < sb.srcPorts.size(); k++) {
                 for (size_t l = 0; l < sb.dstPorts.size(); l++) {
                   if (k == static_cast<size_t>(i) ||
                       l == static_cast<size_t>(j)) {
                     sb.packetGroupId[k][l] = packetGroupId;
-                    sb.packetIds[k][l].insert(*packetId);
+                    sb.packetIds[k][l].insert(packetIdValue);
                   }
                 }
               }

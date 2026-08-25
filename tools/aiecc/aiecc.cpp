@@ -93,7 +93,7 @@ EdgeWithTypedOutput<Directory> &
 buildObjectSubgraph(EdgeWithTypedOutput<ModRef> &lowered,
                     EdgeWithTypedOutput<std::string> &arches,
                     EdgeWithTypedOutput<std::vector<std::string>> &irLinkFiles,
-                    std::string objName) {
+                    const std::string &objName) {
   std::string installDir = getInstallDir();
   std::string aietoolsRoot = discoverAietoolsDir(aietoolsDir.getValue());
 
@@ -181,7 +181,9 @@ buildObjectSubgraph(EdgeWithTypedOutput<ModRef> &lowered,
       .input()
       .output("-o");
   auto &peanoCompat =
-      llvmIR.map<std::string>("peano-compat_{0}.ll", downgradeIRForPeano);
+      llvmIR.map<std::string>("peano-compat_{0}.ll", [](llvm::StringRef ir) {
+        return downgradeIRForPeano(ir);
+      });
   // Merge the core's merge-mode link artifacts (`link_merge_files`) into the
   // downgraded core IR before opt; with the kernel marked alwaysinline that
   // inlines its body into the core, leaving no func.call and no separate kernel
@@ -262,7 +264,7 @@ buildObjectSubgraph(EdgeWithTypedOutput<ModRef> &lowered,
                                << out.filePath << "': " << ec.message() << "\n";
                   return mlir::failure();
                 }
-                os << downgradeIRForPeano(merged);
+                os << downgradeIRForPeano(merged, /*stripAlign=*/false);
                 out.value = File{};
                 return mlir::success();
               })
@@ -366,7 +368,7 @@ buildAiesimSubgraph(mlir::MLIRContext &context,
                     EdgeWithTypedOutput<std::string> &aieInc) {
   std::string installDir = getInstallDir();
   std::string aietoolsRoot = discoverAietoolsDir(aietoolsDir.getValue());
-  std::string devFilter = deviceName.getValue();
+  const std::string &devFilter = deviceName.getValue();
 
   // graph.xpe / aieshim_solution.aiesol / scsim_config.json: in-process
   // translations of the per-device module.
@@ -561,11 +563,10 @@ aiesimulator --pkg-dir=${prj_name}/sim --dump-vcd ${vcd_filename}
 // (the transaction instruction binary + its source-location map) per sequence,
 // keyed "<device>_<sequence>".
 //
-// `foldDDRAddrOffset` selects how host-buffer addresses are encoded in the TXN:
-//   * true  -- the DDR-aperture offset is folded into the transaction, as the
-//              xclbin + instruction-buffer runtime expects;
-//   * false -- the offset is left out, as the full-ELF runtime (xrt.ext.kernel)
-//              assigns NPU-space device addresses to every host buffer itself.
+// DDR-patch ABI: XRT (and CPU) consume the folded firmware ABI; HRX consumes
+// the producer-independent (unfolded) insts.bin and adds the AIE DDR aperture
+// offset for every arg itself. cl::opt defaults to true, so only pass the
+// flag when unfolding is requested.
 EdgeWithTypedOutput<NpuProgram> &buildNpuProgramSubgraph(
     EdgeWithTypedOutput<OpInModule<xilinx::AIE::RuntimeSequenceOp>> &perSeq,
     std::string programName, bool foldDDRAddrOffset) {
@@ -600,8 +601,9 @@ EdgeWithTypedOutput<NpuProgram> &buildNpuProgramSubgraph(
 // Assemble the full compilation artifact graph into `g` and return the list of
 // requested output edges. Edges named via `--cut` are appended to `cutEdges`
 // (and built) so a `--checkpoint` can capture them as its cut points.
-std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
-                                       std::vector<EdgeBase *> &cutEdges) {
+static std::vector<EdgeBase *>
+buildMainGraph(mlir::MLIRContext &context, Graph &g,
+               std::vector<EdgeBase *> &cutEdges) {
 
   //--------------------------------------------------------------------------//
   // Helpers
@@ -613,15 +615,10 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
   using xilinx::AIE::TileOp;
   using ModRef = mlir::OwningOpRef<mlir::ModuleOp>;
 
-  std::string devFilter = deviceName.getValue();
+  const std::string &devFilter = deviceName.getValue();
   std::string inputFile = getInputFilename();
 
-  // Chess/xbridge toolchain locations
-  std::string aietoolsRoot = discoverAietoolsDir(aietoolsDir.getValue());
-  std::string installDir = getInstallDir();
   std::string workDirStr = getWorkDir();
-  // xchesscc_wrapper scratch dir
-  std::string chessWork = workDirStr + "/chess_work";
   std::string lldPath = ShellCommand::resolveTool("ld.lld");
 
   auto matchesDeviceFilter = [devFilter](DeviceOp d) {
@@ -1130,12 +1127,14 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
         ModRef clone = item.get().get().clone();
         if (mlir::failed(getControlPacketDmaPipeline(&context)->run(*clone)))
           return mlir::failure();
-        // The control-packet DMA sequence only ever pairs with the xclbin /
-        // instruction-buffer runtime (full ELF is rejected up front), which
-        // folds the DDR-aperture offset into the TXN.
+        // DDR-patch ABI: XRT (and CPU) consume the folded firmware ABI; HRX
+        // consumes the producer-independent (unfolded) insts.bin and adds the
+        // AIE DDR aperture offset for every arg itself. cl::opt defaults to
+        // true, so only pass the flag when unfolding is requested.
         return xilinx::AIE::AIETranslateNpuToBinary(
             clone.get(), words, item.key, "",
-            /*locmap=*/nullptr, /*foldDDRAddrOffset=*/true);
+            /*locmap=*/nullptr,
+            /*foldDDRAddrOffset=*/foldDDRAddrOffsetOpt.getValue());
       }));
 
   // Partial ELF containing the DMA sequence and the control packet data;
@@ -1252,7 +1251,7 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
   // --xclbin-input flow: dump the existing xclbin's AIE_PARTITION, append this
   // design's first PDI to it, then re-emit with the merged partition and our
   // kernel
-  std::string inXclbin = xclbinInput.getValue();
+  const std::string &inXclbin = xclbinInput.getValue();
   // xclbinutil can only emit the section to a file; lift it into a parsed JSON
   // payload (via the json Deserializer) so the merge below works on the
   // in-memory object.
@@ -1362,15 +1361,14 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
                   });
 
   // Translate each sequence exactly once into its NPU program (the .bin bytes
-  // and the locmap). Two variants are built from the same per-sequence input,
-  // differing only in whether the DDR-aperture offset is folded into the TXN:
-  //   * npuProgram (folded) drives the xclbin / instruction-buffer artifacts
-  //     (instElf, insts.bin, locmap), whose runtime needs the offset folded in;
-  //   * npuProgramFullElf (not folded, built just below the full-ELF section)
-  //     drives the combined full ELF, whose runtime assigns host-buffer
-  //     addresses itself.
-  auto &npuProgram = buildNpuProgramSubgraph(perSeq, "npu_program_{0}.bin",
-                                             /*foldDDRAddrOffset=*/true);
+  // and the locmap). Two variants are built from the same per-sequence input.
+  // DDR-patch ABI: XRT (and CPU) consume the folded firmware ABI; HRX consumes
+  // the producer-independent (unfolded) insts.bin and adds the AIE DDR aperture
+  // offset for every arg itself. cl::opt defaults to true, so only pass the
+  // flag when unfolding is requested.
+  auto &npuProgram = buildNpuProgramSubgraph(
+      perSeq, "npu_program_{0}.bin",
+      /*foldDDRAddrOffset=*/foldDDRAddrOffsetOpt.getValue());
 
   auto &npuInsts = npuProgram.map<std::vector<char>>(
       npuInstsName.getValue(), [](const NpuProgram &p) { return p.insts; });
@@ -1417,10 +1415,10 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
   //--------------------------------------------------------------------------//
   // Combined full ELF (joins the static configuration + NPU branches)
   //--------------------------------------------------------------------------//
-  // The full ELF consumes its own NPU program variant, translated WITHOUT
-  // folding the DDR-aperture offset (foldDDRAddrOffset=false): the full-ELF
-  // runtime assigns host-buffer addresses itself, so the offset must not be
-  // baked into the TXN.
+  // DDR-patch ABI: XRT (and CPU) consume the folded firmware ABI; HRX consumes
+  // the producer-independent (unfolded) insts.bin and adds the AIE DDR aperture
+  // offset for every arg itself. cl::opt defaults to true, so only pass the
+  // flag when unfolding is requested.
   auto &npuProgramFullElf = buildNpuProgramSubgraph(
       perSeq, "npu_program_full_elf_{0}.bin", /*foldDDRAddrOffset=*/false);
   auto &npuInstsFullElf = npuProgramFullElf.map<std::vector<char>>(
@@ -1969,11 +1967,14 @@ int main(int argc, char **argv) {
   // materialized artifact.)
   if (wantAiesim && !dryRun) {
     std::string script = getWorkDir() + "/aiesim.sh";
-    if (llvm::sys::fs::exists(script))
-      llvm::sys::fs::setPermissions(script,
-                                    llvm::sys::fs::perms::owner_all |
-                                        llvm::sys::fs::perms::group_exe |
-                                        llvm::sys::fs::perms::others_exe);
+    if (llvm::sys::fs::exists(script)) {
+      if (std::error_code ec = llvm::sys::fs::setPermissions(
+              script, llvm::sys::fs::perms::owner_all |
+                          llvm::sys::fs::perms::group_exe |
+                          llvm::sys::fs::perms::others_exe))
+        llvm::errs() << "aiecc: cannot make '" << script
+                     << "' executable: " << ec.message() << "\n";
+    }
   }
 
   return 0;

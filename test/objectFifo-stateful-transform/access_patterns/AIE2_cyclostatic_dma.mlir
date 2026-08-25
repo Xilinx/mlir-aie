@@ -8,7 +8,7 @@
 // In this test, data is exchanged the same as in AIE2_cyclostatic_l1, but
 // tiles are farther apart and have to use the network/DMAs to communicate.
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=false" %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll %s | FileCheck %s
 // CHECK: module @aie2_cyclostatic_dma {
 // CHECK:   aie.device(xcve2302) {
 // CHECK:     %[[t0:.*]] = aie.tile(2, 2)
@@ -16,12 +16,12 @@
 // CHECK:     %[[buf1_0:.*]] = aie.buffer(%[[t1]]) {sym_name = "fifo_cons_buff_0"} : memref<i32>
 // CHECK:     %[[buf1_1:.*]] = aie.buffer(%[[t1]]) {sym_name = "fifo_cons_buff_1"} : memref<i32>
 // CHECK:     %[[buf1_2:.*]] = aie.buffer(%[[t1]]) {sym_name = "fifo_cons_buff_2"} : memref<i32>
-// CHECK:     %[[C_PL:.*]] = aie.lock(%[[t1]], 0) {init = 3 : i32, sym_name = "fifo_cons_prod_lock_0"}
-// CHECK:     %[[C_CL:.*]] = aie.lock(%[[t1]], 1) {init = 0 : i32, sym_name = "fifo_cons_cons_lock_0"}
+// CHECK:     %[[C_PL:.*]] = aie.lock(%[[t1]]) {init = 3 : i32, sym_name = "fifo_cons_prod_lock_0"}
+// CHECK:     %[[C_CL:.*]] = aie.lock(%[[t1]]) {init = 0 : i32, sym_name = "fifo_cons_cons_lock_0"}
 // CHECK:     %[[buf0_0:.*]] = aie.buffer(%[[t0]]) {sym_name = "fifo_buff_0"} : memref<i32>
 // CHECK:     %[[buf0_1:.*]] = aie.buffer(%[[t0]]) {sym_name = "fifo_buff_1"} : memref<i32>
-// CHECK:     %[[PL:.*]] = aie.lock(%[[t0]], 0) {init = 2 : i32, sym_name = "fifo_prod_lock_0"}
-// CHECK:     %[[CL:.*]] = aie.lock(%[[t0]], 1) {init = 0 : i32, sym_name = "fifo_cons_lock_0"}
+// CHECK:     %[[PL:.*]] = aie.lock(%[[t0]]) {init = 2 : i32, sym_name = "fifo_prod_lock_0"}
+// CHECK:     %[[CL:.*]] = aie.lock(%[[t0]]) {init = 0 : i32, sym_name = "fifo_cons_lock_0"}
 // CHECK:     aie.flow(%[[t0]], DMA : 0, %[[t1]], DMA : 0)
 // CHECK:     %[[c0:.*]] = aie.core(%[[t0]]) {
 // CHECK:       aie.use_lock(%[[PL]], AcquireGreaterEqual, %{{.*}})

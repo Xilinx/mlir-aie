@@ -20,7 +20,9 @@ Used together with [`Flow`][iron.Flow] / [`PacketFlow`][iron.PacketFlow]
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Iterable
+from typing import Any, Iterable, Sequence
+
+import numpy as np
 
 from ... import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
 from ...dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
@@ -39,6 +41,7 @@ from ...dialects.aie import (
     shim_mem,
     use_lock,  # pyright: ignore[reportAttributeAccessIssue]
 )
+from ...helpers.util import pack_pad_value
 from ..buffer import Buffer
 from ..device import Tile
 from ..lock import Lock
@@ -72,6 +75,24 @@ class Release:
 
 
 @dataclass
+class BdIteration:
+    """Iteration state of a buffer descriptor for aie.dma_bd.
+
+    Lets one BD cover ``size`` sub-buffers over ``size`` executions instead of an
+    N-deep chain. Values are true/element: the base advances by ``stride``
+    elements each execution and wraps after ``size`` executions; ``current`` is
+    the starting step (default 0). The lowering applies the hardware ``-1`` bias
+    and element->word scaling. NOTE: the identically-named ``iteration_*`` family
+    on the runtime-sequence path uses RAW register values instead -- do not copy
+    numbers between them.
+    """
+
+    size: int
+    stride: int
+    current: int = 0
+
+
+@dataclass
 class Bd:
     """A single buffer-descriptor entry in a [`DmaChannel`][iron.DmaChannel]'s chain.
 
@@ -85,6 +106,10 @@ class Bd:
       list (zero-based). Useful for explicit cycles in a multi-BD chain.
     - `None` — emit no `next_bd` (rarely useful; this leaves the
       basic block without a terminator).
+
+    `next` is ignored on an out-of-order channel because those BDs are chained
+    only for configuration and the hardware selects by header id (see
+    [`DmaChannel.out_of_order`][iron.DmaChannel]).
     """
 
     buffer: Buffer
@@ -97,11 +122,23 @@ class Bd:
     # (pkt_type, pkt_id).  Pairs with a PacketFlow that uses
     # the same pkt_id so the routing fabric dispatches correctly.
     packet: tuple[int, int] | None = None
+    # Explicit id (other ids are auto-assigned around it).
+    bd_id: int | None = None
     # Strided access pattern, outermost dimension first; each entry is a
     # constant int or a runtime Value. Empty (default) emits a contiguous
     # transfer. sizes and strides must have equal length.
     sizes: list = field(default_factory=list)
     strides: list = field(default_factory=list)
+    # Per-BD constant-pad geometry (MemTile only): one (const_pad_before,
+    # const_pad_after) pair per dimension, outermost first, matching the
+    # sizes/strides layout. The fill value is per-channel (DmaChannel.pad_value).
+    pad_dimensions: list[Sequence[int]] | None = None
+    # BD iteration state: one BD covers N sub-buffers over N executions instead
+    # of an N-deep chain. See BdIteration. Absent = iteration disabled.
+    iteration: BdIteration | None = None
+    # The out-of-order id stamped into the packet header. Names the slot a
+    # receiving out-of-order S2MM channel places this BD's data into.
+    out_of_order_id: int | None = None
 
 
 @dataclass
@@ -112,12 +149,72 @@ class DmaChannel:
         direction: `DMAChannelDir.S2MM` (host→tile) or `DMAChannelDir.MM2S`
             (tile→host).
         channel: hardware channel index.
-        bds: ordered list of [`Bd`][iron.Bd] entries that form the chain.
+        bds: ordered list of [`Bd`][iron.Bd] entries that form the chain
+            (in-order) or n-way merge (out-of-order).
+        repeat_count: extra repeats of the task (0 = run once), where the task
+            is the BD chain (in-order) or a merge round (out-of-order).
+        out_of_order: put the channel into out-of-order mode (S2MM only).
+            Each BD receives the packet with `bd.bd_id == pkt.out_of_order_id`,
+            and the BD chain (next bd) is ignored. Each BD receives its own
+            `BdIteration.size` packets per merge round. Every BD must be
+            packet-enabled and the ingress flow must set `keep_pkt_header=True`.
+            Multiple out-of-order channels must have disjoint BD ids.
+            At the hardware level, repeat_count is the total number of packets
+            to accept (0-based). This class converts repeated merge rounds to
+            that total.
     """
 
     direction: DMAChannelDir
     channel: int
     bds: list[Bd]
+    pad_value: int = 0
+    repeat_count: int = 0
+    out_of_order: bool = False
+
+
+def _channel_pad_word(ch: "DmaChannel") -> int | None:
+    """Resolve a channel's per-element pad_value into the raw 32-bit stream word.
+
+    Returns None for the default 0 (elides the attribute). The element width is
+    taken from the channel's padded BD(s); a nonzero pad_value requires at least
+    one BD with pad_dimensions (else it would silently no-op), and all padded BDs
+    on the channel must share an element size (one register serves them all).
+    """
+    if not ch.pad_value:
+        return None
+    elem_sizes = {
+        np.dtype(bd.buffer.dtype).itemsize
+        for bd in ch.bds
+        if bd.pad_dimensions is not None
+    }
+    if not elem_sizes:
+        raise ValueError(
+            "DmaChannel.pad_value is set but no BD on the channel has "
+            "pad_dimensions; a pad value needs a padded region."
+        )
+    if len(elem_sizes) > 1:
+        raise ValueError(
+            "DmaChannel.pad_value is shared by all padded BDs on the channel, "
+            f"but they have differing element sizes {sorted(elem_sizes)}."
+        )
+    return pack_pad_value(ch.pad_value, elem_sizes.pop())
+
+
+def _dma_start_repeat_count(ch: "DmaChannel") -> int:
+    """Lowered ``repeat_count`` for a channel's ``dma_start``.
+
+    Out-of-order mode's hardware repeat_count is the 0-based number of packets
+    to receive, so a merge of ``ch.repeat_count + 1`` rounds lowers to
+    ``packets_per_round * (ch.repeat_count + 1) - 1``. In-order mode passes
+    ``ch.repeat_count`` through unchanged.
+    """
+    if ch.out_of_order:
+        return (
+            sum(bd.iteration.size if bd.iteration else 1 for bd in ch.bds)
+            * (ch.repeat_count + 1)
+            - 1
+        )
+    return ch.repeat_count
 
 
 class TileDma(Resolvable):
@@ -189,6 +286,37 @@ class TileDma(Resolvable):
         # decorator-managed block sequence after all channels (handled by
         # using extra block indices for multi-BD chains).
         channels = self._channels
+
+        def _ooo_slot_id(bd: Bd, pos: int) -> int:
+            return bd.bd_id if bd.bd_id is not None else pos
+
+        pinned_bd_ids: dict[int, int] = {}  # slot id -> owning channel
+        for ch in channels:
+            if ch.out_of_order and ch.direction != DMAChannelDir.S2MM:
+                raise ValueError(
+                    "out_of_order is only valid for an S2MM DmaChannel; "
+                    f"channel {ch.channel} is {ch.direction}"
+                )
+            if ch.out_of_order:
+                if not ch.bds:
+                    raise ValueError(
+                        f"out_of_order channel {ch.channel} needs at least one "
+                        "receive BD"
+                    )
+                for slot, bd in enumerate(ch.bds):
+                    if bd.packet is None:
+                        raise ValueError(
+                            f"out_of_order channel {ch.channel} BD at slot "
+                            f"{slot} must be packet-enabled"
+                        )
+                    pinned = _ooo_slot_id(bd, slot)
+                    if pinned in pinned_bd_ids:
+                        raise ValueError(
+                            f"out_of_order bd_id {pinned} is used by more than "
+                            f"one BD on this tile (channels "
+                            f"{pinned_bd_ids[pinned]} and {ch.channel})"
+                        )
+                    pinned_bd_ids[pinned] = ch.channel
         if not channels:
             # Degenerate: nothing to do.  Emit an empty mem region.
             @decorator
@@ -228,6 +356,9 @@ class TileDma(Resolvable):
                 ch.channel,
                 dest=block[chan_head_idx[0]],
                 chain=block[chan_chain_idx[0]],
+                pad_value=_channel_pad_word(ch) or 0,
+                repeat_count=_dma_start_repeat_count(ch),
+                out_of_order=ch.out_of_order,
             )
             # Chain blocks: dma_start for channels 1..N-1
             for i in range(1, len(channels)):
@@ -238,6 +369,9 @@ class TileDma(Resolvable):
                         ch_i.channel,
                         dest=block[chan_head_idx[i]],
                         chain=block[chan_chain_idx[i]],
+                        pad_value=_channel_pad_word(ch_i) or 0,
+                        repeat_count=_dma_start_repeat_count(ch_i),
+                        out_of_order=ch_i.out_of_order,
                     )
 
             # Per-channel BD bodies.
@@ -254,6 +388,17 @@ class TileDma(Resolvable):
                             bd_kwargs["offset"] = bd.offset
                         if bd.length is not None:
                             bd_kwargs["transfer_len"] = bd.length
+                        if bd.pad_dimensions is not None:
+                            bd_kwargs["pad_dimensions"] = bd.pad_dimensions
+                        if bd.iteration is not None:
+                            it = bd.iteration
+                            bd_kwargs["iteration"] = (it.size, it.stride, it.current)
+                        if ch.out_of_order:
+                            bd_kwargs["bd_id"] = _ooo_slot_id(bd, bd_pos)
+                        elif bd.bd_id is not None:
+                            bd_kwargs["bd_id"] = bd.bd_id
+                        if bd.out_of_order_id is not None:
+                            bd_kwargs["out_of_order_id"] = bd.out_of_order_id
                         # A packet header must be a distinct aie.dma_bd_packet op
                         # placed BEFORE the aie.dma_bd: the CDO/xclbin backends
                         # (AIERT / AIETargetXAIEV2) read the header only from that
@@ -265,7 +410,12 @@ class TileDma(Resolvable):
                         for rel in bd.releases:
                             rel.emit()
                         # next_bd target
-                        if bd.next is None:
+                        if ch.out_of_order:
+                            # Chain BDs only for configuration; the hardware
+                            # ignores the chain.
+                            nxt = (bd_pos + 1) % len(ch.bds)
+                            next_bd(block[bd_block_idx[nxt]])
+                        elif bd.next is None:
                             pass  # caller's problem if the block has no terminator
                         elif bd.next == "self":
                             next_bd(block[bd_block_idx[bd_pos]])

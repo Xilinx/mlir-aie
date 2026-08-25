@@ -68,11 +68,12 @@ std::vector<uint32_t> readHex(const char *path) {
 // synthetic high keys so a structural difference (missing/extra/reordered op)
 // still surfaces, without needing to model their register semantics.
 //
-// This is the equivalence relation for the DYNAMIC size path: a runtime BD
-// lowers to a zero-template blockwrite PLUS write32 overrides, whereas the
-// static path bakes the values into the blockwrite. The two are NOT byte-equal,
-// but they program the SAME final registers -- which is exactly what replay
-// compares. (The static-vs-golden pair stays byte-exact via equal().)
+// This is the equivalence relation for the DYNAMIC path: a runtime BD assembles
+// its block-write payload at TXN-build time (and, from a runtime pool, at a
+// runtime address), whereas the static path bakes a constant payload into a
+// constant-address blockwrite. The two are NOT byte-equal, but they program the
+// SAME final registers -- which is exactly what replay compares. (The
+// static-vs-golden pair stays byte-exact via equal().)
 using RegMap = std::map<uint64_t, uint32_t>;
 
 bool replayToRegisters(const char *name, const std::vector<uint32_t> &txn,
@@ -237,11 +238,11 @@ int main(int argc, char **argv) {
   // golden-vs-static is always byte-exact (both bake constants the same way).
   bool ok = equal("golden", golden, "static-C++", stat);
 
-  // static-vs-dynamic: a runtime DMA *size* lowers to a zero-template
-  // blockwrite + write32 overrides, which is not byte-equal to the static
-  // baked blockwrite but programs identical registers. Compile the runtime-size
-  // tests with -DDYN_STRUCTURAL to compare register state; the rtp-only tests
-  // (whose dynamic stream stays byte-identical) keep the strict byte check.
+  // static-vs-dynamic: a runtime DMA *size* assembles the block-write payload
+  // at TXN-build time, which is not byte-equal to the static baked blockwrite
+  // but programs identical registers. Compile the runtime-size tests with
+  // -DDYN_STRUCTURAL to compare register state; the rtp-only tests (whose
+  // dynamic stream stays byte-identical) keep the strict byte check.
 #ifdef DYN_STRUCTURAL
   ok = ok && registersEqual("static-C++", stat, "dynamic-C++", dyn);
 #else

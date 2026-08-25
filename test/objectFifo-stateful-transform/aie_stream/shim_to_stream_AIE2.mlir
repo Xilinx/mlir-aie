@@ -5,14 +5,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=false" %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll %s | FileCheck %s
 
 // CHECK: module @shim_to_stream_AIE2 {
 // CHECK:   aie.device(xcve2302) {
 // CHECK:     %shim_noc_tile_2_0 = aie.tile(2, 0)
 // CHECK:     %tile_3_3 = aie.tile(3, 3)
-// CHECK:     %of_stream_prod_lock_0 = aie.lock(%shim_noc_tile_2_0, 0) {init = 1 : i32, sym_name = "of_stream_prod_lock_0"}
-// CHECK:     %of_stream_cons_lock_0 = aie.lock(%shim_noc_tile_2_0, 1) {init = 0 : i32, sym_name = "of_stream_cons_lock_0"}
+// CHECK:     %of_stream_prod_lock_0 = aie.lock(%shim_noc_tile_2_0) {init = 1 : i32, sym_name = "of_stream_prod_lock_0"}
+// CHECK:     %of_stream_cons_lock_0 = aie.lock(%shim_noc_tile_2_0) {init = 0 : i32, sym_name = "of_stream_cons_lock_0"}
 // CHECK:     aie.flow(%shim_noc_tile_2_0, DMA : 0, %tile_3_3, Core : 0)
 // CHECK:     %ext_buffer_in = aie.external_buffer {sym_name = "ext_buffer_in"} : memref<16xi32>
 // CHECK:     %shim_dma_2_0 = aie.shim_dma(%shim_noc_tile_2_0) {

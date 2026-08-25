@@ -202,7 +202,7 @@ struct VectorToPointerLoopsPattern : public OpRewritePattern<scf::ForOp> {
     Value c0 = arith::ConstantIndexOp::create(rewriter, loc, 0);
 
     for (auto [idx, initArg] : llvm::enumerate(forOp.getInitArgs())) {
-      auto it = llvm::find(indexIterArgPositions, idx);
+      auto *it = llvm::find(indexIterArgPositions, idx);
       if (it != indexIterArgPositions.end()) {
         // This is an index iter_arg - convert to pointer
         size_t pos = std::distance(indexIterArgPositions.begin(), it);
@@ -315,7 +315,7 @@ struct VectorToPointerLoopsPattern : public OpRewritePattern<scf::ForOp> {
         if (llvm::isa<ptr::PtrType>(lhs.getType())) {
           // Find which memref this pointer corresponds to
           Value memrefForPtr = nullptr;
-          for (auto [memref, access] : memrefAccesses) {
+          for (const auto &[memref, access] : memrefAccesses) {
             // Check if lhs comes from this memref's pointer chain
             // For now, find any memref being accessed (simplified)
             memrefForPtr = memref;

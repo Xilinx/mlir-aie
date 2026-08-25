@@ -8,6 +8,7 @@
 
 #include "aie/Dialect/AIE/IR/AIETargetModel.h"
 #include "aie/Dialect/AIE/Util/AIERegisterDatabase.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/ErrorHandling.h"
 #include <cstdint>
 #include <utility>
@@ -474,20 +475,23 @@ bool AIE1TargetModel::isLegalTileConnection(int col, int row,
   if (isMemTile(col, row)) {
     return false;
   }
-  // Shimtile
-  else if (isShimNOCorPLTile(col, row)) {
+  // Shimtile and Coretile currently share this trace-routing constraint;
+  // flagged by bugprone-branch-clone -- unconfirmed whether that's
+  // deliberate or a copy-paste that should differ per tile kind, needs
+  // hardware-team confirmation before changing.
+  // NOLINTBEGIN(bugprone-branch-clone)
+  if (isShimNOCorPLTile(col, row)) {
     if (srcBundle == WireBundle::Trace)
       return dstBundle == WireBundle::South;
-    else
-      return true;
+    return true;
   }
   // Coretile
-  else if (isCoreTile(col, row)) {
+  if (isCoreTile(col, row)) {
     if (srcBundle == WireBundle::Trace)
       return dstBundle == WireBundle::South;
-    else
-      return true;
+    return true;
   }
+  // NOLINTEND(bugprone-branch-clone)
   return false;
 }
 
@@ -823,6 +827,11 @@ uint64_t AIE2TargetModel::getDmaBdAddress(int col, int row, uint32_t bd_id,
                                           int channel,
                                           AIE::DMAChannelDir direction) const {
   uint64_t offset = 0;
+  // Shimtile and Coretile currently compute the same offset; flagged by
+  // bugprone-branch-clone -- unconfirmed whether the DMA BD register bank
+  // genuinely shares this base across both tile kinds, needs hardware-team
+  // confirmation before changing.
+  // NOLINTBEGIN(bugprone-branch-clone)
   if (isShimNOCTile(col, row)) {
     offset = 0x0001D000 + bd_id * 0x20;
   } else if (isMemTile(col, row)) {
@@ -833,6 +842,7 @@ uint64_t AIE2TargetModel::getDmaBdAddress(int col, int row, uint32_t bd_id,
     llvm_unreachable(
         "AIE2TargetModel::getDmaBdAddress called for non-DMA tile");
   }
+  // NOLINTEND(bugprone-branch-clone)
   return ((col & 0xff) << getColumnShift()) | ((row & 0xff) << getRowShift()) |
          offset;
 }
@@ -1071,7 +1081,7 @@ bool AIE2TargetModel::isLegalTileConnection(int col, int row,
   // Lambda function to check if a bundle is in a list
   auto isBundleInList = [](WireBundle bundle,
                            std::initializer_list<WireBundle> bundles) {
-    return std::find(bundles.begin(), bundles.end(), bundle) != bundles.end();
+    return llvm::find(bundles, bundle) != bundles.end();
   };
 
   // Memtile
@@ -1127,7 +1137,7 @@ bool AIE2TargetModel::isLegalTileConnection(int col, int row,
     }
   }
   // Coretile
-  else if (isCoreTile(col, row)) {
+  if (isCoreTile(col, row)) {
     if (isBundleInList(srcBundle,
                        {WireBundle::DMA, WireBundle::FIFO, WireBundle::South,
                         WireBundle::West, WireBundle::North, WireBundle::East}))

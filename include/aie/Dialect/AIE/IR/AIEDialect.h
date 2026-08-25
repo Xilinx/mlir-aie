@@ -195,7 +195,7 @@ parseObjectFifoProducerTile(mlir::OpAsmParser &parser,
                             BDDimLayoutArrayAttr &dimensions);
 
 void printObjectFifoProducerTile(mlir::OpAsmPrinter &printer,
-                                 mlir::Operation *op, mlir::Value tile,
+                                 mlir::Operation *op, mlir::Value operand,
                                  BDDimLayoutArrayAttr dimensions);
 
 mlir::ParseResult parseObjectFifoConsumerTiles(
@@ -205,7 +205,7 @@ mlir::ParseResult parseObjectFifoConsumerTiles(
 
 void printObjectFifoConsumerTiles(mlir::OpAsmPrinter &printer,
                                   mlir::Operation *op, mlir::OperandRange tiles,
-                                  BDDimLayoutArrayArrayAttr dimensions);
+                                  BDDimLayoutArrayArrayAttr dimsPerTileAttr);
 
 int32_t getBufferBaseAddress(mlir::Operation *bufOp);
 
@@ -235,6 +235,11 @@ void collectBuffers(
 // canonicalization to allow natural ND forms on shim tiles that will be
 // linearized by the compiler.
 bool isContiguousBDTransfer(llvm::ArrayRef<BDDimLayoutAttr> dims);
+
+// Validate the sender-side out_of_order_id field on a single BD. Callable from
+// the AIEX dialect, whose runtime-sequence task BDs skip DMABDOp::verify.
+mlir::LogicalResult
+verifyDMABDOutOfOrderId(DMABDOp bd, bool packetEnabledByContext = false);
 
 } // namespace xilinx::AIE
 

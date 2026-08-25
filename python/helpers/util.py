@@ -218,6 +218,25 @@ def np_ndarray_type_to_memref_type(ndarray_type: type[np.ndarray]):
     return T.memref(*shape, element_type=np_dtype_to_mlir_type(dtype))
 
 
+def pack_pad_value(value: int, elem_bytes: int) -> int:
+    """Pack a per-element pad value into the 32-bit CONSTANT_PAD_VALUE stream word."""
+    bits = elem_bytes * 8
+    if bits > 32:
+        raise ValueError(
+            f"pad_value is not supported for {elem_bytes}-byte elements: the "
+            "32-bit CONSTANT_PAD_VALUE register cannot hold a wider value."
+        )
+    v = value & 0xFFFFFFFF
+    if bits == 32:
+        return v
+    mask = (1 << bits) - 1
+    v &= mask
+    out = 0
+    for shift in range(0, 32, bits):
+        out |= v << shift
+    return out
+
+
 def try_convert_np_type_to_mlir_type(input_type):
     if get_origin(input_type) == np.ndarray:
         output_type = np_ndarray_type_to_memref_type(input_type)

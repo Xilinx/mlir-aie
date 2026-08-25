@@ -5,4 +5,8 @@
 //
 // RUN: %aiecc -v --get-full-elf %S/aie.mlir
 // RUN: %host_clang -o test.exe %S/test.cpp -std=c++17 %host_link_flags %xrt_flags
-// RUN: %run_on_npu2% ./test.exe
+// RUN: env AIE_NPU_EXCLUSIVE_DEVICE=1 %run_on_npu2% ./test.exe
+//
+// The second dispatch reads back what the first left in the core tile's
+// params_buf, and opening any other hardware context clears it -- that context
+// need not dispatch.

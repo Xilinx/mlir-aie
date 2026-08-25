@@ -32,7 +32,7 @@
 //   object-by-object. If the consumer needs more than one object at once, it
 //   acquires the consumer locks multiple times.
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=false" %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll %s | FileCheck %s
 
 // CHECK: module @aie2_cyclostatic_L2 {
 // CHECK:   aie.device(xcve2302) {
@@ -44,8 +44,8 @@
 // CHECK:     %[[fifo1_cons_buff_1:.*]] = aie.buffer(%[[t2]]) {sym_name = "fifo1_cons_buff_1"} : memref<1xi32>
 // CHECK:     %[[fifo1_cons_buff_2:.*]] = aie.buffer(%[[t2]]) {sym_name = "fifo1_cons_buff_2"} : memref<1xi32>
 // CHECK:     %[[fifo1_cons_buff_3:.*]] = aie.buffer(%[[t2]]) {sym_name = "fifo1_cons_buff_3"} : memref<1xi32>
-// CHECK:     %[[fifo1_cons_prod_lock:.*]] = aie.lock(%[[t2]], 0) {init = 4 : i32, sym_name = "fifo1_cons_prod_lock_0"}
-// CHECK:     %[[fifo1_cons_cons_lock:.*]] = aie.lock(%[[t2]], 1) {init = 0 : i32, sym_name = "fifo1_cons_cons_lock_0"}
+// CHECK:     %[[fifo1_cons_prod_lock:.*]] = aie.lock(%[[t2]]) {init = 4 : i32, sym_name = "fifo1_cons_prod_lock_0"}
+// CHECK:     %[[fifo1_cons_cons_lock:.*]] = aie.lock(%[[t2]]) {init = 0 : i32, sym_name = "fifo1_cons_cons_lock_0"}
 
 // The consume buffers are used at the receiving end of a stream to notify the
 // sender to send more objects once they have been consumed. In this case,
@@ -55,8 +55,8 @@
 // CHECK:     %[[fifo0_cons_buff_2:.*]] = aie.buffer(%[[t1]]) {sym_name = "fifo0_cons_buff_2"} : memref<1xi32>
 // CHECK:     %[[fifo0_cons_buff_3:.*]] = aie.buffer(%[[t1]]) {sym_name = "fifo0_cons_buff_3"} : memref<1xi32>
 
-// CHECK:     %[[fifo0_cons_prod_lock:.*]] = aie.lock(%[[t1]], 0) {init = 4 : i32, sym_name = "fifo0_cons_prod_lock_0"}
-// CHECK:     %[[fifo0_cons_cons_lock:.*]] = aie.lock(%[[t1]], 1) {init = 0 : i32, sym_name = "fifo0_cons_cons_lock_0"}
+// CHECK:     %[[fifo0_cons_prod_lock:.*]] = aie.lock(%[[t1]]) {init = 4 : i32, sym_name = "fifo0_cons_prod_lock_0"}
+// CHECK:     %[[fifo0_cons_cons_lock:.*]] = aie.lock(%[[t1]]) {init = 0 : i32, sym_name = "fifo0_cons_cons_lock_0"}
 
 // The objectFifo lowering creates two buffers (for ping-pong) on the producer
 // side to which elements are written.
@@ -65,11 +65,11 @@
 
 // Whenever the prod lock can be acquired, the core can proceed to put another
 // object into the fifo, i.e. there is space in the queue.
-// CHECK:     %[[fifo0_prod_lock:.*]] = aie.lock(%[[t0]], 0) {init = 2 : i32, sym_name = "fifo0_prod_lock_0"}
+// CHECK:     %[[fifo0_prod_lock:.*]] = aie.lock(%[[t0]]) {init = 2 : i32, sym_name = "fifo0_prod_lock_0"}
 
 // Whenever the cons lock can be acquired, there is an object available in the
 // queue to be consumed.
-// CHECK:     %[[fifo0_cons_lock:.*]] = aie.lock(%[[t0]], 1) {init = 0 : i32, sym_name = "fifo0_cons_lock_0"}
+// CHECK:     %[[fifo0_cons_lock:.*]] = aie.lock(%[[t0]]) {init = 0 : i32, sym_name = "fifo0_cons_lock_0"}
 
 // CHECK:     %[[buf83:.*]] = aie.buffer(%[[t2]]) {sym_name = "buf83"} : memref<1xi32>
 
@@ -86,7 +86,7 @@
 // ////////////////////////////////////////////////////////////////////////// //
 
 // CHECK:     %[[c0:.*]] = aie.core(%[[t0]]) {
-// CHECK:       %c0 = arith.constant 0 : index
+// CHECK-DAG:       %c0 = arith.constant 0 : index
 // CHECK:       aie.use_lock(%[[fifo0_prod_lock]], AcquireGreaterEqual, %{{.*}})
 // CHECK:       memref.store %c55_i32, %[[fifo0_buff_0]][%c0] : memref<1xi32>
 // CHECK:       aie.use_lock(%[[fifo0_cons_lock]], Release, %{{.*}})
@@ -108,10 +108,10 @@
 // ////////////////////////////////////////////////////////////////////////// //
 
 // CHECK:     %[[c2:.*]] = aie.core(%[[t2]]) {
-// CHECK:       %c0 = arith.constant 0 : index
-// CHECK:       %c1 = arith.constant 1 : index
-// CHECK:       %c2 = arith.constant 2 : index
-// CHECK:       %c3 = arith.constant 3 : index
+// CHECK-DAG:       %c0 = arith.constant 0 : index
+// CHECK-DAG:       %c1 = arith.constant 1 : index
+// CHECK-DAG:       %c2 = arith.constant 2 : index
+// CHECK-DAG:       %c3 = arith.constant 3 : index
 
 // The fifo1_cons_cons_lock will be released with a value of 1 whenever the
 // DMA received an object from the stream and wrote it to the buffer. First,

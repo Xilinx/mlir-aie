@@ -75,13 +75,13 @@ struct RuntimeSequenceToCertJob : OpConversionPattern<AIE::RuntimeSequenceOp> {
 
     // Create page wrapper at the same location as the runtime sequence
     rewriter.setInsertionPoint(op);
-    auto pageOp = rewriter.create<AIEX::CertPageOp>(op.getLoc());
+    auto pageOp = AIEX::CertPageOp::create(rewriter, op.getLoc());
     Block *pageBlock = new Block();
     pageOp.getBody().push_back(pageBlock);
     rewriter.setInsertionPointToStart(pageBlock);
 
     // Create job inside page
-    auto jobOp = rewriter.create<AIEX::CertJobOp>(op.getLoc(), newJobId);
+    auto jobOp = AIEX::CertJobOp::create(rewriter, op.getLoc(), newJobId);
 
     // Clone runtime sequence body into job
     // Note: This preserves block arguments from the runtime sequence, which
@@ -426,8 +426,8 @@ struct ConfigureOpToCertSection : OpRewritePattern<AIEX::ConfigureOp> {
       uint32_t pdiId = getOrAssignPdiId(parentDevice, deviceSymName);
 
       rewriter.setInsertionPoint(op);
-      rewriter.create<AIEX::CertLoadPdiOp>(
-          op.getLoc(), rewriter.getUI32IntegerAttr(pdiId),
+      AIEX::CertLoadPdiOp::create(
+          rewriter, op.getLoc(), rewriter.getUI32IntegerAttr(pdiId),
           FlatSymbolRefAttr::get(rewriter.getContext(), deviceSymName));
 
       // Clone configure body operations after the load_pdi
@@ -444,8 +444,8 @@ struct ConfigureOpToCertSection : OpRewritePattern<AIEX::ConfigureOp> {
 
     // Create cert.section with the device symbol name
     rewriter.setInsertionPoint(parentDevice.getBody()->getTerminator());
-    auto sectionOp = rewriter.create<AIEX::CertSectionOp>(
-        op.getLoc(), rewriter.getStringAttr(deviceSymName));
+    auto sectionOp = AIEX::CertSectionOp::create(
+        rewriter, op.getLoc(), rewriter.getStringAttr(deviceSymName));
 
     // Create the section body with a page containing a job
     Block *sectionBlock = new Block();
@@ -453,7 +453,7 @@ struct ConfigureOpToCertSection : OpRewritePattern<AIEX::ConfigureOp> {
     rewriter.setInsertionPointToStart(sectionBlock);
 
     // Create page within section
-    auto pageOp = rewriter.create<AIEX::CertPageOp>(op.getLoc());
+    auto pageOp = AIEX::CertPageOp::create(rewriter, op.getLoc());
     Block *pageBlock = new Block();
     pageOp.getBody().push_back(pageBlock);
     rewriter.setInsertionPointToStart(pageBlock);
@@ -466,7 +466,7 @@ struct ConfigureOpToCertSection : OpRewritePattern<AIEX::ConfigureOp> {
     });
     uint32_t sectionJobId = maxJobId + 1;
 
-    auto jobOp = rewriter.create<AIEX::CertJobOp>(op.getLoc(), sectionJobId);
+    auto jobOp = AIEX::CertJobOp::create(rewriter, op.getLoc(), sectionJobId);
     Block *jobBlock = new Block();
     jobOp.getBody().push_back(jobBlock);
     rewriter.setInsertionPointToStart(jobBlock);
@@ -531,8 +531,8 @@ struct ConfigureOpToCertSection : OpRewritePattern<AIEX::ConfigureOp> {
     uint32_t pdiId = getOrAssignPdiId(parentDevice, deviceSymName);
 
     rewriter.setInsertionPoint(op);
-    rewriter.create<AIEX::CertLoadPdiOp>(
-        op.getLoc(), rewriter.getUI32IntegerAttr(pdiId),
+    AIEX::CertLoadPdiOp::create(
+        rewriter, op.getLoc(), rewriter.getUI32IntegerAttr(pdiId),
         FlatSymbolRefAttr::get(rewriter.getContext(), deviceSymName));
 
     // Clone configure body operations after the load_pdi
@@ -880,15 +880,17 @@ struct AIENpuToCertPass
 
           // Create cert.section in current device
           builder.setInsertionPoint(currentDevice.getBody()->getTerminator());
-          auto sectionOp = builder.create<AIEX::CertSectionOp>(
-              configureSeq.getLoc(), builder.getStringAttr(refSymName));
+          auto sectionOp =
+              AIEX::CertSectionOp::create(builder, configureSeq.getLoc(),
+                                          builder.getStringAttr(refSymName));
 
           Block *sectionBlock = new Block();
           sectionOp.getBody().push_back(sectionBlock);
           builder.setInsertionPointToStart(sectionBlock);
 
           // Create page
-          auto pageOp = builder.create<AIEX::CertPageOp>(configureSeq.getLoc());
+          auto pageOp =
+              AIEX::CertPageOp::create(builder, configureSeq.getLoc());
           Block *pageBlock = new Block();
           pageOp.getBody().push_back(pageBlock);
           builder.setInsertionPointToStart(pageBlock);
@@ -900,8 +902,8 @@ struct AIENpuToCertPass
           });
 
           // Create job
-          auto jobOp = builder.create<AIEX::CertJobOp>(configureSeq.getLoc(),
-                                                       maxJobId + 1);
+          auto jobOp = AIEX::CertJobOp::create(builder, configureSeq.getLoc(),
+                                               maxJobId + 1);
 
           // Clone configure sequence body into job
           IRMapping mapper;
@@ -971,6 +973,7 @@ struct AIENpuToCertPass
     }
 
     target.addIllegalOp<AIEX::NpuBlockWriteOp>();
+    target.addIllegalOp<AIEX::NpuBlockWriteValuesOp>();
     target.addIllegalOp<AIEX::NpuMaskWrite32Op>();
     target.addIllegalOp<AIEX::NpuSyncOp>();
     target.addIllegalOp<AIEX::NpuWrite32Op>();
@@ -1036,8 +1039,8 @@ struct AIENpuToCertPass
 
         // Create cert.section in current device
         builder.setInsertionPoint(currentDevice.getBody()->getTerminator());
-        auto sectionOp = builder.create<AIEX::CertSectionOp>(
-            refDevice.getLoc(), builder.getStringAttr(refSymName));
+        auto sectionOp = AIEX::CertSectionOp::create(
+            builder, refDevice.getLoc(), builder.getStringAttr(refSymName));
 
         Block *sectionBlock = new Block();
         sectionOp.getBody().push_back(sectionBlock);
@@ -1074,6 +1077,9 @@ struct AIENpuToCertPass
 
 static void updateCostForOp(Operation &o, AIE::DeviceOp deviceOp,
                             uint32_t &text_cost, uint32_t &data_cost) {
+  // Several distinct op kinds share an encoded instruction size below --
+  // an instruction-size table, not a copy-paste clone.
+  // NOLINTBEGIN(bugprone-branch-clone)
   if (isa<AIEX::CertLocalBarrierOp>(o)) {
     text_cost += 8; // local barrier
   } else if (isa<AIEX::CertRemoteBarrierOp>(o)) {
@@ -1086,6 +1092,7 @@ static void updateCostForOp(Operation &o, AIE::DeviceOp deviceOp,
     text_cost += 12; // write
   } else if (isa<AIEX::CertApplyOffset57Op>(o)) {
     text_cost += 16; // apply offset
+    // NOLINTEND(bugprone-branch-clone)
   } else if (auto syncOp = dyn_cast<AIEX::CertUcDmaWriteDesSyncOp>(o)) {
     text_cost += 16; // write des sync
     // find the uc_dma_chain

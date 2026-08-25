@@ -43,7 +43,7 @@ struct NdDmaPattern {
 /// suppressed so callers can probe legality without emitting errors.
 bool patternPassesVerification(mlir::Operation *forOp,
                                mlir::BaseMemRefType referencedBufType,
-                               const xilinx::AIE::AIETargetModel &targetModel,
+                               const xilinx::AIE::AIETargetModel &tm,
                                int tileCol, int tileRow,
                                const NdDmaPattern &pattern);
 

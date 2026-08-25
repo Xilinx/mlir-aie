@@ -7,6 +7,7 @@
 
 #include "aie/Dialect/AIE/Transforms/AIEPlacer.h"
 #include "mlir/Interfaces/ViewLikeInterface.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/Debug.h"
 
@@ -265,35 +266,34 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
   // neighbors are then steered to those slots by `computePeerAdjacency`.
   SmallVector<LogicalTileOp> orderedTiles(logicalTiles.begin(),
                                           logicalTiles.end());
-  std::stable_sort(orderedTiles.begin(), orderedTiles.end(),
-                   [&](LogicalTileOp a, LogicalTileOp b) {
-                     auto rank = [](LogicalTileOp lt) {
-                       bool hasCol = lt.tryGetCol().has_value();
-                       bool hasRow = lt.tryGetRow().has_value();
-                       if (hasCol && hasRow)
-                         return 0; // fully pinned
-                       if (hasCol || hasRow)
-                         return 1; // partially constrained
-                       return 2;   // fully unpinned
-                     };
-                     int ra = rank(a), rb = rank(b);
-                     if (ra != rb)
-                       return ra < rb;
-                     // Same constraint level: high priority first. Priority
-                     // = max(self demand, highest peer demand) so a Worker's
-                     // compute-peer producers/consumers also rise to the
-                     // front and claim the Worker's neighbor tiles before
-                     // unrelated LTOs consume them.
-                     int pa = ctx.placementPriority(a.getOperation());
-                     int pb = ctx.placementPriority(b.getOperation());
-                     if (pa != pb)
-                       return pa > pb;
-                     // Among equal priority, place the high-demand LTO
-                     // itself first so its peers can be steered to its
-                     // neighbors immediately afterward.
-                     return ctx.neighborDemand(a.getOperation()) >
-                            ctx.neighborDemand(b.getOperation());
-                   });
+  llvm::stable_sort(orderedTiles, [&](LogicalTileOp a, LogicalTileOp b) {
+    auto rank = [](LogicalTileOp lt) {
+      bool hasCol = lt.tryGetCol().has_value();
+      bool hasRow = lt.tryGetRow().has_value();
+      if (hasCol && hasRow)
+        return 0; // fully pinned
+      if (hasCol || hasRow)
+        return 1; // partially constrained
+      return 2;   // fully unpinned
+    };
+    int ra = rank(a), rb = rank(b);
+    if (ra != rb)
+      return ra < rb;
+    // Same constraint level: high priority first. Priority
+    // = max(self demand, highest peer demand) so a Worker's
+    // compute-peer producers/consumers also rise to the
+    // front and claim the Worker's neighbor tiles before
+    // unrelated LTOs consume them.
+    int pa = ctx.placementPriority(a.getOperation());
+    int pb = ctx.placementPriority(b.getOperation());
+    if (pa != pb)
+      return pa > pb;
+    // Among equal priority, place the high-demand LTO
+    // itself first so its peers can be steered to its
+    // neighbors immediately afterward.
+    return ctx.neighborDemand(a.getOperation()) >
+           ctx.neighborDemand(b.getOperation());
+  });
 
   for (auto logicalTile : orderedTiles) {
     // Place fully constrained tiles at their specified coordinates
@@ -414,15 +414,13 @@ LogicalResult SequentialPlacer::placeNonCoreLogicalTiles(
       continue;
     nonCoreOrdered.push_back(logicalTile);
   }
-  std::stable_sort(nonCoreOrdered.begin(), nonCoreOrdered.end(),
-                   [&](LogicalTileOp a, LogicalTileOp b) {
-                     auto demand = [&](LogicalTileOp lt) {
-                       auto chans =
-                           channelRequirements.lookup(lt.getOperation());
-                       return chans.first + chans.second;
-                     };
-                     return demand(a) > demand(b);
-                   });
+  llvm::stable_sort(nonCoreOrdered, [&](LogicalTileOp a, LogicalTileOp b) {
+    auto demand = [&](LogicalTileOp lt) {
+      auto chans = channelRequirements.lookup(lt.getOperation());
+      return chans.first + chans.second;
+    };
+    return demand(a) > demand(b);
+  });
 
   FlowMembership flowIndex = buildFlowMembership(flows, pktFlows, objectFifos);
 
@@ -501,16 +499,15 @@ SequentialPlacer::findUnconstrainedCoreCandidate(
   SmallVector<TileID> orderedCandidates(availability.compTiles.begin(),
                                         availability.compTiles.end());
   if (neighborDemand(logicalTile.getOperation()) > 0) {
-    std::stable_sort(orderedCandidates.begin(), orderedCandidates.end(),
-                     [&](TileID a, TileID b) {
-                       if (a.col != b.col)
-                         return a.col < b.col;
-                       int na = computeNeighborCount(a);
-                       int nb = computeNeighborCount(b);
-                       if (na != nb)
-                         return na > nb;
-                       return a.row < b.row;
-                     });
+    llvm::stable_sort(orderedCandidates, [&](TileID a, TileID b) {
+      if (a.col != b.col)
+        return a.col < b.col;
+      int na = computeNeighborCount(a);
+      int nb = computeNeighborCount(b);
+      if (na != nb)
+        return na > nb;
+      return a.row < b.row;
+    });
   }
 
   // Two passes: first prefer candidates that aren't reserved for an
@@ -1145,27 +1142,30 @@ int SequentialPlacer::computeCentroidColumn(LogicalTileOp logicalTile,
   if (ltoIt == flowIndex.ltoFlows.end())
     return 0;
 
-  auto resolveCoreCol = [&](Value v) -> std::optional<int> {
+  // Column of a flow endpoint, or nullopt if not yet fixed. A memtile that
+  // already knows its column answers here; looking past it to its cores
+  // would pick up the other flows it carries.
+  auto resolvePeerCol = [&](Value v) -> std::optional<int> {
     Operation *defOp = v.getDefiningOp();
     if (!defOp)
       return std::nullopt;
-    if (auto tileOp = dyn_cast<TileOp>(defOp)) {
-      if (targetModel->getTileType(tileOp.getCol(), tileOp.getRow()) ==
-          AIETileType::CoreTile)
-        return tileOp.getCol();
+    // A physical tile's column is fixed by construction, whatever its type.
+    if (auto tileOp = dyn_cast<TileOp>(defOp))
+      return tileOp.getCol();
+    auto lto = dyn_cast<LogicalTileOp>(defOp);
+    if (!lto)
       return std::nullopt;
-    }
-    if (auto lto = dyn_cast<LogicalTileOp>(defOp);
-        lto && lto.getTileType() == AIETileType::CoreTile) {
-      auto it = result.find(defOp);
-      if (it != result.end())
-        return it->second.col;
-    }
+    if (auto c = lto.tryGetCol())
+      return c;
+    auto it = result.find(defOp);
+    if (it != result.end())
+      return it->second.col;
     return std::nullopt;
   };
 
-  // One level of indirection for shim->memtile->core. Multi-level memtile
-  // chains aren't currently produced by mlir-aie.
+  // One level of indirection for shim->memtile->core, used only when the
+  // memtile's own column is still unknown. Multi-level memtile chains aren't
+  // currently produced by mlir-aie.
   auto resolveLtoCoreCols = [&](Value v) {
     SmallVector<int> out;
     auto it = flowIndex.ltoFlows.find(v);
@@ -1173,7 +1173,7 @@ int SequentialPlacer::computeCentroidColumn(LogicalTileOp logicalTile,
       return out;
     for (auto &peerList : it->second)
       for (Value p : peerList)
-        if (auto col = resolveCoreCol(p))
+        if (auto col = resolvePeerCol(p))
           out.push_back(*col);
     return out;
   };
@@ -1182,7 +1182,7 @@ int SequentialPlacer::computeCentroidColumn(LogicalTileOp logicalTile,
   for (auto &peers : ltoIt->second) {
     SmallVector<int> dests;
     for (Value p : peers) {
-      if (auto col = resolveCoreCol(p)) {
+      if (auto col = resolvePeerCol(p)) {
         dests.push_back(*col);
         continue;
       }
@@ -1217,8 +1217,8 @@ int SequentialPlacer::computeCentroidColumn(LogicalTileOp logicalTile,
       if (dests.size() == 1) {
         cost += std::abs(S - dests[0]);
       } else {
-        int lo = *std::min_element(dests.begin(), dests.end());
-        int hi = *std::max_element(dests.begin(), dests.end());
+        int lo = *llvm::min_element(dests);
+        int hi = *llvm::max_element(dests);
         if (S < lo)
           cost += lo - S;
         else if (S > hi)
@@ -1250,19 +1250,38 @@ LogicalResult SequentialPlacer::placeNonCoreTileByCentroid(
                                         numInputChannels, numOutputChannels,
                                         logicalTile.getTileType());
   if (!maybeTile) {
-    StringRef tileTypeName = stringifyAIETileType(logicalTile.getTileType());
+    AIETileType requestedType = logicalTile.getTileType();
+    StringRef tileTypeName = stringifyAIETileType(requestedType);
     auto diag = logicalTile.emitError();
-    diag << "no " << tileTypeName << " has sufficient DMA capacity for "
-         << numInputChannels << " input/" << numOutputChannels
-         << " output channels ";
-    if (colConstraint)
-      diag << "at column " << *colConstraint;
-    else
-      diag << "near centroid column " << centroidCol;
-    diag.attachNote() << "to fix, pin this " << tileTypeName
-                      << " to a column with available DMA budget, or rebalance "
-                         "compute peers so the centroid lands on a less-busy "
-                         "column";
+    CapacityDiagnosis diagnosis = diagnoseCapacityExhaustion(
+        requestedType, numInputChannels, numOutputChannels);
+    if (!diagnosis.capacityExistsSomewhere) {
+      diag << "no " << tileTypeName << " on the device has " << numInputChannels
+           << " input/" << numOutputChannels
+           << " output DMA channel(s) free: all " << diagnosis.tilesOfType
+           << " " << tileTypeName << "(s) are at " << diagnosis.inUsed << "/"
+           << diagnosis.inMax << " input, " << diagnosis.outUsed << "/"
+           << diagnosis.outMax << " output channels used";
+      diag.attachNote() << "this is the device's total " << tileTypeName
+                        << " DMA budget, not a placement choice -- no column "
+                           "has spare capacity to pin to; fan traffic "
+                           "through a MemTile, or reduce the number of "
+                           "DMA-attached ObjectFIFOs feeding this tile";
+    } else {
+      diag << "no " << tileTypeName << " has sufficient DMA capacity for "
+           << numInputChannels << " input/" << numOutputChannels
+           << " output channels ";
+      if (colConstraint)
+        diag << "at column " << *colConstraint;
+      else
+        diag << "near centroid column " << centroidCol;
+      diag.attachNote() << "every " << tileTypeName
+                        << " with spare DMA capacity already hosts a "
+                           "different logical tile (merge-logical-tiles is "
+                           "off); enable merging, or pin logical tiles "
+                           "one-per-column if fewer of them than physical "
+                        << tileTypeName << "s remain unclaimed";
+    }
     return failure();
   }
 
@@ -1320,6 +1339,34 @@ std::optional<TileID> SequentialPlacer::findTileWithCapacity(
   return best;
 }
 
+SequentialPlacer::CapacityDiagnosis
+SequentialPlacer::diagnoseCapacityExhaustion(AIETileType requestedType,
+                                             int requiredInputChannels,
+                                             int requiredOutputChannels) {
+  // Walk the device directly rather than `availability.nonCompTiles`: a
+  // fully-exhausted tile is meant to stay enumerable here even if a future
+  // fix makes `updateChannelUsage`'s prune (see its `removeTile` call)
+  // actually fire, which today it structurally cannot.
+  CapacityDiagnosis diagnosis;
+  for (int col = 0, numCols = targetModel->columns(); col < numCols; ++col) {
+    for (int row = 0, numRows = targetModel->rows(); row < numRows; ++row) {
+      if (targetModel->getTileType(col, row) != requestedType)
+        continue;
+      TileID tile{col, row};
+      ++diagnosis.tilesOfType;
+      auto [maxIn, maxOut] = getDMACapacity(*targetModel, tile);
+      diagnosis.inMax += maxIn;
+      diagnosis.outMax += maxOut;
+      diagnosis.inUsed += availability.inputChannelsUsed.lookup(tile);
+      diagnosis.outUsed += availability.outputChannelsUsed.lookup(tile);
+      if (hasAvailableChannels(tile, requiredInputChannels,
+                               requiredOutputChannels))
+        diagnosis.capacityExistsSomewhere = true;
+    }
+  }
+  return diagnosis;
+}
+
 void SequentialPlacer::updateChannelUsage(TileID tile, DmaDir direction,
                                           int numChannels) {
   if (direction == DmaDir::Out)
@@ -1358,8 +1405,6 @@ void TileAvailability::removeTile(TileID tile, AIETileType type) {
   case AIETileType::ShimNOCTile:
   case AIETileType::ShimPLTile:
     removeFromVector(nonCompTiles);
-    break;
-  default:
     break;
   }
 }

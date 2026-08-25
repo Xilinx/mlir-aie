@@ -22,7 +22,7 @@ using namespace xilinx;
 using namespace xilinx::AIE;
 using namespace xilinx::AIEX;
 
-std::string utohexstr(uint32_t u) { return "0x" + llvm::utohexstr(u); }
+static std::string utohexstr(uint32_t u) { return "0x" + llvm::utohexstr(u); }
 
 namespace xilinx {
 namespace AIE {
@@ -98,7 +98,8 @@ LogicalResult AIETranslateToBCF(ModuleOp module, raw_ostream &output,
                           "in the neighboring tile\n";
                 output << "\n";
                 continue;
-              } else if (buf.getInitialValue() && tile == srcCoord) {
+              }
+              if (buf.getInitialValue() && tile == srcCoord) {
                 output << "_overlay " << bufName << " "
                        << utohexstr(offset + bufferBaseAddr) << " // "
                        << numBytes << " bytes\n";
@@ -145,12 +146,11 @@ LogicalResult AIETranslateToBCF(ModuleOp module, raw_ostream &output,
           // Canonical path: link_files populated by aie-assign-core-link-files.
           for (auto f : filesAttr->getAsRange<mlir::StringAttr>())
             output << "_include _file " << f.getValue() << "\n";
-        } else if (coreOp.getLinkWith()) {
+        } else if (auto linkWith = coreOp.getLinkWith()) {
           // Deprecated fallback: core-level link_with was not migrated by
           // aie-assign-core-link-files (e.g., the pass was not run). It carries
           // no mode, so it is always an ordinary link input.
-          output << "_include _file " << coreOp.getLinkWith().value().str()
-                 << "\n";
+          output << "_include _file " << linkWith->str() << "\n";
         }
       }
       output << "_resolve _main core_" << tile.getCol() << "_" << tile.getRow()

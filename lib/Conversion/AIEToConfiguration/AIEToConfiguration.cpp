@@ -14,13 +14,14 @@
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
 
+#include "llvm/ADT/APInt.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/Support/Debug.h"
-#include <llvm/ADT/APInt.h>
-#include <llvm/ADT/DenseSet.h>
 
 extern "C" {
-#include "xaiengine/xaiegbl_defs.h"
-// above needs to go first for u32, u64 typedefs
+#include "xaiengine/xaiegbl.h"
+// above needs to go first for u32/u64 typedefs, AieRC, and XAIE_AIG_EXPORT
+// used by xaie_txn.h
 #include "xaiengine/xaie_txn.h"
 }
 
@@ -253,7 +254,10 @@ parseTransactionBinary(const std::vector<uint8_t> &data,
         i += opSize;
         break;
       }
-      case 0x8: { // XAie_TxnOpcode::XAIE_IO_LOAD_PDI
+      // Not in the vendored third_party/aie-rt enum (though the driver
+      // protocol defines it); can't add it without forking upstream.
+      case 0x8: { // NOLINT(clang-diagnostic-switch):
+                  // XAie_TxnOpcode::XAIE_IO_LOAD_PDI
         LLVM_DEBUG(llvm::dbgs() << "opcode: LOAD_PDI (0x08)\n");
         constexpr size_t opSize = sizeof(TxnLoadPdiHeader);
         if (!requireBytes(i, opSize))
@@ -287,7 +291,7 @@ parseTransactionBinary(const std::vector<uint8_t> &data,
         constexpr size_t opSize = sizeof(TxnPreemptHeader);
         if (!requireBytes(i, opSize))
           return std::nullopt;
-        auto header =
+        const auto *header =
             reinterpret_cast<const TxnPreemptHeader *>(data.data() + i);
         op.cmd.Value = header->level;
         op.cmd.Size = opSize;
@@ -300,7 +304,7 @@ parseTransactionBinary(const std::vector<uint8_t> &data,
         return std::nullopt;
       }
 
-      ops.push_back(std::move(op));
+      ops.push_back(op);
     }
   } else if (major == 1 && minor == 0) {
     while (i < data.size()) {
@@ -374,7 +378,10 @@ parseTransactionBinary(const std::vector<uint8_t> &data,
         i += opSize;
         break;
       }
-      case 0x8: { // XAie_TxnOpcode::XAIE_IO_LOAD_PDI
+      // Not in the vendored third_party/aie-rt enum (though the driver
+      // protocol defines it); can't add it without forking upstream.
+      case 0x8: { // NOLINT(clang-diagnostic-switch):
+                  // XAie_TxnOpcode::XAIE_IO_LOAD_PDI
         LLVM_DEBUG(llvm::dbgs() << "opcode: LOAD_PDI (0x08)\n");
         constexpr size_t opSize = sizeof(TxnLoadPdiHeader);
         if (!requireBytes(i, opSize))
@@ -408,7 +415,7 @@ parseTransactionBinary(const std::vector<uint8_t> &data,
         constexpr size_t opSize = sizeof(TxnPreemptHeader);
         if (!requireBytes(i, opSize))
           return std::nullopt;
-        auto header =
+        const auto *header =
             reinterpret_cast<const TxnPreemptHeader *>(data.data() + i);
         op.cmd.Value = header->level;
         op.cmd.Size = opSize;
@@ -421,7 +428,7 @@ parseTransactionBinary(const std::vector<uint8_t> &data,
         return std::nullopt;
       }
 
-      ops.push_back(std::move(op));
+      ops.push_back(op);
     }
   } else {
     llvm::errs() << "Unsupported TXN binary version: " << major << "." << minor
@@ -546,7 +553,7 @@ emitControlPacketOps(OpBuilder &builder, Location fallbackLoc,
                      std::vector<TransactionBinaryOperation> &operations,
                      std::vector<memref::GlobalOp> &global_data) {
 
-  auto ctx = builder.getContext();
+  auto *ctx = builder.getContext();
 
   // create the control packet ops
   for (auto [op, payload] : llvm::zip(operations, global_data)) {
@@ -559,10 +566,10 @@ emitControlPacketOps(OpBuilder &builder, Location fallbackLoc,
           /*stream_id*/ builder.getI32IntegerAttr(0),
           DenseI32ArrayAttr::get(ctx, ArrayRef<int32_t>(op.cmd.Value)));
     } else if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_BLOCKWRITE) {
-      if (!payload.getInitialValue())
+      auto initialValue = payload.getInitialValue();
+      if (!initialValue)
         continue;
-      auto blockWriteData =
-          dyn_cast<DenseIntElementsAttr>(*payload.getInitialValue());
+      auto blockWriteData = dyn_cast<DenseIntElementsAttr>(*initialValue);
       if (!blockWriteData) {
         payload.emitError(
             "Global symbol initial value is not a dense int array");
@@ -600,7 +607,7 @@ emitControlPacketOps(OpBuilder &builder, Location fallbackLoc,
 
 // Perform bitwise or on consecutive control packets operating on the same
 // address, to resolve the lack of mask write in control packets.
-LogicalResult orConsecutiveWritesOnSameAddr(Block *body) {
+static LogicalResult orConsecutiveWritesOnSameAddr(Block *body) {
   SmallVector<AIEX::NpuControlPacketOp> ctrlPktOps;
   body->walk(
       [&](AIEX::NpuControlPacketOp cpOp) { ctrlPktOps.push_back(cpOp); });
@@ -617,8 +624,16 @@ LogicalResult orConsecutiveWritesOnSameAddr(Block *body) {
       ctrlPktBuffer = ctrlPktOps[i];
       continue;
     }
-    auto bufferedData = ctrlPktBuffer.getData().value();
-    auto currentData = ctrlPktOps[i].getData().value();
+    auto bufferedDataAttr = ctrlPktBuffer.getData();
+    auto currentDataAttr = ctrlPktOps[i].getData();
+    if (!bufferedDataAttr || !currentDataAttr) {
+      ctrlPktOps[i].emitError(
+          "cannot OR consecutive control packets on the same address: "
+          "control packet has no data payload");
+      return failure();
+    }
+    auto bufferedData = *bufferedDataAttr;
+    auto currentData = *currentDataAttr;
     SmallVector<int> newData;
     for (unsigned j = 0; j < std::max(bufferedData.size(), currentData.size());
          j++) {
@@ -634,7 +649,7 @@ LogicalResult orConsecutiveWritesOnSameAddr(Block *body) {
     erased.push_back(ctrlPktOps[i]);
   }
 
-  for (auto e : erased)
+  for (auto *e : erased)
     e->erase();
 
   return success();
@@ -645,7 +660,7 @@ LogicalResult orConsecutiveWritesOnSameAddr(Block *body) {
 static LogicalResult convertTransactionOpsToMLIR(
     OpBuilder builder, AIE::AIEToConfigurationOutputType outputType,
     std::vector<TransactionBinaryOperation> &operations,
-    std::string blockwrite_prefix = "config_blockwrite_data_") {
+    const std::string &blockwrite_prefix = "config_blockwrite_data_") {
 
   // for each blockwrite in the binary, create a GlobalOp with the data at the
   // device level
@@ -683,7 +698,7 @@ static LogicalResult convertTransactionOpsToMLIR(
     unsigned id = 0;
     for (auto &op : operations) {
       if (op.cmd.Opcode != XAIE_IO_BLOCKWRITE) {
-        global_data.push_back(nullptr);
+        global_data.emplace_back(nullptr);
         continue;
       }
       uint32_t size = op.cmd.Size / 4;
@@ -771,8 +786,8 @@ xilinx::AIE::convertTransactionBinaryToMLIR(mlir::MLIRContext *ctx,
 
 LogicalResult xilinx::AIE::generateAndInsertConfigOps(
     OpBuilder &builder, xilinx::AIE::DeviceOp device, llvm::StringRef clElfDir,
-    AIE::AIEToConfigurationOutputType outputType, std::string blockwrite_prefix,
-    bool skipCtrlPktOverlay) {
+    AIE::AIEToConfigurationOutputType outputType,
+    const std::string &blockwrite_prefix, bool skipCtrlPktOverlay) {
   const AIETargetModel &targetModel =
       (const AIETargetModel &)device.getTargetModel();
 
@@ -805,23 +820,23 @@ LogicalResult xilinx::AIE::generateAndInsertConfigOps(
   }
 
   // Attach per-op source locations from AIERT's instruction-range bracketing.
-  // The aie-rt TxnList records one XAie_TxnCmd per serialized binary
-  // operation, so the indices align. Operations beyond the recorded range
-  // (or where no bracket fired) keep std::nullopt and inherit the device
+  // AIERTControl already projected those onto the serialized transaction's
+  // operations, so the indices line up with what the parser reproduced here.
+  // Ops with no bracketed location keep std::nullopt and inherit the device
   // fallback location at emit time.
-  const std::vector<mlir::Location> &instrLocs = ctl.getTxnInstrLocs();
-  // Sharp edge: index alignment relies on the recorder's XAie_TxnCmd count
-  // (instrLocs) and the parser's op count (operations) covering the same set
-  // of opcodes. instrLocs may be shorter (trailing cmds with no bracket), but
-  // if it is *longer* the recorder saw a command the parser dropped and every
-  // index past that point is mislabeled -- fail loudly instead of silently.
-  assert(instrLocs.size() <= operations.size() &&
-         "txn loc/op count mismatch: aie-rt recorded more commands than the "
-         "transaction parser reproduced; opcode coverage has drifted");
-  for (size_t i = 0, e = operations.size(); i < e; ++i) {
-    if (i < instrLocs.size())
-      operations[i].sourceLoc = instrLocs[i];
-  }
+  const std::vector<mlir::Location> &opLocs = ctl.getTxnOpLocs();
+  // Sharp edge: that projection models how aie-rt's serializer maps recorded
+  // commands to binary operations. A count disagreement means the model has
+  // drifted from the pinned aie-rt and every index past the divergence is
+  // mislabeled -- fail loudly instead of silently. An empty vector just means
+  // nothing was bracketed.
+  assert((opLocs.empty() || opLocs.size() == operations.size()) &&
+         "txn loc/op count mismatch: AIERTControl's command-to-operation "
+         "projection disagrees with the transaction parser; aie-rt's "
+         "serializer has drifted from projectCmdLocsOntoSerializedOps");
+  for (size_t i = 0, e = std::min(opLocs.size(), operations.size()); i < e; ++i)
+    if (!isa<UnknownLoc>(opLocs[i]))
+      operations[i].sourceLoc = opLocs[i];
 
   if (failed(convertTransactionOpsToMLIR(builder, outputType, operations,
                                          blockwrite_prefix))) {

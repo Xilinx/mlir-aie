@@ -9,7 +9,7 @@ Submodules:
 - `eltwise` — passthrough, scale, add, mul, relu
 - `reduce` — reduce_add, reduce_min, reduce_max, compute_max
 - `vision` — rgba2hue, threshold, bitwise_or, bitwise_and, gray2rgba, rgba2gray, filter2d, add_weighted
-- `activation` — softmax, gelu, silu, swiglu, bf16_exp
+- `activation`: softmax, gelu, silu, swiglu, bf16_exp, exp2f_vec
 - `linalg` — mm, mv, cascade_mm  (mm/mv expose ``.zero`` for the companion zero-fill kernel)
 - `conv` — conv2dk1, conv2dk3, conv2dk1_skip, conv2dk1_i8, conv2dk14, conv2dk1_skip_init, bn_*
 """
@@ -17,6 +17,8 @@ Submodules:
 from .activation import (
     bf16_exp,
     bf16_exp_ref,
+    exp2f_vec,
+    exp2f_vec_ref,
     gelu,
     gelu_ref,
     relu_ref,
@@ -83,10 +85,12 @@ __all__ = [
     "silu",
     "swiglu",
     "bf16_exp",
+    "exp2f_vec",
     "relu_ref",
     "silu_ref",
     "gelu_ref",
     "bf16_exp_ref",
+    "exp2f_vec_ref",
     "softmax_ref",
     "mm",
     "mv",

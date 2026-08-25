@@ -25,11 +25,12 @@ _logger = logging.getLogger(__name__)
 # importing ``aie.utils`` no longer eagerly probes either backend. Runtime
 # selection below probes only the backend it actually needs (so NPU_RUNTIME=hrx
 # never imports pyxrt and NPU_RUNTIME=xrt never runs HRX discovery), and the
-# public ``aie.utils.has_xrt`` / ``aie.utils.has_hrx`` attributes are served
+# public ``aie.utils.has_xrt`` / ``has_hrx`` / ``has_hsa`` attributes are served
 # on-demand via module ``__getattr__`` so a bare capability query still works in
 # any mode (including the default ``auto``) and pays for at most one probe.
 _has_xrt: bool | None = None  # tri-state cache; None => not probed yet
 _has_hrx: bool | None = None
+_has_hsa: bool | None = None
 
 
 def _probe_xrt() -> bool:
@@ -71,6 +72,24 @@ def _probe_hrx() -> bool:
     return _has_hrx
 
 
+def _probe_hsa() -> bool:
+    """Whether ``libhsa-runtime64.so`` can be located on this host.
+
+    Filesystem-only (no dlopen, no device init), but still memoized so repeated
+    queries do no extra work.
+    """
+    global _has_hsa
+    if _has_hsa is None:
+        try:
+            from .hostruntime.hsaruntime.discovery import hsa_available
+
+            _has_hsa = hsa_available()
+        except Exception as e:  # discovery must never break importing aie.utils
+            _logger.debug("HSA discovery probe failed: %s", e)
+            _has_hsa = False
+    return _has_hsa
+
+
 # Host-runtime backend selection. ``NPU_RUNTIME`` chooses between the XRT and
 # HRX host stacks; both consume the identical aiecc artifacts (final.xclbin +
 # insts.bin) and only the dispatch path differs. Accepted values:
@@ -92,9 +111,9 @@ _NPU_RUNTIME = os.environ.get("NPU_RUNTIME", "auto").lower()
 # Strict product contract: an unset NPU_RUNTIME defaults to 'auto', but an
 # explicitly *invalid* value is a hard error rather than a silent fallback --
 # a typo'd backend name must not quietly resolve to something else.
-if _NPU_RUNTIME not in ("xrt", "hrx", "auto"):
+if _NPU_RUNTIME not in ("xrt", "hrx", "hsa", "auto"):
     raise ImportError(
-        f"Invalid NPU_RUNTIME={_NPU_RUNTIME!r}; expected one of xrt|hrx|auto "
+        f"Invalid NPU_RUNTIME={_NPU_RUNTIME!r}; expected one of xrt|hrx|hsa|auto "
         f"(unset defaults to 'auto')."
     )
 
@@ -105,15 +124,30 @@ if _NPU_RUNTIME == "hrx" and not _probe_hrx():
         "Use NPU_RUNTIME=auto to fall back to XRT/CPU when HRX is absent."
     )
 
+if _NPU_RUNTIME == "hsa" and not _probe_hsa():
+    raise ImportError(
+        "NPU_RUNTIME=hsa was requested but libhsa-runtime64.so could not be "
+        "located. Install ROCm to a standard location, pip install it from "
+        "TheRock, or set ROCM_PATH. Use NPU_RUNTIME=auto to fall back to "
+        "XRT/CPU when HSA is absent."
+    )
+
 # Resolve 'auto' to a concrete backend with graceful degradation. HRX is never
 # auto-selected (opt-in only via NPU_RUNTIME=hrx), so 'auto' is XRT or CPU.
 if _NPU_RUNTIME == "auto":
     _NPU_RUNTIME = "xrt" if _probe_xrt() else "cpu"
 
+
 if _NPU_RUNTIME == "hrx":
     from .hostruntime.hrxruntime.tensor import HRXTensor
 
     DEFAULT_TENSOR_CLASS = HRXTensor
+elif _NPU_RUNTIME == "hsa":
+    from .hostruntime.hsaruntime.tensor import HSATensor
+
+    DEFAULT_TENSOR_CLASS = HSATensor
+# Reachable only with _NPU_RUNTIME in {"xrt","cpu"}; "cpu" implies XRT is
+# absent (see the auto-resolution above).
 elif _NPU_RUNTIME == "xrt" and _probe_xrt():
     from .hostruntime.xrtruntime.tensor import XRTTensor
 
@@ -122,6 +156,18 @@ else:
     from .hostruntime.tensor_class import CPUOnlyTensor
 
     DEFAULT_TENSOR_CLASS = CPUOnlyTensor
+
+
+def npu_runtime_folds_ddr_addr_offset() -> bool:
+    """Whether the active backend folds the DDR aperture offset into ``insts.bin``.
+
+    ``True`` for XRT and the CPU default (the firmware-translated ABI); ``False``
+    for HRX, whose runtime adds the aperture offset for every argument itself and
+    therefore needs the producer-independent (unfolded) instruction stream. The
+    value is read from the active backend's ``FOLDS_DDR_ADDR_OFFSET`` class
+    attribute, so the JIT cache and the compiler always agree on the ABI.
+    """
+    return DEFAULT_TENSOR_CLASS.FOLDS_DDR_ADDR_OFFSET
 
 
 def ceildiv(a, b):

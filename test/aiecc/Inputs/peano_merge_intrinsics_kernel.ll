@@ -14,6 +14,9 @@
 ;     becomes llvm.fabs, a multiply-add llvm.fmuladd, a clamp smax/smin.
 ;   * llvm.lifetime.start/end carrying the size operand Peano requires and a
 ;     newer LLVM drops.
+;   * an over-aligned alloca and over-aligned accesses to it, whose alignment
+;     the post-link downgrade must not strip -- opt cannot re-derive it, and the
+;     core misbehaves without it.
 ;
 ; The (ptr, ptr) signature is aiecc's bare-pointer memref calling convention.
 
@@ -21,7 +24,7 @@ target triple = "aie2"
 
 define linkonce_odr void @merge_kernel(ptr %in, ptr %out) #0 {
 entry:
-  %scratch = alloca [4 x float], align 4
+  %scratch = alloca [4 x float], align 64
   call void @llvm.lifetime.start.p0(i64 16, ptr %scratch)
   br label %body
 
@@ -35,9 +38,11 @@ body:
   ; |v| * v + v staged through the local buffer: llvm.fabs / llvm.fmuladd.
   %v = sitofp i32 %clamped to float
   %mag = call float @llvm.fabs.f32(float %v)
+  ; Over-aligned, matching the alloca. ABI alignment for float is 4, so a
+  ; downgrade that strips these is observable: they come back as `align 4`.
   %slot = getelementptr inbounds [4 x float], ptr %scratch, i32 0, i32 0
-  store float %mag, ptr %slot, align 4
-  %mag.reloaded = load float, ptr %slot, align 4
+  store float %mag, ptr %slot, align 64
+  %mag.reloaded = load float, ptr %slot, align 64
   %acc = call float @llvm.fmuladd.f32(float %mag.reloaded, float %v, float %v)
   %res = fptosi float %acc to i32
   %out.ptr = getelementptr inbounds i32, ptr %out, i32 %i

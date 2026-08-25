@@ -56,6 +56,7 @@ declare_mlir_python_sources(AIEPythonSources.Utils
     utils/hostruntime/tensor_class.py
     utils/hostruntime/torch_interop.py
     utils/hostruntime/xrtruntime/__init__.py
+    utils/hostruntime/xrtruntime/device.py
     utils/hostruntime/xrtruntime/hostruntime.py
     utils/hostruntime/xrtruntime/parameter_scratchpad.py
     utils/hostruntime/xrtruntime/tensor.py
@@ -65,6 +66,12 @@ declare_mlir_python_sources(AIEPythonSources.Utils
     utils/hostruntime/hrxruntime/discovery.py
     utils/hostruntime/hrxruntime/hostruntime.py
     utils/hostruntime/hrxruntime/tensor.py
+    utils/hostruntime/hsaruntime/__init__.py
+    utils/hostruntime/hsaruntime/_bindings.py
+    utils/hostruntime/hsaruntime/context.py
+    utils/hostruntime/hsaruntime/discovery.py
+    utils/hostruntime/hsaruntime/hostruntime.py
+    utils/hostruntime/hsaruntime/tensor.py
     utils/compile/__init__.py
     utils/compile/utils.py
     utils/compile/cache/utils.py
