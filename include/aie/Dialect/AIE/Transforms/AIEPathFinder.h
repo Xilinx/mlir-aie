@@ -240,7 +240,7 @@ private:
   // dead-end and AIECreatePathFindFlows reports the flow as unroutable.
   enum PortSide : int { In = 0, Out = 1 };
   static int stateId(int nodeId, PortSide side) { return 2 * nodeId + side; }
-  static int stateNode(int stateId) { return stateId >> 1; }
+  static int stateNode(int state) { return state >> 1; }
 
   // Build the dense integer node numbering and per-node adjacency from `graph`
   // and `flows`. Topology is fixed across congestion iterations, so this runs
