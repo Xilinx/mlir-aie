@@ -17,10 +17,11 @@ module {
     %b1 = aie.buffer(%t) {sym_name = "b1"} : memref<32xi32>
     %pl = aie.lock(%t) {init = 2 : i32, sym_name = "pl"}
     %cl = aie.lock(%t) {init = 0 : i32, sym_name = "cl"}
-    aie.objectfifo.pool @p(%t) {depth = 2 : i32, buffers = [@b0, @b1],
-        segments = [#aie.objectfifo_segment<offset = 0, size = 16, produceLock = @pl, consumeLock = @cl>,
-                    #aie.objectfifo_segment<offset = 16, size = 16, produceLock = @pl, consumeLock = @cl>]} : memref<32xi32>
-    aie.objectfifo.core_endpoint @half(%t) fills @p {segments = array<i32: 1>}
+    aie.objectfifo.pool @p(%t) {depth = 2 : i32, buffers = [@b0, @b1]} : memref<32xi32> {
+      aie.objectfifo.segment @s0 {consumeLock = @cl, offset = 0 : i32, produceLock = @pl, size = 16 : i32}
+      aie.objectfifo.segment @s1 {consumeLock = @cl, offset = 16 : i32, produceLock = @pl, size = 16 : i32}
+    }
+    aie.objectfifo.core_endpoint @half(%t) fills @p {segments = [@s1]}
     %c = aie.core(%t) {
       %e = aie.objectfifo.acquire @half (1) : memref<16xi32, strided<[1], offset: 16>>
       aie.objectfifo.release @half (1)

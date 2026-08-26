@@ -20,10 +20,10 @@ module @counting {
     %full = aie.lock(%tile12) {init = 0 : i32, sym_name = "full"}
 
     aie.objectfifo.pool @pool(%tile12) {
-      depth = 2 : i32, buffers = [@b0, @b1],
-      segments = [#aie.objectfifo_segment<offset = 0, size = 16,
-                                          produceLock = @free, consumeLock = @full>]
-    } : memref<16xi32>
+      depth = 2 : i32, buffers = [@b0, @b1]
+    } : memref<16xi32> {
+      aie.objectfifo.segment @s0 {consumeLock = @full, offset = 0 : i32, produceLock = @free, size = 16 : i32}
+    }
     aie.objectfifo.core_endpoint @writer(%tile12) fills @pool
 
     %core = aie.core(%tile12) {

@@ -655,28 +655,38 @@ LogicalResult ObjectFifoPoolOp::verify() {
     }
   }
 
-  if (auto segments = getSegments()) {
-    if (segments->empty()) {
-      return emitOpError("expects at least one segment");
-    }
+  std::vector<ObjectFifoSegmentOp> segments = getSegmentOps();
+  if (segments.empty()) {
+    return emitOpError("expects at least one segment");
+  }
 
-    int64_t previous = -1;
-    for (auto segment : segments->getAsRange<ObjectFifoSegmentAttr>()) {
-      if (static_cast<int64_t>(segment.getOffset()) <= previous) {
-        return emitOpError("segments must be ordered by increasing offset");
-      }
-      previous = segment.getOffset();
-      if (!semaphoreLocks &&
-          (segment.getProduceLock() || segment.getConsumeLock())) {
-        return emitOpError("segment locks are counting locks, which this "
-                           "device has no use for");
-      }
+  int64_t previous = -1;
+  int64_t covered = 0;
+  for (ObjectFifoSegmentOp segment : segments) {
+    if (static_cast<int64_t>(segment.getOffset()) <= previous) {
+      return emitOpError("segments must be ordered by increasing offset");
     }
+    if (static_cast<int64_t>(segment.getOffset()) != covered) {
+      return segment.emitOpError("leaves a gap or overlaps the segment before "
+                                 "it; segments must tile the object");
+    }
+    previous = segment.getOffset();
+    covered = segment.getOffset() + segment.getSize();
+    if (!semaphoreLocks &&
+        (segment.getProduceLock() || segment.getConsumeLock())) {
+      return emitOpError("segment locks are counting locks, which this "
+                         "device has no use for");
+    }
+  }
 
-    if (segments->size() > 1 && !semaphoreLocks) {
-      return emitOpError(
-          "multi-segment pools are unsupported on binary lock architectures");
-    }
+  if (covered != getObjectSize()) {
+    return emitOpError("segments cover ")
+           << covered << " of " << getObjectSize() << " elements";
+  }
+
+  if (segments.size() > 1 && !semaphoreLocks) {
+    return emitOpError(
+        "multi-segment pools are unsupported on binary lock architectures");
   }
 
   return success();
@@ -689,33 +699,29 @@ int64_t ObjectFifoPoolOp::getObjectSizeInBytes() {
          layout.getTypeSizeInBits(elemType.getElementType()) / 8;
 }
 
-SmallVector<ObjectFifoSegmentAttr> ObjectFifoPoolOp::getSegmentAttrs() {
-  SmallVector<ObjectFifoSegmentAttr> segments;
-  if (auto attrs = getSegments()) {
-    for (auto segment : attrs->getAsRange<ObjectFifoSegmentAttr>()) {
-      segments.push_back(segment);
-    }
-  } else {
-    segments.push_back(ObjectFifoSegmentAttr::get(
-        getContext(), 0, getObjectSize(), nullptr, nullptr));
-  }
-  return segments;
+std::vector<ObjectFifoSegmentOp> ObjectFifoPoolOp::getSegmentOps() {
+  auto ops = getSegments().getOps<ObjectFifoSegmentOp>();
+  return {ops.begin(), ops.end()};
 }
 
 Value BufferOp::getBufferTile() { return getTile(); }
 
 SmallVector<BufferLike> ObjectFifoPoolOp::getBufferOps() {
-  return lookupAll<BufferLike>(*this, getBuffers());
+  // Buffers and locks live beside the pool, not in the symbol table it opens
+  // for its segments.
+  return lookupAll<BufferLike>((*this)->getParentOfType<DeviceOp>(),
+                               getBuffers());
 }
 
 SmallVector<LockOp> ObjectFifoPoolOp::getLockOps() {
-  SmallVector<LockOp> locks = lookupAll<LockOp>(*this, getLocks());
-  for (ObjectFifoSegmentAttr segment : getSegmentAttrs()) {
-    for (FlatSymbolRefAttr name :
-         {segment.getProduceLock(), segment.getConsumeLock()}) {
-      if (name) {
-        if (auto lock =
-                SymbolTable::lookupNearestSymbolFrom<LockOp>(*this, name)) {
+  auto device = (*this)->getParentOfType<DeviceOp>();
+  SmallVector<LockOp> locks = lookupAll<LockOp>(device, getLocks());
+  for (ObjectFifoSegmentOp segment : getSegmentOps()) {
+    for (std::optional<FlatSymbolRefAttr> name :
+         {segment.getProduceLockAttr(), segment.getConsumeLockAttr()}) {
+      if (name && *name) {
+        if (auto lock = mlir::SymbolTable::lookupNearestSymbolFrom<LockOp>(
+                device, *name)) {
           locks.push_back(lock);
         }
       }
@@ -736,28 +742,34 @@ StringRef ObjectFifoPoolOp::getBaseName() {
 namespace {
 
 LogicalResult verifyEndpoint(Operation *op, ObjectFifoPoolOp pool,
-                             std::optional<ArrayRef<int32_t>> segments) {
-  int64_t numSegments = pool.getSegmentAttrs().size();
+                             std::optional<ArrayAttr> segments) {
+  std::vector<ObjectFifoSegmentOp> all = pool.getSegmentOps();
   if (!segments) {
-    if (numSegments > 1) {
+    if (all.size() > 1) {
       return op->emitOpError(
           "must list segments explicitly for a multi-segment pool");
     }
     return success();
   }
   if (segments->empty()) {
-    return op->emitOpError("expects at least one segment index");
+    return op->emitOpError("expects at least one segment");
   }
 
-  int32_t previous = -1;
-  for (int32_t index : *segments) {
-    if (index < 0 || index >= numSegments) {
-      return op->emitOpError("segment index ") << index << " out of range";
+  int64_t previous = -1;
+  for (auto name : segments->getAsRange<FlatSymbolRefAttr>()) {
+    auto segment = SymbolTable::lookupNearestSymbolFrom<ObjectFifoSegmentOp>(
+        pool, name.getAttr());
+    if (!segment) {
+      return op->emitOpError("references undefined segment '")
+             << name.getValue() << "' in pool '" << pool.getSymName() << "'";
     }
-    if (index <= previous) {
-      return op->emitOpError("segment indices must be strictly increasing");
+    // The endpoint's memref is one run of the object, and `dimensions` pairs
+    // with this list positionally.
+    if (static_cast<int64_t>(segment.getOffset()) <= previous) {
+      return op->emitOpError("segments must be named in increasing offset "
+                             "order");
     }
-    previous = index;
+    previous = segment.getOffset();
   }
   return success();
 }
@@ -770,22 +782,24 @@ ObjectFifoPoolOp lookupPool(Operation *op, StringRef name) {
 
 } // namespace
 
-/// The subset of `pool`'s segments `selected` names. Omission selects segment
-/// zero.
-static SmallVector<ObjectFifoSegmentAttr>
-selectSegments(ObjectFifoPoolOp pool,
-               std::optional<ArrayRef<int32_t>> selected) {
+/// The subset of `pool`'s segments `selected` names. Omission selects the
+/// pool's only segment.
+static std::vector<ObjectFifoSegmentOp>
+selectSegments(ObjectFifoPoolOp pool, std::optional<ArrayAttr> selected) {
   if (!pool) {
     return {};
   }
-  SmallVector<ObjectFifoSegmentAttr> all = pool.getSegmentAttrs();
+  std::vector<ObjectFifoSegmentOp> all = pool.getSegmentOps();
   if (!selected) {
-    return {all.front()};
+    return all.empty() ? std::vector<ObjectFifoSegmentOp>{}
+                       : std::vector<ObjectFifoSegmentOp>{all.front()};
   }
-  SmallVector<ObjectFifoSegmentAttr> chosen;
-  for (int32_t index : *selected) {
-    if (index >= 0 && index < (int32_t)all.size()) {
-      chosen.push_back(all[index]);
+  std::vector<ObjectFifoSegmentOp> chosen;
+  for (auto name : selected->getAsRange<FlatSymbolRefAttr>()) {
+    if (auto segment =
+            SymbolTable::lookupNearestSymbolFrom<ObjectFifoSegmentOp>(
+                pool, name.getAttr())) {
+      chosen.push_back(segment);
     }
   }
   return chosen;
@@ -799,7 +813,7 @@ ObjectFifoPoolOp ObjectFifoCoreEndpointOp::getPoolOp() {
   return lookupPool(*this, getPool());
 }
 
-SmallVector<ObjectFifoSegmentAttr>
+std::vector<ObjectFifoSegmentOp>
 ObjectFifoCoreEndpointOp::getSelectedSegments() {
   return selectSegments(getPoolOp(), getSegments());
 }
@@ -816,7 +830,7 @@ LogicalResult ObjectFifoCoreEndpointOp::verify() {
   // The core sees one memref, so the segments it selects have to be a single
   // run of the object.
   int64_t next = -1;
-  for (ObjectFifoSegmentAttr segment : getSelectedSegments()) {
+  for (ObjectFifoSegmentOp segment : getSelectedSegments()) {
     if (next >= 0 && segment.getOffset() != next) {
       return emitOpError("a core endpoint's segments must be contiguous");
     }
@@ -826,7 +840,7 @@ LogicalResult ObjectFifoCoreEndpointOp::verify() {
 }
 
 std::pair<int64_t, int64_t> ObjectFifoCoreEndpointOp::getExtent() {
-  SmallVector<ObjectFifoSegmentAttr> selected = getSelectedSegments();
+  std::vector<ObjectFifoSegmentOp> selected = getSelectedSegments();
   if (selected.empty()) {
     return {0, 0};
   }
@@ -853,7 +867,7 @@ ObjectFifoPoolOp ObjectFifoDmaEndpointOp::getPoolOp() {
   return lookupPool(*this, getPool());
 }
 
-SmallVector<ObjectFifoSegmentAttr>
+std::vector<ObjectFifoSegmentOp>
 ObjectFifoDmaEndpointOp::getSelectedSegments() {
   return selectSegments(getPoolOp(), getSegments());
 }
@@ -882,8 +896,8 @@ LogicalResult ObjectFifoDmaEndpointOp::verify() {
     return failure();
   }
 
-  std::optional<ArrayRef<int32_t>> segmentIndices = getSegments();
-  size_t selectedCount = segmentIndices ? segmentIndices->size() : 1;
+  std::optional<ArrayAttr> segmentNames = getSegments();
+  size_t selectedCount = segmentNames ? segmentNames->size() : 1;
   auto dimensions = getDimensions();
   if (dimensions && dimensions->size() != selectedCount) {
     return emitOpError("dimensions has ")
@@ -907,7 +921,7 @@ LogicalResult ObjectFifoDmaEndpointOp::verify() {
                        "entry");
   }
 
-  SmallVector<ObjectFifoSegmentAttr> selected = getSelectedSegments();
+  std::vector<ObjectFifoSegmentOp> selected = getSelectedSegments();
   for (size_t position = 0; position < selectedCount; ++position) {
     BDDimLayoutArrayAttr dims =
         dimensions ? (*dimensions)[position] : BDDimLayoutArrayAttr();
@@ -924,9 +938,9 @@ LogicalResult ObjectFifoDmaEndpointOp::verify() {
     if (dims && !dims.empty() &&
         getDimsMaxIdx(dims) >= selected[position].getSize()) {
       return emitOpError("dimensions entry ")
-             << position << " exceeds selected segment "
-             << segmentIndices.value_or(ArrayRef<int32_t>{0})[position]
-             << " of size " << selected[position].getSize();
+             << position << " exceeds selected segment '"
+             << selected[position].getSymName() << "' of size "
+             << selected[position].getSize();
     }
   }
   return success();

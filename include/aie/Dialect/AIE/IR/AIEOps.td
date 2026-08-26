@@ -2355,8 +2355,37 @@ def AIE_ObjectFifoLinkOp: AIE_Op<"objectfifo.link", [HasParent<"DeviceOp">]> {
   }];
 }
 
+def AIE_ObjectFifoSegmentOp
+    : AIE_Op<"objectfifo.segment", [HasParent<"ObjectFifoPoolOp">, Symbol]> {
+  let summary = "A slice of every buffer in a pool, and the locks guarding it";
+  let description = [{
+    Segments partition one object. Every buffer in the pool carries every
+    segment, so a segment names the same run of elements in each of them.
+
+    An endpoint names the segments it works, which is how one pool serves
+    several independent actors: each holds its own slice under its own locks.
+
+    `produceLock` and `consumeLock` are filled in by
+    `--aie-objectfifo-allocate`, which leaves alone whatever is already named.
+
+    Example:
+    ```
+      aie.objectfifo.segment @s0 {offset = 0 : i32, size = 16 : i32}
+    ```
+  }];
+
+  let arguments = (ins SymbolNameAttr:$sym_name, AIEI32Attr:$offset,
+      AIEI32Attr:$size, OptionalAttr<FlatSymbolRefAttr>:$produceLock,
+      OptionalAttr<FlatSymbolRefAttr>:$consumeLock);
+
+  let assemblyFormat = [{
+    $sym_name attr-dict
+  }];
+}
+
 def AIE_ObjectFifoPoolOp
-    : AIE_Op<"objectfifo.pool", [HasParent<"DeviceOp">, Symbol]> {
+    : AIE_Op<"objectfifo.pool", [HasParent<"DeviceOp">, Symbol, SymbolTable,
+                                 SingleBlock, NoTerminator]> {
   let summary = "A rotating set of buffers and the locks guarding them";
   let description = [{
     A set of buffers and the locks that guard how they are accessed.
@@ -2365,34 +2394,33 @@ def AIE_ObjectFifoPoolOp
     used in rotation, and each one is what an objectFifo calls an object, so
     `depth` is the fifo's object count.
 
-    `segments` divides a buffer into separately-guarded slices.
-    Every buffer is divided into the same set of segments.
-    An ordinary pool has one segment spanning the whole
-    buffer; a pool that several endpoints fill or drain independently has one
-    segment per participant.
+    The body holds one `aie.objectfifo.segment` per way the object is divided,
+    in increasing offset order, together covering it exactly. An ordinary pool
+    has one segment spanning the whole object; a pool that several endpoints
+    fill or drain independently has one per participant.
 
     On AIE1 a buffer is guarded by a single binary lock that rotates with it,
     with no way to guard part of a buffer; such a pool carries `locks`, one
     per buffer, and cannot be divided into more than one segment.
 
-    `buffers`, `locks` and the segments' lock references are filled in by
-    `--aie-objectfifo-allocate`, which leaves alone whatever is already named.
+    `buffers` and `locks` are filled in by `--aie-objectfifo-allocate`, which
+    leaves alone whatever is already named.
 
     Example:
     ```
       aie.objectfifo.pool @pool(%tile) {
         depth = 2 : i32,
-        buffers = [@buff_0, @buff_1],
-        segments = [#aie.objectfifo_segment<offset = 0, size = 16,
-                                            produceLock = @prod, consumeLock = @cons>]
-      } : memref<16xi32>
+        buffers = [@buff_0, @buff_1]
+      } : memref<16xi32> {
+        aie.objectfifo.segment @s0 {offset = 0 : i32, size = 16 : i32,
+                                    produceLock = @prod, consumeLock = @cons}
+      }
     ```
   }];
 
   let arguments = (ins SymbolNameAttr:$sym_name, Index:$tile, AIEI32Attr:$depth,
       TypeAttrOf<AnyMemRef>:$elemType,
       OptionalAttr<FlatSymbolRefArrayAttr>:$buffers,
-      OptionalAttr<ObjectFifoSegmentArrayAttr>:$segments,
       OptionalAttr<FlatSymbolRefArrayAttr>:$locks,
       // Senders replicate each object `repeatCount` times before moving on to
       // the next one. Receivers take and give back that many lock units at
@@ -2404,8 +2432,10 @@ def AIE_ObjectFifoPoolOp
       // Used to group ops lowered by the same ObjectFifo.
       OptionalAttr<StrAttr>:$fifoName, InitValuesArrayAttr:$initValues);
 
+  let regions = (region SizedRegion<1>:$segments);
+
   let assemblyFormat = [{
-    $sym_name `(` $tile `)` attr-dict `:` $elemType
+    $sym_name `(` $tile `)` attr-dict `:` $elemType $segments
   }];
 
   let hasVerifier = 1;
@@ -2420,9 +2450,8 @@ def AIE_ObjectFifoPoolOp
     /// Size of one object in bytes, under the closest data layout.
     int64_t getObjectSizeInBytes();
 
-    /// One entry per way the object is divided; a pool with no `segments` is
-    /// one whole object.
-    llvm::SmallVector<ObjectFifoSegmentAttr> getSegmentAttrs();
+    /// One entry per way the object is divided, in increasing offset order.
+    std::vector<ObjectFifoSegmentOp> getSegmentOps();
 
     /// The objects themselves, empty until --aie-objectfifo-allocate has run.
     /// Buffers registered against a shim end are aie.external_buffer.
@@ -2442,8 +2471,8 @@ def AIE_ObjectFifoCoreEndpointOp
   let summary = "What a core needs to fill or drain the next object in a pool";
   let description = [{
     Names the pool a core works through, whether it fills or drains it, and which
-    of the pool's segments it handles. Omitting `segments` selects segment zero
-    and is only valid for a single-segment pool.
+    of the pool's segments it handles. Omitting `segments` selects the pool's
+    only segment and is invalid for a multi-segment pool.
 
     A core's `aie.objectfifo.acquire` and `aie.objectfifo.release` refer to this op.
 
@@ -2459,7 +2488,7 @@ def AIE_ObjectFifoCoreEndpointOp
 
   let arguments = (ins SymbolNameAttr:$sym_name, Index:$tile,
       ObjectFifoRole:$role, FlatSymbolRefAttr:$pool,
-      OptionalAttr<DenseI32ArrayAttr>:$segments);
+      OptionalAttr<FlatSymbolRefArrayAttr>:$segments);
 
   let assemblyFormat = [{
     $sym_name `(` $tile `)` $role $pool attr-dict
@@ -2474,7 +2503,7 @@ def AIE_ObjectFifoCoreEndpointOp
     bool drains() { return getRole() == ObjectFifoRole::Drain; }
 
     /// Segments this endpoint is responsible for.
-    llvm::SmallVector<ObjectFifoSegmentAttr> getSelectedSegments();
+    std::vector<ObjectFifoSegmentOp> getSelectedSegments();
 
     /// The run of elements this endpoint's segments span, as an offset into
     /// the pool's object and a length.
@@ -2495,10 +2524,11 @@ def AIE_ObjectFifoDmaEndpointOp
   let description = [{
     Names the pool a DMA channel works through, whether it fills or drains it,
     which of the pool's segments it handles, and the channel itself. Omitting
-    `segments` selects segment zero and is only valid for a single-segment pool.
+    `segments` selects the pool's only segment and is invalid for a
+    multi-segment pool.
 
     `dimensions` and `padDimensions` are positional: entry N describes the
-    segment selected by `segments[N]`. When present, either attribute must have
+    segment named by `segments[N]`. When present, either attribute must have
     exactly as many entries as `segments`; an empty inner array means no
     transformation or padding for that segment.
 
@@ -2517,7 +2547,7 @@ def AIE_ObjectFifoDmaEndpointOp
 
   let arguments = (ins SymbolNameAttr:$sym_name, Index:$tile,
       ObjectFifoRole:$role, FlatSymbolRefAttr:$pool,
-      OptionalAttr<DenseI32ArrayAttr>:$segments,
+      OptionalAttr<FlatSymbolRefArrayAttr>:$segments,
       OptionalAttr<AIEI32Attr>:$channelIndex,
       OptionalAttr<BDDimLayoutArrayArrayAttr>:$dimensions,
       OptionalAttr<BDPadLayoutArrayArrayAttr>:$padDimensions,
@@ -2543,7 +2573,7 @@ def AIE_ObjectFifoDmaEndpointOp
     bool drains() { return getRole() == ObjectFifoRole::Drain; }
 
     /// Segments this endpoint is responsible for.
-    llvm::SmallVector<ObjectFifoSegmentAttr> getSelectedSegments();
+    std::vector<ObjectFifoSegmentOp> getSelectedSegments();
   }];
 }
 

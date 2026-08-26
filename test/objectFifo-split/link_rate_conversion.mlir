@@ -31,7 +31,8 @@ module @linear {
 }
 
 // CHECK-LABEL: module @linear
-// CHECK: aie.objectfifo.pool @wide_cons_pool(%{{.*}}) {{.*}}segments = [#aie.objectfifo_segment<offset = 0, size = 16>]{{.*}} : memref<16xi32>
+// CHECK: aie.objectfifo.pool @wide_cons_pool(%{{.*}}) {{.*}}{{.*}} : memref<16xi32>
+// CHECK: aie.objectfifo.segment @s0 {offset = 0 : i32, size = 16 : i32}
 // CHECK: aie.objectfifo.dma_endpoint @wide_cons_dma(%{{.*}}) fills @wide_cons_pool
 // CHECK: aie.objectfifo.dma_endpoint @narrow_prod_dma(%{{.*}}) drains @wide_cons_pool
 
@@ -61,7 +62,8 @@ module @dimensions {
 }
 
 // CHECK-LABEL: module @dimensions
-// CHECK: aie.objectfifo.pool @wide_cons_pool(%{{.*}}) {{.*}}segments = [#aie.objectfifo_segment<offset = 0, size = 160>]{{.*}} : memref<160xi32>
+// CHECK: aie.objectfifo.pool @wide_cons_pool(%{{.*}}) {{.*}}{{.*}} : memref<160xi32>
+// CHECK: aie.objectfifo.segment @s0 {offset = 0 : i32, size = 160 : i32}
 // CHECK: aie.objectfifo.dma_endpoint @narrow_prod_dma(%{{.*}}) drains @wide_cons_pool
 // CHECK-SAME: dimensions = #aie<bd_dim_layout_array_array
 // CHECK-SAME: <size = 4, stride = 40>

@@ -13,12 +13,13 @@
 module {
   aie.device(xcve2302) {
     %t = aie.tile(1, 2)
-    aie.objectfifo.pool @p(%t) {depth = 2 : i32,
-        segments = [#aie.objectfifo_segment<offset = 0, size = 16>,
-                    #aie.objectfifo_segment<offset = 16, size = 16>,
-                    #aie.objectfifo_segment<offset = 32, size = 16>]} : memref<48xi32>
+    aie.objectfifo.pool @p(%t) {depth = 2 : i32} : memref<48xi32> {
+      aie.objectfifo.segment @s0 {offset = 0 : i32, size = 16 : i32}
+      aie.objectfifo.segment @s1 {offset = 16 : i32, size = 16 : i32}
+      aie.objectfifo.segment @s2 {offset = 32 : i32, size = 16 : i32}
+    }
     // expected-error@+1 {{a core endpoint's segments must be contiguous}}
-    aie.objectfifo.core_endpoint @ends(%t) fills @p {segments = array<i32: 0, 2>}
+    aie.objectfifo.core_endpoint @ends(%t) fills @p {segments = [@s0, @s2]}
   }
 }
 
@@ -29,10 +30,11 @@ module {
 module {
   aie.device(xcve2302) {
     %t = aie.tile(1, 2)
-    aie.objectfifo.pool @p(%t) {depth = 2 : i32,
-        segments = [#aie.objectfifo_segment<offset = 0, size = 16>,
-                    #aie.objectfifo_segment<offset = 16, size = 16>,
-                    #aie.objectfifo_segment<offset = 32, size = 16>]} : memref<48xi32>
-    aie.objectfifo.core_endpoint @middle(%t) fills @p {segments = array<i32: 1, 2>}
+    aie.objectfifo.pool @p(%t) {depth = 2 : i32} : memref<48xi32> {
+      aie.objectfifo.segment @s0 {offset = 0 : i32, size = 16 : i32}
+      aie.objectfifo.segment @s1 {offset = 16 : i32, size = 16 : i32}
+      aie.objectfifo.segment @s2 {offset = 32 : i32, size = 16 : i32}
+    }
+    aie.objectfifo.core_endpoint @middle(%t) fills @p {segments = [@s1, @s2]}
   }
 }

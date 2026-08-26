@@ -49,11 +49,12 @@ A pool is a set of buffers and the contract for accessing them.
 
 ```mlir
 aie.objectfifo.pool @P(%tile) {
-  depth    = 2 : i32,
-  buffers  = [@P_buff_0, @P_buff_1],
-  segments = [#aie.objectfifo_segment<offset = 0,  size = 16, produceLock = @p0, consumeLock = @c0>,
-              #aie.objectfifo_segment<offset = 16, size = 20, produceLock = @p1, consumeLock = @c1>]
-} : memref<36xi32>
+  depth   = 2 : i32,
+  buffers = [@P_buff_0, @P_buff_1]
+} : memref<36xi32> {
+  aie.objectfifo.segment @s0 {offset = 0 : i32,  size = 16 : i32, produceLock = @p0, consumeLock = @c0}
+  aie.objectfifo.segment @s1 {offset = 16 : i32, size = 20 : i32, produceLock = @p1, consumeLock = @c1}
+}
 ```
 
 The tile is where the buffers live and `depth` is how many of them rotate.
@@ -122,11 +123,11 @@ several fillers is a join; one with several drainers is a distribute.
 #### Selecting segments
 
 `segments` picks which of the pool's segments an actor handles. Indices are
-strictly increasing. Omitting the attribute selects segment zero, and is valid
-on a single-segment pool.
+strictly increasing. Omitting the attribute selects the pool's only segment, and is
+invalid on a multi-segment pool.
 
 ```mlir
-aie.objectfifo.dma_endpoint @d(%tile) fills @P {segments = array<i32: 0, 1>}
+aie.objectfifo.dma_endpoint @d(%tile) fills @P {segments = [@s0, @s1]}
 // Results in a DMA program that accesses the first two segments of buffers in @P.
 ```
 
@@ -209,7 +210,9 @@ one pool with two core endpoints:
 
 ```mlir
 aie.objectfifo.pool @smem(%t02) {depth = 4 : i32,
-    segments = [#aie.objectfifo_segment<offset = 0, size = 16>]} : memref<16xi32>
+    } : memref<16xi32> {
+      aie.objectfifo.segment @s0 {offset = 0 : i32, size = 16 : i32}
+    }
 aie.objectfifo.core_endpoint @prod(%t02) fills  @smem
 aie.objectfifo.core_endpoint @cons(%t03) drains @smem
 ```
@@ -233,12 +236,14 @@ granularity. The pool keeps one segment.
 ```mlir
 aie.objectfifo.pool @out_pool(%t21) {
   depth = 2 : i32,
-  segments = [#aie.objectfifo_segment<offset = 0,  size = 16>,
-              #aie.objectfifo_segment<offset = 16, size = 32>]} : memref<48xi32>
+  } : memref<48xi32> {
+  aie.objectfifo.segment @s0 {offset = 0 : i32,  size = 16 : i32}
+  aie.objectfifo.segment @s1 {offset = 16 : i32, size = 32 : i32}
+}
 
-aie.objectfifo.dma_endpoint @fill_0(%t21)    fills  @out_pool {segments = array<i32: 0>}
-aie.objectfifo.dma_endpoint @fill_1(%t21)    fills  @out_pool {segments = array<i32: 1>}
-aie.objectfifo.dma_endpoint @drain_all(%t21) drains @out_pool {segments = array<i32: 0, 1>}
+aie.objectfifo.dma_endpoint @fill_0(%t21)    fills  @out_pool {segments = [@s0]}
+aie.objectfifo.dma_endpoint @fill_1(%t21)    fills  @out_pool {segments = [@s1]}
+aie.objectfifo.dma_endpoint @drain_all(%t21) drains @out_pool {segments = [@s0, @s1]}
 ```
 
 Two DMAs fill different segments of one pool, each ordered by its own locks, and
@@ -276,11 +281,15 @@ aie.objectfifo @of1 (%tile02, {%tile25}, 2 : i32) : !aie.objectfifo<memref<16xi3
 
 // after
 aie.objectfifo.pool @of1_pool(%tile_0_2) {depth = 2 : i32, fifoName = "of1",
-    segments = [#aie.objectfifo_segment<offset = 0, size = 16>]} : memref<16xi32>
+    } : memref<16xi32> {
+      aie.objectfifo.segment @s0 {offset = 0 : i32, size = 16 : i32}
+    }
 aie.objectfifo.core_endpoint @of1_prod(%tile_0_2) fills @of1_pool
 aie.objectfifo.dma_endpoint @of1_prod_dma(%tile_0_2) drains @of1_pool {fifoName = "of1"}
 aie.objectfifo.pool @of1_cons_pool(%tile_2_5) {depth = 2 : i32, fifoName = "of1",
-    segments = [#aie.objectfifo_segment<offset = 0, size = 16>]} : memref<16xi32>
+    } : memref<16xi32> {
+      aie.objectfifo.segment @s0 {offset = 0 : i32, size = 16 : i32}
+    }
 aie.objectfifo.core_endpoint @of1_cons(%tile_2_5) drains @of1_cons_pool
 aie.objectfifo.dma_endpoint @of1_cons_dma(%tile_2_5) fills @of1_cons_pool {fifoName = "of1"}
 aie.route from @of1_prod_dma to [@of1_cons_dma]
@@ -313,9 +322,11 @@ shim allocations.
 
 aie.objectfifo.pool @of1_pool(%tile_0_2) {
     depth = 2 : i32, fifoName = "of1",
-    buffers = [@of1_buff_0, @of1_buff_1],
-    segments = [#aie.objectfifo_segment<offset = 0, size = 16,
-                 produceLock = @of1_prod_lock_0, consumeLock = @of1_cons_lock_0>]} : memref<16xi32>
+    buffers = [@of1_buff_0, @of1_buff_1]
+} : memref<16xi32> {
+    aie.objectfifo.segment @s0 {offset = 0 : i32, size = 16 : i32,
+        produceLock = @of1_prod_lock_0, consumeLock = @of1_cons_lock_0}
+}
 // Note the set buffer and lock attributes.
 aie.objectfifo.dma_endpoint @of1_prod_dma(%tile_0_2) drains @of1_pool {channelIndex = 0 : i32, fifoName = "of1"}
 aie.flow(%tile_0_2, DMA : 0, %tile_2_5, DMA : 0)
@@ -381,11 +392,13 @@ Pools:
 - `buffers` and `locks`, when present, have `depth` entries
 - the lock kind matches the device: binary locks in `locks`, counting locks on segments
 - more than one segment requires semaphore locks
+- segments tile the object: increasing offsets, no gaps or overlaps, covering it exactly
 
 Endpoints:
 
 - the named pool exists
-- segment indices are in range and strictly increasing, and there is at least one
+- segment names resolve inside the pool and are in increasing offset order, and
+  there is at least one
 - omitting `segments` is valid on a single-segment pool
 - a core endpoint's segments are contiguous
 - `dimensions` and `padDimensions` have one entry per selected segment, with matching ranks, within segment bounds
@@ -400,7 +413,6 @@ Flows and core accesses:
 
 ### By `--aie-objectfifo-verify`
 
-- a pool's segments do not overlap and cover the element type exactly
 - each segment has one filling and one draining endpoint. A filler may be absent
   when lock initializers mark the objects as starting full, and a pool over
   external buffers has a host-side actor with no op

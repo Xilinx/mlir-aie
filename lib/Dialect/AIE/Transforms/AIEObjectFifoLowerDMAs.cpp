@@ -104,8 +104,7 @@ struct AIEObjectFifoLowerDMAsPass
   /// each object the slices this endpoint is responsible for.
   SmallVector<Descriptor> descriptorsFor(ObjectFifoDmaEndpointOp endpoint,
                                          ArrayRef<Value> buffers, bool drains) {
-    SmallVector<ObjectFifoSegmentAttr> segments =
-        endpoint.getSelectedSegments();
+    std::vector<ObjectFifoSegmentOp> segments = endpoint.getSelectedSegments();
     SmallVector<BDDimLayoutArrayAttr> dimensions;
     if (auto allDimensions = endpoint.getDimensions()) {
       llvm::append_range(dimensions, *allDimensions);
@@ -124,8 +123,10 @@ struct AIEObjectFifoLowerDMAsPass
                                           : BDDimLayoutArrayAttr(),
              position < padding.size() ? padding[position]
                                        : BDPadLayoutArrayAttr(),
-             drains ? segment.getConsumeLock() : segment.getProduceLock(),
-             drains ? segment.getProduceLock() : segment.getConsumeLock(),
+             drains ? segment.getConsumeLockAttr()
+                    : segment.getProduceLockAttr(),
+             drains ? segment.getProduceLockAttr()
+                    : segment.getConsumeLockAttr(),
              static_cast<int64_t>(index)});
       }
     }

@@ -31,25 +31,6 @@ struct AIEObjectFifoVerifyPass
     : public xilinx::AIE::impl::AIEObjectFifoVerifyBase<
           AIEObjectFifoVerifyPass> {
 
-  /// Segments must tile the element type: a gap has no filler, and an overlap
-  /// gives two actors the same bytes under different locks.
-  LogicalResult verifyCoverage(ObjectFifoPoolOp pool) {
-    int64_t expected = 0;
-    for (ObjectFifoSegmentAttr segment : pool.getSegmentAttrs()) {
-      if (static_cast<int64_t>(segment.getOffset()) != expected) {
-        return pool.emitOpError("segments must be contiguous, but segment at "
-                                "offset ")
-               << segment.getOffset() << " follows " << expected;
-      }
-      expected += segment.getSize();
-    }
-    if (expected != pool.getObjectSize()) {
-      return pool.emitOpError("segments cover ")
-             << expected << " of " << pool.getObjectSize() << " elements";
-    }
-    return success();
-  }
-
   /// Every segment needs an actor at each end, so that what one writes another
   /// reads. A segment may go unfilled when the pool's objects start full.
   LogicalResult verifyActors(ObjectFifoPoolOp pool,
@@ -163,10 +144,7 @@ struct AIEObjectFifoVerifyPass
 
     DenseMap<Operation *, SmallVector<SegmentActors>> actorsPerPool;
     for (auto pool : device.getOps<ObjectFifoPoolOp>()) {
-      if (failed(verifyCoverage(pool))) {
-        return signalPassFailure();
-      }
-      actorsPerPool[pool].resize(pool.getSegmentAttrs().size());
+      actorsPerPool[pool].resize(pool.getSegmentOps().size());
     }
 
     auto record = [&](auto endpoint) {
@@ -175,8 +153,8 @@ struct AIEObjectFifoVerifyPass
         return;
       }
       auto &actors = actorsPerPool[pool];
-      SmallVector<ObjectFifoSegmentAttr> all = pool.getSegmentAttrs();
-      for (ObjectFifoSegmentAttr segment : endpoint.getSelectedSegments()) {
+      std::vector<ObjectFifoSegmentOp> all = pool.getSegmentOps();
+      for (ObjectFifoSegmentOp segment : endpoint.getSelectedSegments()) {
         size_t index = llvm::find(all, segment) - all.begin();
         (endpoint.drains() ? actors[index].drainers : actors[index].fillers)
             .push_back(endpoint);

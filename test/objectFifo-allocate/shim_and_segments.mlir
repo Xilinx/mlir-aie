@@ -15,11 +15,12 @@ module @shim_and_segments {
 
     // Two participants writing one object need a lock pair each.
     aie.objectfifo.pool @in_pool(%memtile) {
-      depth = 2 : i32,
-      segments = [#aie.objectfifo_segment<offset = 0, size = 16>,
-                  #aie.objectfifo_segment<offset = 16, size = 32>]
-    } : memref<48xi32>
-    aie.objectfifo.dma_endpoint @in_dma(%memtile) fills @in_pool {segments = array<i32: 0, 1>}
+      depth = 2 : i32
+    } : memref<48xi32> {
+      aie.objectfifo.segment @s0 {offset = 0 : i32, size = 16 : i32}
+      aie.objectfifo.segment @s1 {offset = 16 : i32, size = 32 : i32}
+    }
+    aie.objectfifo.dma_endpoint @in_dma(%memtile) fills @in_pool {segments = [@s0, @s1]}
 
     aie.route from @in_shim to [@in_dma]
   }

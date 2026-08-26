@@ -191,16 +191,8 @@ struct AIEObjectFifoAllocatePass
       return;
     }
 
-    auto segments = pool.getSegments();
-    if (!segments) {
-      return;
-    }
-
-    SmallVector<Attribute> updated;
-    for (auto [index, segment] :
-         llvm::enumerate(segments->getAsRange<ObjectFifoSegmentAttr>())) {
+    for (auto [index, segment] : llvm::enumerate(pool.getSegmentOps())) {
       if (segment.getProduceLock() && segment.getConsumeLock()) {
-        updated.push_back(segment);
         continue;
       }
       std::string produce =
@@ -209,12 +201,11 @@ struct AIEObjectFifoAllocatePass
           (base + "_cons_lock_" + std::to_string(index)).str();
       createLock(pool, produce, (depth - filled) * repeat);
       createLock(pool, consume, filled * repeat);
-      updated.push_back(ObjectFifoSegmentAttr::get(
-          builder.getContext(), segment.getOffset(), segment.getSize(),
-          FlatSymbolRefAttr::get(builder.getContext(), produce),
-          FlatSymbolRefAttr::get(builder.getContext(), consume)));
+      segment.setProduceLockAttr(
+          FlatSymbolRefAttr::get(builder.getContext(), produce));
+      segment.setConsumeLockAttr(
+          FlatSymbolRefAttr::get(builder.getContext(), consume));
     }
-    pool.setSegmentsAttr(builder.getArrayAttr(updated));
   }
 
   /// A pool whose buffers spilled onto a neighbor can only be reached by the

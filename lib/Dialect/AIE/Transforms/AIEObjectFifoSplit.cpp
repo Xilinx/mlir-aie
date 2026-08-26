@@ -172,36 +172,58 @@ struct AIEObjectFifoSplitPass
   DeviceOp device;
   OpBuilder builder{static_cast<MLIRContext *>(nullptr)};
 
+  /// Fill `pool`'s body with one segment per extent, named for its position.
+  void createSegments(ObjectFifoPoolOp pool, Location loc,
+                      ArrayRef<std::pair<int64_t, int64_t>> extents) {
+    OpBuilder::InsertionGuard guard(builder);
+    builder.createBlock(&pool.getSegments());
+    for (auto [index, extent] : llvm::enumerate(extents)) {
+      ObjectFifoSegmentOp::create(
+          builder, loc, builder.getStringAttr("s" + std::to_string(index)),
+          builder.getI32IntegerAttr(extent.first),
+          builder.getI32IntegerAttr(extent.second),
+          /*produceLock=*/FlatSymbolRefAttr(),
+          /*consumeLock=*/FlatSymbolRefAttr());
+    }
+  }
+
+  /// The names `ref` selects, for an endpoint that works only part of a pool.
+  ArrayAttr selectedSegmentNames(PoolRef ref) {
+    std::vector<ObjectFifoSegmentOp> all = ref.pool.getSegmentOps();
+    if (all.size() <= 1) {
+      return {};
+    }
+    SmallVector<Attribute> names;
+    for (int32_t index : ref.segments) {
+      names.push_back(FlatSymbolRefAttr::get(builder.getContext(),
+                                             all[index].getSymName()));
+    }
+    return builder.getArrayAttr(names);
+  }
+
   ObjectFifoPoolOp createPool(Location loc, StringRef name, Value tile,
                               int depth, MemRefType elemType,
                               ObjectFifoCreateOp from,
                               ArrayRef<std::pair<int64_t, int64_t>> extents,
                               bool holdsInitialContents,
                               std::optional<int> repeatCount) {
-    SmallVector<Attribute> segments;
-    for (auto [offset, size] : extents) {
-      segments.push_back(ObjectFifoSegmentAttr::get(
-          builder.getContext(), offset, size, nullptr, nullptr));
-    }
-
-    return ObjectFifoPoolOp::create(
+    auto pool = ObjectFifoPoolOp::create(
         builder, loc, name, tile, depth, elemType, /*buffers=*/ArrayAttr(),
-        builder.getArrayAttr(segments), /*locks=*/ArrayAttr(),
+        /*locks=*/ArrayAttr(),
         repeatCount ? builder.getI32IntegerAttr(*repeatCount) : IntegerAttr(),
         from.getDisableSynchronization(),
         builder.getStringAttr(from.name().getValue()),
         holdsInitialContents ? from.getInitValuesAttr() : ArrayAttr());
+    createSegments(pool, loc, extents);
+    return pool;
   }
 
   ObjectFifoCoreEndpointOp createCoreEndpoint(Location loc, StringRef name,
                                               Value tile, PoolRef ref,
                                               ObjectFifoRole role) {
-    DenseI32ArrayAttr segments;
-    if (ref.pool.getSegmentAttrs().size() > 1) {
-      segments = builder.getDenseI32ArrayAttr(ref.segments);
-    }
     return ObjectFifoCoreEndpointOp::create(builder, loc, name, tile, role,
-                                            ref.pool.getSymName(), segments);
+                                            ref.pool.getSymName(),
+                                            selectedSegmentNames(ref));
   }
 
   ObjectFifoDmaEndpointOp createDmaEndpoint(Location loc, StringRef name,
@@ -219,10 +241,7 @@ struct AIEObjectFifoSplitPass
                       ? *fifoIterations
                       : *fifoIterations * from.getRepeatCount().value_or(1);
     }
-    DenseI32ArrayAttr segments;
-    if (ref.pool.getSegmentAttrs().size() > 1) {
-      segments = builder.getDenseI32ArrayAttr(ref.segments);
-    }
+    ArrayAttr segments = selectedSegmentNames(ref);
 
     BDDimLayoutArrayArrayAttr dimensions;
     if (dims && !dims.empty()) {
@@ -292,13 +311,11 @@ struct AIEObjectFifoSplitPass
     auto pool = ObjectFifoPoolOp::create(
         builder, fifo.getLoc(), name, tile, (int)names.size(), elemType,
         builder.getArrayAttr(names),
-        builder.getArrayAttr({ObjectFifoSegmentAttr::get(
-            builder.getContext(), 0, elemType.getNumElements(), nullptr,
-            nullptr)}),
         /*locks=*/ArrayAttr(), /*repeatCount=*/IntegerAttr(),
         fifo.getDisableSynchronization(),
         builder.getStringAttr(fifo.name().getValue()),
         /*initValues=*/ArrayAttr());
+    createSegments(pool, fifo.getLoc(), {{0, elemType.getNumElements()}});
     return PoolRef{pool, {0}};
   }
 

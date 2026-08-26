@@ -15,14 +15,18 @@ module @complete {
     %tile33 = aie.tile(3, 3)
 
     aie.objectfifo.pool @prod_pool(%tile12) {
-      depth = 2 : i32, segments = [#aie.objectfifo_segment<offset = 0, size = 16>]
-    } : memref<16xi32>
+      depth = 2 : i32
+    } : memref<16xi32> {
+      aie.objectfifo.segment @s0 {offset = 0 : i32, size = 16 : i32}
+    }
     aie.objectfifo.core_endpoint @prod_core(%tile12) fills @prod_pool
     aie.objectfifo.dma_endpoint @prod_dma(%tile12) drains @prod_pool
 
     aie.objectfifo.pool @cons_pool(%tile33) {
-      depth = 2 : i32, segments = [#aie.objectfifo_segment<offset = 0, size = 16>]
-    } : memref<16xi32>
+      depth = 2 : i32
+    } : memref<16xi32> {
+      aie.objectfifo.segment @s0 {offset = 0 : i32, size = 16 : i32}
+    }
     aie.objectfifo.dma_endpoint @cons_dma(%tile33) fills @cons_pool
     aie.objectfifo.core_endpoint @cons_core(%tile33) drains @cons_pool
 

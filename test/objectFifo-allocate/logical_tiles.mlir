@@ -17,9 +17,13 @@ module {
     %shim = aie.logical_tile<ShimNOCTile>(?, ?)
     %mem = aie.logical_tile<MemTile>(?, ?)
 
-    aie.objectfifo.pool @p(%mem) {depth = 2 : i32, segments = [#aie.objectfifo_segment<offset = 0, size = 16>]} : memref<16xi32>
+    aie.objectfifo.pool @p(%mem) {depth = 2 : i32} : memref<16xi32> {
+      aie.objectfifo.segment @s0 {offset = 0 : i32, size = 16 : i32}
+    }
     // A shim end's objects live in DDR; the pool names none of its own.
-    aie.objectfifo.pool @shim_p(%shim) {depth = 2 : i32, segments = [#aie.objectfifo_segment<offset = 0, size = 16>]} : memref<16xi32>
+    aie.objectfifo.pool @shim_p(%shim) {depth = 2 : i32} : memref<16xi32> {
+      aie.objectfifo.segment @s0 {offset = 0 : i32, size = 16 : i32}
+    }
     aie.objectfifo.dma_endpoint @src(%shim) drains @shim_p {fifoName = "of"}
     aie.objectfifo.dma_endpoint @dst(%mem) fills @p {fifoName = "of"}
     aie.route from @src to [@dst]

@@ -12,14 +12,16 @@ module @erase {
     %b0 = aie.buffer(%tile12) {sym_name = "b0"} : memref<16xi32>
 
     aie.objectfifo.pool @spent(%tile12) {
-      depth = 1 : i32, buffers = [@b0],
-      segments = [#aie.objectfifo_segment<offset = 0, size = 16>]
-    } : memref<16xi32>
+      depth = 1 : i32, buffers = [@b0]
+    } : memref<16xi32> {
+      aie.objectfifo.segment @s0 {offset = 0 : i32, size = 16 : i32}
+    }
 
     aie.objectfifo.pool @live(%tile12) {
-      depth = 1 : i32, buffers = [@b0],
-      segments = [#aie.objectfifo_segment<offset = 0, size = 16>]
-    } : memref<16xi32>
+      depth = 1 : i32, buffers = [@b0]
+    } : memref<16xi32> {
+      aie.objectfifo.segment @s0 {offset = 0 : i32, size = 16 : i32}
+    }
     aie.objectfifo.core_endpoint @reader(%tile12) drains @live
   }
 }

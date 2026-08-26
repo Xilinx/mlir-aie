@@ -18,21 +18,20 @@ module @segments {
     %u1 = aie.lock(%memtile) {init = 0 : i32, sym_name = "u1"}
 
     aie.objectfifo.pool @pool(%memtile) {
-      depth = 2 : i32, buffers = [@b0, @b1],
-      segments = [#aie.objectfifo_segment<offset = 0, size = 16,
-                                          produceLock = @f0, consumeLock = @u0>,
-                  #aie.objectfifo_segment<offset = 16, size = 32,
-                                          produceLock = @f1, consumeLock = @u1>]
-    } : memref<48xi32>
+      depth = 2 : i32, buffers = [@b0, @b1]
+    } : memref<48xi32> {
+      aie.objectfifo.segment @s0 {consumeLock = @u0, offset = 0 : i32, produceLock = @f0, size = 16 : i32}
+      aie.objectfifo.segment @s1 {consumeLock = @u1, offset = 16 : i32, produceLock = @f1, size = 32 : i32}
+    }
 
     // The gathering end fills one slice of every object.
     aie.objectfifo.dma_endpoint @part(%memtile) fills @pool {
-      channelIndex = 0 : i32, segments = array<i32: 1>
+      channelIndex = 0 : i32, segments = [@s1]
     }
 
     // The forwarding end drains all of them.
     aie.objectfifo.dma_endpoint @whole(%memtile) drains @pool {
-      channelIndex = 0 : i32, segments = array<i32: 0, 1>
+      channelIndex = 0 : i32, segments = [@s0, @s1]
     }
   }
 }

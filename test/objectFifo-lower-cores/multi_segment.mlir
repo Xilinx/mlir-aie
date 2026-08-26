@@ -17,13 +17,12 @@ module @multi_segment {
     %u1 = aie.lock(%tile12) {init = 0 : i32, sym_name = "u1"}
 
     aie.objectfifo.pool @pool(%tile12) {
-      depth = 1 : i32, buffers = [@b0],
-      segments = [#aie.objectfifo_segment<offset = 0, size = 16,
-                                          produceLock = @f0, consumeLock = @u0>,
-                  #aie.objectfifo_segment<offset = 16, size = 32,
-                                          produceLock = @f1, consumeLock = @u1>]
-    } : memref<48xi32>
-    aie.objectfifo.core_endpoint @reader(%tile12) drains @pool {segments = array<i32: 0, 1>}
+      depth = 1 : i32, buffers = [@b0]
+    } : memref<48xi32> {
+      aie.objectfifo.segment @s0 {consumeLock = @u0, offset = 0 : i32, produceLock = @f0, size = 16 : i32}
+      aie.objectfifo.segment @s1 {consumeLock = @u1, offset = 16 : i32, produceLock = @f1, size = 32 : i32}
+    }
+    aie.objectfifo.core_endpoint @reader(%tile12) drains @pool {segments = [@s0, @s1]}
 
     %core = aie.core(%tile12) {
       %e = aie.objectfifo.acquire @reader (1) : memref<48xi32>

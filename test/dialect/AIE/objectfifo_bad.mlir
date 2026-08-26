@@ -96,8 +96,9 @@ aie.device(npu1) {
   %shim0 = aie.tile(0, 0)
   %shim1 = aie.tile(1, 0)
 
-  aie.objectfifo.pool @p(%tile02) {depth = 2 : i32,
-      segments = [#aie.objectfifo_segment<offset = 0, size = 16>]} : memref<16xi32>
+  aie.objectfifo.pool @p(%tile02) {depth = 2 : i32} : memref<16xi32> {
+    aie.objectfifo.segment @s0 {offset = 0 : i32, size = 16 : i32}
+  }
   aie.objectfifo.core_endpoint @fill(%tile02) fills @p
   aie.objectfifo.dma_endpoint @drain(%tile02) drains @p
 

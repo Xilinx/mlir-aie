@@ -13,9 +13,10 @@ module @input {
     %shim = aie.tile(2, 0)
     %tile = aie.tile(2, 2)
     %buffer = aie.external_buffer {sym_name = "buffer"} : memref<32xi32>
-    aie.objectfifo.pool @pool(%shim) {depth = 1 : i32, buffers = [@buffer],
-      segments = [#aie.objectfifo_segment<offset = 0, size = 32>]}
-      : memref<32xi32>
+    aie.objectfifo.pool @pool(%shim) {depth = 1 : i32, buffers = [@buffer]}
+      : memref<32xi32> {
+      aie.objectfifo.segment @s0 {offset = 0 : i32, size = 32 : i32}
+    }
     aie.objectfifo.dma_endpoint @dma(%shim) drains @pool
     aie.route_endpoint @sink(%tile) Core {channelIndex = 0 : i32}
     aie.route from @dma to [@sink]
@@ -30,9 +31,10 @@ module @output {
     %shim = aie.tile(2, 0)
     %tile = aie.tile(2, 2)
     %buffer = aie.external_buffer {sym_name = "buffer"} : memref<32xi32>
-    aie.objectfifo.pool @pool(%shim) {depth = 1 : i32, buffers = [@buffer],
-      segments = [#aie.objectfifo_segment<offset = 0, size = 32>]}
-      : memref<32xi32>
+    aie.objectfifo.pool @pool(%shim) {depth = 1 : i32, buffers = [@buffer]}
+      : memref<32xi32> {
+      aie.objectfifo.segment @s0 {offset = 0 : i32, size = 32 : i32}
+    }
     aie.objectfifo.dma_endpoint @dma(%shim) fills @pool
     aie.route_endpoint @source(%tile) Core {channelIndex = 0 : i32}
     aie.route from @source to [@dma]
@@ -47,8 +49,9 @@ module @no_device_actor {
     %shim = aie.tile(2, 0)
     %buffer = aie.external_buffer {sym_name = "buffer"} : memref<32xi32>
     // expected-error@+1 {{segment 0 has no drainer}}
-    aie.objectfifo.pool @pool(%shim) {depth = 1 : i32, buffers = [@buffer],
-      segments = [#aie.objectfifo_segment<offset = 0, size = 32>]}
-      : memref<32xi32>
+    aie.objectfifo.pool @pool(%shim) {depth = 1 : i32, buffers = [@buffer]}
+      : memref<32xi32> {
+      aie.objectfifo.segment @s0 {offset = 0 : i32, size = 32 : i32}
+    }
   }
 }

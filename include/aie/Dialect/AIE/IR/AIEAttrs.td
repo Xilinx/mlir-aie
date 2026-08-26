@@ -252,22 +252,6 @@ def ObjectFifoRole
   let cppNamespace = "xilinx::AIE";
 }
 
-def ObjectFifoSegmentAttr : AttrDef<AIE_Dialect, "ObjectFifoSegment", []> {
-  let mnemonic = "objectfifo_segment";
-  let summary = [{
-    A slice of every buffer in an objectFifo pool, and the locks guarding it.
-  }];
-
-  let parameters = (ins "uint32_t":$offset, "uint32_t":$size,
-      OptionalParameter<"mlir::FlatSymbolRefAttr">:$produceLock,
-      OptionalParameter<"mlir::FlatSymbolRefAttr">:$consumeLock);
-
-  let assemblyFormat = "`<` struct(params) `>`";
-}
-
-def ObjectFifoSegmentArrayAttr
-    : TypedArrayAttrBase<ObjectFifoSegmentAttr, "array of objectFifo segments">;
-
 //===----------------------------------------------------------------------===//
 // Generated AIE event enumerations
 //===----------------------------------------------------------------------===//

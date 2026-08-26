@@ -7,12 +7,13 @@
 module @gap {
   aie.device(xcve2302) {
     %tile12 = aie.tile(1, 2)
-    // expected-error@+1 {{segments must be contiguous, but segment at offset 20 follows 16}}
     aie.objectfifo.pool @p(%tile12) {
-      depth = 2 : i32,
-      segments = [#aie.objectfifo_segment<offset = 0, size = 16>,
-                  #aie.objectfifo_segment<offset = 20, size = 12>]
-    } : memref<32xi32>
+      depth = 2 : i32
+    } : memref<32xi32> {
+      aie.objectfifo.segment @s0 {offset = 0 : i32, size = 16 : i32}
+      // expected-error@+1 {{leaves a gap or overlaps the segment before it}}
+      aie.objectfifo.segment @s1 {offset = 20 : i32, size = 12 : i32}
+    }
   }
 }
 
@@ -24,8 +25,10 @@ module @short {
     %tile12 = aie.tile(1, 2)
     // expected-error@+1 {{segments cover 16 of 32 elements}}
     aie.objectfifo.pool @p(%tile12) {
-      depth = 2 : i32, segments = [#aie.objectfifo_segment<offset = 0, size = 16>]
-    } : memref<32xi32>
+      depth = 2 : i32
+    } : memref<32xi32> {
+      aie.objectfifo.segment @s0 {offset = 0 : i32, size = 16 : i32}
+    }
   }
 }
 
@@ -37,8 +40,10 @@ module @no_drainer {
     %tile12 = aie.tile(1, 2)
     // expected-error@+1 {{segment 0 has no drainer}}
     aie.objectfifo.pool @p(%tile12) {
-      depth = 2 : i32, segments = [#aie.objectfifo_segment<offset = 0, size = 16>]
-    } : memref<16xi32>
+      depth = 2 : i32
+    } : memref<16xi32> {
+      aie.objectfifo.segment @s0 {offset = 0 : i32, size = 16 : i32}
+    }
     aie.objectfifo.core_endpoint @c(%tile12) fills @p
   }
 }
@@ -52,8 +57,10 @@ module @two_fillers {
     %tile13 = aie.tile(1, 3)
     // expected-error@+1 {{segment 0 is filled by more than one endpoint}}
     aie.objectfifo.pool @p(%tile12) {
-      depth = 2 : i32, segments = [#aie.objectfifo_segment<offset = 0, size = 16>]
-    } : memref<16xi32>
+      depth = 2 : i32
+    } : memref<16xi32> {
+      aie.objectfifo.segment @s0 {offset = 0 : i32, size = 16 : i32}
+    }
     aie.objectfifo.core_endpoint @c0(%tile12) fills @p
     aie.objectfifo.core_endpoint @c1(%tile13) fills @p
     aie.objectfifo.core_endpoint @c2(%tile13) drains @p
@@ -67,8 +74,10 @@ module @unconnected {
   aie.device(xcve2302) {
     %tile12 = aie.tile(1, 2)
     aie.objectfifo.pool @p(%tile12) {
-      depth = 2 : i32, segments = [#aie.objectfifo_segment<offset = 0, size = 16>]
-    } : memref<16xi32>
+      depth = 2 : i32
+    } : memref<16xi32> {
+      aie.objectfifo.segment @s0 {offset = 0 : i32, size = 16 : i32}
+    }
     aie.objectfifo.core_endpoint @c(%tile12) fills @p
     // expected-error@+1 {{is not connected by any flow}}
     aie.objectfifo.dma_endpoint @d(%tile12) drains @p

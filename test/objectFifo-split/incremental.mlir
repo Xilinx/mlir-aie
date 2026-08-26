@@ -13,8 +13,10 @@ module @incremental {
     %tile33 = aie.tile(3, 3)
 
     aie.objectfifo.pool @done_pool(%tile12) {
-      depth = 2 : i32, segments = [#aie.objectfifo_segment<offset = 0, size = 16>]
-    } : memref<16xi32>
+      depth = 2 : i32
+    } : memref<16xi32> {
+      aie.objectfifo.segment @s0 {offset = 0 : i32, size = 16 : i32}
+    }
     aie.objectfifo.core_endpoint @done_prod(%tile12) fills @done_pool
     aie.objectfifo.core_endpoint @done_cons(%tile13) drains @done_pool
 
@@ -26,7 +28,8 @@ module @incremental {
 // CHECK:   aie.objectfifo.pool @done_pool
 // CHECK:   aie.objectfifo.core_endpoint @done_prod
 // CHECK:   aie.objectfifo.core_endpoint @done_cons
-// CHECK:   aie.objectfifo.pool @fresh_pool({{.*}}) {depth = 2 : i32, fifoName = "fresh", segments = [#aie.objectfifo_segment<offset = 0, size = 8>]} : memref<8xi32>
+// CHECK:   aie.objectfifo.pool @fresh_pool({{.*}}) {depth = 2 : i32, fifoName = "fresh"} : memref<8xi32>
+// CHECK: aie.objectfifo.segment @s0 {offset = 0 : i32, size = 8 : i32}
 // CHECK:   aie.objectfifo.dma_endpoint @fresh_prod_dma({{.*}}) drains @fresh_pool
 // CHECK:   aie.objectfifo.pool @fresh_cons_pool
 // CHECK:   aie.objectfifo.dma_endpoint @fresh_cons_dma({{.*}}) fills @fresh_cons_pool

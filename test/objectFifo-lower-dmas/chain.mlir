@@ -20,10 +20,10 @@ module @chain {
     %full = aie.lock(%tile12) {init = 0 : i32, sym_name = "full"}
 
     aie.objectfifo.pool @prod_pool(%tile12) {
-      depth = 2 : i32, buffers = [@b0, @b1],
-      segments = [#aie.objectfifo_segment<offset = 0, size = 16,
-                                          produceLock = @free, consumeLock = @full>]
-    } : memref<16xi32>
+      depth = 2 : i32, buffers = [@b0, @b1]
+    } : memref<16xi32> {
+      aie.objectfifo.segment @s0 {consumeLock = @full, offset = 0 : i32, produceLock = @free, size = 16 : i32}
+    }
     aie.objectfifo.dma_endpoint @prod_dma(%tile12) drains @prod_pool {
       channelIndex = 0 : i32
     }
@@ -33,10 +33,10 @@ module @chain {
     %cfull = aie.lock(%tile33) {init = 0 : i32, sym_name = "cfull"}
 
     aie.objectfifo.pool @cons_pool(%tile33) {
-      depth = 1 : i32, buffers = [@c0],
-      segments = [#aie.objectfifo_segment<offset = 0, size = 16,
-                                          produceLock = @cfree, consumeLock = @cfull>]
-    } : memref<16xi32>
+      depth = 1 : i32, buffers = [@c0]
+    } : memref<16xi32> {
+      aie.objectfifo.segment @s0 {consumeLock = @cfull, offset = 0 : i32, produceLock = @cfree, size = 16 : i32}
+    }
     aie.objectfifo.dma_endpoint @cons_dma(%tile33) fills @cons_pool {
       channelIndex = 1 : i32
     }

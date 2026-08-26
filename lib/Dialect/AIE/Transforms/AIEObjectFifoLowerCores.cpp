@@ -96,9 +96,9 @@ segmentLocksFor(ObjectFifoCoreEndpointOp endpoint, LockAction action) {
   bool wantsProduce = acquiring != endpoint.drains();
 
   SmallVector<FlatSymbolRefAttr> locks;
-  for (ObjectFifoSegmentAttr segment : endpoint.getSelectedSegments()) {
-    if (auto lock = wantsProduce ? segment.getProduceLock()
-                                 : segment.getConsumeLock()) {
+  for (ObjectFifoSegmentOp segment : endpoint.getSelectedSegments()) {
+    if (auto lock = wantsProduce ? segment.getProduceLockAttr()
+                                 : segment.getConsumeLockAttr()) {
       locks.push_back(lock);
     }
   }
