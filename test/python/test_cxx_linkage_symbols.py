@@ -328,19 +328,28 @@ def test_jit_compile_rejects_arg_types_that_contradict_the_kernel(
     assert "argument 3" in str(exc.value).lower()
 
 
-def test_shipped_reduce_min_kernel_needs_no_extern_c(clean_registry, tmp_path):
-    """The motivating case: aie_kernels/aie2/reduce_min.cc carries no
-    `extern "C"` trampolines and must still export `reduce_min_vector`."""
+@pytest.mark.parametrize(
+    "source_name,symbol",
+    [
+        ("reduce_min.cc", "reduce_min_vector"),
+        ("reduce_min.cc", "reduce_min_scalar"),
+        ("reduce_add.cc", "reduce_add_vector"),
+        ("reduce_add.cc", "reduce_add_scalar"),
+    ],
+)
+def test_shipped_kernel_needs_no_extern_c(
+    clean_registry, tmp_path, source_name, symbol
+):
+    """The converted kernels: these sources carry no `extern "C"` trampolines
+    and must still export the name IRON declares."""
     _require_peano()
-    source = (
-        pathlib.Path(__file__).parents[2] / "aie_kernels" / "aie2" / "reduce_min.cc"
-    )
+    source = pathlib.Path(__file__).parents[2] / "aie_kernels" / "aie2" / source_name
     if not source.is_file():
         pytest.skip(f"kernel source not available at {source}")
     assert 'extern "C"' not in source.read_text()
 
     func = ExternalFunction(
-        "reduce_min_vector",
+        symbol,
         source_file=str(source),
         arg_types=[
             np.ndarray[(1024,), np.dtype[np.int32]],
@@ -351,7 +360,7 @@ def test_shipped_reduce_min_kernel_needs_no_extern_c(clean_registry, tmp_path):
 
     compile_external_kernel(func, str(tmp_path), "aie2")
 
-    assert "reduce_min_vector" in _defined_symbols(tmp_path / func.object_file_name)
+    assert symbol in _defined_symbols(tmp_path / func.object_file_name)
 
 
 # ---------------------------------------------------------------------------

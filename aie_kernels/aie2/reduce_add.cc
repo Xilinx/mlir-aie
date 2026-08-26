@@ -13,8 +13,8 @@
 #include "../aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 
-static void _reduce_add_scalar(int32_t *restrict in, int32_t *restrict out,
-                               const int32_t input_size) {
+void reduce_add_scalar(int32_t *restrict in, int32_t *restrict out,
+                       const int32_t input_size) {
   event0();
   int32_t running_total = 0;
   for (int32_t i = 0; i < input_size; i++) {
@@ -25,8 +25,8 @@ static void _reduce_add_scalar(int32_t *restrict in, int32_t *restrict out,
   return;
 }
 
-static void _reduce_add_vector(int32_t *restrict in, int32_t *restrict out,
-                               const int32_t input_size) {
+void reduce_add_vector(int32_t *restrict in, int32_t *restrict out,
+                       const int32_t input_size) {
   event0();
   v16int32 zero = broadcast_to_v16int32((int32_t)0);
   const int32_t vector_size = 16;
@@ -53,12 +53,3 @@ static void _reduce_add_vector(int32_t *restrict in, int32_t *restrict out,
   event1();
   return;
 }
-
-extern "C" {
-void reduce_add_vector(int32_t *a_in, int32_t *c_out, int32_t input_size) {
-  _reduce_add_vector(a_in, c_out, input_size);
-}
-void reduce_add_scalar(int32_t *a_in, int32_t *c_out, int32_t input_size) {
-  _reduce_add_scalar(a_in, c_out, input_size);
-}
-} // extern "C"
