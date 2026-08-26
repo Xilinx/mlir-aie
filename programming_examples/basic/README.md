@@ -23,6 +23,7 @@ These programming examples provide a good starting point to illustrate how to bu
 * [Vector Reduce Add](./vector_reduce_add) - Single tile reduction returning the `sum` of a vector.
 * [Vector Reduce Max](./vector_reduce_max) - Single tile reduction returning the `max` of a vector.
 * [Vector Reduce Min](./vector_reduce_min) - Single tile reduction returning the `min` of a vector.
+* [Vector Reduce Argmax](./vector_reduce_argmax) - Multi-core reduction returning the `index` of a vector's maximum.
 * [Vector Exp](./vector_exp) - Element-wise $e^x$ using the AIE look-up table capability.
 * [Vector Exp2f](./vector_exp2f) - Element-wise $2^x$ in f32 via a degree-5 minimax polynomial, a higher-accuracy alternative to the LUT-based `Vector Exp` for softmax-shaped accuracy needs.
 * [Matrix Scalar Add](./matrix_scalar_add) - Single tile adds a scalar constant to every element of a `16x128` matrix (processed in `8x16` tiles).
