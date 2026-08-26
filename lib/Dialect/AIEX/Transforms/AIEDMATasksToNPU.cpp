@@ -66,16 +66,15 @@ struct DMAStartTaskOpPattern : OpConversionPattern<DMAStartTaskOp> {
       return emitUnplacedTileError(op, task_op);
     Location loc = op.getLoc();
 
-    // The bd_id for the queue push: the head BD's runtime pool value (dynamic
-    // free-list) if it carries one, else its statically-assigned id.
+    // The bd_id for the queue push: the head BD's runtime pool value if it
+    // carries one, else its static value.
     AIE::DMABDOp head = task_op.getFirstBd();
     OpFoldResult idOfr = head ? head.getBdIdValue() : OpFoldResult();
     if (!idOfr) {
       auto err = op.emitOpError(
           "First buffer descriptor in chain has not been assigned an ID");
-      err.attachNote()
-          << "Run the `aie-assign-runtime-buffer-descriptor-ids` "
-             "pass first or manually assign an ID.";
+      err.attachNote() << "Run the `aie-assign-runtime-buffer-descriptor-ids` "
+                          "pass first or manually assign an ID.";
       return failure();
     }
     Value bdIdVal = getAsValue(rewriter, loc, idOfr, rewriter.getI32Type());
@@ -211,9 +210,6 @@ struct AIEDMATasksToNPUPass
       return failure();
     }
     AIE::DMABDOp bd_op = *bd_ops.begin();
-    // A runtime bd_id (dynamic free-list pool, on the BD's bd_id_val operand)
-    // takes the place of the static attribute; only require the attribute when
-    // there is no runtime id.
     bool hasRuntimeBdId = bd_op.getBdIdVal() != nullptr;
     if (!hasRuntimeBdId && !bd_op.getBdId().has_value()) {
       auto error = bd_op.emitOpError(
@@ -290,8 +286,7 @@ struct AIEDMATasksToNPUPass
   }
 
   // Returns pair of (acquire_lock_op, release_lock_op) if present. Under
-  // out-of-order, a release-only block is valid and the pair's acquire op is
-  // null.
+  // out-of-order, a release-only block is valid (null acquire).
   std::optional<std::pair<AIE::UseLockOp, AIE::UseLockOp>>
   getOptionalLockOpsForBlock(Block &block, bool outOfOrder) {
     auto lock_ops = block.getOps<AIE::UseLockOp>();
@@ -306,7 +301,6 @@ struct AIEDMATasksToNPUPass
         release_op = lock_op;
     }
 
-    // Out-of-order: a release-only BD is valid (acquire stays disabled).
     if (outOfOrder && n_lock_ops == 1 && release_op)
       return std::make_pair(AIE::UseLockOp(nullptr), release_op);
 
@@ -541,15 +535,15 @@ struct AIEDMATasksToNPUPass
   rewriteSingleBDDynamic(OpBuilder &builder, Block &block, AIE::DMABDOp bd_op,
                          AIE::TileOp &tile,
                          std::optional<xilinx::AIE::PacketInfoAttr> packet,
-                         Value runtimeBdId = nullptr) {
+                         Value runtimeBdId = nullptr, bool outOfOrder = false) {
     const auto &target_model = AIE::getTargetModel(bd_op);
     Location loc = bd_op.getLoc();
     auto i32ty = builder.getIntegerType(32);
     int col = tile.getCol();
     int row = tile.getRow();
 
-    auto fieldsOr =
-        gatherBdTemplateFields(block, bd_op, tile, target_model, packet);
+    auto fieldsOr = gatherBdTemplateFields(block, bd_op, tile, target_model,
+                                           packet, outOfOrder);
     if (failed(fieldsOr))
       return failure();
     // failed() above guards the deref; FailureOr hides the std::optional base's
@@ -643,8 +637,6 @@ struct AIEDMATasksToNPUPass
                   std::optional<xilinx::AIE::PacketInfoAttr> packet,
                   bool outOfOrder = false) {
     AIE::DMABDOp bd_op = getBdForBlock(block);
-    // A runtime bd_id (dynamic free-list pool) supplied by
-    // aie-lower-dynamic-bd-pool; null on the static/pinned path.
     Value runtimeBdId = bd_op.getBdIdVal();
     const auto &target_model = AIE::getTargetModel(bd_op);
     auto buffer_type = llvm::cast<BaseMemRefType>(bd_op.getBuffer().getType());
@@ -685,14 +677,8 @@ struct AIEDMATasksToNPUPass
               bd_op, sizesRev, stridesRev, elemWidth,
               target_model.getAddressGenGranularity())))
         return failure();
-      // The dynamic BD path does not thread out-of-order lock handling, so
-      // reject rather than silently drop the release-only completion lock.
-      if (outOfOrder)
-        return bd_op->emitOpError(
-            "out-of-order is not yet supported for buffer descriptors with "
-            "runtime-valued size, stride, offset, or bd_id");
       return rewriteSingleBDDynamic(builder, block, bd_op, tile, packet,
-                                    runtimeBdId);
+                                    runtimeBdId, outOfOrder);
     }
 
     // Static path: bd_id is a pinned attribute (the dynamic/runtime-bd_id path
@@ -945,10 +931,6 @@ struct AIEDMATasksToNPUPass
     return success();
   }
 
-  // Put an S2MM channel into out-of-order mode by setting the Enable_Out_of_Order
-  // field of its CTRL register, masked so the sibling fields
-  // (DECOMPRESSION_ENABLE, CONTROLLER_ID, FOT_MODE) are preserved. isMem=true
-  // resolves the CTRL register for core, mem, and shim receivers alike.
   LogicalResult emitOutOfOrderChannelEnable(OpBuilder &builder,
                                             DMAConfigureTaskOp op,
                                             AIE::TileOp tile) {
@@ -985,8 +967,8 @@ struct AIEDMATasksToNPUPass
     IntegerAttr colAttr = builder.getI32IntegerAttr(col);
     IntegerAttr rowAttr = builder.getI32IntegerAttr(row);
     Value addr = createConstantI32(builder, loc, ctrlAddrLocal);
-    Value val = createConstantI32(builder, loc,
-                                   tm.encodeFieldValue(*oooField, 1));
+    Value val =
+        createConstantI32(builder, loc, tm.encodeFieldValue(*oooField, 1));
     Value mask = createConstantI32(builder, loc, *oooMask);
     NpuMaskWrite32Op::create(builder, loc, addr, val, mask, nullptr, colAttr,
                              rowAttr);

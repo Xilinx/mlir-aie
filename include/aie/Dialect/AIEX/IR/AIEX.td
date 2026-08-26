@@ -1325,8 +1325,7 @@ def AIE_DMAConfigureTaskOp : AIEX_Op<"dma_configure_task", [HasAncestor<"AIE::Ru
     // Null when the tile is still an aie.logical_tile, so passes that can run
     // before placement defer instead of aborting inside getTileOp().
     AIE::TileOp tryGetTileOp();
-    // The task's head BD (the first aie.dma_bd in the chain), or null when the
-    // body has none.
+    // The task's head BD, or null when the body has none.
     AIE::DMABDOp getFirstBd();
     // The repeat count as an OpFoldResult: the runtime operand if present, else
     // the compile-time attribute. Mirrors dma_bd's offset/len duality.
