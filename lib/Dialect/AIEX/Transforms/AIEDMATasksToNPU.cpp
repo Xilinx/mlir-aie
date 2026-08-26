@@ -66,23 +66,19 @@ struct DMAStartTaskOpPattern : OpConversionPattern<DMAStartTaskOp> {
       return emitUnplacedTileError(op, task_op);
     Location loc = op.getLoc();
 
-    // The bd_id for the queue push: the runtime pool value (dynamic free-list)
-    // if the configure carries one, else the statically-assigned first BD id.
-    Value bdIdVal;
-    if (Value runtimeBdId = task_op.getBdIdVal()) {
-      bdIdVal = runtimeBdId;
-    } else {
-      std::optional<uint32_t> first_bd_id = task_op.getFirstBdId();
-      if (!first_bd_id) {
-        auto err = op.emitOpError(
-            "First buffer descriptor in chain has not been assigned an ID");
-        err.attachNote()
-            << "Run the `aie-assign-runtime-buffer-descriptor-ids` "
-               "pass first or manually assign an ID.";
-        return failure();
-      }
-      bdIdVal = createConstantI32(rewriter, loc, *first_bd_id);
+    // The bd_id for the queue push: the head BD's runtime pool value (dynamic
+    // free-list) if it carries one, else its statically-assigned id.
+    AIE::DMABDOp head = task_op.getFirstBd();
+    OpFoldResult idOfr = head ? head.getBdIdValue() : OpFoldResult();
+    if (!idOfr) {
+      auto err = op.emitOpError(
+          "First buffer descriptor in chain has not been assigned an ID");
+      err.attachNote()
+          << "Run the `aie-assign-runtime-buffer-descriptor-ids` "
+             "pass first or manually assign an ID.";
+      return failure();
     }
+    Value bdIdVal = getAsValue(rewriter, loc, idOfr, rewriter.getI32Type());
     // push_queue takes bd_id + repeat_count as SSA operands. repeat_count is a
     // runtime operand when present (dynamic tile count), else the compile-time
     // attribute materialized as a constant.
@@ -190,7 +186,7 @@ struct AIEDMATasksToNPUPass
     return block.isEntryBlock() && it.begin() == it.end();
   }
 
-  LogicalResult verifyBdInBlock(Block &block, bool hasRuntimeBdId = false) {
+  LogicalResult verifyBdInBlock(Block &block) {
     auto bd_ops = block.getOps<AIE::DMABDOp>();
     // Exactly one BD op per block
     int n_bd_ops = std::distance(bd_ops.begin(), bd_ops.end());
@@ -215,9 +211,10 @@ struct AIEDMATasksToNPUPass
       return failure();
     }
     AIE::DMABDOp bd_op = *bd_ops.begin();
-    // A runtime bd_id (dynamic free-list pool, on the configure's bd_id_val)
+    // A runtime bd_id (dynamic free-list pool, on the BD's bd_id_val operand)
     // takes the place of the static attribute; only require the attribute when
     // there is no runtime id.
+    bool hasRuntimeBdId = bd_op.getBdIdVal() != nullptr;
     if (!hasRuntimeBdId && !bd_op.getBdId().has_value()) {
       auto error = bd_op.emitOpError(
           "Cannot lower buffer descriptor without assigned ID.");
@@ -644,8 +641,11 @@ struct AIEDMATasksToNPUPass
   rewriteSingleBD(OpBuilder &builder, Block &block, AIE::TileOp &tile,
                   AIE::DMAChannelDir channelDir,
                   std::optional<xilinx::AIE::PacketInfoAttr> packet,
-                  Value runtimeBdId = nullptr, bool outOfOrder = false) {
+                  bool outOfOrder = false) {
     AIE::DMABDOp bd_op = getBdForBlock(block);
+    // A runtime bd_id (dynamic free-list pool) supplied by
+    // aie-lower-dynamic-bd-pool; null on the static/pinned path.
+    Value runtimeBdId = bd_op.getBdIdVal();
     const auto &target_model = AIE::getTargetModel(bd_op);
     auto buffer_type = llvm::cast<BaseMemRefType>(bd_op.getBuffer().getType());
     uint32_t addr_granularity = target_model.getAddressGenGranularity();
@@ -1009,7 +1009,6 @@ struct AIEDMATasksToNPUPass
     }
 
     Region &body = op.getBody();
-    bool hasRuntimeBdId = op.getBdIdVal() != nullptr;
 
     // Verify each BD block first; subsequent functions rely on them being
     // well-formed
@@ -1020,7 +1019,7 @@ struct AIEDMATasksToNPUPass
       if (failed(verifyNoUnsupportedOpsInBlock(it))) {
         return failure();
       }
-      if (failed(verifyBdInBlock(it, hasRuntimeBdId))) {
+      if (failed(verifyBdInBlock(it))) {
         return failure();
       }
       if (failed(verifyOptionalLocksInBlock(it, op.getOutOfOrder()))) {
@@ -1040,9 +1039,6 @@ struct AIEDMATasksToNPUPass
 
     auto channelDir = op.getDirection();
     auto packet = op.getPacket();
-    // A runtime bd_id (dynamic free-list pool) supplied by
-    // aie-lower-dynamic-bd-pool; null on the static/pinned path.
-    Value runtimeBdId = op.getBdIdVal();
 
     // Lower all BDs
     for (auto &block : body) {
@@ -1050,7 +1046,7 @@ struct AIEDMATasksToNPUPass
         continue;
       }
       if (failed(rewriteSingleBD(builder, block, tile, channelDir, packet,
-                                 runtimeBdId, op.getOutOfOrder()))) {
+                                 op.getOutOfOrder()))) {
         return failure();
       }
     }

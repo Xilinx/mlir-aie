@@ -1118,10 +1118,10 @@ DenseIntElementsAttr AIEX::NpuBlockWriteOp::getDataWords() {
 // DMAConfigureTaskOp
 //===----------------------------------------------------------------------===//
 
-std::optional<uint32_t> AIEX::DMAConfigureTaskOp::getFirstBdId() {
+AIE::DMABDOp AIEX::DMAConfigureTaskOp::getFirstBd() {
   Region &body = getBody();
   if (body.empty()) {
-    return std::nullopt;
+    return nullptr;
   }
   auto bd_ops = body.front().getOps<AIE::DMABDOp>();
   if (bd_ops.empty() && body.front().getNumSuccessors() == 1) {
@@ -1132,10 +1132,9 @@ std::optional<uint32_t> AIEX::DMAConfigureTaskOp::getFirstBdId() {
     bd_ops = chain_entry.getOps<AIE::DMABDOp>();
   }
   if (bd_ops.empty()) {
-    return std::nullopt;
+    return nullptr;
   }
-  AIE::DMABDOp bd = *bd_ops.begin();
-  return bd.getBdId();
+  return *bd_ops.begin();
 }
 
 LogicalResult

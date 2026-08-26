@@ -1288,7 +1288,7 @@ def AIE_NpuLoadPdiOp: AIEX_Op<"npu.load_pdi", []> {
   let hasCanonicalizeMethod = 1;
 }
 
-def AIE_DMAConfigureTaskOp : AIEX_Op<"dma_configure_task", [HasAncestor<"AIE::RuntimeSequenceOp">, TileElement, AttrSizedOperandSegments]>, Results<(outs Index:$result)> {
+def AIE_DMAConfigureTaskOp : AIEX_Op<"dma_configure_task", [HasAncestor<"AIE::RuntimeSequenceOp">, TileElement]>, Results<(outs Index:$result)> {
   let summary = "Concrete Instantiation of a Buffer Descriptor Chain as a Task on a Channel and Direction on a Tile";
   let description = [{
     Encapsulates the DMA configuration of one task, that is the (chain of) buffer descriptors to be executed on a given channel and direction on a tile.
@@ -1305,7 +1305,6 @@ def AIE_DMAConfigureTaskOp : AIEX_Op<"dma_configure_task", [HasAncestor<"AIE::Ru
         DefaultValuedOptionalAttr<BoolAttr, "false">:$issue_token,
         DefaultValuedOptionalAttr<I32Attr, "0">:$repeat_count,
         Optional<I32>:$repeat_count_val,
-        Optional<I32>:$bd_id_val,
         OptionalAttr<PacketInfoAttr>:$packet,
         // Put the channel into out-of-order mode (S2MM only).
         UnitAttr:$out_of_order
@@ -1318,7 +1317,7 @@ def AIE_DMAConfigureTaskOp : AIEX_Op<"dma_configure_task", [HasAncestor<"AIE::Ru
   let assemblyFormat = [{
     `(` $tile `,` $direction `,` $channel (`,` $packet^)? `)`
     (`repeat` $repeat_count_val^ `:` type($repeat_count_val))?
-    (`bd_id` $bd_id_val^ `:` type($bd_id_val))? regions attr-dict
+    regions attr-dict
   }];
 
   let extraClassDeclaration = [{
@@ -1326,7 +1325,9 @@ def AIE_DMAConfigureTaskOp : AIEX_Op<"dma_configure_task", [HasAncestor<"AIE::Ru
     // Null when the tile is still an aie.logical_tile, so passes that can run
     // before placement defer instead of aborting inside getTileOp().
     AIE::TileOp tryGetTileOp();
-    std::optional<uint32_t> getFirstBdId();
+    // The task's head BD (the first aie.dma_bd in the chain), or null when the
+    // body has none.
+    AIE::DMABDOp getFirstBd();
     // The repeat count as an OpFoldResult: the runtime operand if present, else
     // the compile-time attribute. Mirrors dma_bd's offset/len duality.
     mlir::OpFoldResult getRepeatCountValue() {
@@ -1352,7 +1353,7 @@ def AIE_DMAConfigureTaskOp : AIEX_Op<"dma_configure_task", [HasAncestor<"AIE::Ru
             xilinx::AIE::DMAChannelDirAttr::get(odsBuilder.getContext(), dir),
             $_builder.getI32IntegerAttr(channel_index), $_builder.getBoolAttr(token),
             $_builder.getI32IntegerAttr(repeat), /*repeat_count_val=*/nullptr,
-            /*bd_id_val=*/nullptr, /*packet=*/nullptr, /*out_of_order=*/nullptr);
+            /*packet=*/nullptr, /*out_of_order=*/nullptr);
     }]>
   ];
 }

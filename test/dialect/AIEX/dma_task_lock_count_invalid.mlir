@@ -36,9 +36,9 @@ module {
     %tile_0_0 = aie.tile(0, 0)
     aie.runtime_sequence(%arg0: memref<4xi32>) {
       %bd = aiex.dma_bd_pool_pop(0, 0) : i32
-      %t = aiex.dma_configure_task(%tile_0_0, S2MM, 0, <pkt_type = 0, pkt_id = 0>) bd_id %bd : i32 {
+      %t = aiex.dma_configure_task(%tile_0_0, S2MM, 0, <pkt_type = 0, pkt_id = 0>) {
         // expected-error@+1 {{out-of-order is not yet supported for buffer descriptors with runtime-valued size, stride, offset, or bd_id}}
-        aie.dma_bd(%arg0 : memref<4xi32> offset = 0 len = 4)
+        aie.dma_bd(%arg0 : memref<4xi32> offset = 0 len = 4) bd_id_val %bd : i32
         aie.end
       } {out_of_order}
       aiex.dma_start_task(%t)

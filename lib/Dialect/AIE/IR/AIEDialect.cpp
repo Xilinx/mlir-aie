@@ -2286,6 +2286,7 @@ void DMABDOp::buildMixed(mlir::OpBuilder &builder, mlir::OperationState &state,
         /*static_sizes=*/staticSizesAttr,
         /*static_strides=*/staticStridesAttr,
         /*pad_dimensions=*/padDims,
+        /*bd_id_val=*/nullptr,
         /*bd_id=*/nullptr,
         /*packet=*/packet,
         /*out_of_order_id=*/nullptr,
@@ -2446,6 +2447,9 @@ LogicalResult DMABDOp::verify() {
   if (std::optional<int32_t> nextBdId = getNextBdId();
       nextBdId.has_value() && static_cast<uint32_t>(*nextBdId) >= maxBds)
     return emitOpError("nextBdId attribute exceeds max: ") << maxBds - 1;
+
+  if (getBdIdVal() && getBdId().has_value())
+    return emitOpError("bd_id and bd_id_val are mutually exclusive");
 
   // Issue #1097: the buffer_length field of a DMA buffer descriptor has a
   // tile-type-specific bit width (e.g. on AIE2: 32-bit shim, 17-bit mem tile,
