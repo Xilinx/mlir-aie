@@ -73,6 +73,8 @@ In some cases, the kernels are just generic C code, and will run on any family o
 | Class | Name | Coding style | Purpose | Datatypes |
 |-|-|-|-|-|
 | basic | [zero.cc](./aie2p/zero.cc) | AIE API | Fill a tensor with zeroes (512-bit stores) | template |
+| basic | [add.cc](./aie2p/add.cc) | AIE API | Pointwise addition of 2 tensors (512-bit vectors) | `bfloat16` |
+| basic | [mul.cc](./aie2p/mul.cc) | AIE API | Pointwise multiplication of 2 tensors (512-bit vectors) | `bfloat16` |
 | gemm | [mm.cc](./aie2p/mm.cc) | AIE API | Matrix/Matrix multiplication | `int8_t`,`int16_t`,`bfloat16` |
 | gemm | [mm_bfp.cc](./aie2p/mm_bfp.cc) | AIE API | Block-floating-point matmul | `bfp16` |
 | gemm | [mm_bfp_mixed.cc](./aie2p/mm_bfp_mixed.cc) | AIE API | Mixed-precision BFP matmul | `bfp16` |
