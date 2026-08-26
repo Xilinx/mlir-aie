@@ -103,8 +103,9 @@ struct DMAStartTaskOpPattern : OpConversionPattern<DMAStartTaskOp> {
 // awaited from inside the loop body rather than after it -- e.g. a
 // software-pipelined sequence awaiting the previous iteration's task before
 // reusing its BD). Every reachable configure targets the same physical channel
-// -- the pool pass verified both branches of an scf.if agree -- so the first
-// one found gives the right channel.
+// -- the pool pass verified both branches of an scf.if agree, and a loop's
+// init and per-iteration reconfiguration agree -- so the first one found
+// gives the right channel.
 //
 // Walk such a value back to a configure via RegionBranchOpInterface, which
 // generically maps a successor input (a region's block argument, or a result
@@ -119,7 +120,7 @@ static DMAConfigureTaskOp resolveConfigureThroughCF(Value task) {
   SmallVector<Value> worklist{task};
   while (!worklist.empty()) {
     Value v = worklist.pop_back_val();
-    if (!seen.insert(v).second)
+    if (!v || !seen.insert(v).second)
       continue;
     if (auto cfg = v.getDefiningOp<DMAConfigureTaskOp>())
       return cfg;
