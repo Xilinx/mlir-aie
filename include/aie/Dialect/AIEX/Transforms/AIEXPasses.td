@@ -608,6 +608,13 @@ def AIEExpandLoadPdi : Pass<"aie-expand-load-pdi", "mlir::ModuleOp"> {
               "If true, lower each load_pdi to an @ctrl_pkt_overlay load_pdi "
               "followed by aiex.npu.control_packet ops instead of write32/"
               "blockwrite ops with an empty-device reset.">,
+       Option<
+           "clRegisterReset", "register-reset", "bool", /*default=*/"false",
+           "Replace each empty-device firmware reset with writes restoring "
+           "exactly the registers the outgoing device wrote and the incoming "
+           "one does not, using reset values from the register database. A "
+           "boundary carrying an address the database does not know keeps "
+           "its firmware reset.">,
   ];
 }
 
