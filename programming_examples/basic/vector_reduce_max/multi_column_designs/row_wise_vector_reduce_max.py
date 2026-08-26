@@ -122,7 +122,13 @@ def vector_reduce_max(
         of_out = args[1]
         in_fifos = args[2:-4]
 
-        for _ in range_(num_iter):
+        # The first tile writes the accumulator outright rather than folding into
+        # it: a core-resident buffer keeps its value from the previous run of the
+        # same design, so a seeded accumulator makes the result depend on run order.
+        elem_in = of_in.acquire(1)
+        reduce_max_vector(elem_in, nextC_buffer, elems_per_core)
+        of_in.release(1)
+        for _ in range_(num_iter - 1):
             elem_in = of_in.acquire(1)
             reduce_max_vector(elem_in, tmp_buffer, elems_per_core)
             compute_max(nextC_buffer, tmp_buffer, nextC_buffer)
