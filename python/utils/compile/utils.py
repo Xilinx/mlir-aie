@@ -15,6 +15,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import aie.utils.config as config
+import numpy as np
+from ml_dtypes import bfloat16
 
 if TYPE_CHECKING:
     from aie.ir import (  # pyright: ignore[reportMissingImports]
@@ -554,6 +556,319 @@ def _rename_symbol_in_object(object_path: str, old_name: str, new_name: str) -> 
         raise RuntimeError(f"Symbol rename failed: {result.stderr.decode()}")
 
 
+def _demangled_base_name(demangled: str) -> str:
+    """Return the qualified function name from a demangled symbol.
+
+    Everything from the first ``(`` -- the parameter list -- is dropped, so
+    ``const``, ``__restrict`` and overload parameter types play no part in
+    matching.  Namespace qualification is part of the name and is kept.
+    """
+    paren = demangled.find("(")
+    return (demangled if paren == -1 else demangled[:paren]).strip()
+
+
+def _select_cxx_symbol(symbols: dict[str, str], expected_name: str) -> str | None:
+    """Pick the defined symbol that provides ``expected_name``.
+
+    Matching is on the demangled base name rather than on a mangled name
+    reconstructed from the IRON signature.  That asymmetry is the whole point:
+    ``const``, ``__restrict`` and namespaces all change the mangling but not
+    the base name, so they need no representation in ``arg_types``.
+
+    Args:
+        symbols: Mapping of mangled symbol name to its demangled form, as
+            llvm-nm piped through llvm-cxxfilt produces it.  A C-linkage
+            symbol maps to itself.
+        expected_name: Symbol name IRON emitted into the MLIR.  May be
+            namespace-qualified to disambiguate.
+
+    Returns:
+        The mangled symbol to rename, or None when ``expected_name`` is already
+        defined -- the kernel has C linkage and nothing needs to happen.
+
+    Raises:
+        ValueError: When nothing matches, or when several symbols do.  IRON
+            cannot choose between overloads: ``arg_types`` holds numpy types,
+            which cannot distinguish ``int*`` from ``int const*``.
+    """
+    if expected_name in symbols:
+        return None
+
+    qualified_suffix = f"::{expected_name}"
+    matches = []
+    for mangled, demangled in symbols.items():
+        base = _demangled_base_name(demangled)
+        if base == expected_name or base.endswith(qualified_suffix):
+            matches.append(mangled)
+
+    if len(matches) == 1:
+        return matches[0]
+
+    if not matches:
+        present = "\n  ".join(sorted(symbols.values())) or "(none)"
+        raise ValueError(
+            f"No symbol named '{expected_name}' is defined. Defined symbols "
+            f"are:\n  {present}"
+        )
+
+    candidates = "\n  ".join(sorted(symbols[m] for m in matches))
+    raise ValueError(
+        f"Symbol '{expected_name}' is ambiguous -- several overloads match:"
+        f"\n  {candidates}\n"
+        "IRON cannot choose between them. Give the kernel a distinct name, or "
+        "keep a single overload."
+    )
+
+
+# Demangled spellings llvm-cxxfilt produces for the element types IRON can
+# express, verified against a Peano-compiled aie2 object.  Plain ``char`` is
+# accepted for both signed and unsigned 8-bit buffers because its signedness is
+# implementation-defined, and ``long``/``long long`` both for 64-bit because the
+# choice is target-dependent.  Anything absent here is deliberately not checked.
+_CXX_SPELLINGS = {
+    np.dtype(np.int8): {"signed char", "char"},
+    np.dtype(np.uint8): {"unsigned char", "char"},
+    np.dtype(np.int16): {"short"},
+    np.dtype(np.uint16): {"unsigned short"},
+    np.dtype(np.int32): {"int"},
+    np.dtype(np.uint32): {"unsigned int"},
+    np.dtype(np.int64): {"long", "long long"},
+    np.dtype(np.uint64): {"unsigned long", "unsigned long long"},
+    np.dtype(np.float32): {"float"},
+    np.dtype(np.float64): {"double"},
+    np.dtype(bfloat16): {"bfloat16"},
+    np.dtype(np.bool_): {"bool"},
+}
+
+_CXX_QUALIFIERS = ("const", "volatile", "__restrict", "restrict", "__restrict__")
+
+
+def _split_top_level_params(param_list: str) -> list[str]:
+    """Split a demangled parameter list on its top-level commas.
+
+    Template argument lists and function-pointer parameters contain commas of
+    their own -- ``aie::vector<int, 16>*, int`` is two parameters, not three --
+    so track nesting depth rather than splitting naively.
+    """
+    params: list[str] = []
+    depth = 0
+    current = ""
+    for char in param_list:
+        if char in "<([":
+            depth += 1
+        elif char in ">)]":
+            depth -= 1
+        if char == "," and depth == 0:
+            params.append(current.strip())
+            current = ""
+            continue
+        current += char
+    if current.strip():
+        params.append(current.strip())
+    return params
+
+
+def _normalize_cxx_param(param: str) -> tuple[str, bool]:
+    """Reduce one demangled parameter to ``(base type, is_pointer)``.
+
+    Qualifiers are dropped: they change the mangling but never the meaning of
+    the argument as far as IRON can express it.  A reference counts as a
+    pointer, since both arrive as an address.
+    """
+    is_pointer = "*" in param or "&" in param
+    base = param.replace("*", " ").replace("&", " ")
+    tokens = [t for t in base.split() if t not in _CXX_QUALIFIERS]
+    return " ".join(tokens), is_pointer
+
+
+def _iron_arg_spec(arg) -> tuple[np.dtype | None, bool]:
+    """Reduce one ``arg_types`` entry to ``(dtype, is_pointer)``.
+
+    Mirrors ``BaseKernel.arg_dtype``: an ``np.ndarray[shape, np.dtype[T]]``
+    carries its element type in ``__args__``; anything else is a scalar.
+    Returns a None dtype for entries whose element type cannot be read, which
+    the caller treats as "do not check".
+    """
+    type_args = getattr(arg, "__args__", None)
+    if type_args is not None and len(type_args) >= 2:
+        dt = type_args[1]
+        dt_args = getattr(dt, "__args__", None)
+        try:
+            return np.dtype(dt_args[0] if dt_args is not None else dt), True
+        except TypeError:
+            return None, True
+    try:
+        return np.dtype(arg), False
+    except TypeError:
+        return None, False
+
+
+def _check_cxx_signature(demangled: str, arg_types, symbol: str) -> None:
+    """Check a kernel's declared ``arg_types`` against its real C++ signature.
+
+    Only meaningful for C++-linkage kernels: an ``extern "C"`` symbol demangles
+    to a bare name carrying no parameter list, so there is nothing to compare.
+
+    Strictness is tiered by how costly a false positive would be.  Parameter
+    count and pointer-vs-scalar are unambiguous in a demangled signature and
+    are hard errors.  Element types are compared only when both the C++
+    spelling and the numpy dtype are understood, so a kernel taking an aie_api
+    vector or a struct is never rejected by a checker that cannot read it.
+
+    Args:
+        demangled: Demangled symbol, e.g. ``f(int*, int*, int)``.
+        arg_types: The kernel's declared argument types, or None to skip.
+        symbol: Name used in error messages.
+
+    Raises:
+        ValueError: On an arity or pointer-vs-scalar mismatch, or on an element
+            type mismatch between two understood types.
+    """
+    if arg_types is None:
+        return
+    open_paren = demangled.find("(")
+    if open_paren == -1 or not demangled.endswith(")"):
+        # A bare name: C linkage, nothing to check.
+        return
+
+    params = _split_top_level_params(demangled[open_paren + 1 : -1])
+    # A no-argument function is spelled `f()` by llvm-cxxfilt, so an empty
+    # parameter list is already the empty list.
+    if len(params) != len(arg_types):
+        raise ValueError(
+            f"Kernel '{symbol}' is declared with {len(arg_types)} argument(s) "
+            f"but its C++ signature takes {len(params)}: {demangled}"
+        )
+
+    for index, (param, arg) in enumerate(zip(params, arg_types), start=1):
+        cxx_type, cxx_is_pointer = _normalize_cxx_param(param)
+        dtype, iron_is_pointer = _iron_arg_spec(arg)
+
+        if cxx_is_pointer != iron_is_pointer:
+            expected = "a buffer" if iron_is_pointer else "a scalar"
+            actual = "a pointer" if cxx_is_pointer else "a value"
+            raise ValueError(
+                f"Kernel '{symbol}' argument {index}: declared as {expected}, "
+                f"but the C++ signature takes {actual} ('{param}'). "
+                f"Full signature: {demangled}"
+            )
+
+        if dtype is None or dtype not in _CXX_SPELLINGS:
+            continue
+        if cxx_type not in _CXX_SPELLINGS[dtype]:
+            # Only complain when the C++ spelling is one we model; an unknown
+            # type is not evidence of a mismatch.
+            if any(cxx_type in spellings for spellings in _CXX_SPELLINGS.values()):
+                raise ValueError(
+                    f"Kernel '{symbol}' argument {index}: declared as "
+                    f"{dtype.name}, but the C++ signature takes '{cxx_type}'. "
+                    f"Full signature: {demangled}"
+                )
+
+
+def _defined_global_symbols(object_path: str) -> dict[str, str]:
+    """Return ``{mangled: demangled}`` for an object's defined global symbols.
+
+    ``--extern-only`` drops the local ``.LBB*`` labels that would otherwise
+    appear alongside the functions.
+    """
+    nm = config.peano_nm_path()
+    listing = subprocess.run(
+        [nm, "--defined-only", "--extern-only", "--format=just-symbols", object_path],
+        capture_output=True,
+        check=False,
+    )
+    if listing.returncode != 0:
+        raise RuntimeError(
+            f"Could not list symbols of {object_path}: {listing.stderr.decode()}"
+        )
+    mangled = listing.stdout.decode().split()
+    if not mangled:
+        return {}
+
+    cxxfilt = config.peano_cxxfilt_path()
+    demangling = subprocess.run(
+        [cxxfilt],
+        input="\n".join(mangled),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if demangling.returncode != 0:
+        raise RuntimeError(f"Could not demangle symbols: {demangling.stderr}")
+    demangled = demangling.stdout.splitlines()
+    if len(demangled) != len(mangled):
+        raise RuntimeError(
+            f"llvm-cxxfilt returned {len(demangled)} names for {len(mangled)} "
+            f"symbols of {object_path}; cannot pair them up."
+        )
+    return dict(zip(mangled, demangled))
+
+
+def _resolve_cxx_linkage_symbol(object_path: str, expected_name: str) -> str | None:
+    """Make ``expected_name`` resolvable in a C++-compiled kernel object.
+
+    A kernel source without ``extern "C"`` defines a mangled symbol, but IRON
+    emitted ``func.func private @<expected_name>`` and the linker needs that
+    exact name.  Rename the mangled symbol to it.
+
+    A no-op when the kernel already has C linkage, which also makes this
+    idempotent -- required because the JIT re-runs it on a cache hit, against
+    an object that was already renamed.
+
+    Returns:
+        The demangled signature of the symbol that was renamed, so the caller
+        can check it against the kernel's declared ``arg_types``; None when the
+        kernel already had C linkage and no signature is recoverable.
+    """
+    symbols = _defined_global_symbols(object_path)
+    mangled = _select_cxx_symbol(symbols, expected_name)
+    if mangled is None:
+        return None
+    _rename_symbol_in_object(object_path, mangled, expected_name)
+    return symbols[mangled]
+
+
+def _apply_symbol_renames(func, output_file: str) -> None:
+    """Bring an ExternalFunction's object in line with the symbol IRON emitted.
+
+    Order matters.  A C++-linkage source defines a mangled symbol, not
+    ``_original_name``, so the prefix rename below would match nothing and
+    silently no-op.  Resolving C++ linkage first restores the invariant that
+    rename already assumes::
+
+        _Z10min_kernelPiS_i  ->  min_kernel  ->  pfx_min_kernel
+
+    C++ linkage resolution is skipped on two paths, both of which keep exactly
+    the behaviour they had before it existed:
+
+    * ``inline=True`` emits LLVM IR, not an object.  llvm-nm cannot read it,
+      and ``_make_ir_inlinable`` already rejects a mangled inline kernel with a
+      message naming the ``extern "C"`` fix.
+    * ``use_chess=True`` produces an xchesscc object whose compatibility with
+      llvm-nm is unverified.  Inspecting it could break chess kernels that
+      link fine today, so C++-linkage kernels stay unsupported there until
+      someone with the toolchain installed can confirm.
+
+    Both steps are idempotent, as the cache-hit path re-runs them against an
+    object that was already renamed.
+    """
+    original_name = getattr(func, "_original_name", func._name)
+
+    inspectable_object = not (
+        getattr(func, "_inline", False) or getattr(func, "_use_chess", False)
+    )
+    if inspectable_object:
+        demangled = _resolve_cxx_linkage_symbol(output_file, original_name)
+        if demangled is not None:
+            _check_cxx_signature(
+                demangled, getattr(func, "_arg_types", None), original_name
+            )
+
+    if getattr(func, "_symbol_prefix", None):
+        _rename_symbol_in_object(output_file, original_name, func._name)
+
+
 def compile_external_kernel(func, kernel_dir, target_arch):
     """Compile an ExternalFunction to an object file in the kernel directory.
 
@@ -589,9 +904,7 @@ def compile_external_kernel(func, kernel_dir, target_arch):
     # Skip if the object file already exists (cache hit).
     output_file = os.path.join(kernel_dir, func.object_file_name)
     if os.path.exists(output_file):
-        if getattr(func, "_symbol_prefix", None):
-            # Ensure rename is applied even on cache hit — idempotent with llvm-objcopy
-            _rename_symbol_in_object(output_file, func._original_name, func._name)
+        _apply_symbol_renames(func, output_file)
         return
 
     original_name = getattr(func, "_original_name", func._name)
@@ -646,11 +959,7 @@ def compile_external_kernel(func, kernel_dir, target_arch):
     else:
         raise ValueError("Neither source_string nor source_file is provided")
 
-    # Rename symbol if a prefix is set.
-    if getattr(func, "_symbol_prefix", None):
-        original = func._original_name
-        prefixed = func._name  # already prefixed
-        _rename_symbol_in_object(output_file, original, prefixed)
+    _apply_symbol_renames(func, output_file)
 
     func._compiled = True
 

@@ -1,3 +1,6 @@
+<!-- Copyright (C) 2026 Advanced Micro Devices, Inc.
+SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
+
 # C++-linkage kernels: resolve the symbol at the artifact, not in the frontend
 
 Date: 2026-08-25
@@ -73,10 +76,14 @@ documents why GNU binutils `objcopy` cannot be used here.
 
 ### Where
 
-`compile_external_kernel()` in `python/utils/compile/utils.py:557`, at the end of
-the compile, **before** the existing `symbol_prefix` rename. The file already has
-`_rename_symbol_in_object()` (`utils.py:545`) using `--redefine-sym`, already
-exercised by the `symbol_prefix` feature.
+`compile_external_kernel()` in `python/utils/compile/utils.py`, at the end of the
+compile, **before** the existing `symbol_prefix` rename. The file already has
+`_rename_symbol_in_object()` using `--redefine-sym`, already exercised by the
+`symbol_prefix` feature.
+
+Both call sites — the fresh compile and the cache-hit early return — were
+factored into one `_apply_symbol_renames(func, output_file)` helper, so the two
+renames cannot drift apart.
 
 ### Ordering with `symbol_prefix`
 
@@ -105,9 +112,8 @@ Both errors name the object file and the expected symbol.
 
 ### Cache-hit path
 
-`compile_external_kernel` returns early when the object already exists
-(`utils.py:591`), and already re-applies the prefix rename there for exactly this
-reason. The C++-linkage resolution must be applied on that path too. It is
+`compile_external_kernel` returns early when the object already exists, and
+already re-applies the prefix rename there for exactly this reason. The C++-linkage resolution must be applied on that path too. It is
 idempotent: on a cached object the plain name is already present, so step 2
 returns immediately.
 
@@ -117,28 +123,69 @@ returns immediately.
 mode. This covers the `reduce_min` example and every kernel produced by the
 `iron.kernels.*` factories.
 
-**Explicitly excluded, each with a loud error rather than a silent failure:**
+**Explicitly excluded:**
 
 - `inline=True` / `link_with_mode="merge"` — the artifact is textual `.ll` fed to
   `llvm-link`; no linker and no objcopy are involved, so neither mechanism
   applies. Symbol fixup there means rewriting the IR module, which is a separate
-  design. Raise `NotImplementedError` when a `.ll`/`.bc` artifact has no
-  matching plain symbol.
+  design. **No new guard was needed:** `_make_ir_inlinable` (`utils.py:154`)
+  already raises when it cannot find a `define` for the expected symbol, and its
+  message already names the `extern "C"` fix.
 - `use_chess=True` — xchesscc's object format has not been tested with
-  `llvm-objcopy`. Whether it works is a question to answer by running it, not by
-  reasoning about it. Until then, raise when the plain symbol is missing.
+  `llvm-objcopy` or `llvm-nm`, and the toolchain was not installed on the
+  development machine, so it could not be tested. Rather than assume, the chess
+  path skips C++-linkage resolution entirely and keeps byte-for-byte the
+  behaviour it had before. Inspecting an xchesscc object could otherwise break
+  chess kernels that link fine today. Lifting this needs someone with the
+  toolchain to confirm `llvm-nm` reads those objects.
 
 **Out of scope for this cut:** prebuilt `Kernel("foo.o")`. Those objects belong
 to the user and should not be mutated in place; covering them means either
 copying into `kernel_dir` first or passing `--defsym` through aiecc's link. Both
 are reasonable follow-ups but neither is needed for the example.
 
-**Deliberate non-goal:** checking `arg_types` against the C++ signature. Binding
-by base name means a mismatch links silently — which is exactly the status quo
-under `extern "C"`, so this is not a regression. A later change can demangle the
-matched symbol *fully* and compare its parameter list loosely (element types and
-pointer-ness, ignoring `const`/`restrict`); that would be strictly better
-diagnostics than today, but it is not required to remove the trampolines.
+## Signature checking
+
+Binding by base name would let a mismatch between `arg_types` and the real C++
+signature link silently. Since the matched symbol is demangled anyway, its
+parameter list is free to inspect — so `_check_cxx_signature` compares the two.
+
+This is only possible for C++-linkage kernels: an `extern "C"` symbol demangles
+to a bare name with no parameter list. **Dropping the trampolines is what buys
+the check** — it cannot be a blanket guarantee, only a benefit that arrives as
+kernels stop using `extern "C"`.
+
+Strictness is tiered by what a false positive would cost:
+
+| Tier | Check | On mismatch |
+| --- | --- | --- |
+| 1 | Parameter count | Hard error — a demangled signature's arity is unambiguous |
+| 2 | Pointer vs scalar | Hard error — equally unambiguous, and silently corrupts today |
+| 3 | Element type | Error **only when both** the C++ spelling and the numpy dtype are modelled |
+
+Tier 3's restriction is the safety valve: a kernel taking `aie::vector<int32,
+16>*`, a struct, or `void*` demangles to a spelling the table does not contain,
+and the checker stays silent rather than guessing. A checker that does not
+understand a type must not reject it.
+
+Parsing notes, all driven by observed llvm-cxxfilt output: the parameter list is
+split on *top-level* commas only (`aie::vector<int, 16>*` contains one of its
+own); `const` is emitted **east** (`int const*`); and top-level `__restrict` is
+dropped by the mangling before demangling ever sees it.
+
+### Rollout risk: measured, not assumed
+
+Tier 1 is the tier that could break a working build. A sweep of `aie_kernels/`
+found that **52 of 55 sources use `extern "C"`**; of the three that do not, two
+are `zero.cc` (templates-only, `#include`d rather than compiled standalone).
+`reduce_min.cc` — the one this change converts — is the only C++-linkage kernel
+in the catalog. Tier 1 therefore has no existing kernel to break, and ships as a
+hard error.
+
+The genuine regression risk is different, and is what the catalog sweep test
+actually covers: symbol resolution now runs `llvm-nm` over *every* compiled
+kernel object, including the 52 `extern "C"` ones that take the fast path. All
+41 buildable catalog kernels compile and export their expected symbol.
 
 ## Reverting the current branch
 
@@ -166,4 +213,10 @@ result it produced before the change.
 
 **Regression** — `test/python/test_kernels_specs.py` continues to pass unchanged;
 it asserts `expected_name="reduce_min_vector"`, which is exactly the invariant
-this design preserves.
+this design preserves. The catalog sweep in `test_cxx_linkage_symbols.py`
+compiles every non-NPU2 kernel factory and asserts it still exports its symbol,
+covering the `extern "C"` fast path across the whole shipped catalog.
+
+**Signature checking** — `test/python/test_cxx_signature_check.py` covers the
+three tiers plus the parsing edge cases (nested template commas, east const,
+unknown C++ types, unknown numpy dtypes) without needing a toolchain.

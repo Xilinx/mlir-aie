@@ -7,69 +7,19 @@
 
 import hashlib
 import logging
-import os
 from pathlib import Path
 
 import numpy as np
-import cxxfilt
-from elftools.elf.elffile import ELFFile
-from elftools.elf.sections import SymbolTableSection
-from clang.cindex import Config, Index, CursorKind
-import tempfile
 
 from .. import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
 from ..dialects import memref  # pyright: ignore[reportAttributeAccessIssue]
 from ..dialects.aie import external_func
 from ..extras.dialects.func import FuncOp  # pyright: ignore[reportMissingImports]
 from ..helpers.dialects.func import call
-from ..utils.config import peano_install_dir
 from .buffer import Buffer
 from .resolvable import Resolvable
 
 logger = logging.getLogger(__name__)
-
-
-def find_mangled_symbol(file: os.PathLike, demangled_name):
-    """
-    Find the mangled symbol that corresponds to the demangled_name.
-
-    Args:
-        file (str): Path to the file to analyze
-        demangled_name (str): The demangled name of the symbol to find
-
-    Returns:
-        str: The mangled name of the symbol if found, otherwise None
-    """
-    with open(file, "rb") as file:
-        elf_file = ELFFile(file)
-
-        for section in elf_file.iter_sections():
-            if isinstance(section, SymbolTableSection):
-                for symbol in section.iter_symbols():
-                    # Filter out function symbols
-                    if symbol and symbol["st_info"]["type"] == "STT_FUNC":
-                        if symbol.name == demangled_name:
-                            # Name matches the demangled name, thus it has C linkage
-                            return symbol.name
-                        if cxxfilt.demangle(symbol.name) == demangled_name:
-                            # Demangled symbol name matches the demangled name, thus it has C++ linkage
-                            return symbol.name
-    return None
-
-
-def create_mangled_name(function_signature: str):
-    with tempfile.NamedTemporaryFile(suffix=".cpp", mode="w", delete=True) as f:
-        f.write(function_signature)
-        fname = f.name
-
-        Config.set_library_path("/usr/lib/llvm-20/lib")
-        index = Index.create()
-        tu = index.parse(fname, args=["-std=c++17"])
-
-        for cursor in tu.cursor.get_children():
-            if cursor.kind == CursorKind.FUNCTION_DECL:
-                print("Function:", cursor.spelling)
-                print("Mangled:", cursor.mangled_name)
 
 
 def _is_contiguous_row_major(mr):
@@ -329,15 +279,8 @@ class Kernel(BaseKernel):
         ip: ir.InsertionPoint | None = None,
     ) -> None:
         if not self._op:
-            object_file = os.path.abspath(self._object_file_name)
-            symbol_name = find_mangled_symbol(object_file, self._name)
-            create_mangled_name(f"void {self._name};")
-            if not symbol_name:
-                raise ValueError(
-                    f"Could not find symbol for {self._name} in {object_file}"
-                )
             self._op = external_func(
-                symbol_name,
+                self._name,
                 inputs=self._arg_types,
                 link_with=self._object_file_name,
                 link_with_mode=self._link_with_mode,
