@@ -22,6 +22,7 @@
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/Mem2Reg.h"
 #include "mlir/Transforms/WalkPatternRewriteDriver.h"
+#include "llvm/ADT/STLExtras.h"
 
 #include "mlir/IR/Dominance.h"
 #include "mlir/IR/Operation.h"
@@ -598,8 +599,7 @@ struct AIEObjectFifoStatefulTransformPass
       for (auto consumerTile : createOp.getConsumerTiles()) {
         if (auto consumerTileOp =
                 dyn_cast<TileOp>(consumerTile.getDefiningOp())) {
-          if (std::count(state.splitBecauseLink.begin(),
-                         state.splitBecauseLink.end(), createOp))
+          if (llvm::count(state.splitBecauseLink, createOp))
             hasSharedMemory =
                 isSharedMemory(createOp.getProducerTileOp(),
                                createOp.getProducerTileOp(), &share_direction);
@@ -742,9 +742,8 @@ struct AIEObjectFifoStatefulTransformPass
     } else {
       // create corresponding aie2 locks
       for (int i = 0; i < joinDistribFactor; i++) {
-        auto initValues = op.getInitValues().has_value()
-                              ? op.getInitValues().value().size()
-                              : 0;
+        auto initValuesOpt = op.getInitValues();
+        auto initValues = initValuesOpt.has_value() ? initValuesOpt->size() : 0;
         int prodLockValue = (numElem - initValues) * repeatCount;
         auto prodLock =
             LockOp::create(builder, ofLoc, creation_tile, prodLockValue);

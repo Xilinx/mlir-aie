@@ -20,6 +20,7 @@
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
 #include "mlir/Interfaces/FoldInterfaces.h"
 #include "mlir/Transforms/InliningUtils.h"
+#include "llvm/ADT/STLExtras.h"
 
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/TypeSize.h"
@@ -106,8 +107,8 @@ void AIEX::getHardwareStridesWraps(const AIE::AIETargetModel &targetModel,
   auto addressGranularity = targetModel.getAddressGenGranularity();
 
   // Output strides and sizes are default-initialized to 0
-  std::fill(sizes.begin(), sizes.end(), 0);
-  std::fill(strides.begin(), strides.end(), 0);
+  llvm::fill(sizes, 0);
+  llvm::fill(strides, 0);
 
   if (inputSizes[0] == 0) {
     // Illegal input, this won't transfer anything at all.
@@ -284,6 +285,10 @@ LogicalResult AIEX::BroadcastPacketOp::verify() {
 
 /* Calculates the offset value to be written to the
  */
+uint32_t AIEX::NpuDmaMemcpyNdOp::getAxcacheOrDefault() {
+  return getAxcache().value_or(AIE::getTargetModel(*this).getDefaultAxCache());
+}
+
 int64_t AIEX::NpuDmaMemcpyNdOp::getOffsetInBytes() {
   llvm::SmallVector<int64_t, 4> offsets =
       llvm::map_to_vector(llvm::reverse(getMixedOffsets()), [](OpFoldResult s) {
@@ -449,7 +454,7 @@ struct LinearizeContiguousTransfer
         op.getIssueTokenAttr(), op.getD0ZeroBeforeAttr(),
         op.getD1ZeroBeforeAttr(), op.getD2ZeroBeforeAttr(),
         op.getD0ZeroAfterAttr(), op.getD1ZeroAfterAttr(),
-        op.getD2ZeroAfterAttr(), op.getBurstLengthAttr(),
+        op.getD2ZeroAfterAttr(), op.getBurstLengthAttr(), op.getAxcacheAttr(),
         op.getOffsetParameterAttr(), op.getOffsetStateTableIdxAttr());
     return mlir::success();
   }
@@ -469,10 +474,9 @@ checkBurstLength(const xilinx::AIE::AIETargetModel &targetModel,
                  uint32_t requestedBurstLength) {
   if (requestedBurstLength != 0) {
     auto bel = targetModel.getShimBurstEncodingsAndLengths();
-    auto pair = std::find_if(bel.begin(), bel.end(),
-                             [=](const std::pair<uint32_t, uint32_t> &p) {
-                               return p.second == requestedBurstLength;
-                             });
+    auto pair = llvm::find_if(bel, [=](const std::pair<uint32_t, uint32_t> &p) {
+      return p.second == requestedBurstLength;
+    });
 
     if (pair == bel.end()) {
       std::string errorMessage =
@@ -832,8 +836,14 @@ LogicalResult AIEX::NpuWriteBdOp::verify() {
   if (errorMessage.has_value()) {
     return emitOpError(errorMessage.value());
   }
+  if (!targetModel.isShimNOCTile(getColumn(), getRow()) && getAxcache())
+    return emitOpError("Only ShimTiles support AxCACHE configuration.");
 
   return success();
+}
+
+uint32_t AIEX::NpuWriteBdOp::getAxcacheOrDefault() {
+  return getAxcache().value_or(AIE::getTargetModel(*this).getDefaultAxCache());
 }
 
 std::optional<uint32_t> AIEX::getConstantIntOperand(mlir::Value v) {

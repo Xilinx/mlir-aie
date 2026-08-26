@@ -1,0 +1,128 @@
+{
+  "skill_name": "aie-code-creator",
+  "evals": [
+    {
+      "id": 0,
+      "name": "eltwise-scale-relu-multicore",
+      "prompt": "Write an IRON design that scales a bfloat16 vector of 8192 elements by 2.0 and applies ReLU, split across 4 cores on NPU2",
+      "expected_output": "A Python IRON design file and a C++ kernel file. The Python design must use the current IRON Runtime/Program API: Runtime(seq_fn, fn_args) with fill/drain called as methods on ObjectFifoHandle objects obtained from .prod()/.cons(), and Program(device, rt, workers=[...]) (not the older Runtime()/rt.sequence()/rt.fill()/rt.start() or 2-arg Program() style). It should split the 8192-element tensor across 4 workers (data-parallel), and the kernel should perform scale-by-2.0 then ReLU on bfloat16 data, vectorized via the AIE API.",
+      "files": [],
+      "assertions": [
+        "Runtime is constructed as Runtime(seq_fn, fn_args) with a plain function passed as the sequence body, not via Runtime() then rt.sequence()",
+        "fill and drain are called as methods on ObjectFifoHandle objects (e.g. in_h.fill(...), out_h.drain(...)), not as rt.fill()/rt.drain()",
+        "There is no call to rt.start() anywhere in the generated code",
+        "Program is constructed with workers passed as workers=[...] to Program(device, rt, workers=[...]), not passed to Runtime or via a separate .start() call",
+        "The design splits work across 4 cores/workers (e.g. via ObjectFifo split/join or 4 separate Worker instances), not a single Worker",
+        "The C++ kernel operates on bfloat16 data and performs both a scale operation and a ReLU (max with zero)",
+        "The C++ kernel uses AIE API vector types/intrinsics (aie::vector, aie::mul, aie::max, aie::load_v/store_v, etc.) rather than raw scalar loops or compiler-specific intrinsics",
+        "Kernel pointers passed into the hot loop are marked __restrict"
+      ]
+    },
+    {
+      "id": 1,
+      "name": "two-stage-pipeline",
+      "prompt": "I need a two-stage IRON pipeline: first kernel does elementwise add of two int32 vectors, second kernel does elementwise multiply by a constant. Should run on NPU2",
+      "expected_output": "A Python IRON design wiring two Worker stages together via an intermediate ObjectFifo (producer-consumer pipeline pattern), each running its own C++ kernel (add, then multiply-by-constant), using the current IRON Runtime/Program API.",
+      "files": [],
+      "assertions": [
+        "Runtime is constructed as Runtime(seq_fn, fn_args) with fill/drain called as ObjectFifoHandle methods, not the old rt.sequence()/rt.fill()/rt.start() style",
+        "Program is constructed as Program(device, rt, workers=[...]) with both pipeline-stage workers listed",
+        "There are two distinct Worker instances (or two distinct core_fn bodies), one for the add stage and one for the multiply stage",
+        "An intermediate ObjectFifo connects the output of the add stage to the input of the multiply stage, rather than routing both stages' I/O directly through the top-level Runtime sequence",
+        "The add kernel operates on int32 data with fixed-width types (int32_t), not bare int",
+        "The multiply kernel multiplies by a constant/scalar value",
+        "Every ObjectFifo acquire(n) call in a core body has a matching release(n) call"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "tiled-matmul-mmul",
+      "prompt": "Write an IRON design for a tiled bf16 matmul (256x256 x 256x256) on NPU2 using MMUL, with output verification against numpy",
+      "expected_output": "A Python IRON design tiling a 256x256 x 256x256 bfloat16 matmul across NPU2 cores, a C++ kernel using aie::mmul for the tile-level multiply-accumulate, using the current IRON Runtime/Program API, plus a small numpy-based verification harness comparing NPU output to a reference matmul.",
+      "files": [],
+      "assertions": [
+        "Runtime is constructed as Runtime(seq_fn, fn_args) with fill/drain called as ObjectFifoHandle methods, not the old rt.sequence()/rt.fill()/rt.start() style",
+        "Program is constructed as Program(device, rt, workers=[...])",
+        "The C++ kernel uses aie::mmul (or an equivalent AIE MMUL accumulator API) rather than a naive scalar triple-nested-loop matmul",
+        "Tile/chunk dimensions used with MMUL are chosen or asserted to satisfy the required divisibility constraints (e.g. via static_assert or a comment/assert referencing m/k/n divisibility)",
+        "A numpy-based verification step compares the NPU-computed output against a reference numpy matmul (e.g. np.matmul or @) on the same input data",
+        "The design distributes matmul tiles across multiple cores rather than using a single Worker for the whole 256x256 matmul"
+      ]
+    },
+    {
+      "id": 3,
+      "name": "cascade-accumulator-4core",
+      "prompt": "Write an IRON design on NPU2 that computes a running-sum accumulator across 4 adjacent cores using the AIE cascade interconnect: each core adds its own local partial sum of an int32 vector into the incoming cascade value and passes the result to the next core in the chain, with the final core's cascade output DMA'd back to the host.",
+      "expected_output": "A Python IRON design with 4 Worker instances chained via CascadeFlow(src=..., dst=...) along the cascade interconnect (not through an ObjectFifo), each running a C++ kernel that reads the incoming cascade value with get_scd, adds its local partial sum, and writes the result onward with put_mcd, using the current IRON Runtime/Program API for the surrounding data movement.",
+      "files": [],
+      "assertions": [
+        "Runtime is constructed as Runtime(seq_fn, fn_args) with fill/drain called as ObjectFifoHandle methods, not the old rt.sequence()/rt.fill()/rt.start() style",
+        "Program is constructed as Program(device, rt, workers=[...]) listing all 4 chained workers",
+        "CascadeFlow(src=worker_a, dst=worker_b) (or equivalent positional form) is used to connect each adjacent pair of the 4 workers along the cascade interconnect, not object_fifo or a manual flow() call",
+        "No CascadeFlow instance is passed to rt.add_flow(...) — CascadeFlow self-registers on its src Worker and does not need or use the explicit Flow/PacketFlow registration call",
+        "The C++ kernels use the AIE API's cascade intrinsics (e.g. get_scd / put_mcd, or equivalently named cascade read/write calls) to consume the incoming partial sum and emit the outgoing one, rather than routing the running sum through an ObjectFifo",
+        "The kernel accumulates int32 data with fixed-width types (int32_t), not bare int"
+      ]
+    },
+    {
+      "id": 4,
+      "name": "packet-switched-broadcast",
+      "prompt": "I need explicit low-level control over routing on NPU2: broadcast one shim tile's DMA output to 3 different compute tiles using packet switching with a specific packet id, rather than the default ObjectFifo broadcast pattern.",
+      "expected_output": "A Python IRON/low-level design that constructs a PacketFlow with a caller-chosen packet id routing one shim tile's output to a primary destination plus 2 extra destinations via extra_dsts=[PacketDest(...), PacketDest(...)], explicitly registered with the Runtime so it gets resolved, using the current IRON Runtime/Program API for the rest of the design.",
+      "files": [],
+      "assertions": [
+        "PacketFlow is constructed with the packet id as the first positional argument (e.g. PacketFlow(1, src_tile, dst_tile, ...)), not as a trailing pkt_id= keyword argument after src/dst",
+        "The 2 additional destination tiles are passed via extra_dsts=[PacketDest(tile_x), PacketDest(tile_y)] (or equivalent), not by constructing 3 separate PacketFlow objects for one packet id",
+        "The constructed PacketFlow is registered by calling rt.add_flow(pf) (or equivalent) on the Runtime instance — the design does not rely on constructing the PacketFlow alone to have it resolved",
+        "Runtime is constructed as Runtime(seq_fn, fn_args) with fill/drain called as ObjectFifoHandle methods, not the old rt.sequence()/rt.fill()/rt.start() style",
+        "Program is constructed as Program(device, rt, workers=[...])"
+      ]
+    },
+    {
+      "id": 5,
+      "name": "builtin-relu-library-first",
+      "prompt": "I want to run ReLU over a 65536-element bfloat16 tensor on my NPU, using all the columns. What's the simplest thing that works?",
+      "expected_output": "A short @iron.jit design that uses the prebuilt kernels.relu from aie.iron.kernels together with an aie.iron.algorithms template (transform_parallel), with In/Out annotated tensor arguments and a keyword-only CompileTime[int] size parameter. No hand-written C++ kernel should be produced, since ReLU on bf16 is already covered by the library.",
+      "files": [],
+      "assertions": [
+        "The design uses kernels.relu from aie.iron.kernels rather than defining a hand-written C++ ReLU kernel",
+        "No C++ / .cc kernel source file is written for the ReLU itself",
+        "The design uses an aie.iron.algorithms template (transform_parallel or transform) rather than hand-building ObjectFifo/Worker/Runtime for this element-wise case",
+        "Tensor parameters of the @iron.jit function are annotated with In / Out",
+        "Any size or tile specialization parameter is keyword-only and annotated CompileTime[int]",
+        "pass_size_to_kernel=False is passed (or the bare (in, out) signature of kernels.relu is otherwise correctly accounted for)",
+        "The response states that a built-in kernel was used instead of writing one"
+      ]
+    },
+    {
+      "id": 6,
+      "name": "int8-add-library-gap",
+      "prompt": "Write an IRON design for elementwise add of two int8 vectors (32768 elements each) on NPU2, saturating on overflow.",
+      "expected_output": "kernels.add is bfloat16-only, so the library does not cover int8 add. The correct answer hand-writes a vectorized int8 C++ kernel with saturation enabled, and says why the built-in was not usable. It should not silently call kernels.add with an int8 dtype.",
+      "files": [],
+      "assertions": [
+        "The design does NOT call kernels.add for the int8 data (kernels.add is bf16-only and would be wrong here)",
+        "A hand-written C++ kernel is provided for the int8 elementwise add",
+        "The response explains that the built-in add kernel does not support int8, rather than silently hand-writing without comment",
+        "The C++ kernel calls aie::set_saturation(aie::saturation_mode::saturate) (or equivalent) to get saturating overflow behavior",
+        "The C++ kernel uses fixed-width types (int8_t) and AIE API vector operations rather than bare int and scalar loops",
+        "Kernel pointers passed into the hot loop are marked __restrict"
+      ]
+    },
+    {
+      "id": 7,
+      "name": "pinned-tiles-no-stale-placer",
+      "prompt": "For my NPU2 IRON design I want to pin each of my 4 workers to a specific compute tile in column 0 instead of letting the compiler choose. How do I do that?",
+      "expected_output": "Workers are pinned with the tile= keyword argument taking a Tile(col, row), e.g. Worker(core_fn, [...], tile=Tile(0, 2)). The answer must not use the removed placement= kwarg, must not import aie.iron.placers or use SequentialPlacer, and must not pass a placer object to resolve_program().",
+      "files": [],
+      "assertions": [
+        "Workers are pinned using the tile= keyword argument (e.g. tile=Tile(0, 2)), not placement=",
+        "The code does not use placement= as a Worker keyword argument anywhere",
+        "The code does not import from aie.iron.placers and does not reference SequentialPlacer",
+        "resolve_program() is called with no placer object argument",
+        "Tile is imported from aie.iron.device",
+        "Compute tiles are given plausible row indices for a compute tile (rows 2-5), not row 0 or 1 which are shim/mem tiles"
+      ]
+    }
+  ]
+}

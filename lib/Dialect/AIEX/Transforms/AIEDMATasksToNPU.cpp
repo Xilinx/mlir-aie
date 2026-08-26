@@ -21,6 +21,7 @@
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/TypeSwitch.h"
 
 namespace xilinx::AIEX {
@@ -590,7 +591,8 @@ struct AIEDMATasksToNPUPass
     SmallVector<Value> bdWords;
     Value bdRepeatCount;
     if (failed(buildShimBdWords(builder, loc, target_model, f, sizes4, strides4,
-                                elemWidth, bd_op.getBurstLength(), bufLen,
+                                elemWidth, bd_op.getBurstLength(),
+                                bd_op.getAxcacheOrDefault(), bufLen,
                                 bdRepeatCount, bdWords)))
       return failure();
 
@@ -691,8 +693,8 @@ struct AIEDMATasksToNPUPass
         llvm::SmallVector<int64_t, 4>(4, 0);
     llvm::SmallVector<int64_t, 4> padAfter =
         llvm::SmallVector<int64_t, 4>(4, 0);
-    std::fill(padBefore.begin(), padBefore.end(), 0);
-    std::fill(padAfter.begin(), padAfter.end(), 0);
+    llvm::fill(padBefore, 0);
+    llvm::fill(padAfter, 0);
 
     auto d0size = 0;
     auto d0stride = 0;
@@ -859,7 +861,11 @@ struct AIEDMATasksToNPUPass
         /*d1_zero_before=*/padBefore[1], /*d2_zero_before=*/padBefore[2],
         /*d0_zero_after=*/padAfter[0], /*d1_zero_after=*/padAfter[1],
         /*d2_zero_after=*/padAfter[2],
-        /*burst_length=*/bd_op.getBurstLength());
+        /*burst_length=*/bd_op.getBurstLength(),
+        /*axcache=*/
+        target_model.isShimNOCTile(tile.getCol(), tile.getRow())
+            ? builder.getI32IntegerAttr(bd_op.getAxcacheOrDefault())
+            : IntegerAttr());
     return setAddressForSingleBD(builder, bd_op, tile);
   }
 
