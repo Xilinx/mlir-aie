@@ -1883,17 +1883,19 @@ def AIE_PutCascadeOp: AIE_Op<"put_cascade", []> {
 def AIE_RouteEndpointOp
     : AIE_Op<"route_endpoint", [HasParent<"DeviceOp">, Symbol,
                                 DeclareOpInterfaceMethods<RouteEndpoint>]> {
-  let summary = "A named end of a route that this compiler does not program";
+  let summary = "A symbolic name for a channel on a tile";
   let description = [{
-    Holds a tile and a port, and nothing else: enough for an `aie.route` to
-    reach it, and no buffers to move data into or out of. The direction comes
-    from the side of the route this end is named on.
+    Names a channel on a tile so an `aie.route` can refer to it by symbol.
+    Because the route names the symbol rather than a channel index,
+    `--aie-objectfifo-allocate` is free to pick the index, and the route can be
+    written before that decision is made.
 
-    Two ends look like this. A shim end whose transfers the host runtime issues,
-    where all the design needs from the compiler is the channel to address --
-    recorded as an `aie.shim_dma_allocation` under `fifoName`. And a core's raw
-    stream port, which the core reads and writes directly, bypassing memory.
-    `bundle` tells them apart.
+    `bundle` says what kind of port it is. A `DMA` bundle on a shim tile names a
+    DMA the host runtime programs itself; the chosen channel is recorded as an
+    `aie.shim_dma_allocation` under `fifoName` for the runtime sequence to
+    address. A `Core` bundle names a core's stream port, which the core reads
+    and writes directly and which needs no DMA. Setting `channelIndex` pins the
+    channel instead of leaving it to allocation.
 
     Example:
     ```
@@ -1924,14 +1926,12 @@ def AIE_RouteEndpointOp
 def AIE_RouteOp : AIE_Op<"route", [HasParent<"DeviceOp">]> {
   let summary = "A stream connection between endpoints named by symbol";
   let description = [{
-    Connects one sending endpoint to the receiving endpoints it feeds, naming
-    each by symbol rather than spelling out a (tile, direction, channel) triple.
-    Several destinations describe a broadcast: one source channel feeding a
-    multicast route.
+    Connects a source endpoint to the destination endpoints it feeds, naming
+    each by symbol. Several destinations mean a broadcast: one source channel
+    feeding them all.
 
-    Any op implementing `RouteEndpoint` may take part, so a route says nothing
-    about where the data comes from. `aie.route_endpoint` carries no storage at
-    all, while the objectFifo endpoints carry a pool.
+    Any op implementing `RouteEndpoint` may be an end of a route:
+    `aie.route_endpoint` and `aie.objectfifo.dma_endpoint`.
 
     `--aie-objectfifo-allocate` assigns a channel to each endpoint, emits the
     corresponding `aie.flow`, and consumes this op.
@@ -2357,13 +2357,16 @@ def AIE_ObjectFifoLinkOp: AIE_Op<"objectfifo.link", [HasParent<"DeviceOp">]> {
 
 def AIE_ObjectFifoSegmentOp
     : AIE_Op<"objectfifo.segment", [HasParent<"ObjectFifoPoolOp">, Symbol]> {
-  let summary = "A slice of every buffer in a pool, and the locks guarding it";
+  let summary =
+      "A slice of every buffer in an aie.objectfifo.pool, and its locks";
   let description = [{
-    Segments partition one object. Every buffer in the pool carries every
-    segment, so a segment names the same run of elements in each of them.
+    Segments partition the object an `aie.objectfifo.pool` holds. Every buffer
+    in the pool carries every segment, so a segment names the same run of
+    elements in each of them.
 
-    An endpoint names the segments it works, which is how one pool serves
-    several independent actors: each holds its own slice under its own locks.
+    An endpoint names the segments it fills or drains, which is how one pool
+    serves several independent actors: each holds its own slice under its own
+    locks.
 
     `produceLock` and `consumeLock` are filled in by
     `--aie-objectfifo-allocate`, which leaves alone whatever is already named.

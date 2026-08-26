@@ -187,7 +187,7 @@ struct AIEObjectFifoSplitPass
     }
   }
 
-  /// The names `ref` selects, for an endpoint that works only part of a pool.
+  /// The names `ref` selects, empty on a single-segment pool.
   ArrayAttr selectedSegmentNames(PoolRef ref) {
     std::vector<ObjectFifoSegmentOp> all = ref.pool.getSegmentOps();
     if (all.size() <= 1) {
