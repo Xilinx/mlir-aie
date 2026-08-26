@@ -1306,7 +1306,9 @@ def AIE_DMAConfigureTaskOp : AIEX_Op<"dma_configure_task", [HasAncestor<"AIE::Ru
         DefaultValuedOptionalAttr<I32Attr, "0">:$repeat_count,
         Optional<I32>:$repeat_count_val,
         Optional<I32>:$bd_id_val,
-        OptionalAttr<PacketInfoAttr>:$packet
+        OptionalAttr<PacketInfoAttr>:$packet,
+        // Put the channel into out-of-order mode (S2MM only).
+        UnitAttr:$out_of_order
   );
 
   let regions = (
@@ -1350,7 +1352,7 @@ def AIE_DMAConfigureTaskOp : AIEX_Op<"dma_configure_task", [HasAncestor<"AIE::Ru
             xilinx::AIE::DMAChannelDirAttr::get(odsBuilder.getContext(), dir),
             $_builder.getI32IntegerAttr(channel_index), $_builder.getBoolAttr(token),
             $_builder.getI32IntegerAttr(repeat), /*repeat_count_val=*/nullptr,
-            /*bd_id_val=*/nullptr, /*packet=*/nullptr);
+            /*bd_id_val=*/nullptr, /*packet=*/nullptr, /*out_of_order=*/nullptr);
     }]>
   ];
 }

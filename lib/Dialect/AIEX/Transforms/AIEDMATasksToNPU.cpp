@@ -231,9 +231,20 @@ struct AIEDMATasksToNPUPass
     return success();
   }
 
-  LogicalResult verifyOptionalLocksInBlock(Block &block) {
+  LogicalResult verifyOptionalLocksInBlock(Block &block, bool outOfOrder) {
     auto lock_ops = block.getOps<AIE::UseLockOp>();
     int n_lock_ops = std::distance(lock_ops.begin(), lock_ops.end());
+    // Out-of-order receive BDs may be release-only (lock-driven completion);
+    // matches AIERT.cpp configureLocksInBdBlock.
+    if (outOfOrder && n_lock_ops == 1) {
+      AIE::UseLockOp only = *lock_ops.begin();
+      if (!only.release()) {
+        only.emitOpError(
+            "out-of-order BD with a single lock must use_lock(release)");
+        return failure();
+      }
+      return success();
+    }
     // Allow exactly 0 or 2 lock ops (acquire and release)
     if (n_lock_ops != 0 && n_lock_ops != 2) {
       AIE::UseLockOp lock_op = *lock_ops.begin();
@@ -281,29 +292,31 @@ struct AIEDMATasksToNPUPass
     return bd_op;
   }
 
-  // Returns pair of (acquire_lock_op, release_lock_op) if present
+  // Returns pair of (acquire_lock_op, release_lock_op) if present. Under
+  // out-of-order, a release-only block is valid and the pair's acquire op is
+  // null.
   std::optional<std::pair<AIE::UseLockOp, AIE::UseLockOp>>
-  getOptionalLockOpsForBlock(Block &block) {
+  getOptionalLockOpsForBlock(Block &block, bool outOfOrder) {
     auto lock_ops = block.getOps<AIE::UseLockOp>();
     int n_lock_ops = std::distance(lock_ops.begin(), lock_ops.end());
-    if (n_lock_ops != 2) {
-      return std::nullopt;
-    }
 
     AIE::UseLockOp acquire_op = nullptr;
     AIE::UseLockOp release_op = nullptr;
-
     for (auto lock_op : lock_ops) {
-      if (lock_op.acquire() || lock_op.acquireGE()) {
+      if (lock_op.acquire() || lock_op.acquireGE())
         acquire_op = lock_op;
-      } else if (lock_op.release()) {
+      else if (lock_op.release())
         release_op = lock_op;
-      }
     }
 
-    if (acquire_op && release_op) {
+    // Out-of-order: a release-only BD is valid (acquire stays disabled).
+    if (outOfOrder && n_lock_ops == 1 && release_op)
+      return std::make_pair(AIE::UseLockOp(nullptr), release_op);
+
+    if (n_lock_ops != 2)
+      return std::nullopt;
+    if (acquire_op && release_op)
       return std::make_pair(acquire_op, release_op);
-    }
     return std::nullopt;
   }
 
@@ -453,7 +466,8 @@ struct AIEDMATasksToNPUPass
   FailureOr<BdTemplateFields>
   gatherBdTemplateFields(Block &block, AIE::DMABDOp bd_op, AIE::TileOp &tile,
                          const AIE::AIETargetModel &target_model,
-                         std::optional<xilinx::AIE::PacketInfoAttr> packet) {
+                         std::optional<xilinx::AIE::PacketInfoAttr> packet,
+                         bool outOfOrder = false) {
     BdTemplateFields f;
     if (std::optional<uint32_t> nextBdId = bd_op.getNextBdId()) {
       f.next_bd_id = *nextBdId;
@@ -470,25 +484,29 @@ struct AIEDMATasksToNPUPass
     if (std::optional<int32_t> oooId = bd_op.getOutOfOrderId())
       f.out_of_order_id = *oooId;
 
-    auto lock_ops = getOptionalLockOpsForBlock(block);
+    auto lock_ops = getOptionalLockOpsForBlock(block, outOfOrder);
     if (lock_ops) {
       auto [acquire_op, release_op] = *lock_ops;
-      AIE::LockOp acq_lock = acquire_op.getLockOp();
       AIE::LockOp rel_lock = release_op.getLockOp();
 
-      if (std::optional<int32_t> acqLockId = acq_lock.getLockID()) {
-        f.lock_acq_id = *acqLockId;
-        FailureOr<int32_t> value = acquire_op.getConstantValue();
-        if (failed(value))
-          return failure();
-        // failed() above guards the deref; FailureOr hides std::optional's
-        // has_value(), so the checker cannot see the guard (suppressed below).
-        f.lock_acq_val = *value; // NOLINT
-        // For AcquireGreaterEqual, negate the value to signal the hardware to
-        // use >= comparison instead of == comparison.
-        if (acquire_op.acquireGE())
-          f.lock_acq_val = -f.lock_acq_val;
-        f.lock_acq_enable = 1;
+      // Acquire is optional under out-of-order (release-only completion).
+      if (acquire_op) {
+        AIE::LockOp acq_lock = acquire_op.getLockOp();
+        if (std::optional<int32_t> acqLockId = acq_lock.getLockID()) {
+          f.lock_acq_id = *acqLockId;
+          FailureOr<int32_t> value = acquire_op.getConstantValue();
+          if (failed(value))
+            return failure();
+          // failed() above guards the deref; FailureOr hides std::optional's
+          // has_value(), so the checker cannot see the guard (suppressed
+          // below).
+          f.lock_acq_val = *value; // NOLINT
+          // For AcquireGreaterEqual, negate the value to signal the hardware
+          // to use >= comparison instead of == comparison.
+          if (acquire_op.acquireGE())
+            f.lock_acq_val = -f.lock_acq_val;
+          f.lock_acq_enable = 1;
+        }
       }
 
       if (std::optional<int32_t> relLockId = rel_lock.getLockID()) {
@@ -504,9 +522,10 @@ struct AIEDMATasksToNPUPass
       // AIERT.cpp implementation.
       if (target_model.isMemTile(tile.getCol(), tile.getRow())) {
         auto lockOffset = target_model.getLockLocalBaseIndex(
-            tile.getCol(), tile.getRow(), acq_lock.colIndex(),
-            acq_lock.rowIndex());
-        if (lockOffset && acq_lock.getLockID().has_value())
+            tile.getCol(), tile.getRow(), rel_lock.colIndex(),
+            rel_lock.rowIndex());
+        if (lockOffset && acquire_op &&
+            acquire_op.getLockOp().getLockID().has_value())
           f.lock_acq_id += lockOffset.value();
         if (lockOffset && rel_lock.getLockID().has_value())
           f.lock_rel_id += lockOffset.value();
@@ -625,7 +644,7 @@ struct AIEDMATasksToNPUPass
   rewriteSingleBD(OpBuilder &builder, Block &block, AIE::TileOp &tile,
                   AIE::DMAChannelDir channelDir,
                   std::optional<xilinx::AIE::PacketInfoAttr> packet,
-                  Value runtimeBdId = nullptr) {
+                  Value runtimeBdId = nullptr, bool outOfOrder = false) {
     AIE::DMABDOp bd_op = getBdForBlock(block);
     const auto &target_model = AIE::getTargetModel(bd_op);
     auto buffer_type = llvm::cast<BaseMemRefType>(bd_op.getBuffer().getType());
@@ -666,6 +685,12 @@ struct AIEDMATasksToNPUPass
               bd_op, sizesRev, stridesRev, elemWidth,
               target_model.getAddressGenGranularity())))
         return failure();
+      // The dynamic BD path does not thread out-of-order lock handling, so
+      // reject rather than silently drop the release-only completion lock.
+      if (outOfOrder)
+        return bd_op->emitOpError(
+            "out-of-order is not yet supported for buffer descriptors with "
+            "runtime-valued size, stride, offset, or bd_id");
       return rewriteSingleBDDynamic(builder, block, bd_op, tile, packet,
                                     runtimeBdId);
     }
@@ -849,8 +874,8 @@ struct AIEDMATasksToNPUPass
                << "        Padding is supported only on MemTiles.";
       }
     }
-    auto fieldsOr =
-        gatherBdTemplateFields(block, bd_op, tile, target_model, packet);
+    auto fieldsOr = gatherBdTemplateFields(block, bd_op, tile, target_model,
+                                           packet, outOfOrder);
     if (failed(fieldsOr))
       return failure();
     // failed() above guards the deref; see note in rewriteSingleBDDynamic.
@@ -920,6 +945,54 @@ struct AIEDMATasksToNPUPass
     return success();
   }
 
+  // Put an S2MM channel into out-of-order mode by setting the Enable_Out_of_Order
+  // field of its CTRL register, masked so the sibling fields
+  // (DECOMPRESSION_ENABLE, CONTROLLER_ID, FOT_MODE) are preserved. isMem=true
+  // resolves the CTRL register for core, mem, and shim receivers alike.
+  LogicalResult emitOutOfOrderChannelEnable(OpBuilder &builder,
+                                            DMAConfigureTaskOp op,
+                                            AIE::TileOp tile) {
+    const AIE::AIETargetModel &tm = AIE::getTargetModel(op);
+    int col = tile.getCol();
+    int row = tile.getRow();
+    int channel = op.getChannel();
+
+    uint32_t ctrlAddrLocal =
+        tm.getDmaControlAddress(col, row, channel, AIE::DMAChannelDir::S2MM) &
+        0xFFFFF;
+
+    std::string ctrlRegName = "DMA_S2MM_" + std::to_string(channel) + "_Ctrl";
+    // DMA control regs live in the memory module; memtile ignores isMem, shim
+    // is rejected by the verifier.
+    const AIE::RegisterInfo *ctrlReg =
+        tm.lookupRegister(ctrlRegName, tile.getTileID(), /*isMem=*/true);
+    if (!ctrlReg)
+      return op.emitOpError("target has no ")
+             << ctrlRegName << " register in its register database";
+    const AIE::BitFieldInfo *oooField =
+        ctrlReg->getField("Enable_Out_of_Order");
+    if (!oooField)
+      return op.emitOpError()
+             << ctrlRegName
+             << " has no Enable_Out_of_Order field in the register database";
+    std::optional<uint32_t> oooMask = tm.getFieldMask(*oooField);
+    if (!oooMask)
+      return op.emitOpError()
+             << ctrlRegName
+             << " Enable_Out_of_Order field does not fit in a 32-bit register";
+
+    Location loc = op.getLoc();
+    IntegerAttr colAttr = builder.getI32IntegerAttr(col);
+    IntegerAttr rowAttr = builder.getI32IntegerAttr(row);
+    Value addr = createConstantI32(builder, loc, ctrlAddrLocal);
+    Value val = createConstantI32(builder, loc,
+                                   tm.encodeFieldValue(*oooField, 1));
+    Value mask = createConstantI32(builder, loc, *oooMask);
+    NpuMaskWrite32Op::create(builder, loc, addr, val, mask, nullptr, colAttr,
+                             rowAttr);
+    return success();
+  }
+
   LogicalResult rewriteSingleDMAConfigureTaskOp(DMAConfigureTaskOp op) {
     OpBuilder builder(op);
     AIE::TileOp tile = op.tryGetTileOp();
@@ -950,9 +1023,14 @@ struct AIEDMATasksToNPUPass
       if (failed(verifyBdInBlock(it, hasRuntimeBdId))) {
         return failure();
       }
-      if (failed(verifyOptionalLocksInBlock(it))) {
+      if (failed(verifyOptionalLocksInBlock(it, op.getOutOfOrder()))) {
         return failure();
       }
+    }
+
+    if (op.getOutOfOrder()) {
+      if (failed(emitOutOfOrderChannelEnable(builder, op, tile)))
+        return failure();
     }
 
     // Hoist next_bd operations into next_bd_id attribute of the dma_bd
@@ -972,7 +1050,7 @@ struct AIEDMATasksToNPUPass
         continue;
       }
       if (failed(rewriteSingleBD(builder, block, tile, channelDir, packet,
-                                 runtimeBdId))) {
+                                 runtimeBdId, op.getOutOfOrder()))) {
         return failure();
       }
     }
