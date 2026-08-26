@@ -12,6 +12,9 @@
 
 using namespace xilinx;
 
+static_assert(AIE::AIETargetModel::TK_AIE2PS_VE3858 >
+              AIE::AIETargetModel::TK_AIE2_NPU2_Last);
+
 void test() {
 
   // AIEDevice::xcvc1902
