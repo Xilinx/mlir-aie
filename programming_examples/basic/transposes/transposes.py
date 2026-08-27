@@ -3,9 +3,9 @@
 # Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""Four transpose strategies on a single AIE column, ``@iron.jit``-compiled.
+"""Five transpose strategies on a single AIE column, ``@iron.jit``-compiled.
 
-All four strategies produce the same end result: a full ``M x N`` →
+All five strategies produce the same end result: a full ``M x N`` →
 ``N x M`` transpose.  Only the on-device mechanism differs, and each
 mechanism has its own (dtype, size) support envelope:
 
@@ -28,6 +28,15 @@ mechanism has its own (dtype, size) support envelope:
                       inner ``s x s`` sub-tile.  Supports
                       ``i8`` / ``i16`` / ``i32`` and any sizes with
                       ``m | M``, ``n | N``, ``s | m``, ``s | n``.
+  * ``dyn``         — scalar transpose on a compute core
+                      (``aie_kernels/transpose_dyn.cc``). ``mb``/``nb``
+                      are ordinary ``int32`` kernel arguments rather than
+                      the ``-DDIM_m``/``-DDIM_n`` macros ``combined`` and
+                      ``shuffle`` need, so one compiled object serves any
+                      ``M``/``K``/``i8``/``i16``/``i32`` combination with
+                      no divisibility or minimum-size constraint. One
+                      element per cycle, and the whole ``M x K`` tile must
+                      fit one core's L1.
 
 Each strategy raises ``ValueError`` if asked for a combo outside its
 support envelope.
@@ -53,6 +62,7 @@ from aie.utils.verify import assert_pass
 _KERNELS_DIR = Path(__file__).parent / "aie_kernels"
 _SHUFFLE_SRC = str(_KERNELS_DIR / "shuffle_16x16.cc")
 _COMBINED_SRC = str(_KERNELS_DIR / "transpose.cc")
+_DYN_SRC = str(_KERNELS_DIR / "transpose_dyn.cc")
 
 _BYTES_TO_DTYPE = {1: np.uint8, 2: np.uint16, 4: np.uint32}
 _COMBINED_DTYPE_MACRO = {1: "DTYPE_i8", 2: "DTYPE_i16", 4: "DTYPE_i32"}
@@ -277,6 +287,56 @@ def _transpose_combined(
 
 
 # ---------------------------------------------------------------------------
+# Strategy 5: scalar transpose, mb/nb as runtime kernel args (no macros).
+# ---------------------------------------------------------------------------
+
+
+@iron.jit
+def _transpose_dyn(
+    A: In,
+    C: Out,
+    *,
+    M: CompileTime[int] = 64,
+    K: CompileTime[int] = 64,
+    dtype_bytes: CompileTime[int] = 4,
+):
+    dtype = _BYTES_TO_DTYPE[dtype_bytes]
+    tensor_ty = np.ndarray[(M, K), np.dtype[dtype]]
+
+    kernel_func = ExternalFunction(
+        "transpose_dyn",
+        source_file=_DYN_SRC,
+        arg_types=[tensor_ty, tensor_ty, np.int32, np.int32],
+        compile_flags=[f"-D{_COMBINED_DTYPE_MACRO[dtype_bytes]}"],
+    )
+
+    in_fifo = ObjectFifo(tensor_ty, name="in_fifo")
+    out_fifo = ObjectFifo(tensor_ty, name="out_fifo")
+
+    def core_fn(in_fifo, out_fifo, kernel_func):
+        elem_in = in_fifo.acquire(1)
+        elem_out = out_fifo.acquire(1)
+        # M, K are Python ints closed over from the @iron.jit trace here,
+        # same as this file's other strategies; nothing about the kernel
+        # signature requires that (see transpose_dyn.cc).
+        kernel_func(elem_in, elem_out, M, K)
+        out_fifo.release(1)
+        in_fifo.release(1)
+
+    worker = Worker(core_fn, fn_args=[in_fifo.cons(), out_fifo.prod(), kernel_func])
+
+    def sequence(a, c, in_h, out_h):
+        in_h.fill(a)
+        out_h.drain(c, wait=True)
+
+    rt = Runtime(
+        sequence,
+        [tensor_ty, tensor_ty, in_fifo.prod(), out_fifo.cons()],
+    )
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
+
+
+# ---------------------------------------------------------------------------
 # Strategy dispatch
 # ---------------------------------------------------------------------------
 
@@ -286,6 +346,7 @@ _STRATEGIES = {
     "dma_packet": _transpose_dma_packet,
     "shuffle": _transpose_shuffle,
     "combined": _transpose_combined,
+    "dyn": _transpose_dyn,
 }
 
 
@@ -302,6 +363,9 @@ _DEFAULTS = {
     # outer tile equals the sub-tile size, producing the wrong block
     # interleave.  Original combined_transpose Makefile shipped m=64,n=32.
     "combined": dict(M=128, K=128, dtype_bytes=4, m=32, n=32, s=8),
+    # dyn: an odd, non-power-of-2, mutually-prime (M, K) at bf16 width,
+    # which combined/shuffle cannot express at all, to make the point.
+    "dyn": dict(M=48, K=37, dtype_bytes=2),
 }
 
 
