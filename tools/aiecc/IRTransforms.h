@@ -856,8 +856,9 @@ getInputWithAddressesPipeline(mlir::MLIRContext *ctx, mlir::ModuleOp mod,
 inline std::unique_ptr<mlir::PassManager>
 getRoutingPipeline(mlir::MLIRContext *ctx) {
   auto pm = std::make_unique<mlir::PassManager>(ctx);
-  pm->nest<xilinx::AIE::DeviceOp>().addPass(
-      xilinx::AIE::createAIEPathfinderPass());
+  mlir::OpPassManager &dpm = pm->nest<xilinx::AIE::DeviceOp>();
+  dpm.addPass(xilinx::AIE::createAIESplitFlowViasPass());
+  dpm.addPass(xilinx::AIE::createAIEPathfinderPass());
   return pm;
 }
 

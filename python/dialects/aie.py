@@ -718,7 +718,7 @@ class packetflow(PacketFlowOp):
         dests: Union[Dict, List[Dict]],
         keep_pkt_header: bool | None = None,
     ):
-        super().__init__(ID=pkt_id, keep_pkt_header=keep_pkt_header)
+        super().__init__(ID=pkt_id, keep_pkt_header=keep_pkt_header, vias=[])
         bb = Block.create_at_start(self.ports)
         with InsertionPoint(bb):
             PacketSourceOp(source, source_port, source_channel)
@@ -1028,7 +1028,13 @@ def flow(
     if dest_channel is None:
         dest_channel = 0
     return FlowOp(
-        source, source_bundle, source_channel, dest, dest_bundle, dest_channel
+        source,
+        source_bundle,
+        source_channel,
+        dest,
+        dest_bundle,
+        dest_channel,
+        vias=[],
     )
 
 
