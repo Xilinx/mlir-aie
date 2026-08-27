@@ -1067,8 +1067,7 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
       OptionalAttr<DenseI64ArrayAttr>:$static_strides,
       OptionalAttr<BDPadLayoutArrayAttr>:$pad_dimensions,
       // BD id. Can be given as runtime (_val) or static; mutually exclusive.
-      Optional<I32>:$bd_id_val,
-      OptionalAttr<AIEI32Attr>:$bd_id,
+      Optional<I32>:$bd_id_val, OptionalAttr<AIEI32Attr>:$bd_id,
       OptionalAttr<PacketInfoAttr>:$packet,
       // Sender-side id stamped into the packet header. Selects which receive
       // BD (by bd id) an out-of-order S2MM channel places this data into.

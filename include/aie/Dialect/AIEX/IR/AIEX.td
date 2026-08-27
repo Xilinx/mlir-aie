@@ -1288,7 +1288,10 @@ def AIE_NpuLoadPdiOp: AIEX_Op<"npu.load_pdi", []> {
   let hasCanonicalizeMethod = 1;
 }
 
-def AIE_DMAConfigureTaskOp : AIEX_Op<"dma_configure_task", [HasAncestor<"AIE::RuntimeSequenceOp">, TileElement]>, Results<(outs Index:$result)> {
+def AIE_DMAConfigureTaskOp
+    : AIEX_Op<"dma_configure_task", [HasAncestor<"AIE::RuntimeSequenceOp">,
+                                     TileElement]>,
+      Results<(outs Index:$result)> {
   let summary = "Concrete Instantiation of a Buffer Descriptor Chain as a Task on a Channel and Direction on a Tile";
   let description = [{
     Encapsulates the DMA configuration of one task, that is the (chain of) buffer descriptors to be executed on a given channel and direction on a tile.
@@ -1298,17 +1301,12 @@ def AIE_DMAConfigureTaskOp : AIEX_Op<"dma_configure_task", [HasAncestor<"AIE::Ru
     Once configured, a task can be submitted for execution using `aiex.dma_start_configured_task`, after which its execution completion can be awaited using `aiex.dma_await_task`.
   }];
 
-  let arguments = (
-    ins Index:$tile,
-        DMAChannelDir:$direction,
-        I32Attr:$channel,
-        DefaultValuedOptionalAttr<BoolAttr, "false">:$issue_token,
-        DefaultValuedOptionalAttr<I32Attr, "0">:$repeat_count,
-        Optional<I32>:$repeat_count_val,
-        OptionalAttr<PacketInfoAttr>:$packet,
-        // Put the channel into out-of-order mode (S2MM only).
-        UnitAttr:$out_of_order
-  );
+  let arguments = (ins Index:$tile, DMAChannelDir:$direction, I32Attr:$channel,
+      DefaultValuedOptionalAttr<BoolAttr, "false">:$issue_token,
+      DefaultValuedOptionalAttr<I32Attr, "0">:$repeat_count,
+      Optional<I32>:$repeat_count_val, OptionalAttr<PacketInfoAttr>:$packet,
+      // Put the channel into out-of-order mode (S2MM only).
+      UnitAttr:$out_of_order);
 
   let regions = (
     region AnyRegion:$body
@@ -1345,16 +1343,17 @@ def AIE_DMAConfigureTaskOp : AIEX_Op<"dma_configure_task", [HasAncestor<"AIE::Ru
   let hasVerifier = 1;
   let hasCanonicalizeMethod = 1;
 
-  let builders = [
-    OpBuilder<(ins "::mlir::Type":$result, "mlir::Value":$tile, "xilinx::AIE::DMAChannelDir":$dir, "int":$channel_index,
-               "bool":$token, "int":$repeat), [{
+  let builders = [OpBuilder<(ins "::mlir::Type":$result, "mlir::Value":$tile,
+                                "xilinx::AIE::DMAChannelDir":$dir,
+                                "int":$channel_index, "bool":$token,
+                                "int":$repeat),
+                            [{
       build($_builder, $_state, result, tile,
             xilinx::AIE::DMAChannelDirAttr::get(odsBuilder.getContext(), dir),
             $_builder.getI32IntegerAttr(channel_index), $_builder.getBoolAttr(token),
             $_builder.getI32IntegerAttr(repeat), /*repeat_count_val=*/nullptr,
             /*packet=*/nullptr, /*out_of_order=*/nullptr);
-    }]>
-  ];
+    }]>];
 }
 
 def AIE_DMAConfigureTaskForOp : AIEX_Op<"dma_configure_task_for", [HasAncestor<"AIE::RuntimeSequenceOp">]>, Results<(outs Index:$result)> {
