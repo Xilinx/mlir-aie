@@ -1842,21 +1842,15 @@ checkStackSizeIsSufficient(mlir::MLIRContext &context,
 
     auto tile =
         mlir::cast<xilinx::AIE::TileOp>(coreOp.getTile().getDefiningOp());
-    auto dev = coreOp->getParentOfType<xilinx::AIE::DeviceOp>();
     std::string key = xilinx::aiecc::coreKey(coreOp);
     std::string symbol =
         xilinx::AIE::coreFrameSymbolName(tile.getCol(), tile.getRow());
-    // Must match the object this core's real compile actually wrote: the
-    // "objects_{0}.o"/"unifiedObjects_{0}.o" edges above, keyed the same way
-    // (per-core `key`, or the device's symbol name when --unified), each
-    // materialized as Actions.h's stem-named-subdirectory convention
-    // (objects_<key>/objects_<key>.o). If either edge's name or key ever
-    // changes, this must change with it, or measureFunctionFrameSize below
-    // silently finds nothing and this check silently no-ops for that core.
+    // Must match what the core's compile actually wrote: both the per-core
+    // and unified strategies build "objects_{0}.o" through the same
+    // buildObjectSubgraph call, keyed by `key` either way. If that ever
+    // changes, measureFunctionFrameSize below silently finds nothing.
     std::string objPath =
-        doUnified ? getWorkDir() + "/unifiedObjects_" + dev.getSymName().str() +
-                        "/unifiedObjects_" + dev.getSymName().str() + ".o"
-                  : getWorkDir() + "/objects_" + key + "/objects_" + key + ".o";
+        getWorkDir() + "/objects_" + key + "/objects_" + key + ".o";
     auto ownFrame = xilinx::aiecc::measureFunctionFrameSize(objPath, symbol);
     if (!ownFrame)
       return; // Can't measure the core's own frame -- leave as-is; today's
