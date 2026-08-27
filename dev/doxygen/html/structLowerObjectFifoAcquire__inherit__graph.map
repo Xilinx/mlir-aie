@@ -1,5 +1,0 @@
-<map id="LowerObjectFifoAcquire" name="LowerObjectFifoAcquire">
-<area shape="rect" id="Node000001" title="Lower an objectFifo.acquire to its runtime lock bookkeeping." alt="" coords="14,93,190,119"/>
-<area shape="rect" id="Node000002" href="$classOpRewritePattern.html" title=" " alt="" coords="5,5,199,45"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="105,59,105,93,99,93,99,59"/>
-</map>
