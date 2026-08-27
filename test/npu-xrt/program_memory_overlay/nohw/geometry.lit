@@ -1,0 +1,61 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// Where an overlay slot may be placed, and what must be refused.
+//
+// Needs no hardware: these are the geometry rules, and they are the rules the
+// whole mechanism rests on. A write to the granule the core is fetching from is
+// silently dropped about half the time, so a layout that violates that is not a
+// slow program, it is an intermittently wrong one.
+//
+// REQUIRES: peano
+//
+// The single-slot layout, spelled out. If any of these numbers change the
+// mechanism has moved and every other test's assumptions need re-checking.
+// RUN: %python %S/../pm.py geometry one_slot | FileCheck %s --check-prefix=ONE
+// ONE: device npu2
+// ONE: program-memory 0x4000
+// ONE: host-offset 0x20000
+// ONE: write-granule 0x2000
+// ONE: resident-budget 0x2000
+// ONE: slot a 0x2000 0x2000
+//
+// Ping-pong takes one granule each, so whichever slot is being written the core
+// is executing from the other -- plus a bootstrap park in granule 1, which is
+// where the core waits while granule 0 is written.
+//
+// The granule-1 slot is listed first on purpose: phase 0 uses the first slot,
+// and the core has to park in the resident for it, since the park itself has
+// not been written yet when the first phase begins.
+// RUN: %python %S/../pm.py geometry pingpong | FileCheck %s --check-prefix=PP
+// PP: slot b 0x2000 0x1c00
+// PP-NEXT: slot a 0x400 0x1c00
+// PP-NEXT: bootstrap stub 0x3c00 0x400
+//
+// A slot on another tile is still a valid layout; only the blockwrite's
+// column/row change.
+// RUN: %python %S/../pm.py geometry other_tile | FileCheck %s --check-prefix=TILE
+// TILE: tile (1,3)
+//
+// Each of these violates exactly one rule, and each must be refused. --expect-invalid
+// fails the test if the layout validates, so these cannot rot into no-ops.
+// RUN: %python %S/../pm.py geometry bad_unaligned --expect-invalid | FileCheck %s --check-prefix=UNALIGNED
+// UNALIGNED: refused: {{.*}}does not start on a 16-byte program-memory line
+//
+// RUN: %python %S/../pm.py geometry bad_past_end --expect-invalid | FileCheck %s --check-prefix=PASTEND
+// PASTEND: refused: {{.*}}runs past the end of program memory
+//
+// RUN: %python %S/../pm.py geometry bad_straddles_granule --expect-invalid | FileCheck %s --check-prefix=STRADDLE
+// STRADDLE: refused: {{.*}}straddles a 0x2000-byte write granule boundary
+//
+// RUN: %python %S/../pm.py geometry bad_shares_executing_granule --expect-invalid | FileCheck %s --check-prefix=SHARES
+// SHARES: refused: {{.*}}shares a 0x2000-byte write granule with the code the core executes
+//
+// RUN: %python %S/../pm.py geometry bad_overlap --expect-invalid | FileCheck %s --check-prefix=OVERLAP
+// OVERLAP: refused: {{.*}}overlaps
+//
+// npu1's granule has never been characterised. Refusing is the whole point: the
+// half-granule behaviour was measured on npu2, and a design that silently
+// assumed it held elsewhere would build clean and race on hardware.
+// RUN: %python %S/../pm.py geometry bad_uncharacterised_device --expect-invalid | FileCheck %s --check-prefix=UNCHAR
+// UNCHAR: refused: npu1 has no characterised program-memory write granule

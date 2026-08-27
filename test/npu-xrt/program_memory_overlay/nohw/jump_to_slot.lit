@@ -1,0 +1,49 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// The core's call to the overlay is a direct jump to the slot, and nothing is
+// linked behind it.
+//
+// This is the cheapest test in the suite and it pins the whole mechanism. A
+// `link_with` entry becomes an INPUT() in the generated linker script, and
+// ld.lld parses an input it does not recognise as a script -- which is how
+// slot.ld gets to define `overlay_entry` as an absolute address with no body.
+// If that ever stops working the symbol acquires a definition somewhere and the
+// core calls it, quietly, instead of jumping into the slot.
+//
+// Two independent facts, because either alone can hold while the mechanism is
+// broken: the symbol must be ABS (no section, no body), and the call site must
+// be an immediate jump to the slot address rather than an indirect one.
+//
+// REQUIRES: peano
+//
+// RUN: rm -rf %t && mkdir -p %t
+// RUN: %PEANO_INSTALL_DIR/bin/clang++ --target=aie2p-none-unknown-elf -O2 -c %S/../resident.cc -o %t/resident.o
+// RUN: %python %S/../pm.py emit --recipe one_slot --slot-ld %t/slot.ld --phases 0 --out %t/d.mlir
+// RUN: cd %t && %aiecc --tmpdir=%t/p1 --get-xclbin --xclbin-name=%t/p1.xclbin --get-npu-insts --npu-insts-name=%t/p1.bin %t/d.mlir
+//
+// Absolute, sized 0, and in no section: the linker never found a body for it.
+// RUN: %PEANO_INSTALL_DIR/bin/llvm-readelf -s %t/p1/elfs_main_core_0_2/elfs_main_core_0_2.elf | FileCheck %s --check-prefix=SYM
+// SYM: 00002000 {{ *}}0 NOTYPE {{ *}}GLOBAL {{ *}}DEFAULT {{ *}}ABS overlay_entry
+//
+// And the call really is a jump to that address.
+// RUN: %PEANO_INSTALL_DIR/bin/llvm-objdump -d %t/p1/elfs_main_core_0_2/elfs_main_core_0_2.elf | FileCheck %s --check-prefix=JUMP
+// JUMP: jl {{.*}}#0x2000
+//
+// The slot fragment itself: symbol assignments, and nothing else. A fragment
+// that grew a SECTIONS command would collide with the generated script rather
+// than being merged into it.
+//
+// It used to also carry an ASSERT keeping the resident out of the slot, which
+// meant the only thing between a growing resident and the core overwriting its
+// own code was a side effect of how lld treats an unrecognised input. That is
+// now the core's program_memory_reserved attribute, which shortens the linker's
+// program region -- so the absence of the ASSERT here is the point, not an
+// omission.
+// RUN: FileCheck %s --check-prefix=LD --input-file=%t/slot.ld
+// LD: overlay_entry = 0x2000;
+// LD-NOT: ASSERT
+//
+// The reservation is what enforces the boundary now, and it is on the core.
+// RUN: FileCheck %s --check-prefix=RESV --input-file=%t/d.mlir
+// RESV: program_memory_reserved = 8192

@@ -1,0 +1,57 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// A payload is written before the core is released to run it.
+//
+// This is the ordering the whole design depends on: the blockwrite that fills
+// the slot must precede the write that lets the core out of its wait loop. If
+// they ever swapped, the core would jump into whatever the slot held from the
+// previous phase -- and on hardware that is a race, so it would pass most of
+// the time and fail occasionally, which is the worst way to learn about it.
+//
+// Checked structurally rather than by trying to provoke the race, and walked
+// programmatically rather than with FileCheck. That is not a style preference:
+// the first version of this test used CHECK for the write and the release, and
+// it passed against a design with the two deliberately swapped. A plain CHECK
+// matches anywhere after the previous one, so the release was satisfied by the
+// *next* phase's release and the inversion went unnoticed.
+//
+// Two phases, so the check also catches an ordering that is right once and then
+// drifts -- a single phase can be satisfied by an implementation that emits all
+// the writes first and all the releases after.
+//
+// REQUIRES: peano
+//
+// RUN: rm -rf %t && mkdir -p %t
+// RUN: %PEANO_INSTALL_DIR/bin/clang++ --target=aie2p-none-unknown-elf -O2 -c %S/../resident.cc -o %t/resident.o
+// RUN: %python %S/../pm.py emit --recipe one_slot --slot-ld %t/slot.ld --phases 0 --out %t/d1.mlir
+// RUN: cd %t && %aiecc --tmpdir=%t/p1 --get-xclbin --xclbin-name=%t/p1.xclbin --get-npu-insts --npu-insts-name=%t/p1.bin %t/d1.mlir
+// RUN: %python %S/../pm.py workload --tag 1 --size 0x400 --output %t/w1.o --workdir %t
+// RUN: %python %S/../pm.py workload --tag 2 --size 0x400 --output %t/w2.o --workdir %t
+// RUN: %python %S/../pm.py workload --tag 31661 --size 0x400 --output %t/poison.o --workdir %t
+// RUN: %python %S/../pm.py link --object %t/w1.o --resident %t/p1 --recipe one_slot --output %t/ovl1.elf
+// RUN: %python %S/../pm.py link --object %t/w2.o --resident %t/p1 --recipe one_slot --output %t/ovl2.elf
+// RUN: %python %S/../pm.py link --object %t/poison.o --resident %t/p1 --recipe one_slot --output %t/poison.elf
+// RUN: %python %S/../pm.py emit --recipe one_slot --phases 0,1 --payload %t/ovl1.elf --payload %t/ovl2.elf --poison %t/poison.elf --out %t/d2.mlir
+// The ordering check itself. Fails naming the line where a release precedes
+// its payload write.
+// RUN: %python %S/../pm.py order %t/d2.mlir | FileCheck %s --check-prefix=ORDER
+// ORDER: 3 payload write(s), 2 release(s), correctly ordered
+//
+// Every slot is poisoned before the core can reach one, so a phase whose
+// payload never lands fails the same way every time instead of running whatever
+// the previous xclbin left in program memory. npu-xrt runs serialized, so
+// without this the negative controls depend on which test ran last.
+// RUN: FileCheck %s --check-prefix=POISON --input-file=%t/d2.mlir
+// POISON: memref.get_global @overlay_0_poison
+// POISON-NEXT: aiex.npu.blockwrite
+//
+// The phase-to-overlay mapping is really applied: phase 1 writes overlay 1.
+// RUN: FileCheck %s --check-prefix=MAP --input-file=%t/d2.mlir
+// MAP: memref.get_global @overlay_1_p1
+// MAP-NEXT: aiex.npu.blockwrite
+//
+// Every payload write targets program memory on the right tile: 0x22000 is the
+// host offset 0x20000 plus the slot at 0x2000.
+// RUN: FileCheck %s --check-prefix=ADDR --input-file=%t/d2.mlir
+// ADDR: aiex.npu.blockwrite({{.*}}) {address = 139264 : ui32, column = 0 : i32, row = 2 : i32}

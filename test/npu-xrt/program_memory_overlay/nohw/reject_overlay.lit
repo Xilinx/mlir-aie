@@ -1,0 +1,50 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// Overlays that would load and then misbehave must be refused at build time.
+//
+// Everything here shares a character: it produces a program that links, loads,
+// and then does something subtly wrong. None of it is caught by the compiler,
+// and none of it looks like a failure at run time -- which is exactly why the
+// checks have to exist and have to be tested.
+//
+// This is also the "very long llvm-aie-generated program memory" case: the
+// overlay is a Peano-compiled object whose .text is sized exactly, so the slot
+// boundary can be tested at the boundary rather than near it.
+//
+// REQUIRES: peano
+//
+// RUN: rm -rf %t && mkdir -p %t
+// RUN: %PEANO_INSTALL_DIR/bin/clang++ --target=aie2p-none-unknown-elf -O2 -c %S/../resident.cc -o %t/resident.o
+// RUN: %python %S/../pm.py emit --recipe one_slot --slot-ld %t/slot.ld --phases 0 --out %t/d1.mlir
+// RUN: cd %t && %aiecc --tmpdir=%t/p1 --get-xclbin --xclbin-name=%t/p1.xclbin --get-npu-insts --npu-insts-name=%t/p1.bin %t/d1.mlir
+//
+// Exactly slot-sized is legal: the boundary is inclusive, and a test that only
+// ever checked "well under" would not notice it moving.
+// RUN: %python %S/../pm.py workload --tag 1 --size 0x2000 --output %t/full.o --workdir %t
+// RUN: %python %S/../pm.py link --object %t/full.o --resident %t/p1 --recipe one_slot --output %t/full.elf | FileCheck %s --check-prefix=FULL
+// FULL: full.elf: 8192 bytes at 0x2000
+//
+// One padding block over, and the write would run past the slot. 0x2020 rather
+// than 0x2010 because padding comes in 32-byte blocks: asking for a size off
+// that grid is refused with the two reachable neighbours, which is the right
+// behaviour but not what this line is testing.
+// RUN: %python %S/../pm.py workload --tag 2 --size 0x2020 --output %t/over.o --workdir %t
+// RUN: %python %S/../pm.py link --object %t/over.o --resident %t/p1 --recipe one_slot --output %t/over.elf --expect-rejected | FileCheck %s --check-prefix=OVER
+// OVER: refused: {{.*}}8224 bytes, larger than the 8192-byte slot
+//
+// Static constructors never run in an overlay: crt0 walks the constructor list
+// once when the core starts, long before any overlay reaches the slot. The
+// initializer here reads a volatile so the compiler cannot fold it away -- a
+// constexpr-able one is evaluated at compile time and emits no constructor at
+// all, which is a good way to write a test that passes for the wrong reason.
+// RUN: %PEANO_INSTALL_DIR/bin/clang++ --target=aie2p-none-unknown-elf -O2 -c %S/ctor_overlay.cc -o %t/ctor.o
+// RUN: %python %S/../pm.py link --object %t/ctor.o --resident %t/p1 --recipe one_slot --output %t/ctor.elf --expect-rejected | FileCheck %s --check-prefix=CTOR
+// CTOR: refused: {{.*}}has static constructors (.ctors)
+// CTOR-SAME: {{.*}}
+//
+// Anything but .text has to live in *data* memory, which nothing swaps, so it
+// would have to persist across every overlay simultaneously.
+// RUN: %PEANO_INSTALL_DIR/bin/clang++ --target=aie2p-none-unknown-elf -O2 -c %S/rodata_overlay.cc -o %t/rodata.o
+// RUN: %python %S/../pm.py link --object %t/rodata.o --resident %t/p1 --recipe one_slot --output %t/rodata.elf --expect-rejected | FileCheck %s --check-prefix=RODATA
+// RODATA: refused: {{.*}}expected exactly one allocatable section named .text

@@ -92,11 +92,11 @@ pmlib/      geometry.py  the placement rules, and named recipes
             elf.py       just enough ELF32
             workload.py  generated kernels of an exact size
 pm.py       the CLI the RUN lines drive
-build/      REQUIRES: peano          -- no NPU, runs everywhere
+nohw/       REQUIRES: peano          -- no NPU, runs everywhere
 hw/         REQUIRES: ryzen_ai_npu2  -- the mechanism on a device
 ```
 
-`build/` holds most of the matrix, because most of what can go wrong here is
+`nohw/` holds most of the matrix, because most of what can go wrong here is
 geometric or structural: placement rules, both size directions, the ASSERT
 boundary, the jump into the slot, write-before-release ordering, payload
 round-trip and link determinism, program-memory overflow, and the stack budget.
@@ -169,7 +169,7 @@ Guard the save/restore buffer, not the yield point.
 ## Ping-pong
 
 The geometry and both call sites are checked in
-`build/pingpong_geometry.lit`. The hardware half is not here, and the reason is
+`nohw/pingpong_geometry.lit`. The hardware half is not here, and the reason is
 structural: the core returns from a slot into the resident at 0, so on the phase
 where the low granule is written the core would be executing the granule being
 written. It needs a dispatch path in the upper granule, and there is no mechanism
