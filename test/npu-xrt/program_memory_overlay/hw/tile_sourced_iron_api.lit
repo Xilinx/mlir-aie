@@ -10,18 +10,26 @@
 // 16-entry BD table. See iron_api_tile_sourced.py and
 // ProgramMemorySlot._load_tile_sourced's comments.
 //
-// Two phases (two `--tags`) exercise multi-phase tile-sourced scheduling:
-// `slot.load()` called twice from the source's own core_fn, paced by
-// `_ensure_ack_rig`'s reverse DMA channel so the second overlay is not
-// written until the target core has actually finished with the first.
+// Three phases (three `--tags`) exercise multi-phase tile-sourced scheduling:
+// `slot.load()` called once per phase from the source's own core_fn, paced by
+// `_ensure_ack_rig`'s reverse DMA channel so an overlay is not written until
+// the target core has actually finished with the previous one.
+//
+// Three rather than two on purpose. The ack rig puts a second TileDma on the
+// source tile, and BD ids used to be numbered per DMA region instead of per
+// tile, so its BDs collided with the forward transport's and every
+// multi-phase design failed on hardware close to 100% of the time. Two phases
+// is one ack round-trip and happened to survive; the third is what actually
+// exercised the collision, so that is what guards the fix here.
 //
 // REQUIRES: ryzen_ai_npu2, peano
 //
 // RUN: rm -rf %t && mkdir -p %t
-// RUN: %python %S/../iron_api_tile_sourced.py --tags 5,7 --out %t
+// RUN: %python %S/../iron_api_tile_sourced.py --tags 5,7,9 --out %t
 //
 // RUN: %host_clang %S/../host.cpp -o %t/host.exe -std=c++17 -Wall %xrt_flags %host_link_flags %test_utils_flags
-// RUN: %t/host.exe -x %t/aie.xclbin -k MLIR_AIE -i %t/insts.bin --tags 5,7 --n-elems 4 | FileCheck %s
+// RUN: %t/host.exe -x %t/aie.xclbin -k MLIR_AIE -i %t/insts.bin --tags 5,7,9 --n-elems 4 | FileCheck %s
 // CHECK: phase 0: overlay 5 ok
 // CHECK: phase 1: overlay 7 ok
+// CHECK: phase 2: overlay 9 ok
 // CHECK: PASS!
