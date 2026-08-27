@@ -31,8 +31,8 @@
 
 // REQUIRES: peano
 // RUN: rm -rf %t.d && mkdir -p %t.d
-// RUN: clang++ --target=aie2p-none-unknown-elf -std=c++20 -O0 -DNDEBUG -fstack-size-section -c %S/stack_size_cross_object_caller.cc -o %t.d/stack_size_cross_object_caller.o
-// RUN: clang++ --target=aie2p-none-unknown-elf -std=c++20 -O0 -DNDEBUG -fstack-size-section -c %S/stack_size_cross_object_callee.cc -o %t.d/stack_size_cross_object_callee.o
+// RUN: clang++ --target=aie2p-none-unknown-elf -std=c++20 -O0 -DNDEBUG -ffunction-sections -fdata-sections -fstack-size-section -c %S/stack_size_cross_object_caller.cc -o %t.d/stack_size_cross_object_caller.o
+// RUN: clang++ --target=aie2p-none-unknown-elf -std=c++20 -O0 -DNDEBUG -ffunction-sections -fdata-sections -fstack-size-section -c %S/stack_size_cross_object_callee.cc -o %t.d/stack_size_cross_object_callee.o
 // RUN: cd %t.d && not %aiecc %s 2>&1 | FileCheck %s
 
 // CHECK: warning: this core's callees need at least {{[0-9][0-9][0-9][0-9]+}} bytes of stack (not counting the core body's own frame), but stack_size is only 2048 bytes

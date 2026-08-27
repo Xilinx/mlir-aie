@@ -1,30 +1,22 @@
-//===- stack_size_indirect_call.mlir -------------------------------*- MLIR -*-===//
+//===- stack_size_indirect_call_multi_global.mlir ------------------*- MLIR -*-===//
 //
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
-// resolveIndirectCallEdges' conservative function-pointer-table inference
-// (see StackSizeAnalysis.h's file comment) is otherwise untested: every other
-// stack-size fixture only exercises direct func.call-derived relocations.
-// indirect_caller (see stack_size_indirect_call_kernel.cc) calls
-// target_fn only through a function pointer loaded from a global, so the
-// only way the analysis can fold target_fn's real (~4096-byte) frame into
-// indirect_caller's path is by combining "target_fn's address escapes into
-// g_dispatch" with "indirect_caller references g_dispatch" into a
-// conservative call edge.
-//
-// stack_size = 2048 sits below indirect_caller's own (trivial) frame plus
-// target_fn's real one, so correct inference must warn (and, since 2048 is
-// explicit and genuinely insufficient, ultimately fail) naming a large
-// number; if the indirect edge were never synthesized, indirect_caller would
-// appear to call nothing and the computed requirement would silently be just
-// its own tiny frame -- no warning at all.
+// Same scenario as stack_size_indirect_call.mlir, except the kernel object
+// also defines a second, unrelated global (see
+// stack_size_indirect_call_multi_global_kernel.cc). Without -fdata-sections,
+// g_dispatch and g_unrelated share one .data section, which used to make
+// that section's owner ambiguous and silently drop the "target_fn's address
+// escapes into g_dispatch" record -- so indirect_caller would appear to call
+// nothing, and the computed requirement would silently be just its own tiny
+// frame with no warning at all.
 
 // REQUIRES: peano
 // RUN: rm -rf %t.d && mkdir -p %t.d
-// RUN: clang++ --target=aie2p-none-unknown-elf -std=c++20 -O0 -DNDEBUG -ffunction-sections -fdata-sections -fstack-size-section -c %S/stack_size_indirect_call_kernel.cc -o %t.d/stack_size_indirect_call_kernel.o
+// RUN: clang++ --target=aie2p-none-unknown-elf -std=c++20 -O0 -DNDEBUG -ffunction-sections -fdata-sections -fstack-size-section -c %S/stack_size_indirect_call_multi_global_kernel.cc -o %t.d/stack_size_indirect_call_multi_global_kernel.o
 // RUN: cd %t.d && not %aiecc %s 2>&1 | FileCheck %s
 
 // CHECK: warning: this core's callees need at least {{[0-9][0-9][0-9][0-9]+}} bytes of stack (not counting the core body's own frame), but stack_size is only 2048 bytes
@@ -37,7 +29,7 @@ module {
 
     aie.objectfifo @of_out(%tile_0_2, {%tile_0_0}, 2 : i32) : !aie.objectfifo<memref<512xi8>>
 
-    func.func private @indirect_caller(memref<512xi8>) attributes {link_with = "stack_size_indirect_call_kernel.o"}
+    func.func private @indirect_caller(memref<512xi8>) attributes {link_with = "stack_size_indirect_call_multi_global_kernel.o"}
 
     %core_0_2 = aie.core(%tile_0_2) {
       %sv = aie.objectfifo.acquire @of_out(Produce, 1) : !aie.objectfifosubview<memref<512xi8>>
