@@ -1,4 +1,4 @@
-//===- stack_size_max_not_sum_kernel.cc ---------------------------*- C++ -*-===//
+//===- stack_size_max_not_sum_kernel.cc -------------------------*- C++ -*-===//
 //
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception

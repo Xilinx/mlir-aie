@@ -349,8 +349,8 @@ bool xilinx::aiecc::addObjectToStackGraph(
         llvm::consumeError(homeSecOrErr.takeError());
       bool homeIsKnownText = !isUndefinedHere && (*homeSecOrErr)->isText();
 
-      bool isFunctionRef =
-          typeIsFunction || (isUndefinedHere && knownFunctions.contains(relName));
+      bool isFunctionRef = typeIsFunction || (isUndefinedHere &&
+                                              knownFunctions.contains(relName));
 
       if (modifiedIsText) {
         if (ownerName.empty())

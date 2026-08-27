@@ -1816,8 +1816,8 @@ checkStackSizeIsSufficient(mlir::MLIRContext &context,
                                 &context, coresPerCol.getValue(),
                                 placerType.getValue(), saSeed.getValue())))
       return std::move(err);
-    if (auto err =
-            runStage("trace pipeline", xilinx::aiecc::getTracePipeline(&context)))
+    if (auto err = runStage("trace pipeline",
+                            xilinx::aiecc::getTracePipeline(&context)))
       return std::move(err);
     {
       auto pm = std::make_unique<mlir::PassManager>(&context);
