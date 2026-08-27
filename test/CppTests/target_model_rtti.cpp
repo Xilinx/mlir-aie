@@ -65,6 +65,28 @@ void test() {
     throw std::runtime_error("Failed xcve2802 !isa<>");
   }
 
+  // AIEDevice::xcve3858 (AIE2PS provisional)
+  if (!llvm::isa<AIE::VE3858TargetModel>(
+          AIE::getTargetModel(AIE::AIEDevice::xcve3858))) {
+    throw std::runtime_error("Failed xcve3858 isa<VE3858TargetModel>");
+  }
+  if (!llvm::isa<AIE::AIE2PSTargetModel>(
+          AIE::getTargetModel(AIE::AIEDevice::xcve3858))) {
+    throw std::runtime_error("Failed xcve3858 isa<AIE2PSTargetModel>");
+  }
+  if (!llvm::isa<AIE::AIETargetModel>(
+          AIE::getTargetModel(AIE::AIEDevice::xcve3858))) {
+    throw std::runtime_error("Failed xcve3858 isa<AIETargetModel>");
+  }
+  if (llvm::isa<AIE::AIE1TargetModel, AIE::VC1902TargetModel,
+                AIE::VE2302TargetModel, AIE::VE2802TargetModel,
+                AIE::BaseNPU1TargetModel, AIE::BaseNPU2TargetModel,
+                AIE::VirtualizedNPU1TargetModel, AIE::NPU2TargetModel,
+                AIE::VirtualizedNPU2TargetModel>(
+          AIE::getTargetModel(AIE::AIEDevice::xcve3858))) {
+    throw std::runtime_error("Failed xcve3858 !isa<>");
+  }
+
   // AIEDevice::npu1, AIEDevice::npu_1col, npu_2col, npu_3col, npu_4col
   llvm::SmallVector<AIE::AIEDevice> npu1_devs = {
       AIE::AIEDevice::npu1_1col, AIE::AIEDevice::npu1_2col,

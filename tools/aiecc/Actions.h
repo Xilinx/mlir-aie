@@ -142,8 +142,8 @@ struct SplitIRAction {
   SplitIRAction(KeyFn fn) : keyFn(std::move(fn)) {}
 
   mlir::FailureOr<std::vector<std::pair<std::string, OpInModule<KeyOp>>>>
-  operator()(const mlir::OwningOpRef<mlir::ModuleOp> &in) const {
-    auto srcModule = in.get();
+  operator()(const Item<mlir::OwningOpRef<mlir::ModuleOp>> &item) const {
+    auto srcModule = item.get().get();
     std::vector<std::pair<std::string, size_t>> matches;
     size_t idx = 0;
     srcModule.walk([&](KeyOp op) {

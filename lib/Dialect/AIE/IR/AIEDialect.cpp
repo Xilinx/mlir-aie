@@ -182,6 +182,7 @@ xilinx::AIE::myVerifyOffsetSizeAndStrideOp(OffsetSizeAndStrideOpInterface op) {
 static VC1902TargetModel VC1902model;
 static VE2302TargetModel VE2302model;
 static VE2802TargetModel VE2802model;
+static VE3858TargetModel VE3858model;
 static VirtualizedNPU1TargetModel NPUmodel1col(1);
 static VirtualizedNPU1TargetModel NPUmodel2col(2);
 static VirtualizedNPU1TargetModel NPUmodel3col(3);
@@ -243,6 +244,8 @@ const AIETargetModel &xilinx::AIE::getTargetModel(AIEDevice device) {
     return NPU2model6col;
   case AIEDevice::npu2_7col:
     return NPU2model7col;
+  case AIEDevice::xcve3858:
+    return VE3858model;
   }
   // No default: label above, so -Wswitch still reports a newly added device.
   // This handles values that are not enumerators at all, which
