@@ -214,11 +214,20 @@ struct AIEExpandLoadPdiPass
     module.walk(
         [&](NpuLoadPdiOp loadPdiOp) { loadPdiOps.push_back(loadPdiOp); });
 
-    // Per enclosing runtime sequence: how many resets it will emit, plus the
-    // device type to reset. Captured BEFORE transforming, which erases the ops.
-    llvm::MapVector<AIE::RuntimeSequenceOp, std::pair<unsigned, AIE::AIEDevice>>
-        resetsPerSequence;
-    for (auto loadPdiOp : loadPdiOps) {
+    // Per enclosing runtime sequence: the parity of its FIRST and LAST reset,
+    // plus the device type to reset. `transformLoadPdi` picks the empty device
+    // as `index % 2` over the module-wide op order, and that order includes
+    // ops this pass skips, so a sequence's first reset is not necessarily
+    // `@empty_0` and its parity cannot be recovered from a count. Captured
+    // BEFORE transforming, which erases the ops.
+    struct ResetParity {
+      unsigned firstParity = 0;
+      unsigned lastParity = 0;
+      bool seen = false;
+      AIE::AIEDevice device = {};
+    };
+    llvm::MapVector<AIE::RuntimeSequenceOp, ResetParity> resetsPerSequence;
+    for (auto [index, loadPdiOp] : llvm::enumerate(loadPdiOps)) {
       auto deviceRefAttr = loadPdiOp.getDeviceRefAttr();
       if (!deviceRefAttr)
         continue;
@@ -232,8 +241,12 @@ struct AIEExpandLoadPdiPass
       if (!seq || !dev)
         continue;
       auto &entry = resetsPerSequence[seq];
-      entry.first++;
-      entry.second = dev.getDevice();
+      if (!entry.seen) {
+        entry.firstParity = index % 2;
+        entry.seen = true;
+      }
+      entry.lastParity = index % 2;
+      entry.device = dev.getDevice();
     }
 
     // Map the legacy bool option to the new ExpandMode enum.
@@ -253,21 +266,21 @@ struct AIEExpandLoadPdiPass
     // The `index % 2` alternation above keeps two consecutive resets on
     // different PDIs WITHIN a sequence. But the host re-runs the whole sequence
     // on every dispatch, so the alternation has to hold across that boundary
-    // too: a sequence with an ODD number of resets ends on the same empty PDI
-    // it starts with, the firmware caches the address and no-ops the next
-    // dispatch's first load, and the configuration that follows lands on a
-    // device that was never reset. That is silent -- the first dispatch is
-    // correct and later ones return non-deterministic garbage.
+    // too: when a sequence's last reset lands on the same empty PDI as its
+    // first, the firmware caches the address and no-ops the next dispatch's
+    // first load, and the configuration that follows lands on a device that was
+    // never reset. That is silent -- the first dispatch is correct and later
+    // ones return non-deterministic garbage.
     //
-    // Append one more reset so every sequence ends on the opposite parity. The
-    // empty PDI is a few hundred bytes, so the cost is negligible next to the
-    // configuration it guards.
+    // Append one more reset, of the parity opposite the last one, so the
+    // sequence ends somewhere its own start will not repeat. The empty PDI is a
+    // few hundred bytes, so the cost is negligible next to the configuration it
+    // guards.
     for (auto &[seq, info] : resetsPerSequence) {
-      auto [count, deviceType] = info;
-      if (count % 2 == 0)
+      if (!info.seen || info.firstParity != info.lastParity)
         continue;
       AIE::DeviceOp emptyDevice =
-          getOrCreateEmptyDevice(module, deviceType, count % 2);
+          getOrCreateEmptyDevice(module, info.device, 1 - info.lastParity);
       OpBuilder builder(seq.getContext());
       Block &body = seq.getBody().front();
       if (!body.empty() && body.back().hasTrait<OpTrait::IsTerminator>())

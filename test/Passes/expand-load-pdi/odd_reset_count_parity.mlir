@@ -52,3 +52,28 @@ module {
     }
   }
 }
+
+// -----
+
+// The empty device is chosen by the load_pdi's MODULE-WIDE index, and that
+// index counts ops this pass skips. Here an `expand_mode = none` load takes
+// index 0, so the one reset this sequence does emit starts on empty_1 -- and
+// the appended reset has to be empty_0, not empty_1, or it reloads the address
+// the firmware already has cached and changes nothing.
+module {
+  aie.device(npu2_1col) @dev_a {
+    aie.end
+  }
+
+  aie.device(npu2_1col) @main {
+    // CHECK-LABEL: aie.runtime_sequence(%arg0: memref<1xi32>)
+    aie.runtime_sequence (%arg0: memref<1xi32>) {
+      // CHECK: aiex.npu.load_pdi {device_ref = @dev_a, expand_mode = 0
+      // CHECK: aiex.npu.load_pdi {device_ref = @empty_1
+      // CHECK: aiex.npu.load_pdi {device_ref = @empty_0
+      // CHECK-NOT: aiex.npu.load_pdi
+      aiex.npu.load_pdi { device_ref = @dev_a, expand_mode = 0 : i32 }
+      aiex.npu.load_pdi { device_ref = @dev_a }
+    }
+  }
+}
