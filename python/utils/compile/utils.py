@@ -333,7 +333,12 @@ def compile_cxx_core_function(
             # Matches the -stack-size-section aiecc's own core-object llc
             # invocation passes; without it, kernel objects (where large
             # frames actually live) carry no stack accounting at all.
-            cmd.append("-fstack-size-section")
+            # -ffunction-sections/-fdata-sections make that accounting
+            # unambiguous: the analysis attributes each entry by the section
+            # a symbol owns, which only works if each symbol has its own.
+            cmd.extend(
+                ["-ffunction-sections", "-fdata-sections", "-fstack-size-section"]
+            )
 
     # Add include directories
     if include_dirs:
