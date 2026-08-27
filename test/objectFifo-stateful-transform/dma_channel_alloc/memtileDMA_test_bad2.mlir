@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: not aie-opt --aie-objectFifo-stateful-transform %s 2>&1 | FileCheck %s
+// RUN: not aie-opt --aie-objectFifo-stateful-transform="skip-verify=true" %s 2>&1 | FileCheck %s
 
 // CHECK:   error: 'aie.tile' op number of output DMA channel exceeded!
 

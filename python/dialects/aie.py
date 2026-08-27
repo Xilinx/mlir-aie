@@ -27,7 +27,6 @@ from array import array
 
 # noinspection PyUnresolvedReferences
 from .._mlir_libs._aie import (
-    ObjectFifoSubviewType,
     ObjectFifoType,
     get_target_model,
     aie_llvm_link,
@@ -597,6 +596,8 @@ class object_fifo(ObjectFifoCreateOp):
         disable_synchronization=None,
         iter_count=None,
         consumer_datatype=None,
+        packet=None,
+        packet_id=None,
     ):
         self.datatype = try_convert_np_type_to_mlir_type(datatype)
         self.consumer_datatype = (
@@ -637,6 +638,8 @@ class object_fifo(ObjectFifoCreateOp):
             disable_synchronization=disable_synchronization,
             initValues=initValues,
             iter_count=iter_count,
+            packet=packet,
+            packet_id=packet_id,
         )
         if consumerElemType is not None:
             self.attributes["consumerElemType"] = consumerElemType
@@ -646,18 +649,13 @@ class object_fifo(ObjectFifoCreateOp):
         dt = self.datatype
         if self.consumer_datatype is not None and port == ObjectFifoPort.Consume:
             dt = self.consumer_datatype
-        subview_t = ObjectFifoSubviewType.get(dt)
-        acq = ObjectFifoAcquireOp(subview_t, port, self.sym_name.value, num_elem)
-
-        objects = []
-        if acq.size.value == 1:
-            return ObjectFifoSubviewAccessOp(dt, acq.subview, acq.size.value - 1).result
-        for i in range(acq.size.value):
-            objects.append(ObjectFifoSubviewAccessOp(dt, acq.subview, i).result)
-        return objects
+        acq = ObjectFifoAcquireOp([dt] * num_elem, self.sym_name.value, port=port)
+        if num_elem == 1:
+            return acq.objects[0]
+        return list(acq.objects)
 
     def release(self, port, num_elem):
-        return objectfifo_release(port, self.sym_name.value, num_elem)
+        return objectfifo_release(self.sym_name.value, num_elem, port=port)
 
     def register_external_buffers(self, tile, external_buffers):
         return objectfifo_register_external_buffers(

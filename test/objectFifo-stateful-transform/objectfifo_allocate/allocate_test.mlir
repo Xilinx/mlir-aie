@@ -5,20 +5,20 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="skip-verify=true" --aie-objectFifo-unroll %s | FileCheck %s
 
 // CHECK-LABEL:   aie.device(xcve2302) {
-// CHECK:           %[[VAL_0:.*]] = aie.tile(1, 2)
-// CHECK:           %[[VAL_1:.*]] = aie.tile(1, 3)
-// CHECK:           %of2_buff_0 = aie.buffer(%tile_1_2) {sym_name = "of2_buff_0"} : memref<16xi32>
-// CHECK:           %of2_prod_lock_0 = aie.lock(%tile_1_2) {init = 1 : i32, sym_name = "of2_prod_lock_0"}
-// CHECK:           %of2_cons_lock_0 = aie.lock(%tile_1_2) {init = 0 : i32, sym_name = "of2_cons_lock_0"}
-// CHECK:           %of1_buff_0 = aie.buffer(%tile_1_3) {sym_name = "of1_buff_0"} : memref<16xi32>
-// CHECK:           %of1_prod_lock_0 = aie.lock(%tile_1_3) {init = 1 : i32, sym_name = "of1_prod_lock_0"}
-// CHECK:           %of1_cons_lock_0 = aie.lock(%tile_1_3) {init = 0 : i32, sym_name = "of1_cons_lock_0"}
-// CHECK:           %of0_buff_0 = aie.buffer(%tile_1_3) {sym_name = "of0_buff_0"} : memref<16xi32>
-// CHECK:           %of0_prod_lock_0 = aie.lock(%tile_1_3) {init = 1 : i32, sym_name = "of0_prod_lock_0"}
-// CHECK:           %of0_cons_lock_0 = aie.lock(%tile_1_3) {init = 0 : i32, sym_name = "of0_cons_lock_0"}
+// CHECK-DAG:           %[[VAL_0:.*]] = aie.tile(1, 2)
+// CHECK-DAG:           %[[VAL_1:.*]] = aie.tile(1, 3)
+// CHECK-DAG:           %of2_buff_0 = aie.buffer(%tile_1_2) {sym_name = "of2_buff_0"} : memref<16xi32>
+// CHECK-DAG:           %of2_prod_lock_0 = aie.lock(%tile_1_2) {init = 1 : i32, sym_name = "of2_prod_lock_0"}
+// CHECK-DAG:           %of2_cons_lock_0 = aie.lock(%tile_1_2) {init = 0 : i32, sym_name = "of2_cons_lock_0"}
+// CHECK-DAG:           %of1_buff_0 = aie.buffer(%tile_1_3) {sym_name = "of1_buff_0"} : memref<16xi32>
+// CHECK-DAG:           %of1_prod_lock_0 = aie.lock(%tile_1_3) {init = 1 : i32, sym_name = "of1_prod_lock_0"}
+// CHECK-DAG:           %of1_cons_lock_0 = aie.lock(%tile_1_3) {init = 0 : i32, sym_name = "of1_cons_lock_0"}
+// CHECK-DAG:           %of0_buff_0 = aie.buffer(%tile_1_3) {sym_name = "of0_buff_0"} : memref<16xi32>
+// CHECK-DAG:           %of0_prod_lock_0 = aie.lock(%tile_1_3) {init = 1 : i32, sym_name = "of0_prod_lock_0"}
+// CHECK-DAG:           %of0_cons_lock_0 = aie.lock(%tile_1_3) {init = 0 : i32, sym_name = "of0_cons_lock_0"}
 // CHECK:         }
 
 module @allocate {

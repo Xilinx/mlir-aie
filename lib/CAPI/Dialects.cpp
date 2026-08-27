@@ -36,19 +36,6 @@ MlirType aieObjectFifoTypeGet(MlirType type) {
 }
 
 //===---------------------------------------------------------------------===//
-// ObjectFifoSubviewType
-//===---------------------------------------------------------------------===//
-
-bool aieTypeIsObjectFifoSubviewType(MlirType type) {
-  return llvm::isa<xilinx::AIE::AIEObjectFifoSubviewType>(unwrap(type));
-}
-
-MlirType aieObjectFifoSubviewTypeGet(MlirType type) {
-  return wrap(xilinx::AIE::AIEObjectFifoSubviewType::get(
-      llvm::cast<mlir::MemRefType>(unwrap(type))));
-}
-
-//===---------------------------------------------------------------------===//
 // BlockFloatType
 //===---------------------------------------------------------------------===//
 

@@ -323,11 +323,12 @@ def AIE_ShimMuxOp: AIE_Op<"shim_mux", [
   }];
 }
 
-def AIE_ShimDMAOp: AIE_Op<"shim_dma", [
-    IsFlowEndPoint, TileElement, HasValidBDs,
-    HasValidDMAChannels, IsShimNOCTile,
-    DeclareOpInterfaceMethods<InferTypeOpInterface>
-  ]>, Results<(outs Index)> {
+def AIE_ShimDMAOp
+    : AIE_Op<"shim_dma", [IsFlowEndPoint, TileElement, HasValidBDs,
+                          DeclareOpInterfaceMethods<DmaBody>,
+                          HasValidDMAChannels, IsShimNOCTile,
+                          DeclareOpInterfaceMethods<InferTypeOpInterface>]>,
+      Results<(outs Index)> {
   let arguments = (
     ins Index:$tile
   );
@@ -1334,11 +1335,11 @@ def AIE_DMAOp: AIE_Op<"dma", [
   }];
 }
 
-def AIE_MemOp: AIE_Op<"mem", [
-    TileElement, IsFlowEndPoint,
-    IsCoreTile, HasValidBDs, HasValidDMAChannels,
-    DeclareOpInterfaceMethods<InferTypeOpInterface>
-  ]>, Results<(outs Index)> {
+def AIE_MemOp
+    : AIE_Op<"mem", [TileElement, IsFlowEndPoint, IsCoreTile, HasValidBDs,
+                     HasValidDMAChannels, DeclareOpInterfaceMethods<DmaBody>,
+                     DeclareOpInterfaceMethods<InferTypeOpInterface>]>,
+      Results<(outs Index)> {
   let summary = "Declare a memory op";
   let description = [{
     This operation creates a Memory module that belongs to a tile.
@@ -1373,11 +1374,12 @@ def AIE_MemOp: AIE_Op<"mem", [
   }];
 }
 
-def AIE_MemTileDMAOp: AIE_Op<"memtile_dma", [
-    TileElement, IsFlowEndPoint,
-    IsMemTile, HasValidBDs, HasValidDMAChannels,
-    DeclareOpInterfaceMethods<InferTypeOpInterface>
-  ]>, Results<(outs Index)> {
+def AIE_MemTileDMAOp
+    : AIE_Op<"memtile_dma", [TileElement, IsFlowEndPoint,
+                             DeclareOpInterfaceMethods<DmaBody>, IsMemTile,
+                             HasValidBDs, HasValidDMAChannels,
+                             DeclareOpInterfaceMethods<InferTypeOpInterface>]>,
+      Results<(outs Index)> {
   let summary = "Declare a memtile_dma op";
   let description = [{
     This operation describes a DMA inside an AIE2 MemTile.
@@ -1607,9 +1609,11 @@ def AIE_UseLockOp: AIE_Op<"use_lock", []> {
   }];
 }
 
-def AIE_BufferOp: AIE_Op<"buffer", [
-    TileElement, IsTileWithMemory
-  ]>, Results<(outs AnyMemRef)> {
+def AIE_BufferOp
+    : AIE_Op<
+          "buffer", [TileElement, IsTileWithMemory,
+                     DeclareOpInterfaceMethods<BufferLike, ["getBufferTile"]>]>,
+      Results<(outs AnyMemRef)> {
   let summary = "Declare a buffer";
   let description = [{
     This operation instantiates a buffer that belongs to a Memory Module of a tile.
@@ -1675,9 +1679,11 @@ def AIE_BufferOp: AIE_Op<"buffer", [
   }];
 }
 
-def AIE_ExternalBufferOp: AIE_Op<"external_buffer", [
-    DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>
-  ]>, Results<(outs AnyMemRef)> {
+def AIE_ExternalBufferOp
+    : AIE_Op<"external_buffer", [BufferLike,
+                                 DeclareOpInterfaceMethods<
+                                     OpAsmOpInterface, ["getAsmResultNames"]>]>,
+      Results<(outs AnyMemRef)> {
   let summary = "Declare a buffer in external memory";
   let description = [{
     This operation represents a buffer that exists in some physical
@@ -1870,6 +1876,90 @@ def AIE_PutCascadeOp: AIE_Op<"put_cascade", []> {
   let assemblyFormat = [{ `(` $cascade_value `:` type($cascade_value) `)` attr-dict }];
 }
 
+//============================================================================//
+// Symbolic routes
+//============================================================================//
+
+def AIE_RouteEndpointOp
+    : AIE_Op<"route_endpoint", [HasParent<"DeviceOp">, Symbol,
+                                DeclareOpInterfaceMethods<RouteEndpoint>]> {
+  let summary = "A symbolic name for a channel on a tile";
+  let description = [{
+    Names a channel on a tile so an `aie.route` can refer to it by symbol.
+    Because the route names the symbol rather than a channel index,
+    `--aie-objectfifo-allocate` is free to pick the index, and the route can be
+    written before that decision is made.
+
+    `bundle` says what kind of port it is. A `DMA` bundle on a shim tile names a
+    DMA the host runtime programs itself; the chosen channel is recorded as an
+    `aie.shim_dma_allocation` under `fifoName` for the runtime sequence to
+    address. A `Core` bundle names a core's stream port, which the core reads
+    and writes directly and which needs no DMA. Setting `channelIndex` pins the
+    channel instead of leaving it to allocation.
+
+    Example:
+    ```
+      aie.route_endpoint @in(%shim) DMA {fifoName = "in"}
+      aie.route_endpoint @out(%tile) Core {channelIndex = 0}
+    ```
+  }];
+
+  let arguments = (ins SymbolNameAttr:$sym_name, Index:$tile,
+      WireBundle:$bundle, OptionalAttr<AIEI32Attr>:$channelIndex,
+      OptionalAttr<PacketInfoAttr>:$packet,
+      // If lowered from a high-level ObjectFifo, the name of that fifo.
+      // Used to group ops lowered by the same ObjectFifo.
+      OptionalAttr<StrAttr>:$fifoName);
+
+  let assemblyFormat = [{
+    $sym_name `(` $tile `)` $bundle attr-dict
+  }];
+
+  let hasVerifier = 1;
+
+  let extraClassDeclaration = [{
+    /// The tile op backing this op's tile operand; placed or logical.
+    TileLike getTileLike();
+  }];
+}
+
+def AIE_RouteOp : AIE_Op<"route", [HasParent<"DeviceOp">]> {
+  let summary = "A stream connection between endpoints named by symbol";
+  let description = [{
+    Connects a source endpoint to the destination endpoints it feeds, naming
+    each by symbol. Several destinations mean a broadcast: one source channel
+    feeding them all.
+
+    Any op implementing `RouteEndpoint` may be an end of a route:
+    `aie.route_endpoint` and `aie.objectfifo.dma_endpoint`.
+
+    `--aie-objectfifo-allocate` assigns a channel to each endpoint, emits the
+    corresponding `aie.flow`, and consumes this op.
+
+    `packet` routes the connection as an `aie.packet_flow` instead, sharing the
+    stream with every other packet flow rather than reserving a circuit for it.
+    `packet_id` pins the header the source stamps; without it allocation picks
+    an id no other flow is using. Circuit- and packet-switched routes coexist in
+    one device.
+
+    Example:
+    ```
+      aie.route from @src to [@dst0, @dst1]
+      aie.route from @src to [@dst] {packet, packet_id = 3 : i8}
+    ```
+  }];
+
+  let arguments = (ins FlatSymbolRefAttr:$source,
+      FlatSymbolRefArrayAttr:$destinations, UnitAttr:$packet,
+      OptionalAttr<ConfinedAttr<AIEI8Attr, [IntMinValue<0>]>>:$packet_id);
+
+  let assemblyFormat = [{
+    `from` $source `to` $destinations attr-dict
+  }];
+
+  let hasVerifier = 1;
+}
+
 def AIE_ShimDMAAllocationOp : AIE_Op<"shim_dma_allocation", [HasParent<"DeviceOp">, Symbol]> {
   let summary = "Runtime allocation information for a single shim DMA";
   let description = [{
@@ -1997,7 +2087,7 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
     the producer. Otherwise, the producer size will be applied. If a single size is specified, it will be
     applied to both producer and consumers.
 
-    This operation is then converted by the `AIEObjectFifoStatefulTransformPass` into `aie.buffers` and their associated
+    This operation is then converted by the `--aie-objectfifo-allocate` into `aie.buffer`s and their associated
     `aie.locks`. The pass also establishes Flow and DMA operations between the producer and consumer tiles if they are
     not adjacent.
 
@@ -2061,52 +2151,56 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
     ```
 
     The behavior of the objectFifo is further controlled by optional parameters.
-    The `repeat_count` parameter specifies the number of times each individual
-    object is repeated during transfer. When `repeat_count == 1`, each object
-    is transferred once.
+    Senders replicate each object `repeat_count` times before moving on to the
+    next one. When `repeat_count == 1`, each object is transferred once.
 
-    The `iter_count` parameter specifies the number of iterations of
-    the buffer descriptor chain generated at the lower level. The total number
-    of objects transferred is calculated as `iter_count * elemNumber * repeat_count`.
-    When `repeat_count == 1`, this simplifies to `iter_count * elemNumber`.
+    For bounded execution, `iter_count` states how many times each end cycles
+    through all of its buffers. The total number of objects transferred is
+    `iter_count * elemNumber * repeat_count`, which for `repeat_count == 1`
+    simplifies to `iter_count * elemNumber`.
   }];
 
-  let arguments = (
-    ins SymbolNameAttr:$sym_name,
-        Index:$producerTile,
-        Variadic<Index>:$consumerTiles,
-        AIE_ObjectFifo_Depth:$elemNumber,
-        TypeAttrOf<AIE_ObjectFifoType>:$elemType,
-        // Optional consumer element type for asymmetric transfer granularity.
-        // Producer sends elemType-sized transfers, consumer receives
-        // consumerElemType-sized transfers. Producer element size must be
-        // an integer multiple of consumer element size.
-        OptionalAttr<TypeAttrOf<AIE_ObjectFifoType>>:$consumerElemType,
-        BDDimLayoutArrayAttr:$dimensionsToStream,
-        BDDimLayoutArrayArrayAttr:$dimensionsFromStreamPerConsumer,
-        DefaultValuedAttr<BoolAttr, "false">:$via_DMA,
-        DefaultValuedAttr<BoolAttr, "false">:$plio,
-        // disable_synchronization==true will skip lock generation for
-        // objectfifo synchronous accesses
-        DefaultValuedAttr<BoolAttr, "false">:$disable_synchronization,
-        // repeat_count==1 means "do it once"
-        OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<1>]>>:$repeat_count,
-        // aie_stream==0 means enable aie stream port on producer tile
-        // aie_stream==1 means enable aie stream port on consumer tile
-        // aie_stream==2 means enable aie stream ports on producer and consumer tiles
-        OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>, IntMaxValue<2>]>>:$aie_stream,
-        OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>, IntMaxValue<1>]>>:$aie_stream_port,
-        // Pin the DMA channel for an endpoint instead of first-free assignment.
-        // prod_dma_channel pins the producer endpoint's channel; cons_dma_channels
-        // holds one entry per consumer (-1 = auto-assign that consumer).
-        OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>>:$prod_dma_channel,
-        OptionalAttr<DenseI32ArrayAttr>:$cons_dma_channels,
-        InitValuesArrayAttr:$initValues,
-        OptionalAttr<BDPadLayoutArrayAttr>:$padDimensions,
-        // Lowered onto the memtile MM2S channel; see aie.dma_start's pad_value.
-        DefaultValuedOptionalAttr<AIEI32Attr, "0">:$padValue,
-        OptionalAttr<AIEI32Attr>:$iter_count
-  );
+  let arguments = (ins SymbolNameAttr:$sym_name, Index:$producerTile,
+      Variadic<Index>:$consumerTiles, AIE_ObjectFifo_Depth:$elemNumber,
+      TypeAttrOf<AIE_ObjectFifoType>:$elemType,
+      // Optional consumer element type for asymmetric transfer granularity.
+      // Producer sends elemType-sized transfers, consumer receives
+      // consumerElemType-sized transfers. Producer element size must be
+      // an integer multiple of consumer element size.
+      OptionalAttr<TypeAttrOf<AIE_ObjectFifoType>>:$consumerElemType,
+      BDDimLayoutArrayAttr:$dimensionsToStream,
+      BDDimLayoutArrayArrayAttr:$dimensionsFromStreamPerConsumer,
+      DefaultValuedAttr<BoolAttr, "false">:$via_DMA,
+      DefaultValuedAttr<BoolAttr, "false">:$plio,
+      // disable_synchronization==true will skip lock generation for
+      // objectfifo synchronous accesses
+      DefaultValuedAttr<BoolAttr, "false">:$disable_synchronization,
+      // repeat_count==1 means "do it once"
+      OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<1>]>>:$repeat_count,
+      // aie_stream==0 means enable aie stream port on producer tile
+      // aie_stream==1 means enable aie stream port on consumer tile
+      // aie_stream==2 means enable aie stream ports on producer and consumer
+      // tiles
+      OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>,
+                                             IntMaxValue<2>]>>:$aie_stream,
+      OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>,
+                                             IntMaxValue<1>]>>:$aie_stream_port,
+      // Pin the DMA channel for an endpoint instead of first-free assignment.
+      // prod_dma_channel pins the producer endpoint's channel;
+      // cons_dma_channels holds one entry per consumer (-1 = auto-assign that
+      // consumer).
+      OptionalAttr<ConfinedAttr<
+          AIEI32Attr, [IntMinValue<0>]>>:$prod_dma_channel,
+      OptionalAttr<DenseI32ArrayAttr>:$cons_dma_channels,
+      InitValuesArrayAttr:$initValues,
+      OptionalAttr<BDPadLayoutArrayAttr>:$padDimensions,
+      // Lowered onto the memtile MM2S channel; see aie.dma_start's pad_value.
+      DefaultValuedOptionalAttr<AIEI32Attr, "0">:$padValue,
+      OptionalAttr<AIEI32Attr>:$iter_count,
+      // packet selects packet-switched routing. packet_id pins the header;
+      // allocation chooses an unused id when it is absent.
+      UnitAttr:$packet,
+      OptionalAttr<ConfinedAttr<AIEI8Attr, [IntMinValue<0>]>>:$packet_id);
 
   let assemblyFormat = [{
     $sym_name
@@ -2229,6 +2323,9 @@ def AIE_ObjectFifoLinkOp: AIE_Op<"objectfifo.link", [HasParent<"DeviceOp">]> {
     In the cases of the join and distribute patterns, the link has some special restrictions on `toStream` and `fromStream` dimensions:
     - join: the `toStream` dimensions of the output `objectFifo` cannot access an index beyond the length of the minimum transfer length in the src_offsets.
     - distribute: the `fromStream` dimensions of the input `objectFifo` cannot access an index beyond the length of the minimum transfer length in dst_offsets.
+
+    Join and distribute hand each participant its own slice of the shared object, so the link point must have a memory module
+    to hold that object and the device must have counting locks to guard the slices independently.
   }];
 
   let arguments = (
@@ -2258,10 +2355,237 @@ def AIE_ObjectFifoLinkOp: AIE_Op<"objectfifo.link", [HasParent<"DeviceOp">]> {
   }];
 }
 
-def AIE_ObjectFifoRegisterExternalBuffersOp: AIE_Op<"objectfifo.register_external_buffers", [
-    HasParent<"DeviceOp">, TileElement, IsShimNOCTile
-  ]> {
-  let summary = "Registers external buffers to an objectFifo's shim tile(s) for use in the associated shim DMA(s)";
+def AIE_ObjectFifoSegmentOp
+    : AIE_Op<"objectfifo.segment", [HasParent<"ObjectFifoPoolOp">, Symbol]> {
+  let summary =
+      "A slice of every buffer in an aie.objectfifo.pool, and its locks";
+  let description = [{
+    Segments partition the object an `aie.objectfifo.pool` holds. Every buffer
+    in the pool carries every segment, so a segment names the same run of
+    elements in each of them.
+
+    An endpoint names the segments it fills or drains, which is how one pool
+    serves several independent actors: each holds its own slice under its own
+    locks.
+
+    `produceLock` and `consumeLock` are filled in by
+    `--aie-objectfifo-allocate`, which leaves alone whatever is already named.
+
+    Example:
+    ```
+      aie.objectfifo.segment @s0 {offset = 0 : i32, size = 16 : i32}
+    ```
+  }];
+
+  let arguments = (ins SymbolNameAttr:$sym_name, AIEI32Attr:$offset,
+      AIEI32Attr:$size, OptionalAttr<FlatSymbolRefAttr>:$produceLock,
+      OptionalAttr<FlatSymbolRefAttr>:$consumeLock);
+
+  let assemblyFormat = [{
+    $sym_name attr-dict
+  }];
+}
+
+def AIE_ObjectFifoPoolOp
+    : AIE_Op<"objectfifo.pool", [HasParent<"DeviceOp">, Symbol, SymbolTable,
+                                 SingleBlock, NoTerminator]> {
+  let summary = "A rotating set of buffers and the locks guarding them";
+  let description = [{
+    A set of buffers and the locks that guard how they are accessed.
+
+    A pool holds `depth` buffers of `elemType` on one tile. The buffers are
+    used in rotation, and each one is what an objectFifo calls an object, so
+    `depth` is the fifo's object count.
+
+    The body holds one `aie.objectfifo.segment` per way the object is divided,
+    in increasing offset order, together covering it exactly. An ordinary pool
+    has one segment spanning the whole object; a pool that several endpoints
+    fill or drain independently has one per participant.
+
+    On AIE1 a buffer is guarded by a single binary lock that rotates with it,
+    with no way to guard part of a buffer; such a pool carries `locks`, one
+    per buffer, and cannot be divided into more than one segment.
+
+    `buffers` and `locks` are filled in by `--aie-objectfifo-allocate`, which
+    leaves alone whatever is already named.
+
+    Example:
+    ```
+      aie.objectfifo.pool @pool(%tile) {
+        depth = 2 : i32,
+        buffers = [@buff_0, @buff_1]
+      } : memref<16xi32> {
+        aie.objectfifo.segment @s0 {offset = 0 : i32, size = 16 : i32,
+                                    produceLock = @prod, consumeLock = @cons}
+      }
+    ```
+  }];
+
+  let arguments = (ins SymbolNameAttr:$sym_name, Index:$tile, AIEI32Attr:$depth,
+      TypeAttrOf<AnyMemRef>:$elemType,
+      OptionalAttr<FlatSymbolRefArrayAttr>:$buffers,
+      OptionalAttr<FlatSymbolRefArrayAttr>:$locks,
+      // Senders replicate each object `repeatCount` times before moving on to
+      // the next one. Receivers take and give back that many lock units at
+      // once, and the lock initializers scale with it.
+      OptionalAttr<AIEI32Attr>:$repeatCount,
+      // No locks are created for this pool; its actors are unsynchronized.
+      DefaultValuedAttr<BoolAttr, "false">:$disableSynchronization,
+      // If lowered from a high-level ObjectFifo, the name of that fifo.
+      // Used to group ops lowered by the same ObjectFifo.
+      OptionalAttr<StrAttr>:$fifoName, InitValuesArrayAttr:$initValues);
+
+  let regions = (region SizedRegion<1>:$segments);
+
+  let assemblyFormat = [{
+    $sym_name `(` $tile `)` attr-dict `:` $elemType $segments
+  }];
+
+  let hasVerifier = 1;
+
+  let extraClassDeclaration = [{
+    /// The tile op backing this op's tile operand; placed or logical.
+    TileLike getTileLike();
+
+    /// Byte-agnostic element count of one object, taken from the element type.
+    int64_t getObjectSize();
+
+    /// Size of one object in bytes, under the closest data layout.
+    int64_t getObjectSizeInBytes();
+
+    /// One entry per way the object is divided, in increasing offset order.
+    std::vector<ObjectFifoSegmentOp> getSegmentOps();
+
+    /// The objects themselves, empty until --aie-objectfifo-allocate has run.
+    /// Buffers registered against a shim end are aie.external_buffer.
+    llvm::SmallVector<BufferLike> getBufferOps();
+
+    /// Every lock the pool holds, whichever form the device uses.
+    llvm::SmallVector<LockOp> getLockOps();
+
+    /// The pool's name without the end marker, which buffers and locks are
+    /// named after.
+    llvm::StringRef getBaseName();
+  }];
+}
+
+def AIE_ObjectFifoCoreEndpointOp
+    : AIE_Op<"objectfifo.core_endpoint", [HasParent<"DeviceOp">, Symbol]> {
+  let summary = "What a core needs to fill or drain the next object in a pool";
+  let description = [{
+    Names the pool a core works through, whether it fills or drains it, and which
+    of the pool's segments it handles. Omitting `segments` selects the pool's
+    only segment and is invalid for a multi-segment pool.
+
+    A core's `aie.objectfifo.acquire` and `aie.objectfifo.release` refer to this op.
+
+    An endpoint covering only part of an object hands the core a
+    `memref.subview` of the run its segments span, so a core can take one side
+    of a join or distribute.
+
+    Example:
+    ```
+      aie.objectfifo.core_endpoint @reader(%tile) drains @pool
+    ```
+  }];
+
+  let arguments = (ins SymbolNameAttr:$sym_name, Index:$tile,
+      ObjectFifoRole:$role, FlatSymbolRefAttr:$pool,
+      OptionalAttr<FlatSymbolRefArrayAttr>:$segments);
+
+  let assemblyFormat = [{
+    $sym_name `(` $tile `)` $role $pool attr-dict
+  }];
+
+  let hasVerifier = 1;
+
+  let extraClassDeclaration = [{
+    /// The tile op backing this op's tile operand; placed or logical.
+    TileLike getTileLike();
+    ObjectFifoPoolOp getPoolOp();
+    bool drains() { return getRole() == ObjectFifoRole::Drain; }
+
+    /// Segments this endpoint is responsible for.
+    std::vector<ObjectFifoSegmentOp> getSelectedSegments();
+
+    /// The run of elements this endpoint's segments span, as an offset into
+    /// the pool's object and a length.
+    std::pair<int64_t, int64_t> getExtent();
+
+    /// The memref a core acquires through this endpoint: the pool's own type
+    /// where it covers the whole object, and a view into it otherwise.
+    mlir::MemRefType getAccessType();
+  }];
+}
+
+def AIE_ObjectFifoDmaEndpointOp
+    : AIE_Op<"objectfifo.dma_endpoint", [HasParent<"DeviceOp">, Symbol,
+                                         DeclareOpInterfaceMethods<
+                                             RouteEndpoint>]> {
+  let summary =
+      "What a DMA channel needs to fill or drain the next object in a pool";
+  let description = [{
+    Names the pool a DMA channel works through, whether it fills or drains it,
+    which of the pool's segments it handles, and the channel itself. Omitting
+    `segments` selects the pool's only segment and is invalid for a
+    multi-segment pool.
+
+    `dimensions` and `padDimensions` are positional: entry N describes the
+    segment named by `segments[N]`. When present, either attribute must have
+    exactly as many entries as `segments`; an empty inner array means no
+    transformation or padding for that segment.
+
+    `--aie-objectfifo-lower-dmas` turns this into the buffer descriptor chain
+    that walks the pool's buffers, and consumes it.
+
+    `channelIndex` is the DMA channel this endpoint drives; the direction
+    follows its role. Leaving it out lets `--aie-objectfifo-allocate` pick one,
+    and writing it down pins it.
+
+    Example:
+    ```
+      aie.objectfifo.dma_endpoint @out(%tile) drains @pool {channelIndex = 0}
+    ```
+  }];
+
+  let arguments = (ins SymbolNameAttr:$sym_name, Index:$tile,
+      ObjectFifoRole:$role, FlatSymbolRefAttr:$pool,
+      OptionalAttr<FlatSymbolRefArrayAttr>:$segments,
+      OptionalAttr<AIEI32Attr>:$channelIndex,
+      OptionalAttr<BDDimLayoutArrayArrayAttr>:$dimensions,
+      OptionalAttr<BDPadLayoutArrayArrayAttr>:$padDimensions,
+      DefaultValuedOptionalAttr<AIEI32Attr, "0">:$padValue,
+      // For bounded execution: this endpoint stops after cycling through all
+      // buffers this many times, and runs forever when absent. A sender
+      // replicating each object `repeat_count` times covers the same objects
+      // in that many fewer cycles than the receiver opposite it.
+      OptionalAttr<AIEI32Attr>:$iterCount, OptionalAttr<PacketInfoAttr>:$packet,
+      // ObjectFifo name used by runtime records.
+      OptionalAttr<StrAttr>:$fifoName);
+
+  let assemblyFormat = [{
+    $sym_name `(` $tile `)` $role $pool attr-dict
+  }];
+
+  let hasVerifier = 1;
+
+  let extraClassDeclaration = [{
+    /// The tile op backing this op's tile operand; placed or logical.
+    TileLike getTileLike();
+    ObjectFifoPoolOp getPoolOp();
+    bool drains() { return getRole() == ObjectFifoRole::Drain; }
+
+    /// Segments this endpoint is responsible for.
+    std::vector<ObjectFifoSegmentOp> getSelectedSegments();
+  }];
+}
+
+def AIE_ObjectFifoRegisterExternalBuffersOp
+    : AIE_Op<"objectfifo.register_external_buffers", [HasParent<"DeviceOp">,
+                                                      TileElement,
+                                                      IsShimNOCTile]> {
+  let summary = "Registers external buffers to an objectFifo's shim tile(s) "
+                "for use in the associated shim DMA(s)";
   let description = [{
     The `aie.objectfifo.register_external_buffers` operation is used to register one or multiple external buffers
     to the shim tile(s) used in an `objectFifo` creation. During the `objectFifo` lowering pass, shim DMAs that are
@@ -2298,43 +2622,45 @@ def AIE_ObjectFifoRegisterExternalBuffersOp: AIE_Op<"objectfifo.register_externa
 def AIE_ObjectFifoAcquireOp: AIE_Op<"objectfifo.acquire", []> {
   let summary = "Acquire operation to lock and return objects of an ObjectFifo";
   let description = [{
-    The `aie.objectFifo.acquire` operation first acquires the locks of the next given number
-    of objects in the `objectFifo`. The mode it acquires the locks in is chosen based on the port
-    (producer: acquire for write, consumer: acquire for read). Then, it returns a subview of
-    the acquired objects which can be used to access them.
+    The `aie.objectFifo.acquire` operation acquires the locks of the next objects
+    in the `objectFifo` and returns one memref per object. The mode it acquires
+    the locks in is chosen based on the port (producer: acquire for write,
+    consumer: acquire for read).
 
-    This operation is then converted by the `AIEObjectFifoStatefulTransformPass` into `aie.use_lock` operations on
-    the locks of the `objectFifo` objects that will be acquired. Under the hood, the operation only performs
-    new acquires if necessary. For example, if two objects have been acquired in the past and none have yet
-    to be released by the same process, then performing another acquire operation on the same `objectFifo`
-    within the same process of size two or less will not result in any new use_lock operations (and for size
-    greater than two, only (size - 2) use_lock operations will be performed).
+    This operation is then converted by the `--aie-objectfifo-lower-cores` into `aie.use_lock` operations on
+    the locks of the `objectFifo` objects that will be acquired. The acquire names every object the process
+    wants to hold, so only the ones it does not hold already are taken. For example, if two objects have been
+    acquired in the past and none have yet to be released by the same process, then performing another acquire
+    operation on the same `objectFifo` within the same process of size two or less will not result in any new
+    use_lock operations (and for size greater than two, only (size - 2) use_lock operations will be performed).
 
     Example:
     ```
-      %subview = aie.objectfifo.acquire @of1 (Consume, 2) : !aie.objectfifosubview<memref<16xi32>>
+      %a, %b = aie.objectfifo.acquire @of1 (Consume, 2) : memref<16xi32>, memref<16xi32>
     ```
     This operation acquires the locks of the next two objects in the `objectFifo` named `@of1` from its consumer
-    port and returns a subview of the acquired objects.
+    port and returns them.
+
+    The port is omitted when the target is an endpoint, whose role already fixes the direction:
+    ```
+      %a = aie.objectfifo.acquire @of1_prod (1) : memref<16xi32>
+    ```
   }];
 
-  let arguments = (
-    ins ObjectFifoPort:$port,
-        FlatSymbolRefAttr:$objFifo_name,
-        ConfinedAttr<AIEI32Attr, [IntMinValue<1>]>:$size
-  );
+  let arguments = (ins OptionalAttr<ObjectFifoPort>:$port,
+      FlatSymbolRefAttr:$objFifo_name);
 
-  let results = (outs AIE_ObjectFifoSubviewType:$subview);
+  let results = (outs Variadic<AnyMemRef>:$objects);
 
   let assemblyFormat = [{
-    attr-dict $objFifo_name `(` $port `,` $size `)` `:` qualified(type($subview))
+    attr-dict $objFifo_name `` custom<ObjectFifoAcquireObjects>($port, type($objects))
   }];
 
   let hasVerifier = 1;
 
   let extraClassDeclaration = [{
     ObjectFifoCreateOp getObjectFifo();
-    int acqNumber() { return getSize(); }
+    int acqNumber() { return getObjects().size(); }
   }];
 }
 
@@ -2345,23 +2671,26 @@ def AIE_ObjectFifoReleaseOp: AIE_Op<"objectfifo.release", []> {
     in the `objectFifo`. The mode it releases the locks in is chosen based on the `port`
     (producer: release for read, consumer: release for write).
 
-    This operation is then converted by the `AIEObjectFifoStatefulTransformPass` into `aie.use_lock` operations.
+    This operation is then converted by the `--aie-objectfifo-lower-cores` into `aie.use_lock` operations.
 
     Example:
     ```
       aie.objectfifo.release @of1 (Produce, 1)
     ```
     This operation releases the lock of the next object in the `objectFifo` named `@of1` from producer port.
+
+    The port is omitted when the target is an endpoint, whose role already fixes the direction:
+    ```
+      aie.objectfifo.release @of1_prod (1)
+    ```
   }];
 
-  let arguments = (
-    ins ObjectFifoPort:$port,
-        FlatSymbolRefAttr:$objFifo_name,
-        ConfinedAttr<AIEI32Attr, [IntMinValue<1>]>:$size
-  );
+  let arguments = (ins OptionalAttr<ObjectFifoPort>:$port,
+      FlatSymbolRefAttr:$objFifo_name,
+      ConfinedAttr<AIEI32Attr, [IntMinValue<1>]>:$size);
 
   let assemblyFormat = [{
-    attr-dict $objFifo_name `(` $port `,` $size `)`
+    attr-dict $objFifo_name `` custom<ObjectFifoReleaseCount>($port, $size)
   }];
 
   let hasVerifier = 1;
@@ -2371,41 +2700,6 @@ def AIE_ObjectFifoReleaseOp: AIE_Op<"objectfifo.release", []> {
     int relNumber() { return getSize(); }
   }];
 }
-
-def AIE_ObjectFifoSubviewAccessOp : AIE_Op<"objectfifo.subview.access", []> {
-  let summary = "ObjectFifoSubview type accessor method";
-  let description = [{
-    Access the Nth element of a value of `ObjectFifoSubview` type.
-
-    Example:
-    ```
-      %subview = aie.objectfifo.acquire @of1 (Produce, 3) : !aie.objectfifosubview<memref<16xi32>>
-      %elem = aie.objectfifo.subview.access %subview[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
-    ```
-    In this example, `%elem` is the first object of the subview. Note that this may not correspond to the first element of
-    the `objectFifo` if other acquire operations took place beforehand.
-
-    The `$subview` operand must be the direct SSA result of an
-    `aie.objectfifo.acquire`; flowing the subview through region results
-    (e.g. `scf.yield` / `iter_args`) drops the link to the originating
-    acquire that downstream lowering requires, and is rejected by the
-    verifier.
-  }];
-
-  let arguments = (
-    ins AIE_ObjectFifoSubviewType:$subview,
-        ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$index
-  );
-
-  let hasVerifier = 1;
-
-  let results = (outs AnyMemRef:$output);
-
-  let assemblyFormat = [{
-    $subview `[` $index `]` attr-dict `:` qualified(type($subview)) `->` qualified(type($output))
-  }];
-}
-
 
 def AIE_BDChainOp: AIE_Op<"bd_chain", [Symbol, SkipAccessibilityCheckTrait]> {
   let summary = "Definition of a Parametrizable Chain of Buffer Descriptors";

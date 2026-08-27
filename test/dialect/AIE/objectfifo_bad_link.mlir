@@ -82,7 +82,7 @@ aie.device(xcve2302) {
 
 // -----
 
-// CHECK: ObjectFifoLinkOp join and distribute are unavailable on compute or shim tiles
+// CHECK: ObjectFifoLinkOp join and distribute are unavailable on shim tiles
 
 aie.device(xcve2302) {
     %tile20 = aie.tile(2, 0)
@@ -100,25 +100,7 @@ aie.device(xcve2302) {
 
 // -----
 
-// CHECK: ObjectFifoLinkOp join and distribute are unavailable on compute or shim tiles
-
-aie.device(xcve2302) {
-    %tile32 = aie.tile(3, 2)
-    %tile22 = aie.tile(2, 2)
-    %tile23 = aie.tile(2, 3)
-    %tile33 = aie.tile(3, 3)
-
-    aie.objectfifo @link1 (%tile22, {%tile32}, 2 : i32) : !aie.objectfifo<memref<4x4xi32>>
-    aie.objectfifo @link2 (%tile23, {%tile32}, 2 : i32) : !aie.objectfifo<memref<20xi32>>
-    aie.objectfifo @link3 (%tile33, {%tile32}, 2 : i32) : !aie.objectfifo<memref<12xi32>>
-    aie.objectfifo @link4 (%tile32, {%tile33}, 2 : i32) : !aie.objectfifo<memref<48xi32>>
-
-    aie.objectfifo.link [@link1, @link2, @link3] -> [@link4] ([0, 16, 36][])
-}
-
-// -----
-
-// CHECK: ObjectFifoLinkOp join and distribute are unavailable on compute or shim tiles
+// CHECK: ObjectFifoLinkOp join and distribute are unavailable on shim tiles
 
 aie.device(xcve2302) {
     %tile20 = aie.tile(2, 0)
@@ -130,24 +112,6 @@ aie.device(xcve2302) {
     aie.objectfifo @link2 (%tile20, {%tile22}, 2 : i32) : !aie.objectfifo<memref<4x4xi32>>
     aie.objectfifo @link3 (%tile20, {%tile23}, 2 : i32) : !aie.objectfifo<memref<20xi32>>
     aie.objectfifo @link4 (%tile20, {%tile33}, 2 : i32) : !aie.objectfifo<memref<12xi32>>
-
-    aie.objectfifo.link [@link1] -> [@link2, @link3, @link4] ([][0, 16, 36])
-}
-
-// -----
-
-// CHECK: ObjectFifoLinkOp join and distribute are unavailable on compute or shim tiles
-
-aie.device(xcve2302) {
-    %tile32 = aie.tile(3, 2)
-    %tile22 = aie.tile(2, 2)
-    %tile23 = aie.tile(2, 3)
-    %tile33 = aie.tile(3, 3)
-
-    aie.objectfifo @link1 (%tile33, {%tile32}, 2 : i32) : !aie.objectfifo<memref<48xi32>>
-    aie.objectfifo @link2 (%tile32, {%tile22}, 2 : i32) : !aie.objectfifo<memref<4x4xi32>>
-    aie.objectfifo @link3 (%tile32, {%tile23}, 2 : i32) : !aie.objectfifo<memref<20xi32>>
-    aie.objectfifo @link4 (%tile32, {%tile33}, 2 : i32) : !aie.objectfifo<memref<12xi32>>
 
     aie.objectfifo.link [@link1] -> [@link2, @link3, @link4] ([][0, 16, 36])
 }

@@ -55,6 +55,10 @@ module {
     aie.objectfifo @out1(%tile02, {%tile00}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
 
     %core = aie.core(%tile02) {
+      %input = aie.objectfifo.acquire @in1 (Consume, 1) : memref<16xi32>
+      %output = aie.objectfifo.acquire @out1 (Produce, 1) : memref<16xi32>
+      aie.objectfifo.release @in1 (Consume, 1)
+      aie.objectfifo.release @out1 (Produce, 1)
       aie.end
     }
 
@@ -89,6 +93,10 @@ module {
     aie.objectfifo @out2(%tile12, {%tile10}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
 
     %core = aie.core(%tile12) {
+      %input = aie.objectfifo.acquire @in2 (Consume, 1) : memref<16xi32>
+      %output = aie.objectfifo.acquire @out2 (Produce, 1) : memref<16xi32>
+      aie.objectfifo.release @in2 (Consume, 1)
+      aie.objectfifo.release @out2 (Produce, 1)
       aie.end
     }
 

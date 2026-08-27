@@ -40,11 +40,9 @@ module {
       %c1 = arith.constant 1 : index
       %c16 = arith.constant 16 : index
 
-      %subview_in = aie.objectfifo.acquire @in(Consume, 1) : !aie.objectfifosubview<memref<16xi32>>
-      %elem_in = aie.objectfifo.subview.access %subview_in[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+      %elem_in = aie.objectfifo.acquire @in(Consume, 1) : memref<16xi32>
 
-      %subview_out = aie.objectfifo.acquire @mid(Produce, 1) : !aie.objectfifosubview<memref<16xi32>>
-      %elem_out = aie.objectfifo.subview.access %subview_out[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+      %elem_out = aie.objectfifo.acquire @mid(Produce, 1) : memref<16xi32>
 
       scf.for %i = %c0 to %c16 step %c1 {
         %val = memref.load %elem_in[%i] : memref<16xi32>
@@ -62,11 +60,9 @@ module {
       %c1 = arith.constant 1 : index
       %c16 = arith.constant 16 : index
 
-      %subview_in = aie.objectfifo.acquire @mid(Consume, 1) : !aie.objectfifosubview<memref<16xi32>>
-      %elem_in = aie.objectfifo.subview.access %subview_in[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+      %elem_in = aie.objectfifo.acquire @mid(Consume, 1) : memref<16xi32>
 
-      %subview_out = aie.objectfifo.acquire @out(Produce, 1) : !aie.objectfifosubview<memref<16xi32>>
-      %elem_out = aie.objectfifo.subview.access %subview_out[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+      %elem_out = aie.objectfifo.acquire @out(Produce, 1) : memref<16xi32>
 
       scf.for %i = %c0 to %c16 step %c1 {
         %val = memref.load %elem_in[%i] : memref<16xi32>
