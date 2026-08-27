@@ -247,11 +247,22 @@ inline mlir::LogicalResult checkStackSizeRequirements(mlir::ModuleOp module,
                                                       llvm::StringRef workDir) {
   // stack_size_override is looked up by callee name regardless of which
   // core/device actually calls it, so collect it once for the whole module.
+  // A negative value would subtract from a path's total in maxPathFrom and
+  // undercount -- external_func() rejects that in Python, but hand-written
+  // MLIR bypasses it, so re-check here.
+  mlir::LogicalResult result = mlir::success();
   llvm::StringMap<int64_t> overrides;
   module.walk([&](mlir::func::FuncOp funcOp) {
-    if (auto attr =
-            funcOp->getAttrOfType<mlir::IntegerAttr>("stack_size_override"))
-      overrides[funcOp.getName()] = attr.getInt();
+    auto attr = funcOp->getAttrOfType<mlir::IntegerAttr>("stack_size_override");
+    if (!attr)
+      return;
+    if (attr.getInt() < 0) {
+      funcOp.emitError() << "stack_size_override must be >= 0, got "
+                         << attr.getInt();
+      result = mlir::failure();
+      return;
+    }
+    overrides[funcOp.getName()] = attr.getInt();
   });
 
   // Pass 1's output (which functions a path *defines*) depends only on the
@@ -265,7 +276,6 @@ inline mlir::LogicalResult checkStackSizeRequirements(mlir::ModuleOp module,
   // silently reuse a result computed against the wrong closure.
   llvm::StringMap<llvm::StringSet<>> definedFunctionsByPath;
 
-  mlir::LogicalResult result = mlir::success();
   module.walk([&](xilinx::AIE::CoreOp coreOp) {
     // Roots: symbols the core body directly calls (mirrors the walk in
     // AIEAssignCoreLinkFilesPass).
