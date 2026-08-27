@@ -8,6 +8,7 @@
 #ifndef ZERO_CC
 #define ZERO_CC
 
+#include <aie_api/aie.hpp>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
