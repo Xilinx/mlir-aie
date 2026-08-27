@@ -94,6 +94,21 @@ inline BdPool bd_pool_init(uint32_t n) {
   return p;
 }
 
+// Withhold `id` from the pool, for a BD the static allocator already placed on
+// this tile. BD IDs index one table per tile, shared by the statically
+// configured DMAs and by this pool, so an id handed out here that a static BD
+// already owns would silently overwrite that BD's slot. The compiler emits one
+// of these per statically-assigned id on a pooled tile, right after
+// bd_pool_init; a tile carrying no static BDs emits none, leaving the pool and
+// the generated stream exactly as before.
+inline void bd_pool_reserve(BdPool &p, uint32_t id) {
+  for (int i = 0; i < p.head; ++i)
+    if (p.free_ids[i] == id) {
+      p.free_ids[i] = p.free_ids[--p.head];
+      return;
+    }
+}
+
 // Pop a free BD ID into `out`. Returns false if the pool is empty -- the
 // generated builder turns that into a `return std::nullopt`, so a runtime
 // working set that exceeds the tile's BD count yields no stream rather than a

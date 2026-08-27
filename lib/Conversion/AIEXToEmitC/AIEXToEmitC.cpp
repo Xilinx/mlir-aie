@@ -60,6 +60,32 @@ std::string bdPoolName(uint32_t col, uint32_t row) {
   return "bd_pool_" + std::to_string(col) + "_" + std::to_string(row);
 }
 
+// BD ids the static allocator has already placed on (col, row), read off the
+// placed aie.mem / aie.memtile_dma / aie.shim_dma chains. Sorted so the emitted
+// stream is deterministic.
+llvm::SmallVector<uint32_t, 8> staticBdIdsOnTile(AIE::DeviceOp device,
+                                                 uint32_t col, uint32_t row) {
+  llvm::SmallVector<uint32_t, 8> ids;
+  auto collect = [&](AIE::TileElement elem, Region &region) {
+    auto id = elem.getTileID();
+    if (id.col != static_cast<int>(col) || id.row != static_cast<int>(row))
+      return;
+    region.walk([&](AIE::DMABDOp bd) {
+      if (auto bdId = bd.getBdId())
+        ids.push_back(*bdId);
+    });
+  };
+  for (auto mem : device.getOps<AIE::MemOp>())
+    collect(mem, mem->getRegion(0));
+  for (auto mem : device.getOps<AIE::MemTileDMAOp>())
+    collect(mem, mem->getRegion(0));
+  for (auto mem : device.getOps<AIE::ShimDMAOp>())
+    collect(mem, mem->getRegion(0));
+  llvm::sort(ids);
+  ids.erase(llvm::unique(ids), ids.end());
+  return ids;
+}
+
 // A uint32_t literal operand (e.g. `42u`) for a txn_append_* argument. Used for
 // the compile-time-resolved address fields (buffer/col/row are folded in).
 Value u32Literal(OpBuilder &b, Location loc, uint32_t val) {
@@ -578,6 +604,16 @@ private:
                                 "aie_runtime::BdPool " + bdPoolName(col, row) +
                                     " = aie_runtime::bd_pool_init(" +
                                     std::to_string(numBDs) + ");");
+      // The pool starts owning every id on the tile, but the BD table is
+      // shared with whatever the static allocator already placed there. Hand
+      // back the ids it took, or a pop would return one that a static BD
+      // already owns and overwrite its slot. Nothing is emitted for a tile
+      // with no static BDs, which is the usual case.
+      for (uint32_t id : staticBdIdsOnTile(deviceOp, col, row))
+        emitc::VerbatimOp::create(fb, loc,
+                                  "aie_runtime::bd_pool_reserve(" +
+                                      bdPoolName(col, row) + ", " +
+                                      std::to_string(id) + ");");
     });
 
     // A rolled loop makes the op count a runtime quantity: declare a __opcount
