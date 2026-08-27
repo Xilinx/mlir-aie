@@ -1405,7 +1405,7 @@ def AIE_DMAFreeTaskOp : AIEX_Op<"dma_free_task", [HasAncestor<"AIE::RuntimeSeque
   }];
 
   let extraClassDefinition = [{
-    DMAConfigureTaskOp DMAFreeTaskOp::getTaskOp() { return dyn_cast<DMAConfigureTaskOp>(getTask().getDefiningOp()); }
+    DMAConfigureTaskOp DMAFreeTaskOp::getTaskOp() { return dyn_cast_or_null<DMAConfigureTaskOp>(getTask().getDefiningOp()); }
   }];
 }
 
@@ -1429,7 +1429,7 @@ def AIE_DMAStartTaskOp : AIEX_Op<"dma_start_task", [HasAncestor<"AIE::RuntimeSeq
   }];
 
   let extraClassDefinition = [{
-    DMAConfigureTaskOp DMAStartTaskOp::getTaskOp() { return dyn_cast<DMAConfigureTaskOp>(getTask().getDefiningOp()); }
+    DMAConfigureTaskOp DMAStartTaskOp::getTaskOp() { return dyn_cast_or_null<DMAConfigureTaskOp>(getTask().getDefiningOp()); }
   }];
 }
 
@@ -1464,7 +1464,7 @@ def AIE_DMAAwaitTaskOp : AIEX_Op<"dma_await_task", [HasAncestor<"AIE::RuntimeSeq
 
   let extraClassDefinition = [{
     DMAConfigureTaskOp DMAAwaitTaskOp::getTaskOp() {
-      return dyn_cast<DMAConfigureTaskOp>(getTask().getDefiningOp());
+      return dyn_cast_or_null<DMAConfigureTaskOp>(getTask().getDefiningOp());
     }
   }];
 }

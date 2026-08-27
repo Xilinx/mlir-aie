@@ -19,6 +19,7 @@
 #include "mlir/Interfaces/FoldInterfaces.h"
 #include "mlir/Interfaces/ViewLikeInterface.h"
 #include "mlir/Transforms/InliningUtils.h"
+#include "llvm/ADT/STLExtras.h"
 
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallSet.h"
@@ -117,15 +118,14 @@ getShimBurstLength(const xilinx::AIE::AIETargetModel &tm,
   // If we have the default burst length (no burst length was specified),
   // use the highest one available on our target model
   if (burstLength == 0) {
-    return *std::max_element(
-        bel.begin(), bel.end(),
-        [](auto pair1, auto pair2) { return pair1.second < pair2.second; });
+    return *llvm::max_element(bel, [](auto pair1, auto pair2) {
+      return pair1.second < pair2.second;
+    });
   }
 
   // Note that if we are given a burst size, we are checking its existence in
   // the pass verification already, so we can safely assume it exists.
-  return *std::find_if(bel.begin(), bel.end(),
-                       [=](auto p) { return p.second == burstLength; });
+  return *llvm::find_if(bel, [=](auto p) { return p.second == burstLength; });
 }
 
 uint32_t xilinx::AIE::getShimBurstLengthBytes(const AIE::AIETargetModel &tm,
@@ -182,6 +182,7 @@ xilinx::AIE::myVerifyOffsetSizeAndStrideOp(OffsetSizeAndStrideOpInterface op) {
 static VC1902TargetModel VC1902model;
 static VE2302TargetModel VE2302model;
 static VE2802TargetModel VE2802model;
+static VE3858TargetModel VE3858model;
 static VirtualizedNPU1TargetModel NPUmodel1col(1);
 static VirtualizedNPU1TargetModel NPUmodel2col(2);
 static VirtualizedNPU1TargetModel NPUmodel3col(3);
@@ -238,6 +239,8 @@ const AIETargetModel &xilinx::AIE::getTargetModel(AIEDevice device) {
     return NPU2model6col;
   case AIEDevice::npu2_7col:
     return NPU2model7col;
+  case AIEDevice::xcve3858:
+    return VE3858model;
   }
   // No default: label above, so -Wswitch still reports a newly added device.
   // This handles values that are not enumerators at all, which

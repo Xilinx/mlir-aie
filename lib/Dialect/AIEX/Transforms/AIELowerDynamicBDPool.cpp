@@ -317,7 +317,8 @@ struct AIELowerDynamicBDPoolPass
   //     post-loop await), not the per-iteration body configure.
   //   - scf.if: the then-branch yield's tile/origin flow to the result.
   // A push only reads the tile, so both branches must agree; a genuinely
-  // cross-tile scf.if is rejected.
+  // cross-tile scf.if is rejected, and so is a for-loop whose per-iteration
+  // reconfiguration disagrees with its init.
   LogicalResult computeMetadata(AIE::RuntimeSequenceOp seq) {
     tileForTask.clear();
     originConfigure.clear();
@@ -361,20 +362,55 @@ struct AIELowerDynamicBDPoolPass
         return WalkResult::advance();
       auto thenYield = cast<scf::YieldOp>(ifOp.thenBlock()->getTerminator());
       auto elseYield = cast<scf::YieldOp>(ifOp.elseBlock()->getTerminator());
-      for (unsigned k = 0; k < ifOp.getNumResults(); ++k) {
-        DMAConfigureTaskOp to = originConfigure.lookup(thenYield.getOperand(k));
-        DMAConfigureTaskOp eo = originConfigure.lookup(elseYield.getOperand(k));
-        if (to && eo && syncSig(to) != syncSig(eo)) {
-          ifOp.emitOpError("yields tasks on different physical channels "
-                           "(tile/direction/channel) from its two branches at "
-                           "the same result; a pooled buffer descriptor id and "
-                           "its completion sync belong to one channel");
+      for (unsigned k = 0; k < ifOp.getNumResults(); ++k)
+        if (failed(checkChannelAgreement(
+                ifOp, thenYield.getOperand(k), elseYield.getOperand(k),
+                "yields tasks on different physical channels "
+                "(tile/direction/channel) from its two branches at "
+                "the same result; a pooled buffer descriptor id and "
+                "its completion sync belong to one channel")))
           return WalkResult::interrupt();
-        }
-      }
       return WalkResult::advance();
     });
-    return wr.wasInterrupted() ? failure() : success();
+    if (wr.wasInterrupted())
+      return failure();
+
+    // A task carried around an scf.for must likewise agree on the physical
+    // channel between the loop's init and its per-iteration reconfiguration
+    // -- the push after the loop uses the loop-invariant init's tile
+    // (computeMetadata never adopts the body's), and an await reachable
+    // through the loop (resolveConfigureThroughCF in AIEDMATasksToNPU) may
+    // resolve to either one.
+    WalkResult forWr = seq.walk([&](scf::ForOp forOp) -> WalkResult {
+      auto yield = cast<scf::YieldOp>(forOp.getBody()->getTerminator());
+      for (unsigned k = 0; k < forOp.getInitArgs().size(); ++k)
+        if (failed(checkChannelAgreement(
+                forOp, forOp.getInitArgs()[k], yield.getOperand(k),
+                "carries a task on different physical channels "
+                "(tile/direction/channel) between its init and its "
+                "per-iteration reconfiguration; a pooled buffer "
+                "descriptor id and its completion sync belong to one "
+                "channel")))
+          return WalkResult::interrupt();
+      return WalkResult::advance();
+    });
+    return forWr.wasInterrupted() ? failure() : success();
+  }
+
+  // If both `a` and `b` resolve (via originConfigure) to a configure, and
+  // those configures target different physical channels, emit `msg` on `op`
+  // and return failure. Shared by the scf.if and scf.for channel-agreement
+  // checks in computeMetadata -- only the pair of values being compared
+  // differs between them.
+  LogicalResult checkChannelAgreement(Operation *op, Value a, Value b,
+                                      StringRef msg) {
+    DMAConfigureTaskOp originA = originConfigure.lookup(a);
+    DMAConfigureTaskOp originB = originConfigure.lookup(b);
+    if (originA && originB && syncSig(originA) != syncSig(originB)) {
+      op->emitOpError(msg);
+      return failure();
+    }
+    return success();
   }
 
   // The physical channel a configure targets: (col, row, direction, channel).

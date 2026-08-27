@@ -18,6 +18,17 @@ repos:
     - id: clang-format
       types_or: [c, c++]
       stages: [pre-push]
+      # Exclude generated files and third-party / vendored code (matches black)
+      exclude: |
+        (?x)^(
+          third_party/.*|
+          (_)?build.*/.*|
+          (my_)?install.*/.*|
+          sandbox.*/.*|
+          llvm.*/.*|
+          cmakeModules.*/.*|
+          ironenv/.*
+        )$
 
 - repo: https://github.com/psf/black
   rev: 87928e6d6761a4a6d22250e1fee5601b3998086e  # frozen: 26.5.1
@@ -137,7 +148,7 @@ repos:
     - id: clang-tidy
       name: clang-tidy
       language: python
-      additional_dependencies: ['clang-tidy==20.1.0']
+      additional_dependencies: ['clang-tidy==22.1.8']
       entry: utils/run_clang_tidy.sh
       files: |
         (?x)^(

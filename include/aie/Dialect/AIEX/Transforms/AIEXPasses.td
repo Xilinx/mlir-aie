@@ -287,9 +287,9 @@ def AIEUnrollRuntimeSequenceLoops
     appear inside `aie.runtime_sequence` bodies.
 
     Runs before `aie-assign-runtime-sequence-bd-ids` so BD-ID allocation sees
-    straight-line IR: configure operations in each loop iteration can receive 
+    straight-line IR: configure operations in each loop iteration can receive
     individual BD IDs after unrolling.
-    
+
     Runtime-bound loops (non-constant trip count) are left in place for the
     dynamic EmitC lowering path.
   }];
@@ -336,10 +336,9 @@ def AIEDMATasksToNPU : Pass<"aie-dma-tasks-to-npu", "AIE::DeviceOp"> {
   let summary = "Lower configured DMA tasks to NPU instructions";
 
   let constructor = "xilinx::AIEX::createAIEDMATasksToNPUPass()";
-  let dependentDialects = [
-    "mlir::arith::ArithDialect",
-    "xilinx::AIE::AIEDialect",
-    "xilinx::AIEX::AIEXDialect",
+  let dependentDialects = ["mlir::arith::ArithDialect", "mlir::ub::UBDialect",
+                           "xilinx::AIE::AIEDialect",
+                           "xilinx::AIEX::AIEXDialect",
   ];
 }
 

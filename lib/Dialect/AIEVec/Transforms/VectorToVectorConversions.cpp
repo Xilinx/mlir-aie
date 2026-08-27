@@ -24,6 +24,7 @@
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "llvm/ADT/STLExtras.h"
 #include <algorithm>
 #include <utility>
 
@@ -400,8 +401,7 @@ struct FlattenMultDimTransferReadPattern
       SmallVector<bool> inBounds =
           llvm::to_vector(inBoundsArrayAttrOpt.getAsValueRange<BoolAttr>());
       SmallVector<bool> newInBounds({false});
-      newInBounds[0] = std::all_of(inBounds.begin(), inBounds.end(),
-                                   [](bool v) { return v; });
+      newInBounds[0] = llvm::all_of(inBounds, [](bool v) { return v; });
       newVector.getProperties().setInBounds(
           rewriter.getBoolArrayAttr(newInBounds));
     }
@@ -463,8 +463,7 @@ struct FlattenMultDimTransferWritePattern
       SmallVector<bool> inBounds =
           llvm::to_vector(inBoundsArrayAttrOpt.getAsValueRange<BoolAttr>());
       SmallVector<bool> newInBounds({false});
-      newInBounds[0] = std::all_of(inBounds.begin(), inBounds.end(),
-                                   [](bool v) { return v; });
+      newInBounds[0] = llvm::all_of(inBounds, [](bool v) { return v; });
       newOp.getProperties().setInBounds(rewriter.getBoolArrayAttr(newInBounds));
     }
 
