@@ -9,11 +9,12 @@ discovery + ``dlopen``, and the bound ``hrx_*`` entry points. The higher-level
 device/stream/buffer/dispatch orchestration lives in :mod:`.context`
 (:class:`~.context.HRXContext`); the package ``__init__`` re-exports both.
 
-Library discovery order for ``libhrx.so``:
-  1. ``$HRX_LIBHRX``                       (explicit full path to the .so)
-  2. ``$LIBHRX_DIR/libhrx.so``             (set by activate_env.sh)
-  3. ``$HRX_DIR/lib/libhrx.so``            (HRX install prefix)
-  4. plain ``libhrx.so`` via the loader (LD_LIBRARY_PATH)
+Library discovery order for ``libhrx``:
+  1. ``$HRX_LIBHRX``                       (explicit full path)
+  2. ``$LIBHRX_DIR/<libhrx>``              (set by activate_env.sh)
+  3. pip site-packages                     (``<pkg>/lib`` or ``<pkg>/bin``; no import)
+  4. ``$HRX_DIR`` / sibling / ``FindHRX`` roots
+  5. plain ``libhrx.so`` / ``hrx.dll`` via the loader
 
 Importing this module is side-effect-free: it performs no ``dlopen`` and no
 device init. Binding is deferred to :meth:`_HrxLib.ensure`, which the first
