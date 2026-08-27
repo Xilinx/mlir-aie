@@ -85,16 +85,25 @@ def wire_words(chunks: list[ControlPacketChunk]) -> list[int]:
 
 
 def done_chunk(addr: int) -> ControlPacketChunk:
-    """The one-word "the write landed" signal chunk: a single `1` written to
-    `addr` -- a plain data-memory flag on the target tile, not a hardware
-    lock (writing a *lock's* value register needs its hardware-assigned
-    address, which is not knowable until a much later compiler pass; a plain
-    Buffer's address is knowable from the linked resident ELF, the same way
-    `ProgramMemorySlot.pingpong()`'s bootstrap park's own address already is).
-    Appended as its own trailing `Bd` after the main payload's iterated one,
-    on the same `PacketFlow` (same destination tile, same TileControl port --
-    routing is by destination and pkt_id, not by address).
+    """The "the write landed" signal chunk: `1` written to `addr`, padded to
+    `MAX_DATA_WORDS_PER_PACKET` data words -- a plain data-memory flag on the
+    target tile, not a hardware lock (writing a *lock's* value register needs
+    its hardware-assigned address, which is not knowable until a much later
+    compiler pass; a plain Buffer's address is knowable from the linked
+    resident ELF, the same way `ProgramMemorySlot.pingpong()`'s bootstrap
+    park's own address already is).
+
+    Padded to the same width as every other chunk (rather than the single
+    real word this signal needs) so one reusable BD can send every chunk of
+    an overlay, this one included, without varying its configured transfer
+    length per round -- see `ProgramMemorySlot._load_tile_sourced`. Safe
+    because the destination is a Buffer this module's caller sizes exactly
+    for this padding (`ProgramMemorySlot._ctrl_done_buf`), not a hardware
+    register where writing past word 0 would hit something else.
     """
     return ControlPacketChunk(
-        control_packet_header(stream_id=0, opcode=0, size=1, addr=addr), [1]
+        control_packet_header(
+            stream_id=0, opcode=0, size=MAX_DATA_WORDS_PER_PACKET, addr=addr
+        ),
+        [1] + [0] * (MAX_DATA_WORDS_PER_PACKET - 1),
     )

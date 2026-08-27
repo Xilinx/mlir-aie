@@ -17,11 +17,20 @@ from ...dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
     WireBundle,
 )
 from ...dialects.aie import external_func  # pyright: ignore[reportAttributeAccessIssue]
-from ...dialects.aiex import npu_blockwrite  # pyright: ignore[reportAttributeAccessIssue]
+from ...dialects.aiex import (
+    npu_blockwrite,
+)  # pyright: ignore[reportAttributeAccessIssue]
+from ...extras.dialects.arith import (
+    constant as arith_constant,
+)  # pyright: ignore[reportMissingImports]
+from ...dialects.arith import addi, muli  # pyright: ignore[reportAttributeAccessIssue]
 from ...helpers.dialects.func import call  # pyright: ignore[reportMissingImports]
+from ...helpers.dialects.scf import (
+    _for as range_,
+)  # pyright: ignore[reportMissingImports]
 from ...utils import get_current_device
 from ..buffer import Buffer
-from ..dataflow.flow import PacketFlow
+from ..dataflow.flow import Flow, PacketFlow
 from ..dataflow.tile_dma import Acquire, Bd, DmaChannel, Release, TileDma
 from ..device import Tile
 from ..kernel import BaseKernel
@@ -32,7 +41,12 @@ from ._bootstrap import Bootstrap, emit_payload_global
 from ._elf import peano
 from ._geometry import PROG_MEM_LINE, Geometry, Slot
 from ._link import OverlayError
-from ._tile_transport import chunk_for_control_packets, done_chunk, wire_words
+from ._tile_transport import (
+    MAX_DATA_WORDS_PER_PACKET,
+    chunk_for_control_packets,
+    done_chunk,
+    wire_words,
+)
 from .overlay import ProgramMemoryOverlay
 
 
@@ -115,20 +129,18 @@ class ProgramMemorySlot(BaseKernel):
                 the packet-switched route may hop through intermediate
                 switchboxes -- but if no route exists at all, `aiecc` itself
                 refuses at build time; this never surfaces as a runtime hang.
-                Only one `load()` call per design is supported today (a
-                single overlay loaded once, not a multi-phase schedule
-                sourced from a tile) -- a documented v1 scope, not silently
-                partial: `load()` raises clearly on a second call. `size` is
-                also bounded by `source`'s tile's entire BD table (16
-                descriptors on Strix, shared across every DMA channel on the
-                tile): one control-packet chunk (4 payload words) per
-                descriptor, plus one for the completion signal, so today's
-                real ceiling is a few hundred bytes -- `load()` raises a
-                clear, named error naming the actual and available
-                descriptor counts rather than silently overflowing the
-                table. See `_load_tile_sourced`'s comments for why a single
-                iterated descriptor (which would lift this ceiling) isn't
-                used: it corrupts the packet address hardware-verified.
+                `load(overlay)` may be called more than once, one per
+                phase, exactly like the host-written and ping-pong
+                transports -- see `load`'s own docstring for how the next
+                phase is kept from overwriting the slot before this one has
+                actually finished being used. Hardware-verified on Strix at
+                3 phases and a full-granule slot. `size` is not bounded by
+                `source`'s tile's BD table: the transfer uses one reused,
+                self-looping `aie.dma_bd` (see `_load_tile_sourced`'s
+                comments for why a self-loop reframes each round's packet
+                correctly where `BdIteration` does not, hardware-verified on
+                Strix), so a single BD table entry covers a slot of any
+                size.
         """
         from ..worker import Worker  # deferred: see the Worker-side comment
 
@@ -169,13 +181,29 @@ class ProgramMemorySlot(BaseKernel):
         self._ctrl_done_addr: int | None = None
         self._ctrl_wait_op = None
         if source is not None:
-            word_ty = np.ndarray[(1,), np.dtype[np.int32]]
+            # Sized to MAX_DATA_WORDS_PER_PACKET, not just the one real flag
+            # word: the done signal is sent through the same reused BD as
+            # every other chunk (see `_load_tile_sourced`), which sends a
+            # fixed-length transfer every round, so the done chunk's payload
+            # is padded to that width. Padding into this Buffer's own
+            # trailing words is safe -- unlike padding into a hardware
+            # register -- because this module sizes and owns it.
+            word_ty = np.ndarray[(MAX_DATA_WORDS_PER_PACKET,), np.dtype[np.int32]]
             self._ctrl_done_buf = Buffer(
                 word_ty,
-                initial_value=np.array([0], dtype=np.int32),
+                initial_value=np.zeros(MAX_DATA_WORDS_PER_PACKET, dtype=np.int32),
                 name=f"{name}_ctrl_done",
                 tile=tile,
             )
+        # Multi-phase tile-sourced scheduling: how many times wait() has run
+        # (for phase indexing) and the lazily-built reverse ack channel (see
+        # `_ensure_ack_rig`) letting the source know a phase's overlay has
+        # actually finished being used before it is safe to overwrite the
+        # slot for the next phase. None of this is built at all for a
+        # single-phase design -- see `_ensure_ack_rig`'s docstring.
+        self._wait_calls = 0
+        self._ack: dict[str, Lock] | None = None
+        self._tile_source_rig: dict | None = None
         self._worker = None  # bound by Worker.__init__ when passed in fn_args
         self._geometry: Geometry | None = None  # computed on first resolve()
         self._slot_ld_path: str | None = None
@@ -457,16 +485,150 @@ class ProgramMemorySlot(BaseKernel):
         Worker's control-packet burst writes on completion, instead of
         blocking on a host-released hardware lock -- there is no runtime
         sequence in that transport to release one.
+
+        On the second and later call for a tile-sourced slot, this first
+        sends the previous phase's ack (see `_ensure_ack_rig`): the source
+        must not overwrite the slot for phase N+1 until this core is
+        actually done executing phase N's overlay, and reaching this call
+        again is exactly that point -- the same reasoning
+        `iron_api_one_slot.py`'s host-transport multi-phase design gets for
+        free from an output-DMA wait, made explicit here because a
+        tile-sourced source has no such built-in signal to piggyback on.
         """
         if self._source is not None:
+            if self._wait_calls > 0:
+                self._ensure_ack_rig()
+                self._ack["credit"].acquire(1)
+                self._ack["go"].release(1)
+            self._wait_calls += 1
             self._poll_ctrl_done()
         elif self._park_via is not None:
             self._park_via.enter()
         else:
             self._barrier.wait_for_value(1)
 
+    def _ensure_ack_rig(self) -> None:
+        """Build (once, idempotently) the reverse ack channel from this
+        slot's tile back to `source`'s tile.
+
+        Only built the first time a design actually needs a second phase --
+        `wait()`/`_load_tile_sourced` only call this once `self._wait_calls`
+        /`self._load_calls` show a phase beyond the first, so a single-phase
+        design (still the common case) never pays for or risks this at all.
+
+        Whichever of `wait()` (this tile's core_fn) or `_load_tile_sourced`
+        (`source`'s core_fn) needs it first builds it -- same pattern as
+        `pingpong()`'s shared `Bootstrap`: each caller is inside its own
+        Worker's still-open `core_fn` when it calls this, so
+        `_enclosing_op("aie.core")` always finds the right insertion point
+        (immediately before whichever of the two cores is currently being
+        built) regardless of which Worker's `resolve()` runs first.
+
+        This rig puts a second DMA program on `source`'s tile, alongside
+        the forward transport's own (`_ensure_tile_sourced_rig`). Both are
+        separate `TileDma`s and so lower to separate `aie.mem` regions for
+        one tile, which used to make 3+ phases fail almost always: BD ids
+        are a per-*tile* table, and `--aie-assign-bd-ids` restarted
+        numbering per region, so the two programs' BDs collided in the same
+        slot and silently overwrote each other. Fixed in that pass (its
+        allocator is now keyed by tile, and a genuine collision is a
+        compile error rather than silent corruption) -- see
+        `test/Passes/assign-bd-ids/multiple_mem_ops_same_tile.mlir`. Nothing
+        is required of callers here; the note exists because "two TileDmas
+        on one tile" reads as suspicious and is in fact fine.
+
+        Uses this tile's own MM2S channel 1 and `source`'s S2MM channel 0.
+        Assumed free: a tile-sourced slot's `source` Worker has no dataflow
+        of its own (see `ProgramMemorySlot(source=...)`'s docstring), and
+        this tile's own channel 0 is left for whatever `ObjectFifo`s the
+        Worker that owns this slot already uses.
+        """
+        if self._ack is not None:
+            return
+        src_tile = self._source.tile
+        dst_tile = self._tile
+        prefix = f"{self._slot_name}_ack"
+
+        send_bufs = [
+            Buffer(
+                np.ndarray[(1,), np.dtype[np.int32]],
+                initial_value=np.array([1], dtype=np.int32),
+                name=f"{prefix}_send_{i}",
+                tile=dst_tile,
+            )
+            for i in range(2)
+        ]
+        recv_bufs = [
+            Buffer(
+                np.ndarray[(1,), np.dtype[np.int32]],
+                name=f"{prefix}_recv_{i}",
+                tile=src_tile,
+            )
+            for i in range(2)
+        ]
+        # go/credit: the core (this tile) triggers a send and only triggers
+        # the next one once a buffer has actually drained -- both start
+        # buffers free (credit=2), matching `of_out`'s own depth-2 producer
+        # lock init.
+        ack_go = Lock(dst_tile, init=0, name=f"{prefix}_go")
+        ack_credit = Lock(dst_tile, init=2, name=f"{prefix}_credit")
+        # recv_free/recv_ready: the mirror image on the receiving end.
+        recv_free = Lock(src_tile, init=2, name=f"{prefix}_recv_free")
+        recv_ready_lock = Lock(src_tile, init=0, name=f"{prefix}_recv_ready")
+
+        send_channel = DmaChannel(
+            DMAChannelDir.MM2S,
+            1,
+            bds=[
+                Bd(
+                    send_bufs[i],
+                    length=1,
+                    acquires=[Acquire(ack_go, 1)],
+                    releases=[Release(ack_credit, 1)],
+                    next=1 - i,
+                )
+                for i in range(2)
+            ],
+        )
+        recv_channel = DmaChannel(
+            DMAChannelDir.S2MM,
+            0,
+            bds=[
+                Bd(
+                    recv_bufs[i],
+                    length=1,
+                    acquires=[Acquire(recv_free, 1)],
+                    releases=[Release(recv_ready_lock, 1)],
+                    next=1 - i,
+                )
+                for i in range(2)
+            ],
+        )
+        send_dma = TileDma(dst_tile, [send_channel])
+        recv_dma = TileDma(src_tile, [recv_channel])
+        flow = Flow(dst_tile, src_tile, src_channel=1, dst_channel=0)
+
+        with ir.InsertionPoint(_enclosing_op("aie.core")):
+            for lk in (ack_go, ack_credit, recv_free, recv_ready_lock):
+                lk.resolve()
+            for buf in (*send_bufs, *recv_bufs):
+                buf.resolve()
+            flow.resolve()
+            send_dma.resolve()
+            recv_dma.resolve()
+
+        self._ack = {
+            "go": ack_go,
+            "credit": ack_credit,
+            "recv_free": recv_free,
+            "recv_ready": recv_ready_lock,
+        }
+
     def _poll_ctrl_done(self) -> None:
-        """Call a tiny compiled stub that spins on `_ctrl_done_buf`.
+        """Call a tiny compiled stub that spins on `_ctrl_done_buf`, then
+        clears it -- safe to call more than once across a design's phases,
+        each call waiting for that phase's own write to land rather than
+        the first phase's flag being seen (and satisfied) forever after.
 
         Deliberately NOT an MLIR-emitted `scf.while` reading the buffer with
         a plain `memref.load`: nothing in this core's own instruction stream
@@ -485,13 +647,16 @@ class ProgramMemorySlot(BaseKernel):
             obj = str(Path(f"{self._slot_name}_ctrl_wait.o"))
             src = (
                 "// Generated by iron.overlay.ProgramMemorySlot. Spins until "
-                "the tile-sourced control-packet burst signals completion.\n"
+                "the tile-sourced control-packet burst signals completion, "
+                "then clears the flag so the next phase can wait on it "
+                "again.\n"
                 "#include <cstdint>\n\n"
-                f"extern \"C\" int32_t {self._ctrl_done_buf.name}[];\n"
+                f'extern "C" int32_t {self._ctrl_done_buf.name}[];\n'
                 f'extern "C" void {self._name}_ctrl_wait(void) {{\n'
                 f"  volatile int32_t *f = {self._ctrl_done_buf.name};\n"
                 "  while (*f == 0)\n"
                 "    ;\n"
+                "  *f = 0;\n"
                 "}\n"
             )
             src_path = f"{self._slot_name}_ctrl_wait.cc"
@@ -536,10 +701,10 @@ class ProgramMemorySlot(BaseKernel):
         Call from inside a `Runtime` sequence for the default, host-written
         transport, or from `source`'s own `core_fn` for a tile-sourced slot
         -- calling from the wrong one raises. A tile-sourced slot supports
-        exactly one `load()` call for the lifetime of the design (a
-        documented v1 scope: one overlay written once, not a multi-phase
-        schedule sourced from a tile) -- a second call raises clearly rather
-        than silently reconfiguring a route that is already live.
+        any number of `load()` calls, one per phase, exactly like the
+        host-written and ping-pong transports -- each call's overlay is
+        written after the previous phase's has actually finished being
+        used (see `_ensure_ack_rig`), not merely after it has been sent.
         """
         if overlay.slot is not self:
             raise ValueError(
@@ -636,137 +801,94 @@ class ProgramMemorySlot(BaseKernel):
 
     _ctrl_pkt_id_counter = 0
 
-    def _load_tile_sourced(self, overlay: ProgramMemoryOverlay) -> None:
-        """Emit `source`'s DMA program that writes `overlay` into this slot
-        via a control-packet burst into this tile's `TileControl` port.
+    def _ensure_tile_sourced_rig(self) -> None:
+        """Build (once, idempotently) the forward transport's shared state:
+        the reused staging Buffer, its pacing locks, the one self-looping
+        BD, and the `PacketFlow` to this slot's tile. Every `load()` call
+        (one per phase) reuses this rig, each supplying its own overlay's
+        `full_payload` and core-side copy loop -- see `_load_tile_sourced`.
 
-        Call from inside `source`'s own `core_fn` (validated by the caller,
-        `load()`). Everything except the single lock release below is
-        emitted at device scope (a `TileDma`'s `aie.mem` region is a sibling
-        of `aie.core`, not nestable inside one), inserted immediately
-        *before* `source`'s own (currently still being built) `aie.core` op
-        -- not merely "somewhere at device scope": every tile op already
-        precedes it (tiles are all resolved up front), but appending after
-        the *current* last device-scope op would land after `aie.core`
-        itself, which does not dominate a `use_lock` inside its own body
-        that references a lock defined afterward.
+        Everything here is emitted at device scope (a `TileDma`'s `aie.mem`
+        region is a sibling of `aie.core`, not nestable inside one),
+        inserted immediately *before* `source`'s own (currently still being
+        built) `aie.core` op -- not merely "somewhere at device scope":
+        every tile op already precedes it (tiles are all resolved up
+        front), but appending after the *current* last device-scope op
+        would land after `aie.core` itself, which does not dominate a
+        `use_lock` inside its own body that references a lock defined
+        afterward.
         """
-        if self._load_calls:
-            raise ProgramMemorySlotError(
-                f"ProgramMemorySlot '{self._slot_name}': load() was already "
-                f"called once (overlay '{self._load_calls[0]}'); a "
-                f"tile-sourced slot supports exactly one load() call (see "
-                f"ProgramMemorySlot.load's docstring)."
-            )
-        try:
-            active_sequence()
-        except RuntimeError:
-            pass
-        else:
-            raise ProgramMemorySlotError(
-                f"ProgramMemorySlot.load() for slot '{self._slot_name}' must "
-                f"be called from inside source Worker's core_fn (this slot "
-                f"is tile-sourced), not from a Runtime sequence."
-            )
-
-        words = self._payload_words_for(overlay)
-        host_addr = self._host_offset() + self.base
-        chunks = chunk_for_control_packets(host_addr, words)
-        # Header + data words together: the wire format interleaves them
-        # ([header0, data0..., header1, data1...], see wire_words()), and
-        # the receiving TileControl port parses the header as part of the
-        # SAME burst -- the packet-routing tag below is a separate, additional
-        # switchbox-routing concern, not a substitute for this literal word.
-        chunk_stride = 1 + len(chunks[0].data) if chunks else 0
-        done = done_chunk(self._ctrl_done_addr or 0)
-        wire = wire_words(chunks) + [done.header, *done.data]
+        if self._tile_source_rig is not None:
+            return
+        src_tile = self._source.tile
+        chunk_stride = 1 + MAX_DATA_WORDS_PER_PACKET
+        name_prefix = f"{self._slot_name}_{src_tile.col}_{src_tile.row}"
 
         ProgramMemorySlot._ctrl_pkt_id_counter += 1
         pkt_id = ProgramMemorySlot._ctrl_pkt_id_counter
-        src_tile = self._source.tile
-        payload_ty = np.ndarray[(len(wire),), np.dtype[np.int32]]
-        payload = Buffer(
-            payload_ty,
-            initial_value=np.array(wire, dtype=np.uint32).view(np.int32),
-            name=f"{self._slot_name}_{self._source.tile.col}_{self._source.tile.row}_ctrl_payload",
+
+        # `staging`: the one BD actually reads this, rewritten each round by
+        # whichever phase's core-side loop is currently running (each phase
+        # has its own `full_payload` table to copy from -- see
+        # `_load_tile_sourced` -- but they all copy into this same buffer).
+        staging = Buffer(
+            np.ndarray[(chunk_stride,), np.dtype[np.int32]],
+            name=f"{name_prefix}_ctrl_staging",
             tile=src_tile,
         )
-        cons_lock = Lock(
-            src_tile, init=0, name=f"{self._slot_name}_ctrl_cons_{pkt_id}"
-        )
-        # One explicit Bd per chunk, deliberately NOT `BdIteration` (a single
-        # packet-tagged Bd repeating over N executions): hardware-verified
-        # (Strix) to silently misdirect the packet's embedded address on
-        # every execution but the first once packet-tagging and iteration
-        # are combined, corrupting exactly the chunks after the first --
-        # see test/npu-xrt/tile_sourced_ctrl_pkt_spike/aie.mlir's header
-        # comment (lesson 3). A source tile's BD table is a hard, small
-        # budget (AIETargetModel::getNumBDs(), 16 on Strix compute tiles),
-        # shared by every DMA channel on that tile, so this transport can
-        # only place a chunk count that fits it -- refused here, at build
-        # time, rather than silently overflowing the BD table.
-        num_bds = len(chunks) + 1  # + the trailing done BD
-        bd_budget = get_current_device().target_model.get_num_bds(
-            src_tile.col, src_tile.row
-        )
-        if num_bds > bd_budget:
-            raise ProgramMemorySlotError(
-                f"ProgramMemorySlot '{self._slot_name}': overlay '{overlay.name}' "
-                f"needs {len(chunks)} control-packet chunks plus 1 completion "
-                f"chunk = {num_bds} DMA descriptors on source tile "
-                f"{src_tile}, but that tile's entire BD table holds only "
-                f"{bd_budget} (shared across every channel on the tile). "
-                f"Shrink the overlay/slot, or free up other DMA usage on "
-                f"{src_tile}. (No BdIteration-based workaround exists yet -- "
-                f"see this module's tile-sourced transport comments.)"
-            )
-        # Every BD in a chain that uses a lock at all must have both an
-        # acquire and a release (a CDO/hardware encoding rule, not just a
-        # synchronization nicety -- aiecc's CDO generator rejects an
-        # acquire-only or release-only BD outright), matching
-        # test/npu-xrt/tile_sourced_ctrl_pkt_spike/aie.mlir's own two-BD
-        # chain. A slot can need more than two BDs (up to the tile's BD
-        # budget above), so a *fresh* lock per hop would not scale -- a
-        # source tile only has so many hardware locks either. This is a
-        # strictly single-pass, one-shot sequence (BD i's release is
-        # consumed by BD i+1 and nothing else, ever, in this build), so two
-        # locks reused alternately are exactly as safe as a distinct one per
-        # hop: whichever hop lock BD i just released is the very next thing
-        # BD i+1 acquires, with nothing else in between. The final release
-        # targets a lock nothing ever acquires (`sink_lock`), so looping
-        # back to BD 0 re-acquires cons_lock -- never released again -- and
-        # the channel simply parks there forever, a one-shot burst rather
-        # than a repeating one.
-        hop_locks = [
-            Lock(src_tile, init=0, name=f"{self._slot_name}_ctrl_hop_{pkt_id}_{i}")
-            for i in range(2)
-        ]
-        sink_lock = Lock(src_tile, init=0, name=f"{self._slot_name}_ctrl_sink_{pkt_id}")
-        lock_chain = [cons_lock] + [hop_locks[i % 2] for i in range(num_bds - 1)]
-        release_targets = lock_chain[1:] + [sink_lock]
+        # slot_free: "the core may (over)write staging and arm a send."
+        # Starts available so round 0 proceeds immediately; the BD gives it
+        # back once a send has actually drained staging, gating round i+1 on
+        # round i having actually completed.
+        slot_free_lock = Lock(src_tile, init=1, name=f"{name_prefix}_ctrl_free")
+        # xfer_ready: "staging holds a real, unsent chunk; go." The BD
+        # acquires this before every send -- the first (via dma_start's own
+        # automatic initial queue fetch) and every one after (via the
+        # channel's own next_bd re-fetch of the same BD, below).
+        xfer_ready_lock = Lock(src_tile, init=0, name=f"{name_prefix}_ctrl_ready")
 
-        main_bds = [
-            Bd(
-                payload,
-                offset=i * chunk_stride,
-                length=chunk_stride,
-                acquires=[Acquire(lock_chain[i], 1)],
-                releases=[Release(release_targets[i], 1)],
-                next=i + 1,
-                packet=(1, pkt_id),
-            )
-            for i in range(len(chunks))
-        ]
-        done_bd = Bd(
-            payload,
-            offset=len(wire) - len(done.data) - 1,
-            length=len(done.data) + 1,
-            acquires=[Acquire(lock_chain[-1], 1)],
-            releases=[Release(release_targets[-1], 1)],
+        # One BD, reused for every round via next="self" -- deliberately NOT
+        # one static Bd per chunk (which caps capacity at the source tile's
+        # BD table, AIETargetModel::getNumBDs(), 16 on Strix, shared across
+        # every DMA channel on the tile) and NOT `BdIteration` (a single
+        # packet-tagged Bd repeating over N executions without re-fetching):
+        # hardware-verified (Strix) to silently misdirect the packet's
+        # embedded address on every execution but the first -- see
+        # test/npu-xrt/tile_sourced_ctrl_pkt_spike/aie.mlir's header comment
+        # (lesson 3). Root-caused: AIE2P's packet framing is tied to a
+        # genuine descriptor *fetch*, and `BdIteration` deliberately avoids
+        # re-fetching between repeats (that is its whole point) -- so only
+        # the first repeat is framed as its own packet; the rest are
+        # consumed as continuation data of the still-open first one.
+        #
+        # `next="self"` (an ordinary `aie.next_bd` back to the same block,
+        # the documented default for "the common 'keep streaming' pattern")
+        # is a *different* mechanism from `BdIteration` -- it is the same
+        # kind of chain traversal that already links multiple distinct BDs
+        # together elsewhere in this codebase, and a chain traversal is a
+        # real descriptor fetch every hop, matching BdIteration's own
+        # never-refetches contrast exactly. Hardware-verified (Strix,
+        # test/npu-xrt/tile_sourced_bd_poke_spike/aie.mlir's later history):
+        # a self-looping single BD reframes every round correctly, using one
+        # BD table entry regardless of how many rounds there are. (An
+        # earlier attempt at this same goal used a core-issued raw register
+        # write to re-arm the BD instead of `next="self"`; that write did
+        # work, hardware-verified, but pacing the *next* round on it never
+        # got a reliable completion signal. `next="self"`'s own completion
+        # signal -- the BD's ordinary trailing lock release -- turned out to
+        # be exactly what was missing: it does not fire reliably for a BD
+        # that terminates instead of looping, which is what the register-poke
+        # version did. Looping is both simpler and the one that is provably
+        # reliable.)
+        bd = Bd(
+            staging,
+            length=chunk_stride,
+            acquires=[Acquire(xfer_ready_lock, 1)],
+            releases=[Release(slot_free_lock, 1)],
             packet=(1, pkt_id),
-            next=0,
+            next="self",
         )
-        channel = DmaChannel(DMAChannelDir.MM2S, 0, bds=[*main_bds, done_bd])
+        channel = DmaChannel(DMAChannelDir.MM2S, 0, bds=[bd])
         tile_dma = TileDma(src_tile, [channel])
         flow = PacketFlow(
             pkt_id,
@@ -778,16 +900,106 @@ class ProgramMemorySlot(BaseKernel):
         )
 
         with ir.InsertionPoint(_enclosing_op("aie.core")):
-            for lk in (cons_lock, *hop_locks, sink_lock):
-                lk.resolve()
-            payload.resolve()
+            slot_free_lock.resolve()
+            xfer_ready_lock.resolve()
+            staging.resolve()
             flow.resolve()
             tile_dma.resolve()
 
-        # The one real core action lesson #1 needs: nothing else ever
-        # touches cons_lock, so without this release (an actual instruction
-        # from an independent core context) the DMA channel's hardware queue
-        # never starts at all -- see
-        # test/npu-xrt/tile_sourced_ctrl_pkt_spike/aie.mlir's header comment.
-        cons_lock.release(1)
+        self._tile_source_rig = {
+            "staging": staging,
+            "slot_free": slot_free_lock,
+            "xfer_ready": xfer_ready_lock,
+            "chunk_stride": chunk_stride,
+        }
+
+    def _load_tile_sourced(self, overlay: ProgramMemoryOverlay) -> None:
+        """Emit `source`'s core-side program that writes `overlay` into this
+        slot for the current phase, via the shared rig `_ensure_tile_sourced_rig`
+        builds once.
+
+        Call from inside `source`'s own `core_fn` (validated below), once
+        per phase -- unlike the host-written and ping-pong transports, a
+        tile-sourced slot's `load()` may be called more than once, each
+        call scheduling the next phase's overlay. From the second call on,
+        this first waits for the *previous* phase's ack (see
+        `_ensure_ack_rig`): the destination must have actually finished
+        executing that phase's overlay before it is safe to overwrite the
+        slot again.
+        """
+        try:
+            active_sequence()
+        except RuntimeError:
+            pass
+        else:
+            raise ProgramMemorySlotError(
+                f"ProgramMemorySlot.load() for slot '{self._slot_name}' must "
+                f"be called from inside source Worker's core_fn (this slot "
+                f"is tile-sourced), not from a Runtime sequence."
+            )
+
+        if self._load_calls:
+            self._ensure_ack_rig()
+            self._ack["recv_ready"].acquire(1)
+            self._ack["recv_free"].release(1)
+
+        self._ensure_tile_sourced_rig()
+        rig = self._tile_source_rig
+        staging, slot_free_lock, xfer_ready_lock, chunk_stride = (
+            rig["staging"],
+            rig["slot_free"],
+            rig["xfer_ready"],
+            rig["chunk_stride"],
+        )
+
+        words = self._payload_words_for(overlay)
+        host_addr = self._host_offset() + self.base
+        # Every chunk here has exactly MAX_DATA_WORDS_PER_PACKET data words:
+        # `words` is this slot's whole (already size-padded) content, and
+        # ProgramMemorySlot's constructor requires `size` to be a multiple of
+        # PROG_MEM_LINE (16 bytes = 4 words = MAX_DATA_WORDS_PER_PACKET), so
+        # `len(words)` is always a whole multiple of it -- no ragged last
+        # chunk. `done_chunk` pads the one genuinely 1-word completion signal
+        # to the same width. That uniformity is what lets a single BD, not
+        # one per chunk, carry every round.
+        chunks = chunk_for_control_packets(host_addr, words)
+        done = done_chunk(self._ctrl_done_addr or 0)
+        all_chunks = chunks + [done]
+        wire = wire_words(all_chunks)
+
+        src_tile = self._source.tile
+        # `full_payload`: this phase's words, precomputed and static -- the
+        # source core never computes a header or a data word, only copies
+        # already-known content into the shared `staging` buffer.
+        full_payload = Buffer(
+            np.ndarray[(len(wire),), np.dtype[np.int32]],
+            initial_value=np.array(wire, dtype=np.uint32).view(np.int32),
+            name=f"{self._slot_name}_{src_tile.col}_{src_tile.row}_ctrl_payload_{len(self._load_calls)}",
+            tile=src_tile,
+        )
+        with ir.InsertionPoint(_enclosing_op("aie.core")):
+            full_payload.resolve()
+
+        # The real core action: one round per chunk (main content, then the
+        # padded completion signal), pacing itself on slot_free_lock rather
+        # than assuming the previous round's send has already landed. A real
+        # scf.for, not an unrolled Python loop -- IRON's range_() collapses
+        # to a compact loop (not linear growth) once round count exceeds
+        # LLVM's small-trip-count unroll threshold (~16, see
+        # test/npu-xrt/program_memory_overlay/README.md), which is exactly
+        # the source tile's own program-memory budget this needs to respect
+        # for a genuinely large (multi-KB) overlay.
+        stride_const = arith_constant(chunk_stride, index=True)
+        for i in range_(len(all_chunks)):
+            slot_free_lock.acquire(1)
+            base_idx = muli(i, stride_const)
+            for k in range(chunk_stride):
+                idx = (
+                    base_idx
+                    if k == 0
+                    else addi(base_idx, arith_constant(k, index=True))
+                )
+                staging[k] = full_payload[idx]
+            xfer_ready_lock.release(1)
+
         self._load_calls.append(overlay.name)

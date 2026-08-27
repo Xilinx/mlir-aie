@@ -196,6 +196,7 @@ class Worker(ObjectFifoEndpoint):
                         f"{self._tile}. A slot's tile and its owning Worker's "
                         f"tile must be the same coordinates."
                     )
+                arg._worker = self
                 self._program_memory_slots.append(arg)
                 if arg._source is None:
                     # The slot's wait()/load() handshake is a
