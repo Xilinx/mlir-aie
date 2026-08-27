@@ -25,20 +25,40 @@ namespace {
 // `secIdx`. Returns empty if none, and marks `ambiguous` if more than one --
 // multiple same-typed symbols sharing a section breaks the section-index
 // attribution this analysis relies on throughout.
+//
+// Values are graph keys, not raw names: a `static` symbol is only visible in
+// its own object, so two objects can define an unrelated symbol under the
+// same name -- a bare-name key would alias them. Such a symbol's key is
+// qualified by its defining object's path (see graphKeyFor); a globally
+// bound symbol keeps its bare name, since cross-object calls resolve by name.
 struct SectionOwners {
-  llvm::DenseMap<uint64_t, llvm::StringRef> bySection;
+  llvm::DenseMap<uint64_t, std::string> bySection;
   llvm::DenseMap<uint64_t, bool> ambiguous;
 
   llvm::StringRef lookup(uint64_t secIdx) const {
     if (ambiguous.lookup(secIdx))
       return {};
     auto it = bySection.find(secIdx);
-    return it == bySection.end() ? llvm::StringRef() : it->second;
+    return it == bySection.end() ? llvm::StringRef()
+                                 : llvm::StringRef(it->second);
   }
 };
 
+// No ELF symbol name can contain this byte (names are C strings), so
+// prefixing a locally-bound symbol's key with its defining object's path can
+// never collide with any globally-bound symbol's bare name.
+constexpr char kLocalKeySep = '\x01';
+
+std::string graphKeyFor(llvm::StringRef path, llvm::StringRef name,
+                        bool isLocal) {
+  if (!isLocal)
+    return name.str();
+  return (path + llvm::Twine(kLocalKeySep) + name).str();
+}
+
 SectionOwners buildSectionOwners(llvm::object::ObjectFile &obj,
-                                 llvm::object::SymbolRef::Type wanted) {
+                                 llvm::object::SymbolRef::Type wanted,
+                                 llvm::StringRef path) {
   SectionOwners result;
   for (const llvm::object::SymbolRef &sym : obj.symbols()) {
     auto typeOrErr = sym.getType();
@@ -60,22 +80,29 @@ SectionOwners buildSectionOwners(llvm::object::ObjectFile &obj,
       llvm::consumeError(nameOrErr.takeError());
       continue;
     }
+    auto flagsOrErr = sym.getFlags();
+    if (!flagsOrErr) {
+      llvm::consumeError(flagsOrErr.takeError());
+      continue;
+    }
+    bool isLocal = !(*flagsOrErr & llvm::object::SymbolRef::SF_Global);
     uint64_t secIdx = (*secOrErr)->getIndex();
     if (result.bySection.count(secIdx)) {
       result.ambiguous[secIdx] = true;
       continue;
     }
-    result.bySection[secIdx] = *nameOrErr;
+    result.bySection[secIdx] = graphKeyFor(path, *nameOrErr, isLocal);
   }
   return result;
 }
 
-// Resolve a relocation's target symbol to the function symbol that owns its
-// section (see the header comment: the target is often an anonymous marker in
-// the same section as the actual function, not the function symbol itself).
-llvm::StringRef resolveToOwningFunction(const llvm::object::SymbolRef &sym,
-                                        const SectionOwners &funcs,
-                                        llvm::object::ObjectFile &obj) {
+// Resolve a relocation's target symbol to the graph key of the function (or
+// data symbol) that owns its section (see the header comment: the target is
+// often an anonymous marker in the same section, not the symbol itself).
+// Empty means either undefined here or an ambiguous section.
+llvm::StringRef resolveToOwningSymbol(const llvm::object::SymbolRef &sym,
+                                      const SectionOwners &owners,
+                                      llvm::object::ObjectFile &obj) {
   auto secOrErr = sym.getSection();
   if (!secOrErr) {
     llvm::consumeError(secOrErr.takeError());
@@ -83,7 +110,32 @@ llvm::StringRef resolveToOwningFunction(const llvm::object::SymbolRef &sym,
   }
   if (*secOrErr == obj.section_end())
     return {};
-  return funcs.lookup((*secOrErr)->getIndex());
+  return owners.lookup((*secOrErr)->getIndex());
+}
+
+// Key a reference (a direct call target, or a function/data-table touch for
+// the indirect-call heuristic) by the same graph key its target's own
+// definition was registered under: undefined here must be globally bound
+// (only a global resolves across objects), so `bareName` is already right;
+// defined here resolves through its home section instead, giving a
+// locally-bound target its object-qualified key. Falls back to `bareName`
+// when that section is ambiguous, same as before this resolution existed.
+llvm::StringRef resolveReferenceKey(const llvm::object::SymbolRef &sym,
+                                    bool isUndefinedHere,
+                                    llvm::StringRef bareName,
+                                    const SectionOwners &owners,
+                                    llvm::object::ObjectFile &obj) {
+  if (isUndefinedHere)
+    return bareName;
+  llvm::StringRef resolved = resolveToOwningSymbol(sym, owners, obj);
+  return resolved.empty() ? bareName : resolved;
+}
+
+// Diagnostics must never show a path-qualified internal key to the user --
+// strip back to the plain symbol name.
+llvm::StringRef displayName(llvm::StringRef key) {
+  size_t sep = key.find(kLocalKeySep);
+  return sep == llvm::StringRef::npos ? key : key.substr(sep + 1);
 }
 
 enum class VisitState { Unvisited, InProgress, Done };
@@ -108,7 +160,7 @@ maxPathFrom(llvm::StringRef sym, const StackGraph &graph,
 
   auto nodeIt = graph.nodes.find(sym);
   if (nodeIt == graph.nodes.end() || nodeIt->second.frameSize < 0) {
-    error = ("no stack size information for '" + sym.str() +
+    error = ("no stack size information for '" + displayName(sym).str() +
              "' -- it is called (directly, or conservatively through a "
              "function-pointer reference) but its defining object was not "
              "measurable (missing .stack_sizes, an archive/bitcode input, "
@@ -122,8 +174,8 @@ maxPathFrom(llvm::StringRef sym, const StackGraph &graph,
   if (st == VisitState::InProgress) {
     std::string cycle;
     for (llvm::StringRef s : pathStack)
-      cycle += s.str() + " -> ";
-    cycle += sym.str();
+      cycle += displayName(s).str() + " -> ";
+    cycle += displayName(sym).str();
     error = "recursion detected: " + cycle;
     failureKind = StackRequirementFailure::Cycle;
     return std::nullopt;
@@ -146,7 +198,7 @@ maxPathFrom(llvm::StringRef sym, const StackGraph &graph,
   // make this sum wrap negative and silently *undercount* -- the one
   // direction this analysis must never be wrong in.
   if (node.frameSize > std::numeric_limits<int64_t>::max() - best) {
-    error = ("stack requirement for '" + sym.str() +
+    error = ("stack requirement for '" + displayName(sym).str() +
              "' overflows a signed 64-bit byte count; its object's "
              ".stack_sizes data is not believable");
     failureKind = StackRequirementFailure::Unmeasurable;
@@ -207,15 +259,15 @@ bool xilinx::aiecc::addObjectToStackGraph(
     return false;
 
   SectionOwners funcs =
-      buildSectionOwners(obj, llvm::object::SymbolRef::ST_Function);
+      buildSectionOwners(obj, llvm::object::SymbolRef::ST_Function, path);
   SectionOwners dataSyms =
-      buildSectionOwners(obj, llvm::object::SymbolRef::ST_Data);
+      buildSectionOwners(obj, llvm::object::SymbolRef::ST_Data, path);
   // Every defined function gets a node, even one this core never calls --
   // harmless, and needed so a function with a `.stack_sizes` entry but zero
   // observed call edges (a leaf) still measures correctly.
   for (auto &kv : funcs.bySection)
     if (!funcs.ambiguous.lookup(kv.first))
-      graph.nodes.try_emplace(kv.second.str());
+      graph.nodes.try_emplace(kv.second);
 
   bool ok = true;
 
@@ -299,15 +351,18 @@ bool xilinx::aiecc::addObjectToStackGraph(
           continue;
         }
         llvm::StringRef funcName =
-            resolveToOwningFunction(relocIt->second, funcs, obj);
+            resolveToOwningSymbol(relocIt->second, funcs, obj);
         if (funcName.empty()) {
           ok = false;
           continue;
         }
-        // Two objects can define different static functions under the same
-        // name, and the graph is keyed by name alone. Keeping the larger
-        // frame can only overcount, whereas letting the later object win
-        // could silently undercount the one that actually runs.
+        // Distinct local (`static`) functions no longer collide here (their
+        // keys are qualified by defining object, see graphKeyFor), but two
+        // objects can still define the same *global* name (e.g. two weak
+        // definitions, where only one wins at link time) and this graph has
+        // no way to know which. Keeping the larger frame can only overcount,
+        // whereas letting the later object win could silently undercount
+        // whichever definition actually links in.
         int64_t &slot = graph.nodes[funcName].frameSize;
         slot = std::max(slot, static_cast<int64_t>(frameSize));
       }
@@ -358,22 +413,29 @@ bool xilinx::aiecc::addObjectToStackGraph(
                     // a function for (shouldn't happen; be conservative
                     // and simply not record an edge rather than guess).
         if (isFunctionRef)
-          graph.nodes[ownerName].callees.push_back(relName.str());
+          graph.nodes[ownerName].callees.push_back(
+              resolveReferenceKey(relSym, isUndefinedHere, relName, funcs, obj)
+                  .str());
         else if (!homeIsKnownText)
           // Not a same-object branch-target label, and not (yet) known to
           // be a function -- record as a potential data reference in case
           // it later turns out to be a function-pointer table (resolved by
           // resolveIndirectCallEdges once every object has contributed).
-          graph.dataReferences[ownerName].insert(relName.str());
+          graph.dataReferences[ownerName].insert(
+              resolveReferenceKey(relSym, isUndefinedHere, relName, dataSyms,
+                                  obj)
+                  .str());
       } else if (isFunctionRef) {
         // `modified` is data and the referenced symbol is a function: its
         // address escapes here. Key by the data symbol that owns `modified`
-        // (the same name other code's data references above resolve
+        // (the same key other code's data references above resolve
         // against), not by section index -- section indices aren't
         // meaningful across different objects.
         llvm::StringRef dataOwner = dataSyms.lookup(modified.getIndex());
         if (!dataOwner.empty())
-          graph.dataEscapes[dataOwner].push_back(relName.str());
+          graph.dataEscapes[dataOwner].push_back(
+              resolveReferenceKey(relSym, isUndefinedHere, relName, funcs, obj)
+                  .str());
       }
     }
   }
