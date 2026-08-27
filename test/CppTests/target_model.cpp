@@ -199,7 +199,20 @@ void test() {
   }
 }
 
+// Program memory is 16 KB on every generation, per aie-rt's XAie_CoreMod
+// tables. The same number appears in python/utils/regdb.py's MEMORY_REGIONS --
+// keep them in step.
+void testProgramMemory() {
+  for (auto dev :
+       {AIE::AIEDevice::xcvc1902, AIE::AIEDevice::npu1, AIE::AIEDevice::npu2}) {
+    const auto &tm = AIE::getTargetModel(dev);
+    if (tm.getProgramMemorySize() != 0x4000)
+      throw std::runtime_error("Failed program memory size");
+  }
+}
+
 int main() {
   test();
+  testProgramMemory();
   return 0;
 }

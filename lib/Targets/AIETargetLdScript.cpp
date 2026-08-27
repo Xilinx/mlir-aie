@@ -123,11 +123,17 @@ LogicalResult xilinx::AIE::AIETranslateToLdScript(ModuleOp module,
       int origin =
           targetModel.getMemInternalBaseAddress(srcCoord) + bestGapStart;
       int length = bestGapLen;
+      // The program region has to be the real program memory size. It was
+      // hardcoded to 0x20000 -- eight times the actual 0x4000 -- which let a
+      // core whose .text overflowed link cleanly and then fail much later, in
+      // aie-rt's ELF loader, with a bare "Overflow of program memory" and no
+      // indication of which core.
       output << R"THESCRIPT(
 MEMORY
 {
-   program (RX) : ORIGIN = 0, LENGTH = 0x0020000
 )THESCRIPT";
+      output << "   program (RX) : ORIGIN = 0, LENGTH = 0x"
+             << llvm::utohexstr(targetModel.getProgramMemorySize()) << "\n";
       output << "   data (!RX) : ORIGIN = 0x" << llvm::utohexstr(origin)
              << ", LENGTH = 0x" << llvm::utohexstr(length);
       output << R"THESCRIPT(
