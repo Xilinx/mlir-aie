@@ -565,4 +565,36 @@ def AIEXInlineTraceConfig : Pass<"aie-inline-trace-config", "AIE::DeviceOp"> {
   ];
 }
 
+def AIECoalesceWrite32s : Pass<"aie-coalesce-write32s", "AIE::DeviceOp"> {
+  let summary = "Merge runs of write32 operations into blockwrite operations";
+  let description = [{
+    Merges runs of `aiex.npu.write32` operations at contiguous addresses into a
+    single `aiex.npu.blockwrite`, which lowers the instruction count of a
+    runtime sequence.
+
+    The pass splits each runtime sequence into slices. A write to a special
+    register, a write whose address it cannot resolve, and any other operation
+    end a slice, because such an operation may depend on the order of the writes
+    around it. Within a slice the pass drops every write that a later write to
+    the same address supersedes, sorts the remaining writes by address, and
+    emits a blockwrite for each run of contiguous addresses. A masked write
+    reads the register it writes, so the pass keeps it and ends the run there.
+
+    The option `min-writes-to-coalesce` sets the length a run needs before the
+    pass merges it.
+  }];
+
+  let options = [Option<
+      "minWritesToCoalesce", "min-writes-to-coalesce", "unsigned",
+      /*default=*/"2",
+      "Number of contiguous writes a run needs before the pass merges it "
+      "into a blockwrite">];
+
+  let constructor = "xilinx::AIEX::createAIECoalesceWrite32sPass()";
+  let dependentDialects = ["mlir::memref::MemRefDialect",
+                           "xilinx::AIE::AIEDialect",
+                           "xilinx::AIEX::AIEXDialect",
+  ];
+}
+
 #endif
