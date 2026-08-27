@@ -8,7 +8,7 @@
 
 // REQUIRES: aiesimulator, valid_xchess_license
 // RUN: %aiecc --get-aiesim --xchesscc --xbridge %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %link_against_hsa% %s %test_lib_flags -o test.elf -- %S/test.cpp
-// RUN: aie.mlir.prj/aiesim.sh | FileCheck %s
+// RUN: ./aie.mlir.prj/aiesim.sh | FileCheck %s
 
 // CHECK: test start.
 // CHECK: after core start

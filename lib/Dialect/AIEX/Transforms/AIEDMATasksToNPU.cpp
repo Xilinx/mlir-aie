@@ -17,10 +17,14 @@
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/Dialect/UB/IR/UBOps.h"
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
+#include "mlir/Interfaces/ControlFlowInterfaces.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "mlir/Transforms/Passes.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/TypeSwitch.h"
 
@@ -93,13 +97,24 @@ struct DMAStartTaskOpPattern : OpConversionPattern<DMAStartTaskOp> {
 
 // Resolve a task value to a configure that gives the sync its physical channel.
 // The value is usually a configure result, but under the dynamic BD pool path a
-// task threaded through runtime control flow surfaces as an scf result: a loop
-// result (the task carried across iterations) or an scf.if result (the phi of
-// the task in flight, whichever branch ran). Walk such a result back to a
-// configure via the yields (and, for a loop, the init). Every reachable
-// configure targets the same physical channel -- the pool pass verified both
-// branches of an scf.if agree -- so the first one found gives the right
-// channel.
+// task threaded through runtime control flow surfaces as a region-branch
+// successor input instead: an scf.for/scf.if result (the task carried out of
+// the construct), or a loop's own iter_arg block argument (when the task is
+// awaited from inside the loop body rather than after it -- e.g. a
+// software-pipelined sequence awaiting the previous iteration's task before
+// reusing its BD). Every reachable configure targets the same physical channel
+// -- the pool pass verified both branches of an scf.if agree, and a loop's
+// init and per-iteration reconfiguration agree -- so the first one found
+// gives the right channel.
+//
+// Walk such a value back to a configure via RegionBranchOpInterface, which
+// generically maps a successor input (a region's block argument, or a result
+// of the region-branch op) back to every operand that can feed it -- the
+// entry from the parent op (a loop's init) and any back-edge from a region
+// terminator (a loop body's yield, or an scf.if branch's yield) -- rather than
+// hand-matching scf::ForOp/scf::IfOp. This generalizes to arbitrary nesting
+// depth for free: an edge can itself be another region-branch successor
+// input, resolved on a later worklist pop.
 static DMAConfigureTaskOp resolveConfigureThroughCF(Value task) {
   llvm::SmallPtrSet<Value, 8> seen;
   SmallVector<Value> worklist{task};
@@ -109,17 +124,20 @@ static DMAConfigureTaskOp resolveConfigureThroughCF(Value task) {
       continue;
     if (auto cfg = v.getDefiningOp<DMAConfigureTaskOp>())
       return cfg;
-    if (auto res = dyn_cast<OpResult>(v)) {
-      Operation *def = res.getOwner();
-      unsigned k = res.getResultNumber();
-      if (auto ifOp = dyn_cast<scf::IfOp>(def)) {
-        worklist.push_back(ifOp.thenBlock()->getTerminator()->getOperand(k));
-        worklist.push_back(ifOp.elseBlock()->getTerminator()->getOperand(k));
-      } else if (auto forOp = dyn_cast<scf::ForOp>(def)) {
-        worklist.push_back(forOp.getInitArgs()[k]);
-        worklist.push_back(forOp.getBody()->getTerminator()->getOperand(k));
-      }
-    }
+
+    Operation *regionBranchOp;
+    if (auto res = dyn_cast<OpResult>(v))
+      regionBranchOp = res.getOwner();
+    else
+      regionBranchOp = cast<BlockArgument>(v).getOwner()->getParentOp();
+    auto rbi = dyn_cast<RegionBranchOpInterface>(regionBranchOp);
+    if (!rbi)
+      continue;
+
+    RegionBranchInverseSuccessorMapping mapping;
+    rbi.getSuccessorInputOperandMapping(mapping);
+    for (OpOperand *operand : mapping.lookup(v))
+      worklist.push_back(operand->get());
   }
   return nullptr;
 }
@@ -986,13 +1004,27 @@ struct AIEDMATasksToNPUPass
   // feeding them. Run them device-wide but with folding and constant-CSE
   // DISABLED, so the static path's byte-golden constant emission is untouched
   // -- only the dead scf carries go.
+  //
+  // scf's canonicalizations only see one level at a time: a task carried
+  // through NESTED loops (an outer iter_arg feeding an inner loop's init) is
+  // never provably dead to either loop in isolation, since each still sees a
+  // genuine SSA use feeding the other -- even once the whole chain is
+  // unobserved end to end. RemoveDeadValues performs the cross-region
+  // liveness analysis (via RegionBranchOpInterface, generic over nesting
+  // depth) needed to prune that fully; run it as a nested pipeline afterward
+  // to pick up what the local canonicalizations left behind.
   LogicalResult dropDeadTaskCarries(AIE::DeviceOp device) {
     RewritePatternSet patterns(&getContext());
     scf::ForOp::getCanonicalizationPatterns(patterns, &getContext());
     scf::IfOp::getCanonicalizationPatterns(patterns, &getContext());
     GreedyRewriteConfig config;
     config.enableFolding(false).enableConstantCSE(false);
-    return applyPatternsGreedily(device, std::move(patterns), config);
+    if (failed(applyPatternsGreedily(device, std::move(patterns), config)))
+      return failure();
+
+    OpPassManager pm(AIE::DeviceOp::getOperationName());
+    pm.addPass(createRemoveDeadValuesPass());
+    return runPipeline(pm, device);
   }
 
   void runOnOperation() override {
