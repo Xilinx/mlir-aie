@@ -55,14 +55,40 @@ struct AIEAssignRuntimeSequenceBDIDsPass
 
   llvm::DenseMap<AIE::TileOp, BdIdGenerator> gens;
 
+  // Mark every BD id already taken by a statically-configured DMA on `tile` as
+  // in use. BD ids are one table per *tile*, shared by the static
+  // configuration (aie.mem / aie.memtile_dma / aie.shim_dma, numbered earlier
+  // by --aie-assign-bd-ids) and by the runtime-sequence tasks numbered here.
+  // Without this seeding both allocators start from 0 on a tile that has both,
+  // and a runtime task silently overwrites a static BD's slot in the table.
+  static void seedFromStaticBds(AIE::DeviceOp device, AIE::TileOp tile,
+                                BdIdGenerator &gen) {
+    auto seedRegion = [&](Region &region) {
+      region.walk([&](AIE::DMABDOp bd) {
+        if (auto id = bd.getBdId())
+          if (!gen.bdIdAlreadyAssigned(*id))
+            gen.assignBdId(*id);
+      });
+    };
+    for (auto mem : device.getOps<AIE::MemOp>())
+      if (mem.getTile() == tile.getResult())
+        seedRegion(mem->getRegion(0));
+    for (auto mem : device.getOps<AIE::MemTileDMAOp>())
+      if (mem.getTile() == tile.getResult())
+        seedRegion(mem->getRegion(0));
+    for (auto mem : device.getOps<AIE::ShimDMAOp>())
+      if (mem.getTile() == tile.getResult())
+        seedRegion(mem->getRegion(0));
+  }
+
   BdIdGenerator &getGeneratorForTile(AIE::TileOp tile) {
     auto it = gens.find(tile);
     if (it == gens.end()) {
-      const AIETargetModel &targetModel =
-          tile->getParentOfType<AIE::DeviceOp>().getTargetModel();
+      AIE::DeviceOp device = tile->getParentOfType<AIE::DeviceOp>();
       it = gens.insert({tile, BdIdGenerator(tile.getCol(), tile.getRow(),
-                                            targetModel)})
+                                            device.getTargetModel())})
                .first;
+      seedFromStaticBds(device, tile, it->second);
     }
     return it->second;
   }
