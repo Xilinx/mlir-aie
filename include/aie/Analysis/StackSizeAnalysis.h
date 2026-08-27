@@ -125,10 +125,10 @@ bool collectDefinedFunctionNames(llvm::StringRef path,
 // Returns false if `path` cannot be fully attributed: not a plain
 // relocatable object, a section shared by more than one function symbol, a
 // `.stack_sizes` entry whose relocation doesn't resolve to a known
-// function, or an unterminated/oversized ULEB128. `graph` may still contain
-// partial data from what parsed successfully before the failure; callers
-// must treat any `false` as "this whole object is unmeasurable", not merely
-// skip the unattributed part.
+// function, or an unterminated/oversized ULEB128. Each of those only ever
+// *skips* a write, leaving frameSize at its -1 sentinel (later surfacing as
+// "unmeasurable"), never writes a wrong one -- so `graph` is safe to keep
+// and use as-is; `false` just means "also warn that `path` was incomplete".
 bool addObjectToStackGraph(llvm::StringRef path,
                            const llvm::StringSet<> &knownFunctions,
                            StackGraph &graph);
