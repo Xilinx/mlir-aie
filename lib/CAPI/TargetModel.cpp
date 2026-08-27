@@ -146,6 +146,10 @@ uint32_t aieTargetModelGetProgramMemoryWriteGranule(AieTargetModel targetModel) 
   return unwrap(targetModel).getProgramMemoryWriteGranule().value_or(0);
 }
 
+uint32_t aieTargetModelGetDefaultCoreStackSize(AieTargetModel targetModel) {
+  return unwrap(targetModel).getDefaultCoreStackSize();
+}
+
 uint32_t aieTargetModelGetNumLocks(AieTargetModel targetModel, int col,
                                    int row) {
   return unwrap(targetModel).getNumLocks(col, row);

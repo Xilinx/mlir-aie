@@ -328,6 +328,10 @@ NB_MODULE(_aie, m) {
                return std::nullopt;
              return g;
            })
+      .def("get_default_core_stack_size",
+           [](PyAieTargetModel &self) {
+             return aieTargetModelGetDefaultCoreStackSize(self.get());
+           })
       .def("get_num_locks",
            [](PyAieTargetModel &self, int col, int row) {
              return aieTargetModelGetNumLocks(self.get(), col, row);

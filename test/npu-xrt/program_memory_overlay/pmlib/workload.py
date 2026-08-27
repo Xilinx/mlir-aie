@@ -79,6 +79,10 @@ def compile_overlay(
         f"--target={target}",
         "-O2",
         "-std=c++20",
+        # So iron.overlay's stack-budget guard (which needs .stack_sizes on
+        # every overlay it checks) has something to read -- see
+        # test/npu-xrt/program_memory_overlay/nohw/stack_budget.lit.
+        "-fstack-size-section",
         "-c",
         src,
         "-o",

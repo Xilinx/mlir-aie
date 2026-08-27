@@ -275,6 +275,11 @@ buildObjectSubgraph(EdgeWithTypedOutput<ModRef> &lowered,
       .arg("-O" + std::to_string(optLevel.getValue()))
       .value("--march=")
       .arg("--function-sections")
+      // A per-function .stack_sizes entry, always on: harmless metadata (no
+      // codegen or runtime effect), and the only way anything downstream --
+      // e.g. iron.overlay's stack-budget guard -- can see how much stack a
+      // compiled core actually needs without redoing codegen itself.
+      .arg("-stack-size-section")
       .arg("--filetype=obj")
       .output("-o");
   EdgeWithTypedOutput<Directory> &peanoObject =

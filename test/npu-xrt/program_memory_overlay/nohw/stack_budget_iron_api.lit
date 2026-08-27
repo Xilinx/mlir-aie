@@ -1,0 +1,29 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// ../nohw/stack_budget.lit's guard (resident frame + overlay frame must fit
+// the stack budget), exercised through the `aie.iron.overlay` API against a
+// real aiecc-built resident and a real linked overlay instead of hand-supplied
+// objects -- see `design.py`'s `_check_stack_budget`.
+//
+// REQUIRES: peano
+//
+// RUN: rm -rf %t && mkdir -p %t
+// RUN: %PEANO_INSTALL_DIR/bin/clang++ --target=aie2p-none-unknown-elf -O2 -fstack-size-section -std=c++20 -c %S/deep_overlay_a.cc -o %t/deep.o
+//
+// 2 KB of locals against the default 1024-byte Worker stack_size: refused.
+// RUN: not %python %S/../iron_api_stack_budget.py --overlay-obj %t/deep.o --out %t/over 2>&1 | FileCheck %s --check-prefix=OVER
+// OVER: needs 2{{[0-9][0-9][0-9]}} bytes of stack
+// OVER-SAME: byte stack_size
+// OVER-SAME: Raise the Worker's stack_size
+//
+// The same overlay against a Worker built with enough stack_size.
+// RUN: %python %S/../iron_api_stack_budget.py --overlay-obj %t/deep.o --stack-size 4096 --out %t/fits | FileCheck %s --check-prefix=FITS
+// FITS: built
+//
+// An overlay compiled without -fstack-size-section is refused outright,
+// rather than silently measured as zero and passed.
+// RUN: %PEANO_INSTALL_DIR/bin/clang++ --target=aie2p-none-unknown-elf -O2 -std=c++20 -c %S/deep_overlay_a.cc -o %t/nosizes.o
+// RUN: not %python %S/../iron_api_stack_budget.py --overlay-obj %t/nosizes.o --out %t/nosec 2>&1 | FileCheck %s --check-prefix=NOSEC
+// NOSEC: no .stack_sizes in
+// NOSEC-SAME: -fstack-size-section

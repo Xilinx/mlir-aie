@@ -143,6 +143,11 @@ aieTargetModelGetProgramMemoryHostOffset(AieTargetModel targetModel);
 MLIR_CAPI_EXPORTED uint32_t
 aieTargetModelGetProgramMemoryWriteGranule(AieTargetModel targetModel);
 
+/// Returns the default stack reservation (bytes) an `aie.core` gets when its
+/// `stack_size` attribute is unset.
+MLIR_CAPI_EXPORTED uint32_t
+aieTargetModelGetDefaultCoreStackSize(AieTargetModel targetModel);
+
 MLIR_CAPI_EXPORTED uint32_t
 aieTargetModelGetNumLocks(AieTargetModel targetModel, int col, int row);
 

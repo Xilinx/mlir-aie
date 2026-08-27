@@ -17,6 +17,14 @@ two resident ELFs are compared: any symbol that moved or an overlay's own
 import disappearing is a build error, not a warning -- this is a
 previously-real failure mode.
 
+Pass 1 also checks that every overlay's deepest stack frame, plus the
+resident's own, fits the stack its Worker was linked with (`aiecc`'s Peano
+codegen always emits `.stack_sizes`, so this is exact rather than assumed):
+the call into a slot is through an absolute address, so nothing about a
+normal build would ever catch an overlay overrunning the stack the resident
+was sized for. See `_check_stack_budget`, and the same rule pinned against
+hand-supplied objects in `test/npu-xrt/program_memory_overlay/nohw/stack_budget.lit`.
+
 A `pingpong()` pair's bootstrap park goes through the same pipeline as any
 overlay -- compiled, linked against the resident, its bytes extracted -- the
 one difference is its source is generated here rather than supplied by the
@@ -32,7 +40,7 @@ from typing import Callable
 from ...utils import get_current_device
 from ...utils.compile.utils import compile_mlir_module
 from ._bootstrap import Bootstrap
-from ._elf import defined_symbols, find_core_elf, peano, text_words
+from ._elf import defined_symbols, find_core_elf, max_stack_frame, peano, text_words
 from ._link import OverlayError, link
 from .overlay import ProgramMemoryOverlay
 
@@ -180,6 +188,7 @@ class ProgramMemoryOverlayDesign:
                 imports_used.setdefault(slot.name, set()).update(
                     s for s in f.read().split("\n") if s
                 )
+            _check_stack_budget(resident_elf, linked, slot, overlay, device)
 
         # Tile-sourced slots' flag Buffer ("has the write landed") address:
         # only knowable from the linked resident ELF, same as a pingpong
@@ -322,6 +331,55 @@ class ProgramMemoryOverlayDesign:
             _check_resident_stability(resident1, resident2, all_imports, slot.name)
 
         return xclbin_path, insts_path
+
+
+def _check_stack_budget(resident_elf, overlay_elf, slot, overlay, device) -> None:
+    """Raise unless `overlay`'s deepest frame fits the stack its Worker was linked with.
+
+    The resident's stack is sized once, when the resident links -- and the
+    call into a slot goes through an absolute address, so the compiler cannot
+    see the overlay to do interprocedural stack analysis even in principle.
+    An overlay that needs more overruns into whatever sits below the stack:
+    no fault, just scattered wrong values in another buffer, and in an
+    overlay design the damage outlives the phase that caused it. This is the
+    same check as `pm.py stack`, against the resident and overlay this build
+    actually produced rather than hand-supplied objects.
+    """
+    worker = slot._worker
+    if worker is None:
+        raise ProgramMemoryOverlayDesignError(
+            f"ProgramMemorySlot '{slot.name}': not registered with any Worker "
+            f"(pass it in a Worker's fn_args), so its stack budget is unknown."
+        )
+    budget = worker.stack_size
+    if budget is None:
+        budget = device.target_model.get_default_core_stack_size()
+
+    resident_frame = max_stack_frame(resident_elf)
+    overlay_frame = max_stack_frame(overlay_elf)
+    missing = [
+        p for p, f in ((resident_elf, resident_frame), (overlay_elf, overlay_frame)) if f is None
+    ]
+    if missing:
+        raise ProgramMemoryOverlayDesignError(
+            f"ProgramMemoryOverlay '{overlay.name}' (slot '{slot.name}'): no "
+            f".stack_sizes in {', '.join(missing)}; this should not happen "
+            f"for an aiecc-built resident or an overlay compiled with "
+            f"-fstack-size-section, and this check silently measures nothing "
+            f"without it."
+        )
+
+    need = resident_frame + overlay_frame
+    if need > budget:
+        raise ProgramMemoryOverlayDesignError(
+            f"ProgramMemoryOverlay '{overlay.name}' (slot '{slot.name}'): "
+            f"needs {need} bytes of stack (resident frame {resident_frame} + "
+            f"overlay frame {overlay_frame}) but its Worker was linked with "
+            f"a {budget}-byte stack_size. Raise the Worker's stack_size: "
+            f"overrunning it corrupts whatever is below the stack, without a "
+            f"fault, and in an overlay design the damage outlives the phase "
+            f"that caused it."
+        )
 
 
 def _check_resident_stability(
