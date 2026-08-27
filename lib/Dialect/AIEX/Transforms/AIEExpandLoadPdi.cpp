@@ -28,6 +28,7 @@
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Pass/Pass.h"
 
+#include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -79,6 +80,27 @@ static AIE::DeviceOp getOrCreateCtrlPktOverlayCopy(ModuleOp moduleOp,
   return clonedDev;
 }
 
+// The empty device whose PDI load makes the firmware reset the array. `parity`
+// alternates so that two consecutive loads never name the same PDI (see
+// transformLoadPdi).
+static AIE::DeviceOp getOrCreateEmptyDevice(ModuleOp moduleOp,
+                                            AIE::AIEDevice deviceType,
+                                            unsigned parity) {
+  std::string emptyName = "empty_" + std::to_string(parity);
+  if (auto existing = moduleOp.lookupSymbol<AIE::DeviceOp>(emptyName))
+    return existing;
+
+  OpBuilder builder(moduleOp.getContext());
+  builder.setInsertionPointToStart(moduleOp.getBody());
+  auto loc = builder.getUnknownLoc();
+  auto emptyDevice = AIE::DeviceOp::create(builder, loc, deviceType,
+                                           builder.getStringAttr(emptyName));
+  emptyDevice.getRegion().emplaceBlock();
+  builder.setInsertionPointToEnd(&emptyDevice.getRegion().front());
+  AIE::EndOp::create(builder, loc);
+  return emptyDevice;
+}
+
 // Helper to transform a single load_pdi operation
 static LogicalResult transformLoadPdi(NpuLoadPdiOp loadPdiOp, ModuleOp moduleOp,
                                       unsigned index,
@@ -127,21 +149,8 @@ static LogicalResult transformLoadPdi(NpuLoadPdiOp loadPdiOp, ModuleOp moduleOp,
     preloadRef = FlatSymbolRefAttr::get(builder.getContext(), overlayName);
   } else {
     // Empty device PDI (triggers firmware reset)
-    OpBuilder::InsertionGuard guard(builder);
-    builder.setInsertionPointToStart(moduleOp.getBody());
-
-    std::string emptyName = "empty_" + std::to_string(index % 2);
-    AIE::DeviceOp emptyDevice = moduleOp.lookupSymbol<AIE::DeviceOp>(emptyName);
-    if (!emptyDevice) {
-      auto deviceType = referencedDevice.getDevice();
-      auto loc = builder.getUnknownLoc();
-      emptyDevice = AIE::DeviceOp::create(builder, loc, deviceType,
-                                          builder.getStringAttr(emptyName));
-      emptyDevice.getRegion().emplaceBlock();
-      Block *deviceBlock = &emptyDevice.getRegion().front();
-      builder.setInsertionPointToEnd(deviceBlock);
-      AIE::EndOp::create(builder, loc);
-    }
+    AIE::DeviceOp emptyDevice = getOrCreateEmptyDevice(
+        moduleOp, referencedDevice.getDevice(), index % 2);
     preloadRef = FlatSymbolRefAttr::get(emptyDevice.getSymNameAttr());
   }
 
@@ -205,6 +214,28 @@ struct AIEExpandLoadPdiPass
     module.walk(
         [&](NpuLoadPdiOp loadPdiOp) { loadPdiOps.push_back(loadPdiOp); });
 
+    // Per enclosing runtime sequence: how many resets it will emit, plus the
+    // device type to reset. Captured BEFORE transforming, which erases the ops.
+    llvm::MapVector<AIE::RuntimeSequenceOp, std::pair<unsigned, AIE::AIEDevice>>
+        resetsPerSequence;
+    for (auto loadPdiOp : loadPdiOps) {
+      auto deviceRefAttr = loadPdiOp.getDeviceRefAttr();
+      if (!deviceRefAttr)
+        continue;
+      if (loadPdiOp.getExpandMode().value_or(clCtrlPkt
+                                                 ? AIEX::ExpandMode::ctrlpkt
+                                                 : AIEX::ExpandMode::write32) !=
+          AIEX::ExpandMode::write32)
+        continue;
+      auto seq = loadPdiOp->getParentOfType<AIE::RuntimeSequenceOp>();
+      auto dev = module.lookupSymbol<AIE::DeviceOp>(deviceRefAttr);
+      if (!seq || !dev)
+        continue;
+      auto &entry = resetsPerSequence[seq];
+      entry.first++;
+      entry.second = dev.getDevice();
+    }
+
     // Map the legacy bool option to the new ExpandMode enum.
     AIEX::ExpandMode defaultMode =
         clCtrlPkt ? AIEX::ExpandMode::ctrlpkt : AIEX::ExpandMode::write32;
@@ -217,6 +248,38 @@ struct AIEExpandLoadPdiPass
         return;
       }
       idx++;
+    }
+
+    // The `index % 2` alternation above keeps two consecutive resets on
+    // different PDIs WITHIN a sequence. But the host re-runs the whole sequence
+    // on every dispatch, so the alternation has to hold across that boundary
+    // too: a sequence with an ODD number of resets ends on the same empty PDI
+    // it starts with, the firmware caches the address and no-ops the next
+    // dispatch's first load, and the configuration that follows lands on a
+    // device that was never reset. That is silent -- the first dispatch is
+    // correct and later ones return non-deterministic garbage.
+    //
+    // Append one more reset so every sequence ends on the opposite parity. The
+    // empty PDI is a few hundred bytes, so the cost is negligible next to the
+    // configuration it guards.
+    for (auto &[seq, info] : resetsPerSequence) {
+      auto [count, deviceType] = info;
+      if (count % 2 == 0)
+        continue;
+      AIE::DeviceOp emptyDevice =
+          getOrCreateEmptyDevice(module, deviceType, count % 2);
+      OpBuilder builder(seq.getContext());
+      Block &body = seq.getBody().front();
+      if (!body.empty() && body.back().hasTrait<OpTrait::IsTerminator>())
+        builder.setInsertionPoint(&body.back());
+      else
+        builder.setInsertionPointToEnd(&body);
+      NpuLoadPdiOp::create(
+          builder, seq.getLoc(),
+          FlatSymbolRefAttr::get(emptyDevice.getSymNameAttr()),
+          /*id=*/nullptr, /*size=*/nullptr, /*address=*/nullptr,
+          /*expand_mode=*/
+          AIEX::ExpandModeAttr::get(seq.getContext(), AIEX::ExpandMode::none));
     }
   }
 };
