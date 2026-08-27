@@ -3717,9 +3717,13 @@ values and every HRX environment variable
 <code>IRON_HRX_TIMEOUT</code>) is documented in
 <a href="../iron_configuration/#host-runtime-backend-selection-npu_runtime">IRON Configuration</a>.</p>
 <h2 id="provisioning-libhrx">Provisioning <code>libhrx</code><a class="headerlink" href="#provisioning-libhrx" title="Permanent link">&para;</a></h2>
-<p>Fetch, checksum-verify, and extract the pinned HRX release (coordinates in
-<code>utils/hrx-release.env</code>) with the helper script, then source the environment it
-prints:</p>
+<p>A pip-installed package that ships <code>libhrx</code> in the conventional layout
+(<code>&lt;package&gt;/lib/libhrx.so*</code> on Linux, <code>&lt;package&gt;/bin/hrx.dll</code> on Windows) is
+enough for the Python host. Discovery finds it without importing the package and
+without <code>HRX_*</code> variables. CMake does not search site-packages.</p>
+<p>For a source/release tree, fetch, checksum-verify, and extract the pinned HRX
+release (coordinates in <code>utils/hrx-release.env</code>) with the helper script, then
+source the environment it prints:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nb">source</span><span class="w"> </span><span class="s2">&quot;</span><span class="k">$(</span>utils/fetch-hrx-release.sh<span class="k">)</span><span class="s2">&quot;</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="c1"># or, in one step:  eval &quot;$(utils/fetch-hrx-release.sh --print-env)&quot;</span>
 </code></pre></div>

@@ -4193,32 +4193,38 @@ enabling instructions, and the
 <a href="https://github.com/Xilinx/mlir-aie/blob/main/python/utils/hostruntime/hrxruntime/README.md">HRX runtime README</a> for the
 full step-by-step flow.</p>
 <h3 id="library-discovery">Library discovery<a class="headerlink" href="#library-discovery" title="Permanent link">&para;</a></h3>
-<p><code>libhrx.so</code> is located by probing standard install locations; these variables
-are high-priority hints (checked in this order), mirroring <code>FindHRX.cmake</code>:</p>
+<p>Python locates <code>libhrx</code> in this order (filesystem only — no <code>dlopen</code>). Explicit
+<code>HRX_*</code> hints match <code>FindHRX.cmake</code>; CMake does <strong>not</strong> search site-packages.</p>
 <table>
 <thead>
 <tr>
-<th>Variable</th>
+<th>Source</th>
 <th>Meaning</th>
 </tr>
 </thead>
 <tbody>
 <tr>
 <td><code>HRX_LIBHRX</code></td>
-<td>Explicit full path to <code>libhrx.so</code>.</td>
+<td>Explicit full path to <code>libhrx.so</code> / <code>hrx.dll</code>.</td>
 </tr>
 <tr>
 <td><code>LIBHRX_DIR</code></td>
-<td>Directory containing <code>libhrx.so</code> (e.g. set by <code>activate_env.sh</code>).</td>
+<td>Directory containing the library (e.g. set by <code>activate_env.sh</code>).</td>
+</tr>
+<tr>
+<td>pip site-packages</td>
+<td>A package that ships <code>lib/libhrx.so*</code> or <code>bin/hrx.dll</code>. Filesystem only — the package is not imported.</td>
 </tr>
 <tr>
 <td><code>HRX_DIR</code></td>
 <td>HRX install prefix (<code>$HRX_DIR/lib/libhrx.so</code>, <code>$HRX_DIR/include/...</code>).</td>
 </tr>
+<tr>
+<td>sibling / <code>FindHRX</code> roots</td>
+<td>A sibling <code>hrx</code> checkout, <code>$HOME/hrx</code>, <code>/opt/hrx</code>, <code>/usr/local/hrx</code>, then the loader's search path.</td>
+</tr>
 </tbody>
 </table>
-<p>If none are set, standard locations (a sibling <code>hrx</code> checkout, <code>$HOME/hrx</code>,
-<code>/opt/hrx</code>, <code>/usr/local/hrx</code>, and the loader's <code>LD_LIBRARY_PATH</code>) are tried.</p>
 <h3 id="runtime-behavior">Runtime behavior<a class="headerlink" href="#runtime-behavior" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
