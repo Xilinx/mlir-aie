@@ -287,7 +287,8 @@ class Kernel(BaseKernel):
         None lets aiecc's automatic analysis compute it instead. An explicit
         value always wins over whatever the analysis would compute, even if
         smaller -- it's a declaration, not a clamp; ``0`` is legal. See
-        [`aie.dialects.aie.external_func`][] for the full rationale.
+        [Core Data Memory](../../programming_guide/core_data_memory.md) for
+        the full rationale.
         """
         return self._stack_size_override
 
