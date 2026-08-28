@@ -604,11 +604,7 @@ private:
                                 "aie_runtime::BdPool " + bdPoolName(col, row) +
                                     " = aie_runtime::bd_pool_init(" +
                                     std::to_string(numBDs) + ");");
-      // The pool starts owning every id on the tile, but the BD table is
-      // shared with whatever the static allocator already placed there. Hand
-      // back the ids it took, or a pop would return one that a static BD
-      // already owns and overwrite its slot. Nothing is emitted for a tile
-      // with no static BDs, which is the usual case.
+      // Hand back the ids the static allocator already placed on this tile.
       for (uint32_t id : staticBdIdsOnTile(deviceOp, col, row))
         emitc::VerbatimOp::create(fb, loc,
                                   "aie_runtime::bd_pool_reserve(" +

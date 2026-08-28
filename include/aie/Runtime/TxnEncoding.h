@@ -94,13 +94,8 @@ inline BdPool bd_pool_init(uint32_t n) {
   return p;
 }
 
-// Withhold `id` from the pool, for a BD the static allocator already placed on
-// this tile. BD IDs index one table per tile, shared by the statically
-// configured DMAs and by this pool, so an id handed out here that a static BD
-// already owns would silently overwrite that BD's slot. The compiler emits one
-// of these per statically-assigned id on a pooled tile, right after
-// bd_pool_init; a tile carrying no static BDs emits none, leaving the pool and
-// the generated stream exactly as before.
+// Withhold `id` from the pool -- a static BD already owns that slot in the
+// tile's shared BD table, and popping it here would silently overwrite it.
 inline void bd_pool_reserve(BdPool &p, uint32_t id) {
   for (int i = 0; i < p.head; ++i)
     if (p.free_ids[i] == id) {
