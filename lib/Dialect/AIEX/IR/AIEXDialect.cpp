@@ -1118,10 +1118,10 @@ DenseIntElementsAttr AIEX::NpuBlockWriteOp::getDataWords() {
 // DMAConfigureTaskOp
 //===----------------------------------------------------------------------===//
 
-std::optional<uint32_t> AIEX::DMAConfigureTaskOp::getFirstBdId() {
+AIE::DMABDOp AIEX::DMAConfigureTaskOp::getFirstBd() {
   Region &body = getBody();
   if (body.empty()) {
-    return std::nullopt;
+    return nullptr;
   }
   auto bd_ops = body.front().getOps<AIE::DMABDOp>();
   if (bd_ops.empty() && body.front().getNumSuccessors() == 1) {
@@ -1132,10 +1132,9 @@ std::optional<uint32_t> AIEX::DMAConfigureTaskOp::getFirstBdId() {
     bd_ops = chain_entry.getOps<AIE::DMABDOp>();
   }
   if (bd_ops.empty()) {
-    return std::nullopt;
+    return nullptr;
   }
-  AIE::DMABDOp bd = *bd_ops.begin();
-  return bd.getBdId();
+  return *bd_ops.begin();
 }
 
 LogicalResult
@@ -1220,6 +1219,13 @@ LogicalResult AIEX::DMAConfigureTaskOp::verify() {
       failed(verifyTaskBDDimensions(targetModel, *col, *row, getBody())))
     return failure();
   Region &body = getBody();
+  // This is a layering violation on the DMABDOps, but they are never verified
+  // otherwise Because DMAConfigureTaskOps are not yet merged into the AIE
+  // dialect. The normal DMABDOp verify operation will skip over any BD inside
+  // a DMAConfigureTaskOp
+  LogicalResult result = success();
+  bool taskHasPacket = getPacket().has_value();
+  llvm::SmallVector<AIE::DMABDOp> bds;
   for (auto &block : body) {
     if (block.empty()) {
       continue;
@@ -1234,13 +1240,6 @@ LogicalResult AIEX::DMAConfigureTaskOp::verify() {
     const AIE::AIETargetModel &targetModel =
         AIE::getTargetModel(getOperation());
 
-    // This is a layering violation on the DMABDOps, but they are never verified
-    // otherwise Because DMAConfigureTaskOps are not yet merged into the AIE
-    // dialect. The normal DMABDOp verify operation will skip over any BD inside
-    // a DMAConfigureTaskOp
-    LogicalResult result = success();
-    // A task-level packet supplies the header for every BD in the task.
-    bool taskHasPacket = getPacket().has_value();
     block.walk([&](AIE::DMABDOp bd) {
       if (bd.getBurstLength() != 0 &&
           !targetModel.isShimNOCTile(getTileID().col, getTileID().row)) {
@@ -1251,12 +1250,24 @@ LogicalResult AIEX::DMAConfigureTaskOp::verify() {
       // DMABDOp::verify skips task BDs, so validate out_of_order_id here too.
       if (failed(AIE::verifyDMABDOutOfOrderId(bd, taskHasPacket)))
         result = failure();
+      bds.push_back(bd);
     });
-    if (failed(result)) {
-      return result;
-    }
   }
-  return success();
+  if (getOutOfOrder()) {
+    // Out-of-order mode rejects task completion token (bits are aliased).
+    if (getIssueToken()) {
+      auto err =
+          emitOpError("out_of_order channel cannot issue a completion token");
+      err.attachNote() << "set issue_token = false on this out-of-order task";
+      result = failure();
+    }
+    if (failed(AIE::verifyOutOfOrderChannel(
+            getOperation(), getDirection(), getOutOfOrder(),
+            llvm::ArrayRef<AIE::DMABDOp>(bds),
+            /*packetEnabledByContext=*/taskHasPacket)))
+      result = failure();
+  }
+  return result;
 }
 
 LogicalResult AIEX::DMAConfigureTaskForOp::verify() {
