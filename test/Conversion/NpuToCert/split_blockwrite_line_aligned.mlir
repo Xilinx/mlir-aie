@@ -5,20 +5,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-// A split blockwrite must resume on a 128-bit program-memory line.
-//
-// SplitNpuBlockWriteOpPattern used to split at dataSize/2 elements, which is
-// only guaranteed to be a multiple of two words. That is fine for the
-// word-addressed config registers, but a blockwrite into a core's program
-// memory has to start on a 16-byte line, because program memory is 128 bits
-// wide -- and program-memory overlays are exactly the case that produces large
-// blockwrites.
-//
-// 2012 words is 8048 bytes: past the 8000-byte split threshold, and a multiple
-// of 16 bytes, so a perfectly legal overlay payload. The old split point was
-// word 1006, or byte 4024, which is 8 past a line boundary. The companion case
-// in split_blockwrite.mlir happens to be 2000 words, whose half is already a
-// multiple of 4, so it never showed this.
+// A split blockwrite must resume on a 128-bit program-memory line, not at a
+// bare dataSize/2. 2012 words (8048 bytes) is a legal overlay -- past the
+// split threshold and a multiple of 16 bytes -- but its old split point (word
+// 1006) landed 8 bytes past a line boundary. split_blockwrite.mlir's 2000-word
+// case never showed this, since its half is already line-aligned.
 //
 // RUN: aie-opt --aie-npu-to-cert %s | FileCheck %s
 
