@@ -17,6 +17,11 @@
 # uv version is pinned so the resolution (and the generated header comment)
 # stays deterministic across machines and CI.
 #
+# utils/mlir_wheels/requirements.in is itself generated here from
+# utils/mlir_wheels/pyproject.toml's [build-system].requires, so that list
+# can't drift from the one pip-compile actually locks against (see
+# generate_requirements_in below). Edit pyproject.toml, not requirements.in.
+#
 # Usage:  utils/regenerate_lockfiles.sh
 #
 # Exits non-zero if uv is missing or any compile fails.
@@ -70,6 +75,50 @@ compile() {
       "$src_name" -o "$lock_name" --quiet
   )
 }
+
+# Regenerate utils/mlir_wheels/requirements.in from pyproject.toml's
+# [build-system].requires. mlir-native-tools is deliberately dropped: it
+# lives on an internal index reached via PIP_FIND_LINKS at build time, not
+# on PyPI, so pip-compile can't hash it; mlirDistro.yml installs it as a
+# separate, unpinned step instead.
+generate_requirements_in() {
+  local pyproject="$REPO_ROOT/utils/mlir_wheels/pyproject.toml"
+  local out="$REPO_ROOT/utils/mlir_wheels/requirements.in"
+
+  echo "regenerating utils/mlir_wheels/requirements.in from pyproject.toml"
+
+  {
+    cat <<'EOF'
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+# GENERATED from pyproject.toml's [build-system].requires by
+# utils/regenerate_lockfiles.sh. Do not hand-edit: edit pyproject.toml
+# instead and rerun that script, which regenerates both this file and
+# requirements.lock.
+EOF
+    awk '
+      /^requires = \[/ { in_requires=1; next }
+      in_requires && /^\]/ { in_requires=0; next }
+      in_requires {
+        line=$0
+        sub(/^[ \t]+/, "", line)
+        sub(/,[ \t]*$/, "", line)
+        if (line == "" || line ~ /^#/) next
+        gsub(/"/, "", line)
+        if (line ~ /^mlir-native-tools/) next
+        print line
+      }
+    ' "$pyproject"
+    cat <<'EOF'
+# mlir-native-tools is intentionally dropped above: it lives on an internal
+# index reached via PIP_FIND_LINKS at build time, not on PyPI, so
+# pip-compile can't resolve it. mlirDistro.yml installs it separately.
+EOF
+  } > "$out"
+}
+
+generate_requirements_in
 
 compile python/requirements_dev.txt              python/requirements_dev.lock
 compile utils/mlir_aie_wheels/requirements.txt   utils/mlir_aie_wheels/requirements.lock
