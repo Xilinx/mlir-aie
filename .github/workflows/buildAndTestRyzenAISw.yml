@@ -65,6 +65,19 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
         with:
           submodules: "true"
+
+      # The build runs inside a docker container (below), so this only
+      # primes a host-side cache dir. It is bind-mounted into the container
+      # with the same path and handed to ccache there via CCACHE_DIR, so the
+      # container's compiler invocations land in the same cache the
+      # actions/cache post-step later saves.
+      - uses: ./.github/actions/setup_ccache
+        id: setup_ccache
+        with:
+          MATRIX_OS: ${{ matrix.ubuntu_version }}
+          MATRIX_ARCH: x86
+          EXTRA_KEY: ryzenai-sw
+
       - uses: uraimo/run-on-arch-action@fd7aa8593480287702b446a273a68f788a9bad3a  # v3
         name: Build and Test
         id: runcmd
@@ -74,8 +87,10 @@ jobs:
           githubToken: ${{ github.token }}
           dockerRunArgs: |
             --mac-address 02:42:ac:11:00:02
+            -v ${{ steps.setup_ccache.outputs.HOST_CCACHE_DIR }}:${{ steps.setup_ccache.outputs.HOST_CCACHE_DIR }}
           env: |
             XILINXD_LICENSE_FILE: /opt/xilinx/Xilinx.lic
+            CCACHE_DIR: ${{ steps.setup_ccache.outputs.HOST_CCACHE_DIR }}
           run: |
 
             MLIR_DIR=$PWD
@@ -148,7 +163,13 @@ jobs:
                 -DCMAKE_MODULE_PATH=$MLIR_DIR/cmake/modulesXilinx \
                 -DMLIR_DIR=/workspace/mlir/lib/cmake/mlir
 
+            # See https://github.com/hendrikmuhs/ccache-action/issues/146:
+            # compare by content, not mtime, since the checkout the compiler
+            # invocations run against is fresh every job.
+            ccache --set-config=compiler_check=content
+            ccache -s
             ninja install
+            ccache -s
             # filter out slow tests (e.g. create-flows/vecmul_4x4_slow_test.mlir) due to timeout.
             export LIT_OPTS="-j1 -sv --timeout 600 --filter-out slow_test"
             ninja check-aie
