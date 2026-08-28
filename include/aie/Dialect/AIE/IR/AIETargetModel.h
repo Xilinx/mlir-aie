@@ -532,8 +532,9 @@ public:
                                       bool isMem = false) const;
 
   /// Encode a field value with proper bit shifting.
-  /// Return Value shifted to correct bit position
-  uint32_t encodeFieldValue(const BitFieldInfo &field, uint32_t value) const;
+  /// Return nullopt if value does not fit in the field's bit width.
+  std::optional<uint32_t> encodeFieldValue(const BitFieldInfo &field,
+                                           uint32_t value) const;
 
   /// Compute a 32-bit mask for a register field.
   /// Return nullopt if the field does not fit in a 32-bit register.

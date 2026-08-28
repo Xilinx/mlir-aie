@@ -729,13 +729,17 @@ struct AIEInsertTraceFlowsPass
       if (!resetField)
         llvm::report_fatal_error(
             "Failed to lookup Reset_Event field in Timer_Control");
-      uint32_t timerCtrlValue =
+      auto timerCtrlValue =
           targetModel.encodeFieldValue(*resetField, *broadcastEvent);
+      if (!timerCtrlValue)
+        llvm::report_fatal_error("Broadcast event does not fit in "
+                                 "Timer_Control's Reset_Event field");
 
       xilinx::AIEX::NpuWrite32Op::create(
           builder, runtimeSeq.getLoc(),
           AIEX::createConstantI32(builder, runtimeSeq.getLoc(), timerCtrlAddr),
-          AIEX::createConstantI32(builder, runtimeSeq.getLoc(), timerCtrlValue),
+          AIEX::createConstantI32(builder, runtimeSeq.getLoc(),
+                                  *timerCtrlValue),
           nullptr, builder.getI32IntegerAttr(col),
           builder.getI32IntegerAttr(row));
     }
@@ -807,8 +811,11 @@ struct AIEInsertTraceFlowsPass
         if (!ctrlIdField)
           llvm::report_fatal_error("Failed to lookup Controller_ID field in " +
                                    llvm::Twine(ctrlRegName));
-        uint32_t ctrlIdValue =
+        auto ctrlIdValue =
             targetModel.encodeFieldValue(*ctrlIdField, ctrlIdAttr.getPktId());
+        if (!ctrlIdValue)
+          llvm::report_fatal_error("Controller ID does not fit in the "
+                                   "Controller_ID field");
         auto ctrlIdMask = targetModel.getFieldMask(*ctrlIdField);
         if (!ctrlIdMask)
           llvm::report_fatal_error(
@@ -816,7 +823,7 @@ struct AIEInsertTraceFlowsPass
         xilinx::AIEX::NpuMaskWrite32Op::create(
             builder, runtimeSeq.getLoc(),
             AIEX::createConstantI32(builder, runtimeSeq.getLoc(), ctrlAddr),
-            AIEX::createConstantI32(builder, runtimeSeq.getLoc(), ctrlIdValue),
+            AIEX::createConstantI32(builder, runtimeSeq.getLoc(), *ctrlIdValue),
             AIEX::createConstantI32(builder, runtimeSeq.getLoc(), *ctrlIdMask),
             nullptr, builder.getI32IntegerAttr(shimCol),
             builder.getI32IntegerAttr(0));
@@ -836,9 +843,14 @@ struct AIEInsertTraceFlowsPass
         if (!tokenField || !bdIdField)
           llvm::report_fatal_error(
               "Failed to lookup Enable_Token_Issue or Start_BD_ID fields");
-        uint32_t queueValue =
-            targetModel.encodeFieldValue(*tokenField, 1) |
+        auto tokenValue = targetModel.encodeFieldValue(*tokenField, 1);
+        auto bdIdValue =
             targetModel.encodeFieldValue(*bdIdField, chanDesc.bdId);
+        if (!tokenValue || !bdIdValue)
+          llvm::report_fatal_error("BD ID does not fit in the Start_BD_ID "
+                                   "field of " +
+                                   llvm::Twine(taskQueueRegName));
+        uint32_t queueValue = *tokenValue | *bdIdValue;
         xilinx::AIEX::NpuWrite32Op::create(
             builder, runtimeSeq.getLoc(),
             AIEX::createConstantI32(builder, runtimeSeq.getLoc(),
@@ -867,14 +879,17 @@ struct AIEInsertTraceFlowsPass
         if (!shimResetField)
           llvm::report_fatal_error(
               "Failed to lookup Reset_Event in shim Timer_Control");
-        uint32_t shimTimerCtrlValue =
+        auto shimTimerCtrlValue =
             targetModel.encodeFieldValue(*shimResetField, *userEvent1);
+        if (!shimTimerCtrlValue)
+          llvm::report_fatal_error("USER_EVENT_1 does not fit in shim "
+                                   "Timer_Control's Reset_Event field");
         xilinx::AIEX::NpuWrite32Op::create(
             builder, runtimeSeq.getLoc(),
             AIEX::createConstantI32(builder, runtimeSeq.getLoc(),
                                     shimTimerCtrlAddr),
             AIEX::createConstantI32(builder, runtimeSeq.getLoc(),
-                                    shimTimerCtrlValue),
+                                    *shimTimerCtrlValue),
             nullptr, builder.getI32IntegerAttr(shimCol),
             builder.getI32IntegerAttr(0));
 
