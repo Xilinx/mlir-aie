@@ -6,12 +6,8 @@
 //===----------------------------------------------------------------------===//
 
 // A kernel object with no `.stack_sizes` section (compiled without
-// -fstack-size-section here, standing in for the overwhelmingly common case
-// during rollout: essentially every kernel object compiled before this
-// analysis existed, plus every Chess-compiled one today) must only warn,
-// never fail the build. Failing outright here would break nearly every
-// pre-existing design on first contact with a newer aiecc, for a gap that
-// often never matters at runtime.
+// -fstack-size-section, standing in for every pre-existing or Chess-compiled
+// object) must only warn, never fail the build -- see StackSizeAnalysis.h.
 
 // REQUIRES: peano
 // RUN: rm -rf %t.d && mkdir -p %t.d

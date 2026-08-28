@@ -260,22 +260,10 @@ class Kernel(BaseKernel):
                 ``link_with``.  ``"merge"`` routes the artifact through aiecc's
                 ``llvm-link`` merge path; None (the default) object-links it.
             stack_size_override: Optional declared upper bound, in bytes, on
-                the stack this kernel's call subtree needs. aiecc's automatic
-                stack analysis treats this as the answer for the whole
-                subtree and does not descend into it -- the escape hatch for
-                recursion or indirect (function-pointer) calls inside this
-                kernel, which cannot be sized automatically, and the only way
-                to give the analysis any information at all about a
-                ``link_with_mode="merge"`` kernel (merged into the core's own
-                module before codegen, so the analysis cannot see it as a
-                separate object). An explicit value here always wins over
-                whatever the analysis would otherwise compute, even if
-                smaller -- it is a declaration, not a clamp. ``0`` is legal.
-                It lives here, on the kernel, rather than on the core because the
-                same kernel is often linked into multiple cores and the actually
-                problematic symbol is usually internal to a kernel object MLIR never
-                saw, so the override has to be addressable at the one granularity
-                MLIR does see.
+                the stack this kernel's call subtree needs -- an escape hatch
+                for recursion, indirect calls, or a ``link_with_mode="merge"``
+                kernel aiecc's stack analysis can't see as a separate object.
+                See [`Kernel.stack_size_override`][iron.kernel.Kernel.stack_size_override].
         """
         super().__init__(name, arg_types)
         self._object_file_name = object_file_name
@@ -296,7 +284,10 @@ class Kernel(BaseKernel):
     def stack_size_override(self) -> int | None:
         """Declared upper bound on this kernel's call-subtree stack use.
 
-        None lets aiecc's automatic analysis compute it instead.
+        None lets aiecc's automatic analysis compute it instead. An explicit
+        value always wins over whatever the analysis would compute, even if
+        smaller -- it's a declaration, not a clamp; ``0`` is legal. See
+        [`aie.dialects.aie.external_func`][] for the full rationale.
         """
         return self._stack_size_override
 

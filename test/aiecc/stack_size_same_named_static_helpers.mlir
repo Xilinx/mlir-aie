@@ -5,22 +5,16 @@
 //
 //===----------------------------------------------------------------------===//
 
-// The call graph is keyed by symbol name, but a `static` (internal-linkage)
-// symbol is only visible within the object that defines it -- two different
-// objects in the same core's link_files can each define an unrelated
-// `helper` under the identical name. stack_size_same_named_static_a_kernel.cc
-// defines a plain, non-recursive `helper` (a real ~4096-byte frame) called by
-// entry_a; stack_size_same_named_static_b_kernel.cc separately defines a
-// self-recursive `helper`, called only by unused_entry_b, which this core
-// never calls. Both objects are linked into the one core (link_files is set
-// directly, as in stack_size_cross_object.mlir, so the second object reaches
-// the core without becoming a root in its own right).
+// A `static` symbol is only visible in its defining object, so two objects
+// in one core's link_files can define an unrelated `helper` under the same
+// name. stack_size_same_named_static_a_kernel.cc's `helper` is plain and
+// non-recursive, called by entry_a; b_kernel.cc's `helper` is self-recursive
+// but only reachable from unused_entry_b, which this core never calls.
 //
-// If the two `helper`s alias to one call-graph node, entry_a's real
-// (non-recursive) path inherits object b's unrelated self-loop and the build
-// fails with a false "recursion detected" -- even though nothing this core
-// calls ever recurses. stack_size = 8192 comfortably covers entry_a's real
-// (non-recursive) requirement, so correct attribution must build clean.
+// If the two `helper`s alias to one call-graph node, entry_a's path inherits
+// b's unrelated self-loop and the build fails with a false "recursion
+// detected". stack_size = 8192 comfortably covers entry_a's real
+// requirement, so correct attribution must build clean.
 
 // REQUIRES: peano
 // RUN: rm -rf %t.d && mkdir -p %t.d

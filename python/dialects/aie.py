@@ -205,19 +205,15 @@ class external_func(FuncOp):
             artifact is object-linked, whatever its suffix.
         stack_size_override: Optional declared upper bound, in bytes, on the
             stack this function's call subtree needs. aiecc's automatic stack
-            analysis (a call-graph walk of this function and its linked
-            object's internal calls) treats this as the answer for the whole
-            subtree and does not descend into it -- the escape hatch for
-            recursion or indirect (function-pointer) calls, which cannot be
-            sized automatically, and for kernels compiled without the
-            `.stack_sizes` metadata the analysis needs (e.g. via Chess). An
-            explicit value here always wins over whatever the analysis would
-            otherwise compute, even if smaller: it is a declaration, not a
-            clamp. ``0`` is a legal value. It lives on this func.func rather than
-            on the core because the same kernel is often linked into multiple
-            cores and the actually problematic symbol is usually internal to a
-            kernel object MLIR never saw, so the override has to be addressable at
-            the one granularity MLIR does see.
+            analysis treats this as the answer for the whole subtree and does
+            not descend into it -- the escape hatch for recursion, indirect
+            (function-pointer) calls, or a kernel compiled without
+            `.stack_sizes` metadata (e.g. via Chess). An explicit value always
+            wins over whatever the analysis would compute, even if smaller --
+            it's a declaration, not a clamp. ``0`` is legal. It lives here,
+            not on the core, because the same kernel is often linked into
+            multiple cores, and the problematic symbol is usually internal to
+            a kernel object MLIR never saw.
     """
 
     def __init__(

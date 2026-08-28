@@ -5,19 +5,16 @@
 //
 //===----------------------------------------------------------------------===//
 
-// The core's stack requirement is auto-measured from a call-graph walk of
-// the symbols it directly calls (entry_fn -> helper_fn here, both in the
-// same object) through their link_files objects' `.stack_sizes` metadata.
-// stack_size below is deliberately far too small (1 byte) so the computed
-// requirement always exceeds it, without pinning an exact byte count that
-// would be fragile across compiler versions -- only that a warning fires
-// naming both numbers, and that --no-auto-stack-size suppresses it entirely.
+// The core's stack requirement is auto-measured from a call-graph walk of the
+// symbols it directly calls, through their link_files objects' `.stack_sizes`
+// metadata. stack_size is deliberately far too small (1 byte), so the
+// computed requirement always exceeds it without pinning an exact byte count
+// that would be fragile across compiler versions -- only that a warning fires
+// naming both numbers, and that --no-auto-stack-size suppresses it.
 //
 // A 1-byte stack is also caught by the later, more complete post-build check
-// (see stack_size_explicit_insufficient_error.mlir): the early warning here is
-// only a lower bound (the core body's own frame is not yet known), but the
-// post-build check has the true total, so the build fails outright rather
-// than merely warning and shipping a stack that provably overflows.
+// (see stack_size_explicit_insufficient_error.mlir), which has the true total
+// and so fails the build outright rather than merely warning.
 
 // REQUIRES: peano
 // RUN: rm -rf %t.d && mkdir -p %t.d

@@ -5,29 +5,18 @@
 //
 //===----------------------------------------------------------------------===//
 
-// Every other stack-size fixture has its whole call graph in one object; this
-// one exercises the two-pass cross-object attribution the analysis needs when
-// it doesn't (see StackSizeAnalysis.h's file comment): entry_cross (defined in
-// stack_size_cross_object_caller.o, the only symbol the core body calls
-// directly) calls helper_cross, which is defined only in the *sibling*
-// object stack_size_cross_object_callee.o and has the large real frame
-// (~4096 bytes). The relocation entry_cross's object carries for that call is
-// against an undefined symbol with an unreliable type, so the analysis can
-// only recognize it as a call once it has scanned every object in
-// link_files for what it defines -- not just the one object being walked.
+// Exercises the two-pass cross-object attribution (see StackSizeAnalysis.h):
+// entry_cross (the core body's only direct call, defined in
+// stack_size_cross_object_caller.o) calls helper_cross, defined only in the
+// sibling object stack_size_cross_object_callee.o with a large real frame
+// (~4096 bytes). link_files is set directly on the core, rather than
+// inferred from a func.func's link_with, so both objects reach this core
+// without a second direct func.call to helper_cross that would make it a
+// root in its own right and bypass the cross-object edge under test.
 //
-// link_files is set directly on the core (rather than inferred by
-// aie-assign-core-link-files from a func.func's link_with) specifically so
-// both objects reach this one core without a second, direct func.call to
-// helper_cross -- which would make it a root in its own right and defeat the
-// point: helper_cross must only be reachable through the cross-object edge.
-//
-// stack_size = 2048 sits well below entry_cross's own (trivial) frame plus
-// helper_cross's real one, so a build that folds the cross-object frame in
-// correctly must warn (and, since 2048 is explicit and genuinely
-// insufficient, ultimately fail) naming a large number; a broken cross-object
-// edge would silently drop helper_cross's contribution and report only
-// entry_cross's own tiny frame instead, producing no warning at all.
+// stack_size = 2048 sits well below the true total, so correct cross-object
+// folding must warn and then fail naming a large number; a broken edge would
+// silently drop helper_cross's contribution and report no warning at all.
 
 // REQUIRES: peano
 // RUN: rm -rf %t.d && mkdir -p %t.d

@@ -5,15 +5,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-// An explicit stack_size is never overwritten, but it is not exempt from the
-// post-build sufficiency check either: unlike the early check
-// (checkStackSizeRequirements), which only has a lower bound and so can only
-// warn even when that bound already exceeds stack_size, this later check
-// reads the core's actual compiled frame back from its object and so has the
-// TRUE requirement. An explicit value that is provably too small is exactly
-// as wrong as an absent one defaulting to too little -- shipping it as a
-// warning would ship a proven overflow, so it is a hard build failure too,
-// just as stack_size_absent_insufficient_error.mlir is for the absent case.
+// An explicit stack_size is never overwritten, but it's not exempt from the
+// post-build sufficiency check: unlike the early check
+// (checkStackSizeRequirements), which only has a lower bound, this later
+// check reads the core's true compiled frame back from its object. A
+// provably-too-small explicit value is a hard build failure here too, just
+// as stack_size_absent_insufficient_error.mlir is for the absent case.
 
 // REQUIRES: peano
 // RUN: rm -rf %t.d && mkdir -p %t.d

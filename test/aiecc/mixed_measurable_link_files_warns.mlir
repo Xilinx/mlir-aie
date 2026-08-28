@@ -5,17 +5,13 @@
 //
 //===----------------------------------------------------------------------===//
 
-// stack_size_unmeasurable_warns.mlir covers a core whose ONLY link_files
-// object is unmeasurable, where computeStackRequirement itself fails
-// (nullopt) because a reached symbol has no frame data at all. This test
-// covers the other unmeasurable path: a core with a MIX of a measurable
-// object (entry_a, actually called and reachable) and an unmeasurable one (an
-// archive, never referenced by anything the core calls). The stack
-// requirement is still computed SUCCESSFULLY (the archive's contents are
-// never reached), and warns purely because not every link_files artifact
-// could be inspected, not because the computed number is missing. This is
-// checkStackSizeRequirements' "if (!skipped.empty())" branch (IRTransforms.h),
-// which otherwise only had the all-unmeasurable case above.
+// Where stack_size_unmeasurable_warns.mlir covers a core whose ONLY
+// link_files object is unmeasurable (computeStackRequirement itself fails),
+// this covers a core with a MIX: a measurable object (entry_a, actually
+// reached) and an unmeasurable one (an archive, never referenced). The
+// requirement is still computed successfully, and warns purely because not
+// every artifact could be inspected -- checkStackSizeRequirements'
+// `if (!skipped.empty())` branch (IRTransforms.h).
 
 // REQUIRES: peano
 // RUN: rm -rf %t.d && mkdir -p %t.d

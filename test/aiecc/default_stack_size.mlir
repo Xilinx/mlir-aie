@@ -5,14 +5,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-// --default-stack-size is a design-wide stand-in for the target's built-in
-// stack_size default (AIETargetModel::getDefaultCoreStackSize(), 1024 here),
-// for any core -- like this one -- that leaves stack_size absent. Once
-// applied, the core is assumed to have that many bytes for the rest of the
-// build, exactly as if it had been written explicitly: the diagnostics below
-// say "stack_size = K is insufficient (... assuming K bytes)", not
-// "stack_size is absent (... assuming the device default)", once the flag
-// supplies a value.
+// --default-stack-size stands in for the target's built-in default (1024
+// here) on any core, like this one, that leaves stack_size absent. Once
+// applied, the core is treated as if it had been written explicitly: the
+// diagnostic below says "stack_size = K is insufficient", not "stack_size is
+// absent".
 
 // REQUIRES: peano
 // RUN: rm -rf %t.d && mkdir -p %t.d

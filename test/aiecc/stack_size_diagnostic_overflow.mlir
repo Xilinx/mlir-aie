@@ -5,13 +5,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-// When buffer address assignment fails outright (oversized buffers here, same
-// technique as reserved_data_size_undersized.mlir), the existing MemoryMap
-// diagnostic must also show the call-graph analysis's computed stack
-// requirement alongside the stack region -- so a user sees stack, buffers,
-// and the analysis's own number together in one diagnostic instead of having
-// to cross-reference this failure with the separate warning emitted earlier
-// in the build (from checkStackSizeRequirements).
+// When buffer address assignment fails outright (oversized buffers, same
+// technique as reserved_data_size_undersized.mlir), the MemoryMap diagnostic
+// must also show the call-graph analysis's computed stack requirement
+// alongside the stack region (see getComputedStackRequirement).
 
 // REQUIRES: peano
 // RUN: rm -rf %t.d && mkdir -p %t.d

@@ -22,15 +22,14 @@ using namespace xilinx::aiecc;
 namespace {
 
 // Find the one symbol of the requested type this object defines in section
-// `secIdx`. Returns empty if none, and marks `ambiguous` if more than one --
-// multiple same-typed symbols sharing a section breaks the section-index
-// attribution this analysis relies on throughout.
+// `secIdx`. Empty if none; marks `ambiguous` if more than one, since that
+// breaks the section-index attribution this analysis relies on throughout.
 //
 // Values are graph keys, not raw names: a `static` symbol is only visible in
-// its own object, so two objects can define an unrelated symbol under the
-// same name -- a bare-name key would alias them. Such a symbol's key is
-// qualified by its defining object's path (see graphKeyFor); a globally
-// bound symbol keeps its bare name, since cross-object calls resolve by name.
+// its own object, so a bare-name key would alias two objects' unrelated
+// same-named symbols. Such a key is qualified by its defining object's path
+// (see graphKeyFor); a globally bound symbol keeps its bare name, since
+// cross-object calls resolve by name.
 struct SectionOwners {
   llvm::DenseMap<uint64_t, std::string> bySection;
   llvm::DenseMap<uint64_t, bool> ambiguous;
@@ -113,13 +112,11 @@ llvm::StringRef resolveToOwningSymbol(const llvm::object::SymbolRef &sym,
   return owners.lookup((*secOrErr)->getIndex());
 }
 
-// Key a reference (a direct call target, or a function/data-table touch for
-// the indirect-call heuristic) by the same graph key its target's own
-// definition was registered under: undefined here must be globally bound
-// (only a global resolves across objects), so `bareName` is already right;
-// defined here resolves through its home section instead, giving a
-// locally-bound target its object-qualified key. Falls back to `bareName`
-// when that section is ambiguous, same as before this resolution existed.
+// Key a reference by the same graph key its target's own definition used:
+// undefined here must be globally bound, so `bareName` is already right;
+// defined here resolves through its home section instead, to pick up a
+// locally-bound target's object-qualified key. Falls back to `bareName` if
+// that section is ambiguous.
 llvm::StringRef resolveReferenceKey(const llvm::object::SymbolRef &sym,
                                     bool isUndefinedHere,
                                     llvm::StringRef bareName,
@@ -146,12 +143,10 @@ maxPathFrom(llvm::StringRef sym, const StackGraph &graph,
             llvm::StringMap<VisitState> &state, llvm::StringMap<int64_t> &memo,
             llvm::SmallVectorImpl<llvm::StringRef> &pathStack,
             std::string &error, StackRequirementFailure &failureKind) {
-  // An override cuts the subtree here: the analysis never looks past a
-  // symbol the user has explicitly sized, mirroring reserved_data_size's
-  // "explicit skips measurement entirely" rule. This is also how a
-  // recursive/indirectly-called symbol becomes resolvable at all: the user
-  // only ever needs to override the kernel entry point they already
-  // declared, not whatever internal symbol MLIR never saw.
+  // An override cuts the subtree here, which is also how a recursive or
+  // indirectly-called symbol becomes resolvable at all: the user only needs
+  // to override the kernel entry point they declared, not whatever internal
+  // symbol MLIR never saw.
   if (auto it = overrides.find(sym); it != overrides.end())
     return it->second;
 
@@ -271,13 +266,10 @@ bool xilinx::aiecc::addObjectToStackGraph(
 
   bool ok = true;
 
-  // Relocations are entries of a separate `.rela.X` section, not of the `X`
-  // section they modify -- `sec.relocations()` is only non-empty when `sec`
-  // itself is that relocation-holding section, and `sec.getRelocatedSection()`
-  // is what maps it back to `X` (its offsets, name, and executability all
-  // belong to `X`, not to `sec`). So the outer loop below walks every
-  // section looking for ones that hold relocations at all, then dispatches
-  // on what section those relocations modify.
+  // Relocations live in a separate `.rela.X` section from the `X` they
+  // modify, so walk every section for one that holds relocations, then
+  // dispatch on `getRelocatedSection()` -- the `X` whose offsets/name/
+  // executability actually matter here.
   for (const llvm::object::SectionRef &sec : obj.sections()) {
     if (sec.relocation_begin() == sec.relocation_end())
       continue;
@@ -356,27 +348,22 @@ bool xilinx::aiecc::addObjectToStackGraph(
           ok = false;
           continue;
         }
-        // Distinct local (`static`) functions no longer collide here (their
-        // keys are qualified by defining object, see graphKeyFor), but two
-        // objects can still define the same *global* name (e.g. two weak
-        // definitions, where only one wins at link time) and this graph has
-        // no way to know which. Keeping the larger frame can only overcount,
-        // whereas letting the later object win could silently undercount
-        // whichever definition actually links in.
+        // Two objects can define the same *global* name (e.g. two weak
+        // definitions, where only one wins at link time); keeping the larger
+        // frame can only overcount, vs. letting the later object win, which
+        // could silently undercount whichever definition actually links in.
         int64_t &slot = graph.nodes[funcName].frameSize;
         slot = std::max(slot, static_cast<int64_t>(frameSize));
       }
       continue;
     }
 
-    // Otherwise: `modified` is the section these relocations patch --
-    // executable (code referencing something) or data (something's address
-    // stored here). For each relocation, decide whether its target is "a
-    // function": reliably so if defined here with ST_Function, or (since an
-    // undefined symbol's type is not trustworthy) if its name is in the
-    // whole core's function-name closure. An undefined *data* symbol that
-    // happens to share a name with a function defined elsewhere is therefore
-    // treated as a call; that only ever adds an edge, so it overcounts.
+    // Otherwise `modified` is executable or data. A relocation's target
+    // counts as "a function" if defined here with ST_Function, or (since an
+    // undefined symbol's type isn't trustworthy) its name is in the core's
+    // function-name closure -- so an undefined data symbol that happens to
+    // share a name with a function elsewhere is treated as a call, which
+    // only overcounts.
     llvm::StringRef ownerName = funcs.lookup(modified.getIndex());
     bool modifiedIsText = modified.isText();
     for (const llvm::object::RelocationRef &rel : sec.relocations()) {

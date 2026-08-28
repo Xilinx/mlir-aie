@@ -5,17 +5,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-// python/dialects/aie.py's external_func() already rejects a negative
-// stack_size_override before it reaches the IR (see its `>= 0` check), but
-// that guard is bypassed by hand-written MLIR like this file. A negative
-// override would subtract from whatever path reaches it in maxPathFrom,
-// undercounting a core's real requirement -- exactly the direction this
-// analysis must never be wrong in -- so aiecc must reject it directly
-// instead of trusting the attribute.
-//
-// This is checked unconditionally for every func.func in the module before
-// any core-level stack computation runs, so no real kernel object is needed
-// to observe the error.
+// external_func()'s `>= 0` check rejects a negative stack_size_override
+// before it reaches the IR, but hand-written MLIR like this bypasses it. A
+// negative override would subtract from a path total in maxPathFrom and
+// undercount, so aiecc must reject it directly. Checked for every func.func
+// before any core-level computation runs, so no kernel object is needed.
 
 // RUN: not %aiecc %s 2>&1 | FileCheck %s
 

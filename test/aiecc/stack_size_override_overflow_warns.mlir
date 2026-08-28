@@ -5,16 +5,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-// stack_size_override is looked up directly as a subtree total in
-// maxPathFrom, so an absurdly large (but non-negative, so
-// stack_size_override's own validation lets it through) override is a
-// simple, direct way to drive the computed requirement above what an i32
-// attribute holds -- the same risk a malformed .stack_sizes entry from a
-// hostile object file poses, without needing to hand-craft one. Silently
-// truncating that to i32 (as populateReservedDataSize's own INT32_MAX guard
-// already exists to prevent for reserved_data_size) would wrap to a small or
+// An absurdly large (but non-negative, so validation lets it through)
+// stack_size_override is a direct way to drive the computed requirement
+// above what an i32 attribute holds, without hand-crafting a malformed
+// .stack_sizes entry. Silently truncating to i32 would wrap to a small or
 // negative value and undercount; this must instead warn and leave
-// stack_size unvalidated for the core, never stamp a truncated number.
+// stack_size unvalidated, never stamp a truncated number.
 
 // REQUIRES: peano
 // RUN: rm -rf %t.d && mkdir -p %t.d

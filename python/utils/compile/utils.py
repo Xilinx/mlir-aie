@@ -330,12 +330,10 @@ def compile_cxx_core_function(
             f"--target={target_arch}-none-unknown-elf",
         ]
         if not inline:
-            # Matches the -stack-size-section aiecc's own core-object llc
-            # invocation passes; without it, kernel objects (where large
-            # frames actually live) carry no stack accounting at all.
-            # -ffunction-sections/-fdata-sections make that accounting
-            # unambiguous: the analysis attributes each entry by the section
-            # a symbol owns, which only works if each symbol has its own.
+            # Matches -stack-size-section on aiecc's own core-object llc
+            # invocation, so kernel objects carry stack accounting too.
+            # -f{function,data}-sections make the attribution unambiguous:
+            # each symbol needs its own section for the analysis to own it.
             cmd.extend(
                 ["-ffunction-sections", "-fdata-sections", "-fstack-size-section"]
             )

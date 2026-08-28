@@ -5,15 +5,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-// stack_size is absent (the common case -- most designs never set it), and
-// entry_a's real frame (~4160 bytes, see stack_size_max_not_sum_kernel.cc)
-// exceeds the device default (0x400 = 1024 bytes) that this core's buffers
-// were placed against. Today this silently corrupts memory at runtime;
-// instead, once the core's own compiled frame is known (only possible after
-// this build has already run to completion), the build must fail with the
-// exact value to declare -- never silently pick one itself, the same
-// "compiler measures and reports, user declares and rebuilds" rule as every
-// other check in this analysis.
+// stack_size is absent, and entry_a's real frame (~4160 bytes, see
+// stack_size_max_not_sum_kernel.cc) exceeds the device default (0x400 = 1024
+// bytes) buffers were placed against -- silent memory corruption today. Once
+// the core's own compiled frame is known, the build must fail naming the
+// exact value to declare, never silently pick one itself.
 
 // REQUIRES: peano
 // RUN: rm -rf %t.d && mkdir -p %t.d

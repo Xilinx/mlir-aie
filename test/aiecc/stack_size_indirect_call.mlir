@@ -5,22 +5,16 @@
 //
 //===----------------------------------------------------------------------===//
 
-// resolveIndirectCallEdges' conservative function-pointer-table inference
-// (see StackSizeAnalysis.h's file comment) is otherwise untested: every other
-// stack-size fixture only exercises direct func.call-derived relocations.
-// indirect_caller (see stack_size_indirect_call_kernel.cc) calls
-// target_fn only through a function pointer loaded from a global, so the
-// only way the analysis can fold target_fn's real (~4096-byte) frame into
-// indirect_caller's path is by combining "target_fn's address escapes into
-// g_dispatch" with "indirect_caller references g_dispatch" into a
-// conservative call edge.
+// Exercises resolveIndirectCallEdges' function-pointer-table inference (see
+// StackSizeAnalysis.h): indirect_caller (see stack_size_indirect_call_kernel.cc)
+// calls target_fn only through a function pointer loaded from a global, so
+// folding target_fn's real (~4096-byte) frame into indirect_caller's path
+// requires combining "target_fn's address escapes into g_dispatch" with
+// "indirect_caller references g_dispatch" into a conservative call edge.
 //
-// stack_size = 2048 sits below indirect_caller's own (trivial) frame plus
-// target_fn's real one, so correct inference must warn (and, since 2048 is
-// explicit and genuinely insufficient, ultimately fail) naming a large
-// number; if the indirect edge were never synthesized, indirect_caller would
-// appear to call nothing and the computed requirement would silently be just
-// its own tiny frame -- no warning at all.
+// stack_size = 2048 sits below the true total, so correct inference must warn
+// and then fail naming a large number; a missed edge would silently report
+// just indirect_caller's own tiny frame, with no warning at all.
 
 // REQUIRES: peano
 // RUN: rm -rf %t.d && mkdir -p %t.d
