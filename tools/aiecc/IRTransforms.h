@@ -742,8 +742,8 @@ getPlacementPipeline(mlir::MLIRContext *ctx, int coresPerCol,
   return pm;
 }
 
-// Trace flow + trace-config emission. The per-device work is nested; buffer
-// fusion is module-level because it rewrites callers and callees together.
+// Trace flow + trace-config emission. Buffer fusion is module-level: it
+// rewrites callers and callees together.
 inline std::unique_ptr<mlir::PassManager>
 getTracePipeline(mlir::MLIRContext *ctx) {
   auto pm = std::make_unique<mlir::PassManager>(ctx);

@@ -38,7 +38,7 @@ constexpr StringLiteral kTraceSlicesAttr = "aie.trace_slices";
 struct AIEFuseTraceBuffersPass
     : xilinx::AIEX::impl::AIEFuseTraceBuffersBase<AIEFuseTraceBuffersPass> {
 
-  // Bytes each sequence needs for itself and everything it calls.
+  // Bytes each sequence claims for itself and everything it calls.
   llvm::DenseMap<Operation *, int64_t> claim;
   // Flattened slice list per sequence, in fused-buffer order.
   llvm::DenseMap<Operation *, SmallVector<TraceSlice>> slices;
@@ -60,8 +60,8 @@ struct AIEFuseTraceBuffersPass
     return cast<IntegerAttr>(dict.get(name)).getInt();
   }
 
-  /// Give `seq` a single trace buffer covering its own traces and those of
-  /// every sequence it runs, and hand each call site its slice of it.
+  /// Give `seq` one trace buffer covering its own traces and those of every
+  /// sequence it calls, and pass each call site its slice.
   LogicalResult fuse(AIE::RuntimeSequenceOp seq) {
     if (!done.insert(seq.getOperation()).second)
       return success();
@@ -69,8 +69,7 @@ struct AIEFuseTraceBuffersPass
     SmallVector<RunOp> runs;
     seq.walk([&](RunOp run) { runs.push_back(run); });
 
-    // Callees first: a callee's claim is only final once its own callees have
-    // been folded into it.
+    // A callee's claim covers its own callees, so recurse before summing.
     for (RunOp run : runs) {
       AIE::RuntimeSequenceOp callee = run.getCalleeRuntimeSequenceOp();
       if (!callee)
@@ -89,8 +88,8 @@ struct AIEFuseTraceBuffersPass
     if (total == 0)
       return success();
 
-    // A sequence with nothing to distribute keeps the argument trace lowering
-    // already gave it.
+    // No callee claims to place: the argument from trace lowering already
+    // covers this sequence.
     bool needsFusing = total > ownClaim;
     if (!needsFusing) {
       slices[seq.getOperation()] = ownSlices(seq, ownBuffer, /*base=*/0);
@@ -116,8 +115,8 @@ struct AIEFuseTraceBuffersPass
       fusedArg = entry.addArgument(fusedType, seq.getLoc());
     }
 
-    // The sequence's own traces already patch against offsets from the start of
-    // this argument, so they keep the front of the buffer.
+    // This sequence's own patches use offsets from the argument base, so its
+    // traces must occupy the front.
     SmallVector<TraceSlice> flattened = ownSlices(seq, ownBuffer, /*base=*/0);
     int64_t cursor = ownClaim;
 
@@ -203,10 +202,10 @@ struct AIEFuseTraceBuffersPass
     return builder.getArrayAttr(entries);
   }
 
-  /// A `size`-byte window of `buffer` starting at `offset`, retyped to the
-  /// callee's argument type. `aiex.run` requires exact type equality, which the
-  /// subview's strided layout does not give; the reinterpret_cast drops it, and
-  /// `traceSubviewToBlockArgument` recovers the byte offset from the subview.
+  /// A `size`-byte window of `buffer` at `offset`, typed as the callee's
+  /// argument. `aiex.run` requires exact type equality, so the reinterpret_cast
+  /// erases the subview's strided layout. `traceSubviewToBlockArgument` reads
+  /// the byte offset from the subview.
   Value makeSlice(OpBuilder &builder, Location loc, Value buffer,
                   int64_t offset, MemRefType resultType) {
     int64_t size = resultType.getNumElements();

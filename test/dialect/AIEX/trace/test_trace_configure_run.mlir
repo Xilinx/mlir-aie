@@ -12,15 +12,15 @@
 
 module {
   aie.device(npu1_1col) @main {
-    // The fused buffer is appended after the data arguments, so their indices
-    // are untouched. 2 x 8192 bytes, one region per configured device.
+    // The fused buffer follows the data arguments, so their indices are
+    // unchanged. 2 x 8192 bytes, one region per configured device.
     // CHECK-LABEL: aie.runtime_sequence @main_seq
     // CHECK-SAME: memref<64xi32>, %{{.*}}: memref<64xi32>, %{{.*}}: memref<16384xi8>
     // CHECK-SAME: aie.trace_slices = [
     // CHECK-SAME: {device = "dev_a", offset = 0 : i64, sequence = "seq_a", size = 8192 : i64}
     // CHECK-SAME: {device = "dev_b", offset = 8192 : i64, sequence = "seq_b", size = 8192 : i64}
     aie.runtime_sequence @main_seq(%arg0: memref<64xi32>, %arg1: memref<64xi32>) {
-      // Both patches name the fused buffer (host buffer 2); the slice offset
+      // Both patches name the fused buffer (host buffer 2). The slice offset
       // reaches the BD through arg_plus.
       // CHECK: aiex.npu.load_pdi {device_ref = @dev_a}
       // CHECK: aiex.npu.address_patch(%[[OFFA:.*]] : i32) {{{.*}}arg_idx = 2 : i32}

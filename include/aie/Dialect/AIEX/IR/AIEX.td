@@ -1064,14 +1064,13 @@ def AIE_NpuAddressPatchOp: AIEX_Op<"npu.address_patch", [
     precedence. Only the EmitC (C++ TXN) target supports a runtime `addr_val`;
     the static binary target requires the constant `addr`.
 
-    The host buffer is named either by the `arg_idx` attribute or by the
-    `buffer` operand, and exactly one of the two must be present. `arg_idx` is a
-    host-buffer operand index of the enclosing runtime sequence, which only
-    holds once the op sits in the sequence the host dispatches. An op emitted
-    into a callee sequence that `aiex.run` later inlines cannot know that index,
-    so it names the memref instead and `-aie-resolve-address-patch-buffers`
-    resolves it after inlining, folding the buffer's byte offset into
-    `arg_plus`.
+    Exactly one of the `arg_idx` attribute and the `buffer` operand names the
+    host buffer. `arg_idx` is a host-buffer index of the enclosing runtime
+    sequence, so it holds only in the sequence the host dispatches. A callee
+    sequence that `aiex.run` inlines has a different argument list, so a patch
+    emitted there names the memref. `-aie-resolve-address-patch-buffers`
+    converts the operand to an index after inlining and adds the buffer's byte
+    offset to `arg_plus`.
   }];
   let builders = [
     OpBuilder<(ins "uint32_t":$addr, "mlir::Value":$addr_val,

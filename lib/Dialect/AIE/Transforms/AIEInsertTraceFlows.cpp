@@ -143,11 +143,9 @@ struct AIEInsertTraceFlowsPass
     //     existing argument (an output buffer), saving a host buffer. No new
     //     argument is added; the offset skips past the output data.
     //
-    // The patch names the buffer by SSA value rather than by index. An index
-    // only holds within this sequence, and `aiex.run` may inline this sequence
-    // into a caller whose argument list is different;
-    // -aie-resolve-address-patch-buffers turns the value back into an index
-    // once the op has reached the sequence the host dispatches.
+    // The patch names the buffer by SSA value: an index holds only within this
+    // sequence, and `aiex.run` may inline this sequence into a caller with a
+    // different argument list.
     Value traceBuffer;
     BlockArgument appendedTraceArg; // null when reusing the output buffer
     int traceBufferOffset = 0;      // in bytes
@@ -175,8 +173,8 @@ struct AIEInsertTraceFlowsPass
       traceBufferOffset = memrefType.getNumElements() *
                           (memrefType.getElementTypeBitWidth() / 8);
     } else {
-      // Element type/size is not part of the host ABI (the host sizes the
-      // buffer itself); use an i8 memref so the byte size is self-describing.
+      // An i8 memref makes the type state the buffer's byte size, which both
+      // the host and -aie-fuse-trace-buffers read.
       auto traceBufType = MemRefType::get(
           {bufferSizeBytes}, IntegerType::get(device.getContext(), 8));
       Block &entryBB = runtimeSeq.getBody().front();
@@ -568,9 +566,9 @@ struct AIEInsertTraceFlowsPass
       }
     }
 
-    // A second S2MM channel doubles the bytes the DMAs write. Restate the
-    // appended argument at the size actually claimed: the host sizes its buffer
-    // from this type, and -aie-fuse-trace-buffers packs slices against it.
+    // A second S2MM channel doubles the bytes the DMAs write. The host and
+    // -aie-fuse-trace-buffers both size against this type, so it must state the
+    // full claim.
     int traceBytesClaimed = bufferSizeBytes;
     for (auto &[col, shimInfo] : shimInfos)
       for (auto &chanDesc : shimInfo.channels)
@@ -581,8 +579,8 @@ struct AIEInsertTraceFlowsPass
       appendedTraceArg.setType(MemRefType::get(
           {traceBytesClaimed}, IntegerType::get(device.getContext(), 8)));
 
-    // -aie-fuse-trace-buffers needs to find this argument and know its claim
-    // without re-deriving either from the host_config and channel policy.
+    // -aie-fuse-trace-buffers reads this to locate the argument and its claim
+    // without re-deriving them from host_config and the channel policy.
     runtimeSeq->setAttr(
         "aie.trace_buffer",
         builder.getDictionaryAttr(
@@ -1043,10 +1041,6 @@ private:
   /// Build channel descriptors. Always includes the primary channel.
   /// Adds a secondary channel when distribute-channels is enabled and there
   /// are multiple traces. AIE2 shim tiles have exactly 2 S2MM DMA channels.
-  ///
-  /// Both channels share the same host buffer, split by offset: channel 0
-  /// starts at the base bufferOffset, channel 1 at bufferOffset +
-  /// bufferSizeBytes.
   std::vector<ChannelDescriptor>
   buildChannelDescriptors(size_t numTraces, int primaryChannel, int primaryBdId,
                           int baseBufferOffset, int bufferSizeBytes,

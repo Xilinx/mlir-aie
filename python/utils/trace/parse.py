@@ -48,11 +48,10 @@ def _device_name(device_op):
 def get_trace_slices(mlir_module_str):
     """The trace buffer's layout, as recorded on the dispatched runtime sequence.
 
-    A design that runs several sub-designs through `aiex.configure` shares one
-    trace buffer between them, and `-aie-fuse-trace-buffers` records who owns
-    which byte range. Returns a list of dicts with ``device``, ``sequence``,
-    ``offset`` and ``size``, in buffer order, or ``[]`` when the buffer belongs
-    to a single design.
+    Sub-designs run through `aiex.configure` share one trace buffer, and
+    `-aie-fuse-trace-buffers` records which byte range belongs to which design.
+    Returns a list of dicts with ``device``, ``sequence``, ``offset`` and
+    ``size``, in buffer order, or ``[]`` for a single-design buffer.
     """
     RuntimeSequenceOp = getattr(aiedialect, "RuntimeSequenceOp")
     with Context(), Location.unknown():
@@ -84,11 +83,11 @@ def get_trace_slices(mlir_module_str):
 def parse_trace_slices(trace_buffer, mlir_module_str, colshift=None):
     """Parse a shared trace buffer into one event list per traced sub-design.
 
-    Each slice is decoded against the configuration of the device that wrote it,
-    so two sub-designs occupying the same tiles stay distinguishable.
+    Each slice is decoded against the device that wrote it, which separates two
+    sub-designs that occupy the same tiles.
 
-    Returns a list of ``(slice_info, events)``. Falls back to a single entry
-    covering the whole buffer for a design with no recorded layout.
+    Returns a list of ``(slice_info, events)``. A buffer with no recorded layout
+    yields one entry covering all of it.
     """
     slices = get_trace_slices(mlir_module_str)
     if not slices:
@@ -510,10 +509,10 @@ def parse_mlir_trace_events(mlir_module_str, colshift=None, device_name=None):
         if not devices:
             raise ValueError("no aie.device in the given MLIR module")
 
-        # A fused module holds one device per traced design, each with its own
-        # tile coordinates and event assignment. Scanning them all would key
-        # two designs' configurations to the same (row, col) and let the last
-        # one win, so a caller parsing one slice names the device that wrote it.
+        # A fused module holds one device per traced design, and two designs
+        # often occupy the same tiles. A whole-module scan keys both event
+        # assignments to one (row, col), so a caller parsing one slice names
+        # the device that wrote it.
         if device_name is None:
             device_op = devices[0]
             scope = module.operation

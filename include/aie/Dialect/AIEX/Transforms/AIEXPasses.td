@@ -273,18 +273,17 @@ def AIEFuseTraceBuffers : Pass<"aie-fuse-trace-buffers", "mlir::ModuleOp"> {
   let summary = "Give every traced sequence a slice of one fused trace buffer";
   let description = [{
     Trace lowering appends a trace buffer to each traced `aie.runtime_sequence`
-    independently, so a sequence reached through `aiex.configure` / `aiex.run`
-    ends up with an argument its call site does not supply.
+    on its own, so a sequence that `aiex.run` calls gains an argument its call
+    site does not supply.
 
-    This pass replaces those per-sequence buffers with a single buffer on the
-    sequence the host dispatches. Each `aiex.run` receives a `memref.subview` of
-    it, sized to what that callee claims, so two calls of the same design write
-    to different regions. Offsets follow from the call order: a sequence's own
-    traces take the front, then each call site in turn.
+    This pass gives the sequence the host dispatches one trace buffer and passes
+    each `aiex.run` a `memref.subview` of it, sized to that callee's claim. Two
+    calls of one design therefore write to different regions. A sequence's own
+    traces take the front of the buffer, then each call site in turn.
 
-    The resulting layout is recorded on the dispatched sequence as an
-    `aie.trace_slices` array of `{device, sequence, offset, size}`, which is what
-    lets a host attribute each region of the buffer to the design that wrote it.
+    The pass records the layout on the dispatched sequence as an
+    `aie.trace_slices` array of `{device, sequence, offset, size}`. A host reads
+    it to attribute each region to the design that wrote it.
 
     Run after the trace pipeline and before `-aie-materialize-runtime-sequences`.
   }];
@@ -301,13 +300,12 @@ def AIEResolveAddressPatchBuffers
     : Pass<"aie-resolve-address-patch-buffers", "AIE::DeviceOp"> {
   let summary = "Turn an address patch's buffer operand into a host buffer index";
   let description = [{
-    Rewrites `aiex.npu.address_patch` ops that name their host buffer by SSA
-    value into the `arg_idx` form the targets emit, folding the buffer's byte
-    offset into `arg_plus`.
+    Rewrites each `aiex.npu.address_patch` that names its host buffer by SSA
+    value into the `arg_idx` form the targets emit, and adds the buffer's byte
+    offset to `arg_plus`.
 
-    Run after `-aie-materialize-runtime-sequences`: only once inlining has moved
-    the op into the sequence the host dispatches does an index exist to resolve
-    to.
+    Run after `-aie-materialize-runtime-sequences`. An index exists only in the
+    sequence the host dispatches, and inlining is what moves the op there.
   }];
 
   let constructor = "xilinx::AIEX::createAIEResolveAddressPatchBuffersPass()";
