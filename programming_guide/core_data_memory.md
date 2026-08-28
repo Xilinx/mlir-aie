@@ -26,8 +26,10 @@ failure modes were correspondingly opaque: a stack that quietly overwrote the
 buffers directly above it, or a linker "could not find free space" error that
 named neither the tile nor the buffers responsible.
 
-The compiler now measures and checks all three regions. This page describes the
-attributes and flags that control that, and what to do when a check fires.
+The compiler now measures and checks the **stack** region against what a
+core's call graph actually needs; this page describes the attributes and
+flags that control that check, and what to do when it fires. (The core's own
+compiled sections are reserved and validated by a separate, later change.)
 
 The guiding rule throughout is *the compiler measures and reports; you declare
 and rebuild.* Any value you set explicitly — including an explicit `0` — is
@@ -49,8 +51,8 @@ frames exceed the reservation overwrites the buffers above it. To catch that,
 `stack_size` against it. The analysis parses the `.stack_sizes` sections emitted
 by every kernel object, builds a call graph across the core's `link_files`, and
 takes the **maximum over all root-to-leaf call paths** — not the sum, because
-only one call chain is live at a time. (Static data, by contrast, all coexists,
-which is why `reserved_data_size` below *is* a sum.)
+only one call chain is live at a time (unlike static data, which all coexists
+regardless of control flow).
 
 The check happens in two places, because the two halves of the requirement
 become knowable at different times:
@@ -61,15 +63,10 @@ become knowable at different times:
   `stack_size` is a proven problem, so it warns; a value that fits proves
   nothing, so it stays silent.
 - After the build, `aiecc` reads the core's now-compiled frame back from its
-  object and combines it with the lower bound to get the true requirement. If
-  `stack_size` was left absent and the device default turns out to be
-  insufficient, this is a hard build failure that names the exact value to set.
-
-This asymmetry is only in the *early* check, which only ever warns because its
-number is a lower bound that proves nothing when it happens to fit. The later,
-post-build check has the true total, so it fails the build on an explicit
-`stack_size` that is provably too small exactly as it does on an absent one —
-a warning there would ship a proven overflow.
+  object and combines it with the lower bound to get the true requirement.
+  This is the true total, so it fails the build — even on an explicit
+  `stack_size` — rather than warn: a warning here would ship a proven
+  overflow.
 
 ## Overriding a kernel's stack contribution: `stack_size_override`
 
@@ -144,10 +141,7 @@ validated for this core` (warning).** A symbol could not be measured — a missi
 `link_merge_files` dependency. This is the common case for pre-existing kernel
 objects and is *not* fatal; the compiler simply cannot validate `stack_size` for
 this core. If you want validation, set `stack_size_override` on the affected
-kernel so the analysis has a number to trust. (Note the deliberate severity
-split: an *unmeasurable* symbol only warns, but a genuine *cycle* is a hard
-error — undercounting the stack corrupts memory, whereas an unknown value can
-safely be left unchecked.)
+kernel so the analysis has a number to trust.
 
 **`stack_size is absent ... but this core's real requirement is N bytes; set
 stack_size = N explicitly on this aie.core ... and rebuild` (error).** The
@@ -162,12 +156,3 @@ bytes; increase stack_size to N ... and rebuild` (error).** Same as above, but
 An explicit value is never silently changed, so this is still a hard failure,
 not a warning: increase it to `N` and rebuild, or pass `--no-auto-stack-size`
 to skip the check.
-
-**`buffers leave only N contiguous bytes for the core's data sections, which
-need M bytes` (warning).** The buffers were all placed, but the largest
-surviving run is too small for the core's own sections. The free space is simply
-too broken up. Options, cheapest first: reduce L1 buffer usage on the tile;
-force tight packing on that tile with `allocation_scheme="basic-sequential"` (or
-`--alloc-scheme=basic-sequential` design-wide), which packs from the bottom and
-leaves one big run; or, if the total genuinely does not fit, move data off the
-tile.

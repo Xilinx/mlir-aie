@@ -328,9 +328,9 @@ inline mlir::LogicalResult checkStackSizeRequirements(mlir::ModuleOp module,
       return;
     }
 
-    // Mirrors populateReservedDataSize's INT32_MAX guard below: a value that
-    // doesn't fit the attribute's i32 must not be silently narrowed, which
-    // would wrap to a small or negative number and undercount.
+    // A value that doesn't fit the attribute's i32 must not be silently
+    // narrowed, which would wrap to a small or negative number and
+    // undercount.
     if (*stackRes.bytes > INT32_MAX) {
       coreOp.emitWarning()
           << "stack requirement computed as " << *stackRes.bytes
