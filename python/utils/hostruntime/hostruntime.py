@@ -156,6 +156,7 @@ class HostRuntime(ABC):
         trace_config: TraceConfig | None = None,
         fail_on_error: bool = True,
         only_if_loaded=False,
+        dispatch_insts: np.ndarray | None = None,
         **kwargs,
     ) -> KernelResult:
         """Run a loaded kernel.
@@ -166,6 +167,12 @@ class HostRuntime(ABC):
             trace_config (TraceConfig | None, optional): Configuration for tracing. Defaults to None.
             fail_on_error (bool, optional): Whether to raise an exception on kernel failure. Defaults to True.
             only_if_loaded (bool, optional): If True, only run if already loaded. Defaults to False.
+            dispatch_insts (np.ndarray | None, optional): Freshly-generated
+                instruction words for a DispatchTime[T] design (see
+                ``_maybe_generate_dispatch_insts``), to be submitted
+                *instead of* any static instruction stream the kernel handle
+                may hold. ``None`` for a design with no DispatchTime[T]
+                parameters -- the ordinary static/cached path.
             **kwargs: Additional arguments.
 
         Returns:
@@ -173,10 +180,42 @@ class HostRuntime(ABC):
         """
         pass
 
+    def _maybe_generate_dispatch_insts(
+        self, npu_kernel: NPUKernel, dispatch_scalars: dict | None
+    ) -> np.ndarray | None:
+        """Return fresh instruction words for a DispatchTime[T] design, or ``None``.
+
+        Fully backend-agnostic: validates *dispatch_scalars* against the
+        compiled design's declared ``DispatchTime[T]`` parameters and, if any
+        are declared, calls the design's ``DispatchBridge`` to
+        synthesize this call's instruction stream. Every backend calls this
+        the same way; only what a backend does with the returned words
+        (rebuild a BO, memmove into a device buffer, rebuild an executable...)
+        is backend-specific -- see each concrete ``run()``.
+        """
+        dispatch_params = getattr(npu_kernel, "dispatch_params", None) or []
+        dispatch_scalars = dispatch_scalars or {}
+        if not dispatch_params:
+            if dispatch_scalars:
+                raise HostRuntimeError(
+                    f"got dispatch scalar(s) {list(dispatch_scalars)} but this "
+                    "compiled design declares no DispatchTime[T] parameters"
+                )
+            return None
+        missing = set(dispatch_params) - set(dispatch_scalars)
+        extra = set(dispatch_scalars) - set(dispatch_params)
+        if missing or extra:
+            raise HostRuntimeError(
+                f"dispatch scalar mismatch: missing={missing or None} "
+                f"extra={extra or None}; design expects exactly {dispatch_params}"
+            )
+        return npu_kernel._get_dispatch_bridge().generate(dispatch_scalars)
+
     def load_and_run(
         self,
         npu_kernel: NPUKernel,
         run_args: list,
+        dispatch_scalars: dict | None = None,
         **kwargs,
     ) -> tuple[KernelHandle, KernelResult]:
         """Load and run an NPU kernel.
@@ -184,6 +223,11 @@ class HostRuntime(ABC):
         Args:
             npu_kernel (NPUKernel): The NPU kernel to load and run.
             run_args (list): Arguments to pass to the kernel.
+            dispatch_scalars (dict | None, optional): DispatchTime[T] scalar
+                values for this call, keyed by parameter name. Popped here
+                (never forwarded to ``load()``) so a design with
+                DispatchTime[T] parameters actually reaches ``run()``,
+                which is where the fresh instruction stream is needed.
             **kwargs: Additional arguments passed to load.
 
         Returns:
@@ -191,6 +235,9 @@ class HostRuntime(ABC):
         """
         trace_config = npu_kernel.trace_config
         handle = self.load(npu_kernel, **kwargs)
+        dispatch_insts = self._maybe_generate_dispatch_insts(
+            npu_kernel, dispatch_scalars
+        )
         if trace_config:
             if trace_config.reuse_output_buffer and len(run_args) > 0:
                 trace_config.last_tensor_shape = run_args[-1].shape
@@ -215,7 +262,12 @@ class HostRuntime(ABC):
                     f"land."
                 )
 
-        ret = self.run(handle, list(run_args), trace_config=trace_config)
+        ret = self.run(
+            handle,
+            list(run_args),
+            trace_config=trace_config,
+            dispatch_insts=dispatch_insts,
+        )
 
         if trace_config:
             trace_buffer, ctrl_buffer = self.extract_trace_from_args(

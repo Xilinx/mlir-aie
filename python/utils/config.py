@@ -78,6 +78,97 @@ def aiecc_path():
     )
 
 
+def aie_opt_path():
+    """Return the aie-opt executable used to lower a dynamic runtime sequence.
+
+    Resolution order: the AIE_OPT_PATH environment variable, then the
+    MLIR-AIE bin directory, then PATH. Mirrors :func:`aiecc_path`.
+    """
+    env_aie_opt = os.environ.get("AIE_OPT_PATH")
+    if env_aie_opt:
+        if not os.path.isfile(env_aie_opt):
+            raise RuntimeError(
+                f"AIE_OPT_PATH is set to {env_aie_opt}, but no such file exists."
+            )
+        return env_aie_opt
+
+    bundled_aie_opt = os.path.join(root_path(), "bin", _executable_name("aie-opt"))
+    if os.path.isfile(bundled_aie_opt):
+        return bundled_aie_opt
+
+    path_aie_opt = shutil.which(_executable_name("aie-opt"))
+    if path_aie_opt:
+        return path_aie_opt
+
+    raise RuntimeError(
+        "Could not find aie-opt. Resolves in the order of the AIE_OPT_PATH "
+        "environment variable, MLIR-AIE bin directory, then PATH."
+    )
+
+
+def aie_translate_path():
+    """Return the aie-translate executable used to emit a dynamic TXN builder.
+
+    Resolution order: the AIE_TRANSLATE_PATH environment variable, then the
+    MLIR-AIE bin directory, then PATH. Mirrors :func:`aiecc_path`.
+    """
+    env_aie_translate = os.environ.get("AIE_TRANSLATE_PATH")
+    if env_aie_translate:
+        if not os.path.isfile(env_aie_translate):
+            raise RuntimeError(
+                f"AIE_TRANSLATE_PATH is set to {env_aie_translate}, but no "
+                f"such file exists."
+            )
+        return env_aie_translate
+
+    bundled_aie_translate = os.path.join(
+        root_path(), "bin", _executable_name("aie-translate")
+    )
+    if os.path.isfile(bundled_aie_translate):
+        return bundled_aie_translate
+
+    path_aie_translate = shutil.which(_executable_name("aie-translate"))
+    if path_aie_translate:
+        return path_aie_translate
+
+    raise RuntimeError(
+        "Could not find aie-translate. Resolves in the order of the "
+        "AIE_TRANSLATE_PATH environment variable, MLIR-AIE bin directory, "
+        "then PATH."
+    )
+
+
+def host_cxx_path():
+    """Return a HOST-target (x86_64) C++ compiler.
+
+    Used to compile the dynamic dispatch bridge shared library that Python
+    loads via ``ctypes``. This is deliberately NOT :func:`peano_cxx_path` --
+    Peano's clang++ only
+    targets ``aie2*-none-unknown-elf`` (AIE core object files for linking
+    into an xclbin); it cannot produce a host-loadable ``.so``.
+
+    Resolution order: the CXX environment variable, then ``c++``/``g++``/
+    ``clang++`` on PATH.
+    """
+    env_cxx = os.environ.get("CXX")
+    if env_cxx:
+        found = shutil.which(env_cxx)
+        if not found:
+            raise RuntimeError(f"CXX is set to {env_cxx!r}, but it was not found.")
+        return found
+
+    for candidate in ("c++", "g++", "clang++"):
+        found = shutil.which(candidate)
+        if found:
+            return found
+
+    raise RuntimeError(
+        "Could not find a host C++ compiler (checked CXX env var, then "
+        "c++/g++/clang++ on PATH). Required to compile the dynamic dispatch "
+        "bridge for DispatchTime[T] designs."
+    )
+
+
 def objcopy_path():
     """Return the llvm-objcopy used to rename symbols in compiled objects.
 

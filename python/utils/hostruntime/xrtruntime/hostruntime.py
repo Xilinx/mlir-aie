@@ -148,17 +148,24 @@ class XRTHostRuntime(HostRuntime):
         if getattr(npu_kernel, "elf_path", None) is not None:
             return self._load_full_elf(npu_kernel)
 
-        # Not the full-ELF path, so the xclbin + insts pair is populated.
-        assert npu_kernel.xclbin_path is not None and npu_kernel.insts_path is not None
+        # Not the full-ELF path, so the xclbin is always populated. insts_path
+        # is None for a DispatchTime[T] design -- it synthesizes a fresh
+        # instruction stream per call via its dispatch bridge instead of
+        # reading a static insts.bin (see run()'s dispatch_insts handling).
+        assert npu_kernel.xclbin_path is not None
         xclbin_path = Path(npu_kernel.xclbin_path).resolve()
-        insts_path = Path(npu_kernel.insts_path).resolve()
+        insts_path = (
+            Path(npu_kernel.insts_path).resolve() if npu_kernel.insts_path else None
+        )
         kernel_name = npu_kernel.kernel_name
 
         if not xclbin_path.exists() or not xclbin_path.is_file():
             raise HostRuntimeError(
                 f"xclbin {xclbin_path} does not exist or is not a file."
             )
-        if not insts_path.exists() or not insts_path.is_file():
+        if insts_path is not None and (
+            not insts_path.exists() or not insts_path.is_file()
+        ):
             raise HostRuntimeError(
                 f"insts {insts_path} does not exist or is not a file."
             )
@@ -180,7 +187,7 @@ class XRTHostRuntime(HostRuntime):
                     f"Kernel {kernel_name} not found in xclbin (kernels found: {available_kernels})"
                 )
 
-        insts = self.read_insts(insts_path)
+        insts = self.read_insts(insts_path) if insts_path is not None else None
         if hasattr(pyxrt, "module") and isinstance(insts, pyxrt.module):
             kernel = pyxrt.ext.kernel(context, insts, kernel_name)
         else:
@@ -221,6 +228,7 @@ class XRTHostRuntime(HostRuntime):
         trace_config=None,
         fail_on_error: bool = True,
         only_if_loaded: bool = False,
+        dispatch_insts=None,
         **kwargs,
     ) -> XRTKernelResult:
         """Run a loaded XRT kernel.
@@ -231,6 +239,10 @@ class XRTHostRuntime(HostRuntime):
             trace_config (optional): Configuration for tracing. Defaults to None.
             fail_on_error (bool, optional): Whether to raise an exception on kernel failure. Defaults to True.
             only_if_loaded (bool, optional): Accepted for API compatibility with the runtime base class.
+            dispatch_insts (np.ndarray | None, optional): Freshly-generated
+                instruction words for a DispatchTime[T] design. When set, a
+                fresh (never cached) instruction BO is built from these words
+                every call, instead of reading ``kernel_handle.insts``.
             **kwargs: Additional arguments.
 
         Returns:
@@ -284,20 +296,32 @@ class XRTHostRuntime(HostRuntime):
         insts_bo = None
         insts_bytes = 0
         try:
-            is_module = hasattr(pyxrt, "module") and isinstance(
-                kernel_handle.insts, pyxrt.module
-            )
-            if not is_module:
-                insts_bytes = kernel_handle.insts.nbytes
-                if kernel_handle.insts_bo:
-                    insts_bo = kernel_handle.insts_bo
-                else:
-                    insts_bo = self._tensor_class(
-                        kernel_handle.insts,
-                        flags=pyxrt.bo.cacheable,
-                        group_id=kernel_handle.kernel.group_id(1),
-                        xrt_device=self._device,
-                    ).buffer_object()
+            if dispatch_insts is not None:
+                # DispatchTime[T] design: this call's words are freshly
+                # synthesized and never reused, so always build an uncached
+                # BO for them -- never touch kernel_handle.insts_bo.
+                insts_bytes = dispatch_insts.nbytes
+                insts_bo = self._tensor_class(
+                    dispatch_insts,
+                    flags=pyxrt.bo.cacheable,
+                    group_id=kernel_handle.kernel.group_id(1),
+                    xrt_device=self._device,
+                ).buffer_object()
+            else:
+                is_module = hasattr(pyxrt, "module") and isinstance(
+                    kernel_handle.insts, pyxrt.module
+                )
+                if not is_module:
+                    insts_bytes = kernel_handle.insts.nbytes
+                    if kernel_handle.insts_bo:
+                        insts_bo = kernel_handle.insts_bo
+                    else:
+                        insts_bo = self._tensor_class(
+                            kernel_handle.insts,
+                            flags=pyxrt.bo.cacheable,
+                            group_id=kernel_handle.kernel.group_id(1),
+                            xrt_device=self._device,
+                        ).buffer_object()
 
             start = time.perf_counter_ns()
             h = kernel_handle.kernel(3, insts_bo, insts_bytes, *buffers)
@@ -580,6 +604,7 @@ class CachedXRTRuntime(XRTHostRuntime):
         trace_config=None,
         fail_on_error: bool = True,
         only_if_loaded: bool = False,
+        dispatch_insts=None,
         **kwargs,
     ) -> XRTKernelResult:
         """Run a loaded XRT kernel.
@@ -590,6 +615,8 @@ class CachedXRTRuntime(XRTHostRuntime):
             trace_config (optional): Configuration for tracing. Defaults to None.
             fail_on_error (bool, optional): Whether to raise an exception on kernel failure. Defaults to True.
             only_if_loaded (bool, optional): If True, only run if the kernel is currently loaded in the cache. Defaults to False.
+            dispatch_insts (np.ndarray | None, optional): See
+                ``XRTHostRuntime.run()``.
             **kwargs: Additional arguments.
 
         Returns:
@@ -605,7 +632,14 @@ class CachedXRTRuntime(XRTHostRuntime):
             ):
                 raise HostRuntimeError("Kernel not loaded (evicted from cache)")
 
-        return super().run(kernel_handle, args, trace_config, fail_on_error, **kwargs)
+        return super().run(
+            kernel_handle,
+            args,
+            trace_config,
+            fail_on_error,
+            dispatch_insts=dispatch_insts,
+            **kwargs,
+        )
 
     def load_and_run(self, npu_kernel, run_args, **kwargs):
         """Wrap the base implementation to paper over a Phoenix firmware-state quirk.
@@ -759,20 +793,28 @@ class CachedXRTRuntime(XRTHostRuntime):
             return self._load_full_elf_cached(npu_kernel, retry=retry)
 
         xclbin_path = Path(npu_kernel.xclbin_path).resolve()
-        insts_path = Path(npu_kernel.insts_path).resolve()
+        # insts_path is None for a DispatchTime[T] design -- its instruction
+        # stream is synthesized fresh per call (run()'s dispatch_insts), so
+        # there is nothing here to cache: skip the insts.bin read/cache
+        # entirely and always load a plain (non-ext) kernel below.
+        insts_path = (
+            Path(npu_kernel.insts_path).resolve() if npu_kernel.insts_path else None
+        )
         kernel_name = npu_kernel.kernel_name
 
         if not xclbin_path.exists() or not xclbin_path.is_file():
             raise HostRuntimeError(
                 f"xclbin {xclbin_path} does not exist or is not a file."
             )
-        if not insts_path.exists() or not insts_path.is_file():
+        if insts_path is not None and (
+            not insts_path.exists() or not insts_path.is_file()
+        ):
             raise HostRuntimeError(
                 f"insts {insts_path} does not exist or is not a file."
             )
 
         xclbin_mtime = xclbin_path.stat().st_mtime
-        insts_mtime = insts_path.stat().st_mtime
+        insts_mtime = insts_path.stat().st_mtime if insts_path is not None else None
 
         # Context Cache Lookup
         context_key = (str(xclbin_path), xclbin_mtime)
@@ -845,7 +887,11 @@ class CachedXRTRuntime(XRTHostRuntime):
                         f"Kernel {kernel_name} not found in xclbin (kernels found: {available_kernels})"
                     )
 
-            insts = self._read_insts_cached(insts_path, insts_mtime)
+            insts = (
+                self._read_insts_cached(insts_path, insts_mtime)
+                if insts_path is not None
+                else None
+            )
             insts_bo = None
             if hasattr(pyxrt, "module") and isinstance(insts, pyxrt.module):
                 ext_kernel_key = (kernel_name, str(insts_path), insts_mtime)
@@ -858,6 +904,15 @@ class CachedXRTRuntime(XRTHostRuntime):
                 if kernel_name not in entry["kernels"]:
                     entry["kernels"][kernel_name] = pyxrt.kernel(context, kernel_name)
                 kernel = entry["kernels"][kernel_name]
+
+                if insts_path is None:
+                    # DispatchTime[T] design: no static insts to cache --
+                    # run() builds a fresh, uncached BO from dispatch_insts.
+                    kernel_handle = CachedXRTKernelHandle(
+                        kernel, xclbin, context, None, None
+                    )
+                    entry["handles"].append(weakref.ref(kernel_handle))
+                    return kernel_handle
 
                 # Magic number for RyzenAI group id that will be fixed in the future. See same code at XRT:
                 # https://github.com/Xilinx/XRT/blob/56222ed5cfd119dff0d5bd920735b87024e8c829/src/runtime_src/core/common/api/xrt_module.cpp#L1621

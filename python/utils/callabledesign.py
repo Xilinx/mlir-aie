@@ -242,6 +242,8 @@ class CallableDesign:
                 kernel_name="MLIR_AIE",
                 trace_config=trace_config,
                 num_host_bos=num_host_bos,
+                dispatch_params=compilable.dispatch_params,
+                dispatch_lib_path=compilable.get_dispatch_lib_path(),
             )
         if compilable.use_cache:
             self._kernel_cache[cache_key] = kernel
@@ -289,14 +291,17 @@ class CallableDesign:
 
         # Guard 3-C: too many positional args.
         if callable(self.compilable.mlir_generator):
-            max_positional = len(self.compilable.tensor_params) + len(
-                self.compilable.scalar_params
+            max_positional = (
+                len(self.compilable.tensor_params)
+                + len(self.compilable.dispatch_params)
+                + len(self.compilable.scalar_params)
             )
             if len(runtime_args) > max_positional:
                 raise TypeError(
                     f"{self.compilable.generator_name!r} takes at most "
                     f"{max_positional} positional argument(s) "
                     f"(tensor: {len(self.compilable.tensor_params)}, "
+                    f"dispatch: {len(self.compilable.dispatch_params)}, "
                     f"scalar: {len(self.compilable.scalar_params)}) "
                     f"but {len(runtime_args)} were given.\n"
                     f"  CompileTime[T] parameters {self.compilable.compile_params} "

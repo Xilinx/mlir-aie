@@ -3,6 +3,8 @@
 # Copyright (C) 2025-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
+from pathlib import Path
+
 from .trace import TraceConfig
 
 
@@ -18,6 +20,8 @@ class NPUKernel:
         trace_config: TraceConfig | None = None,
         num_host_bos: int | None = None,
         elf_path=None,
+        dispatch_params: list[str] | None = None,
+        dispatch_lib_path=None,
     ):
         """Initialize the NPUKernel.
 
@@ -25,7 +29,10 @@ class NPUKernel:
             xclbin_path (str | Path | None): Path to the xclbin file. ``None``
                 on the full-ELF path (see ``elf_path``).
             insts_path (str | Path | None): Path to the instructions file.
-                ``None`` on the full-ELF path.
+                ``None`` on the full-ELF path, and on a DispatchTime[T]
+                design (see ``dispatch_params``) -- both synthesize their
+                instruction stream some other way instead of reading a
+                static ``insts.bin``.
             device_index (int, optional): Device index. Defaults to 0.
             kernel_name (str, optional): Name of the kernel. Defaults to
                 "MLIR_AIE". On the full-ELF path this is the
@@ -44,6 +51,14 @@ class NPUKernel:
                 command-chain minimum), so it is the correct value to validate
                 host buffer counts against. ``None`` when it could not be
                 determined (validation is then skipped).
+            dispatch_params (list[str] | None, optional): Declared
+                ``DispatchTime[T]`` parameter names for this design, in
+                declaration order. ``None``/empty for a design with no
+                DispatchTime[T] parameters (the ordinary static/cached path).
+            dispatch_lib_path (str | Path | None, optional): Path to the
+                compiled dispatch bridge (``dispatch.so``) for a
+                DispatchTime[T] design. Required (non-None) whenever
+                ``dispatch_params`` is non-empty.
         """
         self._xclbin_path = xclbin_path
         self._insts_path = insts_path
@@ -52,6 +67,9 @@ class NPUKernel:
         self._trace_config = trace_config
         self._device_index = device_index
         self._num_host_bos = num_host_bos
+        self._dispatch_params = list(dispatch_params) if dispatch_params else []
+        self._dispatch_lib_path = dispatch_lib_path
+        self._dispatch_bridge = None
 
     @property
     def trace_config(self) -> TraceConfig | None:
@@ -109,6 +127,37 @@ class NPUKernel:
         """
         return self._num_host_bos
 
+    @property
+    def dispatch_params(self) -> list[str]:
+        """Get the declared ``DispatchTime[T]`` parameter names, in order.
+
+        Returns:
+            list[str]: Empty for a design with no DispatchTime[T] parameters.
+        """
+        return self._dispatch_params
+
+    def _get_dispatch_bridge(self):
+        """Return this kernel's ``DispatchBridge``, constructing it once.
+
+        Deferred (function-local) imports: ``compile.jit`` is not imported at
+        ``aie.utils`` load time, and ``_dispatch_bridge`` itself imports back
+        into ``aie.utils.hostruntime`` (for ``HostRuntimeError``), which
+        imports ``NPUKernel`` from this module -- a module-level import here
+        would be circular.
+        """
+        if self._dispatch_bridge is None:
+            from .compile.jit._dispatch_bridge import DispatchBridge
+            from .compile.jit._dispatch_compile import _parse_signature
+
+            header_path = Path(self._dispatch_lib_path).parent / "dispatch_gen.h"
+            header_text = header_path.read_text()
+            _func_name, params = _parse_signature(header_text, self._dispatch_params)
+            param_ctypes = [ctype for ctype, _name in params]
+            self._dispatch_bridge = DispatchBridge(
+                self._dispatch_lib_path, self._dispatch_params, param_ctypes
+            )
+        return self._dispatch_bridge
+
     # Blocking call.
     def __call__(self, *args, **kwargs):
         """Run the kernel with the given arguments.
@@ -126,8 +175,13 @@ class NPUKernel:
 
         if DefaultNPURuntime is None:
             raise Exception("Cannot run kernel; DefaultNPURuntime not set.")
+
+        dispatch_names = set(self._dispatch_params)
+        dispatch_scalars = {k: v for k, v in kwargs.items() if k in dispatch_names}
+        other_kwargs = {k: v for k, v in kwargs.items() if k not in dispatch_names}
         return DefaultNPURuntime.load_and_run(
             self,
             list(args),
-            **kwargs,
+            dispatch_scalars=dispatch_scalars or None,
+            **other_kwargs,
         )
