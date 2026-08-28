@@ -20,11 +20,16 @@
 # needed since a single BD descriptor already carries the runtime tile count
 # via its `sizes`/`strides`/`transfer_len`.
 #
-# NOTE: this is the FIRST design ever compiled through the DispatchTime[T]
-# host bridge (Phase 2.3) -- the aiecc/aie-opt/aie-translate/host-C++-compile
-# pipeline this exercises has not been run end-to-end on real hardware by the
-# author (no working local build this session; see project memory). Verify
-# on real XRT hardware before trusting this as a regression guard.
+# NOTE: the compile-time pipeline (aie-opt dynamic lowering + aie-translate
+# --aie-npu-to-cpp + host-compile of dispatch.so + ctypes call, including
+# multiple DispatchTime[T] values against one compiled artifact) has been
+# verified end-to-end against real, hardware-proven dynamic MLIR designs
+# (adapted from dynamic_pingpong_passthrough) -- see project memory. What has
+# NOT been verified is an actual NPU dispatch through THIS specific IRON-level
+# design (no pyxrt build available for the Python version this was developed
+# against). Verify on real XRT hardware before trusting this as a regression
+# guard; the fill/drain sizes/strides/offset/transfer_len math below is a
+# first draft against the IRON API by inspection, not compiled.
 
 import aie.iron as iron
 import numpy as np

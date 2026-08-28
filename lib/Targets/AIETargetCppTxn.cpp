@@ -22,9 +22,10 @@
 using namespace mlir;
 
 LogicalResult xilinx::AIE::AIETranslateNpuToCpp(ModuleOp module,
-                                                raw_ostream &output) {
+                                                raw_ostream &output,
+                                                bool foldDDRAddrOffset) {
   PassManager pm(module.getContext());
-  pm.addPass(xilinx::createConvertAIEXToEmitCPass());
+  pm.addPass(xilinx::createConvertAIEXToEmitCPass(foldDDRAddrOffset));
   if (failed(pm.run(module)))
     return failure();
   return emitc::translateToCpp(module, output);

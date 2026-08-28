@@ -307,10 +307,22 @@ class CompilableDesign:
 
         full_elf = self.full_elf or full_elf_path is not None
         if full_elf and has_dispatch:
+            # Architectural boundary, not a TODO: a full ELF bakes a single
+            # static TXN (control code) into the ELF at aiecc build time, and
+            # the XRT full-ELF dispatch path (pyxrt.ext.kernel + xrt::run
+            # .set_arg/.start) has no instruction-buffer argument at all --
+            # there is nowhere to hand it a per-call TXN, unlike the
+            # xclbin+insts.bin path. Supporting this would mean redesigning
+            # full-ELF packaging to carry an external/swappable TXN, which
+            # cuts against full-ELF's whole point (a single self-contained
+            # artifact) and is a separate, much larger project.
             raise NotImplementedError(
-                "DispatchTime[T] + full_elf=True is not supported yet; "
-                "compile without full_elf for a design with DispatchTime[T] "
-                "parameters."
+                "DispatchTime[T] + full_elf=True is not supported: a full ELF "
+                "bakes one static instruction stream into the ELF at compile "
+                "time, and XRT's full-ELF dispatch path has no instruction-"
+                "buffer argument to swap in a per-call one -- unlike the "
+                "xclbin + insts.bin path. Compile without full_elf for a "
+                "design with DispatchTime[T] parameters."
             )
         if full_elf:
             return self._compile_full_elf(ExternalFunction, full_elf_path)
@@ -478,7 +490,7 @@ class CompilableDesign:
                     from ._dispatch_compile import compile_dispatch_bridge
 
                     dispatch_so_path = compile_dispatch_bridge(
-                        kernel_dir, self.dispatch_params
+                        kernel_dir, self.dispatch_params, fold_ddr_addr_offset
                     )
                     if not dispatch_so_path.exists():
                         raise RuntimeError(

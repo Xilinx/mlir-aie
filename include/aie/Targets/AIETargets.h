@@ -70,7 +70,8 @@ mlir::LogicalResult AIETranslateNpuToBinary(
     llvm::StringRef sequenceName = "",
     std::vector<TxnLocEntry> *locmap = nullptr, bool foldDDRAddrOffset = true);
 mlir::LogicalResult AIETranslateNpuToCpp(mlir::ModuleOp module,
-                                         llvm::raw_ostream &output);
+                                         llvm::raw_ostream &output,
+                                         bool foldDDRAddrOffset = true);
 mlir::LogicalResult AIETranslateToUcDma(mlir::ModuleOp module,
                                         llvm::raw_ostream &output);
 mlir::LogicalResult AIETranslateToUcDma(mlir::ModuleOp module,

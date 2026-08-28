@@ -38,6 +38,15 @@
 #include "llvm/Support/Format.h"
 
 namespace xilinx {
+// Both DECL (the ConvertAIEXToEmitCOptions struct) and DEF (the Base class)
+// are needed here: unlike other passes' consumers in this codebase, this file
+// defines an explicit ConvertAIEXToEmitCPass(ConvertAIEXToEmitCOptions)
+// constructor below (createConvertAIEXToEmitCPass(bool) needs to construct
+// the pass with a non-default option programmatically, not via a textual
+// pass-pipeline string), which forces instantiation of the Base class's
+// matching constructor -- that requires ConvertAIEXToEmitCOptions to actually
+// be declared in this translation unit.
+#define GEN_PASS_DECL_CONVERTAIEXTOEMITC
 #define GEN_PASS_DEF_CONVERTAIEXTOEMITC
 #include "aie/Conversion/Passes.h.inc"
 } // namespace xilinx
@@ -49,6 +58,16 @@ namespace {
 
 // The C++ type of the TXN accumulator the generated function builds.
 constexpr llvm::StringLiteral kTxnVecType = "std::vector<uint32_t>";
+
+// Mirrors AIETargetNPU.cpp's appendAddressPatch: the "instruction buffer"
+// runtime (xclbin + insts.bin) has the NPU firmware pre-translate host buffer
+// addresses into the AIE address space by adding this offset, but only for
+// the first kNumFirmwareTranslatedArgs host arguments; a later argument's DDR
+// patch must fold the same offset into arg_plus to land at the correct AIE
+// address. Kept as a separate file-local copy (not a shared header) to match
+// AIETargetNPU.cpp's own existing convention for these two constants.
+constexpr uint32_t kDDRAIEAddrOffset = 0x80000000;
+constexpr uint32_t kNumFirmwareTranslatedArgs = 5;
 
 emitc::OpaqueType getU32Type(MLIRContext *ctx) {
   return emitc::OpaqueType::get(ctx, "uint32_t");
@@ -90,9 +109,10 @@ struct DeviceResolved {
 class AIEXToEmitCConverter {
 public:
   AIEXToEmitCConverter(emitc::FuncOp funcOp, Value txnVec,
-                       const DeviceResolved &resolved, Value opCountVar)
+                       const DeviceResolved &resolved, Value opCountVar,
+                       bool foldDDRAddrOffset)
       : funcOp(funcOp), txnVec(txnVec), resolved(resolved),
-        opCountVar(opCountVar) {}
+        opCountVar(opCountVar), foldDDRAddrOffset(foldDDRAddrOffset) {}
 
   // Convert every npu/pool op in the body, recursing into scf regions. Returns
   // the compile-time op count for a straight-line body (the literal op_count),
@@ -203,8 +223,21 @@ private:
               b, loc, emitc::OpaqueType::get(b.getContext(), "int32_t"),
               emitc::OpaqueAttr::get(b.getContext(),
                                      std::to_string(ap.getArgIdx())));
+          // Mirror AIETargetNPU.cpp's static-path fold: fold the AIE DDR
+          // aperture offset into arg_plus for a host arg beyond the
+          // firmware-translated set. arg_plus may itself be a runtime SSA
+          // value (a runtime-parameterized buffer offset), so the add is a
+          // real arith op here, lowered by convert-arith-to-emitc below like
+          // any other scalar computation in this sequence.
+          Value argPlusV = ap.getArgPlus();
+          if (foldDDRAddrOffset && ap.getArgIdx() >= kNumFirmwareTranslatedArgs) {
+            Value offsetV = arith::ConstantOp::create(
+                b, loc,
+                b.getI32IntegerAttr(static_cast<int32_t>(kDDRAIEAddrOffset)));
+            argPlusV = arith::AddIOp::create(b, loc, argPlusV, offsetV);
+          }
           emitTxnCall(b, loc, "txn_append_address_patch", txnVec,
-                      {addrV, idxV, ap.getArgPlus()});
+                      {addrV, idxV, argPlusV});
           countOp(b, loc, count);
         })
         .Case<AIEX::NpuBlockWriteOp>([&](auto bw) {
@@ -406,10 +439,20 @@ private:
   bool ok = true;
   // Counter for unique popped-BD-id C++ variable names.
   unsigned nextPoolVar = 0;
+  bool foldDDRAddrOffset;
 };
 
 struct ConvertAIEXToEmitCPass
     : xilinx::impl::ConvertAIEXToEmitCBase<ConvertAIEXToEmitCPass> {
+  ConvertAIEXToEmitCPass() = default;
+  // foldDDRAddrOffset is `protected` on the TableGen-generated base (it's a
+  // Pass::Option<bool>, publicly settable only via the -pass-pipeline string
+  // form); this constructor is the programmatic equivalent, used by
+  // createConvertAIEXToEmitCPass(bool) below for callers (AIETranslateNpuToCpp)
+  // that aren't going through a textual pass pipeline.
+  explicit ConvertAIEXToEmitCPass(const ConvertAIEXToEmitCOptions &options)
+      : ConvertAIEXToEmitCBase(options) {}
+
   void runOnOperation() override {
     ModuleOp moduleOp = getOperation();
     MLIRContext *ctx = &getContext();
@@ -616,7 +659,8 @@ private:
       });
     }
 
-    AIEXToEmitCConverter conv(funcOp, txnVec, resolved, opCountVar);
+    AIEXToEmitCConverter conv(funcOp, txnVec, resolved, opCountVar,
+                             foldDDRAddrOffset);
     std::optional<uint32_t> count = conv.run();
     if (!count)
       return failure();
@@ -650,4 +694,11 @@ private:
 std::unique_ptr<OperationPass<ModuleOp>>
 xilinx::createConvertAIEXToEmitCPass() {
   return std::make_unique<ConvertAIEXToEmitCPass>();
+}
+
+std::unique_ptr<OperationPass<ModuleOp>>
+xilinx::createConvertAIEXToEmitCPass(bool foldDDRAddrOffset) {
+  ConvertAIEXToEmitCOptions options;
+  options.foldDDRAddrOffset = foldDDRAddrOffset;
+  return std::make_unique<ConvertAIEXToEmitCPass>(options);
 }

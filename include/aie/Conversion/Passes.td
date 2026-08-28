@@ -101,6 +101,17 @@ def ConvertAIEXToEmitC : Pass<"convert-aiex-to-emitc", "mlir::ModuleOp"> {
   let dependentDialects = ["mlir::emitc::EmitCDialect",
                            "xilinx::AIE::AIEDialect",
                            "xilinx::AIEX::AIEXDialect"];
+  let options = [
+      Option<"foldDDRAddrOffset", "fold-ddr-addr-offset", "bool",
+             /*default=*/"true",
+             "Fold the AIE DDR-aperture offset into the arg_plus of DDR "
+             "address patches for host arguments beyond the firmware-"
+             "translated set (mirrors -aie-npu-fold-ddr-addr-offset on the "
+             "static aie-npu-to-binary path). Required for the xclbin + "
+             "instruction-buffer runtime; must be false for the full-ELF "
+             "(xrt.ext.kernel) runtime and for HRX, which translate every "
+             "host buffer address themselves.">
+  ];
 }
 
 //===----------------------------------------------------------------------===//

@@ -50,24 +50,9 @@ _DYNAMIC_LOWERING_PASSES = [
     "--aie-lower-set-lock",
 ]
 
-# The NPU firmware ABI (xclbin + insts.bin, "kernel(opcode, insts_bo, ninsts,
-# host_bo0, ...)") auto-translates host buffer addresses for only the first
-# this-many arguments; a DDR address_patch for any later argument must fold
-# in the AIE DDR aperture offset (0x80000000) to land correctly. Confirmed at
-# lib/Targets/AIETargetNPU.cpp:127-145. AIEXToEmitC.cpp's NpuAddressPatchOp
-# conversion (the dynamic path) has no equivalent fold -- confirmed by reading
-# AIEXToEmitC.cpp:197-208, which passes arg_plus straight through. Until that
-# C++ gap is fixed, a dispatch design needs at most this many host tensor
-# buffers (arg_idx 0-2 are the fixed opcode/insts_bo/ninsts slots, so this
-# allows 2 tensor buffers: arg_idx 3 and 4).
-_NUM_FIRMWARE_TRANSLATED_ARGS = 5
-
 _GENERATE_TXN_SIGNATURE_RE = re.compile(
     r"inline\s+std::optional<std::vector<uint32_t>>\s+"
     r"(generate_txn_\w+)\s*\(([^)]*)\)"
-)
-_ADDRESS_PATCH_CALL_RE = re.compile(
-    r"aie_runtime::txn_append_address_patch\([^,]+,[^,]+,\s*(\d+)\s*[,)]"
 )
 
 
@@ -103,11 +88,33 @@ def _lower_dynamic_runtime_sequence(kernel_dir: Path) -> Path:
     return lowered_mlir
 
 
-def _translate_to_cpp(lowered_mlir: Path, kernel_dir: Path) -> Path:
-    """Run aie-translate --aie-npu-to-cpp; return the generated header path."""
+def _translate_to_cpp(
+    lowered_mlir: Path, kernel_dir: Path, fold_ddr_addr_offset: bool
+) -> Path:
+    """Run aie-translate --aie-npu-to-cpp; return the generated header path.
+
+    ``fold_ddr_addr_offset`` mirrors the static path's flag of the same name
+    (``compilabledesign.py``'s ``_resolve_fold_ddr_addr_offset()``): the
+    firmware auto-translates host buffer addresses for only the first 5
+    arguments, so a DDR address_patch for a later argument must fold the AIE
+    DDR aperture offset into ``arg_plus`` itself -- required for XRT/HSA
+    (which consume the folded firmware ABI), and must be off for HRX (which
+    translates every host buffer address itself; folding here too would
+    double-translate it). This is a compile-time choice baked into the
+    generated function, exactly like the static insts.bin is compiled once
+    per fold choice -- not a per-call runtime option.
+    """
     header_path = kernel_dir / "dispatch_gen.h"
+    fold_flag = (
+        f"--aie-npu-fold-ddr-addr-offset={'true' if fold_ddr_addr_offset else 'false'}"
+    )
     stdout = _run(
-        [config.aie_translate_path(), "--aie-npu-to-cpp", str(lowered_mlir)],
+        [
+            config.aie_translate_path(),
+            "--aie-npu-to-cpp",
+            fold_flag,
+            str(lowered_mlir),
+        ],
         "aie-translate",
     )
     header_path.write_text(stdout)
@@ -119,19 +126,30 @@ def _parse_signature(
 ) -> tuple[str, list[tuple[str, str]]]:
     """Return ``(func_name, [(ctype, name), ...])`` for the sole ``generate_txn_*``.
 
-    Raises if none or more than one such function is present (v1 supports
-    only a single-device, single-runtime-sequence design), or if the
+    Raises if none or more than one such function is present, or if the
     parameter count doesn't match ``len(dispatch_params)`` -- the generator
     author is responsible for passing DispatchTime[T] values into
     ``Runtime(inputs=[...])`` in declaration order (this only catches a count
     mismatch, e.g. a forgotten or extra scalar, not a silent reordering).
+
+    The "exactly one" requirement is not a gap in AIEXToEmitC.cpp -- it
+    already emits one correctly-named generate_txn_<device>_<sequence>
+    function per (aie.device, aie.runtime_sequence) pair in the module. It
+    reflects a real, current limit one level up: `iron.Program` takes exactly
+    one `Device` and one `Runtime`, so no design built through the normal
+    @iron.jit/Program/Runtime API can ever produce more than one. Revisit
+    only if Program itself grows multi-device support -- a separate, larger
+    feature than this one.
     """
     matches = _GENERATE_TXN_SIGNATURE_RE.findall(header_text)
     if len(matches) != 1:
         raise DispatchCompileError(
             f"expected exactly one generate_txn_* function in the generated "
-            f"header, found {len(matches)}. Multi-device / multi-runtime-"
-            f"sequence DispatchTime[T] designs are not supported yet."
+            f"header, found {len(matches)}. A multi-device or multi-runtime-"
+            f"sequence module cannot be built through iron.Program today "
+            f"(it takes exactly one Device and one Runtime), so this isn't "
+            f"reachable via @iron.jit; wiring it up needs Program itself to "
+            f"support multiple devices/sequences first."
         )
     func_name, params_str = matches[0]
     params_str = params_str.strip()
@@ -153,34 +171,6 @@ def _parse_signature(
             f"order."
         )
     return func_name, params
-
-
-def _check_address_patch_fold_gap(header_text: str) -> None:
-    """Raise if any address_patch targets a host buffer beyond the firmware-translated range.
-
-    AIEXToEmitC.cpp does not fold the DDR aperture offset the way
-    AIETargetNPU.cpp does for the static path (see module docstring and
-    _NUM_FIRMWARE_TRANSLATED_ARGS above). Unverified without a >2-buffer
-    dynamic design to test against, so this is rejected outright rather than
-    silently producing wrong DMA addresses.
-    """
-    bad_indices = sorted(
-        {
-            int(idx)
-            for idx in _ADDRESS_PATCH_CALL_RE.findall(header_text)
-            if int(idx) >= _NUM_FIRMWARE_TRANSLATED_ARGS
-        }
-    )
-    if bad_indices:
-        raise DispatchCompileError(
-            f"design has host buffer(s) at arg_idx {bad_indices}, beyond the "
-            f"firmware-translated range (0-{_NUM_FIRMWARE_TRANSLATED_ARGS - 1}, "
-            f"i.e. at most 2 host tensor buffers). The dynamic C++ TXN "
-            f"builder does not fold the AIE DDR aperture offset for these "
-            f"(a known gap in AIEXToEmitC.cpp, unlike the static path's "
-            f"AIETargetNPU.cpp), so DispatchTime[T] designs are limited to 2 "
-            f"host tensor buffers until that is fixed."
-        )
 
 
 def _write_wrapper_cpp(
@@ -243,7 +233,9 @@ def _compile_wrapper(wrapper_cpp: Path, kernel_dir: Path) -> Path:
     return so_path
 
 
-def compile_dispatch_bridge(kernel_dir: Path, dispatch_params: list[str]) -> Path:
+def compile_dispatch_bridge(
+    kernel_dir: Path, dispatch_params: list[str], fold_ddr_addr_offset: bool = True
+) -> Path:
     """Build ``kernel_dir/dispatch.so`` for a design with DispatchTime[T] params.
 
     Must be called after the xclbin build (which writes
@@ -251,11 +243,17 @@ def compile_dispatch_bridge(kernel_dir: Path, dispatch_params: list[str]) -> Pat
     only on a cache miss -- this function does no idempotency checking of its
     own; the caller's cache-hit gate is the single source of truth for
     whether recompilation is needed.
+
+    ``fold_ddr_addr_offset`` must match the value the caller resolved for the
+    active backend (``CompilableDesign._resolve_fold_ddr_addr_offset()``) --
+    see ``_translate_to_cpp``'s docstring. Already part of the on-disk cache
+    key via ``_hash.py``'s unconditional ``fold_ddr_addr_offset`` hash input,
+    so an XRT/HSA compile and an HRX compile of the same design never share a
+    cache entry (matching the static insts.bin path).
     """
     lowered_mlir = _lower_dynamic_runtime_sequence(kernel_dir)
-    header_path = _translate_to_cpp(lowered_mlir, kernel_dir)
+    header_path = _translate_to_cpp(lowered_mlir, kernel_dir, fold_ddr_addr_offset)
     header_text = header_path.read_text()
     func_name, params = _parse_signature(header_text, dispatch_params)
-    _check_address_patch_fold_gap(header_text)
     wrapper_cpp = _write_wrapper_cpp(kernel_dir, func_name, params)
     return _compile_wrapper(wrapper_cpp, kernel_dir)
