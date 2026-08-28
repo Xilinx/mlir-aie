@@ -94,6 +94,20 @@ LogicalResult appendWrite32(std::vector<uint32_t> &instructions,
   return success();
 }
 
+LogicalResult appendMaskPoll(std::vector<uint32_t> &instructions,
+                             NpuMaskPollOp op) {
+  if (op.getBuffer())
+    return op.emitOpError("Cannot translate symbolic address");
+  std::optional<uint32_t> address = op.getAbsoluteAddress();
+  std::optional<uint32_t> value = AIEX::getConstantIntOperand(op.getValue());
+  std::optional<uint32_t> mask = AIEX::getConstantIntOperand(op.getMask());
+  if (!address || !value || !mask)
+    return op.emitOpError("Cannot translate maskpoll with non-constant "
+                          "address, value, or mask to a static TXN binary");
+  aie_runtime::txn_append_maskpoll(instructions, *address, *value, *mask);
+  return success();
+}
+
 LogicalResult appendMaskWrite32(std::vector<uint32_t> &instructions,
                                 NpuMaskWrite32Op op) {
   if (op.getBuffer())
@@ -440,6 +454,15 @@ LogicalResult xilinx::AIE::AIETranslateNpuToBinary(
                            "(--aie-npu-to-cpp)");
             result = failure();
           })
+          .Case<NpuMaskPollOp>([&](auto op) {
+            count++;
+            uint32_t before = byteOffset();
+            uint64_t addr = op.getAbsoluteAddress().value_or(0);
+            if (failed(appendMaskPoll(instructions, op)))
+              result = failure();
+            pushLocEntry(locmap, before, byteOffset(), "MASKPOLL",
+                         op->getName().getStringRef(), addr, op, tm);
+          })
           .Case<NpuMaskWrite32Op>([&](auto op) {
             count++;
             uint32_t before = byteOffset();
@@ -559,7 +582,18 @@ LogicalResult xilinx::AIE::AIETranslateControlPacketsToUI32Vec(
       hdr = (info.getPktType() & 0x7) << 12 | (info.getPktId() & 0xff);
     words[0] = hdr | (0x1 & parity(hdr)) << 31;
 
-    // control packet header
+    // control packet header. `beats` gets two bits, immediately above the
+    // address, so an oversized payload does not truncate -- it corrupts the
+    // address and the packet silently lands somewhere else. Ops may carry more
+    // than this before --aie-legalize-control-packet splits them, so the limit
+    // is enforced here, at the point the header is packed.
+    if (size > AIEX::NpuControlPacketOp::getMaxDataWords())
+      return packetOp.emitOpError("payload is ")
+             << size << " words; a control packet carries at most "
+             << AIEX::NpuControlPacketOp::getMaxDataWords()
+             << " on the wire. Run --aie-legalize-control-packet before "
+                "translating.";
+
     uint32_t addr = packetOp.getAddress() & 0xFFFFF;
     uint32_t beats = size - 1;
     uint32_t opc = packetOp.getOpcode();

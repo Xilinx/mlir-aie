@@ -300,6 +300,39 @@ public:
   /// Return the size (in bytes) of the local data memory of a core.
   virtual uint32_t getLocalMemorySize() const = 0;
 
+  /// Return the size (in bytes) of a core's program memory.
+  virtual uint32_t getProgramMemorySize() const = 0;
+
+  /// Return the offset of program memory within a tile's memory-mapped
+  /// configuration address space, i.e. where a control packet or block write
+  /// addresses it from outside the core. This is not the core's own view: a
+  /// core cannot read or write its program memory as data.
+  virtual uint32_t getProgramMemoryHostOffset() const = 0;
+
+  /// Return the width (in bytes) of a program-memory line, i.e. the granularity
+  /// at which a configuration write addresses program memory. Program memory is
+  /// 128 bits wide on every generation so far, so a write starting or ending off
+  /// a multiple of this straddles lines.
+  virtual uint32_t getProgramMemoryLine() const { return 16; }
+
+  /// Return the size (in bytes) of the program-memory region within which a
+  /// configuration write conflicts with the core's instruction fetch.
+  ///
+  /// Measured on AIE2P: a write to the region the core is currently fetching
+  /// from is *silently discarded* about half the time, while a write to any
+  /// other region always lands, with the core running and no halt or stall.
+  /// Code overlays therefore have to keep the slot being written and the code
+  /// being executed in different regions. See
+  /// test/npu-xrt/pm_write_while_running.
+  ///
+  /// std::nullopt means this has not been measured for the architecture.
+  /// Callers must refuse to place overlays rather than guess: the failure mode
+  /// is a dropped write with no diagnostic, so a wrong value miscompiles
+  /// silently.
+  virtual std::optional<uint32_t> getProgramMemoryWriteGranule() const {
+    return std::nullopt;
+  }
+
   /// Return the default stack reservation (in bytes) for a core, used when a
   /// design does not state one. The linker script places the stack directly
   /// below the objectFIFO buffers with no clearance, so a design whose frames
@@ -441,8 +474,11 @@ public:
   virtual uint32_t getNumMemTileRows() const = 0;
   /// Return the size (in bytes) of a MemTile.
   virtual uint32_t getMemTileSize() const = 0;
-  /// Return the number of memory banks of a given tile.
-  virtual uint32_t getNumBanks(int col, int row) const = 0;
+  /// Return the number of *data* memory banks of a given tile: the local
+  /// memory of a compute tile, or a MemTile's memory. Bank size is the
+  /// corresponding memory size divided by this. Program memory is a separate
+  /// address space and is not described by this.
+  virtual uint32_t getNumDataMemoryBanks(int col, int row) const = 0;
 
   virtual uint32_t getMaxChannelNumForAdjacentMemTile(int col,
                                                       int row) const = 0;
@@ -590,6 +626,8 @@ public:
   uint32_t getMemNorthBaseAddress() const override { return 0x00030000; }
   uint32_t getMemEastBaseAddress() const override { return 0x00038000; }
   uint32_t getLocalMemorySize() const override { return 0x00008000; }
+  uint32_t getProgramMemorySize() const override { return 0x00004000; }
+  uint32_t getProgramMemoryHostOffset() const override { return 0x00020000; }
   uint32_t getAccumulatorCascadeSize() const override { return 384; }
   uint32_t getComputeTileLoadStoreBusWidth() const override { return 128; }
 
@@ -642,7 +680,7 @@ public:
 
   uint32_t getNumMemTileRows() const override { return 0; }
   uint32_t getMemTileSize() const override { return 0; }
-  uint32_t getNumBanks(int col, int row) const override { return 4; }
+  uint32_t getNumDataMemoryBanks(int col, int row) const override { return 4; }
 
   uint32_t getMaxChannelNumForAdjacentMemTile(int col, int row) const override {
     return 0;
@@ -723,6 +761,8 @@ public:
   uint32_t getMemNorthBaseAddress() const override { return 0x00060000; }
   uint32_t getMemEastBaseAddress() const override { return 0x00070000; }
   uint32_t getLocalMemorySize() const override { return 0x00010000; }
+  uint32_t getProgramMemorySize() const override { return 0x00004000; }
+  uint32_t getProgramMemoryHostOffset() const override { return 0x00020000; }
   uint32_t getAccumulatorCascadeSize() const override { return 512; }
   uint32_t getComputeTileLoadStoreBusWidth() const override { return 256; }
 
@@ -799,7 +839,7 @@ public:
 
   uint32_t getMemTileSize() const override { return 0x00080000; }
 
-  uint32_t getNumBanks(int col, int row) const override {
+  uint32_t getNumDataMemoryBanks(int col, int row) const override {
     return getTileType(col, row) == AIETileType::MemTile ? 8 : 4;
   }
 
@@ -1047,6 +1087,15 @@ public:
   }
 
   AIEArch getTargetArch() const override;
+
+  /// Measured on Strix: program memory splits at 0x2000, and a configuration
+  /// write to the half the core is fetching from is silently discarded roughly
+  /// half the time. See test/npu-xrt/pm_write_while_running. Only AIE2P has
+  /// been characterized; the base class leaves this std::nullopt everywhere
+  /// else so overlays are refused rather than silently miscompiled.
+  std::optional<uint32_t> getProgramMemoryWriteGranule() const override {
+    return 0x00002000;
+  }
 
   int rows() const override {
     return 6; /* 1 Shim row, 1 memtile row, and 4 Core rows. */

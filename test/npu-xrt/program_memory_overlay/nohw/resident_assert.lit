@@ -1,0 +1,36 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// The resident must not grow into the slot, and the build must say so.
+//
+// This is the "very long mlir-aie-generated program memory" case: the resident
+// here is not a kernel object, it is the core body IRON generates, and its size
+// is driven by the phase count. Each phase body costs about 64 bytes over a
+// 304-byte base, so 123 phases lands just under the 0x2000 budget and 124 just
+// over.
+//
+// Driving it with a plain phase count matters. IRON's range_() emits an scf.for
+// whose size depends on whether LLVM's unroller expands it -- linear to about
+// N=16, then it collapses to a real loop and stays near 900 bytes however large
+// N gets. Straight-line bodies are what make this a knob at all.
+//
+// If the resident silently overran the slot, the first overlay written would
+// land on top of the core's own code.
+//
+// REQUIRES: peano
+//
+// RUN: rm -rf %t && mkdir -p %t
+// RUN: %PEANO_INSTALL_DIR/bin/clang++ --target=aie2p-none-unknown-elf -O2 -c %S/../resident.cc -o %t/resident.o
+//
+// Just under: 304 + 64*123 = 8176 <= 0x2000.
+// RUN: %python %S/../pm.py emit --recipe one_slot_tight --slot-ld %t/slot.ld --phases 0*123 --out %t/under.mlir
+// RUN: cd %t && %aiecc --tmpdir=%t/under --get-xclbin --xclbin-name=%t/under.xclbin --get-npu-insts --npu-insts-name=%t/under.bin %t/under.mlir
+//
+// Just over: 304 + 64*124 = 8240 > 0x2000, which is 48 bytes too many -- and the
+// linker says so, naming the section, the region and the amount. This used to be
+// an ASSERT smuggled into slot.ld; the core's program_memory_reserved attribute
+// shortens the program region instead, so the boundary is an ordinary link
+// constraint rather than a side effect of how lld treats an unrecognised input.
+// RUN: %python %S/../pm.py emit --recipe one_slot_tight --slot-ld %t/slot.ld --phases 0*124 --out %t/over.mlir
+// RUN: cd %t && not %aiecc --tmpdir=%t/over --get-xclbin --xclbin-name=%t/over.xclbin --get-npu-insts --npu-insts-name=%t/over.bin %t/over.mlir 2>&1 | FileCheck %s
+// CHECK: ld.lld: error: section '.text' will not fit in region 'program': overflowed by 48 bytes

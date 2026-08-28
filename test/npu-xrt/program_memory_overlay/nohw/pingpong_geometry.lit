@@ -1,0 +1,70 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// Two slots: the geometry, and the two direct call sites it requires.
+//
+// Everything ping-pong needs that can be checked without hardware. The
+// hardware half needs a mechanism that does not exist yet, and this test is
+// what pins the parts that do.
+//
+// Program memory is 0x4000 with a 0x2000 write granule, so there are exactly
+// two granules and the two slots take one each. That is forced, not chosen:
+// while either slot is written the core must be executing from the other, since
+// a write to the granule the core is fetching from is dropped about half the
+// time. The Slot's core_in field records which granule the core is in during
+// each write, and validate() checks it -- expressing the rule per slot rather
+// than as "must not share with the resident at 0" is what makes ping-pong
+// expressible at all. The stricter phrasing would rule it out by definition
+// rather than by evidence.
+//
+// What is still missing is the dispatch path in the upper granule. The core
+// returns from a slot into the resident, which lives at 0 -- so on the phase
+// where granule 0 is being written, the core would be executing the granule
+// being written. AIETargetLdScript.cpp emits a single `.text ... > program` and
+// aiecc links with --orphan-handling=error, so a link_with fragment, which
+// arrives as an INPUT(), cannot introduce a second output section to hold a
+// copy. That needs either a write-once bootstrap overlay or named-section
+// placement for core code.
+//
+// REQUIRES: peano
+//
+// RUN: rm -rf %t && mkdir -p %t
+// RUN: %PEANO_INSTALL_DIR/bin/clang++ --target=aie2p-none-unknown-elf -O2 -c %S/../resident.cc -o %t/resident.o
+//
+// RUN: %python %S/../pm.py geometry pingpong | FileCheck %s --check-prefix=GEOM
+// GEOM: write-granule 0x2000
+// GEOM: slot b 0x2000 0x1c00
+// GEOM-NEXT: slot a 0x400 0x1c00
+// GEOM-NEXT: bootstrap stub 0x3c00 0x400
+//
+// RUN: %python %S/../pm.py emit --recipe pingpong --slot-ld %t/slot.ld --phases 0,1 --out %t/d.mlir
+//
+// One symbol per slot: two slots cannot share a call site, because slot.ld
+// supplies absolute addresses rather than a table, so an indirect call would
+// have nothing to go through.
+// RUN: FileCheck %s --check-prefix=LD --input-file=%t/slot.ld
+// LD-DAG: overlay_entry_a = 0x400;
+// LD-DAG: overlay_entry_b = 0x2000;
+//
+// RUN: cd %t && %aiecc --tmpdir=%t/p1 --get-xclbin --xclbin-name=%t/p1.xclbin --get-npu-insts --npu-insts-name=%t/p1.bin %t/d.mlir
+//
+// Both entries are absolute with no body, exactly as in the single-slot case.
+// RUN: %PEANO_INSTALL_DIR/bin/llvm-readelf -s %t/p1/elfs_main_core_0_2/elfs_main_core_0_2.elf | FileCheck %s --check-prefix=SYM
+// SYM-DAG: 00000400 {{ *}}0 NOTYPE {{ *}}GLOBAL {{ *}}DEFAULT {{ *}}ABS overlay_entry_a
+// SYM-DAG: 00002000 {{ *}}0 NOTYPE {{ *}}GLOBAL {{ *}}DEFAULT {{ *}}ABS overlay_entry_b
+//
+// And the phase loop really did unroll into two direct jumps, one per slot,
+// rather than one call site reused.
+// RUN: %PEANO_INSTALL_DIR/bin/llvm-objdump -d %t/p1/elfs_main_core_0_2/elfs_main_core_0_2.elf | FileCheck %s --check-prefix=JUMP
+// JUMP-DAG: jl {{.*}}#0x400
+// JUMP-DAG: jl {{.*}}#0x2000
+//
+// Payload writes alternate between the two slots: 0x20400 and 0x22000 are the
+// host offset 0x20000 plus each slot's base.
+// RUN: %python %S/../pm.py workload --tag 1 --size 0x400 --output %t/w.o --workdir %t
+// RUN: %python %S/../pm.py link --object %t/w.o --resident %t/p1 --recipe pingpong --slot a --output %t/ovl_a.elf
+// RUN: %python %S/../pm.py link --object %t/w.o --resident %t/p1 --recipe pingpong --slot b --output %t/ovl_b.elf
+// RUN: %python %S/../pm.py emit --recipe pingpong --phases 0,1 --payload %t/ovl_a.elf --payload %t/ovl_b.elf --out %t/d2.mlir
+// RUN: FileCheck %s --check-prefix=ADDR --input-file=%t/d2.mlir
+// ADDR-DAG: aiex.npu.blockwrite({{.*}}) {address = 132096 : ui32
+// ADDR-DAG: aiex.npu.blockwrite({{.*}}) {address = 139264 : ui32

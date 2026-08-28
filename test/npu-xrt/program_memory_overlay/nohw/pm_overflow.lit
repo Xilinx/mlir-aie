@@ -1,0 +1,33 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// A core whose code exceeds program memory must fail at link.
+//
+// This is not an overlay property, it is the guard underneath the whole feature,
+// and it is a regression test for the linker script's `program` region length.
+// That length used to be hardcoded to 0x20000 -- eight times the real 0x4000 --
+// so a core that overran program memory linked cleanly and failed much later in
+// aie-rt's ELF loader with a bare "Overflow of program memory" and no mention of
+// which core or by how much. It is now driven by
+// AIETargetModel::getProgramMemorySize(). If it ever goes back to a fixed
+// number, the oversized case below starts linking and this test fails.
+//
+// slot.ld's own ASSERT is the tighter of the two guards and would fire first, so
+// --no-reserve takes it out of the way to reach the region overflow underneath.
+// The resident here is the mlir-aie-generated core body, sized by phase count at
+// 304 + 64*N bytes.
+//
+// REQUIRES: peano
+//
+// RUN: rm -rf %t && mkdir -p %t
+// RUN: %PEANO_INSTALL_DIR/bin/clang++ --target=aie2p-none-unknown-elf -O2 -c %S/../resident.cc -o %t/resident.o
+//
+// 304 + 64*251 = 16368, just inside the 16384-byte program memory.
+// RUN: %python %S/../pm.py emit --recipe one_slot_tight --no-reserve --slot-ld %t/slot.ld --phases 0*251 --out %t/fits.mlir
+// RUN: cd %t && %aiecc --tmpdir=%t/fits --get-xclbin --xclbin-name=%t/fits.xclbin --get-npu-insts --npu-insts-name=%t/fits.bin %t/fits.mlir
+//
+// 304 + 64*252 = 16432, which is 48 bytes too many -- and the linker says so,
+// naming the section, the region and the amount.
+// RUN: %python %S/../pm.py emit --recipe one_slot_tight --no-reserve --slot-ld %t/slot.ld --phases 0*252 --out %t/over.mlir
+// RUN: cd %t && not %aiecc --tmpdir=%t/over --get-xclbin --xclbin-name=%t/over.xclbin --get-npu-insts --npu-insts-name=%t/over.bin %t/over.mlir 2>&1 | FileCheck %s
+// CHECK: ld.lld: error: section '.text' will not fit in region 'program': overflowed by 48 bytes

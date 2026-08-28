@@ -94,6 +94,21 @@ inline BdPool bd_pool_init(uint32_t n) {
   return p;
 }
 
+// Withhold `id` from the pool, for a BD the static allocator already placed on
+// this tile. BD IDs index one table per tile, shared by the statically
+// configured DMAs and by this pool, so an id handed out here that a static BD
+// already owns would silently overwrite that BD's slot. The compiler emits one
+// of these per statically-assigned id on a pooled tile, right after
+// bd_pool_init; a tile carrying no static BDs emits none, leaving the pool and
+// the generated stream exactly as before.
+inline void bd_pool_reserve(BdPool &p, uint32_t id) {
+  for (int i = 0; i < p.head; ++i)
+    if (p.free_ids[i] == id) {
+      p.free_ids[i] = p.free_ids[--p.head];
+      return;
+    }
+}
+
 // Pop a free BD ID into `out`. Returns false if the pool is empty -- the
 // generated builder turns that into a `return std::nullopt`, so a runtime
 // working set that exceeds the tile's BD count yields no stream rather than a
@@ -140,6 +155,29 @@ inline void txn_append_maskwrite32(std::vector<uint32_t> &txn, uint32_t addr,
   size_t pos = txn.size();
   txn.resize(pos + 7, 0);
   txn[pos + 0] = TXN_OPC_MASKWRITE;
+  // txn[pos + 1] is reserved (0)
+  txn[pos + 2] = addr;
+  txn[pos + 3] = 0;
+  txn[pos + 4] = val;
+  txn[pos + 5] = mask;
+  txn[pos + 6] = 7 * sizeof(uint32_t); // operation size
+}
+
+// Append a 7-word mask-poll instruction: block until (*addr & mask) == val.
+//
+// Same shape as maskwrite, and deliberately so -- XAie_MaskPoll32Hdr and
+// XAie_MaskWrite32Hdr have identical layouts. This is the only blocking
+// primitive a runtime sequence has that does not depend on a DMA completing,
+// which is what makes it the way for the host to wait on something a core
+// wrote.
+//
+// It blocks. A condition that never becomes true hangs the sequence, so the
+// value being polled has to be something a core is guaranteed to write.
+inline void txn_append_maskpoll(std::vector<uint32_t> &txn, uint32_t addr,
+                                uint32_t val, uint32_t mask) {
+  size_t pos = txn.size();
+  txn.resize(pos + 7, 0);
+  txn[pos + 0] = TXN_OPC_MASKPOLL;
   // txn[pos + 1] is reserved (0)
   txn[pos + 2] = addr;
   txn[pos + 3] = 0;

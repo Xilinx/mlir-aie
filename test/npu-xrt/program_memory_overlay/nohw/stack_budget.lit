@@ -1,0 +1,44 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// An overlay must fit in the stack the resident was linked with.
+//
+// This is the suite's guard against its most dangerous silent failure. The
+// resident's stack size is fixed when the resident links. Overlays link
+// separately and afterwards, so nothing connects an overlay's frame to that
+// budget -- and the call into the slot goes through an absolute address, so the
+// compiler cannot see the callee to do interprocedural stack analysis even in
+// principle. An overlay needing more than the budget overruns into whatever
+// sits below the stack: no fault, just scattered wrong values in another
+// buffer, and in an overlay design the damage outlives the phase that caused it.
+//
+// The information exists -- Peano emits .stack_sizes under
+// -fstack-size-section -- so this turns the hazard into a link-time error.
+//
+// REQUIRES: peano
+//
+// RUN: rm -rf %t && mkdir -p %t
+// RUN: %PEANO_INSTALL_DIR/bin/clang++ --target=aie2p-none-unknown-elf -O2 -fstack-size-section -c %S/../resident.cc -o %t/resident.o
+// RUN: %PEANO_INSTALL_DIR/bin/clang++ --target=aie2p-none-unknown-elf -O2 -fstack-size-section -c %S/deep_overlay.cc -o %t/deep.o
+//
+// 2 KB of locals against the default 1024-byte budget: refused, and the message
+// says what to change rather than just naming the numbers.
+// RUN: not %python %S/../pm.py stack --resident %t/resident.o --overlays %t/deep.o --stack-size 1024 2>&1 | FileCheck %s --check-prefix=OVER
+// The frame is around 2 KB -- the array plus spill, so the exact figure is
+// codegen's business and not pinned here. What is pinned is that it is measured
+// at all (a zero would mean the section was not read) and that it exceeds the
+// budget.
+// OVER: deepest overlay frame 2{{[0-9][0-9][0-9]}}
+// OVER: needs 2{{[0-9][0-9][0-9]}} bytes of stack but the resident was linked with 1024
+// OVER-SAME: Raise the Worker's stack_size
+//
+// The same overlay against a budget that accommodates it.
+// RUN: %python %S/../pm.py stack --resident %t/resident.o --overlays %t/deep.o --stack-size 8192 | FileCheck %s --check-prefix=FITS
+// FITS: need 2{{[0-9][0-9][0-9]}} of 8192
+//
+// And the check refuses to run at all on objects built without the section,
+// rather than reporting a budget of zero and passing.
+// RUN: %PEANO_INSTALL_DIR/bin/clang++ --target=aie2p-none-unknown-elf -O2 -c %S/deep_overlay.cc -o %t/nosizes.o
+// RUN: not %python %S/../pm.py stack --resident %t/resident.o --overlays %t/nosizes.o --stack-size 8192 2>&1 | FileCheck %s --check-prefix=NOSEC
+// NOSEC: no .stack_sizes in
+// NOSEC-SAME: -fstack-size-section

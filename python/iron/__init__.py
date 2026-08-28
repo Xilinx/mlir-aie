@@ -87,6 +87,8 @@ from .runtime import Runtime, RuntimeData, Task, TaskGroup, sync_parameters
 from .scratchpad_parameter import ScratchpadParameter
 from .worker import Worker, WorkerRuntimeBarrier
 
+from . import overlay  # noqa: E402  (after .worker: overlay.slot imports from it)
+
 __all__ = [
     # Core design abstractions
     "Buffer",
@@ -147,4 +149,5 @@ __all__ = [
     # Submodules
     "kernels",
     "algorithms",
+    "overlay",
 ]

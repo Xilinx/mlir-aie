@@ -134,6 +134,22 @@ uint32_t aieTargetModelGetLocalMemorySize(AieTargetModel targetModel) {
   return unwrap(targetModel).getLocalMemorySize();
 }
 
+uint32_t aieTargetModelGetProgramMemorySize(AieTargetModel targetModel) {
+  return unwrap(targetModel).getProgramMemorySize();
+}
+
+uint32_t aieTargetModelGetProgramMemoryHostOffset(AieTargetModel targetModel) {
+  return unwrap(targetModel).getProgramMemoryHostOffset();
+}
+
+uint32_t aieTargetModelGetProgramMemoryWriteGranule(AieTargetModel targetModel) {
+  return unwrap(targetModel).getProgramMemoryWriteGranule().value_or(0);
+}
+
+uint32_t aieTargetModelGetDefaultCoreStackSize(AieTargetModel targetModel) {
+  return unwrap(targetModel).getDefaultCoreStackSize();
+}
+
 uint32_t aieTargetModelGetNumLocks(AieTargetModel targetModel, int col,
                                    int row) {
   return unwrap(targetModel).getNumLocks(col, row);
@@ -151,9 +167,9 @@ uint32_t aieTargetModelGetMemTileSize(AieTargetModel targetModel) {
   return unwrap(targetModel).getMemTileSize();
 }
 
-uint32_t aieTargetModelGetNumBanks(AieTargetModel targetModel, int col,
-                                   int row) {
-  return unwrap(targetModel).getNumBanks(col, row);
+uint32_t aieTargetModelGetNumDataMemoryBanks(AieTargetModel targetModel,
+                                             int col, int row) {
+  return unwrap(targetModel).getNumDataMemoryBanks(col, row);
 }
 
 uint32_t aieTargetModelGetNumDestSwitchboxConnections(

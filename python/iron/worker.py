@@ -46,6 +46,7 @@ class Worker(ObjectFifoEndpoint):
         tile: Tile | None = AnyComputeTile,
         while_true: bool = True,
         stack_size: int | None = None,
+        program_memory_reserved: int | None = None,
         allocation_scheme: str | None = None,
         trace: int | None = None,
         trace_events: list | None = None,
@@ -59,6 +60,7 @@ class Worker(ObjectFifoEndpoint):
             tile (Tile, optional): The compute tile for the Worker. Also accepts None (treated as AnyComputeTile). Defaults to AnyComputeTile.
             while_true (bool, optional): If true, will wrap the core_fn in a while(true) loop to ensure it runs until reconfiguration. Defaults to True.
             stack_size (int, optional): The stack_size in bytes for the worker. Defaults to AIETargetModel::getDefaultCoreStackSize() (currently 1024 bytes).
+            program_memory_reserved (int, optional): bytes at the top of program memory that this worker's own code must not occupy, reserved for code written at run time. The linker script shortens the program region to match, so growing into the reservation is a link error rather than a silent overwrite of the running program.
             allocation_scheme (str, optional): The memory allocation scheme to use for the
                 Worker, either 'basic-sequential' or 'bank-aware'. If None, defaults to bank-aware.
                 Will override any allocation scheme set on the tile.
@@ -99,6 +101,7 @@ class Worker(ObjectFifoEndpoint):
             )
         self._while_true = while_true
         self.stack_size = stack_size
+        self.program_memory_reserved = program_memory_reserved
         self.allocation_scheme = allocation_scheme
         self._dynamic_objfifo_lowering = dynamic_objfifo_lowering
         self.trace = trace
@@ -122,6 +125,20 @@ class Worker(ObjectFifoEndpoint):
         # CascadeFlow(src, dst).__init__ and consumed by Program.resolve()
         # to emit aie.cascade_flow ops after worker placement.
         self._outgoing_cascades: list = []
+
+        # Deferred: iron.overlay.slot imports WorkerRuntimeBarrier from this
+        # module, so a module-level import here would deadlock on a cold
+        # `import aie.iron` (this module executes first; ProgramMemorySlot
+        # isn't defined yet). By the time a Worker is actually constructed,
+        # iron.overlay.slot (if used at all) is fully loaded.
+        from .overlay.slot import ProgramMemorySlot
+
+        self._program_memory_slots: list[ProgramMemorySlot] = []
+        # Resolvables that must be resolved by Program (so they show up in
+        # flat_fn_args) but must NOT be unpacked into core_fn's positional
+        # arguments (so they must not be in self.fn_args). Currently just a
+        # pingpong() pair's shared Bootstrap Buffers -- see below.
+        self._extra_resolvables: list = []
 
         # Check arguments to the core. Some information is saved for resolution.
         # fn_args may nest lists (e.g. one fifo per column); iterate the flattened
@@ -171,10 +188,71 @@ class Worker(ObjectFifoEndpoint):
                 )
             elif isinstance(arg, WorkerRuntimeBarrier):
                 self._barriers.append(arg)
+            elif isinstance(arg, ProgramMemorySlot):
+                if (arg.tile.col, arg.tile.row) != (self._tile.col, self._tile.row):
+                    raise ValueError(
+                        f"ProgramMemorySlot '{arg.name}' was constructed with "
+                        f"tile={arg.tile}, but is passed to a Worker on "
+                        f"{self._tile}. A slot's tile and its owning Worker's "
+                        f"tile must be the same coordinates."
+                    )
+                arg._worker = self
+                self._program_memory_slots.append(arg)
+                if arg._source is None:
+                    # The slot's wait()/load() handshake is a
+                    # WorkerRuntimeBarrier under the hood; registering it
+                    # here gets it the same per-Worker lock creation every
+                    # other barrier gets below, with no separate code path.
+                    # Tile-sourced slots (arg._source is not None) use a
+                    # plain polled Buffer instead -- registered just below --
+                    # so no barrier lock is reserved for them.
+                    self._barriers.append(arg._barrier)
+                else:
+                    buf = arg._ctrl_done_buf
+                    if buf._tile is None:
+                        buf._tile = self._tile
+                    if buf._owner_worker is None:
+                        buf._owner_worker = self
+                    self._buffers.append(buf)
+                    # Not appended to self.fn_args: core_fn never references
+                    # this Buffer directly (only wait()'s emitted poll does),
+                    # so it must not become an extra positional argument.
+                    self._extra_resolvables.append(buf)
             # Kernel/ExternalFunction instances are valid fn_args — they resolve to
             # func.call ops when invoked inside core_fn and carry link_with on their
             # func.func declaration. Other unrecognized args are assumed to be
             # metaprogramming values (Python scalars, etc.).
+
+        # A pingpong() pair's shared Bootstrap owns two Buffers (flag, parked)
+        # that no core_fn code references by name -- only the generated stub
+        # and the runtime sequence do -- so nothing else would ever cause
+        # them to be materialised. `_ensure_bootstrap()` must run (and its
+        # Buffers must land in `flat_fn_args`) before Program's resolution
+        # loop takes its one snapshot of that list, so this happens here in
+        # __init__ rather than lazily in resolve() -- too late for Program to
+        # ever see them. Registered once per distinct Bootstrap (both slots of
+        # a pair point at the same one), so a pair sharing one Worker does
+        # not double-register.
+        seen_bootstraps = set()
+        for slot in self._program_memory_slots:
+            if slot._pingpong is None:
+                continue
+            bootstrap = slot._ensure_bootstrap()
+            if bootstrap is None or id(bootstrap) in seen_bootstraps:
+                continue
+            seen_bootstraps.add(id(bootstrap))
+            for buf in (bootstrap.flag, bootstrap.parked):
+                if buf._tile is None:
+                    buf._tile = self._tile
+                if buf._owner_worker is None:
+                    buf._owner_worker = self
+                self._buffers.append(buf)
+                # Not appended to self.fn_args: that would add unrequested
+                # positional arguments to the user's core_fn signature.
+                # _extra_resolvables is a second list flat_fn_args also scans,
+                # precisely so Program's resolution loop finds these without
+                # core_fn ever seeing them.
+                self._extra_resolvables.append(buf)
 
     @staticmethod
     def grid(
@@ -212,12 +290,14 @@ class Worker(ObjectFifoEndpoint):
 
     @property
     def flat_fn_args(self) -> list:
-        """fn_args with any nested lists/tuples flattened to their leaves.
+        """fn_args with any nested lists/tuples flattened to their leaves,
+        plus any resolvables that must be resolved but never reach core_fn
+        (currently: a pingpong() pair's shared Bootstrap Buffers).
 
         Use this (not ``fn_args``) when iterating to register/resolve individual
         arguments; ``fn_args`` keeps its structure for the core_fn call.
         """
-        return list(flatten_fn_args(self.fn_args))
+        return list(flatten_fn_args(self.fn_args)) + self._extra_resolvables
 
     @property
     def fifos(self) -> list[ObjectFifoHandle]:
@@ -252,9 +332,21 @@ class Worker(ObjectFifoEndpoint):
             barrier_lock = lock(my_tile)
             barrier._add_worker_lock(barrier_lock)
 
+        # ProgramMemorySlots (if any) have already been resolve()'d by this
+        # point (Program's "generate functions" loop runs before this), so
+        # their placement is known. An explicit program_memory_reserved always
+        # wins; otherwise the reservation is exactly what the lowest slot on
+        # this tile needs, computed rather than hand-picked.
+        program_memory_reserved = self.program_memory_reserved
+        if program_memory_reserved is None and self._program_memory_slots:
+            program_memory_reserved = max(
+                slot.reserved_bytes for slot in self._program_memory_slots
+            )
+
         @core(
             my_tile,
             stack_size=self.stack_size,
+            program_memory_reserved=program_memory_reserved,
             dynamic_objfifo_lowering=self._dynamic_objfifo_lowering,
         )
         def core_body():

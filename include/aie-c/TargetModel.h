@@ -132,6 +132,23 @@ MLIR_CAPI_EXPORTED uint32_t
 aieTargetModelGetLocalMemorySize(AieTargetModel targetModel);
 
 MLIR_CAPI_EXPORTED uint32_t
+aieTargetModelGetProgramMemorySize(AieTargetModel targetModel);
+
+MLIR_CAPI_EXPORTED uint32_t
+aieTargetModelGetProgramMemoryHostOffset(AieTargetModel targetModel);
+
+/// Returns 0 where the granule is unknown for this architecture; 0 is not a
+/// valid granule, so it is an unambiguous sentinel. Anything placing code into
+/// program memory while the core runs has to refuse rather than guess.
+MLIR_CAPI_EXPORTED uint32_t
+aieTargetModelGetProgramMemoryWriteGranule(AieTargetModel targetModel);
+
+/// Returns the default stack reservation (bytes) an `aie.core` gets when its
+/// `stack_size` attribute is unset.
+MLIR_CAPI_EXPORTED uint32_t
+aieTargetModelGetDefaultCoreStackSize(AieTargetModel targetModel);
+
+MLIR_CAPI_EXPORTED uint32_t
 aieTargetModelGetNumLocks(AieTargetModel targetModel, int col, int row);
 
 MLIR_CAPI_EXPORTED uint32_t aieTargetModelGetNumBDs(AieTargetModel targetModel,
@@ -143,8 +160,8 @@ aieTargetModelGetNumMemTileRows(AieTargetModel targetModel);
 MLIR_CAPI_EXPORTED uint32_t
 aieTargetModelGetMemTileSize(AieTargetModel targetModel);
 
-MLIR_CAPI_EXPORTED uint32_t
-aieTargetModelGetNumBanks(AieTargetModel targetModel, int col, int row);
+MLIR_CAPI_EXPORTED uint32_t aieTargetModelGetNumDataMemoryBanks(
+    AieTargetModel targetModel, int col, int row);
 
 MLIR_CAPI_EXPORTED uint32_t aieTargetModelGetMaxChannelNumForAdjacentTile(
     AieTargetModel targetModel, int col, int row);

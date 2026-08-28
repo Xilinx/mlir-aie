@@ -113,6 +113,7 @@ Direct writes to addresses in the array. Address resolution follows the
 |----|--------------|------------|---------|
 | `aiex.npu.write32` | Write a 32-bit `value` to a resolved `address` in the array. | any address (shim, mem, core, array registers) | `aiex.npu.write32(%addr, %val) : i32, i32` |
 | `aiex.npu.maskwrite32` | Read-modify-write of a 32-bit word: only the bits set in `mask` take `value`, the rest are preserved. Use when a register packs several fields in one word. | any address | `aiex.npu.maskwrite32(%addr, %val, %mask) : i32, i32, i32` |
+| `aiex.npu.maskpoll` | Block until `(*address & mask) == value`. The only blocking wait that is not on a DMA, so the only way to wait on something a *core* wrote. Blocks indefinitely: poll only for something a core is guaranteed to write. | any address | `aiex.npu.maskpoll(%addr, %val, %mask) : i32, i32, i32` |
 | `aiex.npu.blockwrite` | Write a whole `memref` of words to the array starting at the resolved address, in one instruction. | any address | `aiex.npu.blockwrite(%data) {address = 119300 : ui32} : memref<8xi32>` |
 
 `address` and `value` are SSA operands: use `arith.constant` for a
@@ -949,6 +950,48 @@ def AIE_NpuMaskWrite32Op: AIEX_Op<"npu.maskwrite32", []> {
   }];
 }
 
+def AIE_NpuMaskPollOp: AIEX_Op<"npu.maskpoll", []> {
+  let summary = "Block until a masked 32-bit location reads an expected value";
+  let arguments = (
+    ins I32:$address,
+        I32:$value,
+        I32:$mask,
+        OptionalAttr<FlatSymbolRefAttr>:$buffer,
+        OptionalAttr<I32Attr>:$column,
+        OptionalAttr<I32Attr>:$row
+  );
+  let results = (outs );
+  let assemblyFormat = [{
+    `(` $address `,` $value `,` $mask `)` attr-dict `:` type($address) `,` type($value) `,` type($mask)
+  }];
+  let description = [{
+    Stall the instruction stream until `(*address & mask) == value`.
+
+    This is the only blocking primitive in a runtime sequence that does not wait
+    on a DMA. `aiex.set_lock` is explicitly non-blocking, and `npu.sync` and
+    `npu.dma_wait` both wait on data movement -- so this is the way for the host
+    to wait on something a *core* produced, such as a core signalling that it has
+    reached a particular point in its program.
+
+    That matters for program-memory overlays. Writing a region of program memory
+    is only safe while the core is fetching from a different region, so a design
+    with more than one overlay slot needs the host to know where the core is
+    before it writes. Nothing else can express that wait.
+
+    Addressing follows npu.maskwrite32: 'buffer' makes 'address' an offset into
+    that aie.buffer, 'column' and 'row' make it an offset into a tile's memory
+    space, and with neither it is a full address in the AIE array.
+
+    It blocks indefinitely. A condition no core ever satisfies hangs the
+    sequence, and on a shared device that is felt by everyone -- so poll only
+    for something a core is guaranteed to write.
+  }];
+  let extraClassDeclaration = [{
+    // Compile-time absolute address, or nullopt if 'address' is not constant.
+    std::optional<uint32_t> getAbsoluteAddress();
+  }];
+}
+
 // BLOCKWRITE
 def AIE_NpuBlockWriteOp: AIEX_Op<"npu.blockwrite", []> {
   let summary = "blockwrite operator";
@@ -1221,6 +1264,12 @@ def AIE_NpuControlPacketOp: AIEX_Op<"control_packet", []> {
   let extraClassDeclaration = [{
     uint32_t getRowFromAddr();
     uint32_t getColumnFromAddr();
+
+    /// Most payload words one packet can carry on the wire: the header spends
+    /// only two bits on the beat count. Ops may legitimately hold more before
+    /// --aie-legalize-control-packet splits them, so this is enforced where the
+    /// header is actually packed rather than by a verifier here.
+    static constexpr unsigned getMaxDataWords() { return 4; }
   }];
 }
 

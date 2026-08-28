@@ -300,6 +300,28 @@ NB_MODULE(_aie, m) {
            [](PyAieTargetModel &self) {
              return aieTargetModelGetLocalMemorySize(self.get());
            })
+      .def("get_program_memory_size",
+           [](PyAieTargetModel &self) {
+             return aieTargetModelGetProgramMemorySize(self.get());
+           })
+      .def("get_program_memory_host_offset",
+           [](PyAieTargetModel &self) {
+             return aieTargetModelGetProgramMemoryHostOffset(self.get());
+           })
+      // None where the granule is unknown, so a caller placing code into
+      // program memory under a live core has to handle that case rather than
+      // inherit a plausible-looking default.
+      .def("get_program_memory_write_granule",
+           [](PyAieTargetModel &self) -> std::optional<uint32_t> {
+             uint32_t g = aieTargetModelGetProgramMemoryWriteGranule(self.get());
+             if (g == 0)
+               return std::nullopt;
+             return g;
+           })
+      .def("get_default_core_stack_size",
+           [](PyAieTargetModel &self) {
+             return aieTargetModelGetDefaultCoreStackSize(self.get());
+           })
       .def("get_num_locks",
            [](PyAieTargetModel &self, int col, int row) {
              return aieTargetModelGetNumLocks(self.get(), col, row);

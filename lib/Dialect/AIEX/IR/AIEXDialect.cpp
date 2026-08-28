@@ -1068,6 +1068,17 @@ std::optional<uint32_t> AIEX::NpuMaskWrite32Op::getAbsoluteAddress() {
 }
 
 //===----------------------------------------------------------------------===//
+// NpuMaskPollOp
+//===----------------------------------------------------------------------===//
+
+std::optional<uint32_t> AIEX::NpuMaskPollOp::getAbsoluteAddress() {
+  std::optional<uint32_t> addressOffset = getConstantIntOperand(getAddress());
+  if (!addressOffset)
+    return std::nullopt;
+  return ::getAbsoluteAddress(this, *addressOffset);
+}
+
+//===----------------------------------------------------------------------===//
 // NpuBlockWriteOp
 //===----------------------------------------------------------------------===//
 

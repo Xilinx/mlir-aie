@@ -39,7 +39,10 @@ class AIEAddressDecoder:
     """Decoder for AIE array addresses."""
 
     # Memory region definitions: (name, base_offset, size_bytes)
-    # These are regions where addresses within the range should show offset from base
+    # These are regions where addresses within the range should show offset from base.
+    # Program_Memory mirrors AIETargetModel::getProgramMemoryHostOffset() and
+    # getProgramMemorySize(); test/CppTests/target_model.cpp asserts those, so
+    # keep the two in step.
     MEMORY_REGIONS = {
         "core": [
             ("Program_Memory", 0x20000, 0x4000),  # 16KB program memory

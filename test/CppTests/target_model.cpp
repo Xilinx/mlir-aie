@@ -335,7 +335,34 @@ void test() {
   }
 }
 
+// Program memory is 16 KB at configuration offset 0x20000 on every generation,
+// per aie-rt's XAie_CoreMod tables. The same numbers appear in
+// python/utils/regdb.py's MEMORY_REGIONS and, for the offset, in
+// lib/Dialect/AIE/Util/aie_registers_aie2.json -- keep them in step.
+void testProgramMemory() {
+  for (auto dev :
+       {AIE::AIEDevice::xcvc1902, AIE::AIEDevice::npu1, AIE::AIEDevice::npu2}) {
+    const auto &tm = AIE::getTargetModel(dev);
+    if (tm.getProgramMemorySize() != 0x4000)
+      throw std::runtime_error("Failed program memory size");
+    if (tm.getProgramMemoryHostOffset() != 0x20000)
+      throw std::runtime_error("Failed program memory host offset");
+  }
+
+  // Only AIE2P has been characterized for concurrent writes. Everywhere else
+  // this stays absent so overlay placement refuses to guess: a wrong granule
+  // produces a silently dropped write, not a diagnostic.
+  if (AIE::getTargetModel(AIE::AIEDevice::npu2)
+          .getProgramMemoryWriteGranule() != 0x2000)
+    throw std::runtime_error("Failed npu2 program memory write granule");
+  for (auto dev : {AIE::AIEDevice::xcvc1902, AIE::AIEDevice::npu1})
+    if (AIE::getTargetModel(dev).getProgramMemoryWriteGranule().has_value())
+      throw std::runtime_error(
+          "Unmeasured architecture reports a program memory write granule");
+}
+
 int main() {
   test();
+  testProgramMemory();
   return 0;
 }

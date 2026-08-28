@@ -1,0 +1,50 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// The bytes that reach program memory are the bytes in the overlay.
+//
+// Two properties, both cheap, both guarding against silent corruption:
+//
+// *Round-trip.* Between the linked ELF and the instruction stream the payload
+// is unpacked into 32-bit words, viewed as signed, and re-serialized by MLIR.
+// An endianness or sign slip anywhere in that chain is invisible at build time:
+// the design compiles, the xclbin loads, and the core executes subtly wrong
+// instructions. Comparing the bytes costs nothing.
+//
+// *Determinism.* Linking the same object twice must give byte-identical .text.
+// Every comparison test in the suite -- overlay output against a statically
+// linked reference, one phase against another -- assumes this. If the linker
+// were nondeterministic those tests would flake and the cause would look like
+// hardware.
+//
+// REQUIRES: peano
+//
+// RUN: rm -rf %t && mkdir -p %t
+// RUN: %PEANO_INSTALL_DIR/bin/clang++ --target=aie2p-none-unknown-elf -O2 -c %S/../resident.cc -o %t/resident.o
+// RUN: %python %S/../pm.py emit --recipe one_slot --slot-ld %t/slot.ld --phases 0 --out %t/d1.mlir
+// RUN: cd %t && %aiecc --tmpdir=%t/p1 --get-xclbin --xclbin-name=%t/p1.xclbin --get-npu-insts --npu-insts-name=%t/p1.bin %t/d1.mlir
+// RUN: %python %S/../pm.py workload --tag 1 --size 0x400 --output %t/w1.o --workdir %t
+// RUN: %python %S/../pm.py link --object %t/w1.o --resident %t/p1 --recipe one_slot --output %t/ovl1.elf
+//
+// Same object, linked again into a different output.
+// RUN: %python %S/../pm.py link --object %t/w1.o --resident %t/p1 --recipe one_slot --output %t/ovl1b.elf
+// RUN: cmp %t/ovl1.elf %t/ovl1b.elf
+//
+// And the embedded copy matches the ELF it came from.
+// RUN: %python %S/../pm.py emit --recipe one_slot --phases 0 --payload %t/ovl1.elf --out %t/d2.mlir
+// RUN: %python %S/../pm.py verify-payload %t/d2.mlir %t/ovl1.elf --symbol overlay_0_p0 | FileCheck %s
+// CHECK: @overlay_0_p0: 1024 bytes, byte-identical to
+//
+// The check has to be able to fail, or it says nothing. The corruption is done
+// to the ELF, not by the design generator: the design then embeds a corrupted
+// overlay exactly as it embeds any other, with no notion that anything is
+// amiss, and the defect stays a property of the input.
+//
+// Word 0 is the entry instruction, so corrupting it guarantees divergence --
+// unlike hunting for a payload in a finished instruction stream, which needs a
+// multi-word signature and can land on padding that never reaches the output.
+// RUN: %python %S/../pm.py corrupt %t/ovl1.elf --word 0 --output %t/bad.elf
+// RUN: %python %S/../pm.py emit --recipe one_slot --phases 0 --payload %t/bad.elf --out %t/bad.mlir
+// RUN: not %python %S/../pm.py verify-payload %t/bad.mlir %t/ovl1.elf --symbol overlay_0_p0 2>&1 | FileCheck %s --check-prefix=CORRUPT
+// CORRUPT: embedded payload differs
+// CORRUPT-SAME: first difference at byte 0

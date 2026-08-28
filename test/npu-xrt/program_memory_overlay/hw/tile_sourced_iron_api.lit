@@ -1,0 +1,35 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// A slot written by a neighboring compute tile's own DMA, not the host --
+// test/npu-xrt/tile_sourced_ctrl_pkt_spike/aie.mlir's mechanism, at a real,
+// near-maximum-size (0x1FF0 byte) slot instead of a 2-word proof, built with
+// the `aie.iron.overlay` API's `source=` transport. Every control-packet
+// chunk is sent through one reused, self-looping `aie.dma_bd` -- not one
+// static BD per chunk, so this is no longer capped at a source tile's
+// 16-entry BD table. See iron_api_tile_sourced.py and
+// ProgramMemorySlot._load_tile_sourced's comments.
+//
+// Three phases (three `--tags`) exercise multi-phase tile-sourced scheduling:
+// `slot.load()` called once per phase from the source's own core_fn, paced by
+// `_ensure_ack_rig`'s reverse DMA channel so an overlay is not written until
+// the target core has actually finished with the previous one.
+//
+// Three rather than two on purpose. The ack rig puts a second TileDma on the
+// source tile, and BD ids used to be numbered per DMA region instead of per
+// tile, so its BDs collided with the forward transport's and every
+// multi-phase design failed on hardware close to 100% of the time. Two phases
+// is one ack round-trip and happened to survive; the third is what actually
+// exercised the collision, so that is what guards the fix here.
+//
+// REQUIRES: ryzen_ai_npu2, peano
+//
+// RUN: rm -rf %t && mkdir -p %t
+// RUN: %python %S/../iron_api_tile_sourced.py --tags 5,7,9 --out %t
+//
+// RUN: %host_clang %S/../host.cpp -o %t/host.exe -std=c++17 -Wall %xrt_flags %host_link_flags %test_utils_flags
+// RUN: %t/host.exe -x %t/aie.xclbin -k MLIR_AIE -i %t/insts.bin --tags 5,7,9 --n-elems 4 | FileCheck %s
+// CHECK: phase 0: overlay 5 ok
+// CHECK: phase 1: overlay 7 ok
+// CHECK: phase 2: overlay 9 ok
+// CHECK: PASS!

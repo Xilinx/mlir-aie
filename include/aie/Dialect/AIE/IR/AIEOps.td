@@ -390,6 +390,14 @@ def AIE_CoreOp
     OptionalAttr<StrArrayAttr>:$link_merge_files,
     OptionalAttr<StrAttr>:$elf_file,
     OptionalAttr<BoolAttr>:$dynamic_objfifo_lowering,
+    // Bytes of program memory, at the top of the address range, that the core's
+    // own code must not occupy -- reserved for code written at run time
+    // (program-memory overlays).  The generated linker script shortens the
+    // program region accordingly, so a core that would grow into the reservation
+    // is a link error naming the section and the overrun rather than a silent
+    // overwrite of the running program.  Must be a multiple of the target's
+    // program-memory line; read getReservedProgramMemory().
+    OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<1>]>>:$program_memory_reserved,
     // If set to false, suppresses automatic insertion of the parameter-sync
     // preamble (use_lock acquire) by `--aie-lower-scratchpad-parameters`.  Defaults to
     // true when any `aiex.read_scratchpad_parameter` op is present in the
@@ -487,6 +495,13 @@ def AIE_CoreOp
     /// The stack reservation in bytes: the `stack_size` attribute when set,
     /// otherwise this target's default.
     uint32_t getEffectiveStackSize();
+    /// Bytes at the top of program memory that this core's own code must not
+    /// occupy, or 0 when nothing is reserved.
+    uint32_t getReservedProgramMemory();
+    /// The first address of the reservation, i.e. the ceiling the core's code
+    /// must stay below. Equal to the target's program memory size when nothing
+    /// is reserved.
+    uint32_t getProgramMemoryCeiling();
     void getAsmResultNames(::mlir::OpAsmSetValueNameFn setNameFn) {
       TileElement::Trait<CoreOp>::getAsmResultNames(setNameFn);
     }

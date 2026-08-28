@@ -92,6 +92,11 @@ class Buffer(Resolvable):
         """The tile this buffer is on."""
         return self._tile
 
+    @property
+    def name(self) -> str:
+        """Symbol name of the underlying `aie.buffer`."""
+        return self._name
+
     def tiles(self) -> list:
         """Tile dependency for Program.resolve tile discovery.
 

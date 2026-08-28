@@ -1,0 +1,38 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// A scalar byte-store loop must store every byte.
+//
+// The pinned Peano (llvm-aie 21.0.0.2026080301+c9c5ecb7) miscompiles this. It
+// unrolls the loop by 4 and the last store of each iteration ends up at the
+// zero-overhead-loop boundary, executing once after the loop instead of once per
+// iteration -- so 769 of 1024 bytes are written and the missing ones are exactly
+// those at i % 4 == 3. Silently: no warning, no fault, just stale bytes.
+//
+// The unroll factor decides it, and the count of missing bytes is (1024/UF) - 1:
+// correct at 1 and 8, 511 wrong at 2, 255 wrong at 4, which is the compiler's
+// default choice here. int32 and int64 stores are unaffected, as is a volatile
+// destination.
+//
+// Fixed upstream in llvm-aie 22.0.0.2026082201+63a871b0, so this is XFAIL rather
+// than a bug report: when utils/peano-requirements.txt moves to a nightly with
+// the fix, lit reports XPASS and forces this file to be updated. That is the
+// point of writing it this way -- a hand-maintained note about a known-bad
+// toolchain outlives the bug by years, and nothing makes anyone revisit it.
+//
+// Kept out of the overlay suite deliberately: this is a property of the
+// toolchain, not of overlays. It is here because the overlay work is what found
+// it -- a memset-style byte loop was leaving every fourth byte of a slot
+// uncleared, which looked for a long time like a hardware race.
+//
+// REQUIRES: ryzen_ai_npu2, peano
+// XFAIL: *
+//
+// RUN: rm -rf %t && mkdir -p %t
+// RUN: %PEANO_INSTALL_DIR/bin/clang++ --target=aie2p-none-unknown-elf -O2 -c %S/kernel.cc -o %t/kernel.o
+// RUN: %python %S/aie2.py --dev npu2 --out %t/design.mlir
+// RUN: cd %t && %aiecc --tmpdir=%t/tmp --get-xclbin --xclbin-name=%t/aie.xclbin --get-npu-insts --npu-insts-name=%t/insts.bin %t/design.mlir
+// RUN: %host_clang %S/test.cpp -o %t/test.exe -std=c++17 -Wall %xrt_flags %host_link_flags %test_utils_flags
+// RUN: %t/test.exe -x %t/aie.xclbin -k MLIR_AIE -i %t/insts.bin | FileCheck %s
+// CHECK: all 1024 bytes stored
+// CHECK: PASS!

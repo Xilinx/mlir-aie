@@ -425,7 +425,12 @@ Device = DeviceOp
 class Core(CoreOp):
     # Until https://github.com/llvm/llvm-project/pull/73620 gets figured out.
     def __init__(
-        self, tile, link_with=None, dynamic_objfifo_lowering=None, stack_size=None
+        self,
+        tile,
+        link_with=None,
+        dynamic_objfifo_lowering=None,
+        stack_size=None,
+        program_memory_reserved=None,
     ):
         if link_with is not None:
             raise TypeError(
@@ -439,6 +444,7 @@ class Core(CoreOp):
             stack_size=stack_size,
             link_with=None,
             dynamic_objfifo_lowering=dynamic_objfifo_lowering,
+            program_memory_reserved=program_memory_reserved,
         )
 
 
@@ -717,8 +723,11 @@ class packetflow(PacketFlowOp):
         source_channel,
         dests: Union[Dict, List[Dict]],
         keep_pkt_header: bool | None = None,
+        priority_route: bool | None = None,
     ):
-        super().__init__(ID=pkt_id, keep_pkt_header=keep_pkt_header)
+        super().__init__(
+            ID=pkt_id, keep_pkt_header=keep_pkt_header, priority_route=priority_route
+        )
         bb = Block.create_at_start(self.ports)
         with InsertionPoint(bb):
             PacketSourceOp(source, source_port, source_channel)

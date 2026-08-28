@@ -1,0 +1,45 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// The same mechanism on a tile that is neither column 0 nor row 2.
+//
+// A payload write carries an explicit column and row, and the resident ELF has
+// to be looked up for that tile. Everything else in the suite runs on (0,2), so
+// without this a hardcoded coordinate anywhere in the path would go unnoticed --
+// and one was: check, sizes and link all defaulted to (0,2) while accepting a
+// col/row they never passed on, which meant this test could not be written at
+// all until that was fixed.
+//
+// Tile (1,3): a different column, so the write's column field matters, and a
+// different row, so the row field does too. Getting either wrong writes program
+// memory on the wrong core, and the core under test then runs whatever was in
+// its slot before.
+//
+// REQUIRES: ryzen_ai_npu2, peano
+//
+// RUN: rm -rf %t && mkdir -p %t
+// RUN: %PEANO_INSTALL_DIR/bin/clang++ --target=aie2p-none-unknown-elf -O2 -c %S/../resident.cc -o %t/resident.o
+// RUN: %python %S/../pm.py geometry other_tile | FileCheck %s --check-prefix=GEOM
+// GEOM: tile (1,3)
+//
+// RUN: %python %S/../pm.py emit --recipe other_tile --slot-ld %t/slot.ld --phases 0,1 --out %t/d1.mlir
+// RUN: cd %t && %aiecc --tmpdir=%t/p1 --get-xclbin --xclbin-name=%t/p1.xclbin --get-npu-insts --npu-insts-name=%t/p1.bin %t/d1.mlir
+// RUN: %python %S/../pm.py workload --tag 44 --size 0x400 --output %t/w0.o --workdir %t
+// RUN: %python %S/../pm.py workload --tag 55 --size 0x400 --output %t/w1.o --workdir %t
+// RUN: %python %S/../pm.py workload --tag 31661 --size 0x400 --output %t/poison.o --workdir %t
+// RUN: %python %S/../pm.py link --object %t/w0.o --resident %t/p1 --recipe other_tile --output %t/ovl0.elf
+// RUN: %python %S/../pm.py link --object %t/w1.o --resident %t/p1 --recipe other_tile --output %t/ovl1.elf
+// RUN: %python %S/../pm.py link --object %t/poison.o --resident %t/p1 --recipe other_tile --output %t/poison.elf
+// RUN: %python %S/../pm.py emit --recipe other_tile --phases 0,1 --payload %t/ovl0.elf --payload %t/ovl1.elf --poison %t/poison.elf --out %t/d2.mlir
+//
+// The write really is aimed at (1,3), not at the default tile.
+// RUN: FileCheck %s --check-prefix=ADDR --input-file=%t/d2.mlir
+// ADDR: aiex.npu.blockwrite({{.*}}) {address = 139264 : ui32, column = 1 : i32, row = 3 : i32}
+//
+// RUN: cd %t && %aiecc --tmpdir=%t/p2 --get-xclbin --xclbin-name=%t/aie.xclbin --get-npu-insts --npu-insts-name=%t/insts.bin %t/d2.mlir
+// RUN: %python %S/../pm.py check %t/p1 %t/p2 --tile 1 3
+// RUN: %host_clang %S/../host.cpp -o %t/host.exe -std=c++17 -Wall %xrt_flags %host_link_flags %test_utils_flags
+// RUN: %t/host.exe -x %t/aie.xclbin -k MLIR_AIE -i %t/insts.bin --tags 44,55 | FileCheck %s
+// CHECK: phase 0: overlay 44 ok
+// CHECK: phase 1: overlay 55 ok
+// CHECK: PASS!
