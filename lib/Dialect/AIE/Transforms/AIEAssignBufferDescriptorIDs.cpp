@@ -159,15 +159,9 @@ struct AIEAssignBufferDescriptorIDsPass
     llvm::append_range(memOps, targetOp.getOps<MemTileDMAOp>());
     llvm::append_range(memOps, targetOp.getOps<ShimDMAOp>());
 
-    // BD IDs are a per-*tile* hardware resource (one BD table, shared by
-    // every channel on the tile), but a tile may be described by more than
-    // one op here -- a design that builds two `aie.mem` regions for the same
-    // tile (e.g. two separately-constructed TileDma programs) is legal IR.
-    // The generator must therefore be keyed by tile, not by op: giving each
-    // op its own generator hands out the same BD IDs twice, and the second
-    // BD silently overwrites the first's slot in the BD table. That is not
-    // caught by the collision check below either, since a fresh generator
-    // has no record of what a previous op on the same tile already took.
+    // BD IDs are per-tile, but a tile can be described by more than one op
+    // here -- key the generator by tile, not by op, or two ops on the same
+    // tile hand out the same ids and silently collide.
     std::map<std::pair<int, int>, BdIdGenerator> gens;
     for (TileElement memOp : memOps) {
       int col = memOp.getTileID().col;

@@ -55,12 +55,8 @@ struct AIEAssignRuntimeSequenceBDIDsPass
 
   llvm::DenseMap<AIE::TileOp, BdIdGenerator> gens;
 
-  // Mark every BD id already taken by a statically-configured DMA on `tile` as
-  // in use. BD ids are one table per *tile*, shared by the static
-  // configuration (aie.mem / aie.memtile_dma / aie.shim_dma, numbered earlier
-  // by --aie-assign-bd-ids) and by the runtime-sequence tasks numbered here.
-  // Without this seeding both allocators start from 0 on a tile that has both,
-  // and a runtime task silently overwrites a static BD's slot in the table.
+  // Mark every BD id a static DMA already took on `tile`, so this allocator
+  // doesn't hand the same id to a runtime-sequence task.
   static void seedFromStaticBds(AIE::DeviceOp device, AIE::TileOp tile,
                                 BdIdGenerator &gen) {
     auto seedRegion = [&](Region &region) {
