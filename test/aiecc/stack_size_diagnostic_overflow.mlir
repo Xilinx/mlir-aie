@@ -34,8 +34,7 @@ module {
     func.func private @entry_fn(memref<512xi8>) attributes {link_with = "stack_size_measured_kernel.o"}
 
     %core_0_2 = aie.core(%tile_0_2) {
-      %sv = aie.objectfifo.acquire @of_out(Produce, 1) : !aie.objectfifosubview<memref<512xi8>>
-      %e = aie.objectfifo.subview.access %sv[0] : !aie.objectfifosubview<memref<512xi8>> -> memref<512xi8>
+      %e = aie.objectfifo.acquire @of_out(Produce, 1) : memref<512xi8>
       func.call @entry_fn(%e) : (memref<512xi8>) -> ()
       aie.objectfifo.release @of_out(Produce, 1)
       aie.end
