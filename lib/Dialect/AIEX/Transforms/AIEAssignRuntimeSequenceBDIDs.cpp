@@ -66,15 +66,9 @@ struct AIEAssignRuntimeSequenceBDIDsPass
             gen.assignBdId(*id);
       });
     };
-    for (auto mem : device.getOps<AIE::MemOp>())
-      if (mem.getTile() == tile.getResult())
-        seedRegion(mem->getRegion(0));
-    for (auto mem : device.getOps<AIE::MemTileDMAOp>())
-      if (mem.getTile() == tile.getResult())
-        seedRegion(mem->getRegion(0));
-    for (auto mem : device.getOps<AIE::ShimDMAOp>())
-      if (mem.getTile() == tile.getResult())
-        seedRegion(mem->getRegion(0));
+    for (AIE::DmaBody program : device.getOps<AIE::DmaBody>())
+      if (program.getTile() == tile.getResult())
+        seedRegion(program.getDmaBody());
   }
 
   BdIdGenerator &getGeneratorForTile(AIE::TileOp tile) {
