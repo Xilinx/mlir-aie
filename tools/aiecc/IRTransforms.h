@@ -14,9 +14,9 @@
 #define AIECC_IRTRANSFORMS_H
 
 #include "Graph.h"
+#include "StackSizeAnalysis.h"
 #include "Utils.h"
 
-#include "aie/Analysis/StackSizeAnalysis.h"
 #include "aie/Conversion/Passes.h"
 #include "aie/Dialect/AIE/IR/AIECoreSymbols.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
@@ -188,10 +188,8 @@ collectCoreIRLinkFiles(xilinx::AIE::CoreOp coreOp, llvm::StringRef inputFile,
   return files;
 }
 
-// Clone `src` and set `stack_size = defaultStackSize` on every CoreOp that
-// doesn't already carry `stack_size` explicitly -- a design-wide way to say
-// "every core gets N bytes" in place of the target's built-in default (see
-// CoreOp::getEffectiveStackSize()). An explicit `stack_size` always wins.
+// Sets `stack_size = defaultStackSize` on every CoreOp lacking it
+// explicitly. An explicit `stack_size` always wins.
 inline mlir::OwningOpRef<mlir::ModuleOp>
 populateDefaultStackSize(mlir::ModuleOp src, int64_t defaultStackSize) {
   mlir::OwningOpRef<mlir::ModuleOp> cloned = src.clone();
@@ -204,49 +202,32 @@ populateDefaultStackSize(mlir::ModuleOp src, int64_t defaultStackSize) {
   return cloned;
 }
 
-// Appends a comma-joined list of skipped-artifact paths to a diagnostic the
-// caller has already introduced (e.g. "...could not inspect N artifact(s): ").
-// Factored out so every "couldn't inspect these inputs" warning reports the
-// list the same way, however they differ in what they were measuring.
+// Appends a comma-joined list of skipped-artifact paths to a diagnostic.
 inline void appendSkippedArtifacts(mlir::InFlightDiagnostic &diag,
                                    llvm::ArrayRef<std::string> skipped) {
   for (size_t i = 0; i < skipped.size(); ++i)
     diag << (i ? ", " : "") << skipped[i];
 }
 
-// Validate each core's `stack_size` (explicit, or the target default) against
-// what its call tree needs, via a StackSizeAnalysis.h walk from the symbols
-// the core body directly calls. Only ever warns or fails -- never mutates
-// stack_size -- because the computed number is a LOWER BOUND: it excludes
-// the core body's own top-level frame, not measurable until after the core's
-// own codegen (see buildObjectSubgraph).
-//
-// A cycle (recursion) is unbounded, so it fails the build for that core,
-// naming the root and pointing at `stack_size_override`. A merely
-// unmeasurable symbol (missing `.stack_sizes`, an archive/bitcode input, or
-// a Chess-compiled object -- the common case during rollout) only warns, so
-// this check doesn't break every pre-existing design on first contact with a
-// newer aiecc.
+// Validate each core's `stack_size` against its call tree
+// (StackSizeAnalysis.h). Only warns or fails, never mutates -- the computed
+// number is a lower bound, excluding the core body's own frame (not measurable
+// until after codegen). A cycle fails the build; a merely-unmeasurable symbol
+// only warns.
 inline mlir::LogicalResult checkStackSizeRequirements(mlir::ModuleOp module,
                                                       llvm::StringRef inputFile,
                                                       llvm::StringRef workDir) {
   mlir::LogicalResult result = mlir::success();
 
-  // Pass 1's output depends only on the object itself, so it's safe to cache
-  // across cores (even across devices) sharing a link_files entry. Pass 2 is
-  // NOT cached the same way: its output also depends on the calling core's
-  // own `knownFunctions` closure, which can differ core to core.
+  // Cached per object (not per core): pass 1's output only depends on the
+  // object itself.
   llvm::StringMap<llvm::StringSet<>> definedFunctionsByPath;
 
   for (xilinx::AIE::DeviceOp device : module.getOps<xilinx::AIE::DeviceOp>()) {
-    // stack_size_override is looked up by callee name regardless of which
-    // core in this device calls it, so collect it once per device -- not once
-    // for the whole module, since a DeviceOp is its own symbol table
-    // (IsolatedFromAbove) and a sibling device may legally define a
-    // same-named symbol with a different override. A negative value would
-    // subtract from a path's total in maxPathFrom and undercount --
-    // external_func() rejects that in Python, but hand-written MLIR bypasses
-    // it, so re-check here.
+    // Collected per device, since each DeviceOp is its own symbol table and
+    // a sibling device may define a same-named symbol with a different
+    // override. Rejects negative values here too: external_func() already
+    // does in Python, but hand-written MLIR bypasses that.
     llvm::StringMap<int64_t> overrides;
     device.walk([&](mlir::func::FuncOp funcOp) {
       auto attr =
@@ -335,9 +316,7 @@ inline mlir::LogicalResult checkStackSizeRequirements(mlir::ModuleOp module,
         return;
       }
 
-      // A value that doesn't fit the attribute's i32 must not be silently
-      // narrowed, which would wrap to a small or negative number and
-      // undercount.
+      // Narrowing to i32 unchecked could wrap to a small/negative number.
       if (*stackRes.bytes > INT32_MAX) {
         coreOp.emitWarning()
             << "stack requirement computed as " << *stackRes.bytes
@@ -347,10 +326,6 @@ inline mlir::LogicalResult checkStackSizeRequirements(mlir::ModuleOp module,
       }
 
       if (!skipped.empty()) {
-        // computeStackRequirement only fails for symbols actually reached in
-        // the graph, so a skipped object whose symbols were never called is
-        // silently fine -- but warn regardless so an incomplete picture is
-        // visible rather than assumed exhaustive.
         auto diag = coreOp.emitWarning()
                     << "stack requirement computed as " << *stackRes.bytes
                     << " bytes, but " << skipped.size()
@@ -360,9 +335,6 @@ inline mlir::LogicalResult checkStackSizeRequirements(mlir::ModuleOp module,
         appendSkippedArtifacts(diag, skipped);
       }
 
-      // Stamp the computed value on the CoreOp so AIEAssignBuffers'
-      // memory-map diagnostics can show it alongside the stack region (see
-      // getComputedStackRequirement).
       mlir::Builder b(module.getContext());
       coreOp->setAttr(
           xilinx::AIE::kComputedStackRequirementAttrName,
@@ -1042,9 +1014,8 @@ getInputWithAddressesPipeline(mlir::MLIRContext *ctx, mlir::ModuleOp mod,
   mlir::OpPassManager &dpm2 = pm->nest<DeviceOp>();
   AIEAssignBufferAddressesOptions bufOpts;
   bufOpts.clAllocScheme = allocScheme.str();
-  // aie-assign-core-link-files ran earlier (see the `with_link_files.mlir`
-  // graph edge in buildMainGraph): its link_files attribute must exist before
-  // the stack-size check, which runs ahead of address assignment.
+  // aie-assign-core-link-files now runs earlier (buildMainGraph), before the
+  // stack-size check.
   dpm2.addPass(createAIEAssignBufferAddressesPass(bufOpts));
   dpm2.addPass(createAIEVectorTransferLoweringPass());
   pm->addPass(xilinx::AIEX::createAIESCFToControlFlowPass());

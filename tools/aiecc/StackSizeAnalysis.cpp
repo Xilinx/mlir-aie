@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "aie/Analysis/StackSizeAnalysis.h"
+#include "StackSizeAnalysis.h"
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
