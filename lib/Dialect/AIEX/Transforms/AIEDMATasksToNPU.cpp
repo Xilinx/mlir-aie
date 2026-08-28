@@ -939,9 +939,8 @@ struct AIEDMATasksToNPUPass
     int row = tile.getRow();
     int channel = op.getChannel();
 
-    uint32_t ctrlAddrLocal =
-        tm.getDmaControlAddress(col, row, channel, AIE::DMAChannelDir::S2MM) &
-        0xFFFFF;
+    uint32_t ctrlAddrLocal = tm.getLocalDmaControlAddress(
+        col, row, channel, AIE::DMAChannelDir::S2MM);
 
     std::string ctrlRegName = "DMA_S2MM_" + std::to_string(channel) + "_Ctrl";
     // DMA control regs live in the memory module; memtile ignores isMem, shim

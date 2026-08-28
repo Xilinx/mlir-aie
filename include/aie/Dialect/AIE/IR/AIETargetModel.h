@@ -404,6 +404,13 @@ public:
   virtual uint32_t getDmaControlAddress(int col, int row, int channel,
                                         AIE::DMAChannelDir direction) const = 0;
 
+  /// Return the DMA task-queue register address relative to its tile.
+  uint32_t getLocalDmaControlAddress(int col, int row, int channel,
+                                     AIE::DMAChannelDir direction) const {
+    return getDmaControlAddress(col, row, channel, direction) &
+           ((1u << getRowShift()) - 1);
+  }
+
   virtual uint32_t getNumMemTileRows() const = 0;
   /// Return the size (in bytes) of a MemTile.
   virtual uint32_t getMemTileSize() const = 0;
