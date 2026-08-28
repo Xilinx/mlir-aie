@@ -300,6 +300,9 @@ public:
   /// Return the size (in bytes) of the local data memory of a core.
   virtual uint32_t getLocalMemorySize() const = 0;
 
+  /// Return the size (in bytes) of a core's program memory.
+  virtual uint32_t getProgramMemorySize() const = 0;
+
   /// Return the default stack reservation (in bytes) for a core, used when a
   /// design does not state one. The linker script places the stack directly
   /// below the objectFIFO buffers with no clearance, so a design whose frames
@@ -590,6 +593,7 @@ public:
   uint32_t getMemNorthBaseAddress() const override { return 0x00030000; }
   uint32_t getMemEastBaseAddress() const override { return 0x00038000; }
   uint32_t getLocalMemorySize() const override { return 0x00008000; }
+  uint32_t getProgramMemorySize() const override { return 0x00004000; }
   uint32_t getAccumulatorCascadeSize() const override { return 384; }
   uint32_t getComputeTileLoadStoreBusWidth() const override { return 128; }
 
@@ -723,6 +727,7 @@ public:
   uint32_t getMemNorthBaseAddress() const override { return 0x00060000; }
   uint32_t getMemEastBaseAddress() const override { return 0x00070000; }
   uint32_t getLocalMemorySize() const override { return 0x00010000; }
+  uint32_t getProgramMemorySize() const override { return 0x00004000; }
   uint32_t getAccumulatorCascadeSize() const override { return 512; }
   uint32_t getComputeTileLoadStoreBusWidth() const override { return 256; }
 
