@@ -58,29 +58,11 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   BdIdGenerator &getGeneratorForTile(AIE::TileOp tile) {
     auto it = gens.find(tile);
     if (it == gens.end()) {
-      AIE::DeviceOp device = tile->getParentOfType<AIE::DeviceOp>();
-      const AIETargetModel &targetModel = device.getTargetModel();
+      const AIETargetModel &targetModel =
+          tile->getParentOfType<AIE::DeviceOp>().getTargetModel();
       it = gens.insert({tile, BdIdGenerator(tile.getCol(), tile.getRow(),
                                             targetModel)})
                .first;
-      // Reserve bd_ids the static tile program already assigned on this tile.
-      BdIdGenerator &gen = it->second;
-      int col = tile.getCol(), row = tile.getRow();
-      auto reserveStatic = [&](AIE::TileElement dmaOp) {
-        if (dmaOp.getTileID().col != col || dmaOp.getTileID().row != row)
-          return;
-        dmaOp->walk([&](AIE::DMABDOp bd) {
-          if (bd.getBdId().has_value() &&
-              !gen.bdIdAlreadyAssigned(bd.getBdId().value()))
-            gen.assignBdId(bd.getBdId().value());
-        });
-      };
-      for (auto m : device.getOps<AIE::MemOp>())
-        reserveStatic(m);
-      for (auto m : device.getOps<AIE::MemTileDMAOp>())
-        reserveStatic(m);
-      for (auto m : device.getOps<AIE::ShimDMAOp>())
-        reserveStatic(m);
     }
     return it->second;
   }

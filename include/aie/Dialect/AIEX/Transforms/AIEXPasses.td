@@ -269,24 +269,6 @@ def AIEMaterializeRuntimeSequences : Pass<"aie-materialize-runtime-sequences", "
   ];
 }
 
-def AIEReserveRuntimeBDIDs
-    : Pass<"aie-reserve-runtime-bd-ids", "AIE::DeviceOp"> {
-  let summary =
-      "Reserve runtime-sequence pinned BD ids for the static allocator";
-  let description = [{
-    Records the compile-time BD ids that `aiex.dma_configure_task` ops pin in the
-    runtime sequence, per tile, as an `aiex.reserved_bd_ids` attribute on each
-    `aie.tile`. Runs before `aie-assign-bd-ids` so the static tile-program BD-id
-    allocator, which cannot walk AIEX ops, reserves them and its auto-assignment
-    does not reuse an id the runtime sequence already pinned on the same tile.
-  }];
-
-  let constructor = "xilinx::AIEX::createAIEReserveRuntimeBDIDsPass()";
-  let dependentDialects = ["xilinx::AIE::AIEDialect",
-                           "xilinx::AIEX::AIEXDialect",
-  ];
-}
-
 def AIEAssignRuntimeSequenceBDIDs : Pass<"aie-assign-runtime-sequence-bd-ids", "AIE::DeviceOp"> {
   let summary = "Assign IDs to Buffer Descriptors Configured in the Runtime Sequence";
 

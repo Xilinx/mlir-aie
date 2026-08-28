@@ -40,8 +40,6 @@ createAIEMaterializeRuntimeSequencesPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIEAssignRuntimeSequenceBDIDsPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
-createAIEReserveRuntimeBDIDsPass();
-std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIEUnrollRuntimeSequenceLoopsPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIELowerDynamicBDPoolPass();

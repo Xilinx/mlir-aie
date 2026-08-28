@@ -161,16 +161,6 @@ struct AIEAssignBufferDescriptorIDsPass
       int row = memOp.getTileID().row;
 
       BdIdGenerator gen(col, row, targetModel);
-      // Reserve bd_ids the runtime sequence pinned on this tile.
-      for (TileOp tile : targetOp.getOps<TileOp>()) {
-        if (tile.getCol() != col || tile.getRow() != row)
-          continue;
-        if (auto reserved =
-                tile->getAttrOfType<DenseI32ArrayAttr>("aiex.reserved_bd_ids"))
-          for (int32_t bdId : reserved.asArrayRef())
-            gen.assignBdId(static_cast<uint32_t>(bdId));
-        break;
-      }
       auto checkBdChannelAccessible = [&](DMABDOp bd, int bdId,
                                           int channelIndex) -> bool {
         if (targetModel.isBdChannelAccessible(col, row, bdId, channelIndex))
