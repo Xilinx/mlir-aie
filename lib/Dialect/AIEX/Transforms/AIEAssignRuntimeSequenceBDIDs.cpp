@@ -67,7 +67,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
       });
     };
     for (AIE::DmaBody program : device.getOps<AIE::DmaBody>())
-      if (program.getTile() == tile.getResult())
+      if (program.getTileID() == tile.getTileID())
         seedRegion(program.getDmaBody());
   }
 
