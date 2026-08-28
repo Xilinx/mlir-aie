@@ -81,30 +81,6 @@ runs:
         sudo apt-get install -y binutils-aarch64-linux-gnu \
           g++-aarch64-linux-gnu gcc-aarch64-linux-gnu openssl libssl-dev lld
 
-        # The `lld` metapackage here only pulls in versioned binaries
-        # (ld.lld-18, lld-18, ...) under /usr/bin; the unversioned names live
-        # under /usr/lib/llvm-*/bin, which isn't on PATH. mlir_wheels/setup.py
-        # passes plain `-fuse-ld=lld` to aarch64-linux-gnu-gcc (needed: GNU ld
-        # can't insert AArch64 long-branch veneers for the fully static
-        # mlir-opt/mlir-translate binaries), which fails to resolve without
-        # an unversioned ld.lld and dies with the misleadingly generic
-        # "collect2: fatal error: cannot find 'ld'". Register one explicitly;
-        # idempotent, so this is a no-op if a future image already provides it.
-        LLD_BIN=$(command -v ld.lld || true)
-        if [ -z "$LLD_BIN" ]; then
-          LLD_BIN=$(ls /usr/bin/ld.lld-* 2>/dev/null | sort -V | tail -1)
-        fi
-        if [ -z "$LLD_BIN" ]; then
-          echo "::error::no ld.lld binary found after installing lld"
-          exit 1
-        fi
-        sudo update-alternatives --install /usr/bin/ld.lld ld.lld "$LLD_BIN" 100
-
-        # Fail fast (seconds, not 20 minutes into the LLVM build) if
-        # aarch64-linux-gnu-gcc still can't actually link with it.
-        echo 'int main(void) { return 0; }' | \
-          aarch64-linux-gnu-gcc -fuse-ld=lld -x c - -o /tmp/ld_lld_smoke_test
-
     - name: pip install standard tools
       shell: bash
       run: pip install --require-hashes -r python/requirements_dev.lock
