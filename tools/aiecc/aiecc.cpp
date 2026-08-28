@@ -274,10 +274,6 @@ buildObjectSubgraph(EdgeWithTypedOutput<ModRef> &lowered,
       .arg("-O" + std::to_string(optLevel.getValue()))
       .value("--march=")
       .arg("--function-sections")
-      // Record each function's frame size in a `.stack_sizes` section (metadata
-      // only, no SHF_ALLOC) -- Chess ships the equivalent as `.stackinfo`.
-      // Without this, peano builds have nothing for the stack-size check to
-      // read (see StackSizeAnalysis.h).
       .arg("-stack-size-section")
       .arg("--filetype=obj")
       .output("-o");

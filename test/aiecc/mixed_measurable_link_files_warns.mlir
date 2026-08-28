@@ -5,13 +5,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-// Where stack_size_unmeasurable_warns.mlir covers a core whose ONLY
-// link_files object is unmeasurable (computeStackRequirement itself fails),
-// this covers a core with a MIX: a measurable object (entry_a, actually
-// reached) and an unmeasurable one (an archive, never referenced). The
-// requirement is still computed successfully, and warns purely because not
-// every artifact could be inspected -- checkStackSizeRequirements'
-// `if (!skipped.empty())` branch (IRTransforms.h).
+// A mix of a measurable object (entry_a) and an unmeasurable, unreferenced
+// archive still computes successfully, warning only that an artifact
+// couldn't be inspected -- unlike stack_size_unmeasurable_warns.mlir, where
+// the only object is unmeasurable and the computation itself fails.
 
 // REQUIRES: peano
 // RUN: rm -rf %t.d && mkdir -p %t.d
@@ -28,9 +25,7 @@ module {
 
     aie.objectfifo @of_out(%tile_0_2, {%tile_0_0}, 2 : i32) : !aie.objectfifo<memref<512xi8>>
 
-    // link_files is set directly on the core below (not inferred from
-    // link_with here) so both the measurable object and the archive reach
-    // this core without the archive ever being treated as reachable.
+    // link_files set directly so the archive reaches the core unreached.
     func.func private @entry_a(memref<512xi8>)
 
     %core_0_2 = aie.core(%tile_0_2) {

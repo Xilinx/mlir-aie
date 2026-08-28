@@ -5,11 +5,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-// stack_size is absent, and entry_a's real frame (~4160 bytes, see
-// stack_size_max_not_sum_kernel.cc) exceeds the device default (0x400 = 1024
-// bytes) buffers were placed against -- silent memory corruption today. Once
-// the core's own compiled frame is known, the build must fail naming the
-// exact value to declare, never silently pick one itself.
+// stack_size is absent, and entry_a's real frame exceeds the 1024-byte
+// device default buffers were placed against; the build must fail naming
+// the exact value to declare.
 
 // REQUIRES: peano
 // RUN: rm -rf %t.d && mkdir -p %t.d
@@ -18,15 +16,11 @@
 
 // CHECK: error: stack_size is absent (this core's buffers were placed assuming the device default of 1024 bytes), but this core's real requirement is {{[0-9]+}} bytes; set stack_size = {{[0-9]+}} explicitly on this aie.core (Worker(stack_size=...) in IRON) and rebuild, or pass --no-auto-stack-size to skip this check
 
-// The xclbin this failed build wrote before the post-build check ran must not
-// be left behind looking complete: a caller that doesn't check aiecc's exit
-// code (or `make`, on the next invocation) would otherwise pick up a binary
-// whose buffers were placed against a stack_size now proven insufficient.
+// The xclbin must not be left looking complete for a caller ignoring the
+// exit code.
 // RUN: not ls %t.out/final.xclbin
 
-// --no-auto-stack-size skips this check entirely, same as the earlier
-// warning it complements -- the build must complete despite the same
-// underlying insufficiency.
+// --no-auto-stack-size skips this check entirely.
 // RUN: rm -rf %t.noauto.d && mkdir -p %t.noauto.d
 // RUN: cp %t.d/stack_size_max_not_sum_kernel.o %t.noauto.d/
 // RUN: cd %t.noauto.d && %aiecc --no-auto-stack-size %s 2>&1 | FileCheck --check-prefix=NOAUTO --allow-empty %s

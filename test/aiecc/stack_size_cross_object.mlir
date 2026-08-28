@@ -5,18 +5,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-// Exercises the two-pass cross-object attribution (see StackSizeAnalysis.h):
-// entry_cross (the core body's only direct call, defined in
-// stack_size_cross_object_caller.o) calls helper_cross, defined only in the
-// sibling object stack_size_cross_object_callee.o with a large real frame
-// (~4096 bytes). link_files is set directly on the core, rather than
-// inferred from a func.func's link_with, so both objects reach this core
-// without a second direct func.call to helper_cross that would make it a
-// root in its own right and bypass the cross-object edge under test.
-//
-// stack_size = 2048 sits well below the true total, so correct cross-object
-// folding must warn and then fail naming a large number; a broken edge would
-// silently drop helper_cross's contribution and report no warning at all.
+// Exercises cross-object attribution (StackSizeAnalysis.h): entry_cross,
+// the core body's only direct call, calls helper_cross, defined only in a
+// sibling object with a large real frame. stack_size = 2048 is well below
+// the true total, so folding must warn then fail; a broken edge would
+// silently drop helper_cross and report no warning at all.
 
 // REQUIRES: peano
 // RUN: rm -rf %t.d && mkdir -p %t.d

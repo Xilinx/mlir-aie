@@ -203,17 +203,10 @@ class external_func(FuncOp):
             the core's LLVM module with ``llvm-link`` before codegen instead of
             object-linking it.  Requires ``link_with``.  When omitted, the
             artifact is object-linked, whatever its suffix.
-        stack_size_override: Optional declared upper bound, in bytes, on the
-            stack this function's call subtree needs. aiecc's automatic stack
-            analysis treats this as the answer for the whole subtree and does
-            not descend into it -- the escape hatch for recursion, indirect
-            (function-pointer) calls, or a kernel compiled without
-            `.stack_sizes` metadata (e.g. via Chess). An explicit value always
-            wins over whatever the analysis would compute, even if smaller --
-            it's a declaration, not a clamp. ``0`` is legal. It lives here,
-            not on the core, because the same kernel is often linked into
-            multiple cores, and the problematic symbol is usually internal to
-            a kernel object MLIR never saw.
+        stack_size_override: Optional declared upper bound, in bytes, on this
+            function's call-subtree stack use. Always wins over aiecc's
+            automatic analysis, even if smaller. See
+            `programming_guide/core_data_memory.md` for when to use this.
     """
 
     def __init__(

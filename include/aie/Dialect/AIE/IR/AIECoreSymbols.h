@@ -22,19 +22,13 @@
 
 namespace xilinx::AIE {
 
-// Stack requirement aiecc's call-graph analysis computed for a core, stamped
-// on the CoreOp so later stages can report it alongside the stack region.
-// aiecc erases it again before the module is handed on, so it never reaches
-// user-visible IR.
+// aiecc's computed stack requirement for a core, stamped on the CoreOp for
+// later diagnostics; erased before the module is handed on.
 inline constexpr llvm::StringLiteral kComputedStackRequirementAttrName =
     "aiecc.computed_stack_requirement";
 
-// Name of the top-level function AIECoreToStandard outlines a CoreOp's body
-// into. The canonical definition is there (where the function is actually
-// created); every other reader of a compiled core object -- aiecc's
-// post-build stack-size check reads this function's own frame size back out
-// of the object -- must agree on the same name, so they share this rather
-// than each formatting "core_<col>_<row>" independently.
+// Name AIECoreToStandard gives the function it outlines a CoreOp's body
+// into. Shared so every reader of a compiled core object agrees on it.
 inline std::string coreFrameSymbolName(int col, int row) {
   std::string name;
   llvm::raw_string_ostream(name) << "core_" << col << "_" << row;
