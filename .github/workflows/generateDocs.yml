@@ -94,6 +94,10 @@ jobs:
         uses: hendrikmuhs/ccache-action@d62db5f07c26379fc4b4e0916f098a92573c3b03  # v1.2.23
         with:
           key: ${{ runner.os }}-releaseasserts-${{ steps.get-submodule-hash.outputs.hash }}
+          # The key carries the submodule hash, so every bump mints a new key with
+          # nothing to restore. Fall back to the newest cache under the prefix,
+          # which is the case ccache exists for: most objects survive the bump.
+          restore-keys: ${{ runner.os }}-releaseasserts-
           max-size: 1G
 
       # Compare the compiler by content, not mtime, so the cache hits across

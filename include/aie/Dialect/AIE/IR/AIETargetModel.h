@@ -239,6 +239,40 @@ public:
   virtual bool isLegalMemAffinity(int coreCol, int coreRow, int memCol,
                                   int memRow) const = 0;
 
+  /// Which of two tiles' memory modules both of them can address.
+  enum class SharedMemory {
+    /// Neither tile can address the other's memory module.
+    None,
+    /// Only the first tile's module.
+    First,
+    /// Only the second tile's module.
+    Second,
+    /// Either will do.
+    Either
+  };
+
+  /// Return the memory module `a` and `b` can both reach, if any.
+  SharedMemory getSharedMemory(TileID a, TileID b) const {
+    // A shim or mem tile's memory module is only ever reachable from its own
+    // kind, so tiles of different kinds share nothing.
+    if (isShimNOCorPLTile(a.col, a.row) != isShimNOCorPLTile(b.col, b.row) ||
+        isMemTile(a.col, a.row) != isMemTile(b.col, b.row)) {
+      return SharedMemory::None;
+    }
+    bool aReachesB = isLegalMemAffinity(a.col, a.row, b.col, b.row);
+    bool bReachesA = isLegalMemAffinity(b.col, b.row, a.col, a.row);
+    if (aReachesB && bReachesA) {
+      return SharedMemory::Either;
+    }
+    if (bReachesA) {
+      return SharedMemory::First;
+    }
+    if (aReachesB) {
+      return SharedMemory::Second;
+    }
+    return SharedMemory::None;
+  }
+
   /// Return the base address in the local address map for a core.
   virtual uint32_t getMemInternalBaseAddress(TileID src) const = 0;
   /// Return the base address in the local address map for a core.
@@ -265,6 +299,9 @@ public:
 
   /// Return the size (in bytes) of the local data memory of a core.
   virtual uint32_t getLocalMemorySize() const = 0;
+
+  /// Return the size (in bytes) of a core's program memory.
+  virtual uint32_t getProgramMemorySize() const = 0;
 
   /// Return the default stack reservation (in bytes) for a core, used when a
   /// design does not state one. The linker script places the stack directly
@@ -556,6 +593,7 @@ public:
   uint32_t getMemNorthBaseAddress() const override { return 0x00030000; }
   uint32_t getMemEastBaseAddress() const override { return 0x00038000; }
   uint32_t getLocalMemorySize() const override { return 0x00008000; }
+  uint32_t getProgramMemorySize() const override { return 0x00004000; }
   uint32_t getAccumulatorCascadeSize() const override { return 384; }
   uint32_t getComputeTileLoadStoreBusWidth() const override { return 128; }
 
@@ -689,6 +727,7 @@ public:
   uint32_t getMemNorthBaseAddress() const override { return 0x00060000; }
   uint32_t getMemEastBaseAddress() const override { return 0x00070000; }
   uint32_t getLocalMemorySize() const override { return 0x00010000; }
+  uint32_t getProgramMemorySize() const override { return 0x00004000; }
   uint32_t getAccumulatorCascadeSize() const override { return 512; }
   uint32_t getComputeTileLoadStoreBusWidth() const override { return 256; }
 

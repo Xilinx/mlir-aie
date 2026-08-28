@@ -354,35 +354,110 @@ def AIEHoistVectorTransferPointers : Pass<"aie-hoist-vector-transfer-pointers", 
   let constructor = "xilinx::AIE::createAIEHoistVectorTransferPointersPass()";
 }
 
-def AIEObjectFifoStatefulTransform : Pass<"aie-objectFifo-stateful-transform", "DeviceOp"> {
-  let summary = "Instantiate the buffers and locks of aie.objectFifo.createObjectFifo operations";
+def AIEObjectFifoSplit : Pass<"aie-objectfifo-split", "DeviceOp"> {
+  let summary = "Split objectFifos into pools and endpoints";
   let description = [{
-    Replace each aie.objectFifo.createObjectFifo operation with aie.buffer and aie.lock operations in the
-    producer tile. Convert aie.objectFifo.acquire, aie.objectFifo.release and aie.objectFifo.subviewAccess
-    operations into useLock operations by keeping track of acquire/release operations on each objectFifo by
-    each process.
+    Replace each `aie.objectfifo` and `aie.objectfifo.link` with the buffer pools
+    its objects live in and one endpoint per actor working through them.
 
-    If the producer and consumer tiles of an aie.objectFifo.createObjectFifo operation are not adjacent, the
-    pass also establised aie.flow and aie.dma operations to enable communication between the tiles.
-    ObjectFifo accesses inside loops are lowered to runtime buffer/lock bookkeeping, and each such loop is
-    annotated with an `aie.unroll_hint`; the separate `aie-objectFifo-unroll` pass consumes that hint to
-    unroll the loop and fold the bookkeeping into a static lowering.
+    A fifo whose ends reach one memory module, and which asks for nothing that
+    a DMA has to carry out, becomes a single pool with a core endpoint at each
+    end. Reshaping the data on the way -- a layout transformation on either
+    side, a link, a repeat count, an asymmetric consumer type -- puts it back
+    on DMAs, as does the explicit `via_DMA` switch. Any other fifo becomes one pool per tile, a DMA
+    endpoint alongside each core endpoint, and an `aie.route`
+    connecting the two DMA ends. A link's participants meet on one pool, one
+    segment per participant.
+
+    Buffers, locks and channels are left unassigned; `--aie-objectfifo-allocate`
+    fills them in.
   }];
 
-  let constructor = "xilinx::AIE::createAIEObjectFifoStatefulTransformPass()";
-  let dependentDialects = [
-    "mlir::scf::SCFDialect",
-    "mlir::func::FuncDialect",
-    "mlir::arith::ArithDialect",
-    "mlir::memref::MemRefDialect",
-    "xilinx::AIE::AIEDialect",
-  ];
+  let constructor = "xilinx::AIE::createAIEObjectFifoSplitPass()";
+  let dependentDialects = ["xilinx::AIE::AIEDialect"];
+}
+
+def AIEObjectFifoVerify : Pass<"aie-objectfifo-verify", "DeviceOp"> {
+  let summary = "Check that a pool and endpoint design is complete";
+  let description = [{
+    Check the properties an op verifier cannot: that a pool's segments tile its
+    element type, that each segment has one endpoint filling it and one draining
+    it, that every DMA endpoint is connected by exactly one flow, and that no
+    loop body releases more objects than it acquires.
+
+    These are completeness rules, so a design that is deliberately partial --
+    one whose other half is supplied elsewhere -- may decline to run this pass.
+  }];
+
+  let constructor = "xilinx::AIE::createAIEObjectFifoVerifyPass()";
+  let dependentDialects = ["xilinx::AIE::AIEDialect"];
+}
+
+def AIEObjectFifoAllocate : Pass<"aie-objectfifo-allocate", "DeviceOp"> {
+  let summary = "Give pools and endpoints their buffers, locks and channels";
+  let description = [{
+    Fill in the resources a pool and endpoint design leaves open: the buffers
+    holding a pool's objects, the locks guarding each segment, and the DMA
+    channel each endpoint drives. `aie.route` becomes `aie.flow`, and
+    a shim endpoint gains the `aie.shim_dma_allocation` the runtime resolves.
+
+    Whatever is already written down is kept, so hand-placed buffers,
+    hand-written locks and pinned channels all survive; each is filled in only
+    where it is absent.
+  }];
+
+  let constructor = "xilinx::AIE::createAIEObjectFifoAllocatePass()";
+  let dependentDialects = ["xilinx::AIE::AIEDialect"];
 
   let options =
       [Option<"clPacketSwObjectFifos", "packet-sw-objFifos", "bool",
               /*default=*/"false",
               "Flag to enable aie.packetflow lowering from objectfifos.">,
   ];
+}
+
+def AIEObjectFifoLowerDMAs : Pass<"aie-objectfifo-lower-dmas", "DeviceOp"> {
+  let summary = "Turn DMA endpoints into buffer descriptor chains";
+  let description = [{
+    Program each DMA endpoint's channel: for every object in its pool, for
+    every segment it is responsible for, a buffer descriptor guarded by that
+    segment's locks.
+
+    Consumes `aie.objectfifo.dma_endpoint`.
+  }];
+
+  let constructor = "xilinx::AIE::createAIEObjectFifoLowerDMAsPass()";
+  let dependentDialects = ["xilinx::AIE::AIEDialect"];
+}
+
+def AIEObjectFifoLowerCores : Pass<"aie-objectfifo-lower-cores", "DeviceOp"> {
+  let summary = "Turn core acquires and releases into lock operations";
+  let description = [{
+    Replace each core's `aie.objectfifo.acquire` and `aie.objectfifo.release`
+    with the locks its endpoint guards and the objects its rotating index
+    selects. Loops carrying accesses are annotated with the unroll factor that
+    folds those indices to constants.
+
+    Consumes `aie.objectfifo.core_endpoint`.
+  }];
+
+  let constructor = "xilinx::AIE::createAIEObjectFifoLowerCoresPass()";
+  let dependentDialects = ["xilinx::AIE::AIEDialect",
+                           "mlir::arith::ArithDialect",
+                           "mlir::memref::MemRefDialect",
+                           "mlir::scf::SCFDialect"];
+}
+
+def AIEObjectFifoErasePools : Pass<"aie-objectfifo-erase-pools", "DeviceOp"> {
+  let summary = "Drop pools that no endpoint works any more";
+  let description = [{
+    Erase every `aie.objectfifo.pool` nothing refers to any more. Users may
+    choose to skip this pass to retain the metadata about which buffers and
+    locks belong to which lowered objectFifo.
+  }];
+
+  let constructor = "xilinx::AIE::createAIEObjectFifoErasePoolsPass()";
+  let dependentDialects = ["xilinx::AIE::AIEDialect"];
 }
 
 def AIEObjectFifoUnroll : Pass<"aie-objectFifo-unroll", "DeviceOp"> {

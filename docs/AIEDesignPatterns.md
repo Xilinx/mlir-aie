@@ -364,7 +364,7 @@ AIE.objectfifo @of0 (%tile12, {tile33}, 2 : i32) : !AIE.objectfifo<memref<16xi32
 After subsequent conversion passes, each of the objectFifo elements is instantiated as an AIE.buffer with an AIE.lock.
 
 objectFIFO operations have a 'port' attribute which indicates whether a tile is a 'producer' or a 'consumer' of that objectFIFO.
-Operations can be performed on the objectFIFO in the cores: elements can be acquired from the objectFIFO and accessed via an AIE.objectfifosubview type, then released: 
+Operations can be performed on the objectFIFO in the cores: elements can be acquired from the objectFIFO, which returns one memref per element, then released: 
 ```
 %core12 = AIE.core(%tile12) {
 	%c0 = arith.constant 0 : index
@@ -372,8 +372,7 @@ Operations can be performed on the objectFIFO in the cores: elements can be acqu
 	%height = arith.constant 12 : index
 
 	scf.for %indexInHeight = %c0 to %height step %c1 {
-		%subview = AIE.objectfifo.acquire @of0 (Produce, 1) : !AIE.objectfifosubview<memref<16xi32>>
-		%elem0 = AIE.objectfifo.subview.access %subview[0] : !AIE.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+		%elem0 = AIE.objectfifo.acquire @of0 (Produce, 1) : memref<16xi32>
 		call @some_work(%elem0) : (memref<16xi32>) -> ()
 		AIE.objectfifo.release @of0 (Produce, 1)
 	}
@@ -387,8 +386,7 @@ Operations can be performed on the objectFIFO in the cores: elements can be acqu
 	%height = arith.constant 12 : index
 
 	scf.for %indexInHeight = %c0 to %height step %c1 { 
-		%subview = AIE.objectfifo.acquire @of0 (Consume, 1) : !AIE.objectfifosubview<memref<16xi32>>
-		%elem0 = AIE.objectfifo.subview.access %subview[0] : !AIE.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+		%elem0 = AIE.objectfifo.acquire @of0 (Consume, 1) : memref<16xi32>
 		call @some_work(%elem0) : (memref<16xi32>) -> ()
 		AIE.objectfifo.release @of0 (Consume, 1)
 	}
@@ -407,13 +405,11 @@ In the default lowering, loops that contain objectFIFO operations are unrolled b
 	%height = arith.constant 12 : index
 
 	scf.for %indexInHeight = %c0 to %height step %c2 {
-		%subview0 = AIE.objectfifo.acquire @of0 (Produce, 1) : !AIE.objectfifosubview<memref<16xi32>>
-		%elem00 = AIE.objectfifo.subview.access %subview0[0] : !AIE.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+		%elem00 = AIE.objectfifo.acquire @of0 (Produce, 1) : memref<16xi32>
 		call @some_work(%elem00) : (memref<16xi32>) -> ()
 		AIE.objectfifo.release @of0 (Produce, 1)
 
-		%subview1 = AIE.objectfifo.acquire @of0 (Produce, 1) : !AIE.objectfifosubview<memref<16xi32>>
-		%elem10 = AIE.objectfifo.subview.access %subview1[0] : !AIE.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+		%elem10 = AIE.objectfifo.acquire @of0 (Produce, 1) : memref<16xi32>
 		call @some_work(%elem10) : (memref<16xi32>) -> ()
 		AIE.objectfifo.release @of0 (Produce, 1)
 	}

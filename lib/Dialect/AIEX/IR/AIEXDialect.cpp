@@ -1412,13 +1412,13 @@ LogicalResult AIEX::DmaChannelResetOp::verify() {
 LogicalResult AIEX::DmaChannelResetForOp::verify() {
   // Deferring verifier, in the shape of DMAConfigureTaskForOp::verify: the
   // referenced symbol is only resolvable once the objectFIFO lowering has run.
-  // Before aie.objectfifo_stateful_transform it names an aie.objectfifo; after,
-  // the transform retargets it to that fifo's aie.objectfifo_rearm_binding. If
-  // neither is resolvable yet, defer -- a later pass will resolve it.
+  // It names an aie.objectfifo, then that fifo's shim endpoint while the
+  // lowering is in flight, and finally its aie.objectfifo_rearm_binding. If
+  // none is resolvable yet, defer -- a later pass will resolve it.
   AIE::DeviceOp dev = getOperation()->getParentOfType<AIE::DeviceOp>();
   if (!dev)
     return success();
-  // The resident re-arm relies on the aie2p behaviour that a DMA channel has no
+  // The resident re-arm relies on the aie2p behavior that a DMA channel has no
   // enable bit, so the only way to restart it is a START_QUEUE push. AIE1 DMA
   // channels have an enable bit and are armed differently, so the trio this op
   // lowers to would not re-arm them correctly.
@@ -1428,7 +1428,8 @@ LogicalResult AIEX::DmaChannelResetForOp::verify() {
   Operation *target = dev.lookupSymbol(getObjfifo());
   if (!target)
     return success(); // symbol resolved during a later pass; defer the check
-  if (!isa<AIE::ObjectFifoCreateOp, AIE::ObjectFifoRearmBindingOp>(target))
+  if (!isa<AIE::ObjectFifoCreateOp, AIE::RouteEndpoint,
+           AIE::ObjectFifoRearmBindingOp>(target))
     return emitOpError() << "'" << getObjfifo()
                          << "' must reference an aie.objectfifo (or its "
                             "aie.objectfifo_rearm_binding)";

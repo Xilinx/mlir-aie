@@ -49,6 +49,8 @@ add_mlir_dialect_library(AIEXTransforms
   MLIRPass
   MLIRSCFToControlFlow
   MLIRSupport
+  MLIRTransforms
   MLIRTransformUtils
   MLIRSCFUtils
+  MLIRUBDialect
   )

@@ -11,7 +11,7 @@ module {
     %t00 = aie.tile(0, 0)
     %t01 = aie.tile(0, 1)
     %t02 = aie.tile(0, 2)
-  
+
     aie.objectfifo @objFifo_in0(%t00, {%t01}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
     aie.objectfifo @objFifo_in1(%t01, {%t02}, 2 : i32) : !aie.objectfifo<memref<8xi32>>
     aie.objectfifo.link [@objFifo_in0] -> [@objFifo_in1] ([] [])
@@ -19,7 +19,7 @@ module {
     aie.objectfifo @objFifo_out1(%t02, {%t01}, 2 : i32) : !aie.objectfifo<memref<8xi32>>
     aie.objectfifo @objFifo_out0(%t01, {%t00}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
     aie.objectfifo.link [@objFifo_out1] -> [@objFifo_out0] ([] [])
-  
+
     // Create 8 locks on tile 0,2 with init values 42 to 49
     // This is the data the core will read over the processor bus
     aie.lock(%t02, 8) {init = 42 : i32, sym_name = "lock8"}
@@ -39,10 +39,8 @@ module {
       %stride = arith.constant 0x10 : i32
       %addr = arith.constant 0x0001F080 : i32
       scf.for %steps = %c0 to %c8 step %c1 {
-        %subview0 = aie.objectfifo.acquire @objFifo_in1(Consume, 1) : !aie.objectfifosubview<memref<8xi32>>
-        %elem0 = aie.objectfifo.subview.access %subview0[0] : !aie.objectfifosubview<memref<8xi32>> -> memref<8xi32>
-        %subview1 = aie.objectfifo.acquire @objFifo_out1(Produce, 1) : !aie.objectfifosubview<memref<8xi32>>
-        %elem1 = aie.objectfifo.subview.access %subview1[0] : !aie.objectfifosubview<memref<8xi32>> -> memref<8xi32>
+        %elem0 = aie.objectfifo.acquire @objFifo_in1(Consume, 1) : memref<8xi32>
+        %elem1 = aie.objectfifo.acquire @objFifo_out1(Produce, 1) : memref<8xi32>
         func.call @read_processor_bus(%elem1, %addr, %size, %stride) : (memref<8xi32>, i32, i32, i32) -> ()
         aie.objectfifo.release @objFifo_in1(Consume, 1)
         aie.objectfifo.release @objFifo_out1(Produce, 1)

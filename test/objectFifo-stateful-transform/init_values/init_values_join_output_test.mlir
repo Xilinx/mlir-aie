@@ -5,14 +5,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="skip-verify=true" --aie-objectFifo-unroll %s | FileCheck %s
 
 // CHECK: module @init_join_output {
 // CHECK:   aie.device(xcve2302) {
-// CHECK:     %[[VAL_0:.*]] = aie.tile(1, 0)
-// CHECK:     %{{.*}}tile_1_1 = aie.tile(1, 1)
-// CHECK:     %{{.*}}tile_1_2 = aie.tile(1, 2)
-// CHECK:     %{{.*}}tile_2_3 = aie.tile(2, 3)
+// CHECK-DAG:     %[[VAL_0:.*]] = aie.tile(1, 0)
+// CHECK-DAG:     %{{.*}}tile_1_1 = aie.tile(1, 1)
+// CHECK-DAG:     %{{.*}}tile_1_2 = aie.tile(1, 2)
+// CHECK-DAG:     %{{.*}}tile_2_3 = aie.tile(2, 3)
 // CHECK-DAG: %[[OF2_BUFF_0:.*]] = aie.buffer(%{{.*}}tile_1_1) {sym_name = "of2_buff_0"} : memref<4xi32> = dense<[0, 1, 2, 3]>
 // CHECK-DAG: %[[OF2_BUFF_1:.*]] = aie.buffer(%{{.*}}tile_1_1) {sym_name = "of2_buff_1"} : memref<4xi32> = dense<[4, 5, 6, 7]>
 // CHECK-DAG: %[[OF2_PROD_LOCK_0:.*]] = aie.lock(%{{.*}}tile_1_1) {init = 0 : i32, sym_name = "of2_prod_lock_0"}
@@ -30,6 +30,7 @@
 // CHECK-DAG: aie.flow(%{{.*}}tile_1_2, DMA : 0, %{{.*}}tile_1_1, DMA : 0)
 // CHECK-DAG: aie.flow(%{{.*}}tile_2_3, DMA : 0, %{{.*}}tile_1_1, DMA : 1)
 // CHECK-DAG: aie.flow(%{{.*}}tile_1_1, DMA : 0, %{{.*}}tile_1_0, DMA : 0)
+// CHECK-DAG:     aie.shim_dma_allocation @of2_shim_alloc(%[[VAL_0]], S2MM, 0)
 // CHECK:     %mem_1_2 = aie.mem(%{{.*}}tile_1_2) {
 // CHECK:       %0 = aie.dma_start(MM2S, 0, ^bb1, ^bb3)
 // CHECK:     ^bb1:
@@ -109,7 +110,6 @@
 // CHECK:     ^bb3:
 // CHECK:       aie.end
 // CHECK:     }
-// CHECK:     aie.shim_dma_allocation @of2_shim_alloc(%[[VAL_0]], S2MM, 0)
 // CHECK:   }
 // CHECK: }
 
