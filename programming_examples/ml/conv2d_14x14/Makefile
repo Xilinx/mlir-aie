@@ -25,8 +25,10 @@ devicename ?= npu2
 
 width ?= 896
 height ?= 896
-num_act ?= 8
 multi ?= 0
+# Single-core ships the image co_group(=1152/16=72) times in the input
+# tensor (no on-chip repeat); multi-core uses shim repeat and ships one.
+num_act ?= $(if $(filter 1,$(multi)),1,72)
 
 aie_py_src = ${targetname}.py
 aieargs = -d ${devicename} -wd ${width} -ht ${height} $(if $(filter 1,$(multi)),--multi,)
