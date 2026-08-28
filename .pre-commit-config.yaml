@@ -169,6 +169,7 @@ repos:
           lib/Dialect/AIE/Transforms/AIECanonicalizeDevice\.cpp|
           lib/Dialect/AIE/Transforms/AIECoreToStandard\.cpp|
           lib/Dialect/AIE/Transforms/AIECreatePathFindFlows\.cpp|
+          lib/Dialect/AIE/Transforms/AIEDMAChannelAnalysis\.cpp|
           lib/Dialect/AIE/Transforms/AIEFindFlows\.cpp|
           lib/Dialect/AIE/Transforms/AIEGenerateColumnControlOverlay\.cpp|
           lib/Dialect/AIE/Transforms/AIEHoistVectorTransferPointers\.cpp|
@@ -176,8 +177,15 @@ repos:
           lib/Dialect/AIE/Transforms/AIELocalizeLocks\.cpp|
           lib/Dialect/AIE/Transforms/AIELowerCascadeFlows\.cpp|
           lib/Dialect/AIE/Transforms/AIENormalizeAddressSpaces\.cpp|
+          lib/Dialect/AIE/Transforms/AIEObjectFifoAllocate\.cpp|
+          lib/Dialect/AIE/Transforms/AIEObjectFifoErasePools\.cpp|
           lib/Dialect/AIE/Transforms/AIEObjectFifoLiveness\.cpp|
-          lib/Dialect/AIE/Transforms/AIEObjectFifoStatefulTransform\.cpp|
+          lib/Dialect/AIE/Transforms/AIEObjectFifoLowerCores\.cpp|
+          lib/Dialect/AIE/Transforms/AIEObjectFifoLowerDMAs\.cpp|
+          lib/Dialect/AIE/Transforms/AIEObjectFifoPipeline\.cpp|
+          lib/Dialect/AIE/Transforms/AIEObjectFifoSplit\.cpp|
+          lib/Dialect/AIE/Transforms/AIEObjectFifoUnroll\.cpp|
+          lib/Dialect/AIE/Transforms/AIEObjectFifoVerify\.cpp|
           lib/Dialect/AIE/Transforms/AIEPathFinder\.cpp|
           lib/Dialect/AIE/Transforms/AIEPlacer\.cpp|
           lib/Dialect/AIE/Transforms/AIEPlaceTiles\.cpp|

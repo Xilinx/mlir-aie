@@ -28,13 +28,6 @@ MLIR_CAPI_EXPORTED bool aieTypeIsObjectFifoType(MlirType type);
 MLIR_CAPI_EXPORTED MlirType aieObjectFifoTypeGet(MlirType type);
 
 //===---------------------------------------------------------------------===//
-// ObjectFifoSubviewType
-//===---------------------------------------------------------------------===//
-
-MLIR_CAPI_EXPORTED bool aieTypeIsObjectFifoSubviewType(MlirType type);
-MLIR_CAPI_EXPORTED MlirType aieObjectFifoSubviewTypeGet(MlirType type);
-
-//===---------------------------------------------------------------------===//
 // BlockFloatType
 //===---------------------------------------------------------------------===//
 
