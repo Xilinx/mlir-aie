@@ -584,9 +584,11 @@ struct NpuAddressPatchToCertApplyOffset57
         break;
 
       // replace the address with the new address
+      if (!op.getArgIdx())
+        break;
       rewriter.setInsertionPoint(blockWriteOp);
       rewriter.replaceOpWithNewOp<AIEX::CertApplyOffset57Op>(
-          op, getGlobalOp.getName(), 1, op.getArgIdx());
+          op, getGlobalOp.getName(), 1, *op.getArgIdx());
       return success();
     }
 

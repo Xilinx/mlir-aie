@@ -528,8 +528,8 @@ emitTransactionOps(OpBuilder &builder, Location fallbackLoc,
       const TransactionBinaryOperation::AddressPatchPayload &patch =
           *op.addressPatch;
       AIEX::NpuAddressPatchOp::create(
-          builder, loc, builder.getUI32IntegerAttr(patch.addr),
-          /*addr_val=*/mlir::Value(), builder.getI32IntegerAttr(patch.argIdx),
+          builder, loc, patch.addr,
+          /*addr_val=*/mlir::Value(), static_cast<int32_t>(patch.argIdx),
           AIEX::createConstantI32(builder, loc, patch.argPlus));
     } else if (op.cmd.Opcode == 0x6 /*  XAie_TxnOpcode::XAIE_IO_PREEMPT */) {
       auto ui8Ty =

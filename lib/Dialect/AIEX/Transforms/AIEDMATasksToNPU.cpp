@@ -355,7 +355,11 @@ struct AIEDMATasksToNPUPass
                                   "only be referred to on shim tiles.");
       }
 
-      unsigned arg_idx = buf_arg.getArgNumber();
+      std::optional<unsigned> hostIdx = getHostBufferArgIndex(buf_arg);
+      if (!hostIdx)
+        return bd_op->emitOpError(
+            "buffer must resolve to a memref argument of the runtime sequence");
+      unsigned arg_idx = *hostIdx;
       // arg_plus = buffer byte offset. The dma_bd offset is a single element
       // offset (stride 1); a constant folds to a constant (byte-identical to
       // before), a runtime offset operand is built with arith. `offset` here is

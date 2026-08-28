@@ -202,7 +202,7 @@ private:
           Value idxV = emitc::ConstantOp::create(
               b, loc, emitc::OpaqueType::get(b.getContext(), "int32_t"),
               emitc::OpaqueAttr::get(b.getContext(),
-                                     std::to_string(ap.getArgIdx())));
+                                     std::to_string(ap.getArgIdx().value_or(0))));
           emitTxnCall(b, loc, "txn_append_address_patch", txnVec,
                       {addrV, idxV, ap.getArgPlus()});
           countOp(b, loc, count);

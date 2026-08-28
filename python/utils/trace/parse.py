@@ -6,6 +6,8 @@ import json
 import logging
 import sys
 
+import numpy as np
+
 import aie.dialects.aie as aiedialect
 import aie.dialects.aiex as aiexdialect
 from aie.extras.util import find_ops  # pyright: ignore[reportMissingImports]
@@ -34,6 +36,79 @@ from aie.utils.trace.utils import (
 logger = logging.getLogger(__name__)
 
 NUM_EVENTS = 8  # number of events we can view per trace
+
+TRACE_SLICES_ATTR = "aie.trace_slices"
+
+
+def _device_name(device_op):
+    sym_name = device_op.sym_name
+    return sym_name.value if sym_name is not None else None
+
+
+def get_trace_slices(mlir_module_str):
+    """The trace buffer's layout, as recorded on the dispatched runtime sequence.
+
+    A design that runs several sub-designs through `aiex.configure` shares one
+    trace buffer between them, and `-aie-fuse-trace-buffers` records who owns
+    which byte range. Returns a list of dicts with ``device``, ``sequence``,
+    ``offset`` and ``size``, in buffer order, or ``[]`` when the buffer belongs
+    to a single design.
+    """
+    RuntimeSequenceOp = getattr(aiedialect, "RuntimeSequenceOp")
+    with Context(), Location.unknown():
+        module = Module.parse(mlir_module_str)
+        sequences = find_ops(
+            module.operation,
+            lambda o: isinstance(
+                o.operation.opview, RuntimeSequenceOp
+            ),  # pyright: ignore[reportArgumentType]
+        )
+        for seq in sequences:
+            attrs = seq.operation.attributes
+            if TRACE_SLICES_ATTR not in attrs:
+                continue
+            return [
+                {
+                    "device": entry["device"].value if "device" in entry else None,
+                    "sequence": (
+                        entry["sequence"].value if "sequence" in entry else None
+                    ),
+                    "offset": entry["offset"].value,
+                    "size": entry["size"].value,
+                }
+                for entry in attrs[TRACE_SLICES_ATTR]
+            ]
+    return []
+
+
+def parse_trace_slices(trace_buffer, mlir_module_str, colshift=None):
+    """Parse a shared trace buffer into one event list per traced sub-design.
+
+    Each slice is decoded against the configuration of the device that wrote it,
+    so two sub-designs occupying the same tiles stay distinguishable.
+
+    Returns a list of ``(slice_info, events)``. Falls back to a single entry
+    covering the whole buffer for a design with no recorded layout.
+    """
+    slices = get_trace_slices(mlir_module_str)
+    if not slices:
+        return [(None, parse_trace(trace_buffer, mlir_module_str, colshift))]
+
+    words = np.asarray(trace_buffer).view(np.uint32).reshape(-1)
+    results = []
+    for entry in slices:
+        start = entry["offset"] // 4
+        end = start + entry["size"] // 4
+        region = words[start:end]
+        if not region.any():
+            continue
+        results.append(
+            (
+                entry,
+                parse_trace(region, mlir_module_str, colshift, entry["device"]),
+            )
+        )
+    return results
 
 
 def parse_args():
@@ -409,7 +484,7 @@ def thread_name_metadata(
 # This searches for npu.write32 and categorizes them based on address and row.
 # memtile and core/shim tiles have different addresses, so we distinguish
 # between core and shim tile by row=0
-def parse_mlir_trace_events(mlir_module_str, colshift=None):
+def parse_mlir_trace_events(mlir_module_str, colshift=None, device_name=None):
 
     pid_events = list()
     trace_modes = list()
@@ -426,19 +501,36 @@ def parse_mlir_trace_events(mlir_module_str, colshift=None):
     with Context(), Location.unknown():
         module = Module.parse(mlir_module_str)
 
-        write32s = find_ops(
-            module.operation,
-            lambda o: isinstance(
-                o.operation.opview, NpuWrite32Op
-            ),  # pyright: ignore[reportArgumentType]
-        )
-        device = find_ops(
+        devices = find_ops(
             module.operation,
             lambda o: isinstance(
                 o.operation.opview, DeviceOp
             ),  # pyright: ignore[reportArgumentType]
         )
-        device = AIEDevice(int(device[0].device))
+        if not devices:
+            raise ValueError("no aie.device in the given MLIR module")
+
+        # A fused module holds one device per traced design, each with its own
+        # tile coordinates and event assignment. Scanning them all would key
+        # two designs' configurations to the same (row, col) and let the last
+        # one win, so a caller parsing one slice names the device that wrote it.
+        if device_name is None:
+            device_op = devices[0]
+            scope = module.operation
+        else:
+            matches = [d for d in devices if _device_name(d) == device_name]
+            if not matches:
+                raise ValueError(f"no aie.device named '{device_name}' in module")
+            device_op = matches[0]
+            scope = device_op.operation
+
+        write32s = find_ops(
+            scope,
+            lambda o: isinstance(
+                o.operation.opview, NpuWrite32Op
+            ),  # pyright: ignore[reportArgumentType]
+        )
+        device = AIEDevice(int(device_op.device))
         target_model = aiedialect.get_target_model(device)
         events_module = get_events_for_device(str(device))
 
@@ -739,13 +831,15 @@ def align_column_start_index(events, commands, colshift=None):
 # ------------------------------------------------------------------------------
 
 
-def parse_trace(trace_buffer, mlir_module_str, colshift=None):
+def parse_trace(trace_buffer, mlir_module_str, colshift=None, device_name=None):
     """Parse AIE trace buffer and return trace events as list in Trace Event Format.
 
     Args:
         trace_buffer: numpy array containing trace data (uint32 words)
         mlir_module_str: string containing MLIR module with trace configuration
         colshift: optional column shift adjustment (int or None for auto-align)
+        device_name: parse only this ``aie.device``'s trace configuration. Needed
+            when the module holds several traced designs; see ``parse_trace_slices``.
 
     Returns:
         list: trace events in Trace Event Format
@@ -755,7 +849,7 @@ def parse_trace(trace_buffer, mlir_module_str, colshift=None):
 
     # Parse MLIR to extract event configuration
     pid_events, trace_modes, events_module = parse_mlir_trace_events(
-        mlir_module_str, colshift
+        mlir_module_str, colshift, device_name
     )
 
     # Split buffer into segments to handle multi-channel trace buffers

@@ -54,6 +54,15 @@ struct SubviewTraceResult {
 // memref.view must have a constant byte shift and no dynamic result sizes.
 std::optional<SubviewTraceResult> traceSubviewToBlockArgument(Value value);
 
+// Index of `arg` among the host buffers of its runtime sequence, for the
+// `arg_idx` field of an address patch.
+//
+// The host passes one buffer per memref argument. Scalar arguments (a dynamic
+// sequence's runtime sizes) are baked into the instruction stream instead, so
+// they occupy no buffer slot and the raw block-argument number over-counts by
+// their number. Returns nullopt when `arg` is not a memref.
+std::optional<unsigned> getHostBufferArgIndex(BlockArgument arg);
+
 // Emit an `aiex.npu.update_from_scratchpad` op that adds the runtime offset
 // (held in the scratchpad slot referenced by `bdOp`'s
 // `offset_state_table_idx` attribute, multiplied by the element size of

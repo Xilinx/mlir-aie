@@ -139,7 +139,10 @@ LogicalResult appendAddressPatch(std::vector<uint32_t> &instructions,
   if (!argPlus)
     return op.emitOpError("Cannot translate address_patch with non-constant "
                           "arg_plus to a static TXN binary");
-  uint32_t argIdx = op.getArgIdx();
+  if (!op.getArgIdx())
+    return op.emitOpError("address_patch still names its host buffer by SSA "
+                          "value; run -aie-resolve-address-patch-buffers");
+  uint32_t argIdx = *op.getArgIdx();
   uint32_t patchedArgPlus = *argPlus;
   if (foldDDRAddrOffset && argIdx >= kNumFirmwareTranslatedArgs)
     patchedArgPlus += kDDRAIEAddrOffset;

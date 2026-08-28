@@ -46,7 +46,6 @@ struct TraceInfo {
 struct ChannelDescriptor {
   int channel;      // S2MM channel number
   int bdId;         // Buffer descriptor ID
-  int argIdx;       // Runtime sequence argument index
   int bufferOffset; // Byte offset within the shared trace buffer
 };
 
@@ -54,7 +53,6 @@ struct ShimInfo {
   TileOp shimTile;
   int channel;      // S2MM channel
   int bdId;         // Buffer descriptor ID
-  int argIdx;       // Runtime sequence argument index
   int bufferOffset; // Base byte offset for trace within the XRT buffer
   std::vector<TraceInfo> traceSources;     // All traces routed to this shim
   std::optional<int> startBroadcast;       // Broadcast to trigger for start
@@ -136,7 +134,7 @@ struct AIEInsertTraceFlowsPass
     int egressShimColFromIR = hostConfig.getEgressShimCol();
 
     // The trace buffer is a host buffer, i.e. an argument of the runtime
-    // sequence. Determine which argument index it occupies.
+    // sequence.
     //
     //   - Dedicated (default): append a fresh argument to the runtime sequence
     //     for the trace buffer. It lands at the tail, so enabling trace never
@@ -144,8 +142,15 @@ struct AIEInsertTraceFlowsPass
     //   - Reuse-output: trace data is written into the tail of the last
     //     existing argument (an output buffer), saving a host buffer. No new
     //     argument is added; the offset skips past the output data.
-    int traceArgIdx;
-    int traceBufferOffset = 0; // in bytes
+    //
+    // The patch names the buffer by SSA value rather than by index. An index
+    // only holds within this sequence, and `aiex.run` may inline this sequence
+    // into a caller whose argument list is different;
+    // -aie-resolve-address-patch-buffers turns the value back into an index
+    // once the op has reached the sequence the host dispatches.
+    Value traceBuffer;
+    BlockArgument appendedTraceArg; // null when reusing the output buffer
+    int traceBufferOffset = 0;      // in bytes
     if (reuseOutputBuffer) {
       auto args = runtimeSeq.getBody().getArguments();
       if (args.empty()) {
@@ -165,30 +170,18 @@ struct AIEInsertTraceFlowsPass
         return signalPassFailure();
       }
       Value lastArg = args.back();
-      traceArgIdx = args.size() - 1;
+      traceBuffer = lastArg;
       auto memrefType = cast<MemRefType>(lastArg.getType());
       traceBufferOffset = memrefType.getNumElements() *
                           (memrefType.getElementTypeBitWidth() / 8);
     } else {
-      // Append a trace-buffer argument. Its element type/size is not part of
-      // the host ABI (the host sizes the buffer itself); use an i8 memref so
-      // the byte size is self-describing.
+      // Element type/size is not part of the host ABI (the host sizes the
+      // buffer itself); use an i8 memref so the byte size is self-describing.
       auto traceBufType = MemRefType::get(
           {bufferSizeBytes}, IntegerType::get(device.getContext(), 8));
       Block &entryBB = runtimeSeq.getBody().front();
-      entryBB.addArgument(traceBufType, runtimeSeq.getLoc());
-      // The DDR address-patch arg_idx is a host BUFFER-operand index: scalar
-      // (non-memref) args are baked into the instruction stream, not passed as
-      // host buffers, so they don't count. The appended trace buffer is the
-      // last memref, at buffer-operand index (numMemrefArgs - 1). Using the raw
-      // block-arg index would over-count by the number of scalar args (e.g. a
-      // dynamic sequence's runtime sizes), pointing the patch at a nonexistent
-      // operand so trace data is never written.
-      traceArgIdx = llvm::count_if(entryBB.getArguments(),
-                                   [](BlockArgument a) {
-                                     return isa<MemRefType>(a.getType());
-                                   }) -
-                    1;
+      appendedTraceArg = entryBB.addArgument(traceBufType, runtimeSeq.getLoc());
+      traceBuffer = appendedTraceArg;
     }
 
     // Remove host_config op
@@ -419,7 +412,6 @@ struct AIEInsertTraceFlowsPass
       shimInfo.shimTile = shimTile;
       shimInfo.channel = clShimChannel;
       shimInfo.bdId = clDefaultBdId;
-      shimInfo.argIdx = traceArgIdx;
       shimInfo.bufferOffset = traceBufferOffset;
       shimInfo.traceSources = traceInfos;
       // Collect broadcast channels from traces that use them
@@ -569,12 +561,43 @@ struct AIEInsertTraceFlowsPass
       }
       shimInfo.channels = buildChannelDescriptors(
           shimInfo.traceSources.size(), shimInfo.channel, shimInfo.bdId,
-          shimInfo.argIdx, shimInfo.bufferOffset, bufferSizeBytes, available);
+          shimInfo.bufferOffset, bufferSizeBytes, available);
       // Round-robin assignment of traces to channels
       for (size_t i = 0; i < shimInfo.traceSources.size(); i++) {
         shimInfo.traceChannelAssignment.push_back(i % shimInfo.channels.size());
       }
     }
+
+    // A second S2MM channel doubles the bytes the DMAs write. Restate the
+    // appended argument at the size actually claimed: the host sizes its buffer
+    // from this type, and -aie-fuse-trace-buffers packs slices against it.
+    int traceBytesClaimed = bufferSizeBytes;
+    for (auto &[col, shimInfo] : shimInfos)
+      for (auto &chanDesc : shimInfo.channels)
+        traceBytesClaimed = std::max(
+            traceBytesClaimed, chanDesc.bufferOffset - traceBufferOffset +
+                                   bufferSizeBytes);
+    if (appendedTraceArg)
+      appendedTraceArg.setType(MemRefType::get(
+          {traceBytesClaimed}, IntegerType::get(device.getContext(), 8)));
+
+    // -aie-fuse-trace-buffers needs to find this argument and know its claim
+    // without re-deriving either from the host_config and channel policy.
+    runtimeSeq->setAttr(
+        "aie.trace_buffer",
+        builder.getDictionaryAttr(
+            {builder.getNamedAttr(
+                 "arg_index",
+                 builder.getI64IntegerAttr(
+                     appendedTraceArg
+                         ? appendedTraceArg.getArgNumber()
+                         : runtimeSeq.getBody().getNumArguments() - 1)),
+             builder.getNamedAttr("offset",
+                                  builder.getI64IntegerAttr(traceBufferOffset)),
+             builder.getNamedAttr(
+                 "size", builder.getI64IntegerAttr(traceBytesClaimed)),
+             builder.getNamedAttr(
+                 "dedicated", builder.getBoolAttr(bool(appendedTraceArg)))}));
 
     // Phase 2c: Rewrite broadcast to USER_EVENT for destination shim tiles
     // (shim can't listen for its own broadcast)
@@ -785,7 +808,7 @@ struct AIEInsertTraceFlowsPass
                                               shimInfo.shimTile, targetModel);
         xilinx::AIEX::NpuAddressPatchOp::create(
             builder, runtimeSeq.getLoc(), bdAddress, /*addr_val=*/mlir::Value(),
-            chanDesc.argIdx,
+            traceBuffer,
             AIEX::createConstantI32(builder, runtimeSeq.getLoc(),
                                     chanDesc.bufferOffset));
 
@@ -1021,24 +1044,21 @@ private:
   /// Adds a secondary channel when distribute-channels is enabled and there
   /// are multiple traces. AIE2 shim tiles have exactly 2 S2MM DMA channels.
   ///
-  /// Both channels share the same arg_idx (XRT buffer). The buffer is split
-  /// by offset: channel 0 starts at the base bufferOffset, channel 1 starts
-  /// at bufferOffset + bufferSizeBytes. The host must allocate a trace buffer
-  /// of 2 * bufferSizeBytes when distribute is active.
+  /// Both channels share the same host buffer, split by offset: channel 0
+  /// starts at the base bufferOffset, channel 1 at bufferOffset +
+  /// bufferSizeBytes.
   std::vector<ChannelDescriptor>
   buildChannelDescriptors(size_t numTraces, int primaryChannel, int primaryBdId,
-                          int primaryArgIdx, int baseBufferOffset,
-                          int bufferSizeBytes,
+                          int baseBufferOffset, int bufferSizeBytes,
                           const std::set<int> &availableChannels) {
     std::vector<ChannelDescriptor> chans;
-    chans.push_back(
-        {primaryChannel, primaryBdId, primaryArgIdx, baseBufferOffset});
+    chans.push_back({primaryChannel, primaryBdId, baseBufferOffset});
     if (clDistributeChannels && numTraces > 1 && primaryBdId > 0) {
       int ch2 = (primaryChannel == 1) ? 0 : 1;
       // Only add secondary channel if it's available (not claimed by existing
       // flows)
       if (availableChannels.count(ch2)) {
-        chans.push_back({ch2, primaryBdId - 1, primaryArgIdx,
+        chans.push_back({ch2, primaryBdId - 1,
                          baseBufferOffset + bufferSizeBytes});
       }
     }

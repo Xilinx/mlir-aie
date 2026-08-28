@@ -1035,17 +1035,21 @@ def AIE_NpuSyncOp: AIEX_Op<"npu.sync", []> {
 }
 
 // XAIE_IO_CUSTOM_OP_BEGIN + 1 (address patch)
-def AIE_NpuAddressPatchOp: AIEX_Op<"npu.address_patch", []> {
+def AIE_NpuAddressPatchOp: AIEX_Op<"npu.address_patch", [
+    AttrSizedOperandSegments
+  ]> {
   let summary = "address patch operator";
   let arguments = (
     ins UI32Attr:$addr,
         Optional<I32>:$addr_val,
-        I32Attr:$arg_idx,
-        I32:$arg_plus
+        OptionalAttr<I32Attr>:$arg_idx,
+        I32:$arg_plus,
+        Optional<AnyMemRef>:$buffer
   );
   let results = (outs );
   let assemblyFormat = [{
     `(` $arg_plus `:` type($arg_plus) `)` (`addr` $addr_val^ `:` type($addr_val))?
+    (`buffer` $buffer^ `:` type($buffer))?
     attr-dict
   }];
   let description = [{
@@ -1059,7 +1063,29 @@ def AIE_NpuAddressPatchOp: AIEX_Op<"npu.address_patch", []> {
     is supplied via the optional `addr_val` operand instead, which then takes
     precedence. Only the EmitC (C++ TXN) target supports a runtime `addr_val`;
     the static binary target requires the constant `addr`.
+
+    The host buffer is named either by the `arg_idx` attribute or by the
+    `buffer` operand, and exactly one of the two must be present. `arg_idx` is a
+    host-buffer operand index of the enclosing runtime sequence, which only
+    holds once the op sits in the sequence the host dispatches. An op emitted
+    into a callee sequence that `aiex.run` later inlines cannot know that index,
+    so it names the memref instead and `-aie-resolve-address-patch-buffers`
+    resolves it after inlining, folding the buffer's byte offset into
+    `arg_plus`.
   }];
+  let builders = [
+    OpBuilder<(ins "uint32_t":$addr, "mlir::Value":$addr_val,
+                   "int32_t":$arg_idx, "mlir::Value":$arg_plus), [{
+      build($_builder, $_state, $_builder.getUI32IntegerAttr(addr), addr_val,
+            $_builder.getI32IntegerAttr(arg_idx), arg_plus,
+            /*buffer=*/mlir::Value());
+    }]>,
+    OpBuilder<(ins "uint32_t":$addr, "mlir::Value":$addr_val,
+                   "mlir::Value":$buffer, "mlir::Value":$arg_plus), [{
+      build($_builder, $_state, $_builder.getUI32IntegerAttr(addr), addr_val,
+            /*arg_idx=*/mlir::IntegerAttr(), arg_plus, buffer);
+    }]>
+  ];
   let hasVerifier = 1;
 }
 

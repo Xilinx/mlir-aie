@@ -269,6 +269,55 @@ def AIEMaterializeRuntimeSequences : Pass<"aie-materialize-runtime-sequences", "
   ];
 }
 
+def AIEFuseTraceBuffers : Pass<"aie-fuse-trace-buffers", "mlir::ModuleOp"> {
+  let summary = "Give every traced sequence a slice of one fused trace buffer";
+  let description = [{
+    Trace lowering appends a trace buffer to each traced `aie.runtime_sequence`
+    independently, so a sequence reached through `aiex.configure` / `aiex.run`
+    ends up with an argument its call site does not supply.
+
+    This pass replaces those per-sequence buffers with a single buffer on the
+    sequence the host dispatches. Each `aiex.run` receives a `memref.subview` of
+    it, sized to what that callee claims, so two calls of the same design write
+    to different regions. Offsets follow from the call order: a sequence's own
+    traces take the front, then each call site in turn.
+
+    The resulting layout is recorded on the dispatched sequence as an
+    `aie.trace_slices` array of `{device, sequence, offset, size}`, which is what
+    lets a host attribute each region of the buffer to the design that wrote it.
+
+    Run after the trace pipeline and before `-aie-materialize-runtime-sequences`.
+  }];
+
+  let constructor = "xilinx::AIEX::createAIEFuseTraceBuffersPass()";
+  let dependentDialects = [
+    "mlir::memref::MemRefDialect",
+    "xilinx::AIE::AIEDialect",
+    "xilinx::AIEX::AIEXDialect",
+  ];
+}
+
+def AIEResolveAddressPatchBuffers
+    : Pass<"aie-resolve-address-patch-buffers", "AIE::DeviceOp"> {
+  let summary = "Turn an address patch's buffer operand into a host buffer index";
+  let description = [{
+    Rewrites `aiex.npu.address_patch` ops that name their host buffer by SSA
+    value into the `arg_idx` form the targets emit, folding the buffer's byte
+    offset into `arg_plus`.
+
+    Run after `-aie-materialize-runtime-sequences`: only once inlining has moved
+    the op into the sequence the host dispatches does an index exist to resolve
+    to.
+  }];
+
+  let constructor = "xilinx::AIEX::createAIEResolveAddressPatchBuffersPass()";
+  let dependentDialects = [
+    "mlir::arith::ArithDialect",
+    "xilinx::AIE::AIEDialect",
+    "xilinx::AIEX::AIEXDialect",
+  ];
+}
+
 def AIEAssignRuntimeSequenceBDIDs : Pass<"aie-assign-runtime-sequence-bd-ids", "AIE::DeviceOp"> {
   let summary = "Assign IDs to Buffer Descriptors Configured in the Runtime Sequence";
 
