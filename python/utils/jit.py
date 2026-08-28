@@ -96,7 +96,7 @@ def jit(
     if callable(mlir_generator):
         from aie.utils.compile.jit._introspect import split_params
 
-        compile_params, _, scalar_params = split_params(mlir_generator)
+        compile_params, _, _, scalar_params = split_params(mlir_generator)
 
         # Guard 1-A: reject any compile kwarg that doesn't match a CompileTime[T]
         # param. Failing fast at decoration time catches typos like @jit(NN=...)
@@ -113,12 +113,14 @@ def jit(
                 )
 
         # Guard 1-C: reject unannotated non-tensor params with default values.
-        # The framework has no plumbing for runtime scalar args yet (RTPs are
-        # tracked as a follow-up — see project memory), so a default value
-        # gets baked into the compiled MLIR at decoration time and any per-
-        # call override is *silently* ignored.  That's the worst kind of bug:
-        # the kernel runs successfully but with the wrong value.  Force the
-        # author to be explicit instead.
+        # The framework has no host-bridge plumbing for DispatchTime[T] args
+        # yet (tracked as a follow-up — see project memory), so a default
+        # value gets baked into the compiled MLIR at decoration time and any
+        # per-call override is *silently* ignored.  That's the worst kind of
+        # bug: the kernel runs successfully but with the wrong value. Force
+        # the author to be explicit instead.  DispatchTime[T] params are
+        # exempt here (they classify into a separate bucket) since they are
+        # meant to vary per call once the host bridge lands.
         sig_for_defaults = _inspect.signature(mlir_generator)
         silent_default_scalars = [
             name
@@ -129,14 +131,18 @@ def jit(
             raise TypeError(
                 f"@iron.jit: parameter(s) {silent_default_scalars!r} of "
                 f"{mlir_generator.__name__!r} have default values but no "
-                f"In / Out / InOut / CompileTime[T] annotation.  The framework has "
-                f"no runtime-scalar plumbing yet, so the default would be "
+                f"In / Out / InOut / CompileTime[T] / DispatchTime[T] "
+                f"annotation.  The framework has no runtime-scalar host-bridge "
+                f"plumbing yet, so the default would be "
                 f"baked into the compiled kernel and per-call overrides "
                 f"silently ignored.\n"
                 f"  Fix options:\n"
                 f"    * Use CompileTime[T] = default to keep the default and "
                 f"recompile on per-call change.\n"
-                f"    * Annotate as In / Out / InOut if it's a tensor."
+                f"    * Annotate as In / Out / InOut if it's a tensor.\n"
+                f"    * Annotate as DispatchTime[T] if it's meant to vary per "
+                f"call without a recompile (host-bridge delivery not wired up "
+                f"yet, see ROADMAP_iron_runtime_binding_time.md Phase 2.3)."
             )
 
         # Guard: CompileTime[T] params must be keyword-only (unless pre-bound or

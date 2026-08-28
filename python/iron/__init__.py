@@ -17,6 +17,7 @@ Provides the primary abstractions for describing NPU designs:
 - [`CompilableDesign`][iron.CompilableDesign] / [`compileconfig`][iron.compileconfig] — bundle a generator with compile-time config
 - [`CallableDesign`][iron.CallableDesign] / [`jit`][iron.jit] — JIT-compile and run on the NPU (Triton-style)
 - [`CompileTime`][iron.CompileTime] / [`In`][iron.In] / [`Out`][iron.Out] / [`InOut`][iron.InOut] — type-annotation markers
+- [`DispatchTime`][iron.DispatchTime] — runtime-scalar type-annotation marker
 - [`get_compile_arg`][iron.get_compile_arg] — dynamic compile-time injection (advanced)
 
 !!! note "Implicit MLIR context"
@@ -53,6 +54,7 @@ from aie.utils.callabledesign import CallableDesign
 from aie.utils.compile.jit import (
     CompilableDesign,
     CompileTime,
+    DispatchTime,
     In,
     InOut,
     Out,
@@ -118,6 +120,7 @@ __all__ = [
     "TileDma",
     # Compile-time / JIT API
     "CompileTime",
+    "DispatchTime",
     "In",
     "Out",
     "InOut",
