@@ -271,6 +271,19 @@ jobs:
         ./scripts/apply_patches.sh
 
         pip install --upgrade pip
+        # This is the only leg that isn't routed through cibuildwheel, so
+        # it's also the only leg where `pip wheel .` would otherwise resolve
+        # [build-system].requires with build isolation on: fresh from PyPI,
+        # unpinned. That's how a same-day nanobind release (e.g. 3.0.x) can
+        # break find_package(nanobind 2.9) overnight even though nothing in
+        # this repo changed. Install the hash-pinned lock up front, plus
+        # mlir-native-tools (not in the lock: it's resolved via
+        # PIP_FIND_LINKS, not PyPI, so pip-compile can't hash it), and build
+        # with --no-build-isolation so setup.py sees exactly these versions,
+        # matching what cibuildwheel's before-build already does for the
+        # other legs.
+        pip install --require-hashes -r requirements.lock
+        pip install mlir-native-tools
 
         CIBW_ARCHS=${{ matrix.ARCH }} \
         CMAKE_GENERATOR=Ninja \
@@ -278,7 +291,7 @@ jobs:
         LLVM_PROJECT_COMMIT=${{ needs.get_llvm_project_commit.outputs.LLVM_PROJECT_COMMIT }} \
         MATRIX_OS=${{ matrix.OS }} \
         PARALLEL_LEVEL=2 \
-        pip wheel . -v -w wheelhouse
+        pip wheel . -v -w wheelhouse --no-build-isolation
 
     - name: Clean llvm-project
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
