@@ -167,9 +167,22 @@ struct AIEAssignBufferDescriptorIDsPass
       int col = memOp.getTileID().col;
       int row = memOp.getTileID().row;
 
-      BdIdGenerator &gen =
-          gens.try_emplace(std::make_pair(col, row), col, row, targetModel)
-              .first->second;
+      auto emplaced =
+          gens.try_emplace(std::make_pair(col, row), col, row, targetModel);
+      BdIdGenerator &gen = emplaced.first->second;
+      // First time we touch this tile, reserve the bd_ids the runtime sequence
+      // pinned on it (aie-reserve-runtime-bd-ids -> aiex.reserved_bd_ids).
+      if (emplaced.second) {
+        for (TileOp tile : targetOp.getOps<TileOp>()) {
+          if (tile.getCol() != col || tile.getRow() != row)
+            continue;
+          if (auto reserved = tile->getAttrOfType<DenseI32ArrayAttr>(
+                  "aiex.reserved_bd_ids"))
+            for (int32_t bdId : reserved.asArrayRef())
+              gen.assignBdId(static_cast<uint32_t>(bdId));
+          break;
+        }
+      }
       auto checkBdChannelAccessible = [&](DMABDOp bd, int bdId,
                                           int channelIndex) -> bool {
         if (targetModel.isBdChannelAccessible(col, row, bdId, channelIndex))

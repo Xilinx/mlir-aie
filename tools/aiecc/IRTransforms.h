@@ -865,6 +865,7 @@ inline std::unique_ptr<mlir::PassManager> getInputWithAddressesPipeline(
   // Assign IDs to the ID-less locks the objectFifo lowering creates (and to any
   // user locks without an ID).
   dpm.addPass(createAIEAssignLockIDsPass());
+  dpm.addPass(X::createAIEReserveRuntimeBDIDsPass());
   dpm.addPass(createAIEAssignBufferDescriptorIDsPass());
   dpm.addPass(createAIELowerCascadeFlowsPass());
   dpm.addPass(X::createAIEBroadcastPacketPass());
