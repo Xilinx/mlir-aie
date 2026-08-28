@@ -559,11 +559,10 @@ LogicalResult xilinx::AIE::AIETranslateControlPacketsToUI32Vec(
       hdr = (info.getPktType() & 0x7) << 12 | (info.getPktId() & 0xff);
     words[0] = hdr | (0x1 & parity(hdr)) << 31;
 
-    // control packet header. `beats` gets two bits, immediately above the
-    // address, so an oversized payload does not truncate -- it corrupts the
-    // address and the packet silently lands somewhere else. Ops may carry more
-    // than this before --aie-legalize-control-packet splits them, so the limit
-    // is enforced here, at the point the header is packed.
+    // `beats` gets two bits, directly above the address, so an oversized
+    // payload corrupts the address instead of truncating. Enforced here (not
+    // by a verifier) since ops may carry more before
+    // --aie-legalize-control-packet splits them.
     if (size > AIEX::NpuControlPacketOp::getMaxDataWords())
       return packetOp.emitOpError("payload is ")
              << size << " words; a control packet carries at most "

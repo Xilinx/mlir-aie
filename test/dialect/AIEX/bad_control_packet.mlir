@@ -5,13 +5,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-// A control packet's wire header packs the beat count in the two bits directly
-// above the address, so a payload longer than four words does not truncate -- it
-// corrupts the address and the packet lands somewhere else entirely.
-//
-// The op itself may legitimately carry more: -aie-txn-to-control-packet emits
-// wide packets and -aie-legalize-control-packet splits them. The limit is
-// therefore enforced where the header is packed, on the way to a binary.
+// An over-4-word payload corrupts the packet's address instead of truncating
+// (see AIETranslateControlPacketsToUI32Vec), so translating one straight to a
+// binary without first running --aie-legalize-control-packet must fail.
 
 // RUN: not aie-translate --aie-ctrlpkt-to-bin %s 2>&1 | FileCheck %s
 // CHECK: payload is 8 words; a control packet carries at most 4 on the wire

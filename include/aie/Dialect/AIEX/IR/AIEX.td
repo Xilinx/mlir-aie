@@ -1217,10 +1217,9 @@ def AIE_NpuControlPacketOp: AIEX_Op<"control_packet", []> {
     uint32_t getRowFromAddr();
     uint32_t getColumnFromAddr();
 
-    /// Most payload words one packet can carry on the wire: the header spends
-    /// only two bits on the beat count. Ops may legitimately hold more before
-    /// --aie-legalize-control-packet splits them, so this is enforced where the
-    /// header is actually packed rather than by a verifier here.
+    /// Most payload words one packet can carry on the wire (the header's beat
+    /// count field is 2 bits). Enforced where the header is packed, not here --
+    /// see AIETranslateControlPacketsToUI32Vec.
     static constexpr unsigned getMaxDataWords() { return 4; }
   }];
 }
