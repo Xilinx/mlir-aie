@@ -116,9 +116,17 @@ def get_cross_cmake_args():
             # static mlir-opt/mlir-translate binaries, causing "relocation
             # truncated to fit: R_AARCH64_CALL26" inside libstdc++.a itself.
             # lld handles arbitrarily large binaries correctly.
-            cmake_args["CMAKE_EXE_LINKER_FLAGS_INIT"] = "-fuse-ld=lld"
-            cmake_args["CMAKE_MODULE_LINKER_FLAGS_INIT"] = "-fuse-ld=lld"
-            cmake_args["CMAKE_SHARED_LINKER_FLAGS_INIT"] = "-fuse-ld=lld"
+            #
+            # -B/usr/bin is required alongside -fuse-ld=lld: for a *cross*
+            # gcc, collect2's search for ld.lld doesn't include /usr/bin (the
+            # directory apt actually installs it into) the way it would for a
+            # native compiler, and fails with a misleading "collect2: fatal
+            # error: cannot find 'ld'" even though ld.lld is right there.
+            # -B explicitly adds it to collect2's subprogram search path.
+            _LLD_LINKER_FLAGS = "-fuse-ld=lld -B/usr/bin"
+            cmake_args["CMAKE_EXE_LINKER_FLAGS_INIT"] = _LLD_LINKER_FLAGS
+            cmake_args["CMAKE_MODULE_LINKER_FLAGS_INIT"] = _LLD_LINKER_FLAGS
+            cmake_args["CMAKE_SHARED_LINKER_FLAGS_INIT"] = _LLD_LINKER_FLAGS
             native_tools()
         elif ARCH == "X86":
             cmake_args["LLVM_DEFAULT_TARGET_TRIPLE"] = "x86_64-unknown-linux-gnu"
