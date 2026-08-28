@@ -72,9 +72,6 @@ runs:
       with:
         python-version: '3.12'
 
-    - name: Install Ninja
-      uses: llvm/actions/install-ninja@6a57890d0e3f9f35dfc72e7e48bc5e1e527cdd6c # Jan 17
-
     - name: Install cross-compilation toolchain
       shell: bash
       if: ${{ inputs.MATRIX_OS == 'ubuntu-24.04' && inputs.MATRIX_ARCH == 'aarch64' }}

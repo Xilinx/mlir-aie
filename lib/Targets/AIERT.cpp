@@ -421,7 +421,7 @@ static LogicalResult configureBdInBlock(const AIE::AIETargetModel &targetModel,
     uint32_t burstLen =
         getShimBurstLengthBytes(targetModel, bdOp.getBurstLength());
     uint8_t qOs = 0;
-    uint8_t cache = 0;
+    uint8_t cache = static_cast<uint8_t>(bdOp.getAxcacheOrDefault());
     uint8_t secure = 0;
     TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaSetAxi, &dmaTileBd, smid,
                             burstLen / 16, qOs, cache, secure);

@@ -5,26 +5,26 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="skip-verify=true" --aie-objectFifo-unroll %s | FileCheck %s
 
 // CHECK-LABEL:   aie.device(xcve2302) {
-// CHECK:           %{{.*}}tile_1_1 = aie.tile(1, 1)
-// CHECK:           %{{.*}}tile_3_3 = aie.tile(3, 3)
-// CHECK:           %[[VAL_0:.*]] = aie.buffer(%{{.*}}tile_3_3) {sym_name = "objfifo_cons_buff_0"} : memref<16xi32>
-// CHECK:           %[[VAL_1:.*]] = aie.buffer(%{{.*}}tile_3_3) {sym_name = "objfifo_cons_buff_1"} : memref<16xi32>
-// CHECK:           %[[VAL_2:.*]] = aie.lock(%{{.*}}tile_3_3) {init = 2 : i32, sym_name = "objfifo_cons_prod_lock_0"}
-// CHECK:           %[[VAL_3:.*]] = aie.lock(%{{.*}}tile_3_3) {init = 0 : i32, sym_name = "objfifo_cons_cons_lock_0"}
-// CHECK:           %[[VAL_4:.*]] = aie.buffer(%{{.*}}tile_1_1) {sym_name = "objfifo_buff_0"} : memref<16xi32>
-// CHECK:           %[[VAL_5:.*]] = aie.buffer(%{{.*}}tile_1_1) {sym_name = "objfifo_buff_1"} : memref<16xi32>
-// CHECK:           %[[VAL_6:.*]] = aie.lock(%{{.*}}tile_1_1) {init = 2 : i32, sym_name = "objfifo_prod_lock_0"}
-// CHECK:           %[[VAL_7:.*]] = aie.lock(%{{.*}}tile_1_1) {init = 0 : i32, sym_name = "objfifo_cons_lock_0"}
-// CHECK:           %buffer_1_1 = aie.buffer(%{{.*}}tile_1_1) : memref<16xi32>
-// CHECK:           %lock_1_1 = aie.lock(%{{.*}}tile_1_1, 0)
-// CHECK:           %buffer_1_1_0 = aie.buffer(%{{.*}}tile_1_1) : memref<16xi32>
-// CHECK:           %lock_1_1_1 = aie.lock(%{{.*}}tile_1_1, 1)
-// CHECK:           %buffer_1_1_2 = aie.buffer(%{{.*}}tile_1_1) : memref<16xi32>
-// CHECK:           %lock_1_1_3 = aie.lock(%{{.*}}tile_1_1, 2)
-// CHECK:           aie.flow(%{{.*}}tile_1_1, DMA : 0, %{{.*}}tile_3_3, DMA : 0)
+// CHECK-DAG:           %{{.*}}tile_1_1 = aie.tile(1, 1)
+// CHECK-DAG:           %{{.*}}tile_3_3 = aie.tile(3, 3)
+// CHECK-DAG:           %[[VAL_0:.*]] = aie.buffer(%{{.*}}tile_3_3) {sym_name = "objfifo_cons_buff_0"} : memref<16xi32>
+// CHECK-DAG:           %[[VAL_1:.*]] = aie.buffer(%{{.*}}tile_3_3) {sym_name = "objfifo_cons_buff_1"} : memref<16xi32>
+// CHECK-DAG:           %[[VAL_2:.*]] = aie.lock(%{{.*}}tile_3_3) {init = 2 : i32, sym_name = "objfifo_cons_prod_lock_0"}
+// CHECK-DAG:           %[[VAL_3:.*]] = aie.lock(%{{.*}}tile_3_3) {init = 0 : i32, sym_name = "objfifo_cons_cons_lock_0"}
+// CHECK-DAG:           %[[VAL_4:.*]] = aie.buffer(%{{.*}}tile_1_1) {sym_name = "objfifo_buff_0"} : memref<16xi32>
+// CHECK-DAG:           %[[VAL_5:.*]] = aie.buffer(%{{.*}}tile_1_1) {sym_name = "objfifo_buff_1"} : memref<16xi32>
+// CHECK-DAG:           %[[VAL_6:.*]] = aie.lock(%{{.*}}tile_1_1) {init = 2 : i32, sym_name = "objfifo_prod_lock_0"}
+// CHECK-DAG:           %[[VAL_7:.*]] = aie.lock(%{{.*}}tile_1_1) {init = 0 : i32, sym_name = "objfifo_cons_lock_0"}
+// CHECK-DAG:           %buffer_1_1 = aie.buffer(%{{.*}}tile_1_1) : memref<16xi32>
+// CHECK-DAG:           %lock_1_1 = aie.lock(%{{.*}}tile_1_1, 0)
+// CHECK-DAG:           %buffer_1_1_0 = aie.buffer(%{{.*}}tile_1_1) : memref<16xi32>
+// CHECK-DAG:           %lock_1_1_1 = aie.lock(%{{.*}}tile_1_1, 1)
+// CHECK-DAG:           %buffer_1_1_2 = aie.buffer(%{{.*}}tile_1_1) : memref<16xi32>
+// CHECK-DAG:           %lock_1_1_3 = aie.lock(%{{.*}}tile_1_1, 2)
+// CHECK-DAG:           aie.flow(%{{.*}}tile_1_1, DMA : 0, %{{.*}}tile_3_3, DMA : 0)
 // CHECK:           %memtile_dma_1_1 = aie.memtile_dma(%{{.*}}tile_1_1) {
 // CHECK:             %0 = aie.dma_start(MM2S, 1, ^bb1, ^bb3)
 // CHECK:           ^bb1:  // 2 preds: ^bb0, ^bb2

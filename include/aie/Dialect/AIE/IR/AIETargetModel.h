@@ -63,8 +63,7 @@ public:
     TK_AIE2_NPU1_1Col,
     TK_AIE2_NPU1_2Col,
     TK_AIE2_NPU1_3Col,
-    TK_AIE2_NPU1_4Col, // whole array must be last because of how we
-                       // cast/initialize the VirtualizedNPU1TargetModel class
+    TK_AIE2_NPU1_4Col,
     TK_AIE2_NPU1_Last,
     TK_AIE2_NPU2 = TK_AIE2_NPU1_Last,
     TK_AIE2_NPU2_1Col,
@@ -75,7 +74,9 @@ public:
     TK_AIE2_NPU2_6Col,
     TK_AIE2_NPU2_7Col,
     TK_AIE2_NPU2_Last,
-    TK_AIE2_Last = TK_AIE2_NPU2_Last,
+    TK_AIE2PS_VE3858 = TK_AIE2_NPU2_Last,
+    TK_AIE2PS_Last,
+    TK_AIE2_Last = TK_AIE2PS_Last,
   };
 
   // One-hot encoded list of target model properties.
@@ -83,7 +84,6 @@ public:
     // Device uses semaphore locks.
     UsesSemaphoreLocks = 1U << 0,
     // Device is an NPU-based device.
-    // There are several special cases for handling the NPU at the moment.
     IsNPU = 1U << 1,
     // Device model is virtualized.
     // This is used during CDO code generation to configure aie-rt properly.
@@ -134,6 +134,14 @@ public:
 
   /// Return the number of rows in the device.
   virtual int rows() const = 0;
+
+  /// Number of aie2ps/aie4 microcontrollers (uC) per column
+  virtual uint32_t getNumControllersPerColumn() const { return 0; }
+
+  /// Total number of aie2ps/aie4 microcontrollers (uC) in the device.
+  uint32_t getNumControllers() const {
+    return static_cast<uint32_t>(columns()) * getNumControllersPerColumn();
+  }
 
   /// Return the tile type for the given tile coordinates.
   /// - CoreTile: tiles with a Core, TileDMA, tile memory, and stream
@@ -231,6 +239,40 @@ public:
   virtual bool isLegalMemAffinity(int coreCol, int coreRow, int memCol,
                                   int memRow) const = 0;
 
+  /// Which of two tiles' memory modules both of them can address.
+  enum class SharedMemory {
+    /// Neither tile can address the other's memory module.
+    None,
+    /// Only the first tile's module.
+    First,
+    /// Only the second tile's module.
+    Second,
+    /// Either will do.
+    Either
+  };
+
+  /// Return the memory module `a` and `b` can both reach, if any.
+  SharedMemory getSharedMemory(TileID a, TileID b) const {
+    // A shim or mem tile's memory module is only ever reachable from its own
+    // kind, so tiles of different kinds share nothing.
+    if (isShimNOCorPLTile(a.col, a.row) != isShimNOCorPLTile(b.col, b.row) ||
+        isMemTile(a.col, a.row) != isMemTile(b.col, b.row)) {
+      return SharedMemory::None;
+    }
+    bool aReachesB = isLegalMemAffinity(a.col, a.row, b.col, b.row);
+    bool bReachesA = isLegalMemAffinity(b.col, b.row, a.col, a.row);
+    if (aReachesB && bReachesA) {
+      return SharedMemory::Either;
+    }
+    if (bReachesA) {
+      return SharedMemory::First;
+    }
+    if (aReachesB) {
+      return SharedMemory::Second;
+    }
+    return SharedMemory::None;
+  }
+
   /// Return the base address in the local address map for a core.
   virtual uint32_t getMemInternalBaseAddress(TileID src) const = 0;
   /// Return the base address in the local address map for a core.
@@ -257,6 +299,9 @@ public:
 
   /// Return the size (in bytes) of the local data memory of a core.
   virtual uint32_t getLocalMemorySize() const = 0;
+
+  /// Return the size (in bytes) of a core's program memory.
+  virtual uint32_t getProgramMemorySize() const = 0;
 
   /// Return the default stack reservation (in bytes) for a core, used when a
   /// design does not state one. The linker script places the stack directly
@@ -462,6 +507,13 @@ public:
   virtual std::vector<std::pair<uint32_t, uint32_t>>
   getShimBurstEncodingsAndLengths() const = 0;
 
+  // Returns the default 4-bit AxCACHE value used for shim NOC DMA AXI-MM
+  // transfers when a `dma_bd`/`npu.writebd`'s `axcache` attribute is unset.
+  // Tuned to 2 to enable upsizing in the NoC. No target currently needs
+  // a different value, so this is a single non-pure-virtual default rather
+  // than a per-architecture override.
+  virtual uint32_t getDefaultAxCache() const { return 2; }
+
   // Returns true if the target model supports the given block format.
   virtual bool isSupportedBlockFormat(std::string const &format) const;
 
@@ -541,6 +593,7 @@ public:
   uint32_t getMemNorthBaseAddress() const override { return 0x00030000; }
   uint32_t getMemEastBaseAddress() const override { return 0x00038000; }
   uint32_t getLocalMemorySize() const override { return 0x00008000; }
+  uint32_t getProgramMemorySize() const override { return 0x00004000; }
   uint32_t getAccumulatorCascadeSize() const override { return 384; }
   uint32_t getComputeTileLoadStoreBusWidth() const override { return 128; }
 
@@ -674,6 +727,7 @@ public:
   uint32_t getMemNorthBaseAddress() const override { return 0x00060000; }
   uint32_t getMemEastBaseAddress() const override { return 0x00070000; }
   uint32_t getLocalMemorySize() const override { return 0x00010000; }
+  uint32_t getProgramMemorySize() const override { return 0x00004000; }
   uint32_t getAccumulatorCascadeSize() const override { return 512; }
   uint32_t getComputeTileLoadStoreBusWidth() const override { return 256; }
 
@@ -787,6 +841,76 @@ public:
   getShimBurstEncodingsAndLengths() const override;
 };
 
+// AIE2PS base model
+class AIE2PSTargetModel : public AIE2TargetModel {
+public:
+  AIE2PSTargetModel(TargetModelKind k) : AIE2TargetModel(k) {
+    // AIE2PS is an NPU but uses CERT ELF, not CDO/xclbin.
+    addModelProperty(AIETargetModel::IsNPU);
+  }
+
+  AIEArch getTargetArch() const override { return AIEArch::AIE2ps; }
+
+  uint32_t getNumControllersPerColumn() const override { return 1; }
+
+  // AIE2PS supports 512B burst (same as AIE2P)
+  std::vector<std::pair<uint32_t, uint32_t>>
+  getShimBurstEncodingsAndLengths() const override {
+    return {std::pair(0, 64), std::pair(1, 128), std::pair(2, 256),
+            std::pair(3, 512)};
+  }
+
+  // TODO(aie2ps): AIE2PS changed block floating point from bfp16 to
+  // MX9/MX6/MX4. isSupportedBlockFormat() currently returns false (inherited).
+  // Override with correct MX format strings when ML kernels need it.
+
+  uint64_t getDmaBdAddress(int col, int row, uint32_t bd_id, int channel,
+                           AIE::DMAChannelDir direction) const override;
+  uint32_t getDmaControlAddress(int col, int row, int channel,
+                                AIE::DMAChannelDir direction) const override;
+
+  uint32_t getNumDestSwitchboxConnections(int col, int row,
+                                          WireBundle bundle) const override;
+  uint32_t getNumSourceSwitchboxConnections(int col, int row,
+                                            WireBundle bundle) const override;
+  std::optional<uint32_t> getStreamSwitchPortIndex(int col, int row,
+                                                   WireBundle bundle,
+                                                   uint32_t channel,
+                                                   bool master) const override;
+
+  static bool classof(const AIETargetModel *model) {
+    return model->getKind() >= TK_AIE2PS_VE3858 &&
+           model->getKind() < TK_AIE2PS_Last;
+  }
+};
+
+// VE3858 target model (AIE2PS, xc2ve3858 on VEK385)
+// 36 columns, 7 rows: 1 shim + 2 memtile + 4 core
+class VE3858TargetModel : public AIE2PSTargetModel {
+public:
+  VE3858TargetModel() : AIE2PSTargetModel(TK_AIE2PS_VE3858) {}
+
+  int columns() const override { return 36; }
+  int rows() const override { return 7; }
+
+  // AIE2PS Shim-South tiles (cols 1-23) have both NoC and PL.
+  // Shim-Global (col 0) has NoC only. Modeling all as ShimNOC is a working
+  // approximation for the CERT compilation path.
+  AIETileType getTileType(int col, int row) const override {
+    if (row == 0)
+      return AIETileType::ShimNOCTile;
+    if (row <= 2)
+      return AIETileType::MemTile;
+    return AIETileType::CoreTile;
+  }
+
+  uint32_t getNumMemTileRows() const override { return 2; }
+
+  static bool classof(const AIETargetModel *model) {
+    return model->getKind() == TK_AIE2PS_VE3858;
+  }
+};
+
 class VC1902TargetModel : public AIE1TargetModel {
   llvm::SmallDenseSet<unsigned, 16> nocColumns = {
       2, 3, 6, 7, 10, 11, 18, 19, 26, 27, 34, 35, 42, 43, 46, 47};
@@ -875,7 +999,6 @@ public:
 class BaseNPU1TargetModel : public AIE2TargetModel {
 public:
   BaseNPU1TargetModel(TargetModelKind k) : AIE2TargetModel(k) {
-    // Device properties initialization
     addModelProperty(AIETargetModel::IsNPU);
   }
 
@@ -925,7 +1048,6 @@ public:
 class BaseNPU2TargetModel : public AIE2TargetModel {
 public:
   BaseNPU2TargetModel(TargetModelKind k) : AIE2TargetModel(k) {
-    // Device properties initialization
     addModelProperty(AIETargetModel::IsNPU);
   }
 

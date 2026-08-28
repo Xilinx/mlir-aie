@@ -10,7 +10,7 @@
 // RUN: xchesscc_wrapper aie2 -c %S/kernel.cc
 // RUN: %aiecc --get-aiesim --xchesscc --xbridge %s %test_lib_flags -- %S/test.cpp
 
-// RUN: aie.mlir.prj/aiesim.sh | FileCheck %s
+// RUN: ./aie.mlir.prj/aiesim.sh | FileCheck %s
 // CHECK: PASS!
 
 // XFAIL: *

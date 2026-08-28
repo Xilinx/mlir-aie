@@ -109,7 +109,7 @@ jobs:
         with:
           MATRIX_OS: ${{ matrix.OS }}
           MATRIX_ARCH: x86
-          EXTRA_KEY: compile-and-test-assert=${{ matrix.ENABLE_ASSERTIONS }}-rtti=${{ matrix.ENABLE_RTTI }}
+          EXTRA_KEY: compile-and-test-${{ matrix.COMPILER }}-assert=${{ matrix.ENABLE_ASSERTIONS }}-rtti=${{ matrix.ENABLE_RTTI }}
 
       - name: Get MLIR
         id: mlir-wheels

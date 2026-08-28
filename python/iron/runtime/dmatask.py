@@ -49,9 +49,9 @@ class DMATask(RuntimeTask):
                 value is used as the element offset for this DMA transfer. Defaults to None.
             packet (tuple[int, int] | None, optional): Stamp the shim DMA's
                 BD with a packet header `(pkt_type, pkt_id)`. Pairs with
-                downstream packet-switched routing (e.g. ObjectFifos
-                lowered with `--packet-sw-objFifos` or an explicit
-                [`PacketFlow`][iron.PacketFlow]). Defaults to None.
+                downstream packet-switched routing (e.g. an
+                [`ObjectFifo`][iron.ObjectFifo] built with ``packet=True`` or
+                an explicit [`PacketFlow`][iron.PacketFlow]). Defaults to None.
             sizes (optional): Explicit access-pattern sizes whose entries may be
                 runtime SSA values. Used instead of ``tap`` for the dynamic path.
             strides (optional): Explicit access-pattern strides, paired with

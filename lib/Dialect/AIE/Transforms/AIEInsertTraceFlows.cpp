@@ -773,8 +773,10 @@ struct AIEInsertTraceFlowsPass
                               // lock_acq_val, lock_acq_id
             0, 0, 0, 0, 0, 0, // d0_zero_before, d1_zero_before, d2_zero_before,
                               // d0_zero_after, d1_zero_after, d2_zero_after
-            clTraceBurstLength // burst_length
-        );
+            clTraceBurstLength, // burst_length
+            // axcache left unset: the blockwrite lowering resolves the
+            // target default, so baking it here would only duplicate it.
+            mlir::IntegerAttr());
 
         // 4d. Address patch -- each channel gets its own offset within the
         // shared trace buffer (the secondary channel starts at

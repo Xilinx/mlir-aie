@@ -353,10 +353,9 @@ def AIEDMATasksToNPU : Pass<"aie-dma-tasks-to-npu", "AIE::DeviceOp"> {
   let summary = "Lower configured DMA tasks to NPU instructions";
 
   let constructor = "xilinx::AIEX::createAIEDMATasksToNPUPass()";
-  let dependentDialects = [
-    "mlir::arith::ArithDialect",
-    "xilinx::AIE::AIEDialect",
-    "xilinx::AIEX::AIEXDialect",
+  let dependentDialects = ["mlir::arith::ArithDialect", "mlir::ub::UBDialect",
+                           "xilinx::AIE::AIEDialect",
+                           "xilinx::AIEX::AIEXDialect",
   ];
 }
 
