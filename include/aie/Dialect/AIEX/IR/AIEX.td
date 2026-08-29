@@ -673,7 +673,13 @@ def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
       OptionalAttr<ConfinedAttr<I64Attr, [IntMinValue<0>,
                                           IntMaxValue<15>]>>:$axcache,
       // if set, the aiex.scratchpad_parameter value added to the BD's address
-      // as an offset
+      // as an offset. The value is an ELEMENT count, scaled by the buffer's
+      // element size at lowering. The firmware masks the address register
+      // with 0xFFFFFFFC, so on an element type narrower than 4 bytes a value
+      // that is not a multiple of 4 / gcd(4, element_bytes) elements is
+      // rounded DOWN to the 4-byte boundary below, silently. The static
+      // offset is rejected in the same situation; this one cannot be, so it
+      // only warns.
       OptionalAttr<FlatSymbolRefAttr>:$offset_parameter,
       // Set by --aie-lower-scratchpad-parameters from $offset_parameter: the
       // scratchpad state-table index whose value is used as the BD address

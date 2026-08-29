@@ -9,6 +9,8 @@
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
 
+#include <numeric>
+
 using namespace mlir;
 using namespace xilinx;
 
@@ -210,6 +212,26 @@ LogicalResult AIEX::emitUpdateBdAddressFromOffsetParameter(
 
   uint8_t stateIdx = static_cast<uint8_t>(idxAttr.getUInt());
   uint32_t elemBytes = bufType.getElementTypeBitWidth() / 8;
+
+  // The firmware masks the BD address register with 0xFFFFFFFC, so the byte
+  // offset it computes below is rounded DOWN to a 4-byte boundary rather than
+  // rejected. When elemBytes is itself a multiple of 4 that can never bite.
+  // Otherwise the runtime value has to be a multiple of 4 / gcd(4, elemBytes)
+  // elements, and nothing here can check that -- the value only exists at
+  // run time. The static offset path rejects the same misalignment outright
+  // (NpuDmaMemcpyNdOp::verify, "Offset must be 4-byte-aligned"), so warn
+  // rather than leave the runtime path silent.
+  if (elemBytes != 0 && elemBytes % 4 != 0) {
+    uint32_t elemMultiple = 4 / std::gcd(4u, elemBytes);
+    bdOp->emitWarning()
+        << "runtime offset parameter on a " << (elemBytes * 8)
+        << "-bit element type: the firmware masks the BD address register "
+           "with 0xFFFFFFFC, so a value that is not a multiple of "
+        << elemMultiple
+        << " elements is silently rounded down to the 4-byte boundary below "
+           "instead of being rejected";
+  }
+
   // Use func=mul with func_arg=elemBytes so the firmware computes
   // StateTable[idx] * elemBytes = byte offset, added into the BD address
   // register.
