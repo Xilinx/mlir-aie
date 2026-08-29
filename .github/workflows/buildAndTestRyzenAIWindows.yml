@@ -54,7 +54,6 @@ jobs:
     timeout-minutes: 90
     env:
       NPU_CACHE_HOME: ${{ github.workspace }}\iron-cache-${{ github.run_id }}
-      PIP_CACHE_DIR: ${{ github.workspace }}\.pip-cache-${{ github.run_id }}
       # Force matplotlib's non-interactive backend: taplib visualize() calls
       # plt.show(), which blocks forever on this headless runner (Linux CI has
       # no DISPLAY, so it already falls back to Agg).
@@ -78,6 +77,29 @@ jobs:
         run: |
           python --version
           if errorlevel 1 exit /b 1
+
+      - name: Point pip at a cache that outlives the job
+        # The cache sits beside the checkout rather than inside it: the next
+        # run's actions/checkout does a `git clean -ffdx` over GITHUB_WORKSPACE,
+        # which would take a cache under it with everything else.
+        #
+        # The working set is ~1.7 GB: the mlir distro wheel the build step
+        # pulls is ~961 MB and llvm_aie ~395 MB, and both turn over only on a
+        # re-pin. Growth on top of that is bounded by the nightly reset, since
+        # pip's HTTP cache is keyed by URL with no eviction and the rolling dev
+        # channel publishes one or two ~172 MB mlir_aie wheels a day.
+        shell: cmd
+        run: |
+          REM Parenthesised so a value ending in a digit cannot be read as a
+          REM file-descriptor redirect, and so no space is captured into it.
+          (echo PIP_CACHE_DIR=%RUNNER_WORKSPACE%\.pip-cache)>> "%GITHUB_ENV%"
+          if errorlevel 1 exit /b 1
+
+          python -c "import os; d = os.path.join(os.environ['RUNNER_WORKSPACE'], '.pip-cache'); n = sum(os.path.getsize(os.path.join(r, f)) for r, _, fs in os.walk(d) for f in fs); print('pip cache %.2f GiB at %s' % (n / 2**30, d))"
+          if errorlevel 1 exit /b 1
+
+          if not "%GITHUB_EVENT_NAME%"=="schedule" exit /b 0
+          if exist "%RUNNER_WORKSPACE%\.pip-cache" rmdir /s /q "%RUNNER_WORKSPACE%\.pip-cache"
 
       - name: Setup IRON environment
         shell: cmd
@@ -213,7 +235,8 @@ jobs:
         shell: cmd
         run: |
           if exist "%NPU_CACHE_HOME%" rmdir /s /q "%NPU_CACHE_HOME%"
-          if exist "%PIP_CACHE_DIR%" rmdir /s /q "%PIP_CACHE_DIR%"
+          REM PIP_CACHE_DIR is deliberately absent here; it lives outside the
+          REM workspace and is reset by the nightly run instead.
           REM Fixed-name build trees the next checkout's git-clean can miss on
           REM Windows (locked files / long paths); remove them here so a partial
           REM clean can't leave a poisoned tree on this persistent runner.
