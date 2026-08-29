@@ -25,7 +25,9 @@ PYBIND11_MODULE(_parameter_scratchpad, m) {
              if (info.itemsize * info.size < 4)
                throw py::value_error("buffer too small: need at least 4 bytes");
              auto *ptr = static_cast<uint32_t *>(info.ptr);
-             return new test_utils::ParameterScratchpad(ptr, paramsPath);
+             return new test_utils::ParameterScratchpad(
+                 ptr, static_cast<size_t>(info.itemsize) * info.size,
+                 paramsPath);
            }),
            py::arg("buffer"), py::arg("params_path"),
            py::keep_alive<1, 2>()) // prevent GC of buffer while alive
