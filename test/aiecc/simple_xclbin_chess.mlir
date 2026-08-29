@@ -1,4 +1,4 @@
-//===- simple.mlir ---------------------------------------------*- MLIR -*-===//
+//===- simple_xclbin_chess.mlir --------------------------------*- MLIR -*-===//
 //
 // Copyright (C) 2022 Xilinx, Inc.
 // Copyright (C) 2022-2025 Advanced Micro Devices, Inc.
@@ -6,17 +6,17 @@
 //
 //===----------------------------------------------------------------------===//
 
-// REQUIRES: peano
+// REQUIRES: chess
 
-// RUN: %aiecc -nv --get-xclbin --get-npu-insts --xclbin-name=aie.xclbin --npu-insts-name=insts.txt %s 2>&1 | FileCheck %s --check-prefix=PEANO
+// RUN: %aiecc --xchesscc -nv --get-xclbin --get-npu-insts --xclbin-name=aie.xclbin --npu-insts-name=insts.txt %s 2>&1 | FileCheck %s --check-prefix=XCHESSCC
 
 // Note that llc determines the architecture from the llvm IR.
 // bootgen runs in-process (no exec line); the xclbin packaging step (xclbinutil)
 // is still an external tool.
-// PEANO-NOT: xchesscc_wrapper
-// PEANO: {{[^ ]*llc }}
-// PEANO-SAME: --march=aie2
-// PEANO: xclbinutil
+// XCHESSCC-NOT: {{[^ ]*llc }}
+// XCHESSCC: xchesscc_wrapper aie2
+// XCHESSCC: xclbinutil
+// XCHESSCC-NOT: {{[^ ]*llc }}
 
 module {
   aie.device(npu1) {
