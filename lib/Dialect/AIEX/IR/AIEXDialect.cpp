@@ -143,6 +143,14 @@ AIEX::verifyStridesWraps(mlir::Operation *forOp,
   auto elemWidth =
       dataLayout.getTypeSizeInBits(referencedBufType.getElementType());
 
+  // ShimPLTiles have no ShimDMA, so BD field widths are meaningless here.
+  if (!targetModel.isCoreTile(tileCol, tileRow) &&
+      !targetModel.isMemTile(tileCol, tileRow) &&
+      !targetModel.isShimNOCTile(tileCol, tileRow))
+    return forOp->emitOpError(
+        "Unsupported tile type at (" + std::to_string(tileCol) + ", " +
+        std::to_string(tileRow) + ") Must be ShimNOC, Mem or Core.");
+
   uint32_t wrap_bits = targetModel.getDmaBdWrapBits(tileCol, tileRow);
   uint32_t step_bits = targetModel.getDmaBdStepBits(tileCol, tileRow);
   uint32_t iter_bits = targetModel.getDmaBdIterBits(tileCol, tileRow);
