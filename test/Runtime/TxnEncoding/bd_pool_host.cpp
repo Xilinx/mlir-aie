@@ -103,8 +103,10 @@ int main() {
     BdPool p = bd_pool_init(2);
     bd_pool_reserve(p, 99);
     uint32_t a = 0, b = 0;
-    check(bd_pool_pop(p, a) && a == 0, "pool unaffected by reserving a missing id");
-    check(bd_pool_pop(p, b) && b == 1, "pool unaffected by reserving a missing id");
+    check(bd_pool_pop(p, a) && a == 0,
+          "pool unaffected by reserving a missing id");
+    check(bd_pool_pop(p, b) && b == 1,
+          "pool unaffected by reserving a missing id");
   }
 
   if (failures > 0) {
