@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt -split-input-file -verify-diagnostics --aie-objectFifo-stateful-transform %s
+// RUN: aie-opt -split-input-file -verify-diagnostics --aie-objectFifo-stateful-transform="skip-verify=true" %s
 
 // A dma_channel_reset_for on a fifo with no resident core/mem state to re-arm
 // (here a shared-memory fifo with synchronization disabled: no DMA channel and

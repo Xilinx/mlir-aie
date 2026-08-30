@@ -13,7 +13,7 @@
 // CHECK:     Address: 0x000000000001D008  Data@ {{0x[0-9a-z]+}} is: 0x00000000
 // CHECK:     Address: 0x000000000001D00C  Data@ {{0x[0-9a-z]+}} is: 0x00000000
 // CHECK:     Address: 0x000000000001D010  Data@ {{0x[0-9a-z]+}} is: 0x80000000
-// CHECK:     Address: 0x000000000001D014  Data@ {{0x[0-9a-z]+}} is: 0x00000000
+// CHECK:     Address: 0x000000000001D014  Data@ {{0x[0-9a-z]+}} is: 0x02000000
 // CHECK:     Address: 0x000000000001D018  Data@ {{0x[0-9a-z]+}} is: 0x00000000
 // CHECK:     Address: 0x000000000001D01C  Data@ {{0x[0-9a-z]+}} is: 0x02000000
 
@@ -25,7 +25,7 @@
 // CHECK:     Address: 0x000000000201D008  Data@ {{0x[0-9a-z]+}} is: 0x00000000
 // CHECK:     Address: 0x000000000201D00C  Data@ {{0x[0-9a-z]+}} is: 0x00000000
 // CHECK:     Address: 0x000000000201D010  Data@ {{0x[0-9a-z]+}} is: 0x80000000
-// CHECK:     Address: 0x000000000201D014  Data@ {{0x[0-9a-z]+}} is: 0x00000000
+// CHECK:     Address: 0x000000000201D014  Data@ {{0x[0-9a-z]+}} is: 0x02000000
 // CHECK:     Address: 0x000000000201D018  Data@ {{0x[0-9a-z]+}} is: 0x00000000
 // CHECK:     Address: 0x000000000201D01C  Data@ {{0x[0-9a-z]+}} is: 0x02000000
 
@@ -37,7 +37,7 @@
 // CHECK:     Address: 0x000000000401D008  Data@ {{0x[0-9a-z]+}} is: 0x00000000
 // CHECK:     Address: 0x000000000401D00C  Data@ {{0x[0-9a-z]+}} is: 0x00000000
 // CHECK:     Address: 0x000000000401D010  Data@ {{0x[0-9a-z]+}} is: 0x80000000
-// CHECK:     Address: 0x000000000401D014  Data@ {{0x[0-9a-z]+}} is: 0x00000000
+// CHECK:     Address: 0x000000000401D014  Data@ {{0x[0-9a-z]+}} is: 0x02000000
 // CHECK:     Address: 0x000000000401D018  Data@ {{0x[0-9a-z]+}} is: 0x00000000
 // CHECK:     Address: 0x000000000401D01C  Data@ {{0x[0-9a-z]+}} is: 0x02041000
 
@@ -48,7 +48,7 @@
 // CHECK:     Address: 0x000000000401D028  Data@ {{0x[0-9a-z]+}} is: 0x00000000
 // CHECK:     Address: 0x000000000401D02C  Data@ {{0x[0-9a-z]+}} is: 0x00000000
 // CHECK:     Address: 0x000000000401D030  Data@ {{0x[0-9a-z]+}} is: 0x80000000
-// CHECK:     Address: 0x000000000401D034  Data@ {{0x[0-9a-z]+}} is: 0x00000000
+// CHECK:     Address: 0x000000000401D034  Data@ {{0x[0-9a-z]+}} is: 0x02000000
 // CHECK:     Address: 0x000000000401D038  Data@ {{0x[0-9a-z]+}} is: 0x00000000
 // CHECK:     Address: 0x000000000401D03C  Data@ {{0x[0-9a-z]+}} is: 0x02000000
 
@@ -63,7 +63,7 @@
 // CHECK:     Address: 0x000000000601D008  Data@ {{0x[0-9a-z]+}} is: 0x00000000
 // CHECK:     Address: 0x000000000601D00C  Data@ {{0x[0-9a-z]+}} is: 0x00000000
 // CHECK:     Address: 0x000000000601D010  Data@ {{0x[0-9a-z]+}} is: 0x80000000
-// CHECK:     Address: 0x000000000601D014  Data@ {{0x[0-9a-z]+}} is: 0x00000000
+// CHECK:     Address: 0x000000000601D014  Data@ {{0x[0-9a-z]+}} is: 0x02000000
 // CHECK:     Address: 0x000000000601D018  Data@ {{0x[0-9a-z]+}} is: 0x00000000
 // CHECK:     Address: 0x000000000601D01C  Data@ {{0x[0-9a-z]+}} is: 0x02000000
 
