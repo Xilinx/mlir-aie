@@ -560,12 +560,21 @@ LogicalResult xilinx::AIE::AIETranslateControlPacketsToUI32Vec(
     words[0] = hdr | (0x1 & parity(hdr)) << 31;
 
     // `beats` gets two bits, directly above the address, so an oversized
-    // payload corrupts the address instead of truncating. Enforced here (not
-    // by a verifier) since ops may carry more before
+    // payload corrupts the address instead of truncating, and `size - 1`
+    // underflows the same way when size is 0. Enforced here (not by a
+    // verifier) since ops may carry more before
     // --aie-legalize-control-packet splits them.
+    bool sizeFromLength = !data && length;
+    const char *what = sizeFromLength ? "length" : "payload";
+    if (size == 0)
+      return packetOp.emitOpError()
+             << what
+             << " is empty; a control packet must carry at least 1 "
+                "word on the wire";
     if (size > AIEX::NpuControlPacketOp::getMaxDataWords())
-      return packetOp.emitOpError("payload is ")
-             << size << " words; a control packet carries at most "
+      return packetOp.emitOpError()
+             << what << " is " << size
+             << " words; a control packet carries at most "
              << AIEX::NpuControlPacketOp::getMaxDataWords()
              << " on the wire. Run --aie-legalize-control-packet before "
                 "translating.";
