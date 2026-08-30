@@ -7,10 +7,12 @@
 //
 // Exercises the header-only runtime BD free-list pool in TxnEncoding.h the way
 // generated host C++ consumes it: init a pool sized to a tile's BD count, then
-// pop/push ids. Focus is the exhaustion backstop -- bd_pool_pop returns false
-// when the working set exceeds the tile's BD count, which the generated builder
-// turns into `return std::nullopt`. This is the only path the MLIR/e2e tests
-// verify statically (the write32 emission) but never trigger at runtime.
+// pop/push/reserve ids. Focus is the exhaustion backstop -- bd_pool_pop
+// returns false when the working set exceeds the tile's BD count, which the
+// generated builder turns into `return std::nullopt`; and bd_pool_reserve's
+// lowest-id-first invariant after removing an id from the middle of the pool.
+// These are the only paths the MLIR/e2e tests verify statically (the write32
+// emission) but never trigger at runtime.
 //
 //===----------------------------------------------------------------------===//
 
@@ -68,6 +70,41 @@ int main() {
     while (bd_pool_pop(p, id))
       ++count;
     check(count == kMaxBDsPerTile, "pop count is clamped to kMaxBDsPerTile");
+  }
+
+  // Reserve removes an id from the middle of the pool without disturbing
+  // pop's lowest-first order among the ids left behind.
+  {
+    BdPool p = bd_pool_init(4);
+    bd_pool_reserve(p, 2);
+    uint32_t id = 99;
+    check(bd_pool_pop(p, id) && id == 0, "reserve leaves id 0 as next pop");
+    check(bd_pool_pop(p, id) && id == 1, "reserve leaves id 1 as next pop");
+    check(bd_pool_pop(p, id) && id == 3, "reserved id 2 is skipped");
+    check(!bd_pool_pop(p, id), "pool is empty after the 3 remaining ids");
+  }
+
+  // Reserving the highest id (the bottom of the stack, popped last) must not
+  // reorder the ids that pop lowest-first before it.
+  {
+    BdPool p = bd_pool_init(4);
+    bd_pool_reserve(p, 3);
+    uint32_t id = 99;
+    for (uint32_t expect = 0; expect < 3; ++expect) {
+      check(bd_pool_pop(p, id), "pop within remaining capacity should succeed");
+      check(id == expect, "reserving the top id preserves lowest-first order");
+    }
+    check(!bd_pool_pop(p, id), "pool is empty after the 3 remaining ids");
+  }
+
+  // Reserving an id not present in the pool (already popped, or never valid)
+  // is a no-op -- it must not corrupt the pool or crash.
+  {
+    BdPool p = bd_pool_init(2);
+    bd_pool_reserve(p, 99);
+    uint32_t a = 0, b = 0;
+    check(bd_pool_pop(p, a) && a == 0, "pool unaffected by reserving a missing id");
+    check(bd_pool_pop(p, b) && b == 1, "pool unaffected by reserving a missing id");
   }
 
   if (failures > 0) {
