@@ -67,26 +67,19 @@ def n32_core_gemm(
     B_l1_ty = np.ndarray[(k, n // 8), np.dtype[v8bfp16ebs8]]
     C_l1_ty = np.ndarray[(m, n), np.dtype[bfloat16]]
 
-    kernel_flags = [
-        f"-DDIM_M={m}",
-        f"-DDIM_K={k}",
-        f"-DDIM_N={n}",
-        f"-I{_AIE_KERNELS_INC}",
-    ]
+    kernel_flags = [f"-I{_AIE_KERNELS_INC}"]
 
     zero_kernel = ExternalFunction(
         "zero_kernel_bf16",
         source_file=str(_KERNEL_SRC),
         arg_types=[C_l1_ty],
         compile_flags=kernel_flags + ["-DZERO_ONLY"],
-        use_chess=True,
     )
     matmul_kernel = ExternalFunction(
         "matmul_vectorized_different_datatypes",
         source_file=str(_KERNEL_SRC),
         arg_types=[A_l1_ty, B_l1_ty, C_l1_ty],
         compile_flags=kernel_flags + ["-DMATMUL_ONLY"],
-        use_chess=True,
     )
 
     A_l3l2_fifos: list[ObjectFifo] = []
