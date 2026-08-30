@@ -17,6 +17,7 @@ import os
 
 import numpy as np
 
+from ..helpers.util import ceildiv as ceildiv
 from .hostruntime.tensor_class import NpuTensor
 
 _logger = logging.getLogger(__name__)
@@ -168,11 +169,6 @@ def npu_runtime_folds_ddr_addr_offset() -> bool:
     attribute, so the JIT cache and the compiler always agree on the ABI.
     """
     return DEFAULT_TENSOR_CLASS.FOLDS_DDR_ADDR_OFFSET
-
-
-def ceildiv(a, b):
-    """Ceiling division: smallest integer >= a/b."""
-    return -(a // -b)
 
 
 def tensor(*args, **kwargs):
