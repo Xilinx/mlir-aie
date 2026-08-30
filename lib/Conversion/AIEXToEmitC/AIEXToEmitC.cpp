@@ -661,7 +661,7 @@ private:
     }
 
     AIEXToEmitCConverter conv(funcOp, txnVec, resolved, opCountVar,
-                             foldDDRAddrOffset);
+                              foldDDRAddrOffset);
     std::optional<uint32_t> count = conv.run();
     if (!count)
       return failure();
