@@ -230,7 +230,8 @@ private:
           // real arith op here, lowered by convert-arith-to-emitc below like
           // any other scalar computation in this sequence.
           Value argPlusV = ap.getArgPlus();
-          if (foldDDRAddrOffset && ap.getArgIdx() >= kNumFirmwareTranslatedArgs) {
+          if (foldDDRAddrOffset &&
+              ap.getArgIdx() >= kNumFirmwareTranslatedArgs) {
             Value offsetV = arith::ConstantOp::create(
                 b, loc,
                 b.getI32IntegerAttr(static_cast<int32_t>(kDDRAIEAddrOffset)));
