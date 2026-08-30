@@ -8,7 +8,7 @@
 
 Same shape family as config2 (all-bfp16 inputs/outputs, 32 cores) but
 with asymmetry ratio DIV=4 and an alternate hand-tuned microkernel
-schedule. Strix-only; chess-built kernel.
+schedule (bf16-staged C accumulation). Strix-only; Peano-built kernel.
 """
 
 import argparse
@@ -75,7 +75,7 @@ def n32_core_gemm(
 
     # mm_bfp_mixed.cc keeps a TU-local staging buffer that matmul and
     # zero share, so we point both ExternalFunctions at the same .o
-    # (one chess compile, both symbols emitted, link picks each per call).
+    # (one compile, both symbols emitted, link picks each per call).
     _SHARED_OBJ = "mm_bfp_mixed.o"
     zero_kernel = ExternalFunction(
         "zero_kernel",
@@ -83,7 +83,6 @@ def n32_core_gemm(
         source_file=str(_KERNEL_SRC),
         arg_types=[C_l1_ty],
         compile_flags=kernel_flags,
-        use_chess=True,
     )
     matmul_kernel = ExternalFunction(
         "matmul_vectorized_bfp16",
@@ -91,7 +90,6 @@ def n32_core_gemm(
         source_file=str(_KERNEL_SRC),
         arg_types=[A_l1_ty, B_l1_ty, C_l1_ty],
         compile_flags=kernel_flags,
-        use_chess=True,
     )
 
     A_l3l2_fifos: list[ObjectFifo] = []

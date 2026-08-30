@@ -28,11 +28,17 @@ Copyright (C) 2022-2025 Advanced Micro Devices, Inc.
 #define AIE_TRY_INITIATION_INTERVAL(x)
 #define AIE_PREPARE_FOR_POSTPIPELINING
 #define AIE_LOOP_FLATTEN chess_flatten_loop
+#define AIE_LOOP_HINT(k, v)
+#define AIE_LOOP_GPR_REALLOC
 
 #elif defined(__AIECC__)
 #ifndef __STRINGIFY
 #define __STRINGIFY(a) #a
 #endif
+#define AIE_PRAGMA_STR(x) _Pragma(#x)
+#define AIE_PRAGMA(x) AIE_PRAGMA_STR(x)
+#define AIE_LOOP_HINT(k, v) AIE_PRAGMA(clang loop hint(k, v))
+#define AIE_LOOP_GPR_REALLOC AIE_LOOP_HINT(aie-gpr-realloc, 1)
 #define AIE_LOOP_UNROLL(x) _Pragma(__STRINGIFY(clang loop unroll_count(x)))
 #define AIE_LOOP_UNROLL_FULL _Pragma("clang loop unroll(full)")
 #define AIE_LOOP_NO_UNROLL _Pragma("clang loop unroll(disable)")
@@ -74,6 +80,8 @@ Copyright (C) 2022-2025 Advanced Micro Devices, Inc.
 #define AIE_TRY_INITIATION_INTERVAL(x)
 #define AIE_PREPARE_FOR_POSTPIPELINING
 #define AIE_LOOP_FLATTEN
+#define AIE_LOOP_HINT(k, v)
+#define AIE_LOOP_GPR_REALLOC
 #endif
 
 #endif
