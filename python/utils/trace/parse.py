@@ -6,10 +6,9 @@ import json
 import logging
 import sys
 
-import numpy as np
-
 import aie.dialects.aie as aiedialect
 import aie.dialects.aiex as aiexdialect
+import numpy as np
 from aie.extras.util import find_ops  # pyright: ignore[reportMissingImports]
 from aie.helpers.util import (  # pyright: ignore[reportMissingImports]
     fold_constant_operand,
@@ -46,7 +45,7 @@ def _device_name(device_op):
 
 
 def get_trace_slices(mlir_module_str):
-    """The trace buffer's layout, as recorded on the dispatched runtime sequence.
+    """Return the trace buffer's layout, as recorded on the dispatched sequence.
 
     Sub-designs run through `aiex.configure` share one trace buffer, and
     `-aie-fuse-trace-buffers` records which byte range belongs to which design.
