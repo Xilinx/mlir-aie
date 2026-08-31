@@ -4,10 +4,10 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
-// Support file for stack_size_unmeasurable_warns.mlir. Deliberately compiled
-// WITHOUT -fstack-size-section, so the object carries no `.stack_sizes` and
-// the call-graph analysis cannot size `touch_scratch` -- the "unmeasurable"
-// path, which warns and leaves stack_size unvalidated rather than failing.
+// Support file for stack_size_unmeasurable_warns.mlir. The RUN line compiles
+// this file without -fstack-size-section, so the object carries no
+// `.stack_sizes` section and the analysis cannot size `touch_scratch`. That is
+// the unmeasurable path: aiecc warns and leaves stack_size unchecked.
 
 #include <stdint.h>
 

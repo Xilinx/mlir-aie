@@ -5,14 +5,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-// Same scenario as stack_size_absent_insufficient_error.mlir, but built
-// --unified: the per-core and unified lowering strategies both compile each
-// core to "objects_<key>.o" (see splitLoweredCores' "keys match coreKey"),
-// so the post-build sufficiency check must find and measure that same object
-// regardless of which strategy produced it. A regression that special-cases
-// --unified with a different (nonexistent) object path would make
-// measureFunctionFrameSize silently find nothing, and this check would
-// silently no-op instead of failing the build.
+// The scenario of stack_size_absent_insufficient_error.mlir, built --unified.
+// The per-core strategy and the unified strategy both compile a core to
+// "objects_<key>.o" (see "keys match coreKey" in splitLoweredCores), so the
+// post-build check measures that object under either strategy. Under another
+// object path, measureFunctionFrameSize finds nothing and the check passes the
+// build.
 
 // REQUIRES: peano
 // RUN: rm -rf %t.d && mkdir -p %t.d

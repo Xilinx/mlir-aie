@@ -4,11 +4,11 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
-// Same shape as stack_size_indirect_call_kernel.cc, plus a second, unrelated
-// global (g_unrelated). Without -fdata-sections, g_dispatch and g_unrelated
-// would share one .data section, making that section's owning symbol
-// ambiguous and silently dropping the "target_fn's address escapes into
-// g_dispatch" record the indirect-call inference depends on.
+// The same shape as stack_size_indirect_call_kernel.cc, plus a second,
+// unrelated global, g_unrelated. Under -fdata-sections each global gets its
+// own section, and the analysis attributes the escape of target_fn to
+// g_dispatch. Inside one shared .data section that attribution is ambiguous,
+// and the analysis drops the record that the indirect-call inference needs.
 
 extern "C" void target_fn(unsigned char *out) {
   volatile unsigned char buf[4096];

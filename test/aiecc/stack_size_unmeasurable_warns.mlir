@@ -5,9 +5,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-// A kernel object with no `.stack_sizes` section (compiled without
-// -fstack-size-section, standing in for every pre-existing or Chess-compiled
-// object) must only warn, never fail the build -- see StackSizeAnalysis.h.
+// A kernel object without a `.stack_sizes` section raises a warning, and the
+// build continues, see StackSizeAnalysis.h. The RUN line compiles the object
+// without -fstack-size-section, which stands in for a Chess-compiled or a
+// pre-compiled object.
 
 // REQUIRES: peano
 // RUN: rm -rf %t.d && mkdir -p %t.d

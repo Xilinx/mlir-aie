@@ -4,11 +4,10 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
-// Support file for stack_size_measured.mlir. entry_fn calls helper_fn (a
-// direct, non-recursive call within the same object) so the auto-measured
-// stack requirement is a real, non-zero number greater than either test's
-// deliberately-wrong stack_size, without pinning an exact byte count that
-// would be fragile across compiler versions.
+// Support file for stack_size_measured.mlir. entry_fn calls helper_fn directly
+// inside one object, so the measured requirement is above the stack_size that
+// the test declares. The test matches any byte count, which keeps it stable
+// across compiler versions.
 
 extern "C" {
 

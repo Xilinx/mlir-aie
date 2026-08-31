@@ -48,9 +48,8 @@ static StringRef getArchIntrinsicString(AIEArch arch) {
   case AIEArch::AIE2p:
     return "aie2p";
   case AIEArch::AIE2ps:
-    // No core intrinsics have been defined for this arch yet; listed
-    // explicitly so adding one to AIEArch keeps failing this switch until it
-    // is handled here too.
+    // This arch has no core intrinsic set. The switch lists every AIEArch
+    // value, so a new value raises a -Wswitch warning here.
     break;
   }
   llvm::report_fatal_error("unsupported arch");
@@ -177,7 +176,7 @@ static void declareAIEIntrinsics(AIEArch arch, OpBuilder &builder) {
     registerIntrinsics(getAIE2pIntrinsics(builder));
     return;
   case AIEArch::AIE2ps:
-    // See getArchIntrinsicString: no intrinsic set exists for this arch yet.
+    // See getArchIntrinsicString: this arch has no intrinsic set.
     break;
   }
   llvm::report_fatal_error("unsupported arch");
@@ -700,9 +699,9 @@ struct AIEEventOpToStdLowering : OpConversionPattern<EventOp> {
           rewriter.getI32IntegerAttr(op.getVal())));
       break;
     case AIEArch::AIE2ps:
-      // No event intrinsic is defined for this arch yet. Reported as a
-      // rewrite failure rather than a fatal error, since this one is reachable
-      // from user IR: an aie.event op on a VE3858 device.
+      // This arch has no event intrinsic. User IR reaches this case, through
+      // an aie.event op on a VE3858 device, so the pattern reports a rewrite
+      // failure.
       return op.emitOpError(
           "aie.event is not supported on this device's architecture");
     }

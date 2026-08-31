@@ -5,16 +5,15 @@
 //
 //===----------------------------------------------------------------------===//
 
-// The core's stack requirement is auto-measured from a call-graph walk of the
-// symbols it directly calls, through their link_files objects' `.stack_sizes`
-// metadata. stack_size is deliberately far too small (1 byte), so the
-// computed requirement always exceeds it without pinning an exact byte count
-// that would be fragile across compiler versions -- only that a warning fires
-// naming both numbers, and that --no-auto-stack-size suppresses it.
+// aiecc measures the stack requirement of the core by walking the call graph
+// of the symbols the core calls directly, through the `.stack_sizes` data of
+// their link_files objects. stack_size holds 1 byte, so the computed
+// requirement exceeds it for any compiler version. The test matches the
+// warning that names both numbers, and matches the silence under
+// --no-auto-stack-size.
 //
-// A 1-byte stack is also caught by the later, more complete post-build check
-// (see stack_size_explicit_insufficient_error.mlir), which has the true total
-// and so fails the build outright rather than merely warning.
+// The post-build check (see stack_size_explicit_insufficient_error.mlir) holds
+// the full requirement and fails the build on the same 1-byte stack.
 
 // REQUIRES: peano
 // RUN: rm -rf %t.d && mkdir -p %t.d

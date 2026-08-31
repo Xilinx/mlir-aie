@@ -5,8 +5,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-// --default-stack-size stands in for the target's built-in default for any
-// core with stack_size absent, treating it as if written explicitly.
+// --default-stack-size stands in for the target's built-in default on any core
+// that leaves stack_size absent. The rest of the build treats that value as an
+// explicit stack_size.
 
 // REQUIRES: peano
 // RUN: rm -rf %t.d && mkdir -p %t.d
@@ -24,7 +25,7 @@
 // SUFFICIENT-NOT: stack_size is absent
 // SUFFICIENT-NOT: this core's callees need at least
 
-// tile_0_3's own explicit stack_size must survive untouched.
+// tile_0_3 keeps its explicit stack_size.
 // RUN: cd %t.d && %aiecc --default-stack-size=8192 --get=default_stack_size.mlir --output-dir=%t.pop %s
 // RUN: FileCheck --check-prefix=POPULATED %s < %t.pop/default_stack_size.mlir
 // POPULATED: aie.core(%tile_0_2) {

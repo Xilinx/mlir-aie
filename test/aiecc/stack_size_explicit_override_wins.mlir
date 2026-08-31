@@ -5,14 +5,13 @@
 //
 //===----------------------------------------------------------------------===//
 
-// The same recursive kernel that fails outright in
-// stack_size_recursion_error.mlir must build cleanly once its root symbol
-// carries stack_size_override: the override cuts the subtree beneath it, so
-// the analysis never trips over the self-recursive `recurse` inside.
+// The recursive kernel that fails in stack_size_recursion_error.mlir builds
+// once its root symbol carries a stack_size_override. The override ends the
+// walk above the self-recursive `recurse`.
 //
-// The core's own stack_size (8192) comfortably covers the 4096-byte override
-// plus its own frame, so the later, more complete sufficiency check (see
-// stack_size_absent_insufficient_error.mlir) has nothing to say either.
+// The stack_size of the core, 8192, covers the 4096-byte override and the
+// frame of the core body, so the post-build check (see
+// stack_size_absent_insufficient_error.mlir) passes as well.
 
 // REQUIRES: peano
 // RUN: rm -rf %t.d && mkdir -p %t.d

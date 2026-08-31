@@ -7,11 +7,11 @@
 # RUN: %pytest %s
 # REQUIRES: peano
 
-"""compile_cxx_core_function must emit a `.stack_sizes` section for object
-compiles, matching the flag aiecc's own core-object `llc` invocation passes
-(tools/aiecc/aiecc.cpp). Without this, kernel objects carry no stack
-accounting at all -- and kernels are where large frames actually live. No
-NPU required: this only exercises the Peano compile, not a device run.
+"""compile_cxx_core_function emits a `.stack_sizes` section for an object
+compile, which matches the flag that the core-object `llc` invocation of aiecc
+passes (tools/aiecc/aiecc.cpp). That section carries the stack accounting of a
+kernel object, where the large frames of a design sit. These tests run the
+Peano compile alone and need no NPU.
 """
 
 import os
@@ -50,9 +50,8 @@ def test_compile_cxx_core_function_emits_stack_sizes_section():
 
 
 def test_compile_cxx_core_function_inline_ir_has_no_stack_sizes_section():
-    """The inline path emits textual LLVM IR (no codegen yet), so there is no
-    frame layout and thus no `.stack_sizes` section to check for -- confirm
-    it isn't silently expected to be there."""
+    """The inline path emits textual LLVM IR ahead of codegen, so it fixes no
+    frame layout and writes no `.stack_sizes` section."""
     with tempfile.TemporaryDirectory() as tmp_dir:
         src = os.path.join(tmp_dir, "add_one.cc")
         with open(src, "w") as f:

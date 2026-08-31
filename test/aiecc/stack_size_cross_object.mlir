@@ -5,11 +5,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-// Exercises cross-object attribution (StackSizeAnalysis.h): entry_cross,
-// the core body's only direct call, calls helper_cross, defined only in a
-// sibling object with a large real frame. stack_size = 2048 is well below
-// the true total, so folding must warn then fail; a broken edge would
-// silently drop helper_cross and report no warning at all.
+// Exercises cross-object attribution (StackSizeAnalysis.h). entry_cross is the
+// one direct call of the core body, and it calls helper_cross, which a sibling
+// object defines with a large frame. stack_size = 2048 sits below the full
+// requirement, so the build warns and then fails. Under a dropped call edge
+// the analysis reports the small frame of entry_cross alone.
 
 // REQUIRES: peano
 // RUN: rm -rf %t.d && mkdir -p %t.d

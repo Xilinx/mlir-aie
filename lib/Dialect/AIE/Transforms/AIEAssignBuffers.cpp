@@ -23,10 +23,9 @@ using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
 
-// Surfaced in the memory-map diagnostics below so a user sees the call-graph
-// analysis's number alongside the stack region and the free space in one
-// place, instead of cross-referencing a warning emitted earlier in the build
-// log. Absent unless aiecc ran its stack analysis.
+// The memory-map diagnostics below print this number next to the stack region
+// and the free space, so one message carries both. The attribute is absent
+// unless aiecc ran its stack analysis.
 static std::optional<int64_t> getComputedStackRequirement(TileOp tile) {
   CoreOp core = tile.getCoreOp();
   if (!core)

@@ -660,11 +660,10 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                            placerType.getValue(), saSeed.getValue())})
           .map<ModRef>("traced.mlir", PassPipeline{getTracePipeline(&context)});
 
-  // --default-stack-size: a design-wide stand-in for the target's built-in
-  // default, for any core that leaves stack_size absent. Runs as early as
-  // possible, before every downstream consumer of
-  // CoreOp::getEffectiveStackSize() (buffer placement, the stack-size check,
-  // the core/BCF/ldscript emitters).
+  // --default-stack-size stands in for the target's built-in default on any
+  // core that leaves stack_size absent. It runs ahead of every reader of
+  // CoreOp::getEffectiveStackSize(): buffer placement, the stack-size check,
+  // and the core, BCF and ldscript emitters.
   auto &withDefaultStackSize = traced.map<ModRef>(
       "default_stack_size.mlir",
       [stackSize = defaultStackSize.getValue()](const ModRef &mod) -> ModRef {
@@ -673,9 +672,8 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
         return populateDefaultStackSize(mod.get(), stackSize);
       });
 
-  // aie-assign-core-link-files is a pure call-graph analysis over
-  // func.func/func.call; the stack-size check below needs its link_files
-  // output.
+  // aie-assign-core-link-files analyzes the call graph over func.func and
+  // func.call. The stack-size check below reads the link_files it writes.
   auto &withLinkFiles = withDefaultStackSize.map<ModRef>(
       "with_link_files.mlir",
       PassPipeline{&context, [](mlir::MLIRContext *ctx, mlir::ModuleOp) {
@@ -685,11 +683,10 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                      return pm;
                    }});
 
-  // Validate each core's stack_size against what its call tree actually
-  // needs, from the link_files objects the edge above populated. Unlike the
-  // other analysis edges this one can fail the whole run: a cycle, or an
-  // unmeasurable symbol with no stack_size_override, is an error rather than
-  // a warning -- see checkStackSizeRequirements.
+  // Validates each core's stack_size against its call tree, through the
+  // link_files objects the edge above writes. This edge can fail the whole
+  // run: a cycle, or an unmeasurable symbol without a stack_size_override,
+  // raises an error. See checkStackSizeRequirements.
   auto &withStackSizeChecked = withLinkFiles.map<ModRef>(
       "stack_size_checked.mlir",
       [inputFile, workDirStr, skip = noAutoStackSize.getValue()](
@@ -1708,34 +1705,29 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
 // Post-build stack-size sufficiency check
 //===----------------------------------------------------------------------===//
 
-// After a normal build completes, check whether any core's `stack_size`
-// (explicit or the device default) is smaller than its TRUE requirement: the
-// core body's own top-level frame -- only knowable now, from the
-// just-compiled core object -- plus checkStackSizeRequirements's earlier
-// kernel-side bound. That earlier check only warns on an explicit
-// `stack_size`, since its number is a lower bound; this one has the TRUE
-// total, so a provably-too-small `stack_size` fails the build here instead
-// (a warning would ship a proven overflow). Like every check in this
-// analysis, it never auto-adjusts anything. `--no-auto-stack-size` skips it,
-// same as the earlier warning.
+// Checks each core's `stack_size`, explicit or from the device default,
+// against its full requirement: the top-level frame of the compiled core body
+// plus the callee bound that checkStackSizeRequirements computed earlier. The
+// compiled core object supplies the first term, so this check runs after the
+// build. The sum is exact, so a smaller `stack_size` fails the build here,
+// even an explicit one. `--no-auto-stack-size` skips this check.
 //
-// Re-derives the early, cheap pipeline stages on a fresh parse of the input,
-// since the build graph doesn't expose its intermediate module once
-// `engine.run` has returned; the compiled core object itself is read back
-// from where the real build wrote it, not rebuilt. Returns true if any
-// core's requirement was insufficient; an `llvm::Error` reports a mechanical
-// failure of this check itself.
+// The build graph drops its intermediate module once `engine.run` returns, so
+// this function reparses the input and repeats the cheap early pipeline
+// stages. It reads the compiled core object from the path the build wrote.
+// Returns true when the `stack_size` of some core is too small. An
+// `llvm::Error` reports a failure of this check itself.
 static llvm::Expected<bool>
 checkStackSizeIsSufficient(mlir::MLIRContext &context,
                            llvm::StringRef inputFile) {
   if (noAutoStackSize.getValue())
     return false;
 
-  // This check depends on placement being reproducible from a fresh parse.
-  // `--placer=sa_placer --sa-seed=0` is explicitly non-deterministic
-  // (CommandLineOptions.h), so a re-derived tile assignment could disagree
-  // with the one buffers were actually placed against -- a silent false
-  // negative, not a diagnosable mismatch. Warn and skip instead.
+  // This check needs a placement that a fresh parse reproduces.
+  // `--placer=sa_placer --sa-seed=0` draws a random seed
+  // (CommandLineOptions.h), so a second run can assign tiles differently from
+  // the run that placed the buffers, and this check then compares numbers
+  // from two different designs. Warn and skip.
   if (placerType.getValue() == xilinx::AIE::PlacerType::SAPlacer &&
       saSeed.getValue() == 0) {
     llvm::errs() << "aiecc: stack_size check: skipped -- "
@@ -1754,15 +1746,15 @@ checkStackSizeIsSufficient(mlir::MLIRContext &context,
                                    "check stack_size sufficiency",
                                    inputFile.str().c_str());
 
-  // Reproduce --default-stack-size too, so `assumed` below matches what the
-  // buffers were actually placed against.
+  // Repeat --default-stack-size, so `assumed` below matches the value the
+  // buffers were placed against.
   if (defaultStackSize.getValue() > 0)
     module = xilinx::aiecc::populateDefaultStackSize(
         module.get(), defaultStackSize.getValue());
 
-  // Reproduce exactly the pipeline stages checkStackSizeRequirements' result
-  // depends on: placement (tile assignment), trace flows, and link_files
-  // assignment. All cheap MLIR passes, not a recompile.
+  // Repeat the pipeline stages that the result of checkStackSizeRequirements
+  // depends on: placement, trace flows, and link_files assignment. These are
+  // cheap MLIR passes.
   auto runStage = [&](llvm::StringRef stage,
                       std::unique_ptr<mlir::PassManager> pm) -> llvm::Error {
     if (mlir::failed(pm->run(*module)))
@@ -1773,10 +1765,9 @@ checkStackSizeIsSufficient(mlir::MLIRContext &context,
     return llvm::Error::success();
   };
 
-  // Every diagnostic in this block was already shown once during the real
-  // build; suppress it here to avoid noise. This function's own diagnostics
-  // ("is insufficient"/"is absent", below) are emitted after the handler
-  // goes out of scope.
+  // The build already printed every diagnostic of this block once, so the
+  // handler drops them. The diagnostics of this function come after the
+  // handler leaves scope.
   {
     mlir::ScopedDiagnosticHandler suppress(
         &context, [](mlir::Diagnostic &) { return mlir::success(); });
@@ -1808,23 +1799,22 @@ checkStackSizeIsSufficient(mlir::MLIRContext &context,
     auto boundAttr = coreOp->getAttrOfType<mlir::IntegerAttr>(
         xilinx::AIE::kComputedStackRequirementAttrName);
     if (!boundAttr)
-      return; // No trustworthy kernel-side number -- don't guess.
+      return; // no kernel-side bound to add the core's own frame to
 
     auto tile =
         mlir::cast<xilinx::AIE::TileOp>(coreOp.getTile().getDefiningOp());
     std::string key = xilinx::aiecc::coreKey(coreOp);
     std::string symbol =
         xilinx::AIE::coreFrameSymbolName(tile.getCol(), tile.getRow());
-    // Must match what the core's compile actually wrote: both the per-core
-    // and unified strategies build "objects_{0}.o" through the same
-    // buildObjectSubgraph call, keyed by `key` either way. If that ever
-    // changes, measureFunctionFrameSize below silently finds nothing.
+    // This path must match the one the compile of the core wrote. The
+    // per-core strategy and the unified strategy both build "objects_{0}.o"
+    // through buildObjectSubgraph under `key`. Under another path,
+    // measureFunctionFrameSize below finds nothing.
     std::string objPath =
         getWorkDir() + "/objects_" + key + "/objects_" + key + ".o";
     auto ownFrame = xilinx::aiecc::measureFunctionFrameSize(objPath, symbol);
     if (!ownFrame)
-      return; // Can't measure the core's own frame -- leave as-is; today's
-              // behavior, not a regression.
+      return; // the core's own frame is unmeasurable, so leave it unchecked
 
     int64_t trueTotal = *ownFrame + boundAttr.getInt();
     uint32_t assumed = coreOp.getEffectiveStackSize();
@@ -2109,9 +2099,9 @@ int main(int argc, char **argv) {
   const std::vector<EdgeBase *> noOutputs;
   const std::vector<EdgeBase *> &runOutputs =
       cutEdges.empty() ? outputs : noOutputs;
-  // Captured so the stack-size sufficiency check below can remove these again
-  // if it fails, rather than leaving a complete-looking xclbin that a caller
-  // ignoring aiecc's exit code (e.g. `make`) would pick up next time.
+  // The stack-size check below removes these paths when it fails. A caller
+  // that ignores the exit code of aiecc, `make` for example, would otherwise
+  // reuse a stale xclbin.
   std::vector<std::string> writtenOutputPaths;
   if (mlir::failed(engine.run(g, runOutputs, satisfied,
                               DeserializeContext{&context}, cutEdges,
@@ -2144,9 +2134,8 @@ int main(int argc, char **argv) {
   if (!checkpointDir.empty())
     writeCheckpoint(cutEdges, checkpointDir, graphArgv);
 
-  // The stack_size sufficiency check needs a real, complete build (a
-  // compiled core object to read back) -- skip it for a --cut early stop or
-  // a --dry-run, neither of which produced one.
+  // The stack_size check reads a compiled core object, which only a complete
+  // build produces. `--cut` and `--dry-run` both stop earlier.
   if (cutEdges.empty() && !dryRun) {
     llvm::Expected<bool> insufficient =
         checkStackSizeIsSufficient(context, getInputFilename());
@@ -2156,8 +2145,8 @@ int main(int argc, char **argv) {
       return 1;
     }
     if (*insufficient) {
-      // Remove the just-written artifacts (see writtenOutputPaths above) --
-      // they were placed against a stack_size now proven too small.
+      // The build placed these artifacts against a stack_size that this check
+      // proved too small.
       for (const std::string &path : writtenOutputPaths) {
         std::error_code ec = llvm::sys::fs::remove(path);
         if (ec && ec != std::errc::no_such_file_or_directory)

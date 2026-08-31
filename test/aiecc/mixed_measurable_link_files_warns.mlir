@@ -5,10 +5,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-// A mix of a measurable object (entry_a) and an unmeasurable, unreferenced
-// archive still computes successfully, warning only that an artifact
-// couldn't be inspected -- unlike stack_size_unmeasurable_warns.mlir, where
-// the only object is unmeasurable and the computation itself fails.
+// The core links a measurable object (entry_a) and an archive that the
+// analysis cannot inspect and that no root reaches. The computation succeeds
+// and warns about the archive. In stack_size_unmeasurable_warns.mlir the one
+// object of the core is unmeasurable, and the computation itself fails.
 
 // REQUIRES: peano
 // RUN: rm -rf %t.d && mkdir -p %t.d
@@ -25,7 +25,7 @@ module {
 
     aie.objectfifo @of_out(%tile_0_2, {%tile_0_0}, 2 : i32) : !aie.objectfifo<memref<512xi8>>
 
-    // link_files set directly so the archive reaches the core unreached.
+    // link_files is set directly, so the archive reaches the core.
     func.func private @entry_a(memref<512xi8>)
 
     %core_0_2 = aie.core(%tile_0_2) {

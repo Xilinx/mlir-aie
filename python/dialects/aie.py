@@ -203,10 +203,10 @@ class external_func(FuncOp):
             the core's LLVM module with ``llvm-link`` before codegen instead of
             object-linking it.  Requires ``link_with``.  When omitted, the
             artifact is object-linked, whatever its suffix.
-        stack_size_override: Optional declared upper bound, in bytes, on this
-            function's call-subtree stack use. Always wins over aiecc's
-            automatic analysis, even if smaller. See
-            `programming_guide/core_data_memory.md` for when to use this.
+        stack_size_override: Declared upper bound, in bytes, on the stack that
+            this function's call subtree uses. It replaces the number aiecc's
+            analysis computes, even when it is smaller. See
+            `programming_guide/core_data_memory.md` for when to set it.
     """
 
     def __init__(
@@ -245,8 +245,8 @@ class external_func(FuncOp):
                     f"external_func '{name}': stack_size_override must be >= 0, "
                     f"got {stack_size_override}."
                 )
-            # The attribute is a signless i32; a larger value would wrap
-            # silently and turn a conservative override into an undercount.
+            # The attribute is a signless i32. A larger value wraps and turns
+            # the override into an undercount.
             if stack_size_override > 2**31 - 1:
                 raise ValueError(
                     f"external_func '{name}': stack_size_override must fit in a "

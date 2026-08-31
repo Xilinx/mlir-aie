@@ -4,8 +4,8 @@
 // REQUIRES: ryzen_ai_npu1, peano, torch
 // REQUIRES: makefile_examples
 //
-// group0 only; see run_phoenix_group2.lit for the group2 variant, which is
-// still XFAIL (its LUTs don't fit in one tile's local memory).
+// Runs group0. See run_phoenix_group2.lit for group2, which XFAILs because its
+// LUTs exceed the local memory of one tile.
 //
 // RUN: mkdir -p test_placed
 // RUN: cd test_placed

@@ -4,13 +4,12 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
-// Support file for stack_size_cross_object.mlir. entry_cross has a trivial
-// frame of its own and calls helper_cross, defined in a *different*
-// TU/object (stack_size_cross_object_callee.cc) -- the relocation this
-// generates is against an undefined symbol with an unreliable NOTYPE, which
-// StackSizeAnalysis can only recognize as a call once it has also scanned
-// the callee's own object and found the symbol among what it defines. Both
-// objects are listed in the core's link_files.
+// Support file for stack_size_cross_object.mlir. entry_cross has a small frame
+// and calls helper_cross, which stack_size_cross_object_callee.cc defines in
+// another object. The call relocates against an undefined symbol of type
+// NOTYPE, so StackSizeAnalysis counts it as a call once it scans the object of
+// the callee and finds the symbol there. The core lists both objects in its
+// link_files.
 
 extern "C" void helper_cross(unsigned char *out);
 

@@ -416,11 +416,11 @@ def AIE_CoreOp
     are always stored in the local core memory, to avoid conflicts with static data
     allocations in other cores.
 
-    The stack sits directly below the buffers with no clearance, so a `stack_size` too
-    small for the core's actual usage overwrites them silently.  `aiecc` validates
-    `stack_size` against the core's call graph and fails the build if it's insufficient;
-    see `programming_guide/core_data_memory.md` for the full mechanism, escape hatches
-    (`--no-auto-stack-size`, `stack_size_override`), and diagnostics.
+    The stack sits directly below the buffers with no clearance, so a `stack_size`
+    below the core's use overwrites those buffers. `aiecc` checks `stack_size` against
+    the core's call graph and fails the build when `stack_size` is too small. See
+    `programming_guide/core_data_memory.md` for the mechanism, the escape hatches
+    (`--no-auto-stack-size`, `stack_size_override`) and the diagnostics.
 
     This op has an optional `dynamic_objfifo_lowering` attribute, to finely control whether the
     objectfifos in this core should be lowered using the dynamic runtime lowering.

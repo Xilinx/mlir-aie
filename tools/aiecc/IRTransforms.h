@@ -188,8 +188,8 @@ collectCoreIRLinkFiles(xilinx::AIE::CoreOp coreOp, llvm::StringRef inputFile,
   return files;
 }
 
-// Sets `stack_size = defaultStackSize` on every CoreOp lacking it
-// explicitly. An explicit `stack_size` always wins.
+// Sets `stack_size = defaultStackSize` on every CoreOp without an explicit
+// `stack_size`. A CoreOp with an explicit `stack_size` keeps it.
 inline mlir::OwningOpRef<mlir::ModuleOp>
 populateDefaultStackSize(mlir::ModuleOp src, int64_t defaultStackSize) {
   mlir::OwningOpRef<mlir::ModuleOp> cloned = src.clone();
@@ -202,32 +202,31 @@ populateDefaultStackSize(mlir::ModuleOp src, int64_t defaultStackSize) {
   return cloned;
 }
 
-// Appends a comma-joined list of skipped-artifact paths to a diagnostic.
 inline void appendSkippedArtifacts(mlir::InFlightDiagnostic &diag,
                                    llvm::ArrayRef<std::string> skipped) {
   for (size_t i = 0; i < skipped.size(); ++i)
     diag << (i ? ", " : "") << skipped[i];
 }
 
-// Validate each core's `stack_size` against its call tree
-// (StackSizeAnalysis.h). Only warns or fails, never mutates -- the computed
-// number is a lower bound, excluding the core body's own frame (not measurable
-// until after codegen). A cycle fails the build; a merely-unmeasurable symbol
-// only warns.
+// Validates each core's `stack_size` against its call tree
+// (StackSizeAnalysis.h) and leaves `stack_size` as the design wrote it. The
+// computed number is a lower bound: it covers the callees and omits the core
+// body's own frame, which codegen produces later. A cycle fails the build.
+// An unmeasurable symbol raises a warning.
 inline mlir::LogicalResult checkStackSizeRequirements(mlir::ModuleOp module,
                                                       llvm::StringRef inputFile,
                                                       llvm::StringRef workDir) {
   mlir::LogicalResult result = mlir::success();
 
-  // Cached per object (not per core): pass 1's output only depends on the
-  // object itself.
+  // Keyed by object, because the result depends on the object alone. Several
+  // cores can list one object.
   llvm::StringMap<llvm::StringSet<>> definedFunctionsByPath;
 
   for (xilinx::AIE::DeviceOp device : module.getOps<xilinx::AIE::DeviceOp>()) {
-    // Collected per device, since each DeviceOp is its own symbol table and
-    // a sibling device may define a same-named symbol with a different
-    // override. Rejects negative values here too: external_func() already
-    // does in Python, but hand-written MLIR bypasses that.
+    // Collected per device, because each DeviceOp is its own symbol table,
+    // and a sibling device can bind one name to a different override. The
+    // check for a negative value repeats the one in external_func(), which
+    // hand-written MLIR skips.
     llvm::StringMap<int64_t> overrides;
     device.walk([&](mlir::func::FuncOp funcOp) {
       auto attr =
@@ -244,8 +243,8 @@ inline mlir::LogicalResult checkStackSizeRequirements(mlir::ModuleOp module,
     });
 
     device.walk([&](xilinx::AIE::CoreOp coreOp) {
-      // Roots: symbols the core body directly calls (mirrors the walk in
-      // AIEAssignCoreLinkFilesPass).
+      // The roots are the symbols the core body calls directly.
+      // AIEAssignCoreLinkFilesPass walks the same set.
       llvm::SmallVector<llvm::StringRef, 4> roots;
       llvm::StringSet<> seenRoots;
       coreOp.walk([&](mlir::func::CallOp call) {
@@ -255,20 +254,19 @@ inline mlir::LogicalResult checkStackSizeRequirements(mlir::ModuleOp module,
       mlir::Builder b(module.getContext());
 
       if (roots.empty()) {
-        // Nothing calls out, so the callee-side requirement is zero. Stamp it
-        // rather than returning: the post-build check keys off this attribute,
-        // so leaving it absent lets a core whose own frame overflows go
-        // unvalidated.
+        // The core calls nothing, so its callee-side requirement is zero. The
+        // post-build check reads this attribute, and an absent attribute
+        // leaves the core's own frame unchecked.
         coreOp->setAttr(xilinx::AIE::kComputedStackRequirementAttrName,
                         b.getI32IntegerAttr(0));
         return;
       }
 
-      // A merge-mode kernel carries only link_merge_files, so link_files is
-      // absent while its roots may still have a stack_size_override. Scan no
-      // objects in that case, but keep going so those overrides can satisfy
-      // the roots; a root with neither an object nor an override still falls
-      // out below as the usual unmeasurable warning.
+      // A merge-mode kernel carries link_merge_files alone, so link_files is
+      // absent while its roots can still carry a stack_size_override. The loop
+      // below then scans zero objects, and those overrides still satisfy the
+      // roots. A root with no object and no override reaches the unmeasurable
+      // warning below.
       std::vector<std::string> resolved;
       if (auto filesAttr = coreOp.getLinkFiles())
         for (auto f : filesAttr->getAsRange<mlir::StringAttr>())
@@ -324,7 +322,7 @@ inline mlir::LogicalResult checkStackSizeRequirements(mlir::ModuleOp module,
         return;
       }
 
-      // Narrowing to i32 unchecked could wrap to a small/negative number.
+      // An unchecked narrowing to i32 wraps to a small or negative number.
       if (*stackRes.bytes > INT32_MAX) {
         coreOp.emitWarning()
             << "stack requirement computed as " << *stackRes.bytes
@@ -1021,8 +1019,8 @@ getInputWithAddressesPipeline(mlir::MLIRContext *ctx, mlir::ModuleOp mod,
   mlir::OpPassManager &dpm2 = pm->nest<DeviceOp>();
   AIEAssignBufferAddressesOptions bufOpts;
   bufOpts.clAllocScheme = allocScheme.str();
-  // aie-assign-core-link-files now runs earlier (buildMainGraph), before the
-  // stack-size check.
+  // buildMainGraph runs aie-assign-core-link-files, ahead of the stack-size
+  // check.
   dpm2.addPass(createAIEAssignBufferAddressesPass(bufOpts));
   dpm2.addPass(createAIEVectorTransferLoweringPass());
   pm->addPass(xilinx::AIEX::createAIESCFToControlFlowPass());

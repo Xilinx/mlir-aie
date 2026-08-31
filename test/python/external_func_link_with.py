@@ -1,10 +1,11 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-# Verify that the link_with, link_with_mode, and stack_size_override keyword
+# Verify that the link_with, link_with_mode and stack_size_override keyword
 # arguments on external_func produce the expected func.func attributes in the
-# emitted MLIR, and that their contracts (link_with_mode requires link_with
-# and only accepts "merge"; stack_size_override must be >= 0) are enforced.
+# emitted MLIR, and that external_func enforces their contracts:
+# link_with_mode needs link_with and accepts "merge" alone, and
+# stack_size_override must be >= 0.
 
 # RUN: %python %s | FileCheck %s
 
@@ -174,9 +175,9 @@ def link_with_mode_rejects_unknown_value():
         end()
 
 
-# stack_size_override is emitted as its own integer attribute, independent of
-# link_with -- aiecc's stack analysis reads it by name off the func.func
-# regardless of how (or whether) the artifact is linked.
+# stack_size_override becomes its own integer attribute, independent of
+# link_with. aiecc's stack analysis reads it by name from the func.func,
+# whatever the link mode of the artifact.
 # CHECK-LABEL: TEST: stack_size_override_emitted
 # CHECK: func.func private @recursive({{.*}}) attributes {link_with = "recursive.o", stack_size_override = 4096 : i32}
 @construct_and_print_module
@@ -194,8 +195,8 @@ def stack_size_override_emitted():
         end()
 
 
-# 0 is a legal override -- "this kernel needs no additional stack" -- and
-# must not be confused with "not set".
+# 0 is a legal override: this kernel adds no stack. It differs from an absent
+# attribute.
 # CHECK-LABEL: TEST: stack_size_override_zero_is_legal
 # CHECK: func.func private @leaf({{.*}}) attributes {link_with = "leaf.o", stack_size_override = 0 : i32}
 @construct_and_print_module
@@ -231,7 +232,7 @@ def func_without_stack_size_override():
         end()
 
 
-# A negative override is a caller error, not a silent clamp to 0.
+# A negative override raises a ValueError.
 # CHECK-LABEL: TEST: stack_size_override_rejects_negative
 # CHECK: ValueError: external_func 'bad': stack_size_override must be >= 0, got -1.
 # CHECK-NOT: func.func private @bad

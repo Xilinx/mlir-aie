@@ -5,14 +5,13 @@
 //
 //===----------------------------------------------------------------------===//
 
-// Same scenario as stack_size_indirect_call.mlir, except the kernel object
-// also defines a second, unrelated global (see
-// stack_size_indirect_call_multi_global_kernel.cc). Without -fdata-sections,
-// g_dispatch and g_unrelated share one .data section, which used to make
-// that section's owner ambiguous and silently drop the "target_fn's address
-// escapes into g_dispatch" record -- so indirect_caller would appear to call
-// nothing, and the computed requirement would silently be just its own tiny
-// frame with no warning at all.
+// The scenario of stack_size_indirect_call.mlir, with a second, unrelated
+// global in the kernel object (see
+// stack_size_indirect_call_multi_global_kernel.cc). Under -fdata-sections each
+// global gets its own section, and the analysis attributes the escape of
+// target_fn to g_dispatch. Inside one shared .data section the owner of that
+// section is ambiguous, the analysis drops the escape record, and the computed
+// requirement covers the small frame of indirect_caller alone.
 
 // REQUIRES: peano
 // RUN: rm -rf %t.d && mkdir -p %t.d

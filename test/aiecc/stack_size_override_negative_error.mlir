@@ -5,11 +5,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-// external_func()'s `>= 0` check rejects a negative stack_size_override
-// before it reaches the IR, but hand-written MLIR like this bypasses it. A
-// negative override would subtract from a path total in maxPathFrom and
-// undercount, so aiecc must reject it directly. Checked for every func.func
-// before any core-level computation runs, so no kernel object is needed.
+// external_func() rejects a negative stack_size_override before it reaches the
+// IR, and hand-written MLIR skips that check. A negative override subtracts
+// from a path total in maxPathFrom and undercounts, so aiecc rejects it too.
+// aiecc checks every func.func ahead of any core-level computation, so this
+// test needs no kernel object.
 
 // RUN: not %aiecc %s 2>&1 | FileCheck %s
 

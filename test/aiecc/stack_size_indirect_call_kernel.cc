@@ -4,17 +4,15 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
-// Support file for stack_size_indirect_call.mlir. An indirect call leaves no
-// relocation at the call site naming a callee (the target is a runtime
-// register load), so the analysis has to infer the edge from the reverse
-// direction instead: target_fn's address escapes into the function-pointer
-// variable g_dispatch (a relocation in g_dispatch's own storage pointing at
-// target_fn), and indirect_caller separately loads g_dispatch and calls
-// through it (a relocation in indirect_caller's code referencing
-// g_dispatch). Neither fact alone says indirect_caller can reach target_fn;
-// only combining them does. g_dispatch is a plain (non-const, externally
-// visible) global specifically so -O0 cannot see enough of this one
-// translation unit to devirtualize the call into a direct one.
+// Support file for stack_size_indirect_call.mlir. An indirect call loads its
+// target from a register, so the call site carries no relocation that names a
+// callee. The analysis combines two other facts instead. The address of
+// target_fn escapes into the function-pointer variable g_dispatch, which
+// relocates the storage of g_dispatch against target_fn. And indirect_caller
+// loads g_dispatch, which relocates the code of indirect_caller against
+// g_dispatch. Together the two facts connect indirect_caller to target_fn.
+// g_dispatch is a plain global, neither const nor local, so that -O0 keeps the
+// call indirect inside this translation unit.
 
 extern "C" void target_fn(unsigned char *out) {
   volatile unsigned char buf[4096];

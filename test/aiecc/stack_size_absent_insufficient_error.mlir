@@ -5,9 +5,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-// stack_size is absent, and entry_a's real frame exceeds the 1024-byte
-// device default buffers were placed against; the build must fail naming
-// the exact value to declare.
+// stack_size is absent, and the frame of entry_a exceeds the 1024-byte device
+// default that the buffer placement assumed. The build fails and names the
+// value to declare.
 
 // REQUIRES: peano
 // RUN: rm -rf %t.d && mkdir -p %t.d
@@ -16,11 +16,11 @@
 
 // CHECK: error: stack_size is absent (this core's buffers were placed assuming the device default of 1024 bytes), but this core's real requirement is {{[0-9]+}} bytes; set stack_size = {{[0-9]+}} explicitly on this aie.core (Worker(stack_size=...) in IRON) and rebuild, or pass --no-auto-stack-size to skip this check
 
-// The xclbin must not be left looking complete for a caller ignoring the
-// exit code.
+// aiecc removes the xclbin, so a caller that ignores the exit code finds no
+// stale artifact.
 // RUN: not ls %t.out/final.xclbin
 
-// --no-auto-stack-size skips this check entirely.
+// --no-auto-stack-size skips this check.
 // RUN: rm -rf %t.noauto.d && mkdir -p %t.noauto.d
 // RUN: cp %t.d/stack_size_max_not_sum_kernel.o %t.noauto.d/
 // RUN: cd %t.noauto.d && %aiecc --no-auto-stack-size %s 2>&1 | FileCheck --check-prefix=NOAUTO --allow-empty %s

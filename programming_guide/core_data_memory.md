@@ -7,93 +7,89 @@
 
 # Core Data Memory
 
-Every AIE compute tile has one small block of local data memory (for example,
-64 kB on npu2), and three different things share it:
+Every AIE compute tile has one small block of local data memory, 64 kB on npu2
+for example. Three things share that block:
 
 - the **stack**, at the bottom;
-- the **`aie.buffer`s** placed on the tile by the buffer allocator — the L1
-  storage behind ObjectFifos and any hand-declared buffers;
-- the core's **own compiled sections** (`.data`/`.rodata`/`.bss`) — the
-  globals, constants and zero-initialized statics of the code that runs on the
-  core, including its kernels.
+- the **`aie.buffer`s** that the buffer allocator places on the tile: the L1
+  storage behind ObjectFifos, and any hand-declared buffer;
+- the core's **own compiled sections** (`.data`, `.rodata`, `.bss`): the
+  globals, the constants and the zero-initialized statics of the code that
+  runs on the core, including its kernels.
 
-These three used to be decided by parties that never spoke to each other. The
-buffer allocator placed `aie.buffer`s knowing only about the stack reservation;
-the core compiler (Peano or Chess) later placed the core's own sections into
-whatever memory the buffers left behind. Buffer placement therefore silently
-decided whether the core would link — and it had no idea it was doing so. The
-failure modes were correspondingly opaque: a stack that quietly overwrote the
-buffers directly above it, or a linker "could not find free space" error that
-named neither the tile nor the buffers responsible.
+The buffer allocator places the `aie.buffer`s above the stack reservation. The
+core compiler, Peano or Chess, then places the core's own sections into the
+memory that the buffers leave free. Buffer placement therefore decides whether
+the core links.
 
-The compiler measures and checks the **stack** region against what a core's
-call graph actually needs; this page describes the attributes and flags that
-control that check, and what to do when it fires. (The core's own compiled
-sections are reserved and validated by a separate, later change.)
+This page covers the **stack** region: how the compiler measures a core's
+stack requirement, which attributes and flags control that measurement, and
+what to do when a diagnostic fires. A separate mechanism reserves and checks
+the core's own compiled sections.
 
-The guiding rule throughout is *the compiler measures and reports; you declare
-and rebuild.* `stack_size` is never written for you: a value you set
-explicitly — including an explicit `0` — is never overwritten, and a core that
-leaves it absent keeps the target's default rather than being resized. When
-the measured requirement exceeds what a core declared, the build reports the
-number to set and stops.
+One rule governs the whole check: *the compiler measures and reports, you
+declare and rebuild.* `aiecc` never writes `stack_size`. A value you set
+explicitly, an explicit `0` included, stays as you wrote it, and a core that
+leaves `stack_size` absent keeps the target default. When the measured
+requirement exceeds the declared value, the build reports the number to set
+and stops.
 
 ## The stack: `stack_size`
 
-`stack_size` is a per-core attribute on `aie.core`. When absent, the core uses
-the target default from `AIETargetModel::getDefaultCoreStackSize()`, currently
-1024 bytes. In IRON it is spelled on the `Worker`:
+`stack_size` is a per-core attribute on `aie.core`. A core that leaves it
+absent uses the target default from
+`AIETargetModel::getDefaultCoreStackSize()`, currently 1024 bytes. IRON spells
+it on the `Worker`:
 
 ```python
 Worker(core_fn, [args], stack_size=4096)
 ```
 
 The stack sits directly below the buffers with no clearance, so a core whose
-frames exceed the reservation overwrites the buffers above it. To catch that,
-`aiecc` computes each core's stack requirement from its call graph and validates
-`stack_size` against it. The analysis parses the `.stack_sizes` sections emitted
-by every kernel object, builds a call graph across the core's `link_files`, and
-takes the **maximum over all root-to-leaf call paths** — not the sum, because
-only one call chain is live at a time (unlike static data, which all coexists
-regardless of control flow).
+frames exceed the reservation overwrites the buffers above it. `aiecc`
+therefore computes each core's stack requirement from its call graph and
+checks `stack_size` against that number. The analysis parses the
+`.stack_sizes` section of every kernel object, builds a call graph across the
+core's `link_files`, and takes the **maximum over all root-to-leaf call
+paths**. One call chain is live at a time, so the maximum bounds the
+requirement. Static data differs: all of it coexists, whatever the control
+flow.
 
-The check happens in two places, because the two halves of the requirement
-become knowable at different times:
+The check runs at two points, because the two halves of the requirement become
+known at different times:
 
-- Early in the build, `aiecc` knows the callees' subtrees but not the core
-  body's own top-level frame (that only exists after the core's own codegen).
-  This early number is a *lower bound*: a value that already exceeds
-  `stack_size` is a proven problem, so it warns; a value that fits proves
-  nothing, so it stays silent.
-- After the build, `aiecc` reads the core's now-compiled frame back from its
-  object and combines it with the lower bound to get the true requirement.
-  This is the true total, so it fails the build — even on an explicit
-  `stack_size` — rather than warn: a warning here would ship a proven
-  overflow.
+- Early in the build, `aiecc` knows the subtrees of the callees. The core
+  body's own top-level frame appears only after codegen of the core, so this
+  early number is a *lower bound*. A lower bound above `stack_size` proves a
+  problem, and `aiecc` warns. A lower bound below `stack_size` proves nothing,
+  and `aiecc` stays silent.
+- After the build, `aiecc` reads the compiled frame of the core body from its
+  object and adds the lower bound. That sum is the full requirement, so a
+  smaller `stack_size` fails the build, an explicit one included.
 
 ## Overriding a kernel's stack contribution: `stack_size_override`
 
-Some symbols cannot be sized automatically:
+The analysis cannot size some symbols:
 
-- **recursion** (a cycle in the call graph is unbounded);
-- **indirect / function-pointer calls** (the analysis fans out conservatively
-  but cannot always resolve the target);
-- **Chess-compiled objects**, which carry no `.stack_sizes`;
-- **archives and bitcode** in `link_files`, which are not scanned;
-- **`link_with_mode="merge"` kernels**, merged into the core's own LLVM module
-  before codegen, so the analysis never sees them as a separate object.
+- **recursion**: a cycle in the call graph is unbounded;
+- **an indirect call through a function pointer**: the analysis fans out
+  conservatively and still misses some targets;
+- **a Chess-compiled object**: it carries no `.stack_sizes` section;
+- **an archive or a bitcode file** in `link_files`: the analysis skips both;
+- **a `link_with_mode="merge"` kernel**: it merges into the core's own LLVM
+  module before codegen, so the analysis reads it as part of the core.
 
-For these, you declare the answer with `stack_size_override`. Crucially it lives
-on the **kernel's `func.func`**, at function granularity, *not* on the core.
-That placement is deliberate: the same kernel is often linked into several
-cores, and the actually-problematic symbol is usually internal to a kernel
-object that MLIR never saw — so the override has to be addressable at the one
-granularity MLIR does see, the external-function declaration. `aiecc` treats the
-declared value as the answer for that kernel's entire call subtree and does not
-descend into it. It is a declaration, not a clamp: an explicit value wins even
-if it is smaller than what the analysis would compute. An explicit `0` is legal.
+For these, declare the answer with `stack_size_override`. It lives on the
+**kernel's `func.func`**, at function granularity, and not on the core. Two
+reasons drive that placement. Several cores often link one kernel. And the
+problematic symbol usually sits inside a kernel object that MLIR never reads,
+so the override has to address the one granularity MLIR does read: the
+external-function declaration. `aiecc` takes the declared value as the
+requirement of that kernel's whole call subtree and stops the walk there. The
+value is a declaration, not a clamp: an explicit value replaces the computed
+one, even when it is smaller. An explicit `0` is legal.
 
-In IRON it is a keyword on the kernel declaration:
+IRON spells it as a keyword on the kernel declaration:
 
 ```python
 Kernel("recursive_kernel", "recursive.o", [...], stack_size_override=4096)
@@ -103,61 +99,60 @@ external_func("my_kernel", ..., stack_size_override=4096)
 
 ## Escape hatches and allocation control
 
-One flag disables the automatic behavior, for when you want the pre-existing
-behavior back or are debugging the analysis itself:
+One flag disables the check, for a build that has to skip it and for debugging
+the analysis:
 
-- **`--no-auto-stack-size`** — skip *all* `stack_size` validation (both the
-  early warning and the later hard error); cores are not checked at all.
+- **`--no-auto-stack-size`** skips every `stack_size` check, both the early
+  warning and the later error.
 
-A design-wide stand-in for the target's built-in `stack_size` default is
-available too, for any core that leaves `stack_size` absent:
+A design-wide stand-in for the built-in default covers any core that leaves
+`stack_size` absent:
 
-- **`--default-stack-size=<bytes>`** — assume this many bytes instead of
-  `AIETargetModel::getDefaultCoreStackSize()` for any core with no explicit
-  `stack_size`. Once applied, that core is treated as if it had written
-  `stack_size` explicitly for the rest of the build (diagnostics describe it as
-  an assumed value, not as "absent"). A core with its own explicit `stack_size`
-  is never affected.
+- **`--default-stack-size=<bytes>`** assumes this many bytes in place of
+  `AIETargetModel::getDefaultCoreStackSize()` for any core without an explicit
+  `stack_size`. The rest of the build then treats that core as if it declared
+  `stack_size` explicitly, and the diagnostics call the value assumed. A core
+  with an explicit `stack_size` keeps it.
 
-Allocation strategy is controlled independently:
+Separate flags control the allocation strategy:
 
 - **`--alloc-scheme=<basic-sequential|bank-aware>`** picks the scheme for the
-  whole design. When unset, the allocator tries bank-aware first (which spreads
-  buffers across banks to limit DMA contention) and falls back to
-  basic-sequential if bank-aware runs out of memory.
-- The per-tile **`allocation_scheme`** attribute overrides the scheme for one
-  tile. In IRON this is `Worker(allocation_scheme="basic-sequential")`, and it
-  overrides any scheme set on the tile. Bank placement can also be requested per
-  buffer with `Buffer(mem_bank=...)`.
+  whole design. Without it, the allocator runs bank-aware first, which spreads
+  buffers across banks to limit DMA contention, and falls back to
+  basic-sequential when bank-aware runs out of memory.
+- The per-tile **`allocation_scheme`** attribute picks the scheme for one tile
+  and overrides `--alloc-scheme` there. IRON spells it
+  `Worker(allocation_scheme="basic-sequential")`. `Buffer(mem_bank=...)`
+  requests a bank per buffer.
 
 ## What to do when you hit a diagnostic
 
 **`cannot determine this core's stack requirement: ...` (error).** The call
-graph has a cycle (recursion), which is unbounded. Set `stack_size_override` on
-the affected kernel's `external_func()`/`func.func` declaration to a value large
-enough for the deepest recursion, or pass `--no-auto-stack-size` to skip the
-check entirely.
+graph has a cycle, and recursion is unbounded. Set `stack_size_override` on
+the affected kernel's `external_func()` or `func.func` declaration, to a value
+large enough for the deepest recursion. Pass `--no-auto-stack-size` to skip
+the check instead.
 
 **`cannot determine this core's stack requirement: ...; stack_size is not being
-validated for this core` (warning).** A symbol could not be measured — a missing
-`.stack_sizes` section, a Chess-compiled object, an archive/bitcode entry, or a
-`link_merge_files` dependency. This is the common case for pre-existing kernel
-objects and is *not* fatal; the compiler simply cannot validate `stack_size` for
-this core. If you want validation, set `stack_size_override` on the affected
-kernel so the analysis has a number to trust.
+validated for this core` (warning).** The analysis cannot measure a symbol,
+because of a missing `.stack_sizes` section, a Chess-compiled object, an
+archive or bitcode entry, or a `link_merge_files` dependency. A pre-compiled
+kernel object hits this case often, and the build continues: the compiler
+leaves `stack_size` unchecked for this core. Set `stack_size_override` on the
+affected kernel to give the analysis a number to work from.
 
 **`stack_size is absent ... but this core's real requirement is N bytes; set
 stack_size = N explicitly on this aie.core ... and rebuild` (error).** The
-device default was assumed when the buffers were placed, but the finished core
-needs more. Do exactly what it says: set `stack_size = N` (or
-`Worker(stack_size=N)`) and rebuild.
+buffer placement assumed the device default, and the finished core needs more.
+Do what the message says: set `stack_size = N`, or `Worker(stack_size=N)`, and
+rebuild.
 
 **`stack_size = K is insufficient ... but this core's real requirement is N
-bytes; increase stack_size to N ... and rebuild` (error).** Same as above, but
-`stack_size` was already set explicitly to a value that turned out too small.
-An explicit value is never silently changed, so this is still a hard failure,
-not a warning: increase it to `N` and rebuild.
+bytes; increase stack_size to N ... and rebuild` (error).** The same case, with
+`stack_size` already set explicitly to a value that turned out too small.
+`aiecc` leaves an explicit value alone, so this stays a hard failure. Increase
+it to `N` and rebuild.
 
-At this point the requirement is known, so `--no-auto-stack-size` is not a fix
-— it silences a proven overflow. Reach for it only if you believe the estimate
-itself is wrong, and please file an issue if so.
+At this point the requirement is known, and `--no-auto-stack-size` silences a
+proven overflow. Reach for it only when you believe the measurement itself is
+wrong, and please file an issue in that case.

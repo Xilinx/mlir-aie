@@ -4,11 +4,11 @@
 // REQUIRES: ryzen_ai_npu1, peano, torch
 // REQUIRES: makefile_examples
 //
-// group2's four preloaded LUTs (32768 + 32768 + 32768 + 20064 int16
-// entries, ~231KB total) don't fit in one AIE tile's local memory
-// (basic-sequential allocation reports only ~21KB free), so this fails at
-// compile time, not just numerically. Needs a real redesign (splitting the
-// LUTs across tiles or DMA-streaming them) before this can pass.
+// The four preloaded LUTs of group2 hold 32768 + 32768 + 32768 + 20064 int16
+// entries, about 231 kB, and exceed the local memory of one AIE tile:
+// basic-sequential allocation reports about 21 kB free. The compile fails.
+// group2 needs a redesign that splits the LUTs across tiles or streams them
+// over DMA.
 // XFAIL: *
 //
 // RUN: mkdir -p test_placed_group2

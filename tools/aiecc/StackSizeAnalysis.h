@@ -5,11 +5,12 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Computes a core's stack requirement from its call graph: the MAX over
-// root-to-leaf paths through `.stack_sizes` data and call/data relocations
-// in its `link_files` objects (never the sum -- only one call chain is
-// live at a time). Must never undercount; an unmeasurable or recursive
-// symbol is reported, not silently assumed safe.
+// Computes a core's stack requirement from its call graph: the maximum over
+// root-to-leaf paths through the `.stack_sizes` data and the call and data
+// relocations of its `link_files` objects. One call chain is live at a time,
+// so the maximum bounds the requirement. A symbol the analysis cannot
+// measure, and a symbol that recurses, both end the walk with a failure, so
+// the result is an upper bound.
 //
 //===----------------------------------------------------------------------===//
 
@@ -29,44 +30,46 @@
 namespace xilinx::aiecc {
 
 struct StackGraphNode {
-  int64_t frameSize = -1; // -1 = not yet measured
+  int64_t frameSize = -1; // -1 marks an unmeasured frame
   llvm::SmallVector<std::string, 4> callees;
 };
 
-// The merged call graph across every object linked into one core, keyed by
-// symbol name. dataReferences/dataEscapes back the indirect-call heuristic
-// in addObjectToStackGraph, consumed by resolveIndirectCallEdges.
+// The call graph across every object linked into one core, keyed by graph key
+// (see the comment on SectionOwners in the implementation).
+// addObjectToStackGraph fills dataReferences and dataEscapes for the
+// indirect-call heuristic, and resolveIndirectCallEdges turns them into call
+// edges.
 struct StackGraph {
   llvm::StringMap<StackGraphNode> nodes;
   llvm::StringMap<llvm::StringSet<>> dataReferences;
   llvm::StringMap<llvm::SmallVector<std::string, 2>> dataEscapes;
 };
 
-// Collects every function symbol `path` defines into `names`. False means
-// `path` isn't a plain relocatable object.
+// Collects every function symbol that `path` defines into `names`. Returns
+// false when `path` holds something other than a plain relocatable object.
 bool collectDefinedFunctionNames(llvm::StringRef path,
                                  llvm::StringSet<> &names);
 
-// Parses `path`'s `.stack_sizes` entries and call/data relocations into
-// `graph`. `knownFunctions` must list every function defined anywhere in
-// the core's object set, so a relocation against an undefined symbol
-// (unreliable st_type) can still be recognized as a cross-object call.
+// Parses `path`'s `.stack_sizes` entries and its call and data relocations
+// into `graph`. `knownFunctions` must name every function that any object of
+// the core defines, so that a relocation against an undefined symbol counts
+// as a cross-object call. The st_type of an undefined symbol is unreliable.
 //
-// False means `path` could not be fully attributed, but `graph` is still
-// safe to use: every such case only skips a write (leaving frameSize at
-// its -1 sentinel), never writes a wrong value.
+// Returns false when the attribution of `path` is incomplete. `graph` stays
+// usable: an incomplete attribution skips a write and leaves frameSize at the
+// -1 sentinel.
 bool addObjectToStackGraph(llvm::StringRef path,
                            const llvm::StringSet<> &knownFunctions,
                            StackGraph &graph);
 
-// Folds the conservative indirect-call edges collected across every object
-// into `graph`, then normalizes callee lists. Call once per core, after
-// every link_files object has been added and before computeStackRequirement.
+// Adds the conservative indirect-call edges to `graph` and sorts each callee
+// list. Call once per core, after addObjectToStackGraph runs on every
+// link_files object, and before computeStackRequirement.
 void resolveIndirectCallEdges(StackGraph &graph);
 
-// Cycle: unbounded, always requires stack_size_override. Unmeasurable:
-// missing .stack_sizes data (e.g. a pre-existing or archived object) -- a
-// warning, not a build failure.
+// Cycle: the requirement is unbounded, so the design must declare a
+// stack_size_override. Unmeasurable: an object carries no `.stack_sizes`
+// data, for example an archive member. The driver warns for this case.
 enum class StackRequirementFailure { Cycle, Unmeasurable };
 
 struct StackRequirementResult {
@@ -75,17 +78,18 @@ struct StackRequirementResult {
   StackRequirementFailure failureKind = StackRequirementFailure::Unmeasurable;
 };
 
-// The max over `roots` (symbols the core body calls directly) of each
-// root's longest frame-weighted path in `graph`. `overrides` names symbols
-// whose subtree is a declared leaf rather than analyzed.
+// Returns the maximum, over `roots` (the symbols the core body calls
+// directly), of each root's longest frame-weighted path in `graph`.
+// `overrides` maps a symbol to a declared requirement for its whole subtree,
+// and the walk stops at such a symbol.
 StackRequirementResult
 computeStackRequirement(const StackGraph &graph,
                         llvm::ArrayRef<llvm::StringRef> roots,
                         const llvm::StringMap<int64_t> &overrides);
 
-// A function's own frame size, without a call-graph walk -- for reading
-// back a core's compiled top-level frame after codegen, which
-// computeStackRequirement cannot see.
+// Returns a function's own frame size, without a call-graph walk. The driver
+// reads a core's top-level frame this way after codegen.
+// computeStackRequirement covers the callees of that frame.
 std::optional<int64_t> measureFunctionFrameSize(llvm::StringRef path,
                                                 llvm::StringRef symbol);
 

@@ -5,16 +5,16 @@
 //
 //===----------------------------------------------------------------------===//
 
-// Exercises resolveIndirectCallEdges' function-pointer-table inference (see
-// StackSizeAnalysis.h): indirect_caller (see stack_size_indirect_call_kernel.cc)
-// calls target_fn only through a function pointer loaded from a global, so
-// folding target_fn's real (~4096-byte) frame into indirect_caller's path
-// requires combining "target_fn's address escapes into g_dispatch" with
-// "indirect_caller references g_dispatch" into a conservative call edge.
+// Exercises the function-pointer inference of resolveIndirectCallEdges (see
+// StackSizeAnalysis.h). indirect_caller, in
+// stack_size_indirect_call_kernel.cc, reaches target_fn through a function
+// pointer loaded from a global. The analysis combines the escape of target_fn
+// into g_dispatch with the reference from indirect_caller to g_dispatch, and
+// adds the 4096-byte frame of target_fn to the path of indirect_caller.
 //
-// stack_size = 2048 sits below the true total, so correct inference must warn
-// and then fail naming a large number; a missed edge would silently report
-// just indirect_caller's own tiny frame, with no warning at all.
+// stack_size = 2048 sits below the full requirement, so the build warns and
+// then fails with a large number. Under a missed edge the analysis reports the
+// small frame of indirect_caller alone.
 
 // REQUIRES: peano
 // RUN: rm -rf %t.d && mkdir -p %t.d

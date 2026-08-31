@@ -51,7 +51,7 @@ my_worker = Worker(core_fn, [buf], tile=Tile(0, 2), while_true=False)
 
 > **NOTE 2:** The Worker above is instantiated with `while_true=False`. By default this is `True`, which wraps the kernel body in a `while True`-style loop simulated by a `for _ in range(sys.maxsize):`. Depending on the body (e.g., creating a local buffer with a unique name) the infinite-loop wrapper can cause compiler issues.
 >
-> **NOTE 3:** `Buffer`s like `buf` above share the same local tile memory as the Worker's call stack and its own compiled code. See [Core Data Memory](../core_data_memory.md) for how that's checked and what to do if you hit a stack- or memory-related build error.
+> **NOTE 3:** A `Buffer` such as `buf` above shares the tile's local memory with the Worker's call stack and with the Worker's compiled code. See [Core Data Memory](../core_data_memory.md) for how the compiler checks that memory, and what to do when a stack or memory build error fires.
 
 Data movement between Workers will get its own [section](../section-2/section-2d/); host-to/from-NPU data movement is configured inside the `Runtime` sequence body. In this minimal example the sequence body has one host-facing tensor argument and does no data movement; the Worker is passed to the `Program`:
 

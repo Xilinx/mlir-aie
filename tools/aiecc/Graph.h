@@ -556,12 +556,12 @@ struct EdgeBase {
     return std::string(path.str());
   }
 
-  // Every path this edge writes under its *current* outputDir: one per key
-  // for a fan-out edge (e.g. one xclbin per device under `--xclbin-name`'s
-  // `{0}` template), or the single path a non-fan-out edge writes under its
-  // own name (matching prepareItem's `prepareItem(this->name)` convention).
-  // Only meaningful while outputDir is set, i.e. during/immediately after
-  // Engine::run -- the engine clears it once the run returns.
+  // Every path this edge writes under the current outputDir: one path per key
+  // for a fan-out edge, for example one xclbin per device under the `{0}`
+  // template of `--xclbin-name`, and one path under the edge's own name
+  // otherwise, which matches the `prepareItem(this->name)` convention. The
+  // engine clears outputDir once the run returns, so call this during
+  // Engine::run or right after it.
   std::vector<std::string> outputPaths() {
     std::vector<std::string> paths;
     if (!producesFiles || !outputNode())

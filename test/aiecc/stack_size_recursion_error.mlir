@@ -5,10 +5,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-// Recursion is fundamentally unbounded -- there is no safe number to assume
-// -- so it must fail the whole aiecc run (not just warn) unless the
-// recursive kernel's root symbol carries stack_size_override. This is a
-// hard, actionable diagnostic naming the cycle, never a silent guess.
+// Recursion is unbounded, so aiecc fails the run unless the root symbol of the
+// recursive kernel carries a stack_size_override. The diagnostic names the
+// cycle.
 
 // REQUIRES: peano
 // RUN: rm -rf %t.d && mkdir -p %t.d
@@ -18,7 +17,7 @@
 // CHECK: error: cannot determine this core's stack requirement: recursion detected: recursive_touch -> recurse -> recurse
 // CHECK-SAME: set stack_size_override
 
-// --no-auto-stack-size skips the check entirely, even for a hard failure.
+// --no-auto-stack-size skips the check, including this failure.
 // RUN: cd %t.d && %aiecc --no-auto-stack-size %s 2>&1 | FileCheck --check-prefix=NOAUTO --allow-empty %s
 
 // NOAUTO-NOT: cannot determine this core's stack requirement

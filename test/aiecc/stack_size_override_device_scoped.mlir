@@ -5,15 +5,13 @@
 //
 //===----------------------------------------------------------------------===//
 
-// stack_size_override must be scoped per aie.device, not collected once for
-// the whole module: a DeviceOp is its own symbol table (IsolatedFromAbove),
-// so two devices may legally declare the same symbol name with different
-// overrides. Both devices below link the same recursive kernel object under
-// the name @recursive_touch, but only the first device's declaration carries
-// stack_size_override. A module-wide override map would let the second
-// device's identically-named (un-overridden) @recursive_touch silently
-// inherit the first device's override, masking the real, unbounded recursion
-// this test expects it to report.
+// aiecc collects stack_size_override per aie.device. A DeviceOp is its own
+// symbol table (IsolatedFromAbove), so two devices can declare one symbol name
+// with different overrides. Both devices below link the same recursive kernel
+// object under the name @recursive_touch, and the declaration of the first
+// device carries the override. Under a module-wide override map, the
+// @recursive_touch of the second device would inherit that override, and the
+// unbounded recursion of the second device would go unreported.
 
 // REQUIRES: peano
 // RUN: rm -rf %t.d && mkdir -p %t.d
@@ -24,7 +22,7 @@
 // CHECK-SAME: set stack_size_override
 
 module {
-  // Overridden: builds clean with respect to recursive_touch.
+  // This device overrides recursive_touch and builds.
   aie.device(npu2) @dev_overridden {
     %tile_0_0 = aie.tile(0, 0)
     %tile_0_2 = aie.tile(0, 2)
@@ -49,8 +47,7 @@ module {
     }
   }
 
-  // Not overridden: recursion must still be caught here, regardless of the
-  // sibling device's override on the identically-named symbol above.
+  // This device declares no override, so the recursion fails the build here.
   aie.device(npu2) @dev_plain {
     %tile_0_0 = aie.tile(0, 0)
     %tile_0_2 = aie.tile(0, 2)

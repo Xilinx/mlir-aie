@@ -667,11 +667,10 @@ struct Engine {
   // the downstream consumers that reference them by path (e.g. core ELFs the
   // CDO step loads).
   //
-  // `writtenOutputPaths`, if non-null, is filled with every path written for
-  // an `outputs` edge (not `buildAlso`/intermediates) -- e.g. so a caller
-  // whose own later check fails the build can remove the final artifacts a
-  // successful run just placed in outputDir, rather than leave them looking
-  // complete under an exit code the caller might not check.
+  // A non-null `writtenOutputPaths` receives every path that an `outputs`
+  // edge writes, and none from `buildAlso` or from an intermediate. A caller
+  // whose own later check fails the build removes those artifacts, so that a
+  // caller which ignores the exit code finds no stale output in outputDir.
   mlir::LogicalResult
   run(Graph &g, const std::vector<EdgeBase *> &outputs,
       const llvm::DenseMap<EdgeBase *, RestoredNode> &satisfied =

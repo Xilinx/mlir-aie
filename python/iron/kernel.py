@@ -259,11 +259,12 @@ class Kernel(BaseKernel):
             link_with_mode: Optional link policy emitted alongside
                 ``link_with``.  ``"merge"`` routes the artifact through aiecc's
                 ``llvm-link`` merge path; None (the default) object-links it.
-            stack_size_override: Optional declared upper bound, in bytes, on
-                the stack this kernel's call subtree needs -- an escape hatch
-                for recursion, indirect calls, or a ``link_with_mode="merge"``
-                kernel aiecc's stack analysis can't see as a separate object.
-                See [`Kernel.stack_size_override`][iron.kernel.Kernel.stack_size_override].
+            stack_size_override: Declared upper bound, in bytes, on the stack
+                that this kernel's call subtree uses. Set it for recursion, for
+                an indirect call, or for a ``link_with_mode="merge"`` kernel,
+                which aiecc's stack analysis reads as part of the core rather
+                than as a separate object. See
+                [`Kernel.stack_size_override`][iron.kernel.Kernel.stack_size_override].
         """
         super().__init__(name, arg_types)
         self._object_file_name = object_file_name
@@ -282,13 +283,12 @@ class Kernel(BaseKernel):
 
     @property
     def stack_size_override(self) -> int | None:
-        """Declared upper bound on this kernel's call-subtree stack use.
+        """Declared upper bound on the stack that this kernel's call subtree uses.
 
-        None lets aiecc's automatic analysis compute it instead. An explicit
-        value always wins over whatever the analysis would compute, even if
-        smaller -- it's a declaration, not a clamp; ``0`` is legal. See
-        [Core Data Memory](../../programming_guide/core_data_memory.md) for
-        the full rationale.
+        With ``None``, aiecc's analysis computes the bound. An explicit value
+        replaces that computed bound, even when it is smaller: it is a
+        declaration, and ``0`` is legal. See
+        [Core Data Memory](../../programming_guide/core_data_memory.md).
         """
         return self._stack_size_override
 
@@ -384,13 +384,12 @@ class ExternalFunction(Kernel):
                 object-linking a separate ``.o``. Removes the ``func.call``
                 boundary and the separate object. Peano path only (the
                 Chess/xchesscc toolchain cannot llvm-link).
-            stack_size_override: Optional declared upper bound, in bytes, on
-                the stack this kernel's call subtree needs -- see
+            stack_size_override: Declared upper bound, in bytes, on the stack
+                that this kernel's call subtree uses. See
                 [`Kernel.stack_size_override`][iron.kernel.Kernel.stack_size_override].
-                With ``inline=True`` this is the only way to give aiecc's
-                automatic stack analysis any information about this kernel at
-                all, since a merged kernel has no separate object for the
-                analysis to inspect.
+                With ``inline=True``, the merged kernel has no separate object,
+                so this bound is the one input aiecc's stack analysis reads for
+                this kernel.
         """
         if inline and use_chess:
             raise ValueError(

@@ -5,12 +5,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-// An absurdly large (but non-negative, so validation lets it through)
-// stack_size_override is a direct way to drive the computed requirement
-// above what an i32 attribute holds, without hand-crafting a malformed
-// .stack_sizes entry. Silently truncating to i32 would wrap to a small or
-// negative value and undercount; this must instead warn and leave
-// stack_size unvalidated, never stamp a truncated number.
+// A very large stack_size_override passes the `>= 0` check and drives the
+// computed requirement above the range of the i32 attribute. A truncation to
+// i32 wraps to a small or negative value and undercounts, so aiecc warns and
+// leaves stack_size unchecked.
 
 // REQUIRES: peano
 // RUN: rm -rf %t.d && mkdir -p %t.d

@@ -6,13 +6,12 @@
 //===----------------------------------------------------------------------===//
 // Support file for stack_size_recursion_error.mlir and
 // stack_size_explicit_override_wins.mlir. recurse calls itself, so its stack
-// requirement is fundamentally unbounded -- exactly the case that must fail
-// auto-measurement unless the kernel's func.func declaration carries
-// stack_size_override. Both functions are `extern "C"` (a `static` function
-// still gets a C++-mangled name even inside `extern "C"`, which would make
-// the recursion diagnostic's symbol name unpredictable) and compiled at -O0
-// (set by both tests' RUN lines) so the compiler can't turn the
-// self-recursion into a loop, which would hide the cycle entirely.
+// requirement is unbounded, and the measurement fails until the func.func
+// declaration of the kernel carries a stack_size_override. Both functions are
+// `extern "C"`, which fixes the symbol name that the recursion diagnostic
+// prints; a `static` function keeps a C++-mangled name even inside `extern
+// "C"`. The RUN lines of both tests compile at -O0, which keeps the
+// self-recursion as a call and leaves the cycle in the call graph.
 
 extern "C" void recurse(unsigned char *out, int n) {
   if (n > 0) {

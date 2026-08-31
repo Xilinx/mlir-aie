@@ -5,12 +5,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-// An explicit stack_size is never overwritten, but it's not exempt from the
-// post-build sufficiency check: unlike the early check
-// (checkStackSizeRequirements), which only has a lower bound, this later
-// check reads the core's true compiled frame back from its object. A
-// provably-too-small explicit value is a hard build failure here too, just
-// as stack_size_absent_insufficient_error.mlir is for the absent case.
+// aiecc keeps an explicit stack_size and still checks it after the build. The
+// early check (checkStackSizeRequirements) holds a lower bound; this later
+// check reads the compiled frame of the core from its object. An explicit
+// value below the full requirement fails the build, as
+// stack_size_absent_insufficient_error.mlir shows for the absent case.
 
 // REQUIRES: peano
 // RUN: rm -rf %t.d && mkdir -p %t.d
@@ -19,12 +18,10 @@
 
 // CHECK: error: stack_size = 1024 is insufficient (this core's buffers were placed assuming 1024 bytes), but this core's real requirement is {{[0-9]+}} bytes; increase stack_size to {{[0-9]+}} (Worker(stack_size=...) in IRON) and rebuild, or pass --no-auto-stack-size to skip this check
 
-// Same artifact-cleanliness guarantee as the absent case: a proven-insufficient
-// build must not leave a complete-looking xclbin behind.
+// aiecc removes the xclbin here too, as in the absent case.
 // RUN: not ls %t.out/final.xclbin
 
-// --no-auto-stack-size skips this check entirely, the same escape hatch that
-// skips the absent case.
+// --no-auto-stack-size skips this check, as it does for the absent case.
 // RUN: rm -rf %t.noauto.d && mkdir -p %t.noauto.d
 // RUN: cp %t.d/stack_size_max_not_sum_kernel.o %t.noauto.d/
 // RUN: cd %t.noauto.d && %aiecc --no-auto-stack-size %s 2>&1 | FileCheck --check-prefix=NOAUTO --allow-empty %s

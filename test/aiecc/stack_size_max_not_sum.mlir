@@ -5,15 +5,13 @@
 //
 //===----------------------------------------------------------------------===//
 
-// A core's stack requirement is the MAX over its roots' paths, not their
-// SUM -- unlike reserved_data_size, which sums a core's link_files objects'
-// static data (static buffers coexist regardless of control flow; stack
-// frames don't, since only one call chain is live at a time). entry_a and
-// entry_b each have a real ~4096-byte frame (see the kernel source) and are
-// called independently from the core body, so the true requirement is
-// roughly one frame (~4KiB), not both (~8KiB). stack_size = 5000 sits
-// between the two: correct (max) behavior must not warn; a regression to
-// summing both roots would.
+// A core's stack requirement is the maximum over the paths of its roots, since
+// one call chain is live at a time. (reserved_data_size sums instead, because
+// all static data of the link_files objects coexists.) entry_a and entry_b
+// each hold a frame of about 4096 bytes, see the kernel source, and the core
+// body calls each one on its own, so the requirement is about one frame, 4
+// KiB. stack_size = 5000 sits between one frame and two, so the build stays
+// silent under the maximum and warns under a sum.
 
 // REQUIRES: peano
 // RUN: rm -rf %t.d && mkdir -p %t.d
