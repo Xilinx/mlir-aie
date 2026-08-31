@@ -252,20 +252,28 @@ inline mlir::LogicalResult checkStackSizeRequirements(mlir::ModuleOp module,
         if (seenRoots.insert(call.getCallee()).second)
           roots.push_back(call.getCallee());
       });
-      if (roots.empty())
-        return; // Nothing calls out; the core body's own stack use is out of
-                // this analysis's scope entirely (see above).
+      mlir::Builder b(module.getContext());
 
-      auto filesAttr = coreOp.getLinkFiles();
-      if (!filesAttr)
-        return; // No link_files: every root must be either overridden or
-                // unmeasurable (e.g. only reachable via link_merge_files),
-                // and there is nothing to scan either way.
+      if (roots.empty()) {
+        // Nothing calls out, so the callee-side requirement is zero. Stamp it
+        // rather than returning: the post-build check keys off this attribute,
+        // so leaving it absent lets a core whose own frame overflows go
+        // unvalidated.
+        coreOp->setAttr(xilinx::AIE::kComputedStackRequirementAttrName,
+                        b.getI32IntegerAttr(0));
+        return;
+      }
 
+      // A merge-mode kernel carries only link_merge_files, so link_files is
+      // absent while its roots may still have a stack_size_override. Scan no
+      // objects in that case, but keep going so those overrides can satisfy
+      // the roots; a root with neither an object nor an override still falls
+      // out below as the usual unmeasurable warning.
       std::vector<std::string> resolved;
-      for (auto f : filesAttr->getAsRange<mlir::StringAttr>())
-        resolved.push_back(
-            resolveExternalPath(f.getValue(), inputFile, workDir));
+      if (auto filesAttr = coreOp.getLinkFiles())
+        for (auto f : filesAttr->getAsRange<mlir::StringAttr>())
+          resolved.push_back(
+              resolveExternalPath(f.getValue(), inputFile, workDir));
 
       llvm::StringSet<> knownFunctions;
       for (const std::string &path : resolved) {
@@ -335,7 +343,6 @@ inline mlir::LogicalResult checkStackSizeRequirements(mlir::ModuleOp module,
         appendSkippedArtifacts(diag, skipped);
       }
 
-      mlir::Builder b(module.getContext());
       coreOp->setAttr(
           xilinx::AIE::kComputedStackRequirementAttrName,
           b.getI32IntegerAttr(static_cast<int32_t>(*stackRes.bytes)));

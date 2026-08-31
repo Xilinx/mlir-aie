@@ -673,11 +673,9 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
         return populateDefaultStackSize(mod.get(), stackSize);
       });
 
-  // aie-assign-core-link-files moves here from inside
-  // getInputWithAddressesPipeline (it used to run after address assignment):
-  // it's a pure call-graph analysis over func.func/func.call, so nothing
-  // depends on addresses, and the stack-size check below needs its
-  // link_files output.
+  // aie-assign-core-link-files is a pure call-graph analysis over
+  // func.func/func.call; the stack-size check below needs its link_files
+  // output.
   auto &withLinkFiles = withDefaultStackSize.map<ModRef>(
       "with_link_files.mlir",
       PassPipeline{&context, [](mlir::MLIRContext *ctx, mlir::ModuleOp) {

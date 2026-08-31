@@ -26,14 +26,17 @@ failure modes were correspondingly opaque: a stack that quietly overwrote the
 buffers directly above it, or a linker "could not find free space" error that
 named neither the tile nor the buffers responsible.
 
-The compiler now measures and checks the **stack** region against what a
-core's call graph actually needs; this page describes the attributes and
-flags that control that check, and what to do when it fires. (The core's own
-compiled sections are reserved and validated by a separate, later change.)
+The compiler measures and checks the **stack** region against what a core's
+call graph actually needs; this page describes the attributes and flags that
+control that check, and what to do when it fires. (The core's own compiled
+sections are reserved and validated by a separate, later change.)
 
 The guiding rule throughout is *the compiler measures and reports; you declare
-and rebuild.* Any value you set explicitly — including an explicit `0` — is
-never overwritten. The auto-measurement only fills in values you left absent.
+and rebuild.* `stack_size` is never written for you: a value you set
+explicitly — including an explicit `0` — is never overwritten, and a core that
+leaves it absent keeps the target's default rather than being resized. When
+the measured requirement exceeds what a core declared, the build reports the
+number to set and stops.
 
 ## The stack: `stack_size`
 
@@ -146,13 +149,15 @@ kernel so the analysis has a number to trust.
 **`stack_size is absent ... but this core's real requirement is N bytes; set
 stack_size = N explicitly on this aie.core ... and rebuild` (error).** The
 device default was assumed when the buffers were placed, but the finished core
-needs more. Do exactly what it says — set `stack_size = N` (or
-`Worker(stack_size=N)`) and rebuild — or pass `--no-auto-stack-size` to skip
-the check.
+needs more. Do exactly what it says: set `stack_size = N` (or
+`Worker(stack_size=N)`) and rebuild.
 
 **`stack_size = K is insufficient ... but this core's real requirement is N
 bytes; increase stack_size to N ... and rebuild` (error).** Same as above, but
 `stack_size` was already set explicitly to a value that turned out too small.
 An explicit value is never silently changed, so this is still a hard failure,
-not a warning: increase it to `N` and rebuild, or pass `--no-auto-stack-size`
-to skip the check.
+not a warning: increase it to `N` and rebuild.
+
+At this point the requirement is known, so `--no-auto-stack-size` is not a fix
+— it silences a proven overflow. Reach for it only if you believe the estimate
+itself is wrong, and please file an issue if so.

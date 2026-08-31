@@ -245,6 +245,14 @@ class external_func(FuncOp):
                     f"external_func '{name}': stack_size_override must be >= 0, "
                     f"got {stack_size_override}."
                 )
+            # The attribute is a signless i32; a larger value would wrap
+            # silently and turn a conservative override into an undercount.
+            if stack_size_override > 2**31 - 1:
+                raise ValueError(
+                    f"external_func '{name}': stack_size_override must fit in a "
+                    f"signed 32-bit integer (<= {2**31 - 1}), got "
+                    f"{stack_size_override}."
+                )
         if outputs is None:
             outputs = []
         for i, ty in enumerate(inputs):
