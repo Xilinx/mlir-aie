@@ -11,14 +11,19 @@
 // each hold a frame of about 4096 bytes, see the kernel source, and the core
 // body calls each one on its own, so the requirement is about one frame, 4
 // KiB. stack_size = 5000 sits between one frame and two, so the build stays
-// silent under the maximum and warns under a sum.
+// silent under the maximum and fails under a sum. The measured number lands on
+// the core as `measured_stack_size`.
 
 // REQUIRES: peano
 // RUN: rm -rf %t.d && mkdir -p %t.d
 // RUN: clang++ --target=aie2p-none-unknown-elf -std=c++20 -O0 -DNDEBUG -ffunction-sections -fdata-sections -fstack-size-section -c %S/stack_size_max_not_sum_kernel.cc -o %t.d/stack_size_max_not_sum_kernel.o
-// RUN: cd %t.d && %aiecc %s 2>&1 | FileCheck --allow-empty %s
+// RUN: cd %t.d && %aiecc --get=measured_stack_sizes.mlir --output-dir=%t.out %s 2>&1 | FileCheck --allow-empty %s
+// RUN: FileCheck --check-prefix=ATTR %s < %t.out/measured_stack_sizes.mlir
 
-// CHECK-NOT: this core's callees need at least
+// CHECK-NOT: is insufficient
+
+// ATTR: aie.core(%tile_0_2)
+// ATTR: measured_stack_size = 4{{[0-9][0-9][0-9]}} : i32
 
 module {
   aie.device(npu2) {

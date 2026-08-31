@@ -555,25 +555,6 @@ struct EdgeBase {
     llvm::sys::path::append(path, fileName);
     return std::string(path.str());
   }
-
-  // Every path this edge writes under the current outputDir: one path per key
-  // for a fan-out edge, for example one xclbin per device under the `{0}`
-  // template of `--xclbin-name`, and one path under the edge's own name
-  // otherwise, which matches the `prepareItem(this->name)` convention. The
-  // engine clears outputDir once the run returns, so call this during
-  // Engine::run or right after it.
-  std::vector<std::string> outputPaths() {
-    std::vector<std::string> paths;
-    if (!producesFiles || !outputNode())
-      return paths;
-    if (isFanOut()) {
-      for (size_t i = 0, n = numItems(); i < n; ++i)
-        paths.push_back(makeOutputPath(itemKey(i)));
-    } else {
-      paths.push_back(makeOutputPath(name));
-    }
-    return paths;
-  }
 };
 
 // Forward declarations of concrete edge types (used by chaining helpers).

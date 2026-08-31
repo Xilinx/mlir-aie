@@ -672,33 +672,7 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
         return populateDefaultStackSize(mod.get(), stackSize);
       });
 
-  // aie-assign-core-link-files analyzes the call graph over func.func and
-  // func.call. The stack-size check below reads the link_files it writes.
-  auto &withLinkFiles = withDefaultStackSize.map<ModRef>(
-      "with_link_files.mlir",
-      PassPipeline{&context, [](mlir::MLIRContext *ctx, mlir::ModuleOp) {
-                     auto pm = std::make_unique<mlir::PassManager>(ctx);
-                     pm->nest<DeviceOp>().addPass(
-                         xilinx::AIE::createAIEAssignCoreLinkFilesPass());
-                     return pm;
-                   }});
-
-  // Validates each core's stack_size against its call tree, through the
-  // link_files objects the edge above writes. This edge can fail the whole
-  // run: a cycle, or an unmeasurable symbol without a stack_size_override,
-  // raises an error. See checkStackSizeRequirements.
-  auto &withStackSizeChecked = withLinkFiles.map<ModRef>(
-      "stack_size_checked.mlir",
-      [inputFile, workDirStr, skip = noAutoStackSize.getValue()](
-          const Item<ModRef> &in, Item<ModRef> &out) -> mlir::LogicalResult {
-        out.value = ModRef(in.get().get().clone());
-        if (skip)
-          return mlir::success();
-        return checkStackSizeRequirements(out.value->get(), inputFile,
-                                          workDirStr);
-      });
-
-  auto &withAddresses = withStackSizeChecked.map<ModRef>(
+  auto &withAddresses = withDefaultStackSize.map<ModRef>(
       "input_with_addresses.mlir",
       PassPipeline{
           &context,
@@ -827,6 +801,36 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   EdgeWithTypedOutput<Directory> &objects =
       doUnified ? unifiedObjects : perCoreObjects;
 
+  // Placed downstream of `objects`, which holds the compiled core body the
+  // measurement reads, and upstream of `physicalWithElfs`, so a failure stops
+  // the run before an output artifact is written.
+  auto &withMeasuredStackSizes =
+      bundle(objects.out, physical.out)
+          .join<ModRef>(
+              "measured_stack_sizes.mlir",
+              [inputFile, workDirStr, skip = noAutoStackSize.getValue()](
+                  const Node<Directory> &objs, const Node<ModRef> &physicalN,
+                  Item<ModRef> &out) -> mlir::LogicalResult {
+                out.value = ModRef(physicalN.get().get().clone());
+                if (skip)
+                  return mlir::success();
+                llvm::StringMap<std::string> objByKey;
+                for (const auto &item : objs.items)
+                  objByKey[item.key] = item.filePath;
+                return checkStackSizeRequirements(
+                    out.value->get(), inputFile, workDirStr,
+                    [&](CoreOp coreOp) -> std::optional<int64_t> {
+                      auto it = objByKey.find(coreKey(coreOp));
+                      if (it == objByKey.end())
+                        return std::nullopt;
+                      auto tile =
+                          mlir::cast<TileOp>(coreOp.getTile().getDefiningOp());
+                      return xilinx::aiecc::measureFunctionFrameSize(
+                          it->second, xilinx::AIE::coreFrameSymbolName(
+                                          tile.getCol(), tile.getRow()));
+                    });
+              });
+
   // ld scripts (with link_files absolutized so INPUT() is cwd-invariant).
   auto &ldScripts = perCore.map<std::string>(
       "ldScripts_{0}.ld.script",
@@ -947,7 +951,7 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
 
   // Patch ELF paths back into the physical IR
   auto &physicalWithElfs =
-      bundle(compiledElfs.out, preBakedElfs.out, physical.out)
+      bundle(compiledElfs.out, preBakedElfs.out, withMeasuredStackSizes.out)
           .join<ModRef>(
               "physical_with_elfs.mlir",
               [](const Node<Directory> &compiled, const Node<File> &preBaked,
@@ -1611,8 +1615,13 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
       generatePdi || generateTxn || generateCtrlpkt || generateXclbin ||
       generateFullElf || wantAiesim || doCompileHost || !getOutputs.empty() ||
       !cutOutputs.empty();
-  if (generateCoreElfs || !anySpecificOutput)
+  // Every other artifact depends on the stack check through physicalWithElfs.
+  // A core-ELF build stops short of that edge, so name the check here.
+  if (generateCoreElfs || !anySpecificOutput) {
     outputs.push_back(&compiledElfs);
+    if (!noAutoStackSize.getValue())
+      outputs.push_back(&withMeasuredStackSizes);
+  }
 
   if (generateInputWithAddresses)
     outputs.push_back(&withAddresses);
@@ -1699,147 +1708,6 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   }
 
   return outputs;
-}
-
-//===----------------------------------------------------------------------===//
-// Post-build stack-size sufficiency check
-//===----------------------------------------------------------------------===//
-
-// Checks each core's `stack_size`, explicit or from the device default,
-// against its full requirement: the top-level frame of the compiled core body
-// plus the callee bound that checkStackSizeRequirements computed earlier. The
-// compiled core object supplies the first term, so this check runs after the
-// build. The sum is exact, so a smaller `stack_size` fails the build here,
-// even an explicit one. `--no-auto-stack-size` skips this check.
-//
-// The build graph drops its intermediate module once `engine.run` returns, so
-// this function reparses the input and repeats the cheap early pipeline
-// stages. It reads the compiled core object from the path the build wrote.
-// Returns true when the `stack_size` of some core is too small. An
-// `llvm::Error` reports a failure of this check itself.
-static llvm::Expected<bool>
-checkStackSizeIsSufficient(mlir::MLIRContext &context,
-                           llvm::StringRef inputFile) {
-  if (noAutoStackSize.getValue())
-    return false;
-
-  // This check needs a placement that a fresh parse reproduces.
-  // `--placer=sa_placer --sa-seed=0` draws a random seed
-  // (CommandLineOptions.h), so a second run can assign tiles differently from
-  // the run that placed the buffers, and this check then compares numbers
-  // from two different designs. Warn and skip.
-  if (placerType.getValue() == xilinx::AIE::PlacerType::SAPlacer &&
-      saSeed.getValue() == 0) {
-    llvm::errs() << "aiecc: stack_size check: skipped -- "
-                    "--placer=sa_placer --sa-seed=0 is non-deterministic, so "
-                    "this check's re-derived placement cannot be trusted to "
-                    "match the build's; pass a nonzero --sa-seed, or "
-                    "--no-auto-stack-size to silence this note\n";
-    return false;
-  }
-
-  mlir::OwningOpRef<mlir::ModuleOp> module =
-      mlir::parseSourceFile<mlir::ModuleOp>(inputFile, &context);
-  if (!module)
-    return llvm::createStringError(llvm::inconvertibleErrorCode(),
-                                   "could not reparse input file '%s' to "
-                                   "check stack_size sufficiency",
-                                   inputFile.str().c_str());
-
-  // Repeat --default-stack-size, so `assumed` below matches the value the
-  // buffers were placed against.
-  if (defaultStackSize.getValue() > 0)
-    module = xilinx::aiecc::populateDefaultStackSize(
-        module.get(), defaultStackSize.getValue());
-
-  // Repeat the pipeline stages that the result of checkStackSizeRequirements
-  // depends on: placement, trace flows, and link_files assignment. These are
-  // cheap MLIR passes.
-  auto runStage = [&](llvm::StringRef stage,
-                      std::unique_ptr<mlir::PassManager> pm) -> llvm::Error {
-    if (mlir::failed(pm->run(*module)))
-      return llvm::createStringError(llvm::inconvertibleErrorCode(),
-                                     "%s failed while re-deriving "
-                                     "stack-size state",
-                                     stage.str().c_str());
-    return llvm::Error::success();
-  };
-
-  // The build already printed every diagnostic of this block once, so the
-  // handler drops them. The diagnostics of this function come after the
-  // handler leaves scope.
-  {
-    mlir::ScopedDiagnosticHandler suppress(
-        &context, [](mlir::Diagnostic &) { return mlir::success(); });
-
-    if (auto err = runStage("placement pipeline",
-                            xilinx::aiecc::getPlacementPipeline(
-                                &context, coresPerCol.getValue(),
-                                placerType.getValue(), saSeed.getValue())))
-      return std::move(err);
-    if (auto err = runStage("trace pipeline",
-                            xilinx::aiecc::getTracePipeline(&context)))
-      return std::move(err);
-    {
-      auto pm = std::make_unique<mlir::PassManager>(&context);
-      pm->nest<xilinx::AIE::DeviceOp>().addPass(
-          xilinx::AIE::createAIEAssignCoreLinkFilesPass());
-      if (auto err = runStage("link-files assignment", std::move(pm)))
-        return std::move(err);
-    }
-    if (mlir::failed(xilinx::aiecc::checkStackSizeRequirements(
-            *module, inputFile, getWorkDir())))
-      return llvm::createStringError(llvm::inconvertibleErrorCode(),
-                                     "stack-size check failed while "
-                                     "re-deriving stack-size state");
-  }
-
-  bool anyInsufficient = false;
-  module->walk([&](xilinx::AIE::CoreOp coreOp) {
-    auto boundAttr = coreOp->getAttrOfType<mlir::IntegerAttr>(
-        xilinx::AIE::kComputedStackRequirementAttrName);
-    if (!boundAttr)
-      return; // no kernel-side bound to add the core's own frame to
-
-    auto tile =
-        mlir::cast<xilinx::AIE::TileOp>(coreOp.getTile().getDefiningOp());
-    std::string key = xilinx::aiecc::coreKey(coreOp);
-    std::string symbol =
-        xilinx::AIE::coreFrameSymbolName(tile.getCol(), tile.getRow());
-    // This path must match the one the compile of the core wrote. The
-    // per-core strategy and the unified strategy both build "objects_{0}.o"
-    // through buildObjectSubgraph under `key`. Under another path,
-    // measureFunctionFrameSize below finds nothing.
-    std::string objPath =
-        getWorkDir() + "/objects_" + key + "/objects_" + key + ".o";
-    auto ownFrame = xilinx::aiecc::measureFunctionFrameSize(objPath, symbol);
-    if (!ownFrame)
-      return; // the core's own frame is unmeasurable, so leave it unchecked
-
-    int64_t trueTotal = *ownFrame + boundAttr.getInt();
-    uint32_t assumed = coreOp.getEffectiveStackSize();
-    if (trueTotal <= static_cast<int64_t>(assumed))
-      return;
-
-    anyInsufficient = true;
-    if (coreOp.getStackSizeAttr())
-      coreOp.emitError()
-          << "stack_size = " << assumed
-          << " is insufficient (this core's buffers were placed assuming "
-          << assumed << " bytes), but this core's real requirement is "
-          << trueTotal << " bytes; increase stack_size to " << trueTotal
-          << " (Worker(stack_size=...) in IRON) and rebuild, or pass "
-             "--no-auto-stack-size to skip this check";
-    else
-      coreOp.emitError()
-          << "stack_size is absent (this core's buffers were placed "
-             "assuming the device default of "
-          << assumed << " bytes), but this core's real requirement is "
-          << trueTotal << " bytes; set stack_size = " << trueTotal
-          << " explicitly on this aie.core (Worker(stack_size=...) in IRON) "
-             "and rebuild, or pass --no-auto-stack-size to skip this check";
-  });
-  return anyInsufficient;
 }
 
 //===----------------------------------------------------------------------===//
@@ -2099,13 +1967,8 @@ int main(int argc, char **argv) {
   const std::vector<EdgeBase *> noOutputs;
   const std::vector<EdgeBase *> &runOutputs =
       cutEdges.empty() ? outputs : noOutputs;
-  // The stack-size check below removes these paths when it fails. A caller
-  // that ignores the exit code of aiecc, `make` for example, would otherwise
-  // reuse a stale xclbin.
-  std::vector<std::string> writtenOutputPaths;
   if (mlir::failed(engine.run(g, runOutputs, satisfied,
-                              DeserializeContext{&context}, cutEdges,
-                              &writtenOutputPaths))) {
+                              DeserializeContext{&context}, cutEdges))) {
     // On-failure reproducer ("repeater"): dump a checkpoint of the failed
     // edge's already-computed inputs and print a command that reloads them and
     // re-runs just the failed edge. Opt-in via --enable-repeater-scripts.
@@ -2133,30 +1996,6 @@ int main(int argc, char **argv) {
   // --resume can reload it and continue.
   if (!checkpointDir.empty())
     writeCheckpoint(cutEdges, checkpointDir, graphArgv);
-
-  // The stack_size check reads a compiled core object, which only a complete
-  // build produces. `--cut` and `--dry-run` both stop earlier.
-  if (cutEdges.empty() && !dryRun) {
-    llvm::Expected<bool> insufficient =
-        checkStackSizeIsSufficient(context, getInputFilename());
-    if (!insufficient) {
-      llvm::errs() << "aiecc: stack_size check: "
-                   << llvm::toString(insufficient.takeError()) << "\n";
-      return 1;
-    }
-    if (*insufficient) {
-      // The build placed these artifacts against a stack_size that this check
-      // proved too small.
-      for (const std::string &path : writtenOutputPaths) {
-        std::error_code ec = llvm::sys::fs::remove(path);
-        if (ec && ec != std::errc::no_such_file_or_directory)
-          llvm::errs() << "aiecc: warning: could not remove invalid output '"
-                       << path << "': " << ec.message() << "\n";
-      }
-      llvm::errs() << "aiecc: pipeline failed\n";
-      return 1;
-    }
-  }
 
   // aiesim.sh is produced as a plain-text Item; make it launchable. (The Item
   // abstraction has no notion of an executable bit, so set it here on the

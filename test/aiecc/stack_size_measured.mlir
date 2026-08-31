@@ -5,15 +5,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-// aiecc measures the stack requirement of the core by walking the call graph
-// of the symbols the core calls directly, through the `.stack_sizes` data of
-// their link_files objects. stack_size holds 1 byte, so the computed
-// requirement exceeds it for any compiler version. The test matches the
-// warning that names both numbers, and matches the silence under
+// aiecc measures the stack requirement of the core from the frame of its
+// compiled body and a call-graph walk of the symbols it calls directly, through
+// the `.stack_sizes` data of their link_files objects. stack_size holds 1 byte,
+// so the requirement exceeds it for any compiler version. The test matches the
+// error that names both numbers, and matches the silence under
 // --no-auto-stack-size.
-//
-// The post-build check (see stack_size_explicit_insufficient_error.mlir) holds
-// the full requirement and fails the build on the same 1-byte stack.
 
 // REQUIRES: peano
 // RUN: rm -rf %t.d && mkdir -p %t.d
@@ -21,10 +18,8 @@
 // RUN: cd %t.d && not %aiecc %s 2>&1 | FileCheck %s
 // RUN: cd %t.d && %aiecc --no-auto-stack-size %s 2>&1 | FileCheck --check-prefix=NOAUTO --allow-empty %s
 
-// CHECK: warning: this core's callees need at least {{[0-9]+}} bytes of stack (not counting the core body's own frame), but stack_size is only 1 bytes
-// CHECK: error: stack_size = 1 is insufficient (this core's buffers were placed assuming 1 bytes), but this core's real requirement is {{[0-9]+}} bytes; increase stack_size to {{[0-9]+}} (Worker(stack_size=...) in IRON) and rebuild, or pass --no-auto-stack-size to skip this check
+// CHECK: error: stack_size = 1 is insufficient: this core needs {{[0-9]+}} bytes; increase stack_size to {{[0-9]+}} (Worker(stack_size=...) in IRON), or pass --no-auto-stack-size to skip this check
 
-// NOAUTO-NOT: this core's callees need at least
 // NOAUTO-NOT: is insufficient
 
 module {

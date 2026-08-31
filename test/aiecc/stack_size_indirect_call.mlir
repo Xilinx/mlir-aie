@@ -12,16 +12,15 @@
 // into g_dispatch with the reference from indirect_caller to g_dispatch, and
 // adds the 4096-byte frame of target_fn to the path of indirect_caller.
 //
-// stack_size = 2048 sits below the full requirement, so the build warns and
-// then fails with a large number. Under a missed edge the analysis reports the
-// small frame of indirect_caller alone.
+// stack_size = 2048 sits below the full requirement, so the build fails with a
+// large number. Under a missed edge the analysis reports the small frame of
+// indirect_caller alone.
 
 // REQUIRES: peano
 // RUN: rm -rf %t.d && mkdir -p %t.d
 // RUN: clang++ --target=aie2p-none-unknown-elf -std=c++20 -O0 -DNDEBUG -ffunction-sections -fdata-sections -fstack-size-section -c %S/stack_size_indirect_call_kernel.cc -o %t.d/stack_size_indirect_call_kernel.o
 // RUN: cd %t.d && not %aiecc %s 2>&1 | FileCheck %s
 
-// CHECK: warning: this core's callees need at least {{[0-9][0-9][0-9][0-9]+}} bytes of stack (not counting the core body's own frame), but stack_size is only 2048 bytes
 // CHECK: error: stack_size = 2048 is insufficient
 
 module {

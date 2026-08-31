@@ -47,25 +47,26 @@ Worker(core_fn, [args], stack_size=4096)
 
 The stack sits directly below the buffers with no clearance, so a core whose
 frames exceed the reservation overwrites the buffers above it. `aiecc`
-therefore computes each core's stack requirement from its call graph and
-checks `stack_size` against that number. The analysis parses the
-`.stack_sizes` section of every kernel object, builds a call graph across the
-core's `link_files`, and takes the **maximum over all root-to-leaf call
-paths**. One call chain is live at a time, so the maximum bounds the
-requirement. Static data differs: all of it coexists, whatever the control
-flow.
+therefore measures each core's stack requirement and checks `stack_size`
+against that number. The requirement has two parts: the top-level frame of the
+compiled core body, and the deepest call path into the kernels. For the second
+part the analysis parses the `.stack_sizes` section of every kernel object,
+builds a call graph across the core's `link_files`, and takes the **maximum
+over all root-to-leaf call paths**. One call chain is live at a time, so the
+maximum bounds the requirement. Static data differs: all of it coexists,
+whatever the control flow.
 
-The check runs at two points, because the two halves of the requirement become
-known at different times:
+The check runs once, after each core is compiled, because the core body's own
+frame exists only after codegen. `aiecc` writes the result to the
+`measured_stack_size` attribute on the `aie.core`, so you can read it back:
 
-- Early in the build, `aiecc` knows the subtrees of the callees. The core
-  body's own top-level frame appears only after codegen of the core, so this
-  early number is a *lower bound*. A lower bound above `stack_size` proves a
-  problem, and `aiecc` warns. A lower bound below `stack_size` proves nothing,
-  and `aiecc` stays silent.
-- After the build, `aiecc` reads the compiled frame of the core body from its
-  object and adds the lower bound. That sum is the full requirement, so a
-  smaller `stack_size` fails the build, an explicit one included.
+```mlir
+aie.core(%tile_0_2) { ... } {stack_size = 8192 : i32, measured_stack_size = 4128 : i32}
+```
+
+Pass `--get=measured_stack_sizes.mlir` to dump that module. A `stack_size`
+below `measured_stack_size` fails the build. `measured_stack_size` stays absent
+when `aiecc` cannot measure the core; the next section lists those cases.
 
 ## Overriding a kernel's stack contribution: `stack_size_override`
 
@@ -102,8 +103,8 @@ external_func("my_kernel", ..., stack_size_override=4096)
 One flag disables the check, for a build that has to skip it and for debugging
 the analysis:
 
-- **`--no-auto-stack-size`** skips every `stack_size` check, both the early
-  warning and the later error.
+- **`--no-auto-stack-size`** skips the `stack_size` check and writes no
+  `measured_stack_size`.
 
 A design-wide stand-in for the built-in default covers any core that leaves
 `stack_size` absent:
@@ -138,20 +139,23 @@ validated for this core` (warning).** The analysis cannot measure a symbol,
 because of a missing `.stack_sizes` section, a Chess-compiled object, an
 archive or bitcode entry, or a `link_merge_files` dependency. A pre-compiled
 kernel object hits this case often, and the build continues: the compiler
-leaves `stack_size` unchecked for this core. Set `stack_size_override` on the
-affected kernel to give the analysis a number to work from.
+leaves `stack_size` unchecked for this core and writes no
+`measured_stack_size`. Set `stack_size_override` on the affected kernel to give
+the analysis a number to work from.
 
-**`stack_size is absent ... but this core's real requirement is N bytes; set
-stack_size = N explicitly on this aie.core ... and rebuild` (error).** The
-buffer placement assumed the device default, and the finished core needs more.
-Do what the message says: set `stack_size = N`, or `Worker(stack_size=N)`, and
-rebuild.
+**`this core's callees need at least N bytes of stack (not counting the core
+body's own frame)` (warning).** The kernel objects carry `.stack_sizes` and the
+core object does not: a Chess-compiled core writes `.stackinfo` instead. `N` is
+a lower bound, so `aiecc` warns rather than fails, and writes no
+`measured_stack_size`.
 
-**`stack_size = K is insufficient ... but this core's real requirement is N
-bytes; increase stack_size to N ... and rebuild` (error).** The same case, with
-`stack_size` already set explicitly to a value that turned out too small.
-`aiecc` leaves an explicit value alone, so this stays a hard failure. Increase
-it to `N` and rebuild.
+**`stack_size is absent, so this core uses the device default of M bytes, but
+it needs N bytes` (error).** Set `stack_size = N`, or `Worker(stack_size=N)`,
+and rebuild.
+
+**`stack_size = M is insufficient: this core needs N bytes` (error).** The same
+case, with `stack_size` already set explicitly to a value that turned out too
+small. Increase it to `N` and rebuild.
 
 At this point the requirement is known, and `--no-auto-stack-size` silences a
 proven overflow. Reach for it only when you believe the measurement itself is

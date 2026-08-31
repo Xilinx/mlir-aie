@@ -9,9 +9,10 @@
 // IR, and hand-written MLIR skips that check. A negative override subtracts
 // from a path total in maxPathFrom and undercounts, so aiecc rejects it too.
 // aiecc checks every func.func ahead of any core-level computation, so this
-// test needs no kernel object.
+// test needs no kernel object. @entry_a has no definition, so `--get` stops the
+// build at the check, ahead of the link.
 
-// RUN: not %aiecc %s 2>&1 | FileCheck %s
+// RUN: not %aiecc --get=measured_stack_sizes.mlir --output-dir=%t.out %s 2>&1 | FileCheck %s
 
 // CHECK: error: stack_size_override must be >= 0, got -1
 

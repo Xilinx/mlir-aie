@@ -8,7 +8,7 @@
 // Exercises cross-object attribution (StackSizeAnalysis.h). entry_cross is the
 // one direct call of the core body, and it calls helper_cross, which a sibling
 // object defines with a large frame. stack_size = 2048 sits below the full
-// requirement, so the build warns and then fails. Under a dropped call edge
+// requirement, so the build fails. Under a dropped call edge
 // the analysis reports the small frame of entry_cross alone.
 
 // REQUIRES: peano
@@ -17,7 +17,6 @@
 // RUN: clang++ --target=aie2p-none-unknown-elf -std=c++20 -O0 -DNDEBUG -ffunction-sections -fdata-sections -fstack-size-section -c %S/stack_size_cross_object_callee.cc -o %t.d/stack_size_cross_object_callee.o
 // RUN: cd %t.d && not %aiecc %s 2>&1 | FileCheck %s
 
-// CHECK: warning: this core's callees need at least {{[0-9][0-9][0-9][0-9]+}} bytes of stack (not counting the core body's own frame), but stack_size is only 2048 bytes
 // CHECK: error: stack_size = 2048 is insufficient
 
 module {

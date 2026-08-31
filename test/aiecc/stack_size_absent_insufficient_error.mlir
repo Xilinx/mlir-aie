@@ -14,10 +14,10 @@
 // RUN: clang++ --target=aie2p-none-unknown-elf -std=c++20 -O0 -DNDEBUG -ffunction-sections -fdata-sections -fstack-size-section -c %S/stack_size_max_not_sum_kernel.cc -o %t.d/stack_size_max_not_sum_kernel.o
 // RUN: cd %t.d && not %aiecc --get-xclbin --xclbin-name=final.xclbin --output-dir=%t.out %s 2>&1 | FileCheck %s
 
-// CHECK: error: stack_size is absent (this core's buffers were placed assuming the device default of 1024 bytes), but this core's real requirement is {{[0-9]+}} bytes; set stack_size = {{[0-9]+}} explicitly on this aie.core (Worker(stack_size=...) in IRON) and rebuild, or pass --no-auto-stack-size to skip this check
+// CHECK: error: stack_size is absent, so this core uses the device default of 1024 bytes, but it needs {{[0-9]+}} bytes; set stack_size = {{[0-9]+}} (Worker(stack_size=...) in IRON), or pass --no-auto-stack-size to skip this check
 
-// aiecc removes the xclbin, so a caller that ignores the exit code finds no
-// stale artifact.
+// The check fails ahead of the xclbin edge, so a caller that ignores the exit
+// code finds no artifact.
 // RUN: not ls %t.out/final.xclbin
 
 // --no-auto-stack-size skips this check.

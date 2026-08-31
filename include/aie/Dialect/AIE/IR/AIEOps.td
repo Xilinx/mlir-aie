@@ -375,6 +375,9 @@ def AIE_CoreOp
     ins Index:$tile,
     // Absent means "use this target's default"; read getEffectiveStackSize().
     OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<1>]>>:$stack_size,
+    // Written by aiecc from the compiled core object and the call graph.
+    // Absent when aiecc cannot measure the core.
+    OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>>:$measured_stack_size,
     // Deprecated: attach link_with to func.func declarations instead and run
     // aie-assign-core-link-files to populate link_files.
     OptionalAttr<StrAttr>:$link_with,
@@ -417,10 +420,12 @@ def AIE_CoreOp
     allocations in other cores.
 
     The stack sits directly below the buffers with no clearance, so a `stack_size`
-    below the core's use overwrites those buffers. `aiecc` checks `stack_size` against
-    the core's call graph and fails the build when `stack_size` is too small. See
-    `programming_guide/core_data_memory.md` for the mechanism, the escape hatches
-    (`--no-auto-stack-size`, `stack_size_override`) and the diagnostics.
+    below the core's use overwrites those buffers. `aiecc` measures the stack this
+    core needs, writes it to the `measured_stack_size` attribute, and fails the build
+    when `stack_size` is smaller. `measured_stack_size` stays absent when `aiecc`
+    cannot measure the core. See `programming_guide/core_data_memory.md` for the
+    mechanism, the escape hatches (`--no-auto-stack-size`, `stack_size_override`)
+    and the diagnostics.
 
     This op has an optional `dynamic_objfifo_lowering` attribute, to finely control whether the
     objectfifos in this core should be lowered using the dynamic runtime lowering.

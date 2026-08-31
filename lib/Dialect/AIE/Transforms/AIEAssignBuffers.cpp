@@ -6,7 +6,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "aie/Dialect/AIE/IR/AIECoreSymbols.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 
@@ -22,19 +21,6 @@ namespace xilinx::AIE {
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
-
-// The memory-map diagnostics below print this number next to the stack region
-// and the free space, so one message carries both. The attribute is absent
-// unless aiecc ran its stack analysis.
-static std::optional<int64_t> getComputedStackRequirement(TileOp tile) {
-  CoreOp core = tile.getCoreOp();
-  if (!core)
-    return std::nullopt;
-  if (auto attr =
-          core->getAttrOfType<IntegerAttr>(kComputedStackRequirementAttrName))
-    return attr.getInt();
-  return std::nullopt;
-}
 
 static bool isBufferPreAllocated(BufferOp buffer) {
   auto addr = buffer.getAddress();
@@ -158,9 +144,6 @@ static bool checkAndPrintOverflow(TileOp tile, int address,
       printbuffer("(stack)", 0, stacksize);
     else
       error << "(no stack allocated)\n";
-    if (auto computed = getComputedStackRequirement(tile))
-      note << "\t(call-graph analysis computed this core's callees need >= "
-           << *computed << " bytes of stack)\n";
 
     for (auto buffer : buffers) {
       auto bufferAddrOpt = buffer.getAddress();
@@ -449,9 +432,6 @@ static void printMemMap(TileOp tile, SmallVector<BufferOp> &allocatedBuffers,
         printbuffer("(stack)", 0, stacksize);
       else
         note << "(no stack allocated)\n";
-      if (auto computed = getComputedStackRequirement(tile))
-        note << "\t(call-graph analysis computed this core's callees need >= "
-             << *computed << " bytes of stack)\n";
     }
     note << "\t" << "bank : " << i << "\t" << "0x"
          << llvm::utohexstr(bankLimits[i].startAddr) << "-0x"

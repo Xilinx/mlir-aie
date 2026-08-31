@@ -208,14 +208,18 @@ inline void appendSkippedArtifacts(mlir::InFlightDiagnostic &diag,
     diag << (i ? ", " : "") << skipped[i];
 }
 
-// Validates each core's `stack_size` against its call tree
-// (StackSizeAnalysis.h) and leaves `stack_size` as the design wrote it. The
-// computed number is a lower bound: it covers the callees and omits the core
-// body's own frame, which codegen produces later. A cycle fails the build.
-// An unmeasurable symbol raises a warning.
-inline mlir::LogicalResult checkStackSizeRequirements(mlir::ModuleOp module,
-                                                      llvm::StringRef inputFile,
-                                                      llvm::StringRef workDir) {
+// Measures each core's stack requirement and writes it to
+// `measured_stack_size`: the top-level frame that `measureOwnFrame` reads out
+// of the compiled core object, plus the deepest call path through the core's
+// `link_files` (StackSizeAnalysis.h).
+//
+// A requirement above `stack_size` fails the build, as does a cycle in the call
+// graph. An unmeasurable symbol warns. An unmeasurable core frame leaves the
+// requirement a lower bound, which warns and writes no attribute.
+inline mlir::LogicalResult checkStackSizeRequirements(
+    mlir::ModuleOp module, llvm::StringRef inputFile, llvm::StringRef workDir,
+    llvm::function_ref<std::optional<int64_t>(xilinx::AIE::CoreOp)>
+        measureOwnFrame) {
   mlir::LogicalResult result = mlir::success();
 
   // Keyed by object, because the result depends on the object alone. Several
@@ -251,16 +255,6 @@ inline mlir::LogicalResult checkStackSizeRequirements(mlir::ModuleOp module,
         if (seenRoots.insert(call.getCallee()).second)
           roots.push_back(call.getCallee());
       });
-      mlir::Builder b(module.getContext());
-
-      if (roots.empty()) {
-        // The core calls nothing, so its callee-side requirement is zero. The
-        // post-build check reads this attribute, and an absent attribute
-        // leaves the core's own frame unchecked.
-        coreOp->setAttr(xilinx::AIE::kComputedStackRequirementAttrName,
-                        b.getI32IntegerAttr(0));
-        return;
-      }
 
       // A merge-mode kernel carries link_merge_files alone, so link_files is
       // absent while its roots can still carry a stack_size_override. The loop
@@ -322,15 +316,6 @@ inline mlir::LogicalResult checkStackSizeRequirements(mlir::ModuleOp module,
         return;
       }
 
-      // An unchecked narrowing to i32 wraps to a small or negative number.
-      if (*stackRes.bytes > INT32_MAX) {
-        coreOp.emitWarning()
-            << "stack requirement computed as " << *stackRes.bytes
-            << " bytes, which does not fit in the attribute's i32; "
-               "stack_size is not being validated for this core";
-        return;
-      }
-
       if (!skipped.empty()) {
         auto diag = coreOp.emitWarning()
                     << "stack requirement computed as " << *stackRes.bytes
@@ -341,18 +326,51 @@ inline mlir::LogicalResult checkStackSizeRequirements(mlir::ModuleOp module,
         appendSkippedArtifacts(diag, skipped);
       }
 
-      coreOp->setAttr(
-          xilinx::AIE::kComputedStackRequirementAttrName,
-          b.getI32IntegerAttr(static_cast<int32_t>(*stackRes.bytes)));
-
       uint32_t effective = coreOp.getEffectiveStackSize();
-      if (static_cast<int64_t>(effective) < *stackRes.bytes)
+      std::optional<int64_t> ownFrame = measureOwnFrame(coreOp);
+      if (!ownFrame) {
+        if (static_cast<int64_t>(effective) < *stackRes.bytes)
+          coreOp.emitWarning()
+              << "this core's callees need at least " << *stackRes.bytes
+              << " bytes of stack (not counting the core body's own frame), "
+                 "but "
+              << (coreOp.getStackSizeAttr() ? "stack_size is only "
+                                            : "the default stack_size is only ")
+              << effective << " bytes";
+        return;
+      }
+
+      // An unchecked narrowing to i32 wraps to a small or negative number.
+      if (*ownFrame > INT32_MAX - *stackRes.bytes) {
         coreOp.emitWarning()
-            << "this core's callees need at least " << *stackRes.bytes
-            << " bytes of stack (not counting the core body's own frame), but "
-            << (coreOp.getStackSizeAttr() ? "stack_size is only "
-                                          : "the default stack_size is only ")
-            << effective << " bytes";
+            << "stack requirement computed as " << (*ownFrame + *stackRes.bytes)
+            << " bytes, which does not fit in the attribute's i32; "
+               "stack_size is not being validated for this core";
+        return;
+      }
+
+      int64_t required = *ownFrame + *stackRes.bytes;
+      coreOp.setMeasuredStackSizeAttr(
+          mlir::Builder(module.getContext())
+              .getI32IntegerAttr(static_cast<int32_t>(required)));
+
+      if (static_cast<int64_t>(effective) < required) {
+        if (coreOp.getStackSizeAttr())
+          coreOp.emitError() << "stack_size = " << effective
+                             << " is insufficient: this core needs " << required
+                             << " bytes; increase stack_size to " << required
+                             << " (Worker(stack_size=...) in IRON), or pass "
+                                "--no-auto-stack-size to skip this check";
+        else
+          coreOp.emitError()
+              << "stack_size is absent, so this core uses the device default "
+                 "of "
+              << effective << " bytes, but it needs " << required
+              << " bytes; set stack_size = " << required
+              << " (Worker(stack_size=...) in IRON), or pass "
+                 "--no-auto-stack-size to skip this check";
+        result = mlir::failure();
+      }
     });
   }
   return result;
@@ -1019,9 +1037,8 @@ getInputWithAddressesPipeline(mlir::MLIRContext *ctx, mlir::ModuleOp mod,
   mlir::OpPassManager &dpm2 = pm->nest<DeviceOp>();
   AIEAssignBufferAddressesOptions bufOpts;
   bufOpts.clAllocScheme = allocScheme.str();
-  // buildMainGraph runs aie-assign-core-link-files, ahead of the stack-size
-  // check.
   dpm2.addPass(createAIEAssignBufferAddressesPass(bufOpts));
+  dpm2.addPass(createAIEAssignCoreLinkFilesPass());
   dpm2.addPass(createAIEVectorTransferLoweringPass());
   pm->addPass(xilinx::AIEX::createAIESCFToControlFlowPass());
   return pm;

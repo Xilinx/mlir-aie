@@ -14,16 +14,15 @@
 // RUN: clang++ --target=aie2p-none-unknown-elf -std=c++20 -O0 -DNDEBUG -ffunction-sections -fdata-sections -fstack-size-section -c %S/stack_size_max_not_sum_kernel.cc -o %t.d/stack_size_max_not_sum_kernel.o
 
 // RUN: cd %t.d && not %aiecc %s 2>&1 | FileCheck --check-prefix=ABSENT %s
-// ABSENT: stack_size is absent (this core's buffers were placed assuming the device default of 1024 bytes)
+// ABSENT: stack_size is absent, so this core uses the device default of 1024 bytes
 
 // RUN: cd %t.d && not %aiecc --default-stack-size=2048 %s 2>&1 | FileCheck --check-prefix=TOOSMALL %s
-// TOOSMALL: stack_size = 2048 is insufficient (this core's buffers were placed assuming 2048 bytes)
+// TOOSMALL: stack_size = 2048 is insufficient
 // TOOSMALL-NOT: stack_size is absent
 
 // RUN: cd %t.d && %aiecc --default-stack-size=8192 %s 2>&1 | FileCheck --check-prefix=SUFFICIENT --allow-empty %s
 // SUFFICIENT-NOT: is insufficient
 // SUFFICIENT-NOT: stack_size is absent
-// SUFFICIENT-NOT: this core's callees need at least
 
 // tile_0_3 keeps its explicit stack_size.
 // RUN: cd %t.d && %aiecc --default-stack-size=8192 --get=default_stack_size.mlir --output-dir=%t.pop %s
