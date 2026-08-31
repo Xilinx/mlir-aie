@@ -14,15 +14,15 @@
 // RUN: clang++ --target=aie2p-none-unknown-elf -std=c++20 -O0 -DNDEBUG -ffunction-sections -fdata-sections -fstack-size-section -c %S/stack_size_max_not_sum_kernel.cc -o %t.d/stack_size_max_not_sum_kernel.o
 // RUN: cd %t.d && not %aiecc --get-xclbin --xclbin-name=final.xclbin --output-dir=%t.out %s 2>&1 | FileCheck %s
 
-// CHECK: error: stack_size = 1024 is insufficient: this core needs {{[0-9]+}} bytes; increase stack_size to {{[0-9]+}} (Worker(stack_size=...) in IRON), or pass --no-auto-stack-size to skip this check
+// CHECK: error: stack_size = 1024 is insufficient: this core needs {{[0-9]+}} bytes; increase stack_size to {{[0-9]+}} (Worker(stack_size=...) in IRON), or pass --no-measure-stack-size to skip this check
 
 // No xclbin here either, as in the absent case.
 // RUN: not ls %t.out/final.xclbin
 
-// --no-auto-stack-size skips this check, as it does for the absent case.
+// --no-measure-stack-size skips this check, as it does for the absent case.
 // RUN: rm -rf %t.noauto.d && mkdir -p %t.noauto.d
 // RUN: cp %t.d/stack_size_max_not_sum_kernel.o %t.noauto.d/
-// RUN: cd %t.noauto.d && %aiecc --no-auto-stack-size %s 2>&1 | FileCheck --check-prefix=NOAUTO --allow-empty %s
+// RUN: cd %t.noauto.d && %aiecc --no-measure-stack-size %s 2>&1 | FileCheck --check-prefix=NOAUTO --allow-empty %s
 
 // NOAUTO-NOT: stack_size = 1024 is insufficient
 

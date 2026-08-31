@@ -103,8 +103,8 @@ external_func("my_kernel", ..., stack_size_override=4096)
 One flag disables the check, for a build that has to skip it and for debugging
 the analysis:
 
-- **`--no-auto-stack-size`** skips the `stack_size` check and writes no
-  `measured_stack_size`.
+- **`--no-measure-stack-size`** drops the measurement and the check, so no
+  `measured_stack_size` reaches the IR.
 
 A design-wide stand-in for the built-in default covers any core that leaves
 `stack_size` absent:
@@ -131,7 +131,7 @@ Separate flags control the allocation strategy:
 **`cannot determine this core's stack requirement: ...` (error).** The call
 graph has a cycle, and recursion is unbounded. Set `stack_size_override` on
 the affected kernel's `external_func()` or `func.func` declaration, to a value
-large enough for the deepest recursion. Pass `--no-auto-stack-size` to skip
+large enough for the deepest recursion. Pass `--no-measure-stack-size` to skip
 the check instead.
 
 **`cannot determine this core's stack requirement: ...; stack_size is not being
@@ -157,6 +157,6 @@ and rebuild.
 case, with `stack_size` already set explicitly to a value that turned out too
 small. Increase it to `N` and rebuild.
 
-At this point the requirement is known, and `--no-auto-stack-size` silences a
+At this point the requirement is known, and `--no-measure-stack-size` silences a
 proven overflow. Reach for it only when you believe the measurement itself is
 wrong, and please file an issue in that case.

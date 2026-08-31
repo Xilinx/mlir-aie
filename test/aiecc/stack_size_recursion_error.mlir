@@ -17,8 +17,8 @@
 // CHECK: error: cannot determine this core's stack requirement: recursion detected: recursive_touch -> recurse -> recurse
 // CHECK-SAME: set stack_size_override
 
-// --no-auto-stack-size skips the check, including this failure.
-// RUN: cd %t.d && %aiecc --no-auto-stack-size %s 2>&1 | FileCheck --check-prefix=NOAUTO --allow-empty %s
+// --no-measure-stack-size skips the check, including this failure.
+// RUN: cd %t.d && %aiecc --no-measure-stack-size %s 2>&1 | FileCheck --check-prefix=NOAUTO --allow-empty %s
 
 // NOAUTO-NOT: cannot determine this core's stack requirement
 // NOAUTO-NOT: recursion detected

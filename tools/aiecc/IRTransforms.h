@@ -302,7 +302,7 @@ inline mlir::LogicalResult checkStackSizeRequirements(
               << "; set stack_size_override on the affected kernel's "
                  "external_func()/func.func declaration (Kernel(...)/"
                  "ExternalFunction(...) in IRON), or pass "
-                 "--no-auto-stack-size to skip this check entirely";
+                 "--no-measure-stack-size to skip this check entirely";
           result = mlir::failure();
         } else {
           coreOp.emitWarning()
@@ -360,7 +360,7 @@ inline mlir::LogicalResult checkStackSizeRequirements(
                              << " is insufficient: this core needs " << required
                              << " bytes; increase stack_size to " << required
                              << " (Worker(stack_size=...) in IRON), or pass "
-                                "--no-auto-stack-size to skip this check";
+                                "--no-measure-stack-size to skip this check";
         else
           coreOp.emitError()
               << "stack_size is absent, so this core uses the device default "
@@ -368,7 +368,7 @@ inline mlir::LogicalResult checkStackSizeRequirements(
               << effective << " bytes, but it needs " << required
               << " bytes; set stack_size = " << required
               << " (Worker(stack_size=...) in IRON), or pass "
-                 "--no-auto-stack-size to skip this check";
+                 "--no-measure-stack-size to skip this check";
         result = mlir::failure();
       }
     });

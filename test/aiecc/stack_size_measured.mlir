@@ -10,15 +10,15 @@
 // the `.stack_sizes` data of their link_files objects. stack_size holds 1 byte,
 // so the requirement exceeds it for any compiler version. The test matches the
 // error that names both numbers, and matches the silence under
-// --no-auto-stack-size.
+// --no-measure-stack-size.
 
 // REQUIRES: peano
 // RUN: rm -rf %t.d && mkdir -p %t.d
 // RUN: clang++ --target=aie2p-none-unknown-elf -std=c++20 -O0 -DNDEBUG -ffunction-sections -fdata-sections -fstack-size-section -c %S/stack_size_measured_kernel.cc -o %t.d/stack_size_measured_kernel.o
 // RUN: cd %t.d && not %aiecc %s 2>&1 | FileCheck %s
-// RUN: cd %t.d && %aiecc --no-auto-stack-size %s 2>&1 | FileCheck --check-prefix=NOAUTO --allow-empty %s
+// RUN: cd %t.d && %aiecc --no-measure-stack-size %s 2>&1 | FileCheck --check-prefix=NOAUTO --allow-empty %s
 
-// CHECK: error: stack_size = 1 is insufficient: this core needs {{[0-9]+}} bytes; increase stack_size to {{[0-9]+}} (Worker(stack_size=...) in IRON), or pass --no-auto-stack-size to skip this check
+// CHECK: error: stack_size = 1 is insufficient: this core needs {{[0-9]+}} bytes; increase stack_size to {{[0-9]+}} (Worker(stack_size=...) in IRON), or pass --no-measure-stack-size to skip this check
 
 // NOAUTO-NOT: is insufficient
 

@@ -151,10 +151,10 @@ inline cl::opt<bool> noUnified(
     "no-unified",
     cl::desc("Lower each core independently, against its own clone of the "
              "design (negates --unified; the default)"));
-inline cl::opt<bool> noAutoStackSize(
-    "no-auto-stack-size",
-    cl::desc("Skip the check of each core's stack_size against the "
-             "requirement computed from its call tree"));
+inline cl::opt<bool> noMeasureStackSize(
+    "no-measure-stack-size",
+    cl::desc("Skip the measurement of each core's stack requirement and the "
+             "check of stack_size against it"));
 inline cl::opt<int> defaultStackSize(
     "default-stack-size",
     cl::desc("Stack size in bytes to assume for any core that leaves "

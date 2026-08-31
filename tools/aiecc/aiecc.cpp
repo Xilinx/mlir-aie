@@ -804,32 +804,35 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   // Placed downstream of `objects`, which holds the compiled core body the
   // measurement reads, and upstream of `physicalWithElfs`, so a failure stops
   // the run before an output artifact is written.
-  auto &withMeasuredStackSizes =
-      bundle(objects.out, physical.out)
-          .join<ModRef>(
-              "measured_stack_sizes.mlir",
-              [inputFile, workDirStr, skip = noAutoStackSize.getValue()](
-                  const Node<Directory> &objs, const Node<ModRef> &physicalN,
-                  Item<ModRef> &out) -> mlir::LogicalResult {
-                out.value = ModRef(physicalN.get().get().clone());
-                if (skip)
-                  return mlir::success();
-                llvm::StringMap<std::string> objByKey;
-                for (const auto &item : objs.items)
-                  objByKey[item.key] = item.filePath;
-                return checkStackSizeRequirements(
-                    out.value->get(), inputFile, workDirStr,
-                    [&](CoreOp coreOp) -> std::optional<int64_t> {
-                      auto it = objByKey.find(coreKey(coreOp));
-                      if (it == objByKey.end())
-                        return std::nullopt;
-                      auto tile =
-                          mlir::cast<TileOp>(coreOp.getTile().getDefiningOp());
-                      return xilinx::aiecc::measureFunctionFrameSize(
-                          it->second, xilinx::AIE::coreFrameSymbolName(
-                                          tile.getCol(), tile.getRow()));
-                    });
-              });
+  EdgeWithTypedOutput<ModRef> *physicalWithMeasuredStackSizes = nullptr;
+  if (!noMeasureStackSize.getValue())
+    physicalWithMeasuredStackSizes =
+        &bundle(objects.out, physical.out)
+             .join<ModRef>(
+                 "measured_stack_sizes.mlir",
+                 [inputFile, workDirStr](
+                     const Node<Directory> &objs, const Node<ModRef> &physicalN,
+                     Item<ModRef> &out) -> mlir::LogicalResult {
+                   out.value = ModRef(physicalN.get().get().clone());
+                   llvm::StringMap<std::string> objByKey;
+                   for (const auto &item : objs.items)
+                     objByKey[item.key] = item.filePath;
+                   return checkStackSizeRequirements(
+                       out.value->get(), inputFile, workDirStr,
+                       [&](CoreOp coreOp) -> std::optional<int64_t> {
+                         auto it = objByKey.find(coreKey(coreOp));
+                         if (it == objByKey.end())
+                           return std::nullopt;
+                         auto tile = mlir::cast<TileOp>(
+                             coreOp.getTile().getDefiningOp());
+                         return xilinx::aiecc::measureFunctionFrameSize(
+                             it->second, xilinx::AIE::coreFrameSymbolName(
+                                             tile.getCol(), tile.getRow()));
+                       });
+                 });
+  EdgeWithTypedOutput<ModRef> &physicalForElfs =
+      physicalWithMeasuredStackSizes ? *physicalWithMeasuredStackSizes
+                                     : physical;
 
   // ld scripts (with link_files absolutized so INPUT() is cwd-invariant).
   auto &ldScripts = perCore.map<std::string>(
@@ -951,7 +954,7 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
 
   // Patch ELF paths back into the physical IR
   auto &physicalWithElfs =
-      bundle(compiledElfs.out, preBakedElfs.out, withMeasuredStackSizes.out)
+      bundle(compiledElfs.out, preBakedElfs.out, physicalForElfs.out)
           .join<ModRef>(
               "physical_with_elfs.mlir",
               [](const Node<Directory> &compiled, const Node<File> &preBaked,
@@ -1619,8 +1622,8 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   // A core-ELF build stops short of that edge, so name the check here.
   if (generateCoreElfs || !anySpecificOutput) {
     outputs.push_back(&compiledElfs);
-    if (!noAutoStackSize.getValue())
-      outputs.push_back(&withMeasuredStackSizes);
+    if (physicalWithMeasuredStackSizes)
+      outputs.push_back(physicalWithMeasuredStackSizes);
   }
 
   if (generateInputWithAddresses)

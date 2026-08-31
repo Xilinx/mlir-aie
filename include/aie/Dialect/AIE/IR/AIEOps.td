@@ -426,7 +426,7 @@ def AIE_CoreOp
     core needs, writes it to the `measured_stack_size` attribute, and fails the build
     when `stack_size` is smaller. `measured_stack_size` stays absent when `aiecc`
     cannot measure the core. See `programming_guide/core_data_memory.md` for the
-    mechanism, the escape hatches (`--no-auto-stack-size`, `stack_size_override`)
+    mechanism, the escape hatches (`--no-measure-stack-size`, `stack_size_override`)
     and the diagnostics.
 
     This op has an optional `dynamic_objfifo_lowering` attribute, to finely control whether the
