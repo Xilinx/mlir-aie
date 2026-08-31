@@ -289,16 +289,14 @@ def AIEFuseTraceBuffers : Pass<"aie-fuse-trace-buffers", "mlir::ModuleOp"> {
   }];
 
   let constructor = "xilinx::AIEX::createAIEFuseTraceBuffersPass()";
-  let dependentDialects = [
-    "mlir::memref::MemRefDialect",
-    "xilinx::AIE::AIEDialect",
-    "xilinx::AIEX::AIEXDialect",
-  ];
+  let dependentDialects = ["mlir::memref::MemRefDialect",
+                           "xilinx::AIE::AIEDialect",
+                           "xilinx::AIEX::AIEXDialect"];
 }
 
 def AIEResolveAddressPatchBuffers
     : Pass<"aie-resolve-address-patch-buffers", "AIE::DeviceOp"> {
-  let summary = "Turn an address patch's buffer operand into a host buffer index";
+  let summary = "Resolve an address patch's buffer operand to a buffer index";
   let description = [{
     Rewrites each `aiex.npu.address_patch` that names its host buffer by SSA
     value into the `arg_idx` form the targets emit, and adds the buffer's byte
@@ -309,11 +307,9 @@ def AIEResolveAddressPatchBuffers
   }];
 
   let constructor = "xilinx::AIEX::createAIEResolveAddressPatchBuffersPass()";
-  let dependentDialects = [
-    "mlir::arith::ArithDialect",
-    "xilinx::AIE::AIEDialect",
-    "xilinx::AIEX::AIEXDialect",
-  ];
+  let dependentDialects = ["mlir::arith::ArithDialect",
+                           "xilinx::AIE::AIEDialect",
+                           "xilinx::AIEX::AIEXDialect"];
 }
 
 def AIEAssignRuntimeSequenceBDIDs : Pass<"aie-assign-runtime-sequence-bd-ids", "AIE::DeviceOp"> {

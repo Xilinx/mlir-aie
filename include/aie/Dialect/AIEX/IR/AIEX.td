@@ -1035,17 +1035,12 @@ def AIE_NpuSyncOp: AIEX_Op<"npu.sync", []> {
 }
 
 // XAIE_IO_CUSTOM_OP_BEGIN + 1 (address patch)
-def AIE_NpuAddressPatchOp: AIEX_Op<"npu.address_patch", [
-    AttrSizedOperandSegments
-  ]> {
+def AIE_NpuAddressPatchOp
+    : AIEX_Op<"npu.address_patch", [AttrSizedOperandSegments]> {
   let summary = "address patch operator";
-  let arguments = (
-    ins UI32Attr:$addr,
-        Optional<I32>:$addr_val,
-        OptionalAttr<I32Attr>:$arg_idx,
-        I32:$arg_plus,
-        Optional<AnyMemRef>:$buffer
-  );
+  let arguments = (ins UI32Attr:$addr, Optional<I32>:$addr_val,
+      OptionalAttr<I32Attr>:$arg_idx, I32:$arg_plus,
+      Optional<AnyMemRef>:$buffer);
   let results = (outs );
   let assemblyFormat = [{
     `(` $arg_plus `:` type($arg_plus) `)` (`addr` $addr_val^ `:` type($addr_val))?
@@ -1072,19 +1067,19 @@ def AIE_NpuAddressPatchOp: AIEX_Op<"npu.address_patch", [
     converts the operand to an index after inlining and adds the buffer's byte
     offset to `arg_plus`.
   }];
-  let builders = [
-    OpBuilder<(ins "uint32_t":$addr, "mlir::Value":$addr_val,
-                   "int32_t":$arg_idx, "mlir::Value":$arg_plus), [{
+  let builders = [OpBuilder<(ins "uint32_t":$addr, "mlir::Value":$addr_val,
+                                "int32_t":$arg_idx, "mlir::Value":$arg_plus),
+                            [{
       build($_builder, $_state, $_builder.getUI32IntegerAttr(addr), addr_val,
             $_builder.getI32IntegerAttr(arg_idx), arg_plus,
             /*buffer=*/mlir::Value());
     }]>,
-    OpBuilder<(ins "uint32_t":$addr, "mlir::Value":$addr_val,
-                   "mlir::Value":$buffer, "mlir::Value":$arg_plus), [{
+                  OpBuilder<(ins "uint32_t":$addr, "mlir::Value":$addr_val,
+                                "mlir::Value":$buffer, "mlir::Value":$arg_plus),
+                            [{
       build($_builder, $_state, $_builder.getUI32IntegerAttr(addr), addr_val,
             /*arg_idx=*/mlir::IntegerAttr(), arg_plus, buffer);
-    }]>
-  ];
+    }]>];
   let hasVerifier = 1;
 }
 
