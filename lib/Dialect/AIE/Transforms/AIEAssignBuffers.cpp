@@ -561,7 +561,26 @@ static bool simpleBankAwareAllocation(TileOp tile) {
     nextAddrInBanks.push_back(bankSize * i);
   if (auto core = tile.getCoreOp()) {
     stacksize = core.getEffectiveStackSize();
-    nextAddrInBanks[0] += stacksize;
+
+    if (stacksize >= maxDataMemorySize) {
+      tile->emitOpError("stack size exceeds local memory size");
+      return false;
+    }
+
+    // The stack occupies the bottom of the tile's memory. When it is larger
+    // than a single bank, spill it across consecutive banks so each bank's
+    // next-free address accounts for the portion of the stack it holds.
+    int remainStacksize = stacksize;
+    for (int bank_idx = 0; bank_idx < numBanks && remainStacksize > 0;
+         bank_idx++) {
+      if (remainStacksize >= bankSize) {
+        nextAddrInBanks[bank_idx] += bankSize;
+        remainStacksize -= bankSize;
+      } else {
+        nextAddrInBanks[bank_idx] += remainStacksize;
+        remainStacksize = 0;
+      }
+    }
   }
   fillBankLimits(numBanks, bankSize, bankLimits);
 
