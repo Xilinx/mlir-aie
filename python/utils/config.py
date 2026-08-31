@@ -41,6 +41,24 @@ def peano_linker_path():
     return peano_ld
 
 
+def peano_nm_path():
+    """Return the path to Peano's llvm-nm."""
+    install_dir = peano_install_dir()
+    peano_nm = os.path.join(install_dir, "bin", _executable_name("llvm-nm"))
+    if not os.path.isfile(peano_nm):
+        raise RuntimeError(f"Peano llvm-nm not found in {peano_nm}")
+    return peano_nm
+
+
+def peano_cxxfilt_path():
+    """Return the path to Peano's llvm-cxxfilt."""
+    install_dir = peano_install_dir()
+    peano_cxxfilt = os.path.join(install_dir, "bin", _executable_name("llvm-cxxfilt"))
+    if not os.path.isfile(peano_cxxfilt):
+        raise RuntimeError(f"Peano llvm-cxxfilt not found in {peano_cxxfilt}")
+    return peano_cxxfilt
+
+
 def root_path():
     """Return the root path of the MLIR-AIE project."""
     root_dir = config.install_path()
