@@ -572,9 +572,9 @@ struct AIEInsertTraceFlowsPass
     int traceBytesClaimed = bufferSizeBytes;
     for (auto &[col, shimInfo] : shimInfos)
       for (auto &chanDesc : shimInfo.channels)
-        traceBytesClaimed = std::max(
-            traceBytesClaimed, chanDesc.bufferOffset - traceBufferOffset +
-                                   bufferSizeBytes);
+        traceBytesClaimed = std::max(traceBytesClaimed, chanDesc.bufferOffset -
+                                                            traceBufferOffset +
+                                                            bufferSizeBytes);
     if (appendedTraceArg)
       appendedTraceArg.setType(MemRefType::get(
           {traceBytesClaimed}, IntegerType::get(device.getContext(), 8)));
@@ -592,8 +592,8 @@ struct AIEInsertTraceFlowsPass
                          : runtimeSeq.getBody().getNumArguments() - 1)),
              builder.getNamedAttr("offset",
                                   builder.getI64IntegerAttr(traceBufferOffset)),
-             builder.getNamedAttr(
-                 "size", builder.getI64IntegerAttr(traceBytesClaimed)),
+             builder.getNamedAttr("size",
+                                  builder.getI64IntegerAttr(traceBytesClaimed)),
              builder.getNamedAttr(
                  "dedicated", builder.getBoolAttr(bool(appendedTraceArg)))}));
 
@@ -1052,8 +1052,8 @@ private:
       // Only add secondary channel if it's available (not claimed by existing
       // flows)
       if (availableChannels.count(ch2)) {
-        chans.push_back({ch2, primaryBdId - 1,
-                         baseBufferOffset + bufferSizeBytes});
+        chans.push_back(
+            {ch2, primaryBdId - 1, baseBufferOffset + bufferSizeBytes});
       }
     }
     return chans;

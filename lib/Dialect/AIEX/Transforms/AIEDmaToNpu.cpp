@@ -519,7 +519,8 @@ public:
       return op->emitOpError(
           "memref must be a block argument or subview/cast/reinterpret_cast of "
           "a block argument with static offsets, sizes, and strides");
-    std::optional<unsigned> hostIdx = getHostBufferArgIndex(traceResult->rootArg);
+    std::optional<unsigned> hostIdx =
+        getHostBufferArgIndex(traceResult->rootArg);
     if (!hostIdx || traceResult->rootArg.getOwner() != &seqOp.getBody().front())
       return failure();
     argIdx = static_cast<int>(*hostIdx);

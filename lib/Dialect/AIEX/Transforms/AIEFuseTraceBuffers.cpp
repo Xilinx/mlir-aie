@@ -127,6 +127,13 @@ struct AIEFuseTraceBuffersPass
         continue;
 
       DictionaryAttr calleeBuffer = getTraceBufferAttr(callee);
+      if (calleeBuffer &&
+          !cast<BoolAttr>(calleeBuffer.get("dedicated")).getValue())
+        return run.emitOpError(
+            "calls a design whose trace.host_config sets "
+            "reuse_output_buffer=true. That design writes its trace data into "
+            "its own output buffer, which this call site cannot slice. Use a "
+            "separate trace buffer instead");
       unsigned calleeArgIdx =
           calleeBuffer
               ? static_cast<unsigned>(getIntField(calleeBuffer, "arg_index"))
@@ -149,17 +156,14 @@ struct AIEFuseTraceBuffersPass
 
     slices[seq.getOperation()] = flattened;
     seq->setAttr(kTraceSlicesAttr, buildSlicesAttr(builder, flattened));
-    seq->setAttr(kTraceBufferAttr,
-                 builder.getDictionaryAttr(
-                     {builder.getNamedAttr(
-                          "arg_index",
-                          builder.getI64IntegerAttr(fusedArg.getArgNumber())),
-                      builder.getNamedAttr("offset",
-                                           builder.getI64IntegerAttr(0)),
-                      builder.getNamedAttr("size",
-                                           builder.getI64IntegerAttr(total)),
-                      builder.getNamedAttr("dedicated",
-                                           builder.getBoolAttr(true))}));
+    seq->setAttr(
+        kTraceBufferAttr,
+        builder.getDictionaryAttr(
+            {builder.getNamedAttr("arg_index", builder.getI64IntegerAttr(
+                                                   fusedArg.getArgNumber())),
+             builder.getNamedAttr("offset", builder.getI64IntegerAttr(0)),
+             builder.getNamedAttr("size", builder.getI64IntegerAttr(total)),
+             builder.getNamedAttr("dedicated", builder.getBoolAttr(true))}));
     return success();
   }
 
@@ -169,10 +173,9 @@ struct AIEFuseTraceBuffersPass
     if (auto existing = seq->getAttrOfType<ArrayAttr>(kTraceSlicesAttr)) {
       for (Attribute a : existing) {
         auto d = cast<DictionaryAttr>(a);
-        result.push_back({d.getAs<StringAttr>("device"),
-                          d.getAs<StringAttr>("sequence"),
-                          base + getIntField(d, "offset"),
-                          getIntField(d, "size")});
+        result.push_back(
+            {d.getAs<StringAttr>("device"), d.getAs<StringAttr>("sequence"),
+             base + getIntField(d, "offset"), getIntField(d, "size")});
       }
       return result;
     }
@@ -210,7 +213,8 @@ struct AIEFuseTraceBuffersPass
                   int64_t offset, MemRefType resultType) {
     int64_t size = resultType.getNumElements();
     Value sub = memref::SubViewOp::create(
-        builder, loc, buffer, ArrayRef<OpFoldResult>{builder.getIndexAttr(offset)},
+        builder, loc, buffer,
+        ArrayRef<OpFoldResult>{builder.getIndexAttr(offset)},
         ArrayRef<OpFoldResult>{builder.getIndexAttr(size)},
         ArrayRef<OpFoldResult>{builder.getIndexAttr(1)});
     return memref::ReinterpretCastOp::create(

@@ -142,13 +142,13 @@ AIEX::traceSubviewToBlockArgument(Value value) {
 }
 
 std::optional<unsigned> AIEX::getHostBufferArgIndex(BlockArgument arg) {
-  if (!isa<MemRefType>(arg.getType()))
+  if (!isa<BaseMemRefType>(arg.getType()))
     return std::nullopt;
   unsigned index = 0;
   for (BlockArgument other : arg.getOwner()->getArguments()) {
     if (other == arg)
       return index;
-    if (isa<MemRefType>(other.getType()))
+    if (isa<BaseMemRefType>(other.getType()))
       index++;
   }
   return std::nullopt;
