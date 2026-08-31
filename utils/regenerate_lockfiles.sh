@@ -77,10 +77,7 @@ compile() {
 }
 
 # Regenerate utils/mlir_wheels/requirements.in from pyproject.toml's
-# [build-system].requires. mlir-native-tools is deliberately dropped: it
-# lives on an internal index reached via PIP_FIND_LINKS at build time, not
-# on PyPI, so pip-compile can't hash it; mlirDistro.yml installs it as a
-# separate, unpinned step instead.
+# [build-system].requires.
 generate_requirements_in() {
   local pyproject="$REPO_ROOT/utils/mlir_wheels/pyproject.toml"
   local out="$REPO_ROOT/utils/mlir_wheels/requirements.in"
@@ -97,24 +94,11 @@ generate_requirements_in() {
 # instead and rerun that script, which regenerates both this file and
 # requirements.lock.
 EOF
-    awk '
-      /^requires = \[/ { in_requires=1; next }
-      in_requires && /^\]/ { in_requires=0; next }
-      in_requires {
-        line=$0
-        sub(/^[ \t]+/, "", line)
-        sub(/,[ \t]*$/, "", line)
-        if (line == "" || line ~ /^#/) next
-        gsub(/"/, "", line)
-        if (line ~ /^mlir-native-tools/) next
-        print line
-      }
-    ' "$pyproject"
-    cat <<'EOF'
-# mlir-native-tools is intentionally dropped above: it lives on an internal
-# index reached via PIP_FIND_LINKS at build time, not on PyPI, so
-# pip-compile can't resolve it. mlirDistro.yml installs it separately.
-EOF
+    python3 -c '
+import sys, tomllib
+with open(sys.argv[1], "rb") as f:
+    print(*tomllib.load(f)["build-system"]["requires"], sep="\n")
+' "$pyproject"
   } > "$out"
 }
 
