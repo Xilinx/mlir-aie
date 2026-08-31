@@ -1648,6 +1648,29 @@ def AIE_BufferOp
       %buf = aie.buffer(%tile33) : memref<256xi64>
     ```
     This operation represents a buffer in tile (3, 3) of 256 elements, each a 64-bit integer.
+
+    `alloc_group` names a set of buffers that ARE live together. Buffers on the
+    same tile sharing a group get distinct storage, laid out one after another.
+    Buffers in DIFFERENT groups are asserted by the author never to be live at the
+    same time, so the allocator overlays the groups: they share one region, sized
+    at the largest group's total rather than the sum of every group. A group is
+    typically one mode of a mode-selected design, which is what lets several
+    topologies coexist in one design without each paying for the others' L1.
+
+    Sizing follows from that. Two modes of two buffers each cost
+    `max(a1+a2, b1+b2)`, not `max(a1,b1) + max(a2,b2)`: for 100/10 against 10/100
+    that is 110 rather than 200, and the modes need not hold the same number of
+    buffers.
+
+    The assertion is the author's -- the allocator cannot prove two modes never run
+    together. What IS checked (AIEAssignBufferAddresses) is the decidable part: no
+    two buffers from DIFFERENT groups may be referenced from one `aie.core` unless
+    a one-of-N selector (`scf.if`, `scf.index_switch`) separates the references,
+    since otherwise they are simultaneously live by construction. Note this is a
+    property of the selector, not of the enclosing block: objectFifo lowering gives
+    each reference its own `scf.index_switch` case, so a block-scoped check would
+    pass everything. A buffer with no `alloc_group` overlays nothing and is
+    allocated exactly as before.
   }];
 
   let arguments = (
@@ -1656,7 +1679,8 @@ def AIE_BufferOp
         OptionalAttr<AIEI32Attr>:$address,
         OptionalAttr<ElementsAttr>:$initial_value,
         OptionalAttr<AIEI32Attr>:$mem_bank,
-        DefaultValuedAttr<BoolAttr, "true">:$aligned
+        DefaultValuedAttr<BoolAttr, "true">:$aligned,
+        OptionalAttr<StrAttr>:$alloc_group
   );
 
   let results = (outs AnyMemRef:$buffer);
