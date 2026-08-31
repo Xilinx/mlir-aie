@@ -528,6 +528,22 @@ public:
   // DMA channels (register=CONSTANT_PAD_VALUE).
   virtual bool isMemTilePadValueSupported() const { return false; }
 
+  // Returns true if a write to `absoluteAddress` has a side effect beyond
+  // storing the value, such as a reset or a start of processing. A pass that
+  // reorders or merges writes must keep such a write in place.
+  virtual bool isSpecialRegister(uint32_t absoluteAddress) const {
+    return false;
+  }
+
+  // Returns true if a write to `offset` in tile (col, row) has a side effect
+  // beyond storing the value.
+  virtual bool isSpecialRegister(int col, int row, uint32_t offset) const {
+    uint32_t absoluteAddress = ((col & 0xff) << getColumnShift()) |
+                               ((row & 0xff) << getRowShift()) |
+                               (offset & 0xfffff);
+    return isSpecialRegister(absoluteAddress);
+  }
+
   /// Register Database API - provides access to register and event information
   /// for trace configuration and low-level register access.
 
@@ -1080,6 +1096,38 @@ public:
   bool isSupportedBlockFormat(std::string const &format) const override;
 
   bool isMemTilePadValueSupported() const override { return true; }
+
+  bool isSpecialRegister(uint32_t absoluteAddress) const override {
+    int col = (absoluteAddress >> getColumnShift()) & 0xff;
+    int row = (absoluteAddress >> getRowShift()) & 0x1f;
+    uint32_t offset = absoluteAddress & 0xfffff;
+    return isSpecialRegister(col, row, offset);
+  }
+
+  bool isSpecialRegister(int col, int row, uint32_t offset) const override {
+    if (isCoreTile(col, row))
+      return offset == 0x32000 || // Core_Control
+             offset == 0x36070 || // Memory_Control
+             offset == 0x60000 || // Module_Clock_Control
+             offset == 0x60010 || // Module_Reset_Control
+             offset == 0x60020 || // Tile_Control
+             offset == 0x1DE04 || offset == 0x1DE0C || offset == 0x1DE14 ||
+             offset == 0x1DE1C;
+    if (isShimNOCTile(col, row))
+      return (offset >= 0x15000 && offset <= 0x15010) || offset == 0x1D200 ||
+             offset == 0x1D204 || offset == 0x1D208 || offset == 0x1D20C ||
+             offset == 0x1D210 || offset == 0x1D214 || offset == 0x1D218 ||
+             offset == 0x1D21C || offset == 0x1F000 || offset == 0x1F004 ||
+             offset == 0x40000;
+    if (isMemTile(col, row))
+      return offset == 0x94008 || offset == 0x96048 || offset == 0xA0604 ||
+             offset == 0xA060C || offset == 0xA0614 || offset == 0xA061C ||
+             offset == 0xA0624 || offset == 0xA062C || offset == 0xA0634 ||
+             offset == 0xA063C || offset == 0xA0644 || offset == 0xA064C ||
+             offset == 0xA0654 || offset == 0xA065C || offset == 0xFFF00 ||
+             offset == 0xFFF10 || offset == 0xFFF20;
+    return false;
+  }
 
   static bool classof(const AIETargetModel *model) {
     return model->getKind() >= TK_AIE2_NPU2 &&
