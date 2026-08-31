@@ -55,14 +55,30 @@ struct AIEAssignRuntimeSequenceBDIDsPass
 
   llvm::DenseMap<AIE::TileOp, BdIdGenerator> gens;
 
+  // Mark every BD id a static DMA already took on `tile`, so this allocator
+  // doesn't hand the same id to a runtime-sequence task.
+  static void seedFromStaticBds(AIE::DeviceOp device, AIE::TileOp tile,
+                                BdIdGenerator &gen) {
+    auto seedRegion = [&](Region &region) {
+      region.walk([&](AIE::DMABDOp bd) {
+        if (auto id = bd.getBdId())
+          if (!gen.bdIdAlreadyAssigned(*id))
+            gen.assignBdId(*id);
+      });
+    };
+    for (AIE::DmaBody program : device.getOps<AIE::DmaBody>())
+      if (program.getTileID() == tile.getTileID())
+        seedRegion(program.getDmaBody());
+  }
+
   BdIdGenerator &getGeneratorForTile(AIE::TileOp tile) {
     auto it = gens.find(tile);
     if (it == gens.end()) {
-      const AIETargetModel &targetModel =
-          tile->getParentOfType<AIE::DeviceOp>().getTargetModel();
+      AIE::DeviceOp device = tile->getParentOfType<AIE::DeviceOp>();
       it = gens.insert({tile, BdIdGenerator(tile.getCol(), tile.getRow(),
-                                            targetModel)})
+                                            device.getTargetModel())})
                .first;
+      seedFromStaticBds(device, tile, it->second);
     }
     return it->second;
   }
