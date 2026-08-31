@@ -75,15 +75,6 @@ class CMakeExtension(Extension):
 def get_cross_cmake_args():
     cmake_args = {}
 
-    def native_tools():
-        nonlocal cmake_args
-
-        native_tools_dir = Path(sys.prefix).absolute() / "bin"
-        assert native_tools_dir is not None, "native_tools_dir missing"
-        assert os.path.exists(native_tools_dir), "native_tools_dir doesn't exist"
-        cmake_args["LLVM_USE_HOST_TOOLS"] = "ON"
-        cmake_args["LLVM_NATIVE_TOOL_DIR"] = str(native_tools_dir)
-
     CIBW_ARCHS = os.environ.get("CIBW_ARCHS")
     if CIBW_ARCHS in {"arm64", "aarch64", "ARM64"}:
         ARCH = cmake_args["LLVM_TARGETS_TO_BUILD"] = "AArch64"
@@ -127,7 +118,11 @@ def get_cross_cmake_args():
             cmake_args["CMAKE_EXE_LINKER_FLAGS_INIT"] = _LLD_LINKER_FLAGS
             cmake_args["CMAKE_MODULE_LINKER_FLAGS_INIT"] = _LLD_LINKER_FLAGS
             cmake_args["CMAKE_SHARED_LINKER_FLAGS_INIT"] = _LLD_LINKER_FLAGS
-            native_tools()
+            # TableGen runs on the host and bakes in a TargetOpcode enum, so
+            # it must come from the same commit as the .td sources it parses.
+            # Without LLVM_NATIVE_TOOL_DIR, LLVM builds it in a NATIVE
+            # subdirectory of this same tree.
+            cmake_args["LLVM_USE_HOST_TOOLS"] = "ON"
         elif ARCH == "X86":
             cmake_args["LLVM_DEFAULT_TARGET_TRIPLE"] = "x86_64-unknown-linux-gnu"
             cmake_args["LLVM_HOST_TRIPLE"] = "x86_64-unknown-linux-gnu"

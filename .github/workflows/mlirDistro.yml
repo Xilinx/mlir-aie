@@ -301,26 +301,11 @@ jobs:
         # [build-system].requires with build isolation on: fresh from PyPI,
         # unpinned. That's how a same-day nanobind release (e.g. 3.0.x) can
         # break find_package(nanobind 2.9) overnight even though nothing in
-        # this repo changed. Install the hash-pinned lock up front, plus
-        # mlir-native-tools (not in the lock: it's resolved via
-        # PIP_FIND_LINKS, not PyPI, so pip-compile can't hash it), and build
+        # this repo changed. Install the hash-pinned lock up front and build
         # with --no-build-isolation so setup.py sees exactly these versions,
         # matching what cibuildwheel's before-build already does for the
         # other legs.
         pip install --require-hashes -r requirements.lock
-
-        # The host llvm-tblgen this cross build runs and the .td sources it
-        # parses must come from the same LLVM commit; unpinned takes newest.
-        LLVM_XYZ=$(sed -nE 's/^[[:space:]]*set\(LLVM_VERSION_(MAJOR|MINOR|PATCH) ([0-9]+)\)/\2/p' \
-          llvm-project/cmake/Modules/LLVMVersion.cmake | paste -sd.)
-        LLVM_COMMIT=${{ needs.get_llvm_project_commit.outputs.LLVM_PROJECT_COMMIT }}
-        NATIVE_TOOLS_VERSION="$LLVM_XYZ.${{ needs.get_llvm_project_commit.outputs.DATETIME }}+${LLVM_COMMIT:0:8}"
-
-        # No such wheel on the schedule trigger, which builds live HEAD.
-        if ! pip install "mlir-native-tools==$NATIVE_TOOLS_VERSION"; then
-          echo "::warning::no mlir-native-tools==$NATIVE_TOOLS_VERSION, falling back to latest"
-          pip install mlir-native-tools
-        fi
 
         CIBW_ARCHS=${{ matrix.ARCH }} \
         CMAKE_GENERATOR=Ninja \
