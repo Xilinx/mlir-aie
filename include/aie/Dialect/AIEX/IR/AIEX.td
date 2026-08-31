@@ -1765,16 +1765,18 @@ def AIEX_NpuReadRegOp: AIEX_Op<"npu.read_reg", [HasParent<"AIE::RuntimeSequenceO
     tiles alike, so the verifier only checks that `tile` resolves to an
     `aie.tile` op (its own verifier already bounds col/row).
 
-    WHERE THE RESULT LANDS ON THE HOST IS UNVERIFIED. XDP's only consumer of
-    `XAIE_IO_CUSTOM_OP_READ_REGS` submits it through a *separate*
-    `CONFIGURE_OPCODE=2` transaction against a dedicated `use_type::debug` BO
-    (`xdp/profile/device/common/client_transaction.cpp`), not the ordinary
-    `EXEC_NPU` dispatch this op targets, and that debug BO's device address is
-    never named in the TXN words -- the binding is out-of-band, at the
-    driver/context level. Whether the ordinary `EXEC_NPU` path honors the same
-    custom op and where it lands the read values has not been confirmed
-    against firmware or on real hardware; this op is the compiler-side half
-    only, gated on a device-side proof before its output is trusted.
+    The read values land at the start of the `use_type::debug` BO bound to the
+    dispatching hardware context, one 32-bit word per read, in program order.
+    That BO's device address is never named in the TXN words -- the binding is
+    out-of-band, at the driver/context level (`DRM_AMDXDNA_HWCTX_ASSIGN_DBG_BUF`
+    on Linux), which is why this op takes no destination operand. If no debug
+    BO is bound the dispatch still completes and the values are dropped.
+
+    Measured on npu2 (Ryzen AI 9 465, NPU firmware 1.1.2.64, amdxdna 7.2.0,
+    XRT 2.21.75) through an ordinary `EXEC_NPU` dispatch -- not XDP's separate
+    configure transaction: a `write32` of a known word followed by a
+    `read_reg` of the same address returns that word, for both a core-tile and
+    a shim-tile register.
 
     Example:
     ```

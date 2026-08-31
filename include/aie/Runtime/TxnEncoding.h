@@ -161,24 +161,29 @@ inline void txn_append_sync(std::vector<uint32_t> &txn, uint32_t col,
       ((nrow & 0xff) << 8) | ((ncol & 0xff) << 16) | ((chan & 0xff) << 24);
 }
 
-// Append a 4-word read_regs instruction reading ONE register at `addr`.
+// Append a read_regs instruction reading ONE register at `addr`.
 //
-// Word layout is REASONED from the sibling custom-op encoders in this file
-// (opcode word, size-in-bytes word, then payload -- see txn_append_sync above
-// and txn_append_address_patch below), not confirmed against firmware: this
-// opcode number (TXN_OPC_READ_REGS) was reserved above but, before this
-// function, never emitted by any encoder here. `count` is always 1 -- one
-// aiex.npu.read_reg lowers to one entry; batching several addresses into a
-// single entry (as XDP's read_register_op_t does) is not implemented.
-// Device-verify the whole custom op before trusting values read this way; see
-// aiex.npu.read_reg's op doc for what is and is not confirmed.
+// On-wire layout is aie-rt's: XAie_CustomOpHdr (u8 Op, u8 Col, u8 Row, pad,
+// u32 Size) followed by the raw read_register_op_t payload (u32 count, 4 bytes
+// of padding, then one u64 address per register) -- see _XAie_AppendCustomOp
+// in aie-rt xaie_helper.c and read_register_op_t in xaiegbl.h. 24 bytes for a
+// single register. `count` is always 1: one aiex.npu.read_reg lowers to one
+// entry; batching several addresses into one entry (as XDP does) is not
+// implemented, and a 2-entry op and two 1-entry ops were measured to fill the
+// destination buffer identically.
+//
+// The 32-bit read values land at the start of the use_type::debug BO bound to
+// the dispatching hardware context, one word per read, in program order. With
+// no debug BO bound the dispatch still completes and the values are dropped.
 inline void txn_append_read_reg(std::vector<uint32_t> &txn, uint32_t addr) {
   size_t pos = txn.size();
-  txn.resize(pos + 4, 0);
+  txn.resize(pos + 6, 0);
   txn[pos + 0] = TXN_OPC_READ_REGS;
-  txn[pos + 1] = 4 * sizeof(uint32_t); // operation size
+  txn[pos + 1] = 6 * sizeof(uint32_t); // operation size
   txn[pos + 2] = 1;                    // count (single-register form only)
-  txn[pos + 3] = addr;
+  txn[pos + 3] = 0;                    // padding before the u64 address array
+  txn[pos + 4] = addr;                 // address, low half
+  txn[pos + 5] = 0;                    // address, high half
 }
 
 // Append a variable-length blockwrite instruction.
