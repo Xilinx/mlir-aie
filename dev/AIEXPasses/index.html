@@ -3441,6 +3441,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#-aie-reserve-runtime-bd-ids" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        -aie-reserve-runtime-bd-ids
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#-aie-scf-to-control-flow" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -4135,6 +4146,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#-aie-reserve-runtime-bd-ids" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        -aie-reserve-runtime-bd-ids
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#-aie-scf-to-control-flow" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -4485,6 +4507,13 @@ from the output, keeping only the main device.</p>
 <h4 id="options_2">Options<a class="headerlink" href="#options_2" title="Permanent link">&para;</a></h4>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>-device-name : Name of the main device to emit (other devices are removed after absorption)
 </code></pre></div>
+<h3 id="-aie-reserve-runtime-bd-ids"><code>-aie-reserve-runtime-bd-ids</code><a class="headerlink" href="#-aie-reserve-runtime-bd-ids" title="Permanent link">&para;</a></h3>
+<p><em>Reserve runtime-sequence pinned BD ids for the static allocator</em></p>
+<p>Records the compile-time BD ids that <code>aiex.dma_configure_task</code> ops pin in the
+runtime sequence, per tile, as an <code>aiex.reserved_bd_ids</code> attribute on each
+<code>aie.tile</code>. The static allocator (<code>aie-assign-bd-ids</code>) runs in the AIE
+dialect and cannot walk AIEX ops, so it reads this attribute to keep its
+auto-assignment off ids the runtime sequence already claimed.</p>
 <h3 id="-aie-scf-to-control-flow"><code>-aie-scf-to-control-flow</code><a class="headerlink" href="#-aie-scf-to-control-flow" title="Permanent link">&para;</a></h3>
 <p><em>Lower scf to cf everywhere except inside runtime sequences</em></p>
 <p>Converts structured control flow (<code>scf</code>) to unstructured control flow
