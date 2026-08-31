@@ -137,7 +137,10 @@ struct AIEObjectFifoAllocatePass
           builder, pool.getLoc(), pool.getElemType(), placement,
           builder.getStringAttr(name), /*address=*/nullptr, init,
           /*mem_bank=*/nullptr, /*aligned=*/nullptr,
-          /*alloc_group=*/nullptr);
+          // Every slot of one pool is live at once -- that is what depth
+          // means -- so they all take the pool's group and are laid out one
+          // after another; a pool in a different group overlays them.
+          pool.getAllocGroupAttr());
       names.push_back(FlatSymbolRefAttr::get(builder.getContext(), name));
     }
     pool.setBuffersAttr(builder.getArrayAttr(names));

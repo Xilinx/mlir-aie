@@ -90,6 +90,7 @@ class ObjectFifo(Resolvable):
         aie_stream: tuple[int, int] | None = None,
         packet: bool = False,
         packet_id: int | None = None,
+        alloc_group: str | None = None,
     ):
         """Construct an ObjectFifo.
 
@@ -156,6 +157,14 @@ class ObjectFifo(Resolvable):
                 designs that route on the id (e.g. a MemTile dispatching to one of several
                 cores). Requires ``packet``; when absent, allocation picks an id no other
                 flow is using. Defaults to None.
+            alloc_group (str | None, optional): Allocation group name, stamped onto the
+                underlying ``aie.objectfifo`` op and propagated onto every buffer it lowers
+                to. A fifo's own depth slots are live together, which is what one group
+                asserts, so they all share it. Fifos in DIFFERENT groups are asserted by the
+                author never to be live at the same time, so the allocator overlays them: the
+                groups share one region sized at the largest group's total. That is what lets
+                a second mode-selected topology coexist without paying full L1. Only
+                ``basic-sequential`` allocation implements the overlay. Defaults to None.
 
         Raises:
             ValueError: If ``depth`` is provided and is less than 1.
@@ -192,6 +201,7 @@ class ObjectFifo(Resolvable):
         self._aie_stream: tuple[int, int] | None = aie_stream
         self._packet: bool = packet
         self._packet_id: int | None = packet_id
+        self._alloc_group: str | None = alloc_group
 
     @property
     def depth(self) -> int | None:
@@ -484,6 +494,9 @@ class ObjectFifo(Resolvable):
 
             if self._aie_stream is not None:
                 op.set_aie_stream(*self._aie_stream)
+
+            if self._alloc_group is not None:
+                op.set_alloc_group(self._alloc_group)
 
             # Pin DMA channels requested on the handles. The producer channel
             # and one channel per consumer (-1 = auto-assign that consumer) are
