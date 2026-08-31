@@ -66,21 +66,12 @@ std::string bdPoolName(uint32_t col, uint32_t row) {
 llvm::SmallVector<uint32_t, 8> staticBdIdsOnTile(AIE::DeviceOp device,
                                                  uint32_t col, uint32_t row) {
   llvm::SmallVector<uint32_t, 8> ids;
-  auto collect = [&](AIE::TileElement elem, Region &region) {
-    auto id = elem.getTileID();
+  for (AIE::DmaBody program : device.getOps<AIE::DmaBody>()) {
+    auto id = program.getTileID();
     if (id.col != static_cast<int>(col) || id.row != static_cast<int>(row))
-      return;
-    region.walk([&](AIE::DMABDOp bd) {
-      if (auto bdId = bd.getBdId())
-        ids.push_back(*bdId);
-    });
-  };
-  for (auto mem : device.getOps<AIE::MemOp>())
-    collect(mem, mem->getRegion(0));
-  for (auto mem : device.getOps<AIE::MemTileDMAOp>())
-    collect(mem, mem->getRegion(0));
-  for (auto mem : device.getOps<AIE::ShimDMAOp>())
-    collect(mem, mem->getRegion(0));
+      continue;
+    llvm::append_range(ids, AIE::getAssignedBdIds(program));
+  }
   llvm::sort(ids);
   ids.erase(llvm::unique(ids), ids.end());
   return ids;
