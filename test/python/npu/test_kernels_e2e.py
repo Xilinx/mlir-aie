@@ -140,7 +140,7 @@ def test_reduce_max_bfloat16_output_alignment_e2e():
 
 
 # ===========================================================================
-# Kernels copied back from IRON that need a bespoke hand-built design (their
+# The following kernels need a bespoke hand-built design (their
 # signatures don't fit the generic ``transform_parallel`` helper):
 #
 # * ``axpy``       — two inputs (x, y) + a runtime scalar ``a`` before the output.
@@ -212,7 +212,7 @@ def test_axpy_e2e():
     # emits an *integer* MLIR constant for the arg, truncating e.g. 2.5 -> 2.
     # The kernel math itself is correct (verified for a in {2.0, 3.0}); a
     # fractional slope needs the framework's float-scalar transport, which is a
-    # separate gap tracked outside this kernel copy-back.
+    # separate framework gap.
     size, a = 4096, 3.0
     rng = np.random.default_rng(0)
     x = rng.uniform(-2, 2, size=(size,)).astype(bfloat16)
@@ -420,12 +420,12 @@ def test_leaky_relu_e2e():
 # mha.cc is not a single kernel but a set of composable symbols (matmul_PV,
 # partial_softmax, rescale_O, init_scale_buffer, …) that ``#include`` sibling
 # ``softmax.cc`` + ``mm.cc``.  A full attention dataflow needs a bespoke
-# multi-core design (see IRON's iron/operators/mha/); that's out of scope here.
-# What this test pins is the copy-back prerequisite: mha.cc must COMPILE against
-# mlir-aie's softmax.cc, which required porting ``partial_softmax_bf16`` /
-# ``partial_softmax_alias_bf16`` into it.  If that port regresses, mha.cc stops
-# compiling and this test fails.  ``init_scale_buffer`` is the simplest symbol to
-# instantiate the translation unit.
+# multi-core design; that's out of scope here.  What this test pins is that
+# mha.cc must COMPILE against mlir-aie's softmax.cc, which relies on
+# ``partial_softmax_bf16`` / ``partial_softmax_alias_bf16`` being defined there.
+# If those regress, mha.cc stops compiling and this test fails.
+# ``init_scale_buffer`` is the simplest symbol to instantiate the translation
+# unit.
 # ---------------------------------------------------------------------------
 
 _MHA_TILE = 1024
@@ -643,10 +643,10 @@ def test_aie2p_eltwise_e2e(which, op):
 # ---------------------------------------------------------------------------
 # generic/mv.cc:  bf16 matrix-vector multiply (c = A @ b).
 #
-# This is the bf16 matvec ported from IRON; no kernels.* factory exposes it yet
-# (kernels.mv resolves the pre-existing aie2/mv.cc, an i16->i32 kernel), so the
-# ExternalFunction is hand-built directly against the source — same approach as
-# the mha probe above.  The entry is matvec_vectorized_bf16_bf16(m, row_offset,
+# No kernels.* factory exposes this yet (kernels.mv resolves aie2/mv.cc, an
+# i16->i32 kernel), so the ExternalFunction is hand-built directly against the
+# source — same approach as the mha probe above.  The entry is
+# matvec_vectorized_bf16_bf16(m, row_offset,
 # a, b, c); it needs -DDIM_K and assumes k >= 2*VEC_SIZE (VEC_SIZE=64 -> k>=128).
 # ---------------------------------------------------------------------------
 
