@@ -371,35 +371,37 @@ def AIE_CoreOp
                       AutomaticAllocationScope,
                       DeclareOpInterfaceMethods<InferTypeOpInterface>]>,
       Results<(outs Index)> {
-  let arguments = (
-    ins Index:$tile,
-    // Absent means "use this target's default"; read getEffectiveStackSize().
-    OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<1>]>>:$stack_size,
-    // Written by aiecc from the compiled core object and the call graph.
-    // Absent when aiecc cannot measure the core.
-    OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>>:$measured_stack_size,
-    // Deprecated: attach link_with to func.func declarations instead and run
-    // aie-assign-core-link-files to populate link_files.
-    OptionalAttr<StrAttr>:$link_with,
-    // Populated by aie-assign-core-link-files; consumed by BCF/ldscript emitters
-    // and the aiecc driver.  Specifying both link_with and link_files is an error.
-    // These artifacts are ordinary inputs to the core's final link.
-    OptionalAttr<StrArrayAttr>:$link_files,
-    // Populated by aie-assign-core-link-files from func.func declarations that
-    // carry `link_with_mode = "merge"`.  These artifacts are merged into the
-    // core's LLVM module (llvm-link) before codegen instead of being handed to
-    // the final link.  May coexist with link_files, but a given path must not
-    // appear in both.
-    OptionalAttr<StrArrayAttr>:$link_merge_files,
-    OptionalAttr<StrAttr>:$elf_file,
-    OptionalAttr<BoolAttr>:$dynamic_objfifo_lowering,
-    // If set to false, suppresses automatic insertion of the parameter-sync
-    // preamble (use_lock acquire) by `--aie-lower-scratchpad-parameters`.  Defaults to
-    // true when any `aiex.read_scratchpad_parameter` op is present in the
-    // core body.
-    // Set to false automatically after the preamble has been emitted.
-    OptionalAttr<BoolAttr>:$emit_parameter_sync_preamble
-  );
+  let arguments =
+      (ins Index:$tile,
+          // Absent means "use this target's default"; read
+          // getEffectiveStackSize().
+          OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<1>]>>:$stack_size,
+          // Written by aiecc from the compiled core object and the call graph.
+          // Absent when aiecc cannot measure the core.
+          OptionalAttr<
+              ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>>:$measured_stack_size,
+          // Deprecated: attach link_with to func.func declarations instead and
+          // run aie-assign-core-link-files to populate link_files.
+          OptionalAttr<StrAttr>:$link_with,
+          // Populated by aie-assign-core-link-files; consumed by BCF/ldscript
+          // emitters and the aiecc driver.  Specifying both link_with and
+          // link_files is an error. These artifacts are ordinary inputs to the
+          // core's final link.
+          OptionalAttr<StrArrayAttr>:$link_files,
+          // Populated by aie-assign-core-link-files from func.func declarations
+          // that carry `link_with_mode = "merge"`.  These artifacts are merged
+          // into the core's LLVM module (llvm-link) before codegen instead of
+          // being handed to the final link.  May coexist with link_files, but a
+          // given path must not appear in both.
+          OptionalAttr<StrArrayAttr>:$link_merge_files,
+          OptionalAttr<StrAttr>:$elf_file,
+          OptionalAttr<BoolAttr>:$dynamic_objfifo_lowering,
+          // If set to false, suppresses automatic insertion of the
+          // parameter-sync preamble (use_lock acquire) by
+          // `--aie-lower-scratchpad-parameters`.  Defaults to true when any
+          // `aiex.read_scratchpad_parameter` op is present in the core body.
+          // Set to false automatically after the preamble has been emitted.
+          OptionalAttr<BoolAttr>:$emit_parameter_sync_preamble);
   let summary = "Declare a core module";
   let description = [{
     This operation represents an AIEngine processor core belonging to a tile.
