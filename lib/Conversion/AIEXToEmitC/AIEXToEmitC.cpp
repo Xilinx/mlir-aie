@@ -199,10 +199,13 @@ private:
           // the SSA addr_val (flows through arith-to-emitc) over the constant.
           Value addrV = ap.getAddrVal() ? ap.getAddrVal()
                                         : u32Literal(b, loc, ap.getAddr());
+          std::optional<uint32_t> argIdx = ap.getArgIdx();
+          if (!argIdx)
+            return fail(ap, "address_patch still names its host buffer by SSA "
+                            "value; run -aie-resolve-address-patch-buffers");
           Value idxV = emitc::ConstantOp::create(
               b, loc, emitc::OpaqueType::get(b.getContext(), "int32_t"),
-              emitc::OpaqueAttr::get(
-                  b.getContext(), std::to_string(ap.getArgIdx().value_or(0))));
+              emitc::OpaqueAttr::get(b.getContext(), std::to_string(*argIdx)));
           emitTxnCall(b, loc, "txn_append_address_patch", txnVec,
                       {addrV, idxV, ap.getArgPlus()});
           countOp(b, loc, count);
