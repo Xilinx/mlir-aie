@@ -568,6 +568,10 @@ def _convert_copy_design(a_in: In, b_out: Out):
 
 
 def test_convert_copy_e2e():
+    from aie.iron.kernels._common import _detect_arch
+
+    if _detect_arch() != "aie2p":
+        pytest.skip("convert_copy binds aie2p/cast_f32_bf16.cc")
     rng = np.random.default_rng(5)
     x = rng.uniform(-8, 8, size=(_CVT_TILE,)).astype(np.float32)
     xt = iron.tensor(x, dtype=np.float32, device="npu")
