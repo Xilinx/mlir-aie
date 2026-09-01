@@ -11,10 +11,9 @@
 // emits. @main dispatches six runs, so -aie-fuse-trace-buffers must give each
 // run its own slice of one trace buffer.
 //
-// The runs alternate between the devices. Two runs of one device in a row share
-// a trace buffer descriptor, because loading the PDI of the device that is
-// already loaded reconfigures nothing, and the second run then appends to the
-// first run's slice.
+// The runs alternate between the devices. A load_pdi of the device that is
+// already loaded reconfigures nothing, so two runs of one device in a row share
+// one trace buffer descriptor and land in one slice.
 //
 // Run order and event count per run:
 //   @seq_a1 ->  7000 x INSTR_EVENT_0
@@ -30,8 +29,8 @@ module {
 
   aie.device(npu2_1col) @main {
 
-    // Each run writes the parameter it received into its own four-element
-    // window of %out, which pins a slice to the run that produced it.
+    // Each run writes its parameter into its own four-element window of %out,
+    // which records the dispatch order.
     aie.runtime_sequence @sequence(%out: memref<24xi32>) {
 
       aiex.configure @dev_a {

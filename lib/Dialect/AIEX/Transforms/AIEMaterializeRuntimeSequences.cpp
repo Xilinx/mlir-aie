@@ -300,8 +300,8 @@ copyReferencedSSAValues(PatternRewriter &rewriter,
           });
 
     } else if (auto lockOp = llvm::dyn_cast<AIE::LockOp>(definingOp)) {
-      // Several aiex.run calls may name one lock. Cloning it once per call
-      // would define its symbol more than once in the caller device.
+      // Several aiex.run calls may name one lock, and the caller device holds
+      // its symbol once.
       AIE::LockOp existingLock = nullptr;
       if (Value callerTile = argMap.lookupOrNull(lockOp.getTile())) {
         for (AIE::LockOp lock : callerDevice.getOps<AIE::LockOp>()) {

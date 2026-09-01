@@ -39,10 +39,9 @@ HERE = Path(__file__).parent
 # One entry per aiex.run in @main, in dispatch order: the device it configures,
 # the sequence it runs, and the runtime parameter that sequence writes.
 #
-# The runs alternate between the devices. Loading the PDI of the device that is
-# already loaded reconfigures nothing, so two runs of one device in a row would
-# share a trace buffer descriptor and the second would append to the first
-# run's slice.
+# The runs alternate between the devices. A load_pdi of the device that is
+# already loaded reconfigures nothing, so two runs of one device in a row share
+# one trace buffer descriptor and land in one slice.
 RUNS = [
     ("dev_a", "seq_a1", 7000),
     ("dev_b", "seq_b1", 8000),

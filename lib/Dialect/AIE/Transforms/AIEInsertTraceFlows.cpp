@@ -97,9 +97,9 @@ struct AIEInsertTraceFlowsPass
     if (traces.empty())
       return;
 
-    // Phase 1b: Collect every runtime_sequence that asks for a trace buffer.
-    // A device may declare several, and each one drives the trace units on its
-    // own dispatch, so each one needs a trace buffer and a shim DMA program.
+    // Phase 1b: Collect every runtime_sequence with an aie.trace.host_config.
+    // Each one drives the trace units on its own dispatch, so each one gets a
+    // trace buffer and a shim DMA program.
     SmallVector<RuntimeSequenceOp> runtimeSeqs;
     SmallVector<TraceHostConfigOp> hostConfigs;
     RuntimeSequenceOp firstSeq = nullptr;
@@ -127,9 +127,8 @@ struct AIEInsertTraceFlowsPass
       return signalPassFailure();
     }
 
-    // Get configuration from host_config. The trace overlay occupies the
-    // device's stream switches and shim DMA channels, which the sequences
-    // share, so they must agree on it.
+    // The trace overlay occupies the device's stream switches and shim DMA
+    // channels, which the sequences share, so they must agree on it.
     TraceHostConfigOp hostConfig = hostConfigs.front();
     int bufferSizeBytes = hostConfig.getBufferSize();
     bool reuseOutputBuffer = hostConfig.getReuseOutputBuffer();
@@ -162,7 +161,7 @@ struct AIEInsertTraceFlowsPass
     //     argument is added; the offset skips past the output data.
     //
     // The offset reaches the hardware through the shared shim BD programs, so
-    // every sequence must place its trace data at the same offset.
+    // the trace data of every sequence starts at the same offset.
     int traceBufferOffset = 0; // in bytes
     if (reuseOutputBuffer) {
       for (auto seq : runtimeSeqs) {
@@ -198,7 +197,6 @@ struct AIEInsertTraceFlowsPass
       }
     }
 
-    // Remove host_config ops
     for (auto hc : hostConfigs)
       hc.erase();
 
@@ -687,10 +685,9 @@ struct AIEInsertTraceFlowsPass
     }
   }
 
-  /// Give `runtimeSeq` a trace buffer, then emit the timer sync, the shim DMA
-  /// program that drains the trace stream into that buffer, and the trace stop.
-  /// `traceInfos` and `shimInfos` describe the device-wide overlay, which every
-  /// sequence of the device drives.
+  /// Give `runtimeSeq` a trace buffer and the shim DMA program that drains the
+  /// trace stream into it. `traceInfos` and `shimInfos` describe the
+  /// device-wide overlay, which every sequence of the device drives.
   LogicalResult emitSequenceTraceOps(RuntimeSequenceOp runtimeSeq,
                                      bool reuseOutputBuffer,
                                      int bufferSizeBytes, int traceBufferOffset,

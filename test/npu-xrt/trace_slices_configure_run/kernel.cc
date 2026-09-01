@@ -7,9 +7,8 @@
 
 #include <stdint.h>
 
-// The core trace unit drops events raised on consecutive cycles, and the trace
-// parser merges surviving neighbours into one interval. Idle between events so
-// each one reaches the trace buffer as its own record.
+// The trace parser merges events raised on consecutive cycles into one
+// interval. Idle between two events so that each one appears on its own.
 #define EVENT_GAP_CYCLES 16
 
 static inline void gap() {
