@@ -802,10 +802,10 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
       doUnified ? unifiedObjects : perCoreObjects;
 
   // This edge runs after `objects`, which holds the compiled core body that
-  // the measurement reads, and before `physicalWithElfs`, so a failure ends
-  // the run before any output artifact is written.
+  // the measurement reads, and before `physicalWithElfs`, so a stack size
+  // analysis failure ends the run before any output artifact is written.
   EdgeWithTypedOutput<ModRef> *physicalWithMeasuredStackSizes = nullptr;
-  if (!noMeasureStackSize.getValue())
+  if (!noMeasureStackSize.getValue()) {
     physicalWithMeasuredStackSizes =
         &bundle(objects.out, physical.out)
              .join<ModRef>(
@@ -830,6 +830,7 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                                              tile.getCol(), tile.getRow()));
                        });
                  });
+  }
   EdgeWithTypedOutput<ModRef> &physicalForElfs =
       physicalWithMeasuredStackSizes ? *physicalWithMeasuredStackSizes
                                      : physical;
