@@ -383,7 +383,6 @@ class CompilableDesign:
             lock_file_path = kernel_dir / ".lock"
             # has_dispatch + explicit_paths is rejected above.
             dispatch_so_path = None
-            secondary = inst_path
         else:
             cache_hash = self._compute_cache_hash()
             kernel_dir = NPU_CACHE_HOME / cache_hash
@@ -391,16 +390,18 @@ class CompilableDesign:
             xclbin_path = kernel_dir / "final.xclbin"
             inst_path = None if has_dispatch else kernel_dir / "insts.bin"
             dispatch_so_path = kernel_dir / "dispatch.so" if has_dispatch else None
-            # The xclbin's companion artifact. A dispatch design has no
-            # insts.bin at all -- every call synthesizes fresh instructions via
-            # dispatch.so, which carries its own ABI and so is the whole thing.
-            secondary = dispatch_so_path or inst_path
+
+        # The xclbin's companion artifact: insts.bin, or dispatch.so for a
+        # dispatch design, which has no insts.bin at all -- every call
+        # synthesizes fresh instructions instead. Exactly one is always set.
+        companion_path = dispatch_so_path or inst_path
+        assert companion_path is not None
 
         with file_lock(lock_file_path, timeout_seconds=_COMPILE_LOCK_TIMEOUT_SECONDS):
             os.makedirs(kernel_dir, exist_ok=True)
 
             xclbin_exists = xclbin_path.exists()
-            inst_exists = secondary is not None and secondary.exists()
+            inst_exists = companion_path.exists()
 
             if not explicit_paths and self.use_cache and xclbin_exists and inst_exists:
                 if not _manifest.is_valid(kernel_dir):

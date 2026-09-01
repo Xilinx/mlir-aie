@@ -5,27 +5,16 @@
 #
 """Compile the per-design "dispatch bridge" for ``DispatchTime[T]`` designs.
 
-A design with a ``DispatchTime[T]`` parameter used dynamically (an
-``aie.runtime_sequence`` argument driving a real ``scf.for``, not folded to a
-constant) cannot go through aiecc's static ``--get-npu-insts`` binary emitter
-at all -- ``AIETargetNPU.cpp`` requires every patched value to resolve to a
-compile-time constant. The dynamic path instead lowers the runtime sequence
-through a separate pipeline and translates it to a C++ function
-(``generate_txn_<device>_<sequence>``, via ``aie-translate --aie-npu-to-cpp``)
-that rebuilds the whole instruction stream from scratch given the runtime
-scalar value(s) -- proven end-to-end only by hand-written lit tests today
-(``test/npu-xrt/dynamic_pingpong_passthrough/``).
+A ``DispatchTime[T]`` parameter used dynamically (driving a real ``scf.for``,
+not folded to a constant) cannot go through aiecc's static ``--get-npu-insts``
+emitter, which requires every patched value to be a compile-time constant.
 
-This module is the Python entry point for that pipeline: given the
-``input_with_addresses.mlir`` aiecc already writes into every JIT kernel_dir,
-it lowers the runtime sequence and translates it to C++, then compiles the
-result with a HOST compiler (not Peano -- Peano only targets
-``aie2*-none-unknown-elf``) into ``kernel_dir/dispatch.so``, which
-``DispatchBridge`` (_dispatch_bridge.py) loads via ``ctypes`` at dispatch time.
-
-``ConvertAIEXToEmitC`` emits the ``extern "C"`` entry points from the
-``aie.runtime_sequence`` argument types, so the parameter types cross into
-Python through the built ``.so``'s own ``dispatch_abi()``.
+So instead: take the ``input_with_addresses.mlir`` aiecc already writes into
+every JIT kernel_dir, lower it, translate it to a C++ instruction-stream
+builder (``aie-translate --aie-npu-to-cpp``), and compile that to
+``kernel_dir/dispatch.so`` with a HOST compiler -- not Peano, which only
+targets ``aie2*-none-unknown-elf``. ``DispatchBridge`` loads the ``.so`` via
+``ctypes`` at dispatch time.
 """
 
 from __future__ import annotations
@@ -36,15 +25,14 @@ from pathlib import Path
 
 from aie.utils import config
 
-from ._dispatch_abi import (
+from ._dispatch_bridge import (
     C_TYPE_BY_NP_TYPE,
     EMIT_DISPATCH_SHIM_FLAG,
     read_dispatch_abi,
 )
 
-# The same pipeline aiecc runs in-process for the static path (its
-# getNpuDmaLoweringPipeline calls this exact builder), so a dynamic design
-# cannot lower differently. See lib/Dialect/AIEX/Transforms/AIEXNpuPipelines.cpp.
+# Resolves to the same builder aiecc calls in-process for the static path, so a
+# dynamic design cannot lower differently. See AIEXNpuPipelines.cpp.
 _DYNAMIC_LOWERING_PASSES = ["--aie-npu-dma-lowering"]
 
 
@@ -85,21 +73,13 @@ def _translate_to_cpp(
 ) -> Path:
     """Run aie-translate --aie-npu-to-cpp; return the generated .cpp path.
 
-    ``EMIT_DISPATCH_SHIM_FLAG`` makes the pass emit the ``extern "C"``
-    ``dispatch_generate`` / ``dispatch_abi`` entry points alongside the builder,
-    so this file is the whole translation unit and its parameter types are the
-    ones MLIR resolved.
+    ``EMIT_DISPATCH_SHIM_FLAG`` emits the ``extern "C"`` ``dispatch_generate``
+    / ``dispatch_abi`` entry points alongside the builder, making this file the
+    whole translation unit.
 
-    ``fold_ddr_addr_offset`` mirrors the static path's flag of the same name
-    (``compilabledesign.py``'s ``_resolve_fold_ddr_addr_offset()``): the
-    firmware auto-translates host buffer addresses for only the first 5
-    arguments, so a DDR address_patch for a later argument must fold the AIE
-    DDR aperture offset into ``arg_plus`` itself -- required for XRT/HSA
-    (which consume the folded firmware ABI), and must be off for HRX (which
-    translates every host buffer address itself; folding here too would
-    double-translate it). This is a compile-time choice baked into the
-    generated function, exactly like the static insts.bin is compiled once
-    per fold choice -- not a per-call runtime option.
+    ``fold_ddr_addr_offset`` is the active backend's DDR-patch ABI, resolved by
+    ``CompilableDesign._resolve_fold_ddr_addr_offset()`` and baked in here
+    exactly as the static insts.bin bakes it -- not a per-call option.
     """
     gen_cpp = kernel_dir / "dispatch_gen.cpp"
     fold_flag = (
@@ -145,15 +125,13 @@ def _check_built_abi(
 ) -> None:
     """Check the built ``.so``'s own ABI against what the design declares.
 
-    The generated parameter order is the ``Runtime(inputs=[...])`` order the
-    author wrote by hand; the declared order is the Python signature. Nothing
-    ties the two together, so a design that threads its scalars in a different
-    order than it declares them silently transposes values at every call.
-    Comparing the type sequences catches that whenever the types differ; two
-    same-typed parameters stay indistinguishable, as nothing distinguishes them.
-
-    A declared type absent from ``C_TYPE_BY_NP_TYPE`` is left unchecked rather
-    than guessed at, so a new scalar type cannot fail the build spuriously.
+    The generated parameter order is the hand-written ``Runtime(inputs=[...])``
+    order; the declared order is the Python signature. Nothing ties the two
+    together, so threading scalars in a different order than they are declared
+    silently transposes values at every call. Comparing type sequences catches
+    that whenever the types differ; two same-typed parameters stay
+    indistinguishable. A declared type absent from ``C_TYPE_BY_NP_TYPE`` is
+    left unchecked rather than guessed at.
     """
     try:
         c_types = read_dispatch_abi(ctypes.CDLL(str(so_path)), so_path)
@@ -188,18 +166,9 @@ def compile_dispatch_bridge(
 ) -> Path:
     """Build ``kernel_dir/dispatch.so`` for a design with DispatchTime[T] params.
 
-    Must be called after the xclbin build (which writes
-    ``input_with_addresses.mlir`` into ``kernel_dir`` as a side effect) and
-    only on a cache miss -- this function does no idempotency checking of its
-    own; the caller's cache-hit gate is the single source of truth for
-    whether recompilation is needed.
-
-    ``fold_ddr_addr_offset`` must match the value the caller resolved for the
-    active backend (``CompilableDesign._resolve_fold_ddr_addr_offset()``) --
-    see ``_translate_to_cpp``'s docstring. Already part of the on-disk cache
-    key via ``_hash.py``'s unconditional ``fold_ddr_addr_offset`` hash input,
-    so an XRT/HSA compile and an HRX compile of the same design never share a
-    cache entry (matching the static insts.bin path).
+    Must be called after the xclbin build, which writes
+    ``input_with_addresses.mlir`` into ``kernel_dir``, and only on a cache
+    miss: this does no idempotency checking of its own.
     """
     lowered_mlir = _lower_dynamic_runtime_sequence(kernel_dir)
     gen_cpp = _translate_to_cpp(lowered_mlir, kernel_dir, fold_ddr_addr_offset)

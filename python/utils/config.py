@@ -49,40 +49,11 @@ def root_path():
     return root_dir
 
 
-def aiecc_path():
-    """Return the aiecc executable used by JIT compilation.
-
-    Resolution order: the AIECC_PATH environment variable (for consumers,
-    e.g. IRON, that need to point at a specific aiecc without relying on
-    PATH search order), then the MLIR-AIE bin directory, then PATH.
-    """
-    env_aiecc = os.environ.get("AIECC_PATH")
-    if env_aiecc:
-        if not os.path.isfile(env_aiecc):
-            raise RuntimeError(
-                f"AIECC_PATH is set to {env_aiecc}, but no such file exists."
-            )
-        return env_aiecc
-
-    bundled_aiecc = os.path.join(root_path(), "bin", _executable_name("aiecc"))
-    if os.path.isfile(bundled_aiecc):
-        return bundled_aiecc
-
-    path_aiecc = shutil.which(_executable_name("aiecc"))
-    if path_aiecc:
-        return path_aiecc
-
-    raise RuntimeError(
-        "Could not find aiecc. Resolves in the order of the AIECC_PATH "
-        "environment variable, MLIR-AIE bin directory, then PATH."
-    )
-
-
 def _resolve_tool(tool: str, env_var: str) -> str:
     """Locate *tool*: ``$env_var``, then the MLIR-AIE bin directory, then PATH.
 
-    The same order ``aiecc_path()`` uses, so every tool the dispatch bridge
-    shells out to is found the same way aiecc itself is.
+    The env var comes first for consumers (e.g. IRON) that need to point at a
+    specific build without relying on PATH search order.
     """
     override = os.environ.get(env_var)
     if override:
@@ -104,6 +75,11 @@ def _resolve_tool(tool: str, env_var: str) -> str:
         f"Could not find {tool}. Resolves in the order of the {env_var} "
         f"environment variable, MLIR-AIE bin directory, then PATH."
     )
+
+
+def aiecc_path():
+    """Return the aiecc executable used by JIT compilation."""
+    return _resolve_tool("aiecc", "AIECC_PATH")
 
 
 def aie_opt_path():

@@ -5,6 +5,8 @@
 #
 from pathlib import Path
 
+from .compile.jit._dispatch_bridge import DispatchBridge
+from .hostruntime.hostruntime import HostRuntimeError
 from .trace import TraceConfig
 
 
@@ -151,17 +153,8 @@ class NPUKernel:
 
         The call ABI comes from the ``.so``'s own ``dispatch_abi()`` export, so
         nothing here parses generated C++ or a file beside it.
-
-        Deferred (function-local) imports: ``compile.jit`` is not imported at
-        ``aie.utils`` load time, and ``_dispatch_bridge`` itself imports back
-        into ``aie.utils.hostruntime`` (for ``HostRuntimeError``), which
-        imports ``NPUKernel`` from this module -- a module-level import here
-        would be circular.
         """
         if self._dispatch_bridge is None:
-            from .compile.jit._dispatch_bridge import DispatchBridge
-            from .hostruntime.hostruntime import HostRuntimeError
-
             if self._dispatch_lib_path is None:
                 raise HostRuntimeError(
                     f"design declares DispatchTime[T] parameter(s) "

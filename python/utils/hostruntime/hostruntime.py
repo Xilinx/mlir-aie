@@ -1,6 +1,8 @@
 # Copyright (C) 2025-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
+from __future__ import annotations
+
 import logging
 import sys
 from abc import ABC, abstractmethod
@@ -13,7 +15,11 @@ from ..tensor_factory import tensor
 
 if TYPE_CHECKING:
     from aie.iron.device import Device
-from ..npukernel import NPUKernel
+
+    # Annotation-only: NPUKernel imports the dispatch bridge, which needs
+    # HostRuntimeError from this module. Importing it for real would close
+    # that loop.
+    from ..npukernel import NPUKernel
 from ..trace import TraceConfig
 from ..trace.utils import create_ctrl_pkt, extract_tile
 from . import bfloat16_safe_allclose
