@@ -136,6 +136,16 @@ class NPUKernel:
         """
         return self._dispatch_params
 
+    @property
+    def dispatch_lib_path(self):
+        """Get the path to the compiled dispatch bridge (``dispatch.so``).
+
+        Returns:
+            str | Path | None: ``None`` for a design with no DispatchTime[T]
+            parameters, which dispatches a static ``insts.bin`` instead.
+        """
+        return self._dispatch_lib_path
+
     def _get_dispatch_bridge(self):
         """Return this kernel's ``DispatchBridge``, constructing it once.
 
@@ -148,11 +158,22 @@ class NPUKernel:
         if self._dispatch_bridge is None:
             from .compile.jit._dispatch_bridge import DispatchBridge
             from .compile.jit._dispatch_compile import _parse_signature
+            from .hostruntime.hostruntime import HostRuntimeError
 
-            # Non-None whenever dispatch_params is non-empty (see __init__).
-            assert self._dispatch_lib_path is not None
+            if self._dispatch_lib_path is None:
+                raise HostRuntimeError(
+                    f"design declares DispatchTime[T] parameter(s) "
+                    f"{self._dispatch_params!r} but was constructed without a "
+                    "dispatch_lib_path; it cannot build a per-call instruction "
+                    "stream."
+                )
             lib_path = Path(self._dispatch_lib_path)
             header_path = lib_path.parent / "dispatch_gen.h"
+            if not header_path.is_file():
+                raise HostRuntimeError(
+                    f"dispatch bridge header {header_path} is missing; the "
+                    "compiled kernel directory is incomplete."
+                )
             header_text = header_path.read_text()
             _func_name, params = _parse_signature(header_text, self._dispatch_params)
             param_ctypes = [ctype for ctype, _name in params]

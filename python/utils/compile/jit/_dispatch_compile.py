@@ -222,7 +222,9 @@ def _compile_wrapper(wrapper_cpp: Path, kernel_dir: Path) -> Path:
         "-shared",
         "-fPIC",
         "-O2",
-        "-std=c++20",
+        # Matches the project-wide CMAKE_CXX_STANDARD; the generated builder
+        # needs nothing newer than std::optional/std::vector.
+        "-std=c++17",
         f"-I{config.runtime_header_path()}",
         f"-I{kernel_dir}",
         str(wrapper_cpp),

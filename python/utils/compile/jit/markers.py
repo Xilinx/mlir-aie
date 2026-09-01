@@ -35,19 +35,20 @@ Five annotation categories are defined here (all exported from ``aie.iron``):
     wrapped type ``T`` itself (e.g. ``np.int32``), not a concrete value, so it
     can forward it into ``Runtime(..., inputs=[...])`` and get back a runtime
     SSA block arg (the same scalar-type-in-``inputs`` duality ``Runtime``
-    already implements).  **The host-side bridge that delivers a per-call
-    value to that SSA arg is not wired up yet** (tracked as
-    ROADMAP_iron_runtime_binding_time.md Phase 2.2/2.3) — today a
-    ``DispatchTime[T]`` parameter classifies and generates correctly, but a
-    per-call override does not yet reach the NPU dispatch.
+    already implements).  Each call rebuilds the instruction stream for the
+    given value through the host dispatch bridge (a ``dispatch.so`` compiled
+    alongside the xclbin and called via ``ctypes``), so the per-call value
+    reaches the NPU without recompiling the design.  Not supported together
+    with ``full_elf=True``, which bakes one static instruction stream into the
+    ELF.
 
-Any parameter without one of these annotations is currently rejected at
-``@iron.jit`` decoration time when the parameter has a default value — there
-is no runtime-scalar host-bridge plumbing yet (tracked separately as future
-work), so the default would be baked into the compiled kernel and per-call
-overrides silently ignored.  Annotate as ``CompileTime[T]`` (recompiles on
-change), ``DispatchTime[T]`` (runtime scalar, once the host bridge lands), or
-``In``/``Out``/``InOut`` (DMA tensor) instead.
+Any parameter without one of these annotations is rejected at ``@iron.jit``
+decoration time when the parameter has a default value: an unannotated scalar
+is bound at generation time, so the default would be baked into the compiled
+kernel and per-call overrides silently ignored.  Annotate as
+``CompileTime[T]`` (recompiles on change), ``DispatchTime[T]`` (runtime
+scalar, one compile many values), or ``In``/``Out``/``InOut`` (DMA tensor)
+instead.
 """
 
 from __future__ import annotations

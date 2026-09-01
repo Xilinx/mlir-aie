@@ -103,6 +103,20 @@ class DispatchBridge:
                 "smaller value, or a design compiled with a larger "
                 "CompileTime[T] bound."
             )
+        # Past this point n indexes raw memory, so anything the contract does
+        # not allow has to become an exception rather than a bad read.
+        if n < 0:
+            raise HostRuntimeError(
+                f"dispatch bridge returned unexpected status {n} for {values!r}; "
+                "the compiled dispatch.so does not match this design."
+            )
+        if n == 0:
+            return np.empty(0, dtype=np.uint32)
+        if not out_ptr:
+            raise HostRuntimeError(
+                f"dispatch bridge reported {n} instruction word(s) for {values!r} "
+                "but returned a null pointer."
+            )
         # out_ptr points into the wrapper's thread-local storage, valid only
         # until the next call on this thread -- copy out immediately.
         return np.ctypeslib.as_array(out_ptr, shape=(n,)).copy()

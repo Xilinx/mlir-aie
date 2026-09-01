@@ -137,6 +137,24 @@ def test_dispatch_time_scalar_varies_without_recompile():
     assert dyn_copy.compilable._kernel_dir == kernel_dir_after_first_call
 
 
+def test_dispatch_time_scalar_repeated_same_value():
+    """Repeat calls with the *same* n_tiles must keep working.
+
+    The call above varies n_tiles, which changes the kernel cache key and so
+    never exercises the in-memory kernel-cache hit. That path used to validate
+    a cached kernel via ``Path(kernel.insts_path)``, which a dispatch design
+    leaves as ``None`` -- so the second identical call raised TypeError.
+    """
+    a = iron.tensor(_random_tiles(seed=4), dtype=np.int32, device="npu")
+    for _ in range(3):
+        b = iron.zeros((MAX_TILES * TILE_SIZE,), dtype=np.int32, device="npu")
+        dyn_copy(a, b, 3)
+        assert np.array_equal(b.numpy()[: 3 * TILE_SIZE], a.numpy()[: 3 * TILE_SIZE])
+        # Beyond n_tiles the buffer must be untouched -- proves the runtime
+        # scalar, not a fixed compiled-in bound, sized the transfer.
+        assert np.all(b.numpy()[3 * TILE_SIZE :] == 0)
+
+
 def test_dispatch_time_scalar_rejects_missing_value():
     from aie.utils.hostruntime.hostruntime import HostRuntimeError
 
