@@ -300,9 +300,33 @@ copyReferencedSSAValues(PatternRewriter &rewriter,
           });
 
     } else if (auto lockOp = llvm::dyn_cast<AIE::LockOp>(definingOp)) {
-      rewriter.restoreInsertionPoint(clonedSSAInsertPoint);
-      Operation *clonedLock = rewriter.clone(*lockOp, argMap);
-      clonedSSAInsertPoint = rewriter.saveInsertionPoint();
+      // Several aiex.run calls may name one lock. Cloning it once per call
+      // would define its symbol more than once in the caller device.
+      AIE::LockOp existingLock = nullptr;
+      if (Value callerTile = argMap.lookupOrNull(lockOp.getTile())) {
+        for (AIE::LockOp lock : callerDevice.getOps<AIE::LockOp>()) {
+          if (lock.getTile() != callerTile)
+            continue;
+          if (lock.getLockID() != lockOp.getLockID() ||
+              lock.getSymName() != lockOp.getSymName())
+            continue;
+          // Two locks with neither an id nor a name are distinct locks that
+          // happen to share a tile.
+          if (!lock.getLockID().has_value() && !lock.getSymName().has_value())
+            continue;
+          existingLock = lock;
+          break;
+        }
+      }
+
+      Operation *clonedLock = existingLock.getOperation();
+      if (!existingLock) {
+        rewriter.restoreInsertionPoint(clonedSSAInsertPoint);
+        clonedLock = rewriter.clone(*lockOp, argMap);
+        clonedSSAInsertPoint = rewriter.saveInsertionPoint();
+      } else {
+        argMap.map(definingOp->getResult(0), clonedLock->getResult(0));
+      }
       rewriter.replaceOpUsesWithIf(
           definingOp, clonedLock->getResult(0), [&](OpOperand &operand) {
             return operand.getOwner()->getParentOfType<AIE::DeviceOp>() ==
