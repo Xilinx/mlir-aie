@@ -97,41 +97,59 @@ struct AIEInsertTraceFlowsPass
     if (traces.empty())
       return;
 
-    // Phase 1b: Find runtime_sequence and trace.host_config within it
-    RuntimeSequenceOp runtimeSeq = nullptr;
-    TraceHostConfigOp hostConfig = nullptr;
-    for (auto &op : device.getBody()->getOperations()) {
-      if (auto seq = dyn_cast<RuntimeSequenceOp>(&op)) {
-        runtimeSeq = seq;
-        for (auto &subOp : seq.getBody().front().getOperations()) {
-          if (auto hc = dyn_cast<TraceHostConfigOp>(&subOp)) {
-            hostConfig = hc;
-            break;
-          }
-        }
+    // Phase 1b: Collect every runtime_sequence that asks for a trace buffer.
+    // A device may declare several, and each one drives the trace units on its
+    // own dispatch, so each one needs a trace buffer and a shim DMA program.
+    SmallVector<RuntimeSequenceOp> runtimeSeqs;
+    SmallVector<TraceHostConfigOp> hostConfigs;
+    RuntimeSequenceOp firstSeq = nullptr;
+    for (auto seq : device.getBody()->getOps<RuntimeSequenceOp>()) {
+      if (!firstSeq)
+        firstSeq = seq;
+      for (auto hc : seq.getBody().front().getOps<TraceHostConfigOp>()) {
+        runtimeSeqs.push_back(seq);
+        hostConfigs.push_back(hc);
         break;
       }
     }
 
     // Require runtime_sequence when trace ops are present
-    if (!runtimeSeq) {
+    if (!firstSeq) {
       device.emitError()
           << "aie.trace ops found but no runtime_sequence defined";
       return signalPassFailure();
     }
 
     // Require trace.host_config in runtime_sequence
-    if (!hostConfig) {
-      runtimeSeq.emitError()
+    if (runtimeSeqs.empty()) {
+      firstSeq.emitError()
           << "runtime_sequence with traces requires aie.trace.host_config";
       return signalPassFailure();
     }
 
-    // Get configuration from host_config
+    // Get configuration from host_config. The trace overlay occupies the
+    // device's stream switches and shim DMA channels, which the sequences
+    // share, so they must agree on it.
+    TraceHostConfigOp hostConfig = hostConfigs.front();
     int bufferSizeBytes = hostConfig.getBufferSize();
     bool reuseOutputBuffer = hostConfig.getReuseOutputBuffer();
     auto routing = hostConfig.getRouting();
     int egressShimColFromIR = hostConfig.getEgressShimCol();
+    for (auto other : ArrayRef(hostConfigs).drop_front()) {
+      if (other.getBufferSize() == bufferSizeBytes &&
+          other.getReuseOutputBuffer() == reuseOutputBuffer &&
+          other.getRouting() == routing &&
+          other.getEgressShimCol() == egressShimColFromIR)
+        continue;
+      InFlightDiagnostic err =
+          other.emitError()
+          << "aie.trace.host_config disagrees with another runtime_sequence in "
+             "this device; sequences of one device share a trace overlay and "
+             "must request the same buffer size, routing, egress column and "
+             "reuse mode";
+      err.attachNote(hostConfig.getLoc()) << "first aie.trace.host_config here";
+      return signalPassFailure();
+    }
 
     // The trace buffer is a host buffer, i.e. an argument of the runtime
     // sequence.
@@ -143,46 +161,46 @@ struct AIEInsertTraceFlowsPass
     //     existing argument (an output buffer), saving a host buffer. No new
     //     argument is added; the offset skips past the output data.
     //
-    // `aiex.npu.address_patch` names the buffer by SSA value. `aiex.run` may
-    // inline this sequence into a caller with a different argument list.
-    Value traceBuffer;
-    BlockArgument appendedTraceArg; // null when reusing the output buffer
-    int traceBufferOffset = 0;      // in bytes
+    // The offset reaches the hardware through the shared shim BD programs, so
+    // every sequence must place its trace data at the same offset.
+    int traceBufferOffset = 0; // in bytes
     if (reuseOutputBuffer) {
-      auto args = runtimeSeq.getBody().getArguments();
-      if (args.empty()) {
-        runtimeSeq.emitError() << "trace.host_config reuse_output_buffer "
-                                  "requires the runtime_sequence to have at "
-                                  "least one argument to reuse";
-        return signalPassFailure();
+      for (auto seq : runtimeSeqs) {
+        auto args = seq.getBody().getArguments();
+        if (args.empty()) {
+          seq.emitError() << "trace.host_config reuse_output_buffer "
+                             "requires the runtime_sequence to have at "
+                             "least one argument to reuse";
+          return signalPassFailure();
+        }
+        if (isDynamicRuntimeSequence(seq)) {
+          seq.emitError()
+              << "trace.host_config reuse_output_buffer=true cannot be used "
+                 "with a dynamic (runtime-sized) runtime_sequence: the trace "
+                 "offset would be computed from the last tensor's maximum "
+                 "static size, not its runtime transfer size, so trace data "
+                 "would be written past the output buffer. Use a separate "
+                 "trace buffer instead (reuse_output_buffer=false)";
+          return signalPassFailure();
+        }
+        auto memrefType = cast<MemRefType>(args.back().getType());
+        int offset = memrefType.getNumElements() *
+                     (memrefType.getElementTypeBitWidth() / 8);
+        if (seq == runtimeSeqs.front()) {
+          traceBufferOffset = offset;
+        } else if (offset != traceBufferOffset) {
+          seq.emitError()
+              << "trace.host_config reuse_output_buffer=true requires every "
+                 "runtime_sequence in this device to end in an output buffer "
+                 "of the same size, because they share one shim DMA program";
+          return signalPassFailure();
+        }
       }
-      if (isDynamicRuntimeSequence(runtimeSeq)) {
-        runtimeSeq.emitError()
-            << "trace.host_config reuse_output_buffer=true cannot be used with "
-               "a dynamic (runtime-sized) runtime_sequence: the trace offset "
-               "would be computed from the last tensor's maximum static size, "
-               "not its runtime transfer size, so trace data would be written "
-               "past the output buffer. Use a separate trace buffer instead "
-               "(reuse_output_buffer=false)";
-        return signalPassFailure();
-      }
-      Value lastArg = args.back();
-      traceBuffer = lastArg;
-      auto memrefType = cast<MemRefType>(lastArg.getType());
-      traceBufferOffset = memrefType.getNumElements() *
-                          (memrefType.getElementTypeBitWidth() / 8);
-    } else {
-      // An i8 memref makes the type state the buffer's byte size, which both
-      // the host and -aie-fuse-trace-buffers read.
-      auto traceBufType = MemRefType::get(
-          {bufferSizeBytes}, IntegerType::get(device.getContext(), 8));
-      Block &entryBB = runtimeSeq.getBody().front();
-      appendedTraceArg = entryBB.addArgument(traceBufType, runtimeSeq.getLoc());
-      traceBuffer = appendedTraceArg;
     }
 
-    // Remove host_config op
-    hostConfig.erase();
+    // Remove host_config ops
+    for (auto hc : hostConfigs)
+      hc.erase();
 
     // Phase 2: Analyze traces and allocate resources
     std::vector<TraceInfo> traceInfos;
@@ -576,17 +594,6 @@ struct AIEInsertTraceFlowsPass
                                                             bufferSizeBytes);
       }
     }
-    if (appendedTraceArg) {
-      appendedTraceArg.setType(MemRefType::get(
-          {traceBytesClaimed}, IntegerType::get(device.getContext(), 8)));
-    }
-
-    runtimeSeq.setTraceBufferAttr(TraceBufferAttr::get(
-        device.getContext(),
-        appendedTraceArg ? appendedTraceArg.getArgNumber()
-                         : runtimeSeq.getBody().getNumArguments() - 1,
-        traceBufferOffset, traceBytesClaimed, bool(appendedTraceArg)));
-
     // Phase 2c: Rewrite broadcast to USER_EVENT for destination shim tiles
     // (shim can't listen for its own broadcast)
     for (auto &info : traceInfos) {
@@ -671,7 +678,51 @@ struct AIEInsertTraceFlowsPass
       packetFlowOp->setAttr("keep_pkt_header", builder.getBoolAttr(true));
     }
 
-    // Phase 4: Insert runtime sequence operations
+    // Phase 4: Program each runtime sequence to drain its own trace buffer.
+    for (RuntimeSequenceOp runtimeSeq : runtimeSeqs) {
+      if (failed(emitSequenceTraceOps(
+              runtimeSeq, reuseOutputBuffer, bufferSizeBytes, traceBufferOffset,
+              traceBytesClaimed, traceInfos, shimInfos)))
+        return signalPassFailure();
+    }
+  }
+
+  /// Give `runtimeSeq` a trace buffer, then emit the timer sync, the shim DMA
+  /// program that drains the trace stream into that buffer, and the trace stop.
+  /// `traceInfos` and `shimInfos` describe the device-wide overlay, which every
+  /// sequence of the device drives.
+  LogicalResult emitSequenceTraceOps(RuntimeSequenceOp runtimeSeq,
+                                     bool reuseOutputBuffer,
+                                     int bufferSizeBytes, int traceBufferOffset,
+                                     int traceBytesClaimed,
+                                     std::vector<TraceInfo> &traceInfos,
+                                     std::map<int, ShimInfo> &shimInfos) {
+    DeviceOp device = getOperation();
+    OpBuilder builder(device);
+    const auto &targetModel = device.getTargetModel();
+
+    // `aiex.npu.address_patch` names the buffer by SSA value. `aiex.run` may
+    // inline this sequence into a caller with a different argument list.
+    Value traceBuffer;
+    BlockArgument appendedTraceArg; // null when reusing the output buffer
+    if (reuseOutputBuffer) {
+      traceBuffer = runtimeSeq.getBody().getArguments().back();
+    } else {
+      // An i8 memref makes the type state the buffer's byte size, which both
+      // the host and -aie-fuse-trace-buffers read.
+      appendedTraceArg = runtimeSeq.getBody().front().addArgument(
+          MemRefType::get({traceBytesClaimed},
+                          IntegerType::get(device.getContext(), 8)),
+          runtimeSeq.getLoc());
+      traceBuffer = appendedTraceArg;
+    }
+
+    runtimeSeq.setTraceBufferAttr(TraceBufferAttr::get(
+        device.getContext(),
+        appendedTraceArg ? appendedTraceArg.getArgNumber()
+                         : runtimeSeq.getBody().getNumArguments() - 1,
+        traceBufferOffset, traceBytesClaimed, bool(appendedTraceArg)));
+
     Block &seqBlock = runtimeSeq.getBody().front();
 
     // Find the last TraceStartConfigOp in the runtime sequence
@@ -730,7 +781,7 @@ struct AIEInsertTraceFlowsPass
       if (!broadcastEvent) {
         info.traceOp.emitError() << "Failed to lookup broadcast event '"
                                  << broadcastEventName << "'";
-        return signalPassFailure();
+        return failure();
       }
       const RegisterInfo *timerReg = targetModel.lookupRegister(
           "Timer_Control", info.tile.getTileID(), isMemTrace);
@@ -964,6 +1015,8 @@ struct AIEInsertTraceFlowsPass
           nullptr, builder.getI32IntegerAttr(shimCol),
           builder.getI32IntegerAttr(0));
     }
+
+    return success();
   }
 
 private:

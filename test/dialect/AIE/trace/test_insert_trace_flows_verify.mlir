@@ -194,3 +194,30 @@ module @reuse_output_buffer_dynamic {
     }
   }
 }
+
+// -----
+
+// Test: sequences of one device share a trace overlay -- one set of stream
+// switch routes and one shim DMA channel -- so they must agree on the buffer
+// size, routing, egress column and reuse mode.
+module @disagreeing_host_configs {
+  aie.device(npu2_1col) {
+    %tile02 = aie.tile(0, 2)
+    aie.trace @core_trace(%tile02) {
+      aie.trace.packet id=1 type=core
+      aie.trace.event<"INSTR_EVENT_0">
+      aie.trace.start broadcast=15
+      aie.trace.stop broadcast=14
+    }
+    aie.runtime_sequence @first(%arg0: memref<64xi32>) {
+      // expected-note@+1 {{first aie.trace.host_config here}}
+      aie.trace.host_config {buffer_size = 4096 : i32}
+      aie.trace.start_config @core_trace
+    }
+    aie.runtime_sequence @second(%arg0: memref<64xi32>) {
+      // expected-error@+1 {{disagrees with another runtime_sequence}}
+      aie.trace.host_config {buffer_size = 8192 : i32}
+      aie.trace.start_config @core_trace
+    }
+  }
+}
