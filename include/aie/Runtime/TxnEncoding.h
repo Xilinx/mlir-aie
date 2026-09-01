@@ -136,9 +136,9 @@ struct TxnDeviceInfo {
   uint8_t numMemTileRows = 1;
 };
 
-// Build a TxnDeviceInfo from target-model values. Assigns by field name, so
-// callers that can only emit an expression (the generated C++ builder) do not
-// have to restate the field order as a positional initializer.
+// Build a TxnDeviceInfo from target-model values. Assigns by field name, so a
+// caller that can only emit an expression (the generated C++ builder) states
+// the field order in exactly one place: here.
 inline TxnDeviceInfo txn_device_info(uint8_t dev_gen, uint8_t num_rows,
                                      uint8_t num_cols,
                                      uint8_t num_memtile_rows) {

@@ -23,10 +23,9 @@ result with a HOST compiler (not Peano -- Peano only targets
 ``aie2*-none-unknown-elf``) into ``kernel_dir/dispatch.so``, which
 ``DispatchBridge`` (_dispatch_bridge.py) loads via ``ctypes`` at dispatch time.
 
-The ``extern "C"`` entry points are emitted by ``ConvertAIEXToEmitC`` itself,
-from the ``aie.runtime_sequence`` argument types, so nothing here writes or
-parses C++ -- the parameter types cross into Python only through the built
-``.so``'s own ``dispatch_abi()``.
+``ConvertAIEXToEmitC`` emits the ``extern "C"`` entry points from the
+``aie.runtime_sequence`` argument types, so the parameter types cross into
+Python through the built ``.so``'s own ``dispatch_abi()``.
 """
 
 from __future__ import annotations
@@ -88,8 +87,8 @@ def _translate_to_cpp(
 
     ``EMIT_DISPATCH_SHIM_FLAG`` makes the pass emit the ``extern "C"``
     ``dispatch_generate`` / ``dispatch_abi`` entry points alongside the builder,
-    so this file is the whole translation unit -- there is no hand-written
-    wrapper, and the parameter types are the ones MLIR resolved.
+    so this file is the whole translation unit and its parameter types are the
+    ones MLIR resolved.
 
     ``fold_ddr_addr_offset`` mirrors the static path's flag of the same name
     (``compilabledesign.py``'s ``_resolve_fold_ddr_addr_offset()``): the

@@ -6,16 +6,15 @@
 """The call ABI of a compiled dispatch bridge.
 
 ``ConvertAIEXToEmitC`` emits both the ``dispatch_generate`` entry point and a
-``dispatch_abi()`` naming the C type of each of its scalar parameters -- it
-builds them from the ``aie.runtime_sequence`` argument types, so MLIR is the
-one authority on what the compiled ``.so`` expects and nothing on this side
-parses generated C++.
+``dispatch_abi()`` naming the C type of each of its scalar parameters, built
+from the ``aie.runtime_sequence`` argument types. MLIR is therefore the one
+authority on what the compiled ``.so`` expects.
 
 This module reads that string back. ``compile_dispatch_bridge()``
 (_dispatch_compile.py) uses it to check the declared ``DispatchTime[T]`` types
-against what was actually built; ``DispatchBridge`` (_dispatch_bridge.py) uses
-it to build the ``ctypes`` call signature. Those need one shared C-type table,
-so it lives here.
+against what was built; ``DispatchBridge`` (_dispatch_bridge.py) uses it to
+build the ``ctypes`` call signature. Both need the same C-type table, so it
+lives here.
 
 Deliberately imports nothing from ``aie.utils.hostruntime`` or
 ``aie.utils.npukernel``: _dispatch_bridge reaches into hostruntime for

@@ -126,9 +126,9 @@ def test_dispatch_time_scalar_repeated_same_value():
     """Repeat calls with the *same* n_tiles must keep working.
 
     The call above varies n_tiles, which changes the kernel cache key and so
-    never exercises the in-memory kernel-cache hit. That path used to validate
-    a cached kernel via ``Path(kernel.insts_path)``, which a dispatch design
-    leaves as ``None`` -- so the second identical call raised TypeError.
+    never exercises the in-memory kernel-cache hit. That hit revalidates the
+    cached kernel's artifacts, and a dispatch design has no ``insts_path`` to
+    revalidate, so this is the only coverage of that branch.
     """
     a = iron.tensor(_random_tiles(seed=4), dtype=np.int32, device="npu")
     for _ in range(3):

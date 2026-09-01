@@ -29,9 +29,8 @@ from aie.utils.hostruntime.hostruntime import HostRuntimeError
 # One fixture .cpp exercising every path DispatchBridge needs to handle:
 #   normal value       -> exact-size result via the thread-local buffer
 #   value == 0          -> "guard failed" (std::nullopt-equivalent), returns -2
-# Written by hand rather than generated, so the shape ConvertAIEXToEmitC emits
-# is pinned from this side too (test/Conversion/AIEXToEmitC/dispatch_shim.mlir
-# pins the other side).
+# Hand-written, so it pins the shape ConvertAIEXToEmitC must emit from this
+# side; test/Conversion/AIEXToEmitC/dispatch_shim.mlir pins the other side.
 _FIXTURE_BODY = r"""
 #include <cstddef>
 #include <cstdint>
@@ -91,7 +90,7 @@ def fixture_so(tmp_path_factory):
 
 @pytest.fixture(scope="module")
 def fixture_so_no_abi(tmp_path_factory):
-    """Build the same .so without dispatch_abi() -- i.e. a stale cache entry."""
+    """Build a .so with no dispatch_abi(), as an unusable cache entry has."""
     tmp_dir = tmp_path_factory.mktemp("dispatch_bridge_fixture_no_abi")
     return _compile_fixture(tmp_dir, _FIXTURE_BODY, "fixture_no_abi")
 
@@ -145,13 +144,13 @@ def test_param_ctypes_read_from_the_so(fixture_so):
 
 
 def test_so_without_abi_rejected(fixture_so_no_abi):
-    """A .so built before the shim existed must be rebuilt, not guessed at."""
+    """A .so with no ABI to report is unusable and must be rebuilt."""
     with pytest.raises(HostRuntimeError, match="exports no dispatch_abi"):
         DispatchBridge(fixture_so_no_abi, dispatch_params=["scale", "n_tiles"])
 
 
 def test_param_count_mismatch_with_so_rejected(fixture_so):
-    """The .so takes two scalars; a design declaring one is a stale artifact."""
+    """The .so takes two scalars, so a design declaring one does not match it."""
     with pytest.raises(HostRuntimeError, match="cached artifact is stale"):
         DispatchBridge(fixture_so, dispatch_params=["scale"])
 
@@ -170,9 +169,9 @@ def test_dynamic_lowering_invokes_the_shared_pipeline():
 
     aiecc's getNpuDmaLoweringPipeline and this flag both resolve to
     buildNpuDmaLoweringPipeline (lib/Dialect/AIEX/Transforms/AIEXNpuPipelines.cpp),
-    so there is nothing left to drift. Spelling out individual passes here
-    would reintroduce that drift -- aie-opt accepts a short list happily, and a
-    skipped pass is wrong hardware behavior rather than a compile error.
+    which is what keeps the two paths lowering identically. Spelling out
+    individual passes here would break that: aie-opt accepts a short list
+    happily, so a skipped pass is wrong hardware behavior, not a compile error.
     """
     assert _DYNAMIC_LOWERING_PASSES == ["--aie-npu-dma-lowering"]
 

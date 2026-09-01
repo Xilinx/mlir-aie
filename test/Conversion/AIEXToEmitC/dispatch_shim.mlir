@@ -10,8 +10,8 @@
 
 // The JIT dispatch bridge loads these two symbols with ctypes. dispatch_abi()
 // and dispatch_generate() are built from the same aie.runtime_sequence argument
-// types, so the reported names must match the emitted signature exactly -- that
-// pairing is what lets Python build its call signature without parsing C++.
+// types, so the reported names must match the emitted signature exactly; that
+// pairing is what Python builds its call signature from.
 
 // CHECK: inline std::optional<std::vector<uint32_t>> generate_txn_main_seq(int32_t {{v[0-9]+}}, size_t {{v[0-9]+}})
 
