@@ -3333,6 +3333,15 @@ LogicalResult DMABDOp::verify() {
   return success();
 }
 
+LogicalResult DMABDPACKETOp::verify() {
+  if (getPacketType() > 7)
+    return emitOpError("Packet type field can only hold 3 bits.");
+  if (getPacketID() >
+      static_cast<int32_t>(getTargetModel(getOperation()).getMaxPacketId()))
+    return emitOpError("Packet ID field can only hold 5 bits.");
+  return success();
+}
+
 uint32_t DMABDOp::getAxcacheOrDefault() {
   return getAxcache().value_or(
       getTargetModel(getOperation()).getDefaultAxCache());
