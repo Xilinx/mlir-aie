@@ -42,20 +42,12 @@ def check_env(build, default=0):
 
 
 def real_compiler_path(name):
-    """Resolve `name` to an absolute path, skipping ccache's masquerade dirs.
+    """Resolve `name` to an absolute path outside ccache's masquerade dirs.
 
-    setup_ccache (.github/actions/setup_ccache/action.yml) prepends
-    /usr/lib/ccache et al. to PATH so bare names like "gcc" transparently
-    resolve to ccache. That's fine for the native x86_64 build, but for the
-    aarch64 cross build, CMake's own compiler-detection/ABI-check runs the
-    resolved compiler directly (no CMAKE_<LANG>_COMPILER_LAUNCHER involved
-    yet), and ccache's masquerade re-invoking the real compiler for the link
-    step drops -fuse-ld=lld, which this cross build requires (see the
-    CMAKE_EXE_LINKER_FLAGS_INIT comment below) and fails with a misleading
-    "collect2: fatal error: cannot find 'ld'". Resolving to the real,
-    absolute path up front avoids the masquerade for this step entirely;
-    LLVM_CCACHE_BUILD's RULE_LAUNCH_COMPILE still wraps ccache around it
-    correctly for the actual compile rules.
+    setup_ccache puts /usr/lib/ccache on PATH, where each compiler name is a
+    symlink to ccache. LLVM_CCACHE_BUILD sets a ccache compiler launcher on
+    top of CMAKE_<LANG>_COMPILER, so a masqueraded path makes ccache invoke
+    ccache.
     """
     real_dirs = [
         d for d in os.environ.get("PATH", "").split(os.pathsep) if "ccache" not in d
@@ -108,20 +100,16 @@ def get_cross_cmake_args():
             # truncated to fit: R_AARCH64_CALL26" inside libstdc++.a itself.
             # lld handles arbitrarily large binaries correctly.
             #
-            # -B/usr/bin is required alongside -fuse-ld=lld: for a *cross*
-            # gcc, collect2's search for ld.lld doesn't include /usr/bin (the
-            # directory apt actually installs it into) the way it would for a
-            # native compiler, and fails with a misleading "collect2: fatal
-            # error: cannot find 'ld'" even though ld.lld is right there.
-            # -B explicitly adds it to collect2's subprogram search path.
+            # collect2 searches PATH for aarch64-linux-gnu-ld.lld and the -B
+            # directories for ld.lld. The lld package installs
+            # /usr/bin/ld.lld, so -B/usr/bin resolves -fuse-ld=lld.
             _LLD_LINKER_FLAGS = "-fuse-ld=lld -B/usr/bin"
             cmake_args["CMAKE_EXE_LINKER_FLAGS_INIT"] = _LLD_LINKER_FLAGS
             cmake_args["CMAKE_MODULE_LINKER_FLAGS_INIT"] = _LLD_LINKER_FLAGS
             cmake_args["CMAKE_SHARED_LINKER_FLAGS_INIT"] = _LLD_LINKER_FLAGS
-            # TableGen runs on the host and bakes in a TargetOpcode enum, so
-            # it must come from the same commit as the .td sources it parses.
-            # Without LLVM_NATIVE_TOOL_DIR, LLVM builds it in a NATIVE
-            # subdirectory of this same tree.
+            # tblgen runs on the host and embeds a TargetOpcode enum, so it
+            # must come from the same commit as the .td sources it parses.
+            # LLVM builds it in a NATIVE subdirectory of this tree.
             cmake_args["LLVM_USE_HOST_TOOLS"] = "ON"
         elif ARCH == "X86":
             cmake_args["LLVM_DEFAULT_TARGET_TRIPLE"] = "x86_64-unknown-linux-gnu"

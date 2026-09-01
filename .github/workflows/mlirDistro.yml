@@ -83,8 +83,6 @@ jobs:
       DATETIME: ${{ steps.get_llvm_project_commit.outputs.DATETIME }}
 
     steps:
-      # Only needed to read utils/clone-llvm.sh's pin below; the live-HEAD
-      # (schedule) and explicit-input branches don't touch the checkout.
       - name: Checkout clone-llvm.sh
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
         with:
@@ -100,8 +98,8 @@ jobs:
         run: |
 
           if [ x"${{ inputs.LLVM_COMMIT }}" != x"" ]; then
-            # Explicit hash (update-llvm.yml validating a bump candidate
-            # before adopting it as the new pin).
+            # update-llvm.yml passes a candidate commit. It records that
+            # commit as the pin after this build succeeds.
             LLVM_PROJECT_COMMIT="${{ inputs.LLVM_COMMIT }}"
           elif [ x"${{ github.event_name }}" == x"schedule" ]; then
             sudo apt install jq
@@ -111,9 +109,9 @@ jobs:
             # on HTTP error so future failures surface the actual cause in
             # the CI log instead of hiding behind a silent curl.
             #
-            # The schedule trigger deliberately tracks live amd-staging HEAD
-            # (unlike the branch below) so that wheels are pre-built ahead of
-            # update-llvm.yml's biweekly pin-bump search.
+            # The schedule trigger tracks live amd-staging HEAD, so a wheel
+            # exists by the time update-llvm.yml searches for a commit to
+            # pin.
             RESPONSE=$(curl --fail-with-body -sSL \
               -H "Authorization: Bearer $GH_TOKEN" \
               -H "Accept: application/vnd.github+json" \
@@ -125,13 +123,8 @@ jobs:
             }
             LLVM_PROJECT_COMMIT=$(echo "$RESPONSE" | jq -r '.sha')
           else
-            # pull_request / manual dispatch with no explicit hash: build the
-            # repo's actual pin instead of a live, unvalidated amd-staging
-            # HEAD, matching how every other dependency here (aie-rt
-            # submodule, eudsl-python-extras==, dependabot constraints.txt)
-            # is resolved against a recorded commit rather than "latest".
-            # Same regex utils/update_llvm_version.py's get_current_llvm_commit()
-            # uses.
+            # utils/update_llvm_version.py's get_current_llvm_commit() reads
+            # the pin with the same regex.
             LLVM_PROJECT_COMMIT=$(grep -oP 'LLVM_PROJECT_COMMIT=\K[a-f0-9]+' utils/clone-llvm.sh)
           fi
 
@@ -296,15 +289,9 @@ jobs:
         ./scripts/apply_patches.sh
 
         pip install --upgrade pip
-        # This is the only leg that isn't routed through cibuildwheel, so
-        # it's also the only leg where `pip wheel .` would otherwise resolve
-        # [build-system].requires with build isolation on: fresh from PyPI,
-        # unpinned. That's how a same-day nanobind release (e.g. 3.0.x) can
-        # break find_package(nanobind 2.9) overnight even though nothing in
-        # this repo changed. Install the hash-pinned lock up front and build
-        # with --no-build-isolation so setup.py sees exactly these versions,
-        # matching what cibuildwheel's before-build already does for the
-        # other legs.
+        # cibuildwheel's before-build installs the lock for the other legs.
+        # This leg runs pip directly, so it installs the lock and disables
+        # build isolation to keep those versions.
         pip install --require-hashes -r requirements.lock
 
         CIBW_ARCHS=${{ matrix.ARCH }} \
