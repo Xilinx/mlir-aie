@@ -1221,6 +1221,12 @@ def AIE_NpuControlPacketOp: AIEX_Op<"control_packet", []> {
   let extraClassDeclaration = [{
     uint32_t getRowFromAddr();
     uint32_t getColumnFromAddr();
+
+    /// Most words -- data payload, or read length when there is no data --
+    /// one packet can carry on the wire (the header's beat count field is 2
+    /// bits). Enforced where the header is packed, not here -- see
+    /// AIETranslateControlPacketsToUI32Vec.
+    static constexpr unsigned getMaxDataWords() { return 4; }
   }];
 }
 
