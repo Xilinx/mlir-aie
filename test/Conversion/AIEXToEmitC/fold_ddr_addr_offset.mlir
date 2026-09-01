@@ -8,14 +8,9 @@
 // RUN: aie-translate %s --aie-npu-to-cpp | FileCheck %s --check-prefix=FOLD
 // RUN: aie-translate %s --aie-npu-to-cpp --aie-npu-fold-ddr-addr-offset=false | FileCheck %s --check-prefix=NOFOLD
 
-// The firmware auto-translates host buffer addresses for only the first 5
-// arguments (arg_idx 0-4); a DDR address_patch for a later argument must fold
-// the AIE DDR aperture offset (0x80000000) into arg_plus itself to land
-// correctly -- mirroring what AIETargetNPU.cpp's binary emitter does for the
-// static path. arg_idx < 5 is never folded either way; arg_idx >= 5 is folded
-// only when --aie-npu-fold-ddr-addr-offset=true (the default, matching the
-// xclbin + instruction-buffer runtime). --aie-npu-fold-ddr-addr-offset=false
-// (HRX, full-ELF) must leave arg_plus untouched at every arg_idx.
+// Firmware auto-translates host addresses for only arg_idx 0-4, so a later
+// arg's DDR patch must fold the aperture offset (0x80000000) into arg_plus, as
+// AIETargetNPU.cpp does statically. =false (HRX, full-ELF) never folds.
 
 // FOLD: inline std::optional<std::vector<uint32_t>> generate_txn_main_seq(int32_t [[P:v[0-9]+]]) {
 // arg_idx=2 (< 5): untouched, passed straight through.

@@ -1419,8 +1419,7 @@ def test_get_pdi_paths_empty_before_compile():
 
 
 # ---------------------------------------------------------------------------
-# compile(): DispatchTime[T] guards (raise before any aiecc/dispatch-bridge
-# subprocess runs, so no compiler toolchain is needed to exercise these)
+# compile(): DispatchTime[T] guards -- these raise before any subprocess runs
 # ---------------------------------------------------------------------------
 
 

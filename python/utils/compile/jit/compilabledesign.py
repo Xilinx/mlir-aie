@@ -190,17 +190,9 @@ class CompilableDesign:
             self.dispatch_params = []
             self.scalar_params = []
 
-        # Guard 0-A: compile_kwargs must not contain DispatchTime[T] param
-        # names. Checked here at construction -- not lazily in
-        # _generate_uncached, where an earlier version of this guard lived --
-        # because __hash__/_compute_cache_hash read self.compile_kwargs
-        # directly and can run before generation ever happens (e.g. a
-        # cache-hit compile() never calls _generate_uncached at all). A
-        # dispatch value smuggled into compile_kwargs would otherwise pollute
-        # the on-disk cache key before any guard fired, defeating "one
-        # compile, many DispatchTime values". compile_kwargs is frozen for the
-        # lifetime of this instance (see above), so checking once here is
-        # equivalent to checking on every later read.
+        # Guard 0-A: a DispatchTime[T] name in compile_kwargs would pollute the
+        # cache key via __hash__/_compute_cache_hash, which can run before any
+        # generation. compile_kwargs is frozen, so checking once here suffices.
         confused_dispatch_keys = set(self.compile_kwargs.keys()) & set(
             self.dispatch_params
         )
@@ -307,15 +299,9 @@ class CompilableDesign:
 
         full_elf = self.full_elf or full_elf_path is not None
         if full_elf and has_dispatch:
-            # Architectural boundary, not a TODO: a full ELF bakes a single
-            # static TXN (control code) into the ELF at aiecc build time, and
-            # the XRT full-ELF dispatch path (pyxrt.ext.kernel + xrt::run
-            # .set_arg/.start) has no instruction-buffer argument at all --
-            # there is nowhere to hand it a per-call TXN, unlike the
-            # xclbin+insts.bin path. Supporting this would mean redesigning
-            # full-ELF packaging to carry an external/swappable TXN, which
-            # cuts against full-ELF's whole point (a single self-contained
-            # artifact) and is a separate, much larger project.
+            # Architectural boundary, not a TODO: full-ELF bakes one static TXN
+            # into the ELF, and XRT's full-ELF dispatch path has no instruction-
+            # buffer argument to swap a per-call one into.
             raise NotImplementedError(
                 "DispatchTime[T] + full_elf=True is not supported: a full ELF "
                 "bakes one static instruction stream into the ELF at compile "
@@ -387,11 +373,9 @@ class CompilableDesign:
             kernel_dir = NPU_CACHE_HOME / cache_hash
             lock_file_path = kernel_dir / ".lock"
             xclbin_path = kernel_dir / "final.xclbin"
-            # A dispatch design has no insts.bin at all -- every call
-            # synthesizes fresh instructions via the dispatch bridge instead
-            # (see compile_dispatch_bridge below); this is not a static
-            # fallback, it's the only path for a design that genuinely uses a
-            # DispatchTime[T] value dynamically.
+            # A dispatch design has no insts.bin: every call synthesizes fresh
+            # instructions via the dispatch bridge. Not a fallback -- it is the
+            # only path for a design that uses a DispatchTime[T] value.
             inst_path = None if has_dispatch else kernel_dir / "insts.bin"
             dispatch_so_path = kernel_dir / "dispatch.so" if has_dispatch else None
 
@@ -1054,10 +1038,9 @@ class CompilableDesign:
                 f"  CompileTime[T] params are: {self.compile_params}."
             )
 
-        # Guard 2-A2 (DispatchTime[T] name in compile_kwargs) lives in
-        # __init__ now, not here -- see Guard 0-A. It has to run before
-        # compile_kwargs can ever be read by __hash__/_compute_cache_hash,
-        # which this method does not gate.
+        # Guard 2-A2 (DispatchTime[T] name in compile_kwargs) lives in __init__
+        # as Guard 0-A: it must run before __hash__/_compute_cache_hash reads
+        # compile_kwargs, which this method does not gate.
 
         # Guard 2-B: compile_kwargs must not contain entirely unknown keys.
         known_params = (
@@ -1104,11 +1087,9 @@ class CompilableDesign:
         _tensor_placeholders = {
             name: _TensorPlaceholder(name) for name in self.tensor_params
         }
-        # DispatchTime[T] params generate from the wrapped type T itself (e.g.
-        # np.int32), not a concrete value -- the generator forwards it into
-        # Runtime(..., inputs=[...]) to get back a runtime SSA block arg. The
-        # value never varies per compile, so it is not part of compile_kwargs
-        # or the cache key.
+        # DispatchTime[T] params generate from the wrapped type T (e.g.
+        # np.int32), not a value: the generator forwards it into Runtime(
+        # inputs=[...]) for a runtime SSA block arg. Hence not in the cache key.
         _dispatch_placeholders = {
             name: _dispatch_param_type(hints.get(name, sig.parameters[name].annotation))
             for name in self.dispatch_params

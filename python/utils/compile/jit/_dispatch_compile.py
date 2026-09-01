@@ -33,10 +33,9 @@ from pathlib import Path
 
 from aie.utils import config
 
-# aie-opt pass list that lowers a materialized runtime sequence to npu ops,
-# mirroring test/npu-xrt/dynamic_pingpong_passthrough/run.lit verbatim (not
-# re-derived) -- this is the one place in the repo this pipeline is proven
-# end-to-end on real hardware.
+# aie-opt pass list lowering a materialized runtime sequence to npu ops. Copied
+# verbatim from test/npu-xrt/dynamic_pingpong_passthrough/run.lit, the one place
+# this pipeline is proven end-to-end on hardware -- keep them in sync.
 _DYNAMIC_LOWERING_PASSES = [
     "--aie-materialize-bd-chains",
     "--aie-substitute-shim-dma-allocations",

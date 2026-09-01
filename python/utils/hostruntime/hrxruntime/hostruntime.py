@@ -374,10 +374,9 @@ class HRXHostRuntime(HostRuntime):
                 return HRXKernelResult(stop - start, success=False)
             stop = time.perf_counter_ns()
 
-            # Outputs were written on-device; the persistent host mapping is
-            # stale. Leave the tensors marked device="npu" so the next host
-            # read (numpy()/to("cpu")) invalidates the cache via
-            # _sync_from_device.
+            # Outputs were written on-device, so the host mapping is stale.
+            # Leave the tensors marked device="npu" so the next host read
+            # invalidates the cache via _sync_from_device.
             for a in args:
                 a.device = "npu"
 

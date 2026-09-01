@@ -8,28 +8,9 @@
 # RUN: %run_on_npu2_hrx% %pytest %s
 # REQUIRES: xrt_python_bindings || hrx_python_bindings
 
-# First end-to-end test of DispatchTime[T]: a design compiled ONCE, called
-# with different runtime scalar values (no recompile), through the top-level
-# @iron.jit + Runtime API. Adapted from matmul_whole_array_dynamic's
-# fill/drain-with-runtime-sizes pattern (the only prior IRON-level example of
-# a runtime-valued Runtime(inputs=[...]) entry), drastically simplified to a
-# single-fifo tile copy: `n_tiles` drives both a runtime-sized `fill` (read n
-# distinct tiles from `a`) and a runtime-sized `drain` (write n distinct
-# tiles to `b`), with the core looping forever (Worker's default while_true),
-# driven purely by DMA fill/drain backpressure -- no host-side range_ loop is
-# needed since a single BD descriptor already carries the runtime tile count
-# via its `sizes`/`strides`/`transfer_len`.
-#
-# NOTE: the compile-time pipeline (aie-opt dynamic lowering + aie-translate
-# --aie-npu-to-cpp + host-compile of dispatch.so + ctypes call, including
-# multiple DispatchTime[T] values against one compiled artifact) has been
-# verified end-to-end against real, hardware-proven dynamic MLIR designs
-# (adapted from dynamic_pingpong_passthrough) -- see project memory. What has
-# NOT been verified is an actual NPU dispatch through THIS specific IRON-level
-# design (no pyxrt build available for the Python version this was developed
-# against). Verify on real XRT hardware before trusting this as a regression
-# guard; the fill/drain sizes/strides/offset/transfer_len math below is a
-# first draft against the IRON API by inspection, not compiled.
+# End-to-end DispatchTime[T]: one compiled design, called with different
+# runtime scalar values. `n_tiles` sizes both the fill and the drain, so a
+# single BD carries the tile count -- no host-side range_ loop is needed.
 
 import aie.iron as iron
 import numpy as np

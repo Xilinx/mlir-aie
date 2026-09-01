@@ -112,14 +112,9 @@ def jit(
                     f"  Config keys: {sorted(_JIT_CONFIG_KEYS)}."
                 )
 
-        # Guard 1-C: reject unannotated non-tensor params with default values.
-        # An unannotated scalar is bound at generation time, so its default
-        # gets baked into the compiled MLIR and any per-call override is
-        # *silently* ignored.  That's the worst kind of bug: the kernel runs
-        # successfully but with the wrong value. Force the author to be
-        # explicit instead.  DispatchTime[T] params are exempt here (they
-        # classify into a separate bucket) since the dispatch bridge rebuilds
-        # their instruction stream per call.
+        # Guard 1-C: an unannotated scalar binds at generation time, so its
+        # default bakes into the MLIR and per-call overrides are *silently*
+        # ignored. DispatchTime[T] is exempt -- its stream is rebuilt per call.
         sig_for_defaults = _inspect.signature(mlir_generator)
         silent_default_scalars = [
             name

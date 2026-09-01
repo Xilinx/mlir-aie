@@ -157,9 +157,8 @@ class XRTHostRuntime(HostRuntime):
             return self._load_full_elf(npu_kernel)
 
         # Not the full-ELF path, so the xclbin is always populated. insts_path
-        # is None for a DispatchTime[T] design -- it synthesizes a fresh
-        # instruction stream per call via its dispatch bridge instead of
-        # reading a static insts.bin (see run()'s dispatch_insts handling).
+        # is None for a DispatchTime[T] design, which synthesizes a fresh
+        # stream per call instead (see run()'s dispatch_insts handling).
         assert npu_kernel.xclbin_path is not None
         xclbin_path = Path(npu_kernel.xclbin_path).resolve()
         insts_path = (
@@ -803,10 +802,9 @@ class CachedXRTRuntime(XRTHostRuntime):
             return self._load_full_elf_cached(npu_kernel, retry=retry)
 
         xclbin_path = Path(npu_kernel.xclbin_path).resolve()
-        # insts_path is None for a DispatchTime[T] design -- its instruction
-        # stream is synthesized fresh per call (run()'s dispatch_insts), so
-        # there is nothing here to cache: skip the insts.bin read/cache
-        # entirely and always load a plain (non-ext) kernel below.
+        # insts_path is None for a DispatchTime[T] design: its stream is
+        # synthesized per call, so there is nothing to cache. Skip the
+        # insts.bin read and always load a plain (non-ext) kernel below.
         insts_path = (
             Path(npu_kernel.insts_path).resolve() if npu_kernel.insts_path else None
         )

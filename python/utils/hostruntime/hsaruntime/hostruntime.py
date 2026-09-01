@@ -404,10 +404,9 @@ class CachedHSAHostRuntime(HSAHostRuntime):
     def load(self, npu_kernel, **kwargs) -> HSAKernelHandle:
         insts_path, pdi_path, kernel_name = self._resolve_kernel(npu_kernel)
         if insts_path is None:
-            # DispatchTime[T] design: no static insts.bin to key a cache
-            # entry on -- key on the PDI alone, so repeated calls reuse one
-            # PDI allocation; run() allocates/frees the instruction stream
-            # fresh every call regardless of this cache.
+            # DispatchTime[T] design: no static insts.bin to key on, so key on
+            # the PDI alone and repeated calls reuse one PDI allocation. run()
+            # allocates the instruction stream fresh regardless of this cache.
             key = (str(pdi_path), pdi_path.stat().st_mtime, kernel_name, "dispatch")
         else:
             key = (

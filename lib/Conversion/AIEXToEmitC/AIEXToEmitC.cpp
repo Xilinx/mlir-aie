@@ -38,14 +38,9 @@
 #include "llvm/Support/Format.h"
 
 namespace xilinx {
-// Both DECL (the ConvertAIEXToEmitCOptions struct) and DEF (the Base class)
-// are needed here: unlike other passes' consumers in this codebase, this file
-// defines an explicit ConvertAIEXToEmitCPass(ConvertAIEXToEmitCOptions)
-// constructor below (createConvertAIEXToEmitCPass(bool) needs to construct
-// the pass with a non-default option programmatically, not via a textual
-// pass-pipeline string), which forces instantiation of the Base class's
-// matching constructor -- that requires ConvertAIEXToEmitCOptions to actually
-// be declared in this translation unit.
+// DECL as well as DEF: the explicit ConvertAIEXToEmitCPass(Options)
+// constructor below instantiates the Base's matching constructor, which needs
+// ConvertAIEXToEmitCOptions declared in this translation unit.
 #define GEN_PASS_DECL_CONVERTAIEXTOEMITC
 #define GEN_PASS_DEF_CONVERTAIEXTOEMITC
 #include "aie/Conversion/Passes.h.inc"
@@ -59,13 +54,9 @@ namespace {
 // The C++ type of the TXN accumulator the generated function builds.
 constexpr llvm::StringLiteral kTxnVecType = "std::vector<uint32_t>";
 
-// Mirrors AIETargetNPU.cpp's appendAddressPatch: the "instruction buffer"
-// runtime (xclbin + insts.bin) has the NPU firmware pre-translate host buffer
-// addresses into the AIE address space by adding this offset, but only for
-// the first kNumFirmwareTranslatedArgs host arguments; a later argument's DDR
-// patch must fold the same offset into arg_plus to land at the correct AIE
-// address. Kept as a separate file-local copy (not a shared header) to match
-// AIETargetNPU.cpp's own existing convention for these two constants.
+// Mirrors AIETargetNPU.cpp's appendAddressPatch: NPU firmware pre-translates
+// host addresses into AIE space for only the first kNumFirmwareTranslatedArgs
+// args, so a later arg's DDR patch must fold the offset in itself.
 constexpr uint32_t kDDRAIEAddrOffset = 0x80000000;
 constexpr uint32_t kNumFirmwareTranslatedArgs = 5;
 
@@ -240,12 +231,9 @@ private:
               b, loc, emitc::OpaqueType::get(b.getContext(), "int32_t"),
               emitc::OpaqueAttr::get(b.getContext(),
                                      std::to_string(ap.getArgIdx())));
-          // Mirror AIETargetNPU.cpp's static-path fold: fold the AIE DDR
-          // aperture offset into arg_plus for a host arg beyond the
-          // firmware-translated set. arg_plus may itself be a runtime SSA
-          // value (a runtime-parameterized buffer offset), so the add is a
-          // real arith op here, lowered by convert-arith-to-emitc below like
-          // any other scalar computation in this sequence.
+          // Fold the AIE DDR aperture offset into arg_plus, as the static path
+          // does. arg_plus may be a runtime SSA value, so this is a real arith
+          // op, lowered by convert-arith-to-emitc below.
           Value argPlusV = ap.getArgPlus();
           if (foldDDRAddrOffset &&
               ap.getArgIdx() >= kNumFirmwareTranslatedArgs) {
@@ -463,11 +451,8 @@ private:
 struct ConvertAIEXToEmitCPass
     : xilinx::impl::ConvertAIEXToEmitCBase<ConvertAIEXToEmitCPass> {
   ConvertAIEXToEmitCPass() = default;
-  // foldDDRAddrOffset is `protected` on the TableGen-generated base (it's a
-  // Pass::Option<bool>, publicly settable only via the -pass-pipeline string
-  // form); this constructor is the programmatic equivalent, used by
-  // createConvertAIEXToEmitCPass(bool) below for callers (AIETranslateNpuToCpp)
-  // that aren't going through a textual pass pipeline.
+  // foldDDRAddrOffset is `protected` on the generated base, settable only via
+  // a -pass-pipeline string; this constructor is the programmatic equivalent.
   explicit ConvertAIEXToEmitCPass(const ConvertAIEXToEmitCOptions &options)
       : ConvertAIEXToEmitCBase(options) {}
 
