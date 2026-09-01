@@ -96,11 +96,7 @@ def fixture_so_no_abi(tmp_path_factory):
 
 
 def _bridge(fixture_so):
-    return DispatchBridge(
-        fixture_so,
-        dispatch_params=["scale", "n_tiles"],
-        param_ctypes=["int32_t", "size_t"],
-    )
+    return DispatchBridge(fixture_so, dispatch_params=["scale", "n_tiles"])
 
 
 def test_generate_returns_exact_size_result(fixture_so):
@@ -128,21 +124,6 @@ def test_generate_raises_on_guard_failed(fixture_so):
         bridge.generate({"scale": 0, "n_tiles": 1})
 
 
-def test_mismatched_param_lengths_rejected(fixture_so):
-    with pytest.raises(ValueError, match="same length"):
-        DispatchBridge(
-            fixture_so,
-            dispatch_params=["scale", "n_tiles"],
-            param_ctypes=["int32_t"],
-        )
-
-
-def test_param_ctypes_read_from_the_so(fixture_so):
-    """With no param_ctypes given, the signature comes from dispatch_abi()."""
-    bridge = DispatchBridge(fixture_so, dispatch_params=["scale", "n_tiles"])
-    assert list(bridge.generate({"scale": 10, "n_tiles": 3})) == [10, 11, 12]
-
-
 def test_so_without_abi_rejected(fixture_so_no_abi):
     """A .so with no ABI to report is unusable and must be rebuilt."""
     with pytest.raises(HostRuntimeError, match="exports no dispatch_abi"):
@@ -155,13 +136,26 @@ def test_param_count_mismatch_with_so_rejected(fixture_so):
         DispatchBridge(fixture_so, dispatch_params=["scale"])
 
 
-def test_unrecognized_ctype_rejected(fixture_so):
+@pytest.fixture(scope="module")
+def bogus_ctype_so(tmp_path_factory):
+    """Build a .so naming a C type no ctypes type corresponds to."""
+    tmp_dir = tmp_path_factory.mktemp("dispatch_bridge_bogus")
+    src = 'extern "C" const char *dispatch_abi() { return "not_a_real_ctype"; }\n'
+    return _compile_fixture(tmp_dir, src, "bogus")
+
+
+def test_unrecognized_ctype_rejected(bogus_ctype_so):
+    """A C type the bridge cannot marshal must be named, not silently coerced."""
     with pytest.raises(HostRuntimeError, match="unrecognized generated C type"):
-        DispatchBridge(
-            fixture_so,
-            dispatch_params=["scale"],
-            param_ctypes=["not_a_real_ctype"],
-        )
+        DispatchBridge(bogus_ctype_so, dispatch_params=["scale"])
+
+
+def test_unloadable_so_rejected(tmp_path):
+    """A truncated/corrupt .so must name the kernel cache, not raise a bare OSError."""
+    bad = tmp_path / "not-an-elf.so"
+    bad.write_text("this is not a shared object\n")
+    with pytest.raises(HostRuntimeError, match="could not be loaded"):
+        DispatchBridge(bad, dispatch_params=["scale"])
 
 
 def test_dynamic_lowering_invokes_the_shared_pipeline():

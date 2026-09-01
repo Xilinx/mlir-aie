@@ -67,6 +67,12 @@ class _CompileTimeTag:
 
     __slots__ = ()
 
+    def __repr__(self) -> str:
+        # The default repr embeds this instance's address, which differs every
+        # process. _hash.py folds annotations into the cache key by repr, so an
+        # address there would make a design miss its own cache on every run.
+        return "CompileTime"
+
 
 _COMPILE_TIME_TAG = _CompileTimeTag()
 
@@ -111,6 +117,12 @@ class _DispatchTimeTag:
     """
 
     __slots__ = ()
+
+    def __repr__(self) -> str:
+        # The default repr embeds this instance's address, which differs every
+        # process. _hash.py folds annotations into the cache key by repr, so an
+        # address there would make a design miss its own cache on every run.
+        return "DispatchTime"
 
 
 _DISPATCH_TIME_TAG = _DispatchTimeTag()

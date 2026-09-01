@@ -141,7 +141,7 @@ def _compile_so(gen_cpp: Path, kernel_dir: Path) -> Path:
 def _check_built_abi(
     so_path: Path,
     dispatch_params: list[str],
-    dispatch_param_types: list | None,
+    dispatch_param_types: list,
 ) -> None:
     """Check the built ``.so``'s own ABI against what the design declares.
 
@@ -167,8 +167,6 @@ def _check_built_abi(
             f"param(s) ({dispatch_params!r}). Check that every DispatchTime[T] "
             f"value is threaded into Runtime(inputs=[...]) in declaration order."
         )
-    if not dispatch_param_types:
-        return
     for c_type, name, declared in zip(c_types, dispatch_params, dispatch_param_types):
         expected = C_TYPE_BY_NP_TYPE.get(declared)
         if expected is not None and expected != c_type:
@@ -185,8 +183,8 @@ def _check_built_abi(
 def compile_dispatch_bridge(
     kernel_dir: Path,
     dispatch_params: list[str],
-    fold_ddr_addr_offset: bool = True,
-    dispatch_param_types: list | None = None,
+    fold_ddr_addr_offset: bool,
+    dispatch_param_types: list,
 ) -> Path:
     """Build ``kernel_dir/dispatch.so`` for a design with DispatchTime[T] params.
 

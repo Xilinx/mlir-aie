@@ -52,55 +52,43 @@ class DispatchBridge:
         dispatch_params: Declared ``DispatchTime[T]`` parameter names, in the
             same order as the generated function's parameters (validated by
             ``compile_dispatch_bridge()`` (_dispatch_compile.py) at compile time).
-        param_ctypes: The C type spelling (e.g. ``"int32_t"``) for each entry
-            in ``dispatch_params``, in order. ``None`` reads them from the
-            ``.so``'s own ``dispatch_abi()``, which is what every caller
-            outside this module's tests wants: it reports the types the
-            generated C++ was compiled with.
+            The C types come from the ``.so``'s own ``dispatch_abi()``, so only
+            the names are needed here.
     """
 
-    def __init__(
-        self,
-        so_path: Path,
-        dispatch_params: list[str],
-        param_ctypes: list[str] | None = None,
-    ):
-        self._lib = ctypes.CDLL(str(so_path))
-        if param_ctypes is None:
-            param_ctypes = self._param_ctypes_from_so(so_path, dispatch_params)
-        elif len(dispatch_params) != len(param_ctypes):
-            raise ValueError(
-                f"dispatch_params ({len(dispatch_params)}) and param_ctypes "
-                f"({len(param_ctypes)}) must have the same length"
-            )
-        self._dispatch_params = list(dispatch_params)
-        self._arg_ctypes = [_ctypes_for(c) for c in param_ctypes]
-        self._lib.dispatch_generate.restype = ctypes.c_int64
-        self._lib.dispatch_generate.argtypes = [
-            *self._arg_ctypes,
-            ctypes.POINTER(ctypes.POINTER(ctypes.c_uint32)),
-        ]
-
-    def _param_ctypes_from_so(
-        self, so_path: Path, dispatch_params: list[str]
-    ) -> list[str]:
-        """Read the loaded ``.so``'s self-reported ABI and check it fits.
-
-        Raises ``HostRuntimeError`` if the ``.so`` reports no usable ABI or a
-        different parameter count: a cache entry that disagrees with the design
-        has to be rebuilt, not guessed at.
-        """
+    def __init__(self, so_path: Path, dispatch_params: list[str]):
         try:
-            c_types = read_dispatch_abi(self._lib, so_path)
+            self._lib = ctypes.CDLL(str(so_path))
+        except OSError as e:
+            raise HostRuntimeError(
+                f"dispatch bridge at {so_path} could not be loaded ({e}); the "
+                "compiled kernel directory is unusable -- clear it and rebuild."
+            ) from None
+        try:
+            param_ctypes = read_dispatch_abi(self._lib, so_path)
         except ValueError as e:
             raise HostRuntimeError(f"dispatch bridge: {e}") from None
-        if len(c_types) != len(dispatch_params):
+        # A count mismatch means this .so was built for a different signature:
+        # rebuild it rather than guess which parameters line up.
+        if len(param_ctypes) != len(dispatch_params):
             raise HostRuntimeError(
-                f"dispatch bridge at {so_path} takes {len(c_types)} scalar "
+                f"dispatch bridge at {so_path} takes {len(param_ctypes)} scalar "
                 f"parameter(s) but this design declares {len(dispatch_params)} "
                 f"({list(dispatch_params)!r}); the cached artifact is stale."
             )
-        return c_types
+        # Ranges are fixed once the ABI is known; deriving them per dispatch
+        # would redo this work on every call.
+        self._arg_spec = [
+            (name, ctype, *value_range(ctype))
+            for name, ctype in zip(
+                dispatch_params, (_ctypes_for(c) for c in param_ctypes)
+            )
+        ]
+        self._lib.dispatch_generate.restype = ctypes.c_int64
+        self._lib.dispatch_generate.argtypes = [
+            *(ctype for _n, ctype, _lo, _hi in self._arg_spec),
+            ctypes.POINTER(ctypes.POINTER(ctypes.c_uint32)),
+        ]
 
     def generate(self, values: dict[str, Any]) -> np.ndarray:
         """Return a fresh ``uint32`` instruction word array for *values*.
@@ -110,20 +98,19 @@ class DispatchBridge:
         the generator itself returned no stream.
         """
         ordered = []
-        for name, ctype in zip(self._dispatch_params, self._arg_ctypes):
+        for name, ctype, low, high in self._arg_spec:
             value = values[name]
             # ctypes truncates silently: c_int32(2**31) is -2147483648 and
             # c_int32(2**70) is 0, either of which would dispatch a
             # plausible-looking stream built from a value the caller never
             # asked for.
-            low, high = value_range(ctype)
             if not low <= int(value) <= high:
                 raise HostRuntimeError(
                     f"DispatchTime[T] value {name}={value!r} does not fit its "
                     f"generated C parameter type (valid range {low}..{high}); "
                     "passing it would silently wrap to a different value."
                 )
-            ordered.append(ctype(value))
+            ordered.append(ctype(int(value)))
         out_ptr = ctypes.POINTER(ctypes.c_uint32)()
         n = self._lib.dispatch_generate(*ordered, ctypes.byref(out_ptr))
         if n == -2:

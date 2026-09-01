@@ -131,16 +131,8 @@ class HSAHostRuntime(HostRuntime):
         """
         self.check_device_consistency()
         xclbin_path = Path(npu_kernel.xclbin_path).resolve()
-        insts_path = (
-            Path(npu_kernel.insts_path).resolve() if npu_kernel.insts_path else None
-        )
+        insts_path = self._resolve_insts_path(npu_kernel)
         kernel_name = npu_kernel.kernel_name or "MLIR_AIE"
-        if insts_path is not None and (
-            not insts_path.exists() or not insts_path.is_file()
-        ):
-            raise HostRuntimeError(
-                f"insts {insts_path} does not exist or is not a file."
-            )
         pdi_path = self._find_pdi(xclbin_path)
         return insts_path, pdi_path, kernel_name
 
@@ -344,6 +336,9 @@ class HSAHostRuntime(HostRuntime):
         tensors = []
         for kernel_handle, args in runs:
             assert isinstance(kernel_handle, HSAKernelHandle)
+            # A chain carries no per-run instruction stream, so a dispatch
+            # design would contribute a null one here rather than fail.
+            self._require_dispatch_insts(kernel_handle, None)
             kept = self._validate_args(args)
             tensors.extend(kept)
             items.append(
@@ -372,7 +367,7 @@ class HSAHostRuntime(HostRuntime):
         self._mark_device_resident(tensors)
         return HSAKernelResult(stop - start, success=True)
 
-    def load_and_run(self, npu_kernel, run_args, dispatch_scalars=None, **kwargs):
+    def load_and_run(self, npu_kernel, run_args, **kwargs):
         """Reject trace up front, then defer to the base load/run pipeline.
 
         The base ``load_and_run`` mutates ``run_args`` (appends a trace buffer
@@ -382,9 +377,7 @@ class HSAHostRuntime(HostRuntime):
         """
         if getattr(npu_kernel, "trace_config", None) is not None:
             raise HostRuntimeError(_TRACE_UNSUPPORTED_MSG)
-        return super().load_and_run(
-            npu_kernel, run_args, dispatch_scalars=dispatch_scalars, **kwargs
-        )
+        return super().load_and_run(npu_kernel, run_args, **kwargs)
 
     def device(self) -> "Device":
         from aie.iron.device import from_name
@@ -417,19 +410,16 @@ class CachedHSAHostRuntime(HSAHostRuntime):
 
     def load(self, npu_kernel, **kwargs) -> HSAKernelHandle:
         insts_path, pdi_path, kernel_name = self._resolve_kernel(npu_kernel)
-        if insts_path is None:
-            # DispatchTime[T] design: no static insts.bin to key on, so key on
-            # the PDI alone and repeated calls reuse one PDI allocation. run()
-            # allocates the instruction stream fresh regardless of this cache.
-            key = (str(pdi_path), pdi_path.stat().st_mtime, kernel_name, "dispatch")
-        else:
-            key = (
-                str(insts_path),
-                insts_path.stat().st_mtime,
-                str(pdi_path),
-                pdi_path.stat().st_mtime,
-                kernel_name,
-            )
+        # A DispatchTime[T] design has no insts.bin to key on -- it keys on the
+        # PDI alone, so repeated calls reuse one PDI allocation while run()
+        # allocates the instruction stream fresh regardless of this cache.
+        key = (
+            str(insts_path) if insts_path else None,
+            insts_path.stat().st_mtime if insts_path else None,
+            str(pdi_path),
+            pdi_path.stat().st_mtime,
+            kernel_name,
+        )
         if key in self._exe_cache:
             self._exe_cache.move_to_end(key)
             return self._exe_cache[key]

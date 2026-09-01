@@ -201,22 +201,26 @@ class CompilableDesign:
             self.scalar_params = []
             self.dispatch_param_types = []
 
-        # Guard 0-A: a DispatchTime[T] name in compile_kwargs would pollute the
-        # cache key via __hash__/_compute_cache_hash, which can run before any
-        # generation. compile_kwargs is frozen, so checking once here suffices.
-        confused_dispatch_keys = set(self.compile_kwargs.keys()) & set(
-            self.dispatch_params
-        )
-        if confused_dispatch_keys:
-            raise TypeError(
-                f"CompilableDesign for {getattr(mlir_generator, '__name__', mlir_generator)!r}: "
-                f"compile_kwargs contains name(s) annotated as runtime scalars "
-                f"(DispatchTime[T]), not CompileTime[T] parameters: "
-                f"{confused_dispatch_keys}.\n"
-                f"  DispatchTime[T] params are supplied at call time, not compile "
-                f"time, and must never enter the cache key.\n"
-                f"  CompileTime[T] params are: {self.compile_params}."
-            )
+        # Guard 0-A: every compile_kwargs key must be a CompileTime[T] param.
+        # Checked here, not at generation, because a misplaced key otherwise
+        # reaches __hash__/_compute_cache_hash -- which can run before any
+        # generation -- and pollutes the cache key. compile_kwargs is frozen,
+        # so checking once is enough.
+        name = getattr(mlir_generator, "__name__", mlir_generator)
+        for kind, names in (
+            ("runtime tensors (In/Out/InOut)", self.tensor_params),
+            ("runtime scalars (DispatchTime[T])", self.dispatch_params),
+        ):
+            misplaced = set(self.compile_kwargs) & set(names)
+            if misplaced:
+                raise TypeError(
+                    f"CompilableDesign for {name!r}: compile_kwargs contains "
+                    f"name(s) annotated as {kind}, not CompileTime[T] "
+                    f"parameters: {misplaced}.\n"
+                    f"  They are supplied at call time, not compile time, and "
+                    f"must never enter the cache key.\n"
+                    f"  CompileTime[T] params are: {self.compile_params}."
+                )
 
     # ------------------------------------------------------------------
     # Public API
@@ -379,29 +383,24 @@ class CompilableDesign:
             lock_file_path = kernel_dir / ".lock"
             # has_dispatch + explicit_paths is rejected above.
             dispatch_so_path = None
+            secondary = inst_path
         else:
             cache_hash = self._compute_cache_hash()
             kernel_dir = NPU_CACHE_HOME / cache_hash
             lock_file_path = kernel_dir / ".lock"
             xclbin_path = kernel_dir / "final.xclbin"
-            # A dispatch design has no insts.bin: every call synthesizes fresh
-            # instructions via the dispatch bridge. Not a fallback -- it is the
-            # only path for a design that uses a DispatchTime[T] value.
             inst_path = None if has_dispatch else kernel_dir / "insts.bin"
             dispatch_so_path = kernel_dir / "dispatch.so" if has_dispatch else None
+            # The xclbin's companion artifact. A dispatch design has no
+            # insts.bin at all -- every call synthesizes fresh instructions via
+            # dispatch.so, which carries its own ABI and so is the whole thing.
+            secondary = dispatch_so_path or inst_path
 
         with file_lock(lock_file_path, timeout_seconds=_COMPILE_LOCK_TIMEOUT_SECONDS):
             os.makedirs(kernel_dir, exist_ok=True)
 
             xclbin_exists = xclbin_path.exists()
-            if has_dispatch:
-                # dispatch.so carries its own ABI (dispatch_abi()), so it is the
-                # whole artifact -- there is no second file to check for.
-                assert dispatch_so_path is not None
-                inst_exists = dispatch_so_path.exists()
-            else:
-                assert inst_path is not None
-                inst_exists = inst_path.exists()
+            inst_exists = secondary is not None and secondary.exists()
 
             if not explicit_paths and self.use_cache and xclbin_exists and inst_exists:
                 if not _manifest.is_valid(kernel_dir):
@@ -728,41 +727,6 @@ class CompilableDesign:
             return target if target in pdis else None
         return pdis[0]
 
-    def dispatch_free_args(
-        self, runtime_args: tuple, runtime_kwargs: dict[str, Any]
-    ) -> tuple:
-        """Return *runtime_args* with the DispatchTime[T] values removed.
-
-        A dispatch value is by definition not part of the compiled artifact, so
-        it must not reach the in-process kernel cache key: keying on it builds
-        one kernel per distinct value and makes positional calls behave
-        differently from keyword ones, which never entered the key.
-
-        Mirrors ``split_runtime_args()``'s positional walk (a param supplied by
-        keyword consumes no positional; Kernel objects are compile-time only
-        and are skipped) so the two agree on which slot holds which param.
-        """
-        if not callable(self.mlir_generator) or not self.dispatch_params:
-            return runtime_args
-
-        from aie.iron.kernel import Kernel
-
-        sig = self._sig
-        assert sig is not None
-        slots = [i for i, a in enumerate(runtime_args) if not isinstance(a, Kernel)]
-        dispatch = set(self.dispatch_params)
-        drop = set()
-        cursor = 0
-        for name in sig.parameters:
-            if name in self.compile_kwargs or name in runtime_kwargs:
-                continue
-            if cursor >= len(slots):
-                break
-            if name in dispatch:
-                drop.add(slots[cursor])
-            cursor += 1
-        return tuple(a for i, a in enumerate(runtime_args) if i not in drop)
-
     def split_runtime_args(
         self, runtime_args: tuple, runtime_kwargs: dict[str, Any]
     ) -> tuple[list, dict[str, Any]]:
@@ -1083,21 +1047,12 @@ class CompilableDesign:
 
         hints = self._hints
 
-        # Guard 2-A: compile_kwargs must not contain tensor param names.
-        tensor_names = set(self.tensor_params)
-        confused_tensor_keys = set(self.compile_kwargs.keys()) & tensor_names
-        if confused_tensor_keys:
-            raise TypeError(
-                f"CompilableDesign for {self.generator_name!r}: "
-                f"compile_kwargs contains name(s) annotated as runtime tensors "
-                f"(In/Out/InOut), not CompileTime[T] parameters: {confused_tensor_keys}.\n"
-                f"  Tensor params must be supplied at call time, not compile time.\n"
-                f"  CompileTime[T] params are: {self.compile_params}."
-            )
-
-        # Guard 2-A2 (DispatchTime[T] name in compile_kwargs) lives in __init__
-        # as Guard 0-A: it must run before __hash__/_compute_cache_hash reads
-        # compile_kwargs, which this method does not gate.
+        # Guard 2-A (a tensor or dispatch name in compile_kwargs) lives in
+        # __init__ as Guard 0-A: those names are real parameters, so the design
+        # is hashable and the bad key would reach the cache key before ever
+        # generating. An entirely unknown key cannot generate at all, so it can
+        # be caught here -- and catching it here keeps to_json() able to
+        # round-trip whatever a caller put in compile_kwargs.
 
         # Guard 2-B: compile_kwargs must not contain entirely unknown keys.
         known_params = (

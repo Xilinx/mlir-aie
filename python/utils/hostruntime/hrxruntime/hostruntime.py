@@ -205,20 +205,12 @@ class HRXHostRuntime(HostRuntime):
         """
         self.check_device_consistency()
         xclbin_path = Path(npu_kernel.xclbin_path).resolve()
-        insts_path = (
-            Path(npu_kernel.insts_path).resolve() if npu_kernel.insts_path else None
-        )
+        insts_path = self._resolve_insts_path(npu_kernel)
         kernel_name = npu_kernel.kernel_name or "MLIR_AIE"
 
         if not xclbin_path.exists() or not xclbin_path.is_file():
             raise HostRuntimeError(
                 f"xclbin {xclbin_path} does not exist or is not a file."
-            )
-        if insts_path is not None and (
-            not insts_path.exists() or not insts_path.is_file()
-        ):
-            raise HostRuntimeError(
-                f"insts {insts_path} does not exist or is not a file."
             )
         return xclbin_path, insts_path, kernel_name
 
@@ -452,6 +444,9 @@ class HRXHostRuntime(HostRuntime):
         touched = []
         for kernel_handle, args in runs:
             assert isinstance(kernel_handle, HRXKernelHandle)
+            # A chain carries no per-run instruction stream, so a dispatch
+            # design would contribute a null executable here rather than fail.
+            self._require_dispatch_insts(kernel_handle, None)
             kept, bindings = self._prepare_bindings(args)
             items.append(
                 (kernel_handle.executable, kernel_handle.export_ordinal, bindings)
@@ -476,7 +471,7 @@ class HRXHostRuntime(HostRuntime):
 
         return HRXKernelResult(stop - start, success=True)
 
-    def load_and_run(self, npu_kernel, run_args, dispatch_scalars=None, **kwargs):
+    def load_and_run(self, npu_kernel, run_args, **kwargs):
         """Reject trace up front, then defer to the base load/run pipeline.
 
         The base ``load_and_run`` mutates ``run_args`` (appends a trace buffer
@@ -486,9 +481,7 @@ class HRXHostRuntime(HostRuntime):
         """
         if getattr(npu_kernel, "trace_config", None) is not None:
             raise HostRuntimeError(_TRACE_UNSUPPORTED_MSG)
-        return super().load_and_run(
-            npu_kernel, run_args, dispatch_scalars=dispatch_scalars, **kwargs
-        )
+        return super().load_and_run(npu_kernel, run_args, **kwargs)
 
     def device(self) -> "Device":
         from aie.iron.device import from_name

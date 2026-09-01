@@ -982,15 +982,19 @@ def test_generate_mlir_unplaced_style_uses_return_value():
 # ---------------------------------------------------------------------------
 
 
-def test_generate_mlir_guard_2a_tensor_name_in_compile_kwargs():
-    """compile_kwargs must not contain names annotated as In/Out/InOut."""
+def test_construction_rejects_tensor_name_in_compile_kwargs():
+    """compile_kwargs must not contain names annotated as In/Out/InOut.
+
+    Rejected at construction, not generation: `a` is a real parameter, so the
+    design would otherwise be hashable and the misplaced key would reach the
+    cache key before anything generated.
+    """
 
     def gen(a: In, *, M: CompileTime[int]):
         pass
 
-    d = CompilableDesign(gen, compile_kwargs={"a": object(), "M": 1})
     with pytest.raises(TypeError, match="runtime tensors"):
-        d._generate_mlir(ExternalFunction)
+        CompilableDesign(gen, compile_kwargs={"a": object(), "M": 1})
 
 
 def test_generate_mlir_guard_2b_unknown_key_in_compile_kwargs():

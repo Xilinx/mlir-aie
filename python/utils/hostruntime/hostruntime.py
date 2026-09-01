@@ -191,6 +191,23 @@ class HostRuntime(ABC):
         pass
 
     @staticmethod
+    def _resolve_insts_path(npu_kernel) -> Path | None:
+        """Resolve and validate a kernel's static insts.bin.
+
+        ``None`` when the design has no static stream at all -- a full ELF
+        carries its control code inside the ELF, and a DispatchTime[T] design
+        synthesizes a fresh stream per call.
+        """
+        if not npu_kernel.insts_path:
+            return None
+        insts_path = Path(npu_kernel.insts_path).resolve()
+        if not insts_path.is_file():
+            raise HostRuntimeError(
+                f"insts {insts_path} does not exist or is not a file."
+            )
+        return insts_path
+
+    @staticmethod
     def _require_dispatch_insts(kernel_handle: KernelHandle, dispatch_insts) -> None:
         """Reject a run of a dispatch design that was given no instructions.
 
@@ -221,7 +238,7 @@ class HostRuntime(ABC):
         (rebuild a BO, memmove into a device buffer, rebuild an executable...)
         is backend-specific -- see each concrete ``run()``.
         """
-        dispatch_params = getattr(npu_kernel, "dispatch_params", None) or []
+        dispatch_params = npu_kernel.dispatch_params
         dispatch_scalars = dispatch_scalars or {}
         if not dispatch_params:
             if dispatch_scalars:

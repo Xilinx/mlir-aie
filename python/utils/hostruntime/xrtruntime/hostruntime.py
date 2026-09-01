@@ -199,20 +199,12 @@ class XRTHostRuntime(HostRuntime):
         # stream per call instead (see run()'s dispatch_insts handling).
         assert npu_kernel.xclbin_path is not None
         xclbin_path = Path(npu_kernel.xclbin_path).resolve()
-        insts_path = (
-            Path(npu_kernel.insts_path).resolve() if npu_kernel.insts_path else None
-        )
+        insts_path = self._resolve_insts_path(npu_kernel)
         kernel_name = npu_kernel.kernel_name
 
         if not xclbin_path.exists() or not xclbin_path.is_file():
             raise HostRuntimeError(
                 f"xclbin {xclbin_path} does not exist or is not a file."
-            )
-        if insts_path is not None and (
-            not insts_path.exists() or not insts_path.is_file()
-        ):
-            raise HostRuntimeError(
-                f"insts {insts_path} does not exist or is not a file."
             )
 
         xclbin = pyxrt.xclbin(str(xclbin_path))
@@ -685,7 +677,7 @@ class CachedXRTRuntime(XRTHostRuntime):
             **kwargs,
         )
 
-    def load_and_run(self, npu_kernel, run_args, dispatch_scalars=None, **kwargs):
+    def load_and_run(self, npu_kernel, run_args, **kwargs):
         """Wrap the base implementation to paper over a Phoenix firmware-state quirk.
 
         A trace-on run leaves the amdxdna firmware in
@@ -709,9 +701,7 @@ class CachedXRTRuntime(XRTHostRuntime):
         draining unconditionally on Phoenix is simpler than tracking which
         contexts are about to be touched next.
         """
-        handle, ret = super().load_and_run(
-            npu_kernel, run_args, dispatch_scalars=dispatch_scalars, **kwargs
-        )
+        handle, ret = super().load_and_run(npu_kernel, run_args, **kwargs)
         if (
             npu_kernel.trace_config is not None
             and getattr(self, "npu_str", None) == "npu1"
@@ -842,20 +832,12 @@ class CachedXRTRuntime(XRTHostRuntime):
         # insts_path is None for a DispatchTime[T] design: its stream is
         # synthesized per call, so there is nothing to cache. Skip the
         # insts.bin read and always load a plain (non-ext) kernel below.
-        insts_path = (
-            Path(npu_kernel.insts_path).resolve() if npu_kernel.insts_path else None
-        )
+        insts_path = self._resolve_insts_path(npu_kernel)
         kernel_name = npu_kernel.kernel_name
 
         if not xclbin_path.exists() or not xclbin_path.is_file():
             raise HostRuntimeError(
                 f"xclbin {xclbin_path} does not exist or is not a file."
-            )
-        if insts_path is not None and (
-            not insts_path.exists() or not insts_path.is_file()
-        ):
-            raise HostRuntimeError(
-                f"insts {insts_path} does not exist or is not a file."
             )
 
         xclbin_mtime = xclbin_path.stat().st_mtime

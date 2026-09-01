@@ -7,6 +7,8 @@
 
 // RUN: aie-translate %s --aie-npu-to-cpp --aie-npu-emit-dispatch-shim | FileCheck %s
 // RUN: aie-translate %s --aie-npu-to-cpp | FileCheck %s --check-prefix=NOSHIM
+// RUN: aie-translate %S/Inputs/dispatch_shim_widths.mlir --aie-npu-to-cpp \
+// RUN:   --aie-npu-emit-dispatch-shim | FileCheck %s --check-prefix=SIGNED
 
 // The JIT dispatch bridge loads these two symbols with ctypes. dispatch_abi()
 // and dispatch_generate() are built from the same aie.runtime_sequence argument
@@ -32,6 +34,13 @@
 // would not link.
 // NOSHIM-NOT: dispatch_abi
 // NOSHIM-NOT: dispatch_generate
+
+// Signedness and width come from CppEmitter's own rules, so the ABI string has
+// to track them: an unsigned arg prints uintN_t and an i1 prints bool. Reporting
+// int32_t for a uint32_t parameter would make DispatchBridge build a signed
+// ctypes signature against an unsigned entry point.
+// SIGNED: generate_txn_main_widths(uint32_t {{v[0-9]+}}, bool {{v[0-9]+}}, int8_t {{v[0-9]+}}, size_t {{v[0-9]+}})
+// SIGNED: return "uint32_t,bool,int8_t,size_t";
 
 module {
   aie.device(npu1_1col) {

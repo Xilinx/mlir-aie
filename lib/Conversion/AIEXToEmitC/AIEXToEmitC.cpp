@@ -533,20 +533,20 @@ struct ConvertAIEXToEmitCPass
 private:
   // The C spelling emitc's translator emits for a runtime-sequence parameter
   // type. Used only to build the ABI string; the shim's actual signature is an
-  // emitc.func over the same types, so the translator writes those itself and
-  // dispatch_shim.mlir pins the two spellings together.
+  // emitc.func over the same types, so the translator writes those itself.
+  // Mirrors CppEmitter::emitType, including its signedness rule -- an unsigned
+  // integer prints as uintN_t, and disagreeing here would report an ABI the
+  // emitted signature does not have. dispatch_shim.mlir pins the two together.
   static std::optional<std::string> cTypeName(Type t) {
     if (isa<emitc::SizeTType>(t))
       return std::string("size_t");
     auto intTy = dyn_cast<IntegerType>(t);
-    if (!intTy)
+    if (!intTy || !emitc::isSupportedIntegerType(intTy))
       return std::nullopt;
-    unsigned width = intTy.getWidth();
-    if (width == 1)
+    if (intTy.getWidth() == 1)
       return std::string("bool");
-    if (width == 8 || width == 16 || width == 32 || width == 64)
-      return "int" + std::to_string(width) + "_t";
-    return std::nullopt;
+    return (intTy.isUnsigned() ? "uint" : "int") +
+           std::to_string(intTy.getWidth()) + "_t";
   }
 
   // Emit the ctypes-callable entry points the JIT dispatch bridge loads:
