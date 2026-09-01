@@ -2006,15 +2006,16 @@ def AIE_ShimDMAAllocationOp : AIE_Op<"shim_dma_allocation", [HasParent<"DeviceOp
     ```
   }];
 
-  let arguments = (
-    ins SymbolNameAttr:$sym_name,
-        Index:$tile,
-        DMAChannelDir:$channel_dir,
-        AIEI64Attr:$channel_index,
-        // If this is set we are using the PLIO in this ShimTile
-        DefaultValuedAttr<BoolAttr, "false">:$plio,
-        OptionalAttr<PacketInfoAttr>:$packet
-  );
+  let arguments = (ins SymbolNameAttr:$sym_name, Index:$tile,
+      DMAChannelDir:$channel_dir, AIEI64Attr:$channel_index,
+      // If this is set we are using the PLIO in this ShimTile
+      DefaultValuedAttr<BoolAttr, "false">:$plio,
+      OptionalAttr<PacketInfoAttr>:$packet,
+      // The object the far end of this channel receives, when the allocation
+      // was emitted from an objectFIFO. A runtime sequence sizes its buffer
+      // descriptor in the host buffer's element type; this records what the
+      // stream expects, which is otherwise lost at this symbol.
+      OptionalAttr<TypeAttrOf<AnyMemRef>>:$elem_type);
 
   let results = (outs);
 
@@ -2025,6 +2026,9 @@ def AIE_ShimDMAAllocationOp : AIE_Op<"shim_dma_allocation", [HasParent<"DeviceOp
   let hasVerifier = 1;
 
   let extraClassDeclaration = [{
+    /// Bytes one object occupies, or nullopt when this allocation does not
+    /// record the type it carries.
+    std::optional<int64_t> getObjectSizeInBytes();
     TileOp getTileOp();
     static ::xilinx::AIE::ShimDMAAllocationOp getForSymbol(::xilinx::AIE::DeviceOp device, ::llvm::StringRef symbol);
   }];
