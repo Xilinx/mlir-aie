@@ -757,10 +757,12 @@ getTracePipeline(mlir::MLIRContext *ctx) {
 // Vector → AIEVec → buffer/lock/DMA setup → control-overlay → SCF lowering.
 // Operates on the whole module; the inner pipeline nests under DeviceOp.
 // Inspects `mod` for target arch (drives `convert-vector-to-aievec` opts).
-inline std::unique_ptr<mlir::PassManager> getInputWithAddressesPipeline(
-    mlir::MLIRContext *ctx, mlir::ModuleOp mod, llvm::StringRef allocScheme,
-    bool dynamicObjFifos, bool packetSwObjFifos, bool ctrlPktOverlay,
-    bool bf16Emulation, bool loadPdiToCtrlPkt = false) {
+inline std::unique_ptr<mlir::PassManager>
+getInputWithAddressesPipeline(mlir::MLIRContext *ctx, mlir::ModuleOp mod,
+                              llvm::StringRef allocScheme, bool dynamicObjFifos,
+                              bool packetSwObjFifos, bool ctrlPktOverlay,
+                              bool bf16Emulation, bool loadPdiToCtrlPkt = false,
+                              bool skipObjectFifoVerify = false) {
   using namespace xilinx::AIE;
   namespace X = xilinx::AIEX;
   auto pm = std::make_unique<mlir::PassManager>(ctx);
@@ -803,9 +805,10 @@ inline std::unique_ptr<mlir::PassManager> getInputWithAddressesPipeline(
   // accesses and folds the (now loop-invariant) runtime bookkeeping into a
   // static, unrolled lowering.
   if (mlir::failed(mlir::parsePassPipeline(
-          llvm::formatv("aie-objectFifo-stateful-transform{{packet-sw-objFifos="
-                        "{0}}",
-                        packetSwObjFifos)
+          llvm::formatv(
+              "aie-objectFifo-stateful-transform{{packet-sw-objFifos={0} "
+              "skip-verify={1}}",
+              packetSwObjFifos, skipObjectFifoVerify)
               .str(),
           dpm)))
     return nullptr;
@@ -822,6 +825,7 @@ inline std::unique_ptr<mlir::PassManager> getInputWithAddressesPipeline(
   // Assign IDs to the ID-less locks the objectFifo lowering creates (and to any
   // user locks without an ID).
   dpm.addPass(createAIEAssignLockIDsPass());
+  dpm.addPass(X::createAIEReserveRuntimeBDIDsPass());
   dpm.addPass(createAIEAssignBufferDescriptorIDsPass());
   dpm.addPass(createAIELowerCascadeFlowsPass());
   dpm.addPass(X::createAIEBroadcastPacketPass());

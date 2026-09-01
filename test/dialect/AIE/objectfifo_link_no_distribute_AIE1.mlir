@@ -7,7 +7,7 @@
 
 // RUN: not aie-opt %s 2>&1 | FileCheck %s
 
-// CHECK:   error: ObjectFifoLinkOp join and distribute are unavailable on compute or shim tiles
+// CHECK:   error: ObjectFifoLinkOp join and distribute require semaphore locks, which this device lacks
 
 module @objectfifo_link_no_distribute_AIE1 {
     aie.device(xcvc1902) {

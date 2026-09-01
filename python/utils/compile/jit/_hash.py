@@ -9,9 +9,16 @@ Two halves so callers can distinguish "recipe changed" from "rebuild needed":
 
 * :func:`_compute_recipe_hash`   — generator identity + compile_kwargs +
   aiecc/compile flags. Target-independent design identity.
-* :func:`_compute_artifact_hash` — source / object mtimes + tool mtimes +
+* :func:`_compute_artifact_hash` — source / object content + tool mtimes +
   target device.  Captures things that change the *output* of compilation
   without changing the *recipe*.
+
+Design inputs (sources, objects, a `Path` generator) are identified by their
+**content**.  mtime is not a property of a file, it is a property of how the
+file arrived: a fresh clone, a `pip install`, a `cp` or a `touch` all restamp it
+without changing a byte, and restoring one hides a change that did happen.  Tool
+identity stays on mtime, which is cheap and moves whenever the toolchain is
+rebuilt or reinstalled.
 
 :func:`_compute_hash` composes both into the 24-hex cache-key
 ``CompilableDesign`` uses to address ``$NPU_CACHE_HOME``.
@@ -31,6 +38,29 @@ from types import CodeType
 from typing import Any, Callable, Mapping
 
 logger = logging.getLogger(__name__)
+
+# Read granularity for content digests.  Bounded so a large input is streamed
+# rather than materialised, which keeps MemoryError off this path.
+_DIGEST_CHUNK = 1 << 20
+
+
+def _content_digest(path: Path | str) -> str:
+    """Digest a file by content, streamed.
+
+    Returns a marker instead of raising: an input we cannot read is still an
+    input, and it must not silently collapse onto the same key as an input we
+    can.  The marker embeds the error class so "missing" and "unreadable" stay
+    distinguishable, which keeps a later fail-closed change a pure policy edit
+    rather than a re-plumbing.
+    """
+    h = hashlib.sha256()
+    try:
+        with open(path, "rb") as fh:
+            while chunk := fh.read(_DIGEST_CHUNK):
+                h.update(chunk)
+    except (OSError, ValueError) as exc:
+        return f"<unreadable:{type(exc).__name__}>"
+    return h.hexdigest()
 
 
 def _device_identity_key(device) -> tuple[str, str, str, str]:
@@ -85,6 +115,7 @@ def _compute_recipe_hash(
     aiecc_flags: list[str] | tuple[str, ...],
     compile_flags: list[str] | tuple[str, ...],
     full_elf: bool = False,
+    include_paths: list[Path] | tuple[Path, ...] = (),
 ) -> str:
     """Hash of the "recipe": generator bytecode + CompileTime[T] kwargs + flags.
 
@@ -95,15 +126,18 @@ def _compute_recipe_hash(
     ``full_elf`` is part of the recipe: full-ELF and xclbin+insts builds emit
     different MLIR (the former injects ``npu.load_pdi``) and different
     artifacts, so they must not share a cache entry.
+
+    ``include_paths`` likewise: they are ``-I`` directories forwarded to the
+    C++ compiler, so two otherwise identical designs pointed at different
+    header trees compile to different objects. Hashed in ORDER, not sorted
+    like the flag lists above, because ``-I`` search order decides which
+    header wins when two directories provide the same name.
     """
     h = hashlib.sha256()
 
     if isinstance(generator, Path):
         h.update(str(generator).encode())
-        try:
-            h.update(str(generator.stat().st_mtime).encode())
-        except FileNotFoundError:
-            pass
+        h.update(_content_digest(generator).encode())
     else:
         h.update(_code_identity(generator.__code__))
         h.update(getattr(generator, "__qualname__", "").encode())
@@ -142,6 +176,7 @@ def _compute_recipe_hash(
     h.update(repr(sorted(aiecc_flags)).encode())
     h.update(repr(sorted(compile_flags)).encode())
     h.update(f"full_elf={full_elf}".encode())
+    h.update(repr([str(p) for p in include_paths]).encode())
 
     return h.hexdigest()
 
@@ -152,7 +187,7 @@ def _compute_artifact_hash(
     object_files: list[Path] | tuple[Path, ...],
     fold_ddr_addr_offset: bool,
 ) -> str:
-    """Hash of the "artifacts": source/object mtimes + tool mtimes + target device.
+    """Hash of the "artifacts": source/object content + tool mtimes + device.
 
     Captures everything that can change the *output* of compilation without
     changing the *recipe*: edited C++ kernels, swapped object files, upgraded
@@ -167,17 +202,11 @@ def _compute_artifact_hash(
 
     for sf in sorted(source_files, key=str):
         h.update(str(sf).encode())
-        try:
-            h.update(str(Path(sf).stat().st_mtime).encode())
-        except (FileNotFoundError, OSError):
-            pass
+        h.update(_content_digest(sf).encode())
 
     for of in sorted(object_files, key=str):
         h.update(str(of).encode())
-        try:
-            h.update(str(Path(of).stat().st_mtime).encode())
-        except (FileNotFoundError, OSError):
-            pass
+        h.update(_content_digest(of).encode())
 
     h.update(f"fold_ddr_addr_offset={fold_ddr_addr_offset}".encode())
 
@@ -259,10 +288,11 @@ def _compute_hash(
     compile_flags: list[str] | tuple[str, ...],
     full_elf: bool = False,
     fold_ddr_addr_offset: bool = True,
+    include_paths: list[Path] | tuple[Path, ...] = (),
 ) -> str:
     """Stable 24-hex SHA-256 cache key combining recipe + artifact hashes."""
     recipe = _compute_recipe_hash(
-        generator, compile_kwargs, aiecc_flags, compile_flags, full_elf
+        generator, compile_kwargs, aiecc_flags, compile_flags, full_elf, include_paths
     )
     artifact = _compute_artifact_hash(
         generator, source_files, object_files, fold_ddr_addr_offset

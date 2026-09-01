@@ -98,25 +98,6 @@ public:
       return nullptr;
     });
 
-    // Add a conversion for ObjectFifoSubviewType
-    addConversion([&](AIEObjectFifoSubviewType objectFifoSubviewType)
-                      -> std::optional<AIEObjectFifoSubviewType> {
-      auto newElementType = convertType(objectFifoSubviewType.getElementType());
-      if (!newElementType) {
-        llvm::errs()
-            << "Failed to convert ObjectFifoSubviewType element type\n";
-        return nullptr;
-      }
-
-      if (auto newMemRef = dyn_cast<MemRefType>(newElementType))
-        return AIEObjectFifoSubviewType::get(objectFifoSubviewType.getContext(),
-                                             newMemRef);
-
-      llvm::errs()
-          << "ObjectFifoSubviewType element type is not a MemRefType\n";
-      return nullptr;
-    });
-
     // Add a conversion for FunctionType
     addConversion([&](FunctionType funcType) -> std::optional<FunctionType> {
       llvm::SmallVector<Type> newInputTypes;

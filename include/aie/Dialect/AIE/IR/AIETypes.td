@@ -39,30 +39,6 @@ def AIE_ObjectFifoType : TypeDef<AIE_Dialect, "AIEObjectFifo", []> {
   }];
 }
 
-def AIE_ObjectFifoSubviewType : TypeDef<AIE_Dialect, "AIEObjectFifoSubview", []> {
-  let mnemonic = "objectfifosubview";
-  let description = [{
-    An Object FIFO subview represents a subview of an object FIFO.
-  }];
-
-  let parameters = (ins AnyMemRef:$memref);
-
-  let assemblyFormat = "`<` $memref `>`";
-
-  // This is for compatibility with code prior to tablegenerated types in the project
-  let extraClassDeclaration = [{
-    static AIEObjectFifoSubviewType get(mlir::MemRefType elementType)
-    {
-      mlir::MLIRContext *ctx = elementType.getContext();
-      return get(ctx, elementType);
-    }
-
-    mlir::MemRefType getElementType() {
-      return getMemref();
-    }
-  }];
-}
-
 def AIE_ObjectFifo_Depth : AnyAttrOf<[ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>, ArrayAttr]>;
 
 def AnyScalarOrTensor : TypeConstraint<Or<[AnySignlessInteger.predicate,
