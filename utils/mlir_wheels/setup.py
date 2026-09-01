@@ -41,6 +41,31 @@ def check_env(build, default=0):
     return os.environ.get(build, str(default)) in {"1", "true", "True", "ON", "YES"}
 
 
+def real_compiler_path(name):
+    """Resolve `name` to an absolute path, skipping ccache's masquerade dirs.
+
+    setup_ccache (.github/actions/setup_ccache/action.yml) prepends
+    /usr/lib/ccache et al. to PATH so bare names like "gcc" transparently
+    resolve to ccache. That's fine for the native x86_64 build, but for the
+    aarch64 cross build, CMake's own compiler-detection/ABI-check runs the
+    resolved compiler directly (no CMAKE_<LANG>_COMPILER_LAUNCHER involved
+    yet), and ccache's masquerade re-invoking the real compiler for the link
+    step drops -fuse-ld=lld, which this cross build requires (see the
+    CMAKE_EXE_LINKER_FLAGS_INIT comment below) and fails with a misleading
+    "collect2: fatal error: cannot find 'ld'". Resolving to the real,
+    absolute path up front avoids the masquerade for this step entirely;
+    LLVM_CCACHE_BUILD's RULE_LAUNCH_COMPILE still wraps ccache around it
+    correctly for the actual compile rules.
+    """
+    real_dirs = [
+        d for d in os.environ.get("PATH", "").split(os.pathsep) if "ccache" not in d
+    ]
+    path = shutil.which(name, path=os.pathsep.join(real_dirs))
+    if not path:
+        raise RuntimeError(f"could not find {name} outside of ccache's PATH dirs")
+    return path
+
+
 class CMakeExtension(Extension):
     def __init__(self, name: str, sourcedir: str = "") -> None:
         super().__init__(name, sources=[])
@@ -49,15 +74,6 @@ class CMakeExtension(Extension):
 
 def get_cross_cmake_args():
     cmake_args = {}
-
-    def native_tools():
-        nonlocal cmake_args
-
-        native_tools_dir = Path(sys.prefix).absolute() / "bin"
-        assert native_tools_dir is not None, "native_tools_dir missing"
-        assert os.path.exists(native_tools_dir), "native_tools_dir doesn't exist"
-        cmake_args["LLVM_USE_HOST_TOOLS"] = "ON"
-        cmake_args["LLVM_NATIVE_TOOL_DIR"] = str(native_tools_dir)
 
     CIBW_ARCHS = os.environ.get("CIBW_ARCHS")
     if CIBW_ARCHS in {"arm64", "aarch64", "ARM64"}:
@@ -82,17 +98,31 @@ def get_cross_cmake_args():
         if ARCH == "AArch64":
             cmake_args["LLVM_DEFAULT_TARGET_TRIPLE"] = "aarch64-linux-gnu"
             cmake_args["LLVM_HOST_TRIPLE"] = "aarch64-linux-gnu"
-            cmake_args["CMAKE_C_COMPILER"] = "aarch64-linux-gnu-gcc"
-            cmake_args["CMAKE_CXX_COMPILER"] = "aarch64-linux-gnu-g++"
+            cmake_args["CMAKE_C_COMPILER"] = real_compiler_path("aarch64-linux-gnu-gcc")
+            cmake_args["CMAKE_CXX_COMPILER"] = real_compiler_path(
+                "aarch64-linux-gnu-g++"
+            )
             cmake_args["CMAKE_CXX_FLAGS"] = "-static-libgcc -static-libstdc++"
             # GNU ld fails to insert AArch64 long-branch veneers for the fully
             # static mlir-opt/mlir-translate binaries, causing "relocation
             # truncated to fit: R_AARCH64_CALL26" inside libstdc++.a itself.
             # lld handles arbitrarily large binaries correctly.
-            cmake_args["CMAKE_EXE_LINKER_FLAGS_INIT"] = "-fuse-ld=lld"
-            cmake_args["CMAKE_MODULE_LINKER_FLAGS_INIT"] = "-fuse-ld=lld"
-            cmake_args["CMAKE_SHARED_LINKER_FLAGS_INIT"] = "-fuse-ld=lld"
-            native_tools()
+            #
+            # -B/usr/bin is required alongside -fuse-ld=lld: for a *cross*
+            # gcc, collect2's search for ld.lld doesn't include /usr/bin (the
+            # directory apt actually installs it into) the way it would for a
+            # native compiler, and fails with a misleading "collect2: fatal
+            # error: cannot find 'ld'" even though ld.lld is right there.
+            # -B explicitly adds it to collect2's subprogram search path.
+            _LLD_LINKER_FLAGS = "-fuse-ld=lld -B/usr/bin"
+            cmake_args["CMAKE_EXE_LINKER_FLAGS_INIT"] = _LLD_LINKER_FLAGS
+            cmake_args["CMAKE_MODULE_LINKER_FLAGS_INIT"] = _LLD_LINKER_FLAGS
+            cmake_args["CMAKE_SHARED_LINKER_FLAGS_INIT"] = _LLD_LINKER_FLAGS
+            # TableGen runs on the host and bakes in a TargetOpcode enum, so
+            # it must come from the same commit as the .td sources it parses.
+            # Without LLVM_NATIVE_TOOL_DIR, LLVM builds it in a NATIVE
+            # subdirectory of this same tree.
+            cmake_args["LLVM_USE_HOST_TOOLS"] = "ON"
         elif ARCH == "X86":
             cmake_args["LLVM_DEFAULT_TARGET_TRIPLE"] = "x86_64-unknown-linux-gnu"
             cmake_args["LLVM_HOST_TRIPLE"] = "x86_64-unknown-linux-gnu"
