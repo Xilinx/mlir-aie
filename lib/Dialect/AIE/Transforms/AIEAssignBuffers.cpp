@@ -336,7 +336,8 @@ static void setAndUpdateAddressInBank(BufferOp buffer, int64_t start_addr,
 // added to the list of buffers without addresses, to be completed later on).
 static FailureOr<bool> checkAndAddBufferWithAddress(
     BufferOp buffer, int numBanks, uint32_t tileAlignBitWidth,
-    uint32_t maxVecAlignBits, std::vector<int64_t> &nextAddrInBanks,
+    [[maybe_unused]] uint32_t maxVecAlignBits,
+    std::vector<int64_t> &nextAddrInBanks,
     std::vector<BankLimits> &bankLimits) {
   auto addrAttr = buffer->getAttrOfType<IntegerAttr>("address");
   if (!addrAttr)
@@ -397,7 +398,9 @@ static FailureOr<bool> checkAndAddBufferWithMemBank(
 
   int64_t startAddr = nextAddrInBanks[mem_bank];
   if (buffer.getAligned()) {
-    startAddr = getAlignedAddress(startAddr, tileAlignBitWidth);
+    startAddr = getAlignedAddress(
+        startAddr,
+        getRequiredAlignBits(buffer, tileAlignBitWidth, maxVecAlignBits));
   }
 
   int64_t endAddr = startAddr + buffer.getAllocationSize();

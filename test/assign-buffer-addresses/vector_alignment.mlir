@@ -47,7 +47,7 @@ module @aie2p_small_buffers_unpadded {
     %s1 = aie.buffer(%t) { sym_name = "s1" } : memref<8xbf16>      // 16 B
     aie.core(%t) {
       aie.end
-    } { stackSize = 1024 : i32 }
+    } { stack_size = 1024 : i32 }
   }
 }
 
@@ -65,7 +65,7 @@ module @aie2_unchanged {
     %vec = aie.buffer(%t) { sym_name = "vec" } : memref<32xbf16>
     aie.core(%t) {
       aie.end
-    } { stackSize = 1024 : i32 }
+    } { stack_size = 1024 : i32 }
   }
 }
 

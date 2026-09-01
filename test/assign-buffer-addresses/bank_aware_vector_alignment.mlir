@@ -36,6 +36,27 @@ module @bank_aware_needs_64B {
 
 // -----
 
+// Same as @bank_aware_needs_64B, but both buffers are pre-allocated with only
+// a mem_bank attribute (no address): this goes through
+// checkAndAddBufferWithMemBank rather than setBufferAddress. Without also
+// applying the stricter alignment there, `vec` lands at 1184 (32 mod 64) and
+// a 512-bit vector store to it is torn; it must be bumped to 1216.
+// CHECK-LABEL: module @bank_aware_membank_only_needs_64B
+// CHECK: aie.buffer({{.*}}) {address = 1024 : i32, mem_bank = 0 : i32, sym_name = "pad"} : memref<72xbf16>
+// CHECK: aie.buffer({{.*}}) {address = 1216 : i32, mem_bank = 0 : i32, sym_name = "vec"} : memref<32xbf16>
+module @bank_aware_membank_only_needs_64B {
+  aie.device(npu2) {
+    %t = aie.tile(0, 2)
+    %pad = aie.buffer(%t) { sym_name = "pad", mem_bank = 0 : i32 } : memref<72xbf16>   // 144 B
+    %vec = aie.buffer(%t) { sym_name = "vec", mem_bank = 0 : i32 } : memref<32xbf16>   //  64 B
+    aie.core(%t) {
+      aie.end
+    } { stack_size = 1024 : i32 }
+  }
+}
+
+// -----
+
 // An explicitly pinned address is the user's assertion and is often fixed by an
 // external ABI (e.g. an RTP buffer a host writes at a known address). It is held
 // only to the bus width, so pinning a 64B buffer at a 32-mod-64 address stays
