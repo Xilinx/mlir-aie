@@ -44,7 +44,7 @@ def compileconfig(
             when used as a bare decorator).
         use_cache: Enable file-system caching. Defaults to True.
         compile_flags: Extra flags for the Peano C++ compiler.
-        source_files: C++ kernel source files whose mtimes invalidate the cache.
+        source_files: C++ kernel source files whose content invalidates the cache.
         include_paths: Extra ``-I`` paths for the C++ compiler.
         aiecc_flags: Extra flags for ``aiecc``.
         object_files: Pre-compiled ``.o`` files to link with.

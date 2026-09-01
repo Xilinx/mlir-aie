@@ -1067,7 +1067,9 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
       OptionalAttr<DenseI64ArrayAttr>:$static_sizes,
       OptionalAttr<DenseI64ArrayAttr>:$static_strides,
       OptionalAttr<BDPadLayoutArrayAttr>:$pad_dimensions,
-      OptionalAttr<AIEI32Attr>:$bd_id, OptionalAttr<PacketInfoAttr>:$packet,
+      // BD id. Can be given as runtime (_val) or static; mutually exclusive.
+      Optional<I32>:$bd_id_val, OptionalAttr<AIEI32Attr>:$bd_id,
+      OptionalAttr<PacketInfoAttr>:$packet,
       // Sender-side id stamped into the packet header. Selects which receive
       // BD (by bd id) an out-of-order S2MM channel places this data into.
       OptionalAttr<AIEI32Attr>:$out_of_order_id,
@@ -1099,7 +1101,9 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
     ( `sizes` `=` custom<DynamicIndexList>($sizes, $static_sizes)^ )?
     ( `strides` `=` custom<DynamicIndexList>($strides, $static_strides)^ )?
     ( `pad` $pad_dimensions^ )?
-    `)` attr-dict
+    `)`
+    ( `bd_id_val` $bd_id_val^ `:` type($bd_id_val) )?
+    attr-dict
   }];
 
   let extraClassDeclaration = [{
@@ -1151,6 +1155,17 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
         if (auto c = ::mlir::getConstantIntValue(getLen()))
           return static_cast<int32_t>(*c);
       return std::nullopt;
+    }
+
+    // The bd_id as an OpFoldResult: the runtime operand if present, else the
+    // static bd_id attribute. Null when neither is set.
+    ::mlir::OpFoldResult getBdIdValue() {
+      if (::mlir::Value v = getBdIdVal())
+        return v;
+      if (auto id = getBdId())
+        return ::mlir::IntegerAttr::get(
+            ::mlir::IntegerType::get(getContext(), 32), *id);
+      return {};
     }
 
     // True when the BD carries an explicit length (runtime operand or

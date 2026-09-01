@@ -18,6 +18,7 @@ add_mlir_dialect_library(AIEXTransforms
   AIEMaterializeBDChains.cpp
   AIEMaterializeRuntimeSequences.cpp
   AIEAssignRuntimeSequenceBDIDs.cpp
+  AIEReserveRuntimeBDIDs.cpp
   AIEUnrollRuntimeSequenceLoops.cpp
   AIELowerDynamicBDPool.cpp
   AIEDMATasksToNPU.cpp
