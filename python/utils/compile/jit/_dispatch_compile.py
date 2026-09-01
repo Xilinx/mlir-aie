@@ -16,49 +16,37 @@ that rebuilds the whole instruction stream from scratch given the runtime
 scalar value(s) -- proven end-to-end only by hand-written lit tests today
 (``test/npu-xrt/dynamic_pingpong_passthrough/``).
 
-This module is the first Python entry point for that pipeline: given the
+This module is the Python entry point for that pipeline: given the
 ``input_with_addresses.mlir`` aiecc already writes into every JIT kernel_dir,
-it lowers the runtime sequence, translates it to C++, wraps the generated
-function in a small ``extern "C"`` shim, and compiles that shim with a HOST
-compiler (not Peano -- Peano only targets ``aie2*-none-unknown-elf``) into
-``kernel_dir/dispatch.so``, which ``DispatchBridge`` (_dispatch_bridge.py)
-loads via ``ctypes`` at dispatch time.
+it lowers the runtime sequence and translates it to C++, then compiles the
+result with a HOST compiler (not Peano -- Peano only targets
+``aie2*-none-unknown-elf``) into ``kernel_dir/dispatch.so``, which
+``DispatchBridge`` (_dispatch_bridge.py) loads via ``ctypes`` at dispatch time.
+
+The ``extern "C"`` entry points are emitted by ``ConvertAIEXToEmitC`` itself,
+from the ``aie.runtime_sequence`` argument types, so nothing here writes or
+parses C++ -- the parameter types cross into Python only through the built
+``.so``'s own ``dispatch_abi()``.
 """
 
 from __future__ import annotations
 
-import re
+import ctypes
 import subprocess
 from pathlib import Path
 
-import numpy as np
 from aie.utils import config
 
-from ._dispatch_artifacts import write_dispatch_abi
-
-# aie-opt spelling of aiecc's getNpuDmaLoweringPipeline (tools/aiecc/IRTransforms.h),
-# which the static path runs in-process. Same passes in the same order -- a dynamic
-# design must lower identically. test_dispatch_bridge.py pins the two together.
-_DYNAMIC_LOWERING_PASSES = [
-    "--aie-materialize-bd-chains",
-    "--aie-substitute-shim-dma-allocations",
-    "--aie-unroll-runtime-sequence-loops",
-    "--canonicalize",
-    "--aie-decompose-large-dma-bd",
-    "--aie-lower-dynamic-bd-pool",
-    "--canonicalize",
-    "--aie-assign-runtime-sequence-bd-ids",
-    "--aie-dma-tasks-to-npu",
-    "--aie-lower-dma-channel-reset",
-    "--aie-dma-to-npu",
-    "--aie-lower-set-lock",
-    "--aie-lower-core-reset",
-]
-
-_GENERATE_TXN_SIGNATURE_RE = re.compile(
-    r"inline\s+std::optional<std::vector<uint32_t>>\s+"
-    r"(generate_txn_\w+)\s*\(([^)]*)\)"
+from ._dispatch_abi import (
+    C_TYPE_BY_NP_TYPE,
+    EMIT_DISPATCH_SHIM_FLAG,
+    read_dispatch_abi,
 )
+
+# The same pipeline aiecc runs in-process for the static path (its
+# getNpuDmaLoweringPipeline calls this exact builder), so a dynamic design
+# cannot lower differently. See lib/Dialect/AIEX/Transforms/AIEXNpuPipelines.cpp.
+_DYNAMIC_LOWERING_PASSES = ["--aie-npu-dma-lowering"]
 
 
 class DispatchCompileError(RuntimeError):
@@ -96,7 +84,12 @@ def _lower_dynamic_runtime_sequence(kernel_dir: Path) -> Path:
 def _translate_to_cpp(
     lowered_mlir: Path, kernel_dir: Path, fold_ddr_addr_offset: bool
 ) -> Path:
-    """Run aie-translate --aie-npu-to-cpp; return the generated header path.
+    """Run aie-translate --aie-npu-to-cpp; return the generated .cpp path.
+
+    ``EMIT_DISPATCH_SHIM_FLAG`` makes the pass emit the ``extern "C"``
+    ``dispatch_generate`` / ``dispatch_abi`` entry points alongside the builder,
+    so this file is the whole translation unit -- there is no hand-written
+    wrapper, and the parameter types are the ones MLIR resolved.
 
     ``fold_ddr_addr_offset`` mirrors the static path's flag of the same name
     (``compilabledesign.py``'s ``_resolve_fold_ddr_addr_offset()``): the
@@ -109,7 +102,7 @@ def _translate_to_cpp(
     generated function, exactly like the static insts.bin is compiled once
     per fold choice -- not a per-call runtime option.
     """
-    header_path = kernel_dir / "dispatch_gen.h"
+    gen_cpp = kernel_dir / "dispatch_gen.cpp"
     fold_flag = (
         f"--aie-npu-fold-ddr-addr-offset={'true' if fold_ddr_addr_offset else 'false'}"
     )
@@ -118,161 +111,16 @@ def _translate_to_cpp(
             config.aie_translate_path(),
             "--aie-npu-to-cpp",
             fold_flag,
+            EMIT_DISPATCH_SHIM_FLAG,
             str(lowered_mlir),
         ],
         "aie-translate",
     )
-    header_path.write_text(stdout)
-    return header_path
+    gen_cpp.write_text(stdout)
+    return gen_cpp
 
 
-# DispatchTime[T] wrapped type -> the C spelling aie-translate emits for it.
-# Only unambiguous mappings: anything absent here is left unchecked rather
-# than guessed at, so a new scalar type cannot fail the build spuriously.
-_C_TYPE_BY_NP_TYPE = {
-    np.int8: "int8_t",
-    np.uint8: "uint8_t",
-    np.int16: "int16_t",
-    np.uint16: "uint16_t",
-    np.int32: "int32_t",
-    np.uint32: "uint32_t",
-    np.int64: "int64_t",
-    np.uint64: "uint64_t",
-}
-
-
-def _check_param_types(
-    params: list[tuple[str, str]],
-    dispatch_params: list[str],
-    dispatch_param_types: list | None,
-) -> None:
-    """Check the generated C parameters against the declared DispatchTime[T] types.
-
-    The order of the generated parameters is the ``Runtime(inputs=[...])``
-    order the author wrote by hand; the declared order is the Python
-    signature. Nothing ties the two together, so a design that threads its
-    scalars in a different order than it declares them silently transposes
-    values at every call. Comparing the type sequences catches that whenever
-    the types differ.
-
-    Same-typed parameters stay indistinguishable here -- see the note on
-    ``compile_dispatch_bridge``.
-    """
-    if not dispatch_param_types:
-        return
-    for (c_type, _c_name), name, declared in zip(
-        params, dispatch_params, dispatch_param_types
-    ):
-        expected = _C_TYPE_BY_NP_TYPE.get(declared)
-        if expected is not None and expected != c_type:
-            raise DispatchCompileError(
-                f"DispatchTime[T] parameter {name!r} is declared as "
-                f"{getattr(declared, '__name__', declared)} (C {expected}) but "
-                f"the generated builder takes {c_type} in that position. The "
-                f"order values are threaded into Runtime(inputs=[...]) must "
-                f"match the order they are declared in the signature "
-                f"({dispatch_params!r})."
-            )
-
-
-def _parse_signature(
-    header_text: str,
-    dispatch_params: list[str],
-    dispatch_param_types: list | None = None,
-) -> tuple[str, list[tuple[str, str]]]:
-    """Return ``(func_name, [(ctype, name), ...])`` for the sole ``generate_txn_*``.
-
-    Raises if none or more than one such function is present, if the parameter
-    count doesn't match ``len(dispatch_params)``, or if a parameter's C type
-    contradicts the declared ``DispatchTime[T]`` type in that position (see
-    ``_check_param_types``). Two same-typed parameters threaded in the wrong
-    order remain undetectable -- nothing distinguishes them.
-
-    The "exactly one" requirement is not a gap in AIEXToEmitC.cpp -- it
-    already emits one correctly-named generate_txn_<device>_<sequence>
-    function per (aie.device, aie.runtime_sequence) pair in the module. It
-    reflects a real, current limit one level up: `iron.Program` takes exactly
-    one `Device` and one `Runtime`, so no design built through the normal
-    @iron.jit/Program/Runtime API can ever produce more than one. Revisit
-    only if Program itself grows multi-device support -- a separate, larger
-    feature than this one.
-    """
-    matches = _GENERATE_TXN_SIGNATURE_RE.findall(header_text)
-    if len(matches) != 1:
-        raise DispatchCompileError(
-            f"expected exactly one generate_txn_* function in the generated "
-            f"header, found {len(matches)}. A multi-device or multi-runtime-"
-            f"sequence module cannot be built through iron.Program today "
-            f"(it takes exactly one Device and one Runtime), so this isn't "
-            f"reachable via @iron.jit; wiring it up needs Program itself to "
-            f"support multiple devices/sequences first."
-        )
-    func_name, params_str = matches[0]
-    params_str = params_str.strip()
-    if not params_str:
-        params: list[tuple[str, str]] = []
-    else:
-        params = []
-        for param in params_str.split(","):
-            param = param.strip()
-            ctype, name = param.rsplit(" ", 1)
-            params.append((ctype.strip(), name.strip()))
-
-    if len(params) != len(dispatch_params):
-        raise DispatchCompileError(
-            f"generate_txn_* declares {len(params)} scalar parameter(s) but "
-            f"the design declares {len(dispatch_params)} DispatchTime[T] "
-            f"param(s) ({dispatch_params!r}). Check that every DispatchTime[T] "
-            f"value is threaded into Runtime(inputs=[...]) in declaration "
-            f"order."
-        )
-    _check_param_types(params, dispatch_params, dispatch_param_types)
-    return func_name, params
-
-
-def _write_wrapper_cpp(
-    kernel_dir: Path, func_name: str, params: list[tuple[str, str]]
-) -> Path:
-    """Emit the extern "C" ctypes-callable shim around ``func_name``.
-
-    ``generate_txn_*`` already builds a complete ``std::vector<uint32_t>``
-    before returning, so its exact size is known on the C++ side -- the
-    wrapper keeps owning that vector (in thread-local storage, overwritten by
-    each call) and hands Python a pointer + the exact word count, instead of
-    Python guessing a buffer capacity. ``DispatchBridge`` copies the words out
-    immediately, before making any further call on this thread.
-
-    Sentinel (matching DispatchBridge's expectations): ``-2`` means the
-    generator itself returned ``std::nullopt`` (a runtime scalar overflowed a
-    hardware BD field). Any non-negative return is the actual word count.
-    """
-    param_decls = ", ".join(f"{ctype} {name}" for ctype, name in params)
-    if param_decls:
-        param_decls += ", "
-    arg_names = ", ".join(name for _ctype, name in params)
-
-    wrapper_cpp = f"""\
-#include "dispatch_gen.h"
-#include <cstddef>
-#include <cstdint>
-#include <vector>
-
-thread_local static std::vector<uint32_t> g_dispatch_result;
-
-extern "C" int64_t dispatch_generate({param_decls}uint32_t **out_ptr) {{
-  auto result = {func_name}({arg_names});
-  if (!result) return -2;
-  g_dispatch_result = std::move(*result);
-  *out_ptr = g_dispatch_result.data();
-  return static_cast<int64_t>(g_dispatch_result.size());
-}}
-"""
-    wrapper_path = kernel_dir / "dispatch_wrapper.cpp"
-    wrapper_path.write_text(wrapper_cpp)
-    return wrapper_path
-
-
-def _compile_wrapper(wrapper_cpp: Path, kernel_dir: Path) -> Path:
+def _compile_so(gen_cpp: Path, kernel_dir: Path) -> Path:
     so_path = kernel_dir / "dispatch.so"
     cmd = [
         config.host_cxx_path(),
@@ -283,13 +131,56 @@ def _compile_wrapper(wrapper_cpp: Path, kernel_dir: Path) -> Path:
         # needs nothing newer than std::optional/std::vector.
         "-std=c++17",
         f"-I{config.runtime_header_path()}",
-        f"-I{kernel_dir}",
-        str(wrapper_cpp),
+        str(gen_cpp),
         "-o",
         str(so_path),
     ]
     _run(cmd, "host C++ compile")
     return so_path
+
+
+def _check_built_abi(
+    so_path: Path,
+    dispatch_params: list[str],
+    dispatch_param_types: list | None,
+) -> None:
+    """Check the built ``.so``'s own ABI against what the design declares.
+
+    The generated parameter order is the ``Runtime(inputs=[...])`` order the
+    author wrote by hand; the declared order is the Python signature. Nothing
+    ties the two together, so a design that threads its scalars in a different
+    order than it declares them silently transposes values at every call.
+    Comparing the type sequences catches that whenever the types differ; two
+    same-typed parameters stay indistinguishable, as nothing distinguishes them.
+
+    A declared type absent from ``C_TYPE_BY_NP_TYPE`` is left unchecked rather
+    than guessed at, so a new scalar type cannot fail the build spuriously.
+    """
+    try:
+        c_types = read_dispatch_abi(ctypes.CDLL(str(so_path)), so_path)
+    except (OSError, ValueError) as e:
+        raise DispatchCompileError(f"dispatch bridge: {e}") from None
+
+    if len(c_types) != len(dispatch_params):
+        raise DispatchCompileError(
+            f"the generated builder takes {len(c_types)} scalar parameter(s) "
+            f"but the design declares {len(dispatch_params)} DispatchTime[T] "
+            f"param(s) ({dispatch_params!r}). Check that every DispatchTime[T] "
+            f"value is threaded into Runtime(inputs=[...]) in declaration order."
+        )
+    if not dispatch_param_types:
+        return
+    for c_type, name, declared in zip(c_types, dispatch_params, dispatch_param_types):
+        expected = C_TYPE_BY_NP_TYPE.get(declared)
+        if expected is not None and expected != c_type:
+            raise DispatchCompileError(
+                f"DispatchTime[T] parameter {name!r} is declared as "
+                f"{getattr(declared, '__name__', declared)} (C {expected}) but "
+                f"the generated builder takes {c_type} in that position. The "
+                f"order values are threaded into Runtime(inputs=[...]) must "
+                f"match the order they are declared in the signature "
+                f"({dispatch_params!r})."
+            )
 
 
 def compile_dispatch_bridge(
@@ -314,18 +205,7 @@ def compile_dispatch_bridge(
     cache entry (matching the static insts.bin path).
     """
     lowered_mlir = _lower_dynamic_runtime_sequence(kernel_dir)
-    header_path = _translate_to_cpp(lowered_mlir, kernel_dir, fold_ddr_addr_offset)
-    header_text = header_path.read_text()
-    func_name, params = _parse_signature(
-        header_text, dispatch_params, dispatch_param_types
-    )
-    wrapper_cpp = _write_wrapper_cpp(kernel_dir, func_name, params)
-    so_path = _compile_wrapper(wrapper_cpp, kernel_dir)
-    # Record the ABI now, while it is known for certain. Dispatch then needs
-    # only the .so and this sidecar -- never the generated C++ header, whose
-    # formatting would otherwise have to stay parseable for the life of the
-    # cache entry.
-    write_dispatch_abi(
-        kernel_dir, func_name, dispatch_params, [ctype for ctype, _name in params]
-    )
+    gen_cpp = _translate_to_cpp(lowered_mlir, kernel_dir, fold_ddr_addr_offset)
+    so_path = _compile_so(gen_cpp, kernel_dir)
+    _check_built_abi(so_path, dispatch_params, dispatch_param_types)
     return so_path

@@ -149,8 +149,8 @@ class NPUKernel:
     def _get_dispatch_bridge(self):
         """Return this kernel's ``DispatchBridge``, constructing it once.
 
-        The call ABI comes from the sidecar recorded when the ``.so`` was
-        built, so nothing here parses generated C++.
+        The call ABI comes from the ``.so``'s own ``dispatch_abi()`` export, so
+        nothing here parses generated C++ or a file beside it.
 
         Deferred (function-local) imports: ``compile.jit`` is not imported at
         ``aie.utils`` load time, and ``_dispatch_bridge`` itself imports back
@@ -169,7 +169,7 @@ class NPUKernel:
                     "dispatch_lib_path; it cannot build a per-call instruction "
                     "stream."
                 )
-            self._dispatch_bridge = DispatchBridge.from_artifacts(
+            self._dispatch_bridge = DispatchBridge(
                 Path(self._dispatch_lib_path), self._dispatch_params
             )
         return self._dispatch_bridge

@@ -35,6 +35,7 @@ int main(int argc, char **argv) {
   xilinx::AIE::registerAIEPasses();
   xilinx::AIE::registerAIEObjectFifoPipeline();
   xilinx::AIEX::registerAIEXPasses();
+  xilinx::AIEX::registerAIEXNpuPipelines();
   xilinx::aievec::registerAIEVecAnalysisPasses();
   xilinx::aievec::registerAIEVecPasses();
   xilinx::aievec::registerAIEVecPipelines();

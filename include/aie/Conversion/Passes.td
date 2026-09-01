@@ -110,7 +110,14 @@ def ConvertAIEXToEmitC : Pass<"convert-aiex-to-emitc", "mlir::ModuleOp"> {
       "static aie-npu-to-binary path). Required for the xclbin + "
       "instruction-buffer runtime; must be false for the full-ELF "
       "(xrt.ext.kernel) runtime and for HRX, which translate every "
-      "host buffer address themselves.">];
+      "host buffer address themselves.">,
+    Option<
+      "emitDispatchShim", "emit-dispatch-shim", "bool",
+      /*default=*/"false",
+      "Also emit the extern \"C\" dispatch_abi() / dispatch_generate() "
+      "entry points the JIT dispatch bridge loads via ctypes. Requires "
+      "exactly one aie.runtime_sequence. Off by default: these are "
+      "definitions, so a header including them twice would not link.">];
 }
 
 //===----------------------------------------------------------------------===//

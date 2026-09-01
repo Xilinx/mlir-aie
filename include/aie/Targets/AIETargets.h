@@ -73,9 +73,12 @@ mlir::LogicalResult AIETranslateNpuToBinary(
 /// \param foldDDRAddrOffset true for the xclbin + instruction-buffer runtime;
 /// false for full-ELF and HRX, which translate host addresses themselves.
 /// Matches the default on AIETranslateNpuToBinary.
+/// \param emitDispatchShim also emit the extern "C" dispatch_abi() /
+/// dispatch_generate() entry points the JIT dispatch bridge loads via ctypes.
 mlir::LogicalResult AIETranslateNpuToCpp(mlir::ModuleOp module,
                                          llvm::raw_ostream &output,
-                                         bool foldDDRAddrOffset = true);
+                                         bool foldDDRAddrOffset = true,
+                                         bool emitDispatchShim = false);
 mlir::LogicalResult AIETranslateToUcDma(mlir::ModuleOp module,
                                         llvm::raw_ostream &output);
 mlir::LogicalResult AIETranslateToUcDma(mlir::ModuleOp module,

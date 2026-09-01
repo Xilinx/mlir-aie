@@ -53,7 +53,6 @@ from aie.utils.compile.cache.utils import file_lock
 from aie.utils.compile.utils import _cleanup_failed_compilation
 
 from . import _manifest
-from ._dispatch_artifacts import dispatch_abi_path
 from ._dispatch_compile import compile_dispatch_bridge
 from ._dma_size_parser import parse_dma_sizes
 from ._hash import (
@@ -396,14 +395,10 @@ class CompilableDesign:
 
             xclbin_exists = xclbin_path.exists()
             if has_dispatch:
-                # The bridge is only usable with its ABI sidecar, so a
-                # directory holding one without the other is a miss to be
-                # rebuilt -- not a hit that fails later at dispatch.
+                # dispatch.so carries its own ABI (dispatch_abi()), so it is the
+                # whole artifact -- there is no second file to check for.
                 assert dispatch_so_path is not None
-                inst_exists = (
-                    dispatch_so_path.exists()
-                    and dispatch_abi_path(kernel_dir).is_file()
-                )
+                inst_exists = dispatch_so_path.exists()
             else:
                 assert inst_path is not None
                 inst_exists = inst_path.exists()

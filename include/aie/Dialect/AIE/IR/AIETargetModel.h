@@ -1147,6 +1147,13 @@ public:
   }
 };
 
+/// \brief Device generation ID written into the TXN header
+/// (aie_runtime::TxnDeviceInfo::devGen). Both the static binary emitter and the
+/// generated-C++ builder read it from here, so a new device family is one edit.
+inline uint8_t txnDeviceGen(const AIETargetModel &tm) {
+  return llvm::isa<BaseNPU2TargetModel>(tm) ? 4 : 3;
+}
+
 } // namespace xilinx::AIE
 
 namespace llvm {

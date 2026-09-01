@@ -14,19 +14,25 @@ returned), so these tests do not depend on aiecc/aie-opt/aie-translate at
 all -- only a host C compiler.
 """
 
-import re
 import subprocess
-from pathlib import Path
 
+import numpy as np
 import pytest
 from aie.utils.compile.jit._dispatch_bridge import DispatchBridge
-from aie.utils.compile.jit._dispatch_compile import _DYNAMIC_LOWERING_PASSES
+from aie.utils.compile.jit._dispatch_compile import (
+    _DYNAMIC_LOWERING_PASSES,
+    DispatchCompileError,
+    _check_built_abi,
+)
 from aie.utils.hostruntime.hostruntime import HostRuntimeError
 
 # One fixture .cpp exercising every path DispatchBridge needs to handle:
 #   normal value       -> exact-size result via the thread-local buffer
 #   value == 0          -> "guard failed" (std::nullopt-equivalent), returns -2
-_FIXTURE_SRC = r"""
+# Written by hand rather than generated, so the shape ConvertAIEXToEmitC emits
+# is pinned from this side too (test/Conversion/AIEXToEmitC/dispatch_shim.mlir
+# pins the other side).
+_FIXTURE_BODY = r"""
 #include <cstddef>
 #include <cstdint>
 #include <vector>
@@ -43,10 +49,11 @@ extern "C" int64_t dispatch_generate(int32_t scale, size_t n_tiles,
 }
 """
 
+_FIXTURE_ABI = 'extern "C" const char *dispatch_abi() { return "int32_t,size_t"; }\n'
 
-@pytest.fixture(scope="module")
-def fixture_so(tmp_path_factory):
-    """Compile the fixture .cpp once per test module; skip if no host compiler."""
+
+def _compile_fixture(tmp_dir, source, name):
+    """Compile *source* into ``<name>.so``; skip the module if no host compiler."""
     from aie.utils import config
 
     try:
@@ -54,10 +61,9 @@ def fixture_so(tmp_path_factory):
     except RuntimeError:
         pytest.skip("no host C++ compiler available")
 
-    tmp_dir = tmp_path_factory.mktemp("dispatch_bridge_fixture")
-    src_path = tmp_dir / "fixture.cpp"
-    src_path.write_text(_FIXTURE_SRC)
-    so_path = tmp_dir / "fixture.so"
+    src_path = tmp_dir / f"{name}.cpp"
+    src_path.write_text(source)
+    so_path = tmp_dir / f"{name}.so"
     result = subprocess.run(
         [
             cxx,
@@ -74,6 +80,20 @@ def fixture_so(tmp_path_factory):
     )
     assert result.returncode == 0, result.stderr
     return so_path
+
+
+@pytest.fixture(scope="module")
+def fixture_so(tmp_path_factory):
+    """A self-describing fixture .so, as ConvertAIEXToEmitC would emit one."""
+    tmp_dir = tmp_path_factory.mktemp("dispatch_bridge_fixture")
+    return _compile_fixture(tmp_dir, _FIXTURE_ABI + _FIXTURE_BODY, "fixture")
+
+
+@pytest.fixture(scope="module")
+def fixture_so_no_abi(tmp_path_factory):
+    """The same .so built without dispatch_abi() -- i.e. a stale cache entry."""
+    tmp_dir = tmp_path_factory.mktemp("dispatch_bridge_fixture_no_abi")
+    return _compile_fixture(tmp_dir, _FIXTURE_BODY, "fixture_no_abi")
 
 
 def _bridge(fixture_so):
@@ -118,6 +138,24 @@ def test_mismatched_param_lengths_rejected(fixture_so):
         )
 
 
+def test_param_ctypes_read_from_the_so(fixture_so):
+    """With no param_ctypes given, the signature comes from dispatch_abi()."""
+    bridge = DispatchBridge(fixture_so, dispatch_params=["scale", "n_tiles"])
+    assert list(bridge.generate({"scale": 10, "n_tiles": 3})) == [10, 11, 12]
+
+
+def test_so_without_abi_rejected(fixture_so_no_abi):
+    """A .so built before the shim existed must be rebuilt, not guessed at."""
+    with pytest.raises(HostRuntimeError, match="exports no dispatch_abi"):
+        DispatchBridge(fixture_so_no_abi, dispatch_params=["scale", "n_tiles"])
+
+
+def test_param_count_mismatch_with_so_rejected(fixture_so):
+    """The .so takes two scalars; a design declaring one is a stale artifact."""
+    with pytest.raises(HostRuntimeError, match="cached artifact is stale"):
+        DispatchBridge(fixture_so, dispatch_params=["scale"])
+
+
 def test_unrecognized_ctype_rejected(fixture_so):
     with pytest.raises(HostRuntimeError, match="unrecognized generated C type"):
         DispatchBridge(
@@ -127,53 +165,16 @@ def test_unrecognized_ctype_rejected(fixture_so):
         )
 
 
-# aiecc C++ symbol -> aie-opt flag, in getNpuDmaLoweringPipeline order. The
-# dynamic path spells this pipeline as CLI flags; the static path builds it
-# in-process. They must stay identical or a dispatch design lowers differently
-# from the same design compiled statically.
-_AIECC_PIPELINE = [
-    ("createAIEMaterializeBDChainsPass", "--aie-materialize-bd-chains"),
-    (
-        "createAIESubstituteShimDMAAllocationsPass",
-        "--aie-substitute-shim-dma-allocations",
-    ),
-    ("createAIEUnrollRuntimeSequenceLoopsPass", "--aie-unroll-runtime-sequence-loops"),
-    ("createCanonicalizerPass", "--canonicalize"),
-    ("createAIEDecomposeLargeDmaBdPass", "--aie-decompose-large-dma-bd"),
-    ("createAIELowerDynamicBDPoolPass", "--aie-lower-dynamic-bd-pool"),
-    ("createCanonicalizerPass", "--canonicalize"),
-    ("createAIEAssignRuntimeSequenceBDIDsPass", "--aie-assign-runtime-sequence-bd-ids"),
-    ("createAIEDMATasksToNPUPass", "--aie-dma-tasks-to-npu"),
-    ("createAIELowerDmaChannelResetPass", "--aie-lower-dma-channel-reset"),
-    ("createAIEDmaToNpuPass", "--aie-dma-to-npu"),
-    ("createAIELowerSetLockPass", "--aie-lower-set-lock"),
-    ("createAIELowerCoreResetPass", "--aie-lower-core-reset"),
-]
+def test_dynamic_lowering_invokes_the_shared_pipeline():
+    """The dynamic path must run aiecc's pipeline, not a copy of its pass list.
 
-
-def _aiecc_pipeline_symbols():
-    """The create*Pass() calls in aiecc's getNpuDmaLoweringPipeline, in order."""
-    header = Path(__file__).resolve().parents[2] / "tools" / "aiecc" / "IRTransforms.h"
-    text = header.read_text()
-    start = text.index("getNpuDmaLoweringPipeline")
-    body = text[start : text.index("\n}", start)]
-    return re.findall(r"create[A-Za-z0-9]+Pass", body)
-
-
-def test_dynamic_lowering_matches_aiecc_pipeline():
-    """The dynamic pass list must not drift from aiecc's static pipeline.
-
-    If this fails, aiecc's pipeline changed: mirror the change into
-    _DYNAMIC_LOWERING_PASSES and update _AIECC_PIPELINE here. Silently
-    skipping a pass on the dynamic path produces wrong hardware behavior, not
-    a compile error -- aie-opt happily accepts a shorter list.
+    aiecc's getNpuDmaLoweringPipeline and this flag both resolve to
+    buildNpuDmaLoweringPipeline (lib/Dialect/AIEX/Transforms/AIEXNpuPipelines.cpp),
+    so there is nothing left to drift. Spelling out individual passes here
+    would reintroduce that drift -- aie-opt accepts a short list happily, and a
+    skipped pass is wrong hardware behavior rather than a compile error.
     """
-    symbols = _aiecc_pipeline_symbols()
-    assert symbols == [sym for sym, _flag in _AIECC_PIPELINE], (
-        "aiecc's getNpuDmaLoweringPipeline changed; _DYNAMIC_LOWERING_PASSES in "
-        "_dispatch_compile.py and _AIECC_PIPELINE here both need updating."
-    )
-    assert _DYNAMIC_LOWERING_PASSES == [flag for _sym, flag in _AIECC_PIPELINE]
+    assert _DYNAMIC_LOWERING_PASSES == ["--aie-npu-dma-lowering"]
 
 
 @pytest.mark.parametrize(
@@ -194,7 +195,15 @@ def test_out_of_range_value_rejected(fixture_so, value):
         bridge.generate({param: value, **other})
 
 
-def test_param_type_mismatch_rejected():
+@pytest.fixture(scope="module")
+def transposed_so(tmp_path_factory):
+    """A .so reporting (int64_t, int32_t) -- only dispatch_abi() is needed."""
+    tmp_dir = tmp_path_factory.mktemp("dispatch_bridge_transposed")
+    src = 'extern "C" const char *dispatch_abi() { return "int64_t,int32_t"; }\n'
+    return _compile_fixture(tmp_dir, src, "transposed")
+
+
+def test_param_type_mismatch_rejected(transposed_so):
     """A declared/generated type mismatch means the values are transposed.
 
     The generated parameter order is the Runtime(inputs=[...]) order the
@@ -202,18 +211,15 @@ def test_param_type_mismatch_rejected():
     ties them together, so this is the only signal available when a design
     threads its scalars in a different order than it declares them.
     """
-    import numpy as np
-    from aie.utils.compile.jit._dispatch_compile import (
-        DispatchCompileError,
-        _check_param_types,
-    )
-
-    params = [("int64_t", "v1"), ("int32_t", "v2")]
     with pytest.raises(DispatchCompileError, match="declared as int32"):
-        _check_param_types(params, ["rows", "cols"], [np.int32, np.int64])
+        _check_built_abi(transposed_so, ["rows", "cols"], [np.int32, np.int64])
 
     # Correctly ordered: no complaint.
-    _check_param_types(params, ["rows", "cols"], [np.int64, np.int32])
+    _check_built_abi(transposed_so, ["rows", "cols"], [np.int64, np.int32])
 
     # Unknown declared type is left unchecked rather than guessed at.
-    _check_param_types(params, ["rows", "cols"], [None, None])
+    _check_built_abi(transposed_so, ["rows", "cols"], [None, None])
+
+    # Arity is checked even with no declared types to compare.
+    with pytest.raises(DispatchCompileError, match="the design declares 1"):
+        _check_built_abi(transposed_so, ["rows"], None)

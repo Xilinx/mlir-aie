@@ -136,6 +136,20 @@ struct TxnDeviceInfo {
   uint8_t numMemTileRows = 1;
 };
 
+// Build a TxnDeviceInfo from target-model values. Assigns by field name, so
+// callers that can only emit an expression (the generated C++ builder) do not
+// have to restate the field order as a positional initializer.
+inline TxnDeviceInfo txn_device_info(uint8_t dev_gen, uint8_t num_rows,
+                                     uint8_t num_cols,
+                                     uint8_t num_memtile_rows) {
+  TxnDeviceInfo info;
+  info.devGen = dev_gen;
+  info.numRows = num_rows;
+  info.numCols = num_cols;
+  info.numMemTileRows = num_memtile_rows;
+  return info;
+}
+
 // Append a 6-word write32 instruction.
 inline void txn_append_write32(std::vector<uint32_t> &txn, uint32_t addr,
                                uint32_t val) {
@@ -199,6 +213,18 @@ inline void txn_append_blockwrite(std::vector<uint32_t> &txn, uint32_t addr,
     txn[pos + headerSize + i] = data[i];
 }
 
+// The "instruction buffer" runtime (xclbin + insts.bin, launched as
+// kernel(opcode, insts_bo, ninsts, host_bo0, ...)) has the NPU firmware
+// pre-translate host buffer addresses into the AIE address space by adding
+// kDDRAIEAddrOffset, but only for the first kNumFirmwareTranslatedArgs host
+// arguments. Host arguments beyond that keep their raw host address, so the DDR
+// patch must fold the same offset into arg_plus to land at the correct AIE
+// address. The full-ELF runtime (xrt.elf + xrt.ext.kernel) and HRX instead
+// assign device addresses to ALL host arguments, so folding there would
+// double-translate the 6th+ buffer: those pass fold = false.
+constexpr uint32_t kDDRAIEAddrOffset = 0x80000000;
+constexpr uint32_t kNumFirmwareTranslatedArgs = 5;
+
 // Append a 12-word address_patch (DDR_PATCH) instruction.
 inline void txn_append_address_patch(std::vector<uint32_t> &txn, uint32_t addr,
                                      int32_t arg_idx, uint32_t arg_plus) {
@@ -214,6 +240,18 @@ inline void txn_append_address_patch(std::vector<uint32_t> &txn, uint32_t addr,
   // pos+9 is reserved (zero)
   txn[pos + 10] = arg_plus; // byte offset into buffer
   // pos+11 is reserved (zero)
+}
+
+// Append a DDR_PATCH for a host buffer argument, folding the aperture offset
+// when the target runtime needs it. Both the static binary emitter and the
+// generated C++ builder route through here, so the fold rule has one body.
+inline void txn_append_arg_patch(std::vector<uint32_t> &txn, uint32_t addr,
+                                 int32_t arg_idx, uint32_t arg_plus,
+                                 bool fold_ddr_addr_offset) {
+  if (fold_ddr_addr_offset &&
+      static_cast<uint32_t>(arg_idx) >= kNumFirmwareTranslatedArgs)
+    arg_plus += kDDRAIEAddrOffset;
+  txn_append_address_patch(txn, addr, arg_idx, arg_plus);
 }
 
 // Append a 4-word loadpdi instruction.
