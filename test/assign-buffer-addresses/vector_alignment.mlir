@@ -28,7 +28,7 @@ module @aie2p_core_needs_64B {
     %vec = aie.buffer(%t) { sym_name = "vec" } : memref<32xbf16>   //  64 B
     aie.core(%t) {
       aie.end
-    } { stackSize = 1024 : i32 }
+    } { stack_size = 1024 : i32 }
   }
 }
 
