@@ -796,8 +796,14 @@ class CompilableDesign:
                     except StopIteration:
                         # Not supplied: fall back to the signature default, so
                         # `n: DispatchTime[T] = 4` means what it says instead
-                        # of failing later as a missing dispatch scalar.
-                        if param.default is not inspect.Parameter.empty:
+                        # of failing later as a missing dispatch scalar. Only
+                        # for dispatch params -- a defaulted CompileTime[T] is
+                        # already baked into the artifact, and forwarding its
+                        # default here would leak it into the backend's load().
+                        if (
+                            name in self.dispatch_params
+                            and param.default is not inspect.Parameter.empty
+                        ):
                             scalar_kwargs[name] = param.default
 
         return tensor_args, scalar_kwargs

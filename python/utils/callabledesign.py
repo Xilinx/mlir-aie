@@ -359,7 +359,7 @@ class CallableDesign:
         if kernel is not None:
             if compilable.full_elf:
                 artifacts_present = Path(kernel.elf_path).is_file()
-            elif kernel.dispatch_params:
+            elif compilable.dispatch_params:
                 # A dispatch design has no insts.bin at all -- the instruction
                 # stream is rebuilt per call from dispatch.so, so that is the
                 # artifact whose disappearance has to invalidate the kernel.
