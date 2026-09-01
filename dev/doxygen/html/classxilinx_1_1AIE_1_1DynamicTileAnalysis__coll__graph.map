@@ -1,0 +1,19 @@
+<map id="xilinx::AIE::DynamicTileAnalysis" name="xilinx::AIE::DynamicTileAnalysis">
+<area shape="rect" id="Node000001" title=" " alt="" coords="427,224,604,264"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="112,17,151,42"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="165,28,214,33,276,44,342,64,374,79,404,97,438,126,467,160,506,222,502,225,463,164,435,130,401,101,372,83,341,69,275,49,213,38,164,33"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="60,67,203,107"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="217,99,309,122,357,139,404,159,453,190,493,222,490,226,450,194,401,164,355,144,307,127,216,104"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="54,131,209,171"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="222,165,403,205,457,221,455,227,402,211,221,170"/>
+<area shape="rect" id="Node000005" title=" " alt="" coords="54,195,209,235"/>
+<area shape="poly" id="edge4_Node000001_Node000005" title=" " alt="" coords="223,219,427,235,426,240,222,224"/>
+<area shape="rect" id="Node000006" title=" " alt="" coords="27,259,236,285"/>
+<area shape="poly" id="edge5_Node000001_Node000006" title=" " alt="" coords="250,266,402,256,426,254,427,259,403,261,250,271"/>
+<area shape="rect" id="Node000007" title=" " alt="" coords="5,309,257,334"/>
+<area shape="poly" id="edge6_Node000001_Node000007" title=" " alt="" coords="271,308,337,299,402,285,470,262,471,267,403,291,338,304,272,314"/>
+<area shape="rect" id="Node000008" title=" " alt="" coords="8,358,255,383"/>
+<area shape="poly" id="edge7_Node000001_Node000008" title=" " alt="" coords="268,361,336,348,402,327,428,313,453,296,493,262,496,266,456,301,431,318,404,332,337,353,269,366"/>
+<area shape="rect" id="Node000009" title=" " alt="" coords="35,407,228,433"/>
+<area shape="poly" id="edge8_Node000001_Node000009" title=" " alt="" coords="241,420,323,408,363,396,401,379,435,354,463,322,502,263,506,266,468,326,439,358,404,384,365,401,324,414,242,425"/>
+</map>
