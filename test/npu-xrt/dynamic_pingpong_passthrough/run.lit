@@ -20,9 +20,8 @@
 // RUN:   --xclbin-name=%t.xclbin --tmpdir=%t.prj %S/aie.mlir
 //
 // Generate the C++ TXN builder from aiecc's lowered intermediate.
-// input_with_addresses.mlir is lowered for addresses only; --aie-npu-dma-lowering
-// is the same pipeline aiecc runs in-process, so the npu ops produced here match
-// what a static build of this design would emit.
+// --aie-npu-dma-lowering is the same pipeline aiecc runs in-process, so the npu
+// ops produced here match what a static build of this design would emit.
 // RUN: aie-opt --aie-npu-dma-lowering %t.prj/input_with_addresses.mlir -o %t.lowered.mlir
 // RUN: aie-translate --aie-npu-to-cpp %t.lowered.mlir > %t.gen.h
 //

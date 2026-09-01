@@ -8,10 +8,9 @@
 // RUN: aie-translate %s --aie-npu-to-cpp | FileCheck %s --check-prefix=FOLD
 // RUN: aie-translate %s --aie-npu-to-cpp --aie-npu-fold-ddr-addr-offset=false | FileCheck %s --check-prefix=NOFOLD
 
-// Firmware auto-translates host addresses for only arg_idx 0-4, so a later
-// arg's DDR patch must fold the aperture offset into arg_plus. The rule itself
-// lives in TxnEncoding.h's txn_append_arg_patch, which the static path calls
-// too; this pass only decides the fold flag. =false (HRX, full-ELF) never folds.
+// The fold rule itself lives in TxnEncoding.h's txn_append_arg_patch, which the
+// static path calls too; this pass only decides the flag. =false (HRX,
+// full-ELF) never folds.
 
 // FOLD: inline std::optional<std::vector<uint32_t>> generate_txn_main_seq(int32_t [[P:v[0-9]+]]) {
 // FOLD:   [[F:v[0-9]+]] = true

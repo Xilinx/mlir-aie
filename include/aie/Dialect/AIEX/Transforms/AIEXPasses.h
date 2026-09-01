@@ -77,9 +77,8 @@ createAIELowerScratchpadParametersPass(
     AIELowerScratchpadParametersOptions options);
 
 /// \brief DMA->NPU lowering. Expects runtime sequences to already be
-/// materialized (aiecc's getMaterializeRuntimeSeqPipeline). aiecc runs this
-/// in-process; the JIT dispatch bridge runs the same thing out-of-process as
-/// `aie-opt --aie-npu-dma-lowering`, so the two cannot drift.
+/// materialized (aiecc's getMaterializeRuntimeSeqPipeline). Registered as
+/// `aie-npu-dma-lowering` so out-of-process callers share this definition.
 void buildNpuDmaLoweringPipeline(mlir::OpPassManager &pm);
 
 /// Register buildNpuDmaLoweringPipeline as `-aie-npu-dma-lowering`.

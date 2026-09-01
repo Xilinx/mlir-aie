@@ -147,11 +147,8 @@ def _compute_recipe_hash(
         h.update(repr(getattr(generator, "__defaults__", None)).encode())
         h.update(repr(getattr(generator, "__kwdefaults__", None)).encode())
         # Annotations also live outside the code object, and they decide how
-        # every parameter is treated: In vs Out vs InOut, and the wrapped type
-        # of a DispatchTime[T] (which is forwarded into the generated MLIR as
-        # the runtime scalar's type). Without this, changing only an annotation
-        # reuses an artifact built for the old one. Markers repr stably by
-        # design (markers.py) so this is constant across processes.
+        # every parameter is treated: In vs Out vs InOut, and a DispatchTime[T]
+        # wrapped type. Markers repr stably (markers.py), so this is portable.
         h.update(repr(getattr(generator, "__annotations__", None)).encode())
 
     def _kwarg_repr(v):

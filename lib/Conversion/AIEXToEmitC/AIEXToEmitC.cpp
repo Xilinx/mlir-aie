@@ -39,9 +39,8 @@
 #include "llvm/Support/Format.h"
 
 namespace xilinx {
-// DECL as well as DEF: the explicit ConvertAIEXToEmitCPass(Options)
-// constructor below instantiates the Base's matching constructor, which needs
-// ConvertAIEXToEmitCOptions declared in this translation unit.
+// DECL as well as DEF: the ConvertAIEXToEmitCPass(Options) constructor below
+// needs ConvertAIEXToEmitCOptions declared in this translation unit.
 #define GEN_PASS_DECL_CONVERTAIEXTOEMITC
 #define GEN_PASS_DEF_CONVERTAIEXTOEMITC
 #include "aie/Conversion/Passes.h.inc"
@@ -531,12 +530,9 @@ struct ConvertAIEXToEmitCPass
   }
 
 private:
-  // The C spelling emitc's translator emits for a runtime-sequence parameter
-  // type. Used only to build the ABI string; the shim's actual signature is an
-  // emitc.func over the same types, so the translator writes those itself.
-  // Mirrors CppEmitter::emitType, including its signedness rule -- an unsigned
-  // integer prints as uintN_t, and disagreeing here would report an ABI the
-  // emitted signature does not have. dispatch_shim.mlir pins the two together.
+  // The C spelling emitc's translator emits for a parameter type, for the ABI
+  // string only. Must mirror CppEmitter::emitType down to its signedness rule,
+  // or the reported ABI disagrees with the emitted signature.
   static std::optional<std::string> cTypeName(Type t) {
     if (isa<emitc::SizeTType>(t))
       return std::string("size_t");
@@ -549,11 +545,9 @@ private:
            std::to_string(intTy.getWidth()) + "_t";
   }
 
-  // Emit the ctypes-callable entry points the JIT dispatch bridge loads:
-  // dispatch_abi() reporting the parameter types, and dispatch_generate()
-  // handing back a pointer + exact word count into thread-local storage.
-  // Returning -2 means the builder itself declined (a runtime scalar overflowed
-  // a hardware BD field), which the caller must not read a stream from.
+  // Emit the ctypes-callable entry points: dispatch_abi() reporting the
+  // parameter types, and dispatch_generate() handing back a pointer + word
+  // count into thread-local storage, or -2 when the builder declined.
   LogicalResult emitDispatchShimFuncs(OpBuilder &builder, ModuleOp moduleOp) {
     auto gen = *moduleOp.getOps<emitc::FuncOp>().begin();
     MLIRContext *ctx = moduleOp.getContext();

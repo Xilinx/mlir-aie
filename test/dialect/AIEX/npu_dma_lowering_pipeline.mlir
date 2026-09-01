@@ -7,10 +7,9 @@
 
 // RUN: aie-opt --aie-npu-dma-lowering %s | FileCheck %s
 
-// aiecc's getNpuDmaLoweringPipeline and the JIT dispatch bridge both resolve to
-// buildNpuDmaLoweringPipeline, so this named pipeline is the only place the
-// pass list exists. If it stops resolving, the dispatch bridge silently lowers
-// a runtime sequence differently from the same design compiled statically.
+// aiecc and the JIT dispatch bridge both resolve to buildNpuDmaLoweringPipeline.
+// If this named pipeline stops resolving, the bridge silently lowers a runtime
+// sequence differently from the same design compiled statically.
 
 // The dma_memcpy_nd became a blockwrite of BD words + an address_patch for the
 // host buffer, and the dma_wait a sync -- i.e. the whole pass list ran, not

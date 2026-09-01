@@ -346,10 +346,9 @@ def whole_array_dynamic(
 
 
 # DispatchTime M/K/N stay runtime i32 block args, so the range_ loops stay
-# rolled and the design takes the dispatch-bridge path: one xclbin plus a C++
-# TXN builder that rebuilds the instruction stream per call. M/K/N here are the
-# compiled maxima that size the host buffers; the per-call values are M_rt/K_rt/
-# N_rt. K_rt must equal the compiled K.
+# rolled and the design takes the dispatch-bridge path. M/K/N here are the
+# compiled maxima sizing the host buffers; per-call values are M_rt/K_rt/N_rt,
+# and K_rt must equal the compiled K.
 @iron.jit(aiecc_flags=["--alloc-scheme=basic-sequential"])
 def whole_array_dispatch(
     A: In,

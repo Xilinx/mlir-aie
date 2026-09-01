@@ -32,8 +32,7 @@ EMIT_DISPATCH_SHIM_FLAG = "--aie-npu-emit-dispatch-shim"
 
 # C type spelling (as aie-translate emits it) -> (ctypes type, the
 # ``DispatchTime[T]`` wrapped type that maps to it, or None if none does).
-# Must cover everything AIEXToEmitC.cpp's cTypeName can emit: ``size_t`` for an
-# ``index`` arg and ``bool`` for an ``i1`` have no DispatchTime[T] spelling.
+# Covers everything AIEXToEmitC.cpp's cTypeName can emit.
 _SCALAR_C_TYPES: dict[str, tuple[type, type | None]] = {
     "bool": (ctypes.c_bool, None),
     "int8_t": (ctypes.c_int8, np.int8),

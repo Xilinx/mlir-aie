@@ -340,11 +340,9 @@ class CallableDesign:
         else:
             cache_fn = self._path_cache_fn
 
-        # The tensor args are the whole runtime half of the key: a
-        # DispatchTime[T] value is by definition not part of the compiled
-        # artifact, so keying on it would build one kernel per distinct value.
-        # split_runtime_args drops it for us, so the split has to happen here
-        # rather than after compile().
+        # Tensor args are the whole runtime half of the key: a DispatchTime[T]
+        # value is not part of the compiled artifact, so keying on it would
+        # build one kernel per distinct value.
         tensor_args, remaining_scalars = compilable.split_runtime_args(
             runtime_args, scalar_runtime_kwargs
         )

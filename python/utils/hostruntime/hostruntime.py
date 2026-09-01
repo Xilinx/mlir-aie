@@ -43,9 +43,7 @@ class KernelHandle(ABC):
 
         True for a ``DispatchTime[T]`` design, which holds no static
         instruction stream: each call rebuilds one through the dispatch
-        bridge. Backends override this to name the artifact they lack, so the
-        "no static stream" test lives in one place per backend instead of
-        being re-derived at every use.
+        bridge. Each backend names the artifact it would otherwise dispatch.
         """
         return False
 

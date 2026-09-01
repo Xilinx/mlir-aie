@@ -8,12 +8,9 @@
 # REQUIRES: xrt_python_bindings, peano
 
 # Whole-array dynamic i16 GEMM on real hardware, swept over n_aie_cols 1, 2, 4.
-# The runtime sequence keeps its scf.for rolled over a RUNTIME trip count
-# derived from M/K/N, which the dynamic BD free-list pool path supports (the
-# static allocator would reject it). One compiled artifact per column count
-# serves every shape below: `whole_array_dispatch` declares M/K/N as
-# DispatchTime[np.int32], so each call rebuilds the instruction stream through
-# the dispatch bridge instead of recompiling.
+# The runtime sequence keeps its scf.for rolled over a runtime trip count, which
+# only the dynamic BD free-list pool path supports. M/K/N are DispatchTime, so
+# one compiled artifact per column count serves every shape below.
 
 import aie.iron as iron
 import numpy as np

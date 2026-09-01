@@ -201,11 +201,9 @@ class CompilableDesign:
             self.scalar_params = []
             self.dispatch_param_types = []
 
-        # Guard 0-A: every compile_kwargs key must be a CompileTime[T] param.
-        # Checked here, not at generation, because a misplaced key otherwise
-        # reaches __hash__/_compute_cache_hash -- which can run before any
-        # generation -- and pollutes the cache key. compile_kwargs is frozen,
-        # so checking once is enough.
+        # Guard 0-A: compile_kwargs holds only CompileTime[T] names. Checked at
+        # construction because __hash__ can run before any generation, so a
+        # misplaced key would reach the cache key first.
         name = getattr(mlir_generator, "__name__", mlir_generator)
         for kind, names in (
             ("runtime tensors (In/Out/InOut)", self.tensor_params),
@@ -795,12 +793,9 @@ class CompilableDesign:
                         val = _next_non_kernel(pos_iter)
                         scalar_kwargs[name] = val
                     except StopIteration:
-                        # Not supplied: fall back to the signature default, so
-                        # `n: DispatchTime[T] = 4` means what it says instead
-                        # of failing later as a missing dispatch scalar. Only
-                        # for dispatch params -- a defaulted CompileTime[T] is
-                        # already baked into the artifact, and forwarding its
-                        # default here would leak it into the backend's load().
+                        # Dispatch params only: a defaulted CompileTime[T] is
+                        # baked into the artifact already, and forwarding it
+                        # here would leak it into the backend's load().
                         if (
                             name in self.dispatch_params
                             and param.default is not inspect.Parameter.empty
@@ -1054,14 +1049,9 @@ class CompilableDesign:
 
         hints = self._hints
 
-        # Guard 2-A (a tensor or dispatch name in compile_kwargs) lives in
-        # __init__ as Guard 0-A: those names are real parameters, so the design
-        # is hashable and the bad key would reach the cache key before ever
-        # generating. An entirely unknown key cannot generate at all, so it can
-        # be caught here -- and catching it here keeps to_json() able to
-        # round-trip whatever a caller put in compile_kwargs.
-
-        # Guard 2-B: compile_kwargs must not contain entirely unknown keys.
+        # Guard 2-B is checked here, not in __init__: an unknown key cannot
+        # generate at all, and leaving it be keeps to_json() able to round-trip
+        # whatever a caller put in compile_kwargs.
         known_params = (
             set(self.compile_params)
             | set(self.tensor_params)

@@ -30,13 +30,9 @@ void xilinx::AIEX::buildNpuDmaLoweringPipeline(OpPassManager &pm) {
   dpm.addPass(createCanonicalizerPass());
   dpm.addPass(createAIEAssignRuntimeSequenceBDIDsPass());
   dpm.addPass(createAIEDMATasksToNPUPass());
-  // Expand dma_channel_reset_for into its re-arm trio (dma_channel_reset +
-  // set_lock + a START_QUEUE re-push) and lower the resulting dma_channel_reset
-  // ops to maskwrite32 -- one pass. Runs before aie-dma-to-npu so the emitted
-  // push_queue is lowered with the other queue pushes, and before
-  // aie-lower-set- lock so the emitted set_lock ops are lowered too. The head
-  // bd_id + repeat it re-pushes were folded into the objectfifo_rearm_binding
-  // by aie-assign-bd-ids.
+  // Expands dma_channel_reset_for into its re-arm trio and lowers the
+  // dma_channel_reset ops to maskwrite32. Must precede aie-dma-to-npu and
+  // aie-lower-set-lock, which lower the push_queue and set_lock ops it emits.
   dpm.addPass(createAIELowerDmaChannelResetPass());
   dpm.addPass(createAIEDmaToNpuPass());
   dpm.addPass(createAIELowerSetLockPass());

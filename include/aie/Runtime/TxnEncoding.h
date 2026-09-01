@@ -213,15 +213,11 @@ inline void txn_append_blockwrite(std::vector<uint32_t> &txn, uint32_t addr,
     txn[pos + headerSize + i] = data[i];
 }
 
-// The "instruction buffer" runtime (xclbin + insts.bin, launched as
-// kernel(opcode, insts_bo, ninsts, host_bo0, ...)) has the NPU firmware
-// pre-translate host buffer addresses into the AIE address space by adding
-// kDDRAIEAddrOffset, but only for the first kNumFirmwareTranslatedArgs host
-// arguments. Host arguments beyond that keep their raw host address, so the DDR
-// patch must fold the same offset into arg_plus to land at the correct AIE
-// address. The full-ELF runtime (xrt.elf + xrt.ext.kernel) and HRX instead
-// assign device addresses to ALL host arguments, so folding there would
-// double-translate the 6th+ buffer: those pass fold = false.
+// Under the xclbin + insts.bin runtime, NPU firmware adds kDDRAIEAddrOffset to
+// host buffer addresses for only the first kNumFirmwareTranslatedArgs args; a
+// DDR patch for a later arg must fold the offset into arg_plus itself. Full-ELF
+// and HRX translate every arg, so folding there would double-translate the 6th+
+// buffer: those pass fold = false.
 constexpr uint32_t kDDRAIEAddrOffset = 0x80000000;
 constexpr uint32_t kNumFirmwareTranslatedArgs = 5;
 

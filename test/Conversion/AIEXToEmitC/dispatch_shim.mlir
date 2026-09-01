@@ -10,10 +10,9 @@
 // RUN: aie-translate %S/Inputs/dispatch_shim_widths.mlir --aie-npu-to-cpp \
 // RUN:   --aie-npu-emit-dispatch-shim | FileCheck %s --check-prefix=SIGNED
 
-// The JIT dispatch bridge loads these two symbols with ctypes. dispatch_abi()
-// and dispatch_generate() are built from the same aie.runtime_sequence argument
-// types, so the reported names must match the emitted signature exactly; that
-// pairing is what Python builds its call signature from.
+// Both symbols are built from the same aie.runtime_sequence argument types, so
+// the names dispatch_abi() reports must match dispatch_generate()'s signature
+// exactly -- Python builds its ctypes call signature from that pairing.
 
 // CHECK: inline std::optional<std::vector<uint32_t>> generate_txn_main_seq(int32_t {{v[0-9]+}}, size_t {{v[0-9]+}})
 
@@ -35,10 +34,9 @@
 // NOSHIM-NOT: dispatch_abi
 // NOSHIM-NOT: dispatch_generate
 
-// Signedness and width come from CppEmitter's own rules, so the ABI string has
-// to track them: an unsigned arg prints uintN_t and an i1 prints bool. Reporting
-// int32_t for a uint32_t parameter would make DispatchBridge build a signed
-// ctypes signature against an unsigned entry point.
+// The ABI string has to track CppEmitter's signedness and width rules: naming
+// int32_t for a uint32_t parameter would build a signed ctypes signature
+// against an unsigned entry point.
 // SIGNED: generate_txn_main_widths(uint32_t {{v[0-9]+}}, bool {{v[0-9]+}}, int8_t {{v[0-9]+}}, size_t {{v[0-9]+}})
 // SIGNED: return "uint32_t,bool,int8_t,size_t";
 
