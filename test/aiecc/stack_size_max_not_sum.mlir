@@ -11,8 +11,8 @@
 // each hold a frame of about 4096 bytes, see the kernel source, and the core
 // body calls each one on its own, so the requirement is about one frame, 4
 // KiB. stack_size = 5000 sits between one frame and two, so the build stays
-// silent under the maximum and fails under a sum. The measured number lands on
-// the core as `measured_stack_size`.
+// silent under the maximum and fails under a sum. aiecc writes the measured
+// number to the core's `measured_stack_size` attribute.
 
 // REQUIRES: peano
 // RUN: rm -rf %t.d && mkdir -p %t.d

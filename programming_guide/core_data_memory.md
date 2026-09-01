@@ -58,7 +58,7 @@ whatever the control flow.
 
 The check runs once, after each core is compiled, because the core body's own
 frame exists only after codegen. `aiecc` writes the result to the
-`measured_stack_size` attribute on the `aie.core`, so you can read it back:
+`measured_stack_size` attribute on the `aie.core`, so you can inspect it:
 
 ```mlir
 aie.core(%tile_0_2) { ... } {stack_size = 8192 : i32, measured_stack_size = 4128 : i32}
@@ -154,8 +154,8 @@ it needs N bytes` (error).** Set `stack_size = N`, or `Worker(stack_size=N)`,
 and rebuild.
 
 **`stack_size = M is insufficient: this core needs N bytes` (error).** The same
-case, with `stack_size` already set explicitly to a value that turned out too
-small. Increase it to `N` and rebuild.
+case, with `stack_size` already set explicitly to a value below the
+requirement. Increase it to `N` and rebuild.
 
 At this point the requirement is known, and `--no-measure-stack-size` silences a
 proven overflow. Reach for it only when you believe the measurement itself is

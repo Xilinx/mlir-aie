@@ -16,7 +16,7 @@
 
 // CHECK: error: stack_size = 1024 is insufficient: this core needs {{[0-9]+}} bytes; increase stack_size to {{[0-9]+}} (Worker(stack_size=...) in IRON), or pass --no-measure-stack-size to skip this check
 
-// No xclbin here either, as in the absent case.
+// The check fails ahead of the xclbin edge here too, as in the absent case.
 // RUN: not ls %t.out/final.xclbin
 
 // --no-measure-stack-size skips this check, as it does for the absent case.

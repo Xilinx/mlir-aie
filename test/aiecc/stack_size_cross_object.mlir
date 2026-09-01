@@ -8,8 +8,8 @@
 // Exercises cross-object attribution (StackSizeAnalysis.h). entry_cross is the
 // one direct call of the core body, and it calls helper_cross, which a sibling
 // object defines with a large frame. stack_size = 2048 sits below the full
-// requirement, so the build fails. Under a dropped call edge
-// the analysis reports the small frame of entry_cross alone.
+// requirement, so the build fails. Under a dropped call edge the analysis
+// reports the small frame of entry_cross alone.
 
 // REQUIRES: peano
 // RUN: rm -rf %t.d && mkdir -p %t.d

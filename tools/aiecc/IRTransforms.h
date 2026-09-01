@@ -209,8 +209,8 @@ inline void appendSkippedArtifacts(mlir::InFlightDiagnostic &diag,
 }
 
 // Measures each core's stack requirement and writes it to
-// `measured_stack_size`: the top-level frame that `measureOwnFrame` reads out
-// of the compiled core object, plus the deepest call path through the core's
+// `measured_stack_size`: the top-level frame that `measureOwnFrame` reads from
+// the compiled core object, plus the deepest call path through the core's
 // `link_files` (StackSizeAnalysis.h).
 //
 // A requirement above `stack_size` fails the build, as does a cycle in the call

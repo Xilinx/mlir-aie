@@ -801,9 +801,9 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   EdgeWithTypedOutput<Directory> &objects =
       doUnified ? unifiedObjects : perCoreObjects;
 
-  // Placed downstream of `objects`, which holds the compiled core body the
-  // measurement reads, and upstream of `physicalWithElfs`, so a failure stops
-  // the run before an output artifact is written.
+  // This edge runs after `objects`, which holds the compiled core body that
+  // the measurement reads, and before `physicalWithElfs`, so a failure ends
+  // the run before any output artifact is written.
   EdgeWithTypedOutput<ModRef> *physicalWithMeasuredStackSizes = nullptr;
   if (!noMeasureStackSize.getValue())
     physicalWithMeasuredStackSizes =
@@ -1619,7 +1619,7 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
       generateFullElf || wantAiesim || doCompileHost || !getOutputs.empty() ||
       !cutOutputs.empty();
   // Every other artifact depends on the stack check through physicalWithElfs.
-  // A core-ELF build stops short of that edge, so name the check here.
+  // A core-ELF build ends before that edge, so name the check here.
   if (generateCoreElfs || !anySpecificOutput) {
     outputs.push_back(&compiledElfs);
     if (physicalWithMeasuredStackSizes)

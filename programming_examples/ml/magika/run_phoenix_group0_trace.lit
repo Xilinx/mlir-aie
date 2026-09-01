@@ -5,7 +5,7 @@
 // REQUIRES: makefile_examples
 //
 // group0 routes the trace of two cores into one shim channel, and the capture
-// comes back empty: parse.py reports "No valid trace data found". group2 traces
+// holds no data: parse.py reports "No valid trace data found". group2 traces
 // one core and its trace run passes, so the shared channel is the open problem.
 // XFAIL: *
 //
