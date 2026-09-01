@@ -251,6 +251,10 @@ __attribute__((noinline)) void threshold4Ch_aie(
 
 extern "C" {
 
+#ifndef BIT_WIDTH
+#error "threshold.cc: BIT_WIDTH selects the element type of the exported wrappers and has no safe default. Pass -DBIT_WIDTH=8, 16 or 32."
+#endif
+
 #if BIT_WIDTH == 8
 
 void threshold(uint8_t *img_in, uint8_t *img_out, int32_t thresh_val,
@@ -307,7 +311,7 @@ void thresholdLine(int16_t *in, int16_t *out, int32_t lineWidth,
                              thresholdType);
 }
 
-#else // 32
+#elif BIT_WIDTH == 32
 
 void threshold(int32_t *img_in, int32_t *img_out, int32_t thresh_val,
                int32_t max_val, int32_t img_width, int32_t img_height) {
@@ -329,6 +333,8 @@ void thresholdLine(int32_t *in, int32_t *out, int32_t lineWidth,
                              thresholdType);
 }
 
+#else
+#error "threshold.cc: BIT_WIDTH selects the element type of the exported wrappers and has no safe default -- an unset BIT_WIDTH expands to 0 and would silently select the widest branch. Pass -DBIT_WIDTH=8, 16 or 32."
 #endif
 
 } // extern "C"
