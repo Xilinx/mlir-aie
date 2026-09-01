@@ -62,7 +62,7 @@ KNOWN_C_TYPES = sorted(_SCALAR_C_TYPES)
 
 
 def ctypes_for(c_type_name: str) -> type | None:
-    """The ``ctypes`` type for a generated C type, or ``None`` if unrecognized."""
+    """Return the ``ctypes`` type for a generated C type, or ``None`` if unknown."""
     entry = _SCALAR_C_TYPES.get(c_type_name)
     return entry[0] if entry else None
 

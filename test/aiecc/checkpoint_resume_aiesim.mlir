@@ -5,7 +5,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-// REQUIRES: aiesimulator
+// The device is xcvc1902, so this also needs the AIE1 runtime lib: having
+// aiesimulator does not imply AIE was in AIE_VITIS_COMPONENTS, and without it
+// aie_runtime_lib/AIE/chess_intrinsic_wrapper.ll is never built and the chess
+// link fails. Same gate as test/generate-mmap/allocation_error_chess.mlir.
+// REQUIRES: aiesimulator, aietools_aie
 
 // The aiesim work-folder subgraph must round-trip through checkpoint/resume.
 // A straight-through `--get-aiesim` build (which assembles the whole `sim/`

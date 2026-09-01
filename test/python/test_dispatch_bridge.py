@@ -84,14 +84,14 @@ def _compile_fixture(tmp_dir, source, name):
 
 @pytest.fixture(scope="module")
 def fixture_so(tmp_path_factory):
-    """A self-describing fixture .so, as ConvertAIEXToEmitC would emit one."""
+    """Build a self-describing fixture .so, as ConvertAIEXToEmitC would emit one."""
     tmp_dir = tmp_path_factory.mktemp("dispatch_bridge_fixture")
     return _compile_fixture(tmp_dir, _FIXTURE_ABI + _FIXTURE_BODY, "fixture")
 
 
 @pytest.fixture(scope="module")
 def fixture_so_no_abi(tmp_path_factory):
-    """The same .so built without dispatch_abi() -- i.e. a stale cache entry."""
+    """Build the same .so without dispatch_abi() -- i.e. a stale cache entry."""
     tmp_dir = tmp_path_factory.mktemp("dispatch_bridge_fixture_no_abi")
     return _compile_fixture(tmp_dir, _FIXTURE_BODY, "fixture_no_abi")
 
@@ -197,7 +197,7 @@ def test_out_of_range_value_rejected(fixture_so, value):
 
 @pytest.fixture(scope="module")
 def transposed_so(tmp_path_factory):
-    """A .so reporting (int64_t, int32_t) -- only dispatch_abi() is needed."""
+    """Build a .so reporting (int64_t, int32_t); only dispatch_abi() is needed."""
     tmp_dir = tmp_path_factory.mktemp("dispatch_bridge_transposed")
     src = 'extern "C" const char *dispatch_abi() { return "int64_t,int32_t"; }\n'
     return _compile_fixture(tmp_dir, src, "transposed")
