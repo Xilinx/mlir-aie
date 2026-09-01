@@ -18,7 +18,7 @@ In some cases, the kernels are just generic C code, and will run on any family o
 |-|-|-|-|-|
 | basic | [passThrough.cc](./generic/passThrough.cc) | AIE API | A simple memcpy operation | `uint8_t`, `int16_t`, `int32_t` |
 | data movement | [transpose.cc](./generic/transpose.cc) | AIE API | Blocked matrix transpose (4×4 / 8×8 sub-tiles, VSHUFFLE) | `bfloat16` |
-| data movement | [expand.cc](./generic/expand.cc) | AIE API | int4→bf16 dequant with per-group scale factors | `int4`→`bfloat16` |
+| data movement | [expand.cc](./generic/expand.cc) | AIE API | uint4→bf16 dequant with per-group scale factors (zero-extended, no zero point) | `uint4`→`bfloat16` |
 | gemv | [mv.cc](./generic/mv.cc) | AIE API | Matrix/Vector multiply | `bfloat16` |
 | blas | [axpy.cc](./generic/axpy.cc) | AIE API | `z = a*x + y` (SAXPY) | `bfloat16` |
 

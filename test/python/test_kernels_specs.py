@@ -695,8 +695,8 @@ KERNEL_SPECS: list[KernelSpec] = [
         name="expand",
         factory=kernels.expand,
         kwargs=dict(tile_size=1024, group_size=32),
-        arg_count=2,  # packed int4 payload+scales, bf16 out
-        expected_name="expand_int4_to_bfloat16",
+        arg_count=2,  # packed uint4 payload+scales, bf16 out
+        expected_name="expand_uint4_to_bfloat16",
         invalid_kwargs=[(dict(group_size=48), "multiple of 32")],
     ),
     KernelSpec(

@@ -37,7 +37,7 @@ void expand(T_in *in, T_out *out) {
       pSF += 1;
       for (int k = 0; k < blocks_per_group; k++) {
         aie::vector<T_in, block_size> I0 =
-            aie::load_v<block_size>(pI); // Load one block of input (32 int4s)
+            aie::load_v<block_size>(pI); // Load one block of input (32 uint4s)
         pI += block_size / 2;            // Advance by the number of bytes
 
         bfloat16 sf_bf16 = sf;
@@ -72,7 +72,7 @@ extern "C" {
 #define TILE_SIZE 1024
 #endif
 
-void expand_int4_to_bfloat16(uint4 *a_in, bfloat16 *c_out) {
+void expand_uint4_to_bfloat16(uint4 *a_in, bfloat16 *c_out) {
   expand<uint4, bfloat16, bfloat16, TILE_SIZE, GROUP_SIZE>(a_in, c_out);
 }
 

@@ -90,20 +90,21 @@ def convert_copy(tile_size: int = 1024) -> ExternalFunction:
 
 
 def expand(tile_size: int = 1024, group_size: int = 32) -> ExternalFunction:
-    """Dequantize kernel: ``int4`` -> ``bfloat16`` with per-group scale factors.
+    """Dequantize kernel: ``uint4`` -> ``bfloat16`` with per-group scale factors.
 
-    Each tile holds ``tile_size`` packed int4 values followed by one bf16 scale
-    factor per ``group_size``-element group; the kernel unpacks and scales into
-    ``tile_size`` bf16 outputs.  ``tile_size`` and ``group_size`` are baked in at
-    compile time via ``-DTILE_SIZE`` / ``-DGROUP_SIZE`` (group_size must be a
-    multiple of 32, matching the C++ ``static_assert``).
+    Each tile holds ``tile_size`` packed unsigned int4 values followed by one
+    bf16 scale factor per ``group_size``-element group; the kernel zero-extends
+    and scales into ``tile_size`` bf16 outputs (no zero point).  ``tile_size``
+    and ``group_size`` are baked in at compile time via ``-DTILE_SIZE`` /
+    ``-DGROUP_SIZE`` (group_size must be a multiple of 32, matching the C++
+    ``static_assert``).
 
     Args:
-        tile_size: Number of int4 elements per tile.
+        tile_size: Number of uint4 elements per tile.
         group_size: Elements sharing one scale factor (multiple of 32).
 
     Returns:
-        ExternalFunction for ``expand_int4_to_bfloat16``.
+        ExternalFunction for ``expand_uint4_to_bfloat16``.
 
     Raises:
         ValueError: When ``group_size`` is not a multiple of 32.
@@ -122,7 +123,7 @@ def expand(tile_size: int = 1024, group_size: int = 32) -> ExternalFunction:
     in_ty = np.ndarray[(in_bytes,), np.dtype[np.uint8]]
     out_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
     return _make_extern(
-        "expand_int4_to_bfloat16",
+        "expand_uint4_to_bfloat16",
         _default_source_path("expand.cc"),
         [in_ty, out_ty],
         compile_flags=[f"-DTILE_SIZE={tile_size}", f"-DGROUP_SIZE={group_size}"],

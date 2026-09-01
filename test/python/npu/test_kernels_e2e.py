@@ -207,13 +207,10 @@ def _axpy_design(
 
 
 def test_axpy_e2e():
-    # NOTE: ``a`` must be integer-valued here.  The kernel takes a C ``float``
-    # scalar, but @iron.jit's CompileTime scalar-constant plumbing currently
-    # emits an *integer* MLIR constant for the arg, truncating e.g. 2.5 -> 2.
-    # The kernel math itself is correct (verified for a in {2.0, 3.0}); a
-    # fractional slope needs the framework's float-scalar transport, which is a
-    # separate framework gap.
-    size, a = 4096, 3.0
+    # ``a`` is a fractional scalar: the call builder types the constant by the
+    # kernel's declared f32 arg, so the full float value reaches ``saxpy`` and
+    # the kernel casts it to bf16 with ``bfloat16(a)``.
+    size, a = 4096, 2.5
     rng = np.random.default_rng(0)
     x = rng.uniform(-2, 2, size=(size,)).astype(bfloat16)
     y = rng.uniform(-2, 2, size=(size,)).astype(bfloat16)
