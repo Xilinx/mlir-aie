@@ -56,11 +56,25 @@ def _device_for(dev_str, n_aie_cols):
 
 
 def _build_design(
-    dev, M, K, N, m, k, n, n_aie_cols, dtype_in_str, dtype_out_str, dynamic=True
+    dev,
+    M,
+    K,
+    N,
+    m,
+    k,
+    n,
+    n_aie_cols,
+    dtype_in_str,
+    dtype_out_str,
+    dynamic=True,
+    mkn=None,
 ):
     """Build the whole-array matmul with a range_-based runtime sequence.
 
     dynamic=True  -> M/K/N are runtime i32 args (scf survives, EmitC path).
+                     `mkn` carries the three DispatchTime[np.int32] parameters,
+                     which reach here as the wrapped numpy types; M/K/N are then
+                     the compiled maxima that size the host buffers.
     dynamic=False -> M/K/N fold to constants (loops unroll, binary path).
     The same runtime-sequence body is used for both.
     """
@@ -278,8 +292,9 @@ def _build_design(
 
                 tg.finish()
 
-    # dynamic -> declare M/K/N as runtime i32 types; static -> pass the ints.
-    mkn = [np.int32, np.int32, np.int32] if dynamic else [M, K, N]
+    # dynamic -> the three runtime scalars (i32 block args); static -> the ints,
+    # which fold to arith.constant so the range_ bounds are compile-time.
+    mkn = list(mkn or (np.int32, np.int32, np.int32)) if dynamic else [M, K, N]
     # fifos the body drives, one prod/cons handle per column, passed as fn_args.
     A_prods = [f.prod() for f in A_l3l2]
     B_prods = [f.prod() for f in B_l3l2]
@@ -292,14 +307,13 @@ def _build_design(
     return Program(dev, rt, workers=workers).resolve_program()
 
 
-# Static @iron.jit entry: M/K/N are CompileTime, so the range_ loops unroll and
-# the design compiles to the binary path (recompiles per shape). This is the
-# runnable-on-HW form today; the dynamic (runtime-M/K/N) form lowers to a C++
-# TXN builder (verified at the MLIR level) and awaits an end-to-end dynamic
-# dispatch driver.
-from aie.iron import CompileTime, In, Out  # noqa: E402
+# Two @iron.jit entries over the one design body, differing only in how M/K/N
+# reach the runtime sequence.
+from aie.iron import CompileTime, DispatchTime, In, Out  # noqa: E402
 
 
+# CompileTime M/K/N fold to constants, so the range_ loops unroll and the design
+# takes the static binary path -- one xclbin per shape.
 @iron.jit(aiecc_flags=["--alloc-scheme=basic-sequential"])
 def whole_array_dynamic(
     A: In,
@@ -331,6 +345,46 @@ def whole_array_dynamic(
     )
 
 
+# DispatchTime M/K/N stay runtime i32 block args, so the range_ loops stay
+# rolled and the design takes the dispatch-bridge path: one xclbin plus a C++
+# TXN builder that rebuilds the instruction stream per call. M/K/N here are the
+# compiled maxima that size the host buffers; the per-call values are M_rt/K_rt/
+# N_rt. K_rt must equal the compiled K.
+@iron.jit(aiecc_flags=["--alloc-scheme=basic-sequential"])
+def whole_array_dispatch(
+    A: In,
+    B: In,
+    C: Out,
+    M_rt: DispatchTime[np.int32],
+    K_rt: DispatchTime[np.int32],
+    N_rt: DispatchTime[np.int32],
+    *,
+    M: CompileTime[int],
+    K: CompileTime[int],
+    N: CompileTime[int],
+    m: CompileTime[int],
+    k: CompileTime[int],
+    n: CompileTime[int],
+    n_aie_cols: CompileTime[int],
+    dtype_in_str: CompileTime[str],
+    dtype_out_str: CompileTime[str],
+):
+    return _build_design(
+        iron.get_current_device(),
+        M,
+        K,
+        N,
+        m,
+        k,
+        n,
+        n_aie_cols,
+        dtype_in_str,
+        dtype_out_str,
+        dynamic=True,
+        mkn=(M_rt, K_rt, N_rt),
+    )
+
+
 def _make_argparser():
     p = argparse.ArgumentParser(prog="Whole-array matmul (dynamic runtime seq)")
     add_compile_args(p, short_dev=None)
@@ -343,15 +397,6 @@ def _make_argparser():
     p.add_argument("--n-aie-cols", type=int, choices=[1, 2, 4], default=4)
     p.add_argument("--dtype_in", type=str, choices=["i16"], default="i16")
     p.add_argument("--dtype_out", type=str, choices=["i16", "i32"], default="i16")
-    p.add_argument(
-        "-o",
-        "--emit-dynamic-mlir",
-        type=str,
-        default=None,
-        help="Write the dynamic (runtime M/K/N) MLIR to this file and exit. "
-        "aiecc consumes it to build the xclbin for end-to-end HW dispatch "
-        "(the C++ TXN builder path, no @iron.jit).",
-    )
     add_benchmark_args(p)
     return p
 
@@ -416,28 +461,6 @@ def _compile_kwargs(opts):
 
 def main():
     opts = _make_argparser().parse_args()
-    if opts.emit_dynamic_mlir:
-        dev = _device_for(opts.dev, opts.n_aie_cols)
-        # Set the device so kernels.mm() resolves the correct arch (aie2p for
-        # npu2); otherwise arch detection falls back to aie2 and the emitted
-        # link_with names a kernel .o built for the wrong architecture.
-        iron.set_current_device(dev)
-        module = _build_design(
-            dev,
-            opts.M,
-            opts.K,
-            opts.N,
-            opts.m,
-            opts.k,
-            opts.n,
-            opts.n_aie_cols,
-            opts.dtype_in,
-            opts.dtype_out,
-            dynamic=True,
-        )
-        with open(opts.emit_dynamic_mlir, "w") as f:
-            f.write(str(module))
-        return
     run_design_cli(
         whole_array_dynamic,
         opts,
