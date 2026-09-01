@@ -468,6 +468,44 @@ struct AIEObjectFifoAllocatePass
     return success();
   }
 
+  /// The object the far end of `endpoint`'s route receives, or null when that
+  /// is not one unambiguous type. A broadcast to endpoints holding different
+  /// object types, and an endpoint that pads into its object - which receives
+  /// more than the shim sends - are both the null case: neither can be
+  /// compared against a shim transfer's extent.
+  ///
+  /// Resolved through the route rather than through the `fifoName` the two ends
+  /// share: that attribute is optional, and hand-written IR routinely omits it.
+  TypeAttr peerObjectType(RouteEndpoint endpoint) {
+    auto self = FlatSymbolRefAttr::get(
+        builder.getContext(),
+        cast<SymbolOpInterface>(endpoint.getOperation()).getName());
+    SmallVector<FlatSymbolRefAttr> peers;
+    for (auto flow : device.getOps<RouteOp>()) {
+      auto dests = flow.getDestinations().getAsRange<FlatSymbolRefAttr>();
+      if (flow.getSourceAttr() == self) {
+        llvm::append_range(peers, dests);
+      } else if (llvm::is_contained(dests, self)) {
+        peers.push_back(flow.getSourceAttr());
+      }
+    }
+
+    TypeAttr found;
+    for (FlatSymbolRefAttr peerName : peers) {
+      auto dma = dyn_cast_or_null<ObjectFifoDmaEndpointOp>(
+          SymbolTable::lookupNearestSymbolFrom(device, peerName.getAttr()));
+      if (!dma || dma.getPadDimensions()) {
+        return {};
+      }
+      TypeAttr elemType = dma.getPoolOp().getElemTypeAttr();
+      if (found && found != elemType) {
+        return {};
+      }
+      found = elemType;
+    }
+    return found;
+  }
+
   /// A shim endpoint has no memory of its own, so the runtime needs its channel
   /// spelled out under the name the sequence refers to.
   void emitShimAllocations() {
@@ -488,7 +526,8 @@ struct AIEObjectFifoAllocatePass
                                    endpoint.getRouteDirection()),
             builder.getI64IntegerAttr(*channel),
             builder.getBoolAttr(endpoint.getRouteBundle() == WireBundle::PLIO),
-            endpoint->getAttrOfType<PacketInfoAttr>("packet"));
+            endpoint->getAttrOfType<PacketInfoAttr>("packet"),
+            peerObjectType(endpoint));
       }
       // The runtime sequence reaches the fifo through this record.
       (void)SymbolTable::replaceAllSymbolUses(
