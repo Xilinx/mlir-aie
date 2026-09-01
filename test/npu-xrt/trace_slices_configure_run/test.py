@@ -13,10 +13,13 @@
 
 """Six traced dispatches through aiex.configure share one trace buffer.
 
-@main runs @dev_a and @dev_b twice each, so -aie-fuse-trace-buffers must give
-every aiex.run its own slice of a single trace argument. The design is compiled
-from a pre-written .mlir file because IRON builds one device with one runtime
-sequence, and this needs three devices with five.
+@main runs two traced designs three times each, so -aie-fuse-trace-buffers must
+give every aiex.run its own slice of a single trace argument. Each run emits the
+number of events its runtime parameter names, so the count in a slice identifies
+the run that filled it.
+
+The design is compiled from a pre-written .mlir file because IRON builds one
+device with one runtime sequence, and this needs three devices with five.
 """
 
 import sys
@@ -33,20 +36,26 @@ from aie.utils.trace import (
 
 HERE = Path(__file__).parent
 
-# One (device, sequence) pair per aiex.run in @main, in dispatch order, with the
-# runtime parameter that sequence writes.
+# One entry per aiex.run in @main, in dispatch order: the device it configures,
+# the sequence it runs, and the runtime parameter that sequence writes.
+#
+# The runs alternate between the devices. Loading the PDI of the device that is
+# already loaded reconfigures nothing, so two runs of one device in a row would
+# share a trace buffer descriptor and the second would append to the first
+# run's slice.
 RUNS = [
-    ("dev_a", "seq_a1", 500),
-    ("dev_b", "seq_b1", 700),
-    ("dev_a", "seq_a2", 900),
-    ("dev_a", "seq_a2", 900),
-    ("dev_b", "seq_b2", 1100),
-    ("dev_b", "seq_b2", 1100),
+    ("dev_a", "seq_a1", 7000),
+    ("dev_b", "seq_b1", 8000),
+    ("dev_a", "seq_a2", 9000),
+    ("dev_b", "seq_b2", 10000),
+    ("dev_a", "seq_a2", 9000),
+    ("dev_b", "seq_b2", 10000),
 ]
 
 SLICE_BYTES = 8192
 WORDS_PER_RUN = 4
 EVENT_OF_DEVICE = {"dev_a": "INSTR_EVENT_0", "dev_b": "INSTR_EVENT_1"}
+OTHER_DEVICE = {"dev_a": "dev_b", "dev_b": "dev_a"}
 
 
 def count_events(events, name):
@@ -92,21 +101,27 @@ def main():
     if got != want:
         errors.append(f"slices {got} != {want}")
 
-    # A slice decodes against the device that wrote it, so a slice must never
-    # carry the other device's event.
+    # A slice holds the events of one run, decoded against the device that wrote
+    # it, so both the count and the event name identify that run.
     trace_buffer = trace_config.read_trace()
-    populated = 0
-    for info, events in parse_trace_slices(trace_buffer, mlir):
-        mine = count_events(events, EVENT_OF_DEVICE[info["device"]])
-        other = info["device"] == "dev_a" and "INSTR_EVENT_1" or "INSTR_EVENT_0"
+    parsed = parse_trace_slices(trace_buffer, mlir)
+    if len(parsed) != len(RUNS):
+        errors.append(f"{len(parsed)} slices carry trace data, expected {len(RUNS)}")
+
+    for (device, sequence, rtp), (info, events) in zip(RUNS, parsed):
+        mine = count_events(events, EVENT_OF_DEVICE[device])
+        other = EVENT_OF_DEVICE[OTHER_DEVICE[device]]
         theirs = count_events(events, other)
-        print(f"{info['device']}/{info['sequence']}@{info['offset']}: {mine} events")
+        print(
+            f"{info['device']}/{info['sequence']}@{info['offset']}: "
+            f"{mine} {EVENT_OF_DEVICE[device]}, {theirs} {other}"
+        )
+        if (info["device"], info["sequence"]) != (device, sequence):
+            errors.append(f"slice at {info['offset']} is not {device}/{sequence}")
+        if mine != rtp:
+            errors.append(f"{device}/{sequence} slice holds {mine} events, want {rtp}")
         if theirs:
-            errors.append(f"{info['device']} slice holds {theirs} {other}")
-        if mine:
-            populated += 1
-    if populated == 0:
-        errors.append("no slice received trace data")
+            errors.append(f"{device} slice holds {theirs} {other}")
 
     for message in errors:
         print(f"ERROR: {message}")

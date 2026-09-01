@@ -11,13 +11,18 @@
 // emits. @main dispatches six runs, so -aie-fuse-trace-buffers must give each
 // run its own slice of one trace buffer.
 //
+// The runs alternate between the devices. Two runs of one device in a row share
+// a trace buffer descriptor, because loading the PDI of the device that is
+// already loaded reconfigures nothing, and the second run then appends to the
+// first run's slice.
+//
 // Run order and event count per run:
-//   @seq_a1 ->  500 x INSTR_EVENT_0
-//   @seq_b1 ->  700 x INSTR_EVENT_1
-//   @seq_a2 ->  900 x INSTR_EVENT_0
-//   @seq_a2 ->  900 x INSTR_EVENT_0
-//   @seq_b2 -> 1100 x INSTR_EVENT_1
-//   @seq_b2 -> 1100 x INSTR_EVENT_1
+//   @seq_a1 ->  7000 x INSTR_EVENT_0
+//   @seq_b1 ->  8000 x INSTR_EVENT_1
+//   @seq_a2 ->  9000 x INSTR_EVENT_0
+//   @seq_b2 -> 10000 x INSTR_EVENT_1
+//   @seq_a2 ->  9000 x INSTR_EVENT_0
+//   @seq_b2 -> 10000 x INSTR_EVENT_1
 //
 //===----------------------------------------------------------------------===//
 
@@ -45,15 +50,21 @@ module {
         %v2 = memref.subview %out[8] [4] [1] : memref<24xi32> to memref<4xi32, strided<[1], offset: 8>>
         %a2 = memref.reinterpret_cast %v2 to offset: [0], sizes: [4], strides: [1] : memref<4xi32, strided<[1], offset: 8>> to memref<4xi32>
         aiex.run @seq_a2 (%a2) : (memref<4xi32>)
-        %v3 = memref.subview %out[12] [4] [1] : memref<24xi32> to memref<4xi32, strided<[1], offset: 12>>
-        %a3 = memref.reinterpret_cast %v3 to offset: [0], sizes: [4], strides: [1] : memref<4xi32, strided<[1], offset: 12>> to memref<4xi32>
-        aiex.run @seq_a2 (%a3) : (memref<4xi32>)
       }
 
       aiex.configure @dev_b {
+        %v3 = memref.subview %out[12] [4] [1] : memref<24xi32> to memref<4xi32, strided<[1], offset: 12>>
+        %a3 = memref.reinterpret_cast %v3 to offset: [0], sizes: [4], strides: [1] : memref<4xi32, strided<[1], offset: 12>> to memref<4xi32>
+        aiex.run @seq_b2 (%a3) : (memref<4xi32>)
+      }
+
+      aiex.configure @dev_a {
         %v4 = memref.subview %out[16] [4] [1] : memref<24xi32> to memref<4xi32, strided<[1], offset: 16>>
         %a4 = memref.reinterpret_cast %v4 to offset: [0], sizes: [4], strides: [1] : memref<4xi32, strided<[1], offset: 16>> to memref<4xi32>
-        aiex.run @seq_b2 (%a4) : (memref<4xi32>)
+        aiex.run @seq_a2 (%a4) : (memref<4xi32>)
+      }
+
+      aiex.configure @dev_b {
         %v5 = memref.subview %out[20] [4] [1] : memref<24xi32> to memref<4xi32, strided<[1], offset: 20>>
         %a5 = memref.reinterpret_cast %v5 to offset: [0], sizes: [4], strides: [1] : memref<4xi32, strided<[1], offset: 20>> to memref<4xi32>
         aiex.run @seq_b2 (%a5) : (memref<4xi32>)
@@ -107,7 +118,7 @@ module {
     aie.runtime_sequence @seq_a1(%out: memref<4xi32>) {
       aie.trace.host_config {buffer_size = 8192 : i32}
       aie.trace.start_config @trace_a
-      %n = arith.constant 500 : i32
+      %n = arith.constant 7000 : i32
       aiex.npu.rtp_write(@rtp_a, 0, %n) : i32
       aiex.set_lock(%sync_a, 1)
       %t = aiex.dma_configure_task_for @out_a {
@@ -121,7 +132,7 @@ module {
     aie.runtime_sequence @seq_a2(%out: memref<4xi32>) {
       aie.trace.host_config {buffer_size = 8192 : i32}
       aie.trace.start_config @trace_a
-      %n = arith.constant 900 : i32
+      %n = arith.constant 9000 : i32
       aiex.npu.rtp_write(@rtp_a, 0, %n) : i32
       aiex.set_lock(%sync_a, 1)
       %t = aiex.dma_configure_task_for @out_a {
@@ -175,7 +186,7 @@ module {
     aie.runtime_sequence @seq_b1(%out: memref<4xi32>) {
       aie.trace.host_config {buffer_size = 8192 : i32}
       aie.trace.start_config @trace_b
-      %n = arith.constant 700 : i32
+      %n = arith.constant 8000 : i32
       aiex.npu.rtp_write(@rtp_b, 0, %n) : i32
       aiex.set_lock(%sync_b, 1)
       %t = aiex.dma_configure_task_for @out_b {
@@ -189,7 +200,7 @@ module {
     aie.runtime_sequence @seq_b2(%out: memref<4xi32>) {
       aie.trace.host_config {buffer_size = 8192 : i32}
       aie.trace.start_config @trace_b
-      %n = arith.constant 1100 : i32
+      %n = arith.constant 10000 : i32
       aiex.npu.rtp_write(@rtp_b, 0, %n) : i32
       aiex.set_lock(%sync_b, 1)
       %t = aiex.dma_configure_task_for @out_b {
