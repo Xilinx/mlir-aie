@@ -45,12 +45,7 @@
 // RUN: %aiecc --get-xclbin \
 // RUN:   --get-input-with-addresses --output-dir=%t.1.prj \
 // RUN:   --xclbin-name=%t.1.xclbin --tmpdir=%t.1.prj %t.1.norm.mlir
-// RUN: aie-opt --aie-materialize-bd-chains --aie-substitute-shim-dma-allocations \
-// RUN:   --aie-unroll-runtime-sequence-loops --canonicalize \
-// RUN:   --aie-lower-dynamic-bd-pool --canonicalize \
-// RUN:   --aie-assign-runtime-sequence-bd-ids --aie-dma-tasks-to-npu \
-// RUN:   --aie-dma-to-npu --aie-lower-set-lock \
-// RUN:   %t.1.prj/input_with_addresses.mlir -o %t.1.lowered.mlir
+// RUN: aie-opt --aie-npu-dma-lowering %t.1.prj/input_with_addresses.mlir -o %t.1.lowered.mlir
 // RUN: aie-translate --aie-npu-to-cpp %t.1.lowered.mlir > %t.1.gen.h
 // RUN: %host_clang %S/test.cpp -o %t.1.exe -std=c++23 -Wall \
 // RUN:   -DGEN_HDR='"%t.1.gen.h"' -DXCLBIN='std::string("%/t.1.xclbin")' \
@@ -68,12 +63,7 @@
 // RUN: %aiecc --get-xclbin \
 // RUN:   --get-input-with-addresses --output-dir=%t.2.prj \
 // RUN:   --xclbin-name=%t.2.xclbin --tmpdir=%t.2.prj %t.2.norm.mlir
-// RUN: aie-opt --aie-materialize-bd-chains --aie-substitute-shim-dma-allocations \
-// RUN:   --aie-unroll-runtime-sequence-loops --canonicalize \
-// RUN:   --aie-lower-dynamic-bd-pool --canonicalize \
-// RUN:   --aie-assign-runtime-sequence-bd-ids --aie-dma-tasks-to-npu \
-// RUN:   --aie-dma-to-npu --aie-lower-set-lock \
-// RUN:   %t.2.prj/input_with_addresses.mlir -o %t.2.lowered.mlir
+// RUN: aie-opt --aie-npu-dma-lowering %t.2.prj/input_with_addresses.mlir -o %t.2.lowered.mlir
 // RUN: aie-translate --aie-npu-to-cpp %t.2.lowered.mlir > %t.2.gen.h
 // RUN: %host_clang %S/test.cpp -o %t.2.exe -std=c++23 -Wall \
 // RUN:   -DGEN_HDR='"%t.2.gen.h"' -DXCLBIN='std::string("%/t.2.xclbin")' \
@@ -91,12 +81,7 @@
 // RUN: %aiecc --get-xclbin \
 // RUN:   --get-input-with-addresses --output-dir=%t.4.prj \
 // RUN:   --xclbin-name=%t.4.xclbin --tmpdir=%t.4.prj %t.4.norm.mlir
-// RUN: aie-opt --aie-materialize-bd-chains --aie-substitute-shim-dma-allocations \
-// RUN:   --aie-unroll-runtime-sequence-loops --canonicalize \
-// RUN:   --aie-lower-dynamic-bd-pool --canonicalize \
-// RUN:   --aie-assign-runtime-sequence-bd-ids --aie-dma-tasks-to-npu \
-// RUN:   --aie-dma-to-npu --aie-lower-set-lock \
-// RUN:   %t.4.prj/input_with_addresses.mlir -o %t.4.lowered.mlir
+// RUN: aie-opt --aie-npu-dma-lowering %t.4.prj/input_with_addresses.mlir -o %t.4.lowered.mlir
 // RUN: aie-translate --aie-npu-to-cpp %t.4.lowered.mlir > %t.4.gen.h
 // RUN: %host_clang %S/test.cpp -o %t.4.exe -std=c++23 -Wall \
 // RUN:   -DGEN_HDR='"%t.4.gen.h"' -DXCLBIN='std::string("%/t.4.xclbin")' \
