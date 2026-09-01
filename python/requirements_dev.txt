@@ -3,7 +3,7 @@
 #   utils/regenerate_lockfiles.sh
 cmake>=4.4.2, <5.0
 pybind11>=3.1.0
-setuptools>=83.0.0
+setuptools>=84.0.0
 wheel
 ninja!=1.13.0
 cibuildwheel
@@ -28,7 +28,11 @@ clang-tidy==22.1.8
 # passing an OpResult where a Value is declared, breaking eudsl-python-extras'
 # ArithValue path. Bump only alongside a compatible eudsl/distro rebuild.
 nanobind==2.12.0
-lit
+# lit 23 makes ShTest(execute_external=True) a hard error and lit 24 removes the
+# option; every lit.cfg.py here still passes it. Jobs that install this file
+# unpinned otherwise pick up lit 23. Lift once the configs move to the internal
+# shell.
+lit<23
 # numpy is ABI-coupled like nanobind (see above): keep this constraint identical
 # to utils/mlir_wheels/requirements.in and utils/mlir_aie_wheels/requirements.txt.
 # Without a direct pin numpy would enter this lock only transitively (via

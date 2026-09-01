@@ -10,32 +10,32 @@
 // RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll %s | FileCheck %s
 
 // CHECK-LABEL:   aie.device(xcve2302) {
-// CHECK:           %[[VAL_0:.*]] = aie.tile(0, 0)
-// CHECK:           %[[VAL_1:.*]] = aie.tile(0, 1)
-// CHECK:           %[[VAL_2:.*]] = aie.tile(0, 2)
-// CHECK:           %[[VAL_3:.*]] = aie.tile(0, 3)
-// CHECK:           %[[VAL_4:.*]] = aie.buffer(%[[VAL_3]]) {sym_name = "mem_out_cons_buff_0"} : memref<3000xi32>
-// CHECK:           %[[VAL_5:.*]] = aie.buffer(%[[VAL_3]]) {sym_name = "mem_out_cons_buff_1"} : memref<3000xi32>
-// CHECK:           %[[VAL_6:.*]] = aie.buffer(%[[VAL_3]]) {sym_name = "mem_out_cons_buff_2"} : memref<3000xi32>
-// CHECK:           %[[VAL_7:.*]] = aie.buffer(%[[VAL_3]]) {sym_name = "mem_out_cons_buff_3"} : memref<3000xi32>
-// CHECK:           %[[VAL_8:.*]] = aie.lock(%[[VAL_3]]) {init = 4 : i32, sym_name = "mem_out_cons_prod_lock_0"}
-// CHECK:           %[[VAL_9:.*]] = aie.lock(%[[VAL_3]]) {init = 0 : i32, sym_name = "mem_out_cons_cons_lock_0"}
-// CHECK:           %[[VAL_10:.*]] = aie.buffer(%[[VAL_2]]) {sym_name = "mem_in_0_cons_buff_0"} : memref<3000xi32>
-// CHECK:           %[[VAL_11:.*]] = aie.buffer(%[[VAL_2]]) {sym_name = "mem_in_0_cons_buff_1"} : memref<3000xi32>
-// CHECK:           %[[VAL_12:.*]] = aie.lock(%[[VAL_2]]) {init = 2 : i32, sym_name = "mem_in_0_cons_prod_lock_0"}
-// CHECK:           %[[VAL_13:.*]] = aie.lock(%[[VAL_2]]) {init = 0 : i32, sym_name = "mem_in_0_cons_cons_lock_0"}
-// CHECK:           %[[VAL_14:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "mem_in_1_cons_buff_0"} : memref<3000xi32>
-// CHECK:           %[[VAL_15:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "mem_in_1_cons_buff_1"} : memref<3000xi32>
-// CHECK:           %[[VAL_16:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "mem_in_1_cons_buff_2"} : memref<3000xi32>
-// CHECK:           %[[VAL_17:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "mem_in_1_cons_buff_3"} : memref<3000xi32>
-// CHECK:           %[[VAL_18:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "mem_in_1_cons_buff_4"} : memref<3000xi32>
-// CHECK:           %[[VAL_19:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "mem_in_1_cons_buff_5"} : memref<3000xi32>
-// CHECK:           %[[VAL_20:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "mem_in_1_cons_buff_6"} : memref<3000xi32>
-// CHECK:           %[[VAL_21:.*]] = aie.lock(%[[VAL_1]]) {init = 7 : i32, sym_name = "mem_in_1_cons_prod_lock_0"}
-// CHECK:           %[[VAL_22:.*]] = aie.lock(%[[VAL_1]]) {init = 0 : i32, sym_name = "mem_in_1_cons_cons_lock_0"}
-// CHECK:           aie.flow(%[[VAL_0]], DMA : 0, %[[VAL_1]], DMA : 0)
-// CHECK:           aie.flow(%[[VAL_0]], DMA : 0, %[[VAL_2]], DMA : 0)
-// CHECK:           aie.flow(%[[VAL_1]], DMA : 0, %[[VAL_3]], DMA : 0)
+// CHECK-DAG:           %[[VAL_0:.*]] = aie.tile(0, 0)
+// CHECK-DAG:           %[[VAL_1:.*]] = aie.tile(0, 1)
+// CHECK-DAG:           %[[VAL_2:.*]] = aie.tile(0, 2)
+// CHECK-DAG:           %[[VAL_3:.*]] = aie.tile(0, 3)
+// CHECK-DAG:           %[[VAL_4:.*]] = aie.buffer(%[[VAL_3]]) {sym_name = "mem_out_cons_buff_0"} : memref<3000xi32>
+// CHECK-DAG:           %[[VAL_5:.*]] = aie.buffer(%[[VAL_3]]) {sym_name = "mem_out_cons_buff_1"} : memref<3000xi32>
+// CHECK-DAG:           %[[VAL_6:.*]] = aie.buffer(%[[VAL_3]]) {sym_name = "mem_out_cons_buff_2"} : memref<3000xi32>
+// CHECK-DAG:           %[[VAL_7:.*]] = aie.buffer(%[[VAL_3]]) {sym_name = "mem_out_cons_buff_3"} : memref<3000xi32>
+// CHECK-DAG:           %[[VAL_8:.*]] = aie.lock(%[[VAL_3]]) {init = 4 : i32, sym_name = "mem_out_cons_prod_lock_0"}
+// CHECK-DAG:           %[[VAL_9:.*]] = aie.lock(%[[VAL_3]]) {init = 0 : i32, sym_name = "mem_out_cons_cons_lock_0"}
+// CHECK-DAG:           %[[VAL_10:.*]] = aie.buffer(%[[VAL_2]]) {sym_name = "mem_in_0_cons_buff_0"} : memref<3000xi32>
+// CHECK-DAG:           %[[VAL_11:.*]] = aie.buffer(%[[VAL_2]]) {sym_name = "mem_in_0_cons_buff_1"} : memref<3000xi32>
+// CHECK-DAG:           %[[VAL_12:.*]] = aie.lock(%[[VAL_2]]) {init = 2 : i32, sym_name = "mem_in_0_cons_prod_lock_0"}
+// CHECK-DAG:           %[[VAL_13:.*]] = aie.lock(%[[VAL_2]]) {init = 0 : i32, sym_name = "mem_in_0_cons_cons_lock_0"}
+// CHECK-DAG:           %[[VAL_14:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "mem_in_1_cons_buff_0"} : memref<3000xi32>
+// CHECK-DAG:           %[[VAL_15:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "mem_in_1_cons_buff_1"} : memref<3000xi32>
+// CHECK-DAG:           %[[VAL_16:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "mem_in_1_cons_buff_2"} : memref<3000xi32>
+// CHECK-DAG:           %[[VAL_17:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "mem_in_1_cons_buff_3"} : memref<3000xi32>
+// CHECK-DAG:           %[[VAL_18:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "mem_in_1_cons_buff_4"} : memref<3000xi32>
+// CHECK-DAG:           %[[VAL_19:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "mem_in_1_cons_buff_5"} : memref<3000xi32>
+// CHECK-DAG:           %[[VAL_20:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "mem_in_1_cons_buff_6"} : memref<3000xi32>
+// CHECK-DAG:           %[[VAL_21:.*]] = aie.lock(%[[VAL_1]]) {init = 7 : i32, sym_name = "mem_in_1_cons_prod_lock_0"}
+// CHECK-DAG:           %[[VAL_22:.*]] = aie.lock(%[[VAL_1]]) {init = 0 : i32, sym_name = "mem_in_1_cons_cons_lock_0"}
+// CHECK-DAG:           aie.flow(%[[VAL_0]], DMA : 0, %[[VAL_1]], DMA : 0)
+// CHECK-DAG:           aie.flow(%[[VAL_0]], DMA : 0, %[[VAL_2]], DMA : 0)
+// CHECK-DAG:           aie.flow(%[[VAL_1]], DMA : 0, %[[VAL_3]], DMA : 0)
 // CHECK:           %[[VAL_25:.*]] = aie.core(%[[VAL_2]]) {
 // CHECK-DAG:             %[[VAL_26:.*]] = arith.constant 11 : i32
 // CHECK-DAG:             %[[VAL_27:.*]] = arith.constant 0 : index
@@ -50,7 +50,7 @@
 // CHECK:             memref.store %[[VAL_29]], %[[VAL_4]]{{\[}}%[[VAL_30]]] : memref<3000xi32>
 // CHECK:             aie.end
 // CHECK:           }
-// CHECK:           aie.shim_dma_allocation @mem_in_shim_alloc(%[[VAL_0]], MM2S, 0)
+// CHECK-DAG:           aie.shim_dma_allocation @mem_in_shim_alloc(%[[VAL_0]], MM2S, 0)
 // CHECK:           %[[VAL_31:.*]] = aie.mem(%[[VAL_2]]) {
 // CHECK:             %[[VAL_32:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
 // CHECK:           ^bb1:  // 2 preds: ^bb0, ^bb2
@@ -185,8 +185,7 @@ module @link_test_broadcast {
             %v11 = arith.constant 11 : i32
             %c0 = arith.constant 0 : index
 
-            %subview = aie.objectfifo.acquire @mem_in (Consume, 1) : !aie.objectfifosubview<memref<3000xi32>>
-            %subview_obj = aie.objectfifo.subview.access %subview[0] : !aie.objectfifosubview<memref<3000xi32>> -> memref<3000xi32>
+            %subview_obj = aie.objectfifo.acquire @mem_in (Consume, 1) : memref<3000xi32>
             memref.store %v11, %subview_obj[%c0] : memref<3000xi32>
             aie.end
         }
@@ -195,8 +194,7 @@ module @link_test_broadcast {
             %v11 = arith.constant 11 : i32
             %c0 = arith.constant 0 : index
 
-            %subview = aie.objectfifo.acquire @mem_out (Consume, 3) : !aie.objectfifosubview<memref<3000xi32>>
-            %subview_obj = aie.objectfifo.subview.access %subview[0] : !aie.objectfifosubview<memref<3000xi32>> -> memref<3000xi32>
+            %subview_obj, %subview_obj1, %subview_obj2 = aie.objectfifo.acquire @mem_out (Consume, 3) : memref<3000xi32>, memref<3000xi32>, memref<3000xi32>
             memref.store %v11, %subview_obj[%c0] : memref<3000xi32>
             aie.end
         }

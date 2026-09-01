@@ -57,16 +57,6 @@ NB_MODULE(_aie, m) {
           "Get an instance of ObjectFifoType with given element type.",
           "self"_a, "type"_a = nb::none());
 
-  nanobind_adaptors::mlir_type_subclass(m, "ObjectFifoSubviewType",
-                                        aieTypeIsObjectFifoSubviewType)
-      .def_classmethod(
-          "get",
-          [](const nb::object &cls, const MlirType type) {
-            return cls(aieObjectFifoSubviewTypeGet(type));
-          },
-          "Get an instance of ObjectFifoSubviewType with given element type.",
-          "self"_a, "type"_a = nb::none());
-
   nanobind_adaptors::mlir_type_subclass(m, "blockFloatType",
                                         aieTypeIsBlockFloatType)
       .def_classmethod(

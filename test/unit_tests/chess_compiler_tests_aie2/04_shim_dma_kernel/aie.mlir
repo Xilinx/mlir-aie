@@ -11,7 +11,7 @@
 // RUN: xchesscc_wrapper aie2 +l aie.mlir.prj/main_core_7_3.bcf %S/kernel.cc -o custom_7_3.elf
 
 // FIXME: this hangs
-// UN: aie.mlir.prj/aiesim.sh | FileCheck %s
+// UN: ./aie.mlir.prj/aiesim.sh | FileCheck %s
 
 // CHECK: AIE2 ISS
 // CHECK: test start.

@@ -546,7 +546,8 @@ jobs:
         run: |
           # The XRT-free / Boost-free packaging tool aiecc uses on the NPU_RUNTIME=hrx
           # path. Building it here proves the pure-HRX packaging tool compiles on
-          # Windows in this tree (not just the submodule's own CI).
+          # Windows in this tree (the dedicated buildAndTestHrxXclbinutil.yml workflow
+          # covers the standalone build/test matrix in more detail).
           #
           # Build-only on a GitHub-hosted runner with no NPU, so the on-device
           # retry signatures don't apply; retry once on any failure to ride out a

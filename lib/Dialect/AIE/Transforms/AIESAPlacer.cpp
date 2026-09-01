@@ -1270,7 +1270,7 @@ void SAPlacer::buildFifoBufferInfo(DeviceOp device,
     }
 
     // Determine if this fifo forces DMA even when tiles are adjacent.
-    // Must match AIEObjectFifoStatefulTransform::requiresDMAs().
+    // Must match requiresDMAs() in AIEObjectFifoSplit.cpp.
     bool isLinked = false;
     for (auto link : objectFifoLinks) {
       for (auto in : link.getInputObjectFifos())
