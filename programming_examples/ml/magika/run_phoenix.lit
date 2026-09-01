@@ -4,13 +4,11 @@
 // REQUIRES: ryzen_ai_npu1, peano, torch
 // REQUIRES: makefile_examples
 //
-// Runs group0. See run_phoenix_group2.lit for group2, which XFAILs because its
-// LUTs exceed the local memory of one tile.
+// Runs group0. See run_phoenix_group0_trace.lit for its trace run and
+// run_phoenix_group2.lit for group2.
 //
 // RUN: mkdir -p test_placed
 // RUN: cd test_placed
 // RUN: cp -r %S/data .
 // RUN: make -f %S/Makefile clean
 // RUN: %run_on_npu1% make -f %S/Makefile run_py
-// RUN: make -f %S/Makefile clean
-// RUN: %run_on_npu1% make -f %S/Makefile trace_py

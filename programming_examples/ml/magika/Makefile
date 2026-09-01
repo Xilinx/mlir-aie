@@ -14,11 +14,7 @@ mlirFileName = aie
 aie_py_src=${targetname}.py
 
 CHESS ?= false
-# group0 traces 2 cores into one shared buffer and shim channel
-# (routing="single"), so it needs room for both streams; group2 traces one
-# core. The tiles of group2 are memory-constrained (4 neighbor tiles carry
-# LUTs), so group2 keeps the smaller size.
-trace_size ?= $(if $(filter group2,$(targetname)),16384,32768)
+trace_size ?= 16384
 colshift ?= $(if $(filter npu,$(devicename)),1,0)
 
 #ifeq (${targetname}, group2)
