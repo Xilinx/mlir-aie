@@ -17,8 +17,10 @@ namespace xilinx {
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createConvertAIEXToEmitCPass();
 
-// Same pass with fold-ddr-addr-offset set explicitly, for programmatic callers
-// (e.g. AIETranslateNpuToCpp) that don't go through a pass-pipeline string.
+/// \brief Same pass with fold-ddr-addr-offset set explicitly, for programmatic
+/// callers (e.g. AIETranslateNpuToCpp) not going through a pipeline string.
+/// \param foldDDRAddrOffset true for the xclbin + instruction-buffer runtime;
+/// false for full-ELF and HRX, which translate host addresses themselves.
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createConvertAIEXToEmitCPass(bool foldDDRAddrOffset);
 

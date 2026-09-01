@@ -106,16 +106,20 @@ def test_dispatch_time_scalar_varies_without_recompile():
     dyn_copy(a1, b1, 3)
     assert np.array_equal(b1.numpy()[: 3 * TILE_SIZE], a1.numpy()[: 3 * TILE_SIZE])
 
-    kernel_dir_after_first_call = dyn_copy.compilable._kernel_dir
+    # One cache entry per compiled artifact. _kernel_dir cannot vary with a
+    # dispatch value by construction, so asserting on it would pass even if
+    # every value rebuilt; the kernel cache is what actually shows reuse.
+    kernels_after_first_call = len(dyn_copy._kernel_cache)
 
     a2 = iron.tensor(_random_tiles(seed=2), dtype=np.int32, device="npu")
     b2 = iron.zeros((MAX_TILES * TILE_SIZE,), dtype=np.int32, device="npu")
     dyn_copy(a2, b2, 6)
     assert np.array_equal(b2.numpy()[: 6 * TILE_SIZE], a2.numpy()[: 6 * TILE_SIZE])
 
-    # Same compiled kernel_dir/dispatch.so reused across both calls -- the
-    # whole point of DispatchTime[T] is "one compile, many values".
-    assert dyn_copy.compilable._kernel_dir == kernel_dir_after_first_call
+    # A second, different value must reuse the first call's kernel rather than
+    # add one -- the whole point of DispatchTime[T] is "one compile, many
+    # values", and passing values positionally must not defeat it.
+    assert len(dyn_copy._kernel_cache) == kernels_after_first_call
 
 
 def test_dispatch_time_scalar_repeated_same_value():

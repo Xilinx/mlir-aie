@@ -24,6 +24,8 @@ from typing import Any
 import numpy as np
 from aie.utils.hostruntime.hostruntime import HostRuntimeError
 
+from ._dispatch_artifacts import dispatch_abi_path, read_dispatch_abi
+
 # C type spelling (as aie-translate emits it) -> ctypes type. Small, fixed
 # table because the generated function only ever takes scalar runtime-
 # sequence arguments (i32/index), never anything more exotic.
@@ -38,6 +40,14 @@ _CTYPES_BY_NAME = {
     "uint64_t": ctypes.c_uint64,
     "size_t": ctypes.c_size_t,
 }
+
+
+def _range_for(ctype: type) -> tuple[int, int]:
+    """Inclusive ``(low, high)`` a *ctype* can hold, derived from the type itself."""
+    bits = ctypes.sizeof(ctype) * 8
+    if ctype(-1).value < 0:  # type: ignore[call-arg]
+        return -(2 ** (bits - 1)), 2 ** (bits - 1) - 1
+    return 0, 2**bits - 1
 
 
 def _ctypes_for(c_type_name: str) -> type:
@@ -84,16 +94,54 @@ class DispatchBridge:
             ctypes.POINTER(ctypes.POINTER(ctypes.c_uint32)),
         ]
 
+    @classmethod
+    def from_artifacts(
+        cls, so_path: Path, dispatch_params: list[str]
+    ) -> DispatchBridge:
+        """Build from ``dispatch.so`` plus the ABI sidecar written beside it.
+
+        Raises ``HostRuntimeError`` if the sidecar is missing or describes a
+        different design -- a kernel directory that has one without the other
+        is incomplete and must be rebuilt, not guessed at.
+        """
+        so_path = Path(so_path)
+        abi_path = dispatch_abi_path(so_path.parent)
+        if not abi_path.is_file():
+            raise HostRuntimeError(
+                f"dispatch bridge ABI {abi_path} is missing; the compiled "
+                "kernel directory is incomplete -- clear it and rebuild."
+            )
+        abi = read_dispatch_abi(so_path.parent)
+        if abi.get("dispatch_params") != list(dispatch_params):
+            raise HostRuntimeError(
+                f"dispatch bridge at {so_path} was built for parameters "
+                f"{abi.get('dispatch_params')!r} but this design declares "
+                f"{list(dispatch_params)!r}; the cached artifact is stale."
+            )
+        return cls(so_path, dispatch_params, abi["param_ctypes"])
+
     def generate(self, values: dict[str, Any]) -> np.ndarray:
         """Return a fresh ``uint32`` instruction word array for *values*.
 
-        Raises ``HostRuntimeError`` if a value overflowed a hardware BD
-        field -- the generator itself returned no stream.
+        Raises ``HostRuntimeError`` if a value does not fit its generated C
+        parameter, or if it overflowed a hardware BD field -- in which case
+        the generator itself returned no stream.
         """
-        ordered = [
-            ctype(values[name])
-            for name, ctype in zip(self._dispatch_params, self._arg_ctypes)
-        ]
+        ordered = []
+        for name, ctype in zip(self._dispatch_params, self._arg_ctypes):
+            value = values[name]
+            # ctypes truncates silently: c_int32(2**31) is -2147483648 and
+            # c_int32(2**70) is 0, either of which would dispatch a
+            # plausible-looking stream built from a value the caller never
+            # asked for.
+            low, high = _range_for(ctype)
+            if not low <= int(value) <= high:
+                raise HostRuntimeError(
+                    f"DispatchTime[T] value {name}={value!r} does not fit its "
+                    f"generated C parameter type (valid range {low}..{high}); "
+                    "passing it would silently wrap to a different value."
+                )
+            ordered.append(ctype(value))
         out_ptr = ctypes.POINTER(ctypes.c_uint32)()
         n = self._lib.dispatch_generate(*ordered, ctypes.byref(out_ptr))
         if n == -2:

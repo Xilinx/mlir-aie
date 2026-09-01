@@ -35,6 +35,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
 from aie.utils.compile.cache.utils import _create_function_cache_key
+from aie.utils.compile.jit._dispatch_artifacts import dispatch_abi_path
 from aie.utils.compile.jit.compilabledesign import CompilableDesign
 
 if TYPE_CHECKING:
@@ -342,7 +343,7 @@ class CallableDesign:
 
         cache_key = _create_function_cache_key(
             cache_fn,
-            runtime_args,
+            compilable.dispatch_free_args(runtime_args, scalar_runtime_kwargs),
             cache_compile_kwargs,
             extra_key=compilable._generation_cache_key(),
         )
@@ -353,12 +354,15 @@ class CallableDesign:
                 artifacts_present = Path(kernel.elf_path).is_file()
             elif kernel.dispatch_params:
                 # A dispatch design has no insts.bin at all -- the instruction
-                # stream is rebuilt per call from dispatch.so -- so that is the
-                # artifact whose disappearance has to invalidate the kernel.
+                # stream is rebuilt per call from dispatch.so plus its ABI
+                # sidecar, so those are the artifacts whose disappearance has
+                # to invalidate the kernel.
+                lib = kernel.dispatch_lib_path
                 artifacts_present = (
                     Path(kernel.xclbin_path).is_file()
-                    and kernel.dispatch_lib_path is not None
-                    and Path(kernel.dispatch_lib_path).is_file()
+                    and lib is not None
+                    and Path(lib).is_file()
+                    and dispatch_abi_path(Path(lib).parent).is_file()
                 )
             else:
                 artifacts_present = (

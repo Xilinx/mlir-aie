@@ -29,26 +29,34 @@ logger = logging.getLogger(__name__)
 _TENSOR_ANNOTATIONS = (In, Out, InOut)
 
 
-def _is_compile_param(annotation) -> bool:
-    """Return True for ``CompileTime[T]`` or ``Optional[CompileTime[T]]``."""
+def _tagged_type(annotation, tag):
+    """Return the wrapped ``T`` for an annotation carrying *tag*, else ``None``.
+
+    One traversal for every marker: ``get_type_hints`` rewrites a defaulted
+    ``Marker[T] = None`` to ``Optional[...]``, so both the direct
+    ``Annotated`` form and the ``Union`` wrapper have to be unwrapped, and
+    every marker needs it the same way.
+    """
     origin = get_origin(annotation)
     if origin is Annotated:
-        return any(arg is _COMPILE_TIME_TAG for arg in get_args(annotation)[1:])
-    # get_type_hints rewrites `CompileTime[T] = None` defaults to Optional[...].
+        args = get_args(annotation)
+        return args[0] if any(arg is tag for arg in args[1:]) else None
     if origin is typing.Union:
-        return any(_is_compile_param(arg) for arg in get_args(annotation))
-    return False
+        for arg in get_args(annotation):
+            wrapped = _tagged_type(arg, tag)
+            if wrapped is not None:
+                return wrapped
+    return None
+
+
+def _is_compile_param(annotation) -> bool:
+    """Return True for ``CompileTime[T]`` or ``Optional[CompileTime[T]]``."""
+    return _tagged_type(annotation, _COMPILE_TIME_TAG) is not None
 
 
 def _is_dispatch_param(annotation) -> bool:
     """Return True for ``DispatchTime[T]`` or ``Optional[DispatchTime[T]]``."""
-    origin = get_origin(annotation)
-    if origin is Annotated:
-        return any(arg is _DISPATCH_TIME_TAG for arg in get_args(annotation)[1:])
-    # get_type_hints rewrites `DispatchTime[T] = None` defaults to Optional[...].
-    if origin is typing.Union:
-        return any(_is_dispatch_param(arg) for arg in get_args(annotation))
-    return False
+    return _tagged_type(annotation, _DISPATCH_TIME_TAG) is not None
 
 
 def _is_tensor_param(annotation) -> bool:
@@ -57,26 +65,8 @@ def _is_tensor_param(annotation) -> bool:
 
 
 def _dispatch_param_type(annotation):
-    """Return the wrapped type ``T`` for a ``DispatchTime[T]`` annotation.
-
-    Mirrors ``_is_dispatch_param()``'s ``Annotated``/``Union`` unwrapping so
-    callers recover the same ``T`` regardless of how ``get_type_hints``
-    rewrote a defaulted param (``DispatchTime[T] = None`` becomes
-    ``Optional[...]``).  Returns ``None`` if *annotation* is not a
-    ``DispatchTime[T]`` annotation.
-    """
-    origin = get_origin(annotation)
-    if origin is Annotated:
-        args = get_args(annotation)
-        if any(arg is _DISPATCH_TIME_TAG for arg in args[1:]):
-            return args[0]
-        return None
-    if origin is typing.Union:
-        for arg in get_args(annotation):
-            wrapped = _dispatch_param_type(arg)
-            if wrapped is not None:
-                return wrapped
-    return None
+    """Return the wrapped ``T`` of a ``DispatchTime[T]``, else ``None``."""
+    return _tagged_type(annotation, _DISPATCH_TIME_TAG)
 
 
 @functools.lru_cache(maxsize=None)

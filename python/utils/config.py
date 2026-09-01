@@ -78,64 +78,42 @@ def aiecc_path():
     )
 
 
-def aie_opt_path():
-    """Return the aie-opt executable used to lower a dynamic runtime sequence.
+def _resolve_tool(tool: str, env_var: str) -> str:
+    """Locate *tool*: ``$env_var``, then the MLIR-AIE bin directory, then PATH.
 
-    Resolution order: the AIE_OPT_PATH environment variable, then the
-    MLIR-AIE bin directory, then PATH. Mirrors ``aiecc_path()``.
+    The same order ``aiecc_path()`` uses, so every tool the dispatch bridge
+    shells out to is found the same way aiecc itself is.
     """
-    env_aie_opt = os.environ.get("AIE_OPT_PATH")
-    if env_aie_opt:
-        if not os.path.isfile(env_aie_opt):
+    override = os.environ.get(env_var)
+    if override:
+        if not os.path.isfile(override):
             raise RuntimeError(
-                f"AIE_OPT_PATH is set to {env_aie_opt}, but no such file exists."
+                f"{env_var} is set to {override}, but no such file exists."
             )
-        return env_aie_opt
+        return override
 
-    bundled_aie_opt = os.path.join(root_path(), "bin", _executable_name("aie-opt"))
-    if os.path.isfile(bundled_aie_opt):
-        return bundled_aie_opt
+    bundled = os.path.join(root_path(), "bin", _executable_name(tool))
+    if os.path.isfile(bundled):
+        return bundled
 
-    path_aie_opt = shutil.which(_executable_name("aie-opt"))
-    if path_aie_opt:
-        return path_aie_opt
+    found = shutil.which(_executable_name(tool))
+    if found:
+        return found
 
     raise RuntimeError(
-        "Could not find aie-opt. Resolves in the order of the AIE_OPT_PATH "
-        "environment variable, MLIR-AIE bin directory, then PATH."
+        f"Could not find {tool}. Resolves in the order of the {env_var} "
+        f"environment variable, MLIR-AIE bin directory, then PATH."
     )
+
+
+def aie_opt_path():
+    """Return the aie-opt executable used to lower a dynamic runtime sequence."""
+    return _resolve_tool("aie-opt", "AIE_OPT_PATH")
 
 
 def aie_translate_path():
-    """Return the aie-translate executable used to emit a dynamic TXN builder.
-
-    Resolution order: the AIE_TRANSLATE_PATH environment variable, then the
-    MLIR-AIE bin directory, then PATH. Mirrors ``aiecc_path()``.
-    """
-    env_aie_translate = os.environ.get("AIE_TRANSLATE_PATH")
-    if env_aie_translate:
-        if not os.path.isfile(env_aie_translate):
-            raise RuntimeError(
-                f"AIE_TRANSLATE_PATH is set to {env_aie_translate}, but no "
-                f"such file exists."
-            )
-        return env_aie_translate
-
-    bundled_aie_translate = os.path.join(
-        root_path(), "bin", _executable_name("aie-translate")
-    )
-    if os.path.isfile(bundled_aie_translate):
-        return bundled_aie_translate
-
-    path_aie_translate = shutil.which(_executable_name("aie-translate"))
-    if path_aie_translate:
-        return path_aie_translate
-
-    raise RuntimeError(
-        "Could not find aie-translate. Resolves in the order of the "
-        "AIE_TRANSLATE_PATH environment variable, MLIR-AIE bin directory, "
-        "then PATH."
-    )
+    """Return the aie-translate executable used to emit a dynamic TXN builder."""
+    return _resolve_tool("aie-translate", "AIE_TRANSLATE_PATH")
 
 
 def host_cxx_path():

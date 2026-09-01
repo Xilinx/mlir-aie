@@ -74,6 +74,11 @@ class HSAKernelHandle(KernelHandle):
         self.insts_ptr = insts_ptr
         self.insts_size = insts_size
 
+    @property
+    def needs_dispatch_insts(self) -> bool:
+        """No device-side instruction buffer -- so a dispatch design."""
+        return self.insts_ptr is None
+
 
 class HSAKernelResult(KernelResult):
     """Result wrapper for an HSA dispatch (raises on failure, so success here)."""
@@ -263,6 +268,7 @@ class HSAHostRuntime(HostRuntime):
         assert isinstance(kernel_handle, HSAKernelHandle)
         if trace_config is not None:
             raise HostRuntimeError(_TRACE_UNSUPPORTED_MSG)
+        self._require_dispatch_insts(kernel_handle, dispatch_insts)
         self.check_device_consistency()
 
         kept = self._validate_args(args)
@@ -272,10 +278,13 @@ class HSAHostRuntime(HostRuntime):
         signal = self._ctx.arm_signal(1)
         try:
             if dispatch_insts is not None:
-                insts_bytes = dispatch_insts.tobytes()
-                dispatch_ptr = self._ctx.alloc_dev(len(insts_bytes))
-                ctypes.memmove(dispatch_ptr, insts_bytes, len(insts_bytes))
-                insts_ptr, insts_size = dispatch_ptr, len(insts_bytes)
+                # dispatch_insts is already a fresh contiguous copy owned by
+                # this call; memmove reads it directly rather than paying for
+                # an intermediate bytes object the size of the stream.
+                nbytes = dispatch_insts.nbytes
+                dispatch_ptr = self._ctx.alloc_dev(nbytes)
+                ctypes.memmove(dispatch_ptr, dispatch_insts.ctypes.data, nbytes)
+                insts_ptr, insts_size = dispatch_ptr, nbytes
             else:
                 insts_ptr = kernel_handle.insts_ptr
                 insts_size = kernel_handle.insts_size
@@ -295,7 +304,10 @@ class HSAHostRuntime(HostRuntime):
             raise
         finally:
             self._release_dispatch(failed, overflows)
-            if dispatch_ptr is not None:
+            # Same rule _release_dispatch applies to the overflow buffers: a
+            # failed dispatch may have reached the device, which can still be
+            # reading these words, so leak rather than hand the pages back.
+            if dispatch_ptr is not None and not failed:
                 self._ctx.free_dev(dispatch_ptr)
 
         self._mark_device_resident(kept)
@@ -370,7 +382,9 @@ class HSAHostRuntime(HostRuntime):
         """
         if getattr(npu_kernel, "trace_config", None) is not None:
             raise HostRuntimeError(_TRACE_UNSUPPORTED_MSG)
-        return super().load_and_run(npu_kernel, run_args, dispatch_scalars, **kwargs)
+        return super().load_and_run(
+            npu_kernel, run_args, dispatch_scalars=dispatch_scalars, **kwargs
+        )
 
     def device(self) -> "Device":
         from aie.iron.device import from_name

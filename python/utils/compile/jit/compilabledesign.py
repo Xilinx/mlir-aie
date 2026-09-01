@@ -53,6 +53,8 @@ from aie.utils.compile.cache.utils import file_lock
 from aie.utils.compile.utils import _cleanup_failed_compilation
 
 from . import _manifest
+from ._dispatch_artifacts import dispatch_abi_path
+from ._dispatch_compile import compile_dispatch_bridge
 from ._dma_size_parser import parse_dma_sizes
 from ._hash import (
     _compute_artifact_hash,
@@ -182,6 +184,15 @@ class CompilableDesign:
             self.tensor_params = list(tp)
             self.dispatch_params = list(dp)
             self.scalar_params = list(sp)
+            # The wrapped T of each DispatchTime[T], in declaration order, so
+            # the build can check the generated C parameters against what was
+            # declared instead of trusting the count alone.
+            self.dispatch_param_types = [
+                _dispatch_param_type(
+                    self._hints.get(name, self._sig.parameters[name].annotation)
+                )
+                for name in self.dispatch_params
+            ]
         else:
             self._hints = {}
             self._sig = None
@@ -189,6 +200,7 @@ class CompilableDesign:
             self.tensor_params = []
             self.dispatch_params = []
             self.scalar_params = []
+            self.dispatch_param_types = []
 
         # Guard 0-A: a DispatchTime[T] name in compile_kwargs would pollute the
         # cache key via __hash__/_compute_cache_hash, which can run before any
@@ -383,9 +395,18 @@ class CompilableDesign:
             os.makedirs(kernel_dir, exist_ok=True)
 
             xclbin_exists = xclbin_path.exists()
-            inst_artifact = dispatch_so_path if has_dispatch else inst_path
-            assert inst_artifact is not None
-            inst_exists = inst_artifact.exists()
+            if has_dispatch:
+                # The bridge is only usable with its ABI sidecar, so a
+                # directory holding one without the other is a miss to be
+                # rebuilt -- not a hit that fails later at dispatch.
+                assert dispatch_so_path is not None
+                inst_exists = (
+                    dispatch_so_path.exists()
+                    and dispatch_abi_path(kernel_dir).is_file()
+                )
+            else:
+                assert inst_path is not None
+                inst_exists = inst_path.exists()
 
             if not explicit_paths and self.use_cache and xclbin_exists and inst_exists:
                 if not _manifest.is_valid(kernel_dir):
@@ -473,10 +494,11 @@ class CompilableDesign:
                     )
 
                 if has_dispatch:
-                    from ._dispatch_compile import compile_dispatch_bridge
-
                     dispatch_so_path = compile_dispatch_bridge(
-                        kernel_dir, self.dispatch_params, fold_ddr_addr_offset
+                        kernel_dir,
+                        self.dispatch_params,
+                        fold_ddr_addr_offset,
+                        self.dispatch_param_types,
                     )
                     if not dispatch_so_path.exists():
                         raise RuntimeError(
@@ -711,6 +733,41 @@ class CompilableDesign:
             return target if target in pdis else None
         return pdis[0]
 
+    def dispatch_free_args(
+        self, runtime_args: tuple, runtime_kwargs: dict[str, Any]
+    ) -> tuple:
+        """Return *runtime_args* with the DispatchTime[T] values removed.
+
+        A dispatch value is by definition not part of the compiled artifact, so
+        it must not reach the in-process kernel cache key: keying on it builds
+        one kernel per distinct value and makes positional calls behave
+        differently from keyword ones, which never entered the key.
+
+        Mirrors ``split_runtime_args()``'s positional walk (a param supplied by
+        keyword consumes no positional; Kernel objects are compile-time only
+        and are skipped) so the two agree on which slot holds which param.
+        """
+        if not callable(self.mlir_generator) or not self.dispatch_params:
+            return runtime_args
+
+        from aie.iron.kernel import Kernel
+
+        sig = self._sig
+        assert sig is not None
+        slots = [i for i, a in enumerate(runtime_args) if not isinstance(a, Kernel)]
+        dispatch = set(self.dispatch_params)
+        drop = set()
+        cursor = 0
+        for name in sig.parameters:
+            if name in self.compile_kwargs or name in runtime_kwargs:
+                continue
+            if cursor >= len(slots):
+                break
+            if name in dispatch:
+                drop.add(slots[cursor])
+            cursor += 1
+        return tuple(a for i, a in enumerate(runtime_args) if i not in drop)
+
     def split_runtime_args(
         self, runtime_args: tuple, runtime_kwargs: dict[str, Any]
     ) -> tuple[list, dict[str, Any]]:
@@ -778,7 +835,11 @@ class CompilableDesign:
                         val = _next_non_kernel(pos_iter)
                         scalar_kwargs[name] = val
                     except StopIteration:
-                        pass
+                        # Not supplied: fall back to the signature default, so
+                        # `n: DispatchTime[T] = 4` means what it says instead
+                        # of failing later as a missing dispatch scalar.
+                        if param.default is not inspect.Parameter.empty:
+                            scalar_kwargs[name] = param.default
 
         return tensor_args, scalar_kwargs
 
@@ -954,6 +1015,7 @@ class CompilableDesign:
             self.source_files,
             self.object_files,
             self._resolve_fold_ddr_addr_offset(),
+            bool(self.dispatch_params),
         )
 
     def _compute_cache_hash(self) -> str:

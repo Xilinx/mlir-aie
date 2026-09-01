@@ -113,6 +113,7 @@ class HRXKernelHandle(KernelHandle):
         self.kernel_name = kernel_name
         self.xclbin_path = xclbin_path
         self.insts_path = insts_path
+        self._xclbin_bytes: bytes | None = None
         # Own an independent libhrx reference to the executable. The executable
         # cache holds only a single reference and drops it on LRU eviction; a
         # live handle (e.g. every step of a batched run_chain, kept in the
@@ -131,6 +132,23 @@ class HRXKernelHandle(KernelHandle):
             except Exception:
                 pass
             self.executable = None
+
+    @property
+    def needs_dispatch_insts(self) -> bool:
+        """No prebuilt executable -- so a dispatch design (run() builds one)."""
+        return self.executable is None
+
+    def xclbin_image(self) -> bytes:
+        """Return the xclbin bytes, read once and kept for later dispatches.
+
+        A dispatch design rebuilds its executable every call (libhrx has no
+        way to swap an existing one's transaction bytes), but the xclbin
+        behind it never changes -- so only the executable needs rebuilding,
+        not the file read.
+        """
+        if self._xclbin_bytes is None:
+            self._xclbin_bytes = Path(self.xclbin_path).read_bytes()
+        return self._xclbin_bytes
 
 
 class HRXKernelResult(KernelResult):
@@ -349,6 +367,9 @@ class HRXHostRuntime(HostRuntime):
         # trace). Matches the C++ wrapper's reject_unsupported_features.
         if trace_config is not None:
             raise HostRuntimeError(_TRACE_UNSUPPORTED_MSG)
+        # After the trace check: an unsupported feature is the more useful
+        # complaint when a caller asks for both at once.
+        self._require_dispatch_insts(kernel_handle, dispatch_insts)
         self.check_device_consistency()
 
         args, bindings = self._prepare_bindings(args)
@@ -356,9 +377,10 @@ class HRXHostRuntime(HostRuntime):
         exe, ordv = kernel_handle.executable, kernel_handle.export_ordinal
         dispatch_exe = None
         if dispatch_insts is not None:
-            xclbin_bytes = Path(kernel_handle.xclbin_path).read_bytes()
             dispatch_exe, ordv = self._create_executable_from_bytes(
-                xclbin_bytes, dispatch_insts.tobytes(), kernel_handle.kernel_name
+                kernel_handle.xclbin_image(),
+                dispatch_insts.tobytes(),
+                kernel_handle.kernel_name,
             )
             exe = dispatch_exe
 
@@ -464,7 +486,9 @@ class HRXHostRuntime(HostRuntime):
         """
         if getattr(npu_kernel, "trace_config", None) is not None:
             raise HostRuntimeError(_TRACE_UNSUPPORTED_MSG)
-        return super().load_and_run(npu_kernel, run_args, dispatch_scalars, **kwargs)
+        return super().load_and_run(
+            npu_kernel, run_args, dispatch_scalars=dispatch_scalars, **kwargs
+        )
 
     def device(self) -> "Device":
         from aie.iron.device import from_name

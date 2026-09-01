@@ -31,7 +31,17 @@ class HostRuntimeError(Exception):
 class KernelHandle(ABC):
     """Abstract representation that represents a kernel already registered/loaded with a runtime."""
 
-    ...
+    @property
+    def needs_dispatch_insts(self) -> bool:
+        """Whether every run must be handed freshly synthesized instructions.
+
+        True for a ``DispatchTime[T]`` design, which holds no static
+        instruction stream: each call rebuilds one through the dispatch
+        bridge. Backends override this to name the artifact they lack, so the
+        "no static stream" test lives in one place per backend instead of
+        being re-derived at every use.
+        """
+        return False
 
 
 class KernelResult(ABC):
@@ -179,6 +189,24 @@ class HostRuntime(ABC):
             KernelResult: The result of the kernel execution.
         """
         pass
+
+    @staticmethod
+    def _require_dispatch_insts(kernel_handle: KernelHandle, dispatch_insts) -> None:
+        """Reject a run of a dispatch design that was given no instructions.
+
+        ``load_and_run`` synthesizes them via ``_maybe_generate_dispatch_insts``;
+        anything reaching ``run()`` by another route (``run_test``,
+        ``run_chain``, a direct ``load()`` + ``run()``) would otherwise submit a
+        null instruction stream, which each backend fails differently and
+        unrecognizably.
+        """
+        if kernel_handle.needs_dispatch_insts and dispatch_insts is None:
+            raise HostRuntimeError(
+                "this kernel declares DispatchTime[T] parameter(s), so it has "
+                "no static instruction stream and run() cannot submit it "
+                "directly. Call the kernel (or load_and_run) with the "
+                "DispatchTime[T] value(s) so the stream is built for this call."
+            )
 
     def _maybe_generate_dispatch_insts(
         self, npu_kernel: NPUKernel, dispatch_scalars: dict | None

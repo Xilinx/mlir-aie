@@ -31,22 +31,28 @@ import re
 import subprocess
 from pathlib import Path
 
+import numpy as np
 from aie.utils import config
 
-# aie-opt pass list lowering a materialized runtime sequence to npu ops. Copied
-# verbatim from test/npu-xrt/dynamic_pingpong_passthrough/run.lit, the one place
-# this pipeline is proven end-to-end on hardware -- keep them in sync.
+from ._dispatch_artifacts import write_dispatch_abi
+
+# aie-opt spelling of aiecc's getNpuDmaLoweringPipeline (tools/aiecc/IRTransforms.h),
+# which the static path runs in-process. Same passes in the same order -- a dynamic
+# design must lower identically. test_dispatch_bridge.py pins the two together.
 _DYNAMIC_LOWERING_PASSES = [
     "--aie-materialize-bd-chains",
     "--aie-substitute-shim-dma-allocations",
     "--aie-unroll-runtime-sequence-loops",
     "--canonicalize",
+    "--aie-decompose-large-dma-bd",
     "--aie-lower-dynamic-bd-pool",
     "--canonicalize",
     "--aie-assign-runtime-sequence-bd-ids",
     "--aie-dma-tasks-to-npu",
+    "--aie-lower-dma-channel-reset",
     "--aie-dma-to-npu",
     "--aie-lower-set-lock",
+    "--aie-lower-core-reset",
 ]
 
 _GENERATE_TXN_SIGNATURE_RE = re.compile(
@@ -120,16 +126,67 @@ def _translate_to_cpp(
     return header_path
 
 
+# DispatchTime[T] wrapped type -> the C spelling aie-translate emits for it.
+# Only unambiguous mappings: anything absent here is left unchecked rather
+# than guessed at, so a new scalar type cannot fail the build spuriously.
+_C_TYPE_BY_NP_TYPE = {
+    np.int8: "int8_t",
+    np.uint8: "uint8_t",
+    np.int16: "int16_t",
+    np.uint16: "uint16_t",
+    np.int32: "int32_t",
+    np.uint32: "uint32_t",
+    np.int64: "int64_t",
+    np.uint64: "uint64_t",
+}
+
+
+def _check_param_types(
+    params: list[tuple[str, str]],
+    dispatch_params: list[str],
+    dispatch_param_types: list | None,
+) -> None:
+    """Check the generated C parameters against the declared DispatchTime[T] types.
+
+    The order of the generated parameters is the ``Runtime(inputs=[...])``
+    order the author wrote by hand; the declared order is the Python
+    signature. Nothing ties the two together, so a design that threads its
+    scalars in a different order than it declares them silently transposes
+    values at every call. Comparing the type sequences catches that whenever
+    the types differ.
+
+    Same-typed parameters stay indistinguishable here -- see the note on
+    ``compile_dispatch_bridge``.
+    """
+    if not dispatch_param_types:
+        return
+    for (c_type, _c_name), name, declared in zip(
+        params, dispatch_params, dispatch_param_types
+    ):
+        expected = _C_TYPE_BY_NP_TYPE.get(declared)
+        if expected is not None and expected != c_type:
+            raise DispatchCompileError(
+                f"DispatchTime[T] parameter {name!r} is declared as "
+                f"{getattr(declared, '__name__', declared)} (C {expected}) but "
+                f"the generated builder takes {c_type} in that position. The "
+                f"order values are threaded into Runtime(inputs=[...]) must "
+                f"match the order they are declared in the signature "
+                f"({dispatch_params!r})."
+            )
+
+
 def _parse_signature(
-    header_text: str, dispatch_params: list[str]
+    header_text: str,
+    dispatch_params: list[str],
+    dispatch_param_types: list | None = None,
 ) -> tuple[str, list[tuple[str, str]]]:
     """Return ``(func_name, [(ctype, name), ...])`` for the sole ``generate_txn_*``.
 
-    Raises if none or more than one such function is present, or if the
-    parameter count doesn't match ``len(dispatch_params)`` -- the generator
-    author is responsible for passing DispatchTime[T] values into
-    ``Runtime(inputs=[...])`` in declaration order (this only catches a count
-    mismatch, e.g. a forgotten or extra scalar, not a silent reordering).
+    Raises if none or more than one such function is present, if the parameter
+    count doesn't match ``len(dispatch_params)``, or if a parameter's C type
+    contradicts the declared ``DispatchTime[T]`` type in that position (see
+    ``_check_param_types``). Two same-typed parameters threaded in the wrong
+    order remain undetectable -- nothing distinguishes them.
 
     The "exactly one" requirement is not a gap in AIEXToEmitC.cpp -- it
     already emits one correctly-named generate_txn_<device>_<sequence>
@@ -169,6 +226,7 @@ def _parse_signature(
             f"value is threaded into Runtime(inputs=[...]) in declaration "
             f"order."
         )
+    _check_param_types(params, dispatch_params, dispatch_param_types)
     return func_name, params
 
 
@@ -235,7 +293,10 @@ def _compile_wrapper(wrapper_cpp: Path, kernel_dir: Path) -> Path:
 
 
 def compile_dispatch_bridge(
-    kernel_dir: Path, dispatch_params: list[str], fold_ddr_addr_offset: bool = True
+    kernel_dir: Path,
+    dispatch_params: list[str],
+    fold_ddr_addr_offset: bool = True,
+    dispatch_param_types: list | None = None,
 ) -> Path:
     """Build ``kernel_dir/dispatch.so`` for a design with DispatchTime[T] params.
 
@@ -255,6 +316,16 @@ def compile_dispatch_bridge(
     lowered_mlir = _lower_dynamic_runtime_sequence(kernel_dir)
     header_path = _translate_to_cpp(lowered_mlir, kernel_dir, fold_ddr_addr_offset)
     header_text = header_path.read_text()
-    func_name, params = _parse_signature(header_text, dispatch_params)
+    func_name, params = _parse_signature(
+        header_text, dispatch_params, dispatch_param_types
+    )
     wrapper_cpp = _write_wrapper_cpp(kernel_dir, func_name, params)
-    return _compile_wrapper(wrapper_cpp, kernel_dir)
+    so_path = _compile_wrapper(wrapper_cpp, kernel_dir)
+    # Record the ABI now, while it is known for certain. Dispatch then needs
+    # only the .so and this sidecar -- never the generated C++ header, whose
+    # formatting would otherwise have to stay parseable for the life of the
+    # cache entry.
+    write_dispatch_abi(
+        kernel_dir, func_name, dispatch_params, [ctype for ctype, _name in params]
+    )
+    return so_path
