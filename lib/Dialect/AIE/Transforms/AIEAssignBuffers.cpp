@@ -334,11 +334,12 @@ static void setAndUpdateAddressInBank(BufferOp buffer, int64_t start_addr,
 // returns true and if not, the function emits a warning that the address
 // will be overwritten and returns false (which will cause the buffer to be
 // added to the list of buffers without addresses, to be completed later on).
-static FailureOr<bool> checkAndAddBufferWithAddress(
-    BufferOp buffer, int numBanks, uint32_t tileAlignBitWidth,
-    [[maybe_unused]] uint32_t maxVecAlignBits,
-    std::vector<int64_t> &nextAddrInBanks,
-    std::vector<BankLimits> &bankLimits) {
+static FailureOr<bool>
+checkAndAddBufferWithAddress(BufferOp buffer, int numBanks,
+                             uint32_t tileAlignBitWidth,
+                             [[maybe_unused]] uint32_t maxVecAlignBits,
+                             std::vector<int64_t> &nextAddrInBanks,
+                             std::vector<BankLimits> &bankLimits) {
   auto addrAttr = buffer->getAttrOfType<IntegerAttr>("address");
   if (!addrAttr)
     return false;
