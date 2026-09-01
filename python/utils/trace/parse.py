@@ -9,7 +9,13 @@ import sys
 import aie.dialects.aie as aiedialect
 import aie.dialects.aiex as aiexdialect
 import numpy as np
-from aie._mlir_libs import _aie  # pyright: ignore[reportMissingImports]
+from aie._mlir_libs._aie import (  # pyright: ignore[reportMissingImports]
+    trace_buffer_fields,  # pyright: ignore[reportAttributeAccessIssue]
+    trace_slice_fields,  # pyright: ignore[reportAttributeAccessIssue]
+)
+from aie.dialects.aie import (  # pyright: ignore[reportMissingImports]
+    RuntimeSequenceOp,  # pyright: ignore[reportAttributeAccessIssue]
+)
 from aie.extras.util import find_ops  # pyright: ignore[reportMissingImports]
 from aie.helpers.util import (  # pyright: ignore[reportMissingImports]
     fold_constant_operand,
@@ -50,9 +56,7 @@ def _find_sequence(module, kernel):
     found = []
     for seq in find_ops(
         module.operation,
-        lambda o: isinstance(
-            o.operation.opview, aiedialect.RuntimeSequenceOp
-        ),  # pyright: ignore[reportArgumentType]
+        lambda o: isinstance(o.operation.opview, RuntimeSequenceOp),
     ):
         device = seq.operation.parent.opview
         name = f"{_device_name(device)}:{seq.sym_name.value}"
@@ -77,7 +81,7 @@ def get_trace_buffer(mlir_module_str, kernel=DEFAULT_KERNEL):
         attr = _find_sequence(module, kernel).trace_buffer
         if attr is None:
             return None
-        arg_index, offset, size, dedicated = _aie.trace_buffer_fields(attr)
+        arg_index, offset, size, dedicated = trace_buffer_fields(attr)
         return {
             "arg_index": arg_index,
             "offset": offset,
@@ -104,7 +108,7 @@ def get_trace_slices(mlir_module_str, kernel=DEFAULT_KERNEL):
             return []
         entries = []
         for slice_attr in attr:
-            device, sequence, offset, size = _aie.trace_slice_fields(slice_attr)
+            device, sequence, offset, size = trace_slice_fields(slice_attr)
             entries.append(
                 {
                     "device": device,
