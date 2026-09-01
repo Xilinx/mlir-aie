@@ -59,7 +59,7 @@ def _is_tensor_param(annotation) -> bool:
 def _dispatch_param_type(annotation):
     """Return the wrapped type ``T`` for a ``DispatchTime[T]`` annotation.
 
-    Mirrors :func:`_is_dispatch_param`'s ``Annotated``/``Union`` unwrapping so
+    Mirrors ``_is_dispatch_param()``'s ``Annotated``/``Union`` unwrapping so
     callers recover the same ``T`` regardless of how ``get_type_hints``
     rewrote a defaulted param (``DispatchTime[T] = None`` becomes
     ``Optional[...]``).  Returns ``None`` if *annotation* is not a

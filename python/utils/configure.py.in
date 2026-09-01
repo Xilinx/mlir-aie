@@ -34,6 +34,12 @@ aie_unified_compile = True
 host_disable_compile = not pythonize_bool("@AIECC_HOST_COMPILE@")
 host_architecture = os.getenv("LLVM_HOST_TRIPLE", "@LLVM_HOST_TRIPLE@")
 
+# Source tree this was configured from. A build area stages only generated
+# headers under include/, so hand-written ones (aie/Runtime/*) are reachable
+# only from here; an install area has them under install_path()/include and
+# this path no longer exists.
+aie_source_dir = r"""@AIE_SOURCE_DIR@"""
+
 peano_install_dir = os.getenv("PEANO_INSTALL_DIR", r"""@PEANO_INSTALL_DIR@""")
 aie_dir = os.path.realpath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 if not os.path.exists(peano_install_dir):

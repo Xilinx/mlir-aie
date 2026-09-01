@@ -82,7 +82,7 @@ def aie_opt_path():
     """Return the aie-opt executable used to lower a dynamic runtime sequence.
 
     Resolution order: the AIE_OPT_PATH environment variable, then the
-    MLIR-AIE bin directory, then PATH. Mirrors :func:`aiecc_path`.
+    MLIR-AIE bin directory, then PATH. Mirrors ``aiecc_path()``.
     """
     env_aie_opt = os.environ.get("AIE_OPT_PATH")
     if env_aie_opt:
@@ -110,7 +110,7 @@ def aie_translate_path():
     """Return the aie-translate executable used to emit a dynamic TXN builder.
 
     Resolution order: the AIE_TRANSLATE_PATH environment variable, then the
-    MLIR-AIE bin directory, then PATH. Mirrors :func:`aiecc_path`.
+    MLIR-AIE bin directory, then PATH. Mirrors ``aiecc_path()``.
     """
     env_aie_translate = os.environ.get("AIE_TRANSLATE_PATH")
     if env_aie_translate:
@@ -142,7 +142,7 @@ def host_cxx_path():
     """Return a HOST-target (x86_64) C++ compiler.
 
     Used to compile the dynamic dispatch bridge shared library that Python
-    loads via ``ctypes``. This is deliberately NOT :func:`peano_cxx_path` --
+    loads via ``ctypes``. This is deliberately NOT ``peano_cxx_path()`` --
     Peano's clang++ only
     targets ``aie2*-none-unknown-elf`` (AIE core object files for linking
     into an xclbin); it cannot produce a host-loadable ``.so``.
@@ -198,3 +198,23 @@ def cxx_header_path():
     if not os.path.isdir(include_dir):
         raise RuntimeError(f"MLIR-AIE C++ headers not found in {include_dir}")
     return include_dir
+
+
+def runtime_header_path():
+    """Return the include directory holding ``aie/Runtime/TxnEncoding.h``.
+
+    The dispatch bridge compiles generated host C++ that includes that header.
+    Unlike the device-kernel headers ``cxx_header_path()`` serves, it is not
+    staged into a build area's ``include/`` -- only into an install area -- so
+    fall back to the source tree, the way ``configure.py`` resolves
+    ``peano_install_dir``.
+    """
+    sentinel = os.path.join("aie", "Runtime", "TxnEncoding.h")
+    candidates = [os.path.join(root_path(), "include")]
+    source_dir = getattr(config, "aie_source_dir", "")
+    if source_dir:
+        candidates.append(os.path.join(source_dir, "include"))
+    for include_dir in candidates:
+        if os.path.isfile(os.path.join(include_dir, sentinel)):
+            return include_dir
+    raise RuntimeError(f"Could not find {sentinel} in any of: {', '.join(candidates)}.")

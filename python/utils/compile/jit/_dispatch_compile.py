@@ -223,7 +223,7 @@ def _compile_wrapper(wrapper_cpp: Path, kernel_dir: Path) -> Path:
         "-fPIC",
         "-O2",
         "-std=c++20",
-        f"-I{config.cxx_header_path()}",
+        f"-I{config.runtime_header_path()}",
         f"-I{kernel_dir}",
         str(wrapper_cpp),
         "-o",
