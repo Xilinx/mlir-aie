@@ -12,31 +12,31 @@
         <meta name="author" content="AMD Advanced Micro Devices">
       
       
-        <link rel="canonical" href="https://xilinx.github.io/mlir-aie/dev/aiecc/">
+        <link rel="canonical" href="https://xilinx.github.io/mlir-aie/dev/programming_guide/core_data_memory/">
       
       
-        <link rel="prev" href="../api/cpp_doxygen/">
+        <link rel="prev" href="../iron_configuration/">
       
       
-        <link rel="next" href="../UsedIn/">
+        <link rel="next" href="../hrx_runtime/">
       
       
         
       
       
-      <link rel="icon" href="../assets/images/favicon.svg">
+      <link rel="icon" href="../../assets/images/favicon.svg">
       <meta name="generator" content="mkdocs-ProperDocs 1.6.7, mkdocs-material-9.7.7">
     
     
       
-        <title>aiecc Compiler Driver - IRON / MLIR-AIE</title>
+        <title>Core Data Memory - IRON / MLIR-AIE</title>
       
     
     
-      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
       
         
-        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
       
       
 
@@ -55,11 +55,11 @@
       
     
     
-      <link rel="stylesheet" href="../assets/_mkdocstrings.css">
+      <link rel="stylesheet" href="../../assets/_mkdocstrings.css">
     
-      <link rel="stylesheet" href="../assets/css/iron.css">
+      <link rel="stylesheet" href="../../assets/css/iron.css">
     
-    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
       
 
@@ -84,7 +84,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#aiecc-the-mlir-aie-compiler-driver" class="md-skip">
+        <a href="#core-data-memory" class="md-skip">
           Skip to content
         </a>
       
@@ -104,9 +104,9 @@
 
 <header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
   <nav class="md-header__inner md-grid" aria-label="Header">
-    <a href=".." title="IRON / MLIR-AIE" class="md-header__button md-logo" aria-label="IRON / MLIR-AIE" data-md-component="logo">
+    <a href="../.." title="IRON / MLIR-AIE" class="md-header__button md-logo" aria-label="IRON / MLIR-AIE" data-md-component="logo">
       
-  <img src="../assets/images/favicon.svg" alt="logo">
+  <img src="../../assets/images/favicon.svg" alt="logo">
 
     </a>
     <label class="md-header__button md-icon" for="__drawer">
@@ -123,7 +123,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              aiecc Compiler Driver
+              Core Data Memory
             
           </span>
         </div>
@@ -230,7 +230,7 @@
   
   
     <li class="md-tabs__item">
-      <a href=".." class="md-tabs__link">
+      <a href="../.." class="md-tabs__link">
         
   
   
@@ -251,7 +251,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="../getting-started/" class="md-tabs__link">
+        <a href="../../getting-started/" class="md-tabs__link">
           
   
   
@@ -269,11 +269,13 @@
   
   
   
+    
+  
   
     
     
-      <li class="md-tabs__item">
-        <a href="../programming_guide/" class="md-tabs__link">
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../" class="md-tabs__link">
           
   
   
@@ -295,7 +297,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="../skills/agentic_programming/" class="md-tabs__link">
+        <a href="../../skills/agentic_programming/" class="md-tabs__link">
           
   
   
@@ -313,13 +315,11 @@
   
   
   
-    
-  
   
     
     
-      <li class="md-tabs__item md-tabs__item--active">
-        <a href="../api/" class="md-tabs__link">
+      <li class="md-tabs__item">
+        <a href="../../api/" class="md-tabs__link">
           
   
   
@@ -341,7 +341,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="../UsedIn/" class="md-tabs__link">
+        <a href="../../UsedIn/" class="md-tabs__link">
           
   
   
@@ -383,9 +383,9 @@
 
 <nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
-    <a href=".." title="IRON / MLIR-AIE" class="md-nav__button md-logo" aria-label="IRON / MLIR-AIE" data-md-component="logo">
+    <a href="../.." title="IRON / MLIR-AIE" class="md-nav__button md-logo" aria-label="IRON / MLIR-AIE" data-md-component="logo">
       
-  <img src="../assets/images/favicon.svg" alt="logo">
+  <img src="../../assets/images/favicon.svg" alt="logo">
 
     </a>
     IRON / MLIR-AIE
@@ -412,7 +412,7 @@
   
   
     <li class="md-nav__item">
-      <a href=".." class="md-nav__link">
+      <a href="../.." class="md-nav__link">
         
   
   
@@ -509,7 +509,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../getting-started/" class="md-nav__link">
+      <a href="../../getting-started/" class="md-nav__link">
         
   
   
@@ -537,7 +537,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../buildHostWin/" class="md-nav__link">
+      <a href="../../buildHostWin/" class="md-nav__link">
         
   
   
@@ -565,7 +565,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../buildHostWinNative/" class="md-nav__link">
+      <a href="../../buildHostWinNative/" class="md-nav__link">
         
   
   
@@ -593,7 +593,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../buildHostLinNonUbuntu/" class="md-nav__link">
+      <a href="../../buildHostLinNonUbuntu/" class="md-nav__link">
         
   
   
@@ -621,7 +621,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../Building/" class="md-nav__link">
+      <a href="../../Building/" class="md-nav__link">
         
   
   
@@ -649,7 +649,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../Devices/" class="md-nav__link">
+      <a href="../../Devices/" class="md-nav__link">
         
   
   
@@ -677,7 +677,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../BuildingVersal/" class="md-nav__link">
+      <a href="../../BuildingVersal/" class="md-nav__link">
         
   
   
@@ -705,7 +705,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../Platform/" class="md-nav__link">
+      <a href="../../Platform/" class="md-nav__link">
         
   
   
@@ -737,6 +737,8 @@
       
   
   
+    
+  
   
   
     
@@ -768,20 +770,23 @@
     
     
       
+        
+        
+      
       
         
       
     
     
-    <li class="md-nav__item md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
         
           
           <div class="md-nav__link md-nav__container">
-            <a href="../programming_guide/" class="md-nav__link ">
+            <a href="../" class="md-nav__link ">
               
   
   
@@ -799,13 +804,13 @@
             </a>
             
               
-              <label class="md-nav__link " for="__nav_3" id="__nav_3_label" tabindex="0">
+              <label class="md-nav__link " for="__nav_3" id="__nav_3_label" tabindex="">
                 <span class="md-nav__icon md-icon"></span>
               </label>
             
           </div>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_3">
             <span class="md-nav__icon md-icon"></span>
             
@@ -825,7 +830,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../programming_guide/mini_tutorial/" class="md-nav__link">
+      <a href="../mini_tutorial/" class="md-nav__link">
         
   
   
@@ -853,7 +858,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../programming_guide/section-0/" class="md-nav__link">
+      <a href="../section-0/" class="md-nav__link">
         
   
   
@@ -881,7 +886,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../programming_guide/section-1/" class="md-nav__link">
+      <a href="../section-1/" class="md-nav__link">
         
   
   
@@ -937,10 +942,13 @@
       
       
         
+          
+          
+        
       
     
     
-    <li class="md-nav__item md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
       
         
         
@@ -948,7 +956,7 @@
         
           
           <div class="md-nav__link md-nav__container">
-            <a href="../programming_guide/section-2/" class="md-nav__link ">
+            <a href="../section-2/" class="md-nav__link ">
               
   
   
@@ -966,7 +974,7 @@
             </a>
             
               
-              <label class="md-nav__link " for="__nav_3_5" id="__nav_3_5_label" tabindex="0">
+              <label class="md-nav__link " for="__nav_3_5" id="__nav_3_5_label" tabindex="">
                 <span class="md-nav__icon md-icon"></span>
               </label>
             
@@ -992,7 +1000,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../programming_guide/section-2/section-2a/" class="md-nav__link">
+      <a href="../section-2/section-2a/" class="md-nav__link">
         
   
   
@@ -1051,7 +1059,7 @@
         
           
           <div class="md-nav__link md-nav__container">
-            <a href="../programming_guide/section-2/section-2b/" class="md-nav__link ">
+            <a href="../section-2/section-2b/" class="md-nav__link ">
               
   
   
@@ -1095,7 +1103,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../programming_guide/section-2/section-2b/01_Reuse/" class="md-nav__link">
+      <a href="../section-2/section-2b/01_Reuse/" class="md-nav__link">
         
   
   
@@ -1123,7 +1131,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../programming_guide/section-2/section-2b/02_Broadcast/" class="md-nav__link">
+      <a href="../section-2/section-2b/02_Broadcast/" class="md-nav__link">
         
   
   
@@ -1151,7 +1159,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../programming_guide/section-2/section-2b/03_Implicit_Copy/" class="md-nav__link">
+      <a href="../section-2/section-2b/03_Implicit_Copy/" class="md-nav__link">
         
   
   
@@ -1179,7 +1187,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../programming_guide/section-2/section-2b/04_Repeat/" class="md-nav__link">
+      <a href="../section-2/section-2b/04_Repeat/" class="md-nav__link">
         
   
   
@@ -1242,7 +1250,7 @@
         
           
           <div class="md-nav__link md-nav__container">
-            <a href="../programming_guide/section-2/section-2c/" class="md-nav__link ">
+            <a href="../section-2/section-2c/" class="md-nav__link ">
               
   
   
@@ -1286,7 +1294,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../programming_guide/section-2/section-2c/to_stream_transformations/" class="md-nav__link">
+      <a href="../section-2/section-2c/to_stream_transformations/" class="md-nav__link">
         
   
   
@@ -1314,7 +1322,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../programming_guide/section-2/section-2c/from_stream_transformations/" class="md-nav__link">
+      <a href="../section-2/section-2c/from_stream_transformations/" class="md-nav__link">
         
   
   
@@ -1377,7 +1385,7 @@
         
           
           <div class="md-nav__link md-nav__container">
-            <a href="../programming_guide/section-2/section-2d/" class="md-nav__link ">
+            <a href="../section-2/section-2d/" class="md-nav__link ">
               
   
   
@@ -1421,7 +1429,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../programming_guide/section-2/section-2d/DMATasks/" class="md-nav__link">
+      <a href="../section-2/section-2d/DMATasks/" class="md-nav__link">
         
   
   
@@ -1449,7 +1457,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../programming_guide/section-2/section-2d/RuntimeTasks/" class="md-nav__link">
+      <a href="../section-2/section-2d/RuntimeTasks/" class="md-nav__link">
         
   
   
@@ -1485,7 +1493,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../programming_guide/section-2/section-2e/" class="md-nav__link">
+      <a href="../section-2/section-2e/" class="md-nav__link">
         
   
   
@@ -1546,7 +1554,7 @@
         
           
           <div class="md-nav__link md-nav__container">
-            <a href="../programming_guide/section-2/section-2f/" class="md-nav__link ">
+            <a href="../section-2/section-2f/" class="md-nav__link ">
               
   
   
@@ -1590,7 +1598,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../programming_guide/section-2/section-2f/01_single_double_buffer/" class="md-nav__link">
+      <a href="../section-2/section-2f/01_single_double_buffer/" class="md-nav__link">
         
   
   
@@ -1618,7 +1626,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../programming_guide/section-2/section-2f/02_external_mem_to_core/" class="md-nav__link">
+      <a href="../section-2/section-2f/02_external_mem_to_core/" class="md-nav__link">
         
   
   
@@ -1646,7 +1654,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../programming_guide/section-2/section-2f/03_external_mem_to_core_L2/" class="md-nav__link">
+      <a href="../section-2/section-2f/03_external_mem_to_core_L2/" class="md-nav__link">
         
   
   
@@ -1674,7 +1682,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../programming_guide/section-2/section-2f/04_distribute_L2/" class="md-nav__link">
+      <a href="../section-2/section-2f/04_distribute_L2/" class="md-nav__link">
         
   
   
@@ -1702,7 +1710,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../programming_guide/section-2/section-2f/05_join_L2/" class="md-nav__link">
+      <a href="../section-2/section-2f/05_join_L2/" class="md-nav__link">
         
   
   
@@ -1738,7 +1746,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../programming_guide/section-2/section-2g/" class="md-nav__link">
+      <a href="../section-2/section-2g/" class="md-nav__link">
         
   
   
@@ -1766,7 +1774,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../programming_guide/section-2/section-2h/" class="md-nav__link">
+      <a href="../section-2/section-2h/" class="md-nav__link">
         
   
   
@@ -1802,7 +1810,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../programming_guide/section-3/" class="md-nav__link">
+      <a href="../section-3/" class="md-nav__link">
         
   
   
@@ -1848,10 +1856,13 @@
       
       
         
+          
+          
+        
       
     
     
-    <li class="md-nav__item md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
       
         
         
@@ -1859,7 +1870,7 @@
         
           
           <div class="md-nav__link md-nav__container">
-            <a href="../programming_guide/section-4/" class="md-nav__link ">
+            <a href="../section-4/" class="md-nav__link ">
               
   
   
@@ -1877,7 +1888,7 @@
             </a>
             
               
-              <label class="md-nav__link " for="__nav_3_7" id="__nav_3_7_label" tabindex="0">
+              <label class="md-nav__link " for="__nav_3_7" id="__nav_3_7_label" tabindex="">
                 <span class="md-nav__icon md-icon"></span>
               </label>
             
@@ -1903,7 +1914,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../programming_guide/section-4/section-4a/" class="md-nav__link">
+      <a href="../section-4/section-4a/" class="md-nav__link">
         
   
   
@@ -1931,7 +1942,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../programming_guide/section-4/section-4b/" class="md-nav__link">
+      <a href="../section-4/section-4b/" class="md-nav__link">
         
   
   
@@ -1959,7 +1970,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../programming_guide/section-4/section-4c/" class="md-nav__link">
+      <a href="../section-4/section-4c/" class="md-nav__link">
         
   
   
@@ -1995,7 +2006,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../programming_guide/section-5/" class="md-nav__link">
+      <a href="../section-5/" class="md-nav__link">
         
   
   
@@ -2023,7 +2034,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../programming_guide/section-6/" class="md-nav__link">
+      <a href="../section-6/" class="md-nav__link">
         
   
   
@@ -2048,8 +2059,10 @@
                 
   
   
+    
   
   
+  
     
     
       
@@ -2072,18 +2085,21 @@
     
       
       
-        
-      
-    
-    
-    <li class="md-nav__item md-nav__item--nested">
-      
-        
-        
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_10" >
         
           
-          <label class="md-nav__link" for="__nav_3_10" id="__nav_3_10_label" tabindex="0">
+          
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_10" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3_10" id="__nav_3_10_label" tabindex="">
             
   
   
@@ -2101,7 +2117,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_10_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_10_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_3_10">
             <span class="md-nav__icon md-icon"></span>
             
@@ -2119,7 +2135,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../programming_guide/iron_configuration/" class="md-nav__link">
+      <a href="../iron_configuration/" class="md-nav__link">
         
   
   
@@ -2144,10 +2160,37 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../programming_guide/core_data_memory/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Core Data Memory
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -2163,6 +2206,70 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-stack-stack_size" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The stack: stack_size
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#overriding-a-kernels-stack-contribution-stack_size_override" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Overriding a kernel's stack contribution: stack_size_override
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#escape-hatches-and-allocation-control" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Escape hatches and allocation control
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-to-do-when-you-hit-a-diagnostic" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What to do when you hit a diagnostic
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -2175,7 +2282,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../programming_guide/hrx_runtime/" class="md-nav__link">
+      <a href="../hrx_runtime/" class="md-nav__link">
         
   
   
@@ -2203,7 +2310,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../programming_guide/hsa_runtime/" class="md-nav__link">
+      <a href="../hsa_runtime/" class="md-nav__link">
         
   
   
@@ -2231,7 +2338,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../programming_guide/compilation_stages/" class="md-nav__link">
+      <a href="../compilation_stages/" class="md-nav__link">
         
   
   
@@ -2259,7 +2366,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../programming_guide/implicit_mlir_context/" class="md-nav__link">
+      <a href="../implicit_mlir_context/" class="md-nav__link">
         
   
   
@@ -2287,7 +2394,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../programming_guide/kernels_library/" class="md-nav__link">
+      <a href="../kernels_library/" class="md-nav__link">
         
   
   
@@ -2365,7 +2472,7 @@
         
           
           <div class="md-nav__link md-nav__container">
-            <a href="../skills/" class="md-nav__link ">
+            <a href="../../skills/" class="md-nav__link ">
               
   
   
@@ -2407,7 +2514,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../skills/agentic_programming/" class="md-nav__link">
+      <a href="../../skills/agentic_programming/" class="md-nav__link">
         
   
   
@@ -2437,7 +2544,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../skills/aie-model-baseline/SKILL/" class="md-nav__link">
+      <a href="../../skills/aie-model-baseline/SKILL/" class="md-nav__link">
         
   
   
@@ -2465,7 +2572,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../skills/aie-dataflow-presim/SKILL/" class="md-nav__link">
+      <a href="../../skills/aie-dataflow-presim/SKILL/" class="md-nav__link">
         
   
   
@@ -2493,7 +2600,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../skills/aie-hw-bringup/SKILL/" class="md-nav__link">
+      <a href="../../skills/aie-hw-bringup/SKILL/" class="md-nav__link">
         
   
   
@@ -2521,7 +2628,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../skills/aie-kernel-opt/SKILL/" class="md-nav__link">
+      <a href="../../skills/aie-kernel-opt/SKILL/" class="md-nav__link">
         
   
   
@@ -2549,7 +2656,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../skills/aie-dataflow-opt/SKILL/" class="md-nav__link">
+      <a href="../../skills/aie-dataflow-opt/SKILL/" class="md-nav__link">
         
   
   
@@ -2581,8 +2688,6 @@
       
   
   
-    
-  
   
   
     
@@ -2602,23 +2707,20 @@
     
     
       
-        
-        
-      
       
         
       
     
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
         
           
           <div class="md-nav__link md-nav__container">
-            <a href="../api/" class="md-nav__link ">
+            <a href="../../api/" class="md-nav__link ">
               
   
   
@@ -2636,13 +2738,13 @@
             </a>
             
               
-              <label class="md-nav__link " for="__nav_5" id="__nav_5_label" tabindex="">
+              <label class="md-nav__link " for="__nav_5" id="__nav_5_label" tabindex="0">
                 <span class="md-nav__icon md-icon"></span>
               </label>
             
           </div>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_5">
             <span class="md-nav__icon md-icon"></span>
             
@@ -2682,20 +2784,17 @@
       
       
         
-          
-          
-        
       
     
     
-    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--nested">
       
         
         
         <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_2" >
         
           
-          <label class="md-nav__link" for="__nav_5_2" id="__nav_5_2_label" tabindex="">
+          <label class="md-nav__link" for="__nav_5_2" id="__nav_5_2_label" tabindex="0">
             
   
   
@@ -2731,7 +2830,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../api/iron/" class="md-nav__link">
+      <a href="../../api/iron/" class="md-nav__link">
         
   
   
@@ -2759,7 +2858,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../api/dialect_wrappers/" class="md-nav__link">
+      <a href="../../api/dialect_wrappers/" class="md-nav__link">
         
   
   
@@ -2787,7 +2886,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../api/taplib/" class="md-nav__link">
+      <a href="../../api/taplib/" class="md-nav__link">
         
   
   
@@ -2815,7 +2914,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../api/kernels/" class="md-nav__link">
+      <a href="../../api/kernels/" class="md-nav__link">
         
   
   
@@ -2843,7 +2942,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../api/hostruntime/" class="md-nav__link">
+      <a href="../../api/hostruntime/" class="md-nav__link">
         
   
   
@@ -2871,7 +2970,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../api/aie_kernels/" class="md-nav__link">
+      <a href="../../api/aie_kernels/" class="md-nav__link">
         
   
   
@@ -2931,20 +3030,17 @@
       
       
         
-          
-          
-        
       
     
     
-    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--nested">
       
         
         
         <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_3" >
         
           
-          <label class="md-nav__link" for="__nav_5_3" id="__nav_5_3_label" tabindex="">
+          <label class="md-nav__link" for="__nav_5_3" id="__nav_5_3_label" tabindex="0">
             
   
   
@@ -2980,7 +3076,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../ObjectFifoLowering/" class="md-nav__link">
+      <a href="../../ObjectFifoLowering/" class="md-nav__link">
         
   
   
@@ -3008,7 +3104,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../AIEDialect/" class="md-nav__link">
+      <a href="../../AIEDialect/" class="md-nav__link">
         
   
   
@@ -3036,7 +3132,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../AIEXDialect/" class="md-nav__link">
+      <a href="../../AIEXDialect/" class="md-nav__link">
         
   
   
@@ -3064,7 +3160,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../AIEVecDialect/" class="md-nav__link">
+      <a href="../../AIEVecDialect/" class="md-nav__link">
         
   
   
@@ -3092,7 +3188,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../AIEPasses/" class="md-nav__link">
+      <a href="../../AIEPasses/" class="md-nav__link">
         
   
   
@@ -3120,7 +3216,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../AIEXPasses/" class="md-nav__link">
+      <a href="../../AIEXPasses/" class="md-nav__link">
         
   
   
@@ -3148,7 +3244,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../AIEVecPasses/" class="md-nav__link">
+      <a href="../../AIEVecPasses/" class="md-nav__link">
         
   
   
@@ -3176,7 +3272,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../api/cpp_doxygen/" class="md-nav__link">
+      <a href="../../api/cpp_doxygen/" class="md-nav__link">
         
   
   
@@ -3209,37 +3305,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    aiecc Compiler Driver
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../../aiecc/" class="md-nav__link">
         
   
   
@@ -3255,165 +3324,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#user-guide" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        User guide
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="User guide">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#the-two-most-common-flows" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        The two most common flows
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#seeing-what-the-compiler-will-do--dry-running---emit-dot" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Seeing what the compiler will do / dry-running: --emit-dot
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#stopping-and-restarting-a-build---checkpoint-and---resume" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Stopping and restarting a build: --checkpoint and --resume
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#extracting-a-single-artifact---get" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Extracting a single artifact: --get
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#developer-guide" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Developer guide
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Developer guide">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#edge-node-item--and-keys" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Edge, Node, Item — and keys
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#keeping-the-graph-static" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Keeping the graph static
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Keeping the graph static">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#why-this-matters" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Why this matters
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#edge-types" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Edge types
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#putting-it-together-scatter--gather" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Putting it together: scatter / gather
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -3495,7 +3405,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../UsedIn/" class="md-nav__link">
+      <a href="../../UsedIn/" class="md-nav__link">
         
   
   
@@ -3523,7 +3433,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../CONTRIBUTING/" class="md-nav__link">
+      <a href="../../CONTRIBUTING/" class="md-nav__link">
         
   
   
@@ -3551,7 +3461,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../ROADMAP/" class="md-nav__link">
+      <a href="../../ROADMAP/" class="md-nav__link">
         
   
   
@@ -3579,7 +3489,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../SECURITY/" class="md-nav__link">
+      <a href="../../SECURITY/" class="md-nav__link">
         
   
   
@@ -3634,141 +3544,46 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#user-guide" class="md-nav__link">
+  <a href="#the-stack-stack_size" class="md-nav__link">
     <span class="md-ellipsis">
       
-        User guide
+        The stack: stack_size
       
     </span>
   </a>
-  
-    <nav class="md-nav" aria-label="User guide">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#the-two-most-common-flows" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        The two most common flows
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#seeing-what-the-compiler-will-do--dry-running---emit-dot" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Seeing what the compiler will do / dry-running: --emit-dot
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#stopping-and-restarting-a-build---checkpoint-and---resume" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Stopping and restarting a build: --checkpoint and --resume
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#extracting-a-single-artifact---get" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Extracting a single artifact: --get
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#developer-guide" class="md-nav__link">
+  <a href="#overriding-a-kernels-stack-contribution-stack_size_override" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Developer guide
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Developer guide">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#edge-node-item--and-keys" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Edge, Node, Item — and keys
+        Overriding a kernel's stack contribution: stack_size_override
       
     </span>
   </a>
   
 </li>
-        
-          <li class="md-nav__item">
-  <a href="#keeping-the-graph-static" class="md-nav__link">
+      
+        <li class="md-nav__item">
+  <a href="#escape-hatches-and-allocation-control" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Keeping the graph static
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Keeping the graph static">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#why-this-matters" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Why this matters
+        Escape hatches and allocation control
       
     </span>
   </a>
   
 </li>
-        
-      </ul>
-    </nav>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#edge-types" class="md-nav__link">
+      
+        <li class="md-nav__item">
+  <a href="#what-to-do-when-you-hit-a-diagnostic" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Edge types
+        What to do when you hit a diagnostic
       
     </span>
   </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#putting-it-together-scatter--gather" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Putting it together: scatter / gather
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
   
 </li>
       
@@ -3797,7 +3612,7 @@
   
   
     <li class="md-path__item">
-      <a href=".." class="md-path__link">
+      <a href="../.." class="md-path__link">
         
   <span class="md-ellipsis">
     Home
@@ -3815,10 +3630,28 @@
     
     
       <li class="md-path__item">
-        <a href="../api/" class="md-path__link">
+        <a href="../" class="md-path__link">
           
   <span class="md-ellipsis">
-    API & Internals
+    Programming Guide
+  </span>
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+    
+    
+      <li class="md-path__item">
+        <a href="../iron_configuration/" class="md-path__link">
+          
+  <span class="md-ellipsis">
+    Extra References
   </span>
 
         </a>
@@ -3840,215 +3673,143 @@
   
 
 
-<!---//===- README.md --------------------------*- Markdown -*-===//
+<!---//===- core_data_memory.md ------------------------*- Markdown -*-===//
 //
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-// 
-//===----------------------------------------------------------===//-->
+//
+//===----------------------------------------------------------------------===//-->
 
-<h1 id="aiecc-the-mlir-aie-compiler-driver"><code>aiecc</code>: the MLIR-AIE compiler driver<a class="headerlink" href="#aiecc-the-mlir-aie-compiler-driver" title="Permanent link">&para;</a></h1>
-<p><code>aiecc</code> takes an AIE <code>.mlir</code> design and produces the artifacts needed to run it
-on an NPU (instruction streams, ELFs, PDIs, xclbins, …).</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>aiecc<span class="w"> </span><span class="o">[</span>options<span class="o">]</span><span class="w"> </span>&lt;input.mlir&gt;
-</code></pre></div>
-<p>To also build a <strong>host program</strong> that drives the array, pass <code>--get-host</code>
-and put the host C/C++ sources after a <code>--</code></p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>aiecc<span class="w"> </span>--get-host<span class="w"> </span><span class="o">[</span>options<span class="o">]</span><span class="w"> </span>&lt;input.mlir&gt;<span class="w"> </span>-o<span class="w"> </span>host.exe<span class="w"> </span>--<span class="w"> </span>host.cpp<span class="w"> </span><span class="o">[</span>host-compiler<span class="w"> </span>flags<span class="o">]</span>
-</code></pre></div>
-<hr />
-<h2 id="user-guide">User guide<a class="headerlink" href="#user-guide" title="Permanent link">&para;</a></h2>
-<h3 id="the-two-most-common-flows">The two most common flows<a class="headerlink" href="#the-two-most-common-flows" title="Permanent link">&para;</a></h3>
-<p><strong>1. Instruction-sequence + xclbin flow.</strong> The host loads an <code>xclbin</code> (which
-contains the array configuration) and, at dispatch time, streams a
-per-runtime-sequence NPU instruction binary to the device:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>aiecc<span class="w"> </span>--get-npu-insts<span class="w"> </span>--get-xclbin<span class="w"> </span>design.mlir
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="c1"># -&gt; insts_&lt;device&gt;_&lt;seq&gt;.bin   (one per runtime sequence)</span>
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="c1"># -&gt; aie.xclbin                 (configuration PDI, packaged)</span>
-</code></pre></div>
-<p><strong>2. Full-ELF flow.</strong> Everything — all device PDIs and instruction streams — is
-bundled into a single loadable ELF instead of an xclbin plus loose binaries:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>aiecc<span class="w"> </span>--get-full-elf<span class="w"> </span>design.mlir<span class="w">   </span><span class="c1"># -&gt; aie.elf</span>
-</code></pre></div>
-<p>You can override these output file names with <code>--npu-insts-name</code>, 
-<code>--xclbin-name</code>, and <code>--full-elf-name</code>. You can filter which devices and 
-runtime sequences are compiled with <code>--device-name</code> and <code>--sequence-name</code>. </p>
-<h3 id="seeing-what-the-compiler-will-do--dry-running---emit-dot">Seeing what the compiler will do / dry-running: <code>--emit-dot</code><a class="headerlink" href="#seeing-what-the-compiler-will-do--dry-running---emit-dot" title="Permanent link">&para;</a></h3>
-<p>The compiler builds its execution plan from the flags you pass.
-Adding <code>--emit-dot</code> prints that plan (as a GraphViz graph) for exactly the 
-requested outputs and options and exits without compiling anything. You omit
-the input file when you pass <code>--emit-dot</code>, as no compilation actually takes
-place. For example, this shows the plan for the NPU-instruction flow and 
-renders it to an image:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>aiecc<span class="w"> </span>--get-npu-insts<span class="w"> </span>--emit-dot<span class="w"> </span><span class="p">|</span><span class="w"> </span>dot<span class="w"> </span>-Tpng<span class="w"> </span>-o<span class="w"> </span>flow.png
-</code></pre></div>
-<p>Each box is a compilation step labelled by the artifact it produces, arrows show
-dependencies between steps, and the outputs you requested are highlighted.
-Changing the output flags (for instance to <code>--get-full-elf</code>) changes the
-graph accordingly, so this is the fastest way to understand what a given
-invocation will actually do. The command above produces this graph:</p>
-<p><img alt="NPU-instruction flow graph" src="docs/npu_insts_flow.svg" /></p>
-<h3 id="stopping-and-restarting-a-build---checkpoint-and---resume">Stopping and restarting a build: <code>--checkpoint</code> and <code>--resume</code><a class="headerlink" href="#stopping-and-restarting-a-build---checkpoint-and---resume" title="Permanent link">&para;</a></h3>
-<p>Sometimes you want to interrupt compilation partway through, look at or modify
-an intermediate result, and then continue from that point rather than starting
-over. <code>--checkpoint</code> and <code>--resume</code> let you do exactly that.</p>
-<p>First, compile up to some intermediate stage and save the result. Here we stop
-at the routed physical IR (<code>--cut</code>, described below, selects where to cut) and
-write the checkpoint into the directory <code>cp</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>aiecc<span class="w"> </span>--cut<span class="o">=</span>input_physical.mlir<span class="w"> </span>--checkpoint<span class="o">=</span>cp<span class="w"> </span>design.mlir
-</code></pre></div>
-<p><code>--cut</code> stops the build at the named edge — nothing downstream of it runs, so no
-final artifacts are produced — and snapshots that frontier. It requires
-<code>--checkpoint</code> to say where to write the snapshot. The artifacts you eventually
-want are built later, by <code>--resume</code>.</p>
-<p>Now you can open the intermediate files saved in <code>cp</code> and edit them — for
-instance, to hand-tweak the IR and see how a change affects the rest of the
-build. When you are ready, resume from the checkpoint and ask for the artifact
-you want (<code>--get</code>, described below). The saved frontier is read back from disk
-(IR frontiers are re-parsed from their <code>.mlir</code> text), the stages before the
-checkpoint are skipped entirely, and only what comes after runs:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>aiecc<span class="w"> </span>--resume<span class="o">=</span>cp/manifest.json
-</code></pre></div>
-<p>The resume invocation rebuilds the graph from the flags recorded in the
-checkpoint manifest, so it inherits the original device, toolchain and lowering
-options automatically — you neither repeat them nor may override them. <code>--resume</code>
-rejects any graph-shaping flag on its command line, since changing the graph
-would invalidate the saved intermediates; only execution-only flags may
-accompany it: <code>--get</code>, <code>--cut</code>, <code>--checkpoint</code>, <code>-j</code>, <code>-v</code>/<code>--verbose</code>, and
-<code>--progress</code>.</p>
-<p>This makes it easy to isolate a problem: compile up to just before a stage you
-suspect, change the intermediate result by hand, and re-run only what comes
-after it.</p>
-<p>Adding <code>--emit-dot</code> previews where the checkpoint will cut the build. Here the
-NPU-instruction flow is cut right after routing produces the physical IR: the
-steps run before the cut are shaded green (the <code>--cut</code> frontier, whose artifacts
-are saved to disk, darker), and the steps a <code>--resume</code> runs afterwards sit
-across the dashed red <em>cut</em> arrows. Each edge runs at most once across the pair:
-the prefix and frontier during <code>--checkpoint</code>, the downstream steps during
-<code>--resume</code> (which reloads the frontier from disk rather than rebuilding it).</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>aiecc<span class="w"> </span>--get-npu-insts<span class="w"> </span>--cut<span class="o">=</span>input_physical.mlir<span class="w"> </span>--checkpoint<span class="o">=</span>cp<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="w">      </span>--emit-dot<span class="w"> </span><span class="p">|</span><span class="w"> </span>dot<span class="w"> </span>-Tsvg<span class="w"> </span>-o<span class="w"> </span>cut.svg
-</code></pre></div>
-<p><img alt="NPU-instruction flow with a checkpoint cut" src="docs/npu_insts_cut.svg" /></p>
-<p>If an error occurs during compilation, <code>aiecc</code> will dump a checkpoint 
-capturing the state up to the first failing edge. This allows you to submit
-a checkpoint as a reproducer, or investigate the issue yourself using the
-exact inputs the failing step saw.</p>
-<h3 id="extracting-a-single-artifact---get">Extracting a single artifact: <code>--get</code><a class="headerlink" href="#extracting-a-single-artifact---get" title="Permanent link">&para;</a></h3>
-<p><code>--get=&lt;name&gt;</code> asks for any single artifact in the build by name, including
-intermediates that don't have their own <code>--get-&lt;name&gt;</code> shorthand (such as the
-per-core objects or the routed IR). Run with <code>--emit-dot</code> to see the available
-names; passing an unrecognized name prints the full list.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>aiecc<span class="w"> </span>--get<span class="o">=</span>objects_<span class="o">{</span><span class="m">0</span><span class="o">}</span>.o<span class="w"> </span>design.mlir<span class="w">           </span><span class="c1"># just the per-core objects</span>
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>aiecc<span class="w"> </span>--get<span class="o">=</span>input_physical.mlir<span class="w"> </span>design.mlir<span class="w">     </span><span class="c1"># just the routed IR</span>
-</code></pre></div>
-<p><code>--get</code> and <code>--resume</code> work well together when you want just one final artifact
-without redoing the whole build. First checkpoint all the intermediates up to
-some stage, then resume and ask only for the one output you want; the compiler
-reuses the checkpointed intermediates instead of recomputing them:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>aiecc<span class="w"> </span>--cut<span class="o">=</span>physical_with_elfs.mlir<span class="w"> </span>--checkpoint<span class="o">=</span>cp<span class="w"> </span>design.mlir
-<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>aiecc<span class="w"> </span>--resume<span class="o">=</span>cp/manifest.json<span class="w"> </span>--get<span class="o">=</span>cdo_<span class="o">{</span><span class="m">0</span><span class="o">}</span><span class="w">   </span><span class="c1"># only the CDO, from the checkpoint</span>
-</code></pre></div>
-<hr />
-<h2 id="developer-guide">Developer guide<a class="headerlink" href="#developer-guide" title="Permanent link">&para;</a></h2>
-<p><code>aiecc</code> captures the build steps required for each requested output artifact
-as a static graph: every kind of intermediate is a <code>Node</code>, every 
-transformation an edge, and the engine runs only the edges needed for the
-artifacts you asked for.</p>
-<h3 id="edge-node-item--and-keys">Edge, Node, Item — and keys<a class="headerlink" href="#edge-node-item--and-keys" title="Permanent link">&para;</a></h3>
+<h1 id="core-data-memory">Core Data Memory<a class="headerlink" href="#core-data-memory" title="Permanent link">&para;</a></h1>
+<p>Every AIE compute tile has one small block of local data memory, 64 kB on npu2
+for example. Three things share that block:</p>
 <ul>
-<li><strong><code>Item&lt;T&gt;</code></strong> — one typed intermediate or output artifact; a payload of type 
-  <code>T</code> (e.g., JSON, IR module, vector of bytes) plus a <code>key</code>, which uniquely
-  identifies the payload among its peers. Items are materialized to disk 
-  lazily, i.e., only when a downstream edge needs them on disk. Payload types 
-  and their disk serializers live in <code>Items.h</code>.</li>
-<li><strong><code>Node&lt;T&gt;</code></strong> — the collection of all <code>Item&lt;T&gt;</code> artifacts produced by one 
-  edge; for many edges this wraps a single item (e.g. <code>aie.elf</code>), but for
-  some it contains many (e.g. the per-AIE-core <code>.o</code> files).</li>
-<li><strong><code>Edge</code></strong> — a transformation from input node(s) to an output node, 
-  performing some action (a lambda, a <code>PassPipeline</code>, or a <code>ShellCommand</code>). 
-  Edges may change the cardinality of the input/output nodes, e.g. split or
-  join, or apply a transform to each item (map) -- see below.</li>
+<li>the <strong>stack</strong>, at the bottom;</li>
+<li>the <strong><code>aie.buffer</code>s</strong> that the buffer allocator places on the tile: the L1
+  storage behind ObjectFifos, and any hand-declared buffer;</li>
+<li>the core's <strong>own compiled sections</strong> (<code>.data</code>, <code>.rodata</code>, <code>.bss</code>): the
+  globals, the constants and the zero-initialized statics of the code that
+  runs on the core, including its kernels.</li>
 </ul>
-<p><strong>Keys</strong> are what make fan-out/fan-in well-defined: an edge that splits a module
-per-device produces one item per device, each with a stable key (the device
-name). Downstream edges zip nodes <em>by key</em>, so a core's object, its ld script,
-and its arch string all line up. Keys also name checkpoint frontier entries. In
-edge output names/file paths, <code>{0}</code> gets substituted for each item's key.</p>
-<h3 id="keeping-the-graph-static">Keeping the graph static<a class="headerlink" href="#keeping-the-graph-static" title="Permanent link">&para;</a></h3>
-<p>If you are adding logic to the driver, the single rule that makes everything
-else work is: <strong>the graph declaration is static, and every dependency and every
-file written must flow through the graph and the <code>Item</code> abstraction.</strong> Never
-read inputs or write outputs out-of-band.</p>
-<h4 id="why-this-matters">Why this matters<a class="headerlink" href="#why-this-matters" title="Permanent link">&para;</a></h4>
-<ul>
-<li><strong>The graph is declared unconditionally.</strong> No guards around edge construction 
-  — every edge always exists. The engine prunes backward from the requested 
-  outputs, so unrequested work never runs. <code>--emit-dot</code>, <code>--checkpoint</code>, and 
-  <code>--resume</code> rely on this static shape.</li>
-<li><strong><code>Item</code> owns materialization.</strong> An <code>Item&lt;T&gt;</code> holds a typed payload and only
-  writes it to disk when a <em>downstream</em> edge asks for its path via <code>asFile()</code>.
-  Intermediates that nobody needs on disk stay in memory automatically. If you
-  write files yourself, you defeat this and break checkpointing.</li>
-</ul>
-<p>Keep both invariants and the user-facing features above come for free.</p>
-<h3 id="edge-types">Edge types<a class="headerlink" href="#edge-types" title="Permanent link">&para;</a></h3>
-<p>Each diagram shows the items (with their keys) of the input and output nodes
-and how the edge relates them.</p>
-<p><strong><code>map&lt;U&gt;</code></strong> — one output item per input item, applying the action
-element-wise and preserving keys.</p>
-<p><img alt="map edge" src="docs/edges/map.svg" /></p>
-<p><strong><code>split&lt;U&gt;</code></strong> — explode a singleton input into many keyed output items.</p>
-<p><img alt="split edge" src="docs/edges/split.svg" /></p>
-<p><strong><code>join&lt;U&gt;</code></strong> — fold every item of a node into a single output item.</p>
-<p><img alt="join edge" src="docs/edges/join.svg" /></p>
-<p><strong><code>filter</code></strong> — a zero-copy view keeping only the items whose payload matches;
-the surviving output items alias their source items rather than copying.</p>
-<p><img alt="filter edge" src="docs/edges/filter.svg" /></p>
-<p><strong><code>rekeyFrom&lt;S&gt;</code></strong> — re-key a secondary node onto this node's keys (a broadcast
-/ keyed join): one output item per primary item, aliasing the secondary item
-whose key equals <code>keyFn(payload)</code>. Below, each core picks up its device's item.</p>
-<p><img alt="rekeyFrom edge" src="docs/edges/rekeyfrom.svg" /></p>
-<p><strong><code>bundle(a, b, …).map&lt;U&gt;</code></strong> — zip several nodes by key and run the action on
-the matched items together, producing one output item per key.</p>
-<p><img alt="bundle map edge" src="docs/edges/bundle_map.svg" /></p>
-<p><strong><code>bundle(a, b, …).join&lt;U&gt;</code></strong> — zip several nodes by key and fold all the
-matched items into a single output item.</p>
-<p><img alt="bundle join edge" src="docs/edges/bundle_join.svg" /></p>
-<p><strong><code>fileInput</code></strong> — seed the graph with an existing on-disk file; it has no input
-node and produces a singleton <code>Node&lt;File&gt;</code>.</p>
-<p><img alt="fileInput edge" src="docs/edges/fileinput.svg" /></p>
-<p>Mark an edge <code>.threadSafe()</code> only when its action touches no shared state
-(external-tool invocations); such edges fan their per-key work across <code>-j</code>.</p>
-<h3 id="putting-it-together-scatter--gather">Putting it together: scatter / gather<a class="headerlink" href="#putting-it-together-scatter--gather" title="Permanent link">&para;</a></h3>
-<p>A worked slice of the real driver — split a module per core (scatter), compile
-each core in parallel, then link each core against its object plus its script
-(gather over multiple keyed nodes):</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="c1">// Scatter: one item per aie.core, keyed by &quot;&lt;device&gt;_core_&lt;col&gt;_&lt;row&gt;&quot;.</span>
-<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="k">auto</span><span class="w"> </span><span class="o">&amp;</span><span class="n">cores</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">physical</span><span class="p">.</span><span class="n">split</span><span class="o">&lt;</span><span class="n">OpInModule</span><span class="o">&lt;</span><span class="n">CoreOp</span><span class="o">&gt;&gt;</span><span class="p">(</span>
-<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="w">    </span><span class="s">&quot;perCore_{0}.mlir&quot;</span><span class="p">,</span>
-<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="w">    </span><span class="n">SplitIRAction</span><span class="o">&lt;</span><span class="n">CoreOp</span><span class="o">&gt;</span><span class="p">([](</span><span class="n">CoreOp</span><span class="w"> </span><span class="n">c</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="n">coreKey</span><span class="p">(</span><span class="n">c</span><span class="p">);</span><span class="w"> </span><span class="p">}));</span>
-<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>
-<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a><span class="c1">// Element-wise maps: each core gets its own object and ld script. The .o edge</span>
-<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a><span class="c1">// shells out to a tool, so it is thread-safe and runs under -j.</span>
-<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a><span class="k">auto</span><span class="w"> </span><span class="o">&amp;</span><span class="n">objects</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">cores</span><span class="p">.</span><span class="n">map</span><span class="o">&lt;</span><span class="n">ModRef</span><span class="o">&gt;</span><span class="p">(</span><span class="s">&quot;lowered_{0}.mlir&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">lowerCore</span><span class="p">)</span>
-<a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a><span class="w">                     </span><span class="p">.</span><span class="n">map</span><span class="o">&lt;</span><span class="n">File</span><span class="o">&gt;</span><span class="p">(</span><span class="s">&quot;objects_{0}.o&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">ShellCommand</span><span class="p">{</span><span class="s">&quot;llc&quot;</span><span class="p">}</span><span class="w"> </span><span class="cm">/*...*/</span><span class="p">)</span>
-<a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a><span class="w">                     </span><span class="p">.</span><span class="n">threadSafe</span><span class="p">();</span>
-<a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a><span class="k">auto</span><span class="w"> </span><span class="o">&amp;</span><span class="n">scripts</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">cores</span><span class="p">.</span><span class="n">map</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="o">&gt;</span><span class="p">(</span><span class="s">&quot;ld_{0}.script&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">emitLdScript</span><span class="p">);</span>
-<a id="__codelineno-10-12" name="__codelineno-10-12" href="#__codelineno-10-12"></a>
-<a id="__codelineno-10-13" name="__codelineno-10-13" href="#__codelineno-10-13"></a><span class="c1">// Gather: zip the object and script nodes by key, link per core.</span>
-<a id="__codelineno-10-14" name="__codelineno-10-14" href="#__codelineno-10-14"></a><span class="k">auto</span><span class="w"> </span><span class="o">&amp;</span><span class="n">elfs</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">bundle</span><span class="p">(</span><span class="n">objects</span><span class="p">.</span><span class="n">out</span><span class="p">,</span><span class="w"> </span><span class="n">scripts</span><span class="p">.</span><span class="n">out</span><span class="p">)</span>
-<a id="__codelineno-10-15" name="__codelineno-10-15" href="#__codelineno-10-15"></a><span class="w">    </span><span class="p">.</span><span class="n">map</span><span class="o">&lt;</span><span class="n">File</span><span class="o">&gt;</span><span class="p">(</span><span class="s">&quot;elfs_{0}.elf&quot;</span><span class="p">,</span>
-<a id="__codelineno-10-16" name="__codelineno-10-16" href="#__codelineno-10-16"></a><span class="w">               </span><span class="n">ShellCommand</span><span class="p">{</span><span class="s">&quot;clang&quot;</span><span class="p">}.</span><span class="n">input</span><span class="p">().</span><span class="n">input</span><span class="p">(</span><span class="s">&quot;-Wl,-T,&quot;</span><span class="p">).</span><span class="n">output</span><span class="p">(</span><span class="s">&quot;-o&quot;</span><span class="p">))</span>
-<a id="__codelineno-10-17" name="__codelineno-10-17" href="#__codelineno-10-17"></a><span class="w">    </span><span class="p">.</span><span class="n">threadSafe</span><span class="p">();</span>
+<p>The buffer allocator places the <code>aie.buffer</code>s above the stack reservation. The
+core compiler, Peano or Chess, then places the core's own sections into the
+memory that the buffers leave free. Buffer placement therefore decides whether
+the core links.</p>
+<p>This page covers the <strong>stack</strong> region: how the compiler measures a core's
+stack requirement, which attributes and flags control that measurement, and
+what to do when a diagnostic fires. A separate mechanism reserves and checks
+the core's own compiled sections.</p>
+<p>One rule governs the whole check: <em>the compiler measures and reports, you
+declare and rebuild.</em> <code>aiecc</code> never writes <code>stack_size</code>. A value you set
+explicitly, an explicit <code>0</code> included, stays as you wrote it, and a core that
+leaves <code>stack_size</code> absent keeps the target default. When the measured
+requirement exceeds the declared value, the build reports the number to set
+and stops.</p>
+<h2 id="the-stack-stack_size">The stack: <code>stack_size</code><a class="headerlink" href="#the-stack-stack_size" title="Permanent link">&para;</a></h2>
+<p><code>stack_size</code> is a per-core attribute on <code>aie.core</code>. A core that leaves it
+absent uses the target default from
+<code>AIETargetModel::getDefaultCoreStackSize()</code>, currently 1024 bytes. IRON spells
+it on the <code>Worker</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">Worker</span><span class="p">(</span><span class="n">core_fn</span><span class="p">,</span> <span class="p">[</span><span class="n">args</span><span class="p">],</span> <span class="n">stack_size</span><span class="o">=</span><span class="mi">4096</span><span class="p">)</span>
 </code></pre></div>
-<p>Each core flows independently from <code>cores</code> through to <code>elfs</code>; nothing hits disk
-unless a downstream consumer (or a requested output) calls <code>asFile()</code>. Add a new
-artifact by declaring more edges off an existing node and appending the terminal
-edge to <code>outputs</code> — the engine and every user-facing feature above adapt
-automatically.</p>
-<p>For the full picture, start from <code>buildMainGraph</code> in <code>aiecc.cpp</code>, then read
-<code>Graph.h</code> (edges) and <code>Items.h</code> (payloads).</p>
+<p>The stack sits directly below the buffers with no clearance, so a core whose
+frames exceed the reservation overwrites the buffers above it. <code>aiecc</code>
+therefore measures each core's stack requirement and checks <code>stack_size</code>
+against that number. The requirement has two parts: the top-level frame of the
+compiled core body, and the deepest call path into the kernels. For the second
+part the analysis parses the <code>.stack_sizes</code> section of every kernel object,
+builds a call graph across the core's <code>link_files</code>, and takes the <strong>maximum
+over all root-to-leaf call paths</strong>. One call chain is live at a time, so the
+maximum bounds the requirement. Static data differs: all of it coexists,
+whatever the control flow.</p>
+<p>The check runs once, after each core is compiled, because the core body's own
+frame exists only after codegen. <code>aiecc</code> writes the result to the
+<code>measured_stack_size</code> attribute on the <code>aie.core</code>, so you can inspect it:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>aie.core(%tile_0_2) { ... } {stack_size = 8192 : i32, measured_stack_size = 4128 : i32}
+</code></pre></div>
+<p>Pass <code>--get=measured_stack_sizes.mlir</code> to dump that module. A <code>stack_size</code>
+below <code>measured_stack_size</code> fails the build. <code>measured_stack_size</code> stays absent
+when <code>aiecc</code> cannot measure the core; the next section lists those cases.</p>
+<h2 id="overriding-a-kernels-stack-contribution-stack_size_override">Overriding a kernel's stack contribution: <code>stack_size_override</code><a class="headerlink" href="#overriding-a-kernels-stack-contribution-stack_size_override" title="Permanent link">&para;</a></h2>
+<p>The analysis cannot size some symbols:</p>
+<ul>
+<li><strong>recursion</strong>: a cycle in the call graph is unbounded;</li>
+<li><strong>an indirect call through a function pointer</strong>: the analysis fans out
+  conservatively and still misses some targets;</li>
+<li><strong>a Chess-compiled object</strong>: it carries no <code>.stack_sizes</code> section;</li>
+<li><strong>an archive or a bitcode file</strong> in <code>link_files</code>: the analysis skips both;</li>
+<li><strong>a <code>link_with_mode="merge"</code> kernel</strong>: it merges into the core's own LLVM
+  module before codegen, so the analysis reads it as part of the core.</li>
+</ul>
+<p>For these, declare the answer with <code>stack_size_override</code>. It lives on the
+<strong>kernel's <code>func.func</code></strong>, at function granularity, and not on the core. Two
+reasons drive that placement. Several cores often link one kernel. And the
+problematic symbol usually sits inside a kernel object that MLIR never reads,
+so the override has to address the one granularity MLIR does read: the
+external-function declaration. <code>aiecc</code> takes the declared value as the
+requirement of that kernel's whole call subtree and stops the walk there. The
+value is a declaration, not a clamp: an explicit value replaces the computed
+one, even when it is smaller. An explicit <code>0</code> is legal.</p>
+<p>IRON spells it as a keyword on the kernel declaration:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">Kernel</span><span class="p">(</span><span class="s2">&quot;recursive_kernel&quot;</span><span class="p">,</span> <span class="s2">&quot;recursive.o&quot;</span><span class="p">,</span> <span class="p">[</span><span class="o">...</span><span class="p">],</span> <span class="n">stack_size_override</span><span class="o">=</span><span class="mi">4096</span><span class="p">)</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="n">ExternalFunction</span><span class="p">(</span><span class="s2">&quot;my_kernel&quot;</span><span class="p">,</span> <span class="o">...</span><span class="p">,</span> <span class="n">stack_size_override</span><span class="o">=</span><span class="mi">4096</span><span class="p">)</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="n">external_func</span><span class="p">(</span><span class="s2">&quot;my_kernel&quot;</span><span class="p">,</span> <span class="o">...</span><span class="p">,</span> <span class="n">stack_size_override</span><span class="o">=</span><span class="mi">4096</span><span class="p">)</span>
+</code></pre></div>
+<h2 id="escape-hatches-and-allocation-control">Escape hatches and allocation control<a class="headerlink" href="#escape-hatches-and-allocation-control" title="Permanent link">&para;</a></h2>
+<p>One flag disables the check, for a build that has to skip it and for debugging
+the analysis:</p>
+<ul>
+<li><strong><code>--no-measure-stack-size</code></strong> drops the measurement and the check, so no
+  <code>measured_stack_size</code> reaches the IR.</li>
+</ul>
+<p>A design-wide stand-in for the built-in default covers any core that leaves
+<code>stack_size</code> absent:</p>
+<ul>
+<li><strong><code>--default-stack-size=&lt;bytes&gt;</code></strong> assumes this many bytes in place of
+  <code>AIETargetModel::getDefaultCoreStackSize()</code> for any core without an explicit
+  <code>stack_size</code>. The rest of the build then treats that core as if it declared
+  <code>stack_size</code> explicitly, and the diagnostics call the value assumed. A core
+  with an explicit <code>stack_size</code> keeps it.</li>
+</ul>
+<p>Separate flags control the allocation strategy:</p>
+<ul>
+<li><strong><code>--alloc-scheme=&lt;basic-sequential|bank-aware&gt;</code></strong> picks the scheme for the
+  whole design. Without it, the allocator runs bank-aware first, which spreads
+  buffers across banks to limit DMA contention, and falls back to
+  basic-sequential when bank-aware runs out of memory.</li>
+<li>The per-tile <strong><code>allocation_scheme</code></strong> attribute picks the scheme for one tile
+  and overrides <code>--alloc-scheme</code> there. IRON spells it
+  <code>Worker(allocation_scheme="basic-sequential")</code>. <code>Buffer(mem_bank=...)</code>
+  requests a bank per buffer.</li>
+</ul>
+<h2 id="what-to-do-when-you-hit-a-diagnostic">What to do when you hit a diagnostic<a class="headerlink" href="#what-to-do-when-you-hit-a-diagnostic" title="Permanent link">&para;</a></h2>
+<p><strong><code>cannot determine this core's stack requirement: ...</code> (error).</strong> The call
+graph has a cycle, and recursion is unbounded. Set <code>stack_size_override</code> on
+the affected kernel's <code>external_func()</code> or <code>func.func</code> declaration, to a value
+large enough for the deepest recursion. Pass <code>--no-measure-stack-size</code> to skip
+the check instead.</p>
+<p><strong><code>cannot determine this core's stack requirement: ...; stack_size is not being
+validated for this core</code> (warning).</strong> The analysis cannot measure a symbol,
+because of a missing <code>.stack_sizes</code> section, a Chess-compiled object, an
+archive or bitcode entry, or a <code>link_merge_files</code> dependency. A pre-compiled
+kernel object hits this case often, and the build continues: the compiler
+leaves <code>stack_size</code> unchecked for this core and writes no
+<code>measured_stack_size</code>. Set <code>stack_size_override</code> on the affected kernel to give
+the analysis a number to work from.</p>
+<p><strong><code>this core's callees need at least N bytes of stack (not counting the core
+body's own frame)</code> (warning).</strong> The kernel objects carry <code>.stack_sizes</code> and the
+core object does not: a Chess-compiled core writes <code>.stackinfo</code> instead. <code>N</code> is
+a lower bound, so <code>aiecc</code> warns rather than fails, and writes no
+<code>measured_stack_size</code>.</p>
+<p><strong><code>stack_size is absent, so this core uses the device default of M bytes, but
+it needs N bytes</code> (error).</strong> Set <code>stack_size = N</code>, or <code>Worker(stack_size=N)</code>,
+and rebuild.</p>
+<p><strong><code>stack_size = M is insufficient: this core needs N bytes</code> (error).</strong> The same
+case, with <code>stack_size</code> already set explicitly to a value below the
+requirement. Increase it to <code>N</code> and rebuild.</p>
+<p>At this point the requirement is known, and <code>--no-measure-stack-size</code> silences a
+proven overflow. Reach for it only when you believe the measurement itself is
+wrong, and please file an issue in that case.</p>
 
 
 
@@ -4086,7 +3847,7 @@ automatically.</p>
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../api/cpp_doxygen/" class="md-footer__link md-footer__link--prev" aria-label="Previous: C++ API (Doxygen)">
+          <a href="../iron_configuration/" class="md-footer__link md-footer__link--prev" aria-label="Previous: IRON Configuration">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
@@ -4096,20 +3857,20 @@ automatically.</p>
                 Previous
               </span>
               <div class="md-ellipsis">
-                C++ API (Doxygen)
+                IRON Configuration
               </div>
             </div>
           </a>
         
         
           
-          <a href="../UsedIn/" class="md-footer__link md-footer__link--next" aria-label="Next: Used in / Cited in">
+          <a href="../hrx_runtime/" class="md-footer__link md-footer__link--next" aria-label="Next: HRX Runtime (amdxdna)">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Used in / Cited in
+                HRX Runtime (amdxdna)
               </div>
             </div>
             <div class="md-footer__button md-icon">
@@ -4179,10 +3940,10 @@ automatically.</p>
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tabs", "navigation.tabs.sticky", "navigation.sections", "navigation.indexes", "navigation.path", "navigation.top", "navigation.footer", "search.suggest", "search.highlight", "content.tabs.link", "content.code.copy", "content.code.annotate", "toc.follow"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"alias": true, "default": "latest", "provider": "mike"}}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.tabs.sticky", "navigation.sections", "navigation.indexes", "navigation.path", "navigation.top", "navigation.footer", "search.suggest", "search.highlight", "content.tabs.link", "content.code.copy", "content.code.annotate", "toc.follow"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"alias": true, "default": "latest", "provider": "mike"}}</script>
     
     
-      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
       
     
   </body>

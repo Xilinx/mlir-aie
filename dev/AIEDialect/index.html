@@ -2065,6 +2065,8 @@
       
         
       
+        
+      
     
     
     
@@ -2125,6 +2127,34 @@
     
   
     IRON Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../programming_guide/core_data_memory/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Core Data Memory
   
 
     
@@ -11293,9 +11323,13 @@ reserved for the stack.  When absent the target's default is used
 (<code>AIETargetModel::getDefaultCoreStackSize()</code>).  The stack (and other data allocations)
 are always stored in the local core memory, to avoid conflicts with static data
 allocations in other cores.</p>
-<p>The reservation is not checked against the core's actual frames, and the stack sits
-directly below the objectFIFO buffers with no clearance, so a design with large frames
-must set this attribute or it will overwrite them silently.</p>
+<p>The stack sits directly below the buffers with no clearance, so a <code>stack_size</code>
+below the core's use overwrites those buffers. <code>aiecc</code> measures the stack this
+core needs, writes it to the <code>measured_stack_size</code> attribute, and fails the build
+when <code>stack_size</code> is smaller. <code>measured_stack_size</code> stays absent when <code>aiecc</code>
+cannot measure the core. See <code>programming_guide/core_data_memory.md</code> for the
+mechanism, the escape hatches (<code>--no-measure-stack-size</code>, <code>stack_size_override</code>)
+and the diagnostics.</p>
 <p>This op has an optional <code>dynamic_objfifo_lowering</code> attribute, to finely control whether the
 objectfifos in this core should be lowered using the dynamic runtime lowering.</p>
 <p><strong>External link artifacts.</strong>  The preferred mechanism is to attach a
@@ -11350,6 +11384,7 @@ removed).  Specifying both <code>link_with</code> and either <code>link_files</c
 <table>
 <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
 <tr><td><code>stack_size</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 1</td></tr>
+<tr><td><code>measured_stack_size</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0</td></tr>
 <tr><td><code>link_with</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
 <tr><td><code>link_files</code></td><td>::mlir::ArrayAttr</td><td>string array attribute</td></tr>
 <tr><td><code>link_merge_files</code></td><td>::mlir::ArrayAttr</td><td>string array attribute</td></tr>

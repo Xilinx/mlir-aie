@@ -2167,6 +2167,8 @@
       
         
       
+        
+      
     
     
     
@@ -2230,6 +2232,34 @@
     
   
     IRON Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../core_data_memory/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Core Data Memory
   
 
     
@@ -3662,6 +3692,7 @@
 <p><strong>NOTE 1:</strong> Did you notice the underscore in <code>range_</code>? Although IRON makes NPU designs look mostly like normal Python programs, the code you write here is <em>not</em> directly executed on the NPU; instead, it <em>generates other code</em> (metaprogramming) — kind of like writing a print statement with a string of code inside. Our toolchain then compiles that generated code so it can run on the NPU.</p>
 <p>If you wrote <code>range</code> instead of <code>range_</code>, the generated NPU code would contain many <code>buff[i] = 0</code> instructions back-to-back, with no loop at all (the loop is "unrolled"). On the other hand, when you use <code>range_</code>, Python executes the loop body once to collect the instructions, then emits a real loop into the NPU code. The same applies to other branching constructs like <code>if</code>; using Python's native <code>if</code> will emit no actual branches into the NPU code.</p>
 <p><strong>NOTE 2:</strong> The Worker above is instantiated with <code>while_true=False</code>. By default this is <code>True</code>, which wraps the kernel body in a <code>while True</code>-style loop simulated by a <code>for _ in range(sys.maxsize):</code>. Depending on the body (e.g., creating a local buffer with a unique name) the infinite-loop wrapper can cause compiler issues.</p>
+<p><strong>NOTE 3:</strong> A <code>Buffer</code> such as <code>buf</code> above shares the tile's local memory with the Worker's call stack and with the Worker's compiled code. See <a href="../core_data_memory/">Core Data Memory</a> for how the compiler checks that memory, and what to do when a stack or memory build error fires.</p>
 </blockquote>
 <p>Data movement between Workers will get its own <a href="../section-2/section-2d/">section</a>; host-to/from-NPU data movement is configured inside the <code>Runtime</code> sequence body. In this minimal example the sequence body has one host-facing tensor argument and does no data movement; the Worker is passed to the <code>Program</code>:</p>
 <p><div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">sequence</span><span class="p">(</span><span class="n">b</span><span class="p">):</span>
