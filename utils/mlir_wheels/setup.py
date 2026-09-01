@@ -42,19 +42,20 @@ def check_env(build, default=0):
 
 
 def real_compiler_path(name):
-    """Resolve `name` to an absolute path outside ccache's masquerade dirs.
+    """Resolve `name` outside ccache's masquerade directories.
 
-    setup_ccache puts /usr/lib/ccache on PATH, where each compiler name is a
-    symlink to ccache. LLVM_CCACHE_BUILD sets a ccache compiler launcher on
-    top of CMAKE_<LANG>_COMPILER, so a masqueraded path makes ccache invoke
-    ccache.
+    setup_ccache puts /usr/lib/ccache on PATH. Every compiler name in that
+    directory is a symlink to ccache. LLVM_CCACHE_BUILD also sets a ccache
+    compiler launcher. The launcher hashes the ccache binary under
+    compiler_check=mtime. ccache can return an object that an earlier
+    compiler built.
     """
     real_dirs = [
         d for d in os.environ.get("PATH", "").split(os.pathsep) if "ccache" not in d
     ]
     path = shutil.which(name, path=os.pathsep.join(real_dirs))
     if not path:
-        raise RuntimeError(f"could not find {name} outside of ccache's PATH dirs")
+        raise RuntimeError(f"could not find {name} outside ccache's directories")
     return path
 
 
@@ -100,16 +101,20 @@ def get_cross_cmake_args():
             # truncated to fit: R_AARCH64_CALL26" inside libstdc++.a itself.
             # lld handles arbitrarily large binaries correctly.
             #
-            # collect2 searches PATH for aarch64-linux-gnu-ld.lld and the -B
-            # directories for ld.lld. The lld package installs
-            # /usr/bin/ld.lld, so -B/usr/bin resolves -fuse-ld=lld.
+            # A cross gcc searches the -B directories for the plain name
+            # ld.lld. It searches PATH for aarch64-linux-gnu-ld.lld. The
+            # lld package installs /usr/bin/ld.lld and no prefixed alias.
+            # -B/usr/bin is therefore the one directory where -fuse-ld=lld
+            # finds a linker.
             _LLD_LINKER_FLAGS = "-fuse-ld=lld -B/usr/bin"
             cmake_args["CMAKE_EXE_LINKER_FLAGS_INIT"] = _LLD_LINKER_FLAGS
             cmake_args["CMAKE_MODULE_LINKER_FLAGS_INIT"] = _LLD_LINKER_FLAGS
             cmake_args["CMAKE_SHARED_LINKER_FLAGS_INIT"] = _LLD_LINKER_FLAGS
-            # tblgen runs on the host and embeds a TargetOpcode enum, so it
-            # must come from the same commit as the .td sources it parses.
-            # LLVM builds it in a NATIVE subdirectory of this tree.
+            # The cross build runs tblgen on the host against this tree's
+            # .td sources. tblgen embeds the TargetOpcode enum of the
+            # sources that built it. A tblgen from another commit therefore
+            # fails on these sources. LLVM_USE_HOST_TOOLS builds tblgen from
+            # this tree, in a NATIVE subdirectory.
             cmake_args["LLVM_USE_HOST_TOOLS"] = "ON"
         elif ARCH == "X86":
             cmake_args["LLVM_DEFAULT_TARGET_TRIPLE"] = "x86_64-unknown-linux-gnu"
