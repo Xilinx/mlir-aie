@@ -10,8 +10,8 @@
 // Test: two calls of the same traced design get distinct regions.
 // CHECK-LABEL: aie.runtime_sequence @main_seq
 // CHECK-SAME: memref<16384xi8>
-// CHECK-SAME: {device = "dev_a", offset = 0 : i64, sequence = "seq_a", size = 8192 : i64}
-// CHECK-SAME: {device = "dev_a", offset = 8192 : i64, sequence = "seq_a", size = 8192 : i64}
+// CHECK-SAME: #aie.trace_slice<device = "dev_a", sequence = "seq_a", offset = 0, size = 8192>
+// CHECK-SAME: #aie.trace_slice<device = "dev_a", sequence = "seq_a", offset = 8192, size = 8192>
 module {
   aie.device(npu1_1col) @main {
     aie.runtime_sequence @main_seq(%arg0: memref<64xi32>) {
@@ -46,8 +46,8 @@ module {
 // traces take the tail. The caller's data argument holds its index.
 // CHECK-LABEL: aie.runtime_sequence @main_seq
 // CHECK-SAME: %{{.*}}: memref<64xi32>, %{{.*}}: memref<12288xi8>
-// CHECK-SAME: {device = "main", offset = 0 : i64, sequence = "main_seq", size = 4096 : i64}
-// CHECK-SAME: {device = "dev_a", offset = 4096 : i64, sequence = "seq_a", size = 8192 : i64}
+// CHECK-SAME: #aie.trace_slice<device = "main", sequence = "main_seq", offset = 0, size = 4096>
+// CHECK-SAME: #aie.trace_slice<device = "dev_a", sequence = "seq_a", offset = 4096, size = 8192>
 module {
   aie.device(npu1_1col) @main {
     %shim_m = aie.tile(0, 0)
@@ -86,7 +86,7 @@ module {
 
 // Test: an untraced caller of an untraced callee gains no trace argument.
 // CHECK-LABEL: aie.runtime_sequence @main_seq
-// CHECK-NOT: aie.trace_slices
+// CHECK-NOT: trace_slices
 // CHECK-SAME: memref<64xi32>) {
 module {
   aie.device(npu1_1col) @main {

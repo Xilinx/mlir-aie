@@ -9,6 +9,7 @@ import sys
 import aie.dialects.aie as aiedialect
 import aie.dialects.aiex as aiexdialect
 import numpy as np
+from aie._mlir_libs import _aie  # pyright: ignore[reportMissingImports]
 from aie.extras.util import find_ops  # pyright: ignore[reportMissingImports]
 from aie.helpers.util import (  # pyright: ignore[reportMissingImports]
     fold_constant_operand,
@@ -36,7 +37,7 @@ logger = logging.getLogger(__name__)
 
 NUM_EVENTS = 8  # number of events we can view per trace
 
-TRACE_SLICES_ATTR = "aie.trace_slices"
+DEFAULT_KERNEL = "main:sequence"
 
 
 def _device_name(device_op):
@@ -44,42 +45,80 @@ def _device_name(device_op):
     return sym_name.value if sym_name is not None else None
 
 
-def get_trace_slices(mlir_module_str):
-    """Return the trace buffer's layout, as recorded on the dispatched sequence.
+def _find_sequence(module, kernel):
+    """Return the `aie.runtime_sequence` that `kernel` names, as "device:sequence"."""
+    found = []
+    for seq in find_ops(
+        module.operation,
+        lambda o: isinstance(
+            o.operation.opview, aiedialect.RuntimeSequenceOp
+        ),  # pyright: ignore[reportArgumentType]
+    ):
+        device = seq.operation.parent.opview
+        name = f"{_device_name(device)}:{seq.sym_name.value}"
+        if name == kernel:
+            return seq
+        found.append(name)
+    raise ValueError(f"no runtime sequence named '{kernel}'; found {found}")
 
-    Sub-designs run through `aiex.configure` share one trace buffer, and
-    `-aie-fuse-trace-buffers` records which byte range belongs to which design.
-    Returns a list of dicts with ``device``, ``sequence``, ``offset`` and
-    ``size``, in buffer order, or ``[]`` for a single-design buffer.
+
+def get_trace_buffer(mlir_module_str, kernel=DEFAULT_KERNEL):
+    """Return which argument of `kernel` receives trace data.
+
+    Reads the `#aie.trace_buffer` attribute that `-aie-insert-trace-flows` sets
+    and `-aie-fuse-trace-buffers` updates. Write that attribute by hand to point
+    tracing at an argument of your choice.
+
+    Returns a dict with ``arg_index``, ``offset``, ``size`` and ``dedicated``,
+    or ``None`` when `kernel` is untraced.
     """
-    RuntimeSequenceOp = getattr(aiedialect, "RuntimeSequenceOp")
     with Context(), Location.unknown():
         module = Module.parse(mlir_module_str)
-        sequences = find_ops(
-            module.operation,
-            lambda o: isinstance(
-                o.operation.opview, RuntimeSequenceOp
-            ),  # pyright: ignore[reportArgumentType]
-        )
-        for seq in sequences:
-            attrs = seq.operation.attributes
-            if TRACE_SLICES_ATTR not in attrs:
-                continue
-            return [
+        attr = _find_sequence(module, kernel).trace_buffer
+        if attr is None:
+            return None
+        arg_index, offset, size, dedicated = _aie.trace_buffer_fields(attr)
+        return {
+            "arg_index": arg_index,
+            "offset": offset,
+            "size": size,
+            "dedicated": dedicated,
+        }
+
+
+def get_trace_slices(mlir_module_str, kernel=DEFAULT_KERNEL):
+    """Return how `kernel` splits its trace buffer between the designs it runs.
+
+    `-aie-fuse-trace-buffers` records one `#aie.trace_slice` per `aiex.run` call
+    site, so a sequence that runs several designs, or one design several times,
+    keeps their traces in separate byte ranges.
+
+    Returns a list of dicts with ``device``, ``sequence``, ``offset`` and
+    ``size``, in buffer order. Returns ``[]`` when `kernel` runs no other
+    sequence, because its whole buffer is then its own.
+    """
+    with Context(), Location.unknown():
+        module = Module.parse(mlir_module_str)
+        attr = _find_sequence(module, kernel).trace_slices
+        if attr is None:
+            return []
+        entries = []
+        for slice_attr in attr:
+            device, sequence, offset, size = _aie.trace_slice_fields(slice_attr)
+            entries.append(
                 {
-                    "device": entry["device"].value if "device" in entry else None,
-                    "sequence": (
-                        entry["sequence"].value if "sequence" in entry else None
-                    ),
-                    "offset": entry["offset"].value,
-                    "size": entry["size"].value,
+                    "device": device,
+                    "sequence": sequence,
+                    "offset": offset,
+                    "size": size,
                 }
-                for entry in attrs[TRACE_SLICES_ATTR]
-            ]
-    return []
+            )
+        return entries
 
 
-def parse_trace_slices(trace_buffer, mlir_module_str, colshift=None):
+def parse_trace_slices(
+    trace_buffer, mlir_module_str, colshift=None, kernel=DEFAULT_KERNEL
+):
     """Parse a shared trace buffer into one event list per traced sub-design.
 
     Each slice is decoded against the device that wrote it, which separates two
@@ -88,7 +127,7 @@ def parse_trace_slices(trace_buffer, mlir_module_str, colshift=None):
     Returns a list of ``(slice_info, events)``. A buffer with no recorded layout
     yields one entry covering all of it.
     """
-    slices = get_trace_slices(mlir_module_str)
+    slices = get_trace_slices(mlir_module_str, kernel)
     if not slices:
         return [(None, parse_trace(trace_buffer, mlir_module_str, colshift))]
 

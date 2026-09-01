@@ -276,15 +276,18 @@ def AIEFuseTraceBuffers : Pass<"aie-fuse-trace-buffers", "mlir::ModuleOp"> {
     It does not update the `aiex.run` call sites. These call sites are therefore
     one argument short.
 
-    This pass enables tracing across designs that `aiex.configure` reconfigures.
-    It gives the sequence the host dispatches one trace buffer. It passes each
-    `aiex.run` a `memref.subview` of that buffer, sized to the callee's claim.
-    Two calls of one design therefore write to different regions. A sequence's
-    own traces take the front of the buffer, then each call site in turn.
+    This pass gives each `aie.runtime_sequence` one trace buffer covering its
+    own traces and those of every sequence it runs. It passes each `aiex.run` a
+    `memref.subview` of that buffer, sized to the callee's claim. Every call
+    site gets its own region, so a sequence that runs one design twice keeps the
+    two traces apart. `aiex.configure` plays no part in the split: the buffer
+    follows the `aiex.run` call graph, whether the calls reconfigure the array
+    between them or repeat one design.
 
-    The pass records the layout on the dispatched sequence as an
-    `aie.trace_slices` array of `{device, sequence, offset, size}`. A host reads
-    it to attribute each region to the design that wrote it.
+    A sequence's own traces take the front of its buffer, then each call site in
+    turn. The pass records the layout as an `aie.trace_slices` array of
+    `#aie.trace_slice`, and the buffer itself as `#aie.trace_buffer`. A host
+    reads the slices to attribute each region to the design that wrote it.
 
     Run after the trace pipeline and before `-aie-materialize-runtime-sequences`.
   }];
@@ -304,7 +307,7 @@ def AIEResolveAddressPatchBuffers
     offset to `arg_plus`.
 
     Run after `-aie-materialize-runtime-sequences`. An index exists only in the
-    sequence the host dispatches. Inlining moves the op into that sequence.
+    sequence that holds the op. Inlining moves the op into that sequence.
   }];
 
   let constructor = "xilinx::AIEX::createAIEResolveAddressPatchBuffersPass()";

@@ -16,9 +16,9 @@ module {
     // unchanged. 2 x 8192 bytes, one region per configured device.
     // CHECK-LABEL: aie.runtime_sequence @main_seq
     // CHECK-SAME: memref<64xi32>, %{{.*}}: memref<64xi32>, %{{.*}}: memref<16384xi8>
-    // CHECK-SAME: aie.trace_slices = [
-    // CHECK-SAME: {device = "dev_a", offset = 0 : i64, sequence = "seq_a", size = 8192 : i64}
-    // CHECK-SAME: {device = "dev_b", offset = 8192 : i64, sequence = "seq_b", size = 8192 : i64}
+    // CHECK-SAME: trace_slices = [
+    // CHECK-SAME: #aie.trace_slice<device = "dev_a", sequence = "seq_a", offset = 0, size = 8192>
+    // CHECK-SAME: #aie.trace_slice<device = "dev_b", sequence = "seq_b", offset = 8192, size = 8192>
     aie.runtime_sequence @main_seq(%arg0: memref<64xi32>, %arg1: memref<64xi32>) {
       // Both patches name the fused buffer (host buffer 2). The slice offset
       // reaches the BD through arg_plus.

@@ -143,9 +143,8 @@ struct AIEInsertTraceFlowsPass
     //     existing argument (an output buffer), saving a host buffer. No new
     //     argument is added; the offset skips past the output data.
     //
-    // The patch names the buffer by SSA value. An index holds only within this
-    // sequence. `aiex.run` may inline this sequence into a caller with a
-    // different argument list.
+    // `aiex.npu.address_patch` names the buffer by SSA value. `aiex.run` may
+    // inline this sequence into a caller with a different argument list.
     Value traceBuffer;
     BlockArgument appendedTraceArg; // null when reusing the output buffer
     int traceBufferOffset = 0;      // in bytes
@@ -570,32 +569,23 @@ struct AIEInsertTraceFlowsPass
     // -aie-fuse-trace-buffers size against this type. It must state the full
     // claim.
     int traceBytesClaimed = bufferSizeBytes;
-    for (auto &[col, shimInfo] : shimInfos)
-      for (auto &chanDesc : shimInfo.channels)
+    for (auto &[col, shimInfo] : shimInfos) {
+      for (auto &chanDesc : shimInfo.channels) {
         traceBytesClaimed = std::max(traceBytesClaimed, chanDesc.bufferOffset -
                                                             traceBufferOffset +
                                                             bufferSizeBytes);
-    if (appendedTraceArg)
+      }
+    }
+    if (appendedTraceArg) {
       appendedTraceArg.setType(MemRefType::get(
           {traceBytesClaimed}, IntegerType::get(device.getContext(), 8)));
+    }
 
-    // -aie-fuse-trace-buffers reads this to locate the argument and its claim
-    // without re-deriving them from host_config and the channel policy.
-    runtimeSeq->setAttr(
-        "aie.trace_buffer",
-        builder.getDictionaryAttr(
-            {builder.getNamedAttr(
-                 "arg_index",
-                 builder.getI64IntegerAttr(
-                     appendedTraceArg
-                         ? appendedTraceArg.getArgNumber()
-                         : runtimeSeq.getBody().getNumArguments() - 1)),
-             builder.getNamedAttr("offset",
-                                  builder.getI64IntegerAttr(traceBufferOffset)),
-             builder.getNamedAttr("size",
-                                  builder.getI64IntegerAttr(traceBytesClaimed)),
-             builder.getNamedAttr(
-                 "dedicated", builder.getBoolAttr(bool(appendedTraceArg)))}));
+    runtimeSeq.setTraceBufferAttr(TraceBufferAttr::get(
+        device.getContext(),
+        appendedTraceArg ? appendedTraceArg.getArgNumber()
+                         : runtimeSeq.getBody().getNumArguments() - 1,
+        traceBufferOffset, traceBytesClaimed, bool(appendedTraceArg)));
 
     // Phase 2c: Rewrite broadcast to USER_EVENT for destination shim tiles
     // (shim can't listen for its own broadcast)

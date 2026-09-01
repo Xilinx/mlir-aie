@@ -14,7 +14,7 @@ module {
   aie.device(npu1_1col) @main {
     aie.runtime_sequence @main_seq(%arg0: memref<64xi32>) {
       aiex.configure @dev_a {
-        // expected-error@+1 {{calls a design whose trace.host_config sets reuse_output_buffer=true}}
+        // expected-error@+1 {{calls a design that sets trace.host_config reuse_output_buffer=true}}
         aiex.run @seq_a (%arg0) : (memref<64xi32>)
       }
     }
@@ -49,7 +49,7 @@ module {
       aie.trace.start broadcast=15
       aie.trace.stop broadcast=14
     }
-    // expected-error@+1 {{reuse_output_buffer=true cannot be combined with aiex.run calls into traced designs}}
+    // expected-error@+1 {{runs traced designs and sets trace.host_config reuse_output_buffer=true}}
     aie.runtime_sequence @main_seq(%arg0: memref<64xi32>) {
       aie.trace.host_config {buffer_size = 4096 : i32, reuse_output_buffer = true}
       aie.trace.start_config @main_trace

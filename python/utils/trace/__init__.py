@@ -433,6 +433,7 @@ which reduces the timer from 11,091,042 cycles to 381,175 seems to fix it.
 """
 
 from .config import TraceConfig
+from .parse import get_trace_buffer as get_trace_buffer
 from .parse import get_trace_slices as get_trace_slices
 from .parse import parse_trace
 from .parse import parse_trace_slices as parse_trace_slices

@@ -5,23 +5,23 @@
 
 # RUN: %python %s | FileCheck %s
 
-# Test that a trace buffer shared by several aiex.configure'd designs is split
-# by get_trace_slices(), and that each slice's events are read from the device
-# that wrote it rather than from the union of all of them.
+# Test that the Python trace utilities read #aie.trace_buffer and
+# #aie.trace_slice through the MLIR bindings, and that each slice's events come
+# from the device that wrote it rather than from the union of all of them.
 
 import subprocess
 import tempfile
 from pathlib import Path
 
-from aie.utils.trace import get_trace_slices
+from aie.utils.trace import get_trace_buffer, get_trace_slices
 from aie.utils.trace.parse import parse_mlir_trace_events
 
-# Two designs, each traced, reached through aiex.configure. They trace
-# different tiles and different events so a mixed-up attribution is visible.
+# Two designs, each traced, reached through aiex.run. They trace different tiles
+# and different events so a mixed-up attribution is visible.
 SOURCE = """
 module {
   aie.device(npu1_1col) @main {
-    aie.runtime_sequence @main_seq(%arg0: memref<64xi32>) {
+    aie.runtime_sequence @sequence(%arg0: memref<64xi32>) {
       aiex.configure @dev_a {
         aiex.run @seq_a (%arg0) : (memref<64xi32>)
       }
@@ -61,6 +61,20 @@ module {
 }
 """
 
+# A hand-written #aie.trace_buffer, with no aie.trace op anywhere. The passes
+# leave it alone, and the utilities read it.
+HAND_WRITTEN = """
+module {
+  aie.device(npu1_1col) @main {
+    aie.runtime_sequence @sequence(%arg0: memref<64xi32>, %arg1: memref<777xi8>)
+        attributes {trace_buffer = #aie.trace_buffer<arg_index = 1, offset = 16,
+                                                     size = 761,
+                                                     dedicated = true>} {
+    }
+  }
+}
+"""
+
 PIPELINE = [
     "-aie-insert-trace-flows",
     "-aie-trace-to-config",
@@ -71,15 +85,23 @@ PIPELINE = [
     "-aie-resolve-address-patch-buffers",
 ]
 
-with tempfile.TemporaryDirectory() as tmp:
-    src = Path(tmp) / "design.mlir"
-    src.write_text(SOURCE)
-    lowered = subprocess.run(
-        ["aie-opt", str(src), *PIPELINE],
-        check=True,
-        capture_output=True,
-        text=True,
-    ).stdout
+
+def lower(source, passes):
+    with tempfile.TemporaryDirectory() as tmp:
+        src = Path(tmp) / "design.mlir"
+        src.write_text(source)
+        return subprocess.run(
+            ["aie-opt", str(src), *passes],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout
+
+
+lowered = lower(SOURCE, PIPELINE)
+
+print("buffer", get_trace_buffer(lowered))
+# CHECK: buffer {'arg_index': 1, 'offset': 0, 'size': 12288, 'dedicated': True}
 
 slices = get_trace_slices(lowered)
 for entry in slices:
@@ -104,3 +126,18 @@ for entry in slices:
 pid_events, _, _ = parse_mlir_trace_events(lowered, None, None)
 print("merged tiles=", sorted(pid_events[0].keys()))
 # CHECK: merged tiles= ['2,0', '4,0']
+
+# A callee is dispatchable in its own right, and carries its own layout.
+print("callee", get_trace_buffer(lowered, "dev_b:seq_b"))
+# CHECK: callee {'arg_index': 1, 'offset': 0, 'size': 4096, 'dedicated': True}
+
+# A hand-written attribute survives the passes and reaches the utilities.
+kept = lower(HAND_WRITTEN, PIPELINE)
+print("hand-written", get_trace_buffer(kept))
+# CHECK: hand-written {'arg_index': 1, 'offset': 16, 'size': 761, 'dedicated': True}
+
+try:
+    get_trace_slices(lowered, "main:nosuch")
+except ValueError as err:
+    print("named", str(err).split(";")[0])
+# CHECK: named no runtime sequence named 'main:nosuch'
