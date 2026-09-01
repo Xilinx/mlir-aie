@@ -272,14 +272,15 @@ def AIEMaterializeRuntimeSequences : Pass<"aie-materialize-runtime-sequences", "
 def AIEFuseTraceBuffers : Pass<"aie-fuse-trace-buffers", "mlir::ModuleOp"> {
   let summary = "Give every traced sequence a slice of one fused trace buffer";
   let description = [{
-    Trace lowering appends a trace buffer to each traced `aie.runtime_sequence`
-    on its own, so a sequence that `aiex.run` calls gains an argument its call
-    site does not supply.
+    Trace lowering appends a trace buffer to each traced `aie.runtime_sequence`.
+    It does not update the `aiex.run` call sites. These call sites are therefore
+    one argument short.
 
-    This pass gives the sequence the host dispatches one trace buffer and passes
-    each `aiex.run` a `memref.subview` of it, sized to that callee's claim. Two
-    calls of one design therefore write to different regions. A sequence's own
-    traces take the front of the buffer, then each call site in turn.
+    This pass enables tracing across designs that `aiex.configure` reconfigures.
+    It gives the sequence the host dispatches one trace buffer. It passes each
+    `aiex.run` a `memref.subview` of that buffer, sized to the callee's claim.
+    Two calls of one design therefore write to different regions. A sequence's
+    own traces take the front of the buffer, then each call site in turn.
 
     The pass records the layout on the dispatched sequence as an
     `aie.trace_slices` array of `{device, sequence, offset, size}`. A host reads
@@ -299,11 +300,11 @@ def AIEResolveAddressPatchBuffers
   let summary = "Resolve an address patch's buffer operand to a buffer index";
   let description = [{
     Rewrites each `aiex.npu.address_patch` that names its host buffer by SSA
-    value into the `arg_idx` form the targets emit, and adds the buffer's byte
+    value into the `arg_idx` form the targets emit. Adds the buffer's byte
     offset to `arg_plus`.
 
     Run after `-aie-materialize-runtime-sequences`. An index exists only in the
-    sequence the host dispatches, and inlining is what moves the op there.
+    sequence the host dispatches. Inlining moves the op into that sequence.
   }];
 
   let constructor = "xilinx::AIEX::createAIEResolveAddressPatchBuffersPass()";

@@ -6,7 +6,7 @@
 // RUN: aie-opt --aie-dma-tasks-to-npu %s | FileCheck %s
 
 // An unranked memref argument occupies a host buffer slot like any other
-// memref, so the ranked argument after it is buffer 1.
+// memref. The ranked argument after it is therefore buffer 1.
 
 module {
   aie.device(npu1) {

@@ -508,10 +508,10 @@ def parse_mlir_trace_events(mlir_module_str, colshift=None, device_name=None):
         if not devices:
             raise ValueError("no aie.device in the given MLIR module")
 
-        # A fused module holds one device per traced design, and two designs
-        # often occupy the same tiles. A whole-module scan keys both event
-        # assignments to one (row, col), so a caller parsing one slice names
-        # the device that wrote it.
+        # A fused module holds one device per traced design. Two designs often
+        # occupy the same tiles. A whole-module scan then keys both event
+        # assignments to one (row, col). A caller parsing one slice therefore
+        # names the device that wrote it.
         if device_name is None:
             device_op = devices[0]
             scope = module.operation

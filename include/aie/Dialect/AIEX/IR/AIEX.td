@@ -1061,11 +1061,11 @@ def AIE_NpuAddressPatchOp
 
     Exactly one of the `arg_idx` attribute and the `buffer` operand names the
     host buffer. `arg_idx` is a host-buffer index of the enclosing runtime
-    sequence, so it holds only in the sequence the host dispatches. A callee
-    sequence that `aiex.run` inlines has a different argument list, so a patch
-    emitted there names the memref. `-aie-resolve-address-patch-buffers`
-    converts the operand to an index after inlining and adds the buffer's byte
-    offset to `arg_plus`.
+    sequence. It therefore holds only in the sequence the host dispatches.
+    `aiex.run` inlines a callee sequence into a caller with a different argument
+    list. A patch emitted in that callee names the memref.
+    `-aie-resolve-address-patch-buffers` converts the operand to an index after
+    inlining. It adds the buffer's byte offset to `arg_plus`.
   }];
   let builders = [OpBuilder<(ins "uint32_t":$addr, "mlir::Value":$addr_val,
                                 "int32_t":$arg_idx, "mlir::Value":$arg_plus),

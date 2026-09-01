@@ -61,7 +61,7 @@ struct AIEFuseTraceBuffersPass
   }
 
   /// Give `seq` one trace buffer covering its own traces and those of every
-  /// sequence it calls, and pass each call site its slice.
+  /// sequence it calls. Pass each call site its slice.
   LogicalResult fuse(AIE::RuntimeSequenceOp seq) {
     if (!done.insert(seq.getOperation()).second)
       return success();
@@ -69,7 +69,7 @@ struct AIEFuseTraceBuffersPass
     SmallVector<RunOp> runs;
     seq.walk([&](RunOp run) { runs.push_back(run); });
 
-    // A callee's claim covers its own callees, so recurse before summing.
+    // A callee's claim covers its own callees. Recurse before summing.
     for (RunOp run : runs) {
       AIE::RuntimeSequenceOp callee = run.getCalleeRuntimeSequenceOp();
       if (!callee)
@@ -115,7 +115,7 @@ struct AIEFuseTraceBuffersPass
       fusedArg = entry.addArgument(fusedType, seq.getLoc());
     }
 
-    // This sequence's own patches use offsets from the argument base, so its
+    // This sequence's own patches use offsets from the argument base. Its
     // traces must occupy the front.
     SmallVector<TraceSlice> flattened = ownSlices(seq, ownBuffer, /*base=*/0);
     int64_t cursor = ownClaim;
@@ -206,9 +206,9 @@ struct AIEFuseTraceBuffersPass
   }
 
   /// A `size`-byte window of `buffer` at `offset`, typed as the callee's
-  /// argument. `aiex.run` requires exact type equality, so the reinterpret_cast
-  /// erases the subview's strided layout. `traceSubviewToBlockArgument` reads
-  /// the byte offset from the subview.
+  /// argument. `aiex.run` requires exact type equality. The reinterpret_cast
+  /// therefore erases the subview's strided layout.
+  /// `traceSubviewToBlockArgument` reads the byte offset from the subview.
   Value makeSlice(OpBuilder &builder, Location loc, Value buffer,
                   int64_t offset, MemRefType resultType) {
     int64_t size = resultType.getNumElements();

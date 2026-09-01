@@ -56,10 +56,9 @@ std::optional<SubviewTraceResult> traceSubviewToBlockArgument(Value value);
 
 // Index of `arg` among the host buffers of its runtime sequence.
 //
-// The host passes one buffer per memref argument. A scalar argument (a dynamic
-// sequence's runtime size) travels in the instruction stream and occupies no
-// buffer slot, so the block-argument number over-counts it. Returns nullopt
-// when `arg` is not a memref.
+// The host passes one buffer per memref argument. Scalar arguments travel in
+// the instruction stream and occupy no buffer slot. The block-argument number
+// therefore over-counts them. Returns nullopt when `arg` is not a memref.
 std::optional<unsigned> getHostBufferArgIndex(BlockArgument arg);
 
 // Emit an `aiex.npu.update_from_scratchpad` op that adds the runtime offset

@@ -143,8 +143,8 @@ struct AIEInsertTraceFlowsPass
     //     existing argument (an output buffer), saving a host buffer. No new
     //     argument is added; the offset skips past the output data.
     //
-    // The patch names the buffer by SSA value: an index holds only within this
-    // sequence, and `aiex.run` may inline this sequence into a caller with a
+    // The patch names the buffer by SSA value. An index holds only within this
+    // sequence. `aiex.run` may inline this sequence into a caller with a
     // different argument list.
     Value traceBuffer;
     BlockArgument appendedTraceArg; // null when reusing the output buffer
@@ -567,8 +567,8 @@ struct AIEInsertTraceFlowsPass
     }
 
     // A second S2MM channel doubles the bytes the DMAs write. The host and
-    // -aie-fuse-trace-buffers both size against this type, so it must state the
-    // full claim.
+    // -aie-fuse-trace-buffers size against this type. It must state the full
+    // claim.
     int traceBytesClaimed = bufferSizeBytes;
     for (auto &[col, shimInfo] : shimInfos)
       for (auto &chanDesc : shimInfo.channels)

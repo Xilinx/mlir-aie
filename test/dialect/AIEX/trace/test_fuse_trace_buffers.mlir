@@ -42,8 +42,8 @@ module {
 
 // -----
 
-// Test: the caller's own traces take the front of the buffer, the callee's the
-// tail. The caller's data argument holds its index.
+// Test: the caller's own traces take the front of the buffer. The callee's
+// traces take the tail. The caller's data argument holds its index.
 // CHECK-LABEL: aie.runtime_sequence @main_seq
 // CHECK-SAME: %{{.*}}: memref<64xi32>, %{{.*}}: memref<12288xi8>
 // CHECK-SAME: {device = "main", offset = 0 : i64, sequence = "main_seq", size = 4096 : i64}
