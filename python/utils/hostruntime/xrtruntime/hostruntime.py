@@ -138,7 +138,9 @@ class XRTHostRuntime(HostRuntime):
         Worth ~11us of a ~235us dispatch on Strix (measured end to end).
 
         The buffer only grows, and the submit passes the true length
-        separately, so a shorter stream never exposes the previous tail.
+        separately, so a shorter stream never exposes the previous tail -- and
+        for the same reason the whole allocation can be handed over as-is,
+        rather than deriving an exact-size sub-buffer per distinct length.
         """
         nbytes = dispatch_insts.nbytes
         storage = self._dispatch_storage
@@ -151,8 +153,7 @@ class XRTHostRuntime(HostRuntime):
             self._dispatch_storage = storage
             self._dispatch_storage_group = group_id
         storage.host_bytes[:nbytes] = dispatch_insts.view(np.uint8).reshape(-1)
-        storage.to_device(0, nbytes)
-        return storage.handle(0, nbytes)
+        return storage.root_prefix_to_device(nbytes)
 
     @classmethod
     def read_insts(cls, insts_path: Path):

@@ -56,6 +56,18 @@ class XrtTransport(Transport):
             xrt.xclBOSyncDirection.XCL_BO_SYNC_BO_TO_DEVICE
         )
 
+    def root_prefix_to_device(self, nbytes):
+        """Sync the first *nbytes* and return the whole allocation.
+
+        For callers that hand the buffer to a submit taking an explicit length,
+        so nothing downstream reads past *nbytes*. ``handle()`` would derive an
+        exact-size sub-buffer and cache it for the life of the transport, which
+        for a caller whose length varies retains one XRT sub-buffer per distinct
+        length; this keeps that set empty.
+        """
+        self._bo.sync(xrt.xclBOSyncDirection.XCL_BO_SYNC_BO_TO_DEVICE, nbytes, 0)
+        return self._bo
+
     def from_device(self, offset, nbytes):
         self.handle(offset, nbytes).sync(
             xrt.xclBOSyncDirection.XCL_BO_SYNC_BO_FROM_DEVICE
