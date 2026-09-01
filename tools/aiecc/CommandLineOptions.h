@@ -151,6 +151,17 @@ inline cl::opt<bool> noUnified(
     "no-unified",
     cl::desc("Lower each core independently, against its own clone of the "
              "design (negates --unified; the default)"));
+inline cl::opt<bool> noMeasureStackSize(
+    "no-measure-stack-size",
+    cl::desc("Skip the measurement of each core's stack requirement and the "
+             "check of stack_size against it"));
+inline cl::opt<int> defaultStackSize(
+    "default-stack-size",
+    cl::desc("Stack size in bytes to assume for any core that leaves "
+             "stack_size absent, in place of the target's built-in default "
+             "(AIETargetModel::getDefaultCoreStackSize()). A core with an "
+             "explicit stack_size keeps it."),
+    cl::init(0));
 
 //===----------------------------------------------------------------------===//
 // Runtime sequence to compile (empty = all). Filters the per-sequence NPU

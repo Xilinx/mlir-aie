@@ -14,7 +14,7 @@ mlirFileName = aie
 aie_py_src=${targetname}.py
 
 CHESS ?= false
-trace_size = 16384
+trace_size ?= 16384
 colshift ?= $(if $(filter npu,$(devicename)),1,0)
 
 #ifeq (${targetname}, group2)
@@ -111,10 +111,10 @@ build/final_trace.xclbin: build/${mlirFileName}_trace.mlir ${group_objs}
 	mkdir -p ${@D}
 ifeq ($(CHESS), true)
 	cd ${@D} && aiecc -v --get-xclbin --xclbin-name=${@F} ${alloc_scheme} \
-				--get-npu-insts --npu-insts-name=insts.bin $(<:%=../%)
+				--get-npu-insts --npu-insts-name=insts.bin --get-input-with-addresses $(<:%=../%)
 else
 	cd ${@D} && aiecc -v --get-xclbin --xclbin-name=${@F} ${alloc_scheme} \
-				--get-npu-insts --npu-insts-name=insts.bin $(<:%=../%)
+				--get-npu-insts --npu-insts-name=insts.bin --get-input-with-addresses $(<:%=../%)
 endif
 
 run_py: build/final.xclbin
@@ -123,7 +123,7 @@ run_py: build/final.xclbin
 
 trace_py: build/final_trace.xclbin
 	${powershell} python3 ${srcdir}/test_${targetname}.py --verbosity 1 --xclbin build/final_trace.xclbin --instr build/insts.bin --kernel MLIR_AIE --trace_size ${trace_size}
-	${srcdir}/../../../python/utils/trace/parse.py --input log/trace_magika.txt --mlir build/${mlirFileName}_trace.mlir.prj/input_with_addresses.mlir --output trace_${targetname}.json
+	${srcdir}/../../../python/utils/trace/parse.py --input log/trace_magika.txt --mlir build/input_with_addresses.mlir --output trace_${targetname}.json
 	${srcdir}/../../../python/utils/trace/get_trace_summary.py --input trace_${targetname}.json
 
 clean:
