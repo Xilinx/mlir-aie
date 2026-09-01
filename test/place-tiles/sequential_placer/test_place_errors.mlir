@@ -63,7 +63,8 @@ module @memtile_exhaustion {
     // Global exhaustion: npu1_1col has exactly one MemTile, and it is
     // already fully booked, so no column pin could ever help.
     // CHECK: error: no MemTile on the device has {{[0-9]+ input/[0-9]+ output}} DMA channel(s) free: all 1 MemTile(s) are at {{[0-9]+/[0-9]+}} input, {{[0-9]+/[0-9]+}} output channels used
-    // CHECK: note: this is the device's total MemTile DMA budget
+    // CHECK: note: this is the device's total MemTile DMA budget, not a placement choice
+    // CHECK: note: short 1 output channel(s); fan traffic through a MemTile via aie.objectfifo.link
     %mem7 = aie.logical_tile<MemTile>(?, ?)
 
     aie.objectfifo @of1 (%mem1, {%core1}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
@@ -149,7 +150,8 @@ module @shimnoc_exhaustion {
     // Global exhaustion: npu1_1col has exactly one ShimNOCTile, and it is
     // already fully booked, so no column pin could ever help.
     // CHECK: error: no ShimNOCTile on the device has {{[0-9]+ input/[0-9]+ output}} DMA channel(s) free: all 1 ShimNOCTile(s) are at {{[0-9]+/[0-9]+}} input, {{[0-9]+/[0-9]+}} output channels used
-    // CHECK: note: this is the device's total ShimNOCTile DMA budget
+    // CHECK: note: this is the device's total ShimNOCTile DMA budget, not a placement choice
+    // CHECK: note: short 1 output channel(s); fan traffic through a MemTile via aie.objectfifo.link
     %shim3 = aie.logical_tile<ShimNOCTile>(?, ?)
 
     aie.objectfifo @of1 (%shim1, {%core1}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
