@@ -199,7 +199,7 @@ module @reuse_output_buffer_dynamic {
 
 // Test: the trace routes live in the device's stream switches, which every
 // sequence of the device drives, so the sequences must name one egress column.
-// Buffer size and reuse mode stay per sequence.
+// Buffer size and reuse mode are per sequence.
 module @disagreeing_host_configs {
   aie.device(npu2) {
     %tile02 = aie.tile(0, 2)

@@ -199,7 +199,7 @@ collectReferencedSSAValues(Operation *op, const IRMapping &argMap,
 }
 
 // Return the operation in the caller device that stands for `op`, cloning `op`
-// on first use. `clonedDefs` holds the association across aiex.run calls, so
+// on first use. `clonedDefs` spans the aiex.run calls of one caller device, so
 // several calls that name one definition share one clone and one symbol.
 static Operation *
 getOrClone(PatternRewriter &rewriter, Operation *op, IRMapping &argMap,
@@ -263,7 +263,7 @@ copyReferencedSSAValues(PatternRewriter &rewriter,
       int row = tileOp.getRow();
 
       // A tile is its coordinates, so a tile the caller already declares stands
-      // for the callee's tile whether an earlier call cloned it or not.
+      // for the callee's tile.
       AIE::TileOp existingTile = nullptr;
       for (AIE::TileOp tile : callerDevice.getOps<AIE::TileOp>()) {
         if (tile.getCol() == col && tile.getRow() == row) {

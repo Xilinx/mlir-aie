@@ -59,8 +59,8 @@ struct ShimInfo {
   std::vector<int> traceChannelAssignment; // Per-trace index into channels
 };
 
-/// What one runtime sequence asks of its own trace buffer. The trace units and
-/// the routes belong to the device; the buffer belongs to the sequence.
+/// The trace buffer of one runtime sequence. The trace units and the routes
+/// belong to the device; the buffer belongs to the sequence.
 struct SequenceTraceConfig {
   RuntimeSequenceOp seq;
   int bufferSizeBytes;
@@ -135,7 +135,8 @@ struct AIEInsertTraceFlowsPass
     }
 
     // The packet flows and the stream switch configuration reach the hardware
-    // through the device, so every sequence egresses through the same shim.
+    // through the device, so the trace data of every sequence leaves the array
+    // through the same shim.
     TraceHostConfigOp hostConfig = hostConfigs.front();
     auto routing = hostConfig.getRouting();
     int egressShimColFromIR = hostConfig.getEgressShimCol();
@@ -684,8 +685,8 @@ struct AIEInsertTraceFlowsPass
     int bufferSizeBytes = cfg.bufferSizeBytes;
 
     // A second S2MM channel doubles the bytes the DMAs write. The host and
-    // -aie-fuse-trace-buffers size against the argument type, so it must state
-    // the full claim.
+    // -aie-fuse-trace-buffers read the byte count from the argument type, so
+    // the type must cover every channel.
     size_t maxChannels = 1;
     for (auto &[col, shimInfo] : shimInfos)
       maxChannels = std::max(maxChannels, shimInfo.channels.size());

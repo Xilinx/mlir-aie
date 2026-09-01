@@ -10,8 +10,7 @@
 // A device may declare several runtime sequences, and any of them may drive the
 // device's trace units. Each one gets its own trace buffer argument and its own
 // copy of the shim DMA program that drains the trace stream. The buffer belongs
-// to the sequence, so the sequences may size it differently and may differ on
-// reusing the output buffer.
+// to the sequence, so the sequences may differ in buffer size and reuse mode.
 
 module {
   aie.device(npu2_1col) @dev {
@@ -44,8 +43,8 @@ module {
       aie.trace.start_config @core_trace
     }
 
-    // Reuse of the output buffer stays per sequence: no argument is appended,
-    // and the trace data starts past the 128 bytes of %arg0.
+    // The reuse mode is per sequence. The trace data lands in %arg0, past its
+    // 128 bytes.
     // CHECK: aie.runtime_sequence @third(%{{.*}}: memref<32xi32>)
     // CHECK-SAME: trace_buffer = #aie.trace_buffer<arg_index = 0, offset = 128, size = 2048, dedicated = false>
     aie.runtime_sequence @third(%arg0: memref<32xi32>) {
