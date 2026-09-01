@@ -115,6 +115,7 @@ def _compute_recipe_hash(
     aiecc_flags: list[str] | tuple[str, ...],
     compile_flags: list[str] | tuple[str, ...],
     full_elf: bool = False,
+    include_paths: list[Path] | tuple[Path, ...] = (),
 ) -> str:
     """Hash of the "recipe": generator bytecode + CompileTime[T] kwargs + flags.
 
@@ -125,6 +126,12 @@ def _compute_recipe_hash(
     ``full_elf`` is part of the recipe: full-ELF and xclbin+insts builds emit
     different MLIR (the former injects ``npu.load_pdi``) and different
     artifacts, so they must not share a cache entry.
+
+    ``include_paths`` likewise: they are ``-I`` directories forwarded to the
+    C++ compiler, so two otherwise identical designs pointed at different
+    header trees compile to different objects. Hashed in ORDER, not sorted
+    like the flag lists above, because ``-I`` search order decides which
+    header wins when two directories provide the same name.
     """
     h = hashlib.sha256()
 
@@ -169,6 +176,7 @@ def _compute_recipe_hash(
     h.update(repr(sorted(aiecc_flags)).encode())
     h.update(repr(sorted(compile_flags)).encode())
     h.update(f"full_elf={full_elf}".encode())
+    h.update(repr([str(p) for p in include_paths]).encode())
 
     return h.hexdigest()
 
@@ -311,10 +319,11 @@ def _compute_hash(
     full_elf: bool = False,
     fold_ddr_addr_offset: bool = True,
     has_dispatch_params: bool = False,
+    include_paths: list[Path] | tuple[Path, ...] = (),
 ) -> str:
     """Stable 24-hex SHA-256 cache key combining recipe + artifact hashes."""
     recipe = _compute_recipe_hash(
-        generator, compile_kwargs, aiecc_flags, compile_flags, full_elf
+        generator, compile_kwargs, aiecc_flags, compile_flags, full_elf, include_paths
     )
     artifact = _compute_artifact_hash(
         generator,

@@ -455,7 +455,7 @@ class HRXHostRuntime(HostRuntime):
 
         return HRXKernelResult(stop - start, success=True)
 
-    def load_and_run(self, npu_kernel, run_args, **kwargs):
+    def load_and_run(self, npu_kernel, run_args, dispatch_scalars=None, **kwargs):
         """Reject trace up front, then defer to the base load/run pipeline.
 
         The base ``load_and_run`` mutates ``run_args`` (appends a trace buffer
@@ -465,7 +465,7 @@ class HRXHostRuntime(HostRuntime):
         """
         if getattr(npu_kernel, "trace_config", None) is not None:
             raise HostRuntimeError(_TRACE_UNSUPPORTED_MSG)
-        return super().load_and_run(npu_kernel, run_args, **kwargs)
+        return super().load_and_run(npu_kernel, run_args, dispatch_scalars, **kwargs)
 
     def device(self) -> "Device":
         from aie.iron.device import from_name

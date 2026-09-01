@@ -17,6 +17,11 @@
 # uv version is pinned so the resolution (and the generated header comment)
 # stays deterministic across machines and CI.
 #
+# utils/mlir_wheels/requirements.in is itself generated here from
+# utils/mlir_wheels/pyproject.toml's [build-system].requires, so that list
+# can't drift from the one pip-compile actually locks against (see
+# generate_requirements_in below). Edit pyproject.toml, not requirements.in.
+#
 # Usage:  utils/regenerate_lockfiles.sh
 #
 # Exits non-zero if uv is missing or any compile fails.
@@ -70,6 +75,34 @@ compile() {
       "$src_name" -o "$lock_name" --quiet
   )
 }
+
+# Regenerate utils/mlir_wheels/requirements.in from pyproject.toml's
+# [build-system].requires.
+generate_requirements_in() {
+  local pyproject="$REPO_ROOT/utils/mlir_wheels/pyproject.toml"
+  local out="$REPO_ROOT/utils/mlir_wheels/requirements.in"
+
+  echo "regenerating utils/mlir_wheels/requirements.in from pyproject.toml"
+
+  {
+    cat <<'EOF'
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+# GENERATED from pyproject.toml's [build-system].requires by
+# utils/regenerate_lockfiles.sh. Do not hand-edit: edit pyproject.toml
+# instead and rerun that script, which regenerates both this file and
+# requirements.lock.
+EOF
+    python3 -c '
+import sys, tomllib
+with open(sys.argv[1], "rb") as f:
+    print(*tomllib.load(f)["build-system"]["requires"], sep="\n")
+' "$pyproject"
+  } > "$out"
+}
+
+generate_requirements_in
 
 compile python/requirements_dev.txt              python/requirements_dev.lock
 compile utils/mlir_aie_wheels/requirements.txt   utils/mlir_aie_wheels/requirements.lock

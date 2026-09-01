@@ -380,6 +380,8 @@ class CompilableDesign:
             # other's input_with_addresses.mlir / .o files.
             kernel_dir = xclbin_path.parent / f"{xclbin_path.stem}.prj"
             lock_file_path = kernel_dir / ".lock"
+            # has_dispatch + explicit_paths is rejected above.
+            dispatch_so_path = None
         else:
             cache_hash = self._compute_cache_hash()
             kernel_dir = NPU_CACHE_HOME / cache_hash
@@ -397,9 +399,9 @@ class CompilableDesign:
             os.makedirs(kernel_dir, exist_ok=True)
 
             xclbin_exists = xclbin_path.exists()
-            inst_exists = (
-                dispatch_so_path.exists() if has_dispatch else inst_path.exists()
-            )
+            inst_artifact = dispatch_so_path if has_dispatch else inst_path
+            assert inst_artifact is not None
+            inst_exists = inst_artifact.exists()
 
             if not explicit_paths and self.use_cache and xclbin_exists and inst_exists:
                 if not _manifest.is_valid(kernel_dir):
@@ -940,6 +942,7 @@ class CompilableDesign:
             self.aiecc_flags,
             self.compile_flags,
             self.full_elf,
+            self.include_paths,
         )
 
     @staticmethod
@@ -980,6 +983,7 @@ class CompilableDesign:
             self.full_elf,
             self._resolve_fold_ddr_addr_offset(),
             bool(self.dispatch_params),
+            self.include_paths,
         )
 
     def _bind_generation_device(self):
@@ -1106,9 +1110,7 @@ class CompilableDesign:
         # value never varies per compile, so it is not part of compile_kwargs
         # or the cache key.
         _dispatch_placeholders = {
-            name: _dispatch_param_type(
-                hints.get(name, self._sig.parameters[name].annotation)
-            )
+            name: _dispatch_param_type(hints.get(name, sig.parameters[name].annotation))
             for name in self.dispatch_params
         }
         _gen_call_kwargs = {

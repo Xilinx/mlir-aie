@@ -149,12 +149,15 @@ class NPUKernel:
             from .compile.jit._dispatch_bridge import DispatchBridge
             from .compile.jit._dispatch_compile import _parse_signature
 
-            header_path = Path(self._dispatch_lib_path).parent / "dispatch_gen.h"
+            # Non-None whenever dispatch_params is non-empty (see __init__).
+            assert self._dispatch_lib_path is not None
+            lib_path = Path(self._dispatch_lib_path)
+            header_path = lib_path.parent / "dispatch_gen.h"
             header_text = header_path.read_text()
             _func_name, params = _parse_signature(header_text, self._dispatch_params)
             param_ctypes = [ctype for ctype, _name in params]
             self._dispatch_bridge = DispatchBridge(
-                self._dispatch_lib_path, self._dispatch_params, param_ctypes
+                lib_path, self._dispatch_params, param_ctypes
             )
         return self._dispatch_bridge
 

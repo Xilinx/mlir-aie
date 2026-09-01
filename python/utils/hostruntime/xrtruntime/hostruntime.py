@@ -90,7 +90,15 @@ class XRTHostRuntime(HostRuntime):
     # Maps generation name to list of model strings that may appear in xrt-smi
     NPU_MODELS = {
         "npu1": ["npu1", "Phoenix"],
-        "npu2": ["npu4", "Strix", "npu5", "Strix Halo", "npu6", "Krackan"],
+        "npu2": [
+            "npu4",
+            "Strix",
+            "npu5",
+            "Strix Halo",
+            "npu6",
+            "Krackan",
+            "Gorgon Point",
+        ],
     }
     _tensor_class = XRTTensor
 
@@ -641,7 +649,7 @@ class CachedXRTRuntime(XRTHostRuntime):
             **kwargs,
         )
 
-    def load_and_run(self, npu_kernel, run_args, **kwargs):
+    def load_and_run(self, npu_kernel, run_args, dispatch_scalars=None, **kwargs):
         """Wrap the base implementation to paper over a Phoenix firmware-state quirk.
 
         A trace-on run leaves the amdxdna firmware in
@@ -665,7 +673,9 @@ class CachedXRTRuntime(XRTHostRuntime):
         draining unconditionally on Phoenix is simpler than tracking which
         contexts are about to be touched next.
         """
-        handle, ret = super().load_and_run(npu_kernel, run_args, **kwargs)
+        handle, ret = super().load_and_run(
+            npu_kernel, run_args, dispatch_scalars, **kwargs
+        )
         if (
             npu_kernel.trace_config is not None
             and getattr(self, "npu_str", None) == "npu1"
