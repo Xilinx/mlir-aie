@@ -572,14 +572,15 @@ def AIE_ConnectOp: AIE_Op<"connect", [ParentOneOf<["SwitchboxOp", "ShimMuxOp"]> 
 }
 
 def AIE_FlowOp: AIE_Op<"flow", []> {
-  let arguments = (
-    ins Index:$source,
-        WireBundle:$source_bundle,
-        ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$source_channel,
-        Index:$dest,
-        WireBundle:$dest_bundle,
-        ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$dest_channel
-  );
+  let arguments = (ins Index:$source, WireBundle:$source_bundle,
+      ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$source_channel, Index:$dest,
+      WireBundle:$dest_bundle,
+      ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$dest_channel,
+      Variadic<Index>:$vias,
+      OptionalAttr<DenseI32ArrayAttr>:$via_ingress_bundles,
+      OptionalAttr<DenseI32ArrayAttr>:$via_ingress_channels,
+      OptionalAttr<DenseI32ArrayAttr>:$via_egress_bundles,
+      OptionalAttr<DenseI32ArrayAttr>:$via_egress_channels);
   let summary = "A logical circuit-switched connection between cores";
   let description = [{
     The `aie.flow` operation represents a circuit switched connection between two endpoints, usually
@@ -587,18 +588,41 @@ def AIE_FlowOp: AIE_Op<"flow", []> {
     the programmed connections inside a switchbox, along with `aie.wire` operations which represent
     physical connections between switchboxes and other components.
 
+    An optional `via` list pins the exact tiles and stream-switch ports the flow
+    must route through.  Each via is a tuple of a tile value together with the
+    ingress and egress port (bundle and channel) the stream uses at that tile,
+    so the intermediate switchbox configuration follows from the flow itself.  A
+    flow with vias is equivalent to the disaggregated flows that meet on the via
+    ports, and `--aie-split-flow-vias` rewrites it into those segments plus the
+    pinned switchbox connections.
+
     Example:
     ```
       %00 = aie.tile(0, 0)
       %11 = aie.tile(1, 1)
       %01 = aie.tile(0, 1)
       aie.flow(%00, "DMA" : 0, %11, "Core" : 1)
+      aie.flow(%00, "DMA" : 0, %11, "Core" : 1) via (%01 : South : 0 -> North : 0)
     ```
   }];
 
   let assemblyFormat = [{
-    `(` $source `,` $source_bundle `:` $source_channel `,` $dest `,` $dest_bundle `:` $dest_channel `)` attr-dict
+    `(` $source `,` $source_bundle `:` $source_channel `,` $dest `,` $dest_bundle `:` $dest_channel `)`
+    custom<FlowVias>($vias, $via_ingress_bundles, $via_ingress_channels, $via_egress_bundles, $via_egress_channels)
+    attr-dict
   }];
+
+  let hasVerifier = 1;
+
+  let builders = [OpBuilder<
+      (ins "mlir::Value":$source, "xilinx::AIE::WireBundle":$source_bundle,
+          "int":$source_channel, "mlir::Value":$dest,
+          "xilinx::AIE::WireBundle":$dest_bundle, "int":$dest_channel),
+      [{
+      build($_builder, $_state, source, source_bundle, source_channel, dest,
+            dest_bundle, dest_channel, mlir::ValueRange{}, nullptr, nullptr,
+            nullptr, nullptr);
+    }]>];
 
   let extraClassDeclaration = [{
     int sourceIndex() { return getSourceChannel(); }
@@ -809,25 +833,50 @@ def AIE_PacketFlowOp: AIE_Op<"packet_flow", [SingleBlockImplicitTerminator<"EndO
     so that they always get allocated with the same master, slave
     ports, arbiters and master selects (msel).
 
+    The optional attribute mask, written directly after the ID in the
+    parentheses, pins the packet-rule mask for the flow. A packet is
+    accepted at a slave port when (incoming ID & mask) == (ID & mask),
+    so the flow matches every ID sharing the unmasked bits of ID. When
+    omitted, the mask is derived automatically during routing.
+
     Example:
     ```
       %01 = aie.tile(0, 1)
-      aie.packet_flow(0x10) {
+      aie.packet_flow(0x10 mask 0x1f) {
         aie.packet_source<%01, "Core" : 0>
         aie.packet_dest<%01, "Core" : 0>
       }
     ```
   }];
 
-  let arguments = (
-    ins AIEI8Attr:$ID,
-        OptionalAttr<BoolAttr>:$keep_pkt_header,
-        OptionalAttr<BoolAttr>:$priority_route
-  );
+  let arguments = (ins AIEI8Attr:$ID, OptionalAttr<AIEI8Attr>:$mask,
+      OptionalAttr<BoolAttr>:$keep_pkt_header,
+      OptionalAttr<BoolAttr>:$priority_route, Variadic<Index>:$vias,
+      OptionalAttr<DenseI32ArrayAttr>:$via_ingress_bundles,
+      OptionalAttr<DenseI32ArrayAttr>:$via_ingress_channels,
+      OptionalAttr<DenseI32ArrayAttr>:$via_egress_bundles,
+      OptionalAttr<DenseI32ArrayAttr>:$via_egress_channels);
   let regions = (region AnyRegion:$ports);
 
-  let assemblyFormat = [{ `(` $ID `)` regions attr-dict }];
+  let assemblyFormat = [{ `(` $ID (`mask` $mask^)? `)` regions
+    custom<FlowVias>($vias, $via_ingress_bundles, $via_ingress_channels, $via_egress_bundles, $via_egress_channels)
+    attr-dict }];
   let hasVerifier = 1;
+
+  let builders = [OpBuilder<(ins "uint8_t":$ID,
+                                "mlir::BoolAttr":$keep_pkt_header,
+                                "mlir::BoolAttr":$priority_route),
+                            [{
+      build($_builder, $_state, ID, nullptr, keep_pkt_header, priority_route,
+            mlir::ValueRange{}, nullptr, nullptr, nullptr, nullptr);
+    }]>,
+                  OpBuilder<(ins "mlir::IntegerAttr":$ID,
+                                "mlir::BoolAttr":$keep_pkt_header,
+                                "mlir::BoolAttr":$priority_route),
+                            [{
+      build($_builder, $_state, ID, nullptr, keep_pkt_header, priority_route,
+            mlir::ValueRange{}, nullptr, nullptr, nullptr, nullptr);
+    }]>];
 
   let extraClassDeclaration = [{
     int IDInt() { return getID(); }

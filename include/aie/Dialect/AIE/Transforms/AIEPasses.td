@@ -274,14 +274,54 @@ def AIEFindFlows : Pass<"aie-find-flows", "DeviceOp"> {
     by aie.flow) or a packet-switched connection (represensted by
     aie.packetflow).  This pass is primarily used for testing automatic
     routing.
+
+    By default every configured connection is lifted, including partial flows
+    whose source or destination is a directional switchbox port rather than a
+    core or DMA (transit connections, PLIO/edge entries, and packet routes a
+    running design steers by packet id).  A physically routed design can
+    therefore drop its aie.switchbox configuration and recover it from the
+    lifted flows.  Set `keep-partial-flows=false` to restrict recovery to flows
+    that begin at a core/DMA and end on a core/DMA.
   }];
 
   let constructor = "xilinx::AIE::createAIEFindFlowsPass()";
   let dependentDialects = [
     "xilinx::AIE::AIEDialect",
   ];
+
+  let options =
+      [Option<"clKeepPartialFlows", "keep-partial-flows", "bool",
+              /*default=*/"true",
+              "Also recover partial flows whose source or destination is a "
+              "directional/edge switchbox port rather than a core or DMA.">,
+       Option<
+           "clEmitVias", "emit-vias", "bool", /*default=*/"false",
+           "Emit each recovered flow with a via list pinning every switchbox "
+           "hop, so the flow carries its own route and the router can skip "
+           "it.">,
+       Option<
+           "clRemoveLifted", "remove-lifted", "bool", /*default=*/"true",
+           "Remove the interconnect configuration (connects, packet rules, "
+           "mastersets, amsels, wires) that was lifted into recovered flows, "
+           "leaving only configuration that could not be lifted.">,
+  ];
 }
 
+def AIESplitFlowVias : Pass<"aie-split-flow-vias", "DeviceOp"> {
+  let summary = "Split aie.flow operations that pin via ports into segments";
+  let description = [{
+    Each `aie.flow` that carries a `via` list is rewritten into the
+    disaggregated flows that meet on the via ports, plus an `aie.switchbox`
+    connection at every via tile joining its pinned ingress and egress ports.
+    A flow `A via (B : in -> eg) to C` becomes `aie.flow(A, B:in)`,
+    `aie.switchbox(B) { aie.connect<in, eg> }`, and `aie.flow(B:eg, C)`.  The
+    pass elides a segment whose source and destination coincide, which happens
+    when the flow already begins or ends on a via port.
+  }];
+
+  let constructor = "xilinx::AIE::createAIESplitFlowViasPass()";
+  let dependentDialects = ["xilinx::AIE::AIEDialect", ];
+}
 
 def AIEVectorTransferLowering : Pass<"aie-vector-transfer-lowering", "DeviceOp"> {
   let summary = "Lower vector.transfer_read/write to vector.load/store for AIE";

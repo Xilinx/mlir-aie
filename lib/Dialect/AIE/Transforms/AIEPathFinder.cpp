@@ -13,6 +13,7 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_os_ostream.h"
 
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/MapVector.h"
 
 using namespace mlir;
@@ -385,27 +386,71 @@ bool Pathfinder::addFixedConnection(SwitchboxOp switchboxOp) {
   int row = switchboxOp.rowIndex();
   TileID coords = {col, row};
   auto &sb = graph[std::make_pair(coords, coords)];
+  // Validate every connect against the original connectivity before reserving
+  // any resource, so a broadcast (one source fanning out to several dests) does
+  // not invalidate its own sibling connects mid-scan. A destination port may be
+  // driven only once; a source port may legally recur across a broadcast.
+  llvm::SmallVector<std::pair<int, int>, 8> reserved;
+  llvm::SmallDenseSet<int, 8> claimedDsts;
   for (ConnectOp connectOp : switchboxOp.getOps<ConnectOp>()) {
-    bool found = false;
-    for (size_t i = 0; i < sb.srcPorts.size(); i++) {
-      if (sb.srcPorts[i] != connectOp.sourcePort())
-        continue;
-      // A circuit-switched ConnectOp monopolizes its entire source port;
-      // mark all connectivity[i][*] INVALID so the pathfinder cannot route
-      // any packet flow through this source port.
-      for (size_t j = 0; j < sb.dstPorts.size(); j++) {
-        if (sb.dstPorts[j] == connectOp.destPort() &&
-            sb.connectivity[i][j] == Connectivity::AVAILABLE)
-          found = true;
-        sb.connectivity[i][j] = Connectivity::INVALID;
+    int srcIdx = -1, dstIdx = -1;
+    for (size_t i = 0; i < sb.srcPorts.size(); i++)
+      if (sb.srcPorts[i] == connectOp.sourcePort()) {
+        srcIdx = static_cast<int>(i);
+        break;
       }
-    }
-    if (!found) {
-      // ConnectOp references a (srcPort, dstPort) pair absent from or already
-      // fully invalidated in the switchbox model; IR/graph mismatch.
+    for (size_t j = 0; j < sb.dstPorts.size(); j++)
+      if (sb.dstPorts[j] == connectOp.destPort()) {
+        dstIdx = static_cast<int>(j);
+        break;
+      }
+    // Reject an illegal pair (absent from the switchbox model) or a second
+    // driver on the same output port; a repeated source port is a broadcast.
+    if (srcIdx < 0 || dstIdx < 0 ||
+        sb.connectivity[srcIdx][dstIdx] != Connectivity::AVAILABLE ||
+        !claimedDsts.insert(dstIdx).second)
       return false;
-    }
+    reserved.emplace_back(srcIdx, dstIdx);
   }
+  // A pre-placed packet-switched output (an aie.masterset, e.g. materialized
+  // from a `via`-pinned aie.packet_flow) also monopolizes its destination port:
+  // that stream-switch output is already configured for packet switching, so no
+  // circuit stream may drive it, and the router cannot emit a second masterset
+  // on the same port for another packet flow. Reserve those output ports too;
+  // otherwise the circuit pathfinder, blind to packet ops, may route a flow
+  // onto an output the masterset already owns, producing an illegal
+  // double-driver (two ops targeting the same dest) at materialization.
+  llvm::SmallVector<int, 8> reservedMasterDsts;
+  for (MasterSetOp masterSetOp : switchboxOp.getOps<MasterSetOp>()) {
+    int dstIdx = -1;
+    for (size_t j = 0; j < sb.dstPorts.size(); j++)
+      if (sb.dstPorts[j] == masterSetOp.destPort()) {
+        dstIdx = static_cast<int>(j);
+        break;
+      }
+    // Reject an output port absent from the switchbox model or already driven
+    // by a circuit connect or another masterset.
+    if (dstIdx < 0 || !claimedDsts.insert(dstIdx).second)
+      return false;
+    reservedMasterDsts.push_back(dstIdx);
+  }
+  // A circuit-switched ConnectOp monopolizes both its source port (the stream
+  // switch input) and its destination port (the output): no other stream may
+  // inject on that input, and the output can carry only this one stream.
+  // Reserving the whole column also reserves the outgoing wire, since that wire
+  // is reachable only by driving this output port.
+  for (auto [srcIdx, dstIdx] : reserved) {
+    for (size_t j = 0; j < sb.dstPorts.size(); j++)
+      sb.connectivity[srcIdx][j] = Connectivity::INVALID;
+    for (size_t i = 0; i < sb.srcPorts.size(); i++)
+      sb.connectivity[i][dstIdx] = Connectivity::INVALID;
+  }
+  // A masterset only fixes its output port (its inputs arrive through arbiters
+  // shared among packet flows), so reserve just that destination column and
+  // leave source rows free.
+  for (int dstIdx : reservedMasterDsts)
+    for (size_t i = 0; i < sb.srcPorts.size(); i++)
+      sb.connectivity[i][dstIdx] = Connectivity::INVALID;
   return true;
 }
 

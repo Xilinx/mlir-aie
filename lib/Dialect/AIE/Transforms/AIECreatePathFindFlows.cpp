@@ -15,6 +15,7 @@
 #include "mlir/Pass/Pass.h"
 #include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallBitVector.h"
 #include "llvm/ADT/SmallSet.h"
@@ -22,6 +23,8 @@
 #include "llvm/Support/MathExtras.h"
 
 #include <cstdint>
+
+#include <set>
 
 using namespace mlir;
 using namespace xilinx;
@@ -97,9 +100,16 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
     TileID srcSbId = {srcCoords.col, srcCoords.row};
     PathEndPoint srcPoint = {srcSbId, srcPort};
     if (analyzer.processedFlows[srcPoint]) {
+      // This FlowOp is a broadcast sibling of a flow whose route was already
+      // materialized (the analyzer merges all destinations sharing a source
+      // into one net, so the first sibling emitted connections for every
+      // destination). Erase it and report success so the erase is committed;
+      // returning failure() here would roll the erase back and leave a stale
+      // aie.flow in the routed IR, breaking idempotency (re-running the pass
+      // would try to re-route an already-routed net and fail).
       LLVM_DEBUG(llvm::dbgs() << "Flow already processed!\n");
       rewriter.eraseOp(Op);
-      return failure();
+      return success();
     }
     // std::map<TileID, SwitchSetting>
     SwitchSettings settings = analyzer.flowSolutions[srcPoint];
@@ -251,6 +261,13 @@ bool AIEPathfinderPass::findPathToDest(const SwitchSettings &settings,
   }
 
   int neighbourSourceChannel = currDestChannel;
+  // The destination may itself be a fabric input port (e.g. a partial packet
+  // flow pinned to end at a switchbox port). Such a port is never the output of
+  // any switchbox setting, so it would otherwise never match; recognize arrival
+  // when the current output feeds the final tile's destination input directly.
+  if (neighbourTile == finalTile && neighbourSourceBundle == finalDestBundle &&
+      neighbourSourceChannel == finalDestChannel)
+    return true;
   for (const auto &[sbNode, setting] : settings) {
     TileID tile = {sbNode.col, sbNode.row};
     if (tile == neighbourTile) {
@@ -484,6 +501,11 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
   std::map<std::pair<PhysPort, int>, SmallVector<PhysPort, 4>> ctrlPacketFlows;
   SmallVector<std::pair<PhysPort, int>, 4> slavePorts;
   DenseMap<std::pair<PhysPort, int>, int> slaveAMSels;
+  // Explicit packet-rule masks pinned by aie.packet_flow's mask attribute. The
+  // key is the slave port (switchbox ingress) together with the flow ID,
+  // because a design may reuse one ID across flows that declare different
+  // masks. A flow without an explicit mask has its mask derived from the ids.
+  std::map<std::pair<PhysPort, int>, int> explicitPortMasks;
   // Flag to keep packet header at packet flow destination
   DenseMap<PhysPort, BoolAttr> keepPktHeaderAttr;
   // Map from tileID and master ports to flags labelling control packet flows
@@ -503,6 +525,10 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
     Region &r = pktFlowOp.getPorts();
     Block &b = r.front();
     int flowID = pktFlowOp.IDInt();
+    std::optional<int> flowMask =
+        pktFlowOp.getMask()
+            ? std::optional<int>(static_cast<int>(*pktFlowOp.getMask()))
+            : std::nullopt;
     SmallVector<std::pair<TileID, Port>, 4> sources;
 
     // Pass 1: collect all sources (order-independent; supports fan-in).
@@ -557,6 +583,12 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
                     switchboxes[currTile].begin(), switchboxes[currTile].end(),
                     std::pair{connect, flowID}) == switchboxes[currTile].end())
               switchboxes[currTile].push_back({connect, flowID});
+            // Pin this flow's declared mask to the slave port it enters here,
+            // so flows that share an ID but declare different masks stay
+            // distinct.
+            if (flowMask)
+              explicitPortMasks[{{currTile, {src.bundle, src.channel}},
+                                 flowID}] = *flowMask;
             // Assign "control packet flows" flag per switchbox, based on
             // packet flow op attribute
             auto ctrlPkt = pktFlowOp.getPriorityRoute();
@@ -619,6 +651,14 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
   // master select.
   std::map<std::pair<TileID, int>, SmallVector<Port, 4>> masterAMSels;
 
+  // <arbiter, msel> slots (per tile) already occupied by packet-switch
+  // configuration present in the input IR (e.g. pinned via segments emitted by
+  // --aie-split-flow-vias). These are reserved so the allocator below does not
+  // hand them out again and create two flows that share one amsel. Kept
+  // separate from masterAMSels so the existing masterset ops are not
+  // re-emitted.
+  std::set<std::pair<TileID, int>> reservedAmsels;
+
   // Track which arbiter each port is assigned to (to prevent conflicts)
   std::map<PhysPort, int> portToArbiter;
 
@@ -641,17 +681,20 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
       [&](const std::map<std::pair<TileID, int>, SmallVector<Port, 4>>
               &masterAMSels,
           TileOp tileOp, bool isCtrlPkt) {
+        auto slotFree = [&](int a, int i) {
+          auto key = std::make_pair(tileOp.getTileID(),
+                                    getAmselFromArbiterIDAndMsel(a, i));
+          return !masterAMSels.count(key) && !reservedAmsels.count(key);
+        };
         if (isCtrlPkt) { // Higher AMsel first
           for (int i = numMselsPerArbiter - 1; i >= 0; i--)
             for (int a = numArbiters - 1; a >= 0; a--)
-              if (!masterAMSels.count(
-                      {tileOp.getTileID(), getAmselFromArbiterIDAndMsel(a, i)}))
+              if (slotFree(a, i))
                 return getAmselFromArbiterIDAndMsel(a, i);
         } else { // Lower AMsel first
           for (int i = 0; i < numMselsPerArbiter; i++)
             for (int a = 0; a < numArbiters; a++)
-              if (!masterAMSels.count(
-                      {tileOp.getTileID(), getAmselFromArbiterIDAndMsel(a, i)}))
+              if (slotFree(a, i))
                 return getAmselFromArbiterIDAndMsel(a, i);
         }
         tileOp->emitOpError(
@@ -663,10 +706,12 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
       [&](const std::map<std::pair<TileID, int>, SmallVector<Port, 4>>
               &masterAMSels,
           TileOp tileOp, int arbiter) {
-        for (int i = 0; i < numMselsPerArbiter; i++)
-          if (!masterAMSels.count({tileOp.getTileID(),
-                                   getAmselFromArbiterIDAndMsel(arbiter, i)}))
+        for (int i = 0; i < numMselsPerArbiter; i++) {
+          auto key = std::make_pair(tileOp.getTileID(),
+                                    getAmselFromArbiterIDAndMsel(arbiter, i));
+          if (!masterAMSels.count(key) && !reservedAmsels.count(key))
             return getAmselFromArbiterIDAndMsel(arbiter, i);
+        }
         tileOp->emitOpError("tile op arbiter ")
             << std::to_string(arbiter) << " has used up all its msels";
         return INVALID_AMSEL_VALUE;
@@ -734,6 +779,27 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
     }
     return INVALID_ARBITER_VALUE;
   };
+
+  // Seed the reserved-amsel set with packet-switch configuration that is
+  // already present in the switchboxes (e.g. pinned via segments materialized
+  // by --aie-split-flow-vias, or any pre-lowered packet routing). Without this
+  // the allocator below starts from an empty state and can hand out an
+  // <arbiter, msel> pair that another master on the same tile already occupies,
+  // producing two independent flows that share one amsel and mis-multicast
+  // (deadlock).
+  for (auto swboxOp : device.getOps<SwitchboxOp>()) {
+    TileID tileId = swboxOp.getTileOp().getTileID();
+    for (auto mtset : swboxOp.getConnections().getOps<MasterSetOp>()) {
+      for (Value amselVal : mtset.getAmsels()) {
+        auto amselOp = amselVal.getDefiningOp<AMSelOp>();
+        if (!amselOp)
+          continue;
+        reservedAmsels.insert(
+            {tileId, getAmselFromArbiterIDAndMsel(amselOp.arbiterIndex(),
+                                                  amselOp.getMselValue())});
+      }
+    }
+  }
 
   // Check all multi-cast flows (same source, same ID). They should be
   // assigned the same arbiter and msel so that the flow can reach all the
@@ -1093,8 +1159,20 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
       llvm::SmallSet<int, 8> avoidIds = idsOnPort[port];
       for (int id : matchIds)
         avoidIds.erase(id);
-      SmallVector<std::pair<int, int>> cover =
-          computeSubcubeCover(matchIds, avoidIds, idBits);
+
+      // A mask attribute on any flow of the group pins the group to a single
+      // rule; otherwise the rules follow from the ids alone.
+      std::optional<int> pinnedMask;
+      for (auto member : group)
+        if (auto it = explicitPortMasks.find(member);
+            it != explicitPortMasks.end())
+          pinnedMask = it->second;
+
+      SmallVector<std::pair<int, int>> cover;
+      if (pinnedMask)
+        cover.push_back({*pinnedMask, matchIds.front() & *pinnedMask});
+      else
+        cover = computeSubcubeCover(matchIds, avoidIds, idBits);
 
       LLVM_DEBUG({
         llvm::dbgs() << "packet cover " << stringifyWireBundle(bundle)
@@ -1110,18 +1188,21 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
         llvm::dbgs() << '\n';
       });
 
-      for (int id : matchIds)
-        assert(llvm::any_of(cover,
-                            [&](std::pair<int, int> c) {
-                              return (id & c.first) == c.second;
-                            }) &&
-               "subcube cover misses a match id");
-      for (int id : avoidIds)
-        assert(llvm::none_of(cover,
-                             [&](std::pair<int, int> c) {
-                               return (id & c.first) == c.second;
-                             }) &&
-               "subcube cover over-claims an avoid id");
+      // A pinned mask is the user's choice, so only a derived cover is checked.
+      if (!pinnedMask) {
+        for (int id : matchIds)
+          assert(llvm::any_of(cover,
+                              [&](std::pair<int, int> c) {
+                                return (id & c.first) == c.second;
+                              }) &&
+                 "subcube cover misses a match id");
+        for (int id : avoidIds)
+          assert(llvm::none_of(cover,
+                               [&](std::pair<int, int> c) {
+                                 return (id & c.first) == c.second;
+                               }) &&
+                 "subcube cover over-claims an avoid id");
+      }
 
       Value amsel = amselOps[slaveAMSels[group.front()]];
 
@@ -1274,7 +1355,14 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
     }
   }
 
+  // Remove the packet_flow ops now that they have been lowered into
+  // masterset/amsel/packet_rules on the switchboxes. Leaving them in the IR
+  // would break idempotency: re-running this pass on its own routed output
+  // would re-lower them and emit duplicate masterset/packet_rules (illegal
+  // double-drivers on ports already claimed by the first lowering).
+  target.addIllegalOp<PacketFlowOp>();
   RewritePatternSet patterns(&getContext());
+  patterns.insert<AIEOpRemoval<PacketFlowOp>>(device.getContext());
 
   if (failed(applyPartialConversion(device, target, std::move(patterns))))
     return failure();
@@ -1293,6 +1381,15 @@ void AIEPathfinderPass::runOnOperation() {
     signalPassFailure();
     return;
   }
+  for (auto flowOp : d.getOps<FlowOp>()) {
+    if (!flowOp.getVias().empty()) {
+      flowOp.emitOpError("cannot be routed while it carries via waypoints; run "
+                         "--aie-split-flow-vias first to lower the vias into "
+                         "switchbox connections");
+      signalPassFailure();
+      return;
+    }
+  }
   OpBuilder builder = OpBuilder::atBlockTerminator(d.getBody());
 
   if (clRouteCircuit && failed(runOnFlow(d, analyzer))) {
@@ -1304,8 +1401,23 @@ void AIEPathfinderPass::runOnOperation() {
     return;
   }
 
-  // Populate wires between switchboxes and tiles.
+  // Populate wires between switchboxes and tiles. Re-running the pass on
+  // already-routed IR must not duplicate the wires a previous run emitted, so
+  // key the wires already present and emit only the missing ones.
   builder.setInsertionPoint(d.getBody()->getTerminator());
+  llvm::DenseSet<std::tuple<Value, int, Value, int>> existingWires;
+  for (auto wire : d.getOps<WireOp>())
+    existingWires.insert(
+        {wire.getSource(), static_cast<int>(wire.getSourceBundle()),
+         wire.getDest(), static_cast<int>(wire.getDestBundle())});
+  auto wire = [&](Location loc, Value source, WireBundle sourceBundle,
+                  Value dest, WireBundle destBundle) {
+    if (existingWires
+            .insert({source, static_cast<int>(sourceBundle), dest,
+                     static_cast<int>(destBundle)})
+            .second)
+      WireOp::create(builder, loc, source, sourceBundle, dest, destBundle);
+  };
   for (int col = 0; col <= analyzer.getMaxCol(); col++) {
     for (int row = 0; row <= analyzer.getMaxRow(); row++) {
       TileOp tile;
@@ -1323,50 +1435,42 @@ void AIEPathfinderPass::runOnOperation() {
         // connections east-west between stream switches
         if (analyzer.coordToSwitchbox.count({col - 1, row})) {
           auto westsw = analyzer.coordToSwitchbox[{col - 1, row}];
-          WireOp::create(builder, loc, westsw, WireBundle::East, sw,
-                         WireBundle::West);
+          wire(loc, westsw, WireBundle::East, sw, WireBundle::West);
         }
       }
       if (row > 0) {
         // connections between abstract 'core' of tile
-        WireOp::create(builder, loc, tile, WireBundle::Core, sw,
-                       WireBundle::Core);
+        wire(loc, tile, WireBundle::Core, sw, WireBundle::Core);
         // connections between abstract 'dma' of tile
-        WireOp::create(builder, loc, tile, WireBundle::DMA, sw,
-                       WireBundle::DMA);
+        wire(loc, tile, WireBundle::DMA, sw, WireBundle::DMA);
         // connections north-south inside array ( including connection to shim
         // row)
         if (analyzer.coordToSwitchbox.count({col, row - 1})) {
           auto southsw = analyzer.coordToSwitchbox[{col, row - 1}];
-          WireOp::create(builder, loc, southsw, WireBundle::North, sw,
-                         WireBundle::South);
+          wire(loc, southsw, WireBundle::North, sw, WireBundle::South);
         }
       } else if (row == 0) {
         if (tile.isShimNOCTile()) {
           if (analyzer.coordToShimMux.count({col, 0})) {
             auto shimsw = analyzer.coordToShimMux[{col, 0}];
-            WireOp::create(
-                builder, loc, shimsw,
-                WireBundle::North, // Changed to connect into the north
-                sw, WireBundle::South);
+            wire(loc, shimsw,
+                 WireBundle::North, // Changed to connect into the north
+                 sw, WireBundle::South);
             // PLIO is attached to shim mux
             if (analyzer.coordToPLIO.count(col)) {
               auto plio = analyzer.coordToPLIO[col];
-              WireOp::create(builder, loc, plio, WireBundle::North, shimsw,
-                             WireBundle::South);
+              wire(loc, plio, WireBundle::North, shimsw, WireBundle::South);
             }
 
             // abstract 'DMA' connection on tile is attached to shim mux ( in
             // row 0 )
-            WireOp::create(builder, loc, tile, WireBundle::DMA, shimsw,
-                           WireBundle::DMA);
+            wire(loc, tile, WireBundle::DMA, shimsw, WireBundle::DMA);
           }
         } else if (tile.isShimPLTile()) {
           // PLIO is attached directly to switch
           if (analyzer.coordToPLIO.count(col)) {
             auto plio = analyzer.coordToPLIO[col];
-            WireOp::create(builder, loc, plio, WireBundle::North, sw,
-                           WireBundle::South);
+            wire(loc, plio, WireBundle::North, sw, WireBundle::South);
           }
         }
       }
