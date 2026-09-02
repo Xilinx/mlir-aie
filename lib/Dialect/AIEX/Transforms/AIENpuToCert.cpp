@@ -684,7 +684,10 @@ struct SplitNpuBlockWriteOpPattern : OpRewritePattern<AIEX::NpuBlockWriteOp> {
     // line -- dataSize/2 alone is only guaranteed word-aligned. Costs at most
     // 3 words of imbalance; harmless for word-addressed non-program-memory
     // targets.
-    constexpr uint32_t wordsPerLine = 4; // 16 bytes / sizeof(int)
+    auto elemTy = dyn_cast<IntegerType>(dataType.getElementType());
+    if (!elemTy || elemTy.getWidth() != 32)
+      return failure();
+    constexpr uint32_t wordsPerLine = 4; // 16 bytes / 4 bytes-per-word
     uint32_t splitElements = (dataSize / 2) & ~(wordsPerLine - 1);
     if (splitElements == 0)
       return failure();
