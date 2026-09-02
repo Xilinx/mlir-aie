@@ -381,7 +381,7 @@ jobs:
         rm -rf build
 
     - name: Docker prune
-      if: contains(inputs.MATRIX_OS, 'ubuntu')
+      if: runner.os == 'Linux'
       shell: bash
       run: |
 
