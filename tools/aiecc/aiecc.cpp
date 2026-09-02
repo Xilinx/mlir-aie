@@ -78,11 +78,10 @@ namespace {
 using ModRef = mlir::OwningOpRef<mlir::ModuleOp>;
 using xilinx::AIE::DeviceOp;
 
-// Produce a per-key object (.o) -- these are the core program memories, either
-// as per-core objects or a single unified object (only difference is
-// cardinality of the input module/arches edges). We define a chess path and a
-// peano path; the `xchesscc` command-line flag selects which output edge is
-// returned.
+// Produce a per-key object (.o) -- these are the core program memories. Both
+// lowering strategies feed this per core; they differ only in how the modules
+// arriving here were produced. We define a chess path and a peano path; the
+// `xchesscc` command-line flag selects which output edge is returned.
 //
 // `irLinkFiles` carries, per key, the merge-mode kernel artifacts (the core's
 // `link_merge_files`, i.e. `link_with_mode = "merge"`) to llvm-link into that
@@ -275,6 +274,7 @@ buildObjectSubgraph(EdgeWithTypedOutput<ModRef> &lowered,
       .arg("-O" + std::to_string(optLevel.getValue()))
       .value("--march=")
       .arg("--function-sections")
+      .arg("-stack-size-section")
       .arg("--filetype=obj")
       .output("-o");
   EdgeWithTypedOutput<Directory> &peanoObject =
@@ -652,27 +652,39 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   std::vector<EdgeBase *> outputs;
   auto &input = g.fileInput(inputFile, "input.mlir");
 
-  auto &withAddresses =
+  auto &traced =
       input
           .map<ModRef>("placed.mlir",
                        PassPipeline{getPlacementPipeline(
                            &context, coresPerCol.getValue(),
                            placerType.getValue(), saSeed.getValue())})
-          .map<ModRef>("traced.mlir", PassPipeline{getTracePipeline(&context)})
-          .map<ModRef>(
-              "input_with_addresses.mlir",
-              PassPipeline{&context,
-                           [scheme = allocScheme.getValue(),
-                            dyn = dynamicObjFifos.getValue(),
-                            pkt = packetSwObjFifos.getValue(),
-                            ctrl = ctrlPktOverlay.getValue() ||
-                                   loadPdiToCtrlPkt.getValue(),
-                            ldpdi = loadPdiToCtrlPkt.getValue(),
-                            bf16 = bf16Emulation.getValue()](
-                               mlir::MLIRContext *ctx, mlir::ModuleOp mod) {
-                             return getInputWithAddressesPipeline(
-                                 ctx, mod, scheme, dyn, pkt, ctrl, bf16, ldpdi);
-                           }});
+          .map<ModRef>("traced.mlir", PassPipeline{getTracePipeline(&context)});
+
+  // --default-stack-size stands in for the target's built-in default on any
+  // core that leaves stack_size absent. It runs ahead of every reader of
+  // CoreOp::getEffectiveStackSize(): buffer placement, the stack-size check,
+  // and the core, BCF and ldscript emitters.
+  auto &withDefaultStackSize = traced.map<ModRef>(
+      "default_stack_size.mlir",
+      [stackSize = defaultStackSize.getValue()](const ModRef &mod) -> ModRef {
+        if (stackSize <= 0)
+          return ModRef(mod.get().clone());
+        return populateDefaultStackSize(mod.get(), stackSize);
+      });
+
+  auto &withAddresses = withDefaultStackSize.map<ModRef>(
+      "input_with_addresses.mlir",
+      PassPipeline{
+          &context,
+          [scheme = allocScheme.getValue(), dyn = dynamicObjFifos.getValue(),
+           pkt = packetSwObjFifos.getValue(),
+           ctrl = ctrlPktOverlay.getValue() || loadPdiToCtrlPkt.getValue(),
+           ldpdi = loadPdiToCtrlPkt.getValue(), bf16 = bf16Emulation.getValue(),
+           skipVerify = skipObjectFifoVerify.getValue()](mlir::MLIRContext *ctx,
+                                                         mlir::ModuleOp mod) {
+            return getInputWithAddressesPipeline(ctx, mod, scheme, dyn, pkt,
+                                                 ctrl, bf16, ldpdi, skipVerify);
+          }});
 
   // Scratchpad run-time parameters sidecar file
   auto &paramsFile = withAddresses.map<std::string>(
@@ -735,10 +747,13 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
             core.op->getParentOfType<DeviceOp>().getSymName());
       });
 
-  // Per-core .o node. Two strategies selectable:
-  //   * unified: compile all cores of a device into one shared object, then
-  //     re-key that device-wide object onto each of the device's cores;
-  //   * per-core: compile each core's own module to its own object.
+  // Per-core .o node. Two strategies selectable, differing only in how many
+  // times the lowering pipeline runs:
+  //   * unified: lower once per device, then carve that module into one module
+  //     per core;
+  //   * per-core: lower once per core, each run on a clone of the whole design.
+  // Either way every core compiles its own object, so the object stage keeps
+  // its per-core parallelism.
 
   // Unified strategy
   auto &physicalPerDevice = splitPerDevice(
@@ -747,38 +762,18 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
       "perDeviceArches_{0}.txt", [](const OpInModule<DeviceOp> &dev) {
         return detectAIETarget(dev.module.get(), DeviceOp(dev.op).getSymName());
       });
-  auto &unifiedLowered = physicalPerDevice.map<ModRef>(
-      "unifiedLowered_{0}.mlir",
-      [](const Item<OpInModule<DeviceOp>> &item, Item<ModRef> &out) {
-        DeviceOp d = item.get().op;
-        return loweringPipeline(item.get().module.get(), d.getSymName(), -1, -1,
-                                out);
+  // Lower once per device, then carve out one module per core. Keyed like
+  // `perCore`, so the per-core arches and link files below apply unchanged --
+  // except that `perCore` drops cores that already carry an `elf_file`, so
+  // filter the carved set to match or the object subgraph joins on a key its
+  // other inputs do not have.
+  auto &unifiedPerCoreLowered = physicalPerDevice.split<ModRef>(
+      "lowered_{0}.mlir", [](const Item<OpInModule<DeviceOp>> &dev) {
+        // Same predicate as the `perCoreCompile` filter above: a core with an
+        // `elf_file` is used verbatim, so it must not appear here either.
+        return splitLoweredCores(
+            dev, [](CoreOp c) { return !c.getElfFileAttr() || xbridge; });
       });
-  // Merge-mode link artifacts for the device's whole core set, deduplicated
-  // (the shared unified module is llvm-linked once). See buildObjectSubgraph.
-  auto &perDeviceIRLinkFiles = physicalPerDevice.map<std::vector<std::string>>(
-      "perDeviceIRLinkFiles_{0}.txt",
-      [inputFile,
-       workDirStr](const Item<OpInModule<DeviceOp>> &dev,
-                   Item<std::vector<std::string>> &out) -> mlir::LogicalResult {
-        std::vector<std::string> files;
-        if (mlir::failed(collectDeviceIRLinkFiles(
-                DeviceOp(dev.get().op), inputFile, workDirStr, files)))
-          return mlir::failure();
-        out.value = std::move(files);
-        return mlir::success();
-      });
-  auto &unifiedObjects =
-      buildObjectSubgraph(unifiedLowered, perDeviceArches, perDeviceIRLinkFiles,
-                          "unifiedObjects_{0}.o");
-  // Each core links against its device's shared object: re-key the device-keyed
-  // unified objects onto the per-core keys.
-  EdgeWithTypedOutput<Directory> &unifiedCoreObjects =
-      perCore.rekeyFrom<Directory>(
-          "objects_{0}.o", unifiedObjects.out,
-          [](const OpInModule<CoreOp> &core) {
-            return core.op->getParentOfType<DeviceOp>().getSymName().str();
-          });
 
   // Per-core strategy
   auto &perCoreLowered = perCore.map<ModRef>(
@@ -799,8 +794,46 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   EdgeWithTypedOutput<Directory> &perCoreObjects = buildObjectSubgraph(
       perCoreLowered, perCoreArches, perCoreIRLinkFiles, "objects_{0}.o");
 
+  EdgeWithTypedOutput<Directory> &unifiedObjects =
+      buildObjectSubgraph(unifiedPerCoreLowered, perCoreArches,
+                          perCoreIRLinkFiles, "objects_{0}.o");
+
   EdgeWithTypedOutput<Directory> &objects =
-      doUnified ? unifiedCoreObjects : perCoreObjects;
+      doUnified ? unifiedObjects : perCoreObjects;
+
+  // This edge runs after `objects`, which holds the compiled core body that
+  // the measurement reads, and before `physicalWithElfs`, so a stack size
+  // analysis failure ends the run before any output artifact is written.
+  EdgeWithTypedOutput<ModRef> *physicalWithMeasuredStackSizes = nullptr;
+  if (!noMeasureStackSize.getValue()) {
+    physicalWithMeasuredStackSizes =
+        &bundle(objects.out, physical.out)
+             .join<ModRef>(
+                 "measured_stack_sizes.mlir",
+                 [inputFile, workDirStr](
+                     const Node<Directory> &objs, const Node<ModRef> &physicalN,
+                     Item<ModRef> &out) -> mlir::LogicalResult {
+                   out.value = ModRef(physicalN.get().get().clone());
+                   llvm::StringMap<std::string> objByKey;
+                   for (const auto &item : objs.items)
+                     objByKey[item.key] = item.filePath;
+                   return checkStackSizeRequirements(
+                       out.value->get(), inputFile, workDirStr,
+                       [&](CoreOp coreOp) -> std::optional<int64_t> {
+                         auto it = objByKey.find(coreKey(coreOp));
+                         if (it == objByKey.end())
+                           return std::nullopt;
+                         auto tile = mlir::cast<TileOp>(
+                             coreOp.getTile().getDefiningOp());
+                         return xilinx::aiecc::measureFunctionFrameSize(
+                             it->second, xilinx::AIE::coreFrameSymbolName(
+                                             tile.getCol(), tile.getRow()));
+                       });
+                 });
+  }
+  EdgeWithTypedOutput<ModRef> &physicalForElfs =
+      physicalWithMeasuredStackSizes ? *physicalWithMeasuredStackSizes
+                                     : physical;
 
   // ld scripts (with link_files absolutized so INPUT() is cwd-invariant).
   auto &ldScripts = perCore.map<std::string>(
@@ -922,7 +955,7 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
 
   // Patch ELF paths back into the physical IR
   auto &physicalWithElfs =
-      bundle(compiledElfs.out, preBakedElfs.out, physical.out)
+      bundle(compiledElfs.out, preBakedElfs.out, physicalForElfs.out)
           .join<ModRef>(
               "physical_with_elfs.mlir",
               [](const Node<Directory> &compiled, const Node<File> &preBaked,
@@ -1586,8 +1619,13 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
       generatePdi || generateTxn || generateCtrlpkt || generateXclbin ||
       generateFullElf || wantAiesim || doCompileHost || !getOutputs.empty() ||
       !cutOutputs.empty();
-  if (generateCoreElfs || !anySpecificOutput)
+  // Every other artifact depends on the stack check through physicalWithElfs.
+  // A core-ELF build ends before that edge, so name the check here.
+  if (generateCoreElfs || !anySpecificOutput) {
     outputs.push_back(&compiledElfs);
+    if (physicalWithMeasuredStackSizes)
+      outputs.push_back(physicalWithMeasuredStackSizes);
+  }
 
   if (generateInputWithAddresses)
     outputs.push_back(&withAddresses);
@@ -1691,6 +1729,7 @@ int main(int argc, char **argv) {
   mlir::registerAllPasses();
   xilinx::registerConversionPasses();
   xilinx::AIE::registerAIEPasses();
+  xilinx::AIE::registerAIEObjectFifoPipeline();
   xilinx::AIEX::registerAIEXPasses();
   xilinx::aievec::registerAIEVecPasses();
   xilinx::aievec::registerAIEVecPipelines();

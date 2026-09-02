@@ -63,7 +63,7 @@ make run_py
 
 To build and run the 32-core design:
 ```shell
-make clean; make multi=1 num_act=1 run_py
+make clean; make multi=1 run_py
 ```
 
 ## Multi-core Design Example (32-cores)
@@ -79,6 +79,6 @@ At the moment, the following limitations exist:
 * The scalar kernel version of this design does not run properly in single core mode for the full data size because the total compute time exceeds the execution time limit of the npu driver (~2 seconds). You can reduce the number of output channels (576 channels works) or you can run the scalar kernel with the 32-core design as noted above.
 * There is a bug if the trace_size is 32,768 bytes (rather than 16kB or 8kB) which causes the trace to seg fault. Still under investigation, but choosing a smaller size seems to be a good workaround.
 * Trace for the 32-core variant currently causes the compilation to hang. Under investigation but the non-trace run works without issue.
-* There is behavior bug where the number of input/activation sets sent from the host to the AIE array needs to be a certain value in order for correct functionality. For the single core design, `num_act=2` is sufficient for non-trace runs (`run_py`) but for trace runs (`trace_py`), we need this to be `num_act=8`. For the 32-core design, `num_act=1` is sufficient but any value for trace runs causes it to hang at the moment. This is under investigation.
+* `num_act` sets how many copies of the input image the host sends to the AIE array. The single-core design repeats nothing on chip and needs one copy per output-channel group (`co_group` = 72 for the default 1152 channels). The 32-core design uses shim repeat and needs one copy. The `Makefile` derives `num_act` from `multi`. Override it when you change `--out_channels`/`-oc` and need a different `co_group`.
 
 

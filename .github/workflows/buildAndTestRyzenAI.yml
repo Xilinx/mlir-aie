@@ -538,7 +538,7 @@ jobs:
           arch: x64
 
       - name: Set up Python
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
           python-version: "3.12"
 
@@ -546,7 +546,8 @@ jobs:
         run: |
           # The XRT-free / Boost-free packaging tool aiecc uses on the NPU_RUNTIME=hrx
           # path. Building it here proves the pure-HRX packaging tool compiles on
-          # Windows in this tree (not just the submodule's own CI).
+          # Windows in this tree (the dedicated buildAndTestHrxXclbinutil.yml workflow
+          # covers the standalone build/test matrix in more detail).
           #
           # Build-only on a GitHub-hosted runner with no NPU, so the on-device
           # retry signatures don't apply; retry once on any failure to ride out a

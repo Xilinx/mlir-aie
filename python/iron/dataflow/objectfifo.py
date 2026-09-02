@@ -88,6 +88,8 @@ class ObjectFifo(Resolvable):
         init_values: list[np.ndarray] | None = None,
         consumer_obj_type: type[np.ndarray] | None = None,
         aie_stream: tuple[int, int] | None = None,
+        packet: bool = False,
+        packet_id: int | None = None,
     ):
         """Construct an ObjectFifo.
 
@@ -113,9 +115,11 @@ class ObjectFifo(Resolvable):
                 padding). Defaults to 0.
             disable_synchronization (bool, optional): When True, disables lock-based
                 synchronization on the ObjectFifo. Defaults to False.
-            repeat_count (int | None, optional): If set, causes the MemTile DMA to replay the
-                buffer descriptor this many times without a new DMA transfer from L3.
-                Distinct from ``iter_count`` (BD-chain iteration count). Defaults to None.
+            repeat_count (int | None, optional): If set, the sending end replicates
+                each object this many times before moving on to the next one. The
+                receiving end covers a whole batch in one acquire, so its lock
+                initializers scale to match. Distinct from ``iter_count``
+                (BD-chain iteration count). Defaults to None.
             delegate_tile (Tile | None, optional): Shared-memory delegate tile. When set, the
                 ObjectFifo's underlying buffer pool is allocated on this tile's memory module
                 instead of the default placement. Lowers to ``aie.objectfifo.allocate``. *Only
@@ -144,6 +148,14 @@ class ObjectFifo(Resolvable):
                 attributes ``(end, port)`` on the underlying ``aie.objectfifo`` op. Use with
                 kernels that emit on the wire via ``put_ms()`` instead of going through an L1
                 buffer. Defaults to None.
+            packet (bool, optional): Route this ObjectFifo as an ``aie.packet_flow``, sharing
+                the stream with other packet flows instead of reserving a circuit for it.
+                Decided per fifo, so a design may mix packet- and circuit-switched fifos.
+                Defaults to False.
+            packet_id (int | None, optional): Pin the 5-bit header the source stamps, for
+                designs that route on the id (e.g. a MemTile dispatching to one of several
+                cores). Requires ``packet``; when absent, allocation picks an id no other
+                flow is using. Defaults to None.
 
         Raises:
             ValueError: If ``depth`` is provided and is less than 1.
@@ -178,6 +190,8 @@ class ObjectFifo(Resolvable):
         self._init_values: list[np.ndarray] | None = init_values
         self._consumer_obj_type: type[np.ndarray] | None = consumer_obj_type
         self._aie_stream: tuple[int, int] | None = aie_stream
+        self._packet: bool = packet
+        self._packet_id: int | None = packet_id
 
     @property
     def depth(self) -> int | None:
@@ -216,11 +230,14 @@ class ObjectFifo(Resolvable):
         return self._obj_type
 
     def set_iter_count(self, iter_count: int):
-        """Set iteration count for DMA BD (Buffer Descriptor) chaining on MemTile for the ObjectFifo.
+        """Set how many times each end of the ObjectFifo cycles through its buffers.
 
         Args:
-            iter_count (int): Number of forward chain iterations.
-                - Must be in range [1, 256]: Forward chain with specified number of iterations
+            iter_count (int): Passes each end's BD chain makes before it stops.
+                Both ends carry ``depth * repeat_count * iter_count`` objects, so
+                a sending end replicating each object ``repeat_count`` times
+                makes that many fewer passes than the receiving end opposite it.
+                - Must be in range [1, 256]
 
         Raises:
             ValueError: If iter_count is outside the valid range [1, 256]
@@ -457,6 +474,8 @@ class ObjectFifo(Resolvable):
                 via_DMA=self._via_DMA or None,
                 initValues=self._init_values,
                 consumer_datatype=consumer_datatype,
+                packet=self._packet or None,
+                packet_id=self._packet_id,
             )
             self._op = op
 

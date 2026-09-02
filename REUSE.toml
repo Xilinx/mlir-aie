@@ -72,3 +72,30 @@ path = [
 precedence = "override"
 SPDX-FileCopyrightText = "Copyright (C) 2013-2016 Xilinx, Inc."
 SPDX-License-Identifier = "MIT"
+
+# hrx-xclbinutil vendored XRT sources: a trimmed, Boost-free copy of the XRT
+# `xclbinutil` tool (upstream iree-amd-aie/third_party/XRT). Upstream is
+# Apache-2.0 and its files carry the original Xilinx/AMD "All rights reserved"
+# notices, so declare the licensing here (precedence override) to keep those
+# notices verbatim instead of the project canonical form. The aie-pdi-transform
+# subtree is MIT and is carved out below.
+[[annotations]]
+path = ["third_party/hrx-xclbinutil/vendor/**"]
+precedence = "override"
+SPDX-FileCopyrightText = [
+    "Copyright (C) 2015-2024 Xilinx, Inc.",
+    "Copyright (C) 2023-2026 Advanced Micro Devices, Inc.",
+]
+SPDX-License-Identifier = "Apache-2.0"
+
+# The aie-pdi-transform subtree within the vendored XRT sources is MIT-licensed.
+# Listed AFTER the Apache-2.0 block above so it wins for these paths (the last
+# matching annotation wins in REUSE.toml).
+[[annotations]]
+path = ["third_party/hrx-xclbinutil/vendor/xclbinutil/aie-pdi-transform/**"]
+precedence = "override"
+SPDX-FileCopyrightText = [
+    "Copyright (C) 2018-2022 Xilinx, Inc.",
+    "Copyright (C) 2023 Advanced Micro Devices, Inc.",
+]
+SPDX-License-Identifier = "MIT"
