@@ -172,7 +172,7 @@ void test() {
     for (int c = 0; c + cols <= 4; ++c)
       expectedStarts.push_back(c);
     checkPartitionStarts(dev, 4, expectedStarts);
-    checkControllerTopology(dev, 0, 0);
+    checkControllerTopology(dev, 0, 1);
   }
 
   // AIEDevice::npu2
@@ -203,7 +203,7 @@ void test() {
     throw std::runtime_error("Failed npu2 rows");
   }
   checkPartitionStarts(AIE::AIEDevice::npu2, 8, {0});
-  checkControllerTopology(AIE::AIEDevice::npu2, 0, 0);
+  checkControllerTopology(AIE::AIEDevice::npu2, 0, 1);
 
   // AIEDevice::npu2_1col, npu2_2col, npu2_3col, npu2_4col, npu2_5col,
   // npu2_6col, npu2_7col
@@ -245,7 +245,7 @@ void test() {
     for (int c = 0; c + cols <= 8; ++c)
       expectedStarts.push_back(c);
     checkPartitionStarts(dev, 8, expectedStarts);
-    checkControllerTopology(dev, 0, 0);
+    checkControllerTopology(dev, 0, 1);
   }
 
   // AIEDevice::xcve3858 (AIE2PS)
