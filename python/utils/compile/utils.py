@@ -551,16 +551,61 @@ def compile_mlir_module(
             os.unlink(mlir_file)
 
 
-def _rename_symbol_in_object(object_path: str, old_name: str, new_name: str) -> None:
-    """Rename a symbol in a compiled object file using llvm-objcopy."""
-    objcopy = config.objcopy_path()
-    result = subprocess.run(
-        [objcopy, f"--redefine-sym={old_name}={new_name}", str(object_path)],
+def prefix_symbols_in_object(object_path: str, prefix: str) -> None:
+    """Prefix every defined, external symbol in a compiled object file.
+
+    Used when linking multiple independently-compiled objects into one module
+    (e.g. IRON's operator fusion, or mlir-aie's own kernel memoization: see
+    ``compile_external_kernel``'s ``symbol_prefix`` handling), to avoid symbol
+    collisions between them: every symbol an object defines is renamed to
+    ``{prefix}{symbol}`` before it is linked alongside sibling objects.
+
+    Internally this lists symbols with llvm-nm and bulk-renames them with a
+    single llvm-objcopy --redefine-syms= pass, done directly in Python
+    (rather than shelling out to sh/awk) so it behaves identically on POSIX
+    and Windows. nm's exit status is checked explicitly before objcopy ever
+    runs: silently ignoring an nm failure would produce an empty rename map,
+    turning this into a silent no-op that only surfaces later as a
+    confusing "undefined symbol: <prefix><sym>" at final link time.
+
+    Idempotent: a symbol that already starts with ``prefix`` is left alone,
+    so calling this again on an already-prefixed object (e.g. a disk-cached
+    kernel object reused across process runs) is a safe no-op rather than
+    re-prefixing an already-prefixed symbol.
+    """
+    nm = config.nm_path()
+    nm_result = subprocess.run(
+        [nm, "--defined-only", "--extern-only", str(object_path)],
         capture_output=True,
         check=False,
     )
-    if result.returncode != 0:
-        raise RuntimeError(f"Symbol rename failed: {result.stderr.decode()}")
+    if nm_result.returncode != 0:
+        raise RuntimeError(f"Symbol listing failed: {nm_result.stderr.decode()}")
+
+    symbols = [
+        line.split()[-1]
+        for line in nm_result.stdout.decode().splitlines()
+        if len(line.split()) >= 3
+    ]
+    if prefix:
+        symbols = [symbol for symbol in symbols if not symbol.startswith(prefix)]
+
+    objcopy = config.objcopy_path()
+    map_file = f"{object_path}.symbol_map"
+    with open(map_file, "w") as f:
+        for symbol in symbols:
+            f.write(f"{symbol} {prefix}{symbol}\n")
+
+    try:
+        result = subprocess.run(
+            [objcopy, f"--redefine-syms={map_file}", str(object_path)],
+            capture_output=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(f"Symbol prefixing failed: {result.stderr.decode()}")
+    finally:
+        os.remove(map_file)
 
 
 def compile_external_kernel(func, kernel_dir, target_arch):
@@ -584,7 +629,7 @@ def compile_external_kernel(func, kernel_dir, target_arch):
     # inline + symbol_prefix is unsupported: the MLIR func.call uses the
     # prefixed func._name, but an inline kernel is emitted as a textual .ll whose
     # ``define`` carries the un-prefixed _original_name. Object mode reconciles
-    # the two via an llvm-objcopy --redefine-sym rename, which cannot rewrite a
+    # the two via an llvm-objcopy --redefine-syms rename, which cannot rewrite a
     # .ll. Fail loudly here rather than downstream in objcopy or as a silent
     # call/define name mismatch at llvm-link time.
     if getattr(func, "_inline", False) and getattr(func, "_symbol_prefix", None):
@@ -599,8 +644,11 @@ def compile_external_kernel(func, kernel_dir, target_arch):
     output_file = os.path.join(kernel_dir, func.object_file_name)
     if os.path.exists(output_file):
         if getattr(func, "_symbol_prefix", None):
-            # Ensure rename is applied even on cache hit — idempotent with llvm-objcopy
-            _rename_symbol_in_object(output_file, func._original_name, func._name)
+            # Ensure the prefix is applied even on a cache hit; prefix_symbols_in_object
+            # is idempotent (an already-prefixed symbol is left alone), so this is
+            # safe whether or not a prior process run already renamed this on-disk
+            # object.
+            prefix_symbols_in_object(output_file, f"{func._symbol_prefix}_")
         return
 
     original_name = getattr(func, "_original_name", func._name)
@@ -655,11 +703,13 @@ def compile_external_kernel(func, kernel_dir, target_arch):
     else:
         raise ValueError("Neither source_string nor source_file is provided")
 
-    # Rename symbol if a prefix is set.
+    # Prefix every defined symbol in the object if a prefix is set. This covers
+    # not just the entry point (func._name is already "{symbol_prefix}_{original}")
+    # but any other extern "C" helper symbols the kernel source happens to define,
+    # so multiple memoized instantiations of the same source can be linked
+    # together without their helpers colliding too.
     if getattr(func, "_symbol_prefix", None):
-        original = func._original_name
-        prefixed = func._name  # already prefixed
-        _rename_symbol_in_object(output_file, original, prefixed)
+        prefix_symbols_in_object(output_file, f"{func._symbol_prefix}_")
 
     func._compiled = True
 
