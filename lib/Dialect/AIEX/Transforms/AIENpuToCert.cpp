@@ -680,8 +680,17 @@ struct SplitNpuBlockWriteOpPattern : OpRewritePattern<AIEX::NpuBlockWriteOp> {
 
     auto loc = op.getLoc();
 
-    // Calculate split point (split roughly in half)
-    uint32_t splitElements = dataSize / 2;
+    // Split roughly in half, rounded down to a whole 128-bit program-memory
+    // line -- dataSize/2 alone is only guaranteed word-aligned. Costs at most
+    // 3 words of imbalance; harmless for word-addressed non-program-memory
+    // targets.
+    auto elemTy = dyn_cast<IntegerType>(dataType.getElementType());
+    if (!elemTy || elemTy.getWidth() != 32)
+      return failure();
+    constexpr uint32_t wordsPerLine = 4; // 16 bytes / 4 bytes-per-word
+    uint32_t splitElements = (dataSize / 2) & ~(wordsPerLine - 1);
+    if (splitElements == 0)
+      return failure();
     uint32_t firstChunkSize = splitElements;
     uint32_t secondChunkSize = dataSize - splitElements;
 
