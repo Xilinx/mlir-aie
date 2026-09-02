@@ -603,9 +603,8 @@ def compile_external_kernel(func, kernel_dir, target_arch):
             _rename_symbol_in_object(output_file, func._original_name, func._name)
         return
 
-    original_name = getattr(func, "_original_name", func._name)
-
     if func._source_string is not None:
+        original_name = getattr(func, "_original_name", func._name)
         source_file = os.path.join(kernel_dir, f"{original_name}.cc")
         with open(source_file, "w") as f:
             f.write(func._source_string)
@@ -625,13 +624,21 @@ def compile_external_kernel(func, kernel_dir, target_arch):
         )
 
     elif func._source_file is not None:
-        source_file = os.path.join(kernel_dir, f"{original_name}.cc")
+        # Named after the real source basename (not the entry point) so the
+        # embedded debug/.strtab filename is deterministic: with several
+        # ExternalFunctions sharing one object_file_name, only the first one
+        # visited in `ExternalFunction._instances` (a content-hashed set,
+        # so iteration order shifts whenever ANY registered kernel's content
+        # changes) actually compiles, and its naming used to leak into every
+        # sibling entry point's object.
+        source_file = os.path.join(kernel_dir, os.path.basename(func._source_file))
         # Check if source file exists before copying
         if not os.path.exists(func._source_file):
             raise FileNotFoundError(
                 f"ExternalFunction '{func._name}': source file not found: {func._source_file}"
             )
-        shutil.copy2(func._source_file, source_file)
+        if os.path.abspath(source_file) != os.path.abspath(func._source_file):
+            shutil.copy2(func._source_file, source_file)
         # Include the original source file's directory so relative includes
         # (e.g. "../aie_kernel_utils.h") still resolve after the file is
         # copied into kernel_dir.
