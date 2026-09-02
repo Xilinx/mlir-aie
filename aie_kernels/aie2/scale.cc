@@ -73,7 +73,8 @@ void scale_vectorized<int32_t>(int32_t *__restrict a, int32_t *__restrict c,
 extern "C" {
 
 #ifndef BIT_WIDTH
-#error "scale.cc: BIT_WIDTH selects the element type of the exported wrappers and has no safe default. Pass -DBIT_WIDTH=16 or 32."
+#error                                                                         \
+    "scale.cc: BIT_WIDTH selects the element type of the exported wrappers and has no safe default. Pass -DBIT_WIDTH=16 or 32."
 #endif
 
 #if BIT_WIDTH == 16
@@ -101,7 +102,8 @@ void vector_scalar_mul_vector(int32_t *a_in, int32_t *c_out, int32_t *factor,
 }
 
 #else
-#error "scale.cc: BIT_WIDTH selects the element type of the exported wrappers and has no safe default -- an unset BIT_WIDTH expands to 0 and would silently select the widest branch. Pass -DBIT_WIDTH=16 or 32."
+#error                                                                         \
+    "scale.cc: BIT_WIDTH selects the element type of the exported wrappers and has no safe default -- an unset BIT_WIDTH expands to 0 and would silently select the widest branch. Pass -DBIT_WIDTH=16 or 32."
 #endif
 
 } // extern "C"

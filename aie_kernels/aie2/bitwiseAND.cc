@@ -48,7 +48,8 @@ void bitwiseAND_aie(const T *src1, const T *src2, T *dst, const int32_t width,
 extern "C" {
 
 #ifndef BIT_WIDTH
-#error "bitwiseAND.cc: BIT_WIDTH selects the element type of the exported wrappers and has no safe default. Pass -DBIT_WIDTH=8, 16 or 32."
+#error                                                                         \
+    "bitwiseAND.cc: BIT_WIDTH selects the element type of the exported wrappers and has no safe default. Pass -DBIT_WIDTH=8, 16 or 32."
 #endif
 
 #if BIT_WIDTH == 8
@@ -86,6 +87,7 @@ void bitwiseANDTile(int32_t *in1, int32_t *in2, int32_t *out,
 }
 
 #else
-#error "bitwiseAND.cc: BIT_WIDTH selects the element type of the exported wrappers and has no safe default -- an unset BIT_WIDTH expands to 0 and would silently select the widest branch. Pass -DBIT_WIDTH=8, 16 or 32."
+#error                                                                         \
+    "bitwiseAND.cc: BIT_WIDTH selects the element type of the exported wrappers and has no safe default -- an unset BIT_WIDTH expands to 0 and would silently select the widest branch. Pass -DBIT_WIDTH=8, 16 or 32."
 #endif
 } // extern "C"
