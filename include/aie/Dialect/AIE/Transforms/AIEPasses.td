@@ -67,37 +67,37 @@ def AIEPlaceTiles : Pass<"aie-place-tiles", "DeviceOp"> {
 
   let dependentDialects = ["xilinx::AIE::AIEDialect"];
 
-  let options = [
-    Option<"clPlacerType", "placer", "enum xilinx::AIE::PlacerType",
-           /*default=*/"xilinx::AIE::PlacerType::SequentialPlacer",
-           "Placement algorithm to use (default: sequential_placer)",
-           "llvm::cl::values("
-             "clEnumValN(xilinx::AIE::PlacerType::SequentialPlacer, "
-                        "\"sequential_placer\", \"Sequential column-major placement\"), "
-             "clEnumValN(xilinx::AIE::PlacerType::SAPlacer, "
-                        "\"sa_placer\", \"Simulated annealing placement\"))">,
-    Option<"clCoresPerCol", "cores-per-col", "int",
-           /*default=*/"-1",
-           "Limit number of cores per column (-1 = no limit). "
-           "Spreads cores across columns for better trace packet routing.">,
-    Option<"clMergeLogicalTiles", "merge-logical-tiles", "bool",
-           /*default=*/"true",
-           "When true (default), allow multiple non-core (ShimNOCTile / "
-           "MemTile) aie.logical_tile ops to share one physical aie.tile "
-           "if combined DMA channel demand fits. When false, each non-core "
-           "aie.logical_tile is pinned to its own physical tile. CoreTile "
-           "placement is unaffected.">,
-    Option<"clSpreadUnanchoredTiles", "spread-unanchored-tiles", "bool",
+  let options =
+      [Option<"clPlacerType", "placer", "enum xilinx::AIE::PlacerType",
+              /*default=*/"xilinx::AIE::PlacerType::SequentialPlacer",
+              "Placement algorithm to use (default: sequential_placer)",
+              "llvm::cl::values("
+              "clEnumValN(xilinx::AIE::PlacerType::SequentialPlacer, "
+              "\"sequential_placer\", \"Sequential column-major placement\"), "
+              "clEnumValN(xilinx::AIE::PlacerType::SAPlacer, "
+              "\"sa_placer\", \"Simulated annealing placement\"))">,
+       Option<"clCoresPerCol", "cores-per-col", "int",
+              /*default=*/"-1",
+              "Limit number of cores per column (-1 = no limit). "
+              "Spreads cores across columns for better trace packet routing.">,
+       Option<"clMergeLogicalTiles", "merge-logical-tiles", "bool",
+              /*default=*/"true",
+              "When true (default), allow multiple non-core (ShimNOCTile / "
+              "MemTile) aie.logical_tile ops to share one physical aie.tile "
+              "if combined DMA channel demand fits. When false, each non-core "
+              "aie.logical_tile is pinned to its own physical tile. CoreTile "
+              "placement is unaffected.">,
+       Option<
+           "clSpreadUnanchoredTiles", "spread-unanchored-tiles", "bool",
            /*default=*/"false",
            "When a non-core aie.logical_tile has no CoreTile peers to derive a "
            "routing centroid from, rank candidates by current DMA load instead "
            "of distance to the fallback column. Affects only designs with no "
            "core anchors (e.g. pure DMA passthrough); CoreTile placement and "
            "anchored non-core placement are unchanged.">,
-    Option<"clSASeed", "sa-seed", "int",
-           /*default=*/"1",
-           "Random seed for SA placer (0 = non-deterministic).">
-  ];
+       Option<"clSASeed", "sa-seed", "int",
+              /*default=*/"1",
+              "Random seed for SA placer (0 = non-deterministic).">];
 }
 
 def AIEAssignBufferAddresses : Pass<"aie-assign-buffer-addresses", "DeviceOp"> {
