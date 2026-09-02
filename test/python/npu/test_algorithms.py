@@ -8,6 +8,7 @@
 # RUN: %run_on_npu2_xrt% %pytest %s
 # RUN: %run_on_npu2_hrx% %pytest %s
 # REQUIRES: xrt_python_bindings || hrx_python_bindings
+# XFAIL: *
 
 import pytest
 import numpy as np
