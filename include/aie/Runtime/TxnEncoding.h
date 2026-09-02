@@ -94,6 +94,21 @@ inline BdPool bd_pool_init(uint32_t n) {
   return p;
 }
 
+// Withhold `id` from the pool -- a static BD already owns that slot in the
+// tile's shared BD table, and popping it here would silently overwrite it.
+// `free_ids[0..head)` is kept sorted highest-to-lowest (see bd_pool_init) so
+// pop keeps handing out the lowest remaining id first; shift the tail down
+// instead of swapping in the top, which would scramble that order.
+inline void bd_pool_reserve(BdPool &p, uint32_t id) {
+  for (int i = 0; i < p.head; ++i)
+    if (p.free_ids[i] == id) {
+      for (int j = i; j < p.head - 1; ++j)
+        p.free_ids[j] = p.free_ids[j + 1];
+      --p.head;
+      return;
+    }
+}
+
 // Pop a free BD ID into `out`. Returns false if the pool is empty -- the
 // generated builder turns that into a `return std::nullopt`, so a runtime
 // working set that exceeds the tile's BD count yields no stream rather than a
