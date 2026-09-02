@@ -30,6 +30,7 @@ std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIEDecomposeLargeDmaBdPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> createAIENpuToCertPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>> createAIECertPagesPass();
+std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>> createAIECertVerifyPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> createAIEXToStandardPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createAIESCFToControlFlowPass();

@@ -1353,6 +1353,38 @@ getTransactionPipeline(mlir::MLIRContext *ctx, llvm::StringRef elfDir,
   return pm;
 }
 
+// CERT pipeline: transaction generation, followed by lowering the
+// transaction into the microcontroller firmware's CERT representation. Mirrors
+// `builtin.module(aie.device(convert-aie-to-transaction{elf-dir=<elfDir>}),
+// aie-npu-to-cert, aie.device(cert-legalize-pages, aie-cert-verify))`.
+// `aie-npu-to-cert` runs
+// module-wide (its `device-name` option defaults to "main" and absorbs every
+// other device's load-pdi references into that device's cert sections), so
+// this pipeline is meant to run once over the whole module, not per device.
+// Feeds `--aie-cert-to-asm` (AIETranslateToUcDma) to produce the control-code
+// assembly consumed by the downstream CERT assembler. Returns nullptr on parse
+// failure.
+inline std::unique_ptr<mlir::PassManager>
+getCertPipeline(mlir::MLIRContext *ctx, llvm::StringRef elfDir) {
+  namespace X = xilinx::AIEX;
+  auto pm = std::make_unique<mlir::PassManager>(ctx);
+  std::string txnPipelineStr =
+      ("convert-aie-to-transaction{elf-dir=" + elfDir + "}").str();
+  auto &dpm = pm->nest<xilinx::AIE::DeviceOp>();
+  if (mlir::failed(mlir::parsePassPipeline(txnPipelineStr, dpm)))
+    return nullptr;
+  pm->addPass(X::createAIENpuToCertPass());
+  auto &certDpm = pm->nest<xilinx::AIE::DeviceOp>();
+  certDpm.addPass(X::createAIECertPagesPass());
+  // aie-cert-verify runs last, after page legalization and placement lowering,
+  // where final pages and uC (group) assignments are known. It turns CERT
+  // firmware constraints (barrier co-location, one wait_tcts per actor, remote
+  // barrier rendezvous, preempt-count parity, id budgets) into compile-time
+  // diagnostics instead of hardware hangs.
+  certDpm.addPass(X::createAIECertVerifyPass());
+  return pm;
+}
+
 // Control-packet generation: transaction pipeline, then rewrite the
 // transaction ops into control packets and legalize them — all in one device
 // nest. Same `elfDir` / `devName` semantics as getTransactionPipeline. Returns
