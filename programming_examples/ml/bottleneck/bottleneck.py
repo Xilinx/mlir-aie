@@ -208,6 +208,7 @@ def bottleneck(
                 0,
             ],
             tile=Tile(0, 3),
+            stack_size=4672,
         )
     )
     workers.append(
@@ -221,6 +222,7 @@ def bottleneck(
                 l2_out_c // 2,
             ],
             tile=Tile(0, 5),
+            stack_size=4672,
         )
     )
 
@@ -261,7 +263,7 @@ def bottleneck(
                 conv1_skip,
             ],
             tile=Tile(0, 4),
-            stack_size=0xA00,
+            stack_size=2752,
         )
     )
 

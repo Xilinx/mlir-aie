@@ -82,6 +82,7 @@ config.substitutions.append(("%HSA_DIR%", ""))
 # Add Vitis components as features
 LitConfigHelper.add_vitis_components_features(config, config.vitis_components)
 LitConfigHelper.setup_host_compiler_substitutions(config)
+LitConfigHelper.add_makefile_examples_feature(config)
 
 # Detect Peano before XRT feature gating for systems without Chess/AIETOOLS.
 early_peano_tools_dir = os.path.join(config.peano_install_dir, "bin")
