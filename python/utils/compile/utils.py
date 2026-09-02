@@ -635,7 +635,10 @@ def compile_external_kernel(func, kernel_dir, target_arch):
                 f"ExternalFunction '{func._name}': source file not found: {func._source_file}"
             )
         if os.path.abspath(source_file) != os.path.abspath(func._source_file):
-            shutil.copy2(func._source_file, source_file)
+            try:
+                shutil.copy2(func._source_file, source_file)
+            except shutil.SameFileError:
+                pass
         # Include the original source file's directory so relative includes
         # (e.g. "../aie_kernel_utils.h") still resolve after the file is
         # copied into kernel_dir.
