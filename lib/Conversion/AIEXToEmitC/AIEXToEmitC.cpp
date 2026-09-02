@@ -60,6 +60,23 @@ std::string bdPoolName(uint32_t col, uint32_t row) {
   return "bd_pool_" + std::to_string(col) + "_" + std::to_string(row);
 }
 
+// BD ids the static allocator has already placed on (col, row), read off the
+// placed aie.mem / aie.memtile_dma / aie.shim_dma chains. Sorted so the emitted
+// stream is deterministic.
+llvm::SmallVector<uint32_t, 8> staticBdIdsOnTile(AIE::DeviceOp device,
+                                                 uint32_t col, uint32_t row) {
+  llvm::SmallVector<uint32_t, 8> ids;
+  for (AIE::DmaBody program : device.getOps<AIE::DmaBody>()) {
+    auto id = program.getTileID();
+    if (id.col != static_cast<int>(col) || id.row != static_cast<int>(row))
+      continue;
+    llvm::append_range(ids, AIE::getAssignedBdIds(program));
+  }
+  llvm::sort(ids);
+  ids.erase(llvm::unique(ids), ids.end());
+  return ids;
+}
+
 // A uint32_t literal operand (e.g. `42u`) for a txn_append_* argument. Used for
 // the compile-time-resolved address fields (buffer/col/row are folded in).
 Value u32Literal(OpBuilder &b, Location loc, uint32_t val) {
@@ -581,6 +598,12 @@ private:
                                 "aie_runtime::BdPool " + bdPoolName(col, row) +
                                     " = aie_runtime::bd_pool_init(" +
                                     std::to_string(numBDs) + ");");
+      // Hand back the ids the static allocator already placed on this tile.
+      for (uint32_t id : staticBdIdsOnTile(deviceOp, col, row))
+        emitc::VerbatimOp::create(fb, loc,
+                                  "aie_runtime::bd_pool_reserve(" +
+                                      bdPoolName(col, row) + ", " +
+                                      std::to_string(id) + ");");
     });
 
     // A rolled loop makes the op count a runtime quantity: declare a __opcount

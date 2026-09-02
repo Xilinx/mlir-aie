@@ -1241,6 +1241,12 @@ def AIE_NpuControlPacketOp: AIEX_Op<"control_packet", []> {
   let extraClassDeclaration = [{
     uint32_t getRowFromAddr();
     uint32_t getColumnFromAddr();
+
+    /// Most words -- data payload, or read length when there is no data --
+    /// one packet can carry on the wire (the header's beat count field is 2
+    /// bits). Enforced where the header is packed, not here -- see
+    /// AIETranslateControlPacketsToUI32Vec.
+    static constexpr unsigned getMaxDataWords() { return 4; }
   }];
 }
 
@@ -1308,7 +1314,10 @@ def AIE_NpuLoadPdiOp: AIEX_Op<"npu.load_pdi", []> {
   let hasCanonicalizeMethod = 1;
 }
 
-def AIE_DMAConfigureTaskOp : AIEX_Op<"dma_configure_task", [HasAncestor<"AIE::RuntimeSequenceOp">, TileElement, AttrSizedOperandSegments]>, Results<(outs Index:$result)> {
+def AIE_DMAConfigureTaskOp
+    : AIEX_Op<"dma_configure_task", [HasAncestor<"AIE::RuntimeSequenceOp">,
+                                     TileElement]>,
+      Results<(outs Index:$result)> {
   let summary = "Concrete Instantiation of a Buffer Descriptor Chain as a Task on a Channel and Direction on a Tile";
   let description = [{
     Encapsulates the DMA configuration of one task, that is the (chain of) buffer descriptors to be executed on a given channel and direction on a tile.
@@ -1318,16 +1327,12 @@ def AIE_DMAConfigureTaskOp : AIEX_Op<"dma_configure_task", [HasAncestor<"AIE::Ru
     Once configured, a task can be submitted for execution using `aiex.dma_start_configured_task`, after which its execution completion can be awaited using `aiex.dma_await_task`.
   }];
 
-  let arguments = (
-    ins Index:$tile,
-        DMAChannelDir:$direction,
-        I32Attr:$channel,
-        DefaultValuedOptionalAttr<BoolAttr, "false">:$issue_token,
-        DefaultValuedOptionalAttr<I32Attr, "0">:$repeat_count,
-        Optional<I32>:$repeat_count_val,
-        Optional<I32>:$bd_id_val,
-        OptionalAttr<PacketInfoAttr>:$packet
-  );
+  let arguments = (ins Index:$tile, DMAChannelDir:$direction, I32Attr:$channel,
+      DefaultValuedOptionalAttr<BoolAttr, "false">:$issue_token,
+      DefaultValuedOptionalAttr<I32Attr, "0">:$repeat_count,
+      Optional<I32>:$repeat_count_val, OptionalAttr<PacketInfoAttr>:$packet,
+      // Put the channel into out-of-order mode (S2MM only).
+      UnitAttr:$out_of_order);
 
   let regions = (
     region AnyRegion:$body
@@ -1336,7 +1341,7 @@ def AIE_DMAConfigureTaskOp : AIEX_Op<"dma_configure_task", [HasAncestor<"AIE::Ru
   let assemblyFormat = [{
     `(` $tile `,` $direction `,` $channel (`,` $packet^)? `)`
     (`repeat` $repeat_count_val^ `:` type($repeat_count_val))?
-    (`bd_id` $bd_id_val^ `:` type($bd_id_val))? regions attr-dict
+    regions attr-dict
   }];
 
   let extraClassDeclaration = [{
@@ -1344,7 +1349,8 @@ def AIE_DMAConfigureTaskOp : AIEX_Op<"dma_configure_task", [HasAncestor<"AIE::Ru
     // Null when the tile is still an aie.logical_tile, so passes that can run
     // before placement defer instead of aborting inside getTileOp().
     AIE::TileOp tryGetTileOp();
-    std::optional<uint32_t> getFirstBdId();
+    // The task's head BD, or null when the body has none.
+    AIE::DMABDOp getFirstBd();
     // The repeat count as an OpFoldResult: the runtime operand if present, else
     // the compile-time attribute. Mirrors dma_bd's offset/len duality.
     mlir::OpFoldResult getRepeatCountValue() {
@@ -1363,16 +1369,17 @@ def AIE_DMAConfigureTaskOp : AIEX_Op<"dma_configure_task", [HasAncestor<"AIE::Ru
   let hasVerifier = 1;
   let hasCanonicalizeMethod = 1;
 
-  let builders = [
-    OpBuilder<(ins "::mlir::Type":$result, "mlir::Value":$tile, "xilinx::AIE::DMAChannelDir":$dir, "int":$channel_index,
-               "bool":$token, "int":$repeat), [{
+  let builders = [OpBuilder<(ins "::mlir::Type":$result, "mlir::Value":$tile,
+                                "xilinx::AIE::DMAChannelDir":$dir,
+                                "int":$channel_index, "bool":$token,
+                                "int":$repeat),
+                            [{
       build($_builder, $_state, result, tile,
             xilinx::AIE::DMAChannelDirAttr::get(odsBuilder.getContext(), dir),
             $_builder.getI32IntegerAttr(channel_index), $_builder.getBoolAttr(token),
             $_builder.getI32IntegerAttr(repeat), /*repeat_count_val=*/nullptr,
-            /*bd_id_val=*/nullptr, /*packet=*/nullptr);
-    }]>
-  ];
+            /*packet=*/nullptr, /*out_of_order=*/nullptr);
+    }]>];
 }
 
 def AIE_DMAConfigureTaskForOp : AIEX_Op<"dma_configure_task_for", [HasAncestor<"AIE::RuntimeSequenceOp">]>, Results<(outs Index:$result)> {

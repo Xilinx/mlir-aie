@@ -2696,9 +2696,10 @@ static LogicalResult verifyDMARepeatCount(Operation *op, int32_t repeatCount) {
   return success();
 }
 
-static LogicalResult verifyOutOfOrderChannel(Operation *op, DMAChannelDir dir,
-                                             bool outOfOrder,
-                                             ArrayRef<DMABDOp> bds) {
+LogicalResult
+xilinx::AIE::verifyOutOfOrderChannel(Operation *op, DMAChannelDir dir,
+                                     bool outOfOrder, ArrayRef<DMABDOp> bds,
+                                     bool packetEnabledByContext) {
   if (!outOfOrder)
     return success();
   if (dir != DMAChannelDir::S2MM)
@@ -2710,7 +2711,7 @@ static LogicalResult verifyOutOfOrderChannel(Operation *op, DMAChannelDir dir,
     return op->emitOpError("out-of-order S2MM channel must have at least one "
                            "receive buffer descriptor"); // else stall
   for (DMABDOp bd : bds) {
-    if (!isBdPacketEnabled(bd))
+    if (!packetEnabledByContext && !isBdPacketEnabled(bd))
       return bd.emitOpError(
           "out-of-order S2MM receive buffer descriptor must be packet-enabled");
     if (bd.getOutOfOrderId().has_value())
@@ -2868,6 +2869,7 @@ void DMABDOp::buildMixed(mlir::OpBuilder &builder, mlir::OperationState &state,
         /*static_sizes=*/staticSizesAttr,
         /*static_strides=*/staticStridesAttr,
         /*pad_dimensions=*/padDims,
+        /*bd_id_val=*/nullptr,
         /*bd_id=*/nullptr,
         /*packet=*/packet,
         /*out_of_order_id=*/nullptr,
@@ -2985,6 +2987,15 @@ bool xilinx::AIE::isContiguousBDTransfer(llvm::ArrayRef<BDDimLayoutAttr> dims) {
   return true;
 }
 
+llvm::SmallVector<uint32_t> xilinx::AIE::getAssignedBdIds(DmaBody program) {
+  llvm::SmallVector<uint32_t> ids;
+  program.getDmaBody().walk([&](DMABDOp bd) {
+    if (auto id = bd.getBdId())
+      ids.push_back(*id);
+  });
+  return ids;
+}
+
 LogicalResult DMABDOp::verify() {
   // Skip verification of the BDOp outside of mem operations.
   // BDOps may appear elsewhere and subsequent lowerings will place them in the
@@ -3028,6 +3039,9 @@ LogicalResult DMABDOp::verify() {
   if (std::optional<int32_t> nextBdId = getNextBdId();
       nextBdId.has_value() && static_cast<uint32_t>(*nextBdId) >= maxBds)
     return emitOpError("nextBdId attribute exceeds max: ") << maxBds - 1;
+
+  if (getBdIdVal() && getBdId().has_value())
+    return emitOpError("bd_id and bd_id_val are mutually exclusive");
 
   // Issue #1097: the buffer_length field of a DMA buffer descriptor has a
   // tile-type-specific bit width (e.g. on AIE2: 32-bit shim, 17-bit mem tile,
