@@ -183,13 +183,25 @@ collectReferencedSSAValues(Operation *op, const IRMapping &argMap,
     region.walk([&](Operation *nestedOp) {
       for (Value operand : nestedOp->getOperands()) {
         if (argMap.contains(operand)) {
-          return;
+          continue;
         }
 
-        // Check if defined within the parent operation
-        Operation *defOp = operand.getDefiningOp();
-        if (defOp && op->isProperAncestor(defOp)) {
-          return;
+        // Check if defined within the parent operation.
+        if (Operation *defOp = operand.getDefiningOp()) {
+          if (op->isProperAncestor(defOp)) {
+            continue;
+          }
+        } else if (auto blockArg = llvm::dyn_cast<BlockArgument>(operand)) {
+          // A block argument has no defining op, so the check above cannot see
+          // it. One belonging to a region nested inside `op` -- an scf.for
+          // induction variable, most commonly -- is nonetheless defined within
+          // `op` and must not be collected as an external reference: it would
+          // reach copyReferencedSSAValues, whose getDefiningOp() is null, and
+          // fail with "Referenced value is not defined by an operation".
+          Operation *owner = blockArg.getOwner()->getParentOp();
+          if (owner && (owner == op || op->isProperAncestor(owner))) {
+            continue;
+          }
         }
 
         processValue(operand);
@@ -520,10 +532,17 @@ struct InlineRuntimeCallsPattern : RewritePattern {
       Operation *clonedOp = rewriter.clone(op, argMap);
       clonedOpInsertionPoint = rewriter.saveInsertionPoint();
 
-      if (failed(inlineReferencedSymbolDefinitions(
-              rewriter, clonedOp, calleeRuntimeSequence.getOperation(), argMap,
-              previouslyInlinedSymbolMap, callerDevice, clonedDefs,
-              symbolDefInsertPoint, allSymbolNames))) {
+      // Inline symbol references in all nested ops.
+      WalkResult symbolWalk = clonedOp->walk([&](Operation *nestedOp) {
+        if (failed(inlineReferencedSymbolDefinitions(
+                rewriter, nestedOp, calleeRuntimeSequence.getOperation(),
+                argMap, previouslyInlinedSymbolMap, callerDevice, clonedDefs,
+                symbolDefInsertPoint, allSymbolNames))) {
+          return WalkResult::interrupt();
+        }
+        return WalkResult::advance();
+      });
+      if (symbolWalk.wasInterrupted()) {
         return failure();
       }
     }
