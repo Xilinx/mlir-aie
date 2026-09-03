@@ -194,3 +194,30 @@ module @reuse_output_buffer_dynamic {
     }
   }
 }
+
+// -----
+
+// Test: the trace routes live in the device's stream switches, which every
+// sequence of the device drives, so the sequences must name one egress column.
+// Buffer size and reuse mode are per sequence.
+module @disagreeing_host_configs {
+  aie.device(npu2) {
+    %tile02 = aie.tile(0, 2)
+    aie.trace @core_trace(%tile02) {
+      aie.trace.packet id=1 type=core
+      aie.trace.event<"INSTR_EVENT_0">
+      aie.trace.start broadcast=15
+      aie.trace.stop broadcast=14
+    }
+    aie.runtime_sequence @first(%arg0: memref<64xi32>) {
+      // expected-note@+1 {{first aie.trace.host_config here}}
+      aie.trace.host_config {buffer_size = 4096 : i32, egress_shim_col = 0 : i32}
+      aie.trace.start_config @core_trace
+    }
+    aie.runtime_sequence @second(%arg0: memref<64xi32>) {
+      // expected-error@+1 {{routes trace data differently}}
+      aie.trace.host_config {buffer_size = 8192 : i32, egress_shim_col = 1 : i32}
+      aie.trace.start_config @core_trace
+    }
+  }
+}
