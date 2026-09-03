@@ -593,23 +593,22 @@ EdgeWithTypedOutput<NpuProgram> &buildNpuProgramSubgraph(
   return npuProgram;
 }
 
-// The Peano runtime entry function. `__start` (crt0) sets SP and jumps to it,
-// it sets up the C environment and calls `main` -- the core body -- so its
-// frame is live across everything the core does.
+// The Peano runtime entry function. `__start` (crt0) sets SP and jumps to it.
+// `_main_init` initializes the C environment and calls `main`, the core body.
+// Its frame stays live across the whole call to the core body.
 constexpr llvm::StringLiteral runtimeEntrySymbol = "_main_init";
 
 // Absolute path of the Peano crt1.o for `arch` ("aie2", "aie2p", ...), or the
-// empty string when it cannot be located. crt1.o holds `_main_init`, but the
-// toolchain supplies it: it is in neither the compiled core object nor the
-// core's `link_files`, so the stack-size call-graph walk never sees it and the
-// driver has to find it separately. crt0.o needs no such treatment -- `__start`
-// has no frame and crt0.o carries no `.stack_sizes` data at all.
+// empty string when clang cannot locate it. crt1.o holds `_main_init`. The
+// toolchain supplies crt1.o, so it is in neither the compiled core object nor
+// the core's `link_files`. The stack-size call-graph walk therefore cannot
+// reach it. The driver locates it here. crt0.o needs no such treatment:
+// `__start` has no frame, and crt0.o carries no `.stack_sizes` data.
 std::string findRuntimeEntryObject(llvm::StringRef arch) {
   std::string clangPath = ShellCommand::resolveTool("clang");
   if (clangPath.empty())
     return {};
-  // The overload that hands back no descriptor: ExecuteAndWait opens the path
-  // itself, so one is not needed and closing it cannot fail.
+  // This overload returns no descriptor. ExecuteAndWait opens the path itself.
   llvm::SmallString<128> outPath;
   if (llvm::sys::fs::createTemporaryFile("aiecc-crt1", "txt", outPath))
     return {};
@@ -617,8 +616,8 @@ std::string findRuntimeEntryObject(llvm::StringRef arch) {
   std::string target = ("--target=" + arch + "-none-unknown-elf").str();
   llvm::SmallVector<llvm::StringRef> argv = {clangPath, target,
                                              "-print-file-name=crt1.o"};
-  // Redirects are [stdin, stdout, stderr]; an empty path is the null device,
-  // so any driver chatter is dropped instead of polluting the answer.
+  // Redirects are [stdin, stdout, stderr]. An empty path is the null device,
+  // which discards the driver's diagnostics.
   std::array<std::optional<llvm::StringRef>, 3> redirects = {
       std::nullopt, llvm::StringRef(outPath), llvm::StringRef("")};
   int rc = llvm::sys::ExecuteAndWait(clangPath, argv, std::nullopt, redirects);
@@ -626,7 +625,7 @@ std::string findRuntimeEntryObject(llvm::StringRef arch) {
   if (rc == 0)
     if (auto buf = llvm::MemoryBuffer::getFile(outPath))
       result = (*buf)->getBuffer().trim().str();
-  // clang echoes the bare name back when it has no such file.
+  // clang prints the bare name when the file does not exist.
   if (result.empty() || !llvm::sys::fs::exists(result))
     return {};
   return result;
@@ -862,8 +861,8 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                    llvm::StringMap<std::string> archByKey;
                    for (const auto &item : arches.items)
                      archByKey[item.key] = item.get();
-                   // crt1.o is per-arch, not per-core, and locating it costs a
-                   // clang invocation, so resolve each arch once.
+                   // crt1.o is per-arch. Locating it costs a clang
+                   // invocation, so resolve each arch once.
                    llvm::StringMap<std::optional<int64_t>> runtimeFrameByArch;
                    return checkStackSizeRequirements(
                        out.value->get(), inputFile, workDirStr,
@@ -878,14 +877,13 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                                              tile.getCol(), tile.getRow()));
                        },
                        [&](CoreOp coreOp) -> std::optional<int64_t> {
-                         // crt1.o is a link-time input, so this term follows
-                         // the linker, not the compiler: `xbridge` links with
+                         // crt1.o is a link-time input, so the linker
+                         // determines this term. `xbridge` links with
                          // chess/BCF, which supplies its own startup in place
-                         // of peano's crt1. That startup names `_main_init`
-                         // too (see AIETargetBCF.cpp), so it may carry the
-                         // same live frame, but nothing here measures it.
-                         // Counting 0 leaves the chess flow exactly as it was
-                         // rather than asserting that it needs nothing.
+                         // of peano's crt1. That startup also names
+                         // `_main_init` (see AIETargetBCF.cpp), so it may hold
+                         // the same live frame. Nothing here measures that
+                         // frame. This term counts 0 for the chess flow.
                          if (xbridge)
                            return 0;
                          auto it = archByKey.find(coreKey(coreOp));

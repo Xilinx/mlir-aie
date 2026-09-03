@@ -211,13 +211,13 @@ inline void appendSkippedArtifacts(mlir::InFlightDiagnostic &diag,
 // Measures each core's stack requirement and writes it to
 // `measured_stack_size`, as the sum of three terms:
 //
-//   1. the runtime entry frame that `measureRuntimeEntryFrame` reports. The
-//      real call chain on a core is `__start` (crt0) -> `_main_init` (crt1) ->
-//      the core body -> its kernels, and `_main_init`'s frame stays live across
-//      the whole call to the core body. crt1 belongs to the toolchain, so it is
-//      in neither the core object nor `link_files` and the call-graph walk
-//      below never sees it; the driver measures it separately and passes it in.
-//      `__start` only sets SP and jumps, so crt0 contributes nothing;
+//   1. the runtime entry frame that `measureRuntimeEntryFrame` reports. A
+//      core's call chain is `__start` (crt0) -> `_main_init` (crt1) -> the
+//      core body -> its kernels. `_main_init`'s frame stays live across the
+//      whole call to the core body. crt1 belongs to the toolchain, so it is in
+//      neither the core object nor `link_files`. The call-graph walk therefore
+//      cannot reach it. The driver measures it separately. `__start` only sets
+//      SP and jumps, so crt0 adds nothing;
 //   2. the top-level frame that `measureOwnFrame` reads from the compiled core
 //      object;
 //   3. the deepest call path through the core's `link_files`
@@ -226,8 +226,8 @@ inline void appendSkippedArtifacts(mlir::InFlightDiagnostic &diag,
 // A requirement above `stack_size` fails the build, as does a cycle in the call
 // graph. An unmeasurable symbol warns. An unmeasurable core frame leaves the
 // requirement a lower bound, which warns and writes no attribute. An
-// unmeasurable runtime entry frame counts as 0 and warns, which keeps
-// toolchains that ship no measurable crt1 building as they did before.
+// unmeasurable runtime entry frame warns and counts as 0, so aiecc accepts a
+// toolchain that ships no measurable crt1.
 inline mlir::LogicalResult checkStackSizeRequirements(
     mlir::ModuleOp module, llvm::StringRef inputFile, llvm::StringRef workDir,
     llvm::function_ref<std::optional<int64_t>(xilinx::AIE::CoreOp)>
@@ -354,10 +354,9 @@ inline mlir::LogicalResult checkStackSizeRequirements(
         return;
       }
 
-      // The frame of the runtime's entry function, live across the whole call
-      // to the core body. Counting it as 0 when it cannot be measured keeps the
-      // requirement exactly what it was before this term existed, rather than
-      // failing every build on a toolchain that ships no measurable crt1.
+      // The frame of the runtime entry function, live across the whole call to
+      // the core body. An unmeasurable frame counts as 0, so aiecc accepts a
+      // toolchain that ships no measurable crt1.
       std::optional<int64_t> runtimeFrameOpt = measureRuntimeEntryFrame(coreOp);
       if (!runtimeFrameOpt)
         coreOp.emitWarning()
@@ -368,7 +367,7 @@ inline mlir::LogicalResult checkStackSizeRequirements(
       int64_t runtimeFrame = runtimeFrameOpt.value_or(0);
 
       // An unchecked narrowing to i32 wraps to a small or negative number. The
-      // budget is taken apart term by term so the check itself cannot overflow.
+      // check splits the budget term by term so that it cannot overflow.
       int64_t budget = INT32_MAX - runtimeFrame;
       if (*stackRes.bytes > budget || *ownFrame > budget - *stackRes.bytes) {
         coreOp.emitWarning()

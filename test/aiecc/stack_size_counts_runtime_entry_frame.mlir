@@ -7,27 +7,27 @@
 
 // A core's live call chain starts above the core body: `__start` (crt0) calls
 // `_main_init` (crt1), which calls the core body. `_main_init`'s frame stays
-// live throughout, and crt1 belongs to the toolchain, so it is in neither the
-// core object nor `link_files` and the call-graph walk cannot reach it. aiecc
-// measures it separately, through the same `clang` that links the core.
+// live across the whole chain. crt1 belongs to the toolchain, so it is in
+// neither the core object nor `link_files`. The call-graph walk therefore
+// cannot reach it. aiecc measures it separately, through the same `clang` that
+// links the core.
 //
-// An undercount here is silent: the stack sits directly below the buffers with
-// no clearance, so it overwrites the buffer above it rather than failing.
+// An undercount is silent. The stack sits directly below the buffers with no
+// clearance, so a core that needs more than it declares overwrites the buffer
+// above its stack.
 //
-// Reuses the kernel of stack_size_max_not_sum.mlir, whose requirement without
-// the runtime frame is exactly 4224. That makes `stack_size = 4224` an exact
-// fit for the walk alone -- which the check accepts -- and short once the
-// runtime frame counts. Drop the term and this build succeeds, failing the
-// test. If a peano update moves the frames, take the new number from the
-// diagnostic.
+// This test reuses the kernel of stack_size_max_not_sum.mlir. On that kernel
+// the walk alone reaches exactly 4224 bytes. The check accepts an exact fit,
+// so `stack_size = 4224` fails only when the runtime entry frame counts. Take
+// a new number from the diagnostic when a peano update moves the frames.
 
 // REQUIRES: peano
 // RUN: rm -rf %t.d && mkdir -p %t.d
 // RUN: clang++ --target=aie2p-none-unknown-elf -std=c++20 -O0 -DNDEBUG -ffunction-sections -fdata-sections -fstack-size-section -c %S/stack_size_max_not_sum_kernel.cc -o %t.d/stack_size_max_not_sum_kernel.o
 // RUN: cd %t.d && not %aiecc --get=measured_stack_sizes.mlir --output-dir=%t.out %s 2>&1 | FileCheck %s
 
-// The requirement must exceed the 4224 the walk reaches on its own, and the
-// core must be reported as short rather than as an exact fit.
+// The requirement must exceed the 4224 the walk reaches on its own. The core
+// must be reported as short, not as an exact fit.
 // CHECK: stack_size = 4224 is insufficient: this core needs 42{{[0-9][0-9]}} bytes
 
 module {
