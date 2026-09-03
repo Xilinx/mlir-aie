@@ -66,12 +66,39 @@ struct Graph {
   llvm::DenseMap<uint64_t, llvm::SmallVector<uint64_t, 2>> dataEscapes;
   SymbolRanges funcs;
   llvm::DenseMap<uint64_t, int64_t> overridesByAddr;
+  unsigned elfFlags = 0;
 
   llvm::StringRef nameOf(uint64_t addr) const {
     const SymbolRanges::Entry *e = funcs.owner(addr);
     return e ? e->name : llvm::StringRef("<unknown>");
   }
 };
+
+// A frame that the ELF does not report. Each value comes from the disassembly
+// of the object that defines the symbol. `elfFlags` is the ELF header's
+// e_flags: 2 for aie2, 3 for aie2p.
+//
+// FIXME: Peano compiles aie2's crt1.o without -fstack-size-section. aie2p's
+// crt1.o carries the section. `_main_init` allocates 32 bytes on aie2
+// (`paddb [sp], #0x20`) and 64 on aie2p. Every npu1 core therefore needs 32
+// bytes that no `.stack_sizes` entry reports. Report this to llvm-aie, build
+// crt1.o with -fstack-size-section there, then delete this table.
+struct FallbackFrame {
+  unsigned elfFlags;
+  llvm::StringLiteral symbol;
+  int64_t bytes;
+};
+constexpr FallbackFrame fallbackFrames[] = {
+    {2, llvm::StringLiteral("_main_init"), 32},
+};
+
+std::optional<int64_t> fallbackFrameFor(const Graph &graph, uint64_t addr) {
+  llvm::StringRef name = graph.nameOf(addr);
+  for (const FallbackFrame &f : fallbackFrames)
+    if (f.elfFlags == graph.elfFlags && f.symbol == name)
+      return f.bytes;
+  return std::nullopt;
+}
 
 // Collects the address ranges of every symbol of type `wanted`. `addrByName`
 // records each symbol's address under its name. An override names a function,
@@ -185,15 +212,16 @@ std::optional<int64_t> maxPathFrom(uint64_t sym, const Graph &graph,
     return it->second;
 
   auto nodeIt = graph.nodes.find(sym);
-  // A frame the ELF holds no entry for counts as 0, which makes the total a
-  // lower bound. The walk continues, so one such function costs only its own
-  // frame. Peano's aie2 crt1.o carries no `.stack_sizes` at all, so this keeps
-  // the check alive on that target.
+  // A frame the ELF does not report falls back to fallbackFrames. It counts as
+  // 0 when that misses too, which makes the total a lower bound. The walk
+  // continues either way, so one such function costs only its own frame.
   int64_t frameSize = 0;
-  if (nodeIt == graph.nodes.end() || nodeIt->second.frameSize < 0)
-    unmeasured.insert(sym);
-  else
+  if (nodeIt != graph.nodes.end() && nodeIt->second.frameSize >= 0)
     frameSize = nodeIt->second.frameSize;
+  else if (auto fallback = fallbackFrameFor(graph, sym))
+    frameSize = *fallback;
+  else
+    unmeasured.insert(sym);
   static const Node emptyNode;
   const Node &node = nodeIt == graph.nodes.end() ? emptyNode : nodeIt->second;
 
@@ -261,6 +289,8 @@ StackRequirementResult xilinx::aiecc::computeStackRequirement(
   Graph graph;
   llvm::StringMap<uint64_t> funcAddrByName;
   graph.funcs = collectRanges(obj, SymbolRef::ST_Function, &funcAddrByName);
+  if (const auto *elf = llvm::dyn_cast<ELFObjectFileBase>(&obj))
+    graph.elfFlags = elf->getPlatformFlags();
   SymbolRanges data = collectRanges(obj, SymbolRef::ST_Data);
   for (const auto &kv : overrides)
     if (auto it = funcAddrByName.find(kv.first()); it != funcAddrByName.end())

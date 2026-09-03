@@ -39,10 +39,10 @@ struct StackRequirementResult {
   std::optional<int64_t> bytes;
   std::string error;
   StackRequirementFailure failureKind = StackRequirementFailure::Unmeasurable;
-  // Functions the ELF holds no `.stack_sizes` entry for. Their frames count as
-  // 0, so `bytes` is a lower bound while this list is non-empty. Peano's aie2
-  // crt1.o puts `_main_init` here; a kernel compiled without
-  // -fstack-size-section puts its own functions here.
+  // Functions with no frame size: the ELF holds no `.stack_sizes` entry for
+  // them and the fallback table does not name them. Their frames count as 0,
+  // so `bytes` is a lower bound while this list is non-empty. A kernel
+  // compiled without -fstack-size-section lands here.
   std::vector<std::string> unmeasured;
 };
 
