@@ -962,6 +962,10 @@ LogicalResult AIEX::NpuAddressPatchOp::verify() {
   // The static binary target checks for the operand and diagnoses it there.
   if (getAddrVal() && !getAddrVal().getType().isInteger(32))
     return emitOpError("addr_val must be an i32 value");
+  if (getArgIdx().has_value() == static_cast<bool>(getBuffer()))
+    return emitOpError("must name the host buffer either by the 'arg_idx' "
+                       "attribute or by the 'buffer' operand, not both and not "
+                       "neither");
   return success();
 }
 

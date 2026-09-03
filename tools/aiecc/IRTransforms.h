@@ -933,7 +933,8 @@ getPlacementPipeline(mlir::MLIRContext *ctx, int coresPerCol,
   return pm;
 }
 
-// Trace flow + trace-config emission, nested under DeviceOp.
+// Trace flow + trace-config emission. -aie-fuse-trace-buffers is module-level:
+// it rewrites callers and callees together.
 inline std::unique_ptr<mlir::PassManager>
 getTracePipeline(mlir::MLIRContext *ctx) {
   auto pm = std::make_unique<mlir::PassManager>(ctx);
@@ -942,6 +943,7 @@ getTracePipeline(mlir::MLIRContext *ctx) {
   dpm.addPass(xilinx::AIE::createAIETraceToConfigPass());
   dpm.addPass(xilinx::AIE::createAIETraceRegPackWritesPass());
   dpm.addPass(xilinx::AIEX::createAIEXInlineTraceConfigPass());
+  pm->addPass(xilinx::AIEX::createAIEFuseTraceBuffersPass());
   return pm;
 }
 
@@ -1252,6 +1254,7 @@ getNpuDmaLoweringPipeline(mlir::MLIRContext *ctx) {
   namespace X = xilinx::AIEX;
   auto pm = std::make_unique<mlir::PassManager>(ctx);
   auto &dpm = pm->nest<xilinx::AIE::DeviceOp>();
+  dpm.addPass(X::createAIEResolveAddressPatchBuffersPass());
   dpm.addPass(X::createAIEMaterializeBDChainsPass());
   dpm.addPass(X::createAIESubstituteShimDMAAllocationsPass());
   dpm.addPass(X::createAIEUnrollRuntimeSequenceLoopsPass());
@@ -1314,6 +1317,7 @@ getPerDeviceDmaLoweringPipeline(mlir::MLIRContext *ctx) {
   namespace X = xilinx::AIEX;
   auto pm = std::make_unique<mlir::PassManager>(ctx);
   auto &dpm = pm->nest<xilinx::AIE::DeviceOp>();
+  dpm.addPass(X::createAIEResolveAddressPatchBuffersPass());
   dpm.addPass(X::createAIEMaterializeBDChainsPass());
   dpm.addPass(X::createAIESubstituteShimDMAAllocationsPass());
   dpm.addPass(X::createAIEAssignRuntimeSequenceBDIDsPass());
