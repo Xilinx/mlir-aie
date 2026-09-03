@@ -2987,6 +2987,15 @@ bool xilinx::AIE::isContiguousBDTransfer(llvm::ArrayRef<BDDimLayoutAttr> dims) {
   return true;
 }
 
+llvm::SmallVector<uint32_t> xilinx::AIE::getAssignedBdIds(DmaBody program) {
+  llvm::SmallVector<uint32_t> ids;
+  program.getDmaBody().walk([&](DMABDOp bd) {
+    if (auto id = bd.getBdId())
+      ids.push_back(*id);
+  });
+  return ids;
+}
+
 LogicalResult DMABDOp::verify() {
   // Skip verification of the BDOp outside of mem operations.
   // BDOps may appear elsewhere and subsequent lowerings will place them in the
