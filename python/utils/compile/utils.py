@@ -329,6 +329,15 @@ def compile_cxx_core_function(
             "-D__AIE_API_AIE_ADF_HPP__",
             f"--target={target_arch}-none-unknown-elf",
         ]
+        if not inline:
+            # -fstack-size-section matches -stack-size-section on the llc
+            # invocation of aiecc for a core object, so a kernel object carries
+            # the same stack accounting. -ffunction-sections and
+            # -fdata-sections give each symbol its own section, which the
+            # attribution in StackSizeAnalysis.h needs.
+            cmd.extend(
+                ["-ffunction-sections", "-fdata-sections", "-fstack-size-section"]
+            )
 
     # Add include directories
     if include_dirs:
