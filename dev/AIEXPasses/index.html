@@ -3294,6 +3294,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#-aie-fuse-trace-buffers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        -aie-fuse-trace-buffers
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#-aie-inline-trace-config" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3475,6 +3486,17 @@
     <span class="md-ellipsis">
       
         -aie-reserve-runtime-bd-ids
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#-aie-resolve-address-patch-buffers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        -aie-resolve-address-patch-buffers
       
     </span>
   </a>
@@ -3999,6 +4021,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#-aie-fuse-trace-buffers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        -aie-fuse-trace-buffers
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#-aie-inline-trace-config" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -4180,6 +4213,17 @@
     <span class="md-ellipsis">
       
         -aie-reserve-runtime-bd-ids
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#-aie-resolve-address-patch-buffers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        -aie-resolve-address-patch-buffers
       
     </span>
   </a>
@@ -4438,6 +4482,23 @@ into MLIR operations.</p>
 <h4 id="options">Options<a class="headerlink" href="#options" title="Permanent link">&para;</a></h4>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>-ctrl-pkt : If true, lower each load_pdi to an @ctrl_pkt_overlay load_pdi followed by aiex.npu.control_packet ops instead of write32/blockwrite ops with an empty-device reset.
 </code></pre></div>
+<h3 id="-aie-fuse-trace-buffers"><code>-aie-fuse-trace-buffers</code><a class="headerlink" href="#-aie-fuse-trace-buffers" title="Permanent link">&para;</a></h3>
+<p><em>Give every traced sequence a slice of one fused trace buffer</em></p>
+<p>Trace lowering appends a trace buffer to each traced <code>aie.runtime_sequence</code>.
+It does not update the <code>aiex.run</code> call sites. These call sites are therefore
+one argument short.</p>
+<p>This pass gives each <code>aie.runtime_sequence</code> one trace buffer covering its
+own traces and those of every sequence it runs. It passes each <code>aiex.run</code> a
+<code>memref.subview</code> of that buffer, sized to the callee's claim. Every call
+site gets its own region, so a sequence that runs one design twice keeps the
+two traces apart. <code>aiex.configure</code> plays no part in the split: the buffer
+follows the <code>aiex.run</code> call graph, whether the calls reconfigure the array
+between them or repeat one design.</p>
+<p>A sequence's own traces take the front of its buffer, then each call site in
+turn. The pass records the layout as an <code>aie.trace_slices</code> array of
+<code>#aie.trace_slice</code>, and the buffer itself as <code>#aie.trace_buffer</code>. A host
+reads the slices to attribute each region to the design that wrote it.</p>
+<p>Run after the trace pipeline and before <code>-aie-materialize-runtime-sequences</code>.</p>
 <h3 id="-aie-inline-trace-config"><code>-aie-inline-trace-config</code><a class="headerlink" href="#-aie-inline-trace-config" title="Permanent link">&para;</a></h3>
 <p><em>Inline trace configuration and generate NPU writes</em></p>
 <p>Replaces aie.trace.start_config operations by:
@@ -4544,6 +4605,13 @@ runtime sequence, per tile, as an <code>aiex.reserved_bd_ids</code> attribute on
 <code>aie.tile</code>. The static allocator (<code>aie-assign-bd-ids</code>) runs in the AIE
 dialect and cannot walk AIEX ops, so it reads this attribute to keep its
 auto-assignment off ids the runtime sequence already claimed.</p>
+<h3 id="-aie-resolve-address-patch-buffers"><code>-aie-resolve-address-patch-buffers</code><a class="headerlink" href="#-aie-resolve-address-patch-buffers" title="Permanent link">&para;</a></h3>
+<p><em>Resolve an address patch's buffer operand to a buffer index</em></p>
+<p>Rewrites each <code>aiex.npu.address_patch</code> that names its host buffer by SSA
+value into the <code>arg_idx</code> form the targets emit. Adds the buffer's byte
+offset to <code>arg_plus</code>.</p>
+<p>Run after <code>-aie-materialize-runtime-sequences</code>. An index exists only in the
+sequence that holds the op. Inlining moves the op into that sequence.</p>
 <h3 id="-aie-scf-to-control-flow"><code>-aie-scf-to-control-flow</code><a class="headerlink" href="#-aie-scf-to-control-flow" title="Permanent link">&para;</a></h3>
 <p><em>Lower scf to cf everywhere except inside runtime sequences</em></p>
 <p>Converts structured control flow (<code>scf</code>) to unstructured control flow

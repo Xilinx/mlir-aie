@@ -5727,6 +5727,34 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#tracebufferattr" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TraceBufferAttr
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="TraceBufferAttr">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#parameters_8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameters:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#traceeventattr" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -5739,7 +5767,35 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#parameters_8" class="md-nav__link">
+  <a href="#parameters_9" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameters:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tracesliceattr" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TraceSliceAttr
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="TraceSliceAttr">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#parameters_10" class="md-nav__link">
     <span class="md-ellipsis">
       
         Parameters:
@@ -5784,7 +5840,7 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#parameters_9" class="md-nav__link">
+  <a href="#parameters_11" class="md-nav__link">
     <span class="md-ellipsis">
       
         Parameters:
@@ -9662,6 +9718,34 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#tracebufferattr" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TraceBufferAttr
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="TraceBufferAttr">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#parameters_8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameters:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#traceeventattr" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -9674,7 +9758,35 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#parameters_8" class="md-nav__link">
+  <a href="#parameters_9" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameters:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tracesliceattr" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TraceSliceAttr
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="TraceSliceAttr">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#parameters_10" class="md-nav__link">
     <span class="md-ellipsis">
       
         Parameters:
@@ -9719,7 +9831,7 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#parameters_9" class="md-nav__link">
+  <a href="#parameters_11" class="md-nav__link">
     <span class="md-ellipsis">
       
         Parameters:
@@ -10962,15 +11074,23 @@ switch is referred to as <code>switchbox</code> to avoid confusion with the
 <li><a href="#parameters_7">Parameters:</a></li>
 </ul>
 </li>
-<li><a href="#traceeventattr">TraceEventAttr</a><ul>
+<li><a href="#tracebufferattr">TraceBufferAttr</a><ul>
 <li><a href="#parameters_8">Parameters:</a></li>
+</ul>
+</li>
+<li><a href="#traceeventattr">TraceEventAttr</a><ul>
+<li><a href="#parameters_9">Parameters:</a></li>
+</ul>
+</li>
+<li><a href="#tracesliceattr">TraceSliceAttr</a><ul>
+<li><a href="#parameters_10">Parameters:</a></li>
 </ul>
 </li>
 </ul>
 </li>
 <li><a href="#types">Types</a><ul>
 <li><a href="#aieobjectfifotype">AIEObjectFifoType</a><ul>
-<li><a href="#parameters_9">Parameters:</a></li>
+<li><a href="#parameters_11">Parameters:</a></li>
 </ul>
 </li>
 </ul>
@@ -13164,6 +13284,23 @@ The input arguments are arguments passed in from the host at kernel invocation t
 <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
 <tr><td><code>sym_name</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
 <tr><td><code>emit_parameter_sync_preamble</code></td><td>::mlir::BoolAttr</td><td>bool attribute</td></tr>
+<tr><td><code>trace_buffer</code></td><td>::xilinx::AIE::TraceBufferAttr</td><td><details><summary>
+    The runtime sequence argument that receives trace data;
+  </summary>{{% markdown %}}
+    `-aie-insert-trace-flows` sets this on every traced `aie.runtime_sequence`.
+    `-aie-fuse-trace-buffers` reads it to find the argument. That pass grows the
+    argument to cover the sequences this one calls, then writes the attribute
+    back.
+
+    `arg_index` indexes the block arguments of the sequence body. `offset` and
+    `size` bound the bytes that the trace DMAs write inside that argument.
+    `dedicated` is false when the trace shares an output buffer, which
+    `aie.trace.host_config` requests with `reuse_output_buffer`.
+
+    Write this attribute by hand to point tracing at an argument of your choice.
+    The passes and the Python trace parser both read it.
+  {{% /markdown %}}</details></td></tr>
+<tr><td><code>trace_slices</code></td><td>::mlir::ArrayAttr</td><td>array of trace buffer slices</td></tr>
 </table>
 
 <h3 id="aieshim_dma-xilinxaieshimdmaop"><code>aie.shim_dma</code> (::xilinx::AIE::ShimDMAOp)<a class="headerlink" href="#aieshim_dma-xilinxaieshimdmaop" title="Permanent link">&para;</a></h3>
@@ -14177,12 +14314,64 @@ represented by an <a href="#aietile-xilinxaietileop">aie.tile</a> operation.</p>
 </tr>
 </tbody>
 </table>
+<h3 id="tracebufferattr">TraceBufferAttr<a class="headerlink" href="#tracebufferattr" title="Permanent link">&para;</a></h3>
+<p><em>The runtime sequence argument that receives trace data;</em></p>
+<p>Syntax:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-132-1" name="__codelineno-132-1" href="#__codelineno-132-1"></a>#aie.trace_buffer&lt;
+<a id="__codelineno-132-2" name="__codelineno-132-2" href="#__codelineno-132-2"></a>  uint32_t,   # arg_index
+<a id="__codelineno-132-3" name="__codelineno-132-3" href="#__codelineno-132-3"></a>  uint32_t,   # offset
+<a id="__codelineno-132-4" name="__codelineno-132-4" href="#__codelineno-132-4"></a>  uint32_t,   # size
+<a id="__codelineno-132-5" name="__codelineno-132-5" href="#__codelineno-132-5"></a>  bool   # dedicated
+<a id="__codelineno-132-6" name="__codelineno-132-6" href="#__codelineno-132-6"></a>&gt;
+</code></pre></div>
+<p><code>-aie-insert-trace-flows</code> sets this on every traced <code>aie.runtime_sequence</code>.
+<code>-aie-fuse-trace-buffers</code> reads it to find the argument. That pass grows the
+argument to cover the sequences this one calls, then writes the attribute
+back.</p>
+<p><code>arg_index</code> indexes the block arguments of the sequence body. <code>offset</code> and
+<code>size</code> bound the bytes that the trace DMAs write inside that argument.
+<code>dedicated</code> is false when the trace shares an output buffer, which
+<code>aie.trace.host_config</code> requests with <code>reuse_output_buffer</code>.</p>
+<p>Write this attribute by hand to point tracing at an argument of your choice.
+The passes and the Python trace parser both read it.</p>
+<h4 id="parameters_8">Parameters:<a class="headerlink" href="#parameters_8" title="Permanent link">&para;</a></h4>
+<table>
+<thead>
+<tr>
+<th style="text-align: center;">Parameter</th>
+<th style="text-align: center;">C++ type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: center;">arg_index</td>
+<td style="text-align: center;"><code>uint32_t</code></td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: center;">offset</td>
+<td style="text-align: center;"><code>uint32_t</code></td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: center;">size</td>
+<td style="text-align: center;"><code>uint32_t</code></td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: center;">dedicated</td>
+<td style="text-align: center;"><code>bool</code></td>
+<td></td>
+</tr>
+</tbody>
+</table>
 <h3 id="traceeventattr">TraceEventAttr<a class="headerlink" href="#traceeventattr" title="Permanent link">&para;</a></h3>
 <p><em>Reference to a trace event by name or enum</em></p>
 <p>Syntax:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-132-1" name="__codelineno-132-1" href="#__codelineno-132-1"></a>#aie.trace_event&lt;
-<a id="__codelineno-132-2" name="__codelineno-132-2" href="#__codelineno-132-2"></a>  Attribute   # value
-<a id="__codelineno-132-3" name="__codelineno-132-3" href="#__codelineno-132-3"></a>&gt;
+<div class="highlight"><pre><span></span><code><a id="__codelineno-133-1" name="__codelineno-133-1" href="#__codelineno-133-1"></a>#aie.trace_event&lt;
+<a id="__codelineno-133-2" name="__codelineno-133-2" href="#__codelineno-133-2"></a>  Attribute   # value
+<a id="__codelineno-133-3" name="__codelineno-133-3" href="#__codelineno-133-3"></a>&gt;
 </code></pre></div>
 <p>References an event by name string or typed enum. Strings are used for
 generic references that are resolved during lowering. Enums provide
@@ -14193,7 +14382,7 @@ compile-time type checking.</p>
 <p>Examples:
   "INSTR_EVENT_0"                // String (resolved during lowering)
   CoreEventAIE2::INSTR_EVENT_0   // Enum</p>
-<h4 id="parameters_8">Parameters:<a class="headerlink" href="#parameters_8" title="Permanent link">&para;</a></h4>
+<h4 id="parameters_9">Parameters:<a class="headerlink" href="#parameters_9" title="Permanent link">&para;</a></h4>
 <table>
 <thead>
 <tr>
@@ -14210,15 +14399,62 @@ compile-time type checking.</p>
 </tr>
 </tbody>
 </table>
+<h3 id="tracesliceattr">TraceSliceAttr<a class="headerlink" href="#tracesliceattr" title="Permanent link">&para;</a></h3>
+<p><em>One design's byte range inside a shared trace buffer;</em></p>
+<p>Syntax:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-134-1" name="__codelineno-134-1" href="#__codelineno-134-1"></a>#aie.trace_slice&lt;
+<a id="__codelineno-134-2" name="__codelineno-134-2" href="#__codelineno-134-2"></a>  ::llvm::StringRef,   # device
+<a id="__codelineno-134-3" name="__codelineno-134-3" href="#__codelineno-134-3"></a>  ::llvm::StringRef,   # sequence
+<a id="__codelineno-134-4" name="__codelineno-134-4" href="#__codelineno-134-4"></a>  uint32_t,   # offset
+<a id="__codelineno-134-5" name="__codelineno-134-5" href="#__codelineno-134-5"></a>  uint32_t   # size
+<a id="__codelineno-134-6" name="__codelineno-134-6" href="#__codelineno-134-6"></a>&gt;
+</code></pre></div>
+<p><code>-aie-fuse-trace-buffers</code> records one of these per <code>aiex.run</code> call site, in
+buffer order, on the calling <code>aie.runtime_sequence</code>. A host reads them to
+attribute each byte range of the trace buffer to the design that wrote it.</p>
+<p><code>device</code> and <code>sequence</code> name the <code>aie.device</code> and the
+<code>aie.runtime_sequence</code> that the call site ran.</p>
+<h4 id="parameters_10">Parameters:<a class="headerlink" href="#parameters_10" title="Permanent link">&para;</a></h4>
+<table>
+<thead>
+<tr>
+<th style="text-align: center;">Parameter</th>
+<th style="text-align: center;">C++ type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: center;">device</td>
+<td style="text-align: center;"><code>::llvm::StringRef</code></td>
+<td>device symbol name</td>
+</tr>
+<tr>
+<td style="text-align: center;">sequence</td>
+<td style="text-align: center;"><code>::llvm::StringRef</code></td>
+<td>runtime sequence symbol name</td>
+</tr>
+<tr>
+<td style="text-align: center;">offset</td>
+<td style="text-align: center;"><code>uint32_t</code></td>
+<td></td>
+</tr>
+<tr>
+<td style="text-align: center;">size</td>
+<td style="text-align: center;"><code>uint32_t</code></td>
+<td></td>
+</tr>
+</tbody>
+</table>
 <h2 id="types">Types<a class="headerlink" href="#types" title="Permanent link">&para;</a></h2>
 <h3 id="aieobjectfifotype">AIEObjectFifoType<a class="headerlink" href="#aieobjectfifotype" title="Permanent link">&para;</a></h3>
 <p>Syntax:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-133-1" name="__codelineno-133-1" href="#__codelineno-133-1"></a>!aie.objectfifo&lt;
-<a id="__codelineno-133-2" name="__codelineno-133-2" href="#__codelineno-133-2"></a>  ::mlir::MemRefType   # memref
-<a id="__codelineno-133-3" name="__codelineno-133-3" href="#__codelineno-133-3"></a>&gt;
+<div class="highlight"><pre><span></span><code><a id="__codelineno-135-1" name="__codelineno-135-1" href="#__codelineno-135-1"></a>!aie.objectfifo&lt;
+<a id="__codelineno-135-2" name="__codelineno-135-2" href="#__codelineno-135-2"></a>  ::mlir::MemRefType   # memref
+<a id="__codelineno-135-3" name="__codelineno-135-3" href="#__codelineno-135-3"></a>&gt;
 </code></pre></div>
 <p>An object FIFO represents the data movement connection between a source and one or multiple destinations.</p>
-<h4 id="parameters_9">Parameters:<a class="headerlink" href="#parameters_9" title="Permanent link">&para;</a></h4>
+<h4 id="parameters_11">Parameters:<a class="headerlink" href="#parameters_11" title="Permanent link">&para;</a></h4>
 <table>
 <thead>
 <tr>

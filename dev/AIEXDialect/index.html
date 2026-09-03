@@ -11721,17 +11721,37 @@ route, it will be replaced by multiple flows.</p>
 <p><em>Address patch operator</em></p>
 <p>Syntax:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-57-1" name="__codelineno-57-1" href="#__codelineno-57-1"></a>operation ::= `aiex.npu.address_patch` `(` $arg_plus `:` type($arg_plus) `)` (`addr` $addr_val^ `:` type($addr_val))?
-<a id="__codelineno-57-2" name="__codelineno-57-2" href="#__codelineno-57-2"></a>              attr-dict
+<a id="__codelineno-57-2" name="__codelineno-57-2" href="#__codelineno-57-2"></a>              (`buffer` $buffer^ `:` type($buffer))?
+<a id="__codelineno-57-3" name="__codelineno-57-3" href="#__codelineno-57-3"></a>              attr-dict
 </code></pre></div>
-<p>address patch operator. <code>arg_plus</code> is an SSA value; use arith.constant for
-a compile-time-known offset or pass a runtime sequence value for a
-runtime-parameterized buffer offset.</p>
+<p>address patch operator. </p>
+<p>This instruction writes the address of a runtime-allocated host buffer 
+into a register, typically a BD's buffer address register. The runtime 
+passes runtime-allocated host buffers as runtime sequence arguments, so 
+this instruction refers to them by their argument index. </p>
 <p><code>addr</code> is the register to patch (the BD's buffer-address word). It is a
 compile-time attribute on the static path; when the BD id is chosen at
 runtime (dynamic free-list pool) the register address is itself runtime and
 is supplied via the optional <code>addr_val</code> operand instead, which then takes
 precedence. Only the EmitC (C++ TXN) target supports a runtime <code>addr_val</code>;
 the static binary target requires the constant <code>addr</code>.</p>
+<p><code>arg_plus</code> is an SSA value; use arith.constant for
+a compile-time-known offset or pass a runtime sequence value for a
+runtime-parameterized buffer offset.</p>
+<p><code>arg_idx</code> or <code>buffer</code> specify which runtime sequence argument holds the 
+host buffer whose address you want to patch. You must set exactly one of
+the two:
+- <code>arg_idx</code> is an argument index of the enclosing runtime sequence.
+  Address patch instructions using <code>arg_idx</code> should not be inlined into 
+  other runtime sequences with <code>aiex.run</code>, because the argument index might
+  not match there.
+- <code>buffer</code> instead names the buffer by reference to a <code>memref</code> by reference.
+  You can use it together with <code>aiex.run</code>.
+  The <code>-aie-resolve-address-patch-buffers</code> pass traces the <code>memref</code> back to
+  the enclosing runtime sequence argument list and converts the operand to 
+  the correct <code>arg_idx</code> after inlining. It adds the buffer's byte offset to
+  <code>arg_plus</code>.</p>
+<p>Traits: <code>AttrSizedOperandSegments</code></p>
 <h4 id="attributes_30">Attributes:<a class="headerlink" href="#attributes_30" title="Permanent link">&para;</a></h4>
 <table>
 <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
@@ -11755,6 +11775,10 @@ the static binary target requires the constant <code>addr</code>.</p>
 <tr>
 <td style="text-align: center;"><code>arg_plus</code></td>
 <td>32-bit signless integer</td>
+</tr>
+<tr>
+<td style="text-align: center;"><code>buffer</code></td>
+<td>memref of any non-token type values</td>
 </tr>
 </tbody>
 </table>
