@@ -68,6 +68,8 @@ void rms_norm(const T *restrict input, T *restrict output, int32_t cols) {
 
 extern "C" {
 void rms_norm(bfloat16 *input, bfloat16 *output, int32_t cols) {
-  rms_norm<bfloat16, 16>(input, output, cols);
+  // N=32 bf16 = 512 bits = one AIE2P vector register; the tail loop handles a
+  // cols not divisible by 32.
+  rms_norm<bfloat16, 32>(input, output, cols);
 }
 }
