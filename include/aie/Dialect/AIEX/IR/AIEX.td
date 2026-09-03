@@ -1035,31 +1035,64 @@ def AIE_NpuSyncOp: AIEX_Op<"npu.sync", []> {
 }
 
 // XAIE_IO_CUSTOM_OP_BEGIN + 1 (address patch)
-def AIE_NpuAddressPatchOp: AIEX_Op<"npu.address_patch", []> {
+def AIE_NpuAddressPatchOp
+    : AIEX_Op<"npu.address_patch", [AttrSizedOperandSegments]> {
   let summary = "address patch operator";
-  let arguments = (
-    ins UI32Attr:$addr,
-        Optional<I32>:$addr_val,
-        I32Attr:$arg_idx,
-        I32:$arg_plus
-  );
+  let arguments = (ins UI32Attr:$addr, Optional<I32>:$addr_val,
+      OptionalAttr<I32Attr>:$arg_idx, I32:$arg_plus,
+      Optional<AnyMemRef>:$buffer);
   let results = (outs );
   let assemblyFormat = [{
     `(` $arg_plus `:` type($arg_plus) `)` (`addr` $addr_val^ `:` type($addr_val))?
+    (`buffer` $buffer^ `:` type($buffer))?
     attr-dict
   }];
   let description = [{
-    address patch operator. `arg_plus` is an SSA value; use arith.constant for
-    a compile-time-known offset or pass a runtime sequence value for a
-    runtime-parameterized buffer offset.
-
+    address patch operator. 
+    
+    This instruction writes the address of a runtime-allocated host buffer 
+    into a register, typically a BD's buffer address register. The runtime 
+    passes runtime-allocated host buffers as runtime sequence arguments, so 
+    this instruction refers to them by their argument index. 
+    
     `addr` is the register to patch (the BD's buffer-address word). It is a
     compile-time attribute on the static path; when the BD id is chosen at
     runtime (dynamic free-list pool) the register address is itself runtime and
     is supplied via the optional `addr_val` operand instead, which then takes
     precedence. Only the EmitC (C++ TXN) target supports a runtime `addr_val`;
     the static binary target requires the constant `addr`.
+
+    `arg_plus` is an SSA value; use arith.constant for
+    a compile-time-known offset or pass a runtime sequence value for a
+    runtime-parameterized buffer offset.
+
+    `arg_idx` or `buffer` specify which runtime sequence argument holds the 
+    host buffer whose address you want to patch. You must set exactly one of
+    the two:
+    - `arg_idx` is an argument index of the enclosing runtime sequence.
+      Address patch instructions using `arg_idx` should not be inlined into 
+      other runtime sequences with `aiex.run`, because the argument index might
+      not match there.
+    - `buffer` instead names the buffer by reference to a `memref` by reference.
+      You can use it together with `aiex.run`.
+      The `-aie-resolve-address-patch-buffers` pass traces the `memref` back to
+      the enclosing runtime sequence argument list and converts the operand to 
+      the correct `arg_idx` after inlining. It adds the buffer's byte offset to
+      `arg_plus`.
   }];
+  let builders = [OpBuilder<(ins "uint32_t":$addr, "mlir::Value":$addr_val,
+                                "int32_t":$arg_idx, "mlir::Value":$arg_plus),
+                            [{
+      build($_builder, $_state, $_builder.getUI32IntegerAttr(addr), addr_val,
+            $_builder.getI32IntegerAttr(arg_idx), arg_plus,
+            /*buffer=*/mlir::Value());
+    }]>,
+                  OpBuilder<(ins "uint32_t":$addr, "mlir::Value":$addr_val,
+                                "mlir::Value":$buffer, "mlir::Value":$arg_plus),
+                            [{
+      build($_builder, $_state, $_builder.getUI32IntegerAttr(addr), addr_val,
+            /*arg_idx=*/mlir::IntegerAttr(), arg_plus, buffer);
+    }]>];
   let hasVerifier = 1;
 }
 
