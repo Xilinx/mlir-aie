@@ -1035,31 +1035,64 @@ def AIE_NpuSyncOp: AIEX_Op<"npu.sync", []> {
 }
 
 // XAIE_IO_CUSTOM_OP_BEGIN + 1 (address patch)
-def AIE_NpuAddressPatchOp: AIEX_Op<"npu.address_patch", []> {
+def AIE_NpuAddressPatchOp
+    : AIEX_Op<"npu.address_patch", [AttrSizedOperandSegments]> {
   let summary = "address patch operator";
-  let arguments = (
-    ins UI32Attr:$addr,
-        Optional<I32>:$addr_val,
-        I32Attr:$arg_idx,
-        I32:$arg_plus
-  );
+  let arguments = (ins UI32Attr:$addr, Optional<I32>:$addr_val,
+      OptionalAttr<I32Attr>:$arg_idx, I32:$arg_plus,
+      Optional<AnyMemRef>:$buffer);
   let results = (outs );
   let assemblyFormat = [{
     `(` $arg_plus `:` type($arg_plus) `)` (`addr` $addr_val^ `:` type($addr_val))?
+    (`buffer` $buffer^ `:` type($buffer))?
     attr-dict
   }];
   let description = [{
-    address patch operator. `arg_plus` is an SSA value; use arith.constant for
-    a compile-time-known offset or pass a runtime sequence value for a
-    runtime-parameterized buffer offset.
-
+    address patch operator. 
+    
+    This instruction writes the address of a runtime-allocated host buffer 
+    into a register, typically a BD's buffer address register. The runtime 
+    passes runtime-allocated host buffers as runtime sequence arguments, so 
+    this instruction refers to them by their argument index. 
+    
     `addr` is the register to patch (the BD's buffer-address word). It is a
     compile-time attribute on the static path; when the BD id is chosen at
     runtime (dynamic free-list pool) the register address is itself runtime and
     is supplied via the optional `addr_val` operand instead, which then takes
     precedence. Only the EmitC (C++ TXN) target supports a runtime `addr_val`;
     the static binary target requires the constant `addr`.
+
+    `arg_plus` is an SSA value; use arith.constant for
+    a compile-time-known offset or pass a runtime sequence value for a
+    runtime-parameterized buffer offset.
+
+    `arg_idx` or `buffer` specify which runtime sequence argument holds the 
+    host buffer whose address you want to patch. You must set exactly one of
+    the two:
+    - `arg_idx` is an argument index of the enclosing runtime sequence.
+      Address patch instructions using `arg_idx` should not be inlined into 
+      other runtime sequences with `aiex.run`, because the argument index might
+      not match there.
+    - `buffer` instead names the buffer by reference to a `memref` by reference.
+      You can use it together with `aiex.run`.
+      The `-aie-resolve-address-patch-buffers` pass traces the `memref` back to
+      the enclosing runtime sequence argument list and converts the operand to 
+      the correct `arg_idx` after inlining. It adds the buffer's byte offset to
+      `arg_plus`.
   }];
+  let builders = [OpBuilder<(ins "uint32_t":$addr, "mlir::Value":$addr_val,
+                                "int32_t":$arg_idx, "mlir::Value":$arg_plus),
+                            [{
+      build($_builder, $_state, $_builder.getUI32IntegerAttr(addr), addr_val,
+            $_builder.getI32IntegerAttr(arg_idx), arg_plus,
+            /*buffer=*/mlir::Value());
+    }]>,
+                  OpBuilder<(ins "uint32_t":$addr, "mlir::Value":$addr_val,
+                                "mlir::Value":$buffer, "mlir::Value":$arg_plus),
+                            [{
+      build($_builder, $_state, $_builder.getUI32IntegerAttr(addr), addr_val,
+            /*arg_idx=*/mlir::IntegerAttr(), arg_plus, buffer);
+    }]>];
   let hasVerifier = 1;
 }
 
@@ -1221,6 +1254,12 @@ def AIE_NpuControlPacketOp: AIEX_Op<"control_packet", []> {
   let extraClassDeclaration = [{
     uint32_t getRowFromAddr();
     uint32_t getColumnFromAddr();
+
+    /// Most words -- data payload, or read length when there is no data --
+    /// one packet can carry on the wire (the header's beat count field is 2
+    /// bits). Enforced where the header is packed, not here -- see
+    /// AIETranslateControlPacketsToUI32Vec.
+    static constexpr unsigned getMaxDataWords() { return 4; }
   }];
 }
 
@@ -1288,7 +1327,10 @@ def AIE_NpuLoadPdiOp: AIEX_Op<"npu.load_pdi", []> {
   let hasCanonicalizeMethod = 1;
 }
 
-def AIE_DMAConfigureTaskOp : AIEX_Op<"dma_configure_task", [HasAncestor<"AIE::RuntimeSequenceOp">, TileElement, AttrSizedOperandSegments]>, Results<(outs Index:$result)> {
+def AIE_DMAConfigureTaskOp
+    : AIEX_Op<"dma_configure_task", [HasAncestor<"AIE::RuntimeSequenceOp">,
+                                     TileElement]>,
+      Results<(outs Index:$result)> {
   let summary = "Concrete Instantiation of a Buffer Descriptor Chain as a Task on a Channel and Direction on a Tile";
   let description = [{
     Encapsulates the DMA configuration of one task, that is the (chain of) buffer descriptors to be executed on a given channel and direction on a tile.
@@ -1298,16 +1340,12 @@ def AIE_DMAConfigureTaskOp : AIEX_Op<"dma_configure_task", [HasAncestor<"AIE::Ru
     Once configured, a task can be submitted for execution using `aiex.dma_start_configured_task`, after which its execution completion can be awaited using `aiex.dma_await_task`.
   }];
 
-  let arguments = (
-    ins Index:$tile,
-        DMAChannelDir:$direction,
-        I32Attr:$channel,
-        DefaultValuedOptionalAttr<BoolAttr, "false">:$issue_token,
-        DefaultValuedOptionalAttr<I32Attr, "0">:$repeat_count,
-        Optional<I32>:$repeat_count_val,
-        Optional<I32>:$bd_id_val,
-        OptionalAttr<PacketInfoAttr>:$packet
-  );
+  let arguments = (ins Index:$tile, DMAChannelDir:$direction, I32Attr:$channel,
+      DefaultValuedOptionalAttr<BoolAttr, "false">:$issue_token,
+      DefaultValuedOptionalAttr<I32Attr, "0">:$repeat_count,
+      Optional<I32>:$repeat_count_val, OptionalAttr<PacketInfoAttr>:$packet,
+      // Put the channel into out-of-order mode (S2MM only).
+      UnitAttr:$out_of_order);
 
   let regions = (
     region AnyRegion:$body
@@ -1316,7 +1354,7 @@ def AIE_DMAConfigureTaskOp : AIEX_Op<"dma_configure_task", [HasAncestor<"AIE::Ru
   let assemblyFormat = [{
     `(` $tile `,` $direction `,` $channel (`,` $packet^)? `)`
     (`repeat` $repeat_count_val^ `:` type($repeat_count_val))?
-    (`bd_id` $bd_id_val^ `:` type($bd_id_val))? regions attr-dict
+    regions attr-dict
   }];
 
   let extraClassDeclaration = [{
@@ -1324,7 +1362,8 @@ def AIE_DMAConfigureTaskOp : AIEX_Op<"dma_configure_task", [HasAncestor<"AIE::Ru
     // Null when the tile is still an aie.logical_tile, so passes that can run
     // before placement defer instead of aborting inside getTileOp().
     AIE::TileOp tryGetTileOp();
-    std::optional<uint32_t> getFirstBdId();
+    // The task's head BD, or null when the body has none.
+    AIE::DMABDOp getFirstBd();
     // The repeat count as an OpFoldResult: the runtime operand if present, else
     // the compile-time attribute. Mirrors dma_bd's offset/len duality.
     mlir::OpFoldResult getRepeatCountValue() {
@@ -1343,16 +1382,17 @@ def AIE_DMAConfigureTaskOp : AIEX_Op<"dma_configure_task", [HasAncestor<"AIE::Ru
   let hasVerifier = 1;
   let hasCanonicalizeMethod = 1;
 
-  let builders = [
-    OpBuilder<(ins "::mlir::Type":$result, "mlir::Value":$tile, "xilinx::AIE::DMAChannelDir":$dir, "int":$channel_index,
-               "bool":$token, "int":$repeat), [{
+  let builders = [OpBuilder<(ins "::mlir::Type":$result, "mlir::Value":$tile,
+                                "xilinx::AIE::DMAChannelDir":$dir,
+                                "int":$channel_index, "bool":$token,
+                                "int":$repeat),
+                            [{
       build($_builder, $_state, result, tile,
             xilinx::AIE::DMAChannelDirAttr::get(odsBuilder.getContext(), dir),
             $_builder.getI32IntegerAttr(channel_index), $_builder.getBoolAttr(token),
             $_builder.getI32IntegerAttr(repeat), /*repeat_count_val=*/nullptr,
-            /*bd_id_val=*/nullptr, /*packet=*/nullptr);
-    }]>
-  ];
+            /*packet=*/nullptr, /*out_of_order=*/nullptr);
+    }]>];
 }
 
 def AIE_DMAConfigureTaskForOp : AIEX_Op<"dma_configure_task_for", [HasAncestor<"AIE::RuntimeSequenceOp">]>, Results<(outs Index:$result)> {

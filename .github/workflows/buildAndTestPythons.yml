@@ -56,7 +56,7 @@ jobs:
           fetch-depth: 2
           submodules: "true"
 
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
           python-version: ${{ matrix.python_version }}
 
@@ -95,8 +95,11 @@ jobs:
         uses: hendrikmuhs/ccache-action@d62db5f07c26379fc4b4e0916f098a92573c3b03  # v1.2.23
         with:
           # Since there are now several compilation jobs running in parallel,
-          # use a different key per job to avoid a ccache writing race condition
-          key: ${{ matrix.build_type }}-${{ runner.os }}-${{ matrix.ubuntu_version }}
+          # use a different key per job to avoid a ccache writing race condition.
+          # python_version is part of that identity: without it the four Python
+          # legs of one build_type share a key, each stores a full cache every
+          # run, and only the newest is ever restored.
+          key: ${{ matrix.build_type }}-${{ runner.os }}-${{ matrix.ubuntu_version }}-${{ matrix.python_version }}
           max-size: 1G
 
       # ccache defaults to comparing the compiler by mtime. GitHub-hosted
@@ -109,7 +112,7 @@ jobs:
           ccache --set-config=compiler_check=content
           ccache --set-config=sloppiness=locale,time_macros
 
-      # Build the repo test target in debug mode to build and test.
+      # Build the repo test target with assertions on to build and test.
       - name: Build and test (Assert)
         if: matrix.build_type == 'Assert'
         run: |
@@ -119,7 +122,7 @@ jobs:
 
           cmake .. \
             -GNinja \
-            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DCMAKE_EXE_LINKER_FLAGS_INIT="-fuse-ld=lld" -DCMAKE_MODULE_LINKER_FLAGS_INIT="-fuse-ld=lld" -DCMAKE_SHARED_LINKER_FLAGS_INIT="-fuse-ld=lld" \
             -DCMAKE_PLATFORM_NO_VERSIONED_SONAME=ON \

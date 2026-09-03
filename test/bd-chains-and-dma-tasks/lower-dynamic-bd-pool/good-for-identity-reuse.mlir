@@ -16,7 +16,8 @@
 
 // CHECK-LABEL: @for_identity_reuse
 // CHECK: %[[ID:.*]] = aiex.dma_bd_pool_pop(0, 0) : i32
-// CHECK: %[[T:.*]] = aiex.dma_configure_task(%{{.*}}, MM2S, 0) bd_id %[[ID]] : i32
+// CHECK: %[[T:.*]] = aiex.dma_configure_task(%{{.*}}, MM2S, 0) {
+// CHECK:   aie.dma_bd(%{{.*}} : memref<1024xi32> offset = 0 len = 256) bd_id_val %[[ID]] : i32
 // CHECK: %[[LOOP:.*]]:2 = scf.for {{.*}} iter_args(%[[TK:.*]] = %[[T]], %[[PID:.*]] = %[[ID]]) -> (index, i32)
 // CHECK:   aiex.dma_start_task(%[[TK]])
 // CHECK:   aiex.dma_await_task(%[[TK]])
