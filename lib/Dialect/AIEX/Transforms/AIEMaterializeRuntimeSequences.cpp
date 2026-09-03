@@ -536,8 +536,8 @@ struct InlineRuntimeCallsPattern : RewritePattern {
       WalkResult symbolWalk = clonedOp->walk([&](Operation *nestedOp) {
         if (failed(inlineReferencedSymbolDefinitions(
                 rewriter, nestedOp, calleeRuntimeSequence.getOperation(),
-                argMap, previouslyInlinedSymbolMap, callerDevice,
-                clonedDefs, symbolDefInsertPoint, allSymbolNames))) {
+                argMap, previouslyInlinedSymbolMap, callerDevice, clonedDefs,
+                symbolDefInsertPoint, allSymbolNames))) {
           return WalkResult::interrupt();
         }
         return WalkResult::advance();
