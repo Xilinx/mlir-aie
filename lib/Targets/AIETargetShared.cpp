@@ -123,8 +123,9 @@ void generateXAieDmaSetMultiDimAddr(raw_ostream &output, int ndims,
            << " = { /* Stride */ " << std::to_string(stride) << ", /* Size */ "
            << std::to_string(size) << "};\n";
   }
-  if ((baseAddrA + offsetA) % 4)
+  if ((baseAddrA + offsetA) % 4) {
     llvm::report_fatal_error("bd address must be 4B (32b) aligned");
+  }
   output << "__mlir_aie_try(XAie_DmaSetMultiDimAddr("
          << tileDMAInstRefStr(col, row, bdNum) << ", "
          << "&" << tensor << ", "
@@ -143,8 +144,9 @@ llvm::SetVector<Block *> getOrderedChainOfBlocks(Region *region) {
   worklist.push_back(firstBD);
   while (!worklist.empty()) {
     Block *block = worklist.pop_back_val();
-    if (block->empty())
+    if (block->empty()) {
       continue;
+    }
     auto successors = block->getTerminator()->getSuccessors();
     for (auto *i : successors) {
       if (!blockVector.contains(i)) {
@@ -160,25 +162,84 @@ llvm::SmallPtrSet<Block *, 8>
 collectOutOfOrderBlocks(const llvm::SetVector<Block *> &blockVector) {
   // Scoped to this channel only.
   llvm::SmallPtrSet<Block *, 8> channelHeads;
-  for (Block *block : blockVector)
-    for (auto startOp : block->getOps<DMAStartOp>())
+  for (Block *block : blockVector) {
+    for (auto startOp : block->getOps<DMAStartOp>()) {
       channelHeads.insert(startOp.getDest());
+    }
+  }
 
   llvm::SmallPtrSet<Block *, 8> oooBlocks;
-  for (Block *block : blockVector)
+  for (Block *block : blockVector) {
     for (auto startOp : block->getOps<DMAStartOp>()) {
-      if (!startOp.getOutOfOrder())
+      if (!startOp.getOutOfOrder()) {
         continue;
+      }
       Block *b = startOp.getDest();
       while (b && oooBlocks.insert(b).second && b->getNumSuccessors() > 0) {
         Block *next = b->getSuccessor(0);
         // Another channel's head or this own channel's head.
-        if (channelHeads.contains(next))
+        if (channelHeads.contains(next)) {
           break;
+        }
         b = next;
       }
     }
+  }
   return oooBlocks;
+}
+
+std::optional<std::vector<char>>
+denseAttrToBytes(mlir::DenseElementsAttr denseInit) {
+  mlir::Type elemType = denseInit.getElementType();
+  if (!elemType.isIntOrIndex() && !llvm::isa<mlir::FloatType>(elemType)) {
+    return std::nullopt;
+  }
+
+  std::vector<char> bytes;
+  // A float reaches its byte image through APInt too, so one loop covers both.
+  // The APInt object aliases its own value only for a width that fits the
+  // inline union, so this reads getRawData() instead of &value.
+  auto append = [&bytes](const llvm::APInt &value) {
+    size_t byteSize = (value.getBitWidth() + 7) / 8;
+    const auto *first = reinterpret_cast<const char *>(value.getRawData());
+    bytes.insert(bytes.end(), first, first + byteSize);
+  };
+  if (elemType.isIntOrIndex()) {
+    for (const llvm::APInt &intVal : denseInit.getValues<llvm::APInt>()) {
+      append(intVal);
+    }
+  } else {
+    for (const llvm::APFloat &floatVal : denseInit.getValues<llvm::APFloat>()) {
+      append(floatVal.bitcastToAPInt());
+    }
+  }
+  return bytes;
+}
+
+MemoryRun coreDataRegion(TileOp tile, llvm::ArrayRef<BufferOp> buffers) {
+  BufferOp coreData;
+  for (auto buf : buffers) {
+    if (buf.getCoreData()) {
+      coreData = buf;
+    }
+  }
+  if (coreData) {
+    if (std::optional<int32_t> addr = coreData.getAddress()) {
+      return MemoryRun{*addr, (int64_t)coreData.getAllocationSize()};
+    }
+  }
+
+  const auto &targetModel = getTargetModel(tile);
+  CoreOp core = tile.getCoreOp();
+  llvm::SmallVector<std::pair<int64_t, int64_t>> occupied;
+  occupied.emplace_back(0, core ? core.getEffectiveStackSize() : 0);
+  for (auto buf : buffers) {
+    int64_t base = getBufferBaseAddress(buf);
+    occupied.emplace_back(base, base + buf.getAllocationSize());
+  }
+  return largestFreeRun(
+      targetModel.getLocalMemorySize(), std::move(occupied),
+      std::max<int64_t>(targetModel.getComputeTileMaxVectorAlignBits() / 8, 1));
 }
 
 } // namespace xilinx::AIE

@@ -46,6 +46,7 @@
 #include "aie/Dialect/AIEVec/TransformOps/DialectExtension.h"
 #include "aie/InitialAllDialect.h"
 #include "aie/Target/LLVMIR/Dialect/XLLVM/XLLVMToLLVMIRTranslation.h"
+#include "aie/Targets/AIETargetShared.h"
 
 #include "mlir/IR/AsmState.h"
 #include "mlir/IR/Diagnostics.h"
@@ -64,6 +65,7 @@
 #include "llvm/Support/SourceMgr.h"
 
 #include <cstdlib>
+#include <mutex>
 #include <set>
 
 using namespace xilinx::aiecc;
@@ -125,8 +127,9 @@ buildObjectSubgraph(EdgeWithTypedOutput<ModRef> &lowered,
                                 "link artifacts (link_with_mode = \"merge\"): "
                                 "the Chess front-end cannot llvm-link them "
                                 "into the core. Offending link_with entries:\n";
-                         for (const auto &f : irLinks.get())
+                         for (const auto &f : irLinks.get()) {
                            llvm::errs() << "  " << f << "\n";
+                         }
                          llvm::errs()
                              << "Drop link_with_mode = \"merge\" and compile "
                                 "these kernels to objects (.o) instead, or "
@@ -172,8 +175,9 @@ buildObjectSubgraph(EdgeWithTypedOutput<ModRef> &lowered,
   // Peano path: downgrade -> (llvm-link merge-mode kernels) -> opt -> llc.
   unsigned optPassLevel = std::min<unsigned>(optLevel, 1u);
   ShellCommand optCmd{"opt"};
-  if (optLevel >= 3)
+  if (optLevel >= 3) {
     optCmd.arg("-disable-loop-idiom-memset");
+  }
   optCmd.arg("--passes=default<O" + std::to_string(optPassLevel) + ">")
       .arg("-inline-threshold=10")
       .arg("-S")
@@ -319,12 +323,14 @@ buildHostExeSubgraph(EdgeWithTypedOutput<std::string> &aieInc,
             // Compilation command
             ShellCommand cmd{"clang++"};
             cmd.arg("-std=c++17");
-            if (!hostTarget.empty())
+            if (!hostTarget.empty()) {
               cmd.arg("--target=" + hostTarget);
+            }
             if (!sysroot.empty()) {
               cmd.arg("--sysroot=" + sysroot);
-              if (hostTarget == "aarch64-linux-gnu")
+              if (hostTarget == "aarch64-linux-gnu") {
                 cmd.arg("--gcc-toolchain=" + sysroot + "/usr");
+              }
             }
             cmd.arg(rt.memoryAllocator)
                 .arg("-I" + rt.xaiengineInclude)
@@ -335,16 +341,20 @@ buildHostExeSubgraph(EdgeWithTypedOutput<std::string> &aieInc,
                 .arg("-lm")
                 .arg("-lxaienginecdo");
             cmd.arg(aieArchDefine(arch));
-            for (const auto &d : hostIncludeDirs)
+            for (const auto &d : hostIncludeDirs) {
               cmd.arg("-I" + d);
-            for (const auto &d : hostLibDirs)
+            }
+            for (const auto &d : hostLibDirs) {
               cmd.arg("-L" + d);
-            for (const auto &l : hostLibs)
+            }
+            for (const auto &l : hostLibs) {
               cmd.arg("-l" + l);
+            }
             // Host sources and host-compiler flags arrive after the `--`
             // separator and are forwarded verbatim.
-            for (const auto &a : hostPassthroughArgs)
+            for (const auto &a : hostPassthroughArgs) {
               cmd.arg(a);
+            }
             cmd.output("-o");
             return cmd(out);
           });
@@ -412,11 +422,12 @@ buildAiesimSubgraph(mlir::MLIRContext &context,
                   Item<std::string> &out) -> mlir::LogicalResult {
         mlir::ModuleOp mod = item.get().get();
         std::string devName = devFilter;
-        if (devName.empty())
+        if (devName.empty()) {
           for (auto d : mod.getOps<DeviceOp>()) {
             devName = d.getSymName().str();
             break;
           }
+        }
         llvm::raw_string_ostream os(out.value.emplace());
         return xilinx::AIE::AIEFlowsToJSON(mod, os, devName);
       });
@@ -454,8 +465,9 @@ buildAiesimSubgraph(mlir::MLIRContext &context,
                     llvm::sys::path::parent_path(incs.items.front().asFile()));
 
                 std::string archTag = hostTarget.getValue();
-                if (auto pos = archTag.find('-'); pos != std::string::npos)
+                if (auto pos = archTag.find('-'); pos != std::string::npos) {
                   archTag = archTag.substr(0, pos);
+                }
                 std::string rtl = installDir + "/runtime_lib/" + archTag;
 
                 ShellCommand cmd{"clang++"};
@@ -485,8 +497,9 @@ buildAiesimSubgraph(mlir::MLIRContext &context,
                     .arg("-I" + rtl + "/test_lib/include");
                 std::string memAlloc =
                     rtl + "/test_lib/lib/libmemory_allocator_sim_aie.a";
-                if (llvm::sys::fs::exists(memAlloc))
+                if (llvm::sys::fs::exists(memAlloc)) {
                   cmd.arg(memAlloc);
+                }
                 cmd.arg("-L" + rtl + "/xaiengine/lib")
                     .arg("-lxaienginecdo")
                     .arg("-L" + aietoolsRoot + "/lib/lnx64.o")
@@ -495,14 +508,18 @@ buildAiesimSubgraph(mlir::MLIRContext &context,
                     .arg("-Wl,--as-needed")
                     .arg("-lsystemc")
                     .arg("-lxtlm");
-                for (const auto &dir : hostIncludeDirs)
+                for (const auto &dir : hostIncludeDirs) {
                   cmd.arg("-I" + dir);
-                for (const auto &dir : hostLibDirs)
+                }
+                for (const auto &dir : hostLibDirs) {
                   cmd.arg("-L" + dir);
-                for (const auto &lib : hostLibs)
+                }
+                for (const auto &lib : hostLibs) {
                   cmd.arg("-l" + lib);
-                for (const auto &a : hostPassthroughArgs)
+                }
+                for (const auto &a : hostPassthroughArgs) {
                   cmd.arg(a);
+                }
                 cmd.arg(genwrapper).output("-o");
                 return cmd(out);
               });
@@ -549,9 +566,11 @@ aiesimulator --pkg-dir=${prj_name}/sim --dump-vcd ${vcd_filename}
                  Item<File> &out) -> mlir::LogicalResult {
                 const NodeBase *nodes[] = {&xpe,       &shim, &scsim,  &flows,
                                            &flowsJson, &ps,   &target, &script};
-                for (const NodeBase *n : nodes)
-                  for (const ItemBase *it : n->itemRefs())
+                for (const NodeBase *n : nodes) {
+                  for (const ItemBase *it : n->itemRefs()) {
                     (void)it->asFile();
+                  }
+                }
                 out.value = File{};
                 return mlir::success();
               });
@@ -582,8 +601,9 @@ EdgeWithTypedOutput<NpuProgram> &buildNpuProgramSubgraph(
         std::vector<uint32_t> insts;
         if (mlir::failed(xilinx::AIE::AIETranslateNpuToBinary(
                 item.get().module.get(), insts, devOp.getSymName(),
-                seq.getSymName(), &prog.locmap, foldDDRAddrOffset)))
+                seq.getSymName(), &prog.locmap, foldDDRAddrOffset))) {
           return mlir::failure();
+        }
         prog.insts = wordsToBytes(insts);
         out.value = std::move(prog);
         return mlir::success();
@@ -620,6 +640,15 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
 
   std::string workDirStr = getWorkDir();
   std::string lldPath = ShellCommand::resolveTool("ld.lld");
+
+  // Bytes the linker script grants each core for its own sections. The script
+  // edge fills this in and the link's failure hint reads it, and both run on
+  // the graph's worker threads.
+  struct DataRegionSizes {
+    std::mutex mutex;
+    llvm::StringMap<int64_t> size;
+  };
+  auto dataRegionBytes = std::make_shared<DataRegionSizes>();
 
   auto matchesDeviceFilter = [devFilter](DeviceOp d) {
     // Empty reset devices synthesized by --expand-load-pdis must always be
@@ -675,6 +704,9 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
         return verifyStackSizeOverrides(out.value->get());
       });
 
+  // Everything a core needs before it can be compiled: objectFifo lowering
+  // (which creates buffers), buffer addresses, lock and BD ids, and the
+  // core-body lowerings.
   auto &withAddresses = withDefaultStackSize.map<ModRef>(
       "input_with_addresses.mlir",
       PassPipeline{
@@ -805,23 +837,39 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
       doUnified ? unifiedObjects : perCoreObjects;
 
   // ld scripts (with link_files absolutized so INPUT() is cwd-invariant).
-  auto &ldScripts = perCore.map<std::string>(
-      "ldScripts_{0}.ld.script",
-      [inputFile, workDirStr](const Item<OpInModule<CoreOp>> &item,
-                              Item<std::string> &out) -> mlir::LogicalResult {
-        CoreOp op = item.get().op;
-        auto tile = mlir::cast<TileOp>(op.getTile().getDefiningOp());
-        // Peano-only guard. `link_files` entries become INPUT() directives, and
-        // lld falls back to parsing a non-object INPUT() as a linker script: a
-        // textual .ll dies with the useless `ld.lld: error: <file>:1: malformed
-        // number`. Bitcode is fine -- lld accepts a .bc as an LTO input -- so
-        // only .ll is rejected, and only here: the chess linker consumes the
-        // BCF emitter's output instead and has its own rules.
-        if (!xbridge) {
-          auto isTextualIR =
-              [&](llvm::StringRef f) {
-                if (!f.ends_with(".ll"))
+  auto &ldScripts =
+      perCore.map<std::string>(
+          "ldScripts_{0}.ld.script",
+          [inputFile, workDirStr,
+           dataRegionBytes](const Item<OpInModule<CoreOp>> &item,
+                            Item<std::string> &out) -> mlir::LogicalResult {
+            CoreOp op = item.get().op;
+            auto tile = mlir::cast<TileOp>(op.getTile().getDefiningOp());
+            {
+              llvm::SmallVector<xilinx::AIE::BufferOp> tileBuffers;
+              if (auto device = tile->getParentOfType<DeviceOp>()) {
+                for (auto buffer : device.getOps<xilinx::AIE::BufferOp>()) {
+                  if (buffer.getTileOp() == tile) {
+                    tileBuffers.push_back(buffer);
+                  }
+                }
+              }
+              std::lock_guard<std::mutex> guard(dataRegionBytes->mutex);
+              dataRegionBytes->size[item.key] =
+                  xilinx::AIE::coreDataRegion(tile, tileBuffers).size;
+            }
+            // Peano-only guard. `link_files` entries become INPUT() directives,
+            // and lld falls back to parsing a non-object INPUT() as a linker
+            // script: a textual .ll dies with the useless `ld.lld: error:
+            // <file>:1: malformed number`. Bitcode is fine -- lld accepts a .bc
+            // as an LTO input -- so only .ll is rejected, and only here: the
+            // chess linker consumes the BCF emitter's output instead and has
+            // its own rules.
+            if (!xbridge) {
+              auto isTextualIR = [&](llvm::StringRef f) {
+                if (!f.ends_with(".ll")) {
                   return false;
+                }
                 llvm::errs()
                     << "aiecc: link file '" << f << "' on core ("
                     << tile.getCol() << ", " << tile.getRow()
@@ -833,27 +881,30 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                        "bitcode (.bc) or an object (.o).\n";
                 return true;
               };
-          // Mirror the emitter's precedence exactly (see
-          // AIETranslateToLdScript): when link_files is present the deprecated
-          // core-level link_with is not emitted, so it must not be diagnosed
-          // either.
-          if (auto filesAttr = op.getLinkFiles()) {
-            for (auto f : filesAttr->getAsRange<mlir::StringAttr>())
-              if (isTextualIR(f.getValue()))
-                return mlir::failure();
-          } else if (auto fileAttr = op.getLinkWith()) {
-            if (isTextualIR(fileAttr.value()))
-              return mlir::failure();
-          }
-        }
-        auto rewritten =
-            absolutizeLinkFiles(item.get().module.get(), tile.getCol(),
-                                tile.getRow(), inputFile, workDirStr);
-        llvm::raw_string_ostream os(out.value.emplace());
-        return xilinx::AIE::AIETranslateToLdScript(
-            rewritten.get(), os, tile.getCol(), tile.getRow(),
-            op->getParentOfType<DeviceOp>().getSymName());
-      });
+              // Mirror the emitter's precedence exactly (see
+              // AIETranslateToLdScript): when link_files is present the
+              // deprecated core-level link_with is not emitted, so it must not
+              // be diagnosed either.
+              if (auto filesAttr = op.getLinkFiles()) {
+                for (auto f : filesAttr->getAsRange<mlir::StringAttr>()) {
+                  if (isTextualIR(f.getValue())) {
+                    return mlir::failure();
+                  }
+                }
+              } else if (auto fileAttr = op.getLinkWith()) {
+                if (isTextualIR(fileAttr.value())) {
+                  return mlir::failure();
+                }
+              }
+            }
+            auto rewritten =
+                absolutizeLinkFiles(item.get().module.get(), tile.getCol(),
+                                    tile.getRow(), inputFile, workDirStr);
+            llvm::raw_string_ostream os(out.value.emplace());
+            return xilinx::AIE::AIETranslateToLdScript(
+                rewritten.get(), os, tile.getCol(), tile.getRow(),
+                op->getParentOfType<DeviceOp>().getSymName());
+          });
 
   // Link each core's object into its .elf; user can chose between
   // chess/xbridge or peano
@@ -876,8 +927,9 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
        workDirStr](const Item<std::string> &bcf,
                    Item<std::vector<std::string>> &out) -> mlir::LogicalResult {
         std::vector<std::string> resolved;
-        for (const auto &f : parseBcfIncludeFiles(bcf.get()))
+        for (const auto &f : parseBcfIncludeFiles(bcf.get())) {
           resolved.push_back(resolveExternalPath(f, inputFile, workDirStr));
+        }
         out.value = std::move(resolved);
         return mlir::success();
       });
@@ -915,7 +967,48 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                   .arg("-Wl,--emit-relocs")
                   .arg("-Wl,--orphan-handling=error")
                   .input("-Wl,-T,")
-                  .output("-o"))
+                  .output("-o")
+                  .explainFailure([dataRegionBytes](llvm::StringRef log,
+                                                    llvm::StringRef key) {
+                    // A failed link writes no ELF to measure, so the bytes the
+                    // core needs are the region the script granted plus the
+                    // shortfall the linker reports against it.
+                    std::optional<int64_t> over = parseLinkOverflowBytes(log);
+                    if (log.contains("will not fit in region 'data'") && over) {
+                      int64_t granted = 0;
+                      {
+                        std::lock_guard<std::mutex> guard(
+                            dataRegionBytes->mutex);
+                        auto it = dataRegionBytes->size.find(key);
+                        if (it != dataRegionBytes->size.end()) {
+                          granted = it->second;
+                        }
+                      }
+                      int64_t need = granted + *over;
+                      llvm::errs()
+                          << "aiecc: core " << key << " needs space for "
+                          << need
+                          << " bytes of static data (constant arrays such as "
+                             "lookup tables and strings). That does not fit in "
+                             "the space left after buffer allocation, but it "
+                             "may fit if you reserve it explicitly. Set "
+                             "data_size on the core: aie.core(%tile) { ... } "
+                             "{ data_size = "
+                          << need
+                          << " : i32 }, or Worker(..., data_size=" << need
+                          << ") in IRON.\n";
+                    }
+                    if (log.contains("will not fit in region 'program'")) {
+                      llvm::errs()
+                          << "aiecc: core " << key
+                          << ": its code exceeds the tile's program memory. "
+                             "That region covers all of the program memory, so "
+                             "only the code itself can shrink. Split the work "
+                             "across more cores, remove unused kernels from "
+                             "link_files, or build the core at a lower "
+                             "optimization level.\n";
+                    }
+                  }))
           .threadSafe();
 
   // Fresh per-core ELFs (Chess/xbridge or Peano). Cores that already carry an
@@ -924,30 +1017,45 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   EdgeWithTypedOutput<Directory> &compiledElfs =
       xbridge ? chessElfs : peanoElfs;
 
-  // Measures each core's stack requirement from its linked ELF. This edge runs
-  // before `physicalWithElfs`, so a failure ends the run before any artifact
-  // that depends on a core is written.
-  EdgeWithTypedOutput<ModRef> *physicalWithMeasuredStackSizes = nullptr;
+  // Each measurement reads the linked ELFs and writes its result into a clone
+  // of the physical IR. Both run before `physicalWithElfs`, so a failure ends
+  // the run before any artifact that depends on a core is written.
+  auto elfLookup = [](const Node<Directory> &elfs) {
+    auto byKey = std::make_shared<llvm::StringMap<std::string>>();
+    for (const auto &item : elfs.items) {
+      (*byKey)[item.key] = item.filePath;
+    }
+    return [byKey](CoreOp coreOp) -> std::string {
+      return byKey->lookup(coreKey(coreOp));
+    };
+  };
+
+  EdgeWithTypedOutput<ModRef> *measured = &physical;
   if (!noMeasureStackSize.getValue()) {
-    physicalWithMeasuredStackSizes =
-        &bundle(compiledElfs.out, physical.out)
-             .join<ModRef>(
-                 "measured_stack_sizes.mlir",
-                 [](const Node<Directory> &elfs, const Node<ModRef> &physicalN,
-                    Item<ModRef> &out) -> mlir::LogicalResult {
-                   out.value = ModRef(physicalN.get().get().clone());
-                   llvm::StringMap<std::string> elfByKey;
-                   for (const auto &item : elfs.items)
-                     elfByKey[item.key] = item.filePath;
-                   return checkStackSizeRequirements(
-                       out.value->get(), [&](CoreOp coreOp) -> std::string {
-                         return elfByKey.lookup(coreKey(coreOp));
-                       });
-                 });
+    measured = &bundle(compiledElfs.out, measured->out)
+                    .join<ModRef>(
+                        "measured_stack_sizes.mlir",
+                        [elfLookup](const Node<Directory> &elfs,
+                                    const Node<ModRef> &physicalN,
+                                    Item<ModRef> &out) -> mlir::LogicalResult {
+                          out.value = ModRef(physicalN.get().get().clone());
+                          return checkStackSizeRequirements(out.value->get(),
+                                                            elfLookup(elfs));
+                        });
   }
-  EdgeWithTypedOutput<ModRef> &physicalForElfs =
-      physicalWithMeasuredStackSizes ? *physicalWithMeasuredStackSizes
-                                     : physical;
+  if (!noMeasureDataSize.getValue()) {
+    measured = &bundle(compiledElfs.out, measured->out)
+                    .join<ModRef>(
+                        "measured_data_sizes.mlir",
+                        [elfLookup](const Node<Directory> &elfs,
+                                    const Node<ModRef> &physicalN,
+                                    Item<ModRef> &out) -> mlir::LogicalResult {
+                          out.value = ModRef(physicalN.get().get().clone());
+                          return checkDataSizeRequirements(out.value->get(),
+                                                           elfLookup(elfs));
+                        });
+  }
+  EdgeWithTypedOutput<ModRef> &physicalForElfs = *measured;
 
   // --- Per-device configuration artifacts ---------------------------------
 
@@ -961,18 +1069,20 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                  Item<ModRef> &out) -> mlir::LogicalResult {
                 // ELF paths must be absolute for the aie-rt loader.
                 llvm::StringMap<std::string> byKey;
-                for (const auto &item : compiled.items)
+                for (const auto &item : compiled.items) {
                   byKey[item.key] = absolutePath(item.filePath);
-                for (const auto &item : preBaked.items)
+                }
+                for (const auto &item : preBaked.items) {
                   byKey[item.key] = absolutePath(item.filePath);
+                }
                 out.value = patchCoreElfFiles(physicalN.get().get(), byKey);
                 return mlir::success();
               });
 
   // NPU runtime-sequence lowering needs only the placed+routed `physical`
   // module, so feeding it keeps the instruction-sequence branch independent of
-  // per-core compilation. Two cases reference the compiled cores and so run on
-  // the ELF-patched `physicalWithElfs` module instead:
+  // per-core compilation. Three cases reference the compiled cores and so run
+  // on the ELF-patched `physicalWithElfs` module instead:
   //   * --expand-load-pdis references the compiled cores directly.
   //   * the transaction output embeds each core's compiled program:
   //     `convert-aie-to-transaction` reads each core's `elf_file` to emit a
@@ -1073,17 +1183,20 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
         }
         const std::string &cdoDir = out.filePath;
         out.value = Directory{cdoDir};
-        if (dryRun)
+        if (dryRun) {
           return mlir::success();
+        }
         // The CDO output path is itself a directory that the translation
         // writes its `.bin` files into, so create it here (prepareItem only
         // makes the parent)
-        if (llvm::sys::fs::create_directories(cdoDir))
+        if (llvm::sys::fs::create_directories(cdoDir)) {
           return mlir::failure();
+        }
         if (mlir::failed(xilinx::AIE::AIETranslateToCDODirect(
                 item.get().module.get(), cdoDir, d.getSymName(), false, false,
-                false, false, false, /*enableCores=*/true)))
+                false, false, false, /*enableCores=*/true))) {
           return mlir::failure();
+        }
         return mlir::success();
       });
 
@@ -1136,8 +1249,9 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
         ModRef clone = item.get().module.get().clone();
         auto pm =
             getControlPacketPipeline(&context, /*elfDir=*/"", d.getSymName());
-        if (!pm || mlir::failed(pm->run(*clone)))
+        if (!pm || mlir::failed(pm->run(*clone))) {
           return mlir::failure();
+        }
         out.value = std::move(clone);
         return mlir::success();
       });
@@ -1156,8 +1270,9 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                                     std::vector<uint32_t> &words)
                              -> mlir::LogicalResult {
         ModRef clone = item.get().get().clone();
-        if (mlir::failed(getControlPacketDmaPipeline(&context)->run(*clone)))
+        if (mlir::failed(getControlPacketDmaPipeline(&context)->run(*clone))) {
           return mlir::failure();
+        }
         // DDR-patch ABI: XRT (and CPU) consume the folded firmware ABI; HRX
         // consumes the producer-independent (unfolded) insts.bin and adds the
         // AIE DDR aperture offset for every arg itself. cl::opt defaults to
@@ -1366,8 +1481,9 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
         ModRef clone = item.get().module.get().clone();
         auto pm =
             getTransactionPipeline(&context, /*elfDir=*/"", d.getSymName());
-        if (!pm || mlir::failed(pm->run(*clone)))
+        if (!pm || mlir::failed(pm->run(*clone))) {
           return mlir::failure();
+        }
         out.value = std::move(clone);
         return mlir::success();
       });
@@ -1381,15 +1497,17 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                 return npuSeqKey(s->getParentOfType<DeviceOp>().getSymName(),
                                  s.getSymName());
               }))
-          .filter("perSeqMatching",
-                  [matchesDeviceFilter, seqFilter = sequenceName.getValue()](
-                      const OpInModule<RuntimeSequenceOp> &x) {
-                    RuntimeSequenceOp seq = x.op;
-                    if (!matchesDeviceFilter(seq->getParentOfType<DeviceOp>()))
-                      return false;
-                    // --sequence-name: keep only the named runtime sequence.
-                    return seqFilter.empty() || seq.getSymName() == seqFilter;
-                  });
+          .filter(
+              "perSeqMatching",
+              [matchesDeviceFilter, seqFilter = sequenceName.getValue()](
+                  const OpInModule<RuntimeSequenceOp> &x) {
+                RuntimeSequenceOp seq = x.op;
+                if (!matchesDeviceFilter(seq->getParentOfType<DeviceOp>())) {
+                  return false;
+                }
+                // --sequence-name: keep only the named runtime sequence.
+                return seqFilter.empty() || seq.getSymName() == seqFilter;
+              });
 
   // Translate each sequence exactly once into its NPU program (the .bin bytes
   // and the locmap). Two variants are built from the same per-sequence input.
@@ -1486,14 +1604,15 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                  ctrlPktExpandedPerSeq)
            : static_cast<EdgeWithTypedOutput<OpInModule<RuntimeSequenceOp>> &>(
                  noCtrlPktSeqs))
-          .filter("ctrlPktSeqs",
-                  [matchesDeviceFilter, seqFilter = sequenceName.getValue()](
-                      const OpInModule<RuntimeSequenceOp> &x) {
-                    RuntimeSequenceOp seq = x.op;
-                    if (!matchesDeviceFilter(seq->getParentOfType<DeviceOp>()))
-                      return false;
-                    return seqFilter.empty() || seq.getSymName() == seqFilter;
-                  });
+          .filter("ctrlPktSeqs", [matchesDeviceFilter,
+                                  seqFilter = sequenceName.getValue()](
+                                     const OpInModule<RuntimeSequenceOp> &x) {
+            RuntimeSequenceOp seq = x.op;
+            if (!matchesDeviceFilter(seq->getParentOfType<DeviceOp>())) {
+              return false;
+            }
+            return seqFilter.empty() || seq.getSymName() == seqFilter;
+          });
 
   // Per-sequence control-packet binary, dropping empties so the config only
   // references sequences that actually carry a control packet.
@@ -1549,14 +1668,18 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                  Item<llvm::json::Value> &out) -> mlir::LogicalResult {
                 llvm::StringMap<std::string> pdiPaths, instsPaths;
                 llvm::StringMap<std::string> ctrlPktPaths, patchInfoPaths;
-                for (const auto &item : pdis.items)
+                for (const auto &item : pdis.items) {
                   pdiPaths[item.key] = absolutePath(item.asFile());
-                for (const auto &item : instsBins.items)
+                }
+                for (const auto &item : instsBins.items) {
                   instsPaths[item.key] = absolutePath(item.asFile());
-                for (const auto &item : ctrlPkts.items)
+                }
+                for (const auto &item : ctrlPkts.items) {
                   ctrlPktPaths[item.key] = absolutePath(item.asFile());
-                for (const auto &item : patchInfos.items)
+                }
+                for (const auto &item : patchInfos.items) {
                   patchInfoPaths[item.key] = absolutePath(item.asFile());
+                }
                 out.value = makeFullElfConfigJson(devices, pdiPaths, instsPaths,
                                                   ctrlPktPaths, patchInfoPaths);
                 return mlir::success();
@@ -1605,8 +1728,9 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   //--------------------------------------------------------------------------//
   // Output selection
   //--------------------------------------------------------------------------//
-  if (generateScratchpadParams)
+  if (generateScratchpadParams) {
     outputs.push_back(&paramsFile);
+  }
 
   // Core-ELF output: emit the per-core ELFs when --get-core-elfs is
   // passed, or as the default when no other artifact was requested (so a bare
@@ -1617,31 +1741,40 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
       generatePdi || generateTxn || generateCtrlpkt || generateXclbin ||
       generateFullElf || wantAiesim || doCompileHost || !getOutputs.empty() ||
       !cutOutputs.empty();
-  // Every other artifact depends on the stack check through physicalWithElfs.
-  // A core-ELF build ends before that edge, so name the check here.
+  // Every other artifact depends on the post-link checks through
+  // physicalWithElfs. A core-ELF build ends before that edge, so name the
+  // checks here.
   if (generateCoreElfs || !anySpecificOutput) {
     outputs.push_back(&compiledElfs);
-    if (physicalWithMeasuredStackSizes)
-      outputs.push_back(physicalWithMeasuredStackSizes);
+    if (&physicalForElfs != &physical) {
+      outputs.push_back(&physicalForElfs);
+    }
   }
 
-  if (generateInputWithAddresses)
+  if (generateInputWithAddresses) {
     outputs.push_back(&withAddresses);
-  if (generateNpuInsts)
+  }
+  if (generateNpuInsts) {
     outputs.push_back(&npuInsts);
-  if (keepLoc)
+  }
+  if (keepLoc) {
     outputs.push_back(&npuLocmap);
+  }
   // The plain instruction ELF is skipped when control packets are also being
   // generated: in that case the combined control-packet ELF (produced below)
   // is the artifact written to --elf-name.
-  if (generateElf && !generateCtrlpkt)
+  if (generateElf && !generateCtrlpkt) {
     outputs.push_back(&instElf);
-  if (generateCdo)
+  }
+  if (generateCdo) {
     outputs.push_back(&cdo);
-  if (generatePdi)
+  }
+  if (generatePdi) {
     outputs.push_back(&pdi);
-  if (generateTxn)
+  }
+  if (generateTxn) {
     outputs.push_back(&txn);
+  }
   // Only emit standalone control-packet artifacts (partial ELF + DMA sequence)
   // in the non-full-ELF flow. In the full-ELF-flow, the control packet data is
   // contained in the ELF and patched into a runtime sequence argument.
@@ -1650,21 +1783,25 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
     outputs.push_back(&ctrlpktDmaSeq);
     outputs.push_back(&ctrlpktElf);
   }
-  if (generateXclbin)
+  if (generateXclbin) {
     outputs.push_back(&xclbin);
-  if (generateFullElf)
+  }
+  if (generateFullElf) {
     outputs.push_back(&fullElf);
+  }
   // AIE simulator Work folder: only when explicitly requested. The aggregator
   // edge pulls in and materializes every sim/ artifact.
-  if (wantAiesim)
+  if (wantAiesim) {
     outputs.push_back(&aiesim);
+  }
   // Host executable: only when explicitly requested and host sources exist.
   if (doCompileHost) {
-    if (!hasHostSourceFiles())
+    if (!hasHostSourceFiles()) {
       llvm::errs() << "aiecc: --get-host given but no host source files "
                       "were provided; skipping host compilation\n";
-    else
+    } else {
       outputs.push_back(&hostExe);
+    }
   }
 
   // --get=<name> / --cut=<name>: request outputs (and cut points) by the exact
@@ -1686,16 +1823,19 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                       llvm::StringRef flag) -> std::vector<EdgeBase *> {
       llvm::Expected<std::vector<EdgeBase *>> resolved =
           resolveLiveEdges(g, names, live);
-      if (resolved)
+      if (resolved) {
         return std::move(*resolved);
+      }
       llvm::errs() << "aiecc: " << flag << ": "
                    << llvm::toString(resolved.takeError())
                    << "; known outputs are:\n";
       std::set<llvm::StringRef> known;
-      for (const auto &e : g.edges)
+      for (const auto &e : g.edges) {
         known.insert(e->name);
-      for (llvm::StringRef n : known)
+      }
+      for (llvm::StringRef n : known) {
         llvm::errs() << "  " << n << '\n';
+      }
       std::exit(1);
     };
 
@@ -1703,10 +1843,12 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
     // checkpoint cut point: the edge is built (see Engine::run `buildAlso`) but
     // stays in the work dir as an intermediate, so downstream consumers that
     // reference it by path (e.g. the CDO step loading core ELFs) still find it.
-    for (EdgeBase *e : select(getOutputs, "--get"))
+    for (EdgeBase *e : select(getOutputs, "--get")) {
       outputs.push_back(e);
-    for (EdgeBase *e : select(cutOutputs, "--cut"))
+    }
+    for (EdgeBase *e : select(cutOutputs, "--cut")) {
       cutEdges.push_back(e);
+    }
   }
 
   return outputs;
@@ -1742,16 +1884,19 @@ int main(int argc, char **argv) {
   std::vector<std::string> graphArgv;
   std::optional<std::vector<std::string>> effArgvStore =
       cli::resolveCommandLine(argc, argv, resume, graphArgv);
-  if (!effArgvStore)
+  if (!effArgvStore) {
     return 1;
+  }
   // Resolve the `--get-<name>` artifact shorthands (setting the
   // output-selection bools) before cl parsing sees them.
-  if (!cli::applyOutputSelectorFlags(*effArgvStore))
+  if (!cli::applyOutputSelectorFlags(*effArgvStore)) {
     return 1;
+  }
   std::vector<char *> effArgvPtrs;
   effArgvPtrs.reserve(effArgvStore->size());
-  for (std::string &s : *effArgvStore)
+  for (std::string &s : *effArgvStore) {
     effArgvPtrs.push_back(s.data());
+  }
   int effArgc = static_cast<int>(effArgvPtrs.size());
   char **effArgv = effArgvPtrs.data();
 
@@ -1760,12 +1905,13 @@ int main(int argc, char **argv) {
   // forwarded verbatim to the host compiler (AIE1 host-compilation flow only).
   // Truncating parseArgc keeps cl from treating the tail as positionals.
   int parseArgc = effArgc;
-  for (int i = 1; i < effArgc; ++i)
+  for (int i = 1; i < effArgc; ++i) {
     if (llvm::StringRef(effArgv[i]) == "--") {
       parseArgc = i;
       hostPassthroughArgs.assign(effArgv + i + 1, effArgv + effArgc);
       break;
     }
+  }
   llvm::cl::ParseCommandLineOptions(parseArgc, effArgv,
                                     "aiecc declarative driver\n");
 
@@ -1787,8 +1933,9 @@ int main(int argc, char **argv) {
   // selection (xchesscc/xbridge), the --get-aiesim implication, and the
   // resolved-option globals (wantAiesim, doUnified, doCompileHost). See
   // CommandLineOptions.h.
-  if (!cli::resolveOptions())
+  if (!cli::resolveOptions()) {
     return 1;
+  }
 
   // --expand-load-pdis reconfigures via PDI swaps and routes the config branch
   // through the NPU-lowered module; control-packet generation currently
@@ -1838,12 +1985,14 @@ int main(int argc, char **argv) {
 
   llvm::SourceMgr sourceMgr;
   unsigned inputBufferId = 0;
-  if (auto inputBuf = mlir::openInputFile(getInputFilename()))
+  if (auto inputBuf = mlir::openInputFile(getInputFilename())) {
     inputBufferId =
         sourceMgr.AddNewSourceBuffer(std::move(inputBuf), llvm::SMLoc());
+  }
   mlir::SourceMgrDiagnosticHandler diagHandler(sourceMgr, &context);
-  if (!ShellCommand::addInstallPrefix("peano", peanoInstallDir))
+  if (!ShellCommand::addInstallPrefix("peano", peanoInstallDir)) {
     return 1;
+  }
   // discoverAietoolsDir has the same shape: it falls through to $AIETOOLS_ROOT
   // and then to xchesscc on PATH.
   if (!aietoolsDir.empty() && !llvm::sys::fs::is_directory(aietoolsDir)) {
@@ -1862,15 +2011,18 @@ int main(int argc, char **argv) {
   // used.
   if (generateXclbin) {
     std::string ovr = xclbinutilPath;
-    if (ovr.empty())
-      if (const char *env = std::getenv("AIE_XCLBINUTIL"))
+    if (ovr.empty()) {
+      if (const char *env = std::getenv("AIE_XCLBINUTIL")) {
         ovr = env;
+      }
+    }
     if (!ovr.empty()) {
       std::string resolved;
       if (ovr.find('/') != std::string::npos ||
           ovr.find('\\') != std::string::npos) {
-        if (llvm::sys::fs::can_execute(ovr))
+        if (llvm::sys::fs::can_execute(ovr)) {
           resolved = ovr;
+        }
       } else if (auto r = llvm::sys::findProgramByName(ovr)) {
         resolved = *r;
       }
@@ -1936,9 +2088,11 @@ int main(int argc, char **argv) {
       llvm::DenseSet<llvm::StringRef> want(getOutputs.begin(),
                                            getOutputs.end());
       std::vector<EdgeBase *> filtered;
-      for (EdgeBase *e : outputs)
-        if (want.count(e->name))
+      for (EdgeBase *e : outputs) {
+        if (want.count(e->name)) {
           filtered.push_back(e);
+        }
+      }
       outputs = std::move(filtered);
     }
     llvm::DenseSet<EdgeBase *> reach = reachableEdges(outputs);
@@ -1979,9 +2133,11 @@ int main(int argc, char **argv) {
                             ? getWorkDir() + "/repeater"
                             : repeaterOutputDir.getValue();
       std::vector<EdgeBase *> frontierEdges;
-      for (NodeBase *n : engine.failedEdge->inputNodes())
-        if (n && n->producer)
+      for (NodeBase *n : engine.failedEdge->inputNodes()) {
+        if (n && n->producer) {
           frontierEdges.push_back(n->producer);
+        }
+      }
       // Record argv that rebuilds this graph, narrowed to the failed edge so a
       // resume reloads its inputs and re-runs only it.
       std::vector<std::string> reproArgv = graphArgv;
@@ -1996,8 +2152,9 @@ int main(int argc, char **argv) {
 
   // --checkpoint: dump the --cut cut (artifacts + manifest.json) so a later
   // --resume can reload it and continue.
-  if (!checkpointDir.empty())
+  if (!checkpointDir.empty()) {
     writeCheckpoint(cutEdges, checkpointDir, graphArgv);
+  }
 
   // aiesim.sh is produced as a plain-text Item; make it launchable. (The Item
   // abstraction has no notion of an executable bit, so set it here on the
@@ -2008,9 +2165,10 @@ int main(int argc, char **argv) {
       if (std::error_code ec = llvm::sys::fs::setPermissions(
               script, llvm::sys::fs::perms::owner_all |
                           llvm::sys::fs::perms::group_exe |
-                          llvm::sys::fs::perms::others_exe))
+                          llvm::sys::fs::perms::others_exe)) {
         llvm::errs() << "aiecc: cannot make '" << script
                      << "' executable: " << ec.message() << "\n";
+      }
     }
   }
 

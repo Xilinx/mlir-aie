@@ -380,6 +380,14 @@ def AIE_CoreOp
           // Absent when aiecc cannot measure the core.
           OptionalAttr<
               ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>>:$measured_stack_size,
+          // Bytes to set aside for the core's own .data, .rodata and .bss.
+          // Absent (0) leaves the region to the largest remaining contiguous
+          // run after placing all buffers.
+          OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>>:$data_size,
+          // Written by aiecc from the linked ELF. Absent when aiecc cannot
+          // measure the core.
+          OptionalAttr<
+              ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>>:$measured_data_size,
           // Deprecated: attach link_with to func.func declarations instead and
           // run aie-assign-core-link-files to populate link_files.
           OptionalAttr<StrAttr>:$link_with,
@@ -1655,16 +1663,22 @@ def AIE_BufferOp
       %buf = aie.buffer(%tile33) : memref<256xi64>
     ```
     This operation represents a buffer in tile (3, 3) of 256 elements, each a 64-bit integer.
+
+    `mem_bank` pins the buffer to one memory bank of that tile. The bank-aware
+    allocation scheme treats the pin as a hard constraint and reports an error
+    when the bank cannot hold the buffer. The basic-sequential scheme has no
+    notion of banks and ignores the pin.
+
+    `core_data` marks the extent that holds the core's own .data, .rodata and
+    .bss, which `aie-assign-buffer-addresses` creates from the core's
+    `data_size`. It names no symbol.
   }];
 
-  let arguments = (
-    ins Index:$tile,
-        OptionalAttr<StrAttr>:$sym_name,
-        OptionalAttr<AIEI32Attr>:$address,
-        OptionalAttr<ElementsAttr>:$initial_value,
-        OptionalAttr<AIEI32Attr>:$mem_bank,
-        DefaultValuedAttr<BoolAttr, "true">:$aligned
-  );
+  let arguments = (ins Index:$tile, OptionalAttr<StrAttr>:$sym_name,
+      OptionalAttr<AIEI32Attr>:$address,
+      OptionalAttr<ElementsAttr>:$initial_value,
+      OptionalAttr<AIEI32Attr>:$mem_bank, UnitAttr:$core_data,
+      DefaultValuedAttr<BoolAttr, "true">:$aligned);
 
   let results = (outs AnyMemRef:$buffer);
   let assemblyFormat = [{
