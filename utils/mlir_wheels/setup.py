@@ -41,6 +41,24 @@ def check_env(build, default=0):
     return os.environ.get(build, str(default)) in {"1", "true", "True", "ON", "YES"}
 
 
+def real_compiler_path(name):
+    """Resolve `name` outside ccache's masquerade directories.
+
+    setup_ccache puts /usr/lib/ccache on PATH. Every compiler name in that
+    directory is a symlink to ccache. LLVM_CCACHE_BUILD also sets a ccache
+    compiler launcher. The launcher hashes the ccache binary under
+    compiler_check=mtime. ccache can return an object that an earlier
+    compiler built.
+    """
+    real_dirs = [
+        d for d in os.environ.get("PATH", "").split(os.pathsep) if "ccache" not in d
+    ]
+    path = shutil.which(name, path=os.pathsep.join(real_dirs))
+    if not path:
+        raise RuntimeError(f"could not find {name} outside ccache's directories")
+    return path
+
+
 class CMakeExtension(Extension):
     def __init__(self, name: str, sourcedir: str = "") -> None:
         super().__init__(name, sources=[])
@@ -49,15 +67,6 @@ class CMakeExtension(Extension):
 
 def get_cross_cmake_args():
     cmake_args = {}
-
-    def native_tools():
-        nonlocal cmake_args
-
-        native_tools_dir = Path(sys.prefix).absolute() / "bin"
-        assert native_tools_dir is not None, "native_tools_dir missing"
-        assert os.path.exists(native_tools_dir), "native_tools_dir doesn't exist"
-        cmake_args["LLVM_USE_HOST_TOOLS"] = "ON"
-        cmake_args["LLVM_NATIVE_TOOL_DIR"] = str(native_tools_dir)
 
     CIBW_ARCHS = os.environ.get("CIBW_ARCHS")
     if CIBW_ARCHS in {"arm64", "aarch64", "ARM64"}:
@@ -82,17 +91,31 @@ def get_cross_cmake_args():
         if ARCH == "AArch64":
             cmake_args["LLVM_DEFAULT_TARGET_TRIPLE"] = "aarch64-linux-gnu"
             cmake_args["LLVM_HOST_TRIPLE"] = "aarch64-linux-gnu"
-            cmake_args["CMAKE_C_COMPILER"] = "aarch64-linux-gnu-gcc"
-            cmake_args["CMAKE_CXX_COMPILER"] = "aarch64-linux-gnu-g++"
+            cmake_args["CMAKE_C_COMPILER"] = real_compiler_path("aarch64-linux-gnu-gcc")
+            cmake_args["CMAKE_CXX_COMPILER"] = real_compiler_path(
+                "aarch64-linux-gnu-g++"
+            )
             cmake_args["CMAKE_CXX_FLAGS"] = "-static-libgcc -static-libstdc++"
             # GNU ld fails to insert AArch64 long-branch veneers for the fully
             # static mlir-opt/mlir-translate binaries, causing "relocation
             # truncated to fit: R_AARCH64_CALL26" inside libstdc++.a itself.
             # lld handles arbitrarily large binaries correctly.
-            cmake_args["CMAKE_EXE_LINKER_FLAGS_INIT"] = "-fuse-ld=lld"
-            cmake_args["CMAKE_MODULE_LINKER_FLAGS_INIT"] = "-fuse-ld=lld"
-            cmake_args["CMAKE_SHARED_LINKER_FLAGS_INIT"] = "-fuse-ld=lld"
-            native_tools()
+            #
+            # A cross gcc searches the -B directories for the plain name
+            # ld.lld. It searches PATH for aarch64-linux-gnu-ld.lld. The
+            # lld package installs /usr/bin/ld.lld and no prefixed alias.
+            # -B/usr/bin is therefore the one directory where -fuse-ld=lld
+            # finds a linker.
+            _LLD_LINKER_FLAGS = "-fuse-ld=lld -B/usr/bin"
+            cmake_args["CMAKE_EXE_LINKER_FLAGS_INIT"] = _LLD_LINKER_FLAGS
+            cmake_args["CMAKE_MODULE_LINKER_FLAGS_INIT"] = _LLD_LINKER_FLAGS
+            cmake_args["CMAKE_SHARED_LINKER_FLAGS_INIT"] = _LLD_LINKER_FLAGS
+            # The cross build runs tblgen on the host against this tree's
+            # .td sources. tblgen embeds the TargetOpcode enum of the
+            # sources that built it. A tblgen from another commit therefore
+            # fails on these sources. LLVM_USE_HOST_TOOLS builds tblgen from
+            # this tree, in a NATIVE subdirectory.
+            cmake_args["LLVM_USE_HOST_TOOLS"] = "ON"
         elif ARCH == "X86":
             cmake_args["LLVM_DEFAULT_TARGET_TRIPLE"] = "x86_64-unknown-linux-gnu"
             cmake_args["LLVM_HOST_TRIPLE"] = "x86_64-unknown-linux-gnu"

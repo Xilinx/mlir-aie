@@ -1,0 +1,20 @@
+//===- stack_sizes_makefile_kernel.test -------------------------*- - -*-===//
+//
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+//===----------------------------------------------------------------------===//
+
+// A Makefile-driven example, programming_examples/ml/magika/Makefile for
+// instance, compiles its kernel objects with PEANOWRAP2P_FLAGS from
+// programming_examples/makefile-common, outside the IRON JIT flow. Confirm
+// that those flags carry -fstack-size-section, so such a kernel object holds
+// the stack accounting that aiecc produces for a core object.
+
+// REQUIRES: peano, makefile_examples
+// RUN: rm -rf %t.d && mkdir -p %t.d
+// RUN: make -f %S/stack_sizes_makefile_kernel.mk kernel \
+// RUN:   SRC=%S/stack_sizes_makefile_kernel_kernel.cc OUT=%t.d/kernel.o
+// RUN: llvm-readelf -S %t.d/kernel.o | FileCheck %s
+
+// CHECK: .stack_sizes
