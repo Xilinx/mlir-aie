@@ -60,7 +60,6 @@
 
 #include "llvm/ADT/StringMap.h"
 #include "llvm/Support/CommandLine.h"
-#include "llvm/Support/FileUtilities.h"
 #include "llvm/Support/InitLLVM.h"
 #include "llvm/Support/SourceMgr.h"
 
@@ -593,44 +592,6 @@ EdgeWithTypedOutput<NpuProgram> &buildNpuProgramSubgraph(
   return npuProgram;
 }
 
-// The Peano runtime entry function. `__start` (crt0) sets SP and jumps to it.
-// `_main_init` initializes the C environment and calls `main`, the core body.
-// Its frame stays live across the whole call to the core body.
-constexpr llvm::StringLiteral runtimeEntrySymbol = "_main_init";
-
-// Absolute path of the Peano crt1.o for `arch` ("aie2", "aie2p", ...), or the
-// empty string when clang cannot locate it. crt1.o holds `_main_init`. The
-// toolchain supplies crt1.o, so it is in neither the compiled core object nor
-// the core's `link_files`. The stack-size call-graph walk therefore cannot
-// reach it. The driver locates it here. crt0.o needs no such treatment:
-// `__start` has no frame, and crt0.o carries no `.stack_sizes` data.
-std::string findRuntimeEntryObject(llvm::StringRef arch) {
-  std::string clangPath = ShellCommand::resolveTool("clang");
-  if (clangPath.empty())
-    return {};
-  // This overload returns no descriptor. ExecuteAndWait opens the path itself.
-  llvm::SmallString<128> outPath;
-  if (llvm::sys::fs::createTemporaryFile("aiecc-crt1", "txt", outPath))
-    return {};
-  llvm::FileRemover cleanup(outPath);
-  std::string target = ("--target=" + arch + "-none-unknown-elf").str();
-  llvm::SmallVector<llvm::StringRef> argv = {clangPath, target,
-                                             "-print-file-name=crt1.o"};
-  // Redirects are [stdin, stdout, stderr]. An empty path is the null device,
-  // which discards the driver's diagnostics.
-  std::array<std::optional<llvm::StringRef>, 3> redirects = {
-      std::nullopt, llvm::StringRef(outPath), llvm::StringRef("")};
-  int rc = llvm::sys::ExecuteAndWait(clangPath, argv, std::nullopt, redirects);
-  std::string result;
-  if (rc == 0)
-    if (auto buf = llvm::MemoryBuffer::getFile(outPath))
-      result = (*buf)->getBuffer().trim().str();
-  // clang prints the bare name when the file does not exist.
-  if (result.empty() || !llvm::sys::fs::exists(result))
-    return {};
-  return result;
-}
-
 } // namespace
 
 //===----------------------------------------------------------------------===//
@@ -705,10 +666,13 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   // and the core, BCF and ldscript emitters.
   auto &withDefaultStackSize = traced.map<ModRef>(
       "default_stack_size.mlir",
-      [stackSize = defaultStackSize.getValue()](const ModRef &mod) -> ModRef {
-        if (stackSize <= 0)
-          return ModRef(mod.get().clone());
-        return populateDefaultStackSize(mod.get(), stackSize);
+      [stackSize = defaultStackSize.getValue()](
+          const Item<ModRef> &in, Item<ModRef> &out) -> mlir::LogicalResult {
+        out.value =
+            stackSize > 0
+                ? ModRef(populateDefaultStackSize(in.get().get(), stackSize))
+                : ModRef(in.get().get().clone());
+        return verifyStackSizeOverrides(out.value->get());
       });
 
   auto &withAddresses = withDefaultStackSize.map<ModRef>(
@@ -840,72 +804,6 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   EdgeWithTypedOutput<Directory> &objects =
       doUnified ? unifiedObjects : perCoreObjects;
 
-  // This edge runs after `objects`, which holds the compiled core body that
-  // the measurement reads, and before `physicalWithElfs`, so a stack size
-  // analysis failure ends the run before any output artifact is written.
-  EdgeWithTypedOutput<ModRef> *physicalWithMeasuredStackSizes = nullptr;
-  if (!noMeasureStackSize.getValue()) {
-    physicalWithMeasuredStackSizes =
-        &bundle(objects.out, perCoreArches.out, physical.out)
-             .join<ModRef>(
-                 "measured_stack_sizes.mlir",
-                 [inputFile,
-                  workDirStr](const Node<Directory> &objs,
-                              const Node<std::string> &arches,
-                              const Node<ModRef> &physicalN,
-                              Item<ModRef> &out) -> mlir::LogicalResult {
-                   out.value = ModRef(physicalN.get().get().clone());
-                   llvm::StringMap<std::string> objByKey;
-                   for (const auto &item : objs.items)
-                     objByKey[item.key] = item.filePath;
-                   llvm::StringMap<std::string> archByKey;
-                   for (const auto &item : arches.items)
-                     archByKey[item.key] = item.get();
-                   // crt1.o is per-arch. Locating it costs a clang
-                   // invocation, so resolve each arch once.
-                   llvm::StringMap<std::optional<int64_t>> runtimeFrameByArch;
-                   return checkStackSizeRequirements(
-                       out.value->get(), inputFile, workDirStr,
-                       [&](CoreOp coreOp) -> std::optional<int64_t> {
-                         auto it = objByKey.find(coreKey(coreOp));
-                         if (it == objByKey.end())
-                           return std::nullopt;
-                         auto tile = mlir::cast<TileOp>(
-                             coreOp.getTile().getDefiningOp());
-                         return xilinx::aiecc::measureFunctionFrameSize(
-                             it->second, xilinx::AIE::coreFrameSymbolName(
-                                             tile.getCol(), tile.getRow()));
-                       },
-                       [&](CoreOp coreOp) -> std::optional<int64_t> {
-                         // crt1.o is a link-time input, so the linker
-                         // determines this term. `xbridge` links with
-                         // chess/BCF, which supplies its own startup in place
-                         // of peano's crt1. That startup also names
-                         // `_main_init` (see AIETargetBCF.cpp), so it may hold
-                         // the same live frame. Nothing here measures that
-                         // frame. This term counts 0 for the chess flow.
-                         if (xbridge)
-                           return 0;
-                         auto it = archByKey.find(coreKey(coreOp));
-                         if (it == archByKey.end())
-                           return std::nullopt;
-                         auto cached = runtimeFrameByArch.find(it->second);
-                         if (cached != runtimeFrameByArch.end())
-                           return cached->second;
-                         std::optional<int64_t> frame;
-                         std::string crt1 = findRuntimeEntryObject(it->second);
-                         if (!crt1.empty())
-                           frame = xilinx::aiecc::measureFunctionFrameSize(
-                               crt1, runtimeEntrySymbol);
-                         runtimeFrameByArch[it->second] = frame;
-                         return frame;
-                       });
-                 });
-  }
-  EdgeWithTypedOutput<ModRef> &physicalForElfs =
-      physicalWithMeasuredStackSizes ? *physicalWithMeasuredStackSizes
-                                     : physical;
-
   // ld scripts (with link_files absolutized so INPUT() is cwd-invariant).
   auto &ldScripts = perCore.map<std::string>(
       "ldScripts_{0}.ld.script",
@@ -1011,6 +909,10 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                   .arg(lldPath.empty() ? "-fuse-ld=lld" : "-fuse-ld=" + lldPath)
                   .input()
                   .arg("-Wl,--gc-sections")
+                  // The relocations carry the call graph that the stack-size
+                  // check walks. They are non-alloc, so they use no tile
+                  // memory.
+                  .arg("-Wl,--emit-relocs")
                   .arg("-Wl,--orphan-handling=error")
                   .input("-Wl,-T,")
                   .output("-o"))
@@ -1021,6 +923,31 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   // into `physicalWithElfs`.
   EdgeWithTypedOutput<Directory> &compiledElfs =
       xbridge ? chessElfs : peanoElfs;
+
+  // Measures each core's stack requirement from its linked ELF. This edge runs
+  // before `physicalWithElfs`, so a failure ends the run before any artifact
+  // that depends on a core is written.
+  EdgeWithTypedOutput<ModRef> *physicalWithMeasuredStackSizes = nullptr;
+  if (!noMeasureStackSize.getValue()) {
+    physicalWithMeasuredStackSizes =
+        &bundle(compiledElfs.out, physical.out)
+             .join<ModRef>(
+                 "measured_stack_sizes.mlir",
+                 [](const Node<Directory> &elfs, const Node<ModRef> &physicalN,
+                    Item<ModRef> &out) -> mlir::LogicalResult {
+                   out.value = ModRef(physicalN.get().get().clone());
+                   llvm::StringMap<std::string> elfByKey;
+                   for (const auto &item : elfs.items)
+                     elfByKey[item.key] = item.filePath;
+                   return checkStackSizeRequirements(
+                       out.value->get(), [&](CoreOp coreOp) -> std::string {
+                         return elfByKey.lookup(coreKey(coreOp));
+                       });
+                 });
+  }
+  EdgeWithTypedOutput<ModRef> &physicalForElfs =
+      physicalWithMeasuredStackSizes ? *physicalWithMeasuredStackSizes
+                                     : physical;
 
   // --- Per-device configuration artifacts ---------------------------------
 

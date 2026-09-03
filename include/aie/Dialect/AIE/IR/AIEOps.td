@@ -427,8 +427,8 @@ def AIE_CoreOp
     when `stack_size` is smaller. `aiecc` measures the whole live call chain. That
     chain starts above the core body: the runtime enters at `__start` (crt0), which
     calls `_main_init` (crt1), which calls the core body, which calls its kernels.
-    `_main_init` holds a frame that stays live across the whole chain. crt1 belongs
-    to the toolchain, so `aiecc` locates and measures that frame separately.
+    `_main_init` holds a frame that stays live across the whole chain. `aiecc`
+    measures the linked core, so the chain covers crt0 and crt1 too.
     `measured_stack_size` stays absent when `aiecc` cannot measure the core. See
     `programming_guide/core_data_memory.md` for the mechanism, the escape hatches
     (`--no-measure-stack-size`, `stack_size_override`) and the diagnostics.

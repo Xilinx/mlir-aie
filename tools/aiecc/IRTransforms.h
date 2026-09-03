@@ -202,111 +202,54 @@ populateDefaultStackSize(mlir::ModuleOp src, int64_t defaultStackSize) {
   return cloned;
 }
 
-inline void appendSkippedArtifacts(mlir::InFlightDiagnostic &diag,
-                                   llvm::ArrayRef<std::string> skipped) {
-  for (size_t i = 0; i < skipped.size(); ++i)
-    diag << (i ? ", " : "") << skipped[i];
+// Rejects a negative `stack_size_override`. This repeats the check in
+// external_func(), which hand-written MLIR skips. It runs ahead of
+// compilation, so a link failure cannot preempt the diagnostic.
+inline mlir::LogicalResult verifyStackSizeOverrides(mlir::ModuleOp module) {
+  mlir::LogicalResult result = mlir::success();
+  module.walk([&](mlir::func::FuncOp funcOp) {
+    auto attr = funcOp->getAttrOfType<mlir::IntegerAttr>("stack_size_override");
+    if (attr && attr.getInt() < 0) {
+      funcOp.emitError() << "stack_size_override must be >= 0, got "
+                         << attr.getInt();
+      result = mlir::failure();
+    }
+  });
+  return result;
 }
 
-// Measures each core's stack requirement and writes it to
-// `measured_stack_size`, as the sum of three terms:
+// Measures each core's stack requirement from its linked ELF and writes it to
+// `measured_stack_size`. `elfForCore` returns the path of the linked core, or
+// an empty string for a core this run does not link.
 //
-//   1. the runtime entry frame that `measureRuntimeEntryFrame` reports. A
-//      core's call chain is `__start` (crt0) -> `_main_init` (crt1) -> the
-//      core body -> its kernels. `_main_init`'s frame stays live across the
-//      whole call to the core body. crt1 belongs to the toolchain, so it is in
-//      neither the core object nor `link_files`. The call-graph walk therefore
-//      cannot reach it. The driver measures it separately. `__start` only sets
-//      SP and jumps, so crt0 adds nothing;
-//   2. the top-level frame that `measureOwnFrame` reads from the compiled core
-//      object;
-//   3. the deepest call path through the core's `link_files`
-//      (StackSizeAnalysis.h).
+// A core's call chain is `__start` (crt0) -> `_main_init` (crt1) -> the core
+// body -> its kernels. `_main_init`'s frame stays live across the whole call
+// to the core body. The linker supplies crt1, so the linked core holds that
+// frame too.
 //
-// A requirement above `stack_size` fails the build, as does a cycle in the call
-// graph. An unmeasurable symbol warns. An unmeasurable core frame leaves the
-// requirement a lower bound, which warns and writes no attribute. An
-// unmeasurable runtime entry frame warns and counts as 0, so aiecc accepts a
-// toolchain that ships no measurable crt1.
+// A requirement above `stack_size` fails the build, as does a cycle in the
+// call graph. An unmeasurable core warns and writes no attribute.
 inline mlir::LogicalResult checkStackSizeRequirements(
-    mlir::ModuleOp module, llvm::StringRef inputFile, llvm::StringRef workDir,
-    llvm::function_ref<std::optional<int64_t>(xilinx::AIE::CoreOp)>
-        measureOwnFrame,
-    llvm::function_ref<std::optional<int64_t>(xilinx::AIE::CoreOp)>
-        measureRuntimeEntryFrame) {
+    mlir::ModuleOp module,
+    llvm::function_ref<std::string(xilinx::AIE::CoreOp)> elfForCore) {
   mlir::LogicalResult result = mlir::success();
 
-  // Keyed by object, because the result depends on the object alone. Several
-  // cores can list one object.
-  llvm::StringMap<llvm::StringSet<>> definedFunctionsByPath;
-
   for (xilinx::AIE::DeviceOp device : module.getOps<xilinx::AIE::DeviceOp>()) {
-    // Collected per device, because each DeviceOp is its own symbol table,
-    // and a sibling device can bind one name to a different override. The
-    // check for a negative value repeats the one in external_func(), which
-    // hand-written MLIR skips.
+    // Collected per device, because each DeviceOp is its own symbol table, and
+    // a sibling device can bind one name to a different override.
     llvm::StringMap<int64_t> overrides;
     device.walk([&](mlir::func::FuncOp funcOp) {
-      auto attr =
-          funcOp->getAttrOfType<mlir::IntegerAttr>("stack_size_override");
-      if (!attr)
-        return;
-      if (attr.getInt() < 0) {
-        funcOp.emitError() << "stack_size_override must be >= 0, got "
-                           << attr.getInt();
-        result = mlir::failure();
-        return;
-      }
-      overrides[funcOp.getName()] = attr.getInt();
+      if (auto attr =
+              funcOp->getAttrOfType<mlir::IntegerAttr>("stack_size_override"))
+        overrides[funcOp.getName()] = attr.getInt();
     });
 
     device.walk([&](xilinx::AIE::CoreOp coreOp) {
-      // The roots are the symbols the core body calls directly.
-      // AIEAssignCoreLinkFilesPass walks the same set.
-      llvm::SmallVector<llvm::StringRef, 4> roots;
-      llvm::StringSet<> seenRoots;
-      coreOp.walk([&](mlir::func::CallOp call) {
-        if (seenRoots.insert(call.getCallee()).second)
-          roots.push_back(call.getCallee());
-      });
+      std::string elf = elfForCore(coreOp);
+      if (elf.empty())
+        return;
 
-      // A merge-mode kernel carries link_merge_files alone, so link_files is
-      // absent while its roots can still carry a stack_size_override. The loop
-      // below then scans zero objects, and those overrides still satisfy the
-      // roots. A root with no object and no override reaches the unmeasurable
-      // warning below.
-      std::vector<std::string> resolved;
-      if (auto filesAttr = coreOp.getLinkFiles())
-        for (auto f : filesAttr->getAsRange<mlir::StringAttr>())
-          resolved.push_back(
-              resolveExternalPath(f.getValue(), inputFile, workDir));
-
-      llvm::StringSet<> knownFunctions;
-      for (const std::string &path : resolved) {
-        auto it = definedFunctionsByPath.find(path);
-        if (it == definedFunctionsByPath.end())
-          it = definedFunctionsByPath
-                   .try_emplace(path,
-                                [&] {
-                                  llvm::StringSet<> names;
-                                  xilinx::aiecc::collectDefinedFunctionNames(
-                                      path, names);
-                                  return names;
-                                }())
-                   .first;
-        for (const auto &name : it->second)
-          knownFunctions.insert(name.first());
-      }
-
-      xilinx::aiecc::StackGraph graph;
-      std::vector<std::string> skipped;
-      for (const std::string &path : resolved)
-        if (!xilinx::aiecc::addObjectToStackGraph(path, knownFunctions, graph))
-          skipped.push_back(path);
-      xilinx::aiecc::resolveIndirectCallEdges(graph);
-
-      auto stackRes =
-          xilinx::aiecc::computeStackRequirement(graph, roots, overrides);
+      auto stackRes = xilinx::aiecc::computeStackRequirement(elf, overrides);
       if (!stackRes.bytes) {
         if (stackRes.failureKind ==
             xilinx::aiecc::StackRequirementFailure::Cycle) {
@@ -330,59 +273,21 @@ inline mlir::LogicalResult checkStackSizeRequirements(
         return;
       }
 
-      if (!skipped.empty()) {
-        auto diag = coreOp.emitWarning()
-                    << "stack requirement computed as " << *stackRes.bytes
-                    << " bytes, but " << skipped.size()
-                    << " link_files artifact(s) could not be inspected "
-                       "(archive, bitcode, or unreadable), so this may be "
-                       "incomplete: ";
-        appendSkippedArtifacts(diag, skipped);
-      }
-
-      uint32_t effective = coreOp.getEffectiveStackSize();
-      std::optional<int64_t> ownFrame = measureOwnFrame(coreOp);
-      if (!ownFrame) {
-        if (static_cast<int64_t>(effective) < *stackRes.bytes)
-          coreOp.emitWarning()
-              << "this core's callees need at least " << *stackRes.bytes
-              << " bytes of stack (not counting the core body's own frame), "
-                 "but "
-              << (coreOp.getStackSizeAttr() ? "stack_size is only "
-                                            : "the default stack_size is only ")
-              << effective << " bytes";
-        return;
-      }
-
-      // The frame of the runtime entry function, live across the whole call to
-      // the core body. An unmeasurable frame counts as 0, so aiecc accepts a
-      // toolchain that ships no measurable crt1.
-      std::optional<int64_t> runtimeFrameOpt = measureRuntimeEntryFrame(coreOp);
-      if (!runtimeFrameOpt)
+      // An unchecked narrowing to i32 wraps to a small or negative number.
+      if (*stackRes.bytes > INT32_MAX) {
         coreOp.emitWarning()
-            << "cannot measure the runtime entry frame (the crt1 `_main_init` "
-               "frame that stays live across the call to the core body); "
-               "counting it as 0, so this core's stack requirement may be an "
-               "underestimate";
-      int64_t runtimeFrame = runtimeFrameOpt.value_or(0);
-
-      // An unchecked narrowing to i32 wraps to a small or negative number. The
-      // check splits the budget term by term so that it cannot overflow.
-      int64_t budget = INT32_MAX - runtimeFrame;
-      if (*stackRes.bytes > budget || *ownFrame > budget - *stackRes.bytes) {
-        coreOp.emitWarning()
-            << "stack requirement computed as "
-            << (runtimeFrame + *ownFrame + *stackRes.bytes)
+            << "stack requirement computed as " << *stackRes.bytes
             << " bytes, which does not fit in the attribute's i32; "
                "stack_size is not being validated for this core";
         return;
       }
 
-      int64_t required = runtimeFrame + *ownFrame + *stackRes.bytes;
+      int64_t required = *stackRes.bytes;
       coreOp.setMeasuredStackSizeAttr(
           mlir::Builder(module.getContext())
               .getI32IntegerAttr(static_cast<int32_t>(required)));
 
+      uint32_t effective = coreOp.getEffectiveStackSize();
       if (static_cast<int64_t>(effective) < required) {
         if (coreOp.getStackSizeAttr())
           coreOp.emitError() << "stack_size = " << effective

@@ -7,19 +7,18 @@
 
 // A core's live call chain starts above the core body: `__start` (crt0) calls
 // `_main_init` (crt1), which calls the core body. `_main_init`'s frame stays
-// live across the whole chain. crt1 belongs to the toolchain, so it is in
-// neither the core object nor `link_files`. The call-graph walk therefore
-// cannot reach it. aiecc measures it separately, through the same `clang` that
-// links the core.
+// live across the whole chain. crt1 belongs to the toolchain, so the compiler
+// produces no object that holds it. The linker adds it, and aiecc measures the
+// linked core.
 //
 // An undercount is silent. The stack sits directly below the buffers with no
 // clearance, so a core that needs more than it declares overwrites the buffer
 // above its stack.
 //
-// This test reuses the kernel of stack_size_max_not_sum.mlir. On that kernel
-// the walk alone reaches exactly 4224 bytes. The check accepts an exact fit,
-// so `stack_size = 4224` fails only when the runtime entry frame counts. Take
-// a new number from the diagnostic when a peano update moves the frames.
+// This test reuses the kernel of stack_size_max_not_sum.mlir. The core body
+// and its kernels reach exactly 4224 bytes. The check accepts an exact fit, so
+// `stack_size = 4224` fails only when the runtime entry frame counts. Take a
+// new number from the diagnostic when a peano update moves the frames.
 
 // REQUIRES: peano
 // RUN: rm -rf %t.d && mkdir -p %t.d
