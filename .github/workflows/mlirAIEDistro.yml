@@ -381,7 +381,7 @@ jobs:
         rm -rf build
 
     - name: Docker prune
-      if: contains(inputs.MATRIX_OS, 'ubuntu')
+      if: runner.os == 'Linux'
       shell: bash
       run: |
 
@@ -499,7 +499,7 @@ jobs:
           name: build_artifact_${{ matrix.OS }}_${{ matrix.ARCH }}_rtti_${{ matrix.ENABLE_RTTI }}
           path: dist
 
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
           python-version: '3.12'
 
@@ -594,7 +594,7 @@ jobs:
           done
           ls -la
 
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
           python-version: '3.12'
 

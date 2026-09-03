@@ -24,6 +24,7 @@ on:
   # - or edit directly the step below which runs tmate and push to the
   #   PR, ignoring the manual workflow launch.
   workflow_dispatch:
+    inputs:
       launch_tmate_terminal_for_debug:
         type: boolean
         description: 'Run the build with tmate debugging enabled (https://github.com/marketplace/actions/debugging-with-tmate)'
