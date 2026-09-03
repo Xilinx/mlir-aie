@@ -2761,17 +2761,20 @@ def AIE_RuntimeSequenceOp : AIE_Op<"runtime_sequence", [
     Typically, these instructions include configuring the data transfers between host and AIE array on the shims.
     The input arguments are arguments passed in from the host at kernel invocation time. This may include buffers on the host.
   }];
-  let arguments = (
-    ins DefaultValuedAttr<SymbolNameAttr, "getDefaultRuntimeSequenceName()">:$sym_name,
-    // If set to false, suppresses automatic insertion of the parameter-sync
-    // preamble (create_scratchpad + update_from_scratchpad + set_lock) by
-    // `--aie-lower-scratchpad-parameters`.
-    // Defaults to true when any `aiex.read_scratchpad_parameter` is present
-    // in a core in the parent device, or any `offset_parameter` attribute on
-    // a DMA BD.
-    // Set to false automatically after the preamble has been emitted.
-    OptionalAttr<BoolAttr>:$emit_parameter_sync_preamble
-  );
+  let arguments = (ins DefaultValuedAttr<
+                       SymbolNameAttr,
+                       "getDefaultRuntimeSequenceName()">:$sym_name,
+      // Should the `--aie-lower-scratchpad-parameters` pass prepend code to
+      // this runtime sequence copying and synchronizing scratchpad parameters?
+      // Defaults to true if the scratchpad parameter feature is used anywhere
+      // (`aiex.read_scratchpad_parameter` on cores, `offset_parameter` on BDs).
+      // Set to false once emitted, so it does not get re-emitted.
+      OptionalAttr<BoolAttr>:$emit_parameter_sync_preamble,
+      // Which of the runtime sequence arguments is the trace buffer, if any?
+      OptionalAttr<TraceBufferAttr>:$trace_buffer,
+      // If this runtime sequence produces multiple traces, `trace_slices`
+      // states which slice of the trace buffer corresponds to which trace.
+      OptionalAttr<TraceSliceArrayAttr>:$trace_slices);
   let regions = (region
     AnyRegion:$body
   );
