@@ -38,13 +38,6 @@ using namespace xilinx::AIEX;
 
 namespace {
 
-// Device generation ID written into the TXN header. Centralized here so adding
-// a new device family is a single edit instead of an inline ternary at the call
-// site.
-uint8_t txnDeviceGen(const AIETargetModel &tm) {
-  return llvm::isa<AIE::BaseNPU2TargetModel>(tm) ? 4 : 3;
-}
-
 // Example:
 // - instructions = {3,4,5}
 // - tailSize = 2
@@ -113,20 +106,6 @@ void appendLoadPdi(std::vector<uint32_t> &instructions, NpuLoadPdiOp op) {
                                   op.getAddress());
 }
 
-// The "instruction buffer" runtime (xclbin + insts.bin, launched as
-// kernel(opcode, insts_bo, ninsts, host_bo0, ...)) has the NPU firmware
-// pre-translate host buffer addresses into the AIE address space by adding this
-// offset, but only for the first `kNumFirmwareTranslatedArgs` host arguments.
-// Host arguments beyond that keep their raw host address, so the DDR patch must
-// fold the same offset into arg_plus to land at the correct AIE address.
-//
-// The full-ELF runtime (xrt.elf + xrt.ext.kernel) instead assigns NPU-space
-// device addresses to ALL host arguments, so folding the offset there would
-// double-translate the 6th+ buffer. `foldDDRAddrOffset` (see
-// AIETranslateNpuToBinary) selects between the two runtimes.
-static constexpr uint32_t kDDRAIEAddrOffset = 0x80000000;
-static constexpr uint32_t kNumFirmwareTranslatedArgs = 5;
-
 LogicalResult appendAddressPatch(std::vector<uint32_t> &instructions,
                                  NpuAddressPatchOp op, bool foldDDRAddrOffset) {
   if (op.getAddrVal())
@@ -139,12 +118,8 @@ LogicalResult appendAddressPatch(std::vector<uint32_t> &instructions,
   if (!argPlus)
     return op.emitOpError("Cannot translate address_patch with non-constant "
                           "arg_plus to a static TXN binary");
-  uint32_t argIdx = op.getArgIdx();
-  uint32_t patchedArgPlus = *argPlus;
-  if (foldDDRAddrOffset && argIdx >= kNumFirmwareTranslatedArgs)
-    patchedArgPlus += kDDRAIEAddrOffset;
-  aie_runtime::txn_append_address_patch(instructions, op.getAddr(), argIdx,
-                                        patchedArgPlus);
+  aie_runtime::txn_append_arg_patch(instructions, op.getAddr(), op.getArgIdx(),
+                                    *argPlus, foldDDRAddrOffset);
   return success();
 }
 
@@ -370,11 +345,8 @@ LogicalResult xilinx::AIE::AIETranslateNpuToBinary(
   // txn_prepend_header once all instructions are appended.
   aie_runtime::txn_init(instructions);
 
-  aie_runtime::TxnDeviceInfo devInfo;
-  devInfo.devGen = txnDeviceGen(tm);
-  devInfo.numRows = tm.rows();
-  devInfo.numCols = tm.columns();
-  devInfo.numMemTileRows = tm.getNumMemTileRows();
+  aie_runtime::TxnDeviceInfo devInfo = aie_runtime::txn_device_info(
+      txnDeviceGen(tm), tm.rows(), tm.columns(), tm.getNumMemTileRows());
   uint32_t count = 0;
 
   AIE::RuntimeSequenceOp seq =

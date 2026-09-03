@@ -74,6 +74,11 @@ class HSAKernelHandle(KernelHandle):
         self.insts_ptr = insts_ptr
         self.insts_size = insts_size
 
+    @property
+    def needs_dispatch_insts(self) -> bool:
+        """No device-side instruction buffer -- so a dispatch design."""
+        return self.insts_ptr is None
+
 
 class HSAKernelResult(KernelResult):
     """Result wrapper for an HSA dispatch (raises on failure, so success here)."""
@@ -118,24 +123,35 @@ class HSAHostRuntime(HostRuntime):
         )
 
     def _resolve_kernel(self, npu_kernel):
-        """Resolve + validate an npu_kernel to (insts_path, pdi_path, name)."""
+        """Resolve + validate an npu_kernel to (insts_path, pdi_path, name).
+
+        ``insts_path`` is ``None`` for a DispatchTime[T] design -- its
+        instruction stream is synthesized fresh per call (see ``run``'s
+        ``dispatch_insts`` handling) instead of read from a static insts.bin.
+        """
         self.check_device_consistency()
         xclbin_path = Path(npu_kernel.xclbin_path).resolve()
-        insts_path = Path(npu_kernel.insts_path).resolve()
+        insts_path = self._resolve_insts_path(npu_kernel)
         kernel_name = npu_kernel.kernel_name or "MLIR_AIE"
-        if not insts_path.exists() or not insts_path.is_file():
-            raise HostRuntimeError(
-                f"insts {insts_path} does not exist or is not a file."
-            )
         pdi_path = self._find_pdi(xclbin_path)
         return insts_path, pdi_path, kernel_name
 
     def _build_handle(self, insts_path, pdi_path) -> HSAKernelHandle:
-        """Copy insts + PDI into fresh device-heap allocations and wrap in a handle."""
+        """Copy insts (if any) + PDI into fresh device-heap allocations.
+
+        ``insts_path=None`` (a DispatchTime[T] design) allocates only the PDI
+        -- there is no static instruction stream to load; ``run()`` builds
+        (and frees) a fresh device buffer from ``dispatch_insts`` every call.
+        """
+        pdi_bytes = pdi_path.read_bytes()
+        if insts_path is None:
+            pdi_ptr = self._ctx.alloc_dev(len(pdi_bytes))
+            ctypes.memmove(pdi_ptr, pdi_bytes, len(pdi_bytes))
+            return HSAKernelHandle(pdi_ptr, None, 0)
+
         insts_bytes = insts_path.read_bytes()
         if len(insts_bytes) % 4 != 0:
             raise HostRuntimeError("insts.bin length is not a multiple of 4 bytes")
-        pdi_bytes = pdi_path.read_bytes()
 
         insts_ptr = self._ctx.alloc_dev(len(insts_bytes))
         ctypes.memmove(insts_ptr, insts_bytes, len(insts_bytes))
@@ -149,7 +165,8 @@ class HSAHostRuntime(HostRuntime):
 
     def _free_handle(self, handle) -> None:
         self._ctx.free_dev(handle.pdi_ptr)
-        self._ctx.free_dev(handle.insts_ptr)
+        if handle.insts_ptr is not None:
+            self._ctx.free_dev(handle.insts_ptr)
 
     def load(self, npu_kernel, **kwargs) -> HSAKernelHandle:
         insts_path, pdi_path, _ = self._resolve_kernel(npu_kernel)
@@ -223,6 +240,7 @@ class HSAHostRuntime(HostRuntime):
         trace_config=None,
         fail_on_error=True,
         only_if_loaded=False,
+        dispatch_insts=None,
         **kwargs,
     ) -> HSAKernelResult:
         """Dispatch one packet for ``kernel_handle`` and wait for it to complete.
@@ -231,22 +249,43 @@ class HSAHostRuntime(HostRuntime):
         HSA always raises on failure via the context's ``_check`` (see the
         _release_dispatch note below for the one path where cleanup is
         intentionally skipped rather than run unconditionally).
+
+        ``dispatch_insts`` (np.ndarray | None): freshly-generated instruction
+        words for a DispatchTime[T] design. Its exact size is only known per
+        call (see DispatchBridge), so -- unlike XRT's cacheable BO -- this
+        allocates a fresh device buffer, copies the words in, dispatches, and
+        frees it every call; ``kernel_handle.insts_ptr`` is ``None`` for a
+        dispatch design (see ``_build_handle``) and is never touched here.
         """
         assert isinstance(kernel_handle, HSAKernelHandle)
         if trace_config is not None:
             raise HostRuntimeError(_TRACE_UNSUPPORTED_MSG)
+        self._require_dispatch_insts(kernel_handle, dispatch_insts)
         self.check_device_consistency()
 
         kept = self._validate_args(args)
         failed = False
         overflows = []
+        dispatch_ptr = None
         signal = self._ctx.arm_signal(1)
         try:
+            if dispatch_insts is not None:
+                # dispatch_insts is already a fresh contiguous copy owned by
+                # this call; memmove reads it directly rather than paying for
+                # an intermediate bytes object the size of the stream.
+                nbytes = dispatch_insts.nbytes
+                dispatch_ptr = self._ctx.alloc_dev(nbytes)
+                ctypes.memmove(dispatch_ptr, dispatch_insts.ctypes.data, nbytes)
+                insts_ptr, insts_size = dispatch_ptr, nbytes
+            else:
+                insts_ptr = kernel_handle.insts_ptr
+                insts_size = kernel_handle.insts_size
+
             start = time.perf_counter_ns()
             overflows = self._ctx.dispatch(
                 kernel_handle.pdi_ptr,
-                kernel_handle.insts_ptr,
-                kernel_handle.insts_size,
+                insts_ptr,
+                insts_size,
                 self._arg_pairs(kept),
                 signal,
             )
@@ -257,6 +296,11 @@ class HSAHostRuntime(HostRuntime):
             raise
         finally:
             self._release_dispatch(failed, overflows)
+            # Same rule _release_dispatch applies to the overflow buffers: a
+            # failed dispatch may have reached the device, which can still be
+            # reading these words, so leak rather than hand the pages back.
+            if dispatch_ptr is not None and not failed:
+                self._ctx.free_dev(dispatch_ptr)
 
         self._mark_device_resident(kept)
         return HSAKernelResult(stop - start, success=True)
@@ -292,6 +336,9 @@ class HSAHostRuntime(HostRuntime):
         tensors = []
         for kernel_handle, args in runs:
             assert isinstance(kernel_handle, HSAKernelHandle)
+            # A chain carries no per-run instruction stream, so a dispatch
+            # design would contribute a null one here rather than fail.
+            self._require_dispatch_insts(kernel_handle, None)
             kept = self._validate_args(args)
             tensors.extend(kept)
             items.append(
@@ -363,9 +410,12 @@ class CachedHSAHostRuntime(HSAHostRuntime):
 
     def load(self, npu_kernel, **kwargs) -> HSAKernelHandle:
         insts_path, pdi_path, kernel_name = self._resolve_kernel(npu_kernel)
+        # A DispatchTime[T] design has no insts.bin to key on -- it keys on the
+        # PDI alone, so repeated calls reuse one PDI allocation while run()
+        # allocates the instruction stream fresh regardless of this cache.
         key = (
-            str(insts_path),
-            insts_path.stat().st_mtime,
+            str(insts_path) if insts_path else None,
+            insts_path.stat().st_mtime if insts_path else None,
             str(pdi_path),
             pdi_path.stat().st_mtime,
             kernel_name,

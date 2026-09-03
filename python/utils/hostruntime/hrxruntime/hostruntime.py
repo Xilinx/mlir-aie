@@ -113,6 +113,7 @@ class HRXKernelHandle(KernelHandle):
         self.kernel_name = kernel_name
         self.xclbin_path = xclbin_path
         self.insts_path = insts_path
+        self._xclbin_bytes: bytes | None = None
         # Own an independent libhrx reference to the executable. The executable
         # cache holds only a single reference and drops it on LRU eviction; a
         # live handle (e.g. every step of a batched run_chain, kept in the
@@ -131,6 +132,23 @@ class HRXKernelHandle(KernelHandle):
             except Exception:
                 pass
             self.executable = None
+
+    @property
+    def needs_dispatch_insts(self) -> bool:
+        """No prebuilt executable -- so a dispatch design (run() builds one)."""
+        return self.executable is None
+
+    def xclbin_image(self) -> bytes:
+        """Return the xclbin bytes, read once and kept for later dispatches.
+
+        A dispatch design rebuilds its executable every call (libhrx has no
+        way to swap an existing one's transaction bytes), but the xclbin
+        behind it never changes -- so only the executable needs rebuilding,
+        not the file read.
+        """
+        if self._xclbin_bytes is None:
+            self._xclbin_bytes = Path(self.xclbin_path).read_bytes()
+        return self._xclbin_bytes
 
 
 class HRXKernelResult(KernelResult):
@@ -179,31 +197,36 @@ class HRXHostRuntime(HostRuntime):
         self._device_gen = _detect_hrx_device_gen()
 
     def _resolve_kernel(self, npu_kernel):
-        """Resolve + validate an npu_kernel to (xclbin_path, insts_path, name)."""
+        """Resolve + validate an npu_kernel to (xclbin_path, insts_path, name).
+
+        ``insts_path`` is ``None`` for a DispatchTime[T] design -- its
+        instruction stream is synthesized fresh per call (see ``run``'s
+        ``dispatch_insts`` handling) instead of read from a static insts.bin.
+        """
         self.check_device_consistency()
         xclbin_path = Path(npu_kernel.xclbin_path).resolve()
-        insts_path = Path(npu_kernel.insts_path).resolve()
+        insts_path = self._resolve_insts_path(npu_kernel)
         kernel_name = npu_kernel.kernel_name or "MLIR_AIE"
 
         if not xclbin_path.exists() or not xclbin_path.is_file():
             raise HostRuntimeError(
                 f"xclbin {xclbin_path} does not exist or is not a file."
             )
-        if not insts_path.exists() or not insts_path.is_file():
-            raise HostRuntimeError(
-                f"insts {insts_path} does not exist or is not a file."
-            )
         return xclbin_path, insts_path, kernel_name
 
-    def _build_executable(self, xclbin_path, insts_path, kernel_name):
-        """Create + look up a fresh amdxdna executable from the raw artifacts."""
-        xclbin_bytes = xclbin_path.read_bytes()
+    def _create_executable_from_bytes(self, xclbin_bytes, insts_data, kernel_name):
+        """Create + look up a fresh amdxdna executable from raw artifact bytes.
+
+        Shared by the static path (``_build_executable``, file-backed) and
+        the DispatchTime[T] path (``run()``, backed by this call's
+        freshly-generated instruction words) -- both need the same
+        create+lookup sequence, only the byte source differs.
+        """
         # libhrx builds the amdxdna XADX package and derives the patch table
         # from the XAie transaction internally, so we just hand it the raw
         # artifacts. The transaction is the raw insts.bin TXN words; for an ELF
         # input (aiecc --aie-generate-elf) we extract .ctrltext (the TXN verbatim)
         # so libhrx still sees the BLOCKWRITE/DDR_PATCH ops it patches from.
-        insts_data = insts_path.read_bytes()
         if insts_data[:4] == b"\x7fELF":
             insts_bytes = control_code_from_elf(insts_data).tobytes()
         else:
@@ -215,6 +238,12 @@ class HRXHostRuntime(HostRuntime):
             raise HostRuntimeError(f"HRX failed to load kernel: {e}") from e
         return exe, ordv
 
+    def _build_executable(self, xclbin_path, insts_path, kernel_name):
+        """Create + look up a fresh amdxdna executable from the raw artifacts (file-backed)."""
+        xclbin_bytes = xclbin_path.read_bytes()
+        insts_data = insts_path.read_bytes()
+        return self._create_executable_from_bytes(xclbin_bytes, insts_data, kernel_name)
+
     def load(self, npu_kernel, **kwargs) -> HRXKernelHandle:
         """Build a fresh amdxdna executable for ``npu_kernel``.
 
@@ -225,13 +254,26 @@ class HRXHostRuntime(HostRuntime):
 
         Returns:
             HRXKernelHandle: A handle wrapping the loaded executable and its
-            resolved export ordinal.
+            resolved export ordinal. For a DispatchTime[T] design (no static
+            insts.bin), ``executable``/``export_ordinal`` are left ``None`` --
+            ``run()`` builds (and releases) a fresh executable from each
+            call's freshly-generated instruction words instead. libhrx bakes
+            the transaction into an immutable executable object at creation
+            time, with no lower-level "patch the bytes on an existing
+            executable" primitive, so this is a real per-call cost on this
+            backend, unlike XRT (rebuilds a BO) or HSA (memmoves into a fresh
+            device buffer) -- both far cheaper than recreating a whole
+            executable.
 
         Raises:
             HostRuntimeError: If the artifacts are missing or libhrx fails to
                 create/resolve the executable.
         """
         xclbin_path, insts_path, kernel_name = self._resolve_kernel(npu_kernel)
+        if insts_path is None:
+            return HRXKernelHandle(
+                None, None, kernel_name, xclbin_path, None, ctx=self._ctx
+            )
         exe, ordv = self._build_executable(xclbin_path, insts_path, kernel_name)
         self._executables.append(exe)
         return HRXKernelHandle(
@@ -277,6 +319,7 @@ class HRXHostRuntime(HostRuntime):
         trace_config=None,
         fail_on_error: bool = True,
         only_if_loaded: bool = False,
+        dispatch_insts=None,
         **kwargs,
     ) -> HRXKernelResult:
         """Dispatch a single loaded kernel and wait for it to finish.
@@ -293,6 +336,14 @@ class HRXHostRuntime(HostRuntime):
             fail_on_error (bool, optional): Raise on a failed dispatch instead of
                 returning an unsuccessful result. Defaults to True.
             only_if_loaded (bool, optional): Accepted for API compatibility.
+            dispatch_insts (np.ndarray | None, optional): Freshly-generated
+                instruction words for a DispatchTime[T] design. When set,
+                builds a fresh amdxdna executable from these words (since
+                ``kernel_handle.executable`` is ``None`` for a dispatch
+                design -- see ``load``), dispatches it, and releases it
+                before returning. This re-does load()-equivalent work on
+                *every* dynamic call -- a real, structural per-call cost
+                specific to this backend (see ``load``'s docstring).
             **kwargs: Accepted for API compatibility; ignored by HRX.
 
         Returns:
@@ -308,30 +359,45 @@ class HRXHostRuntime(HostRuntime):
         # trace). Matches the C++ wrapper's reject_unsupported_features.
         if trace_config is not None:
             raise HostRuntimeError(_TRACE_UNSUPPORTED_MSG)
+        # After the trace check: an unsupported feature is the more useful
+        # complaint when a caller asks for both at once.
+        self._require_dispatch_insts(kernel_handle, dispatch_insts)
         self.check_device_consistency()
 
         args, bindings = self._prepare_bindings(args)
 
-        start = time.perf_counter_ns()
-        try:
-            self._ctx.dispatch(
-                kernel_handle.executable, kernel_handle.export_ordinal, bindings
+        exe, ordv = kernel_handle.executable, kernel_handle.export_ordinal
+        dispatch_exe = None
+        if dispatch_insts is not None:
+            dispatch_exe, ordv = self._create_executable_from_bytes(
+                kernel_handle.xclbin_image(),
+                dispatch_insts.tobytes(),
+                kernel_handle.kernel_name,
             )
-            self._ctx.synchronize()
-        except HRXError as e:
-            if fail_on_error:
-                raise HostRuntimeError(f"HRX dispatch failed: {e}") from e
+            exe = dispatch_exe
+
+        try:
+            start = time.perf_counter_ns()
+            try:
+                self._ctx.dispatch(exe, ordv, bindings)
+                self._ctx.synchronize()
+            except HRXError as e:
+                if fail_on_error:
+                    raise HostRuntimeError(f"HRX dispatch failed: {e}") from e
+                stop = time.perf_counter_ns()
+                return HRXKernelResult(stop - start, success=False)
             stop = time.perf_counter_ns()
-            return HRXKernelResult(stop - start, success=False)
-        stop = time.perf_counter_ns()
 
-        # Outputs were written on-device; the persistent host mapping is stale.
-        # Leave the tensors marked device="npu" so the next host read
-        # (numpy()/to("cpu")) invalidates the cache via _sync_from_device.
-        for a in args:
-            a.device = "npu"
+            # Outputs were written on-device, so the host mapping is stale.
+            # Leave the tensors marked device="npu" so the next host read
+            # invalidates the cache via _sync_from_device.
+            for a in args:
+                a.device = "npu"
 
-        return HRXKernelResult(stop - start, success=True)
+            return HRXKernelResult(stop - start, success=True)
+        finally:
+            if dispatch_exe is not None:
+                self._release_executable(dispatch_exe)
 
     def run_chain(self, runs, fail_on_error: bool = True) -> HRXKernelResult:
         """Execute a chain (runlist) of dispatches as a single batched submit.
@@ -378,6 +444,9 @@ class HRXHostRuntime(HostRuntime):
         touched = []
         for kernel_handle, args in runs:
             assert isinstance(kernel_handle, HRXKernelHandle)
+            # A chain carries no per-run instruction stream, so a dispatch
+            # design would contribute a null executable here rather than fail.
+            self._require_dispatch_insts(kernel_handle, None)
             kept, bindings = self._prepare_bindings(args)
             items.append(
                 (kernel_handle.executable, kernel_handle.export_ordinal, bindings)
@@ -462,6 +531,14 @@ class CachedHRXRuntime(HRXHostRuntime):
 
     def load(self, npu_kernel, **kwargs) -> HRXKernelHandle:
         xclbin_path, insts_path, kernel_name = self._resolve_kernel(npu_kernel)
+
+        if insts_path is None:
+            # DispatchTime[T] design: nothing stable to cache here -- run()
+            # builds and releases a fresh executable from each call's
+            # instruction words (see HRXHostRuntime.load/run).
+            return HRXKernelHandle(
+                None, None, kernel_name, xclbin_path, None, ctx=self._ctx
+            )
 
         key = (
             str(xclbin_path),

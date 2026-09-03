@@ -1245,38 +1245,12 @@ splitLoweredCores(const Item<OpInModule<xilinx::AIE::DeviceOp>> &devItem,
   return out;
 }
 
-// DMA→NPU lowering. Expects runtime sequences to already be materialized
-// (getMaterializeRuntimeSeqPipeline).
+// DMA→NPU lowering, as an in-process PassManager. The pass list itself lives in
+// AIEXNpuPipelines.cpp so `aie-opt --aie-npu-dma-lowering` runs the same one.
 inline std::unique_ptr<mlir::PassManager>
 getNpuDmaLoweringPipeline(mlir::MLIRContext *ctx) {
-  namespace X = xilinx::AIEX;
   auto pm = std::make_unique<mlir::PassManager>(ctx);
-  auto &dpm = pm->nest<xilinx::AIE::DeviceOp>();
-  dpm.addPass(X::createAIEMaterializeBDChainsPass());
-  dpm.addPass(X::createAIESubstituteShimDMAAllocationsPass());
-  dpm.addPass(X::createAIEUnrollRuntimeSequenceLoopsPass());
-  dpm.addPass(mlir::createCanonicalizerPass());
-  // Decompose oversized non-contiguous ND transfers (wrap/stride exceeding the
-  // hardware BD field limits) into legal sub-transfers before BD lowering.
-  dpm.addPass(X::createAIEDecomposeLargeDmaBdPass());
-  // A runtime-bound scf.for that survived unroll takes the dynamic BD pool path
-  // (rewritten to pool pop/push, ids drawn at runtime); the static allocator
-  // below skips it. Straight-line sequences fall through unchanged.
-  dpm.addPass(X::createAIELowerDynamicBDPoolPass());
-  dpm.addPass(mlir::createCanonicalizerPass());
-  dpm.addPass(X::createAIEAssignRuntimeSequenceBDIDsPass());
-  dpm.addPass(X::createAIEDMATasksToNPUPass());
-  // Expand dma_channel_reset_for into its re-arm trio (dma_channel_reset +
-  // set_lock + a START_QUEUE re-push) and lower the resulting dma_channel_reset
-  // ops to maskwrite32 -- one pass. Runs before aie-dma-to-npu so the emitted
-  // push_queue is lowered with the other queue pushes, and before
-  // aie-lower-set- lock so the emitted set_lock ops are lowered too. The head
-  // bd_id + repeat it re-pushes were folded into the objectfifo_rearm_binding
-  // by aie-assign-bd-ids.
-  dpm.addPass(X::createAIELowerDmaChannelResetPass());
-  dpm.addPass(X::createAIEDmaToNpuPass());
-  dpm.addPass(X::createAIELowerSetLockPass());
-  dpm.addPass(X::createAIELowerCoreResetPass());
+  xilinx::AIEX::buildNpuDmaLoweringPipeline(*pm);
   return pm;
 }
 

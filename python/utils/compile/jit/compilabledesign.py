@@ -53,6 +53,7 @@ from aie.utils.compile.cache.utils import file_lock
 from aie.utils.compile.utils import _cleanup_failed_compilation
 
 from . import _manifest
+from ._dispatch_compile import compile_dispatch_bridge
 from ._dma_size_parser import parse_dma_sizes
 from ._hash import (
     _compute_artifact_hash,
@@ -61,6 +62,7 @@ from ._hash import (
     _device_identity_key,
 )
 from ._introspect import (
+    _dispatch_param_type,
     _introspect_generator,
     _is_compile_param,
     _is_tensor_param,
@@ -174,16 +176,49 @@ class CompilableDesign:
         # same memoised intro instead of re-running typing.get_type_hints
         # and inspect.signature on every call.
         if callable(mlir_generator):
-            self._hints, self._sig, (cp, tp, sp) = _introspect_generator(mlir_generator)
+            self._hints, self._sig, (cp, tp, dp, sp) = _introspect_generator(
+                mlir_generator
+            )
             self.compile_params = list(cp)
             self.tensor_params = list(tp)
+            self.dispatch_params = list(dp)
             self.scalar_params = list(sp)
+            # The wrapped T of each DispatchTime[T], in declaration order, so
+            # the build can check the generated C parameters against what was
+            # declared instead of trusting the count alone.
+            self.dispatch_param_types = [
+                _dispatch_param_type(
+                    self._hints.get(name, self._sig.parameters[name].annotation)
+                )
+                for name in self.dispatch_params
+            ]
         else:
             self._hints = {}
             self._sig = None
             self.compile_params = []
             self.tensor_params = []
+            self.dispatch_params = []
             self.scalar_params = []
+            self.dispatch_param_types = []
+
+        # Guard 0-A: compile_kwargs holds only CompileTime[T] names. Checked at
+        # construction because __hash__ can run before any generation, so a
+        # misplaced key would reach the cache key first.
+        name = getattr(mlir_generator, "__name__", mlir_generator)
+        for kind, names in (
+            ("runtime tensors (In/Out/InOut)", self.tensor_params),
+            ("runtime scalars (DispatchTime[T])", self.dispatch_params),
+        ):
+            misplaced = set(self.compile_kwargs) & set(names)
+            if misplaced:
+                raise TypeError(
+                    f"CompilableDesign for {name!r}: compile_kwargs contains "
+                    f"name(s) annotated as {kind}, not CompileTime[T] "
+                    f"parameters: {misplaced}.\n"
+                    f"  They are supplied at call time, not compile time, and "
+                    f"must never enter the cache key.\n"
+                    f"  CompileTime[T] params are: {self.compile_params}."
+                )
 
     # ------------------------------------------------------------------
     # Public API
@@ -273,7 +308,21 @@ class CompilableDesign:
         """
         from aie.iron.kernel import ExternalFunction
 
+        has_dispatch = bool(self.dispatch_params)
+
         full_elf = self.full_elf or full_elf_path is not None
+        if full_elf and has_dispatch:
+            # Architectural boundary, not a TODO: full-ELF bakes one static TXN
+            # into the ELF, and XRT's full-ELF dispatch path has no instruction-
+            # buffer argument to swap a per-call one into.
+            raise NotImplementedError(
+                "DispatchTime[T] + full_elf=True is not supported: a full ELF "
+                "bakes one static instruction stream into the ELF at compile "
+                "time, and XRT's full-ELF dispatch path has no instruction-"
+                "buffer argument to swap in a per-call one -- unlike the "
+                "xclbin + insts.bin path. Compile without full_elf for a "
+                "design with DispatchTime[T] parameters."
+            )
         if full_elf:
             return self._compile_full_elf(ExternalFunction, full_elf_path)
 
@@ -285,6 +334,12 @@ class CompilableDesign:
                 f"inst_path={inst_path!r}."
             )
         explicit_paths = xclbin_path is not None
+        if has_dispatch and explicit_paths:
+            raise NotImplementedError(
+                "DispatchTime[T] designs must use the default JIT cache path "
+                "(xclbin_path=inst_path=None); explicit-path compilation is "
+                "not supported for them yet."
+            )
         cache_hash = None
 
         if elf_path is not None and not explicit_paths:
@@ -324,18 +379,27 @@ class CompilableDesign:
             # other's input_with_addresses.mlir / .o files.
             kernel_dir = xclbin_path.parent / f"{xclbin_path.stem}.prj"
             lock_file_path = kernel_dir / ".lock"
+            # has_dispatch + explicit_paths is rejected above.
+            dispatch_so_path = None
         else:
             cache_hash = self._compute_cache_hash()
             kernel_dir = NPU_CACHE_HOME / cache_hash
             lock_file_path = kernel_dir / ".lock"
             xclbin_path = kernel_dir / "final.xclbin"
-            inst_path = kernel_dir / "insts.bin"
+            inst_path = None if has_dispatch else kernel_dir / "insts.bin"
+            dispatch_so_path = kernel_dir / "dispatch.so" if has_dispatch else None
+
+        # The xclbin's companion artifact: insts.bin, or dispatch.so for a
+        # dispatch design, which has no insts.bin at all -- every call
+        # synthesizes fresh instructions instead. Exactly one is always set.
+        companion_path = dispatch_so_path or inst_path
+        assert companion_path is not None
 
         with file_lock(lock_file_path, timeout_seconds=_COMPILE_LOCK_TIMEOUT_SECONDS):
             os.makedirs(kernel_dir, exist_ok=True)
 
             xclbin_exists = xclbin_path.exists()
-            inst_exists = inst_path.exists()
+            inst_exists = companion_path.exists()
 
             if not explicit_paths and self.use_cache and xclbin_exists and inst_exists:
                 if not _manifest.is_valid(kernel_dir):
@@ -407,7 +471,9 @@ class CompilableDesign:
 
                 # aiecc may exit 0 even when xclbin generation fails silently
                 # (missing xclbinutil/bootgen); verify outputs exist.
-                expected_outputs = [xclbin_path, inst_path]
+                expected_outputs = [xclbin_path]
+                if inst_path is not None:
+                    expected_outputs.append(inst_path)
                 if elf_path is not None:
                     expected_outputs.append(Path(elf_path))
                 if pdi_path is not None:
@@ -419,6 +485,19 @@ class CompilableDesign:
                         "but expected output file(s) were not created: "
                         + ", ".join(str(p) for p in missing)
                     )
+
+                if has_dispatch:
+                    dispatch_so_path = compile_dispatch_bridge(
+                        kernel_dir,
+                        self.dispatch_params,
+                        fold_ddr_addr_offset,
+                        self.dispatch_param_types,
+                    )
+                    if not dispatch_so_path.exists():
+                        raise RuntimeError(
+                            "[dispatch bridge] Compilation appeared to succeed "
+                            f"but {dispatch_so_path} was not created."
+                        )
 
                 # Build succeeded: record what it consumed, so the next lookup
                 # can check the real inputs instead of guessing at them.
@@ -590,6 +669,17 @@ class CompilableDesign:
             return None
         return self._xclbin_path, self._inst_path
 
+    def get_dispatch_lib_path(self) -> Path | None:
+        """Return the compiled dispatch bridge ``.so`` for a DispatchTime[T] design.
+
+        ``None`` if this design has no ``DispatchTime[T]`` parameters, or if
+        it hasn't been compiled yet.
+        """
+        if self._kernel_dir is None or not self.dispatch_params:
+            return None
+        so_path = self._kernel_dir / "dispatch.so"
+        return so_path if so_path.exists() else None
+
     def get_pdi_paths(self) -> list[Path]:
         """Return every cache-directory PDI aiecc emitted, sorted by name.
 
@@ -703,7 +793,14 @@ class CompilableDesign:
                         val = _next_non_kernel(pos_iter)
                         scalar_kwargs[name] = val
                     except StopIteration:
-                        pass
+                        # Dispatch params only: a defaulted CompileTime[T] is
+                        # baked into the artifact already, and forwarding it
+                        # here would leak it into the backend's load().
+                        if (
+                            name in self.dispatch_params
+                            and param.default is not inspect.Parameter.empty
+                        ):
+                            scalar_kwargs[name] = param.default
 
         return tensor_args, scalar_kwargs
 
@@ -879,6 +976,7 @@ class CompilableDesign:
             self.source_files,
             self.object_files,
             self._resolve_fold_ddr_addr_offset(),
+            bool(self.dispatch_params),
         )
 
     def _compute_cache_hash(self) -> str:
@@ -891,6 +989,7 @@ class CompilableDesign:
             self.compile_flags,
             self.full_elf,
             self._resolve_fold_ddr_addr_offset(),
+            bool(self.dispatch_params),
             self.include_paths,
         )
 
@@ -950,21 +1049,14 @@ class CompilableDesign:
 
         hints = self._hints
 
-        # Guard 2-A: compile_kwargs must not contain tensor param names.
-        tensor_names = set(self.tensor_params)
-        confused_tensor_keys = set(self.compile_kwargs.keys()) & tensor_names
-        if confused_tensor_keys:
-            raise TypeError(
-                f"CompilableDesign for {self.generator_name!r}: "
-                f"compile_kwargs contains name(s) annotated as runtime tensors "
-                f"(In/Out/InOut), not CompileTime[T] parameters: {confused_tensor_keys}.\n"
-                f"  Tensor params must be supplied at call time, not compile time.\n"
-                f"  CompileTime[T] params are: {self.compile_params}."
-            )
-
-        # Guard 2-B: compile_kwargs must not contain entirely unknown keys.
+        # Guard 2-B is checked here, not in __init__: an unknown key cannot
+        # generate at all, and leaving it be keeps to_json() able to round-trip
+        # whatever a caller put in compile_kwargs.
         known_params = (
-            set(self.compile_params) | set(self.tensor_params) | set(self.scalar_params)
+            set(self.compile_params)
+            | set(self.tensor_params)
+            | set(self.dispatch_params)
+            | set(self.scalar_params)
         )
         unknown_keys = set(self.compile_kwargs.keys()) - known_params
         if unknown_keys:
@@ -1004,7 +1096,18 @@ class CompilableDesign:
         _tensor_placeholders = {
             name: _TensorPlaceholder(name) for name in self.tensor_params
         }
-        _gen_call_kwargs = {**_tensor_placeholders, **self.compile_kwargs}
+        # DispatchTime[T] params generate from the wrapped type T (e.g.
+        # np.int32), not a value: the generator forwards it into Runtime(
+        # inputs=[...]) for a runtime SSA block arg. Hence not in the cache key.
+        _dispatch_placeholders = {
+            name: _dispatch_param_type(hints.get(name, sig.parameters[name].annotation))
+            for name in self.dispatch_params
+        }
+        _gen_call_kwargs = {
+            **_tensor_placeholders,
+            **_dispatch_placeholders,
+            **self.compile_kwargs,
+        }
 
         # Re-register any ExternalFunction instances passed as CompileTime[T] params
         # so the generator's kernel-call paths see them already-registered.

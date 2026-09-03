@@ -20,13 +20,7 @@
 // RUN:   --get-input-with-addresses --output-dir=%t.prj \
 // RUN:   --xclbin-name=%t.xclbin --tmpdir=%t.prj %S/aie.mlir
 //
-// RUN: aie-opt \
-// RUN:   --aie-materialize-bd-chains --aie-substitute-shim-dma-allocations \
-// RUN:   --aie-unroll-runtime-sequence-loops --canonicalize \
-// RUN:   --aie-lower-dynamic-bd-pool --canonicalize \
-// RUN:   --aie-assign-runtime-sequence-bd-ids --aie-dma-tasks-to-npu \
-// RUN:   --aie-dma-to-npu --aie-lower-set-lock \
-// RUN:   %t.prj/input_with_addresses.mlir -o %t.lowered.mlir
+// RUN: aie-opt --aie-npu-dma-lowering %t.prj/input_with_addresses.mlir -o %t.lowered.mlir
 // RUN: aie-translate --aie-npu-to-cpp %t.lowered.mlir > %t.gen.h
 //
 // RUN: %host_clang %S/test.cpp -o %t.exe -std=c++17 -Wall \

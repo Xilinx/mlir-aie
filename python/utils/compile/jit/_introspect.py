@@ -5,9 +5,9 @@
 #
 """Annotation introspection helpers for classifying generator parameters.
 
-Classifies generator parameters into ``CompileTime[T]`` / tensor / scalar
-buckets. Carved out of ``compilabledesign.py`` to keep the main file focused on
-the
+Classifies generator parameters into ``CompileTime[T]`` / tensor /
+``DispatchTime[T]`` / scalar buckets. Carved out of ``compilabledesign.py`` to
+keep the main file focused on the
 ``CompilableDesign`` class itself.  The public surface is
 :func:`split_params`; the rest is implementation detail behind
 :func:`_introspect_generator`'s ``lru_cache``.
@@ -21,7 +21,7 @@ import logging
 import typing
 from typing import Annotated, Callable, get_args, get_origin
 
-from .markers import _COMPILE_TIME_TAG, In, InOut, Out
+from .markers import _COMPILE_TIME_TAG, _DISPATCH_TIME_TAG, In, InOut, Out
 
 logger = logging.getLogger(__name__)
 
@@ -29,15 +29,34 @@ logger = logging.getLogger(__name__)
 _TENSOR_ANNOTATIONS = (In, Out, InOut)
 
 
-def _is_compile_param(annotation) -> bool:
-    """Return True for ``CompileTime[T]`` or ``Optional[CompileTime[T]]``."""
+def _tagged_type(annotation, tag):
+    """Return the wrapped ``T`` for an annotation carrying *tag*, else ``None``.
+
+    One traversal for every marker: ``get_type_hints`` rewrites a defaulted
+    ``Marker[T] = None`` to ``Optional[...]``, so both the direct
+    ``Annotated`` form and the ``Union`` wrapper have to be unwrapped, and
+    every marker needs it the same way.
+    """
     origin = get_origin(annotation)
     if origin is Annotated:
-        return any(arg is _COMPILE_TIME_TAG for arg in get_args(annotation)[1:])
-    # get_type_hints rewrites `CompileTime[T] = None` defaults to Optional[...].
+        args = get_args(annotation)
+        return args[0] if any(arg is tag for arg in args[1:]) else None
     if origin is typing.Union:
-        return any(_is_compile_param(arg) for arg in get_args(annotation))
-    return False
+        for arg in get_args(annotation):
+            wrapped = _tagged_type(arg, tag)
+            if wrapped is not None:
+                return wrapped
+    return None
+
+
+def _is_compile_param(annotation) -> bool:
+    """Return True for ``CompileTime[T]`` or ``Optional[CompileTime[T]]``."""
+    return _tagged_type(annotation, _COMPILE_TIME_TAG) is not None
+
+
+def _is_dispatch_param(annotation) -> bool:
+    """Return True for ``DispatchTime[T]`` or ``Optional[DispatchTime[T]]``."""
+    return _tagged_type(annotation, _DISPATCH_TIME_TAG) is not None
 
 
 def _is_tensor_param(annotation) -> bool:
@@ -45,11 +64,16 @@ def _is_tensor_param(annotation) -> bool:
     return annotation in _TENSOR_ANNOTATIONS
 
 
+def _dispatch_param_type(annotation):
+    """Return the wrapped ``T`` of a ``DispatchTime[T]``, else ``None``."""
+    return _tagged_type(annotation, _DISPATCH_TIME_TAG)
+
+
 @functools.lru_cache(maxsize=None)
 def _introspect_generator(generator: Callable):
-    """Memoise ``(hints, signature, (compile, tensor, scalar))`` for a generator.
+    """Memoise ``(hints, signature, (compile, tensor, dispatch, scalar))``.
 
-    All three derived values are pure functions of the generator's source —
+    All four derived values are pure functions of the generator's source —
     the same answer for every call of the same function object — but
     ``typing.get_type_hints`` and ``inspect.signature`` together cost
     ~40us per invocation.  Memoising shaves both ``split_params`` and
@@ -69,6 +93,7 @@ def _introspect_generator(generator: Callable):
     sig = inspect.signature(generator)
     compile_params: list[str] = []
     tensor_params: list[str] = []
+    dispatch_params: list[str] = []
     scalar_params: list[str] = []
     for name, param in sig.parameters.items():
         ann = hints.get(name, param.annotation)
@@ -78,6 +103,8 @@ def _introspect_generator(generator: Callable):
             compile_params.append(name)
         elif _is_tensor_param(ann):
             tensor_params.append(name)
+        elif _is_dispatch_param(ann):
+            dispatch_params.append(name)
         else:
             scalar_params.append(name)
 
@@ -87,22 +114,28 @@ def _introspect_generator(generator: Callable):
         (
             tuple(compile_params),
             tuple(tensor_params),
+            tuple(dispatch_params),
             tuple(scalar_params),
         ),
     )
 
 
-def split_params(generator: Callable) -> tuple[list[str], list[str], list[str]]:
-    """Inspect *generator* and return ``(compile_params, tensor_params, scalar_params)``.
+def split_params(
+    generator: Callable,
+) -> tuple[list[str], list[str], list[str], list[str]]:
+    """Inspect *generator*; return ``(compile, tensor, dispatch, scalar)`` params.
 
     * ``compile_params``  — names with ``CompileTime[T]`` annotation
     * ``tensor_params``   — names with ``In``/``Out``/``InOut`` annotation (in order)
-    * ``scalar_params``   — names with any other annotation (runtime scalars)
+    * ``dispatch_params``  — names with ``DispatchTime[T]`` annotation (runtime
+      scalars, one compiled artifact serves many values)
+    * ``scalar_params``   — names with any other annotation (unclassified;
+      currently rejected at ``@iron.jit`` time if they carry a default)
 
     Uses ``typing.get_type_hints()`` so that stringified annotations (produced
     by ``from __future__ import annotations`` or PEP 563 mode) are evaluated
     correctly.  Falls back to ``inspect.signature`` annotations on any error
     (e.g. when the generator's globals are not resolvable at call time).
     """
-    _, _, (cp, tp, sp) = _introspect_generator(generator)
-    return list(cp), list(tp), list(sp)
+    _, _, (cp, tp, dp, sp) = _introspect_generator(generator)
+    return list(cp), list(tp), list(dp), list(sp)

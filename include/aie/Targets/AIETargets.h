@@ -69,8 +69,16 @@ mlir::LogicalResult AIETranslateNpuToBinary(
     mlir::ModuleOp, std::vector<uint32_t> &, llvm::StringRef deviceName = "",
     llvm::StringRef sequenceName = "",
     std::vector<TxnLocEntry> *locmap = nullptr, bool foldDDRAddrOffset = true);
+/// \brief Emit a C++ builder that reconstructs the TXN stream at runtime.
+/// \param foldDDRAddrOffset true for the xclbin + instruction-buffer runtime;
+/// false for full-ELF and HRX, which translate host addresses themselves.
+/// Matches the default on AIETranslateNpuToBinary.
+/// \param emitDispatchShim also emit the extern "C" dispatch_abi() /
+/// dispatch_generate() entry points the JIT dispatch bridge loads via ctypes.
 mlir::LogicalResult AIETranslateNpuToCpp(mlir::ModuleOp module,
-                                         llvm::raw_ostream &output);
+                                         llvm::raw_ostream &output,
+                                         bool foldDDRAddrOffset = true,
+                                         bool emitDispatchShim = false);
 mlir::LogicalResult AIETranslateToUcDma(mlir::ModuleOp module,
                                         llvm::raw_ostream &output);
 mlir::LogicalResult AIETranslateToUcDma(mlir::ModuleOp module,

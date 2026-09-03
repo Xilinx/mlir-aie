@@ -5,7 +5,7 @@
 #
 """Type-annotation markers for compile-time vs. runtime parameter classification.
 
-Three annotation categories are defined here (all exported from ``aie.iron``):
+Five annotation categories are defined here (all exported from ``aie.iron``):
 
 ``CompileTime[T]``
     Marks a generator function parameter as compile-time.  Changing its value
@@ -27,12 +27,28 @@ Three annotation categories are defined here (all exported from ``aie.iron``):
     Marks a generator function parameter as a runtime bidirectional tensor.
     Data is DMA-transferred in both directions on every kernel call.
 
-Any parameter without one of these four annotations is currently rejected at
-``@iron.jit`` decoration time when the parameter has a default value — there
-is no runtime-scalar plumbing yet (tracked separately as future work), so the
-default would be baked into the compiled kernel and per-call overrides
-silently ignored.  Annotate as ``CompileTime[T]`` (recompiles on change) or
-``In``/``Out``/``InOut`` (DMA tensor) instead.
+``DispatchTime[T]``
+    Marks a generator function parameter as a runtime *scalar*.  Unlike
+    ``CompileTime[T]``, the value is not baked into the compiled kernel and
+    does not affect the cache key — one compiled artifact is meant to serve
+    many scalar values.  At generation time the generator receives the
+    wrapped type ``T`` itself (e.g. ``np.int32``), not a concrete value, so it
+    can forward it into ``Runtime(..., inputs=[...])`` and get back a runtime
+    SSA block arg (the same scalar-type-in-``inputs`` duality ``Runtime``
+    already implements).  Each call rebuilds the instruction stream for the
+    given value through the host dispatch bridge (a ``dispatch.so`` compiled
+    alongside the xclbin and called via ``ctypes``), so the per-call value
+    reaches the NPU without recompiling the design.  Not supported together
+    with ``full_elf=True``, which bakes one static instruction stream into the
+    ELF.
+
+Any parameter without one of these annotations is rejected at ``@iron.jit``
+decoration time when the parameter has a default value: an unannotated scalar
+is bound at generation time, so the default would be baked into the compiled
+kernel and per-call overrides silently ignored.  Annotate as
+``CompileTime[T]`` (recompiles on change), ``DispatchTime[T]`` (runtime
+scalar, one compile many values), or ``In``/``Out``/``InOut`` (DMA tensor)
+instead.
 """
 
 from __future__ import annotations
@@ -50,6 +66,12 @@ class _CompileTimeTag:
     """
 
     __slots__ = ()
+
+    def __repr__(self) -> str:
+        # The default repr embeds this instance's address, which differs every
+        # process. _hash.py folds annotations into the cache key by repr, so an
+        # address there would make a design miss its own cache on every run.
+        return "CompileTime"
 
 
 _COMPILE_TIME_TAG = _CompileTimeTag()
@@ -85,3 +107,40 @@ class Out:
 
 class InOut:
     """Runtime bidirectional tensor annotation (DMA in both directions each call)."""
+
+
+class _DispatchTimeTag:
+    """Runtime tag embedded in ``Annotated[T, _DispatchTimeTag()]``.
+
+    Lets ``_introspect.py`` recognize a ``DispatchTime[T]`` annotation without
+    pyright treating the parameter's type as anything other than ``T``.
+    """
+
+    __slots__ = ()
+
+    def __repr__(self) -> str:
+        # The default repr embeds this instance's address, which differs every
+        # process. _hash.py folds annotations into the cache key by repr, so an
+        # address there would make a design miss its own cache on every run.
+        return "DispatchTime"
+
+
+_DISPATCH_TIME_TAG = _DispatchTimeTag()
+
+DispatchTime = Annotated[T, _DISPATCH_TIME_TAG]
+"""Runtime-scalar parameter annotation.
+
+Use as a type annotation on generator function parameters that are runtime
+scalars: bound once per compiled artifact's *type* (not baked in by value),
+re-suppliable per call without a recompile.
+
+Unlike ``CompileTime[T]``, a ``DispatchTime[T]`` value is not part of the
+cache key. Unlike ``In``/``Out``/``InOut``, no DMA is involved -- the scalar
+reaches the device as a runtime sequence value (an ``npu.write32``/inline TXN
+argument or an ``rt.inline_ops`` symbolic bind), not a buffer transfer.
+
+Example::
+
+    def scaled_copy(a: In, b: Out, scale: DispatchTime[int]):
+        ...
+"""

@@ -26,7 +26,7 @@ from aie.iron.kernel import ExternalFunction, Kernel
 from aie.utils.compile.jit._dma_size_parser import parse_dma_sizes
 from aie.utils.compile.jit.compilabledesign import CompilableDesign, _compute_hash
 from aie.utils.compile.jit.context import get_compile_arg
-from aie.utils.compile.jit.markers import CompileTime, In, InOut, Out
+from aie.utils.compile.jit.markers import CompileTime, DispatchTime, In, InOut, Out
 from aie.utils.hostruntime import set_current_device
 
 # ---------------------------------------------------------------------------
@@ -58,6 +58,13 @@ def _scalar_gen():
 
 def _inout_gen():
     def f(x: InOut, *, M: CompileTime[int]):
+        pass
+
+    return f
+
+
+def _dispatch_gen():
+    def f(a: In, c: Out, scale: DispatchTime[int], *, N: CompileTime[int]):
         pass
 
     return f
@@ -115,10 +122,19 @@ def test_inout_classified_as_tensor():
     assert d.tensor_params == ["x"]
 
 
+def test_dispatch_params_classified():
+    d = CompilableDesign(_dispatch_gen())
+    assert d.dispatch_params == ["scale"]
+    # DispatchTime[T] params must not also land in scalar_params or compile_params.
+    assert d.scalar_params == []
+    assert d.compile_params == ["N"]
+
+
 def test_path_generator_has_empty_param_lists():
     d = CompilableDesign(Path("/nonexistent/design.mlir"))
     assert d.compile_params == []
     assert d.tensor_params == []
+    assert d.dispatch_params == []
     assert d.scalar_params == []
 
 
@@ -296,6 +312,66 @@ def test_hash_works_when_peano_install_dir_is_invalid(monkeypatch):
     # different-keyed designs must still differ.
     assert hash(d1) == hash(d2)
     assert hash(d1) != hash(d3)
+
+
+def test_hash_stable_for_generator_with_dispatch_param():
+    """A DispatchTime[T] param in the signature must not affect hash(design).
+
+    DispatchTime[T] values are never part of compile_kwargs (Guard 0-A), so
+    two designs built from the same generator + compile_kwargs must hash
+    identically -- there is no way to make hash(design) depend on a runtime
+    scalar value.
+    """
+    gen = _dispatch_gen()
+    d1 = CompilableDesign(gen, compile_kwargs={"N": 512})
+    d2 = CompilableDesign(gen, compile_kwargs={"N": 512})
+    assert hash(d1) == hash(d2)
+
+
+def test_hash_differs_for_compile_time_change_with_dispatch_param_present():
+    """Contrast case.
+
+    CompileTime[T] changes still rehash even when the same generator also
+    declares a DispatchTime[T] param.
+    """
+    gen = _dispatch_gen()
+    d1 = CompilableDesign(gen, compile_kwargs={"N": 512})
+    d2 = CompilableDesign(gen, compile_kwargs={"N": 1024})
+    assert hash(d1) != hash(d2)
+
+
+def test_dispatch_time_value_rejected_before_it_can_reach_hash():
+    """A DispatchTime[T] name in compile_kwargs is rejected at construction.
+
+    Before hash(design) could ever be computed from it (Guard 0-A). Waiting
+    until generation (the old Guard 2-A2 location) would be too late: a
+    cache-hit compile() never calls _generate_mlir, so __hash__ would already
+    have read the polluted compile_kwargs.
+    """
+    gen = _dispatch_gen()
+    with pytest.raises(TypeError, match="runtime scalars"):
+        CompilableDesign(gen, compile_kwargs={"scale": 4, "N": 512})
+
+
+def test_hash_works_when_dispatch_toolchain_is_missing(monkeypatch):
+    """``hash(design)`` must not require the dispatch toolchain to be installed.
+
+    aie-opt/aie-translate/a host C++ compiler are needed to *compile* a
+    DispatchTime[T] design, but hashing it must still work without them.
+    """
+    import aie.utils.config as _config
+
+    def _raise(*_a, **_kw):
+        raise RuntimeError("not found")
+
+    monkeypatch.setattr(_config, "aie_opt_path", _raise)
+    monkeypatch.setattr(_config, "aie_translate_path", _raise)
+    monkeypatch.setattr(_config, "host_cxx_path", _raise)
+
+    gen = _dispatch_gen()
+    d1 = CompilableDesign(gen, compile_kwargs={"N": 512})
+    d2 = CompilableDesign(gen, compile_kwargs={"N": 512})
+    assert hash(d1) == hash(d2)
 
 
 def test_hash_for_path_generator_uses_path_string():
@@ -906,15 +982,19 @@ def test_generate_mlir_unplaced_style_uses_return_value():
 # ---------------------------------------------------------------------------
 
 
-def test_generate_mlir_guard_2a_tensor_name_in_compile_kwargs():
-    """compile_kwargs must not contain names annotated as In/Out/InOut."""
+def test_construction_rejects_tensor_name_in_compile_kwargs():
+    """compile_kwargs must not contain names annotated as In/Out/InOut.
+
+    Rejected at construction, not generation: `a` is a real parameter, so the
+    design would otherwise be hashable and the misplaced key would reach the
+    cache key before anything generated.
+    """
 
     def gen(a: In, *, M: CompileTime[int]):
         pass
 
-    d = CompilableDesign(gen, compile_kwargs={"a": object(), "M": 1})
     with pytest.raises(TypeError, match="runtime tensors"):
-        d._generate_mlir(ExternalFunction)
+        CompilableDesign(gen, compile_kwargs={"a": object(), "M": 1})
 
 
 def test_generate_mlir_guard_2b_unknown_key_in_compile_kwargs():
@@ -926,6 +1006,24 @@ def test_generate_mlir_guard_2b_unknown_key_in_compile_kwargs():
     d = CompilableDesign(gen, compile_kwargs={"M": 1, "NOSUCHPARAM": 99})
     with pytest.raises(TypeError, match="not in the generator signature"):
         d._generate_mlir(ExternalFunction)
+
+
+def test_generate_mlir_dispatch_param_receives_wrapped_type():
+    """DispatchTime[T] params generate from the wrapped type T, not a value."""
+    import numpy as np
+
+    observed = {}
+
+    def gen(scale: DispatchTime[np.int32], *, M: CompileTime[int]):
+        observed["scale"] = scale
+        with mlir_mod_ctx() as ctx:
+            pass
+        return ctx.module
+
+    d = CompilableDesign(gen, compile_kwargs={"M": 1})
+    d._generate_mlir(ExternalFunction)
+
+    assert observed["scale"] is np.int32
 
 
 def test_generate_mlir_raises_on_verification_failure():
@@ -1322,3 +1420,41 @@ def test_get_pdi_paths_empty_before_compile():
 
     cd = CompilableDesign(gen)
     assert cd.get_pdi_paths() == []
+
+
+# ---------------------------------------------------------------------------
+# compile(): DispatchTime[T] guards -- these raise before any subprocess runs
+# ---------------------------------------------------------------------------
+
+
+def test_compile_dispatch_time_rejects_full_elf():
+    """DispatchTime[T] + full_elf=True raises before any compilation is attempted."""
+    d = CompilableDesign(_dispatch_gen(), compile_kwargs={"N": 512}, full_elf=True)
+    with pytest.raises(NotImplementedError, match="full_elf"):
+        d.compile()
+
+
+def test_compile_dispatch_time_rejects_full_elf_path_kwarg():
+    """Same guard via the full_elf_path= call-time kwarg, not just the config."""
+    d = CompilableDesign(_dispatch_gen(), compile_kwargs={"N": 512})
+    with pytest.raises(NotImplementedError, match="full_elf"):
+        d.compile(full_elf_path="/tmp/foo.elf")
+
+
+def test_compile_dispatch_time_rejects_explicit_paths():
+    """DispatchTime[T] + explicit xclbin_path/inst_path raises up front."""
+    d = CompilableDesign(_dispatch_gen(), compile_kwargs={"N": 512})
+    with pytest.raises(NotImplementedError, match="explicit-path"):
+        d.compile(xclbin_path="/tmp/foo.xclbin", inst_path="/tmp/foo.bin")
+
+
+def test_get_dispatch_lib_path_none_before_compile():
+    """get_dispatch_lib_path() returns None when no compile has happened yet."""
+    d = CompilableDesign(_dispatch_gen(), compile_kwargs={"N": 512})
+    assert d.get_dispatch_lib_path() is None
+
+
+def test_get_dispatch_lib_path_none_for_non_dispatch_design():
+    """get_dispatch_lib_path() returns None for a design with no DispatchTime[T] params."""
+    d = CompilableDesign(_gemm_gen())
+    assert d.get_dispatch_lib_path() is None

@@ -19,6 +19,7 @@
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/IR/AIETargetModel.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
+#include "aie/Runtime/TxnEncoding.h"
 
 #include "mlir/Conversion/ArithToEmitC/ArithToEmitC.h"
 #include "mlir/Conversion/SCFToEmitC/SCFToEmitC.h"
@@ -38,6 +39,9 @@
 #include "llvm/Support/Format.h"
 
 namespace xilinx {
+// DECL as well as DEF: the ConvertAIEXToEmitCPass(Options) constructor below
+// needs ConvertAIEXToEmitCOptions declared in this translation unit.
+#define GEN_PASS_DECL_CONVERTAIEXTOEMITC
 #define GEN_PASS_DEF_CONVERTAIEXTOEMITC
 #include "aie/Conversion/Passes.h.inc"
 } // namespace xilinx
@@ -107,9 +111,10 @@ struct DeviceResolved {
 class AIEXToEmitCConverter {
 public:
   AIEXToEmitCConverter(emitc::FuncOp funcOp, Value txnVec,
-                       const DeviceResolved &resolved, Value opCountVar)
+                       const DeviceResolved &resolved, Value opCountVar,
+                       bool foldDDRAddrOffset)
       : funcOp(funcOp), txnVec(txnVec), resolved(resolved),
-        opCountVar(opCountVar) {}
+        opCountVar(opCountVar), foldDDRAddrOffset(foldDDRAddrOffset) {}
 
   // Convert every npu/pool op in the body, recursing into scf regions. Returns
   // the compile-time op count for a straight-line body (the literal op_count),
@@ -220,8 +225,15 @@ private:
               b, loc, emitc::OpaqueType::get(b.getContext(), "int32_t"),
               emitc::OpaqueAttr::get(b.getContext(),
                                      std::to_string(ap.getArgIdx())));
-          emitTxnCall(b, loc, "txn_append_address_patch", txnVec,
-                      {addrV, idxV, ap.getArgPlus()});
+          // txn_append_arg_patch applies the DDR-aperture fold itself, so the
+          // rule lives only in TxnEncoding.h. Both operands are literals here,
+          // so -O2 folds the branch away.
+          Value foldV = emitc::ConstantOp::create(
+              b, loc, emitc::OpaqueType::get(b.getContext(), "bool"),
+              emitc::OpaqueAttr::get(b.getContext(),
+                                     foldDDRAddrOffset ? "true" : "false"));
+          emitTxnCall(b, loc, "txn_append_arg_patch", txnVec,
+                      {addrV, idxV, ap.getArgPlus(), foldV});
           countOp(b, loc, count);
         })
         .Case<AIEX::NpuBlockWriteOp>([&](auto bw) {
@@ -423,10 +435,17 @@ private:
   bool ok = true;
   // Counter for unique popped-BD-id C++ variable names.
   unsigned nextPoolVar = 0;
+  bool foldDDRAddrOffset;
 };
 
 struct ConvertAIEXToEmitCPass
     : xilinx::impl::ConvertAIEXToEmitCBase<ConvertAIEXToEmitCPass> {
+  ConvertAIEXToEmitCPass() = default;
+  // foldDDRAddrOffset is `protected` on the generated base, settable only via
+  // a -pass-pipeline string; this constructor is the programmatic equivalent.
+  explicit ConvertAIEXToEmitCPass(const ConvertAIEXToEmitCOptions &options)
+      : ConvertAIEXToEmitCBase(options) {}
+
   void runOnOperation() override {
     ModuleOp moduleOp = getOperation();
     MLIRContext *ctx = &getContext();
@@ -441,6 +460,14 @@ struct ConvertAIEXToEmitCPass
     });
     if (sequences.empty())
       return;
+
+    if (emitDispatchShim && sequences.size() != 1) {
+      moduleOp.emitOpError()
+          << "emit-dispatch-shim needs exactly one aie.runtime_sequence to "
+             "wrap, found "
+          << sequences.size();
+      return signalPassFailure();
+    }
 
     OpBuilder builder(ctx);
     for (auto &[seqOp, deviceOp] : sequences) {
@@ -459,6 +486,9 @@ struct ConvertAIEXToEmitCPass
         toErase.push_back(&op);
     for (Operation *op : llvm::reverse(toErase))
       op->erase();
+
+    if (emitDispatchShim && failed(emitDispatchShimFuncs(builder, moduleOp)))
+      return signalPassFailure();
 
     // Lower the arith ops (constant scalar fields, runtime-value arithmetic
     // feeding npu ops) and any scf control flow (a rolled dynamic loop) left in
@@ -500,6 +530,85 @@ struct ConvertAIEXToEmitCPass
   }
 
 private:
+  // The C spelling emitc's translator emits for a parameter type, for the ABI
+  // string only. Must mirror CppEmitter::emitType down to its signedness rule,
+  // or the reported ABI disagrees with the emitted signature.
+  static std::optional<std::string> cTypeName(Type t) {
+    if (isa<emitc::SizeTType>(t))
+      return std::string("size_t");
+    auto intTy = dyn_cast<IntegerType>(t);
+    if (!intTy || !emitc::isSupportedIntegerType(intTy))
+      return std::nullopt;
+    if (intTy.getWidth() == 1)
+      return std::string("bool");
+    return (intTy.isUnsigned() ? "uint" : "int") +
+           std::to_string(intTy.getWidth()) + "_t";
+  }
+
+  // Emit the ctypes-callable entry points: dispatch_abi() reporting the
+  // parameter types, and dispatch_generate() handing back a pointer + word
+  // count into thread-local storage, or -2 when the builder declined.
+  LogicalResult emitDispatchShimFuncs(OpBuilder &builder, ModuleOp moduleOp) {
+    auto gen = *moduleOp.getOps<emitc::FuncOp>().begin();
+    MLIRContext *ctx = moduleOp.getContext();
+    Location loc = gen.getLoc();
+    TypeRange genParams = gen.getFunctionType().getInputs();
+
+    SmallVector<std::string> abiTypes;
+    for (Type t : genParams) {
+      std::optional<std::string> name = cTypeName(t);
+      if (!name)
+        return gen.emitOpError()
+               << "runtime-sequence parameter type " << t
+               << " has no dispatch ABI spelling; it cannot be passed from the "
+                  "host at dispatch time";
+      abiTypes.push_back(*name);
+    }
+
+    builder.setInsertionPointToEnd(moduleOp.getBody());
+    auto externC = builder.getStrArrayAttr({"extern \"C\""});
+
+    // Pointers must be emitc.ptr: an opaque type may not have a pointer as its
+    // outer type.
+    auto charPtrTy =
+        emitc::PointerType::get(emitc::OpaqueType::get(ctx, "const char"));
+    auto abiFn = emitc::FuncOp::create(builder, loc, "dispatch_abi",
+                                       FunctionType::get(ctx, {}, {charPtrTy}));
+    abiFn.setSpecifiersAttr(externC);
+    OpBuilder ab = OpBuilder::atBlockBegin(abiFn.addEntryBlock());
+    Value abiStr = emitc::LiteralOp::create(
+        ab, loc, charPtrTy, "\"" + llvm::join(abiTypes, ",") + "\"");
+    emitc::ReturnOp::create(ab, loc, abiStr);
+
+    SmallVector<Type> shimParams(genParams);
+    shimParams.push_back(
+        emitc::PointerType::get(emitc::PointerType::get(getU32Type(ctx))));
+    auto i64Ty = emitc::OpaqueType::get(ctx, "int64_t");
+    auto shimFn =
+        emitc::FuncOp::create(builder, loc, "dispatch_generate",
+                              FunctionType::get(ctx, shimParams, {i64Ty}));
+    shimFn.setSpecifiersAttr(externC);
+    Block *shimBlock = shimFn.addEntryBlock();
+    OpBuilder sb = OpBuilder::atBlockBegin(shimBlock);
+
+    SmallVector<Value> genArgs(shimBlock->getArguments().drop_back());
+    SmallVector<StringRef> holes(genArgs.size(), "{}");
+    std::string call = "auto __result = " + gen.getSymName().str() + "(" +
+                       llvm::join(holes, ", ") + ");";
+    emitc::VerbatimOp::create(
+        sb, loc, "static thread_local " + kTxnVecType.str() + " __txn;");
+    emitc::VerbatimOp::create(sb, loc, call, genArgs);
+    emitc::VerbatimOp::create(sb, loc, "if (!__result) return -2;");
+    emitc::VerbatimOp::create(sb, loc, "__txn = std::move(*__result);");
+    emitc::VerbatimOp::create(sb, loc, "*{} = __txn.data();",
+                              ValueRange{shimBlock->getArguments().back()});
+    emitc::ReturnOp::create(
+        sb, loc,
+        emitc::LiteralOp::create(sb, loc, i64Ty,
+                                 "static_cast<int64_t>(__txn.size())"));
+    return success();
+  }
+
   // Resolve `orig`'s device-dependent values (still under the device) keyed by
   // its detached `clone`.
   static void recordDeviceResolved(Operation *orig, Operation *clone,
@@ -639,7 +748,8 @@ private:
       });
     }
 
-    AIEXToEmitCConverter conv(funcOp, txnVec, resolved, opCountVar);
+    AIEXToEmitCConverter conv(funcOp, txnVec, resolved, opCountVar,
+                              foldDDRAddrOffset);
     std::optional<uint32_t> count = conv.run();
     if (!count)
       return failure();
@@ -648,15 +758,17 @@ private:
     // runtime `__opcount` when the sequence has a loop, else the compile-time
     // literal.
     const AIE::AIETargetModel &tm = deviceOp.getTargetModel();
-    uint8_t devGen = isa<AIE::BaseNPU2TargetModel>(tm) ? 4 : 3;
     OpBuilder eb(funcBlock, funcBlock->end());
     std::string countStr =
         hasControlFlow ? "__opcount" : (std::to_string(*count) + "u");
+    // txn_device_info assigns TxnDeviceInfo by field name, so a field added or
+    // reordered there cannot silently mis-encode this generated header.
     std::string header = "aie_runtime::txn_prepend_header(txn, " + countStr +
-                         ", {0, 1, " + std::to_string(devGen) + ", " +
+                         ", aie_runtime::txn_device_info(" +
+                         std::to_string(AIE::txnDeviceGen(tm)) + ", " +
                          std::to_string(tm.rows()) + ", " +
                          std::to_string(tm.columns()) + ", " +
-                         std::to_string(tm.getNumMemTileRows()) + "});";
+                         std::to_string(tm.getNumMemTileRows()) + "));";
     emitc::VerbatimOp::create(eb, loc, header);
     // Return the vector as the optional result. The literal text differs from
     // the "txn" accumulator literal (so the two are not deduplicated) and is
@@ -673,4 +785,13 @@ private:
 std::unique_ptr<OperationPass<ModuleOp>>
 xilinx::createConvertAIEXToEmitCPass() {
   return std::make_unique<ConvertAIEXToEmitCPass>();
+}
+
+std::unique_ptr<OperationPass<ModuleOp>>
+xilinx::createConvertAIEXToEmitCPass(bool foldDDRAddrOffset,
+                                     bool emitDispatchShim) {
+  ConvertAIEXToEmitCOptions options;
+  options.foldDDRAddrOffset = foldDDRAddrOffset;
+  options.emitDispatchShim = emitDispatchShim;
+  return std::make_unique<ConvertAIEXToEmitCPass>(options);
 }

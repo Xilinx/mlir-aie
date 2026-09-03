@@ -76,6 +76,14 @@ std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createAIELowerScratchpadParametersPass(
     AIELowerScratchpadParametersOptions options);
 
+/// \brief DMA->NPU lowering. Expects runtime sequences to already be
+/// materialized (aiecc's getMaterializeRuntimeSeqPipeline). Registered as
+/// `aie-npu-dma-lowering` so out-of-process callers share this definition.
+void buildNpuDmaLoweringPipeline(mlir::OpPassManager &pm);
+
+/// Register buildNpuDmaLoweringPipeline as `-aie-npu-dma-lowering`.
+void registerAIEXNpuPipelines();
+
 /// Generate the code for registering passes.
 #define GEN_PASS_REGISTRATION
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h.inc"
