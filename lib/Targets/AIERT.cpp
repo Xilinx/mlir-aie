@@ -257,7 +257,7 @@ xilinx::AIE::AIERTControl::AIERTControl(const AIE::AIETargetModel &tm)
   size_t deviceCols = tm.columns() + partitionStartCol;
 
   // Don't put this in the target model, because it's XAIE specific.
-  unsigned char devGen;
+  unsigned char devGen = XAIE_DEV_GEN_AIE;
   switch (tm.getTargetArch()) {
   case AIEArch::AIE1: // probably unreachable.
     devGen = XAIE_DEV_GEN_AIE;
@@ -270,6 +270,12 @@ xilinx::AIE::AIERTControl::AIERTControl(const AIE::AIETargetModel &tm)
   case AIEArch::AIE2p:
     devGen = XAIE_DEV_GEN_AIE2P_STRIX_B0;
     break;
+  case AIEArch::AIE2ps:
+    // AIE2PS configures the array through a CERT ELF instead of CDO or an
+    // xclbin (see AIE2PSTargetModel), so it has no aie-rt device generation.
+    // Listed here so that a new AIEArch still raises -Wswitch.
+    llvm::report_fatal_error("aie-rt configuration is not supported for the "
+                             "AIE2PS architecture");
   }
   aiert->configPtr = XAie_Config{
       /*AieGen*/ devGen,
@@ -720,42 +726,15 @@ LogicalResult xilinx::AIE::AIERTControl::initBuffers(DeviceOp &targetOp) {
       return;
     auto tileLoc = XAie_TileLoc(bufferOp.getTileOp().colIndex(),
                                 bufferOp.getTileOp().rowIndex());
-    std::vector<char> byteVec;
-    if (denseInit.getElementType().isIntOrIndex()) {
-      for (auto intVal : denseInit.getValues<APInt>()) {
-        // Get the size in bytes
-        size_t byteSize = (intVal.getBitWidth() + 7) / 8;
-        // Create a buffer for the integer bytes and copy
-        std::vector<char> bytes(byteSize);
-        std::copy(
-            static_cast<const char *>(static_cast<const void *>(&intVal)),
-            static_cast<const char *>(static_cast<const void *>(&intVal)) +
-                byteSize,
-            bytes.begin());
-        byteVec.insert(byteVec.end(), bytes.begin(), bytes.end());
-      }
-    } else if (isa<FloatType>(denseInit.getElementType())) {
-      for (auto floatVal : denseInit.getValues<APFloat>()) {
-        APInt floatInt = floatVal.bitcastToAPInt();
-        // Get the size in bytes
-        size_t byteSize = (floatInt.getBitWidth() + 7) / 8;
-        // Create a buffer for the float bytes and copy
-        std::vector<char> bytes(byteSize);
-        std::copy(
-            static_cast<const char *>(static_cast<const void *>(&floatInt)),
-            static_cast<const char *>(static_cast<const void *>(&floatInt)) +
-                byteSize,
-            bytes.begin());
-        byteVec.insert(byteVec.end(), bytes.begin(), bytes.end());
-      }
-    } else {
+    std::optional<std::vector<char>> byteVec = denseAttrToBytes(denseInit);
+    if (!byteVec) {
       llvm::outs() << "buffer op type not supported for initialization "
                    << bufferOp << "\n";
       return;
     }
     TRY_XAIE_API_FATAL_ERROR(XAie_DataMemBlockWrite, &aiert->devInst, tileLoc,
-                             bufferOp.getAddress().value(), byteVec.data(),
-                             byteVec.size());
+                             bufferOp.getAddress().value(), byteVec->data(),
+                             byteVec->size());
   });
   return success();
 }

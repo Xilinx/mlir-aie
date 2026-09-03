@@ -487,29 +487,25 @@ struct AIEUseLockToStdLowering : OpConversionPattern<UseLockOp> {
 struct AIEBufferToStandard : OpConversionPattern<BufferOp> {
   using OpConversionPattern::OpConversionPattern;
   ModuleOp &module;
-  int tileCol = 0;
-  int tileRow = 0;
   AIEBufferToStandard(MLIRContext *context, ModuleOp &m,
-                      PatternBenefit benefit = 1, int tileCol = -1,
-                      int tileRow = -1)
-      : OpConversionPattern(context, benefit), module(m), tileCol(tileCol),
-        tileRow(tileRow) {}
+                      PatternBenefit benefit = 1)
+      : OpConversionPattern(context, benefit), module(m) {}
   LogicalResult
   matchAndRewrite(BufferOp buffer, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     rewriter.setInsertionPointToStart(module.getBody());
     auto t = llvm::cast<MemRefType>(buffer.getType());
-    int col = llvm::cast<TileOp>(buffer.getTile().getDefiningOp()).getCol();
-    int row = llvm::cast<TileOp>(buffer.getTile().getDefiningOp()).getRow();
     auto symName = buffer.name().getValue();
-    mlir::ElementsAttr initValue = buffer.getInitialValueAttr();
-    // Don't emit initialization for cores that don't "own" the buffer (to
-    // prevent duplication in the data section of the elf/object file)
-    if ((tileRow != row && tileRow != -1) || (tileCol != col && tileCol != -1))
-      initValue = nullptr;
+    // A declaration, never a definition: a buffer lives at the address the
+    // allocator chose, and the linker supplies that address from the generated
+    // script or BCF. `initial_value` is device state, written by whoever
+    // configures the device -- the CDO writer, or mlir_aie_initialize_buffers
+    // on the simulator path. A definition here would place the bytes wherever
+    // `*(.data*)` lands, which costs the core's data region a copy it never
+    // reads.
     memref::GlobalOp::create(rewriter, buffer.getLoc(), symName,
                              rewriter.getStringAttr("public"), buffer.getType(),
-                             initValue, /*constant*/ false,
+                             /*initial_value=*/nullptr, /*constant*/ false,
                              /*alignment*/ nullptr);
 
     for (auto &use : make_early_inc_range(buffer.getResult().getUses())) {
@@ -775,8 +771,7 @@ struct AIECoreToStandardPass
                  AIEDebugOpToStdLowering, AIEUseLockToStdLowering,
                  AIEEventOpToStdLowering>(m.getContext(), m);
 
-    patterns.add<AIEBufferToStandard>(m.getContext(), m, /*benefit*/ 1, tileCol,
-                                      tileRow);
+    patterns.add<AIEBufferToStandard>(m.getContext(), m, /*benefit*/ 1);
     if (failed(applyPartialConversion(deviceOp, target, std::move(patterns))))
       return signalPassFailure();
 

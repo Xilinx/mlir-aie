@@ -48,7 +48,6 @@
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/ADT/StringSet.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Support/Error.h"
@@ -990,6 +989,9 @@ getInputWithAddressesPipeline(mlir::MLIRContext *ctx, mlir::ModuleOp mod,
   }
 
   mlir::OpPassManager &dpm2 = pm->nest<DeviceOp>();
+  // A buffer's name becomes a symbol in its core's object, so aie-prepare-
+  // buffers names the unnamed buffers before the core compiles.
+  dpm2.addPass(createAIEPrepareBuffersPass());
   AIEAssignBufferAddressesOptions bufOpts;
   bufOpts.clAllocScheme = allocScheme.str();
   dpm2.addPass(createAIEAssignBufferAddressesPass(bufOpts));

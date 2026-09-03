@@ -31,7 +31,7 @@ from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_close_with_benchmark
 
 
-@iron.jit(aiecc_flags=["--alloc-scheme=basic-sequential"])
+@iron.jit
 def matrix_vector(
     A: In,
     B: In,

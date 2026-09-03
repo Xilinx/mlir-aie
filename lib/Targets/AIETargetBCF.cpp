@@ -91,25 +91,16 @@ LogicalResult AIETranslateToBCF(ModuleOp module, raw_ostream &output,
               std::string bufName(buf.name().getValue());
               int bufferBaseAddr = getBufferBaseAddress(buf);
               int numBytes = buf.getAllocationSize();
-              if (buf.getInitialValue() && tile != srcCoord) {
-                output << "// skip initialization of " << buf.name()
-                       << " which is initialized "
-                          "in the neighboring tile\n";
-                output << "\n";
-                continue;
-              }
-              if (buf.getInitialValue() && tile == srcCoord) {
-                output << "_overlay " << bufName << " "
-                       << utohexstr(offset + bufferBaseAddr) << " // "
-                       << numBytes << " bytes\n";
-              } else {
-                output << "_symbol " << bufName << " "
-                       << utohexstr(offset + bufferBaseAddr) << " " << numBytes
-                       << '\n';
-                output << "_extern " << bufName << "\n";
-                output << "_reserved DMb " << utohexstr(offset + bufferBaseAddr)
-                       << " " << numBytes << '\n';
-              }
+              // Every buffer is an external symbol at a reserved address,
+              // whether or not it has an `initial_value`. No core object
+              // defines a buffer, so there is no data here to overlay. Whoever
+              // configures the device writes the initial value.
+              output << "_symbol " << bufName << " "
+                     << utohexstr(offset + bufferBaseAddr) << " " << numBytes
+                     << '\n';
+              output << "_extern " << bufName << "\n";
+              output << "_reserved DMb " << utohexstr(offset + bufferBaseAddr)
+                     << " " << numBytes << '\n';
               output << "\n";
             }
           }

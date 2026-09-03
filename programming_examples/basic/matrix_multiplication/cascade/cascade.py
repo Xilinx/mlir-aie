@@ -49,7 +49,7 @@ def _device_for(dev_str, n_aie_cols):
     return from_name(dev_str, n_cols=n_aie_cols if dev_str == "npu" else None)
 
 
-@iron.jit(aiecc_flags=["--alloc-scheme=basic-sequential"])
+@iron.jit
 def cascade(
     A: In,
     B: In,

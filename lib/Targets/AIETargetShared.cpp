@@ -181,4 +181,28 @@ collectOutOfOrderBlocks(const llvm::SetVector<Block *> &blockVector) {
   return oooBlocks;
 }
 
+std::optional<std::vector<char>>
+denseAttrToBytes(mlir::DenseElementsAttr denseInit) {
+  mlir::Type elemType = denseInit.getElementType();
+  if (!elemType.isIntOrIndex() && !llvm::isa<mlir::FloatType>(elemType))
+    return std::nullopt;
+
+  std::vector<char> bytes;
+  // A float reaches its byte image through APInt too, so one loop covers both.
+  // The APInt object aliases its own value only for a width that fits the
+  // inline union, so this reads getRawData() instead of &value.
+  auto append = [&bytes](const llvm::APInt &value) {
+    size_t byteSize = (value.getBitWidth() + 7) / 8;
+    const auto *first = reinterpret_cast<const char *>(value.getRawData());
+    bytes.insert(bytes.end(), first, first + byteSize);
+  };
+  if (elemType.isIntOrIndex())
+    for (const llvm::APInt &intVal : denseInit.getValues<llvm::APInt>())
+      append(intVal);
+  else
+    for (const llvm::APFloat &floatVal : denseInit.getValues<llvm::APFloat>())
+      append(floatVal.bitcastToAPInt());
+  return bytes;
+}
+
 } // namespace xilinx::AIE

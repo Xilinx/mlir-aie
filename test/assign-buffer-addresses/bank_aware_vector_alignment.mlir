@@ -14,12 +14,16 @@
 
 // RUN: aie-opt --split-input-file --aie-assign-buffer-addresses="alloc-scheme=bank-aware" %s | FileCheck %s
 
-// Banks are round-robined, so `b4` is the first buffer to land in bank 0 behind
-// the 144B `pad`. Without the fix it is placed at 1184 (32 mod 64) and a 512-bit
-// vector store to it is torn; it must be bumped to 1216.
+// The 144B `pad` ends at 1168, so the buffer behind it lands at 1184 (32 mod
+// 64), where a 512-bit vector store is torn. It is bumped to 1216. The rest
+// follow at 64B intervals, packed into one bank, because placement maximizes
+// the free run it leaves behind.
 // CHECK-LABEL: module @bank_aware_needs_64B
 // CHECK: aie.buffer({{.*}}) {address = 1024 : i32, mem_bank = 0 : i32, sym_name = "pad"} : memref<72xbf16>
-// CHECK: aie.buffer({{.*}}) {address = 1216 : i32, mem_bank = 0 : i32, sym_name = "b4"} : memref<32xbf16>
+// CHECK: aie.buffer({{.*}}) {address = 1216 : i32, mem_bank = 0 : i32, sym_name = "b1"} : memref<32xbf16>
+// CHECK: aie.buffer({{.*}}) {address = 1280 : i32, mem_bank = 0 : i32, sym_name = "b2"} : memref<32xbf16>
+// CHECK: aie.buffer({{.*}}) {address = 1344 : i32, mem_bank = 0 : i32, sym_name = "b3"} : memref<32xbf16>
+// CHECK: aie.buffer({{.*}}) {address = 1408 : i32, mem_bank = 0 : i32, sym_name = "b4"} : memref<32xbf16>
 module @bank_aware_needs_64B {
   aie.device(npu2) {
     %t = aie.tile(0, 2)

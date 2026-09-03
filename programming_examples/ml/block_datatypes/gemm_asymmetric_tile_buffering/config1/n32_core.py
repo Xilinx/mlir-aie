@@ -42,7 +42,7 @@ _KERNEL_SRC = Path(__file__).resolve().parent / "mm_bfp_mixed.cc"
 _AIE_KERNELS_INC = Path(__file__).resolve().parents[5] / "aie_kernels"
 
 
-@iron.jit(aiecc_flags=["--dynamic-objFifos", "--alloc-scheme=basic-sequential"])
+@iron.jit(aiecc_flags=["--dynamic-objFifos"])
 def n32_core_gemm(
     A: In,
     B: In,

@@ -362,7 +362,7 @@ def _build_design(
     return module
 
 
-@iron.jit(aiecc_flags=["--alloc-scheme=basic-sequential"])
+@iron.jit
 def whole_array(
     A: In,
     B: In,

@@ -5,8 +5,11 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "aie/Dialect/AIE/IR/AIECoreMemory.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Targets/AIETargets.h"
+
+#include <optional>
 
 using namespace mlir;
 using namespace xilinx;
@@ -80,52 +83,72 @@ LogicalResult xilinx::AIE::AIETranslateToLdScript(ModuleOp module,
       TileID srcCoord = {tile.colIndex(), tile.rowIndex()};
       const auto &targetModel = getTargetModel(tile);
 
-      // Figure out how much memory we have left for compiler-generated
-      // sections (.data/.rodata/.bss) that are not explicitly placed; these are
-      // emitted into the "data" region below. Buffers are placed by the
-      // buffer-address allocator, which (in bank-aware mode) can leave the free
-      // space fragmented -- pick the largest free gap across the stack and this
-      // tile's buffers within the tile's local memory.
+      // The "data" region below holds the sections the core compiler generates
+      // itself (.data, .rodata and .bss) and that nothing places explicitly. It
+      // is one contiguous region, so its size bounds what the core can link,
+      // and the total free memory on the tile does not.
       auto core = tile.getCoreOp();
       int localMemSize = targetModel.getLocalMemorySize();
+      int64_t stackSize = core ? core.getEffectiveStackSize() : 0;
 
-      // Collect occupied [start, end) intervals in tile-local coordinates: the
-      // stack sits at the bottom of memory, followed by the placed buffers.
-      SmallVector<std::pair<int, int>, 8> occupied;
-      occupied.push_back({0, core.getEffectiveStackSize()});
-      for (auto buf : buffers[tiles[srcCoord]]) {
-        int bufferBaseAddr = getBufferBaseAddress(buf);
-        int numBytes = buf.getAllocationSize();
-        occupied.push_back({bufferBaseAddr, bufferBaseAddr + numBytes});
-      }
-      std::sort(occupied.begin(), occupied.end());
+      MemoryRun dataRun;
+      auto dataOrigin = core ? core.getDataOrigin() : std::nullopt;
+      auto dataLength = core ? core.getDataLength() : std::nullopt;
+      if (dataOrigin && dataLength) {
+        // Emit the allocator's recorded placement, so this does not re-derive a
+        // number that would have to agree with it.
+        dataRun = {*dataOrigin, *dataLength};
 
-      // Sweep the intervals to find the largest free gap not covered by any of
-      // them within [0, localMemSize).
-      int bestGapStart = 0;
-      int bestGapLen = 0;
-      int cursor = 0;
-      auto considerGap = [&](int gapStart, int gapEnd) {
-        if (gapEnd - gapStart > bestGapLen) {
-          bestGapLen = gapEnd - gapStart;
-          bestGapStart = gapStart;
+        // A pass that adds a buffer to this tile after the allocator runs makes
+        // the region alias the core's own .data and .bss. Report that here,
+        // instead of hiding the pipeline-ordering bug behind a fallback. A
+        // zero-length region and a zero-sized buffer span no bytes, so they
+        // collide with nothing.
+        int64_t dataEnd = dataRun.start + dataRun.size;
+        if (dataRun.size > 0 && dataRun.start < stackSize)
+          return tile.emitOpError("recorded data region at 0x")
+                 << llvm::utohexstr(dataRun.start)
+                 << " overlaps this core's stack (" << stackSize << " bytes)";
+        for (auto buf : buffers[tiles[srcCoord]]) {
+          if (buf.getAllocationSize() == 0)
+            continue;
+          int64_t bufStart = getBufferBaseAddress(buf);
+          int64_t bufEnd = bufStart + buf.getAllocationSize();
+          if (dataRun.size > 0 && bufStart < dataEnd && dataRun.start < bufEnd)
+            return tile.emitOpError("recorded data region 0x")
+                   << llvm::utohexstr(dataRun.start) << "-0x"
+                   << llvm::utohexstr(dataEnd - 1) << " overlaps buffer '"
+                   << buf.name().getValue() << "' at 0x"
+                   << llvm::utohexstr(bufStart)
+                   << "; the buffer allocator's placement is stale. Re-run "
+                      "--aie-assign-buffer-addresses, or drop data_origin/"
+                      "data_length to recompute the region here";
         }
-      };
-      for (auto &iv : occupied) {
-        if (iv.first > cursor)
-          considerGap(cursor, iv.first);
-        cursor = std::max(cursor, iv.second);
+      } else {
+        // No recorded placement: this IR never went through the allocator, so
+        // it is hand-written, or aie-translate ran directly on it. Derive the
+        // region the way the allocator derives it, so such IR still links.
+        // Bank-aware placement can leave the free space fragmented, so this is
+        // the largest gap, not the space above the top buffer.
+        SmallVector<std::pair<int64_t, int64_t>> occupied;
+        occupied.emplace_back(0, stackSize);
+        for (auto buf : buffers[tiles[srcCoord]]) {
+          int64_t bufferBaseAddr = getBufferBaseAddress(buf);
+          occupied.emplace_back(bufferBaseAddr,
+                                bufferBaseAddr + buf.getAllocationSize());
+        }
+        dataRun = largestFreeRun(
+            localMemSize, std::move(occupied),
+            std::max<int64_t>(
+                targetModel.getComputeTileMaxVectorAlignBits() / 8, 1));
       }
-      // Trailing gap above the highest occupied address.
-      if (cursor < localMemSize)
-        considerGap(cursor, localMemSize);
 
-      int origin =
-          targetModel.getMemInternalBaseAddress(srcCoord) + bestGapStart;
-      int length = bestGapLen;
       // Was hardcoded to 0x20000 -- eight times the real 0x4000 -- which let
       // an overflowing core link cleanly and fail much later in aie-rt's ELF
       // loader instead of here, at the linker, naming the section.
+      int origin =
+          targetModel.getMemInternalBaseAddress(srcCoord) + dataRun.start;
+      int length = dataRun.size;
       output << R"THESCRIPT(
 MEMORY
 {

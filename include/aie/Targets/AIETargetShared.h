@@ -47,6 +47,16 @@ llvm::SetVector<mlir::Block *> getOrderedChainOfBlocks(mlir::Region *region);
 llvm::SmallPtrSet<mlir::Block *, 8>
 collectOutOfOrderBlocks(const llvm::SetVector<mlir::Block *> &blockVector);
 
+/// A buffer's `initial_value` as the bytes to write to its tile memory, in
+/// element order. Every path that delivers that value to the device calls this
+/// -- the CDO and transaction writer, and the aiesim configuration source -- so
+/// one buffer is initialized one way.
+///
+/// Returns nullopt for an element type with no byte image, meaning neither
+/// integer nor float. The callers report that type.
+std::optional<std::vector<char>>
+denseAttrToBytes(mlir::DenseElementsAttr denseInit);
+
 } // namespace AIE
 } // namespace xilinx
 

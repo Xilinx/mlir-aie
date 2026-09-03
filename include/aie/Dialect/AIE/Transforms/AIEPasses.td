@@ -93,6 +93,24 @@ def AIEPlaceTiles : Pass<"aie-place-tiles", "DeviceOp"> {
   ];
 }
 
+def AIEPrepareBuffers : Pass<"aie-prepare-buffers", "DeviceOp"> {
+  let summary = "Check buffer placement and give every buffer a name";
+  let description = [{
+    Settles everything about a buffer that the core compilation depends on,
+    except the buffer's address.
+
+    A buffer's name becomes a symbol in the core's object, so the name must
+    exist before the core is lowered. This pass names every unnamed buffer and
+    checks buffer placement, which rejects a malformed design before any core
+    is compiled.
+
+    aie-assign-buffer-addresses assigns the addresses. It runs once the core
+    objects exist, so it can measure the space each core's own sections need.
+  }];
+
+  let constructor = "xilinx::AIE::createAIEPrepareBuffersPass()";
+}
+
 def AIEAssignBufferAddresses : Pass<"aie-assign-buffer-addresses", "DeviceOp"> {
   let summary = "Assign memory locations for buffers in each tile";
   let description = [{
