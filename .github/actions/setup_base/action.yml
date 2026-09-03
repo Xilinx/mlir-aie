@@ -32,7 +32,7 @@ outputs:
     description: ''
     value: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
 
-description: ''
+description: 'Prepare the workspace, toolchain and optional tmate debug session shared by the distro build jobs.'
 
 runs:
   using: "composite"
@@ -55,7 +55,7 @@ runs:
 
     - name: MS Build
       if: ${{ inputs.MATRIX_OS == 'windows-2022' }}
-      uses: microsoft/setup-msbuild@34cfbaee7f672c76950673338facd8a73f637506  # v1.1
+      uses: microsoft/setup-msbuild@30375c66a4eea26614e0d39710365f22f8b0af57  # v3.0.0
 
     - name: Free disk space
       if: contains(inputs.MATRIX_OS, 'ubuntu')
@@ -68,7 +68,7 @@ runs:
         large-packages: true
         swap-storage: false # This frees space on the wrong partition.
 
-    - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
+    - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
       with:
         python-version: '3.12'
 

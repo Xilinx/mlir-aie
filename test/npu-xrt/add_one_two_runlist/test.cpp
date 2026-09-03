@@ -114,10 +114,17 @@ int main(int argc, const char *argv[]) {
   bo0_inA.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
   if (verbosity >= 1)
-    std::cout << "Running Kernel 0.\n";
+    std::cout << "Setting arguments of Kernel 0.\n";
 
+  // xrt::kernel::operator() would start the run; a run in a runlist must be
+  // started by the runlist.
   unsigned int opcode = 3;
-  auto run0 = kernel0(opcode, bo0_instr, instr_v.size(), bo0_inA, bo0_out);
+  xrt::run run0(kernel0);
+  run0.set_arg(0, opcode);
+  run0.set_arg(1, bo0_instr);
+  run0.set_arg(2, static_cast<uint32_t>(instr_v.size()));
+  run0.set_arg(3, bo0_inA);
+  run0.set_arg(4, bo0_out);
 
   // same instructions as kernel1
   bufInstr = bo1_instr.map<void *>();
@@ -125,9 +132,14 @@ int main(int argc, const char *argv[]) {
   bo1_instr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
   if (verbosity >= 1)
-    std::cout << "Running Kernel 1.\n";
+    std::cout << "Setting arguments of Kernel 1.\n";
   // Use the output of kernel0 as input to kernel1
-  auto run1 = kernel1(opcode, bo1_instr, instr_v.size(), bo0_out, bo1_out);
+  xrt::run run1(kernel1);
+  run1.set_arg(0, opcode);
+  run1.set_arg(1, bo1_instr);
+  run1.set_arg(2, static_cast<uint32_t>(instr_v.size()));
+  run1.set_arg(3, bo0_out);
+  run1.set_arg(4, bo1_out);
 
   // Creating a runlist to contain two seperate runs
   xrt::runlist runlist = xrt::runlist(context);
