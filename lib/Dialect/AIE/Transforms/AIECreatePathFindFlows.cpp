@@ -15,6 +15,7 @@
 #include "mlir/Pass/Pass.h"
 #include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallBitVector.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/Support/Debug.h"
@@ -219,7 +220,8 @@ struct AIEOpRemoval : OpConversionPattern<MyOp> {
   }
 };
 
-bool AIEPathfinderPass::findPathToDest(SwitchSettings settings, TileID currTile,
+bool AIEPathfinderPass::findPathToDest(const SwitchSettings &settings,
+                                       TileID currTile,
                                        WireBundle currDestBundle,
                                        int currDestChannel, TileID finalTile,
                                        WireBundle finalDestBundle,
@@ -357,12 +359,7 @@ computeSubcubeCover(const SmallVector<int, 4> &matchIds,
   const int idMask = numIds - 1;
 
   auto hitsAvoid = [&](int mask, int value) {
-    for (int o : avoidIds) {
-      if ((o & mask) == value) {
-        return true;
-      }
-    }
-    return false;
+    return llvm::any_of(avoidIds, [&](int o) { return (o & mask) == value; });
   };
 
   llvm::SmallBitVector matchMask(numIds);
@@ -796,8 +793,7 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
 
       for (auto dest : packetFlow.second) {
         Port port = dest.second;
-        if (std::find(existingPorts.begin(), existingPorts.end(), port) ==
-            existingPorts.end())
+        if (llvm::find(existingPorts, port) == existingPorts.end())
           hasNonOverlap = true;
         else
           hasOverlap = true;
@@ -964,7 +960,7 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
         continue;
 
       for (auto dest1 : dests1) {
-        if (std::find(dests2.begin(), dests2.end(), dest1) == dests2.end()) {
+        if (llvm::find(dests2, dest1) == dests2.end()) {
           matched = false;
           break;
         }
@@ -996,11 +992,11 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
   for (const auto &swMap : mastersets) {
     TileID tileId = swMap.first.first;
     TileOp tileOp = analyzer.getTile(builder, tileId);
-    if (std::none_of(tiles.begin(), tiles.end(),
-                     [&tileOp](const std::pair<const xilinx::AIE::TileID,
-                                               Operation *> &tileMapEntry) {
-                       return tileMapEntry.second == tileOp.getOperation();
-                     })) {
+    if (llvm::none_of(tiles,
+                      [&tileOp](const std::pair<const xilinx::AIE::TileID,
+                                                Operation *> &tileMapEntry) {
+                        return tileMapEntry.second == tileOp.getOperation();
+                      })) {
       tiles[{tileOp.colIndex(), tileOp.rowIndex()}] = tileOp;
     }
   }

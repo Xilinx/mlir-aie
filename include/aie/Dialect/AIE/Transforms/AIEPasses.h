@@ -19,6 +19,13 @@
 
 namespace xilinx::AIE {
 
+/// Discardable attribute set by `--aie-objectfifo-lower-cores` on `scf.for`
+/// loops containing ObjectFifo accesses -- the loop unroll factor (the least
+/// common multiple of the depths of the objectFifos accessed within the
+/// loop) consumed by the `AIEObjectFifoUnroll` pass.
+inline constexpr llvm::StringLiteral kObjectFifoUnrollHintAttrName =
+    "aie.unroll_hint";
+
 #define GEN_PASS_DECL
 #define GEN_PASS_DEF_AIEROUTEPATHFINDERFLOWS
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h.inc"
@@ -52,8 +59,19 @@ createAIEVectorTransferLoweringPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createAIEHoistVectorTransferPointersPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEPathfinderPass();
+std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEObjectFifoUnrollPass();
+std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEObjectFifoSplitPass();
+std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEObjectFifoVerifyPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>>
-createAIEObjectFifoStatefulTransformPass();
+createAIEObjectFifoAllocatePass();
+std::unique_ptr<mlir::OperationPass<DeviceOp>>
+createAIEObjectFifoAllocatePass(bool packetSwitched);
+std::unique_ptr<mlir::OperationPass<DeviceOp>>
+createAIEObjectFifoLowerDMAsPass();
+std::unique_ptr<mlir::OperationPass<DeviceOp>>
+createAIEObjectFifoLowerCoresPass();
+std::unique_ptr<mlir::OperationPass<DeviceOp>>
+createAIEObjectFifoErasePoolsPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIELowerCascadeFlowsPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>>
 createAIEAssignBufferDescriptorIDsPass();
@@ -73,6 +91,10 @@ std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEInsertTraceFlowsPass();
 /// Generate the code for registering passes.
 #define GEN_PASS_REGISTRATION
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h.inc"
+
+/// Register `aie-objectFifo-stateful-transform` as a pipeline over the passes
+/// that lower `aie.objectfifo`.
+void registerAIEObjectFifoPipeline();
 
 /// \brief Routes flows in a device by lowering them to stream-switch
 /// configurations.
@@ -96,7 +118,7 @@ struct AIEPathfinderPass
 
   typedef std::pair<TileID, Port> PhysPort;
 
-  bool findPathToDest(SwitchSettings settings, TileID currTile,
+  bool findPathToDest(const SwitchSettings &settings, TileID currTile,
                       WireBundle currDestBundle, int currDestChannel,
                       TileID finalTile, WireBundle finalDestBundle,
                       int finalDestChannel);

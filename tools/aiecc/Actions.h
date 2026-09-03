@@ -142,8 +142,8 @@ struct SplitIRAction {
   SplitIRAction(KeyFn fn) : keyFn(std::move(fn)) {}
 
   mlir::FailureOr<std::vector<std::pair<std::string, OpInModule<KeyOp>>>>
-  operator()(const mlir::OwningOpRef<mlir::ModuleOp> &in) const {
-    auto srcModule = in.get();
+  operator()(const Item<mlir::OwningOpRef<mlir::ModuleOp>> &item) const {
+    auto srcModule = item.get().get();
     std::vector<std::pair<std::string, size_t>> matches;
     size_t idx = 0;
     srcModule.walk([&](KeyOp op) {
@@ -153,7 +153,9 @@ struct SplitIRAction {
 
     std::vector<std::pair<std::string, OpInModule<KeyOp>>> out;
     out.reserve(matches.size());
-    for (auto &[key, target] : matches) {
+    for (auto &match : matches) {
+      std::string &key = match.first;
+      size_t target = match.second;
       mlir::OwningOpRef<mlir::ModuleOp> clone = srcModule.clone();
       KeyOp clonedOp;
       size_t cur = 0;

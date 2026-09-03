@@ -11,10 +11,12 @@ upstream yet, applied automatically at CMake configure time (see
 
 - `0001-cdo-sim-defork-fixes.patch`: works around aie-rt's
   `cdo_rts.h`/`main_rts.h` dependencies on Vitis-only headers by replacing the
-  includes with local forward declarations (`xaie_cdo.c`, `xaie_sim.c`), fixes
-  a resource-manager memory leak (`RscArrPerTile` in `xaie_io_common.c`), and
-  carries a few minor build/warning fixes. None of this is present upstream as
-  of the pinned commit.
+  includes with local forward declarations (`xaie_cdo.c`, `xaie_sim.c`), adds
+  an explicit backend-selection parameter to `XAie_IOInit` and a matching
+  `Backend` field on `XAie_Config` (`xaiegbl.c`/`.h`, `xaie_io.c`/`.h`) that
+  `lib/Targets/AIERT.cpp` depends on to select the CDO backend, and carries a
+  few minor build/warning fixes. None of this is present upstream as of the
+  pinned commit.
 - `0002-elfloader-zero-bss-gap.patch`: `_XAie_LoadDataMemSection` wrote
   `p_memsz` bytes from a buffer (`ElfMem + p_offset`) holding only `p_filesz`
   valid ones, substituting a zeroed buffer only when `p_filesz == 0`. That
@@ -28,4 +30,21 @@ upstream yet, applied automatically at CMake configure time (see
   buffer whenever `p_memsz > p_filesz` and copies the initialised prefix into
   it. Regression test: `test/aiecc/bss_zero_init.mlir`. Not fixed upstream as of
   the pinned commit.
-
+- `0003-remove-dead-blockwrite32-append-fns.patch`: deletes
+  `_XAie_AppendBlockWrite32`/`_opt` in `xaie_txn.c`, two `static inline`
+  functions left over from an upstream TXN-serialization refactor that no
+  caller references anymore (block-write commands now go through
+  `_XAie_AppendBWToTxnBuff`/`_XAie_AppendBWToBlockwriteBuff` instead). GCC
+  doesn't flag this, but clang's `-Werror=unused` (used in CI) does.
+- `0004-fix-aie1-tiledma-intrleavecount-underflow.patch`: fixes an unsigned
+  underflow in the AIE1 tile-DMA BD writer. `_XAie_TileDmaWriteBd` guards each
+  BD field with `_XAie_CheckPrecisionExceeds(Lsb, _XAie_MaxBitsNeeded(v), 32)`,
+  and passes `IntrleaveCount - 1U` for the interleave-count field. Interleaving
+  is off by default, so `IntrleaveCount` is 0 and the subtraction wraps to
+  `0xFFFFFFFF`, making `_XAie_MaxBitsNeeded` return 32 and the guard trip for
+  any nonzero `Lsb`. The BD write then bails out with `XAIE_ERR` before
+  programming a single word, so every AIE1 tile DMA silently goes
+  unconfigured. The neighbouring `XAie_SetField` that actually writes the
+  field masks the wrapped value, which is why only the new check is affected.
+  Clamp the checked value to 0 when interleaving is disabled. Reported
+  upstream; drop this once it lands.

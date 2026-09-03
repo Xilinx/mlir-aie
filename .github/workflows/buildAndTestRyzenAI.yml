@@ -53,6 +53,8 @@ jobs:
     # The goal for this job is to run the full test suite, including programming guide and examples, on a freshly built-from-source MLIR-AIE.
     # This also exercises the build-mlir-aie-from-wheels.sh script, which is the most common developer-facing way to rebuild MLIR-AIE from source.
     runs-on: ${{ matrix.runner_type }}
+    # Normal exec is 20-40 min; cap a hang well below GitHub's 360-min default.
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
@@ -297,6 +299,7 @@ jobs:
     #     the normal single-dispatch path (vector_vector_add IRON +
     #     vector_reduce_max C++).
     runs-on: aie2p-8col
+    timeout-minutes: 30
     env:
       NPU_CACHE_HOME: ${{ github.workspace }}/iron-cache-hrx-${{ github.run_id }}
       PIP_CACHE_DIR: ${{ github.workspace }}/.pip-cache-hrx-${{ github.run_id }}
@@ -535,7 +538,7 @@ jobs:
           arch: x64
 
       - name: Set up Python
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
           python-version: "3.12"
 
@@ -543,7 +546,8 @@ jobs:
         run: |
           # The XRT-free / Boost-free packaging tool aiecc uses on the NPU_RUNTIME=hrx
           # path. Building it here proves the pure-HRX packaging tool compiles on
-          # Windows in this tree (not just the submodule's own CI).
+          # Windows in this tree (the dedicated buildAndTestHrxXclbinutil.yml workflow
+          # covers the standalone build/test matrix in more detail).
           #
           # Build-only on a GitHub-hosted runner with no NPU, so the on-device
           # retry signatures don't apply; retry once on any failure to ride out a

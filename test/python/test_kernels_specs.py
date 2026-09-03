@@ -23,16 +23,19 @@ The shared _isolate_extern_state fixture lives in conftest.py at this
 directory level.
 """
 
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable
+from typing import Callable
 
 import numpy as np
 import pytest
-from ml_dtypes import bfloat16
-
 from aie.iron import kernels
+from aie.iron.device import NPU2Col1
 from aie.iron.kernel import ExternalFunction
+from aie.utils import get_current_device
+from aie.utils.hostruntime import set_current_device
+from ml_dtypes import bfloat16
 
 # ---------------------------------------------------------------------------
 # Spec table
@@ -60,6 +63,12 @@ class KernelSpec:
     shape_checks: list[tuple[dict, int, tuple]] = field(default_factory=list)
     # (kwargs_overrides, expected_tile_size_at_arg_0)
     tile_size_checks: list[tuple[dict, int]] = field(default_factory=list)
+    # True for a factory that raises unless the current device resolves to
+    # aie2p (e.g. exp2f_vec's explicit NotImplementedError gate on aie2).
+    # Every other factory here is arch-agnostic (or pins its own subdir
+    # regardless of the detected arch), so this defaults off; see
+    # _device_for below for what setting it does.
+    requires_npu2: bool = False
 
 
 KERNEL_SPECS: list[KernelSpec] = [
@@ -280,6 +289,51 @@ KERNEL_SPECS: list[KernelSpec] = [
         source_kind="string_or_file",
         source_substring="bf16_exp.cc",
         invalid_kwargs=[(dict(tile_size=512), "tile_size must be 1024")],
+    ),
+    KernelSpec(
+        name="tanh",
+        factory=kernels.tanh,
+        kwargs=dict(tile_size=1024),
+        arg_count=3,
+        expected_name="tanh_bf16",
+        source_kind="string_or_file",
+        source_substring="tanh.cc",
+        invalid_kwargs=[(dict(tile_size=512), "tile_size must be 1024")],
+    ),
+    KernelSpec(
+        name="sigmoid",
+        factory=kernels.sigmoid,
+        kwargs=dict(tile_size=1024),
+        arg_count=3,
+        expected_name="sigmoid_bf16",
+        source_kind="string_or_file",
+        source_substring="sigmoid.cc",
+        invalid_kwargs=[(dict(tile_size=512), "tile_size must be 1024")],
+    ),
+    KernelSpec(
+        name="leaky_relu",
+        factory=kernels.leaky_relu,
+        kwargs=dict(tile_size=1024),
+        arg_count=4,  # in, out, size (int32), alpha (bfloat16)
+        expected_name="leaky_relu_bf16",
+        source_kind="string_or_file",
+        source_substring="leaky_relu.cc",
+        invalid_kwargs=[(dict(tile_size=512), "tile_size must be 1024")],
+    ),
+    KernelSpec(
+        name="exp2f_vec",
+        factory=kernels.exp2f_vec,
+        kwargs=dict(tile_size=1024),
+        arg_count=3,
+        expected_name="exp2f_vec_f32",
+        requires_npu2=True,
+        invalid_kwargs=[
+            (dict(tile_size=1000), "multiple of 16"),
+            (dict(tile_size=1024, min_x=-127.0), "min_x must be >= -126"),
+        ],
+        shape_checks=[
+            (dict(tile_size=32), 0, (32,)),
+        ],
     ),
     # ----- vision -----
     KernelSpec(
@@ -628,6 +682,43 @@ KERNEL_SPECS: list[KernelSpec] = [
         ],
         invalid_kwargs=[(dict(block_index=12), "block_index")],
     ),
+    # ----- data movement (kernels.datamovement) -----
+    KernelSpec(
+        name="axpy",
+        factory=kernels.axpy,
+        kwargs=dict(tile_size=1024),
+        arg_count=5,  # x, y, a (scalar), z, size
+        expected_name="saxpy",
+        invalid_kwargs=[(dict(tile_size=1000), "multiple of 64")],
+    ),
+    KernelSpec(
+        name="expand",
+        factory=kernels.expand,
+        kwargs=dict(tile_size=1024, group_size=32),
+        arg_count=2,  # packed uint4 payload+scales, bf16 out
+        expected_name="expand_uint4_to_bfloat16",
+        invalid_kwargs=[(dict(group_size=48), "multiple of 32")],
+    ),
+    KernelSpec(
+        name="transpose",
+        factory=kernels.transpose,
+        kwargs=dict(dim_m=32, dim_n=32, subtile=4),
+        arg_count=2,
+        expected_name="transpose_4x4",
+        name_variants=[(dict(dim_m=32, dim_n=32, subtile=8), "transpose_8x8")],
+        invalid_kwargs=[(dict(subtile=3), "subtile must be 4 or 8")],
+    ),
+    KernelSpec(
+        name="convert_copy",
+        factory=kernels.convert_copy,
+        kwargs=dict(tile_size=1024),
+        arg_count=3,  # f32 in, bf16 out, size
+        expected_name="cast_f32_bf16_row",
+        # Binds aie2p/cast_f32_bf16.cc (upstream's cast, chosen over the dropped
+        # IRON convert_copy.cc — see KERNEL_DEDUP_REPORT §4.1); aie2p-only source.
+        requires_npu2=True,
+        invalid_kwargs=[(dict(tile_size=1000), "multiple of 16")],
+    ),
 ]
 
 
@@ -653,6 +744,42 @@ def _flat_ids(rows, label):
     return [f"{r[0].name}-{label}{i}" for i, r in enumerate(rows)]
 
 
+@contextmanager
+def _device_for(spec: KernelSpec):
+    """Bind the current iron device around a factory call, when the spec needs one.
+
+    Every factory in KERNEL_SPECS except exp2f_vec is arch-agnostic (or pins
+    its own subdir regardless of the detected arch), so this is a no-op for
+    almost every row. exp2f_vec is aie2p-only and raises NotImplementedError
+    unless the current device resolves to aie2p (see its factory), so its
+    spec row sets requires_npu2 and needs a real device bound for the
+    duration of the call, mirroring the npu2_device fixture test_kernels_
+    chess.py's emulated-bf16 tests use, inlined here since KERNEL_SPECS'
+    generic tests are parametrized per-spec, not per-fixture.
+
+    Restores whatever was bound before rather than clearing, so binding here
+    cannot drop a device a caller had already selected. The npu2_device fixture
+    in conftest.py can clear unconditionally because pytest scopes its teardown
+    to one test; this runs inline, per parametrized spec.
+    """
+    if spec.requires_npu2:
+        # probe_runtime=False reads only the explicit binding, and never
+        # initializes the default runtime just to snapshot it.
+        previous = get_current_device(probe_runtime=False)
+        set_current_device(NPU2Col1())
+        try:
+            yield
+        finally:
+            set_current_device(previous)
+    else:
+        yield
+
+
+def _call_factory(spec: KernelSpec, kwargs: dict):
+    with _device_for(spec):
+        return spec.factory(**kwargs)
+
+
 ARG_COUNT_OVERRIDES: list[tuple[KernelSpec, dict, int]] = []
 
 
@@ -663,13 +790,13 @@ ARG_COUNT_OVERRIDES: list[tuple[KernelSpec, dict, int]] = []
 
 @pytest.mark.parametrize("spec", KERNEL_SPECS, ids=_ids(KERNEL_SPECS))
 def test_returns_external_function(spec: KernelSpec):
-    ef = spec.factory(**spec.kwargs)
+    ef = _call_factory(spec, spec.kwargs)
     assert isinstance(ef, ExternalFunction)
 
 
 @pytest.mark.parametrize("spec", KERNEL_SPECS, ids=_ids(KERNEL_SPECS))
 def test_source_locatable(spec: KernelSpec):
-    ef = spec.factory(**spec.kwargs)
+    ef = _call_factory(spec, spec.kwargs)
     if spec.source_kind == "file":
         src = ef._source_file
         assert src is not None
@@ -683,13 +810,13 @@ def test_source_locatable(spec: KernelSpec):
 
 @pytest.mark.parametrize("spec", KERNEL_SPECS, ids=_ids(KERNEL_SPECS))
 def test_arg_types_length(spec: KernelSpec):
-    ef = spec.factory(**spec.kwargs)
+    ef = _call_factory(spec, spec.kwargs)
     assert len(ef._arg_types) == spec.arg_count
 
 
 @pytest.mark.parametrize("spec", KERNEL_SPECS, ids=_ids(KERNEL_SPECS))
 def test_default_function_name(spec: KernelSpec):
-    ef = spec.factory(**spec.kwargs)
+    ef = _call_factory(spec, spec.kwargs)
     # The logical (original) name is the stable identity; a parameterized
     # kernel's effective symbol is the original name with a deterministic
     # digest prefix (see _make_extern).  Assert on the order-independent
@@ -710,7 +837,7 @@ _NAME_VARIANTS = _flat(KERNEL_SPECS, "name_variants")
     ids=_flat_ids(_NAME_VARIANTS, "v"),
 )
 def test_name_variant(spec: KernelSpec, kwargs: dict, expected_name: str):
-    ef = spec.factory(**kwargs)
+    ef = _call_factory(spec, kwargs)
     # See test_default_function_name: assert on the order-independent original
     # name; a parameterized variant carries a deterministic digest prefix.
     assert ef._original_name == expected_name
@@ -730,7 +857,7 @@ _INVALID = _flat(KERNEL_SPECS, "invalid_kwargs")
 )
 def test_invalid_kwargs_raise(spec: KernelSpec, kwargs: dict, pattern: str):
     with pytest.raises(ValueError, match=pattern):
-        spec.factory(**kwargs)
+        _call_factory(spec, kwargs)
 
 
 _SHAPES = _flat(KERNEL_SPECS, "shape_checks")
@@ -742,7 +869,7 @@ _SHAPES = _flat(KERNEL_SPECS, "shape_checks")
     ids=_flat_ids(_SHAPES, "shape"),
 )
 def test_arg_shape(spec: KernelSpec, kwargs: dict, arg_idx: int, expected_shape: tuple):
-    ef = spec.factory(**kwargs)
+    ef = _call_factory(spec, kwargs)
     # Use the public arg_shape() method (which the whats-new notebook also
     # uses now) — exercises it across every shape_check spec entry.
     assert ef.arg_shape(arg_idx) == expected_shape
@@ -757,7 +884,7 @@ _TILE_SIZES = _flat(KERNEL_SPECS, "tile_size_checks")
     ids=_flat_ids(_TILE_SIZES, "ts"),
 )
 def test_tile_size_at_arg_0(spec: KernelSpec, kwargs: dict, expected_tile_size: int):
-    ef = spec.factory(**kwargs)
+    ef = _call_factory(spec, kwargs)
     assert ef.tile_size(0) == expected_tile_size
 
 
@@ -768,7 +895,7 @@ def test_tile_size_at_arg_0(spec: KernelSpec, kwargs: dict, expected_tile_size: 
 )
 def test_arg_count_override(spec: KernelSpec, kwargs: dict, expected_arg_count: int):
     """Variant arg_counts (e.g. bn_conv2dk3_dw stride=1 has an extra arg)."""
-    ef = spec.factory(**kwargs)
+    ef = _call_factory(spec, kwargs)
     assert len(ef._arg_types) == expected_arg_count
 
 

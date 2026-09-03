@@ -5,30 +5,30 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=false" %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="skip-verify=true" --aie-objectFifo-unroll %s | FileCheck %s
 
 // ObjectFifoLink where output has padDimensions and a larger element type
 // than the input. MemTile buffers should use the input (smaller) size since
 // padding is applied on-the-fly by the DMA during MM2S transfer.
 
-// CHECK: %{{.*}}tile_0_0 = aie.tile(0, 0)
-// CHECK: %{{.*}}tile_0_1 = aie.tile(0, 1)
-// CHECK: %{{.*}}tile_0_2 = aie.tile(0, 2)
+// CHECK-DAG: %{{.*}}tile_0_0 = aie.tile(0, 0)
+// CHECK-DAG: %{{.*}}tile_0_1 = aie.tile(0, 1)
+// CHECK-DAG: %{{.*}}tile_0_2 = aie.tile(0, 2)
 
 // Compute tile buffers use the output (padded) size
-// CHECK: %[[OUT_BUF0:.*]] = aie.buffer(%{{.*}}tile_0_2) {sym_name = "of_out_cons_buff_0"} : memref<512xi32>
-// CHECK: %[[OUT_BUF1:.*]] = aie.buffer(%{{.*}}tile_0_2) {sym_name = "of_out_cons_buff_1"} : memref<512xi32>
-// CHECK: %[[OUT_PROD:.*]] = aie.lock(%{{.*}}tile_0_2, 0) {init = 2 : i32, sym_name = "of_out_cons_prod_lock_0"}
-// CHECK: %[[OUT_CONS:.*]] = aie.lock(%{{.*}}tile_0_2, 1) {init = 0 : i32, sym_name = "of_out_cons_cons_lock_0"}
+// CHECK-DAG: %[[OUT_BUF0:.*]] = aie.buffer(%{{.*}}tile_0_2) {sym_name = "of_out_cons_buff_0"} : memref<512xi32>
+// CHECK-DAG: %[[OUT_BUF1:.*]] = aie.buffer(%{{.*}}tile_0_2) {sym_name = "of_out_cons_buff_1"} : memref<512xi32>
+// CHECK-DAG: %[[OUT_PROD:.*]] = aie.lock(%{{.*}}tile_0_2) {init = 2 : i32, sym_name = "of_out_cons_prod_lock_0"}
+// CHECK-DAG: %[[OUT_CONS:.*]] = aie.lock(%{{.*}}tile_0_2) {init = 0 : i32, sym_name = "of_out_cons_cons_lock_0"}
 
 // MemTile buffers use the input (smaller) size — NOT the output size
-// CHECK: %[[MT_BUF0:.*]] = aie.buffer(%{{.*}}tile_0_1) {sym_name = "of_in_cons_buff_0"} : memref<256xi32>
-// CHECK: %[[MT_BUF1:.*]] = aie.buffer(%{{.*}}tile_0_1) {sym_name = "of_in_cons_buff_1"} : memref<256xi32>
-// CHECK: %[[MT_PROD:.*]] = aie.lock(%{{.*}}tile_0_1, 0) {init = 2 : i32, sym_name = "of_in_cons_prod_lock_0"}
-// CHECK: %[[MT_CONS:.*]] = aie.lock(%{{.*}}tile_0_1, 1) {init = 0 : i32, sym_name = "of_in_cons_cons_lock_0"}
+// CHECK-DAG: %[[MT_BUF0:.*]] = aie.buffer(%{{.*}}tile_0_1) {sym_name = "of_in_cons_buff_0"} : memref<256xi32>
+// CHECK-DAG: %[[MT_BUF1:.*]] = aie.buffer(%{{.*}}tile_0_1) {sym_name = "of_in_cons_buff_1"} : memref<256xi32>
+// CHECK-DAG: %[[MT_PROD:.*]] = aie.lock(%{{.*}}tile_0_1) {init = 2 : i32, sym_name = "of_in_cons_prod_lock_0"}
+// CHECK-DAG: %[[MT_CONS:.*]] = aie.lock(%{{.*}}tile_0_1) {init = 0 : i32, sym_name = "of_in_cons_cons_lock_0"}
 
-// CHECK: aie.flow(%{{.*}}tile_0_0, DMA : 0, %{{.*}}tile_0_1, DMA : 0)
-// CHECK: aie.flow(%{{.*}}tile_0_1, DMA : 0, %{{.*}}tile_0_2, DMA : 0)
+// CHECK-DAG: aie.flow(%{{.*}}tile_0_0, DMA : 0, %{{.*}}tile_0_1, DMA : 0)
+// CHECK-DAG: aie.flow(%{{.*}}tile_0_1, DMA : 0, %{{.*}}tile_0_2, DMA : 0)
 
 // MemTile DMA: S2MM receives 256 elements (input size)
 // CHECK: %memtile_dma_0_1 = aie.memtile_dma(%{{.*}}tile_0_1) {

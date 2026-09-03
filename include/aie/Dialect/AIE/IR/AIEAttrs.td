@@ -19,132 +19,117 @@ include "mlir/IR/EnumAttr.td"
 // Overridden upstream attributes that return int instead of uint
 //===----------------------------------------------------------------------===//
 
-class AIETypedSignlessIntegerAttrBase<I attrValType, string retType, string descr>
+class AIETypedSignlessIntegerAttrBase<I attrValType, string retType,
+                                      string descr>
     : SignlessIntegerAttrBase<attrValType, descr> {
   let returnType = retType;
   let convertFromStorage = "$_self.getValue().getSExtValue()";
 }
 
-def AIEI8Attr  : AIETypedSignlessIntegerAttrBase<
-    I8,  "int8_t",  "8-bit signless integer attribute">;
-def AIEI16Attr : AIETypedSignlessIntegerAttrBase<
-    I16, "int16_t", "16-bit signless integer attribute">;
-def AIEI32Attr : AIETypedSignlessIntegerAttrBase<
-    I32, "int32_t", "32-bit signless integer attribute">;
-def AIEI64Attr : AIETypedSignlessIntegerAttrBase<
-    I64, "int64_t", "64-bit signless integer attribute">;
+def AIEI8Attr
+    : AIETypedSignlessIntegerAttrBase<I8, "int8_t",
+                                      "8-bit signless integer attribute">;
+def AIEI16Attr
+    : AIETypedSignlessIntegerAttrBase<I16, "int16_t",
+                                      "16-bit signless integer attribute">;
+def AIEI32Attr
+    : AIETypedSignlessIntegerAttrBase<I32, "int32_t",
+                                      "32-bit signless integer attribute">;
+def AIEI64Attr
+    : AIETypedSignlessIntegerAttrBase<I64, "int64_t",
+                                      "64-bit signless integer attribute">;
 
 //===----------------------------------------------------------------------===//
 // AIE attributes.
 //===----------------------------------------------------------------------===//
 
-def CoreWire:   I32EnumAttrCase<"Core", 0>;
-def DMAWire:    I32EnumAttrCase<"DMA", 1>;
-def FIFOWire:   I32EnumAttrCase<"FIFO", 2>;
-def SouthWire:  I32EnumAttrCase<"South", 3>;
-def WestWire:   I32EnumAttrCase<"West", 4>;
-def NorthWire:  I32EnumAttrCase<"North", 5>;
-def EastWire:   I32EnumAttrCase<"East", 6>;
-def PLIOWire:   I32EnumAttrCase<"PLIO", 7>;
-def NOCWire:    I32EnumAttrCase<"NOC", 8>;
-def TraceWire:  I32EnumAttrCase<"Trace", 9>;
-def TileControlWire:  I32EnumAttrCase<"TileControl", 10>;
+def CoreWire : I32EnumAttrCase<"Core", 0>;
+def DMAWire : I32EnumAttrCase<"DMA", 1>;
+def FIFOWire : I32EnumAttrCase<"FIFO", 2>;
+def SouthWire : I32EnumAttrCase<"South", 3>;
+def WestWire : I32EnumAttrCase<"West", 4>;
+def NorthWire : I32EnumAttrCase<"North", 5>;
+def EastWire : I32EnumAttrCase<"East", 6>;
+def PLIOWire : I32EnumAttrCase<"PLIO", 7>;
+def NOCWire : I32EnumAttrCase<"NOC", 8>;
+def TraceWire : I32EnumAttrCase<"Trace", 9>;
+def TileControlWire : I32EnumAttrCase<"TileControl", 10>;
+def Controller32Wire : I32EnumAttrCase<"Controller32", 11>;
 
-def WireBundle: I32EnumAttr<"WireBundle", "Bundle of wires",
-  [
-    CoreWire, DMAWire, FIFOWire, SouthWire, WestWire, NorthWire,
-    EastWire, PLIOWire, NOCWire, TraceWire, TileControlWire
-  ]> {
-
-  let cppNamespace = "xilinx::AIE";
-}
-
-def CascadeDir: I32EnumAttr<"CascadeDir", "Directions for cascade",
-  [
-    SouthWire, WestWire, NorthWire, EastWire
-  ]> {
+def WireBundle : I32EnumAttr<"WireBundle", "Bundle of wires",
+                             [CoreWire, DMAWire, FIFOWire, SouthWire, WestWire,
+                              NorthWire, EastWire, PLIOWire, NOCWire, TraceWire,
+                              TileControlWire, Controller32Wire]> {
 
   let cppNamespace = "xilinx::AIE";
 }
 
-def LockAction: I32EnumAttr<"LockAction", "lock acquire/release",
-  [
-    I32EnumAttrCase<"Acquire", 0>,
-    I32EnumAttrCase<"AcquireGreaterEqual", 2>,
-    I32EnumAttrCase<"Release", 1>,
-  ]> {
+def CascadeDir : I32EnumAttr<"CascadeDir", "Directions for cascade",
+                             [SouthWire, WestWire, NorthWire, EastWire]> {
 
   let cppNamespace = "xilinx::AIE";
 }
 
-def LockBlocking: I32EnumAttr<"LockBlocking", "lock operation is blocking",
-  [
-    I32EnumAttrCase<"NonBlocking", 0>,
-    I32EnumAttrCase<"Blocking", 1>
-  ]> {
+def LockAction : I32EnumAttr<"LockAction", "lock acquire/release",
+                             [I32EnumAttrCase<"Acquire", 0>,
+                              I32EnumAttrCase<"AcquireGreaterEqual", 2>,
+                              I32EnumAttrCase<"Release", 1>,
+]> {
 
   let cppNamespace = "xilinx::AIE";
 }
 
-def AIEArch: I32EnumAttr<"AIEArch", "AIE Architecture",
-  [
-    I32EnumAttrCase<"AIE1", 1>,
-    I32EnumAttrCase<"AIE2", 2>,
-    I32EnumAttrCase<"AIE2p", 3>,
-  ]> {
+def LockBlocking : I32EnumAttr<"LockBlocking", "lock operation is blocking",
+                               [I32EnumAttrCase<"NonBlocking", 0>,
+                                I32EnumAttrCase<"Blocking", 1>]> {
 
   let cppNamespace = "xilinx::AIE";
 }
 
-def AIETileType: I32EnumAttr<"AIETileType", "Type of AIE Tile",
-  [
-    I32EnumAttrCase<"CoreTile", 0>,
-    I32EnumAttrCase<"MemTile", 1>,
-    I32EnumAttrCase<"ShimNOCTile", 2>,
-    I32EnumAttrCase<"ShimPLTile", 3>,
-  ]> {
+def AIEArch
+    : I32EnumAttr<"AIEArch", "AIE Architecture",
+                  [I32EnumAttrCase<"AIE1", 1>, I32EnumAttrCase<"AIE2", 2>,
+                   I32EnumAttrCase<"AIE2p", 3>, I32EnumAttrCase<"AIE2ps", 4>,
+]> {
 
   let cppNamespace = "xilinx::AIE";
 }
 
-def AIEDevice: I32EnumAttr<"AIEDevice", "AIE Device",
-  [
-    I32EnumAttrCase<"xcvc1902", 1>,
-    I32EnumAttrCase<"xcve2302", 2>,
-    I32EnumAttrCase<"xcve2802", 3>,
-    I32EnumAttrCase<"npu1", 4>,
-    I32EnumAttrCase<"npu1_1col", 5>,
-    I32EnumAttrCase<"npu1_2col", 6>,
-    I32EnumAttrCase<"npu1_3col", 7>,
-    I32EnumAttrCase<"npu2", 8>,
-    I32EnumAttrCase<"npu2_1col", 9>,
-    I32EnumAttrCase<"npu2_2col", 10>,
-    I32EnumAttrCase<"npu2_3col", 11>,
-    I32EnumAttrCase<"npu2_4col", 12>,
-    I32EnumAttrCase<"npu2_5col", 13>,
-    I32EnumAttrCase<"npu2_6col", 14>,
-    I32EnumAttrCase<"npu2_7col", 15>,
-  ]> {
+def AIETileType
+    : I32EnumAttr<
+          "AIETileType", "Type of AIE Tile",
+          [I32EnumAttrCase<"CoreTile", 0>, I32EnumAttrCase<"MemTile", 1>,
+           I32EnumAttrCase<"ShimNOCTile", 2>, I32EnumAttrCase<"ShimPLTile", 3>,
+]> {
 
   let cppNamespace = "xilinx::AIE";
 }
 
-def ObjectFifoPort: I32EnumAttr<"ObjectFifoPort",
-  "Ports of an object FIFO",
-  [
-    I32EnumAttrCase<"Produce", 0>,
-    I32EnumAttrCase<"Consume", 1>
-  ]
-  > {
+def AIEDevice
+    : I32EnumAttr<
+          "AIEDevice", "AIE Device",
+          [I32EnumAttrCase<"xcvc1902", 1>, I32EnumAttrCase<"xcve2302", 2>,
+           I32EnumAttrCase<"xcve2802", 3>, I32EnumAttrCase<"npu1", 4>,
+           I32EnumAttrCase<"npu1_1col", 5>, I32EnumAttrCase<"npu1_2col", 6>,
+           I32EnumAttrCase<"npu1_3col", 7>, I32EnumAttrCase<"npu2", 8>,
+           I32EnumAttrCase<"npu2_1col", 9>, I32EnumAttrCase<"npu2_2col", 10>,
+           I32EnumAttrCase<"npu2_3col", 11>, I32EnumAttrCase<"npu2_4col", 12>,
+           I32EnumAttrCase<"npu2_5col", 13>, I32EnumAttrCase<"npu2_6col", 14>,
+           I32EnumAttrCase<"npu2_7col", 15>, I32EnumAttrCase<"xcve3858", 16>,
+]> {
+
   let cppNamespace = "xilinx::AIE";
 }
 
-def DMAChannelDir: I32EnumAttr<"DMAChannelDir",
-  "DMA Channel direction",
-  [
-    I32EnumAttrCase<"S2MM", 0>,
-    I32EnumAttrCase<"MM2S", 1>
-  ]> {
+def ObjectFifoPort : I32EnumAttr<"ObjectFifoPort", "Ports of an object FIFO",
+                                 [I32EnumAttrCase<"Produce", 0>,
+                                  I32EnumAttrCase<"Consume", 1>]> {
+  let cppNamespace = "xilinx::AIE";
+}
+
+def DMAChannelDir
+    : I32EnumAttr<"DMAChannelDir", "DMA Channel direction",
+                  [I32EnumAttrCase<"S2MM", 0>, I32EnumAttrCase<"MM2S", 1>]> {
   let cppNamespace = "xilinx::AIE";
 }
 
@@ -180,7 +165,7 @@ def BDDimLayoutArrayArrayAttr : ArrayOfAttr<
 def BDPadLayoutAttr : AttrDef<AIE_Dialect, "BDPadLayout", []> {
   let mnemonic = "bd_pad_layout";
   let summary = [{
-    Tuple encoding number of zeros before and after on that dimension in an AIE2 
+    Tuple encoding number of zeros before and after on that dimension in an AIE2
     n-dimensional buffer descriptor;
   }];
 
@@ -199,6 +184,14 @@ def BDPadLayoutArrayAttr : ArrayOfAttr<
     /*eltName*/BDPadLayoutAttr.cppClassName
 >;
 
+// Per-segment, per-dimension padding for an objectFifo DMA endpoint.
+def BDPadLayoutArrayArrayAttr
+    : ArrayOfAttr<
+          /*dialect*/ AIE_Dialect,
+          /*attrName*/ "BDPadLayoutArrayArray",
+          /*attrMnemonic*/ "bd_pad_layout_array_array",
+          /*eltName*/ BDPadLayoutArrayAttr.cppClassName>;
+
 def PacketInfoAttr : AttrDef<AIE_Dialect, "PacketInfo", []> {
   let mnemonic = "packet_info";
   let summary = [{
@@ -213,8 +206,88 @@ def PacketInfoAttr : AttrDef<AIE_Dialect, "PacketInfo", []> {
   let assemblyFormat = "`<` struct(params) `>`";
 }
 
+def BDIterationAttr : AttrDef<AIE_Dialect, "BDIteration", []> {
+  let mnemonic = "bd_iteration";
+  let summary = [{
+    Tuple encoding the iteration state of a buffer descriptor in
+    true (element) values;
+  }];
+
+  let parameters = (ins
+    "uint32_t" : $size,
+    "uint32_t" : $stride,
+    "uint32_t" : $current
+  );
+
+  let assemblyFormat = "`<` struct(params) `>`";
+}
+
+def TraceBufferAttr : AttrDef<AIE_Dialect, "TraceBuffer", []> {
+  let mnemonic = "trace_buffer";
+  let summary = [{
+    The runtime sequence argument that receives trace data;
+  }];
+
+  let description = [{
+    `-aie-insert-trace-flows` sets this on every traced `aie.runtime_sequence`.
+    `-aie-fuse-trace-buffers` reads it to find the argument. That pass grows the
+    argument to cover the sequences this one calls, then writes the attribute
+    back.
+
+    `arg_index` indexes the block arguments of the sequence body. `offset` and
+    `size` bound the bytes that the trace DMAs write inside that argument.
+    `dedicated` is false when the trace shares an output buffer, which
+    `aie.trace.host_config` requests with `reuse_output_buffer`.
+
+    Write this attribute by hand to point tracing at an argument of your choice.
+    The passes and the Python trace parser both read it.
+  }];
+
+  let parameters = (ins "uint32_t":$arg_index, "uint32_t":$offset,
+      "uint32_t":$size, "bool":$dedicated);
+
+  let assemblyFormat = "`<` struct(params) `>`";
+}
+
+def TraceSliceAttr : AttrDef<AIE_Dialect, "TraceSlice", []> {
+  let mnemonic = "trace_slice";
+  let summary = [{
+    One design's byte range inside a shared trace buffer;
+  }];
+
+  let description = [{
+    `-aie-fuse-trace-buffers` records one of these per `aiex.run` call site, in
+    buffer order, on the calling `aie.runtime_sequence`. A host reads them to
+    attribute each byte range of the trace buffer to the design that wrote it.
+
+    `device` and `sequence` name the `aie.device` and the
+    `aie.runtime_sequence` that the call site ran.
+  }];
+
+  let parameters = (ins StringRefParameter<"device symbol name">:$device,
+      StringRefParameter<"runtime sequence symbol name">:$sequence,
+      "uint32_t":$offset, "uint32_t":$size);
+
+  let assemblyFormat = "`<` struct(params) `>`";
+}
+
+def TraceSliceArrayAttr
+    : TypedArrayAttrBase<TraceSliceAttr, "array of trace buffer slices">;
+
 def InitValuesArrayAttr
   : OptionalAttr<TypedArrayAttrBase<ElementsAttr, "array of ElementsAttr">>;
+
+//===----------------------------------------------------------------------===//
+// ObjectFifo pools and endpoints
+//===----------------------------------------------------------------------===//
+
+def ObjectFifoRole
+    : I32EnumAttr<"ObjectFifoRole",
+                  "What an objectFifo endpoint does to its pool's buffers",
+                  [I32EnumAttrCase<"Fill", 0, "fills">,
+                   I32EnumAttrCase<"Drain", 1, "drains">]> {
+  let cppNamespace = "xilinx::AIE";
+}
 
 //===----------------------------------------------------------------------===//
 // Generated AIE event enumerations

@@ -49,9 +49,11 @@ public:
     auto row = lockOp.rowIndex();
     uint32_t lockID = lockOp.getLockIDValue();
 
-    // The validity of this optional is already checked in the verifier
-    auto localLockAddress =
-        tm.getLocalLockAddress(lockID, lockOp.getTileID()).value();
+    // The validity of this optional is already checked in the verifier.
+    auto localLockAddressOpt =
+        tm.getLocalLockAddress(lockID, lockOp.getTileID());
+    assert(localLockAddressOpt && "verifier guarantees a valid lock address");
+    auto localLockAddress = *localLockAddressOpt;
 
     Location loc = op.getLoc();
     rewriter.replaceOpWithNewOp<NpuWrite32Op>(

@@ -19,6 +19,7 @@
 #include "mlir/Dialect/UB/IR/UBOps.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Debug.h"
 
 #define DEBUG_TYPE "fold-mul-add-chain-to-conv"
@@ -75,8 +76,8 @@ struct LongestConvMACChainAnalysis {
     int64_t bcastDist; // Must be 1 or 2
   };
 
-  typedef SmallVector<std::unique_ptr<ConvMac>, 8> ConvMacChain;
-  typedef SmallVector<ConvMacChainGroup, 8> ConvMacChainGroupList;
+  using ConvMacChain = SmallVector<std::unique_ptr<ConvMac>, 8>;
+  using ConvMacChainGroupList = SmallVector<ConvMacChainGroup, 8>;
 
   std::unique_ptr<ConvMacChain> convMacChain;
   ConvMacChainGroupList groupsInChain;
@@ -138,7 +139,7 @@ struct LongestConvMACChainAnalysis {
   // yet, this method will generate them.
   const ConvMacChainGroupList &getGroupsInChain() {
     // If there's no group or it's been computed already, return stored list.
-    if (groupsInChain.size() > 0 || !convMacChain || convMacChain->size() == 0)
+    if (!groupsInChain.empty() || !convMacChain || convMacChain->empty())
       return groupsInChain;
 
     uint64_t grpStartIdx = 0;
@@ -213,18 +214,17 @@ struct LongestConvMACChainAnalysis {
 
   bool canChainBeReplacedWithConvOps() {
     const auto &groups = getGroupsInChain();
-    if (groups.size() == 0)
+    if (groups.empty())
       return false;
-    for (const auto &group : groups)
-      if (group.signalShift == -1 || group.bcastShift == -1 ||
-          group.bcastDist == -1)
-        return false;
-    return true;
+    return llvm::all_of(groups, [](const auto &group) {
+      return group.signalShift != -1 && group.bcastShift != -1 &&
+             group.bcastDist != -1;
+    });
   }
 
   std::unique_ptr<ConvMac> getConvMacFromMulOp(arith::MulIOp mulOp) {
-    auto mulOpLhsDefOp = mulOp.getLhs().getDefiningOp();
-    auto mulOpRhsDefOp = mulOp.getRhs().getDefiningOp();
+    auto *mulOpLhsDefOp = mulOp.getLhs().getDefiningOp();
+    auto *mulOpRhsDefOp = mulOp.getRhs().getDefiningOp();
     if (!mulOpLhsDefOp || !mulOpRhsDefOp)
       return nullptr;
 
@@ -244,7 +244,7 @@ struct LongestConvMACChainAnalysis {
       opBwdSlices.insert(mulOpOperand);
 
       LLVM_DEBUG(llvm::dbgs() << "opBwdSlices = [\n");
-      for ([[maybe_unused]] auto op : opBwdSlices) {
+      for ([[maybe_unused]] auto *op : opBwdSlices) {
         LLVM_DEBUG(llvm::dbgs() << *op << "\n");
       }
       LLVM_DEBUG(llvm::dbgs() << "]\n");
@@ -335,24 +335,24 @@ struct LongestConvMACChainAnalysis {
       // Pre-sort the top two MACs so that an undefined accumulator ends up
       // at the top of the chain.
       if (convMac2 && convMac->lhs == convMac2->lhs &&
-          convMac->rhs == convMac->rhs) {
+          convMac->rhs == convMac2->rhs) {
         if (convMac->bcastIdx < convMac2->bcastIdx &&
             convMac->shift < convMac2->shift) {
           convMac2->topOfChainMulConv = std::move(convMac);
           convMac2->acc = acc;
           return convMac2;
-        } else if (convMac->bcastIdx > convMac2->bcastIdx &&
-                   convMac->shift > convMac2->shift) {
+        }
+        if (convMac->bcastIdx > convMac2->bcastIdx &&
+            convMac->shift > convMac2->shift) {
           convMac->topOfChainMulConv = std::move(convMac2);
           convMac->acc = acc;
           return convMac;
-        } else {
-          // WARNING: In this situation, the chain is ambiguous and picking one
-          // WARNING: option over the other may result in a successful
-          // WARNING: and/or better replacement. Here, we are assuming that
-          // WARNING: is going to be either one or the other, or it won't
-          // WARNING: matter.
         }
+        // WARNING: In this situation, the         chain is ambiguous and
+        // picking one WARNING: option over the         other may result in a
+        // successful WARNING: and/or better replacement.         Here, we are
+        // assuming that WARNING: is going to be either         one or the
+        // other, or it won't WARNING: matter.
       } else {
         convMac->topOfChainMulConv = std::move(convMac2);
       }
@@ -576,8 +576,8 @@ struct AIEVecConvAnalysis
       for (uint64_t i = group.fromIdx; i < group.toIdx; i++) {
         auto shift = (*chain)[i]->shift;
         auto bcastIdx = (*chain)[i]->bcastIdx;
-        auto lhsOp = (*chain)[i]->lhs.getDefiningOp();
-        auto rhsOp = (*chain)[i]->rhs.getDefiningOp();
+        auto *lhsOp = (*chain)[i]->lhs.getDefiningOp();
+        auto *rhsOp = (*chain)[i]->rhs.getDefiningOp();
         if (!(*chain)[i]->acc)
           llvm::outs() << "  [mul_conv]\n";
         llvm::outs() << "    [Shift: " << std::to_string(shift) << "]: ";

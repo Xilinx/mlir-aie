@@ -14,9 +14,11 @@
 #define AIECC_IRTRANSFORMS_H
 
 #include "Graph.h"
+#include "StackSizeAnalysis.h"
 #include "Utils.h"
 
 #include "aie/Conversion/Passes.h"
+#include "aie/Dialect/AIE/IR/AIECoreSymbols.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 #include "aie/Dialect/AIEVec/Transforms/Passes.h"
@@ -32,6 +34,8 @@
 #include "mlir/Conversion/UBToLLVM/UBToLLVM.h"
 #include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVMPass.h"
 #include "mlir/Dialect/Arith/Transforms/Passes.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Pass/PassManager.h"
@@ -184,47 +188,191 @@ collectCoreIRLinkFiles(xilinx::AIE::CoreOp coreOp, llvm::StringRef inputFile,
   return files;
 }
 
-// Collect the deduplicated merge-mode link artifacts across every core of
-// `deviceOp`, for the unified-object path where the device's cores share one
-// LLVM module that is llvm-linked once. Duplicate references across cores
-// merge cleanly (the kernels are linkonce_odr) and each is inlined into its
-// caller.
-//
-// Fails if any path is merge-mode on one core and an ordinary link input on
-// another core of the same device: with one shared module the merged copy and
-// the object-linked copy would both define the kernel's symbols. The pass that
-// builds these lists normally diagnoses that, but aiecc can also be handed
-// pre-populated IR, so the check is repeated here.
-inline mlir::LogicalResult
-collectDeviceIRLinkFiles(xilinx::AIE::DeviceOp deviceOp,
-                         llvm::StringRef inputFile, llvm::StringRef workDir,
-                         std::vector<std::string> &files) {
-  files.clear();
-  llvm::StringSet<> merged;
-  deviceOp.walk([&](xilinx::AIE::CoreOp coreOp) {
-    for (auto &f : collectCoreIRLinkFiles(coreOp, inputFile, workDir))
-      if (merged.insert(f).second)
-        files.push_back(std::move(f));
+// Sets `stack_size = defaultStackSize` on every CoreOp without an explicit
+// `stack_size`. A CoreOp with an explicit `stack_size` keeps it.
+inline mlir::OwningOpRef<mlir::ModuleOp>
+populateDefaultStackSize(mlir::ModuleOp src, int64_t defaultStackSize) {
+  mlir::OwningOpRef<mlir::ModuleOp> cloned = src.clone();
+  mlir::Builder b(cloned->getContext());
+  cloned->walk([&](xilinx::AIE::CoreOp coreOp) {
+    if (!coreOp.getStackSizeAttr())
+      coreOp.setStackSizeAttr(
+          b.getI32IntegerAttr(static_cast<int32_t>(defaultStackSize)));
   });
+  return cloned;
+}
 
+inline void appendSkippedArtifacts(mlir::InFlightDiagnostic &diag,
+                                   llvm::ArrayRef<std::string> skipped) {
+  for (size_t i = 0; i < skipped.size(); ++i)
+    diag << (i ? ", " : "") << skipped[i];
+}
+
+// Measures each core's stack requirement and writes it to
+// `measured_stack_size`: the top-level frame that `measureOwnFrame` reads from
+// the compiled core object, plus the deepest call path through the core's
+// `link_files` (StackSizeAnalysis.h).
+//
+// A requirement above `stack_size` fails the build, as does a cycle in the call
+// graph. An unmeasurable symbol warns. An unmeasurable core frame leaves the
+// requirement a lower bound, which warns and writes no attribute.
+inline mlir::LogicalResult checkStackSizeRequirements(
+    mlir::ModuleOp module, llvm::StringRef inputFile, llvm::StringRef workDir,
+    llvm::function_ref<std::optional<int64_t>(xilinx::AIE::CoreOp)>
+        measureOwnFrame) {
   mlir::LogicalResult result = mlir::success();
-  deviceOp.walk([&](xilinx::AIE::CoreOp coreOp) {
-    auto filesAttr = coreOp.getLinkFiles();
-    if (!filesAttr)
-      return;
-    for (auto f : filesAttr->getAsRange<mlir::StringAttr>()) {
-      if (!merged.contains(
-              resolveExternalPath(f.getValue(), inputFile, workDir)))
-        continue;
-      coreOp.emitError() << "link artifact '" << f.getValue()
-                         << "' is listed in link_files here but requested with "
-                            "link_with_mode = \"merge\" elsewhere in this "
-                            "device; a path cannot be both llvm-linked into "
-                            "the shared core module and object-linked, or its "
-                            "symbols are defined twice";
-      result = mlir::failure();
-    }
-  });
+
+  // Keyed by object, because the result depends on the object alone. Several
+  // cores can list one object.
+  llvm::StringMap<llvm::StringSet<>> definedFunctionsByPath;
+
+  for (xilinx::AIE::DeviceOp device : module.getOps<xilinx::AIE::DeviceOp>()) {
+    // Collected per device, because each DeviceOp is its own symbol table,
+    // and a sibling device can bind one name to a different override. The
+    // check for a negative value repeats the one in external_func(), which
+    // hand-written MLIR skips.
+    llvm::StringMap<int64_t> overrides;
+    device.walk([&](mlir::func::FuncOp funcOp) {
+      auto attr =
+          funcOp->getAttrOfType<mlir::IntegerAttr>("stack_size_override");
+      if (!attr)
+        return;
+      if (attr.getInt() < 0) {
+        funcOp.emitError() << "stack_size_override must be >= 0, got "
+                           << attr.getInt();
+        result = mlir::failure();
+        return;
+      }
+      overrides[funcOp.getName()] = attr.getInt();
+    });
+
+    device.walk([&](xilinx::AIE::CoreOp coreOp) {
+      // The roots are the symbols the core body calls directly.
+      // AIEAssignCoreLinkFilesPass walks the same set.
+      llvm::SmallVector<llvm::StringRef, 4> roots;
+      llvm::StringSet<> seenRoots;
+      coreOp.walk([&](mlir::func::CallOp call) {
+        if (seenRoots.insert(call.getCallee()).second)
+          roots.push_back(call.getCallee());
+      });
+
+      // A merge-mode kernel carries link_merge_files alone, so link_files is
+      // absent while its roots can still carry a stack_size_override. The loop
+      // below then scans zero objects, and those overrides still satisfy the
+      // roots. A root with no object and no override reaches the unmeasurable
+      // warning below.
+      std::vector<std::string> resolved;
+      if (auto filesAttr = coreOp.getLinkFiles())
+        for (auto f : filesAttr->getAsRange<mlir::StringAttr>())
+          resolved.push_back(
+              resolveExternalPath(f.getValue(), inputFile, workDir));
+
+      llvm::StringSet<> knownFunctions;
+      for (const std::string &path : resolved) {
+        auto it = definedFunctionsByPath.find(path);
+        if (it == definedFunctionsByPath.end())
+          it = definedFunctionsByPath
+                   .try_emplace(path,
+                                [&] {
+                                  llvm::StringSet<> names;
+                                  xilinx::aiecc::collectDefinedFunctionNames(
+                                      path, names);
+                                  return names;
+                                }())
+                   .first;
+        for (const auto &name : it->second)
+          knownFunctions.insert(name.first());
+      }
+
+      xilinx::aiecc::StackGraph graph;
+      std::vector<std::string> skipped;
+      for (const std::string &path : resolved)
+        if (!xilinx::aiecc::addObjectToStackGraph(path, knownFunctions, graph))
+          skipped.push_back(path);
+      xilinx::aiecc::resolveIndirectCallEdges(graph);
+
+      auto stackRes =
+          xilinx::aiecc::computeStackRequirement(graph, roots, overrides);
+      if (!stackRes.bytes) {
+        if (stackRes.failureKind ==
+            xilinx::aiecc::StackRequirementFailure::Cycle) {
+          coreOp.emitError()
+              << "cannot determine this core's stack requirement: "
+              << stackRes.error
+              << "; set stack_size_override on the affected kernel's "
+                 "external_func()/func.func declaration (Kernel(...)/"
+                 "ExternalFunction(...) in IRON), or pass "
+                 "--no-measure-stack-size to skip this check entirely";
+          result = mlir::failure();
+        } else {
+          coreOp.emitWarning()
+              << "cannot determine this core's stack requirement: "
+              << stackRes.error
+              << "; stack_size is not being validated for this core. Set "
+                 "stack_size_override on the affected kernel's "
+                 "external_func()/func.func declaration (Kernel(...)/"
+                 "ExternalFunction(...) in IRON) to enable it";
+        }
+        return;
+      }
+
+      if (!skipped.empty()) {
+        auto diag = coreOp.emitWarning()
+                    << "stack requirement computed as " << *stackRes.bytes
+                    << " bytes, but " << skipped.size()
+                    << " link_files artifact(s) could not be inspected "
+                       "(archive, bitcode, or unreadable), so this may be "
+                       "incomplete: ";
+        appendSkippedArtifacts(diag, skipped);
+      }
+
+      uint32_t effective = coreOp.getEffectiveStackSize();
+      std::optional<int64_t> ownFrame = measureOwnFrame(coreOp);
+      if (!ownFrame) {
+        if (static_cast<int64_t>(effective) < *stackRes.bytes)
+          coreOp.emitWarning()
+              << "this core's callees need at least " << *stackRes.bytes
+              << " bytes of stack (not counting the core body's own frame), "
+                 "but "
+              << (coreOp.getStackSizeAttr() ? "stack_size is only "
+                                            : "the default stack_size is only ")
+              << effective << " bytes";
+        return;
+      }
+
+      // An unchecked narrowing to i32 wraps to a small or negative number.
+      if (*ownFrame > INT32_MAX - *stackRes.bytes) {
+        coreOp.emitWarning()
+            << "stack requirement computed as " << (*ownFrame + *stackRes.bytes)
+            << " bytes, which does not fit in the attribute's i32; "
+               "stack_size is not being validated for this core";
+        return;
+      }
+
+      int64_t required = *ownFrame + *stackRes.bytes;
+      coreOp.setMeasuredStackSizeAttr(
+          mlir::Builder(module.getContext())
+              .getI32IntegerAttr(static_cast<int32_t>(required)));
+
+      if (static_cast<int64_t>(effective) < required) {
+        if (coreOp.getStackSizeAttr())
+          coreOp.emitError() << "stack_size = " << effective
+                             << " is insufficient: this core needs " << required
+                             << " bytes; increase stack_size to " << required
+                             << " (Worker(stack_size=...) in IRON), or pass "
+                                "--no-measure-stack-size to skip this check";
+        else
+          coreOp.emitError()
+              << "stack_size is absent, so this core uses the device default "
+                 "of "
+              << effective << " bytes, but it needs " << required
+              << " bytes; set stack_size = " << required
+              << " (Worker(stack_size=...) in IRON), or pass "
+                 "--no-measure-stack-size to skip this check";
+        result = mlir::failure();
+      }
+    });
+  }
   return result;
 }
 
@@ -257,7 +405,8 @@ patchCoreElfFiles(mlir::ModuleOp src,
 // LLVM-IR text post-processing
 //===----------------------------------------------------------------------===//
 
-// Strip LLVM-23-only features Peano's older opt/llc can't parse.
+// Strip newer-LLVM features Peano's older opt/llc can't parse. aiecc's LLVM is
+// 24; Peano's is 21, so the text handed between them needs the gap patched.
 inline std::string downgradeIRForPeano(llvm::StringRef ir,
                                        bool stripAlign = true) {
   std::string result = ir.str();
@@ -267,12 +416,6 @@ inline std::string downgradeIRForPeano(llvm::StringRef ir,
       while (end < result.size() && trail(result[end]))
         ++end;
       result.erase(p, end - p);
-    }
-  };
-  auto replaceAll = [&](llvm::StringRef from, llvm::StringRef to) {
-    for (size_t p = 0; (p = result.find(from.str(), p)) != std::string::npos;) {
-      result.replace(p, from.size(), to.str());
-      p += to.size();
     }
   };
   // Newer LLVM prints special floats as 'inf'/'-inf'/'nan'; Peano's opt only
@@ -292,7 +435,6 @@ inline std::string downgradeIRForPeano(llvm::StringRef ir,
       }
     }
   };
-  replaceAll("getelementptr inbounds nuw", "getelementptr inbounds");
   erasePattern("nocreateundeforpoison",
                [](char c) { return c == ' ' || c == '\t'; });
   // LLVM 23 dropped the size operand of `llvm.lifetime.start`/`.end`; Peano
@@ -791,7 +933,8 @@ getPlacementPipeline(mlir::MLIRContext *ctx, int coresPerCol,
   return pm;
 }
 
-// Trace flow + trace-config emission, nested under DeviceOp.
+// Trace flow + trace-config emission. -aie-fuse-trace-buffers is module-level:
+// it rewrites callers and callees together.
 inline std::unique_ptr<mlir::PassManager>
 getTracePipeline(mlir::MLIRContext *ctx) {
   auto pm = std::make_unique<mlir::PassManager>(ctx);
@@ -800,16 +943,19 @@ getTracePipeline(mlir::MLIRContext *ctx) {
   dpm.addPass(xilinx::AIE::createAIETraceToConfigPass());
   dpm.addPass(xilinx::AIE::createAIETraceRegPackWritesPass());
   dpm.addPass(xilinx::AIEX::createAIEXInlineTraceConfigPass());
+  pm->addPass(xilinx::AIEX::createAIEFuseTraceBuffersPass());
   return pm;
 }
 
 // Vector → AIEVec → buffer/lock/DMA setup → control-overlay → SCF lowering.
 // Operates on the whole module; the inner pipeline nests under DeviceOp.
 // Inspects `mod` for target arch (drives `convert-vector-to-aievec` opts).
-inline std::unique_ptr<mlir::PassManager> getInputWithAddressesPipeline(
-    mlir::MLIRContext *ctx, mlir::ModuleOp mod, llvm::StringRef allocScheme,
-    bool dynamicObjFifos, bool packetSwObjFifos, bool ctrlPktOverlay,
-    bool bf16Emulation, bool loadPdiToCtrlPkt = false) {
+inline std::unique_ptr<mlir::PassManager>
+getInputWithAddressesPipeline(mlir::MLIRContext *ctx, mlir::ModuleOp mod,
+                              llvm::StringRef allocScheme, bool dynamicObjFifos,
+                              bool packetSwObjFifos, bool ctrlPktOverlay,
+                              bool bf16Emulation, bool loadPdiToCtrlPkt = false,
+                              bool skipObjectFifoVerify = false) {
   using namespace xilinx::AIE;
   namespace X = xilinx::AIEX;
   auto pm = std::make_unique<mlir::PassManager>(ctx);
@@ -846,14 +992,33 @@ inline std::unique_ptr<mlir::PassManager> getInputWithAddressesPipeline(
   }
 
   mlir::OpPassManager &dpm = pm->nest<DeviceOp>();
-  dpm.addPass(createAIEAssignLockIDsPass());
+  // The stateful transform always emits the dynamic (runtime) buffer addressing
+  // and lock bookkeeping. When dynamic objectFifos are disabled, the
+  // aie-objectFifo-unroll pass below unrolls the loops that carry objectFifo
+  // accesses and folds the (now loop-invariant) runtime bookkeeping into a
+  // static, unrolled lowering.
   if (mlir::failed(mlir::parsePassPipeline(
-          llvm::formatv("aie-objectFifo-stateful-transform{{dynamic-objFifos="
-                        "{0} packet-sw-objFifos={1}}",
-                        dynamicObjFifos, packetSwObjFifos)
+          llvm::formatv(
+              "aie-objectFifo-stateful-transform{{packet-sw-objFifos={0} "
+              "skip-verify={1}}",
+              packetSwObjFifos, skipObjectFifoVerify)
               .str(),
           dpm)))
     return nullptr;
+  // Unroll the objectFifo loops (folding the runtime bookkeeping into the
+  // static lowering). `default-dynamic=true` flips the default to the
+  // loop-preserving form; per-core `dynamic_objfifo_lowering` attributes
+  // override it either way. Either way the unroll hints are stripped.
+  if (mlir::failed(mlir::parsePassPipeline(
+          llvm::formatv("aie-objectFifo-unroll{{default-dynamic={0}}",
+                        dynamicObjFifos)
+              .str(),
+          dpm)))
+    return nullptr;
+  // Assign IDs to the ID-less locks the objectFifo lowering creates (and to any
+  // user locks without an ID).
+  dpm.addPass(createAIEAssignLockIDsPass());
+  dpm.addPass(X::createAIEReserveRuntimeBDIDsPass());
   dpm.addPass(createAIEAssignBufferDescriptorIDsPass());
   dpm.addPass(createAIELowerCascadeFlowsPass());
   dpm.addPass(X::createAIEBroadcastPacketPass());
@@ -979,6 +1144,109 @@ loweringPipeline(mlir::ModuleOp src, llvm::StringRef devName, int col, int row,
   return mlir::success();
 }
 
+// Lower a device once and carve the result into one module per core.
+//
+// Two things have to happen in the same place. The lowering is what we want to
+// run once -- per-core lowering re-runs it against a clone of the whole design
+// and throws away every core but one. The carve then needs to know which tile
+// owns each buffer, and that is only legible before lowering: `memref.global`
+// loses any attribute we might hang on it when it becomes `llvm.mlir.global`.
+// So this takes the pre-lowering DeviceOp, reads ownership off its BufferOps,
+// and applies it after.
+//
+// Ownership matters because `AIEBufferToStandard` drops the initializer for
+// buffers a core does not own, so the data lands in exactly one core's object.
+// It keys that off the tile coordinates it was given, and unified lowering
+// gives it none, so every carved module starts with every initializer and the
+// globals are public -- symbol DCE will not touch them. Reproducing the drop
+// here is what keeps a core's object carrying only its own data.
+//
+// Cores the caller says it will not compile -- a pre-baked `elf_file` is used
+// verbatim -- are skipped, so this keys the same set as `perCore`.
+//
+// Keys match `coreKey`, so the results feed the per-core object subgraph.
+inline mlir::FailureOr<
+    std::vector<std::pair<std::string, mlir::OwningOpRef<mlir::ModuleOp>>>>
+splitLoweredCores(const Item<OpInModule<xilinx::AIE::DeviceOp>> &devItem,
+                  llvm::function_ref<bool(xilinx::AIE::CoreOp)> shouldCompile) {
+  xilinx::AIE::DeviceOp dev = devItem.get().op;
+  std::string devName = dev.getSymName().str();
+
+  // Cores this device will actually compile, by coordinate.
+  llvm::DenseSet<std::pair<int, int>> compiled;
+  dev.walk([&](xilinx::AIE::CoreOp c) {
+    if (!shouldCompile(c))
+      return;
+    auto tile = mlir::cast<xilinx::AIE::TileOp>(c.getTile().getDefiningOp());
+    compiled.insert({tile.getCol(), tile.getRow()});
+  });
+
+  // Buffer symbol -> owning tile, read before the lowering erases the tiles.
+  llvm::StringMap<std::pair<int, int>> owner;
+  dev.walk([&](xilinx::AIE::BufferOp buf) {
+    auto tile = mlir::cast<xilinx::AIE::TileOp>(buf.getTile().getDefiningOp());
+    owner[buf.name().getValue()] = {tile.getCol(), tile.getRow()};
+  });
+
+  Item<mlir::OwningOpRef<mlir::ModuleOp>> lowered;
+  if (mlir::failed(loweringPipeline(devItem.get().module.get(), devName, -1, -1,
+                                    lowered)))
+    return mlir::failure();
+
+  // `core_<col>_<row>` is what AIECoreToStandardFunc emits. Match the shape
+  // rather than the prefix: a hand-written `core_helper` is not a core.
+  auto coreCoords =
+      [](llvm::StringRef name) -> std::optional<std::pair<int, int>> {
+    if (!name.consume_front("core_"))
+      return std::nullopt;
+    llvm::StringRef colStr, rowStr;
+    std::tie(colStr, rowStr) = name.split('_');
+    int col, row;
+    if (colStr.empty() || rowStr.empty() || colStr.getAsInteger(10, col) ||
+        rowStr.getAsInteger(10, row))
+      return std::nullopt;
+    return std::make_pair(col, row);
+  };
+
+  // Name plus coordinates, so the loop below never has to re-parse the name
+  // and unwrap the optional a second time.
+  llvm::SmallVector<std::pair<std::string, std::pair<int, int>>> cores;
+  lowered.get().get().walk([&](mlir::LLVM::LLVMFuncOp f) {
+    auto coords = coreCoords(f.getSymName());
+    if (coords && compiled.contains(*coords))
+      cores.emplace_back(f.getSymName().str(), *coords);
+  });
+
+  std::vector<std::pair<std::string, mlir::OwningOpRef<mlir::ModuleOp>>> out;
+  out.reserve(cores.size());
+  for (const auto &core : cores) {
+    llvm::StringRef keep = core.first;
+    std::pair<int, int> keepCoords = core.second;
+    mlir::OwningOpRef<mlir::ModuleOp> clone = lowered.get().get().clone();
+
+    llvm::SmallVector<mlir::Operation *> drop;
+    clone->walk([&](mlir::LLVM::LLVMFuncOp f) {
+      if (coreCoords(f.getSymName()) && f.getSymName() != keep)
+        drop.push_back(f);
+    });
+    for (mlir::Operation *op : drop)
+      op->erase();
+
+    clone->walk([&](mlir::LLVM::GlobalOp g) {
+      auto it = owner.find(g.getSymName());
+      if (it != owner.end() && it->second != keepCoords)
+        g.removeValueAttr();
+    });
+
+    mlir::PassManager pm(clone->getContext());
+    pm.addPass(mlir::createSymbolDCEPass());
+    if (mlir::failed(pm.run(*clone)))
+      return mlir::failure();
+    out.emplace_back(devName + "_" + keep.str(), std::move(clone));
+  }
+  return out;
+}
+
 // DMA→NPU lowering. Expects runtime sequences to already be materialized
 // (getMaterializeRuntimeSeqPipeline).
 inline std::unique_ptr<mlir::PassManager>
@@ -986,6 +1254,7 @@ getNpuDmaLoweringPipeline(mlir::MLIRContext *ctx) {
   namespace X = xilinx::AIEX;
   auto pm = std::make_unique<mlir::PassManager>(ctx);
   auto &dpm = pm->nest<xilinx::AIE::DeviceOp>();
+  dpm.addPass(X::createAIEResolveAddressPatchBuffersPass());
   dpm.addPass(X::createAIEMaterializeBDChainsPass());
   dpm.addPass(X::createAIESubstituteShimDMAAllocationsPass());
   dpm.addPass(X::createAIEUnrollRuntimeSequenceLoopsPass());
@@ -1048,6 +1317,7 @@ getPerDeviceDmaLoweringPipeline(mlir::MLIRContext *ctx) {
   namespace X = xilinx::AIEX;
   auto pm = std::make_unique<mlir::PassManager>(ctx);
   auto &dpm = pm->nest<xilinx::AIE::DeviceOp>();
+  dpm.addPass(X::createAIEResolveAddressPatchBuffersPass());
   dpm.addPass(X::createAIEMaterializeBDChainsPass());
   dpm.addPass(X::createAIESubstituteShimDMAAllocationsPass());
   dpm.addPass(X::createAIEAssignRuntimeSequenceBDIDsPass());

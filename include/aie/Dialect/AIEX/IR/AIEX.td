@@ -585,6 +585,10 @@ def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
     The burst length attribute specifies the burst length in bytes for the DMA operation. A value
     of 0 indicates that the burst length is not specified and the maximal burst length is used.
 
+    The `axcache` attribute specifies the raw 4-bit `AxCACHE` value used for the shim DMA's
+    AXI-MM transfers to/from host memory. If unset, `AIETargetModel::getDefaultAxCache()` supplies
+    the value.
+
     #### `metadata` -- Specifying Tile, Channel, Direction and Linking a `dma_memcpy_nd` to its Other Half
 
     The `metadata` attribute must point to a symbol referencing a
@@ -651,33 +655,31 @@ def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
 
   }];
 
-  let arguments = (
-    ins AnyRankedOrUnrankedMemRef:$memref,
-        // NOTE: these are in reverse order: offset3, offset2, ...
-        Variadic<I64>:$offsets,
-        Variadic<I64>:$sizes,
-        Variadic<I64>:$strides,
-        ConfinedAttr<DenseI64ArrayAttr, [DenseArrayCount<4>]>:$static_offsets,
-        ConfinedAttr<DenseI64ArrayAttr, [DenseArrayCount<4>]>:$static_sizes,
-        ConfinedAttr<DenseI64ArrayAttr, [DenseArrayCount<4>]>:$static_strides,
-        OptionalAttr<PacketInfoAttr>:$packet,
-        SymbolRefAttr:$metadata,
-        I64Attr:$id,
-        DefaultValuedOptionalAttr<BoolAttr, "false">:$issue_token,
-        DefaultValuedOptionalAttr<I64Attr, "0">:$d0_zero_before,
-        DefaultValuedOptionalAttr<I64Attr, "0">:$d1_zero_before,
-        DefaultValuedOptionalAttr<I64Attr, "0">:$d2_zero_before,
-        DefaultValuedOptionalAttr<I64Attr, "0">:$d0_zero_after,
-        DefaultValuedOptionalAttr<I64Attr, "0">:$d1_zero_after,
-        DefaultValuedOptionalAttr<I64Attr, "0">:$d2_zero_after,
-        DefaultValuedOptionalAttr<I64Attr, "0">:$burst_length,
-        // if set, the aiex.scratchpad_parameter value added to the BD's address as an offset
-        OptionalAttr<FlatSymbolRefAttr>:$offset_parameter,
-        // Set by --aie-lower-scratchpad-parameters from $offset_parameter: the scratchpad
-        // state-table index whose value is used as the BD address offset.
-        // After lowering, $offset_parameter is removed in favor of this attribute.
-        OptionalAttr<UI8Attr>:$offset_state_table_idx
-  );
+  let arguments = (ins AnyRankedOrUnrankedMemRef:$memref,
+      // NOTE: these are in reverse order: offset3, offset2, ...
+      Variadic<I64>:$offsets, Variadic<I64>:$sizes, Variadic<I64>:$strides,
+      ConfinedAttr<DenseI64ArrayAttr, [DenseArrayCount<4>]>:$static_offsets,
+      ConfinedAttr<DenseI64ArrayAttr, [DenseArrayCount<4>]>:$static_sizes,
+      ConfinedAttr<DenseI64ArrayAttr, [DenseArrayCount<4>]>:$static_strides,
+      OptionalAttr<PacketInfoAttr>:$packet, SymbolRefAttr:$metadata,
+      I64Attr:$id, DefaultValuedOptionalAttr<BoolAttr, "false">:$issue_token,
+      DefaultValuedOptionalAttr<I64Attr, "0">:$d0_zero_before,
+      DefaultValuedOptionalAttr<I64Attr, "0">:$d1_zero_before,
+      DefaultValuedOptionalAttr<I64Attr, "0">:$d2_zero_before,
+      DefaultValuedOptionalAttr<I64Attr, "0">:$d0_zero_after,
+      DefaultValuedOptionalAttr<I64Attr, "0">:$d1_zero_after,
+      DefaultValuedOptionalAttr<I64Attr, "0">:$d2_zero_after,
+      DefaultValuedOptionalAttr<I64Attr, "0">:$burst_length,
+      OptionalAttr<ConfinedAttr<I64Attr, [IntMinValue<0>,
+                                          IntMaxValue<15>]>>:$axcache,
+      // if set, the aiex.scratchpad_parameter value added to the BD's address
+      // as an offset
+      OptionalAttr<FlatSymbolRefAttr>:$offset_parameter,
+      // Set by --aie-lower-scratchpad-parameters from $offset_parameter: the
+      // scratchpad state-table index whose value is used as the BD address
+      // offset. After lowering, $offset_parameter is removed in favor of this
+      // attribute.
+      OptionalAttr<UI8Attr>:$offset_state_table_idx);
 
   let assemblyFormat = [{
     `(` $memref ``
@@ -690,7 +692,7 @@ def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
 
   let extraClassDeclaration = [{
     static unsigned getOffsetSizeAndStrideStartOperandIndex();
-    static std::array<unsigned, 3> getArrayAttrMaxRanks();
+    std::array<unsigned, 3> getArrayAttrMaxRanks();
 
     /* Returns the data transfer offset in bytes, i.e. the first N bytes of the
        target buffer will be skipped. In the IR, offsets are expressed in units
@@ -708,6 +710,9 @@ def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
     llvm::LogicalResult verifyDynamicSizesStrides(
         const xilinx::AIE::AIETargetModel &targetModel,
         mlir::BaseMemRefType buffer);
+
+    /* $axcache, or the target's default when unset. */
+    uint32_t getAxcacheOrDefault();
   }];
 
   let extraClassDefinition = [{
@@ -973,6 +978,33 @@ def AIE_NpuBlockWriteOp: AIEX_Op<"npu.blockwrite", []> {
   }];
 }
 
+// BLOCKWRITE_VALUES
+def AIE_NpuBlockWriteValuesOp : AIEX_Op<"npu.blockwrite_values", []> {
+  let summary = "blockwrite operator with a runtime-computed payload";
+  let arguments = (ins I32:$address, Variadic<I32>:$values);
+  let results = (outs);
+  let assemblyFormat = [{
+    `(` $address `:` type($address) `)` `values` $values `:` type($values)
+    attr-dict
+  }];
+  let description = [{
+    Writes `values`, in order, as a single contiguous block-write of words
+    starting at `address`. Unlike `npu.blockwrite`, whose address is a
+    compile-time attribute and whose payload is a compile-time-constant memref,
+    both are SSA operands here, so the payload is itself computed at TXN-build
+    time, by reference to calculated SSA values.
+
+    This is used for BD register configuration. aiebu expects one blockwrite
+    per BD configuration; it applies `npu.address_patch` instructions to the
+    last preceding BD-configuration-blockwrite, erroring if there's none.
+
+    This op appears only on the dynamic DMA lowering path (a runtime
+    size/stride/length or a runtime BD id) and is supported only by the EmitC
+    (C++ TXN) target; the static binary target has no representation for a
+    runtime-valued block-write and rejects it.
+  }];
+}
+
 // OP_SYNC
 def AIE_NpuSyncOp: AIEX_Op<"npu.sync", []> {
   let summary = "sync operator";
@@ -1003,31 +1035,64 @@ def AIE_NpuSyncOp: AIEX_Op<"npu.sync", []> {
 }
 
 // XAIE_IO_CUSTOM_OP_BEGIN + 1 (address patch)
-def AIE_NpuAddressPatchOp: AIEX_Op<"npu.address_patch", []> {
+def AIE_NpuAddressPatchOp
+    : AIEX_Op<"npu.address_patch", [AttrSizedOperandSegments]> {
   let summary = "address patch operator";
-  let arguments = (
-    ins UI32Attr:$addr,
-        Optional<I32>:$addr_val,
-        I32Attr:$arg_idx,
-        I32:$arg_plus
-  );
+  let arguments = (ins UI32Attr:$addr, Optional<I32>:$addr_val,
+      OptionalAttr<I32Attr>:$arg_idx, I32:$arg_plus,
+      Optional<AnyMemRef>:$buffer);
   let results = (outs );
   let assemblyFormat = [{
     `(` $arg_plus `:` type($arg_plus) `)` (`addr` $addr_val^ `:` type($addr_val))?
+    (`buffer` $buffer^ `:` type($buffer))?
     attr-dict
   }];
   let description = [{
-    address patch operator. `arg_plus` is an SSA value; use arith.constant for
-    a compile-time-known offset or pass a runtime sequence value for a
-    runtime-parameterized buffer offset.
-
+    address patch operator. 
+    
+    This instruction writes the address of a runtime-allocated host buffer 
+    into a register, typically a BD's buffer address register. The runtime 
+    passes runtime-allocated host buffers as runtime sequence arguments, so 
+    this instruction refers to them by their argument index. 
+    
     `addr` is the register to patch (the BD's buffer-address word). It is a
     compile-time attribute on the static path; when the BD id is chosen at
     runtime (dynamic free-list pool) the register address is itself runtime and
     is supplied via the optional `addr_val` operand instead, which then takes
     precedence. Only the EmitC (C++ TXN) target supports a runtime `addr_val`;
     the static binary target requires the constant `addr`.
+
+    `arg_plus` is an SSA value; use arith.constant for
+    a compile-time-known offset or pass a runtime sequence value for a
+    runtime-parameterized buffer offset.
+
+    `arg_idx` or `buffer` specify which runtime sequence argument holds the 
+    host buffer whose address you want to patch. You must set exactly one of
+    the two:
+    - `arg_idx` is an argument index of the enclosing runtime sequence.
+      Address patch instructions using `arg_idx` should not be inlined into 
+      other runtime sequences with `aiex.run`, because the argument index might
+      not match there.
+    - `buffer` instead names the buffer by reference to a `memref` by reference.
+      You can use it together with `aiex.run`.
+      The `-aie-resolve-address-patch-buffers` pass traces the `memref` back to
+      the enclosing runtime sequence argument list and converts the operand to 
+      the correct `arg_idx` after inlining. It adds the buffer's byte offset to
+      `arg_plus`.
   }];
+  let builders = [OpBuilder<(ins "uint32_t":$addr, "mlir::Value":$addr_val,
+                                "int32_t":$arg_idx, "mlir::Value":$arg_plus),
+                            [{
+      build($_builder, $_state, $_builder.getUI32IntegerAttr(addr), addr_val,
+            $_builder.getI32IntegerAttr(arg_idx), arg_plus,
+            /*buffer=*/mlir::Value());
+    }]>,
+                  OpBuilder<(ins "uint32_t":$addr, "mlir::Value":$addr_val,
+                                "mlir::Value":$buffer, "mlir::Value":$arg_plus),
+                            [{
+      build($_builder, $_state, $_builder.getUI32IntegerAttr(addr), addr_val,
+            /*arg_idx=*/mlir::IntegerAttr(), arg_plus, buffer);
+    }]>];
   let hasVerifier = 1;
 }
 
@@ -1189,52 +1254,50 @@ def AIE_NpuControlPacketOp: AIEX_Op<"control_packet", []> {
   let extraClassDeclaration = [{
     uint32_t getRowFromAddr();
     uint32_t getColumnFromAddr();
+
+    /// Most words -- data payload, or read length when there is no data --
+    /// one packet can carry on the wire (the header's beat count field is 2
+    /// bits). Enforced where the header is packed, not here -- see
+    /// AIETranslateControlPacketsToUI32Vec.
+    static constexpr unsigned getMaxDataWords() { return 4; }
   }];
 }
 
 // NPU Bd Write operation
 def AIE_NpuWriteBdOp: AIEX_Op<"npu.writebd", []> {
   let summary = "dma operator";
-  let arguments = (
-    ins I32Attr:$column,
-        I32Attr:$bd_id,
-        I32Attr:$buffer_length,
-        I32Attr:$buffer_offset,
-        I32Attr:$enable_packet,
-        I32Attr:$out_of_order_id,
-        I32Attr:$packet_id,
-        I32Attr:$packet_type,
-        I32Attr:$d0_size,
-        I32Attr:$d0_stride,
-        I32Attr:$d1_size,
-        I32Attr:$d1_stride,
-        I32Attr:$d2_size,
-        I32Attr:$d2_stride,
-        I32Attr:$iteration_current,
-        I32Attr:$iteration_size,
-        I32Attr:$iteration_stride,
-        I32Attr:$next_bd,
-        I32Attr:$row,
-        I32Attr:$use_next_bd,
-        I32Attr:$valid_bd,
-        I32Attr:$lock_rel_val,
-        I32Attr:$lock_rel_id,
-        I32Attr:$lock_acq_enable,
-        I32Attr:$lock_acq_val,
-        I32Attr:$lock_acq_id,
-        I32Attr:$d0_zero_before,
-        I32Attr:$d1_zero_before,
-        I32Attr:$d2_zero_before,
-        I32Attr:$d0_zero_after,
-        I32Attr:$d1_zero_after,
-        I32Attr:$d2_zero_after,
-        DefaultValuedOptionalAttr<I32Attr, "0">:$burst_length
-  );
+  let arguments = (ins I32Attr:$column, I32Attr:$bd_id, I32Attr:$buffer_length,
+      I32Attr:$buffer_offset, I32Attr:$enable_packet, I32Attr:$out_of_order_id,
+      I32Attr:$packet_id, I32Attr:$packet_type, I32Attr:$d0_size,
+      I32Attr:$d0_stride, I32Attr:$d1_size, I32Attr:$d1_stride,
+      I32Attr:$d2_size, I32Attr:$d2_stride, I32Attr:$iteration_current,
+      I32Attr:$iteration_size, I32Attr:$iteration_stride, I32Attr:$next_bd,
+      I32Attr:$row, I32Attr:$use_next_bd, I32Attr:$valid_bd,
+      I32Attr:$lock_rel_val, I32Attr:$lock_rel_id, I32Attr:$lock_acq_enable,
+      I32Attr:$lock_acq_val, I32Attr:$lock_acq_id, I32Attr:$d0_zero_before,
+      I32Attr:$d1_zero_before, I32Attr:$d2_zero_before, I32Attr:$d0_zero_after,
+      I32Attr:$d1_zero_after, I32Attr:$d2_zero_after,
+      DefaultValuedOptionalAttr<I32Attr, "0">:$burst_length,
+      OptionalAttr<ConfinedAttr<I32Attr, [IntMinValue<0>,
+                                          IntMaxValue<15>]>>:$axcache);
   let results = (outs );
   let assemblyFormat = [{ attr-dict }];
   let hasVerifier = 1;
+  let extraClassDeclaration = [{
+    /* $axcache, or the target's default when unset. */
+    uint32_t getAxcacheOrDefault();
+  }];
   let description = [{
-    writebd operator
+    Write a complete buffer descriptor (all fields explicit) to a BD slot.
+
+    ###  Iteration convention: raw register values
+
+    The `iteration_*` attributes here are RAW register values: stored off by one
+    (`iteration_size = 3` means four executions) and `iteration_stride` in
+    32-bit words. The iteration state on `aie.dma_bd` (`#aie.bd_iteration<...>`)
+    holds TRUE / element values; the lowering applies the `-1` bias and the
+    element->word scaling there. Do NOT copy an iteration number between the
+    two ops. See the "## BD iteration" section of `aie.dma_bd` for more details.
   }];
 }
 
@@ -1264,7 +1327,10 @@ def AIE_NpuLoadPdiOp: AIEX_Op<"npu.load_pdi", []> {
   let hasCanonicalizeMethod = 1;
 }
 
-def AIE_DMAConfigureTaskOp : AIEX_Op<"dma_configure_task", [HasAncestor<"AIE::RuntimeSequenceOp">, TileElement, AttrSizedOperandSegments]>, Results<(outs Index:$result)> {
+def AIE_DMAConfigureTaskOp
+    : AIEX_Op<"dma_configure_task", [HasAncestor<"AIE::RuntimeSequenceOp">,
+                                     TileElement]>,
+      Results<(outs Index:$result)> {
   let summary = "Concrete Instantiation of a Buffer Descriptor Chain as a Task on a Channel and Direction on a Tile";
   let description = [{
     Encapsulates the DMA configuration of one task, that is the (chain of) buffer descriptors to be executed on a given channel and direction on a tile.
@@ -1274,16 +1340,12 @@ def AIE_DMAConfigureTaskOp : AIEX_Op<"dma_configure_task", [HasAncestor<"AIE::Ru
     Once configured, a task can be submitted for execution using `aiex.dma_start_configured_task`, after which its execution completion can be awaited using `aiex.dma_await_task`.
   }];
 
-  let arguments = (
-    ins Index:$tile,
-        DMAChannelDir:$direction,
-        I32Attr:$channel,
-        DefaultValuedOptionalAttr<BoolAttr, "false">:$issue_token,
-        DefaultValuedOptionalAttr<I32Attr, "0">:$repeat_count,
-        Optional<I32>:$repeat_count_val,
-        Optional<I32>:$bd_id_val,
-        OptionalAttr<PacketInfoAttr>:$packet
-  );
+  let arguments = (ins Index:$tile, DMAChannelDir:$direction, I32Attr:$channel,
+      DefaultValuedOptionalAttr<BoolAttr, "false">:$issue_token,
+      DefaultValuedOptionalAttr<I32Attr, "0">:$repeat_count,
+      Optional<I32>:$repeat_count_val, OptionalAttr<PacketInfoAttr>:$packet,
+      // Put the channel into out-of-order mode (S2MM only).
+      UnitAttr:$out_of_order);
 
   let regions = (
     region AnyRegion:$body
@@ -1292,7 +1354,7 @@ def AIE_DMAConfigureTaskOp : AIEX_Op<"dma_configure_task", [HasAncestor<"AIE::Ru
   let assemblyFormat = [{
     `(` $tile `,` $direction `,` $channel (`,` $packet^)? `)`
     (`repeat` $repeat_count_val^ `:` type($repeat_count_val))?
-    (`bd_id` $bd_id_val^ `:` type($bd_id_val))? regions attr-dict
+    regions attr-dict
   }];
 
   let extraClassDeclaration = [{
@@ -1300,7 +1362,8 @@ def AIE_DMAConfigureTaskOp : AIEX_Op<"dma_configure_task", [HasAncestor<"AIE::Ru
     // Null when the tile is still an aie.logical_tile, so passes that can run
     // before placement defer instead of aborting inside getTileOp().
     AIE::TileOp tryGetTileOp();
-    std::optional<uint32_t> getFirstBdId();
+    // The task's head BD, or null when the body has none.
+    AIE::DMABDOp getFirstBd();
     // The repeat count as an OpFoldResult: the runtime operand if present, else
     // the compile-time attribute. Mirrors dma_bd's offset/len duality.
     mlir::OpFoldResult getRepeatCountValue() {
@@ -1319,16 +1382,17 @@ def AIE_DMAConfigureTaskOp : AIEX_Op<"dma_configure_task", [HasAncestor<"AIE::Ru
   let hasVerifier = 1;
   let hasCanonicalizeMethod = 1;
 
-  let builders = [
-    OpBuilder<(ins "::mlir::Type":$result, "mlir::Value":$tile, "xilinx::AIE::DMAChannelDir":$dir, "int":$channel_index,
-               "bool":$token, "int":$repeat), [{
+  let builders = [OpBuilder<(ins "::mlir::Type":$result, "mlir::Value":$tile,
+                                "xilinx::AIE::DMAChannelDir":$dir,
+                                "int":$channel_index, "bool":$token,
+                                "int":$repeat),
+                            [{
       build($_builder, $_state, result, tile,
             xilinx::AIE::DMAChannelDirAttr::get(odsBuilder.getContext(), dir),
             $_builder.getI32IntegerAttr(channel_index), $_builder.getBoolAttr(token),
             $_builder.getI32IntegerAttr(repeat), /*repeat_count_val=*/nullptr,
-            /*bd_id_val=*/nullptr, /*packet=*/nullptr);
-    }]>
-  ];
+            /*packet=*/nullptr, /*out_of_order=*/nullptr);
+    }]>];
 }
 
 def AIE_DMAConfigureTaskForOp : AIEX_Op<"dma_configure_task_for", [HasAncestor<"AIE::RuntimeSequenceOp">]>, Results<(outs Index:$result)> {
@@ -1381,7 +1445,7 @@ def AIE_DMAFreeTaskOp : AIEX_Op<"dma_free_task", [HasAncestor<"AIE::RuntimeSeque
   }];
 
   let extraClassDefinition = [{
-    DMAConfigureTaskOp DMAFreeTaskOp::getTaskOp() { return dyn_cast<DMAConfigureTaskOp>(getTask().getDefiningOp()); }
+    DMAConfigureTaskOp DMAFreeTaskOp::getTaskOp() { return dyn_cast_or_null<DMAConfigureTaskOp>(getTask().getDefiningOp()); }
   }];
 }
 
@@ -1405,7 +1469,7 @@ def AIE_DMAStartTaskOp : AIEX_Op<"dma_start_task", [HasAncestor<"AIE::RuntimeSeq
   }];
 
   let extraClassDefinition = [{
-    DMAConfigureTaskOp DMAStartTaskOp::getTaskOp() { return dyn_cast<DMAConfigureTaskOp>(getTask().getDefiningOp()); }
+    DMAConfigureTaskOp DMAStartTaskOp::getTaskOp() { return dyn_cast_or_null<DMAConfigureTaskOp>(getTask().getDefiningOp()); }
   }];
 }
 
@@ -1440,7 +1504,7 @@ def AIE_DMAAwaitTaskOp : AIEX_Op<"dma_await_task", [HasAncestor<"AIE::RuntimeSeq
 
   let extraClassDefinition = [{
     DMAConfigureTaskOp DMAAwaitTaskOp::getTaskOp() {
-      return dyn_cast<DMAConfigureTaskOp>(getTask().getDefiningOp());
+      return dyn_cast_or_null<DMAConfigureTaskOp>(getTask().getDefiningOp());
     }
   }];
 }
@@ -1550,7 +1614,8 @@ def AIE_DMAStartBdChainForOp: AIEX_Op<"dma_start_bd_chain_for", [HasParent<"AIE:
   }];
 }
 
-def AIEX_SetLockOp: AIEX_Op<"set_lock", [HasParent<"AIE::RuntimeSequenceOp">, SkipAccessibilityCheckTrait]> {
+def AIEX_SetLockOp : AIEX_Op<"set_lock", [HasAncestor<"AIE::RuntimeSequenceOp">,
+                                          SkipAccessibilityCheckTrait]> {
   let summary = "Set the value of a lock";
   let description = [{
     This operation sets the value of `lock` inside of a RuntimeSequenceOp.

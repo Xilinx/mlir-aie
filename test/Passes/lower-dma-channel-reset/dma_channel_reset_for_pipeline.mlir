@@ -12,7 +12,7 @@
 // to the reset + set_lock + START_QUEUE trio. This is the path a lit test that
 // runs the lowering pass in isolation does NOT exercise.
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform --aie-assign-bd-ids \
+// RUN: aie-opt --aie-objectFifo-stateful-transform="skip-verify=true" --aie-assign-lock-ids --aie-assign-bd-ids \
 // RUN:   --aie-materialize-runtime-sequences --aie-lower-dma-channel-reset \
 // RUN:   --aie-dma-to-npu --aie-lower-set-lock \
 // RUN:   %s | FileCheck %s

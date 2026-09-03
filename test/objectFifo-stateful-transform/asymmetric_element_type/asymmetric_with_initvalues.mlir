@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=false" %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll %s | FileCheck %s
 
 // Asymmetric ObjectFifo with initValues and depth=2.
 // Mobilenet weight loading pattern: 2 large buffers with static weight
@@ -49,8 +49,7 @@ module {
       %c1 = arith.constant 1 : index
       %c8 = arith.constant 8 : index
       scf.for %i = %c0 to %c8 step %c1 {
-        %sv = aie.objectfifo.acquire @wts(Consume, 1) : !aie.objectfifosubview<memref<10xi32>>
-        %elem = aie.objectfifo.subview.access %sv[0] : !aie.objectfifosubview<memref<10xi32>> -> memref<10xi32>
+        %elem = aie.objectfifo.acquire @wts(Consume, 1) : memref<10xi32>
         aie.objectfifo.release @wts(Consume, 1)
       }
       aie.end

@@ -80,13 +80,22 @@ static NdDmaPattern patternFromOp(NpuDmaMemcpyNdOp op) {
   return pattern;
 }
 
+// Only called after allConstant(op) confirmed every size/stride resolves to
+// a constant, so the has_value() checks below are redundant in practice --
+// asserted rather than re-verified to keep that invariant visible here too.
 static NdDmaPattern patternFromDmaBd(AIE::DMABDOp op) {
   SmallVector<int64_t, 4> outerSizes;
   SmallVector<int64_t, 4> outerStrides;
-  for (OpFoldResult s : op.getMixedSizes())
-    outerSizes.push_back(getConstantIntValue(s).value());
-  for (OpFoldResult s : op.getMixedStrides())
-    outerStrides.push_back(getConstantIntValue(s).value());
+  for (OpFoldResult s : op.getMixedSizes()) {
+    auto c = getConstantIntValue(s);
+    assert(c && "size must be constant (already checked by allConstant)");
+    outerSizes.push_back(*c);
+  }
+  for (OpFoldResult s : op.getMixedStrides()) {
+    auto c = getConstantIntValue(s);
+    assert(c && "stride must be constant (already checked by allConstant)");
+    outerStrides.push_back(*c);
+  }
   while (outerSizes.size() < 4) {
     outerSizes.insert(outerSizes.begin(), 1);
     outerStrides.insert(outerStrides.begin(), 0);
@@ -155,8 +164,11 @@ static AIE::DMABDOp createTaskBd(PatternRewriter &rewriter, Location loc,
     bd.setPacketAttr(tmpl.getPacketAttr());
   if (tmpl.getBurstLengthAttr())
     bd.setBurstLengthAttr(tmpl.getBurstLengthAttr());
+  if (tmpl.getAxcacheAttr())
+    bd.setAxcacheAttr(tmpl.getAxcacheAttr());
   if (tmpl.getOffsetParameterAttr())
     bd.setOffsetParameterAttr(tmpl.getOffsetParameterAttr());
+  // out_of_order_id is not copied because slicing an OoO BD is rejected above.
   return bd;
 }
 
@@ -220,8 +232,8 @@ static NpuDmaMemcpyNdOp createDecomposedOp(PatternRewriter &rewriter,
   auto outerSizes = toOuter(pattern.sizes);
   auto outerStrides = toOuter(pattern.strides);
 
-  return rewriter.create<NpuDmaMemcpyNdOp>(
-      op.getLoc(), op.getMemref(),
+  return NpuDmaMemcpyNdOp::create(
+      rewriter, op.getLoc(), op.getMemref(),
       /*offsets=*/ValueRange{}, /*sizes=*/ValueRange{},
       /*strides=*/ValueRange{},
       DenseI64ArrayAttr::get(op.getContext(), outerOffsets),
@@ -231,7 +243,7 @@ static NpuDmaMemcpyNdOp createDecomposedOp(PatternRewriter &rewriter,
       rewriter.getBoolAttr(issueToken), op.getD0ZeroBeforeAttr(),
       op.getD1ZeroBeforeAttr(), op.getD2ZeroBeforeAttr(),
       op.getD0ZeroAfterAttr(), op.getD1ZeroAfterAttr(), op.getD2ZeroAfterAttr(),
-      op.getBurstLengthAttr(), op.getOffsetParameterAttr(),
+      op.getBurstLengthAttr(), op.getAxcacheAttr(), op.getOffsetParameterAttr(),
       op.getOffsetStateTableIdxAttr());
 }
 
@@ -280,25 +292,30 @@ struct DecomposeLargeDmaBdPattern : OpRewritePattern<NpuDmaMemcpyNdOp> {
 
     auto decomposed =
         decomposeNdDmaPattern(op, bufferType, pattern, targetModel, col, row);
-    if (failed(decomposed) || decomposed->empty())
+    // failed() already guards both dereferences below via short-circuit /
+    // prior control flow; the checker just doesn't associate FailureOr's
+    // failed()/succeeded() idiom with the std::optional base it derives from.
+    if (failed(decomposed) ||
+        decomposed->empty()) // NOLINT(bugprone-unchecked-optional-access)
       return failure();
-    if (decomposed->size() > targetModel.getNumBDs(col, row))
+    // Bind a plain reference now that decomposed is known non-failed and
+    // non-empty, so nothing past this point looks like an optional access.
+    SmallVector<NdDmaPattern> &bds =
+        *decomposed; // NOLINT(bugprone-unchecked-optional-access)
+    if (bds.size() > targetModel.getNumBDs(col, row))
       return failure();
 
-    if (decomposed->size() == 1) {
+    if (bds.size() == 1) {
       rewriter.replaceOpWithNewOp<NpuDmaMemcpyNdOp>(
           op, op.getMemref(), ValueRange{}, ValueRange{}, ValueRange{},
-          DenseI64ArrayAttr::get(op.getContext(),
-                                 toOuter(decomposed->front().offsets)),
-          DenseI64ArrayAttr::get(op.getContext(),
-                                 toOuter(decomposed->front().sizes)),
-          DenseI64ArrayAttr::get(op.getContext(),
-                                 toOuter(decomposed->front().strides)),
+          DenseI64ArrayAttr::get(op.getContext(), toOuter(bds.front().offsets)),
+          DenseI64ArrayAttr::get(op.getContext(), toOuter(bds.front().sizes)),
+          DenseI64ArrayAttr::get(op.getContext(), toOuter(bds.front().strides)),
           op.getPacketAttr(), op.getMetadata(), op.getIdAttr(),
           op.getIssueTokenAttr(), op.getD0ZeroBeforeAttr(),
           op.getD1ZeroBeforeAttr(), op.getD2ZeroBeforeAttr(),
           op.getD0ZeroAfterAttr(), op.getD1ZeroAfterAttr(),
-          op.getD2ZeroAfterAttr(), op.getBurstLengthAttr(),
+          op.getD2ZeroAfterAttr(), op.getBurstLengthAttr(), op.getAxcacheAttr(),
           op.getOffsetParameterAttr(), op.getOffsetStateTableIdxAttr());
       return success();
     }
@@ -315,8 +332,8 @@ struct DecomposeLargeDmaBdPattern : OpRewritePattern<NpuDmaMemcpyNdOp> {
 
     int64_t nextId = op.getId();
     rewriter.setInsertionPoint(op);
-    for (auto [idx, subPattern] : llvm::enumerate(*decomposed)) {
-      bool last = idx + 1 == decomposed->size();
+    for (auto [idx, subPattern] : llvm::enumerate(bds)) {
+      bool last = idx + 1 == bds.size();
       int64_t id = allocateNextId(op, nextId, usedIds);
       nextId = id + 1;
       createDecomposedOp(rewriter, op, subPattern, id,
@@ -365,12 +382,20 @@ struct DecomposeLargeDmaBdTaskPattern : OpRewritePattern<AIE::DMABDOp> {
 
     auto decomposed =
         decomposeNdDmaPattern(op, bufferType, pattern, targetModel, col, row);
-    if (failed(decomposed) || decomposed->empty())
+    // failed() already guards both dereferences below via short-circuit /
+    // prior control flow; the checker just doesn't associate FailureOr's
+    // failed()/succeeded() idiom with the std::optional base it derives from.
+    if (failed(decomposed) ||
+        decomposed->empty()) // NOLINT(bugprone-unchecked-optional-access)
       return failure();
-    if (decomposed->size() > targetModel.getNumBDs(col, row))
+    // Bind a plain reference now that decomposed is known non-failed and
+    // non-empty, so nothing past this point looks like an optional access.
+    SmallVector<NdDmaPattern> &bds =
+        *decomposed; // NOLINT(bugprone-unchecked-optional-access)
+    if (bds.size() > targetModel.getNumBDs(col, row))
       return failure();
 
-    if (decomposed->size() > 1 && isUnderRuntimeControlFlow(op)) {
+    if (bds.size() > 1 && isUnderRuntimeControlFlow(op)) {
       op.emitRemark()
           << "deferring multi-BD decomposition under runtime control flow "
              "(dynamic BD pool supports single-BD tasks only)";
@@ -379,8 +404,8 @@ struct DecomposeLargeDmaBdTaskPattern : OpRewritePattern<AIE::DMABDOp> {
 
     int64_t baseFlatOffset = op.getConstantOffset().value_or(0);
 
-    if (decomposed->size() == 1) {
-      const NdDmaPattern &sub = decomposed->front();
+    if (bds.size() == 1) {
+      const NdDmaPattern &sub = bds.front();
       int64_t flatOffset = flatOffsetFromPattern(baseFlatOffset, sub);
       auto outerSizes = toOuter(sub.sizes);
       auto outerStrides = toOuter(sub.strides);
@@ -396,16 +421,22 @@ struct DecomposeLargeDmaBdTaskPattern : OpRewritePattern<AIE::DMABDOp> {
       return success();
     }
 
+    // A chain split would make every slice reuse the one out_of_order_id slot.
+    // TODO: BD iteration plus padding may enable this feature.
+    if (op.getOutOfOrderId().has_value())
+      return op.emitOpError() << "splitting an out-of-order buffer descriptor "
+                                 "into multiple descriptors is not implemented";
+
     Region *body = getTaskBody(taskOp);
     if (!body || body->empty())
       return failure();
 
     SmallVector<Block *> blocks;
     blocks.push_back(op->getBlock());
-    for (unsigned i = 1; i < decomposed->size(); ++i)
+    for (unsigned i = 1; i < bds.size(); ++i)
       blocks.push_back(rewriter.createBlock(body));
 
-    for (auto [idx, subPattern] : llvm::enumerate(*decomposed)) {
+    for (auto [idx, subPattern] : llvm::enumerate(bds)) {
       Block *block = blocks[idx];
       int64_t flatOffset = flatOffsetFromPattern(baseFlatOffset, subPattern);
       auto outerSizes = toOuter(subPattern.sizes);
@@ -419,7 +450,7 @@ struct DecomposeLargeDmaBdTaskPattern : OpRewritePattern<AIE::DMABDOp> {
         });
         Operation *oldTerm = block->getTerminator();
         rewriter.setInsertionPoint(oldTerm);
-        if (idx + 1 < decomposed->size())
+        if (idx + 1 < bds.size())
           AIE::NextBDOp::create(rewriter, op.getLoc(), blocks[idx + 1]);
         else
           AIE::EndOp::create(rewriter, op.getLoc());
@@ -430,7 +461,7 @@ struct DecomposeLargeDmaBdTaskPattern : OpRewritePattern<AIE::DMABDOp> {
                      static_cast<int32_t>(flatOffset), len, outerSizes,
                      outerStrides);
         rewriter.setInsertionPointToEnd(block);
-        if (idx + 1 < decomposed->size())
+        if (idx + 1 < bds.size())
           AIE::NextBDOp::create(rewriter, op.getLoc(), blocks[idx + 1]);
         else
           AIE::EndOp::create(rewriter, op.getLoc());

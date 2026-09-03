@@ -227,7 +227,7 @@ jobs:
           python -m twine check --strict wheelhouse/repaired_wheel/mlir_aie*whl
 
       - name: Set up Python (host) for smoke test
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
           python-version: ${{ matrix.python_version }}
           allow-prereleases: true
@@ -263,6 +263,8 @@ jobs:
     # nightly still get full from-source NPU coverage via buildAndTestRyzenAI.
     needs: build-repo
     runs-on: ${{ matrix.runner_type }}
+    # Normal exec is ~1 min; cap well below the sibling smoke job's 192.6-min hang.
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -390,7 +392,7 @@ jobs:
           fetch-tags: true
 
       - name: Set up Python
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
           python-version: ${{ matrix.python_version }}
           allow-prereleases: true
@@ -614,7 +616,7 @@ jobs:
             ENABLE_RTTI: OFF
     steps:
       - name: Set up Python
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
           python-version: ${{ matrix.python_version }}
           allow-prereleases: true
@@ -642,6 +644,8 @@ jobs:
     # 3.13 matches the runner's pre-provisioned interpreter (docs/buildHostWinNative.md).
     needs: build-windows
     runs-on: [self-hosted, windows, ryzenai, npu2]
+    # Normal exec is 3-6 min; observed hang 192.6 min on this job (2026-08-04).
+    timeout-minutes: 20
     env:
       NPU_CACHE_HOME: ${{ github.workspace }}\iron-cache-${{ github.run_id }}
       PIP_CACHE_DIR: ${{ github.workspace }}\.pip-cache-${{ github.run_id }}
@@ -748,7 +752,7 @@ jobs:
           find wheels_off -name 'mlir_aie*whl' -exec cp -f {} wheels_off_flat/ \;
 
       - name: Set up Python (host) for rehearsal
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
           python-version: '3.12'
 

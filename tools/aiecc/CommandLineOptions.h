@@ -99,6 +99,9 @@ inline cl::opt<bool> dynamicObjFifos("dynamic-objFifos",
                                      cl::init(true));
 inline cl::opt<bool> packetSwObjFifos("packet-sw-objFifos",
                                       cl::desc("Packet-switched objectFIFOs"));
+inline cl::opt<bool> skipObjectFifoVerify(
+    "skip-objectFifo-verify",
+    cl::desc("Skip structural verification of split objectFifo IR"));
 inline cl::opt<bool>
     ctrlPktOverlay("generate-ctrl-pkt-overlay",
                    cl::desc("Route shim-to-tile control overlay"));
@@ -141,11 +144,24 @@ inline cl::opt<std::string> aietoolsDir(
              "from $AIETOOLS_ROOT or xchesscc on PATH when unset"));
 inline cl::opt<bool> unified(
     "unified",
-    cl::desc("Compile all cores of a device together into one shared object; "
-             "link each core separately against it."));
+    cl::desc("Lower all cores of a device together, then carve the result into "
+             "one module per core; each core still compiles and links its "
+             "own object."));
 inline cl::opt<bool> noUnified(
     "no-unified",
-    cl::desc("Compile cores independently (negates --unified; the default)"));
+    cl::desc("Lower each core independently, against its own clone of the "
+             "design (negates --unified; the default)"));
+inline cl::opt<bool> noMeasureStackSize(
+    "no-measure-stack-size",
+    cl::desc("Skip the measurement of each core's stack requirement and the "
+             "check of stack_size against it"));
+inline cl::opt<int> defaultStackSize(
+    "default-stack-size",
+    cl::desc("Stack size in bytes to assume for any core that leaves "
+             "stack_size absent, in place of the target's built-in default "
+             "(AIETargetModel::getDefaultCoreStackSize()). A core with an "
+             "explicit stack_size keeps it."),
+    cl::init(0));
 
 //===----------------------------------------------------------------------===//
 // Runtime sequence to compile (empty = all). Filters the per-sequence NPU

@@ -1,11 +1,11 @@
 diff --git a/driver/src/common/xaie_txn.h b/driver/src/common/xaie_txn.h
-index 28bad064..35b6b5c6 100644
+index aa353c51..d06a5882 100644
 --- a/driver/src/common/xaie_txn.h
 +++ b/driver/src/common/xaie_txn.h
-@@ -42,7 +42,8 @@ typedef enum {
- 	XAIE_IO_CUSTOM_OP_RECORD_TIMER, // Previously this was XAIE_IO_CUSTOM_OP_BEGIN + 3
+@@ -54,7 +54,8 @@ typedef enum {
  	XAIE_IO_CUSTOM_OP_MERGE_SYNC, // Previously this was XAIE_IO_CUSTOM_OP_BEGIN + 4
  	XAIE_IO_CUSTOM_OP_NEXT,
+ 	XAIE_IO_LOAD_PM_END_INTERNAL = 200,
 -	XAIE_IO_CUSTOM_OP_MAX = UCHAR_MAX,
 +	/* add new op here */
 +	XAIE_IO_CUSTOM_OP_MAX
@@ -13,10 +13,10 @@ index 28bad064..35b6b5c6 100644
  
  struct XAie_TxnCmd {
 diff --git a/driver/src/core/xaie_core_aie.c b/driver/src/core/xaie_core_aie.c
-index 87cdbd9f..a731b73a 100644
+index 188071fb..fdbc42ce 100644
 --- a/driver/src/core/xaie_core_aie.c
 +++ b/driver/src/core/xaie_core_aie.c
-@@ -21,10 +21,6 @@
+@@ -22,10 +22,6 @@
  *
  ******************************************************************************/
  /***************************** Include Files *********************************/
@@ -25,13 +25,13 @@ index 87cdbd9f..a731b73a 100644
 -#endif
 -
  #include "xaie_core_aie.h"
- #include "xaie_events_aie.h"
  #include "xaie_feature_config.h"
+ #include "xaie_helper_internal.h"
 diff --git a/driver/src/global/xaiegbl.c b/driver/src/global/xaiegbl.c
-index 3986369b..ed2bfd45 100644
+index 83a1cebe..e55e7511 100644
 --- a/driver/src/global/xaiegbl.c
 +++ b/driver/src/global/xaiegbl.c
-@@ -234,7 +234,7 @@ AieRC XAie_CfgInitialize(XAie_DevInst *InstPtr, XAie_Config *ConfigPtr)
+@@ -242,7 +242,7 @@ AieRC XAie_CfgInitialize(XAie_DevInst *InstPtr, XAie_Config *ConfigPtr)
  	memcpy(&InstPtr->PartProp, &ConfigPtr->PartProp,
  		sizeof(ConfigPtr->PartProp));
  
@@ -40,7 +40,7 @@ index 3986369b..ed2bfd45 100644
  	if(RC != XAIE_OK) {
  		return RC;
  	}
-@@ -1062,7 +1062,7 @@ AieRC XAie_PerfUtilization(XAie_DevInst *DevInst, XAie_PerfInst *PerfInst)
+@@ -870,7 +870,7 @@ AieRC XAie_PerfUtilization(XAie_DevInst *DevInst, XAie_PerfInst *PerfInst)
  		XAIE_DBG("Start Col: %d\tnum: %d\n",
  				PartRange.Start, PartRange.Num);
  		PerfInst->Range = &PartRange;
@@ -50,10 +50,10 @@ index 3986369b..ed2bfd45 100644
  		XAIE_ERROR("Invalid range!\n");
  		return XAIE_INVALID_ARGS;
 diff --git a/driver/src/global/xaiegbl.h b/driver/src/global/xaiegbl.h
-index bda0f9d4..53d2d15e 100644
+index 3529ea33..aad00440 100644
 --- a/driver/src/global/xaiegbl.h
 +++ b/driver/src/global/xaiegbl.h
-@@ -193,6 +193,7 @@ typedef struct {
+@@ -187,6 +187,7 @@ typedef struct {
  	u8 AieTileRowStart;
  	u8 AieTileNumRows;
  	XAie_PartitionProp PartProp;
@@ -62,10 +62,10 @@ index bda0f9d4..53d2d15e 100644
  
  /*
 diff --git a/driver/src/io_backend/ext/xaie_cdo.c b/driver/src/io_backend/ext/xaie_cdo.c
-index c127865d..f04ee2ca 100644
+index 157ccbf8..c34c94d9 100644
 --- a/driver/src/io_backend/ext/xaie_cdo.c
 +++ b/driver/src/io_backend/ext/xaie_cdo.c
-@@ -29,7 +29,13 @@
+@@ -30,7 +30,13 @@
  
  #ifdef __AIECDO__ /* AIE simulator */
  
@@ -80,100 +80,11 @@ index c127865d..f04ee2ca 100644
  
  #endif
  
-diff --git a/driver/src/io_backend/ext/xaie_debug.c b/driver/src/io_backend/ext/xaie_debug.c
-index e44e8afd..eed7a88f 100644
---- a/driver/src/io_backend/ext/xaie_debug.c
-+++ b/driver/src/io_backend/ext/xaie_debug.c
-@@ -107,7 +107,7 @@ static AieRC XAie_DebugIO_Write32(void *IOInst, u64 RegOff, u32 Value)
- {
- 	XAie_DebugIO *DebugIOInst = (XAie_DebugIO *)IOInst;
- 
--	printf("W: %p, 0x%x\n", (char *)DebugIOInst->BaseAddr + RegOff, Value);
-+	printf("W: %p, 0x%x\n", (uint8_t *) DebugIOInst->BaseAddr + RegOff, Value);
- 
- 	return XAIE_OK;
- }
-@@ -131,7 +131,7 @@ static AieRC XAie_DebugIO_Read32(void *IOInst, u64 RegOff, u32 *Data)
- 	XAie_DebugIO *DebugIOInst = (XAie_DebugIO *)IOInst;
- 
- 	*Data = 0U;
--	printf("R: %p, 0x%x\n", (char *) DebugIOInst->BaseAddr + RegOff, 0);
-+	printf("R: %p, 0x%x\n", (uint8_t *) DebugIOInst->BaseAddr + RegOff, 0);
- 
- 	return XAIE_OK;
- }
-@@ -157,7 +157,7 @@ static AieRC XAie_DebugIO_MaskWrite32(void *IOInst, u64 RegOff, u32 Mask,
- {
- 	XAie_DebugIO *DebugIOInst = (XAie_DebugIO *)IOInst;
- 
--	printf("MW: %p, 0x%x, 0x%x\n", (char *) DebugIOInst->BaseAddr + RegOff,
-+	printf("MW: %p, 0x%x, 0x%x\n", (uint8_t *) DebugIOInst->BaseAddr + RegOff,
- 			Mask, Value);
- 
- 	return XAIE_OK;
-@@ -184,7 +184,7 @@ static AieRC XAie_DebugIO_MaskPoll(void *IOInst, u64 RegOff, u32 Mask, u32 Value
- {
- 	XAie_DebugIO *DebugIOInst = (XAie_DebugIO *)IOInst;
- 
--	printf("MP: %p, 0x%x, 0x%x, 0x%d\n", (char *) DebugIOInst->BaseAddr +
-+	printf("MP: %p, 0x%x, 0x%x, 0x%d\n", (uint8_t *) DebugIOInst->BaseAddr +
- 			RegOff, Mask, Value, TimeOutUs);
- 
- 	return XAIE_ERR;
-@@ -302,7 +302,7 @@ static AieRC _XAie_DebugIO_NpiMaskPoll(void *IOInst, u64 RegOff, u32 Mask,
- {
- 	XAie_DebugIO *DebugIOInst = (XAie_DebugIO *)IOInst;
- 
--	printf("MP: %p, 0x%x, 0x%x, 0x%d\n", (char *) DebugIOInst->NpiBaseAddr +
-+	printf("MP: %p, 0x%x, 0x%x, 0x%d\n", (uint8_t *) DebugIOInst->NpiBaseAddr +
- 			RegOff, Mask, Value, TimeOutUs);
- 
- 	return XAIE_OK;
-diff --git a/driver/src/io_backend/ext/xaie_io_common.c b/driver/src/io_backend/ext/xaie_io_common.c
-index b71ca046..a3393e69 100644
---- a/driver/src/io_backend/ext/xaie_io_common.c
-+++ b/driver/src/io_backend/ext/xaie_io_common.c
-@@ -392,11 +392,12 @@ static AieRC _XAie_RequestBroadcastChannelRscCommon(XAie_DevInst *DevInst,
- AieRC _XAie_RequestRscCommon(XAie_DevInst *DevInst, XAie_BackendTilesRsc *Args)
- {
- 	AieRC RC;
--	u32 *RscArrPerTile;
--
--	RscArrPerTile = (u32*)malloc(Args->NumRscPerTile * sizeof(u32));
-+	u32 *RscArrPerTile = malloc(sizeof(u32) * Args->NumRscPerTile);
-+	if (RscArrPerTile == NULL)
-+		return XAIE_ERR;
- 
- 	if (Args->RscType == XAIE_BCAST_CHANNEL_RSC) {
-+		free((void*)RscArrPerTile);
- 		return _XAie_RequestBroadcastChannelRscCommon(DevInst, Args);
- 	}
- 
-@@ -419,9 +420,8 @@ AieRC _XAie_RequestRscCommon(XAie_DevInst *DevInst, XAie_BackendTilesRsc *Args)
- 			for (u32 j = 0; j < Args->NumRscPerTile; j++) {
- 				Args->Rscs[j].RscId = RscArrPerTile[j];
- 			}
--
- 		}
--		free(RscArrPerTile);
-+		free((void*)RscArrPerTile);
- 		return RC;
- 	}
- 
-@@ -434,7 +434,7 @@ AieRC _XAie_RequestRscCommon(XAie_DevInst *DevInst, XAie_BackendTilesRsc *Args)
- 			Args->Rscs[j].RscId = RscArrPerTile[j];
- 		}
- 	}
--	free(RscArrPerTile);
-+	free((void*)RscArrPerTile);
- 	return RC;
- }
- 
 diff --git a/driver/src/io_backend/ext/xaie_sim.c b/driver/src/io_backend/ext/xaie_sim.c
-index 625d9b6b..8130f5f8 100644
+index 64391b93..a01db97e 100644
 --- a/driver/src/io_backend/ext/xaie_sim.c
 +++ b/driver/src/io_backend/ext/xaie_sim.c
-@@ -34,7 +34,16 @@
+@@ -35,7 +35,16 @@
  
  #ifdef __AIESIM__ /* AIE simulator */
  
@@ -192,10 +103,10 @@ index 625d9b6b..8130f5f8 100644
  #endif
  
 diff --git a/driver/src/io_backend/xaie_io.c b/driver/src/io_backend/xaie_io.c
-index ac4d979e..19de4c82 100644
+index b3aa3753..247e17aa 100644
 --- a/driver/src/io_backend/xaie_io.c
 +++ b/driver/src/io_backend/xaie_io.c
-@@ -118,10 +118,17 @@ static const XAie_Backend *IOBackend[XAIE_IO_BACKEND_MAX] =
+@@ -121,10 +121,17 @@ static const XAie_Backend *IOBackend[XAIE_IO_BACKEND_MAX] =
  * @note		Internal Only.
  *
  ******************************************************************************/
@@ -216,10 +127,10 @@ index ac4d979e..19de4c82 100644
  	RC = Backend->Ops.Init(DevInst);
  	if(RC != XAIE_OK) {
 diff --git a/driver/src/io_backend/xaie_io.h b/driver/src/io_backend/xaie_io.h
-index 2bfcb76f..566a2285 100644
+index f2795377..d667274e 100644
 --- a/driver/src/io_backend/xaie_io.h
 +++ b/driver/src/io_backend/xaie_io.h
-@@ -215,7 +215,7 @@ struct XAie_Backend {
+@@ -174,7 +174,7 @@ struct XAie_Backend {
  };
  
  /************************** Function Prototypes  *****************************/

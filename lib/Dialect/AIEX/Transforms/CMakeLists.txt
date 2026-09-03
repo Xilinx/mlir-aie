@@ -18,6 +18,7 @@ add_mlir_dialect_library(AIEXTransforms
   AIEMaterializeBDChains.cpp
   AIEMaterializeRuntimeSequences.cpp
   AIEAssignRuntimeSequenceBDIDs.cpp
+  AIEReserveRuntimeBDIDs.cpp
   AIEUnrollRuntimeSequenceLoops.cpp
   AIELowerDynamicBDPool.cpp
   AIEDMATasksToNPU.cpp
@@ -32,6 +33,9 @@ add_mlir_dialect_library(AIEXTransforms
   AIETxnToControlPacket.cpp
   AIEExpandLoadPdi.cpp
   AIEInlineTraceConfig.cpp
+  AIEFuseTraceBuffers.cpp
+  AIEResolveAddressPatchBuffers.cpp
+
   ADDITIONAL_HEADER_DIRS
   ${AIE_BINARY_DIR}/include
 
@@ -49,6 +53,8 @@ add_mlir_dialect_library(AIEXTransforms
   MLIRPass
   MLIRSCFToControlFlow
   MLIRSupport
+  MLIRTransforms
   MLIRTransformUtils
   MLIRSCFUtils
+  MLIRUBDialect
   )

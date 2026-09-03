@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=false" %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="skip-verify=true" --aie-objectFifo-unroll %s | FileCheck %s
 
 // CHECK:     %memtile_dma_0_1 = aie.memtile_dma(%mem_tile_0_1) {
 // CHECK:       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb7)
@@ -85,8 +85,8 @@
 // CHECK:       aie.end
 // CHECK:     }
 // CHECK:     %mem_0_2 = aie.mem(%tile_0_2) {
-// CHECK:       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
-// CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb2
+// CHECK:       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb4, repeat_count = 2)
+// CHECK:     ^bb1:  // pred: ^bb0
 // CHECK:       aie.use_lock(%small_output_cons_prod_lock_0, AcquireGreaterEqual, %{{.*}})
 // CHECK:       aie.dma_bd(%small_output_cons_buff_0 : memref<256xui8> offset = {{.*}} len = {{.*}})
 // CHECK:       aie.use_lock(%small_output_cons_cons_lock_0, Release, %{{.*}})
@@ -95,13 +95,15 @@
 // CHECK:       aie.use_lock(%small_output_cons_prod_lock_0, AcquireGreaterEqual, %{{.*}})
 // CHECK:       aie.dma_bd(%small_output_cons_buff_1 : memref<256xui8> offset = {{.*}} len = {{.*}})
 // CHECK:       aie.use_lock(%small_output_cons_cons_lock_0, Release, %{{.*}})
-// CHECK:       aie.next_bd ^bb1
-// CHECK:     ^bb3:  // pred: ^bb0
+// CHECK:       aie.next_bd ^bb3
+// CHECK:     ^bb3:  // pred: ^bb2
+// CHECK:       aie.end
+// CHECK:     ^bb4:  // pred: ^bb0
 // CHECK:       aie.end
 // CHECK:     }
 // CHECK:     %mem_0_3 = aie.mem(%tile_0_3) {
-// CHECK:       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
-// CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb2
+// CHECK:       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb4, repeat_count = 3)
+// CHECK:     ^bb1:  // pred: ^bb0
 // CHECK:       aie.use_lock(%medium_output_cons_prod_lock_0, AcquireGreaterEqual, %{{.*}})
 // CHECK:       aie.dma_bd(%medium_output_cons_buff_0 : memref<384xui8> offset = {{.*}} len = {{.*}})
 // CHECK:       aie.use_lock(%medium_output_cons_cons_lock_0, Release, %{{.*}})
@@ -110,13 +112,15 @@
 // CHECK:       aie.use_lock(%medium_output_cons_prod_lock_0, AcquireGreaterEqual, %{{.*}})
 // CHECK:       aie.dma_bd(%medium_output_cons_buff_1 : memref<384xui8> offset = {{.*}} len = {{.*}})
 // CHECK:       aie.use_lock(%medium_output_cons_cons_lock_0, Release, %{{.*}})
-// CHECK:       aie.next_bd ^bb1
-// CHECK:     ^bb3:  // pred: ^bb0
+// CHECK:       aie.next_bd ^bb3
+// CHECK:     ^bb3:  // pred: ^bb2
+// CHECK:       aie.end
+// CHECK:     ^bb4:  // pred: ^bb0
 // CHECK:       aie.end
 // CHECK:     }
 // CHECK:     %mem_0_4 = aie.mem(%tile_0_4) {
-// CHECK:       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
-// CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb2
+// CHECK:       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb4, repeat_count = 4)
+// CHECK:     ^bb1:  // pred: ^bb0
 // CHECK:       aie.use_lock(%large_output_cons_prod_lock_0, AcquireGreaterEqual, %{{.*}})
 // CHECK:       aie.dma_bd(%large_output_cons_buff_0 : memref<384xui8> offset = {{.*}} len = {{.*}})
 // CHECK:       aie.use_lock(%large_output_cons_cons_lock_0, Release, %{{.*}})
@@ -125,8 +129,10 @@
 // CHECK:       aie.use_lock(%large_output_cons_prod_lock_0, AcquireGreaterEqual, %{{.*}})
 // CHECK:       aie.dma_bd(%large_output_cons_buff_1 : memref<384xui8> offset = {{.*}} len = {{.*}})
 // CHECK:       aie.use_lock(%large_output_cons_cons_lock_0, Release, %{{.*}})
-// CHECK:       aie.next_bd ^bb1
-// CHECK:     ^bb3:  // pred: ^bb0
+// CHECK:       aie.next_bd ^bb3
+// CHECK:     ^bb3:  // pred: ^bb2
+// CHECK:       aie.end
+// CHECK:     ^bb4:  // pred: ^bb0
 // CHECK:       aie.end
 // CHECK:     }
 

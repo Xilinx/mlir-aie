@@ -72,9 +72,6 @@ verifyOffsetSizeAndStrideOp(mlir::OffsetSizeAndStrideOpInterface op);
 
 } // namespace xilinx::AIE
 
-// Include the generated interface declarations.
-#include "aie/Dialect/AIE/IR/AIEInterfaces.h.inc"
-
 namespace xilinx::AIE {
 mlir::LogicalResult
 myVerifyOffsetSizeAndStrideOp(mlir::OffsetSizeAndStrideOpInterface op);
@@ -116,6 +113,9 @@ void registerAIETranslations();
 
 #define GET_ATTRDEF_CLASSES
 #include "aie/Dialect/AIE/IR/AIEAttrs.h.inc"
+
+// Interfaces come after the attributes and types their methods traffic in.
+#include "aie/Dialect/AIE/IR/AIEInterfaces.h.inc"
 
 ////////////////////////////////////////////////////////////////////////////////
 //////////////////// Custom Operations for the Dialect /////////////////////////
@@ -189,14 +189,34 @@ using DMAChannel = struct DMAChannel {
 const AIETargetModel &getTargetModel(mlir::Operation *op);
 const AIETargetModel &getTargetModel(AIEDevice device);
 
+/// Which of `a`'s and `b`'s memory modules both tiles can address.
+AIETargetModel::SharedMemory sharedMemory(TileOp a, TileOp b);
+
 mlir::ParseResult
 parseObjectFifoProducerTile(mlir::OpAsmParser &parser,
                             mlir::OpAsmParser::UnresolvedOperand &operand,
                             BDDimLayoutArrayAttr &dimensions);
 
 void printObjectFifoProducerTile(mlir::OpAsmPrinter &printer,
-                                 mlir::Operation *op, mlir::Value tile,
+                                 mlir::Operation *op, mlir::Value operand,
                                  BDDimLayoutArrayAttr dimensions);
+
+mlir::ParseResult
+parseObjectFifoAcquireObjects(mlir::OpAsmParser &parser,
+                              ObjectFifoPortAttr &port,
+                              llvm::SmallVectorImpl<mlir::Type> &objects);
+
+void printObjectFifoAcquireObjects(mlir::OpAsmPrinter &printer,
+                                   mlir::Operation *op, ObjectFifoPortAttr port,
+                                   mlir::TypeRange objects);
+
+mlir::ParseResult parseObjectFifoReleaseCount(mlir::OpAsmParser &parser,
+                                              ObjectFifoPortAttr &port,
+                                              mlir::IntegerAttr &size);
+
+void printObjectFifoReleaseCount(mlir::OpAsmPrinter &printer,
+                                 mlir::Operation *op, ObjectFifoPortAttr port,
+                                 mlir::IntegerAttr size);
 
 mlir::ParseResult parseObjectFifoConsumerTiles(
     mlir::OpAsmParser &parser,
@@ -205,7 +225,7 @@ mlir::ParseResult parseObjectFifoConsumerTiles(
 
 void printObjectFifoConsumerTiles(mlir::OpAsmPrinter &printer,
                                   mlir::Operation *op, mlir::OperandRange tiles,
-                                  BDDimLayoutArrayArrayAttr dimensions);
+                                  BDDimLayoutArrayArrayAttr dimsPerTileAttr);
 
 int32_t getBufferBaseAddress(mlir::Operation *bufOp);
 
@@ -235,6 +255,22 @@ void collectBuffers(
 // canonicalization to allow natural ND forms on shim tiles that will be
 // linearized by the compiler.
 bool isContiguousBDTransfer(llvm::ArrayRef<BDDimLayoutAttr> dims);
+
+// Validate the sender-side out_of_order_id field on a single BD. Callable from
+// the AIEX dialect, whose runtime-sequence task BDs skip DMABDOp::verify.
+mlir::LogicalResult
+verifyDMABDOutOfOrderId(DMABDOp bd, bool packetEnabledByContext = false);
+
+// Validate an out-of-order S2MM channel and its receive BDs.
+mlir::LogicalResult
+verifyOutOfOrderChannel(mlir::Operation *op, DMAChannelDir dir, bool outOfOrder,
+                        llvm::ArrayRef<DMABDOp> bds,
+                        bool packetEnabledByContext = false);
+
+// BD ids already assigned within a tile's static DMA program (the
+// aie.dma_bd chain(s) inside one DmaBody-implementing op: aie.mem,
+// aie.memtile_dma, aie.shim_dma).
+llvm::SmallVector<uint32_t> getAssignedBdIds(DmaBody program);
 
 } // namespace xilinx::AIE
 

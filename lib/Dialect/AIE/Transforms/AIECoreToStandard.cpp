@@ -6,6 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "aie/Dialect/AIE/IR/AIECoreSymbols.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecDialect.h"
@@ -46,13 +47,17 @@ static StringRef getArchIntrinsicString(AIEArch arch) {
     return "aie2";
   case AIEArch::AIE2p:
     return "aie2p";
+  case AIEArch::AIE2ps:
+    // This arch has no core intrinsic set. The switch lists every AIEArch
+    // value, so a new value raises a -Wswitch warning here.
+    break;
   }
   llvm::report_fatal_error("unsupported arch");
 }
 
-typedef std::tuple<const char *, std::vector<Type>, std::vector<Type>>
-    IntrinsicDecl;
-typedef std::vector<IntrinsicDecl> IntrinsicDecls;
+using IntrinsicDecl =
+    std::tuple<const char *, std::vector<Type>, std::vector<Type>>;
+using IntrinsicDecls = std::vector<IntrinsicDecl>;
 
 static auto getAIE1Intrinsics(OpBuilder &builder) {
   Type int32Type = IntegerType::get(builder.getContext(), 32);
@@ -151,7 +156,7 @@ static auto getAIE2pIntrinsics(OpBuilder &builder) {
 }
 
 static void declareAIEIntrinsics(AIEArch arch, OpBuilder &builder) {
-  auto registerIntrinsics = [&builder](IntrinsicDecls functions) {
+  auto registerIntrinsics = [&builder](const IntrinsicDecls &functions) {
     for (auto &i : functions) {
       auto [name, argTypes, retTypes] = i;
       func::FuncOp::create(
@@ -170,10 +175,25 @@ static void declareAIEIntrinsics(AIEArch arch, OpBuilder &builder) {
   case AIEArch::AIE2p:
     registerIntrinsics(getAIE2pIntrinsics(builder));
     return;
+  case AIEArch::AIE2ps:
+    // See getArchIntrinsicString: this arch has no intrinsic set.
+    break;
   }
   llvm::report_fatal_error("unsupported arch");
 }
 
+// Move all the ops with OpTy inside device, to just before the device.
+template <typename OpTy>
+static void outlineOps(DeviceOp device) {
+  SmallVector<OpTy, 16> ops;
+  for (const auto &op : device.getOps<OpTy>())
+    ops.push_back(op);
+
+  for (const auto &op : ops)
+    op->moveBefore(device);
+}
+
+namespace {
 template <typename MyAIEOp>
 struct AIEOpRemoval : OpConversionPattern<MyAIEOp> {
   using OpConversionPattern<MyAIEOp>::OpConversionPattern;
@@ -541,8 +561,7 @@ struct AIECoreToStandardFunc : OpConversionPattern<CoreOp> {
     // The parent should be an AIE.device op.
     rewriter.setInsertionPointAfter(op->getParentOp());
 
-    std::string coreName("core_" + std::to_string(col) + "_" +
-                         std::to_string(row));
+    std::string coreName = coreFrameSymbolName(col, row);
     auto coreFunc =
         func::FuncOp::create(rewriter, op.getLoc(), coreName,
                              FunctionType::get(rewriter.getContext(), {}, {}));
@@ -648,17 +667,6 @@ struct AIECoreToStandardFunc : OpConversionPattern<CoreOp> {
   }
 };
 
-// Move all the ops with OpTy inside device, to just before the device.
-template <typename OpTy>
-void outlineOps(DeviceOp device) {
-  SmallVector<OpTy, 16> ops;
-  for (const auto &op : device.getOps<OpTy>())
-    ops.push_back(op);
-
-  for (const auto &op : ops)
-    op->moveBefore(device);
-}
-
 // Lower AIE.event to llvm.aie.event intrinsic
 struct AIEEventOpToStdLowering : OpConversionPattern<EventOp> {
   using OpConversionPattern::OpConversionPattern;
@@ -690,8 +698,12 @@ struct AIEEventOpToStdLowering : OpConversionPattern<EventOp> {
           rewriter, op.getLoc(), rewriter.getI32Type(),
           rewriter.getI32IntegerAttr(op.getVal())));
       break;
-    default:
-      return op->emitOpError("Unsupported AIEArch for EventOp lowering");
+    case AIEArch::AIE2ps:
+      // This arch has no event intrinsic. User IR reaches this case, through
+      // an aie.event op on a VE3858 device, so the pattern reports a rewrite
+      // failure.
+      return op.emitOpError(
+          "aie.event is not supported on this device's architecture");
     }
     auto eventFunc = module.lookupSymbol<func::FuncOp>(funcName);
     if (!eventFunc)
@@ -794,6 +806,7 @@ struct AIECoreToStandardPass
       return signalPassFailure();
   }
 };
+} // namespace
 
 std::unique_ptr<OperationPass<ModuleOp>> AIE::createAIECoreToStandardPass() {
   return std::make_unique<AIECoreToStandardPass>();

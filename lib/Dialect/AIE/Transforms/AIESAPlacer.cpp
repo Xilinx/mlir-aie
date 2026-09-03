@@ -528,8 +528,7 @@ int SAPlacer::computeMemSpilloverPenalty() const {
   llvm::SmallVector<std::pair<int64_t, int>> allBufs;
   llvm::SmallVector<int64_t> memTileBaseline(numCols, 0);
 
-  for (size_t fi = 0; fi < fifoBuffers.size(); fi++) {
-    const auto &fb = fifoBuffers[fi];
+  for (const auto &fb : fifoBuffers) {
     if (!fb.producer)
       continue;
     auto prodIt = currentPlacement.find(fb.producer);
@@ -1085,8 +1084,7 @@ int64_t SAPlacer::computeTileMemoryWeight(Operation *tile) const {
     weight += stackIt->second;
 
   // Fifo endpoint contributions
-  for (size_t i = 0; i < fifoBuffers.size(); i++) {
-    const auto &fb = fifoBuffers[i];
+  for (const auto &fb : fifoBuffers) {
     bool isProd = (fb.producer == tile);
     int consIdx = -1;
     for (size_t ci = 0; ci < fb.consumers.size(); ci++) {
@@ -1223,12 +1221,12 @@ void SAPlacer::buildFifoBufferInfo(DeviceOp device,
 
     // Get producer
     auto *prodOp = ofOp.getProducerTile().getDefiningOp();
-    fb.producer = (prodOp && isa<LogicalTileOp>(prodOp)) ? prodOp : nullptr;
+    fb.producer = (isa_and_nonnull<LogicalTileOp>(prodOp)) ? prodOp : nullptr;
 
     // Get consumers
     for (Value ct : ofOp.getConsumerTiles()) {
       auto *consOp = ct.getDefiningOp();
-      if (consOp && isa<LogicalTileOp>(consOp))
+      if (isa_and_nonnull<LogicalTileOp>(consOp))
         fb.consumers.push_back(consOp);
     }
 
@@ -1272,7 +1270,7 @@ void SAPlacer::buildFifoBufferInfo(DeviceOp device,
     }
 
     // Determine if this fifo forces DMA even when tiles are adjacent.
-    // Must match AIEObjectFifoStatefulTransform::requiresDMAs().
+    // Must match requiresDMAs() in AIEObjectFifoSplit.cpp.
     bool isLinked = false;
     for (auto link : objectFifoLinks) {
       for (auto in : link.getInputObjectFifos())

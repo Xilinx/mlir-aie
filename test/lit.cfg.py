@@ -25,7 +25,7 @@ from aie_lit_utils import LitConfigHelper
 # name: The name of this test suite.
 config.name = "AIE_TEST"
 
-config.test_format = lit.formats.ShTest(not llvm_config.use_lit_shell)
+config.test_format = lit.formats.ShTest()
 
 # suffixes: A list of file extensions to treat as test files.
 config.suffixes = [".mlir", ".py", ".test"]
@@ -82,6 +82,7 @@ config.substitutions.append(("%HSA_DIR%", ""))
 # Add Vitis components as features
 LitConfigHelper.add_vitis_components_features(config, config.vitis_components)
 LitConfigHelper.setup_host_compiler_substitutions(config)
+LitConfigHelper.add_makefile_examples_feature(config)
 
 # Detect Peano before XRT feature gating for systems without Chess/AIETOOLS.
 early_peano_tools_dir = os.path.join(config.peano_install_dir, "bin")
@@ -210,6 +211,37 @@ if shutil.which("aie-lsp-server", path=config.llvm_tools_dir) is not None:
 # the bare `xclbinutil` it invokes resolves to the bundled copy).
 if shutil.which("xclbinutil", path=config.aie_tools_dir) is not None:
     config.available_features.add("hrxxclbinutil")
+
+# aiebu ELF packager: gate tests that feed a runtime-assembled TXN blob to the
+# real `aiebu-asm` (the downstream tool that enforces invariants plain XRT
+# dispatch does not, e.g. block-write-covers-patch). It ships with XRT. Prefer
+# the configured XRT bin dir (config.xrt_bin_dir, also prepended to PATH above),
+# then PATH, then the standard install location so the feature still fires on a
+# host that has XRT installed but was not built with it wired into cmake. The
+# %aiebu_asm substitution wraps the binary with the LD_LIBRARY_PATH its shared
+# libaiebu needs so RUN lines invoke it directly. Tests carry
+# `// REQUIRES: aiebu` so they skip (not silently pass) where the tool is
+# absent, e.g. on a CI runner without XRT installed.
+_aiebu_asm = None
+for _cand_dir in [config.xrt_bin_dir, None, "/opt/xilinx/xrt/bin"]:
+    if _cand_dir == "":
+        continue
+    _aiebu_asm = shutil.which("aiebu-asm", path=_cand_dir)
+    if _aiebu_asm is not None:
+        break
+if _aiebu_asm is not None:
+    config.available_features.add("aiebu")
+    # libaiebu lives next to the bin dir; use the configured XRT lib dir when
+    # cmake provided one, else derive it from the located binary.
+    _aiebu_libdir = config.xrt_lib_dir or os.path.join(
+        os.path.dirname(os.path.dirname(_aiebu_asm)), "lib"
+    )
+    config.substitutions.append(
+        (
+            "%aiebu_asm",
+            f"env LD_LIBRARY_PATH={_aiebu_libdir}:$LD_LIBRARY_PATH {_aiebu_asm}",
+        )
+    )
 
 # HRX Python runtime: gate the HRX-only Python tests (test/python/npu-hrx) on
 # libhrx being locatable, so they only run where the HRX backend can load. This

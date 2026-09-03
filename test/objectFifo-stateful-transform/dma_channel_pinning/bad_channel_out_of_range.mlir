@@ -5,11 +5,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: not aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=false" %s 2>&1 | FileCheck %s
+// RUN: not aie-opt --aie-objectFifo-stateful-transform="skip-verify=true" %s 2>&1 | FileCheck %s
 
 // A pinned channel beyond the tile's DMA channel count is rejected up front.
 
-// CHECK: error: 'aie.objectfifo' op pinned MM2S DMA channel 99 is out of range or already in use on this tile
+// CHECK: error: 'aie.objectfifo.dma_endpoint' op pinned MM2S DMA channel 99 is out of range or already in use on this tile
 
 module @bad_channel_out_of_range {
  aie.device(xcve2302) {

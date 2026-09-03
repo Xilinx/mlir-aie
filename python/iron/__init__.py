@@ -67,6 +67,7 @@ from .buffer import Buffer
 from .dataflow import (
     Acquire,
     Bd,
+    BdIteration,
     CascadeFlow,
     DmaChannel,
     Flow,
@@ -105,6 +106,7 @@ __all__ = [
     # Lower-level explicit-routing primitives
     "Acquire",
     "Bd",
+    "BdIteration",
     "CascadeFlow",
     "DmaChannel",
     "Flow",

@@ -21,7 +21,7 @@
 // (e.g. inside functions that can be called from anywhere, with any number
 // of locks held).
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=false" %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll %s | FileCheck %s
 
 // The following is an idea of how a dynamically managed objectFifo could look
 // like, where lock acquire/release numbers are not known statically. The
@@ -34,11 +34,11 @@
 
 // The setup for flows, locks, and buffers can be the same in the dynamic case:
 // CHECK:     %[[fifo_buff_0:.*]] = aie.buffer(%[[tile23]]) {sym_name = "fifo_buff_0"} : memref<i64>
-// CHECK:     %[[fifo_prod_lock:.*]] = aie.lock(%[[tile23]], 0) {init = 1 : i32, sym_name = "fifo_prod_lock_0"}
-// CHECK:     %[[fifo_cons_lock:.*]] = aie.lock(%[[tile23]], 1) {init = 0 : i32, sym_name = "fifo_cons_lock_0"}
+// CHECK:     %[[fifo_prod_lock:.*]] = aie.lock(%[[tile23]]) {init = 1 : i32, sym_name = "fifo_prod_lock_0"}
+// CHECK:     %[[fifo_cons_lock:.*]] = aie.lock(%[[tile23]]) {init = 0 : i32, sym_name = "fifo_cons_lock_0"}
 // CHECK:     %[[fifo_cons_buff_0:.*]] = aie.buffer(%[[tile43]]) {sym_name = "fifo_cons_buff_0"} : memref<i64>
-// CHECK:     %[[fifo_cons_prod_lock:.*]] = aie.lock(%[[tile43]], 0) {init = 1 : i32, sym_name = "fifo_cons_prod_lock_0"}
-// CHECK:     %[[fifo_cons_cons_lock:.*]] = aie.lock(%[[tile43]], 1) {init = 0 : i32, sym_name = "fifo_cons_cons_lock_0"}
+// CHECK:     %[[fifo_cons_prod_lock:.*]] = aie.lock(%[[tile43]]) {init = 1 : i32, sym_name = "fifo_cons_prod_lock_0"}
+// CHECK:     %[[fifo_cons_cons_lock:.*]] = aie.lock(%[[tile43]]) {init = 0 : i32, sym_name = "fifo_cons_cons_lock_0"}
 // CHECK:     aie.flow(%[[tile23]], DMA : 0, %[[tile43]], DMA : 0)
 
 // CHECK:     %[[ssa8:.*]] = aie.core(%[[tile23]]) {
@@ -174,7 +174,7 @@ module @aie2_dynamic_locks {
             %c1 = arith.constant 1 : i64
 
             // Acquire one element.
-            %subview0  = aie.objectfifo.acquire @fifo (Produce, 1) : !aie.objectfifosubview<memref<i64>>
+            %subview0_obj0 = aie.objectfifo.acquire @fifo (Produce, 1) : memref<i64>
 
             scf.for %idx = %i_c0 to %i_c3 step %i_c1 {
                 // Acquire one element (again). In the first iteration of the
@@ -183,8 +183,7 @@ module @aie2_dynamic_locks {
                 // just above the loop. In the second iteration, that object
                 // has been released, and now a lock acquire 1 would be
                 // required.
-                %subview = aie.objectfifo.acquire @fifo (Produce, 1) : !aie.objectfifosubview<memref<i64>>
-                %elem = aie.objectfifo.subview.access %subview[0] : !aie.objectfifosubview<memref<i64>> -> memref<i64>
+                %elem = aie.objectfifo.acquire @fifo (Produce, 1) : memref<i64>
                 memref.store %c1, %elem[] : memref<i64>
                 aie.objectfifo.release @fifo (Produce, 1)
             }

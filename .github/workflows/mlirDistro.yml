@@ -83,19 +83,35 @@ jobs:
       DATETIME: ${{ steps.get_llvm_project_commit.outputs.DATETIME }}
 
     steps:
+      - name: Checkout clone-llvm.sh
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          # Single-file paths require non-cone mode.
+          sparse-checkout: |
+            utils/clone-llvm.sh
+          sparse-checkout-cone-mode: false
+
       - name: Get llvm-project commit
         id: get_llvm_project_commit
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
 
-          if [ x"${{ inputs.LLVM_COMMIT }}" == x"" ]; then
+          if [ x"${{ inputs.LLVM_COMMIT }}" != x"" ]; then
+            # update-llvm.yml validates a candidate commit before it
+            # records that commit as the pin.
+            LLVM_PROJECT_COMMIT="${{ inputs.LLVM_COMMIT }}"
+          elif [ x"${{ github.event_name }}" == x"schedule" ]; then
             sudo apt install jq
             # Authenticated request to avoid the unauthenticated 60/hr per-IP
             # rate limit, which silently produced LLVM_PROJECT_COMMIT=null and
             # broke the wheel build. --fail-with-body keeps the response body
             # on HTTP error so future failures surface the actual cause in
             # the CI log instead of hiding behind a silent curl.
+            #
+            # update-llvm.yml searches for a newer LLVM commit. A wheel must
+            # exist for the commit it records as the pin. The schedule
+            # trigger therefore tracks live amd-staging HEAD.
             RESPONSE=$(curl --fail-with-body -sSL \
               -H "Authorization: Bearer $GH_TOKEN" \
               -H "Accept: application/vnd.github+json" \
@@ -107,7 +123,9 @@ jobs:
             }
             LLVM_PROJECT_COMMIT=$(echo "$RESPONSE" | jq -r '.sha')
           else
-            LLVM_PROJECT_COMMIT="${{ inputs.LLVM_COMMIT }}"
+            # utils/update_llvm_version.py's get_current_llvm_commit()
+            # reads the pin with this regex. Keep the two equal.
+            LLVM_PROJECT_COMMIT=$(grep -oP 'LLVM_PROJECT_COMMIT=\K[a-f0-9]+' utils/clone-llvm.sh)
           fi
 
           if [ -z "$LLVM_PROJECT_COMMIT" ] || [ "$LLVM_PROJECT_COMMIT" = "null" ]; then
@@ -139,11 +157,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - OS: ubuntu-22.04
+          - OS: ubuntu-24.04
             ARCH: x86_64
             ENABLE_RTTI: ON
 
-          - OS: ubuntu-22.04
+          - OS: ubuntu-24.04
             ARCH: aarch64
             ENABLE_RTTI: ON
 
@@ -151,11 +169,11 @@ jobs:
             ARCH: AMD64
             ENABLE_RTTI: ON
 
-          - OS: ubuntu-22.04
+          - OS: ubuntu-24.04
             ARCH: x86_64
             ENABLE_RTTI: OFF
 
-          - OS: ubuntu-22.04
+          - OS: ubuntu-24.04
             ARCH: aarch64
             ENABLE_RTTI: OFF
 
@@ -208,7 +226,7 @@ jobs:
         MATRIX_ARCH: ${{ matrix.ARCH }}
         EXTRA_KEY: mlir-distro-enable-rtti-${{ matrix.ENABLE_RTTI }}
 
-    - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
+    - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
       with:
         python-version: '3.12'
 
@@ -246,7 +264,7 @@ jobs:
     # build
 
     - name: cibuildwheel
-      if: ${{ matrix.OS != 'ubuntu-22.04' || matrix.ARCH != 'aarch64' }}
+      if: ${{ matrix.OS != 'ubuntu-24.04' || matrix.ARCH != 'aarch64' }}
       shell: bash
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
       run: |
@@ -262,7 +280,7 @@ jobs:
         cibuildwheel --output-dir wheelhouse
 
     - name: build aarch ubuntu wheel
-      if: ${{ matrix.OS == 'ubuntu-22.04' && matrix.ARCH == 'aarch64' }}
+      if: ${{ matrix.OS == 'ubuntu-24.04' && matrix.ARCH == 'aarch64' }}
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
       shell: bash
       run: |
@@ -271,6 +289,10 @@ jobs:
         ./scripts/apply_patches.sh
 
         pip install --upgrade pip
+        # The build must use the locked versions. cibuildwheel's
+        # before-build installs the lock for the other legs. This leg runs
+        # pip directly.
+        pip install --require-hashes -r requirements.lock
 
         CIBW_ARCHS=${{ matrix.ARCH }} \
         CMAKE_GENERATOR=Ninja \
@@ -278,7 +300,7 @@ jobs:
         LLVM_PROJECT_COMMIT=${{ needs.get_llvm_project_commit.outputs.LLVM_PROJECT_COMMIT }} \
         MATRIX_OS=${{ matrix.OS }} \
         PARALLEL_LEVEL=2 \
-        pip wheel . -v -w wheelhouse
+        pip wheel . -v -w wheelhouse --no-build-isolation
 
     - name: Clean llvm-project
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
@@ -289,7 +311,7 @@ jobs:
         rm -rf build
 
     - name: Docker prune
-      if: contains(inputs.MATRIX_OS, 'ubuntu')
+      if: runner.os == 'Linux'
       shell: bash
       run: |
 
@@ -306,7 +328,7 @@ jobs:
         echo "MLIR_WHEEL_VERSION=$(python -c "import pkginfo; w = pkginfo.Wheel('$WHL'); print(w.version.split('+')[0] + '+' + w.version.split('+')[1].rsplit('.', 1)[-1])")" | tee -a $GITHUB_OUTPUT
 
     - name: Download cache from container ubuntu
-      if: (matrix.OS == 'ubuntu-22.04' && matrix.ARCH == 'x86_64') && (success() || failure())
+      if: (matrix.OS == 'ubuntu-24.04' && matrix.ARCH == 'x86_64') && (success() || failure())
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
       shell: bash
       run: |
@@ -358,7 +380,7 @@ jobs:
           unzip -j wheelhouse/mlir*whl "mlir/bin/$TOOL" -d native_tools/
         done
 
-        if [ x"${{ matrix.OS }}" == x"ubuntu-22.04" ]; then
+        if [ x"${{ matrix.OS }}" == x"ubuntu-24.04" ]; then
           PLAT="linux"
         elif [ x"${{ matrix.OS }}" == x"windows-2022" ]; then
           PLAT="win"
@@ -408,7 +430,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - OS: ubuntu-22.04
+          - OS: ubuntu-24.04
             ARCH: x86_64
             ENABLE_RTTI: ON
 
@@ -416,7 +438,7 @@ jobs:
             ARCH: AMD64
             ENABLE_RTTI: ON
 
-          - OS: ubuntu-22.04
+          - OS: ubuntu-24.04
             ARCH: x86_64
             ENABLE_RTTI: OFF
 
@@ -430,7 +452,7 @@ jobs:
           name: build_artifact_${{ matrix.OS }}_${{ matrix.ARCH }}_rtti_${{ matrix.ENABLE_RTTI }}
           path: dist
 
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
           python-version: '3.12'
 
@@ -462,11 +484,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - OS: ubuntu-22.04
+          - OS: ubuntu-24.04
             ARCH: x86_64
             ENABLE_RTTI: ON
 
-          - OS: ubuntu-22.04
+          - OS: ubuntu-24.04
             ARCH: aarch64
             ENABLE_RTTI: ON
 
@@ -474,11 +496,11 @@ jobs:
             ARCH: AMD64
             ENABLE_RTTI: ON
 
-          - OS: ubuntu-22.04
+          - OS: ubuntu-24.04
             ARCH: x86_64
             ENABLE_RTTI: OFF
 
-          - OS: ubuntu-22.04
+          - OS: ubuntu-24.04
             ARCH: aarch64
             ENABLE_RTTI: OFF
 
