@@ -82,7 +82,8 @@ struct AIECtrlPacketToDmaPass
       IRMapping mapping;
 
       auto newSeq = AIE::RuntimeSequenceOp::create(
-          builder, loc, f.getSymNameAttr(), BoolAttr{});
+          builder, loc, f.getSymNameAttr(), BoolAttr{}, f.getTraceBufferAttr(),
+          f.getTraceSlicesAttr());
       newSeq.getBody().push_back(new Block);
 
       // Copy the arguments from the old sequence to the new one.

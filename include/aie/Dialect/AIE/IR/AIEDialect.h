@@ -267,6 +267,11 @@ verifyOutOfOrderChannel(mlir::Operation *op, DMAChannelDir dir, bool outOfOrder,
                         llvm::ArrayRef<DMABDOp> bds,
                         bool packetEnabledByContext = false);
 
+// BD ids already assigned within a tile's static DMA program (the
+// aie.dma_bd chain(s) inside one DmaBody-implementing op: aie.mem,
+// aie.memtile_dma, aie.shim_dma).
+llvm::SmallVector<uint32_t> getAssignedBdIds(DmaBody program);
+
 } // namespace xilinx::AIE
 
 namespace llvm {

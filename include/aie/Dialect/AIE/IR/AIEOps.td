@@ -371,32 +371,37 @@ def AIE_CoreOp
                       AutomaticAllocationScope,
                       DeclareOpInterfaceMethods<InferTypeOpInterface>]>,
       Results<(outs Index)> {
-  let arguments = (
-    ins Index:$tile,
-    // Absent means "use this target's default"; read getEffectiveStackSize().
-    OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<1>]>>:$stack_size,
-    // Deprecated: attach link_with to func.func declarations instead and run
-    // aie-assign-core-link-files to populate link_files.
-    OptionalAttr<StrAttr>:$link_with,
-    // Populated by aie-assign-core-link-files; consumed by BCF/ldscript emitters
-    // and the aiecc driver.  Specifying both link_with and link_files is an error.
-    // These artifacts are ordinary inputs to the core's final link.
-    OptionalAttr<StrArrayAttr>:$link_files,
-    // Populated by aie-assign-core-link-files from func.func declarations that
-    // carry `link_with_mode = "merge"`.  These artifacts are merged into the
-    // core's LLVM module (llvm-link) before codegen instead of being handed to
-    // the final link.  May coexist with link_files, but a given path must not
-    // appear in both.
-    OptionalAttr<StrArrayAttr>:$link_merge_files,
-    OptionalAttr<StrAttr>:$elf_file,
-    OptionalAttr<BoolAttr>:$dynamic_objfifo_lowering,
-    // If set to false, suppresses automatic insertion of the parameter-sync
-    // preamble (use_lock acquire) by `--aie-lower-scratchpad-parameters`.  Defaults to
-    // true when any `aiex.read_scratchpad_parameter` op is present in the
-    // core body.
-    // Set to false automatically after the preamble has been emitted.
-    OptionalAttr<BoolAttr>:$emit_parameter_sync_preamble
-  );
+  let arguments =
+      (ins Index:$tile,
+          // Absent means "use this target's default"; read
+          // getEffectiveStackSize().
+          OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<1>]>>:$stack_size,
+          // Written by aiecc from the compiled core object and the call graph.
+          // Absent when aiecc cannot measure the core.
+          OptionalAttr<
+              ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>>:$measured_stack_size,
+          // Deprecated: attach link_with to func.func declarations instead and
+          // run aie-assign-core-link-files to populate link_files.
+          OptionalAttr<StrAttr>:$link_with,
+          // Populated by aie-assign-core-link-files; consumed by BCF/ldscript
+          // emitters and the aiecc driver.  Specifying both link_with and
+          // link_files is an error. These artifacts are ordinary inputs to the
+          // core's final link.
+          OptionalAttr<StrArrayAttr>:$link_files,
+          // Populated by aie-assign-core-link-files from func.func declarations
+          // that carry `link_with_mode = "merge"`.  These artifacts are merged
+          // into the core's LLVM module (llvm-link) before codegen instead of
+          // being handed to the final link.  May coexist with link_files, but a
+          // given path must not appear in both.
+          OptionalAttr<StrArrayAttr>:$link_merge_files,
+          OptionalAttr<StrAttr>:$elf_file,
+          OptionalAttr<BoolAttr>:$dynamic_objfifo_lowering,
+          // If set to false, suppresses automatic insertion of the
+          // parameter-sync preamble (use_lock acquire) by
+          // `--aie-lower-scratchpad-parameters`.  Defaults to true when any
+          // `aiex.read_scratchpad_parameter` op is present in the core body.
+          // Set to false automatically after the preamble has been emitted.
+          OptionalAttr<BoolAttr>:$emit_parameter_sync_preamble);
   let summary = "Declare a core module";
   let description = [{
     This operation represents an AIEngine processor core belonging to a tile.
@@ -416,9 +421,13 @@ def AIE_CoreOp
     are always stored in the local core memory, to avoid conflicts with static data
     allocations in other cores.
 
-    The reservation is not checked against the core's actual frames, and the stack sits
-    directly below the objectFIFO buffers with no clearance, so a design with large frames
-    must set this attribute or it will overwrite them silently.
+    The stack sits directly below the buffers with no clearance, so a `stack_size`
+    below the core's use overwrites those buffers. `aiecc` measures the stack this
+    core needs, writes it to the `measured_stack_size` attribute, and fails the build
+    when `stack_size` is smaller. `measured_stack_size` stays absent when `aiecc`
+    cannot measure the core. See `programming_guide/core_data_memory.md` for the
+    mechanism, the escape hatches (`--no-measure-stack-size`, `stack_size_override`)
+    and the diagnostics.
 
     This op has an optional `dynamic_objfifo_lowering` attribute, to finely control whether the
     objectfifos in this core should be lowered using the dynamic runtime lowering.
@@ -2755,17 +2764,20 @@ def AIE_RuntimeSequenceOp : AIE_Op<"runtime_sequence", [
     Typically, these instructions include configuring the data transfers between host and AIE array on the shims.
     The input arguments are arguments passed in from the host at kernel invocation time. This may include buffers on the host.
   }];
-  let arguments = (
-    ins DefaultValuedAttr<SymbolNameAttr, "getDefaultRuntimeSequenceName()">:$sym_name,
-    // If set to false, suppresses automatic insertion of the parameter-sync
-    // preamble (create_scratchpad + update_from_scratchpad + set_lock) by
-    // `--aie-lower-scratchpad-parameters`.
-    // Defaults to true when any `aiex.read_scratchpad_parameter` is present
-    // in a core in the parent device, or any `offset_parameter` attribute on
-    // a DMA BD.
-    // Set to false automatically after the preamble has been emitted.
-    OptionalAttr<BoolAttr>:$emit_parameter_sync_preamble
-  );
+  let arguments = (ins DefaultValuedAttr<
+                       SymbolNameAttr,
+                       "getDefaultRuntimeSequenceName()">:$sym_name,
+      // Should the `--aie-lower-scratchpad-parameters` pass prepend code to
+      // this runtime sequence copying and synchronizing scratchpad parameters?
+      // Defaults to true if the scratchpad parameter feature is used anywhere
+      // (`aiex.read_scratchpad_parameter` on cores, `offset_parameter` on BDs).
+      // Set to false once emitted, so it does not get re-emitted.
+      OptionalAttr<BoolAttr>:$emit_parameter_sync_preamble,
+      // Which of the runtime sequence arguments is the trace buffer, if any?
+      OptionalAttr<TraceBufferAttr>:$trace_buffer,
+      // If this runtime sequence produces multiple traces, `trace_slices`
+      // states which slice of the trace buffer corresponds to which trace.
+      OptionalAttr<TraceSliceArrayAttr>:$trace_slices);
   let regions = (region
     AnyRegion:$body
   );

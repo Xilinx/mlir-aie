@@ -519,15 +519,11 @@ public:
       return op->emitOpError(
           "memref must be a block argument or subview/cast/reinterpret_cast of "
           "a block argument with static offsets, sizes, and strides");
-    argIdx = -1;
-    Block &entryBB = seqOp.getBody().front();
-    for (int i = 0, e = entryBB.getNumArguments(); i < e; i++)
-      if (entryBB.getArgument(i) == traceResult->rootArg) {
-        argIdx = i;
-        break;
-      }
-    if (argIdx < 0)
+    std::optional<unsigned> hostIdx =
+        getHostBufferArgIndex(traceResult->rootArg);
+    if (!hostIdx || traceResult->rootArg.getOwner() != &seqOp.getBody().front())
       return failure();
+    argIdx = static_cast<int>(*hostIdx);
 
     const auto &targetModel = AIE::getTargetModel(op);
     uint64_t patchAddr =
