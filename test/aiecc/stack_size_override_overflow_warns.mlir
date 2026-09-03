@@ -15,7 +15,9 @@
 // RUN: clang++ --target=aie2p-none-unknown-elf -std=c++20 -O2 -DNDEBUG -c %S/stack_size_unmeasurable_kernel.cc -o %t.d/stack_size_unmeasurable_kernel.o
 // RUN: cd %t.d && %aiecc %s 2>&1 | FileCheck %s
 
-// CHECK: warning: stack requirement computed as 50000000{{[0-9]+}} bytes, which does not fit in the attribute's i32; stack_size is not being validated for this core
+// The override dominates the sum; the trailing digits are the core body's
+// frame plus the runtime entry frame, so they move with the toolchain.
+// CHECK: warning: stack requirement computed as 5000000{{[0-9]+}} bytes, which does not fit in the attribute's i32; stack_size is not being validated for this core
 
 module {
   aie.device(npu2) {

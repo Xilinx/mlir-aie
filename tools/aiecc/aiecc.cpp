@@ -60,6 +60,7 @@
 
 #include "llvm/ADT/StringMap.h"
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/FileUtilities.h"
 #include "llvm/Support/InitLLVM.h"
 #include "llvm/Support/SourceMgr.h"
 
@@ -592,6 +593,45 @@ EdgeWithTypedOutput<NpuProgram> &buildNpuProgramSubgraph(
   return npuProgram;
 }
 
+// The Peano runtime entry function. `__start` (crt0) sets SP and jumps to it,
+// it sets up the C environment and calls `main` -- the core body -- so its
+// frame is live across everything the core does.
+constexpr llvm::StringLiteral runtimeEntrySymbol = "_main_init";
+
+// Absolute path of the Peano crt1.o for `arch` ("aie2", "aie2p", ...), or the
+// empty string when it cannot be located. crt1.o holds `_main_init`, but the
+// toolchain supplies it: it is in neither the compiled core object nor the
+// core's `link_files`, so the stack-size call-graph walk never sees it and the
+// driver has to find it separately. crt0.o needs no such treatment -- `__start`
+// has no frame and crt0.o carries no `.stack_sizes` data at all.
+std::string findRuntimeEntryObject(llvm::StringRef arch) {
+  std::string clangPath = ShellCommand::resolveTool("clang");
+  if (clangPath.empty())
+    return {};
+  // The overload that hands back no descriptor: ExecuteAndWait opens the path
+  // itself, so one is not needed and closing it cannot fail.
+  llvm::SmallString<128> outPath;
+  if (llvm::sys::fs::createTemporaryFile("aiecc-crt1", "txt", outPath))
+    return {};
+  llvm::FileRemover cleanup(outPath);
+  std::string target = ("--target=" + arch + "-none-unknown-elf").str();
+  llvm::SmallVector<llvm::StringRef> argv = {clangPath, target,
+                                             "-print-file-name=crt1.o"};
+  // Redirects are [stdin, stdout, stderr]; an empty path is the null device,
+  // so any driver chatter is dropped instead of polluting the answer.
+  std::array<std::optional<llvm::StringRef>, 3> redirects = {
+      std::nullopt, llvm::StringRef(outPath), llvm::StringRef("")};
+  int rc = llvm::sys::ExecuteAndWait(clangPath, argv, std::nullopt, redirects);
+  std::string result;
+  if (rc == 0)
+    if (auto buf = llvm::MemoryBuffer::getFile(outPath))
+      result = (*buf)->getBuffer().trim().str();
+  // clang echoes the bare name back when it has no such file.
+  if (result.empty() || !llvm::sys::fs::exists(result))
+    return {};
+  return result;
+}
+
 } // namespace
 
 //===----------------------------------------------------------------------===//
@@ -807,16 +847,24 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   EdgeWithTypedOutput<ModRef> *physicalWithMeasuredStackSizes = nullptr;
   if (!noMeasureStackSize.getValue()) {
     physicalWithMeasuredStackSizes =
-        &bundle(objects.out, physical.out)
+        &bundle(objects.out, perCoreArches.out, physical.out)
              .join<ModRef>(
                  "measured_stack_sizes.mlir",
-                 [inputFile, workDirStr](
-                     const Node<Directory> &objs, const Node<ModRef> &physicalN,
-                     Item<ModRef> &out) -> mlir::LogicalResult {
+                 [inputFile,
+                  workDirStr](const Node<Directory> &objs,
+                              const Node<std::string> &arches,
+                              const Node<ModRef> &physicalN,
+                              Item<ModRef> &out) -> mlir::LogicalResult {
                    out.value = ModRef(physicalN.get().get().clone());
                    llvm::StringMap<std::string> objByKey;
                    for (const auto &item : objs.items)
                      objByKey[item.key] = item.filePath;
+                   llvm::StringMap<std::string> archByKey;
+                   for (const auto &item : arches.items)
+                     archByKey[item.key] = item.get();
+                   // crt1.o is per-arch, not per-core, and locating it costs a
+                   // clang invocation, so resolve each arch once.
+                   llvm::StringMap<std::optional<int64_t>> runtimeFrameByArch;
                    return checkStackSizeRequirements(
                        out.value->get(), inputFile, workDirStr,
                        [&](CoreOp coreOp) -> std::optional<int64_t> {
@@ -828,6 +876,31 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                          return xilinx::aiecc::measureFunctionFrameSize(
                              it->second, xilinx::AIE::coreFrameSymbolName(
                                              tile.getCol(), tile.getRow()));
+                       },
+                       [&](CoreOp coreOp) -> std::optional<int64_t> {
+                         // crt1.o is a link-time input, so this term follows
+                         // the linker, not the compiler: `xbridge` links with
+                         // chess/BCF, which supplies its own startup in place
+                         // of peano's crt1. That startup names `_main_init`
+                         // too (see AIETargetBCF.cpp), so it may carry the
+                         // same live frame, but nothing here measures it.
+                         // Counting 0 leaves the chess flow exactly as it was
+                         // rather than asserting that it needs nothing.
+                         if (xbridge)
+                           return 0;
+                         auto it = archByKey.find(coreKey(coreOp));
+                         if (it == archByKey.end())
+                           return std::nullopt;
+                         auto cached = runtimeFrameByArch.find(it->second);
+                         if (cached != runtimeFrameByArch.end())
+                           return cached->second;
+                         std::optional<int64_t> frame;
+                         std::string crt1 = findRuntimeEntryObject(it->second);
+                         if (!crt1.empty())
+                           frame = xilinx::aiecc::measureFunctionFrameSize(
+                               crt1, runtimeEntrySymbol);
+                         runtimeFrameByArch[it->second] = frame;
+                         return frame;
                        });
                  });
   }
