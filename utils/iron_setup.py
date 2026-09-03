@@ -530,11 +530,11 @@ def resolve_xrt_layout(args: argparse.Namespace, venv: VenvInfo) -> XrtLayout:
 
 # NPU_REGEX recognizes supported devices; NPU2_REGEX selects the Makefile NPU2=1 path.
 NPU_REGEX = re.compile(
-    r"NPU Phoenix|NPU Strix|NPU Strix Halo|NPU Krackan|RyzenAI-npu[1456]",
+    r"NPU Phoenix|NPU Strix|NPU Strix Halo|NPU Krackan|NPU Gorgon Point|RyzenAI-npu[1456]",
     re.IGNORECASE,
 )
 NPU2_REGEX = re.compile(
-    r"NPU Strix|NPU Strix Halo|NPU Krackan|RyzenAI-npu[456]",
+    r"NPU Strix|NPU Strix Halo|NPU Krackan|NPU Gorgon Point|RyzenAI-npu[456]",
     re.IGNORECASE,
 )
 
