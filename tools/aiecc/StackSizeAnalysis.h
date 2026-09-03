@@ -26,19 +26,24 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace xilinx::aiecc {
 
 // Cycle: the requirement is unbounded, so the design must declare a
-// stack_size_override. Unmeasurable: the ELF carries no `.stack_sizes` entry
-// for a function the walk reaches, or no relocations to walk. The driver warns
-// for this case.
+// stack_size_override. Unmeasurable: the ELF is unreadable, or its
+// `.stack_sizes` data is malformed. The driver warns for this case.
 enum class StackRequirementFailure { Cycle, Unmeasurable };
 
 struct StackRequirementResult {
   std::optional<int64_t> bytes;
   std::string error;
   StackRequirementFailure failureKind = StackRequirementFailure::Unmeasurable;
+  // Functions the ELF holds no `.stack_sizes` entry for. Their frames count as
+  // 0, so `bytes` is a lower bound while this list is non-empty. Peano's aie2
+  // crt1.o puts `_main_init` here; a kernel compiled without
+  // -fstack-size-section puts its own functions here.
+  std::vector<std::string> unmeasured;
 };
 
 // Measures the stack that the linked core ELF at `elfPath` needs. `overrides`

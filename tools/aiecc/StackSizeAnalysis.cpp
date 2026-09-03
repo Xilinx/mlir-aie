@@ -170,7 +170,8 @@ std::optional<int64_t> maxPathFrom(uint64_t sym, const Graph &graph,
                                    llvm::DenseMap<uint64_t, int64_t> &memo,
                                    llvm::SmallVectorImpl<uint64_t> &pathStack,
                                    std::string &error,
-                                   StackRequirementFailure &failureKind) {
+                                   StackRequirementFailure &failureKind,
+                                   llvm::DenseSet<uint64_t> &unmeasured) {
   // An override ends the walk at this function. A recursive function, and a
   // function reached through a function pointer, become measurable this way:
   // the design declares the override on the kernel entry point it names, and
@@ -184,16 +185,17 @@ std::optional<int64_t> maxPathFrom(uint64_t sym, const Graph &graph,
     return it->second;
 
   auto nodeIt = graph.nodes.find(sym);
-  if (nodeIt == graph.nodes.end() || nodeIt->second.frameSize < 0) {
-    error = ("no stack size information for '" + graph.nameOf(sym).str() +
-             "' -- it is called (directly, or conservatively through a "
-             "function-pointer reference) but the linked core carries no "
-             ".stack_sizes entry for it; compile its source with "
-             "-fstack-size-section");
-    failureKind = StackRequirementFailure::Unmeasurable;
-    return std::nullopt;
-  }
-  const Node &node = nodeIt->second;
+  // A frame the ELF holds no entry for counts as 0, which makes the total a
+  // lower bound. The walk continues, so one such function costs only its own
+  // frame. Peano's aie2 crt1.o carries no `.stack_sizes` at all, so this keeps
+  // the check alive on that target.
+  int64_t frameSize = 0;
+  if (nodeIt == graph.nodes.end() || nodeIt->second.frameSize < 0)
+    unmeasured.insert(sym);
+  else
+    frameSize = nodeIt->second.frameSize;
+  static const Node emptyNode;
+  const Node &node = nodeIt == graph.nodes.end() ? emptyNode : nodeIt->second;
 
   VisitState &st = state[sym];
   if (st == VisitState::InProgress) {
@@ -210,8 +212,8 @@ std::optional<int64_t> maxPathFrom(uint64_t sym, const Graph &graph,
   pathStack.push_back(sym);
   int64_t best = 0;
   for (uint64_t callee : node.callees) {
-    auto sub =
-        maxPathFrom(callee, graph, state, memo, pathStack, error, failureKind);
+    auto sub = maxPathFrom(callee, graph, state, memo, pathStack, error,
+                           failureKind, unmeasured);
     if (!sub)
       return std::nullopt;
     best = std::max(best, *sub);
@@ -221,14 +223,14 @@ std::optional<int64_t> maxPathFrom(uint64_t sym, const Graph &graph,
 
   // A frame size comes from the ELF. A malformed input makes this sum wrap
   // negative, which undercounts the requirement.
-  if (node.frameSize > std::numeric_limits<int64_t>::max() - best) {
+  if (frameSize > std::numeric_limits<int64_t>::max() - best) {
     error = ("stack requirement for '" + graph.nameOf(sym).str() +
              "' overflows a signed 64-bit byte count; the core's .stack_sizes "
              "data is not believable");
     failureKind = StackRequirementFailure::Unmeasurable;
     return std::nullopt;
   }
-  int64_t total = node.frameSize + best;
+  int64_t total = frameSize + best;
   memo[sym] = total;
   return total;
 }
@@ -331,11 +333,17 @@ StackRequirementResult xilinx::aiecc::computeStackRequirement(
   llvm::DenseMap<uint64_t, VisitState> state;
   llvm::DenseMap<uint64_t, int64_t> memo;
   llvm::SmallVector<uint64_t, 8> pathStack;
+  llvm::DenseSet<uint64_t> unmeasured;
   std::string error;
   StackRequirementFailure failureKind = StackRequirementFailure::Unmeasurable;
   auto bytes = maxPathFrom(root->addr, graph, state, memo, pathStack, error,
-                           failureKind);
+                           failureKind, unmeasured);
   if (!bytes)
     return {std::nullopt, std::move(error), failureKind};
-  return {*bytes, {}};
+
+  StackRequirementResult result{*bytes, {}, failureKind, {}};
+  for (uint64_t addr : unmeasured)
+    result.unmeasured.push_back(graph.nameOf(addr).str());
+  llvm::sort(result.unmeasured);
+  return result;
 }

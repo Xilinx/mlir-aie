@@ -283,9 +283,28 @@ inline mlir::LogicalResult checkStackSizeRequirements(
       }
 
       int64_t required = *stackRes.bytes;
-      coreOp.setMeasuredStackSizeAttr(
-          mlir::Builder(module.getContext())
-              .getI32IntegerAttr(static_cast<int32_t>(required)));
+      // An unmeasured frame counted as 0, so `required` is a lower bound. A
+      // lower bound still catches a core that is short. The attribute carries
+      // the exact requirement, so only an exact result reaches it.
+      if (stackRes.unmeasured.empty())
+        coreOp.setMeasuredStackSizeAttr(
+            mlir::Builder(module.getContext())
+                .getI32IntegerAttr(static_cast<int32_t>(required)));
+      else {
+        auto diag = coreOp.emitWarning()
+                    << "no stack size information for "
+                    << stackRes.unmeasured.size()
+                    << " function(s) this core reaches, so its requirement is "
+                       "at least "
+                    << required
+                    << " bytes and may be higher; compile the affected "
+                       "source with -fstack-size-section, or set "
+                       "stack_size_override on the kernel's external_func()/"
+                       "func.func declaration (Kernel(...)/ExternalFunction"
+                       "(...) in IRON): ";
+        for (size_t i = 0; i < stackRes.unmeasured.size(); ++i)
+          diag << (i ? ", " : "") << stackRes.unmeasured[i];
+      }
 
       uint32_t effective = coreOp.getEffectiveStackSize();
       if (static_cast<int64_t>(effective) < required) {
