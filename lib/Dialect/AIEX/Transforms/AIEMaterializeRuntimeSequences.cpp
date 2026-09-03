@@ -186,10 +186,22 @@ collectReferencedSSAValues(Operation *op, const IRMapping &argMap,
           return;
         }
 
-        // Check if defined within the parent operation
-        Operation *defOp = operand.getDefiningOp();
-        if (defOp && op->isProperAncestor(defOp)) {
-          return;
+        // Check if defined within the parent operation.
+        if (Operation *defOp = operand.getDefiningOp()) {
+          if (op->isProperAncestor(defOp)) {
+            return;
+          }
+        } else if (auto blockArg = llvm::dyn_cast<BlockArgument>(operand)) {
+          // A block argument has no defining op, so the check above cannot see
+          // it. One belonging to a region nested inside `op` -- an scf.for
+          // induction variable, most commonly -- is nonetheless defined within
+          // `op` and must not be collected as an external reference: it would
+          // reach copyReferencedSSAValues, whose getDefiningOp() is null, and
+          // fail with "Referenced value is not defined by an operation".
+          Operation *owner = blockArg.getOwner()->getParentOp();
+          if (owner && (owner == op || op->isProperAncestor(owner))) {
+            return;
+          }
         }
 
         processValue(operand);
@@ -515,10 +527,23 @@ struct InlineRuntimeCallsPattern : RewritePattern {
       Operation *clonedOp = rewriter.clone(op, argMap);
       clonedOpInsertionPoint = rewriter.saveInsertionPoint();
 
-      if (failed(inlineReferencedSymbolDefinitions(
-              rewriter, clonedOp, calleeRuntimeSequence.getOperation(), argMap,
-              previouslyInlinedSymbolMap, callerDevice, symbolDefInsertPoint,
-              allSymbolNames))) {
+      // Symbol references are not only on the top-level op: an
+      // aiex.dma_configure_task_for naming a shim DMA allocation commonly sits
+      // inside an scf.for in the callee sequence. Those definitions need the
+      // same inlining and renaming, or the reference survives into the caller
+      // device pointing at a symbol that was left behind in the callee, and a
+      // later pass fails with "no shim DMA allocation found for symbol".
+      // walk() visits clonedOp itself as well as its nested ops.
+      WalkResult symbolWalk = clonedOp->walk([&](Operation *nestedOp) {
+        if (failed(inlineReferencedSymbolDefinitions(
+                rewriter, nestedOp, calleeRuntimeSequence.getOperation(),
+                argMap, previouslyInlinedSymbolMap, callerDevice,
+                symbolDefInsertPoint, allSymbolNames))) {
+          return WalkResult::interrupt();
+        }
+        return WalkResult::advance();
+      });
+      if (symbolWalk.wasInterrupted()) {
         return failure();
       }
     }
