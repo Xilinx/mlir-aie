@@ -182,14 +182,19 @@ collectReferencedSSAValues(Operation *op, const IRMapping &argMap,
   for (Region &region : op->getRegions()) {
     region.walk([&](Operation *nestedOp) {
       for (Value operand : nestedOp->getOperands()) {
+        // `continue`, not `return`: skipping an operand must not abandon the
+        // rest of the same operation's operands. Returning here means an op
+        // whose first operand is already mapped never has its later operands
+        // examined, so a genuine external reference beside a mapped one is
+        // silently dropped.
         if (argMap.contains(operand)) {
-          return;
+          continue;
         }
 
         // Check if defined within the parent operation.
         if (Operation *defOp = operand.getDefiningOp()) {
           if (op->isProperAncestor(defOp)) {
-            return;
+            continue;
           }
         } else if (auto blockArg = llvm::dyn_cast<BlockArgument>(operand)) {
           // A block argument has no defining op, so the check above cannot see
@@ -200,7 +205,7 @@ collectReferencedSSAValues(Operation *op, const IRMapping &argMap,
           // fail with "Referenced value is not defined by an operation".
           Operation *owner = blockArg.getOwner()->getParentOp();
           if (owner && (owner == op || op->isProperAncestor(owner))) {
-            return;
+            continue;
           }
         }
 

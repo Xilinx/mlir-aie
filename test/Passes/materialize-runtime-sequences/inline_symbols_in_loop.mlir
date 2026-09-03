@@ -21,15 +21,21 @@
 // and it working while the in-loop one did not is what the bug looked like.
 
 module {
+  // Anchor on the caller device, so the CHECK-DAGs below cannot be satisfied
+  // by the callee's own definitions. The pass emits the rewritten caller
+  // without a sym name, so the trailing brace is what distinguishes it from
+  // @config_with_symbols -- `@main` does not survive into the output.
+  // CHECK: aie.device(npu2) {
   aie.device(npu2) @main {
     %tile00 = aie.tile(0, 0)
 
     // Both definitions have to be inlined into the caller device, not just
-    // the top-level one. They are placed ahead of the sequence that uses them.
-    // CHECK: aie.shim_dma_allocation @buffer_top
-    // CHECK: aie.shim_dma_allocation @buffer_in_loop
+    // the top-level one. They are placed ahead of the sequence that uses
+    // them; the order between the two is not part of the contract.
+    // CHECK-DAG: aie.shim_dma_allocation @buffer_top
+    // CHECK-DAG: aie.shim_dma_allocation @buffer_in_loop
 
-    // CHECK-LABEL: aie.runtime_sequence @main_seq
+    // CHECK: aie.runtime_sequence @main_seq
     aie.runtime_sequence @main_seq(%arg0: memref<64xi32>) {
       // CHECK: aiex.npu.load_pdi {device_ref = @config_with_symbols}
       // CHECK: aiex.npu.dma_memcpy_nd
@@ -45,8 +51,8 @@ module {
 
   // The originals stay put in the callee device.
   // CHECK: aie.device(npu2) @config_with_symbols
-  // CHECK: aie.shim_dma_allocation @buffer_top
-  // CHECK: aie.shim_dma_allocation @buffer_in_loop
+  // CHECK-DAG: aie.shim_dma_allocation @buffer_top
+  // CHECK-DAG: aie.shim_dma_allocation @buffer_in_loop
   aie.device(npu2) @config_with_symbols {
     %tile20 = aie.tile(2, 0)
     %tile30 = aie.tile(3, 0)
