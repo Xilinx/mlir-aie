@@ -2015,7 +2015,12 @@ def AIE_ShimDMAAllocationOp : AIE_Op<"shim_dma_allocation", [HasParent<"DeviceOp
       // was emitted from an objectFIFO. A runtime sequence sizes its buffer
       // descriptor in the host buffer's element type; this records what the
       // stream expects, which is otherwise lost at this symbol.
-      OptionalAttr<TypeAttrOf<AnyMemRef>>:$elem_type);
+      OptionalAttr<TypeAttrOf<AnyMemRef>>:$elem_type,
+      // The bytes on the wire are not the bytes in the object, so no transfer
+      // extent on this channel can be checked against elem_type. Set it for a
+      // channel whose DMA (de)compresses: the ratio is a property of the data,
+      // and the enable lives in a BD register no pass can see.
+      UnitAttr:$stream_len_decoupled);
 
   let results = (outs);
 
@@ -2228,7 +2233,10 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
       // packet selects packet-switched routing. packet_id pins the header;
       // allocation chooses an unused id when it is absent.
       UnitAttr:$packet,
-      OptionalAttr<ConfinedAttr<AIEI8Attr, [IntMinValue<0>]>>:$packet_id);
+      OptionalAttr<ConfinedAttr<AIEI8Attr, [IntMinValue<0>]>>:$packet_id,
+      // Carried to this fifo's shim allocation; see its own
+      // stream_len_decoupled.
+      UnitAttr:$stream_len_decoupled);
 
   let assemblyFormat = [{
     $sym_name
@@ -2459,6 +2467,9 @@ def AIE_ObjectFifoPoolOp
       OptionalAttr<AIEI32Attr>:$repeatCount,
       // No locks are created for this pool; its actors are unsynchronized.
       DefaultValuedAttr<BoolAttr, "false">:$disableSynchronization,
+      // Carried from the fifo to its shim allocation; see that op's
+      // stream_len_decoupled.
+      UnitAttr:$streamLenDecoupled,
       // If lowered from a high-level ObjectFifo, the name of that fifo.
       // Used to group ops lowered by the same ObjectFifo.
       OptionalAttr<StrAttr>:$fifoName, InitValuesArrayAttr:$initValues);

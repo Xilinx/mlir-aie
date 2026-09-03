@@ -212,6 +212,7 @@ struct AIEObjectFifoSplitPass
         /*locks=*/ArrayAttr(),
         repeatCount ? builder.getI32IntegerAttr(*repeatCount) : IntegerAttr(),
         from.getDisableSynchronization(),
+        from.getStreamLenDecoupled(),
         builder.getStringAttr(from.name().getValue()),
         holdsInitialContents ? from.getInitValuesAttr() : ArrayAttr());
     createSegments(pool, loc, extents);
@@ -313,6 +314,7 @@ struct AIEObjectFifoSplitPass
         builder.getArrayAttr(names),
         /*locks=*/ArrayAttr(), /*repeatCount=*/IntegerAttr(),
         fifo.getDisableSynchronization(),
+        fifo.getStreamLenDecoupled(),
         builder.getStringAttr(fifo.name().getValue()),
         /*initValues=*/ArrayAttr());
     createSegments(pool, fifo.getLoc(), {{0, elemType.getNumElements()}});

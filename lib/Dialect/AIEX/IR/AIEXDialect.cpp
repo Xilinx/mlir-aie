@@ -1280,10 +1280,15 @@ LogicalResult AIEX::DMAConfigureTaskOp::verify() {
 // Checked only when both are static: a runtime length or repeat count has no
 // constant to compare, and an allocation with no elem_type (a control overlay
 // channel, a join or split, an endpoint that pads into its object) records
-// nothing to compare against.
+// nothing to compare against. A channel whose DMA (de)compresses says so with
+// stream_len_decoupled, and is exempt: its wire bytes and its object bytes
+// differ by a data-dependent ratio, and the enable is a BD register write no
+// pass can see.
 static LogicalResult
 verifyTaskCoversWholeObjects(Operation *task, AIE::ShimDMAAllocationOp alloc,
                              mlir::OpFoldResult repeat, Region &body) {
+  if (alloc.getStreamLenDecoupled())
+    return success();
   std::optional<int64_t> objectBytes = alloc.getObjectSizeInBytes();
   if (!objectBytes || *objectBytes <= 0)
     return success();
