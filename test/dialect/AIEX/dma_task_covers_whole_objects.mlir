@@ -101,6 +101,25 @@ module {
 
 // -----
 
+// A channel whose DMA (de)compresses moves a data-dependent count of bytes for
+// a whole object, and nothing in the IR says by how much: the enable is a BD
+// register write. stream_len_decoupled is how such a channel opts out.
+module {
+  aie.device(npu2_1col) {
+    %tile_0_0 = aie.tile(0, 0)
+    aie.shim_dma_allocation @of (%tile_0_0, S2MM, 0) {elem_type = memref<64xi32>, stream_len_decoupled}
+    aie.runtime_sequence(%arg0: memref<300xf32>) {
+      %t = aiex.dma_configure_task_for @of {
+        aie.dma_bd(%arg0 : memref<300xf32> offset = 0 len = 300 sizes = [1, 1, 1, 300] strides = [0, 0, 0, 1])
+        aie.end
+      }
+      aiex.dma_start_task(%t)
+    }
+  }
+}
+
+// -----
+
 // Both extents count an element as the whole bytes it occupies, so a sub-byte
 // element type measures the same on the object side as on the buffer
 // descriptor's: 3 i4 is 3 bytes against 2-byte objects, not 1 against 1.
