@@ -182,11 +182,6 @@ collectReferencedSSAValues(Operation *op, const IRMapping &argMap,
   for (Region &region : op->getRegions()) {
     region.walk([&](Operation *nestedOp) {
       for (Value operand : nestedOp->getOperands()) {
-        // `continue`, not `return`: skipping an operand must not abandon the
-        // rest of the same operation's operands. Returning here means an op
-        // whose first operand is already mapped never has its later operands
-        // examined, so a genuine external reference beside a mapped one is
-        // silently dropped.
         if (argMap.contains(operand)) {
           continue;
         }
@@ -532,13 +527,7 @@ struct InlineRuntimeCallsPattern : RewritePattern {
       Operation *clonedOp = rewriter.clone(op, argMap);
       clonedOpInsertionPoint = rewriter.saveInsertionPoint();
 
-      // Symbol references are not only on the top-level op: an
-      // aiex.dma_configure_task_for naming a shim DMA allocation commonly sits
-      // inside an scf.for in the callee sequence. Those definitions need the
-      // same inlining and renaming, or the reference survives into the caller
-      // device pointing at a symbol that was left behind in the callee, and a
-      // later pass fails with "no shim DMA allocation found for symbol".
-      // walk() visits clonedOp itself as well as its nested ops.
+      // Inline symbol references in all nested ops.
       WalkResult symbolWalk = clonedOp->walk([&](Operation *nestedOp) {
         if (failed(inlineReferencedSymbolDefinitions(
                 rewriter, nestedOp, calleeRuntimeSequence.getOperation(),
