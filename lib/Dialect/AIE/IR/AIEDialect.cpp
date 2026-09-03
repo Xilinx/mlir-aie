@@ -4073,8 +4073,10 @@ std::optional<int64_t> ShimDMAAllocationOp::getObjectSizeInBytes() {
   if (!elemType.hasStaticShape())
     return std::nullopt;
   DataLayout layout = DataLayout::closest(*this);
+  // Per-element bytes, the unit DMABDOp::getBufferElementTypeWidthInBytes()
+  // reports, so a sub-byte element type measures the same on both sides.
   return elemType.getNumElements() *
-         layout.getTypeSizeInBits(elemType.getElementType()) / 8;
+         static_cast<int64_t>(layout.getTypeSize(elemType.getElementType()));
 }
 
 ShimDMAAllocationOp ShimDMAAllocationOp::getForSymbol(DeviceOp device,

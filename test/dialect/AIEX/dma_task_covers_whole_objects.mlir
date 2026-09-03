@@ -98,3 +98,23 @@ module {
     }
   }
 }
+
+// -----
+
+// Both extents count an element as the whole bytes it occupies, so a sub-byte
+// element type measures the same on the object side as on the buffer
+// descriptor's: 3 i4 is 3 bytes against 2-byte objects, not 1 against 1.
+module {
+  aie.device(npu2_1col) {
+    %tile_0_0 = aie.tile(0, 0)
+    aie.shim_dma_allocation @of (%tile_0_0, MM2S, 0) {elem_type = memref<2xi4>}
+    aie.runtime_sequence(%arg0: memref<3xi4>) {
+      // expected-error@+1 {{moves 3 bytes through @of, which is not a whole number of that objectFIFO's 2-byte objects}}
+      %t = aiex.dma_configure_task_for @of {
+        aie.dma_bd(%arg0 : memref<3xi4> offset = 0 len = 3 sizes = [1, 1, 1, 3] strides = [0, 0, 0, 1])
+        aie.end
+      }
+      aiex.dma_start_task(%t)
+    }
+  }
+}
