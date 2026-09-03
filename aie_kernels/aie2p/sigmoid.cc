@@ -1,10 +1,9 @@
-//===- silu.cc --------------------------------------------*- C++
-//-*-===//
+//===- sigmoid.cc --------------------------------------------*- C++ -*-===//
 //
 // Copyright (C) 2025 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-//===-------------------------------------------------- --------===//
+//===----------------------------------------------------------------------===//
 
 #include "../aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
@@ -12,12 +11,11 @@
 
 using namespace aie;
 
-// Processes 32 bf16 elements per iteration.  The bf16 tanh intrinsic works on
-// 16-wide vectors, so each 32-wide input is split into two 16-wide halves for
-// the tanh and re-concatenated; everything else stays 32-wide.
-void silu_tanh_approx_bf16(bfloat16 *restrict input_vector,
-                           bfloat16 *restrict output_vector,
-                           const int32_t vector_size) {
+// sigmoid(x) = 0.5 * (1 + tanh(x/2)), 32 bf16 elements per iteration.  The
+// native tanh works on 16 float lanes, so tanh(x/2) is computed on two halves.
+void sigmoid_tanh_approx_bf16(bfloat16 *restrict input_vector,
+                              bfloat16 *restrict output_vector,
+                              const int32_t vector_size) {
   event0();
 
   int num_elems = vector_size;
@@ -43,9 +41,8 @@ void silu_tanh_approx_bf16(bfloat16 *restrict input_vector,
     auto one_plus = aie::add(tanh_half_x, register_1);
     aie::vector<bfloat16, 32> sigmoid_approx =
         aie::mul(one_plus, register_0_5_wide);
-    auto mul_output = aie::mul(input, sigmoid_approx);
 
-    *it_out++ = mul_output.to_vector<bfloat16>();
+    *it_out++ = sigmoid_approx;
   }
 
   event1();
@@ -55,9 +52,9 @@ void silu_tanh_approx_bf16(bfloat16 *restrict input_vector,
 
 extern "C" {
 
-void silu_bf16(bfloat16 *restrict input, bfloat16 *restrict output) {
-  int32_t input_size = 1024; // Assuming input size is a multiple of 32
-  silu_tanh_approx_bf16(input, output, input_size);
+void sigmoid_bf16(bfloat16 *restrict input, bfloat16 *restrict output,
+                  int input_size) {
+  sigmoid_tanh_approx_bf16(input, output, input_size);
 }
 
 } // extern "C"
