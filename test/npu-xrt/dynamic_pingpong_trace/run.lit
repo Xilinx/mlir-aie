@@ -20,6 +20,7 @@
 // RUN:   --xclbin-name=%t.xclbin --tmpdir=%t.prj %S/aie.mlir
 //
 // RUN: aie-opt \
+// RUN:   --aie-resolve-address-patch-buffers \
 // RUN:   --aie-materialize-bd-chains --aie-substitute-shim-dma-allocations \
 // RUN:   --aie-unroll-runtime-sequence-loops --canonicalize \
 // RUN:   --aie-lower-dynamic-bd-pool --canonicalize \
