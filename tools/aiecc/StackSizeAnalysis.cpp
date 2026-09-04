@@ -101,8 +101,14 @@ std::optional<int64_t> fallbackFrameFor(const Graph &graph, uint64_t addr) {
 }
 
 // Collects the address ranges of every symbol of type `wanted`. `addrByName`
-// records each symbol's address under its name. An override names a function,
-// so that map resolves it, and it resolves an alias of that function too.
+// maps a name to an address. A `stack_size_override` arrives from the MLIR
+// under a function name. This analysis keys its nodes by address. That map
+// bridges the two.
+//
+// It holds only globally bindable symbols. A declaration in the MLIR binds by
+// the linker's rules, and a `static` function of the same name belongs to the
+// object that defines it. It holds unsized symbols too, so an override on an
+// alias reaches the node the alias shares.
 SymbolRanges collectRanges(ObjectFile &obj, SymbolRef::Type wanted,
                            llvm::StringMap<uint64_t> *addrByName = nullptr) {
   SymbolRanges ranges;
@@ -110,15 +116,18 @@ SymbolRanges collectRanges(ObjectFile &obj, SymbolRef::Type wanted,
     auto type = sym.getType();
     auto addr = sym.getAddress();
     auto name = sym.getName();
-    if (!type || !addr || !name) {
+    auto flags = sym.getFlags();
+    if (!type || !addr || !name || !flags) {
       llvm::consumeError(type.takeError());
       llvm::consumeError(addr.takeError());
       llvm::consumeError(name.takeError());
+      llvm::consumeError(flags.takeError());
       continue;
     }
     if (*type != wanted)
       continue;
-    if (addrByName)
+    if (addrByName &&
+        (*flags & (SymbolRef::SF_Global | SymbolRef::SF_Weak)) != 0)
       addrByName->try_emplace(*name, *addr);
     if (uint64_t size = ELFSymbolRef(sym).getSize())
       ranges.entries.push_back({*addr, size, *name});
@@ -297,6 +306,7 @@ StackRequirementResult xilinx::aiecc::computeStackRequirement(
       graph.overridesByAddr[it->second] = kv.second;
 
   bool complete = true;
+  bool sawRelocations = false;
   for (const SectionRef &sec : obj.sections()) {
     auto name = sec.getName();
     if (!name) {
@@ -309,6 +319,7 @@ StackRequirementResult xilinx::aiecc::computeStackRequirement(
     }
     if (sec.relocation_begin() == sec.relocation_end())
       continue;
+    sawRelocations = true;
     // A `.rela.X` section holds the relocations that apply to section `X`, so
     // the executability of `X` says whether a relocation patches code or data.
     auto patchedSec = sec.getRelocatedSection();
@@ -351,6 +362,12 @@ StackRequirementResult xilinx::aiecc::computeStackRequirement(
   if (!root)
     return fail("the linked core '" + elfPath.str() +
                 "' declares no function at its entry point");
+  // Relocations carry every call edge. A link that drops them leaves the graph
+  // with no edges. The walk would then report the entry point's own frame as
+  // the whole requirement. The chess/BCF link produces such an ELF.
+  if (!sawRelocations)
+    return fail("the linked core '" + elfPath.str() +
+                "' retains no relocations, so its call graph is unavailable");
   // The entry point establishes SP. The stack this measures starts there, so
   // the entry point's own frame counts as 0.
   Node &rootNode = graph.nodes[root->addr];

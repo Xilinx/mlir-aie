@@ -48,17 +48,23 @@ Worker(core_fn, [args], stack_size=4096)
 The stack sits directly below the buffers with no clearance, so a core whose
 frames exceed the reservation overwrites the buffers above it. `aiecc`
 therefore measures each core's stack requirement and checks `stack_size`
-against that number. The requirement has two parts: the top-level frame of the
-compiled core body, and the deepest call path into the kernels. For the second
-part the analysis parses the `.stack_sizes` section of every kernel object,
-builds a call graph across the core's `link_files`, and takes the **maximum
-over all root-to-leaf call paths**. One call chain is live at a time, so the
-maximum bounds the requirement. Static data differs: all of it coexists,
-whatever the control flow.
+against that number. It measures the **linked core ELF**: the linker decides
+which objects a core contains, so its output covers the kernels and the
+toolchain's own startup code. The analysis reads the `.stack_sizes` section for
+each frame, follows the relocations for the call edges, and takes the
+**maximum over all root-to-leaf call paths** from the ELF entry point. One call
+chain is live at a time, so the maximum bounds the requirement. Static data
+differs: all of it coexists, whatever the control flow.
 
-The check runs once, after each core is compiled, because the core body's own
-frame exists only after codegen. `aiecc` writes the result to the
-`measured_stack_size` attribute on the `aie.core`, so you can inspect it:
+The walk starts at `__start` (crt0), which calls `_main_init` (crt1), which
+calls the core body, which calls its kernels. `_main_init` holds a frame that
+stays live across the whole chain, so it counts. `__start` establishes the
+stack pointer, so its own frame counts as 0.
+
+The check runs once, after each core is linked, and the Peano link keeps the
+relocations (`-Wl,--emit-relocs`) that the walk needs. `aiecc` writes the
+result to the `measured_stack_size` attribute on the `aie.core`, so you can
+inspect it:
 
 ```mlir
 aie.core(%tile_0_2) { ... } {stack_size = 8192 : i32, measured_stack_size = 4128 : i32}
@@ -75,10 +81,9 @@ The analysis cannot size some symbols:
 - **recursion**: a cycle in the call graph is unbounded;
 - **an indirect call through a function pointer**: the analysis fans out
   conservatively and still misses some targets;
-- **a Chess-compiled object**: it carries no `.stack_sizes` section;
-- **an archive or a bitcode file** in `link_files`: the analysis skips both;
-- **a `link_with_mode="merge"` kernel**: it merges into the core's own LLVM
-  module before codegen, so the analysis reads it as part of the core.
+- **a kernel compiled without `-fstack-size-section`**: the linked core carries
+  no frame for it. A Chess-compiled object and a pre-compiled object both hit
+  this case.
 
 For these, declare the answer with `stack_size_override`. It lives on the
 **kernel's `func.func`**, at function granularity, and not on the core. Two
@@ -135,19 +140,19 @@ large enough for the deepest recursion. Pass `--no-measure-stack-size` to skip
 the check instead.
 
 **`cannot determine this core's stack requirement: ...; stack_size is not being
-validated for this core` (warning).** The analysis cannot measure a symbol,
-because of a missing `.stack_sizes` section, a Chess-compiled object, an
-archive or bitcode entry, or a `link_merge_files` dependency. A pre-compiled
-kernel object hits this case often, and the build continues: the compiler
-leaves `stack_size` unchecked for this core and writes no
-`measured_stack_size`. Set `stack_size_override` on the affected kernel to give
-the analysis a number to work from.
-
-**`this core's callees need at least N bytes of stack (not counting the core
-body's own frame)` (warning).** The kernel objects carry `.stack_sizes` and the
-core object does not: a Chess-compiled core writes `.stackinfo` instead. `N` is
-a lower bound, so `aiecc` warns rather than fails, and writes no
+validated for this core` (warning).** The linked core is unreadable, its
+`.stack_sizes` data is malformed, or the link kept no relocations, so the call
+graph is unavailable. The chess/BCF link produces such an ELF, so a
+`--xbridge` build leaves `stack_size` unchecked and writes no
 `measured_stack_size`.
+
+**`no stack size information for N function(s) this core reaches, so its
+requirement is at least M bytes and may be higher` (warning).** The linked core
+carries no `.stack_sizes` entry for the functions the diagnostic names, and
+their frames count as 0. `M` is therefore a lower bound: `aiecc` still fails a
+core that declares less than `M`, and writes no `measured_stack_size`. Compile
+the named source with `-fstack-size-section`, or set `stack_size_override` on
+the affected kernel.
 
 **`stack_size is absent, so this core uses the device default of M bytes, but
 it needs N bytes` (error).** Set `stack_size = N`, or `Worker(stack_size=N)`,
