@@ -223,7 +223,13 @@ def check_driver() -> Check:
 
 @functools.cache
 def check_runtime() -> Check:
-    """Report XRT userspace, independent of whether its bindings are importable."""
+    """Report XRT userspace, independent of whether its bindings are importable.
+
+    Deliberately does not read the XRT version. That costs an ``xrt-smi examine``
+    subprocess, it cannot change this verdict, and this stage sits on the path of
+    an error message -- the module's rule is that a stage spawns a process only
+    when the answer depends on it. ``xrt-smi examine`` reports the version.
+    """
     binary = _xrt_smi()
     if binary is None:
         return Check(
@@ -232,9 +238,7 @@ def check_runtime() -> Check:
             "xrt-smi not on PATH and XILINX_XRT is unset or does not contain it",
             remedy="Install XRT, or set XILINX_XRT to an existing install.",
         )
-    version = _examine_field("Version")
-    detail = f"XRT userspace found ({binary})"
-    return Check("runtime", True, detail + (f", version {version}" if version else ""))
+    return Check("runtime", True, f"XRT userspace found ({binary})")
 
 
 @functools.cache
@@ -255,6 +259,17 @@ def check_bindings() -> Check:
                 f"version. Install/build XRT for {platform.python_version()}, or run "
                 "under the interpreter its pyxrt was built for."
             ),
+            exc=e,
+        )
+    except Exception as e:  # noqa: BLE001 - the stack this diagnoses is the broken one
+        # Reached when pyxrt is found but its initialisation raises, which the
+        # import machinery propagates unchanged. Letting that out of a probe
+        # would replace the diagnosis with the failure it exists to report.
+        return Check(
+            "bindings",
+            False,
+            f"pyxrt failed to initialise: {type(e).__name__}: {e}",
+            remedy="Check the XRT install this pyxrt was built against.",
             exc=e,
         )
     return Check("bindings", True, "pyxrt imports")
@@ -309,11 +324,18 @@ _STAGES = (
     check_toolchain,
 )
 
+# Stages that load the XRT stack, and so are skippable by a caller that only
+# wants what can be answered without it.
+_DEFERRED = frozenset({check_bindings})
+
+
+def _selected(include_deferred: bool):
+    return (s for s in _STAGES if include_deferred or s not in _DEFERRED)
+
 
 def probe(include_deferred: bool = True) -> list[Check]:
     """Run the diagnosis. Set ``include_deferred=False`` to skip stages that load XRT."""
-    deferred = {check_bindings}
-    return [s() for s in _STAGES if include_deferred or s not in deferred]
+    return [s() for s in _selected(include_deferred)]
 
 
 def failures(include_deferred: bool = True) -> list[Check]:
@@ -322,9 +344,16 @@ def failures(include_deferred: bool = True) -> list[Check]:
 
 
 def first_actionable(include_deferred: bool = True) -> Check | None:
-    """Return the lowest failing stage; fixing it precedes the ones above."""
-    failed = failures(include_deferred)
-    return failed[0] if failed else None
+    """Return the lowest failing stage; fixing it precedes the ones above.
+
+    Stops there rather than running the whole probe: the stages above cannot
+    change which one to fix first, and this is the path an error message takes.
+    """
+    for stage in _selected(include_deferred):
+        check = stage()
+        if check.failed:
+            return check
+    return None
 
 
 def npu_unavailable_reason() -> str | None:
