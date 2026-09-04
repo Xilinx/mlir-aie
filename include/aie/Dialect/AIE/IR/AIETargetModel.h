@@ -313,6 +313,22 @@ public:
   /// core.
   virtual uint32_t getComputeTileLoadStoreBusWidth() const = 0;
 
+  /// Return the alignment (in bits) required by the widest vector load/store a
+  /// compute core can issue.
+  ///
+  /// This is NOT the load/store bus width. From AIE2P on, a full-width
+  /// (512-bit) vector access requires 512-bit alignment even though the bus is
+  /// 256 bits wide. Mirrors `vector_ldst_align` in aie_api
+  /// (aie_api/detail/ld_st.hpp), which is the contract kernels compile against:
+  ///   AIE1  (__AIE_ARCH__ 10):        16B
+  ///   AIE2  (__AIE_ARCH__ 20):        32B
+  ///   AIE2P/AIE2PS (__AIE_ARCH__ 21/22): 64B
+  /// A buffer a core may access with a full-width vector must be aligned to
+  /// this, or the access silently touches the wrong memory.
+  virtual uint32_t getComputeTileMaxVectorAlignBits() const {
+    return getComputeTileLoadStoreBusWidth();
+  }
+
   // NOTE: Maybe this should be set to 4-byte alignment, since DMA on Memtile
   // seems to handle unaligned access.
   /// Return the data bus width (in bits) for load/store operations of a memory
@@ -603,6 +619,7 @@ public:
   uint32_t getProgramMemorySize() const override { return 0x00004000; }
   uint32_t getAccumulatorCascadeSize() const override { return 384; }
   uint32_t getComputeTileLoadStoreBusWidth() const override { return 128; }
+  uint32_t getComputeTileMaxVectorAlignBits() const override { return 128; }
 
   using AIETargetModel::getNumLocks;
   uint32_t getNumLocks(AIETileType tileType) const override {
@@ -737,6 +754,7 @@ public:
   uint32_t getProgramMemorySize() const override { return 0x00004000; }
   uint32_t getAccumulatorCascadeSize() const override { return 512; }
   uint32_t getComputeTileLoadStoreBusWidth() const override { return 256; }
+  uint32_t getComputeTileMaxVectorAlignBits() const override { return 256; }
 
   using AIETargetModel::getNumLocks;
   uint32_t getNumLocks(AIETileType tileType) const override {
@@ -857,6 +875,10 @@ public:
   }
 
   AIEArch getTargetArch() const override { return AIEArch::AIE2ps; }
+  // AIE2P/AIE2PS: a full-width (512-bit) vector access requires 512-bit
+  // alignment, stricter than the 256-bit load/store bus. See aie_api's
+  // vector_ldst_align for __AIE_ARCH__ 21/22.
+  uint32_t getComputeTileMaxVectorAlignBits() const override { return 512; }
 
   uint32_t getNumControllersPerColumn() const override { return 1; }
 
@@ -1059,6 +1081,10 @@ public:
   }
 
   AIEArch getTargetArch() const override;
+  // AIE2P/AIE2PS: a full-width (512-bit) vector access requires 512-bit
+  // alignment, stricter than the 256-bit load/store bus. See aie_api's
+  // vector_ldst_align for __AIE_ARCH__ 21/22.
+  uint32_t getComputeTileMaxVectorAlignBits() const override { return 512; }
 
   int rows() const override {
     return 6; /* 1 Shim row, 1 memtile row, and 4 Core rows. */
