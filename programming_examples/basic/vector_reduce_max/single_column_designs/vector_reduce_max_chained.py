@@ -44,6 +44,10 @@ from aie.utils.verify import assert_pass
 from ml_dtypes import bfloat16
 
 
+# Elements per memtile tile; the CLI validator and the design share it.
+N_MEM_ELEMS = 2048
+
+
 @iron.jit
 def vector_reduce_max(
     a_in: In,
@@ -58,7 +62,7 @@ def vector_reduce_max(
         raise ValueError("Output buffer must be size 4 (4 bytes = 1 integer).")
 
     n_cores = 4
-    n_mem_elems = 2048
+    n_mem_elems = N_MEM_ELEMS
     elems_per_core = n_mem_elems // n_cores
 
     dtype = str_to_dtype(dtype_str)
@@ -239,8 +243,16 @@ def _run_and_verify(opts):
 
 
 def _validate(opts):
-    if opts.in1_size % 64 != 0 or opts.in1_size < 512:
-        sys.exit(f"in1_size ({opts.in1_size}) must be a multiple of 64 and >= 512")
+    if opts.in1_size % 64 != 0:
+        sys.exit(f"in1_size ({opts.in1_size}) must be a multiple of 64")
+    # The design reads one tile before its loop, so an input shorter than a
+    # tile leaves that read waiting on a fill that never comes.
+    elems = opts.in1_size // str_to_dtype(opts.dtype)(0).nbytes
+    if elems < N_MEM_ELEMS:
+        sys.exit(
+            f"in1_size ({opts.in1_size} bytes = {elems} {opts.dtype}) must hold at "
+            f"least one {N_MEM_ELEMS}-element tile"
+        )
 
 
 def main():

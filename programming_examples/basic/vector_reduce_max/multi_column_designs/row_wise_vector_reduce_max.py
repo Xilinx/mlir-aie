@@ -47,6 +47,11 @@ from aie.utils.verify import assert_pass
 from ml_dtypes import bfloat16
 
 
+# Per-core tile and core count; the CLI validator and the design share them.
+ELEMS_PER_CORE = 256
+N_CORES = 8
+
+
 @iron.jit
 def vector_reduce_max(
     a_in: In,
@@ -60,8 +65,8 @@ def vector_reduce_max(
     if out_size != 4:
         raise ValueError("Output buffer must be size 4 (4 bytes = 1 integer).")
 
-    n_cores = 8
-    elems_per_core = 256
+    n_cores = N_CORES
+    elems_per_core = ELEMS_PER_CORE
     n_channels = n_cores
     if n_cores > 8:
         raise ValueError("This design does not support more than 8 cores.")
@@ -238,8 +243,17 @@ def _run_and_verify(opts):
 
 
 def _validate(opts):
-    if opts.in1_size % 64 != 0 or opts.in1_size < 512:
-        sys.exit(f"in1_size ({opts.in1_size}) must be a multiple of 64 and >= 512")
+    if opts.in1_size % 64 != 0:
+        sys.exit(f"in1_size ({opts.in1_size}) must be a multiple of 64")
+    # Each core reads one tile before its loop, so an input shorter than the
+    # whole row leaves those reads waiting on fills that never come.
+    row = ELEMS_PER_CORE * N_CORES
+    elems = opts.in1_size // str_to_dtype(opts.dtype)(0).nbytes
+    if elems < row:
+        sys.exit(
+            f"in1_size ({opts.in1_size} bytes = {elems} {opts.dtype}) must hold at "
+            f"least one {row}-element row"
+        )
 
 
 def main():

@@ -202,11 +202,19 @@ def _run_and_verify(opts):
 
 def _validate(opts):
     dtype = str_to_dtype(opts.dtype)
-    elems = opts.in1_size // dtype(0).nbytes
-    if elems % N_MEM_ELEMS != 0:
+    nbytes = dtype(0).nbytes
+    if opts.in1_size % nbytes != 0:
+        sys.exit(
+            f"in1_size ({opts.in1_size} bytes) must be a whole number of "
+            f"{opts.dtype} elements"
+        )
+    elems = opts.in1_size // nbytes
+    # The design reads one tile before its loop, so anything short of a full
+    # tile -- zero included -- leaves that read waiting on a fill never sent.
+    if elems == 0 or elems % N_MEM_ELEMS != 0:
         sys.exit(
             f"in1_size ({opts.in1_size} bytes = {elems} {opts.dtype}) must be a "
-            f"whole number of {N_MEM_ELEMS}-element iterations"
+            f"positive whole number of {N_MEM_ELEMS}-element iterations"
         )
 
 
