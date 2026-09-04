@@ -61,10 +61,19 @@ public:
   }
 #endif
 
-  /// Construct from a raw buffer pointer (Python bindings / testing).
-  ParameterScratchpad(uint32_t *buffer, const std::string &paramsPath)
+  /// Construct from a raw buffer and its size in bytes (Python bindings /
+  /// testing). The size is required: clear() and every write index off
+  /// scratchpadSizeBytes, which parseParams derives from the params file, not
+  /// from the buffer.
+  ParameterScratchpad(uint32_t *buffer, size_t bufferSizeBytes,
+                      const std::string &paramsPath)
       : boMap(buffer) {
     parseParams(paramsPath);
+    if (bufferSizeBytes < scratchpadSizeBytes)
+      throw std::runtime_error("ParameterScratchpad: buffer size (" +
+                               std::to_string(bufferSizeBytes) +
+                               ") < required scratchpad size (" +
+                               std::to_string(scratchpadSizeBytes) + ")");
     clear();
   }
 

@@ -19,7 +19,7 @@ outputs:
     description: ''
     value: ${{ steps.configure_ccache_dir_on_host.outputs.HOST_CCACHE_DIR }}
 
-description: ''
+description: 'Restore and configure a ccache instance for the calling build job.'
 
 runs:
   using: "composite"
@@ -37,7 +37,7 @@ runs:
       shell: bash
       id: configure_ccache_dir_on_host
       run: |
-        
+
         HOST_CCACHE_DIR="$(ccache --get-config cache_dir)"
         mkdir -p $HOST_CCACHE_DIR
         echo "HOST_CCACHE_DIR=$HOST_CCACHE_DIR" | tee -a $GITHUB_OUTPUT
@@ -46,7 +46,7 @@ runs:
       if: contains(inputs.MATRIX_OS, 'ubuntu') || contains(inputs.MATRIX_OS, 'macos')
       shell: bash
       run: |
-        
+
         if [ x"${{ contains(inputs.MATRIX_OS, 'macos') }}" == x"true" ]; then
           echo "/usr/local/opt/ccache/libexec:/opt/homebrew/opt/ccache/libexec" >> $GITHUB_PATH
         else
