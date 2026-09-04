@@ -86,7 +86,7 @@ def npu_sync(column, row, direction, channel, column_num=1, row_num=1, **kwargs)
 
 
 def npu_address_patch(addr, arg_idx, arg_plus, **kwargs):
-    return _npu_address_patch(addr, arg_idx, _as_i32(arg_plus), **kwargs)
+    return _npu_address_patch(addr, _as_i32(arg_plus), arg_idx=arg_idx, **kwargs)
 
 
 def npu_rtp_write(buffer, index, value, **kwargs):
