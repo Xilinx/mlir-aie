@@ -8,7 +8,7 @@
 
 // REQUIRES: chess
 
-// RUN: %aiecc --get-core-elfs --xchesscc -nv %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s -I%aie_runtime_lib%/test_lib/include %extraAieCcFlags% -L%aie_runtime_lib%/test_lib/lib -ltest_lib -o test.elf -- %S/test.cpp 2>&1 | FileCheck %s --check-prefix=XCHESSCC
+// RUN: %aiecc --get-core-elfs --xchesscc -nv %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s -I%aie_runtime_lib%/test_lib/include %extraAieCcFlags% -L%aie_runtime_lib%/test_lib/lib -ltest_lib -o simple_aie2_chess.elf -- %S/test.cpp 2>&1 | FileCheck %s --check-prefix=XCHESSCC
 
 // Note that llc determines the architecture from the llvm IR.
 // XCHESSCC-NOT: {{[^ ]*llc }}

@@ -8,10 +8,10 @@
 // REQUIRES: chess
 // REQUIRES: peano
 
-// Give each run private output/work dirs: Chess drops scratch and aiecc emits
-// per-core dirs into the output dir, so concurrent runs sharing a directory (as
-// the lit suite does) would clobber each other. The PDIs land in %t; the final
-// ls checks both are there.
+// Private output/work dirs for this test: Chess drops scratch and aiecc emits
+// per-core dirs into the output dir, so concurrent tests sharing a directory
+// (as the lit suite does) would clobber each other. Both runs below land their
+// PDI in this test's own %t; the final ls checks both are there.
 // RUN: %aiecc -v --xchesscc --xbridge --get-pdi --pdi-name=MlirAie0.pdi --output-dir=%t --tmpdir=%t.prj %s 2>&1 | FileCheck %s --check-prefix=XCHESSCC
 // RUN: %aiecc -v --get-pdi --pdi-name=MlirAie1.pdi --output-dir=%t --tmpdir=%t.prj %s 2>&1 | FileCheck %s --check-prefix=PEANO
 

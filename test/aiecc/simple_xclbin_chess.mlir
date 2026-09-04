@@ -8,7 +8,7 @@
 
 // REQUIRES: chess
 
-// RUN: %aiecc --xchesscc -nv --get-xclbin --get-npu-insts --xclbin-name=aie.xclbin --npu-insts-name=insts.txt %s 2>&1 | FileCheck %s --check-prefix=XCHESSCC
+// RUN: %aiecc --xchesscc -nv --get-xclbin --get-npu-insts --xclbin-name=aie_chess.xclbin --npu-insts-name=insts_chess.txt %s 2>&1 | FileCheck %s --check-prefix=XCHESSCC
 
 // Note that llc determines the architecture from the llvm IR.
 // bootgen runs in-process (no exec line); the xclbin packaging step (xclbinutil)
