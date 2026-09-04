@@ -41,16 +41,14 @@ def _probe_xrt() -> bool:
     """
     global _has_xrt
     if _has_xrt is None:
-        try:
-            import pyxrt  # noqa: F401  # pyright: ignore[reportMissingImports]
+        from .probe import check_bindings
 
-            _has_xrt = True
-        except ImportError as e:
+        check = check_bindings()
+        _has_xrt = bool(check.ok)
+        if not _has_xrt:
             _logger.warning(
-                "Failed to import PyXRT: %s, proceeding without runtime libraries.",
-                e,
+                "Proceeding without NPU runtime libraries: %s", check.detail
             )
-            _has_xrt = False
     return _has_xrt
 
 
