@@ -56,11 +56,10 @@ void matmul_vectorized_different_datatypes(bfloat16 *__restrict pA,
   // sizeof(bfp16ebs8) does not track the stream's per-push byte stride
   // (llvm-aie#1232); size the scratch buffer from memory_bytes() instead.
   using ConvertedABlock = aie::block_vector<bfp16ebs8, 64>;
-  alignas(aie::vector_decl_align) uint8_t
-      converted_A_storage[(M / 8 / 2) * (K / 8) * 2 *
-                           ConvertedABlock::memory_bytes()];
-  bfp16ebs8 *converted_A =
-      reinterpret_cast<bfp16ebs8 *>(converted_A_storage);
+  alignas(aie::vector_decl_align)
+      uint8_t converted_A_storage[(M / 8 / 2) * (K / 8) * 2 *
+                                  ConvertedABlock::memory_bytes()];
+  bfp16ebs8 *converted_A = reinterpret_cast<bfp16ebs8 *>(converted_A_storage);
   aie::block_vector_output_buffer_stream<bfp16ebs8, 64> pA_bfp16_stream(
       converted_A);
   pA_bfp16_stream.seek(0);
