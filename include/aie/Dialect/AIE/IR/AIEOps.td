@@ -916,6 +916,8 @@ def AIE_DMABDPACKETOp: AIE_Op<"dma_bd_packet", []> {
   let extraClassDeclaration = [{
     int getPacketID() { return getPacketId(); }
   }];
+
+  let hasVerifier = 1;
 }
 
 def AIE_DMABDOp: AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {

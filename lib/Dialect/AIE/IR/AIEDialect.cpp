@@ -3333,6 +3333,18 @@ LogicalResult DMABDOp::verify() {
   return success();
 }
 
+LogicalResult DMABDPACKETOp::verify() {
+  // Both fields read back signed (AIEI32Attr), so the range is two-sided even
+  // though the hardware fields are unsigned: aie.dma_bd_packet(-1, -1) parses.
+  if (getPacketType() < 0 || getPacketType() > 7)
+    return emitOpError("Packet type field can only hold 3 bits.");
+  if (getPacketID() < 0 ||
+      getPacketID() >
+          static_cast<int32_t>(getTargetModel(getOperation()).getMaxPacketId()))
+    return emitOpError("Packet ID field can only hold 5 bits.");
+  return success();
+}
+
 uint32_t DMABDOp::getAxcacheOrDefault() {
   return getAxcache().value_or(
       getTargetModel(getOperation()).getDefaultAxCache());
