@@ -184,6 +184,14 @@ def BDPadLayoutArrayAttr : ArrayOfAttr<
     /*eltName*/BDPadLayoutAttr.cppClassName
 >;
 
+// Per-segment, per-dimension padding for an objectFifo DMA endpoint.
+def BDPadLayoutArrayArrayAttr
+    : ArrayOfAttr<
+          /*dialect*/ AIE_Dialect,
+          /*attrName*/ "BDPadLayoutArrayArray",
+          /*attrMnemonic*/ "bd_pad_layout_array_array",
+          /*eltName*/ BDPadLayoutArrayAttr.cppClassName>;
+
 def PacketInfoAttr : AttrDef<AIE_Dialect, "PacketInfo", []> {
   let mnemonic = "packet_info";
   let summary = [{
@@ -214,8 +222,72 @@ def BDIterationAttr : AttrDef<AIE_Dialect, "BDIteration", []> {
   let assemblyFormat = "`<` struct(params) `>`";
 }
 
+def TraceBufferAttr : AttrDef<AIE_Dialect, "TraceBuffer", []> {
+  let mnemonic = "trace_buffer";
+  let summary = [{
+    The runtime sequence argument that receives trace data;
+  }];
+
+  let description = [{
+    `-aie-insert-trace-flows` sets this on every traced `aie.runtime_sequence`.
+    `-aie-fuse-trace-buffers` reads it to find the argument. That pass grows the
+    argument to cover the sequences this one calls, then writes the attribute
+    back.
+
+    `arg_index` indexes the block arguments of the sequence body. `offset` and
+    `size` bound the bytes that the trace DMAs write inside that argument.
+    `dedicated` is false when the trace shares an output buffer, which
+    `aie.trace.host_config` requests with `reuse_output_buffer`.
+
+    Write this attribute by hand to point tracing at an argument of your choice.
+    The passes and the Python trace parser both read it.
+  }];
+
+  let parameters = (ins "uint32_t":$arg_index, "uint32_t":$offset,
+      "uint32_t":$size, "bool":$dedicated);
+
+  let assemblyFormat = "`<` struct(params) `>`";
+}
+
+def TraceSliceAttr : AttrDef<AIE_Dialect, "TraceSlice", []> {
+  let mnemonic = "trace_slice";
+  let summary = [{
+    One design's byte range inside a shared trace buffer;
+  }];
+
+  let description = [{
+    `-aie-fuse-trace-buffers` records one of these per `aiex.run` call site, in
+    buffer order, on the calling `aie.runtime_sequence`. A host reads them to
+    attribute each byte range of the trace buffer to the design that wrote it.
+
+    `device` and `sequence` name the `aie.device` and the
+    `aie.runtime_sequence` that the call site ran.
+  }];
+
+  let parameters = (ins StringRefParameter<"device symbol name">:$device,
+      StringRefParameter<"runtime sequence symbol name">:$sequence,
+      "uint32_t":$offset, "uint32_t":$size);
+
+  let assemblyFormat = "`<` struct(params) `>`";
+}
+
+def TraceSliceArrayAttr
+    : TypedArrayAttrBase<TraceSliceAttr, "array of trace buffer slices">;
+
 def InitValuesArrayAttr
   : OptionalAttr<TypedArrayAttrBase<ElementsAttr, "array of ElementsAttr">>;
+
+//===----------------------------------------------------------------------===//
+// ObjectFifo pools and endpoints
+//===----------------------------------------------------------------------===//
+
+def ObjectFifoRole
+    : I32EnumAttr<"ObjectFifoRole",
+                  "What an objectFifo endpoint does to its pool's buffers",
+                  [I32EnumAttrCase<"Fill", 0, "fills">,
+                   I32EnumAttrCase<"Drain", 1, "drains">]> {
+  let cppNamespace = "xilinx::AIE";
+}
 
 //===----------------------------------------------------------------------===//
 // Generated AIE event enumerations

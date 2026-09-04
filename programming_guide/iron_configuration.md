@@ -154,17 +154,16 @@ full step-by-step flow.
 
 ### Library discovery
 
-`libhrx.so` is located by probing standard install locations; these variables
-are high-priority hints (checked in this order), mirroring `FindHRX.cmake`:
+Python locates `libhrx` in this order (filesystem only — no `dlopen`). Explicit
+`HRX_*` hints match `FindHRX.cmake`; CMake does **not** search site-packages.
 
-| Variable | Meaning |
-|----------|---------|
-| `HRX_LIBHRX` | Explicit full path to `libhrx.so`. |
-| `LIBHRX_DIR` | Directory containing `libhrx.so` (e.g. set by `activate_env.sh`). |
+| Source | Meaning |
+|--------|---------|
+| `HRX_LIBHRX` | Explicit full path to `libhrx.so` / `hrx.dll`. |
+| `LIBHRX_DIR` | Directory containing the library (e.g. set by `activate_env.sh`). |
+| pip site-packages | A package that ships `lib/libhrx.so*` or `bin/hrx.dll`. Filesystem only — the package is not imported. |
 | `HRX_DIR` | HRX install prefix (`$HRX_DIR/lib/libhrx.so`, `$HRX_DIR/include/...`). |
-
-If none are set, standard locations (a sibling `hrx` checkout, `$HOME/hrx`,
-`/opt/hrx`, `/usr/local/hrx`, and the loader's `LD_LIBRARY_PATH`) are tried.
+| sibling / `FindHRX` roots | A sibling `hrx` checkout, `$HOME/hrx`, `/opt/hrx`, `/usr/local/hrx`, then the loader's search path. |
 
 ### Runtime behavior
 

@@ -5,14 +5,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-//┌─────────────────────────────────┐      
-//│Input:                           │      
-//│[                                │      
-//│[1, 1, 1, 1, ..., 1, 1, 1, 1],   │      
-//│[0, 0, 0, 0, ..., 0, 0, 0, 0],   │      
-//│ .............                   │      
-//│]                                │      
-//└─────────────────────────────────┘      
+//┌─────────────────────────────────┐
+//│Input:                           │
+//│[                                │
+//│[1, 1, 1, 1, ..., 1, 1, 1, 1],   │
+//│[0, 0, 0, 0, ..., 0, 0, 0, 0],   │
+//│ .............                   │
+//│]                                │
+//└─────────────────────────────────┘
 //┌───────────────────────────────────────┐
 //│Output:                                │
 //│[                                      │
@@ -38,15 +38,15 @@ module {
         %mem_tile_0_1 = aie.tile(0, 1)
         %tile_0_2 = aie.tile(0, 2)
 
-        aie.objectfifo @mem_In(%shim_noc_tile_0_0, {%mem_tile_0_1}, 1 : i32) : !aie.objectfifo<memref<16xi32>> 
-        aie.objectfifo @act_In(%mem_tile_0_1, {%tile_0_2}, 1 : i32) : !aie.objectfifo<memref<16xi32>> 
+        aie.objectfifo @mem_In(%shim_noc_tile_0_0, {%mem_tile_0_1}, 1 : i32) : !aie.objectfifo<memref<16xi32>>
+        aie.objectfifo @act_In(%mem_tile_0_1, {%tile_0_2}, 1 : i32) : !aie.objectfifo<memref<16xi32>>
         aie.objectfifo.link [@mem_In] -> [@act_In]([] [])
-        aie.objectfifo @out(%tile_0_2, {%mem_tile_0_1}, 1 : i32) : !aie.objectfifo<memref<16xi32>> 
-        aie.objectfifo @mem_out(%mem_tile_0_1, {%shim_noc_tile_0_0}, 1 : i32) : !aie.objectfifo<memref<16xi32>> 
+        aie.objectfifo @out(%tile_0_2, {%mem_tile_0_1}, 1 : i32) : !aie.objectfifo<memref<16xi32>>
+        aie.objectfifo @mem_out(%mem_tile_0_1, {%shim_noc_tile_0_0}, 1 : i32) : !aie.objectfifo<memref<16xi32>>
         aie.objectfifo.link [@out] -> [@mem_out]([] [])
 
         // Buffers used to hold runtime parameters
-        %rtp2 = aie.buffer(%tile_0_2) {sym_name = "rtp2"} : memref<16xi32> 
+        %rtp2 = aie.buffer(%tile_0_2) {sym_name = "rtp2"} : memref<16xi32>
 
         %core_0_2 = aie.core(%tile_0_2) {
             %c0 = arith.constant 0 : index
@@ -54,16 +54,14 @@ module {
             %c1 = arith.constant 1 : index
 
             scf.for %arg0 = %c0 to %cmax step %c1 {
-                %Out = aie.objectfifo.acquire @out(Produce, 1) : !aie.objectfifosubview<memref<16xi32>>
-                %elemout = aie.objectfifo.subview.access %Out[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+                %elemout = aie.objectfifo.acquire @out(Produce, 1) : memref<16xi32>
 
                 func.call @zero(%elemout) : (memref<16xi32>) -> ()
 
                 //A simple “do-while” loop can be represented by reducing the “after” block to a simple forwarder.
                 scf.while (%arg1 = %c1) : (index) -> (index) {
 
-                    %In = aie.objectfifo.acquire @act_In(Consume, 1) : !aie.objectfifosubview<memref<16xi32>>
-                    %elemin = aie.objectfifo.subview.access %In[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+                    %elemin = aie.objectfifo.acquire @act_In(Consume, 1) : memref<16xi32>
 
                     func.call @sum(%elemin, %elemout) : (memref<16xi32>, memref<16xi32>) -> ()
 
@@ -150,4 +148,3 @@ module {
         }
     }
 }
-

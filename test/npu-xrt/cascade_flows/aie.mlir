@@ -15,7 +15,7 @@ module {
 
     aie.cascade_flow(%t03, %t13)
     aie.cascade_flow(%t13, %t12)
-  
+
     aie.objectfifo @objFifo_in0(%t00, {%t01}, 1 : i32) : !aie.objectfifo<memref<64xi32>>
     aie.objectfifo @objFifo_in1(%t01, {%t03}, 1 : i32) : !aie.objectfifo<memref<64xi32>>
     aie.objectfifo.link [@objFifo_in0] -> [@objFifo_in1] ([] [])
@@ -29,7 +29,7 @@ module {
     func.func private @extern_kernel3(%b: memref<64xi32>, %size: i32) -> () attributes {link_with = "kernel3.o"}
 
     %core02 = aie.core(%t03) {
-      %subview0 = aie.objectfifo.acquire @objFifo_in1(Consume, 1) : !aie.objectfifosubview<memref<64xi32>>
+      %subview0_obj0 = aie.objectfifo.acquire @objFifo_in1(Consume, 1) : memref<64xi32>
 
       func.call @extern_kernel1() : () -> ()
 
@@ -47,8 +47,7 @@ module {
     %core12 = aie.core(%t12) {
       %size = arith.constant 64 : i32
 
-      %subview1 = aie.objectfifo.acquire @objFifo_out1(Produce, 1) : !aie.objectfifosubview<memref<64xi32>>
-      %elem1 = aie.objectfifo.subview.access %subview1[0] : !aie.objectfifosubview<memref<64xi32>> -> memref<64xi32>
+      %elem1 = aie.objectfifo.acquire @objFifo_out1(Produce, 1) : memref<64xi32>
 
       func.call @extern_kernel3(%elem1, %size) : (memref<64xi32>, i32) -> ()
 

@@ -329,6 +329,15 @@ def compile_cxx_core_function(
             "-D__AIE_API_AIE_ADF_HPP__",
             f"--target={target_arch}-none-unknown-elf",
         ]
+        if not inline:
+            # -fstack-size-section matches -stack-size-section on the llc
+            # invocation of aiecc for a core object, so a kernel object carries
+            # the same stack accounting. -ffunction-sections and
+            # -fdata-sections give each symbol its own section, which the
+            # attribution in StackSizeAnalysis.h needs.
+            cmd.extend(
+                ["-ffunction-sections", "-fdata-sections", "-fstack-size-section"]
+            )
 
     # Add include directories
     if include_dirs:
@@ -594,9 +603,8 @@ def compile_external_kernel(func, kernel_dir, target_arch):
             _rename_symbol_in_object(output_file, func._original_name, func._name)
         return
 
-    original_name = getattr(func, "_original_name", func._name)
-
     if func._source_string is not None:
+        original_name = getattr(func, "_original_name", func._name)
         source_file = os.path.join(kernel_dir, f"{original_name}.cc")
         with open(source_file, "w") as f:
             f.write(func._source_string)
@@ -616,13 +624,21 @@ def compile_external_kernel(func, kernel_dir, target_arch):
         )
 
     elif func._source_file is not None:
-        source_file = os.path.join(kernel_dir, f"{original_name}.cc")
+        # Named after the real source basename, not the entry point: entry
+        # points sharing one object_file_name compile only on the first
+        # visit, and `_instances` iteration order (a content-hashed set)
+        # shifts whenever any registered kernel's content changes.
+        source_file = os.path.join(kernel_dir, os.path.basename(func._source_file))
         # Check if source file exists before copying
         if not os.path.exists(func._source_file):
             raise FileNotFoundError(
                 f"ExternalFunction '{func._name}': source file not found: {func._source_file}"
             )
-        shutil.copy2(func._source_file, source_file)
+        if os.path.abspath(source_file) != os.path.abspath(func._source_file):
+            try:
+                shutil.copy2(func._source_file, source_file)
+            except shutil.SameFileError:
+                pass
         # Include the original source file's directory so relative includes
         # (e.g. "../aie_kernel_utils.h") still resolve after the file is
         # copied into kernel_dir.

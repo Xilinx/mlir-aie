@@ -41,7 +41,7 @@ jobs:
       pull-requests: write
 
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           fetch-depth: 2
           submodules: "true"
@@ -51,7 +51,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ninja-build clang libelf-dev
 
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
           python-version: '3.12'
           cache: 'pip'
@@ -207,6 +207,7 @@ jobs:
             lib/Dialect/AIE/Transforms/AIECanonicalizeDevice.cpp
             lib/Dialect/AIE/Transforms/AIECoreToStandard.cpp
             lib/Dialect/AIE/Transforms/AIECreatePathFindFlows.cpp
+            lib/Dialect/AIE/Transforms/AIEDMAChannelAnalysis.cpp
             lib/Dialect/AIE/Transforms/AIEFindFlows.cpp
             lib/Dialect/AIE/Transforms/AIEGenerateColumnControlOverlay.cpp
             lib/Dialect/AIE/Transforms/AIEHoistVectorTransferPointers.cpp
@@ -214,8 +215,15 @@ jobs:
             lib/Dialect/AIE/Transforms/AIELocalizeLocks.cpp
             lib/Dialect/AIE/Transforms/AIELowerCascadeFlows.cpp
             lib/Dialect/AIE/Transforms/AIENormalizeAddressSpaces.cpp
+            lib/Dialect/AIE/Transforms/AIEObjectFifoAllocate.cpp
+            lib/Dialect/AIE/Transforms/AIEObjectFifoErasePools.cpp
             lib/Dialect/AIE/Transforms/AIEObjectFifoLiveness.cpp
-            lib/Dialect/AIE/Transforms/AIEObjectFifoStatefulTransform.cpp
+            lib/Dialect/AIE/Transforms/AIEObjectFifoLowerCores.cpp
+            lib/Dialect/AIE/Transforms/AIEObjectFifoLowerDMAs.cpp
+            lib/Dialect/AIE/Transforms/AIEObjectFifoPipeline.cpp
+            lib/Dialect/AIE/Transforms/AIEObjectFifoSplit.cpp
+            lib/Dialect/AIE/Transforms/AIEObjectFifoUnroll.cpp
+            lib/Dialect/AIE/Transforms/AIEObjectFifoVerify.cpp
             lib/Dialect/AIE/Transforms/AIEPathFinder.cpp
             lib/Dialect/AIE/Transforms/AIEPlacer.cpp
             lib/Dialect/AIE/Transforms/AIEPlaceTiles.cpp
@@ -328,7 +336,7 @@ jobs:
 
     steps:
       - name: Get the project repository
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           fetch-depth: 2
           submodules: "true"
@@ -339,7 +347,7 @@ jobs:
           clangformat: 20.1.0
 
       - name: Setup Python env
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
           python-version: '3.12'
           cache: 'pip'
@@ -364,6 +372,9 @@ jobs:
 
       - name: Check filename case conflicts
         run: pre-commit run check-case-conflict --all-files --color never
+
+      - name: Lint workflow files (actionlint)
+        run: pre-commit run actionlint --all-files --color never
 
       - name: Run git-clang-format
         id: git-clang-format
@@ -416,10 +427,10 @@ jobs:
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Setup Python env
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
           python-version: '3.12'
 
@@ -442,7 +453,7 @@ jobs:
 
     steps:
       - name: Get the project repository
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       # docs/programming_guide and docs/aiecc are gitignored symlinks into the
       # repo tree (see generateDocs.yml), recreated here so the nav's
@@ -453,7 +464,7 @@ jobs:
       - name: Link aiecc docs into docs tree
         run: ln -s ../tools/aiecc docs/aiecc
 
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
           python-version: '3.12'
           cache: 'pip'
