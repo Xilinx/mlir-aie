@@ -628,6 +628,7 @@ class object_fifo(ObjectFifoCreateOp):
         consumer_datatype=None,
         packet=None,
         packet_id=None,
+        stream_len_decoupled=None,
     ):
         self.datatype = try_convert_np_type_to_mlir_type(datatype)
         self.consumer_datatype = (
@@ -670,6 +671,7 @@ class object_fifo(ObjectFifoCreateOp):
             iter_count=iter_count,
             packet=packet,
             packet_id=packet_id,
+            stream_len_decoupled=stream_len_decoupled,
         )
         if consumerElemType is not None:
             self.attributes["consumerElemType"] = consumerElemType
