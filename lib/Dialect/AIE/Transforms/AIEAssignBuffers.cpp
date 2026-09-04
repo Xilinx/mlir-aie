@@ -108,6 +108,7 @@ static bool checkAndPrintBufferOverlap(SmallVector<BufferOp> &sortedBuffers,
     // to be present for the exemption, or two UNGROUPED buffers would compare
     // equal as absent and exempt every ordinary overlap.
     BufferOp blocker;
+    int64_t blockerAddr = 0;
     int64_t blockerEnd = 0;
     for (size_t j = 0; j < i; ++j) {
       auto other = sortedBuffers[j];
@@ -119,6 +120,7 @@ static bool checkAndPrintBufferOverlap(SmallVector<BufferOp> &sortedBuffers,
       assert(otherAddrOpt.has_value() && "buffer must have address assigned");
       int64_t end = *otherAddrOpt + other.getAllocationSize();
       if (end > blockerEnd) {
+        blockerAddr = *otherAddrOpt;
         blockerEnd = end;
         blocker = other;
       }
@@ -127,7 +129,7 @@ static bool checkAndPrintBufferOverlap(SmallVector<BufferOp> &sortedBuffers,
       cur.emitOpError("buffer '")
           << cur.name() << "' at address 0x" << llvm::utohexstr(curAddr)
           << " overlaps with '" << blocker.name() << "' at address 0x"
-          << llvm::utohexstr(blocker.getAddress().value())
+          << llvm::utohexstr(blockerAddr)
           << " (size: " << blocker.getAllocationSize() << " bytes)";
       return false;
     }
@@ -234,9 +236,9 @@ static SmallVector<AllocUnit> buildAllocUnits(ArrayRef<BufferOp> buffers) {
       extent += member.getAllocationSize();
     u.size = std::max(u.size, extent);
   }
-  std::stable_sort(
-      units.begin(), units.end(),
-      [](const AllocUnit &a, const AllocUnit &b) { return a.size > b.size; });
+  llvm::stable_sort(units, [](const AllocUnit &a, const AllocUnit &b) {
+    return a.size > b.size;
+  });
   return units;
 }
 
@@ -426,10 +428,12 @@ static bool basicAllocation(TileOp tile) {
                                                   maxVecAlignBitWidth));
     if (unit.aligned)
       address = getAlignedAddress(address, unitAlignBits);
-    while (current_alloc != allocated_buffers.end() &&
-           address + unit.size > current_alloc->getAddress().value()) {
-      address = current_alloc->getAddress().value() +
-                current_alloc->getAllocationSize();
+    while (current_alloc != allocated_buffers.end()) {
+      auto allocAddr = current_alloc->getAddress();
+      assert(allocAddr.has_value() && "buffer must have address assigned");
+      if (address + unit.size <= *allocAddr)
+        break;
+      address = *allocAddr + current_alloc->getAllocationSize();
       if (unit.aligned)
         address = getAlignedAddress(address, unitAlignBits);
       current_alloc++;
@@ -983,7 +987,13 @@ struct AIEAssignBufferAddressesPass
       if (!tileAllocationScheme)
         tileAllocationScheme = clAllocScheme;
 
-      if (tileAllocationScheme == "basic-sequential") {
+      // Only basic-sequential implements overlays, so a tile carrying one
+      // takes that path rather than trying bank-aware first and silently
+      // dropping them.
+      bool needsBasic = tileAllocationScheme == "basic-sequential" ||
+                        (tileAllocationScheme != "bank-aware" &&
+                         tileHasAllocGroup(device, tile));
+      if (needsBasic) {
         if (!basicAllocation(tile)) {
           tile.emitOpError("Basic sequential allocation failed.");
           return signalPassFailure();
@@ -997,13 +1007,6 @@ struct AIEAssignBufferAddressesPass
         }
         if (!simpleBankAwareAllocation(tile)) {
           tile.emitOpError("Bank-aware allocation failed.");
-          return signalPassFailure();
-        }
-      } else if (tileHasAllocGroup(device, tile)) {
-        // Only basic-sequential implements overlays, so do not try bank-aware
-        // first and silently drop them.
-        if (!basicAllocation(tile)) {
-          tile.emitOpError("Basic sequential allocation failed.");
           return signalPassFailure();
         }
       } else {
