@@ -2446,6 +2446,48 @@ LogicalResult CoreOp::verify() {
                  << "' appears in both 'link_files' and 'link_merge_files'; an "
                     "artifact must be either merged or linked, not both";
     }
+  // data_origin and data_length describe one region, so the allocator records
+  // both or neither.
+  auto originAttr = getDataOrigin();
+  auto lengthAttr = getDataLength();
+  if (originAttr.has_value() != lengthAttr.has_value())
+    return emitOpError("'data_origin' and 'data_length' must be set together; "
+                       "they are one region recorded by the buffer allocator");
+  if (originAttr && lengthAttr) {
+    int64_t origin = *originAttr;
+    int64_t length = *lengthAttr;
+    int64_t stackSize = getEffectiveStackSize();
+    // A zero-length region spans no bytes, so it has no placement to check.
+    if (length > 0) {
+      if (origin < stackSize)
+        return emitOpError("data region at 0x")
+               << llvm::utohexstr(origin) << " starts below the stack ("
+               << stackSize << " bytes)";
+      const auto &targetModel = getTargetModel(*this);
+      int64_t localMem = targetModel.getLocalMemorySize();
+      if (origin + length > localMem)
+        return emitOpError("data region 0x")
+               << llvm::utohexstr(origin) << "-0x"
+               << llvm::utohexstr(origin + length - 1)
+               << " runs past the end of this tile's memory (" << localMem
+               << " bytes total)";
+      // The linker starts `.data` at a multiple of its strongest section
+      // alignment, so an unaligned origin loses the difference to padding and
+      // the region holds less than `length` states. Both producers, the
+      // allocator and AIETargetLdScript, align the origin, so an unaligned
+      // value here is hand-written or stale.
+      int64_t alignBytes = std::max<int64_t>(
+          targetModel.getComputeTileMaxVectorAlignBits() / 8, 1);
+      if (origin % alignBytes != 0)
+        return emitOpError("data region at 0x")
+               << llvm::utohexstr(origin) << " is not aligned to " << alignBytes
+               << " bytes, so the linker would lose the start of it to padding";
+    }
+    if (auto reserved = getReservedDataSize(); reserved && length < *reserved)
+      return emitOpError("granted data region is ")
+             << length << " bytes, smaller than the requested "
+             << "reserved_data_size of " << *reserved << " bytes";
+  }
   // Checked last so it does not pre-empt the diagnostics above on an op with
   // more than one defect.
   if (uint32_t stackSize = getEffectiveStackSize(),

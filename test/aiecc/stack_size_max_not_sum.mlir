@@ -6,8 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 // A core's stack requirement is the maximum over the paths of its roots, since
-// one call chain is live at a time. (reserved_data_size sums instead, because
-// all static data of the link_files objects coexists.) entry_a and entry_b
+// one call chain is live at a time. entry_a and entry_b
 // each hold a frame of about 4096 bytes, see the kernel source, and the core
 // body calls each one on its own, so the requirement is about one frame, 4
 // KiB. stack_size = 5000 sits between one frame and two, so the build stays

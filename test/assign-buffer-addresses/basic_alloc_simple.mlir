@@ -6,7 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --split-input-file --aie-assign-buffer-addresses="alloc-scheme=basic-sequential" %s | FileCheck %s
+// RUN: aie-opt --split-input-file --aie-prepare-buffers --aie-assign-buffer-addresses="alloc-scheme=basic-sequential" %s | FileCheck %s
 // CHECK:   {{.*}} aie.buffer({{.*}}) {address = 3104 : i32, sym_name = "a"} : memref<16xi8>
 // CHECK:   {{.*}} aie.buffer({{.*}}) {address = 1024 : i32, sym_name = "b"} : memref<512xi32>
 // CHECK:   {{.*}} aie.buffer({{.*}}) {address = 3072 : i32, sym_name = "c"} : memref<16xi16>
@@ -38,6 +38,9 @@ module @test {
 
 module @test_align{
 
+  // The stack size is spelled `stack_size`. Every buffer here is either pinned
+  // or placed above 8192, so the 1024-byte stack does not move any CHECK
+  // address above.
   aie.device(npu2){
       %0 = aie.tile(3, 3)
       %b1 = aie.buffer(%0) { address=4096 : i32,  sym_name = "a"} : memref<1024xi32>
@@ -47,7 +50,7 @@ module @test_align{
 
       aie.core(%0){
         aie.end
-      }{stackSize = 4096 : i32}
+      }{stack_size = 4096 : i32}
   }
 
 
@@ -65,7 +68,7 @@ module @test_align2{
 
     aie.core(%0) {
       aie.end
-    }{stackSize = 4096 : i32}
+    }{stack_size = 4096 : i32}
 
   }
 

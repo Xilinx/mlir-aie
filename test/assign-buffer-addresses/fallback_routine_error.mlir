@@ -11,10 +11,11 @@
 // CHECK:   %tile12 = aie.tile(1, 2)
 // CHECK: warning: Bank-aware allocation failed, trying basic sequential allocation.
 // CHECK: error: 'aie.tile' op allocated buffers exceeded available memory
-// CHECK: (no stack allocated)
 // CHECK:   %tile12 = aie.tile(1, 2)
 // CHECK: note: see current operation: %0 = "aie.tile"() <{col = 1 : i32, row = 2 : i32}> : () -> index
 // CHECK: MemoryMap:
+// The memory map prints a stack line whether or not a stack is allocated.
+// CHECK: (no stack allocated)
 // CHECK:   b : 0x0-0x1FFF (8192 bytes)
 // CHECK:   c : 0x2000-0x3FFF (8192 bytes)
 // CHECK:   a : 0x4000-0x4FFF (4096 bytes)

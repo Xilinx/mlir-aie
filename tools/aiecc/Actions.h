@@ -201,6 +201,7 @@ struct ShellCommand {
 
   std::string tool;
   std::vector<Part> parts;
+  std::function<void(llvm::StringRef, llvm::StringRef)> failureHint;
 
   inline static std::vector<std::string> searchPaths;
   inline static std::map<std::string, std::string> toolPathCache;
@@ -362,6 +363,16 @@ struct ShellCommand {
     return *this;
   }
 
+  // Called with the tool's captured output and the item's key when the tool
+  // fails, before that output is replayed. Use it for a condition the driver
+  // can explain better than the user can read out of the tool's own message,
+  // such as a linker that runs out of room in a region the driver chose.
+  ShellCommand &
+  explainFailure(std::function<void(llvm::StringRef, llvm::StringRef)> fn) {
+    failureHint = std::move(fn);
+    return *this;
+  }
+
   // Uniform entry: takes any number of input Items (in bundle declaration
   // order) followed by the Item<File> output. Each input/value part consumes
   // the next source in order.
@@ -410,8 +421,8 @@ private:
     std::string outputFile =
         (llvm::Twine(dir) + "/" + llvm::sys::path::filename(out.filePath))
             .str();
-    if (mlir::failed(
-            runResolved(std::move(resolved), sources, outputFile, dir)))
+    if (mlir::failed(runResolved(std::move(resolved), sources, outputFile, dir,
+                                 out.key)))
       return mlir::failure();
     out.filePath = outputFile;
     out.value = Directory{std::string(dir)};
@@ -434,7 +445,7 @@ private:
       resolved = tool;
     }
     if (mlir::failed(runResolved(std::move(resolved), sources, out.filePath,
-                                 /*outputDir=*/"")))
+                                 /*outputDirPath=*/"", out.key)))
       return mlir::failure();
     out.value = File{};
     return mlir::success();
@@ -443,7 +454,8 @@ private:
   mlir::LogicalResult runResolved(std::string resolved,
                                   llvm::ArrayRef<const ItemBase *> sources,
                                   llvm::StringRef outputFile,
-                                  llvm::StringRef outputDirPath) const {
+                                  llvm::StringRef outputDirPath,
+                                  llvm::StringRef key) const {
     std::vector<std::string> cmd{std::move(resolved)};
     cmd.reserve(parts.size() + 2);
     size_t cursor = 0;
@@ -503,14 +515,16 @@ private:
     std::string errMsg;
     // Capture the tool's stdout+stderr into a temp file so routine chatter
     // stays hidden; replayed to stderr only on failure. Under --verbose the
-    // tool inherits stdout/stderr and prints normally.
+    // tool inherits stdout/stderr and prints live, except when a failure hint
+    // has to read that output. Such a command is captured either way and
+    // replayed in full under --verbose, which costs only the streaming.
     // Redirects are [stdin, stdout, stderr]; std::nullopt inherits, and
     // pointing stdout and stderr at the same path merges them.
     llvm::SmallString<128> logPath;
     int logFd = -1;
     std::optional<llvm::StringRef> capture;
-    if (!verbose && !llvm::sys::fs::createTemporaryFile("aiecc-tool", "log",
-                                                        logFd, logPath)) {
+    if ((!verbose || failureHint) && !llvm::sys::fs::createTemporaryFile(
+                                         "aiecc-tool", "log", logFd, logPath)) {
       // ExecuteAndWait opens the path itself, so close our handle.
       llvm::sys::Process::SafelyCloseFileDescriptor(logFd);
       capture = llvm::StringRef(logPath);
@@ -523,12 +537,17 @@ private:
     int rc = llvm::sys::ExecuteAndWait(cmd[0], argv, std::nullopt, redirectRef,
                                        0, 0, &errMsg);
     if (capture) {
-      if (rc != 0) {
+      // Verbose replays a successful run too, in place of the live output the
+      // capture suppressed.
+      if (rc != 0 || verbose) {
         // Move off the live --progress status line before the tool's output.
         if (progress)
           llvm::errs() << '\n';
-        if (auto buf = llvm::MemoryBuffer::getFile(logPath))
+        if (auto buf = llvm::MemoryBuffer::getFile(logPath)) {
           llvm::errs() << (*buf)->getBuffer();
+          if (rc != 0 && failureHint)
+            failureHint((*buf)->getBuffer(), key);
+        }
       }
       llvm::sys::fs::remove(logPath);
     }

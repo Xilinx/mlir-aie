@@ -675,6 +675,9 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
         return verifyStackSizeOverrides(out.value->get());
       });
 
+  // Everything a core needs before it can be compiled: objectFifo lowering
+  // (which creates buffers), buffer addresses, lock and BD ids, and the
+  // core-body lowerings.
   auto &withAddresses = withDefaultStackSize.map<ModRef>(
       "input_with_addresses.mlir",
       PassPipeline{
@@ -915,7 +918,33 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                   .arg("-Wl,--emit-relocs")
                   .arg("-Wl,--orphan-handling=error")
                   .input("-Wl,-T,")
-                  .output("-o"))
+                  .output("-o")
+                  .explainFailure([](llvm::StringRef log, llvm::StringRef key) {
+                    // The linker reports how far over a region is, but not
+                    // where that region came from, so name its source. The key
+                    // is `<device>_core_<col>_<row>`.
+                    if (log.contains("will not fit in region 'data'"))
+                      llvm::errs()
+                          << "aiecc: core " << key
+                          << ": its .data/.rodata/.bss exceed the `data` "
+                             "region of ldScripts_"
+                          << key
+                          << ".ld.script. That region is the largest gap "
+                             "between this core's stack and this tile's "
+                             "buffers. Shrink or move the tile's buffers, "
+                             "lower stack_size, or set reserved_data_size on "
+                             "the core to make the allocator reserve at least "
+                             "that many bytes.\n";
+                    if (log.contains("will not fit in region 'program'"))
+                      llvm::errs()
+                          << "aiecc: core " << key
+                          << ": its code exceeds the tile's program memory. "
+                             "That region covers all of the program memory, so "
+                             "only the code itself can shrink. Split the work "
+                             "across more cores, remove unused kernels from "
+                             "link_files, or build the core at a lower "
+                             "optimisation level.\n";
+                  }))
           .threadSafe();
 
   // Fresh per-core ELFs (Chess/xbridge or Peano). Cores that already carry an
@@ -971,8 +1000,8 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
 
   // NPU runtime-sequence lowering needs only the placed+routed `physical`
   // module, so feeding it keeps the instruction-sequence branch independent of
-  // per-core compilation. Two cases reference the compiled cores and so run on
-  // the ELF-patched `physicalWithElfs` module instead:
+  // per-core compilation. Three cases reference the compiled cores and so run
+  // on the ELF-patched `physicalWithElfs` module instead:
   //   * --expand-load-pdis references the compiled cores directly.
   //   * the transaction output embeds each core's compiled program:
   //     `convert-aie-to-transaction` reads each core's `elf_file` to emit a

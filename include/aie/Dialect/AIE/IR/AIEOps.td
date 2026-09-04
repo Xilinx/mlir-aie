@@ -380,6 +380,21 @@ def AIE_CoreOp
           // Absent when aiecc cannot measure the core.
           OptionalAttr<
               ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>>:$measured_stack_size,
+          // Optional floor on the contiguous run left free for the core's own
+          // .data, .rodata and .bss. Placement already maximizes that run, so
+          // set this only when the allocator cannot measure what the core
+          // needs, such as for an archive it cannot inspect. When absent, the
+          // allocator leaves the largest run it can and the linker reports
+          // whether that run holds the sections.
+          OptionalAttr<
+              ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>>:$reserved_data_size,
+          // Where the allocator placed that region, tile-relative, aligned to
+          // the alignment the linker starts .data at. At least
+          // reserved_data_size when one is set. AIETargetLdScript emits these
+          // as the `data` MEMORY region. Absent when the allocator has not run.
+          // Set both or neither.
+          OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>>:$data_origin,
+          OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>>:$data_length,
           // Deprecated: attach link_with to func.func declarations instead and
           // run aie-assign-core-link-files to populate link_files.
           OptionalAttr<StrAttr>:$link_with,
@@ -1655,6 +1670,11 @@ def AIE_BufferOp
       %buf = aie.buffer(%tile33) : memref<256xi64>
     ```
     This operation represents a buffer in tile (3, 3) of 256 elements, each a 64-bit integer.
+
+    `mem_bank` pins the buffer to one memory bank of that tile. The bank-aware
+    allocation scheme treats the pin as a hard constraint and reports an error
+    when the bank cannot hold the buffer. The basic-sequential scheme has no
+    notion of banks and ignores the pin.
   }];
 
   let arguments = (
