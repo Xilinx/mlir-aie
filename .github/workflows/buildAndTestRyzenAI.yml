@@ -203,12 +203,6 @@ jobs:
           # Set number of contexts to maintain in cache per process
           export XRT_CONTEXT_CACHE_SIZE=2
 
-          # gemm_asymmetric_tile_buffering chess builds peak ~8 GB RSS and
-          # ~9 min wall alone on 32 GB; they run serialized via lit's atb_chess
-          # group and need a longer timeout, so they get their own invocation.
-          GEMM=gemm_asymmetric_tile_buffering
-          ATB_LIT_OPTS="-j4 -sv --time-tests --timeout 1200 --show-unsupported --show-excluded"
-
           # run_suite <name> full|only-failed
           #   full        -- the suite's normal invocation
           #   only-failed -- restrict to RETRY_LIT_FILTER (retry of the failed suite)
@@ -219,21 +213,13 @@ jobs:
               concurrency) if [ "$2" = only-failed ]; then LIT_FILTER="$RETRY_LIT_FILTER" ninja check-aie-concurrency
                            else ninja check-aie-concurrency; fi ;;
               refs)        if [ "$2" = only-failed ]; then LIT_FILTER="$RETRY_LIT_FILTER" ninja check-reference-designs
-                           else LIT_FILTER_OUT="$GEMM" ninja check-reference-designs; fi ;;
+                           else ninja check-reference-designs; fi ;;
               guide)       if [ "$2" = only-failed ]; then LIT_FILTER="$RETRY_LIT_FILTER" ninja check-programming-guide
                            else ninja check-programming-guide; fi ;;
-              atb)         if [ "$2" = only-failed ]; then LIT_OPTS="$ATB_LIT_OPTS" LIT_FILTER="$RETRY_LIT_FILTER" ninja check-reference-designs
-                           else LIT_OPTS="$ATB_LIT_OPTS" LIT_FILTER="$GEMM" ninja check-reference-designs; fi ;;
             esac
           }
 
-          # gemm_asymmetric_tile_buffering reproduces a paper rather than gating
-          # a regression, and is ~6 min of an 18-24 min job that does not shrink
-          # on a bigger host. Nightly, plus test-ryzen-ai for on-demand runs.
           SUITES="check-aie concurrency refs guide"
-          if [ "$GITHUB_EVENT_NAME" = schedule ] || [ "$GITHUB_REF_NAME" = test-ryzen-ai ]; then
-            SUITES="$SUITES atb"
-          fi
 
           # Only treat FAILED_SUITE as valid if it EXACTLY names a known suite
           # (fixed-string match, not a glob) -- else force the full re-run path.
