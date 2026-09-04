@@ -5,7 +5,7 @@
 #
 ##===----------------------------------------------------------------------===##
 #
-# Four-way transpose demo (dma, dma_packet, shuffle, combined).  Pick
+# Five-way transpose demo (dma, dma_packet, shuffle, combined, dyn).  Pick
 # one via STRATEGY=...; per-strategy defaults for M / K / dtype-bytes
 # live in transposes.py's _DEFAULTS so `make run` Just Works for any
 # strategy.
@@ -42,6 +42,11 @@ ifeq (${STRATEGY},combined)
   K ?= 128
   DTYPE_BYTES ?= 4
   COMBINED_ARGS ?= -m 32 -n 32 --ss 8
+endif
+ifeq (${STRATEGY},dyn)
+  M ?= 48
+  K ?= 37
+  DTYPE_BYTES ?= 2
 endif
 
 aie_py_src = ${targetname}.py
