@@ -206,13 +206,14 @@ struct AIEObjectFifoSplitPass
                               ObjectFifoCreateOp from,
                               ArrayRef<std::pair<int64_t, int64_t>> extents,
                               bool holdsInitialContents,
-                              std::optional<int> repeatCount) {
+                              std::optional<int> repeatCount,
+                              bool streamLenDecoupled = false) {
     auto pool = ObjectFifoPoolOp::create(
         builder, loc, name, tile, depth, elemType, /*buffers=*/ArrayAttr(),
         /*locks=*/ArrayAttr(),
         repeatCount ? builder.getI32IntegerAttr(*repeatCount) : IntegerAttr(),
         from.getDisableSynchronization(),
-        from.getStreamLenDecoupled(),
+        streamLenDecoupled || from.getStreamLenDecoupled(),
         builder.getStringAttr(from.name().getValue()),
         holdsInitialContents ? from.getInitValuesAttr() : ArrayAttr());
     createSegments(pool, loc, extents);
@@ -313,8 +314,7 @@ struct AIEObjectFifoSplitPass
         builder, fifo.getLoc(), name, tile, (int)names.size(), elemType,
         builder.getArrayAttr(names),
         /*locks=*/ArrayAttr(), /*repeatCount=*/IntegerAttr(),
-        fifo.getDisableSynchronization(),
-        fifo.getStreamLenDecoupled(),
+        fifo.getDisableSynchronization(), fifo.getStreamLenDecoupled(),
         builder.getStringAttr(fifo.name().getValue()),
         /*initValues=*/ArrayAttr());
     createSegments(pool, fifo.getLoc(), {{0, elemType.getNumElements()}});
@@ -534,9 +534,19 @@ void AIEObjectFifoSplitPass::createLinkPools() {
                   : objectCountOn(device, *sharedTile, owner);
     }
 
-    auto pool = createPool(
-        linkOp.getLoc(), name, *sharedTile, depth, elemType, owner, extents,
-        /*holdsInitialContents=*/ownerIsOutput, linkOp.getRepeatCount());
+    // The pool is shared by both sides of the link, but `owner` is only one of
+    // them: a decoupled stream on the other side would be dropped here, and the
+    // shim allocation built from this pool would then reject its own transfer.
+    auto declaresDecoupled = [](ObjectFifoCreateOp fifo) {
+      return fifo.getStreamLenDecoupled();
+    };
+    bool streamLenDecoupled = llvm::any_of(ins, declaresDecoupled) ||
+                              llvm::any_of(outs, declaresDecoupled);
+
+    auto pool = createPool(linkOp.getLoc(), name, *sharedTile, depth, elemType,
+                           owner, extents,
+                           /*holdsInitialContents=*/ownerIsOutput,
+                           linkOp.getRepeatCount(), streamLenDecoupled);
     linkPoolOwner.insert(owner);
 
     SmallVector<int32_t> allSegments;
