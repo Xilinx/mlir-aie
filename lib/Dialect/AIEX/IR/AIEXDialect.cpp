@@ -1172,6 +1172,13 @@ AIEX::DMAConfigureTaskOp::canonicalize(AIEX::DMAConfigureTaskOp op,
 // caps the total at 4, which the MemTile's 4 ND dimensions already reach. Both
 // branches therefore land on the same uniform 4-dimension cap enforced later by
 // AIEDMATasksToNPU.
+//
+// The `iteration` attribute (## BD iteration, AIEOps.td) addresses that same
+// shared register directly, in true element values, instead of through a
+// hoisted dimension: a compile-time-constant BD honors it (rewriteSingleBD in
+// AIEDMATasksToNPU.cpp), so it costs one fewer ND dimension here rather than
+// being rejected outright. The dynamic BD-word encoder
+// (rewriteSingleBDDynamic) does not yet implement it.
 static LogicalResult
 verifyTaskBDDimensions(const AIE::AIETargetModel &targetModel, int col, int row,
                        Region &body) {
@@ -1186,20 +1193,37 @@ verifyTaskBDDimensions(const AIE::AIETargetModel &targetModel, int col, int row,
       result = failure();
       return;
     }
-    if (bd.getIteration()) {
-      // See aie.dma_bd's ## BD iteration doc in AIEOps.td.
-      bd.emitOpError() << "the iteration attribute is not supported on the "
-                          "runtime-sequence path; express iteration via the "
-                          "outermost sizes/strides dimension instead";
-      result = failure();
-      return;
+    auto iter = bd.getIteration();
+    if (iter) {
+      bool constBd = (!bd.getLen() || bd.getConstantLen().has_value()) &&
+                     (!bd.getOffset() || bd.getConstantOffset().has_value()) &&
+                     llvm::all_of(bd.getMixedSizes(),
+                                  [](OpFoldResult s) {
+                                    return getConstantIntValue(s).has_value();
+                                  }) &&
+                     llvm::all_of(bd.getMixedStrides(), [](OpFoldResult s) {
+                       return getConstantIntValue(s).has_value();
+                     });
+      if (!constBd) {
+        bd.emitOpError() << "the iteration attribute requires a "
+                            "compile-time-constant buffer descriptor on the "
+                            "runtime-sequence path; express iteration via "
+                            "the outermost sizes/strides dimension instead";
+        result = failure();
+        return;
+      }
     }
+    // The attribute claims the same slot a hoisted 4th ND dimension would
+    // otherwise use, so it leaves one fewer dimension free.
+    size_t thisMaxNDims = iter ? maxNDims - 1 : maxNDims;
     size_t numDims = bd.getMixedSizes().size();
-    if (numDims > maxNDims) {
-      bd.emitOpError() << "Cannot give more than " << std::to_string(maxNDims)
+    if (numDims > thisMaxNDims) {
+      bd.emitOpError() << "Cannot give more than "
+                       << std::to_string(thisMaxNDims)
                        << " dimensions for step sizes and wraps on this tile "
-                          "(got "
-                       << std::to_string(numDims) << " dimensions).";
+                       << (iter ? "when the iteration attribute is also set "
+                                : "")
+                       << "(got " << std::to_string(numDims) << " dimensions).";
       result = failure();
     }
   });

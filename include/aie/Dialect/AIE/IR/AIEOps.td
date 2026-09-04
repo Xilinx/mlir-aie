@@ -1056,8 +1056,11 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
 
     Do NOT copy an iteration number between the two ops: e.g. `size = 1` disables
     iteration here, but `iteration_size = 1` means *two* executions on
-    `writebd`. The `iteration` attribute is rejected on the other path; express
-    iteration there via the outermost `sizes`/`strides` dimension instead.
+    `writebd`. On the runtime-sequence path (`aiex.dma_configure_task`), the
+    attribute is honored for a compile-time-constant BD with a static `bd_id`;
+    any other BD on that path (runtime-valued, or a dynamic pool `bd_id`)
+    still rejects it, and must express iteration via the outermost
+    `sizes`/`strides` dimension instead.
   }];
 
   let arguments = (ins AnyRankedOrUnrankedMemRef:$buffer,

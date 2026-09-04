@@ -668,6 +668,20 @@ struct AIEDMATasksToNPUPass
       if (bd_op.getPadDimensions().has_value())
         return bd_op->emitOpError(
             "zero padding is not supported with runtime sizes/strides/len.");
+      // The verifier normally catches a runtime-valued BD with iteration set
+      // before this pass runs, but it is skipped on an unplaced tile; don't
+      // assume runtimeBdId is the cause just because this branch was taken.
+      if (bd_op.getIteration()) {
+        if (runtimeBdId)
+          return bd_op->emitOpError(
+              "the iteration attribute is not supported with a dynamic "
+              "(runtime-pool) bd_id; assign a static bd_id or express "
+              "iteration via the outermost sizes/strides dimension instead.");
+        return bd_op->emitOpError(
+            "the iteration attribute requires a compile-time-constant "
+            "buffer descriptor on the runtime-sequence path; express "
+            "iteration via the outermost sizes/strides dimension instead");
+      }
       // Realizability of the constant size/stride operands (runtime ones are
       // guarded at lowering by the shared encoder). Mixed lists are
       // outermost-first; the helper wants innermost-first.
@@ -737,6 +751,7 @@ struct AIEDMATasksToNPUPass
     auto d2stride = 0;
     auto iteration_size = 0;
     auto iteration_stride = 0;
+    auto iteration_current = 0;
 
     if (dims && !dims->empty()) {
       llvm::SmallVector<int64_t, 4> input_sizes =
@@ -864,6 +879,29 @@ struct AIEDMATasksToNPUPass
                << "        Padding is supported only on MemTiles.";
       }
     }
+    // The `iteration` attribute (## BD iteration, AIEOps.td) addresses the
+    // same register as the dim[3] hoist above, in true element values, and
+    // the verifier has confirmed dims leaves that slot free when this is
+    // set. Route it through the same encoder as a lone dimension 3 so the
+    // scaling/bias math cannot drift from the dims path, then override:
+    // dims never produced a real 4th dimension here (verified above), so
+    // there is nothing to combine with. Mirrors AIERT.cpp's
+    // getSize() > 1 / getStride() > 0 guard for the structural lowering of
+    // the same attribute.
+    if (auto iter = bd_op.getIteration();
+        iter && iter->getSize() > 1 && iter->getStride() > 0) {
+      llvm::SmallVector<int64_t, 4> iterInSizes = {1, 1, 1,
+                                                   (int64_t)iter->getSize()};
+      llvm::SmallVector<int64_t, 4> iterInStrides = {0, 0, 0,
+                                                     iter->getStride()};
+      llvm::SmallVector<int64_t, 4> iterSizes(4, 0), iterStrides(4, 0);
+      getHardwareStridesWraps(target_model, bd_op, buffer_type, iterInSizes,
+                              iterInStrides, iterSizes, iterStrides);
+      iteration_size = iterSizes[3];
+      iteration_stride = iterStrides[3];
+      iteration_current = static_cast<int32_t>(iter->getCurrent());
+    }
+
     auto fieldsOr = gatherBdTemplateFields(block, bd_op, tile, target_model,
                                            packet, outOfOrder);
     if (failed(fieldsOr))
@@ -881,7 +919,8 @@ struct AIEDMATasksToNPUPass
         /*d0_size=*/d0size, /*d0_stride=*/d0stride,
         /*d1_size=*/d1size, /*d1_stride=*/d1stride,
         /*d2_size=*/d2size, /*d2_stride=*/d2stride,
-        /*iteration_current=*/0, /*iteration_size=*/iteration_size,
+        /*iteration_current=*/iteration_current,
+        /*iteration_size=*/iteration_size,
         /*iteration_stride=*/iteration_stride,
         /*next_bd=*/f.next_bd_id,
         /*row=*/tile.getRow(),
