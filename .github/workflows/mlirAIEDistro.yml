@@ -167,7 +167,7 @@ jobs:
         echo "OSX_VERSION=$(sw_vers -productVersion)" | tee -a $GITHUB_ENV
 
     - name: Checkout actions
-      uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       with:
         # checkout just the actions in order to pick and choose
         # where the actual repo is checked out manually (see actions/setup_base).
@@ -368,7 +368,7 @@ jobs:
 
     - name: Generate build provenance attestation
       if: github.event_name != 'pull_request'
-      uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373  # v4.1.1
+      uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8  # v4.2.2
       with:
         subject-path: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}/wheelhouse/*.whl
 
@@ -486,7 +486,7 @@ jobs:
 
     steps:
       - name: Checkout reqs
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           sparse-checkout: |
             python/requirements.txt
@@ -559,7 +559,7 @@ jobs:
 
     steps:
       - name: Checkout rehearsal script + ci-tools.lock
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           sparse-checkout: |
             utils/mlir_aie_wheels/scripts/pypi_rehearsal.sh
