@@ -267,8 +267,13 @@ def argmax_ref(x, index_offset: int = 0):
     if np.dtype(x.dtype) == np.dtype(np.int32):
         finite, value_dtype = x.astype(np.int64), np.int32
     else:
-        finite = np.nan_to_num(x.astype(np.float64), nan=-np.inf)
         value_dtype = np.float32
+        finite = np.nan_to_num(x.astype(np.float64), nan=-np.inf)
+        if not np.isfinite(finite).any():
+            # Nothing ever compares greater, so the kernel keeps the value its
+            # accumulator started at and the index it started at.
+            lowest = np.asarray(np.finfo(value_dtype).min, dtype=value_dtype)
+            return np.array([lowest.view(np.int32), index_offset], dtype=np.int32)
     index = int(np.argmax(finite))
     value = np.asarray(x[index], dtype=value_dtype)
     return np.array([value.view(np.int32), index + index_offset], dtype=np.int32)
