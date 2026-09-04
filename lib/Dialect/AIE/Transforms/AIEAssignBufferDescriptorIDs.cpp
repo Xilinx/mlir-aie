@@ -24,8 +24,10 @@
 
 #include <cassert>
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <optional>
+#include <utility>
 
 namespace xilinx::AIE {
 #define GEN_PASS_DEF_AIEASSIGNBUFFERDESCRIPTORIDS
@@ -156,11 +158,31 @@ struct AIEAssignBufferDescriptorIDsPass
     auto memOps = llvm::to_vector_of<TileElement>(targetOp.getOps<MemOp>());
     llvm::append_range(memOps, targetOp.getOps<MemTileDMAOp>());
     llvm::append_range(memOps, targetOp.getOps<ShimDMAOp>());
+
+    // BD IDs are per-tile, but a tile can be described by more than one op
+    // here -- key the generator by tile, not by op, or two ops on the same
+    // tile hand out the same ids and silently collide.
+    std::map<std::pair<int, int>, BdIdGenerator> gens;
     for (TileElement memOp : memOps) {
       int col = memOp.getTileID().col;
       int row = memOp.getTileID().row;
 
-      BdIdGenerator gen(col, row, targetModel);
+      auto emplaced =
+          gens.try_emplace(std::make_pair(col, row), col, row, targetModel);
+      BdIdGenerator &gen = emplaced.first->second;
+      if (emplaced.second) {
+        for (TileOp tile : targetOp.getOps<TileOp>()) {
+          if (tile.getCol() != col || tile.getRow() != row)
+            continue;
+          if (auto reserved = tile->getAttrOfType<DenseI32ArrayAttr>(
+                  "aiex.reserved_bd_ids"))
+            for (int32_t bdId : reserved.asArrayRef()) {
+              auto id = static_cast<uint32_t>(bdId);
+              if (!gen.bdIdAlreadyAssigned(id))
+                gen.assignBdId(id);
+            }
+        }
+      }
       auto checkBdChannelAccessible = [&](DMABDOp bd, int bdId,
                                           int channelIndex) -> bool {
         if (targetModel.isBdChannelAccessible(col, row, bdId, channelIndex))
