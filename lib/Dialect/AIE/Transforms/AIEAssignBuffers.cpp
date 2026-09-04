@@ -467,13 +467,16 @@ static bool basicAllocation(TileOp tile) {
   // Compute the true high-water mark across *all* buffers (including
   // pre-allocated ones above the dynamic-allocation cursor) so that
   // checkAndPrintOverflow sees a correct memory bound.
+  //
+  // Every buffer, not just the last: the vector is sorted by start address,
+  // and buffers in different alloc_groups are allowed to overlap, so the
+  // greatest start address is no longer also the greatest end address.
   int64_t highWater = address;
-  if (!allBuffers_on_tile.empty()) {
-    auto &last = allBuffers_on_tile.back();
-    auto lastAddrOpt = last.getAddress();
-    assert(lastAddrOpt.has_value() && "buffer must have address assigned");
+  for (auto buffer : allBuffers_on_tile) {
+    auto addrOpt = buffer.getAddress();
+    assert(addrOpt.has_value() && "buffer must have address assigned");
     highWater =
-        std::max<int64_t>(highWater, *lastAddrOpt + last.getAllocationSize());
+        std::max<int64_t>(highWater, *addrOpt + buffer.getAllocationSize());
   }
 
   // Check if memory was exceeded or buffers overlap, and print debug info.
