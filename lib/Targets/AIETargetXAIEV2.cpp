@@ -434,6 +434,10 @@ xilinx::AIE::AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output,
   case AIEArch::AIE2p:
     device = AIE2p_device;
     break;
+  case AIEArch::AIE2ps:
+    // aie-rt defines no XAIE_DEV_GEN for this arch (xaiegbl_defs.h), so there
+    // is no generation constant to emit.
+    return targetOp.emitError("AIE2ps has no libxaie device generation");
   }
   output << "  ctx->XAieConfig->AieGen = " << device << ";\n";
   output << "  ctx->XAieConfig->BaseAddr = 0x20000000000;\n";
@@ -495,10 +499,14 @@ xilinx::AIE::AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output,
                  << "Expected lowered ELF file to be given as attribute "
                     "`elf_file` for this core. Compile cores first.";
         }
+        // XAie_LoadElf's __AIESIM__ branch parses "<elf>.map" for a stack
+        // line and returns without loading the ELF if that fails
+        // (xaie_elfloader.c:683-729). Chess writes that sidecar, the Peano
+        // path does not. XAIE_LOAD_ELF_ALL is the load it performs past it.
         output << "{\n"
-               << "AieRC RC = XAie_LoadElf(" << deviceInstRef << ", "
+               << "AieRC RC = XAie_LoadElfPartial(" << deviceInstRef << ", "
                << tileLocStr(col, row) << ", "
-               << "(const char*)\"" << fileName << "\",0);\n";
+               << "(const char*)\"" << fileName << "\", XAIE_LOAD_ELF_ALL);\n";
         output << "if (RC != XAIE_OK)\n"
                << "    __mlir_aie_verbose(fprintf(stderr, \"Failed to load elf "
                   "for Core[%d,%d], ret is %d\\n\", "
