@@ -424,10 +424,17 @@ def AIE_CoreOp
     The stack sits directly below the buffers with no clearance, so a `stack_size`
     below the core's use overwrites those buffers. `aiecc` measures the stack this
     core needs, writes it to the `measured_stack_size` attribute, and fails the build
-    when `stack_size` is smaller. `measured_stack_size` stays absent when `aiecc`
-    cannot measure the core. See `programming_guide/core_data_memory.md` for the
-    mechanism, the escape hatches (`--no-measure-stack-size`, `stack_size_override`)
-    and the diagnostics.
+    when `stack_size` is smaller. `aiecc` measures the whole live call chain. That
+    chain starts above the core body: the runtime enters at `__start` (crt0), which
+    calls `_main_init` (crt1), which calls the core body, which calls its kernels.
+    `_main_init` holds a frame that stays live across the whole chain. `aiecc`
+    measures the linked core, so the chain covers crt0 and crt1 too.
+    `measured_stack_size` stays absent when `aiecc` cannot measure the core. The
+    measurement reads the relocations of the linked core, which the Peano link
+    keeps and the chess/BCF link drops, so a `--xbridge` build leaves every core
+    unmeasured. See `programming_guide/core_data_memory.md` for the mechanism, the
+    escape hatches (`--no-measure-stack-size`, `stack_size_override`) and the
+    diagnostics.
 
     This op has an optional `dynamic_objfifo_lowering` attribute, to finely control whether the
     objectfifos in this core should be lowered using the dynamic runtime lowering.

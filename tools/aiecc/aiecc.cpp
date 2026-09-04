@@ -666,10 +666,13 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   // and the core, BCF and ldscript emitters.
   auto &withDefaultStackSize = traced.map<ModRef>(
       "default_stack_size.mlir",
-      [stackSize = defaultStackSize.getValue()](const ModRef &mod) -> ModRef {
-        if (stackSize <= 0)
-          return ModRef(mod.get().clone());
-        return populateDefaultStackSize(mod.get(), stackSize);
+      [stackSize = defaultStackSize.getValue()](
+          const Item<ModRef> &in, Item<ModRef> &out) -> mlir::LogicalResult {
+        out.value =
+            stackSize > 0
+                ? ModRef(populateDefaultStackSize(in.get().get(), stackSize))
+                : ModRef(in.get().get().clone());
+        return verifyStackSizeOverrides(out.value->get());
       });
 
   auto &withAddresses = withDefaultStackSize.map<ModRef>(
@@ -801,40 +804,6 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   EdgeWithTypedOutput<Directory> &objects =
       doUnified ? unifiedObjects : perCoreObjects;
 
-  // This edge runs after `objects`, which holds the compiled core body that
-  // the measurement reads, and before `physicalWithElfs`, so a stack size
-  // analysis failure ends the run before any output artifact is written.
-  EdgeWithTypedOutput<ModRef> *physicalWithMeasuredStackSizes = nullptr;
-  if (!noMeasureStackSize.getValue()) {
-    physicalWithMeasuredStackSizes =
-        &bundle(objects.out, physical.out)
-             .join<ModRef>(
-                 "measured_stack_sizes.mlir",
-                 [inputFile, workDirStr](
-                     const Node<Directory> &objs, const Node<ModRef> &physicalN,
-                     Item<ModRef> &out) -> mlir::LogicalResult {
-                   out.value = ModRef(physicalN.get().get().clone());
-                   llvm::StringMap<std::string> objByKey;
-                   for (const auto &item : objs.items)
-                     objByKey[item.key] = item.filePath;
-                   return checkStackSizeRequirements(
-                       out.value->get(), inputFile, workDirStr,
-                       [&](CoreOp coreOp) -> std::optional<int64_t> {
-                         auto it = objByKey.find(coreKey(coreOp));
-                         if (it == objByKey.end())
-                           return std::nullopt;
-                         auto tile = mlir::cast<TileOp>(
-                             coreOp.getTile().getDefiningOp());
-                         return xilinx::aiecc::measureFunctionFrameSize(
-                             it->second, xilinx::AIE::coreFrameSymbolName(
-                                             tile.getCol(), tile.getRow()));
-                       });
-                 });
-  }
-  EdgeWithTypedOutput<ModRef> &physicalForElfs =
-      physicalWithMeasuredStackSizes ? *physicalWithMeasuredStackSizes
-                                     : physical;
-
   // ld scripts (with link_files absolutized so INPUT() is cwd-invariant).
   auto &ldScripts = perCore.map<std::string>(
       "ldScripts_{0}.ld.script",
@@ -940,6 +909,10 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                   .arg(lldPath.empty() ? "-fuse-ld=lld" : "-fuse-ld=" + lldPath)
                   .input()
                   .arg("-Wl,--gc-sections")
+                  // The relocations carry the call graph that the stack-size
+                  // check walks. They are non-alloc, so they use no tile
+                  // memory.
+                  .arg("-Wl,--emit-relocs")
                   .arg("-Wl,--orphan-handling=error")
                   .input("-Wl,-T,")
                   .output("-o"))
@@ -950,6 +923,31 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   // into `physicalWithElfs`.
   EdgeWithTypedOutput<Directory> &compiledElfs =
       xbridge ? chessElfs : peanoElfs;
+
+  // Measures each core's stack requirement from its linked ELF. This edge runs
+  // before `physicalWithElfs`, so a failure ends the run before any artifact
+  // that depends on a core is written.
+  EdgeWithTypedOutput<ModRef> *physicalWithMeasuredStackSizes = nullptr;
+  if (!noMeasureStackSize.getValue()) {
+    physicalWithMeasuredStackSizes =
+        &bundle(compiledElfs.out, physical.out)
+             .join<ModRef>(
+                 "measured_stack_sizes.mlir",
+                 [](const Node<Directory> &elfs, const Node<ModRef> &physicalN,
+                    Item<ModRef> &out) -> mlir::LogicalResult {
+                   out.value = ModRef(physicalN.get().get().clone());
+                   llvm::StringMap<std::string> elfByKey;
+                   for (const auto &item : elfs.items)
+                     elfByKey[item.key] = item.filePath;
+                   return checkStackSizeRequirements(
+                       out.value->get(), [&](CoreOp coreOp) -> std::string {
+                         return elfByKey.lookup(coreKey(coreOp));
+                       });
+                 });
+  }
+  EdgeWithTypedOutput<ModRef> &physicalForElfs =
+      physicalWithMeasuredStackSizes ? *physicalWithMeasuredStackSizes
+                                     : physical;
 
   // --- Per-device configuration artifacts ---------------------------------
 
