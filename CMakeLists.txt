@@ -372,6 +372,13 @@ add_subdirectory(aie_runtime_lib)
 add_subdirectory(tools)
 add_subdirectory(runtime_lib)
 
+# The open AIE array simulator (docs/AIESimulator.md). Host-only and free of
+# MLIR, so it sits beside runtime_lib rather than inside it: runtime_lib builds
+# each target as its own cross-compiled ExternalProject, and this has no
+# cross-compile need. It also configures standalone, which is how it is
+# developed and tested.
+add_subdirectory(runtime_lib/aie-sim)
+
 # Bundle llvm-objcopy alongside the AIE bin/ tools.
 #
 # The IRON JIT external-kernel path renames symbols in Peano-compiled objects

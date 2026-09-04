@@ -122,6 +122,15 @@ add_lit_testsuite(check-aie "Running the aie regression tests"
 )
 set_target_properties(check-aie PROPERTIES FOLDER "Tests")
 
+# The aie-sim unit tests are CTest executables rather than lit tests, so
+# check-aie does not reach them on its own and nothing else does either: they
+# would ship passing and unrun. This has to live here rather than beside them,
+# because the top-level CMakeLists processes runtime_lib/aie-sim before test/,
+# so check-aie does not exist yet at that point.
+if(TARGET check-aie-sim)
+  add_dependencies(check-aie check-aie-sim)
+endif()
+
 add_lit_testsuite(check-aie-concurrency "Running the aie concurrency tests"
   ${CMAKE_CURRENT_BINARY_DIR}/python-concurrency
   DEPENDS ${TEST_DEPENDS}
