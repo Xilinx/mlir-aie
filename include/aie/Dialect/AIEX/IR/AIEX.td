@@ -1802,8 +1802,11 @@ def AIEX_DmaChannelResetForOp: AIEX_Op<"dma_channel_reset_for", [HasParent<"AIE:
   let hasVerifier = 1;
 }
 
-def AIEX_NpuReadRegOp: AIEX_Op<"npu.read_reg", [HasParent<"AIE::RuntimeSequenceOp">, SkipAccessibilityCheckTrait]> {
-  let summary = "Read a device register into the runtime-sequence control stream";
+def AIEX_NpuReadRegOp
+    : AIEX_Op<"npu.read_reg", [HasParent<"AIE::RuntimeSequenceOp">,
+                               SkipAccessibilityCheckTrait]> {
+  let summary =
+      "Read a device register into the runtime-sequence control stream";
   let description = [{
     Appends a register read to the runtime sequence's TXN control stream: the
     32-bit word at `tile`'s local `offset` is read on-device and returned to
@@ -1849,10 +1852,7 @@ def AIEX_NpuReadRegOp: AIEX_Op<"npu.read_reg", [HasParent<"AIE::RuntimeSequenceO
       aiex.npu.read_reg(%tile, 0x100)
     ```
   }];
-  let arguments = (
-    ins Index:$tile,
-        I32Attr:$offset
-  );
+  let arguments = (ins Index:$tile, I32Attr:$offset);
   let assemblyFormat = [{ `(` $tile `,` $offset `)` attr-dict }];
   let extraClassDeclaration = [{
     AIE::TileOp getTileOp();
