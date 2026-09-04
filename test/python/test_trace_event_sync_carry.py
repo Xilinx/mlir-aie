@@ -13,10 +13,10 @@ exceeded that field's range, so add one full field range (2**18) before applying
 command's own (remainder) delta. convert_commands_to_json() had no case for it, so every
 Event_Sync was silently dropped -- the running `timer` neither advanced nor emitted anything.
 
-Found via route_b_kernels/codec_block/trace_conv_dispatch.py on real hardware: its `--events
-sparse` run reported a per-tile INSTR_EVENT_0->INSTR_EVENT_1 cost of 44602 cycles, 6.9x below
-`--events dense`'s 306746 (independently confirmed against an untraced wall-clock measurement of
-the same dispatch). 306746 - 44602 == 262144 == 2**18 exactly, and the sparse capture carries
+Found on npu2 hardware in a downstream design: a `--events sparse` capture reported a per-tile
+INSTR_EVENT_0->INSTR_EVENT_1 cost of 44602 cycles, 6.9x below a `--events dense` capture's 306746
+(independently confirmed against an untraced wall-clock measurement of the same dispatch).
+306746 - 44602 == 262144 == 2**18 exactly, and the sparse capture carries
 exactly one Event_Sync per tile bracket. The bytes in test_event_sync_carried_across_bracket are
 that capture's tile 0, verbatim (loc "2,0"'s core byte stream, offset 27).
 """
