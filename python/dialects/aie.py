@@ -705,6 +705,9 @@ class object_fifo(ObjectFifoCreateOp):
         self.attributes["aie_stream"] = int_stream_end
         self.attributes["aie_stream_port"] = int_stream_port
 
+    def set_alloc_group(self, group):
+        self.attributes["alloc_group"] = StringAttr.get(group)
+
     def set_prod_dma_channel(self, channel):
         self.attributes["prod_dma_channel"] = IntegerAttr.get(T.i32(), channel)
 
