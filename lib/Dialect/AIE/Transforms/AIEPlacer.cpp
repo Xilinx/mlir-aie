@@ -1125,8 +1125,9 @@ SequentialPlacer::FlowMembership SequentialPlacer::buildFlowMembership(
   return idx;
 }
 
-int SequentialPlacer::computeCentroidColumn(LogicalTileOp logicalTile,
-                                            const FlowMembership &flowIndex) {
+std::optional<int>
+SequentialPlacer::computeCentroidColumn(LogicalTileOp logicalTile,
+                                        const FlowMembership &flowIndex) {
   // Per-flow routing cost as a function of the LTO's column S:
   //   single-dest flow to col D : cost(S) = |S - D|
   //   N-dest flow spanning [lo, hi]:
@@ -1140,7 +1141,7 @@ int SequentialPlacer::computeCentroidColumn(LogicalTileOp logicalTile,
   Value ltoVal = logicalTile.getResult();
   auto ltoIt = flowIndex.ltoFlows.find(ltoVal);
   if (ltoIt == flowIndex.ltoFlows.end())
-    return 0;
+    return std::nullopt;
 
   // Column of a flow endpoint, or nullopt if not yet fixed. A memtile that
   // already knows its column answers here; looking past it to its cores
@@ -1196,7 +1197,7 @@ int SequentialPlacer::computeCentroidColumn(LogicalTileOp logicalTile,
   }
 
   if (perFlowDests.empty())
-    return 0;
+    return std::nullopt;
 
   double meanDestCol = 0.0;
   int destCount = 0;
@@ -1239,9 +1240,16 @@ LogicalResult SequentialPlacer::placeNonCoreTileByCentroid(
     LogicalTileOp logicalTile, const FlowMembership &flowIndex,
     const llvm::DenseMap<Operation *, std::pair<int, int>>
         &channelRequirements) {
-  int centroidCol = computeCentroidColumn(logicalTile, flowIndex);
+  std::optional<int> centroidCol =
+      computeCentroidColumn(logicalTile, flowIndex);
   auto colConstraint = logicalTile.tryGetCol();
-  int targetCol = colConstraint ? *colConstraint : centroidCol;
+
+  // Without spread-unanchored-tiles, an LTO with no CoreTile peer keeps the
+  // historical column-0 fallback, which ranks every candidate at the same
+  // distance and so pins the whole design to one column until it fills up.
+  std::optional<int> targetCol = colConstraint ? colConstraint : centroidCol;
+  if (!targetCol && !spreadUnanchoredTiles)
+    targetCol = 0;
 
   auto [numInputChannels, numOutputChannels] =
       channelRequirements.lookup(logicalTile.getOperation());
@@ -1273,8 +1281,10 @@ LogicalResult SequentialPlacer::placeNonCoreTileByCentroid(
            << " output channels ";
       if (colConstraint)
         diag << "at column " << *colConstraint;
+      else if (centroidCol)
+        diag << "near centroid column " << *centroidCol;
       else
-        diag << "near centroid column " << centroidCol;
+        diag << "on any column";
       diag.attachNote() << "every " << tileTypeName
                         << " with spare DMA capacity already hosts a "
                            "different logical tile (merge-logical-tiles is "
@@ -1286,11 +1296,15 @@ LogicalResult SequentialPlacer::placeNonCoreTileByCentroid(
   }
 
   result[logicalTile] = *maybeTile;
-  LLVM_DEBUG(llvm::dbgs() << DEBUG_TYPE << ": placed non-core LTO "
-                          << logicalTile.getLoc() << " at (" << maybeTile->col
-                          << ", " << maybeTile->row
-                          << ") (centroid col=" << centroidCol
-                          << ", target col=" << targetCol << ")\n");
+  LLVM_DEBUG({
+    auto showCol = [](std::optional<int> c) {
+      return c ? std::to_string(*c) : std::string("none");
+    };
+    llvm::dbgs() << DEBUG_TYPE << ": placed non-core LTO "
+                 << logicalTile.getLoc() << " at (" << maybeTile->col << ", "
+                 << maybeTile->row << ") (centroid col=" << showCol(centroidCol)
+                 << ", target col=" << showCol(targetCol) << ")\n";
+  });
   if (!mergeLogicalTiles)
     assignedNonCoreTiles.insert(*maybeTile);
   if (numInputChannels > 0)
@@ -1301,8 +1315,9 @@ LogicalResult SequentialPlacer::placeNonCoreTileByCentroid(
 }
 
 std::optional<TileID> SequentialPlacer::findTileWithCapacity(
-    int targetCol, llvm::ArrayRef<TileID> tiles, int requiredInputChannels,
-    int requiredOutputChannels, AIETileType requestedType) {
+    std::optional<int> targetCol, llvm::ArrayRef<TileID> tiles,
+    int requiredInputChannels, int requiredOutputChannels,
+    AIETileType requestedType) {
   // Choose a physical tile by lexicographic minimum of
   //   (|col - targetCol|, current load, col, row).
   // Distance-from-centroid comes first to preserve routing locality: a tile
@@ -1312,6 +1327,12 @@ std::optional<TileID> SequentialPlacer::findTileWithCapacity(
   // adjacent columns), avoiding the first-match pile-up that filled a single
   // column's non-core tile until DMA-full before trying anywhere else.
   // (col, row) is the final tiebreaker for determinism.
+  //
+  // Without a targetCol there is no routing anchor to measure against, so the
+  // distance term is dropped and load leads. Load is then counted only in the
+  // directions this LTO actually needs, matching hasAvailableChannels, which
+  // already filters per direction: summing both would push a chain's read and
+  // write shims onto different columns and need 2N columns for N chains.
   std::optional<TileID> best;
   std::tuple<int, int, int, int> bestKey;
 
@@ -1326,9 +1347,19 @@ std::optional<TileID> SequentialPlacer::findTileWithCapacity(
     // capacity.
     if (!mergeLogicalTiles && assignedNonCoreTiles.contains(tile))
       continue;
-    int dist = std::abs(tile.col - targetCol);
-    int load = availability.inputChannelsUsed[tile] +
-               availability.outputChannelsUsed[tile];
+    int dist = targetCol ? std::abs(tile.col - *targetCol) : 0;
+    int load;
+    if (targetCol ||
+        (requiredInputChannels == 0 && requiredOutputChannels == 0)) {
+      load = availability.inputChannelsUsed[tile] +
+             availability.outputChannelsUsed[tile];
+    } else {
+      load = 0;
+      if (requiredInputChannels > 0)
+        load += availability.inputChannelsUsed[tile];
+      if (requiredOutputChannels > 0)
+        load += availability.outputChannelsUsed[tile];
+    }
     std::tuple<int, int, int, int> key{dist, load, tile.col, tile.row};
     if (!best || key < bestKey) {
       best = tile;
