@@ -46,7 +46,6 @@ from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
 from ml_dtypes import bfloat16
 
-
 # Per-core tile and core count; the CLI validator and the design share them.
 ELEMS_PER_CORE = 256
 N_CORES = 8

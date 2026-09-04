@@ -43,7 +43,6 @@ from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
 from ml_dtypes import bfloat16
 
-
 # Elements per memtile tile; the CLI validator and the design share it.
 N_MEM_ELEMS = 2048
 
