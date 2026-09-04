@@ -668,15 +668,20 @@ struct AIEDMATasksToNPUPass
       if (bd_op.getPadDimensions().has_value())
         return bd_op->emitOpError(
             "zero padding is not supported with runtime sizes/strides/len.");
-      // The verifier only rejects the iteration attribute for a BD that is
-      // itself runtime-valued; a compile-time-constant BD assigned a
-      // dynamic (pool-drawn) bd_id also reaches here (runtimeBdId), and the
-      // dynamic BD-word encoder below does not implement the attribute.
-      if (bd_op.getIteration())
+      // The verifier normally catches a runtime-valued BD with iteration set
+      // before this pass runs, but it is skipped on an unplaced tile; don't
+      // assume runtimeBdId is the cause just because this branch was taken.
+      if (bd_op.getIteration()) {
+        if (runtimeBdId)
+          return bd_op->emitOpError(
+              "the iteration attribute is not supported with a dynamic "
+              "(runtime-pool) bd_id; assign a static bd_id or express "
+              "iteration via the outermost sizes/strides dimension instead.");
         return bd_op->emitOpError(
-            "the iteration attribute is not supported with a dynamic "
-            "(runtime-pool) bd_id; assign a static bd_id or express "
-            "iteration via the outermost sizes/strides dimension instead.");
+            "the iteration attribute requires a compile-time-constant "
+            "buffer descriptor on the runtime-sequence path; express "
+            "iteration via the outermost sizes/strides dimension instead");
+      }
       // Realizability of the constant size/stride operands (runtime ones are
       // guarded at lowering by the shared encoder). Mixed lists are
       // outermost-first; the helper wants innermost-first.
