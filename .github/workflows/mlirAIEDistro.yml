@@ -10,6 +10,10 @@ on:
   pull_request:
     paths:
       - '.github/workflows/mlirAIEDistro.yml'
+      - '.github/actions/setup_base/**'
+      - '.github/actions/setup_ccache/**'
+      - 'utils/mlir_aie_wheels/**'
+      - 'python/requirements_dev.lock'
   workflow_dispatch:
     inputs:
       DEBUG_ENABLED:
