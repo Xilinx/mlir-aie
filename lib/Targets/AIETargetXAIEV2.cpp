@@ -434,6 +434,10 @@ xilinx::AIE::AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output,
   case AIEArch::AIE2p:
     device = AIE2p_device;
     break;
+  case AIEArch::AIE2ps:
+    // aie-rt defines no XAIE_DEV_GEN for this arch (xaiegbl_defs.h), so there
+    // is no generation constant to emit.
+    return targetOp.emitError("AIE2ps has no libxaie device generation");
   }
   output << "  ctx->XAieConfig->AieGen = " << device << ";\n";
   output << "  ctx->XAieConfig->BaseAddr = 0x20000000000;\n";
