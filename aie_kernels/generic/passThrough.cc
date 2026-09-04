@@ -35,6 +35,11 @@ __attribute__((noinline)) void passThrough_aie(T *restrict in, T *restrict out,
 
 extern "C" {
 
+#ifndef BIT_WIDTH
+#error                                                                         \
+    "passThrough.cc: BIT_WIDTH selects the element type of the exported wrappers and has no safe default. Pass -DBIT_WIDTH=8, 16 or 32."
+#endif
+
 #if BIT_WIDTH == 8
 
 void passThroughLine(uint8_t *in, uint8_t *out, int32_t lineWidth) {
@@ -57,7 +62,7 @@ void passThroughTile(int16_t *in, int16_t *out, int32_t tileHeight,
   passThrough_aie<int16_t, 32>(in, out, tileHeight, tileWidth);
 }
 
-#else // 32
+#elif BIT_WIDTH == 32
 
 void passThroughLine(int32_t *in, int32_t *out, int32_t lineWidth) {
   passThrough_aie<int32_t, 16>(in, out, 1, lineWidth);
@@ -68,6 +73,9 @@ void passThroughTile(int32_t *in, int32_t *out, int32_t tileHeight,
   passThrough_aie<int32_t, 16>(in, out, tileHeight, tileWidth);
 }
 
+#else
+#error                                                                         \
+    "passThrough.cc: BIT_WIDTH selects the element type of the exported wrappers and has no safe default -- an unset BIT_WIDTH expands to 0 and would silently select the widest branch. Pass -DBIT_WIDTH=8, 16 or 32."
 #endif
 
 } // extern "C"
