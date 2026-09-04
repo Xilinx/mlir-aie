@@ -1673,15 +1673,12 @@ def AIE_BufferOp
     allocated exactly as before.
   }];
 
-  let arguments = (
-    ins Index:$tile,
-        OptionalAttr<StrAttr>:$sym_name,
-        OptionalAttr<AIEI32Attr>:$address,
-        OptionalAttr<ElementsAttr>:$initial_value,
-        OptionalAttr<AIEI32Attr>:$mem_bank,
-        DefaultValuedAttr<BoolAttr, "true">:$aligned,
-        OptionalAttr<StrAttr>:$alloc_group
-  );
+  let arguments = (ins Index:$tile, OptionalAttr<StrAttr>:$sym_name,
+      OptionalAttr<AIEI32Attr>:$address,
+      OptionalAttr<ElementsAttr>:$initial_value,
+      OptionalAttr<AIEI32Attr>:$mem_bank,
+      DefaultValuedAttr<BoolAttr, "true">:$aligned,
+      OptionalAttr<StrAttr>:$alloc_group);
 
   let results = (outs AnyMemRef:$buffer);
   let assemblyFormat = [{
