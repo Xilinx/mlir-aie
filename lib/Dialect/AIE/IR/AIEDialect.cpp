@@ -4065,6 +4065,20 @@ TileOp ShimDMAAllocationOp::getTileOp() {
   return cast<TileOp>(getTile().getDefiningOp());
 }
 
+std::optional<int64_t> ShimDMAAllocationOp::getObjectSizeInBytes() {
+  std::optional<Type> recorded = getElemType();
+  if (!recorded)
+    return std::nullopt;
+  auto elemType = cast<MemRefType>(*recorded);
+  if (!elemType.hasStaticShape())
+    return std::nullopt;
+  DataLayout layout = DataLayout::closest(*this);
+  // Per-element bytes, the unit DMABDOp::getBufferElementTypeWidthInBytes()
+  // reports, so a sub-byte element type measures the same on both sides.
+  return elemType.getNumElements() *
+         static_cast<int64_t>(layout.getTypeSize(elemType.getElementType()));
+}
+
 ShimDMAAllocationOp ShimDMAAllocationOp::getForSymbol(DeviceOp device,
                                                       llvm::StringRef symbol) {
   Operation *maybeOp = device.lookupSymbol(symbol);

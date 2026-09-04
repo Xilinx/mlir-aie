@@ -496,9 +496,10 @@ struct AIEGenerateColumnControlOverlayPass
       if (device.lookupSymbol(dma_name))
         continue;
 
+      // No elem_type: a control-overlay channel carries no objectFIFO.
       AIE::ShimDMAAllocationOp::create(
           builder, tOp.getLoc(), StringRef(dma_name), shimTile.getResult(), dir,
-          rowToShimChanMap[tOp.rowIndex()], false, nullptr);
+          rowToShimChanMap[tOp.rowIndex()], false, nullptr, nullptr);
     }
     return success();
   }

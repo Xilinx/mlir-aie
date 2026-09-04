@@ -2006,15 +2006,21 @@ def AIE_ShimDMAAllocationOp : AIE_Op<"shim_dma_allocation", [HasParent<"DeviceOp
     ```
   }];
 
-  let arguments = (
-    ins SymbolNameAttr:$sym_name,
-        Index:$tile,
-        DMAChannelDir:$channel_dir,
-        AIEI64Attr:$channel_index,
-        // If this is set we are using the PLIO in this ShimTile
-        DefaultValuedAttr<BoolAttr, "false">:$plio,
-        OptionalAttr<PacketInfoAttr>:$packet
-  );
+  let arguments = (ins SymbolNameAttr:$sym_name, Index:$tile,
+      DMAChannelDir:$channel_dir, AIEI64Attr:$channel_index,
+      // If this is set we are using the PLIO in this ShimTile
+      DefaultValuedAttr<BoolAttr, "false">:$plio,
+      OptionalAttr<PacketInfoAttr>:$packet,
+      // The object the far end of this channel receives, when the allocation
+      // was emitted from an objectFIFO. A runtime sequence sizes its buffer
+      // descriptor in the host buffer's element type; this records what the
+      // stream expects, which is otherwise lost at this symbol.
+      OptionalAttr<TypeAttrOf<AnyMemRef>>:$elem_type,
+      // The bytes on the wire are not the bytes in the object, so no transfer
+      // extent on this channel can be checked against elem_type. Set it for a
+      // channel whose DMA (de)compresses: the ratio is a property of the data,
+      // and the enable lives in a BD register no pass can see.
+      UnitAttr:$stream_len_decoupled);
 
   let results = (outs);
 
@@ -2025,6 +2031,9 @@ def AIE_ShimDMAAllocationOp : AIE_Op<"shim_dma_allocation", [HasParent<"DeviceOp
   let hasVerifier = 1;
 
   let extraClassDeclaration = [{
+    /// Bytes one object occupies, or nullopt when this allocation does not
+    /// record the type it carries.
+    std::optional<int64_t> getObjectSizeInBytes();
     TileOp getTileOp();
     static ::xilinx::AIE::ShimDMAAllocationOp getForSymbol(::xilinx::AIE::DeviceOp device, ::llvm::StringRef symbol);
   }];
@@ -2224,7 +2233,10 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
       // packet selects packet-switched routing. packet_id pins the header;
       // allocation chooses an unused id when it is absent.
       UnitAttr:$packet,
-      OptionalAttr<ConfinedAttr<AIEI8Attr, [IntMinValue<0>]>>:$packet_id);
+      OptionalAttr<ConfinedAttr<AIEI8Attr, [IntMinValue<0>]>>:$packet_id,
+      // Carried to this fifo's shim allocation; see its own
+      // stream_len_decoupled.
+      UnitAttr:$stream_len_decoupled);
 
   let assemblyFormat = [{
     $sym_name
@@ -2455,6 +2467,9 @@ def AIE_ObjectFifoPoolOp
       OptionalAttr<AIEI32Attr>:$repeatCount,
       // No locks are created for this pool; its actors are unsynchronized.
       DefaultValuedAttr<BoolAttr, "false">:$disableSynchronization,
+      // Carried from the fifo to its shim allocation; see that op's
+      // stream_len_decoupled.
+      UnitAttr:$streamLenDecoupled,
       // If lowered from a high-level ObjectFifo, the name of that fifo.
       // Used to group ops lowered by the same ObjectFifo.
       OptionalAttr<StrAttr>:$fifoName, InitValuesArrayAttr:$initValues);
