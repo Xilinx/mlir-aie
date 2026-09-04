@@ -23,7 +23,7 @@ iron.set_current_device(from_name("npu2", n_cols=1))
 N, LINE = 1024, 256
 
 
-def build(fifo_dtype, name, line=LINE, in_ty=None, out_ty=None):
+def build(fifo_dtype, name, line=LINE, in_ty=None, out_ty=None, decoupled=False):
     """Forward N elements shim -> memtile -> shim, per-object ``line`` elements.
 
     The host buffers are typed independently of the fifo so either the fill side or
@@ -33,8 +33,10 @@ def build(fifo_dtype, name, line=LINE, in_ty=None, out_ty=None):
     out_ty = out_ty or np.ndarray[(N,), np.dtype[fifo_dtype]]
     line_ty = np.ndarray[(line,), np.dtype[fifo_dtype]]
 
-    of_in = ObjectFifo(line_ty, name=f"in_{name}")
-    of_out = of_in.cons().forward(name=f"out_{name}")
+    of_in = ObjectFifo(line_ty, name=f"in_{name}", stream_len_decoupled=decoupled)
+    of_out = of_in.cons().forward(
+        name=f"out_{name}", stream_len_decoupled=decoupled
+    )
 
     def sequence(a, c, in_h, out_h):
         in_h.fill(a)
@@ -180,3 +182,11 @@ print(
         transfer_len=128,
     )
 )
+
+
+# A (de)compressing channel moves a byte count the object size cannot predict, so
+# the same partial extent rejected above is well formed here.
+# CHECK-LABEL: TEST: a_decoupled_stream_is_exempt
+# CHECK: aie.objectfifo @in_decoupled{{.*}}stream_len_decoupled
+print("TEST: a_decoupled_stream_is_exempt")
+print(build(np.float32, "decoupled", line=300, decoupled=True))

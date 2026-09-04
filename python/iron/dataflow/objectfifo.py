@@ -760,8 +760,11 @@ class ObjectFifoHandle(Resolvable):
         allocation for i8 activations and ui16 FC data). Only the extents must line up.
 
         Skipped when the extent is not known here: a scalar RuntimeData carries no BD
-        geometry, and a runtime-valued access pattern has no constant to check.
+        geometry, a runtime-valued access pattern has no constant to check, and a
+        fifo whose channel (de)compresses has no fixed relation between the two.
         """
+        if self._object_fifo._stream_len_decoupled:
+            return
         if rt_data.is_scalar:
             return
         extent = _static_transfer_extent(tap, sizes, transfer_len)
