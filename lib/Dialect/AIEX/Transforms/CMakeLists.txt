@@ -49,6 +49,7 @@ add_mlir_dialect_library(AIEXTransforms
   AIE
   MLIRAIEToConfiguration
   AIEXUtils
+  MLIRAIEUtil
   MLIRIR
   MLIRPass
   MLIRSCFToControlFlow
