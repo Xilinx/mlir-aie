@@ -101,6 +101,12 @@ jobs:
           if not "%GITHUB_EVENT_NAME%"=="schedule" exit /b 0
           if exist "%RUNNER_WORKSPACE%\.pip-cache" rmdir /s /q "%RUNNER_WORKSPACE%\.pip-cache"
 
+          REM Re-test the directory rather than errorlevel: what matters is
+          REM whether the cache is gone. A reset that does not take only defers
+          REM the bound to the next scheduled run, so warn instead of failing
+          REM the device job over it.
+          if exist "%RUNNER_WORKSPACE%\.pip-cache" echo ::warning::pip cache reset did not take; it stays until the next scheduled run
+
       - name: Setup IRON environment
         shell: cmd
         run: |
