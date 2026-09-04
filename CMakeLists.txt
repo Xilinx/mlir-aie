@@ -134,6 +134,8 @@ find_package(XRT)
 # (https://github.com/Xilinx/llvm-aie.git <sha>)". That is identity/provenance, not a compatibility
 # predicate: llvm-aie's LLVM_VERSION stays fixed between releases, so there is no meaningful ">="
 # range to gate on here, only "which exact build is this." Record it for diagnostics.
+set(PEANO_VERSION_STRING "")
+set(PEANO_REVISION "")
 if(NOT PEANO_INSTALL_DIR STREQUAL "<unset>")
   # FindPeano.cmake lives in the cmake/modulesXilinx submodule, and this file only puts that
   # directory on CMAKE_MODULE_PATH on WIN32; every other build passes -DCMAKE_MODULE_PATH (see
@@ -164,8 +166,6 @@ if(NOT PEANO_INSTALL_DIR STREQUAL "<unset>")
       "under ${PEANO_INSTALL_DIR}/include/. Fix PEANO_INSTALL_DIR, or unset it to configure without "
       "Peano.")
   else()
-    set(PEANO_VERSION_STRING "")
-    set(PEANO_REVISION "")
     if(PEANO_CLANG)
       execute_process(
         COMMAND ${PEANO_CLANG} --version
@@ -190,6 +190,20 @@ if(NOT PEANO_INSTALL_DIR STREQUAL "<unset>")
       message(STATUS "Peano (llvm-aie) validated: ${PEANO_DIR}")
     endif()
   endif()
+endif()
+
+# Description of the Peano used to configure this build, recorded into aie/version.h so a
+# built tool can report which llvm-aie it was configured against. This is provenance, not a
+# compatibility check: llvm-aie publishes no version query to gate on (see FindPeano above).
+if(PEANO_INSTALL_DIR STREQUAL "<unset>")
+  set(AIE_PEANO_VERSION "not configured")
+elseif(PEANO_VERSION_STRING AND PEANO_REVISION)
+  set(AIE_PEANO_VERSION "${PEANO_VERSION_STRING} (${PEANO_REVISION})")
+elseif(PEANO_VERSION_STRING)
+  set(AIE_PEANO_VERSION "${PEANO_VERSION_STRING}")
+else()
+  # Validated above, but clang --version did not run or did not parse.
+  set(AIE_PEANO_VERSION "unknown")
 endif()
 
 # Find AIEBU library for direct ELF generation (optional, falls back to subprocess)
