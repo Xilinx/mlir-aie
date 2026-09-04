@@ -108,6 +108,17 @@ LogicalResult appendMaskWrite32(std::vector<uint32_t> &instructions,
   return success();
 }
 
+LogicalResult appendReadReg(std::vector<uint32_t> &instructions,
+                            NpuReadRegOp op) {
+  std::optional<uint32_t> address = op.getAbsoluteAddress();
+  if (!address)
+    return op.emitOpError("Cannot translate npu.read_reg with a tile that "
+                          "does not resolve to a constant aie.tile to a "
+                          "static TXN binary");
+  aie_runtime::txn_append_read_reg(instructions, *address);
+  return success();
+}
+
 void appendLoadPdi(std::vector<uint32_t> &instructions, NpuLoadPdiOp op) {
   aie_runtime::txn_append_loadpdi(instructions, op.getId(), op.getSize(),
                                   op.getAddress());
@@ -489,6 +500,15 @@ LogicalResult xilinx::AIE::AIETranslateNpuToBinary(
               result = failure();
             pushLocEntry(locmap, before, byteOffset(), "UPDATE_FROM_SCRATCHPAD",
                          op->getName().getStringRef(), std::nullopt, op, tm);
+          })
+          .Case<NpuReadRegOp>([&](auto op) {
+            count++;
+            uint32_t before = byteOffset();
+            uint64_t addr = op.getAbsoluteAddress().value_or(0);
+            if (failed(appendReadReg(instructions, op)))
+              result = failure();
+            pushLocEntry(locmap, before, byteOffset(), "READ_REGS",
+                         op->getName().getStringRef(), addr, op, tm);
           });
     }
   }

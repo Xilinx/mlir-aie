@@ -1802,6 +1802,72 @@ def AIEX_DmaChannelResetForOp: AIEX_Op<"dma_channel_reset_for", [HasParent<"AIE:
   let hasVerifier = 1;
 }
 
+def AIEX_NpuReadRegOp
+    : AIEX_Op<"npu.read_reg", [HasParent<"AIE::RuntimeSequenceOp">,
+                               SkipAccessibilityCheckTrait]> {
+  let summary =
+      "Read a device register into the runtime-sequence control stream";
+  let description = [{
+    Appends a register read to the runtime sequence's TXN control stream: the
+    32-bit word at `tile`'s local `offset` is read on-device and returned to
+    the host after the dispatch completes, in program order alongside every
+    other `aiex.npu.read_reg` in the same sequence. It lowers to the
+    `TXN_OPC_READ_REGS` custom-op class already reserved in
+    `aie/Runtime/TxnEncoding.h` but, before this op, never emitted by any AIEX
+    op: every existing `npu.*` op inside `aie.runtime_sequence` is write-only
+    (`results = (outs)`), so nothing in the dialect could put a device-read
+    value into the control stream at all.
+
+    This is the observability half of read-into-control, not the closed-loop
+    half. The TXN format has no operand slot for a value a prior instruction
+    produced (`RegOff`/`Mask`/`Value` are host-compiled immediates
+    throughout), so a later instruction in the same dispatch cannot branch on
+    what this op reads; the value only surfaces on the host after
+    `ERT_CMD_STATE_COMPLETED`. That is the same shape XDP's debug/profile/PC
+    plugins already use via `XAie_AddCustomTxnOp(..., XAIE_IO_CUSTOM_OP_READ_REGS,
+    ...)` (`XRT-src/.../xdp/profile/plugin/aie_debug/client/aie_debug.cpp`).
+
+    `tile` is an SSA `aie.tile` value, matching `aiex.dma_channel_reset` /
+    `aiex.core_reset` / `aiex.dma_configure_task`. Unlike those ops this one
+    has no tile-type restriction: registers exist on core, mem, and shim
+    tiles alike, so the verifier only checks that `tile` resolves to an
+    `aie.tile` op (its own verifier already bounds col/row).
+
+    The read values land at the start of the `use_type::debug` BO bound to the
+    dispatching hardware context, one 32-bit word per read, in program order.
+    That BO's device address is never named in the TXN words -- the binding is
+    out-of-band, at the driver/context level (`DRM_AMDXDNA_HWCTX_ASSIGN_DBG_BUF`
+    on Linux), which is why this op takes no destination operand. If no debug
+    BO is bound the dispatch still completes and the values are dropped.
+
+    Measured on npu2 (Ryzen AI 9 465, NPU firmware 1.1.2.64, amdxdna 7.2.0,
+    XRT 2.21.75) through an ordinary `EXEC_NPU` dispatch -- not XDP's separate
+    configure transaction: a `write32` of a known word followed by a
+    `read_reg` of the same address returns that word, for both a core-tile and
+    a shim-tile register.
+
+    Example:
+    ```
+      %tile = aie.tile(2, 3)
+      aiex.npu.read_reg(%tile, 0x100)
+    ```
+  }];
+  let arguments = (ins Index:$tile, I32Attr:$offset);
+  let assemblyFormat = [{ `(` $tile `,` $offset `)` attr-dict }];
+  let extraClassDeclaration = [{
+    AIE::TileOp getTileOp();
+    // Compile-time absolute device address (tile base | offset), mirroring
+    // NpuWrite32Op::getAbsoluteAddress().
+    std::optional<uint32_t> getAbsoluteAddress();
+  }];
+  let extraClassDefinition = [{
+    AIE::TileOp NpuReadRegOp::getTileOp() {
+      return cast<AIE::TileOp>(getTile().getDefiningOp());
+    }
+  }];
+  let hasVerifier = 1;
+}
+
 //===----------------------------------------------------------------------===//
 // ScratchpadParameter ops
 //===----------------------------------------------------------------------===//
