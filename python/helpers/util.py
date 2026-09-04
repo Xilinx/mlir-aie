@@ -14,10 +14,12 @@ from ..extras import types as T  # pyright: ignore[reportMissingImports]
 from ..ir import (  # pyright: ignore[reportMissingImports]
     F32Type,
     F64Type,
+    FloatType,
     IntegerType,
     MemRefType,
     OpView,
     RankedTensorType,
+    Type,
     Value,
     VectorType,
 )
@@ -196,6 +198,37 @@ def memref_type_to_np_dtype(memref_type):
         T.memref(T.bf16()): bfloat16,
     }
     return _memref_type_to_np_dtype.get(memref_type)
+
+
+def element_bit_width(t: Type) -> int | None:
+    """Return an element type's bit width, or None if it does not report one.
+
+    Block-float types (`!aiex.bfp<...>`) are the None case: they have no width to ask
+    for, which is also why np.dtype() cannot measure them.
+    """
+    for cls in (IntegerType, FloatType):
+        try:
+            return cls(t).width
+        except ValueError:
+            continue
+    return None
+
+
+def transfer_element_weights(a: Type, b: Type) -> tuple[int, int] | None:
+    """Per-element weights that put two memref element types in a common unit.
+
+    Returns ``(wa, wb)`` such that ``n * wa`` and ``m * wb`` are comparable extents,
+    or None when the two cannot be brought into one unit. Identical types compare
+    directly in elements; differing ones compare in bits. Block-float types report
+    no bit width, so a differing pair involving one is the None case - asking those
+    for a width is the same trap `objectfifo_blockfloat_default_pad` already guards.
+    """
+    if a == b:
+        return (1, 1)
+    a_width, b_width = element_bit_width(a), element_bit_width(b)
+    if a_width is None or b_width is None:
+        return None
+    return (a_width, b_width)
 
 
 def np_ndarray_type_get_shape(ndarray_type: type[np.ndarray]) -> tuple[int, ...]:

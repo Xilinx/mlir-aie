@@ -2199,6 +2199,11 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
       // disable_synchronization==true will skip lock generation for
       // objectfifo synchronous accesses
       DefaultValuedAttr<BoolAttr, "false">:$disable_synchronization,
+      // The bytes on the wire are not the bytes in the object, so no transfer
+      // extent on this channel can be checked against its object type. Set it
+      // for a channel whose DMA (de)compresses: the ratio is a property of the
+      // data, and the enable lives in a BD register no pass can see.
+      UnitAttr:$stream_len_decoupled,
       // repeat_count==1 means "do it once"
       OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<1>]>>:$repeat_count,
       // aie_stream==0 means enable aie stream port on producer tile
@@ -2455,6 +2460,9 @@ def AIE_ObjectFifoPoolOp
       OptionalAttr<AIEI32Attr>:$repeatCount,
       // No locks are created for this pool; its actors are unsynchronized.
       DefaultValuedAttr<BoolAttr, "false">:$disableSynchronization,
+      // Carried from the fifo this pool was lowered from; see that op's
+      // stream_len_decoupled.
+      UnitAttr:$streamLenDecoupled,
       // If lowered from a high-level ObjectFifo, the name of that fifo.
       // Used to group ops lowered by the same ObjectFifo.
       OptionalAttr<StrAttr>:$fifoName, InitValuesArrayAttr:$initValues);
