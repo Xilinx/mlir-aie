@@ -354,6 +354,17 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
                        ? " (compute-peer DMA budget unsatisfiable)"
                        : "");
         }
+        // A cores-per-col budget leaves no trace in the message above: the
+        // tiles it removed are simply absent from `availability.compTiles`.
+        if (coresPerCol.has_value() && deviceCoresPerCol > 0) {
+          int columns = targetModel->columns();
+          diag.attachNote()
+              << "cores-per-col=" << *coresPerCol << " leaves "
+              << columns * *coresPerCol << " of this device's "
+              << columns * deviceCoresPerCol
+              << " compute tiles placeable; raise it, or reduce the design's "
+                 "core count";
+        }
         if (adjacencyWasCause)
           attachPeerNotes(diag, logicalTile, bufferAdjacency, bufferLabel);
         if (hasCascade)
