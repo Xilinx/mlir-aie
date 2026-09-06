@@ -137,6 +137,21 @@ aieTargetModelGetNumLocks(AieTargetModel targetModel, int col, int row);
 MLIR_CAPI_EXPORTED uint32_t aieTargetModelGetNumBDs(AieTargetModel targetModel,
                                                     int col, int row);
 
+/// Returns the bit width of the wrap (size) field in a DMA buffer descriptor
+/// for the tile at (col, row).
+MLIR_CAPI_EXPORTED uint32_t
+aieTargetModelGetDmaBdWrapBits(AieTargetModel targetModel, int col, int row);
+
+/// Returns the bit width of the step (stride) field in a DMA buffer
+/// descriptor for the tile at (col, row).
+MLIR_CAPI_EXPORTED uint32_t
+aieTargetModelGetDmaBdStepBits(AieTargetModel targetModel, int col, int row);
+
+/// Returns the bit width of the iteration (repeat) wrap/stride fields in a
+/// DMA buffer descriptor for the tile at (col, row).
+MLIR_CAPI_EXPORTED uint32_t
+aieTargetModelGetDmaBdIterBits(AieTargetModel targetModel, int col, int row);
+
 MLIR_CAPI_EXPORTED uint32_t
 aieTargetModelGetNumMemTileRows(AieTargetModel targetModel);
 
