@@ -58,6 +58,46 @@ logger = logging.getLogger(__name__)
 _PCH_ENABLED = os.environ.get("AIE_KERNEL_PCH", "1") != "0"
 
 
+# --- Compiler launcher -------------------------------------------------------
+#
+# A kernel .cc is recompiled whenever anything around it moves -- a sibling
+# design rebuilt, a branch switched back, a CI job rerun -- even though nothing
+# it reads changed.  This function already emits -MD/-MF for exactly this
+# reason ("the way ninja and ccache learn a translation unit's real inputs");
+# routing the compile through a launcher is what makes that pay.  Measured on
+# aie_kernels/aie2p/mha.cc: 5.44 s miss -> 0.010 s hit, object identical, and it
+# composes with the PCH (miss 1.92 s, hit 0.026 s).
+#
+# Off unless asked for: a compiler cache is a policy about the developer's
+# machine, not a property of the compile, and a wrong hit is expensive enough
+# that opting in should be deliberate.  Set AIE_KERNEL_COMPILER_LAUNCHER=ccache
+# (or sccache, or any launcher that takes the compiler as its first argument).
+_COMPILER_LAUNCHER = os.environ.get("AIE_KERNEL_COMPILER_LAUNCHER", "")
+
+
+def _warn_launcher_pch_interaction(launcher: str) -> None:
+    """Say that ccache will not cache a compile that uses -include-pch.
+
+    It is not an error and not a miss -- the call is counted "uncacheable" and
+    the launcher does nothing at all, so a developer who sets both gets the cost
+    of neither lever and no output saying why.  ccache's own message is
+    "You have to specify time_macros sloppiness when using precompiled headers
+    to get direct hits", and it only appears under CCACHE_DEBUG.  Say it here.
+    """
+    if _warn_launcher_pch_interaction.__dict__.setdefault("done", False):
+        return
+    if "ccache" not in os.path.basename(launcher):
+        return
+    if "time_macros" in os.environ.get("CCACHE_SLOPPINESS", ""):
+        return
+    _warn_launcher_pch_interaction.__dict__["done"] = True
+    logger.warning(
+        "ccache will not cache these compiles while the intrinsics PCH is in "
+        "use. Add time_macros to CCACHE_SLOPPINESS, or set AIE_KERNEL_PCH=0 to "
+        "trade the PCH for the cache."
+    )
+
+
 def _compiler_identity(cxx: str) -> str:
     """Identify the compiler by what it IS, not by where it sits.
 
@@ -487,6 +527,17 @@ def compile_cxx_core_function(
             pch = _kernel_pch(cmd[0], peano_flags)
             if pch is not None:
                 cmd[1:1] = ["-mno-vitis-headers", "-include-pch", pch]
+        if _COMPILER_LAUNCHER:
+            launcher = shutil.which(_COMPILER_LAUNCHER)
+            if launcher:
+                if "-include-pch" in cmd:
+                    _warn_launcher_pch_interaction(launcher)
+                cmd.insert(0, launcher)
+            else:
+                logger.warning(
+                    "AIE_KERNEL_COMPILER_LAUNCHER=%s is not on PATH; ignoring it",
+                    _COMPILER_LAUNCHER,
+                )
 
     # Add include directories
     if include_dirs:
@@ -516,7 +567,7 @@ def compile_cxx_core_function(
         # it and report THAT, so what surfaces is the kernel's own diagnostic.
         i = cmd.index("-include-pch")
         plain = [a for j, a in enumerate(cmd) if j not in (i, i + 1)]
-        plain.remove("-mno-vitis-headers")
+        plain.remove("-mno-vitis-headers")  # index-independent: appears once
         logger.debug("Retrying without the PCH: %s", " ".join(plain))
         ret = subprocess.run(plain, cwd=cwd, check=False, capture_output=True)
     if ret.stdout:
