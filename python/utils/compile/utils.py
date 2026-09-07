@@ -5,6 +5,7 @@
 #
 """Low-level helpers for compiling MLIR modules and external C++ kernels to NPU artifacts."""
 
+import contextlib
 import hashlib
 import logging
 import os
@@ -64,12 +65,19 @@ def _compiler_identity(cxx: str) -> str:
     one build; a path or an mtime is not.  mlir-aie#3427 keyed aiecc by mtime and
     made two installs of the same commit disagree -- here the same mistake would
     serve a PCH built by a different compiler.  Costs ~16 ms, once per process.
+
+    ``InstalledDir:`` is dropped for that reason: it is an absolute path, so
+    keeping it would key one compiler's PCH to the directory it was invoked
+    from and miss on every other install of the same build.
     """
     try:
         out = subprocess.run([cxx, "--version"], capture_output=True, check=True).stdout
     except (OSError, subprocess.CalledProcessError):
         return ""
-    return out.decode(errors="replace").strip()
+    text = out.decode(errors="replace")
+    return "\n".join(
+        line for line in text.splitlines() if not line.startswith("InstalledDir:")
+    ).strip()
 
 
 def _kernel_pch(cxx: str, pch_flags: list[str]) -> str | None:
@@ -120,9 +128,10 @@ _PCH_BUILD_LOCK = threading.Lock()
 
 
 def _build_kernel_pch(cxx, pch_flags, cache, key, pch):
+    tmp_path = None
     try:
         empty = cache / f"{key}.h"
-        empty.touch()
+        empty.write_text("")
         with tempfile.NamedTemporaryFile(
             dir=cache, prefix=f"{key}.", suffix=".tmp", delete=False
         ) as tmp:
@@ -137,11 +146,17 @@ def _build_kernel_pch(cxx, pch_flags, cache, key, pch):
                 "PCH build failed; compiling without it:\n%s",
                 ret.stderr.decode(errors="replace"),
             )
-            os.unlink(tmp_path)
             return None
         os.replace(tmp_path, pch)
+        tmp_path = None
     except OSError:
         return None
+    finally:
+        # Nothing else ever names this file, so an early return would strand it
+        # in the shared cache directory.
+        if tmp_path is not None:
+            with contextlib.suppress(OSError):
+                os.unlink(tmp_path)
     return str(pch)
 
 
@@ -489,7 +504,13 @@ def compile_cxx_core_function(
         check=False,
         capture_output=True,
     )
-    if ret.returncode != 0 and "-include-pch" in cmd:
+    if (
+        ret.returncode != 0
+        and "-include-pch" in cmd
+        # Both flags are injected together below; without the marker the
+        # -include-pch came from compile_args and is not ours to strip.
+        and "-mno-vitis-headers" in cmd
+    ):
         # The PCH is an optimisation and must never be the reason a build fails
         # or the reason an error message is confusing.  Redo the compile without
         # it and report THAT, so what surfaces is the kernel's own diagnostic.
