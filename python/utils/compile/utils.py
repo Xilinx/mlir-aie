@@ -573,15 +573,10 @@ def _rename_symbol_in_object(object_path: str, old_name: str, new_name: str) -> 
 def compile_external_kernels(funcs, kernel_dir, target_arch):
     """Compile every ExternalFunction in ``funcs`` into ``kernel_dir``.
 
-    Kernels are separate translation units with separate outputs, so they have
-    always been independent -- they were merely compiled one after another, and
-    the wall was the SUM.  On the encoder-MHA design here that is 7.9 s of the
-    17.1 s build for two kernels.
-
-    Two of them can still collide: ``compile_external_kernel`` writes the source
-    as ``<_original_name>.cc``, so two ExternalFunctions sharing an original name
-    write the same file.  Those keep their relative order; everything else runs
-    concurrently.
+    Kernels are separate translation units with separate outputs, so they compile
+    concurrently.  The exception is the source path: ``compile_external_kernel``
+    writes the source as ``<_original_name>.cc``, so ExternalFunctions sharing an
+    original name write the same file and are ordered against each other.
 
     Each compile is single-threaded and peaks near 205 MB of RSS on aie2p (250 MB
     without the intrinsics PCH), so the bound is cores rather than memory on an
@@ -589,6 +584,13 @@ def compile_external_kernels(funcs, kernel_dir, target_arch):
     """
     pending = [f for f in funcs if not f._compiled]
     if not pending:
+        return
+
+    # Every compile in a batch shares one cwd (kernel_dir), and xchesscc keeps
+    # per-invocation state there, so the Chess path runs serially.
+    if any(getattr(f, "_use_chess", False) for f in pending):
+        for f in pending:
+            compile_external_kernel(f, kernel_dir, target_arch)
         return
 
     groups: dict[str, list] = {}
