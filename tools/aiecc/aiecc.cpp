@@ -1010,7 +1010,8 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                     PassPipeline{
                         &context,
                         [ctrlPkt](mlir::MLIRContext *ctx, mlir::ModuleOp) {
-                          return getExpandLoadPdiPipeline(ctx, ctrlPkt);
+                          return getExpandLoadPdiPipeline(
+                              ctx, ctrlPkt, registerReset.getValue());
                         }}))
           : npuMaterialized;
 
@@ -1777,6 +1778,13 @@ int main(int argc, char **argv) {
     llvm::errs() << "aiecc: only one input MLIR file is allowed before '--'; "
                     "pass host source files and host-compiler flags after "
                     "'--'\n";
+    return 1;
+  }
+
+  // --register-reset only changes what the load_pdi expansion emits, so on its
+  // own it would be silently inert; the pass rejects the ctrl-pkt pairing.
+  if (registerReset.getValue() && !expandLoadPdis.getValue()) {
+    llvm::errs() << "aiecc: --register-reset requires --expand-load-pdis\n";
     return 1;
   }
 
