@@ -115,7 +115,9 @@ struct AIELowerDynamicBDPoolPass
   }
 
   LogicalResult lowerConfigure(DMAConfigureTaskOp cfg) {
-    if (cfg.getBdIdVal())
+    AIE::DMABDOp theBd;
+    cfg.walk([&](AIE::DMABDOp bd) { theBd = bd; });
+    if (theBd && theBd.getBdIdVal())
       return success(); // already lowered
 
     if (countBds(cfg) != 1)
@@ -148,7 +150,7 @@ struct AIELowerDynamicBDPoolPass
     Value bdId = DMABdPoolPopOp::create(b, cfg.getLoc(), b.getI32Type(),
                                         tile.getCol(), tile.getRow())
                      .getBdId();
-    cfg.getBdIdValMutable().assign(bdId);
+    theBd.getBdIdValMutable().assign(bdId);
     pairedId[cfg.getResult()] = bdId;
     return success();
   }

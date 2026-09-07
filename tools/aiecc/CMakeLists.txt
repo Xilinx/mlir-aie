@@ -1,10 +1,10 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-llvm_map_components_to_libnames(llvm_libs support core irreader)
+llvm_map_components_to_libnames(llvm_libs support core irreader object)
 
 # Build aiecc compiler driver
-add_llvm_executable(aiecc aiecc.cpp)
+add_llvm_executable(aiecc aiecc.cpp StackSizeAnalysis.cpp)
 llvm_update_compile_flags(aiecc)
 
 # Refresh AIECCVersion.h each build so --version reflects the current SHA.

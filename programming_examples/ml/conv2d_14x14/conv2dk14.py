@@ -5,16 +5,6 @@
 #
 """14x14 Conv2D — IRON API designs (single-core + 32-core) with @iron.jit.
 
-KNOWN: ``make run_py`` on Strix (npu2 / AIE2P) produces output whose
-layout doesn't match what ``test.py``'s reshape chain (lines 241-253)
-assumes — ``max abs diff ~70`` against a torch golden of dynamic range
-``~[56, 73]``.  The kernel runs without error; the bug is host-side
-post-processing.  Tracked upstream: see
-``~/issues-to-file/conv2dk14_strix_test_layout_mismatch.md`` for the
-diagnosis + two fix candidates.  (Earlier versions of this docstring
-suggested "diff aie2 vs aie2p conv2dk14.cc" — misleading: there is no
-aie2 variant; only aie_kernels/aie2p/conv2dk14.cc ships today.)
-
 Two parallelism modes share the same conv2dk14 sub-kernel:
 
   * single-core (default): one shim DMA in/out pair, one worker; processes

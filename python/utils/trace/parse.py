@@ -8,6 +8,14 @@ import sys
 
 import aie.dialects.aie as aiedialect
 import aie.dialects.aiex as aiexdialect
+import numpy as np
+from aie._mlir_libs._aie import (  # pyright: ignore[reportMissingImports]
+    trace_buffer_fields,  # pyright: ignore[reportAttributeAccessIssue]
+    trace_slice_fields,  # pyright: ignore[reportAttributeAccessIssue]
+)
+from aie.dialects.aie import (  # pyright: ignore[reportMissingImports]
+    RuntimeSequenceOp,  # pyright: ignore[reportAttributeAccessIssue]
+)
 from aie.extras.util import find_ops  # pyright: ignore[reportMissingImports]
 from aie.helpers.util import (  # pyright: ignore[reportMissingImports]
     fold_constant_operand,
@@ -34,6 +42,114 @@ from aie.utils.trace.utils import (
 logger = logging.getLogger(__name__)
 
 NUM_EVENTS = 8  # number of events we can view per trace
+
+DEFAULT_KERNEL = "main:sequence"
+
+
+def _device_name(device_op):
+    sym_name = device_op.sym_name
+    return sym_name.value if sym_name is not None else None
+
+
+def _find_sequence(module, kernel):
+    """Return the `aie.runtime_sequence` that `kernel` names, as "device:sequence"."""
+    found = []
+    for seq in find_ops(
+        module.operation,
+        lambda o: isinstance(o.operation.opview, RuntimeSequenceOp),
+    ):
+        device = seq.operation.parent.opview
+        name = f"{_device_name(device)}:{seq.sym_name.value}"
+        if name == kernel:
+            return seq
+        found.append(name)
+    raise ValueError(f"no runtime sequence named '{kernel}'; found {found}")
+
+
+def get_trace_buffer(mlir_module_str, kernel=DEFAULT_KERNEL):
+    """Return which argument of `kernel` receives trace data.
+
+    Reads the `#aie.trace_buffer` attribute that `-aie-insert-trace-flows` sets
+    and `-aie-fuse-trace-buffers` updates. Write that attribute by hand to point
+    tracing at an argument of your choice.
+
+    Returns a dict with ``arg_index``, ``offset``, ``size`` and ``dedicated``,
+    or ``None`` when `kernel` is untraced.
+    """
+    with Context(), Location.unknown():
+        module = Module.parse(mlir_module_str)
+        attr = _find_sequence(module, kernel).trace_buffer
+        if attr is None:
+            return None
+        arg_index, offset, size, dedicated = trace_buffer_fields(attr)
+        return {
+            "arg_index": arg_index,
+            "offset": offset,
+            "size": size,
+            "dedicated": dedicated,
+        }
+
+
+def get_trace_slices(mlir_module_str, kernel=DEFAULT_KERNEL):
+    """Return how `kernel` splits its trace buffer between the designs it runs.
+
+    `-aie-fuse-trace-buffers` records one `#aie.trace_slice` per `aiex.run` call
+    site, so a sequence that runs several designs, or one design several times,
+    keeps their traces in separate byte ranges.
+
+    Returns a list of dicts with ``device``, ``sequence``, ``offset`` and
+    ``size``, in buffer order. Returns ``[]`` when `kernel` runs no other
+    sequence, because its whole buffer is then its own.
+    """
+    with Context(), Location.unknown():
+        module = Module.parse(mlir_module_str)
+        attr = _find_sequence(module, kernel).trace_slices
+        if attr is None:
+            return []
+        entries = []
+        for slice_attr in attr:
+            device, sequence, offset, size = trace_slice_fields(slice_attr)
+            entries.append(
+                {
+                    "device": device,
+                    "sequence": sequence,
+                    "offset": offset,
+                    "size": size,
+                }
+            )
+        return entries
+
+
+def parse_trace_slices(
+    trace_buffer, mlir_module_str, colshift=None, kernel=DEFAULT_KERNEL
+):
+    """Parse a shared trace buffer into one event list per traced sub-design.
+
+    Each slice is decoded against the device that wrote it, which separates two
+    sub-designs that occupy the same tiles.
+
+    Returns a list of ``(slice_info, events)``. A buffer with no recorded layout
+    yields one entry covering all of it.
+    """
+    slices = get_trace_slices(mlir_module_str, kernel)
+    if not slices:
+        return [(None, parse_trace(trace_buffer, mlir_module_str, colshift))]
+
+    words = np.asarray(trace_buffer).view(np.uint32).reshape(-1)
+    results = []
+    for entry in slices:
+        start = entry["offset"] // 4
+        end = start + entry["size"] // 4
+        region = words[start:end]
+        if not region.any():
+            continue
+        results.append(
+            (
+                entry,
+                parse_trace(region, mlir_module_str, colshift, entry["device"]),
+            )
+        )
+    return results
 
 
 def parse_args():
@@ -409,7 +525,7 @@ def thread_name_metadata(
 # This searches for npu.write32 and categorizes them based on address and row.
 # memtile and core/shim tiles have different addresses, so we distinguish
 # between core and shim tile by row=0
-def parse_mlir_trace_events(mlir_module_str, colshift=None):
+def parse_mlir_trace_events(mlir_module_str, colshift=None, device_name=None):
 
     pid_events = list()
     trace_modes = list()
@@ -426,19 +542,36 @@ def parse_mlir_trace_events(mlir_module_str, colshift=None):
     with Context(), Location.unknown():
         module = Module.parse(mlir_module_str)
 
-        write32s = find_ops(
-            module.operation,
-            lambda o: isinstance(
-                o.operation.opview, NpuWrite32Op
-            ),  # pyright: ignore[reportArgumentType]
-        )
-        device = find_ops(
+        devices = find_ops(
             module.operation,
             lambda o: isinstance(
                 o.operation.opview, DeviceOp
             ),  # pyright: ignore[reportArgumentType]
         )
-        device = AIEDevice(int(device[0].device))
+        if not devices:
+            raise ValueError("no aie.device in the given MLIR module")
+
+        # A fused module holds one device per traced design. Two designs often
+        # occupy the same tiles. A whole-module scan then keys both event
+        # assignments to one (row, col). A caller parsing one slice therefore
+        # names the device that wrote it.
+        if device_name is None:
+            device_op = devices[0]
+            scope = module.operation
+        else:
+            matches = [d for d in devices if _device_name(d) == device_name]
+            if not matches:
+                raise ValueError(f"no aie.device named '{device_name}' in module")
+            device_op = matches[0]
+            scope = device_op.operation
+
+        write32s = find_ops(
+            scope,
+            lambda o: isinstance(
+                o.operation.opview, NpuWrite32Op
+            ),  # pyright: ignore[reportArgumentType]
+        )
+        device = AIEDevice(int(device_op.device))
         target_model = aiedialect.get_target_model(device)
         events_module = get_events_for_device(str(device))
 
@@ -739,13 +872,15 @@ def align_column_start_index(events, commands, colshift=None):
 # ------------------------------------------------------------------------------
 
 
-def parse_trace(trace_buffer, mlir_module_str, colshift=None):
+def parse_trace(trace_buffer, mlir_module_str, colshift=None, device_name=None):
     """Parse AIE trace buffer and return trace events as list in Trace Event Format.
 
     Args:
         trace_buffer: numpy array containing trace data (uint32 words)
         mlir_module_str: string containing MLIR module with trace configuration
         colshift: optional column shift adjustment (int or None for auto-align)
+        device_name: parse only this ``aie.device``'s trace configuration. Needed
+            when the module holds several traced designs; see ``parse_trace_slices``.
 
     Returns:
         list: trace events in Trace Event Format
@@ -755,7 +890,7 @@ def parse_trace(trace_buffer, mlir_module_str, colshift=None):
 
     # Parse MLIR to extract event configuration
     pid_events, trace_modes, events_module = parse_mlir_trace_events(
-        mlir_module_str, colshift
+        mlir_module_str, colshift, device_name
     )
 
     # Split buffer into segments to handle multi-channel trace buffers

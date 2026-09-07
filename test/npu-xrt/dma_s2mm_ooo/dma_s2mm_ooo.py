@@ -25,13 +25,22 @@
 # RUN: %run_on_npu2% %python %s --recv-tile mem  --channels 1 -n 1 --repeat-count 8 --recv-backpressure
 # RUN: %run_on_npu2% %python %s --recv-tile core --channels 1 -n 1 --repeat-count 8 --recv-backpressure
 # RUN: %run_on_npu2% %python %s --recv-tile mem  --channels 1 -n 1 --packets 2 --repeat-count 8 --recv-backpressure
+# RUN: %run_on_npu2% %python %s --recv-config runtime --recv-tile mem  --channels 1 -n 4
+# RUN: %run_on_npu2% %python %s --recv-config runtime --recv-tile core --channels 1 -n 4
+# RUN: %run_on_npu2% %python %s --recv-config runtime --recv-tile mem  --channels 1 -n 1
+# RUN: %run_on_npu2% %python %s --recv-config runtime --recv-tile core --channels 1 -n 8
+# RUN: %run_on_npu2% %python %s --recv-config runtime --recv-tile mem  --channels 1 -n 4 --packets 2
+# RUN: %run_on_npu2% %python %s --recv-config runtime --recv-tile core --channels 1 -n 4 --packets 2
+# RUN: %run_on_npu2% %python %s --recv-config runtime --recv-tile mem  --channels 1 -n 4 --nonuniform
+# RUN: %run_on_npu2% %python %s --recv-config runtime --recv-tile mem  --channels 2 -n 8
+# RUN: %run_on_npu2% %python %s --recv-config runtime --recv-tile core --channels 2 -n 4
+# RUN: %run_on_npu2% %python %s --recv-config runtime --recv-tile mem  --channels 1 -n 4 --repeat-count 2
+# RUN: %run_on_npu2% %python %s --recv-config runtime --recv-tile core --channels 1 -n 4 --repeat-count 1
+# RUN: %run_on_npu2% %python %s --recv-config runtime --recv-tile core --channels 2 -n 6 --repeat-count 1
 #
-"""Out-of-order S2MM merge demo: N senders stream into one S2MM channel and each
-packet lands in a fixed slot chosen by its header out-of-order id, not by arrival
-order. This is the many-to-one packet merge primitive.
-
-See README.md for the design, the resource limits, and the bound formulas. Run
-with --help for the options, or --emit-mlir to print the design without running.
+"""Out-of-order S2MM merge: N senders stream into one S2MM channel and each
+packet lands in a fixed slot chosen by its header out-of-order id, not by
+arrival order. See README.md for the design, options, limits, and bounds.
 """
 
 import argparse
@@ -39,8 +48,14 @@ import sys
 
 import aie.iron as iron
 import numpy as np
-from aie.dialects._aie_enum_gen import AIETileType, DMAChannelDir
-from aie.dialects.aiex import dma_await_task, dma_start_task, shim_dma_single_bd_task
+from aie.dialects._aie_enum_gen import AIETileType, DMAChannelDir, LockAction
+from aie.dialects.aie import EndOp, bds, dma_bd, next_bd, use_lock
+from aie.dialects.aiex import (
+    dma_await_task,
+    dma_configure_task,
+    dma_start_task,
+    shim_dma_single_bd_task,
+)
 from aie.iron import (
     Acquire,
     Bd,
@@ -64,57 +79,32 @@ from aie.utils.hostruntime.argparse import add_compile_args, device_from_args
 from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
 
-OOO_ID_MASK = 0x3F  # the out-of-order id header field is 6 bits
-
-# The merge width is bounded by M <= MAX_LOCK_VALUE because an AIE lock value is
-# 6 bits and the egress completion lock acquires the total packet count M.
-MAX_LOCK_VALUE = 0x3F
-
-# The all-rounds total M*(k+1) cannot exceed MAX_REPEAT_FIELD + 1 because
-# out-of-order encodes M*(k+1)-1 into the 8-bit DMA start-queue repeat field.
-MAX_REPEAT_FIELD = 0xFF
-
-# A multi-round sender walks every round from one BD whose iteration size is
-# max(ms)*rounds, which cannot exceed the BD iteration wrap of 64 (aie-rt
-# IterWrapMax + 1).
-MAX_BD_ITER = 64
+OOO_ID_MASK = 0x3F  # out-of-order id header field is 6-bit
+MAX_LOCK_VALUE = 0x3F  # AIE lock value is 6-bit
+MAX_REPEAT_FIELD = 0xFF  # DMA start-queue repeat field is 8-bit
+MAX_BD_ITER = 64  # BD iteration wrap (aie-rt IterWrapMax + 1)
 
 
 def _perm(n, shift):
-    # Sender s stamps the out-of-order id of slot (s + shift) % n, which rotates
-    # the merge by `shift`.
     return [(s + shift) % n for s in range(n)]
 
 
 def _slot_ids(recv_is_core, kc, n):
-    # Pinned, non-sequential receive-BD ids for channel kc. The ids stay disjoint
-    # across channels and leave room for each channel's egress MM2S BD.
+    # Non-sequential receive-BD ids, disjoint across channels (a memtile odd
+    # channel needs bd_id >= 24).
     if recv_is_core:
-        # A core tile has 16 BDs shared by all channels and their egress BDs.
-        # Channel 0 takes odd ids and channel 1 takes even ids >= 2, which keeps
-        # the channels disjoint and makes bd_id differ from slot position.
         return [(kc + 1) + 2 * j for j in range(n)]
-    # A memtile has 48 BDs. The parity bases keep channels disjoint and honor the
-    # hardware rule that an odd channel needs bd_id >= 24.
     base = 24 if (kc % 2 == 1) else 0
     return [base + 3 + 2 * j for j in range(n)]
 
 
 def _chan_base(kc, r, lo, M, rounds):
-    # First sub-buffer (in tw units) of one source's chunk for channel kc, round r.
-    # Every (channel, round, source) chunk gets a globally distinct base because
-    # channel kc is offset by a whole channel span (rounds*M) and round r by M.
-    # That distinctness lets the verifier catch a channel swap or a cross-channel
-    # misroute, not just a wrong within-channel slot. `lo` is the source's own
-    # within-round start.
+    # Globally distinct base per (channel, round, source) so the verifier catches
+    # a cross-channel misroute, not just a wrong slot.
     return lo + r * M + kc * rounds * M
 
 
 def _recv_bds(buf, ids, off, ms, tw, con):
-    # The n out-of-order receive BDs for one channel. Each BD is pinned to a slot's
-    # bd_id, packet-enabled because placement follows the header id, and
-    # release-only on the completion counter `con`. Both the single-round and
-    # multi-round receivers use this.
     return [
         Bd(
             buffer=buf,
@@ -130,9 +120,6 @@ def _recv_bds(buf, ids, off, ms, tw, con):
 
 
 def _source_pat(lo, cnt, M, rounds, c, tw):
-    # One source's send buffer. The per-channel, per-round arange chunks are laid
-    # out channel-major, with channel kc's `rounds` chunks contiguous. Each
-    # per-channel send BD then reads its own channel's data at offset kc*rounds*cnt.
     return np.concatenate(
         [
             np.arange(
@@ -159,23 +146,21 @@ def dma_s2mm_ooo(
     nonuniform: CompileTime[int] = 0,
     repeat_count: CompileTime[int] = 0,
     recv_backpressure: CompileTime[int] = 0,
+    recv_config: CompileTime[str] = "static",
 ):
     tw = tile_words
     c = channels
     m = packets
+    recv_runtime = recv_config == "runtime"
 
-    # Per-slot packet counts. Uniform m by default, or 1,2,...,n under nonuniform
-    # (a different m per slot in one merge). off[j] is slot j's start in tw
-    # sub-buffers, and M is the total packet count.
     ms = [j + 1 for j in range(n)] if nonuniform else [m] * n
     off = [sum(ms[:j]) for j in range(n)]
     M = sum(ms)
     k = repeat_count  # extra merge rounds; rounds = k + 1
     rounds = k + 1
 
-    # These guards protect the reusable API directly because an out-of-range config
-    # would otherwise hang or lower silently wrong rather than raise. The CLI
-    # repeats them with friendlier exit messages.
+    # Guard the reusable API directly: an out-of-range config would otherwise hang
+    # or lower silently wrong rather than raise. The CLI repeats these friendlier.
     if k < 0:
         raise ValueError("repeat_count must be >= 0")
     if M > MAX_LOCK_VALUE:
@@ -234,10 +219,15 @@ def dma_s2mm_ooo(
                 "from one credit)"
             )
 
+    if recv_runtime:
+        if recv_backpressure:
+            raise ValueError(
+                "recv_config='runtime' is incompatible with recv_backpressure"
+            )
+
     index = _perm(n, shift)
 
-    # Tiles. Senders fill the bottom compute row. The receiver is centered on that
-    # row (see the module docstring for why). The egress is the shim NOC tile.
+    # The receiver is centered at column n//2 to split the funnel (see README).
     egress = Tile(col=0, row=0, tile_type=AIETileType.ShimNOCTile)
     rc = n // 2
     if recv_is_core:
@@ -246,8 +236,6 @@ def dma_s2mm_ooo(
         receiver = Tile(col=rc, row=1, tile_type=AIETileType.MemTile)
     senders = [Tile(col=s, row=2, tile_type=AIETileType.CoreTile) for s in range(n)]
 
-    # One merge buffer and one release-only completion counter per channel, both on
-    # the receiver.
     bufs = [
         Buffer(
             type=np.ndarray[(M * tw,), np.dtype[np.int32]],
@@ -259,14 +247,12 @@ def dma_s2mm_ooo(
     cons = [Lock(receiver, init=0, name=f"ooo_cons{kc}") for kc in range(c)]
 
     sender_dmas, workers, sender_locks, recv_locks, flows = [], [], [], [], []
+    runtime_recv = []
 
     def pkt_id(s, kc):
-        # Distinct id per (sender, channel), all routed to channel kc.
         return kc * n + s
 
     def add_sender_flows():
-        # One packet flow per (sender, channel). keep_pkt_header carries the
-        # out-of-order id through to placement on the receiver.
         for s in range(n):
             for kc in range(c):
                 flows.append(
@@ -280,15 +266,7 @@ def dma_s2mm_ooo(
                 )
 
     if k == 0:
-        # Single round (the default). Each sender owns a preloaded arange slice and
-        # fans it to every channel as `cnt` packets, one distinct tw sub-slice each,
-        # via a send-side BD iteration (size=cnt, stride=tw). Each packet carries
-        # the target slot's pinned bd_id and a distinct route pkt_id. `cnt` is the
-        # target slot's iteration size, equal for all slots unless nonuniform. A
-        # trivial worker releases `filled` to launch the sends.
-
-        # Receiver: n out-of-order receive BDs plus one draining egress BD per
-        # channel.
+        # Single round (the default).
         recv_channels = []
         for kc in range(c):
             ids = _slot_ids(recv_is_core, kc, n)
@@ -301,23 +279,34 @@ def dma_s2mm_ooo(
                 releases=[Release(cons[kc], value=0)],
                 next=0,
             )
-            recv_channels += [
-                DmaChannel(
-                    direction=DMAChannelDir.S2MM,
-                    channel=kc,
-                    bds=recv_bds,
-                    out_of_order=True,
-                ),
-                DmaChannel(direction=DMAChannelDir.MM2S, channel=kc, bds=[egress_bd]),
-            ]
+            if recv_runtime:
+                # Runtime path: the ooo S2MM receive channel is emitted as a
+                # dma_configure_task in sequence(); only the egress MM2S stays static.
+                runtime_recv.append((kc, ids))
+                recv_channels.append(
+                    DmaChannel(
+                        direction=DMAChannelDir.MM2S, channel=kc, bds=[egress_bd]
+                    )
+                )
+            else:
+                recv_channels += [
+                    DmaChannel(
+                        direction=DMAChannelDir.S2MM,
+                        channel=kc,
+                        bds=recv_bds,
+                        out_of_order=True,
+                    ),
+                    DmaChannel(
+                        direction=DMAChannelDir.MM2S, channel=kc, bds=[egress_bd]
+                    ),
+                ]
         recv_dma = TileDma(tile=receiver, channels=recv_channels)
 
-        # Senders.
         for s in range(n):
             t = index[s]  # target slot
-            cnt = ms[t]  # packets this source sends, equal to slot t's iteration size
+            cnt = ms[t]
             lo = off[t] if nonuniform else s * m
-            pat = _source_pat(lo, cnt, M, rounds, c, tw)  # rounds == 1 here
+            pat = _source_pat(lo, cnt, M, rounds, c, tw)
             sbuf = Buffer(initial_value=pat, name=f"sbuf{s}", tile=senders[s])
             filled = Lock(senders[s], init=0, name=f"filled{s}")
             done = Lock(senders[s], init=0, name=f"done{s}")
@@ -333,10 +322,6 @@ def dma_s2mm_ooo(
                 Worker(make_body(cnt), [filled], tile=senders[s], while_true=False)
             )
 
-            # One chained send BD per channel. Each BD reads its own channel's
-            # region of sbuf at offset kc*cnt because each channel carries distinct
-            # data. The first BD gates on `filled` and releases `done` to keep the
-            # lock balanced.
             send_bds = [
                 Bd(
                     buffer=sbuf,
@@ -365,7 +350,6 @@ def dma_s2mm_ooo(
                 )
             )
 
-        # Flows: sender packets in, then one egress drain per channel.
         add_sender_flows()
         for kc in range(c):
             flows.append(
@@ -378,17 +362,8 @@ def dma_s2mm_ooo(
                 )
             )
     elif recv_backpressure:
-        # Single-producer alternative (n=1, one channel). Gate buffer reuse with a
-        # receiver-side credit pair instead of the cross-tile token. Each receive BD
-        # acquires a free-slot credit before it writes, and the egress returns the
-        # round's credits after draining. The stalled receive DMA then backpressures
-        # the one sender through the stream. This drops the token flow, the `go` and
-        # `tok_free` locks, and the token buffers. It works only for a single
-        # producer because the round-agnostic credit cannot hold per-round grouping
-        # across sources.
-
-        # Receiver: one out-of-order receive BD plus the draining egress, with the
-        # ooo_prod free-slot credit that gates reuse.
+        # Single-producer (n=1) receiver-side backpressure: a free-slot credit
+        # gates buffer reuse instead of the cross-tile token.
         ids = _slot_ids(recv_is_core, 0, n)
         prod = Lock(receiver, init=M, name="ooo_prod")  # free slots, init full
         recv_locks = [prod]
@@ -399,7 +374,7 @@ def dma_s2mm_ooo(
             bd_id=ids[0],
             packet=(0, 0),
             iteration=BdIteration(size=M, stride=tw),
-            acquires=[Acquire(prod, value=1)],  # a free slot per packet
+            acquires=[Acquire(prod, value=1)],
             releases=[Release(cons[0], value=1)],
         )
         egress_bd = Bd(
@@ -429,8 +404,6 @@ def dma_s2mm_ooo(
             ],
         )
 
-        # Sender. One BD streams every round. A worker seeds the whole stream's
-        # credit once, and the receiver's credit paces it. No token is needed.
         pat = _source_pat(0, M, M, rounds, c, tw)
         sbuf = Buffer(initial_value=pat, name="sbuf0", tile=senders[0])
         go = Lock(senders[0], init=0, name="go0")
@@ -452,7 +425,7 @@ def dma_s2mm_ooo(
             iteration=BdIteration(size=M * rounds, stride=tw),
             packet=(0, pkt_id(0, 0)),
             out_of_order_id=ids[0] & OOO_ID_MASK,
-            acquires=[Acquire(go, value=1)],  # one credit per packet
+            acquires=[Acquire(go, value=1)],
             releases=[Release(go, value=0)],  # dummy; go is seeded once by the worker
             next=0,
         )
@@ -470,7 +443,6 @@ def dma_s2mm_ooo(
             )
         )
 
-        # Flows: the sender packet in, then the egress drain.
         add_sender_flows()
         flows.append(
             Flow(
@@ -482,38 +454,29 @@ def dma_s2mm_ooo(
             )
         )
     else:
-        # Multi-round (repeat_count > 0). This runs k+1 true n-way out-of-order
-        # merges through the one reused buffer. A receiver lock cannot group the
-        # rounds because a single out-of-order channel is a FIFO. A shared counter
-        # would miscount a fast source's next-round packet, and a per-slot lock
-        # would head-of-line deadlock. The barrier is therefore on the sender side.
-        # After draining round r the receiver broadcasts a one-word credit token,
-        # and each sender waits on it before the next round. The n senders still
-        # race within a round, which keeps each round a genuine out-of-order merge.
-        # With c channels the token fires once all c have drained (a `both` join).
-        # The token packet-shares channel 0's MM2S with that channel's drain,
-        # chained after it under a distinct pkt_id. Sharing the MM2S means the merge
-        # needs no extra channel and fits a core tile's two MM2S even at c == 2.
-
-        # tok_pkt is the first pkt_id past the send ids (which are < n*c). Both
-        # tok_pkt and the channel-0 egress id tok_pkt+1 must fit the 5-bit pkt_id
-        # field (max 31).
+        # Multi-round (repeat_count > 0): k+1 merges through the reused buffer with
+        # a sender-side barrier. The receiver broadcasts a one-word credit token
+        # once all channels drain a round; it packet-shares channel 0's drain MM2S.
         tok_pkt = n * c
-        both = Lock(receiver, init=0, name="ooo_both")  # all c drains done -> token
+        both = Lock(receiver, init=0, name="ooo_both")
         tokbuf = Buffer(
             initial_value=np.zeros(1, np.int32), name="tokbuf", tile=receiver
         )
         recv_locks = [both]
 
-        # Receiver: the out-of-order receive BDs plus the per-channel drain, with
-        # the token BD chained after channel 0's drain.
         recv_channels = []
+        # On a core tile bd_ids are tile-wide, so the static drain/token allocator
+        # (blind to the runtime receive ids pinned in sequence()) can reuse a
+        # receive slot and deadlock (a scale-dependent BD-slot race). Pin the
+        # drain/token off the receive ids. A memtile restricts ids per channel and
+        # its allocator already avoids the collision, so leave it alone.
+        pin_ids = recv_runtime and recv_is_core
+        recv_id_union = {x for kc2 in range(c) for x in _slot_ids(recv_is_core, kc2, n)}
+        free_ids = [i for i in range(16) if i not in recv_id_union]
         for kc in range(c):
             ids = _slot_ids(recv_is_core, kc, n)
             recv_bds = _recv_bds(bufs[kc], ids, off, ms, tw, cons[kc])
-            # Channel 0's drain packet-routes to the shim because its MM2S also
-            # carries the token, chained after it under a second pkt_id. The other
-            # channels drain circuit and loop back to themselves.
+            drain_kw = dict(bd_id=free_ids[kc]) if pin_ids else {}
             drain_bds = [
                 Bd(
                     buffer=bufs[kc],
@@ -521,47 +484,54 @@ def dma_s2mm_ooo(
                     length=M * tw,
                     packet=(0, tok_pkt + 1) if kc == 0 else None,
                     acquires=[Acquire(cons[kc], value=M)],
-                    releases=[Release(both, value=1)],  # this channel drained a round
+                    releases=[Release(both, value=1)],
                     next=1 if kc == 0 else 0,
+                    **drain_kw,
                 )
             ]
             if kc == 0:
+                tok_kw = dict(bd_id=free_ids[c]) if pin_ids else {}
                 drain_bds.append(
                     Bd(
                         buffer=tokbuf,
                         length=1,
                         packet=(0, tok_pkt),
-                        acquires=[Acquire(both, value=c)],  # all c channels drained
+                        acquires=[Acquire(both, value=c)],
                         releases=[Release(both, value=0)],  # dummy (lock invariant)
                         next=0,
+                        **tok_kw,
                     )
                 )
-            recv_channels += [
-                DmaChannel(
-                    direction=DMAChannelDir.S2MM,
-                    channel=kc,
-                    bds=recv_bds,
-                    out_of_order=True,
-                    repeat_count=k,  # HW raw packet count = M*(k+1)-1
-                ),
-                DmaChannel(
-                    direction=DMAChannelDir.MM2S,
-                    channel=kc,
-                    bds=drain_bds,
-                    repeat_count=k,
-                ),
-            ]
+            drain_channel = DmaChannel(
+                direction=DMAChannelDir.MM2S,
+                channel=kc,
+                bds=drain_bds,
+                repeat_count=k,
+            )
+            if recv_runtime:
+                # Runtime path: the ooo S2MM channel is armed in sequence() with
+                # repeat_count = M*(k+1)-1; only the token-carrying drain stays static.
+                runtime_recv.append((kc, ids))
+                recv_channels.append(drain_channel)
+            else:
+                recv_channels += [
+                    DmaChannel(
+                        direction=DMAChannelDir.S2MM,
+                        channel=kc,
+                        bds=recv_bds,
+                        out_of_order=True,
+                        repeat_count=k,  # raw HW count M*(k+1)-1
+                    ),
+                    drain_channel,
+                ]
         recv_dma = TileDma(tile=receiver, channels=recv_channels)
 
-        # Senders.
         for s in range(n):
-            t = index[s]
+            t = index[s]  # target slot
             cnt = ms[t]
-            lo = off[t] if nonuniform else s * m  # this source's round-0 chunk start
+            lo = off[t] if nonuniform else s * m
             pat = _source_pat(lo, cnt, M, rounds, c, tw)
             sbuf = Buffer(initial_value=pat, name=f"sbuf{s}", tile=senders[s])
-            # go is one round's send credit (c*cnt, cnt to each channel). The worker
-            # launches round 0, and each credit token replenishes one round.
             go = Lock(senders[s], init=0, name=f"go{s}")
             tok_free = Lock(senders[s], init=rounds, name=f"tok_free{s}")
             tokrx = Buffer(
@@ -573,7 +543,7 @@ def dma_s2mm_ooo(
 
             def make_launch(reps):
                 def body(g):
-                    g.release(reps)  # launch round 0 with one round's credit
+                    g.release(reps)
 
                 return body
 
@@ -581,10 +551,6 @@ def dma_s2mm_ooo(
                 Worker(make_launch(c * cnt), [go], tile=senders[s], while_true=False)
             )
 
-            # One send BD per channel (fan-out). Each BD reads its own channel's
-            # region of sbuf at offset kc*rounds*cnt because each channel carries
-            # distinct data. Each BD also gates on a `go` credit, which blocks the
-            # next round until the token restores the whole round's credit.
             send_bds = [
                 Bd(
                     buffer=sbuf,
@@ -593,7 +559,7 @@ def dma_s2mm_ooo(
                     iteration=BdIteration(size=cnt * rounds, stride=tw),
                     packet=(0, pkt_id(s, kc)),
                     out_of_order_id=_slot_ids(recv_is_core, kc, n)[t] & OOO_ID_MASK,
-                    acquires=[Acquire(go, value=1)],  # a credit per packet
+                    acquires=[Acquire(go, value=1)],
                     releases=[Release(go, value=0)],  # dummy; go is fed by the token
                     next=(kc + 1) % c,
                 )
@@ -626,11 +592,9 @@ def dma_s2mm_ooo(
                 )
             )
 
-        # Flows: sender packets in, then the credit-token broadcast, then egress.
         add_sender_flows()
-        # Credit-token broadcast from the receiver's MM2S ch0 to every sender's
-        # S2MM ch0, one packet flow fanned out to all senders. It shares ch0 with
-        # the egress drain below.
+        # Credit-token broadcast: receiver MM2S ch0 fanned out to every sender's
+        # S2MM ch0, sharing ch0 with the egress drain below.
         flows.append(
             PacketFlow(
                 pkt_id=tok_pkt,
@@ -641,9 +605,6 @@ def dma_s2mm_ooo(
                 extra_dsts=[PacketDest(senders[s], channel=0) for s in range(1, n)],
             )
         )
-        # Channel 0's egress is packet-routed because its MM2S is shared with the
-        # token. The other channels are circuit-routed. Each channel drains to its
-        # own shim S2MM.
         flows.append(
             PacketFlow(
                 pkt_id=tok_pkt + 1,
@@ -666,12 +627,47 @@ def dma_s2mm_ooo(
             )
 
     def sequence(c_h):
-        # The senders and merge run autonomously. The host drains each channel's
-        # merged buffer once per round into that round's output region (round-major
-        # layout), and each drain self-gates on-chip on the channel's ooo_cons
-        # count. The host must drain round-major (every channel of round r before
-        # round r+1) because the multi-round barrier holds a round until every
-        # channel has drained.
+        # Runtime receiver path: arm each ooo S2MM merge channel from the host
+        # sequence with dma_configure_task {out_of_order}. The chain only configures
+        # the BDs; hardware ignores Use_Next_BD and places each packet by header id.
+        for kc, ids in runtime_recv:
+            task = dma_configure_task(
+                receiver.op,
+                DMAChannelDir.S2MM,
+                kc,
+                repeat_count=M * rounds - 1,
+                out_of_order=True,
+            )
+            with bds(task) as bd:
+                for j in range(n):
+                    with bd[j]:
+                        # ms[j] packets per slot spread across ms[j] sub-buffers via
+                        # BD iteration. The runtime-sequence path takes iteration from
+                        # the outermost sizes/strides dim (repeat count), not the static
+                        # BdIteration attr (rejected here); the tw-word contiguous
+                        # transfer is the innermost dim. An ms[j]==1 slot stays linear.
+                        nd = (
+                            dict(sizes=[ms[j], 1, 1, tw], strides=[tw, 0, 0, 1])
+                            if ms[j] > 1
+                            else {}
+                        )
+                        dma_bd(
+                            bufs[kc].op,
+                            offset=off[j] * tw,
+                            transfer_len=tw,
+                            bd_id=ids[j],
+                            packet=(0, 0),
+                            **nd,
+                        )
+                        use_lock(cons[kc].op, LockAction.Release, value=1)
+                        if j + 1 < n:
+                            next_bd(bd[j + 1])
+                        else:
+                            EndOp()
+            dma_start_task(task)
+
+        # Drain each channel's merged buffer round-major; each drain self-gates
+        # on-chip on the channel's ooo_cons count.
         for r in range(rounds):
             for kc in range(c):
                 task = shim_dma_single_bd_task(
@@ -710,6 +706,7 @@ def _compile_kwargs(opts):
         nonuniform=1 if opts.nonuniform else 0,
         repeat_count=opts.repeat_count,
         recv_backpressure=1 if opts.recv_backpressure else 0,
+        recv_config="runtime" if opts.recv_config == "runtime" else "static",
     )
 
 
@@ -717,16 +714,14 @@ def _run_and_verify(opts):
     n, tw, c, m = opts.sources, opts.tile_words, opts.channels, opts.packets
     k = opts.repeat_count
     rounds = k + 1
-    # Per-slot packet counts, prefix offsets, and total. These must match the
-    # design.
     ms = [j + 1 for j in range(n)] if opts.nonuniform else [m] * n
     off = [sum(ms[:j]) for j in range(n)]
     M = sum(ms)
     recv_is_core = 1 if opts.recv_tile == "core" else 0
 
-    # Every non-identity rotation fully overwrites each channel's buffer, and
+    # Every non-identity rotation fully overwrites each channel's buffer, so
     # matching all of them proves placement follows the pinned out-of-order id.
-    # Because n=1 has no non-identity rotation, it runs the single identity case.
+    # n=1 has no non-identity rotation, so it runs the single identity case.
     for shift in range(1, n) or [0]:
         out = iron.zeros((rounds * c * M * tw,), dtype=np.int32, device="npu")
         dma_s2mm_ooo(
@@ -740,11 +735,8 @@ def _run_and_verify(opts):
             nonuniform=1 if opts.nonuniform else 0,
             repeat_count=k,
             recv_backpressure=1 if opts.recv_backpressure else 0,
+            recv_config="runtime" if opts.recv_config == "runtime" else "static",
         )
-        # In region (round r, channel kc), slot j holds source (j-shift)%n's chunk
-        # for that channel and round. Because the chunks are distinct per channel
-        # (see _chan_base), a channel swap or cross-channel misroute fails the
-        # check, not just a wrong slot.
         expected = np.empty(rounds * c * M * tw, dtype=np.int32)
         for r in range(rounds):
             for kc in range(c):
@@ -792,6 +784,14 @@ def main():
         help="receiver (merge) tile type",
     )
     p.add_argument(
+        "--recv-config",
+        choices=("static", "runtime"),
+        default="static",
+        help="how the out-of-order receive channel is configured: 'static' via "
+        "the tile program, or 'runtime' via a dma_configure_task in the host "
+        "sequence; supports the full merge matrix",
+    )
+    p.add_argument(
         "--packets", type=int, default=1, help="packets per source (m); m>=1"
     )
     p.add_argument(
@@ -836,7 +836,6 @@ def main():
         sys.exit("--packets must be >= 1")
     if opts.nonuniform and opts.packets != 1:
         sys.exit("--nonuniform sets the per-slot count itself; leave --packets at 1")
-    # Total packets = sum of per-slot counts (1..n when nonuniform, else n*m).
     total = (
         opts.sources * (opts.sources + 1) // 2
         if opts.nonuniform
@@ -890,6 +889,9 @@ def main():
                 f"--recv-backpressure launch credit M*(k+1) = {total * rounds} must "
                 f"be <= {MAX_LOCK_VALUE} (the sender streams every round from one credit)"
             )
+    if opts.recv_config == "runtime":
+        if opts.recv_backpressure:
+            sys.exit("--recv-config runtime is incompatible with --recv-backpressure")
     run_design_cli(
         dma_s2mm_ooo,
         opts,
