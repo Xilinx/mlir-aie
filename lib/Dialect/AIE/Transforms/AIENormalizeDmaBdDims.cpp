@@ -68,8 +68,7 @@ struct AIENormalizeDmaBdDimsPass
         if (!op.hasLen() && !op.getBuffer().getType().hasStaticShape())
           return;
         std::optional<int32_t> lenVal = op.getConstantLen();
-        if (lenVal.has_value() &&
-            static_cast<int64_t>(*lenVal) != product)
+        if (lenVal.has_value() && static_cast<int64_t>(*lenVal) != product)
           return;
         int32_t len = static_cast<int32_t>(product);
 
