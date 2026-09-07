@@ -27,9 +27,10 @@ xclbin, same `hw_context`, no reload.
 
 On NPU2, identity/SiLU/GELU dispatch clean: identity is bit-exact against
 the reference, and SiLU and GELU hold the `atol=0.05` gate over a `[-8, 8]`
-sweep. ReLU is bit-exact against `numpy.maximum` in the same sweep (a pure
-comparison, no SFU transcendental); it has not yet been run on NPU2
-hardware.
+sweep. ReLU has not been run on NPU2 hardware; over that same `[-8, 8]`
+range it matches `numpy.maximum` bit-exactly in host emulation, which is
+weaker evidence than the other three modes carry but is what a pure
+comparison with no SFU transcendental is expected to give.
 
 ## Source Files Overview
 

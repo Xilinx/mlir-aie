@@ -3,8 +3,8 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""One resident program, four RTP-selected GEMM-epilogue modes -- IRON API
-+ ``@iron.jit``.
+"""One resident program, four RTP-selected GEMM-epilogue modes -- IRON API +
+``@iron.jit``.
 
 NPU2-only: the underlying ``mm_activation_epilogue_row`` kernel lives under
 ``aie_kernels/aie2p/`` and has no aie2 counterpart.
@@ -31,27 +31,25 @@ RTP word and the DMA fill/drain addressing differ.
 import argparse
 from pathlib import Path
 
-import numpy as np
-
 import aie.iron as iron
+import numpy as np
+from aie.helpers.util import np_ndarray_type_get_shape
 from aie.iron import (
     Buffer,
     CompileTime,
     In,
-    Out,
     ObjectFifo,
+    Out,
     Program,
     Runtime,
     TaskGroup,
     Worker,
     WorkerRuntimeBarrier,
 )
-from aie.utils.hostruntime.argparse import device_from_args
 from aie.iron.controlflow import range_
 from aie.iron.kernel import ExternalFunction
-from aie.helpers.util import np_ndarray_type_get_shape
 from aie.utils import config
-from aie.utils.hostruntime.argparse import add_compile_args
+from aie.utils.hostruntime.argparse import add_compile_args, device_from_args
 from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
 
@@ -247,9 +245,7 @@ def _run_and_verify(opts):
     gelu_t = iron.zeros_like(a_t)
     relu_t = iron.zeros_like(a_t)
 
-    mm_activation_epilogue(
-        a_t, id_t, silu_t, gelu_t, relu_t, **_compile_kwargs(opts)
-    )
+    mm_activation_epilogue(a_t, id_t, silu_t, gelu_t, relu_t, **_compile_kwargs(opts))
 
     assert_pass(id_t.numpy(), a_np, atol=0.0, fail_msg="identity mode mismatch")
     assert_pass(
