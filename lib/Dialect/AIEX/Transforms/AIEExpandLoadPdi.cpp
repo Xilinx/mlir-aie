@@ -240,6 +240,16 @@ static void collectWrittenAddresses(Operation *op, ConfigSegment &out) {
       out.opaque = true;
     return;
   }
+  // A masked write touches one known register. Recording it makes the stale
+  // set MORE complete; treating it as unreadable is what left every segment
+  // opaque, since the load_pdi expansion emits masked writes itself.
+  if (auto m = dyn_cast<AIEX::NpuMaskWrite32Op>(op)) {
+    if (auto addr = m.getAbsoluteAddress())
+      out.addresses.insert(*addr);
+    else
+      out.opaque = true;
+    return;
+  }
   if (auto b = dyn_cast<AIEX::NpuBlockWriteOp>(op)) {
     auto addr = b.getAbsoluteAddress();
     if (!addr) {
@@ -259,26 +269,32 @@ static void collectWrittenAddresses(Operation *op, ConfigSegment &out) {
   }
   // Any other op that configures the array is not modelled here. Writing
   // through one and differencing anyway would under-reset the boundary.
-  if (isa<AIEX::NpuBlockWriteValuesOp, AIEX::NpuMaskWrite32Op,
-          AIEX::NpuAddressPatchOp>(op))
+  if (isa<AIEX::NpuBlockWriteValuesOp, AIEX::NpuAddressPatchOp>(op))
     out.opaque = true;
 }
 
 /// The register-database module name for the tile `addr` lands in, or nullptr
 /// if the address does not resolve to a tile this target has.
-static const char *moduleForAddress(const AIE::AIETargetModel &tm,
-                                    uint32_t addr) {
+static SmallVector<const char *, 2>
+modulesForAddress(const AIE::AIETargetModel &tm, uint32_t addr) {
+  // The row field is only the bits between the two shifts; masking it to a
+  // byte reaches into the column field, so every address outside column 0
+  // decodes to a row past the end of the array.
+  uint32_t rowBits = tm.getColumnShift() - tm.getRowShift();
   int col = (addr >> tm.getColumnShift()) & 0xFF;
-  int row = (addr >> tm.getRowShift()) & 0xFF;
+  int row = (addr >> tm.getRowShift()) & ((1u << rowBits) - 1);
   if (col >= (int)tm.columns() || row >= (int)tm.rows())
-    return nullptr;
+    return {};
+  // A core tile carries TWO register modules at one tile address: the core
+  // module and the memory module that holds its DMA, lock and BD registers.
+  // Naming only "core" loses every BD a configuration writes.
   if (tm.isCoreTile(col, row))
-    return "core";
+    return {"core", "memory"};
   if (tm.isMemTile(col, row))
-    return "memory_tile";
+    return {"memory_tile"};
   if (tm.isShimNOCTile(col, row) || tm.isShimPLTile(col, row))
-    return "shim";
-  return nullptr;
+    return {"shim"};
+  return {};
 }
 
 /// Reset value the database documents for `addr`, or nullopt when the address
@@ -286,17 +302,22 @@ static const char *moduleForAddress(const AIE::AIETargetModel &tm,
 static std::optional<uint32_t> resetValueFor(const AIE::AIETargetModel &tm,
                                              const AIE::RegisterDatabase &db,
                                              uint32_t addr) {
-  const char *module = moduleForAddress(tm, addr);
-  if (!module)
-    return std::nullopt;
   uint32_t offset = addr & ((1u << tm.getRowShift()) - 1);
-  const AIE::RegisterInfo *reg = db.lookupRegisterByOffset(offset, module);
-  if (!reg)
-    return std::nullopt;
-  uint32_t value = 0;
-  if (llvm::StringRef(reg->reset).trim().getAsInteger(0, value))
-    return std::nullopt;
-  return value;
+  std::optional<uint32_t> found;
+  for (const char *module : modulesForAddress(tm, addr)) {
+    const AIE::RegisterInfo *reg = db.lookupRegisterByOffset(offset, module);
+    if (!reg)
+      continue;
+    uint32_t value = 0;
+    if (llvm::StringRef(reg->reset).trim().getAsInteger(0, value))
+      return std::nullopt;
+    // The core and memory module offset ranges overlap, so an offset both
+    // claim names two different registers. Do not pick one.
+    if (found && *found != value)
+      return std::nullopt;
+    found = value;
+  }
+  return found;
 }
 
 } // namespace
@@ -328,8 +349,16 @@ static void applyDifferentialReset(ModuleOp module) {
     // reset. Later ones can be replaced.
     for (unsigned i = 1; i < segments.size(); ++i) {
       // Either side unreadable means the difference is not trustworthy.
-      if (segments[i - 1].second.opaque || segments[i].second.opaque)
+      // Say so: keeping the firmware reset is correct but silently costs the
+      // whole point of the flag, and there is no other signal that it did.
+      if (segments[i - 1].second.opaque || segments[i].second.opaque) {
+        segments[i].first.emitRemark()
+            << "keeping the firmware reset: a configuration write with no "
+               "compile-time address is present on "
+            << (segments[i - 1].second.opaque ? "the outgoing" : "the incoming")
+            << " side";
         continue;
+      }
 
       SmallVector<uint32_t> stale;
       for (uint32_t addr : segments[i - 1].second.addresses)
@@ -338,17 +367,23 @@ static void applyDifferentialReset(ModuleOp module) {
       llvm::sort(stale);
 
       SmallVector<std::pair<uint32_t, uint32_t>> resets;
-      bool resolvable = true;
+      std::optional<uint32_t> unresolved;
       for (uint32_t addr : stale) {
         std::optional<uint32_t> value = resetValueFor(tm, *db, addr);
         if (!value) {
-          resolvable = false;
+          unresolved = addr;
           break;
         }
         resets.emplace_back(addr, *value);
       }
-      if (!resolvable)
+      if (unresolved) {
+        segments[i].first.emitRemark()
+            << "keeping the firmware reset: the register database has no reset "
+               "value for address 0x"
+            << llvm::utohexstr(*unresolved) << ", one of " << stale.size()
+            << " the outgoing device leaves set";
         continue;
+      }
 
       NpuLoadPdiOp preload = segments[i].first;
       OpBuilder builder(preload);
