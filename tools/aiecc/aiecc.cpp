@@ -1138,34 +1138,47 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   // For --load-pdi-to-ctrl-pkt this edge holds the control-packet ops before
   // DMA lowering: the extraction point for the control-packet binary.
   bool ctrlPkt = loadPdiToCtrlPkt.getValue();
-  EdgeWithTypedOutput<ModRef> &npuExpanded =
-      (expandLoadPdis.getValue() || ctrlPkt)
-          ? static_cast<EdgeWithTypedOutput<ModRef> &>(
-                npuMaterialized.map<ModRef>(
-                    "npu_expanded.mlir",
-                    PassPipeline{
-                        &context,
-                        [ctrlPkt](mlir::MLIRContext *ctx, mlir::ModuleOp) {
-                          return getExpandLoadPdiPipeline(ctx, ctrlPkt);
-                        }}))
-          : npuMaterialized;
+  auto expandPipeline =
+      [&context, ctrlPkt](
+          EdgeWithTypedOutput<ModRef> &src) -> EdgeWithTypedOutput<ModRef> & {
+    return src.map<ModRef>(
+        "npu_expanded.mlir",
+        PassPipeline{&context,
+                     [ctrlPkt](mlir::MLIRContext *ctx, mlir::ModuleOp) {
+                       return getExpandLoadPdiPipeline(ctx, ctrlPkt);
+                     }});
+  };
+
+  // --load-pdi-to-ctrl-pkt expands first: its tail consumes the control-packet
+  // ops the expansion emits.
+  EdgeWithTypedOutput<ModRef> &ctrlPktExpanded =
+      expandPipeline(npuMaterialized);
 
   // The default tail unrolls runtime-sequence loops and pools dynamic BDs; the
   // ctrl-packet sequence is straight-line and only needs the per-device tail,
   // after its control packets are lowered to DMA.
+  //
+  // Elsewhere the DMA lowering runs first: aie-dma-to-npu's write32 patterns
+  // only match writes carrying a buffer symbol, and npu_materialized already
+  // carries those, so the expansion's writes need nothing from it.
   EdgeWithTypedOutput<ModRef> &npuDmaLowered =
       ctrlPkt
-          ? npuExpanded
+          ? ctrlPktExpanded
                 .map<ModRef>("ctrlpkt_to_dma.mlir",
                              PassPipeline{getCtrlPktToDmaPipeline(&context)})
                 .map<ModRef>(
                     "ctrlpkt_npu_lowered.mlir",
                     PassPipeline{getPerDeviceDmaLoweringPipeline(&context)})
-          : npuExpanded.map<ModRef>(
+          : npuMaterialized.map<ModRef>(
                 "npu_dma_lowered.mlir",
                 PassPipeline{getNpuDmaLoweringPipeline(&context)});
 
-  auto &npuLowered = npuDmaLowered.map<ModRef>(
+  EdgeWithTypedOutput<ModRef> &npuExpanded = ctrlPkt ? ctrlPktExpanded
+                                             : expandLoadPdis.getValue()
+                                                 ? expandPipeline(npuDmaLowered)
+                                                 : npuDmaLowered;
+
+  auto &npuLowered = npuExpanded.map<ModRef>(
       "npu_lowered.mlir",
       [](const Item<ModRef> &item, Item<ModRef> &out) -> mlir::LogicalResult {
         ModRef clone = item.get().get().clone();
