@@ -899,7 +899,11 @@ struct AIEInsertTraceFlowsPass
         auto tokenValue = targetModel.encodeFieldValue(*tokenField, 1);
         auto bdIdValue =
             targetModel.encodeFieldValue(*bdIdField, chanDesc.bdId);
-        if (!tokenValue || !bdIdValue)
+        if (!tokenValue)
+          llvm::report_fatal_error("Enable_Token_Issue does not fit in the "
+                                   "field of " +
+                                   llvm::Twine(taskQueueRegName));
+        if (!bdIdValue)
           llvm::report_fatal_error("BD ID does not fit in the Start_BD_ID "
                                    "field of " +
                                    llvm::Twine(taskQueueRegName));
