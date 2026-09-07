@@ -986,22 +986,7 @@ LogicalResult AIEX::NpuUpdateFromScratchpadOp::verify() {
            << " exceeds maximum StateTable index ("
            << (kMaxStateTableEntries - 1) << ").";
 
-  // Cross-check against any npu.create_scratchpad ops in the same block: the
-  // index must fit within the allocated scratchpad (size in 32-bit words).
-  Block *block = (*this)->getBlock();
-  if (block) {
-    for (auto createOp : block->getOps<AIEX::NpuCreateScratchpadOp>()) {
-      uint32_t sizeBytes = createOp.getSize();
-      uint32_t numEntries = sizeBytes / 4;
-      if (getStateTableIdx() >= numEntries) {
-        return emitOpError("state_table_idx ")
-               << static_cast<uint32_t>(getStateTableIdx())
-               << " is out of bounds for scratchpad of size " << sizeBytes
-               << " bytes (" << numEntries << " entries) created by "
-               << createOp->getName() << ".";
-      }
-    }
-  }
+  // NpuCreateScratchpadOp::verify() bounds the state_table_idx.
   return success();
 }
 
@@ -1055,6 +1040,21 @@ LogicalResult AIEX::NpuCreateScratchpadOp::verify() {
     diag.attachNote(firstSeen.getLoc())
         << "previous 'aiex.npu.create_scratchpad' here";
     return diag;
+  }
+
+  // Scratchpads are far rarer than the updates they bound, and an op verifier
+  // runs after every pass, so the block scan belongs on this side.
+  uint32_t numEntries = getSize() / 4;
+  if (Block *block = (*this)->getBlock()) {
+    for (auto updateOp : block->getOps<AIEX::NpuUpdateFromScratchpadOp>()) {
+      if (updateOp.getStateTableIdx() < numEntries)
+        continue;
+      return updateOp.emitOpError("state_table_idx ")
+             << static_cast<uint32_t>(updateOp.getStateTableIdx())
+             << " is out of bounds for scratchpad of size " << getSize()
+             << " bytes (" << numEntries << " entries) created by "
+             << (*this)->getName() << ".";
+    }
   }
 
   return success();
