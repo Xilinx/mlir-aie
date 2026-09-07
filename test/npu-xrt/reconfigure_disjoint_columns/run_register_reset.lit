@@ -1,0 +1,15 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// REQUIRES: ryzen_ai_npu2, peano
+//
+// Same design under --register-reset, which replaces the empty-device reload
+// with writes restoring the registers the outgoing device left. The two
+// designs here share no tile, so this is the case a differential reset has to
+// get right and a full reload gets for free.
+//
+// RUN: rm -rf %t.d && mkdir -p %t.d
+// RUN: cd %t.d
+// RUN: %aiecc -v --get-full-elf --expand-load-pdis --register-reset %S/aie.mlir
+// RUN: %host_clang -o test %S/test.cpp -std=c++17 %host_link_flags %xrt_flags
+// RUN: ./test 32
