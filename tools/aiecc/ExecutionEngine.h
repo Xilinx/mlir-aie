@@ -768,6 +768,10 @@ struct Engine {
       if (reachable.count(e.get()))
         reachableEdges.push_back(e.get());
 
+    // Baseline for the per-edge dRSS column: everything resident before any
+    // edge ran (startup, input parsing, graph construction) belongs to no edge.
+    uint64_t baselineRSS = processRSSBytes();
+
     Scheduler scheduler(opts, std::move(reachableEdges), satisfied, deserCtx);
     mlir::LogicalResult r = scheduler.run();
     failedEdge = scheduler.failedEdge;
@@ -788,7 +792,7 @@ struct Engine {
 
     if (opts.profile && !edgeTimings.empty()) {
       int64_t total = 0;
-      uint64_t peak = 0, prevRSS = 0;
+      uint64_t peak = 0, prevRSS = baselineRSS;
       llvm::errs() << "aiecc: profile (per-edge time and resident memory):\n";
       llvm::errs() << llvm::formatv("  {0,8}  {1,10}  {2,10}  {3}\n", "ms",
                                     "dRSS MiB", "peak MiB", "edge");
