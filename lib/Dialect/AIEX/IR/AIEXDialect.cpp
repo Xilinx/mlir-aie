@@ -1274,14 +1274,18 @@ LogicalResult AIEX::DMAConfigureTaskOp::verify() {
   return result;
 }
 
-LogicalResult AIEX::DMAConfigureTaskForOp::verify() {
+// Resolving the allocation symbol through the collection keeps the lookup off
+// the device's linear symbol scan, which a per-op verifier repeats after every
+// pass.
+LogicalResult AIEX::DMAConfigureTaskForOp::verifySymbolUses(
+    SymbolTableCollection &symbolTable) {
   // Recover the shim tile through the referenced shim DMA allocation symbol so
   // the per-BD dimension limit can be enforced on the runtime-sequence path
   // before the allocation is substituted into a concrete DMAConfigureTaskOp.
   AIE::DeviceOp dev = getOperation()->getParentOfType<AIE::DeviceOp>();
   if (!dev)
     return success();
-  AIE::ShimDMAAllocationOp allocOp = AIE::ShimDMAAllocationOp::getForSymbol(
+  auto allocOp = symbolTable.lookupSymbolIn<AIE::ShimDMAAllocationOp>(
       dev, getAlloc().getRootReference());
   if (!allocOp)
     return success(); // symbol resolved during a later pass; defer the check
