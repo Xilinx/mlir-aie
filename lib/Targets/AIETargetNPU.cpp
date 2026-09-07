@@ -139,7 +139,11 @@ LogicalResult appendAddressPatch(std::vector<uint32_t> &instructions,
   if (!argPlus)
     return op.emitOpError("Cannot translate address_patch with non-constant "
                           "arg_plus to a static TXN binary");
-  uint32_t argIdx = op.getArgIdx();
+  std::optional<uint32_t> argIdxAttr = op.getArgIdx();
+  if (!argIdxAttr)
+    return op.emitOpError("address_patch still names its host buffer by SSA "
+                          "value; run -aie-resolve-address-patch-buffers");
+  uint32_t argIdx = *argIdxAttr;
   uint32_t patchedArgPlus = *argPlus;
   if (foldDDRAddrOffset && argIdx >= kNumFirmwareTranslatedArgs)
     patchedArgPlus += kDDRAIEAddrOffset;
@@ -559,7 +563,26 @@ LogicalResult xilinx::AIE::AIETranslateControlPacketsToUI32Vec(
       hdr = (info.getPktType() & 0x7) << 12 | (info.getPktId() & 0xff);
     words[0] = hdr | (0x1 & parity(hdr)) << 31;
 
-    // control packet header
+    // `beats` gets two bits, directly above the address, so an oversized
+    // payload corrupts the address instead of truncating, and `size - 1`
+    // underflows the same way when size is 0. Enforced here (not by a
+    // verifier) since ops may carry more before
+    // --aie-legalize-control-packet splits them.
+    bool sizeFromLength = !data && length;
+    const char *what = sizeFromLength ? "length" : "payload";
+    if (size == 0)
+      return packetOp.emitOpError()
+             << what
+             << " is empty; a control packet must carry at least 1 "
+                "word on the wire";
+    if (size > AIEX::NpuControlPacketOp::getMaxDataWords())
+      return packetOp.emitOpError()
+             << what << " is " << size
+             << " words; a control packet carries at most "
+             << AIEX::NpuControlPacketOp::getMaxDataWords()
+             << " on the wire. Run --aie-legalize-control-packet before "
+                "translating.";
+
     uint32_t addr = packetOp.getAddress() & 0xFFFFF;
     uint32_t beats = size - 1;
     uint32_t opc = packetOp.getOpcode();

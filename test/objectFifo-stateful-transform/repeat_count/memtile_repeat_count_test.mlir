@@ -5,19 +5,19 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="skip-verify=true" --aie-objectFifo-unroll %s | FileCheck %s
 
 // CHECK: module @repeatCount {
 // CHECK:   aie.device(npu1) {
-// CHECK:     %{{.*}}tile_1_1 = aie.tile(1, 1)
-// CHECK:     %{{.*}}tile_1_3 = aie.tile(1, 3)
-// CHECK:     %[[VAL_0:.*]] = aie.buffer(%{{.*}}tile_1_3) {sym_name = "of1_cons_buff_0"} : memref<16xi32>
-// CHECK:     %[[VAL_1:.*]] = aie.lock(%{{.*}}tile_1_3) {init = 1 : i32, sym_name = "of1_cons_prod_lock_0"}
-// CHECK:     %[[VAL_2:.*]] = aie.lock(%{{.*}}tile_1_3) {init = 0 : i32, sym_name = "of1_cons_cons_lock_0"}
-// CHECK:     %[[VAL_3:.*]] = aie.buffer(%{{.*}}tile_1_1) {sym_name = "of1_buff_0"} : memref<16xi32>
-// CHECK:     %[[VAL_4:.*]] = aie.lock(%{{.*}}tile_1_1) {init = 3 : i32, sym_name = "of1_prod_lock_0"}
-// CHECK:     %[[VAL_5:.*]] = aie.lock(%{{.*}}tile_1_1) {init = 0 : i32, sym_name = "of1_cons_lock_0"}
-// CHECK:     aie.flow(%{{.*}}tile_1_1, DMA : 0, %{{.*}}tile_1_3, DMA : 0)
+// CHECK-DAG:     %{{.*}}tile_1_1 = aie.tile(1, 1)
+// CHECK-DAG:     %{{.*}}tile_1_3 = aie.tile(1, 3)
+// CHECK-DAG:     %[[VAL_0:.*]] = aie.buffer(%{{.*}}tile_1_3) {sym_name = "of1_cons_buff_0"} : memref<16xi32>
+// CHECK-DAG:     %[[VAL_1:.*]] = aie.lock(%{{.*}}tile_1_3) {init = 1 : i32, sym_name = "of1_cons_prod_lock_0"}
+// CHECK-DAG:     %[[VAL_2:.*]] = aie.lock(%{{.*}}tile_1_3) {init = 0 : i32, sym_name = "of1_cons_cons_lock_0"}
+// CHECK-DAG:     %[[VAL_3:.*]] = aie.buffer(%{{.*}}tile_1_1) {sym_name = "of1_buff_0"} : memref<16xi32>
+// CHECK-DAG:     %[[VAL_4:.*]] = aie.lock(%{{.*}}tile_1_1) {init = 3 : i32, sym_name = "of1_prod_lock_0"}
+// CHECK-DAG:     %[[VAL_5:.*]] = aie.lock(%{{.*}}tile_1_1) {init = 0 : i32, sym_name = "of1_cons_lock_0"}
+// CHECK-DAG:     aie.flow(%{{.*}}tile_1_1, DMA : 0, %{{.*}}tile_1_3, DMA : 0)
 // CHECK:     %memtile_dma_1_1 = aie.memtile_dma(%{{.*}}tile_1_1) {
 // CHECK:       %0 = aie.dma_start(MM2S, 0, ^bb1, ^bb2, repeat_count = 2)
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb1

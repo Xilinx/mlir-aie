@@ -793,8 +793,7 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
 
       for (auto dest : packetFlow.second) {
         Port port = dest.second;
-        if (std::find(existingPorts.begin(), existingPorts.end(), port) ==
-            existingPorts.end())
+        if (llvm::find(existingPorts, port) == existingPorts.end())
           hasNonOverlap = true;
         else
           hasOverlap = true;
@@ -961,7 +960,7 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
         continue;
 
       for (auto dest1 : dests1) {
-        if (std::find(dests2.begin(), dests2.end(), dest1) == dests2.end()) {
+        if (llvm::find(dests2, dest1) == dests2.end()) {
           matched = false;
           break;
         }
@@ -993,11 +992,11 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
   for (const auto &swMap : mastersets) {
     TileID tileId = swMap.first.first;
     TileOp tileOp = analyzer.getTile(builder, tileId);
-    if (std::none_of(tiles.begin(), tiles.end(),
-                     [&tileOp](const std::pair<const xilinx::AIE::TileID,
-                                               Operation *> &tileMapEntry) {
-                       return tileMapEntry.second == tileOp.getOperation();
-                     })) {
+    if (llvm::none_of(tiles,
+                      [&tileOp](const std::pair<const xilinx::AIE::TileID,
+                                                Operation *> &tileMapEntry) {
+                        return tileMapEntry.second == tileOp.getOperation();
+                      })) {
       tiles[{tileOp.colIndex(), tileOp.rowIndex()}] = tileOp;
     }
   }

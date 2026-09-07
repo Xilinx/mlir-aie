@@ -10,14 +10,14 @@
 // RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll %s | FileCheck %s
 
 // CHECK-LABEL:   aie.device(xcve2302) {
-// CHECK:           %[[VAL_0:.*]] = aie.tile(1, 2)
-// CHECK:           %[[VAL_1:.*]] = aie.tile(2, 2)
-// CHECK:           %[[VAL_2:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "fifo0_buff_0"} : memref<16xi32>
-// CHECK:           %[[VAL_3:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "fifo0_buff_1"} : memref<16xi32>
-// CHECK:           %[[VAL_4:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "fifo0_buff_2"} : memref<16xi32>
-// CHECK:           %[[VAL_5:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "fifo0_buff_3"} : memref<16xi32>
-// CHECK:           %[[VAL_6:.*]] = aie.lock(%[[VAL_0]]) {init = 4 : i32, sym_name = "fifo0_prod_lock_0"}
-// CHECK:           %[[VAL_7:.*]] = aie.lock(%[[VAL_0]]) {init = 0 : i32, sym_name = "fifo0_cons_lock_0"}
+// CHECK-DAG:           %[[VAL_0:.*]] = aie.tile(1, 2)
+// CHECK-DAG:           %[[VAL_1:.*]] = aie.tile(2, 2)
+// CHECK-DAG:           %[[VAL_2:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "fifo0_buff_0"} : memref<16xi32>
+// CHECK-DAG:           %[[VAL_3:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "fifo0_buff_1"} : memref<16xi32>
+// CHECK-DAG:           %[[VAL_4:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "fifo0_buff_2"} : memref<16xi32>
+// CHECK-DAG:           %[[VAL_5:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "fifo0_buff_3"} : memref<16xi32>
+// CHECK-DAG:           %[[VAL_6:.*]] = aie.lock(%[[VAL_0]]) {init = 4 : i32, sym_name = "fifo0_prod_lock_0"}
+// CHECK-DAG:           %[[VAL_7:.*]] = aie.lock(%[[VAL_0]]) {init = 0 : i32, sym_name = "fifo0_cons_lock_0"}
 // Producer: shared-mem semaphore-lock producer, fully unrolled x4 (+1 remainder)
 // storing to buff0..3 in rotation; each push acquires 1 prod / releases 1 cons.
 // CHECK:           %[[VAL_8:.*]] = aie.core(%[[VAL_0]]) {
@@ -92,8 +92,7 @@ module @cyclostatic {
             %c9 = arith.constant 9 : index
 
             scf.for %indexInHeight = %c0 to %c9 step %c1 {
-                %subview1 = aie.objectfifo.acquire @fifo0 (Produce, 1) : !aie.objectfifosubview<memref<16xi32>>
-                %subview1_obj = aie.objectfifo.subview.access %subview1[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+                %subview1_obj = aie.objectfifo.acquire @fifo0 (Produce, 1) : memref<16xi32>
                 memref.store %v11, %subview1_obj[%c0] : memref<16xi32>
                 aie.objectfifo.release @fifo0 (Produce, 1)
             }
@@ -106,25 +105,19 @@ module @cyclostatic {
             %c1 = arith.constant 1 : index
             %c9 = arith.constant 9 : index
 
-            %subview0 = aie.objectfifo.acquire @fifo0 (Consume, 1) : !aie.objectfifosubview<memref<16xi32>>
-            %subview0_obj = aie.objectfifo.subview.access %subview0[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+            %subview0_obj = aie.objectfifo.acquire @fifo0 (Consume, 1) : memref<16xi32>
             %v0 = memref.load %subview0_obj[%c0] : memref<16xi32>
             aie.objectfifo.release @fifo0 (Consume, 1)
 
             scf.for %indexInHeight = %c0 to %c9 step %c1 {
-                %subview1 = aie.objectfifo.acquire @fifo0 (Consume, 3) : !aie.objectfifosubview<memref<16xi32>>
-                %subview1_obj = aie.objectfifo.subview.access %subview1[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
-                %subview1_obj1 = aie.objectfifo.subview.access %subview1[1] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
-                %subview1_obj2 = aie.objectfifo.subview.access %subview1[2] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+                %subview1_obj, %subview1_obj1, %subview1_obj2 = aie.objectfifo.acquire @fifo0 (Consume, 3) : memref<16xi32>, memref<16xi32>, memref<16xi32>
                 %v1 = memref.load %subview1_obj[%c0] : memref<16xi32>
                 %v2 = memref.load %subview1_obj1[%c0] : memref<16xi32>
                 %v3 = memref.load %subview1_obj2[%c0] : memref<16xi32>
                 aie.objectfifo.release @fifo0 (Consume, 1)
             }
 
-            %subview2 = aie.objectfifo.acquire @fifo0 (Consume, 2) : !aie.objectfifosubview<memref<16xi32>>
-            %subview2_obj = aie.objectfifo.subview.access %subview2[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
-            %subview2_obj1 = aie.objectfifo.subview.access %subview2[1] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+            %subview2_obj, %subview2_obj1 = aie.objectfifo.acquire @fifo0 (Consume, 2) : memref<16xi32>, memref<16xi32>
             %v4 = memref.load %subview2_obj[%c0] : memref<16xi32>
             %v5 = memref.load %subview2_obj1[%c0] : memref<16xi32>
             aie.objectfifo.release @fifo0 (Consume, 2)

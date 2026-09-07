@@ -13,7 +13,7 @@
 // CHECK:     Address: 0x000000000001D008  Data@ {{0x[0-9a-z]+}} is: 0x00000000 
 // CHECK:     Address: 0x000000000001D00C  Data@ {{0x[0-9a-z]+}} is: 0x00000000 
 // CHECK:     Address: 0x000000000001D010  Data@ {{0x[0-9a-z]+}} is: 0x80000000 
-// CHECK:     Address: 0x000000000001D014  Data@ {{0x[0-9a-z]+}} is: 0x00000000 
+// CHECK:     Address: 0x000000000001D014  Data@ {{0x[0-9a-z]+}} is: 0x02000000
 // CHECK:     Address: 0x000000000001D018  Data@ {{0x[0-9a-z]+}} is: 0x00000000 
 // CHECK:     Address: 0x000000000001D01C  Data@ {{0x[0-9a-z]+}} is: 0x02000000 
 // check that burst length is set to 128B

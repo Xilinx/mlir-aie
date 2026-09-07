@@ -11,43 +11,43 @@
 // RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll %s | FileCheck %s
 
 // CHECK-LABEL:   aie.device(xcvc1902) {
-// CHECK:           %[[VAL_0:.*]] = aie.tile(1, 2)
-// CHECK:           %[[VAL_1:.*]] = aie.tile(1, 3)
-// CHECK:           %[[VAL_2:.*]] = aie.tile(1, 4)
-// CHECK:           %[[VAL_3:.*]] = aie.tile(3, 2)
-// CHECK:           %[[VAL_4:.*]] = aie.tile(3, 3)
-// CHECK:           %[[VAL_5:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "broadcast_of_0_cons_buff_0"} : memref<16xi32>
-// CHECK:           %[[VAL_6:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "broadcast_of_0_cons_buff_1"} : memref<16xi32>
-// CHECK:           %[[VAL_7:.*]] = aie.lock(%[[VAL_0]]) {init = 0 : i32, sym_name = "broadcast_of_0_cons_lock_0"}
-// CHECK:           %[[VAL_8:.*]] = aie.lock(%[[VAL_0]]) {init = 0 : i32, sym_name = "broadcast_of_0_cons_lock_1"}
-// CHECK:           %[[VAL_9:.*]] = aie.buffer(%[[VAL_2]]) {sym_name = "broadcast_of_1_cons_buff_0"} : memref<16xi32>
-// CHECK:           %[[VAL_10:.*]] = aie.buffer(%[[VAL_2]]) {sym_name = "broadcast_of_1_cons_buff_1"} : memref<16xi32>
-// CHECK:           %[[VAL_11:.*]] = aie.buffer(%[[VAL_2]]) {sym_name = "broadcast_of_1_cons_buff_2"} : memref<16xi32>
-// CHECK:           %[[VAL_12:.*]] = aie.lock(%[[VAL_2]]) {init = 0 : i32, sym_name = "broadcast_of_1_cons_lock_0"}
-// CHECK:           %[[VAL_13:.*]] = aie.lock(%[[VAL_2]]) {init = 0 : i32, sym_name = "broadcast_of_1_cons_lock_1"}
-// CHECK:           %[[VAL_14:.*]] = aie.lock(%[[VAL_2]]) {init = 0 : i32, sym_name = "broadcast_of_1_cons_lock_2"}
-// CHECK:           %[[VAL_15:.*]] = aie.buffer(%[[VAL_3]]) {sym_name = "broadcast_of_2_cons_buff_0"} : memref<16xi32>
-// CHECK:           %[[VAL_16:.*]] = aie.buffer(%[[VAL_3]]) {sym_name = "broadcast_of_2_cons_buff_1"} : memref<16xi32>
-// CHECK:           %[[VAL_17:.*]] = aie.buffer(%[[VAL_3]]) {sym_name = "broadcast_of_2_cons_buff_2"} : memref<16xi32>
-// CHECK:           %[[VAL_18:.*]] = aie.buffer(%[[VAL_3]]) {sym_name = "broadcast_of_2_cons_buff_3"} : memref<16xi32>
-// CHECK:           %[[VAL_19:.*]] = aie.lock(%[[VAL_3]]) {init = 0 : i32, sym_name = "broadcast_of_2_cons_lock_0"}
-// CHECK:           %[[VAL_20:.*]] = aie.lock(%[[VAL_3]]) {init = 0 : i32, sym_name = "broadcast_of_2_cons_lock_1"}
-// CHECK:           %[[VAL_21:.*]] = aie.lock(%[[VAL_3]]) {init = 0 : i32, sym_name = "broadcast_of_2_cons_lock_2"}
-// CHECK:           %[[VAL_22:.*]] = aie.lock(%[[VAL_3]]) {init = 0 : i32, sym_name = "broadcast_of_2_cons_lock_3"}
-// CHECK:           %[[VAL_23:.*]] = aie.buffer(%[[VAL_4]]) {sym_name = "broadcast_of_3_cons_buff_0"} : memref<16xi32>
-// CHECK:           %[[VAL_24:.*]] = aie.buffer(%[[VAL_4]]) {sym_name = "broadcast_of_3_cons_buff_1"} : memref<16xi32>
-// CHECK:           %[[VAL_25:.*]] = aie.buffer(%[[VAL_4]]) {sym_name = "broadcast_of_3_cons_buff_2"} : memref<16xi32>
-// CHECK:           %[[VAL_26:.*]] = aie.lock(%[[VAL_4]]) {init = 0 : i32, sym_name = "broadcast_of_3_cons_lock_0"}
-// CHECK:           %[[VAL_27:.*]] = aie.lock(%[[VAL_4]]) {init = 0 : i32, sym_name = "broadcast_of_3_cons_lock_1"}
-// CHECK:           %[[VAL_28:.*]] = aie.lock(%[[VAL_4]]) {init = 0 : i32, sym_name = "broadcast_of_3_cons_lock_2"}
-// CHECK:           %[[VAL_29:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "broadcast_of_buff_0"} : memref<16xi32>
-// CHECK:           %[[VAL_30:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "broadcast_of_buff_1"} : memref<16xi32>
-// CHECK:           %[[VAL_31:.*]] = aie.lock(%[[VAL_1]]) {init = 0 : i32, sym_name = "broadcast_of_lock_0"}
-// CHECK:           %[[VAL_32:.*]] = aie.lock(%[[VAL_1]]) {init = 0 : i32, sym_name = "broadcast_of_lock_1"}
-// CHECK:           aie.flow(%[[VAL_1]], DMA : 0, %[[VAL_4]], DMA : 0)
-// CHECK:           aie.flow(%[[VAL_1]], DMA : 0, %[[VAL_3]], DMA : 0)
-// CHECK:           aie.flow(%[[VAL_1]], DMA : 0, %[[VAL_2]], DMA : 0)
-// CHECK:           aie.flow(%[[VAL_1]], DMA : 0, %[[VAL_0]], DMA : 0)
+// CHECK-DAG:           %[[VAL_0:.*]] = aie.tile(1, 2)
+// CHECK-DAG:           %[[VAL_1:.*]] = aie.tile(1, 3)
+// CHECK-DAG:           %[[VAL_2:.*]] = aie.tile(1, 4)
+// CHECK-DAG:           %[[VAL_3:.*]] = aie.tile(3, 2)
+// CHECK-DAG:           %[[VAL_4:.*]] = aie.tile(3, 3)
+// CHECK-DAG:           %[[VAL_5:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "broadcast_of_0_cons_buff_0"} : memref<16xi32>
+// CHECK-DAG:           %[[VAL_6:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "broadcast_of_0_cons_buff_1"} : memref<16xi32>
+// CHECK-DAG:           %[[VAL_7:.*]] = aie.lock(%[[VAL_0]]) {init = 0 : i32, sym_name = "broadcast_of_0_cons_lock_0"}
+// CHECK-DAG:           %[[VAL_8:.*]] = aie.lock(%[[VAL_0]]) {init = 0 : i32, sym_name = "broadcast_of_0_cons_lock_1"}
+// CHECK-DAG:           %[[VAL_9:.*]] = aie.buffer(%[[VAL_2]]) {sym_name = "broadcast_of_1_cons_buff_0"} : memref<16xi32>
+// CHECK-DAG:           %[[VAL_10:.*]] = aie.buffer(%[[VAL_2]]) {sym_name = "broadcast_of_1_cons_buff_1"} : memref<16xi32>
+// CHECK-DAG:           %[[VAL_11:.*]] = aie.buffer(%[[VAL_2]]) {sym_name = "broadcast_of_1_cons_buff_2"} : memref<16xi32>
+// CHECK-DAG:           %[[VAL_12:.*]] = aie.lock(%[[VAL_2]]) {init = 0 : i32, sym_name = "broadcast_of_1_cons_lock_0"}
+// CHECK-DAG:           %[[VAL_13:.*]] = aie.lock(%[[VAL_2]]) {init = 0 : i32, sym_name = "broadcast_of_1_cons_lock_1"}
+// CHECK-DAG:           %[[VAL_14:.*]] = aie.lock(%[[VAL_2]]) {init = 0 : i32, sym_name = "broadcast_of_1_cons_lock_2"}
+// CHECK-DAG:           %[[VAL_15:.*]] = aie.buffer(%[[VAL_3]]) {sym_name = "broadcast_of_2_cons_buff_0"} : memref<16xi32>
+// CHECK-DAG:           %[[VAL_16:.*]] = aie.buffer(%[[VAL_3]]) {sym_name = "broadcast_of_2_cons_buff_1"} : memref<16xi32>
+// CHECK-DAG:           %[[VAL_17:.*]] = aie.buffer(%[[VAL_3]]) {sym_name = "broadcast_of_2_cons_buff_2"} : memref<16xi32>
+// CHECK-DAG:           %[[VAL_18:.*]] = aie.buffer(%[[VAL_3]]) {sym_name = "broadcast_of_2_cons_buff_3"} : memref<16xi32>
+// CHECK-DAG:           %[[VAL_19:.*]] = aie.lock(%[[VAL_3]]) {init = 0 : i32, sym_name = "broadcast_of_2_cons_lock_0"}
+// CHECK-DAG:           %[[VAL_20:.*]] = aie.lock(%[[VAL_3]]) {init = 0 : i32, sym_name = "broadcast_of_2_cons_lock_1"}
+// CHECK-DAG:           %[[VAL_21:.*]] = aie.lock(%[[VAL_3]]) {init = 0 : i32, sym_name = "broadcast_of_2_cons_lock_2"}
+// CHECK-DAG:           %[[VAL_22:.*]] = aie.lock(%[[VAL_3]]) {init = 0 : i32, sym_name = "broadcast_of_2_cons_lock_3"}
+// CHECK-DAG:           %[[VAL_23:.*]] = aie.buffer(%[[VAL_4]]) {sym_name = "broadcast_of_3_cons_buff_0"} : memref<16xi32>
+// CHECK-DAG:           %[[VAL_24:.*]] = aie.buffer(%[[VAL_4]]) {sym_name = "broadcast_of_3_cons_buff_1"} : memref<16xi32>
+// CHECK-DAG:           %[[VAL_25:.*]] = aie.buffer(%[[VAL_4]]) {sym_name = "broadcast_of_3_cons_buff_2"} : memref<16xi32>
+// CHECK-DAG:           %[[VAL_26:.*]] = aie.lock(%[[VAL_4]]) {init = 0 : i32, sym_name = "broadcast_of_3_cons_lock_0"}
+// CHECK-DAG:           %[[VAL_27:.*]] = aie.lock(%[[VAL_4]]) {init = 0 : i32, sym_name = "broadcast_of_3_cons_lock_1"}
+// CHECK-DAG:           %[[VAL_28:.*]] = aie.lock(%[[VAL_4]]) {init = 0 : i32, sym_name = "broadcast_of_3_cons_lock_2"}
+// CHECK-DAG:           %[[VAL_29:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "broadcast_of_buff_0"} : memref<16xi32>
+// CHECK-DAG:           %[[VAL_30:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "broadcast_of_buff_1"} : memref<16xi32>
+// CHECK-DAG:           %[[VAL_31:.*]] = aie.lock(%[[VAL_1]]) {init = 0 : i32, sym_name = "broadcast_of_lock_0"}
+// CHECK-DAG:           %[[VAL_32:.*]] = aie.lock(%[[VAL_1]]) {init = 0 : i32, sym_name = "broadcast_of_lock_1"}
+// CHECK-DAG:           aie.flow(%[[VAL_1]], DMA : 0, %[[VAL_4]], DMA : 0)
+// CHECK-DAG:           aie.flow(%[[VAL_1]], DMA : 0, %[[VAL_3]], DMA : 0)
+// CHECK-DAG:           aie.flow(%[[VAL_1]], DMA : 0, %[[VAL_2]], DMA : 0)
+// CHECK-DAG:           aie.flow(%[[VAL_1]], DMA : 0, %[[VAL_0]], DMA : 0)
 // CHECK:           func.func @some_work(%[[VAL_33:.*]]: memref<16xi32>) {
 // CHECK:             return
 // CHECK:           }
@@ -273,8 +273,7 @@ module @broadcast {
         %height = arith.constant 12 : index
 
         scf.for %indexInHeight = %c0 to %height step %c1 {
-            %subview = aie.objectfifo.acquire @broadcast_of (Produce, 1) : !aie.objectfifosubview<memref<16xi32>>
-            %elem0 = aie.objectfifo.subview.access %subview[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+            %elem0 = aie.objectfifo.acquire @broadcast_of (Produce, 1) : memref<16xi32>
             func.call @some_work(%elem0) : (memref<16xi32>) -> ()
             aie.objectfifo.release @broadcast_of (Produce, 1)
         }
@@ -288,8 +287,7 @@ module @broadcast {
         %height = arith.constant 12 : index
 
         scf.for %indexInHeight = %c0 to %height step %c1 {
-            %subview = aie.objectfifo.acquire @broadcast_of (Consume, 1) : !aie.objectfifosubview<memref<16xi32>>
-            %elem0 = aie.objectfifo.subview.access %subview[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+            %elem0 = aie.objectfifo.acquire @broadcast_of (Consume, 1) : memref<16xi32>
             func.call @some_work(%elem0) : (memref<16xi32>) -> ()
             aie.objectfifo.release @broadcast_of (Consume, 1)
         }
@@ -303,9 +301,7 @@ module @broadcast {
         %height = arith.constant 12 : index
 
         scf.for %indexInHeight = %c0 to %height step %c1 {
-            %subview = aie.objectfifo.acquire @broadcast_of (Consume, 2) : !aie.objectfifosubview<memref<16xi32>>
-            %elem0 = aie.objectfifo.subview.access %subview[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
-            %elem1 = aie.objectfifo.subview.access %subview[1] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+            %elem0, %elem1 = aie.objectfifo.acquire @broadcast_of (Consume, 2) : memref<16xi32>, memref<16xi32>
             func.call @some_work(%elem0) : (memref<16xi32>) -> ()
             func.call @some_work(%elem1) : (memref<16xi32>) -> ()
             aie.objectfifo.release @broadcast_of (Consume, 2)
@@ -320,10 +316,7 @@ module @broadcast {
         %height = arith.constant 12 : index
 
         scf.for %indexInHeight = %c0 to %height step %c1 {
-            %subview = aie.objectfifo.acquire @broadcast_of (Consume, 3) : !aie.objectfifosubview<memref<16xi32>>
-            %elem0 = aie.objectfifo.subview.access %subview[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
-            %elem1 = aie.objectfifo.subview.access %subview[1] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
-            %elem2 = aie.objectfifo.subview.access %subview[2] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+            %elem0, %elem1, %elem2 = aie.objectfifo.acquire @broadcast_of (Consume, 3) : memref<16xi32>, memref<16xi32>, memref<16xi32>
             func.call @some_work(%elem0) : (memref<16xi32>) -> ()
             func.call @some_work(%elem1) : (memref<16xi32>) -> ()
             func.call @some_work(%elem2) : (memref<16xi32>) -> ()
@@ -339,9 +332,7 @@ module @broadcast {
         %height = arith.constant 12 : index
 
         scf.for %indexInHeight = %c0 to %height step %c1 {
-            %subview = aie.objectfifo.acquire @broadcast_of (Consume, 2) : !aie.objectfifosubview<memref<16xi32>>
-            %elem0 = aie.objectfifo.subview.access %subview[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
-            %elem1 = aie.objectfifo.subview.access %subview[1] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+            %elem0, %elem1 = aie.objectfifo.acquire @broadcast_of (Consume, 2) : memref<16xi32>, memref<16xi32>
             func.call @some_work(%elem0) : (memref<16xi32>) -> ()
             func.call @some_work(%elem1) : (memref<16xi32>) -> ()
             aie.objectfifo.release @broadcast_of (Consume, 1)

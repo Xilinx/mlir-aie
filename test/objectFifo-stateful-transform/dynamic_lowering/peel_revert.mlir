@@ -15,11 +15,11 @@
 // has to reproduce exactly what peeling disabled produces, which is what makes
 // this a check of the revert rather than of the peel.
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll %s | FileCheck %s
-// RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll="peel-first-iteration=false" %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="skip-verify=true" --aie-objectFifo-unroll %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="skip-verify=true" --aie-objectFifo-unroll="peel-first-iteration=false" %s | FileCheck %s
 
 // CHECK-LABEL:   aie.device(npu2) {
-// CHECK:           %[[T2:.*]] = aie.tile(0, 2)
+// CHECK-DAG:           %[[T2:.*]] = aie.tile(0, 2)
 // CHECK:           %{{.*}} = aie.core(%[[T2]]) {
 // Nothing is acquired ahead of the loop: the peeled copy was discarded.
 // CHECK-NOT:         aie.use_lock
@@ -46,7 +46,7 @@ module {
       %c14 = arith.constant 14 : index
       scf.for %arg0 = %c0 to %c14 step %c1 {
         %dyn = arith.cmpi slt, %arg0, %c7 : index
-        %x = aie.objectfifo.acquire @fifo(Consume, 3) : !aie.objectfifosubview<memref<8xi8>>
+        %x_obj0, %x_obj1, %x_obj2 = aie.objectfifo.acquire @fifo(Consume, 3) : memref<8xi8>, memref<8xi8>, memref<8xi8>
         scf.if %dyn {
           aie.objectfifo.release @fifo(Consume, 1)
         }

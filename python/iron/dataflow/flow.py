@@ -161,18 +161,14 @@ class PacketDest:
 
 
 class PacketFlow(Resolvable):
-    """An explicit packet-switched route with caller-controlled `pkt_id`.
+    """An explicit packet-switched route from a source to one or more destinations.
 
-    Peer of [`Flow`][iron.Flow] for the packet-switched case. Unlike the
-    `--packet-sw-objFifos` global lowering (which auto-assigns sequential
-    packet IDs to every ObjectFifo in the design), `PacketFlow`
-    exposes the packet ID directly so the same ID can be reused across
-    stages and used as a routing decision (e.g. memtile dispatch by
-    `pkt_id` to one of several compute cores).
-
-    Lowers to a single `aie.packetflow` op containing one
-    `aie.packet_source` and one or more `aie.packet_dest` ops in its
-    region.
+    Connects ``(src_tile, src_port, src_channel)`` to each destination
+    endpoint, tagging the stream with `pkt_id`. Lowers to a single
+    `aie.packetflow` op holding one `aie.packet_source` and one
+    `aie.packet_dest` per destination. The user is responsible for
+    arranging matching [`TileDma`][iron.TileDma] channels on the producer and
+    consumer ends.
     """
 
     def __init__(

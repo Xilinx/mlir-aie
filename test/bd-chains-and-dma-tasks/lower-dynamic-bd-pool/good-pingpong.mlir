@@ -11,7 +11,8 @@
 // allocator rejects (see assign-runtime-sequence-bd-ids/bad-runtime-bound-
 // pingpong.mlir). The dynamic pool pass keeps the loop rolled and turns the
 // implicit allocation into runtime pool pop/push:
-//   - each dma_configure_task gets a dma_bd_pool_pop feeding its bd_id_val;
+//   - each dma_configure_task gets a dma_bd_pool_pop feeding its dma_bd's
+//     bd_id_val;
 //   - the popped id is carried through scf.for alongside the task (a second
 //     i32 iter_arg), so the free of the PREVIOUS iteration's task pushes the
 //     right id;
@@ -24,10 +25,12 @@
 
 // CHECK-LABEL: @runtime_bound_pingpong
 // CHECK: %[[INIT:.*]] = aiex.dma_bd_pool_pop(0, 0) : i32
-// CHECK: %[[INIT_T:.*]] = aiex.dma_configure_task(%{{.*}}, MM2S, 0) bd_id %[[INIT]] : i32
+// CHECK: %[[INIT_T:.*]] = aiex.dma_configure_task(%{{.*}}, MM2S, 0) {
+// CHECK:   aie.dma_bd(%{{.*}} : memref<1024xi32> offset = 0 len = 256) bd_id_val %[[INIT]] : i32
 // CHECK: %[[LOOP:.*]]:2 = scf.for {{.*}} iter_args(%[[PREVT:.*]] = %[[INIT_T]], %[[PREVID:.*]] = %[[INIT]]) -> (index, i32)
 // CHECK:   %[[T:.*]] = aiex.dma_bd_pool_pop(0, 0) : i32
-// CHECK:   aiex.dma_configure_task(%{{.*}}, MM2S, 0) bd_id %[[T]] : i32
+// CHECK:   aiex.dma_configure_task(%{{.*}}, MM2S, 0) {
+// CHECK:     aie.dma_bd(%{{.*}} : memref<1024xi32> offset = 0 len = 256) bd_id_val %[[T]] : i32
 // CHECK:   aiex.dma_bd_pool_push(0, 0) bd_id %[[PREVID]] : i32
 // CHECK:   scf.yield %{{.*}}, %[[T]] : index, i32
 // CHECK: aiex.dma_await_task(%[[LOOP]]#0)

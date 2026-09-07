@@ -25,7 +25,7 @@ from aie_lit_utils import LitConfigHelper
 # name: The name of this test suite.
 config.name = "AIE_TEST"
 
-config.test_format = lit.formats.ShTest(not llvm_config.use_lit_shell)
+config.test_format = lit.formats.ShTest()
 
 # suffixes: A list of file extensions to treat as test files.
 config.suffixes = [".mlir", ".py", ".test"]
@@ -82,6 +82,7 @@ config.substitutions.append(("%HSA_DIR%", ""))
 # Add Vitis components as features
 LitConfigHelper.add_vitis_components_features(config, config.vitis_components)
 LitConfigHelper.setup_host_compiler_substitutions(config)
+LitConfigHelper.add_makefile_examples_feature(config)
 
 # Detect Peano before XRT feature gating for systems without Chess/AIETOOLS.
 early_peano_tools_dir = os.path.join(config.peano_install_dir, "bin")

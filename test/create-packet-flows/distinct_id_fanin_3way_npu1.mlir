@@ -12,56 +12,51 @@
 //
 // This pins the behaviour that PR #3472 deliberately kept. Channel sharing is
 // the entire point of packet flows, and it stays legal here precisely because
-// the ids differ:
+// the ids differ: ids that travel together can be told apart again downstream
+// by their rules, so they may ride one amsel and one link. Two same-id flows
+// could not be, which is why #3472 forces those onto disjoint paths instead.
 //
-//   tile_0_3  merges its own DMA:0 (id 1) with the incoming North:1 (id 2)
-//             onto a SINGLE amsel and a single link  -- sharing, allowed
-//   tile_0_2  splits that shared link back apart BY ID:
-//             rule(31, 2) -> its own amsel -> South:3
-//             rule(31, 1) -> its own amsel -> South:1
-//
-// Two same-id flows could not be split like this, which is why the id-gating
-// added in #3472 forces them onto disjoint paths instead. Note that no amsel
-// drives more than one master port in either test -- that invariant holds
-// regardless of whether links are shared.
+// The checks below follow the order the switchboxes are emitted in, which is
+// the shim first and then upward.
 
 // CHECK-LABEL: aie.device(npu1)
 
-// (Checks follow the order the switchboxes are emitted in, so the split point
-// at tile_0_2 is pinned before the merge point at tile_0_3 even though the data
-// flows the other way: tile_0_4 -> tile_0_3 -> tile_0_2 -> shim.)
+// The shim: all three ids converge on a single amsel and a single master port.
+// The rule(29, 0) cube covers ids 0 and 2 together -- the pair already merged
+// upstream -- and id 1 joins them here.
+// CHECK:      %[[shim:.*]] = aie.tile(0, 0)
+// CHECK:      aie.switchbox(%[[shim]]) {
+// CHECK-NEXT:   %[[sh:.*]] = aie.amsel<0> (0)
+// CHECK-NEXT:   aie.masterset(South : 2, %[[sh]])
+// CHECK-NEXT:   aie.packet_rules(North : 0) {
+// CHECK-NEXT:     aie.rule(29, 0, %[[sh]])
+// CHECK-NEXT:   }
+// CHECK-NEXT:   aie.packet_rules(North : 1) {
+// CHECK-NEXT:     aie.rule(31, 1, %[[sh]])
+// CHECK-NEXT:   }
+// CHECK-NEXT: }
 
-// The split point: the shared link is demultiplexed by packet id, each id onto
-// its own amsel and its own output port.
+// The upstream merge point: id 2 (arriving on North : 2) and id 0 (this tile's
+// own DMA) share ONE amsel and ONE master port. id 1 is kept on its own amsel.
 // CHECK:      %[[tile_0_2:.*]] = aie.tile(0, 2)
 // CHECK:      aie.switchbox(%[[tile_0_2]]) {
-// CHECK-NEXT:   %[[a0:.*]] = aie.amsel<0> (0)
-// CHECK-NEXT:   %[[a1:.*]] = aie.amsel<1> (0)
-// CHECK-NEXT:   %[[a2:.*]] = aie.amsel<2> (0)
-// CHECK-NEXT:   aie.masterset(South : 0, %[[a0]])
-// CHECK-NEXT:   aie.masterset(South : 1, %[[a1]])
-// CHECK-NEXT:   aie.masterset(South : 3, %[[a2]])
-// CHECK-NEXT:   aie.packet_rules(North : 1) {
-// CHECK-NEXT:     aie.rule(31, 2, %[[a2]])
-// CHECK-NEXT:     aie.rule(31, 1, %[[a1]])
+// CHECK-NEXT:   %[[shared:.*]] = aie.amsel<0> (0)
+// CHECK-NEXT:   %[[other:.*]] = aie.amsel<1> (0)
+// CHECK-NEXT:   aie.masterset(South : 0, %[[shared]])
+// CHECK-NEXT:   aie.masterset(South : 1, %[[other]])
+// CHECK-NEXT:   aie.packet_rules(North : 2) {
+// CHECK-NEXT:     aie.rule(31, 2, %[[shared]])
+// CHECK-NEXT:   }
+// CHECK-NEXT:   aie.packet_rules(North : 0) {
+// CHECK-NEXT:     aie.rule(31, 1, %[[other]])
 // CHECK-NEXT:   }
 // CHECK-NEXT:   aie.packet_rules(DMA : 0) {
-// CHECK-NEXT:     aie.rule(31, 0, %[[a0]])
+// CHECK-NEXT:     aie.rule(31, 0, %[[shared]])
 // CHECK-NEXT:   }
 // CHECK-NEXT: }
 
-// The merge point: two flows with different ids share one amsel and one link.
-// CHECK:      %[[tile_0_3:.*]] = aie.tile(0, 3)
-// CHECK:      aie.switchbox(%[[tile_0_3]]) {
-// CHECK-NEXT:   %[[m:.*]] = aie.amsel<0> (0)
-// CHECK-NEXT:   aie.masterset(South : 1, %[[m]])
-// CHECK-NEXT:   aie.packet_rules(North : 1) {
-// CHECK-NEXT:     aie.rule(31, 2, %[[m]])
-// CHECK-NEXT:   }
-// CHECK-NEXT:   aie.packet_rules(DMA : 0) {
-// CHECK-NEXT:     aie.rule(31, 1, %[[m]])
-// CHECK-NEXT:   }
-// CHECK-NEXT: }
+// No amsel drives more than one master port in either this test or its same-id
+// companion; that invariant holds regardless of whether links are shared.
 
 module {
   aie.device(npu1) {

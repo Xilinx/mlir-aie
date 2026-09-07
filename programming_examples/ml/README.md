@@ -24,4 +24,3 @@
 |[ResNet](../../programming_examples/ml/resnet/)|ui8|ResNet with offloaded conv2_x layers. The implementation features depth-first implementation of multiple bottleneck blocks across multiple NPU columns.|
 |[Magika](../../programming_examples/ml/magika/)|bfloat16|Magika file-type detection model inference on the NPU.|
 |[Block Datatypes](../../programming_examples/ml/block_datatypes/)|various|Examples demonstrating block floating point and other block datatypes on the NPU.|
-

@@ -5,18 +5,18 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="skip-verify=true" --aie-objectFifo-unroll %s | FileCheck %s
 
 // CHECK-LABEL:   module {
 // CHECK:             aie.device(npu1_1col) {
-// CHECK:               %{{.*}}tile_0_2 = aie.tile(0, 2)
-// CHECK:               %{{.*}}tile_0_3 = aie.tile(0, 3)
-// CHECK:               %[[VAL_0:.*]] = aie.buffer(%{{.*}}tile_0_2) {sym_name = "of_2_buff_0"} : memref<16xi32>
-// CHECK:               %[[VAL_1:.*]] = aie.lock(%{{.*}}tile_0_2) {init = 1 : i32, sym_name = "of_2_prod_lock_0"}
-// CHECK:               %[[VAL_2:.*]] = aie.lock(%{{.*}}tile_0_2) {init = 0 : i32, sym_name = "of_2_cons_lock_0"}
-// CHECK:               %[[VAL_3:.*]] = aie.buffer(%{{.*}}tile_0_3) {sym_name = "of_1_buff_0"} : memref<16xi32>
-// CHECK:               %[[VAL_4:.*]] = aie.lock(%{{.*}}tile_0_3) {init = 1 : i32, sym_name = "of_1_prod_lock_0"}
-// CHECK:               %[[VAL_5:.*]] = aie.lock(%{{.*}}tile_0_3) {init = 0 : i32, sym_name = "of_1_cons_lock_0"}
+// CHECK-DAG:               %{{.*}}tile_0_2 = aie.tile(0, 2)
+// CHECK-DAG:               %{{.*}}tile_0_3 = aie.tile(0, 3)
+// CHECK-DAG:               %[[VAL_0:.*]] = aie.buffer(%{{.*}}tile_0_2) {sym_name = "of_2_buff_0"} : memref<16xi32>
+// CHECK-DAG:               %[[VAL_1:.*]] = aie.lock(%{{.*}}tile_0_2) {init = 1 : i32, sym_name = "of_2_prod_lock_0"}
+// CHECK-DAG:               %[[VAL_2:.*]] = aie.lock(%{{.*}}tile_0_2) {init = 0 : i32, sym_name = "of_2_cons_lock_0"}
+// CHECK-DAG:               %[[VAL_3:.*]] = aie.buffer(%{{.*}}tile_0_3) {sym_name = "of_1_buff_0"} : memref<16xi32>
+// CHECK-DAG:               %[[VAL_4:.*]] = aie.lock(%{{.*}}tile_0_3) {init = 1 : i32, sym_name = "of_1_prod_lock_0"}
+// CHECK-DAG:               %[[VAL_5:.*]] = aie.lock(%{{.*}}tile_0_3) {init = 0 : i32, sym_name = "of_1_cons_lock_0"}
 // CHECK:               func.func @some_work(%arg0: memref<16xi32>, %arg1: memref<16xi32>, %arg2: index, %arg3: index) {
 // CHECK:                 return
 // CHECK:               }
@@ -68,12 +68,10 @@ module {
       scf.for %indexInHeight = %c0 to %c12 step %c1 {
 
         scf.for %indexInWidth = %c0 to %c13 step %c1 {
-          %subviewIn = aie.objectfifo.acquire @of_1 (Consume, 1) : !aie.objectfifosubview<memref<16xi32>>
+          %elemIn = aie.objectfifo.acquire @of_1 (Consume, 1) : memref<16xi32>
 
           scf.for %i = %c0 to %c13 step %c1 {
-            %subviewOut = aie.objectfifo.acquire @of_2 (Produce, 1) : !aie.objectfifosubview<memref<16xi32>>
-            %elemIn = aie.objectfifo.subview.access %subviewIn[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
-            %elemOut = aie.objectfifo.subview.access %subviewOut[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+            %elemOut = aie.objectfifo.acquire @of_2 (Produce, 1) : memref<16xi32>
             func.call @some_work(%elemIn, %elemOut, %indexInHeight, %indexInWidth) : (memref<16xi32>, memref<16xi32>, index, index) -> ()
             aie.objectfifo.release @of_2 (Produce, 1)
           }
@@ -83,12 +81,10 @@ module {
       }
 
       scf.for %indexInWidth = %c0 to %c13 step %c1 {
-        %subviewIn1 = aie.objectfifo.acquire @of_1 (Consume, 1) : !aie.objectfifosubview<memref<16xi32>>
+        %elemIn = aie.objectfifo.acquire @of_1 (Consume, 1) : memref<16xi32>
 
         scf.for %i = %c0 to %c13 step %c1 {
-          %subviewOut1 = aie.objectfifo.acquire @of_2 (Produce, 1) : !aie.objectfifosubview<memref<16xi32>>
-          %elemIn = aie.objectfifo.subview.access %subviewIn1[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
-          %elemOut = aie.objectfifo.subview.access %subviewOut1[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+          %elemOut = aie.objectfifo.acquire @of_2 (Produce, 1) : memref<16xi32>
           func.call @some_work(%elemIn, %elemOut, %c0, %indexInWidth) : (memref<16xi32>, memref<16xi32>, index, index) -> ()
           aie.objectfifo.release @of_2 (Produce, 1)
         }

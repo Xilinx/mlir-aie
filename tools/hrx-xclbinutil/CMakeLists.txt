@@ -5,11 +5,11 @@
 # `xclbinutil` next to aiecc, so aiecc's findAieTool("xclbinutil") resolves to
 # it with no system XRT install. The source is a TRIMMED copy of XRT's
 # xclbinutil (NPU-minimal: only the section handlers an NPU xclbin needs) with
-# Boost replaced by util/hrx_util.{h,cpp}; it is vendored as the
-# third_party/hrx-xclbinutil submodule.
+# Boost replaced by util/hrx_util.{h,cpp}; it is vendored in-tree at
+# third_party/hrx-xclbinutil.
 #
 # Enabled by -DAIE_BUILD_HRXXCLBINUTIL=ON (see the option in the top-level
-# CMakeLists.txt). Requires: git submodule update --init third_party/hrx-xclbinutil
+# CMakeLists.txt).
 
 # Root of the vendored hrx-xclbinutil checkout. Overridable so packagers/tests
 # can point at a checkout elsewhere.
@@ -23,18 +23,19 @@ set(_util "${_hx}/util")
 if(NOT EXISTS "${_xclbinutil_source_dir}")
   message(FATAL_ERROR
     "AIE_BUILD_HRXXCLBINUTIL=ON but ${_xclbinutil_source_dir} is missing.\n"
-    "Initialize the submodule: git submodule update --init third_party/hrx-xclbinutil")
+    "The hrx-xclbinutil sources are vendored in-tree at third_party/hrx-xclbinutil; "
+    "ensure that directory is present, or point HRXXCLBINUTIL_SOURCE_DIR at a checkout.")
 endif()
 
 find_package(Threads REQUIRED)
 
 # transformcdo (aie-pdi-transform) — vendored, C, no external deps. Builds into
-# our binary dir so the submodule source tree stays clean.
+# our binary dir so the vendored source tree stays clean.
 add_subdirectory("${_xclbinutil_source_dir}/aie-pdi-transform"
                  "${CMAKE_CURRENT_BINARY_DIR}/aie-pdi-transform")
 
 # version.h — generated; pinned to the vendored XRT (2.18.0). Emitted into the
-# build tree (not the submodule source, which .gitignores it) and placed first
+# build tree (not the vendored source, which .gitignores it) and placed first
 # on the include path so it always wins.
 set(XRT_VERSION_MAJOR 2)
 set(XRT_VERSION_MINOR 18)

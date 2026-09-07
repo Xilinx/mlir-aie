@@ -40,14 +40,14 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           # Check out the PR branch itself (not the merge ref) so the commit we
           # push lands on Dependabot's branch. persist-credentials keeps the
           # GITHUB_TOKEN available for the push.
           ref: ${{ github.head_ref }}
 
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
           python-version: '3.12'
 
@@ -64,6 +64,11 @@ jobs:
         run: utils/regenerate_lockfiles.sh
 
       - name: Commit regenerated lockfiles
+        # HEAD_REF goes through the environment rather than being interpolated
+        # into the script: a branch name is attacker-controlled text, and this
+        # job holds contents: write.
+        env:
+          HEAD_REF: ${{ github.head_ref }}
         run: |
           if git diff --quiet; then
             echo "Lockfiles already in sync; nothing to commit."
@@ -72,4 +77,4 @@ jobs:
           git config user.name "dependabot[bot]"
           git config user.email "49699333+dependabot[bot]@users.noreply.github.com"
           git commit -am "Regenerate lockfiles [dependabot skip]"
-          git push origin HEAD:"${{ github.head_ref }}"
+          git push origin HEAD:"$HEAD_REF"

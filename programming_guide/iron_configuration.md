@@ -11,7 +11,7 @@ There are several options that exist to configure the IRON Python programming en
 
 ## Default IRON Tensor Class
 
-This is a variable that controls the types of [```aie.utils.NpuTensor```](../python/utils/hostruntime/tensor_class.py)s that are produced by the utility functions ```tensor```, ```ones```, etc. Right now there are three tensor implementations: [```CPUOnlyTensor```](../python/utils/hostruntime/tensor_class.py), [```XRTTensor```](../python/utils/hostruntime/xrtruntime/tensor.py) and [```HRXTensor```](../python/utils/hostruntime/hrxruntime/tensor.py).
+This is a variable that controls the types of [```aie.utils.NpuTensor```](../python/utils/hostruntime/tensor_class.py)s that are produced by the utility functions ```tensor```, ```ones```, etc. The available tensor implementations are [```CPUOnlyTensor```](../python/utils/hostruntime/tensor_class.py), [```XRTTensor```](../python/utils/hostruntime/xrtruntime/tensor.py), [```HRXTensor```](../python/utils/hostruntime/hrxruntime/tensor.py) and [```HSATensor```](../python/utils/hostruntime/hsaruntime/tensor.py); the last two are selected via [```NPU_RUNTIME```](#host-runtime-backend-selection-npu_runtime).
 
 By default, if ```pyxrt``` is available, the ```DEFAULT_TENSOR_CLASS``` is set to ```XRTTensor```. ```HRXTensor``` is never selected automatically: it is chosen only by setting ```NPU_RUNTIME=hrx``` explicitly (see [HRX runtime](hrx_runtime.md)). You can also set the class directly through ```set_tensor_class()```, e.g.:
 ```python
@@ -116,19 +116,22 @@ export XRT_CONTEXT_CACHE_SIZE=1
 ## Host-runtime backend selection (`NPU_RUNTIME`)
 
 IRON dispatches designs through a host runtime that consumes the `aiecc`
-artifacts (`final.xclbin` + `insts.bin`). `NPU_RUNTIME` selects which backend
-is used:
+artifacts. XRT and HRX load `final.xclbin` + `insts.bin`; HSA loads the PDI
+(`main.pdi`) + `insts.bin` from the same build. `NPU_RUNTIME` selects which
+backend is used:
 
 | Value | Behavior |
 |-------|----------|
-| `auto` (default) | Use XRT when `pyxrt` imports, else fall back to CPU-only tensors. Never selects HRX. |
+| `auto` (default) | Use XRT when `pyxrt` imports, else fall back to CPU-only tensors. Never selects HRX or HSA. |
 | `xrt` | Force the XRT backend (falls back to CPU tensors if `pyxrt` is missing). |
 | `hrx` | Force the [HRX](../python/utils/hostruntime/hrxruntime/README.md) (amdxdna / `libhrx`) backend. Errors at import if `libhrx.so` cannot be located. |
+| `hsa` | Force the [HSA/ROCR](hsa_runtime.md) backend. Errors at import if `libhsa-runtime64.so` cannot be located. |
 
 An unset value defaults to `auto`; an explicitly invalid value is a hard error
 (a typo must not silently resolve to another backend). `NPU_RUNTIME` is read
 *before* any capability probe, so a forced backend only probes itself (`hrx`
-never imports `pyxrt`, and `xrt`/`auto` never run HRX discovery).
+and `hsa` never import `pyxrt`, and `xrt`/`auto` never run HRX or HSA
+discovery).
 
 ```bash
 NPU_RUNTIME=hrx python my_script.py
@@ -138,7 +141,8 @@ NPU_RUNTIME=hrx python my_script.py
 same `NPU_RUNTIME=hrx` also builds the HRX host stack (`-DUSE_HRX=ON`) for
 `make`-driven examples (see `programming_examples/makefile-common`). The `auto`
 and `cpu` values are meaningful only to the Python flow; the build system treats
-an unset selector as `xrt`.
+an unset selector as `xrt`. `hsa` is a Python-flow backend only; there is no
+C++ host stack for it, so `make`-driven examples ignore it.
 
 ## HRX Runtime (amdxdna) Configuration
 
@@ -150,17 +154,16 @@ full step-by-step flow.
 
 ### Library discovery
 
-`libhrx.so` is located by probing standard install locations; these variables
-are high-priority hints (checked in this order), mirroring `FindHRX.cmake`:
+Python locates `libhrx` in this order (filesystem only — no `dlopen`). Explicit
+`HRX_*` hints match `FindHRX.cmake`; CMake does **not** search site-packages.
 
-| Variable | Meaning |
-|----------|---------|
-| `HRX_LIBHRX` | Explicit full path to `libhrx.so`. |
-| `LIBHRX_DIR` | Directory containing `libhrx.so` (e.g. set by `activate_env.sh`). |
+| Source | Meaning |
+|--------|---------|
+| `HRX_LIBHRX` | Explicit full path to `libhrx.so` / `hrx.dll`. |
+| `LIBHRX_DIR` | Directory containing the library (e.g. set by `activate_env.sh`). |
+| pip site-packages | A package that ships `lib/libhrx.so*` or `bin/hrx.dll`. Filesystem only — the package is not imported. |
 | `HRX_DIR` | HRX install prefix (`$HRX_DIR/lib/libhrx.so`, `$HRX_DIR/include/...`). |
-
-If none are set, standard locations (a sibling `hrx` checkout, `$HOME/hrx`,
-`/opt/hrx`, `/usr/local/hrx`, and the loader's `LD_LIBRARY_PATH`) are tried.
+| sibling / `FindHRX` roots | A sibling `hrx` checkout, `$HOME/hrx`, `/opt/hrx`, `/usr/local/hrx`, then the loader's search path. |
 
 ### Runtime behavior
 
@@ -175,6 +178,71 @@ If none are set, standard locations (a sibling `hrx` checkout, `$HOME/hrx`,
 NPU_RUNTIME=hrx IRON_HRX_DEVICE=npu2 HRX_EXE_CACHE_SIZE=8 \
   IRON_HRX_TIMEOUT=30 python my_script.py
 ```
+
+## HSA/ROCR Runtime Configuration
+
+These variables apply when the HSA backend is active (`NPU_RUNTIME=hsa`). See
+[HSA Runtime (ROCR)](hsa_runtime.md) for the architecture and the full
+step-by-step flow.
+
+### Getting ROCm
+
+The recommended source is the pip wheel from
+[TheRock](https://github.com/ROCm/TheRock/blob/main/RELEASES.md), installed into
+the environment you run designs from:
+
+```bash
+pip install --index-url https://rocm.nightlies.amd.com/whl-multi-arch/ rocm
+```
+
+The base `rocm` package is enough: it pulls `rocm-sdk-core`, which carries
+`libhsa-runtime64.so` with the AIE support this backend needs. The
+`[libraries]` and `[device-gfx…]` extras are for GPU workloads and are not
+required for the NPU. Discovery finds it in site-packages with nothing to
+configure.
+
+### ROCm discovery
+
+`libhsa-runtime64.so` is located inside a ROCm *installation root*, looked for
+in three places, in this order:
+
+| Source | Meaning |
+|--------|---------|
+| `ROCM_PATH` | An explicit installation root, overriding the wheel. It names a ROCm tree, not a library file, so the same variable serves every ROCm component. |
+| pip-installed ROCm | The wheel above, whose runtime tree ships inside site-packages. |
+| System install | `/opt/rocm`. |
+
+The first root that actually contains the library wins. Both the unversioned
+`libhsa-runtime64.so` and the bare SONAME `libhsa-runtime64.so.1` are accepted:
+TheRock's runtime wheels contain no symlinks, so a pip-installed ROCm provides
+only the versioned name.
+
+> **With no wheel and no `ROCM_PATH`, a system `/opt/rocm` is what you get.** If
+> it predates AIE support, the failure surfaces later as an opaque HSA error
+> rather than a version complaint. Installing the wheel avoids this; set
+> `ROCM_PATH` only when you need a specific ROCm instead.
+
+### Runtime behavior
+
+| Variable | Default | Meaning |
+|----------|---------|---------|
+| `IRON_HSA_DEVICE` | auto-detect | Force the device generation (`npu1` / `npu2`) instead of detecting it from the HSA agent name. ROCR names the agent after its ISA (`aie2` = Phoenix/npu1, `aie2p` = Strix/npu2); an unrecognized name is an error rather than a guess, because a wrong generation compiles for the wrong architecture and wedges the NPU. |
+| `HSA_EXE_CACHE_SIZE` | `32` | Max number of loaded designs the `CachedHSAHostRuntime` keeps (LRU). A non-integer value is ignored, with a warning, in favour of the default. |
+| `IRON_HSA_TIMEOUT` | `0` (disabled) | Timeout, in seconds, bounding the two waits IRON itself performs: the completion-signal wait and the full-queue wait in `enqueue`. `0`, unset, or an invalid value disables it. Implemented with `hsa_signal_wait`'s own timeout, so arming it costs nothing per dispatch. On expiry a diagnosable error is raised (the underlying dispatch cannot be cancelled). **This is not a watchdog for a wedged dispatch:** ROCR's AIE doorbell submits *and blocks until completion*, so a hung dispatch stalls inside the doorbell store — before either bounded wait is reached — on an internal wait this setting cannot reach. |
+
+```bash
+# Point at a specific ROCm, force npu2, cap the cache, bound IRON's waits at 30s.
+NPU_RUNTIME=hsa ROCM_PATH=/opt/rocm-7.0 IRON_HSA_DEVICE=npu2 \
+  HSA_EXE_CACHE_SIZE=8 IRON_HSA_TIMEOUT=30 python my_script.py
+```
+
+### Limitations
+
+- **Trace capture is not supported.** A design with a `trace_config` is rejected
+  up front; use `NPU_RUNTIME=xrt` for trace-enabled designs.
+- **Dispatches must be serialized.** The single in-order AIE queue and its
+  doorbell are not safe for concurrent dispatch from multiple threads (the same
+  constraint HRX documents).
 
 ## Diagnostic Output and Log Level
 

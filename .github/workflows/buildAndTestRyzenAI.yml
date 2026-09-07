@@ -68,7 +68,7 @@ jobs:
       NPU_CACHE_HOME: ${{ github.workspace }}/iron-cache-${{ matrix.runner_type }}-${{ github.run_id }}
       PIP_CACHE_DIR: ${{ github.workspace }}/.pip-cache-${{ matrix.runner_type }}-${{ github.run_id }}
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           submodules: "true"
 
@@ -307,7 +307,7 @@ jobs:
       # to gh / curl; the runner's own gh auth is used when this is empty.
       GH_TOKEN: ${{ secrets.HRX_RELEASE_TOKEN }}
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           submodules: "true"
 
@@ -528,7 +528,7 @@ jobs:
       # Token for the (private) HRX release repo; empty falls back to anonymous.
       GH_TOKEN: ${{ secrets.HRX_RELEASE_TOKEN }}
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           submodules: "true"
 
@@ -538,7 +538,7 @@ jobs:
           arch: x64
 
       - name: Set up Python
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
           python-version: "3.12"
 
@@ -546,7 +546,8 @@ jobs:
         run: |
           # The XRT-free / Boost-free packaging tool aiecc uses on the NPU_RUNTIME=hrx
           # path. Building it here proves the pure-HRX packaging tool compiles on
-          # Windows in this tree (not just the submodule's own CI).
+          # Windows in this tree (the dedicated buildAndTestHrxXclbinutil.yml workflow
+          # covers the standalone build/test matrix in more detail).
           #
           # Build-only on a GitHub-hosted runner with no NPU, so the on-device
           # retry signatures don't apply; retry once on any failure to ride out a

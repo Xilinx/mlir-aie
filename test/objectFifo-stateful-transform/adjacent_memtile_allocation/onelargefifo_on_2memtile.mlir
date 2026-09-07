@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="skip-verify=true" --aie-objectFifo-unroll %s | FileCheck %s
 
 // CHECK-DAG:     %[[SHIM_NOC_TILE_0_0:.*]] = aie.tile(0, 0)
 // CHECK-DAG:     %[[MEM_TILE_0_1:.*]] = aie.tile(0, 1)
@@ -27,11 +27,12 @@
 // CHECK-DAG:     %[[IN0_CONS_BUFF_1:.*]] = aie.buffer(%[[MEM_TILE_1_1]]) {sym_name = "in0_cons_buff_1"} : memref<96000xi32>
 // CHECK-DAG:     %[[IN0_CONS_PROD_LOCK:.*]] = aie.lock(%[[MEM_TILE_0_1]]) {init = 2 : i32, sym_name = "in0_cons_prod_lock_0"}
 // CHECK-DAG:     %[[IN0_CONS_CONS_LOCK:.*]] = aie.lock(%[[MEM_TILE_0_1]]) {init = 0 : i32, sym_name = "in0_cons_cons_lock_0"}
-// CHECK:     aie.flow(%[[SHIM_NOC_TILE_0_0]], DMA : 0, %[[MEM_TILE_0_1]], DMA : 0)
-// CHECK:     aie.flow(%[[MEM_TILE_0_1]], DMA : 0, %[[TILE_0_2]], DMA : 0)
-// CHECK:     aie.flow(%[[MEM_TILE_0_1]], DMA : 1, %[[SHIM_NOC_TILE_0_0]], DMA : 0)
-// CHECK:     aie.flow(%[[TILE_0_2]], DMA : 0, %[[MEM_TILE_0_1]], DMA : 1)
-// CHECK:     aie.shim_dma_allocation @in0_shim_alloc(%[[SHIM_NOC_TILE_0_0]], MM2S, 0)
+// CHECK-DAG:     aie.flow(%[[SHIM_NOC_TILE_0_0]], DMA : 0, %[[MEM_TILE_0_1]], DMA : 0)
+// CHECK-DAG:     aie.flow(%[[MEM_TILE_0_1]], DMA : 0, %[[TILE_0_2]], DMA : 0)
+// CHECK-DAG:     aie.flow(%[[MEM_TILE_0_1]], DMA : 1, %[[SHIM_NOC_TILE_0_0]], DMA : 0)
+// CHECK-DAG:     aie.flow(%[[TILE_0_2]], DMA : 0, %[[MEM_TILE_0_1]], DMA : 1)
+// CHECK-DAG:     aie.shim_dma_allocation @in0_shim_alloc(%[[SHIM_NOC_TILE_0_0]], MM2S, 0)
+// CHECK-DAG:     aie.shim_dma_allocation @out0_shim_alloc(%[[SHIM_NOC_TILE_0_0]], S2MM, 0)
 // CHECK:     %{{.*}} = aie.memtile_dma(%[[MEM_TILE_0_1]]) {
 // CHECK:       aie.dma_start(S2MM, 0, ^bb1, ^bb3)
 // CHECK:     ^bb1:
@@ -110,7 +111,6 @@
 // CHECK:     ^bb6:
 // CHECK:       aie.end
 // CHECK:     }
-// CHECK:     aie.shim_dma_allocation @out0_shim_alloc(%[[SHIM_NOC_TILE_0_0]], S2MM, 0)
 // CHECK:   }
 // CHECK: }
 

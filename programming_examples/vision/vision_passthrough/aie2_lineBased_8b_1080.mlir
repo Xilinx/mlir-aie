@@ -5,34 +5,32 @@
 //
 //===----------------------------------------------------------------------===//
 
-// Declare this MLIR module. A block encapsulates all 
+// Declare this MLIR module. A block encapsulates all
 // AIE tiles, buffers, and communication in an AI Engine design
 module @passThroughLine_aie2 {
 
  	aie.device(npu) {
-        // declare kernel external kernel function 
+        // declare kernel external kernel function
         func.func private @passThroughLine(%in: memref<1920xui8>, %out: memref<1920xui8>, %tilewidth: i32) -> () attributes {link_with = "passThrough.cc.o"}
-        
+
         // Declare tile object of the AIE class located at position col 1, row 4
         %tile00 = aie.tile(0, 0)
         %tile02 = aie.tile(0, 2)
 
         aie.objectfifo @inOF(%tile00, {%tile02}, 2 : i32) : !aie.objectfifo<memref<1920xui8>>
         aie.objectfifo @outOF(%tile02, {%tile00}, 2 : i32) : !aie.objectfifo<memref<1920xui8>>
-       
-        // Define the algorithm for the core of tile(0,2) 
+
+        // Define the algorithm for the core of tile(0,2)
         %core02 = aie.core(%tile02) {
             %c0 = arith.constant 0 : index
             %c1 = arith.constant 1 : index
             %tileheight = arith.constant 1080  : index
             %tilewidth  = arith.constant 1920 : i32
-            
-            scf.for %iter = %c0 to %tileheight step %c1 { 
+
+            scf.for %iter = %c0 to %tileheight step %c1 {
                 // Acquire objectfifos and get subviews
-                %subviewIn = aie.objectfifo.acquire @inOF(Consume, 1) : !aie.objectfifosubview<memref<1920xui8>>
-                %elemIn = aie.objectfifo.subview.access %subviewIn[0] : !aie.objectfifosubview<memref<1920xui8>> -> memref<1920xui8>
-                %subviewOut = aie.objectfifo.acquire @outOF(Produce, 1) : !aie.objectfifosubview<memref<1920xui8>>
-                %elemOut = aie.objectfifo.subview.access %subviewOut[0] : !aie.objectfifosubview<memref<1920xui8>> -> memref<1920xui8>
+                %elemIn = aie.objectfifo.acquire @inOF(Consume, 1) : memref<1920xui8>
+                %elemOut = aie.objectfifo.acquire @outOF(Produce, 1) : memref<1920xui8>
 
                 func.call @passThroughLine(%elemIn, %elemOut, %tilewidth) : (memref<1920xui8>, memref<1920xui8>, i32) -> ()
 

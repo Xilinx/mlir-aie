@@ -8,7 +8,7 @@
 
 // REQUIRES: aiesimulator, valid_xchess_license
 // RUN: %aiecc --get-aiesim --xchesscc --xbridge %s %test_lib_flags -- %S/test.cpp
-// RUN: sh -c 'aie.mlir.prj/aiesim.sh; exit 0' | FileCheck %s
+// RUN: sh -c './aie.mlir.prj/aiesim.sh; exit 0' | FileCheck %s
 
 // CHECK: AIE2 ISS
 // CHECK: Core [7, 3] AIE2 locks are: 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0

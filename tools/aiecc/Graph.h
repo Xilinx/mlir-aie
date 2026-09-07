@@ -679,6 +679,9 @@ struct EdgeWithTypedOutput : EdgeBase {
         out, std::move(name), std::move(fn));
   }
 
+  // Fan each input item out into zero or more keyed output items. Runs over
+  // every item, so it works on a singleton node and on a node that already
+  // holds one item per device.
   template <typename U, typename SplitFn>
   SplitEdge<Out, U, SplitFn> &split(std::string name, SplitFn fn) {
     return graph.template addEdge<SplitEdge<Out, U, SplitFn>>(
@@ -829,17 +832,19 @@ struct SplitEdge : Edge<In, Out> {
       : Edge<In, Out>(src, std::move(name)), fn(std::move(f)) {}
 
   mlir::LogicalResult execute() override {
-    assert(this->in.items.size() == 1 &&
-           "SplitEdge requires a singleton input node");
-    auto produced = fn(this->in.get());
-    if (mlir::failed(produced))
-      return mlir::failure();
     this->out.items.clear();
-    this->out.items.reserve(produced->size());
-    for (auto &[key, value] : *produced) {
-      Item<Out> outItem = this->prepareItem(key);
-      outItem.value = std::move(value);
-      this->out.items.push_back(std::move(outItem));
+    // `fn` gets the whole Item, not just the payload: with more than one input
+    // the outputs have to be keyed off which one they came from (a device's
+    // cores are keyed <device>_core_<col>_<row>).
+    for (const auto &src : this->in.items) {
+      auto produced = fn(src);
+      if (mlir::failed(produced))
+        return mlir::failure();
+      for (auto &[key, value] : *produced) {
+        Item<Out> outItem = this->prepareItem(key);
+        outItem.value = std::move(value);
+        this->out.items.push_back(std::move(outItem));
+      }
     }
     return mlir::success();
   }

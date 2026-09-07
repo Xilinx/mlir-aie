@@ -83,3 +83,42 @@ aie.device(npu2) {
 
    aie.objectfifo @of0 (%tile01, {%tile02}, 1 : i32) : !aie.objectfifo<memref<40xi32>> -> !aie.objectfifo<memref<0xi32>>
 }
+
+// -----
+
+// The direction of a route endpoint is read off the route that names it, so a
+// second flow would leave it ambiguous.
+
+// CHECK: 'aie.route_endpoint' op drives one channel, so at most one flow may name it, but it is named 2 times
+
+aie.device(npu1) {
+  %tile02 = aie.tile(0, 2)
+  %shim0 = aie.tile(0, 0)
+  %shim1 = aie.tile(1, 0)
+
+  aie.objectfifo.pool @p(%tile02) {depth = 2 : i32} : memref<16xi32> {
+    aie.objectfifo.segment @s0 {offset = 0 : i32, size = 16 : i32}
+  }
+  aie.objectfifo.core_endpoint @fill(%tile02) fills @p
+  aie.objectfifo.dma_endpoint @drain(%tile02) drains @p
+
+  aie.route_endpoint @mid(%shim1) DMA
+  aie.route_endpoint @sink(%shim0) DMA
+
+  aie.route from @drain to [@mid]
+  aie.route from @mid to [@sink]
+}
+
+// -----
+
+// Both ends of one flow is the same ambiguity.
+
+// CHECK: 'aie.route_endpoint' op drives one channel, so at most one flow may name it, but it is named 2 times
+
+aie.device(npu1) {
+  %shim0 = aie.tile(0, 0)
+
+  aie.route_endpoint @loop(%shim0) DMA
+
+  aie.route from @loop to [@loop]
+}

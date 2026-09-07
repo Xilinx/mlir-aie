@@ -27,17 +27,35 @@
 # -fix corrupted shared headers via overlapping cross-TU edits twice), and
 # per-site manual review/rename is a separate, much larger effort tracked
 # on its own. Re-enable once that renaming pass lands.
+# misc-override-with-different-visibility (new in clang-tidy 22) fires on
+# every MLIR pass: mlir::Pass declares runOnOperation() protected, and the
+# standard MLIR pass idiom is to override it public. That's the codebase's
+# convention, not a bug, so the check has no legitimate use here.
+# misc-use-internal-linkage and llvm-prefer-static-over-anonymous-namespace
+# both went from zero findings (clang-tidy 20.1.0) to 297 findings across 54
+# files (clang-tidy 22.1.8), almost entirely on this codebase's dominant
+# idiom of a single pass/pattern struct per .cpp file. Unlike llvm-use-ranges
+# (fixed in place, same version bump), neither is safely batch-fixable:
+# misc-use-internal-linkage offers no fix-it at all for structs/classes
+# (confirmed by direct testing -- only free functions get one), and
+# llvm-prefer-static-over-anonymous-namespace's fix-it reports as "applied"
+# but does not actually rewrite the file. Disabled following the same
+# precedent as readability-identifier-naming below: per-site manual fixes
+# are a separate, much larger effort tracked on its own.
 Checks: >
   -*,
   clang-diagnostic-*,
   llvm-*,
+  -llvm-prefer-static-over-anonymous-namespace,
   misc-*,
   -misc-const-correctness,
   -misc-unused-parameters,
   -misc-non-private-member-variables-in-classes,
   -misc-no-recursion,
   -misc-use-anonymous-namespace,
+  -misc-use-internal-linkage,
   -misc-include-cleaner,
+  -misc-override-with-different-visibility,
   -readability-identifier-naming,
   bugprone-argument-comment,
   bugprone-assert-side-effect,

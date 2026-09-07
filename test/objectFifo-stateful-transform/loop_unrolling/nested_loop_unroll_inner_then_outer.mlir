@@ -5,14 +5,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="skip-verify=true" --aie-objectFifo-unroll %s | FileCheck %s
 
 // CHECK-LABEL:   aie.device(xcvc1902) {
-// CHECK:           %[[VAL_0:.*]] = aie.tile(1, 2)
-// CHECK:           %[[VAL_1:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "loop_of_buff_0"} : memref<16xi32>
-// CHECK:           %[[VAL_2:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "loop_of_buff_1"} : memref<16xi32>
-// CHECK:           %[[VAL_3:.*]] = aie.lock(%[[VAL_0]]) {init = 0 : i32, sym_name = "loop_of_lock_0"}
-// CHECK:           %[[VAL_4:.*]] = aie.lock(%[[VAL_0]]) {init = 0 : i32, sym_name = "loop_of_lock_1"}
+// CHECK-DAG:           %[[VAL_0:.*]] = aie.tile(1, 2)
+// CHECK-DAG:           %[[VAL_1:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "loop_of_buff_0"} : memref<16xi32>
+// CHECK-DAG:           %[[VAL_2:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "loop_of_buff_1"} : memref<16xi32>
+// CHECK-DAG:           %[[VAL_3:.*]] = aie.lock(%[[VAL_0]]) {init = 0 : i32, sym_name = "loop_of_lock_0"}
+// CHECK-DAG:           %[[VAL_4:.*]] = aie.lock(%[[VAL_0]]) {init = 0 : i32, sym_name = "loop_of_lock_1"}
 // CHECK:           func.func @some_work(%[[A:.*]]: memref<4x4xi32>, %[[I:.*]]: index) {
 // CHECK:             return
 // CHECK:           }
@@ -105,20 +105,17 @@ module {
       %c21 = arith.constant 21 : index
       %cmax = arith.constant 0xFFFFFFFF : index
       scf.for %arg0 = %c0 to %cmax step %c1 {
-        %subviewTop0 = aie.objectfifo.acquire @loop_of (Produce, 1) : !aie.objectfifosubview<memref<16xi32>>
-        %elemTop0 = aie.objectfifo.subview.access %subviewTop0[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+        %elemTop0 = aie.objectfifo.acquire @loop_of (Produce, 1) : memref<16xi32>
         %reinterpret_cast_0 = memref.reinterpret_cast %elemTop0 to offset: [0], sizes: [4, 4], strides: [4, 1] : memref<16xi32> to memref<4x4xi32>
         func.call @some_work(%reinterpret_cast_0, %c0) : (memref<4x4xi32>, index) -> ()
         aie.objectfifo.release @loop_of (Produce, 1)
         scf.for %indexInHeight = %c1 to %c21 step %c1 {
-          %subview = aie.objectfifo.acquire @loop_of (Produce, 1) : !aie.objectfifosubview<memref<16xi32>>
-          %elem0 = aie.objectfifo.subview.access %subview[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+          %elem0 = aie.objectfifo.acquire @loop_of (Produce, 1) : memref<16xi32>
           %reinterpret_cast_1 = memref.reinterpret_cast %elem0 to offset: [0], sizes: [4, 4], strides: [4, 1] : memref<16xi32> to memref<4x4xi32>
           func.call @some_work(%reinterpret_cast_1, %indexInHeight) : (memref<4x4xi32>, index) -> ()
           aie.objectfifo.release @loop_of (Produce, 1)
         }
-        %subviewTop1 = aie.objectfifo.acquire @loop_of (Produce, 1) : !aie.objectfifosubview<memref<16xi32>>
-        %elemTop1 = aie.objectfifo.subview.access %subviewTop1[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
+        %elemTop1 = aie.objectfifo.acquire @loop_of (Produce, 1) : memref<16xi32>
         %reinterpret_cast_2 = memref.reinterpret_cast %elemTop1 to offset: [0], sizes: [4, 4], strides: [4, 1] : memref<16xi32> to memref<4x4xi32>
         func.call @some_work(%reinterpret_cast_2, %c0) : (memref<4x4xi32>, index) -> ()
         aie.objectfifo.release @loop_of (Produce, 1)

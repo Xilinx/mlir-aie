@@ -267,8 +267,10 @@ struct AIEObjectFifoUnrollPass
         // it as well so that each of those iterations maps to an explicit
         // buffer/lock rotation slot. This is best-effort: an epilogue with a
         // non-constant trip count cannot be fully unrolled and is left rolled.
-        if (info->epilogueLoopOp) {
-          (void)mlir::loopUnrollFull(*info->epilogueLoopOp);
+        std::optional<scf::ForOp> epilogue =
+            info->epilogueLoopOp; // NOLINT(bugprone-unchecked-optional-access)
+        if (epilogue) {
+          (void)mlir::loopUnrollFull(*epilogue);
         }
       }
 
@@ -278,7 +280,7 @@ struct AIEObjectFifoUnrollPass
       });
     }
 
-    // AIEObjectFifoStatefulTransform promotes the buffer-selection and lock
+    // --aie-objectfifo-lower-cores promotes the buffer-selection and lock
     // bookkeeping counters to loop-carried SSA values. Once the loops have been
     // unrolled by their rotation period those counters become loop-invariant,
     // so every buffer selection (scf.index_switch) and lock value collapses to

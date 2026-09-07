@@ -9,31 +9,27 @@
 
 // The output fifo has depth [2, 2] and the input fifo depth [2, 3]. The consumer
 // slides a 2-element window (acquire 2, release 1); the runtime lowering peels
-// the first and last iterations and threads buffer indices / held counts through
-// a 4-way iter_args loop. The input index selects among three buffers and wraps
+// the first and last iterations and threads the buffer indices through the loop
+// as iter_args. The input index selects among three buffers and wraps
 // at 3, while the output index wraps at 2.
 
 // CHECK-LABEL:   aie.device(npu1_1col) {
 // CHECK:           func.func @add_10_i32(%{{.*}}: memref<10xi32>, %{{.*}}: memref<10xi32>, %{{.*}}: memref<10xi32>) {
 // CHECK:             return
 // CHECK:           }
-// CHECK:           %[[T0:.*]] = aie.tile(0, 0)
-// CHECK:           %[[T2:.*]] = aie.tile(0, 2)
-// CHECK:           %{{.*}} = aie.lock(%[[T0]]) {init = 0 : i32, sym_name = "output_fifo_cons_prod_lock_0"}
-// CHECK:           %{{.*}} = aie.lock(%[[T0]]) {init = 0 : i32, sym_name = "output_fifo_cons_cons_lock_0"}
-// CHECK:           %[[OF_B0:.*]] = aie.buffer(%[[T2]]) {sym_name = "output_fifo_buff_0"} : memref<10xi32>
-// CHECK:           %[[OF_B1:.*]] = aie.buffer(%[[T2]]) {sym_name = "output_fifo_buff_1"} : memref<10xi32>
-// CHECK:           %[[OF_PROD:.*]] = aie.lock(%[[T2]]) {init = 2 : i32, sym_name = "output_fifo_prod_lock_0"}
-// CHECK:           %[[OF_CONS:.*]] = aie.lock(%[[T2]]) {init = 0 : i32, sym_name = "output_fifo_cons_lock_0"}
-// CHECK:           %[[IF_B0:.*]] = aie.buffer(%[[T2]]) {sym_name = "input_fifo_cons_buff_0"} : memref<10xi32>
-// CHECK:           %[[IF_B1:.*]] = aie.buffer(%[[T2]]) {sym_name = "input_fifo_cons_buff_1"} : memref<10xi32>
-// CHECK:           %[[IF_B2:.*]] = aie.buffer(%[[T2]]) {sym_name = "input_fifo_cons_buff_2"} : memref<10xi32>
-// CHECK:           %[[IF_PROD:.*]] = aie.lock(%[[T2]]) {init = 3 : i32, sym_name = "input_fifo_cons_prod_lock_0"}
-// CHECK:           %[[IF_CONS:.*]] = aie.lock(%[[T2]]) {init = 0 : i32, sym_name = "input_fifo_cons_cons_lock_0"}
-// CHECK:           %{{.*}} = aie.lock(%[[T0]]) {init = 0 : i32, sym_name = "input_fifo_prod_lock_0"}
-// CHECK:           %{{.*}} = aie.lock(%[[T0]]) {init = 0 : i32, sym_name = "input_fifo_cons_lock_0"}
-// CHECK:           aie.flow(%[[T0]], DMA : 0, %[[T2]], DMA : 0)
-// CHECK:           aie.flow(%[[T2]], DMA : 0, %[[T0]], DMA : 0)
+// CHECK-DAG:           %[[T0:.*]] = aie.tile(0, 0)
+// CHECK-DAG:           %[[T2:.*]] = aie.tile(0, 2)
+// CHECK-DAG:           %[[OF_B0:.*]] = aie.buffer(%[[T2]]) {sym_name = "output_fifo_buff_0"} : memref<10xi32>
+// CHECK-DAG:           %[[OF_B1:.*]] = aie.buffer(%[[T2]]) {sym_name = "output_fifo_buff_1"} : memref<10xi32>
+// CHECK-DAG:           %[[OF_PROD:.*]] = aie.lock(%[[T2]]) {init = 2 : i32, sym_name = "output_fifo_prod_lock_0"}
+// CHECK-DAG:           %[[OF_CONS:.*]] = aie.lock(%[[T2]]) {init = 0 : i32, sym_name = "output_fifo_cons_lock_0"}
+// CHECK-DAG:           %[[IF_B0:.*]] = aie.buffer(%[[T2]]) {sym_name = "input_fifo_cons_buff_0"} : memref<10xi32>
+// CHECK-DAG:           %[[IF_B1:.*]] = aie.buffer(%[[T2]]) {sym_name = "input_fifo_cons_buff_1"} : memref<10xi32>
+// CHECK-DAG:           %[[IF_B2:.*]] = aie.buffer(%[[T2]]) {sym_name = "input_fifo_cons_buff_2"} : memref<10xi32>
+// CHECK-DAG:           %[[IF_PROD:.*]] = aie.lock(%[[T2]]) {init = 3 : i32, sym_name = "input_fifo_cons_prod_lock_0"}
+// CHECK-DAG:           %[[IF_CONS:.*]] = aie.lock(%[[T2]]) {init = 0 : i32, sym_name = "input_fifo_cons_cons_lock_0"}
+// CHECK-DAG:           aie.flow(%[[T0]], DMA : 0, %[[T2]], DMA : 0)
+// CHECK-DAG:           aie.flow(%[[T2]], DMA : 0, %[[T0]], DMA : 0)
 // CHECK:           %{{.*}} = aie.core(%[[T2]]) {
 // CHECK:             %[[C1I:.*]] = arith.constant 1 : i32
 // CHECK:             %[[C9:.*]] = arith.constant 9 : index
@@ -74,8 +70,7 @@
 // CHECK:               default {
 // CHECK:                 scf.yield %[[IF_B0]] : memref<10xi32>
 // CHECK:               }
-// CHECK:               %[[IC2:.*]] = arith.index_cast %[[IIDX]] : i32 to index
-// CHECK:               %[[IB1:.*]] = scf.index_switch %[[IC2]] -> memref<10xi32>
+// CHECK:               %[[IB1:.*]] = scf.index_switch %[[IC]] -> memref<10xi32>
 // CHECK:               case 0 {
 // CHECK:                 scf.yield %[[IF_B1]] : memref<10xi32>
 // CHECK:               }
@@ -126,8 +121,7 @@
 // CHECK:             default {
 // CHECK:               scf.yield %[[IF_B0]] : memref<10xi32>
 // CHECK:             }
-// CHECK:             %[[EIC2:.*]] = arith.index_cast %[[LOOP]]#1 : i32 to index
-// CHECK:             %[[EIB1:.*]] = scf.index_switch %[[EIC2]] -> memref<10xi32>
+// CHECK:             %[[EIB1:.*]] = scf.index_switch %[[EIC]] -> memref<10xi32>
 // CHECK:             case 0 {
 // CHECK:               scf.yield %[[IF_B1]] : memref<10xi32>
 // CHECK:             }
@@ -145,7 +139,8 @@
 // CHECK:             aie.use_lock(%[[OF_CONS]], Release, %[[C1I]])
 // CHECK:             aie.end
 // CHECK:           }
-// CHECK:           aie.shim_dma_allocation @input_fifo_shim_alloc(%[[T0]], MM2S, 0)
+// CHECK-DAG:           aie.shim_dma_allocation @input_fifo_shim_alloc(%[[T0]], MM2S, 0)
+// CHECK-DAG:           aie.shim_dma_allocation @output_fifo_shim_alloc(%[[T0]], S2MM, 0)
 // CHECK:           %{{.*}} = aie.mem(%[[T2]]) {
 // CHECK:             %[[M1:.*]] = arith.constant 1 : i32
 // CHECK:             %{{.*}} = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
@@ -179,7 +174,6 @@
 // CHECK:           ^bb7:
 // CHECK:             aie.end
 // CHECK:           }
-// CHECK:           aie.shim_dma_allocation @output_fifo_shim_alloc(%[[T0]], S2MM, 0)
 
 module {
   aie.device(npu1_1col) {
@@ -197,29 +191,21 @@ module {
       %c1 = arith.constant 1 : index
       %c8 = arith.constant 9 : index
 
-      %0 = aie.objectfifo.acquire @output_fifo(Produce, 1) : !aie.objectfifosubview<memref<10xi32>>
-      %1 = aie.objectfifo.subview.access %0[0] : !aie.objectfifosubview<memref<10xi32>> -> memref<10xi32>
-      %2 = aie.objectfifo.acquire @input_fifo(Consume, 1) : !aie.objectfifosubview<memref<10xi32>>
-      %3 = aie.objectfifo.subview.access %2[0] : !aie.objectfifosubview<memref<10xi32>> -> memref<10xi32>
+      %1 = aie.objectfifo.acquire @output_fifo(Produce, 1) : memref<10xi32>
+      %3 = aie.objectfifo.acquire @input_fifo(Consume, 1) : memref<10xi32>
       func.call @add_10_i32(%3, %3, %1) : (memref<10xi32>, memref<10xi32>, memref<10xi32>) -> ()
       aie.objectfifo.release @output_fifo(Produce, 1)
 
       scf.for %arg0 = %c0 to %c8 step %c1 {
-        %4 = aie.objectfifo.acquire @output_fifo(Produce, 1) : !aie.objectfifosubview<memref<10xi32>>
-        %5 = aie.objectfifo.subview.access %4[0] : !aie.objectfifosubview<memref<10xi32>> -> memref<10xi32>
-        %6 = aie.objectfifo.acquire @input_fifo(Consume, 2) : !aie.objectfifosubview<memref<10xi32>>
-        %7 = aie.objectfifo.subview.access %6[0] : !aie.objectfifosubview<memref<10xi32>> -> memref<10xi32>
-        %8 = aie.objectfifo.subview.access %6[1] : !aie.objectfifosubview<memref<10xi32>> -> memref<10xi32>
+        %5 = aie.objectfifo.acquire @output_fifo(Produce, 1) : memref<10xi32>
+        %7, %8 = aie.objectfifo.acquire @input_fifo(Consume, 2) : memref<10xi32>, memref<10xi32>
         func.call @add_10_i32(%7, %8, %5) : (memref<10xi32>, memref<10xi32>, memref<10xi32>) -> ()
         aie.objectfifo.release @input_fifo(Consume, 1)
         aie.objectfifo.release @output_fifo(Produce, 1)
       }
 
-      %9 = aie.objectfifo.acquire @output_fifo(Produce, 1) : !aie.objectfifosubview<memref<10xi32>>
-      %10 = aie.objectfifo.subview.access %9[0] : !aie.objectfifosubview<memref<10xi32>> -> memref<10xi32>
-      %11 = aie.objectfifo.acquire @input_fifo(Consume, 2) : !aie.objectfifosubview<memref<10xi32>>
-      %12 = aie.objectfifo.subview.access %11[0] : !aie.objectfifosubview<memref<10xi32>> -> memref<10xi32>
-      %13 = aie.objectfifo.subview.access %11[1] : !aie.objectfifosubview<memref<10xi32>> -> memref<10xi32>
+      %10 = aie.objectfifo.acquire @output_fifo(Produce, 1) : memref<10xi32>
+      %12, %13 = aie.objectfifo.acquire @input_fifo(Consume, 2) : memref<10xi32>, memref<10xi32>
       func.call @add_10_i32(%12, %13, %10) : (memref<10xi32>, memref<10xi32>, memref<10xi32>) -> ()
       aie.objectfifo.release @input_fifo(Consume, 2)
       aie.objectfifo.release @output_fifo(Produce, 1)

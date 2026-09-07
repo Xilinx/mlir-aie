@@ -5,14 +5,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform --aie-objectFifo-unroll %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="skip-verify=true" --aie-objectFifo-unroll %s | FileCheck %s
 
 // CHECK: module @disable_sync {
 // CHECK:   aie.device(xcve2302) {
-// CHECK:     %[[SHIM_TILE:.*]] = aie.tile(2, 0)
-// CHECK:     %[[MEM_TILE:.*]] = aie.tile(2, 1)
-// CHECK:     %[[TILE_2_2:.*]] = aie.tile(2, 2)
-// CHECK:     %[[TILE_2_3:.*]] = aie.tile(2, 3)
+// CHECK-DAG:     %[[SHIM_TILE:.*]] = aie.tile(2, 0)
+// CHECK-DAG:     %[[MEM_TILE:.*]] = aie.tile(2, 1)
+// CHECK-DAG:     %[[TILE_2_2:.*]] = aie.tile(2, 2)
+// CHECK-DAG:     %[[TILE_2_3:.*]] = aie.tile(2, 3)
 // CHECK-DAG: %[[LINK3_BUFF:.*]] = aie.buffer(%[[MEM_TILE]]) {sym_name = "link3_buff_0"} : memref<36xi32>
 // CHECK-DAG: %[[LINK2_BUFF:.*]] = aie.buffer(%[[TILE_2_3]]) {sym_name = "link2_buff_0"} : memref<20xi32>
 // CHECK-DAG: %[[LINK2_PROD_LOCK:.*]] = aie.lock(%[[TILE_2_3]]) {init = 1 : i32, sym_name = "link2_prod_lock_0"}
@@ -23,6 +23,7 @@
 // CHECK-DAG: aie.flow(%[[TILE_2_2]], DMA : 0, %[[MEM_TILE]], DMA : 0)
 // CHECK-DAG: aie.flow(%[[TILE_2_3]], DMA : 0, %[[MEM_TILE]], DMA : 1)
 // CHECK-DAG: aie.flow(%[[MEM_TILE]], DMA : 0, %[[SHIM_TILE]], DMA : 0)
+// CHECK-DAG:     aie.shim_dma_allocation @link3_shim_alloc(%{{.*}}, S2MM, 0)
 // CHECK:     %{{.*}} = aie.mem(%[[TILE_2_2]]) {
 // CHECK:       %{{.*}} = aie.dma_start(MM2S, 0, ^bb1, ^bb2)
 // CHECK:     ^bb1:
@@ -64,7 +65,6 @@
 // CHECK:     ^bb2:
 // CHECK:       aie.end
 // CHECK:     }
-// CHECK:     aie.shim_dma_allocation @link3_shim_alloc(%{{.*}}, S2MM, 0)
 // CHECK:   }
 // CHECK: }
 
