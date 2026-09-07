@@ -173,11 +173,14 @@ xilinx::AIE::myVerifyOffsetSizeAndStrideOp(OffsetSizeAndStrideOpInterface op) {
   if (failed(verifyListOfOperandsOrIntegers(
           op, "stride", maxRanks[2], op.getStaticStrides(), op.getStrides())))
     return failure();
-  if (!(op.getMixedOffsets().size() == 1 && maxRanks[0] == 1) && // NOLINT
-      op.getMixedOffsets().size() != op.getMixedSizes().size())
+  // Each getMixed* call rebuilds its list, so read them once.
+  const size_t numMixedOffsets = op.getMixedOffsets().size();
+  const size_t numMixedSizes = op.getMixedSizes().size();
+  if (!(numMixedOffsets == 1 && maxRanks[0] == 1) && // NOLINT
+      numMixedOffsets != numMixedSizes)
     return op->emitError(
                "expected mixed offsets rank to match mixed sizes rank (")
-           << op.getMixedOffsets().size() << " vs " << op.getMixedSizes().size()
+           << numMixedOffsets << " vs " << numMixedSizes
            << ") so the rank of the result type is well-formed.";
   for (int64_t offset : op.getStaticOffsets())
     if (offset < 0 && !ShapedType::isDynamic(offset))
