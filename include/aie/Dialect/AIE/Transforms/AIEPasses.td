@@ -112,6 +112,18 @@ def AIEAssignBufferAddresses : Pass<"aie-assign-buffer-addresses", "DeviceOp"> {
   ];
 }
 
+def AIENormalizeDmaBdDims : Pass<"aie-normalize-dma-bd-dims", "DeviceOp"> {
+  let summary = "Strip degenerate dimensions from DMA BD descriptors.";
+  let description = [{
+    Removes size-1 dimensions from `aie.dma_bd` ops whose strides never
+    take effect.  After stripping, if the remaining dimensions describe a
+    contiguous row-major access, the BD is flattened to a single linear
+    transfer.
+  }];
+
+  let constructor = "xilinx::AIE::createAIENormalizeDmaBdDimsPass()";
+}
+
 def AIEAssignLockIDs : Pass<"aie-assign-lock-ids", "DeviceOp"> {
   let summary = "Assigns the lockIDs of locks that do not have IDs.";
   let description = [{
