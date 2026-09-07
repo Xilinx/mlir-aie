@@ -89,12 +89,12 @@ def AIEPlaceTiles : Pass<"aie-place-tiles", "DeviceOp"> {
               "placement is unaffected.">,
        Option<
            "clSpreadUnanchoredTiles", "spread-unanchored-tiles", "bool",
-           /*default=*/"false",
-           "When a non-core aie.logical_tile has no CoreTile peers to derive a "
-           "routing centroid from, rank candidates by current DMA load instead "
-           "of distance to the fallback column. Affects only designs with no "
-           "core anchors (e.g. pure DMA passthrough); CoreTile placement and "
-           "anchored non-core placement are unchanged.">,
+           /*default=*/"true",
+           "When true (default), a non-core aie.logical_tile with no CoreTile "
+           "peers to derive a routing centroid from is ranked by current DMA "
+           "load rather than by distance to column 0. Affects only designs "
+           "with no core anchors (e.g. pure DMA passthrough); CoreTile "
+           "placement and anchored non-core placement are unaffected.">,
        Option<"clSASeed", "sa-seed", "int",
               /*default=*/"1",
               "Random seed for SA placer (0 = non-deterministic).">];

@@ -1244,9 +1244,9 @@ LogicalResult SequentialPlacer::placeNonCoreTileByCentroid(
       computeCentroidColumn(logicalTile, flowIndex);
   auto colConstraint = logicalTile.tryGetCol();
 
-  // Without spread-unanchored-tiles, an LTO with no CoreTile peer keeps the
-  // historical column-0 fallback, which ranks every candidate at the same
-  // distance and so pins the whole design to one column until it fills up.
+  // With spread-unanchored-tiles off, an LTO with no CoreTile peer targets
+  // column 0, which ranks every candidate at the same distance and so pins the
+  // whole design to one column until it fills up.
   std::optional<int> targetCol = colConstraint ? colConstraint : centroidCol;
   if (!targetCol && !spreadUnanchoredTiles)
     targetCol = 0;

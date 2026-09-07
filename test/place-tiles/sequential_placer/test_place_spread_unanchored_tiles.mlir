@@ -19,7 +19,7 @@
 // group's furthest match, so a tile printed BEFORE it (declaration order is
 // reverse-numeric here, not source order) would go unchecked.
 
-// RUN: aie-opt --split-input-file --aie-place-tiles %s | FileCheck %s --check-prefix=PILE --implicit-check-not='aie.tile('
+// RUN: aie-opt --split-input-file --aie-place-tiles %s | FileCheck %s --check-prefix=SPREAD --implicit-check-not='aie.tile('
 // RUN: aie-opt --split-input-file --aie-place-tiles='spread-unanchored-tiles=false' %s | FileCheck %s --check-prefix=PILE --implicit-check-not='aie.tile('
 // RUN: aie-opt --split-input-file --aie-place-tiles='spread-unanchored-tiles=true' %s | FileCheck %s --check-prefix=SPREAD --implicit-check-not='aie.tile('
 
