@@ -1173,12 +1173,21 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                 "npu_dma_lowered.mlir",
                 PassPipeline{getNpuDmaLoweringPipeline(&context)});
 
+  // The control-packet extraction point: the ctrl-pkt flow reads its data off
+  // the expanded module before the DMA lowering rewrites it (see
+  // `ctrlPktExpandedPerSeq`), so this edge is deliberately the pre-DMA one
+  // there.
   EdgeWithTypedOutput<ModRef> &npuExpanded = ctrlPkt ? ctrlPktExpanded
                                              : expandLoadPdis.getValue()
                                                  ? expandPipeline(npuDmaLowered)
                                                  : npuDmaLowered;
 
-  auto &npuLowered = npuExpanded.map<ModRef>(
+  // What the runtime sequence is actually built from, which must be past the
+  // DMA lowering in every configuration.
+  EdgeWithTypedOutput<ModRef> &npuSequence =
+      ctrlPkt ? npuDmaLowered : npuExpanded;
+
+  auto &npuLowered = npuSequence.map<ModRef>(
       "npu_lowered.mlir",
       [](const Item<ModRef> &item, Item<ModRef> &out) -> mlir::LogicalResult {
         ModRef clone = item.get().get().clone();
