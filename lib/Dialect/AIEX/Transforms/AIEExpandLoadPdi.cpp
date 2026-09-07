@@ -247,6 +247,12 @@ static void collectWrittenAddresses(Operation *op, ConfigSegment &out) {
       return;
     }
     auto words = b.getDataWords();
+    // Returns null on a data type or global it cannot read; the addresses this
+    // write touches are then unknown, so the boundary keeps the full reset.
+    if (!words) {
+      out.opaque = true;
+      return;
+    }
     for (unsigned i = 0, e = words.getNumElements(); i < e; ++i)
       out.addresses.insert(*addr + 4 * i);
     return;
