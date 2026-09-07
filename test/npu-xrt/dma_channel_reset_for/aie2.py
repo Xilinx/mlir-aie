@@ -2,9 +2,11 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 # A resident objectFIFO reused across 1000 dispatches on one hardware context, re-armed
-# each dispatch with aiex.dma_channel_reset_for. Removing the op from the runtime
-# sequence makes the fifo stop delivering: the collect returns the previous dispatch's
-# output (see README.md).
+# each dispatch with aiex.dma_channel_reset_for. Without the op the fifo is never
+# re-armed and dispatches alternate between correct and returning the previous
+# dispatch's output verbatim; 12-14 of 32 exact, and the run can degrade further into
+# a mailbox channel that no longer accepts commands. Reproduce by deleting the
+# dma_channel_reset_for line below.
 #
 # REQUIRES: ryzen_ai_npu2, peano
 #
@@ -49,9 +51,14 @@ def build_design():
             tile_ty = np.ndarray[(TILE,), np.dtype[np.int32]]
 
             shim = tile(0, 0)
-            # A memtile in array column 0 does not survive the re-arm: the first
-            # word of a resident initValues buffer reads back as 0x00CD0CD0 on
-            # every dispatch after the first. See README.md, "Memtile column".
+            # Column 1 is load-bearing. With the memtile in array column 0 the
+            # first word of a resident initValues buffer reads back as
+            # 0x00CD0CD0 on every dispatch after the first; columns 1-7 are
+            # exact. Swept 0-7, 32 dispatches each, both orderings, on npu2.
+            # A memtile buffer filled from the shim through a link instead of
+            # initValues is exact in column 0, so this is specific to a
+            # resident compile-time-initialized buffer. The constant appears in
+            # no build artifact and is unidentified.
             mem = tile(1, 1)
             compute = tile(1, 2)
 
