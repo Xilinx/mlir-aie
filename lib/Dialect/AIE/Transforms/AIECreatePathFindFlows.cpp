@@ -473,9 +473,9 @@ computeSubcubeCover(const SmallVector<int, 4> &matchIds,
 }
 
 namespace {
-/// The tiles whose DMAs produce and consume a slave flow. Only DMA endpoints
-/// are of interest: a DMA is the only endpoint that both stalls a flow by
-/// leaving its buffer full and needs a peer DMA on the same tile to drain it.
+/// Tiles whose DMAs source and sink a slave flow. Only DMA endpoints matter: a
+/// DMA is the only endpoint that stalls a flow on a full buffer and needs a
+/// peer DMA on the same tile to drain it.
 struct DmaEndpoints {
   llvm::SmallDenseSet<TileID, 2> producers;
   llvm::SmallDenseSet<TileID, 2> consumers;
@@ -570,10 +570,8 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
                     switchboxes[currTile].begin(), switchboxes[currTile].end(),
                     std::pair{connect, flowID}) == switchboxes[currTile].end())
               switchboxes[currTile].push_back({connect, flowID});
-            // Record the DMA endpoints of this slave flow. The key is
-            // (switchbox, slave port, ID) rather than the ID alone, because
-            // packet IDs are reused across unrelated flows; this is the
-            // granularity at which the hardware discriminates traffic.
+            // Keyed by slave port as well as ID, since IDs are reused across
+            // unrelated flows.
             std::pair<PhysPort, int> slaveFlow = {
                 {currTile, {src.bundle, src.channel}}, flowID};
             if (srcPort.bundle == WireBundle::DMA)
@@ -674,18 +672,10 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
     return llvm::any_of(a, [&](TileID t) { return b.contains(t); });
   };
 
-  // Would placing `flow` on `arbiter` serialize it against a flow it depends
-  // on?
-  //
-  // An arbiter grants one slave port at a time and holds the grant until
-  // tlast. A DMA emits one packet per buffer descriptor, so the grant is held
-  // for a whole buffer transfer, and two slave ports on one arbiter serialize
-  // completely -- even when they leave the switchbox on different master
-  // ports. That is benign until the two flows form a producer/consumer pair.
-  // If tile T's DMA consumes flow F and produces flow G, then the arbiter can
-  // grant F, F can stall on a full input buffer at T, T can only free that
-  // buffer by emitting G, and G is waiting on the grant that F still holds.
-  // The result is a hold-and-wait cycle of length two.
+  // An arbiter holds its grant until tlast, so two slave ports on one arbiter
+  // serialize even on separate master ports. If flow F is consumed by the tile
+  // that produces flow G, that serialization deadlocks: F stalls on a full
+  // buffer while holding the grant that G needs to drain it.
   auto arbiterHasHazard = [&](TileID tileId, int arbiter,
                               const std::pair<PhysPort, int> &flow) {
     auto placed = arbiterSlaveFlows.find({tileId, arbiter});
@@ -701,32 +691,27 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
   };
 
   // Get a new unique amsel from masterAMSels on tile op. Prioritize on
-  // incrementing arbiter id, before incrementing msel, skipping any arbiter
-  // that would introduce the hazard above.
-  //
-  // Skipping is free while the switchbox still has an unused arbiter, since
-  // msel 0 is filled across all arbiters first and an unused arbiter can hold
-  // no hazard. It only bites once the switchbox is oversubscribed and the scan
-  // wraps onto an arbiter that is already in use. Note also that this is
-  // reached only when none of the flow's master ports have been assigned yet
-  // -- findExistingArbiter pins the arbiter otherwise -- so the arbiter being
-  // skipped has master ports disjoint from this flow's, and the serialization
-  // avoided was buying nothing.
+  // incrementing arbiter id, before incrementing msel, skipping arbiters that
+  // would deadlock. Only an oversubscribed switchbox ever skips: msel 0 is
+  // filled across all arbiters first, and an unused arbiter has no hazard.
+  // Callers reach this only with no master port pinned, so the skipped arbiter
+  // drives no master port of this flow.
   auto getNewUniqueAmsel =
       [&](const std::map<std::pair<TileID, int>, SmallVector<Port, 4>>
               &masterAMSels,
           TileOp tileOp, bool isCtrlPkt, const std::pair<PhysPort, int> &flow) {
         TileID tileId = tileOp.getTileID();
 
+        // Control packets take the highest amsels first.
         SmallVector<int, 32> candidates;
-        for (int msel = 0; msel < numMselsPerArbiter; msel++)
-          for (int arbiter = 0; arbiter < numArbiters; arbiter++)
+        for (int i = 0; i < numMselsPerArbiter; i++)
+          for (int a = 0; a < numArbiters; a++) {
+            int msel = isCtrlPkt ? numMselsPerArbiter - 1 - i : i;
+            int arbiter = isCtrlPkt ? numArbiters - 1 - a : a;
             candidates.push_back(getAmselFromArbiterIDAndMsel(arbiter, msel));
-        if (isCtrlPkt) // Control packets take the highest amsels first.
-          llvm::reverse(candidates);
+          }
 
-        // First free amsel that does carry a hazard, kept as the fallback for
-        // when every free amsel turns out to carry one.
+        // Fallback for when every free amsel is hazardous.
         int hazardous = INVALID_AMSEL_VALUE;
         for (int amsel : candidates) {
           if (masterAMSels.count({tileId, amsel}))
@@ -745,9 +730,8 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
         tileOp->emitWarning()
             << "packet flow " << flow.second << " shares arbiter "
             << getArbiterIDFromAmsel(hazardous)
-            << " with a flow it depends on, as no independent arbiter is left. "
-               "An arbiter holds its grant until tlast, so this routing may "
-               "deadlock.";
+            << " with a flow it depends on; no independent arbiter is free, so "
+               "this routing may deadlock";
         return hazardous;
       };
   // Get a new unique amsel from masterAMSels on tile op with given arbiter id
@@ -978,7 +962,6 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
 
     slaveAMSels[packetFlow.first] = amselValue;
     amselValues[tileOp] = getArbiterIDFromAmsel(amselValue);
-    // Record the assignment so later flows can route around this arbiter.
     arbiterSlaveFlows[{tileId, getArbiterIDFromAmsel(amselValue)}].push_back(
         packetFlow.first);
   }

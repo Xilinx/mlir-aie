@@ -8,14 +8,10 @@
 // RUN: aie-opt --aie-create-pathfinder-flows %s 2>&1 >/dev/null | FileCheck %s --check-prefix=WARN
 // RUN: aie-opt --aie-create-pathfinder-flows %s 2>/dev/null | FileCheck %s
 
-// Companion to arbiter_deadlock_avoidance.mlir, covering the case where the
-// allocator cannot route around the hazard.
-//
-// All six arbiters at memtile (0,1) carry a flow that the memtile's own DMA
-// produces, so the seventh flow -- which that same DMA consumes -- depends on
-// whichever arbiter it is given. Routing still succeeds, on the same arbiter
-// the unfixed allocator would have picked, but it is now reported instead of
-// being emitted silently.
+// Companion to arbiter_deadlock_avoidance.mlir: the hazard cannot be avoided.
+// All six arbiters at memtile (0,1) carry a flow its DMA produces, so the
+// seventh flow -- consumed by that same DMA -- depends on whichever arbiter it
+// gets. Routing succeeds unchanged, and warns.
 
 module {
   aie.device(npu2) {
@@ -44,7 +40,6 @@ module {
 
 // WARN: warning: packet flow 6 shares arbiter 0 with a flow it depends on
 
-// Routing still completes, and the flow lands on the arbiter named above.
 // CHECK-LABEL: aie.switchbox(%mem_tile_0_1)
 // CHECK:         %[[SHARED:.*]] = aie.amsel<0> (1)
 // CHECK:         aie.masterset(DMA : 0, %[[SHARED]])

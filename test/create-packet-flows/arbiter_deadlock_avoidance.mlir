@@ -7,17 +7,11 @@
 
 // RUN: aie-opt --aie-create-pathfinder-flows %s | FileCheck %s
 
-// An arbiter grants one slave port and holds that grant until tlast, so two
-// slave ports sharing an arbiter serialize completely -- even when they leave
-// the switchbox on different master ports. That is fatal when the two flows
-// are in a producer/consumer relation, because the held grant is exactly what
-// the other flow needs in order to release it.
-//
-// Here memtile (0,1) is a relay: packet flow 6 arrives at its DMA : 1 and
-// packet flow 0 leaves from its DMA : 0. The remaining flows exist only to use
-// up the switchbox's other arbiters, so that the allocator's scan wraps from
-// msel 0 back onto an arbiter that is already occupied. It must not wrap onto
-// the arbiter holding flow 0.
+// Memtile (0,1) is a relay: flow 6 arrives at its DMA : 1 and flow 0 leaves
+// from its DMA : 0. The other flows use up the switchbox's arbiters, so the
+// amsel scan wraps from msel 0 onto an arbiter already in use. It must not
+// wrap onto the arbiter carrying flow 0, which would serialize the relay
+// against its own input and deadlock.
 
 module {
   aie.device(npu2) {
@@ -45,10 +39,7 @@ module {
   }
 }
 
-// The switchbox is oversubscribed: seven independent groups, six arbiters. The
-// seventh therefore shares, but it must pick an arbiter other than the one
-// carrying flow 0. Before the fix it took arbiter 0 -- amsel<0> (1) -- and
-// deadlocked.
+// Seven groups, six arbiters: the seventh shares, but not with flow 0.
 
 // CHECK-LABEL: aie.switchbox(%mem_tile_0_1)
 // CHECK:         %[[FEED:.*]] = aie.amsel<0> (0)
