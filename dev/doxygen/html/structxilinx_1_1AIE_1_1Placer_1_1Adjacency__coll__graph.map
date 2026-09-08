@@ -1,0 +1,7 @@
+<map id="xilinx::AIE::Placer::Adjacency" name="xilinx::AIE::Placer::Adjacency">
+<area shape="rect" id="Node000001" title=" " alt="" coords="336,41,471,81"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="12,5,203,45"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="216,36,336,51,336,56,216,41"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="5,70,209,125"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="223,81,336,67,336,72,223,86"/>
+</map>
