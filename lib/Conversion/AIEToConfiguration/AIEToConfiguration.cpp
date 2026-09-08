@@ -528,8 +528,8 @@ emitTransactionOps(OpBuilder &builder, Location fallbackLoc,
       const TransactionBinaryOperation::AddressPatchPayload &patch =
           *op.addressPatch;
       AIEX::NpuAddressPatchOp::create(
-          builder, loc, builder.getUI32IntegerAttr(patch.addr),
-          /*addr_val=*/mlir::Value(), builder.getI32IntegerAttr(patch.argIdx),
+          builder, loc, patch.addr,
+          /*addr_val=*/mlir::Value(), static_cast<int32_t>(patch.argIdx),
           AIEX::createConstantI32(builder, loc, patch.argPlus));
     } else if (op.cmd.Opcode == 0x6 /*  XAie_TxnOpcode::XAIE_IO_PREEMPT */) {
       auto ui8Ty =
@@ -867,7 +867,8 @@ convertAIEToConfiguration(AIE::DeviceOp device, StringRef clElfDir,
       seq_name = "configure" + std::to_string(id++);
     StringAttr seq_sym_name = builder.getStringAttr(seq_name);
     auto seq =
-        AIE::RuntimeSequenceOp::create(builder, loc, seq_sym_name, BoolAttr{});
+        AIE::RuntimeSequenceOp::create(builder, loc, seq_sym_name, BoolAttr{},
+                                       AIE::TraceBufferAttr{}, ArrayAttr{});
     seq.getBody().push_back(new Block);
     builder.setInsertionPointToStart(&seq.getBody().front());
   } else {

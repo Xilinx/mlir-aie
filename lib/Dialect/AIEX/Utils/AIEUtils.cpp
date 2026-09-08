@@ -141,6 +141,19 @@ AIEX::traceSubviewToBlockArgument(Value value) {
   return std::nullopt;
 }
 
+std::optional<unsigned> AIEX::getHostBufferArgIndex(BlockArgument arg) {
+  if (!isa<BaseMemRefType>(arg.getType()))
+    return std::nullopt;
+  unsigned index = 0;
+  for (BlockArgument other : arg.getOwner()->getArguments()) {
+    if (other == arg)
+      return index;
+    if (isa<BaseMemRefType>(other.getType()))
+      index++;
+  }
+  return std::nullopt;
+}
+
 memref::GlobalOp AIEX::getOrCreateDataMemref(
     OpBuilder &builder, AIE::DeviceOp dev, mlir::Location loc,
     ArrayRef<uint32_t> words,

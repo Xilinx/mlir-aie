@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt %s -aie-insert-trace-flows | FileCheck %s
+// RUN: aie-opt %s -aie-insert-trace-flows -aie-resolve-address-patch-buffers | FileCheck %s
 
 // Test: End-to-end trace setup with Event-Time mode
 // CHECK-LABEL: module {

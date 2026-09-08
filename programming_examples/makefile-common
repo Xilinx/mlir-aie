@@ -30,8 +30,12 @@ CHESS_FLAGS = -P ${AIE_INCLUDE_DIR}
 CHESSCCWRAP1_FLAGS = aie -I ${AIETOOLS_DIR}/include
 CHESSCCWRAP2_FLAGS = aie2 -I ${AIETOOLS_DIR}/include
 CHESSCCWRAP2P_FLAGS = aie2p -I ${AIETOOLS_DIR}/include
-PEANOWRAP2_FLAGS = -O2 -std=c++20 --target=aie2-none-unknown-elf ${WARNING_FLAGS} -DNDEBUG -I ${MLIR_AIE_DIR}/include ${NO_ADF_FLAGS}
-PEANOWRAP2P_FLAGS = -O2 -std=c++20 --target=aie2p-none-unknown-elf ${WARNING_FLAGS} -DNDEBUG -I ${MLIR_AIE_DIR}/include ${NO_ADF_FLAGS}
+# -fstack-size-section gives a kernel object the stack accounting that the llc
+# invocation of aiecc produces for a core object. -ffunction-sections and
+# -fdata-sections give each symbol its own section, which the attribution in
+# StackSizeAnalysis.h needs.
+PEANOWRAP2_FLAGS = -O2 -std=c++20 --target=aie2-none-unknown-elf ${WARNING_FLAGS} -DNDEBUG -I ${MLIR_AIE_DIR}/include ${NO_ADF_FLAGS} -ffunction-sections -fdata-sections -fstack-size-section
+PEANOWRAP2P_FLAGS = -O2 -std=c++20 --target=aie2p-none-unknown-elf ${WARNING_FLAGS} -DNDEBUG -I ${MLIR_AIE_DIR}/include ${NO_ADF_FLAGS} -ffunction-sections -fdata-sections -fstack-size-section
 
 TEST_POWERSHELL := $(shell command -v powershell.exe >/dev/null 2>&1 && echo yes || echo no)
 ifeq ($(TEST_POWERSHELL),yes)
