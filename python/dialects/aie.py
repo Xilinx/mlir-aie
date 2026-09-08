@@ -203,6 +203,10 @@ class external_func(FuncOp):
             the core's LLVM module with ``llvm-link`` before codegen instead of
             object-linking it.  Requires ``link_with``.  When omitted, the
             artifact is object-linked, whatever its suffix.
+        stack_size_override: Declared upper bound, in bytes, on the stack that
+            this function's call subtree uses. It replaces the number aiecc's
+            analysis computes, even when it is smaller. See
+            `programming_guide/core_data_memory.md` for when to set it.
     """
 
     def __init__(
@@ -213,6 +217,7 @@ class external_func(FuncOp):
         visibility="private",
         link_with=None,
         link_with_mode=None,
+        stack_size_override=None,
     ):
         # Validate before building the op so a rejected declaration never lands
         # in the IR at the current insertion point.
@@ -226,6 +231,27 @@ class external_func(FuncOp):
                 raise ValueError(
                     f"external_func '{name}': invalid link_with_mode "
                     f"'{link_with_mode}'; the only supported value is 'merge'."
+                )
+        if stack_size_override is not None:
+            if not isinstance(stack_size_override, int) or isinstance(
+                stack_size_override, bool
+            ):
+                raise ValueError(
+                    f"external_func '{name}': stack_size_override must be an int, "
+                    f"got {type(stack_size_override).__name__}."
+                )
+            if stack_size_override < 0:
+                raise ValueError(
+                    f"external_func '{name}': stack_size_override must be >= 0, "
+                    f"got {stack_size_override}."
+                )
+            # The attribute is a signless i32. A larger value wraps and turns
+            # the override into an undercount.
+            if stack_size_override > 2**31 - 1:
+                raise ValueError(
+                    f"external_func '{name}': stack_size_override must fit in a "
+                    f"signed 32-bit integer (<= {2**31 - 1}), got "
+                    f"{stack_size_override}."
                 )
         if outputs is None:
             outputs = []
@@ -244,6 +270,10 @@ class external_func(FuncOp):
             self.operation.attributes["link_with"] = StringAttr.get(link_with)
         if link_with_mode is not None:
             self.operation.attributes["link_with_mode"] = StringAttr.get(link_with_mode)
+        if stack_size_override is not None:
+            self.operation.attributes["stack_size_override"] = IntegerAttr.get(
+                IntegerType.get_signless(32), stack_size_override
+            )
 
     def __call__(self, *call_args):
         return call(self, call_args)

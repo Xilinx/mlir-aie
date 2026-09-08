@@ -269,6 +269,53 @@ def AIEMaterializeRuntimeSequences : Pass<"aie-materialize-runtime-sequences", "
   ];
 }
 
+def AIEFuseTraceBuffers : Pass<"aie-fuse-trace-buffers", "mlir::ModuleOp"> {
+  let summary = "Give every traced sequence a slice of one fused trace buffer";
+  let description = [{
+    Trace lowering appends a trace buffer to each traced `aie.runtime_sequence`.
+    It does not update the `aiex.run` call sites. These call sites are therefore
+    one argument short.
+
+    This pass gives each `aie.runtime_sequence` one trace buffer covering its
+    own traces and those of every sequence it runs. It passes each `aiex.run` a
+    `memref.subview` of that buffer, sized to the callee's claim. Every call
+    site gets its own region, so a sequence that runs one design twice keeps the
+    two traces apart. `aiex.configure` plays no part in the split: the buffer
+    follows the `aiex.run` call graph, whether the calls reconfigure the array
+    between them or repeat one design.
+
+    A sequence's own traces take the front of its buffer, then each call site in
+    turn. The pass records the layout as an `aie.trace_slices` array of
+    `#aie.trace_slice`, and the buffer itself as `#aie.trace_buffer`. A host
+    reads the slices to attribute each region to the design that wrote it.
+
+    Run after the trace pipeline and before `-aie-materialize-runtime-sequences`.
+  }];
+
+  let constructor = "xilinx::AIEX::createAIEFuseTraceBuffersPass()";
+  let dependentDialects = ["mlir::memref::MemRefDialect",
+                           "xilinx::AIE::AIEDialect",
+                           "xilinx::AIEX::AIEXDialect"];
+}
+
+def AIEResolveAddressPatchBuffers
+    : Pass<"aie-resolve-address-patch-buffers", "AIE::DeviceOp"> {
+  let summary = "Resolve an address patch's buffer operand to a buffer index";
+  let description = [{
+    Rewrites each `aiex.npu.address_patch` that names its host buffer by SSA
+    value into the `arg_idx` form the targets emit. Adds the buffer's byte
+    offset to `arg_plus`.
+
+    Run after `-aie-materialize-runtime-sequences`. An index exists only in the
+    sequence that holds the op. Inlining moves the op into that sequence.
+  }];
+
+  let constructor = "xilinx::AIEX::createAIEResolveAddressPatchBuffersPass()";
+  let dependentDialects = ["mlir::arith::ArithDialect",
+                           "xilinx::AIE::AIEDialect",
+                           "xilinx::AIEX::AIEXDialect"];
+}
+
 def AIEAssignRuntimeSequenceBDIDs : Pass<"aie-assign-runtime-sequence-bd-ids", "AIE::DeviceOp"> {
   let summary = "Assign IDs to Buffer Descriptors Configured in the Runtime Sequence";
 
@@ -276,6 +323,24 @@ def AIEAssignRuntimeSequenceBDIDs : Pass<"aie-assign-runtime-sequence-bd-ids", "
   let dependentDialects = [
     "xilinx::AIE::AIEDialect",
     "xilinx::AIEX::AIEXDialect",
+  ];
+}
+
+def AIEReserveRuntimeBDIDs
+    : Pass<"aie-reserve-runtime-bd-ids", "AIE::DeviceOp"> {
+  let summary =
+      "Reserve runtime-sequence pinned BD ids for the static allocator";
+  let description = [{
+    Records the compile-time BD ids that `aiex.dma_configure_task` ops pin in the
+    runtime sequence, per tile, as an `aiex.reserved_bd_ids` attribute on each
+    `aie.tile`. The static allocator (`aie-assign-bd-ids`) runs in the AIE
+    dialect and cannot walk AIEX ops, so it reads this attribute to keep its
+    auto-assignment off ids the runtime sequence already claimed.
+  }];
+
+  let constructor = "xilinx::AIEX::createAIEReserveRuntimeBDIDsPass()";
+  let dependentDialects = ["xilinx::AIE::AIEDialect",
+                           "xilinx::AIEX::AIEXDialect",
   ];
 }
 

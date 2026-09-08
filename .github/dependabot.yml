@@ -63,6 +63,24 @@ updates:
         patterns: ["*"]
         group-by: dependency-name
 
+  # docs/requirements-mkdocs.txt drives the docs-build job in lintAndFormat.yml
+  # and the mkdocs/mike deploy in generateDocs.yml. It gets its own entry rather
+  # than joining the `directories` list above: that list exists to hold one
+  # shared build toolchain in ABI lockstep, and the mkdocs set shares no package
+  # with it, so folding it in would group unrelated bumps under that rationale.
+  - package-ecosystem: "pip"
+    directory: "/docs"
+    schedule:
+      interval: "cron"
+      cronjob: "0 6 8,22 * *"
+    cooldown:
+      default-days: 7
+    # The mkdocs plugins track mkdocs and mkdocs-material closely enough that a
+    # split bump is usually the broken state, so ship them as one PR.
+    groups:
+      mkdocs:
+        patterns: ["*"]
+
   # third_party/aie-rt tracks upstream Xilinx/aie-rt release/main_aig (see
   # .gitmodules and third_party/patches/aie-rt/README.md). Scoped to aie-rt
   # only: third_party/bootgen isn't covered by this effort and a vendored

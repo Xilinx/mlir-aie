@@ -99,6 +99,16 @@ repos:
       args: [--fix=lf]
       exclude: *generated_exclude
 
+- repo: https://github.com/rhysd/actionlint
+  rev: 914e7df21a07ef503a81201c76d2b11c789d3fca  # frozen: v1.7.12
+  hooks:
+    - id: actionlint
+      # actionlint runs shellcheck and pyflakes over inline `run:` blocks when
+      # they are on PATH, as the runner images provide: 141 more findings here,
+      # 95 of them SC2086 (shellcheck 0.11.0). Off, to keep this hook on
+      # workflow schema, expressions and runner labels.
+      args: [-shellcheck=, -pyflakes=]
+
 # Regenerate hash-pinned lockfiles when their source manifests change.
 # Only fires if you've staged one of the source files below; if uv is missing
 # locally the hook fails with a clear install hint (the script does the check).

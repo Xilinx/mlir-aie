@@ -31,7 +31,7 @@
 
 // LD02: MEMORY
 // LD02-NEXT: {
-// LD02-NEXT:    program (RX) : ORIGIN = 0, LENGTH = 0x0020000
+// LD02-NEXT:    program (RX) : ORIGIN = 0, LENGTH = 0x4000
 // LD02-NEXT:    data (!RX) : ORIGIN = 0x74000, LENGTH = 0x4000
 // LD02-NEXT: }
 
