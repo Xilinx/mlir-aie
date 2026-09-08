@@ -6,17 +6,21 @@
 //===----------------------------------------------------------------------===//
 
 // A kernel object without a `.stack_sizes` section raises a warning, and the
-// build continues, see StackSizeAnalysis.h. The RUN line compiles the object
-// without -fstack-size-section, which stands in for a Chess-compiled or a
-// pre-compiled object.
+// build continues, see StackSizeAnalysis.h. Its frame counts as 0, so the
+// requirement stays a lower bound and the core keeps no measured_stack_size.
+// The RUN line compiles the object without -fstack-size-section, which stands
+// in for a Chess-compiled or a pre-compiled object.
 
 // REQUIRES: peano
 // RUN: rm -rf %t.d && mkdir -p %t.d
 // RUN: clang++ --target=aie2p-none-unknown-elf -std=c++20 -O2 -DNDEBUG -c %S/stack_size_unmeasurable_kernel.cc -o %t.d/stack_size_unmeasurable_kernel.o
-// RUN: cd %t.d && %aiecc %s 2>&1 | FileCheck %s
+// RUN: cd %t.d && %aiecc --get=measured_stack_sizes.mlir --output-dir=%t.out %s 2>&1 | FileCheck %s
+// RUN: FileCheck %s --check-prefix=ATTR --input-file %t.out/measured_stack_sizes.mlir --implicit-check-not=measured_stack_size
 
-// CHECK: warning: cannot determine this core's stack requirement: no stack size information for 'touch_scratch'
-// CHECK-SAME: stack_size is not being validated for this core
+// CHECK: warning: no stack size information for 1 function(s) this core reaches
+// CHECK-SAME: touch_scratch
+
+// ATTR: aie.core
 
 module {
   aie.device(npu2) {
