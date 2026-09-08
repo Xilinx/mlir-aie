@@ -10,7 +10,6 @@ Strix-only because ``v8bfp16ebs8`` is an AIE2P intrinsic type.
 """
 
 import argparse
-from pathlib import Path
 
 import aie.iron as iron
 import numpy as np
@@ -18,7 +17,6 @@ from aie.dialects.aiex import v8bfp16ebs8
 from aie.helpers.taplib import TensorTiler2D
 from aie.iron import (
     CompileTime,
-    ExternalFunction,
     In,
     ObjectFifo,
     Out,
@@ -26,6 +24,7 @@ from aie.iron import (
     Runtime,
     TaskGroup,
     Worker,
+    kernels,
 )
 from aie.iron.controlflow import range_
 from aie.utils.hostruntime.argparse import (
@@ -33,10 +32,6 @@ from aie.utils.hostruntime.argparse import (
     device_from_args,
 )
 from aie.utils.hostruntime.cli import run_design_cli
-
-_KERNEL_SRC = (
-    Path(__file__).resolve().parents[5] / "aie_kernels" / "aie2p" / "mm_bfp.cc"
-)
 
 
 @iron.jit(aiecc_flags=["--dynamic-objFifos"])
@@ -67,20 +62,8 @@ def single_core_matmul(
     b_ty = np.ndarray[(k, n // 8), np.dtype[v8bfp16ebs8]]
     c_ty = np.ndarray[(m, n // 8), np.dtype[v8bfp16ebs8]]
 
-    kernel_flags = [f"-DDIM_M={m}", f"-DDIM_K={k}", f"-DDIM_N={n}"]
-
-    zero_kernel = ExternalFunction(
-        "zero_kernel",
-        source_file=str(_KERNEL_SRC),
-        arg_types=[c_ty],
-        compile_flags=kernel_flags + ["-DZERO_ONLY"],
-    )
-    matmul_kernel = ExternalFunction(
-        "matmul_vectorized_bfp16",
-        source_file=str(_KERNEL_SRC),
-        arg_types=[a_ty, b_ty, c_ty],
-        compile_flags=kernel_flags + ["-DMATMUL_ONLY"],
-    )
+    matmul_kernel = kernels.mm_bfp(dim_m=m, dim_k=k, dim_n=n)
+    zero_kernel = matmul_kernel.zero
 
     inA = ObjectFifo(a_ty, name="inA")
     memA = inA.cons().forward(name="memA")

@@ -23,8 +23,9 @@ mechanism has its own (dtype, size) support envelope:
                       exact ``(dtype, M, K) = (uint8, 16, 16)``.
   * ``combined``    — hybrid: shim DMA does the outer-block reshuffle
                       (L3→L2→L1 TAP chain), and a VSHUFFLE kernel
-                      (``transpose_4x4`` or ``transpose_8x8`` in
-                      ``aie_kernels/transpose.cc``) transposes each
+                      (``kernels.transpose``, i.e. ``transpose_4x4`` or
+                      ``transpose_8x8`` in the library's
+                      ``aie_kernels/generic/transpose.cc``) transposes each
                       inner ``s x s`` sub-tile.  Supports
                       ``i8`` / ``i16`` / ``i32`` and any sizes with
                       ``m | M``, ``n | N``, ``s | m``, ``s | n``.
@@ -42,7 +43,7 @@ from pathlib import Path
 import aie.iron as iron
 import numpy as np
 from aie.helpers.taplib import TensorAccessPattern, TensorTiler2D
-from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker
+from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker, kernels
 from aie.iron.controlflow import range_
 from aie.iron.device import AnyComputeTile
 from aie.iron.kernel import ExternalFunction
@@ -52,10 +53,8 @@ from aie.utils.verify import assert_pass
 
 _KERNELS_DIR = Path(__file__).parent / "aie_kernels"
 _SHUFFLE_SRC = str(_KERNELS_DIR / "shuffle_16x16.cc")
-_COMBINED_SRC = str(_KERNELS_DIR / "transpose.cc")
 
 _BYTES_TO_DTYPE = {1: np.uint8, 2: np.uint16, 4: np.uint32}
-_COMBINED_DTYPE_MACRO = {1: "DTYPE_i8", 2: "DTYPE_i16", 4: "DTYPE_i32"}
 
 
 # ---------------------------------------------------------------------------
@@ -208,24 +207,17 @@ def _transpose_combined(
     if s == 8 and (m < 32 or n < 32):
         # The s=8 kernel uses an interleave_unzip(32) stage internally, so
         # it needs min(m, n) >= 32 — m,n > 8 compiles but silently produces
-        # wrong output.  The matching static_assert lives in
-        # aie_kernels/transpose.cc:transpose_8x8.
+        # wrong output.  kernels.transpose raises the same way, and the
+        # matching static_assert lives in aie_kernels/generic/transpose.cc.
         raise ValueError("s=8 requires m, n >= 32 (kernel constraint)")
 
     dtype = _BYTES_TO_DTYPE[dtype_bytes]
     matrix_ty = np.ndarray[(M, K), np.dtype[dtype]]
     tile_ty = np.ndarray[(m, n), np.dtype[dtype]]
 
-    kernel_func = ExternalFunction(
-        f"transpose_{s}x{s}",
-        source_file=_COMBINED_SRC,
-        arg_types=[tile_ty, tile_ty],
-        compile_flags=[
-            f"-DDIM_m={m}",
-            f"-DDIM_n={n}",
-            f"-D{_COMBINED_DTYPE_MACRO[dtype_bytes]}",
-        ],
-    )
+    # The library's blocked transpose (aie_kernels/generic/transpose.cc), which
+    # takes any 1-, 2- or 4-byte element type.
+    kernel_func = kernels.transpose(dim_m=m, dim_n=n, subtile=s, dtype=dtype)
 
     tap_in_L3L2 = TensorAccessPattern(
         tensor_dims=(M, K),

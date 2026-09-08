@@ -18,35 +18,16 @@ host-side from ``theta = 10000`` per the canonical RoPE formula.
 """
 
 import argparse
-from pathlib import Path
 
 import aie.iron as iron
 import numpy as np
 from aie.helpers.taplib import TensorTiler2D
-from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker
+from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker, kernels
 from aie.iron.controlflow import range_
-from aie.iron.kernel import ExternalFunction
-from aie.utils import config
 from aie.utils.hostruntime.argparse import add_compile_args, device_from_args
 from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
 from ml_dtypes import bfloat16
-
-_KERNEL_SRC = Path(__file__).resolve().parents[3] / "aie_kernels/aie2p/rope.cc"
-
-
-def _rope_extern(chunk_type):
-    return ExternalFunction(
-        "rope",
-        source_file=str(_KERNEL_SRC),
-        arg_types=[
-            chunk_type,
-            chunk_type,
-            chunk_type,
-            np.int32,  # pyright: ignore[reportArgumentType]
-        ],
-        include_dirs=[config.cxx_header_path()],
-    )
 
 
 @iron.jit
@@ -76,7 +57,7 @@ def rope(
     of_luts = [ObjectFifo(chunk_ty, name=f"lut_{i}") for i in range(n_cores)]
     of_outs = [ObjectFifo(chunk_ty, name=f"out_{i}") for i in range(n_cores)]
 
-    rope_fn = _rope_extern(chunk_ty)
+    rope_fn = kernels.rope(cols=embedding_dim)
 
     def core_fn(of_in, of_lut, of_out, kernel):
         for _ in range_(rows_per_core):

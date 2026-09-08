@@ -11,30 +11,25 @@ path; the host harness ingests A and reads back the shuffled C.
 """
 
 import argparse
-from pathlib import Path
 
 import aie.iron as iron
 import numpy as np
 from aie.dialects.aiex import v8bfp16ebs8
 from aie.iron import (
     CompileTime,
-    ExternalFunction,
     In,
     ObjectFifo,
     Out,
     Program,
     Runtime,
     Worker,
+    kernels,
 )
 from aie.utils.hostruntime.argparse import (
     add_compile_args,
     device_from_args,
 )
 from aie.utils.hostruntime.cli import run_design_cli
-
-_KERNEL_SRC = (
-    Path(__file__).resolve().parents[5] / "aie_kernels" / "aie2p" / "mm_bfp.cc"
-)
 
 
 @iron.jit(aiecc_flags=["--dynamic-objFifos"])
@@ -52,20 +47,7 @@ def in_core_shuffle(
     a_ty = np.ndarray[(m * k // 8,), np.dtype[v8bfp16ebs8]]
     c_ty = np.ndarray[(m * n // 8,), np.dtype[v8bfp16ebs8]]
 
-    kernel_flags = [f"-DDIM_M={m}", f"-DDIM_K={k}", f"-DDIM_N={n}"]
-
-    scalar_shuffle_kernel = ExternalFunction(
-        "scalar_shuffle",
-        source_file=str(_KERNEL_SRC),
-        arg_types=[
-            a_ty,
-            c_ty,
-            np.dtype(np.int16),
-            np.dtype(np.int16),
-            np.dtype(np.int16),
-        ],
-        compile_flags=kernel_flags + ["-DSHUFFLE_ONLY"],
-    )
+    scalar_shuffle_kernel = kernels.mm_bfp_shuffle(dim_m=m, dim_k=k, dim_n=n)
 
     inA = ObjectFifo(a_ty, name="inA")
     memA = inA.cons().forward(name="memA")

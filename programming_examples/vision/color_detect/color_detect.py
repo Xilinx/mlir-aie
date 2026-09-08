@@ -241,54 +241,18 @@ def _design_for(opts):
 
 
 def _rgba2hue_ref(rgba_uint8):
-    """Numpy port of the scalar formula in aie_kernels/aie2/rgba2hue.cc."""
-    rgba = rgba_uint8.reshape(-1, 4)
-    r = rgba[:, 0].astype(np.int32)
-    g = rgba[:, 1].astype(np.int32)
-    b = rgba[:, 2].astype(np.int32)
-    rgb_max = np.maximum.reduce([r, g, b])
-    rgb_min = np.minimum.reduce([r, g, b])
-    rng = rgb_max - rgb_min
-    # Guard div-by-zero; kernel sets h=0 when rgb_max==0 or rgb_max==rgb_min.
-    safe_rng = np.where(rng == 0, 1, rng)
-    h = np.zeros_like(rgb_max)
-    is_r = (rgb_max == r) & (rng != 0)
-    is_g = (rgb_max == g) & (rng != 0) & ~is_r
-    is_b = (rgb_max == b) & (rng != 0) & ~is_r & ~is_g
-
-    # C++ ``int / int`` truncates toward zero; Python ``//`` floors.  Use
-    # np.trunc-via-float so negative dividends behave like the kernel.
-    def _trunc_div(num, den):
-        return np.trunc(num.astype(np.float64) / den.astype(np.float64)).astype(
-            np.int32
-        )
-
-    np.copyto(h, 0 + _trunc_div(85 * (g - b), safe_rng), where=is_r)
-    np.copyto(h, 85 * 2 + _trunc_div(85 * (b - r), safe_rng), where=is_g)
-    np.copyto(h, 170 * 2 + _trunc_div(85 * (r - g), safe_rng), where=is_b)
-    np.copyto(h, 0, where=(rgb_max == 0) | (rgb_max == rgb_min))
-    # Kernel does ``h = (h + 1) >> 1`` before storing -- halve with rounding.
-    h = (h + 1) >> 1
-    return h.astype(np.uint8)
+    """``kernels.rgba2hue_ref``: the scalar formula in aie_kernels/aie2/rgba2hue.cc."""
+    return kernels.rgba2hue_ref(rgba_uint8.reshape(-1))
 
 
 def _threshold_ref(arr_uint8, thresh, max_val, mode):
-    """Numpy reference for threshold.cc (modes 0=BINARY, 4=TOZERO_INV)."""
-    if mode == 0:
-        return np.where(arr_uint8 > thresh, np.uint8(max_val), np.uint8(0))
-    if mode == 4:
-        return np.where(arr_uint8 > thresh, np.uint8(0), arr_uint8)
-    raise ValueError(f"threshold mode {mode} not modeled in reference")
+    """``kernels.threshold_ref``: mode 0 is BINARY, 4 is TOZERO_INV (threshold.cc)."""
+    return kernels.threshold_ref(arr_uint8, thresh, max_val, mode)
 
 
 def _gray2rgba_ref(gray_uint8):
-    """Replicate gray to R, G, B with alpha = 255 (matches gray2rgba_aie)."""
-    out = np.zeros((gray_uint8.size, 4), dtype=np.uint8)
-    out[:, 0] = gray_uint8
-    out[:, 1] = gray_uint8
-    out[:, 2] = gray_uint8
-    out[:, 3] = 255
-    return out.reshape(-1)
+    """Replicate gray to R, G, B with alpha = 255: ``kernels.gray2rgba_ref``."""
+    return kernels.gray2rgba_ref(gray_uint8.reshape(-1))
 
 
 def _color_detect_ref(rgba_uint8):
@@ -298,9 +262,9 @@ def _color_detect_ref(rgba_uint8):
     t1b = _threshold_ref(t1a, 30, 255, 0)
     t2a = _threshold_ref(hue, 160, 255, 4)
     t2b = _threshold_ref(t2a, 90, 255, 0)
-    mask = np.bitwise_or(t1b, t2b)
+    mask = kernels.bitwise_or_ref(t1b, t2b)
     mask_rgba = _gray2rgba_ref(mask)
-    return np.bitwise_and(mask_rgba, rgba_uint8)
+    return kernels.bitwise_and_ref(mask_rgba, rgba_uint8)
 
 
 def _run_and_verify(opts):

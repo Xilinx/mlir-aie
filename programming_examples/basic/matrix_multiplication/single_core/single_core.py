@@ -104,20 +104,18 @@ def single_core(
     b_ty = np.ndarray[(k, n), np.dtype[dtype_in]]
     c_ty = np.ndarray[(m, n), np.dtype[dtype_out]]
 
+    # The (r, s, t) micro-tile transforms the kernel consumes and produces
+    # come with the kernel (kernels.mm_stream_dims); b_col_maj is folded in.
+    dims = matmul_kernel.stream_dims
+
     inA = ObjectFifo(a_ty, name="inA")
-    a_dims = [(m // r, r * k), (k // s, s), (r, k), (s, 1)]
-    memA = inA.cons().forward(name="memA", dims_to_stream=a_dims)
+    memA = inA.cons().forward(name="memA", dims_to_stream=dims["A"])
 
     inB = ObjectFifo(b_ty, name="inB")
-    if b_col_maj:
-        b_dims = [(n // t, t * k), (k // s, s), (t, k), (s, 1)]
-    else:
-        b_dims = [(k // s, s * n), (n // t, t), (s, n), (t, 1)]
-    memB = inB.cons().forward(name="memB", dims_to_stream=b_dims)
+    memB = inB.cons().forward(name="memB", dims_to_stream=dims["B"])
 
     memC = ObjectFifo(c_ty, name="memC")
-    c_dims = [(m // r, r * n), (r, t), (n // t, r * t), (t, 1)]
-    outC = memC.cons().forward(name="outC", dims_to_stream=c_dims)
+    outC = memC.cons().forward(name="outC", dims_to_stream=dims["C"])
 
     def core_fn(of_a, of_b, of_c, zero, matmul):
         for _ in range_(tiles) if tiles > 1 else range(1):
@@ -222,10 +220,27 @@ def _make_argparser():
 
 
 def _numpy_reference(A_np, B_np, b_col_maj, dtype_out):
+    """``kernels.mm_ref`` on the logical operands (B is stored transposed for b_col_maj)."""
     B_logical = B_np.T if b_col_maj else B_np
-    if np.issubdtype(A_np.dtype, np.integer):
-        return (A_np.astype(np.int64) @ B_logical.astype(np.int64)).astype(dtype_out)
-    return (A_np.astype(np.float32) @ B_logical.astype(np.float32)).astype(dtype_out)
+    return kernels.mm_ref(A_np, B_logical).astype(dtype_out)
+
+
+def _tolerance(opts) -> tuple[float, float]:
+    """The kernel's own ``(rtol, atol)``, from its contract (unused for exact integer kinds)."""
+    fn = kernels.mm(
+        dim_m=opts.m,
+        dim_k=opts.k,
+        dim_n=opts.n,
+        input_dtype=str_to_dtype(opts.dtype_in),
+        output_dtype=str_to_dtype(opts.dtype_out),
+        b_col_maj=bool(opts.b_col_maj),
+    )
+    assert fn.contract is not None, "kernels.mm declares a contract"
+    tol = fn.contract.tolerance
+    return (
+        tol.rtol if tol.rtol is not None else 0.0,
+        tol.atol if tol.atol is not None else 0.0,
+    )
 
 
 def _trace_config(opts):
@@ -276,11 +291,14 @@ def _run_and_verify(opts):
     expected = _numpy_reference(A_np, B_np, opts.b_col_maj, dtype_out)
     actual = C_t.numpy().reshape(opts.M, opts.N)
 
+    rtol, atol = _tolerance(opts)
     assert_close_with_benchmark(
         actual,
         expected,
         bench=bench,
         ops=2.0 * opts.M * opts.K * opts.N,
+        float_rtol=rtol,
+        float_atol=atol,
         fail_msg="output does not match A @ B",
     )
 

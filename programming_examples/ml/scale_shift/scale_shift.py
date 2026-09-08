@@ -17,7 +17,6 @@ starts the next phase.
 """
 
 import argparse
-from pathlib import Path
 
 import aie.iron as iron
 import numpy as np
@@ -33,30 +32,13 @@ from aie.iron import (
     TaskGroup,
     Worker,
     WorkerRuntimeBarrier,
+    kernels,
 )
 from aie.iron.controlflow import range_
-from aie.iron.kernel import ExternalFunction
-from aie.utils import config
 from aie.utils.hostruntime.argparse import add_compile_args, device_from_args
 from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
 from ml_dtypes import bfloat16
-
-_KERNEL_SRC = Path(__file__).resolve().parents[3] / "aie_kernels/aie2/scale_shift.cc"
-
-
-def _scale_shift_extern(tile_ty):
-    return ExternalFunction(
-        "eltwise_mul_add_bf16_vector",
-        source_file=str(_KERNEL_SRC),
-        arg_types=[
-            tile_ty,
-            tile_ty,
-            tile_ty,
-            np.int32,  # pyright: ignore[reportArgumentType]
-        ],
-        include_dirs=[config.cxx_header_path()],
-    )
 
 
 @iron.jit
@@ -108,7 +90,7 @@ def scale_shift(
         names=[f"memC{i}" for i in range(n_cores)],
     )
 
-    mul_add_fn = _scale_shift_extern(tile_ty)
+    mul_add_fn = kernels.mul_add(tile_size=tile_size)
 
     rtps = [
         Buffer(

@@ -10,7 +10,6 @@ on AIE2P. Strix-only.
 """
 
 import argparse
-from pathlib import Path
 
 import aie.iron as iron
 import numpy as np
@@ -18,7 +17,6 @@ from aie.dialects.aiex import v8bfp16ebs8
 from aie.helpers.taplib.tensortiler2d import TensorTiler2D
 from aie.iron import (
     CompileTime,
-    ExternalFunction,
     In,
     ObjectFifo,
     Out,
@@ -27,6 +25,7 @@ from aie.iron import (
     StreamDims,
     TaskGroup,
     Worker,
+    kernels,
 )
 from aie.iron.controlflow import range_
 from aie.utils.hostruntime.argparse import (
@@ -35,10 +34,6 @@ from aie.utils.hostruntime.argparse import (
 )
 from aie.utils.hostruntime.cli import run_design_cli
 from ml_dtypes import bfloat16
-
-_KERNEL_SRC = (
-    Path(__file__).resolve().parents[5] / "aie_kernels" / "aie2p" / "mm_bfp_mixed.cc"
-)
 
 
 @iron.jit(aiecc_flags=["--dynamic-objFifos"])
@@ -57,8 +52,9 @@ def whole_array_mixed(
 ):
     n_aie_rows = 4
     n_aie_cores = n_aie_rows * n_aie_cols
-    # bfp16ebs8 matmul mac unit is 8x8x8; m/k/n must be multiples of these.
-    r, s, t = 8, 8, 8
+    matmul_kernel = kernels.mm_bfp(dim_m=m, dim_k=k, dim_n=n, mixed=True)
+    zero_kernel = matmul_kernel.zero
+    r, s, t = matmul_kernel.mac_dims  # the bfp16ebs8 mmul is 8x8x8
     assert m % r == 0, f"m ({m}) must be a multiple of {r}"
     assert k % s == 0, f"k ({k}) must be a multiple of {s}"
     assert n % t == 0, f"n ({n}) must be a multiple of {t}"
@@ -75,21 +71,6 @@ def whole_array_mixed(
     B_l1_ty = np.ndarray[(k, n // 8), np.dtype[v8bfp16ebs8]]
     C_l1_ty = np.ndarray[(m, n), np.dtype[bfloat16]]
 
-    kernel_flags = [f"-DDIM_M={m}", f"-DDIM_K={k}", f"-DDIM_N={n}"]
-
-    zero_kernel = ExternalFunction(
-        "zero_kernel_bf16",
-        source_file=str(_KERNEL_SRC),
-        arg_types=[C_l1_ty],
-        compile_flags=kernel_flags + ["-DZERO_ONLY"],
-    )
-    matmul_kernel = ExternalFunction(
-        "matmul_vectorized_different_datatypes",
-        source_file=str(_KERNEL_SRC),
-        arg_types=[A_l1_ty, B_l1_ty, C_l1_ty],
-        compile_flags=kernel_flags + ["-DMATMUL_ONLY"],
-    )
-
     A_l3l2_fifos: list[ObjectFifo] = []
     A_l2l1_fifos: list[ObjectFifo] = []
     B_l3l2_fifos: list[ObjectFifo] = []
@@ -103,9 +84,9 @@ def whole_array_mixed(
         start_row = i * n_A_tiles_per_shim
         stop_row = start_row + n_A_tiles_per_shim
         of_offsets = [m * k * j for j in range(stop_row - start_row)]
-        dims_to_stream: list[StreamDims] = [
-            [(m // r, r * k), (k // s, s), (r, k), (s, 1)]
-        ] * (stop_row - start_row)
+        dims_to_stream: list[StreamDims] = [matmul_kernel.stream_dims["A"]] * (
+            stop_row - start_row
+        )
         a_tmp_fifos = a_l3l2.cons().split(
             of_offsets,
             obj_types=[A_l1_ty] * (stop_row - start_row),
@@ -121,7 +102,7 @@ def whole_array_mixed(
             b_l3l2.cons().forward(obj_type=B_l1_ty, name=f"B_L2L1_{col}")
         )
 
-        c_l2l3_dims: StreamDims = [(m // r, r * n), (r, t), (n // t, r * t), (t, 1)]
+        c_l2l3_dims: StreamDims = matmul_kernel.stream_dims["C"]
         c_l2l3 = ObjectFifo(
             C_l2_ty,
             name=f"C_L2L3_{col}",

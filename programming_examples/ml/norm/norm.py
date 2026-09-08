@@ -34,26 +34,22 @@ Eight cores process ``sequence_length // 8`` rows each; one row =
 """
 
 import argparse
-from pathlib import Path
 
 import aie.iron as iron
 import numpy as np
 from aie.helpers.taplib import TensorTiler2D
-from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker
+from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker, kernels
 from aie.iron.controlflow import range_
-from aie.iron.kernel import ExternalFunction
-from aie.utils import config
 from aie.utils.hostruntime.argparse import add_compile_args, device_from_args
 from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
 from ml_dtypes import bfloat16
 
-_KERNEL_DIR = Path(__file__).resolve().parents[3] / "aie_kernels/aie2p"
-_KERNEL_SPEC = {
-    "rms": ("rms_norm", _KERNEL_DIR / "rms_norm.cc"),
-    "layer": ("layer_norm", _KERNEL_DIR / "layer_norm.cc"),
-    "layer_f32": ("layer_norm_f32", _KERNEL_DIR / "layer_norm.cc"),
-    "layer_affine_cast": ("layer_norm_affine_cast", _KERNEL_DIR / "layer_norm.cc"),
+# The library factories behind each op (aie.iron.kernels.transformer).
+_NORM_FACTORY = {
+    "rms": kernels.rms_norm,
+    "layer": kernels.layer_norm,
+    "layer_f32": kernels.layer_norm_f32,
 }
 
 # rms / layer are bf16; layer_f32 is the f32-in/f32-out per-row LayerNorm.
@@ -65,20 +61,6 @@ _OP_DTYPE = {"rms": bfloat16, "layer": bfloat16, "layer_f32": np.float32}
 # Ops wired through norm_affine (a real per-column gamma/beta plus an output
 # cast) rather than through norm (same dtype in/out, gamma=1/beta=0 fixed).
 _AFFINE_OPS = frozenset({"layer_affine_cast"})
-
-
-def _norm_extern(op, chunk_type):
-    sym, src = _KERNEL_SPEC[op]
-    return ExternalFunction(
-        sym,
-        source_file=str(src),
-        arg_types=[
-            chunk_type,
-            chunk_type,
-            np.int32,  # pyright: ignore[reportArgumentType]
-        ],
-        include_dirs=[config.cxx_header_path()],
-    )
 
 
 @iron.jit
@@ -111,7 +93,7 @@ def norm(
     of_ins = [ObjectFifo(chunk_ty, name=f"in_{i}") for i in range(n_cores)]
     of_outs = [ObjectFifo(chunk_ty, name=f"out_{i}") for i in range(n_cores)]
 
-    norm_fn = _norm_extern(op, chunk_ty)
+    norm_fn = _NORM_FACTORY[op](cols=embedding_dim)
 
     def core_fn(of_in, of_out, kernel):
         for _ in range_(rows_per_core):
@@ -150,21 +132,6 @@ def norm(
     )
 
     return Program(iron.get_current_device(), rt, workers=workers).resolve_program()
-
-
-def _norm_affine_extern(op, chunk_in_ty, chunk_gb_ty, chunk_out_ty):
-    sym, src = _KERNEL_SPEC[op]
-    return ExternalFunction(
-        sym,
-        source_file=str(src),
-        arg_types=[
-            chunk_in_ty,
-            chunk_gb_ty,
-            chunk_out_ty,
-            np.int32,  # pyright: ignore[reportArgumentType]
-        ],
-        include_dirs=[config.cxx_header_path()],
-    )
 
 
 @iron.jit
@@ -216,7 +183,7 @@ def norm_affine(
     of_gbs = [ObjectFifo(chunk_gb_ty, name=f"gb_{i}", depth=1) for i in range(n_cores)]
     of_outs = [ObjectFifo(chunk_out_ty, name=f"out_{i}") for i in range(n_cores)]
 
-    norm_fn = _norm_affine_extern(op, chunk_in_ty, chunk_gb_ty, chunk_out_ty)
+    norm_fn = kernels.layer_norm_affine_cast(cols=embedding_dim)
 
     def core_fn(of_in, of_gb, of_out, kernel):
         # gamma/beta are constant for every row this core sees: acquire once,
