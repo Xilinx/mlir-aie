@@ -170,9 +170,12 @@ def test_cascade_mm_exposes_all_modes_and_zero():
     assert isinstance(ef.put_only, Kernel)
     assert isinstance(ef.put_get, Kernel)
     assert isinstance(ef.zero, Kernel)
-    assert ef.put_only._name == "matmul_scalar_cascade_put_only_i16_i16"
-    assert ef.put_get._name == "matmul_scalar_cascade_put_get_i16_i16"
-    assert ef.zero._name == "zero_scalar_i16"
+    # Every symbol in the object carries this parameterisation's prefix, so
+    # the sibling bindings do too (see ExternalFunction.sibling).
+    p = ef._symbol_prefix
+    assert ef.put_only._name == f"{p}_matmul_scalar_cascade_put_only_i16_i16"
+    assert ef.put_get._name == f"{p}_matmul_scalar_cascade_put_get_i16_i16"
+    assert ef.zero._name == f"{p}_zero_scalar_i16"
     # All four bindings reference the same .o.
     for sibling in (ef.put_only, ef.put_get, ef.zero):
         assert sibling.object_file_name == ef.object_file_name

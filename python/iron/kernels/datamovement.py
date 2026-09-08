@@ -14,9 +14,80 @@ with host-matching ``conv_even`` rounding), and is aie2p-only.
 
 import numpy as np
 from aie.iron.kernel import ExternalFunction
+from aie.utils.verify import Tolerance
 from ml_dtypes import bfloat16
 
-from ._common import _default_source_path, _make_extern
+from ._common import KernelContract, _declare_dtypes, _default_source_path, _make_extern
+
+# bf16 results of an fp32 computation, rounded once. Measured on device by
+# test/python/npu/test_kernels_e2e.py with this tolerance.
+_BF16_ROUNDTRIP = Tolerance.relative(
+    0.03,
+    0.05,
+    max_mismatch_frac=0.02,
+    note="fp32 compute, one bf16 rounding; tolerance measured by test_kernels_e2e",
+)
+
+
+def axpy_ref(x, y, a):
+    """Numpy reference for [`axpy`][iron.kernels.datamovement.axpy]: ``a * x + y`` in float32."""
+    return np.float32(a) * x.astype(np.float32) + y.astype(np.float32)
+
+
+def convert_copy_ref(x):
+    """Numpy reference for [`convert_copy`][iron.kernels.datamovement.convert_copy].
+
+    ``ml_dtypes`` rounds f32 -> bf16 half-to-even, exactly as the kernel's
+    ``conv_even`` does, so the cast is the reference and the match is
+    bit-for-bit.
+    """
+    return x.astype(bfloat16)
+
+
+def expand_ref(payload, *, tile_size: int, group_size: int):
+    """Numpy reference for [`expand`][iron.kernels.datamovement.expand].
+
+    ``payload`` holds, per tile, ``tile_size`` packed uint4 values
+    (``tile_size // 2`` bytes, low nibble first) followed by one bf16 scale per
+    ``group_size`` elements; the result is ``nibble * scale-of-its-group``.
+    """
+    payload = np.asarray(payload, dtype=np.uint8)
+    payload = payload.reshape(-1, payload.shape[-1])
+    n_scales = tile_size // group_size
+    packed = payload[:, : tile_size // 2]
+    scales = np.ascontiguousarray(payload[:, tile_size // 2 :]).view(bfloat16)
+    scales = scales.reshape(-1, n_scales).astype(np.float32)
+    nibbles = np.empty((payload.shape[0], tile_size), np.float32)
+    nibbles[:, 0::2] = packed & 0x0F
+    nibbles[:, 1::2] = packed >> 4
+    return nibbles * np.repeat(scales, group_size, axis=1)
+
+
+def expand_sample(rng, calls: int, *, tile_size: int, group_size: int) -> list:
+    """Random ``expand`` payloads: packed uint4 values then bf16 scales in [0.1, 1)."""
+    n_scales = tile_size // group_size
+    nibbles = rng.integers(0, 16, size=(calls, tile_size), dtype=np.uint8)
+    packed = (nibbles[:, 0::2] | (nibbles[:, 1::2] << 4)).astype(np.uint8)
+    scales = rng.uniform(0.1, 1.0, size=(calls, n_scales)).astype(bfloat16)
+    return [np.concatenate([packed, scales.view(np.uint8)], axis=1)]
+
+
+def transpose_ref(x, *, dim_m: int, dim_n: int, subtile: int):
+    """Numpy reference for [`transpose`][iron.kernels.datamovement.transpose].
+
+    Transposes each ``subtile`` x ``subtile`` block of the ``dim_n`` x ``dim_m``
+    matrix in place -- the blocks move, the matrix does not.
+    """
+    x = np.asarray(x)
+    mats = x.reshape(-1, dim_n, dim_m)
+    out = mats.copy()
+    for r in range(0, dim_n, subtile):
+        for c in range(0, dim_m, subtile):
+            out[:, r : r + subtile, c : c + subtile] = np.swapaxes(
+                mats[:, r : r + subtile, c : c + subtile], 1, 2
+            )
+    return out.reshape(x.shape)
+
 
 _AXPY_VEC = 64  # saxpy processes 64 bf16/iteration
 
@@ -51,6 +122,16 @@ def axpy(tile_size: int = 1024, vectorized: bool = True) -> ExternalFunction:
         func,
         _default_source_path("axpy.cc"),
         [tile_ty, tile_ty, a_ty, tile_ty, np.int32],
+        contract=KernelContract(
+            roles=("in", "in", "scalar", "out", "count"),
+            reference=axpy_ref,
+            nonfinite="propagate",
+            subnormals="preserve",
+            acc_dtype=np.float32,
+            reduction=1,
+            tolerance=_BF16_ROUNDTRIP,
+            ops_per_call=2 * tile_size,
+        ),
     )
 
 
@@ -86,6 +167,13 @@ def convert_copy(tile_size: int = 1024) -> ExternalFunction:
         "cast_f32_bf16_row",
         _default_source_path("cast_f32_bf16.cc"),
         [in_ty, out_ty, np.int32],
+        contract=KernelContract(
+            roles=("in", "out", "count"),
+            reference=convert_copy_ref,
+            tolerance=Tolerance.exact(
+                note="conv_even rounding matches ml_dtypes bit-for-bit (test_kernels_e2e)"
+            ),
+        ),
     )
 
 
@@ -127,34 +215,93 @@ def expand(tile_size: int = 1024, group_size: int = 32) -> ExternalFunction:
         _default_source_path("expand.cc"),
         [in_ty, out_ty],
         compile_flags=[f"-DTILE_SIZE={tile_size}", f"-DGROUP_SIZE={group_size}"],
+        contract=KernelContract(
+            roles=("in", "out"),
+            reference=lambda p: expand_ref(
+                p, tile_size=tile_size, group_size=group_size
+            ),
+            tolerance=_BF16_ROUNDTRIP,
+            ops_per_call=tile_size,
+            sample=lambda rng, calls: expand_sample(
+                rng, calls, tile_size=tile_size, group_size=group_size
+            ),
+        ),
     )
 
 
-def transpose(dim_m: int = 32, dim_n: int = 32, subtile: int = 4) -> ExternalFunction:
-    """Blocked bf16 transpose using AIE-API shuffle intrinsics.
+# -DDTYPE_* flag per element width; the transpose only moves bytes.
+_TRANSPOSE_DTYPE_FLAG = {1: "-DDTYPE_i8", 2: "-DDTYPE_i16", 4: "-DDTYPE_i32"}
+
+
+def transpose(
+    dim_m: int = 32, dim_n: int = 32, subtile: int = 4, dtype: type = bfloat16
+) -> ExternalFunction:
+    """Blocked transpose using AIE-API shuffle intrinsics.
 
     Transposes ``subtile``x``subtile`` blocks of a ``dim_n`` x ``dim_m`` matrix.
     ``dim_m``/``dim_n`` are compile-time (``-DDIM_m`` / ``-DDIM_n``); the C++
-    ``#error`` guard rejects a build without them.
+    ``#error`` guard rejects a build without them. Any 1-, 2- or 4-byte
+    ``dtype`` works, since the kernel only moves bytes (bf16 is the default
+    and needs no flag; other widths select ``-DDTYPE_i8/i16/i32``).
+    programming_examples/basic/transposes uses this kernel for its
+    ``combined`` strategy.
 
     Args:
         dim_m: Inner (contiguous) dimension.
         dim_n: Outer dimension.
         subtile: Block size to transpose — 4 (``transpose_4x4``) or 8
-            (``transpose_8x8``).
+            (``transpose_8x8``, which needs ``min(dim_m, dim_n) >= 32``).
+        dtype: Element type, 1, 2 or 4 bytes wide.
 
     Returns:
         ExternalFunction for the selected transpose variant.
 
     Raises:
-        ValueError: When ``subtile`` is not 4 or 8.
+        ValueError: When ``subtile`` is not 4 or 8, when ``subtile == 8`` with
+            a dimension below 32, or when ``dtype`` is not 1, 2 or 4 bytes.
     """
     if subtile not in (4, 8):
         raise ValueError(f"transpose() subtile must be 4 or 8, got {subtile}.")
-    tile_ty = np.ndarray[(dim_m * dim_n,), np.dtype[bfloat16]]
+    if subtile == 8 and min(dim_m, dim_n) < 32:
+        raise ValueError(
+            "transpose() subtile 8 requires min(dim_m, dim_n) >= 32 (the kernel's "
+            f"interleave stage), got {dim_m}x{dim_n}."
+        )
+    width = np.dtype(dtype).itemsize
+    if width not in _TRANSPOSE_DTYPE_FLAG:
+        raise ValueError(
+            f"transpose() dtype must be 1, 2 or 4 bytes wide, got {dtype}."
+        )
+    flags = [f"-DDIM_m={dim_m}", f"-DDIM_n={dim_n}"]
+    if np.dtype(dtype) != np.dtype(bfloat16):
+        flags.append(_TRANSPOSE_DTYPE_FLAG[width])
+    tile_ty = np.ndarray[(dim_m * dim_n,), np.dtype[dtype]]
     return _make_extern(
         f"transpose_{subtile}x{subtile}",
         _default_source_path("transpose.cc"),
         [tile_ty, tile_ty],
-        compile_flags=[f"-DDIM_m={dim_m}", f"-DDIM_n={dim_n}"],
+        compile_flags=flags,
+        contract=KernelContract(
+            roles=("in", "out"),
+            reference=lambda x: transpose_ref(
+                x, dim_m=dim_m, dim_n=dim_n, subtile=subtile
+            ),
+            nonfinite="propagate",
+            subnormals="preserve",
+            tolerance=Tolerance.exact(note="data movement only; lossless"),
+            ops_per_call=0,
+        ),
     )
+
+
+# Supported dtype combinations, as data: the registry and the contract test
+# enumerate these instead of restating them.
+_declare_dtypes(
+    transpose,
+    (
+        {"dtype": bfloat16},
+        {"dtype": np.uint8},
+        {"dtype": np.uint16},
+        {"dtype": np.uint32},
+    ),
+)

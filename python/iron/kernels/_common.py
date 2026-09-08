@@ -7,12 +7,176 @@
 
 import hashlib
 import logging
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable
 
 import numpy as np
 from aie.iron.kernel import ExternalFunction
+from aie.utils.verify import Tolerance
 
 _log = logging.getLogger(__name__)
+
+# Argument roles a kernel contract may assign, one per entry of ``arg_types``:
+#   "in"     a tile streamed in through an ObjectFifo, one element per call
+#   "out"    the tile the kernel writes, one element per call
+#   "param"  a small buffer filled once and held for the whole run (e.g. the
+#            1-element factor of ``scale``)
+#   "count"  the trailing element count the C++ takes at runtime
+#   "scalar" a runtime scalar constant (``leaky_relu`` alpha, ``axpy`` a)
+ROLES = ("in", "out", "inout", "param", "count", "scalar")
+# What an integer kernel does when a result leaves the output range.
+OVERFLOW = ("wrap", "saturate", "undefined")
+# How a kernel rounds when it narrows a result: a fixed-point shift or a
+# float store. "nearest" is round-half-up (``(x + 2**(s-1)) >> s``),
+# "nearest_even" ties-to-even (the bottleneck kernels' srs, a bf16 store).
+ROUNDING = ("floor", "nearest", "nearest_even", "unspecified")
+# What a float kernel does with NaN / inf inputs: "propagate" (the IEEE
+# result numpy computes) or "unspecified" (out of contract; not sampled).
+NONFINITE = ("propagate", "unspecified")
+# What a float kernel does with subnormal inputs: "preserve" (IEEE),
+# "flush" (treated as zero, and so is the reference) or "unspecified".
+SUBNORMALS = ("preserve", "flush", "unspecified")
+
+
+@dataclass(frozen=True)
+class KernelContract:
+    """What a kernel computes, declared next to the factory that builds it.
+
+    ``arg_types`` already fixes each argument's shape and dtype. The contract
+    adds what types cannot say: which argument is which, how to compute the
+    expected result on the host, and how close the device must come. With it
+    a generic harness (``aie.utils.kernel_harness``) can build a design, run
+    the kernel and judge the output for *any* factory, so correctness tests,
+    e2e tests and benchmarks share one definition instead of each restating
+    it.
+
+    Attributes:
+        roles: One of :data:`ROLES` per argument, in argument order.
+            ``"out"`` is written by the kernel; ``"inout"`` is accumulated
+            into (``mm``'s ``C += A * B``), which is why such a kernel ships
+            a ``.zero`` sibling and a design zeroes the buffer before the
+            first call. Exactly one argument is ``out`` or ``inout``.
+        reference: Host implementation. Called with every non-``out``,
+            non-``inout``, non-``count`` argument in argument order: ``in``/``param``
+            tiles as numpy arrays of shape ``(calls, n)`` in the kernel's
+            dtype, ``scalar`` values as Python numbers. Returns the expected
+            output for all calls; the harness casts it to the output dtype.
+            ``None`` when no host reference exists yet -- the kernel is then
+            built but not judged.
+        tolerance: How close the device result must be, or ``None`` for
+            :meth:`Tolerance.default_for` the output dtype. State the
+            evidence in ``Tolerance.note``.
+        ops_per_call: Arithmetic operations one kernel call performs, for
+            throughput normalisation. ``None`` means one per output element.
+        out_valid: Meaningful elements at the start of each output tile when
+            the tile is padded for DMA alignment (reductions write one value
+            into a 4-byte-aligned tile). ``None`` means the whole tile.
+        sample: ``sample(rng, calls) -> list[np.ndarray]`` producing one host
+            array per ``in``/``param`` argument for ``calls`` kernel calls,
+            for kernels whose inputs have structure a dtype cannot express
+            (``expand``'s packed nibbles + scales). ``None`` lets the harness
+            draw plain random data of each argument's dtype.
+        acc_dtype: The type the kernel accumulates in (``np.int32`` for an
+            ``acc32`` mmul, ``np.float32`` for ``accfloat``), or ``None`` when
+            nothing is accumulated (copies, selections, bit operations). With
+            ``reduction`` it tells the harness how large an input may be
+            before the accumulator, or the output, would overflow.
+        reduction: Terms summed into one output element per call (``K`` for
+            a matmul tile, taps x channels for a convolution, the tile size
+            for a reduction). ``None`` means one.
+        overflow: What happens when an integer result leaves the output
+            range: ``"wrap"`` (two's complement), ``"saturate"`` (the kernel
+            clamps, as a ``set_sat`` shift does) or ``"undefined"`` (the
+            source does not say). The judge clips or wraps the reference
+            accordingly and refuses to grade an overflowing reference under
+            ``"undefined"``.
+        rounding: How the kernel rounds when it narrows a result (a
+            fixed-point shift, a float store): ``"floor"``, ``"nearest"``
+            (half up), ``"nearest_even"`` (ties to even) or
+            ``"unspecified"`` (an ``srs`` in the core's default mode).
+            References model a declared mode; ``"unspecified"`` is why some
+            tolerances allow one LSB.
+        nonfinite: What NaN and inf inputs produce: ``"propagate"`` (the
+            IEEE result numpy computes, so the registry feeds them) or
+            ``"unspecified"`` (out of contract; never sampled).
+        subnormals: What subnormal inputs produce: ``"preserve"`` (IEEE),
+            ``"flush"`` (the core treats them as zero; the judge flushes
+            both sides) or ``"unspecified"`` (never sampled).
+        unsupported: ``None`` when the generic harness can build, run and
+            judge the kernel in a single-Worker design; otherwise the reason
+            it cannot (a cascade protocol, an operand it cannot sample). The
+            reference and the dtype facts still say what the kernel computes.
+    """
+
+    roles: tuple[str, ...]
+    reference: Callable[..., np.ndarray] | None = None
+    tolerance: Tolerance | None = None
+    ops_per_call: int | None = None
+    out_valid: int | None = None
+    sample: Callable[..., list] | None = None
+    acc_dtype: type | None = None
+    reduction: int | None = None
+    overflow: str = "undefined"
+    rounding: str = "unspecified"
+    nonfinite: str = "unspecified"
+    subnormals: str = "unspecified"
+    # Why the generic harness cannot build a single-Worker design for this
+    # kernel (a cascade protocol, an operand it cannot sample); the reference
+    # and the dtype facts still describe what the kernel computes.
+    unsupported: str | None = None
+
+    def __post_init__(self):
+        bad = [r for r in self.roles if r not in ROLES]
+        if bad:
+            raise ValueError(f"unknown kernel argument role(s) {bad}; use {ROLES}")
+        n_out = self.roles.count("out") + self.roles.count("inout")
+        if n_out != 1:
+            raise ValueError(
+                "a kernel contract needs exactly one 'out' or 'inout' role"
+            )
+        if self.overflow not in OVERFLOW:
+            raise ValueError(
+                f"overflow must be one of {OVERFLOW}, got {self.overflow!r}"
+            )
+        if self.rounding not in ROUNDING:
+            raise ValueError(
+                f"rounding must be one of {ROUNDING}, got {self.rounding!r}"
+            )
+        if self.reduction is not None and self.reduction < 1:
+            raise ValueError(f"reduction must be >= 1, got {self.reduction}")
+        if self.nonfinite not in NONFINITE:
+            raise ValueError(
+                f"nonfinite must be one of {NONFINITE}, got {self.nonfinite!r}"
+            )
+        if self.subnormals not in SUBNORMALS:
+            raise ValueError(
+                f"subnormals must be one of {SUBNORMALS}, got {self.subnormals!r}"
+            )
+        if self.unsupported is not None and not self.unsupported:
+            raise ValueError("unsupported must be a reason, or None")
+
+    @property
+    def out_index(self) -> int:
+        """Position of the output, whether the kernel writes it or accumulates into it."""
+        roles = list(self.roles)
+        return roles.index("out") if "out" in roles else roles.index("inout")
+
+    @property
+    def accumulates(self) -> bool:
+        """Whether the kernel reads its output back (``inout``), as ``C += A * B`` does."""
+        return "inout" in self.roles
+
+    def reference_indices(self) -> list[int]:
+        """Argument positions handed to ``reference``, in order.
+
+        An ``inout`` output is excluded like an ``out`` one: the reference
+        computes the whole result, and a design that accumulates zeroes the
+        buffer first (see the ``.zero`` sibling).
+        """
+        return [
+            i for i, r in enumerate(self.roles) if r not in ("out", "inout", "count")
+        ]
 
 
 def _detect_arch() -> str:
@@ -100,6 +264,16 @@ def _dtype_to_bit_width(dtype, *, factory_name: str) -> int:
     return bit_width
 
 
+def _declare_dtypes(factory, table: tuple[dict, ...]) -> None:
+    """Attach ``factory.dtypes``: the keyword combinations the factory builds.
+
+    The registry and the host contract test enumerate the table instead of
+    restating it. A function attribute, set here so the assignment
+    type-checks.
+    """
+    setattr(factory, "dtypes", tuple(table))
+
+
 def _conv_act_dtype_info(
     base_name: str, act_dtype, *, factory_name: str
 ) -> tuple[str, list[str]]:
@@ -180,8 +354,13 @@ def _make_extern(
     compile_flags: list[str] | None = None,
     use_chess: bool = False,
     shared_object_file_name: str | None = None,
+    contract: KernelContract | None = None,
 ) -> ExternalFunction:
     """Construct (or reuse) an ExternalFunction with the standard include_dirs.
+
+    ``contract`` (a :class:`KernelContract`) is attached as ``extern.contract``
+    so harnesses and tests can build, run and judge the kernel generically;
+    factories without one leave it ``None``.
 
     Memoized on (func_name, source_path, arg_types, compile_flags,
     use_chess) so repeated calls with identical parameters return the
@@ -304,5 +483,6 @@ def _make_extern(
         symbol_prefix=symbol_prefix,
         use_chess=use_chess,
     )
+    extern.contract = contract
     _EXTERN_CACHE[cache_key] = extern
     return extern
