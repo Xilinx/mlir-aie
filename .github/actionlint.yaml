@@ -1,0 +1,13 @@
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+# actionlint cannot see this repository's self-hosted runners, so every
+# `runs-on` naming one reads as an unknown label. Declare them here; a label
+# missing from this list is then a real typo rather than noise.
+self-hosted-runner:
+  labels:
+    - aie2-4col      # NPU1, 4 columns
+    - aie2p-8col     # NPU2, 8 columns
+    - npu2
+    - ryzenai
+    - ubuntu-vitis   # Vitis toolchain image
