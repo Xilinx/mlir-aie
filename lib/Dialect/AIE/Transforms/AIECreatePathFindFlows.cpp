@@ -723,7 +723,7 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
           for (int arbiter = 0; arbiter < numArbiters; arbiter++)
             candidates.push_back(getAmselFromArbiterIDAndMsel(arbiter, msel));
         if (isCtrlPkt) // Control packets take the highest amsels first.
-          std::reverse(candidates.begin(), candidates.end());
+          llvm::reverse(candidates);
 
         // First free amsel that does carry a hazard, kept as the fallback for
         // when every free amsel turns out to carry one.
