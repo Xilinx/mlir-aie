@@ -1,0 +1,188 @@
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+name: Static Kernel Checks (Peano remarks)
+
+# CPU-only. Compiles every library kernel with Peano remark flags, records
+# per-loop II / ZOL / pipelining status, PM bytes, missing-bank loads and
+# dropped-pragma warnings. Runs nightly (which records the baseline) and on
+# PRs that change what gets compiled: the Peano pin, the kernel sources, the
+# factories that pick sources and flags, or this checker. Never gates;
+# comments on same-repo PRs only when a series regressed; nothing on failure.
+#
+# The job installs the published mlir_aie wheel rather than building the PR.
+# The wheel carries its own snapshot of aie_kernels/ and aie_runtime_lib/,
+# so the checker is pointed at the checkout's copies (--source-root), and
+# the checkout's pure-Python aie.iron / aie.utils are copied over the
+# wheel's so factory changes (sources, flags, contracts) are the PR's. A PR
+# that also changes the compiled bindings can fail here until the next
+# wheel; the job is advisory, so that costs nothing but a red check.
+
+permissions:
+  contents: write
+  pull-requests: write
+
+on:
+  schedule:
+    - cron: '30 5 * * *'
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - utils/peano-requirements.txt   # the Peano pin: the primary trigger
+      - aie_kernels/**                 # what is compiled
+      - aie_runtime_lib/**             # lut_based_ops.cpp behind the aie2 LUT kernels
+      - python/iron/kernels/**         # which source, which flags
+      - benchmarks/**                  # the registry (what is compiled) and this checker
+      - .github/workflows/staticKernelChecks.yml
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  static:
+    name: static (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [aie2, aie2p]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with: { python-version: '3.12' }
+      - name: Install Peano and mlir_aie wheels
+        run: |
+          python -m pip install -U pip
+          python -m pip install -r utils/peano-requirements.txt \
+            -f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly
+          # The rolling channel holds dev pre-releases (1.x.y.devN+g<sha>);
+          # without --pre pip settles on the last final release, whose
+          # aie.iron predates the harness (see utils/iron_setup.py --dev).
+          python -m pip install --upgrade --pre mlir_aie \
+            -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels-4
+          python -m pip show mlir_aie | sed -n 's/^Version: /mlir_aie /p'
+          python -m pip install pyyaml numpy ml_dtypes pytest
+      - name: Overlay this checkout's kernel library onto the wheel
+        # The wheel is the newest nightly, which can be ahead of this
+        # checkout; overlaying whole packages mixes the two (a newer taplib
+        # importing from an older aie.utils.__init__ is a circular import).
+        # Copy only the files this suite owns, so the checkout's kernels,
+        # contracts, harness and compile recipe run on the wheel's bindings.
+        run: |
+          site=$(python -c "import aie, os; print(os.path.dirname(aie.__file__))")
+          cp python/iron/kernel.py "$site/iron/kernel.py"
+          cp -r python/iron/kernels/. "$site/iron/kernels/"
+          cp python/utils/kernel_harness.py python/utils/bfp.py \
+            python/utils/verify.py python/utils/benchmark.py "$site/utils/"
+          cp python/utils/compile/utils.py "$site/utils/compile/utils.py"
+      - name: Run static analysis
+        id: static
+        run: |
+          python -m benchmarks.static.run --out static.json --out-pm static-pm.json \
+            --meta static-meta.json --target ${{ matrix.target }} \
+            --source-root "$GITHUB_WORKSPACE" 2>&1 | tee static.log
+      - name: Host-only unit tests
+        run: python -m pytest benchmarks/static benchmarks/kernels/test_run_driver.py -q
+      - name: Compile every registry design through CDO
+        # The same aiecc pipeline the device runs, minus xclbin packaging
+        # (needs XRT). Catches tile sets that overflow core memory and DMA
+        # patterns the hardware cannot express, on a host.
+        run: python -m pytest benchmarks/kernels/test_designs_compile.py -q -x
+        env:
+          KERNEL_TEST_ARCH: ${{ matrix.target }}
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        if: always()
+        with:
+          name: static-${{ matrix.target }}-${{ github.run_id }}
+          path: |
+            static.json
+            static-pm.json
+            static-meta.json
+            static.log
+          if-no-files-found: ignore
+
+      - name: Record (nightly)
+        if: github.event_name != 'pull_request' && hashFiles('static.json') != ''
+        uses: benchmark-action/github-action-benchmark@fd31771ce86cc65eab85653da103f71ab1b4479c  # v1.9.0
+        with:
+          name: static (${{ matrix.target }})
+          tool: customSmallerIsBetter
+          output-file-path: static.json
+          benchmark-data-dir-path: bench/static/${{ matrix.target }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          auto-push: true
+          # II and counts are integers; any increase is real.
+          alert-threshold: '101%'
+          comment-on-alert: false
+          fail-on-alert: false
+          summary-always: true
+          max-items-in-chart: 400
+      - name: Record program memory (nightly)
+        if: github.event_name != 'pull_request' && hashFiles('static-pm.json') != ''
+        uses: benchmark-action/github-action-benchmark@fd31771ce86cc65eab85653da103f71ab1b4479c  # v1.9.0
+        with:
+          name: static pm (${{ matrix.target }})
+          tool: customSmallerIsBetter
+          output-file-path: static-pm.json
+          benchmark-data-dir-path: bench/static-pm/${{ matrix.target }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          auto-push: true
+          # Program memory moves by a few bytes on most toolchain bumps; only
+          # a real growth is worth an alert.
+          alert-threshold: '103%'
+          comment-on-alert: false
+          fail-on-alert: false
+          summary-always: true
+          max-items-in-chart: 400
+
+      - name: Save baseline (nightly)
+        if: github.event_name != 'pull_request' && hashFiles('static.json') != ''
+        run: |
+          mkdir -p baseline && git fetch origin gh-pages --depth=1
+          git show origin/gh-pages:bench/static/${{ matrix.target }}/data.js \
+            | sed -e 's/^window\.BENCHMARK_DATA = //' -e 's/;\s*$//' > baseline/benchmark-data.json
+          git show origin/gh-pages:bench/static-pm/${{ matrix.target }}/data.js \
+            | sed -e 's/^window\.BENCHMARK_DATA = //' -e 's/;\s*$//' > baseline/benchmark-data-pm.json
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        if: github.event_name != 'pull_request' && hashFiles('static.json') != ''
+        with:
+          path: baseline
+          key: static-baseline-${{ matrix.target }}-${{ github.run_id }}
+
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        if: github.event_name == 'pull_request' && hashFiles('static.json') != ''
+        with:
+          path: baseline
+          key: static-baseline-${{ matrix.target }}-
+          restore-keys: static-baseline-${{ matrix.target }}-
+      - name: Compare (PR)
+        if: github.event_name == 'pull_request' && hashFiles('static.json') != ''
+        uses: benchmark-action/github-action-benchmark@fd31771ce86cc65eab85653da103f71ab1b4479c  # v1.9.0
+        with:
+          name: static (${{ matrix.target }})
+          tool: customSmallerIsBetter
+          output-file-path: static.json
+          external-data-json-path: baseline/benchmark-data.json
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          alert-threshold: '101%'
+          # A fork PR's token cannot comment; the job summary still carries the table.
+          comment-on-alert: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+          summary-always: true
+          fail-on-alert: false
+          save-data-file: false
+      - name: Compare program memory (PR)
+        if: github.event_name == 'pull_request' && hashFiles('static-pm.json') != '' && hashFiles('baseline/benchmark-data-pm.json') != ''
+        uses: benchmark-action/github-action-benchmark@fd31771ce86cc65eab85653da103f71ab1b4479c  # v1.9.0
+        with:
+          name: static pm (${{ matrix.target }})
+          tool: customSmallerIsBetter
+          output-file-path: static-pm.json
+          external-data-json-path: baseline/benchmark-data-pm.json
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          alert-threshold: '103%'
+          comment-on-alert: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+          summary-always: true
+          fail-on-alert: false
+          save-data-file: false
