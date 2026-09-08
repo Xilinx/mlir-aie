@@ -8,6 +8,7 @@
 import hashlib
 import logging
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 
@@ -106,7 +107,16 @@ class BaseKernel(Resolvable):
             raise ValueError("Kernel name cannot be empty.")
         self._name = name
         self._arg_types = arg_types if arg_types is not None else []
+        # The declaration as written (numpy shapes and dtypes). `_arg_types`
+        # is rewritten with MLIR types the first time a design resolves this
+        # kernel, so host-side tooling reads this snapshot instead.
+        self._declared_arg_types = list(self._arg_types)
         self._op: FuncOp | None = None
+
+    @property
+    def name(self) -> str:
+        """Symbol name of the function as it appears in the object file."""
+        return self._name
 
     def _resolve_arg(self, arg_index: int):
         """Validate ``arg_index`` and return the underlying type entry."""
@@ -186,6 +196,15 @@ class BaseKernel(Resolvable):
                 f"Argument {arg_index} does not have a shape or is not an array type."
             )
         return shape[0]
+
+    def declared_arg_types(self) -> list:
+        """Return the argument types as declared: ``np.ndarray[shape, dtype]`` / scalars.
+
+        Unlike :meth:`arg_types`, this does not change when a design resolves
+        the kernel and rewrites its types for MLIR, so a memoized kernel can be
+        described on the host before and after a build.
+        """
+        return list(self._declared_arg_types)
 
     def arg_types(self) -> list:
         """Return a copy of the argument type list."""
@@ -298,6 +317,8 @@ class Kernel(BaseKernel):
         ip: ir.InsertionPoint | None = None,
     ) -> None:
         if not self._op:
+            # external_func rewrites `_arg_types` in place with MLIR types; the
+            # numpy-style declaration survives in `_declared_arg_types`.
             self._op = external_func(
                 self._name,
                 inputs=self._arg_types,
@@ -322,14 +343,47 @@ class ExternalFunction(Kernel):
 
     _instances: set = set()  # Registry of all live ExternalFunction instances.
 
-    # Optional sibling bindings attached by the linalg kernel factories
-    # (kernels.mm / mv / cascade_mm). Declared here so the dynamic
-    # assignment of these contract attributes type-checks.
+    # Optional metadata the kernel factories attach: the contract
+    # (aie.iron.kernels.KernelContract), the matmul layout facts and the
+    # sibling bindings of the linalg factories (kernels.mm / mv / cascade_mm
+    # / mm_bfp). Declared here so the dynamic assignment type-checks.
+    # Typed Any rather than KernelContract: pyright analyses the sources and
+    # the staged package as two module trees, so naming the class here would
+    # make the factories' own KernelContract a different type.
+    contract: Any = None
     mac_dims: tuple
+    dims: tuple
+    stream_dims: dict
+    b_col_maj: bool
+    c_col_maj: bool
+    a_dims_from_stream: object
     zero: "Kernel"
+    matmul_scalar: "Kernel"
+    matmul_rowmaj: "Kernel"
+    partial_softmax: "Kernel"
+    matmul_pv: "Kernel"
+    rescale_o: "Kernel"
+    init_scale_buffer: "Kernel"
     get_only: "Kernel"
     put_only: "Kernel"
     put_get: "Kernel"
+
+    def sibling(self, symbol: str, arg_types: list) -> "Kernel":
+        """Bind another symbol from this kernel's own object file.
+
+        A translation unit often exports more than the symbol this
+        ExternalFunction declares -- ``mm.cc`` emits the ``zero_*`` that
+        accumulation needs beside ``matmul_*``, ``cascade_mm.cc`` a get/put
+        trio -- and binding them here avoids compiling the source a second
+        time. ``symbol`` is the name as written in the source: when this
+        kernel carries a ``symbol_prefix``, the object's symbols have all
+        been prefixed to keep parameterizations apart (see
+        ``aie.utils.compile.utils._prefix_symbols_in_object``), so the
+        sibling is prefixed to match.
+        """
+        prefix = getattr(self, "_symbol_prefix", None)
+        name = f"{prefix}_{symbol}" if prefix else symbol
+        return Kernel(name, self.object_file_name, arg_types)
 
     def __init__(
         self,
@@ -481,6 +535,36 @@ class ExternalFunction(Kernel):
                 self._object_file_name = object_file_name
                 break
         ExternalFunction._instances.add(self)
+
+    # Read-only views of the compile recipe. Tooling that inspects or
+    # recompiles a kernel outside the JIT path (e.g. benchmarks/static/) reads
+    # these rather than the private fields; the JIT itself keeps using the
+    # private fields directly.
+
+    @property
+    def source_file(self) -> str | None:
+        """Path to the C/C++ source on disk, or None for inline source."""
+        return self._source_file
+
+    @property
+    def source_string(self) -> str | None:
+        """Inline C/C++ source text, or None when compiled from a file."""
+        return self._source_string
+
+    @property
+    def include_dirs(self) -> list[str]:
+        """Copy of the extra ``-I`` directories passed to the compiler."""
+        return list(self._include_dirs)
+
+    @property
+    def compile_flags(self) -> list[str]:
+        """Copy of the extra flags passed verbatim to the compiler."""
+        return list(self._compile_flags)
+
+    @property
+    def use_chess(self) -> bool:
+        """True when this kernel's object is built with xchesscc, not Peano."""
+        return self._use_chess
 
     def __call__(self, *args, **kwargs):
         """Call with argument count and type validation before emitting MLIR.
