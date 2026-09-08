@@ -42,6 +42,8 @@ logger = logging.getLogger(__name__)
 # Enum / flag constants (mirror hrx_runtime.h; values match IREE HAL).
 # ---------------------------------------------------------------------------
 HRX_MEMORY_TYPE_HOST_LOCAL = 0x00000046
+HRX_MEMORY_TYPE_HOST_VISIBLE = 0x00000002
+HRX_MEMORY_TYPE_HOST_CACHED = 0x00000008
 HRX_MEMORY_TYPE_DEVICE_VISIBLE = 0x00000010
 
 HRX_BUFFER_USAGE_DEFAULT = 0x00000C03

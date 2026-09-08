@@ -243,6 +243,22 @@ def test_hash_differs_for_different_compile_flags():
     assert hash(d1) != hash(d2)
 
 
+def test_hash_differs_for_different_include_paths():
+    """-I directories change which headers the C++ kernel compiles against."""
+    gen = _gemm_gen()
+    d1 = CompilableDesign(gen, include_paths=["/a/include"])
+    d2 = CompilableDesign(gen, include_paths=["/b/include"])
+    assert hash(d1) != hash(d2)
+
+
+def test_hash_differs_for_include_path_order():
+    """-I search order decides which header wins, so it is not order-free."""
+    gen = _gemm_gen()
+    d1 = CompilableDesign(gen, include_paths=["/a/include", "/b/include"])
+    d2 = CompilableDesign(gen, include_paths=["/b/include", "/a/include"])
+    assert hash(d1) != hash(d2)
+
+
 def test_hash_differs_for_different_generators():
     # Use meaningfully different bodies so that co_code differs.
     def gen_a(*, M: CompileTime[int]):

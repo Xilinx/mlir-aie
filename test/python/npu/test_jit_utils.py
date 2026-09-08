@@ -108,6 +108,122 @@ def test_compile_external_kernel_source_file(npu_target_arch):
         assert os.path.getsize(obj) > 0
 
 
+def test_compile_external_kernel_source_file_uses_true_basename(npu_target_arch):
+    """The copied/embedded source name must be the real file's basename, not
+    the entry point name, so it stays stable regardless of which entry point
+    of a multi-entry-point source file happens to compile first."""
+    with (
+        tempfile.TemporaryDirectory() as src_dir,
+        tempfile.TemporaryDirectory() as kernel_dir,
+    ):
+        src = os.path.join(src_dir, "conv.cc")
+        with open(src, "w") as f:
+            f.write("""extern "C" {
+                void conv_step(int* a, int* b, int n) {
+                    for (int i = 0; i < n; i++) b[i] = a[i] + 1;
+                }
+            }""")
+
+        func = ExternalFunction("conv_step", source_file=src)
+        compile_external_kernel(func, kernel_dir, target_arch=npu_target_arch)
+
+        assert os.path.exists(os.path.join(kernel_dir, "conv.cc"))
+        assert not os.path.exists(os.path.join(kernel_dir, "conv_step.cc"))
+
+
+def test_compile_external_kernel_shared_object_deterministic(npu_target_arch):
+    """Several ExternalFunctions with distinct entry points but a shared
+    ``object_file_name`` must produce a byte-identical object regardless of
+    which entry point is compiled first.
+
+    Regression: only the first-visited entry point actually compiles (the
+    rest hit the output-file-exists cache check), so its (previously
+    entry-point-derived) source naming used to leak into the shared object.
+    Since ``ExternalFunction._instances`` is a content-hashed set, the
+    "first-visited" entry point is perturbed by edits to unrelated kernels,
+    making the embedded name (and thus the object's bytes) nondeterministic.
+    """
+    with tempfile.TemporaryDirectory() as src_dir:
+        src = os.path.join(src_dir, "conv.cc")
+        with open(src, "w") as f:
+            f.write("""extern "C" {
+                void conv_begin(int* a, int* b, int n) {}
+                void conv_step(int* a, int* b, int n) {}
+            }""")
+
+        def build(order):
+            ExternalFunction._instances.clear()
+            funcs = {
+                "conv_begin": ExternalFunction(
+                    "conv_begin", object_file_name="conv.o", source_file=src
+                ),
+                "conv_step": ExternalFunction(
+                    "conv_step", object_file_name="conv.o", source_file=src
+                ),
+            }
+            with tempfile.TemporaryDirectory() as kernel_dir:
+                for name in order:
+                    compile_external_kernel(
+                        funcs[name], kernel_dir, target_arch=npu_target_arch
+                    )
+                with open(os.path.join(kernel_dir, "conv.o"), "rb") as f:
+                    return f.read()
+
+        first = build(["conv_begin", "conv_step"])
+        second = build(["conv_step", "conv_begin"])
+        assert first == second
+
+
+def test_compile_external_kernel_same_source_multiple_entries_no_collision(
+    npu_target_arch,
+):
+    """Two ExternalFunctions built from the SAME source file (different entry
+    points, different object_file_name) must compile cleanly -- this is the
+    normal "one .cc, several kernels" pattern (e.g. kernels.mm's matmul +
+    zero symbols)."""
+    with (
+        tempfile.TemporaryDirectory() as src_dir,
+        tempfile.TemporaryDirectory() as kernel_dir,
+    ):
+        src = os.path.join(src_dir, "mm.cc")
+        with open(src, "w") as f:
+            f.write("""extern "C" {
+                void zero_kernel(int* a) {}
+                void matmul_kernel(int* a) {}
+            }""")
+
+        zero = ExternalFunction("zero_kernel", source_file=src)
+        matmul = ExternalFunction("matmul_kernel", source_file=src)
+        compile_external_kernel(zero, kernel_dir, target_arch=npu_target_arch)
+        compile_external_kernel(matmul, kernel_dir, target_arch=npu_target_arch)
+
+        assert os.path.exists(os.path.join(kernel_dir, "mm.cc"))
+        assert os.path.exists(os.path.join(kernel_dir, "zero_kernel.o"))
+        assert os.path.exists(os.path.join(kernel_dir, "matmul_kernel.o"))
+
+
+def test_compile_external_kernel_source_file_already_in_kernel_dir(npu_target_arch):
+    """kernel_dir == the source file's own directory must not crash.
+
+    Naming the copy after the true basename means source_file and the
+    computed destination can be the literal same path (e.g. a caller that
+    compiles a design in place). shutil.copy2 raises SameFileError when src
+    and dst are identical, so compile_external_kernel must skip the copy
+    rather than attempt it unconditionally.
+    """
+    with tempfile.TemporaryDirectory() as kernel_dir:
+        src = os.path.join(kernel_dir, "in_place.cc")
+        with open(src, "w") as f:
+            f.write('extern "C" void in_place(int* a) {}')
+
+        func = ExternalFunction("in_place", source_file=src)
+        compile_external_kernel(func, kernel_dir, target_arch=npu_target_arch)
+
+        obj = os.path.join(kernel_dir, "in_place.o")
+        assert os.path.exists(obj)
+        assert os.path.getsize(obj) > 0
+
+
 def test_compile_external_kernel_marks_compiled(npu_target_arch):
     """compile_external_kernel must set func._compiled = True on success."""
     func = ExternalFunction(
