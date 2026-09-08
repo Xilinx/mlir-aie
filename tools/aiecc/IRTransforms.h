@@ -14,9 +14,11 @@
 #define AIECC_IRTRANSFORMS_H
 
 #include "Graph.h"
+#include "StackSizeAnalysis.h"
 #include "Utils.h"
 
 #include "aie/Conversion/Passes.h"
+#include "aie/Dialect/AIE/IR/AIECoreSymbols.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 #include "aie/Dialect/AIEVec/Transforms/Passes.h"
@@ -32,6 +34,7 @@
 #include "mlir/Conversion/UBToLLVM/UBToLLVM.h"
 #include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVMPass.h"
 #include "mlir/Dialect/Arith/Transforms/Passes.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -183,6 +186,147 @@ collectCoreIRLinkFiles(xilinx::AIE::CoreOp coreOp, llvm::StringRef inputFile,
     for (auto f : mergeAttr->getAsRange<mlir::StringAttr>())
       files.push_back(resolveExternalPath(f.getValue(), inputFile, workDir));
   return files;
+}
+
+// Sets `stack_size = defaultStackSize` on every CoreOp without an explicit
+// `stack_size`. A CoreOp with an explicit `stack_size` keeps it.
+inline mlir::OwningOpRef<mlir::ModuleOp>
+populateDefaultStackSize(mlir::ModuleOp src, int64_t defaultStackSize) {
+  mlir::OwningOpRef<mlir::ModuleOp> cloned = src.clone();
+  mlir::Builder b(cloned->getContext());
+  cloned->walk([&](xilinx::AIE::CoreOp coreOp) {
+    if (!coreOp.getStackSizeAttr())
+      coreOp.setStackSizeAttr(
+          b.getI32IntegerAttr(static_cast<int32_t>(defaultStackSize)));
+  });
+  return cloned;
+}
+
+// Rejects a negative `stack_size_override`. This repeats the check in
+// external_func(), which hand-written MLIR skips. It runs ahead of
+// compilation, so a link failure cannot preempt the diagnostic.
+inline mlir::LogicalResult verifyStackSizeOverrides(mlir::ModuleOp module) {
+  mlir::LogicalResult result = mlir::success();
+  module.walk([&](mlir::func::FuncOp funcOp) {
+    auto attr = funcOp->getAttrOfType<mlir::IntegerAttr>("stack_size_override");
+    if (attr && attr.getInt() < 0) {
+      funcOp.emitError() << "stack_size_override must be >= 0, got "
+                         << attr.getInt();
+      result = mlir::failure();
+    }
+  });
+  return result;
+}
+
+// Measures each core's stack requirement from its linked ELF and writes it to
+// `measured_stack_size`. `elfForCore` returns the path of the linked core, or
+// an empty string for a core this run does not link.
+//
+// A core's call chain is `__start` (crt0) -> `_main_init` (crt1) -> the core
+// body -> its kernels. `_main_init`'s frame stays live across the whole call
+// to the core body. The linker supplies crt1, so the linked core holds that
+// frame too.
+//
+// A requirement above `stack_size` fails the build, as does a cycle in the
+// call graph. An unmeasurable core warns and writes no attribute.
+inline mlir::LogicalResult checkStackSizeRequirements(
+    mlir::ModuleOp module,
+    llvm::function_ref<std::string(xilinx::AIE::CoreOp)> elfForCore) {
+  mlir::LogicalResult result = mlir::success();
+
+  for (xilinx::AIE::DeviceOp device : module.getOps<xilinx::AIE::DeviceOp>()) {
+    // Collected per device, because each DeviceOp is its own symbol table, and
+    // a sibling device can bind one name to a different override.
+    llvm::StringMap<int64_t> overrides;
+    device.walk([&](mlir::func::FuncOp funcOp) {
+      if (auto attr =
+              funcOp->getAttrOfType<mlir::IntegerAttr>("stack_size_override"))
+        overrides[funcOp.getName()] = attr.getInt();
+    });
+
+    device.walk([&](xilinx::AIE::CoreOp coreOp) {
+      std::string elf = elfForCore(coreOp);
+      if (elf.empty())
+        return;
+
+      auto stackRes = xilinx::aiecc::computeStackRequirement(elf, overrides);
+      if (!stackRes.bytes) {
+        if (stackRes.failureKind ==
+            xilinx::aiecc::StackRequirementFailure::Cycle) {
+          coreOp.emitError()
+              << "cannot determine this core's stack requirement: "
+              << stackRes.error
+              << "; set stack_size_override on the affected kernel's "
+                 "external_func()/func.func declaration (Kernel(...)/"
+                 "ExternalFunction(...) in IRON), or pass "
+                 "--no-measure-stack-size to skip this check entirely";
+          result = mlir::failure();
+        } else {
+          coreOp.emitWarning()
+              << "cannot determine this core's stack requirement: "
+              << stackRes.error
+              << "; stack_size is not being validated for this core. Set "
+                 "stack_size_override on the affected kernel's "
+                 "external_func()/func.func declaration (Kernel(...)/"
+                 "ExternalFunction(...) in IRON) to enable it";
+        }
+        return;
+      }
+
+      // An unchecked narrowing to i32 wraps to a small or negative number.
+      if (*stackRes.bytes > INT32_MAX) {
+        coreOp.emitWarning()
+            << "stack requirement computed as " << *stackRes.bytes
+            << " bytes, which does not fit in the attribute's i32; "
+               "stack_size is not being validated for this core";
+        return;
+      }
+
+      int64_t required = *stackRes.bytes;
+      // An unmeasured frame counted as 0, so `required` is a lower bound. A
+      // lower bound still catches a core that is short. The attribute carries
+      // the exact requirement, so only an exact result reaches it.
+      if (stackRes.unmeasured.empty())
+        coreOp.setMeasuredStackSizeAttr(
+            mlir::Builder(module.getContext())
+                .getI32IntegerAttr(static_cast<int32_t>(required)));
+      else {
+        auto diag = coreOp.emitWarning()
+                    << "no stack size information for "
+                    << stackRes.unmeasured.size()
+                    << " function(s) this core reaches, so its requirement is "
+                       "at least "
+                    << required
+                    << " bytes and may be higher; compile the affected "
+                       "source with -fstack-size-section, or set "
+                       "stack_size_override on the kernel's external_func()/"
+                       "func.func declaration (Kernel(...)/ExternalFunction"
+                       "(...) in IRON): ";
+        for (size_t i = 0; i < stackRes.unmeasured.size(); ++i)
+          diag << (i ? ", " : "") << stackRes.unmeasured[i];
+      }
+
+      uint32_t effective = coreOp.getEffectiveStackSize();
+      if (static_cast<int64_t>(effective) < required) {
+        if (coreOp.getStackSizeAttr())
+          coreOp.emitError() << "stack_size = " << effective
+                             << " is insufficient: this core needs " << required
+                             << " bytes; increase stack_size to " << required
+                             << " (Worker(stack_size=...) in IRON), or pass "
+                                "--no-measure-stack-size to skip this check";
+        else
+          coreOp.emitError()
+              << "stack_size is absent, so this core uses the device default "
+                 "of "
+              << effective << " bytes, but it needs " << required
+              << " bytes; set stack_size = " << required
+              << " (Worker(stack_size=...) in IRON), or pass "
+                 "--no-measure-stack-size to skip this check";
+        result = mlir::failure();
+      }
+    });
+  }
+  return result;
 }
 
 // Clone `src` and replace each matched CoreOp with a stub that carries
@@ -742,7 +886,8 @@ getPlacementPipeline(mlir::MLIRContext *ctx, int coresPerCol,
   return pm;
 }
 
-// Trace flow + trace-config emission, nested under DeviceOp.
+// Trace flow + trace-config emission. -aie-fuse-trace-buffers is module-level:
+// it rewrites callers and callees together.
 inline std::unique_ptr<mlir::PassManager>
 getTracePipeline(mlir::MLIRContext *ctx) {
   auto pm = std::make_unique<mlir::PassManager>(ctx);
@@ -751,6 +896,7 @@ getTracePipeline(mlir::MLIRContext *ctx) {
   dpm.addPass(xilinx::AIE::createAIETraceToConfigPass());
   dpm.addPass(xilinx::AIE::createAIETraceRegPackWritesPass());
   dpm.addPass(xilinx::AIEX::createAIEXInlineTraceConfigPass());
+  pm->addPass(xilinx::AIEX::createAIEFuseTraceBuffersPass());
   return pm;
 }
 
@@ -825,6 +971,7 @@ getInputWithAddressesPipeline(mlir::MLIRContext *ctx, mlir::ModuleOp mod,
   // Assign IDs to the ID-less locks the objectFifo lowering creates (and to any
   // user locks without an ID).
   dpm.addPass(createAIEAssignLockIDsPass());
+  dpm.addPass(X::createAIEReserveRuntimeBDIDsPass());
   dpm.addPass(createAIEAssignBufferDescriptorIDsPass());
   dpm.addPass(createAIELowerCascadeFlowsPass());
   dpm.addPass(X::createAIEBroadcastPacketPass());
@@ -1060,6 +1207,7 @@ getNpuDmaLoweringPipeline(mlir::MLIRContext *ctx) {
   namespace X = xilinx::AIEX;
   auto pm = std::make_unique<mlir::PassManager>(ctx);
   auto &dpm = pm->nest<xilinx::AIE::DeviceOp>();
+  dpm.addPass(X::createAIEResolveAddressPatchBuffersPass());
   dpm.addPass(X::createAIEMaterializeBDChainsPass());
   dpm.addPass(X::createAIESubstituteShimDMAAllocationsPass());
   dpm.addPass(X::createAIEUnrollRuntimeSequenceLoopsPass());
@@ -1122,6 +1270,7 @@ getPerDeviceDmaLoweringPipeline(mlir::MLIRContext *ctx) {
   namespace X = xilinx::AIEX;
   auto pm = std::make_unique<mlir::PassManager>(ctx);
   auto &dpm = pm->nest<xilinx::AIE::DeviceOp>();
+  dpm.addPass(X::createAIEResolveAddressPatchBuffersPass());
   dpm.addPass(X::createAIEMaterializeBDChainsPass());
   dpm.addPass(X::createAIESubstituteShimDMAAllocationsPass());
   dpm.addPass(X::createAIEAssignRuntimeSequenceBDIDsPass());

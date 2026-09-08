@@ -851,6 +851,7 @@ class CompilableDesign:
             self.aiecc_flags,
             self.compile_flags,
             self.full_elf,
+            self.include_paths,
         )
 
     @staticmethod
@@ -890,6 +891,7 @@ class CompilableDesign:
             self.compile_flags,
             self.full_elf,
             self._resolve_fold_ddr_addr_offset(),
+            self.include_paths,
         )
 
     def _bind_generation_device(self):
