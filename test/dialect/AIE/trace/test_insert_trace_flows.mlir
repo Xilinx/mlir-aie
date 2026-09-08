@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt %s --split-input-file -aie-insert-trace-flows | FileCheck %s
+// RUN: aie-opt %s --split-input-file -aie-insert-trace-flows -aie-resolve-address-patch-buffers | FileCheck %s
 
 // -----
 

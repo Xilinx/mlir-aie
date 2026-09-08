@@ -1,0 +1,33 @@
+//===- reserve_runtime_bd_ids_multi_tile.mlir -----------------*- MLIR -*-===//
+//
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+//===----------------------------------------------------------------------===//
+
+// Two aie.tile ops for one (col,row): the runtime pins a bd_id via %t1, a static
+// BD uses %t0. The reservation must still steer the static BD to bd_id 1.
+
+// RUN: aie-opt --aie-reserve-runtime-bd-ids --aie-assign-bd-ids %s | FileCheck %s
+
+// CHECK: aie.shim_dma
+// CHECK: aie.dma_bd(%{{.*}} : memref<8xi32>) {bd_id = 1 : i32}
+aie.device(npu2) {
+  %t0 = aie.tile(0, 0)
+  %t1 = aie.tile(0, 0)
+  %buf = aie.external_buffer {sym_name = "b"} : memref<8xi32>
+  aie.shim_dma(%t0) {
+    %0 = aie.dma_start(MM2S, 0, ^bd, ^end)
+  ^bd:
+    aie.dma_bd(%buf : memref<8xi32>)
+    aie.next_bd ^end
+  ^end:
+    aie.end
+  }
+  aie.runtime_sequence(%a: memref<8xi32>) {
+    %task = aiex.dma_configure_task(%t1, S2MM, 1) {
+      aie.dma_bd(%a : memref<8xi32>) {bd_id = 0 : i32}
+      aie.end
+    }
+  }
+}

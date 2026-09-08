@@ -62,7 +62,7 @@ export PYTHONPATH=${MLIR_AIE_INSTALL_DIR}/python:${PYTHONPATH}
 export LD_LIBRARY_PATH=${MLIR_AIE_INSTALL_DIR}/lib:${LD_LIBRARY_PATH}
 
 # --- NPU detection (native + WSL) --------------------------------------------
-NPUPAT='NPU Phoenix|NPU Strix|NPU Strix Halo|NPU Krackan|RyzenAI-npu[1456]'
+NPUPAT='NPU Phoenix|NPU Strix|NPU Strix Halo|NPU Krackan|NPU Gorgon Point|RyzenAI-npu[1456]'
 if [ -n "${WSL_DISTRO_NAME-}" ]; then
     # Under WSL the NPU is queried through the Windows xrt-smi.exe.
     XRTSMI="/mnt/c/Windows/System32/AMD/xrt-smi.exe"
@@ -78,7 +78,7 @@ fi
 
 # Check if the current environment is NPU2
 # npu4 => Strix, npu5 => Strix Halo, npu6 => Krackan
-if echo "$NPU" | grep -qiE "NPU Strix|NPU Strix Halo|NPU Krackan|RyzenAI-npu[456]"; then
+if echo "$NPU" | grep -qiE "NPU Strix|NPU Strix Halo|NPU Krackan|NPU Gorgon Point|RyzenAI-npu[456]"; then
     export NPU2=1
 else
     export NPU2=0

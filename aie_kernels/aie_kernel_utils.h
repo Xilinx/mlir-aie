@@ -76,4 +76,27 @@ Copyright (C) 2022-2025 Advanced Micro Devices, Inc.
 #define AIE_LOOP_FLATTEN
 #endif
 
+// Runs `body` (a zero-arg lambda) `count` times.  When count >= MinIters the
+// loop is eligible for software pipelining (extra pragma macros may be passed
+// after `body`, e.g. AIE_PREPARE_FOR_POSTPIPELINING); otherwise a plain
+// no-unroll loop is emitted, avoiding invalid pipeliner assumptions for tiny
+// trip counts.
+#define VERSIONED_LOOP(MinIters, count, body, ...)                             \
+  do {                                                                         \
+    if ((count) >= (MinIters)) {                                               \
+      __VA_ARGS__                                                              \
+      AIE_LOOP_RANGE(MinIters, )                                               \
+      for (int _vl_i = 0; _vl_i < (count); _vl_i++) {                          \
+        (body)();                                                              \
+      }                                                                        \
+    } else {                                                                   \
+      AIE_NO_PREPARE_FOR_PIPELINING                                            \
+      AIE_LOOP_RANGE(1, )                                                      \
+      AIE_LOOP_NO_UNROLL                                                       \
+      for (int _vl_i = 0; _vl_i < (count); _vl_i++) {                          \
+        (body)();                                                              \
+      }                                                                        \
+    }                                                                          \
+  } while (0)
+
 #endif
