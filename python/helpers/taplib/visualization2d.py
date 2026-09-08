@@ -8,7 +8,8 @@ import matplotlib.animation as animation
 import matplotlib.patheffects as pe
 import matplotlib.pyplot as plt
 import numpy as np
-from aie.utils.tensor_factory import ceildiv
+
+from ..util import ceildiv
 
 
 def animate_from_accesses(

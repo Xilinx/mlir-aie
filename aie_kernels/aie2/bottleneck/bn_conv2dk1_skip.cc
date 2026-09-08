@@ -232,7 +232,7 @@ void conv2dk1_ui8_i8_i8_scalar_input_split_partial_width_get_new(
 #endif
 
 #if defined(BN13_1_INPUT_SPLIT_PARTIAL_GET_UI8_I8_I8_CAS_WIDTH) ||             \
-    (BN14_1_INPUT_SPLIT_PARTIAL_GET_UI8_I8_I8_CAS_WIDTH)
+    defined(BN14_1_INPUT_SPLIT_PARTIAL_GET_UI8_I8_I8_CAS_WIDTH)
 // 8 Pixels Width Processing Approach: Processes 8 spatial pixels (x_start to
 // x_start + 8) simultaneously within each output channel (oc8 iteration).
 void conv2dk1_ui8_i8_i8_scalar_input_split_partial_width_get(
@@ -651,8 +651,9 @@ void conv2dk1_skip_ui8_i8_i8_scalar_cascade_get(
 }
 #endif
 
-#if defined(REGULAR) || (BN0) || (BN2) || (BN4) || (BN5) || (BN7) || (BN8) ||  \
-    (BN9) || (BN11)
+#if defined(REGULAR) || defined(BN0) || defined(BN2) || defined(BN4) ||        \
+    defined(BN5) || defined(BN7) || defined(BN8) || defined(BN9) ||            \
+    defined(BN11)
 #ifdef UNSIGNED_SKIP
 void conv2dk1_skip_ui8_ui8_i8_scalar(uint8_t *input0, int8_t *kernels,
                                      int8_t *output, uint8_t *skip,

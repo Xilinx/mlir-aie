@@ -5,12 +5,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-// aiecc measures the stack requirement of the core from the frame of its
-// compiled body and a call-graph walk of the symbols it calls directly, through
-// the `.stack_sizes` data of their link_files objects. stack_size holds 1 byte,
-// so the requirement exceeds it for any compiler version. The test matches the
-// error that names both numbers, and matches the silence under
-// --no-measure-stack-size.
+// aiecc measures the stack requirement of the core by walking the call graph
+// of its linked ELF. stack_size holds 1 byte, so the requirement exceeds it for
+// any compiler version. The test matches the error that names both numbers, and
+// matches the silence under --no-measure-stack-size.
 
 // REQUIRES: peano
 // RUN: rm -rf %t.d && mkdir -p %t.d
