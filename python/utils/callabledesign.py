@@ -440,6 +440,7 @@ class CallableDesign:
         elf_path: Path | str | None = None,
         full_elf_path: Path | str | None = None,
         pdi_path: Path | str | None = None,
+        npu_cpp_path: Path | str | None = None,
     ) -> tuple[Path | None, Path | None]:
         """Eagerly compile this design and return ``(xclbin_path, inst_path)``.
 
@@ -463,6 +464,10 @@ class CallableDesign:
         mode: a single self-contained ELF is written there instead of an
         xclbin + insts pair, and the return value is ``(elf_path, None)``.
 
+        ``npu_cpp_path`` requests the runtime sequence as a C++ TXN builder
+        rather than a flat instruction binary, so one artifact serves every
+        shape the host asks for.  It counts as an explicit output path.
+
         ``pdi_path`` is optional: when set, aiecc writes the Programmable
         Device Image to that path.  Requires an explicit output path.  In cache
         mode, use :meth:`get_pdi_path` to locate the ``main.pdi`` aiecc emits
@@ -474,6 +479,7 @@ class CallableDesign:
             elf_path=elf_path,
             full_elf_path=full_elf_path,
             pdi_path=pdi_path,
+            npu_cpp_path=npu_cpp_path,
         )
 
     def get_pdi_path(self, device_name: str | None = None) -> Path | None:

@@ -1239,6 +1239,35 @@ def test_compile_single_path_selects_that_artifact(tmp_path, monkeypatch):
         assert cd.get_artifacts() is None
 
 
+def test_compile_npu_cpp_path_alone_is_an_explicit_output(tmp_path, monkeypatch):
+    """npu_cpp_path on its own builds just the sequence, decoupled from any overlay."""
+    seen = {}
+
+    def fake_compile_mlir_module(**kwargs):
+        seen.update(kwargs)
+        Path(kwargs["npu_cpp_path"]).write_text("// txn builder\n")
+
+    def gen():
+        pass
+
+    cd = CompilableDesign(gen)
+    monkeypatch.setattr(
+        compilabledesign_module, "compile_mlir_module", fake_compile_mlir_module
+    )
+    monkeypatch.setattr(cd, "_generate_mlir", lambda _ExternalFunction: "module {}")
+    cpp = tmp_path / "seq.cpp"
+    xclbin, insts = cd.compile(npu_cpp_path=cpp)
+
+    # Neither overlay nor flat-binary artifact was requested or returned.
+    assert xclbin is None and insts is None
+    assert seen["xclbin_path"] is None and seen["insts_path"] is None
+    assert seen["npu_cpp_path"] == cpp.resolve()
+    assert cpp.exists()
+    # It counts as an explicit path, so the cache was bypassed: the scratch dir
+    # is named after the artifact, not a cache hash.
+    assert (tmp_path / "seq.prj").is_dir()
+
+
 # ---------------------------------------------------------------------------
 # specialize(): config overrides + CompileTime[T] kwargs
 # ---------------------------------------------------------------------------

@@ -237,6 +237,7 @@ class CompilableDesign:
         elf_path: Path | str | None = None,
         full_elf_path: Path | str | None = None,
         pdi_path: Path | str | None = None,
+        npu_cpp_path: Path | str | None = None,
     ) -> tuple[Path | None, Path | None]:
         """Compile the generator to ``(xclbin_path, inst_path)``.
 
@@ -276,6 +277,16 @@ class CompilableDesign:
         With ``full_elf_path`` set the ELF is written there directly (cache
         bypassed); otherwise it lands in the JIT cache as ``<hash>/design.elf``.
 
+        ``npu_cpp_path`` requests the runtime sequence as a C++ TXN builder
+        instead of (or alongside) a flat ``inst_path`` binary.  A sequence
+        written with ``range_``/``if_`` over runtime scalars keeps its
+        ``scf.for``/``scf.if`` in this form, so one artifact serves every shape
+        the host asks for; the binary path has to bake one shape in.  It counts
+        as an explicit output path, so ``compile(npu_cpp_path=...)`` on its own
+        builds just the sequence -- decoupled from any overlay, which is the
+        point: one shape-agnostic overlay can then drive many sequences without
+        rebuilding an identical xclbin per sequence.
+
         ``pdi_path`` is likewise optional: when set, aiecc writes the
         Programmable Device Image (config data packed by ``bootgen``) to that
         path.  Like ``elf_path`` it requires an explicit output path.  In
@@ -291,7 +302,9 @@ class CompilableDesign:
         # Either artifact may be requested on its own; the driver gates the
         # two --get-* flags independently.  Any explicit path bypasses the
         # cache, whose entry couples the pair under one hash.
-        explicit_paths = xclbin_path is not None or inst_path is not None
+        explicit_paths = (
+            xclbin_path is not None or inst_path is not None or npu_cpp_path is not None
+        )
         cache_hash = None
 
         if elf_path is not None and not explicit_paths:
@@ -329,12 +342,15 @@ class CompilableDesign:
                 elf_path = Path(elf_path).resolve()
             if pdi_path is not None:
                 pdi_path = Path(pdi_path).resolve()
+            if npu_cpp_path is not None:
+                npu_cpp_path = Path(npu_cpp_path).resolve()
             # Per-xclbin scratch dir (mirrors aiecc's default <input>.prj
             # naming) so two siblings sharing one build/ don't clobber each
-            # other's input_with_addresses.mlir / .o files.  An insts-only
-            # build names it after the insts instead, for the same reason.
-            anchor = xclbin_path if xclbin_path is not None else inst_path
-            assert anchor is not None
+            # other's input_with_addresses.mlir / .o files.  A build that skips
+            # the xclbin names it after whichever artifact it does produce.
+            anchor = next(
+                p for p in (xclbin_path, inst_path, npu_cpp_path) if p is not None
+            )
             kernel_dir = anchor.parent / f"{anchor.stem}.prj"
             lock_file_path = kernel_dir / ".lock"
         else:
@@ -380,7 +396,9 @@ class CompilableDesign:
                     "Compiling '%s' to %s (explicit paths, cache bypassed)",
                     self.generator_name,
                     ", ".join(
-                        str(p) for p in (xclbin_path, inst_path) if p is not None
+                        str(p)
+                        for p in (xclbin_path, inst_path, npu_cpp_path)
+                        if p is not None
                     ),
                 )
             else:
@@ -414,6 +432,7 @@ class CompilableDesign:
                     xclbin_path=xclbin_path,
                     elf_path=elf_path,
                     pdi_path=pdi_path,
+                    npu_cpp_path=npu_cpp_path,
                     work_dir=kernel_dir,
                     use_chess=use_chess,
                     options=list(self.aiecc_flags) if self.aiecc_flags else None,
@@ -423,7 +442,9 @@ class CompilableDesign:
                 # aiecc may exit 0 even when xclbin generation fails silently
                 # (missing xclbinutil/bootgen); verify outputs exist.
                 expected_outputs = [
-                    p for p in (xclbin_path, inst_path) if p is not None
+                    Path(p)
+                    for p in (xclbin_path, inst_path, npu_cpp_path)
+                    if p is not None
                 ]
                 if elf_path is not None:
                     expected_outputs.append(Path(elf_path))

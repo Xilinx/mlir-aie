@@ -428,6 +428,7 @@ def compile_mlir_module(
     xclbin_path: str | Path | None = None,
     elf_path: str | Path | None = None,
     full_elf_path: str | Path | None = None,
+    npu_cpp_path: str | Path | None = None,
     verbose=False,
     work_dir: str | Path | None = None,
     options=None,
@@ -453,6 +454,13 @@ def compile_mlir_module(
             needs an xclbin), a full ELF is loaded standalone through
             ``pyxrt.hw_context(dev, pyxrt.elf(path))``.  When set, xclbin and
             raw-insts generation are skipped -- the full ELF is self-contained.
+        npu_cpp_path (str): Path to a C++ TXN builder for the runtime
+            sequence, emitted via ``--get-npu-cpp``.  This is the
+            runtime-parameterizable counterpart of ``insts_path``: a sequence
+            whose bounds/offsets are runtime values keeps its ``scf.for`` /
+            ``scf.if`` here, where a flat instruction binary would have to bake
+            one shape in.  The host ``#include``s it and calls the generated
+            builder with the shape, so one overlay serves many shapes.
         verbose (bool): If True, enable verbose output.
         work_dir (str): Compilation working directory.
         options (list[str]): List of additional options.
@@ -494,6 +502,8 @@ def compile_mlir_module(
             args.extend(["--get-npu-insts", f"--npu-insts-name={insts_path}"])
         if xclbin_path:
             args.extend(["--get-xclbin", f"--xclbin-name={xclbin_path}"])
+        if npu_cpp_path:
+            args.extend(["--get-npu-cpp", f"--npu-cpp-name={npu_cpp_path}"])
     # DDR-patch ABI: XRT (and CPU) consume the folded firmware ABI; HRX consumes
     # the producer-independent (unfolded) insts.bin and adds the AIE DDR aperture
     # offset for every arg itself. cl::opt defaults to true, so only pass the

@@ -270,6 +270,17 @@ inline cl::opt<std::string>
             cl::desc("Output PDI filename template (use {0} for multi-device)"),
             cl::init("{0}.pdi"));
 
+// The runtime-parameterizable C++ counterpart of npu-insts. A sequence whose
+// bounds/offsets are runtime values keeps its scf.for/scf.if, which a flat
+// instruction binary cannot represent; emitted as a C++ builder the host calls
+// with the shape, it is one artifact serving many shapes against one overlay.
+inline bool generateNpuCpp = false;
+inline cl::opt<std::string> npuCppName(
+    "npu-cpp-name",
+    cl::desc("Output NPU C++ TXN builder filename template (use {0} for the "
+             "device/sequence key)"),
+    cl::init("npu_seq_{0}.cpp"));
+
 inline bool generateTxn = false;
 inline cl::opt<std::string> txnName(
     "txn-name",
@@ -370,6 +381,7 @@ inline llvm::ArrayRef<OutputSelector> outputSelectors() {
       {"scratchpad-parameters", "params.txt", &generateScratchpadParams},
       {"core-elfs", "elfs_{0}.elf", &generateCoreElfs},
       {"npu-insts", "insts_{0}.bin", &generateNpuInsts},
+      {"npu-cpp", "npu_seq_{0}.cpp", &generateNpuCpp},
       {"elf", "design.elf", &generateElf},
       {"cdo", "cdo_{0}", &generateCdo},
       {"pdi", "{0}.pdi", &generatePdi},
