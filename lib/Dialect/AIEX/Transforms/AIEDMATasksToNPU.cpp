@@ -668,9 +668,9 @@ struct AIEDMATasksToNPUPass
       if (bd_op.getPadDimensions().has_value())
         return bd_op->emitOpError(
             "zero padding is not supported with runtime sizes/strides/len.");
-      // The verifier normally catches a runtime-valued BD with iteration set
-      // before this pass runs, but it is skipped on an unplaced tile; don't
-      // assume runtimeBdId is the cause just because this branch was taken.
+      // DMABDOp::verify skips all task BDs and verifyTaskBDDimensions only
+      // covers placed tiles, so the dynamic BD-word encoder rejects iteration
+      // here too. Either bd_id kind can reach this; don't assume runtimeBdId.
       if (bd_op.getIteration()) {
         if (runtimeBdId)
           return bd_op->emitOpError(
