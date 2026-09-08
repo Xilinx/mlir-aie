@@ -3715,16 +3715,21 @@ it on the <code>Worker</code>:</p>
 <p>The stack sits directly below the buffers with no clearance, so a core whose
 frames exceed the reservation overwrites the buffers above it. <code>aiecc</code>
 therefore measures each core's stack requirement and checks <code>stack_size</code>
-against that number. The requirement has two parts: the top-level frame of the
-compiled core body, and the deepest call path into the kernels. For the second
-part the analysis parses the <code>.stack_sizes</code> section of every kernel object,
-builds a call graph across the core's <code>link_files</code>, and takes the <strong>maximum
-over all root-to-leaf call paths</strong>. One call chain is live at a time, so the
-maximum bounds the requirement. Static data differs: all of it coexists,
-whatever the control flow.</p>
-<p>The check runs once, after each core is compiled, because the core body's own
-frame exists only after codegen. <code>aiecc</code> writes the result to the
-<code>measured_stack_size</code> attribute on the <code>aie.core</code>, so you can inspect it:</p>
+against that number. It measures the <strong>linked core ELF</strong>: the linker decides
+which objects a core contains, so its output covers the kernels and the
+toolchain's own startup code. The analysis reads the <code>.stack_sizes</code> section for
+each frame, follows the relocations for the call edges, and takes the
+<strong>maximum over all root-to-leaf call paths</strong> from the ELF entry point. One call
+chain is live at a time, so the maximum bounds the requirement. Static data
+differs: all of it coexists, whatever the control flow.</p>
+<p>The walk starts at <code>__start</code> (crt0), which calls <code>_main_init</code> (crt1), which
+calls the core body, which calls its kernels. <code>_main_init</code> holds a frame that
+stays live across the whole chain, so it counts. <code>__start</code> establishes the
+stack pointer, so its own frame counts as 0.</p>
+<p>The check runs once, after each core is linked, and the Peano link keeps the
+relocations (<code>-Wl,--emit-relocs</code>) that the walk needs. <code>aiecc</code> writes the
+result to the <code>measured_stack_size</code> attribute on the <code>aie.core</code>, so you can
+inspect it:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>aie.core(%tile_0_2) { ... } {stack_size = 8192 : i32, measured_stack_size = 4128 : i32}
 </code></pre></div>
 <p>Pass <code>--get=measured_stack_sizes.mlir</code> to dump that module. A <code>stack_size</code>
@@ -3736,10 +3741,9 @@ when <code>aiecc</code> cannot measure the core; the next section lists those ca
 <li><strong>recursion</strong>: a cycle in the call graph is unbounded;</li>
 <li><strong>an indirect call through a function pointer</strong>: the analysis fans out
   conservatively and still misses some targets;</li>
-<li><strong>a Chess-compiled object</strong>: it carries no <code>.stack_sizes</code> section;</li>
-<li><strong>an archive or a bitcode file</strong> in <code>link_files</code>: the analysis skips both;</li>
-<li><strong>a <code>link_with_mode="merge"</code> kernel</strong>: it merges into the core's own LLVM
-  module before codegen, so the analysis reads it as part of the core.</li>
+<li><strong>a kernel compiled without <code>-fstack-size-section</code></strong>: the linked core carries
+  no frame for it. A Chess-compiled object and a pre-compiled object both hit
+  this case.</li>
 </ul>
 <p>For these, declare the answer with <code>stack_size_override</code>. It lives on the
 <strong>kernel's <code>func.func</code></strong>, at function granularity, and not on the core. Two
@@ -3789,18 +3793,18 @@ the affected kernel's <code>external_func()</code> or <code>func.func</code> dec
 large enough for the deepest recursion. Pass <code>--no-measure-stack-size</code> to skip
 the check instead.</p>
 <p><strong><code>cannot determine this core's stack requirement: ...; stack_size is not being
-validated for this core</code> (warning).</strong> The analysis cannot measure a symbol,
-because of a missing <code>.stack_sizes</code> section, a Chess-compiled object, an
-archive or bitcode entry, or a <code>link_merge_files</code> dependency. A pre-compiled
-kernel object hits this case often, and the build continues: the compiler
-leaves <code>stack_size</code> unchecked for this core and writes no
-<code>measured_stack_size</code>. Set <code>stack_size_override</code> on the affected kernel to give
-the analysis a number to work from.</p>
-<p><strong><code>this core's callees need at least N bytes of stack (not counting the core
-body's own frame)</code> (warning).</strong> The kernel objects carry <code>.stack_sizes</code> and the
-core object does not: a Chess-compiled core writes <code>.stackinfo</code> instead. <code>N</code> is
-a lower bound, so <code>aiecc</code> warns rather than fails, and writes no
+validated for this core</code> (warning).</strong> The linked core is unreadable, its
+<code>.stack_sizes</code> data is malformed, or the link kept no relocations, so the call
+graph is unavailable. The chess/BCF link produces such an ELF, so a
+<code>--xbridge</code> build leaves <code>stack_size</code> unchecked and writes no
 <code>measured_stack_size</code>.</p>
+<p><strong><code>no stack size information for N function(s) this core reaches, so its
+requirement is at least M bytes and may be higher</code> (warning).</strong> The linked core
+carries no <code>.stack_sizes</code> entry for the functions the diagnostic names, and
+their frames count as 0. <code>M</code> is therefore a lower bound: <code>aiecc</code> still fails a
+core that declares less than <code>M</code>, and writes no <code>measured_stack_size</code>. Compile
+the named source with <code>-fstack-size-section</code>, or set <code>stack_size_override</code> on
+the affected kernel.</p>
 <p><strong><code>stack_size is absent, so this core uses the device default of M bytes, but
 it needs N bytes</code> (error).</strong> Set <code>stack_size = N</code>, or <code>Worker(stack_size=N)</code>,
 and rebuild.</p>

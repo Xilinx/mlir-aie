@@ -11446,10 +11446,17 @@ allocations in other cores.</p>
 <p>The stack sits directly below the buffers with no clearance, so a <code>stack_size</code>
 below the core's use overwrites those buffers. <code>aiecc</code> measures the stack this
 core needs, writes it to the <code>measured_stack_size</code> attribute, and fails the build
-when <code>stack_size</code> is smaller. <code>measured_stack_size</code> stays absent when <code>aiecc</code>
-cannot measure the core. See <code>programming_guide/core_data_memory.md</code> for the
-mechanism, the escape hatches (<code>--no-measure-stack-size</code>, <code>stack_size_override</code>)
-and the diagnostics.</p>
+when <code>stack_size</code> is smaller. <code>aiecc</code> measures the whole live call chain. That
+chain starts above the core body: the runtime enters at <code>__start</code> (crt0), which
+calls <code>_main_init</code> (crt1), which calls the core body, which calls its kernels.
+<code>_main_init</code> holds a frame that stays live across the whole chain. <code>aiecc</code>
+measures the linked core, so the chain covers crt0 and crt1 too.
+<code>measured_stack_size</code> stays absent when <code>aiecc</code> cannot measure the core. The
+measurement reads the relocations of the linked core, which the Peano link
+keeps and the chess/BCF link drops, so a <code>--xbridge</code> build leaves every core
+unmeasured. See <code>programming_guide/core_data_memory.md</code> for the mechanism, the
+escape hatches (<code>--no-measure-stack-size</code>, <code>stack_size_override</code>) and the
+diagnostics.</p>
 <p>This op has an optional <code>dynamic_objfifo_lowering</code> attribute, to finely control whether the
 objectfifos in this core should be lowered using the dynamic runtime lowering.</p>
 <p><strong>External link artifacts.</strong>  The preferred mechanism is to attach a
