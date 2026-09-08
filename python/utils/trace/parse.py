@@ -43,6 +43,12 @@ logger = logging.getLogger(__name__)
 
 NUM_EVENTS = 8  # number of events we can view per trace
 
+# Single2/Multiple2 carry an 18-bit cycle delta (utils.py convert_to_commands). Event_Sync is
+# the hardware's marker that the field wrapped once, so decoding it as a no-op undercounts by
+# one full range per occurrence -- 6.9x on a measured capture whose real per-tile interval was
+# 306746 cycles against 44602 decoded.
+EVENT_SYNC_CYCLES = 1 << 18
+
 DEFAULT_KERNEL = "main:sequence"
 
 
@@ -484,6 +490,10 @@ def convert_commands_to_json(trace_events, commands, pid_events, events_module):
                                     trace_events,
                                     events_module,
                                 )
+
+                elif t == "Event_Sync":
+                    # Advances the clock only; no event starts or ends here.
+                    timer = timer + EVENT_SYNC_CYCLES
 
 
 def process_name_metadata(trace_events, pid, trace_type, loc):
