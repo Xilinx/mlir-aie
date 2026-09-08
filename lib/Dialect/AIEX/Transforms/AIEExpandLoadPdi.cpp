@@ -22,9 +22,11 @@
 
 #include "aie/Conversion/AIEToConfiguration/AIEToConfiguration.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Dialect/AIE/Util/AIERegisterDatabase.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Pass/Pass.h"
 
@@ -193,17 +195,236 @@ static LogicalResult transformLoadPdi(NpuLoadPdiOp loadPdiOp, ModuleOp moduleOp,
   return success();
 }
 
+//===----------------------------------------------------------------------===//
+// Differential reset
+//===----------------------------------------------------------------------===//
+//
+// A device's configuration writes only the registers that device needs. Between
+// two devices, a register the outgoing one wrote and the incoming one does not
+// keeps the outgoing value: the `@empty` firmware reset is what has been
+// clearing it. Resetting by resource kind (cores, objectFIFOs, ...) cannot
+// cover this in general, because the leftover set is a property of the two
+// configurations, not of a fixed list of resource kinds. Routing is the case
+// that shows it: two devices that connect different switchbox ports write
+// disjoint slave-config registers, so neither disables the other's.
+//
+// So take the difference directly. The pass generates both configurations, so
+// the set is available to it exactly:
+//
+//     stale = addresses written by the outgoing device
+//           - addresses written by the incoming device
+//
+// Each stale address is restored to the reset value the register database
+// documents for it. An address the database does not know is not guessed at:
+// that boundary keeps its firmware reset.
+
+namespace {
+
+/// Absolute addresses one configuration segment writes, plus whether the
+/// segment contained a write whose addresses could not be determined. A segment
+/// that is not fully readable cannot be differenced: the leftover set would be
+/// missing entries, and the boundary would under-reset.
+struct ConfigSegment {
+  llvm::DenseSet<uint32_t> addresses;
+  bool opaque = false;
+};
+
+/// Collect the absolute addresses written by `op`, if it is a configuration
+/// write with a compile-time address. A blockwrite covers one word per data
+/// element from its base.
+static void collectWrittenAddresses(Operation *op, ConfigSegment &out) {
+  if (auto w = dyn_cast<AIEX::NpuWrite32Op>(op)) {
+    if (auto addr = w.getAbsoluteAddress())
+      out.addresses.insert(*addr);
+    else
+      out.opaque = true;
+    return;
+  }
+  // A masked write touches one known register. Recording it makes the stale
+  // set MORE complete; treating it as unreadable is what left every segment
+  // opaque, since the load_pdi expansion emits masked writes itself.
+  if (auto m = dyn_cast<AIEX::NpuMaskWrite32Op>(op)) {
+    if (auto addr = m.getAbsoluteAddress())
+      out.addresses.insert(*addr);
+    else
+      out.opaque = true;
+    return;
+  }
+  if (auto b = dyn_cast<AIEX::NpuBlockWriteOp>(op)) {
+    auto addr = b.getAbsoluteAddress();
+    if (!addr) {
+      out.opaque = true;
+      return;
+    }
+    auto words = b.getDataWords();
+    // Returns null on a data type or global it cannot read; the addresses this
+    // write touches are then unknown, so the boundary keeps the full reset.
+    if (!words) {
+      out.opaque = true;
+      return;
+    }
+    for (unsigned i = 0, e = words.getNumElements(); i < e; ++i)
+      out.addresses.insert(*addr + 4 * i);
+    return;
+  }
+  // Any other op that configures the array is not modelled here. Writing
+  // through one and differencing anyway would under-reset the boundary.
+  if (isa<AIEX::NpuBlockWriteValuesOp, AIEX::NpuAddressPatchOp>(op))
+    out.opaque = true;
+}
+
+/// The register-database module name for the tile `addr` lands in, or nullptr
+/// if the address does not resolve to a tile this target has.
+static SmallVector<const char *, 2>
+modulesForAddress(const AIE::AIETargetModel &tm, uint32_t addr) {
+  // The row field is only the bits between the two shifts; masking it to a
+  // byte reaches into the column field, so every address outside column 0
+  // decodes to a row past the end of the array.
+  uint32_t rowBits = tm.getColumnShift() - tm.getRowShift();
+  int col = (addr >> tm.getColumnShift()) & 0xFF;
+  int row = (addr >> tm.getRowShift()) & ((1u << rowBits) - 1);
+  if (col >= (int)tm.columns() || row >= (int)tm.rows())
+    return {};
+  // A core tile carries TWO register modules at one tile address: the core
+  // module and the memory module that holds its DMA, lock and BD registers.
+  // Naming only "core" loses every BD a configuration writes.
+  if (tm.isCoreTile(col, row))
+    return {"core", "memory"};
+  if (tm.isMemTile(col, row))
+    return {"memory_tile"};
+  if (tm.isShimNOCTile(col, row) || tm.isShimPLTile(col, row))
+    return {"shim"};
+  return {};
+}
+
+/// Reset value the database documents for `addr`, or nullopt when the address
+/// has no entry. Nullopt means "do not guess", not "zero".
+static std::optional<uint32_t> resetValueFor(const AIE::AIETargetModel &tm,
+                                             const AIE::RegisterDatabase &db,
+                                             uint32_t addr) {
+  uint32_t offset = addr & ((1u << tm.getRowShift()) - 1);
+  std::optional<uint32_t> found;
+  for (const char *module : modulesForAddress(tm, addr)) {
+    const AIE::RegisterInfo *reg = db.lookupRegisterByOffset(offset, module);
+    if (!reg)
+      continue;
+    uint32_t value = 0;
+    if (llvm::StringRef(reg->reset).trim().getAsInteger(0, value))
+      return std::nullopt;
+    // The core and memory module offset ranges overlap, so an offset both
+    // claim names two different registers. Do not pick one.
+    if (found && *found != value)
+      return std::nullopt;
+    found = value;
+  }
+  return found;
+}
+
+} // namespace
+
+/// Replace each firmware reset with writes that restore exactly the registers
+/// the outgoing device left behind. A boundary whose leftover set contains an
+/// address the register database does not know keeps its firmware reset.
+static void applyDifferentialReset(ModuleOp module) {
+  std::unique_ptr<AIE::RegisterDatabase> db = AIE::RegisterDatabase::loadAIE2();
+  if (!db)
+    return;
+
+  module.walk([&](AIE::RuntimeSequenceOp seq) {
+    const AIE::AIETargetModel &tm = AIE::getTargetModel(seq.getOperation());
+
+    // Segment the sequence at each preload: everything up to the next preload
+    // is one device's configuration.
+    SmallVector<std::pair<NpuLoadPdiOp, ConfigSegment>> segments;
+    seq.walk([&](Operation *op) {
+      if (auto loadPdi = dyn_cast<NpuLoadPdiOp>(op)) {
+        segments.emplace_back(loadPdi, ConfigSegment{});
+        return;
+      }
+      if (!segments.empty())
+        collectWrittenAddresses(op, segments.back().second);
+    });
+
+    // The first preload has no predecessor to undo, so it stays a firmware
+    // reset. Later ones can be replaced.
+    for (unsigned i = 1; i < segments.size(); ++i) {
+      // Either side unreadable means the difference is not trustworthy.
+      // Say so: keeping the firmware reset is correct but silently costs the
+      // whole point of the flag, and there is no other signal that it did.
+      if (segments[i - 1].second.opaque || segments[i].second.opaque) {
+        segments[i].first.emitRemark()
+            << "keeping the firmware reset: a configuration write with no "
+               "compile-time address is present on "
+            << (segments[i - 1].second.opaque ? "the outgoing" : "the incoming")
+            << " side";
+        continue;
+      }
+
+      SmallVector<uint32_t> stale;
+      for (uint32_t addr : segments[i - 1].second.addresses)
+        if (!segments[i].second.addresses.contains(addr))
+          stale.push_back(addr);
+      llvm::sort(stale);
+
+      SmallVector<std::pair<uint32_t, uint32_t>> resets;
+      std::optional<uint32_t> unresolved;
+      for (uint32_t addr : stale) {
+        std::optional<uint32_t> value = resetValueFor(tm, *db, addr);
+        if (!value) {
+          unresolved = addr;
+          break;
+        }
+        resets.emplace_back(addr, *value);
+      }
+      if (unresolved) {
+        segments[i].first.emitRemark()
+            << "keeping the firmware reset: the register database has no reset "
+               "value for address 0x"
+            << llvm::utohexstr(*unresolved) << ", one of " << stale.size()
+            << " the outgoing device leaves set";
+        continue;
+      }
+
+      NpuLoadPdiOp preload = segments[i].first;
+      OpBuilder builder(preload);
+      Location loc = preload.getLoc();
+      for (auto [addr, value] : resets) {
+        auto addrOp = arith::ConstantOp::create(
+            builder, loc,
+            builder.getI32IntegerAttr(static_cast<int32_t>(addr)));
+        auto valueOp = arith::ConstantOp::create(
+            builder, loc,
+            builder.getI32IntegerAttr(static_cast<int32_t>(value)));
+        NpuWrite32Op::create(builder, loc, addrOp, valueOp,
+                             /*buffer=*/nullptr, /*column=*/nullptr,
+                             /*row=*/nullptr);
+      }
+      preload.erase();
+    }
+  });
+}
+
 struct AIEExpandLoadPdiPass
     : public xilinx::AIEX::impl::AIEExpandLoadPdiBase<AIEExpandLoadPdiPass> {
   using AIEExpandLoadPdiBase::AIEExpandLoadPdiBase;
 
   void getDependentDialects(DialectRegistry &registry) const override {
-    registry
-        .insert<memref::MemRefDialect, AIE::AIEDialect, AIEX::AIEXDialect>();
+    registry.insert<arith::ArithDialect, memref::MemRefDialect, AIE::AIEDialect,
+                    AIEX::AIEXDialect>();
   }
 
   void runOnOperation() override {
     auto module = getOperation();
+
+    // ctrl-pkt emits its configuration as control packets, whose targets this
+    // pass does not read. Differencing over them would find nothing and would
+    // drop the overlay preload the mode depends on, so reject the combination
+    // before doing any work rather than silently mis-lowering.
+    if (clRegisterReset && clCtrlPkt) {
+      module.emitError("register-reset and ctrl-pkt are mutually exclusive");
+      signalPassFailure();
+      return;
+    }
 
     // Collect all load_pdi operations in program order;
     // need to collect once, then transform all collected ops;
@@ -294,6 +515,9 @@ struct AIEExpandLoadPdiPass
           /*expand_mode=*/
           AIEX::ExpandModeAttr::get(seq.getContext(), AIEX::ExpandMode::none));
     }
+
+    if (clRegisterReset)
+      applyDifferentialReset(module);
   }
 };
 
