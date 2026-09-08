@@ -77,6 +77,7 @@ jobs:
           cp python/utils/kernel_harness.py python/utils/bfp.py \
             python/utils/verify.py python/utils/benchmark.py "$site/utils/"
           cp python/utils/compile/utils.py "$site/utils/compile/utils.py"
+          cp python/utils/config.py "$site/utils/config.py"
       - name: Run static analysis
         id: static
         run: |
