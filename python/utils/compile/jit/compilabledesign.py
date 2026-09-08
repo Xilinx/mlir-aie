@@ -285,7 +285,8 @@ class CompilableDesign:
         as an explicit output path, so ``compile(npu_cpp_path=...)`` on its own
         builds just the sequence -- decoupled from any overlay, which is the
         point: one shape-agnostic overlay can then drive many sequences without
-        rebuilding an identical xclbin per sequence.
+        rebuilding an identical xclbin per sequence.  Full-ELF mode does not
+        emit it -- that ELF carries its own TXN control code.
 
         ``pdi_path`` is likewise optional: when set, aiecc writes the
         Programmable Device Image (config data packed by ``bootgen``) to that
