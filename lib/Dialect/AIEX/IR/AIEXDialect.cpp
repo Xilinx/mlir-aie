@@ -798,6 +798,10 @@ LogicalResult AIEX::NpuWriteBdOp::verify() {
   if (static_cast<uint32_t>(getIterationStride()) > maxStep)
     return emitOpError() << "Iteration Stride exceeds the [0:" << maxStep
                          << "] range.";
+  // Encoded fields are actual-1, so current must not exceed size. Guards a
+  // hand-written writebd (front-end verifiers already enforce current < size).
+  if (getIterationCurrent() > getIterationSize())
+    return emitOpError() << "Iteration Current exceeds Iteration Size.";
   if (targetModel.isShimNOCTile(getColumn(), getRow()) && getD2Size() != 0)
     return emitOpError("ShimTile only supports 3 dimensions of sizes.");
   if (targetModel.isShimNOCTile(getColumn(), getRow()) &&
@@ -1215,6 +1219,13 @@ verifyTaskBDDimensions(const AIE::AIETargetModel &targetModel, int col, int row,
                             "compile-time-constant buffer descriptor on the "
                             "runtime-sequence path; express iteration via "
                             "the outermost sizes/strides dimension instead";
+        result = failure();
+        return;
+      }
+      // DMABDOp::verify is skipped for task BDs (parent is the task op, not a
+      // *DMAOp), so enforce the iteration bounds here too.
+      if (failed(AIE::verifyBDIterationBounds(
+              bd, targetModel, targetModel.getTileType(col, row)))) {
         result = failure();
         return;
       }
