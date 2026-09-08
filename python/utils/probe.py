@@ -1,22 +1,19 @@
 # probe.py -*- Python -*-
 #
-# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2026 Advanced Micro Devices, Inc.
 
 """Structured diagnosis of the NPU stack, from silicon up to this interpreter.
 
-Callers previously answered "can I use the NPU?" with a single bool derived from
-``import pyxrt``. That conflates conditions which fail independently and have
-different fixes, so the resulting error could only ever report the device string
-the caller passed in. Each stage here returns a :class:`Check` carrying the
-reason and a remedy, so a caller can say *why* the NPU is unavailable.
+"Can I use the NPU?" is not one condition: platform, hardware, driver, XRT and
+the Python bindings fail independently and have different fixes. Each stage
+returns a :class:`Check` carrying the reason and a remedy, so a caller can say
+*why* the NPU is unavailable rather than only which device it asked for.
 
 Cheap stages (platform, hardware, driver) are pure filesystem lookups and run
-eagerly. Stages that load the XRT stack or spawn a process are deferred, keeping
-the property the previous probe was right to protect.
+eagerly; stages that load the XRT stack or spawn a process are deferred, so
+importing this module costs nothing.
 """
 
 from __future__ import annotations
