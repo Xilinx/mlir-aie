@@ -113,11 +113,13 @@ on each submodule's `__doc__`:
 
 | Submodule | What's in it |
 |-----------|--------------|
-| [`kernels.eltwise`](../python/iron/kernels/eltwise.py)       | element-wise: passthrough, scale, add, mul, relu |
+| [`kernels.eltwise`](../python/iron/kernels/eltwise.py)       | element-wise: passthrough, scale, add, mul, mul_add, relu |
 | [`kernels.reduce`](../python/iron/kernels/reduce.py)         | reductions: reduce_add, reduce_min, reduce_max, compute_max |
-| [`kernels.activation`](../python/iron/kernels/activation.py) | activations: softmax, gelu, silu, swiglu, bf16_exp.  Companion numpy refs (`relu_ref`, `silu_ref`, `gelu_ref`, `bf16_exp_ref`, `softmax_ref`) live in the same module so host harnesses don't reimplement the math. |
-| [`kernels.linalg`](../python/iron/kernels/linalg.py)         | linear algebra: mm (+ `.zero`, `.mac_dims`), mv (+ `.zero`), cascade_mm (+ `.{get_only,put_only,put_get,zero}`, `.mac_dims`) |
-| [`kernels.conv`](../python/iron/kernels/conv.py)             | convolutions: conv2dk1/3/14, conv2dk1_skip(_init), bn_* bottleneck variants for MobileNet/ResNet |
+| [`kernels.activation`](../python/iron/kernels/activation.py) | activations: softmax, tanh, sigmoid, gelu, silu, swiglu, leaky_relu, bf16_exp, exp2f_vec |
+| [`kernels.datamovement`](../python/iron/kernels/datamovement.py) | data movement and conversion: axpy, convert_copy, expand, transpose |
+| [`kernels.linalg`](../python/iron/kernels/linalg.py)         | linear algebra: mm (+ `.zero`, `.mac_dims`, `.stream_dims`), mv (int16 + `.zero`, bf16), cascade_mm (+ `.{get_only,put_only,put_get,zero}`, `.mac_dims`), mm_bfp (+ `.zero`), mm_bfp_shuffle, mha (+ the flash-attention siblings) |
+| [`kernels.conv`](../python/iron/kernels/conv.py)             | convolutions: conv2dk1/3/14, conv2dk1_skip(_init), dwconv1d, bn_* bottleneck variants for MobileNet/ResNet |
+| [`kernels.transformer`](../python/iron/kernels/transformer.py) | transformer blocks: rms_norm, layer_norm (bf16, f32, affine + cast), rope, mm_activation_epilogue |
 | [`kernels.vision`](../python/iron/kernels/vision.py)         | vision: rgba2hue, rgba2gray, gray2rgba, threshold, bitwise_or/and, filter2d, add_weighted |
 
 The submodule files are the authoritative catalog — each function has
@@ -140,6 +142,135 @@ kernels.conv.<TAB>            # factory-level
 The factories themselves are short — typically a `_make_extern` call
 plus dtype validation.  Reading the source of a factory you're about
 to use is often faster than chasing through the docstring.
+
+Every module also exports a numpy reference per kernel (`add_ref`,
+`reduce_max_ref`, `mm_ref`, `softmax_ref`, ...), and most factories attach
+a `KernelContract` to the function they return:
+
+```python
+fn = kernels.reduce_max(dtype=np.int32, tile_size=1024)
+fn.contract.roles        # ('in', 'out', 'count')
+fn.contract.reference    # kernels.reduce_max_ref
+fn.contract.tolerance.kind  # 'exact'
+fn.contract.ops_per_call # 1024
+
+mm = kernels.mm(input_dtype=np.int16, output_dtype=np.int32)
+mm.contract.acc_dtype    # numpy.int64: accauto is acc64 for int16
+mm.contract.reduction    # 64: products summed per output per call (dim_k)
+mm.contract.overflow     # 'undefined': to_vector() in the core's default mode
+mm.contract.rounding     # 'unspecified'
+kernels.mm.dtypes        # every (input_dtype, output_dtype) the factory supports
+```
+
+The contract is what lets `aie.utils.kernel_harness` build, run and check
+a kernel without a hand-written design:
+
+```python
+from aie.utils import kernel_harness as kh
+
+verdict = kh.check(kernels.reduce_max, calls=16, dtype=np.int32)
+assert verdict, verdict.detail
+```
+
+Tolerances are kernel-owned. Integer kernels and lossless copies are
+bit-exact; LUT approximations declare the `rtol` their reference
+documents; a factory that declares nothing is judged with
+`Tolerance.default_for(out_dtype)`: exact for integers, `1e-4` for
+float32, `1e-2` for float16 and the canonical `0.128` for bf16.
+
+### What a signature cannot say
+
+A contract also declares the dtype facts an `arg_types` list leaves out:
+
+- `acc_dtype` and `reduction`: what the kernel accumulates in and over how
+  many terms. `aie.utils.kernel_harness.input_limit` turns them into the
+  largest integer input that cannot overflow the accumulator, which is
+  where the harness and the benchmark registry draw their data.
+- `overflow`: whether an integer result outside the output range wraps,
+  saturates, or is undefined (a `to_vector()` in the core's default
+  mode). The judge clips or wraps the reference to match, and under
+  `undefined` refuses to grade an overflowing reference at all.
+- `rounding`: how a narrowing rounds (`floor`, `nearest`, `nearest_even`,
+  or `unspecified` for an `srs` in the core's default mode, which is why
+  some kernels allow one LSB).
+- `nonfinite` and `subnormals`: whether NaN / inf propagate and whether
+  subnormal inputs are preserved, flushed (the judge then compares them
+  as zero) or unspecified. The benchmark registry derives each kernel's
+  edge-data cases from these, so widening what a kernel is fed is a
+  contract change.
+- `unsupported`: why the generic harness cannot run this kernel, when it
+  cannot; the reference still says what the kernel computes.
+- `.dtypes` on the factory: the dtype combinations it builds. The host
+  contract test builds every entry.
+
+## Standing in for a hand-built kernel (amd/IRON)
+
+An operator that builds a kernel by hand needs the exported **symbol**,
+the **source file** and the **compile flags** to line up. Every factory
+publishes all three (`fn.name`, `fn.source_file`, `fn.compile_flags`), so
+a factory call replaces a hand-written source-plus-symbol pair wherever
+the two trees share the kernel.
+`test_factories_reproduce_the_iron_operator_kernel_specs` in
+`test/python/test_kernel_contracts.py` pins that table for the kernels
+[amd/IRON](https://github.com/amd/iron)'s operators build: `saxpy`,
+`gelu_bf16`, `silu_bf16`, `sigmoid_bf16`, `tanh_bf16`, `softmax_bf16`,
+`eltwise_add_bf16_vector`, `eltwise_mul_bf16_vector`, `layer_norm`,
+`rope`, `passThroughLine`, `expand_uint4_to_bfloat16`, `transpose_4x4`,
+`matvec_vectorized_bf16_bf16` and the `matmul_*` family with its
+`-DDIM_*`, dtype-`ONLY`, `-DB_COL_MAJ` / `-DC_COL_MAJ` and
+`AIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16` flags. Renaming a symbol or
+dropping a flag fails that test rather than silently breaking a
+downstream build.
+
+Three things make this work for more than one kernel per design:
+
+- **`inout`.** A kernel that accumulates into its output declares that
+  argument `inout` rather than `out`: `mm` computes `C += A * B`, reads C
+  back, ships a `.zero` sibling, and a design zeroes the buffer before
+  the first call. The reference still computes the whole product, so an
+  `inout` output is excluded from `reference_indices` like an `out` one;
+  `contract.accumulates` says which kind a kernel is. The int16 `mv` and
+  `cascade_mm` accumulate the same way; the bf16 `mv` stores.
+- **Whole-object symbol prefixing.** Each parameterisation of a kernel
+  gets its own symbol prefix, and every symbol its object defines is
+  prefixed, not just the declared one. A translation unit usually
+  exports more (`mm.cc` emits the `zero_*` that `.zero` binds; `mha.cc`
+  includes `mm.cc` and defines `matmul_*` names of its own), and leaving
+  those bare made two parameterisations collide at link.
+  `ExternalFunction.sibling(symbol, arg_types)` binds another symbol
+  from the same object with the prefix applied; that is how `.zero`, the
+  cascade trio and `mha`'s flash-attention siblings are built. Chess-built
+  kernels are the exception: `llvm-objcopy` corrupts xchesscc objects, so
+  they keep bare symbols and only one variant may appear in a design.
+- **`host_args`.** `aie.utils.kernel_harness.host_args(fn, calls=, shape=)`
+  returns one `HostArg` (direction, shape, dtype) per host buffer the
+  design takes, in the layout the device expects: B transposed for a
+  `b_col_maj` matmul, C transposed for `c_col_maj`, encoded bytes for a
+  bfp16ebs8 operand, interleaved tiles where streamed tensors share one
+  fifo, a reduction's DMA padding. `param` arguments are absent, since
+  they are baked into the design. A caller that only needs to size
+  buffers reads this instead of running the sampler.
+
+Where the kernel *sources* have diverged, no factory can stand in:
+
+| Kernel | Why a factory cannot substitute |
+| --- | --- |
+| `relu` | IRON's `relu.cc` exports `relu_bf16`; this tree's exports `bf16_relu`. |
+| `rms_norm` | IRON's exports `rms_norm_bf16_vector` and `weighted_rms_norm`; this tree's exports `rms_norm`. |
+| `mm` with `-DROUND_CONV_EVEN` | The flag exists only in IRON's `mm.cc`; passing it here would be a no-op, so the factory does not offer it. |
+
+Two factories are drop-ins even though the harness cannot run them.
+`kernels.mha()` compiles `aie_kernels/aie2p/mha.cc` once and binds its
+ten symbols: the returned kernel is the `QK^T` matmul, with `.zero`,
+`.matmul_rowmaj`, `.matmul_scalar`, `.partial_softmax`, `.matmul_pv`,
+`.rescale_o` and `.init_scale_buffer` beside it (`passThroughLine` is
+only declared there; take it from `passthrough(dtype=np.int32)`, as
+IRON's MHA operator does). The bf16 `mv` builds the shared
+`aie_kernels/generic/mv.cc` with its `(m, row_offset, A, b, c)`
+signature, `DIM_K` and `VEC_SIZE`. Both contracts declare `unsupported`
+(attention is a multi-core dataflow; the matvec design drives the int16
+signature); what an operator needs is the object and the binding, and
+both provide that.
 
 ## When you outgrow the library
 
@@ -167,6 +298,37 @@ the new kernel proves useful across designs, contributing it back as a
 new factory under the right submodule is straightforward — match the
 existing module's docstring + `ValueError` shape and the auto-listing
 above picks it up.
+
+### Adding a kernel
+
+A new factory is complete when one line each in two places covers it:
+
+1. **Contract.** Pass `contract=KernelContract(...)` to `_make_extern`
+   with the argument roles (`in`, `out` or `inout`, `param`, `count`,
+   `scalar`), a
+   numpy reference exported as `<name>_ref`, `ops_per_call` for the
+   benchmark's throughput series, and a `Tolerance` with its evidence in
+   `note` — or none, to get the dtype default. Reductions set `out_valid`
+   to the number of meaningful output elements. Say what the kernel
+   accumulates in (`acc_dtype`, `reduction`), what an integer overflow
+   does (`overflow`) and how a fixed-point shift rounds (`rounding`),
+   from the C++ rather than from a guess; a factory with more than one
+   dtype lists them in a `.dtypes` table.
+2. **Case.** Add the shapes to time and the edge data the kernel must
+   survive as one `Case(...)` in
+   [`benchmarks/kernels/registry.py`](../benchmarks/kernels/registry.py),
+   and one entry in
+   [`test/python/npu/test_kernels_e2e.py`](../test/python/npu/test_kernels_e2e.py)
+   for the per-PR device smoke test.
+
+The host test [`test/python/test_kernel_contracts.py`](../test/python/test_kernel_contracts.py)
+then checks the roles against the real `arg_types()`, the reference's
+arity, and that the harness design lowers to MLIR; the nightly static
+checker (`benchmarks/static`) reports per-loop II, zero-overhead-loop
+status and missing-bank loads from Peano's remarks, which is where to
+look when optimizing. See
+[`benchmarks/kernels/README.md`](../benchmarks/kernels/README.md) for the
+test tiers.
 
 ## Related reading
 
