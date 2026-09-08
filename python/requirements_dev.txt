@@ -32,7 +32,7 @@ nanobind==2.12.0
 # option; every lit.cfg.py here still passes it. Jobs that install this file
 # unpinned otherwise pick up lit 23. Lift once the configs move to the internal
 # shell.
-lit<23
+lit<24
 # numpy is ABI-coupled like nanobind (see above): keep this constraint identical
 # to utils/mlir_wheels/requirements.in and utils/mlir_aie_wheels/requirements.txt.
 # Without a direct pin numpy would enter this lock only transitively (via
