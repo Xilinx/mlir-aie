@@ -186,3 +186,33 @@ module @cascade_i16_strip_linearize {
     }
   }
 }
+
+// -----
+
+// Test 7: Iteration case — outermost dim is BD iteration (len < product).
+// Input:  sizes = [8, 1, 256, 32]  strides = [8192, 32, 32, 1]  len = 8192
+// product = 8 * 1 * 256 * 32 = 65536, but len = 8192 != 65536.
+// The outermost dim encodes BD iteration; stripping the size-1 dim would
+// change the dimension count and confuse downstream passes that interpret
+// the 4th dim as iteration. Pass must leave this BD unchanged.
+// maxIdx = (8-1)*8192 + 0 + (256-1)*32 + (32-1)*1 = 57344 + 8160 + 31 = 65535
+
+// CHECK-LABEL: @iteration_case_no_strip
+// CHECK:         aie.memtile_dma
+// CHECK:           aie.dma_bd
+// CHECK-SAME:        sizes = [8, 1, 256, 32] strides = [8192, 32, 32, 1]
+module @iteration_case_no_strip {
+  aie.device(xcve2802) {
+    %tile = aie.tile(1, 1)
+    %buf = aie.buffer(%tile) { sym_name = "buf_t7" } : memref<65536xi32>
+    aie.memtile_dma(%tile) {
+      aie.dma_start(MM2S, 0, ^bd0, ^end)
+      ^bd0:
+        aie.dma_bd(%buf : memref<65536xi32> offset = 0 len = 8192
+                   sizes = [8, 1, 256, 32] strides = [8192, 32, 32, 1])
+        aie.next_bd ^end
+      ^end:
+        aie.end
+    }
+  }
+}

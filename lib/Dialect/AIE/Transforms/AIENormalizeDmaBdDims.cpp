@@ -60,18 +60,20 @@ struct AIENormalizeDmaBdDimsPass
       if (newDims.size() == origDims.size())
         return;
 
+      int64_t product = 1;
+      for (BDDimLayoutAttr dim : origDims)
+        product *= dim.getSize();
+
+      if (!op.hasLen() && !op.getBuffer().getType().hasStaticShape())
+        return;
+      std::optional<int32_t> lenVal = op.getConstantLen();
+      if (op.getLen() && !lenVal)
+        return;
+      if (lenVal.has_value() && static_cast<int64_t>(*lenVal) != product)
+        return;
+
       if (newDims.empty() || isContiguousBDTransfer(newDims)) {
-        int64_t product = 1;
-        for (BDDimLayoutAttr dim : origDims)
-          product *= dim.getSize();
-
-        if (!op.hasLen() && !op.getBuffer().getType().hasStaticShape())
-          return;
-        std::optional<int32_t> lenVal = op.getConstantLen();
-        if (lenVal.has_value() && static_cast<int64_t>(*lenVal) != product)
-          return;
         int32_t len = static_cast<int32_t>(product);
-
         op.getLenMutable().clear();
         op.setStaticLen(len);
         op.getSizesMutable().clear();
