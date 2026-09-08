@@ -28,47 +28,28 @@ logger = logging.getLogger(__name__)
 
 # --- Precompiled header for the driver-injected intrinsics -------------------
 #
-# The AIE driver `-include`s its intrinsics header into every TU it compiles
-# (clang/lib/Driver/ToolChains/AIE.cpp, AddClangSystemIncludeArgs).  For aie2p
-# that header set is 67k lines of inline intrinsic definitions and Sema re-runs
-# over all of it per kernel.  Measured on an EMPTY translation unit: aie2p costs
-# 2.14 s against 0.45 s for aie2 and 0.019 s for the host, and -ftime-trace puts
-# 2.02 s of the 2.11 s in ParseDeclarationOrFunctionDefinition.  Preprocessing is
-# not the cost (-E is 0.19 s); parsing the inline bodies is.
+# The AIE driver -includes its intrinsics header into every TU; for aie2p that is
+# 67k lines of inline definitions reparsed per kernel, 2.14 s on an empty TU.
+# Parsing it once into a PCH and passing that back with -mno-vitis-headers takes
+# aie_kernels/aie2p/mha.cc from 5.28 s to 2.80 s, object byte-identical.
 #
-# So parse it once into a PCH and pass that back with -mno-vitis-headers, which
-# suppresses the automatic inclusion.  Measured on aie_kernels/aie2p/mha.cc:
-# 5.28 s -> 2.80 s wall and 251.6 MB -> 205.6 MB peak RSS, object byte-identical.
-#
-# Two properties make this safe rather than merely fast:
-#
-#   * The PCH source is an EMPTY header.  The driver injects the intrinsics into
-#     the PCH's own TU exactly as it would into a kernel's, so the PCH holds
-#     precisely what it replaces and no header path has to be located or guessed.
-#
-#   * The key covers only the compiler and the flags THIS function fixes, never a
-#     caller's -I / -D / compile_args.  That is what keeps it to one PCH per
-#     target rather than one per kernel, and it is sound in both directions:
-#     extra caller defines are accepted and produce a byte-identical object
-#     (verified), while a CONFLICTING one is a hard clang error naming the PCH,
-#     not a silently different parse.  The retry below turns that error back into
-#     an ordinary compile so a caller can never be blocked by this optimisation.
+# The PCH source is an EMPTY header, so the driver injects into its TU exactly
+# what it would inject into a kernel's.  The key covers the compiler and the
+# flags fixed here, never a caller's -I/-D, which keeps it to one PCH per target;
+# a conflicting define is a hard clang error, and the retry below turns that back
+# into an ordinary compile.
 #
 # Set AIE_KERNEL_PCH=0 to disable.
 _PCH_ENABLED = os.environ.get("AIE_KERNEL_PCH", "1") != "0"
 
 
 def _compiler_identity(cxx: str) -> str:
-    """Identify the compiler by what it IS, not by where it sits.
+    """Key on the compiler build, not on where it sits.
 
     ``clang --version`` prints the llvm-aie git SHA, identical across installs of
-    one build; a path or an mtime is not.  mlir-aie#3427 keyed aiecc by mtime and
-    made two installs of the same commit disagree -- here the same mistake would
-    serve a PCH built by a different compiler.  Costs ~16 ms, once per process.
-
-    ``InstalledDir:`` is dropped for that reason: it is an absolute path, so
-    keeping it would key one compiler's PCH to the directory it was invoked
-    from and miss on every other install of the same build.
+    one build; a path or an mtime is not (mlir-aie#3427 keyed aiecc by mtime and
+    made two installs of one commit disagree).  ``InstalledDir:`` is dropped for
+    the same reason.  Costs ~16 ms, once per process.
     """
     try:
         out = subprocess.run([cxx, "--version"], capture_output=True, check=True).stdout
