@@ -6,10 +6,9 @@
 //===----------------------------------------------------------------------===//
 
 // The scenario of stack_size_absent_insufficient_error.mlir, built --unified.
-// The per-core strategy and the unified strategy both compile a core to
-// "objects_<key>.o" (see "keys match coreKey" in splitLoweredCores), so the
-// check measures that object under either strategy. Under another object path,
-// measureFunctionFrameSize finds nothing and the check passes the build.
+// The per-core strategy and the unified strategy both link a core to
+// "elfs_<key>.elf" (see "keys match coreKey" in splitLoweredCores), so the
+// check measures that core under either strategy.
 
 // REQUIRES: peano
 // RUN: rm -rf %t.d && mkdir -p %t.d
