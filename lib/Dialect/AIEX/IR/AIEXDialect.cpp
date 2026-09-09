@@ -143,23 +143,17 @@ AIEX::verifyStridesWraps(mlir::Operation *forOp,
   auto elemWidth =
       dataLayout.getTypeSizeInBits(referencedBufType.getElementType());
 
-  uint32_t wrap_bits = 0;
-  uint32_t step_bits = 0;
-  uint32_t iter_bits = targetModel.getDmaBdIterBits(tileCol, tileRow);
-  if (targetModel.isShimNOCTile(tileCol, tileRow)) {
-    step_bits = 20; // XAIEMLGBL_NOC_MODULE_DMA_BD0_3_D0_STEPSIZE_WIDTH
-    wrap_bits = 10; // XAIEMLGBL_NOC_MODULE_DMA_BD0_3_D0_WRAP_WIDTH
-  } else if (targetModel.isMemTile(tileCol, tileRow)) {
-    step_bits = 17; // XAIEMLGBL_MEM_TILE_MODULE_DMA_BD0_2_D0_STEPSIZE_WIDTH
-    wrap_bits = 10; // XAIEMLGBL_MEM_TILE_MODULE_DMA_BD0_2_D0_WRAP_WIDTH
-  } else if (targetModel.isCoreTile(tileCol, tileRow)) {
-    step_bits = 13; // XAIEMLGBL_MEMORY_MODULE_DMA_BD0_2_D0_STEPSIZE_WIDTH
-    wrap_bits = 8;  // XAIEMLGBL_MEMORY_MODULE_DMA_BD0_3_D0_WRAP_WIDTH
-  } else {
+  // ShimPLTiles have no ShimDMA, so BD field widths are meaningless here.
+  if (!targetModel.isCoreTile(tileCol, tileRow) &&
+      !targetModel.isMemTile(tileCol, tileRow) &&
+      !targetModel.isShimNOCTile(tileCol, tileRow))
     return forOp->emitOpError(
         "Unsupported tile type at (" + std::to_string(tileCol) + ", " +
         std::to_string(tileRow) + ") Must be ShimNOC, Mem or Core.");
-  }
+
+  uint32_t wrap_bits = targetModel.getDmaBdWrapBits(tileCol, tileRow);
+  uint32_t step_bits = targetModel.getDmaBdStepBits(tileCol, tileRow);
+  uint32_t iter_bits = targetModel.getDmaBdIterBits(tileCol, tileRow);
 
   for (int i = 0; i < 4; i++) {
     if (inputSizes[i] <= 0) {
@@ -962,6 +956,10 @@ LogicalResult AIEX::NpuAddressPatchOp::verify() {
   // The static binary target checks for the operand and diagnoses it there.
   if (getAddrVal() && !getAddrVal().getType().isInteger(32))
     return emitOpError("addr_val must be an i32 value");
+  if (getArgIdx().has_value() == static_cast<bool>(getBuffer()))
+    return emitOpError("must name the host buffer either by the 'arg_idx' "
+                       "attribute or by the 'buffer' operand, not both and not "
+                       "neither");
   return success();
 }
 

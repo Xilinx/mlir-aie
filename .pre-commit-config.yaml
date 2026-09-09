@@ -13,7 +13,7 @@ repos:
 
 # Formatting hooks (run on pre-push to catch issues before CI)
 - repo: https://github.com/pre-commit/mirrors-clang-format
-  rev: f4d7745e17a28aad7eed2f4874ca8d1568c11c4c  # frozen: v22.1.8
+  rev: 34b241d706d24e4ccb69e38f9f0fa190b5f486ec  # frozen: v23.1.0
   hooks:
     - id: clang-format
       types_or: [c, c++]
@@ -48,7 +48,7 @@ repos:
         )$
 
 - repo: https://github.com/astral-sh/ruff-pre-commit
-  rev: 65dbdb59d2f2d9c3bdc343c566821ad3319ddaa3  # frozen: v0.16.3
+  rev: 1f1e8bf348ff38fc88619a38d3ca4d9c56abea49  # frozen: v0.16.5
   hooks:
     - id: ruff-check
       stages: [pre-push]
@@ -98,6 +98,16 @@ repos:
       stages: [pre-push]
       args: [--fix=lf]
       exclude: *generated_exclude
+
+- repo: https://github.com/rhysd/actionlint
+  rev: 914e7df21a07ef503a81201c76d2b11c789d3fca  # frozen: v1.7.12
+  hooks:
+    - id: actionlint
+      # actionlint runs shellcheck and pyflakes over inline `run:` blocks when
+      # they are on PATH, as the runner images provide: 141 more findings here,
+      # 95 of them SC2086 (shellcheck 0.11.0). Off, to keep this hook on
+      # workflow schema, expressions and runner labels.
+      args: [-shellcheck=, -pyflakes=]
 
 # Regenerate hash-pinned lockfiles when their source manifests change.
 # Only fires if you've staged one of the source files below; if uv is missing

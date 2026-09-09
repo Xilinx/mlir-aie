@@ -274,6 +274,7 @@ buildObjectSubgraph(EdgeWithTypedOutput<ModRef> &lowered,
       .arg("-O" + std::to_string(optLevel.getValue()))
       .value("--march=")
       .arg("--function-sections")
+      .arg("-stack-size-section")
       .arg("--filetype=obj")
       .output("-o");
   EdgeWithTypedOutput<Directory> &peanoObject =
@@ -651,29 +652,42 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   std::vector<EdgeBase *> outputs;
   auto &input = g.fileInput(inputFile, "input.mlir");
 
-  auto &withAddresses =
+  auto &traced =
       input
           .map<ModRef>("placed.mlir",
                        PassPipeline{getPlacementPipeline(
                            &context, coresPerCol.getValue(),
                            placerType.getValue(), saSeed.getValue())})
-          .map<ModRef>("traced.mlir", PassPipeline{getTracePipeline(&context)})
-          .map<ModRef>(
-              "input_with_addresses.mlir",
-              PassPipeline{
-                  &context, [scheme = allocScheme.getValue(),
-                             dyn = dynamicObjFifos.getValue(),
-                             pkt = packetSwObjFifos.getValue(),
-                             ctrl = ctrlPktOverlay.getValue() ||
-                                    loadPdiToCtrlPkt.getValue(),
-                             ldpdi = loadPdiToCtrlPkt.getValue(),
-                             bf16 = bf16Emulation.getValue(),
-                             skipVerify = skipObjectFifoVerify.getValue()](
-                                mlir::MLIRContext *ctx, mlir::ModuleOp mod) {
-                    return getInputWithAddressesPipeline(ctx, mod, scheme, dyn,
-                                                         pkt, ctrl, bf16, ldpdi,
-                                                         skipVerify);
-                  }});
+          .map<ModRef>("traced.mlir", PassPipeline{getTracePipeline(&context)});
+
+  // --default-stack-size stands in for the target's built-in default on any
+  // core that leaves stack_size absent. It runs ahead of every reader of
+  // CoreOp::getEffectiveStackSize(): buffer placement, the stack-size check,
+  // and the core, BCF and ldscript emitters.
+  auto &withDefaultStackSize = traced.map<ModRef>(
+      "default_stack_size.mlir",
+      [stackSize = defaultStackSize.getValue()](
+          const Item<ModRef> &in, Item<ModRef> &out) -> mlir::LogicalResult {
+        out.value =
+            stackSize > 0
+                ? ModRef(populateDefaultStackSize(in.get().get(), stackSize))
+                : ModRef(in.get().get().clone());
+        return verifyStackSizeOverrides(out.value->get());
+      });
+
+  auto &withAddresses = withDefaultStackSize.map<ModRef>(
+      "input_with_addresses.mlir",
+      PassPipeline{
+          &context,
+          [scheme = allocScheme.getValue(), dyn = dynamicObjFifos.getValue(),
+           pkt = packetSwObjFifos.getValue(),
+           ctrl = ctrlPktOverlay.getValue() || loadPdiToCtrlPkt.getValue(),
+           ldpdi = loadPdiToCtrlPkt.getValue(), bf16 = bf16Emulation.getValue(),
+           skipVerify = skipObjectFifoVerify.getValue()](mlir::MLIRContext *ctx,
+                                                         mlir::ModuleOp mod) {
+            return getInputWithAddressesPipeline(ctx, mod, scheme, dyn, pkt,
+                                                 ctrl, bf16, ldpdi, skipVerify);
+          }});
 
   // Scratchpad run-time parameters sidecar file
   auto &paramsFile = withAddresses.map<std::string>(
@@ -895,6 +909,10 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                   .arg(lldPath.empty() ? "-fuse-ld=lld" : "-fuse-ld=" + lldPath)
                   .input()
                   .arg("-Wl,--gc-sections")
+                  // The relocations carry the call graph that the stack-size
+                  // check walks. They are non-alloc, so they use no tile
+                  // memory.
+                  .arg("-Wl,--emit-relocs")
                   .arg("-Wl,--orphan-handling=error")
                   .input("-Wl,-T,")
                   .output("-o"))
@@ -906,11 +924,36 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   EdgeWithTypedOutput<Directory> &compiledElfs =
       xbridge ? chessElfs : peanoElfs;
 
+  // Measures each core's stack requirement from its linked ELF. This edge runs
+  // before `physicalWithElfs`, so a failure ends the run before any artifact
+  // that depends on a core is written.
+  EdgeWithTypedOutput<ModRef> *physicalWithMeasuredStackSizes = nullptr;
+  if (!noMeasureStackSize.getValue()) {
+    physicalWithMeasuredStackSizes =
+        &bundle(compiledElfs.out, physical.out)
+             .join<ModRef>(
+                 "measured_stack_sizes.mlir",
+                 [](const Node<Directory> &elfs, const Node<ModRef> &physicalN,
+                    Item<ModRef> &out) -> mlir::LogicalResult {
+                   out.value = ModRef(physicalN.get().get().clone());
+                   llvm::StringMap<std::string> elfByKey;
+                   for (const auto &item : elfs.items)
+                     elfByKey[item.key] = item.filePath;
+                   return checkStackSizeRequirements(
+                       out.value->get(), [&](CoreOp coreOp) -> std::string {
+                         return elfByKey.lookup(coreKey(coreOp));
+                       });
+                 });
+  }
+  EdgeWithTypedOutput<ModRef> &physicalForElfs =
+      physicalWithMeasuredStackSizes ? *physicalWithMeasuredStackSizes
+                                     : physical;
+
   // --- Per-device configuration artifacts ---------------------------------
 
   // Patch ELF paths back into the physical IR
   auto &physicalWithElfs =
-      bundle(compiledElfs.out, preBakedElfs.out, physical.out)
+      bundle(compiledElfs.out, preBakedElfs.out, physicalForElfs.out)
           .join<ModRef>(
               "physical_with_elfs.mlir",
               [](const Node<Directory> &compiled, const Node<File> &preBaked,
@@ -1574,8 +1617,13 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
       generatePdi || generateTxn || generateCtrlpkt || generateXclbin ||
       generateFullElf || wantAiesim || doCompileHost || !getOutputs.empty() ||
       !cutOutputs.empty();
-  if (generateCoreElfs || !anySpecificOutput)
+  // Every other artifact depends on the stack check through physicalWithElfs.
+  // A core-ELF build ends before that edge, so name the check here.
+  if (generateCoreElfs || !anySpecificOutput) {
     outputs.push_back(&compiledElfs);
+    if (physicalWithMeasuredStackSizes)
+      outputs.push_back(physicalWithMeasuredStackSizes);
+  }
 
   if (generateInputWithAddresses)
     outputs.push_back(&withAddresses);
