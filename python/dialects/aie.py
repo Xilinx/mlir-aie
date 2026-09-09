@@ -1280,8 +1280,24 @@ class TileOp(TileOp):
         return tile_like_is_shim_tile(self.operation)
 
 
-def tile(col, row, *, loc=None, ip=None, allocation_scheme=None):
-    return TileOp(col=col, row=row, loc=loc, ip=ip, allocation_scheme=allocation_scheme)
+def tile(
+    col,
+    row,
+    *,
+    loc=None,
+    ip=None,
+    allocation_scheme=None,
+    packet_type=0,
+    packet_id=None,
+):
+    tile_op = TileOp(
+        col=col, row=row, loc=loc, ip=ip, allocation_scheme=allocation_scheme
+    )
+    if packet_id is not None:
+        tile_op.attributes["controller_id"] = packet_info_attr_builder(
+            (packet_type, packet_id)
+        )
+    return tile_op
 
 
 @_cext.register_operation(_Dialect, replace=True)

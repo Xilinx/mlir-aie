@@ -37,6 +37,13 @@ def tileOp():
     t = tile(col=0, row=0)
 
 
+# CHECK-LABEL: tileOpControlPacket
+# CHECK: aie.tile(1, 2) {controller_id = #aie.packet_info<pkt_type = 3, pkt_id = 4>}
+@construct_and_print_module
+def tileOpControlPacket():
+    t = tile(col=1, row=2, packet_type=3, packet_id=4)
+
+
 # CHECK-LABEL: tileOpAllocationScheme
 # CHECK: aie.tile(2, 2) {allocation_scheme = "basic-sequential"}
 @construct_and_print_module
