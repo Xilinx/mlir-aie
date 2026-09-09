@@ -251,6 +251,11 @@ __attribute__((noinline)) void threshold4Ch_aie(
 
 extern "C" {
 
+#ifndef BIT_WIDTH
+#error                                                                         \
+    "threshold.cc: BIT_WIDTH selects the element type of the exported wrappers and has no safe default. Pass -DBIT_WIDTH=8, 16 or 32."
+#endif
+
 #if BIT_WIDTH == 8
 
 void threshold(uint8_t *img_in, uint8_t *img_out, int32_t thresh_val,
@@ -289,15 +294,14 @@ void threshold4ChLine(uint8_t *in, uint8_t *out, int32_t lineWidth,
 void threshold(int16_t *img_in, int16_t *img_out, int32_t thresh_val,
                int32_t max_val, int32_t img_width, int32_t img_height) {
   threshold_aie<int16_t, 32>(img_in, img_out, img_width, img_height, thresh_val,
-                             max_va, XF_THRESHOLD_TYPE_BINARY);
+                             max_val, XF_THRESHOLD_TYPE_BINARY);
 }
 
 void thresholdTile(int16_t *in, int16_t *out, int32_t tileHeight,
                    int32_t tileWidth, int16_t thresholdValue, int16_t maxValue,
                    uint8_t thresholdType) {
   threshold_aie<int16_t, 32>(in, out, tileWidth, tileHeight, thresholdValue,
-                             maxValue),
-      thresholdType;
+                             maxValue, thresholdType);
 }
 
 void thresholdLine(int16_t *in, int16_t *out, int32_t lineWidth,
@@ -307,7 +311,7 @@ void thresholdLine(int16_t *in, int16_t *out, int32_t lineWidth,
                              thresholdType);
 }
 
-#else // 32
+#elif BIT_WIDTH == 32
 
 void threshold(int32_t *img_in, int32_t *img_out, int32_t thresh_val,
                int32_t max_val, int32_t img_width, int32_t img_height) {
@@ -329,6 +333,9 @@ void thresholdLine(int32_t *in, int32_t *out, int32_t lineWidth,
                              thresholdType);
 }
 
+#else
+#error                                                                         \
+    "threshold.cc: BIT_WIDTH selects the element type of the exported wrappers and has no safe default -- an unset BIT_WIDTH expands to 0 and would silently select the widest branch. Pass -DBIT_WIDTH=8, 16 or 32."
 #endif
 
 } // extern "C"

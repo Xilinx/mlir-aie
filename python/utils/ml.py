@@ -444,7 +444,9 @@ def run_conv_torch_test(
 
     in1 = iron.tensor(ifm_mem_fmt, dtype=dtype_in)
     in2 = iron.tensor(total_wts, dtype=dtype_wts)
-    out_size = int(np.prod(out_shape_in_layout) * dtype_out.itemsize)
+    # zeros() takes a shape in elements, and out is reshaped to
+    # out_shape_in_layout below, so this must not be scaled by itemsize.
+    out_size = int(np.prod(out_shape_in_layout))
     out = iron.zeros(out_size, dtype=dtype_out)
     buffers = [in1, in2, out]
 

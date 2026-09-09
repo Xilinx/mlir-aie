@@ -434,6 +434,12 @@ xilinx::AIE::AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output,
   case AIEArch::AIE2p:
     device = AIE2p_device;
     break;
+  case AIEArch::AIE2ps:
+    // AIE2PS configures the array through a CERT ELF instead of this libxaie
+    // source (see AIE2PSTargetModel). Listed here so that a new AIEArch still
+    // raises -Wswitch.
+    return targetOp.emitOpError(
+        "--aie-generate-xaie is not supported for the AIE2PS architecture");
   }
   output << "  ctx->XAieConfig->AieGen = " << device << ";\n";
   output << "  ctx->XAieConfig->BaseAddr = 0x20000000000;\n";
@@ -463,6 +469,9 @@ xilinx::AIE::AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output,
   //---------------------------------------------------------------------------
   // mlir_aie_configure_cores
   //---------------------------------------------------------------------------
+  // Defined below. configure_cores calls it at its end, once every ELF is
+  // loaded, so a PT_LOAD cannot land on top of an initialized buffer.
+  output << "int mlir_aie_initialize_buffers(" << ctx_p << ");\n";
   output << "int mlir_aie_configure_cores(" << ctx_p << ") {\n";
   // Reset each core.  Load the corresponding ELF file, if necessary.
   for (auto tileOp : targetOp.getOps<TileOp>()) {
@@ -509,6 +518,13 @@ xilinx::AIE::AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output,
       }
     }
   }
+  // __mlir_aie_try assigns to an AieRC, and the generated entry points return
+  // int, which C++ does not convert implicitly.
+  output << "{\n";
+  output << "  int rc = mlir_aie_initialize_buffers(ctx);\n";
+  output << "  if (rc != XAIE_OK)\n";
+  output << "    return rc;\n";
+  output << "}\n";
   output << "return XAIE_OK;\n";
   output << "} // mlir_aie_configure_cores\n\n";
 
@@ -677,6 +693,51 @@ xilinx::AIE::AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output,
   });
   output << "return XAIE_OK;\n";
   output << "} // mlir_aie_initialize_locks\n";
+
+  //---------------------------------------------------------------------------
+  // mlir_aie_initialize_buffers
+  //---------------------------------------------------------------------------
+  // A buffer's initial_value is device state, written by whoever configures
+  // the device: the CDO writer on the NPU path, this function on the simulator
+  // path. This walks every tile, because a memtile buffer has no core and so no
+  // other route. mlir_aie_configure_cores calls this, so a host that already
+  // configures its cores needs no change.
+  output << "int mlir_aie_initialize_buffers(" << ctx_p << ") {\n";
+  auto initBuffersResult = targetOp.walk<WalkOrder::PreOrder>([&](BufferOp
+                                                                      buffer) {
+    auto initialValue = buffer.getInitialValue();
+    if (!initialValue)
+      return WalkResult::advance();
+    auto denseInit = llvm::dyn_cast<DenseElementsAttr>(*initialValue);
+    if (!denseInit)
+      return WalkResult::advance();
+    std::optional<std::vector<char>> bytes = denseAttrToBytes(denseInit);
+    if (!bytes)
+      return WalkResult(buffer.emitOpError(
+          "buffer op type not supported for initialization"));
+    if (!buffer.getAddress())
+      return WalkResult(buffer.emitOpError(
+          "buffer has no address; run --aie-assign-buffer-addresses first"));
+    TileOp tile = buffer.getTileOp();
+    // Emitted as a byte array, so the value lands as data and matches the block
+    // write the CDO path performs.
+    std::string bufName(buffer.name().getValue());
+    output << "{\n";
+    output << "static const unsigned char " << bufName << "_init[] = {";
+    for (size_t i = 0; i < bytes->size(); ++i)
+      output << (i ? "," : "") << (unsigned)(unsigned char)(*bytes)[i];
+    output << "};\n";
+    output << "__mlir_aie_try(XAie_DataMemBlockWrite(" << deviceInstRef << ", "
+           << tileLocStr(tile.colIndex(), tile.rowIndex()) << ", "
+           << "0x" << llvm::utohexstr(*buffer.getAddress()) << ", "
+           << "(void *)" << bufName << "_init, " << bytes->size() << "));\n";
+    output << "}\n";
+    return WalkResult::advance();
+  });
+  if (initBuffersResult.wasInterrupted())
+    return failure();
+  output << "return XAIE_OK;\n";
+  output << "} // mlir_aie_initialize_buffers\n";
 
   //---------------------------------------------------------------------------
   // mlir_aie_configure_switchboxes

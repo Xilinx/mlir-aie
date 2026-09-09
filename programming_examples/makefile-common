@@ -14,7 +14,8 @@ MLIR_AIE_DIR ?= $(shell python3 -c "from aie.utils.config import root_path; prin
 # npu2 the same way our lit tests do.
 devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 
-WARNING_FLAGS = -Wno-parentheses -Wno-attributes -Wno-macro-redefined -Wno-empty-body -Wno-missing-template-arg-list-after-template-kw
+WARNING_FLAGS = -Wno-parentheses -Wno-attributes -Wno-macro-redefined -Wno-empty-body -Wno-missing-template-arg-list-after-template-kw \
+                --system-header-prefix=aie_api/ -Werror=undef
 
 # Pre-trip aie_api's aie_adf.hpp include guard so stock upstream aie_api never
 # pulls in <adf.h> (a Vitis-only header absent from Peano).  No mlir-aie kernel
