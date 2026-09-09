@@ -21,6 +21,7 @@ import argparse
 import sys
 
 import aie.iron as iron
+import aie.iron.kernels as kernels
 import numpy as np
 from aie.helpers.taplib import TensorAccessSequence, TensorTiler2D
 from aie.iron import (
@@ -33,7 +34,6 @@ from aie.iron import (
     StreamDims,
     TaskGroup,
     Worker,
-    kernels,
     str_to_dtype,
 )
 from aie.iron.controlflow import range_
@@ -495,21 +495,15 @@ def _numpy_reference(A_np, B_np, b_col_maj, dtype_out):
     return kernels.mm_ref(A_np, B_logical).astype(dtype_out)
 
 
-def _tolerance(opts) -> tuple[float, float]:
-    """The kernel's own ``(rtol, atol)``, from its contract (unused for exact integer kinds)."""
-    fn = kernels.mm(
+def _kernel(opts):
+    """The matmul kernel the design binds, built the same way, for its contract."""
+    return kernels.mm(
         dim_m=opts.m,
         dim_k=opts.k,
         dim_n=opts.n,
         input_dtype=str_to_dtype(opts.dtype_in),
         output_dtype=str_to_dtype(opts.dtype_out),
         b_col_maj=bool(opts.b_col_maj),
-    )
-    assert fn.contract is not None, "kernels.mm declares a contract"
-    tol = fn.contract.tolerance
-    return (
-        tol.rtol if tol.rtol is not None else 0.0,
-        tol.atol if tol.atol is not None else 0.0,
     )
 
 
@@ -583,14 +577,12 @@ def _run_and_verify(opts):
         actual = C_t.numpy().reshape(opts.M, opts.N)
         expected = expected_logical
 
-    rtol, atol = _tolerance(opts)
     assert_close_with_benchmark(
         actual,
         expected,
         bench=bench,
         ops=2.0 * opts.M * opts.K * opts.N,
-        float_rtol=rtol,
-        float_atol=atol,
+        tolerance=_kernel(opts).contract.tolerance,
         fail_msg="output does not match A @ B",
         mismatch_indices=True,
     )

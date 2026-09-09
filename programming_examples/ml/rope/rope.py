@@ -20,9 +20,10 @@ host-side from ``theta = 10000`` per the canonical RoPE formula.
 import argparse
 
 import aie.iron as iron
+import aie.iron.kernels as kernels
 import numpy as np
 from aie.helpers.taplib import TensorTiler2D
-from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker, kernels
+from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker
 from aie.iron.controlflow import range_
 from aie.utils.hostruntime.argparse import add_compile_args, device_from_args
 from aie.utils.hostruntime.cli import run_design_cli

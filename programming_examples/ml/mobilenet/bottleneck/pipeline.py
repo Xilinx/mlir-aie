@@ -12,11 +12,12 @@ Two module-level builders, dispatched by network_spec.NETWORK:
                           (bn12 only — combines L2 + L3 into one buffer)
 """
 
+import aie.iron.kernels as kernels
 import numpy as np
 from aie.extras.dialects.memref import (  # pyright: ignore[reportMissingImports]
     view as memref_view,
 )
-from aie.iron import Buffer, ObjectFifo, Worker, kernels
+from aie.iron import Buffer, ObjectFifo, Worker
 from aie.iron.algorithms import row_at_a_time, row_at_a_time_with_skip, sliding_3row
 from aie.iron.controlflow import range_
 from aie.iron.device import Tile

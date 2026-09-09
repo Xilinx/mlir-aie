@@ -13,6 +13,7 @@ writes the final C tile to L2.
 import argparse
 
 import aie.iron as iron
+import aie.iron.kernels as kernels
 import numpy as np
 from aie.helpers.taplib import TensorTiler2D
 from aie.iron import (
@@ -27,7 +28,6 @@ from aie.iron import (
     StreamDims,
     TaskGroup,
     Worker,
-    kernels,
     str_to_dtype,
 )
 from aie.iron.controlflow import range_
@@ -82,7 +82,7 @@ def cascade(
     r, s, t = cascade_kernel.mac_dims
     # The (r, s, t) micro-tile transforms for A, B and C: the same derivation
     # every mm.cc design uses, from kernels.mm_stream_dims.
-    dims = kernels.mm_stream_dims(m, k, n, cascade_kernel.mac_dims)
+    dims = kernels.mm_stream_dims(m, k, n, (r, s, t))
 
     assert M % m == 0
     assert K % (k * n_aie_rows) == 0

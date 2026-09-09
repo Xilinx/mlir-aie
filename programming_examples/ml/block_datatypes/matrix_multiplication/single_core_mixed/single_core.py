@@ -13,6 +13,7 @@ kernel is Peano-built.
 import argparse
 
 import aie.iron as iron
+import aie.iron.kernels as kernels
 import numpy as np
 from aie.dialects.aiex import v8bfp16ebs8
 from aie.helpers.taplib.tensortiler2d import TensorTiler2D
@@ -26,7 +27,6 @@ from aie.iron import (
     StreamDims,
     TaskGroup,
     Worker,
-    kernels,
 )
 from aie.iron.controlflow import range_
 from aie.utils.hostruntime.argparse import (

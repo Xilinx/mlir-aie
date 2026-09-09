@@ -12,6 +12,7 @@ tile loop. Strix-only.
 import argparse
 
 import aie.iron as iron
+import aie.iron.kernels as kernels
 import numpy as np
 from aie.dialects.aiex import v8bfp16ebs8
 from aie.iron import (
@@ -23,7 +24,6 @@ from aie.iron import (
     Runtime,
     StreamDims,
     Worker,
-    kernels,
 )
 from aie.utils.hostruntime.argparse import (
     add_compile_args,

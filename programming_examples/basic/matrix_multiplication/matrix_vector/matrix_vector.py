@@ -11,6 +11,7 @@ Default config: ``M=K=288``, kernel tile ``m=k=32``, vectorized mv kernel.
 import argparse
 
 import aie.iron as iron
+import aie.iron.kernels as kernels
 import numpy as np
 from aie.helpers.taplib import TensorTiler2D
 from aie.iron import (
@@ -22,7 +23,6 @@ from aie.iron import (
     Runtime,
     StreamDims,
     Worker,
-    kernels,
 )
 from aie.iron.controlflow import range_
 from aie.utils.benchmark import run_iters

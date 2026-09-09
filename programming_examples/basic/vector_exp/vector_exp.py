@@ -13,8 +13,9 @@ Demonstrates the IRON kernel library's LUT-backed bf16 exp kernel
 import sys
 
 import aie.iron as iron
+import aie.iron.kernels as kernels
 import numpy as np
-from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker, kernels
+from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker
 from aie.iron.controlflow import range_
 from aie.utils.verify import count_mismatches
 from ml_dtypes import bfloat16

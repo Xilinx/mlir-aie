@@ -26,6 +26,7 @@ import argparse
 import sys
 
 import aie.iron as iron
+import aie.iron.kernels as kernels
 import numpy as np
 import torch  # pyright: ignore[reportMissingImports]
 import torch.nn as nn  # pyright: ignore[reportMissingImports]
@@ -39,7 +40,6 @@ from aie.iron import (
     Runtime,
     StreamDims,
     Worker,
-    kernels,
 )
 from aie.iron.controlflow import range_
 from aie.iron.device import Tile

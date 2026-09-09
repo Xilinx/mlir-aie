@@ -24,8 +24,9 @@ Tile placement is either passed explicitly via the placement dict
 (placement=None) to let the SA placer assign tiles at compile time.
 """
 
+import aie.iron.kernels as kernels
 import numpy as np
-from aie.iron import Buffer, ObjectFifo, Worker, kernels
+from aie.iron import Buffer, ObjectFifo, Worker
 from aie.iron.controlflow import range_
 from aie.iron.dataflow.cascadeflow import CascadeFlow
 from aie.iron.device import Tile

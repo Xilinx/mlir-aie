@@ -13,8 +13,9 @@ trip through L3) before re-broadcasting to PostL2 — see the comment near
 Input:  (7,1,80) int8   Output: (1,1,1280) uint16 (post_L2_InC wide)
 """
 
+import aie.iron.kernels as kernels
 import numpy as np
-from aie.iron import ObjectFifo, Worker, kernels
+from aie.iron import ObjectFifo, Worker
 from aie.iron.controlflow import range_
 from aie.iron.dataflow.endpoint import ObjectFifoEndpoint
 from aie.iron.device import AnyMemTile

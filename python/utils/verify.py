@@ -146,6 +146,7 @@ def assert_close_with_benchmark(
     gflops_fmt: str = ".2f",
     float_rtol: float = 0.05,
     float_atol: float = 0.5,
+    tolerance: "Tolerance | None" = None,
     fail_msg: str | None = None,
     mismatch_indices: bool = False,
 ) -> None:
@@ -154,7 +155,9 @@ def assert_close_with_benchmark(
     Wraps the standard matmul/vector_scalar_mul tail in one call.  Picks
     the comparator based on ``expected``'s dtype: integer dtypes use the
     exact compare (``np.array_equal``), float dtypes use the tolerance
-    compare with ``rtol=float_rtol`` / ``atol=float_atol``.
+    compare with ``rtol=float_rtol`` / ``atol=float_atol``. A kernel's own
+    :class:`Tolerance` (``fn.contract.tolerance``) can be passed instead and
+    is judged by :func:`compare`, whatever the dtype.
 
     Args:
         actual: Array-like produced by the kernel under test.
@@ -175,6 +178,8 @@ def assert_close_with_benchmark(
             Defaults match the C++ matmul harness's get_*_tol.
         fail_msg: Optional context appended to the ``FAIL!`` line on
             mismatch.
+        tolerance: The kernel's declared :class:`Tolerance`; when given it
+            replaces the dtype-selected comparator above.
         mismatch_indices: When True (and the integer branch detects a
             mismatch), append the first five mismatch ``np.argwhere``
             indices to the ``FAIL!`` line — useful for matmul-style
@@ -183,7 +188,12 @@ def assert_close_with_benchmark(
     Raises:
         SystemExit: On mismatch (via :func:`assert_pass`).
     """
-    if np.issubdtype(np.asarray(expected).dtype, np.integer):
+    if tolerance is not None:
+        verdict = compare(np.asarray(actual), np.asarray(expected), tolerance)
+        if not verdict:
+            base = "output mismatch" if fail_msg is None else fail_msg
+            sys.exit(f"FAIL! {base}: {verdict.detail}")
+    elif np.issubdtype(np.asarray(expected).dtype, np.integer):
         if mismatch_indices and not bool(np.array_equal(actual, expected)):
             diffs = np.argwhere(np.asarray(actual) != np.asarray(expected))[:5]
             base = "output mismatch" if fail_msg is None else fail_msg

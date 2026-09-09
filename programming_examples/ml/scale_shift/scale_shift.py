@@ -19,6 +19,7 @@ starts the next phase.
 import argparse
 
 import aie.iron as iron
+import aie.iron.kernels as kernels
 import numpy as np
 from aie.helpers.util import np_ndarray_type_get_shape
 from aie.iron import (
@@ -32,7 +33,6 @@ from aie.iron import (
     TaskGroup,
     Worker,
     WorkerRuntimeBarrier,
-    kernels,
 )
 from aie.iron.controlflow import range_
 from aie.utils.hostruntime.argparse import add_compile_args, device_from_args

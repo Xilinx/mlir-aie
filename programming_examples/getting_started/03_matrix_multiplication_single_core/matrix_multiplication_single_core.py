@@ -18,6 +18,7 @@ is decorated.
 """
 
 import aie.iron as iron
+import aie.iron.kernels as kernels
 import numpy as np
 from aie.helpers.taplib import TensorAccessPattern, TensorTiler2D
 from aie.iron import (
@@ -29,7 +30,6 @@ from aie.iron import (
     Runtime,
     TaskGroup,
     Worker,
-    kernels,
 )
 from aie.iron.controlflow import range_
 from aie.utils.verify import assert_pass

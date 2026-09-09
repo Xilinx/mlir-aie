@@ -13,6 +13,7 @@ path; the host harness ingests A and reads back the shuffled C.
 import argparse
 
 import aie.iron as iron
+import aie.iron.kernels as kernels
 import numpy as np
 from aie.dialects.aiex import v8bfp16ebs8
 from aie.iron import (
@@ -23,7 +24,6 @@ from aie.iron import (
     Program,
     Runtime,
     Worker,
-    kernels,
 )
 from aie.utils.hostruntime.argparse import (
     add_compile_args,
