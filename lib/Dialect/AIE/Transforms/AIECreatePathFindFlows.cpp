@@ -480,6 +480,20 @@ struct DmaEndpoints {
   llvm::SmallDenseSet<TileID, 2> producers;
   llvm::SmallDenseSet<TileID, 2> consumers;
 };
+
+/// What a slave port's traffic does at one switchbox. A port carries a single
+/// ordered stream, so a stall at its head holds up every packet behind it
+/// whatever the ID. Arbiter hazards are properties of the port, not of one
+/// flow on it.
+struct PortTraffic {
+  /// Tiles whose DMAs sink traffic this port carries.
+  llvm::SmallDenseSet<TileID, 2> consumers;
+  /// Some flow on this port has yet to leave this switchbox.
+  bool leaves = false;
+  /// Some flow on this port sends packets a receiving DMA takes in more than
+  /// one buffer descriptor.
+  bool spansConsumerBds = false;
+};
 } // namespace
 
 LogicalResult
@@ -503,12 +517,66 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
   DenseSet<PhysPort> ctrlPktOverlayMasterPorts;
   // DMA endpoints of each slave flow, consulted when choosing its arbiter.
   DenseMap<std::pair<PhysPort, int>, DmaEndpoints> slaveFlowDmaEndpoints;
+  // Aggregate of the above over all flows sharing a slave port.
+  DenseMap<PhysPort, PortTraffic> slavePortTraffic;
 
   for (auto tileOp : device.getOps<TileOp>()) {
     int col = tileOp.colIndex();
     int row = tileOp.rowIndex();
     tiles[{col, row}] = tileOp;
   }
+
+  // Largest buffer descriptor each DMA channel issues, in bytes. A channel with
+  // no entry is programmed from outside this module, as a host-driven shim DMA
+  // is, and nothing can be concluded about its transfer sizes.
+  DenseMap<std::pair<TileID, int>, uint64_t> mm2sBdBytes, s2mmBdBytes;
+  auto scanDmaBds = [&](TileID tileId, Region &region) {
+    for (Block &block : region)
+      for (DMAStartOp startOp : block.getOps<DMAStartOp>()) {
+        Block *head = startOp.getDest();
+        if (!head)
+          continue;
+        // The chain reachable from the start block, following aie.next_bd. The
+        // start op's other successor belongs to the next channel and is not
+        // part of this one.
+        uint64_t largest = 0;
+        SmallVector<Block *, 8> work{head};
+        SmallPtrSet<Block *, 8> seen;
+        seen.insert(head);
+        while (!work.empty()) {
+          Block *b = work.pop_back_val();
+          for (DMABDOp bd : b->getOps<DMABDOp>())
+            largest = std::max(largest, bd.getLenInBytes());
+          for (Block *succ : b->getSuccessors())
+            if (seen.insert(succ).second)
+              work.push_back(succ);
+        }
+        if (largest == 0)
+          continue;
+        auto &sizes = startOp.isSend() ? mm2sBdBytes : s2mmBdBytes;
+        uint64_t &slot = sizes[{tileId, startOp.getChannelIndex()}];
+        slot = std::max(slot, largest);
+      }
+  };
+  for (MemOp mem : device.getOps<MemOp>())
+    scanDmaBds(mem.getTileOp().getTileID(), mem->getRegion(0));
+  for (MemTileDMAOp mem : device.getOps<MemTileDMAOp>())
+    scanDmaBds(mem.getTileOp().getTileID(), mem->getRegion(0));
+  for (ShimDMAOp dma : device.getOps<ShimDMAOp>())
+    scanDmaBds(dma.getTileOp().getTileID(), dma->getRegion(0));
+
+  // One send buffer descriptor becomes one packet, delivered under a single
+  // arbiter grant. If the receiving DMA takes it in smaller descriptors, that
+  // grant is held while the consumer works through every one of them. The four
+  // bytes of slack cover the packet header the destination drops.
+  auto spansConsumerBds = [&](TileID srcTile, Port srcPort, TileID destTile,
+                              Port destPort) {
+    auto send = mm2sBdBytes.find({srcTile, srcPort.channel});
+    auto recv = s2mmBdBytes.find({destTile, destPort.channel});
+    if (send == mm2sBdBytes.end() || recv == s2mmBdBytes.end())
+      return false;
+    return send->second > recv->second + 4;
+  };
 
   // The logical model of all the switchboxes.
   std::map<TileID, SmallVector<std::pair<Connect, int>, 8>> switchboxes;
@@ -572,12 +640,18 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
               switchboxes[currTile].push_back({connect, flowID});
             // Keyed by slave port as well as ID, since IDs are reused across
             // unrelated flows.
-            std::pair<PhysPort, int> slaveFlow = {
-                {currTile, {src.bundle, src.channel}}, flowID};
+            PhysPort slavePort = {currTile, {src.bundle, src.channel}};
+            std::pair<PhysPort, int> slaveFlow = {slavePort, flowID};
             if (srcPort.bundle == WireBundle::DMA)
               slaveFlowDmaEndpoints[slaveFlow].producers.insert(srcCoords);
-            if (destPort.bundle == WireBundle::DMA)
+            if (destPort.bundle == WireBundle::DMA) {
               slaveFlowDmaEndpoints[slaveFlow].consumers.insert(destCoords);
+              PortTraffic &traffic = slavePortTraffic[slavePort];
+              traffic.consumers.insert(destCoords);
+              if (srcPort.bundle == WireBundle::DMA &&
+                  spansConsumerBds(srcCoords, srcPort, destCoords, destPort))
+                traffic.spansConsumerBds = true;
+            }
             // Assign "control packet flows" flag per switchbox, based on
             // packet flow op attribute
             auto ctrlPkt = pktFlowOp.getPriorityRoute();
@@ -622,6 +696,16 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
                               << destPort.channel << "\n");
     }
   }
+
+  // A flow still on its way to another tile can be held up by congestion
+  // anywhere downstream. One that ends at a DMA of this tile cannot: the local
+  // DMA drains it.
+  for (const auto *flows : {&packetFlows, &ctrlPacketFlows})
+    for (const auto &[flow, dests] : *flows)
+      if (llvm::any_of(dests, [](const PhysPort &dest) {
+            return dest.second.bundle != WireBundle::DMA;
+          }))
+        slavePortTraffic[flow.first].leaves = true;
 
   // amsel()
   // masterset()
@@ -672,38 +756,34 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
     return llvm::any_of(a, [&](TileID t) { return b.contains(t); });
   };
 
-  // A flow still on its way to another tile can be held up by congestion
-  // anywhere downstream. One that ends at a DMA of this tile cannot: the local
-  // DMA drains it.
-  auto leavesTile = [&](const std::pair<PhysPort, int> &flow) {
-    auto it = packetFlows.find(flow);
-    if (it == packetFlows.end())
-      return false;
-    return llvm::any_of(it->second, [](const PhysPort &dest) {
-      return dest.second.bundle != WireBundle::DMA;
-    });
+  const PortTraffic noTraffic;
+  auto trafficOf = [&](PhysPort port) -> const PortTraffic & {
+    auto it = slavePortTraffic.find(port);
+    return it == slavePortTraffic.end() ? noTraffic : it->second;
   };
 
-  // A flow this tile emits towards another tile's DMA advances only as fast as
-  // the core behind that DMA, so it can hold a grant for an unbounded time.
-  // Shim destinations do not count: they drain to DDR under host control and
-  // are not gated on any core.
-  auto stallsOnConsumer = [&](const std::pair<PhysPort, int> &flow) {
-    if (flow.first.second.bundle != WireBundle::DMA)
-      return false;
-    return llvm::any_of(dmaEndpointsOf(flow).consumers,
-                        [](TileID t) { return t.row != 0; });
+  // A DMA of this tile feeding another tile's DMA advances only as fast as the
+  // far side drains it, so it can hold a grant for an unbounded time. A core
+  // gates on its own compute; a shim DMA gates on the host, whose ordering of
+  // waits this pass cannot see. Neither is self-draining.
+  auto portStalls = [&](PhysPort port) {
+    return port.second.bundle == WireBundle::DMA &&
+           !trafficOf(port).consumers.empty();
   };
 
   // An arbiter holds its grant until tlast, so two slave ports on one arbiter
-  // serialize even on separate master ports. Two ways that deadlocks:
+  // serialize even on separate master ports. Three ways that deadlocks:
   //
-  //  - A flow this tile emits to another tile's DMA stalls whenever that core
-  //    falls behind, and holds the grant while it does. A co-tenant that still
-  //    has to leave this switchbox is then blocked, and the stall propagates
-  //    back to a tile the consumer may itself be waiting on, whether through
-  //    the dataflow or through the control path that reprograms it. Co-tenants
-  //    that end here are safe, since the local DMA drains them regardless.
+  //  - A port whose packets outlast a single receive descriptor holds its grant
+  //    across all of them, so the consumer's whole lock cycle runs inside one
+  //    grant. Nothing may share with it.
+  //  - A DMA of this tile feeding another tile's DMA stalls whenever the far
+  //    side falls behind, and holds the grant while it does. A co-tenant that
+  //    still has to leave this switchbox is then blocked, and the stall
+  //    propagates back to a tile the consumer may itself be waiting on, whether
+  //    through the dataflow, through the control path that reprograms it, or
+  //    through the order in which the host waits on its own transfers.
+  //    Co-tenants that end here are safe, since the local DMA drains them.
   //  - Flow F ends at the tile that produces flow G. Serializing those
   //    deadlocks directly: F stalls on a full buffer while holding the grant
   //    that G needs to drain it.
@@ -713,15 +793,17 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
     if (placed == arbiterSlaveFlows.end())
       return false;
     const DmaEndpoints &f = dmaEndpointsOf(flow);
-    bool flowStalls = stallsOnConsumer(flow);
-    bool flowLeaves = leavesTile(flow);
+    const PortTraffic &fp = trafficOf(flow.first);
+    bool flowStalls = portStalls(flow.first);
     for (const auto &other : placed->second) {
       // One slave port carries one stream, so the flows on it are already
       // serialized by the port and never arbitrate against each other.
       if (other.first == flow.first)
         continue;
-      if ((flowStalls && leavesTile(other)) ||
-          (flowLeaves && stallsOnConsumer(other)))
+      const PortTraffic &gp = trafficOf(other.first);
+      if (fp.spansConsumerBds || gp.spansConsumerBds)
+        return true;
+      if ((flowStalls && gp.leaves) || (fp.leaves && portStalls(other.first)))
         return true;
       const DmaEndpoints &g = dmaEndpointsOf(other);
       if (sharesTile(g.consumers, f.producers) ||
