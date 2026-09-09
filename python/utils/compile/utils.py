@@ -454,6 +454,10 @@ def compile_cxx_core_function(
             "-Wno-attributes",
             "-Wno-macro-redefined",
             "-Wno-empty-body",
+            # aie_api tests capability macros Peano never defines, so -Wundef
+            # is only usable once the vendored headers are treated as system.
+            "--system-header-prefix=aie_api/",
+            "-Werror=undef",
             "-O2",
             "-DNDEBUG",
             # Pre-trip aie_api's aie_adf.hpp include guard so stock upstream
