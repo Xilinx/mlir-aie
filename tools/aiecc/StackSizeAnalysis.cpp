@@ -40,8 +40,9 @@ struct SymbolRanges {
   const Entry *owner(uint64_t addr) const {
     auto it = llvm::upper_bound(
         entries, addr, [](uint64_t a, const Entry &e) { return a < e.addr; });
-    if (it == entries.begin())
+    if (it == entries.begin()) {
       return nullptr;
+    }
     --it;
     return addr < it->addr + it->size ? &*it : nullptr;
   }
@@ -94,9 +95,11 @@ constexpr FallbackFrame fallbackFrames[] = {
 
 std::optional<int64_t> fallbackFrameFor(const Graph &graph, uint64_t addr) {
   llvm::StringRef name = graph.nameOf(addr);
-  for (const FallbackFrame &f : fallbackFrames)
-    if (f.elfFlags == graph.elfFlags && f.symbol == name)
+  for (const FallbackFrame &f : fallbackFrames) {
+    if (f.elfFlags == graph.elfFlags && f.symbol == name) {
       return f.bytes;
+    }
+  }
   return std::nullopt;
 }
 
@@ -124,13 +127,16 @@ SymbolRanges collectRanges(ObjectFile &obj, SymbolRef::Type wanted,
       llvm::consumeError(flags.takeError());
       continue;
     }
-    if (*type != wanted)
+    if (*type != wanted) {
       continue;
+    }
     if (addrByName &&
-        (*flags & (SymbolRef::SF_Global | SymbolRef::SF_Weak)) != 0)
+        (*flags & (SymbolRef::SF_Global | SymbolRef::SF_Weak)) != 0) {
       addrByName->try_emplace(*name, *addr);
-    if (uint64_t size = ELFSymbolRef(sym).getSize())
+    }
+    if (uint64_t size = ELFSymbolRef(sym).getSize()) {
       ranges.entries.push_back({*addr, size, *name});
+    }
   }
   llvm::sort(ranges.entries,
              [](const auto &a, const auto &b) { return a.addr < b.addr; });
@@ -152,8 +158,9 @@ bool readFrameSizes(ObjectFile &obj, SectionRef sec, Graph &graph) {
   const auto *cursor = reinterpret_cast<const uint8_t *>(contents->data());
   const uint8_t *end = cursor + contents->size();
   while (cursor < end) {
-    if (static_cast<size_t>(end - cursor) < addrSize)
+    if (static_cast<size_t>(end - cursor) < addrSize) {
       return false;
+    }
     uint64_t funcAddr =
         addrSize == 8 ? llvm::support::endian::read<uint64_t>(cursor, order)
                       : llvm::support::endian::read<uint32_t>(cursor, order);
@@ -161,16 +168,20 @@ bool readFrameSizes(ObjectFile &obj, SectionRef sec, Graph &graph) {
     unsigned lebLen = 0;
     const char *lebErr = nullptr;
     uint64_t frameSize = llvm::decodeULEB128(cursor, &lebLen, end, &lebErr);
-    if (lebErr || lebLen == 0)
+    if (lebErr || lebLen == 0) {
       return false;
+    }
     cursor += lebLen;
     // A frame size past a signed byte count is malformed. Taking it would wrap
     // negative and undercount the requirement.
-    if (frameSize > static_cast<uint64_t>(std::numeric_limits<int64_t>::max()))
+    if (frameSize >
+        static_cast<uint64_t>(std::numeric_limits<int64_t>::max())) {
       return false;
-    if (const SymbolRanges::Entry *fn = graph.funcs.owner(funcAddr))
+    }
+    if (const SymbolRanges::Entry *fn = graph.funcs.owner(funcAddr)) {
       graph.nodes[fn->addr].frameSize = std::max<int64_t>(
           graph.nodes[fn->addr].frameSize, static_cast<int64_t>(frameSize));
+    }
   }
   return true;
 }
@@ -183,20 +194,24 @@ void addEdge(Graph &graph, const SymbolRanges &data, bool patchedIsText,
   const SymbolRanges::Entry *targetFunc = graph.funcs.startsAt(target);
   if (patchedIsText) {
     const SymbolRanges::Entry *owner = graph.funcs.owner(patched);
-    if (!owner)
+    if (!owner) {
       return;
-    if (targetFunc)
+    }
+    if (targetFunc) {
       graph.nodes[owner->addr].callees.push_back(targetFunc->addr);
-    else if (const SymbolRanges::Entry *targetData = data.owner(target))
+    } else if (const SymbolRanges::Entry *targetData = data.owner(target)) {
       // A data object that a function reads can hold a function-pointer table.
       graph.dataReferences[owner->addr].insert(targetData->addr);
+    }
     return;
   }
   // The address of a function escapes into data, so any function that reads
   // that data may call it.
-  if (targetFunc)
-    if (const SymbolRanges::Entry *owner = data.owner(patched))
+  if (targetFunc) {
+    if (const SymbolRanges::Entry *owner = data.owner(patched)) {
       graph.dataEscapes[owner->addr].push_back(targetFunc->addr);
+    }
+  }
 }
 
 enum class VisitState { Unvisited, InProgress, Done };
@@ -214,31 +229,35 @@ std::optional<int64_t> maxPathFrom(uint64_t sym, const Graph &graph,
   // the walk stops above the internal function that the MLIR declaration
   // cannot name.
   if (auto it = graph.overridesByAddr.find(sym);
-      it != graph.overridesByAddr.end())
+      it != graph.overridesByAddr.end()) {
     return it->second;
+  }
 
-  if (auto it = memo.find(sym); it != memo.end())
+  if (auto it = memo.find(sym); it != memo.end()) {
     return it->second;
+  }
 
   auto nodeIt = graph.nodes.find(sym);
   // A frame the ELF does not report falls back to fallbackFrames. It counts as
   // 0 when that misses too, which makes the total a lower bound. The walk
   // continues either way, so one such function costs only its own frame.
   int64_t frameSize = 0;
-  if (nodeIt != graph.nodes.end() && nodeIt->second.frameSize >= 0)
+  if (nodeIt != graph.nodes.end() && nodeIt->second.frameSize >= 0) {
     frameSize = nodeIt->second.frameSize;
-  else if (auto fallback = fallbackFrameFor(graph, sym))
+  } else if (auto fallback = fallbackFrameFor(graph, sym)) {
     frameSize = *fallback;
-  else
+  } else {
     unmeasured.insert(sym);
+  }
   static const Node emptyNode;
   const Node &node = nodeIt == graph.nodes.end() ? emptyNode : nodeIt->second;
 
   VisitState &st = state[sym];
   if (st == VisitState::InProgress) {
     std::string cycle;
-    for (uint64_t s : pathStack)
+    for (uint64_t s : pathStack) {
       cycle += graph.nameOf(s).str() + " -> ";
+    }
     cycle += graph.nameOf(sym).str();
     error = "recursion detected: " + cycle;
     failureKind = StackRequirementFailure::Cycle;
@@ -251,8 +270,9 @@ std::optional<int64_t> maxPathFrom(uint64_t sym, const Graph &graph,
   for (uint64_t callee : node.callees) {
     auto sub = maxPathFrom(callee, graph, state, memo, pathStack, error,
                            failureKind, unmeasured);
-    if (!sub)
+    if (!sub) {
       return std::nullopt;
+    }
     best = std::max(best, *sub);
   }
   pathStack.pop_back();
@@ -298,12 +318,15 @@ StackRequirementResult xilinx::aiecc::computeStackRequirement(
   Graph graph;
   llvm::StringMap<uint64_t> funcAddrByName;
   graph.funcs = collectRanges(obj, SymbolRef::ST_Function, &funcAddrByName);
-  if (const auto *elf = llvm::dyn_cast<ELFObjectFileBase>(&obj))
+  if (const auto *elf = llvm::dyn_cast<ELFObjectFileBase>(&obj)) {
     graph.elfFlags = elf->getPlatformFlags();
+  }
   SymbolRanges data = collectRanges(obj, SymbolRef::ST_Data);
-  for (const auto &kv : overrides)
-    if (auto it = funcAddrByName.find(kv.first()); it != funcAddrByName.end())
+  for (const auto &kv : overrides) {
+    if (auto it = funcAddrByName.find(kv.first()); it != funcAddrByName.end()) {
       graph.overridesByAddr[it->second] = kv.second;
+    }
+  }
 
   bool complete = true;
   bool sawRelocations = false;
@@ -317,8 +340,9 @@ StackRequirementResult xilinx::aiecc::computeStackRequirement(
       complete &= readFrameSizes(obj, sec, graph);
       continue;
     }
-    if (sec.relocation_begin() == sec.relocation_end())
+    if (sec.relocation_begin() == sec.relocation_end()) {
       continue;
+    }
     sawRelocations = true;
     // A `.rela.X` section holds the relocations that apply to section `X`, so
     // the executability of `X` says whether a relocation patches code or data.
@@ -327,13 +351,15 @@ StackRequirementResult xilinx::aiecc::computeStackRequirement(
       llvm::consumeError(patchedSec.takeError());
       continue;
     }
-    if (*patchedSec == obj.section_end())
+    if (*patchedSec == obj.section_end()) {
       continue;
+    }
     bool patchedIsText = (*patchedSec)->isText();
     for (const RelocationRef &rel : sec.relocations()) {
       symbol_iterator target = rel.getSymbol();
-      if (target == obj.symbol_end())
+      if (target == obj.symbol_end()) {
         continue; // no symbol to attribute this relocation to
+      }
       auto targetAddr = target->getAddress();
       if (!targetAddr) {
         llvm::consumeError(targetAddr.takeError());
@@ -343,11 +369,14 @@ StackRequirementResult xilinx::aiecc::computeStackRequirement(
     }
   }
 
-  for (const auto &ref : graph.dataReferences)
-    for (uint64_t dataAddr : ref.second)
+  for (const auto &ref : graph.dataReferences) {
+    for (uint64_t dataAddr : ref.second) {
       if (auto it = graph.dataEscapes.find(dataAddr);
-          it != graph.dataEscapes.end())
+          it != graph.dataEscapes.end()) {
         llvm::append_range(graph.nodes[ref.first].callees, it->second);
+      }
+    }
+  }
   // A callee list grows from hash-ordered maps. It names one function once per
   // call site and once per function-pointer table. This loop fixes the order of
   // the walk, so the diagnostic names the same path on every run. It also
@@ -359,23 +388,27 @@ StackRequirementResult xilinx::aiecc::computeStackRequirement(
   }
 
   const SymbolRanges::Entry *root = graph.funcs.owner(*entry);
-  if (!root)
+  if (!root) {
     return fail("the linked core '" + elfPath.str() +
                 "' declares no function at its entry point");
+  }
   // Relocations carry every call edge. A link that drops them leaves the graph
   // with no edges. The walk would then report the entry point's own frame as
   // the whole requirement. The chess/BCF link produces such an ELF.
-  if (!sawRelocations)
+  if (!sawRelocations) {
     return fail("the linked core '" + elfPath.str() +
                 "' retains no relocations, so its call graph is unavailable");
+  }
   // The entry point establishes SP. The stack this measures starts there, so
   // the entry point's own frame counts as 0.
   Node &rootNode = graph.nodes[root->addr];
-  if (rootNode.frameSize < 0)
+  if (rootNode.frameSize < 0) {
     rootNode.frameSize = 0;
-  if (!complete)
+  }
+  if (!complete) {
     return fail("the linked core '" + elfPath.str() +
                 "' carries malformed .stack_sizes data");
+  }
 
   llvm::DenseMap<uint64_t, VisitState> state;
   llvm::DenseMap<uint64_t, int64_t> memo;
@@ -385,12 +418,57 @@ StackRequirementResult xilinx::aiecc::computeStackRequirement(
   StackRequirementFailure failureKind = StackRequirementFailure::Unmeasurable;
   auto bytes = maxPathFrom(root->addr, graph, state, memo, pathStack, error,
                            failureKind, unmeasured);
-  if (!bytes)
+  if (!bytes) {
     return {std::nullopt, std::move(error), failureKind};
+  }
 
   StackRequirementResult result{*bytes, {}, failureKind, {}};
-  for (uint64_t addr : unmeasured)
+  for (uint64_t addr : unmeasured) {
     result.unmeasured.push_back(graph.nameOf(addr).str());
+  }
   llvm::sort(result.unmeasured);
   return result;
+}
+
+std::optional<int64_t>
+xilinx::aiecc::measureDataSectionBytes(llvm::StringRef elfPath) {
+  auto binary = llvm::object::createBinary(elfPath);
+  if (!binary) {
+    llvm::consumeError(binary.takeError());
+    return std::nullopt;
+  }
+  auto *obj = llvm::dyn_cast<ObjectFile>(binary->getBinary());
+  if (!obj) {
+    return std::nullopt;
+  }
+  int64_t total = 0;
+  for (const SectionRef &sec : obj->sections()) {
+    auto name = sec.getName();
+    if (!name) {
+      llvm::consumeError(name.takeError());
+      continue;
+    }
+    // The program memory holds .text; only the data regions compete with the
+    // buffers for this tile's data memory.
+    if (!name->starts_with(".data") && !name->starts_with(".rodata") &&
+        !name->starts_with(".bss")) {
+      continue;
+    }
+    total += sec.getSize();
+  }
+  return total;
+}
+
+std::optional<int64_t>
+xilinx::aiecc::parseLinkOverflowBytes(llvm::StringRef log) {
+  size_t pos = log.find("overflowed by ");
+  if (pos == llvm::StringRef::npos) {
+    return std::nullopt;
+  }
+  int64_t bytes = 0;
+  if (log.drop_front(pos + strlen("overflowed by "))
+          .consumeInteger(10, bytes)) {
+    return std::nullopt;
+  }
+  return bytes;
 }
