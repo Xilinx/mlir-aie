@@ -6,8 +6,8 @@ from functools import partial
 from typing import Sequence
 
 import numpy as np
-from aie.utils.tensor_factory import ceildiv
 
+from ..util import ceildiv
 from .tas import TensorAccessSequence
 from .utils import validate_and_clean_sizes_strides, validate_tensor_dims
 
