@@ -27,12 +27,12 @@ from aie.utils import config
 from aie.utils.compile import remarks
 from aie.utils.compile.remarks import (
     StaticReport,
-    workflow_annotations,
     compile_command,
     kernel_builds,
     parse_stderr,
     parse_yaml,
     report_rows,
+    workflow_annotations,
 )
 from aie.utils.hostruntime import set_current_device
 
