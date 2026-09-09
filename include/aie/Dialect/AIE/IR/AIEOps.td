@@ -380,6 +380,14 @@ def AIE_CoreOp
           // Absent when aiecc cannot measure the core.
           OptionalAttr<
               ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>>:$measured_stack_size,
+          // Bytes to set aside for the core's own .data, .rodata and .bss.
+          // Absent (0) leaves the region to the largest remaining contiguous
+          // run after placing all buffers.
+          OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>>:$data_size,
+          // Written by aiecc from the linked ELF. Absent when aiecc cannot
+          // measure the core.
+          OptionalAttr<
+              ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>>:$measured_data_size,
           // Deprecated: attach link_with to func.func declarations instead and
           // run aie-assign-core-link-files to populate link_files.
           OptionalAttr<StrAttr>:$link_with,
@@ -424,10 +432,17 @@ def AIE_CoreOp
     The stack sits directly below the buffers with no clearance, so a `stack_size`
     below the core's use overwrites those buffers. `aiecc` measures the stack this
     core needs, writes it to the `measured_stack_size` attribute, and fails the build
-    when `stack_size` is smaller. `measured_stack_size` stays absent when `aiecc`
-    cannot measure the core. See `programming_guide/core_data_memory.md` for the
-    mechanism, the escape hatches (`--no-measure-stack-size`, `stack_size_override`)
-    and the diagnostics.
+    when `stack_size` is smaller. `aiecc` measures the whole live call chain. That
+    chain starts above the core body: the runtime enters at `__start` (crt0), which
+    calls `_main_init` (crt1), which calls the core body, which calls its kernels.
+    `_main_init` holds a frame that stays live across the whole chain. `aiecc`
+    measures the linked core, so the chain covers crt0 and crt1 too.
+    `measured_stack_size` stays absent when `aiecc` cannot measure the core. The
+    measurement reads the relocations of the linked core, which the Peano link
+    keeps and the chess/BCF link drops, so a `--xbridge` build leaves every core
+    unmeasured. See `programming_guide/core_data_memory.md` for the mechanism, the
+    escape hatches (`--no-measure-stack-size`, `stack_size_override`) and the
+    diagnostics.
 
     This op has an optional `dynamic_objfifo_lowering` attribute, to finely control whether the
     objectfifos in this core should be lowered using the dynamic runtime lowering.
@@ -1648,16 +1663,22 @@ def AIE_BufferOp
       %buf = aie.buffer(%tile33) : memref<256xi64>
     ```
     This operation represents a buffer in tile (3, 3) of 256 elements, each a 64-bit integer.
+
+    `mem_bank` pins the buffer to one memory bank of that tile. The bank-aware
+    allocation scheme treats the pin as a hard constraint and reports an error
+    when the bank cannot hold the buffer. The basic-sequential scheme has no
+    notion of banks and ignores the pin.
+
+    `core_data` marks the extent that holds the core's own .data, .rodata and
+    .bss, which `aie-assign-buffer-addresses` creates from the core's
+    `data_size`. It names no symbol.
   }];
 
-  let arguments = (
-    ins Index:$tile,
-        OptionalAttr<StrAttr>:$sym_name,
-        OptionalAttr<AIEI32Attr>:$address,
-        OptionalAttr<ElementsAttr>:$initial_value,
-        OptionalAttr<AIEI32Attr>:$mem_bank,
-        DefaultValuedAttr<BoolAttr, "true">:$aligned
-  );
+  let arguments = (ins Index:$tile, OptionalAttr<StrAttr>:$sym_name,
+      OptionalAttr<AIEI32Attr>:$address,
+      OptionalAttr<ElementsAttr>:$initial_value,
+      OptionalAttr<AIEI32Attr>:$mem_bank, UnitAttr:$core_data,
+      DefaultValuedAttr<BoolAttr, "true">:$aligned);
 
   let results = (outs AnyMemRef:$buffer);
   let assemblyFormat = [{

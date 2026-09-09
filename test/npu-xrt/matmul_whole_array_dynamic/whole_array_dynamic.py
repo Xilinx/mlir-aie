@@ -300,7 +300,7 @@ def _build_design(
 from aie.iron import CompileTime, In, Out  # noqa: E402
 
 
-@iron.jit(aiecc_flags=["--alloc-scheme=basic-sequential"])
+@iron.jit()
 def whole_array_dynamic(
     A: In,
     B: In,

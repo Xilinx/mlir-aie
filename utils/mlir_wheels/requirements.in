@@ -6,7 +6,7 @@
 setuptools>=84.0.0
 wheel
 ninja!=1.13.0
-cmake==4.4.2
+cmake==4.4.3
 pybind11[global]>=3.1.0
 numpy>=2.4.6,<2.5; python_version == '3.11'
 numpy>=2.5.2; python_version >= '3.12'
