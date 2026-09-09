@@ -597,6 +597,9 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
   const auto &targetModel = AIE::getTargetModel(*this);
   auto addressGranularity = targetModel.getAddressGenGranularity();
 
+  if (getOffsetParameterAttr() && buffer.getElementTypeBitWidth() % 8)
+    return emitOpError("offset_parameter requires a whole-byte element type");
+
   if (getElementTypeBitwidth() > addressGranularity) {
     return emitOpError("Maximum element bit width allowed is ")
            << addressGranularity << "bits. ";

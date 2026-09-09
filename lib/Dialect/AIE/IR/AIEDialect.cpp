@@ -2997,6 +2997,12 @@ llvm::SmallVector<uint32_t> xilinx::AIE::getAssignedBdIds(DmaBody program) {
 }
 
 LogicalResult DMABDOp::verify() {
+  if (getOffsetParameterAttr() &&
+      llvm::cast<BaseMemRefType>(getBuffer().getType())
+              .getElementTypeBitWidth() %
+          8)
+    return emitOpError("offset_parameter requires a whole-byte element type");
+
   // Skip verification of the BDOp outside of mem operations.
   // BDOps may appear elsewhere and subsequent lowerings will place them in the
   // correct mem ops.
