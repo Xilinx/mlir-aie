@@ -17,6 +17,7 @@ import os
 
 import numpy as np
 
+from ..helpers.util import ceildiv as ceildiv
 from .hostruntime.tensor_class import NpuTensor
 
 _logger = logging.getLogger(__name__)
@@ -41,16 +42,14 @@ def _probe_xrt() -> bool:
     """
     global _has_xrt
     if _has_xrt is None:
-        try:
-            import pyxrt  # noqa: F401  # pyright: ignore[reportMissingImports]
+        from .probe import check_bindings
 
-            _has_xrt = True
-        except ImportError as e:
+        check = check_bindings()
+        _has_xrt = bool(check.ok)
+        if not _has_xrt:
             _logger.warning(
-                "Failed to import PyXRT: %s, proceeding without runtime libraries.",
-                e,
+                "Proceeding without NPU runtime libraries: %s", check.detail
             )
-            _has_xrt = False
     return _has_xrt
 
 
@@ -168,11 +167,6 @@ def npu_runtime_folds_ddr_addr_offset() -> bool:
     attribute, so the JIT cache and the compiler always agree on the ABI.
     """
     return DEFAULT_TENSOR_CLASS.FOLDS_DDR_ADDR_OFFSET
-
-
-def ceildiv(a, b):
-    """Ceiling division: smallest integer >= a/b."""
-    return -(a // -b)
 
 
 def tensor(*args, **kwargs):

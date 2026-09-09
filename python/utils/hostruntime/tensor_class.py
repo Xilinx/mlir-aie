@@ -56,6 +56,23 @@ def _as_shape(shape):
     return extents
 
 
+def _unsupported_device_message(cls, device) -> str:
+    """Explain a device rejection, not just report it.
+
+    A class-attribute check can only see the string it rejected, so asking for
+    "npu" from a CPU-only tensor used to surface as a bare "Unsupported device"
+    -- indistinguishable from a typo. The reason the CPU-only class was selected
+    lives in aie.utils.probe; quote it here.
+    """
+    message = f"Unsupported device: {device}"
+    if device != "npu" or "npu" in cls.DEVICES:
+        return message
+    from ..probe import npu_unavailable_reason
+
+    reason = npu_unavailable_reason()
+    return f"{message} ({cls.__name__} is in use: {reason})" if reason else message
+
+
 class _WriteBorrow:
     """The array a write scope hands out, and the record it leaves behind.
 
@@ -256,7 +273,7 @@ class NpuTensor(ABC):
     @device.setter
     def device(self, value):
         if value not in self.__class__.DEVICES:
-            raise ValueError(f"Unsupported device: {value}")
+            raise ValueError(_unsupported_device_message(self.__class__, value))
         start, end = self._extent
         self._coherence().set(start, end, value)
 
@@ -305,7 +322,7 @@ class NpuTensor(ABC):
             device (str, optional): Device string identifier (e.g., 'npu', 'cpu'). Defaults to 'npu'.
         """
         if device not in self.__class__.DEVICES:
-            raise ValueError(f"Unsupported device: {device}")
+            raise ValueError(_unsupported_device_message(self.__class__, device))
         self._initial_device = device
         self.dtype = dtype
 
