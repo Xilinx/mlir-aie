@@ -108,7 +108,7 @@ def _create_lut_kernel(
     flags = compile_flags or []
 
     if arch == "aie2":
-        runtime_dir = Path(config.root_path()) / "aie_runtime_lib" / "AIE2"
+        runtime_dir = Path(config.aie_runtime_lib_dir()) / "AIE2"
         lut_cpp = runtime_dir / "lut_based_ops.cpp"
         include.append(str(runtime_dir))
         source = f'#include "{kernel_path}"\n#include "{lut_cpp}"\n'

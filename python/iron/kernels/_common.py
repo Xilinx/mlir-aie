@@ -218,7 +218,7 @@ def _kernel_source(arch: str, subdir: str, filename: str) -> Path:
     """
     from aie.utils import config
 
-    base = Path(config.cxx_header_path()) / "aie_kernels"
+    base = Path(config.aie_kernels_dir())
     candidate = base / subdir / filename
     if candidate.exists():
         return candidate

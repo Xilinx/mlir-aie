@@ -17,7 +17,13 @@ from aie.iron.kernel import ExternalFunction
 from aie.utils.verify import Tolerance
 from ml_dtypes import bfloat16
 
-from ._common import KernelContract, _declare_dtypes, _default_source_path, _make_extern
+from ._common import (
+    KernelContract,
+    _declare_dtypes,
+    _default_source_path,
+    _detect_arch,
+    _make_extern,
+)
 
 # bf16 results of an fp32 computation, rounded once. Measured on device by
 # test/python/npu/test_kernels_e2e.py with this tolerance.
@@ -156,11 +162,14 @@ def convert_copy(tile_size: int = 1024) -> ExternalFunction:
 
     Raises:
         ValueError: When ``tile_size`` is not a multiple of 16.
+        NotImplementedError: On aie2 (the kernel has not been ported).
     """
     if tile_size % 16 != 0:
         raise ValueError(
             f"convert_copy() tile_size must be a multiple of 16, got {tile_size}."
         )
+    if _detect_arch() != "aie2p":
+        raise NotImplementedError("convert_copy() is only available on aie2p.")
     in_ty = np.ndarray[(tile_size,), np.dtype[np.float32]]
     out_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
     return _make_extern(

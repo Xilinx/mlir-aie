@@ -42,7 +42,10 @@ declare_mlir_python_sources(AIEPythonSources.Utils
     utils/benchmark.py
     utils/bfp.py
     utils/config.py
-    utils/kernel_harness.py
+    utils/kernel_harness/__init__.py
+    utils/kernel_harness/__main__.py
+    utils/kernel_harness/bench.py
+    utils/kernel_harness/cases.py
     utils/tensor_factory.py
     utils/test.py
     utils/ml.py
@@ -75,6 +78,7 @@ declare_mlir_python_sources(AIEPythonSources.Utils
     utils/hostruntime/hsaruntime/hostruntime.py
     utils/hostruntime/hsaruntime/tensor.py
     utils/compile/__init__.py
+    utils/compile/remarks.py
     utils/compile/utils.py
     utils/compile/cache/utils.py
     utils/compile/jit/__init__.py

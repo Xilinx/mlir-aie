@@ -97,7 +97,9 @@ jobs:
           source aie-venv/bin/activate
           export XRT_CONTEXT_CACHE_SIZE=2
           rm -rf "$NPU_CACHE_HOME" && mkdir -p "$NPU_CACHE_HOME"
-          python -m pytest benchmarks/kernels/test_correctness.py -v \
+          # Every case in test/python/npu/kernel_cases.py, under every edge-data
+          # case its contract admits, for three random seeds.
+          python -m pytest test/python/npu/test_kernels_e2e.py -m extensive -v \
             --junitxml=correctness.xml --seeds 3 2>&1 | tee correctness.log
 
       - name: Run kernel benchmarks
@@ -109,7 +111,7 @@ jobs:
           source aie-venv/bin/activate
           export XRT_CONTEXT_CACHE_SIZE=2
           ONLY="${{ github.event.inputs.only }}"
-          python -m benchmarks.kernels.run \
+          python -m aie.utils.kernel_harness --cases test/python/npu/kernel_cases.py \
             --out bench.json --meta meta.json --pmode "$BENCH_PMODE" \
             --warmup 10 --iters 50 \
             ${ONLY:+--only "$ONLY"} 2>&1 | tee bench.log

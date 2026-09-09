@@ -13,9 +13,13 @@ jitter, not just central tendency.
 from __future__ import annotations
 
 import math
+import os
 import statistics
+import subprocess
 import time
 from dataclasses import dataclass, field
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _pkg_version
 from typing import Callable
 
 
@@ -152,3 +156,35 @@ def print_benchmark(result: BenchmarkResult) -> None:
         f"End-to-end   (avg/min/max us): {s.avg_us:.1f} / {s.min_us:.1f} / {s.max_us:.1f}"
         f"   [median {s.median_us:.1f}, MAD {s.mad_us:.1f}, p95 {s.p95_us:.1f}]"
     )
+
+
+def provenance(**extra: str) -> str:
+    """Return a one-line description of what produced a measurement.
+
+    The git commit (``GITHUB_SHA`` or ``git rev-parse HEAD``), the installed
+    ``llvm-aie`` (Peano) and ``mlir_aie`` versions, and any ``extra`` fields
+    (``device="NPU Strix"``, ``pmode="performance"``) as ``key value`` pairs.
+    A benchmark row records it so a number can be traced to a toolchain.
+    """
+
+    def pkg(name: str) -> str:
+        try:
+            return _pkg_version(name)
+        except PackageNotFoundError:
+            return "unknown"
+
+    commit = os.environ.get("GITHUB_SHA")
+    if not commit:
+        try:
+            commit = subprocess.run(
+                ["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=True
+            ).stdout.strip()
+        except (OSError, subprocess.CalledProcessError):
+            commit = "unknown"
+    parts = [
+        f"commit {commit[:10]}",
+        f"peano {pkg('llvm-aie')}",
+        f"mlir_aie {pkg('mlir_aie')}",
+    ]
+    parts += [f"{k} {v}" for k, v in extra.items() if v]
+    return " | ".join(parts)

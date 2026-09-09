@@ -238,7 +238,7 @@ def cxx_core_compile_command(
     """Return the compiler command line that ``compile_cxx_core_function`` runs.
 
     Factored out so tools that want the compiler's *diagnostics* rather than
-    its object -- the Peano remark checks under ``benchmarks/static/`` -- can
+    its object -- the Peano remark checks in ``aie.utils.compile.remarks`` -- can
     run the exact command the library uses (same target triple, warning set,
     defines and section flags) and capture stderr themselves. Building the
     command here and executing it in ``compile_cxx_core_function`` keeps one

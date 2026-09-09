@@ -122,6 +122,29 @@ def nm_path():
     )
 
 
+def aie_kernels_dir():
+    """Return the ``aie_kernels/`` directory the kernel factories compile from.
+
+    The installed tree's copy (``<root>/include/aie_kernels``) unless
+    ``MLIR_AIE_KERNEL_SOURCES`` names a checkout, in which case that
+    checkout's ``aie_kernels/`` is used. The override lets a checked-out
+    kernel source be compiled against an installed wheel, which is how the
+    static kernel checks run on a pull request.
+    """
+    override = os.environ.get("MLIR_AIE_KERNEL_SOURCES")
+    if override:
+        return os.path.join(override, "aie_kernels")
+    return os.path.join(cxx_header_path(), "aie_kernels")
+
+
+def aie_runtime_lib_dir():
+    """Return ``aie_runtime_lib/`` (the LUT sources), honouring ``MLIR_AIE_KERNEL_SOURCES``."""
+    override = os.environ.get("MLIR_AIE_KERNEL_SOURCES")
+    if override:
+        return os.path.join(override, "aie_runtime_lib")
+    return os.path.join(root_path(), "aie_runtime_lib")
+
+
 def cxx_header_path():
     """Return the path to the MLIR-AIE C++ headers."""
     include_dir = os.path.join(root_path(), "include")

@@ -3,20 +3,21 @@
 
 name: Static Kernel Checks (Peano remarks)
 
-# CPU-only. Compiles every library kernel with Peano remark flags, records
-# per-loop II / ZOL / pipelining status, PM bytes, missing-bank loads and
-# dropped-pragma warnings. Runs nightly (which records the baseline) and on
-# PRs that change what gets compiled: the Peano pin, the kernel sources, the
-# factories that pick sources and flags, or this checker. Never gates;
-# comments on same-repo PRs only when a series regressed; nothing on failure.
+# CPU-only. Compiles every library kernel with Peano remark flags
+# (python -m aie.utils.compile.remarks) and records per-loop II and
+# zero-overhead status, program memory, missing-bank loads and dropped-pragma
+# warnings. Runs nightly (which records the baseline) and on PRs that change
+# what gets compiled: the Peano pin, the kernel sources, the factories that
+# pick sources and flags, or the checker. Never gates; comments on same-repo
+# PRs only when a series regressed; nothing on failure.
 #
 # The job installs the published mlir_aie wheel rather than building the PR.
-# The wheel carries its own snapshot of aie_kernels/ and aie_runtime_lib/,
-# so the checker is pointed at the checkout's copies (--source-root), and
-# the checkout's pure-Python aie.iron / aie.utils are copied over the
-# wheel's so factory changes (sources, flags, contracts) are the PR's. A PR
-# that also changes the compiled bindings can fail here until the next
-# wheel; the job is advisory, so that costs nothing but a red check.
+# MLIR_AIE_KERNEL_SOURCES points the factories at the checkout's aie_kernels/
+# and aie_runtime_lib/, and the checkout's pure-Python kernel library, harness
+# and checker are copied over the wheel's so factory changes (sources, flags,
+# contracts) are the PR's. A PR that also changes the compiled bindings can
+# fail here until the next wheel; the job is advisory, so that costs nothing
+# but a red check.
 
 permissions:
   contents: write
@@ -28,11 +29,15 @@ on:
   workflow_dispatch:
   pull_request:
     paths:
-      - utils/peano-requirements.txt   # the Peano pin: the primary trigger
-      - aie_kernels/**                 # what is compiled
-      - aie_runtime_lib/**             # lut_based_ops.cpp behind the aie2 LUT kernels
-      - python/iron/kernels/**         # which source, which flags
-      - benchmarks/**                  # the registry (what is compiled) and this checker
+      - utils/peano-requirements.txt        # the Peano pin: the primary trigger
+      - aie_kernels/**                      # what is compiled
+      - aie_runtime_lib/**                  # lut_based_ops.cpp behind the aie2 LUT kernels
+      - python/iron/kernels/**              # which source, which flags
+      - python/utils/kernel_harness/**      # the designs the compile sweep builds
+      - python/utils/compile/remarks.py     # the checker
+      - test/python/npu/kernel_cases.py     # the case table the compile sweep walks
+      - test/python/test_remarks.py
+      - test/python/test_kernel_bench.py
       - .github/workflows/staticKernelChecks.yml
 
 defaults:
@@ -47,7 +52,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [aie2, aie2p]
+        include:
+          - target: aie2
+            device: npu1
+          - target: aie2p
+            device: npu2
+    env:
+      MLIR_AIE_KERNEL_SOURCES: ${{ github.workspace }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
@@ -69,30 +80,39 @@ jobs:
         # checkout; overlaying whole packages mixes the two (a newer taplib
         # importing from an older aie.utils.__init__ is a circular import).
         # Copy only the files this suite owns, so the checkout's kernels,
-        # contracts, harness and compile recipe run on the wheel's bindings.
+        # contracts, harness and checker run on the wheel's bindings.
         run: |
           site=$(python -c "import aie, os; print(os.path.dirname(aie.__file__))")
           cp python/iron/kernel.py "$site/iron/kernel.py"
           cp -r python/iron/kernels/. "$site/iron/kernels/"
-          cp python/utils/kernel_harness.py python/utils/bfp.py \
-            python/utils/verify.py python/utils/benchmark.py "$site/utils/"
-          cp python/utils/compile/utils.py "$site/utils/compile/utils.py"
-          cp python/utils/config.py "$site/utils/config.py"
+          rm -f "$site/utils/kernel_harness.py"
+          mkdir -p "$site/utils/kernel_harness"
+          cp -r python/utils/kernel_harness/. "$site/utils/kernel_harness/"
+          cp python/utils/bfp.py python/utils/verify.py python/utils/benchmark.py \
+            python/utils/config.py "$site/utils/"
+          cp python/utils/compile/utils.py python/utils/compile/remarks.py "$site/utils/compile/"
+          cp python/utils/hostruntime/hostruntime.py "$site/utils/hostruntime/"
+          cp python/utils/hostruntime/xrtruntime/hostruntime.py \
+            python/utils/hostruntime/xrtruntime/device.py "$site/utils/hostruntime/xrtruntime/"
       - name: Run static analysis
         id: static
         run: |
-          python -m benchmarks.static.run --out static.json --out-pm static-pm.json \
-            --meta static-meta.json --target ${{ matrix.target }} \
-            --source-root "$GITHUB_WORKSPACE" 2>&1 | tee static.log
-      - name: Host-only unit tests
-        run: python -m pytest benchmarks/static benchmarks/kernels/test_run_driver.py -q
-      - name: Compile every registry design through CDO
+          python -m aie.utils.compile.remarks --target ${{ matrix.target }} \
+            --out static.json --out-pm static-pm.json --meta static-meta.json 2>&1 | tee static.log
+      - name: Host-only tests
+        # The remark parser (with one real Peano build), the benchmark driver's
+        # gating with the hardware steps injected, and every contract against
+        # its factory.
+        run: |
+          python -m pytest test/python/test_remarks.py test/python/test_kernel_bench.py \
+            test/python/test_kernel_contracts.py -q
+      - name: Compile every distinct design through CDO
         # The same aiecc pipeline the device runs, minus xclbin packaging
         # (needs XRT). Catches tile sets that overflow core memory and DMA
         # patterns the hardware cannot express, on a host.
-        run: python -m pytest benchmarks/kernels/test_designs_compile.py -q -x
+        run: python -m pytest test/python/npu/test_kernels_compile.py -m extensive -q -x
         env:
-          KERNEL_TEST_ARCH: ${{ matrix.target }}
+          KERNEL_TEST_DEVICE: ${{ matrix.device }}
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         if: always()
         with:
@@ -114,7 +134,7 @@ jobs:
           benchmark-data-dir-path: bench/static/${{ matrix.target }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           auto-push: true
-          # II and counts are integers; any increase is real.
+          # II, ZOL and counts are integers; any increase is real.
           alert-threshold: '101%'
           comment-on-alert: false
           fail-on-alert: false

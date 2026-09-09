@@ -7,6 +7,8 @@ import atexit
 import gc
 import logging
 import os
+import re
+import subprocess
 import time
 import weakref
 from collections import OrderedDict
@@ -16,7 +18,7 @@ from typing import TYPE_CHECKING
 import pyxrt  # pyright: ignore[reportMissingImports]
 
 from ..hostruntime import HostRuntime, HostRuntimeError, KernelHandle, KernelResult
-from .device import acquire_device
+from .device import acquire_device, xrt_smi_path
 
 if TYPE_CHECKING:
     from aie.iron.device import Device
@@ -115,6 +117,28 @@ class XRTHostRuntime(HostRuntime):
                 break
         if not self.npu_str:
             raise RuntimeError(f"Unknown device type: {self._device_type_str}")
+
+    def power_mode(self) -> str:
+        """Return the power mode ``xrt-smi`` reports for this device, or ``"unknown"``.
+
+        Read from ``xrt-smi examine --report platform`` for the device's
+        BDF. Best effort: a missing ``xrt-smi`` or an unexpected report
+        yields ``"unknown"`` rather than an error, since the mode only
+        qualifies a measurement.
+        """
+        try:
+            bdf = self._device.get_info(pyxrt.xrt_info_device.bdf)
+            out = subprocess.run(
+                [xrt_smi_path(), "examine", "-d", bdf, "--report", "platform"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                check=False,
+            ).stdout
+        except Exception:  # noqa: BLE001 - informational only
+            return "unknown"
+        m = re.search(r"(?i)\b(?:performance|power)\s*mode\s*:\s*(\S+)", out)
+        return m.group(1).lower() if m else "unknown"
 
     @classmethod
     def read_insts(cls, insts_path: Path):

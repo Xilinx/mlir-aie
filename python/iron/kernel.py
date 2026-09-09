@@ -537,7 +537,7 @@ class ExternalFunction(Kernel):
         ExternalFunction._instances.add(self)
 
     # Read-only views of the compile recipe. Tooling that inspects or
-    # recompiles a kernel outside the JIT path (e.g. benchmarks/static/) reads
+    # recompiles a kernel outside the JIT path (aie.utils.compile.remarks) reads
     # these rather than the private fields; the JIT itself keeps using the
     # private fields directly.
 
