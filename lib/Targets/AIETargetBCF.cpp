@@ -125,7 +125,7 @@ LogicalResult AIETranslateToBCF(ModuleOp module, raw_ostream &output,
                targetModel.getMemEastBaseAddress(), std::string("east"));
       output << "// end mapping neighbors tile memory\n\n";
 
-      int addressSpaceSize = 0x100000;
+      int addressSpaceSize = targetModel.getCoreDataAddressSpaceSize();
       int dataMemoryEnd = targetModel.getMemEastBaseAddress() +
                           targetModel.getLocalMemorySize();
       output << "_reserved DMb " << utohexstr(dataMemoryEnd) << " "
