@@ -185,7 +185,7 @@ A contract also declares the dtype facts an `arg_types` list leaves out:
 - `acc_dtype` and `reduction`: what the kernel accumulates in and over how
   many terms. `aie.utils.kernel_harness.input_limit` turns them into the
   largest integer input that cannot overflow the accumulator, which is
-  where the harness and the benchmark registry draw their data.
+  where the harness and the case table draw their data.
 - `overflow`: whether an integer result outside the output range wraps,
   saturates, or is undefined (a `to_vector()` in the core's default
   mode). The judge clips or wraps the reference to match, and under
@@ -193,9 +193,12 @@ A contract also declares the dtype facts an `arg_types` list leaves out:
 - `rounding`: how a narrowing rounds (`floor`, `nearest`, `nearest_even`,
   or `unspecified` for an `srs` in the core's default mode, which is why
   some kernels allow one LSB).
+- `rounding_mode`: the core rounding-mode register the kernel needs
+  (`sets_own`, an `aie::rounding_mode` name such as `conv_even`, or
+  `unspecified`); see [Rounding mode](#rounding-mode) below.
 - `nonfinite` and `subnormals`: whether NaN / inf propagate and whether
   subnormal inputs are preserved, flushed (the judge then compares them
-  as zero) or unspecified. The benchmark registry derives each kernel's
+  as zero) or unspecified. The case table derives each kernel's
   edge-data cases from these, so widening what a kernel is fed is a
   contract change.
 - `unsupported`: why the generic harness cannot run this kernel, when it
@@ -314,21 +317,117 @@ A new factory is complete when one line each in two places covers it:
    does (`overflow`) and how a fixed-point shift rounds (`rounding`),
    from the C++ rather than from a guess; a factory with more than one
    dtype lists them in a `.dtypes` table.
-2. **Case.** Add the shapes to time and the edge data the kernel must
-   survive as one `Case(...)` in
-   [`benchmarks/kernels/registry.py`](../benchmarks/kernels/registry.py),
-   and one entry in
-   [`test/python/npu/test_kernels_e2e.py`](../test/python/npu/test_kernels_e2e.py)
-   for the per-PR device smoke test.
+2. **Case.** Add one `Case(...)` to
+   [`test/python/npu/kernel_cases.py`](../test/python/npu/kernel_cases.py):
+   the shape to run and, with `smoke=True`, that it is the kernel's
+   representative shape for the per-PR device test. The same table drives
+   the nightly correctness sweep and the benchmark, so there is nothing
+   else to register.
 
 The host test [`test/python/test_kernel_contracts.py`](../test/python/test_kernel_contracts.py)
 then checks the roles against the real `arg_types()`, the reference's
-arity, and that the harness design lowers to MLIR; the nightly static
-checker (`benchmarks/static`) reports per-loop II, zero-overhead-loop
-status and missing-bank loads from Peano's remarks, which is where to
-look when optimizing. See
-[`benchmarks/kernels/README.md`](../benchmarks/kernels/README.md) for the
-test tiers.
+arity, that the harness design lowers to MLIR, and that `rounding_mode`
+agrees with the source.
+
+## Testing, benchmarking and static checks
+
+Every tier below reads the contract and the case table; none restates
+what a kernel computes.
+
+| Tier | What | Where | When |
+| --- | --- | --- | --- |
+| host | contract vs. factory; design lowers to MLIR | `test/python/test_kernel_contracts.py` | every PR (lit) |
+| host, compile | every distinct design through aiecc to CDO | `test/python/npu/test_kernels_compile.py` (`-m extensive`) | static workflow |
+| device, smoke | the `smoke` cases on random data | `test/python/npu/test_kernels_e2e.py` | every PR on the NPU runners |
+| device, full | every case, every edge-data case, `--seeds` seeds | the same file, `-m extensive` | nightly, before anything is timed |
+| host, static | Peano remarks per kernel build | `python -m aie.utils.compile.remarks` | nightly and kernel or toolchain PRs |
+
+```bash
+pytest test/python/test_kernel_contracts.py                        # host
+pytest test/python/npu/test_kernels_e2e.py -k eltwise              # NPU, smoke
+pytest test/python/npu/test_kernels_e2e.py -m extensive --seeds 3  # NPU, everything
+python -m aie.utils.kernel_harness add mul --out bench.json        # time two kernels
+python -m aie.utils.kernel_harness --cases test/python/npu/kernel_cases.py --out bench.json
+python -m aie.utils.compile.remarks --target aie2p --out static.json
+```
+
+### Data policy
+
+Random data is drawn inside `kernel_harness.input_limit`, which the
+contract's `acc_dtype` and `reduction` fix (over the design's full `K`
+for a matmul), so an edge case exercises the datapath rather than an
+overflow the source leaves undefined. Edge-data cases follow the contract:
+integer kernels get the extremes; float kernels get subnormal and
+NaN/inf data only when `subnormals` / `nonfinite` say what the kernel
+does with them; matmul operands never carry NaN. A kernel that declares
+`overflow="saturate"` or `"wrap"` is judged that way and gets full-range
+data.
+
+### Rounding mode
+
+The core narrows accumulators (an `srs` shift, a bf16 store) in whatever
+mode its rounding-mode register holds, and a fresh core boots in `floor`.
+The contract's `rounding_mode` says what the kernel needs: `sets_own`
+when the source calls `aie::set_rounding` itself (the conv kernels,
+`layer_norm`, `mha`, the aie2p `mm`), an `aie::rounding_mode` name when
+the kernel relies on the design to have set it (the bf16 kernels that
+store from an fp32 accumulator name `conv_even`, the mode numpy's
+reference rounds in), or `unspecified`. A design that uses such a kernel
+calls `kernels.set_rounding(mode)` once before it; the harness does the
+same, so the tests and benchmarks run each kernel in the mode its
+contract was written for.
+
+### What the benchmark records
+
+`python -m aie.utils.kernel_harness` measures a kernel only after it has
+produced a correct result under its declared tolerance; a wrong result
+invalidates the run (exit 3, nothing written). Per case it records core
+`cycles` (trace, median over the run's kernel calls) and
+`cycles_per_kop`, `npu_us` / `e2e_us` from `aie.utils.benchmark`, and
+`compile_s` with the `xclbin`, `insts` and core-ELF sizes of a forced
+rebuild. Preflight reads the device and its power mode through the host
+runtime (`HostRuntime.power_mode()`) and refuses to run outside
+`--pmode`; a bit-exact `passthrough` canary inside a cycle band guards
+the machine. Nightly data goes to `gh-pages:bench/<npu>/` and is graphed
+at `https://xilinx.github.io/mlir-aie/bench/npu2/` (and `npu1`); `cycles`
+and the sizes alert at 3 %, the wall times are advisory, and nothing
+gates a pull request. A Peano-bump PR is compared against the cached
+nightly baseline and gets one comment only if a hard-threshold series
+regressed.
+
+### Static checks
+
+`aie.utils.compile.remarks` compiles every factory build (defaults plus
+each `.dtypes` entry) exactly as the JIT does, with Peano's
+optimization-record flags, and turns the records into per-kernel series:
+each loop's II and whether it is a zero-overhead loop, program memory,
+missing-bank loads and dropped `#pragma`s. The record shapes and the
+regression rules are documented on the module
+([API](../api/kernels.md#static-checks)). A dropped pragma is a
+kernel-source bug and is annotated on the pull request's file and line;
+a kernel that fails to compile is an error annotation. With
+`MLIR_AIE_KERNEL_SOURCES` set to a checkout, the checkout's
+`aie_kernels/` is compiled against an installed wheel, which is how the
+workflow runs on a pull request.
+
+### Kernels the harness cannot run
+
+Five factories carry a contract whose `unsupported` field says why the
+single-Worker harness cannot drive them; their references still say what
+they compute, and `design()` refuses them with that reason:
+
+| Factory | Why |
+| --- | --- |
+| `cascade_mm` | partial sums travel over the cascade stream, which is not an argument |
+| `mm_bfp_shuffle` | a bfp16ebs8 tile through a plain fifo, which the harness samples only as a matmul operand |
+| bf16 `mv` | its signature leads with runtime `m` / `row_offset` scalars; the matvec design drives the int16 `(A, b, c)` form |
+| `mha` | a multi-core attention dataflow with a running softmax |
+| `bn_conv2dk1_relu_xy_pool_padded` | accumulates across calls through its output, one row per `y_index` |
+
+Five `bn_*` cascade halves have no contract at all: a PUT kernel has no
+output argument, so a contract would describe half a computation.
+`test_contract_coverage_is_explicit` pins that list, as it does
+`set_rounding`, which has no data arguments.
 
 ## Related reading
 
