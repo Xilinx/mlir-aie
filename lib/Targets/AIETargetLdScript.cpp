@@ -5,8 +5,12 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "aie/Dialect/AIE/IR/AIECoreMemory.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Targets/AIETargetShared.h"
 #include "aie/Targets/AIETargets.h"
+
+#include <optional>
 
 using namespace mlir;
 using namespace xilinx;
@@ -75,57 +79,43 @@ LogicalResult xilinx::AIE::AIETranslateToLdScript(ModuleOp module,
   collectTiles(targetOp, tiles);
   collectBuffers(targetOp, buffers);
 
-  for (auto tile : targetOp.getOps<TileOp>())
+  for (auto tile : targetOp.getOps<TileOp>()) {
     if (tile.colIndex() == tileCol && tile.rowIndex() == tileRow) {
       TileID srcCoord = {tile.colIndex(), tile.rowIndex()};
+      // The "data" region below holds the sections the core compiler generates
+      // itself (.data, .rodata and .bss) and that nothing places explicitly. It
+      // is one contiguous region, so its size bounds what the core can link,
+      // and the total free memory on the tile does not.
       const auto &targetModel = getTargetModel(tile);
+      MemoryRun dataRun = coreDataRegion(tile, buffers[tiles[srcCoord]]);
 
-      // Figure out how much memory we have left for compiler-generated
-      // sections (.data/.rodata/.bss) that are not explicitly placed; these are
-      // emitted into the "data" region below. Buffers are placed by the
-      // buffer-address allocator, which (in bank-aware mode) can leave the free
-      // space fragmented -- pick the largest free gap across the stack and this
-      // tile's buffers within the tile's local memory.
-      auto core = tile.getCoreOp();
-      int localMemSize = targetModel.getLocalMemorySize();
-
-      // Collect occupied [start, end) intervals in tile-local coordinates: the
-      // stack sits at the bottom of memory, followed by the placed buffers.
-      SmallVector<std::pair<int, int>, 8> occupied;
-      occupied.push_back({0, core.getEffectiveStackSize()});
+      // A pass that adds or moves a buffer after the allocator ran leaves the
+      // region aliasing it, and the core compiler and that buffer would then
+      // write over each other. Report the alias here.
       for (auto buf : buffers[tiles[srcCoord]]) {
-        int bufferBaseAddr = getBufferBaseAddress(buf);
-        int numBytes = buf.getAllocationSize();
-        occupied.push_back({bufferBaseAddr, bufferBaseAddr + numBytes});
-      }
-      std::sort(occupied.begin(), occupied.end());
-
-      // Sweep the intervals to find the largest free gap not covered by any of
-      // them within [0, localMemSize).
-      int bestGapStart = 0;
-      int bestGapLen = 0;
-      int cursor = 0;
-      auto considerGap = [&](int gapStart, int gapEnd) {
-        if (gapEnd - gapStart > bestGapLen) {
-          bestGapLen = gapEnd - gapStart;
-          bestGapStart = gapStart;
+        if (buf.getCoreData() || buf.getAllocationSize() == 0 ||
+            dataRun.size == 0) {
+          continue;
         }
-      };
-      for (auto &iv : occupied) {
-        if (iv.first > cursor)
-          considerGap(cursor, iv.first);
-        cursor = std::max(cursor, iv.second);
+        int64_t bufStart = getBufferBaseAddress(buf);
+        int64_t bufEnd = bufStart + buf.getAllocationSize();
+        if (bufStart < dataRun.end() && dataRun.start < bufEnd) {
+          return tile.emitOpError("data region 0x")
+                 << llvm::utohexstr(dataRun.start) << "-0x"
+                 << llvm::utohexstr(dataRun.end() - 1) << " overlaps buffer '"
+                 << buf.name().getValue() << "' at 0x"
+                 << llvm::utohexstr(bufStart)
+                 << "; the buffer allocator's placement is stale. Re-run "
+                    "--aie-assign-buffer-addresses";
+        }
       }
-      // Trailing gap above the highest occupied address.
-      if (cursor < localMemSize)
-        considerGap(cursor, localMemSize);
 
-      int origin =
-          targetModel.getMemInternalBaseAddress(srcCoord) + bestGapStart;
-      int length = bestGapLen;
       // Was hardcoded to 0x20000 -- eight times the real 0x4000 -- which let
       // an overflowing core link cleanly and fail much later in aie-rt's ELF
       // loader instead of here, at the linker, naming the section.
+      int origin =
+          targetModel.getMemInternalBaseAddress(srcCoord) + dataRun.start;
+      int length = dataRun.size;
       output << R"THESCRIPT(
 MEMORY
 {
@@ -176,9 +166,13 @@ SECTIONS
       auto doBuffer = [&](std::optional<TileID> tile, int offset,
                           const std::string &dir) {
         if (tile) {
-          if (tiles.count(*tile))
-            for (auto buf : buffers[tiles[*tile]])
-              writeLDScriptMap(output, buf, offset);
+          if (tiles.count(*tile)) {
+            for (auto buf : buffers[tiles[*tile]]) {
+              if (!buf.getCoreData()) {
+                writeLDScriptMap(output, buf, offset);
+              }
+            }
+          }
         } else {
           output << "/* No tile with memory exists to the " << dir << ". */\n";
           output << ". = 0x" << llvm::utohexstr(offset) << ";\n";
@@ -193,11 +187,12 @@ SECTIONS
              << ";\n";
       output << "_sp_start_value_DM_stack = .;\n";
 
-      if (auto core = tile.getCoreOp())
+      if (auto core = tile.getCoreOp()) {
         output << ". += 0x" << llvm::utohexstr(core.getEffectiveStackSize())
                << "; /* stack */\n";
-      else
+      } else {
         output << "/* no stack allocated */\n";
+      }
 
       doBuffer(targetModel.getMemSouth(srcCoord),
                targetModel.getMemSouthBaseAddress(), std::string("south"));
@@ -216,8 +211,9 @@ SECTIONS
         // `link_files` holds the ordinary final-link inputs (object files)
         if (auto filesAttr = coreOp.getLinkFiles()) {
           // Canonical path: link_files populated by aie-assign-core-link-files.
-          for (auto f : filesAttr->getAsRange<mlir::StringAttr>())
+          for (auto f : filesAttr->getAsRange<mlir::StringAttr>()) {
             output << "INPUT(" << f.getValue() << ")\n";
+          }
         } else if (auto fileAttr = coreOp.getLinkWith()) {
           // Deprecated fallback: core-level link_with was not migrated by
           // aie-assign-core-link-files (e.g., the pass was not run). It carries
@@ -229,5 +225,6 @@ SECTIONS
                << tile.getRow() << ");\n";
       }
     }
+  }
   return success();
 }
