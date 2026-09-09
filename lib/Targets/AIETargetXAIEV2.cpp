@@ -717,6 +717,9 @@ xilinx::AIE::AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output,
       int arbiter = -1;
       for (auto val : connectOp.getAmsels()) {
         AMSelOp amsel = cast<AMSelOp>(val.getDefiningOp());
+        if (arbiter != -1 && arbiter != amsel.arbiterIndex())
+          return connectOp.emitOpError(
+              "a master port can only be tied to one arbiter");
         arbiter = amsel.arbiterIndex();
         int msel = amsel.getMselValue();
         mask |= (1 << msel);
