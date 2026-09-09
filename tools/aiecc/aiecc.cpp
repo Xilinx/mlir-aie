@@ -71,6 +71,34 @@ using namespace xilinx::aiecc::cli;
 
 namespace {
 
+// Apply the process-wide parallelism cap only when the command line did not
+// select one explicitly. Keep the accepted syntax identical to -j: an
+// unsigned decimal value, including 0 for hardware auto-detection.
+bool applyJobsEnvironment() {
+  if (numThreads.getNumOccurrences() != 0)
+    return true;
+
+  const char *env = std::getenv("AIECC_JOBS");
+  if (!env)
+    return true;
+
+  llvm::StringRef value(env);
+  bool decimal = !value.empty();
+  for (char c : value)
+    decimal &= c >= '0' && c <= '9';
+
+  unsigned jobs = 0;
+  if (!decimal || value.getAsInteger(10, jobs)) {
+    llvm::errs() << "aiecc: invalid AIECC_JOBS value '" << value
+                 << "': expected a non-negative integer that fits in an "
+                    "unsigned value\n";
+    return false;
+  }
+
+  numThreads = jobs;
+  return true;
+}
+
 //===----------------------------------------------------------------------===//
 // Shared subgraphs
 //===----------------------------------------------------------------------===//
@@ -1782,6 +1810,9 @@ int main(int argc, char **argv) {
     printVersion(llvm::outs());
     return 0;
   }
+
+  if (!applyJobsEnvironment())
+    return 1;
 
   // Resolve inter-option coupling once, up front: the Chess/Peano toolchain
   // selection (xchesscc/xbridge), the --get-aiesim implication, and the
