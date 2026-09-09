@@ -22,6 +22,7 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/MathExtras.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <optional>
 
@@ -574,9 +575,9 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
   for (ShimDMAOp dma : device.getOps<ShimDMAOp>())
     scanDmaBds(dma.getTileOp().getTileID(), dma->getRegion(0));
 
-  // The stream packet header the destination drops when keep_pkt_header is
-  // unset, and the only reason a send and a receive descriptor that describe
-  // the same transfer differ in length.
+  // The stream packet header, the only reason a send and a receive descriptor
+  // for the same transfer differ in length. Under keep_pkt_header the
+  // destination stores it too and the two lengths match.
   constexpr uint64_t packetHeaderBytes = 4;
 
   // One send buffer descriptor becomes one packet, delivered under a single
@@ -592,12 +593,13 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
   // chains descriptor by descriptor is the accurate answer and is left for
   // later; the size mismatch this misses has not been observed to hang.
   auto sendSpansReceiveBds = [&](TileID srcTile, Port srcPort, TileID destTile,
-                                 Port destPort) {
+                                 Port destPort, bool keepsPktHeader) {
     auto send = mm2sBdBytes.find({srcTile, srcPort.channel});
     auto recv = s2mmBdBytes.find({destTile, destPort.channel});
     if (send == mm2sBdBytes.end() || recv == s2mmBdBytes.end())
       return false;
-    return send->second > recv->second + packetHeaderBytes;
+    uint64_t slack = keepsPktHeader ? 0 : packetHeaderBytes;
+    return send->second > recv->second + slack;
   };
 
   // The logical model of all the switchboxes.
@@ -671,7 +673,8 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
               PortTraffic &traffic = slavePortTraffic[slavePort];
               traffic.feedsDma = true;
               if (srcPort.bundle == WireBundle::DMA &&
-                  sendSpansReceiveBds(srcCoords, srcPort, destCoords, destPort))
+                  sendSpansReceiveBds(srcCoords, srcPort, destCoords, destPort,
+                                      keep.value_or(false)))
                 traffic.spansConsumerBds = true;
             }
             // Assign "control packet flows" flag per switchbox, based on
