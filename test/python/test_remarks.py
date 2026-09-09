@@ -125,6 +125,13 @@ def _aie2p_device():
     set_current_device(None)
 
 
+def _peano_available() -> bool:
+    try:
+        return os.path.isfile(config.peano_cxx_path())
+    except RuntimeError:
+        return False
+
+
 # --------------------------------------------------------------------------
 # parser
 # --------------------------------------------------------------------------
@@ -267,6 +274,7 @@ def test_kernel_builds_cover_every_factory_once():
     assert all(not ef.use_chess for ef in builds.values())
 
 
+@pytest.mark.skipif(not _peano_available(), reason="needs an installed Peano")
 def test_compile_command_uses_the_kernels_own_directory(tmp_path):
     ef = kernels.scale()
     cmd, yaml_out = compile_command(ef, "aie2p", tmp_path)
@@ -276,6 +284,7 @@ def test_compile_command_uses_the_kernels_own_directory(tmp_path):
     assert any(flag.startswith("-Rpass=") for flag in cmd)
 
 
+@pytest.mark.skipif(not _peano_available(), reason="needs an installed Peano")
 def test_inline_source_kernels_are_written_out_first(tmp_path):
     set_current_device(None)
     from aie.iron.device import NPU1Col1
@@ -313,13 +322,6 @@ def test_chess_kernels_are_refused(tmp_path):
 # --------------------------------------------------------------------------
 # the real compiler
 # --------------------------------------------------------------------------
-
-
-def _peano_available() -> bool:
-    try:
-        return os.path.isfile(config.peano_cxx_path())
-    except RuntimeError:
-        return False
 
 
 @pytest.mark.skipif(not _peano_available(), reason="needs an installed Peano")

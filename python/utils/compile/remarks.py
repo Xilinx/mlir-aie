@@ -22,7 +22,7 @@ not LLVM's documented ones):
 
 | Pass | Kind / Name | Args | Tracked as |
 | --- | --- | --- | --- |
-| ``pipeliner`` | ``Passed`` / ``schedule`` | ``II``, ``NS``, ``Loop``, ``Pipeliner``, prologue/epilogue bundles | ``loop/<fn>/<bb>/II``, with the rest as hover text |
+| ``pipeliner`` | ``Passed`` / ``schedule`` | ``II``, ``NS``, ``Loop``, ``Pipeliner``, prologue/epilogue bundles | ``loop/<fn>/<bb>/II`` (rest as hover text) |
 | ``pipeliner`` | ``Missed`` / ``canPipelineLoop`` | "Failed to pipeline loop"; located by ``DebugLoc`` only | ``unpipelined_loops`` (keyed ``L<line>``) |
 | ``pipeliner`` | ``Analysis`` / ``schedule`` | ``MII``, ``SwpMaxMii``, "Unable to find schedule" | ``schedule_notes`` in the meta file |
 | ``aie-hardware-loops`` | ``Analysis`` / ``analysis`` | ``BasicBlock``, ``Zero-Overhead-Loop`` | ``non_zol_loops``, and ``loop/<fn>/<bb>/not_zol`` per loop |

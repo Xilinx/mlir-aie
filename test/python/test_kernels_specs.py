@@ -430,10 +430,11 @@ KERNEL_SPECS: list[KernelSpec] = [
         expected_name="addWeightedLine",
         name_variants=[
             (dict(line_width=1920, dtype=np.int16), "addWeightedLine"),
-            (dict(line_width=1920, dtype=np.int32), "addWeightedLine"),
         ],
         invalid_kwargs=[
             (dict(line_width=1920, dtype=np.float32), "unsupported dtype"),
+            # addWeighted.cc's int32 branch has no int32 x int16 MAC and never compiled.
+            (dict(line_width=1920, dtype=np.int32), "no int32 build"),
         ],
         shape_checks=[(dict(line_width=640, dtype=np.uint8), 0, (640,))],
     ),
