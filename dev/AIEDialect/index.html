@@ -11284,6 +11284,13 @@ At its usage sites, the abstract BD chain will be concretized with the given inp
 <a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>  %buf = aie.buffer(%tile33) : memref&lt;256xi64&gt;
 </code></pre></div>
 This operation represents a buffer in tile (3, 3) of 256 elements, each a 64-bit integer.</p>
+<p><code>mem_bank</code> pins the buffer to one memory bank of that tile. The bank-aware
+allocation scheme treats the pin as a hard constraint and reports an error
+when the bank cannot hold the buffer. The basic-sequential scheme has no
+notion of banks and ignores the pin.</p>
+<p><code>core_data</code> marks the extent that holds the core's own .data, .rodata and
+.bss, which <code>aie-assign-buffer-addresses</code> creates from the core's
+<code>data_size</code>. It names no symbol.</p>
 <p>Interfaces: <code>BufferLike</code>, <code>OpAsmOpInterface</code>, <code>TileElement</code></p>
 <h4 id="attributes_2">Attributes:<a class="headerlink" href="#attributes_2" title="Permanent link">&para;</a></h4>
 <table>
@@ -11292,6 +11299,7 @@ This operation represents a buffer in tile (3, 3) of 256 elements, each a 64-bit
 <tr><td><code>address</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 <tr><td><code>initial_value</code></td><td>::mlir::ElementsAttr</td><td>constant vector/tensor attribute</td></tr>
 <tr><td><code>mem_bank</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>core_data</code></td><td>::mlir::UnitAttr</td><td>unit attribute</td></tr>
 <tr><td><code>aligned</code></td><td>::mlir::BoolAttr</td><td>bool attribute</td></tr>
 </table>
 
@@ -11512,6 +11520,8 @@ removed).  Specifying both <code>link_with</code> and either <code>link_files</c
 <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
 <tr><td><code>stack_size</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 1</td></tr>
 <tr><td><code>measured_stack_size</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0</td></tr>
+<tr><td><code>data_size</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0</td></tr>
+<tr><td><code>measured_data_size</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0</td></tr>
 <tr><td><code>link_with</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
 <tr><td><code>link_files</code></td><td>::mlir::ArrayAttr</td><td>string array attribute</td></tr>
 <tr><td><code>link_merge_files</code></td><td>::mlir::ArrayAttr</td><td>string array attribute</td></tr>

@@ -3539,6 +3539,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#-aie-prepare-buffers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        -aie-prepare-buffers
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#-aie-standard-lowering" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -4358,6 +4369,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#-aie-prepare-buffers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        -aie-prepare-buffers
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#-aie-standard-lowering" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -4546,6 +4568,10 @@ aie.buffer operations without an address.  This pass determines
 updates each aie.buffer operation without an address to have a
 well-defined address.  This enables later passes to have a
 consistent view of the memory map of a system.</p>
+<p>A core that declares <code>data_size</code> also gets an aie.buffer marked <code>core_data</code>,
+covering the bytes its own .data, .rodata and .bss occupy. The pass places
+that buffer with the rest, and AIETargetLdScript emits its extent as the
+<code>data</code> MEMORY region of the core's linker script.</p>
 <h4 id="options">Options<a class="headerlink" href="#options" title="Permanent link">&para;</a></h4>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>-alloc-scheme : Select allocation scheme: basic-sequential or bank-aware. Default is bank-aware, falling back to basic-sequential if it fails.
 </code></pre></div>
@@ -4806,6 +4832,14 @@ to one aie.tile.</p>
 <a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>-merge-logical-tiles : When true (default), allow multiple non-core (ShimNOCTile / MemTile) aie.logical_tile ops to share one physical aie.tile if combined DMA channel demand fits. When false, each non-core aie.logical_tile is pinned to its own physical tile. CoreTile placement is unaffected.
 <a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>-sa-seed             : Random seed for SA placer (0 = non-deterministic).
 </code></pre></div>
+<h3 id="-aie-prepare-buffers"><code>-aie-prepare-buffers</code><a class="headerlink" href="#-aie-prepare-buffers" title="Permanent link">&para;</a></h3>
+<p><em>Check buffer placement and give every buffer a name</em></p>
+<p>Settles everything about a buffer that the core compilation depends on,
+except the buffer's address.</p>
+<p>A buffer's name becomes a symbol in the core's object, so the name must
+exist before the core is lowered. This pass names every unnamed buffer and
+checks buffer placement, which rejects a malformed design before any core
+is compiled.</p>
 <h3 id="-aie-standard-lowering"><code>-aie-standard-lowering</code><a class="headerlink" href="#-aie-standard-lowering" title="Permanent link">&para;</a></h3>
 <p><em>Lowering operations in AIE cores' regions to Standard</em></p>
 <p>Outline code inside AIE.core operations into the llvm dialect.

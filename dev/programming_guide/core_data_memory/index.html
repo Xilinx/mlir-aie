@@ -2245,6 +2245,45 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#the-cores-own-sections-data_size" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The core's own sections: data_size
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The core&#39;s own sections: data_size">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#measured_data_size" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        measured_data_size
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cores-built-ahead-of-time" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cores built ahead of time
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#escape-hatches-and-allocation-control" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3566,6 +3605,45 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#the-cores-own-sections-data_size" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The core's own sections: data_size
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The core&#39;s own sections: data_size">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#measured_data_size" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        measured_data_size
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cores-built-ahead-of-time" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cores built ahead of time
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#escape-hatches-and-allocation-control" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3692,19 +3770,17 @@ for example. Three things share that block:</p>
   runs on the core, including its kernels.</li>
 </ul>
 <p>The buffer allocator places the <code>aie.buffer</code>s above the stack reservation. The
-core compiler, Peano or Chess, then places the core's own sections into the
-memory that the buffers leave free. Buffer placement therefore decides whether
-the core links.</p>
-<p>This page covers the <strong>stack</strong> region: how the compiler measures a core's
-stack requirement, which attributes and flags control that measurement, and
-what to do when a diagnostic fires. A separate mechanism reserves and checks
-the core's own compiled sections.</p>
-<p>One rule governs the whole check: <em>the compiler measures and reports, you
-declare and rebuild.</em> <code>aiecc</code> never writes <code>stack_size</code>. A value you set
-explicitly, an explicit <code>0</code> included, stays as you wrote it, and a core that
-leaves <code>stack_size</code> absent keeps the target default. When the measured
-requirement exceeds the declared value, the build reports the number to set
-and stops.</p>
+core compiler, Peano or Chess, then places the core's own sections into one
+contiguous run that the buffers leave. Buffer placement therefore governs
+whether the core links.</p>
+<p>This page covers the <strong>stack</strong> and the <strong>core's own sections</strong>: how each is
+sized, which attributes and flags control them, and what to do when a
+diagnostic fires.</p>
+<p>One rule governs both checks: <em>the compiler measures and reports, you declare
+and rebuild.</em> <code>aiecc</code> never writes <code>stack_size</code> or <code>data_size</code>. A value you set
+explicitly, an explicit <code>0</code> included, stays as you wrote it. When the measured
+requirement exceeds the declared value, the build reports the number to set and
+stops.</p>
 <h2 id="the-stack-stack_size">The stack: <code>stack_size</code><a class="headerlink" href="#the-stack-stack_size" title="Permanent link">&para;</a></h2>
 <p><code>stack_size</code> is a per-core attribute on <code>aie.core</code>. A core that leaves it
 absent uses the target default from
@@ -3759,11 +3835,64 @@ one, even when it is smaller. An explicit <code>0</code> is legal.</p>
 <a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="n">ExternalFunction</span><span class="p">(</span><span class="s2">&quot;my_kernel&quot;</span><span class="p">,</span> <span class="o">...</span><span class="p">,</span> <span class="n">stack_size_override</span><span class="o">=</span><span class="mi">4096</span><span class="p">)</span>
 <a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="n">external_func</span><span class="p">(</span><span class="s2">&quot;my_kernel&quot;</span><span class="p">,</span> <span class="o">...</span><span class="p">,</span> <span class="n">stack_size_override</span><span class="o">=</span><span class="mi">4096</span><span class="p">)</span>
 </code></pre></div>
+<h2 id="the-cores-own-sections-data_size">The core's own sections: <code>data_size</code><a class="headerlink" href="#the-cores-own-sections-data_size" title="Permanent link">&para;</a></h2>
+<p><code>.data</code>, <code>.rodata</code> and <code>.bss</code> do not go wherever there is room. The generated
+linker script grants the core compiler exactly <strong>one</strong> contiguous region, so the
+number that matters is the largest single free run on the tile, not the total
+free memory.</p>
+<p><code>data_size</code> is a per-core attribute that reserves that run:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>aie.core(%tile_0_2) { ... } {data_size = 8192 : i32}
+</code></pre></div>
+<p><code>aie-assign-buffer-addresses</code> turns the reservation into an <code>aie.buffer</code> marked
+<code>core_data</code> and places it alongside the tile's other buffers:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>%core_data_0_2 = aie.buffer(%tile_0_2) {address = 49152 : i32, core_data, sym_name = &quot;core_data_0_2&quot;} : memref&lt;8192xi8&gt;
+</code></pre></div>
+<p><code>aie-translate</code> emits that buffer's extent as the <code>data</code> MEMORY region of the
+linker script. The buffer names no symbol, so nothing else refers to it.</p>
+<p>Reserving costs nothing when the tile has room, and it improves placement. The
+allocator packs the buffers around a declared reservation, and a packing that
+leaves 8192 contiguous bytes often exists where the unconstrained placement
+leaves two runs of 4096. A reservation the allocator cannot satisfy fails buffer
+allocation and names the core.</p>
+<p>A core that leaves <code>data_size</code> absent gets whatever contiguous run the buffers
+leave. That is enough for most cores, until a link reports the <code>data</code> region
+overflowing.</p>
+<p>The allocator caps the leftover run it aims for. Free space beyond the bytes
+still to place serves nothing, so the ranking counts a run only up to that
+amount. Within the cap it prefers layouts that spread buffers across banks,
+which limits DMA contention.</p>
+<h3 id="measured_data_size"><code>measured_data_size</code><a class="headerlink" href="#measured_data_size" title="Permanent link">&para;</a></h3>
+<p><code>aiecc</code> counts the allocated <code>.data</code>, <code>.rodata</code> and <code>.bss</code> of each <strong>linked core
+ELF</strong> and writes the total to <code>measured_data_size</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>aie.core(%tile_0_2) { ... } {data_size = 8192 : i32, measured_data_size = 6144 : i32}
+</code></pre></div>
+<p>The count comes from the linked ELF because <code>--gc-sections</code> runs during the
+link. A kernel header that defines a large lookup table no code reads adds to
+the object files and drops out of the ELF. A count taken from the objects would
+reject designs that fit.</p>
+<p>Pass <code>--get=measured_stack_sizes.mlir</code> to dump the module carrying both measured
+attributes. A <code>data_size</code> below <code>measured_data_size</code> fails the build and reports
+the number to set.</p>
+<h3 id="cores-built-ahead-of-time">Cores built ahead of time<a class="headerlink" href="#cores-built-ahead-of-time" title="Permanent link">&para;</a></h3>
+<p>A core that carries an <code>elf_file</code> attribute comes linked, and its <code>.data</code> and
+<code>.bss</code> sit at the addresses that link chose. <code>aiecc</code> reads nothing back out of
+that ELF, so nothing tells the buffer allocator which bytes of the tile the ELF
+holds, and a buffer can land on top of them.</p>
+<p><code>data_size</code> does not express this. It is a size, and what the ELF needs
+is a specific range. Declare that range as a buffer at a fixed address on the
+same tile:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>%prebaked = aie.buffer(%tile_0_3) {sym_name = &quot;prebaked_data&quot;, address = 8192 : i32} : memref&lt;4096xi8&gt;
+</code></pre></div>
+<p>The allocator treats a fixed-address buffer as occupied space, keeps every
+buffer it places clear of it, reports a collision against it by name, and lists
+it in the memory map when a tile runs out of room.</p>
+<p>With <code>--xchesscc</code>/<code>--xbridge</code>, <code>aiecc</code> compiles and links an <code>elf_file</code> core, so
+that core gets a <code>data</code> region like any other.</p>
 <h2 id="escape-hatches-and-allocation-control">Escape hatches and allocation control<a class="headerlink" href="#escape-hatches-and-allocation-control" title="Permanent link">&para;</a></h2>
-<p>One flag disables the check, for a build that has to skip it and for debugging
-the analysis:</p>
+<p>One flag disables a measurement, for a build that has to skip it and for
+debugging the analysis:</p>
 <ul>
-<li><strong><code>--no-measure-stack-size</code></strong> drops the measurement and the check, so no
+<li><strong><code>--no-measure-stack-size</code></strong> drops the stack measurement and its check, so no
   <code>measured_stack_size</code> reaches the IR.</li>
 </ul>
 <p>A design-wide stand-in for the built-in default covers any core that leaves
@@ -3778,13 +3907,18 @@ the analysis:</p>
 <p>Separate flags control the allocation strategy:</p>
 <ul>
 <li><strong><code>--alloc-scheme=&lt;basic-sequential|bank-aware&gt;</code></strong> picks the scheme for the
-  whole design. Without it, the allocator runs bank-aware first, which spreads
-  buffers across banks to limit DMA contention, and falls back to
-  basic-sequential when bank-aware runs out of memory.</li>
+  whole design. Without it, the allocator runs bank-aware first and falls back
+  to basic-sequential when bank-aware runs out of memory. Bank-aware spreads
+  buffers across banks to limit DMA contention, up to the point where the spread
+  costs a core the contiguous run it still needs.</li>
 <li>The per-tile <strong><code>allocation_scheme</code></strong> attribute picks the scheme for one tile
   and overrides <code>--alloc-scheme</code> there. IRON spells it
-  <code>Worker(allocation_scheme="basic-sequential")</code>. <code>Buffer(mem_bank=...)</code>
-  requests a bank per buffer.</li>
+  <code>Worker(allocation_scheme="basic-sequential")</code>.</li>
+<li><strong><code>Buffer(mem_bank=...)</code></strong> pins a buffer to a bank. Under bank-aware the pin
+  is a hard constraint: the allocator reports an error when the bank cannot
+  hold the buffer. Basic-sequential has no notion of banks, ignores the pin and
+  warns that it dropped it, so a design that depends on <code>mem_bank</code> must not
+  select that scheme.</li>
 </ul>
 <h2 id="what-to-do-when-you-hit-a-diagnostic">What to do when you hit a diagnostic<a class="headerlink" href="#what-to-do-when-you-hit-a-diagnostic" title="Permanent link">&para;</a></h2>
 <p><strong><code>cannot determine this core's stack requirement: ...</code> (error).</strong> The call
@@ -3814,6 +3948,27 @@ requirement. Increase it to <code>N</code> and rebuild.</p>
 <p>At this point the requirement is known, and <code>--no-measure-stack-size</code> silences a
 proven overflow. Reach for it only when you believe the measurement itself is
 wrong, and please file an issue in that case.</p>
+<p><strong><code>section '.bss' will not fit in region 'data'</code> from the linker, followed by
+<code>core X needs space for N bytes of static data</code>.</strong> The core's own sections do
+not fit the run left for them. <code>aiecc</code> adds the linker's shortfall to the size
+of the region to state <code>N</code>, the number to reserve. Set <code>data_size = N</code> on the
+core, or <code>Worker(data_size=N)</code> in IRON, and rebuild: the allocator then packs
+the tile's buffers around the reservation. Shrinking or moving buffers, or
+lowering <code>stack_size</code>, frees the bytes when <code>N</code> does not fit.</p>
+<p><strong><code>will not fit in region 'program'</code>, followed by <code>this core's code exceeds
+the tile's program memory</code>.</strong> Program memory is fixed and the region covers all
+of it, so only the code can shrink. Split the work across more cores, remove
+unused kernels from <code>link_files</code>, or lower the optimization level.</p>
+<p><strong><code>data_size M is smaller than the N bytes this core's linked sections occupy</code>
+(error).</strong> <code>aiecc</code> measured the linked ELF and the reservation does not cover
+it. Set <code>data_size = N</code> and rebuild.</p>
+<p><strong><code>bank-aware allocation failed. Core (X, Y) reserves N bytes for its static
+data</code> (error).</strong> The tile cannot hold its buffers and the reservation together.
+The message lists the tile's memory map. Lower <code>data_size</code>, or shrink or move
+the buffers.</p>
+<p><strong><code>basic-sequential allocation ignores mem_bank; dropping the pin on: "b"</code>
+(warning).</strong> That scheme has no notion of banks. Either remove the <code>mem_bank</code>
+request or let the tile use bank-aware allocation.</p>
 
 
 

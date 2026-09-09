@@ -8048,11 +8048,12 @@ in the compilation pipeline converts them to aie.tile ops.</p>
 <a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">tile</span><span class="p">:</span> <span class="n"><span title="iron.device.Tile">Tile</span></span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="n"><span title="iron.device.AnyComputeTile">AnyComputeTile</span></span><span class="p">,</span>
 <a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="n">while_true</span><span class="p">:</span> <span class="n"><span title="bool">bool</span></span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
 <a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    <span class="n">stack_size</span><span class="p">:</span> <span class="n"><span title="int">int</span></span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    <span class="n">allocation_scheme</span><span class="p">:</span> <span class="n"><span title="str">str</span></span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    <span class="n">trace</span><span class="p">:</span> <span class="n"><span title="int">int</span></span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>    <span class="n">trace_events</span><span class="p">:</span> <span class="n"><span title="list">list</span></span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>    <span class="n">dynamic_objfifo_lowering</span><span class="p">:</span> <span class="n"><span title="bool">bool</span></span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="p">)</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    <span class="n">data_size</span><span class="p">:</span> <span class="n"><span title="int">int</span></span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    <span class="n">allocation_scheme</span><span class="p">:</span> <span class="n"><span title="str">str</span></span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>    <span class="n">trace</span><span class="p">:</span> <span class="n"><span title="int">int</span></span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>    <span class="n">trace_events</span><span class="p">:</span> <span class="n"><span title="list">list</span></span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>    <span class="n">dynamic_objfifo_lowering</span><span class="p">:</span> <span class="n"><span title="bool">bool</span></span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="p">)</span>
 </code></pre></div>
 
     <div class="doc doc-contents ">
@@ -8154,6 +8155,26 @@ explicitly via <code>tile</code> or automatically by the <code>--aie-place-tiles
             <td>
               <div class="doc-md-description">
                 <p>The stack_size in bytes for the worker. Defaults to AIETargetModel::getDefaultCoreStackSize() (currently 1024 bytes).</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>data_size</code>
+            </td>
+            <td>
+                  <code><span title="int">int</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Bytes of data memory to reserve for this
+core's compiled sections (.data/.rodata/.bss), beyond the stack. The
+buffer allocator packs the tile's buffers around the reservation. None
+leaves the core whatever contiguous run the buffers leave.
+Defaults to None.</p>
               </div>
             </td>
             <td>
@@ -8398,138 +8419,192 @@ attribute is ignored. Defaults to None.</p>
 <span class="normal"><a href="#__codelineno-0-170">170</a></span>
 <span class="normal"><a href="#__codelineno-0-171">171</a></span>
 <span class="normal"><a href="#__codelineno-0-172">172</a></span>
-<span class="normal"><a href="#__codelineno-0-173">173</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-42" name="__codelineno-0-42"></a><span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+<span class="normal"><a href="#__codelineno-0-173">173</a></span>
+<span class="normal"><a href="#__codelineno-0-174">174</a></span>
+<span class="normal"><a href="#__codelineno-0-175">175</a></span>
+<span class="normal"><a href="#__codelineno-0-176">176</a></span>
+<span class="normal"><a href="#__codelineno-0-177">177</a></span>
+<span class="normal"><a href="#__codelineno-0-178">178</a></span>
+<span class="normal"><a href="#__codelineno-0-179">179</a></span>
+<span class="normal"><a href="#__codelineno-0-180">180</a></span>
+<span class="normal"><a href="#__codelineno-0-181">181</a></span>
+<span class="normal"><a href="#__codelineno-0-182">182</a></span>
+<span class="normal"><a href="#__codelineno-0-183">183</a></span>
+<span class="normal"><a href="#__codelineno-0-184">184</a></span>
+<span class="normal"><a href="#__codelineno-0-185">185</a></span>
+<span class="normal"><a href="#__codelineno-0-186">186</a></span>
+<span class="normal"><a href="#__codelineno-0-187">187</a></span>
+<span class="normal"><a href="#__codelineno-0-188">188</a></span>
+<span class="normal"><a href="#__codelineno-0-189">189</a></span>
+<span class="normal"><a href="#__codelineno-0-190">190</a></span>
+<span class="normal"><a href="#__codelineno-0-191">191</a></span>
+<span class="normal"><a href="#__codelineno-0-192">192</a></span>
+<span class="normal"><a href="#__codelineno-0-193">193</a></span>
+<span class="normal"><a href="#__codelineno-0-194">194</a></span>
+<span class="normal"><a href="#__codelineno-0-195">195</a></span>
+<span class="normal"><a href="#__codelineno-0-196">196</a></span>
+<span class="normal"><a href="#__codelineno-0-197">197</a></span>
+<span class="normal"><a href="#__codelineno-0-198">198</a></span>
+<span class="normal"><a href="#__codelineno-0-199">199</a></span>
+<span class="normal"><a href="#__codelineno-0-200">200</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-42" name="__codelineno-0-42"></a><span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
 <a id="__codelineno-0-43" name="__codelineno-0-43"></a>    <span class="bp">self</span><span class="p">,</span>
 <a id="__codelineno-0-44" name="__codelineno-0-44"></a>    <span class="n">core_fn</span><span class="p">:</span> <span class="n">Callable</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
 <a id="__codelineno-0-45" name="__codelineno-0-45"></a>    <span class="n">fn_args</span><span class="p">:</span> <span class="nb">list</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 <a id="__codelineno-0-46" name="__codelineno-0-46"></a>    <span class="n">tile</span><span class="p">:</span> <span class="n">Tile</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="n">AnyComputeTile</span><span class="p">,</span>
 <a id="__codelineno-0-47" name="__codelineno-0-47"></a>    <span class="n">while_true</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
 <a id="__codelineno-0-48" name="__codelineno-0-48"></a>    <span class="n">stack_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-49" name="__codelineno-0-49"></a>    <span class="n">allocation_scheme</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-50" name="__codelineno-0-50"></a>    <span class="n">trace</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-51" name="__codelineno-0-51"></a>    <span class="n">trace_events</span><span class="p">:</span> <span class="nb">list</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-52" name="__codelineno-0-52"></a>    <span class="n">dynamic_objfifo_lowering</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-53" name="__codelineno-0-53"></a><span class="p">):</span>
-<a id="__codelineno-0-54" name="__codelineno-0-54"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Construct a Worker.</span>
-<a id="__codelineno-0-55" name="__codelineno-0-55"></a>
-<a id="__codelineno-0-56" name="__codelineno-0-56"></a><span class="sd">    Args:</span>
-<a id="__codelineno-0-57" name="__codelineno-0-57"></a><span class="sd">        core_fn (Callable | None): The task to run on a core. If None, a busy-loop (`while(true): pass`) core will be generated.</span>
-<a id="__codelineno-0-58" name="__codelineno-0-58"></a><span class="sd">        fn_args (list | None, optional): Pointers to arguments, which should include all context the core_fn needs to run. Defaults to None (empty list).</span>
-<a id="__codelineno-0-59" name="__codelineno-0-59"></a><span class="sd">        tile (Tile, optional): The compute tile for the Worker. Also accepts None (treated as AnyComputeTile). Defaults to AnyComputeTile.</span>
-<a id="__codelineno-0-60" name="__codelineno-0-60"></a><span class="sd">        while_true (bool, optional): If true, will wrap the core_fn in a while(true) loop to ensure it runs until reconfiguration. Defaults to True.</span>
-<a id="__codelineno-0-61" name="__codelineno-0-61"></a><span class="sd">        stack_size (int, optional): The stack_size in bytes for the worker. Defaults to AIETargetModel::getDefaultCoreStackSize() (currently 1024 bytes).</span>
-<a id="__codelineno-0-62" name="__codelineno-0-62"></a><span class="sd">        allocation_scheme (str, optional): The memory allocation scheme to use for the</span>
-<a id="__codelineno-0-63" name="__codelineno-0-63"></a><span class="sd">            Worker, either &#39;basic-sequential&#39; or &#39;bank-aware&#39;. If None, defaults to bank-aware.</span>
-<a id="__codelineno-0-64" name="__codelineno-0-64"></a><span class="sd">            Will override any allocation scheme set on the tile.</span>
-<a id="__codelineno-0-65" name="__codelineno-0-65"></a><span class="sd">        trace (int, optional): If &gt;0, enable tracing for this worker.</span>
-<a id="__codelineno-0-66" name="__codelineno-0-66"></a><span class="sd">        trace_events (list | None, optional): Custom list of trace events for this worker. Defaults to None.</span>
-<a id="__codelineno-0-67" name="__codelineno-0-67"></a><span class="sd">        dynamic_objfifo_lowering (bool | None, optional): Per-core override for the</span>
-<a id="__codelineno-0-68" name="__codelineno-0-68"></a><span class="sd">            ``aie-objectFifo-stateful-transform`` pass&#39;s lowering choice. ``True`` forces</span>
-<a id="__codelineno-0-69" name="__codelineno-0-69"></a><span class="sd">            dynamic (loop-preserving) lowering for this core; ``False`` forces static</span>
-<a id="__codelineno-0-70" name="__codelineno-0-70"></a><span class="sd">            LCM-based unrolling. ``None`` (default) leaves the choice to the compiler&#39;s</span>
-<a id="__codelineno-0-71" name="__codelineno-0-71"></a><span class="sd">            global ``--dynamic-objFifos`` flag. Note: the per-core attribute is only</span>
-<a id="__codelineno-0-72" name="__codelineno-0-72"></a><span class="sd">            honored when the global flag is ``false``; when global is ``true`` the</span>
-<a id="__codelineno-0-73" name="__codelineno-0-73"></a><span class="sd">            attribute is ignored. Defaults to None.</span>
-<a id="__codelineno-0-74" name="__codelineno-0-74"></a>
-<a id="__codelineno-0-75" name="__codelineno-0-75"></a><span class="sd">    Raises:</span>
-<a id="__codelineno-0-76" name="__codelineno-0-76"></a><span class="sd">        ValueError: Parameters are validated.</span>
-<a id="__codelineno-0-77" name="__codelineno-0-77"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-78" name="__codelineno-0-78"></a>    <span class="k">if</span> <span class="n">tile</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-79" name="__codelineno-0-79"></a>        <span class="n">tile</span> <span class="o">=</span> <span class="n">AnyComputeTile</span>
-<a id="__codelineno-0-80" name="__codelineno-0-80"></a>    <span class="k">if</span> <span class="n">tile</span><span class="o">.</span><span class="n">tile_type</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">tile</span><span class="o">.</span><span class="n">tile_type</span> <span class="o">!=</span> <span class="n">AIETileType</span><span class="o">.</span><span class="n">CoreTile</span><span class="p">:</span>
-<a id="__codelineno-0-81" name="__codelineno-0-81"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-<a id="__codelineno-0-82" name="__codelineno-0-82"></a>            <span class="sa">f</span><span class="s2">&quot;Worker requires a compute tile, but got tile_type=</span><span class="si">{</span><span class="n">tile</span><span class="o">.</span><span class="n">tile_type</span><span class="si">}</span><span class="s2">&quot;</span>
-<a id="__codelineno-0-83" name="__codelineno-0-83"></a>        <span class="p">)</span>
-<a id="__codelineno-0-84" name="__codelineno-0-84"></a>    <span class="c1"># Store the user&#39;s Tile directly when it is already typed as CoreTile</span>
-<a id="__codelineno-0-85" name="__codelineno-0-85"></a>    <span class="c1"># and no allocation_scheme override is needed. This preserves Python</span>
-<a id="__codelineno-0-86" name="__codelineno-0-86"></a>    <span class="c1"># object identity so a Buffer and a Worker that share the same Tile</span>
-<a id="__codelineno-0-87" name="__codelineno-0-87"></a>    <span class="c1"># object resolve to a single LogicalTileOp. When we need a fresh copy</span>
-<a id="__codelineno-0-88" name="__codelineno-0-88"></a>    <span class="c1"># (untyped tile, singleton default, or allocation_scheme override) use</span>
-<a id="__codelineno-0-89" name="__codelineno-0-89"></a>    <span class="c1"># with_type() — it always returns a new object.</span>
-<a id="__codelineno-0-90" name="__codelineno-0-90"></a>    <span class="k">if</span> <span class="p">(</span>
-<a id="__codelineno-0-91" name="__codelineno-0-91"></a>        <span class="n">tile</span><span class="o">.</span><span class="n">tile_type</span> <span class="o">==</span> <span class="n">AIETileType</span><span class="o">.</span><span class="n">CoreTile</span>
-<a id="__codelineno-0-92" name="__codelineno-0-92"></a>        <span class="ow">and</span> <span class="n">allocation_scheme</span> <span class="ow">is</span> <span class="kc">None</span>
-<a id="__codelineno-0-93" name="__codelineno-0-93"></a>        <span class="ow">and</span> <span class="n">tile</span> <span class="ow">is</span> <span class="ow">not</span> <span class="n">AnyComputeTile</span>
-<a id="__codelineno-0-94" name="__codelineno-0-94"></a>    <span class="p">):</span>
-<a id="__codelineno-0-95" name="__codelineno-0-95"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_tile</span> <span class="o">=</span> <span class="n">tile</span>
-<a id="__codelineno-0-96" name="__codelineno-0-96"></a>    <span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-0-97" name="__codelineno-0-97"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_tile</span> <span class="o">=</span> <span class="n">tile</span><span class="o">.</span><span class="n">with_type</span><span class="p">(</span>
-<a id="__codelineno-0-98" name="__codelineno-0-98"></a>            <span class="n">AIETileType</span><span class="o">.</span><span class="n">CoreTile</span><span class="p">,</span> <span class="n">allocation_scheme</span><span class="o">=</span><span class="n">allocation_scheme</span>
-<a id="__codelineno-0-99" name="__codelineno-0-99"></a>        <span class="p">)</span>
-<a id="__codelineno-0-100" name="__codelineno-0-100"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_while_true</span> <span class="o">=</span> <span class="n">while_true</span>
-<a id="__codelineno-0-101" name="__codelineno-0-101"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">stack_size</span> <span class="o">=</span> <span class="n">stack_size</span>
-<a id="__codelineno-0-102" name="__codelineno-0-102"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">allocation_scheme</span> <span class="o">=</span> <span class="n">allocation_scheme</span>
-<a id="__codelineno-0-103" name="__codelineno-0-103"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_dynamic_objfifo_lowering</span> <span class="o">=</span> <span class="n">dynamic_objfifo_lowering</span>
-<a id="__codelineno-0-104" name="__codelineno-0-104"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">trace</span> <span class="o">=</span> <span class="n">trace</span>
-<a id="__codelineno-0-105" name="__codelineno-0-105"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">trace_events</span> <span class="o">=</span> <span class="n">trace_events</span>
-<a id="__codelineno-0-106" name="__codelineno-0-106"></a>
-<a id="__codelineno-0-107" name="__codelineno-0-107"></a>    <span class="c1"># If no core_fn is given, make a simple while(true) loop.</span>
-<a id="__codelineno-0-108" name="__codelineno-0-108"></a>    <span class="k">if</span> <span class="n">core_fn</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-109" name="__codelineno-0-109"></a>
-<a id="__codelineno-0-110" name="__codelineno-0-110"></a>        <span class="k">def</span><span class="w"> </span><span class="nf">do_nothing_core_fun</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-111" name="__codelineno-0-111"></a>            <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="n">range_</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">maxsize</span><span class="p">):</span>
-<a id="__codelineno-0-112" name="__codelineno-0-112"></a>                <span class="k">pass</span>
-<a id="__codelineno-0-113" name="__codelineno-0-113"></a>
-<a id="__codelineno-0-114" name="__codelineno-0-114"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">core_fn</span> <span class="o">=</span> <span class="n">do_nothing_core_fun</span>
-<a id="__codelineno-0-115" name="__codelineno-0-115"></a>    <span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-0-116" name="__codelineno-0-116"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">core_fn</span> <span class="o">=</span> <span class="n">core_fn</span>
-<a id="__codelineno-0-117" name="__codelineno-0-117"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">fn_args</span> <span class="o">=</span> <span class="n">fn_args</span> <span class="k">if</span> <span class="n">fn_args</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="p">[]</span>
-<a id="__codelineno-0-118" name="__codelineno-0-118"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_fifos</span> <span class="o">=</span> <span class="p">[]</span>
-<a id="__codelineno-0-119" name="__codelineno-0-119"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_buffers</span> <span class="o">=</span> <span class="p">[]</span>
-<a id="__codelineno-0-120" name="__codelineno-0-120"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_barriers</span> <span class="o">=</span> <span class="p">[]</span>
-<a id="__codelineno-0-121" name="__codelineno-0-121"></a>    <span class="c1"># CascadeFlow objects whose source is this Worker. Populated by</span>
-<a id="__codelineno-0-122" name="__codelineno-0-122"></a>    <span class="c1"># CascadeFlow(src, dst).__init__ and consumed by Program.resolve()</span>
-<a id="__codelineno-0-123" name="__codelineno-0-123"></a>    <span class="c1"># to emit aie.cascade_flow ops after worker placement.</span>
-<a id="__codelineno-0-124" name="__codelineno-0-124"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_outgoing_cascades</span><span class="p">:</span> <span class="nb">list</span> <span class="o">=</span> <span class="p">[]</span>
-<a id="__codelineno-0-125" name="__codelineno-0-125"></a>
-<a id="__codelineno-0-126" name="__codelineno-0-126"></a>    <span class="c1"># Check arguments to the core. Some information is saved for resolution.</span>
-<a id="__codelineno-0-127" name="__codelineno-0-127"></a>    <span class="c1"># fn_args may nest lists (e.g. one fifo per column); iterate the flattened</span>
-<a id="__codelineno-0-128" name="__codelineno-0-128"></a>    <span class="c1"># leaves for registration while the core_fn still receives the structure.</span>
-<a id="__codelineno-0-129" name="__codelineno-0-129"></a>    <span class="k">for</span> <span class="n">arg</span> <span class="ow">in</span> <span class="n">flatten_fn_args</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">fn_args</span><span class="p">):</span>
-<a id="__codelineno-0-130" name="__codelineno-0-130"></a>        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">arg</span><span class="p">,</span> <span class="n">ObjectFifoHandle</span><span class="p">):</span>
-<a id="__codelineno-0-131" name="__codelineno-0-131"></a>            <span class="n">arg</span><span class="o">.</span><span class="n">endpoint</span> <span class="o">=</span> <span class="bp">self</span>
-<a id="__codelineno-0-132" name="__codelineno-0-132"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">_fifos</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">arg</span><span class="p">)</span>
-<a id="__codelineno-0-133" name="__codelineno-0-133"></a>        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">arg</span><span class="p">,</span> <span class="n">Buffer</span><span class="p">):</span>
-<a id="__codelineno-0-134" name="__codelineno-0-134"></a>            <span class="c1"># A Buffer pinned to an EXPLICIT tile may legitimately be shared</span>
-<a id="__codelineno-0-135" name="__codelineno-0-135"></a>            <span class="c1"># across Workers: AIE compute tiles can read a neighbor tile&#39;s L1</span>
-<a id="__codelineno-0-136" name="__codelineno-0-136"></a>            <span class="c1"># directly, so a producer core&#39;s output buffer can be an input to a</span>
-<a id="__codelineno-0-137" name="__codelineno-0-137"></a>            <span class="c1"># consumer core on an adjacent tile. In that case the FIRST worker that</span>
-<a id="__codelineno-0-138" name="__codelineno-0-138"></a>            <span class="c1"># references it &quot;owns&quot;/places it and later workers are non-owning</span>
-<a id="__codelineno-0-139" name="__codelineno-0-139"></a>            <span class="c1"># readers. We only forbid sharing for AUTO-PLACED buffers (no explicit</span>
-<a id="__codelineno-0-140" name="__codelineno-0-140"></a>            <span class="c1"># tile), where two owners would race to pin it to different tiles.</span>
-<a id="__codelineno-0-141" name="__codelineno-0-141"></a>            <span class="c1"># Note: ``_tile`` alone is not a reliable signal — the owning Worker</span>
-<a id="__codelineno-0-142" name="__codelineno-0-142"></a>            <span class="c1"># auto-pins ``_tile`` to its own tile below — so we key off</span>
-<a id="__codelineno-0-143" name="__codelineno-0-143"></a>            <span class="c1"># ``_explicit_tile``, which records the user&#39;s construction-time intent.</span>
-<a id="__codelineno-0-144" name="__codelineno-0-144"></a>            <span class="k">if</span> <span class="n">arg</span><span class="o">.</span><span class="n">_owner_worker</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">arg</span><span class="o">.</span><span class="n">_owner_worker</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">self</span><span class="p">:</span>
-<a id="__codelineno-0-145" name="__codelineno-0-145"></a>                <span class="k">if</span> <span class="ow">not</span> <span class="n">arg</span><span class="o">.</span><span class="n">_explicit_tile</span><span class="p">:</span>
-<a id="__codelineno-0-146" name="__codelineno-0-146"></a>                    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-<a id="__codelineno-0-147" name="__codelineno-0-147"></a>                        <span class="sa">f</span><span class="s2">&quot;Buffer &#39;</span><span class="si">{</span><span class="n">arg</span><span class="o">.</span><span class="n">_name</span><span class="si">}</span><span class="s2">&#39; has no explicit tile and is shared &quot;</span>
-<a id="__codelineno-0-148" name="__codelineno-0-148"></a>                        <span class="sa">f</span><span class="s2">&quot;across Workers; pin it to a tile (Buffer(tile=...)) so &quot;</span>
-<a id="__codelineno-0-149" name="__codelineno-0-149"></a>                        <span class="sa">f</span><span class="s2">&quot;placement is unambiguous.&quot;</span>
-<a id="__codelineno-0-150" name="__codelineno-0-150"></a>                    <span class="p">)</span>
-<a id="__codelineno-0-151" name="__codelineno-0-151"></a>                <span class="c1"># shared reader: keep original owner, just record the reference.</span>
-<a id="__codelineno-0-152" name="__codelineno-0-152"></a>                <span class="bp">self</span><span class="o">.</span><span class="n">_buffers</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">arg</span><span class="p">)</span>
-<a id="__codelineno-0-153" name="__codelineno-0-153"></a>            <span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-0-154" name="__codelineno-0-154"></a>                <span class="n">arg</span><span class="o">.</span><span class="n">_owner_worker</span> <span class="o">=</span> <span class="bp">self</span>
-<a id="__codelineno-0-155" name="__codelineno-0-155"></a>                <span class="bp">self</span><span class="o">.</span><span class="n">_buffers</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">arg</span><span class="p">)</span>
-<a id="__codelineno-0-156" name="__codelineno-0-156"></a>                <span class="c1"># If the Buffer has no tile, pin it to the Worker&#39;s tile as a</span>
-<a id="__codelineno-0-157" name="__codelineno-0-157"></a>                <span class="c1"># convenience.  If the user pinned it explicitly to a neighbor</span>
-<a id="__codelineno-0-158" name="__codelineno-0-158"></a>                <span class="c1"># tile (AIE compute tiles can read N/S/E/W neighbors&#39; L1</span>
-<a id="__codelineno-0-159" name="__codelineno-0-159"></a>                <span class="c1"># directly), honor that placement — Program.resolve discovers</span>
-<a id="__codelineno-0-160" name="__codelineno-0-160"></a>                <span class="c1"># the neighbor tile via Buffer.tiles().</span>
-<a id="__codelineno-0-161" name="__codelineno-0-161"></a>                <span class="k">if</span> <span class="n">arg</span><span class="o">.</span><span class="n">_tile</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-162" name="__codelineno-0-162"></a>                    <span class="n">arg</span><span class="o">.</span><span class="n">_tile</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_tile</span>
-<a id="__codelineno-0-163" name="__codelineno-0-163"></a>        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">arg</span><span class="p">,</span> <span class="n">ScratchpadParameter</span><span class="p">):</span>
-<a id="__codelineno-0-164" name="__codelineno-0-164"></a>            <span class="k">pass</span>  <span class="c1"># ScratchpadParameters are device-level symbols; no tile placement needed</span>
-<a id="__codelineno-0-165" name="__codelineno-0-165"></a>        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">arg</span><span class="p">,</span> <span class="n">ObjectFifo</span><span class="p">):</span>
-<a id="__codelineno-0-166" name="__codelineno-0-166"></a>            <span class="c1"># This is an easy error to make, so we catch it early</span>
-<a id="__codelineno-0-167" name="__codelineno-0-167"></a>            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-<a id="__codelineno-0-168" name="__codelineno-0-168"></a>                <span class="s2">&quot;Cannot give an ObjectFifo directly to a worker; &quot;</span>
-<a id="__codelineno-0-169" name="__codelineno-0-169"></a>                <span class="s2">&quot;must give an ObjectFifoHandle obtained through &quot;</span>
-<a id="__codelineno-0-170" name="__codelineno-0-170"></a>                <span class="s2">&quot;ObjectFifo.prod() or ObjectFifo.cons()&quot;</span>
-<a id="__codelineno-0-171" name="__codelineno-0-171"></a>            <span class="p">)</span>
-<a id="__codelineno-0-172" name="__codelineno-0-172"></a>        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">arg</span><span class="p">,</span> <span class="n">WorkerRuntimeBarrier</span><span class="p">):</span>
-<a id="__codelineno-0-173" name="__codelineno-0-173"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">_barriers</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">arg</span><span class="p">)</span>
+<a id="__codelineno-0-49" name="__codelineno-0-49"></a>    <span class="n">data_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-50" name="__codelineno-0-50"></a>    <span class="n">allocation_scheme</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-51" name="__codelineno-0-51"></a>    <span class="n">trace</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-52" name="__codelineno-0-52"></a>    <span class="n">trace_events</span><span class="p">:</span> <span class="nb">list</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-53" name="__codelineno-0-53"></a>    <span class="n">dynamic_objfifo_lowering</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-54" name="__codelineno-0-54"></a><span class="p">):</span>
+<a id="__codelineno-0-55" name="__codelineno-0-55"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Construct a Worker.</span>
+<a id="__codelineno-0-56" name="__codelineno-0-56"></a>
+<a id="__codelineno-0-57" name="__codelineno-0-57"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-58" name="__codelineno-0-58"></a><span class="sd">        core_fn (Callable | None): The task to run on a core. If None, a busy-loop (`while(true): pass`) core will be generated.</span>
+<a id="__codelineno-0-59" name="__codelineno-0-59"></a><span class="sd">        fn_args (list | None, optional): Pointers to arguments, which should include all context the core_fn needs to run. Defaults to None (empty list).</span>
+<a id="__codelineno-0-60" name="__codelineno-0-60"></a><span class="sd">        tile (Tile, optional): The compute tile for the Worker. Also accepts None (treated as AnyComputeTile). Defaults to AnyComputeTile.</span>
+<a id="__codelineno-0-61" name="__codelineno-0-61"></a><span class="sd">        while_true (bool, optional): If true, will wrap the core_fn in a while(true) loop to ensure it runs until reconfiguration. Defaults to True.</span>
+<a id="__codelineno-0-62" name="__codelineno-0-62"></a><span class="sd">        stack_size (int, optional): The stack_size in bytes for the worker. Defaults to AIETargetModel::getDefaultCoreStackSize() (currently 1024 bytes).</span>
+<a id="__codelineno-0-63" name="__codelineno-0-63"></a><span class="sd">        data_size (int, optional): Bytes of data memory to reserve for this</span>
+<a id="__codelineno-0-64" name="__codelineno-0-64"></a><span class="sd">            core&#39;s compiled sections (.data/.rodata/.bss), beyond the stack. The</span>
+<a id="__codelineno-0-65" name="__codelineno-0-65"></a><span class="sd">            buffer allocator packs the tile&#39;s buffers around the reservation. None</span>
+<a id="__codelineno-0-66" name="__codelineno-0-66"></a><span class="sd">            leaves the core whatever contiguous run the buffers leave.</span>
+<a id="__codelineno-0-67" name="__codelineno-0-67"></a><span class="sd">            Defaults to None.</span>
+<a id="__codelineno-0-68" name="__codelineno-0-68"></a><span class="sd">        allocation_scheme (str, optional): The memory allocation scheme to use for the</span>
+<a id="__codelineno-0-69" name="__codelineno-0-69"></a><span class="sd">            Worker, either &#39;basic-sequential&#39; or &#39;bank-aware&#39;. If None, defaults to bank-aware.</span>
+<a id="__codelineno-0-70" name="__codelineno-0-70"></a><span class="sd">            Will override any allocation scheme set on the tile.</span>
+<a id="__codelineno-0-71" name="__codelineno-0-71"></a><span class="sd">        trace (int, optional): If &gt;0, enable tracing for this worker.</span>
+<a id="__codelineno-0-72" name="__codelineno-0-72"></a><span class="sd">        trace_events (list | None, optional): Custom list of trace events for this worker. Defaults to None.</span>
+<a id="__codelineno-0-73" name="__codelineno-0-73"></a><span class="sd">        dynamic_objfifo_lowering (bool | None, optional): Per-core override for the</span>
+<a id="__codelineno-0-74" name="__codelineno-0-74"></a><span class="sd">            ``aie-objectFifo-stateful-transform`` pass&#39;s lowering choice. ``True`` forces</span>
+<a id="__codelineno-0-75" name="__codelineno-0-75"></a><span class="sd">            dynamic (loop-preserving) lowering for this core; ``False`` forces static</span>
+<a id="__codelineno-0-76" name="__codelineno-0-76"></a><span class="sd">            LCM-based unrolling. ``None`` (default) leaves the choice to the compiler&#39;s</span>
+<a id="__codelineno-0-77" name="__codelineno-0-77"></a><span class="sd">            global ``--dynamic-objFifos`` flag. Note: the per-core attribute is only</span>
+<a id="__codelineno-0-78" name="__codelineno-0-78"></a><span class="sd">            honored when the global flag is ``false``; when global is ``true`` the</span>
+<a id="__codelineno-0-79" name="__codelineno-0-79"></a><span class="sd">            attribute is ignored. Defaults to None.</span>
+<a id="__codelineno-0-80" name="__codelineno-0-80"></a>
+<a id="__codelineno-0-81" name="__codelineno-0-81"></a><span class="sd">    Raises:</span>
+<a id="__codelineno-0-82" name="__codelineno-0-82"></a><span class="sd">        ValueError: Parameters are validated.</span>
+<a id="__codelineno-0-83" name="__codelineno-0-83"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-84" name="__codelineno-0-84"></a>    <span class="k">if</span> <span class="n">tile</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-85" name="__codelineno-0-85"></a>        <span class="n">tile</span> <span class="o">=</span> <span class="n">AnyComputeTile</span>
+<a id="__codelineno-0-86" name="__codelineno-0-86"></a>    <span class="k">if</span> <span class="n">tile</span><span class="o">.</span><span class="n">tile_type</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">tile</span><span class="o">.</span><span class="n">tile_type</span> <span class="o">!=</span> <span class="n">AIETileType</span><span class="o">.</span><span class="n">CoreTile</span><span class="p">:</span>
+<a id="__codelineno-0-87" name="__codelineno-0-87"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+<a id="__codelineno-0-88" name="__codelineno-0-88"></a>            <span class="sa">f</span><span class="s2">&quot;Worker requires a compute tile, but got tile_type=</span><span class="si">{</span><span class="n">tile</span><span class="o">.</span><span class="n">tile_type</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-89" name="__codelineno-0-89"></a>        <span class="p">)</span>
+<a id="__codelineno-0-90" name="__codelineno-0-90"></a>    <span class="k">if</span> <span class="n">stack_size</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-91" name="__codelineno-0-91"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">stack_size</span><span class="p">,</span> <span class="nb">int</span><span class="p">)</span> <span class="ow">or</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">stack_size</span><span class="p">,</span> <span class="nb">bool</span><span class="p">):</span>
+<a id="__codelineno-0-92" name="__codelineno-0-92"></a>            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+<a id="__codelineno-0-93" name="__codelineno-0-93"></a>                <span class="sa">f</span><span class="s2">&quot;Worker stack_size must be an int, but got &quot;</span>
+<a id="__codelineno-0-94" name="__codelineno-0-94"></a>                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">stack_size</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-95" name="__codelineno-0-95"></a>            <span class="p">)</span>
+<a id="__codelineno-0-96" name="__codelineno-0-96"></a>        <span class="k">if</span> <span class="n">stack_size</span> <span class="o">&lt;</span> <span class="mi">1</span><span class="p">:</span>
+<a id="__codelineno-0-97" name="__codelineno-0-97"></a>            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+<a id="__codelineno-0-98" name="__codelineno-0-98"></a>                <span class="sa">f</span><span class="s2">&quot;Worker stack_size must be &gt;= 1, but got </span><span class="si">{</span><span class="n">stack_size</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-99" name="__codelineno-0-99"></a>            <span class="p">)</span>
+<a id="__codelineno-0-100" name="__codelineno-0-100"></a>    <span class="k">if</span> <span class="n">data_size</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-101" name="__codelineno-0-101"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">data_size</span><span class="p">,</span> <span class="nb">int</span><span class="p">)</span> <span class="ow">or</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">data_size</span><span class="p">,</span> <span class="nb">bool</span><span class="p">):</span>
+<a id="__codelineno-0-102" name="__codelineno-0-102"></a>            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+<a id="__codelineno-0-103" name="__codelineno-0-103"></a>                <span class="sa">f</span><span class="s2">&quot;Worker data_size must be an int, but got &quot;</span>
+<a id="__codelineno-0-104" name="__codelineno-0-104"></a>                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">data_size</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-105" name="__codelineno-0-105"></a>            <span class="p">)</span>
+<a id="__codelineno-0-106" name="__codelineno-0-106"></a>        <span class="k">if</span> <span class="n">data_size</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">:</span>
+<a id="__codelineno-0-107" name="__codelineno-0-107"></a>            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+<a id="__codelineno-0-108" name="__codelineno-0-108"></a>                <span class="sa">f</span><span class="s2">&quot;Worker data_size must be &gt;= 0, but got &quot;</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">data_size</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-109" name="__codelineno-0-109"></a>            <span class="p">)</span>
+<a id="__codelineno-0-110" name="__codelineno-0-110"></a>    <span class="c1"># Store the user&#39;s Tile directly when it is already typed as CoreTile</span>
+<a id="__codelineno-0-111" name="__codelineno-0-111"></a>    <span class="c1"># and no allocation_scheme override is needed. This preserves Python</span>
+<a id="__codelineno-0-112" name="__codelineno-0-112"></a>    <span class="c1"># object identity so a Buffer and a Worker that share the same Tile</span>
+<a id="__codelineno-0-113" name="__codelineno-0-113"></a>    <span class="c1"># object resolve to a single LogicalTileOp. When we need a fresh copy</span>
+<a id="__codelineno-0-114" name="__codelineno-0-114"></a>    <span class="c1"># (untyped tile, singleton default, or allocation_scheme override) use</span>
+<a id="__codelineno-0-115" name="__codelineno-0-115"></a>    <span class="c1"># with_type() — it always returns a new object.</span>
+<a id="__codelineno-0-116" name="__codelineno-0-116"></a>    <span class="k">if</span> <span class="p">(</span>
+<a id="__codelineno-0-117" name="__codelineno-0-117"></a>        <span class="n">tile</span><span class="o">.</span><span class="n">tile_type</span> <span class="o">==</span> <span class="n">AIETileType</span><span class="o">.</span><span class="n">CoreTile</span>
+<a id="__codelineno-0-118" name="__codelineno-0-118"></a>        <span class="ow">and</span> <span class="n">allocation_scheme</span> <span class="ow">is</span> <span class="kc">None</span>
+<a id="__codelineno-0-119" name="__codelineno-0-119"></a>        <span class="ow">and</span> <span class="n">tile</span> <span class="ow">is</span> <span class="ow">not</span> <span class="n">AnyComputeTile</span>
+<a id="__codelineno-0-120" name="__codelineno-0-120"></a>    <span class="p">):</span>
+<a id="__codelineno-0-121" name="__codelineno-0-121"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_tile</span> <span class="o">=</span> <span class="n">tile</span>
+<a id="__codelineno-0-122" name="__codelineno-0-122"></a>    <span class="k">else</span><span class="p">:</span>
+<a id="__codelineno-0-123" name="__codelineno-0-123"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_tile</span> <span class="o">=</span> <span class="n">tile</span><span class="o">.</span><span class="n">with_type</span><span class="p">(</span>
+<a id="__codelineno-0-124" name="__codelineno-0-124"></a>            <span class="n">AIETileType</span><span class="o">.</span><span class="n">CoreTile</span><span class="p">,</span> <span class="n">allocation_scheme</span><span class="o">=</span><span class="n">allocation_scheme</span>
+<a id="__codelineno-0-125" name="__codelineno-0-125"></a>        <span class="p">)</span>
+<a id="__codelineno-0-126" name="__codelineno-0-126"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_while_true</span> <span class="o">=</span> <span class="n">while_true</span>
+<a id="__codelineno-0-127" name="__codelineno-0-127"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">stack_size</span> <span class="o">=</span> <span class="n">stack_size</span>
+<a id="__codelineno-0-128" name="__codelineno-0-128"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">data_size</span> <span class="o">=</span> <span class="n">data_size</span>
+<a id="__codelineno-0-129" name="__codelineno-0-129"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">allocation_scheme</span> <span class="o">=</span> <span class="n">allocation_scheme</span>
+<a id="__codelineno-0-130" name="__codelineno-0-130"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_dynamic_objfifo_lowering</span> <span class="o">=</span> <span class="n">dynamic_objfifo_lowering</span>
+<a id="__codelineno-0-131" name="__codelineno-0-131"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">trace</span> <span class="o">=</span> <span class="n">trace</span>
+<a id="__codelineno-0-132" name="__codelineno-0-132"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">trace_events</span> <span class="o">=</span> <span class="n">trace_events</span>
+<a id="__codelineno-0-133" name="__codelineno-0-133"></a>
+<a id="__codelineno-0-134" name="__codelineno-0-134"></a>    <span class="c1"># If no core_fn is given, make a simple while(true) loop.</span>
+<a id="__codelineno-0-135" name="__codelineno-0-135"></a>    <span class="k">if</span> <span class="n">core_fn</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-136" name="__codelineno-0-136"></a>
+<a id="__codelineno-0-137" name="__codelineno-0-137"></a>        <span class="k">def</span><span class="w"> </span><span class="nf">do_nothing_core_fun</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-138" name="__codelineno-0-138"></a>            <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="n">range_</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">maxsize</span><span class="p">):</span>
+<a id="__codelineno-0-139" name="__codelineno-0-139"></a>                <span class="k">pass</span>
+<a id="__codelineno-0-140" name="__codelineno-0-140"></a>
+<a id="__codelineno-0-141" name="__codelineno-0-141"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">core_fn</span> <span class="o">=</span> <span class="n">do_nothing_core_fun</span>
+<a id="__codelineno-0-142" name="__codelineno-0-142"></a>    <span class="k">else</span><span class="p">:</span>
+<a id="__codelineno-0-143" name="__codelineno-0-143"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">core_fn</span> <span class="o">=</span> <span class="n">core_fn</span>
+<a id="__codelineno-0-144" name="__codelineno-0-144"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">fn_args</span> <span class="o">=</span> <span class="n">fn_args</span> <span class="k">if</span> <span class="n">fn_args</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="p">[]</span>
+<a id="__codelineno-0-145" name="__codelineno-0-145"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_fifos</span> <span class="o">=</span> <span class="p">[]</span>
+<a id="__codelineno-0-146" name="__codelineno-0-146"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_buffers</span> <span class="o">=</span> <span class="p">[]</span>
+<a id="__codelineno-0-147" name="__codelineno-0-147"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_barriers</span> <span class="o">=</span> <span class="p">[]</span>
+<a id="__codelineno-0-148" name="__codelineno-0-148"></a>    <span class="c1"># CascadeFlow objects whose source is this Worker. Populated by</span>
+<a id="__codelineno-0-149" name="__codelineno-0-149"></a>    <span class="c1"># CascadeFlow(src, dst).__init__ and consumed by Program.resolve()</span>
+<a id="__codelineno-0-150" name="__codelineno-0-150"></a>    <span class="c1"># to emit aie.cascade_flow ops after worker placement.</span>
+<a id="__codelineno-0-151" name="__codelineno-0-151"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_outgoing_cascades</span><span class="p">:</span> <span class="nb">list</span> <span class="o">=</span> <span class="p">[]</span>
+<a id="__codelineno-0-152" name="__codelineno-0-152"></a>
+<a id="__codelineno-0-153" name="__codelineno-0-153"></a>    <span class="c1"># Check arguments to the core. Some information is saved for resolution.</span>
+<a id="__codelineno-0-154" name="__codelineno-0-154"></a>    <span class="c1"># fn_args may nest lists (e.g. one fifo per column); iterate the flattened</span>
+<a id="__codelineno-0-155" name="__codelineno-0-155"></a>    <span class="c1"># leaves for registration while the core_fn still receives the structure.</span>
+<a id="__codelineno-0-156" name="__codelineno-0-156"></a>    <span class="k">for</span> <span class="n">arg</span> <span class="ow">in</span> <span class="n">flatten_fn_args</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">fn_args</span><span class="p">):</span>
+<a id="__codelineno-0-157" name="__codelineno-0-157"></a>        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">arg</span><span class="p">,</span> <span class="n">ObjectFifoHandle</span><span class="p">):</span>
+<a id="__codelineno-0-158" name="__codelineno-0-158"></a>            <span class="n">arg</span><span class="o">.</span><span class="n">endpoint</span> <span class="o">=</span> <span class="bp">self</span>
+<a id="__codelineno-0-159" name="__codelineno-0-159"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">_fifos</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">arg</span><span class="p">)</span>
+<a id="__codelineno-0-160" name="__codelineno-0-160"></a>        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">arg</span><span class="p">,</span> <span class="n">Buffer</span><span class="p">):</span>
+<a id="__codelineno-0-161" name="__codelineno-0-161"></a>            <span class="c1"># A Buffer pinned to an EXPLICIT tile may legitimately be shared</span>
+<a id="__codelineno-0-162" name="__codelineno-0-162"></a>            <span class="c1"># across Workers: AIE compute tiles can read a neighbor tile&#39;s L1</span>
+<a id="__codelineno-0-163" name="__codelineno-0-163"></a>            <span class="c1"># directly, so a producer core&#39;s output buffer can be an input to a</span>
+<a id="__codelineno-0-164" name="__codelineno-0-164"></a>            <span class="c1"># consumer core on an adjacent tile. In that case the FIRST worker that</span>
+<a id="__codelineno-0-165" name="__codelineno-0-165"></a>            <span class="c1"># references it &quot;owns&quot;/places it and later workers are non-owning</span>
+<a id="__codelineno-0-166" name="__codelineno-0-166"></a>            <span class="c1"># readers. We only forbid sharing for AUTO-PLACED buffers (no explicit</span>
+<a id="__codelineno-0-167" name="__codelineno-0-167"></a>            <span class="c1"># tile), where two owners would race to pin it to different tiles.</span>
+<a id="__codelineno-0-168" name="__codelineno-0-168"></a>            <span class="c1"># Note: ``_tile`` alone is not a reliable signal — the owning Worker</span>
+<a id="__codelineno-0-169" name="__codelineno-0-169"></a>            <span class="c1"># auto-pins ``_tile`` to its own tile below — so we key off</span>
+<a id="__codelineno-0-170" name="__codelineno-0-170"></a>            <span class="c1"># ``_explicit_tile``, which records the user&#39;s construction-time intent.</span>
+<a id="__codelineno-0-171" name="__codelineno-0-171"></a>            <span class="k">if</span> <span class="n">arg</span><span class="o">.</span><span class="n">_owner_worker</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">arg</span><span class="o">.</span><span class="n">_owner_worker</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">self</span><span class="p">:</span>
+<a id="__codelineno-0-172" name="__codelineno-0-172"></a>                <span class="k">if</span> <span class="ow">not</span> <span class="n">arg</span><span class="o">.</span><span class="n">_explicit_tile</span><span class="p">:</span>
+<a id="__codelineno-0-173" name="__codelineno-0-173"></a>                    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+<a id="__codelineno-0-174" name="__codelineno-0-174"></a>                        <span class="sa">f</span><span class="s2">&quot;Buffer &#39;</span><span class="si">{</span><span class="n">arg</span><span class="o">.</span><span class="n">_name</span><span class="si">}</span><span class="s2">&#39; has no explicit tile and is shared &quot;</span>
+<a id="__codelineno-0-175" name="__codelineno-0-175"></a>                        <span class="sa">f</span><span class="s2">&quot;across Workers; pin it to a tile (Buffer(tile=...)) so &quot;</span>
+<a id="__codelineno-0-176" name="__codelineno-0-176"></a>                        <span class="sa">f</span><span class="s2">&quot;placement is unambiguous.&quot;</span>
+<a id="__codelineno-0-177" name="__codelineno-0-177"></a>                    <span class="p">)</span>
+<a id="__codelineno-0-178" name="__codelineno-0-178"></a>                <span class="c1"># shared reader: keep original owner, just record the reference.</span>
+<a id="__codelineno-0-179" name="__codelineno-0-179"></a>                <span class="bp">self</span><span class="o">.</span><span class="n">_buffers</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">arg</span><span class="p">)</span>
+<a id="__codelineno-0-180" name="__codelineno-0-180"></a>            <span class="k">else</span><span class="p">:</span>
+<a id="__codelineno-0-181" name="__codelineno-0-181"></a>                <span class="n">arg</span><span class="o">.</span><span class="n">_owner_worker</span> <span class="o">=</span> <span class="bp">self</span>
+<a id="__codelineno-0-182" name="__codelineno-0-182"></a>                <span class="bp">self</span><span class="o">.</span><span class="n">_buffers</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">arg</span><span class="p">)</span>
+<a id="__codelineno-0-183" name="__codelineno-0-183"></a>                <span class="c1"># If the Buffer has no tile, pin it to the Worker&#39;s tile as a</span>
+<a id="__codelineno-0-184" name="__codelineno-0-184"></a>                <span class="c1"># convenience.  If the user pinned it explicitly to a neighbor</span>
+<a id="__codelineno-0-185" name="__codelineno-0-185"></a>                <span class="c1"># tile (AIE compute tiles can read N/S/E/W neighbors&#39; L1</span>
+<a id="__codelineno-0-186" name="__codelineno-0-186"></a>                <span class="c1"># directly), honor that placement — Program.resolve discovers</span>
+<a id="__codelineno-0-187" name="__codelineno-0-187"></a>                <span class="c1"># the neighbor tile via Buffer.tiles().</span>
+<a id="__codelineno-0-188" name="__codelineno-0-188"></a>                <span class="k">if</span> <span class="n">arg</span><span class="o">.</span><span class="n">_tile</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-189" name="__codelineno-0-189"></a>                    <span class="n">arg</span><span class="o">.</span><span class="n">_tile</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_tile</span>
+<a id="__codelineno-0-190" name="__codelineno-0-190"></a>        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">arg</span><span class="p">,</span> <span class="n">ScratchpadParameter</span><span class="p">):</span>
+<a id="__codelineno-0-191" name="__codelineno-0-191"></a>            <span class="k">pass</span>  <span class="c1"># ScratchpadParameters are device-level symbols; no tile placement needed</span>
+<a id="__codelineno-0-192" name="__codelineno-0-192"></a>        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">arg</span><span class="p">,</span> <span class="n">ObjectFifo</span><span class="p">):</span>
+<a id="__codelineno-0-193" name="__codelineno-0-193"></a>            <span class="c1"># This is an easy error to make, so we catch it early</span>
+<a id="__codelineno-0-194" name="__codelineno-0-194"></a>            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+<a id="__codelineno-0-195" name="__codelineno-0-195"></a>                <span class="s2">&quot;Cannot give an ObjectFifo directly to a worker; &quot;</span>
+<a id="__codelineno-0-196" name="__codelineno-0-196"></a>                <span class="s2">&quot;must give an ObjectFifoHandle obtained through &quot;</span>
+<a id="__codelineno-0-197" name="__codelineno-0-197"></a>                <span class="s2">&quot;ObjectFifo.prod() or ObjectFifo.cons()&quot;</span>
+<a id="__codelineno-0-198" name="__codelineno-0-198"></a>            <span class="p">)</span>
+<a id="__codelineno-0-199" name="__codelineno-0-199"></a>        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">arg</span><span class="p">,</span> <span class="n">WorkerRuntimeBarrier</span><span class="p">):</span>
+<a id="__codelineno-0-200" name="__codelineno-0-200"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">_barriers</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">arg</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
                   </details>
 
@@ -8810,59 +8885,59 @@ ws[i][j]       # natural 2-D access
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>python/iron/worker.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-179">179</a></span>
-<span class="normal"><a href="#__codelineno-0-180">180</a></span>
-<span class="normal"><a href="#__codelineno-0-181">181</a></span>
-<span class="normal"><a href="#__codelineno-0-182">182</a></span>
-<span class="normal"><a href="#__codelineno-0-183">183</a></span>
-<span class="normal"><a href="#__codelineno-0-184">184</a></span>
-<span class="normal"><a href="#__codelineno-0-185">185</a></span>
-<span class="normal"><a href="#__codelineno-0-186">186</a></span>
-<span class="normal"><a href="#__codelineno-0-187">187</a></span>
-<span class="normal"><a href="#__codelineno-0-188">188</a></span>
-<span class="normal"><a href="#__codelineno-0-189">189</a></span>
-<span class="normal"><a href="#__codelineno-0-190">190</a></span>
-<span class="normal"><a href="#__codelineno-0-191">191</a></span>
-<span class="normal"><a href="#__codelineno-0-192">192</a></span>
-<span class="normal"><a href="#__codelineno-0-193">193</a></span>
-<span class="normal"><a href="#__codelineno-0-194">194</a></span>
-<span class="normal"><a href="#__codelineno-0-195">195</a></span>
-<span class="normal"><a href="#__codelineno-0-196">196</a></span>
-<span class="normal"><a href="#__codelineno-0-197">197</a></span>
-<span class="normal"><a href="#__codelineno-0-198">198</a></span>
-<span class="normal"><a href="#__codelineno-0-199">199</a></span>
-<span class="normal"><a href="#__codelineno-0-200">200</a></span>
-<span class="normal"><a href="#__codelineno-0-201">201</a></span>
-<span class="normal"><a href="#__codelineno-0-202">202</a></span>
-<span class="normal"><a href="#__codelineno-0-203">203</a></span>
-<span class="normal"><a href="#__codelineno-0-204">204</a></span>
-<span class="normal"><a href="#__codelineno-0-205">205</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-179" name="__codelineno-0-179"></a><span class="nd">@staticmethod</span>
-<a id="__codelineno-0-180" name="__codelineno-0-180"></a><span class="k">def</span><span class="w"> </span><span class="nf">grid</span><span class="p">(</span>
-<a id="__codelineno-0-181" name="__codelineno-0-181"></a>    <span class="n">rows</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
-<a id="__codelineno-0-182" name="__codelineno-0-182"></a>    <span class="n">cols</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
-<a id="__codelineno-0-183" name="__codelineno-0-183"></a>    <span class="n">factory</span><span class="p">:</span> <span class="n">Callable</span><span class="p">[[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">],</span> <span class="s2">&quot;Worker&quot;</span><span class="p">],</span>
-<a id="__codelineno-0-184" name="__codelineno-0-184"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">list</span><span class="p">[</span><span class="s2">&quot;Worker&quot;</span><span class="p">]]:</span>
-<a id="__codelineno-0-185" name="__codelineno-0-185"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Build a 2D grid of Workers; ``factory(r, c)`` returns one Worker.</span>
-<a id="__codelineno-0-186" name="__codelineno-0-186"></a>
-<a id="__codelineno-0-187" name="__codelineno-0-187"></a><span class="sd">    Replaces the common pattern::</span>
-<a id="__codelineno-0-188" name="__codelineno-0-188"></a>
-<a id="__codelineno-0-189" name="__codelineno-0-189"></a><span class="sd">        ws = [Worker(...) for i in range(R) for j in range(C)]</span>
-<a id="__codelineno-0-190" name="__codelineno-0-190"></a><span class="sd">        ws[i * C + j]  # 1-D index arithmetic</span>
-<a id="__codelineno-0-191" name="__codelineno-0-191"></a>
-<a id="__codelineno-0-192" name="__codelineno-0-192"></a><span class="sd">    with::</span>
-<a id="__codelineno-0-193" name="__codelineno-0-193"></a>
-<a id="__codelineno-0-194" name="__codelineno-0-194"></a><span class="sd">        ws = Worker.grid(R, C, lambda r, c: Worker(...))</span>
-<a id="__codelineno-0-195" name="__codelineno-0-195"></a><span class="sd">        ws[i][j]       # natural 2-D access</span>
-<a id="__codelineno-0-196" name="__codelineno-0-196"></a>
-<a id="__codelineno-0-197" name="__codelineno-0-197"></a><span class="sd">    Args:</span>
-<a id="__codelineno-0-198" name="__codelineno-0-198"></a><span class="sd">        rows: Outer-dimension count (e.g. column index).</span>
-<a id="__codelineno-0-199" name="__codelineno-0-199"></a><span class="sd">        cols: Inner-dimension count (e.g. channel index).</span>
-<a id="__codelineno-0-200" name="__codelineno-0-200"></a><span class="sd">        factory: Called once per cell with ``(r, c)``; must return a Worker.</span>
-<a id="__codelineno-0-201" name="__codelineno-0-201"></a>
-<a id="__codelineno-0-202" name="__codelineno-0-202"></a><span class="sd">    Returns:</span>
-<a id="__codelineno-0-203" name="__codelineno-0-203"></a><span class="sd">        ``rows``-by-``cols`` nested list of Worker instances.</span>
-<a id="__codelineno-0-204" name="__codelineno-0-204"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-205" name="__codelineno-0-205"></a>    <span class="k">return</span> <span class="p">[[</span><span class="n">factory</span><span class="p">(</span><span class="n">r</span><span class="p">,</span> <span class="n">c</span><span class="p">)</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">cols</span><span class="p">)]</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">rows</span><span class="p">)]</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-206">206</a></span>
+<span class="normal"><a href="#__codelineno-0-207">207</a></span>
+<span class="normal"><a href="#__codelineno-0-208">208</a></span>
+<span class="normal"><a href="#__codelineno-0-209">209</a></span>
+<span class="normal"><a href="#__codelineno-0-210">210</a></span>
+<span class="normal"><a href="#__codelineno-0-211">211</a></span>
+<span class="normal"><a href="#__codelineno-0-212">212</a></span>
+<span class="normal"><a href="#__codelineno-0-213">213</a></span>
+<span class="normal"><a href="#__codelineno-0-214">214</a></span>
+<span class="normal"><a href="#__codelineno-0-215">215</a></span>
+<span class="normal"><a href="#__codelineno-0-216">216</a></span>
+<span class="normal"><a href="#__codelineno-0-217">217</a></span>
+<span class="normal"><a href="#__codelineno-0-218">218</a></span>
+<span class="normal"><a href="#__codelineno-0-219">219</a></span>
+<span class="normal"><a href="#__codelineno-0-220">220</a></span>
+<span class="normal"><a href="#__codelineno-0-221">221</a></span>
+<span class="normal"><a href="#__codelineno-0-222">222</a></span>
+<span class="normal"><a href="#__codelineno-0-223">223</a></span>
+<span class="normal"><a href="#__codelineno-0-224">224</a></span>
+<span class="normal"><a href="#__codelineno-0-225">225</a></span>
+<span class="normal"><a href="#__codelineno-0-226">226</a></span>
+<span class="normal"><a href="#__codelineno-0-227">227</a></span>
+<span class="normal"><a href="#__codelineno-0-228">228</a></span>
+<span class="normal"><a href="#__codelineno-0-229">229</a></span>
+<span class="normal"><a href="#__codelineno-0-230">230</a></span>
+<span class="normal"><a href="#__codelineno-0-231">231</a></span>
+<span class="normal"><a href="#__codelineno-0-232">232</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-206" name="__codelineno-0-206"></a><span class="nd">@staticmethod</span>
+<a id="__codelineno-0-207" name="__codelineno-0-207"></a><span class="k">def</span><span class="w"> </span><span class="nf">grid</span><span class="p">(</span>
+<a id="__codelineno-0-208" name="__codelineno-0-208"></a>    <span class="n">rows</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+<a id="__codelineno-0-209" name="__codelineno-0-209"></a>    <span class="n">cols</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+<a id="__codelineno-0-210" name="__codelineno-0-210"></a>    <span class="n">factory</span><span class="p">:</span> <span class="n">Callable</span><span class="p">[[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">],</span> <span class="s2">&quot;Worker&quot;</span><span class="p">],</span>
+<a id="__codelineno-0-211" name="__codelineno-0-211"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">list</span><span class="p">[</span><span class="s2">&quot;Worker&quot;</span><span class="p">]]:</span>
+<a id="__codelineno-0-212" name="__codelineno-0-212"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Build a 2D grid of Workers; ``factory(r, c)`` returns one Worker.</span>
+<a id="__codelineno-0-213" name="__codelineno-0-213"></a>
+<a id="__codelineno-0-214" name="__codelineno-0-214"></a><span class="sd">    Replaces the common pattern::</span>
+<a id="__codelineno-0-215" name="__codelineno-0-215"></a>
+<a id="__codelineno-0-216" name="__codelineno-0-216"></a><span class="sd">        ws = [Worker(...) for i in range(R) for j in range(C)]</span>
+<a id="__codelineno-0-217" name="__codelineno-0-217"></a><span class="sd">        ws[i * C + j]  # 1-D index arithmetic</span>
+<a id="__codelineno-0-218" name="__codelineno-0-218"></a>
+<a id="__codelineno-0-219" name="__codelineno-0-219"></a><span class="sd">    with::</span>
+<a id="__codelineno-0-220" name="__codelineno-0-220"></a>
+<a id="__codelineno-0-221" name="__codelineno-0-221"></a><span class="sd">        ws = Worker.grid(R, C, lambda r, c: Worker(...))</span>
+<a id="__codelineno-0-222" name="__codelineno-0-222"></a><span class="sd">        ws[i][j]       # natural 2-D access</span>
+<a id="__codelineno-0-223" name="__codelineno-0-223"></a>
+<a id="__codelineno-0-224" name="__codelineno-0-224"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-225" name="__codelineno-0-225"></a><span class="sd">        rows: Outer-dimension count (e.g. column index).</span>
+<a id="__codelineno-0-226" name="__codelineno-0-226"></a><span class="sd">        cols: Inner-dimension count (e.g. channel index).</span>
+<a id="__codelineno-0-227" name="__codelineno-0-227"></a><span class="sd">        factory: Called once per cell with ``(r, c)``; must return a Worker.</span>
+<a id="__codelineno-0-228" name="__codelineno-0-228"></a>
+<a id="__codelineno-0-229" name="__codelineno-0-229"></a><span class="sd">    Returns:</span>
+<a id="__codelineno-0-230" name="__codelineno-0-230"></a><span class="sd">        ``rows``-by-``cols`` nested list of Worker instances.</span>
+<a id="__codelineno-0-231" name="__codelineno-0-231"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-232" name="__codelineno-0-232"></a>    <span class="k">return</span> <span class="p">[[</span><span class="n">factory</span><span class="p">(</span><span class="n">r</span><span class="p">,</span> <span class="n">c</span><span class="p">)</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">cols</span><span class="p">)]</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">rows</span><span class="p">)]</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -8937,21 +9012,21 @@ ws[i][j]       # natural 2-D access
 
                   <details class="mkdocstrings-source">
                     <summary>Source code in <code>python/iron/worker.py</code></summary>
-                    <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-273">273</a></span>
-<span class="normal"><a href="#__codelineno-0-274">274</a></span>
-<span class="normal"><a href="#__codelineno-0-275">275</a></span>
-<span class="normal"><a href="#__codelineno-0-276">276</a></span>
-<span class="normal"><a href="#__codelineno-0-277">277</a></span>
-<span class="normal"><a href="#__codelineno-0-278">278</a></span>
-<span class="normal"><a href="#__codelineno-0-279">279</a></span>
-<span class="normal"><a href="#__codelineno-0-280">280</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-273" name="__codelineno-0-273"></a><span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">initial_value</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">):</span>
-<a id="__codelineno-0-274" name="__codelineno-0-274"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Initialize a WorkerRuntimeBarrier.</span>
-<a id="__codelineno-0-275" name="__codelineno-0-275"></a>
-<a id="__codelineno-0-276" name="__codelineno-0-276"></a><span class="sd">    Args:</span>
-<a id="__codelineno-0-277" name="__codelineno-0-277"></a><span class="sd">        initial_value (int, optional): The initial lock value. Defaults to 0.</span>
-<a id="__codelineno-0-278" name="__codelineno-0-278"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-279" name="__codelineno-0-279"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">initial_value</span> <span class="o">=</span> <span class="n">initial_value</span>
-<a id="__codelineno-0-280" name="__codelineno-0-280"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">worker_locks</span> <span class="o">=</span> <span class="p">[]</span>
+                    <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-301">301</a></span>
+<span class="normal"><a href="#__codelineno-0-302">302</a></span>
+<span class="normal"><a href="#__codelineno-0-303">303</a></span>
+<span class="normal"><a href="#__codelineno-0-304">304</a></span>
+<span class="normal"><a href="#__codelineno-0-305">305</a></span>
+<span class="normal"><a href="#__codelineno-0-306">306</a></span>
+<span class="normal"><a href="#__codelineno-0-307">307</a></span>
+<span class="normal"><a href="#__codelineno-0-308">308</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-301" name="__codelineno-0-301"></a><span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">initial_value</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">):</span>
+<a id="__codelineno-0-302" name="__codelineno-0-302"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Initialize a WorkerRuntimeBarrier.</span>
+<a id="__codelineno-0-303" name="__codelineno-0-303"></a>
+<a id="__codelineno-0-304" name="__codelineno-0-304"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-305" name="__codelineno-0-305"></a><span class="sd">        initial_value (int, optional): The initial lock value. Defaults to 0.</span>
+<a id="__codelineno-0-306" name="__codelineno-0-306"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-307" name="__codelineno-0-307"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">initial_value</span> <span class="o">=</span> <span class="n">initial_value</span>
+<a id="__codelineno-0-308" name="__codelineno-0-308"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">worker_locks</span> <span class="o">=</span> <span class="p">[]</span>
 </code></pre></div></td></tr></table></div>
                   </details>
 
@@ -9018,37 +9093,37 @@ ws[i][j]       # natural 2-D access
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>python/iron/worker.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-282">282</a></span>
-<span class="normal"><a href="#__codelineno-0-283">283</a></span>
-<span class="normal"><a href="#__codelineno-0-284">284</a></span>
-<span class="normal"><a href="#__codelineno-0-285">285</a></span>
-<span class="normal"><a href="#__codelineno-0-286">286</a></span>
-<span class="normal"><a href="#__codelineno-0-287">287</a></span>
-<span class="normal"><a href="#__codelineno-0-288">288</a></span>
-<span class="normal"><a href="#__codelineno-0-289">289</a></span>
-<span class="normal"><a href="#__codelineno-0-290">290</a></span>
-<span class="normal"><a href="#__codelineno-0-291">291</a></span>
-<span class="normal"><a href="#__codelineno-0-292">292</a></span>
-<span class="normal"><a href="#__codelineno-0-293">293</a></span>
-<span class="normal"><a href="#__codelineno-0-294">294</a></span>
-<span class="normal"><a href="#__codelineno-0-295">295</a></span>
-<span class="normal"><a href="#__codelineno-0-296">296</a></span>
-<span class="normal"><a href="#__codelineno-0-297">297</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-282" name="__codelineno-0-282"></a><span class="k">def</span><span class="w"> </span><span class="nf">wait_for_value</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">:</span> <span class="nb">int</span><span class="p">):</span>
-<a id="__codelineno-0-283" name="__codelineno-0-283"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Wait for the barrier to be set to `value`.</span>
-<a id="__codelineno-0-284" name="__codelineno-0-284"></a>
-<a id="__codelineno-0-285" name="__codelineno-0-285"></a><span class="sd">    Should be called from inside a core function.</span>
-<a id="__codelineno-0-286" name="__codelineno-0-286"></a>
-<a id="__codelineno-0-287" name="__codelineno-0-287"></a><span class="sd">    Args:</span>
-<a id="__codelineno-0-288" name="__codelineno-0-288"></a><span class="sd">        value (int): The value to wait for.</span>
-<a id="__codelineno-0-289" name="__codelineno-0-289"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-290" name="__codelineno-0-290"></a>    <span class="c1"># Here this is assuming that the we are currently placing the last added lock</span>
-<a id="__codelineno-0-291" name="__codelineno-0-291"></a>    <span class="c1"># And therefore that wait_for_value operations are placed just after their corresponding Worker...</span>
-<a id="__codelineno-0-292" name="__codelineno-0-292"></a>    <span class="c1"># This is a pretty bad assumption, think about an alternative way to solve this</span>
-<a id="__codelineno-0-293" name="__codelineno-0-293"></a>    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">worker_locks</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
-<a id="__codelineno-0-294" name="__codelineno-0-294"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-<a id="__codelineno-0-295" name="__codelineno-0-295"></a>            <span class="s2">&quot;No workers have been registered for this barrier. Need to pass the barrier as an argument to the worker.&quot;</span>
-<a id="__codelineno-0-296" name="__codelineno-0-296"></a>        <span class="p">)</span>
-<a id="__codelineno-0-297" name="__codelineno-0-297"></a>    <span class="n">use_lock</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">worker_locks</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="n">LockAction</span><span class="o">.</span><span class="n">Acquire</span><span class="p">,</span> <span class="n">value</span><span class="o">=</span><span class="n">value</span><span class="p">)</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-310">310</a></span>
+<span class="normal"><a href="#__codelineno-0-311">311</a></span>
+<span class="normal"><a href="#__codelineno-0-312">312</a></span>
+<span class="normal"><a href="#__codelineno-0-313">313</a></span>
+<span class="normal"><a href="#__codelineno-0-314">314</a></span>
+<span class="normal"><a href="#__codelineno-0-315">315</a></span>
+<span class="normal"><a href="#__codelineno-0-316">316</a></span>
+<span class="normal"><a href="#__codelineno-0-317">317</a></span>
+<span class="normal"><a href="#__codelineno-0-318">318</a></span>
+<span class="normal"><a href="#__codelineno-0-319">319</a></span>
+<span class="normal"><a href="#__codelineno-0-320">320</a></span>
+<span class="normal"><a href="#__codelineno-0-321">321</a></span>
+<span class="normal"><a href="#__codelineno-0-322">322</a></span>
+<span class="normal"><a href="#__codelineno-0-323">323</a></span>
+<span class="normal"><a href="#__codelineno-0-324">324</a></span>
+<span class="normal"><a href="#__codelineno-0-325">325</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-310" name="__codelineno-0-310"></a><span class="k">def</span><span class="w"> </span><span class="nf">wait_for_value</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">:</span> <span class="nb">int</span><span class="p">):</span>
+<a id="__codelineno-0-311" name="__codelineno-0-311"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Wait for the barrier to be set to `value`.</span>
+<a id="__codelineno-0-312" name="__codelineno-0-312"></a>
+<a id="__codelineno-0-313" name="__codelineno-0-313"></a><span class="sd">    Should be called from inside a core function.</span>
+<a id="__codelineno-0-314" name="__codelineno-0-314"></a>
+<a id="__codelineno-0-315" name="__codelineno-0-315"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-316" name="__codelineno-0-316"></a><span class="sd">        value (int): The value to wait for.</span>
+<a id="__codelineno-0-317" name="__codelineno-0-317"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-318" name="__codelineno-0-318"></a>    <span class="c1"># Here this is assuming that the we are currently placing the last added lock</span>
+<a id="__codelineno-0-319" name="__codelineno-0-319"></a>    <span class="c1"># And therefore that wait_for_value operations are placed just after their corresponding Worker...</span>
+<a id="__codelineno-0-320" name="__codelineno-0-320"></a>    <span class="c1"># This is a pretty bad assumption, think about an alternative way to solve this</span>
+<a id="__codelineno-0-321" name="__codelineno-0-321"></a>    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">worker_locks</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+<a id="__codelineno-0-322" name="__codelineno-0-322"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+<a id="__codelineno-0-323" name="__codelineno-0-323"></a>            <span class="s2">&quot;No workers have been registered for this barrier. Need to pass the barrier as an argument to the worker.&quot;</span>
+<a id="__codelineno-0-324" name="__codelineno-0-324"></a>        <span class="p">)</span>
+<a id="__codelineno-0-325" name="__codelineno-0-325"></a>    <span class="n">use_lock</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">worker_locks</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="n">LockAction</span><span class="o">.</span><span class="n">Acquire</span><span class="p">,</span> <span class="n">value</span><span class="o">=</span><span class="n">value</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -9104,19 +9179,19 @@ ws[i][j]       # natural 2-D access
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>python/iron/worker.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-299">299</a></span>
-<span class="normal"><a href="#__codelineno-0-300">300</a></span>
-<span class="normal"><a href="#__codelineno-0-301">301</a></span>
-<span class="normal"><a href="#__codelineno-0-302">302</a></span>
-<span class="normal"><a href="#__codelineno-0-303">303</a></span>
-<span class="normal"><a href="#__codelineno-0-304">304</a></span>
-<span class="normal"><a href="#__codelineno-0-305">305</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-299" name="__codelineno-0-299"></a><span class="k">def</span><span class="w"> </span><span class="nf">set</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">:</span> <span class="nb">int</span><span class="p">):</span>
-<a id="__codelineno-0-300" name="__codelineno-0-300"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Set the barrier to ``value`` from within a runtime sequence body.</span>
-<a id="__codelineno-0-301" name="__codelineno-0-301"></a>
-<a id="__codelineno-0-302" name="__codelineno-0-302"></a><span class="sd">    Args:</span>
-<a id="__codelineno-0-303" name="__codelineno-0-303"></a><span class="sd">        value (int): The value to set the barrier to.</span>
-<a id="__codelineno-0-304" name="__codelineno-0-304"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-305" name="__codelineno-0-305"></a>    <span class="n">_BarrierSetOp</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">)</span><span class="o">.</span><span class="n">resolve</span><span class="p">()</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-327">327</a></span>
+<span class="normal"><a href="#__codelineno-0-328">328</a></span>
+<span class="normal"><a href="#__codelineno-0-329">329</a></span>
+<span class="normal"><a href="#__codelineno-0-330">330</a></span>
+<span class="normal"><a href="#__codelineno-0-331">331</a></span>
+<span class="normal"><a href="#__codelineno-0-332">332</a></span>
+<span class="normal"><a href="#__codelineno-0-333">333</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-327" name="__codelineno-0-327"></a><span class="k">def</span><span class="w"> </span><span class="nf">set</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">:</span> <span class="nb">int</span><span class="p">):</span>
+<a id="__codelineno-0-328" name="__codelineno-0-328"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Set the barrier to ``value`` from within a runtime sequence body.</span>
+<a id="__codelineno-0-329" name="__codelineno-0-329"></a>
+<a id="__codelineno-0-330" name="__codelineno-0-330"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-331" name="__codelineno-0-331"></a><span class="sd">        value (int): The value to set the barrier to.</span>
+<a id="__codelineno-0-332" name="__codelineno-0-332"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-333" name="__codelineno-0-333"></a>    <span class="n">_BarrierSetOp</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">)</span><span class="o">.</span><span class="n">resolve</span><span class="p">()</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -9172,27 +9247,27 @@ ws[i][j]       # natural 2-D access
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>python/iron/worker.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-316">316</a></span>
-<span class="normal"><a href="#__codelineno-0-317">317</a></span>
-<span class="normal"><a href="#__codelineno-0-318">318</a></span>
-<span class="normal"><a href="#__codelineno-0-319">319</a></span>
-<span class="normal"><a href="#__codelineno-0-320">320</a></span>
-<span class="normal"><a href="#__codelineno-0-321">321</a></span>
-<span class="normal"><a href="#__codelineno-0-322">322</a></span>
-<span class="normal"><a href="#__codelineno-0-323">323</a></span>
-<span class="normal"><a href="#__codelineno-0-324">324</a></span>
-<span class="normal"><a href="#__codelineno-0-325">325</a></span>
-<span class="normal"><a href="#__codelineno-0-326">326</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-316" name="__codelineno-0-316"></a><span class="k">def</span><span class="w"> </span><span class="nf">release_with_value</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">:</span> <span class="nb">int</span><span class="p">):</span>
-<a id="__codelineno-0-317" name="__codelineno-0-317"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Release and decrement the barrier by `value` inside the core.</span>
-<a id="__codelineno-0-318" name="__codelineno-0-318"></a>
-<a id="__codelineno-0-319" name="__codelineno-0-319"></a><span class="sd">    Args:</span>
-<a id="__codelineno-0-320" name="__codelineno-0-320"></a><span class="sd">        value (int): The value to decrement by in Release.</span>
-<a id="__codelineno-0-321" name="__codelineno-0-321"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-322" name="__codelineno-0-322"></a>    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">worker_locks</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
-<a id="__codelineno-0-323" name="__codelineno-0-323"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-<a id="__codelineno-0-324" name="__codelineno-0-324"></a>            <span class="s2">&quot;No workers have been registered for this barrier. Need to pass the barrier as an argument to the worker.&quot;</span>
-<a id="__codelineno-0-325" name="__codelineno-0-325"></a>        <span class="p">)</span>
-<a id="__codelineno-0-326" name="__codelineno-0-326"></a>    <span class="n">use_lock</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">worker_locks</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="n">LockAction</span><span class="o">.</span><span class="n">Release</span><span class="p">,</span> <span class="n">value</span><span class="o">=</span><span class="n">value</span><span class="p">)</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-344">344</a></span>
+<span class="normal"><a href="#__codelineno-0-345">345</a></span>
+<span class="normal"><a href="#__codelineno-0-346">346</a></span>
+<span class="normal"><a href="#__codelineno-0-347">347</a></span>
+<span class="normal"><a href="#__codelineno-0-348">348</a></span>
+<span class="normal"><a href="#__codelineno-0-349">349</a></span>
+<span class="normal"><a href="#__codelineno-0-350">350</a></span>
+<span class="normal"><a href="#__codelineno-0-351">351</a></span>
+<span class="normal"><a href="#__codelineno-0-352">352</a></span>
+<span class="normal"><a href="#__codelineno-0-353">353</a></span>
+<span class="normal"><a href="#__codelineno-0-354">354</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-344" name="__codelineno-0-344"></a><span class="k">def</span><span class="w"> </span><span class="nf">release_with_value</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">:</span> <span class="nb">int</span><span class="p">):</span>
+<a id="__codelineno-0-345" name="__codelineno-0-345"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Release and decrement the barrier by `value` inside the core.</span>
+<a id="__codelineno-0-346" name="__codelineno-0-346"></a>
+<a id="__codelineno-0-347" name="__codelineno-0-347"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-348" name="__codelineno-0-348"></a><span class="sd">        value (int): The value to decrement by in Release.</span>
+<a id="__codelineno-0-349" name="__codelineno-0-349"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-350" name="__codelineno-0-350"></a>    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">worker_locks</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+<a id="__codelineno-0-351" name="__codelineno-0-351"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+<a id="__codelineno-0-352" name="__codelineno-0-352"></a>            <span class="s2">&quot;No workers have been registered for this barrier. Need to pass the barrier as an argument to the worker.&quot;</span>
+<a id="__codelineno-0-353" name="__codelineno-0-353"></a>        <span class="p">)</span>
+<a id="__codelineno-0-354" name="__codelineno-0-354"></a>    <span class="n">use_lock</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">worker_locks</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="n">LockAction</span><span class="o">.</span><span class="n">Release</span><span class="p">,</span> <span class="n">value</span><span class="o">=</span><span class="n">value</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -14651,7 +14726,8 @@ before starting workers that read them.</p>
 <a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="n">tile</span><span class="p">:</span> <span class="n"><span title="iron.device.Tile">Tile</span></span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 <a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    <span class="n">use_write_rtp</span><span class="p">:</span> <span class="n"><span title="bool">bool</span></span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
 <a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    <span class="n">address</span><span class="p">:</span> <span class="n"><span title="int">int</span></span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="p">)</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    <span class="n">mem_bank</span><span class="p">:</span> <span class="n"><span title="int">int</span></span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="p">)</span>
 </code></pre></div>
 
     <div class="doc doc-contents ">
@@ -14782,6 +14858,26 @@ Defaults to None (compiler-assigned).</p>
                   <code>None</code>
             </td>
           </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>mem_bank</code>
+            </td>
+            <td>
+                  <code><span title="int">int</span> | None</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Pin the buffer to a specific L1 memory bank.
+Bank-aware allocation treats the pin as a hard constraint and reports an
+error when the bank cannot hold the buffer. The basic-sequential scheme
+has no notion of banks and ignores the pin. Defaults to None
+(compiler-assigned).</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
       </tbody>
     </table>
 
@@ -14801,7 +14897,8 @@ Defaults to None (compiler-assigned).</p>
             </td>
             <td>
               <div class="doc-md-description">
-                <p>If neither <code>type</code> nor <code>initial_value</code> is provided.</p>
+                <p>If neither <code>type</code> nor <code>initial_value</code> is provided, or if
+<code>address</code>/<code>mem_bank</code> are provided but are not a non-negative int.</p>
               </div>
             </td>
           </tr>
@@ -14817,59 +14914,83 @@ Defaults to None (compiler-assigned).</p>
 
                   <details class="mkdocstrings-source">
                     <summary>Source code in <code>python/iron/buffer.py</code></summary>
-                    <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-36">36</a></span>
-<span class="normal"><a href="#__codelineno-0-37">37</a></span>
-<span class="normal"><a href="#__codelineno-0-38">38</a></span>
-<span class="normal"><a href="#__codelineno-0-39">39</a></span>
-<span class="normal"><a href="#__codelineno-0-40">40</a></span>
-<span class="normal"><a href="#__codelineno-0-41">41</a></span>
-<span class="normal"><a href="#__codelineno-0-42">42</a></span>
-<span class="normal"><a href="#__codelineno-0-43">43</a></span>
-<span class="normal"><a href="#__codelineno-0-44">44</a></span>
-<span class="normal"><a href="#__codelineno-0-45">45</a></span>
-<span class="normal"><a href="#__codelineno-0-46">46</a></span>
-<span class="normal"><a href="#__codelineno-0-47">47</a></span>
-<span class="normal"><a href="#__codelineno-0-48">48</a></span>
-<span class="normal"><a href="#__codelineno-0-49">49</a></span>
-<span class="normal"><a href="#__codelineno-0-50">50</a></span>
-<span class="normal"><a href="#__codelineno-0-51">51</a></span>
-<span class="normal"><a href="#__codelineno-0-52">52</a></span>
-<span class="normal"><a href="#__codelineno-0-53">53</a></span>
-<span class="normal"><a href="#__codelineno-0-54">54</a></span>
-<span class="normal"><a href="#__codelineno-0-55">55</a></span>
-<span class="normal"><a href="#__codelineno-0-56">56</a></span>
-<span class="normal"><a href="#__codelineno-0-57">57</a></span>
-<span class="normal"><a href="#__codelineno-0-58">58</a></span>
-<span class="normal"><a href="#__codelineno-0-59">59</a></span>
-<span class="normal"><a href="#__codelineno-0-60">60</a></span>
-<span class="normal"><a href="#__codelineno-0-61">61</a></span>
-<span class="normal"><a href="#__codelineno-0-62">62</a></span>
-<span class="normal"><a href="#__codelineno-0-63">63</a></span>
-<span class="normal"><a href="#__codelineno-0-64">64</a></span>
-<span class="normal"><a href="#__codelineno-0-65">65</a></span>
-<span class="normal"><a href="#__codelineno-0-66">66</a></span>
-<span class="normal"><a href="#__codelineno-0-67">67</a></span>
-<span class="normal"><a href="#__codelineno-0-68">68</a></span>
-<span class="normal"><a href="#__codelineno-0-69">69</a></span>
-<span class="normal"><a href="#__codelineno-0-70">70</a></span>
-<span class="normal"><a href="#__codelineno-0-71">71</a></span>
-<span class="normal"><a href="#__codelineno-0-72">72</a></span>
-<span class="normal"><a href="#__codelineno-0-73">73</a></span>
-<span class="normal"><a href="#__codelineno-0-74">74</a></span>
-<span class="normal"><a href="#__codelineno-0-75">75</a></span>
-<span class="normal"><a href="#__codelineno-0-76">76</a></span>
-<span class="normal"><a href="#__codelineno-0-77">77</a></span>
-<span class="normal"><a href="#__codelineno-0-78">78</a></span>
-<span class="normal"><a href="#__codelineno-0-79">79</a></span>
-<span class="normal"><a href="#__codelineno-0-80">80</a></span>
-<span class="normal"><a href="#__codelineno-0-81">81</a></span>
-<span class="normal"><a href="#__codelineno-0-82">82</a></span>
-<span class="normal"><a href="#__codelineno-0-83">83</a></span>
-<span class="normal"><a href="#__codelineno-0-84">84</a></span>
-<span class="normal"><a href="#__codelineno-0-85">85</a></span>
-<span class="normal"><a href="#__codelineno-0-86">86</a></span>
-<span class="normal"><a href="#__codelineno-0-87">87</a></span>
-<span class="normal"><a href="#__codelineno-0-88">88</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-36" name="__codelineno-0-36"></a><span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+                    <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-36"> 36</a></span>
+<span class="normal"><a href="#__codelineno-0-37"> 37</a></span>
+<span class="normal"><a href="#__codelineno-0-38"> 38</a></span>
+<span class="normal"><a href="#__codelineno-0-39"> 39</a></span>
+<span class="normal"><a href="#__codelineno-0-40"> 40</a></span>
+<span class="normal"><a href="#__codelineno-0-41"> 41</a></span>
+<span class="normal"><a href="#__codelineno-0-42"> 42</a></span>
+<span class="normal"><a href="#__codelineno-0-43"> 43</a></span>
+<span class="normal"><a href="#__codelineno-0-44"> 44</a></span>
+<span class="normal"><a href="#__codelineno-0-45"> 45</a></span>
+<span class="normal"><a href="#__codelineno-0-46"> 46</a></span>
+<span class="normal"><a href="#__codelineno-0-47"> 47</a></span>
+<span class="normal"><a href="#__codelineno-0-48"> 48</a></span>
+<span class="normal"><a href="#__codelineno-0-49"> 49</a></span>
+<span class="normal"><a href="#__codelineno-0-50"> 50</a></span>
+<span class="normal"><a href="#__codelineno-0-51"> 51</a></span>
+<span class="normal"><a href="#__codelineno-0-52"> 52</a></span>
+<span class="normal"><a href="#__codelineno-0-53"> 53</a></span>
+<span class="normal"><a href="#__codelineno-0-54"> 54</a></span>
+<span class="normal"><a href="#__codelineno-0-55"> 55</a></span>
+<span class="normal"><a href="#__codelineno-0-56"> 56</a></span>
+<span class="normal"><a href="#__codelineno-0-57"> 57</a></span>
+<span class="normal"><a href="#__codelineno-0-58"> 58</a></span>
+<span class="normal"><a href="#__codelineno-0-59"> 59</a></span>
+<span class="normal"><a href="#__codelineno-0-60"> 60</a></span>
+<span class="normal"><a href="#__codelineno-0-61"> 61</a></span>
+<span class="normal"><a href="#__codelineno-0-62"> 62</a></span>
+<span class="normal"><a href="#__codelineno-0-63"> 63</a></span>
+<span class="normal"><a href="#__codelineno-0-64"> 64</a></span>
+<span class="normal"><a href="#__codelineno-0-65"> 65</a></span>
+<span class="normal"><a href="#__codelineno-0-66"> 66</a></span>
+<span class="normal"><a href="#__codelineno-0-67"> 67</a></span>
+<span class="normal"><a href="#__codelineno-0-68"> 68</a></span>
+<span class="normal"><a href="#__codelineno-0-69"> 69</a></span>
+<span class="normal"><a href="#__codelineno-0-70"> 70</a></span>
+<span class="normal"><a href="#__codelineno-0-71"> 71</a></span>
+<span class="normal"><a href="#__codelineno-0-72"> 72</a></span>
+<span class="normal"><a href="#__codelineno-0-73"> 73</a></span>
+<span class="normal"><a href="#__codelineno-0-74"> 74</a></span>
+<span class="normal"><a href="#__codelineno-0-75"> 75</a></span>
+<span class="normal"><a href="#__codelineno-0-76"> 76</a></span>
+<span class="normal"><a href="#__codelineno-0-77"> 77</a></span>
+<span class="normal"><a href="#__codelineno-0-78"> 78</a></span>
+<span class="normal"><a href="#__codelineno-0-79"> 79</a></span>
+<span class="normal"><a href="#__codelineno-0-80"> 80</a></span>
+<span class="normal"><a href="#__codelineno-0-81"> 81</a></span>
+<span class="normal"><a href="#__codelineno-0-82"> 82</a></span>
+<span class="normal"><a href="#__codelineno-0-83"> 83</a></span>
+<span class="normal"><a href="#__codelineno-0-84"> 84</a></span>
+<span class="normal"><a href="#__codelineno-0-85"> 85</a></span>
+<span class="normal"><a href="#__codelineno-0-86"> 86</a></span>
+<span class="normal"><a href="#__codelineno-0-87"> 87</a></span>
+<span class="normal"><a href="#__codelineno-0-88"> 88</a></span>
+<span class="normal"><a href="#__codelineno-0-89"> 89</a></span>
+<span class="normal"><a href="#__codelineno-0-90"> 90</a></span>
+<span class="normal"><a href="#__codelineno-0-91"> 91</a></span>
+<span class="normal"><a href="#__codelineno-0-92"> 92</a></span>
+<span class="normal"><a href="#__codelineno-0-93"> 93</a></span>
+<span class="normal"><a href="#__codelineno-0-94"> 94</a></span>
+<span class="normal"><a href="#__codelineno-0-95"> 95</a></span>
+<span class="normal"><a href="#__codelineno-0-96"> 96</a></span>
+<span class="normal"><a href="#__codelineno-0-97"> 97</a></span>
+<span class="normal"><a href="#__codelineno-0-98"> 98</a></span>
+<span class="normal"><a href="#__codelineno-0-99"> 99</a></span>
+<span class="normal"><a href="#__codelineno-0-100">100</a></span>
+<span class="normal"><a href="#__codelineno-0-101">101</a></span>
+<span class="normal"><a href="#__codelineno-0-102">102</a></span>
+<span class="normal"><a href="#__codelineno-0-103">103</a></span>
+<span class="normal"><a href="#__codelineno-0-104">104</a></span>
+<span class="normal"><a href="#__codelineno-0-105">105</a></span>
+<span class="normal"><a href="#__codelineno-0-106">106</a></span>
+<span class="normal"><a href="#__codelineno-0-107">107</a></span>
+<span class="normal"><a href="#__codelineno-0-108">108</a></span>
+<span class="normal"><a href="#__codelineno-0-109">109</a></span>
+<span class="normal"><a href="#__codelineno-0-110">110</a></span>
+<span class="normal"><a href="#__codelineno-0-111">111</a></span>
+<span class="normal"><a href="#__codelineno-0-112">112</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-36" name="__codelineno-0-36"></a><span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
 <a id="__codelineno-0-37" name="__codelineno-0-37"></a>    <span class="bp">self</span><span class="p">,</span>
 <a id="__codelineno-0-38" name="__codelineno-0-38"></a>    <span class="nb">type</span><span class="p">:</span> <span class="nb">type</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 <a id="__codelineno-0-39" name="__codelineno-0-39"></a>    <span class="n">initial_value</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
@@ -14877,51 +14998,75 @@ Defaults to None (compiler-assigned).</p>
 <a id="__codelineno-0-41" name="__codelineno-0-41"></a>    <span class="n">tile</span><span class="p">:</span> <span class="n">Tile</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 <a id="__codelineno-0-42" name="__codelineno-0-42"></a>    <span class="n">use_write_rtp</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
 <a id="__codelineno-0-43" name="__codelineno-0-43"></a>    <span class="n">address</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-44" name="__codelineno-0-44"></a><span class="p">):</span>
-<a id="__codelineno-0-45" name="__codelineno-0-45"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Declare a memory region at the top-level of the design.</span>
-<a id="__codelineno-0-46" name="__codelineno-0-46"></a>
-<a id="__codelineno-0-47" name="__codelineno-0-47"></a><span class="sd">    The buffer is accessible by both Workers and the Runtime.</span>
-<a id="__codelineno-0-48" name="__codelineno-0-48"></a>
-<a id="__codelineno-0-49" name="__codelineno-0-49"></a><span class="sd">    Args:</span>
-<a id="__codelineno-0-50" name="__codelineno-0-50"></a><span class="sd">        type (type[np.ndarray] | None, optional): The type of the buffer. Defaults to None.</span>
-<a id="__codelineno-0-51" name="__codelineno-0-51"></a><span class="sd">        initial_value (np.ndarray | None, optional): An initial value to set the buffer</span>
-<a id="__codelineno-0-52" name="__codelineno-0-52"></a><span class="sd">            to. Should be of same datatype and shape as the buffer. Defaults to None.</span>
-<a id="__codelineno-0-53" name="__codelineno-0-53"></a><span class="sd">        name (str | None, optional): The name of the buffer. If none is given, a unique</span>
-<a id="__codelineno-0-54" name="__codelineno-0-54"></a><span class="sd">            name will be generated. Defaults to None.</span>
-<a id="__codelineno-0-55" name="__codelineno-0-55"></a><span class="sd">        tile (Tile | None, optional): The tile for the buffer. Automatically set to the</span>
-<a id="__codelineno-0-56" name="__codelineno-0-56"></a><span class="sd">            Worker&#39;s tile when the buffer is passed in the Worker&#39;s fn_args list.</span>
-<a id="__codelineno-0-57" name="__codelineno-0-57"></a><span class="sd">            Defaults to None.</span>
-<a id="__codelineno-0-58" name="__codelineno-0-58"></a><span class="sd">        use_write_rtp (bool, optional): If use_write_rtp, write_rtp/read_rtp operations</span>
-<a id="__codelineno-0-59" name="__codelineno-0-59"></a><span class="sd">            will be generated. Otherwise, traditional write/read operations will be</span>
-<a id="__codelineno-0-60" name="__codelineno-0-60"></a><span class="sd">            used. Defaults to False.</span>
-<a id="__codelineno-0-61" name="__codelineno-0-61"></a><span class="sd">        address (int | None, optional): Pin the buffer to a fixed L1 address. Needed</span>
-<a id="__codelineno-0-62" name="__codelineno-0-62"></a><span class="sd">            for host-written RTP buffers the runtime pokes at a hardcoded address.</span>
-<a id="__codelineno-0-63" name="__codelineno-0-63"></a><span class="sd">            Defaults to None (compiler-assigned).</span>
-<a id="__codelineno-0-64" name="__codelineno-0-64"></a>
-<a id="__codelineno-0-65" name="__codelineno-0-65"></a><span class="sd">    Raises:</span>
-<a id="__codelineno-0-66" name="__codelineno-0-66"></a><span class="sd">        ValueError: If neither ``type`` nor ``initial_value`` is provided.</span>
-<a id="__codelineno-0-67" name="__codelineno-0-67"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-68" name="__codelineno-0-68"></a>    <span class="k">if</span> <span class="nb">type</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">initial_value</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-69" name="__codelineno-0-69"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Must provide either type, initial value, or both.&quot;</span><span class="p">)</span>
-<a id="__codelineno-0-70" name="__codelineno-0-70"></a>    <span class="k">if</span> <span class="nb">type</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-71" name="__codelineno-0-71"></a>        <span class="k">assert</span> <span class="n">initial_value</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
-<a id="__codelineno-0-72" name="__codelineno-0-72"></a>        <span class="nb">type</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[</span><span class="n">initial_value</span><span class="o">.</span><span class="n">shape</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">[</span><span class="n">initial_value</span><span class="o">.</span><span class="n">dtype</span><span class="o">.</span><span class="n">type</span><span class="p">]]</span>
-<a id="__codelineno-0-73" name="__codelineno-0-73"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_initial_value</span> <span class="o">=</span> <span class="n">initial_value</span>
-<a id="__codelineno-0-74" name="__codelineno-0-74"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_name</span> <span class="o">=</span> <span class="n">name</span>
-<a id="__codelineno-0-75" name="__codelineno-0-75"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_op</span> <span class="o">=</span> <span class="kc">None</span>
-<a id="__codelineno-0-76" name="__codelineno-0-76"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_arr_type</span> <span class="o">=</span> <span class="nb">type</span>
-<a id="__codelineno-0-77" name="__codelineno-0-77"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_name</span><span class="p">:</span>
-<a id="__codelineno-0-78" name="__codelineno-0-78"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_name</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;buf_</span><span class="si">{</span><span class="nb">next</span><span class="p">(</span><span class="n">Buffer</span><span class="o">.</span><span class="n">_gbuf_index</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span>
-<a id="__codelineno-0-79" name="__codelineno-0-79"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_use_write_rtp</span> <span class="o">=</span> <span class="n">use_write_rtp</span>
-<a id="__codelineno-0-80" name="__codelineno-0-80"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_address</span> <span class="o">=</span> <span class="n">address</span>
-<a id="__codelineno-0-81" name="__codelineno-0-81"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_tile</span> <span class="o">=</span> <span class="n">tile</span>
-<a id="__codelineno-0-82" name="__codelineno-0-82"></a>    <span class="c1"># Whether the user pinned this Buffer to an explicit tile at</span>
-<a id="__codelineno-0-83" name="__codelineno-0-83"></a>    <span class="c1"># construction.  A Worker may auto-pin _tile later as a</span>
-<a id="__codelineno-0-84" name="__codelineno-0-84"></a>    <span class="c1"># convenience, so `_tile is not None` is not a reliable signal of</span>
-<a id="__codelineno-0-85" name="__codelineno-0-85"></a>    <span class="c1"># user intent; this flag is.  Only explicitly-placed Buffers may be</span>
-<a id="__codelineno-0-86" name="__codelineno-0-86"></a>    <span class="c1"># shared (read) across Workers — see Worker.</span>
-<a id="__codelineno-0-87" name="__codelineno-0-87"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_explicit_tile</span> <span class="o">=</span> <span class="n">tile</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
-<a id="__codelineno-0-88" name="__codelineno-0-88"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_owner_worker</span><span class="p">:</span> <span class="s2">&quot;Worker | None&quot;</span> <span class="o">=</span> <span class="kc">None</span>
+<a id="__codelineno-0-44" name="__codelineno-0-44"></a>    <span class="n">mem_bank</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-45" name="__codelineno-0-45"></a><span class="p">):</span>
+<a id="__codelineno-0-46" name="__codelineno-0-46"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Declare a memory region at the top-level of the design.</span>
+<a id="__codelineno-0-47" name="__codelineno-0-47"></a>
+<a id="__codelineno-0-48" name="__codelineno-0-48"></a><span class="sd">    The buffer is accessible by both Workers and the Runtime.</span>
+<a id="__codelineno-0-49" name="__codelineno-0-49"></a>
+<a id="__codelineno-0-50" name="__codelineno-0-50"></a><span class="sd">    Args:</span>
+<a id="__codelineno-0-51" name="__codelineno-0-51"></a><span class="sd">        type (type[np.ndarray] | None, optional): The type of the buffer. Defaults to None.</span>
+<a id="__codelineno-0-52" name="__codelineno-0-52"></a><span class="sd">        initial_value (np.ndarray | None, optional): An initial value to set the buffer</span>
+<a id="__codelineno-0-53" name="__codelineno-0-53"></a><span class="sd">            to. Should be of same datatype and shape as the buffer. Defaults to None.</span>
+<a id="__codelineno-0-54" name="__codelineno-0-54"></a><span class="sd">        name (str | None, optional): The name of the buffer. If none is given, a unique</span>
+<a id="__codelineno-0-55" name="__codelineno-0-55"></a><span class="sd">            name will be generated. Defaults to None.</span>
+<a id="__codelineno-0-56" name="__codelineno-0-56"></a><span class="sd">        tile (Tile | None, optional): The tile for the buffer. Automatically set to the</span>
+<a id="__codelineno-0-57" name="__codelineno-0-57"></a><span class="sd">            Worker&#39;s tile when the buffer is passed in the Worker&#39;s fn_args list.</span>
+<a id="__codelineno-0-58" name="__codelineno-0-58"></a><span class="sd">            Defaults to None.</span>
+<a id="__codelineno-0-59" name="__codelineno-0-59"></a><span class="sd">        use_write_rtp (bool, optional): If use_write_rtp, write_rtp/read_rtp operations</span>
+<a id="__codelineno-0-60" name="__codelineno-0-60"></a><span class="sd">            will be generated. Otherwise, traditional write/read operations will be</span>
+<a id="__codelineno-0-61" name="__codelineno-0-61"></a><span class="sd">            used. Defaults to False.</span>
+<a id="__codelineno-0-62" name="__codelineno-0-62"></a><span class="sd">        address (int | None, optional): Pin the buffer to a fixed L1 address. Needed</span>
+<a id="__codelineno-0-63" name="__codelineno-0-63"></a><span class="sd">            for host-written RTP buffers the runtime pokes at a hardcoded address.</span>
+<a id="__codelineno-0-64" name="__codelineno-0-64"></a><span class="sd">            Defaults to None (compiler-assigned).</span>
+<a id="__codelineno-0-65" name="__codelineno-0-65"></a><span class="sd">        mem_bank (int | None, optional): Pin the buffer to a specific L1 memory bank.</span>
+<a id="__codelineno-0-66" name="__codelineno-0-66"></a><span class="sd">            Bank-aware allocation treats the pin as a hard constraint and reports an</span>
+<a id="__codelineno-0-67" name="__codelineno-0-67"></a><span class="sd">            error when the bank cannot hold the buffer. The basic-sequential scheme</span>
+<a id="__codelineno-0-68" name="__codelineno-0-68"></a><span class="sd">            has no notion of banks and ignores the pin. Defaults to None</span>
+<a id="__codelineno-0-69" name="__codelineno-0-69"></a><span class="sd">            (compiler-assigned).</span>
+<a id="__codelineno-0-70" name="__codelineno-0-70"></a>
+<a id="__codelineno-0-71" name="__codelineno-0-71"></a><span class="sd">    Raises:</span>
+<a id="__codelineno-0-72" name="__codelineno-0-72"></a><span class="sd">        ValueError: If neither ``type`` nor ``initial_value`` is provided, or if</span>
+<a id="__codelineno-0-73" name="__codelineno-0-73"></a><span class="sd">            ``address``/``mem_bank`` are provided but are not a non-negative int.</span>
+<a id="__codelineno-0-74" name="__codelineno-0-74"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-75" name="__codelineno-0-75"></a>    <span class="k">if</span> <span class="nb">type</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">initial_value</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-76" name="__codelineno-0-76"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Must provide either type, initial value, or both.&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-77" name="__codelineno-0-77"></a>    <span class="k">if</span> <span class="n">address</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-78" name="__codelineno-0-78"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">address</span><span class="p">,</span> <span class="nb">int</span><span class="p">)</span> <span class="ow">or</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">address</span><span class="p">,</span> <span class="nb">bool</span><span class="p">):</span>
+<a id="__codelineno-0-79" name="__codelineno-0-79"></a>            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+<a id="__codelineno-0-80" name="__codelineno-0-80"></a>                <span class="sa">f</span><span class="s2">&quot;Buffer address must be an int, but got &quot;</span>
+<a id="__codelineno-0-81" name="__codelineno-0-81"></a>                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">address</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-82" name="__codelineno-0-82"></a>            <span class="p">)</span>
+<a id="__codelineno-0-83" name="__codelineno-0-83"></a>        <span class="k">if</span> <span class="n">address</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">:</span>
+<a id="__codelineno-0-84" name="__codelineno-0-84"></a>            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Buffer address must be &gt;= 0, but got </span><span class="si">{</span><span class="n">address</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-85" name="__codelineno-0-85"></a>    <span class="k">if</span> <span class="n">mem_bank</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-86" name="__codelineno-0-86"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">mem_bank</span><span class="p">,</span> <span class="nb">int</span><span class="p">)</span> <span class="ow">or</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">mem_bank</span><span class="p">,</span> <span class="nb">bool</span><span class="p">):</span>
+<a id="__codelineno-0-87" name="__codelineno-0-87"></a>            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+<a id="__codelineno-0-88" name="__codelineno-0-88"></a>                <span class="sa">f</span><span class="s2">&quot;Buffer mem_bank must be an int, but got &quot;</span>
+<a id="__codelineno-0-89" name="__codelineno-0-89"></a>                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">mem_bank</span><span class="o">.</span><span class="vm">__class__</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-90" name="__codelineno-0-90"></a>            <span class="p">)</span>
+<a id="__codelineno-0-91" name="__codelineno-0-91"></a>        <span class="k">if</span> <span class="n">mem_bank</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">:</span>
+<a id="__codelineno-0-92" name="__codelineno-0-92"></a>            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Buffer mem_bank must be &gt;= 0, but got </span><span class="si">{</span><span class="n">mem_bank</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-93" name="__codelineno-0-93"></a>    <span class="k">if</span> <span class="nb">type</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-94" name="__codelineno-0-94"></a>        <span class="k">assert</span> <span class="n">initial_value</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+<a id="__codelineno-0-95" name="__codelineno-0-95"></a>        <span class="nb">type</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[</span><span class="n">initial_value</span><span class="o">.</span><span class="n">shape</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">[</span><span class="n">initial_value</span><span class="o">.</span><span class="n">dtype</span><span class="o">.</span><span class="n">type</span><span class="p">]]</span>
+<a id="__codelineno-0-96" name="__codelineno-0-96"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_initial_value</span> <span class="o">=</span> <span class="n">initial_value</span>
+<a id="__codelineno-0-97" name="__codelineno-0-97"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_name</span> <span class="o">=</span> <span class="n">name</span>
+<a id="__codelineno-0-98" name="__codelineno-0-98"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_op</span> <span class="o">=</span> <span class="kc">None</span>
+<a id="__codelineno-0-99" name="__codelineno-0-99"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_arr_type</span> <span class="o">=</span> <span class="nb">type</span>
+<a id="__codelineno-0-100" name="__codelineno-0-100"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_name</span><span class="p">:</span>
+<a id="__codelineno-0-101" name="__codelineno-0-101"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_name</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;buf_</span><span class="si">{</span><span class="nb">next</span><span class="p">(</span><span class="n">Buffer</span><span class="o">.</span><span class="n">_gbuf_index</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-102" name="__codelineno-0-102"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_use_write_rtp</span> <span class="o">=</span> <span class="n">use_write_rtp</span>
+<a id="__codelineno-0-103" name="__codelineno-0-103"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_address</span> <span class="o">=</span> <span class="n">address</span>
+<a id="__codelineno-0-104" name="__codelineno-0-104"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_mem_bank</span> <span class="o">=</span> <span class="n">mem_bank</span>
+<a id="__codelineno-0-105" name="__codelineno-0-105"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_tile</span> <span class="o">=</span> <span class="n">tile</span>
+<a id="__codelineno-0-106" name="__codelineno-0-106"></a>    <span class="c1"># Whether the user pinned this Buffer to an explicit tile at</span>
+<a id="__codelineno-0-107" name="__codelineno-0-107"></a>    <span class="c1"># construction.  A Worker may auto-pin _tile later as a</span>
+<a id="__codelineno-0-108" name="__codelineno-0-108"></a>    <span class="c1"># convenience, so `_tile is not None` is not a reliable signal of</span>
+<a id="__codelineno-0-109" name="__codelineno-0-109"></a>    <span class="c1"># user intent; this flag is.  Only explicitly-placed Buffers may be</span>
+<a id="__codelineno-0-110" name="__codelineno-0-110"></a>    <span class="c1"># shared (read) across Workers — see Worker.</span>
+<a id="__codelineno-0-111" name="__codelineno-0-111"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_explicit_tile</span> <span class="o">=</span> <span class="n">tile</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+<a id="__codelineno-0-112" name="__codelineno-0-112"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_owner_worker</span><span class="p">:</span> <span class="s2">&quot;Worker | None&quot;</span> <span class="o">=</span> <span class="kc">None</span>
 </code></pre></div></td></tr></table></div>
                   </details>
 
@@ -15035,29 +15180,29 @@ placements.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>python/iron/buffer.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-95"> 95</a></span>
-<span class="normal"><a href="#__codelineno-0-96"> 96</a></span>
-<span class="normal"><a href="#__codelineno-0-97"> 97</a></span>
-<span class="normal"><a href="#__codelineno-0-98"> 98</a></span>
-<span class="normal"><a href="#__codelineno-0-99"> 99</a></span>
-<span class="normal"><a href="#__codelineno-0-100">100</a></span>
-<span class="normal"><a href="#__codelineno-0-101">101</a></span>
-<span class="normal"><a href="#__codelineno-0-102">102</a></span>
-<span class="normal"><a href="#__codelineno-0-103">103</a></span>
-<span class="normal"><a href="#__codelineno-0-104">104</a></span>
-<span class="normal"><a href="#__codelineno-0-105">105</a></span>
-<span class="normal"><a href="#__codelineno-0-106">106</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-95" name="__codelineno-0-95"></a><span class="k">def</span><span class="w"> </span><span class="nf">tiles</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">:</span>
-<a id="__codelineno-0-96" name="__codelineno-0-96"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Tile dependency for Program.resolve tile discovery.</span>
-<a id="__codelineno-0-97" name="__codelineno-0-97"></a>
-<a id="__codelineno-0-98" name="__codelineno-0-98"></a><span class="sd">    Pinned Buffers (e.g. a compute [`Worker`][iron.Worker] reading a</span>
-<a id="__codelineno-0-99" name="__codelineno-0-99"></a><span class="sd">    neighbor tile&#39;s L1 directly) need their tile registered with the</span>
-<a id="__codelineno-0-100" name="__codelineno-0-100"></a><span class="sd">    Device before `resolve` runs. Worker-attached Buffers without an</span>
-<a id="__codelineno-0-101" name="__codelineno-0-101"></a><span class="sd">    explicit placement get pinned to the Worker&#39;s tile in</span>
-<a id="__codelineno-0-102" name="__codelineno-0-102"></a><span class="sd">    [`Worker`][iron.Worker]&#39;s constructor, which is already discoverable</span>
-<a id="__codelineno-0-103" name="__codelineno-0-103"></a><span class="sd">    via `Worker.tile`; this method just exposes any extra (cross-tile)</span>
-<a id="__codelineno-0-104" name="__codelineno-0-104"></a><span class="sd">    placements.</span>
-<a id="__codelineno-0-105" name="__codelineno-0-105"></a><span class="sd">    &quot;&quot;&quot;</span>
-<a id="__codelineno-0-106" name="__codelineno-0-106"></a>    <span class="k">return</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_tile</span><span class="p">]</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_tile</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="p">[]</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-119">119</a></span>
+<span class="normal"><a href="#__codelineno-0-120">120</a></span>
+<span class="normal"><a href="#__codelineno-0-121">121</a></span>
+<span class="normal"><a href="#__codelineno-0-122">122</a></span>
+<span class="normal"><a href="#__codelineno-0-123">123</a></span>
+<span class="normal"><a href="#__codelineno-0-124">124</a></span>
+<span class="normal"><a href="#__codelineno-0-125">125</a></span>
+<span class="normal"><a href="#__codelineno-0-126">126</a></span>
+<span class="normal"><a href="#__codelineno-0-127">127</a></span>
+<span class="normal"><a href="#__codelineno-0-128">128</a></span>
+<span class="normal"><a href="#__codelineno-0-129">129</a></span>
+<span class="normal"><a href="#__codelineno-0-130">130</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-119" name="__codelineno-0-119"></a><span class="k">def</span><span class="w"> </span><span class="nf">tiles</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">:</span>
+<a id="__codelineno-0-120" name="__codelineno-0-120"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Tile dependency for Program.resolve tile discovery.</span>
+<a id="__codelineno-0-121" name="__codelineno-0-121"></a>
+<a id="__codelineno-0-122" name="__codelineno-0-122"></a><span class="sd">    Pinned Buffers (e.g. a compute [`Worker`][iron.Worker] reading a</span>
+<a id="__codelineno-0-123" name="__codelineno-0-123"></a><span class="sd">    neighbor tile&#39;s L1 directly) need their tile registered with the</span>
+<a id="__codelineno-0-124" name="__codelineno-0-124"></a><span class="sd">    Device before `resolve` runs. Worker-attached Buffers without an</span>
+<a id="__codelineno-0-125" name="__codelineno-0-125"></a><span class="sd">    explicit placement get pinned to the Worker&#39;s tile in</span>
+<a id="__codelineno-0-126" name="__codelineno-0-126"></a><span class="sd">    [`Worker`][iron.Worker]&#39;s constructor, which is already discoverable</span>
+<a id="__codelineno-0-127" name="__codelineno-0-127"></a><span class="sd">    via `Worker.tile`; this method just exposes any extra (cross-tile)</span>
+<a id="__codelineno-0-128" name="__codelineno-0-128"></a><span class="sd">    placements.</span>
+<a id="__codelineno-0-129" name="__codelineno-0-129"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-0-130" name="__codelineno-0-130"></a>    <span class="k">return</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_tile</span><span class="p">]</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_tile</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="p">[]</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
