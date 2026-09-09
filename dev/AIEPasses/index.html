@@ -3389,6 +3389,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#-aie-normalize-dma-bd-dims" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        -aie-normalize-dma-bd-dims
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#-aie-objectfifo-unroll" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -4219,6 +4230,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#-aie-normalize-dma-bd-dims" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        -aie-normalize-dma-bd-dims
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#-aie-objectfifo-unroll" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -4716,6 +4738,12 @@ address spaces.  However, after outlining code for AIE engines, the core itself 
 has access to a single address space.  To avoid confusion, this pass normalizes
 any address spaces remaining in the code, converting them to the default address
 space.</p>
+<h3 id="-aie-normalize-dma-bd-dims"><code>-aie-normalize-dma-bd-dims</code><a class="headerlink" href="#-aie-normalize-dma-bd-dims" title="Permanent link">&para;</a></h3>
+<p><em>Strip degenerate dimensions from DMA BD descriptors.</em></p>
+<p>Removes size-1 dimensions from <code>aie.dma_bd</code> ops whose strides never
+take effect.  After stripping, if the remaining dimensions describe a
+contiguous row-major access, the BD is flattened to a single linear
+transfer.</p>
 <h3 id="-aie-objectfifo-unroll"><code>-aie-objectFifo-unroll</code><a class="headerlink" href="#-aie-objectfifo-unroll" title="Permanent link">&para;</a></h3>
 <p><em>Unroll scf.for loops that contain objectFifo operations</em></p>
 <p>Unroll each <code>scf.for</code> loop (and its ancestor loops) inside an <code>aie.core</code>
