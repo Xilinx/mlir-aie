@@ -133,7 +133,7 @@ jobs:
       # ---------------- nightly / dispatch: record history --------------
       - name: Record to gh-pages (nightly)
         if: github.event_name != 'pull_request' && hashFiles('bench.json') != ''
-        uses: benchmark-action/github-action-benchmark@fd31771ce86cc65eab85653da103f71ab1b4479c  # v1.9.0
+        uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba  # v1.22.1
         with:
           name: aie_kernels (${{ matrix.expected_npu }})
           tool: customSmallerIsBetter
@@ -178,8 +178,9 @@ jobs:
           restore-keys: kernel-bench-baseline-${{ matrix.expected_npu }}-
 
       - name: Compare against baseline (PR)
-        if: github.event_name == 'pull_request' && hashFiles('bench.json') != ''
-        uses: benchmark-action/github-action-benchmark@fd31771ce86cc65eab85653da103f71ab1b4479c  # v1.9.0
+        # Needs a nightly baseline in the cache; the first runs have none.
+        if: github.event_name == 'pull_request' && hashFiles('bench.json') != '' && hashFiles('baseline/benchmark-data.json') != ''
+        uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba  # v1.22.1
         with:
           name: aie_kernels (${{ matrix.expected_npu }})
           tool: customSmallerIsBetter

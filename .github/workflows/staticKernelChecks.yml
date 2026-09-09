@@ -126,7 +126,7 @@ jobs:
 
       - name: Record (nightly)
         if: github.event_name != 'pull_request' && hashFiles('static.json') != ''
-        uses: benchmark-action/github-action-benchmark@fd31771ce86cc65eab85653da103f71ab1b4479c  # v1.9.0
+        uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba  # v1.22.1
         with:
           name: static (${{ matrix.target }})
           tool: customSmallerIsBetter
@@ -142,7 +142,7 @@ jobs:
           max-items-in-chart: 400
       - name: Record program memory (nightly)
         if: github.event_name != 'pull_request' && hashFiles('static-pm.json') != ''
-        uses: benchmark-action/github-action-benchmark@fd31771ce86cc65eab85653da103f71ab1b4479c  # v1.9.0
+        uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba  # v1.22.1
         with:
           name: static pm (${{ matrix.target }})
           tool: customSmallerIsBetter
@@ -179,8 +179,9 @@ jobs:
           key: static-baseline-${{ matrix.target }}-
           restore-keys: static-baseline-${{ matrix.target }}-
       - name: Compare (PR)
-        if: github.event_name == 'pull_request' && hashFiles('static.json') != ''
-        uses: benchmark-action/github-action-benchmark@fd31771ce86cc65eab85653da103f71ab1b4479c  # v1.9.0
+        # Needs a nightly baseline in the cache; the first runs have none.
+        if: github.event_name == 'pull_request' && hashFiles('static.json') != '' && hashFiles('baseline/benchmark-data.json') != ''
+        uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba  # v1.22.1
         with:
           name: static (${{ matrix.target }})
           tool: customSmallerIsBetter
@@ -195,7 +196,7 @@ jobs:
           save-data-file: false
       - name: Compare program memory (PR)
         if: github.event_name == 'pull_request' && hashFiles('static-pm.json') != '' && hashFiles('baseline/benchmark-data-pm.json') != ''
-        uses: benchmark-action/github-action-benchmark@fd31771ce86cc65eab85653da103f71ab1b4479c  # v1.9.0
+        uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba  # v1.22.1
         with:
           name: static pm (${{ matrix.target }})
           tool: customSmallerIsBetter
