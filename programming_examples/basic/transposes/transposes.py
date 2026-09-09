@@ -41,9 +41,10 @@ import argparse
 from pathlib import Path
 
 import aie.iron as iron
+import aie.iron.kernels as kernels
 import numpy as np
 from aie.helpers.taplib import TensorAccessPattern, TensorTiler2D
-from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker, kernels
+from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker
 from aie.iron.controlflow import range_
 from aie.iron.device import AnyComputeTile
 from aie.iron.kernel import ExternalFunction
@@ -204,13 +205,6 @@ def _transpose_combined(
             f"combined requires m | M, n | K, s | m, s | n; got "
             f"M={M}, K={K}, m={m}, n={n}, s={s}."
         )
-    if s == 8 and (m < 32 or n < 32):
-        # The s=8 kernel uses an interleave_unzip(32) stage internally, so
-        # it needs min(m, n) >= 32 — m,n > 8 compiles but silently produces
-        # wrong output.  kernels.transpose raises the same way, and the
-        # matching static_assert lives in aie_kernels/generic/transpose.cc.
-        raise ValueError("s=8 requires m, n >= 32 (kernel constraint)")
-
     dtype = _BYTES_TO_DTYPE[dtype_bytes]
     matrix_ty = np.ndarray[(M, K), np.dtype[dtype]]
     tile_ty = np.ndarray[(m, n), np.dtype[dtype]]

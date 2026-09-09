@@ -241,51 +241,64 @@ def expand(tile_size: int = 1024, group_size: int = 32) -> ExternalFunction:
 
 
 # -DDTYPE_* flag per element width; the transpose only moves bytes.
-_TRANSPOSE_DTYPE_FLAG = {1: "-DDTYPE_i8", 2: "-DDTYPE_i16", 4: "-DDTYPE_i32"}
+def _transpose_strip(dim_m: int, subtile: int, bits: int) -> tuple[int, int]:
+    """``(W, R)``: the strip of ``R`` rows by ``W`` columns transpose.cc walks.
+
+    Mirrors the kernel's constexpr arithmetic so the factory can refuse a
+    shape the kernel would reject at compile time, with the reason.
+    """
+    vec = 1024 // bits
+    w = max(subtile, min(dim_m, vec // subtile))
+    r = min(subtile, vec // w)
+    return w, r
 
 
 def transpose(
     dim_m: int = 32, dim_n: int = 32, subtile: int = 4, dtype: type = bfloat16
 ) -> ExternalFunction:
-    """Blocked transpose using AIE-API shuffle intrinsics.
+    """Blocked transpose through ``aie::transpose``.
 
-    Transposes ``subtile``x``subtile`` blocks of a ``dim_n`` x ``dim_m`` matrix.
-    ``dim_m``/``dim_n`` are compile-time (``-DDIM_m`` / ``-DDIM_n``); the C++
-    ``#error`` guard rejects a build without them. Any 1-, 2- or 4-byte
-    ``dtype`` works, since the kernel only moves bytes (bf16 is the default
-    and needs no flag; other widths select ``-DDTYPE_i8/i16/i32``).
-    programming_examples/basic/transposes uses this kernel for its
+    Transposes each ``subtile`` x ``subtile`` block of a ``dim_n`` x ``dim_m``
+    matrix in place: the blocks stay put, the elements inside them move.
+    ``dim_m`` / ``dim_n`` are compile-time (``-DDIM_m`` / ``-DDIM_n``). The
+    kernel only moves bytes, so any 1-, 2- or 4-byte ``dtype`` works and
+    selects ``-DBIT_WIDTH`` as the other generic kernels do; bf16 is the
+    default. programming_examples/basic/transposes uses this kernel for its
     ``combined`` strategy.
 
     Args:
         dim_m: Inner (contiguous) dimension.
         dim_n: Outer dimension.
-        subtile: Block size to transpose — 4 (``transpose_4x4``) or 8
-            (``transpose_8x8``, which needs ``min(dim_m, dim_n) >= 32``).
+        subtile: Block size to transpose, 4 (``transpose_4x4``) or 8
+            (``transpose_8x8``).
         dtype: Element type, 1, 2 or 4 bytes wide.
 
     Returns:
         ExternalFunction for the selected transpose variant.
 
     Raises:
-        ValueError: When ``subtile`` is not 4 or 8, when ``subtile == 8`` with
-            a dimension below 32, or when ``dtype`` is not 1, 2 or 4 bytes.
+        ValueError: When ``subtile`` is not 4 or 8, when ``dtype`` is not 1, 2
+            or 4 bytes, or when the shape does not divide into the strips the
+            kernel walks (``dim_n`` a multiple of ``subtile``; ``dim_m`` a
+            multiple of the strip width, at least 16 bytes long).
     """
     if subtile not in (4, 8):
         raise ValueError(f"transpose() subtile must be 4 or 8, got {subtile}.")
-    if subtile == 8 and min(dim_m, dim_n) < 32:
-        raise ValueError(
-            "transpose() subtile 8 requires min(dim_m, dim_n) >= 32 (the kernel's "
-            f"interleave stage), got {dim_m}x{dim_n}."
-        )
     width = np.dtype(dtype).itemsize
-    if width not in _TRANSPOSE_DTYPE_FLAG:
+    if width not in (1, 2, 4):
         raise ValueError(
             f"transpose() dtype must be 1, 2 or 4 bytes wide, got {dtype}."
         )
-    flags = [f"-DDIM_m={dim_m}", f"-DDIM_n={dim_n}"]
-    if np.dtype(dtype) != np.dtype(bfloat16):
-        flags.append(_TRANSPOSE_DTYPE_FLAG[width])
+    bits = 8 * width
+    strip_w, _ = _transpose_strip(dim_m, subtile, bits)
+    if dim_n % subtile or dim_m % strip_w or strip_w * width < 16:
+        raise ValueError(
+            f"transpose() {dim_m}x{dim_n} with {subtile}x{subtile} blocks of "
+            f"{width}-byte elements: dim_n must be a multiple of {subtile} and "
+            f"dim_m a multiple of {strip_w} (the kernel's strip width), with "
+            "dim_m at least 16 bytes long."
+        )
+    flags = [f"-DDIM_m={dim_m}", f"-DDIM_n={dim_n}", f"-DBIT_WIDTH={bits}"]
     tile_ty = np.ndarray[(dim_m * dim_n,), np.dtype[dtype]]
     return _make_extern(
         f"transpose_{subtile}x{subtile}",
