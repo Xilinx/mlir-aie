@@ -672,22 +672,63 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
     return llvm::any_of(a, [&](TileID t) { return b.contains(t); });
   };
 
+  // A flow still on its way to another tile can be held up by congestion
+  // anywhere downstream. One that ends at a DMA of this tile cannot: the local
+  // DMA drains it.
+  auto leavesTile = [&](const std::pair<PhysPort, int> &flow) {
+    auto it = packetFlows.find(flow);
+    if (it == packetFlows.end())
+      return false;
+    return llvm::any_of(it->second, [](const PhysPort &dest) {
+      return dest.second.bundle != WireBundle::DMA;
+    });
+  };
+
+  // A flow this tile emits towards another tile's DMA advances only as fast as
+  // the core behind that DMA, so it can hold a grant for an unbounded time.
+  // Shim destinations do not count: they drain to DDR under host control and
+  // are not gated on any core.
+  auto stallsOnConsumer = [&](const std::pair<PhysPort, int> &flow) {
+    if (flow.first.second.bundle != WireBundle::DMA)
+      return false;
+    return llvm::any_of(dmaEndpointsOf(flow).consumers,
+                        [](TileID t) { return t.row != 0; });
+  };
+
   // An arbiter holds its grant until tlast, so two slave ports on one arbiter
-  // serialize even on separate master ports. If flow F is consumed by the tile
-  // that produces flow G, that serialization deadlocks: F stalls on a full
-  // buffer while holding the grant that G needs to drain it.
+  // serialize even on separate master ports. Two ways that deadlocks:
+  //
+  //  - A flow this tile emits to another tile's DMA stalls whenever that core
+  //    falls behind, and holds the grant while it does. A co-tenant that still
+  //    has to leave this switchbox is then blocked, and the stall propagates
+  //    back to a tile the consumer may itself be waiting on, whether through
+  //    the dataflow or through the control path that reprograms it. Co-tenants
+  //    that end here are safe, since the local DMA drains them regardless.
+  //  - Flow F ends at the tile that produces flow G. Serializing those
+  //    deadlocks directly: F stalls on a full buffer while holding the grant
+  //    that G needs to drain it.
   auto arbiterHasHazard = [&](TileID tileId, int arbiter,
                               const std::pair<PhysPort, int> &flow) {
     auto placed = arbiterSlaveFlows.find({tileId, arbiter});
     if (placed == arbiterSlaveFlows.end())
       return false;
     const DmaEndpoints &f = dmaEndpointsOf(flow);
-    return llvm::any_of(placed->second,
-                        [&](const std::pair<PhysPort, int> &other) {
-                          const DmaEndpoints &g = dmaEndpointsOf(other);
-                          return sharesTile(g.consumers, f.producers) ||
-                                 sharesTile(g.producers, f.consumers);
-                        });
+    bool flowStalls = stallsOnConsumer(flow);
+    bool flowLeaves = leavesTile(flow);
+    for (const auto &other : placed->second) {
+      // One slave port carries one stream, so the flows on it are already
+      // serialized by the port and never arbitrate against each other.
+      if (other.first == flow.first)
+        continue;
+      if ((flowStalls && leavesTile(other)) ||
+          (flowLeaves && stallsOnConsumer(other)))
+        return true;
+      const DmaEndpoints &g = dmaEndpointsOf(other);
+      if (sharesTile(g.consumers, f.producers) ||
+          sharesTile(g.producers, f.consumers))
+        return true;
+    }
+    return false;
   };
 
   // Get a new unique amsel from masterAMSels on tile op. Prioritize on
@@ -730,8 +771,8 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
         tileOp->emitWarning()
             << "packet flow " << flow.second << " shares arbiter "
             << getArbiterIDFromAmsel(hazardous)
-            << " with a flow it depends on; no independent arbiter is free, so "
-               "this routing may deadlock";
+            << " with a flow it can deadlock against; no independent arbiter "
+               "is free, so this routing may deadlock";
         return hazardous;
       };
   // Get a new unique amsel from masterAMSels on tile op with given arbiter id

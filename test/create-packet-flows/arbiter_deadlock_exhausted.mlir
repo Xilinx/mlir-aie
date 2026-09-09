@@ -38,7 +38,7 @@ module {
   }
 }
 
-// WARN: warning: packet flow 6 shares arbiter 0 with a flow it depends on
+// WARN: warning: packet flow 6 shares arbiter 0 with a flow it can deadlock against
 
 // CHECK-LABEL: aie.switchbox(%mem_tile_0_1)
 // CHECK:         %[[SHARED:.*]] = aie.amsel<0> (1)
