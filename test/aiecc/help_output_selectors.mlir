@@ -6,10 +6,9 @@
 //===----------------------------------------------------------------------===//
 
 // The `--get-<name>` output-selector shorthands are resolved by
-// applyOutputSelectorFlags() before llvm::cl ever parses argv, so none of them
-// are registered as a cl::opt and --help/--help-hidden used to omit the whole
-// family; the only place the list appeared was the "unknown output selector"
-// diagnostic for a typo'd flag. cl::extrahelp now appends it to both.
+// applyOutputSelectorFlags() before llvm::cl ever parses argv, so none of
+// them are registered as a cl::opt and would not otherwise appear in
+// --help/--help-hidden. cl::extrahelp appends the list to both.
 
 // RUN: aiecc --help 2>&1 | FileCheck %s
 // RUN: aiecc --help-hidden 2>&1 | FileCheck %s

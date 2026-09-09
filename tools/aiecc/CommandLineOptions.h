@@ -389,19 +389,15 @@ inline llvm::ArrayRef<OutputSelector> outputSelectors() {
   return table;
 }
 
-// Shared by the "unknown selector" diagnostic below and the --help text
-// (outputSelectorHelpText()), so the two can't drift apart.
 inline void printOutputSelectorTable(llvm::raw_ostream &os) {
   for (const OutputSelector &s : outputSelectors())
     os << "  --get-" << s.niceName << "  (" << s.edgeName << ")\n";
 }
 
 // `--get-<name>` is resolved by applyOutputSelectorFlags() below before
-// llvm::cl ever parses argv, so the shorthands are never registered as
-// cl::opt and are invisible to --help/--help-hidden; previously the only way
-// to see the list was to pass an unrecognized `--get-<name>` and read the
-// resulting error. cl::extrahelp appends this text after the normal --help
-// output instead.
+// llvm::cl ever parses argv, so the shorthands are never registered as a
+// cl::opt and are invisible to --help/--help-hidden without this.
+// cl::extrahelp appends the text after the normal --help output.
 inline std::string outputSelectorHelpText() {
   std::string text;
   llvm::raw_string_ostream os(text);
