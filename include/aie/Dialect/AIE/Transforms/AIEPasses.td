@@ -257,11 +257,11 @@ def AIERoutePathfinderFlows : Pass<"aie-create-pathfinder-flows", "DeviceOp"> {
     flows on separate arbiters; when no independent arbiter is free it keeps
     the sharing and warns. Only an oversubscribed switchbox is affected.
 
-    Deciding this reads the DMA bodies in the device (aie.mem,
-    aie.memtile_dma, aie.shim_dma) for buffer descriptor sizes, so the pass is
-    meant to run after those exist. A DMA channel with no body in the module,
-    as every shim channel is once the runtime sequence has been lowered away,
-    simply yields no conclusion and is left to the remaining rules.
+    Deciding this reads buffer descriptor sizes out of the DMA bodies in the
+    device (aie.mem, aie.memtile_dma, aie.shim_dma), so the pass is meant to
+    run after those exist. A channel with no body in the module, as every shim
+    channel is once the runtime sequence has been lowered away, yields no
+    conclusion and is left to the remaining rules.
   }];
 
   let constructor = "xilinx::AIE::createAIEPathfinderPass()";
