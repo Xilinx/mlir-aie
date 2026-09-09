@@ -65,6 +65,7 @@ bool isContiguousTransfer(llvm::ArrayRef<int64_t> sizes,
 // otherwise returns nullopt. Used by ops whose operands carry
 // compile-time-known values in the static lowering path.
 std::optional<uint32_t> getConstantIntOperand(mlir::Value v);
+std::optional<uint64_t> getConstantInt64Operand(mlir::Value v);
 
 // Materializes a 32-bit integer constant. The inverse of getConstantIntOperand:
 // used when lowering passes feed a compile-time-known value into an npu op

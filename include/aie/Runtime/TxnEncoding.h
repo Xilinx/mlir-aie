@@ -200,8 +200,24 @@ inline void txn_append_blockwrite(std::vector<uint32_t> &txn, uint32_t addr,
 }
 
 // Append a 12-word address_patch (DDR_PATCH) instruction.
+//
+// The consumer casts this byte range to aie-rt's `XAie_CustomOpHdr` followed by
+// `patch_op_t` (xaie_txn.h), so the word offsets are that struct pair's layout
+// under natural alignment, not a free choice:
+//
+//   XAie_CustomOpHdr { XAie_OpHdr{u8 Op,Col,Row}; u32 Size; }   words 0-1
+//   patch_op_t { op_base{enum,u32}; u32 action; <4 B pad>;      words 2-5
+//                u64 regaddr; u64 argidx; u64 argplus; }        words 6-11
+//
+// regaddr, argidx and argplus therefore each occupy a word pair, low half
+// first. aiebu's stringify_patchop reads `op->argplus` as one u64.
+//
+// `action` sits at word 4 per the struct while the store below targets word 5,
+// the alignment pad. Both are zero for every op emitted here (action 0 =
+// patch), so the disagreement is inert; op_base's size field (word 3) is
+// likewise never populated.
 inline void txn_append_address_patch(std::vector<uint32_t> &txn, uint32_t addr,
-                                     int32_t arg_idx, uint32_t arg_plus) {
+                                     int32_t arg_idx, uint64_t arg_plus) {
   size_t pos = txn.size();
   txn.resize(pos + 12, 0);
   txn[pos + 0] = TXN_OPC_DDR_PATCH;     // opcode
@@ -212,8 +228,8 @@ inline void txn_append_address_patch(std::vector<uint32_t> &txn, uint32_t addr,
   // pos+7 is reserved (zero)
   txn[pos + 8] = static_cast<uint32_t>(arg_idx); // buffer argument index
   // pos+9 is reserved (zero)
-  txn[pos + 10] = arg_plus; // byte offset into buffer
-  // pos+11 is reserved (zero)
+  txn[pos + 10] = static_cast<uint32_t>(arg_plus & 0xFFFFFFFFull);
+  txn[pos + 11] = static_cast<uint32_t>(arg_plus >> 32);
 }
 
 // Append a 4-word loadpdi instruction.
