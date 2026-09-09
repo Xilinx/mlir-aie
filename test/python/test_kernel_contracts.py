@@ -19,12 +19,13 @@ of which is silent until a device run otherwise:
 """
 
 import inspect
+import re
 from pathlib import Path
 
 import numpy as np
 import pytest
 from aie.iron import kernels
-from aie.iron.device import NPU2Col1
+from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.iron.kernels import ROLES, KernelContract
 from aie.utils import kernel_harness as kh
 from aie.utils.hostruntime import set_current_device
@@ -210,6 +211,7 @@ def test_every_case_names_an_exported_factory():
 # two-tile cascade exchange (a PUT kernel has no output argument at all),
 # so its semantics are the pair's, which is a design rather than a kernel.
 WITHOUT_CONTRACT = {
+    "set_rounding",  # sets the core's rounding mode; no data arguments
     "bn_conv2dk1_partial_put_i8",
     "bn_conv2dk1_partial_get_relu_i8",
     "bn_conv2dk3_dw_out_split",
@@ -1180,3 +1182,93 @@ def test_saturating_kernels_are_judged_by_clipping():
     got = np.full((1, 32 * 64), 255, np.uint8)
     ref = np.full((1, 32 * 64), 900, np.int64)
     assert kh.judge(fn, got, ref, calls=1)
+
+
+# --------------------------------------------------------------------------
+# rounding mode
+# --------------------------------------------------------------------------
+
+_SET_ROUNDING_CALL = re.compile(r"^\s*(?!//)[^/\n]*\bset_rounding\s*\(", re.M)
+_NARROWS = re.compile(r"to_vector<|\.srs\(|srs<|to_fixed|to_float")
+
+# Factory builds whose compiled source calls aie::set_rounding on entry, per
+# architecture. A new call in a source, or a removed one, changes this list
+# and the factory's ``rounding_mode`` together.
+SETS_OWN = {
+    "aie2": {
+        "conv2dk1",
+        "conv2dk3",
+        "conv2dk1_skip",
+        "conv2dk1_i8",
+        "conv2dk14",
+        "conv2dk1_skip_init",
+        "mv/dim_k=256/input_dtype=bfloat16/output_dtype=bfloat16",
+    },
+    "aie2p": {
+        "conv2dk1",
+        "conv2dk3",
+        "conv2dk1_skip",
+        "conv2dk1_i8",
+        "conv2dk14",
+        "conv2dk1_skip_init",
+        "dwconv1d",
+        "convert_copy",
+        "layer_norm",
+        "layer_norm_f32",
+        "layer_norm_affine_cast",
+        "softmax",
+        "mm",
+        "mha",
+        "mv/dim_k=256/input_dtype=bfloat16/output_dtype=bfloat16",
+    },
+}
+
+
+@pytest.mark.parametrize("arch", ["aie2", "aie2p"])
+def test_rounding_mode_declarations_follow_the_sources(arch):
+    """``sets_own`` is declared exactly where the compiled source sets the mode.
+
+    Every other build either names the mode it needs (a bf16 store from a
+    wider accumulator, judged against numpy's ties-to-even) or leaves it
+    unspecified; a source that sets the mode but declares otherwise, or the
+    reverse, fails here.
+    """
+    from aie.utils.compile.remarks import kernel_builds
+
+    set_current_device(NPU1Col1() if arch == "aie2" else NPU2Col1())
+    declared, called = set(), set()
+    for name, ef in kernel_builds():
+        c = getattr(ef, "contract", None)
+        if c is None:
+            continue
+        src = Path(ef.source_file).read_text() if ef.source_file else ef.source_string
+        if _SET_ROUNDING_CALL.search(src):
+            called.add(name.split("/")[0])
+        if c.rounding_mode == "sets_own":
+            declared.add(name)
+        elif c.needs_rounding_mode:
+            # The mode only matters where an accumulator is narrowed: a bf16
+            # or bfp16 output, or an explicit conversion in the source.
+            out_dt = kh._shape_dtype(kh._arg_types(ef)[c.out_index])[1]
+            narrows = (
+                kh._is_bfp(out_dt)
+                or np.dtype(out_dt) == np.dtype(bfloat16)
+                or _NARROWS.search(src)
+            )
+            assert narrows, f"{name}: declares {c.rounding_mode} but narrows nothing"
+    # every build of a factory whose source calls set_rounding declares it
+    # (mv.cc guards its call behind the bf16 variant, so it is pinned by build)
+    assert {n.split("/")[0] for n in declared} >= called - {"mv"}
+    assert declared == SETS_OWN[arch] | {
+        n for n in declared if n.split("/")[0] in SETS_OWN[arch]
+    }
+
+
+def test_harness_sets_the_mode_a_contract_names():
+    """A design for a ``conv_even`` kernel binds ``set_rounding_conv_even``; one for ``sets_own`` does not."""
+    assert kernels.add().contract.needs_rounding_mode == "conv_even"
+    mlir = str(kh.design(kernels.add, calls=2).as_mlir())
+    assert "set_rounding_conv_even" in mlir
+    assert kernels.convert_copy().contract.rounding_mode == "sets_own"
+    mlir = str(kh.design(kernels.convert_copy, calls=1).as_mlir())
+    assert "set_rounding" not in mlir

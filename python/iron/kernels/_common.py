@@ -31,6 +31,23 @@ OVERFLOW = ("wrap", "saturate", "undefined")
 # float store. "nearest" is round-half-up (``(x + 2**(s-1)) >> s``),
 # "nearest_even" ties-to-even (the bottleneck kernels' srs, a bf16 store).
 ROUNDING = ("floor", "nearest", "nearest_even", "unspecified")
+# The core's rounding-mode register a kernel needs when it narrows an
+# accumulator: an ``aie::rounding_mode`` name the design must set before the
+# first call (the harness does), "sets_own" when the source sets it itself,
+# or "unspecified" when the kernel takes whatever mode the core is in (a fresh
+# core boots in floor) and its tolerance covers the difference.
+ROUNDING_MODES = (
+    "unspecified",
+    "sets_own",
+    "floor",
+    "ceil",
+    "positive_inf",
+    "negative_inf",
+    "symmetric_inf",
+    "symmetric_zero",
+    "conv_even",
+    "conv_odd",
+)
 # What a float kernel does with NaN / inf inputs: "propagate" (the IEEE
 # result numpy computes) or "unspecified" (out of contract; not sampled).
 NONFINITE = ("propagate", "unspecified")
@@ -97,6 +114,16 @@ class KernelContract:
             ``"unspecified"`` (an ``srs`` in the core's default mode).
             References model a declared mode; ``"unspecified"`` is why some
             tolerances allow one LSB.
+        rounding_mode: The core rounding-mode register the kernel needs, one
+            of :data:`ROUNDING_MODES`. The core narrows in whatever mode its
+            register holds and boots in ``floor``. ``"sets_own"``: the source
+            calls ``aie::set_rounding`` itself. An ``aie::rounding_mode`` name
+            (``"conv_even"`` for a kernel that stores bf16 from an fp32
+            accumulator and is judged against numpy's round-to-nearest-even):
+            the kernel reads the register, so a design sets that mode before
+            the first call (``kernels.set_rounding(mode)``) and the harness
+            does the same. ``"unspecified"``: the kernel narrows in whatever
+            mode it finds and its tolerance covers the difference.
         nonfinite: What NaN and inf inputs produce: ``"propagate"`` (the
             IEEE result numpy computes, so the registry feeds them) or
             ``"unspecified"`` (out of contract; never sampled).
@@ -119,6 +146,7 @@ class KernelContract:
     reduction: int | None = None
     overflow: str = "undefined"
     rounding: str = "unspecified"
+    rounding_mode: str = "unspecified"
     nonfinite: str = "unspecified"
     subnormals: str = "unspecified"
     # Why the generic harness cannot build a single-Worker design for this
@@ -143,6 +171,10 @@ class KernelContract:
             raise ValueError(
                 f"rounding must be one of {ROUNDING}, got {self.rounding!r}"
             )
+        if self.rounding_mode not in ROUNDING_MODES:
+            raise ValueError(
+                f"rounding_mode must be one of {ROUNDING_MODES}, got {self.rounding_mode!r}"
+            )
         if self.reduction is not None and self.reduction < 1:
             raise ValueError(f"reduction must be >= 1, got {self.reduction}")
         if self.nonfinite not in NONFINITE:
@@ -161,6 +193,13 @@ class KernelContract:
         """Position of the output, whether the kernel writes it or accumulates into it."""
         roles = list(self.roles)
         return roles.index("out") if "out" in roles else roles.index("inout")
+
+    @property
+    def needs_rounding_mode(self) -> str | None:
+        """The ``aie::rounding_mode`` a design must set before calling the kernel, or ``None``."""
+        if self.rounding_mode in ("unspecified", "sets_own"):
+            return None
+        return self.rounding_mode
 
     @property
     def accumulates(self) -> bool:

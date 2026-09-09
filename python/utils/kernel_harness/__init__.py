@@ -236,6 +236,22 @@ def _encode_params(fn, params) -> tuple:
     return tuple(out)
 
 
+def _rounding_setter(c):
+    """Return the ``set_rounding`` kernel a contract's ``rounding_mode`` asks for, or ``None``.
+
+    A fresh Worker boots in floor; a kernel that names the mode it narrows in
+    is run in that mode, as a design following its contract would run it.
+    """
+    from aie.iron import kernels
+
+    mode = c.needs_rounding_mode
+    return kernels.set_rounding(mode) if mode else None
+
+
+def _opt(x) -> list:
+    return [x] if x is not None else []
+
+
 def _build_stream(
     tensors_in,
     tensor_out,
@@ -297,6 +313,7 @@ def _build_stream(
         for k, (i, (dt_name, shape, vals)) in enumerate(zip(param_roles, params))
     ]
     count = _elems(arg_types[in_roles[0]])
+    setter = _rounding_setter(c)
 
     def core(*args):
         f_in = args[:n_fifos_in]
@@ -305,6 +322,8 @@ def _build_stream(
             zip(param_roles, args[n_fifos_in + 1 : n_fifos_in + 1 + len(param_bufs)])
         )
         kernel = args[n_fifos_in + 1 + len(param_bufs)]
+        if setter is not None:
+            args[-1]()
         for _ in range_(calls) if calls > 1 else range(1):
             if pack:
                 got = f_in[0].acquire(n_in)
@@ -334,7 +353,9 @@ def _build_stream(
 
     worker = Worker(
         core,
-        [f.cons() for f in fifos_in] + [fifo_out.prod(), *param_bufs, fn],
+        [f.cons() for f in fifos_in]
+        + [fifo_out.prod(), *param_bufs, fn]
+        + _opt(setter),
         stack_size=_STREAM_STACK,
         trace=1 if trace_config else 0,
     )
@@ -511,7 +532,11 @@ def _matmul(
     mem_c = ObjectFifo(c_ty, name="memC", depth=depth)
     out_c = mem_c.cons().forward(name="outC", dims_to_stream=dims["C"])
 
-    def core(of_a, of_b, of_c, zero_k, mm_k):
+    setter = _rounding_setter(_contract(mm))
+
+    def core(of_a, of_b, of_c, zero_k, mm_k, *set_mode):
+        if set_mode:
+            set_mode[0]()
         for _ in range_(tiles) if tiles > 1 else range(1):
             c = of_c.acquire(1)
             zero_k(c)
@@ -525,7 +550,7 @@ def _matmul(
 
     worker = Worker(
         core,
-        [mem_a.cons(), mem_b.cons(), mem_c.prod(), zero, mm],
+        [mem_a.cons(), mem_b.cons(), mem_c.prod(), zero, mm] + _opt(setter),
         stack_size=stack,
         trace=1 if trace_config else 0,
     )
@@ -629,7 +654,11 @@ def _matvec(
     in_b = ObjectFifo(np.ndarray[(k,), np.dtype[dt_in]], name="inB")
     out_c = ObjectFifo(np.ndarray[(m,), np.dtype[dt_out]], name="outC")
 
-    def core(of_a, of_b, of_c, zero_k, mv_k):
+    setter = _rounding_setter(_contract(mv))
+
+    def core(of_a, of_b, of_c, zero_k, mv_k, *set_mode):
+        if set_mode:
+            set_mode[0]()
         c = of_c.acquire(1)
         zero_k(c)
         for _ in range_(K_div_k) if K_div_k > 1 else range(1):
@@ -642,7 +671,7 @@ def _matvec(
 
     worker = Worker(
         core,
-        [core_a.cons(), in_b.cons(), out_c.prod(), zero, mv],
+        [core_a.cons(), in_b.cons(), out_c.prod(), zero, mv] + _opt(setter),
         trace=1 if trace_config else 0,
     )
 

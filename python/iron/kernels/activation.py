@@ -51,14 +51,24 @@ _LUT_TOLERANCE = Tolerance.relative(
 
 
 def _unary_lut_contract(
-    ref, *, count: bool, tolerance: Tolerance = _LUT_TOLERANCE
+    ref,
+    *,
+    count: bool,
+    tolerance: Tolerance = _LUT_TOLERANCE,
+    rounding_mode: str = "conv_even",
 ) -> KernelContract:
-    """Contract for a one-in/one-out LUT kernel, with or without a trailing count."""
+    """Contract for a one-in/one-out LUT kernel, with or without a trailing count.
+
+    The LUT kernels store bf16 from wider vector math without setting the
+    core's rounding mode, so they are judged (and run by the harness) in
+    ``conv_even``, the mode numpy's reference rounds in.
+    """
     return KernelContract(
         roles=("in", "out", "count") if count else ("in", "out"),
         reference=ref,
         tolerance=tolerance,
         acc_dtype=bfloat16,  # bf16 vector math around the LUT
+        rounding_mode=rounding_mode,
     )
 
 
@@ -166,6 +176,8 @@ def softmax(tile_size: int = 1024) -> ExternalFunction:
             lambda x: softmax_ref(x, tile_size=tile_size),
             count=True,
             tolerance=_softmax_tolerance(tile_size),
+            # aie2p/softmax.cc sets conv_even itself; the aie2 LUT path does not.
+            rounding_mode="sets_own" if _detect_arch() == "aie2p" else "conv_even",
         ),
     )
 
@@ -206,6 +218,7 @@ def swiglu(tile_size: int = 1024) -> ExternalFunction:
         tile_size,
         arg_arity=4,
         contract=KernelContract(
+            rounding_mode="conv_even",
             roles=("in", "in", "in", "out"),
             reference=swiglu_ref,
             acc_dtype=bfloat16,
@@ -280,6 +293,7 @@ def exp2f_vec(tile_size: int = 1024, min_x: float = -111.0) -> ExternalFunction:
         [tile_ty, tile_ty, np.int32],
         compile_flags=[f"-DEXP2F_VEC_MIN_X={float(min_x)!r}f"],
         contract=KernelContract(
+            rounding_mode="conv_even",
             roles=("in", "out", "count"),
             reference=lambda x: exp2f_vec_ref(x, min_x=min_x),
             acc_dtype=np.float32,
@@ -336,6 +350,7 @@ def leaky_relu(tile_size: int = 1024) -> ExternalFunction:
         "leaky_relu.cc",
         [tile_ty, tile_ty, np.int32, bfloat16],
         contract=KernelContract(
+            rounding_mode="conv_even",
             roles=("in", "out", "count", "scalar"),
             reference=leaky_relu_ref,
             nonfinite="propagate",

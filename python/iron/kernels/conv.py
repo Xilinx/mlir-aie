@@ -590,6 +590,7 @@ def dwconv1d(
         [in_ty, w_ty, out_ty, np.int32],
         compile_flags=[f"-DDWCONV_K={kernel_size}", f"-DDWCONV_BIAS={int(bias)}"],
         contract=KernelContract(
+            rounding_mode="sets_own",
             roles=("in", "in", "out", "scalar"),
             reference=lambda x, w, n: dwconv1d_ref(
                 x, w, n, kernel_size=kernel_size, bias=bias
@@ -652,6 +653,7 @@ def conv2dk1(
         [in_ty, wt_ty, out_ty, *_i32s(4)],
         compile_flags=flags,
         contract=KernelContract(
+            rounding_mode="sets_own",
             roles=("in", "param", "out", "scalar", "scalar", "scalar", "scalar"),
             reference=conv2dk1_ref,
             acc_dtype=np.int32,
@@ -713,6 +715,7 @@ def conv2dk3(
         [line_ty, line_ty, line_ty, wt_ty, out_ty, *_i32s(8)],
         compile_flags=flags,
         contract=KernelContract(
+            rounding_mode="sets_own",
             roles=("in", "in", "in", "param", "out", *(("scalar",) * 8)),
             reference=conv2dk3_ref,
             acc_dtype=np.int32,
@@ -773,6 +776,7 @@ def conv2dk1_skip(
         [in0_ty, in1_ty, wt_ty, out_ty, skip_ty, *_i32s(5)],
         compile_flags=flags,
         contract=KernelContract(
+            rounding_mode="sets_own",
             roles=("in", "in", "param", "out", "in", *(("scalar",) * 5)),
             reference=conv2dk1_skip_ref,
             acc_dtype=np.int32,
@@ -815,6 +819,7 @@ def conv2dk1_i8(
         [in_ty, wt_ty, out_ty, *_i32s(4)],
         compile_flags=["-DINT8_ACT"],
         contract=KernelContract(
+            rounding_mode="sets_own",
             roles=("in", "param", "out", "scalar", "scalar", "scalar", "scalar"),
             reference=conv2dk1_i8_ref,
             acc_dtype=np.int32,
@@ -857,6 +862,7 @@ def conv2dk14(
         _default_source_path("conv2dk14.cc", subdir="aie2p"),
         [in_ty, wt_ty, out_ty, *_i32s(5)],
         contract=KernelContract(
+            rounding_mode="sets_own",
             roles=("in", "param", "out", *(("scalar",) * 5)),
             reference=conv2dk14_ref,
             acc_dtype=np.int32,
@@ -911,6 +917,7 @@ def conv2dk1_skip_init(
         [in0_ty, in1_ty, wt_ty, out_ty, skip_ty, *_i32s(7)],
         compile_flags=flags,
         contract=KernelContract(
+            rounding_mode="sets_own",
             roles=("in", "in", "param", "out", "in", *(("scalar",) * 7)),
             reference=conv2dk1_skip_init_ref,
             acc_dtype=np.int32,

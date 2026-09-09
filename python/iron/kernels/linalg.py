@@ -305,6 +305,13 @@ def mm(
         compile_flags=compile_flags,
         use_chess=use_chess,
         contract=KernelContract(
+            rounding_mode=(
+                # aie2p/mm.cc sets conv_even itself and restores it; aie2/mm.cc
+                # stores bf16 in whatever mode the core is in.
+                "sets_own"
+                if arch == "aie2p"
+                else "conv_even" if output_dtype is bfloat16 else "unspecified"
+            ),
             roles=("in", "in", "inout"),  # C += A * B; see the .zero sibling
             reference=mm_ref,
             acc_dtype=mm_acc_dtype(input_dtype),
@@ -464,6 +471,7 @@ def _mv_bf16(dim_m, dim_k, vectorized, use_chess, vec_size) -> ExternalFunction:
         compile_flags=[f"-DDIM_K={dim_k}", f"-DVEC_SIZE={vec_size}"],
         use_chess=use_chess,
         contract=KernelContract(
+            rounding_mode="sets_own",
             roles=("scalar", "scalar", "in", "in", "out"),
             reference=mv_bf16_ref,
             acc_dtype=np.float32,  # accfloat, reduced to bf16 on store
@@ -549,6 +557,7 @@ def mm_bfp(
         [a_ty, b_ty, c_ty],
         compile_flags=flags + ["-DMATMUL_ONLY"],
         contract=KernelContract(
+            rounding_mode="conv_even",
             roles=("in", "in", "inout"),  # C += A * B; see the .zero sibling
             reference=mm_bfp_mixed_ref if mixed else mm_bfp_ref,
             acc_dtype=np.float32,
@@ -695,6 +704,7 @@ def mha(dim_m: int = 64, dim_k: int = 64, dim_n: int = 64) -> ExternalFunction:
         [a_ty, b_ty, tile, idx],
         compile_flags=flags,
         contract=KernelContract(
+            rounding_mode="sets_own",
             roles=("in", "in", "inout", "param"),
             acc_dtype=np.float32,
             reduction=dim_k,

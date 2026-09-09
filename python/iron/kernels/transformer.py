@@ -44,7 +44,17 @@ def _cols(name: str, cols: int) -> None:
 
 
 def _row_kernel(
-    name: str, symbol: str, source: str, cols: int, in_dt, out_dt, ref, tol, ops
+    name: str,
+    symbol: str,
+    source: str,
+    cols: int,
+    in_dt,
+    out_dt,
+    ref,
+    tol,
+    ops,
+    *,
+    rounding_mode: str,
 ) -> ExternalFunction:
     _aie2p_only(name, source)
     _cols(name, cols)
@@ -61,6 +71,7 @@ def _row_kernel(
             ops_per_call=ops,
             acc_dtype=np.float32,
             reduction=cols,
+            rounding_mode=rounding_mode,
         ),
     )
 
@@ -81,6 +92,7 @@ def rms_norm(cols: int = 4096) -> ExternalFunction:
         rms_norm_ref,
         _NORM_BF16,
         4 * cols,
+        rounding_mode="conv_even",
     )
 
 
@@ -100,6 +112,7 @@ def layer_norm(cols: int = 4096) -> ExternalFunction:
         layer_norm_ref,
         _NORM_BF16,
         6 * cols,
+        rounding_mode="sets_own",
     )
 
 
@@ -119,6 +132,7 @@ def layer_norm_f32(cols: int = 4096) -> ExternalFunction:
         layer_norm_f32_ref,
         _NORM_F32,
         6 * cols,
+        rounding_mode="sets_own",
     )
 
 
@@ -142,6 +156,7 @@ def layer_norm_affine_cast(cols: int = 4096) -> ExternalFunction:
         _default_source_path("layer_norm.cc", subdir="aie2p"),
         [in_ty, gb_ty, out_ty, np.int32],
         contract=KernelContract(
+            rounding_mode="sets_own",
             roles=("in", "param", "out", "count"),
             reference=layer_norm_affine_cast_ref,
             acc_dtype=np.float32,
@@ -201,6 +216,7 @@ def mm_activation_epilogue(tile_size: int = 1024) -> ExternalFunction:
         _default_source_path("mm_activation_epilogue.cc", subdir="aie2p"),
         [tile_ty, tile_ty, np.int32, np.int32],
         contract=KernelContract(
+            rounding_mode="conv_even",
             roles=("in", "out", "count", "scalar"),
             reference=mm_activation_epilogue_ref,
             acc_dtype=np.float32,

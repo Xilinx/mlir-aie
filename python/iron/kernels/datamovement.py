@@ -129,6 +129,7 @@ def axpy(tile_size: int = 1024, vectorized: bool = True) -> ExternalFunction:
         _default_source_path("axpy.cc"),
         [tile_ty, tile_ty, a_ty, tile_ty, np.int32],
         contract=KernelContract(
+            rounding_mode="conv_even",
             roles=("in", "in", "scalar", "out", "count"),
             reference=axpy_ref,
             nonfinite="propagate",
@@ -177,6 +178,7 @@ def convert_copy(tile_size: int = 1024) -> ExternalFunction:
         _default_source_path("cast_f32_bf16.cc"),
         [in_ty, out_ty, np.int32],
         contract=KernelContract(
+            rounding_mode="sets_own",
             roles=("in", "out", "count"),
             reference=convert_copy_ref,
             tolerance=Tolerance.exact(

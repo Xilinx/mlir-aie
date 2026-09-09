@@ -71,6 +71,7 @@ def _eltwise_bf16_kernel(
         _default_source_path(f"{op}.cc"),
         [tile_ty, tile_ty, tile_ty],
         contract=KernelContract(
+            rounding_mode="conv_even",
             roles=("in", "in", "out"),
             reference=add_ref if op == "add" else mul_ref,
             nonfinite="propagate",
