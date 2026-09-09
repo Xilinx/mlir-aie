@@ -93,6 +93,22 @@ def AIEPlaceTiles : Pass<"aie-place-tiles", "DeviceOp"> {
   ];
 }
 
+def AIEPrepareBuffers : Pass<"aie-prepare-buffers", "DeviceOp"> {
+  let summary = "Check buffer placement and give every buffer a name";
+  let description = [{
+    Settles everything about a buffer that the core compilation depends on,
+    except the buffer's address.
+
+    A buffer's name becomes a symbol in the core's object, so the name must
+    exist before the core is lowered. This pass names every unnamed buffer and
+    checks buffer placement, which rejects a malformed design before any core
+    is compiled.
+
+  }];
+
+  let constructor = "xilinx::AIE::createAIEPrepareBuffersPass()";
+}
+
 def AIEAssignBufferAddresses : Pass<"aie-assign-buffer-addresses", "DeviceOp"> {
   let summary = "Assign memory locations for buffers in each tile";
   let description = [{
@@ -102,6 +118,11 @@ def AIEAssignBufferAddresses : Pass<"aie-assign-buffer-addresses", "DeviceOp"> {
     updates each aie.buffer operation without an address to have a
     well-defined address.  This enables later passes to have a
     consistent view of the memory map of a system.
+
+    A core that declares `data_size` also gets an aie.buffer marked `core_data`,
+    covering the bytes its own .data, .rodata and .bss occupy. The pass places
+    that buffer with the rest, and AIETargetLdScript emits its extent as the
+    `data` MEMORY region of the core's linker script.
   }];
 
   let constructor = "xilinx::AIE::createAIEAssignBufferAddressesPass()";
