@@ -268,8 +268,10 @@ xilinx::AIE::AIERTControl::AIERTControl(const AIE::AIETargetModel &tm)
     devGen = XAIE_DEV_GEN_AIE2IPU;
     break;
   case AIEArch::AIE2p:
-  case AIEArch::AIE2ps:
     devGen = XAIE_DEV_GEN_AIE2P_STRIX_B0;
+    break;
+  case AIEArch::AIE2ps:
+    devGen = XAIE_DEV_GEN_AIE2PS;
     break;
   }
   aiert->configPtr = XAie_Config{
