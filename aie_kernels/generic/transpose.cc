@@ -58,13 +58,15 @@ void copy(T *__restrict in_ptr, T *__restrict out_ptr) {
 // assembled from the S / R strips that cover the block.
 template <unsigned S>
 static inline void transpose_blocks(const T *__restrict in, T *__restrict out) {
-  constexpr unsigned W = std::max<unsigned>(S, std::min<unsigned>(DIM_m, VEC / S));
+  constexpr unsigned W =
+      std::max<unsigned>(S, std::min<unsigned>(DIM_m, VEC / S));
   constexpr unsigned R = std::min<unsigned>(S, VEC / W);
   constexpr unsigned C = W / S;
   constexpr unsigned H = S / R; // strips per block row
   static_assert(DIM_m % W == 0 && DIM_n % S == 0 && S % R == 0);
   static_assert(W * BIT_WIDTH >= 128, "a strip row must fill a 128-bit load");
-  static_assert(H == 1 || R * BIT_WIDTH >= 128, "chunks must fill a 128-bit vector");
+  static_assert(H == 1 || R * BIT_WIDTH >= 128,
+                "chunks must fill a 128-bit vector");
 
   for (unsigned row = 0; row < DIM_n; row += S) {
     for (unsigned col = 0; col < DIM_m; col += W) {
