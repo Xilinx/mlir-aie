@@ -14,6 +14,8 @@
 #include <optional>
 #include <set>
 #include <tuple>
+#include <utility>
+#include <vector>
 
 namespace xilinx::AIE {
 #define GEN_PASS_DEF_AIEFINDFLOWS

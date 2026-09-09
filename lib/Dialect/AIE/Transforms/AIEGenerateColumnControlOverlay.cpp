@@ -15,6 +15,9 @@
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallSet.h"
 
+#include <map>
+#include <tuple>
+
 namespace xilinx::AIE {
 #define GEN_PASS_DEF_AIEGENERATECOLUMNCONTROLOVERLAY
 #define GEN_PASS_DEF_AIEASSIGNTILECTRLIDS
@@ -375,6 +378,54 @@ struct AIEGenerateColumnControlOverlayPass
     return attr && !attr.getValue();
   }
 
+  // A one-source, one-destination packet flow reduced to a comparable key:
+  // the packet ID plus both endpoints as (col, row, bundle, channel). This is
+  // the shape every control flow below has, and it matches what
+  // DeviceOp::verify calls a duplicate.
+  using CtrlFlowKey = std::tuple<int, int, int, int, int, int, int, int, int>;
+
+  static CtrlFlowKey getCtrlFlowKey(int id, TileOp srcTile,
+                                    WireBundle srcBundle, int srcChan,
+                                    TileOp destTile, WireBundle destBundle,
+                                    int destChan) {
+    return {id,
+            srcTile.colIndex(),
+            srcTile.rowIndex(),
+            static_cast<int>(srcBundle),
+            srcChan,
+            destTile.colIndex(),
+            destTile.rowIndex(),
+            static_cast<int>(destBundle),
+            destChan};
+  }
+
+  // The packet flows `device` already declares in the shape this pass emits,
+  // keyed so one can be recognised before it is created a second time. A flow
+  // with more than one source or destination, or one on a tile
+  // --aie-place-tiles has not placed yet, cannot be told apart from what is
+  // about to be created and is left out.
+  static std::map<CtrlFlowKey, AIE::PacketFlowOp>
+  collectExistingCtrlFlows(DeviceOp device) {
+    std::map<CtrlFlowKey, AIE::PacketFlowOp> flows;
+    for (auto flow : device.getOps<AIE::PacketFlowOp>()) {
+      auto sources = flow.getOps<AIE::PacketSourceOp>();
+      auto dests = flow.getOps<AIE::PacketDestOp>();
+      if (!llvm::hasSingleElement(sources) || !llvm::hasSingleElement(dests))
+        continue;
+      AIE::PacketSourceOp src = *sources.begin();
+      AIE::PacketDestOp dest = *dests.begin();
+      auto srcTile = dyn_cast_or_null<TileOp>(src.getTile().getDefiningOp());
+      auto destTile = dyn_cast_or_null<TileOp>(dest.getTile().getDefiningOp());
+      if (!srcTile || !destTile)
+        continue;
+      flows.try_emplace(getCtrlFlowKey(flow.IDInt(), srcTile, src.getBundle(),
+                                       src.channelIndex(), destTile,
+                                       dest.getBundle(), dest.channelIndex()),
+                        flow);
+    }
+    return flows;
+  }
+
   AIE::PacketFlowOp createPacketFlowOp(OpBuilder &builder, Location loc,
                                        int &flowID, Value source,
                                        xilinx::AIE::WireBundle sourceBundle,
@@ -446,6 +497,12 @@ struct AIEGenerateColumnControlOverlayPass
     // available
     auto availableShimChans =
         getAvailableShimChans(device, shimTile, shimWireBundle, isShimMM2S);
+    // The overlay a device already carries -- from a user-written control flow,
+    // or from an earlier run of this pass, which aiecc does whenever the input
+    // was already overlaid -- must not be laid down a second time. A flow
+    // declared twice is rejected by DeviceOp::verify.
+    std::map<CtrlFlowKey, AIE::PacketFlowOp> existingCtrlFlows =
+        collectExistingCtrlFlows(device);
 
     builder.setInsertionPoint(device.getBody()->getTerminator());
     for (auto tOp : ctrlTiles) {
@@ -467,16 +524,41 @@ struct AIEGenerateColumnControlOverlayPass
 
       auto keep_pkt_header = builder.getBoolAttr(true);
       auto ctrl_pkt_flow = builder.getBoolAttr(true);
-      if (isShimMM2S)
-        (void)createPacketFlowOp(
-            builder, tOp.getLoc(), ctrlPktFlowID, shimTile, shimWireBundle,
-            rowToShimChanMap[tOp.rowIndex()], tOp, ctrlWireBundle,
-            coreOrMemChanId, keep_pkt_header, ctrl_pkt_flow);
-      else
-        (void)createPacketFlowOp(
-            builder, tOp.getLoc(), ctrlPktFlowID, tOp, ctrlWireBundle,
-            coreOrMemChanId, shimTile, shimWireBundle,
-            rowToShimChanMap[tOp.rowIndex()], keep_pkt_header, ctrl_pkt_flow);
+      int shimChan = rowToShimChanMap[tOp.rowIndex()];
+      CtrlFlowKey key =
+          isShimMM2S
+              ? getCtrlFlowKey(ctrlPktFlowID, shimTile, shimWireBundle,
+                               shimChan, tOp, ctrlWireBundle, coreOrMemChanId)
+              : getCtrlFlowKey(ctrlPktFlowID, tOp, ctrlWireBundle,
+                               coreOrMemChanId, shimTile, shimWireBundle,
+                               shimChan);
+      // Only the flow itself is affected by this; the shim DMA allocation
+      // below is emitted either way, guarded by its own name lookup.
+      auto [it, isNew] = existingCtrlFlows.try_emplace(key, nullptr);
+      if (isNew) {
+        it->second =
+            isShimMM2S
+                ? createPacketFlowOp(builder, tOp.getLoc(), ctrlPktFlowID,
+                                     shimTile, shimWireBundle, shimChan, tOp,
+                                     ctrlWireBundle, coreOrMemChanId,
+                                     keep_pkt_header, ctrl_pkt_flow)
+                : createPacketFlowOp(builder, tOp.getLoc(), ctrlPktFlowID, tOp,
+                                     ctrlWireBundle, coreOrMemChanId, shimTile,
+                                     shimWireBundle, shimChan, keep_pkt_header,
+                                     ctrl_pkt_flow);
+      } else {
+        // The device already declares this control flow -- written by hand, or
+        // laid down by an earlier run of this pass over the same input, which
+        // aiecc does whenever its input was already overlaid. Declaring it a
+        // second time is the duplicate DeviceOp::verify rejects, so adopt the
+        // overlay's attributes onto the flow that is already there instead.
+        // They are what tells --aie-create-pathfinder-flows this is a control
+        // flow; that pass takes the last writer per destination port, so
+        // before this pass deduplicated, the copy it appended is what set
+        // them. Dropping them here would silently reroute the switchbox.
+        it->second.setKeepPktHeader(keep_pkt_header.getValue());
+        it->second.setPriorityRoute(ctrl_pkt_flow.getValue());
+      }
 
       // Generate shim dma alloc ops as handle for runtime sequence to pickup,
       // when issuing control packets

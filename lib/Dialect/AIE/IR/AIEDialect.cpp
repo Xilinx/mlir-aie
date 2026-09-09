@@ -26,7 +26,10 @@
 #include "llvm/ADT/TypeSwitch.h"
 
 #include <map>
+#include <optional>
+#include <string>
 #include <tuple>
+#include <utility>
 #include <vector>
 
 using namespace mlir;
