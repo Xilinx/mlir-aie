@@ -56,3 +56,27 @@ aie.device(npu1_1col) {
     aie.packet_dest<%tile_0_0, South : 0>
   }
 }
+
+// -----
+
+// The flow the pass would emit, declared against a *pinned* aie.logical_tile
+// rather than the aie.tile. Its coordinates are known, so DeviceOp::verify sees
+// it as the same port and would reject a second copy -- matching that means
+// recognising the existing flow through TileLike, not just TileOp.
+// CHECK-LABEL: module {
+// CHECK: %[[shim:.*]] = aie.logical_tile<ShimNOCTile>(0, 0)
+// CHECK: aie.packet_flow(3) {
+// CHECK-NEXT: aie.packet_source<%[[shim]], TileControl : 0>
+// CHECK-NEXT: aie.packet_dest<%[[shim]], South : 0>
+// CHECK-NEXT: } {keep_pkt_header = true, priority_route = true}
+// CHECK-NOT: aie.packet_dest<%{{.*}}, South : 0>
+
+aie.device(npu1_1col) {
+  %tile_0_0 = aie.tile(0, 0) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 3>}
+  %tile_0_2 = aie.tile(0, 2)
+  %shim = aie.logical_tile<ShimNOCTile>(0, 0)
+  aie.packet_flow(0x3) {
+    aie.packet_source<%shim, TileControl : 0>
+    aie.packet_dest<%shim, South : 0>
+  }
+}
