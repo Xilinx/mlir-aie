@@ -11,6 +11,9 @@
 
 #include "mlir/IR/IRMapping.h"
 #include "mlir/Pass/Pass.h"
+#include <optional>
+#include <set>
+#include <tuple>
 
 namespace xilinx::AIE {
 #define GEN_PASS_DEF_AIEFINDFLOWS
@@ -226,8 +229,63 @@ public:
   }
 };
 
+// Identifies a flow by its two endpoints -- tile coordinates plus port -- and
+// the packet ID it carries, using kCircuitFlow for circuit-switched flows.
+// Coordinates rather than SSA values, so flows written against different
+// aie.tile ops for the same tile still compare equal.
+static constexpr int kCircuitFlow = -1;
+using FlowKey = std::tuple<int, int, int, int, int, int, int, int, int>;
+using FlowKeySet = std::set<FlowKey>;
+
+// Returns nullopt when either endpoint's coordinates are unknown, in which
+// case the caller cannot tell the flow apart from any other and must not
+// dedupe it away.
+static std::optional<FlowKey> tryGetFlowKey(Operation *srcOp, Port srcPort,
+                                            Operation *destOp, Port destPort,
+                                            int packetID) {
+  auto coords = [](Operation *op) -> std::optional<std::pair<int, int>> {
+    auto tile = llvm::dyn_cast_or_null<TileLike>(op);
+    if (!tile)
+      return std::nullopt;
+    std::optional<int> col = tile.tryGetCol();
+    std::optional<int> row = tile.tryGetRow();
+    if (!col || !row)
+      return std::nullopt;
+    return std::make_pair(*col, *row);
+  };
+  std::optional<std::pair<int, int>> src = coords(srcOp);
+  std::optional<std::pair<int, int>> dest = coords(destOp);
+  if (!src || !dest)
+    return std::nullopt;
+  return FlowKey{src->first,
+                 src->second,
+                 static_cast<int>(srcPort.bundle),
+                 srcPort.channel,
+                 dest->first,
+                 dest->second,
+                 static_cast<int>(destPort.bundle),
+                 destPort.channel,
+                 packetID};
+}
+
+// Drops the flows the device already declares. This pass recovers the logical
+// flows a routed design implements, so the flows it writes are the answer --
+// leaving the originals in place next to them would just describe the same
+// routing twice, which DeviceOp::verify now rejects. It really does happen:
+// --aie-create-pathfinder-flows leaves behind every aie.flow it folded into an
+// earlier flow with the same source, and it never consumes aie.packet_flow.
+static void eraseExistingFlows(DeviceOp device) {
+  SmallVector<Operation *> toErase;
+  for (FlowOp flow : device.getOps<FlowOp>())
+    toErase.push_back(flow);
+  for (PacketFlowOp packetFlow : device.getOps<PacketFlowOp>())
+    toErase.push_back(packetFlow);
+  for (Operation *op : toErase)
+    op->erase();
+}
+
 static void findFlowsFrom(TileOp op, ConnectivityAnalysis &analysis,
-                          OpBuilder &rewriter) {
+                          OpBuilder &rewriter, FlowKeySet &seen) {
   Operation *Op = op.getOperation();
   rewriter.setInsertionPoint(Op->getBlock()->getTerminator());
 
@@ -246,6 +304,15 @@ static void findFlowsFrom(TileOp op, ConnectivityAnalysis &analysis,
         MaskValue maskValue = c.mv;
         Operation *destOp = portConnection.op;
         Port destPort = portConnection.port;
+        // The traversal can reach the same endpoint more than once, for
+        // instance when a broadcast re-converges on it. Those repeats all
+        // describe one logical flow, and a flow declared twice is rejected by
+        // DeviceOp::verify.
+        std::optional<FlowKey> key =
+            tryGetFlowKey(Op, {bundle, (int)i}, destOp, destPort,
+                          maskValue.mask == 0 ? kCircuitFlow : maskValue.value);
+        if (key && !seen.insert(*key).second)
+          continue;
         if (maskValue.mask == 0) {
           FlowOp::create(rewriter, Op->getLoc(), Op->getResult(0), bundle, i,
                          destOp->getResult(0), destPort.bundle,
@@ -280,9 +347,14 @@ struct AIEFindFlowsPass
     ConnectivityAnalysis analysis(d);
     d.getTargetModel().validate();
 
+    // The analysis above reads only the switchboxes and shim muxes, so the
+    // flows can be cleared before rebuilding them from that routing.
+    eraseExistingFlows(d);
+
     OpBuilder builder = OpBuilder::atBlockTerminator(d.getBody());
+    FlowKeySet seen;
     for (auto tile : d.getOps<TileOp>()) {
-      findFlowsFrom(tile, analysis, builder);
+      findFlowsFrom(tile, analysis, builder, seen);
     }
   }
 };
