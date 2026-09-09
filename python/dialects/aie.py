@@ -826,6 +826,7 @@ class packetflow(PacketFlowOp):
             ID=pkt_id,
             keep_pkt_header=keep_pkt_header,
             priority_route=priority_route,
+            vias=[],
             loc=loc,
             ip=ip,
         )
@@ -1164,6 +1165,7 @@ def flow(
         dest,
         dest_bundle,
         dest_channel,
+        vias=[],
         loc=loc,
         ip=ip,
     )
