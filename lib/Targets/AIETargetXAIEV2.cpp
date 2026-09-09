@@ -432,6 +432,7 @@ xilinx::AIE::AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output,
     device = AIE2_device;
     break;
   case AIEArch::AIE2p:
+  case AIEArch::AIE2ps:
     device = AIE2p_device;
     break;
   }
