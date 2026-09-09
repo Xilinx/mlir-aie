@@ -423,7 +423,6 @@ xilinx::AIE::AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output,
   std::string AIE1_device("XAIE_DEV_GEN_AIE");
   std::string AIE2_device("XAIE_DEV_GEN_AIEML");
   std::string AIE2p_device("XAIE_DEV_GEN_AIE2P");
-  std::string AIE2ps_device("XAIE_DEV_GEN_AIE2PS");
   std::string device;
   switch (arch) {
   case AIEArch::AIE1:
