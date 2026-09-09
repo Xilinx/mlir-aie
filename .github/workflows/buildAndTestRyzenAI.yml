@@ -184,6 +184,10 @@ jobs:
             LIT_OPTS="-j12 $LIT_OPTS"
           fi
 
+          # Cap aiecc's internal per-design scheduler independently of lit's
+          # test-level -j setting to stay within this runner's memory limit.
+          export AIECC_JOBS=1
+
           export PATH=$VITIS/bin:$VITIS/aietools/bin:$PATH
 
           # Build from source, unless this is a narrowed retry: the build
