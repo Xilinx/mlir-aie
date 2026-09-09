@@ -1,7 +1,7 @@
+//===- error_masterset_mixed_arbiters.mlir ----------------------*- MLIR -*-===//
+//
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-
-//===- error_masterset_mixed_arbiters.mlir ----------------------*- MLIR -*-===//
 //
 //===----------------------------------------------------------------------===//
 
