@@ -38,7 +38,10 @@ module {
   }
 }
 
-// WARN: warning: packet flow 6 shares arbiter 0 with a flow it can deadlock against
+// The warning names the flow it conflicts with: flow 0 leaves the DMA channel
+// that flow 6 feeds, so serializing the two deadlocks that channel.
+
+// WARN: warning: at tile (0, 1), packet flow 6 shares arbiter 0 with packet flow 0, which it can deadlock against
 
 // CHECK-LABEL: aie.switchbox(%mem_tile_0_1)
 // CHECK:         %[[SHARED:.*]] = aie.amsel<0> (1)

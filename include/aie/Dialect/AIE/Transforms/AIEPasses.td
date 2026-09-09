@@ -250,6 +250,18 @@ def AIERoutePathfinderFlows : Pass<"aie-create-pathfinder-flows", "DeviceOp"> {
     Each aie.flow is replaced with aie.connect operation.
     Each aie.packetflow is replace with the set of aie.amsel, aie.masterset
     and aie.packet_rules operations.
+
+    An arbiter holds its grant until the end of a packet, so two slave ports
+    sharing one arbiter serialize even when they leave the switchbox on
+    different master ports. Where that can deadlock, amsel allocation puts the
+    flows on separate arbiters; when no independent arbiter is free it keeps
+    the sharing and warns. Only an oversubscribed switchbox is affected.
+
+    Deciding this reads the DMA bodies in the device (aie.mem,
+    aie.memtile_dma, aie.shim_dma) for buffer descriptor sizes, so the pass is
+    meant to run after those exist. A DMA channel with no body in the module,
+    as every shim channel is once the runtime sequence has been lowered away,
+    simply yields no conclusion and is left to the remaining rules.
   }];
 
   let constructor = "xilinx::AIE::createAIEPathfinderPass()";
