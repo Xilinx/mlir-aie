@@ -73,7 +73,7 @@ void bitwiseORTile(int16_t *in1, int16_t *in2, int16_t *out, int32_t tileHeight,
 
 void bitwiseORLine(int32_t *in1, int32_t *in2, int32_t *out,
                    int32_t lineWidth) {
-  bitwiseOR_aie<int32_t, 16>(in1, in2, out, lineWidth);
+  bitwiseOR_aie<int32_t, 16>(in1, in2, out, lineWidth, 1);
 }
 
 void bitwiseORTile(int32_t *in1, int32_t *in2, int32_t *out, int32_t tileHeight,

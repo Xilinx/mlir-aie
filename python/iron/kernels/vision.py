@@ -104,7 +104,9 @@ def threshold(
 
     Args:
         line_width: Number of elements per line.
-        dtype: Element data type (``np.uint8``, ``np.int16``, or ``np.int32``).
+        dtype: Element data type, ``np.uint8`` or ``np.int16``. The source's
+            32-bit branch multiplies int32 data by int16 coefficients, a MAC
+            AIE2 does not have, so it does not compile and is not offered.
         use_chess: When ``True``, build the .o with ``xchesscc_wrapper``
             instead of Peano.
 
@@ -234,14 +236,21 @@ def add_weighted(
 
     Args:
         line_width: Number of elements per line.
-        dtype: Element data type (``np.uint8``, ``np.int16``, or ``np.int32``).
+        dtype: Element data type, ``np.uint8`` or ``np.int16``. The source's
+            32-bit branch multiplies int32 data by int16 coefficients, a MAC
+            AIE2 does not have, so it does not compile and is not offered.
         use_chess: When ``True``, build the .o with ``xchesscc_wrapper``
             instead of Peano.
 
     Raises:
-        ValueError: When ``dtype`` is not ``np.uint8``, ``np.int16``, or ``np.int32``.
+        ValueError: When ``dtype`` is not ``np.uint8`` or ``np.int16``.
     """
     bit_width = _dtype_to_bit_width(dtype, factory_name="add_weighted")
+    if bit_width == 32:
+        raise ValueError(
+            "add_weighted: no int32 build; addWeighted.cc has no int32 x int16 MAC. "
+            "Use np.uint8 or np.int16."
+        )
     gamma_ty = {8: np.int8, 16: np.int16, 32: np.int32}[bit_width]
     line_ty = np.ndarray[(line_width,), np.dtype[dtype]]
     return _make_extern(
@@ -265,9 +274,7 @@ def add_weighted(
 
 # Supported dtype combinations, as data: the registry and the contract test
 # enumerate these instead of restating them.
-_declare_dtypes(
-    add_weighted, ({"dtype": np.uint8}, {"dtype": np.int16}, {"dtype": np.int32})
-)
+_declare_dtypes(add_weighted, ({"dtype": np.uint8}, {"dtype": np.int16}))
 
 
 # --------------------------------------------------------------------------
