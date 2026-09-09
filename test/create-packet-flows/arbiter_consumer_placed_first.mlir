@@ -16,10 +16,17 @@
 //
 // Here it is reversed. Flow 9 is a control flow, so it is placed before
 // everything, and it ends at the memtile's DMA. Flows 0..4 then fill msel 0 on
-// arbiters 0..4, leaving flow 5 -- emitted by that same DMA -- to find arbiter
-// 5 already carrying the flow that feeds it. Granting flow 9 while the
-// memtile's input buffer is full leaves flow 5, the only thing that drains it,
-// waiting on the grant.
+// arbiters 0..4, leaving flow 5 -- emitted by that same DMA -- with nothing
+// free: arbiter 5 carries the flow that feeds it, and granting flow 9 while the
+// memtile's input buffer is full would leave flow 5, the only thing that drains
+// it, waiting on the grant.
+//
+// So flow 5 wraps onto arbiter 0 instead and takes a second msel there. That is
+// not free either -- flow 0 is emitted by a DMA of this tile and can stall,
+// while flow 5 has yet to leave the switchbox -- but a port that stalls is only
+// a shape, with nothing found that closes it back into a cycle, whereas flow 9
+// and flow 5 are the two halves of one buffer. Between the two the allocator
+// takes the speculative hazard over the demonstrated one, and says which.
 
 module {
   aie.device(npu2) {
@@ -50,9 +57,18 @@ module {
   }
 }
 
-// WARN: warning: at tile (0, 1), packet flow 5 shares arbiter 5 with packet flow 9, which it can deadlock against
+// WARN: warning: at tile (0, 1), packet flow 5 shares arbiter 0 with packet flow 0, which it can deadlock against
+
+// Flow 9 keeps arbiter 5 to itself; flow 5 doubles up on arbiter 0.
 
 // CHECK-LABEL: aie.switchbox(%mem_tile_0_1)
-// CHECK:         %[[SHARED:.*]] = aie.amsel<5> (0)
+// CHECK:         %[[FILLER:.*]] = aie.amsel<0> (0)
+// CHECK:         %[[SHARED:.*]] = aie.amsel<0> (1)
+// CHECK:         %[[CTRL:.*]] = aie.amsel<5> (3)
+// CHECK:         aie.masterset(DMA : 0, %[[CTRL]])
 // CHECK:         aie.packet_rules(DMA : 5) {
 // CHECK-NEXT:      aie.rule(31, 5, %[[SHARED]])
+// CHECK:         aie.packet_rules(DMA : 0) {
+// CHECK-NEXT:      aie.rule(31, 0, %[[FILLER]])
+// CHECK:         aie.packet_rules(North : 0) {
+// CHECK-NEXT:      aie.rule(31, 9, %[[CTRL]])

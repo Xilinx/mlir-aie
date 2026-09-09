@@ -15,19 +15,25 @@
 // stops whenever the core stops draining. Its arbiter is held for as long as
 // that lasts, so flow 6, which has yet to leave this switchbox, must not join
 // it. Flow 5 ends at a DMA here and is drained locally, so flow 6 joins that.
+//
+// Nothing this memtile sends to reaches (0,5). That keeps the test on the point
+// above: were (0,5) downstream of it, flow 5 would additionally close a cycle
+// back to flow 6's producer and be rejected for that instead, which is what
+// arbiter_multi_hop_cycle.mlir covers.
 
 module {
   aie.device(npu2) {
     %s0 = aie.tile(0, 0)
     %m  = aie.tile(0, 1)
     %c2 = aie.tile(0, 2)
+    %c3 = aie.tile(0, 3)
     %c4 = aie.tile(0, 4)
     %c5 = aie.tile(0, 5)
 
     aie.packet_flow(0) { aie.packet_source<%m, DMA : 0>  aie.packet_dest<%c2, DMA : 0> }
     aie.packet_flow(1) { aie.packet_source<%m, DMA : 0>  aie.packet_dest<%s0, TileControl : 0> }
     aie.packet_flow(2) { aie.packet_source<%m, DMA : 1>  aie.packet_dest<%c4, DMA : 0> }
-    aie.packet_flow(3) { aie.packet_source<%m, DMA : 2>  aie.packet_dest<%c5, DMA : 0> }
+    aie.packet_flow(3) { aie.packet_source<%m, DMA : 2>  aie.packet_dest<%c3, DMA : 0> }
     aie.packet_flow(4) { aie.packet_source<%m, DMA : 3>  aie.packet_dest<%c2, DMA : 1> }
 
     // Ends at this memtile's DMA.

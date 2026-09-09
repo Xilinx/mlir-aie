@@ -40,10 +40,16 @@ module {
 }
 
 // Seven groups, six arbiters: the seventh shares, but not with flow 0.
+//
+// It also skips arbiters 1 and 2, which carry flows 2 and 3 out of shim (0,0).
+// Flow 6 ends at this memtile, and the memtile feeds (0,2), which emits flow 1
+// back to that same shim -- so those two close a cycle as well, just a longer
+// one. Arbiter 3 carries flow 5 from shim (1,0), which nothing here reaches,
+// and is the first with no coupling at all.
 
 // CHECK-LABEL: aie.switchbox(%mem_tile_0_1)
 // CHECK:         %[[FEED:.*]] = aie.amsel<0> (0)
-// CHECK:         %[[RELAY:.*]] = aie.amsel<1> (1)
+// CHECK:         %[[RELAY:.*]] = aie.amsel<3> (1)
 // CHECK:         aie.masterset(DMA : 1, %[[RELAY]])
 // CHECK:         aie.packet_rules(North : 3) {
 // CHECK-NEXT:      aie.rule(31, 6, %[[RELAY]])

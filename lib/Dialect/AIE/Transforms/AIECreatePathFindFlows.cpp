@@ -499,6 +499,37 @@ struct PortTraffic {
   /// one buffer descriptor.
   bool spansConsumerBds = false;
 };
+
+/// The ways flows sharing one arbiter are known to be able to hang. An arbiter
+/// can trip several at once -- against one co-tenant or across them -- and the
+/// more of them it trips the worse it is, so these are OR'd together and the
+/// result compared as a number: a higher bit is stronger evidence, and more
+/// bits are more independent ways to deadlock. At an oversubscribed switchbox
+/// every arbiter carries something and the allocator has to pick the least bad.
+enum HazardKind : unsigned {
+  /// A shape that stalls -- a port whose packets outlast the receiving DMA's
+  /// descriptors, or a stalling source sharing with a co-tenant that still has
+  /// to leave this switchbox. Whether anything downstream closes it back into
+  /// a cycle is not known, which makes it the most speculative of the three.
+  StallShape = 1,
+  /// The dataflow does close back, through intermediate pipeline stages: what
+  /// one of the pair delivers is, some hops later, what the other's producer
+  /// needs drained. Every stage in between has to saturate at once.
+  RelayedCycle = 2,
+  /// The same cycle with nothing in between -- one flow ends at the very tile
+  /// the other starts from. The tightest loop, closing on a single buffer
+  /// filling up, and enough on its own to outrank any pile of the others.
+  DirectCycle = 4,
+};
+
+/// A placed flow the flow being allocated can deadlock against on one arbiter.
+struct ArbiterHazard {
+  /// The ID of that flow, so the diagnostic can name it.
+  int conflictingFlowID;
+  /// Which HazardKinds the arbiter trips. An allocation with nothing safe left
+  /// to pick takes the arbiter with the lowest of these it can find.
+  unsigned kinds;
+};
 } // namespace
 
 LogicalResult
@@ -530,6 +561,57 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
     int row = tileOp.rowIndex();
     tiles[{col, row}] = tileOp;
   }
+
+  // Tile-level dataflow graph over the whole device: an edge P -> C for every
+  // packet flow that leaves a DMA of P and arrives at a DMA of C. Freeing C's
+  // input buffer needs C to run, so everything C goes on to emit waits behind
+  // that flow.
+  DenseMap<TileID, llvm::SmallDenseSet<TileID, 4>> tileConsumers;
+  for (PacketFlowOp pktFlowOp : device.getOps<PacketFlowOp>()) {
+    Block &b = pktFlowOp.getPorts().front();
+    SmallVector<TileID, 4> srcTiles;
+    for (PacketSourceOp src : b.getOps<PacketSourceOp>())
+      if (src.port().bundle == WireBundle::DMA)
+        srcTiles.push_back(
+            cast<TileOp>(src.getTile().getDefiningOp()).getTileID());
+    for (PacketDestOp dst : b.getOps<PacketDestOp>()) {
+      if (dst.port().bundle != WireBundle::DMA)
+        continue;
+      TileID dstTile = cast<TileOp>(dst.getTile().getDefiningOp()).getTileID();
+      for (TileID srcTile : srcTiles)
+        if (srcTile != dstTile)
+          tileConsumers[srcTile].insert(dstTile);
+    }
+  }
+
+  // Tiles whose progress the root's draining depends on: the root itself, the
+  // tiles it feeds, the tiles those feed, and so on. A shim tile is reached but
+  // never expanded through -- its DMA drains to DDR, and the chain continues
+  // only through the order the host chooses to wait in, which this module does
+  // not hold. Following it would put nearly every tile downstream of every
+  // other and leave the coupling rule flagging any pair at all.
+  const AIETargetModel &targetModel = device.getTargetModel();
+  DenseMap<TileID, llvm::SmallDenseSet<TileID, 8>> downstreamTiles;
+  auto downstreamOf =
+      [&](TileID root) -> const llvm::SmallDenseSet<TileID, 8> & {
+    auto cached = downstreamTiles.find(root);
+    if (cached != downstreamTiles.end())
+      return cached->second;
+    llvm::SmallDenseSet<TileID, 8> reached;
+    SmallVector<TileID, 8> work{root};
+    while (!work.empty()) {
+      TileID tile = work.pop_back_val();
+      if (!reached.insert(tile).second)
+        continue;
+      if (targetModel.isShimNOCorPLTile(tile.col, tile.row))
+        continue;
+      auto succs = tileConsumers.find(tile);
+      if (succs == tileConsumers.end())
+        continue;
+      work.append(succs->second.begin(), succs->second.end());
+    }
+    return downstreamTiles[root] = std::move(reached);
+  };
 
   // Largest buffer descriptor each DMA channel issues, in bytes. Only channels
   // with a body in this module appear; one programmed from outside it, as every
@@ -777,6 +859,19 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
                        const llvm::SmallDenseSet<TileID, 2> &b) {
     return llvm::any_of(a, [&](TileID t) { return b.contains(t); });
   };
+  // True when the tiles a flow ends at have to make progress before any of
+  // `producers` can emit. The two need not be the same tile: pipeline stages in
+  // between relay the dependency, and the flows at either end of the chain
+  // still meet on one arbiter. Reflexive, so sharesTile is the depth-0 case and
+  // this is the same question asked at any depth.
+  auto couples = [&](const llvm::SmallDenseSet<TileID, 2> &consumers,
+                     const llvm::SmallDenseSet<TileID, 2> &producers) {
+    return llvm::any_of(consumers, [&](TileID consumer) {
+      const llvm::SmallDenseSet<TileID, 8> &reached = downstreamOf(consumer);
+      return llvm::any_of(producers,
+                          [&](TileID p) { return reached.contains(p); });
+    });
+  };
 
   const PortTraffic noTraffic;
   auto trafficOf = [&](PhysPort port) -> const PortTraffic & {
@@ -817,20 +912,31 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
   //    consumer may itself be waiting on -- through the dataflow, through the
   //    control path that reprograms it, or through the order the host waits in.
   //    Co-tenants that end here are safe: the local DMA drains them.
-  //  - Flow F ends at the tile that produces flow G: F stalls on a full buffer
-  //    while holding the grant G needs to drain it.
+  //  - Flow F ends at a tile whose progress flow G's producer waits on: F
+  //    stalls on a full buffer while holding the grant G needs to drain it.
+  //    The wait may run through intermediate pipeline stages, so this is asked
+  //    of the flow graph (see couples) rather than of the two flows' endpoints.
   //
-  // Returns the ID of a placed flow this one can deadlock against, so the
-  // diagnostic can name it, or nullopt if the arbiter is safe.
-  auto arbiterHazard =
-      [&](TileID tileId, int arbiter,
-          const std::pair<PhysPort, int> &flow) -> std::optional<int> {
+  // Returns the worst hazard the arbiter carries for this flow, or nullopt if
+  // it carries none. Only the last of the three exhibits the cycle it deadlocks
+  // on; the first two recognize a shape that stalls and leave open whether
+  // anything downstream closes it back, so they rank below either cycle.
+  auto arbiterHazard = [&](TileID tileId, int arbiter,
+                           const std::pair<PhysPort, int> &flow)
+      -> std::optional<ArbiterHazard> {
     auto placed = arbiterSlaveFlows.find({tileId, arbiter});
     if (placed == arbiterSlaveFlows.end())
       return std::nullopt;
     const DmaEndpoints &f = dmaEndpointsOf(flow);
     const PortTraffic &fp = trafficOf(flow.first);
     bool flowStalls = portStalls(flow.first);
+    ArbiterHazard worst{0, 0};
+    auto raise = [&](int conflictingFlowID, HazardKind kind) {
+      // Name the flow behind the strongest evidence, not the first found.
+      if (kind > worst.kinds)
+        worst.conflictingFlowID = conflictingFlowID;
+      worst.kinds |= kind;
+    };
     for (const auto &other : placed->second) {
       // One slave port carries one stream, so flows on it are serialized by
       // the port and never arbitrate against each other.
@@ -843,17 +949,23 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
       // exactly this shape.
       if (fansIntoSameLocalDma(flow, other))
         continue;
-      const PortTraffic &gp = trafficOf(other.first);
-      if (fp.spansConsumerBds || gp.spansConsumerBds)
-        return other.second;
-      if ((flowStalls && gp.leaves) || (fp.leaves && portStalls(other.first)))
-        return other.second;
       const DmaEndpoints &g = dmaEndpointsOf(other);
       if (sharesTile(g.consumers, f.producers) ||
-          sharesTile(g.producers, f.consumers))
-        return other.second;
+          sharesTile(g.producers, f.consumers)) {
+        // Nothing outranks this, so there is no point looking at the rest.
+        return ArbiterHazard{other.second, HazardKind::DirectCycle};
+      }
+      if (couples(g.consumers, f.producers) ||
+          couples(f.consumers, g.producers))
+        raise(other.second, HazardKind::RelayedCycle);
+      const PortTraffic &gp = trafficOf(other.first);
+      if (fp.spansConsumerBds || gp.spansConsumerBds ||
+          (flowStalls && gp.leaves) || (fp.leaves && portStalls(other.first)))
+        raise(other.second, HazardKind::StallShape);
     }
-    return std::nullopt;
+    if (!worst.kinds)
+      return std::nullopt;
+    return worst;
   };
 
   // Reported wherever a flow lands on an arbiter it can deadlock against,
@@ -890,20 +1002,22 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
             candidates.push_back(getAmselFromArbiterIDAndMsel(arbiter, msel));
           }
 
-        // Fallback for when every free amsel is hazardous, and the flow the
-        // first such amsel conflicts with.
+        // Every free amsel is hazardous, so fall back to the least bad of them:
+        // the one tripping the fewest and weakest HazardKinds, with the flow it
+        // conflicts with. Ties go to the earliest, keeping the old scan order
+        // wherever the ranking has no opinion.
         int hazardous = INVALID_AMSEL_VALUE;
-        int conflictingFlowID = 0;
+        ArbiterHazard worst{0, 0};
         for (int amsel : candidates) {
           if (masterAMSels.count({tileId, amsel}))
             continue;
-          std::optional<int> conflict =
+          std::optional<ArbiterHazard> hazard =
               arbiterHazard(tileId, getArbiterIDFromAmsel(amsel), flow);
-          if (!conflict)
+          if (!hazard)
             return amsel;
-          if (hazardous == INVALID_AMSEL_VALUE) {
+          if (hazardous == INVALID_AMSEL_VALUE || hazard->kinds < worst.kinds) {
             hazardous = amsel;
-            conflictingFlowID = *conflict;
+            worst = *hazard;
           }
         }
 
@@ -913,7 +1027,8 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
           return INVALID_AMSEL_VALUE;
         }
         warnSharedArbiter(tileOp, flow.second, getArbiterIDFromAmsel(hazardous),
-                          conflictingFlowID, "no independent arbiter is free");
+                          worst.conflictingFlowID,
+                          "no independent arbiter is free");
         return hazardous;
       };
   // Get a new unique amsel from masterAMSels on tile op with given arbiter id
@@ -1153,9 +1268,10 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
     // arbiters. The fix is the same either way: give the flows separate master
     // ports so they need not share.
     if (!hazardChecked)
-      if (std::optional<int> conflict =
+      if (std::optional<ArbiterHazard> hazard =
               arbiterHazard(tileId, arbiter, packetFlow.first))
-        warnSharedArbiter(tileOp, packetFlow.first.second, arbiter, *conflict,
+        warnSharedArbiter(tileOp, packetFlow.first.second, arbiter,
+                          hazard->conflictingFlowID,
                           "a master port of this flow is already tied to that "
                           "arbiter");
 
