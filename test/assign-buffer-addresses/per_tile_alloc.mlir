@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-assign-buffer-addresses="alloc-scheme=bank-aware" %s | FileCheck %s
+// RUN: aie-opt --aie-prepare-buffers --aie-assign-buffer-addresses="alloc-scheme=bank-aware" %s | FileCheck %s
 
 module @test {
   aie.device(xcvc1902) {
@@ -18,10 +18,14 @@ module @test {
     // CHECK: {{.*}} = aie.buffer({{.*}}) {address = {{.*}} : i32, mem_bank = {{.*}} : i32, sym_name = {{.*}}}
     %b3 = aie.buffer(%t1) : memref<16xi16>
 
-    // The tile allocation scheme overrides the alloc-scheme flag.
+    // The tile allocation scheme overrides the alloc-scheme flag: this buffer
+    // must come from basic-sequential allocation, which assigns no mem_bank.
     // CHECK: aie.tile(4, 4) {allocation_scheme = "basic-sequential"}
     %t2 = aie.tile(4, 4) { allocation_scheme="basic-sequential" }
-    // CHECK: {address = {{.*}} : i32, sym_name = {{.*}}}
+    // The address pattern is digits rather than `.*` on purpose: a greedy `.*`
+    // spans a `mem_bank = N : i32,` too, so it would also accept the
+    // bank-aware result this line exists to rule out.
+    // CHECK: {address = {{[0-9]+}} : i32, sym_name = {{.*}}}
     %b4 = aie.buffer(%t2) : memref<500xi32>
 
     // The default allocation scheme is given by the falg in this case.
@@ -36,6 +40,6 @@ module @test {
 
     aie.core(%t2) {
       aie.end
-    } {stackSize = 2048}
+    } {stack_size = 2048 : i32}
   }
 }

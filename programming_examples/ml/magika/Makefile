@@ -17,14 +17,6 @@ CHESS ?= false
 trace_size ?= 16384
 colshift ?= $(if $(filter npu,$(devicename)),1,0)
 
-#ifeq (${targetname}, group2)
-#alloc_scheme=--alloc-scheme=basic-sequential
-#else
-#alloc_scheme=--alloc-scheme=bank-aware
-#endif
-
-alloc_scheme=--alloc-scheme=basic-sequential
-
 VPATH := ${srcdir}/kernels
 
 all: build/aie.mlir
@@ -100,20 +92,20 @@ group_objs=${group_objs_${targetname}}
 build/final.xclbin: build/${mlirFileName}.mlir ${group_objs}
 	mkdir -p ${@D}
 ifeq ($(CHESS), true)
-	cd ${@D} && aiecc -v --get-xclbin --xclbin-name=${@F} ${alloc_scheme} \
+	cd ${@D} && aiecc -v --get-xclbin --xclbin-name=${@F} \
 				--get-npu-insts --npu-insts-name=insts.bin $(<:%=../%)
 else
-	cd ${@D} && aiecc -v --get-xclbin --xclbin-name=${@F} ${alloc_scheme} \
+	cd ${@D} && aiecc -v --get-xclbin --xclbin-name=${@F} \
 				--get-npu-insts --npu-insts-name=insts.bin $(<:%=../%)
 endif
 
 build/final_trace.xclbin: build/${mlirFileName}_trace.mlir ${group_objs}
 	mkdir -p ${@D}
 ifeq ($(CHESS), true)
-	cd ${@D} && aiecc -v --get-xclbin --xclbin-name=${@F} ${alloc_scheme} \
+	cd ${@D} && aiecc -v --get-xclbin --xclbin-name=${@F} \
 				--get-npu-insts --npu-insts-name=insts.bin --get-input-with-addresses $(<:%=../%)
 else
-	cd ${@D} && aiecc -v --get-xclbin --xclbin-name=${@F} ${alloc_scheme} \
+	cd ${@D} && aiecc -v --get-xclbin --xclbin-name=${@F} \
 				--get-npu-insts --npu-insts-name=insts.bin --get-input-with-addresses $(<:%=../%)
 endif
 
