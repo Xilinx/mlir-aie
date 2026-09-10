@@ -468,23 +468,29 @@ def compare(
         err[finite] = np.abs(a32[finite] - e_bf[finite].astype(np.float32))
         max_ulps = tol.ulps if tol.ulps is not None else 0
         bad = nonfinite_bad | (finite & (ulp > max_ulps))
-        return _verdict(bad, err, ulp, tol, n)
+        return _verdict(bad, err, ulp, tol, n, nonfinite_bad)
 
     if tol.kind == "exact":
         e_cast = e32.astype(actual.dtype).astype(np.float32)
         err[finite] = np.abs(a32[finite] - e_cast[finite])
         bad = nonfinite_bad | (finite & (a32 != e_cast))
-        return _verdict(bad, err, None, tol, n)
+        return _verdict(bad, err, None, tol, n, nonfinite_bad)
 
     err[finite] = np.abs(a32[finite].astype(np.float64) - e32[finite])
     close = nearly_equal(a32, e32, rtol=tol.rtol or 0.0, atol=tol.atol)
     bad = nonfinite_bad | (finite & ~close)
-    return _verdict(bad, err, None, tol, n)
+    return _verdict(bad, err, None, tol, n, nonfinite_bad)
 
 
-def _verdict(bad, err, ulp, tol: Tolerance, n: int) -> Verdict:
+def _verdict(bad, err, ulp, tol: Tolerance, n: int, nonfinite_bad=None) -> Verdict:
     n_bad = int(np.count_nonzero(bad))
-    ok = n_bad <= int(np.floor(tol.max_mismatch_frac * n))
+    # A non-finite mismatch must fail regardless of max_mismatch_frac: that
+    # budget is for how close a finite value came, not for whether NaN/Inf
+    # values were reproduced at all.
+    n_nonfinite_bad = (
+        int(np.count_nonzero(nonfinite_bad)) if nonfinite_bad is not None else 0
+    )
+    ok = n_nonfinite_bad == 0 and n_bad <= int(np.floor(tol.max_mismatch_frac * n))
     first = int(np.argmax(bad)) if n_bad else None
     max_ulp = int(ulp.max()) if ulp is not None and n else None
     max_err = float(err.max()) if n else 0.0

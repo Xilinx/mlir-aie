@@ -189,6 +189,17 @@ def test_nonfinite_must_match_under_every_kind(tol):
     assert compare(a, _REF, tol).ok, "matching non-finite values must pass"
 
 
+def test_nonfinite_mismatch_ignores_max_mismatch_frac():
+    # A generous budget is for how close finite values came, not for whether
+    # NaN/Inf were reproduced at all -- a single non-finite mismatch must fail
+    # a verdict even when the budget alone would forgive it.
+    r = _REF.astype(bfloat16).copy()
+    r[4] = np.nan
+    a = r.copy()
+    a[4] = 0
+    assert not compare(a, r, Tolerance.bf16_ulps(1, max_mismatch_frac=1.0)).ok
+
+
 def test_exact_kind_casts_the_reference_to_the_output_dtype():
     # relu-style: reference computed in f32 but the kernel emits bf16.
     ref = np.array([1.00390625, 2.0], np.float32)  # 1 + 2^-8, not bf16-representable
