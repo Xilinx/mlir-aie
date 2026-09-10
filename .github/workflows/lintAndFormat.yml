@@ -427,10 +427,11 @@ jobs:
 
     runs-on: ubuntu-latest
 
-    # HEAD in a merge_group carries commits from every PR ahead of this one in the
-    # queue, so the diff would compare comments across several independently
-    # reviewed PRs and could fail this one for wording introduced by another.
-    if: github.event_name != 'merge_group'
+    # Scoped to actual PR commits only. merge_group's HEAD carries commits from
+    # every PR ahead of this one in the queue, so the diff would compare comments
+    # across several independently reviewed PRs; schedule/workflow_dispatch run
+    # against main with no PR base, which would just diff main against itself.
+    if: github.event_name == 'pull_request'
 
     permissions:
       contents: read
@@ -454,9 +455,8 @@ jobs:
         # Scoped to the PR's actual target branch (not always main), so a PR onto a
         # release branch is diffed against that branch instead.
         env:
-          BASE_REF: ${{ github.base_ref || github.event.repository.default_branch }}
+          BASE_BRANCH: ${{ github.base_ref }}
         run: |
-          BASE_BRANCH="${BASE_REF#refs/heads/}"
           git fetch --no-tags origin "$BASE_BRANCH"
           BASE=$(git merge-base "origin/$BASE_BRANCH" HEAD)
           pre-commit run comment-slop --from-ref "$BASE" --to-ref HEAD --show-diff-on-failure
