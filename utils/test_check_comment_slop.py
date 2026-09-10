@@ -62,6 +62,45 @@ class CollectTests(unittest.TestCase):
         self.assertEqual(blocks, [])
         self.assertEqual(code, 3)
 
+    def test_explanation_adjacent_to_header_is_still_a_block(self):
+        # No blank line between the SPDX line and the explanation that
+        # follows it, so both are one contiguous comment run; only the
+        # header lines should be exempt, not the explanation riding along.
+        blocks, _ = slop.collect(
+            diff(
+                (
+                    "a.py",
+                    1,
+                    [
+                        "# Copyright (C) 2026 Advanced Micro Devices, Inc.",
+                        "# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception",
+                        "# This kernel assumes the caller already validated shapes.",
+                        "x = 1",
+                    ],
+                )
+            )
+        )
+        self.assertEqual(len(blocks), 1)
+        self.assertIn(
+            "This kernel assumes the caller already validated shapes.",
+            blocks[0].lines,
+        )
+
+    def test_unrelated_mention_of_copyright_is_not_a_header(self):
+        blocks, _ = slop.collect(
+            diff(
+                (
+                    "a.py",
+                    1,
+                    [
+                        "# See the copyright notice in LICENSE.txt for the full text.",
+                        "x = 1",
+                    ],
+                )
+            )
+        )
+        self.assertEqual(len(blocks), 1)
+
 
 class TermTests(unittest.TestCase):
     def test_identifiers_are_split_into_words(self):
