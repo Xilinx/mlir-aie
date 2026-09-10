@@ -10,10 +10,13 @@
 import os
 import types
 
-import pytest
-
 import aie.utils.compile.utils as compile_utils
-from aie.utils.compile.utils import _materialize_source, compile_external_kernels
+import pytest
+from aie.utils.compile.utils import (
+    _copy_source,
+    _write_source,
+    compile_external_kernels,
+)
 
 pytestmark = pytest.mark.skipif(
     os.name == "nt", reason="test/python/ has no Windows pytest job to run under"
@@ -23,7 +26,7 @@ SOURCE = "// kernel\nvoid k() {}\n" * 64
 
 
 def _stub_func(name, source_file):
-    """A stand-in for ExternalFunction carrying only what the compile path reads."""
+    """Build a stand-in for ExternalFunction carrying what the compile path reads."""
     return types.SimpleNamespace(
         _name=name,
         _original_name=name,
@@ -59,10 +62,10 @@ def test_rewrite_leaves_an_open_reader_on_its_own_file(tmp_path):
     which is what spares it the SIGBUS when the size drops under its mapping.
     """
     dest = tmp_path / "kernel.cc"
-    _materialize_source(str(dest), text=SOURCE)
+    _write_source(str(dest), SOURCE)
 
     with open(dest) as reader:
-        _materialize_source(str(dest), text="// replaced\n")
+        _write_source(str(dest), "// replaced\n")
         assert reader.read() == SOURCE
         assert os.fstat(reader.fileno()).st_ino != os.stat(dest).st_ino
 
@@ -112,10 +115,10 @@ def test_source_that_is_already_in_place_is_not_rewritten(tmp_path, stub_compile
 def test_materialized_source_keeps_umask_permissions(tmp_path):
     """Staging through mkstemp must not narrow the source to 0600."""
     written = tmp_path / "from_string.cc"
-    _materialize_source(str(written), text=SOURCE)
+    _write_source(str(written), SOURCE)
 
     copied = tmp_path / "from_file.cc"
-    _materialize_source(str(copied), copy_from=str(written))
+    _copy_source(str(copied), str(written))
 
     expected = 0o666 & ~compile_utils._UMASK
     assert os.stat(written).st_mode & 0o777 == expected
@@ -126,6 +129,6 @@ def test_failed_write_leaves_no_temp_files(tmp_path):
     """A raising write must not litter the kernel directory with .tmp sources."""
     dest = tmp_path / "kernel.cc"
     with pytest.raises(FileNotFoundError):
-        _materialize_source(str(dest), copy_from=str(tmp_path / "missing.cc"))
+        _copy_source(str(dest), str(tmp_path / "missing.cc"))
 
     assert list(tmp_path.iterdir()) == []

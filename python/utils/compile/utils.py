@@ -581,10 +581,9 @@ def _rename_symbol_in_object(object_path: str, old_name: str, new_name: str) -> 
         raise RuntimeError(f"Symbol rename failed: {result.stderr.decode()}")
 
 
-def _materialize_source(
-    dest: str, *, text: str | None = None, copy_from: str | None = None
-):
-    """Put a kernel's source at ``dest`` without ever truncating it in place.
+@contextlib.contextmanager
+def _staged(dest: str):
+    """Yield a sibling temp path that replaces ``dest`` atomically on success.
 
     Kernels are grouped by ``_original_name``, but a source file is named after
     its own basename, so the several ExternalFunctions that share one .cc (only
@@ -595,24 +594,16 @@ def _materialize_source(
     behind an #ifdef, and emits an object with no symbol in it.
 
     Every writer stages identical bytes, so it does not matter which one lands.
-    Staging in a sibling temp file and renaming makes the swap atomic, and a
-    compile already holding the old inode keeps reading it until it unmaps.
+    Renaming makes the swap atomic, and a compile already holding the old inode
+    keeps reading it until it unmaps.
     """
     directory = os.path.dirname(dest) or "."
     fd, tmp = tempfile.mkstemp(
         dir=directory, prefix=os.path.basename(dest) + ".", suffix=".tmp"
     )
+    os.close(fd)
     try:
-        if text is not None:
-            with os.fdopen(fd, "w") as f:
-                f.write(text)
-            # mkstemp opens at 0600; the in-place open() this replaces left the
-            # file at the process umask.  copy2 carries the mode over on the
-            # other branch, so only the written-from-string one has to.
-            os.chmod(tmp, _DEFAULT_FILE_MODE)
-        else:
-            os.close(fd)
-            shutil.copy2(copy_from, tmp)
+        yield tmp
         os.replace(tmp, dest)
     except BaseException:
         with contextlib.suppress(OSError):
@@ -620,13 +611,30 @@ def _materialize_source(
         raise
 
 
+def _write_source(dest: str, text: str) -> None:
+    """Write ``text`` to ``dest`` without ever truncating it in place."""
+    with _staged(dest) as tmp:
+        with open(tmp, "w") as f:
+            f.write(text)
+        # mkstemp created the temp file at 0600; the in-place open() this
+        # replaces left the source at the process umask.  copy2 carries the mode
+        # over in _copy_source, so only this path has to restore it.
+        os.chmod(tmp, _DEFAULT_FILE_MODE)
+
+
+def _copy_source(dest: str, src: str) -> None:
+    """Copy ``src`` onto ``dest`` without ever truncating ``dest`` in place."""
+    with _staged(dest) as tmp:
+        shutil.copy2(src, tmp)
+
+
 def compile_external_kernels(funcs, kernel_dir, target_arch):
     """Compile every ExternalFunction in ``funcs`` into ``kernel_dir``.
 
     Kernels are separate translation units with separate outputs, so they
     compile concurrently.  Their source files are not always separate --
-    several ExternalFunctions can share one .cc -- so ``_materialize_source``
-    makes each write atomic rather than ordering the compiles behind it.
+    several ExternalFunctions can share one .cc -- so ``_staged`` makes each
+    write atomic rather than ordering the compiles behind it.
 
     Each compile is single-threaded and peaks near 205 MB of RSS on aie2p (250 MB
     without the intrinsics PCH), so the bound is cores rather than memory on an
@@ -714,7 +722,7 @@ def compile_external_kernel(func, kernel_dir, target_arch):
     if func._source_string is not None:
         original_name = getattr(func, "_original_name", func._name)
         source_file = os.path.join(kernel_dir, f"{original_name}.cc")
-        _materialize_source(source_file, text=func._source_string)
+        _write_source(source_file, func._source_string)
         compile_cxx_core_function(
             source_path=source_file,
             target_arch=target_arch,
@@ -741,11 +749,11 @@ def compile_external_kernel(func, kernel_dir, target_arch):
             raise FileNotFoundError(
                 f"ExternalFunction '{func._name}': source file not found: {func._source_file}"
             )
-        # realpath, not abspath: the rename in _materialize_source would happily
-        # overwrite the kernel's own source with a copy of itself if kernel_dir
-        # reaches it through a symlink, where copy2 used to raise SameFileError.
+        # realpath, not abspath: the rename in _staged would happily overwrite
+        # the kernel's own source with a copy of itself if kernel_dir reaches it
+        # through a symlink, where copy2 used to raise SameFileError.
         if os.path.realpath(source_file) != os.path.realpath(func._source_file):
-            _materialize_source(source_file, copy_from=func._source_file)
+            _copy_source(source_file, func._source_file)
         # Include the original source file's directory so relative includes
         # (e.g. "../aie_kernel_utils.h") still resolve after the file is
         # copied into kernel_dir.
