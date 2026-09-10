@@ -17,13 +17,6 @@ from ._common import (
     _make_extern,
 )
 
-# Fixed-point pixel kernels end in a saturating accumulator shift whose
-# rounding mode is a core setting the kernels do not fix (they call set_sat but
-# not set_rounding), so the references below use floor and allow one LSB.
-_LSB = Tolerance.lsb(
-    1, note="fixed-point srs shift: rounding mode not modelled, floor +/- 1"
-)
-
 
 def _color_convert_kernel(
     func_name: str,
@@ -186,7 +179,9 @@ def rgba2gray(line_width: int = 1920, use_chess: bool = False) -> ExternalFuncti
         contract=KernelContract(
             roles=("in", "out", "count"),
             reference=rgba2gray_ref,
-            tolerance=_LSB,
+            tolerance=Tolerance.exact(
+                note="measured bit-exact against the reference over every data case"
+            ),
             acc_dtype=np.int32,
             reduction=3,
             overflow="undefined",  # cannot overflow: weights sum to 1
@@ -217,9 +212,8 @@ def filter2d(line_width: int = 1920, use_chess: bool = False) -> ExternalFunctio
             reduction=9,
             overflow="saturate",  # set_sat before the shift
             rounding="nearest",  # (x + 2**(s-1)) >> s, as the reference does
-            # Not _LSB: the vector path rounds exactly as the reference does,
-            # measured over every data case at three seeds. That slack had been
-            # absorbing a wrong carry across the 32-pixel boundary instead (see
+            # The one-LSB slack these pixel kernels used to share was
+            # absorbing a wrong carry across the 32-pixel boundary here (see
             # filter2d.cc); an exact contract is what would have caught it.
             tolerance=Tolerance.exact(
                 note="vector path matches the reference bit-for-bit"
@@ -266,7 +260,9 @@ def add_weighted(
             reduction=2,
             overflow="saturate",  # set_saturation(saturate)
             rounding="unspecified",
-            tolerance=_LSB,
+            tolerance=Tolerance.exact(
+                note="measured bit-exact against the reference over every data case"
+            ),
             ops_per_call=3 * line_width,
         ),
     )

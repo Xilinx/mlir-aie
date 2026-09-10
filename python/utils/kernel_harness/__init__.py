@@ -185,30 +185,36 @@ def is_matvec(fn) -> bool:
 
 
 def _fifo_plan(fn):
-    """How the harness feeds ``fn``: ``(pack, in_roles, param_roles)``.
+    """How the harness feeds ``fn``: ``(groups, in_roles, param_roles)``.
 
-    A core tile has two input DMA channels, so at most two ObjectFifos can
-    feed the Worker. A kernel with more ``in`` tensors than that (swiglu's
-    three) streams them all through one fifo and acquires them together, the
-    way the vision examples slide a window of lines; that needs the ``in``
-    tiles to share one type. ``param`` tensors (scale's factor, filter2d's
-    3x3 kernel) are not streamed at all: they become core Buffers with an
-    initial value, as programming_examples/vision/edge_detect does, which
-    also sidesteps the 4-byte DMA length rule an 18-byte kernel would break.
+    ``groups`` are the ``in`` tensors gathered by type, one ObjectFifo each,
+    in the order the types first appear. Tiles of one type travel through one
+    fifo and are acquired together, the way the vision examples slide a window
+    of lines, so swiglu's three same-type inputs cost one channel rather than
+    three. A core tile has two input DMA channels, so two types can be fed and
+    a third cannot -- conv2dk1_skip_init's int8 residual beside its uint8
+    activations is two, and fits.
+
+    ``param`` tensors (scale's factor, filter2d's 3x3 kernel) are not streamed
+    at all: they become core Buffers with an initial value, as
+    programming_examples/vision/edge_detect does, which also sidesteps the
+    4-byte DMA length rule an 18-byte kernel would break.
     """
     c = _contract(fn)
     in_pos, _ = _tensor_positions(c)
     in_roles = [i for i in in_pos if c.roles[i] == "in"]
     param_roles = [i for i in in_pos if c.roles[i] == "param"]
-    pack = len(in_roles) > 2
-    if pack:
-        types = {str(_arg_types(fn)[i]) for i in in_roles}
-        if len(types) != 1:
-            raise ValueError(
-                f"{fn.name}: {len(in_roles)} 'in' tensors need one packed fifo, but "
-                f"they differ in type: {sorted(types)}"
-            )
-    return pack, in_roles, param_roles
+    by_type: dict[str, list[int]] = {}
+    for i in in_roles:
+        by_type.setdefault(str(_arg_types(fn)[i]), []).append(i)
+    groups = list(by_type.values())
+    if len(groups) > 2:
+        raise ValueError(
+            f"{fn.name}: {len(in_roles)} 'in' tensors of {len(groups)} types need "
+            f"{len(groups)} fifos, but a core tile has 2 input channels: "
+            f"{sorted(by_type)}"
+        )
+    return groups, in_roles, param_roles
 
 
 def param_values(fn, inputs: list[np.ndarray]) -> list[np.ndarray]:
@@ -272,8 +278,8 @@ def _build_stream(
     c = _contract(fn)
     arg_types = _arg_types(fn)
     in_pos, out_pos = _tensor_positions(c)
-    pack, in_roles, param_roles = _fifo_plan(fn)
-    n_fifos_in = 1 if pack else len(in_roles)
+    groups, in_roles, param_roles = _fifo_plan(fn)
+    n_fifos_in = len(groups)
     if len(tensors_in) != n_fifos_in:
         raise ValueError(
             f"{fn.name}: design has {len(tensors_in)} input tensors, kernel needs {n_fifos_in}"
@@ -299,14 +305,10 @@ def _build_stream(
         stack_bytes=_STREAM_STACK,
         fixed_bytes=sum(nbytes(i) for i in param_roles),
     )
-    n_in = len(in_roles)
-    if pack:
-        fifos_in = [ObjectFifo(arg_types[in_roles[0]], name="in", depth=n_in * depth)]
-    else:
-        fifos_in = [
-            ObjectFifo(arg_types[i], name=f"in{k}", depth=depth)
-            for k, i in enumerate(in_roles)
-        ]
+    fifos_in = [
+        ObjectFifo(arg_types[g[0]], name=f"in{k}", depth=len(g) * depth)
+        for k, g in enumerate(groups)
+    ]
     fifo_out = ObjectFifo(arg_types[out_pos], name="out", depth=depth)
     # `param` arguments live in core Buffers initialised at build time.
     param_bufs = [
@@ -330,11 +332,14 @@ def _build_stream(
         if setter is not None:
             args[-1]()
         for _ in range_(calls) if calls > 1 else range(1):
-            if pack:
-                got = f_in[0].acquire(n_in)
-                elems = {i: got[k] for k, i in enumerate(in_roles)}
-            else:
-                elems = {i: f_in[k].acquire(1) for k, i in enumerate(in_roles)}
+            elems = {}
+            for k, g in enumerate(groups):
+                # acquire(1) hands back the tile; acquire(n) a list of them.
+                got = f_in[k].acquire(len(g))
+                if len(g) == 1:
+                    elems[g[0]] = got
+                else:
+                    elems.update({i: got[j] for j, i in enumerate(g)})
             o = f_out.acquire(1)
             call_args, s = [], iter(scalars)
             for i, role in enumerate(c.roles):
@@ -349,11 +354,8 @@ def _build_stream(
                 else:  # scalar: a plain Python number, typed by the kernel's arg
                     call_args.append(next(s))
             kernel(*call_args)
-            if pack:
-                f_in[0].release(n_in)
-            else:
-                for f in f_in:
-                    f.release(1)
+            for k, g in enumerate(groups):
+                f_in[k].release(len(g))
             f_out.release(1)
 
     worker = Worker(
@@ -369,10 +371,7 @@ def _build_stream(
         shape, dt = _shape_dtype(arg_types[i])
         return np.ndarray[(int(np.prod(shape)) * reps,), np.dtype[dt]]
 
-    if pack:
-        host_tys = [host_ty(in_roles[0], calls * n_in)]
-    else:
-        host_tys = [host_ty(i, calls) for i in in_roles]
+    host_tys = [host_ty(g[0], calls * len(g)) for g in groups]
     host_tys += [host_ty(out_pos, calls)]
 
     def sequence(*args):
@@ -753,13 +752,8 @@ def design(
     if is_matvec(fn):
         M, K = _matrix_shape(fn, shape, 2)
         return _matvec.specialize(M=M, K=K, **kw)
-    pack, in_roles, _ = _fifo_plan(fn)
-    n_fifos = 1 if pack else len(in_roles)
-    if n_fifos > 2:
-        raise ValueError(
-            f"{fn.name}: {n_fifos} input fifos; a core tile has 2 channels"
-        )
-    return _STREAM[n_fifos].specialize(
+    groups, _, _ = _fifo_plan(fn)  # raises when the types need a third channel
+    return _STREAM[len(groups)].specialize(
         calls=calls,
         scalars=tuple(scalars),
         params=_encode_params(fn, params or ()),
@@ -889,16 +883,22 @@ def host_layout(fn, inputs: list[np.ndarray]) -> list[np.ndarray]:
         return [a, b]
     if is_matvec(fn):
         return list(inputs)
-    pack, in_roles, _ = _fifo_plan(fn)
+    groups, _, _ = _fifo_plan(fn)
     c = _contract(fn)
     in_pos, _ = _tensor_positions(c)
-    by_pos = dict(zip(in_pos, inputs))
-    ins = [np.asarray(by_pos[i]) for i in in_roles]  # params are baked in
-    if not pack:
-        return ins
-    calls = ins[0].shape[0] if ins[0].ndim > 1 else 1
-    packed = np.stack([a.reshape(calls, -1) for a in ins], axis=1)
-    return [np.ascontiguousarray(packed)]
+    by_pos = dict(zip(in_pos, inputs))  # params are baked in
+    out = []
+    for g in groups:
+        tiles = [np.asarray(by_pos[i]) for i in g]
+        if len(tiles) == 1:
+            out.append(tiles[0])
+            continue
+        # One fifo carries this group's tiles interleaved per call, matching
+        # the order the core acquires them in.
+        calls = tiles[0].shape[0] if tiles[0].ndim > 1 else 1
+        packed = np.stack([a.reshape(calls, -1) for a in tiles], axis=1)
+        out.append(np.ascontiguousarray(packed))
+    return out
 
 
 def upload(
@@ -1079,12 +1079,14 @@ def host_args(fn, *, calls: int = 1, shape: tuple | None = None) -> list[HostArg
         else:
             args.append(HostArg("out", (M,), out_dt))
         return args
-    pack, in_roles, _ = _fifo_plan(fn)
-    tiles = [(_elems(types[i]), _shape_dtype(types[i])[1]) for i in in_roles]
-    if pack:
-        args.append(HostArg("in", (calls, len(tiles), tiles[0][0]), tiles[0][1]))
-    else:
-        args += [HostArg("in", (calls, n), dt) for n, dt in tiles]
+    groups, _, _ = _fifo_plan(fn)
+    for g in groups:
+        n, dt = _elems(types[g[0]]), _shape_dtype(types[g[0]])[1]
+        args.append(
+            HostArg("in", (calls, n), dt)
+            if len(g) == 1
+            else HostArg("in", (calls, len(g), n), dt)
+        )
     args.append(HostArg("out", (output_size(fn, calls=calls, shape=shape),), out_dt))
     return args
 

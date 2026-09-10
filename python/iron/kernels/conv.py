@@ -27,14 +27,6 @@ def _i32s(n: int) -> list:
     return [np.int32] * n
 
 
-# The conv kernels end in `(sum + 2**(scale-1)) >> scale` saturated to uint8
-# (a fused ReLU); the vector paths do the shift with the core's srs rounding
-# mode, which the kernels do not fix, so the references allow one LSB.
-_CONV_TOLERANCE = Tolerance.lsb(
-    1, note="scalar-path reference; vector path srs rounding not modelled"
-)
-
-
 def _requant(acc, scale: int, lo: int = 0, hi: int = 255, dtype: type = np.uint8):
     """``(acc + 2**(scale-1)) >> scale`` saturated to ``[lo, hi]``, as the kernels do."""
     scale = int(scale)
@@ -660,7 +652,9 @@ def conv2dk1(
             reduction=input_channels,
             overflow="saturate",  # explicit clamp to [0, 255] in both paths
             rounding="unspecified",  # scalar path rounds half up; vector path srs
-            tolerance=_CONV_TOLERANCE,
+            tolerance=Tolerance.exact(
+                note="measured bit-exact against the reference over every data case"
+            ),
             ops_per_call=2 * input_width * input_channels * output_channels,
         ),
     )
@@ -720,7 +714,9 @@ def conv2dk3(
             reduction=9 * input_channels,
             overflow="saturate",
             rounding="unspecified",
-            tolerance=_CONV_TOLERANCE,
+            tolerance=Tolerance.exact(
+                note="measured bit-exact against the reference over every data case"
+            ),
             ops_per_call=2 * 9 * input_width * input_channels * output_channels,
         ),
     )
@@ -779,7 +775,9 @@ def conv2dk1_skip(
             reduction=input_channels,
             overflow="saturate",  # int8 after the conv shift, uint8 after the add
             rounding="unspecified",  # scalar path rounds half up; vector path srs
-            tolerance=_CONV_TOLERANCE,
+            tolerance=Tolerance.exact(
+                note="measured bit-exact against the reference over every data case"
+            ),
             ops_per_call=2 * input_width * input_channels * output_channels
             + input_width * output_channels,
         ),
@@ -820,7 +818,12 @@ def conv2dk1_i8(
             reduction=input_channels,
             overflow="saturate",  # explicit clamp to [-128, 127] in both paths
             rounding="unspecified",  # scalar half up; vector symmetric_inf srs
-            tolerance=_CONV_TOLERANCE,
+            # The only conv kernel that is not bit-exact: its vector path
+            # ends in a symmetric_inf srs the scalar reference does not model,
+            # measured at 2 of 98304 values, each one LSB out.
+            tolerance=Tolerance.lsb(
+                1, note="vector path srs rounding; measured within one LSB"
+            ),
             ops_per_call=2 * input_width * input_channels * output_channels,
         ),
     )
@@ -863,7 +866,9 @@ def conv2dk14(
             reduction=pixels * _RGBA,
             overflow="saturate",  # explicit clamp to [-128, 127] in both paths
             rounding="unspecified",  # scalar half up; vector srs
-            tolerance=_CONV_TOLERANCE,
+            tolerance=Tolerance.exact(
+                note="measured bit-exact against the reference over every data case"
+            ),
             ops_per_call=2 * tiles * pixels * _RGBA * output_channels,
         ),
     )
@@ -928,10 +933,10 @@ def conv2dk1_skip_init(
             reduction=max(input_channels, skip_input_channels),
             overflow="saturate",  # int8 after each conv, uint8 after the add
             rounding="nearest",  # (x + 2**(s-1)) >> s in both paths and the reference
-            # Not _CONV_TOLERANCE: measured bit-exact over every data case at
-            # three seeds. The uint8 entry point was an empty function and the
-            # LSB slack was not what hid it, but an exact contract states what
-            # this kernel actually owes.
+            # Measured bit-exact over every data case at three seeds. The uint8
+            # entry point was an empty function and the one-LSB slack these
+            # conv kernels used to share was not what hid it, but an exact
+            # contract states what this kernel actually owes.
             tolerance=Tolerance.exact(
                 note="both paths match the reference bit-for-bit"
             ),

@@ -170,13 +170,19 @@ CASES: list[Case] = [
         scalars=(32, 64, 64, 32, 12, 1, 11),
         smoke=True,
     ),
-    # The int8 entry point of the same source has no case, and cannot: its
-    # three 'in' tensors exceed the two input DMA channels a core tile has, so
-    # they must share one packed fifo, and an int8 residual beside uint8
-    # activations gives that fifo two types (see _fifo_plan). Driving it needs
-    # a design with more than one Worker, not another Case. Worth knowing that
-    # this is why only half of conv2dk1_skip_init is covered here -- the uint8
-    # entry point was an empty function and nothing caught it.
+    # The int8 entry point of the same source. Its residual is int8 beside
+    # uint8 activations, so the three 'in' tensors group into two fifos, one
+    # per type, which is exactly the two input channels a core tile has. Only
+    # the uint8 half used to be covered, which is how that entry point stayed
+    # an empty function.
+    Case(
+        "conv2dk1_skip_init",
+        dict(input_channels=64, skip_input_channels=32, act_dtype=np.int8),
+        calls=8,
+        scalars=(32, 64, 64, 32, 12, 1, 11),
+        tag="int8_skip",
+        smoke=True,
+    ),
     # conv2dk14 (aie2p): 16 patches of 14x14 RGBA pixels per call, 784 taps.
     Case(
         "conv2dk14",
