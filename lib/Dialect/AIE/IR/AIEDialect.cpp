@@ -2384,6 +2384,25 @@ LogicalResult PacketRulesOp::verify() {
   return success();
 }
 
+LogicalResult MasterSetOp::verify() {
+  // This is a structural invariant of the op, independent of the target model,
+  // so it is checked here rather than in SwitchboxOp::verify -- that verifier
+  // defers to post-placement for anything it can only decide with a target
+  // model, and would therefore let this through on an aie.logical_tile. Both
+  // stream-switch backends fold the amsels into a single arbiter plus msel
+  // mask, so a masterset straddling arbiters has no valid lowering.
+  int arbiter = -1;
+  for (auto val : getAmsels()) {
+    auto amsel = dyn_cast_if_present<AMSelOp>(val.getDefiningOp());
+    if (!amsel)
+      return emitOpError("amsel operand must be produced by an 'aie.amsel' op");
+    if (arbiter != -1 && arbiter != amsel.arbiterIndex())
+      return emitOpError("a master port can only be tied to one arbiter");
+    arbiter = amsel.arbiterIndex();
+  }
+  return success();
+}
+
 LogicalResult PacketFlowOp::verify() {
   Region &body = getPorts();
   if (body.empty())
@@ -3720,14 +3739,7 @@ LogicalResult SwitchboxOp::verify() {
               .failed())
         return failure();
 
-      int arbiter = -1;
-      for (auto val : connectOp.getAmsels()) {
-        auto amsel = cast<AMSelOp>(val.getDefiningOp());
-        if (arbiter != -1 && arbiter != amsel.arbiterIndex())
-          return connectOp.emitOpError(
-              "a master port can only be tied to one arbiter");
-        arbiter = amsel.arbiterIndex();
-      }
+      // The single-arbiter invariant is checked by MasterSetOp::verify.
     } else if (auto connectOp = dyn_cast<PacketRulesOp>(ops)) {
       Port source = {connectOp.getSourceBundle(), connectOp.sourceIndex()};
       if (sourceset.count(source))

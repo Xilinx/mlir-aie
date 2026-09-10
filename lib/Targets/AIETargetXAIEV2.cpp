@@ -776,11 +776,10 @@ xilinx::AIE::AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output,
     for (auto connectOp : b.getOps<MasterSetOp>()) {
       int mask = 0;
       int arbiter = -1;
+      // MasterSetOp::verify guarantees every amsel names the same arbiter, so
+      // folding them into one arbiter plus msel mask is safe here.
       for (auto val : connectOp.getAmsels()) {
         AMSelOp amsel = cast<AMSelOp>(val.getDefiningOp());
-        if (arbiter != -1 && arbiter != amsel.arbiterIndex())
-          return connectOp.emitOpError(
-              "a master port can only be tied to one arbiter");
         arbiter = amsel.arbiterIndex();
         int msel = amsel.getMselValue();
         mask |= (1 << msel);

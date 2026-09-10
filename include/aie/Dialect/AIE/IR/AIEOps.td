@@ -715,6 +715,8 @@ def AIE_MasterSetOp: AIE_Op<"masterset", [
     int destIndex() { return getDestChannel(); }
     Port destPort() { return {getDestBundle(), destIndex()}; }
   }];
+
+  let hasVerifier = 1;
 }
 
 def AIE_WireOp: AIE_Op<"wire", []> {
