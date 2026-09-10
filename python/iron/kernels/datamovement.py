@@ -282,6 +282,10 @@ def transpose(
     """
     if subtile not in (4, 8):
         raise ValueError(f"transpose() subtile must be 4 or 8, got {subtile}.")
+    if dim_m <= 0 or dim_n <= 0:
+        raise ValueError(
+            f"transpose() dim_m and dim_n must be positive, got {dim_m}x{dim_n}."
+        )
     width = np.dtype(dtype).itemsize
     if width not in (1, 2, 4):
         raise ValueError(

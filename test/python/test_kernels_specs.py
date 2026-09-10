@@ -707,7 +707,12 @@ KERNEL_SPECS: list[KernelSpec] = [
         arg_count=2,
         expected_name="transpose_4x4",
         name_variants=[(dict(dim_m=32, dim_n=32, subtile=8), "transpose_8x8")],
-        invalid_kwargs=[(dict(subtile=3), "subtile must be 4 or 8")],
+        invalid_kwargs=[
+            (dict(subtile=3), "subtile must be 4 or 8"),
+            # dim_m=0 sails through the modulo checks below (0 % anything is
+            # 0) and would otherwise reach the kernel's compile-time division.
+            (dict(dim_m=0, dim_n=4, subtile=4, dtype=np.uint32), "must be positive"),
+        ],
     ),
     KernelSpec(
         name="convert_copy",
