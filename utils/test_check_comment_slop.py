@@ -73,7 +73,9 @@ class CollectTests(unittest.TestCase):
                     1,
                     [
                         "# Copyright (C) 2026 Advanced Micro Devices, Inc.",
+                        # REUSE-IgnoreStart
                         "# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception",
+                        # REUSE-IgnoreEnd
                         "# This kernel assumes the caller already validated shapes.",
                         "x = 1",
                     ],
