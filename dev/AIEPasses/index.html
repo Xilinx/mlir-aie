@@ -4864,10 +4864,11 @@ column-major order and places fifo-connected Shim/Mem tiles
 near its core tiles. One or more aie.logical_tile operation is mapped
 to one aie.tile.</p>
 <h4 id="options_7">Options<a class="headerlink" href="#options_7" title="Permanent link">&para;</a></h4>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>-placer              : Placement algorithm to use (default: sequential_placer)
-<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>-cores-per-col       : Limit number of cores per column (-1 = no limit). Spreads cores across columns for better trace packet routing.
-<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>-merge-logical-tiles : When true (default), allow multiple non-core (ShimNOCTile / MemTile) aie.logical_tile ops to share one physical aie.tile if combined DMA channel demand fits. When false, each non-core aie.logical_tile is pinned to its own physical tile. CoreTile placement is unaffected.
-<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>-sa-seed             : Random seed for SA placer (0 = non-deterministic).
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>-placer                  : Placement algorithm to use (default: sequential_placer)
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>-cores-per-col           : Limit number of cores per column (-1 = no limit). Spreads cores across columns for better trace packet routing.
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>-merge-logical-tiles     : When true (default), allow multiple non-core (ShimNOCTile / MemTile) aie.logical_tile ops to share one physical aie.tile if combined DMA channel demand fits. When false, each non-core aie.logical_tile is pinned to its own physical tile. CoreTile placement is unaffected.
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>-spread-unanchored-tiles : When true (default), a non-core aie.logical_tile with no CoreTile peers to derive a routing centroid from is ranked by current DMA load rather than by distance to column 0. Affects only designs with no core anchors (e.g. pure DMA passthrough); CoreTile placement and anchored non-core placement are unaffected.
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>-sa-seed                 : Random seed for SA placer (0 = non-deterministic).
 </code></pre></div>
 <h3 id="-aie-prepare-buffers"><code>-aie-prepare-buffers</code><a class="headerlink" href="#-aie-prepare-buffers" title="Permanent link">&para;</a></h3>
 <p><em>Check buffer placement and give every buffer a name</em></p>
