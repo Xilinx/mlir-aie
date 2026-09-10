@@ -186,7 +186,13 @@ def n32_core_gemm(
                 zero_kernel,
                 matmul_kernel,
             ],
-            stack_size=0xD00,
+            # Peano drops the chess_storage(exN/dmN) placements above, so those
+            # block_vectors spill to the stack: with converted_A sized correctly
+            # the frame is 0x1640 (disassembled `paddxm [sp], #0x1640`), which
+            # 0xD00 silently underprovisioned. 0x1800 overflows the core's data
+            # region by 4 B; 0x1700 is the largest round value that links.
+            # Chess pins these vectors off-stack and likely needs less; untested.
+            stack_size=0x1700,
         ),
     )
 
