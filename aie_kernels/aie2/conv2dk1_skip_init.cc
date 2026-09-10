@@ -412,7 +412,7 @@ void conv2dk1_skip_init_i8_vector(
             (input_channels / 8) * 64; // reset kernel back to beginning of ic/8
         kernels_skip -= (input_channels_skip / 8) *
                         64; // reset kernel back to beginning of ic/8
-      }                     // for(int x=0; x<iw_32; x++) {
+      } // for(int x=0; x<iw_32; x++) {
       // input_offset -= (iw_32) * 256; // 8*32, reset beginning of input ptr
       input_offset1 = 0;                    // reset beginning of input ptr
       input_offset2 = 0;                    // reset beginning of input ptr
@@ -422,7 +422,7 @@ void conv2dk1_skip_init_i8_vector(
           (input_channels_skip / 8) * 64; // move to next oc/8 weights
       out_ptr += (iw_32_rem *
                   32); // move to next oc/8 (skip remainder section if present)
-    }                  // for(int oc=0; oc<(output_channels/8); oc++) {
+    } // for(int oc=0; oc<(output_channels/8); oc++) {
 
     out_ptr -= output_channels *
                iw; // output_channels/8*iw_32*8*32 = 256/8*(iw/4/8)*8*32
@@ -713,7 +713,7 @@ void conv2dk1_skip_init_ui8_vector(
             (input_channels / 8) * 64; // reset kernel back to beginning of ic/8
         kernels_skip -= (input_channels_skip / 8) *
                         64; // reset kernel back to beginning of ic/8
-      }                     // for(int x=0; x<iw_32; x++) {
+      } // for(int x=0; x<iw_32; x++) {
       // input_offset -= (iw_32) * 256; // 8*32, reset beginning of input ptr
       input_offset1 = 0;                    // reset beginning of input ptr
       input_offset2 = 0;                    // reset beginning of input ptr
@@ -723,7 +723,7 @@ void conv2dk1_skip_init_ui8_vector(
           (input_channels_skip / 8) * 64; // move to next oc/8 weights
       out_ptr += (iw_32_rem *
                   32); // move to next oc/8 (skip remainder section if present)
-    }                  // for(int oc=0; oc<(output_channels/8); oc++) {
+    } // for(int oc=0; oc<(output_channels/8); oc++) {
 
     out_ptr -= output_channels *
                iw; // output_channels/8*iw_32*8*32 = 256/8*(iw/4/8)*8*32
@@ -884,9 +884,9 @@ void conv2dk1_skip_init_ui8(uint8_t *input0, uint8_t *input1, int8_t *kernels,
                             const int32_t output_channels,
                             const int32_t input_channels_skip, const int scale,
                             const int skip_scale, const int scale_skip_conv) {
-  // conv2dk1_skip_init_ui8_scalar(input0, input1, kernels, output, skip,
-  // input_width, input_channels, output_channels, input_channels_skip, scale,
-  // skip_scale, scale_skip_conv);
+  conv2dk1_skip_init_ui8_scalar(
+      input0, input1, kernels, output, skip, input_width, input_channels,
+      output_channels, input_channels_skip, scale, skip_scale, scale_skip_conv);
 }
 
 #endif // UINT8_ACT
@@ -916,9 +916,9 @@ void conv2dk1_skip_init_ui8(uint8_t *input0, uint8_t *input1, int8_t *kernels,
                             const int32_t output_channels,
                             const int32_t input_channels_skip, const int scale,
                             const int skip_scale, const int scale_skip_conv) {
-  // conv2dk1_skip_init_ui8_vector(input0, input1, kernels, output, skip,
-  // input_width, input_channels, output_channels, input_channels_skip, scale,
-  // skip_scale, scale_skip_conv);
+  conv2dk1_skip_init_ui8_vector(
+      input0, input1, kernels, output, skip, input_width, input_channels,
+      output_channels, input_channels_skip, scale, skip_scale, scale_skip_conv);
 }
 
 #endif // UINT8_ACT
