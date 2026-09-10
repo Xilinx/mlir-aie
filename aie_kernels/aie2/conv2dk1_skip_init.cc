@@ -317,9 +317,9 @@ void conv2dk1_skip_init_i8_vector(
             kernels += 64; // wts ic0..7(oc0..7)
 
             for (int x8 = 0; x8 < NUM_ACC; x8++)
-            // chess_prepare_for_pipelining //chess_loop_range(7, )
-            // e.g. 28/4 = 7
-            // 13 cycles delay for vload.
+            // A vload costs about 13 cycles here; the Chess pragmas that used
+            // to sit on these four loops were commented out and Peano, the
+            // default toolchain for this kernel, would ignore them anyway.
             // 7 gives us 3 cycle inner loop.
             // 13 gave 1 cycle inner loop before partial load, not it only gets
             // 2 cycles
@@ -342,9 +342,6 @@ void conv2dk1_skip_init_i8_vector(
             kernels += 64; // wts ic0..7(oc0..7)
 
             for (int x8 = 0; x8 < NUM_ACC; x8++)
-            // chess_prepare_for_pipelining //chess_loop_range(7, )
-            // e.g. 28/4 = 7
-            // 13 cycles delay for vload.
             // 7 gives us 3 cycle inner loop.
             // 13 gave 1 cycle inner loop before partial load, not it only gets
             // 2 cycles
@@ -509,9 +506,6 @@ void conv2dk1_skip_init_ui8_vector(
             kernels += 64; // wts ic0..7(oc0..7)
 
             for (int x8 = 0; x8 < NUM_ACC; x8++)
-            // chess_prepare_for_pipelining //chess_loop_range(7, )
-            // e.g. 28/4 = 7
-            // 13 cycles delay for vload.
             // 7 gives us 3 cycle inner loop.
             // 13 gave 1 cycle inner loop before partial load, not it only gets
             // 2 cycles
@@ -534,9 +528,6 @@ void conv2dk1_skip_init_ui8_vector(
             kernels += 64; // wts ic0..7(oc0..7)
 
             for (int x8 = 0; x8 < NUM_ACC; x8++)
-            // chess_prepare_for_pipelining //chess_loop_range(7, )
-            // e.g. 28/4 = 7
-            // 13 cycles delay for vload.
             // 7 gives us 3 cycle inner loop.
             // 13 gave 1 cycle inner loop before partial load, not it only gets
             // 2 cycles
