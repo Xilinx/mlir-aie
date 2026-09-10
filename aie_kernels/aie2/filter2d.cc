@@ -23,6 +23,7 @@ const int32_t SRS_SHIFT = 12;
 void filter2d_3lines_aie_scalar(uint8_t *lineIn0, uint8_t *lineIn1,
                                 uint8_t *lineIn2, uint8_t *output,
                                 const int32_t width, int16_t *kernel) {
+  event0();
 
   int32_t acc;
 
@@ -68,6 +69,8 @@ void filter2d_3lines_aie_scalar(uint8_t *lineIn0, uint8_t *lineIn1,
   acc = ((acc + (1 << (SRS_SHIFT - 1))) >> SRS_SHIFT);
   acc = (acc > UINT8_MAX) ? UINT8_MAX : (acc < 0) ? 0 : acc; // saturate
   output[width - 1] = (uint8_t)acc;
+
+  event1();
 }
 
 #define KERNEL_WIDTH 3
@@ -85,6 +88,7 @@ using mul_ops =
 void filter2d_3lines_aie(uint8_t *lineIn0, uint8_t *lineIn1, uint8_t *lineIn2,
                          uint8_t *output, const int32_t width,
                          int16_t *kernel) {
+  event0();
 
   set_sat(); // Needed for int16 to saturate properly to uint8
 
@@ -198,6 +202,8 @@ void filter2d_3lines_aie(uint8_t *lineIn0, uint8_t *lineIn1, uint8_t *lineIn2,
   // Store result
   ::aie::store_v(output, acc.to_vector<uint8>(SRS_SHIFT - 8));
   output += VecFactor;
+
+  event1();
 }
 
 extern "C" {

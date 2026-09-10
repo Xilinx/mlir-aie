@@ -666,7 +666,7 @@ def compile_external_kernels(funcs, kernel_dir, target_arch):
     without the intrinsics PCH), so the bound is cores rather than memory on an
     ordinary box.  Set AIE_KERNEL_COMPILE_JOBS to override.
     """
-    pending = [f for f in funcs if not f._compiled]
+    pending = list(funcs)
     if not pending:
         return
 
@@ -719,10 +719,6 @@ def compile_external_kernel(func, kernel_dir, target_arch):
             correctly.
         target_arch: Peano target architecture string (e.g., "aie2", "aie2p").
     """
-    # Skip if already compiled in this session.
-    if func._compiled:
-        return
-
     # inline + symbol_prefix is unsupported: the MLIR func.call uses the
     # prefixed func._name, but an inline kernel is emitted as a textual .ll whose
     # ``define`` carries the un-prefixed _original_name. Object mode reconciles
@@ -814,8 +810,6 @@ def compile_external_kernel(func, kernel_dir, target_arch):
                 f"ExternalFunction '{func._name}': the compiled object does not "
                 f"define '{func._original_name}' (found {sorted(renamed)})"
             )
-
-    func._compiled = True
 
 
 def _cleanup_failed_compilation(cache_dir):

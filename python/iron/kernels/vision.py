@@ -216,8 +216,14 @@ def filter2d(line_width: int = 1920, use_chess: bool = False) -> ExternalFunctio
             acc_dtype=np.int32,
             reduction=9,
             overflow="saturate",  # set_sat before the shift
-            rounding="unspecified",
-            tolerance=_LSB,
+            rounding="nearest",  # (x + 2**(s-1)) >> s, as the reference does
+            # Not _LSB: the vector path rounds exactly as the reference does,
+            # measured over every data case at three seeds. That slack had been
+            # absorbing a wrong carry across the 32-pixel boundary instead (see
+            # filter2d.cc); an exact contract is what would have caught it.
+            tolerance=Tolerance.exact(
+                note="vector path matches the reference bit-for-bit"
+            ),
             ops_per_call=18 * line_width,
         ),
     )

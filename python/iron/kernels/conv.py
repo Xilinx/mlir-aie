@@ -917,8 +917,14 @@ def conv2dk1_skip_init(
             acc_dtype=np.int32,
             reduction=max(input_channels, skip_input_channels),
             overflow="saturate",  # int8 after each conv, uint8 after the add
-            rounding="unspecified",  # scalar half up; vector srs
-            tolerance=_CONV_TOLERANCE,
+            rounding="nearest",  # (x + 2**(s-1)) >> s in both paths and the reference
+            # Not _CONV_TOLERANCE: measured bit-exact over every data case at
+            # three seeds. The uint8 entry point was an empty function and the
+            # LSB slack was not what hid it, but an exact contract states what
+            # this kernel actually owes.
+            tolerance=Tolerance.exact(
+                note="both paths match the reference bit-for-bit"
+            ),
             ops_per_call=2
             * input_width
             * output_channels

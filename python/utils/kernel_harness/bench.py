@@ -49,10 +49,15 @@ TRACE_SIZE = 16384
 
 # A trivially correct kernel that must be bit-exact and inside a wide cycle
 # band before anything else is measured; a machine that fails it is not
-# trusted and nothing is recorded. The band is deliberately wide until nightly
-# data has shown the real spread.
+# trusted and nothing is recorded.
 CANARY = Case("passthrough", dict(tile_size=2048), calls=16)
-CANARY_CYCLE_BAND = (1_000, 2_000_000)
+# 270 cycles on Strix, identical across calls and across runs: 8 KB copied at
+# about 30 B/cycle. The lower bound catches a decode that reports nothing
+# rather than bounding the kernel, and the upper bound stays generous until
+# nightly data has shown the spread across machines. The previous lower bound
+# of 1000 was never exercised: a traced run could not resolve its physical
+# MLIR, so cycles came back None and the band check passed vacuously.
+CANARY_CYCLE_BAND = (100, 2_000_000)
 
 
 @dataclass
@@ -89,9 +94,12 @@ def measure_compile(design, workdir: Path) -> tuple[float, int, int, int]:
         xclbin_path=build / "final.xclbin", inst_path=build / "insts.bin"
     )
     secs = time.perf_counter() - t0
-    # aiecc writes one "elfs_<core>.elf" per core when asked (--get-core-elfs).
+    # With --get-core-elfs aiecc writes one ELF per core, each in its own
+    # directory: "elfs_<core>/elfs_<core>.elf". A "elfs_*.elf" glob does not
+    # cross that directory and matched nothing, so this reported 0 bytes for
+    # every design.
     prj = build / "final.prj"
-    elf = sum(p.stat().st_size for p in prj.glob("elfs_*.elf")) if prj.is_dir() else 0
+    elf = sum(p.stat().st_size for p in prj.glob("elfs_*/*.elf")) if prj.is_dir() else 0
     insts_bytes = Path(insts).stat().st_size if insts else 0
     return secs, Path(xclbin).stat().st_size, insts_bytes, elf
 

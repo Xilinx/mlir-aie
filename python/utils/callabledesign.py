@@ -311,12 +311,17 @@ class CallableDesign:
         else:
             trace_config = effective_compile_kwargs.get("trace_config", None)
 
-        # Build a separate dict for the cache key that excludes trace_config:
-        # trace_config is a per-call object whose identity should not drive cache
-        # misses.
+        # The TraceConfig object itself stays out of the key: it is a per-call
+        # object carrying mutable state, so keying on it would miss every call.
+        # Its size has to be in there, though. A traced build is a different
+        # program -- an extra buffer and instrumented cores -- and keying on
+        # neither let a traced run reuse the untraced kernel, which came back
+        # with an empty trace and no physical MLIR path to decode it against.
         cache_compile_kwargs = {
             k: v for k, v in effective_compile_kwargs.items() if k != "trace_config"
         }
+        if trace_config is not None:
+            cache_compile_kwargs["trace_size"] = trace_config.trace_size
 
         from aie.utils import ensure_current_device
 
@@ -342,7 +347,13 @@ class CallableDesign:
             extra_key=compilable._generation_cache_key(),
         )
 
-        kernel = self._kernel_cache.get(cache_key) if compilable.use_cache else None
+        # A traced call skips the in-process cache. Decoding a trace needs the
+        # physical MLIR, and only going through compile() tells the design which
+        # directory holds it -- an in-process hit returns the kernel without
+        # ever asking. The on-disk cache still serves the artifacts, so this
+        # re-reads rather than rebuilds.
+        use_kernel_cache = compilable.use_cache and trace_config is None
+        kernel = self._kernel_cache.get(cache_key) if use_kernel_cache else None
         if kernel is not None:
             if compilable.full_elf:
                 artifacts_present = Path(kernel.elf_path).is_file()
