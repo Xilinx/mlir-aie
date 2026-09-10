@@ -79,18 +79,22 @@ jobs:
         # The wheel is the newest nightly, which can be ahead of this
         # checkout; overlaying whole packages mixes the two (a newer taplib
         # importing from an older aie.utils.__init__ is a circular import).
-        # Copy only the files this suite owns, so the checkout's kernels,
-        # contracts, harness and checker run on the wheel's bindings.
+        # Copy only the (sub)packages this suite owns wholesale, so a new
+        # file added inside one of them doesn't also need a line here; the
+        # checkout's kernels, contracts, harness and checker run on the
+        # wheel's bindings.
         run: |
           site=$(python -c "import aie, os; print(os.path.dirname(aie.__file__))")
           cp python/iron/kernel.py "$site/iron/kernel.py"
-          cp -r python/iron/kernels/. "$site/iron/kernels/"
+          rm -rf "$site/iron/kernels"
+          cp -r python/iron/kernels "$site/iron/kernels"
           rm -f "$site/utils/kernel_harness.py"
-          mkdir -p "$site/utils/kernel_harness"
-          cp -r python/utils/kernel_harness/. "$site/utils/kernel_harness/"
+          rm -rf "$site/utils/kernel_harness"
+          cp -r python/utils/kernel_harness "$site/utils/kernel_harness"
           cp python/utils/bfp.py python/utils/verify.py python/utils/benchmark.py \
             python/utils/config.py "$site/utils/"
-          cp python/utils/compile/utils.py python/utils/compile/remarks.py "$site/utils/compile/"
+          rm -rf "$site/utils/compile"
+          cp -r python/utils/compile "$site/utils/compile"
           cp python/utils/hostruntime/hostruntime.py "$site/utils/hostruntime/"
           cp python/utils/hostruntime/xrtruntime/hostruntime.py \
             python/utils/hostruntime/xrtruntime/device.py "$site/utils/hostruntime/xrtruntime/"
