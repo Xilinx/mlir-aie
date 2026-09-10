@@ -112,8 +112,13 @@ def dtype_name(dt) -> str:
 
 
 def _bfp_operands(fn) -> tuple[bool, bool, bool]:
-    """Return ``(A, B, C)`` flags: which of a matmul's operands are bfp16ebs8 blocks."""
-    a, b, c = (_is_bfp(_shape_dtype(t)[1]) for t in _arg_types(fn)[:3])
+    """Return ``(A, B, C)`` flags: which of a matmul's operands are bfp16ebs8 blocks.
+
+    False for an argument a kernel does not have, so this answers for any
+    kernel rather than only for the three-operand ones.
+    """
+    flags = [_is_bfp(_shape_dtype(t)[1]) for t in _arg_types(fn)[:3]]
+    a, b, c = flags + [False] * (3 - len(flags))
     return a, b, c
 
 
@@ -914,20 +919,17 @@ def upload(
     reference of zeros. Callers that time repeated runs keep the tensors and
     reuse them; ``run`` is the one-shot form.
     """
-    inputs = host_layout(fn, inputs)
     # dtype= is required, not inferred: iron.tensor defaults to uint32, and
     # copying a float (or any other kind of) array into that buffer raises
     # rather than reinterpreting it.
     ins = [
         iron.tensor(np.ascontiguousarray(a).reshape(-1), dtype=a.dtype, device="npu")
-        for a in inputs
+        for a in host_layout(fn, inputs)
     ]
-    if poison:
-        nbytes = out_size * np.dtype(out_dtype).itemsize
-        host = np.full(nbytes, 0x55, dtype=np.uint8).view(out_dtype)
-        out = iron.tensor(host, dtype=out_dtype, device="npu")
-    else:
-        out = iron.zeros(out_size, dtype=out_dtype, device="npu")
+    nbytes = out_size * np.dtype(out_dtype).itemsize
+    fill = 0x55 if poison else 0x00
+    host = np.full(nbytes, fill, dtype=np.uint8).view(out_dtype)
+    out = iron.tensor(host, dtype=out_dtype, device="npu")
     return ins, out
 
 

@@ -718,14 +718,19 @@ class CompilableDesign:
         return self._generate_mlir(ExternalFunction, full_elf=self.full_elf)
 
     def validate_tensor_args(self, tensor_args: list) -> None:
-        """Validate that *tensor_args* element counts match the compiled kernel.
+        """Validate that *tensor_args* cover the bits the compiled kernel expects.
 
-        Compares each tensor's element count against the per-host-arg
-        addressable footprint extracted from the compiled
-        ``aiex.runtime_sequence``.  ``parse_dma_sizes`` returns
-        ``max(offset + len)`` so multi-column fan-outs, repeated transfers
-        (matmul B reloaded each tile_row), and InOut buffers (for_each
-        fill+drain on the same arg) all give the host-tensor size directly.
+        Compares each tensor's footprint against the per-host-arg addressable
+        footprint extracted from the compiled ``aiex.runtime_sequence``.
+        ``parse_dma_sizes`` returns ``max(offset + len)`` so multi-column
+        fan-outs, repeated transfers (matmul B reloaded each tile_row), and
+        InOut buffers (for_each fill+drain on the same arg) all give the
+        host-tensor size directly.
+
+        Both sides are measured in bits: a host buffer and the design's memref
+        cover the same bits but need not divide them into elements the same
+        way, so a block type (``v8bfp16ebs8``: one element per 72 bits, where
+        the host holds bytes) compares equal instead of off by nine.
 
         Args with no associated DMA (entry == 0) are skipped — those are
         runtime params not directly transferred by the design.
@@ -743,7 +748,10 @@ class CompilableDesign:
             if expected == 0:
                 continue
             try:
-                actual = int(np.size(tensor))
+                # tensor.dtype rather than asarray(tensor): a device tensor
+                # would sync itself back to the host just to be measured.
+                itemsize = np.dtype(tensor.dtype).itemsize
+                actual = int(np.size(tensor)) * itemsize * 8
             except (TypeError, ValueError, AttributeError):
                 # Non-array-like tensor argument (e.g. a scalar passed by mistake);
                 # skip rather than raise so the kernel call surfaces the real
@@ -756,8 +764,8 @@ class CompilableDesign:
                     else f"arg[{i}]"
                 )
                 raise RuntimeError(
-                    f"Tensor argument {param_name!r} has {actual} elements but "
-                    f"the kernel was compiled for {expected} elements.\n"
+                    f"Tensor argument {param_name!r} covers {actual // 8} bytes "
+                    f"but the kernel was compiled for {expected // 8}.\n"
                     f"CompileTime[T] parameters used at compile time: "
                     f"{self.compile_kwargs!r}"
                 )

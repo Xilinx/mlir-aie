@@ -68,6 +68,14 @@ NB_MODULE(_aie, m) {
           "Get an instance of BlockFloat type with the specified subtype.",
           "self"_a, "subtype"_a, "ctx"_a = nb::none());
 
+  m.def(
+      "type_size_in_bits",
+      [](MlirType type) { return aieTypeGetSizeInBits(type); },
+      "Size of a type in bits under the default data layout, or 0 when the "
+      "type does not describe one. A block floating-point type reports the "
+      "bits one block occupies, not the bits of one value.",
+      "type"_a);
+
   auto stealCStr = [](MlirStringRef mlirString) {
     if (!mlirString.data || mlirString.length == 0)
       throw std::runtime_error("couldn't translate");

@@ -990,7 +990,31 @@ module {
     mlir_path = tmp_path / "input_with_addresses.mlir"
     mlir_path.write_text(sample_mlir)
     sizes = parse_dma_sizes(tmp_path)
-    assert sizes == [1024, 1024], f"Expected [1024, 1024], got {sizes}"
+    assert sizes == [1024 * 32, 1024 * 32], f"Expected i32 bits, got {sizes}"
+
+
+def test_parse_dma_sizes_counts_a_block_type_by_its_block(tmp_path):
+    """A block float memref holds one element per block, not per value.
+
+    The host holds that buffer as bytes, so only a footprint in bits makes the
+    two comparable; counting elements made a bfp16ebs8 argument look nine times
+    smaller than the host tensor covering exactly the same memory.
+    """
+    sample_mlir = """\
+module {
+  aie.device(npu2) {
+    aie.runtime_sequence(%arg0: memref<2048x!aiex.bfp<"v8bfp16ebs8">>) {
+      aie.end
+    }
+  }
+}
+"""
+    mlir_path = tmp_path / "input_with_addresses.mlir"
+    mlir_path.write_text(sample_mlir)
+    sizes = parse_dma_sizes(tmp_path)
+    # 2048 blocks, 9 bytes each: the 18432 bytes the host encodes for 128x128.
+    assert sizes == [2048 * 72], f"Expected block bits, got {sizes}"
+    assert sizes[0] // 8 == 18432
 
 
 def test_parse_dma_sizes_handles_repeated_transfer(tmp_path):
@@ -1020,7 +1044,7 @@ module {
 """
     (tmp_path / "input_with_addresses.mlir").write_text(sample_mlir)
     sizes = parse_dma_sizes(tmp_path)
-    assert sizes == [1024], f"Expected [1024] (signature-based), got {sizes}"
+    assert sizes == [1024 * 32], f"Expected i32 bits (signature-based), got {sizes}"
 
 
 def test_parse_dma_sizes_handles_disjoint_fan_out(tmp_path):
@@ -1049,7 +1073,7 @@ module {
 """
     (tmp_path / "input_with_addresses.mlir").write_text(sample_mlir)
     sizes = parse_dma_sizes(tmp_path)
-    assert sizes == [1024], f"Expected [1024] (union), got {sizes}"
+    assert sizes == [1024 * 32], f"Expected i32 bits (union), got {sizes}"
 
 
 def test_parse_dma_sizes_picks_uncalled_root_when_helper_present(tmp_path):
@@ -1080,7 +1104,7 @@ module {
 """
     (tmp_path / "input_with_addresses.mlir").write_text(sample_mlir)
     sizes = parse_dma_sizes(tmp_path)
-    assert sizes == [1024, 1024], f"Expected main's args [1024, 1024], got {sizes}"
+    assert sizes == [1024 * 32, 1024 * 32], f"Expected main's args in bits, got {sizes}"
 
 
 def test_parse_dma_sizes_returns_none_when_multi_device_has_multiple_roots(tmp_path):
