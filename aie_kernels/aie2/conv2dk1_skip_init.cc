@@ -317,12 +317,12 @@ void conv2dk1_skip_init_i8_vector(
             kernels += 64; // wts ic0..7(oc0..7)
 
             for (int x8 = 0; x8 < NUM_ACC; x8++)
-            // A vload costs about 13 cycles here; the Chess pragmas that used
-            // to sit on these four loops were commented out and Peano, the
-            // default toolchain for this kernel, would ignore them anyway.
-            // 7 gives us 3 cycle inner loop.
-            // 13 gave 1 cycle inner loop before partial load, not it only gets
-            // 2 cycles
+            // All four NUM_ACC loops carried the same commented-out Chess
+            // pragma (chess_loop_range(7, )) and its tuning notes: a range of
+            // 7 gave a 3-cycle inner loop, 13 gave 1 cycle before partial
+            // loads and 2 after, against a vload costing about 13. Peano, the
+            // toolchain this kernel builds with, ignores the pragma, so the
+            // measurements are what is kept -- once, here.
             {
               aie::vector<uint8, 32> in_a =
                   aie::load_v<32>(input0 + input_offset1);
@@ -341,11 +341,7 @@ void conv2dk1_skip_init_i8_vector(
             aie::vector<int8, 64> in_b = aie::load_v<64>(kernels);
             kernels += 64; // wts ic0..7(oc0..7)
 
-            for (int x8 = 0; x8 < NUM_ACC; x8++)
-            // 7 gives us 3 cycle inner loop.
-            // 13 gave 1 cycle inner loop before partial load, not it only gets
-            // 2 cycles
-            {
+            for (int x8 = 0; x8 < NUM_ACC; x8++) {
               aie::vector<uint8, 32> in_a =
                   aie::load_v<32>(input1 + input_offset2);
               input_offset2 += 32; // act oc0..3(ic0..7)
@@ -505,11 +501,7 @@ void conv2dk1_skip_init_ui8_vector(
             aie::vector<int8, 64> in_b = aie::load_v<64>(kernels);
             kernels += 64; // wts ic0..7(oc0..7)
 
-            for (int x8 = 0; x8 < NUM_ACC; x8++)
-            // 7 gives us 3 cycle inner loop.
-            // 13 gave 1 cycle inner loop before partial load, not it only gets
-            // 2 cycles
-            {
+            for (int x8 = 0; x8 < NUM_ACC; x8++) {
               aie::vector<uint8, 32> in_a =
                   aie::load_v<32>(input0 + input_offset1);
               input_offset1 += 32; // act oc0..3(ic0..7)
@@ -527,11 +519,7 @@ void conv2dk1_skip_init_ui8_vector(
             aie::vector<int8, 64> in_b = aie::load_v<64>(kernels);
             kernels += 64; // wts ic0..7(oc0..7)
 
-            for (int x8 = 0; x8 < NUM_ACC; x8++)
-            // 7 gives us 3 cycle inner loop.
-            // 13 gave 1 cycle inner loop before partial load, not it only gets
-            // 2 cycles
-            {
+            for (int x8 = 0; x8 < NUM_ACC; x8++) {
               aie::vector<uint8, 32> in_a =
                   aie::load_v<32>(input1 + input_offset2);
               input_offset2 += 32; // act oc0..3(ic0..7)
