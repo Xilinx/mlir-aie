@@ -113,9 +113,10 @@ class AIEXToEmitCConverter {
 public:
   AIEXToEmitCConverter(emitc::FuncOp funcOp, Value txnVec,
                        const DeviceResolved &resolved, Value opCountVar,
-                       bool foldDDRAddrOffset)
+                       bool foldDDRAddrOffset, Value scratchpadAddr = {})
       : funcOp(funcOp), txnVec(txnVec), resolved(resolved),
-        opCountVar(opCountVar), foldDDRAddrOffset(foldDDRAddrOffset) {}
+        opCountVar(opCountVar), scratchpadAddr(scratchpadAddr),
+        foldDDRAddrOffset(foldDDRAddrOffset) {}
 
   // Convert every npu/pool op in the body, recursing into scf regions. Returns
   // the compile-time op count for a straight-line body (the literal op_count),
@@ -290,6 +291,26 @@ private:
         })
         .Case<AIEX::NpuBlockWriteValuesOp>([&](auto bw) {
           convertBlockWriteValues(b, loc, bw);
+          countOp(b, loc, count);
+        })
+        .Case<AIEX::NpuCreateScratchpadOp>([&](auto cs) {
+          // usage_type/size are compile-time attributes; the buffer's device
+          // address is not resolvable from the IR at all (the host allocates
+          // it), so it comes from the function's extra trailing parameter.
+          emitTxnCall(b, loc, "txn_append_create_scratchpad", txnVec,
+                      {u32Literal(b, loc, cs.getUsageType()),
+                       u32Literal(b, loc, cs.getSize()), scratchpadAddr});
+          countOp(b, loc, count);
+        })
+        .Case<AIEX::NpuUpdateFromScratchpadOp>([&](auto us) {
+          Value addrV = resolvedAddr(b, loc, us);
+          if (!addrV)
+            return fail(us, "cannot convert update_from_scratchpad with "
+                            "unresolved address to the C++ TXN target");
+          emitTxnCall(b, loc, "txn_append_update_reg", txnVec,
+                      {u32Literal(b, loc, us.getStateTableIdx()),
+                       u32Literal(b, loc, static_cast<uint32_t>(us.getFunc())),
+                       u32Literal(b, loc, us.getFuncArg()), addrV});
           countOp(b, loc, count);
         })
         .Case<AIEX::NpuAssertBdFieldOp>([&](auto g) {
@@ -480,6 +501,10 @@ private:
   // Runtime op-count variable (the C++ `__opcount`), or null when the sequence
   // is straight-line and the count is a compile-time literal.
   Value opCountVar;
+  // The generated function's extra trailing parameter carrying the host-
+  // allocated scratchpad buffer's device address; null unless the sequence
+  // contains a create_scratchpad op (see emitFunction).
+  Value scratchpadAddr;
   bool ok = true;
   // Counter for unique popped-BD-id C++ variable names.
   unsigned nextPoolVar = 0;
@@ -689,6 +714,9 @@ private:
       // Already absolute: no buffer/col/row to fold in.
       if (auto a = AIEX::getConstantIntOperand(bwv.getAddress()))
         resolved.absoluteAddr[clone] = *a;
+    } else if (auto us = dyn_cast<AIEX::NpuUpdateFromScratchpadOp>(orig)) {
+      if (auto a = us.getAbsoluteAddress())
+        resolved.absoluteAddr[clone] = *a;
     }
   }
 
@@ -721,6 +749,18 @@ private:
     for (BlockArgument arg : entry.getArguments())
       if (!isa<BaseMemRefType>(arg.getType()))
         paramTypes.push_back(paramTypeFor(arg.getType()));
+
+    // create_scratchpad's DDR address has no relocation table to fill it in
+    // on this path (see txn_append_create_scratchpad) -- the host already
+    // knows it (xrt::run::get_ctrl_scratchpad_bo()), so it is threaded
+    // through as an extra trailing parameter instead. Added only when the
+    // sequence actually has a create_scratchpad, so every other generated
+    // signature is unchanged.
+    bool hasScratchpad = false;
+    seqOp.walk([&](AIEX::NpuCreateScratchpadOp) { hasScratchpad = true; });
+    if (hasScratchpad)
+      paramTypes.push_back(
+          emitc::OpaqueType::get(moduleOp.getContext(), "uint64_t"));
 
     builder.setInsertionPointToEnd(moduleOp.getBody());
     std::string funcName = "generate_txn_" + deviceOp.getSymName().str() + "_" +
@@ -797,6 +837,10 @@ private:
     for (BlockArgument arg : entry.getArguments())
       if (!isa<BaseMemRefType>(arg.getType()))
         mapping.map(arg, funcBlock->getArgument(p++));
+    // The scratchpad address param (if any) was appended last, past every
+    // sequence-derived argument the loop above just consumed.
+    Value scratchpadAddr =
+        hasScratchpad ? funcBlock->getArgument(p++) : Value();
     DeviceResolved resolved;
     for (Operation &op : entry.without_terminator()) {
       fb.clone(op, mapping);
@@ -810,7 +854,7 @@ private:
     }
 
     AIEXToEmitCConverter conv(funcOp, txnVec, resolved, opCountVar,
-                              foldDDRAddrOffset);
+                              foldDDRAddrOffset, scratchpadAddr);
     std::optional<uint32_t> count = conv.run();
     if (!count)
       return failure();
