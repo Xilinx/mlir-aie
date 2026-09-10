@@ -51,7 +51,9 @@ class CollectTests(unittest.TestCase):
                 f"# {name}.py -*- Python -*-",
                 "#",
                 "# Copyright (C) 2026 Advanced Micro Devices, Inc.",
+                # REUSE-IgnoreStart
                 "# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception",
+                # REUSE-IgnoreEnd
             ]
 
         blocks, code = slop.collect(
