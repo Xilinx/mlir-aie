@@ -475,59 +475,49 @@ computeSubcubeCover(const SmallVector<int, 4> &matchIds,
 }
 
 namespace {
-/// Tiles whose DMAs source and sink a slave flow. Only DMA endpoints matter: a
-/// DMA is the only endpoint that stalls a flow on a full buffer and needs a
-/// peer DMA on the same tile to drain it.
+/// Tiles whose DMAs source and sink a slave flow. Only DMAs matter: a DMA is
+/// the only endpoint that stalls on a full buffer and needs a peer DMA on the
+/// same tile to drain it.
 struct DmaEndpoints {
   llvm::SmallDenseSet<TileID, 2> producers;
   llvm::SmallDenseSet<TileID, 2> consumers;
 };
 
-/// What a slave port's traffic does at one switchbox. A port carries a single
-/// ordered stream, so a stall at its head holds up every packet behind it
-/// whatever the ID; hazards are therefore properties of the port, not of one
-/// flow on it.
+/// What a slave port's traffic does at one switchbox. A port carries one
+/// ordered stream, so a stall at its head holds up every packet behind it:
+/// hazards are properties of the port, not of one flow on it.
 struct PortTraffic {
   /// Some flow on this port ends at a DMA, here or on another tile.
   bool feedsDma = false;
-  /// Some flow on this port has a destination at this switchbox that is not a
-  /// DMA: one in transit to another tile, or one ending at a local control
-  /// port, which backs up when its config queue fills. Only a local DMA is
-  /// taken to drain unconditionally.
+  /// Some flow on this port has a non-DMA destination here: in transit to
+  /// another tile, or ending at a local control port (which backs up when its
+  /// config queue fills). Only a local DMA is taken to drain unconditionally.
   bool leaves = false;
-  /// Some flow on this port sends packets a receiving DMA takes in more than
+  /// Some flow on this port sends packets the receiving DMA takes in more than
   /// one buffer descriptor.
   bool spansConsumerBds = false;
 };
 
-/// The ways flows sharing one arbiter are known to be able to hang. An arbiter
-/// can trip several at once -- against one co-tenant or across them -- and the
-/// more of them it trips the worse it is, so these are OR'd together and the
-/// result compared as a number: a higher bit is stronger evidence, and more
-/// bits are more independent ways to deadlock. At an oversubscribed switchbox
-/// every arbiter carries something and the allocator has to pick the least bad.
+/// Ways flows sharing an arbiter can hang. OR'd together and compared as a
+/// number, so a higher bit outranks lower ones and more bits are worse. An
+/// oversubscribed switchbox has to pick the least bad arbiter.
 enum HazardKind : unsigned {
-  /// A shape that stalls -- a port whose packets outlast the receiving DMA's
-  /// descriptors, or a stalling source sharing with a co-tenant that still has
-  /// to leave this switchbox. Whether anything downstream closes it back into
-  /// a cycle is not known, which makes it the most speculative of the three.
+  /// A shape that stalls, with no known cycle closing it back: packets
+  /// outlasting the receiving DMA's descriptors, or a stalling source sharing
+  /// with a co-tenant that still has to leave this switchbox.
   StallShape = 1,
-  /// The dataflow does close back, through intermediate pipeline stages: what
-  /// one of the pair delivers is, some hops later, what the other's producer
-  /// needs drained. Every stage in between has to saturate at once.
+  /// A cycle closed through intermediate pipeline stages, all of which must
+  /// saturate at once.
   RelayedCycle = 2,
-  /// The same cycle with nothing in between -- one flow ends at the very tile
-  /// the other starts from. The tightest loop, closing on a single buffer
-  /// filling up, and enough on its own to outrank any pile of the others.
+  /// The same cycle with nothing in between: one flow ends at the tile the
+  /// other starts from. Tightest loop, so it outranks any pile of the others.
   DirectCycle = 4,
 };
 
 /// A placed flow the flow being allocated can deadlock against on one arbiter.
 struct ArbiterHazard {
-  /// The ID of that flow, so the diagnostic can name it.
   int conflictingFlowID;
-  /// Which HazardKinds the arbiter trips. An allocation with nothing safe left
-  /// to pick takes the arbiter with the lowest of these it can find.
+  /// HazardKinds this arbiter trips; the allocator falls back to the lowest.
   unsigned kinds;
 };
 } // namespace
@@ -562,10 +552,9 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
     tiles[{col, row}] = tileOp;
   }
 
-  // Tile-level dataflow graph over the whole device: an edge P -> C for every
-  // packet flow that leaves a DMA of P and arrives at a DMA of C. Freeing C's
-  // input buffer needs C to run, so everything C goes on to emit waits behind
-  // that flow.
+  // Tile-level dataflow graph: an edge P -> C per packet flow from a DMA of P
+  // to a DMA of C. C must run to free its input buffer, so everything C emits
+  // waits behind that flow.
   DenseMap<TileID, llvm::SmallDenseSet<TileID, 4>> tileConsumers;
   for (PacketFlowOp pktFlowOp : device.getOps<PacketFlowOp>()) {
     Block &b = pktFlowOp.getPorts().front();
@@ -584,12 +573,10 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
     }
   }
 
-  // Tiles whose progress the root's draining depends on: the root itself, the
-  // tiles it feeds, the tiles those feed, and so on. A shim tile is reached but
-  // never expanded through -- its DMA drains to DDR, and the chain continues
-  // only through the order the host chooses to wait in, which this module does
-  // not hold. Following it would put nearly every tile downstream of every
-  // other and leave the coupling rule flagging any pair at all.
+  // Tiles the root's draining depends on: itself, what it feeds, transitively.
+  // Shim tiles are reached but not expanded through: they drain to DDR in an
+  // order only the host knows, and following them would make nearly every tile
+  // downstream of every other.
   const AIETargetModel &targetModel = device.getTargetModel();
   DenseMap<TileID, llvm::SmallDenseSet<TileID, 8>> downstreamTiles;
   auto downstreamOf =
@@ -614,9 +601,9 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
   };
 
   // Largest buffer descriptor each DMA channel issues, in bytes. Only channels
-  // with a body in this module appear; one programmed from outside it, as every
-  // shim channel is once the runtime sequence has been lowered away, has no
-  // entry and yields no conclusion below.
+  // with a body here appear; ones programmed from outside (e.g. shim channels,
+  // once the runtime sequence is lowered away) are absent and draw no
+  // conclusion below.
   DenseMap<std::pair<TileID, int>, uint64_t> mm2sBdBytes, s2mmBdBytes;
   auto scanDmaBds = [&](TileID tileId, Region &region) {
     for (Block &block : region)
@@ -624,10 +611,9 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
         Block *head = startOp.getDest();
         if (!head)
           continue;
-        // Walk the chain reachable from the start block via aie.next_bd. A
-        // block holding a dma_start opens another channel and is skipped;
-        // dma_start terminates its block, so none of this chain's descriptors
-        // can be in it.
+        // Walk the aie.next_bd chain from the start block. A block holding a
+        // dma_start belongs to another channel; dma_start terminates its
+        // block, so none of this chain's descriptors can be in it.
         uint64_t largest = 0;
         SmallVector<Block *, 8> work{head};
         SmallPtrSet<Block *, 8> seen;
@@ -656,20 +642,16 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
   for (ShimDMAOp dma : device.getOps<ShimDMAOp>())
     scanDmaBds(dma.getTileOp().getTileID(), dma->getRegion(0));
 
-  // The stream packet header, the only reason a send and a receive descriptor
-  // for the same transfer differ in length. Under keep_pkt_header the
-  // destination stores it too and the two lengths match.
+  // Stripped at the destination, so a send descriptor is this much longer than
+  // the receive descriptor for the same transfer -- unless keep_pkt_header.
   constexpr uint64_t packetHeaderBytes = 4;
 
-  // One send buffer descriptor becomes one packet, delivered under a single
-  // arbiter grant. If the receiving DMA takes it in smaller descriptors, that
-  // grant is held while the consumer works through every one of them.
-  //
-  // Each side is summarized by its largest descriptor, which under-reports: a
-  // receive chain that mixes sizes can pair a large send against a small
-  // descriptor and go unflagged. Using the receiver's smallest instead flags
-  // nearly every flow. Comparing the chains descriptor by descriptor is the
-  // accurate answer and is left for later.
+  // One send descriptor is one packet under one arbiter grant, so if the
+  // receiving DMA takes it in smaller descriptors the grant is held across all
+  // of them. Comparing largest against largest under-reports (a mixed-size
+  // receive chain can pair a large send with a small descriptor); comparing
+  // against the receiver's smallest flags nearly everything. A descriptor-by-
+  // descriptor comparison is the accurate answer, left for later.
   auto sendSpansReceiveBds = [&](TileID srcTile, Port srcPort, TileID destTile,
                                  Port destPort, bool keepsPktHeader) {
     auto send = mm2sBdBytes.find({srcTile, srcPort.channel});
@@ -800,10 +782,9 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
     }
   }
 
-  // A flow whose destination here is not a DMA can be held up by whatever sits
-  // behind it: congestion downstream if it is in transit to another tile, a
-  // full config queue if it is a local control port. Only a flow ending at a
-  // DMA is certain to drain, whatever the arbiter is doing.
+  // A non-DMA destination can be held up by what sits behind it: downstream
+  // congestion in transit, or a full config queue at a local control port.
+  // Only a flow ending at a DMA is certain to drain.
   for (const auto *flows : {&packetFlows, &ctrlPacketFlows})
     for (const auto &[flow, dests] : *flows)
       if (llvm::any_of(dests, [](const PhysPort &dest) {
@@ -859,11 +840,9 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
                        const llvm::SmallDenseSet<TileID, 2> &b) {
     return llvm::any_of(a, [&](TileID t) { return b.contains(t); });
   };
-  // True when the tiles a flow ends at have to make progress before any of
-  // `producers` can emit. The two need not be the same tile: pipeline stages in
-  // between relay the dependency, and the flows at either end of the chain
-  // still meet on one arbiter. Reflexive, so sharesTile is the depth-0 case and
-  // this is the same question asked at any depth.
+  // True when `consumers` must make progress before any of `producers` can
+  // emit, possibly relayed through intermediate pipeline stages. Reflexive, so
+  // sharesTile is just the depth-0 case of this.
   auto couples = [&](const llvm::SmallDenseSet<TileID, 2> &consumers,
                      const llvm::SmallDenseSet<TileID, 2> &producers) {
     return llvm::any_of(consumers, [&](TileID consumer) {
@@ -879,17 +858,16 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
     return it == slavePortTraffic.end() ? noTraffic : it->second;
   };
 
-  // A DMA of this tile feeding another tile's DMA advances only as fast as the
-  // far side drains it, so it can hold a grant for an unbounded time. That
-  // covers a shim destination too: it drains under host control, and the order
-  // the host waits in is not visible to this pass.
+  // A DMA feeding another tile's DMA advances only as fast as the far side
+  // drains, so it can hold a grant for an unbounded time. Shim destinations
+  // included: they drain in an order only the host knows.
   auto portStalls = [&](PhysPort port) {
     return port.second.bundle == WireBundle::DMA && trafficOf(port).feedsDma;
   };
 
-  // True when both flows leave this switchbox by the same single master port
-  // and that port is a DMA of this tile. Restricted to one destination each on
-  // purpose: a flow with a second destination can be held up there instead.
+  // True when both flows leave by the same, single master port and it is a DMA
+  // of this tile. One destination each is deliberate: a flow with a second
+  // destination can be held up there instead.
   auto fansIntoSameLocalDma = [&](const std::pair<PhysPort, int> &flow,
                                   const std::pair<PhysPort, int> &other) {
     auto a = packetFlows.find(flow);
@@ -905,22 +883,18 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
   // An arbiter holds its grant until tlast, so two slave ports on one arbiter
   // serialize even on separate master ports. Three ways that deadlocks:
   //
-  //  - A port whose packets outlast a single receive descriptor holds the grant
+  //  - A port whose packets outlast one receive descriptor holds the grant
   //    across the consumer's whole lock cycle. Nothing may share with it.
   //  - A stalling port (see portStalls) blocks any co-tenant that still has to
-  //    leave this switchbox, and the stall propagates back to a tile the
-  //    consumer may itself be waiting on -- through the dataflow, through the
-  //    control path that reprograms it, or through the order the host waits in.
-  //    Co-tenants that end here are safe: the local DMA drains them.
-  //  - Flow F ends at a tile whose progress flow G's producer waits on: F
-  //    stalls on a full buffer while holding the grant G needs to drain it.
-  //    The wait may run through intermediate pipeline stages, so this is asked
-  //    of the flow graph (see couples) rather than of the two flows' endpoints.
+  //    leave this switchbox. Co-tenants ending here are safe: the local DMA
+  //    drains them.
+  //  - Flow F ends at a tile flow G's producer waits on, so F stalls on a full
+  //    buffer while holding the grant G needs to drain it. Asked of the flow
+  //    graph (see couples), not just of the two flows' endpoints.
   //
-  // Returns the worst hazard the arbiter carries for this flow, or nullopt if
-  // it carries none. Only the last of the three exhibits the cycle it deadlocks
-  // on; the first two recognize a shape that stalls and leave open whether
-  // anything downstream closes it back, so they rank below either cycle.
+  // Returns the worst hazard on this arbiter, or nullopt if there is none.
+  // Only the third exhibits an actual cycle; the first two recognize a shape
+  // that stalls, so they rank below either cycle.
   auto arbiterHazard = [&](TileID tileId, int arbiter,
                            const std::pair<PhysPort, int> &flow)
       -> std::optional<ArbiterHazard> {
@@ -938,23 +912,21 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
       worst.kinds |= kind;
     };
     for (const auto &other : placed->second) {
-      // One slave port carries one stream, so flows on it are serialized by
-      // the port and never arbitrate against each other.
+      // Flows on one slave port are serialized by the port and never
+      // arbitrate against each other.
       if (other.first == flow.first)
         continue;
-      // Nor do flows that fan into one DMA channel of this tile and go nowhere
-      // else: that DMA takes them one packet at a time whatever the arbiter
-      // does, and a master port can only be tied to one arbiter, so they have
-      // to share regardless. Checked first, since the rules below would flag
-      // exactly this shape.
+      // Nor do flows fanning into one local DMA channel and going nowhere
+      // else: that DMA takes them one packet at a time regardless, and they
+      // must share an arbiter anyway since a master port is tied to one.
+      // Checked first -- the rules below would flag exactly this shape.
       if (fansIntoSameLocalDma(flow, other))
         continue;
       const DmaEndpoints &g = dmaEndpointsOf(other);
+      // Nothing outranks a direct cycle, so stop at the first one.
       if (sharesTile(g.consumers, f.producers) ||
-          sharesTile(g.producers, f.consumers)) {
-        // Nothing outranks this, so there is no point looking at the rest.
+          sharesTile(g.producers, f.consumers))
         return ArbiterHazard{other.second, HazardKind::DirectCycle};
-      }
       if (couples(g.consumers, f.producers) ||
           couples(f.consumers, g.producers))
         raise(other.second, HazardKind::RelayedCycle);
@@ -968,10 +940,8 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
     return worst;
   };
 
-  // Reported wherever a flow lands on an arbiter it can deadlock against,
-  // whether because nothing better was free or because the arbiter was pinned.
-  // The tile op's location is rarely the switchbox in question, so name the
-  // tile in the message.
+  // Reported wherever a flow lands on an arbiter it can deadlock against. The
+  // tile op's location is rarely the switchbox in question, so name the tile.
   auto warnSharedArbiter = [](TileOp tileOp, int flowID, int arbiter,
                               int conflictingFlowID, StringRef why) {
     tileOp->emitWarning() << "at tile (" << tileOp.colIndex() << ", "
@@ -983,10 +953,9 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
 
   // Get a new unique amsel from masterAMSels on tile op. Prioritize on
   // incrementing arbiter id, before incrementing msel, skipping arbiters that
-  // would deadlock. Only an oversubscribed switchbox ever skips: msel 0 is
-  // filled across all arbiters first, and an unused arbiter has no hazard.
-  // Reached only with no master port of this flow pinned, so a skipped arbiter
-  // drives none of them.
+  // would deadlock. Only an oversubscribed switchbox ever skips, since msel 0
+  // fills across all arbiters first and an unused arbiter has no hazard.
+  // Reached only with no master port of this flow pinned.
   auto getNewUniqueAmsel =
       [&](const std::map<std::pair<TileID, int>, SmallVector<Port, 4>>
               &masterAMSels,
@@ -1002,10 +971,9 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
             candidates.push_back(getAmselFromArbiterIDAndMsel(arbiter, msel));
           }
 
-        // Every free amsel is hazardous, so fall back to the least bad of them:
-        // the one tripping the fewest and weakest HazardKinds, with the flow it
-        // conflicts with. Ties go to the earliest, keeping the old scan order
-        // wherever the ranking has no opinion.
+        // Take the first hazard-free amsel; if every free one is hazardous,
+        // fall back to the lowest-ranked. Ties go to the earliest, keeping the
+        // old scan order wherever the ranking has no opinion.
         int hazardous = INVALID_AMSEL_VALUE;
         ArbiterHazard worst{0, 0};
         for (int amsel : candidates) {
@@ -1139,9 +1107,8 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
     // assigned)
     bool hasMatchingAmselEntry = false;
     int partialMatchArbiterID = INVALID_ARBITER_VALUE;
-    // Set on the one path that chooses an arbiter, and so reports a hazard
-    // itself. Every other path takes an arbiter a master port of this flow is
-    // already tied to, and is checked below instead.
+    // Set on the one path that chooses an arbiter, and so reports its own
+    // hazard. Other paths take a pinned arbiter and are checked below.
     bool hazardChecked = false;
 
     // Check if any ports in this flow already have arbiter assignments
@@ -1263,10 +1230,9 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
     }
 
     int arbiter = getArbiterIDFromAmsel(amselValue);
-    // A pinned arbiter leaves no choice to make, but it can still be one this
-    // flow deadlocks against, which earns the same warning as running out of
-    // arbiters. The fix is the same either way: give the flows separate master
-    // ports so they need not share.
+    // A pinned arbiter leaves nothing to choose, but can still be one this
+    // flow deadlocks against, so it earns the same warning. The fix either way
+    // is to give the flows separate master ports.
     if (!hazardChecked)
       if (std::optional<ArbiterHazard> hazard =
               arbiterHazard(tileId, arbiter, packetFlow.first))

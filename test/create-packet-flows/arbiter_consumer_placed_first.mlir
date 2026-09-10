@@ -8,25 +8,15 @@
 // RUN: aie-opt --aie-create-pathfinder-flows %s 2>&1 >/dev/null | FileCheck %s --check-prefix=WARN
 // RUN: aie-opt --aie-create-pathfinder-flows %s 2>/dev/null | FileCheck %s
 
-// The direct coupling -- one flow ending at the tile the other is emitted from
-// -- is symmetric, but which way round the allocator meets it is not. A flow a
-// tile emits has its slave port on DMA, and DMA sorts ahead of the North the
-// inbound flow arrives on, so the emitted flow is normally placed first and the
-// inbound one runs into it. arbiter_deadlock_exhausted.mlir is that order.
+// Direct coupling is symmetric, but the order the allocator meets it in is
+// not: an emitted flow's slave port is DMA, which sorts ahead of the North an
+// inbound flow arrives on. arbiter_deadlock_exhausted.mlir covers that order;
+// here it is reversed, since control flow 9 is placed before everything.
 //
-// Here it is reversed. Flow 9 is a control flow, so it is placed before
-// everything, and it ends at the memtile's DMA. Flows 0..4 then fill msel 0 on
-// arbiters 0..4, leaving flow 5 -- emitted by that same DMA -- with nothing
-// free: arbiter 5 carries the flow that feeds it, and granting flow 9 while the
-// memtile's input buffer is full would leave flow 5, the only thing that drains
-// it, waiting on the grant.
-//
-// So flow 5 wraps onto arbiter 0 instead and takes a second msel there. That is
-// not free either -- flow 0 is emitted by a DMA of this tile and can stall,
-// while flow 5 has yet to leave the switchbox -- but a port that stalls is only
-// a shape, with nothing found that closes it back into a cycle, whereas flow 9
-// and flow 5 are the two halves of one buffer. Between the two the allocator
-// takes the speculative hazard over the demonstrated one, and says which.
+// Flows 0..4 fill msel 0 on arbiters 0..4, leaving flow 5 with nothing free:
+// arbiter 5 holds flow 9, which feeds the very DMA flow 5 drains. So flow 5
+// wraps onto arbiter 0, a StallShape hazard (flow 0 can stall, flow 5 has yet
+// to leave the switchbox) -- preferred over the demonstrated cycle, and named.
 
 module {
   aie.device(npu2) {

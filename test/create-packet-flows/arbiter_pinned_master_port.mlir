@@ -8,14 +8,11 @@
 // RUN: aie-opt --aie-create-pathfinder-flows %s 2>&1 >/dev/null | FileCheck %s --check-prefix=WARN
 // RUN: aie-opt --aie-create-pathfinder-flows %s 2>/dev/null | FileCheck %s
 
-// A master port can only be tied to one arbiter, so the second flow to leave by
-// one has no allocation left to choose. That is still worth reporting when the
-// arbiter is one it can deadlock against: the fix is not a different amsel, it
-// is giving the two flows separate master ports.
+// A master port is tied to one arbiter, so the second flow to leave by it has
+// nothing to choose. Still worth reporting when that arbiter is one it can
+// deadlock against: the fix is separate master ports, not a different amsel.
 //
-// The two flows here meet twice, and only one of the meetings is a hazard.
-// arbiter_fan_in_one_dma.mlir is the same pair drawn so they meet only at the
-// second.
+// The two flows meet twice, and only the first meeting is a hazard:
 //
 //   (1,4) --.
 //           |          both southbound on one link, and reported
@@ -23,12 +20,10 @@
 //              |       both into one DMA channel, and exempt
 //           (1,2)
 //
-// Flow 0 sends 256 bytes a descriptor into a channel taking 64, so it holds an
-// arbiter across four of the consumer's descriptors. Where that arbiter also
-// carries flow 1, flow 1 waits on a link it could otherwise have been using --
-// at (1,3), where the two still have somewhere different to be. By (1,2) they
-// do not: the same DMA drains both, in whatever order, so sharing there costs
-// nothing and goes unreported.
+// Flow 0 sends 256 bytes a descriptor into a channel taking 64, holding the
+// arbiter across four of them. At (1,3) flow 1 has somewhere else to be and so
+// waits needlessly; by (1,2) one DMA drains both in any order, so sharing
+// there costs nothing. arbiter_fan_in_one_dma.mlir is just the second meeting.
 
 module {
   aie.device(npu2) {
@@ -71,8 +66,7 @@ module {
   }
 }
 
-// One warning, naming the transit tile and the reason there was nothing to
-// choose. Nothing is said about (1,2).
+// One warning, at the transit tile only -- nothing is said about (1,2).
 
 // WARN:      warning: at tile (1, 3), packet flow 1 shares arbiter 0 with packet flow 0, which it can deadlock against; a master port of this flow is already tied to that arbiter
 // WARN-NOT:  warning

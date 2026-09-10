@@ -7,19 +7,16 @@
 
 // RUN: aie-opt --aie-create-pathfinder-flows %s | FileCheck %s
 
-// Memtile (0,1) sends flows 0 and 1 from one DMA channel: flow 0 feeds a core's
-// DMA, flow 1 carries control packets to the shim. They take different master
-// ports, so they take different arbiters.
+// Memtile (0,1) sends flows 0 and 1 from one DMA channel -- flow 0 to a core's
+// DMA, flow 1 as control packets to the shim -- on different master ports, and
+// so different arbiters. One slave port is one ordered stream, so flow 1 sits
+// behind flow 0 and stops whenever the core stops draining. Flow 6 has yet to
+// leave this switchbox and must not join it; flow 5 ends at a DMA here and is
+// drained locally, so flow 6 joins that.
 //
-// A slave port carries one ordered stream, so flow 1 sits behind flow 0 and
-// stops whenever the core stops draining. Its arbiter is held for as long as
-// that lasts, so flow 6, which has yet to leave this switchbox, must not join
-// it. Flow 5 ends at a DMA here and is drained locally, so flow 6 joins that.
-//
-// Nothing this memtile sends to reaches (0,5). That keeps the test on the point
-// above: were (0,5) downstream of it, flow 5 would additionally close a cycle
-// back to flow 6's producer and be rejected for that instead, which is what
-// arbiter_multi_hop_cycle.mlir covers.
+// Nothing this memtile sends reaches (0,5), keeping the test on that point: if
+// it did, flow 5 would close a cycle back to flow 6's producer and be rejected
+// for that instead (arbiter_multi_hop_cycle.mlir).
 
 module {
   aie.device(npu2) {

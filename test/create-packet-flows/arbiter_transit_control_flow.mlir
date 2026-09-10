@@ -8,19 +8,16 @@
 // RUN: aie-opt --aie-create-pathfinder-flows %s 2>&1 >/dev/null | FileCheck %s --check-prefix=WARN
 // RUN: aie-opt --aie-create-pathfinder-flows %s 2>/dev/null | FileCheck %s
 
-// The hazard between a flow this tile emits and a co-tenant that has yet to
-// leave the switchbox is symmetric, and both orders reach the allocator.
-// arbiter_stall_isolation.mlir covers the transit flow arriving second; here it
-// arrives first, which only a control flow can do, since those are allocated
-// ahead of everything else and a slave port on DMA otherwise sorts before one
-// on North.
+// The emitted-vs-transit hazard is symmetric and both orders reach the
+// allocator. arbiter_stall_isolation.mlir has the transit flow arriving
+// second; here it arrives first, which only a control flow can do, since those
+// are allocated ahead of everything and DMA otherwise sorts before North.
 //
-// Flow 9 transits (0,1) southward and takes arbiter 5, the highest, being a
-// control flow. Flows 0..4 then fill msel 0 on arbiters 0..4, so flow 5 --
-// emitted by this tile, and so able to stall on the tile that consumes it --
-// first reaches a free amsel on arbiter 5. Sharing with a transit flow is
-// exactly what deadlocks, and no arbiter here is free of one, so flow 5 keeps
-// the allocation it would have had and the conflict is reported instead.
+// Control flow 9 transits (0,1) southward, taking the highest arbiter, 5.
+// Flows 0..4 fill msel 0 on arbiters 0..4, so flow 5 -- emitted here, and able
+// to stall on its consumer -- first finds a free amsel on arbiter 5. That is
+// exactly the deadlock, but no arbiter is free of one, so the allocation
+// stands and the conflict is reported instead.
 
 module {
   aie.device(npu2) {
@@ -53,8 +50,7 @@ module {
 
 // WARN: warning: at tile (0, 1), packet flow 5 shares arbiter 5 with packet flow 9, which it can deadlock against
 
-// Both end up on arbiter 5, which is the point: the allocation is unchanged
-// and the warning is the whole of the reaction.
+// Both on arbiter 5: the allocation is unchanged, the warning is the reaction.
 
 // CHECK-LABEL: aie.switchbox(%mem_tile_0_1)
 // CHECK:         %[[SHARED:.*]] = aie.amsel<5> (0)

@@ -9,15 +9,13 @@
 // RUN: aie-opt --aie-create-pathfinder-flows %s 2>&1 >/dev/null | FileCheck %s --check-prefix=QUIET --allow-empty
 
 // The same three-stage pipeline as arbiter_multi_hop_cycle.mlir -- flow 0 into
-// core (0,4), flow 1 on to core (0,5), flow 2 back out to a shim, with flows 0
-// and 2 meeting at memtile (0,1). There the switchbox had nothing safe left and
-// could only report the cycle; here one arbiter is clean, so the allocator has
-// to actually route around it.
+// core (0,4), flow 1 on to (0,5), flow 2 back out to a shim, with flows 0 and 2
+// meeting at memtile (0,1). There nothing safe was left and the cycle could
+// only be reported; here flow 8 gives the allocator a clean arbiter to find.
 //
-// Flow 8 is what makes the difference. It ends at this memtile's own DMA, and
-// nothing this memtile sends reaches (0,5), so it is coupled to flow 2 in
-// neither direction and its arbiter is free of hazards. Flow 2 must land there
-// rather than on flow 0's, and must do so silently.
+// Flow 8 ends at this memtile's own DMA and nothing the memtile sends reaches
+// (0,5), so it is coupled to flow 2 in neither direction. Flow 2 must land on
+// its arbiter rather than flow 0's, and silently.
 
 module {
   aie.device(npu2) {
@@ -48,9 +46,8 @@ module {
 }
 
 // Seven groups on six arbiters again, so flow 2 still doubles up -- but on
-// arbiter 5, with flow 8, and not on arbiter 4 with flow 0. Before the flow
-// graph was consulted this went the other way: flow 0 and flow 2 have no
-// endpoint in common, so arbiter 4 looked clean and, being scanned first, won.
+// arbiter 5 with flow 8, not arbiter 4 with flow 0. Pairwise endpoint checks
+// picked arbiter 4: flows 0 and 2 share no endpoint, so it looked clean.
 
 // QUIET-NOT: warning
 

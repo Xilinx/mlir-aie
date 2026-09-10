@@ -7,11 +7,10 @@
 
 // RUN: aie-opt --aie-create-pathfinder-flows %s | FileCheck %s
 
-// Memtile (0,1) is a relay: flow 6 arrives at its DMA : 1 and flow 0 leaves
-// from its DMA : 0. The other flows use up the switchbox's arbiters, so the
-// amsel scan wraps from msel 0 onto an arbiter already in use. It must not
-// wrap onto the arbiter carrying flow 0, which would serialize the relay
-// against its own input and deadlock.
+// Memtile (0,1) is a relay: flow 6 arrives at DMA : 1, flow 0 leaves from
+// DMA : 0. The other flows exhaust the arbiters, so the amsel scan wraps onto
+// one already in use -- but must not pick flow 0's, which would serialize the
+// relay against its own input and deadlock.
 
 module {
   aie.device(npu2) {
@@ -39,13 +38,10 @@ module {
   }
 }
 
-// Seven groups, six arbiters: the seventh shares, but not with flow 0.
-//
-// It also skips arbiters 1 and 2, which carry flows 2 and 3 out of shim (0,0).
-// Flow 6 ends at this memtile, and the memtile feeds (0,2), which emits flow 1
-// back to that same shim -- so those two close a cycle as well, just a longer
-// one. Arbiter 3 carries flow 5 from shim (1,0), which nothing here reaches,
-// and is the first with no coupling at all.
+// Seven groups, six arbiters: the seventh shares, but not with flow 0. It also
+// skips arbiters 1 and 2 (flows 2 and 3 out of shim (0,0)), which close a
+// longer cycle back via (0,2) and flow 1. Arbiter 3 carries flow 5 from shim
+// (1,0), which nothing here reaches, and is the first free of any coupling.
 
 // CHECK-LABEL: aie.switchbox(%mem_tile_0_1)
 // CHECK:         %[[FEED:.*]] = aie.amsel<0> (0)

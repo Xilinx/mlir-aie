@@ -7,15 +7,13 @@
 
 // RUN: aie-opt --aie-create-pathfinder-flows %s | FileCheck %s
 
-// Memtile (0,1) emits flows 0..3 south and receives flows 4, 5 and 6 from the
-// cores above, one arbiter short. Flow 6 is placed last, so it is the one that
-// has to share.
+// Memtile (0,1) emits flows 0..3 south and receives flows 4..6 from the cores
+// above, one arbiter short. Flow 6 is placed last and has to share.
 //
-// Flow 4 sends 256 bytes per buffer descriptor into a DMA that takes 64 at a
-// time. One send descriptor is one packet and the arbiter holds its grant until
-// tlast, so that grant spans all four receive descriptors and anything sharing
-// the arbiter waits out the whole sequence. Flow 5 sends and receives the same
-// size, so flow 6 joins that one instead.
+// Flow 4 sends 256 bytes per descriptor into a DMA taking 64 at a time. One
+// send descriptor is one packet and the grant is held until tlast, so it spans
+// all four receive descriptors and any co-tenant waits out the whole sequence.
+// Flow 5 sends and receives the same size, so flow 6 joins that arbiter.
 
 module {
   aie.device(npu2) {

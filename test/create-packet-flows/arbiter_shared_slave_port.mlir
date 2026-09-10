@@ -8,16 +8,14 @@
 // RUN: aie-opt --aie-create-pathfinder-flows %s 2>&1 >/dev/null | FileCheck %s --check-prefix=NOWARN --allow-empty
 // RUN: aie-opt --aie-create-pathfinder-flows %s 2>/dev/null | FileCheck %s
 
-// Two flows on one slave port never arbitrate against each other: the port
-// hands the switch one stream, and the arbiter sees the second flow only once
-// the first has finished. So they may share an arbiter even when the port they
-// arrive on is one that stalls.
+// Two flows on one slave port never arbitrate against each other -- the port
+// hands over one stream, so the arbiter sees the second only once the first
+// finishes -- and may share an arbiter even on a port that stalls.
 //
 // Flows 0..4 fill msel 0 on arbiters 0..4. Flows 5 and 6 then leave DMA : 5
-// together, southbound and northbound, so they need separate master ports and
-// separate amsels. Flow 5 takes the last free arbiter. Flow 6 finds every
-// arbiter occupied, and takes the second msel of the one carrying its own
-// slave port rather than crowding a stranger.
+// together, south and north, needing separate master ports and amsels. Flow 5
+// takes the last free arbiter; flow 6, finding none, takes a second msel on
+// its own slave port's arbiter rather than crowding a stranger.
 
 module {
   aie.device(npu2) {

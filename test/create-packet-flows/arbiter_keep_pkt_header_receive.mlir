@@ -8,14 +8,14 @@
 // RUN: aie-opt --split-input-file --aie-create-pathfinder-flows %s | FileCheck %s
 
 // Same 68-byte send into a 64-byte receive descriptor, with and without
-// keep_pkt_header. The destination drops the 4-byte packet header unless
-// keep_pkt_header is set, so the two cases store 64 and 68 bytes respectively
-// and only the second one spans a second receive descriptor.
+// keep_pkt_header. The destination drops the 4-byte header unless it is set,
+// so the two cases store 68 and 64 bytes and only the first spans a second
+// receive descriptor.
 //
-// Layout in both: memtile (0,1) emits flows 0..3 south and receives flows 4, 5
-// and 6 from the cores above, one arbiter short. Flow 6 is placed last, so it
-// is the one that has to share. Arbiters 0..3 are ruled out either way, since
-// flow 6 feeds the memtile that produces the flows on them.
+// Layout in both: memtile (0,1) emits flows 0..3 south and receives flows 4..6
+// from the cores above, one arbiter short. Flow 6 is placed last and has to
+// share; arbiters 0..3 are ruled out either way, since flow 6 feeds the
+// memtile producing the flows on them.
 
 // CHECK-LABEL: aie.switchbox(%mem_tile_0_1)
 // CHECK:         %[[KEPT:.*]] = aie.amsel<4> (0)

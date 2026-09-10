@@ -10,12 +10,11 @@
 // Memtile (0,1) emits flows 0..3 and receives flows 4 and 5, filling all six
 // arbiters. Flow 6 only passes through, so it has to share.
 //
-// An arbiter holds its grant until tlast, so a co-tenant that has yet to leave
-// the switchbox waits behind whatever the grant holder is waiting on. None of
-// flows 0..3 will do: each is emitted by this tile's DMA and stalls when its
-// consumer falls behind, flow 3 included, since a shim DMA drains when the host
-// says so and this pass cannot see the order the host waits in. Flows 4 and 5
-// end at a DMA here, which drains them whatever the arbiter is doing.
+// The grant is held until tlast, so a co-tenant still to leave the switchbox
+// waits behind whatever the holder waits on. Flows 0..3 are all emitted by
+// this tile's DMA and stall when their consumer falls behind -- flow 3
+// included, since a shim DMA drains in an order only the host knows. Flows 4
+// and 5 end at a DMA here, which drains them regardless.
 
 module {
   aie.device(npu2) {

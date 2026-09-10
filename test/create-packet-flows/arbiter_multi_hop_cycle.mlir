@@ -15,19 +15,14 @@
 //   flow 1: core (0,4) --> core (0,5)
 //   flow 2: core (0,5) --> shim (1,0)
 //
-// Flows 0 and 2 both transit memtile (0,1), on South : 1 and North : 3. Put
-// them on one arbiter and: the grant goes to flow 0, core (0,4)'s input buffer
-// is full so flow 0 stalls with no tlast, (0,4) can only free that buffer by
-// running and emitting flow 1, (0,5) consumes it and emits flow 2 -- which
-// wants the arbiter flow 0 is still holding.
+// Flows 0 and 2 both transit memtile (0,1), on South : 1 and North : 3. Share
+// an arbiter and: flow 0 takes the grant, stalls with no tlast on (0,4)'s full
+// input buffer; (0,4) can only free it by emitting flow 1; (0,5) consumes that
+// and emits flow 2 -- which wants the arbiter flow 0 still holds.
 //
-// None of the pairwise rules sees this. At (0,1) neither flow arrives on a DMA
-// of this tile, so neither counts as a port that stalls; flow 0's endpoints and
-// flow 2's are two hops apart, so comparing the two flows directly finds
-// nothing in common; and there are no DMA bodies to find a send outlasting its
-// receive descriptors in. It is only visible as reachability over the whole
-// flow graph -- (0,4), then (0,5), then flow 2's producer -- which is what the
-// coupling rule walks.
+// No pairwise rule sees this: neither flow arrives on a DMA of (0,1), their
+// endpoints are two hops apart, and there are no DMA bodies to compare
+// descriptor lengths in. Only reachability over the whole flow graph finds it.
 
 module {
   aie.device(npu2) {
@@ -53,11 +48,9 @@ module {
   }
 }
 
-// Seven groups on six arbiters, so flow 2 has to double up somewhere. Every
-// arbiter here carries something: 0..4 hold this memtile's own outgoing DMAs,
-// which stall whenever the core they feed stops draining, and 5 holds flow 0.
-// Only flow 0 closes a cycle, so flow 2 takes arbiter 0 and the warning names
-// the merely-stalling flow it settled for.
+// Seven groups on six arbiters, so flow 2 doubles up. Arbiters 0..4 hold this
+// memtile's outgoing DMAs (stalling shapes), 5 holds flow 0 (a cycle), so
+// flow 2 takes arbiter 0 and the warning names the flow it settled for.
 
 // WARN: warning: at tile (0, 1), packet flow 2 shares arbiter 0 with packet flow 3, which it can deadlock against
 

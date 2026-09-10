@@ -8,21 +8,15 @@
 // RUN: aie-opt --aie-create-pathfinder-flows %s 2>&1 >/dev/null | FileCheck %s --check-prefix=NOWARN --allow-empty
 // RUN: aie-opt --aie-create-pathfinder-flows %s 2>/dev/null | FileCheck %s
 
-// Three flows converge on one DMA channel of the core at (1,2), one from each
-// side, so (1,2) is the only switchbox any two of them meet in. A master port
-// can only be tied to one arbiter, so they have to share there whatever else
-// is true of them.
+// Three flows converge on one DMA channel of core (1,2), one from each side,
+// so (1,2) is the only switchbox any two meet in -- and a master port is tied
+// to one arbiter, so they must share there. That costs nothing here: one DMA
+// channel drains all three a packet at a time, in whatever order, so none can
+// wait on another. True even of flow 0, which sends 256 bytes per descriptor
+// into a channel receiving 64 and would otherwise keep an arbiter to itself.
 //
-// Sharing costs nothing in this shape. All three are drained by the same DMA
-// channel, one packet at a time, so the order the arbiter picks is the order
-// they would have been taken in anyway, and none of them can be waiting on
-// another. That holds even for flow 0, which sends 256 bytes per buffer
-// descriptor into a channel receiving 64 at a time: on any other pairing that
-// would keep the arbiter to itself.
-//
-// The exemption is deliberately no wider than this. Two flows sharing a
-// master port that leaves the switchbox can still diverge downstream, and one
-// of them can then be waiting on the other, so those are left to the rules.
+// The exemption goes no wider: flows sharing a master port that leaves the
+// switchbox can diverge downstream, so those are left to the rules.
 
 module {
   aie.device(npu2) {
