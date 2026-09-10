@@ -1,0 +1,7 @@
+<map id="xilinx::AIE::SAConfig" name="xilinx::AIE::SAConfig">
+<area shape="rect" id="Node000001" title=" " alt="" coords="41,240,196,265"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="7,5,46,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="21,45,13,81,8,126,12,172,19,194,30,214,44,228,61,238,59,242,41,232,26,218,14,196,7,173,3,126,8,80,16,44"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="177,5,244,31"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="216,44,218,81,215,126,205,174,184,218,170,232,153,242,150,237,166,228,179,214,200,172,210,125,212,81,211,45"/>
+</map>
