@@ -5,6 +5,7 @@
 #
 """Low-level helpers for compiling MLIR modules and external C++ kernels to NPU artifacts."""
 
+import concurrent.futures
 import logging
 import os
 import re
@@ -530,9 +531,15 @@ def compile_mlir_module(
         from aie.iron.kernel import ExternalFunction
 
         target_arch = resolve_target_arch(device)
-        for func in list(ExternalFunction._instances):
-            if not func._compiled and getattr(func, "_source_file", None):
-                compile_external_kernel(func, str(work_dir), target_arch)
+        compile_external_kernels(
+            [
+                f
+                for f in ExternalFunction._instances
+                if getattr(f, "_source_file", None)
+            ],
+            str(work_dir),
+            target_arch,
+        )
 
     # When work_dir is provided, invoke the aiecc binary as a subprocess so
     # that it resolves relative link_with paths (e.g. "add_one.o") against the
@@ -565,6 +572,57 @@ def _rename_symbol_in_object(object_path: str, old_name: str, new_name: str) -> 
     )
     if result.returncode != 0:
         raise RuntimeError(f"Symbol rename failed: {result.stderr.decode()}")
+
+
+def compile_external_kernels(funcs, kernel_dir, target_arch):
+    """Compile every ExternalFunction in ``funcs`` into ``kernel_dir``.
+
+    Kernels are separate translation units with separate outputs, so they compile
+    concurrently.  The exception is the source path: ``compile_external_kernel``
+    writes the source as ``<_original_name>.cc``, so ExternalFunctions sharing an
+    original name write the same file and are ordered against each other.
+
+    Each compile is single-threaded and peaks near 205 MB of RSS on aie2p (250 MB
+    without the intrinsics PCH), so the bound is cores rather than memory on an
+    ordinary box.  Set AIE_KERNEL_COMPILE_JOBS to override.
+    """
+    pending = [f for f in funcs if not f._compiled]
+    if not pending:
+        return
+
+    # Every compile in a batch shares one cwd (kernel_dir), and xchesscc keeps
+    # per-invocation state there, so the Chess path runs serially.
+    if any(getattr(f, "_use_chess", False) for f in pending):
+        for f in pending:
+            compile_external_kernel(f, kernel_dir, target_arch)
+        return
+
+    groups: dict[str, list] = {}
+    for f in pending:
+        groups.setdefault(getattr(f, "_original_name", f._name), []).append(f)
+
+    try:
+        jobs = int(os.environ.get("AIE_KERNEL_COMPILE_JOBS", "0"))
+    except ValueError:
+        jobs = 0
+    if jobs <= 0:
+        jobs = os.cpu_count() or 1
+    jobs = min(jobs, len(groups))
+
+    if jobs == 1:
+        for group in groups.values():
+            for f in group:
+                compile_external_kernel(f, kernel_dir, target_arch)
+        return
+
+    def _run(group):
+        for f in group:
+            compile_external_kernel(f, kernel_dir, target_arch)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as pool:
+        # list() re-raises the first failure, after the others have finished --
+        # a compile error must not be swallowed by a sibling that succeeded.
+        list(pool.map(_run, groups.values()))
 
 
 def compile_external_kernel(func, kernel_dir, target_arch):
