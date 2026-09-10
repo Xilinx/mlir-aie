@@ -141,24 +141,33 @@ void filter2d_3lines_aie(uint8_t *lineIn0, uint8_t *lineIn1, uint8_t *lineIn2,
     data_buf1.insert(0, aie::load_v<32>(lineIn0));
     lineIn0 += VecFactor;
     data_buf1.insert(1, aie::load_v<32>(lineIn0));
+    // The pixel carried to the next iteration is this vector's own last one,
+    // so it has to be taken before the shuffle. Reading it back out afterwards
+    // yields the already-shifted vector, whose last element is the
+    // second-to-last pixel, and every 32-pixel boundary from the third vector
+    // on then convolves against the wrong left neighbour. The store stays
+    // after the shuffle, which still needs the previous iteration's value.
+    auto carry1 = data_buf1.template extract<32>(0);
     data_buf1 = ::aie::shuffle_up_fill(data_buf1, prev_buf1, kernel_side);
-    prev_buf1.insert(1, data_buf1.template extract<32>(0));
+    prev_buf1.insert(1, carry1);
     acc = mul_ops::mul(kernel_vec, 0, data_buf1, 0);
 
     // second kernel row
     data_buf2.insert(0, aie::load_v<32>(lineIn1));
     lineIn1 += VecFactor;
     data_buf2.insert(1, aie::load_v<32>(lineIn1));
+    auto carry2 = data_buf2.template extract<32>(0);
     data_buf2 = ::aie::shuffle_up_fill(data_buf2, prev_buf2, kernel_side);
-    prev_buf2.insert(1, data_buf2.template extract<32>(0));
+    prev_buf2.insert(1, carry2);
     acc = mul_ops::mac(acc, kernel_vec, Points, data_buf2, 0);
 
     // third kernel row
     data_buf3.insert(0, aie::load_v<32>(lineIn2));
     lineIn2 += VecFactor;
     data_buf3.insert(1, aie::load_v<32>(lineIn2));
+    auto carry3 = data_buf3.template extract<32>(0);
     data_buf3 = ::aie::shuffle_up_fill(data_buf3, prev_buf3, kernel_side);
-    prev_buf3.insert(1, data_buf3.template extract<32>(0));
+    prev_buf3.insert(1, carry3);
     acc = mul_ops::mac(acc, kernel_vec, 2 * Points, data_buf3, 0);
 
     // Store result
