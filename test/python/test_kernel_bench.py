@@ -107,6 +107,27 @@ def test_canary_out_of_band_writes_nothing(fake, tmp_path):
     assert fake.calls == [bench.CANARY.name]
 
 
+def test_canary_none_cycles_fails_when_cycles_are_requested(fake, tmp_path):
+    # A failed/empty trace reports no cycles at all; without --no-cycles that
+    # must not pass the band check vacuously (the previous lower bound of
+    # 1000 was never exercised for exactly this reason).
+    fake.canary_cycles = None
+    out, meta = tmp_path / "b.json", tmp_path / "m.json"
+    code = bench.main(
+        ["--out", str(out), "--meta", str(meta), "--cases", str(CASES_FILE)],
+        measure_fn=fake.measure_fn,
+        preflight_fn=fake.preflight_fn,
+    )
+    assert code == 2 and not out.exists()
+    assert fake.calls == [bench.CANARY.name]
+
+
+def test_canary_none_cycles_pass_when_cycles_are_skipped(fake, tmp_path):
+    fake.canary_cycles = None
+    code, out, _ = _run(fake, tmp_path)  # _run passes --no-cycles
+    assert code == 0 and out.exists()
+
+
 def test_one_wrong_kernel_invalidates(fake, tmp_path):
     fake.wrong.add(
         next(c.name for c in load_cases(str(CASES_FILE)) if c.name.startswith("add/"))
@@ -167,6 +188,36 @@ def test_device_restricted_cases_are_skipped_on_the_other_generation(fake, tmp_p
     assert code == 0
     assert [c.split("/")[0] for c in fake.calls] == ["passthrough", "passthrough"]
     assert fake.calls[1].split("/")[1].endswith("x4")
+
+
+class _StubDesign:
+    """Stands in for CallableDesign.compile.
+
+    Writes placeholder artifacts at whatever paths it is given, without
+    touching aiecc or the toolchain.
+    """
+
+    def __init__(self):
+        self.build_dirs: list[Path] = []
+
+    def compile(self, *, xclbin_path, inst_path):
+        self.build_dirs.append(xclbin_path.parent)
+        xclbin_path.write_bytes(b"x")
+        inst_path.write_bytes(b"i")
+        return xclbin_path, inst_path
+
+
+def test_measure_compile_does_not_reuse_another_cases_directory(tmp_path):
+    # Two cases sharing a workdir must not share measure_compile's "compile"
+    # subdirectory: compile_external_kernel skips a kernel object that
+    # already exists in its directory, which would make the second case's
+    # forced rebuild look faster than it is and mix ELFs into its byte count.
+    design = _StubDesign()
+    bench.measure_compile(design, tmp_path / "case-a")
+    bench.measure_compile(design, tmp_path / "case-b")
+    assert len(set(design.build_dirs)) == 2
+    for d in design.build_dirs:
+        assert d.is_relative_to(tmp_path)
 
 
 def test_rows_for_skips_what_was_not_measured():

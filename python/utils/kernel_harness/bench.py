@@ -136,8 +136,14 @@ def measure(
         out_dt = kh.output_dtype(fn, ref.dtype)
         ins, out = kh.upload(inputs, out_n, out_dt, poison=True, fn=fn)
         if do_compile:
+            # A subdirectory per case: measure_compile's cold rebuild bypasses
+            # the on-disk xclbin cache, but compile_external_kernel still
+            # skips a kernel object that already exists in its directory, so
+            # a shared directory would let one case's leftovers make another
+            # case's "cold" build look faster than it is (and mix ELFs into
+            # its byte count).
             m.compile_s, m.xclbin_bytes, m.insts_bytes, m.elf_bytes = measure_compile(
-                design, workdir
+                design, workdir / case.name
             )
         design(*ins, out)
         v = kh.judge(fn, out.numpy(), ref, calls=case.calls)
@@ -333,7 +339,12 @@ def main(
 
     can = measure_fn(CANARY, **common)
     lo, hi = CANARY_CYCLE_BAND
-    in_band = can.cycles_median is None or lo <= can.cycles_median <= hi
+    # None is only a pass when cycles were deliberately skipped (--no-cycles);
+    # otherwise it means the traced run produced nothing to check, which is
+    # the vacuous pass this band exists to catch.
+    in_band = (a.no_cycles and can.cycles_median is None) or (
+        can.cycles_median is not None and lo <= can.cycles_median <= hi
+    )
     if not can.correct or can.error or not in_band:
         meta["canary"] = _m2d(can)
         _write(a.meta, meta)
