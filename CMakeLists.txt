@@ -41,8 +41,11 @@ if(POLICY CMP0091)
   cmake_policy(SET CMP0091 NEW)
 endif()
 
+# LLVM's tablegen() macro emits a depfile only under CMP0116 NEW. The depfile
+# lists the transitive .td includes, so a generated file rebuilds whenever any
+# .td it includes changes.
 if(POLICY CMP0116)
-  cmake_policy(SET CMP0116 OLD)
+  cmake_policy(SET CMP0116 NEW)
 endif()
 
 if(POLICY CMP0144)

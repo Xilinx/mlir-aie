@@ -133,6 +133,18 @@ def AIEAssignBufferAddresses : Pass<"aie-assign-buffer-addresses", "DeviceOp"> {
   ];
 }
 
+def AIENormalizeDmaBdDims : Pass<"aie-normalize-dma-bd-dims", "DeviceOp"> {
+  let summary = "Strip degenerate dimensions from DMA BD descriptors.";
+  let description = [{
+    Removes size-1 dimensions from `aie.dma_bd` ops whose strides never
+    take effect.  After stripping, if the remaining dimensions describe a
+    contiguous row-major access, the BD is flattened to a single linear
+    transfer.
+  }];
+
+  let constructor = "xilinx::AIE::createAIENormalizeDmaBdDimsPass()";
+}
+
 def AIEAssignLockIDs : Pass<"aie-assign-lock-ids", "DeviceOp"> {
   let summary = "Assigns the lockIDs of locks that do not have IDs.";
   let description = [{
@@ -271,6 +283,17 @@ def AIERoutePathfinderFlows : Pass<"aie-create-pathfinder-flows", "DeviceOp"> {
     Each aie.flow is replaced with aie.connect operation.
     Each aie.packetflow is replace with the set of aie.amsel, aie.masterset
     and aie.packet_rules operations.
+
+    An arbiter holds its grant until end of packet, so two slave ports sharing
+    one arbiter serialize even on different master ports. Where that can
+    deadlock, amsel allocation separates them; with no independent arbiter free
+    it keeps the sharing and warns. Only oversubscribed switchboxes are
+    affected.
+
+    This reads buffer descriptor lengths from the DMA bodies (aie.mem,
+    aie.memtile_dma, aie.shim_dma), so run the pass after those exist. Channels
+    with no body here (e.g. shim channels, once the runtime sequence is lowered
+    away) are simply left to the remaining rules.
   }];
 
   let constructor = "xilinx::AIE::createAIEPathfinderPass()";

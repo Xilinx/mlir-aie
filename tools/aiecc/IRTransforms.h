@@ -1045,6 +1045,7 @@ getInputWithAddressesPipeline(mlir::MLIRContext *ctx, mlir::ModuleOp mod,
           dpm))) {
     return nullptr;
   }
+  dpm.addPass(createAIENormalizeDmaBdDimsPass());
   // Assign IDs to the ID-less locks the objectFifo lowering creates (and to any
   // user locks without an ID).
   dpm.addPass(createAIEAssignLockIDsPass());
@@ -1292,6 +1293,7 @@ getNpuDmaLoweringPipeline(mlir::MLIRContext *ctx) {
   dpm.addPass(X::createAIESubstituteShimDMAAllocationsPass());
   dpm.addPass(X::createAIEUnrollRuntimeSequenceLoopsPass());
   dpm.addPass(mlir::createCanonicalizerPass());
+  dpm.addPass(xilinx::AIE::createAIENormalizeDmaBdDimsPass());
   // Decompose oversized non-contiguous ND transfers (wrap/stride exceeding the
   // hardware BD field limits) into legal sub-transfers before BD lowering.
   dpm.addPass(X::createAIEDecomposeLargeDmaBdPass());
@@ -1357,6 +1359,7 @@ getPerDeviceDmaLoweringPipeline(mlir::MLIRContext *ctx) {
   dpm.addPass(X::createAIESubstituteShimDMAAllocationsPass());
   dpm.addPass(X::createAIEAssignRuntimeSequenceBDIDsPass());
   dpm.addPass(mlir::createCanonicalizerPass());
+  dpm.addPass(xilinx::AIE::createAIENormalizeDmaBdDimsPass());
   dpm.addPass(X::createAIEDMATasksToNPUPass());
   dpm.addPass(X::createAIEDmaToNpuPass());
   dpm.addPass(X::createAIELowerSetLockPass());
