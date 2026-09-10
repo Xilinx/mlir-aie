@@ -593,9 +593,11 @@ def _staged(dest: str):
     or sees a short prefix, compiles it clean because the missing part was
     behind an #ifdef, and emits an object with no symbol in it.
 
-    Every writer stages identical bytes, so it does not matter which one lands.
-    Renaming makes the swap atomic, and a compile already holding the old inode
-    keeps reading it until it unmaps.
+    Safe while every writer to one ``dest`` stages identical bytes: renaming
+    makes the swap atomic, and a compile already holding the old inode keeps
+    reading it until it unmaps.  Writers whose bytes differ have to be ordered
+    instead; ``compile_external_kernels`` says which of those its grouping
+    covers.
     """
     directory = os.path.dirname(dest) or "."
     fd, tmp = tempfile.mkstemp(
@@ -635,6 +637,16 @@ def compile_external_kernels(funcs, kernel_dir, target_arch):
     compile concurrently.  Their source files are not always separate --
     several ExternalFunctions can share one .cc -- so ``_staged`` makes each
     write atomic rather than ordering the compiles behind it.
+
+    The ``_original_name`` grouping below is still load-bearing, for a case
+    ``_staged`` cannot cover: two ExternalFunctions can share an
+    ``_original_name`` while carrying different ``source_string``s, because
+    ``ExternalFunction.__init__`` auto-suffixes a defaulted ``object_file_name``
+    on collision but never the original name.  Both write ``<_original_name>.cc``
+    and the bytes differ, so an atomic swap is not enough and they have to run
+    one after the other.  Not covered either way: two ``source_file``s with the
+    same basename in different directories land on one path with different bytes
+    but different ``_original_name``s, so nothing orders them.
 
     Each compile is single-threaded and peaks near 205 MB of RSS on aie2p (250 MB
     without the intrinsics PCH), so the bound is cores rather than memory on an
