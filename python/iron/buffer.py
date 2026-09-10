@@ -41,6 +41,7 @@ class Buffer(Resolvable):
         tile: Tile | None = None,
         use_write_rtp: bool = False,
         address: int | None = None,
+        mem_bank: int | None = None,
     ):
         """Declare a memory region at the top-level of the design.
 
@@ -61,12 +62,34 @@ class Buffer(Resolvable):
             address (int | None, optional): Pin the buffer to a fixed L1 address. Needed
                 for host-written RTP buffers the runtime pokes at a hardcoded address.
                 Defaults to None (compiler-assigned).
+            mem_bank (int | None, optional): Pin the buffer to a specific L1 memory bank.
+                Bank-aware allocation treats the pin as a hard constraint and reports an
+                error when the bank cannot hold the buffer. The basic-sequential scheme
+                has no notion of banks and ignores the pin. Defaults to None
+                (compiler-assigned).
 
         Raises:
-            ValueError: If neither ``type`` nor ``initial_value`` is provided.
+            ValueError: If neither ``type`` nor ``initial_value`` is provided, or if
+                ``address``/``mem_bank`` are provided but are not a non-negative int.
         """
         if type is None and initial_value is None:
             raise ValueError("Must provide either type, initial value, or both.")
+        if address is not None:
+            if not isinstance(address, int) or isinstance(address, bool):
+                raise ValueError(
+                    f"Buffer address must be an int, but got "
+                    f"{address.__class__.__name__}"
+                )
+            if address < 0:
+                raise ValueError(f"Buffer address must be >= 0, but got {address}")
+        if mem_bank is not None:
+            if not isinstance(mem_bank, int) or isinstance(mem_bank, bool):
+                raise ValueError(
+                    f"Buffer mem_bank must be an int, but got "
+                    f"{mem_bank.__class__.__name__}"
+                )
+            if mem_bank < 0:
+                raise ValueError(f"Buffer mem_bank must be >= 0, but got {mem_bank}")
         if type is None:
             assert initial_value is not None
             type = np.ndarray[initial_value.shape, np.dtype[initial_value.dtype.type]]
@@ -78,6 +101,7 @@ class Buffer(Resolvable):
             self._name = f"buf_{next(Buffer._gbuf_index)}"
         self._use_write_rtp = use_write_rtp
         self._address = address
+        self._mem_bank = mem_bank
         self._tile = tile
         # Whether the user pinned this Buffer to an explicit tile at
         # construction.  A Worker may auto-pin _tile later as a
@@ -149,6 +173,7 @@ class Buffer(Resolvable):
                 datatype=self._arr_type,
                 name=self._name,
                 address=self._address,
+                mem_bank=self._mem_bank,
                 initial_value=self._initial_value,
                 use_write_rtp=self._use_write_rtp,
             )

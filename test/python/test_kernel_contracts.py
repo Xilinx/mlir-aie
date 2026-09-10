@@ -1066,6 +1066,7 @@ def test_transformer_references_match_the_example_formulas():
         kernels.mm_activation_epilogue_ref(xf, 1), xf / (1 + np.exp(-xf))
     )
     assert np.allclose(kernels.mm_activation_epilogue_ref(xf, 2)[1], 0.0)
+    assert kernels.mm_activation_epilogue_ref(xf, 3).tolist() == [0.0, 0.0, 3.0]
     # mul_add: both phases of scale_shift.
     a = np.array([1.5, -2.0], bfloat16)
     b = np.array([2.0, 4.0], bfloat16)

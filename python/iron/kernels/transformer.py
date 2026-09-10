@@ -199,7 +199,7 @@ def rope(cols: int = 4096) -> ExternalFunction:
 
 
 def mm_activation_epilogue(tile_size: int = 1024) -> ExternalFunction:
-    """GEMM epilogue on float32 rows: identity (0), SiLU (1) or tanh-GELU (2) by ``mode``.
+    """GEMM epilogue on float32 rows: identity (0), SiLU (1), tanh-GELU (2) or ReLU (3) by ``mode``.
 
     One resident kernel whose ``mode`` is a runtime argument, so a design can
     switch activations without recompiling
@@ -225,7 +225,7 @@ def mm_activation_epilogue(tile_size: int = 1024) -> ExternalFunction:
                 0.128,
                 0.05,
                 note="programming_examples/ml/mm_activation_epilogue: atol 0.05 "
-                "for the bf16-internal SiLU / GELU, identity is exact",
+                "for the bf16-internal SiLU / GELU, identity and ReLU are exact",
             ),
             ops_per_call=8 * tile_size,
         ),
@@ -292,7 +292,8 @@ def rope_ref(x, lut):
 def mm_activation_epilogue_ref(x, mode):
     """Numpy reference for [`mm_activation_epilogue`][iron.kernels.transformer.mm_activation_epilogue].
 
-    ``mode`` 0 identity, 1 ``x * sigmoid(x)``, 2 tanh-approximation GELU.
+    ``mode`` 0 identity, 1 ``x * sigmoid(x)``, 2 tanh-approximation GELU,
+    3 ``max(x, 0)``.
     """
     x32 = x.astype(np.float32)
     mode = int(mode)
@@ -304,4 +305,6 @@ def mm_activation_epilogue_ref(x, mode):
     if mode == 2:
         inner = 0.7978845608 * (x32 + 0.044715 * x32**3)
         return (0.5 * x32 * (1.0 + np.tanh(inner))).astype(x.dtype)
-    raise ValueError(f"mm_activation_epilogue mode must be 0, 1 or 2, got {mode}")
+    if mode == 3:
+        return np.maximum(x32, 0.0).astype(x.dtype)
+    raise ValueError(f"mm_activation_epilogue mode must be 0, 1, 2 or 3, got {mode}")

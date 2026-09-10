@@ -46,7 +46,7 @@ from aie.ir import (  # pyright: ignore[reportMissingImports]
 )
 from aie.utils.compile import (
     NPU_CACHE_HOME,
-    compile_external_kernel,
+    compile_external_kernels,
     compile_mlir_module,
 )
 from aie.utils.compile.cache.utils import file_lock
@@ -389,9 +389,7 @@ class CompilableDesign:
 
                 use_chess = self._resolve_use_chess(external_kernels)
 
-                for func in external_kernels:
-                    if not func._compiled:
-                        compile_external_kernel(func, kernel_dir, target_arch)
+                compile_external_kernels(external_kernels, kernel_dir, target_arch)
 
                 compile_mlir_module(
                     mlir_module=mlir_module,
@@ -508,9 +506,7 @@ class CompilableDesign:
                 ExternalFunction._instances.clear()
 
                 use_chess = self._resolve_use_chess(external_kernels)
-                for func in external_kernels:
-                    if not func._compiled:
-                        compile_external_kernel(func, kernel_dir, target_arch)
+                compile_external_kernels(external_kernels, kernel_dir, target_arch)
 
                 compile_mlir_module(
                     mlir_module=mlir_module,

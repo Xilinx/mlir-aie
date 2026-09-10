@@ -71,8 +71,8 @@ struct AIEPlaceTilesPass
       std::optional<int> coresPerCol = std::nullopt;
       if (clCoresPerCol >= 0)
         coresPerCol = clCoresPerCol;
-      placer =
-          std::make_shared<SequentialPlacer>(coresPerCol, clMergeLogicalTiles);
+      placer = std::make_shared<SequentialPlacer>(
+          coresPerCol, clMergeLogicalTiles, clSpreadUnanchoredTiles);
       break;
     }
     case PlacerType::SAPlacer:

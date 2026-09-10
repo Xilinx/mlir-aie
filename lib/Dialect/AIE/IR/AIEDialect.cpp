@@ -2446,6 +2446,13 @@ LogicalResult CoreOp::verify() {
                  << "' appears in both 'link_files' and 'link_merge_files'; an "
                     "artifact must be either merged or linked, not both";
     }
+  // The core's own sections live in a `core_data` aie.buffer, so the buffer
+  // verifier covers their placement. Only the size belongs here.
+  if (auto measured = getMeasuredDataSize())
+    if (auto declared = getDataSize(); declared && *declared < *measured)
+      return emitOpError("data_size ")
+             << *declared << " is smaller than the " << *measured
+             << " bytes this core's linked sections occupy";
   // Checked last so it does not pre-empt the diagnostics above on an op with
   // more than one defect.
   if (uint32_t stackSize = getEffectiveStackSize(),
@@ -2484,8 +2491,50 @@ int64_t BufferOp::getAllocationSize() {
 }
 
 LogicalResult BufferOp::verify() {
-  if (UsesAreAccessible::verifyTrait(*this).failed())
+  if (UsesAreAccessible::verifyTrait(*this).failed()) {
     return failure();
+  }
+
+  // A logical tile stands for a placement the compiler has yet to choose, so
+  // neither check below has a tile to reason about.
+  auto tile = dyn_cast_if_present<TileOp>(getTile().getDefiningOp());
+  if (!tile) {
+    return success();
+  }
+
+  // A tile has one data region, so the code that looks the buffer up takes the
+  // first match.
+  if (getCoreData()) {
+    for (Operation *user : tile.getResult().getUsers()) {
+      auto other = dyn_cast<BufferOp>(user);
+      if (other && other != *this && other.getCoreData()) {
+        return emitOpError("is a second core_data buffer on tile (")
+               << tile.getCol() << ", " << tile.getRow()
+               << "); the core's data region is one extent";
+      }
+    }
+  }
+
+  // A pin the allocator cannot honor: the address is outside the bank, so one
+  // of the two is stale. A zero-sized buffer covers no byte, and one at the top
+  // of the tile holds the one-past-the-end address, which is in no bank.
+  std::optional<int32_t> address = getAddress();
+  std::optional<int32_t> memBank = getMemBank();
+  if (address && memBank && getAllocationSize() > 0) {
+    const auto &targetModel = getTargetModel(*this);
+    int64_t numBanks = targetModel.getNumBanks(tile.getCol(), tile.getRow());
+    int64_t memSize = tile.isMemTile() ? targetModel.getMemTileSize()
+                                       : targetModel.getLocalMemorySize();
+    if (numBanks > 0) {
+      int64_t bankSize = memSize / numBanks;
+      int64_t bankOfAddress = *address / bankSize;
+      if (bankOfAddress != *memBank) {
+        return emitOpError("address 0x")
+               << llvm::utohexstr(*address) << " lies in bank " << bankOfAddress
+               << ", but mem_bank requests bank " << *memBank;
+      }
+    }
+  }
   return success();
 }
 
@@ -2997,6 +3046,13 @@ llvm::SmallVector<uint32_t> xilinx::AIE::getAssignedBdIds(DmaBody program) {
 }
 
 LogicalResult DMABDOp::verify() {
+  if (getOffsetParameterAttr() || getOffsetStateTableIdxAttr()) {
+    uint64_t elemBitWidth =
+        llvm::cast<BaseMemRefType>(getBuffer().getType()).getElementTypeBitWidth();
+    if (elemBitWidth == 0 || (elemBitWidth % 8) != 0)
+      return emitOpError("offset_parameter requires a whole-byte element type");
+  }
+
   // Skip verification of the BDOp outside of mem operations.
   // BDOps may appear elsewhere and subsequent lowerings will place them in the
   // correct mem ops.
@@ -3330,6 +3386,18 @@ LogicalResult DMABDOp::verify() {
       return emitOpError("BD iteration current must be in [0, size)");
   }
 
+  return success();
+}
+
+LogicalResult DMABDPACKETOp::verify() {
+  // Both fields read back signed (AIEI32Attr), so the range is two-sided even
+  // though the hardware fields are unsigned: aie.dma_bd_packet(-1, -1) parses.
+  if (getPacketType() < 0 || getPacketType() > 7)
+    return emitOpError("Packet type field can only hold 3 bits.");
+  if (getPacketID() < 0 ||
+      getPacketID() >
+          static_cast<int32_t>(getTargetModel(getOperation()).getMaxPacketId()))
+    return emitOpError("Packet ID field can only hold 5 bits.");
   return success();
 }
 

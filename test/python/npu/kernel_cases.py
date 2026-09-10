@@ -282,6 +282,13 @@ CASES: list[Case] = [
         devices=("npu2",),
         smoke=True,
     ),
+    Case(
+        "mm_activation_epilogue",
+        calls=16,
+        scalars=(3,),
+        tag="relu",
+        devices=("npu2",),
+    ),
     # depthwise 1-D conv (aie2p): 1024 outputs per call from a padded row
     Case(
         "dwconv1d",
