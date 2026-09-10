@@ -43,6 +43,23 @@ class CollectTests(unittest.TestCase):
         self.assertEqual(blocks, [])
         self.assertEqual(code, 0)
 
+    def test_license_headers_are_not_blocks(self):
+        # The first line names its own file, so the three headers differ there
+        # and still have to be recognised by what follows.
+        def header(name):
+            return [
+                f"# {name}.py -*- Python -*-",
+                "#",
+                "# Copyright (C) 2026 Advanced Micro Devices, Inc.",
+                "# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception",
+            ]
+
+        blocks, code = slop.collect(
+            diff(*[(f"{n}.py", 1, header(n) + ["x = 1"]) for n in "abc"])
+        )
+        self.assertEqual(blocks, [])
+        self.assertEqual(code, 3)
+
 
 class TermTests(unittest.TestCase):
     def test_identifiers_are_split_into_words(self):

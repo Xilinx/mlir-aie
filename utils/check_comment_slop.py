@@ -119,6 +119,11 @@ STOPWORDS = {
 # as a repeated explanation.
 COMMENT_RE_PY = re.compile(r"^\s*#")
 COMMENT_RE_CISH = re.compile(r"^\s*(//|/\*|\*/|\*(?=\s|$))")
+
+# The license header every file carries by policy is not an explanation anyone
+# wrote twice, so it is not slop: counting it reports any commit that adds three
+# files as repeating one concept, and inflates the comment-density note besides.
+LICENSE_RE = re.compile(r"copyright|SPDX-License-Identifier", re.IGNORECASE)
 SOURCE_SUFFIXES = (
     ".c",
     ".cc",
@@ -315,7 +320,7 @@ def collect(diff):
             current = None
             if text.strip():
                 code += 1
-    return blocks, code
+    return [b for b in blocks if not LICENSE_RE.search(b.text)], code
 
 
 def find_duplicates(blocks):
