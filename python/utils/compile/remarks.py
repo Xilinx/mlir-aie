@@ -310,12 +310,14 @@ def annotation(
 
     ``file`` is made relative to ``root`` (the checkout) when it lies inside
     it; a path outside the checkout (a wheel header) is dropped, since the
-    annotation could not be placed on a file of the pull request anyway.
+    annotation could not be placed on a file of the pull request anyway. The
+    relative path is emitted with forward slashes on every runner OS, which is
+    what GitHub matches against the files of the pull request.
     """
     props = []
     if file and root:
         try:
-            file = str(Path(file).resolve().relative_to(Path(root).resolve()))
+            file = Path(file).resolve().relative_to(Path(root).resolve()).as_posix()
         except ValueError:
             file = None
     if file:

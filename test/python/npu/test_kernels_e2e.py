@@ -113,7 +113,10 @@ def test_case_names_are_unique():
 # unit.
 # ---------------------------------------------------------------------------
 
-_MHA_TILE = 1024
+# init_scale_buffer's buffer argument is mha's per-row scale buffer, which is
+# dim_m elements wide, so the probe's ObjectFifo has to be that wide too.
+_MHA_DIM = 64
+_MHA_TILE = _MHA_DIM
 
 
 @iron.jit
@@ -123,7 +126,7 @@ def _mha_compile_probe(
     buf = np.ndarray[(_MHA_TILE,), np.dtype[bfloat16]]
     # kernels.mha compiles mha.cc once and binds its symbols; init_scale_buffer
     # is the simplest of them to instantiate the translation unit with.
-    kern = kernels.mha(dim_m=64, dim_k=64, dim_n=64).init_scale_buffer
+    kern = kernels.mha(dim_m=_MHA_DIM, dim_k=_MHA_DIM, dim_n=_MHA_DIM).init_scale_buffer
     of_in = ObjectFifo(buf, name="mhi")
     of_out = ObjectFifo(buf, name="mho")
 

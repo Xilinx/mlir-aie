@@ -915,13 +915,17 @@ def upload(
     reuse them; ``run`` is the one-shot form.
     """
     inputs = host_layout(fn, inputs)
+    # dtype= is required, not inferred: iron.tensor defaults to uint32, and
+    # copying a float (or any other kind of) array into that buffer raises
+    # rather than reinterpreting it.
     ins = [
-        iron.tensor(np.ascontiguousarray(a).reshape(-1), device="npu") for a in inputs
+        iron.tensor(np.ascontiguousarray(a).reshape(-1), dtype=a.dtype, device="npu")
+        for a in inputs
     ]
     if poison:
         nbytes = out_size * np.dtype(out_dtype).itemsize
         host = np.full(nbytes, 0x55, dtype=np.uint8).view(out_dtype)
-        out = iron.tensor(host, device="npu")
+        out = iron.tensor(host, dtype=out_dtype, device="npu")
     else:
         out = iron.zeros(out_size, dtype=out_dtype, device="npu")
     return ins, out
@@ -937,10 +941,15 @@ def run(
     poison: bool = False,
     **call_kwargs,
 ) -> np.ndarray:
-    """Move ``inputs`` to the device, run ``design_`` and return the output array."""
+    """Move ``inputs`` to the device, run ``design_`` and return the output array.
+
+    The result is a copy: ``Tensor.numpy()`` is a view of the XRT buffer's
+    mapped host memory, and ``out`` is the last reference to that buffer, so
+    the mapping goes away when this returns and the view would dangle.
+    """
     ins, out = upload(inputs, out_size, out_dtype, fn=fn, poison=poison)
     design_(*ins, out, **call_kwargs)
-    return out.numpy()
+    return out.numpy().copy()
 
 
 def check(
