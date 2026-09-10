@@ -25,8 +25,6 @@ from ._common import (
     _make_extern,
 )
 
-# bf16 results of an fp32 computation, rounded once. Measured on device by
-# test/python/npu/test_kernels_e2e.py with this tolerance.
 _BF16_ROUNDTRIP = Tolerance.relative(
     0.03,
     0.05,
@@ -318,8 +316,6 @@ def transpose(
     )
 
 
-# Supported dtype combinations, as data: the registry and the contract test
-# enumerate these instead of restating them.
 _declare_dtypes(
     transpose,
     (

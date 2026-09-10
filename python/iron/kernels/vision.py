@@ -130,8 +130,6 @@ def threshold(
     )
 
 
-# Supported dtype combinations, as data: the registry and the contract test
-# enumerate these instead of restating them.
 _declare_dtypes(
     threshold, ({"dtype": np.uint8}, {"dtype": np.int16}, {"dtype": np.int32})
 )
@@ -144,8 +142,6 @@ def bitwise_or(
     return _bitwise_kernel("OR", line_width, dtype, use_chess=use_chess)
 
 
-# Supported dtype combinations, as data: the registry and the contract test
-# enumerate these instead of restating them.
 _declare_dtypes(
     bitwise_or, ({"dtype": np.uint8}, {"dtype": np.int16}, {"dtype": np.int32})
 )
@@ -158,8 +154,6 @@ def bitwise_and(
     return _bitwise_kernel("AND", line_width, dtype, use_chess=use_chess)
 
 
-# Supported dtype combinations, as data: the registry and the contract test
-# enumerate these instead of restating them.
 _declare_dtypes(
     bitwise_and, ({"dtype": np.uint8}, {"dtype": np.int16}, {"dtype": np.int32})
 )
@@ -272,8 +266,6 @@ def add_weighted(
     )
 
 
-# Supported dtype combinations, as data: the registry and the contract test
-# enumerate these instead of restating them.
 _declare_dtypes(add_weighted, ({"dtype": np.uint8}, {"dtype": np.int16}))
 
 

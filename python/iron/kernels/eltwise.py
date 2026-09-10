@@ -22,9 +22,7 @@ from ._common import (
 _ELTWISE_FIXED_TILE = 1024
 _RELU_FIXED_TILE = 1024
 
-# add/mul accumulate in fp32 and round once to bf16. Measured on device by
-# test/python/npu/test_kernels_e2e.py with this tolerance; tighten (toward
-# Tolerance.bf16_ulps(1)) once a nightly has shown the margin.
+# Tighten toward Tolerance.bf16_ulps(1) once a nightly has shown the margin.
 _BF16_ROUNDTRIP = Tolerance.relative(
     0.03,
     0.05,
@@ -157,8 +155,6 @@ def scale(
     )
 
 
-# Supported dtype combinations, as data: the registry and the contract test
-# enumerate these instead of restating them.
 _declare_dtypes(scale, ({"dtype": np.int16}, {"dtype": np.int32}))
 
 

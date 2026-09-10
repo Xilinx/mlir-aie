@@ -348,8 +348,6 @@ def mm(
     return extern
 
 
-# Supported dtype combinations, as data: the registry and the contract test
-# enumerate these instead of restating them.
 _declare_dtypes(
     mm, tuple({"input_dtype": i, "output_dtype": o} for (i, o) in _MM_MAC_DIMS["aie2p"])
 )
@@ -440,8 +438,6 @@ def mv(
     return extern
 
 
-# Supported dtype combinations, as data: the registry and the contract test
-# enumerate these instead of restating them.
 _declare_dtypes(
     mv,
     (
@@ -583,8 +579,6 @@ def mm_bfp(
     return extern
 
 
-# Supported dtype combinations, as data: the registry and the contract test
-# enumerate these instead of restating them.
 _declare_dtypes(mm_bfp, ({"mixed": False}, {"mixed": True}))
 
 

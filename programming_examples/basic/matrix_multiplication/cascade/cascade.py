@@ -80,8 +80,6 @@ def cascade(
     zero_kernel = cascade_kernel.zero
 
     r, s, t = cascade_kernel.mac_dims
-    # The (r, s, t) micro-tile transforms for A, B and C: the same derivation
-    # every mm.cc design uses, from kernels.mm_stream_dims.
     dims = kernels.mm_stream_dims(m, k, n, (r, s, t))
 
     assert M % m == 0

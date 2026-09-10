@@ -100,8 +100,6 @@ def _build_design(
     )
     zero_kernel = matmul_kernel.zero
     r, s, t = matmul_kernel.mac_dims
-    # The (r, s, t) micro-tile transforms for A, B and C, with b_col_maj /
-    # c_col_maj folded in, come with the kernel (kernels.mm_stream_dims).
     dims = matmul_kernel.stream_dims
 
     if dev_str == "npu" and n_aie_cols > 4:

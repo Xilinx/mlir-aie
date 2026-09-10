@@ -666,8 +666,6 @@ def conv2dk1(
     )
 
 
-# Supported dtype combinations, as data: the registry and the contract test
-# enumerate these instead of restating them.
 _declare_dtypes(conv2dk1, ({"act_dtype": np.int8}, {"act_dtype": np.uint8}))
 
 
@@ -728,8 +726,6 @@ def conv2dk3(
     )
 
 
-# Supported dtype combinations, as data: the registry and the contract test
-# enumerate these instead of restating them.
 _declare_dtypes(conv2dk3, ({"act_dtype": np.int8}, {"act_dtype": np.uint8}))
 
 
@@ -790,8 +786,6 @@ def conv2dk1_skip(
     )
 
 
-# Supported dtype combinations, as data: the registry and the contract test
-# enumerate these instead of restating them.
 _declare_dtypes(conv2dk1_skip, ({"act_dtype": np.int8}, {"act_dtype": np.uint8}))
 
 
@@ -933,8 +927,6 @@ def conv2dk1_skip_init(
     )
 
 
-# Supported dtype combinations, as data: the registry and the contract test
-# enumerate these instead of restating them.
 _declare_dtypes(conv2dk1_skip_init, ({"act_dtype": np.int8}, {"act_dtype": np.uint8}))
 
 
@@ -1102,8 +1094,6 @@ def bn_conv2dk1_skip(
     )
 
 
-# Supported dtype combinations, as data: the registry and the contract test
-# enumerate these instead of restating them.
 _declare_dtypes(bn_conv2dk1_skip, ({"skip_dtype": np.uint8}, {"skip_dtype": np.int8}))
 
 

@@ -158,8 +158,6 @@ def reduce_max(
     )
 
 
-# Supported dtype combinations, as data: the registry and the contract test
-# enumerate these instead of restating them.
 _declare_dtypes(reduce_max, ({"dtype": np.int32}, {"dtype": bfloat16}))
 
 
@@ -209,8 +207,6 @@ def compute_max(dtype: type = np.int32) -> ExternalFunction:
     )
 
 
-# Supported dtype combinations, as data: the registry and the contract test
-# enumerate these instead of restating them.
 _declare_dtypes(compute_max, ({"dtype": np.int32}, {"dtype": bfloat16}))
 
 

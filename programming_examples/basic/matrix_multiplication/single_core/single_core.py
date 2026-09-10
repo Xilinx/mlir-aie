@@ -104,8 +104,6 @@ def single_core(
     b_ty = np.ndarray[(k, n), np.dtype[dtype_in]]
     c_ty = np.ndarray[(m, n), np.dtype[dtype_out]]
 
-    # The (r, s, t) micro-tile transforms the kernel consumes and produces
-    # come with the kernel (kernels.mm_stream_dims); b_col_maj is folded in.
     dims = matmul_kernel.stream_dims
 
     inA = ObjectFifo(a_ty, name="inA")
