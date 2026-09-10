@@ -1469,13 +1469,13 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
         llvm::dbgs() << '\n';
       });
 
-      for (int id : matchIds)
+      for ([[maybe_unused]] int id : matchIds)
         assert(llvm::any_of(cover,
                             [&](std::pair<int, int> c) {
                               return (id & c.first) == c.second;
                             }) &&
                "subcube cover misses a match id");
-      for (int id : avoidIds)
+      for ([[maybe_unused]] int id : avoidIds)
         assert(llvm::none_of(cover,
                              [&](std::pair<int, int> c) {
                                return (id & c.first) == c.second;

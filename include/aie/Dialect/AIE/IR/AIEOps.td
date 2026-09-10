@@ -380,6 +380,14 @@ def AIE_CoreOp
           // Absent when aiecc cannot measure the core.
           OptionalAttr<
               ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>>:$measured_stack_size,
+          // Bytes to set aside for the core's own .data, .rodata and .bss.
+          // Absent (0) leaves the region to the largest remaining contiguous
+          // run after placing all buffers.
+          OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>>:$data_size,
+          // Written by aiecc from the linked ELF. Absent when aiecc cannot
+          // measure the core.
+          OptionalAttr<
+              ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>>:$measured_data_size,
           // Deprecated: attach link_with to func.func declarations instead and
           // run aie-assign-core-link-files to populate link_files.
           OptionalAttr<StrAttr>:$link_with,
@@ -1099,7 +1107,13 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
       // The BD's iteration state; see the "## BD iteration" section above.
       OptionalAttr<BDIterationAttr>:$iteration,
       // if set, the aiex.scratchpad_parameter value added to the BD's address
-      // as an offset
+      // as an offset. The value is an ELEMENT count, scaled by the buffer's
+      // element size at lowering. The firmware masks the address register
+      // with 0xFFFFFFFC, so on an element type narrower than 4 bytes a value
+      // that is not a multiple of 4 / gcd(4, element_bytes) elements is
+      // rounded DOWN to the 4-byte boundary below, silently. The static
+      // offset is rejected in the same situation; this one cannot be, so it
+      // only warns.
       OptionalAttr<FlatSymbolRefAttr>:$offset_parameter,
       // Set by --aie-lower-scratchpad-parameters from $offset_parameter: the
       // scratchpad state-table index whose value is used as the BD address
@@ -1655,16 +1669,22 @@ def AIE_BufferOp
       %buf = aie.buffer(%tile33) : memref<256xi64>
     ```
     This operation represents a buffer in tile (3, 3) of 256 elements, each a 64-bit integer.
+
+    `mem_bank` pins the buffer to one memory bank of that tile. The bank-aware
+    allocation scheme treats the pin as a hard constraint and reports an error
+    when the bank cannot hold the buffer. The basic-sequential scheme has no
+    notion of banks and ignores the pin.
+
+    `core_data` marks the extent that holds the core's own .data, .rodata and
+    .bss, which `aie-assign-buffer-addresses` creates from the core's
+    `data_size`. It names no symbol.
   }];
 
-  let arguments = (
-    ins Index:$tile,
-        OptionalAttr<StrAttr>:$sym_name,
-        OptionalAttr<AIEI32Attr>:$address,
-        OptionalAttr<ElementsAttr>:$initial_value,
-        OptionalAttr<AIEI32Attr>:$mem_bank,
-        DefaultValuedAttr<BoolAttr, "true">:$aligned
-  );
+  let arguments = (ins Index:$tile, OptionalAttr<StrAttr>:$sym_name,
+      OptionalAttr<AIEI32Attr>:$address,
+      OptionalAttr<ElementsAttr>:$initial_value,
+      OptionalAttr<AIEI32Attr>:$mem_bank, UnitAttr:$core_data,
+      DefaultValuedAttr<BoolAttr, "true">:$aligned);
 
   let results = (outs AnyMemRef:$buffer);
   let assemblyFormat = [{
