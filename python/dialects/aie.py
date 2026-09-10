@@ -1280,8 +1280,24 @@ class TileOp(TileOp):
         return tile_like_is_shim_tile(self.operation)
 
 
-def tile(col, row, *, loc=None, ip=None, allocation_scheme=None):
-    return TileOp(col=col, row=row, loc=loc, ip=ip, allocation_scheme=allocation_scheme)
+def tile(
+    col,
+    row,
+    *,
+    loc=None,
+    ip=None,
+    allocation_scheme=None,
+    packet_type=0,
+    packet_id=None,
+):
+    tile_op = TileOp(
+        col=col, row=row, loc=loc, ip=ip, allocation_scheme=allocation_scheme
+    )
+    if packet_id is not None:
+        tile_op.attributes["controller_id"] = packet_info_attr_builder(
+            (packet_type, packet_id)
+        )
+    return tile_op
 
 
 @_cext.register_operation(_Dialect, replace=True)
@@ -1309,9 +1325,17 @@ class LogicalTileOp(LogicalTileOp):
 
 
 def logical_tile(
-    tile_type, *, col=None, row=None, allocation_scheme=None, loc=None, ip=None
+    tile_type,
+    *,
+    col=None,
+    row=None,
+    allocation_scheme=None,
+    loc=None,
+    ip=None,
+    packet_type=0,
+    packet_id=None,
 ):
-    return LogicalTileOp(
+    tile_op = LogicalTileOp(
         tile_type=tile_type,
         col=col,
         row=row,
@@ -1319,6 +1343,11 @@ def logical_tile(
         loc=loc,
         ip=ip,
     )
+    if packet_id is not None:
+        tile_op.attributes["controller_id"] = packet_info_attr_builder(
+            (packet_type, packet_id)
+        )
+    return tile_op
 
 
 # BDChainOp
