@@ -99,6 +99,8 @@ class Device(Resolvable):
             allocation_scheme=tile.allocation_scheme,
             loc=loc,
             ip=ip,
+            packet_type=tile.packet_type,
+            packet_id=tile.packet_id,
         )
         self._resolved_tiles[tile_id] = op
         tile.op = op

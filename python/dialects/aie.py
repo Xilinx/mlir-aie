@@ -1325,9 +1325,17 @@ class LogicalTileOp(LogicalTileOp):
 
 
 def logical_tile(
-    tile_type, *, col=None, row=None, allocation_scheme=None, loc=None, ip=None
+    tile_type,
+    *,
+    col=None,
+    row=None,
+    allocation_scheme=None,
+    loc=None,
+    ip=None,
+    packet_type=0,
+    packet_id=None,
 ):
-    return LogicalTileOp(
+    tile_op = LogicalTileOp(
         tile_type=tile_type,
         col=col,
         row=row,
@@ -1335,6 +1343,11 @@ def logical_tile(
         loc=loc,
         ip=ip,
     )
+    if packet_id is not None:
+        tile_op.attributes["controller_id"] = packet_info_attr_builder(
+            (packet_type, packet_id)
+        )
+    return tile_op
 
 
 # BDChainOp

@@ -15,6 +15,7 @@ from aie.dialects.aie import (
     external_buffer,
     bd_dim_layout,
     end,
+    logical_tile,
     object_fifo,
     object_fifo_link,
     tile,
@@ -24,6 +25,7 @@ from aie.dialects.aie import (
     get_target_model,
     dma_bd,
 )
+from aie.dialects._aie_enum_gen import AIETileType
 from aie.ir import InsertionPoint, Block
 from aie.extras.context import mlir_mod_ctx
 from aie.extras import types as T
@@ -42,6 +44,13 @@ def tileOp():
 @construct_and_print_module
 def tileOpControlPacket():
     t = tile(col=1, row=2, packet_type=3, packet_id=4)
+
+
+# CHECK-LABEL: logicalTileOpControlPacket
+# CHECK: aie.logical_tile<CoreTile>(1, 2) {controller_id = #aie.packet_info<pkt_type = 3, pkt_id = 4>}
+@construct_and_print_module
+def logicalTileOpControlPacket():
+    t = logical_tile(AIETileType.CoreTile, col=1, row=2, packet_type=3, packet_id=4)
 
 
 # CHECK-LABEL: tileOpAllocationScheme
