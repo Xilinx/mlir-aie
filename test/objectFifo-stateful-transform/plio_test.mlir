@@ -11,9 +11,9 @@
 // CHECK-DAG:  aie.flow(%{{.*}}tile_2_2, DMA : 0, %{{.*}}tile_2_0, PLIO : 0)
 // CHECK-DAG:  aie.flow(%{{.*}}tile_2_2, DMA : 1, %{{.*}}tile_2_3, DMA : 0)
 // CHECK-DAG:  aie.flow(%{{.*}}tile_2_2, DMA : 1, %{{.*}}tile_2_0, PLIO : 1)
-// CHECK-DAG:  aie.shim_dma_allocation @of_0_shim_alloc(%shim_noc_tile_2_0, MM2S, 0) {plio = true}
-// CHECK-DAG:  aie.shim_dma_allocation @of_1_shim_alloc(%shim_noc_tile_2_0, S2MM, 0) {plio = true}
-// CHECK-DAG:  aie.shim_dma_allocation @of_2_shim_alloc(%shim_noc_tile_2_0, S2MM, 1) {plio = true}
+// CHECK-DAG:  aie.shim_dma_allocation @of_0_shim_alloc(%shim_noc_tile_2_0, MM2S, 0) {elem_type = memref<64xi16>, plio = true}
+// CHECK-DAG:  aie.shim_dma_allocation @of_1_shim_alloc(%shim_noc_tile_2_0, S2MM, 0) {elem_type = memref<64xi16>, plio = true}
+// CHECK-DAG:  aie.shim_dma_allocation @of_2_shim_alloc(%shim_noc_tile_2_0, S2MM, 1) {elem_type = memref<64xi16>, plio = true}
 
 module @plio {
     aie.device(xcve2302) {
@@ -21,8 +21,8 @@ module @plio {
         %tile22 = aie.tile(2, 2)
         %tile23 = aie.tile(2, 3)
 
-        aie.objectfifo @of_0 (%tile20, {%tile22}, 2 : i32) {plio = true} : !aie.objectfifo<memref<64xi16>>
-        aie.objectfifo @of_1 (%tile22, {%tile20}, 2 : i32) {plio = true} : !aie.objectfifo<memref<64xi16>>
-        aie.objectfifo @of_2 (%tile22, {%tile20, %tile23}, 2 : i32) {plio = true} : !aie.objectfifo<memref<64xi16>>
+        aie.objectfifo @of_0 (%tile20, {%tile22}, 2 : i32) {elem_type = memref<64xi16>, plio = true} : !aie.objectfifo<memref<64xi16>>
+        aie.objectfifo @of_1 (%tile22, {%tile20}, 2 : i32) {elem_type = memref<64xi16>, plio = true} : !aie.objectfifo<memref<64xi16>>
+        aie.objectfifo @of_2 (%tile22, {%tile20, %tile23}, 2 : i32) {elem_type = memref<64xi16>, plio = true} : !aie.objectfifo<memref<64xi16>>
     }
 }
