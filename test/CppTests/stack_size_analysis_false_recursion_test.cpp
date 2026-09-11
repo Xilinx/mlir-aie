@@ -24,9 +24,7 @@
 
 namespace {
 
-std::string quote(llvm::StringRef s) {
-  return "'" + s.str() + "'";
-}
+std::string quote(llvm::StringRef s) { return "'" + s.str() + "'"; }
 
 void writeFile(llvm::StringRef path, llvm::StringRef contents) {
   std::ofstream out(path.str());
@@ -49,7 +47,8 @@ std::string buildFalseRecursionElf() {
   llvm::SmallString<128> dir;
   if (std::error_code ec = llvm::sys::fs::createUniqueDirectory(
           "stack-size-analysis-false-recursion", dir)) {
-    throw std::runtime_error("failed to create temp directory: " + ec.message());
+    throw std::runtime_error("failed to create temp directory: " +
+                             ec.message());
   }
 
   llvm::SmallString<128> asmPath = dir;
@@ -110,7 +109,8 @@ void checkRecursionDiagnosticPrintsAddresses() {
   llvm::SmallString<128> dir;
   if (std::error_code ec =
           llvm::sys::fs::createUniqueDirectory("stack-size-analysis-cycle", dir)) {
-    throw std::runtime_error("failed to create temp directory: " + ec.message());
+    throw std::runtime_error("failed to create temp directory: " +
+                             ec.message());
   }
 
   llvm::SmallString<128> asmPath = dir;
@@ -142,8 +142,8 @@ recurse:
       " -nostdlib -no-pie -Wl,-e,_start -Wl,--emit-relocs -o " +
       quote(elfPath));
 
-  auto result =
-      xilinx::aiecc::computeStackRequirement(elfPath.str(), llvm::StringMap<int64_t>());
+  auto result = xilinx::aiecc::computeStackRequirement(
+      elfPath.str(), llvm::StringMap<int64_t>());
   if (result.bytes) {
     throw std::runtime_error("expected recursion failure");
   }
