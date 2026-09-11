@@ -951,6 +951,8 @@ static LogicalResult checkQueueDepth(AIE::DeviceOp device,
             queue.awaitToken(DmaQueueModel::ChannelKey{
                 tile.getCol(), tile.getRow(), static_cast<int>(dir),
                 static_cast<int>(chan)});
+          } else if (auto sync = dyn_cast<NpuSyncOp>(op)) {
+            awaitSync(queue, sync);
           }
           return WalkResult::advance();
         });
@@ -961,10 +963,6 @@ static LogicalResult checkQueueDepth(AIE::DeviceOp device,
 }
 
 struct AIEDmaToNpuPass : xilinx::AIEX::impl::AIEDmaToNpuBase<AIEDmaToNpuPass> {
-  using Base = xilinx::AIEX::impl::AIEDmaToNpuBase<AIEDmaToNpuPass>;
-  AIEDmaToNpuPass() = default;
-  AIEDmaToNpuPass(const xilinx::AIEX::AIEDmaToNpuOptions &options)
-      : Base(options) {}
 
   void runOnOperation() override {
 
@@ -1032,11 +1030,4 @@ struct AIEDmaToNpuPass : xilinx::AIEX::impl::AIEDmaToNpuBase<AIEDmaToNpuPass> {
 
 std::unique_ptr<OperationPass<AIE::DeviceOp>> AIEX::createAIEDmaToNpuPass() {
   return std::make_unique<AIEDmaToNpuPass>();
-}
-
-std::unique_ptr<OperationPass<AIE::DeviceOp>>
-AIEX::createAIEDmaToNpuPass(bool enforceQueueDepth) {
-  AIEDmaToNpuOptions options;
-  options.enforceQueueDepth = enforceQueueDepth;
-  return std::make_unique<AIEDmaToNpuPass>(options);
 }
