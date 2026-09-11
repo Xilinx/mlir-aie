@@ -506,14 +506,13 @@ struct AIEObjectFifoAllocatePass
     loweredFlows.clear();
     drainerIterations.clear();
 
-    // MemTile pools competing for the same home tile are served by greatest
-    // channel demand first. Spilling one restricts all of its endpoints to the
-    // channels that can reach an adjacent MemTile, so a high-fan-in pool must
-    // claim home placement before lower-demand pools. Prefer larger objects
-    // when channel demand is equal.
+    // MemTile pools with the greatest channel demand are served first. Spilling
+    // one restricts all of its endpoints to the channels that can reach an
+    // adjacent MemTile, so a high-fan-in pool must claim home placement before
+    // lower-demand pools. Prefer larger objects when channel demand is equal.
     SmallVector<ObjectFifoPoolOp> pools(device.getOps<ObjectFifoPoolOp>());
-    DenseMap<Value, SmallVector<size_t>> memTileSlots;
-    DenseMap<Value, SmallVector<ObjectFifoPoolOp>> memTilePools;
+    SmallVector<size_t> memTileSlots;
+    SmallVector<ObjectFifoPoolOp> memTilePools;
     DenseMap<Operation *, std::pair<int, int>> poolChannelDemand;
     for (auto endpoint : device.getOps<ObjectFifoDmaEndpointOp>()) {
       ObjectFifoPoolOp pool = endpoint.getPoolOp();
@@ -527,23 +526,21 @@ struct AIEObjectFifoAllocatePass
     }
     for (auto [index, pool] : llvm::enumerate(pools)) {
       if (pool.getTileLike().isMemTile()) {
-        memTileSlots[pool.getTile()].push_back(index);
-        memTilePools[pool.getTile()].push_back(pool);
+        memTileSlots.push_back(index);
+        memTilePools.push_back(pool);
       }
     }
-    for (auto &[tile, tilePools] : memTilePools) {
-      llvm::stable_sort(tilePools, [&](ObjectFifoPoolOp a, ObjectFifoPoolOp b) {
-        auto demand = [&](ObjectFifoPoolOp pool) {
-          auto [input, output] = poolChannelDemand.lookup(pool.getOperation());
-          return std::max(input, output);
-        };
-        if (demand(a) != demand(b))
-          return demand(a) > demand(b);
-        return a.getObjectSizeInBytes() > b.getObjectSizeInBytes();
-      });
-      for (auto [slot, pool] : llvm::zip(memTileSlots[tile], tilePools)) {
-        pools[slot] = pool;
-      }
+    llvm::stable_sort(memTilePools, [&](ObjectFifoPoolOp a, ObjectFifoPoolOp b) {
+      auto demand = [&](ObjectFifoPoolOp pool) {
+        auto [input, output] = poolChannelDemand.lookup(pool.getOperation());
+        return std::max(input, output);
+      };
+      if (demand(a) != demand(b))
+        return demand(a) > demand(b);
+      return a.getObjectSizeInBytes() > b.getObjectSizeInBytes();
+    });
+    for (auto [slot, pool] : llvm::zip(memTileSlots, memTilePools)) {
+      pools[slot] = pool;
     }
 
     for (auto endpoint : device.getOps<ObjectFifoCoreEndpointOp>()) {
