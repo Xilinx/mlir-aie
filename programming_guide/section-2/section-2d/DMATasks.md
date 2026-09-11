@@ -239,6 +239,22 @@ dma_free_task(in_task, out_task)
 
 #### **Conclusion**
 
+#### **The DMA Task Queue**
+
+Each DMA channel has a *task queue* holding a bounded number of outstanding transfers -- 4 on AIE2. Starting a task pushes onto that channel's queue; the transfer leaves the queue as the DMA runs it.
+
+The queue does **not** backpressure. A push that arrives when the queue is full is dropped, the transfer never runs, and anything waiting on it (a `dma_await_task`, or a downstream receive) blocks forever. Nothing reports this at the time it happens.
+
+Whether it happens depends on how fast the consumer drains, not on the program. Measured on a Strix NPU, 14 back-to-back pushes on one shim channel time out every run, while the same 14 pushes behind a faster consumer complete -- identical instructions, opposite outcomes. Eight pushes of 1KB are fine; eight of 8KB behind a slow consumer overflow.
+
+Two things follow. First, keep the number of started-but-not-awaited tasks on any one channel at or below the queue depth; a `dma_await_task` on a channel retires the task it names and everything queued ahead of it, because a channel runs its queue in order. Second, when you cannot bound it by construction, the compiler can enforce it:
+
+```
+aie-opt --aie-assign-runtime-sequence-bd-ids='enforce-queue-depth=true'
+```
+
+This inserts a poll of the channel's live queue occupancy before any push that could find it full, so the sequence waits for a free slot instead of racing. It is off by default because it costs a stall whenever it fires, and it is only needed where the DMA cannot drain ahead of the pushes. `aie-dma-to-npu` takes the same option for the `npu_dma_memcpy_nd` interface.
+
 Both the `npu_dma_memcpy_nd`/`dma_wait` interface and the `shim_dma_single_bd_task`/`dma_await_task`/`dma_free_task` interface are powerful tools for managing data transfers and synchronization with AI Engines in the Ryzen™ AI NPU. By understanding and effectively implementing applications leveraging these functions, developers can enhance the performance, efficiency, and accuracy of their high-performance computing applications.
 
 -----
