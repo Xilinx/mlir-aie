@@ -236,16 +236,25 @@ def test_compile_external_kernel_marks_compiled(npu_target_arch):
         assert func._compiled
 
 
-def test_compile_external_kernel_skip_if_already_compiled(npu_target_arch):
-    """compile_external_kernel must be a no-op when func._compiled is already True."""
+def test_compile_external_kernel_skip_is_per_kernel_dir(npu_target_arch):
+    """The skip covers the directory already built into, not the function.
+
+    Skipping on the flag alone denies a second design its own object, so the
+    same func compiled into a fresh directory must compile again.
+    """
     func = ExternalFunction(
         "add_one",
         source_string='extern "C" void add_one() {}',
     )
-    func._compiled = True
     with tempfile.TemporaryDirectory() as kernel_dir:
+        func._compiled = True
+        func._compiled_dir = kernel_dir
         compile_external_kernel(func, kernel_dir, target_arch=npu_target_arch)
         assert not os.path.exists(os.path.join(kernel_dir, "add_one.o"))
+
+    with tempfile.TemporaryDirectory() as other_dir:
+        compile_external_kernel(func, other_dir, target_arch=npu_target_arch)
+        assert os.path.exists(os.path.join(other_dir, "add_one.o"))
 
 
 def test_compile_external_kernel_skip_if_object_file_exists(npu_target_arch):
