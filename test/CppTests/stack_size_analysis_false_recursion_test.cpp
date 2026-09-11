@@ -14,6 +14,7 @@
 #include "llvm/Support/Path.h"
 
 #include <cstdlib>
+#include <cstring>
 #include <elf.h>
 #include <fstream>
 #include <iterator>
@@ -61,40 +62,59 @@ void patchElfAsAieWithNumberedDataRelocation(llvm::StringRef elfPath) {
     throw std::runtime_error("ELF is too small to patch");
   }
 
-  auto *ehdr = reinterpret_cast<Elf64_Ehdr *>(bytes.data());
-  if (ehdr->e_ident[EI_MAG0] != ELFMAG0 || ehdr->e_ident[EI_MAG1] != ELFMAG1 ||
-      ehdr->e_ident[EI_MAG2] != ELFMAG2 || ehdr->e_ident[EI_MAG3] != ELFMAG3) {
+  auto readStruct = [&](auto &out, size_t offset, llvm::StringRef what) {
+    if (!rangeFits(bytes.size(), offset, sizeof(out))) {
+      throw std::runtime_error("ELF is too small to read " + what.str());
+    }
+    std::memcpy(&out, bytes.data() + offset, sizeof(out));
+  };
+  auto writeStruct = [&](const auto &in, size_t offset, llvm::StringRef what) {
+    if (!rangeFits(bytes.size(), offset, sizeof(in))) {
+      throw std::runtime_error("ELF is too small to write " + what.str());
+    }
+    std::memcpy(bytes.data() + offset, &in, sizeof(in));
+  };
+
+  Elf64_Ehdr ehdr;
+  readStruct(ehdr, 0, "ELF header");
+  if (ehdr.e_ident[EI_MAG0] != ELFMAG0 || ehdr.e_ident[EI_MAG1] != ELFMAG1 ||
+      ehdr.e_ident[EI_MAG2] != ELFMAG2 || ehdr.e_ident[EI_MAG3] != ELFMAG3) {
     throw std::runtime_error("expected an ELF test fixture");
   }
-  if (ehdr->e_ident[EI_DATA] != ELFDATA2LSB) {
+  if (ehdr.e_ident[EI_DATA] != ELFDATA2LSB) {
     throw std::runtime_error("expected a little-endian ELF test fixture");
   }
-  if (ehdr->e_ident[EI_CLASS] != ELFCLASS64) {
+  if (ehdr.e_ident[EI_CLASS] != ELFCLASS64) {
     throw std::runtime_error("expected an ELF64 test fixture");
   }
-  if (ehdr->e_shnum == 0) {
+  if (ehdr.e_shnum == 0) {
     throw std::runtime_error("ELF has no section headers");
   }
-  if (ehdr->e_shstrndx >= ehdr->e_shnum) {
+  if (ehdr.e_shstrndx >= ehdr.e_shnum) {
     throw std::runtime_error("ELF has an invalid section-name string table");
   }
   size_t sectionTableSize =
-      static_cast<size_t>(ehdr->e_shnum) * ehdr->e_shentsize;
-  if (ehdr->e_shentsize != sizeof(Elf64_Shdr) ||
-      !rangeFits(bytes.size(), ehdr->e_shoff, sectionTableSize)) {
+      static_cast<size_t>(ehdr.e_shnum) * ehdr.e_shentsize;
+  if (ehdr.e_shentsize != sizeof(Elf64_Shdr) ||
+      !rangeFits(bytes.size(), ehdr.e_shoff, sectionTableSize)) {
     throw std::runtime_error("ELF has a truncated section table");
   }
-  ehdr->e_machine = llvm::ELF::EM_AIE;
+  auto readSectionHeader = [&](size_t index) {
+    Elf64_Shdr shdr;
+    readStruct(shdr, ehdr.e_shoff + index * ehdr.e_shentsize, "section header");
+    return shdr;
+  };
+  ehdr.e_machine = llvm::ELF::EM_AIE;
+  writeStruct(ehdr, 0, "ELF header");
 
-  auto *sections = reinterpret_cast<Elf64_Shdr *>(bytes.data() + ehdr->e_shoff);
-  const auto &shstr = sections[ehdr->e_shstrndx];
+  Elf64_Shdr shstr = readSectionHeader(ehdr.e_shstrndx);
   if (!rangeFits(bytes.size(), shstr.sh_offset, shstr.sh_size)) {
     throw std::runtime_error("ELF has a truncated section-name string table");
   }
   llvm::StringRef shstrtab(bytes.data() + shstr.sh_offset, shstr.sh_size);
   bool patchedRelocation = false;
-  for (unsigned i = 0; i < ehdr->e_shnum; ++i) {
-    const Elf64_Shdr &sec = sections[i];
+  for (unsigned i = 0; i < ehdr.e_shnum; ++i) {
+    Elf64_Shdr sec = readSectionHeader(i);
     if (sec.sh_name >= shstrtab.size()) {
       throw std::runtime_error("ELF has an invalid section name offset");
     }
@@ -107,15 +127,17 @@ void patchElfAsAieWithNumberedDataRelocation(llvm::StringRef elfPath) {
         !rangeFits(bytes.size(), sec.sh_offset, sec.sh_size)) {
       throw std::runtime_error("ELF has a malformed .rela.text section");
     }
-    auto *relocs = reinterpret_cast<Elf64_Rela *>(bytes.data() + sec.sh_offset);
     size_t count = sec.sh_size / sizeof(Elf64_Rela);
     for (size_t j = 0; j < count; ++j) {
-      if (ELF64_R_TYPE(relocs[j].r_info) != llvm::ELF::R_X86_64_64) {
+      size_t relOffset = sec.sh_offset + j * sizeof(Elf64_Rela);
+      Elf64_Rela reloc;
+      readStruct(reloc, relOffset, ".rela.text relocation");
+      if (ELF64_R_TYPE(reloc.r_info) != llvm::ELF::R_X86_64_64) {
         continue;
       }
-      relocs[j].r_info =
-          ELF64_R_INFO(ELF64_R_SYM(relocs[j].r_info),
-                       xilinx::aiecc::detail::aieData4RelocAie2p);
+      reloc.r_info = ELF64_R_INFO(ELF64_R_SYM(reloc.r_info),
+                                  xilinx::aiecc::detail::aieData4RelocAie2p);
+      writeStruct(reloc, relOffset, ".rela.text relocation");
       patchedRelocation = true;
     }
   }
