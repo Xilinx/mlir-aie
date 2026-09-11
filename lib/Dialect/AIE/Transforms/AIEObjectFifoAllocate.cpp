@@ -506,18 +506,38 @@ struct AIEObjectFifoAllocatePass
     loweredFlows.clear();
     drainerIterations.clear();
 
-    // MemTile pools are served largest-first so the big buffers claim home
-    // placement before smaller ones consume the neighbors they would spill to.
+    // MemTile pools with the greatest channel demand are served first. Spilling
+    // one restricts all of its endpoints to the channels that can reach an
+    // adjacent MemTile, so a high-fan-in pool must claim home placement before
+    // lower-demand pools. Prefer larger objects when channel demand is equal.
     SmallVector<ObjectFifoPoolOp> pools(device.getOps<ObjectFifoPoolOp>());
     SmallVector<size_t> memTileSlots;
     SmallVector<ObjectFifoPoolOp> memTilePools;
+    DenseMap<Operation *, std::pair<int, int>> poolChannelDemand;
+    for (auto endpoint : device.getOps<ObjectFifoDmaEndpointOp>()) {
+      ObjectFifoPoolOp pool = endpoint.getPoolOp();
+      if (endpoint.getTile() != pool.getTile())
+        continue;
+      auto &demand = poolChannelDemand[pool];
+      if (endpoint.getRouteDirection() == DMAChannelDir::S2MM)
+        ++demand.first;
+      else
+        ++demand.second;
+    }
     for (auto [index, pool] : llvm::enumerate(pools)) {
       if (pool.getTileLike().isMemTile()) {
         memTileSlots.push_back(index);
         memTilePools.push_back(pool);
       }
     }
-    llvm::stable_sort(memTilePools, [](ObjectFifoPoolOp a, ObjectFifoPoolOp b) {
+    llvm::stable_sort(memTilePools, [&](ObjectFifoPoolOp a,
+                                        ObjectFifoPoolOp b) {
+      auto demand = [&](ObjectFifoPoolOp pool) {
+        auto [input, output] = poolChannelDemand.lookup(pool.getOperation());
+        return std::max(input, output);
+      };
+      if (demand(a) != demand(b))
+        return demand(a) > demand(b);
       return a.getObjectSizeInBytes() > b.getObjectSizeInBytes();
     });
     for (auto [slot, pool] : llvm::zip(memTileSlots, memTilePools)) {
