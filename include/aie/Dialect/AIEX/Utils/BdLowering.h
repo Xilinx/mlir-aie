@@ -221,7 +221,8 @@ struct SsaStridePolicy {
 mlir::Value getAsValue(mlir::OpBuilder &builder, mlir::Location loc,
                        mlir::OpFoldResult ofr, mlir::Type intType);
 
-// Build the address-patch `arg_plus` (buffer BYTE offset) as an i32 Value:
+// Build the address-patch `arg_plus` (buffer BYTE offset) as an i32 Value, or
+// i64 when a constant offset exceeds 32 bits:
 // sum(elementOffsets[i] * strides[i]) * elemWidthBytes + baseByteOffset, where
 // any entry may be runtime (a fully-constant set folds to one arith.constant).
 mlir::Value buildArgPlusValue(mlir::OpBuilder &builder, mlir::Location loc,
