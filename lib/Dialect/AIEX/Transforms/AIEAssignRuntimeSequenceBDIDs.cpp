@@ -310,9 +310,10 @@ struct AIEAssignRuntimeSequenceBDIDsPass
       return;
     Operation *freeOp = idIt->second;
     tileIt->second.erase(idIt);
-    auto diag = bd->emitWarning()
-        << "reuses buffer descriptor ID " << id << " on tile ("
-        << tile.getCol() << "," << tile.getRow()
+    auto diag =
+        bd->emitWarning()
+        << "reuses buffer descriptor ID " << id << " on tile (" << tile.getCol()
+        << "," << tile.getRow()
         << ") after it was released by an aiex.dma_free_task that had no "
            "completion guarantee, so the DMA it belonged to may still be "
            "running and this reprograms it underneath. Await the earlier task, "

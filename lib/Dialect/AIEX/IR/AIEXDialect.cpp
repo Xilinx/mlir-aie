@@ -1522,7 +1522,7 @@ AIEX::BlockFloatType::getBlockFormat(StringRef blockType) {
       blockFormatsMap = {
           {"v8bfp16ebs8", {8, 8, 8, 0}},
           {"v16bfp16ebs16", {16, 8, 8, 0}},
-      };
+  };
 
   auto it = blockFormatsMap.find(blockType);
   if (it != blockFormatsMap.end()) {
