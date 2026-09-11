@@ -57,8 +57,8 @@ __attribute__((always_inline)) v16accfloat getExpBf16(v16bfloat16 x) {
 
   // Saturate to the addressable domain (see EXP_BF16_CLAMP) before the Q8
   // conversion below, which would otherwise wrap.
-  input_bf16 = aie::min(
-      input_bf16, aie::broadcast<bfloat16, 16>((bfloat16)EXP_BF16_CLAMP));
+  input_bf16 = aie::min(input_bf16,
+                        aie::broadcast<bfloat16, 16>((bfloat16)EXP_BF16_CLAMP));
   input_bf16 = aie::max(
       input_bf16, aie::broadcast<bfloat16, 16>((bfloat16)-EXP_BF16_CLAMP));
 
