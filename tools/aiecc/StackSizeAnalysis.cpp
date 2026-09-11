@@ -191,45 +191,31 @@ bool readFrameSizes(ObjectFile &obj, SectionRef sec, Graph &graph) {
   return true;
 }
 
-bool isAmbiguousZeroSizedFunctionSymbol(const Graph &graph,
-                                        const SymbolRef &sym) {
+bool isZeroSizedFunctionSymbol(const SymbolRef &sym) {
   auto type = sym.getType();
-  auto addr = sym.getAddress();
-  auto name = sym.getName();
   if (!type) {
     llvm::consumeError(type.takeError());
-    if (!addr) {
-      llvm::consumeError(addr.takeError());
-    }
-    if (!name) {
-      llvm::consumeError(name.takeError());
-    }
     return false;
   }
-  if (!addr) {
-    llvm::consumeError(addr.takeError());
-    if (!name) {
-      llvm::consumeError(name.takeError());
-    }
+  return *type == SymbolRef::ST_Function && ELFSymbolRef(sym).getSize() == 0;
+}
+
+bool isCallLikeRelocation(const RelocationRef &rel) {
+  llvm::SmallString<32> typeNameStorage;
+  rel.getTypeName(typeNameStorage);
+  llvm::StringRef typeName(typeNameStorage);
+  if (typeName.contains("CALL") || typeName.contains("JUMP") ||
+      typeName.contains("BRANCH") || typeName.contains("PLT32")) {
+    return true;
+  }
+  if (typeName == "R_X86_64_64" || typeName == "R_X86_64_32" ||
+      typeName == "R_X86_64_32S" || typeName.contains("ABS") ||
+      typeName.contains("ADDR")) {
     return false;
   }
-  if (!name) {
-    llvm::consumeError(name.takeError());
-    return false;
-  }
-  if (*type != SymbolRef::ST_Function || ELFSymbolRef(sym).getSize() != 0) {
-    return false;
-  }
-  // The linker script makes `_main_init` the runtime entry trampoline for each
-  // core and may leave it as a zero-sized FUNC symbol at the core body's
-  // address. That edge is real and must keep the stack walk connected.
-  if (*name == "_main_init") {
-    return false;
-  }
-  if (const SymbolRanges::Entry *owner = graph.funcs.startsAt(*addr)) {
-    return owner->name != *name;
-  }
-  return false;
+  // Keep unknown relocation kinds conservative: dropping them can disconnect
+  // the call graph and undercount the stack requirement.
+  return true;
 }
 
 // Records one call edge, or one half of the function-pointer heuristic, per
@@ -407,10 +393,11 @@ StackRequirementResult xilinx::aiecc::computeStackRequirement(
         continue; // no symbol to attribute this relocation to
       }
       // A fully inlined entry point can survive the link as a zero-sized FUNC
-      // symbol that aliases the next real function in .text. Attributing this
-      // relocation by address alone would invent a call edge to that other
-      // function.
-      if (isAmbiguousZeroSizedFunctionSymbol(graph, *target)) {
+      // symbol at another function's address. Only call-like relocations should
+      // close a call edge through that alias; an address constant in .text
+      // would otherwise invent a callee that the code never executes.
+      if (patchedIsText && isZeroSizedFunctionSymbol(*target) &&
+          !isCallLikeRelocation(rel)) {
         continue;
       }
       auto targetAddr = target->getAddress();
