@@ -630,6 +630,19 @@ def _copy_source(dest: str, src: str) -> None:
         shutil.copy2(src, tmp)
 
 
+def _compiled_into(func, kernel_dir) -> bool:
+    """Report whether ``func``'s object was already built into this ``kernel_dir``.
+
+    One ExternalFunction can be compiled by several designs, each into its own
+    directory, so ``_compiled`` on its own would deny every design after the
+    first an object.
+    """
+    compiled_dir = getattr(func, "_compiled_dir", None)
+    if not getattr(func, "_compiled", False) or compiled_dir is None:
+        return False
+    return os.path.abspath(compiled_dir) == os.path.abspath(kernel_dir)
+
+
 def compile_external_kernels(funcs, kernel_dir, target_arch, include_dirs=None):
     """Compile every ExternalFunction in ``funcs`` into ``kernel_dir``.
 
@@ -652,7 +665,7 @@ def compile_external_kernels(funcs, kernel_dir, target_arch, include_dirs=None):
     without the intrinsics PCH), so the bound is cores rather than memory on an
     ordinary box.  Set AIE_KERNEL_COMPILE_JOBS to override.
     """
-    pending = [f for f in funcs if not f._compiled]
+    pending = [f for f in funcs if not _compiled_into(f, kernel_dir)]
     if not pending:
         return
 
@@ -707,8 +720,7 @@ def compile_external_kernel(func, kernel_dir, target_arch, include_dirs=None):
         include_dirs: Design-wide include directories appended after the
             ExternalFunction's own include directories.
     """
-    # Skip if already compiled in this session.
-    if func._compiled:
+    if _compiled_into(func, kernel_dir):
         return
 
     # inline + symbol_prefix is unsupported: the MLIR func.call uses the
@@ -799,6 +811,7 @@ def compile_external_kernel(func, kernel_dir, target_arch, include_dirs=None):
         _rename_symbol_in_object(output_file, original, prefixed)
 
     func._compiled = True
+    func._compiled_dir = os.path.abspath(kernel_dir)
 
 
 def _cleanup_failed_compilation(cache_dir):

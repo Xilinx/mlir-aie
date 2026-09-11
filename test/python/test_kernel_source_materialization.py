@@ -152,6 +152,28 @@ def test_source_string_design_include_dirs_follow_kernel_dirs(tmp_path, stub_com
     assert func._include_dirs == ["kernel/include"]
 
 
+def test_reused_kernel_compiles_into_each_design_directory(stub_compiler, tmp_path):
+    """One ExternalFunction compiled by two designs must land in both directories."""
+    src = tmp_path / "k.cc"
+    src.write_text(SOURCE)
+    func = _stub_func("k", src)
+    dir_a = tmp_path / "design_a"
+    dir_a.mkdir()
+    dir_b = tmp_path / "design_b"
+    dir_b.mkdir()
+
+    compile_external_kernels(
+        [func], str(dir_a), "aie2p", include_dirs=[tmp_path / "inc_a"]
+    )
+    compile_external_kernels(
+        [func], str(dir_b), "aie2p", include_dirs=[tmp_path / "inc_b"]
+    )
+
+    assert (dir_a / "k.o").exists()
+    assert (dir_b / "k.o").exists()
+    assert stub_compiler[1]["include_dirs"][-1] == tmp_path / "inc_b"
+
+
 def test_materialized_source_keeps_umask_permissions(tmp_path):
     """Staging through mkstemp must not narrow the source to 0600."""
     written = tmp_path / "from_string.cc"
