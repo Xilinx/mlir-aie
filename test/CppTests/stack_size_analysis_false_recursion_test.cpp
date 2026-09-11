@@ -107,7 +107,8 @@ void patchElfAsAieWithNumberedDataRelocation(llvm::StringRef elfPath) {
         continue;
       }
       relocs[j].r_info =
-          ELF64_R_INFO(ELF64_R_SYM(relocs[j].r_info), 62 /* aie2p FK_Data_4 */);
+          ELF64_R_INFO(ELF64_R_SYM(relocs[j].r_info),
+                       xilinx::aiecc::detail::aieData4RelocAie2p);
       patchedRelocation = true;
     }
   }

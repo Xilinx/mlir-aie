@@ -201,11 +201,6 @@ bool isZeroSizedFunctionSymbol(const SymbolRef &sym) {
   return *type == SymbolRef::ST_Function && ELFSymbolRef(sym).getSize() == 0;
 }
 
-constexpr uint64_t aieData4RelocAie2 = 50;
-constexpr uint64_t aieData4RelocAie2p = 62;
-constexpr uint64_t aieData4RelocAie1 = 72;
-constexpr uint64_t aieData4RelocAie2ps = 135;
-
 bool isAieDataWordRelocation(const ObjectFile &obj, const RelocationRef &rel) {
   if (const auto *elf = llvm::dyn_cast<ELFObjectFileBase>(&obj);
       !elf || elf->getEMachine() != llvm::ELF::EM_AIE) {
@@ -215,10 +210,10 @@ bool isAieDataWordRelocation(const ObjectFile &obj, const RelocationRef &rel) {
   // per-architecture FK_Data_4 number to a plain 32-bit address literal. That
   // literal is not a call, even when it sits in `.text`.
   switch (rel.getType()) {
-  case aieData4RelocAie2:
-  case aieData4RelocAie2p:
-  case aieData4RelocAie1:
-  case aieData4RelocAie2ps:
+  case detail::aieData4RelocAie2:
+  case detail::aieData4RelocAie2p:
+  case detail::aieData4RelocAie1:
+  case detail::aieData4RelocAie2ps:
     return true;
   default:
     return false;

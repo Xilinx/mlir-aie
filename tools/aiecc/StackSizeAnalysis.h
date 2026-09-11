@@ -30,6 +30,13 @@
 
 namespace xilinx::aiecc {
 
+namespace detail {
+constexpr uint64_t aieData4RelocAie2 = 50;
+constexpr uint64_t aieData4RelocAie2p = 62;
+constexpr uint64_t aieData4RelocAie1 = 72;
+constexpr uint64_t aieData4RelocAie2ps = 135;
+} // namespace detail
+
 // Cycle: the requirement is unbounded, so the design must declare a
 // stack_size_override. Unmeasurable: the ELF is unreadable, or its
 // `.stack_sizes` data is malformed. The driver warns for this case.
