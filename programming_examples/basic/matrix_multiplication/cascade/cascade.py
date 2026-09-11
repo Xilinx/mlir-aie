@@ -13,6 +13,7 @@ writes the final C tile to L2.
 import argparse
 
 import aie.iron as iron
+import aie.iron.kernels as kernels
 import numpy as np
 from aie.helpers.taplib import TensorTiler2D
 from aie.iron import (
@@ -27,7 +28,6 @@ from aie.iron import (
     StreamDims,
     TaskGroup,
     Worker,
-    kernels,
     str_to_dtype,
 )
 from aie.iron.controlflow import range_
@@ -80,6 +80,7 @@ def cascade(
     zero_kernel = cascade_kernel.zero
 
     r, s, t = cascade_kernel.mac_dims
+    dims = kernels.mm_stream_dims(m, k, n, (r, s, t))
 
     assert M % m == 0
     assert K % (k * n_aie_rows) == 0
@@ -110,7 +111,7 @@ def cascade(
     for col in range(n_aie_cols):
         start_row = col * n_A_tiles_per_shim
         of_offsets = [m * k * j for j in range(n_A_tiles_per_shim)]
-        a_dims: StreamDims = [(m // r, r * k), (k // s, s), (r, k), (s, 1)]
+        a_dims: StreamDims = dims["A"]
         # Each row's L2→L1 fifo is broadcast to all n_aie_cols core_tiles in
         # that row.  split() returns one handle per output, but we want one
         # logical broadcast fifo per row.  Using forward() with a list of
@@ -139,7 +140,7 @@ def cascade(
     B_l2l1_fifos: list[list[ObjectFifo]] = [[] for _ in range(n_aie_rows)]
     for col in range(n_aie_cols):
         of_offsets = [k * n * row for row in range(n_aie_rows)]
-        b_dims: StreamDims = [(k // s, s * n), (n // t, t), (s, n), (t, 1)]
+        b_dims: StreamDims = dims["B"]
         fifos = (
             B_l3l2_fifos[col]
             .cons()
@@ -165,7 +166,7 @@ def cascade(
             obj_type=C_l2_ty,
             name=f"C_L2L3_{col}",
             depth=fifo_depth,
-            dims_to_stream=[(m // r, r * n), (r, t), (n // t, r * t), (t, 1)],
+            dims_to_stream=dims["C"],
             tile=Tile(col, 1),
         )
         C_l1l2_fifos.append(c_l1l2)

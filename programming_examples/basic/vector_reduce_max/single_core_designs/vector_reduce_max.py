@@ -23,8 +23,9 @@ import argparse
 import sys
 
 import aie.iron as iron
+import aie.iron.kernels as kernels
 import numpy as np
-from aie.iron import CompileTime, In, Out, kernels, str_to_dtype
+from aie.iron import CompileTime, In, Out, str_to_dtype
 from aie.iron.algorithms import reduce
 from aie.utils.hostruntime.argparse import add_compile_args, add_trace_arg
 from aie.utils.hostruntime.cli import run_design_cli

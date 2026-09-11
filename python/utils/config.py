@@ -101,6 +101,59 @@ def objcopy_path():
     )
 
 
+def nm_path():
+    """Return the llvm-nm used to list the symbols a compiled object defines.
+
+    Same sourcing rule as :func:`objcopy_path`, plus the Peano install: AIE
+    objects use the AIEngine ELF e_machine, which GNU binutils nm cannot
+    parse, and the wheel bundles llvm-objcopy but not llvm-nm, so a wheel
+    install finds it in the Peano that compiled the object.
+    """
+    bundled_nm = os.path.join(root_path(), "bin", _executable_name("llvm-nm"))
+    if os.path.isfile(bundled_nm):
+        return bundled_nm
+
+    try:
+        peano_nm = os.path.join(peano_install_dir(), "bin", _executable_name("llvm-nm"))
+    except RuntimeError:
+        peano_nm = None
+    if peano_nm and os.path.isfile(peano_nm):
+        return peano_nm
+
+    path_nm = shutil.which(_executable_name("llvm-nm"))
+    if path_nm:
+        return path_nm
+
+    raise RuntimeError(
+        "Could not find llvm-nm. Expected it under the MLIR-AIE bin directory, "
+        "the Peano install or on PATH. GNU binutils nm cannot process AIE "
+        "objects, so an LLVM nm is required."
+    )
+
+
+def aie_kernels_dir():
+    """Return the ``aie_kernels/`` directory the kernel factories compile from.
+
+    The installed tree's copy (``<root>/include/aie_kernels``) unless
+    ``MLIR_AIE_KERNEL_SOURCES`` names a checkout, in which case that
+    checkout's ``aie_kernels/`` is used. The override lets a checked-out
+    kernel source be compiled against an installed wheel, which is how the
+    static kernel checks run on a pull request.
+    """
+    override = os.environ.get("MLIR_AIE_KERNEL_SOURCES")
+    if override:
+        return os.path.join(override, "aie_kernels")
+    return os.path.join(cxx_header_path(), "aie_kernels")
+
+
+def aie_runtime_lib_dir():
+    """Return ``aie_runtime_lib/`` (the LUT sources), honouring ``MLIR_AIE_KERNEL_SOURCES``."""
+    override = os.environ.get("MLIR_AIE_KERNEL_SOURCES")
+    if override:
+        return os.path.join(override, "aie_runtime_lib")
+    return os.path.join(root_path(), "aie_runtime_lib")
+
+
 def cxx_header_path():
     """Return the path to the MLIR-AIE C++ headers."""
     include_dir = os.path.join(root_path(), "include")

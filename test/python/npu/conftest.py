@@ -32,8 +32,43 @@ def _running_on_hrx() -> bool:
     return getattr(aie_utils.DEFAULT_TENSOR_CLASS, "__name__", "") == "HRXTensor"
 
 
+def pytest_addoption(parser):
+    parser.addoption(
+        "--seeds",
+        type=int,
+        default=1,
+        help="random seeds per case in the extensive kernel sweep",
+    )
+
+
+def _device_generation() -> str | None:
+    """``"npu1"`` / ``"npu2"`` for the device the tests will run on, or None."""
+    from aie.utils import get_current_device
+    from aie.utils.compile.utils import resolve_target_arch
+
+    try:
+        arch = resolve_target_arch(get_current_device())
+    except Exception:  # noqa: BLE001 - no device: nothing to skip on
+        return None
+    return "npu2" if arch == "aie2p" else "npu1"
+
+
 def pytest_collection_modifyitems(config, items):
-    """Skip HRX-unsupported tests when running under the HRX backend."""
+    """Skip HRX-unsupported tests under HRX, and device-restricted tests elsewhere.
+
+    ``@pytest.mark.supported_devices("npu2")`` names the generations a
+    test's kernels exist for (IRON's marker of the same name); the test is
+    skipped on any other device.
+    """
+    generation = _device_generation()
+    for item in items:
+        marker = item.get_closest_marker("supported_devices")
+        if marker and generation and generation not in marker.args:
+            item.add_marker(
+                pytest.mark.skip(
+                    reason=f"kernel exists for {marker.args}, not {generation}"
+                )
+            )
     if not _running_on_hrx():
         return
     for item in items:

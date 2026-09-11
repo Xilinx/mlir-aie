@@ -12,8 +12,9 @@ single uint16 output fifo via MemTile.
 Input:  (1,1,1280) uint16  Output: (1,1,1280) uint16 (4 tiles, joined)
 """
 
+import aie.iron.kernels as kernels
 import numpy as np
-from aie.iron import ObjectFifo, Worker, kernels
+from aie.iron import ObjectFifo, Worker
 from aie.iron.controlflow import range_
 from aie.iron.dataflow.endpoint import ObjectFifoEndpoint
 from aie.iron.device import AnyMemTile, Tile

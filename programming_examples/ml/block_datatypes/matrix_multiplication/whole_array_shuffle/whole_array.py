@@ -10,16 +10,15 @@ the matmul; B is consumed in its native bfp layout. Strix-only.
 """
 
 import argparse
-from pathlib import Path
 
 import aie.iron as iron
+import aie.iron.kernels as kernels
 import numpy as np
 from aie.dialects.aiex import v8bfp16ebs8
 from aie.helpers.taplib import TensorTiler2D
 from aie.iron import (
     Buffer,
     CompileTime,
-    ExternalFunction,
     In,
     ObjectFifo,
     Out,
@@ -34,10 +33,6 @@ from aie.utils.hostruntime.argparse import (
     device_from_args,
 )
 from aie.utils.hostruntime.cli import run_design_cli
-
-_KERNEL_SRC = (
-    Path(__file__).resolve().parents[5] / "aie_kernels" / "aie2p" / "mm_bfp.cc"
-)
 
 
 @iron.jit(aiecc_flags=["--dynamic-objFifos"])
@@ -70,32 +65,15 @@ def whole_array_shuffle(
     B_l1_ty = np.ndarray[(k, n // 8), np.dtype[v8bfp16ebs8]]
     C_l1_ty = np.ndarray[(m, n // 8), np.dtype[v8bfp16ebs8]]
 
-    kernel_flags = [f"-DDIM_M={m}", f"-DDIM_K={k}", f"-DDIM_N={n}"]
-
-    zero_kernel = ExternalFunction(
-        "zero_kernel",
-        source_file=str(_KERNEL_SRC),
-        arg_types=[C_l1_ty],
-        compile_flags=kernel_flags + ["-DZERO_ONLY"],
+    matmul_kernel = kernels.mm_bfp(dim_m=m, dim_k=k, dim_n=n)
+    zero_kernel = matmul_kernel.zero
+    # A tiles are shuffled on the core into a flat A-shaped Buffer that feeds
+    # the matmul; the library kernels declare flat tiles, and the ObjectFifo
+    # elements collapse onto them.
+    shuffle_kernel = kernels.mm_bfp_shuffle(
+        dim_m=m, dim_k=k, dim_n=n, out_shape=(m * k // 8,)
     )
-    matmul_kernel = ExternalFunction(
-        "matmul_vectorized_bfp16",
-        source_file=str(_KERNEL_SRC),
-        arg_types=[A_l1_ty, B_l1_ty, C_l1_ty],
-        compile_flags=kernel_flags + ["-DMATMUL_ONLY"],
-    )
-    shuffle_kernel = ExternalFunction(
-        "scalar_shuffle",
-        source_file=str(_KERNEL_SRC),
-        arg_types=[
-            A_l1_ty,
-            A_l1_ty,
-            np.dtype(np.int16),
-            np.dtype(np.int16),
-            np.dtype(np.int16),
-        ],
-        compile_flags=kernel_flags + ["-DSHUFFLE_ONLY"],
-    )
+    A_core_ty = np.ndarray[(m * k // 8,), np.dtype[v8bfp16ebs8]]
 
     A_l3l2_fifos: list[ObjectFifo] = []
     A_l2l1_fifos: list[ObjectFifo] = []
@@ -151,7 +129,7 @@ def whole_array_shuffle(
             out_c.release(1)
 
     def _make_worker(row, col):
-        buffer_a = Buffer(A_l1_ty)
+        buffer_a = Buffer(A_core_ty)
         return Worker(
             core_fn,
             [

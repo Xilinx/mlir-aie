@@ -317,12 +317,12 @@ void conv2dk1_skip_init_i8_vector(
             kernels += 64; // wts ic0..7(oc0..7)
 
             for (int x8 = 0; x8 < NUM_ACC; x8++)
-            // chess_prepare_for_pipelining //chess_loop_range(7, )
-            // e.g. 28/4 = 7
-            // 13 cycles delay for vload.
-            // 7 gives us 3 cycle inner loop.
-            // 13 gave 1 cycle inner loop before partial load, not it only gets
-            // 2 cycles
+            // All four NUM_ACC loops carried the same commented-out Chess
+            // pragma (chess_loop_range(7, )) and its tuning notes: a range of
+            // 7 gave a 3-cycle inner loop, 13 gave 1 cycle before partial
+            // loads and 2 after, against a vload costing about 13. Peano, the
+            // toolchain this kernel builds with, ignores the pragma, so the
+            // measurements are what is kept -- once, here.
             {
               aie::vector<uint8, 32> in_a =
                   aie::load_v<32>(input0 + input_offset1);
@@ -341,14 +341,7 @@ void conv2dk1_skip_init_i8_vector(
             aie::vector<int8, 64> in_b = aie::load_v<64>(kernels);
             kernels += 64; // wts ic0..7(oc0..7)
 
-            for (int x8 = 0; x8 < NUM_ACC; x8++)
-            // chess_prepare_for_pipelining //chess_loop_range(7, )
-            // e.g. 28/4 = 7
-            // 13 cycles delay for vload.
-            // 7 gives us 3 cycle inner loop.
-            // 13 gave 1 cycle inner loop before partial load, not it only gets
-            // 2 cycles
-            {
+            for (int x8 = 0; x8 < NUM_ACC; x8++) {
               aie::vector<uint8, 32> in_a =
                   aie::load_v<32>(input1 + input_offset2);
               input_offset2 += 32; // act oc0..3(ic0..7)
@@ -412,7 +405,7 @@ void conv2dk1_skip_init_i8_vector(
             (input_channels / 8) * 64; // reset kernel back to beginning of ic/8
         kernels_skip -= (input_channels_skip / 8) *
                         64; // reset kernel back to beginning of ic/8
-      }                     // for(int x=0; x<iw_32; x++) {
+      } // for(int x=0; x<iw_32; x++) {
       // input_offset -= (iw_32) * 256; // 8*32, reset beginning of input ptr
       input_offset1 = 0;                    // reset beginning of input ptr
       input_offset2 = 0;                    // reset beginning of input ptr
@@ -422,129 +415,20 @@ void conv2dk1_skip_init_i8_vector(
           (input_channels_skip / 8) * 64; // move to next oc/8 weights
       out_ptr += (iw_32_rem *
                   32); // move to next oc/8 (skip remainder section if present)
-    }                  // for(int oc=0; oc<(output_channels/8); oc++) {
+    } // for(int oc=0; oc<(output_channels/8); oc++) {
 
     out_ptr -= output_channels *
                iw; // output_channels/8*iw_32*8*32 = 256/8*(iw/4/8)*8*32
-
-    // for(int oc=0; oc<(output_channels/8); oc++) {
-    //     for(int x=0; x<iw_32; x++) {
-    //         for(int x8=0; x8<NUM_ACC; x8++) {
-    //             // aie::vector<uint8,32> skip1 = aie::load_v<32>(skip_ptr);
-    //             skip_ptr += 32; aie::vector<int8,32> skip1 =
-    //             aie::load_v<32>(skip_ptr); skip_ptr += 32;
-    //             // aie::vector<uint8,32> tmp   = aie::load_v<32>(out_ptr);
-    //             aie::vector<int8,32> tmp   = aie::load_v<32>(i_out_ptr);
-    //             i_out_ptr += 32; aie::accum<acc32,32> accj;
-    //             accj.from_vector(skip1,0);
-    //             accj = aie::mac(accj, tmp, (uint8_t)1);
-    //             aie::vector<uint8,32> o3 =
-    //             accj.to_vector<uint8>(skip_scaleT); aie::store_v(out_ptr,
-    //             o3); out_ptr += 32;
-    //         }
-    //     }
-    //     out_ptr += (iw_32_rem*32);
-    //     skip_ptr += (iw_32_rem*32);
-    // }
 
     out_ptr -= (output_channels - 1) * iw + (iw_32_rem * 32);
     skip_ptr -= (output_channels - 1) * iw + (iw_32_rem * 32);
 
   } // if(iw_32 > 0) {
 
-  // **TODO** Move out_ptr and skip_ptr back to first oc/8 rem location
-
-  // if(iw_32_rem > 0) {
-
-  // const int ocs = output_channels;
-  // const int ics = input_channels;
-
-  // input_offset1 = 0; // TODO need to offset this to ic_32_rem position
-  // input_offset2 = 0; // TODO need to offset this to ic_32_rem position
-
-  // for(int oc=0; oc<(ocs/8); oc++) {
-  //     for(int ic=0; ic<(ics/16); ic++) {
-  //         // For ic = oc = 8, we can load all the weights in 1x 512b vec reg
-  //         (2x 256b loads)
-  //         // For ic > 8, we would load the next 64 weights that are
-  //         ic8..15(oc0..7)
-  //         // For oc > 8, we would load the next 64 weights after all the ic
-  //         weights {OC}{IC}{IC8}{OC8} aie::vector<int8, 64> in_b =
-  //         aie::load_v<64>(kernels); kernels+=64; // wts ic0..7(oc0..7)
-
-  //         for(int x=0; x<iw_32_rem; x++)
-  //             // chess_prepare_for_pipelining //chess_loop_range(7, )
-  //             // e.g. 28/4 = 7
-  //             // 13 cycles delay for vload.
-  //             // 7 gives us 3 cycle inner loop.
-  //             // 13 gave 1 cycle inner loop before partial load, not it only
-  //             gets 2 cycles
-  //         {
-  //             aie::vector<uint8, 32> in_a      =
-  //             aie::load_v<32>(input0+input_offset1); input_offset1 += 32; //
-  //             act oc0..3(ic0..7) acc_tmp[x].mac(in_a, in_b);
-  //         }
-  //         input_offset1 += (iw*8)-(iw_32_rem*32); // Move to next ic/8
-  //         position, TODO -(iw_32_rem*8)??
-  //     }
-  //     for(int ic=0; ic<(ics/16); ic++) {
-  //         // For ic = oc = 8, we can load all the weights in 1x 512b vec reg
-  //         (2x 256b loads)
-  //         // For ic > 8, we would load the next 64 weights that are
-  //         ic8..15(oc0..7)
-  //         // For oc > 8, we would load the next 64 weights after all the ic
-  //         weights {OC}{IC}{IC8}{OC8} aie::vector<int8, 64> in_b =
-  //         aie::load_v<64>(kernels); kernels+=64; // wts ic0..7(oc0..7)
-
-  //         for(int x=0; x<iw_32_rem; x++)
-  //             // chess_prepare_for_pipelining //chess_loop_range(7, )
-  //             // e.g. 28/4 = 7
-  //             // 13 cycles delay for vload.
-  //             // 7 gives us 3 cycle inner loop.
-  //             // 13 gave 1 cycle inner loop before partial load, not it only
-  //             gets 2 cycles
-  //         {
-  //             aie::vector<uint8, 32> in_a      =
-  //             aie::load_v<32>(input1+input_offset2); input_offset2 += 32; //
-  //             act oc0..3(ic0..7) acc_tmp[x].mac(in_a, in_b);
-  //         }
-  //         input_offset2 += (iw*8)-(iw_32_rem*32); // Move to next ic/8
-  //         position
-  //     }
-  //     // input ptr just moves to next section
-  //     for(int xx=0; xx<iw_32_rem; xx++) {
-  //         // aie::vector<uint8,32> o1 = acc_tmp[xx].to_vector<uint8>(scaleT);
-  //         aie::vector<int8,32> o1 = acc_tmp[xx].to_vector<int8>(scaleT);
-  //         // aie::store_v(out_ptr, o1); out_ptr += 32;
-  //         aie::store_v(i_out_ptr, o1); i_out_ptr += 32;
-  //         acc_tmp[xx] = aie::zeros<acc32,32>();
-  //     }
-  //     // input   -= ((ics-1)/8)*(iw*8)+(iw_32_rem*32); // reset to beginning
-  //     of input ptr for remainder input_offset1   -= 448; // reset to
-  //     beginning of input ptr for remainder input_offset2   -= 448; // reset
-  //     to beginning of input ptr for remainder
-  //     // kernel ptr already at next oc/8
-  //     i_out_ptr += (iw*8)-(iw_32_rem*32);           // move to next oc/8
-  //     (skip remainder section if present)
-  // }
-
-  // i_out_ptr -= output_channels*iw;
-
-  // for(int oc=0; oc<(output_channels/8); oc++) {
-  //     for(int x8=0; x8<NUM_ACC; x8++) {
-  //         aie::vector<int8,32> skip1 = aie::load_v<32>(skip_ptr); skip_ptr +=
-  //         32; aie::vector<int8,32> tmp   = aie::load_v<32>(i_out_ptr);
-  //         aie::accum<acc32,32> accj;
-  //         accj.from_vector(skip1,0);
-  //         accj = aie::mac(accj, tmp, (uint8_t)1);
-  //         aie::vector<uint8,32> o3 = accj.to_vector<uint8>(skip_scaleT);
-  //         aie::store_v(out_ptr, o3); out_ptr += 32;
-  //     }
-  //     out_ptr += (iw*8)-(iw_32_rem*32);
-  //     skip_ptr += (iw*8)-(iw_32_rem*32);
-  // }
-
-  // } // if(iw_32_rem > 0)
+  // Only whole 32-wide blocks are computed. The iw_32_rem tail was never
+  // implemented, so an input_width that is not a multiple of 32 leaves its
+  // last (input_width % 32) columns unwritten rather than raising. The
+  // factory rejects such a width; see kernels.conv2dk1_skip_init.
 
   event1();
 }
@@ -617,14 +501,7 @@ void conv2dk1_skip_init_ui8_vector(
             aie::vector<int8, 64> in_b = aie::load_v<64>(kernels);
             kernels += 64; // wts ic0..7(oc0..7)
 
-            for (int x8 = 0; x8 < NUM_ACC; x8++)
-            // chess_prepare_for_pipelining //chess_loop_range(7, )
-            // e.g. 28/4 = 7
-            // 13 cycles delay for vload.
-            // 7 gives us 3 cycle inner loop.
-            // 13 gave 1 cycle inner loop before partial load, not it only gets
-            // 2 cycles
-            {
+            for (int x8 = 0; x8 < NUM_ACC; x8++) {
               aie::vector<uint8, 32> in_a =
                   aie::load_v<32>(input0 + input_offset1);
               input_offset1 += 32; // act oc0..3(ic0..7)
@@ -642,14 +519,7 @@ void conv2dk1_skip_init_ui8_vector(
             aie::vector<int8, 64> in_b = aie::load_v<64>(kernels);
             kernels += 64; // wts ic0..7(oc0..7)
 
-            for (int x8 = 0; x8 < NUM_ACC; x8++)
-            // chess_prepare_for_pipelining //chess_loop_range(7, )
-            // e.g. 28/4 = 7
-            // 13 cycles delay for vload.
-            // 7 gives us 3 cycle inner loop.
-            // 13 gave 1 cycle inner loop before partial load, not it only gets
-            // 2 cycles
-            {
+            for (int x8 = 0; x8 < NUM_ACC; x8++) {
               aie::vector<uint8, 32> in_a =
                   aie::load_v<32>(input1 + input_offset2);
               input_offset2 += 32; // act oc0..3(ic0..7)
@@ -713,7 +583,7 @@ void conv2dk1_skip_init_ui8_vector(
             (input_channels / 8) * 64; // reset kernel back to beginning of ic/8
         kernels_skip -= (input_channels_skip / 8) *
                         64; // reset kernel back to beginning of ic/8
-      }                     // for(int x=0; x<iw_32; x++) {
+      } // for(int x=0; x<iw_32; x++) {
       // input_offset -= (iw_32) * 256; // 8*32, reset beginning of input ptr
       input_offset1 = 0;                    // reset beginning of input ptr
       input_offset2 = 0;                    // reset beginning of input ptr
@@ -723,129 +593,20 @@ void conv2dk1_skip_init_ui8_vector(
           (input_channels_skip / 8) * 64; // move to next oc/8 weights
       out_ptr += (iw_32_rem *
                   32); // move to next oc/8 (skip remainder section if present)
-    }                  // for(int oc=0; oc<(output_channels/8); oc++) {
+    } // for(int oc=0; oc<(output_channels/8); oc++) {
 
     out_ptr -= output_channels *
                iw; // output_channels/8*iw_32*8*32 = 256/8*(iw/4/8)*8*32
-
-    // for(int oc=0; oc<(output_channels/8); oc++) {
-    //     for(int x=0; x<iw_32; x++) {
-    //         for(int x8=0; x8<NUM_ACC; x8++) {
-    //             // aie::vector<uint8,32> skip1 = aie::load_v<32>(skip_ptr);
-    //             skip_ptr += 32; aie::vector<int8,32> skip1 =
-    //             aie::load_v<32>(skip_ptr); skip_ptr += 32;
-    //             // aie::vector<uint8,32> tmp   = aie::load_v<32>(out_ptr);
-    //             aie::vector<int8,32> tmp   = aie::load_v<32>(i_out_ptr);
-    //             i_out_ptr += 32; aie::accum<acc32,32> accj;
-    //             accj.from_vector(skip1,0);
-    //             accj = aie::mac(accj, tmp, (uint8_t)1);
-    //             aie::vector<uint8,32> o3 =
-    //             accj.to_vector<uint8>(skip_scaleT); aie::store_v(out_ptr,
-    //             o3); out_ptr += 32;
-    //         }
-    //     }
-    //     out_ptr += (iw_32_rem*32);
-    //     skip_ptr += (iw_32_rem*32);
-    // }
 
     out_ptr -= (output_channels - 1) * iw + (iw_32_rem * 32);
     skip_ptr -= (output_channels - 1) * iw + (iw_32_rem * 32);
 
   } // if(iw_32 > 0) {
 
-  // **TODO** Move out_ptr and skip_ptr back to first oc/8 rem location
-
-  // if(iw_32_rem > 0) {
-
-  // const int ocs = output_channels;
-  // const int ics = input_channels;
-
-  // input_offset1 = 0; // TODO need to offset this to ic_32_rem position
-  // input_offset2 = 0; // TODO need to offset this to ic_32_rem position
-
-  // for(int oc=0; oc<(ocs/8); oc++) {
-  //     for(int ic=0; ic<(ics/16); ic++) {
-  //         // For ic = oc = 8, we can load all the weights in 1x 512b vec reg
-  //         (2x 256b loads)
-  //         // For ic > 8, we would load the next 64 weights that are
-  //         ic8..15(oc0..7)
-  //         // For oc > 8, we would load the next 64 weights after all the ic
-  //         weights {OC}{IC}{IC8}{OC8} aie::vector<int8, 64> in_b =
-  //         aie::load_v<64>(kernels); kernels+=64; // wts ic0..7(oc0..7)
-
-  //         for(int x=0; x<iw_32_rem; x++)
-  //             // chess_prepare_for_pipelining //chess_loop_range(7, )
-  //             // e.g. 28/4 = 7
-  //             // 13 cycles delay for vload.
-  //             // 7 gives us 3 cycle inner loop.
-  //             // 13 gave 1 cycle inner loop before partial load, not it only
-  //             gets 2 cycles
-  //         {
-  //             aie::vector<uint8, 32> in_a      =
-  //             aie::load_v<32>(input0+input_offset1); input_offset1 += 32; //
-  //             act oc0..3(ic0..7) acc_tmp[x].mac(in_a, in_b);
-  //         }
-  //         input_offset1 += (iw*8)-(iw_32_rem*32); // Move to next ic/8
-  //         position, TODO -(iw_32_rem*8)??
-  //     }
-  //     for(int ic=0; ic<(ics/16); ic++) {
-  //         // For ic = oc = 8, we can load all the weights in 1x 512b vec reg
-  //         (2x 256b loads)
-  //         // For ic > 8, we would load the next 64 weights that are
-  //         ic8..15(oc0..7)
-  //         // For oc > 8, we would load the next 64 weights after all the ic
-  //         weights {OC}{IC}{IC8}{OC8} aie::vector<int8, 64> in_b =
-  //         aie::load_v<64>(kernels); kernels+=64; // wts ic0..7(oc0..7)
-
-  //         for(int x=0; x<iw_32_rem; x++)
-  //             // chess_prepare_for_pipelining //chess_loop_range(7, )
-  //             // e.g. 28/4 = 7
-  //             // 13 cycles delay for vload.
-  //             // 7 gives us 3 cycle inner loop.
-  //             // 13 gave 1 cycle inner loop before partial load, not it only
-  //             gets 2 cycles
-  //         {
-  //             aie::vector<uint8, 32> in_a      =
-  //             aie::load_v<32>(input1+input_offset2); input_offset2 += 32; //
-  //             act oc0..3(ic0..7) acc_tmp[x].mac(in_a, in_b);
-  //         }
-  //         input_offset2 += (iw*8)-(iw_32_rem*32); // Move to next ic/8
-  //         position
-  //     }
-  //     // input ptr just moves to next section
-  //     for(int xx=0; xx<iw_32_rem; xx++) {
-  //         // aie::vector<uint8,32> o1 = acc_tmp[xx].to_vector<uint8>(scaleT);
-  //         aie::vector<int8,32> o1 = acc_tmp[xx].to_vector<int8>(scaleT);
-  //         // aie::store_v(out_ptr, o1); out_ptr += 32;
-  //         aie::store_v(i_out_ptr, o1); i_out_ptr += 32;
-  //         acc_tmp[xx] = aie::zeros<acc32,32>();
-  //     }
-  //     // input   -= ((ics-1)/8)*(iw*8)+(iw_32_rem*32); // reset to beginning
-  //     of input ptr for remainder input_offset1   -= 448; // reset to
-  //     beginning of input ptr for remainder input_offset2   -= 448; // reset
-  //     to beginning of input ptr for remainder
-  //     // kernel ptr already at next oc/8
-  //     i_out_ptr += (iw*8)-(iw_32_rem*32);           // move to next oc/8
-  //     (skip remainder section if present)
-  // }
-
-  // i_out_ptr -= output_channels*iw;
-
-  // for(int oc=0; oc<(output_channels/8); oc++) {
-  //     for(int x8=0; x8<NUM_ACC; x8++) {
-  //         aie::vector<int8,32> skip1 = aie::load_v<32>(skip_ptr); skip_ptr +=
-  //         32; aie::vector<int8,32> tmp   = aie::load_v<32>(i_out_ptr);
-  //         aie::accum<acc32,32> accj;
-  //         accj.from_vector(skip1,0);
-  //         accj = aie::mac(accj, tmp, (uint8_t)1);
-  //         aie::vector<uint8,32> o3 = accj.to_vector<uint8>(skip_scaleT);
-  //         aie::store_v(out_ptr, o3); out_ptr += 32;
-  //     }
-  //     out_ptr += (iw*8)-(iw_32_rem*32);
-  //     skip_ptr += (iw*8)-(iw_32_rem*32);
-  // }
-
-  // } // if(iw_32_rem > 0)
+  // Only whole 32-wide blocks are computed. The iw_32_rem tail was never
+  // implemented, so an input_width that is not a multiple of 32 leaves its
+  // last (input_width % 32) columns unwritten rather than raising. The
+  // factory rejects such a width; see kernels.conv2dk1_skip_init.
 
   event1();
 }
@@ -884,9 +645,9 @@ void conv2dk1_skip_init_ui8(uint8_t *input0, uint8_t *input1, int8_t *kernels,
                             const int32_t output_channels,
                             const int32_t input_channels_skip, const int scale,
                             const int skip_scale, const int scale_skip_conv) {
-  // conv2dk1_skip_init_ui8_scalar(input0, input1, kernels, output, skip,
-  // input_width, input_channels, output_channels, input_channels_skip, scale,
-  // skip_scale, scale_skip_conv);
+  conv2dk1_skip_init_ui8_scalar(
+      input0, input1, kernels, output, skip, input_width, input_channels,
+      output_channels, input_channels_skip, scale, skip_scale, scale_skip_conv);
 }
 
 #endif // UINT8_ACT
@@ -916,9 +677,9 @@ void conv2dk1_skip_init_ui8(uint8_t *input0, uint8_t *input1, int8_t *kernels,
                             const int32_t output_channels,
                             const int32_t input_channels_skip, const int scale,
                             const int skip_scale, const int scale_skip_conv) {
-  // conv2dk1_skip_init_ui8_vector(input0, input1, kernels, output, skip,
-  // input_width, input_channels, output_channels, input_channels_skip, scale,
-  // skip_scale, scale_skip_conv);
+  conv2dk1_skip_init_ui8_vector(
+      input0, input1, kernels, output, skip, input_width, input_channels,
+      output_channels, input_channels_skip, scale, skip_scale, scale_skip_conv);
 }
 
 #endif // UINT8_ACT

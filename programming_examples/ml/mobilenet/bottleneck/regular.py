@@ -17,11 +17,12 @@ The thin `regular_bottlenecks` orchestrator at the bottom just reads the
 NETWORK and dispatches to the right builder per block.
 """
 
+import aie.iron.kernels as kernels
 import numpy as np
 from aie.extras.dialects.memref import (  # pyright: ignore[reportMissingImports]
     view as memref_view,
 )
-from aie.iron import ObjectFifo, Worker, kernels
+from aie.iron import ObjectFifo, Worker
 from aie.iron.controlflow import range_
 
 from ..network_spec import block as nsblock
