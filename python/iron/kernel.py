@@ -83,6 +83,32 @@ def _maybe_collapse_to_match(arg, expected_ty):
     return memref.collapse_shape(exp_mr, arg, reassociation)
 
 
+_DIGEST_CHUNK = 1 << 20  # streamed read bound for _hash_dir_contents
+
+
+def _hash_dir_contents(d: str) -> str:
+    """Recursive content digest of every regular file under ``d``.
+
+    Replaces a directory mtime, which moves on create/delete/rename but not
+    on an in-place rewrite (e.g. an editor that truncates-and-rewrites a
+    header) -- the common case a cache key needs to catch.
+    """
+    h = hashlib.sha256()
+    try:
+        paths = sorted(p for p in Path(d).rglob("*") if p.is_file())
+    except OSError:
+        return "<missing>"
+    for p in paths:
+        h.update(str(p.relative_to(d)).encode())
+        try:
+            with open(p, "rb") as fh:
+                while chunk := fh.read(_DIGEST_CHUNK):
+                    h.update(chunk)
+        except OSError as exc:
+            h.update(f"<unreadable:{type(exc).__name__}>".encode())
+    return h.hexdigest()
+
+
 class BaseKernel(Resolvable):
     """Base class for AIE core functions that resolve to a func.func declaration.
 
@@ -528,20 +554,23 @@ class ExternalFunction(Kernel):
         if self._cached_digest is not None:
             return self._cached_digest
 
-        from pathlib import Path as _Path
-
-        include_dir_mtimes = []
-        for d in sorted(self._include_dirs):
-            try:
-                mtime = str(_Path(d).stat().st_mtime)
-            except (FileNotFoundError, OSError):
-                mtime = "missing"
-            include_dir_mtimes.append(f"{d}:{mtime}")
+        include_dirs = list(self._include_dirs)
+        if self._source_file is not None:
+            # Mirrors compile_external_kernel()'s own src_dir append: a
+            # same-directory sibling #include (e.g. aie_kernels/aie2p/mm.cc
+            # including zero.cc) is otherwise never in any hashed directory
+            # unless the caller separately declares it via include_dirs=.
+            src_dir = str(Path(self._source_file).resolve().parent)
+            if src_dir not in include_dirs:
+                include_dirs.append(src_dir)
+        include_dir_hashes = [
+            f"{d}:{_hash_dir_contents(d)}" for d in sorted(include_dirs)
+        ]
 
         parts = [
             self._name,
             str(self._arg_types),
-            str(include_dir_mtimes),
+            str(include_dir_hashes),
             str(sorted(self._compile_flags)),
             # Toolchain choice (peano vs chess) changes the resulting .o
             # contents even when name + arg_types + flags + source are
