@@ -1401,7 +1401,11 @@ def AIE_DMAConfigureTaskOp
     }]>];
 }
 
-def AIE_DMAConfigureTaskForOp : AIEX_Op<"dma_configure_task_for", [HasAncestor<"AIE::RuntimeSequenceOp">]>, Results<(outs Index:$result)> {
+def AIE_DMAConfigureTaskForOp
+    : AIEX_Op<"dma_configure_task_for", [HasAncestor<"AIE::RuntimeSequenceOp">,
+                                         DeclareOpInterfaceMethods<
+                                             SymbolUserOpInterface>]>,
+      Results<(outs Index:$result)> {
   let summary = "As dma_configure_task, but specify tile, direction and channel by reference to a Shim DMA allocation op";
 
   let arguments = (
@@ -1416,8 +1420,6 @@ def AIE_DMAConfigureTaskForOp : AIEX_Op<"dma_configure_task_for", [HasAncestor<"
   let assemblyFormat = [{
     $alloc (`repeat` $repeat_count_val^ `:` type($repeat_count_val))? regions attr-dict
   }];
-
-  let hasVerifier = 1;
 
   let extraClassDeclaration = [{
     // The repeat count as an OpFoldResult: runtime operand if present, else the

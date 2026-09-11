@@ -23,7 +23,9 @@
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/JSON.h"
+#include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Path.h"
+#include "llvm/Support/Process.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include <algorithm>
@@ -37,6 +39,42 @@
 #include <vector>
 
 namespace xilinx::aiecc {
+
+// This process's resident size and the kernel's high-water mark for it, in
+// bytes; 0 where unavailable, which --profile renders as "-".
+inline uint64_t processRSSBytes() {
+  uint64_t pages = 0, rss = 0;
+  // A /proc file reports st_size 0, so it has to be read as a stream.
+  if (auto buf = llvm::MemoryBuffer::getFileAsStream("/proc/self/statm")) {
+    llvm::StringRef text = (*buf)->getBuffer();
+    llvm::StringRef sizeField, rssField;
+    std::tie(sizeField, text) = text.split(' ');
+    std::tie(rssField, text) = text.split(' ');
+    (void)sizeField;
+    if (!rssField.getAsInteger(10, pages))
+      rss = pages * (uint64_t)llvm::sys::Process::getPageSizeEstimate();
+  }
+  return rss;
+}
+
+inline uint64_t processPeakRSSBytes() {
+  if (auto buf = llvm::MemoryBuffer::getFileAsStream("/proc/self/status")) {
+    for (llvm::StringRef line : llvm::split((*buf)->getBuffer(), '\n')) {
+      if (!line.consume_front("VmHWM:"))
+        continue;
+      uint64_t kb = 0;
+      if (!line.trim().split(' ').first.getAsInteger(10, kb))
+        return kb * 1024;
+    }
+  }
+  return 0;
+}
+
+inline std::string formatMiB(uint64_t bytes) {
+  if (bytes == 0)
+    return "-";
+  return llvm::formatv("{0:F1}", bytes / (1024.0 * 1024.0)).str();
+}
 
 // Backward-reachable set of edges from the requested `outputs`
 inline llvm::DenseSet<EdgeBase *>
@@ -251,9 +289,16 @@ struct Engine {
     const llvm::DenseMap<EdgeBase *, RestoredNode> &satisfied;
     const DeserializeContext &deserCtx; // forwarded to restoreNode on --resume
     std::vector<EdgeState> st;
-    // Per-edge wall time, in finish order; summarized slowest-first under
-    // --profile.
-    std::vector<std::pair<std::string, int64_t>> edgeTimings;
+    // Per-edge cost in finish order. The dRSS column only attributes a memory
+    // step to its edge when edges do not overlap (-j1); under -j>1 read the
+    // peak column.
+    struct EdgeCost {
+      std::string name;
+      int64_t ms = 0;
+      uint64_t rssAfter = 0;
+      uint64_t peakAfter = 0;
+    };
+    std::vector<EdgeCost> edgeTimings;
 
     std::mutex mtx;
     std::condition_variable cv;
@@ -567,7 +612,8 @@ struct Engine {
             auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
                           std::chrono::steady_clock::now() - s.startTime)
                           .count();
-            edgeTimings.emplace_back(displayName(s.edge).str(), ms);
+            edgeTimings.push_back({displayName(s.edge).str(), ms,
+                                   processRSSBytes(), processPeakRSSBytes()});
           }
           if (!recordPaths(task.edge))
             failed = true;
@@ -722,6 +768,10 @@ struct Engine {
       if (reachable.count(e.get()))
         reachableEdges.push_back(e.get());
 
+    // Baseline for the per-edge dRSS column: everything resident before any
+    // edge ran (startup, input parsing, graph construction) belongs to no edge.
+    uint64_t baselineRSS = processRSSBytes();
+
     Scheduler scheduler(opts, std::move(reachableEdges), satisfied, deserCtx);
     mlir::LogicalResult r = scheduler.run();
     failedEdge = scheduler.failedEdge;
@@ -740,18 +790,27 @@ struct Engine {
         llvm::errs() << "aiecc: wrote edge '" << displayName(e.get()) << "'\n";
     }
 
-    // --profile: report each edge's execution time, slowest first, plus total.
     if (opts.profile && !edgeTimings.empty()) {
-      std::stable_sort(
-          edgeTimings.begin(), edgeTimings.end(),
-          [](const auto &a, const auto &b) { return a.second > b.second; });
       int64_t total = 0;
-      for (const auto &[name, ms] : edgeTimings)
-        total += ms;
-      llvm::errs() << "aiecc: profile (per-edge execution time):\n";
-      for (const auto &[name, ms] : edgeTimings)
-        llvm::errs() << llvm::formatv("  {0,8} ms  {1}\n", ms, name);
-      llvm::errs() << llvm::formatv("  {0,8} ms  total\n", total);
+      uint64_t peak = 0, prevRSS = baselineRSS;
+      llvm::errs() << "aiecc: profile (per-edge time and resident memory):\n";
+      llvm::errs() << llvm::formatv("  {0,8}  {1,10}  {2,10}  {3}\n", "ms",
+                                    "dRSS MiB", "peak MiB", "edge");
+      for (const Scheduler::EdgeCost &e : edgeTimings) {
+        total += e.ms;
+        peak = std::max(peak, e.peakAfter);
+        std::string delta =
+            e.rssAfter == 0
+                ? std::string("-")
+                : llvm::formatv("{0:F1}", (int64_t)(e.rssAfter - prevRSS) /
+                                              (1024.0 * 1024.0))
+                      .str();
+        llvm::errs() << llvm::formatv("  {0,8}  {1,10}  {2,10}  {3}\n", e.ms,
+                                      delta, formatMiB(e.peakAfter), e.name);
+        prevRSS = e.rssAfter;
+      }
+      llvm::errs() << llvm::formatv("  {0,8}  {1,10}  {2,10}  total\n", total,
+                                    "", formatMiB(peak));
     }
     return mlir::success();
   }
