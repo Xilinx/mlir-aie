@@ -1,5 +1,7 @@
 //===- alloc_group_nested_error.mlir ---------------------------*- MLIR -*-===//
 //
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
