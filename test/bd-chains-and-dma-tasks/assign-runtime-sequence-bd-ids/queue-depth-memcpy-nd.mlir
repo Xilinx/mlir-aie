@@ -75,3 +75,23 @@ aie.device(npu1_1col) {
     aiex.npu.dma_memcpy_nd(%arg1[0, 0, 0, 768][1, 1, 1, 256][0, 0, 0, 1]) {id = 7 : i64, metadata = @out0} : memref<1280xi32>
   }
 }
+
+// -----
+
+// An S2MM push issues a completion token whether or not it says so: the
+// lowering sets issue_token on every S2MM channel. Taking the attribute at
+// face value would leave the queue with nothing for the wait to pop through,
+// so this shape -- which is what every objectfifo output lowers to -- would
+// report a full queue that had in fact drained.
+aie.device(npu1_1col) {
+  %tile_0_0 = aie.tile(0, 0)
+  aie.shim_dma_allocation @out0 (%tile_0_0, S2MM, 0)
+  aie.runtime_sequence (%arg0: memref<1280xi32>) {
+    aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][1, 1, 1, 256][0, 0, 0, 1]) {id = 0 : i64, metadata = @out0} : memref<1280xi32>
+    aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 256][1, 1, 1, 256][0, 0, 0, 1]) {id = 1 : i64, metadata = @out0} : memref<1280xi32>
+    aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 512][1, 1, 1, 256][0, 0, 0, 1]) {id = 2 : i64, metadata = @out0} : memref<1280xi32>
+    aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 768][1, 1, 1, 256][0, 0, 0, 1]) {id = 3 : i64, metadata = @out0} : memref<1280xi32>
+    aiex.npu.dma_wait {symbol = @out0}
+    aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 1024][1, 1, 1, 256][0, 0, 0, 1]) {id = 4 : i64, metadata = @out0} : memref<1280xi32>
+  }
+}
