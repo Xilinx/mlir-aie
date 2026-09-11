@@ -457,6 +457,21 @@ public:
   virtual uint32_t getDmaControlAddress(int col, int row, int channel,
                                         AIE::DMAChannelDir direction) const = 0;
 
+  /// Return the address of the DMA status register for a channel, or nullopt
+  /// when this target's layout has not been verified. The register carries the
+  /// live task-queue occupancy in getDmaTaskQueueSizeMask(), which is the only
+  /// way to observe queue space: the queue does not backpressure, so a push
+  /// onto a full queue is dropped rather than stalled.
+  virtual std::optional<uint32_t>
+  getDmaStatusAddress(int /*col*/, int /*row*/, int /*channel*/,
+                      AIE::DMAChannelDir /*direction*/) const {
+    return std::nullopt;
+  }
+
+  /// Return the mask selecting the live task-queue occupancy field within the
+  /// getDmaStatusAddress() register (0 when unsupported).
+  virtual uint32_t getDmaTaskQueueSizeMask() const { return 0; }
+
   /// Return the DMA task-queue register address relative to its tile.
   uint32_t getLocalDmaControlAddress(int col, int row, int channel,
                                      AIE::DMAChannelDir direction) const {
@@ -499,6 +514,23 @@ public:
   virtual uint32_t getMaxOutOfOrderId() const = 0;
   /// Return the largest DMA task repeat count (unsupported = 0).
   virtual uint32_t getMaxRepeatCount() const = 0;
+
+  /// Return how many DMA tasks a single channel's task queue holds
+  /// (unsupported = 0). Pushing to a full queue drops the push and sets the
+  /// channel's sticky Task_Queue_Overflow bit, stranding whoever waits on that
+  /// transfer. Flat rather than per-tile-type because aie-rt's
+  /// XAie_DmaGetMaxQueueSize (XAIE_DMA_MAX_QUEUE_SIZE) returns the same depth
+  /// for every tile type and architecture.
+  virtual uint32_t getDmaTaskQueueDepth() const = 0;
+
+  /// Return the task-queue depth for one channel. The queue is a per-channel
+  /// resource in hardware, but no shipping target gives channels different
+  /// depths, so this forwards to the flat accessor; carrying the parameters
+  /// spares call sites churn if one ever does.
+  uint32_t getDmaTaskQueueDepth(int /*col*/, int /*row*/, int /*channel*/,
+                                AIE::DMAChannelDir /*direction*/) const {
+    return getDmaTaskQueueDepth();
+  }
 
   // Return true if the stream switch connection is legal, false otherwise.
   virtual bool isLegalTileConnection(int col, int row, WireBundle srcBundle,
@@ -587,6 +619,9 @@ public:
   uint32_t getMaxPacketId() const override { return 31; }
   uint32_t getMaxOutOfOrderId() const override { return 0; }
   uint32_t getMaxRepeatCount() const override { return 0; }
+  // AIE1 has no queued DMA-task model (BDs are started directly), so there is
+  // no queue to overflow.
+  uint32_t getDmaTaskQueueDepth() const override { return 0; }
 
   std::optional<TileID> getMemWest(TileID src) const override;
   std::optional<TileID> getMemEast(TileID src) const override;
@@ -726,6 +761,7 @@ public:
   uint32_t getMaxPacketId() const override { return 31; }
   uint32_t getMaxOutOfOrderId() const override { return 63; }
   uint32_t getMaxRepeatCount() const override { return 255; }
+  uint32_t getDmaTaskQueueDepth() const override { return 4; }
 
   std::optional<TileID> getMemWest(TileID src) const override;
   std::optional<TileID> getMemEast(TileID src) const override;
@@ -826,6 +862,11 @@ public:
 
   uint32_t getDmaControlAddress(int col, int row, int channel,
                                 AIE::DMAChannelDir direction) const override;
+  std::optional<uint32_t>
+  getDmaStatusAddress(int col, int row, int channel,
+                      AIE::DMAChannelDir direction) const override;
+  // Task_Queue_Size, bits 22:20 of the DMA_{MM2S,S2MM}_Status_N register.
+  uint32_t getDmaTaskQueueSizeMask() const override { return 0x7u << 20; }
 
   uint32_t getMemTileSize() const override { return 0x00080000; }
 
@@ -897,6 +938,9 @@ public:
                            AIE::DMAChannelDir direction) const override;
   uint32_t getDmaControlAddress(int col, int row, int channel,
                                 AIE::DMAChannelDir direction) const override;
+  std::optional<uint32_t>
+  getDmaStatusAddress(int col, int row, int channel,
+                      AIE::DMAChannelDir direction) const override;
 
   uint32_t getNumDestSwitchboxConnections(int col, int row,
                                           WireBundle bundle) const override;

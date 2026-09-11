@@ -27,8 +27,8 @@ The `npu_dma_memcpy_nd` function is key for enabling non-blocking, multi-dimensi
 npu_dma_memcpy_nd(metadata, bd_id, mem, offsets=None, sizes=None, strides=None)
 ```
 - **`metadata`**: This is a reference to the ObjectFifo or the string name of an ObjectFifo that records a Shim Tile and one of its DMA channels allocated for the host-side memory transfer. In order to associate the memcpy operation with an ObjectFifo, this metadata string needs to match the ObjectFifo name string.
-- **`bd_id`**: Identifier integer for the particular Buffer Descriptor control registers used for this memcpy. A buffer descriptor contains all information needed for a DMA transfer described in the parameters below. 
-- **`mem`**: Reference to a host buffer, given as an argument to the sequence function, that this transfer will read from or write to. 
+- **`bd_id`**: Identifier integer for the particular Buffer Descriptor control registers used for this memcpy. A buffer descriptor contains all information needed for a DMA transfer described in the parameters below.
+- **`mem`**: Reference to a host buffer, given as an argument to the sequence function, that this transfer will read from or write to.
 - **`tap`** (optional): A `TensorAccessPattern` is an alternative method of specifying `offset`/`sizes`/`strides` for determining an access pattern over the `mem` buffer.
 - **`offsets`** (optional): Start points for data transfer in each dimension. There is a maximum of four offset dimensions.
 - **`sizes`**: The extent of data to be transferred across each dimension. There is a maximum of four size dimensions.
@@ -65,7 +65,7 @@ mem = matrix_memory  # Memory object for the matrix
 sizes = [1, 1, 20, 10]
 
 # Strides set to '0' in the higher (unused) dimensions and to '100' (length of a row in 4B or "i32s") in the minor dimension
-strides = [0, 0, 0, 100]  
+strides = [0, 0, 0, 100]
 
 # Offsets set to zero since we start from the beginning
 offsets = [0, 0, 0, 0]
@@ -90,7 +90,7 @@ sizes = [5, 10, 20, 10]
 # '2000' for the next row of tile below the last (200 x 20 x 2B / 4B),
 # '10' for the next tile to the 'right' of the last [20, 20] tile,
 # and '100' (length of a row in 4B or "i32s") in dimension 0.
-strides = [0, 2000, 10, 100]  
+strides = [0, 2000, 10, 100]
 
 # Offsets set to zero since we start from the beginning
 offsets = [0, 0, 0, 0]
@@ -113,12 +113,12 @@ dma_wait(metadata)
 Waiting on DMAs associated with one ObjectFifo:
 ```python
 # Waits for the output data to transfer from the output ObjectFifo to the host
-dma_wait(of_out)  
+dma_wait(of_out)
 ```
 
 Waiting on DMAs associated with more than one ObjectFifo:
 ```python
-dma_wait(of_in, of_out)  
+dma_wait(of_in, of_out)
 ```
 
 ##### **Automatic Linearization of Contiguous Accesses**
@@ -148,7 +148,7 @@ As an alternative to `npu_dma_memcpy_nd` and `dma_wait`, there is a series of op
 
 There are two advantages of using the DMA task operations over using `npu_dma_memcpy_nd`:
 * The user does not have to specify a BD number
-* DMA task operations are capable of *chaining* BD operations; however, this is an advance use-case beyond the scope of this guide. 
+* DMA task operations are capable of *chaining* BD operations; however, this is an advance use-case beyond the scope of this guide.
 
 The dialect-direct lowering used by DMA task operations can be inspected for any `@iron.jit`-decorated design via `design.as_mlir(...)` (or by examining `aiecc`'s intermediate `input_with_addresses.mlir` under the build's `.prj/` directory).
 
@@ -166,7 +166,7 @@ def shim_dma_single_bd_task(
 )
 ```
 - **`alloc`**: The `alloc` argument associates the DMA task with an ObjectFifo. This argument is called `alloc` because the shim-side end of a data transfer (specifically a channel on a shim tile) is referenced through a so-called "shim DMA allocation". When an ObjectFifo is created with a Shim Tile endpoint, an allocation with the same name as the ObjectFifo is automatically generated.
-- **`mem`**: Reference to a host buffer, given as an argument to the sequence function, that this transfer will read from or write to. 
+- **`mem`**: Reference to a host buffer, given as an argument to the sequence function, that this transfer will read from or write to.
 - **`tap`** (optional): A `TensorAccessPattern` is an alternative method of specifying `offset`/`sizes`/`strides` for determining an access pattern over the `mem` buffer.
 - **`offset`** (optional): Starting point for the data transfer. Default values is `0`.
 - **`sizes`**: The extent of data to be transferred across each dimension. There is a maximum of four size dimensions.
@@ -198,13 +198,13 @@ def dma_await_task(*args: DMAConfigureTaskForOp)
 Waiting on task completion of one DMA task:
 ```python
 # Waits for the output task to complete
-dma_await_task(out_task)  
+dma_await_task(out_task)
 ```
 
 Waiting on task completion of more than one DMA task:
 ```python
 # Waits for the input task and then the output task to complete
-dma_await_task(in_task, out_task)  
+dma_await_task(in_task, out_task)
 ```
 
 #### **Free BDs without Waiting with `dma_free_task`**
@@ -222,22 +222,42 @@ def dma_free_task(*args: DMAConfigureTaskForOp)
 Release BDs belonging to DMAs associated with one task:
 ```python
 # Allow compiler to reuse BDs of a a task. Should only be called if the programmer is sure the task is completed.
-dma_free_task(out_task)  
+dma_free_task(out_task)
 ```
 
 Release BDs belonging to DMAs associated with more than one task:
 ```python
 # Allow compiler to reuse BDs of more than one task. Should only be called if the programmer is sure all tasks are completed.
-dma_free_task(in_task, out_task)  
+dma_free_task(in_task, out_task)
 ```
 
 #### **Best Practices for Data Movement and Synchronization with `dma_task` Operations**
 
-- **Await or Free to Reuse Buffer Descriptors**: While the exact buffer descriptor (BD) used for each operation is not visible to the user with the `dma_task` operations, there are still a finite number (maximum of `16` on a Shim Tile). Thus, it is important to use `dma_await_task` or `dma_free_task` before the number of BDs are exhausted so that they may be reused. 
+- **Await or Free to Reuse Buffer Descriptors**: While the exact buffer descriptor (BD) used for each operation is not visible to the user with the `dma_task` operations, there are still a finite number (maximum of `16` on a Shim Tile). Thus, it is important to use `dma_await_task` or `dma_free_task` before the number of BDs are exhausted so that they may be reused.
 - **Note Non-blocking Transfers**: Overlap data transfers with computation by leveraging the non-blocking nature of `dma_start_task`.
 - **Minimize Synchronization Overhead**: Synchronize/wait judiciously to avoid excessive overhead that might degrade performance.
 
 #### **Conclusion**
+
+#### **The DMA Task Queue**
+
+Each DMA channel has a *task queue* holding a bounded number of outstanding transfers -- 4 on AIE2. Starting a task pushes onto that channel's queue; the transfer leaves the queue as the DMA runs it.
+
+The queue does **not** backpressure. A push that arrives when the queue is full is dropped, the transfer never runs, and anything waiting on it (a `dma_await_task`, or a downstream receive) blocks forever. Nothing reports this at the time it happens.
+
+Whether it happens depends on how fast the consumer drains, not on the program. Measured on a Strix NPU, 14 back-to-back pushes on one shim channel time out every run, while the same 14 pushes behind a faster consumer complete -- identical instructions, opposite outcomes. Eight pushes of 1KB are fine; eight of 8KB behind a slow consumer overflow.
+
+Two things follow. First, keep the number of started-but-not-awaited tasks on any one channel at or below the queue depth; a `dma_await_task` on a channel retires the task it names and everything queued ahead of it, because a channel runs its queue in order. Second, where you cannot bound it by construction, the compiler does it for you: by default it inserts a poll of the channel's live queue occupancy before any push that could find it full, so the sequence waits for a free slot instead of racing.
+
+That wait costs nothing where the queue was going to drain anyway -- the occupancy check passes immediately -- and it only stalls where the alternative is a dropped transfer. To turn it off and get a warning instead:
+
+```
+aiecc --no-enforce-dma-queue-depth
+```
+
+Both lowering paths take an `enforce-queue-depth` pass option directly, should you need it: `aie-assign-runtime-sequence-bd-ids` for `dma_start_task` and `aie-dma-to-npu` for `npu_dma_memcpy_nd`.
+
+Enforcement needs a pollable occupancy register, and not every target reports one. Where it cannot be applied the compiler warns and the build succeeds, with a note saying so.
 
 Both the `npu_dma_memcpy_nd`/`dma_wait` interface and the `shim_dma_single_bd_task`/`dma_await_task`/`dma_free_task` interface are powerful tools for managing data transfers and synchronization with AI Engines in the Ryzen™ AI NPU. By understanding and effectively implementing applications leveraging these functions, developers can enhance the performance, efficiency, and accuracy of their high-performance computing applications.
 

@@ -18,10 +18,12 @@
 // NPU instruction stream); such forms are rejected here for the dynamic EmitC
 // path (Phase 2).
 //
-// Before allocating, the pass also rejects task-completion-token (TCT)
-// imbalances -- an await with no matching issue_token push on its channel would
-// deadlock the host. On the straight-line IR the allocator sees, this is a
-// simple per-channel token count (see verifyTokenBalance).
+// Before allocating, the pass also checks the per-channel hardware resources a
+// sequence can exhaust (see verifyChannelUsage): task-completion-token (TCT)
+// imbalance -- an await with no matching issue_token push on its channel would
+// deadlock the host -- and DMA task-queue overflow, where more transfers are
+// pushed onto a channel than its queue holds. On the straight-line IR the
+// allocator sees, both are single-pass per-channel counts.
 //
 //===----------------------------------------------------------------------===//
 
@@ -29,7 +31,9 @@
 #include "aie/Dialect/AIE/Transforms/AIEAssignBufferDescriptorIDs.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
+#include "aie/Dialect/AIEX/Utils/DmaQueueModel.h"
 
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Pass/Pass.h"
 #include "llvm/ADT/DenseMap.h"
@@ -37,6 +41,7 @@
 
 #include <array>
 #include <map>
+#include <set>
 
 namespace xilinx::AIEX {
 #define GEN_PASS_DEF_AIEASSIGNRUNTIMESEQUENCEBDIDS
@@ -52,6 +57,12 @@ namespace {
 struct AIEAssignRuntimeSequenceBDIDsPass
     : xilinx::AIEX::impl::AIEAssignRuntimeSequenceBDIDsBase<
           AIEAssignRuntimeSequenceBDIDsPass> {
+  using Base = xilinx::AIEX::impl::AIEAssignRuntimeSequenceBDIDsBase<
+      AIEAssignRuntimeSequenceBDIDsPass>;
+  AIEAssignRuntimeSequenceBDIDsPass() = default;
+  AIEAssignRuntimeSequenceBDIDsPass(
+      const AIEAssignRuntimeSequenceBDIDsOptions &options)
+      : Base(options) {}
 
   llvm::DenseMap<AIE::TileOp, BdIdGenerator> gens;
 
@@ -97,22 +108,19 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     return failure(wr.wasInterrupted());
   }
 
-  // Reject task-completion-token (TCT) imbalances that deadlock the host.
+  // Track the two per-channel resources a sequence can exhaust. Their failure
+  // modes are opposites: over-production is harmless for the TCT FIFO (leftover
+  // tokens cost nothing) but not for the task queue, where a push onto a full
+  // queue is dropped and its transfer never runs.
   //
-  // Each issue_token dma_start_task pushes one token onto a per-(tile,
-  // direction, channel) FIFO; each dma_await_task on that channel pops one. A
-  // sync that runs when the FIFO is empty blocks the runtime sequence forever.
-  // Over-production is always safe (leftover tokens are harmless) -- awaiting
-  // the last of N pushes on a channel and letting the FIFO cover the rest is a
-  // legal, common idiom -- so only under-production (an await with no matching
-  // push) is an error.
-  //
-  // rejectRuntimeControlFlow has already run, so this walks straight-line IR: a
-  // single program-order pass counting available tokens per channel is exact,
-  // with no control-flow reasoning. (Non-issue_token awaits are left to the
-  // per-op check in aie-dma-tasks-to-npu, which owns that diagnostic.)
-  LogicalResult verifyTokenBalance(AIE::RuntimeSequenceOp seq) {
-    using ChannelKey = std::array<int, 4>; // {col, row, direction, channel}
+  // Queue counting differs from token counting in three ways: every push takes
+  // a slot, not just issue_token ones; a non-token push is still retired
+  // implicitly, since in-order execution means awaiting a token drains
+  // everything queued ahead of it too; and repeat_count does not multiply
+  // slots. rejectRuntimeControlFlow has already run, so one program-order pass
+  // over straight-line IR is exact.
+  LogicalResult verifyChannelUsage(AIE::RuntimeSequenceOp seq) {
+    using ChannelKey = DmaQueueModel::ChannelKey;
     auto keyOf = [](DMAConfigureTaskOp cfg) -> ChannelKey {
       AIE::TileOp tile = cfg.getTileOp();
       return {tile.getCol(), tile.getRow(),
@@ -120,19 +128,34 @@ struct AIEAssignRuntimeSequenceBDIDsPass
               static_cast<int>(cfg.getChannel())};
     };
 
+    const AIETargetModel &tm =
+        seq->getParentOfType<AIE::DeviceOp>().getTargetModel();
+
     std::map<ChannelKey, int> avail;
+    DmaQueueModel queue;
+
     WalkResult wr = seq.walk([&](Operation *op) -> WalkResult {
       if (auto start = dyn_cast<DMAStartTaskOp>(op)) {
         DMAConfigureTaskOp cfg = start.getTaskOp();
-        if (cfg && cfg.getIssueToken())
-          avail[keyOf(cfg)]++;
+        if (!cfg)
+          return WalkResult::advance();
+        ChannelKey key = keyOf(cfg);
+        AIE::TileOp tile = cfg.getTileOp();
+        uint32_t depth = tm.getDmaTaskQueueDepth(
+            tile.getCol(), tile.getRow(), cfg.getChannel(), cfg.getDirection());
+        if (queue.wouldOverflow(key, depth))
+          guardQueueOverflow(queue, start, tm, key, depth, enforceQueueDepth);
+        queue.push(key, cfg.getIssueToken());
+        if (cfg.getIssueToken())
+          avail[key]++;
       } else if (auto await = dyn_cast<DMAAwaitTaskOp>(op)) {
         DMAConfigureTaskOp cfg = await.getTaskOp();
         // A non-issue_token await is diagnosed later by aie-dma-tasks-to-npu;
         // an unresolved task is diagnosed by the recycle path. Skip both here.
         if (!cfg || !cfg.getIssueToken())
           return WalkResult::advance();
-        int &tokens = avail[keyOf(cfg)];
+        ChannelKey key = keyOf(cfg);
+        int &tokens = avail[key];
         if (tokens < 1) {
           await.emitOpError(
               "awaits a task-completion token on a channel where no "
@@ -143,6 +166,13 @@ struct AIEAssignRuntimeSequenceBDIDsPass
           return WalkResult::interrupt();
         }
         tokens--;
+        queue.awaitToken(key);
+      } else if (auto sync = dyn_cast<NpuSyncOp>(op)) {
+        // Deliberately the queue only, never the `avail` token balance above.
+        // That balance drives a hard error, so it stays with the ops whose
+        // token flags it can read off the IR; the queue only warns or polls,
+        // so it can afford to credit a raw sync it cannot fully account for.
+        awaitSync(queue, sync);
       }
       return WalkResult::advance();
     });
@@ -154,7 +184,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     // on straight-line IR and needs no control-flow reasoning.
     if (failed(rejectRuntimeControlFlow(seq)))
       return failure();
-    if (failed(verifyTokenBalance(seq)))
+    if (failed(verifyChannelUsage(seq)))
       return failure();
     return success();
   }
@@ -169,10 +199,15 @@ struct AIEAssignRuntimeSequenceBDIDsPass
         if (gen.bdIdAlreadyAssigned(bd_op.getBdId().value())) {
           op.emitOpError("Specified buffer descriptor ID ")
               << bd_op.getBdId().value()
-              << " is already in use. Emit an aiex.dma_free_task operation to "
-                 "reuse BDs.";
+              << " is already in use. Release the earlier task first: "
+                 "aiex.dma_await_task waits for hardware completion before its "
+                 "BDs are reusable. aiex.dma_free_task also releases them but "
+                 "does NOT wait, so it is only safe when some other "
+                 "synchronization already guarantees that task has finished "
+                 "(see programming_guide/section-2/section-2d/DMATasks.md).";
           return WalkResult::interrupt();
         }
+        checkReallocation(tile, bd_op.getBdId().value(), bd_op);
         gen.assignBdId(bd_op.getBdId().value());
       }
       return WalkResult::advance();
@@ -199,10 +234,16 @@ struct AIEAssignRuntimeSequenceBDIDsPass
                 << tile.getCol() << "," << tile.getRow()
                 << "), which supports up to "
                 << tm.getNumBDs(tile.getCol(), tile.getRow())
-                << ". Emit an aiex.dma_free_task / aiex.dma_await_task to "
-                   "reuse BDs.";
+                << ". Emit an aiex.dma_await_task to free BDs for reuse; it "
+                   "waits for hardware completion, so the recycled ids are no "
+                   "longer in flight. aiex.dma_free_task also recycles ids but "
+                   "does NOT wait for completion -- using it before the task "
+                   "has finished is a race -- so reach for it only when some "
+                   "other synchronization already guarantees completion (see "
+                   "programming_guide/section-2/section-2d/DMATasks.md).";
             return WalkResult::interrupt();
           }
+          checkReallocation(tile, *next_id, bd_op);
           bd_op.setBdId(next_id);
           return WalkResult::advance();
         });
@@ -210,6 +251,76 @@ struct AIEAssignRuntimeSequenceBDIDsPass
       return failure();
 
     return success();
+  }
+
+  // Tasks started on each channel, in program order, that are not yet known to
+  // have completed.
+  std::map<DmaQueueModel::ChannelKey, SmallVector<DMAConfigureTaskOp, 8>>
+      startedOnChannel;
+  // Configures whose completion an await has established.
+  llvm::SmallPtrSet<Operation *, 16> knownComplete;
+  // BD ids released by aiex.dma_free_task while the task could still have been
+  // in flight, keyed by tile, with the free that released them.
+  std::map<std::pair<int, int>, std::map<uint32_t, Operation *>> freedInFlight;
+
+  static DmaQueueModel::ChannelKey channelOf(DMAConfigureTaskOp cfg) {
+    AIE::TileOp tile = cfg.getTileOp();
+    return {tile.getCol(), tile.getRow(), static_cast<int>(cfg.getDirection()),
+            static_cast<int>(cfg.getChannel())};
+  }
+
+  // A channel runs its tasks in order, so awaiting one establishes that it and
+  // everything started ahead of it on that channel has finished. This is the
+  // reasoning DMATasks.md blesses for "free X after awaiting Y", made explicit.
+  void noteAwaited(DMAConfigureTaskOp cfg) {
+    auto &started = startedOnChannel[channelOf(cfg)];
+    auto *it = llvm::find(started, cfg);
+    if (it == started.end()) {
+      knownComplete.insert(cfg);
+      return;
+    }
+    for (auto *p = started.begin(); p <= it; ++p)
+      knownComplete.insert(*p);
+    started.erase(started.begin(), std::next(it));
+  }
+
+  // Record ids released without any completion guarantee. nextBdId scans upward
+  // from 0, so a just-freed low id is the first one handed out again -- the
+  // worst case for aliasing a BD that is still running.
+  void noteFreedInFlight(DMAConfigureTaskOp cfg, Operation *freeOp) {
+    if (knownComplete.contains(cfg))
+      return;
+    AIE::TileOp tile = cfg.getTileOp();
+    auto &ids = freedInFlight[{tile.getCol(), tile.getRow()}];
+    cfg.walk([&](AIE::DMABDOp bd) {
+      if (bd.getBdId().has_value())
+        ids[bd.getBdId().value()] = freeOp;
+    });
+  }
+
+  // Warn where the hazard actually bites: reusing the id, not releasing it.
+  void checkReallocation(AIE::TileOp tile, uint32_t id, AIE::DMABDOp bd) {
+    if (!warnUnsafeBdReuse)
+      return;
+    auto tileIt = freedInFlight.find({tile.getCol(), tile.getRow()});
+    if (tileIt == freedInFlight.end())
+      return;
+    auto idIt = tileIt->second.find(id);
+    if (idIt == tileIt->second.end())
+      return;
+    Operation *freeOp = idIt->second;
+    tileIt->second.erase(idIt);
+    auto diag =
+        bd->emitWarning()
+        << "reuses buffer descriptor ID " << id << " on tile (" << tile.getCol()
+        << "," << tile.getRow()
+        << ") after it was released by an aiex.dma_free_task that had no "
+           "completion guarantee, so the DMA it belonged to may still be "
+           "running and this reprograms it underneath. Await the earlier task, "
+           "or await a later one on the same tile, direction and channel -- a "
+           "channel completes its tasks in order, so that covers everything "
+           "queued before it";
+    diag.attachNote(freeOp->getLoc()) << "released here";
   }
 
   // Configures already completed by an aiex.dma_await_task. Awaiting a task
@@ -248,6 +359,8 @@ struct AIEAssignRuntimeSequenceBDIDsPass
       return failure();
     if (isAwait)
       awaitedConfigures.insert(task_op);
+    else
+      noteFreedInFlight(task_op, freeOp);
     return success();
   }
 
@@ -302,7 +415,12 @@ struct AIEAssignRuntimeSequenceBDIDsPass
         if (auto cfg = dyn_cast<DMAConfigureTaskOp>(op)) {
           if (failed(allocateConfigure(cfg)))
             return WalkResult::interrupt();
+        } else if (auto start = dyn_cast<DMAStartTaskOp>(op)) {
+          if (DMAConfigureTaskOp cfg = start.getTaskOp())
+            startedOnChannel[channelOf(cfg)].push_back(cfg);
         } else if (auto await = dyn_cast<DMAAwaitTaskOp>(op)) {
+          if (DMAConfigureTaskOp cfg = await.getTaskOp())
+            noteAwaited(cfg);
           if (failed(recycleTask(await.getTask(), await, /*isAwait=*/true)))
             return WalkResult::interrupt();
         } else if (auto freeOp = dyn_cast<DMAFreeTaskOp>(op)) {
@@ -328,4 +446,10 @@ struct AIEAssignRuntimeSequenceBDIDsPass
 std::unique_ptr<OperationPass<AIE::DeviceOp>>
 AIEX::createAIEAssignRuntimeSequenceBDIDsPass() {
   return std::make_unique<AIEAssignRuntimeSequenceBDIDsPass>();
+}
+
+std::unique_ptr<OperationPass<AIE::DeviceOp>>
+AIEX::createAIEAssignRuntimeSequenceBDIDsPass(
+    const AIEAssignRuntimeSequenceBDIDsOptions &options) {
+  return std::make_unique<AIEAssignRuntimeSequenceBDIDsPass>(options);
 }

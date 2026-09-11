@@ -921,6 +921,42 @@ def AIE_NpuAssertBdDivisibleOp: AIEX_Op<"npu.assert_bd_divisible", []> {
 }
 
 // MASKWRITE
+def AIE_NpuMaskPollOp: AIEX_Op<"npu.maskpoll", []> {
+  let summary = "Block the runtime sequence until a masked 32-bit register matches";
+  let arguments = (
+    ins I32:$address,
+        I32:$value,
+        I32:$mask,
+        OptionalAttr<FlatSymbolRefAttr>:$buffer,
+        OptionalAttr<I32Attr>:$column,
+        OptionalAttr<I32Attr>:$row
+  );
+  let results = (outs );
+  let assemblyFormat = [{
+    `(` $address `,` $value `,` $mask `)` attr-dict `:` type($address) `,` type($value) `,` type($mask)
+  }];
+  let description = [{
+    Stalls the runtime sequence until `(reg & mask) == value` for the register
+    at 'address'. This is the read-side counterpart to `npu.maskwrite32`: the
+    NPU instruction stream has no way to branch on a register, but it can wait
+    on one, which is enough to turn a timing assumption into an enforced
+    precondition.
+
+    The poll timeout is not encoded in the transaction; the firmware applies its
+    own default (see `XAIE_IO_MASKPOLL` in aie-rt's xaie_txn.c). A condition
+    that never becomes true therefore surfaces as a dispatch timeout rather
+    than hanging forever.
+
+    Address interpretation matches `npu.maskwrite32`: an offset into 'buffer'
+    if present, else an offset into aie.tile('column', 'row') if those are
+    present, else a full 32-bit array address.
+  }];
+  let extraClassDeclaration = [{
+    // Compile-time absolute address, or nullopt if 'address' is not constant.
+    std::optional<uint32_t> getAbsoluteAddress();
+  }];
+}
+
 def AIE_NpuMaskWrite32Op: AIEX_Op<"npu.maskwrite32", []> {
   let summary = "Write a masked 32-bit value to the AIE array";
   let arguments = (
@@ -1054,13 +1090,13 @@ def AIE_NpuAddressPatchOp
     attr-dict
   }];
   let description = [{
-    address patch operator. 
-    
-    This instruction writes the address of a runtime-allocated host buffer 
-    into a register, typically a BD's buffer address register. The runtime 
-    passes runtime-allocated host buffers as runtime sequence arguments, so 
-    this instruction refers to them by their argument index. 
-    
+    address patch operator.
+
+    This instruction writes the address of a runtime-allocated host buffer
+    into a register, typically a BD's buffer address register. The runtime
+    passes runtime-allocated host buffers as runtime sequence arguments, so
+    this instruction refers to them by their argument index.
+
     `addr` is the register to patch (the BD's buffer-address word). It is a
     compile-time attribute on the static path; when the BD id is chosen at
     runtime (dynamic free-list pool) the register address is itself runtime and
@@ -1072,17 +1108,17 @@ def AIE_NpuAddressPatchOp
     a compile-time-known offset or pass a runtime sequence value for a
     runtime-parameterized buffer offset.
 
-    `arg_idx` or `buffer` specify which runtime sequence argument holds the 
+    `arg_idx` or `buffer` specify which runtime sequence argument holds the
     host buffer whose address you want to patch. You must set exactly one of
     the two:
     - `arg_idx` is an argument index of the enclosing runtime sequence.
-      Address patch instructions using `arg_idx` should not be inlined into 
+      Address patch instructions using `arg_idx` should not be inlined into
       other runtime sequences with `aiex.run`, because the argument index might
       not match there.
     - `buffer` instead names the buffer by reference to a `memref` by reference.
       You can use it together with `aiex.run`.
       The `-aie-resolve-address-patch-buffers` pass traces the `memref` back to
-      the enclosing runtime sequence argument list and converts the operand to 
+      the enclosing runtime sequence argument list and converts the operand to
       the correct `arg_idx` after inlining. It adds the buffer's byte offset to
       `arg_plus`.
   }];
