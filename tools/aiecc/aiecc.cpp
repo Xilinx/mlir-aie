@@ -1550,6 +1550,22 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   auto &npuInsts = npuProgram.map<std::vector<char>>(
       npuInstsName.getValue(), [](const NpuProgram &p) { return p.insts; });
 
+  // The same per-sequence input, emitted as a C++ TXN builder instead of a
+  // flat binary. A sequence with runtime-valued bounds/offsets keeps its
+  // scf.for/scf.if here, so one artifact serves every shape the caller asks
+  // for -- against an overlay that never has to be rebuilt. The module is
+  // cloned because the emitC lowering rewrites it in place and `perSeq` also
+  // feeds the binary path above.
+  auto &npuCpp = perSeq.map<std::string>(
+      npuCppName.getValue(),
+      [](const Item<OpInModule<RuntimeSequenceOp>> &item,
+         Item<std::string> &out) -> mlir::LogicalResult {
+        mlir::OwningOpRef<mlir::ModuleOp> clone =
+            item.get().module.get().clone();
+        llvm::raw_string_ostream os(out.value.emplace());
+        return xilinx::AIE::AIETranslateNpuToCpp(*clone, os);
+      });
+
   auto &npuLocmap =
       bundle(npuInsts.out, npuProgram.out)
           .map<std::string>(
@@ -1765,7 +1781,7 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   // `aiecc design.mlir` builds every device's cores up front).
   bool anySpecificOutput =
       generateInputWithAddresses || generateScratchpadParams ||
-      generateNpuInsts || keepLoc || generateElf || generateCdo ||
+      generateNpuInsts || generateNpuCpp || keepLoc || generateElf || generateCdo ||
       generatePdi || generateTxn || generateCtrlpkt || generateXclbin ||
       generateFullElf || wantAiesim || doCompileHost || !getOutputs.empty() ||
       !cutOutputs.empty();
@@ -1784,8 +1800,9 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   }
   if (generateNpuInsts) {
     outputs.push_back(&npuInsts);
-  }
-  if (keepLoc) {
+  if (generateNpuCpp)
+    outputs.push_back(&npuCpp);
+  if (keepLoc)
     outputs.push_back(&npuLocmap);
   }
   // The plain instruction ELF is skipped when control packets are also being

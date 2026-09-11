@@ -24,6 +24,7 @@ from aie.extras.context import mlir_mod_ctx
 from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.iron.kernel import ExternalFunction, Kernel
 from aie.utils.compile.jit._dma_size_parser import parse_dma_sizes
+import aie.utils.compile.jit.compilabledesign as compilabledesign_module
 from aie.utils.compile.jit.compilabledesign import CompilableDesign, _compute_hash
 from aie.utils.compile.jit.context import get_compile_arg
 from aie.utils.compile.jit.markers import CompileTime, In, InOut, Out
@@ -1201,17 +1202,70 @@ def test_kernels_mm_mac_dims_per_arch():
     ), f"AIE2P i16/i16 mac_dims expected (4, 4, 8), got {mm_aie2p.mac_dims}"
 
 
-def test_compile_mixed_explicit_paths_raises():
-    """Passing only one of (xclbin_path, inst_path) is rejected up front."""
+def test_compile_single_path_selects_that_artifact(tmp_path, monkeypatch):
+    """Either path alone compiles just that artifact and bypasses the cache."""
+    seen = {}
+
+    def fake_compile_mlir_module(**kwargs):
+        seen.update(kwargs)
+        for key in ("xclbin_path", "insts_path"):
+            if kwargs.get(key) is not None:
+                Path(kwargs[key]).write_bytes(b"")
+
+    def gen():
+        pass
+
+    for kwarg, produced, skipped in (
+        ("xclbin_path", "xclbin_path", "insts_path"),
+        ("inst_path", "insts_path", "xclbin_path"),
+    ):
+        seen.clear()
+        cd = CompilableDesign(gen)
+        monkeypatch.setattr(
+            compilabledesign_module, "compile_mlir_module", fake_compile_mlir_module
+        )
+        monkeypatch.setattr(cd, "_generate_mlir", lambda _ExternalFunction: "module {}")
+        out = tmp_path / f"{kwarg}_only"
+        xclbin, insts = cd.compile(**{kwarg: out})
+        assert seen[produced] is not None
+        assert seen[skipped] is None
+        # The un-requested slot is None; the requested one is the resolved path.
+        requested, other = (
+            (xclbin, insts) if kwarg == "xclbin_path" else (insts, xclbin)
+        )
+        assert requested == out.resolve()
+        assert other is None
+        # A partial build never populates the cache-artifact accessor.
+        assert cd.get_artifacts() is None
+
+
+def test_compile_npu_cpp_path_alone_is_an_explicit_output(tmp_path, monkeypatch):
+    """npu_cpp_path on its own builds just the sequence, decoupled from any overlay."""
+    seen = {}
+
+    def fake_compile_mlir_module(**kwargs):
+        seen.update(kwargs)
+        Path(kwargs["npu_cpp_path"]).write_text("// txn builder\n")
 
     def gen():
         pass
 
     cd = CompilableDesign(gen)
-    with pytest.raises(ValueError, match="must be set together"):
-        cd.compile(xclbin_path="/tmp/foo.xclbin", inst_path=None)
-    with pytest.raises(ValueError, match="must be set together"):
-        cd.compile(xclbin_path=None, inst_path="/tmp/foo.bin")
+    monkeypatch.setattr(
+        compilabledesign_module, "compile_mlir_module", fake_compile_mlir_module
+    )
+    monkeypatch.setattr(cd, "_generate_mlir", lambda _ExternalFunction: "module {}")
+    cpp = tmp_path / "seq.cpp"
+    xclbin, insts = cd.compile(npu_cpp_path=cpp)
+
+    # Neither overlay nor flat-binary artifact was requested or returned.
+    assert xclbin is None and insts is None
+    assert seen["xclbin_path"] is None and seen["insts_path"] is None
+    assert seen["npu_cpp_path"] == cpp.resolve()
+    assert cpp.exists()
+    # It counts as an explicit path, so the cache was bypassed: the scratch dir
+    # is named after the artifact, not a cache hash.
+    assert (tmp_path / "seq.prj").is_dir()
 
 
 # ---------------------------------------------------------------------------

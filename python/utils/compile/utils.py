@@ -446,6 +446,9 @@ def compile_mlir_module(
     use_chess: bool = False,
     device=None,
     fold_ddr_addr_offset: bool = True,
+    # This signature is public API and callers may pass positionally, so a new
+    # parameter goes at the end rather than beside the paths it belongs with.
+    npu_cpp_path: str | Path | None = None,
 ):
     """Compile an MLIR module to instruction, PDI, ELF, and/or xclbin files using the aiecc module.
 
@@ -463,8 +466,9 @@ def compile_mlir_module(
             bundles the PDIs and TXN control code (via ``--get-full-elf``).
             Unlike ``elf_path`` (which only wraps the NPU instructions and still
             needs an xclbin), a full ELF is loaded standalone through
-            ``pyxrt.hw_context(dev, pyxrt.elf(path))``.  When set, xclbin and
-            raw-insts generation are skipped -- the full ELF is self-contained.
+            ``pyxrt.hw_context(dev, pyxrt.elf(path))``.  When set, xclbin,
+            raw-insts and ``npu_cpp_path`` generation are all skipped -- the
+            full ELF is self-contained.
         verbose (bool): If True, enable verbose output.
         work_dir (str): Compilation working directory.
         options (list[str]): List of additional options.
@@ -482,6 +486,13 @@ def compile_mlir_module(
             behavior).  Without this, low-level designs going through
             ``compile_mlir_module`` directly (e.g. ``basic/packet_switch``)
             still need a Makefile-side ``.o`` rule.
+        npu_cpp_path (str): Path to a C++ TXN builder for the runtime
+            sequence, emitted via ``--get-npu-cpp``.  This is the
+            runtime-parameterizable counterpart of ``insts_path``: a sequence
+            whose bounds/offsets are runtime values keeps its ``scf.for`` /
+            ``scf.if`` here, where a flat instruction binary would have to bake
+            one shape in.  The host ``#include``s it and calls the generated
+            builder with the shape, so one overlay serves many shapes.
     """
     if use_chess:
         # Chess-driven aiecc.  --unified runs all cores' xchesscc invocations
@@ -506,6 +517,8 @@ def compile_mlir_module(
             args.extend(["--get-npu-insts", f"--npu-insts-name={insts_path}"])
         if xclbin_path:
             args.extend(["--get-xclbin", f"--xclbin-name={xclbin_path}"])
+        if npu_cpp_path:
+            args.extend(["--get-npu-cpp", f"--npu-cpp-name={npu_cpp_path}"])
     # DDR-patch ABI: XRT (and CPU) consume the folded firmware ABI; HRX consumes
     # the producer-independent (unfolded) insts.bin and adds the AIE DDR aperture
     # offset for every arg itself. cl::opt defaults to true, so only pass the
