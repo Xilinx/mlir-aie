@@ -31,6 +31,11 @@
 // memtile together, which is what ranking by direction-matched load buys: a
 // summed load would push each chain's read and write onto different
 // columns.
+//
+// Odd-indexed chains use channel 1: placement doesn't renumber a flow's
+// declared DMA channel, so two chains piled onto the same physical tile
+// pair on channel 0 would be the same flow twice over, which DeviceOp::verify
+// now rejects.
 
 // PILE-LABEL:     @anchorless_passthrough
 // PILE-DAG:       aie.tile(0, 0)
@@ -59,12 +64,12 @@ module @anchorless_passthrough {
     %mem3 = aie.logical_tile<MemTile>(?, ?)
     aie.flow(%shim0, DMA : 0, %mem0, DMA : 0)
     aie.flow(%mem0, DMA : 0, %shim0, DMA : 0)
-    aie.flow(%shim1, DMA : 0, %mem1, DMA : 0)
-    aie.flow(%mem1, DMA : 0, %shim1, DMA : 0)
+    aie.flow(%shim1, DMA : 1, %mem1, DMA : 1)
+    aie.flow(%mem1, DMA : 1, %shim1, DMA : 1)
     aie.flow(%shim2, DMA : 0, %mem2, DMA : 0)
     aie.flow(%mem2, DMA : 0, %shim2, DMA : 0)
-    aie.flow(%shim3, DMA : 0, %mem3, DMA : 0)
-    aie.flow(%mem3, DMA : 0, %shim3, DMA : 0)
+    aie.flow(%shim3, DMA : 1, %mem3, DMA : 1)
+    aie.flow(%mem3, DMA : 1, %shim3, DMA : 1)
   }
 }
 
