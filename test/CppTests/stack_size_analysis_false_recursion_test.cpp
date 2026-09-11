@@ -17,7 +17,6 @@
 #include <cstring>
 #include <elf.h>
 #include <fstream>
-#include <iterator>
 #include <stdexcept>
 #include <string>
 #include <system_error>
@@ -48,118 +47,35 @@ void run(llvm::StringRef command) {
   }
 }
 
-void patchElfAsAieWithNumberedDataRelocation(llvm::StringRef elfPath) {
-  auto rangeFits = [](size_t size, size_t offset, size_t length) {
-    return offset <= size && length <= size - offset;
-  };
-  std::ifstream in(elfPath.str(), std::ios::binary);
-  if (!in) {
-    throw std::runtime_error("failed to open " + elfPath.str());
-  }
-  std::vector<char> bytes((std::istreambuf_iterator<char>(in)),
-                          std::istreambuf_iterator<char>());
-  if (bytes.size() < sizeof(Elf64_Ehdr)) {
-    throw std::runtime_error("ELF is too small to patch");
-  }
-
-  auto readStruct = [&](auto &out, size_t offset, llvm::StringRef what) {
-    if (!rangeFits(bytes.size(), offset, sizeof(out))) {
-      throw std::runtime_error("ELF is too small to read " + what.str());
-    }
-    std::memcpy(&out, bytes.data() + offset, sizeof(out));
-  };
-  auto writeStruct = [&](const auto &in, size_t offset, llvm::StringRef what) {
-    if (!rangeFits(bytes.size(), offset, sizeof(in))) {
-      throw std::runtime_error("ELF is too small to write " + what.str());
-    }
-    std::memcpy(bytes.data() + offset, &in, sizeof(in));
-  };
-
-  Elf64_Ehdr ehdr;
-  readStruct(ehdr, 0, "ELF header");
-  if (ehdr.e_ident[EI_MAG0] != ELFMAG0 || ehdr.e_ident[EI_MAG1] != ELFMAG1 ||
-      ehdr.e_ident[EI_MAG2] != ELFMAG2 || ehdr.e_ident[EI_MAG3] != ELFMAG3) {
-    throw std::runtime_error("expected an ELF test fixture");
-  }
-  if (ehdr.e_ident[EI_DATA] != ELFDATA2LSB) {
-    throw std::runtime_error("expected a little-endian ELF test fixture");
-  }
-  if (ehdr.e_ident[EI_CLASS] != ELFCLASS64) {
-    throw std::runtime_error("expected an ELF64 test fixture");
-  }
-  if (ehdr.e_shnum == 0) {
-    throw std::runtime_error("ELF has no section headers");
-  }
-  if (ehdr.e_shstrndx >= ehdr.e_shnum) {
-    throw std::runtime_error("ELF has an invalid section-name string table");
-  }
-  size_t sectionTableSize =
-      static_cast<size_t>(ehdr.e_shnum) * ehdr.e_shentsize;
-  if (ehdr.e_shentsize != sizeof(Elf64_Shdr) ||
-      !rangeFits(bytes.size(), ehdr.e_shoff, sectionTableSize)) {
-    throw std::runtime_error("ELF has a truncated section table");
-  }
-  auto readSectionHeader = [&](size_t index) {
-    Elf64_Shdr shdr;
-    readStruct(shdr, ehdr.e_shoff + index * ehdr.e_shentsize, "section header");
-    return shdr;
-  };
-  ehdr.e_machine = llvm::ELF::EM_AIE;
-  writeStruct(ehdr, 0, "ELF header");
-
-  Elf64_Shdr shstr = readSectionHeader(ehdr.e_shstrndx);
-  if (!rangeFits(bytes.size(), shstr.sh_offset, shstr.sh_size)) {
-    throw std::runtime_error("ELF has a truncated section-name string table");
-  }
-  llvm::StringRef shstrtab(bytes.data() + shstr.sh_offset, shstr.sh_size);
-  bool patchedRelocation = false;
-  for (size_t i = 0; i < ehdr.e_shnum; ++i) {
-    Elf64_Shdr sec = readSectionHeader(i);
-    if (sec.sh_name >= shstrtab.size()) {
-      throw std::runtime_error("ELF has an invalid section name offset");
-    }
-    llvm::StringRef name = shstrtab.drop_front(sec.sh_name).split('\0').first;
-    if (sec.sh_type != SHT_RELA || name != ".rela.text") {
-      continue;
-    }
-    if (sec.sh_entsize != sizeof(Elf64_Rela) ||
-        sec.sh_size % sizeof(Elf64_Rela) != 0 ||
-        !rangeFits(bytes.size(), sec.sh_offset, sec.sh_size)) {
-      throw std::runtime_error("ELF has a malformed .rela.text section");
-    }
-    size_t count = sec.sh_size / sizeof(Elf64_Rela);
-    for (size_t j = 0; j < count; ++j) {
-      size_t relOffset = sec.sh_offset + j * sizeof(Elf64_Rela);
-      Elf64_Rela reloc;
-      readStruct(reloc, relOffset, ".rela.text relocation");
-      if (ELF64_R_TYPE(reloc.r_info) != llvm::ELF::R_X86_64_64) {
-        continue;
-      }
-      reloc.r_info = ELF64_R_INFO(ELF64_R_SYM(reloc.r_info),
-                                  xilinx::aiecc::detail::aieData4RelocAie2p);
-      writeStruct(reloc, relOffset, ".rela.text relocation");
-      patchedRelocation = true;
-      break;
-    }
-    if (patchedRelocation) {
-      break;
-    }
-  }
-  if (!patchedRelocation) {
-    throw std::runtime_error("failed to find x86_64 absolute relocation");
-  }
-
-  std::ofstream out(elfPath.str(), std::ios::binary | std::ios::trunc);
-  if (!out) {
-    throw std::runtime_error("failed to reopen " + elfPath.str());
-  }
-  out.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
-  if (!out) {
-    throw std::runtime_error("failed to write patched ELF");
-  }
+void align(std::vector<char> &bytes, size_t alignment) {
+  size_t padded = llvm::alignTo(bytes.size(), alignment);
+  bytes.resize(padded, '\0');
 }
 
-std::string buildFalseRecursionElf(bool useAieNumberedDataRelocation = false) {
+template <typename T>
+size_t appendStruct(std::vector<char> &bytes, const T &value,
+                    size_t alignment = alignof(T)) {
+  align(bytes, alignment);
+  size_t offset = bytes.size();
+  bytes.resize(offset + sizeof(T));
+  std::memcpy(bytes.data() + offset, &value, sizeof(T));
+  return offset;
+}
+
+size_t appendBytes(std::vector<char> &bytes, llvm::StringRef contents,
+                   size_t alignment = 1) {
+  align(bytes, alignment);
+  size_t offset = bytes.size();
+  bytes.insert(bytes.end(), contents.begin(), contents.end());
+  return offset;
+}
+
+template <typename T>
+void overwriteStruct(std::vector<char> &bytes, size_t offset, const T &value) {
+  std::memcpy(bytes.data() + offset, &value, sizeof(T));
+}
+
+std::string buildFalseRecursionElf() {
   llvm::SmallString<128> dir;
   if (std::error_code ec = llvm::sys::fs::createUniqueDirectory(
           "stack-size-analysis-false-recursion", dir)) {
@@ -207,8 +123,191 @@ helper_cycle:
   run(clang + " " + quote(objPath) +
       " -nostdlib -no-pie -Wl,-e,_start -Wl,--emit-relocs -o " +
       quote(elfPath));
-  if (useAieNumberedDataRelocation) {
-    patchElfAsAieWithNumberedDataRelocation(elfPath);
+  return elfPath.str().str();
+}
+
+std::string buildAieNumberedFalseRecursionElf() {
+  enum SectionIndex : uint16_t {
+    NullSection,
+    TextSection,
+    StackSizesSection,
+    RelaTextSection,
+    SymtabSection,
+    StrtabSection,
+    ShstrtabSection,
+  };
+  enum SymbolIndex : uint32_t {
+    NullSymbol,
+    StartSymbol,
+    EntryRealSymbol,
+    HelperCycleSymbol,
+    InlinedEntrySymbol,
+  };
+  constexpr uint32_t startAddr = 0x0;
+  constexpr uint32_t entryRealAddr = 0x10;
+  constexpr uint32_t helperCycleAddr = 0x20;
+  constexpr uint32_t textSize = 0x30;
+  constexpr uint32_t aieCallReloc = 1;
+
+  llvm::SmallString<128> dir;
+  if (std::error_code ec = llvm::sys::fs::createUniqueDirectory(
+          "stack-size-analysis-aie-false-recursion", dir)) {
+    throw std::runtime_error("failed to create temp directory: " +
+                             ec.message());
+  }
+  llvm::SmallString<128> elfPath = dir;
+  llvm::sys::path::append(elfPath, "false_recursion_aie.elf");
+
+  const std::string strtab =
+      std::string("\0__start\0entry_real\0helper_cycle\0inlined_entry\0", 47);
+  const size_t startName = 1;
+  const size_t entryRealName = startName + std::strlen("__start") + 1;
+  const size_t helperCycleName = entryRealName + std::strlen("entry_real") + 1;
+  const size_t inlinedEntryName =
+      helperCycleName + std::strlen("helper_cycle") + 1;
+  const std::string shstrtab = std::string(
+      "\0.text\0.stack_sizes\0.rela.text\0.symtab\0.strtab\0.shstrtab\0", 57);
+  const size_t textName = 1;
+  const size_t stackSizesName = textName + std::strlen(".text") + 1;
+  const size_t relaTextName = stackSizesName + std::strlen(".stack_sizes") + 1;
+  const size_t symtabName = relaTextName + std::strlen(".rela.text") + 1;
+  const size_t strtabName = symtabName + std::strlen(".symtab") + 1;
+  const size_t shstrtabName = strtabName + std::strlen(".strtab") + 1;
+
+  std::string stackSizes;
+  auto appendStackSize = [&](uint32_t addr, uint8_t bytesValue) {
+    for (unsigned shift = 0; shift < 32; shift += 8) {
+      stackSizes.push_back(static_cast<char>((addr >> shift) & 0xFF));
+    }
+    stackSizes.push_back(static_cast<char>(bytesValue));
+  };
+  appendStackSize(entryRealAddr, 8);
+  appendStackSize(helperCycleAddr, 8);
+
+  std::vector<Elf32_Rela> relocs = {
+      {startAddr, ELF32_R_INFO(EntryRealSymbol, aieCallReloc), 0},
+      {entryRealAddr,
+       ELF32_R_INFO(InlinedEntrySymbol,
+                    xilinx::aiecc::detail::aieData4RelocAie2p),
+       0},
+      {helperCycleAddr, ELF32_R_INFO(EntryRealSymbol, aieCallReloc), 0},
+  };
+  std::vector<Elf32_Sym> symbols = {
+      {},
+      {static_cast<Elf32_Word>(startName), startAddr, 4,
+       ELF32_ST_INFO(STB_GLOBAL, STT_FUNC), 0, TextSection},
+      {static_cast<Elf32_Word>(entryRealName), entryRealAddr, 4,
+       ELF32_ST_INFO(STB_GLOBAL, STT_FUNC), 0, TextSection},
+      {static_cast<Elf32_Word>(helperCycleName), helperCycleAddr, 4,
+       ELF32_ST_INFO(STB_GLOBAL, STT_FUNC), 0, TextSection},
+      {static_cast<Elf32_Word>(inlinedEntryName), helperCycleAddr, 0,
+       ELF32_ST_INFO(STB_GLOBAL, STT_FUNC), 0, TextSection},
+  };
+
+  std::vector<char> bytes(sizeof(Elf32_Ehdr), '\0');
+  size_t textOffset = appendBytes(bytes, std::string(textSize, '\0'), 4);
+  size_t stackSizesOffset = appendBytes(bytes, stackSizes, 4);
+  size_t relaTextOffset =
+      appendBytes(bytes,
+                  llvm::StringRef(reinterpret_cast<const char *>(relocs.data()),
+                                  relocs.size() * sizeof(Elf32_Rela)),
+                  4);
+  size_t symtabOffset = appendBytes(
+      bytes,
+      llvm::StringRef(reinterpret_cast<const char *>(symbols.data()),
+                      symbols.size() * sizeof(Elf32_Sym)),
+      4);
+  size_t strtabOffset = appendBytes(bytes, strtab);
+  size_t shstrtabOffset = appendBytes(bytes, shstrtab);
+  align(bytes, alignof(Elf32_Shdr));
+  size_t shoff = bytes.size();
+
+  std::vector<Elf32_Shdr> sections(ShstrtabSection + 1);
+  sections[TextSection] = {static_cast<Elf32_Word>(textName),
+                           SHT_PROGBITS,
+                           SHF_ALLOC | SHF_EXECINSTR,
+                           0,
+                           textOffset,
+                           textSize,
+                           0,
+                           0,
+                           4,
+                           0};
+  sections[StackSizesSection] = {static_cast<Elf32_Word>(stackSizesName),
+                                 SHT_PROGBITS,
+                                 0,
+                                 0,
+                                 stackSizesOffset,
+                                 static_cast<Elf32_Word>(stackSizes.size()),
+                                 0,
+                                 0,
+                                 1,
+                                 0};
+  sections[RelaTextSection] = {
+      static_cast<Elf32_Word>(relaTextName),
+      SHT_RELA,
+      0,
+      0,
+      relaTextOffset,
+      static_cast<Elf32_Word>(relocs.size() * sizeof(Elf32_Rela)),
+      SymtabSection,
+      TextSection,
+      4,
+      sizeof(Elf32_Rela)};
+  sections[SymtabSection] = {
+      static_cast<Elf32_Word>(symtabName),
+      SHT_SYMTAB,
+      0,
+      0,
+      symtabOffset,
+      static_cast<Elf32_Word>(symbols.size() * sizeof(Elf32_Sym)),
+      StrtabSection,
+      1,
+      4,
+      sizeof(Elf32_Sym)};
+  sections[StrtabSection] = {
+      static_cast<Elf32_Word>(strtabName),    SHT_STRTAB, 0, 0, strtabOffset,
+      static_cast<Elf32_Word>(strtab.size()), 0,          0, 1, 0};
+  sections[ShstrtabSection] = {static_cast<Elf32_Word>(shstrtabName),
+                               SHT_STRTAB,
+                               0,
+                               0,
+                               shstrtabOffset,
+                               static_cast<Elf32_Word>(shstrtab.size()),
+                               0,
+                               0,
+                               1,
+                               0};
+  for (const Elf32_Shdr &section : sections) {
+    appendStruct(bytes, section, alignof(Elf32_Shdr));
+  }
+
+  Elf32_Ehdr ehdr = {};
+  ehdr.e_ident[EI_MAG0] = ELFMAG0;
+  ehdr.e_ident[EI_MAG1] = ELFMAG1;
+  ehdr.e_ident[EI_MAG2] = ELFMAG2;
+  ehdr.e_ident[EI_MAG3] = ELFMAG3;
+  ehdr.e_ident[EI_CLASS] = ELFCLASS32;
+  ehdr.e_ident[EI_DATA] = ELFDATA2LSB;
+  ehdr.e_ident[EI_VERSION] = EV_CURRENT;
+  ehdr.e_type = ET_EXEC;
+  ehdr.e_machine = llvm::ELF::EM_AIE;
+  ehdr.e_version = EV_CURRENT;
+  ehdr.e_entry = startAddr;
+  ehdr.e_ehsize = sizeof(Elf32_Ehdr);
+  ehdr.e_shoff = shoff;
+  ehdr.e_shentsize = sizeof(Elf32_Shdr);
+  ehdr.e_shnum = sections.size();
+  ehdr.e_shstrndx = ShstrtabSection;
+  overwriteStruct(bytes, 0, ehdr);
+
+  std::ofstream out(elfPath.str(), std::ios::binary | std::ios::trunc);
+  if (!out) {
+    throw std::runtime_error("failed to open " + elfPath.str());
+  }
+  out.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+  if (!out) {
+    throw std::runtime_error("failed to write " + elfPath.str());
   }
   return elfPath.str().str();
 }
@@ -226,8 +325,7 @@ void checkZeroSizedTargetDoesNotCreateFalseCycle() {
 
 void checkAieNumberedDataRelocationDoesNotCreateFalseCycle() {
   auto result = xilinx::aiecc::computeStackRequirement(
-      buildFalseRecursionElf(/*useAieNumberedDataRelocation=*/true),
-      llvm::StringMap<int64_t>());
+      buildAieNumberedFalseRecursionElf(), llvm::StringMap<int64_t>());
   if (!result.bytes) {
     throw std::runtime_error("unexpected AIE-numbered failure: " +
                              result.error);
