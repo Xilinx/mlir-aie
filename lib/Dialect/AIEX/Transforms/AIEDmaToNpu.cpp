@@ -938,7 +938,11 @@ static LogicalResult checkQueueDepth(AIE::DeviceOp device,
                                          queue.outstanding(key));
               }
             }
-            queue.push(key, memcpy.getIssueToken());
+            // Not the attribute but the flag the lowering will apply:
+            // DmaToNpuPattern forces issue_token on every S2MM channel, so
+            // taking the op at face value leaves a wait nothing to pop through.
+            queue.push(key, memcpy.getIssueToken() ||
+                                dir == AIE::DMAChannelDir::S2MM);
           } else if (auto wait = dyn_cast<NpuDmaWaitOp>(op)) {
             auto info = resolve(wait.getSymbol());
             if (!info)
@@ -957,6 +961,10 @@ static LogicalResult checkQueueDepth(AIE::DeviceOp device,
 }
 
 struct AIEDmaToNpuPass : xilinx::AIEX::impl::AIEDmaToNpuBase<AIEDmaToNpuPass> {
+  using Base = xilinx::AIEX::impl::AIEDmaToNpuBase<AIEDmaToNpuPass>;
+  AIEDmaToNpuPass() = default;
+  AIEDmaToNpuPass(const xilinx::AIEX::AIEDmaToNpuOptions &options)
+      : Base(options) {}
 
   void runOnOperation() override {
 
@@ -1024,4 +1032,11 @@ struct AIEDmaToNpuPass : xilinx::AIEX::impl::AIEDmaToNpuBase<AIEDmaToNpuPass> {
 
 std::unique_ptr<OperationPass<AIE::DeviceOp>> AIEX::createAIEDmaToNpuPass() {
   return std::make_unique<AIEDmaToNpuPass>();
+}
+
+std::unique_ptr<OperationPass<AIE::DeviceOp>>
+AIEX::createAIEDmaToNpuPass(bool enforceQueueDepth) {
+  AIEDmaToNpuOptions options;
+  options.enforceQueueDepth = enforceQueueDepth;
+  return std::make_unique<AIEDmaToNpuPass>(options);
 }
