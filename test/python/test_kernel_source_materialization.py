@@ -135,6 +135,23 @@ def test_design_include_dirs_follow_kernel_and_source_dirs(tmp_path, stub_compil
     ]
 
 
+def test_source_string_design_include_dirs_follow_kernel_dirs(tmp_path, stub_compiler):
+    func = _stub_func("kernel", None)
+    func._source_file = None
+    func._source_string = SOURCE
+    func._include_dirs = ["kernel/include"]
+
+    compile_external_kernels(
+        [func], tmp_path, "aie2p", include_dirs=[tmp_path / "design/include"]
+    )
+
+    assert stub_compiler[0]["include_dirs"] == [
+        "kernel/include",
+        tmp_path / "design/include",
+    ]
+    assert func._include_dirs == ["kernel/include"]
+
+
 def test_materialized_source_keeps_umask_permissions(tmp_path):
     """Staging through mkstemp must not narrow the source to 0600."""
     written = tmp_path / "from_string.cc"
