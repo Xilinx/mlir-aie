@@ -606,12 +606,18 @@ struct AIETraceRegPackWritesPass
               << "], width=" << fieldInfo->getWidth();
           return signalPassFailure();
         }
-        uint32_t shiftedValue = targetModel.encodeFieldValue(*fieldInfo, value);
+        auto shiftedValue = targetModel.encodeFieldValue(*fieldInfo, value);
+        if (!shiftedValue) {
+          regOp.emitError("Value ")
+              << value << " does not fit in field " << regOp.getRegName() << "."
+              << fieldInfo->name << " (width " << fieldInfo->getWidth() << ")";
+          return signalPassFailure();
+        }
         // Create new operation with mask
         builder.setInsertionPoint(regOp);
         TraceRegOp::create(builder, regOp.getLoc(), regOp.getRegNameAttr(),
                            nullptr, // no field
-                           builder.getI32IntegerAttr(shiftedValue),
+                           builder.getI32IntegerAttr(*shiftedValue),
                            builder.getI32IntegerAttr(*mask),
                            regOp.getCommentAttr());
 
