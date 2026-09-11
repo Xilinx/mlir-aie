@@ -113,7 +113,7 @@ void patchElfAsAieWithNumberedDataRelocation(llvm::StringRef elfPath) {
   }
   llvm::StringRef shstrtab(bytes.data() + shstr.sh_offset, shstr.sh_size);
   bool patchedRelocation = false;
-  for (unsigned i = 0; i < ehdr.e_shnum; ++i) {
+  for (size_t i = 0; i < ehdr.e_shnum; ++i) {
     Elf64_Shdr sec = readSectionHeader(i);
     if (sec.sh_name >= shstrtab.size()) {
       throw std::runtime_error("ELF has an invalid section name offset");
