@@ -11735,9 +11735,10 @@ runtime (dynamic free-list pool) the register address is itself runtime and
 is supplied via the optional <code>addr_val</code> operand instead, which then takes
 precedence. Only the EmitC (C++ TXN) target supports a runtime <code>addr_val</code>;
 the static binary target requires the constant <code>addr</code>.</p>
-<p><code>arg_plus</code> is an SSA value; use arith.constant for
+<p><code>arg_plus</code> is an SSA value of type <code>i32</code> or <code>i64</code>; use arith.constant for
 a compile-time-known offset or pass a runtime sequence value for a
-runtime-parameterized buffer offset.</p>
+runtime-parameterized buffer offset. It reaches the device as a 64-bit
+field, so an offset past 4 GiB needs an <code>i64</code> constant.</p>
 <p><code>arg_idx</code> or <code>buffer</code> specify which runtime sequence argument holds the 
 host buffer whose address you want to patch. You must set exactly one of
 the two:
@@ -11774,7 +11775,7 @@ the two:
 </tr>
 <tr>
 <td style="text-align: center;"><code>arg_plus</code></td>
-<td>32-bit signless integer</td>
+<td>32-bit signless integer or 64-bit signless integer</td>
 </tr>
 <tr>
 <td style="text-align: center;"><code>buffer</code></td>
