@@ -107,8 +107,8 @@ void checkZeroSizedTargetDoesNotCreateFalseCycle() {
 
 void checkRecursionDiagnosticPrintsAddresses() {
   llvm::SmallString<128> dir;
-  if (std::error_code ec =
-          llvm::sys::fs::createUniqueDirectory("stack-size-analysis-cycle", dir)) {
+  if (std::error_code ec = llvm::sys::fs::createUniqueDirectory(
+          "stack-size-analysis-cycle", dir)) {
     throw std::runtime_error("failed to create temp directory: " +
                              ec.message());
   }
