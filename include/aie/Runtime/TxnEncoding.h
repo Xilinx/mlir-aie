@@ -213,7 +213,7 @@ inline void txn_append_address_patch(std::vector<uint32_t> &txn, uint32_t addr,
   txn[pos + 0] = TXN_OPC_DDR_PATCH;     // opcode
   txn[pos + 1] = 12 * sizeof(uint32_t); // operation size
   // pos+2..4 are reserved (zero)
-  txn[pos + 5] = 0; // action; the struct puts it at word 4, inert while zero
+  txn[pos + 5] = 0;    // action; the struct puts it at word 4, inert while zero
   txn[pos + 6] = addr; // register address to patch
   // pos+7 is reserved (zero)
   txn[pos + 8] = static_cast<uint32_t>(arg_idx); // buffer argument index

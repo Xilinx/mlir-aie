@@ -854,8 +854,7 @@ std::optional<uint32_t> AIEX::getConstantIntOperand(mlir::Value v) {
   return static_cast<uint32_t>(cst.getZExtValue());
 }
 
-// Widthwise counterpart of getConstantIntOperand, for fields aie-rt carries as
-// u64: `address_patch`'s arg_plus offset truncates past 4 GiB otherwise.
+// Widthwise counterpart of getConstantIntOperand; see createConstantArgPlus.
 std::optional<uint64_t> AIEX::getConstantInt64Operand(mlir::Value v) {
   mlir::APInt cst;
   if (!mlir::matchPattern(v, mlir::m_ConstantInt(&cst)))
