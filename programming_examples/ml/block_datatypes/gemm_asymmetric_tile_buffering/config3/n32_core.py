@@ -150,11 +150,11 @@ def n32_core_gemm(
                 zero_kernel,
                 matmul_kernel,
             ],
-            stack_size=0xF00,
+            stack_size=0x400,
             # Reserve the kernel's static data explicitly: mm_bfp_mixed.cc
             # holds the bf16 C staging buffer (c_bf16_2nd_half, 16384 B) plus
-            # two counters in .bss. Buffer allocation leaves < 14 KB
-            # contiguous on each core, so the link fails without this.
+            # two counters in .bss. Without this, buffer allocation leaves
+            # < 14 KB contiguous and the core-ELF link fails.
             data_size=m * n // 2 * 2 + 8,
         ),
     )

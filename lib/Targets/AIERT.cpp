@@ -771,6 +771,8 @@ xilinx::AIE::AIERTControl::configureSwitches(DeviceOp &targetOp,
       int mask = 0;
       int arbiter = -1;
 
+      // MasterSetOp::verify guarantees every amsel names the same arbiter, so
+      // folding them into one arbiter plus msel mask is safe here.
       for (auto val : masterSetOp.getAmsels()) {
         AMSelOp amsel = cast<AMSelOp>(val.getDefiningOp());
         arbiter = amsel.arbiterIndex();
