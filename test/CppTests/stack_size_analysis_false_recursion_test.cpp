@@ -33,7 +33,7 @@ void writeFile(llvm::StringRef path, llvm::StringRef contents) {
   if (!out) {
     throw std::runtime_error("failed to open " + path.str());
   }
-  out << contents;
+  out.write(contents.data(), static_cast<std::streamsize>(contents.size()));
   if (!out) {
     throw std::runtime_error("failed to write " + path.str());
   }
@@ -92,7 +92,7 @@ helper_cycle:
   run(clang + " " + quote(objPath) +
       " -nostdlib -no-pie -Wl,-e,_start -Wl,--emit-relocs -o " +
       quote(elfPath));
-  return elfPath.str();
+  return elfPath.str().str();
 }
 
 void checkZeroSizedTargetDoesNotCreateFalseCycle() {
