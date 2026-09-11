@@ -28,10 +28,9 @@
 // CHECK:            aie.rule(31, 1, %[[VAL1]])
 // CHECK:          }
 // CHECK:        }
-// CHECK:        aie.packet_flow(1) {
-// CHECK:          aie.packet_source<%[[TILE_1_2]], Trace : 0>
-// CHECK:          aie.packet_dest<%[[TILE_0_0]], DMA : 1>
-// CHECK:        } {keep_pkt_header = true}
+// The pathfinder removes the packet_flow op once it has been lowered into
+// switchbox masterset/packet_rules, so it must not reappear in the output.
+// CHECK-NOT:     aie.packet_flow
 // CHECK:        %[[TILE_1_0:.*]] = aie.tile(1, 0)
 // CHECK:        %{{.*}} = aie.switchbox(%[[TILE_1_0]]) {
 // CHECK:          %[[VAL2:.*]] = aie.amsel<0> (0)
