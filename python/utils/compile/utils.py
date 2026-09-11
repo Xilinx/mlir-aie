@@ -12,6 +12,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -425,6 +426,13 @@ def _run_aiecc(mlir_file: str, args: list[str]):
         logger.debug("%s", result.stdout)
     if result.stderr:
         logger.debug("%s", result.stderr)
+        # Diagnostics from a build that succeeded would otherwise be dropped:
+        # debug logging is off by default and the failure path below only runs
+        # on a non-zero exit.
+        if result.returncode == 0:
+            for line in result.stderr.splitlines():
+                if ": warning:" in line or ": error:" in line:
+                    print(f"[aiecc] {line}", file=sys.stderr)
     if result.returncode != 0:
         error_msg = result.stderr if result.stderr else result.stdout
         raise RuntimeError(
