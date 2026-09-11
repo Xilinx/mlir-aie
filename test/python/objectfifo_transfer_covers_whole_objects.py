@@ -34,9 +34,7 @@ def build(fifo_dtype, name, line=LINE, in_ty=None, out_ty=None, decoupled=False)
     line_ty = np.ndarray[(line,), np.dtype[fifo_dtype]]
 
     of_in = ObjectFifo(line_ty, name=f"in_{name}", stream_len_decoupled=decoupled)
-    of_out = of_in.cons().forward(
-        name=f"out_{name}", stream_len_decoupled=decoupled
-    )
+    of_out = of_in.cons().forward(name=f"out_{name}", stream_len_decoupled=decoupled)
 
     def sequence(a, c, in_h, out_h):
         in_h.fill(a)
