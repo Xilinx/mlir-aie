@@ -389,8 +389,8 @@ buildHostExeSubgraph(EdgeWithTypedOutput<std::string> &aieInc,
 }
 
 // AIE-simulator work-folder subgraph. Emits the `sim/` folder the aiesimulator
-// consumes: the graph/shim/scsim descriptors, the routed flows, the ps.so
-// co-simulation model, the `.target` marker, and the `aiesim.sh` launcher.
+// consumes: the graph/shim/scsim descriptors, the ps.so co-simulation model,
+// the `.target` marker, and the `aiesim.sh` launcher.
 //
 // Each artifact is its own edge/Item. They are declared with work-dir-relative
 // names, so as intermediates they land in the `.prj` (aiesim.sh derives
@@ -406,7 +406,6 @@ buildAiesimSubgraph(mlir::MLIRContext &context,
                     EdgeWithTypedOutput<std::string> &aieInc) {
   std::string installDir = getInstallDir();
   std::string aietoolsRoot = discoverAietoolsDir(aietoolsDir.getValue());
-  const std::string &devFilter = deviceName.getValue();
 
   // graph.xpe / aieshim_solution.aiesol / scsim_config.json: in-process
   // translations of the per-device module.
@@ -438,27 +437,10 @@ buildAiesimSubgraph(mlir::MLIRContext &context,
                                                     d.getSymName());
       });
 
-  // Routed flows: run `aie-find-flows` to annotate the module, emit it as
-  // flows_physical.mlir, then serialize the flows to JSON.
-  auto findFlowsPM = std::make_unique<mlir::PassManager>(&context);
-  findFlowsPM->nest<DeviceOp>().addPass(xilinx::AIE::createAIEFindFlowsPass());
-  auto &flows = staticPerDevice.map<ModRef>(
-      "sim/flows_physical.mlir", PassPipeline{std::move(findFlowsPM)});
-  auto &flowsJson = flows.map<std::string>(
-      "sim/flows_physical.json",
-      [devFilter](const Item<ModRef> &item,
-                  Item<std::string> &out) -> mlir::LogicalResult {
-        mlir::ModuleOp mod = item.get().get();
-        std::string devName = devFilter;
-        if (devName.empty()) {
-          for (auto d : mod.getOps<DeviceOp>()) {
-            devName = d.getSymName().str();
-            break;
-          }
-        }
-        llvm::raw_string_ostream os(out.value.emplace());
-        return xilinx::AIE::AIEFlowsToJSON(mod, os, devName);
-      });
+  // The routing description `aie-translate --aie-flows-to-json` produces
+  // belongs to the route visualizer, not to aiesimulator, which reads only the
+  // graph/shim/scsim descriptors and ps.so. Run
+  // tools/aie-routing-command-line/mlir2json.sh to obtain it.
 
   // ps.so: the SystemC co-simulation model. clang++ links the toolchain's
   // `genwrapper_for_ps.cpp` (which #includes aie_inc.cpp from the work dir)
@@ -582,26 +564,24 @@ aiesimulator --pkg-dir=${prj_name}/sim --dump-vcd ${vcd_filename}
   // materializes them -- via asFile(), the Item abstraction's "I need this on
   // disk" request -- into the `.prj`. Produces no file of its own.
   auto &aiesim =
-      bundle(xpe.out, shim.out, scsim.out, flows.out, flowsJson.out, ps.out,
-             target.out, script.out)
-          .join<File>(
-              "aiesim.stamp",
-              [](const Node<std::string> &xpe, const Node<std::string> &shim,
-                 const Node<std::string> &scsim, const Node<ModRef> &flows,
-                 const Node<std::string> &flowsJson, const Node<File> &ps,
-                 const Node<std::string> &target,
-                 const Node<std::string> &script,
-                 Item<File> &out) -> mlir::LogicalResult {
-                const NodeBase *nodes[] = {&xpe,       &shim, &scsim,  &flows,
-                                           &flowsJson, &ps,   &target, &script};
-                for (const NodeBase *n : nodes) {
-                  for (const ItemBase *it : n->itemRefs()) {
-                    (void)it->asFile();
-                  }
-                }
-                out.value = File{};
-                return mlir::success();
-              });
+      bundle(xpe.out, shim.out, scsim.out, ps.out, target.out, script.out)
+          .join<File>("aiesim.stamp",
+                      [](const Node<std::string> &xpe,
+                         const Node<std::string> &shim,
+                         const Node<std::string> &scsim, const Node<File> &ps,
+                         const Node<std::string> &target,
+                         const Node<std::string> &script,
+                         Item<File> &out) -> mlir::LogicalResult {
+                        const NodeBase *nodes[] = {&xpe, &shim,   &scsim,
+                                                   &ps,  &target, &script};
+                        for (const NodeBase *n : nodes) {
+                          for (const ItemBase *it : n->itemRefs()) {
+                            (void)it->asFile();
+                          }
+                        }
+                        out.value = File{};
+                        return mlir::success();
+                      });
   aiesim.producesFiles = false;
   return aiesim;
 }

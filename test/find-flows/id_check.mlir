@@ -9,7 +9,7 @@
 // RUN: aie-opt -aie-find-flows %s | FileCheck %s
 // CHECK: %[[T23:.*]] = aie.tile(2, 3)
 // CHECK: %[[T22:.*]] = aie.tile(2, 2)
-// CHECK: aie.packet_flow(15) {
+// CHECK: aie.packet_flow(15 mask 15) {
 // CHECK:   aie.packet_source<%[[T22]], DMA : 0>
 // CHECK:   aie.packet_dest<%[[T23]], DMA : 1>
 // CHECK: }

@@ -58,7 +58,7 @@ module @flow_dup_logical {
 // -----
 
 // The same packet flow declared twice, as reported in issue #3706.
-// CHECK: error{{.*}}'aie.packet_flow' op duplicates an earlier packet flow; ID 0 is already declared between the same sources and destinations
+// CHECK: error{{.*}}'aie.packet_flow' op duplicates an earlier packet flow; ID 0 under mask 0x1F is already declared between the same sources and destinations
 // CHECK: note:{{.*}}the other packet flow is here
 module @packet_flow_dup {
   aie.device(npu2) {
@@ -81,7 +81,7 @@ module @packet_flow_dup {
 // same endpoints in a different order is still the same flow. Disagreeing
 // keep_pkt_header attributes make the redeclaration contradictory, not merely
 // redundant, so the attributes are deliberately not part of the key.
-// CHECK: error{{.*}}'aie.packet_flow' op duplicates an earlier packet flow; ID 3 is already declared between the same sources and destinations
+// CHECK: error{{.*}}'aie.packet_flow' op duplicates an earlier packet flow; ID 3 under mask 0x1F is already declared between the same sources and destinations
 module @packet_flow_dup_reordered {
   aie.device(npu2) {
     %shim = aie.tile(2, 0)
@@ -158,6 +158,27 @@ module @packet_flow_no_false_positives {
     aie.packet_flow(0) {
       aie.packet_source<%u0, DMA : 0>
       aie.packet_dest<%u1, DMA : 0>
+    }
+  }
+}
+
+// -----
+
+// Two flows carrying one ID between one pair of endpoints under different
+// masks claim different sets of packets, so neither duplicates the other.
+// The first claims 0x0 through 0x3, the second 0x0 alone.
+// CHECK-LABEL: @packet_flow_distinct_masks
+module @packet_flow_distinct_masks {
+  aie.device(npu2) {
+    %shim = aie.tile(2, 0)
+    %core = aie.tile(2, 2)
+    aie.packet_flow(0 mask 28) {
+      aie.packet_source<%shim, DMA : 0>
+      aie.packet_dest<%core, DMA : 0>
+    }
+    aie.packet_flow(0) {
+      aie.packet_source<%shim, DMA : 0>
+      aie.packet_dest<%core, DMA : 0>
     }
   }
 }

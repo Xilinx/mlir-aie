@@ -1232,6 +1232,84 @@ static void printObjectFifoConsumerElemType(OpAsmPrinter &p,
     p << " -> " << consumerElemType;
 }
 
+ParseResult xilinx::AIE::parseFlowVias(
+    OpAsmParser &parser, SmallVectorImpl<OpAsmParser::UnresolvedOperand> &vias,
+    DenseI32ArrayAttr &ingressBundles, DenseI32ArrayAttr &ingressChannels,
+    DenseI32ArrayAttr &egressBundles, DenseI32ArrayAttr &egressChannels) {
+  SmallVector<int32_t> inBundles, inChannels, egBundles, egChannels;
+  auto parseBundle = [&](SmallVectorImpl<int32_t> &out) -> ParseResult {
+    StringRef kw;
+    if (parser.parseKeyword(&kw))
+      return failure();
+    auto bundle = symbolizeWireBundle(kw);
+    if (!bundle)
+      return parser.emitError(parser.getCurrentLocation(),
+                              "invalid wire bundle '" + kw + "'");
+    out.push_back(static_cast<int32_t>(*bundle));
+    return success();
+  };
+  // via ( %tile : <ingress bundle> : <ch> -> <egress bundle> : <ch>, ... )
+  if (succeeded(parser.parseOptionalKeyword("via"))) {
+    auto parseOne = [&]() -> ParseResult {
+      int32_t inChan, egChan;
+      if (parser.parseOperand(vias.emplace_back()) || parser.parseColon() ||
+          parseBundle(inBundles) || parser.parseColon() ||
+          parser.parseInteger(inChan) || parser.parseArrow() ||
+          parseBundle(egBundles) || parser.parseColon() ||
+          parser.parseInteger(egChan))
+        return failure();
+      inChannels.push_back(inChan);
+      egChannels.push_back(egChan);
+      return success();
+    };
+    if (parser.parseCommaSeparatedList(AsmParser::Delimiter::Paren, parseOne))
+      return failure();
+  }
+  if (!vias.empty()) {
+    MLIRContext *ctx = parser.getContext();
+    ingressBundles = DenseI32ArrayAttr::get(ctx, inBundles);
+    ingressChannels = DenseI32ArrayAttr::get(ctx, inChannels);
+    egressBundles = DenseI32ArrayAttr::get(ctx, egBundles);
+    egressChannels = DenseI32ArrayAttr::get(ctx, egChannels);
+  }
+  return success();
+}
+
+void xilinx::AIE::printFlowVias(OpAsmPrinter &printer, Operation *op,
+                                OperandRange vias,
+                                DenseI32ArrayAttr ingressBundles,
+                                DenseI32ArrayAttr ingressChannels,
+                                DenseI32ArrayAttr egressBundles,
+                                DenseI32ArrayAttr egressChannels) {
+  if (vias.empty())
+    return;
+  printer << "via (";
+  for (size_t i = 0; i < vias.size(); i++) {
+    if (i)
+      printer << ", ";
+    printer << vias[i] << " : "
+            << stringifyWireBundle(static_cast<WireBundle>(ingressBundles[i]))
+            << " : " << ingressChannels[i] << " -> "
+            << stringifyWireBundle(static_cast<WireBundle>(egressBundles[i]))
+            << " : " << egressChannels[i];
+  }
+  printer << ")";
+}
+
+LogicalResult FlowOp::verify() {
+  size_t n = getVias().size();
+  DenseI32ArrayAttr arrays[] = {
+      getViaIngressBundlesAttr(), getViaIngressChannelsAttr(),
+      getViaEgressBundlesAttr(), getViaEgressChannelsAttr()};
+  for (DenseI32ArrayAttr a : arrays) {
+    size_t size = a ? a.size() : 0;
+    if (size != n)
+      return emitOpError("has ")
+             << n << " via tile(s) but a via port array of size " << size;
+  }
+  return success();
+}
+
 static ParseResult parseObjectFifoConsumerElemType(OpAsmParser &parser,
                                                    TypeAttr &consumerElemType) {
   if (failed(parser.parseOptionalArrow()))
@@ -1974,12 +2052,18 @@ LogicalResult verifyNoDuplicateFlows(DeviceOp device) {
 }
 
 // Rejects two aie.packet_flow ops that carry the same ID between the same set
-// of sources and destinations. Declaring the flow twice makes the routing
-// problem look more congested than it is and gives the two copies conflicting
-// keep_pkt_header/priority_route settings when their attributes disagree.
+// of sources and destinations under the same mask. Declaring the flow twice
+// makes the routing problem look more congested than it is and gives the two
+// copies conflicting keep_pkt_header/priority_route settings when their
+// attributes disagree.
+//
+// The mask belongs in the key because it is half of what a flow claims: an ID
+// under two masks names two sets of packets, so the two flows carry different
+// traffic. A flow without the attribute claims its ID alone, which is what the
+// widest mask says, so both spellings key alike.
 LogicalResult verifyNoDuplicatePacketFlows(DeviceOp device) {
   using PacketFlowKey =
-      std::tuple<int, std::vector<PortKey>, std::vector<PortKey>>;
+      std::tuple<int, int, std::vector<PortKey>, std::vector<PortKey>>;
   std::map<PacketFlowKey, PacketFlowOp> packetFlowSeen;
   WalkResult result = device.walk([&](PacketFlowOp packetFlow) {
     Region &body = packetFlow.getPorts();
@@ -2011,12 +2095,17 @@ LogicalResult verifyNoDuplicatePacketFlows(DeviceOp device) {
       return WalkResult::advance();
     llvm::sort(sources);
     llvm::sort(dests);
+    int idBits =
+        llvm::Log2_32_Ceil(device.getTargetModel().getMaxPacketId() + 1);
+    int mask = packetFlow.getMask().value_or((1 << idBits) - 1);
     auto [it, inserted] = packetFlowSeen.try_emplace(
-        {packetFlow.IDInt(), std::move(sources), std::move(dests)}, packetFlow);
+        {packetFlow.IDInt(), mask, std::move(sources), std::move(dests)},
+        packetFlow);
     if (!inserted) {
       InFlightDiagnostic diag =
           packetFlow.emitOpError()
           << "duplicates an earlier packet flow; ID " << packetFlow.IDInt()
+          << " under mask 0x" << llvm::utohexstr(mask)
           << " is already declared between the same sources and destinations";
       diag.attachNote(it->second.getLoc()) << "the other packet flow is here";
       return WalkResult::interrupt();
@@ -2545,6 +2634,27 @@ LogicalResult PacketFlowOp::verify() {
     return emitOpError("must have at least one aie.packet_source");
   if (numDests < 1)
     return emitOpError("must have at least one aie.packet_dest");
+
+  // A slave port accepts a packet when `incoming & mask == ID`, so a bit set
+  // in ID and clear in the mask rejects every packet.
+  if (std::optional<uint8_t> mask = getMask()) {
+    uint8_t id = getID();
+    if ((id & *mask) != id)
+      return emitOpError("has ID 0x")
+             << llvm::utohexstr(id) << " outside mask 0x"
+             << llvm::utohexstr(*mask) << ", which no packet can match";
+  }
+
+  size_t n = getVias().size();
+  DenseI32ArrayAttr arrays[] = {
+      getViaIngressBundlesAttr(), getViaIngressChannelsAttr(),
+      getViaEgressBundlesAttr(), getViaEgressChannelsAttr()};
+  for (DenseI32ArrayAttr a : arrays) {
+    size_t size = a ? a.size() : 0;
+    if (size != n)
+      return emitOpError("has ")
+             << n << " via tile(s) but a via port array of size " << size;
+  }
 
   return success();
 }
