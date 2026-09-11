@@ -319,8 +319,18 @@ def AIEResolveAddressPatchBuffers
 def AIEAssignRuntimeSequenceBDIDs : Pass<"aie-assign-runtime-sequence-bd-ids", "AIE::DeviceOp"> {
   let summary = "Assign IDs to Buffer Descriptors Configured in the Runtime Sequence";
 
+  let options = [
+    Option<"enforceQueueDepth", "enforce-queue-depth", "bool",
+           /*default=*/"false",
+           "Insert an aiex.npu.maskpoll before any dma_start_task that could "
+           "push onto a full DMA task queue, so the sequence waits for a free "
+           "slot instead of racing on drain timing. Off by default: it costs a "
+           "stall whenever it fires.">
+  ];
+
   let constructor = "xilinx::AIEX::createAIEAssignRuntimeSequenceBDIDsPass()";
   let dependentDialects = [
+    "mlir::arith::ArithDialect",
     "xilinx::AIE::AIEDialect",
     "xilinx::AIEX::AIEXDialect",
   ];

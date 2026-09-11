@@ -32,6 +32,7 @@
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Pass/Pass.h"
 #include "llvm/ADT/DenseMap.h"
@@ -39,6 +40,7 @@
 
 #include <array>
 #include <map>
+#include <set>
 
 namespace xilinx::AIEX {
 #define GEN_PASS_DEF_AIEASSIGNRUNTIMESEQUENCEBDIDS
@@ -99,11 +101,47 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     return failure(wr.wasInterrupted());
   }
 
+  // Emit a poll that blocks until the channel's task queue has a free slot.
+  // The queue does not backpressure -- a push onto a full queue is dropped, not
+  // stalled -- so waiting here is the only way to make room a precondition
+  // rather than a bet on drain timing.
+  //
+  // A maskpoll tests masked equality, not "<", so this relies on `depth` being
+  // a power of two: occupancy < depth is then exactly "the depth bit is clear"
+  // (for depth 4, bit 22 of Task_Queue_Size).
+  LogicalResult insertQueueSpaceWait(DMAStartTaskOp start,
+                                     DMAConfigureTaskOp cfg, AIE::TileOp tile,
+                                     uint32_t depth,
+                                     const AIETargetModel &tm) {
+    uint32_t fieldMask = tm.getDmaTaskQueueSizeMask();
+    if (!fieldMask || (depth & (depth - 1)) != 0)
+      return failure();
+    std::optional<uint32_t> statusAddr = tm.getDmaStatusAddress(
+        tile.getCol(), tile.getRow(), cfg.getChannel(), cfg.getDirection());
+    if (!statusAddr)
+      return failure();
+
+    uint32_t depthBit = depth << llvm::countr_zero(fieldMask);
+    if ((depthBit & fieldMask) != depthBit)
+      return failure();
+
+    OpBuilder b(start);
+    Location loc = start.getLoc();
+    auto i32 = b.getI32Type();
+    auto cst = [&](uint32_t v) {
+      return b.create<arith::ConstantOp>(loc, i32, b.getI32IntegerAttr(v))
+          .getResult();
+    };
+    b.create<NpuMaskPollOp>(loc, cst(*statusAddr), cst(0), cst(depthBit),
+                            /*buffer=*/nullptr, /*column=*/nullptr,
+                            /*row=*/nullptr);
+    return success();
+  }
+
   // Track the two per-channel resources a sequence can exhaust. Their failure
-  // modes are opposites, so they are counted separately: over-production is
-  // harmless for the TCT FIFO (leftover tokens cost nothing) but not for the
-  // task queue, where a push onto a full queue is dropped and its transfer
-  // never runs.
+  // modes are opposites: over-production is harmless for the TCT FIFO (leftover
+  // tokens cost nothing) but not for the task queue, where a push onto a full
+  // queue is dropped and its transfer never runs.
   //
   // Queue counting differs from token counting in three ways: every push takes
   // a slot, not just issue_token ones; a non-token push is still retired
@@ -127,6 +165,9 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     // Per channel, the queued-but-not-known-retired pushes in program order.
     // Each entry records whether that push issues a token.
     std::map<ChannelKey, SmallVector<bool, 8>> queued;
+    // An over-subscribed channel usually stays that way for every later push,
+    // so report only the first occurrence per channel.
+    std::set<ChannelKey> reported;
 
     WalkResult wr = seq.walk([&](Operation *op) -> WalkResult {
       if (auto start = dyn_cast<DMAStartTaskOp>(op)) {
@@ -139,7 +180,13 @@ struct AIEAssignRuntimeSequenceBDIDsPass
             tile.getCol(), tile.getRow(), cfg.getChannel(), cfg.getDirection());
         SmallVector<bool, 8> &q = queued[key];
         // depth == 0 means the target has no queued-task model to overflow.
-        if (depth > 0 && q.size() >= depth)
+        if (depth > 0 && q.size() >= depth && enforceQueueDepth &&
+            succeeded(insertQueueSpaceWait(start, cfg, tile, depth, tm))) {
+          // The poll guarantees occupancy < depth once it returns, so the
+          // modelled queue can only hold depth-1 entries at this point.
+          q.truncate(0);
+          q.append(depth - 1, false);
+        } else if (depth > 0 && q.size() >= depth && !enforceQueueDepth)
           start.emitWarning()
               << "pushes a DMA task onto tile (" << tile.getCol() << ","
               << tile.getRow() << ") "

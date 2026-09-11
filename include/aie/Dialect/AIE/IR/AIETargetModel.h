@@ -457,6 +457,21 @@ public:
   virtual uint32_t getDmaControlAddress(int col, int row, int channel,
                                         AIE::DMAChannelDir direction) const = 0;
 
+  /// Return the address of the DMA status register for a channel, or nullopt
+  /// when this target's layout has not been verified. The register carries the
+  /// live task-queue occupancy in getDmaTaskQueueSizeMask(), which is the only
+  /// way to observe queue space: the queue does not backpressure, so a push
+  /// onto a full queue is dropped rather than stalled.
+  virtual std::optional<uint32_t>
+  getDmaStatusAddress(int /*col*/, int /*row*/, int /*channel*/,
+                      AIE::DMAChannelDir /*direction*/) const {
+    return std::nullopt;
+  }
+
+  /// Return the mask selecting the live task-queue occupancy field within the
+  /// getDmaStatusAddress() register (0 when unsupported).
+  virtual uint32_t getDmaTaskQueueSizeMask() const { return 0; }
+
   /// Return the DMA task-queue register address relative to its tile.
   uint32_t getLocalDmaControlAddress(int col, int row, int channel,
                                      AIE::DMAChannelDir direction) const {
@@ -847,6 +862,11 @@ public:
 
   uint32_t getDmaControlAddress(int col, int row, int channel,
                                 AIE::DMAChannelDir direction) const override;
+  std::optional<uint32_t>
+  getDmaStatusAddress(int col, int row, int channel,
+                      AIE::DMAChannelDir direction) const override;
+  // Task_Queue_Size, bits 22:20 of the DMA_{MM2S,S2MM}_Status_N register.
+  uint32_t getDmaTaskQueueSizeMask() const override { return 0x7u << 20; }
 
   uint32_t getMemTileSize() const override { return 0x00080000; }
 
@@ -918,6 +938,9 @@ public:
                            AIE::DMAChannelDir direction) const override;
   uint32_t getDmaControlAddress(int col, int row, int channel,
                                 AIE::DMAChannelDir direction) const override;
+  std::optional<uint32_t>
+  getDmaStatusAddress(int col, int row, int channel,
+                      AIE::DMAChannelDir direction) const override;
 
   uint32_t getNumDestSwitchboxConnections(int col, int row,
                                           WireBundle bundle) const override;
