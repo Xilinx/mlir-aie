@@ -231,6 +231,53 @@ KERNEL_SPECS: list[KernelSpec] = [
             (dict(tile_size=1024, dtype=bfloat16), 1, (2,)),
         ],
     ),
+    KernelSpec(
+        name="argmax",
+        factory=kernels.argmax,
+        kwargs=dict(tile_size=1024, dtype=np.int32),
+        arg_count=4,
+        expected_name="argmax_vector",
+        name_variants=[
+            (dict(tile_size=1024, dtype=np.int32, vectorized=False), "argmax_scalar"),
+            (dict(tile_size=1024, dtype=bfloat16), "argmax_vector_bfloat16"),
+            (
+                dict(tile_size=1000, dtype=bfloat16, vectorized=False),
+                "argmax_scalar_bfloat16",
+            ),
+            # Not a multiple of any vector width: the kernel takes a tail.
+            (dict(tile_size=1000, dtype=bfloat16), "argmax_vector_bfloat16"),
+        ],
+        invalid_kwargs=[
+            (
+                dict(tile_size=1024, dtype=np.float32),
+                "dtype must be np.int32 or bfloat16",
+            ),
+            (dict(tile_size=40000, dtype=bfloat16), "must be in 1..32767"),
+            (dict(tile_size=0, dtype=np.int32), "must be in 1..32767"),
+        ],
+        shape_checks=[
+            (dict(tile_size=2048, dtype=np.int32), 0, (2048,)),
+            # The record is two int32 slots whatever the input dtype.
+            (dict(tile_size=2048, dtype=np.int32), 1, (2,)),
+            (dict(tile_size=1024, dtype=bfloat16), 1, (2,)),
+        ],
+    ),
+    KernelSpec(
+        name="argmax_combine",
+        factory=kernels.argmax_combine,
+        kwargs=dict(dtype=np.int32),
+        arg_count=3,
+        expected_name="argmax_combine",
+        name_variants=[
+            (dict(dtype=bfloat16), "argmax_combine_bfloat16"),
+        ],
+        invalid_kwargs=[
+            (dict(dtype=np.float32), "dtype must be np.int32 or bfloat16"),
+        ],
+        shape_checks=[
+            (dict(dtype=bfloat16), 0, (2,)),
+        ],
+    ),
     # ----- activation -----
     KernelSpec(
         name="relu",
