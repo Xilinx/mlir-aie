@@ -8,9 +8,8 @@ permissions:
   contents: read
 
 on:
-  push:
-    branches:
-      - main
+  # No push trigger for main: the merge queue runs this workflow on the
+  # commit that lands, so a push run repeats it.
   pull_request:
     types: [opened, synchronize, reopened]
   workflow_dispatch:
@@ -101,6 +100,8 @@ jobs:
           # run, and only the newest is ever restored.
           key: ${{ matrix.build_type }}-${{ runner.os }}-${{ matrix.ubuntu_version }}-${{ matrix.python_version }}
           max-size: 1G
+          # Restore always, save only off a PR -- see .github/actions/setup_ccache.
+          save: ${{ github.event_name != 'pull_request' }}
 
       # ccache defaults to comparing the compiler by mtime. GitHub-hosted
       # runners reinstall the compiler every run with a fresh mtime, so every
