@@ -12,6 +12,7 @@
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
+#include "llvm/BinaryFormat/ELF.h"
 #include "llvm/Object/ELFObjectFile.h"
 #include "llvm/Object/ObjectFile.h"
 #include "llvm/Support/Endian.h"
@@ -201,9 +202,8 @@ bool isZeroSizedFunctionSymbol(const SymbolRef &sym) {
 }
 
 bool isAieDataWordRelocation(const ObjectFile &obj, const RelocationRef &rel) {
-  constexpr uint16_t aieMachine = 264; // llvm::ELF::EM_AIE
   if (const auto *elf = llvm::dyn_cast<ELFObjectFileBase>(&obj);
-      !elf || elf->getEMachine() != aieMachine) {
+      !elf || elf->getEMachine() != llvm::ELF::EM_AIE) {
     return false;
   }
   // llvm-aie assigns one dense relocation range to instruction fixups and one
