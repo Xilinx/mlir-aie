@@ -530,7 +530,8 @@ struct AIEObjectFifoAllocatePass
         memTilePools.push_back(pool);
       }
     }
-    llvm::stable_sort(memTilePools, [&](ObjectFifoPoolOp a, ObjectFifoPoolOp b) {
+    llvm::stable_sort(memTilePools, [&](ObjectFifoPoolOp a,
+                                        ObjectFifoPoolOp b) {
       auto demand = [&](ObjectFifoPoolOp pool) {
         auto [input, output] = poolChannelDemand.lookup(pool.getOperation());
         return std::max(input, output);
