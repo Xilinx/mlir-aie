@@ -17,6 +17,7 @@
 #include <cstring>
 #include <elf.h>
 #include <fstream>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <system_error>
@@ -280,6 +281,15 @@ std::string buildAieNumberedFalseRecursionElf() {
                                0};
   for (const Elf32_Shdr &section : sections) {
     appendStruct(bytes, section, alignof(Elf32_Shdr));
+  }
+  if (sections.size() > std::numeric_limits<Elf32_Half>::max()) {
+    throw std::runtime_error("synthetic ELF uses too many sections");
+  }
+  if (ShstrtabSection >= sections.size()) {
+    throw std::runtime_error("synthetic ELF has an invalid shstrtab index");
+  }
+  if (sections.front().sh_type != SHT_NULL) {
+    throw std::runtime_error("synthetic ELF is missing the null section");
   }
 
   Elf32_Ehdr ehdr = {};
