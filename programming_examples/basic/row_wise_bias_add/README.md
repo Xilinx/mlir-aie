@@ -27,3 +27,13 @@ The kernel uses vector intrinsics of size `t` to perform the additions.
 The computation is designed such that the `bias` vector is not unnecessarily reloaded.
 To achieve this, we first load a chunk of `t` elements of `bias`, then produce the results for the first `t` columns of `out` (this is the inner loop).
 The outer loop iterates through chunks of `t` columns, loading the next `t` biases at the beginning of each iteration.
+
+## Row-wise Affine Cast
+
+`--op affine_cast` selects a second design in the same files: a per-column affine transform, `out = bfloat16(in*gamma + beta)`, narrowing the `float32` input to `bfloat16` on the way out.
+`gamma` and `beta` are packed into one `1`&times;`2N` buffer, block-interleaved (`gamma` then `beta` per `n`-wide column block), since an AIE2 tile has only two input DMA channels and `in` already uses one.
+The narrowing cast rounds to nearest even (`aie::rounding_mode::conv_even`), matching a host `float32`-\>`bfloat16` pack bit-for-bit; the AIE default truncates toward zero.
+
+```shell
+python3 row_wise_bias_add.py --op affine_cast --dev npu2
+```
