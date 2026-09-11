@@ -6,19 +6,13 @@
 //
 //===----------------------------------------------------------------------===//
 
-// REQUIRES: chess
 // REQUIRES: peano
 
-// RUN: %aiecc --xchesscc -nv --get-xclbin --get-npu-insts --xclbin-name=aie.xclbin --npu-insts-name=insts.txt %s 2>&1 | FileCheck %s --check-prefix=XCHESSCC
 // RUN: %aiecc -nv --get-xclbin --get-npu-insts --xclbin-name=aie.xclbin --npu-insts-name=insts.txt %s 2>&1 | FileCheck %s --check-prefix=PEANO
 
 // Note that llc determines the architecture from the llvm IR.
 // bootgen runs in-process (no exec line); the xclbin packaging step (xclbinutil)
 // is still an external tool.
-// XCHESSCC-NOT: {{[^ ]*llc }}
-// XCHESSCC: xchesscc_wrapper aie2
-// XCHESSCC: xclbinutil
-// XCHESSCC-NOT: {{[^ ]*llc }}
 // PEANO-NOT: xchesscc_wrapper
 // PEANO: {{[^ ]*llc }}
 // PEANO-SAME: --march=aie2

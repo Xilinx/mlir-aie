@@ -67,30 +67,53 @@ def AIEPlaceTiles : Pass<"aie-place-tiles", "DeviceOp"> {
 
   let dependentDialects = ["xilinx::AIE::AIEDialect"];
 
-  let options = [
-    Option<"clPlacerType", "placer", "enum xilinx::AIE::PlacerType",
-           /*default=*/"xilinx::AIE::PlacerType::SequentialPlacer",
-           "Placement algorithm to use (default: sequential_placer)",
-           "llvm::cl::values("
-             "clEnumValN(xilinx::AIE::PlacerType::SequentialPlacer, "
-                        "\"sequential_placer\", \"Sequential column-major placement\"), "
-             "clEnumValN(xilinx::AIE::PlacerType::SAPlacer, "
-                        "\"sa_placer\", \"Simulated annealing placement\"))">,
-    Option<"clCoresPerCol", "cores-per-col", "int",
-           /*default=*/"-1",
-           "Limit number of cores per column (-1 = no limit). "
-           "Spreads cores across columns for better trace packet routing.">,
-    Option<"clMergeLogicalTiles", "merge-logical-tiles", "bool",
+  let options =
+      [Option<"clPlacerType", "placer", "enum xilinx::AIE::PlacerType",
+              /*default=*/"xilinx::AIE::PlacerType::SequentialPlacer",
+              "Placement algorithm to use (default: sequential_placer)",
+              "llvm::cl::values("
+              "clEnumValN(xilinx::AIE::PlacerType::SequentialPlacer, "
+              "\"sequential_placer\", \"Sequential column-major placement\"), "
+              "clEnumValN(xilinx::AIE::PlacerType::SAPlacer, "
+              "\"sa_placer\", \"Simulated annealing placement\"))">,
+       Option<"clCoresPerCol", "cores-per-col", "int",
+              /*default=*/"-1",
+              "Limit number of cores per column (-1 = no limit). "
+              "Spreads cores across columns for better trace packet routing.">,
+       Option<"clMergeLogicalTiles", "merge-logical-tiles", "bool",
+              /*default=*/"true",
+              "When true (default), allow multiple non-core (ShimNOCTile / "
+              "MemTile) aie.logical_tile ops to share one physical aie.tile "
+              "if combined DMA channel demand fits. When false, each non-core "
+              "aie.logical_tile is pinned to its own physical tile. CoreTile "
+              "placement is unaffected.">,
+       Option<
+           "clSpreadUnanchoredTiles", "spread-unanchored-tiles", "bool",
            /*default=*/"true",
-           "When true (default), allow multiple non-core (ShimNOCTile / "
-           "MemTile) aie.logical_tile ops to share one physical aie.tile "
-           "if combined DMA channel demand fits. When false, each non-core "
-           "aie.logical_tile is pinned to its own physical tile. CoreTile "
-           "placement is unaffected.">,
-    Option<"clSASeed", "sa-seed", "int",
-           /*default=*/"1",
-           "Random seed for SA placer (0 = non-deterministic).">
-  ];
+           "When true (default), a non-core aie.logical_tile with no CoreTile "
+           "peers to derive a routing centroid from is ranked by current DMA "
+           "load rather than by distance to column 0. Affects only designs "
+           "with no core anchors (e.g. pure DMA passthrough); CoreTile "
+           "placement and anchored non-core placement are unaffected.">,
+       Option<"clSASeed", "sa-seed", "int",
+              /*default=*/"1",
+              "Random seed for SA placer (0 = non-deterministic).">];
+}
+
+def AIEPrepareBuffers : Pass<"aie-prepare-buffers", "DeviceOp"> {
+  let summary = "Check buffer placement and give every buffer a name";
+  let description = [{
+    Settles everything about a buffer that the core compilation depends on,
+    except the buffer's address.
+
+    A buffer's name becomes a symbol in the core's object, so the name must
+    exist before the core is lowered. This pass names every unnamed buffer and
+    checks buffer placement, which rejects a malformed design before any core
+    is compiled.
+
+  }];
+
+  let constructor = "xilinx::AIE::createAIEPrepareBuffersPass()";
 }
 
 def AIEAssignBufferAddresses : Pass<"aie-assign-buffer-addresses", "DeviceOp"> {
@@ -102,6 +125,11 @@ def AIEAssignBufferAddresses : Pass<"aie-assign-buffer-addresses", "DeviceOp"> {
     updates each aie.buffer operation without an address to have a
     well-defined address.  This enables later passes to have a
     consistent view of the memory map of a system.
+
+    A core that declares `data_size` also gets an aie.buffer marked `core_data`,
+    covering the bytes its own .data, .rodata and .bss occupy. The pass places
+    that buffer with the rest, and AIETargetLdScript emits its extent as the
+    `data` MEMORY region of the core's linker script.
   }];
 
   let constructor = "xilinx::AIE::createAIEAssignBufferAddressesPass()";
@@ -110,6 +138,18 @@ def AIEAssignBufferAddresses : Pass<"aie-assign-buffer-addresses", "DeviceOp"> {
     Option<"clAllocScheme", "alloc-scheme", "std::string", /*default=*/"",
            "Select allocation scheme: basic-sequential or bank-aware. Default is bank-aware, falling back to basic-sequential if it fails.">,
   ];
+}
+
+def AIENormalizeDmaBdDims : Pass<"aie-normalize-dma-bd-dims", "DeviceOp"> {
+  let summary = "Strip degenerate dimensions from DMA BD descriptors.";
+  let description = [{
+    Removes size-1 dimensions from `aie.dma_bd` ops whose strides never
+    take effect.  After stripping, if the remaining dimensions describe a
+    contiguous row-major access, the BD is flattened to a single linear
+    transfer.
+  }];
+
+  let constructor = "xilinx::AIE::createAIENormalizeDmaBdDimsPass()";
 }
 
 def AIEAssignLockIDs : Pass<"aie-assign-lock-ids", "DeviceOp"> {
@@ -250,6 +290,17 @@ def AIERoutePathfinderFlows : Pass<"aie-create-pathfinder-flows", "DeviceOp"> {
     Each aie.flow is replaced with aie.connect operation.
     Each aie.packetflow is replace with the set of aie.amsel, aie.masterset
     and aie.packet_rules operations.
+
+    An arbiter holds its grant until end of packet, so two slave ports sharing
+    one arbiter serialize even on different master ports. Where that can
+    deadlock, amsel allocation separates them; with no independent arbiter free
+    it keeps the sharing and warns. Only oversubscribed switchboxes are
+    affected.
+
+    This reads buffer descriptor lengths from the DMA bodies (aie.mem,
+    aie.memtile_dma, aie.shim_dma), so run the pass after those exist. Channels
+    with no body here (e.g. shim channels, once the runtime sequence is lowered
+    away) are simply left to the remaining rules.
   }];
 
   let constructor = "xilinx::AIE::createAIEPathfinderPass()";

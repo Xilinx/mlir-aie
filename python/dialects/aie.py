@@ -455,7 +455,12 @@ Device = DeviceOp
 class Core(CoreOp):
     # Until https://github.com/llvm/llvm-project/pull/73620 gets figured out.
     def __init__(
-        self, tile, link_with=None, dynamic_objfifo_lowering=None, stack_size=None
+        self,
+        tile,
+        link_with=None,
+        dynamic_objfifo_lowering=None,
+        stack_size=None,
+        data_size=None,
     ):
         if link_with is not None:
             raise TypeError(
@@ -467,6 +472,7 @@ class Core(CoreOp):
             result=T.index(),
             tile=tile,
             stack_size=stack_size,
+            data_size=data_size,
             link_with=None,
             dynamic_objfifo_lowering=dynamic_objfifo_lowering,
         )
@@ -486,6 +492,7 @@ class buffer(BufferOp):
         datatype: MemRefType | type[np.ndarray],
         name: str | None = None,
         address=None,
+        mem_bank=None,
         initial_value: np.ndarray | None = None,
         use_write_rtp: bool = False,
         loc=None,
@@ -505,6 +512,7 @@ class buffer(BufferOp):
             tile=tile,
             sym_name=name,
             address=address,
+            mem_bank=mem_bank,
             initial_value=initial_value,
             loc=loc,
             ip=ip,
@@ -1274,8 +1282,24 @@ class TileOp(TileOp):
         return tile_like_is_shim_tile(self.operation)
 
 
-def tile(col, row, *, loc=None, ip=None, allocation_scheme=None):
-    return TileOp(col=col, row=row, loc=loc, ip=ip, allocation_scheme=allocation_scheme)
+def tile(
+    col,
+    row,
+    *,
+    loc=None,
+    ip=None,
+    allocation_scheme=None,
+    packet_type=0,
+    packet_id=None,
+):
+    tile_op = TileOp(
+        col=col, row=row, loc=loc, ip=ip, allocation_scheme=allocation_scheme
+    )
+    if packet_id is not None:
+        tile_op.attributes["controller_id"] = packet_info_attr_builder(
+            (packet_type, packet_id)
+        )
+    return tile_op
 
 
 @_cext.register_operation(_Dialect, replace=True)
@@ -1303,9 +1327,17 @@ class LogicalTileOp(LogicalTileOp):
 
 
 def logical_tile(
-    tile_type, *, col=None, row=None, allocation_scheme=None, loc=None, ip=None
+    tile_type,
+    *,
+    col=None,
+    row=None,
+    allocation_scheme=None,
+    loc=None,
+    ip=None,
+    packet_type=0,
+    packet_id=None,
 ):
-    return LogicalTileOp(
+    tile_op = LogicalTileOp(
         tile_type=tile_type,
         col=col,
         row=row,
@@ -1313,6 +1345,11 @@ def logical_tile(
         loc=loc,
         ip=ip,
     )
+    if packet_id is not None:
+        tile_op.attributes["controller_id"] = packet_info_attr_builder(
+            (packet_type, packet_id)
+        )
+    return tile_op
 
 
 # BDChainOp

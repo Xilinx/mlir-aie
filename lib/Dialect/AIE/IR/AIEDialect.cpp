@@ -25,6 +25,13 @@
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/TypeSwitch.h"
 
+#include <map>
+#include <optional>
+#include <string>
+#include <tuple>
+#include <utility>
+#include <vector>
+
 using namespace mlir;
 using namespace xilinx::AIE;
 
@@ -1907,6 +1914,120 @@ LogicalResult GetCascadeOp::verify() {
 // DeviceOp
 //===----------------------------------------------------------------------===//
 
+namespace {
+
+// A flow endpoint reduced to a comparable key: resolved tile coordinates plus
+// the stream-switch port, as (col, row, bundle, channel). Only used for
+// equality and ordering, so the raw WireBundle enum value is a fine component.
+using PortKey = std::tuple<int, int, int, int>;
+
+// Returns the key for the port (`tileValue`, `bundle`, `channel`), or nullopt
+// when the tile's coordinates are not known yet -- an aie.logical_tile that
+// --aie-place-tiles has not placed. Two such endpoints cannot be compared
+// until placement runs, at which point the caller's check runs again on the
+// resulting aie.tile coordinates.
+std::optional<PortKey> tryGetPortKey(Value tileValue, WireBundle bundle,
+                                     int channel) {
+  auto tile = llvm::dyn_cast_or_null<TileLike>(tileValue.getDefiningOp());
+  if (!tile)
+    return std::nullopt;
+  std::optional<int> col = tile.tryGetCol();
+  std::optional<int> row = tile.tryGetRow();
+  if (!col || !row)
+    return std::nullopt;
+  return PortKey{*col, *row, static_cast<int>(bundle), channel};
+}
+
+std::string to_string(const PortKey &key) {
+  auto [col, row, bundle, channel] = key;
+  return "(" + std::to_string(col) + ", " + std::to_string(row) + ") " +
+         stringifyWireBundle(static_cast<WireBundle>(bundle)).str() + " : " +
+         std::to_string(channel);
+}
+
+// Rejects two aie.flow ops that declare the same source and destination port.
+// A repeated flow is not a harmless redundancy: Pathfinder::addFlow folds a
+// flow into any existing flow with the same source, so the duplicate lands in
+// that flow's destination list a second time and the router is asked to
+// broadcast to the same endpoint twice.
+LogicalResult verifyNoDuplicateFlows(DeviceOp device) {
+  std::map<std::pair<PortKey, PortKey>, FlowOp> flowSeen;
+  WalkResult result = device.walk([&](FlowOp flow) {
+    std::optional<PortKey> src = tryGetPortKey(
+        flow.getSource(), flow.getSourceBundle(), flow.getSourceChannel());
+    std::optional<PortKey> dst = tryGetPortKey(
+        flow.getDest(), flow.getDestBundle(), flow.getDestChannel());
+    if (!src || !dst)
+      return WalkResult::advance();
+    auto [it, inserted] = flowSeen.try_emplace({*src, *dst}, flow);
+    if (!inserted) {
+      InFlightDiagnostic diag = flow.emitOpError()
+                                << "duplicates an earlier flow; "
+                                << to_string(*src) << " -> " << to_string(*dst)
+                                << " is already declared";
+      diag.attachNote(it->second.getLoc()) << "the other flow is here";
+      return WalkResult::interrupt();
+    }
+    return WalkResult::advance();
+  });
+  return failure(result.wasInterrupted());
+}
+
+// Rejects two aie.packet_flow ops that carry the same ID between the same set
+// of sources and destinations. Declaring the flow twice makes the routing
+// problem look more congested than it is and gives the two copies conflicting
+// keep_pkt_header/priority_route settings when their attributes disagree.
+LogicalResult verifyNoDuplicatePacketFlows(DeviceOp device) {
+  using PacketFlowKey =
+      std::tuple<int, std::vector<PortKey>, std::vector<PortKey>>;
+  std::map<PacketFlowKey, PacketFlowOp> packetFlowSeen;
+  WalkResult result = device.walk([&](PacketFlowOp packetFlow) {
+    Region &body = packetFlow.getPorts();
+    if (body.empty())
+      return WalkResult::advance();
+    // Sources and destinations are unordered within a packet flow, so sort
+    // both to give permutations of the same flow the same key.
+    std::vector<PortKey> sources, dests;
+    for (Operation &op : body.front()) {
+      std::vector<PortKey> *endpoints = nullptr;
+      std::optional<PortKey> port;
+      if (auto source = dyn_cast<PacketSourceOp>(op)) {
+        endpoints = &sources;
+        port = tryGetPortKey(source.getTile(), source.getBundle(),
+                             source.getChannel());
+      } else if (auto dest = dyn_cast<PacketDestOp>(op)) {
+        endpoints = &dests;
+        port =
+            tryGetPortKey(dest.getTile(), dest.getBundle(), dest.getChannel());
+      } else {
+        continue;
+      }
+      // One unplaced endpoint makes the whole flow incomparable.
+      if (!port)
+        return WalkResult::advance();
+      endpoints->push_back(*port);
+    }
+    if (sources.empty() || dests.empty())
+      return WalkResult::advance();
+    llvm::sort(sources);
+    llvm::sort(dests);
+    auto [it, inserted] = packetFlowSeen.try_emplace(
+        {packetFlow.IDInt(), std::move(sources), std::move(dests)}, packetFlow);
+    if (!inserted) {
+      InFlightDiagnostic diag =
+          packetFlow.emitOpError()
+          << "duplicates an earlier packet flow; ID " << packetFlow.IDInt()
+          << " is already declared between the same sources and destinations";
+      diag.attachNote(it->second.getLoc()) << "the other packet flow is here";
+      return WalkResult::interrupt();
+    }
+    return WalkResult::advance();
+  });
+  return failure(result.wasInterrupted());
+}
+
+} // namespace
+
 LogicalResult DeviceOp::verify() {
   // A compute tile has exactly one core in hardware, so at most one aie.core
   // may resolve to any given (col, row). Cores whose tile is a logical_tile
@@ -1937,6 +2058,14 @@ LogicalResult DeviceOp::verify() {
   });
   if (result.wasInterrupted())
     return failure();
+
+  // A flow declared twice is always a mistake, and one that is otherwise only
+  // noticed (if at all) as unexplained routing pressure much later on.
+  if (failed(verifyNoDuplicateFlows(*this)))
+    return failure();
+  if (failed(verifyNoDuplicatePacketFlows(*this)))
+    return failure();
+
   return success();
 }
 
@@ -2384,6 +2513,19 @@ LogicalResult PacketRulesOp::verify() {
   return success();
 }
 
+LogicalResult MasterSetOp::verify() {
+  int arbiter = -1;
+  for (auto val : getAmsels()) {
+    auto amsel = dyn_cast_if_present<AMSelOp>(val.getDefiningOp());
+    if (!amsel)
+      return emitOpError("amsel operand must be produced by an 'aie.amsel' op");
+    if (arbiter != -1 && arbiter != amsel.arbiterIndex())
+      return emitOpError("a master port can only be tied to one arbiter");
+    arbiter = amsel.arbiterIndex();
+  }
+  return success();
+}
+
 LogicalResult PacketFlowOp::verify() {
   Region &body = getPorts();
   if (body.empty())
@@ -2446,6 +2588,13 @@ LogicalResult CoreOp::verify() {
                  << "' appears in both 'link_files' and 'link_merge_files'; an "
                     "artifact must be either merged or linked, not both";
     }
+  // The core's own sections live in a `core_data` aie.buffer, so the buffer
+  // verifier covers their placement. Only the size belongs here.
+  if (auto measured = getMeasuredDataSize())
+    if (auto declared = getDataSize(); declared && *declared < *measured)
+      return emitOpError("data_size ")
+             << *declared << " is smaller than the " << *measured
+             << " bytes this core's linked sections occupy";
   // Checked last so it does not pre-empt the diagnostics above on an op with
   // more than one defect.
   if (uint32_t stackSize = getEffectiveStackSize(),
@@ -2484,8 +2633,50 @@ int64_t BufferOp::getAllocationSize() {
 }
 
 LogicalResult BufferOp::verify() {
-  if (UsesAreAccessible::verifyTrait(*this).failed())
+  if (UsesAreAccessible::verifyTrait(*this).failed()) {
     return failure();
+  }
+
+  // A logical tile stands for a placement the compiler has yet to choose, so
+  // neither check below has a tile to reason about.
+  auto tile = dyn_cast_if_present<TileOp>(getTile().getDefiningOp());
+  if (!tile) {
+    return success();
+  }
+
+  // A tile has one data region, so the code that looks the buffer up takes the
+  // first match.
+  if (getCoreData()) {
+    for (Operation *user : tile.getResult().getUsers()) {
+      auto other = dyn_cast<BufferOp>(user);
+      if (other && other != *this && other.getCoreData()) {
+        return emitOpError("is a second core_data buffer on tile (")
+               << tile.getCol() << ", " << tile.getRow()
+               << "); the core's data region is one extent";
+      }
+    }
+  }
+
+  // A pin the allocator cannot honor: the address is outside the bank, so one
+  // of the two is stale. A zero-sized buffer covers no byte, and one at the top
+  // of the tile holds the one-past-the-end address, which is in no bank.
+  std::optional<int32_t> address = getAddress();
+  std::optional<int32_t> memBank = getMemBank();
+  if (address && memBank && getAllocationSize() > 0) {
+    const auto &targetModel = getTargetModel(*this);
+    int64_t numBanks = targetModel.getNumBanks(tile.getCol(), tile.getRow());
+    int64_t memSize = tile.isMemTile() ? targetModel.getMemTileSize()
+                                       : targetModel.getLocalMemorySize();
+    if (numBanks > 0) {
+      int64_t bankSize = memSize / numBanks;
+      int64_t bankOfAddress = *address / bankSize;
+      if (bankOfAddress != *memBank) {
+        return emitOpError("address 0x")
+               << llvm::utohexstr(*address) << " lies in bank " << bankOfAddress
+               << ", but mem_bank requests bank " << *memBank;
+      }
+    }
+  }
   return success();
 }
 
@@ -2997,6 +3188,13 @@ llvm::SmallVector<uint32_t> xilinx::AIE::getAssignedBdIds(DmaBody program) {
 }
 
 LogicalResult DMABDOp::verify() {
+  if (getOffsetParameterAttr() || getOffsetStateTableIdxAttr()) {
+    uint64_t elemBitWidth =
+        llvm::cast<BaseMemRefType>(getBuffer().getType()).getElementTypeBitWidth();
+    if (elemBitWidth == 0 || (elemBitWidth % 8) != 0)
+      return emitOpError("offset_parameter requires a whole-byte element type");
+  }
+
   // Skip verification of the BDOp outside of mem operations.
   // BDOps may appear elsewhere and subsequent lowerings will place them in the
   // correct mem ops.
@@ -3330,6 +3528,18 @@ LogicalResult DMABDOp::verify() {
       return emitOpError("BD iteration current must be in [0, size)");
   }
 
+  return success();
+}
+
+LogicalResult DMABDPACKETOp::verify() {
+  // Both fields read back signed (AIEI32Attr), so the range is two-sided even
+  // though the hardware fields are unsigned: aie.dma_bd_packet(-1, -1) parses.
+  if (getPacketType() < 0 || getPacketType() > 7)
+    return emitOpError("Packet type field can only hold 3 bits.");
+  if (getPacketID() < 0 ||
+      getPacketID() >
+          static_cast<int32_t>(getTargetModel(getOperation()).getMaxPacketId()))
+    return emitOpError("Packet ID field can only hold 5 bits.");
   return success();
 }
 
@@ -3671,14 +3881,7 @@ LogicalResult SwitchboxOp::verify() {
               .failed())
         return failure();
 
-      int arbiter = -1;
-      for (auto val : connectOp.getAmsels()) {
-        auto amsel = cast<AMSelOp>(val.getDefiningOp());
-        if (arbiter != -1 && arbiter != amsel.arbiterIndex())
-          return connectOp.emitOpError(
-              "a master port can only be tied to one arbiter");
-        arbiter = amsel.arbiterIndex();
-      }
+      // The single-arbiter invariant is checked by MasterSetOp::verify.
     } else if (auto connectOp = dyn_cast<PacketRulesOp>(ops)) {
       Port source = {connectOp.getSourceBundle(), connectOp.sourceIndex()};
       if (sourceset.count(source))

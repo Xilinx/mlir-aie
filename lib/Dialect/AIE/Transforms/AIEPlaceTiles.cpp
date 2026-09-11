@@ -44,6 +44,9 @@ struct ConvertLogicalTileToTile : OpConversionPattern<LogicalTileOp> {
     if (auto scheme = logicalTile.getAllocationScheme())
       tileOp.setAllocationScheme(scheme);
 
+    if (auto controllerId = logicalTile->getAttr("controller_id"))
+      tileOp->setAttr("controller_id", controllerId);
+
     rewriter.replaceOp(logicalTile, tileOp.getResult());
     return success();
   }
@@ -71,8 +74,8 @@ struct AIEPlaceTilesPass
       std::optional<int> coresPerCol = std::nullopt;
       if (clCoresPerCol >= 0)
         coresPerCol = clCoresPerCol;
-      placer =
-          std::make_shared<SequentialPlacer>(coresPerCol, clMergeLogicalTiles);
+      placer = std::make_shared<SequentialPlacer>(
+          coresPerCol, clMergeLogicalTiles, clSpreadUnanchoredTiles);
       break;
     }
     case PlacerType::SAPlacer:
