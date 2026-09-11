@@ -751,6 +751,10 @@ private:
   container m_children;
 
   static void splitPath(const std::string &path, std::list<std::string> &out) {
+    // An empty path denotes the node itself, as in boost. Otherwise the loop below pushes
+    // an empty segment and put("", v) lands one level deeper than as_vector_simple reads.
+    if (path.empty())
+      return;
     size_t start = 0, dot;
     while ((dot = path.find('.', start)) != std::string::npos) {
       out.push_back(path.substr(start, dot - start));
