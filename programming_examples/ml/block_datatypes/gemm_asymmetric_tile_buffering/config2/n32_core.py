@@ -154,7 +154,7 @@ def n32_core_gemm(
                 zero_kernel,
                 matmul_kernel,
             ],
-            stack_size=0xD00,
+            stack_size=0x400,
         ),
     )
 
