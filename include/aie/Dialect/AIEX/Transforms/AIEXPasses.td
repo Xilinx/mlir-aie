@@ -334,7 +334,17 @@ def AIEAssignRuntimeSequenceBDIDs : Pass<"aie-assign-runtime-sequence-bd-ids", "
            "Insert an aiex.npu.maskpoll before any dma_start_task that could "
            "push onto a full DMA task queue, so the sequence waits for a free "
            "slot instead of racing on drain timing. Off by default: it costs a "
-           "stall whenever it fires.">
+           "stall whenever it fires.">,
+    Option<"warnUnsafeBdReuse", "warn-unsafe-bd-reuse", "bool",
+           /*default=*/"false",
+           "Warn when a BD id released by aiex.dma_free_task without any "
+           "completion guarantee is later reused on the same tile. Off by "
+           "default: the common fill/drain idiom frees tasks on one channel "
+           "having awaited another, and that cross-channel reasoning runs "
+           "through the compute core, which the runtime sequence cannot see, "
+           "so this reports designs that are correct by an argument the "
+           "compiler does not have. Useful when chasing a suspected BD "
+           "aliasing hang.">
   ];
 
   let constructor = "xilinx::AIEX::createAIEAssignRuntimeSequenceBDIDsPass()";
