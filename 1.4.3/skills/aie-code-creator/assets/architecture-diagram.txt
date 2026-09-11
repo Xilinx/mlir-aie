@@ -1,0 +1,52 @@
+AMD XDNA NPU Tile Architecture
+================================
+
+NPU1 (AIE2) — 4 columns                    NPU2 (AIE2P) — 8 columns
+Ryzen AI Phoenix / Hawk Point               Ryzen AI 300 Strix / Strix Halo / Krackan
+
+  Col 0    Col 1    Col 2    Col 3            Col 0  Col 1  Col 2  Col 3  Col 4  Col 5  Col 6  Col 7
++--------+--------+--------+--------+      +------+------+------+------+------+------+------+------+
+| CT     | CT     | CT     | CT     | R5   | CT   | CT   | CT   | CT   | CT   | CT   | CT   | CT   | R5
+| 64KB   | 64KB   | 64KB   | 64KB   |      | 64KB | 64KB | 64KB | 64KB | 64KB | 64KB | 64KB | 64KB |
++--------+--------+--------+--------+      +------+------+------+------+------+------+------+------+
+| CT     | CT     | CT     | CT     | R4   | CT   | CT   | CT   | CT   | CT   | CT   | CT   | CT   | R4
+| 64KB   | 64KB   | 64KB   | 64KB   |      | 64KB | 64KB | 64KB | 64KB | 64KB | 64KB | 64KB | 64KB |
++--------+--------+--------+--------+      +------+------+------+------+------+------+------+------+
+| CT     | CT     | CT     | CT     | R3   | CT   | CT   | CT   | CT   | CT   | CT   | CT   | CT   | R3
+| 64KB   | 64KB   | 64KB   | 64KB   |      | 64KB | 64KB | 64KB | 64KB | 64KB | 64KB | 64KB | 64KB |
++--------+--------+--------+--------+      +------+------+------+------+------+------+------+------+
+| CT     | CT     | CT     | CT     | R2   | CT   | CT   | CT   | CT   | CT   | CT   | CT   | CT   | R2
+| 64KB   | 64KB   | 64KB   | 64KB   |      | 64KB | 64KB | 64KB | 64KB | 64KB | 64KB | 64KB | 64KB |
++--------+--------+--------+--------+      +------+------+------+------+------+------+------+------+
+| MemT   | MemT   | MemT   | MemT   | R1   | MemT | MemT | MemT | MemT | MemT | MemT | MemT | MemT | R1
+| 512KB  | 512KB  | 512KB  | 512KB  |      |512KB |512KB |512KB |512KB |512KB |512KB |512KB |512KB |
++--------+--------+--------+--------+      +------+------+------+------+------+------+------+------+
+| Shim   | Shim   | Shim   | Shim   | R0   | Shim | Shim | Shim | Shim | Shim | Shim | Shim | Shim | R0
+| DMA    | DMA    | DMA    | DMA    |      | DMA  | DMA  | DMA  | DMA  | DMA  | DMA  | DMA  | DMA  |
++--------+--------+--------+--------+      +------+------+------+------+------+------+------+------+
+     |        |        |        |                |      |      |      |      |      |      |      |
+     +--------+--------+--------+                +------+------+------+------+------+------+------+
+                    |                                                  |
+              DDR (L3 Memory)                                   DDR (L3 Memory)
+
+CT   = Compute Tile (AIE core + L1 memory, 64KB = 4x16KB banks)
+MemT = Memory Tile  (L2 shared scratchpad, 512KB)
+Shim = Shim Tile    (DMA engine for L3 <-> NPU data transfer)
+
+Memory Hierarchy:
+  L3 (DDR)  <--Shim DMA-->  L2 (MemTile)  <--Stream-->  L1 (Compute Tile)
+  Host-side                  Shared buffer               Per-core local memory
+  GB scale                   512KB/tile                  64KB/tile
+
+Data Flow (typical):
+  Host DDR --> Shim(R0) --> MemTile(R1) --> ComputeTile(R2-R5) --> MemTile(R1) --> Shim(R0) --> Host DDR
+
+Tile Coordinates: Tile(column, row)
+  Shim tiles:    Tile(col, 0)
+  MemTiles:      Tile(col, 1)
+  Compute tiles: Tile(col, 2) through Tile(col, 5)
+
+IRON Placement Sentinels:
+  AnyShimTile    -> auto-assign row 0
+  AnyMemTile     -> auto-assign row 1
+  AnyComputeTile -> auto-assign rows 2-5 (default for Workers)
