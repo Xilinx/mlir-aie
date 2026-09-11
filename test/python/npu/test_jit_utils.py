@@ -249,6 +249,23 @@ def test_compile_external_kernel_skips_an_object_already_there(npu_target_arch):
         assert os.stat(obj).st_mtime_ns == first
 
 
+def test_compile_external_kernel_skip_is_per_kernel_dir(npu_target_arch):
+    """The in-memory skip covers the directory already built into, not the function."""
+    func = ExternalFunction(
+        "add_one",
+        source_string='extern "C" void add_one(int* a, int* b, int n) {}',
+    )
+    with tempfile.TemporaryDirectory() as kernel_dir:
+        func._compiled = True
+        func._compiled_dir = kernel_dir
+        compile_external_kernel(func, kernel_dir, target_arch=npu_target_arch)
+        assert not os.path.exists(os.path.join(kernel_dir, func.object_file_name))
+
+    with tempfile.TemporaryDirectory() as other_dir:
+        compile_external_kernel(func, other_dir, target_arch=npu_target_arch)
+        assert os.path.exists(os.path.join(other_dir, func.object_file_name))
+
+
 def test_compile_external_kernel_serves_two_directories(npu_target_arch):
     """One kernel built into two directories has to land in both.
 
@@ -266,6 +283,10 @@ def test_compile_external_kernel_serves_two_directories(npu_target_arch):
         compile_external_kernel(func, b, target_arch=npu_target_arch)
         assert os.path.exists(os.path.join(a, func.object_file_name))
         assert os.path.exists(os.path.join(b, func.object_file_name))
+
+    with tempfile.TemporaryDirectory() as other_dir:
+        compile_external_kernel(func, other_dir, target_arch=npu_target_arch)
+        assert os.path.exists(os.path.join(other_dir, "add_one.o"))
 
 
 def test_compile_external_kernel_skip_if_object_file_exists(npu_target_arch):

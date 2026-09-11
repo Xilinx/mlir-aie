@@ -504,6 +504,8 @@ class ExternalFunction(Kernel):
         self._include_dirs = include_dirs if include_dirs is not None else []
         self._compile_flags = compile_flags if compile_flags is not None else []
         self._use_chess = use_chess
+        self._compiled = False
+        self._compiled_dir = None
         self._cached_digest: str | None = None
 
         # Two same-name EFs with default object_file_name would collide on the

@@ -6,6 +6,7 @@
 """Low-level helpers for compiling MLIR modules and external C++ kernels to NPU artifacts."""
 
 import concurrent.futures
+import contextlib
 import logging
 import os
 import re
@@ -23,6 +24,12 @@ if TYPE_CHECKING:
     )
 
 logger = logging.getLogger(__name__)
+
+# What open(path, "w") would have produced.  Probed once at import because
+# reading the umask means setting it, which is process-wide.
+_UMASK = os.umask(0o022)
+os.umask(_UMASK)
+_DEFAULT_FILE_MODE = 0o666 & ~_UMASK
 
 
 def resolve_target_arch(device=None) -> str:
@@ -312,7 +319,7 @@ def cxx_core_compile_command(
     # Add include directories
     if include_dirs:
         for include_dir in include_dirs:
-            cmd.extend(["-I", include_dir])
+            cmd.extend(["-I", str(include_dir)])
 
     # Add additional compile arguments
     if compile_args:
@@ -654,19 +661,91 @@ def _prefix_symbols_in_object(object_path: str, prefix: str) -> list[str]:
     return renamed
 
 
-def compile_external_kernels(funcs, kernel_dir, target_arch):
+@contextlib.contextmanager
+def _staged(dest: str):
+    """Yield a sibling temp path that replaces ``dest`` atomically on success.
+
+    Kernels are grouped by ``_original_name``, but a source file is named after
+    its own basename, so the several ExternalFunctions that share one .cc (only
+    their -D flags differ) land in different groups and materialize the same
+    path concurrently.  Writing in place truncates that file under a sibling
+    compile: the reader either takes SIGBUS when the mapping shrinks beneath it,
+    or sees a short prefix, compiles it clean because the missing part was
+    behind an #ifdef, and emits an object with no symbol in it.
+
+    Safe while every writer to one ``dest`` stages identical bytes: renaming
+    makes the swap atomic, and a compile already holding the old inode keeps
+    reading it until it unmaps.  Writers whose bytes differ have to be ordered
+    instead; ``compile_external_kernels`` says which of those its grouping
+    covers.
+    """
+    directory = os.path.dirname(dest) or "."
+    fd, tmp = tempfile.mkstemp(
+        dir=directory, prefix=os.path.basename(dest) + ".", suffix=".tmp"
+    )
+    os.close(fd)
+    try:
+        yield tmp
+        os.replace(tmp, dest)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp)
+        raise
+
+
+def _write_source(dest: str, text: str) -> None:
+    """Write ``text`` to ``dest`` without ever truncating it in place."""
+    with _staged(dest) as tmp:
+        with open(tmp, "w") as f:
+            f.write(text)
+        # mkstemp created the temp file at 0600; the in-place open() this
+        # replaces left the source at the process umask.  copy2 carries the mode
+        # over in _copy_source, so only this path has to restore it.
+        os.chmod(tmp, _DEFAULT_FILE_MODE)
+
+
+def _copy_source(dest: str, src: str) -> None:
+    """Copy ``src`` onto ``dest`` without ever truncating ``dest`` in place."""
+    with _staged(dest) as tmp:
+        shutil.copy2(src, tmp)
+
+
+def _compiled_into(func, kernel_dir) -> bool:
+    """Report whether ``func``'s object was already built into this ``kernel_dir``.
+
+    One ExternalFunction can be compiled by several designs, each into its own
+    directory, so ``_compiled`` on its own would deny every design after the
+    first an object.
+    """
+    compiled_dir = getattr(func, "_compiled_dir", None)
+    if not getattr(func, "_compiled", False) or compiled_dir is None:
+        return False
+    return os.path.abspath(compiled_dir) == os.path.abspath(kernel_dir)
+
+
+def compile_external_kernels(funcs, kernel_dir, target_arch, include_dirs=None):
     """Compile every ExternalFunction in ``funcs`` into ``kernel_dir``.
 
-    Kernels are separate translation units with separate outputs, so they compile
-    concurrently.  The exception is the source path: ``compile_external_kernel``
-    writes the source as ``<_original_name>.cc``, so ExternalFunctions sharing an
-    original name write the same file and are ordered against each other.
+    Kernels are separate translation units with separate outputs, so they
+    compile concurrently.  Their source files are not always separate --
+    several ExternalFunctions can share one .cc -- so ``_staged`` makes each
+    write atomic rather than ordering the compiles behind it.
+
+    The ``_original_name`` grouping below is still load-bearing, for a case
+    ``_staged`` cannot cover: two ExternalFunctions can share an
+    ``_original_name`` while carrying different ``source_string``s, because
+    ``ExternalFunction.__init__`` auto-suffixes a defaulted ``object_file_name``
+    on collision but never the original name.  Both write ``<_original_name>.cc``
+    and the bytes differ, so an atomic swap is not enough and they have to run
+    one after the other.  Not covered either way: two ``source_file``s with the
+    same basename in different directories land on one path with different bytes
+    but different ``_original_name``s, so nothing orders them.
 
     Each compile is single-threaded and peaks near 205 MB of RSS on aie2p (250 MB
     without the intrinsics PCH), so the bound is cores rather than memory on an
     ordinary box.  Set AIE_KERNEL_COMPILE_JOBS to override.
     """
-    pending = list(funcs)
+    pending = [f for f in funcs if not _compiled_into(f, kernel_dir)]
     if not pending:
         return
 
@@ -674,7 +753,7 @@ def compile_external_kernels(funcs, kernel_dir, target_arch):
     # per-invocation state there, so the Chess path runs serially.
     if any(getattr(f, "_use_chess", False) for f in pending):
         for f in pending:
-            compile_external_kernel(f, kernel_dir, target_arch)
+            compile_external_kernel(f, kernel_dir, target_arch, include_dirs)
         return
 
     groups: dict[str, list] = {}
@@ -692,12 +771,12 @@ def compile_external_kernels(funcs, kernel_dir, target_arch):
     if jobs == 1:
         for group in groups.values():
             for f in group:
-                compile_external_kernel(f, kernel_dir, target_arch)
+                compile_external_kernel(f, kernel_dir, target_arch, include_dirs)
         return
 
     def _run(group):
         for f in group:
-            compile_external_kernel(f, kernel_dir, target_arch)
+            compile_external_kernel(f, kernel_dir, target_arch, include_dirs)
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as pool:
         # list() re-raises the first failure, after the others have finished --
@@ -705,7 +784,7 @@ def compile_external_kernels(funcs, kernel_dir, target_arch):
         list(pool.map(_run, groups.values()))
 
 
-def compile_external_kernel(func, kernel_dir, target_arch):
+def compile_external_kernel(func, kernel_dir, target_arch, include_dirs=None):
     """Compile an ExternalFunction to an object file in the kernel directory.
 
     The output file is named ``func.object_file_name`` and placed in ``kernel_dir``.
@@ -718,7 +797,12 @@ def compile_external_kernel(func, kernel_dir, target_arch):
             ``compile_mlir_module`` so that relative link_with paths resolve
             correctly.
         target_arch: Peano target architecture string (e.g., "aie2", "aie2p").
+        include_dirs: Design-wide include directories appended after the
+            ExternalFunction's own include directories.
     """
+    if _compiled_into(func, kernel_dir):
+        return
+
     # inline + symbol_prefix is unsupported: the MLIR func.call uses the
     # prefixed func._name, but an inline kernel is emitted as a textual .ll whose
     # ``define`` carries the un-prefixed _original_name. Object mode reconciles
@@ -745,8 +829,7 @@ def compile_external_kernel(func, kernel_dir, target_arch):
     if func._source_string is not None:
         original_name = getattr(func, "_original_name", func._name)
         source_file = os.path.join(kernel_dir, f"{original_name}.cc")
-        with open(source_file, "w") as f:
-            f.write(func._source_string)
+        _write_source(source_file, func._source_string)
         compile_cxx_core_function(
             source_path=source_file,
             target_arch=target_arch,
@@ -755,7 +838,7 @@ def compile_external_kernel(func, kernel_dir, target_arch):
             # in the emitted .ll ``define`` that _make_ir_inlinable must rewrite.
             # (inline + symbol_prefix is rejected above, so no rename applies.)
             symbol_name=func._original_name,
-            include_dirs=func._include_dirs,
+            include_dirs=[*func._include_dirs, *(include_dirs or ())],
             compile_args=func._compile_flags,
             cwd=str(kernel_dir),
             inline=getattr(func, "_inline", False),
@@ -773,18 +856,19 @@ def compile_external_kernel(func, kernel_dir, target_arch):
             raise FileNotFoundError(
                 f"ExternalFunction '{func._name}': source file not found: {func._source_file}"
             )
-        if os.path.abspath(source_file) != os.path.abspath(func._source_file):
-            try:
-                shutil.copy2(func._source_file, source_file)
-            except shutil.SameFileError:
-                pass
+        # realpath, not abspath: the rename in _staged would happily overwrite
+        # the kernel's own source with a copy of itself if kernel_dir reaches it
+        # through a symlink, where copy2 used to raise SameFileError.
+        if os.path.realpath(source_file) != os.path.realpath(func._source_file):
+            _copy_source(source_file, func._source_file)
         # Include the original source file's directory so relative includes
         # (e.g. "../aie_kernel_utils.h") still resolve after the file is
         # copied into kernel_dir.
         src_dir = os.path.dirname(os.path.abspath(func._source_file))
-        include_dirs = list(func._include_dirs)
-        if src_dir not in include_dirs:
-            include_dirs.append(src_dir)
+        kernel_include_dirs = list(func._include_dirs)
+        if src_dir not in kernel_include_dirs:
+            kernel_include_dirs.append(src_dir)
+        kernel_include_dirs.extend(include_dirs or ())
         compile_cxx_core_function(
             source_path=source_file,
             target_arch=target_arch,
@@ -792,7 +876,7 @@ def compile_external_kernel(func, kernel_dir, target_arch):
             # _original_name is the symbol in the emitted .ll ``define`` (see
             # the source_string branch above).
             symbol_name=func._original_name,
-            include_dirs=include_dirs,
+            include_dirs=kernel_include_dirs,
             compile_args=func._compile_flags,
             cwd=kernel_dir,
             inline=getattr(func, "_inline", False),
@@ -810,6 +894,9 @@ def compile_external_kernel(func, kernel_dir, target_arch):
                 f"ExternalFunction '{func._name}': the compiled object does not "
                 f"define '{func._original_name}' (found {sorted(renamed)})"
             )
+
+    func._compiled = True
+    func._compiled_dir = os.path.abspath(kernel_dir)
 
 
 def _cleanup_failed_compilation(cache_dir):

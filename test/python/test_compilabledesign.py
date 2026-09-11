@@ -20,6 +20,7 @@ from types import CodeType
 
 import pytest
 
+import aie.utils.compile.jit.compilabledesign as compilabledesign_module
 from aie.extras.context import mlir_mod_ctx
 from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.iron.kernel import ExternalFunction, Kernel
@@ -1236,6 +1237,55 @@ def test_compile_mixed_explicit_paths_raises():
         cd.compile(xclbin_path="/tmp/foo.xclbin", inst_path=None)
     with pytest.raises(ValueError, match="must be set together"):
         cd.compile(xclbin_path=None, inst_path="/tmp/foo.bin")
+
+
+@pytest.mark.parametrize("full_elf", [False, True])
+def test_mlir_path_compile_forwards_include_paths_with_no_kernels(
+    tmp_path, monkeypatch, npu2_device, full_elf
+):
+    mlir_path = tmp_path / "design.mlir"
+    mlir_path.write_text("module {}")
+    include_path = tmp_path / "include"
+    calls = []
+
+    def fake_compile_external_kernels(
+        funcs, kernel_dir, target_arch, include_dirs=None
+    ):
+        calls.append((list(funcs), include_dirs))
+
+    def fake_compile_mlir_module(**kwargs):
+        if full_elf:
+            Path(kwargs["full_elf_path"]).touch()
+        else:
+            Path(kwargs["xclbin_path"]).touch()
+            Path(kwargs["insts_path"]).touch()
+
+    monkeypatch.setattr(
+        compilabledesign_module,
+        "compile_external_kernels",
+        fake_compile_external_kernels,
+    )
+    monkeypatch.setattr(
+        compilabledesign_module, "compile_mlir_module", fake_compile_mlir_module
+    )
+    monkeypatch.setattr(
+        compilabledesign_module._manifest, "record", lambda *args, **kwargs: None
+    )
+    monkeypatch.setattr(compilabledesign_module, "parse_dma_sizes", lambda *args: [])
+
+    design = CompilableDesign(mlir_path, include_paths=[include_path])
+    if full_elf:
+        monkeypatch.setattr(
+            design, "_parse_full_elf_kernel_name", lambda *args: "main:sequence"
+        )
+        design.compile(full_elf_path=tmp_path / "design.elf")
+    else:
+        design.compile(
+            xclbin_path=tmp_path / "design.xclbin",
+            inst_path=tmp_path / "insts.bin",
+        )
+
+    assert calls == [([], (include_path,))]
 
 
 # ---------------------------------------------------------------------------

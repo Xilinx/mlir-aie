@@ -8,7 +8,7 @@
 
 Same shape family as config2 (all-bfp16 inputs/outputs, 32 cores) but
 with asymmetry ratio DIV=4 and an alternate hand-tuned microkernel
-schedule. Strix-only; chess-built kernel.
+schedule (bf16-staged C accumulation). Strix-only; Peano-built kernel.
 """
 
 import argparse
@@ -67,15 +67,12 @@ def n32_core_gemm(
     C_l1_ty = np.ndarray[(m, n // 8), np.dtype[v8bfp16ebs8]]
 
     kernel_flags = [
-        f"-DDIM_M={m}",
-        f"-DDIM_K={k}",
-        f"-DDIM_N={n}",
         f"-I{_AIE_KERNELS_INC}",
     ]
 
     # mm_bfp_mixed.cc keeps a TU-local staging buffer that matmul and
     # zero share, so we point both ExternalFunctions at the same .o
-    # (one chess compile, both symbols emitted, link picks each per call).
+    # (one compile, both symbols emitted, link picks each per call).
     _SHARED_OBJ = "mm_bfp_mixed.o"
     zero_kernel = ExternalFunction(
         "zero_kernel",
@@ -83,7 +80,6 @@ def n32_core_gemm(
         source_file=str(_KERNEL_SRC),
         arg_types=[C_l1_ty],
         compile_flags=kernel_flags,
-        use_chess=True,
     )
     matmul_kernel = ExternalFunction(
         "matmul_vectorized_bfp16",
@@ -91,7 +87,6 @@ def n32_core_gemm(
         source_file=str(_KERNEL_SRC),
         arg_types=[A_l1_ty, B_l1_ty, C_l1_ty],
         compile_flags=kernel_flags,
-        use_chess=True,
     )
 
     A_l3l2_fifos: list[ObjectFifo] = []
@@ -155,7 +150,12 @@ def n32_core_gemm(
                 zero_kernel,
                 matmul_kernel,
             ],
-            stack_size=0xF00,
+            stack_size=0x400,
+            # Reserve the kernel's static data explicitly: mm_bfp_mixed.cc
+            # holds the bf16 C staging buffer (c_bf16_2nd_half, 16384 B) plus
+            # two counters in .bss. Without this, buffer allocation leaves
+            # < 14 KB contiguous and the core-ELF link fails.
+            data_size=m * n // 2 * 2 + 8,
         ),
     )
 
