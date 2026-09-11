@@ -10,6 +10,7 @@
 #include "aie/Dialect/AIEX/AIEUtils.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
+#include "aie/Dialect/AIEX/Utils/DmaQueueModel.h"
 #include "aie/Dialect/AIEX/Utils/BdLowering.h"
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -878,11 +879,91 @@ public:
   }
 };
 
+
+// Check the per-channel DMA task queue on the npu.dma_memcpy_nd path.
+//
+// The conversion below is pattern-driven, so it visits ops in worklist order
+// and cannot count a queue. This runs first, in program order, which is exact:
+// aie-unroll-runtime-sequence-loops has already run, so the sequence is
+// straight-line. The queue rule itself is shared with the dma_start_task path
+// (see DmaQueueModel.h) so the two cannot disagree about the same hardware.
+static LogicalResult checkQueueDepth(AIE::DeviceOp device,
+                                     bool enforceQueueDepth) {
+  const AIE::AIETargetModel &tm = device.getTargetModel();
+  // Resolve the (tile, direction, channel) a metadata symbol names, the same
+  // lookup DmaToNpuPattern and DmaWaitToSyncPattern do.
+  auto resolve = [&](llvm::StringRef sym)
+      -> std::optional<std::tuple<AIE::TileOp, AIE::DMAChannelDir, uint32_t>> {
+    auto infoOp = AIE::ShimDMAAllocationOp::getForSymbol(device, sym);
+    if (!infoOp)
+      return std::nullopt;
+    AIE::TileOp tile = infoOp.getTileOp();
+    if (!tile)
+      return std::nullopt;
+    return std::make_tuple(tile, infoOp.getChannelDir(),
+                           static_cast<uint32_t>(infoOp.getChannelIndex()));
+  };
+
+  WalkResult wr =
+      device.walk([&](AIE::RuntimeSequenceOp seq) -> WalkResult {
+        DmaQueueModel queue;
+        WalkResult inner = seq.walk([&](Operation *op) -> WalkResult {
+          if (auto memcpy = dyn_cast<NpuDmaMemcpyNdOp>(op)) {
+            auto info = resolve(memcpy.getMetadata().getRootReference());
+            if (!info)
+              return WalkResult::advance();
+            auto [tile, dir, chan] = *info;
+            DmaQueueModel::ChannelKey key{tile.getCol(), tile.getRow(),
+                                          static_cast<int>(dir),
+                                          static_cast<int>(chan)};
+            uint32_t depth = tm.getDmaTaskQueueDepth(tile.getCol(),
+                                                     tile.getRow(), chan, dir);
+            if (queue.wouldOverflow(key, depth)) {
+              if (enforceQueueDepth) {
+                if (failed(insertQueueSpaceWait(memcpy, tm, tile.getCol(),
+                                                tile.getRow(), chan, dir,
+                                                depth))) {
+                  memcpy.emitOpError()
+                      << "cannot enforce the DMA task-queue bound on tile ("
+                      << tile.getCol() << "," << tile.getRow() << ") "
+                      << AIE::stringifyDMAChannelDir(dir) << " channel " << chan
+                      << ": this target does not report a pollable task-queue "
+                         "occupancy register for it";
+                  return WalkResult::interrupt();
+                }
+                queue.noteSpaceGuaranteed(key, depth);
+              } else if (queue.shouldReport(key)) {
+                emitQueueOverflowWarning(memcpy, tile.getCol(), tile.getRow(),
+                                         dir, chan, depth,
+                                         queue.outstanding(key));
+              }
+            }
+            queue.push(key, memcpy.getIssueToken());
+          } else if (auto wait = dyn_cast<NpuDmaWaitOp>(op)) {
+            auto info = resolve(wait.getSymbol());
+            if (!info)
+              return WalkResult::advance();
+            auto [tile, dir, chan] = *info;
+            queue.awaitToken(DmaQueueModel::ChannelKey{
+                tile.getCol(), tile.getRow(), static_cast<int>(dir),
+                static_cast<int>(chan)});
+          }
+          return WalkResult::advance();
+        });
+        return inner.wasInterrupted() ? WalkResult::interrupt()
+                                      : WalkResult::advance();
+      });
+  return failure(wr.wasInterrupted());
+}
+
 struct AIEDmaToNpuPass : xilinx::AIEX::impl::AIEDmaToNpuBase<AIEDmaToNpuPass> {
 
   void runOnOperation() override {
 
     AIE::DeviceOp device = getOperation();
+
+    if (failed(checkQueueDepth(device, enforceQueueDepth)))
+      return signalPassFailure();
 
     ConversionTarget target(getContext());
     target.addLegalDialect<AIEXDialect>();
