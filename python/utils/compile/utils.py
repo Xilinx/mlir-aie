@@ -354,7 +354,7 @@ def compile_cxx_core_function(
     # Add include directories
     if include_dirs:
         for include_dir in include_dirs:
-            cmd.extend(["-I", include_dir])
+            cmd.extend(["-I", str(include_dir)])
 
     # Add additional compile arguments
     if compile_args:
@@ -630,7 +630,20 @@ def _copy_source(dest: str, src: str) -> None:
         shutil.copy2(src, tmp)
 
 
-def compile_external_kernels(funcs, kernel_dir, target_arch):
+def _compiled_into(func, kernel_dir) -> bool:
+    """Report whether ``func``'s object was already built into this ``kernel_dir``.
+
+    One ExternalFunction can be compiled by several designs, each into its own
+    directory, so ``_compiled`` on its own would deny every design after the
+    first an object.
+    """
+    compiled_dir = getattr(func, "_compiled_dir", None)
+    if not getattr(func, "_compiled", False) or compiled_dir is None:
+        return False
+    return os.path.abspath(compiled_dir) == os.path.abspath(kernel_dir)
+
+
+def compile_external_kernels(funcs, kernel_dir, target_arch, include_dirs=None):
     """Compile every ExternalFunction in ``funcs`` into ``kernel_dir``.
 
     Kernels are separate translation units with separate outputs, so they
@@ -652,7 +665,7 @@ def compile_external_kernels(funcs, kernel_dir, target_arch):
     without the intrinsics PCH), so the bound is cores rather than memory on an
     ordinary box.  Set AIE_KERNEL_COMPILE_JOBS to override.
     """
-    pending = [f for f in funcs if not f._compiled]
+    pending = [f for f in funcs if not _compiled_into(f, kernel_dir)]
     if not pending:
         return
 
@@ -660,7 +673,7 @@ def compile_external_kernels(funcs, kernel_dir, target_arch):
     # per-invocation state there, so the Chess path runs serially.
     if any(getattr(f, "_use_chess", False) for f in pending):
         for f in pending:
-            compile_external_kernel(f, kernel_dir, target_arch)
+            compile_external_kernel(f, kernel_dir, target_arch, include_dirs)
         return
 
     groups: dict[str, list] = {}
@@ -678,12 +691,12 @@ def compile_external_kernels(funcs, kernel_dir, target_arch):
     if jobs == 1:
         for group in groups.values():
             for f in group:
-                compile_external_kernel(f, kernel_dir, target_arch)
+                compile_external_kernel(f, kernel_dir, target_arch, include_dirs)
         return
 
     def _run(group):
         for f in group:
-            compile_external_kernel(f, kernel_dir, target_arch)
+            compile_external_kernel(f, kernel_dir, target_arch, include_dirs)
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as pool:
         # list() re-raises the first failure, after the others have finished --
@@ -691,7 +704,7 @@ def compile_external_kernels(funcs, kernel_dir, target_arch):
         list(pool.map(_run, groups.values()))
 
 
-def compile_external_kernel(func, kernel_dir, target_arch):
+def compile_external_kernel(func, kernel_dir, target_arch, include_dirs=None):
     """Compile an ExternalFunction to an object file in the kernel directory.
 
     The output file is named ``func.object_file_name`` and placed in ``kernel_dir``.
@@ -704,9 +717,10 @@ def compile_external_kernel(func, kernel_dir, target_arch):
             ``compile_mlir_module`` so that relative link_with paths resolve
             correctly.
         target_arch: Peano target architecture string (e.g., "aie2", "aie2p").
+        include_dirs: Design-wide include directories appended after the
+            ExternalFunction's own include directories.
     """
-    # Skip if already compiled in this session.
-    if func._compiled:
+    if _compiled_into(func, kernel_dir):
         return
 
     # inline + symbol_prefix is unsupported: the MLIR func.call uses the
@@ -743,7 +757,7 @@ def compile_external_kernel(func, kernel_dir, target_arch):
             # in the emitted .ll ``define`` that _make_ir_inlinable must rewrite.
             # (inline + symbol_prefix is rejected above, so no rename applies.)
             symbol_name=func._original_name,
-            include_dirs=func._include_dirs,
+            include_dirs=[*func._include_dirs, *(include_dirs or ())],
             compile_args=func._compile_flags,
             cwd=str(kernel_dir),
             inline=getattr(func, "_inline", False),
@@ -770,9 +784,10 @@ def compile_external_kernel(func, kernel_dir, target_arch):
         # (e.g. "../aie_kernel_utils.h") still resolve after the file is
         # copied into kernel_dir.
         src_dir = os.path.dirname(os.path.abspath(func._source_file))
-        include_dirs = list(func._include_dirs)
-        if src_dir not in include_dirs:
-            include_dirs.append(src_dir)
+        kernel_include_dirs = list(func._include_dirs)
+        if src_dir not in kernel_include_dirs:
+            kernel_include_dirs.append(src_dir)
+        kernel_include_dirs.extend(include_dirs or ())
         compile_cxx_core_function(
             source_path=source_file,
             target_arch=target_arch,
@@ -780,7 +795,7 @@ def compile_external_kernel(func, kernel_dir, target_arch):
             # _original_name is the symbol in the emitted .ll ``define`` (see
             # the source_string branch above).
             symbol_name=func._original_name,
-            include_dirs=include_dirs,
+            include_dirs=kernel_include_dirs,
             compile_args=func._compile_flags,
             cwd=kernel_dir,
             inline=getattr(func, "_inline", False),
@@ -796,6 +811,7 @@ def compile_external_kernel(func, kernel_dir, target_arch):
         _rename_symbol_in_object(output_file, original, prefixed)
 
     func._compiled = True
+    func._compiled_dir = os.path.abspath(kernel_dir)
 
 
 def _cleanup_failed_compilation(cache_dir):
