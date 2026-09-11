@@ -57,6 +57,12 @@ namespace {
 struct AIEAssignRuntimeSequenceBDIDsPass
     : xilinx::AIEX::impl::AIEAssignRuntimeSequenceBDIDsBase<
           AIEAssignRuntimeSequenceBDIDsPass> {
+  using Base = xilinx::AIEX::impl::AIEAssignRuntimeSequenceBDIDsBase<
+      AIEAssignRuntimeSequenceBDIDsPass>;
+  AIEAssignRuntimeSequenceBDIDsPass() = default;
+  AIEAssignRuntimeSequenceBDIDsPass(
+      const AIEAssignRuntimeSequenceBDIDsOptions &options)
+      : Base(options) {}
 
   llvm::DenseMap<AIE::TileOp, BdIdGenerator> gens;
 
@@ -137,31 +143,8 @@ struct AIEAssignRuntimeSequenceBDIDsPass
         AIE::TileOp tile = cfg.getTileOp();
         uint32_t depth = tm.getDmaTaskQueueDepth(
             tile.getCol(), tile.getRow(), cfg.getChannel(), cfg.getDirection());
-        if (queue.wouldOverflow(key, depth)) {
-          if (enforceQueueDepth) {
-            if (failed(insertQueueSpaceWait(start, tm, tile.getCol(), tile.getRow(),
-                                        cfg.getChannel(), cfg.getDirection(),
-                                        depth))) {
-              // Never fall through silently: the caller asked for the overflow
-              // to be impossible, and going quiet here would hand them exactly
-              // the silent drop they were trying to rule out.
-              start.emitOpError()
-                  << "cannot enforce the DMA task-queue bound on tile ("
-                  << tile.getCol() << "," << tile.getRow() << ") "
-                  << stringifyDMAChannelDir(cfg.getDirection()) << " channel "
-                  << cfg.getChannel()
-                  << ": this target does not report a pollable task-queue "
-                     "occupancy register for it. Drop enforce-queue-depth and "
-                     "drain the channel with aiex.dma_await_task instead";
-              return WalkResult::interrupt();
-            }
-            queue.noteSpaceGuaranteed(key, depth);
-          } else if (queue.shouldReport(key)) {
-            emitQueueOverflowWarning(start, tile.getCol(), tile.getRow(),
-                                     cfg.getDirection(), cfg.getChannel(),
-                                     depth, queue.outstanding(key));
-          }
-        }
+        if (queue.wouldOverflow(key, depth))
+          guardQueueOverflow(queue, start, tm, key, depth, enforceQueueDepth);
         queue.push(key, cfg.getIssueToken());
         if (cfg.getIssueToken())
           avail[key]++;
@@ -462,4 +445,10 @@ struct AIEAssignRuntimeSequenceBDIDsPass
 std::unique_ptr<OperationPass<AIE::DeviceOp>>
 AIEX::createAIEAssignRuntimeSequenceBDIDsPass() {
   return std::make_unique<AIEAssignRuntimeSequenceBDIDsPass>();
+}
+
+std::unique_ptr<OperationPass<AIE::DeviceOp>>
+AIEX::createAIEAssignRuntimeSequenceBDIDsPass(
+    const AIEAssignRuntimeSequenceBDIDsOptions &options) {
+  return std::make_unique<AIEAssignRuntimeSequenceBDIDsPass>(options);
 }

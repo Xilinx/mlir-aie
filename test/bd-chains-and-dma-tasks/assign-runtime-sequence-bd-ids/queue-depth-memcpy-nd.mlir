@@ -3,7 +3,9 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 
-// RUN: aie-opt --aie-dma-to-npu --verify-diagnostics --split-input-file %s
+// Enforcement pinned off: these stanzas are about what the count reports, and
+// with it on the compiler inserts a poll instead of saying anything.
+// RUN: aie-opt --aie-dma-to-npu='enforce-queue-depth=false' --verify-diagnostics --split-input-file %s
 
 // The npu.dma_memcpy_nd path shares the task queue with dma_start_task, so it
 // gets the same bound. aie-dma-to-npu is pattern-driven and visits ops in
