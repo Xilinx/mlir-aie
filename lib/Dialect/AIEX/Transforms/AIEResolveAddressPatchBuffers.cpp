@@ -55,13 +55,22 @@ struct ResolveBufferOperand : OpRewritePattern<NpuAddressPatchOp> {
 
     Value argPlus = op.getArgPlus();
     if (traced->offsetInBytes != 0) {
-      std::optional<uint32_t> base = getConstantIntOperand(argPlus);
-      if (base) {
-        argPlus = createConstantI32(rewriter, op.getLoc(),
-                                    *base + traced->offsetInBytes);
+      // Sum at 64 bits; see createConstantArgPlus for the width choice.
+      if (std::optional<uint64_t> base = getConstantInt64Operand(argPlus)) {
+        argPlus = createConstantArgPlus(
+            rewriter, op.getLoc(),
+            *base + static_cast<uint64_t>(traced->offsetInBytes));
       } else {
-        Value shift =
-            createConstantI32(rewriter, op.getLoc(), traced->offsetInBytes);
+        // Widen the runtime value only when the offset outgrows its width.
+        Type ty = argPlus.getType();
+        if (ty.getIntOrFloatBitWidth() < 64 &&
+            traced->offsetInBytes > std::numeric_limits<uint32_t>::max()) {
+          ty = rewriter.getIntegerType(64);
+          argPlus = arith::ExtUIOp::create(rewriter, op.getLoc(), ty, argPlus);
+        }
+        Value shift = arith::ConstantOp::create(
+            rewriter, op.getLoc(),
+            IntegerAttr::get(ty, static_cast<int64_t>(traced->offsetInBytes)));
         argPlus = arith::AddIOp::create(rewriter, op.getLoc(), argPlus, shift);
       }
     }
