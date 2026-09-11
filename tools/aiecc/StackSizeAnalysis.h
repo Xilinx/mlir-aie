@@ -31,6 +31,8 @@
 namespace xilinx::aiecc {
 
 namespace detail {
+// llvm-aie's AIEELFObjectWriter maps the plain 32-bit FK_Data_4 literal fixup
+// to one relocation number per AIE architecture variant.
 constexpr uint64_t aieData4RelocAie2 = 50;
 constexpr uint64_t aieData4RelocAie2p = 62;
 constexpr uint64_t aieData4RelocAie1 = 72;

@@ -139,6 +139,10 @@ void patchElfAsAieWithNumberedDataRelocation(llvm::StringRef elfPath) {
                                   xilinx::aiecc::detail::aieData4RelocAie2p);
       writeStruct(reloc, relOffset, ".rela.text relocation");
       patchedRelocation = true;
+      break;
+    }
+    if (patchedRelocation) {
+      break;
     }
   }
   if (!patchedRelocation) {
