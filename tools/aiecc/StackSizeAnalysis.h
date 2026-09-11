@@ -32,6 +32,7 @@
 namespace xilinx::aiecc {
 
 namespace detail {
+constexpr uint16_t aieElfMachine = llvm::ELF::EM_AIE;
 constexpr uint64_t aieData4RelocAie2 = llvm::ELF::R_AIE_50;
 constexpr uint64_t aieData4RelocAie2p = llvm::ELF::R_AIE_62;
 constexpr uint64_t aieData4RelocAie1 = llvm::ELF::R_AIE_72;

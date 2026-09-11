@@ -291,7 +291,7 @@ std::string buildAieNumberedFalseRecursionElf() {
   ehdr.e_ident[EI_DATA] = ELFDATA2LSB;
   ehdr.e_ident[EI_VERSION] = EV_CURRENT;
   ehdr.e_type = ET_EXEC;
-  ehdr.e_machine = llvm::ELF::EM_AIE;
+  ehdr.e_machine = xilinx::aiecc::detail::aieElfMachine;
   ehdr.e_version = EV_CURRENT;
   ehdr.e_entry = startAddr;
   ehdr.e_ehsize = sizeof(Elf32_Ehdr);

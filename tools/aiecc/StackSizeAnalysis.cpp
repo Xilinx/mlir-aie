@@ -203,7 +203,7 @@ bool isZeroSizedFunctionSymbol(const SymbolRef &sym) {
 
 bool isAieDataWordRelocation(const ObjectFile &obj, const RelocationRef &rel) {
   if (const auto *elf = llvm::dyn_cast<ELFObjectFileBase>(&obj);
-      !elf || elf->getEMachine() != llvm::ELF::EM_AIE) {
+      !elf || elf->getEMachine() != detail::aieElfMachine) {
     return false;
   }
   // llvm-aie assigns one dense relocation range to instruction fixups and one
