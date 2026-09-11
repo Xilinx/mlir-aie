@@ -43,3 +43,14 @@ def test_out_of_range_coordinates_error(device):
         device.get_tile_type(-1, 0)
     with pytest.raises(ValueError, match="out of range"):
         device.get_tile_type(0, -1)
+
+
+def test_get_num_bds_disambiguates_tile_type(device):
+    """get_num_bds must key off tile type, not assume one BD count for the
+    whole device -- a MemTile and a CoreTile/ShimNOCTile do not agree."""
+    from aie.dialects._aie_enum_gen import AIETileType
+
+    assert device.get_num_bds(AIETileType.CoreTile) == 16
+    assert device.get_num_bds(AIETileType.ShimNOCTile) == 16
+    if device.get_tile_type(0, 1) == AIETileType.MemTile:
+        assert device.get_num_bds(AIETileType.MemTile) == 48

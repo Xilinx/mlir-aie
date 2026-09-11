@@ -61,6 +61,43 @@ class Device(Resolvable):
         self._validate_coordinates(col, row)
         return AIETileType(self._tm.get_tile_type(col, row))
 
+    def get_dma_bd_wrap_bits(self, col, row) -> int:
+        """Wrap (size) field width, in bits."""
+        self._validate_coordinates(col, row)
+        return self._tm.get_dma_bd_wrap_bits(col, row)
+
+    def get_dma_bd_step_bits(self, col, row) -> int:
+        """Step (stride) field width, in bits. The field counts address granules."""
+        self._validate_coordinates(col, row)
+        return self._tm.get_dma_bd_step_bits(col, row)
+
+    def get_dma_bd_iter_bits(self, col, row) -> int:
+        """Iteration (repeat) field width, in bits."""
+        self._validate_coordinates(col, row)
+        return self._tm.get_dma_bd_iter_bits(col, row)
+
+    @property
+    def address_gen_granularity(self) -> int:
+        """Address-generation granularity of the device, in bits."""
+        return self._tm.get_address_gen_granularity()
+
+    def get_num_bds(self, tile_type: AIETileType) -> int:
+        """Return the number of DMA buffer descriptors (BDs) a tile of
+        ``tile_type`` has on this device.
+
+        The BD budget is per tile TYPE, not per coordinate, and it is not
+        uniform: on AIE2, a MemTile has 48 BDs while a CoreTile and a
+        ShimNOCTile both have 16 — the same count for two different roles.
+        Callers must name the tile type they mean rather than hardcode a
+        BD count, since "16" is only right for two of the three types and
+        silently wrong for the third.
+        """
+        for row in range(self.rows):
+            for col in range(self.cols):
+                if self.get_tile_type(col, row) == tile_type:
+                    return self._tm.get_num_bds(col, row)
+        raise ValueError(f"Device has no tile of type {tile_type!r}")
+
     def resolve_tile(
         self,
         tile: Tile,

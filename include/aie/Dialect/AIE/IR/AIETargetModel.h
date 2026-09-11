@@ -303,6 +303,12 @@ public:
   /// Return the size (in bytes) of a core's program memory.
   virtual uint32_t getProgramMemorySize() const = 0;
 
+  /// Return the size (in bytes) of the address space a core can issue data
+  /// accesses into. The neighbour memory windows sit at the bottom of it; the
+  /// span above them reaches no memory and is reserved so nothing is placed
+  /// there.
+  virtual uint32_t getCoreDataAddressSpaceSize() const = 0;
+
   /// Return the default stack reservation (in bytes) for a core, used when a
   /// design does not state one. The linker script places the stack directly
   /// below the objectFIFO buffers with no clearance, so a design whose frames
@@ -617,6 +623,7 @@ public:
   uint32_t getMemEastBaseAddress() const override { return 0x00038000; }
   uint32_t getLocalMemorySize() const override { return 0x00008000; }
   uint32_t getProgramMemorySize() const override { return 0x00004000; }
+  uint32_t getCoreDataAddressSpaceSize() const override { return 0x00100000; }
   uint32_t getAccumulatorCascadeSize() const override { return 384; }
   uint32_t getComputeTileLoadStoreBusWidth() const override { return 128; }
   uint32_t getComputeTileMaxVectorAlignBits() const override { return 128; }
@@ -752,6 +759,7 @@ public:
   uint32_t getMemEastBaseAddress() const override { return 0x00070000; }
   uint32_t getLocalMemorySize() const override { return 0x00010000; }
   uint32_t getProgramMemorySize() const override { return 0x00004000; }
+  uint32_t getCoreDataAddressSpaceSize() const override { return 0x00100000; }
   uint32_t getAccumulatorCascadeSize() const override { return 512; }
   uint32_t getComputeTileLoadStoreBusWidth() const override { return 256; }
   uint32_t getComputeTileMaxVectorAlignBits() const override { return 256; }
