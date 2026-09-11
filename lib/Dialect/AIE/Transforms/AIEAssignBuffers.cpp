@@ -219,11 +219,12 @@ static bool checkAndPrintBufferOverlap(ArrayRef<BufferOp> sortedBuffers,
       }
     }
     if (blocker && curAddr < blockerEnd) {
-      cur.emitOpError("")
-          << bufferLabel(cur) << " at address 0x" << llvm::utohexstr(curAddr)
-          << " overlaps with " << bufferLabel(blocker) << " at address 0x"
-          << llvm::utohexstr(blockerAddr)
-          << " (size: " << blocker.getAllocationSize() << " bytes)";
+      cur.emitOpError("") << bufferLabel(cur) << " at address 0x"
+                          << llvm::utohexstr(curAddr) << " overlaps with "
+                          << bufferLabel(blocker) << " at address 0x"
+                          << llvm::utohexstr(blockerAddr)
+                          << " (size: " << blocker.getAllocationSize()
+                          << " bytes)";
       return false;
     }
   }
@@ -302,15 +303,14 @@ struct AllocUnit {
 // its use in basicAllocation): every member's required alignment then
 // divides the base's, so the padding pattern -- and hence the extent -- does
 // not depend on the base's actual value.
-static int64_t groupExtent(ArrayRef<BufferOp> group,
-                           uint32_t tileAlignBitWidth,
-                           uint32_t maxVecAlignBitWidth) {
+static int64_t groupExtent(ArrayRef<BufferOp> group, uint32_t tileAlignBitWidth,
+                           uint32_t maxVecAlignBits) {
   int64_t offset = 0;
   for (auto buffer : group) {
     if (buffer.getAligned())
       offset = getAlignedAddress(
           offset,
-          getRequiredAlignBits(buffer, tileAlignBitWidth, maxVecAlignBitWidth));
+          getRequiredAlignBits(buffer, tileAlignBitWidth, maxVecAlignBits));
     offset += buffer.getAllocationSize();
   }
   return offset;
@@ -320,7 +320,7 @@ static int64_t groupExtent(ArrayRef<BufferOp> group,
 // pass's existing largest-first order across units.
 static SmallVector<AllocUnit> buildAllocUnits(ArrayRef<BufferOp> buffers,
                                               uint32_t tileAlignBitWidth,
-                                              uint32_t maxVecAlignBitWidth) {
+                                              uint32_t maxVecAlignBits) {
   SmallVector<AllocUnit> units;
   // Every alloc_group on this tile overlays every other, so they share ONE
   // unit. groupIndex maps a group name to its slot within that unit's group
@@ -349,8 +349,8 @@ static SmallVector<AllocUnit> buildAllocUnits(ArrayRef<BufferOp> buffers,
     u.aligned |= buffer.getAligned();
     // A group's extent is its members' padded layout; the unit's is the
     // largest such extent.
-    int64_t extent = groupExtent(u.groups[it->second], tileAlignBitWidth,
-                                 maxVecAlignBitWidth);
+    int64_t extent =
+        groupExtent(u.groups[it->second], tileAlignBitWidth, maxVecAlignBits);
     u.size = std::max(u.size, extent);
   }
   llvm::stable_sort(units, [](const AllocUnit &a, const AllocUnit &b) {
@@ -517,7 +517,7 @@ static bool basicAllocation(TileOp tile) {
   // getAlignedAddress then bumps it into a pre-allocated buffer.
   auto *current_alloc = allocated_buffers.begin();
   for (const AllocUnit &unit :
-       buildAllocUnits(buffers, tileAlignBitWidth, maxVecAlignBitWidth)) {
+       buildAllocUnits(buffers, tileAlignBitWidth, maxVecAlignBits)) {
     // Every group starts at the unit's base, so the base has to satisfy the
     // strictest requirement any member has -- a per-buffer figure since
     // getRequiredAlignBits keys on the buffer's own size.
@@ -526,8 +526,8 @@ static bool basicAllocation(TileOp tile) {
       for (auto buffer : group)
         if (buffer.getAligned())
           unitAlignBits = std::max(
-              unitAlignBits, getRequiredAlignBits(buffer, tileAlignBitWidth,
-                                                  maxVecAlignBits));
+              unitAlignBits,
+              getRequiredAlignBits(buffer, tileAlignBitWidth, maxVecAlignBits));
     if (unit.aligned)
       address = getAlignedAddress(address, unitAlignBits);
     while (current_alloc != allocated_buffers.end()) {
@@ -557,8 +557,8 @@ static bool basicAllocation(TileOp tile) {
         assert(!buffer.getAddress());
         if (buffer.getAligned())
           offset = getAlignedAddress(
-              offset, getRequiredAlignBits(buffer, tileAlignBitWidth,
-                                           maxVecAlignBits));
+              offset,
+              getRequiredAlignBits(buffer, tileAlignBitWidth, maxVecAlignBits));
         buffer.setAddress(offset);
         offset += buffer.getAllocationSize();
       }
