@@ -160,10 +160,10 @@ LogicalResult
 xilinx::AIE::myVerifyOffsetSizeAndStrideOp(OffsetSizeAndStrideOpInterface op) {
   std::array<unsigned, 3> maxRanks = op.getArrayAttrMaxRanks();
   // Count checks FIRST, matching mlir::detail::verifyOffsetSizeAndStrideOp.
-  // getMixedOffsets()/getMixedSizes() assert that the number of dynamic operands
-  // equals the number of kDynamic sentinels in the static list, so running the
-  // rank comparison before these validates nothing and aborts on malformed input
-  // instead of diagnosing it.
+  // getMixedOffsets()/getMixedSizes() assert that the number of dynamic
+  // operands equals the number of kDynamic sentinels in the static list, so
+  // running the rank comparison before these validates nothing and aborts on
+  // malformed input instead of diagnosing it.
   if (failed(verifyListOfOperandsOrIntegers(
           op, "offset", maxRanks[0], op.getStaticOffsets(), op.getOffsets())))
     return failure();
