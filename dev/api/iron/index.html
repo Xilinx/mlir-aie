@@ -16517,7 +16517,8 @@ this kernel.</p>
 <span class="normal"><a href="#__codelineno-0-480">480</a></span>
 <span class="normal"><a href="#__codelineno-0-481">481</a></span>
 <span class="normal"><a href="#__codelineno-0-482">482</a></span>
-<span class="normal"><a href="#__codelineno-0-483">483</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-334" name="__codelineno-0-334"></a><span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+<span class="normal"><a href="#__codelineno-0-483">483</a></span>
+<span class="normal"><a href="#__codelineno-0-484">484</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-334" name="__codelineno-0-334"></a><span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
 <a id="__codelineno-0-335" name="__codelineno-0-335"></a>    <span class="bp">self</span><span class="p">,</span>
 <a id="__codelineno-0-336" name="__codelineno-0-336"></a>    <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
 <a id="__codelineno-0-337" name="__codelineno-0-337"></a>    <span class="n">object_file_name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
@@ -16637,36 +16638,37 @@ this kernel.</p>
 <a id="__codelineno-0-451" name="__codelineno-0-451"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_compile_flags</span> <span class="o">=</span> <span class="n">compile_flags</span> <span class="k">if</span> <span class="n">compile_flags</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="p">[]</span>
 <a id="__codelineno-0-452" name="__codelineno-0-452"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_use_chess</span> <span class="o">=</span> <span class="n">use_chess</span>
 <a id="__codelineno-0-453" name="__codelineno-0-453"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_compiled</span> <span class="o">=</span> <span class="kc">False</span>
-<a id="__codelineno-0-454" name="__codelineno-0-454"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_cached_digest</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
-<a id="__codelineno-0-455" name="__codelineno-0-455"></a>
-<a id="__codelineno-0-456" name="__codelineno-0-456"></a>    <span class="c1"># Two same-name EFs with default object_file_name would collide on the</span>
-<a id="__codelineno-0-457" name="__codelineno-0-457"></a>    <span class="c1"># same artifact path. Auto-suffix defaulted names with a content digest;</span>
-<a id="__codelineno-0-458" name="__codelineno-0-458"></a>    <span class="c1"># raise on explicit names so silent renames don&#39;t surprise the caller.</span>
-<a id="__codelineno-0-459" name="__codelineno-0-459"></a>    <span class="k">for</span> <span class="n">existing</span> <span class="ow">in</span> <span class="n">ExternalFunction</span><span class="o">.</span><span class="n">_instances</span><span class="p">:</span>
-<a id="__codelineno-0-460" name="__codelineno-0-460"></a>        <span class="k">if</span> <span class="p">(</span>
-<a id="__codelineno-0-461" name="__codelineno-0-461"></a>            <span class="n">existing</span><span class="o">.</span><span class="n">_name</span> <span class="o">==</span> <span class="n">effective_name</span>
-<a id="__codelineno-0-462" name="__codelineno-0-462"></a>            <span class="ow">and</span> <span class="n">existing</span><span class="o">.</span><span class="n">_object_file_name</span> <span class="o">==</span> <span class="n">object_file_name</span>
-<a id="__codelineno-0-463" name="__codelineno-0-463"></a>            <span class="ow">and</span> <span class="n">existing</span><span class="o">.</span><span class="n">_content_digest</span><span class="p">()</span> <span class="o">!=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_content_digest</span><span class="p">()</span>
-<a id="__codelineno-0-464" name="__codelineno-0-464"></a>        <span class="p">):</span>
-<a id="__codelineno-0-465" name="__codelineno-0-465"></a>            <span class="k">if</span> <span class="n">object_file_name_explicit</span><span class="p">:</span>
-<a id="__codelineno-0-466" name="__codelineno-0-466"></a>                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-<a id="__codelineno-0-467" name="__codelineno-0-467"></a>                    <span class="sa">f</span><span class="s2">&quot;ExternalFunction &#39;</span><span class="si">{</span><span class="n">effective_name</span><span class="si">}</span><span class="s2">&#39; would collide with &quot;</span>
-<a id="__codelineno-0-468" name="__codelineno-0-468"></a>                    <span class="sa">f</span><span class="s2">&quot;an already-registered instance: same name and &quot;</span>
-<a id="__codelineno-0-469" name="__codelineno-0-469"></a>                    <span class="sa">f</span><span class="s2">&quot;explicit object_file_name=&#39;</span><span class="si">{</span><span class="n">object_file_name</span><span class="si">}</span><span class="s2">&#39; but &quot;</span>
-<a id="__codelineno-0-470" name="__codelineno-0-470"></a>                    <span class="sa">f</span><span class="s2">&quot;different compile_flags / source.  Distinguish them &quot;</span>
-<a id="__codelineno-0-471" name="__codelineno-0-471"></a>                    <span class="sa">f</span><span class="s2">&quot;by passing a distinct `object_file_name=...` or &quot;</span>
-<a id="__codelineno-0-472" name="__codelineno-0-472"></a>                    <span class="sa">f</span><span class="s2">&quot;`name=...`.&quot;</span>
-<a id="__codelineno-0-473" name="__codelineno-0-473"></a>                <span class="p">)</span>
-<a id="__codelineno-0-474" name="__codelineno-0-474"></a>            <span class="n">suffix</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_content_digest</span><span class="p">()[:</span><span class="mi">8</span><span class="p">]</span>
-<a id="__codelineno-0-475" name="__codelineno-0-475"></a>            <span class="n">output_path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">object_file_name</span><span class="p">)</span>
-<a id="__codelineno-0-476" name="__codelineno-0-476"></a>            <span class="n">object_file_name</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span>
-<a id="__codelineno-0-477" name="__codelineno-0-477"></a>                <span class="n">output_path</span><span class="o">.</span><span class="n">with_name</span><span class="p">(</span>
-<a id="__codelineno-0-478" name="__codelineno-0-478"></a>                    <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">output_path</span><span class="o">.</span><span class="n">stem</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">suffix</span><span class="si">}{</span><span class="n">output_path</span><span class="o">.</span><span class="n">suffix</span><span class="si">}</span><span class="s2">&quot;</span>
-<a id="__codelineno-0-479" name="__codelineno-0-479"></a>                <span class="p">)</span>
-<a id="__codelineno-0-480" name="__codelineno-0-480"></a>            <span class="p">)</span>
-<a id="__codelineno-0-481" name="__codelineno-0-481"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">_object_file_name</span> <span class="o">=</span> <span class="n">object_file_name</span>
-<a id="__codelineno-0-482" name="__codelineno-0-482"></a>            <span class="k">break</span>
-<a id="__codelineno-0-483" name="__codelineno-0-483"></a>    <span class="n">ExternalFunction</span><span class="o">.</span><span class="n">_instances</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+<a id="__codelineno-0-454" name="__codelineno-0-454"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_compiled_dir</span> <span class="o">=</span> <span class="kc">None</span>
+<a id="__codelineno-0-455" name="__codelineno-0-455"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_cached_digest</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<a id="__codelineno-0-456" name="__codelineno-0-456"></a>
+<a id="__codelineno-0-457" name="__codelineno-0-457"></a>    <span class="c1"># Two same-name EFs with default object_file_name would collide on the</span>
+<a id="__codelineno-0-458" name="__codelineno-0-458"></a>    <span class="c1"># same artifact path. Auto-suffix defaulted names with a content digest;</span>
+<a id="__codelineno-0-459" name="__codelineno-0-459"></a>    <span class="c1"># raise on explicit names so silent renames don&#39;t surprise the caller.</span>
+<a id="__codelineno-0-460" name="__codelineno-0-460"></a>    <span class="k">for</span> <span class="n">existing</span> <span class="ow">in</span> <span class="n">ExternalFunction</span><span class="o">.</span><span class="n">_instances</span><span class="p">:</span>
+<a id="__codelineno-0-461" name="__codelineno-0-461"></a>        <span class="k">if</span> <span class="p">(</span>
+<a id="__codelineno-0-462" name="__codelineno-0-462"></a>            <span class="n">existing</span><span class="o">.</span><span class="n">_name</span> <span class="o">==</span> <span class="n">effective_name</span>
+<a id="__codelineno-0-463" name="__codelineno-0-463"></a>            <span class="ow">and</span> <span class="n">existing</span><span class="o">.</span><span class="n">_object_file_name</span> <span class="o">==</span> <span class="n">object_file_name</span>
+<a id="__codelineno-0-464" name="__codelineno-0-464"></a>            <span class="ow">and</span> <span class="n">existing</span><span class="o">.</span><span class="n">_content_digest</span><span class="p">()</span> <span class="o">!=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_content_digest</span><span class="p">()</span>
+<a id="__codelineno-0-465" name="__codelineno-0-465"></a>        <span class="p">):</span>
+<a id="__codelineno-0-466" name="__codelineno-0-466"></a>            <span class="k">if</span> <span class="n">object_file_name_explicit</span><span class="p">:</span>
+<a id="__codelineno-0-467" name="__codelineno-0-467"></a>                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+<a id="__codelineno-0-468" name="__codelineno-0-468"></a>                    <span class="sa">f</span><span class="s2">&quot;ExternalFunction &#39;</span><span class="si">{</span><span class="n">effective_name</span><span class="si">}</span><span class="s2">&#39; would collide with &quot;</span>
+<a id="__codelineno-0-469" name="__codelineno-0-469"></a>                    <span class="sa">f</span><span class="s2">&quot;an already-registered instance: same name and &quot;</span>
+<a id="__codelineno-0-470" name="__codelineno-0-470"></a>                    <span class="sa">f</span><span class="s2">&quot;explicit object_file_name=&#39;</span><span class="si">{</span><span class="n">object_file_name</span><span class="si">}</span><span class="s2">&#39; but &quot;</span>
+<a id="__codelineno-0-471" name="__codelineno-0-471"></a>                    <span class="sa">f</span><span class="s2">&quot;different compile_flags / source.  Distinguish them &quot;</span>
+<a id="__codelineno-0-472" name="__codelineno-0-472"></a>                    <span class="sa">f</span><span class="s2">&quot;by passing a distinct `object_file_name=...` or &quot;</span>
+<a id="__codelineno-0-473" name="__codelineno-0-473"></a>                    <span class="sa">f</span><span class="s2">&quot;`name=...`.&quot;</span>
+<a id="__codelineno-0-474" name="__codelineno-0-474"></a>                <span class="p">)</span>
+<a id="__codelineno-0-475" name="__codelineno-0-475"></a>            <span class="n">suffix</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_content_digest</span><span class="p">()[:</span><span class="mi">8</span><span class="p">]</span>
+<a id="__codelineno-0-476" name="__codelineno-0-476"></a>            <span class="n">output_path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">object_file_name</span><span class="p">)</span>
+<a id="__codelineno-0-477" name="__codelineno-0-477"></a>            <span class="n">object_file_name</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span>
+<a id="__codelineno-0-478" name="__codelineno-0-478"></a>                <span class="n">output_path</span><span class="o">.</span><span class="n">with_name</span><span class="p">(</span>
+<a id="__codelineno-0-479" name="__codelineno-0-479"></a>                    <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">output_path</span><span class="o">.</span><span class="n">stem</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">suffix</span><span class="si">}{</span><span class="n">output_path</span><span class="o">.</span><span class="n">suffix</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-480" name="__codelineno-0-480"></a>                <span class="p">)</span>
+<a id="__codelineno-0-481" name="__codelineno-0-481"></a>            <span class="p">)</span>
+<a id="__codelineno-0-482" name="__codelineno-0-482"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">_object_file_name</span> <span class="o">=</span> <span class="n">object_file_name</span>
+<a id="__codelineno-0-483" name="__codelineno-0-483"></a>            <span class="k">break</span>
+<a id="__codelineno-0-484" name="__codelineno-0-484"></a>    <span class="n">ExternalFunction</span><span class="o">.</span><span class="n">_instances</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
                   </details>
 
