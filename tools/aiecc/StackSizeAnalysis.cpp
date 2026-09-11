@@ -200,7 +200,30 @@ bool isZeroSizedFunctionSymbol(const SymbolRef &sym) {
   return *type == SymbolRef::ST_Function && ELFSymbolRef(sym).getSize() == 0;
 }
 
-bool isCallLikeRelocation(const RelocationRef &rel) {
+bool isAieDataWordRelocation(const ObjectFile &obj, const RelocationRef &rel) {
+  constexpr uint16_t aieMachine = 264; // llvm::ELF::EM_AIE
+  if (const auto *elf = llvm::dyn_cast<ELFObjectFileBase>(&obj);
+      !elf || elf->getEMachine() != aieMachine) {
+    return false;
+  }
+  // llvm-aie assigns one dense relocation range to instruction fixups and one
+  // per-architecture FK_Data_4 number to a plain 32-bit address literal. That
+  // literal is not a call, even when it sits in `.text`.
+  switch (rel.getType()) {
+  case 50:  // aie2   FK_Data_4
+  case 62:  // aie2p  FK_Data_4
+  case 72:  // aie1   FK_Data_4
+  case 135: // aie2ps FK_Data_4
+    return true;
+  default:
+    return false;
+  }
+}
+
+bool isCallLikeRelocation(const ObjectFile &obj, const RelocationRef &rel) {
+  if (isAieDataWordRelocation(obj, rel)) {
+    return false;
+  }
   llvm::SmallString<32> typeNameStorage;
   rel.getTypeName(typeNameStorage);
   llvm::StringRef typeName(typeNameStorage);
@@ -397,7 +420,7 @@ StackRequirementResult xilinx::aiecc::computeStackRequirement(
       // close a call edge through that alias; an address constant in .text
       // would otherwise invent a callee that the code never executes.
       if (patchedIsText && isZeroSizedFunctionSymbol(*target) &&
-          !isCallLikeRelocation(rel)) {
+          !isCallLikeRelocation(obj, rel)) {
         continue;
       }
       auto targetAddr = target->getAddress();

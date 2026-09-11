@@ -18,7 +18,7 @@
 // RUN: clang++ --target=aie2p-none-unknown-elf -std=c++20 -O0 -DNDEBUG -ffunction-sections -fdata-sections -fstack-size-section -c %S/stack_size_recursive_kernel.cc -o %t.d/stack_size_recursive_kernel.o
 // RUN: cd %t.d && not %aiecc %s 2>&1 | FileCheck %s
 
-// CHECK: error: cannot determine this core's stack requirement: recursion detected: __start@0x{{[0-9a-f]+}} -> _main_init@0x{{[0-9a-f]+}} -> core_0_2@0x{{[0-9a-f]+}} -> recursive_touch@0x{{[0-9a-f]+}} -> recurse@0x{{[0-9a-f]+}} -> recurse@0x{{[0-9a-f]+}}
+// CHECK: error: cannot determine this core's stack requirement: recursion detected: __start@0x{{[0-9A-Fa-f]+}} -> _main_init@0x{{[0-9A-Fa-f]+}} -> core_0_2@0x{{[0-9A-Fa-f]+}} -> recursive_touch@0x{{[0-9A-Fa-f]+}} -> recurse@0x{{[0-9A-Fa-f]+}} -> recurse@0x{{[0-9A-Fa-f]+}}
 // CHECK-SAME: set stack_size_override
 
 module {

@@ -9,14 +9,18 @@
 
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/BinaryFormat/ELF.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Path.h"
 
 #include <cstdlib>
+#include <elf.h>
 #include <fstream>
+#include <iterator>
 #include <stdexcept>
 #include <string>
 #include <system_error>
+#include <vector>
 
 #ifndef AIE_STACK_SIZE_ANALYSIS_TEST_CLANG
 #define AIE_STACK_SIZE_ANALYSIS_TEST_CLANG "clang"
@@ -43,7 +47,59 @@ void run(llvm::StringRef command) {
   }
 }
 
-std::string buildFalseRecursionElf() {
+void patchElfAsAieWithNumberedDataRelocation(llvm::StringRef elfPath) {
+  std::ifstream in(elfPath.str(), std::ios::binary);
+  if (!in) {
+    throw std::runtime_error("failed to open " + elfPath.str());
+  }
+  std::vector<char> bytes((std::istreambuf_iterator<char>(in)),
+                          std::istreambuf_iterator<char>());
+  if (bytes.size() < sizeof(Elf64_Ehdr)) {
+    throw std::runtime_error("ELF is too small to patch");
+  }
+
+  auto *ehdr = reinterpret_cast<Elf64_Ehdr *>(bytes.data());
+  if (ehdr->e_ident[EI_CLASS] != ELFCLASS64) {
+    throw std::runtime_error("expected an ELF64 test fixture");
+  }
+  ehdr->e_machine = llvm::ELF::EM_AIE;
+
+  auto *sections = reinterpret_cast<Elf64_Shdr *>(bytes.data() + ehdr->e_shoff);
+  const auto &shstr = sections[ehdr->e_shstrndx];
+  llvm::StringRef shstrtab(bytes.data() + shstr.sh_offset, shstr.sh_size);
+  bool patchedRelocation = false;
+  for (unsigned i = 0; i < ehdr->e_shnum; ++i) {
+    const Elf64_Shdr &sec = sections[i];
+    llvm::StringRef name = shstrtab.drop_front(sec.sh_name).split('\0').first;
+    if (sec.sh_type != SHT_RELA || name != ".rela.text") {
+      continue;
+    }
+    auto *relocs = reinterpret_cast<Elf64_Rela *>(bytes.data() + sec.sh_offset);
+    size_t count = sec.sh_size / sizeof(Elf64_Rela);
+    for (size_t j = 0; j < count; ++j) {
+      if (ELF64_R_TYPE(relocs[j].r_info) != llvm::ELF::R_X86_64_64) {
+        continue;
+      }
+      relocs[j].r_info =
+          ELF64_R_INFO(ELF64_R_SYM(relocs[j].r_info), 62 /* aie2p FK_Data_4 */);
+      patchedRelocation = true;
+    }
+  }
+  if (!patchedRelocation) {
+    throw std::runtime_error("failed to find x86_64 absolute relocation");
+  }
+
+  std::ofstream out(elfPath.str(), std::ios::binary | std::ios::trunc);
+  if (!out) {
+    throw std::runtime_error("failed to reopen " + elfPath.str());
+  }
+  out.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+  if (!out) {
+    throw std::runtime_error("failed to write patched ELF");
+  }
+}
+
+std::string buildFalseRecursionElf(bool useAieNumberedDataRelocation = false) {
   llvm::SmallString<128> dir;
   if (std::error_code ec = llvm::sys::fs::createUniqueDirectory(
           "stack-size-analysis-false-recursion", dir)) {
@@ -91,6 +147,9 @@ helper_cycle:
   run(clang + " " + quote(objPath) +
       " -nostdlib -no-pie -Wl,-e,_start -Wl,--emit-relocs -o " +
       quote(elfPath));
+  if (useAieNumberedDataRelocation) {
+    patchElfAsAieWithNumberedDataRelocation(elfPath);
+  }
   return elfPath.str().str();
 }
 
@@ -102,6 +161,20 @@ void checkZeroSizedTargetDoesNotCreateFalseCycle() {
   }
   if (!result.error.empty()) {
     throw std::runtime_error("unexpected error text: " + result.error);
+  }
+}
+
+void checkAieNumberedDataRelocationDoesNotCreateFalseCycle() {
+  auto result = xilinx::aiecc::computeStackRequirement(
+      buildFalseRecursionElf(/*useAieNumberedDataRelocation=*/true),
+      llvm::StringMap<int64_t>());
+  if (!result.bytes) {
+    throw std::runtime_error("unexpected AIE-numbered failure: " +
+                             result.error);
+  }
+  if (!result.error.empty()) {
+    throw std::runtime_error("unexpected AIE-numbered error text: " +
+                             result.error);
   }
 }
 
@@ -224,6 +297,7 @@ recurse:
 
 int main() {
   checkZeroSizedTargetDoesNotCreateFalseCycle();
+  checkAieNumberedDataRelocationDoesNotCreateFalseCycle();
   checkZeroSizedMainInitStillConnectsCallGraph();
   checkRecursionDiagnosticPrintsAddresses();
   return 0;
