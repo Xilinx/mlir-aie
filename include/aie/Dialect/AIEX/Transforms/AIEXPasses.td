@@ -188,6 +188,15 @@ def AIEDmaToNpu : Pass<"aie-dma-to-npu", "AIE::DeviceOp"> {
 
   }];
 
+  let options = [
+    Option<"enforceQueueDepth", "enforce-queue-depth", "bool",
+           /*default=*/"false",
+           "Insert an aiex.npu.maskpoll before any npu.dma_memcpy_nd that could "
+           "push onto a full DMA task queue. Mirrors the option of the same "
+           "name on aie-assign-runtime-sequence-bd-ids, which covers the "
+           "dma_start_task path.">
+  ];
+
   let constructor = "xilinx::AIEX::createAIEDmaToNpuPass()";
   let dependentDialects = [
     "mlir::arith::ArithDialect",

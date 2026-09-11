@@ -31,6 +31,7 @@
 #include "aie/Dialect/AIE/Transforms/AIEAssignBufferDescriptorIDs.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
+#include "aie/Dialect/AIEX/Utils/DmaQueueModel.h"
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
@@ -101,43 +102,6 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     return failure(wr.wasInterrupted());
   }
 
-  // Emit a poll that blocks until the channel's task queue has a free slot.
-  // The queue does not backpressure -- a push onto a full queue is dropped, not
-  // stalled -- so waiting here is the only way to make room a precondition
-  // rather than a bet on drain timing.
-  //
-  // A maskpoll tests masked equality, not "<", so this relies on `depth` being
-  // a power of two: occupancy < depth is then exactly "the depth bit is clear"
-  // (for depth 4, bit 22 of Task_Queue_Size).
-  LogicalResult insertQueueSpaceWait(DMAStartTaskOp start,
-                                     DMAConfigureTaskOp cfg, AIE::TileOp tile,
-                                     uint32_t depth,
-                                     const AIETargetModel &tm) {
-    uint32_t fieldMask = tm.getDmaTaskQueueSizeMask();
-    if (!fieldMask || (depth & (depth - 1)) != 0)
-      return failure();
-    std::optional<uint32_t> statusAddr = tm.getDmaStatusAddress(
-        tile.getCol(), tile.getRow(), cfg.getChannel(), cfg.getDirection());
-    if (!statusAddr)
-      return failure();
-
-    uint32_t depthBit = depth << llvm::countr_zero(fieldMask);
-    if ((depthBit & fieldMask) != depthBit)
-      return failure();
-
-    OpBuilder b(start);
-    Location loc = start.getLoc();
-    auto i32 = b.getI32Type();
-    auto cst = [&](uint32_t v) {
-      return b.create<arith::ConstantOp>(loc, i32, b.getI32IntegerAttr(v))
-          .getResult();
-    };
-    b.create<NpuMaskPollOp>(loc, cst(*statusAddr), cst(0), cst(depthBit),
-                            /*buffer=*/nullptr, /*column=*/nullptr,
-                            /*row=*/nullptr);
-    return success();
-  }
-
   // Track the two per-channel resources a sequence can exhaust. Their failure
   // modes are opposites: over-production is harmless for the TCT FIFO (leftover
   // tokens cost nothing) but not for the task queue, where a push onto a full
@@ -150,7 +114,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   // slots. rejectRuntimeControlFlow has already run, so one program-order pass
   // over straight-line IR is exact.
   LogicalResult verifyChannelUsage(AIE::RuntimeSequenceOp seq) {
-    using ChannelKey = std::array<int, 4>; // {col, row, direction, channel}
+    using ChannelKey = DmaQueueModel::ChannelKey;
     auto keyOf = [](DMAConfigureTaskOp cfg) -> ChannelKey {
       AIE::TileOp tile = cfg.getTileOp();
       return {tile.getCol(), tile.getRow(),
@@ -162,12 +126,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
         seq->getParentOfType<AIE::DeviceOp>().getTargetModel();
 
     std::map<ChannelKey, int> avail;
-    // Per channel, the queued-but-not-known-retired pushes in program order.
-    // Each entry records whether that push issues a token.
-    std::map<ChannelKey, SmallVector<bool, 8>> queued;
-    // An over-subscribed channel usually stays that way for every later push,
-    // so report only the first occurrence per channel.
-    std::set<ChannelKey> reported;
+    DmaQueueModel queue;
 
     WalkResult wr = seq.walk([&](Operation *op) -> WalkResult {
       if (auto start = dyn_cast<DMAStartTaskOp>(op)) {
@@ -178,42 +137,32 @@ struct AIEAssignRuntimeSequenceBDIDsPass
         AIE::TileOp tile = cfg.getTileOp();
         uint32_t depth = tm.getDmaTaskQueueDepth(
             tile.getCol(), tile.getRow(), cfg.getChannel(), cfg.getDirection());
-        SmallVector<bool, 8> &q = queued[key];
-        // depth == 0 means the target has no queued-task model to overflow.
-        if (depth > 0 && q.size() >= depth && enforceQueueDepth) {
-          if (failed(insertQueueSpaceWait(start, cfg, tile, depth, tm))) {
-            // Never fall through silently: the caller asked for the overflow to
-            // be impossible, and going quiet here would hand them exactly the
-            // silent drop they were trying to rule out.
-            start.emitOpError()
-                << "cannot enforce the DMA task-queue bound on tile ("
-                << tile.getCol() << "," << tile.getRow() << ") "
-                << stringifyDMAChannelDir(cfg.getDirection()) << " channel "
-                << cfg.getChannel()
-                << ": this target does not report a pollable task-queue "
-                   "occupancy register for it. Drop enforce-queue-depth and "
-                   "drain the channel with aiex.dma_await_task instead";
-            return WalkResult::interrupt();
+        if (queue.wouldOverflow(key, depth)) {
+          if (enforceQueueDepth) {
+            if (failed(insertQueueSpaceWait(start, tm, tile.getCol(), tile.getRow(),
+                                        cfg.getChannel(), cfg.getDirection(),
+                                        depth))) {
+              // Never fall through silently: the caller asked for the overflow
+              // to be impossible, and going quiet here would hand them exactly
+              // the silent drop they were trying to rule out.
+              start.emitOpError()
+                  << "cannot enforce the DMA task-queue bound on tile ("
+                  << tile.getCol() << "," << tile.getRow() << ") "
+                  << stringifyDMAChannelDir(cfg.getDirection()) << " channel "
+                  << cfg.getChannel()
+                  << ": this target does not report a pollable task-queue "
+                     "occupancy register for it. Drop enforce-queue-depth and "
+                     "drain the channel with aiex.dma_await_task instead";
+              return WalkResult::interrupt();
+            }
+            queue.noteSpaceGuaranteed(key, depth);
+          } else if (queue.shouldReport(key)) {
+            emitQueueOverflowWarning(start, tile.getCol(), tile.getRow(),
+                                     cfg.getDirection(), cfg.getChannel(),
+                                     depth, queue.outstanding(key));
           }
-          // The poll guarantees occupancy < depth once it returns. Keep the
-          // most recent depth-1 entries rather than fabricating fresh ones, so
-          // their issue_token flags survive for the pop-through above.
-          q.erase(q.begin(), q.end() - (depth - 1));
-        } else if (depth > 0 && q.size() >= depth && !enforceQueueDepth)
-          start.emitWarning()
-              << "pushes a DMA task onto tile (" << tile.getCol() << ","
-              << tile.getRow() << ") "
-              << stringifyDMAChannelDir(cfg.getDirection()) << " channel "
-              << cfg.getChannel() << ", whose task queue is only " << depth
-              << " deep, with " << q.size()
-              << " push(es) not yet known to have completed. A push to a full "
-                 "queue is dropped by hardware and its transfer never runs, "
-                 "hanging anything that waits on it. This is a race rather "
-                 "than a certainty -- the DMA drains concurrently, so the "
-                 "count is an upper bound -- hence a warning. Emit an "
-                 "aiex.dma_await_task on this tile, direction and channel to "
-                 "drain the queue before pushing again";
-        q.push_back(cfg.getIssueToken());
+        }
+        queue.push(key, cfg.getIssueToken());
         if (cfg.getIssueToken())
           avail[key]++;
       } else if (auto await = dyn_cast<DMAAwaitTaskOp>(op)) {
@@ -234,13 +183,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
           return WalkResult::interrupt();
         }
         tokens--;
-        // The sync pops whichever token the channel produces first -- the
-        // oldest outstanding token-issuing push, not necessarily the one this
-        // op names -- so retire through that entry inclusive.
-        SmallVector<bool, 8> &q = queued[key];
-        auto *it = llvm::find(q, true);
-        if (it != q.end())
-          q.erase(q.begin(), std::next(it));
+        queue.awaitToken(key);
       }
       return WalkResult::advance();
     });
