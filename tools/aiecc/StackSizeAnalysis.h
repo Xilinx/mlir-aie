@@ -22,6 +22,7 @@
 
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/BinaryFormat/ELF.h"
 
 #include <cstdint>
 #include <optional>
@@ -31,12 +32,10 @@
 namespace xilinx::aiecc {
 
 namespace detail {
-// llvm-aie's AIEELFObjectWriter maps the plain 32-bit FK_Data_4 literal fixup
-// to one relocation number per AIE architecture variant.
-constexpr uint64_t aieData4RelocAie2 = 50;
-constexpr uint64_t aieData4RelocAie2p = 62;
-constexpr uint64_t aieData4RelocAie1 = 72;
-constexpr uint64_t aieData4RelocAie2ps = 135;
+constexpr uint64_t aieData4RelocAie2 = llvm::ELF::R_AIE_50;
+constexpr uint64_t aieData4RelocAie2p = llvm::ELF::R_AIE_62;
+constexpr uint64_t aieData4RelocAie1 = llvm::ELF::R_AIE_72;
+constexpr uint64_t aieData4RelocAie2ps = llvm::ELF::R_AIE_135;
 } // namespace detail
 
 // Cycle: the requirement is unbounded, so the design must declare a
