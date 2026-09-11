@@ -331,3 +331,86 @@ def test_kernels_mm_object_file_name_is_order_independent():
     reuses by name is identical regardless of registration order."""
     ef = kernels.mm(dim_m=64, dim_k=64, dim_n=32, c_col_maj=True)
     assert ef._object_file_name == f"matmul_i16_i16_{ef._symbol_prefix}.o"
+
+
+# ---------------------------------------------------------------------------
+# _content_digest must react to included source, not just the top-level
+# file, and to the source file's OWN directory even when the caller never
+# passes it via include_dirs= — the aie_kernels/aie2p/mm.cc + zero.cc shape
+# (a quoted #include of a same-directory sibling). A directory mtime misses
+# an in-place rewrite (an editor's truncate-and-rewrite save, cp -p, git
+# checkout); content hashing does not.
+# ---------------------------------------------------------------------------
+
+
+def test_content_digest_changes_on_declared_include_header_edit(tmp_path):
+    """Editing a header under a declared include_dirs= entry moves the digest."""
+    inc_dir = tmp_path / "inc"
+    inc_dir.mkdir()
+    header = inc_dir / "declared.h"
+    header.write_text("#define DIGEST_TEST_VAL 1\n")
+    src = tmp_path / "main_declared.cc"
+    src.write_text(
+        '#include "declared.h"\n'
+        'extern "C" int digest_test_declared() { return DIGEST_TEST_VAL; }\n'
+    )
+
+    def make():
+        return ExternalFunction(
+            name="digest_test_declared_fn",
+            source_file=str(src),
+            include_dirs=[str(inc_dir)],
+            arg_types=[],
+        )._content_digest()
+
+    before = make()
+    header.write_text("#define DIGEST_TEST_VAL 2\n")  # in-place rewrite, same file
+    after = make()
+    assert before != after
+
+
+def test_content_digest_changes_on_undeclared_sibling_edit(tmp_path):
+    """A sibling reached only via the source file's own directory -- no
+    matching include_dirs= entry -- still moves the digest when edited."""
+    sibling = tmp_path / "sibling.cc"
+    sibling.write_text("static int digest_test_sibling_val() { return 1; }\n")
+    src = tmp_path / "main_sibling.cc"
+    src.write_text(
+        '#include "sibling.cc"\n'
+        'extern "C" int digest_test_sibling() { return digest_test_sibling_val(); }\n'
+    )
+
+    def make():
+        return ExternalFunction(
+            name="digest_test_sibling_fn",
+            source_file=str(src),
+            arg_types=[],
+        )._content_digest()
+
+    before = make()
+    sibling.write_text("static int digest_test_sibling_val() { return 2; }\n")
+    after = make()
+    assert before != after
+
+
+def test_content_digest_stable_when_nothing_changes(tmp_path):
+    """Two EFs over byte-identical source + includes get the same digest --
+    the control case: the digest must not move on its own."""
+    inc_dir = tmp_path / "inc"
+    inc_dir.mkdir()
+    (inc_dir / "declared.h").write_text("#define DIGEST_TEST_STABLE 1\n")
+    src = tmp_path / "main_stable.cc"
+    src.write_text(
+        '#include "declared.h"\n'
+        'extern "C" int digest_test_stable() { return DIGEST_TEST_STABLE; }\n'
+    )
+
+    def make():
+        return ExternalFunction(
+            name="digest_test_stable_fn",
+            source_file=str(src),
+            include_dirs=[str(inc_dir)],
+            arg_types=[],
+        )._content_digest()
+
+    assert make() == make()
