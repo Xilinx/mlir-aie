@@ -69,20 +69,15 @@ __attribute__((always_inline)) v16accfloat getExpBf16(v16bfloat16 x) {
   aie::vector<int16, 32> input0 = v32int16(bfloat16_to_int(input_bf16, 8));
   aie::vector<int16, 16> input = aie::filter_even(input0);
 
-  // The parallel_lookup fetch()es above internally convert a fixed-point
-  // accumulator to an integer table index; that conversion is NOT
-  // rounding-mode-independent, so it silently picks up whatever core-wide
-  // rounding mode the caller is in. A caller that sets conv_even before this
-  // loop (to narrow its own float accumulator to bf16 -- see
-  // KernelContract.rounding_mode) corrupts the index computation for any
-  // key whose Q8 fraction is >= 224/256: the fetch returns exp(frac + 1)
-  // (high by a factor of e) instead of exp(frac). Bracketing the fetches in
-  // the mode they were authored against (floor, the core's boot default)
-  // avoids that; HW-verified across the full fractional range on Phoenix.
-  // This belongs in aie_api, which already carries a FIXME for it
-  // (detail/aie2/parallel_lookup.hpp, CRVO-4425): masking off the bits its
-  // index shift discards, as linear_approx does, fixes it at the source and
-  // makes this bracket removable on the next third_party/aie_api bump.
+  // The parallel_lookup fetch()es above convert a fixed-point accumulator to
+  // a table index using whatever core-wide rounding mode is active. A caller
+  // that sets conv_even before this loop (to narrow its own accumulator to
+  // bf16 -- see KernelContract.rounding_mode) corrupts the index for any Q8
+  // fraction >= 224/256, returning exp(frac + 1) instead of exp(frac).
+  // Bracketing the fetches in floor (the core's boot default, and the mode
+  // these tables were authored against) avoids that; HW-verified on Phoenix.
+  // aie_api carries a FIXME for this (detail/aie2/parallel_lookup.hpp,
+  // CRVO-4425) that would make the bracket unnecessary once fixed upstream.
   aie::rounding_mode saved_rnd = aie::tile::current().get_rounding();
   aie::tile::current().set_rounding(aie::rounding_mode::floor);
   I_val_vec = lookup_i.fetch(input.cast_to<uint16>());

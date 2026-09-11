@@ -12,12 +12,12 @@ from ml_dtypes import bfloat16
 
 from ._common import (
     KernelContract,
-    _require_min_trip_count,
     _declare_dtypes,
     _default_source_path,
     _dtype_to_bit_width,
     _make_extern,
     _require_fixed_tile_size,
+    _require_min_trip_count,
 )
 
 _ELTWISE_FIXED_TILE = 1024

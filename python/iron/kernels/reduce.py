@@ -12,11 +12,11 @@ from ml_dtypes import bfloat16
 
 from ._common import (
     KernelContract,
-    _require_min_trip_count,
     _declare_dtypes,
     _default_source_path,
     _make_extern,
     _min_dma_aligned_elems,
+    _require_min_trip_count,
 )
 
 # reduce_max_*() and compute_max() both live in reduce_max.cc; pin the
