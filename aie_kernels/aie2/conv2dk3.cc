@@ -464,20 +464,7 @@ void conv2dk3_i8_vector(int8_t *line0, int8_t *line1, int8_t *line2,
   int kernel_height_start;
   int kernel_height_end;
 
-  // int kernel_height_start, kernel_height_end;
-#ifdef BORDER_REPLICATE
-  kernel_height_start = 0;
-  kernel_height_end = kernel_height;
-  // constexpr int kernel_height_start = 0;
-  // constexpr int kernel_height_end   = kernel_height;
-#else // Zero border for 3x3
-  // constexpr int kernel_height_start = 0;
-  // constexpr int kernel_height_end   = kernel_height-1;
-
-  // if(check == top)
-  //     idx_adj = 1;
-
-  // We skip top or bottom row for zero border
+  // Zero border: skip the kernel row that would read outside the tile.
   switch (check) {
   case top:
     kernel_height_start = 1;
@@ -492,7 +479,6 @@ void conv2dk3_i8_vector(int8_t *line0, int8_t *line1, int8_t *line2,
     kernel_height_end = kernel_height - 1;
     break;
   }
-#endif
 
   // --------------------------------------------------------------------
   // Leftmost pattern
@@ -523,15 +509,8 @@ void conv2dk3_i8_vector(int8_t *line0, int8_t *line1, int8_t *line2,
           auto tmp_a2 = aie::load_v<32>(line[i]); // act 4..7 (ic0..7 for each)
           auto in_a = aie::concat(tmp_a1, tmp_a2);
 
-          aie::vector<int8, 64> tmp_a;
-#ifdef BORDER_REPLICATE
-          tmp_a1 = aie::shuffle_up(tmp_a1, 24);
-          tmp_a.insert<32>(1, tmp_a1);
-#else
-          tmp_a = aie::zeros<int8, 64>();
-#endif
-          // Shift right 1 input (8 channels) [- a0 a1 a2 a3 a4 a5 a6] where -
-          // is either a0 or 0's
+          aie::vector<int8, 64> tmp_a = aie::zeros<int8, 64>();
+          // Shift right 1 input (8 channels): [0 a0 a1 a2 a3 a4 a5 a6]
           in_a = aie::shuffle_up_fill(in_a, tmp_a, 8);
 
           // Previous buffer stores shifted data, [- - - - a0 a1 a2 a3]
@@ -787,13 +766,7 @@ void conv2dk3_i8_vector(int8_t *line0, int8_t *line1, int8_t *line2,
               aie::load_v<32>(line[i]); // act 28..31 (ic0..7 for each)
           auto in_a = aie::concat(tmp_a1, tmp_a2);
 
-          aie::vector<int8, 64> tmp_a;
-#ifdef BORDER_REPLICATE
-          tmp_a2 = aie::shuffle_down(tmp_a2, 24);
-          tmp_a.insert<32>(0, tmp_a2);
-#else
-          tmp_a = aie::zeros<int8, 64>();
-#endif
+          aie::vector<int8, 64> tmp_a = aie::zeros<int8, 64>();
           // shift by 32-8 (fill 32 then shift up by 8)
           in_a = aie::shuffle_down_fill(in_a, tmp_a, 24); // act 27..31 - - -
 
@@ -922,20 +895,7 @@ void conv2dk3_ui8_vector(uint8_t *line0, uint8_t *line1, uint8_t *line2,
   int kernel_height_start;
   int kernel_height_end;
 
-  // int kernel_height_start, kernel_height_end;
-#ifdef BORDER_REPLICATE
-  kernel_height_start = 0;
-  kernel_height_end = kernel_height;
-  // constexpr int kernel_height_start = 0;
-  // constexpr int kernel_height_end   = kernel_height;
-#else // Zero border for 3x3
-  // constexpr int kernel_height_start = 0;
-  // constexpr int kernel_height_end   = kernel_height-1;
-
-  // if(check == top)
-  //     idx_adj = 1;
-
-  // We skip top or bottom row for zero border
+  // Zero border: skip the kernel row that would read outside the tile.
   switch (check) {
   case top:
     kernel_height_start = 1;
@@ -950,7 +910,6 @@ void conv2dk3_ui8_vector(uint8_t *line0, uint8_t *line1, uint8_t *line2,
     kernel_height_end = kernel_height - 1;
     break;
   }
-#endif
 
   // --------------------------------------------------------------------
   // Leftmost pattern
@@ -981,15 +940,8 @@ void conv2dk3_ui8_vector(uint8_t *line0, uint8_t *line1, uint8_t *line2,
           auto tmp_a2 = aie::load_v<32>(line[i]); // act 4..7 (ic0..7 for each)
           auto in_a = aie::concat(tmp_a1, tmp_a2);
 
-          aie::vector<uint8, 64> tmp_a;
-#ifdef BORDER_REPLICATE
-          tmp_a1 = aie::shuffle_up(tmp_a1, 24);
-          tmp_a.insert<32>(1, tmp_a1);
-#else
-          tmp_a = aie::zeros<uint8, 64>();
-#endif
-          // Shift right 1 input (8 channels) [- a0 a1 a2 a3 a4 a5 a6] where
-          // - is either a0 or 0's
+          aie::vector<uint8, 64> tmp_a = aie::zeros<uint8, 64>();
+          // Shift right 1 input (8 channels): [0 a0 a1 a2 a3 a4 a5 a6]
           in_a = aie::shuffle_up_fill(in_a, tmp_a, 8);
 
           // Previous buffer stores shifted data, [- - - - a0 a1 a2 a3]
@@ -1322,13 +1274,7 @@ void conv2dk3_ui8_vector(uint8_t *line0, uint8_t *line1, uint8_t *line2,
               aie::load_v<32>(line[i]); // act 28..31 (ic0..7 for each)
           auto in_a = aie::concat(tmp_a1, tmp_a2);
 
-          aie::vector<uint8, 64> tmp_a;
-#ifdef BORDER_REPLICATE
-          tmp_a2 = aie::shuffle_down(tmp_a2, 24);
-          tmp_a.insert<32>(0, tmp_a2);
-#else
-          tmp_a = aie::zeros<uint8, 64>();
-#endif
+          aie::vector<uint8, 64> tmp_a = aie::zeros<uint8, 64>();
           // shift by 32-8 (fill 32 then shift up by 8)
           in_a = aie::shuffle_down_fill(in_a, tmp_a, 24); // act 27..31 - - -
 
