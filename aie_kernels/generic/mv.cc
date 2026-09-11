@@ -25,6 +25,7 @@
 
 void matvec_scalar(uint32_t m, uint32_t k, const bfloat16 *__restrict a,
                    const bfloat16 *__restrict b, bfloat16 *__restrict c) {
+  ::aie::set_rounding(aie::rounding_mode::conv_even);
   for (uint32_t row = 0; row < m; row++) {
     float acc = 0;
     for (uint32_t i = 0; i < k; i++) {
