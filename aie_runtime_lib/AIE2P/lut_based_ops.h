@@ -50,9 +50,12 @@ __attribute__((always_inline)) v16accfloat getExpBf16(v16bfloat16 x) {
   aie::vector<bfloat16, 16> input_bf16 = x;
 
   // Saturate to the addressable domain (see EXP_BF16_CLAMP) before the Q8
-  // conversion below, which would otherwise wrap.
-  input_bf16 = aie::min(input_bf16,
-                        aie::broadcast<bfloat16, 16>((bfloat16)EXP_BF16_CLAMP));
+  // conversion below, which would otherwise wrap. See
+  // aie_runtime_lib/AIE2/lut_based_ops.h for why the upper bound goes
+  // through -max(-x, -c) rather than a direct aie::min(x, c).
+  input_bf16 = aie::neg(
+      aie::max(aie::neg(input_bf16),
+               aie::broadcast<bfloat16, 16>((bfloat16)-EXP_BF16_CLAMP)));
   input_bf16 = aie::max(
       input_bf16, aie::broadcast<bfloat16, 16>((bfloat16)-EXP_BF16_CLAMP));
 
