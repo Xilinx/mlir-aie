@@ -191,13 +191,39 @@ bool readFrameSizes(ObjectFile &obj, SectionRef sec, Graph &graph) {
   return true;
 }
 
-bool isZeroSizedFunctionSymbol(const SymbolRef &sym) {
+bool isAmbiguousZeroSizedFunctionSymbol(const Graph &graph,
+                                        const SymbolRef &sym) {
   auto type = sym.getType();
+  auto addr = sym.getAddress();
+  auto name = sym.getName();
   if (!type) {
     llvm::consumeError(type.takeError());
+    if (!addr) {
+      llvm::consumeError(addr.takeError());
+    }
+    if (!name) {
+      llvm::consumeError(name.takeError());
+    }
     return false;
   }
-  return *type == SymbolRef::ST_Function && ELFSymbolRef(sym).getSize() == 0;
+  if (!addr) {
+    llvm::consumeError(addr.takeError());
+    if (!name) {
+      llvm::consumeError(name.takeError());
+    }
+    return false;
+  }
+  if (!name) {
+    llvm::consumeError(name.takeError());
+    return false;
+  }
+  if (*type != SymbolRef::ST_Function || ELFSymbolRef(sym).getSize() != 0) {
+    return false;
+  }
+  if (const SymbolRanges::Entry *owner = graph.funcs.startsAt(*addr)) {
+    return owner->name != *name;
+  }
+  return false;
 }
 
 // Records one call edge, or one half of the function-pointer heuristic, per
@@ -378,7 +404,7 @@ StackRequirementResult xilinx::aiecc::computeStackRequirement(
       // symbol that aliases the next real function in .text. Attributing this
       // relocation by address alone would invent a call edge to that other
       // function.
-      if (isZeroSizedFunctionSymbol(*target)) {
+      if (isAmbiguousZeroSizedFunctionSymbol(graph, *target)) {
         continue;
       }
       auto targetAddr = target->getAddress();

@@ -27,7 +27,10 @@ else()
 endif()
 add_test(NAME Bfloat16Fallback COMMAND bfloat16_fallback_test)
 
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+string(TOLOWER "${CMAKE_SYSTEM_PROCESSOR}" AIE_CPP_TEST_HOST_PROCESSOR)
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND
+   AIE_CPP_TEST_HOST_PROCESSOR MATCHES "^(x86_64|amd64|i[3-6]86|x86)$")
   llvm_map_components_to_libnames(stack_analysis_llvm_libs support core irreader object)
 
   add_executable(stack_size_analysis_false_recursion_test
@@ -49,7 +52,8 @@ get_property(dialect_libs GLOBAL PROPERTY MLIR_DIALECT_LIBS)
 set(EXECUTABLES target_model target_model_rtti target_model_unknown_device register_database)
 
 set(CPP_TEST_DEPENDS ${EXECUTABLES} bfloat16_fallback_test)
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND
+   AIE_CPP_TEST_HOST_PROCESSOR MATCHES "^(x86_64|amd64|i[3-6]86|x86)$")
   list(APPEND CPP_TEST_DEPENDS stack_size_analysis_false_recursion_test)
 endif()
 add_custom_target(check-aie-cpp COMMAND ${CMAKE_CTEST_COMMAND}
