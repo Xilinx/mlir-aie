@@ -1330,3 +1330,29 @@ def test_passthrough_rejects_tiles_its_loop_cannot_handle(tile_size, dtype, reas
 def test_passthrough_accepts_its_smallest_legal_tile(tile_size, dtype):
     """384 bytes -- exactly 6 vector copies -- is the smallest tile that builds."""
     assert kernels.passthrough(tile_size=tile_size, dtype=dtype) is not None
+
+
+@pytest.mark.parametrize(
+    "factory,kwargs",
+    [
+        (kernels.reduce_add, dict(tile_size=64)),  # 4 iterations, min 8
+        (kernels.reduce_min, dict(tile_size=64)),
+        (kernels.reduce_max, dict(tile_size=64)),
+        (kernels.reduce_max, dict(tile_size=128, dtype=bfloat16)),  # 32-lane
+        (kernels.reduce_add, dict(tile_size=100)),  # not a whole vector
+    ],
+)
+def test_reduce_rejects_tiles_below_its_declared_trip_count(factory, kwargs):
+    """reduce_*.cc declares AIE_LOOP_MIN_ITERATION_COUNT(8); reduce_add hangs below it.
+
+    reduce_max.cc says the same thing as ``assert(input_size / VECTOR_SIZE >=
+    8)``, which the -DNDEBUG build drops -- so the factory is the only place
+    the precondition can still be enforced.
+    """
+    with pytest.raises(ValueError, match="reduce_"):
+        factory(**kwargs)
+
+
+def test_reduce_scalar_path_has_no_trip_count_floor():
+    """Only the vectorised path carries the pragma, so the scalar one stays free."""
+    assert kernels.reduce_add(tile_size=64, vectorized=False) is not None

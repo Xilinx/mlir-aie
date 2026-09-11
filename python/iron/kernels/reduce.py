@@ -12,6 +12,7 @@ from ml_dtypes import bfloat16
 
 from ._common import (
     KernelContract,
+    _require_min_trip_count,
     _declare_dtypes,
     _default_source_path,
     _make_extern,
@@ -22,6 +23,13 @@ from ._common import (
 # output object name so multiple factory calls in the same design share
 # one compile (no duplicate-symbol link errors).
 _REDUCE_MAX_OBJ = "reduce_max.cc.o"
+
+# reduce_{add,min,max}.cc all step a 16-element int32 vector (32 for the
+# bfloat16 reduce_max) and declare AIE_LOOP_MIN_ITERATION_COUNT(8).
+# reduce_add measurably hangs below that; see _require_min_trip_count.
+_REDUCE_VEC_ELEMS = 16
+_REDUCE_VEC_ELEMS_BF16 = 32
+_REDUCE_MIN_ITERS = 8
 
 
 def reduce_add_ref(x):
@@ -66,6 +74,11 @@ def _reduce_kernel(
         raise ValueError(
             f"reduce_{op}() dtype must be np.int32, got {dtype}. "
             "Only the int32 variant is available in the installed aie_kernels."
+        )
+
+    if vectorized:
+        _require_min_trip_count(
+            f"reduce_{op}", tile_size, _REDUCE_VEC_ELEMS, _REDUCE_MIN_ITERS
         )
 
     in_ty = np.ndarray[(tile_size,), np.dtype[np.int32]]
@@ -141,6 +154,13 @@ def reduce_max(
         )
 
     actual_dtype = bfloat16 if is_bf16 else np.int32
+    if vectorized:
+        _require_min_trip_count(
+            "reduce_max",
+            tile_size,
+            _REDUCE_VEC_ELEMS_BF16 if is_bf16 else _REDUCE_VEC_ELEMS,
+            _REDUCE_MIN_ITERS,
+        )
     in_ty = np.ndarray[(tile_size,), np.dtype[actual_dtype]]
     # The C++ kernel writes one scalar; the output tile must still be at least
     # 4 bytes for shim-DMA alignment, so bfloat16 callers get out_size=2 even

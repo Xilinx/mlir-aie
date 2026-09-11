@@ -12,6 +12,7 @@ from ml_dtypes import bfloat16
 
 from ._common import (
     KernelContract,
+    _require_min_trip_count,
     _declare_dtypes,
     _default_source_path,
     _dtype_to_bit_width,
@@ -104,31 +105,14 @@ def passthrough(tile_size: int = 4096, dtype: type = np.int32) -> ExternalFuncti
             64-byte vectors, or is below the kernel's minimum trip count.
     """
     bit_width = _dtype_to_bit_width(dtype, factory_name="passthrough")
-    tile_bytes = tile_size * np.dtype(dtype).itemsize
-    # passThrough.cc copies a v64uint8 per iteration and steps the loop by
-    # that many elements, so a tile that is not a whole number of 64-byte
-    # vectors makes the last store run past the end of the buffer.
-    if tile_bytes % _PASSTHROUGH_VEC_BYTES:
-        raise ValueError(
-            f"passthrough() tile_size={tile_size} with {np.dtype(dtype).name} is "
-            f"{tile_bytes} bytes, not a multiple of the kernel's "
-            f"{_PASSTHROUGH_VEC_BYTES}-byte vector copy; the tail store would "
-            f"overrun the tile."
-        )
-    # The loop declares AIE_LOOP_MIN_ITERATION_COUNT(6). That is a promise to
-    # the compiler, not a check: below it the pipelined loop reads and writes
-    # past the tile and the core hangs (measured: a 4-iteration tile times out
-    # on Phoenix). The pragma is worth keeping -- it is 4.3x faster than
-    # without -- so the size it assumes is enforced here instead.
-    if tile_bytes < _PASSTHROUGH_MIN_ITERS * _PASSTHROUGH_VEC_BYTES:
-        raise ValueError(
-            f"passthrough() tile_size={tile_size} with {np.dtype(dtype).name} is "
-            f"{tile_bytes} bytes; the kernel's loop assumes at least "
-            f"{_PASSTHROUGH_MIN_ITERS} iterations of {_PASSTHROUGH_VEC_BYTES} "
-            f"bytes ({_PASSTHROUGH_MIN_ITERS * _PASSTHROUGH_VEC_BYTES} bytes, "
-            f"i.e. tile_size >= "
-            f"{_PASSTHROUGH_MIN_ITERS * _PASSTHROUGH_VEC_BYTES // np.dtype(dtype).itemsize})."
-        )
+    # passThrough.cc copies one 64-byte vector per iteration and declares
+    # AIE_LOOP_MIN_ITERATION_COUNT(6); a 4-iteration tile hangs the core.
+    _require_min_trip_count(
+        "passthrough",
+        tile_size,
+        _PASSTHROUGH_VEC_BYTES // np.dtype(dtype).itemsize,
+        _PASSTHROUGH_MIN_ITERS,
+    )
     tile_ty = np.ndarray[(tile_size,), np.dtype[dtype]]
     return _make_extern(
         "passThroughLine",

@@ -350,6 +350,42 @@ def _require_fixed_tile_size(
         )
 
 
+def _require_min_trip_count(
+    factory_name: str,
+    elems: int,
+    per_iter: int,
+    min_iters: int,
+    *,
+    param: str = "tile_size",
+) -> None:
+    """Raise ValueError when a tile is too small for a kernel's vectorised loop.
+
+    Several kernels declare ``AIE_LOOP_MIN_ITERATION_COUNT(n)``. Peano
+    predefines ``__AIECC__``, so that expands to a real ``#pragma clang loop
+    min_iteration_count(n)``: a promise the compiler may schedule against,
+    not a check. Below it the pipelined loop runs past the tile. Two kernels
+    here (passthrough, reduce_add) hang the core outright at four iterations
+    rather than returning wrong data. ``reduce_max.cc`` states the same
+    precondition as an ``assert``, which the ``-DNDEBUG`` build drops, so the
+    check only has effect if it lives here.
+
+    ``per_iter`` elements are consumed per iteration; a tile that is not a
+    whole number of them also lets the tail load/store overrun.
+    """
+    if elems % per_iter:
+        raise ValueError(
+            f"{factory_name}() {param}={elems} is not a multiple of the "
+            f"kernel's {per_iter}-element vector step; the tail iteration "
+            f"would run past the tile."
+        )
+    if elems < min_iters * per_iter:
+        raise ValueError(
+            f"{factory_name}() {param}={elems} gives {elems // per_iter} "
+            f"loop iterations, but the kernel declares a minimum of "
+            f"{min_iters}; use {param} >= {min_iters * per_iter}."
+        )
+
+
 def _min_dma_aligned_elems(dtype, align: int = 4) -> int:
     """Return the minimum element count whose byte size is a multiple of *align*.
 
