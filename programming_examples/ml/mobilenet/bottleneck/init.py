@@ -12,9 +12,8 @@ input activations and is exposed so the runtime sequence's `rt.fill`
 can address it.
 """
 
-import aie.iron.kernels as kernels
 import numpy as np
-from aie.iron import ObjectFifo, Worker
+from aie.iron import ObjectFifo, Worker, kernels
 from aie.iron.controlflow import range_
 
 from ..network_spec import block as nsblock

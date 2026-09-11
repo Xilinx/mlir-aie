@@ -22,9 +22,8 @@ WorkerRuntimeBarrier dance.
 import argparse
 
 import aie.iron as iron
-import aie.iron.kernels as kernels
 import numpy as np
-from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker
+from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker, kernels
 from aie.iron.controlflow import range_
 from aie.iron.device import AnyMemTile, Tile
 from aie.utils.hostruntime.argparse import (

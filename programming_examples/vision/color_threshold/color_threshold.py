@@ -15,7 +15,6 @@ sequence's ``set_rtps()`` before reading.
 import argparse
 
 import aie.iron as iron
-import aie.iron.kernels as kernels
 import numpy as np
 from aie.extras import types as T  # pyright: ignore[reportMissingImports]
 from aie.extras.dialects import arith  # pyright: ignore[reportMissingImports]
@@ -30,6 +29,7 @@ from aie.iron import (
     Runtime,
     Worker,
     WorkerRuntimeBarrier,
+    kernels,
 )
 from aie.utils.hostruntime.argparse import add_compile_args, device_from_args
 from aie.utils.hostruntime.cli import run_design_cli
