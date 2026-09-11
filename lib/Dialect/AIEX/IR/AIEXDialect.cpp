@@ -853,9 +853,8 @@ std::optional<uint32_t> AIEX::getConstantIntOperand(mlir::Value v) {
   return static_cast<uint32_t>(cst.getZExtValue());
 }
 
-// `address_patch`'s arg_plus is a buffer OFFSET and aie-rt carries it as u64;
-// truncating it to 32 bits mis-addresses any buffer past 4 GiB. Operands whose
-// field is genuinely 32-bit use getConstantIntOperand.
+// Widthwise counterpart of getConstantIntOperand, for fields aie-rt carries as
+// u64: `address_patch`'s arg_plus offset truncates past 4 GiB otherwise.
 std::optional<uint64_t> AIEX::getConstantInt64Operand(mlir::Value v) {
   mlir::APInt cst;
   if (!mlir::matchPattern(v, mlir::m_ConstantInt(&cst)))

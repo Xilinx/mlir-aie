@@ -113,13 +113,9 @@ Value buildArgPlusValue(OpBuilder &builder, Location loc,
       assert(oc && sc && "allConst already verified these are constant");
       bytes += (*oc) * (*sc) * elemWidthBytes;
     }
-    // aie-rt carries argplus as u64 (patch_op_t::argplus) and the TXN op has a
-    // high word for it, so an offset past UINT32_MAX needs an i64 constant.
-    //
-    // Constant path only: the runtime path below is i32 throughout, since a
-    // value not known here cannot be range-checked here. The static TXN target
-    // refuses a non-constant arg_plus outright, so a dynamic sequence on the
-    // C++ TXN builder is the one path that truncates.
+    // aie-rt carries argplus as u64, so an offset past UINT32_MAX needs an i64
+    // constant. Reachable only for a constant offset; the runtime path below
+    // stays i32.
     if (bytes > std::numeric_limits<uint32_t>::max() || bytes < 0)
       return arith::ConstantOp::create(
           builder, loc, IntegerAttr::get(builder.getIntegerType(64), bytes));
