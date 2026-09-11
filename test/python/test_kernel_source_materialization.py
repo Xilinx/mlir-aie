@@ -45,12 +45,15 @@ def _stub_func(name, source_file):
 @pytest.fixture
 def stub_compiler(monkeypatch):
     """Replace the Peano invocation with a no-op that just produces the object."""
+    calls = []
 
     def fake_compile(source_path, output_path, **kwargs):
+        calls.append(kwargs)
         with open(output_path, "w"):
             pass
 
     monkeypatch.setattr(compile_utils, "compile_cxx_core_function", fake_compile)
+    return calls
 
 
 def test_rewrite_leaves_an_open_reader_on_its_own_file(tmp_path):
@@ -110,6 +113,26 @@ def test_source_that_is_already_in_place_is_not_rewritten(tmp_path, stub_compile
 
     assert os.stat(upstream).st_ino == before
     assert upstream.read_text() == SOURCE
+
+
+def test_design_include_dirs_follow_kernel_and_source_dirs(tmp_path, stub_compiler):
+    upstream = tmp_path / "source" / "kernel.cc"
+    upstream.parent.mkdir()
+    upstream.write_text(SOURCE)
+    kernel_dir = tmp_path / "work"
+    kernel_dir.mkdir()
+    func = _stub_func("kernel", upstream)
+    func._include_dirs = ["kernel/include"]
+
+    compile_external_kernels(
+        [func], kernel_dir, "aie2p", include_dirs=[tmp_path / "design/include"]
+    )
+
+    assert stub_compiler[0]["include_dirs"] == [
+        "kernel/include",
+        str(upstream.parent),
+        tmp_path / "design/include",
+    ]
 
 
 def test_materialized_source_keeps_umask_permissions(tmp_path):
