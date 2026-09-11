@@ -34,7 +34,9 @@ CASES: list[Case] = [
     Case("passthrough", dict(tile_size=2048), calls=256),
     Case("passthrough", dict(dtype=np.int16), calls=16, smoke=True),
     Case("passthrough", dict(dtype=np.uint8), calls=16, smoke=True),
-    Case("passthrough", dict(tile_size=64), calls=4, tag="edge-tiny", perf=False),
+    # 96 int32 = 384 bytes = exactly the 6 vector copies passThrough.cc's
+    # loop assumes, so this pins the smallest tile the kernel supports.
+    Case("passthrough", dict(tile_size=96), calls=4, tag="edge-tiny", perf=False),
     Case("scale", dict(dtype=np.int16), calls=16, smoke=True),
     Case("scale", dict(dtype=np.int16), calls=256),
     Case("scale", dict(dtype=np.int32), calls=16, smoke=True),

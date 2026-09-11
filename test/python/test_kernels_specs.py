@@ -80,10 +80,10 @@ KERNEL_SPECS: list[KernelSpec] = [
         arg_count=3,
         expected_name="passThroughLine",
         shape_checks=[
-            (dict(tile_size=64, dtype=np.int16), 0, (64,)),
+            (dict(tile_size=192, dtype=np.int16), 0, (192,)),
         ],
         tile_size_checks=[
-            (dict(tile_size=256, dtype=np.uint8), 256),
+            (dict(tile_size=384, dtype=np.uint8), 384),
         ],
     ),
     KernelSpec(
@@ -943,12 +943,12 @@ def test_tile_size_equivalent_to_arg_shape_first_dim():
 
 def test_arg_shape_out_of_range_raises():
     """Out-of-range arg_index gets a clean error — same as tile_size()."""
-    ef = kernels.passthrough(tile_size=64, dtype=np.int32)  # 3 args
+    ef = kernels.passthrough(tile_size=96, dtype=np.int32)  # 3 args
     with pytest.raises(ValueError, match="out of range"):
         ef.arg_shape(99)
 
 
 def test_arg_dtype_out_of_range_raises():
-    ef = kernels.passthrough(tile_size=64, dtype=np.int32)
+    ef = kernels.passthrough(tile_size=96, dtype=np.int32)
     with pytest.raises(ValueError, match="out of range"):
         ef.arg_dtype(99)

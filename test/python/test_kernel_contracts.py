@@ -1300,3 +1300,33 @@ def test_bf16_exp_clamp_matches_the_kernel_headers():
         )
         checked.append(arch)
     assert checked, "no lut_based_ops.h found to check the clamp against"
+
+
+@pytest.mark.parametrize(
+    "tile_size,dtype,reason",
+    [
+        (64, np.int32, "iterations"),  # 256 B: 4 vector copies, below the 6 assumed
+        (128, np.int16, "iterations"),  # 256 B again, via a different dtype
+        (80, np.int32, "iterations"),  # 320 B: 5 copies, still short
+        (100, np.int32, "vector"),  # 400 B: not a whole number of 64-B copies
+    ],
+)
+def test_passthrough_rejects_tiles_its_loop_cannot_handle(tile_size, dtype, reason):
+    """A tile below passThrough.cc's assumed trip count is refused, not run.
+
+    The loop declares AIE_LOOP_MIN_ITERATION_COUNT(6) and steps by a whole
+    64-byte vector. Violating either is undefined: a 4-iteration tile hangs
+    the core on Phoenix rather than returning wrong data, so the factory has
+    to reject it up front.
+    """
+    with pytest.raises(ValueError, match="passthrough"):
+        kernels.passthrough(tile_size=tile_size, dtype=dtype)
+
+
+@pytest.mark.parametrize(
+    "tile_size,dtype",
+    [(96, np.int32), (192, np.int16), (384, np.uint8), (4096, np.int32)],
+)
+def test_passthrough_accepts_its_smallest_legal_tile(tile_size, dtype):
+    """384 bytes -- exactly 6 vector copies -- is the smallest tile that builds."""
+    assert kernels.passthrough(tile_size=tile_size, dtype=dtype) is not None
