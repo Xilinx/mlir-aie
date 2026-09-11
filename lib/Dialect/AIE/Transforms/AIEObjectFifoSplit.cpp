@@ -206,12 +206,13 @@ struct AIEObjectFifoSplitPass
                               ObjectFifoCreateOp from,
                               ArrayRef<std::pair<int64_t, int64_t>> extents,
                               bool holdsInitialContents,
-                              std::optional<int> repeatCount) {
+                              std::optional<int> repeatCount,
+                              bool disableSynchronization = false) {
     auto pool = ObjectFifoPoolOp::create(
         builder, loc, name, tile, depth, elemType, /*buffers=*/ArrayAttr(),
         /*locks=*/ArrayAttr(),
         repeatCount ? builder.getI32IntegerAttr(*repeatCount) : IntegerAttr(),
-        from.getDisableSynchronization(),
+        disableSynchronization || from.getDisableSynchronization(),
         builder.getStringAttr(from.name().getValue()),
         holdsInitialContents ? from.getInitValuesAttr() : ArrayAttr());
     createSegments(pool, loc, extents);
@@ -532,9 +533,18 @@ void AIEObjectFifoSplitPass::createLinkPools() {
                   : objectCountOn(device, *sharedTile, owner);
     }
 
-    auto pool = createPool(
-        linkOp.getLoc(), name, *sharedTile, depth, elemType, owner, extents,
-        /*holdsInitialContents=*/ownerIsOutput, linkOp.getRepeatCount());
+    // The pool is shared by every participant, but `owner` is only one of them:
+    // whether its locks are generated must not depend on which fifo that is.
+    auto asksToSkipLocks = [](ObjectFifoCreateOp fifo) {
+      return fifo.getDisableSynchronization();
+    };
+    bool disableSynchronization = llvm::any_of(ins, asksToSkipLocks) ||
+                                  llvm::any_of(outs, asksToSkipLocks);
+
+    auto pool = createPool(linkOp.getLoc(), name, *sharedTile, depth, elemType,
+                           owner, extents,
+                           /*holdsInitialContents=*/ownerIsOutput,
+                           linkOp.getRepeatCount(), disableSynchronization);
     linkPoolOwner.insert(owner);
 
     SmallVector<int32_t> allSegments;
