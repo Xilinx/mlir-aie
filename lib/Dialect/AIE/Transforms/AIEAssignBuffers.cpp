@@ -11,7 +11,10 @@
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/Attributes.h"
+#include "llvm/ADT/MapVector.h"
+#include "llvm/ADT/StringMap.h"
 
 #include "llvm/ADT/BitVector.h"
 
@@ -156,8 +159,8 @@ static uint32_t getRequiredAlignBits(BufferOp buffer, uint32_t busAlignBits,
 static bool checkAndPrintBufferOverlap(ArrayRef<BufferOp> sortedBuffers,
                                        uint32_t tileAlignBitWidth,
                                        uint32_t maxVecAlignBits) {
-  BufferOp prev = nullptr;
-  for (auto cur : sortedBuffers) {
+  for (size_t i = 0; i < sortedBuffers.size(); ++i) {
+    auto cur = sortedBuffers[i];
     auto curAddrOpt = cur.getAddress();
     assert(curAddrOpt.has_value() && "buffer must have address assigned");
     int64_t curAddr = *curAddrOpt;
@@ -184,39 +187,43 @@ static bool checkAndPrintBufferOverlap(ArrayRef<BufferOp> sortedBuffers,
       continue;
     }
 
-    if (prev) {
-      auto prevAddrOpt = prev.getAddress();
-      assert(prevAddrOpt.has_value() && "buffer must have address assigned");
-      int64_t prevAddr = *prevAddrOpt;
-      int64_t prevEnd = prevAddr + prev.getAllocationSize();
-      if (curAddr < prevEnd) {
-        cur.emitOpError("")
-            << bufferLabel(cur) << " at address 0x" << llvm::utohexstr(curAddr)
-            << " overlaps with " << bufferLabel(prev) << " at address 0x"
-            << llvm::utohexstr(prevAddr)
-            << " (size: " << prev.getAllocationSize() << " bytes)";
-        return false;
+    // Track the furthest end among the earlier buffers `cur` must stay clear
+    // of, rather than comparing against sortedBuffers[i - 1] alone: an exempt
+    // pair can sit between two buffers that do overlap, hiding it from an
+    // adjacent-only check.
+    //
+    // Buffers in DIFFERENT alloc_groups are overlaid on purpose, so a shared
+    // address between them is not a defect; two members of the SAME group are
+    // laid out sequentially and must not overlap. Both sides have to name a
+    // group, or two ungrouped buffers would compare equal as absent and exempt
+    // every ordinary overlap.
+    BufferOp blocker;
+    int64_t blockerAddr = 0;
+    int64_t blockerEnd = 0;
+    for (size_t j = 0; j < i; ++j) {
+      auto other = sortedBuffers[j];
+      if (other.getAllocationSize() == 0) {
+        continue;
+      }
+      if (auto curGroup = cur.getAllocGroup())
+        if (auto otherGroup = other.getAllocGroup())
+          if (*curGroup != *otherGroup)
+            continue;
+      auto otherAddrOpt = other.getAddress();
+      assert(otherAddrOpt.has_value() && "buffer must have address assigned");
+      int64_t end = *otherAddrOpt + other.getAllocationSize();
+      if (end > blockerEnd) {
+        blockerAddr = *otherAddrOpt;
+        blockerEnd = end;
+        blocker = other;
       }
     }
-    prev = cur;
-  }
-  return true;
-}
-
-static bool checkAndPrintOverlapStackframe(int64_t stacksize,
-                                           ArrayRef<BufferOp> buffers) {
-  for (auto buf : buffers) {
-    // A zero-sized buffer covers no bytes, so it cannot overlap the stack.
-    if (buf.getAllocationSize() == 0) {
-      continue;
-    }
-    auto bufAddrOpt = buf.getAddress();
-    assert(bufAddrOpt.has_value() && "buffer must have address assigned");
-    int64_t bufAddr = *bufAddrOpt;
-    if (bufAddr < stacksize) {
-      buf.emitOpError("") << bufferLabel(buf) << " at address 0x"
-                          << llvm::utohexstr(bufAddr)
-                          << " overlaps with stack (size: " << stacksize
+    if (blocker && curAddr < blockerEnd) {
+      cur.emitOpError("") << bufferLabel(cur) << " at address 0x"
+                          << llvm::utohexstr(curAddr) << " overlaps with "
+                          << bufferLabel(blocker) << " at address 0x"
+                          << llvm::utohexstr(blockerAddr)
+                          << " (size: " << blocker.getAllocationSize()
                           << " bytes)";
       return false;
     }
@@ -269,6 +276,174 @@ static bool checkAndPrintOverflow(TileOp tile, int64_t address,
     return false;
   }
   return true;
+}
+
+// An allocation unit is either one ordinary buffer or every `alloc_group`
+// on the tile, overlaid.
+// Members of a group are asserted never to be live simultaneously, so they
+// overlay: the unit costs its LARGEST member, not the sum. See AIE_BufferOp's
+// description for what is asserted and what is checked.
+namespace {
+struct AllocUnit {
+  // Each entry is one alloc_group, laid out sequentially from the unit's base.
+  // Entries overlay: they all start at the same base, so the unit costs the
+  // largest group's total, not the sum of every group. An ungrouped buffer is a
+  // unit holding one group of one member, which is the pre-existing behaviour.
+  SmallVector<SmallVector<BufferOp>> groups;
+  int64_t size = 0;     // max over groups of that group's padded extent
+  bool aligned = false; // any member aligned => align the shared base
+};
+} // namespace
+
+// Simulate laying `group` out sequentially from a base of 0, applying each
+// member's own alignment exactly as the real placement loop in
+// basicAllocation does, and return the resulting extent (including any
+// inter-member padding). Valid at any base that is itself aligned to the
+// unit's `unitAlignBits` (the max required alignment over its members, see
+// its use in basicAllocation): every member's required alignment then
+// divides the base's, so the padding pattern -- and hence the extent -- does
+// not depend on the base's actual value.
+static int64_t groupExtent(ArrayRef<BufferOp> group, uint32_t tileAlignBitWidth,
+                           uint32_t maxVecAlignBits) {
+  int64_t offset = 0;
+  for (auto buffer : group) {
+    if (buffer.getAligned())
+      offset = getAlignedAddress(
+          offset,
+          getRequiredAlignBits(buffer, tileAlignBitWidth, maxVecAlignBits));
+    offset += buffer.getAllocationSize();
+  }
+  return offset;
+}
+
+// Group this tile's unallocated buffers into allocation units, preserving the
+// pass's existing largest-first order across units.
+static SmallVector<AllocUnit> buildAllocUnits(ArrayRef<BufferOp> buffers,
+                                              uint32_t tileAlignBitWidth,
+                                              uint32_t maxVecAlignBits) {
+  SmallVector<AllocUnit> units;
+  // Every alloc_group on this tile overlays every other, so they share ONE
+  // unit. groupIndex maps a group name to its slot within that unit's group
+  // list.
+  llvm::MapVector<StringRef, unsigned> groupIndex;
+  std::optional<unsigned> overlayUnit;
+  for (auto buffer : buffers) {
+    auto group = buffer.getAllocGroup();
+    if (!group) {
+      AllocUnit u;
+      u.groups.push_back({buffer});
+      u.size = buffer.getAllocationSize();
+      u.aligned = buffer.getAligned();
+      units.push_back(std::move(u));
+      continue;
+    }
+    if (!overlayUnit) {
+      overlayUnit = units.size();
+      units.push_back(AllocUnit{});
+    }
+    AllocUnit &u = units[*overlayUnit];
+    auto [it, inserted] = groupIndex.try_emplace(*group, u.groups.size());
+    if (inserted)
+      u.groups.push_back({});
+    u.groups[it->second].push_back(buffer);
+    u.aligned |= buffer.getAligned();
+    // A group's extent is its members' padded layout; the unit's is the
+    // largest such extent.
+    int64_t extent =
+        groupExtent(u.groups[it->second], tileAlignBitWidth, maxVecAlignBits);
+    u.size = std::max(u.size, extent);
+  }
+  llvm::stable_sort(units, [](const AllocUnit &a, const AllocUnit &b) {
+    return a.size > b.size;
+  });
+  return units;
+}
+
+// The decidable half of the alloc_group assertion: two buffers from different
+// groups that one core references without a selector between them are
+// simultaneously live by construction, so they can never be overlaid whatever
+// the author intended. Catching this here turns a silent memory-aliasing bug
+// into a compile error.
+// Does any buffer on this tile ask for an overlay?
+static bool tileHasAllocGroup(DeviceOp device, TileOp tile) {
+  bool found = false;
+  device.walk([&](BufferOp buffer) {
+    if (buffer.getTileOp() == tile && buffer.getAllocGroup())
+      found = true;
+  });
+  return found;
+}
+
+// Whether two ops sit in branches of one branching op that selects exactly one
+// of them -- the only ground on which two references inside one core body may
+// be called mutually exclusive. Decided at the INNERMOST COMMON ANCESTOR: two
+// ops in different regions of one scf.if / scf.index_switch are exclusive;
+// anything else (different ops, an scf.while whose regions both run, plain
+// sequence) is not.
+//
+// Scoping this at the block rather than the ancestor does not work: the
+// objectFifo lowering hands every buffer reference its own scf.index_switch
+// case, so on a lowered design no two buffers ever share a block and a
+// block-scoped check silently passes everything.
+static bool inExclusiveBranches(Operation *a, Operation *b) {
+  llvm::DenseMap<Operation *, Region *> aChain;
+  for (Region *r = a->getParentRegion(); r; r = r->getParentRegion())
+    if (Operation *parent = r->getParentOp())
+      aChain[parent] = r;
+    else
+      break;
+
+  for (Region *r = b->getParentRegion(); r; r = r->getParentRegion()) {
+    Operation *parent = r->getParentOp();
+    if (!parent)
+      break;
+    auto it = aChain.find(parent);
+    if (it == aChain.end())
+      continue;
+    // Innermost common ancestor. Only a one-of-N selector makes its regions
+    // exclusive; scf.for/scf.while run theirs unconditionally.
+    if (!isa<scf::IfOp, scf::IndexSwitchOp>(parent))
+      return false;
+    return it->second != r;
+  }
+  return false;
+}
+
+static bool checkAllocGroups(DeviceOp device) {
+  bool ok = true;
+  // Collect every reference to a grouped buffer from inside a core. Two
+  // references conflict when they name DIFFERENT groups, since different groups
+  // are the ones the allocator overlays; same-group members get distinct
+  // storage and may be live together, which is the point of the group.
+  device.walk([&](CoreOp core) {
+    SmallVector<std::tuple<BufferOp, Operation *, StringRef>> refs;
+    core.walk([&](Operation *op) {
+      for (Value operand : op->getOperands())
+        if (auto buffer = dyn_cast_or_null<BufferOp>(operand.getDefiningOp()))
+          if (auto group = buffer.getAllocGroup())
+            refs.emplace_back(buffer, op, *group);
+    });
+
+    for (size_t i = 0; i < refs.size(); ++i)
+      for (size_t j = i + 1; j < refs.size(); ++j) {
+        auto [bufI, opI, groupI] = refs[i];
+        auto [bufJ, opJ, groupJ] = refs[j];
+        if (groupI == groupJ)
+          continue;
+        if (inExclusiveBranches(opI, opJ))
+          continue;
+        ok = false;
+        bufJ.emitOpError()
+            << "is in alloc_group '" << groupJ
+            << "' while this aie.core also references a buffer in alloc_group '"
+            << groupI
+            << "', and no selector separates the two references, so they are "
+               "simultaneously live and cannot be overlaid";
+        bufI.emitRemark() << "member of alloc_group '" << groupI << "'";
+        return;
+      }
+  });
+  return ok;
 }
 
 static bool basicAllocation(TileOp tile) {
@@ -341,39 +516,71 @@ static bool basicAllocation(TileOp tile) {
   // final placement. A misaligned candidate otherwise passes the fit test, and
   // getAlignedAddress then bumps it into a pre-allocated buffer.
   auto *current_alloc = allocated_buffers.begin();
-  for (auto buffer : buffers) {
-    assert(!buffer.getAddress());
-    uint32_t reqAlignBits =
-        getRequiredAlignBits(buffer, tileAlignBitWidth, maxVecAlignBits);
-    if (buffer.getAligned()) {
-      address = getAlignedAddress(address, reqAlignBits);
-    }
-    while (current_alloc != allocated_buffers.end() &&
-           address + buffer.getAllocationSize() >
-               current_alloc->getAddress().value()) {
-      address = current_alloc->getAddress().value() +
-                current_alloc->getAllocationSize();
-      if (buffer.getAligned()) {
-        address = getAlignedAddress(address, reqAlignBits);
-      }
+  for (const AllocUnit &unit :
+       buildAllocUnits(buffers, tileAlignBitWidth, maxVecAlignBits)) {
+    // Every group starts at the unit's base, so the base has to satisfy the
+    // strictest requirement any member has -- a per-buffer figure since
+    // getRequiredAlignBits keys on the buffer's own size.
+    uint32_t unitAlignBits = tileAlignBitWidth;
+    for (const auto &group : unit.groups)
+      for (auto buffer : group)
+        if (buffer.getAligned())
+          unitAlignBits = std::max(
+              unitAlignBits,
+              getRequiredAlignBits(buffer, tileAlignBitWidth, maxVecAlignBits));
+    if (unit.aligned)
+      address = getAlignedAddress(address, unitAlignBits);
+    while (current_alloc != allocated_buffers.end()) {
+      auto allocAddr = current_alloc->getAddress();
+      assert(allocAddr.has_value() && "buffer must have address assigned");
+      if (address + unit.size <= *allocAddr)
+        break;
+      address = *allocAddr + current_alloc->getAllocationSize();
+      if (unit.aligned)
+        address = getAlignedAddress(address, unitAlignBits);
       current_alloc++;
     }
 
-    buffer.setAddress(address);
-    address += buffer.getAllocationSize();
+    // Groups overlay: each starts at the unit's base. Members within a group do
+    // not, so they follow one another. The unit advances by the largest group's
+    // real end, which is what makes N modes cost max(sum) rather than sum(max).
+    //
+    // That real end is tracked here rather than trusted from unit.size: a
+    // group's alignment padding depends on each member's own required
+    // alignment, and while unit.size (via groupExtent) predicts it correctly,
+    // advancing by what was actually placed can't be wrong even if the two
+    // ever diverge.
+    int64_t unitEnd = address;
+    for (const auto &group : unit.groups) {
+      int64_t offset = address;
+      for (auto buffer : group) {
+        assert(!buffer.getAddress());
+        if (buffer.getAligned())
+          offset = getAlignedAddress(
+              offset,
+              getRequiredAlignBits(buffer, tileAlignBitWidth, maxVecAlignBits));
+        buffer.setAddress(offset);
+        offset += buffer.getAllocationSize();
+      }
+      unitEnd = std::max(unitEnd, offset);
+    }
+    address = unitEnd;
   }
 
   sortBuffersByAddress(allBuffers_on_tile);
 
   // High-water mark across all buffers, including pre-allocated buffers above
   // the allocation cursor, so checkAndPrintOverflow reads a correct bound.
+  //
+  // Every buffer, not just the last: the vector is sorted by start address, and
+  // buffers in different alloc_groups are allowed to overlap, so the greatest
+  // start address is no longer also the greatest end address.
   int64_t highWater = address;
-  if (!allBuffers_on_tile.empty()) {
-    auto &last = allBuffers_on_tile.back();
-    auto lastAddrOpt = last.getAddress();
-    assert(lastAddrOpt.has_value() && "buffer must have address assigned");
+  for (auto buffer : allBuffers_on_tile) {
+    auto addrOpt = buffer.getAddress();
+    assert(addrOpt.has_value() && "buffer must have address assigned");
     highWater =
-        std::max<int64_t>(highWater, *lastAddrOpt + last.getAllocationSize());
+        std::max<int64_t>(highWater, *addrOpt + buffer.getAllocationSize());
   }
 
   if (!checkAndPrintOverlapStackframe(stacksize, allBuffers_on_tile) ||
@@ -1143,6 +1350,12 @@ struct AIEAssignBufferAddressesPass
     DeviceOp device = getOperation();
     materializeCoreDataBuffers(device);
 
+    // alloc_group overlays buffers, so validate the part of its contract that
+    // is decidable before any address is handed out.
+    if (!checkAllocGroups(device))
+      return signalPassFailure();
+
+    // Select allocation scheme per tile
     for (auto tile : device.getOps<TileOp>()) {
       auto tileAllocationScheme = tile.getAllocationScheme();
 
@@ -1150,12 +1363,24 @@ struct AIEAssignBufferAddressesPass
         tileAllocationScheme = clAllocScheme;
       }
 
-      if (tileAllocationScheme == "basic-sequential") {
+      // Only basic-sequential implements overlays, so a tile carrying one
+      // takes that path rather than trying bank-aware first and silently
+      // dropping them.
+      bool needsBasic = tileAllocationScheme == "basic-sequential" ||
+                        (tileAllocationScheme != "bank-aware" &&
+                         tileHasAllocGroup(device, tile));
+      if (needsBasic) {
         if (!basicAllocation(tile)) {
           emitAllocationFailure(tile, "basic-sequential");
           return signalPassFailure();
         }
       } else if (tileAllocationScheme == "bank-aware") {
+        if (tileHasAllocGroup(device, tile)) {
+          tile.emitOpError(
+              "bank-aware allocation does not implement alloc_group "
+              "overlays; use basic-sequential on this tile");
+          return signalPassFailure();
+        }
         if (simpleBankAwareAllocation(tile) != BankAwareResult::Success) {
           emitAllocationFailure(tile, "bank-aware");
           return signalPassFailure();
