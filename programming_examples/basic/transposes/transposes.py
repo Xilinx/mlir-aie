@@ -327,7 +327,7 @@ def _transpose_dyn(
     kernel_func = ExternalFunction(
         "transpose_dyn",
         source_file=_DYN_SRC,
-        arg_types=[tensor_ty, tensor_ty, np.int32, np.int32],
+        arg_types=[tensor_ty, tensor_ty, np.dtype(np.int32), np.dtype(np.int32)],
         compile_flags=[f"-D{_COMBINED_DTYPE_MACRO[dtype_bytes]}"],
     )
 
