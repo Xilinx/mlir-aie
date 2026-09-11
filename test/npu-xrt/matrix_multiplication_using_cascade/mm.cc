@@ -27,17 +27,17 @@ void matmul_scalar_cascade_i32_i32(int32_t *a, int32_t *b, int32_t *c) {
           for (int n = 0; n < N; n++) {
             int32_t running_sum = 0;
             if (get && k_t == 0) {
-              v32int32 v32 = get_scd_v32int32();
-              running_sum += ext_elem(v32, 0);
+              v16int32 lo = extract_v16int32(get_scd_v32int32(), 0);
+              running_sum += ext_elem(lo, 0);
             }
             for (int k = 0; k < K; k++) {
               running_sum += a[a_offset + m * K + k] * b[b_offset + k * N + n];
             }
             c[c_offset + m * N + n] += running_sum;
             if (put && k_t == K_tile - 1) {
-              v32int32 v32 = undef_v32int32();
-              v32 = upd_elem(v32, 0, c[c_offset + m * N + n]);
-              put_mcd(v32);
+              v16int32 lo =
+                  upd_elem(undef_v16int32(), 0, c[c_offset + m * N + n]);
+              put_mcd(concat(lo, undef_v16int32()));
             }
           }
         }
