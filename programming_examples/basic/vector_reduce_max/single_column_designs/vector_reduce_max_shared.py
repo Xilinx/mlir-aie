@@ -23,6 +23,7 @@ import argparse
 import sys
 
 import aie.iron as iron
+import aie.iron.kernels as kernels
 import numpy as np
 from aie.helpers.util import np_ndarray_type_get_shape
 from aie.iron import (
@@ -34,7 +35,6 @@ from aie.iron import (
     Program,
     Runtime,
     Worker,
-    kernels,
     str_to_dtype,
 )
 from aie.iron.controlflow import range_

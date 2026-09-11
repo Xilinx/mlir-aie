@@ -1,0 +1,205 @@
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+name: Kernel Benchmarks on Ryzen AI
+
+# Record cycles / wall time / compile size for aie_kernels via the IRON JIT
+# path and publish graphs to the site. Never gates PRs. On Peano/LLVM-bump
+# PRs: compare against the recorded baseline; the action comments only if a
+# hard-threshold series regressed. Everything else: no comments, no data,
+# just a red run and an artifact.
+#
+# SOFT RELEASE: manual (workflow_dispatch) only while this settles. The
+# nightly and PR triggers below are commented out, not deleted -- restoring
+# them is uncommenting the two blocks. Until then nothing records a baseline
+# on a schedule, so the first manual runs are what seed it.
+
+permissions:
+  contents: write        # push gh-pages benchmark data (main only)
+  pull-requests: write   # sticky comment (peano PRs only)
+
+on:
+  workflow_dispatch:
+    inputs:
+      only:
+        description: 'regex on kernel names (e.g. linalg/)'
+        required: false
+        default: ''
+  # --- soft release: re-enable together when this is trusted ---------------
+  # schedule:
+  #   - cron: '0 6 * * *'          # after the 00:00 test nightly
+  # pull_request:
+  #   paths:
+  #     - utils/peano-requirements.txt
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  DEBIAN_FRONTEND: noninteractive
+  BENCH_PMODE: performance
+
+jobs:
+  bench:
+    name: Kernel bench (${{ matrix.runner_type }})
+    # Only in-repo branches on self-hosted hardware.
+    if: github.event_name != 'pull_request' ||
+        github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, bench, "${{ matrix.runner_type }}"]
+    timeout-minutes: 120
+    # Never let two benchmark jobs share an NPU; never cancel a nightly.
+    concurrency:
+      group: kernel-bench-${{ matrix.runner_type }}
+      cancel-in-progress: false
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner_type: aie2-4col
+            expected_npu: npu1
+          - runner_type: aie2p-8col
+            expected_npu: npu2
+    env:
+      AIE_EXPECTED_NPU: ${{ matrix.expected_npu }}
+      NPU_CACHE_HOME: ${{ github.workspace }}/bench-cache-${{ github.run_id }}
+      PIP_CACHE_DIR: ${{ github.workspace }}/.pip-cache-bench-${{ github.run_id }}
+      DATA_DIR: bench/${{ matrix.expected_npu }}
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: "true"
+
+      - name: Setup virtual environment / prerequisites
+        run: source ./utils/env_install.sh aie-venv --dev --extras
+
+      - name: Build from source
+        run: |
+          sudo prlimit -lunlimited --pid $$
+          [ -f /opt/xilinx/xrt/setup.sh ] && source /opt/xilinx/xrt/setup.sh
+          source aie-venv/bin/activate
+          export EXTRA_CMAKE_ARGS="-DPython3_EXECUTABLE=$(which python) \
+            -DXRT_ROOT=/opt/xilinx/xrt -DAIE_ENABLE_PYTHON_PASSES=OFF \
+            -DAIE_ENABLE_XRT_PYTHON_BINDINGS=ON"
+          ./utils/build-mlir-aie-from-wheels.sh "" build mlir_aie
+
+      - name: NPU preflight and performance mode
+        id: preflight
+        run: |
+          [ -f /opt/xilinx/xrt/setup.sh ] && source /opt/xilinx/xrt/setup.sh
+          xrt-smi examine
+          BDF=$(xrt-smi examine | grep -oE '\[[0-9a-f:.]+\]' | head -1 | tr -d '[]')
+          echo "bdf=$BDF" >> "$GITHUB_OUTPUT"
+          # `performance` = max DPM, clock gating on. `turbo` is refused
+          # while any hwctx is open, so it is not used on shared hosts.
+          sudo xrt-smi configure -d "$BDF" --pmode "$BENCH_PMODE"
+          xrt-smi examine -d "$BDF" --report platform
+
+      - name: Run kernel correctness suite
+        id: correctness
+        run: |
+          [ -f /opt/xilinx/xrt/setup.sh ] && source /opt/xilinx/xrt/setup.sh
+          source aie-venv/bin/activate
+          export XRT_CONTEXT_CACHE_SIZE=2
+          rm -rf "$NPU_CACHE_HOME" && mkdir -p "$NPU_CACHE_HOME"
+          # Every case in test/python/npu/kernel_cases.py, under every edge-data
+          # case its contract admits, for three random seeds.
+          python -m pytest test/python/npu/test_kernels_e2e.py -m extensive -v \
+            --junitxml=correctness.xml --seeds 3 2>&1 | tee correctness.log
+
+      - name: Run kernel benchmarks
+        id: bench
+        # Correctness must be green before numbers are trusted.
+        if: steps.correctness.outcome == 'success'
+        run: |
+          [ -f /opt/xilinx/xrt/setup.sh ] && source /opt/xilinx/xrt/setup.sh
+          source aie-venv/bin/activate
+          export XRT_CONTEXT_CACHE_SIZE=2
+          ONLY="${{ github.event.inputs.only }}"
+          python -m aie.utils.kernel_harness --cases test/python/npu/kernel_cases.py \
+            --out bench.json --meta meta.json --pmode "$BENCH_PMODE" \
+            --warmup 10 --iters 50 \
+            ${ONLY:+--only "$ONLY"} 2>&1 | tee bench.log
+          # Exit codes 2/3 leave no bench.json -> downstream steps skip.
+
+      - name: Upload raw results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: kernel-bench-${{ matrix.expected_npu }}-${{ github.run_id }}
+          path: |
+            bench.json
+            meta.json
+            bench.log
+            correctness.log
+            correctness.xml
+          if-no-files-found: ignore
+
+      # ---------------- record history (main only) ----------------------
+      - name: Record to gh-pages (main only)
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && hashFiles('bench.json') != ''
+        uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba  # v1.22.1
+        with:
+          name: aie_kernels (${{ matrix.expected_npu }})
+          tool: customSmallerIsBetter
+          output-file-path: bench.json
+          gh-pages-branch: gh-pages
+          # Top-level path: the docs site is mike-versioned and rewrites
+          # /dev, /latest, /<ver> on every deploy. bench/ is left alone.
+          benchmark-data-dir-path: ${{ env.DATA_DIR }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          auto-push: true
+          # Alerts go to the graph and the run summary only. No commit
+          # comments (those notify whoever last merged to main).
+          alert-threshold: '103%'
+          comment-on-alert: false
+          fail-on-alert: false
+          summary-always: true
+          max-items-in-chart: 400
+
+      - name: Save baseline for PR comparisons
+        if: github.event_name != 'pull_request' && hashFiles('bench.json') != ''
+        run: |
+          mkdir -p baseline
+          # The action's data.js is `window.BENCHMARK_DATA = {...}`; keep the
+          # JSON payload so PR runs can compare via external-data-json-path.
+          git fetch origin gh-pages --depth=1
+          git show origin/gh-pages:${DATA_DIR}/data.js \
+            | sed -e 's/^window\.BENCHMARK_DATA = //' -e 's/;\s*$//' > baseline/benchmark-data.json
+      - name: Cache baseline
+        if: github.event_name != 'pull_request' && hashFiles('bench.json') != ''
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: baseline
+          key: kernel-bench-baseline-${{ matrix.expected_npu }}-${{ github.run_id }}
+
+      # ---------------- peano bump PR: compare, one sticky comment --------
+      - name: Restore baseline (PR)
+        if: github.event_name == 'pull_request' && hashFiles('bench.json') != ''
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: baseline
+          key: kernel-bench-baseline-${{ matrix.expected_npu }}-
+          restore-keys: kernel-bench-baseline-${{ matrix.expected_npu }}-
+
+      - name: Compare against baseline (PR)
+        # Needs a nightly baseline in the cache; the first runs have none.
+        if: github.event_name == 'pull_request' && hashFiles('bench.json') != '' && hashFiles('baseline/benchmark-data.json') != ''
+        uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba  # v1.22.1
+        with:
+          name: aie_kernels (${{ matrix.expected_npu }})
+          tool: customSmallerIsBetter
+          output-file-path: bench.json
+          external-data-json-path: baseline/benchmark-data.json
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          alert-threshold: '103%'
+          comment-on-alert: true     # one comment, only if something regressed
+          summary-always: true
+          fail-on-alert: false
+          save-data-file: false
+
+      - name: Cleanup
+        if: always()
+        run: |
+          rm -rf "$NPU_CACHE_HOME" "$PIP_CACHE_DIR"

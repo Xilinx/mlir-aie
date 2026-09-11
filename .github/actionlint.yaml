@@ -8,6 +8,7 @@ self-hosted-runner:
   labels:
     - aie2-4col      # NPU1, 4 columns
     - aie2p-8col     # NPU2, 8 columns
+    - bench          # runners reserved for benchmark timing
     - npu2
     - ryzenai
     - ubuntu-vitis   # Vitis toolchain image

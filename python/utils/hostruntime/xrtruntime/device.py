@@ -41,6 +41,15 @@ _DEVICES: dict[int, "pyxrt.device"] = {}
 _MAX_RETRIES = 5
 
 
+def xrt_smi_path() -> str:
+    """Return the ``xrt-smi`` executable: from PATH, else under ``$XILINX_XRT/bin``."""
+    xrt_bin = shutil.which("xrt-smi")
+    if xrt_bin is None:
+        xrt_base = os.environ.get("XILINX_XRT", "/opt/xilinx/xrt")
+        xrt_bin = os.path.join(xrt_base, "bin", "xrt-smi")
+    return xrt_bin
+
+
 def _log_device_state():
     """Report what the host thinks of the NPU, after an open has failed.
 
@@ -55,10 +64,7 @@ def _log_device_state():
         else:
             logger.debug("/dev/accel/accel0 does not exist")
 
-        xrt_bin = shutil.which("xrt-smi")
-        if xrt_bin is None:
-            xrt_base = os.environ.get("XILINX_XRT", "/opt/xilinx/xrt")
-            xrt_bin = xrt_base + "/bin/xrt-smi"
+        xrt_bin = xrt_smi_path()
         if os.path.exists(xrt_bin):
             logger.debug("Running %s examine", xrt_bin)
             result = subprocess.run(

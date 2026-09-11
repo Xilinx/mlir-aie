@@ -43,6 +43,87 @@ class CollectTests(unittest.TestCase):
         self.assertEqual(blocks, [])
         self.assertEqual(code, 0)
 
+    def test_license_headers_are_not_blocks(self):
+        # The first line names its own file, so the three headers differ there
+        # and still have to be recognised by what follows.
+        def header(name):
+            return [
+                f"# {name}.py -*- Python -*-",
+                "#",
+                "# Copyright (C) 2026 Advanced Micro Devices, Inc.",
+                # REUSE-IgnoreStart
+                "# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception",
+                # REUSE-IgnoreEnd
+            ]
+
+        blocks, code = slop.collect(
+            diff(*[(f"{n}.py", 1, header(n) + ["x = 1"]) for n in "abc"])
+        )
+        self.assertEqual(blocks, [])
+        self.assertEqual(code, 3)
+
+    def test_llvm_style_cpp_headers_are_not_blocks(self):
+        # The banner's opening line names its own file, so the three headers
+        # differ there and still have to be recognised by what follows.
+        def header(name):
+            return [
+                f"//===- {name}.cc ------------------------------*- C++ -*-===//",
+                "//",
+                "// Copyright (C) 2026 Advanced Micro Devices, Inc.",
+                # REUSE-IgnoreStart
+                "// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception",
+                # REUSE-IgnoreEnd
+                "//",
+                "//===----------------------------------------------------------------------===//",
+            ]
+
+        blocks, code = slop.collect(
+            diff(*[(f"{n}.cc", 1, header(n) + ["int x = 1;"]) for n in "abc"])
+        )
+        self.assertEqual(blocks, [])
+        self.assertEqual(code, 3)
+
+    def test_explanation_adjacent_to_header_is_still_a_block(self):
+        # No blank line between the SPDX line and the explanation that
+        # follows it, so both are one contiguous comment run; only the
+        # header lines should be exempt, not the explanation riding along.
+        blocks, _ = slop.collect(
+            diff(
+                (
+                    "a.py",
+                    1,
+                    [
+                        "# Copyright (C) 2026 Advanced Micro Devices, Inc.",
+                        # REUSE-IgnoreStart
+                        "# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception",
+                        # REUSE-IgnoreEnd
+                        "# This kernel assumes the caller already validated shapes.",
+                        "x = 1",
+                    ],
+                )
+            )
+        )
+        self.assertEqual(len(blocks), 1)
+        self.assertIn(
+            "This kernel assumes the caller already validated shapes.",
+            blocks[0].lines,
+        )
+
+    def test_unrelated_mention_of_copyright_is_not_a_header(self):
+        blocks, _ = slop.collect(
+            diff(
+                (
+                    "a.py",
+                    1,
+                    [
+                        "# See the copyright notice in LICENSE.txt for the full text.",
+                        "x = 1",
+                    ],
+                )
+            )
+        )
+        self.assertEqual(len(blocks), 1)
+
 
 class TermTests(unittest.TestCase):
     def test_identifiers_are_split_into_words(self):

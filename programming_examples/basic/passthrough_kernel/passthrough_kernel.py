@@ -9,6 +9,7 @@ import argparse
 import sys
 
 import aie.iron as iron
+import aie.iron.kernels as kernels
 import numpy as np
 from aie.iron import (
     CompileTime,
@@ -18,7 +19,6 @@ from aie.iron import (
     Program,
     Runtime,
     Worker,
-    kernels,
 )
 from aie.utils.benchmark import print_benchmark, run_iters
 from aie.utils.trace import TraceConfig

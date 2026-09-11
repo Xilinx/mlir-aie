@@ -21,6 +21,7 @@ Two invocation modes:
 import argparse
 
 import aie.iron as iron
+import aie.iron.kernels as kernels
 import numpy as np
 from aie.dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
     WireBundle,
@@ -33,7 +34,6 @@ from aie.iron import (
     Program,
     Runtime,
     Worker,
-    kernels,
 )
 from aie.iron.controlflow import range_
 from aie.utils.hostruntime.argparse import add_compile_args

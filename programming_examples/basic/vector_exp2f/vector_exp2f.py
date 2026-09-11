@@ -26,8 +26,9 @@ yields a finite, wrong-signed result that isfinite() cannot see.
 import sys
 
 import aie.iron as iron
+import aie.iron.kernels as kernels
 import numpy as np
-from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker, kernels
+from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker
 from aie.iron.controlflow import range_
 
 _TILE = 1024

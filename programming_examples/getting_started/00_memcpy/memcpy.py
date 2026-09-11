@@ -10,8 +10,9 @@ per-tile kernel is the library passthrough.
 """
 
 import aie.iron as iron
+import aie.iron.kernels as kernels
 import numpy as np
-from aie.iron import CompileTime, In, Out, kernels
+from aie.iron import CompileTime, In, Out
 from aie.iron.algorithms import transform_parallel
 from aie.utils.benchmark import run_iters
 from aie.utils.verify import assert_pass

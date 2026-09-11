@@ -19,34 +19,25 @@ ObjectFifo/Worker wiring below rather than delegating to one of those.
 """
 
 import argparse
-from pathlib import Path
 
 import aie.iron as iron
+import aie.iron.kernels as kernels
 import numpy as np
 from aie.helpers.taplib import TensorTiler2D
-from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker
+from aie.iron import (
+    CompileTime,
+    In,
+    ObjectFifo,
+    Out,
+    Program,
+    Runtime,
+    Worker,
+)
 from aie.iron.controlflow import range_
-from aie.iron.kernel import ExternalFunction
-from aie.utils import config
 from aie.utils.hostruntime.argparse import add_compile_args, device_from_args
 from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
 from ml_dtypes import bfloat16
-
-_KERNEL_DIR = Path(__file__).resolve().parents[3] / "aie_kernels/aie2p"
-
-
-def _cast_extern(chunk_in_ty, chunk_out_ty):
-    return ExternalFunction(
-        "cast_f32_bf16_row",
-        source_file=str(_KERNEL_DIR / "cast_f32_bf16.cc"),
-        arg_types=[
-            chunk_in_ty,
-            chunk_out_ty,
-            np.int32,  # pyright: ignore[reportArgumentType]
-        ],
-        include_dirs=[config.cxx_header_path()],
-    )
 
 
 @iron.jit
@@ -75,7 +66,8 @@ def cast_f32_bf16(
     of_ins = [ObjectFifo(chunk_in_ty, name=f"in_{i}") for i in range(n_cores)]
     of_outs = [ObjectFifo(chunk_out_ty, name=f"out_{i}") for i in range(n_cores)]
 
-    cast_fn = _cast_extern(chunk_in_ty, chunk_out_ty)
+    # aie_kernels/aie2p/cast_f32_bf16.cc (cast_f32_bf16_row), sized per chunk.
+    cast_fn = kernels.convert_copy(tile_size=vector_size)
 
     def core_fn(of_in, of_out, kernel):
         for _ in range_(rows_per_core):

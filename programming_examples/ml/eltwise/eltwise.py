@@ -13,8 +13,9 @@ per-tile kernel is selected by the ``op`` CompileTime parameter and pulled from
 import argparse
 
 import aie.iron as iron
+import aie.iron.kernels as kernels
 import numpy as np
-from aie.iron import CompileTime, In, Out, kernels
+from aie.iron import CompileTime, In, Out
 from aie.iron.algorithms import transform_parallel_binary
 from aie.utils.hostruntime.argparse import (
     add_compile_args,

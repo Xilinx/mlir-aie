@@ -10,14 +10,13 @@ tile loop. Strix-only.
 """
 
 import argparse
-from pathlib import Path
 
 import aie.iron as iron
+import aie.iron.kernels as kernels
 import numpy as np
 from aie.dialects.aiex import v8bfp16ebs8
 from aie.iron import (
     CompileTime,
-    ExternalFunction,
     In,
     ObjectFifo,
     Out,
@@ -33,10 +32,6 @@ from aie.utils.hostruntime.argparse import (
 from aie.utils.hostruntime.cli import run_design_cli
 from ml_dtypes import bfloat16
 
-_KERNEL_SRC = (
-    Path(__file__).resolve().parents[5] / "aie_kernels" / "aie2p" / "mm_bfp_mixed.cc"
-)
-
 
 @iron.jit(aiecc_flags=["--dynamic-objFifos"])
 def single_core_no_tiling_mixed(
@@ -51,34 +46,20 @@ def single_core_no_tiling_mixed(
     k: CompileTime[int] = 64,
     n: CompileTime[int] = 64,
 ):
-    r, s, t = 8, 8, 8
-
     a_ty = np.ndarray[(m * k,), np.dtype[bfloat16]]
     b_ty = np.ndarray[(k * n // 8,), np.dtype[v8bfp16ebs8]]
     c_ty = np.ndarray[(m * n,), np.dtype[bfloat16]]
 
-    kernel_flags = [f"-DDIM_M={m}", f"-DDIM_K={k}", f"-DDIM_N={n}"]
-
-    zero_kernel = ExternalFunction(
-        "zero_kernel_bf16",
-        source_file=str(_KERNEL_SRC),
-        arg_types=[c_ty],
-        compile_flags=kernel_flags + ["-DZERO_ONLY"],
-    )
-    matmul_kernel = ExternalFunction(
-        "matmul_vectorized_different_datatypes",
-        source_file=str(_KERNEL_SRC),
-        arg_types=[a_ty, b_ty, c_ty],
-        compile_flags=kernel_flags + ["-DMATMUL_ONLY"],
-    )
+    matmul_kernel = kernels.mm_bfp(dim_m=m, dim_k=k, dim_n=n, mixed=True)
+    zero_kernel = matmul_kernel.zero
 
     inA = ObjectFifo(a_ty, name="inA")
-    a_dims: StreamDims = [(m // r, r * k), (k // s, s), (r, k), (s, 1)]
+    a_dims: StreamDims = matmul_kernel.stream_dims["A"]
     memA = inA.cons().forward(name="memA", dims_to_stream=a_dims)
     inB = ObjectFifo(b_ty, name="inB")
     memB = inB.cons().forward(name="memB")
     memC = ObjectFifo(c_ty, name="memC")
-    c_dims: StreamDims = [(m // r, r * n), (r, t), (n // t, r * t), (t, 1)]
+    c_dims: StreamDims = matmul_kernel.stream_dims["C"]
     outC = memC.cons().forward(name="outC", dims_to_stream=c_dims)
 
     def core_fn(of_a, of_b, of_c, zero, matmul):

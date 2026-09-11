@@ -23,9 +23,11 @@ from pathlib import Path
 
 import numpy as np
 from aie.iron.kernel import ExternalFunction
+from aie.utils.verify import Tolerance
 from ml_dtypes import bfloat16
 
 from ._common import (
+    KernelContract,
     _default_source_path,
     _detect_arch,
     _include_dirs,
@@ -36,18 +38,78 @@ from ._common import (
 
 _LUT_FIXED_TILE = 1024
 
+# Mirrors EXP_BF16_CLAMP in aie_runtime_lib/AIE2{,P}/lut_based_ops.h: the
+# input domain getExpBf16 saturates to, so the references below describe what
+# the device actually computes. Keep the two in step.
+_EXP_BF16_CLAMP = 88.0
+
+# The LUT-approximated kernels document rtol=0.128 (the canonical C++ testbench
+# default) on their *_ref functions below; the absolute floor and the mismatch
+# budget are what test/python/npu/test_kernels_e2e.py measured on device for
+# tanh, sigmoid and bf16_exp.
+_LUT_TOLERANCE = Tolerance.relative(
+    0.128,
+    0.05,
+    max_mismatch_frac=0.02,
+    note="LUT approximation: rtol documented on the *_ref; atol/budget from test_kernels_e2e",
+)
+
+
+def _unary_lut_contract(
+    ref,
+    *,
+    count: bool,
+    tolerance: Tolerance = _LUT_TOLERANCE,
+    rounding_mode: str = "conv_even",
+) -> KernelContract:
+    """Contract for a one-in/one-out LUT kernel, with or without a trailing count.
+
+    The LUT kernels store bf16 from wider vector math without setting the
+    core's rounding mode, so they are judged (and run by the harness) in
+    ``conv_even``, the mode numpy's reference rounds in.
+    """
+    return KernelContract(
+        roles=("in", "out", "count") if count else ("in", "out"),
+        reference=ref,
+        tolerance=tolerance,
+        acc_dtype=bfloat16,  # bf16 vector math around the LUT
+        rounding_mode=rounding_mode,
+    )
+
+
+def _softmax_tolerance(tile_size: int) -> Tolerance:
+    """Return the LUT bound with a floor an unwritten tile cannot hide under.
+
+    Softmax outputs sum to 1 over the tile, so a typical element is about
+    ``1 / tile_size`` and the generic LUT floor of 0.05 would accept an
+    all-zero output. A tenth of an average element still covers the exp
+    LUT's underflow on the far tail, while an unwritten tile mismatches on
+    most elements.
+    """
+    return Tolerance.relative(
+        0.128,
+        0.1 / tile_size,
+        max_mismatch_frac=0.02,
+        note="LUT rtol from softmax_ref; atol = 0.1 / tile_size so an unwritten "
+        "(all-zero) tile fails, since every softmax output is below the generic "
+        "LUT atol",
+    )
+
 
 def _create_lut_kernel(
     func_name: str,
     kernel_filename: str,
     arg_types: list,
     compile_flags: list[str] | None = None,
+    contract: KernelContract | None = None,
 ) -> ExternalFunction:
     """Create an ExternalFunction for a LUT-dependent kernel.
 
     Handles the aie2/aie2p split:
     - aie2: combines kernel source with lut_based_ops.cpp in a single TU.
     - aie2p: uses source_file directly (no LUT dependency).
+
+    ``contract`` is attached as ``.contract`` like ``_make_extern`` does.
     """
     arch = _detect_arch()
     kernel_path = _kernel_source(arch, arch, kernel_filename)
@@ -61,24 +123,27 @@ def _create_lut_kernel(
     flags = compile_flags or []
 
     if arch == "aie2":
-        runtime_dir = Path(config.root_path()) / "aie_runtime_lib" / "AIE2"
+        runtime_dir = Path(config.aie_runtime_lib_dir()) / "AIE2"
         lut_cpp = runtime_dir / "lut_based_ops.cpp"
         include.append(str(runtime_dir))
         source = f'#include "{kernel_path}"\n#include "{lut_cpp}"\n'
-        return ExternalFunction(
+        ef = ExternalFunction(
             func_name,
             source_string=source,
             arg_types=arg_types,
             include_dirs=include,
             compile_flags=flags,
         )
-    return ExternalFunction(
-        func_name,
-        source_file=str(kernel_path),
-        arg_types=arg_types,
-        include_dirs=include,
-        compile_flags=flags,
-    )
+    else:
+        ef = ExternalFunction(
+            func_name,
+            source_file=str(kernel_path),
+            arg_types=arg_types,
+            include_dirs=include,
+            compile_flags=flags,
+        )
+    ef.contract = contract
+    return ef
 
 
 def _bf16_lut_factory(
@@ -87,11 +152,14 @@ def _bf16_lut_factory(
     kernel_filename: str,
     tile_size: int,
     arg_arity: int,
+    contract: KernelContract | None = None,
 ) -> ExternalFunction:
     """Build a LUT-backed bf16 kernel whose arg list is N copies of the same tile type."""
     _require_fixed_tile_size(factory_name, tile_size, _LUT_FIXED_TILE)
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
-    return _create_lut_kernel(func_name, kernel_filename, [tile_ty] * arg_arity)
+    return _create_lut_kernel(
+        func_name, kernel_filename, [tile_ty] * arg_arity, contract=contract
+    )
 
 
 def softmax(tile_size: int = 1024) -> ExternalFunction:
@@ -109,30 +177,77 @@ def softmax(tile_size: int = 1024) -> ExternalFunction:
         "softmax_bf16",
         "softmax.cc",
         [tile_ty, tile_ty, np.int32],
+        contract=_unary_lut_contract(
+            lambda x: softmax_ref(x, tile_size=tile_size),
+            count=True,
+            tolerance=_softmax_tolerance(tile_size),
+            # aie2p/softmax.cc sets conv_even itself; the aie2 LUT path does not.
+            rounding_mode="sets_own" if _detect_arch() == "aie2p" else "conv_even",
+        ),
     )
 
 
 def gelu(tile_size: int = 1024) -> ExternalFunction:
     """GELU activation kernel (tanh approximation) for bf16 tiles (must be 1024)."""
-    return _bf16_lut_factory("gelu", "gelu_bf16", "gelu.cc", tile_size, arg_arity=2)
+    return _bf16_lut_factory(
+        "gelu",
+        "gelu_bf16",
+        "gelu.cc",
+        tile_size,
+        arg_arity=2,
+        contract=_unary_lut_contract(gelu_ref, count=False),
+    )
 
 
 def silu(tile_size: int = 1024) -> ExternalFunction:
     """SiLU (Swish) activation kernel for bf16 tiles (must be 1024)."""
-    return _bf16_lut_factory("silu", "silu_bf16", "silu.cc", tile_size, arg_arity=2)
+    return _bf16_lut_factory(
+        "silu",
+        "silu_bf16",
+        "silu.cc",
+        tile_size,
+        arg_arity=2,
+        contract=_unary_lut_contract(silu_ref, count=False),
+    )
 
 
 def swiglu(tile_size: int = 1024) -> ExternalFunction:
-    """SwiGLU gated activation kernel for bf16 tiles (must be 1024)."""
+    """SwiGLU gated activation kernel for bf16 tiles (must be 1024).
+
+    ``out = (x * w1) * silu(x * w2)``; see [`swiglu_ref`][iron.kernels.activation.swiglu_ref].
+    """
     return _bf16_lut_factory(
-        "swiglu", "swiglu_bf16", "swiglu.cc", tile_size, arg_arity=4
+        "swiglu",
+        "swiglu_bf16",
+        "swiglu.cc",
+        tile_size,
+        arg_arity=4,
+        contract=KernelContract(
+            rounding_mode="conv_even",
+            roles=("in", "in", "in", "out"),
+            reference=swiglu_ref,
+            acc_dtype=bfloat16,
+            tolerance=_LUT_TOLERANCE,
+            ops_per_call=6 * tile_size,
+        ),
     )
 
 
 def bf16_exp(tile_size: int = 1024) -> ExternalFunction:
-    """Element-wise exponential kernel for bf16 tiles (must be 1024)."""
+    """Element-wise exponential kernel for bf16 tiles (must be 1024).
+
+    Computes ``exp(clip(x, -88, 88))``: the kernel saturates rather than
+    overflowing, so every input is well defined. See
+    [`bf16_exp_ref`][iron.kernels.activation.bf16_exp_ref] for why that
+    clamp is the table's own limit and costs no accuracy.
+    """
     return _bf16_lut_factory(
-        "bf16_exp", "exp_bf16_1024", "bf16_exp.cc", tile_size, arg_arity=2
+        "bf16_exp",
+        "exp_bf16_1024",
+        "bf16_exp.cc",
+        tile_size,
+        arg_arity=2,
+        contract=_unary_lut_contract(bf16_exp_ref, count=False),
     )
 
 
@@ -188,6 +303,16 @@ def exp2f_vec(tile_size: int = 1024, min_x: float = -111.0) -> ExternalFunction:
         source,
         [tile_ty, tile_ty, np.int32],
         compile_flags=[f"-DEXP2F_VEC_MIN_X={float(min_x)!r}f"],
+        contract=KernelContract(
+            rounding_mode="conv_even",
+            roles=("in", "out", "count"),
+            reference=lambda x: exp2f_vec_ref(x, min_x=min_x),
+            acc_dtype=np.float32,
+            tolerance=Tolerance.relative(
+                1e-3,
+                note="minimax poly targets 8.9e-5 relative error; see exp2f_vec_ref",
+            ),
+        ),
     )
 
 
@@ -200,7 +325,12 @@ def tanh(tile_size: int = 1024) -> ExternalFunction:
     """
     _require_fixed_tile_size("tanh", tile_size, _LUT_FIXED_TILE)
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
-    return _create_lut_kernel("tanh_bf16", "tanh.cc", [tile_ty, tile_ty, np.int32])
+    return _create_lut_kernel(
+        "tanh_bf16",
+        "tanh.cc",
+        [tile_ty, tile_ty, np.int32],
+        contract=_unary_lut_contract(tanh_ref, count=True),
+    )
 
 
 def sigmoid(tile_size: int = 1024) -> ExternalFunction:
@@ -211,7 +341,10 @@ def sigmoid(tile_size: int = 1024) -> ExternalFunction:
     _require_fixed_tile_size("sigmoid", tile_size, _LUT_FIXED_TILE)
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
     return _create_lut_kernel(
-        "sigmoid_bf16", "sigmoid.cc", [tile_ty, tile_ty, np.int32]
+        "sigmoid_bf16",
+        "sigmoid.cc",
+        [tile_ty, tile_ty, np.int32],
+        contract=_unary_lut_contract(sigmoid_ref, count=True),
     )
 
 
@@ -224,7 +357,23 @@ def leaky_relu(tile_size: int = 1024) -> ExternalFunction:
     _require_fixed_tile_size("leaky_relu", tile_size, _LUT_FIXED_TILE)
     tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
     return _create_lut_kernel(
-        "leaky_relu_bf16", "leaky_relu.cc", [tile_ty, tile_ty, np.int32, bfloat16]
+        "leaky_relu_bf16",
+        "leaky_relu.cc",
+        [tile_ty, tile_ty, np.int32, bfloat16],
+        contract=KernelContract(
+            rounding_mode="conv_even",
+            roles=("in", "out", "count", "scalar"),
+            reference=leaky_relu_ref,
+            nonfinite="propagate",
+            subnormals="preserve",
+            acc_dtype=bfloat16,
+            tolerance=Tolerance.relative(
+                0.03,
+                0.05,
+                max_mismatch_frac=0.02,
+                note="exact up to bf16 rounding of alpha*x; measured by test_kernels_e2e",
+            ),
+        ),
     )
 
 
@@ -300,20 +449,46 @@ def leaky_relu_ref(x, alpha=0.01):
     return np.where(xf > 0.0, xf, alpha * xf).astype(x.dtype)
 
 
+def swiglu_ref(x, w1, w2):
+    """Numpy reference for [`swiglu`][iron.kernels.activation.swiglu]: ``(x * w1) * silu(x * w2)``.
+
+    ``swiglu.cc`` forms the two products in bf16, then ``silu`` of the second
+    through the tanh LUT (``0.5 * (1 + tanh(z / 2))``). The reference rounds
+    the two products to bf16 as the kernel does and computes the rest in
+    float32; LUT-approximation territory, pair with ``rtol=0.128``.
+    """
+    xf = x.astype(np.float32)
+    xw1 = (xf * w1.astype(np.float32)).astype(bfloat16).astype(np.float32)
+    xw2 = (xf * w2.astype(np.float32)).astype(bfloat16).astype(np.float32)
+    return (xw1 * (xw2 / (1.0 + np.exp(-xw2)))).astype(x.dtype)
+
+
 def bf16_exp_ref(x):
     """Numpy reference for [`bf16_exp`][iron.kernels.activation.bf16_exp] — element-wise ``exp(x)``.
 
-    LUT approximation territory; the AIE kernel saturates on large inputs.
-    Pair with the canonical 12.8% relative tolerance and ``stop_at_
-    nonfinite=True`` (the default in
+    LUT approximation territory; pair with the canonical 12.8% relative
+    tolerance and ``stop_at_nonfinite=True`` (the default in
     `count_mismatches`) when verifying.
+
+    ``exp(clip(x, -88, 88))``, not plain ``exp(x)``: the kernel clamps to
+    ``EXP_BF16_CLAMP`` before its Q8 fixed-point table lookup (see
+    ``aie_runtime_lib/AIE2/lut_based_ops.h``), so it saturates rather than
+    overflowing. The clamp is exact -- ``+88`` is the largest value the
+    tables carry and ``exp(-88)`` has already underflowed bf16 to 0 -- so
+    this matches the device over the whole real line, including the inputs
+    that used to wrap. It also keeps the reference itself in range:
+    ``exp(88) = 1.65e+38`` fits float32 where ``exp(89)`` would not.
     """
-    xf = x.astype(np.float32)
-    with np.errstate(over="ignore", invalid="ignore"):
+    xf = np.clip(x.astype(np.float32), -_EXP_BF16_CLAMP, _EXP_BF16_CLAMP)
+    # The clamp rules out overflow, so that warning stays un-suppressed and
+    # would now be a real signal. A NaN input still reaches exp -- the kernel
+    # declares nonfinite="unspecified" and callers do feed raw bit patterns
+    # (programming_examples/basic/vector_exp sweeps all 65536 of them).
+    with np.errstate(invalid="ignore"):
         return np.exp(xf).astype(x.dtype)
 
 
-def exp2f_vec_ref(x):
+def exp2f_vec_ref(x, min_x: float = -111.0):
     """Numpy reference for [`exp2f_vec`][iron.kernels.activation.exp2f_vec]: exact ``2**x``.
 
     Unlike the LUT-based refs above, this is float64 ``2**x`` (not a
@@ -321,8 +496,12 @@ def exp2f_vec_ref(x):
     relative error by design, several orders tighter than the LUT-based
     kernels' 12.8% default, so pair with a correspondingly tight
     tolerance (e.g. ``rtol=1e-3``) rather than the LUT default.
+
+    The kernel clamps its input to ``min_x`` before evaluating (see the
+    factory's ``min_x``), so the reference does the same: ``2**-5000`` is
+    ``2**min_x`` on the device, not zero. Pass the factory's ``min_x``.
     """
-    xf = x.astype(np.float64)
+    xf = np.maximum(x.astype(np.float64), min_x)
     return np.exp2(xf).astype(x.dtype)
 
 

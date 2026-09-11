@@ -80,10 +80,10 @@ KERNEL_SPECS: list[KernelSpec] = [
         arg_count=3,
         expected_name="passThroughLine",
         shape_checks=[
-            (dict(tile_size=64, dtype=np.int16), 0, (64,)),
+            (dict(tile_size=192, dtype=np.int16), 0, (192,)),
         ],
         tile_size_checks=[
-            (dict(tile_size=256, dtype=np.uint8), 256),
+            (dict(tile_size=384, dtype=np.uint8), 384),
         ],
     ),
     KernelSpec(
@@ -430,10 +430,11 @@ KERNEL_SPECS: list[KernelSpec] = [
         expected_name="addWeightedLine",
         name_variants=[
             (dict(line_width=1920, dtype=np.int16), "addWeightedLine"),
-            (dict(line_width=1920, dtype=np.int32), "addWeightedLine"),
         ],
         invalid_kwargs=[
             (dict(line_width=1920, dtype=np.float32), "unsupported dtype"),
+            # addWeighted.cc's int32 branch has no int32 x int16 MAC and never compiled.
+            (dict(line_width=1920, dtype=np.int32), "no int32 build"),
         ],
         shape_checks=[(dict(line_width=640, dtype=np.uint8), 0, (640,))],
     ),
@@ -706,7 +707,12 @@ KERNEL_SPECS: list[KernelSpec] = [
         arg_count=2,
         expected_name="transpose_4x4",
         name_variants=[(dict(dim_m=32, dim_n=32, subtile=8), "transpose_8x8")],
-        invalid_kwargs=[(dict(subtile=3), "subtile must be 4 or 8")],
+        invalid_kwargs=[
+            (dict(subtile=3), "subtile must be 4 or 8"),
+            # dim_m=0 sails through the modulo checks below (0 % anything is
+            # 0) and would otherwise reach the kernel's compile-time division.
+            (dict(dim_m=0, dim_n=4, subtile=4, dtype=np.uint32), "must be positive"),
+        ],
     ),
     KernelSpec(
         name="convert_copy",
@@ -937,12 +943,12 @@ def test_tile_size_equivalent_to_arg_shape_first_dim():
 
 def test_arg_shape_out_of_range_raises():
     """Out-of-range arg_index gets a clean error — same as tile_size()."""
-    ef = kernels.passthrough(tile_size=64, dtype=np.int32)  # 3 args
+    ef = kernels.passthrough(tile_size=96, dtype=np.int32)  # 3 args
     with pytest.raises(ValueError, match="out of range"):
         ef.arg_shape(99)
 
 
 def test_arg_dtype_out_of_range_raises():
-    ef = kernels.passthrough(tile_size=64, dtype=np.int32)
+    ef = kernels.passthrough(tile_size=96, dtype=np.int32)
     with pytest.raises(ValueError, match="out of range"):
         ef.arg_dtype(99)

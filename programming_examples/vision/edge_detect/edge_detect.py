@@ -16,6 +16,7 @@ import argparse
 import sys
 
 import aie.iron as iron
+import aie.iron.kernels as kernels
 import numpy as np
 from aie.iron import (
     Buffer,
@@ -26,7 +27,6 @@ from aie.iron import (
     Program,
     Runtime,
     Worker,
-    kernels,
 )
 from aie.iron.controlflow import range_
 from aie.utils.hostruntime.argparse import (
@@ -256,16 +256,9 @@ def _compile_kwargs(opts):
 
 
 def _rgba2gray_ref(rgba_uint8, height, width):
-    """Numpy port of ``rgba2gray_aie`` (SRS_SHIFT=15)."""
-    rgba = rgba_uint8.reshape(height, width, 4)
-    r = rgba[..., 0].astype(np.int32)
-    g = rgba[..., 1].astype(np.int32)
-    b = rgba[..., 2].astype(np.int32)
-    wt_r = int(round(0.299 * (1 << 15)))  # 9798
-    wt_g = int(round(0.587 * (1 << 15)))  # 19235
-    wt_b = int(round(0.114 * (1 << 15)))  # 3736
-    y = (wt_r * r + wt_g * g + wt_b * b + (1 << 14)) >> 15
-    return np.clip(y, 0, 255).astype(np.uint8)
+    """``kernels.rgba2gray_ref`` (the kernel's Q0.15 luma), one image at a time."""
+    del height, width  # the reference is per pixel
+    return kernels.rgba2gray_ref(rgba_uint8.reshape(-1))
 
 
 def _filter2d_cv_ref(gray_uint8, height, width):
@@ -284,23 +277,22 @@ def _filter2d_cv_ref(gray_uint8, height, width):
 
 
 def _threshold_binary_ref(arr_uint8, thresh, max_val):
-    """cv::threshold with THRESH_BINARY: out = (in > thresh) ? max : 0."""
-    return np.where(arr_uint8 > thresh, np.uint8(max_val), np.uint8(0))
+    """cv::threshold THRESH_BINARY: ``kernels.threshold_ref`` with type 0."""
+    return kernels.threshold_ref(arr_uint8, thresh, max_val, 0)
 
 
 def _gray2rgba_ref(gray_uint8):
-    """Replicate gray to R/G/B with alpha=255 (matches ``gray2rgba_aie``)."""
-    flat = gray_uint8.reshape(-1)
-    out = np.zeros((flat.size, 4), dtype=np.uint8)
-    out[:, 0] = flat
-    out[:, 1] = flat
-    out[:, 2] = flat
-    out[:, 3] = 255
-    return out.reshape(-1)
+    """Replicate gray to R/G/B with alpha=255: ``kernels.gray2rgba_ref``."""
+    return kernels.gray2rgba_ref(gray_uint8.reshape(-1))
 
 
 def _add_weighted_cv_ref(a_uint8, b_uint8, alpha, beta, gamma):
     """Numpy equivalent of cv::addWeighted: ``saturate(alpha*a + beta*b + gamma)``.
+
+    Deliberately the OpenCV formula and not ``kernels.add_weighted_ref``: this
+    file mirrors test.cpp's OpenCV pipeline and judges the whole image by an
+    L1 epsilon, whereas the library reference follows the kernel's Q2.14
+    fixed point exactly.
     test.cpp passes alpha=beta=1.0, gamma=0.0; the AIE kernel computes
     ``(a+b)/2`` in fixed-point — the diffs land under ``_EPSILON``.
     """

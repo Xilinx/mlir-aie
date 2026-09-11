@@ -523,6 +523,7 @@ void conv2dk3_i8_vector(int8_t *line0, int8_t *line1, int8_t *line2,
           auto tmp_a2 = aie::load_v<32>(line[i]); // act 4..7 (ic0..7 for each)
           auto in_a = aie::concat(tmp_a1, tmp_a2);
 
+          aie::vector<int8, 64> tmp_a;
 #ifdef BORDER_REPLICATE
           tmp_a1 = aie::shuffle_up(tmp_a1, 24);
           tmp_a.insert<32>(1, tmp_a1);
@@ -785,11 +786,13 @@ void conv2dk3_i8_vector(int8_t *line0, int8_t *line1, int8_t *line2,
           auto tmp_a2 =
               aie::load_v<32>(line[i]); // act 28..31 (ic0..7 for each)
           auto in_a = aie::concat(tmp_a1, tmp_a2);
+
+          aie::vector<int8, 64> tmp_a;
 #ifdef BORDER_REPLICATE
           tmp_a2 = aie::shuffle_down(tmp_a2, 24);
           tmp_a.insert<32>(0, tmp_a2);
 #else
-          auto tmp_a = aie::zeros<int8, 64>();
+          tmp_a = aie::zeros<int8, 64>();
 #endif
           // shift by 32-8 (fill 32 then shift up by 8)
           in_a = aie::shuffle_down_fill(in_a, tmp_a, 24); // act 27..31 - - -

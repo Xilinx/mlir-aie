@@ -22,6 +22,7 @@ import argparse
 import sys
 
 import aie.iron as iron
+import aie.iron.kernels as kernels
 import numpy as np
 from aie.helpers.taplib.tensortiler2d import TensorTiler2D
 from aie.iron import (
@@ -33,7 +34,6 @@ from aie.iron import (
     Program,
     Runtime,
     Worker,
-    kernels,
     str_to_dtype,
 )
 from aie.iron.controlflow import range_

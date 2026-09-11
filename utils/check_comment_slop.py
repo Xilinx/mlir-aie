@@ -119,6 +119,17 @@ STOPWORDS = {
 # as a repeated explanation.
 COMMENT_RE_PY = re.compile(r"^\s*#")
 COMMENT_RE_CISH = re.compile(r"^\s*(//|/\*|\*/|\*(?=\s|$))")
+
+# The license header every file carries by policy is not an explanation anyone
+# wrote twice, so it is not slop: counting it reports any commit that adds three
+# files as repeating one concept, and inflates the comment-density note besides.
+# Anchored to the start of a (stripped) line so an unrelated comment that merely
+# mentions "copyright" or "SPDX" in passing does not also count as the header.
+LICENSE_RE = re.compile(r"^(copyright\b|spdx-license-identifier:)", re.IGNORECASE)
+# The blank separator line(s), the "name.py -*- Python -*-" mode line, and the
+# "//===- name.cc ... -*- C++ -*-===//" / "//===...===//" LLVM-style banner
+# lines this repo's header conventions wrap the two lines above in.
+_HEADER_FILLER_RE = re.compile(r"^(\s*|\S*\s*-\*-.*-\*-\s*|={2,}.*={2,}/{0,2})$")
 SOURCE_SUFFIXES = (
     ".c",
     ".cc",
@@ -315,7 +326,16 @@ def collect(diff):
             current = None
             if text.strip():
                 code += 1
-    return blocks, code
+    # Drop a block only if every line in it is header boilerplate, so an
+    # explanation with no blank/code line separating it from the header
+    # keeps its own lines rather than being dropped along with it.
+    return [
+        b
+        for b in blocks
+        if not all(
+            LICENSE_RE.search(line) or _HEADER_FILLER_RE.match(line) for line in b.lines
+        )
+    ], code
 
 
 def find_duplicates(blocks):
