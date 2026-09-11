@@ -126,9 +126,10 @@ COMMENT_RE_CISH = re.compile(r"^\s*(//|/\*|\*/|\*(?=\s|$))")
 # Anchored to the start of a (stripped) line so an unrelated comment that merely
 # mentions "copyright" or "SPDX" in passing does not also count as the header.
 LICENSE_RE = re.compile(r"^(copyright\b|spdx-license-identifier:)", re.IGNORECASE)
-# The blank separator line(s) and "name.py -*- Python -*-" / "-*- C++ -*-"
-# mode-line this repo's header convention wraps the two lines above in.
-_HEADER_FILLER_RE = re.compile(r"^(\s*|\S*\s*-\*-.*-\*-\s*)$")
+# The blank separator line(s), the "name.py -*- Python -*-" mode line, and the
+# "//===- name.cc ... -*- C++ -*-===//" / "//===...===//" LLVM-style banner
+# lines this repo's header conventions wrap the two lines above in.
+_HEADER_FILLER_RE = re.compile(r"^(\s*|\S*\s*-\*-.*-\*-\s*|={2,}.*={2,}/{0,2})$")
 SOURCE_SUFFIXES = (
     ".c",
     ".cc",

@@ -186,6 +186,7 @@ def rope(cols: int = 4096) -> ExternalFunction:
         _default_source_path("rope.cc", subdir="aie2p"),
         [tile_ty, tile_ty, tile_ty, np.int32],
         contract=KernelContract(
+            rounding_mode="conv_even",
             roles=("in", "in", "out", "count"),
             reference=rope_ref,
             acc_dtype=np.float32,

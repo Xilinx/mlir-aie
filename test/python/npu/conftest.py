@@ -46,9 +46,16 @@ def _device_generation() -> str | None:
     from aie.utils import get_current_device
     from aie.utils.compile.utils import resolve_target_arch
 
+    # ``resolve_target_arch(None)`` deliberately defaults to "aie2" for callers
+    # that don't care about device-specific codegen; here it would misclassify
+    # "no device" (e.g. a static-checks runner with no NPU attached) as npu1
+    # and skip every npu2-only case. Bail out before that default kicks in.
+    device = get_current_device()
+    if device is None:
+        return None
     try:
-        arch = resolve_target_arch(get_current_device())
-    except Exception:  # noqa: BLE001 - no device: nothing to skip on
+        arch = resolve_target_arch(device)
+    except Exception:  # noqa: BLE001 - unrecognized device: nothing to skip on
         return None
     return "npu2" if arch == "aie2p" else "npu1"
 
