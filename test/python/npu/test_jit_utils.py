@@ -237,11 +237,7 @@ def test_compile_external_kernel_marks_compiled(npu_target_arch):
 
 
 def test_compile_external_kernel_skip_is_per_kernel_dir(npu_target_arch):
-    """The skip covers the directory already built into, not the function.
-
-    Skipping on the flag alone denies a second design its own object, so the
-    same func compiled into a fresh directory must compile again.
-    """
+    """The skip covers the directory already built into, not the function."""
     func = ExternalFunction(
         "add_one",
         source_string='extern "C" void add_one() {}',

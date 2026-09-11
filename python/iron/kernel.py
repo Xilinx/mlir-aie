@@ -451,7 +451,6 @@ class ExternalFunction(Kernel):
         self._compile_flags = compile_flags if compile_flags is not None else []
         self._use_chess = use_chess
         self._compiled = False
-        # Which kernel_dir that compile wrote into; see _compiled_into().
         self._compiled_dir = None
         self._cached_digest: str | None = None
 

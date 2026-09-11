@@ -153,13 +153,7 @@ def test_source_string_design_include_dirs_follow_kernel_dirs(tmp_path, stub_com
 
 
 def test_reused_kernel_compiles_into_each_design_directory(stub_compiler, tmp_path):
-    """One ExternalFunction compiled by two designs must land in both directories.
-
-    A kernel built at module scope outlives the design that compiled it, so the
-    record of "already compiled" has to name the directory it wrote into.  Keyed
-    on a bare flag, the second design skips its own compile and its kernel_dir
-    holds no object for aiecc's linker -- and never sees its own -I paths.
-    """
+    """One ExternalFunction compiled by two designs must land in both directories."""
     src = tmp_path / "k.cc"
     src.write_text(SOURCE)
     func = _stub_func("k", src)

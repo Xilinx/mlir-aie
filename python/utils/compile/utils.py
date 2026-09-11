@@ -633,13 +633,9 @@ def _copy_source(dest: str, src: str) -> None:
 def _compiled_into(func, kernel_dir) -> bool:
     """Report whether ``func``'s object was already built into this ``kernel_dir``.
 
-    ``_compiled`` alone cannot answer it.  One ExternalFunction can be compiled
-    by several designs -- the module-scope kernel of
-    ``programming_examples/algorithms/README.md`` is the documented shape -- and
-    each design compiles into its own ``kernel_dir`` with its own ``-I`` paths.
-    A flag that only remembers *whether* a compile happened makes every design
-    after the first skip its own, leaving that design's directory with no object
-    for aiecc's linker to find.
+    One ExternalFunction can be compiled by several designs, each into its own
+    directory, so ``_compiled`` on its own would deny every design after the
+    first an object.
     """
     compiled_dir = getattr(func, "_compiled_dir", None)
     if not getattr(func, "_compiled", False) or compiled_dir is None:
@@ -724,7 +720,6 @@ def compile_external_kernel(func, kernel_dir, target_arch, include_dirs=None):
         include_dirs: Design-wide include directories appended after the
             ExternalFunction's own include directories.
     """
-    # Skip only if this session already built it into this same directory.
     if _compiled_into(func, kernel_dir):
         return
 
