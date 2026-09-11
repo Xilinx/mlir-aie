@@ -163,7 +163,8 @@ recurse:
     throw std::runtime_error("expected recursion failure kind");
   }
   if (result.error.find("recurse@0x") == std::string::npos) {
-    throw std::runtime_error("expected preserved call graph through _main_init");
+    throw std::runtime_error(
+        "expected preserved call graph through _main_init");
   }
 }
 
