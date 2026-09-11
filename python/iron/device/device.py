@@ -62,17 +62,17 @@ class Device(Resolvable):
         return AIETileType(self._tm.get_tile_type(col, row))
 
     def get_dma_bd_wrap_bits(self, col, row) -> int:
-        """Bit width of a DMA buffer descriptor's wrap (size) field at the given device coordinates."""
+        """Wrap (size) field width, in bits."""
         self._validate_coordinates(col, row)
         return self._tm.get_dma_bd_wrap_bits(col, row)
 
     def get_dma_bd_step_bits(self, col, row) -> int:
-        """Bit width of a DMA buffer descriptor's step (stride) field at the given device coordinates."""
+        """Step (stride) field width, in bits. The field counts address granules."""
         self._validate_coordinates(col, row)
         return self._tm.get_dma_bd_step_bits(col, row)
 
     def get_dma_bd_iter_bits(self, col, row) -> int:
-        """Bit width of a DMA buffer descriptor's iteration (repeat) wrap/stride fields at the given device coordinates."""
+        """Iteration (repeat) field width, in bits."""
         self._validate_coordinates(col, row)
         return self._tm.get_dma_bd_iter_bits(col, row)
 
