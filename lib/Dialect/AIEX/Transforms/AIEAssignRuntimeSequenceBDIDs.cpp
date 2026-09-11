@@ -169,8 +169,12 @@ struct AIEAssignRuntimeSequenceBDIDsPass
         if (gen.bdIdAlreadyAssigned(bd_op.getBdId().value())) {
           op.emitOpError("Specified buffer descriptor ID ")
               << bd_op.getBdId().value()
-              << " is already in use. Emit an aiex.dma_free_task operation to "
-                 "reuse BDs.";
+              << " is already in use. Release the earlier task first: "
+                 "aiex.dma_await_task waits for hardware completion before its "
+                 "BDs are reusable. aiex.dma_free_task also releases them but "
+                 "does NOT wait, so it is only safe when some other "
+                 "synchronization already guarantees that task has finished "
+                 "(see programming_guide/section-2/section-2d/DMATasks.md).";
           return WalkResult::interrupt();
         }
         gen.assignBdId(bd_op.getBdId().value());
@@ -199,8 +203,13 @@ struct AIEAssignRuntimeSequenceBDIDsPass
                 << tile.getCol() << "," << tile.getRow()
                 << "), which supports up to "
                 << tm.getNumBDs(tile.getCol(), tile.getRow())
-                << ". Emit an aiex.dma_free_task / aiex.dma_await_task to "
-                   "reuse BDs.";
+                << ". Emit an aiex.dma_await_task to free BDs for reuse; it "
+                   "waits for hardware completion, so the recycled ids are no "
+                   "longer in flight. aiex.dma_free_task also recycles ids but "
+                   "does NOT wait for completion -- using it before the task "
+                   "has finished is a race -- so reach for it only when some "
+                   "other synchronization already guarantees completion (see "
+                   "programming_guide/section-2/section-2d/DMATasks.md).";
             return WalkResult::interrupt();
           }
           bd_op.setBdId(next_id);
