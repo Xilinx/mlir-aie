@@ -108,6 +108,20 @@ LogicalResult appendMaskWrite32(std::vector<uint32_t> &instructions,
   return success();
 }
 
+LogicalResult appendMaskPoll(std::vector<uint32_t> &instructions,
+                             NpuMaskPollOp op) {
+  if (op.getBuffer())
+    return op.emitOpError("Cannot translate symbolic address");
+  std::optional<uint32_t> address = op.getAbsoluteAddress();
+  std::optional<uint32_t> value = AIEX::getConstantIntOperand(op.getValue());
+  std::optional<uint32_t> mask = AIEX::getConstantIntOperand(op.getMask());
+  if (!address || !value || !mask)
+    return op.emitOpError("Cannot translate maskpoll with non-constant "
+                          "address, value, or mask to a static TXN binary");
+  aie_runtime::txn_append_maskpoll32(instructions, *address, *value, *mask);
+  return success();
+}
+
 void appendLoadPdi(std::vector<uint32_t> &instructions, NpuLoadPdiOp op) {
   aie_runtime::txn_append_loadpdi(instructions, op.getId(), op.getSize(),
                                   op.getAddress());
@@ -451,6 +465,15 @@ LogicalResult xilinx::AIE::AIETranslateNpuToBinary(
             if (failed(appendMaskWrite32(instructions, op)))
               result = failure();
             pushLocEntry(locmap, before, byteOffset(), "MASKWRITE",
+                         op->getName().getStringRef(), addr, op, tm);
+          })
+          .Case<NpuMaskPollOp>([&](auto op) {
+            count++;
+            uint32_t before = byteOffset();
+            uint64_t addr = op.getAbsoluteAddress().value_or(0);
+            if (failed(appendMaskPoll(instructions, op)))
+              result = failure();
+            pushLocEntry(locmap, before, byteOffset(), "MASKPOLL",
                          op->getName().getStringRef(), addr, op, tm);
           })
           .Case<NpuLoadPdiOp>([&](auto op) {

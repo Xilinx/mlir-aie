@@ -921,6 +921,42 @@ def AIE_NpuAssertBdDivisibleOp: AIEX_Op<"npu.assert_bd_divisible", []> {
 }
 
 // MASKWRITE
+def AIE_NpuMaskPollOp: AIEX_Op<"npu.maskpoll", []> {
+  let summary = "Block the runtime sequence until a masked 32-bit register matches";
+  let arguments = (
+    ins I32:$address,
+        I32:$value,
+        I32:$mask,
+        OptionalAttr<FlatSymbolRefAttr>:$buffer,
+        OptionalAttr<I32Attr>:$column,
+        OptionalAttr<I32Attr>:$row
+  );
+  let results = (outs );
+  let assemblyFormat = [{
+    `(` $address `,` $value `,` $mask `)` attr-dict `:` type($address) `,` type($value) `,` type($mask)
+  }];
+  let description = [{
+    Stalls the runtime sequence until `(reg & mask) == value` for the register
+    at 'address'. This is the read-side counterpart to `npu.maskwrite32`: the
+    NPU instruction stream has no way to branch on a register, but it can wait
+    on one, which is enough to turn a timing assumption into an enforced
+    precondition.
+
+    The poll timeout is not encoded in the transaction; the firmware applies its
+    own default (see `XAIE_IO_MASKPOLL` in aie-rt's xaie_txn.c). A condition
+    that never becomes true therefore surfaces as a dispatch timeout rather
+    than hanging forever.
+
+    Address interpretation matches `npu.maskwrite32`: an offset into 'buffer'
+    if present, else an offset into aie.tile('column', 'row') if those are
+    present, else a full 32-bit array address.
+  }];
+  let extraClassDeclaration = [{
+    // Compile-time absolute address, or nullopt if 'address' is not constant.
+    std::optional<uint32_t> getAbsoluteAddress();
+  }];
+}
+
 def AIE_NpuMaskWrite32Op: AIEX_Op<"npu.maskwrite32", []> {
   let summary = "Write a masked 32-bit value to the AIE array";
   let arguments = (
