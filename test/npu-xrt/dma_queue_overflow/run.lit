@@ -1,0 +1,22 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// REQUIRES: ryzen_ai, peano
+//
+// RUN: cp %S/aie.mlir aie_arch.mlir
+// RUN: %run_on_npu1% sed 's/NPUDEVICE/npu1_1col/g' -i aie_arch.mlir
+// RUN: %run_on_npu2% sed 's/NPUDEVICE/npu2_1col/g' -i aie_arch.mlir
+// Enforcement is what makes this design run at all: without it the queue
+// overflows, transfers are dropped, and the trailing await never returns.
+// RUN: aie-opt --aie-assign-runtime-sequence-bd-ids='enforce-queue-depth=true' aie_arch.mlir -o aie_enforced.mlir
+// RUN: FileCheck %s --input-file=aie_enforced.mlir --check-prefix=POLL
+// RUN: %aiecc --get-xclbin --get-npu-insts --xclbin-name=aie.xclbin --npu-insts-name=insts.bin aie_enforced.mlir
+// RUN: %host_clang %S/test.cpp -o test.exe -std=c++17 -Wall %xrt_flags %host_link_flags %test_utils_flags
+// RUN: %run_on_npu1% ./test.exe -x aie.xclbin -k MLIR_AIE -i insts.bin
+// RUN: %run_on_npu2% ./test.exe -x aie.xclbin -k MLIR_AIE -i insts.bin
+
+// The poll waits for the depth bit of Task_Queue_Size to clear on shim
+// DMA_MM2S_Status_0 (0x1D228 = 119336), i.e. mask 0x400000 = 4194304.
+// POLL-DAG: arith.constant 119336 : i32
+// POLL-DAG: arith.constant 4194304 : i32
+// POLL: aiex.npu.maskpoll
