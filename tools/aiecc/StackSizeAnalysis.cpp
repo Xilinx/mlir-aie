@@ -10,6 +10,7 @@
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Object/ELFObjectFile.h"
 #include "llvm/Object/ObjectFile.h"
@@ -72,6 +73,10 @@ struct Graph {
   llvm::StringRef nameOf(uint64_t addr) const {
     const SymbolRanges::Entry *e = funcs.owner(addr);
     return e ? e->name : llvm::StringRef("<unknown>");
+  }
+
+  std::string describe(uint64_t addr) const {
+    return nameOf(addr).str() + "@0x" + llvm::utohexstr(addr);
   }
 };
 
@@ -186,6 +191,15 @@ bool readFrameSizes(ObjectFile &obj, SectionRef sec, Graph &graph) {
   return true;
 }
 
+bool isZeroSizedFunctionSymbol(const SymbolRef &sym) {
+  auto type = sym.getType();
+  if (!type) {
+    llvm::consumeError(type.takeError());
+    return false;
+  }
+  return *type == SymbolRef::ST_Function && ELFSymbolRef(sym).getSize() == 0;
+}
+
 // Records one call edge, or one half of the function-pointer heuristic, per
 // relocation. `patched` is the address the relocation writes, `target` the
 // address it writes there.
@@ -256,9 +270,9 @@ std::optional<int64_t> maxPathFrom(uint64_t sym, const Graph &graph,
   if (st == VisitState::InProgress) {
     std::string cycle;
     for (uint64_t s : pathStack) {
-      cycle += graph.nameOf(s).str() + " -> ";
+      cycle += graph.describe(s) + " -> ";
     }
-    cycle += graph.nameOf(sym).str();
+    cycle += graph.describe(sym);
     error = "recursion detected: " + cycle;
     failureKind = StackRequirementFailure::Cycle;
     return std::nullopt;
@@ -359,6 +373,13 @@ StackRequirementResult xilinx::aiecc::computeStackRequirement(
       symbol_iterator target = rel.getSymbol();
       if (target == obj.symbol_end()) {
         continue; // no symbol to attribute this relocation to
+      }
+      // A fully inlined entry point can survive the link as a zero-sized FUNC
+      // symbol that aliases the next real function in .text. Attributing this
+      // relocation by address alone would invent a call edge to that other
+      // function.
+      if (isZeroSizedFunctionSymbol(*target)) {
+        continue;
       }
       auto targetAddr = target->getAddress();
       if (!targetAddr) {

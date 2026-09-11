@@ -27,11 +27,33 @@ else()
 endif()
 add_test(NAME Bfloat16Fallback COMMAND bfloat16_fallback_test)
 
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  llvm_map_components_to_libnames(stack_analysis_llvm_libs support core irreader object)
+
+  add_executable(stack_size_analysis_false_recursion_test
+    stack_size_analysis_false_recursion_test.cpp
+    ${CMAKE_SOURCE_DIR}/tools/aiecc/StackSizeAnalysis.cpp)
+  target_include_directories(stack_size_analysis_false_recursion_test
+                             PRIVATE ${CMAKE_SOURCE_DIR})
+  target_compile_definitions(stack_size_analysis_false_recursion_test
+                             PRIVATE
+                             AIE_STACK_SIZE_ANALYSIS_TEST_CLANG="${CMAKE_C_COMPILER}")
+  target_link_libraries(stack_size_analysis_false_recursion_test
+                        PRIVATE ${stack_analysis_llvm_libs})
+  add_test(NAME StackSizeAnalysisFalseRecursion
+           COMMAND stack_size_analysis_false_recursion_test)
+endif()
+
 get_property(dialect_libs GLOBAL PROPERTY MLIR_DIALECT_LIBS)
 
 set(EXECUTABLES target_model target_model_rtti target_model_unknown_device register_database)
 
-add_custom_target(check-aie-cpp COMMAND ${CMAKE_CTEST_COMMAND} DEPENDS ${EXECUTABLES} bfloat16_fallback_test)
+set(CPP_TEST_DEPENDS ${EXECUTABLES} bfloat16_fallback_test)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  list(APPEND CPP_TEST_DEPENDS stack_size_analysis_false_recursion_test)
+endif()
+add_custom_target(check-aie-cpp COMMAND ${CMAKE_CTEST_COMMAND}
+                  DEPENDS ${CPP_TEST_DEPENDS})
 
 foreach(executable ${EXECUTABLES})
     target_link_libraries(${executable}
