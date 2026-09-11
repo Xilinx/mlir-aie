@@ -66,6 +66,9 @@ void patchElfAsAieWithNumberedDataRelocation(llvm::StringRef elfPath) {
       ehdr->e_ident[EI_MAG2] != ELFMAG2 || ehdr->e_ident[EI_MAG3] != ELFMAG3) {
     throw std::runtime_error("expected an ELF test fixture");
   }
+  if (ehdr->e_ident[EI_DATA] != ELFDATA2LSB) {
+    throw std::runtime_error("expected a little-endian ELF test fixture");
+  }
   if (ehdr->e_ident[EI_CLASS] != ELFCLASS64) {
     throw std::runtime_error("expected an ELF64 test fixture");
   }
