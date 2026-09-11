@@ -3,28 +3,34 @@
 
 name: Kernel Benchmarks on Ryzen AI
 
-# Nightly: record cycles / wall time / compile size for aie_kernels via the
-# IRON JIT path and publish graphs to the site. Never gates PRs.
-# Peano/LLVM-bump PRs: compare against the nightly baseline; the action
-# comments only if a hard-threshold series regressed. Everything else: no
-# comments, no data, just a red run and an artifact.
+# Record cycles / wall time / compile size for aie_kernels via the IRON JIT
+# path and publish graphs to the site. Never gates PRs. On Peano/LLVM-bump
+# PRs: compare against the recorded baseline; the action comments only if a
+# hard-threshold series regressed. Everything else: no comments, no data,
+# just a red run and an artifact.
+#
+# SOFT RELEASE: manual (workflow_dispatch) only while this settles. The
+# nightly and PR triggers below are commented out, not deleted -- restoring
+# them is uncommenting the two blocks. Until then nothing records a baseline
+# on a schedule, so the first manual runs are what seed it.
 
 permissions:
-  contents: write        # push gh-pages benchmark data (nightly only)
+  contents: write        # push gh-pages benchmark data (main only)
   pull-requests: write   # sticky comment (peano PRs only)
 
 on:
-  schedule:
-    - cron: '0 6 * * *'          # after the 00:00 test nightly
   workflow_dispatch:
     inputs:
       only:
         description: 'regex on kernel names (e.g. linalg/)'
         required: false
         default: ''
-  pull_request:
-    paths:
-      - utils/peano-requirements.txt
+  # --- soft release: re-enable together when this is trusted ---------------
+  # schedule:
+  #   - cron: '0 6 * * *'          # after the 00:00 test nightly
+  # pull_request:
+  #   paths:
+  #     - utils/peano-requirements.txt
 
 defaults:
   run:
@@ -130,9 +136,9 @@ jobs:
             correctness.xml
           if-no-files-found: ignore
 
-      # ---------------- nightly / dispatch: record history --------------
-      - name: Record to gh-pages (nightly)
-        if: github.event_name != 'pull_request' && hashFiles('bench.json') != ''
+      # ---------------- record history (main only) ----------------------
+      - name: Record to gh-pages (main only)
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && hashFiles('bench.json') != ''
         uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba  # v1.22.1
         with:
           name: aie_kernels (${{ matrix.expected_npu }})
@@ -152,7 +158,7 @@ jobs:
           summary-always: true
           max-items-in-chart: 400
 
-      - name: Save baseline for PR comparisons (nightly)
+      - name: Save baseline for PR comparisons
         if: github.event_name != 'pull_request' && hashFiles('bench.json') != ''
         run: |
           mkdir -p baseline
