@@ -3,8 +3,10 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 
+// Enforcement pinned off: these stanzas are about what the count reports, and
+// with it on the compiler inserts a poll instead of saying anything.
 // RUN: aie-opt --aie-unroll-runtime-sequence-loops --canonicalize \
-// RUN:         --aie-assign-runtime-sequence-bd-ids \
+// RUN:         --aie-assign-runtime-sequence-bd-ids='enforce-queue-depth=false' \
 // RUN:         --verify-diagnostics --split-input-file %s
 
 // A DMA channel's task queue holds only getDmaTaskQueueDepth() entries (4 on

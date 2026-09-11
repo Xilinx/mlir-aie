@@ -190,7 +190,7 @@ def AIEDmaToNpu : Pass<"aie-dma-to-npu", "AIE::DeviceOp"> {
 
   let options = [
     Option<"enforceQueueDepth", "enforce-queue-depth", "bool",
-           /*default=*/"false",
+           /*default=*/"true",
            "Insert an aiex.npu.maskpoll before any npu.dma_memcpy_nd that could "
            "push onto a full DMA task queue. Mirrors the option of the same "
            "name on aie-assign-runtime-sequence-bd-ids, which covers the "
@@ -330,11 +330,13 @@ def AIEAssignRuntimeSequenceBDIDs : Pass<"aie-assign-runtime-sequence-bd-ids", "
 
   let options = [
     Option<"enforceQueueDepth", "enforce-queue-depth", "bool",
-           /*default=*/"false",
+           /*default=*/"true",
            "Insert an aiex.npu.maskpoll before any dma_start_task that could "
            "push onto a full DMA task queue, so the sequence waits for a free "
-           "slot instead of racing on drain timing. Off by default: it costs a "
-           "stall whenever it fires.">,
+           "slot instead of racing on drain timing. On by default: the stall "
+           "only happens where the DMA cannot drain ahead of the pushes, which "
+           "is exactly where the alternative is a dropped transfer. Targets "
+           "that report no pollable occupancy register fall back to warning.">,
     Option<"warnUnsafeBdReuse", "warn-unsafe-bd-reuse", "bool",
            /*default=*/"false",
            "Warn when a BD id released by aiex.dma_free_task without any "

@@ -6,21 +6,21 @@
 // RUN: cp %S/aie.mlir aie_arch.mlir
 // RUN: %run_on_npu1% sed 's/NPUDEVICE/npu1_1col/g' -i aie_arch.mlir
 // RUN: %run_on_npu2% sed 's/NPUDEVICE/npu2_1col/g' -i aie_arch.mlir
-// Enforcement is what makes this design run at all: without it the queue
-// overflows, transfers are dropped, and the trailing await never returns. It is
-// on by default, so check the poll on a throwaway copy and then build the
-// design itself through the driver -- feeding aiecc already-enforced IR would
-// leave the checked file and the built one different, and get a second poll
-// inserted before each guarded push.
-// RUN: aie-opt --aie-assign-runtime-sequence-bd-ids aie_arch.mlir -o poll_check.mlir
+// Check the poll on a throwaway copy, then build the design itself through the
+// driver: enforcement is on by default, so what aiecc produces is what runs.
+// RUN: aie-opt --aie-dma-to-npu aie_arch.mlir -o poll_check.mlir
 // RUN: FileCheck %s --input-file=poll_check.mlir --check-prefix=POLL
 // RUN: %aiecc --get-xclbin --get-npu-insts --xclbin-name=aie.xclbin --npu-insts-name=insts.bin aie_arch.mlir
-// RUN: %host_clang %S/test.cpp -o test.exe -std=c++17 -Wall %xrt_flags %host_link_flags %test_utils_flags
+// The data check is generic -- every transfer carries the same slice and a
+// dropped one leaves its slice zeroed -- so it is shared with the twin.
+// RUN: %host_clang %S/../dma_queue_overflow/test.cpp -o test.exe -std=c++17 -Wall %xrt_flags %host_link_flags %test_utils_flags
 // RUN: %run_on_npu1% ./test.exe -x aie.xclbin -k MLIR_AIE -i insts.bin
 // RUN: %run_on_npu2% ./test.exe -x aie.xclbin -k MLIR_AIE -i insts.bin
 
-// The poll waits for the depth bit of Task_Queue_Size to clear on shim
+// Ten of the fourteen pushes can find the queue full, and each is guarded. The
+// poll waits for the depth bit of Task_Queue_Size to clear on shim
 // DMA_MM2S_Status_0 (0x1D228 = 119336), i.e. mask 0x400000 = 4194304.
 // POLL-DAG: arith.constant 119336 : i32
 // POLL-DAG: arith.constant 4194304 : i32
-// POLL: aiex.npu.maskpoll
+// POLL-COUNT-10: aiex.npu.maskpoll
+// POLL-NOT: aiex.npu.maskpoll

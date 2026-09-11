@@ -887,8 +887,7 @@ public:
 // aie-unroll-runtime-sequence-loops has already run, so the sequence is
 // straight-line. The queue rule itself is shared with the dma_start_task path
 // (see DmaQueueModel.h) so the two cannot disagree about the same hardware.
-static LogicalResult checkQueueDepth(AIE::DeviceOp device,
-                                     bool enforceQueueDepth) {
+static void checkQueueDepth(AIE::DeviceOp device, bool enforceQueueDepth) {
   const AIE::AIETargetModel &tm = device.getTargetModel();
   // Resolve the (tile, direction, channel) a metadata symbol names, the same
   // lookup DmaToNpuPattern and DmaWaitToSyncPattern do.
@@ -904,40 +903,23 @@ static LogicalResult checkQueueDepth(AIE::DeviceOp device,
                            static_cast<uint32_t>(infoOp.getChannelIndex()));
   };
 
-  WalkResult wr =
-      device.walk([&](AIE::RuntimeSequenceOp seq) -> WalkResult {
-        DmaQueueModel queue;
-        WalkResult inner = seq.walk([&](Operation *op) -> WalkResult {
+  device.walk([&](AIE::RuntimeSequenceOp seq) {
+    DmaQueueModel queue;
+    seq.walk(
+        [&](Operation *op) {
           if (auto memcpy = dyn_cast<NpuDmaMemcpyNdOp>(op)) {
             auto info = resolve(memcpy.getMetadata().getRootReference());
             if (!info)
-              return WalkResult::advance();
+              return;
             auto [tile, dir, chan] = *info;
             DmaQueueModel::ChannelKey key{tile.getCol(), tile.getRow(),
                                           static_cast<int>(dir),
                                           static_cast<int>(chan)};
             uint32_t depth = tm.getDmaTaskQueueDepth(tile.getCol(),
                                                      tile.getRow(), chan, dir);
-            if (queue.wouldOverflow(key, depth)) {
-              if (enforceQueueDepth) {
-                if (failed(insertQueueSpaceWait(memcpy, tm, tile.getCol(),
-                                                tile.getRow(), chan, dir,
-                                                depth))) {
-                  memcpy.emitOpError()
-                      << "cannot enforce the DMA task-queue bound on tile ("
-                      << tile.getCol() << "," << tile.getRow() << ") "
-                      << AIE::stringifyDMAChannelDir(dir) << " channel " << chan
-                      << ": this target does not report a pollable task-queue "
-                         "occupancy register for it";
-                  return WalkResult::interrupt();
-                }
-                queue.noteSpaceGuaranteed(key, depth);
-              } else if (queue.shouldReport(key)) {
-                emitQueueOverflowWarning(memcpy, tile.getCol(), tile.getRow(),
-                                         dir, chan, depth,
-                                         queue.outstanding(key));
-              }
-            }
+            if (queue.wouldOverflow(key, depth))
+              guardQueueOverflow(queue, memcpy, tm, key, depth,
+                                 enforceQueueDepth);
             // Not the attribute but the flag the lowering will apply:
             // DmaToNpuPattern forces issue_token on every S2MM channel, so
             // taking the op at face value leaves a wait nothing to pop through.
@@ -946,7 +928,7 @@ static LogicalResult checkQueueDepth(AIE::DeviceOp device,
           } else if (auto wait = dyn_cast<NpuDmaWaitOp>(op)) {
             auto info = resolve(wait.getSymbol());
             if (!info)
-              return WalkResult::advance();
+              return;
             auto [tile, dir, chan] = *info;
             queue.awaitToken(DmaQueueModel::ChannelKey{
                 tile.getCol(), tile.getRow(), static_cast<int>(dir),
@@ -954,22 +936,20 @@ static LogicalResult checkQueueDepth(AIE::DeviceOp device,
           } else if (auto sync = dyn_cast<NpuSyncOp>(op)) {
             awaitSync(queue, sync);
           }
-          return WalkResult::advance();
         });
-        return inner.wasInterrupted() ? WalkResult::interrupt()
-                                      : WalkResult::advance();
-      });
-  return failure(wr.wasInterrupted());
+  });
 }
 
 struct AIEDmaToNpuPass : xilinx::AIEX::impl::AIEDmaToNpuBase<AIEDmaToNpuPass> {
+  using Base = xilinx::AIEX::impl::AIEDmaToNpuBase<AIEDmaToNpuPass>;
+  AIEDmaToNpuPass() = default;
+  AIEDmaToNpuPass(const AIEDmaToNpuOptions &options) : Base(options) {}
 
   void runOnOperation() override {
 
     AIE::DeviceOp device = getOperation();
 
-    if (failed(checkQueueDepth(device, enforceQueueDepth)))
-      return signalPassFailure();
+    checkQueueDepth(device, enforceQueueDepth);
 
     ConversionTarget target(getContext());
     target.addLegalDialect<AIEXDialect>();
@@ -1030,4 +1010,9 @@ struct AIEDmaToNpuPass : xilinx::AIEX::impl::AIEDmaToNpuBase<AIEDmaToNpuPass> {
 
 std::unique_ptr<OperationPass<AIE::DeviceOp>> AIEX::createAIEDmaToNpuPass() {
   return std::make_unique<AIEDmaToNpuPass>();
+}
+
+std::unique_ptr<OperationPass<AIE::DeviceOp>>
+AIEX::createAIEDmaToNpuPass(const AIEDmaToNpuOptions &options) {
+  return std::make_unique<AIEDmaToNpuPass>(options);
 }

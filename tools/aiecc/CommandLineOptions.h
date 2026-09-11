@@ -60,6 +60,16 @@ inline cl::opt<std::string>
     workDir("tmpdir",
             cl::desc("Intermediate workdir (default: <input>.prj in cwd)"),
             cl::init(""));
+// A DMA task queue does not backpressure: a push onto a full one is dropped and
+// its transfer never runs. By default the compiler waits for a free slot before
+// any push that could find the queue full, which stalls only where the DMA
+// cannot drain ahead of the pushes -- exactly where the alternative is a lost
+// transfer. This reverts to reporting the hazard as a warning.
+inline cl::opt<bool> noEnforceDmaQueueDepth(
+    "no-enforce-dma-queue-depth",
+    cl::desc("Only warn about DMA task-queue overflow; do not wait for a free "
+             "slot"));
+
 inline cl::opt<bool> verbose("verbose", cl::desc("Verbose execution"));
 inline cl::alias verboseAlias("v", cl::desc("Alias for --verbose"),
                               cl::aliasopt(verbose));

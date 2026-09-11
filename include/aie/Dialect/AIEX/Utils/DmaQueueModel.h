@@ -128,19 +128,21 @@ inline void awaitSync(DmaQueueModel &queue, NpuSyncOp sync) {
 
 /// Shared wording for the two lowering paths, so the explanation does not
 /// depend on whether the transfer came from dma_start_task or npu.dma_memcpy_nd.
-inline void emitQueueOverflowWarning(mlir::Operation *op, int col, int row,
-                                     AIE::DMAChannelDir dir, uint32_t channel,
-                                     uint32_t depth, size_t outstanding) {
-  op->emitWarning()
-      << "pushes a DMA task onto tile (" << col << "," << row << ") "
-      << AIE::stringifyDMAChannelDir(dir) << " channel " << channel
-      << ", whose task queue is only " << depth << " deep, with " << outstanding
-      << " push(es) not yet known to have completed. A push onto a full queue "
-         "is dropped by hardware and its transfer never runs, so whatever "
-         "waits on it blocks forever. Whether it happens depends on how fast "
-         "the consumer drains, which is why this is a warning and not an "
-         "error. Drain the channel with an await, or enable enforce-queue-depth "
-         "to make the compiler wait for a free slot";
+inline mlir::InFlightDiagnostic
+emitQueueOverflowWarning(mlir::Operation *op, int col, int row,
+                         AIE::DMAChannelDir dir, uint32_t channel,
+                         uint32_t depth, size_t outstanding) {
+  return op->emitWarning()
+         << "pushes a DMA task onto tile (" << col << "," << row << ") "
+         << AIE::stringifyDMAChannelDir(dir) << " channel " << channel
+         << ", whose task queue is only " << depth << " deep, with "
+         << outstanding
+         << " push(es) not yet known to have completed. A push onto a full "
+            "queue is dropped by hardware and its transfer never runs, so "
+            "whatever waits on it blocks forever. Whether it happens depends "
+            "on how fast the consumer drains, which is why this is a warning "
+            "and not an error. Drain the channel with an await on this tile, "
+            "direction and channel before pushing again";
 }
 
 /// Emit a poll that blocks until the channel's task queue has a free slot,
@@ -174,6 +176,38 @@ insertQueueSpaceWait(mlir::Operation *before, const AIE::AIETargetModel &tm,
                         /*buffer=*/nullptr, /*column=*/nullptr,
                         /*row=*/nullptr);
   return mlir::success();
+}
+
+/// Handle a push on `key` that would land on a full queue, guarding it with a
+/// poll when `enforce` is set and the target allows one.
+///
+/// Where it does not allow one -- no pollable occupancy register, or a depth
+/// that is not a power of two -- this warns rather than failing the build. A
+/// default that refuses to compile designs it cannot prove safe would reject
+/// working code on targets whose status block nobody has confirmed yet, and
+/// the reason enforcement must never decline quietly is satisfied by saying
+/// so, which the note does.
+inline void guardQueueOverflow(DmaQueueModel &queue, mlir::Operation *push,
+                               const AIE::AIETargetModel &tm,
+                               const DmaQueueModel::ChannelKey &key,
+                               uint32_t depth, bool enforce) {
+  int col = key[0], row = key[1];
+  auto dir = static_cast<AIE::DMAChannelDir>(key[2]);
+  auto chan = static_cast<uint32_t>(key[3]);
+
+  if (enforce && mlir::succeeded(insertQueueSpaceWait(push, tm, col, row, chan,
+                                                      dir, depth))) {
+    queue.noteSpaceGuaranteed(key, depth);
+    return;
+  }
+  if (!queue.shouldReport(key))
+    return;
+  mlir::InFlightDiagnostic diag = emitQueueOverflowWarning(
+      push, col, row, dir, chan, depth, queue.outstanding(key));
+  if (enforce)
+    diag.attachNote() << "the compiler would have waited for a free slot here, "
+                         "but this target reports no pollable task-queue "
+                         "occupancy register for this channel";
 }
 
 } // namespace xilinx::AIEX
