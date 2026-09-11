@@ -297,7 +297,7 @@ std::string buildAieNumberedFalseRecursionElf() {
   ehdr.e_ehsize = sizeof(Elf32_Ehdr);
   ehdr.e_shoff = shoff;
   ehdr.e_shentsize = sizeof(Elf32_Shdr);
-  ehdr.e_shnum = sections.size();
+  ehdr.e_shnum = static_cast<Elf32_Half>(sections.size());
   ehdr.e_shstrndx = ShstrtabSection;
   overwriteStruct(bytes, 0, ehdr);
 
