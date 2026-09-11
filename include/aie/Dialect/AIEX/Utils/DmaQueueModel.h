@@ -93,6 +93,39 @@ private:
   std::set<ChannelKey> reported;
 };
 
+/// The channel an aiex.npu.sync retires on, or nullopt when it cannot be
+/// pinned down. Its six operands are exactly a ChannelKey, with direction
+/// numbered as AIE::DMAChannelDir because DmaWaitToSyncPattern builds that
+/// operand by casting the enum. Unresolvable retires nothing, which
+/// over-reports; guessing the other way would hide a real hang.
+inline std::optional<DmaQueueModel::ChannelKey> syncChannelKey(NpuSyncOp sync) {
+  std::optional<uint32_t> col = getConstantIntOperand(sync.getColumn());
+  std::optional<uint32_t> row = getConstantIntOperand(sync.getRow());
+  std::optional<uint32_t> dir = getConstantIntOperand(sync.getDirection());
+  std::optional<uint32_t> chan = getConstantIntOperand(sync.getChannel());
+  std::optional<uint32_t> colNum = getConstantIntOperand(sync.getColumnNum());
+  std::optional<uint32_t> rowNum = getConstantIntOperand(sync.getRowNum());
+  if (!col || !row || !dir || !chan || !colNum || !rowNum)
+    return std::nullopt;
+  // Nothing in tree settles whether a sync spanning a range of tiles waits for
+  // one token per tile or one for the range -- the cert lowering ignores both
+  // fields -- and crediting nothing is the only reading sound either way.
+  if (*colNum != 1 || *rowNum != 1)
+    return std::nullopt;
+  return DmaQueueModel::ChannelKey{
+      static_cast<int>(*col), static_cast<int>(*row), static_cast<int>(*dir),
+      static_cast<int>(*chan)};
+}
+
+/// Retire what an aiex.npu.sync proves has drained. This is the lowered form of
+/// npu.dma_wait and the same hardware event, so it retires by the same rule;
+/// sequences written or lowered down to raw syncs would otherwise look like
+/// they never drain a channel at all.
+inline void awaitSync(DmaQueueModel &queue, NpuSyncOp sync) {
+  if (std::optional<DmaQueueModel::ChannelKey> key = syncChannelKey(sync))
+    queue.awaitToken(*key);
+}
+
 /// Shared wording for the two lowering paths, so the explanation does not
 /// depend on whether the transfer came from dma_start_task or npu.dma_memcpy_nd.
 inline void emitQueueOverflowWarning(mlir::Operation *op, int col, int row,

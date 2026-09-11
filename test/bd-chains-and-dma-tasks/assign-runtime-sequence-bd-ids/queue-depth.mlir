@@ -308,3 +308,47 @@ aie.device(npu2) {
     aiex.dma_start_task(%t3)
   }
 }
+
+// -----
+
+// A raw aiex.npu.sync drains the queue exactly as dma_await_task does -- it is
+// the same hardware event, just spelled at a lower level -- so a sequence that
+// mixes the two still gets an accurate count. Only the queue is credited here;
+// the token balance that guards await stays with the ops whose flags it can
+// read off the IR.
+aie.device(npu2) {
+  %tile_0_0 = aie.tile(0, 0)
+  aie.runtime_sequence @raw_sync_drains(%arg0: memref<1024xi32>) {
+    %c0 = arith.constant 0 : i32
+    %c1 = arith.constant 1 : i32
+    %t0 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
+      aie.dma_bd(%arg0 : memref<1024xi32> offset = 0 len = 256)
+      aie.end
+    } {issue_token = true}
+    aiex.dma_start_task(%t0)
+    aiex.npu.sync(%c0, %c0, %c1, %c0, %c1, %c1) : i32, i32, i32, i32, i32, i32
+    %t1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
+      aie.dma_bd(%arg0 : memref<1024xi32> offset = 256 len = 256)
+      aie.end
+    } {issue_token = true}
+    aiex.dma_start_task(%t1)
+    aiex.npu.sync(%c0, %c0, %c1, %c0, %c1, %c1) : i32, i32, i32, i32, i32, i32
+    %t2 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
+      aie.dma_bd(%arg0 : memref<1024xi32> offset = 512 len = 256)
+      aie.end
+    } {issue_token = true}
+    aiex.dma_start_task(%t2)
+    aiex.npu.sync(%c0, %c0, %c1, %c0, %c1, %c1) : i32, i32, i32, i32, i32, i32
+    %t3 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
+      aie.dma_bd(%arg0 : memref<1024xi32> offset = 768 len = 256)
+      aie.end
+    } {issue_token = true}
+    aiex.dma_start_task(%t3)
+    aiex.npu.sync(%c0, %c0, %c1, %c0, %c1, %c1) : i32, i32, i32, i32, i32, i32
+    %t4 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
+      aie.dma_bd(%arg0 : memref<1024xi32> offset = 0 len = 256)
+      aie.end
+    }
+    aiex.dma_start_task(%t4)
+  }
+}

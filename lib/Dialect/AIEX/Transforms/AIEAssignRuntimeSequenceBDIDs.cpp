@@ -184,6 +184,12 @@ struct AIEAssignRuntimeSequenceBDIDsPass
         }
         tokens--;
         queue.awaitToken(key);
+      } else if (auto sync = dyn_cast<NpuSyncOp>(op)) {
+        // Deliberately the queue only, never the `avail` token balance above.
+        // That balance drives a hard error, so it stays with the ops whose
+        // token flags it can read off the IR; the queue only warns or polls,
+        // so it can afford to credit a raw sync it cannot fully account for.
+        awaitSync(queue, sync);
       }
       return WalkResult::advance();
     });
