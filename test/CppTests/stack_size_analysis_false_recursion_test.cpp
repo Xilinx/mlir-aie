@@ -48,6 +48,9 @@ void run(llvm::StringRef command) {
 }
 
 void patchElfAsAieWithNumberedDataRelocation(llvm::StringRef elfPath) {
+  auto rangeFits = [](size_t size, size_t offset, size_t length) {
+    return offset <= size && length <= size - offset;
+  };
   std::ifstream in(elfPath.str(), std::ios::binary);
   if (!in) {
     throw std::runtime_error("failed to open " + elfPath.str());
@@ -62,17 +65,40 @@ void patchElfAsAieWithNumberedDataRelocation(llvm::StringRef elfPath) {
   if (ehdr->e_ident[EI_CLASS] != ELFCLASS64) {
     throw std::runtime_error("expected an ELF64 test fixture");
   }
+  if (ehdr->e_shnum == 0) {
+    throw std::runtime_error("ELF has no section headers");
+  }
+  if (ehdr->e_shstrndx >= ehdr->e_shnum) {
+    throw std::runtime_error("ELF has an invalid section-name string table");
+  }
+  size_t sectionTableSize =
+      static_cast<size_t>(ehdr->e_shnum) * ehdr->e_shentsize;
+  if (ehdr->e_shentsize != sizeof(Elf64_Shdr) ||
+      !rangeFits(bytes.size(), ehdr->e_shoff, sectionTableSize)) {
+    throw std::runtime_error("ELF has a truncated section table");
+  }
   ehdr->e_machine = llvm::ELF::EM_AIE;
 
   auto *sections = reinterpret_cast<Elf64_Shdr *>(bytes.data() + ehdr->e_shoff);
   const auto &shstr = sections[ehdr->e_shstrndx];
+  if (!rangeFits(bytes.size(), shstr.sh_offset, shstr.sh_size)) {
+    throw std::runtime_error("ELF has a truncated section-name string table");
+  }
   llvm::StringRef shstrtab(bytes.data() + shstr.sh_offset, shstr.sh_size);
   bool patchedRelocation = false;
   for (unsigned i = 0; i < ehdr->e_shnum; ++i) {
     const Elf64_Shdr &sec = sections[i];
+    if (sec.sh_name >= shstrtab.size()) {
+      throw std::runtime_error("ELF has an invalid section name offset");
+    }
     llvm::StringRef name = shstrtab.drop_front(sec.sh_name).split('\0').first;
     if (sec.sh_type != SHT_RELA || name != ".rela.text") {
       continue;
+    }
+    if (sec.sh_entsize != sizeof(Elf64_Rela) ||
+        sec.sh_size % sizeof(Elf64_Rela) != 0 ||
+        !rangeFits(bytes.size(), sec.sh_offset, sec.sh_size)) {
+      throw std::runtime_error("ELF has a malformed .rela.text section");
     }
     auto *relocs = reinterpret_cast<Elf64_Rela *>(bytes.data() + sec.sh_offset);
     size_t count = sec.sh_size / sizeof(Elf64_Rela);
