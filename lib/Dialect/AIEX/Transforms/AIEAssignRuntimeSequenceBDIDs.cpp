@@ -180,12 +180,25 @@ struct AIEAssignRuntimeSequenceBDIDsPass
             tile.getCol(), tile.getRow(), cfg.getChannel(), cfg.getDirection());
         SmallVector<bool, 8> &q = queued[key];
         // depth == 0 means the target has no queued-task model to overflow.
-        if (depth > 0 && q.size() >= depth && enforceQueueDepth &&
-            succeeded(insertQueueSpaceWait(start, cfg, tile, depth, tm))) {
-          // The poll guarantees occupancy < depth once it returns, so the
-          // modelled queue can only hold depth-1 entries at this point.
-          q.truncate(0);
-          q.append(depth - 1, false);
+        if (depth > 0 && q.size() >= depth && enforceQueueDepth) {
+          if (failed(insertQueueSpaceWait(start, cfg, tile, depth, tm))) {
+            // Never fall through silently: the caller asked for the overflow to
+            // be impossible, and going quiet here would hand them exactly the
+            // silent drop they were trying to rule out.
+            start.emitOpError()
+                << "cannot enforce the DMA task-queue bound on tile ("
+                << tile.getCol() << "," << tile.getRow() << ") "
+                << stringifyDMAChannelDir(cfg.getDirection()) << " channel "
+                << cfg.getChannel()
+                << ": this target does not report a pollable task-queue "
+                   "occupancy register for it. Drop enforce-queue-depth and "
+                   "drain the channel with aiex.dma_await_task instead";
+            return WalkResult::interrupt();
+          }
+          // The poll guarantees occupancy < depth once it returns. Keep the
+          // most recent depth-1 entries rather than fabricating fresh ones, so
+          // their issue_token flags survive for the pop-through above.
+          q.erase(q.begin(), q.end() - (depth - 1));
         } else if (depth > 0 && q.size() >= depth && !enforceQueueDepth)
           start.emitWarning()
               << "pushes a DMA task onto tile (" << tile.getCol() << ","
