@@ -105,6 +105,68 @@ void checkZeroSizedTargetDoesNotCreateFalseCycle() {
   }
 }
 
+void checkZeroSizedMainInitStillConnectsCallGraph() {
+  llvm::SmallString<128> dir;
+  if (std::error_code ec = llvm::sys::fs::createUniqueDirectory(
+          "stack-size-analysis-main-init", dir)) {
+    throw std::runtime_error("failed to create temp directory: " +
+                             ec.message());
+  }
+
+  llvm::SmallString<128> asmPath = dir;
+  llvm::sys::path::append(asmPath, "main_init_cycle.s");
+  llvm::SmallString<128> objPath = dir;
+  llvm::sys::path::append(objPath, "main_init_cycle.o");
+  llvm::SmallString<128> elfPath = dir;
+  llvm::sys::path::append(elfPath, "main_init_cycle.elf");
+
+  writeFile(asmPath, R"ASM(
+.globl _start
+.type _start,@function
+_start:
+  call _main_init
+  ret
+.size _start, .-_start
+
+.globl entry_real
+.type entry_real,@function
+entry_real:
+  call recurse
+  ret
+.size entry_real, .-entry_real
+
+.globl recurse
+.type recurse,@function
+recurse:
+  call recurse
+  ret
+.size recurse, .-recurse
+
+.globl _main_init
+.type _main_init,@function
+.set _main_init, entry_real
+.size _main_init, 0
+)ASM");
+
+  std::string clang = AIE_STACK_SIZE_ANALYSIS_TEST_CLANG;
+  run(clang + " -c " + quote(asmPath) + " -o " + quote(objPath));
+  run(clang + " " + quote(objPath) +
+      " -nostdlib -no-pie -Wl,-e,_start -Wl,--emit-relocs -o " +
+      quote(elfPath));
+
+  auto result = xilinx::aiecc::computeStackRequirement(
+      elfPath.str(), llvm::StringMap<int64_t>());
+  if (result.bytes) {
+    throw std::runtime_error("expected recursion through _main_init alias");
+  }
+  if (result.failureKind != xilinx::aiecc::StackRequirementFailure::Cycle) {
+    throw std::runtime_error("expected recursion failure kind");
+  }
+  if (result.error.find("recurse@0x") == std::string::npos) {
+    throw std::runtime_error("expected preserved call graph through _main_init");
+  }
+}
+
 void checkRecursionDiagnosticPrintsAddresses() {
   llvm::SmallString<128> dir;
   if (std::error_code ec = llvm::sys::fs::createUniqueDirectory(
@@ -161,6 +223,7 @@ recurse:
 
 int main() {
   checkZeroSizedTargetDoesNotCreateFalseCycle();
+  checkZeroSizedMainInitStillConnectsCallGraph();
   checkRecursionDiagnosticPrintsAddresses();
   return 0;
 }

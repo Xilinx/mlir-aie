@@ -220,6 +220,12 @@ bool isAmbiguousZeroSizedFunctionSymbol(const Graph &graph,
   if (*type != SymbolRef::ST_Function || ELFSymbolRef(sym).getSize() != 0) {
     return false;
   }
+  // The linker script makes `_main_init` the runtime entry trampoline for each
+  // core and may leave it as a zero-sized FUNC symbol at the core body's
+  // address. That edge is real and must keep the stack walk connected.
+  if (*name == "_main_init") {
+    return false;
+  }
   if (const SymbolRanges::Entry *owner = graph.funcs.startsAt(*addr)) {
     return owner->name != *name;
   }
