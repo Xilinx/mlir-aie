@@ -18,10 +18,12 @@
 // NPU instruction stream); such forms are rejected here for the dynamic EmitC
 // path (Phase 2).
 //
-// Before allocating, the pass also rejects task-completion-token (TCT)
-// imbalances -- an await with no matching issue_token push on its channel would
-// deadlock the host. On the straight-line IR the allocator sees, this is a
-// simple per-channel token count (see verifyTokenBalance).
+// Before allocating, the pass also checks the per-channel hardware resources a
+// sequence can exhaust (see verifyChannelUsage): task-completion-token (TCT)
+// imbalance -- an await with no matching issue_token push on its channel would
+// deadlock the host -- and DMA task-queue overflow, where more transfers are
+// pushed onto a channel than its queue holds. On the straight-line IR the
+// allocator sees, both are single-pass per-channel counts.
 //
 //===----------------------------------------------------------------------===//
 
@@ -97,21 +99,19 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     return failure(wr.wasInterrupted());
   }
 
-  // Reject task-completion-token (TCT) imbalances that deadlock the host.
+  // Track the two per-channel resources a sequence can exhaust. Their failure
+  // modes are opposites, so they are counted separately: over-production is
+  // harmless for the TCT FIFO (leftover tokens cost nothing) but not for the
+  // task queue, where a push onto a full queue is dropped and its transfer
+  // never runs.
   //
-  // Each issue_token dma_start_task pushes one token onto a per-(tile,
-  // direction, channel) FIFO; each dma_await_task on that channel pops one. A
-  // sync that runs when the FIFO is empty blocks the runtime sequence forever.
-  // Over-production is always safe (leftover tokens are harmless) -- awaiting
-  // the last of N pushes on a channel and letting the FIFO cover the rest is a
-  // legal, common idiom -- so only under-production (an await with no matching
-  // push) is an error.
-  //
-  // rejectRuntimeControlFlow has already run, so this walks straight-line IR: a
-  // single program-order pass counting available tokens per channel is exact,
-  // with no control-flow reasoning. (Non-issue_token awaits are left to the
-  // per-op check in aie-dma-tasks-to-npu, which owns that diagnostic.)
-  LogicalResult verifyTokenBalance(AIE::RuntimeSequenceOp seq) {
+  // Queue counting differs from token counting in three ways: every push takes
+  // a slot, not just issue_token ones; a non-token push is still retired
+  // implicitly, since in-order execution means awaiting a token drains
+  // everything queued ahead of it too; and repeat_count does not multiply
+  // slots. rejectRuntimeControlFlow has already run, so one program-order pass
+  // over straight-line IR is exact.
+  LogicalResult verifyChannelUsage(AIE::RuntimeSequenceOp seq) {
     using ChannelKey = std::array<int, 4>; // {col, row, direction, channel}
     auto keyOf = [](DMAConfigureTaskOp cfg) -> ChannelKey {
       AIE::TileOp tile = cfg.getTileOp();
@@ -120,19 +120,50 @@ struct AIEAssignRuntimeSequenceBDIDsPass
               static_cast<int>(cfg.getChannel())};
     };
 
+    const AIETargetModel &tm =
+        seq->getParentOfType<AIE::DeviceOp>().getTargetModel();
+
     std::map<ChannelKey, int> avail;
+    // Per channel, the queued-but-not-known-retired pushes in program order.
+    // Each entry records whether that push issues a token.
+    std::map<ChannelKey, SmallVector<bool, 8>> queued;
+
     WalkResult wr = seq.walk([&](Operation *op) -> WalkResult {
       if (auto start = dyn_cast<DMAStartTaskOp>(op)) {
         DMAConfigureTaskOp cfg = start.getTaskOp();
-        if (cfg && cfg.getIssueToken())
-          avail[keyOf(cfg)]++;
+        if (!cfg)
+          return WalkResult::advance();
+        ChannelKey key = keyOf(cfg);
+        AIE::TileOp tile = cfg.getTileOp();
+        uint32_t depth = tm.getDmaTaskQueueDepth(
+            tile.getCol(), tile.getRow(), cfg.getChannel(), cfg.getDirection());
+        SmallVector<bool, 8> &q = queued[key];
+        // depth == 0 means the target has no queued-task model to overflow.
+        if (depth > 0 && q.size() >= depth)
+          start.emitWarning()
+              << "pushes a DMA task onto tile (" << tile.getCol() << ","
+              << tile.getRow() << ") "
+              << stringifyDMAChannelDir(cfg.getDirection()) << " channel "
+              << cfg.getChannel() << ", whose task queue is only " << depth
+              << " deep, with " << q.size()
+              << " push(es) not yet known to have completed. A push to a full "
+                 "queue is dropped by hardware and its transfer never runs, "
+                 "hanging anything that waits on it. This is a race rather "
+                 "than a certainty -- the DMA drains concurrently, so the "
+                 "count is an upper bound -- hence a warning. Emit an "
+                 "aiex.dma_await_task on this tile, direction and channel to "
+                 "drain the queue before pushing again";
+        q.push_back(cfg.getIssueToken());
+        if (cfg.getIssueToken())
+          avail[key]++;
       } else if (auto await = dyn_cast<DMAAwaitTaskOp>(op)) {
         DMAConfigureTaskOp cfg = await.getTaskOp();
         // A non-issue_token await is diagnosed later by aie-dma-tasks-to-npu;
         // an unresolved task is diagnosed by the recycle path. Skip both here.
         if (!cfg || !cfg.getIssueToken())
           return WalkResult::advance();
-        int &tokens = avail[keyOf(cfg)];
+        ChannelKey key = keyOf(cfg);
+        int &tokens = avail[key];
         if (tokens < 1) {
           await.emitOpError(
               "awaits a task-completion token on a channel where no "
@@ -143,6 +174,13 @@ struct AIEAssignRuntimeSequenceBDIDsPass
           return WalkResult::interrupt();
         }
         tokens--;
+        // The sync pops whichever token the channel produces first -- the
+        // oldest outstanding token-issuing push, not necessarily the one this
+        // op names -- so retire through that entry inclusive.
+        SmallVector<bool, 8> &q = queued[key];
+        auto *it = llvm::find(q, true);
+        if (it != q.end())
+          q.erase(q.begin(), std::next(it));
       }
       return WalkResult::advance();
     });
@@ -154,7 +192,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     // on straight-line IR and needs no control-flow reasoning.
     if (failed(rejectRuntimeControlFlow(seq)))
       return failure();
-    if (failed(verifyTokenBalance(seq)))
+    if (failed(verifyChannelUsage(seq)))
       return failure();
     return success();
   }

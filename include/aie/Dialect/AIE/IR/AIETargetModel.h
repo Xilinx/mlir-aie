@@ -500,6 +500,23 @@ public:
   /// Return the largest DMA task repeat count (unsupported = 0).
   virtual uint32_t getMaxRepeatCount() const = 0;
 
+  /// Return how many DMA tasks a single channel's task queue holds
+  /// (unsupported = 0). Pushing to a full queue drops the push and sets the
+  /// channel's sticky Task_Queue_Overflow bit, stranding whoever waits on that
+  /// transfer. Flat rather than per-tile-type because aie-rt's
+  /// XAie_DmaGetMaxQueueSize (XAIE_DMA_MAX_QUEUE_SIZE) returns the same depth
+  /// for every tile type and architecture.
+  virtual uint32_t getDmaTaskQueueDepth() const = 0;
+
+  /// Return the task-queue depth for one channel. The queue is a per-channel
+  /// resource in hardware, but no shipping target gives channels different
+  /// depths, so this forwards to the flat accessor; carrying the parameters
+  /// spares call sites churn if one ever does.
+  uint32_t getDmaTaskQueueDepth(int /*col*/, int /*row*/, int /*channel*/,
+                                AIE::DMAChannelDir /*direction*/) const {
+    return getDmaTaskQueueDepth();
+  }
+
   // Return true if the stream switch connection is legal, false otherwise.
   virtual bool isLegalTileConnection(int col, int row, WireBundle srcBundle,
                                      int srcChan, WireBundle dstBundle,
@@ -587,6 +604,9 @@ public:
   uint32_t getMaxPacketId() const override { return 31; }
   uint32_t getMaxOutOfOrderId() const override { return 0; }
   uint32_t getMaxRepeatCount() const override { return 0; }
+  // AIE1 has no queued DMA-task model (BDs are started directly), so there is
+  // no queue to overflow.
+  uint32_t getDmaTaskQueueDepth() const override { return 0; }
 
   std::optional<TileID> getMemWest(TileID src) const override;
   std::optional<TileID> getMemEast(TileID src) const override;
@@ -726,6 +746,7 @@ public:
   uint32_t getMaxPacketId() const override { return 31; }
   uint32_t getMaxOutOfOrderId() const override { return 63; }
   uint32_t getMaxRepeatCount() const override { return 255; }
+  uint32_t getDmaTaskQueueDepth() const override { return 4; }
 
   std::optional<TileID> getMemWest(TileID src) const override;
   std::optional<TileID> getMemEast(TileID src) const override;
