@@ -921,17 +921,13 @@ def AIE_NpuAssertBdDivisibleOp: AIEX_Op<"npu.assert_bd_divisible", []> {
 }
 
 // MASKWRITE
-def AIE_NpuMaskPollOp: AIEX_Op<"npu.maskpoll", []> {
-  let summary = "Block the runtime sequence until a masked 32-bit register matches";
-  let arguments = (
-    ins I32:$address,
-        I32:$value,
-        I32:$mask,
-        OptionalAttr<FlatSymbolRefAttr>:$buffer,
-        OptionalAttr<I32Attr>:$column,
-        OptionalAttr<I32Attr>:$row
-  );
-  let results = (outs );
+def AIE_NpuMaskPollOp : AIEX_Op<"npu.maskpoll", []> {
+  let summary =
+      "Block the runtime sequence until a masked 32-bit register matches";
+  let arguments = (ins I32:$address, I32:$value, I32:$mask,
+      OptionalAttr<FlatSymbolRefAttr>:$buffer, OptionalAttr<I32Attr>:$column,
+      OptionalAttr<I32Attr>:$row);
+  let results = (outs);
   let assemblyFormat = [{
     `(` $address `,` $value `,` $mask `)` attr-dict `:` type($address) `,` type($value) `,` type($mask)
   }];
@@ -1090,13 +1086,13 @@ def AIE_NpuAddressPatchOp
     attr-dict
   }];
   let description = [{
-    address patch operator. 
-    
-    This instruction writes the address of a runtime-allocated host buffer 
-    into a register, typically a BD's buffer address register. The runtime 
-    passes runtime-allocated host buffers as runtime sequence arguments, so 
-    this instruction refers to them by their argument index. 
-    
+    address patch operator.
+
+    This instruction writes the address of a runtime-allocated host buffer
+    into a register, typically a BD's buffer address register. The runtime
+    passes runtime-allocated host buffers as runtime sequence arguments, so
+    this instruction refers to them by their argument index.
+
     `addr` is the register to patch (the BD's buffer-address word). It is a
     compile-time attribute on the static path; when the BD id is chosen at
     runtime (dynamic free-list pool) the register address is itself runtime and
@@ -1109,17 +1105,17 @@ def AIE_NpuAddressPatchOp
     runtime-parameterized buffer offset. It reaches the device as a 64-bit
     field, so an offset past 4 GiB needs an `i64` constant.
 
-    `arg_idx` or `buffer` specify which runtime sequence argument holds the 
+    `arg_idx` or `buffer` specify which runtime sequence argument holds the
     host buffer whose address you want to patch. You must set exactly one of
     the two:
     - `arg_idx` is an argument index of the enclosing runtime sequence.
-      Address patch instructions using `arg_idx` should not be inlined into 
+      Address patch instructions using `arg_idx` should not be inlined into
       other runtime sequences with `aiex.run`, because the argument index might
       not match there.
     - `buffer` instead names the buffer by reference to a `memref` by reference.
       You can use it together with `aiex.run`.
       The `-aie-resolve-address-patch-buffers` pass traces the `memref` back to
-      the enclosing runtime sequence argument list and converts the operand to 
+      the enclosing runtime sequence argument list and converts the operand to
       the correct `arg_idx` after inlining. It adds the buffer's byte offset to
       `arg_plus`.
   }];

@@ -10,8 +10,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include <cstdint>
 #include <algorithm>
+#include <cstdint>
 #include <cstring>
 #include <iostream>
 #include <string>
@@ -23,8 +23,8 @@
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
 
-constexpr int ELEMS = 2048;   // per transfer
-constexpr int NPUSH = 14;     // pushes on one 4-deep channel
+constexpr int ELEMS = 2048; // per transfer
+constexpr int NPUSH = 14;   // pushes on one 4-deep channel
 constexpr int BUFSZ = 65536;
 
 int main(int argc, const char *argv[]) {

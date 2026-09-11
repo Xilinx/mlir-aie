@@ -10,8 +10,8 @@
 #include "aie/Dialect/AIEX/AIEUtils.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
-#include "aie/Dialect/AIEX/Utils/DmaQueueModel.h"
 #include "aie/Dialect/AIEX/Utils/BdLowering.h"
+#include "aie/Dialect/AIEX/Utils/DmaQueueModel.h"
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
@@ -879,7 +879,6 @@ public:
   }
 };
 
-
 // Check the per-channel DMA task queue on the npu.dma_memcpy_nd path.
 //
 // The conversion below is pattern-driven, so it visits ops in worklist order
@@ -905,38 +904,36 @@ static void checkQueueDepth(AIE::DeviceOp device, bool enforceQueueDepth) {
 
   device.walk([&](AIE::RuntimeSequenceOp seq) {
     DmaQueueModel queue;
-    seq.walk(
-        [&](Operation *op) {
-          if (auto memcpy = dyn_cast<NpuDmaMemcpyNdOp>(op)) {
-            auto info = resolve(memcpy.getMetadata().getRootReference());
-            if (!info)
-              return;
-            auto [tile, dir, chan] = *info;
-            DmaQueueModel::ChannelKey key{tile.getCol(), tile.getRow(),
-                                          static_cast<int>(dir),
-                                          static_cast<int>(chan)};
-            uint32_t depth = tm.getDmaTaskQueueDepth(tile.getCol(),
-                                                     tile.getRow(), chan, dir);
-            if (queue.wouldOverflow(key, depth))
-              guardQueueOverflow(queue, memcpy, tm, key, depth,
-                                 enforceQueueDepth);
-            // Not the attribute but the flag the lowering will apply:
-            // DmaToNpuPattern forces issue_token on every S2MM channel, so
-            // taking the op at face value leaves a wait nothing to pop through.
-            queue.push(key, memcpy.getIssueToken() ||
-                                dir == AIE::DMAChannelDir::S2MM);
-          } else if (auto wait = dyn_cast<NpuDmaWaitOp>(op)) {
-            auto info = resolve(wait.getSymbol());
-            if (!info)
-              return;
-            auto [tile, dir, chan] = *info;
-            queue.awaitToken(DmaQueueModel::ChannelKey{
-                tile.getCol(), tile.getRow(), static_cast<int>(dir),
-                static_cast<int>(chan)});
-          } else if (auto sync = dyn_cast<NpuSyncOp>(op)) {
-            awaitSync(queue, sync);
-          }
-        });
+    seq.walk([&](Operation *op) {
+      if (auto memcpy = dyn_cast<NpuDmaMemcpyNdOp>(op)) {
+        auto info = resolve(memcpy.getMetadata().getRootReference());
+        if (!info)
+          return;
+        auto [tile, dir, chan] = *info;
+        DmaQueueModel::ChannelKey key{tile.getCol(), tile.getRow(),
+                                      static_cast<int>(dir),
+                                      static_cast<int>(chan)};
+        uint32_t depth =
+            tm.getDmaTaskQueueDepth(tile.getCol(), tile.getRow(), chan, dir);
+        if (queue.wouldOverflow(key, depth))
+          guardQueueOverflow(queue, memcpy, tm, key, depth, enforceQueueDepth);
+        // Not the attribute but the flag the lowering will apply:
+        // DmaToNpuPattern forces issue_token on every S2MM channel, so
+        // taking the op at face value leaves a wait nothing to pop through.
+        queue.push(key,
+                   memcpy.getIssueToken() || dir == AIE::DMAChannelDir::S2MM);
+      } else if (auto wait = dyn_cast<NpuDmaWaitOp>(op)) {
+        auto info = resolve(wait.getSymbol());
+        if (!info)
+          return;
+        auto [tile, dir, chan] = *info;
+        queue.awaitToken(DmaQueueModel::ChannelKey{tile.getCol(), tile.getRow(),
+                                                   static_cast<int>(dir),
+                                                   static_cast<int>(chan)});
+      } else if (auto sync = dyn_cast<NpuSyncOp>(op)) {
+        awaitSync(queue, sync);
+      }
+    });
   });
 }
 

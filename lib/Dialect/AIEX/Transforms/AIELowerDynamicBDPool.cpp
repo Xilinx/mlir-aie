@@ -434,7 +434,6 @@ struct AIELowerDynamicBDPoolPass
     return success();
   }
 
-
   // Report loops whose body nets DMA pushes onto a channel it never drains.
   //
   // The straight-line queue check cannot run here: this path keeps its scf.for
@@ -485,8 +484,8 @@ struct AIELowerDynamicBDPoolPass
       for (auto &[key, d] : delta) {
         if (d <= 0 || !firstPush.count(key))
           continue;
-        uint32_t depth = tm.getDmaTaskQueueDepth(key[0], key[1], key[3],
-                                                 static_cast<AIE::DMAChannelDir>(key[2]));
+        uint32_t depth = tm.getDmaTaskQueueDepth(
+            key[0], key[1], key[3], static_cast<AIE::DMAChannelDir>(key[2]));
         if (depth == 0)
           continue;
         firstPush[key].emitWarning()

@@ -80,7 +80,9 @@ public:
   /// True the first time a channel is reported. An over-subscribed channel
   /// usually stays that way for every later push, and repeating the same
   /// diagnostic per push buries it.
-  bool shouldReport(const ChannelKey &key) { return reported.insert(key).second; }
+  bool shouldReport(const ChannelKey &key) {
+    return reported.insert(key).second;
+  }
 
   /// Outstanding pushes on `key`, for diagnostics.
   size_t outstanding(const ChannelKey &key) const {
@@ -127,7 +129,8 @@ inline void awaitSync(DmaQueueModel &queue, NpuSyncOp sync) {
 }
 
 /// Shared wording for the two lowering paths, so the explanation does not
-/// depend on whether the transfer came from dma_start_task or npu.dma_memcpy_nd.
+/// depend on whether the transfer came from dma_start_task or
+/// npu.dma_memcpy_nd.
 inline mlir::InFlightDiagnostic
 emitQueueOverflowWarning(mlir::Operation *op, int col, int row,
                          AIE::DMAChannelDir dir, uint32_t channel,
@@ -152,8 +155,8 @@ emitQueueOverflowWarning(mlir::Operation *op, int col, int row,
 /// "depth bit is clear" test (for depth 4, bit 22 of Task_Queue_Size).
 inline mlir::LogicalResult
 insertQueueSpaceWait(mlir::Operation *before, const AIE::AIETargetModel &tm,
-                     int col, int row, uint32_t channel,
-                     AIE::DMAChannelDir dir, uint32_t depth) {
+                     int col, int row, uint32_t channel, AIE::DMAChannelDir dir,
+                     uint32_t depth) {
   uint32_t fieldMask = tm.getDmaTaskQueueSizeMask();
   if (!fieldMask || depth == 0 || (depth & (depth - 1)) != 0)
     return mlir::failure();
@@ -178,15 +181,11 @@ insertQueueSpaceWait(mlir::Operation *before, const AIE::AIETargetModel &tm,
   return mlir::success();
 }
 
-/// Handle a push on `key` that would land on a full queue, guarding it with a
-/// poll when `enforce` is set and the target allows one.
-///
-/// Where it does not allow one -- no pollable occupancy register, or a depth
-/// that is not a power of two -- this warns rather than failing the build. A
-/// default that refuses to compile designs it cannot prove safe would reject
-/// working code on targets whose status block nobody has confirmed yet, and
-/// the reason enforcement must never decline quietly is satisfied by saying
-/// so, which the note does.
+/// Handle a push on `key` that would land on a full queue: poll where one can
+/// be emitted, warn where it cannot (see insertQueueSpaceWait above for when
+/// that is). Warning rather than failing keeps a default from rejecting
+/// designs that build today on a target the user can do nothing about; the
+/// note is what keeps it from declining quietly.
 inline void guardQueueOverflow(DmaQueueModel &queue, mlir::Operation *push,
                                const AIE::AIETargetModel &tm,
                                const DmaQueueModel::ChannelKey &key,
