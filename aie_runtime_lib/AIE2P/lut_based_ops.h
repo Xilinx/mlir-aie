@@ -19,6 +19,16 @@ alignas(aie::vector_decl_align) extern int16 exp_flut_ab[512];
 alignas(aie::vector_decl_align) extern int16 exp_flut_cd[512];
 alignas(aie::vector_decl_align) extern unsigned char m_inv_lut[128];
 
+// getExpBf16 indexes its tables through a Q8 fixed-point int16, so the inputs
+// it can address at all are (-128, 128); past that the conversion wraps and
+// the entry fetched has nothing to do with exp(x). The tables themselves stop
+// earlier: entry 88 holds bf16(exp(88)) = 1.6549e+38 and is the largest value
+// they carry, and exp(-88) has already underflowed bf16 to 0. Clamping the
+// input here is therefore exact for every x the kernel could otherwise answer
+// correctly, and turns the wrap into the saturation callers expect. exp2f_vec
+// takes the same approach with its min_x.
+static constexpr float EXP_BF16_CLAMP = 88.0f;
+
 __attribute__((always_inline)) v16accfloat getExpBf16(v16bfloat16 x) {
   bfloat16 __aie_dm_resource_a *ilut_ab =
       (bfloat16 __aie_dm_resource_a *)exp_ilut_ab;
@@ -45,14 +55,39 @@ __attribute__((always_inline)) v16accfloat getExpBf16(v16bfloat16 x) {
   aie::accum<accfloat, 16> exp_val;
   aie::vector<bfloat16, 16> input_bf16 = x;
 
+  // Saturate to the addressable domain (see EXP_BF16_CLAMP) before the Q8
+  // conversion below, which would otherwise wrap.
+  input_bf16 = aie::min(
+      input_bf16, aie::broadcast<bfloat16, 16>((bfloat16)EXP_BF16_CLAMP));
+  input_bf16 = aie::max(
+      input_bf16, aie::broadcast<bfloat16, 16>((bfloat16)-EXP_BF16_CLAMP));
+
   // position of output decimal point = 8, making input become 8 bits, and for
   // LUT_elems = 256 lookup. aie::vector<int16, 16>
   // input=aie::to_fixed<int16>(input_bf16,8);
   aie::vector<int16, 32> input0 = v32int16(bfloat16_to_int(input_bf16, 8));
   aie::vector<int16, 16> input = aie::filter_even(input0);
 
+  // The parallel_lookup fetch()es above internally convert a fixed-point
+  // accumulator to an integer table index; that conversion is NOT
+  // rounding-mode-independent, so it silently picks up whatever core-wide
+  // rounding mode the caller is in. A caller that sets conv_even before this
+  // loop (to narrow its own float accumulator to bf16 -- see
+  // KernelContract.rounding_mode) corrupts the index computation for any
+  // key whose Q8 fraction is >= 224/256: the fetch returns exp(frac + 1)
+  // (high by a factor of e) instead of exp(frac), as measured on aie2.
+  // Bracketing the fetches in the mode they were authored against (floor,
+  // the core's boot default) avoids that. This belongs in aie_api, which
+  // already carries a FIXME for it (detail/aie2/parallel_lookup.hpp,
+  // CRVO-4425): masking off the bits its index shift discards, as
+  // linear_approx does, fixes it at the source and makes this bracket
+  // removable on the next third_party/aie_api bump.
+  aie::rounding_mode saved_rnd = aie::tile::current().get_rounding();
+  aie::tile::current().set_rounding(aie::rounding_mode::floor);
   I_val_vec = lookup_i.fetch(input.cast_to<uint16>());
   F_val_vec = lookup_f.fetch(input.cast_to<uint16>());
+  aie::tile::current().set_rounding(saved_rnd);
+
   exp_val = aie::mul(I_val_vec, F_val_vec);
   return v16accfloat(exp_val);
 }

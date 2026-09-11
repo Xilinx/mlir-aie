@@ -22,7 +22,14 @@ _log = logging.getLogger(__name__)
 #   "out"    the tile the kernel writes, one element per call
 #   "param"  a small buffer filled once and held for the whole run (e.g. the
 #            1-element factor of ``scale``)
-#   "count"  the trailing element count the C++ takes at runtime
+#   "count"  the trailing element count the C++ takes at runtime: the
+#            smaller of the first "in" tensor and "out" tensor element
+#            counts, so a channel-ratio conversion (rgba2hue's lineWidth
+#            counts hue pixels, a quarter of its RGBA input's element
+#            count) gets the pixel count from whichever side is 1:1 with
+#            it. A reduction's ``out_valid`` marks its output tile as
+#            padded rather than narrower-per-pixel, so it is exempted:
+#            count there is the (larger) input's element count instead.
 #   "scalar" a runtime scalar constant (``leaky_relu`` alpha, ``axpy`` a)
 ROLES = ("in", "out", "inout", "param", "count", "scalar")
 # What an integer kernel does when a result leaves the output range.

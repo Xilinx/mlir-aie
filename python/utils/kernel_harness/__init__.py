@@ -319,7 +319,19 @@ def _build_stream(
         )
         for k, (i, (dt_name, shape, vals)) in enumerate(zip(param_roles, params))
     ]
-    count = _elems(arg_types[in_roles[0]])
+    # The trailing element count the C++ takes at runtime is the number of
+    # per-call iterations, which is 1:1 with whichever tensor has fewer raw
+    # elements when one side packs several values per iteration (rgba2hue's
+    # 4-byte RGBA pixels in, 1-byte hue out: lineWidth is the smaller, output
+    # side). A reduction's ``out_valid`` marks its output tile as padded
+    # rather than narrower-per-iteration, so there the count is the (larger)
+    # input's element count instead.
+    in0_elems = _elems(arg_types[in_roles[0]])
+    count = (
+        in0_elems
+        if c.out_valid is not None
+        else min(in0_elems, _elems(arg_types[out_pos]))
+    )
     setter = _rounding_setter(c)
 
     def core(*args):

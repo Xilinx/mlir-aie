@@ -38,10 +38,15 @@ from ._common import (
 
 _LUT_FIXED_TILE = 1024
 
+# Mirrors EXP_BF16_CLAMP in aie_runtime_lib/AIE2{,P}/lut_based_ops.h: the
+# input domain getExpBf16 saturates to, so the references below describe what
+# the device actually computes. Keep the two in step.
+_EXP_BF16_CLAMP = 88.0
+
 # The LUT-approximated kernels document rtol=0.128 (the canonical C++ testbench
 # default) on their *_ref functions below; the absolute floor and the mismatch
-# budget are what test/python/npu/test_kernels_e2e.py measured for tanh and
-# sigmoid on device.
+# budget are what test/python/npu/test_kernels_e2e.py measured on device for
+# tanh, sigmoid and bf16_exp.
 _LUT_TOLERANCE = Tolerance.relative(
     0.128,
     0.05,
@@ -229,7 +234,13 @@ def swiglu(tile_size: int = 1024) -> ExternalFunction:
 
 
 def bf16_exp(tile_size: int = 1024) -> ExternalFunction:
-    """Element-wise exponential kernel for bf16 tiles (must be 1024)."""
+    """Element-wise exponential kernel for bf16 tiles (must be 1024).
+
+    Computes ``exp(clip(x, -88, 88))``: the kernel saturates rather than
+    overflowing, so every input is well defined. See
+    [`bf16_exp_ref`][iron.kernels.activation.bf16_exp_ref] for why that
+    clamp is the table's own limit and costs no accuracy.
+    """
     return _bf16_lut_factory(
         "bf16_exp",
         "exp_bf16_1024",
@@ -455,13 +466,25 @@ def swiglu_ref(x, w1, w2):
 def bf16_exp_ref(x):
     """Numpy reference for [`bf16_exp`][iron.kernels.activation.bf16_exp] — element-wise ``exp(x)``.
 
-    LUT approximation territory; the AIE kernel saturates on large inputs.
-    Pair with the canonical 12.8% relative tolerance and ``stop_at_
-    nonfinite=True`` (the default in
+    LUT approximation territory; pair with the canonical 12.8% relative
+    tolerance and ``stop_at_nonfinite=True`` (the default in
     `count_mismatches`) when verifying.
+
+    ``exp(clip(x, -88, 88))``, not plain ``exp(x)``: the kernel clamps to
+    ``EXP_BF16_CLAMP`` before its Q8 fixed-point table lookup (see
+    ``aie_runtime_lib/AIE2/lut_based_ops.h``), so it saturates rather than
+    overflowing. The clamp is exact -- ``+88`` is the largest value the
+    tables carry and ``exp(-88)`` has already underflowed bf16 to 0 -- so
+    this matches the device over the whole real line, including the inputs
+    that used to wrap. It also keeps the reference itself in range:
+    ``exp(88) = 1.65e+38`` fits float32 where ``exp(89)`` would not.
     """
-    xf = x.astype(np.float32)
-    with np.errstate(over="ignore", invalid="ignore"):
+    xf = np.clip(x.astype(np.float32), -_EXP_BF16_CLAMP, _EXP_BF16_CLAMP)
+    # The clamp rules out overflow, so that warning stays un-suppressed and
+    # would now be a real signal. A NaN input still reaches exp -- the kernel
+    # declares nonfinite="unspecified" and callers do feed raw bit patterns
+    # (programming_examples/basic/vector_exp sweeps all 65536 of them).
+    with np.errstate(invalid="ignore"):
         return np.exp(xf).astype(x.dtype)
 
 

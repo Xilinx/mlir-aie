@@ -1273,3 +1273,30 @@ def test_harness_sets_the_mode_a_contract_names():
     assert kernels.convert_copy().contract.rounding_mode == "sets_own"
     mlir = str(kh.design(kernels.convert_copy, calls=1).as_mlir())
     assert "set_rounding" not in mlir
+
+
+def test_bf16_exp_clamp_matches_the_kernel_headers():
+    """``_EXP_BF16_CLAMP`` tracks ``EXP_BF16_CLAMP`` in the kernel sources.
+
+    ``bf16_exp_ref`` describes the device as ``exp(clip(x, -C, C))``. That is
+    only true while the Python constant and the C++ one agree; if they ever
+    drift the reference silently stops modelling the kernel, which is the
+    class of bug these contracts exist to catch.
+    """
+    from aie.iron.kernels.activation import _EXP_BF16_CLAMP
+    from aie.utils import config
+
+    pattern = re.compile(r"constexpr\s+float\s+EXP_BF16_CLAMP\s*=\s*([0-9.]+)f")
+    checked = []
+    for arch in ("AIE2", "AIE2P"):
+        header = Path(config.aie_runtime_lib_dir()) / arch / "lut_based_ops.h"
+        if not header.exists():
+            continue
+        found = pattern.search(header.read_text())
+        assert found, f"{header}: no EXP_BF16_CLAMP definition"
+        assert float(found.group(1)) == _EXP_BF16_CLAMP, (
+            f"{header} clamps at {found.group(1)} but bf16_exp_ref uses "
+            f"{_EXP_BF16_CLAMP}; the reference no longer matches the kernel"
+        )
+        checked.append(arch)
+    assert checked, "no lut_based_ops.h found to check the clamp against"

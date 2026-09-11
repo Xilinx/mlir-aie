@@ -99,6 +99,65 @@ def test_case_names_are_unique():
     assert len(names) == len(set(names)), "two cases share a series name"
 
 
+# getExpBf16 reaches its tables through a Q8 fixed-point int16, so an input
+# outside (-128, 128) used to wrap and fetch an unrelated entry. The two tests
+# below pin the clamp that closes that (EXP_BF16_CLAMP in
+# aie_runtime_lib/AIE2{,P}/lut_based_ops.h); the data-case sweep never reaches
+# far enough past the wrap to catch a regression on its own.
+
+
+def test_bf16_exp_saturates_outside_lut_domain():
+    """exp saturates rather than wrapping, over the whole real line."""
+    fn = kernels.bf16_exp()
+    xs = np.array(
+        [88, 89, 128, 200, 4e4, np.inf, -88, -128, -200, -4e4, -np.inf],
+        dtype=np.float32,
+    )
+    tile = np.zeros(1024, dtype=np.float32)
+    tile[: len(xs)] = xs
+    tile_bf16 = tile.astype(bfloat16)
+
+    design = kh.design(kernels.bf16_exp, calls=1)
+    got = kh.run(
+        design,
+        [tile_bf16.reshape(1, 1024)],
+        1024,
+        np.dtype(bfloat16),
+        poison=True,
+        fn=fn,
+    )
+    verdict = kh.judge(fn, got, kh.expected(fn, [tile_bf16.reshape(1, 1024)]), calls=1)
+    assert verdict, verdict.detail
+
+
+def test_softmax_wide_dynamic_range():
+    """A tile whose x - max runs past the LUT domain still normalises.
+
+    Softmax subtracts the per-tile max, so its exp input is <= 0 but not
+    bounded below. Before the clamp, Q8 wrapped those deeply-negative values
+    onto a large positive entry, which swamped the normalising sum and made
+    every element of the tile wrong -- including the peak.
+    """
+    fn = kernels.softmax()
+    tile = np.full(1024, -1000.0, dtype=np.float32)
+    tile[0], tile[1] = 0.0, -5.0
+    tile_bf16 = tile.astype(bfloat16)
+
+    design = kh.design(kernels.softmax, calls=1)
+    got = kh.run(
+        design,
+        [tile_bf16.reshape(1, 1024)],
+        1024,
+        np.dtype(bfloat16),
+        poison=True,
+        fn=fn,
+    )
+    verdict = kh.judge(fn, got, kh.expected(fn, [tile_bf16.reshape(1, 1024)]), calls=1)
+    assert verdict, verdict.detail
+    # The peak must dominate: a wrapped index used to bury it at ~1e-14.
+    assert got.astype(np.float32)[0] > 0.9
+
+
 # ---------------------------------------------------------------------------
 # mha: flash-attention toolkit — compile regression only.
 #
