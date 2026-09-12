@@ -9,7 +9,7 @@
 
 import numpy as np
 import pytest
-from aie.utils.verify import count_mismatches, nearly_equal
+from aie.utils.verify import poisoned, count_mismatches, nearly_equal
 
 # ---------------------------------------------------------------------------
 # nearly_equal
@@ -283,3 +283,12 @@ def test_a_flushing_kernel_flushes_in_its_reference():
         return np.where(np.abs(x) < np.finfo(np.float32).tiny, np.float32(0), x)
 
     assert compare(flush(got), flush(ref), Tolerance.exact())
+
+
+@pytest.mark.parametrize("dtype", [np.int16, np.uint8, np.float32, bfloat16])
+def test_poisoned_gives_n_elements_of_a_value_no_kernel_writes(dtype):
+    """An unwritten output must not pass against a reference of zeros."""
+    buf = poisoned(4, dtype)
+    assert buf.size == 4 and buf.dtype == np.dtype(dtype)
+    assert (buf.view(np.uint8) == 0x55).all()
+    assert not compare(buf, np.zeros(4, dtype), Tolerance.exact())

@@ -357,6 +357,16 @@ def bf16_ulp_distance(a, b) -> np.ndarray:
     return np.abs(ordinal(a) - ordinal(b))
 
 
+def poisoned(n: int, dtype) -> np.ndarray:
+    """Return an ``n``-element buffer filled with a value no kernel would write.
+
+    An output buffer left as zeros lets a kernel that never writes pass a
+    comparison against a reference that happens to be zeros. Filling it with
+    0x55 bytes first means silence fails.
+    """
+    return np.full(n * np.dtype(dtype).itemsize, 0x55, dtype=np.uint8).view(dtype)
+
+
 def compare(actual, expected, tol: Tolerance | None = None) -> Verdict:
     """Compare a kernel's ``actual`` output with a reference under ``tol``.
 

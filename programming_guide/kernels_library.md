@@ -168,7 +168,14 @@ a kernel without a hand-written design:
 ```python
 from aie.utils import kernel_harness as kh
 
-verdict = kh.check(kernels.reduce_max, calls=16, dtype=np.int32)
+fn = kernels.reduce_max(dtype=np.int32)
+design = kh.design(kernels.reduce_max, calls=16, dtype=np.int32)
+inputs = kh.sample_inputs(fn, calls=16)
+ins, out = kh.upload(
+    inputs, kh.output_size(fn, calls=16), fn.output_dtype(np.int32), fn=fn, poison=True
+)
+design(*ins, out)
+verdict = fn.judge(out.numpy().copy(), fn.expected(inputs), calls=16)
 assert verdict, verdict.detail
 ```
 

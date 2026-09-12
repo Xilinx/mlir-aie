@@ -15,14 +15,16 @@ module does it once, for every kernel:
     from aie.iron import kernels
     from aie.utils import kernel_harness as kh
 
-    verdict = kh.check(kernels.reduce_max, calls=16, dtype=bfloat16)
-    assert verdict, verdict.detail
+    fn = kernels.reduce_max(dtype=bfloat16)
+    design = kh.design(kernels.reduce_max, calls=16, dtype=bfloat16)
+    inputs = kh.sample_inputs(fn, calls=16)
+    ins, out = kh.upload(inputs, kh.output_size(fn, calls=16),
+                         fn.output_dtype(np.dtype(bfloat16)), fn=fn, poison=True)
+    design(*ins, out)
+    verdict = fn.judge(out.numpy().copy(), fn.expected(inputs), calls=16)
 
-``check`` draws inputs, builds the design, runs it on the current device,
-computes the reference and compares under the kernel's tolerance. The pieces
-are exposed separately (``design``, ``sample_inputs``, ``upload``, ``run``,
-``expected``, ``judge``, ``cycles_per_call``) for benchmarks and for users
-bringing up a new kernel.
+The pieces are separate on purpose: a design is built, run and judged the
+same way anything else built with ``@iron.jit`` is.
 
 Design generators are module-level functions with fixed arity, and everything
 that varies -- the factory, its kwargs, the call count, runtime scalars, the
@@ -61,7 +63,7 @@ from aie.iron.kernel import DesignShape
 from aie.utils import bfp
 from aie.utils.trace import TraceConfig
 from aie.utils.trace.utils import get_cycles_summary
-from aie.utils.verify import Tolerance, Verdict
+from aie.utils.verify import poisoned
 
 # --------------------------------------------------------------------------
 # Contract helpers
@@ -867,9 +869,9 @@ def upload(
         iron.tensor(np.ascontiguousarray(a).reshape(-1), dtype=a.dtype, device="npu")
         for a in host_layout(fn, inputs)
     ]
-    nbytes = out_size * np.dtype(out_dtype).itemsize
-    fill = 0x55 if poison else 0x00
-    host = np.full(nbytes, fill, dtype=np.uint8).view(out_dtype)
+    host = (
+        poisoned(out_size, out_dtype) if poison else np.zeros(out_size, dtype=out_dtype)
+    )
     out = iron.tensor(host, dtype=out_dtype, device="npu")
     return ins, out
 
@@ -893,45 +895,6 @@ def run(
     ins, out = upload(inputs, out_size, out_dtype, fn=fn, poison=poison)
     design_(*ins, out, **call_kwargs)
     return out.numpy().copy()
-
-
-def check(
-    factory: Callable,
-    *,
-    calls: int = 1,
-    scalars: tuple = (),
-    shape: tuple | None = None,
-    inputs: list[np.ndarray] | None = None,
-    rng=None,
-    tolerance: Tolerance | None = None,
-    **factory_kwargs,
-) -> Verdict:
-    """Build, run and judge ``factory(**factory_kwargs)`` on the current device.
-
-    Returns the :class:`~aie.utils.verify.Verdict`; ``tolerance`` overrides
-    the contract's for a one-off (tightening while bringing a kernel up).
-    """
-    fn = factory(**factory_kwargs)
-    if inputs is None:
-        inputs = sample_inputs(fn, calls=calls, shape=shape, rng=rng)
-    d = design(
-        factory,
-        calls=calls,
-        scalars=scalars,
-        shape=shape,
-        params=fn.param_values(inputs),
-        **factory_kwargs,
-    )
-    ref = fn.expected(inputs, scalars=scalars)
-    got = run(
-        d,
-        inputs,
-        output_size(fn, calls=calls, shape=shape),
-        fn.output_dtype(ref.dtype),
-        poison=True,
-        fn=fn,
-    )
-    return fn.judge(got, ref, calls=calls, tolerance=tolerance)
 
 
 def output_size(fn, *, calls: int = 1, shape: tuple | None = None) -> int:

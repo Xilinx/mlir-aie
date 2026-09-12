@@ -48,7 +48,18 @@ def _param(case):
     return pytest.param(case, marks=marks, id=case.name)
 
 
-def _run(case, data_case: str, seed: int):
+def _run(design, fn, inputs, out_n, out_dt):
+    """Upload, run and read back, with the output poisoned first.
+
+    The result is a copy: ``Tensor.numpy()`` views the XRT buffer's mapped
+    host memory, and ``out`` is the last reference to that buffer.
+    """
+    ins, out = kh.upload(inputs, out_n, out_dt, fn=fn, poison=True)
+    design(*ins, out)
+    return out.numpy().copy()
+
+
+def _run_case(case, data_case: str, seed: int):
     fn = case.fn()
     inputs = inputs_for(case, data_case, np.random.default_rng(1000 + seed))
     design = kh.design(
@@ -61,14 +72,14 @@ def _run(case, data_case: str, seed: int):
     out_n = kh.output_size(fn, calls=case.calls, shape=case.shape)
     out_dt = fn.output_dtype(ref.dtype)
     # The output is poisoned so a kernel that writes nothing cannot pass.
-    got = kh.run(design, inputs, out_n, out_dt, poison=True, fn=fn)
+    got = _run(design, fn, inputs, out_n, out_dt)
     verdict = fn.judge(got, ref, calls=case.calls)
     assert verdict, f"{case.name} [{data_case}, seed {seed}]: {verdict.detail}"
 
 
 @pytest.mark.parametrize("case", [_param(c) for c in CASES if c.smoke])
 def test_kernel(case):
-    _run(case, "random", 0)
+    _run_case(case, "random", 0)
 
 
 def pytest_generate_tests(metafunc):
@@ -91,7 +102,7 @@ def pytest_generate_tests(metafunc):
 
 @pytest.mark.extensive
 def test_kernel_extensive(case, data_case, seed):
-    _run(case, data_case, seed)
+    _run_case(case, data_case, seed)
 
 
 def test_case_names_are_unique():
@@ -118,14 +129,7 @@ def test_bf16_exp_saturates_outside_lut_domain():
     tile_bf16 = tile.astype(bfloat16)
 
     design = kh.design(kernels.bf16_exp, calls=1)
-    got = kh.run(
-        design,
-        [tile_bf16.reshape(1, 1024)],
-        1024,
-        np.dtype(bfloat16),
-        poison=True,
-        fn=fn,
-    )
+    got = _run(design, fn, [tile_bf16.reshape(1, 1024)], 1024, np.dtype(bfloat16))
     verdict = fn.judge(got, fn.expected([tile_bf16.reshape(1, 1024)]), calls=1)
     assert verdict, verdict.detail
 
@@ -144,14 +148,7 @@ def test_softmax_wide_dynamic_range():
     tile_bf16 = tile.astype(bfloat16)
 
     design = kh.design(kernels.softmax, calls=1)
-    got = kh.run(
-        design,
-        [tile_bf16.reshape(1, 1024)],
-        1024,
-        np.dtype(bfloat16),
-        poison=True,
-        fn=fn,
-    )
+    got = _run(design, fn, [tile_bf16.reshape(1, 1024)], 1024, np.dtype(bfloat16))
     verdict = fn.judge(got, fn.expected([tile_bf16.reshape(1, 1024)]), calls=1)
     assert verdict, verdict.detail
     # The peak must dominate: a wrapped index used to bury it at ~1e-14.
