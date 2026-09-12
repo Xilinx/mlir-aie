@@ -164,15 +164,24 @@ aie.route_endpoint @s(%tile)  Core {channelIndex = 0 : i32}
 
 ### Routes
 
-Routes name two endpoints and lower to a circuit- or packet-switched connection
+Routes name endpoints and lower to a circuit- or packet-switched connection
 between them.
 
 ```mlir
 aie.route from @d1 to [@d2, @d3]
+aie.route from [@d1, @d4] to [@d2] {packet = #aie.packet_info<>}
 ```
 
 Several destinations are a broadcast: one source channel feeding a multicast
-route.
+route. Several sources are a fan-in: their packets share the destination
+channel, which fills its next object with whichever arrives, so the
+destination's pool is a queue with several producers and no memory of which.
+A fan-in is packet-switched, since a circuit joins one port to its masters,
+and every end moves one object of the same size, since a packet is one pass of
+its sender's chain and a shorter one would leave two senders in one object.
+The one header is stamped by every source and the destination's chain is the
+ordinary ring. A consumer that must know the source is a different design:
+one route per source into its own pool. An endpoint is named by one route.
 
 A flow carrying a `packet` header becomes an `aie.packet_flow` and shares the
 stream; circuit flows reserve theirs. Both kinds coexist in one device. The
@@ -457,6 +466,8 @@ Flows and core accesses:
   Only releases forced by static loop bounds count, and a loop meant to run
   forever (a trip count from the 24-bit BD-loop saturation value up) is left
   out, since its core stalling once the data stops is how such a design ends
+- every end of a fan-in route moves one object of the same size, counting a
+  DMA endpoint's selected segments through its `dimensions`
 
 ### By `--aie-assign-packet-ids`
 

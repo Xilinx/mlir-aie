@@ -1202,17 +1202,19 @@ void SequentialPlacer::addChannelRequirementsFromFlows(
     });
   }
 
-  // The verifier lets an endpoint appear in only one route.
+  // The verifier lets an endpoint appear in only one route, and a fan-in's
+  // sources share one destination channel.
   for (auto route : routes) {
-    auto count = [&](FlatSymbolRefAttr name, bool isOutput) {
-      auto endpoint =
-          SymbolTable::lookupNearestSymbolFrom<RouteEndpoint>(route, name);
+    auto count = [&](StringRef name, bool isOutput) {
+      auto endpoint = SymbolTable::lookupNearestSymbolFrom<RouteEndpoint>(
+          route, StringAttr::get(route.getContext(), name));
       if (endpoint)
         incIfDMA(endpoint.getTile().getDefiningOp(), endpoint.getRouteBundle(),
                  endpoint.getRouteChannel(), isOutput);
     };
-    count(route.getSourceAttr(), /*isOutput=*/true);
-    for (auto dest : route.getDestinations().getAsRange<FlatSymbolRefAttr>())
+    for (StringRef source : route.getSourceNames())
+      count(source, /*isOutput=*/true);
+    for (StringRef dest : route.getDestinationNames())
       count(dest, /*isOutput=*/false);
   }
 }
@@ -1252,21 +1254,22 @@ SequentialPlacer::FlowMembership SequentialPlacer::buildFlowMembership(
       addEntry(d, srcs);
   }
   for (auto route : routes) {
-    auto tileOf = [&](FlatSymbolRefAttr name) -> Value {
-      auto endpoint =
-          SymbolTable::lookupNearestSymbolFrom<RouteEndpoint>(route, name);
+    auto tileOf = [&](StringRef name) -> Value {
+      auto endpoint = SymbolTable::lookupNearestSymbolFrom<RouteEndpoint>(
+          route, StringAttr::get(route.getContext(), name));
       return endpoint ? endpoint.getTile() : Value();
     };
-    Value src = tileOf(route.getSourceAttr());
-    SmallVector<Value> dsts;
-    for (auto dest : route.getDestinations().getAsRange<FlatSymbolRefAttr>())
+    SmallVector<Value> srcs, dsts;
+    for (StringRef source : route.getSourceNames())
+      if (Value tile = tileOf(source))
+        srcs.push_back(tile);
+    for (StringRef dest : route.getDestinationNames())
       if (Value tile = tileOf(dest))
         dsts.push_back(tile);
-    if (!src)
-      continue;
-    addEntry(src, dsts);
+    for (Value s : srcs)
+      addEntry(s, dsts);
     for (Value d : dsts)
-      addEntry(d, {src});
+      addEntry(d, srcs);
   }
   for (auto of : objectFifos) {
     Value prod = of.getProducerTile();
