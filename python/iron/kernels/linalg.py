@@ -310,6 +310,7 @@ def mm(
         compile_flags=compile_flags,
         use_chess=use_chess,
         contract=KernelContract(
+            stack_bytes=0xD00,  # programming_examples/basic/matrix_multiplication
             # aie2p/mm.cc sets conv_even itself and restores it; aie2/mm.cc
             # stores bf16 in whatever mode the core is in.
             setup=(conv_even if arch != "aie2p" and output_dtype is bfloat16 else None),
@@ -544,6 +545,7 @@ def mm_bfp(
         [a_ty, b_ty, c_ty],
         compile_flags=flags + ["-DMATMUL_ONLY"],
         contract=KernelContract(
+            stack_bytes=0xF00,  # programming_examples/ml/block_datatypes
             setup=conv_even,
             roles=(In, In, InOut),  # C += A * B; see the .also.zero sibling
             reference=mm_bfp_mixed_ref if mixed else mm_bfp_ref,

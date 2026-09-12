@@ -131,32 +131,44 @@ def _tensor_positions(contract):
     return ins, contract.out_index
 
 
-# A core tile's data memory on aie2 and aie2p; the design's tiles must fit
-# beside the stack. ObjectFifos default to depth 2 (ping-pong); when that does
-# not fit, depth 1 still runs the kernel correctly, just without overlap.
-_CORE_MEMORY = 64 * 1024
-_DEFAULT_STACK = 1024
-# Stream Workers get 8 KB: aiecc measures each core's stack need and rejects
-# a design whose stack is too small (conv2dk1 wants 2688 bytes, conv2dk3
-# 4672). The fifo-depth budget below accounts for it.
-_STREAM_STACK = 0x2000
+def _device():
+    """Return the bound device, whose target model sizes tiles and stacks."""
+    device = iron.get_current_device()
+    if device is None:
+        raise RuntimeError(
+            "no device is bound: a design's core memory and stack budget come "
+            "from the target model, so select one with iron.set_current_device()"
+        )
+    return device
 
 
-def _fifo_depth(
-    fn, tile_bytes: int, stack_bytes: int = _DEFAULT_STACK, fixed_bytes: int = 0
-) -> int:
+def _stack_bytes(fn) -> int:
+    """Stack a Worker calling ``fn`` needs.
+
+    aiecc measures each core's stack and rejects a design whose stack is too
+    small, so a kernel that needs more than the target's default says so in
+    its contract; everything else takes the default.
+    """
+    declared = getattr(_contract(fn), "stack_bytes", None)
+    return declared or _device().default_core_stack_bytes
+
+
+def _fifo_depth(fn, tile_bytes: int, stack_bytes: int, fixed_bytes: int = 0) -> int:
     """Largest ObjectFifo depth (2 or 1) at which ``tile_bytes`` per depth fits.
 
+    ObjectFifos default to depth 2 (ping-pong); when that does not fit beside
+    the stack, depth 1 still runs the kernel correctly, just without overlap.
     ``fixed_bytes`` is memory used once regardless of depth: the Buffers that
-    hold ``param`` arguments (a 3x3x64x64 conv weight set is 36 KB).
+    hold ``Param`` arguments (a 3x3x64x64 conv weight set is 36 KB).
     """
+    core_memory = _device().core_memory_bytes
     for depth in (2, 1):
-        if depth * tile_bytes + fixed_bytes + stack_bytes <= _CORE_MEMORY:
+        if depth * tile_bytes + fixed_bytes + stack_bytes <= core_memory:
             return depth
     raise ValueError(
         f"{fn.name}: one set of tiles is {tile_bytes} bytes plus {fixed_bytes} bytes "
         f"of parameters; with a {stack_bytes}-byte stack that exceeds the "
-        f"{_CORE_MEMORY}-byte core memory. Use a smaller tile."
+        f"{core_memory}-byte core memory. Use a smaller tile."
     )
 
 
@@ -297,7 +309,7 @@ def _build_stream(
     depth = _fifo_depth(
         fn,
         sum(nbytes(i) for i in in_roles + [out_pos]),
-        stack_bytes=_STREAM_STACK,
+        stack_bytes=_stack_bytes(fn),
         fixed_bytes=sum(nbytes(i) for i in param_roles),
     )
     fifos_in = [
@@ -370,7 +382,7 @@ def _build_stream(
         [f.cons() for f in fifos_in]
         + [fifo_out.prod(), *param_bufs, fn]
         + _opt(setter),
-        stack_size=_STREAM_STACK,
+        stack_size=_stack_bytes(fn),
         trace=1 if trace_config else 0,
     )
 
@@ -478,9 +490,6 @@ _STREAM = {1: _stream1, 2: _stream2, 3: _stream3}
 # Matrix kernels: mm / mv with their published DMA layouts
 # --------------------------------------------------------------------------
 
-_MM_STACK = 0xD00  # as programming_examples/basic/matrix_multiplication
-_BFP_MM_STACK = 0xF00  # as programming_examples/ml/block_datatypes (mixed)
-
 
 @iron.jit
 def _matmul(
@@ -517,8 +526,7 @@ def _matmul(
     # examples declare them.
     va, vb, vc = (_values_per_elem(dt) for dt in (dt_a, dt_b, dt_c))
     assert a_shape == (m * k // va,) and c_shape == (m * n // vc,)
-    any_bfp = va > 1 or vb > 1 or vc > 1
-    stack = _BFP_MM_STACK if any_bfp else _MM_STACK
+    stack = _stack_bytes(mm)
     M_div_m, K_div_k, N_div_n = M // m, K // k, N // n
     tiles = M_div_m * N_div_n
     # C drains in ping-pong groups of ``c_rows`` tile rows: two when M holds

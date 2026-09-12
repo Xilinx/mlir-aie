@@ -48,6 +48,16 @@ class Device(Resolvable):
         """AIE architecture of the device (AIE1, AIE2, or AIE2p)."""
         return AIEArch(self._tm.get_target_arch())
 
+    @property
+    def core_memory_bytes(self) -> int:
+        """Data memory local to one compute tile."""
+        return self._tm.get_local_memory_size()
+
+    @property
+    def default_core_stack_bytes(self) -> int:
+        """Stack a Worker gets when nothing it calls declares a larger need."""
+        return self._tm.get_default_core_stack_size()
+
     def _validate_coordinates(self, col, row):
         """Raise ValueError if coordinates are outside the device grid."""
         if col < 0 or col >= self._tm.columns() or row < 0 or row >= self._tm.rows():
