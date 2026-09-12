@@ -7,21 +7,19 @@
 
 // RUN: aie-opt --aie-objectFifo-stateful-transform="skip-verify=true" --aie-objectFifo-unroll %s | FileCheck %s
 
-// A compute tile broadcasting to two shim tiles. Each shim consumer needs its
-// own aie.shim_dma_allocation; a lowering that stops at the first row-0
-// consumer silently drops the second.
+// A compute tile broadcasting to two shim tiles. Each shim consumer is a
+// different tile and channel, so each needs its own aie.shim_dma_allocation
+// for the runtime to address.
 
 // CHECK-LABEL: @twoShimConsumers
 // Routing reaches both shim tiles.
 // CHECK-DAG:     aie.flow(%{{.*}}tile_0_2, DMA : 0, %{{.*}}shim_pl_tile_0_0, DMA : 0)
 // CHECK-DAG:     aie.flow(%{{.*}}tile_0_2, DMA : 0, %{{.*}}shim_pl_tile_1_0, DMA : 0)
 
-// Known limitation: the runtime record is named after the fifo, so the second
-// shim consumer gets no aie.shim_dma_allocation of its own and tile(1, 0) is
-// unreachable from a runtime sequence. Emitting one record per shim consumer
-// is the fix; this pins today's output so that change is deliberate.
-// CHECK:         aie.shim_dma_allocation @of_shim_alloc(%{{.*}}shim_pl_tile_0_0, S2MM, 0)
-// CHECK-NOT:     aie.shim_dma_allocation
+// The first shim end keeps the fifo's own record name; the second gets one of
+// its own rather than being folded into the first, which named the wrong tile.
+// CHECK-DAG:     aie.shim_dma_allocation @of_shim_alloc(%{{.*}}shim_pl_tile_0_0, S2MM, 0)
+// CHECK-DAG:     aie.shim_dma_allocation @of_shim_alloc_0(%{{.*}}shim_pl_tile_1_0, S2MM, 0)
 
 module @twoShimConsumers {
  aie.device(xcve2302) {

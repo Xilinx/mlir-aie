@@ -14,6 +14,7 @@
 #include "mlir/IR/Attributes.h"
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
 #include "mlir/Pass/Pass.h"
+#include "llvm/ADT/StringMap.h"
 
 #include <set>
 
@@ -1288,6 +1289,11 @@ struct AIEObjectFifoAllocatePass
   /// spelled out under the name the sequence refers to.
   void emitShimAllocations() {
     builder.setInsertionPoint(device.getBody()->getTerminator());
+    // A fifo's first shim end takes the name the runtime sequence was pointed
+    // at. Any further shim end of the same fifo, as when a core broadcasts to
+    // two shim tiles, is a different tile and channel and needs a record of
+    // its own; sharing the first would send the runtime to the wrong tile.
+    llvm::StringMap<unsigned> shimEndsSeen;
     for (auto endpoint : device.getOps<RouteEndpoint>()) {
       std::optional<StringRef> fifoName = endpoint.getFifoName();
       std::optional<int> channel = endpoint.getRouteChannel();
@@ -1295,8 +1301,19 @@ struct AIEObjectFifoAllocatePass
         continue;
       }
       std::string name = (*fifoName + "_shim_alloc").str();
-      if (!SymbolTable::lookupNearestSymbolFrom<ShimDMAAllocationOp>(
-              device, builder.getStringAttr(name))) {
+      unsigned ordinal = shimEndsSeen[*fifoName]++;
+      bool create = true;
+      if (ordinal == 0) {
+        // A record under this name may already be there, declared by hand.
+        create = !SymbolTable::lookupNearestSymbolFrom<ShimDMAAllocationOp>(
+            device, builder.getStringAttr(name));
+      } else {
+        for (unsigned suffix = ordinal - 1; device.lookupSymbol(name);
+             suffix++) {
+          name = (*fifoName + "_shim_alloc_" + std::to_string(suffix)).str();
+        }
+      }
+      if (create) {
         ShimDMAAllocationOp::create(
             builder, endpoint.getLoc(), builder.getStringAttr(name),
             endpoint.getTile(),
