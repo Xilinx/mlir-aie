@@ -14,10 +14,12 @@ design passes as the ``count`` role. These are the kernels
 
 import numpy as np
 from aie.iron.kernel import ExternalFunction
+from aie.utils.compile.jit.markers import Count, In, Out, Param, Scalar
 from aie.utils.verify import Tolerance
 from ml_dtypes import bfloat16
 
 from ._common import KernelContract, _default_source_path, _detect_arch, _make_extern
+from .core import conv_even
 
 _EPS = 1e-5
 
@@ -54,7 +56,7 @@ def _row_kernel(
     tol,
     ops,
     *,
-    rounding_mode: str,
+    setup=None,
 ) -> ExternalFunction:
     _aie2p_only(name, source)
     _cols(name, cols)
@@ -65,13 +67,13 @@ def _row_kernel(
         _default_source_path(source, subdir="aie2p"),
         [in_ty, out_ty, np.int32],
         contract=KernelContract(
-            roles=("in", "out", "count"),
+            roles=(In, Out, Count),
             reference=ref,
             tolerance=tol,
             ops_per_call=ops,
             acc_dtype=np.float32,
             reduction=cols,
-            rounding_mode=rounding_mode,
+            setup=setup,
         ),
     )
 
@@ -92,7 +94,7 @@ def rms_norm(cols: int = 4096) -> ExternalFunction:
         rms_norm_ref,
         _NORM_BF16,
         4 * cols,
-        rounding_mode="conv_even",
+        setup=conv_even,
     )
 
 
@@ -112,7 +114,6 @@ def layer_norm(cols: int = 4096) -> ExternalFunction:
         layer_norm_ref,
         _NORM_BF16,
         6 * cols,
-        rounding_mode="sets_own",
     )
 
 
@@ -132,7 +133,6 @@ def layer_norm_f32(cols: int = 4096) -> ExternalFunction:
         layer_norm_f32_ref,
         _NORM_F32,
         6 * cols,
-        rounding_mode="sets_own",
     )
 
 
@@ -156,8 +156,7 @@ def layer_norm_affine_cast(cols: int = 4096) -> ExternalFunction:
         _default_source_path("layer_norm.cc", subdir="aie2p"),
         [in_ty, gb_ty, out_ty, np.int32],
         contract=KernelContract(
-            rounding_mode="sets_own",
-            roles=("in", "param", "out", "count"),
+            roles=(In, Param, Out, Count),
             reference=layer_norm_affine_cast_ref,
             acc_dtype=np.float32,
             reduction=cols,
@@ -186,8 +185,8 @@ def rope(cols: int = 4096) -> ExternalFunction:
         _default_source_path("rope.cc", subdir="aie2p"),
         [tile_ty, tile_ty, tile_ty, np.int32],
         contract=KernelContract(
-            rounding_mode="conv_even",
-            roles=("in", "in", "out", "count"),
+            setup=conv_even,
+            roles=(In, In, Out, Count),
             reference=rope_ref,
             acc_dtype=np.float32,
             reduction=2,
@@ -217,8 +216,8 @@ def mm_activation_epilogue(tile_size: int = 1024) -> ExternalFunction:
         _default_source_path("mm_activation_epilogue.cc", subdir="aie2p"),
         [tile_ty, tile_ty, np.int32, np.int32],
         contract=KernelContract(
-            rounding_mode="conv_even",
-            roles=("in", "out", "count", "scalar"),
+            setup=conv_even,
+            roles=(In, Out, Count, Scalar),
             reference=mm_activation_epilogue_ref,
             acc_dtype=np.float32,
             reduction=1,

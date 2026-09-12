@@ -9,16 +9,17 @@ import functools
 
 import numpy as np
 from aie.iron.kernel import ExternalFunction
+from aie.utils.compile.jit.markers import In, InOut, Out, Param, Scalar
 from aie.utils.verify import Tolerance
 from ml_dtypes import bfloat16
 
 from ._common import (
     KernelContract,
     _conv_act_dtype_info,
-    _declare_dtypes,
     _default_source_path,
     _detect_arch,
     _make_extern,
+    dtypes,
 )
 
 
@@ -582,8 +583,7 @@ def dwconv1d(
         [in_ty, w_ty, out_ty, np.int32],
         compile_flags=[f"-DDWCONV_K={kernel_size}", f"-DDWCONV_BIAS={int(bias)}"],
         contract=KernelContract(
-            rounding_mode="sets_own",
-            roles=("in", "in", "out", "scalar"),
+            roles=(In, In, Out, Scalar),
             reference=lambda x, w, n: dwconv1d_ref(
                 x, w, n, kernel_size=kernel_size, bias=bias
             ),
@@ -613,6 +613,7 @@ def dwconv1d_ref(x_pad, w, seq_len, *, kernel_size: int, bias: bool):
     return out.astype(np.asarray(x_pad).dtype)
 
 
+@dtypes(({"act_dtype": np.int8}, {"act_dtype": np.uint8}))
 def conv2dk1(
     input_width: int = 32,
     input_channels: int = 64,
@@ -645,13 +646,10 @@ def conv2dk1(
         [in_ty, wt_ty, out_ty, *_i32s(4)],
         compile_flags=flags,
         contract=KernelContract(
-            rounding_mode="sets_own",
-            roles=("in", "param", "out", "scalar", "scalar", "scalar", "scalar"),
+            roles=(In, Param, Out, Scalar, Scalar, Scalar, Scalar),
             reference=conv2dk1_ref,
             acc_dtype=np.int32,
             reduction=input_channels,
-            overflow="saturate",  # explicit clamp to [0, 255] in both paths
-            rounding="unspecified",  # scalar path rounds half up; vector path srs
             tolerance=Tolerance.exact(
                 note="measured bit-exact against the reference over every data case"
             ),
@@ -660,9 +658,7 @@ def conv2dk1(
     )
 
 
-_declare_dtypes(conv2dk1, ({"act_dtype": np.int8}, {"act_dtype": np.uint8}))
-
-
+@dtypes(({"act_dtype": np.int8}, {"act_dtype": np.uint8}))
 def conv2dk3(
     input_width: int = 32,
     input_channels: int = 64,
@@ -707,13 +703,10 @@ def conv2dk3(
         [line_ty, line_ty, line_ty, wt_ty, out_ty, *_i32s(8)],
         compile_flags=flags,
         contract=KernelContract(
-            rounding_mode="sets_own",
-            roles=("in", "in", "in", "param", "out", *(("scalar",) * 8)),
+            roles=(In, In, In, Param, Out, *((Scalar,) * 8)),
             reference=conv2dk3_ref,
             acc_dtype=np.int32,
             reduction=9 * input_channels,
-            overflow="saturate",
-            rounding="unspecified",
             tolerance=Tolerance.exact(
                 note="measured bit-exact against the reference over every data case"
             ),
@@ -722,9 +715,7 @@ def conv2dk3(
     )
 
 
-_declare_dtypes(conv2dk3, ({"act_dtype": np.int8}, {"act_dtype": np.uint8}))
-
-
+@dtypes(({"act_dtype": np.int8}, {"act_dtype": np.uint8}))
 def conv2dk1_skip(
     input_width: int = 32,
     input_channels: int = 64,
@@ -768,13 +759,10 @@ def conv2dk1_skip(
         [in0_ty, in1_ty, wt_ty, out_ty, skip_ty, *_i32s(5)],
         compile_flags=flags,
         contract=KernelContract(
-            rounding_mode="sets_own",
-            roles=("in", "in", "param", "out", "in", *(("scalar",) * 5)),
+            roles=(In, In, Param, Out, In, *((Scalar,) * 5)),
             reference=conv2dk1_skip_ref,
             acc_dtype=np.int32,
             reduction=input_channels,
-            overflow="saturate",  # int8 after the conv shift, uint8 after the add
-            rounding="unspecified",  # scalar path rounds half up; vector path srs
             tolerance=Tolerance.exact(
                 note="measured bit-exact against the reference over every data case"
             ),
@@ -782,9 +770,6 @@ def conv2dk1_skip(
             + input_width * output_channels,
         ),
     )
-
-
-_declare_dtypes(conv2dk1_skip, ({"act_dtype": np.int8}, {"act_dtype": np.uint8}))
 
 
 def conv2dk1_i8(
@@ -811,13 +796,10 @@ def conv2dk1_i8(
         [in_ty, wt_ty, out_ty, *_i32s(4)],
         compile_flags=["-DINT8_ACT"],
         contract=KernelContract(
-            rounding_mode="sets_own",
-            roles=("in", "param", "out", "scalar", "scalar", "scalar", "scalar"),
+            roles=(In, Param, Out, Scalar, Scalar, Scalar, Scalar),
             reference=conv2dk1_i8_ref,
             acc_dtype=np.int32,
             reduction=input_channels,
-            overflow="saturate",  # explicit clamp to [-128, 127] in both paths
-            rounding="unspecified",  # scalar half up; vector symmetric_inf srs
             # The only conv kernel that is not bit-exact: its vector path
             # ends in a symmetric_inf srs the scalar reference does not model,
             # measured at 2 of 98304 values, each one LSB out.
@@ -859,13 +841,10 @@ def conv2dk14(
         _default_source_path("conv2dk14.cc", subdir="aie2p"),
         [in_ty, wt_ty, out_ty, *_i32s(5)],
         contract=KernelContract(
-            rounding_mode="sets_own",
-            roles=("in", "param", "out", *(("scalar",) * 5)),
+            roles=(In, Param, Out, *((Scalar,) * 5)),
             reference=conv2dk14_ref,
             acc_dtype=np.int32,
             reduction=pixels * _RGBA,
-            overflow="saturate",  # explicit clamp to [-128, 127] in both paths
-            rounding="unspecified",  # scalar half up; vector srs
             tolerance=Tolerance.exact(
                 note="measured bit-exact against the reference over every data case"
             ),
@@ -874,6 +853,7 @@ def conv2dk14(
     )
 
 
+@dtypes(({"act_dtype": np.int8}, {"act_dtype": np.uint8}))
 def conv2dk1_skip_init(
     input_width: int = 32,
     input_channels: int = 64,
@@ -926,13 +906,10 @@ def conv2dk1_skip_init(
         [in0_ty, in1_ty, wt_ty, out_ty, skip_ty, *_i32s(7)],
         compile_flags=flags,
         contract=KernelContract(
-            rounding_mode="sets_own",
-            roles=("in", "in", "param", "out", "in", *(("scalar",) * 7)),
+            roles=(In, In, Param, Out, In, *((Scalar,) * 7)),
             reference=conv2dk1_skip_init_ref,
             acc_dtype=np.int32,
             reduction=max(input_channels, skip_input_channels),
-            overflow="saturate",  # int8 after each conv, uint8 after the add
-            rounding="nearest",  # (x + 2**(s-1)) >> s in both paths and the reference
             # Measured bit-exact over every data case at three seeds. The uint8
             # entry point was an empty function and the one-LSB slack these
             # conv kernels used to share was not what hid it, but an exact
@@ -946,9 +923,6 @@ def conv2dk1_skip_init(
             * (input_channels + skip_input_channels),
         ),
     )
-
-
-_declare_dtypes(conv2dk1_skip_init, ({"act_dtype": np.int8}, {"act_dtype": np.uint8}))
 
 
 def bn_conv2dk1_relu(
@@ -975,12 +949,10 @@ def bn_conv2dk1_relu(
         [in_ty, wt_ty, out_ty, *_i32s(4)],
         compile_flags=["-DREGULAR", "-DINT8_ACT"],
         contract=KernelContract(
-            roles=("in", "param", "out", *(("scalar",) * 4)),
+            roles=(In, Param, Out, *((Scalar,) * 4)),
             reference=bn_conv2dk1_relu_ref,
             acc_dtype=np.int32,
             reduction=input_channels,
-            overflow="saturate",
-            rounding="nearest_even",
             tolerance=_BN_TOLERANCE,
             ops_per_call=2 * input_width * input_channels * output_channels,
         ),
@@ -1012,12 +984,10 @@ def bn_conv2dk3(
         _default_source_path("bottleneck/bn_conv2dk3.cc", subdir="aie2"),
         [line_ty, line_ty, line_ty, wt_ty, out_ty, *_i32s(8)],
         contract=KernelContract(
-            roles=("in", "in", "in", "param", "out", *(("scalar",) * 8)),
+            roles=(In, In, In, Param, Out, *((Scalar,) * 8)),
             reference=bn_conv2dk3_ref,
             acc_dtype=np.int32,
             reduction=9 * input_channels,
-            overflow="saturate",
-            rounding="nearest_even",
             tolerance=_BN_TOLERANCE,
             ops_per_call=2 * 9 * (input_width // 2) * input_channels * output_channels,
         ),
@@ -1048,18 +1018,17 @@ def bn_conv2dk1_i8(
         [in_ty, wt_ty, out_ty, *_i32s(4)],
         compile_flags=["-DREGULAR", "-DSCALAR"],
         contract=KernelContract(
-            roles=("in", "param", "out", *(("scalar",) * 4)),
+            roles=(In, Param, Out, *((Scalar,) * 4)),
             reference=bn_conv2dk1_i8_ref,
             acc_dtype=np.int32,
             reduction=input_channels,
-            overflow="saturate",
-            rounding="nearest_even",
             tolerance=_BN_TOLERANCE,
             ops_per_call=2 * input_width * input_channels * output_channels,
         ),
     )
 
 
+@dtypes(({"skip_dtype": np.uint8}, {"skip_dtype": np.int8}))
 def bn_conv2dk1_skip(
     input_width: int = 32,
     input_channels: int = 64,
@@ -1102,20 +1071,15 @@ def bn_conv2dk1_skip(
         [in_ty, wt_ty, out_ty, skip_ty, *_i32s(5)],
         compile_flags=flags,
         contract=KernelContract(
-            roles=("in", "param", "out", "in", *(("scalar",) * 5)),
+            roles=(In, Param, Out, In, *((Scalar,) * 5)),
             reference=bn_conv2dk1_skip_ref,
             acc_dtype=np.int32,
             reduction=input_channels,
-            overflow="saturate",  # int8 after the conv shift and after the add
-            rounding="nearest_even",
             tolerance=_BN_TOLERANCE,
             ops_per_call=2 * input_width * input_channels * output_channels
             + input_width * output_channels,
         ),
     )
-
-
-_declare_dtypes(bn_conv2dk1_skip, ({"skip_dtype": np.uint8}, {"skip_dtype": np.int8}))
 
 
 def bn_conv2dk3_dw(
@@ -1155,12 +1119,10 @@ def bn_conv2dk3_dw(
         [line_ty, line_ty, line_ty, wt_ty, out_ty, *_i32s(8)],
         compile_flags=["-DREGULAR", "-DSCALAR", f"-DSTRIDE{stride}"],
         contract=KernelContract(
-            roles=("in", "in", "in", "param", "out", *(("scalar",) * 8)),
+            roles=(In, In, In, Param, Out, *((Scalar,) * 8)),
             reference=functools.partial(_bn_conv2dk3_dw_ref_stride, stride),
             acc_dtype=np.int32,
             reduction=9,
-            overflow="saturate",
-            rounding="nearest_even",
             tolerance=_BN_TOLERANCE,
             ops_per_call=2 * 9 * (input_width // stride) * output_channels,
         ),
@@ -1210,12 +1172,10 @@ def bn_conv2dk1_relu_xy_pool_padded(
         compile_flags=["-DSCALAR", "-DCONV_XYPOOL_FUSED_LARGE_PADDED", "-DINT8_ACT"],
         contract=KernelContract(
             # The output is read back on every row after the first (y_index).
-            roles=("in", "param", "inout", *(("scalar",) * 8)),
+            roles=(In, Param, InOut, *((Scalar,) * 8)),
             reference=bn_conv2dk1_relu_xy_pool_padded_ref,
             acc_dtype=np.int32,
             reduction=input_channels,
-            overflow="saturate",  # each pixel's conv saturates to uint8 before the pool
-            rounding="nearest_even",  # the conv shift; the pool's own rule is modelled
             tolerance=Tolerance.lsb(
                 1,
                 note="scalar source modelled exactly, except that the pool average "
@@ -1493,12 +1453,10 @@ def bn_fc_relu_ui16_pad(
         [in_ty, wt_ty, out_ty, *_i32s(5)],
         compile_flags=["-DSCALAR", "-DPOSTL2_PAD", "-DUINT16_ACT"],
         contract=KernelContract(
-            roles=("in", "param", "out", *(("scalar",) * 5)),
+            roles=(In, Param, Out, *((Scalar,) * 5)),
             reference=bn_fc_relu_ui16_pad_ref,
             acc_dtype=np.int32,
             reduction=input_channels,
-            overflow="saturate",
-            rounding="nearest_even",
             tolerance=_BN_TOLERANCE,
             ops_per_call=2 * input_channels * output_channels,
         ),

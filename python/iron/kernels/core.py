@@ -3,45 +3,55 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""Core state kernels: ``set_rounding``.
+"""``set_rounding``: the core's rounding-mode register.
 
 The AIE core narrows accumulators (an ``srs`` shift, a bf16 store) in the
 rounding mode its mode register holds, and a fresh core boots in ``floor``.
-A kernel whose contract names a ``rounding_mode`` expects the design to have
-set that mode before its first call; ``set_rounding`` is the kernel that
-does so, and ``aie.utils.kernel_harness`` calls it for such contracts.
+A kernel that needs another mode names a setter as its contract's ``setup``,
+and a design calls it once before the kernel's first call; the mode persists
+on that core until something changes it.
 """
+
+from enum import StrEnum
+from functools import partial
 
 from aie.iron.kernel import ExternalFunction
 
-from ._common import ROUNDING_MODES, _default_source_path, _make_extern
+from ._common import KernelContract, _default_source_path, _make_extern
 
 
-def set_rounding(mode: str = "conv_even") -> ExternalFunction:
+class RoundingMode(StrEnum):
+    """An ``aie::rounding_mode``, named as the C++ enumerator is."""
+
+    FLOOR = "floor"
+    CEIL = "ceil"
+    POSITIVE_INF = "positive_inf"
+    NEGATIVE_INF = "negative_inf"
+    SYMMETRIC_INF = "symmetric_inf"
+    SYMMETRIC_ZERO = "symmetric_zero"
+    CONV_EVEN = "conv_even"
+    CONV_ODD = "conv_odd"
+
+
+def set_rounding(mode: RoundingMode = RoundingMode.CONV_EVEN) -> ExternalFunction:
     """Kernel that sets the core's rounding mode to ``mode`` and returns.
 
-    Call it once in a Worker before the first kernel whose contract's
-    ``rounding_mode`` is ``mode``; the mode persists on that core until
-    another kernel changes it. ``mode`` is an ``aie::rounding_mode`` name:
-    ``floor``, ``ceil``, ``positive_inf``, ``negative_inf``,
-    ``symmetric_inf``, ``symmetric_zero``, ``conv_even`` or ``conv_odd``.
-
     Args:
-        mode: The ``aie::rounding_mode`` to set.
+        mode: The [`RoundingMode`][iron.kernels.core.RoundingMode] to set.
 
     Returns:
         ExternalFunction ``set_rounding_<mode>``, which takes no arguments.
-
-    Raises:
-        ValueError: When ``mode`` is not an ``aie::rounding_mode`` name.
     """
-    if mode not in ROUNDING_MODES or mode in ("unspecified", "sets_own"):
-        raise ValueError(
-            f"set_rounding() mode must be an aie::rounding_mode name, got {mode!r}."
-        )
+    mode = RoundingMode(mode)
     return _make_extern(
         f"set_rounding_{mode}",
         _default_source_path("set_rounding.cc", subdir="generic"),
         [],
         compile_flags=[f"-DROUNDING_MODE={mode}"],
+        contract=KernelContract(roles=()),  # sets core state; no data arguments
     )
+
+
+#: Round ties to even, the mode numpy's float casts use. The ``setup`` of
+#: every contract judged against a numpy reference that rounds that way.
+conv_even = partial(set_rounding, RoundingMode.CONV_EVEN)

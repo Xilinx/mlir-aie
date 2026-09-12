@@ -246,23 +246,23 @@ def test_integers_honour_an_lsb_slack_only_under_a_relative_tolerance():
     )
 
 
-def test_integer_overflow_of_the_reference_follows_the_declared_semantics():
+def test_the_reference_models_overflow_and_compare_reports_when_it_does_not():
+    """``compare`` measures; the reference is what says the kernel wraps or clips."""
     ref = np.array([100, 40000, -40000, 7], dtype=np.int64)
-    # wrap: the plain cast, two's complement.
-    wrapped = ref.astype(np.int16)
-    assert compare(wrapped, ref, Tolerance.exact(), overflow="wrap")
-    # saturate: the kernel clamps.
-    sat = np.array([100, 32767, -32768, 7], dtype=np.int16)
-    assert compare(sat, ref, Tolerance.exact(), overflow="saturate")
-    assert not compare(wrapped, ref, Tolerance.exact(), overflow="saturate")
-    # undefined: an overflowing reference is not graded at all.
-    v = compare(sat, ref, Tolerance.exact(), overflow="undefined")
-    assert not v and v.n_mismatch == 2 and "overflows int16" in v.detail
-    # ... but a reference that fits is graded normally.
+    # A wrapping kernel's reference casts; a saturating one's clips. Either
+    # matches its own device output, and neither needs a flag here.
+    assert compare(ref.astype(np.int16), ref.astype(np.int16), Tolerance.exact())
+    sat = np.clip(ref, -32768, 32767).astype(np.int16)
+    assert compare(sat, sat, Tolerance.exact())
+
+    # A reference left in its wider type does not model either, so a failure
+    # says so rather than blaming the kernel.
+    v = compare(sat, ref, Tolerance.exact())
+    assert not v and "overflows int16" in v.detail
+    # A reference that fits is graded normally, with no such note.
     fits = np.array([1, 2, 3, 4], dtype=np.int64)
-    assert compare(fits.astype(np.int16), fits, Tolerance.exact(), overflow="undefined")
-    with pytest.raises(ValueError, match="overflow must be"):
-        compare(sat, ref, Tolerance.exact(), overflow="clamp")
+    v = compare(fits.astype(np.int16), fits, Tolerance.exact())
+    assert v and "overflows" not in (v.detail or "")
 
 
 def test_default_tolerance_is_dtype_aware():
@@ -272,13 +272,14 @@ def test_default_tolerance_is_dtype_aware():
     assert Tolerance.default_for(np.int32).kind == "exact"
 
 
-def test_compare_can_flush_subnormals():
-    from aie.utils.verify import Tolerance, compare
-
+def test_a_flushing_kernel_flushes_in_its_reference():
+    """Denormal flushing belongs to the reference, not to a ``compare`` flag."""
     tiny = np.float32(1e-40)  # subnormal in float32
     got = np.array([0.0, 1.0, tiny], np.float32)
     ref = np.array([tiny, 1.0, 0.0], np.float32)
     assert not compare(got, ref, Tolerance.exact())
-    assert compare(got, ref, Tolerance.exact(), subnormals="flush")
-    with pytest.raises(ValueError):
-        compare(got, ref, Tolerance.exact(), subnormals="sometimes")
+
+    def flush(x):
+        return np.where(np.abs(x) < np.finfo(np.float32).tiny, np.float32(0), x)
+
+    assert compare(flush(got), flush(ref), Tolerance.exact())

@@ -7,18 +7,20 @@
 
 import numpy as np
 from aie.iron.kernel import ExternalFunction
+from aie.utils.compile.jit.markers import Count, In, Out, Param, Scalar
 from aie.utils.verify import Tolerance
 from ml_dtypes import bfloat16
 
 from ._common import (
     KernelContract,
-    _declare_dtypes,
     _default_source_path,
     _dtype_to_bit_width,
     _make_extern,
     _require_fixed_tile_size,
     _require_min_trip_count,
+    dtypes,
 )
+from .core import conv_even
 
 _ELTWISE_FIXED_TILE = 1024
 _RELU_FIXED_TILE = 1024
@@ -75,11 +77,9 @@ def _eltwise_bf16_kernel(
         _default_source_path(f"{op}.cc"),
         [tile_ty, tile_ty, tile_ty],
         contract=KernelContract(
-            rounding_mode="conv_even",
-            roles=("in", "in", "out"),
+            setup=conv_even,
+            roles=(In, In, Out),
             reference=add_ref if op == "add" else mul_ref,
-            nonfinite="propagate",
-            subnormals="preserve",
             acc_dtype=np.float32,
             tolerance=_BF16_ROUNDTRIP,
         ),
@@ -120,13 +120,14 @@ def passthrough(tile_size: int = 4096, dtype: type = np.int32) -> ExternalFuncti
         [tile_ty, tile_ty, np.int32],
         compile_flags=[f"-DBIT_WIDTH={bit_width}"],
         contract=KernelContract(
-            roles=("in", "out", "count"),
+            roles=(In, Out, Count),
             reference=lambda x: x,
             tolerance=Tolerance.exact(note="lossless copy"),
         ),
     )
 
 
+@dtypes(({"dtype": np.int16}, {"dtype": np.int32}))
 def scale(
     tile_size: int = 1024,
     dtype: type = np.int32,
@@ -162,19 +163,15 @@ def scale(
         compile_flags=[f"-DBIT_WIDTH={bit_width}"],
         use_chess=use_chess,
         contract=KernelContract(
-            roles=("in", "out", "param", "count"),
+            roles=(In, Out, Param, Count),
             reference=scale_ref,
             acc_dtype=np.int32 if dtype == np.int16 else np.int64,  # acc32 / acc64
             reduction=1,
-            overflow="undefined",  # to_vector(0) without set_sat: core default
             tolerance=Tolerance.exact(
                 note="integer multiply; overflow wraps like the C++ store"
             ),
         ),
     )
-
-
-_declare_dtypes(scale, ({"dtype": np.int16}, {"dtype": np.int32}))
 
 
 def add(
@@ -236,10 +233,8 @@ def mul_add(tile_size: int = 1024) -> ExternalFunction:
         _default_source_path("scale_shift.cc"),
         [tile_ty, tile_ty, tile_ty, np.int32],
         contract=KernelContract(
-            roles=("in", "in", "out", "scalar"),
+            roles=(In, In, Out, Scalar),
             reference=mul_add_ref,
-            nonfinite="propagate",
-            subnormals="preserve",
             acc_dtype=np.float32,
             tolerance=_BF16_ROUNDTRIP,
             ops_per_call=tile_size,
@@ -272,7 +267,7 @@ def relu(tile_size: int = 1024) -> ExternalFunction:
         _default_source_path("relu.cc"),
         [tile_ty, tile_ty],
         contract=KernelContract(
-            roles=("in", "out"),
+            roles=(In, Out),
             reference=lambda x: np.maximum(x.astype(np.float32), 0.0),
             tolerance=Tolerance.exact(note="selection: max(x, 0) is exact in bf16"),
         ),

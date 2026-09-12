@@ -20,9 +20,11 @@ Companion numpy reference implementations for host-side verification:
 """
 
 from pathlib import Path
+from typing import Callable
 
 import numpy as np
 from aie.iron.kernel import ExternalFunction
+from aie.utils.compile.jit.markers import Count, In, Out, Scalar
 from aie.utils.verify import Tolerance
 from ml_dtypes import bfloat16
 
@@ -35,6 +37,7 @@ from ._common import (
     _make_extern,
     _require_fixed_tile_size,
 )
+from .core import conv_even
 
 _LUT_FIXED_TILE = 1024
 
@@ -60,20 +63,20 @@ def _unary_lut_contract(
     *,
     count: bool,
     tolerance: Tolerance = _LUT_TOLERANCE,
-    rounding_mode: str = "conv_even",
+    setup: Callable[[], object] | None = conv_even,
 ) -> KernelContract:
     """Contract for a one-in/one-out LUT kernel, with or without a trailing count.
 
     The LUT kernels store bf16 from wider vector math without setting the
-    core's rounding mode, so they are judged (and run by the harness) in
-    ``conv_even``, the mode numpy's reference rounds in.
+    core's rounding mode, so they are judged in ``conv_even``, the mode
+    numpy's reference rounds in.
     """
     return KernelContract(
-        roles=("in", "out", "count") if count else ("in", "out"),
+        roles=(In, Out, Count) if count else (In, Out),
         reference=ref,
         tolerance=tolerance,
         acc_dtype=bfloat16,  # bf16 vector math around the LUT
-        rounding_mode=rounding_mode,
+        setup=setup,
     )
 
 
@@ -182,7 +185,7 @@ def softmax(tile_size: int = 1024) -> ExternalFunction:
             count=True,
             tolerance=_softmax_tolerance(tile_size),
             # aie2p/softmax.cc sets conv_even itself; the aie2 LUT path does not.
-            rounding_mode="sets_own" if _detect_arch() == "aie2p" else "conv_even",
+            setup=None if _detect_arch() == "aie2p" else conv_even,
         ),
     )
 
@@ -223,8 +226,8 @@ def swiglu(tile_size: int = 1024) -> ExternalFunction:
         tile_size,
         arg_arity=4,
         contract=KernelContract(
-            rounding_mode="conv_even",
-            roles=("in", "in", "in", "out"),
+            setup=conv_even,
+            roles=(In, In, In, Out),
             reference=swiglu_ref,
             acc_dtype=bfloat16,
             tolerance=_LUT_TOLERANCE,
@@ -304,8 +307,8 @@ def exp2f_vec(tile_size: int = 1024, min_x: float = -111.0) -> ExternalFunction:
         [tile_ty, tile_ty, np.int32],
         compile_flags=[f"-DEXP2F_VEC_MIN_X={float(min_x)!r}f"],
         contract=KernelContract(
-            rounding_mode="conv_even",
-            roles=("in", "out", "count"),
+            setup=conv_even,
+            roles=(In, Out, Count),
             reference=lambda x: exp2f_vec_ref(x, min_x=min_x),
             acc_dtype=np.float32,
             tolerance=Tolerance.relative(
@@ -361,11 +364,9 @@ def leaky_relu(tile_size: int = 1024) -> ExternalFunction:
         "leaky_relu.cc",
         [tile_ty, tile_ty, np.int32, bfloat16],
         contract=KernelContract(
-            rounding_mode="conv_even",
-            roles=("in", "out", "count", "scalar"),
+            setup=conv_even,
+            roles=(In, Out, Count, Scalar),
             reference=leaky_relu_ref,
-            nonfinite="propagate",
-            subnormals="preserve",
             acc_dtype=bfloat16,
             tolerance=Tolerance.relative(
                 0.03,

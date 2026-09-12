@@ -24,7 +24,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from aie.iron import kernels
+from aie.iron import In, InOut, Out, Scalar, kernels
 from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.iron.kernels import ROLES, KernelContract
 from aie.utils import kernel_harness as kh
@@ -211,7 +211,6 @@ def test_every_case_names_an_exported_factory():
 # two-tile cascade exchange (a PUT kernel has no output argument at all),
 # so its semantics are the pair's, which is a design rather than a kernel.
 WITHOUT_CONTRACT = {
-    "set_rounding",  # sets the core's rounding mode; no data arguments
     "bn_conv2dk1_partial_put_i8",
     "bn_conv2dk1_partial_get_relu_i8",
     "bn_conv2dk3_dw_out_split",
@@ -338,11 +337,11 @@ def test_packed_inputs_and_baked_params_leave_the_host_side_small():
 
 def test_contract_rejects_bad_roles():
     with pytest.raises(ValueError, match="unknown"):
-        KernelContract(roles=("in", "output"))
-    with pytest.raises(ValueError, match="exactly one 'out'"):
-        KernelContract(roles=("in", "in"))
-    with pytest.raises(ValueError, match="exactly one 'out'"):
-        KernelContract(roles=("out", "out"))
+        KernelContract(roles=(In, "output"))
+    with pytest.raises(ValueError, match="exactly one Out"):
+        KernelContract(roles=(In, In))
+    with pytest.raises(ValueError, match="exactly one Out"):
+        KernelContract(roles=(Out, Out))
 
 
 def test_harness_refuses_a_kernel_without_a_contract():
@@ -408,7 +407,7 @@ def test_bfp_matmul_host_layout_reference_and_judge():
     M, K, N = 128, 128, 128
     fn = kernels.mm_bfp(dim_m=64, dim_k=64, dim_n=64)
     c = fn.contract
-    assert c.roles == ("in", "in", "inout") and fn.b_col_maj and not fn.c_col_maj
+    assert c.roles == (In, In, InOut) and fn.b_col_maj and not fn.c_col_maj
     a, b = kh.sample_inputs(fn, shape=(M, K, N))
     assert a.dtype == np.float32 and a.shape == (M, K) and b.shape == (K, N)
     # The host tensors are encoded bytes: 9 bytes per 8 values along K,
@@ -669,14 +668,14 @@ def test_bf16_matvec_matches_the_iron_gemv_signature():
     assert types[0] is np.int32 and types[1] is np.int32
     assert [kh._shape_dtype(t)[0] for t in types[2:]] == [(32 * 256,), (256,), (32,)]
     assert all(kh._shape_dtype(t)[1] is bfloat16 for t in types[2:])
-    assert fn.contract.roles == ("scalar", "scalar", "in", "in", "out")
+    assert fn.contract.roles == (Scalar, Scalar, In, In, Out)
     # row_offset shifts the write into c, so one core fills several blocks.
     a = np.arange(4 * 8, dtype=np.float32).reshape(4, 8).astype(bfloat16)
     b = np.ones(8, dtype=bfloat16)
     assert kernels.mv_bf16_ref(2, 1, a, b).tolist() == [0.0, 28.0, 92.0]
     # The int16 kernel is a different source with a zero symbol and no scalars.
     i16 = kernels.mv(dim_m=32, dim_k=32)
-    assert i16.contract.roles == ("in", "in", "inout") and hasattr(i16, "zero")
+    assert i16.contract.roles == (In, In, InOut) and hasattr(i16, "zero")
     with pytest.raises(ValueError, match="multiple of vec_size"):
         kernels.mv(dim_k=100, input_dtype=bfloat16, output_dtype=bfloat16)
 
@@ -691,7 +690,7 @@ def test_host_args_match_what_the_sampler_and_uploader_produce(case_id):
     calls, shape = opts.get("calls", 1), opts.get("shape")
     args = kh.host_args(fn, calls=calls, shape=shape)
     ins, out = args[:-1], args[-1]
-    assert [a.direction for a in args] == ["in"] * len(ins) + ["out"]
+    assert [a.direction for a in args] == [In] * len(ins) + [Out]
     # Inputs: the arrays host_layout hands the device.
     staged = kh.host_layout(fn, kh.sample_inputs(fn, calls=calls, shape=shape))
     assert len(staged) == len(ins), case_id
@@ -794,7 +793,7 @@ def test_accumulating_kernels_are_inout_and_ship_a_zero():
         fn = f(**fkw)
         c = fn.contract
         assert c.accumulates, f"{f.__name__} accumulates into C"
-        assert c.roles[c.out_index] == "inout"
+        assert c.roles[c.out_index] is InOut
         assert hasattr(fn, "zero"), f"{f.__name__} needs a .zero to clear C"
         assert c.out_index not in c.reference_indices()
     # The autouse fixture selects aie2p, so the bfp matmul builds here too.
@@ -803,14 +802,14 @@ def test_accumulating_kernels_are_inout_and_ship_a_zero():
     # The bf16 matvec stores rather than accumulating: plain "out".
     st = kernels.mv(dim_m=32, dim_k=256, input_dtype=bfloat16, output_dtype=bfloat16)
     assert not st.contract.accumulates
-    assert st.contract.roles[st.contract.out_index] == "out"
+    assert st.contract.roles[st.contract.out_index] is Out
     # A kernel that neither writes nor accumulates is rejected, and so is one
     # that claims both.
     with pytest.raises(ValueError, match="exactly one"):
-        kernels.KernelContract(roles=("in", "in"))
+        kernels.KernelContract(roles=(In, In))
     with pytest.raises(ValueError, match="exactly one"):
-        kernels.KernelContract(roles=("out", "inout"))
-    single = kernels.KernelContract(roles=("in", "inout"))
+        kernels.KernelContract(roles=(Out, InOut))
+    single = kernels.KernelContract(roles=(In, InOut))
     assert single.out_index == 1 and single.accumulates
 
 
@@ -839,23 +838,6 @@ def test_sibling_symbols_follow_the_parameterisation_prefix():
         )
     # reduce_max / compute_max pin one shared object, so they stay unprefixed.
     assert not getattr(kernels.compute_max(), "_symbol_prefix", None)
-
-
-def test_contract_validates_nonfinite_and_subnormals():
-    base = dict(roles=("in", "out"))
-    for bad in (dict(nonfinite="maybe"), dict(subnormals="sometimes")):
-        with pytest.raises(ValueError):
-            kernels.KernelContract(**base, **bad)
-    c = kernels.KernelContract(**base, nonfinite="propagate", subnormals="flush")
-    assert (c.nonfinite, c.subnormals) == ("propagate", "flush")
-    assert kernels.KernelContract(**base).nonfinite == "unspecified"
-    # The exact-copy and one-op bf16 kernels declare IEEE behaviour; the
-    # LUT activations and the norms leave it unspecified.
-    for f in (kernels.add, kernels.mul, kernels.axpy, kernels.transpose):
-        assert f().contract.nonfinite == "propagate"
-        assert f().contract.subnormals == "preserve"
-    for f in (kernels.gelu, kernels.softmax, kernels.rms_norm):
-        assert f().contract.nonfinite == "unspecified"
 
 
 def test_unsupported_contracts_are_refused_by_the_harness():
@@ -906,16 +888,18 @@ def test_conv2dk1_i8_and_skip_references():
     assert set(out.tolist()) == {255}
 
 
-def test_saturating_kernels_sample_full_range_inputs():
+def test_input_limit_is_bounded_by_the_accumulator_only():
     # conv2dk1 requantises by >> 12: bounding its inputs by the uint8 output
-    # would leave every random output at 0 or 1. Only the int32 accumulator
-    # bounds a saturating kernel; an undefined-overflow kernel keeps both.
+    # would leave every random output at 0 or 1. The accumulator is the only
+    # thing that bounds an input; what the kernel does when a result leaves
+    # the output range is the reference's job to model.
     fn = kernels.conv2dk1()
-    assert fn.contract.overflow == "saturate"
     assert kh.input_limit(fn, np.int8) == 127
+    # Two tensors multiplied into an int32 accumulator: each is bounded by
+    # the square root of the accumulator's budget, not by the int16 output.
     fn = kernels.scale(dtype=np.int16)
-    assert fn.contract.overflow == "undefined"
-    assert kh.input_limit(fn, np.int16) <= np.iinfo(np.int16).max // 4
+    budget = np.iinfo(fn.contract.acc_dtype).max // 4
+    assert kh.input_limit(fn, np.int16) == int(np.sqrt(budget))
 
 
 def test_host_layout_transposes_b_for_col_major_and_judge_undoes_c():
@@ -1081,36 +1065,38 @@ def test_transformer_references_match_the_example_formulas():
     assert out.tolist() == [float(i) for i in range(1, 33)]
 
 
-def test_contract_validates_overflow_and_rounding():
-    with pytest.raises(ValueError, match="overflow must be"):
-        KernelContract(roles=("in", "out"), overflow="clamp")
-    with pytest.raises(ValueError, match="rounding must be"):
-        KernelContract(roles=("in", "out"), rounding="banker")
+def test_contract_validates_its_remaining_fields():
     with pytest.raises(ValueError, match="reduction"):
-        KernelContract(roles=("in", "out"), reduction=0)
-    c = KernelContract(roles=("in", "out"))
-    assert (c.acc_dtype, c.reduction, c.overflow, c.rounding) == (
+        KernelContract(roles=(In, Out), reduction=0)
+    with pytest.raises(ValueError, match="stack_bytes"):
+        KernelContract(roles=(In, Out), stack_bytes=0)
+    with pytest.raises(ValueError, match="role"):
+        KernelContract(roles=(In, "out"))
+    c = KernelContract(roles=(In, Out))
+    assert (c.acc_dtype, c.reduction, c.setup, c.stack_bytes) == (
         None,
         None,
-        "undefined",
-        "unspecified",
+        None,
+        None,
     )
 
 
 def test_input_limit_keeps_the_reference_inside_the_accumulator():
-    # A matmul tile with int16 inputs into int32: K products of two limits
-    # must fit with margin, over the design's full K, not the tile's k.
+    # A matmul tile with int16 inputs: K products of two limits must fit in
+    # what the kernel accumulates in (accauto gives int16 inputs an int64
+    # accumulator), over the design's full K, not the tile's k.
     fn = kernels.mm(
         dim_m=64, dim_k=32, dim_n=64, input_dtype=np.int16, output_dtype=np.int32
     )
     if fn.contract.acc_dtype is None:
         pytest.skip("mm declares no accumulator yet")
     lim = kh.input_limit(fn, np.int16, reduction=256)
-    assert 256 * lim * lim <= np.iinfo(np.int32).max // 4
+    assert 256 * lim * lim <= np.iinfo(fn.contract.acc_dtype).max // 4
     a, b = kh.sample_inputs(fn, shape=(128, 256, 64))
     assert int(np.abs(a).max()) <= lim and int(np.abs(b).max()) <= lim
     ref = kernels.mm_ref(a, b)
-    assert ref.min() >= np.iinfo(np.int32).min and ref.max() <= np.iinfo(np.int32).max
+    acc = np.iinfo(fn.contract.acc_dtype)
+    assert ref.min() >= acc.min and ref.max() <= acc.max
     # Float inputs and kernels without an accumulator have no limit.
     assert kh.input_limit(fn, bfloat16) is None
     assert kh.input_limit(kernels.passthrough(), np.int32) is None
@@ -1161,8 +1147,6 @@ def test_accumulating_kernels_declare_their_accumulator(case_id):
         assert (
             c.acc_dtype is not None
         ), f"{case_id}: reduction {c.reduction} without acc_dtype"
-    if c.acc_dtype is not None and c.reduction is None:
-        assert c.overflow in ("wrap", "saturate", "undefined")
 
 
 def test_mm_accumulators_follow_accauto():
@@ -1175,14 +1159,14 @@ def test_mm_accumulators_follow_accauto():
     assert (fn.contract.acc_dtype, fn.contract.reduction) == (np.int64, 32)
 
 
-def test_saturating_kernels_are_judged_by_clipping():
-    # conv2dk1 declares overflow="saturate": a reference above 255 is clipped
-    # to what the kernel emits, not wrapped.
-    fn = kernels.conv2dk1()
-    assert fn.contract.overflow == "saturate"
-    got = np.full((1, 32 * 64), 255, np.uint8)
-    ref = np.full((1, 32 * 64), 900, np.int64)
-    assert kh.judge(fn, got, ref, calls=1)
+def test_saturating_kernels_saturate_in_their_reference():
+    # The kernel clamps to uint8, so conv2dk1_ref clamps: saturation is part
+    # of the arithmetic model, not something the judge applies afterwards.
+    W, IC, OC = 32, 64, 64
+    x = np.full(W * IC, 127, np.int8)
+    w = np.full(IC * OC, 127, np.int8)
+    out = kernels.conv2dk1_ref(x, w, W, IC, OC, 0)
+    assert out.dtype == np.uint8 and set(out.tolist()) == {255}
 
 
 # --------------------------------------------------------------------------
@@ -1192,63 +1176,30 @@ def test_saturating_kernels_are_judged_by_clipping():
 _SET_ROUNDING_CALL = re.compile(r"^\s*(?!//)[^/\n]*\bset_rounding\s*\(", re.M)
 _NARROWS = re.compile(r"to_vector<|\.srs\(|srs<|to_fixed|to_float")
 
-# Factory builds whose compiled source calls aie::set_rounding on entry, per
-# architecture. A new call in a source, or a removed one, changes this list
-# and the factory's ``rounding_mode`` together.
-SETS_OWN = {
-    "aie2": {
-        "conv2dk1",
-        "conv2dk3",
-        "conv2dk1_skip",
-        "conv2dk1_i8",
-        "conv2dk14",
-        "conv2dk1_skip_init",
-        "mv/dim_k=256/input_dtype=bfloat16/output_dtype=bfloat16",
-    },
-    "aie2p": {
-        "conv2dk1",
-        "conv2dk3",
-        "conv2dk1_skip",
-        "conv2dk1_i8",
-        "conv2dk14",
-        "conv2dk1_skip_init",
-        "dwconv1d",
-        "convert_copy",
-        "layer_norm",
-        "layer_norm_f32",
-        "layer_norm_affine_cast",
-        "softmax",
-        "mm",
-        "mha",
-        "mv/dim_k=256/input_dtype=bfloat16/output_dtype=bfloat16",
-    },
-}
-
 
 @pytest.mark.parametrize("arch", ["aie2", "aie2p"])
-def test_rounding_mode_declarations_follow_the_sources(arch):
-    """``sets_own`` is declared exactly where the compiled source sets the mode.
+def test_setup_is_declared_exactly_where_the_source_does_not_set_the_mode(arch):
+    """A kernel that sets its own rounding mode must not also name a ``setup``.
 
-    Every other build either names the mode it needs (a bf16 store from a
-    wider accumulator, judged against numpy's ties-to-even) or leaves it
-    unspecified; a source that sets the mode but declares otherwise, or the
-    reverse, fails here.
+    The two are alternatives: either the compiled source calls
+    ``aie::set_rounding`` on entry, or the design sets the mode before the
+    first call. Declaring both means the design fights the kernel; declaring
+    neither, on a kernel that narrows an accumulator, means it runs in
+    whatever mode the core booted in.
     """
     from aie.utils.compile.remarks import kernel_builds
 
     set_current_device(NPU1Col1() if arch == "aie2" else NPU2Col1())
-    declared, called = set(), set()
     for name, ef in kernel_builds():
         c = getattr(ef, "contract", None)
         if c is None:
             continue
         src = Path(ef.source_file).read_text() if ef.source_file else ef.source_string
-        if _SET_ROUNDING_CALL.search(src):
-            called.add(name.split("/")[0])
-        if c.rounding_mode == "sets_own":
-            declared.add(name)
-        elif c.needs_rounding_mode:
-            # The mode only matters where an accumulator is narrowed: a bf16
+        sets_own = bool(_SET_ROUNDING_CALL.search(src))
+        if sets_own:
+            assert c.setup is None, f"{name}: source sets the mode and names a setup"
+        elif c.setup is not None:
+            # A setup only matters where an accumulator is narrowed: a bf16
             # or bfp16 output, or an explicit conversion in the source.
             out_dt = kh._shape_dtype(kh._arg_types(ef)[c.out_index])[1]
             narrows = (
@@ -1256,21 +1207,15 @@ def test_rounding_mode_declarations_follow_the_sources(arch):
                 or np.dtype(out_dt) == np.dtype(bfloat16)
                 or _NARROWS.search(src)
             )
-            assert narrows, f"{name}: declares {c.rounding_mode} but narrows nothing"
-    # every build of a factory whose source calls set_rounding declares it
-    # (mv.cc guards its call behind the bf16 variant, so it is pinned by build)
-    assert {n.split("/")[0] for n in declared} >= called - {"mv"}
-    assert declared == SETS_OWN[arch] | {
-        n for n in declared if n.split("/")[0] in SETS_OWN[arch]
-    }
+            assert narrows, f"{name}: names a setup but narrows nothing"
 
 
-def test_harness_sets_the_mode_a_contract_names():
-    """A design for a ``conv_even`` kernel binds ``set_rounding_conv_even``; one for ``sets_own`` does not."""
-    assert kernels.add().contract.needs_rounding_mode == "conv_even"
+def test_a_design_runs_the_setup_a_contract_names():
+    """A design for a kernel with a ``setup`` binds it; one without does not."""
+    assert kernels.add().contract.setup is not None
     mlir = str(kh.design(kernels.add, calls=2).as_mlir())
     assert "set_rounding_conv_even" in mlir
-    assert kernels.convert_copy().contract.rounding_mode == "sets_own"
+    assert kernels.convert_copy().contract.setup is None
     mlir = str(kh.design(kernels.convert_copy, calls=1).as_mlir())
     assert "set_rounding" not in mlir
 

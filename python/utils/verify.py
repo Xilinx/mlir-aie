@@ -18,7 +18,7 @@ gelu, silu, swiglu, ...).
 from __future__ import annotations
 
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import numpy as np
 from aie.utils.benchmark import print_benchmark
@@ -357,44 +357,25 @@ def bf16_ulp_distance(a, b) -> np.ndarray:
     return np.abs(ordinal(a) - ordinal(b))
 
 
-def compare(
-    actual,
-    expected,
-    tol: Tolerance | None = None,
-    *,
-    overflow: str = "wrap",
-    subnormals: str = "preserve",
-) -> Verdict:
+def compare(actual, expected, tol: Tolerance | None = None) -> Verdict:
     """Compare a kernel's ``actual`` output with a reference under ``tol``.
 
     ``expected`` may be higher precision than ``actual`` (a float64 sum, an
-    int64 product); it is cast to ``actual.dtype`` for the exact and ULP
-    kinds, so the kernel is held to what a correctly rounded implementation
-    would produce. With ``tol=None`` the output dtype's
-    :meth:`Tolerance.default_for` applies.
+    int64 product); it is cast to ``actual.dtype``, so the kernel is held to
+    what a correctly rounded implementation would produce. With ``tol=None``
+    the output dtype's :meth:`Tolerance.default_for` applies.
 
-    ``subnormals="flush"`` compares subnormal values on either side as zero,
-    for a kernel whose core flushes denormals.
-
-    ``overflow`` says how an integer reference that leaves the output range
-    is brought into it, matching the kernel's declared behaviour:
-    ``"wrap"`` (two's complement, the plain cast), ``"saturate"`` (clip) or
-    ``"undefined"`` -- in which case an overflowing reference is not graded
-    at all: the verdict fails and says which elements overflowed, since
-    whatever the device produced there proves nothing.
+    This measures; it does not model. What a kernel does on overflow, on a
+    narrowing store, or with subnormal inputs belongs in the reference that
+    produced ``expected`` -- a saturating kernel's reference clips, a
+    denormal-flushing kernel's reference flushes. A reference that leaves the
+    output range is reported as such when the comparison fails, since it
+    means the reference is under-specified rather than the kernel wrong.
     """
     actual = np.asarray(actual)
     expected = np.asarray(expected)
     if tol is None:
         tol = Tolerance.default_for(actual.dtype)
-    if subnormals not in ("preserve", "flush", "unspecified"):
-        raise ValueError(
-            f"subnormals must be preserve, flush or unspecified, got {subnormals!r}"
-        )
-    if overflow not in ("wrap", "saturate", "undefined"):
-        raise ValueError(
-            f"overflow must be wrap, saturate or undefined, got {overflow!r}"
-        )
     if actual.shape != expected.shape:
         return Verdict(
             False,
@@ -410,28 +391,11 @@ def compare(
     # Integers: bit-exact under exact / ulps; under a relative tolerance the
     # nearly_equal formula in int64 (Tolerance.lsb sets atol = n + 0.5).
     if np.issubdtype(actual.dtype, np.integer) or actual.dtype == np.bool_:
+        n_over = 0
         if actual.dtype != np.bool_ and np.issubdtype(e.dtype, np.integer):
             info = np.iinfo(actual.dtype)
             e_wide = e.astype(np.int64)
-            over = (e_wide < info.min) | (e_wide > info.max)
-            if over.any():
-                if overflow == "saturate":
-                    e = np.clip(e_wide, info.min, info.max)
-                elif overflow == "undefined":
-                    n_over = int(np.count_nonzero(over))
-                    return Verdict(
-                        False,
-                        n,
-                        n_over,
-                        float("inf"),
-                        None,
-                        int(np.argmax(over)),
-                        f"reference overflows {np.dtype(actual.dtype).name} in "
-                        f"{n_over} of {n} elements and the kernel declares "
-                        "overflow='undefined': choose inputs that fit its "
-                        "accumulator (kernel_harness.input_limit) or declare "
-                        "'wrap' / 'saturate' in the contract",
-                    )
+            n_over = int(np.count_nonzero((e_wide < info.min) | (e_wide > info.max)))
         e_cast = e.astype(actual.dtype)
         a64, e64 = a.astype(np.int64), e_cast.astype(np.int64)
         err = np.abs(a64 - e64)
@@ -442,15 +406,20 @@ def compare(
             bad = ~(err < bound)
         else:
             bad = a != e_cast
-        return _verdict(bad, err, None, tol, n)
+        v = _verdict(bad, err, None, tol, n)
+        if n_over and not v.ok:
+            # Not a policy, a diagnostic: the reference left the output range,
+            # so what the device did there says nothing about the kernel.
+            v = replace(
+                v,
+                detail=f"{v.detail}; the reference overflows "
+                f"{np.dtype(actual.dtype).name} in {n_over} of {n} elements, so "
+                "it does not model what the kernel does there (clip for a "
+                "saturating kernel, cast for a wrapping one)",
+            )
+        return v
 
     a32, e32 = a.astype(np.float32), e.astype(np.float32)
-    if subnormals == "flush":
-        # The kernel treats subnormal inputs as zero, so a subnormal on either
-        # side is compared as zero.
-        tiny = np.float32(np.finfo(np.dtype(actual.dtype)).tiny)
-        a32 = np.where(np.abs(a32) < tiny, np.float32(0), a32)
-        e32 = np.where(np.abs(e32) < tiny, np.float32(0), e32)
     a_nan, e_nan = np.isnan(a32), np.isnan(e32)
     a_inf, e_inf = np.isinf(a32), np.isinf(e32)
     nonfinite_bad = (a_nan != e_nan) | (a_inf != e_inf) | (a_inf & e_inf & (a32 != e32))

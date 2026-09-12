@@ -8,16 +8,18 @@
 import numpy as np
 from aie.dialects.aiex import v8bfp16ebs8
 from aie.iron.kernel import ExternalFunction
+from aie.utils.compile.jit.markers import In, InOut, Out, Param, Scalar
 from aie.utils.verify import Tolerance
 from ml_dtypes import bfloat16
 
 from ._common import (
     KernelContract,
-    _declare_dtypes,
     _default_source_path,
     _detect_arch,
     _make_extern,
+    dtypes,
 )
+from .core import conv_even
 
 _CASCADE_COMBOS = {
     (np.int16, np.int16): "i16_i16",
@@ -223,6 +225,9 @@ def mm_stream_dims(
     return {"A": a, "B": b, "C": c}
 
 
+@dtypes(
+    tuple({"input_dtype": i, "output_dtype": o} for (i, o) in _MM_MAC_DIMS["aie2p"])
+)
 def mm(
     dim_m: int = 64,
     dim_k: int = 64,
@@ -305,18 +310,13 @@ def mm(
         compile_flags=compile_flags,
         use_chess=use_chess,
         contract=KernelContract(
-            rounding_mode=(
-                # aie2p/mm.cc sets conv_even itself and restores it; aie2/mm.cc
-                # stores bf16 in whatever mode the core is in.
-                "sets_own"
-                if arch == "aie2p"
-                else "conv_even" if output_dtype is bfloat16 else "unspecified"
-            ),
-            roles=("in", "in", "inout"),  # C += A * B; see the .zero sibling
+            # aie2p/mm.cc sets conv_even itself and restores it; aie2/mm.cc
+            # stores bf16 in whatever mode the core is in.
+            setup=(conv_even if arch != "aie2p" and output_dtype is bfloat16 else None),
+            roles=(In, In, InOut),  # C += A * B; see the .zero sibling
             reference=mm_ref,
             acc_dtype=mm_acc_dtype(input_dtype),
             reduction=dim_k,
-            overflow="undefined",  # to_vector<T_out> without set_sat
             tolerance=_linalg_tolerance(input_dtype),
             ops_per_call=2 * dim_m * dim_k * dim_n,
         ),
@@ -348,11 +348,14 @@ def mm(
     return extern
 
 
-_declare_dtypes(
-    mm, tuple({"input_dtype": i, "output_dtype": o} for (i, o) in _MM_MAC_DIMS["aie2p"])
+@dtypes(
+    (
+        {"input_dtype": np.int16, "output_dtype": np.int32},
+        # dim_k: the bf16 kernel accumulates VEC_SIZE (64) elements at a
+        # time, so the default dim_k of 32 is too short for it.
+        {"input_dtype": bfloat16, "output_dtype": bfloat16, "dim_k": 256},
+    )
 )
-
-
 def mv(
     dim_m: int = 32,
     dim_k: int = 32,
@@ -415,11 +418,10 @@ def mv(
         compile_flags=[f"-DDIM_M={dim_m}", f"-DDIM_K={dim_k}"],
         use_chess=use_chess,
         contract=KernelContract(
-            roles=("in", "in", "inout"),  # C += A * B; see the .zero sibling
+            roles=(In, In, InOut),  # C += A * B; see the .zero sibling
             reference=mv_ref,
             acc_dtype=np.int32,  # acc32
             reduction=dim_k,
-            overflow="undefined",
             tolerance=Tolerance.exact(note="int16 x int16 accumulated in int32"),
             ops_per_call=2 * dim_m * dim_k,
         ),
@@ -436,17 +438,6 @@ def mv(
     zero_prefix = "zero_vectorized" if vectorized else "zero_scalar"
     extern.zero = extern.sibling(f"{zero_prefix}_i32", [c_ty])
     return extern
-
-
-_declare_dtypes(
-    mv,
-    (
-        {"input_dtype": np.int16, "output_dtype": np.int32},
-        # dim_k: the bf16 kernel accumulates VEC_SIZE (64) elements at a
-        # time, so the default dim_k of 32 is too short for it.
-        {"input_dtype": bfloat16, "output_dtype": bfloat16, "dim_k": 256},
-    ),
-)
 
 
 def _mv_bf16(dim_m, dim_k, vectorized, use_chess, vec_size) -> ExternalFunction:
@@ -467,8 +458,7 @@ def _mv_bf16(dim_m, dim_k, vectorized, use_chess, vec_size) -> ExternalFunction:
         compile_flags=[f"-DDIM_K={dim_k}", f"-DVEC_SIZE={vec_size}"],
         use_chess=use_chess,
         contract=KernelContract(
-            rounding_mode="sets_own",
-            roles=("scalar", "scalar", "in", "in", "out"),
+            roles=(Scalar, Scalar, In, In, Out),
             reference=mv_bf16_ref,
             acc_dtype=np.float32,  # accfloat, reduced to bf16 on store
             reduction=dim_k,
@@ -497,6 +487,7 @@ def mv_bf16_ref(m, row_offset, a, b):
 _BFP_MAC_DIMS = (8, 8, 8)  # the bfp16ebs8 mmul is 8x8x8
 
 
+@dtypes(({"mixed": False}, {"mixed": True}))
 def mm_bfp(
     dim_m: int = 64, dim_k: int = 64, dim_n: int = 64, mixed: bool = False
 ) -> ExternalFunction:
@@ -553,8 +544,8 @@ def mm_bfp(
         [a_ty, b_ty, c_ty],
         compile_flags=flags + ["-DMATMUL_ONLY"],
         contract=KernelContract(
-            rounding_mode="conv_even",
-            roles=("in", "in", "inout"),  # C += A * B; see the .zero sibling
+            setup=conv_even,
+            roles=(In, In, InOut),  # C += A * B; see the .zero sibling
             reference=mm_bfp_mixed_ref if mixed else mm_bfp_ref,
             acc_dtype=np.float32,
             reduction=dim_k,
@@ -577,9 +568,6 @@ def mm_bfp(
     # buffer is B^T (N, K), as the block_datatypes examples tile it.
     extern.b_col_maj, extern.c_col_maj = True, False
     return extern
-
-
-_declare_dtypes(mm_bfp, ({"mixed": False}, {"mixed": True}))
 
 
 def mm_bfp_shuffle(
@@ -621,7 +609,7 @@ def mm_bfp_shuffle(
         [in_ty, out_ty, np.int16, np.int16, np.int16],
         compile_flags=flags + ["-DSHUFFLE_ONLY"],
         contract=KernelContract(
-            roles=("in", "out", "scalar", "scalar", "scalar"),
+            roles=(In, Out, Scalar, Scalar, Scalar),
             reference=mm_bfp_shuffle_ref,
             tolerance=Tolerance.exact(note="a byte permutation"),
             ops_per_call=0,
@@ -698,8 +686,7 @@ def mha(dim_m: int = 64, dim_k: int = 64, dim_n: int = 64) -> ExternalFunction:
         [a_ty, b_ty, tile, idx],
         compile_flags=flags,
         contract=KernelContract(
-            rounding_mode="sets_own",
-            roles=("in", "in", "inout", "param"),
+            roles=(In, In, InOut, Param),
             acc_dtype=np.float32,
             reduction=dim_k,
             tolerance=_linalg_tolerance(bfloat16),
@@ -796,11 +783,10 @@ def cascade_mm(
         ],
         use_chess=use_chess,
         contract=KernelContract(
-            roles=("in", "in", "inout"),  # C += A * B; see the .zero sibling
+            roles=(In, In, InOut),  # C += A * B; see the .zero sibling
             reference=mm_ref,
             acc_dtype=mm_acc_dtype(input_dtype),
             reduction=dim_k,
-            overflow="undefined",
             tolerance=_linalg_tolerance(input_dtype),
             ops_per_call=2 * dim_m * dim_k * dim_n,
             unsupported=(

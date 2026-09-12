@@ -7,14 +7,15 @@
 
 import numpy as np
 from aie.iron.kernel import ExternalFunction
+from aie.utils.compile.jit.markers import Count, In, Out, Param, Scalar
 from aie.utils.verify import Tolerance
 
 from ._common import (
     KernelContract,
-    _declare_dtypes,
     _default_source_path,
     _dtype_to_bit_width,
     _make_extern,
+    dtypes,
 )
 
 
@@ -51,7 +52,7 @@ def _bitwise_kernel(
         compile_flags=[f"-DBIT_WIDTH={bit_width}"],
         use_chess=use_chess,
         contract=KernelContract(
-            roles=("in", "in", "out", "count"),
+            roles=(In, In, Out, Count),
             reference={"OR": bitwise_or_ref, "AND": bitwise_and_ref}[op],
             tolerance=Tolerance.exact(note="bitwise op"),
         ),
@@ -80,17 +81,16 @@ def rgba2hue(line_width: int = 1920, use_chess: bool = False) -> ExternalFunctio
         line_width,
         use_chess=use_chess,
         contract=KernelContract(
-            roles=("in", "out", "count"),
+            roles=(In, Out, Count),
             reference=rgba2hue_ref,
             acc_dtype=np.int32,
             reduction=1,
-            overflow="wrap",  # the uint8 store of a negative hue
-            rounding="unspecified",
             tolerance=_HUE_TOLERANCE,
         ),
     )
 
 
+@dtypes(({"dtype": np.uint8}, {"dtype": np.int16}, {"dtype": np.int32}))
 def threshold(
     line_width: int = 1920, dtype: type = np.uint8, use_chess: bool = False
 ) -> ExternalFunction:
@@ -117,18 +117,14 @@ def threshold(
         compile_flags=[f"-DBIT_WIDTH={bit_width}"],
         use_chess=use_chess,
         contract=KernelContract(
-            roles=("in", "out", "count", "scalar", "scalar", "scalar"),
+            roles=(In, Out, Count, Scalar, Scalar, Scalar),
             reference=threshold_ref,
             tolerance=Tolerance.exact(note="selection"),
         ),
     )
 
 
-_declare_dtypes(
-    threshold, ({"dtype": np.uint8}, {"dtype": np.int16}, {"dtype": np.int32})
-)
-
-
+@dtypes(({"dtype": np.uint8}, {"dtype": np.int16}, {"dtype": np.int32}))
 def bitwise_or(
     line_width: int = 1920, dtype: type = np.uint8, use_chess: bool = False
 ) -> ExternalFunction:
@@ -136,21 +132,12 @@ def bitwise_or(
     return _bitwise_kernel("OR", line_width, dtype, use_chess=use_chess)
 
 
-_declare_dtypes(
-    bitwise_or, ({"dtype": np.uint8}, {"dtype": np.int16}, {"dtype": np.int32})
-)
-
-
+@dtypes(({"dtype": np.uint8}, {"dtype": np.int16}, {"dtype": np.int32}))
 def bitwise_and(
     line_width: int = 1920, dtype: type = np.uint8, use_chess: bool = False
 ) -> ExternalFunction:
     """Element-wise bitwise AND of two lines."""
     return _bitwise_kernel("AND", line_width, dtype, use_chess=use_chess)
-
-
-_declare_dtypes(
-    bitwise_and, ({"dtype": np.uint8}, {"dtype": np.int16}, {"dtype": np.int32})
-)
 
 
 def gray2rgba(line_width: int = 1920, use_chess: bool = False) -> ExternalFunction:
@@ -162,7 +149,7 @@ def gray2rgba(line_width: int = 1920, use_chess: bool = False) -> ExternalFuncti
         line_width * 4,
         use_chess=use_chess,
         contract=KernelContract(
-            roles=("in", "out", "count"),
+            roles=(In, Out, Count),
             reference=gray2rgba_ref,
             tolerance=Tolerance.exact(note="copy with alpha = 255"),
         ),
@@ -178,15 +165,13 @@ def rgba2gray(line_width: int = 1920, use_chess: bool = False) -> ExternalFuncti
         line_width,
         use_chess=use_chess,
         contract=KernelContract(
-            roles=("in", "out", "count"),
+            roles=(In, Out, Count),
             reference=rgba2gray_ref,
             tolerance=Tolerance.exact(
                 note="measured bit-exact against the reference over every data case"
             ),
             acc_dtype=np.int32,
             reduction=3,
-            overflow="undefined",  # cannot overflow: weights sum to 1
-            rounding="unspecified",
         ),
     )
 
@@ -207,12 +192,10 @@ def filter2d(line_width: int = 1920, use_chess: bool = False) -> ExternalFunctio
         [line_ty, line_ty, line_ty, line_ty, np.int32, kernel_ty],
         use_chess=use_chess,
         contract=KernelContract(
-            roles=("in", "in", "in", "out", "count", "param"),
+            roles=(In, In, In, Out, Count, Param),
             reference=filter2d_ref,
             acc_dtype=np.int32,
             reduction=9,
-            overflow="saturate",  # set_sat before the shift
-            rounding="nearest",  # (x + 2**(s-1)) >> s, as the reference does
             # The one-LSB slack these pixel kernels used to share was
             # absorbing a wrong carry across the 32-pixel boundary here (see
             # filter2d.cc); an exact contract is what would have caught it.
@@ -224,6 +207,7 @@ def filter2d(line_width: int = 1920, use_chess: bool = False) -> ExternalFunctio
     )
 
 
+@dtypes(({"dtype": np.uint8}, {"dtype": np.int16}))
 def add_weighted(
     line_width: int = 1920, dtype: type = np.uint8, use_chess: bool = False
 ) -> ExternalFunction:
@@ -255,21 +239,16 @@ def add_weighted(
         compile_flags=[f"-DBIT_WIDTH={bit_width}"],
         use_chess=use_chess,
         contract=KernelContract(
-            roles=("in", "in", "out", "count", "scalar", "scalar", "scalar"),
+            roles=(In, In, Out, Count, Scalar, Scalar, Scalar),
             reference=add_weighted_ref,
             acc_dtype=np.int32,
             reduction=2,
-            overflow="saturate",  # set_saturation(saturate)
-            rounding="unspecified",
             tolerance=Tolerance.exact(
                 note="measured bit-exact against the reference over every data case"
             ),
             ops_per_call=3 * line_width,
         ),
     )
-
-
-_declare_dtypes(add_weighted, ({"dtype": np.uint8}, {"dtype": np.int16}))
 
 
 # --------------------------------------------------------------------------

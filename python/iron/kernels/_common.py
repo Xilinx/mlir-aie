@@ -9,56 +9,17 @@ import hashlib
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Iterable
 
 import numpy as np
 from aie.iron.kernel import ExternalFunction
+from aie.utils.compile.jit import markers as _markers
+from aie.utils.compile.jit.markers import Count, InOut, Out
 from aie.utils.verify import Tolerance
 
 _log = logging.getLogger(__name__)
 
-# Argument roles a kernel contract may assign, one per entry of ``arg_types``:
-#   "in"     a tile streamed in through an ObjectFifo, one element per call
-#   "out"    the tile the kernel writes, one element per call
-#   "param"  a small buffer filled once and held for the whole run (e.g. the
-#            1-element factor of ``scale``)
-#   "count"  the trailing element count the C++ takes at runtime: the
-#            smaller of the "in"/"out" element counts, so a channel-ratio
-#            conversion (rgba2hue: lineWidth counts hue pixels, a quarter
-#            of its RGBA input) gets the count from whichever side is 1:1.
-#            A reduction's ``out_valid`` exempts it: count is the (larger)
-#            input's element count instead.
-#   "scalar" a runtime scalar constant (``leaky_relu`` alpha, ``axpy`` a)
-ROLES = ("in", "out", "inout", "param", "count", "scalar")
-# What an integer kernel does when a result leaves the output range.
-OVERFLOW = ("wrap", "saturate", "undefined")
-# How a kernel rounds when it narrows a result: a fixed-point shift or a
-# float store. "nearest" is round-half-up (``(x + 2**(s-1)) >> s``),
-# "nearest_even" ties-to-even (the bottleneck kernels' srs, a bf16 store).
-ROUNDING = ("floor", "nearest", "nearest_even", "unspecified")
-# The core's rounding-mode register a kernel needs when it narrows an
-# accumulator: an ``aie::rounding_mode`` name the design must set before the
-# first call (the harness does), "sets_own" when the source sets it itself,
-# or "unspecified" when the kernel takes whatever mode the core is in (a fresh
-# core boots in floor) and its tolerance covers the difference.
-ROUNDING_MODES = (
-    "unspecified",
-    "sets_own",
-    "floor",
-    "ceil",
-    "positive_inf",
-    "negative_inf",
-    "symmetric_inf",
-    "symmetric_zero",
-    "conv_even",
-    "conv_odd",
-)
-# What a float kernel does with NaN / inf inputs: "propagate" (the IEEE
-# result numpy computes) or "unspecified" (out of contract; not sampled).
-NONFINITE = ("propagate", "unspecified")
-# What a float kernel does with subnormal inputs: "preserve" (IEEE),
-# "flush" (treated as zero, and so is the reference) or "unspecified".
-SUBNORMALS = ("preserve", "flush", "unspecified")
+ROLES = _markers.ROLES
 
 
 @dataclass(frozen=True)
@@ -74,15 +35,19 @@ class KernelContract:
     it.
 
     Attributes:
-        roles: One of :data:`ROLES` per argument, in argument order.
-            ``"out"`` is written by the kernel; ``"inout"`` is accumulated
-            into (``mm``'s ``C += A * B``), which is why such a kernel ships
-            a ``.zero`` sibling and a design zeroes the buffer before the
-            first call. Exactly one argument is ``out`` or ``inout``.
-        reference: Host implementation. Called with every non-``out``,
-            non-``inout``, non-``count`` argument in argument order: ``in``/``param``
-            tiles as numpy arrays of shape ``(calls, n)`` in the kernel's
-            dtype, ``scalar`` values as Python numbers. Returns the expected
+        roles: One of :data:`ROLES` per argument, in argument order --
+            ``In``, ``Out``, ``InOut``, ``Param``, ``Scalar`` or ``Count``,
+            the same markers ``@iron.jit`` uses. ``Out`` is written by the
+            kernel; ``InOut`` is accumulated into (``mm``'s ``C += A * B``),
+            which is why such a kernel ships a ``.zero`` sibling and a design
+            zeroes the buffer before the first call. Exactly one argument is
+            ``Out`` or ``InOut``.
+        reference: Host implementation, and the kernel's arithmetic model:
+            a saturating kernel's reference clips, a flushing one flushes.
+            Called with every non-``Out``, non-``InOut``, non-``Count``
+            argument in argument order: ``In``/``Param`` tiles as numpy arrays
+            of shape ``(calls, n)`` in the kernel's dtype, ``Scalar`` values
+            as Python numbers. Returns the expected
             output for all calls; the harness casts it to the output dtype.
             ``None`` when no host reference exists yet -- the kernel is then
             built but not judged.
@@ -95,7 +60,7 @@ class KernelContract:
             the tile is padded for DMA alignment (reductions write one value
             into a 4-byte-aligned tile). ``None`` means the whole tile.
         sample: ``sample(rng, calls) -> list[np.ndarray]`` producing one host
-            array per ``in``/``param`` argument for ``calls`` kernel calls,
+            array per ``In``/``Param`` argument for ``calls`` kernel calls,
             for kernels whose inputs have structure a dtype cannot express
             (``expand``'s packed nibbles + scales). ``None`` lets the harness
             draw plain random data of each argument's dtype.
@@ -107,41 +72,30 @@ class KernelContract:
         reduction: Terms summed into one output element per call (``K`` for
             a matmul tile, taps x channels for a convolution, the tile size
             for a reduction). ``None`` means one.
-        overflow: What happens when an integer result leaves the output
-            range: ``"wrap"`` (two's complement), ``"saturate"`` (the kernel
-            clamps, as a ``set_sat`` shift does) or ``"undefined"`` (the
-            source does not say). The judge clips or wraps the reference
-            accordingly and refuses to grade an overflowing reference under
-            ``"undefined"``.
-        rounding: How the kernel rounds when it narrows a result (a
-            fixed-point shift, a float store): ``"floor"``, ``"nearest"``
-            (half up), ``"nearest_even"`` (ties to even) or
-            ``"unspecified"`` (an ``srs`` in the core's default mode).
-            References model a declared mode; ``"unspecified"`` is why some
-            tolerances allow one LSB.
-        rounding_mode: The core rounding-mode register the kernel needs, one
-            of :data:`ROUNDING_MODES`. The core narrows in whatever mode its
-            register holds and boots in ``floor``. ``"sets_own"``: the source
-            calls ``aie::set_rounding`` itself. An ``aie::rounding_mode`` name
-            (``"conv_even"`` for a kernel that stores bf16 from an fp32
-            accumulator and is judged against numpy's round-to-nearest-even):
-            the kernel reads the register, so a design sets that mode before
-            the first call (``kernels.set_rounding(mode)``) and the harness
-            does the same. ``"unspecified"``: the kernel narrows in whatever
-            mode it finds and its tolerance covers the difference.
-        nonfinite: What NaN and inf inputs produce: ``"propagate"`` (the
-            IEEE result numpy computes, so the registry feeds them) or
-            ``"unspecified"`` (out of contract; never sampled).
-        subnormals: What subnormal inputs produce: ``"preserve"`` (IEEE),
-            ``"flush"`` (the core treats them as zero; the judge flushes
-            both sides) or ``"unspecified"`` (never sampled).
+        setup: A kernel to call once on the core before the first call of
+            this one, or ``None``. The core narrows accumulators in whatever
+            mode its rounding register holds and boots in ``floor``; a kernel
+            that needs another mode names the setter here, e.g.
+            ``setup=conv_even``. A kernel whose source calls
+            ``aie::set_rounding`` itself needs nothing.
+        stack_bytes: Core stack a Worker calling this kernel needs, or
+            ``None`` for the target's default. aiecc measures each core's
+            stack and rejects a design whose stack is too small, so a kernel
+            that needs more than the default says so here rather than making
+            every design guess. Record where the number came from.
         unsupported: ``None`` when the generic harness can build, run and
             judge the kernel in a single-Worker design; otherwise the reason
             it cannot (a cascade protocol, an operand it cannot sample). The
             reference and the dtype facts still say what the kernel computes.
+
+    What the kernel does when a result overflows, how it rounds a narrowing
+    store, and what it does with NaN or subnormal inputs are not declared
+    here: ``reference`` is the arithmetic model (a saturating kernel's
+    reference clips, a flushing kernel's reference flushes) and ``tolerance``
+    is the slack allowed against it. Declaring them twice let the two drift.
     """
 
-    roles: tuple[str, ...]
+    roles: tuple[type, ...]
     reference: Callable[..., np.ndarray] | None = None
     tolerance: Tolerance | None = None
     ops_per_call: int | None = None
@@ -149,47 +103,23 @@ class KernelContract:
     sample: Callable[..., list] | None = None
     acc_dtype: type | None = None
     reduction: int | None = None
-    overflow: str = "undefined"
-    rounding: str = "unspecified"
-    rounding_mode: str = "unspecified"
-    nonfinite: str = "unspecified"
-    subnormals: str = "unspecified"
-    # Why the generic harness cannot build a single-Worker design for this
-    # kernel (a cascade protocol, an operand it cannot sample); the reference
-    # and the dtype facts still describe what the kernel computes.
+    setup: Callable[[], object] | None = None
+    stack_bytes: int | None = None
     unsupported: str | None = None
 
     def __post_init__(self):
         bad = [r for r in self.roles if r not in ROLES]
         if bad:
-            raise ValueError(f"unknown kernel argument role(s) {bad}; use {ROLES}")
-        n_out = self.roles.count("out") + self.roles.count("inout")
-        if n_out != 1:
-            raise ValueError(
-                "a kernel contract needs exactly one 'out' or 'inout' role"
-            )
-        if self.overflow not in OVERFLOW:
-            raise ValueError(
-                f"overflow must be one of {OVERFLOW}, got {self.overflow!r}"
-            )
-        if self.rounding not in ROUNDING:
-            raise ValueError(
-                f"rounding must be one of {ROUNDING}, got {self.rounding!r}"
-            )
-        if self.rounding_mode not in ROUNDING_MODES:
-            raise ValueError(
-                f"rounding_mode must be one of {ROUNDING_MODES}, got {self.rounding_mode!r}"
-            )
+            names = ", ".join(r.__name__ for r in ROLES)
+            raise ValueError(f"unknown kernel argument role(s) {bad}; use {names}")
+        # A kernel with no data arguments at all (set_rounding sets core state)
+        # has nothing to be the output.
+        if self.roles and self.roles.count(Out) + self.roles.count(InOut) != 1:
+            raise ValueError("a kernel contract needs exactly one Out or InOut role")
         if self.reduction is not None and self.reduction < 1:
             raise ValueError(f"reduction must be >= 1, got {self.reduction}")
-        if self.nonfinite not in NONFINITE:
-            raise ValueError(
-                f"nonfinite must be one of {NONFINITE}, got {self.nonfinite!r}"
-            )
-        if self.subnormals not in SUBNORMALS:
-            raise ValueError(
-                f"subnormals must be one of {SUBNORMALS}, got {self.subnormals!r}"
-            )
+        if self.stack_bytes is not None and self.stack_bytes < 1:
+            raise ValueError(f"stack_bytes must be >= 1, got {self.stack_bytes}")
         if self.unsupported is not None and not self.unsupported:
             raise ValueError("unsupported must be a reason, or None")
 
@@ -197,30 +127,21 @@ class KernelContract:
     def out_index(self) -> int:
         """Position of the output, whether the kernel writes it or accumulates into it."""
         roles = list(self.roles)
-        return roles.index("out") if "out" in roles else roles.index("inout")
-
-    @property
-    def needs_rounding_mode(self) -> str | None:
-        """The ``aie::rounding_mode`` a design must set before calling the kernel, or ``None``."""
-        if self.rounding_mode in ("unspecified", "sets_own"):
-            return None
-        return self.rounding_mode
+        return roles.index(Out) if Out in roles else roles.index(InOut)
 
     @property
     def accumulates(self) -> bool:
-        """Whether the kernel reads its output back (``inout``), as ``C += A * B`` does."""
-        return "inout" in self.roles
+        """Whether the kernel reads its output back (``InOut``), as ``C += A * B`` does."""
+        return InOut in self.roles
 
     def reference_indices(self) -> list[int]:
         """Argument positions handed to ``reference``, in order.
 
-        An ``inout`` output is excluded like an ``out`` one: the reference
+        An ``InOut`` output is excluded like an ``Out`` one: the reference
         computes the whole result, and a design that accumulates zeroes the
         buffer first (see the ``.zero`` sibling).
         """
-        return [
-            i for i, r in enumerate(self.roles) if r not in ("out", "inout", "count")
-        ]
+        return [i for i, r in enumerate(self.roles) if r not in (Out, InOut, Count)]
 
 
 def _detect_arch() -> str:
@@ -308,14 +229,21 @@ def _dtype_to_bit_width(dtype, *, factory_name: str) -> int:
     return bit_width
 
 
-def _declare_dtypes(factory, table: tuple[dict, ...]) -> None:
-    """Attach ``factory.dtypes``: the keyword combinations the factory builds.
+def dtypes(table: Iterable[dict]):
+    """Declare the keyword combinations a factory builds, as ``factory.dtypes``.
 
     The registry and the host contract test enumerate the table instead of
-    restating it. A function attribute, set here so the assignment
-    type-checks.
+    restating it.
     """
-    setattr(factory, "dtypes", tuple(table))
+
+    def decorate(factory):
+        # A function attribute: pyright models functions as having a fixed
+        # attribute set, so the one assignment is annotated rather than each
+        # of the ~20 factories that carry a table.
+        factory.dtypes = tuple(table)  # pyright: ignore[reportFunctionMemberAccess]
+        return factory
+
+    return decorate
 
 
 def _conv_act_dtype_info(

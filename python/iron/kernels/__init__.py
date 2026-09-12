@@ -8,7 +8,7 @@
 Submodules:
 - `eltwise` — passthrough, scale, add, mul, relu
 - `datamovement` — axpy, convert_copy, expand, transpose
-- `core` — set_rounding (the core's rounding-mode register, for kernels whose contract names one)
+- `core` — set_rounding (the core's rounding-mode register, named by a contract's `setup`)
 - `reduce` — reduce_add, reduce_min, reduce_max, compute_max
 - `vision` — rgba2hue, threshold, bitwise_or, bitwise_and, gray2rgba, rgba2gray, filter2d, add_weighted
 - `activation` — softmax, gelu, silu, swiglu, bf16_exp, exp2f_vec, tanh, sigmoid, leaky_relu
@@ -24,12 +24,7 @@ Most factories attach a [`KernelContract`][iron.kernels.KernelContract] as
 """
 
 from ._common import (
-    NONFINITE,
-    OVERFLOW,
     ROLES,
-    ROUNDING,
-    ROUNDING_MODES,
-    SUBNORMALS,
     KernelContract,
 )
 from .activation import (
@@ -89,7 +84,7 @@ from .conv import (
     dwconv1d,
     dwconv1d_ref,
 )
-from .core import set_rounding
+from .core import RoundingMode, conv_even, set_rounding
 from .datamovement import (
     axpy,
     axpy_ref,
@@ -173,12 +168,9 @@ from .vision import (
 
 __all__ = [
     "KernelContract",
-    "NONFINITE",
-    "OVERFLOW",
-    "SUBNORMALS",
-    "ROUNDING",
-    "ROUNDING_MODES",
     "ROLES",
+    "RoundingMode",
+    "conv_even",
     "set_rounding",
     "passthrough",
     "scale",

@@ -3,9 +3,15 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""Type-annotation markers for compile-time vs. runtime parameter classification.
+"""Argument markers: how a value reaches a design or a kernel.
 
-Three annotation categories are defined here (all exported from ``aie.iron``):
+``CompileTime`` / ``In`` / ``Out`` / ``InOut`` annotate ``@iron.jit`` generator
+parameters. ``In`` / ``Out`` / ``InOut`` are also the vocabulary a
+``KernelContract`` uses to name what each of a kernel's arguments is, alongside
+``Param`` / ``Scalar`` / ``Count`` below, which have no design-parameter
+meaning. One set of names for one question, whichever side is asking.
+
+All are exported from ``aie.iron``.
 
 ``CompileTime[T]``
     Marks a generator function parameter as compile-time.  Changing its value
@@ -27,12 +33,29 @@ Three annotation categories are defined here (all exported from ``aie.iron``):
     Marks a generator function parameter as a runtime bidirectional tensor.
     Data is DMA-transferred in both directions on every kernel call.
 
-Any parameter without one of these four annotations is currently rejected at
-``@iron.jit`` decoration time when the parameter has a default value — there
-is no runtime-scalar plumbing yet (tracked separately as future work), so the
-default would be baked into the compiled kernel and per-call overrides
-silently ignored.  Annotate as ``CompileTime[T]`` (recompiles on change) or
-``In``/``Out``/``InOut`` (DMA tensor) instead.
+``Param``
+    A kernel argument held for the whole run rather than streamed per call
+    (``scale``'s factor, ``filter2d``'s 3x3 window). A design gives it a core
+    buffer with an initial value; it is not a design parameter.
+
+``Scalar``
+    A kernel argument that is a runtime scalar constant (``leaky_relu``'s
+    alpha, ``axpy``'s a).
+
+``Count``
+    A kernel argument that is the trailing element count the C++ takes at
+    runtime: the smaller of the ``In``/``Out`` element counts, so a
+    channel-ratio conversion gets it from whichever side is 1:1
+    (``rgba2hue``'s ``lineWidth`` counts hue pixels, a quarter of its RGBA
+    input). A reduction's ``out_valid`` exempts it: the count is then the
+    larger input's element count.
+
+Any generator parameter without one of the first four annotations is currently
+rejected at ``@iron.jit`` decoration time when the parameter has a default
+value — there is no runtime-scalar plumbing yet (tracked separately as future
+work), so the default would be baked into the compiled kernel and per-call
+overrides silently ignored.  Annotate as ``CompileTime[T]`` (recompiles on
+change) or ``In``/``Out``/``InOut`` (DMA tensor) instead.
 """
 
 from __future__ import annotations
@@ -84,4 +107,24 @@ class Out:
 
 
 class InOut:
-    """Runtime bidirectional tensor annotation (DMA in both directions each call)."""
+    """Runtime bidirectional tensor annotation (DMA in both directions each call).
+
+    As a kernel-contract role: the kernel accumulates into this argument
+    (``mm``'s ``C += A * B``), so a design zeroes it before the first call.
+    """
+
+
+class Param:
+    """Kernel argument held for the whole run, not streamed per call."""
+
+
+class Scalar:
+    """Kernel argument that is a runtime scalar constant."""
+
+
+class Count:
+    """Kernel argument that is the trailing element count, passed at runtime."""
+
+
+#: Every marker a ``KernelContract`` may give an argument, in no order.
+ROLES = (In, Out, InOut, Param, Scalar, Count)

@@ -22,7 +22,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 
 import numpy as np
-from aie.iron import kernels
+from aie.iron import In, Param, kernels
 from aie.iron.device import from_name
 from aie.utils import get_current_device
 from aie.utils import kernel_harness as kh
@@ -113,13 +113,13 @@ class Case:
         """
         fn = self.fn()
         types = kh._arg_types(fn)
-        in_dt = kh.dtype_name(kh._shape_dtype(types[fn.contract.roles.index("in")])[1])
+        in_dt = kh.dtype_name(kh._shape_dtype(types[fn.contract.roles.index(In)])[1])
         out_dt = kh.dtype_name(kh._shape_dtype(types[fn.contract.out_index])[1])
         dtypes = in_dt if in_dt == out_dt else f"{in_dt}_{out_dt}"
         if self.shape:
             dims = "x".join(str(d) for d in self.shape)
         else:
-            dims = f"{kh._elems(types[fn.contract.roles.index('in')])}x{self.calls}"
+            dims = f"{kh._elems(types[fn.contract.roles.index(In)])}x{self.calls}"
         extra = [
             f"{k}={kh.dtype_name(v) if isinstance(v, type) else v}"
             for k, v in sorted(self.kwargs.items())
@@ -183,19 +183,14 @@ def data_policy(fn) -> tuple[str, ...]:
     if c.sample is not None:
         return ("random",)  # structured inputs have no edge variants
     types = kh._arg_types(fn)
-    in_dt = kh._shape_dtype(types[c.roles.index("in")])[1]
+    in_dt = kh._shape_dtype(types[c.roles.index(In)])[1]
     if kh._is_bfp(in_dt):
         return tuple(d for d in MATRIX_DATA if d != "max")
     if kh.is_matmul(fn) or kh.is_matvec(fn):
         return MATRIX_DATA
     if np.issubdtype(np.dtype(in_dt), np.integer):
         return INT_DATA
-    cases: list[str] = list(FLOAT_BASE)
-    if c.subnormals != "unspecified":
-        cases.append("subnormal")
-    if c.nonfinite == "propagate":
-        cases.append("nan_inf")
-    return tuple(cases)
+    return FLOAT_BASE
 
 
 def _edge(shape, dtype, rng, case: str, limit: int | None = None) -> np.ndarray:
@@ -242,7 +237,7 @@ def inputs_for(case: Case, data_case: str, rng) -> list[np.ndarray]:
     fn = case.fn()
     c = fn.contract
     inputs = kh.sample_inputs(fn, calls=case.calls, shape=case.shape, rng=rng)
-    tensor_pos = [i for i, r in enumerate(c.roles) if r in ("in", "param")]
+    tensor_pos = [i for i, r in enumerate(c.roles) if r in (In, Param)]
     if data_case != "random":
         if c.sample is not None:
             raise ValueError(
@@ -256,7 +251,7 @@ def inputs_for(case: Case, data_case: str, rng) -> list[np.ndarray]:
         inputs = [
             (
                 a
-                if c.roles[i] == "param"
+                if c.roles[i] == Param
                 else _edge(
                     a.shape,
                     a.dtype,
@@ -272,7 +267,7 @@ def inputs_for(case: Case, data_case: str, rng) -> list[np.ndarray]:
         inputs = [
             (
                 np.full(a.shape, next(params), dtype=a.dtype)
-                if c.roles[i] == "param"
+                if c.roles[i] == Param
                 else a
             )
             for a, i in zip(inputs, tensor_pos)

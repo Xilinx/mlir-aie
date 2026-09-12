@@ -14,16 +14,18 @@ with host-matching ``conv_even`` rounding), and is aie2p-only.
 
 import numpy as np
 from aie.iron.kernel import ExternalFunction
+from aie.utils.compile.jit.markers import Count, In, Out, Scalar
 from aie.utils.verify import Tolerance
 from ml_dtypes import bfloat16
 
 from ._common import (
     KernelContract,
-    _declare_dtypes,
     _default_source_path,
     _detect_arch,
     _make_extern,
+    dtypes,
 )
+from .core import conv_even
 
 _BF16_ROUNDTRIP = Tolerance.relative(
     0.03,
@@ -127,11 +129,9 @@ def axpy(tile_size: int = 1024, vectorized: bool = True) -> ExternalFunction:
         _default_source_path("axpy.cc"),
         [tile_ty, tile_ty, a_ty, tile_ty, np.int32],
         contract=KernelContract(
-            rounding_mode="conv_even",
-            roles=("in", "in", "scalar", "out", "count"),
+            setup=conv_even,
+            roles=(In, In, Scalar, Out, Count),
             reference=axpy_ref,
-            nonfinite="propagate",
-            subnormals="preserve",
             acc_dtype=np.float32,
             reduction=1,
             tolerance=_BF16_ROUNDTRIP,
@@ -176,8 +176,7 @@ def convert_copy(tile_size: int = 1024) -> ExternalFunction:
         _default_source_path("cast_f32_bf16.cc"),
         [in_ty, out_ty, np.int32],
         contract=KernelContract(
-            rounding_mode="sets_own",
-            roles=("in", "out", "count"),
+            roles=(In, Out, Count),
             reference=convert_copy_ref,
             tolerance=Tolerance.exact(
                 note="conv_even rounding matches ml_dtypes bit-for-bit (test_kernels_e2e)"
@@ -225,7 +224,7 @@ def expand(tile_size: int = 1024, group_size: int = 32) -> ExternalFunction:
         [in_ty, out_ty],
         compile_flags=[f"-DTILE_SIZE={tile_size}", f"-DGROUP_SIZE={group_size}"],
         contract=KernelContract(
-            roles=("in", "out"),
+            roles=(In, Out),
             reference=lambda p: expand_ref(
                 p, tile_size=tile_size, group_size=group_size
             ),
@@ -251,6 +250,14 @@ def _transpose_strip(dim_m: int, subtile: int, bits: int) -> tuple[int, int]:
     return w, r
 
 
+@dtypes(
+    (
+        {"dtype": bfloat16},
+        {"dtype": np.uint8},
+        {"dtype": np.uint16},
+        {"dtype": np.uint32},
+    )
+)
 def transpose(
     dim_m: int = 32, dim_n: int = 32, subtile: int = 4, dtype: type = bfloat16
 ) -> ExternalFunction:
@@ -308,24 +315,11 @@ def transpose(
         [tile_ty, tile_ty],
         compile_flags=flags,
         contract=KernelContract(
-            roles=("in", "out"),
+            roles=(In, Out),
             reference=lambda x: transpose_ref(
                 x, dim_m=dim_m, dim_n=dim_n, subtile=subtile
             ),
-            nonfinite="propagate",
-            subnormals="preserve",
             tolerance=Tolerance.exact(note="data movement only; lossless"),
             ops_per_call=0,
         ),
     )
-
-
-_declare_dtypes(
-    transpose,
-    (
-        {"dtype": bfloat16},
-        {"dtype": np.uint8},
-        {"dtype": np.uint16},
-        {"dtype": np.uint32},
-    ),
-)

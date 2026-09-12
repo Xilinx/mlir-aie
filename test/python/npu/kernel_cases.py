@@ -28,6 +28,20 @@ _mm = dict(dim_m=64, dim_k=32, dim_n=64)
 _mm_bf16 = dict(**_mm, input_dtype=bfloat16, output_dtype=np.float32)
 _mm_bfp = dict(dim_m=64, dim_k=64, dim_n=64)  # the block_datatypes examples' tile
 
+# The exact-copy and one-op bf16 kernels propagate NaN/inf and preserve
+# subnormals, and their references do the same. That is a claim about
+# behaviour, so it is made where it is exercised rather than declared on the
+# contract and never checked.
+IEEE_FLOAT = (
+    "random",
+    "zeros",
+    "ones",
+    "large",
+    "alternating",
+    "nan_inf",
+    "subnormal",
+)
+
 CASES: list[Case] = [
     # eltwise
     Case("passthrough", dict(tile_size=2048), calls=16),
@@ -53,9 +67,9 @@ CASES: list[Case] = [
         perf=False,
     ),
     Case("add", calls=16, smoke=True),
-    Case("add", calls=256),
+    Case("add", calls=256, data_cases=IEEE_FLOAT),
     Case("mul", calls=16, smoke=True),
-    Case("mul", calls=256),
+    Case("mul", calls=256, data_cases=IEEE_FLOAT),
     Case("relu", calls=16, smoke=True),
     Case("relu", calls=256),
     # reduce
@@ -87,7 +101,7 @@ CASES: list[Case] = [
     Case("exp2f_vec", calls=256, devices=("npu2",)),
     # datamovement
     Case("axpy", calls=16, scalars=(2.5,), smoke=True),
-    Case("axpy", calls=256, scalars=(2.5,)),
+    Case("axpy", calls=256, scalars=(2.5,), data_cases=IEEE_FLOAT),
     Case("convert_copy", calls=16, devices=("npu2",), smoke=True),
     Case("convert_copy", calls=256, devices=("npu2",)),
     Case("expand", calls=16, smoke=True),

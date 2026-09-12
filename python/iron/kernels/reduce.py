@@ -7,16 +7,17 @@
 
 import numpy as np
 from aie.iron.kernel import ExternalFunction
+from aie.utils.compile.jit.markers import Count, In, Out
 from aie.utils.verify import Tolerance
 from ml_dtypes import bfloat16
 
 from ._common import (
     KernelContract,
-    _declare_dtypes,
     _default_source_path,
     _make_extern,
     _min_dma_aligned_elems,
     _require_min_trip_count,
+    dtypes,
 )
 
 # reduce_max_*() and compute_max() both live in reduce_max.cc; pin the
@@ -55,11 +56,10 @@ def _reduce_contract(op: str, tile_size: int) -> KernelContract:
     # is padding), so only element 0 of each output tile is compared. Every
     # reduction here is exact: integer arithmetic, or a selection in bf16.
     return KernelContract(
-        roles=("in", "out", "count"),
+        roles=(In, Out, Count),
         reference=_REDUCE_REFS[op],
         acc_dtype=np.int32 if op == "add" else None,
         reduction=tile_size if op == "add" else None,
-        overflow="undefined",
         tolerance=Tolerance.exact(note="integer sum, or an exact selection"),
         ops_per_call=tile_size,
         out_valid=1,
@@ -130,6 +130,7 @@ def reduce_min(
     return _reduce_kernel("min", tile_size, dtype, vectorized)
 
 
+@dtypes(({"dtype": np.int32}, {"dtype": bfloat16}))
 def reduce_max(
     tile_size: int = 1024, dtype: type = np.int32, vectorized: bool = True
 ) -> ExternalFunction:
@@ -178,9 +179,7 @@ def reduce_max(
     )
 
 
-_declare_dtypes(reduce_max, ({"dtype": np.int32}, {"dtype": bfloat16}))
-
-
+@dtypes(({"dtype": np.int32}, {"dtype": bfloat16}))
 def compute_max(dtype: type = np.int32) -> ExternalFunction:
     """Pairwise scalar max — companion to [`reduce_max`][iron.kernels.reduce.reduce_max].
 
@@ -218,16 +217,13 @@ def compute_max(dtype: type = np.int32) -> ExternalFunction:
         [out_ty, out_ty, out_ty],
         shared_object_file_name=_REDUCE_MAX_OBJ,
         contract=KernelContract(
-            roles=("in", "in", "out"),
+            roles=(In, In, Out),
             reference=compute_max_ref,
             tolerance=Tolerance.exact(note="selection"),
             ops_per_call=1,
             out_valid=1,
         ),
     )
-
-
-_declare_dtypes(compute_max, ({"dtype": np.int32}, {"dtype": bfloat16}))
 
 
 def compute_max_ref(a, b):

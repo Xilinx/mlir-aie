@@ -44,11 +44,15 @@ from aie.helpers.util import v8bfp16ebs8
 from aie.iron import (
     Buffer,
     CompileTime,
+    Count,
     In,
+    InOut,
     ObjectFifo,
     Out,
+    Param,
     Program,
     Runtime,
+    Scalar,
     TaskGroup,
     Worker,
 )
@@ -129,7 +133,7 @@ def _tensor_positions(contract):
     the output, so the kernel's own argument order (``scale`` puts its output
     before its parameter) is not the design's parameter order.
     """
-    ins = [i for i, r in enumerate(contract.roles) if r in ("in", "param")]
+    ins = [i for i, r in enumerate(contract.roles) if r in (In, Param)]
     return ins, contract.out_index
 
 
@@ -202,8 +206,8 @@ def _fifo_plan(fn):
     """
     c = _contract(fn)
     in_pos, _ = _tensor_positions(c)
-    in_roles = [i for i in in_pos if c.roles[i] == "in"]
-    param_roles = [i for i in in_pos if c.roles[i] == "param"]
+    in_roles = [i for i in in_pos if c.roles[i] == In]
+    param_roles = [i for i in in_pos if c.roles[i] == Param]
     by_type: dict[str, list[int]] = {}
     for i in in_roles:
         by_type.setdefault(str(_arg_types(fn)[i]), []).append(i)
@@ -221,7 +225,7 @@ def param_values(fn, inputs: list[np.ndarray]) -> list[np.ndarray]:
     """Return the ``param`` arrays among logical ``inputs`` (one per ``in``/``param``)."""
     c = _contract(fn)
     in_pos, _ = _tensor_positions(c)
-    return [np.asarray(a) for a, i in zip(inputs, in_pos) if c.roles[i] == "param"]
+    return [np.asarray(a) for a, i in zip(inputs, in_pos) if c.roles[i] == Param]
 
 
 def _encode_params(fn, params) -> tuple:
@@ -248,15 +252,12 @@ def _encode_params(fn, params) -> tuple:
 
 
 def _rounding_setter(c):
-    """Return the ``set_rounding`` kernel a contract's ``rounding_mode`` asks for, or ``None``.
+    """Return the kernel a contract's ``setup`` asks to run first, or ``None``.
 
-    A fresh Worker boots in floor; a kernel that names the mode it narrows in
-    is run in that mode, as a design following its contract would run it.
+    A fresh Worker boots in floor; a kernel that needs another mode names the
+    setter, as a design following its contract would.
     """
-    from aie.iron import kernels
-
-    mode = c.needs_rounding_mode
-    return kernels.set_rounding(mode) if mode else None
+    return c.setup() if c.setup else None
 
 
 def _opt(x) -> list:
@@ -288,7 +289,7 @@ def _build_stream(
         raise ValueError(
             f"{fn.name}: {len(param_roles)} param value(s) expected, got {len(params)}"
         )
-    n_scalars = c.roles.count("scalar")
+    n_scalars = c.roles.count(Scalar)
     if len(scalars) != n_scalars:
         raise ValueError(
             f"{fn.name}: expected {n_scalars} scalar(s), got {len(scalars)}"
@@ -355,13 +356,13 @@ def _build_stream(
             o = f_out.acquire(1)
             call_args, s = [], iter(scalars)
             for i, role in enumerate(c.roles):
-                if role == "in":
+                if role == In:
                     call_args.append(elems[i])
-                elif role == "param":
+                elif role == Param:
                     call_args.append(held[i])
-                elif role in ("out", "inout"):
+                elif role in (Out, InOut):
                     call_args.append(o)
-                elif role == "count":
+                elif role == Count:
                     call_args.append(count)
                 else:  # scalar: a plain Python number, typed by the kernel's arg
                     call_args.append(next(s))
@@ -801,11 +802,8 @@ def input_limit(fn, dtype, *, reduction: int | None = None) -> int | None:
     if c.acc_dtype is None or not np.issubdtype(np.dtype(c.acc_dtype), np.integer):
         return None
     n = reduction or c.reduction or 1
-    out_dt = np.dtype(_shape_dtype(_arg_types(fn)[c.out_index])[1])
     budget = np.iinfo(c.acc_dtype).max // 4
-    if c.overflow == "undefined" and np.issubdtype(out_dt, np.integer):
-        budget = min(budget, np.iinfo(out_dt).max // 4)
-    n_tensors = sum(1 for r in c.roles if r in ("in", "param"))
+    n_tensors = sum(1 for r in c.roles if r in (In, Param))
     limit = int(np.sqrt(budget // n)) if n_tensors >= 2 else budget // n
     return max(1, min(limit, int(np.iinfo(dt).max)))
 
@@ -842,7 +840,7 @@ def sample_inputs(
     for i in _tensor_positions(c)[0]:
         s, dt = _shape_dtype(_arg_types(fn)[i])
         n = int(np.prod(s))
-        reps = (calls,) if c.roles[i] == "in" else ()
+        reps = (calls,) if c.roles[i] == In else ()
         out.append(_draw(rng, reps + (n,), dt, int_range=input_limit(fn, dt)))
     return out
 
@@ -862,7 +860,7 @@ def expected(fn, inputs: list[np.ndarray], *, scalars: tuple = ()) -> np.ndarray
         raise ValueError(f"{fn.name}: contract has no reference")
     tensors, s = iter(inputs), iter(scalars)
     args = [
-        next(s) if c.roles[i] == "scalar" else next(tensors)
+        next(s) if c.roles[i] == Scalar else next(tensors)
         for i in c.reference_indices()
     ]
     _, out_dt = _shape_dtype(_arg_types(fn)[c.out_index])
@@ -1023,13 +1021,13 @@ def output_size(fn, *, calls: int = 1, shape: tuple | None = None) -> int:
 class HostArg:
     """One host buffer a design takes, in the order it is called with.
 
-    ``direction`` is ``"in"`` or ``"out"``; ``shape`` and ``dtype`` are what
+    ``direction`` is ``In`` or ``Out``; ``shape`` and ``dtype`` are what
     the device expects *after* :func:`host_layout` (B transposed for a
     ``b_col_maj`` matmul, encoded bytes for a bfp16ebs8 operand, interleaved
     tiles for a packed fifo), so a caller can allocate straight from it.
     """
 
-    direction: str
+    direction: type
     shape: tuple[int, ...]
     dtype: type
 
@@ -1070,10 +1068,8 @@ def host_args(fn, *, calls: int = 1, shape: tuple | None = None) -> list[HostArg
         def _enc(sh, dt, is_bfp):
             # An encoded operand is bytes: 9 per block of 8 along the last axis.
             if not is_bfp:
-                return HostArg("in", sh, np.float32 if _is_bfp(dt) else dt)
-            return HostArg(
-                "in", (sh[0], sh[1] * bfp.BLOCK_BYTES // bfp.BLOCK), np.uint8
-            )
+                return HostArg(In, sh, np.float32 if _is_bfp(dt) else dt)
+            return HostArg(In, (sh[0], sh[1] * bfp.BLOCK_BYTES // bfp.BLOCK), np.uint8)
 
         args.append(_enc((M, K), in_dts[0], bfp_a))
         args.append(_enc(b_shape, in_dts[1], bfp_b))
@@ -1081,25 +1077,25 @@ def host_args(fn, *, calls: int = 1, shape: tuple | None = None) -> list[HostArg
             c_shape = (dims[2], M) if fn.c_col_maj else (M, dims[2])
             args.append(
                 HostArg(
-                    "out",
+                    Out,
                     (c_shape[0], c_shape[1] * bfp.BLOCK_BYTES // bfp.BLOCK),
                     np.uint8,
                 )
                 if bfp_c
-                else HostArg("out", c_shape, out_dt)
+                else HostArg(Out, c_shape, out_dt)
             )
         else:
-            args.append(HostArg("out", (M,), out_dt))
+            args.append(HostArg(Out, (M,), out_dt))
         return args
     groups, _, _ = _fifo_plan(fn)
     for g in groups:
         n, dt = _elems(types[g[0]]), _shape_dtype(types[g[0]])[1]
         args.append(
-            HostArg("in", (calls, n), dt)
+            HostArg(In, (calls, n), dt)
             if len(g) == 1
-            else HostArg("in", (calls, len(g), n), dt)
+            else HostArg(In, (calls, len(g), n), dt)
         )
-    args.append(HostArg("out", (output_size(fn, calls=calls, shape=shape),), out_dt))
+    args.append(HostArg(Out, (output_size(fn, calls=calls, shape=shape),), out_dt))
     return args
 
 
@@ -1144,8 +1140,6 @@ def judge(
         got,
         ref,
         tolerance or c.tolerance or Tolerance.default_for(ref.dtype),
-        overflow=c.overflow,
-        subnormals=c.subnormals,
     )
 
 
