@@ -120,9 +120,11 @@ struct AIEObjectFifoVerifyPass
   LogicalResult verifyFlows(DeviceOp device) {
     DenseMap<StringRef, int> appearances;
     for (auto flow : device.getOps<RouteOp>()) {
-      appearances[flow.getSource()]++;
-      for (auto dest : flow.getDestinations().getAsRange<FlatSymbolRefAttr>()) {
-        appearances[dest.getValue()]++;
+      for (StringRef source : flow.getSourceNames()) {
+        appearances[source]++;
+      }
+      for (StringRef dest : flow.getDestinationNames()) {
+        appearances[dest]++;
       }
     }
 
@@ -137,6 +139,75 @@ struct AIEObjectFifoVerifyPass
                    "drives one channel, so at most one flow may name it, but "
                    "it is named ")
                << count << " times";
+      }
+    }
+    return success();
+  }
+
+  /// The elements one pass of an endpoint's chain moves: each selected segment
+  /// once, through its transform where it has one.
+  static int64_t transferElements(ObjectFifoDmaEndpointOp endpoint) {
+    int64_t elements = 0;
+    std::optional<ArrayRef<BDDimLayoutArrayAttr>> dimensions =
+        endpoint.getDimensions();
+    for (auto [index, segment] :
+         llvm::enumerate(endpoint.getSelectedSegments())) {
+      BDDimLayoutArrayAttr dims;
+      if (dimensions && index < dimensions->size()) {
+        dims = (*dimensions)[index];
+      }
+      if (dims && !dims.empty()) {
+        int64_t product = 1;
+        for (BDDimLayoutAttr dim : dims) {
+          product *= dim.getSize();
+        }
+        elements += product;
+      } else {
+        elements += segment.getSize();
+      }
+    }
+    return elements;
+  }
+
+  /// A fan-in's destination fills its next object with whatever packet
+  /// arrives, and a packet is one pass of its sender's chain, so every end has
+  /// to move the same number of elements or two senders share an object. A
+  /// route endpoint's transfers are the runtime's and are not checked here.
+  LogicalResult verifyFanIn(DeviceOp device) {
+    for (auto flow : device.getOps<RouteOp>()) {
+      if (!flow.isFanIn()) {
+        continue;
+      }
+      std::optional<std::pair<StringRef, int64_t>> first;
+      auto check = [&](StringRef name) -> LogicalResult {
+        auto endpoint = dyn_cast_or_null<ObjectFifoDmaEndpointOp>(
+            SymbolTable::lookupNearestSymbolFrom(
+                device, StringAttr::get(device.getContext(), name)));
+        if (!endpoint) {
+          return success();
+        }
+        int64_t elements = transferElements(endpoint);
+        if (!first) {
+          first = {name, elements};
+          return success();
+        }
+        if (elements != first->second) {
+          return flow.emitOpError("fans in, so every end moves one object of "
+                                  "the same size, but @")
+                 << first->first << " moves " << first->second
+                 << " elements and @" << name << " moves " << elements;
+        }
+        return success();
+      };
+      for (StringRef name : flow.getSourceNames()) {
+        if (failed(check(name))) {
+          return failure();
+        }
+      }
+      for (StringRef name : flow.getDestinationNames()) {
+        if (failed(check(name))) {
+          return failure();
+        }
       }
     }
     return success();
@@ -288,7 +359,8 @@ struct AIEObjectFifoVerifyPass
       }
     }
 
-    if (failed(verifyFlows(device)) || failed(verifyOverRelease(device)) ||
+    if (failed(verifyFlows(device)) || failed(verifyFanIn(device)) ||
+        failed(verifyOverRelease(device)) ||
         failed(verifyTransferBudgets(device))) {
       return signalPassFailure();
     }

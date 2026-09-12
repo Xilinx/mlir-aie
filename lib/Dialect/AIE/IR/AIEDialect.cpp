@@ -1101,12 +1101,10 @@ DMAChannelDir RouteEndpointOp::getRouteDirection() {
   StringRef name = getSymName();
   bool named = false;
   for (auto flow : device.getOps<RouteOp>()) {
-    if (flow.getSource() == name) {
+    if (flow.namesAsSource(name)) {
       return DMAChannelDir::MM2S;
     }
-    named |= llvm::any_of(
-        flow.getDestinations().getAsRange<FlatSymbolRefAttr>(),
-        [&](FlatSymbolRefAttr dest) { return dest.getValue() == name; });
+    named |= flow.namesAsDestination(name);
   }
   assert(named && "endpoint is named by no flow, so it has no direction to "
                   "read; --aie-objectfifo-verify rejects this");
@@ -1135,12 +1133,8 @@ LogicalResult RouteEndpointOp::verify() {
   StringRef name = getSymName();
   int flows = 0;
   for (auto flow : (*this)->getParentOfType<DeviceOp>().getOps<RouteOp>()) {
-    if (flow.getSource() == name) {
-      flows++;
-    }
-    flows += llvm::count_if(
-        flow.getDestinations().getAsRange<FlatSymbolRefAttr>(),
-        [&](FlatSymbolRefAttr dest) { return dest.getValue() == name; });
+    flows += llvm::count(flow.getSourceNames(), name);
+    flows += llvm::count(flow.getDestinationNames(), name);
   }
   if (flows > 1) {
     return emitOpError("drives one channel, so at most one flow may name it, "
@@ -1168,7 +1162,43 @@ LogicalResult RouteEndpointOp::verify() {
 // RouteOp
 //===----------------------------------------------------------------------===//
 
+// A route's sources print bare when there is one, bracketed when there are
+// several; both forms parse.
+static ParseResult parseRouteSources(OpAsmParser &parser, ArrayAttr &sources) {
+  SmallVector<Attribute> names;
+  auto parseOne = [&]() -> ParseResult {
+    FlatSymbolRefAttr name;
+    if (parser.parseAttribute(name))
+      return failure();
+    names.push_back(name);
+    return success();
+  };
+  if (succeeded(parser.parseOptionalLSquare())) {
+    if (failed(parser.parseOptionalRSquare()) &&
+        (parser.parseCommaSeparatedList(parseOne) || parser.parseRSquare()))
+      return failure();
+  } else if (parseOne()) {
+    return failure();
+  }
+  sources = parser.getBuilder().getArrayAttr(names);
+  return success();
+}
+
+static void printRouteSources(OpAsmPrinter &p, Operation *, ArrayAttr sources) {
+  if (sources.size() == 1) {
+    p.printAttribute(sources[0]);
+    return;
+  }
+  p << '[';
+  llvm::interleaveComma(sources, p,
+                        [&](Attribute name) { p.printAttribute(name); });
+  p << ']';
+}
+
 LogicalResult RouteOp::verify() {
+  if (getSources().empty()) {
+    return emitOpError("expects at least one source");
+  }
   if (getDestinations().empty()) {
     return emitOpError("expects at least one destination");
   }
@@ -1179,17 +1209,34 @@ LogicalResult RouteOp::verify() {
         device, StringAttr::get(getContext(), name)));
   };
 
-  if (!lookup(getSource())) {
-    return emitOpError("source '") << getSource() << "' is not an endpoint";
+  llvm::SmallDenseSet<StringRef> seen;
+  for (StringRef source : getSourceNames()) {
+    if (!lookup(source)) {
+      return emitOpError("source '") << source << "' is not an endpoint";
+    }
+    if (!seen.insert(source).second) {
+      return emitOpError("names '@") << source << "' as a source twice";
+    }
   }
-
-  for (auto destination : getDestinations().getAsRange<FlatSymbolRefAttr>()) {
-    if (!lookup(destination.getValue())) {
+  for (StringRef destination : getDestinationNames()) {
+    if (!lookup(destination)) {
       return emitOpError("destination '")
-             << destination.getValue() << "' is not an endpoint";
+             << destination << "' is not an endpoint";
+    }
+    if (!seen.insert(destination).second) {
+      return emitOpError("names '@")
+             << destination
+             << "' more than once; an end is a source or a "
+                "destination, and only one of each";
     }
   }
 
+  // A circuit joins one slave port to its master ports, so only packets can
+  // share a destination channel between sources.
+  if (isFanIn() && !getPacket()) {
+    return emitOpError("has several sources, so it needs a `packet` header; "
+                       "a circuit cannot merge streams");
+  }
   return success();
 }
 

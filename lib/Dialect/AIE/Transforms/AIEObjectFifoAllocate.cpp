@@ -805,9 +805,9 @@ struct AIEObjectFifoAllocatePass
     for (auto flow : device.getOps<RouteOp>()) {
       if (!flow.getPacket())
         continue;
-      packetEndpoints.insert(
-          lookupEndpoint(flow.getSourceAttr()).getOperation());
-      for (auto dest : flow.getDestinations().getAsRange<FlatSymbolRefAttr>())
+      for (StringRef source : flow.getSourceNames())
+        packetEndpoints.insert(lookupEndpoint(source).getOperation());
+      for (StringRef dest : flow.getDestinationNames())
         packetEndpoints.insert(lookupEndpoint(dest).getOperation());
     }
     bool clash = false;
@@ -1032,10 +1032,14 @@ struct AIEObjectFifoAllocatePass
 
   /// A packet-switched flow shares the stream with others, so every buffer
   /// descriptor the source emits has to carry the packet header.
-  LogicalResult lowerPacketFlow(RouteOp flow, RouteEndpoint source,
+  /// One packet flow carries every source of the route: each stamps the same
+  /// header, and their packets share the destination channels.
+  LogicalResult lowerPacketFlow(RouteOp flow, ArrayRef<RouteEndpoint> sources,
                                 PacketInfoAttr header) {
     int packetID = header.assignedId();
-    source.setRoutePacket(header);
+    for (RouteEndpoint source : sources) {
+      source.setRoutePacket(header);
+    }
 
     builder.setInsertionPoint(flow);
     auto packetFlow = PacketFlowOp::create(
@@ -1048,10 +1052,11 @@ struct AIEObjectFifoAllocatePass
     EndOp::create(builder, flow.getLoc());
 
     builder.setInsertionPointToStart(&ports);
-    PacketSourceOp::create(builder, flow.getLoc(), source.getTile(),
-                           source.getRouteBundle(), channelOf(source));
-    for (auto destName :
-         flow.getDestinations().getAsRange<FlatSymbolRefAttr>()) {
+    for (RouteEndpoint source : sources) {
+      PacketSourceOp::create(builder, flow.getLoc(), source.getTile(),
+                             source.getRouteBundle(), channelOf(source));
+    }
+    for (StringRef destName : flow.getDestinationNames()) {
       auto dest = lookupEndpoint(destName);
       PacketDestOp::create(builder, flow.getLoc(), dest.getTile(),
                            dest.getRouteBundle(), channelOf(dest));
@@ -1066,14 +1071,17 @@ struct AIEObjectFifoAllocatePass
     return *channel;
   }
 
-  RouteEndpoint lookupEndpoint(FlatSymbolRefAttr name) {
-    return dyn_cast_or_null<RouteEndpoint>(
-        SymbolTable::lookupNearestSymbolFrom(device, name.getAttr()));
+  RouteEndpoint lookupEndpoint(StringRef name) {
+    return dyn_cast_or_null<RouteEndpoint>(SymbolTable::lookupNearestSymbolFrom(
+        device, StringAttr::get(device.getContext(), name)));
   }
 
   LogicalResult lowerFlows() {
     for (auto flow : device.getOps<RouteOp>()) {
-      auto source = lookupEndpoint(flow.getSourceAttr());
+      SmallVector<RouteEndpoint> sources;
+      for (StringRef name : flow.getSourceNames()) {
+        sources.push_back(lookupEndpoint(name));
+      }
       loweredFlows.push_back(flow);
 
       // Which switching a route gets was settled upstream of this pass: the
@@ -1083,16 +1091,18 @@ struct AIEObjectFifoAllocatePass
           return flow.emitOpError("has a packet header with no pkt_id; run "
                                   "--aie-assign-packet-ids before this pass");
         }
-        if (failed(lowerPacketFlow(flow, source, *packet))) {
+        if (failed(lowerPacketFlow(flow, sources, *packet))) {
           return failure();
         }
         continue;
       }
 
+      // The verifier keeps a circuit route to one source.
+      RouteEndpoint source = sources.front();
+
       int sourceChannel = channelOf(source);
       builder.setInsertionPoint(flow);
-      for (auto destName :
-           flow.getDestinations().getAsRange<FlatSymbolRefAttr>()) {
+      for (StringRef destName : flow.getDestinationNames()) {
         auto dest = lookupEndpoint(destName);
         FlowOp::create(builder, flow.getLoc(), source.getTile(),
                        source.getRouteBundle(), sourceChannel, dest.getTile(),
@@ -1113,7 +1123,7 @@ struct AIEObjectFifoAllocatePass
       }
       // Split may already have pointed this at the fifo's shim endpoint.
       StringRef name = sym.getValue();
-      if (auto endpoint = lookupEndpoint(sym)) {
+      if (auto endpoint = lookupEndpoint(sym.getValue())) {
         if (auto fifoName = endpoint.getFifoName()) {
           name = *fifoName;
         }

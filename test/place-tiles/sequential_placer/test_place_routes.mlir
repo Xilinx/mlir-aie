@@ -91,3 +91,41 @@ module @route_channel_demand {
     // CHECK-NOT: aie.logical_tile
   }
 }
+
+// -----
+
+// A fan-in route makes the mem tile a peer of both cores, so it lands between
+// them, and it spends one input channel on the mem tile, not one per source.
+
+// CHECK-LABEL: @fan_in_memtile_between_cores
+module @fan_in_memtile_between_cores {
+  aie.device(npu1) {
+    // CHECK-DAG: %[[C1:.*]] = aie.tile(1, 2)
+    %c1 = aie.logical_tile<CoreTile>(1, 2)
+    // CHECK-DAG: %[[C2:.*]] = aie.tile(3, 2)
+    %c2 = aie.logical_tile<CoreTile>(3, 2)
+    // CHECK-DAG: %[[MEM:.*]] = aie.tile(2, 1)
+    %mem = aie.logical_tile<MemTile>(?, ?)
+    aie.objectfifo.pool @a(%c1) {depth = 1 : i32} : memref<16xi32> {
+      aie.objectfifo.segment @s0 {offset = 0 : i32, size = 16 : i32}
+    }
+    aie.objectfifo.core_endpoint @a_core(%c1) fills @a
+    aie.objectfifo.dma_endpoint @a_dma(%c1) drains @a
+    aie.objectfifo.pool @b(%c2) {depth = 1 : i32} : memref<16xi32> {
+      aie.objectfifo.segment @s0 {offset = 0 : i32, size = 16 : i32}
+    }
+    aie.objectfifo.core_endpoint @b_core(%c2) fills @b
+    aie.objectfifo.dma_endpoint @b_dma(%c2) drains @b
+    aie.objectfifo.pool @m(%mem) {depth = 2 : i32} : memref<16xi32> {
+      aie.objectfifo.segment @s0 {offset = 0 : i32, size = 16 : i32}
+    }
+    aie.objectfifo.dma_endpoint @m_in(%mem) fills @m
+    aie.objectfifo.dma_endpoint @m_out(%mem) drains @m
+    %shim = aie.logical_tile<ShimNOCTile>(?, ?)
+    aie.route_endpoint @out(%shim) DMA
+    // CHECK: aie.route from [@a_dma, @b_dma] to [@m_in] {packet = #aie.packet_info<>}
+    aie.route from [@a_dma, @b_dma] to [@m_in] {packet = #aie.packet_info<>}
+    aie.route from @m_out to [@out]
+    // CHECK-NOT: aie.logical_tile
+  }
+}

@@ -780,7 +780,8 @@ void AIEObjectFifoSplitPass::runOnOperation() {
     // The fifo's packet request rides on the route as written; allocation
     // assigns the id unless the fifo pinned one.
     RouteOp::create(builder, loc,
-                    FlatSymbolRefAttr::get(builder.getContext(), prodDmaName),
+                    builder.getArrayAttr({FlatSymbolRefAttr::get(
+                        builder.getContext(), prodDmaName)}),
                     builder.getArrayAttr(destinations), fifo.packetHeader());
   }
 

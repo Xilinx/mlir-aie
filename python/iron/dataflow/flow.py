@@ -375,7 +375,7 @@ class Flow(_Route):
                 ip=ip,
             )
         self._op = _route_op(
-            self._end_symbol(0),
+            [self._end_symbol(0)],
             [self._end_symbol(end) for end in range(1, len(self._channels))],
             loc=loc,
             ip=ip,

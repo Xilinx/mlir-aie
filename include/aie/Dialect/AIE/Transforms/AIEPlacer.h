@@ -649,6 +649,17 @@ private:
   llvm::DenseMap<mlir::Operation *, llvm::SmallVector<size_t>> tileToNetIndices;
   llvm::SmallVector<FifoBufferInfo> fifoBuffers;
 
+  // A route's DMA end on a logical tile: one channel, in or out, that moves
+  // with the tile.
+  struct RouteEndInfo {
+    mlir::Operation *tile;
+    bool output;
+  };
+  llvm::SmallVector<RouteEndInfo> routeEnds;
+  llvm::DenseMap<mlir::Operation *, llvm::SmallVector<size_t>> tileToRouteEnds;
+  // Descriptors the pools on each logical tile need, for the mem-tile budget.
+  llvm::DenseMap<mlir::Operation *, int> poolBDs;
+
   // Placement state
   llvm::DenseMap<mlir::Operation *, TileID> currentPlacement;
   llvm::DenseMap<TileID, mlir::Operation *> physToLogical;
@@ -690,6 +701,7 @@ private:
   // Cost and resource methods
   void initResourceTracking();
   void addFifoContribution(size_t fifoIdx, int sign);
+  void addRouteEndContribution(size_t endIdx, int sign);
   int updateResourcePenalty(
       const llvm::SmallVector<std::pair<mlir::Operation *, TileID>>
           &oldPlacements);
@@ -723,6 +735,7 @@ private:
   void buildFifoBufferInfo(DeviceOp device,
                            llvm::ArrayRef<ObjectFifoCreateOp> objectFifos,
                            llvm::ArrayRef<ObjectFifoLinkOp> objectFifoLinks);
+  void buildRouteModel(DeviceOp device, llvm::ArrayRef<RouteOp> routes);
   int computeNetHPWL(const NetInfo &net) const;
   int computeTotalHPWL() const;
   void initBoundingBoxes();

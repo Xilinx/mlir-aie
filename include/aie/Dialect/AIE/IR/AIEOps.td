@@ -2160,40 +2160,60 @@ def AIE_RouteEndpointOp
 def AIE_RouteOp : AIE_Op<"route", [HasParent<"DeviceOp">]> {
   let summary = "A stream connection between endpoints named by symbol";
   let description = [{
-    Connects a source endpoint to the destination endpoints it feeds, naming
-    each by symbol. Several destinations mean a broadcast: one source channel
-    feeding them all.
+    Connects the source endpoints to the destination endpoints they feed,
+    naming each by symbol. Several destinations mean a broadcast: one source
+    channel feeding them all. Several sources mean a fan-in: their packets
+    share one destination channel, which fills its objects in arrival order,
+    so a fan-in is packet-switched and every end moves one object of the same
+    size. An endpoint is named by one route.
 
     Any op implementing `RouteEndpoint` may be an end of a route:
     `aie.route_endpoint` and `aie.objectfifo.dma_endpoint`.
 
     `--aie-objectfifo-allocate` assigns a channel to each endpoint, emits the
-    corresponding `aie.flow`, and consumes this op.
+    corresponding `aie.flow` or `aie.packet_flow`, and consumes this op.
 
     `packet` routes the connection as an `aie.packet_flow` instead, sharing the
     stream with every other packet flow rather than reserving a circuit for it.
     It is the same `#aie.packet_info` the endpoints and buffer descriptors end
-    up carrying: with `pkt_id` set it pins the header the source stamps, without
-    it allocation picks an id no other flow is using. Circuit- and
-    packet-switched routes coexist in one device.
+    up carrying: with `pkt_id` set it pins the header the sources stamp, without
+    it `--aie-assign-packet-ids` picks an id no other flow is using. Circuit-
+    and packet-switched routes coexist in one device.
 
     Example:
     ```
       aie.route from @src to [@dst0, @dst1]
       aie.route from @src to [@dst] {packet = #aie.packet_info<>}
-      aie.route from @src to [@dst] {packet = #aie.packet_info<pkt_id = 3>}
+      aie.route from [@src0, @src1] to [@dst] {packet = #aie.packet_info<pkt_id = 3>}
     ```
   }];
 
-  let arguments = (ins FlatSymbolRefAttr:$source,
+  let arguments = (ins FlatSymbolRefArrayAttr:$sources,
       FlatSymbolRefArrayAttr:$destinations,
       OptionalAttr<PacketInfoAttr>:$packet);
 
   let assemblyFormat = [{
-    `from` $source `to` $destinations attr-dict
+    `from` custom<RouteSources>($sources) `to` $destinations attr-dict
   }];
 
   let hasVerifier = 1;
+
+  let extraClassDeclaration = [{
+    auto getSourceNames() {
+      return getSources().getAsValueRange<mlir::FlatSymbolRefAttr>();
+    }
+    auto getDestinationNames() {
+      return getDestinations().getAsValueRange<mlir::FlatSymbolRefAttr>();
+    }
+    bool namesAsSource(llvm::StringRef name) {
+      return llvm::is_contained(getSourceNames(), name);
+    }
+    bool namesAsDestination(llvm::StringRef name) {
+      return llvm::is_contained(getDestinationNames(), name);
+    }
+    /// Several sources share the destination channel.
+    bool isFanIn() { return getSources().size() > 1; }
+  }];
 }
 
 def AIE_ShimDMAAllocationOp

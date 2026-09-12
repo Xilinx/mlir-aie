@@ -173,6 +173,53 @@ void SAPlacer::buildNetModel(SmallVector<ObjectFifoCreateOp> &objectFifos,
   }
 }
 
+// A route is a net over the tiles of its ends, and each DMA end is one channel
+// on its tile; a pool is bytes on its tile, and descriptors when the tile is a
+// mem tile. None of it needs the DMA-or-shared-memory guess a fifo needs: a
+// route already moves data by DMA.
+void SAPlacer::buildRouteModel(DeviceOp device, ArrayRef<RouteOp> routes) {
+  routeEnds.clear();
+  poolBDs.clear();
+  for (RouteOp route : routes) {
+    NetInfo net;
+    auto addEnd = [&](StringRef name, bool output) {
+      auto endpoint = SymbolTable::lookupNearestSymbolFrom<RouteEndpoint>(
+          route, StringAttr::get(route.getContext(), name));
+      if (!endpoint)
+        return;
+      Operation *tileOp = endpoint.getTile().getDefiningOp();
+      if (!isa_and_nonnull<LogicalTileOp>(tileOp))
+        return;
+      net.endpoints.push_back(tileOp);
+      if (endpoint.getRouteBundle() == WireBundle::DMA)
+        routeEnds.push_back({tileOp, output});
+    };
+    for (StringRef source : route.getSourceNames())
+      addEnd(source, /*output=*/true);
+    for (StringRef dest : route.getDestinationNames())
+      addEnd(dest, /*output=*/false);
+    if (net.endpoints.size() < 2)
+      continue;
+    unsigned threshold = static_cast<unsigned>(config.multicastThreshold);
+    net.isMulticast = route.getDestinations().size() > threshold ||
+                      route.getSources().size() > threshold;
+    size_t idx = nets.size();
+    nets.push_back(net);
+    for (auto *ep : net.endpoints)
+      tileToNetIndices[ep].push_back(idx);
+  }
+
+  for (auto pool : device.getOps<ObjectFifoPoolOp>()) {
+    Operation *tileOp = pool.getTile().getDefiningOp();
+    if (!isa_and_nonnull<LogicalTileOp>(tileOp))
+      continue;
+    staticBufferSizes[tileOp] += pool.getObjectSizeInBytes() * pool.getDepth();
+    auto typeIt = tileTypes.find(tileOp);
+    if (typeIt != tileTypes.end() && typeIt->second == AIETileType::MemTile)
+      poolBDs[tileOp] += pool.getDepth();
+  }
+}
+
 int SAPlacer::computeNetHPWL(const NetInfo &net) const {
   int spanCol = net.bb.maxCol - net.bb.minCol;
   int spanRow = net.bb.maxRow - net.bb.minRow;
@@ -341,6 +388,17 @@ std::optional<TileID> SAPlacer::positionOf(Operation *tile) const {
 }
 
 // Add a single fifo's contributions to memory and DMA usage maps.
+void SAPlacer::addRouteEndContribution(size_t endIdx, int sign) {
+  const RouteEndInfo &end = routeEnds[endIdx];
+  auto posIt = currentPlacement.find(end.tile);
+  if (posIt == currentPlacement.end())
+    return;
+  if (end.output)
+    currentDMAUsage[posIt->second].second += sign;
+  else
+    currentDMAUsage[posIt->second].first += sign;
+}
+
 void SAPlacer::addFifoContribution(size_t fifoIdx, int sign) {
   const auto &fb = fifoBuffers[fifoIdx];
   Operation *prod = fb.producer;
@@ -534,6 +592,12 @@ void SAPlacer::initResourceTracking() {
 
   for (size_t i = 0; i < fifoBuffers.size(); i++)
     addFifoContribution(i, +1);
+
+  tileToRouteEnds.clear();
+  for (size_t i = 0; i < routeEnds.size(); i++) {
+    tileToRouteEnds[routeEnds[i].tile].push_back(i);
+    addRouteEndContribution(i, +1);
+  }
   cachedResourcePenalty = computePenalty();
 }
 
@@ -816,6 +880,11 @@ int SAPlacer::computeBDCountPenalty() const {
       memTileBDs[posIt->second] += depth;
     }
   }
+  for (auto &[op, depth] : poolBDs) {
+    auto posIt = currentPlacement.find(op);
+    if (posIt != currentPlacement.end())
+      memTileBDs[posIt->second] += depth;
+  }
   for (auto &[tilePos, totalBDs] : memTileBDs) {
     if (totalBDs > memTileBDMax)
       penalty += (totalBDs - memTileBDMax) * config.dmaPenaltyPerChannel;
@@ -986,12 +1055,18 @@ int SAPlacer::updateResourcePenalty(
   }
   for (size_t fi : affectedFifos)
     addFifoContribution(fi, -1);
+  for (auto &[op, _] : oldPlacements)
+    for (size_t ei : tileToRouteEnds.lookup(op))
+      addRouteEndContribution(ei, -1);
 
   // Restore new positions and add new contributions
   for (auto &[op, newPos] : savedPositions)
     currentPlacement[op] = newPos;
   for (size_t fi : affectedFifos)
     addFifoContribution(fi, +1);
+  for (auto &[op, _] : oldPlacements)
+    for (size_t ei : tileToRouteEnds.lookup(op))
+      addRouteEndContribution(ei, +1);
 
   // Add new static buffer and stack contributions
   for (auto &[op, _] : oldPlacements) {
@@ -1289,6 +1364,7 @@ LogicalResult SAPlacer::collectAndBuildModel(DeviceOp device) {
   // Build net model, fifo buffer info, and cascade groups
   buildNetModel(objectFifos, objectFifoLinks);
   buildFifoBufferInfo(device, objectFifos, objectFifoLinks);
+  buildRouteModel(device, collected.routes);
   cascadeAdjacency = buildCascadeAdjacency(collected.cascadeFlows);
   LLVM_DEBUG(llvm::dbgs() << "[SA] Cascade adjacency: "
                           << cascadeAdjacency.edges.size() << " edges\n");
