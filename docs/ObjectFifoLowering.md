@@ -418,6 +418,11 @@ Flows and core accesses:
   external buffers has a host-side actor with no op
 - every DMA and route endpoint appears in exactly one route
 - no loop body releases more than it acquires
+- no core must release more objects through an endpoint than the pool's DMA
+  endpoint, bounded by an `iterCount`, will move (`iterCount` times depth).
+  Only releases forced by static loop bounds count, and a loop meant to run
+  forever (a trip count from the 24-bit BD-loop saturation value up) is left
+  out, since its core stalling once the data stops is how such a design ends
 
 ### By `--aie-objectfifo-lower-dmas`
 

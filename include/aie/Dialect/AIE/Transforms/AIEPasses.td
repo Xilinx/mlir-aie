@@ -534,8 +534,10 @@ def AIEObjectFifoVerify : Pass<"aie-objectfifo-verify", "DeviceOp"> {
   let description = [{
     Check the properties an op verifier cannot: that a pool's segments tile its
     element type, that each segment has one endpoint filling it and one draining
-    it, that every DMA endpoint is connected by exactly one flow, and that no
-    loop body releases more objects than it acquires.
+    it, that every DMA endpoint is connected by exactly one flow, that no
+    loop body releases more objects than it acquires, and that no core must
+    release more objects through a pool than the pool's DMA endpoint, bounded
+    by an iteration count, will ever move.
 
     These are completeness rules, so a design that is deliberately partial --
     one whose other half is supplied elsewhere -- may decline to run this pass.
