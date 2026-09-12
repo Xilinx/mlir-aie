@@ -1300,3 +1300,25 @@ def test_reduce_rejects_tiles_below_its_declared_trip_count(factory, kwargs):
 def test_reduce_scalar_path_has_no_trip_count_floor():
     """Only the vectorised path carries the pragma, so the scalar one stays free."""
     assert kernels.reduce_add(tile_size=64, vectorized=False) is not None
+
+
+@pytest.mark.parametrize(
+    "dims,mac",
+    [((64, 64, 64), (4, 8, 8)), ((128, 64, 64), (8, 8, 8)), ((64, 32, 64), (4, 4, 8))],
+)
+def test_mm_stream_dims_match_the_blocking_the_kernel_was_compiled_for(dims, mac):
+    """A and B come from taplib; C is the one layout taplib cannot express.
+
+    The A/B transforms are a plain (r x s) blocked walk, so they ask
+    TensorTiler2D for it. This pins that the answer is still the layout
+    ``mm.cc`` expects, byte for byte, rather than whatever the tiler happens
+    to return after a change.
+    """
+    (m, k, n), (r, s, t) = dims, mac
+    d = kernels.mm_stream_dims(m, k, n, mac)
+    assert d["A"] == [(m // r, r * k), (k // s, s), (r, k), (s, 1)]
+    assert d["B"] == [(k // s, s * n), (n // t, t), (s, n), (t, 1)]
+    assert d["C"] == [(m // r, r * n), (r, t), (n // t, r * t), (t, 1)]
+    col = kernels.mm_stream_dims(m, k, n, mac, b_col_maj=True, c_col_maj=True)
+    assert col["B"] == [(n // t, t * k), (k // s, s), (t, k), (s, 1)]
+    assert col["C"] == [(n // t, t * m), (t, r), (m // r, r * t), (r, 1)]

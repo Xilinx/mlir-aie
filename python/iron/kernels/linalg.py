@@ -190,6 +190,16 @@ def _linalg_tolerance(input_dtype) -> Tolerance:
     )
 
 
+def _blocked(rows: int, cols: int, tile_rows: int, tile_cols: int) -> list:
+    """``dims_to_stream`` walking a ``(rows, cols)`` tensor in tile-sized blocks."""
+    from aie.helpers.taplib import TensorTiler2D
+
+    tiles = TensorTiler2D.group_tiler(
+        (rows, cols), (tile_rows, tile_cols), (rows // tile_rows, cols // tile_cols)
+    )
+    return list(tiles[0].transformation_dims)
+
+
 def mm_stream_dims(
     dim_m: int,
     dim_k: int,
@@ -213,11 +223,17 @@ def mm_stream_dims(
     """
     r, s, t = mac_dims
     m, k, n = dim_m, dim_k, dim_n
-    a = [(m // r, r * k), (k // s, s), (r, k), (s, 1)]
-    if b_col_maj:
-        b = [(n // t, t * k), (k // s, s), (t, k), (s, 1)]
-    else:
-        b = [(k // s, s * n), (n // t, t), (s, n), (t, 1)]
+    # Walking an operand as (r x s) blocks is what TensorTiler2D generates, so
+    # A and B ask for it rather than restating it.
+    a = _blocked(m, k, r, s)
+    b = _blocked(n, k, t, s) if b_col_maj else _blocked(k, n, s, t)
+    # C is not expressible that way. The DMA reads a core-blocked buffer and
+    # writes a differently ordered stream, so the intra-tile row term comes
+    # *outside* the tile index -- (r, t) before (n//t, r*t). Every
+    # TensorTiler2D classmethod iterates tiles outermost and elements within
+    # them, and no combination of tile_col_major / iter_col_major /
+    # prune_step produces this order. Closing the gap needs an un-blocking
+    # tiler in taplib, which is its own change.
     if c_col_maj:
         c = [(n // t, t * m), (t, r), (m // r, r * t), (r, 1)]
     else:
