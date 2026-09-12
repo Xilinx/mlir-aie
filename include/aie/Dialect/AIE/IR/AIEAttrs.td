@@ -194,16 +194,42 @@ def BDPadLayoutArrayArrayAttr
 
 def PacketInfoAttr : AttrDef<AIE_Dialect, "PacketInfo", []> {
   let mnemonic = "packet_info";
-  let summary = [{
-    Tuple encoding the type and header of a packet;
+  let summary = "The header of a packet-switched stream";
+  let description = [{
+    One spelling of a packet header, from the request down to the hardware.
+
+    `pkt_id` is optional so the attribute can describe a packet-switched
+    connection before allocation has picked its header: `#aie.packet_info<>`
+    asks for packet switching with any free id, `#aie.packet_info<pkt_id = 3>`
+    pins the id. `--aie-objectfifo-allocate` fills the id in, so on an endpoint,
+    a buffer descriptor or a runtime op the id is always assigned; those ops
+    verify that.
+
+    `pkt_type` defaults to 0 and is omitted when it is.
+
+    ```
+      aie.route from @src to [@dst] {packet = #aie.packet_info<pkt_id = 3>}
+      aie.dma_bd(%buf : memref<16xi32>) {packet = #aie.packet_info<pkt_id = 3>}
+    ```
   }];
 
-  let parameters = (ins
-    "uint16_t" : $pkt_type,
-    "uint16_t" : $pkt_id
-  );
+  let parameters = (ins DefaultValuedParameter<"uint16_t", "0">:$pkt_type,
+      OptionalParameter<"std::optional<uint16_t>">:$pkt_id);
 
   let assemblyFormat = "`<` struct(params) `>`";
+
+  let extraClassDeclaration = [{
+    /// Whether allocation has assigned the header id yet.
+    bool isAssigned() const { return getPktId().has_value(); }
+
+    /// The id of a header allocation has resolved. Every op below `aie.route`
+    /// verifies its header is assigned, so readers at that level use this
+    /// rather than re-checking.
+    uint16_t assignedId() const {
+      assert(isAssigned() && "packet header has no pkt_id");
+      return *getPktId();
+    }
+  }];
 }
 
 def BDIterationAttr : AttrDef<AIE_Dialect, "BDIteration", []> {

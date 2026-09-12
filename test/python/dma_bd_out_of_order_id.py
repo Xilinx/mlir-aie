@@ -38,6 +38,6 @@ rt = Runtime(sequence, [np.ndarray[(2,), np.dtype[np.int32]]])
 rt.add_tile_dma(tile_dma)
 
 # Each sending BD carries its packet header and out_of_order_id as attributes.
-# CHECK: aie.dma_bd({{.*}}out_of_order_id = 0 : i32, packet = #aie.packet_info<pkt_type = 0, pkt_id = 0>
-# CHECK: aie.dma_bd({{.*}}out_of_order_id = 1 : i32, packet = #aie.packet_info<pkt_type = 0, pkt_id = 0>
+# CHECK: aie.dma_bd({{.*}}out_of_order_id = 0 : i32, packet = #aie.packet_info<pkt_id = 0>
+# CHECK: aie.dma_bd({{.*}}out_of_order_id = 1 : i32, packet = #aie.packet_info<pkt_id = 0>
 print(Program(NPU2Col1(), rt).resolve_program())

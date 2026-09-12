@@ -865,7 +865,7 @@ struct AIEInsertTraceFlowsPass
           llvm::report_fatal_error("Failed to lookup Controller_ID field in " +
                                    llvm::Twine(ctrlRegName));
         uint32_t ctrlIdValue =
-            targetModel.encodeFieldValue(*ctrlIdField, ctrlIdAttr.getPktId());
+            targetModel.encodeFieldValue(*ctrlIdField, ctrlIdAttr.assignedId());
         auto ctrlIdMask = targetModel.getFieldMask(*ctrlIdField);
         if (!ctrlIdMask)
           llvm::report_fatal_error(

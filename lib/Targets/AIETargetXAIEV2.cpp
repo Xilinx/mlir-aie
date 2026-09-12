@@ -130,7 +130,7 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
       if (auto packetInfo = op.getPacket()) {
         foundBdPacket = true;
         packetType = packetInfo->getPktType();
-        packetID = packetInfo->getPktId();
+        packetID = packetInfo->assignedId();
       }
       if (!targetModel.isShimNOCTile(col, row)) {
         std::optional<int32_t> bufferAddr = op.getBufferOp().getAddress();

@@ -497,7 +497,7 @@ struct AIEDMATasksToNPUPass
     if (info) {
       f.enable_packet = 1;
       f.packet_type = info.getPktType();
-      f.packet_id = info.getPktId();
+      f.packet_id = info.assignedId();
     }
 
     if (std::optional<int32_t> oooId = bd_op.getOutOfOrderId())

@@ -29,8 +29,8 @@ module @mixed {
 // other.
 // SPLIT:       aie.route from @plain_prod_dma to [@plain_cons_dma]
 // SPLIT-NOT:   packet
-// SPLIT:       aie.route from @auto_prod_dma to [@auto_cons_dma] {packet}
-// SPLIT:       aie.route from @pinned_prod_dma to [@pinned_cons_dma] {packet, packet_id = 7 : i8}
+// SPLIT:       aie.route from @auto_prod_dma to [@auto_cons_dma] {packet = #aie.packet_info<>}
+// SPLIT:       aie.route from @pinned_prod_dma to [@pinned_cons_dma] {packet = #aie.packet_info<pkt_id = 7>}
 
 // CHECK-DAG:   %[[A:.*]] = aie.tile(1, 2)
 // CHECK-DAG:   %[[B:.*]] = aie.tile(3, 2)

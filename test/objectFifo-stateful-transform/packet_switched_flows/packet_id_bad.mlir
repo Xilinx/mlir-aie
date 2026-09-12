@@ -191,7 +191,7 @@ module @packet_id_out_of_range {
     %tile12 = aie.tile(1, 2)
     %tile33 = aie.tile(3, 3)
 
-    // expected-error@+1 {{'aie.route' op packet_id 32 is out of range (max 31)}}
+    // expected-error@+1 {{'aie.route' op pkt_id 32 is out of range (max 31)}}
     aie.objectfifo @of1 (%tile12, {%tile33}, 2 : i32) {packet, packet_id = 32 : i8} : !aie.objectfifo<memref<16xi32>>
  }
 }

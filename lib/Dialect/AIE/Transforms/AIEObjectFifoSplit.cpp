@@ -771,11 +771,16 @@ void AIEObjectFifoSplitPass::runOnOperation() {
       consumerIndex++;
     }
 
+    // The fifo's packet request becomes the route's header, id still
+    // unassigned unless the fifo pinned one.
+    PacketInfoAttr packet;
+    if (fifo.getPacket()) {
+      packet = PacketInfoAttr::get(builder.getContext(), /*pkt_type=*/0,
+                                   fifo.getPacketId());
+    }
     RouteOp::create(builder, loc,
                     FlatSymbolRefAttr::get(builder.getContext(), prodDmaName),
-                    builder.getArrayAttr(destinations),
-                    fifo.getPacket() ? builder.getUnitAttr() : UnitAttr(),
-                    fifo.getPacketIdAttr());
+                    builder.getArrayAttr(destinations), packet);
   }
 
   SmallVector<Operation *> toErase;

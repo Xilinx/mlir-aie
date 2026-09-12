@@ -157,7 +157,7 @@ module @lateral_fallback_full_shim {
     }
 
     // Trace redirects to column 1 (spare, both channels free)
-    // CHECK: aie.tile(1, 0) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 15>}
+    // CHECK: aie.tile(1, 0) {controller_id = #aie.packet_info<pkt_id = 15>}
     // CHECK: aiex.npu.writebd {{{.*}}column = 1
     // CHECK: aie.packet_dest<%{{.*}}1_0{{.*}}, DMA : 1>
   }
