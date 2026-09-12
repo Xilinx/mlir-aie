@@ -7,6 +7,7 @@
 
 import hashlib
 import logging
+from enum import Enum
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -22,6 +23,20 @@ from .buffer import Buffer
 from .resolvable import Resolvable
 
 logger = logging.getLogger(__name__)
+
+
+class DesignShape(Enum):
+    """The dataflow a generic design has to build to run a kernel.
+
+    A kernel's arguments say what it consumes, not how a design feeds it.
+    ``STREAM`` tiles every input through an ObjectFifo, one element per call;
+    the matrix shapes walk operands in the micro-tile blocking the kernel was
+    compiled for, which is a property of the kernel, not of its signature.
+    """
+
+    STREAM = "stream"
+    MATMUL = "matmul"
+    MATVEC = "matvec"
 
 
 def _as_dtype(dt):
@@ -361,6 +376,8 @@ class ExternalFunction(Kernel):
     b_col_maj: bool
     c_col_maj: bool
     a_dims_from_stream: object
+    #: How a generic design must feed this kernel.
+    design_shape: DesignShape = DesignShape.STREAM
 
     def _require_contract(self):
         if self.contract is None:
@@ -431,6 +448,54 @@ class ExternalFunction(Kernel):
         if out_dt is v8bfp16ebs8:
             out_dt = np.float32  # judged after decoding the device's blocks
         return np.asarray(c.reference(*args)).astype(out_dt)
+
+    def _bfp_output(self) -> bool:
+        """Whether this kernel writes bfp16ebs8 blocks rather than plain values."""
+        from aie.helpers.util import v8bfp16ebs8
+
+        c = self._require_contract()
+        return self.arg_dtype(c.out_index) is v8bfp16ebs8
+
+    def output_dtype(self, ref_dtype):
+        """Host dtype of the device output buffer.
+
+        A bfp16ebs8 output arrives as packed bytes; everything else arrives in
+        the reference's own dtype.
+        """
+        import numpy as np
+
+        return np.uint8 if self._bfp_output() else ref_dtype
+
+    def judge(self, got, ref, *, calls: int = 1, tolerance=None):
+        """Compare a flat device output against a reference under the contract.
+
+        Streaming outputs are viewed as ``(calls, tile)`` and trimmed to the
+        contract's ``out_valid`` elements per call, so DMA padding is never
+        compared; matrix outputs are reshaped to the reference, a bfp16ebs8 C
+        unshuffled and decoded first.
+        """
+        from aie.utils import bfp
+        from aie.utils.verify import Tolerance, compare
+
+        c = self._require_contract()
+        got, ref = np.asarray(got), np.asarray(ref)
+        matmul = self.design_shape is DesignShape.MATMUL
+        if matmul and self._bfp_output():
+            M, N = ref.shape
+            m, _, n = self.dims
+            got = bfp.decode(bfp.shuffle(got, N, M, n, m, unshuffle=True))
+        elif matmul and self.c_col_maj:
+            got = got.reshape(ref.shape[1], ref.shape[0]).T  # host buffer holds C^T
+        elif matmul or self.design_shape is DesignShape.MATVEC:
+            got = got.reshape(ref.shape)
+        else:
+            got = got.reshape(calls, -1)
+            if c.out_valid is not None:
+                got = got[:, : c.out_valid]
+            ref = ref.reshape(calls, -1)
+        return compare(
+            got, ref, tolerance or c.tolerance or Tolerance.default_for(ref.dtype)
+        )
 
     def siblings(self, **symbols: tuple) -> SimpleNamespace:
         """Bind other symbols exported by this kernel's own object file.

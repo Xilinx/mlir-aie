@@ -57,10 +57,11 @@ from aie.iron import (
     Worker,
 )
 from aie.iron.controlflow import range_
+from aie.iron.kernel import DesignShape
 from aie.utils import bfp
 from aie.utils.trace import TraceConfig
 from aie.utils.trace.utils import get_cycles_summary
-from aie.utils.verify import Tolerance, Verdict, compare
+from aie.utils.verify import Tolerance, Verdict
 
 # --------------------------------------------------------------------------
 # Contract helpers
@@ -173,7 +174,8 @@ def _fifo_depth(fn, tile_bytes: int, stack_bytes: int, fixed_bytes: int = 0) -> 
 
 
 def is_matmul(fn) -> bool:
-    return hasattr(fn, "stream_dims")
+    """Whether a design must walk this kernel's operands as a matmul."""
+    return fn.design_shape is DesignShape.MATMUL
 
 
 def _matrix_shape(fn, shape: tuple | None, rank: int) -> tuple:
@@ -186,7 +188,8 @@ def _matrix_shape(fn, shape: tuple | None, rank: int) -> tuple:
 
 
 def is_matvec(fn) -> bool:
-    return hasattr(fn, "a_dims_from_stream")
+    """Whether a design must walk this kernel's operands as a matrix-vector product."""
+    return fn.design_shape is DesignShape.MATVEC
 
 
 # --------------------------------------------------------------------------
@@ -924,11 +927,11 @@ def check(
         d,
         inputs,
         output_size(fn, calls=calls, shape=shape),
-        output_dtype(fn, ref.dtype),
+        fn.output_dtype(ref.dtype),
         poison=True,
         fn=fn,
     )
-    return judge(fn, got, ref, calls=calls, tolerance=tolerance)
+    return fn.judge(got, ref, calls=calls, tolerance=tolerance)
 
 
 def output_size(fn, *, calls: int = 1, shape: tuple | None = None) -> int:
@@ -1025,50 +1028,6 @@ def host_args(fn, *, calls: int = 1, shape: tuple | None = None) -> list[HostArg
         )
     args.append(HostArg(Out, (output_size(fn, calls=calls, shape=shape),), out_dt))
     return args
-
-
-def output_dtype(fn, ref_dtype):
-    """Return the host dtype of the device output buffer: ``uint8`` bytes for bfp16ebs8, else the reference's."""
-    if is_matmul(fn) and _bfp_operands(fn)[2]:
-        return np.uint8
-    return ref_dtype
-
-
-def judge(
-    fn,
-    got: np.ndarray,
-    ref: np.ndarray,
-    *,
-    calls: int = 1,
-    tolerance: Tolerance | None = None,
-) -> Verdict:
-    """Compare a flat device output against the reference under the contract.
-
-    Streaming outputs are viewed as ``(calls, tile)`` and trimmed to the
-    contract's ``out_valid`` elements per call, so DMA padding is never
-    compared; matrix outputs are reshaped to the reference, a bfp16ebs8 C
-    unshuffled and decoded first.
-    """
-    c = _contract(fn)
-    got = np.asarray(got)
-    if is_matmul(fn) and _bfp_operands(fn)[2]:
-        M, N = ref.shape
-        m, _, n = fn.dims
-        got = bfp.decode(bfp.shuffle(got, N, M, n, m, unshuffle=True))
-    elif is_matmul(fn) and fn.c_col_maj:
-        got = got.reshape(ref.shape[1], ref.shape[0]).T  # host buffer holds C^T
-    elif is_matmul(fn) or is_matvec(fn):
-        got = got.reshape(ref.shape)
-    else:
-        got = got.reshape(calls, -1)
-        if c.out_valid is not None:
-            got = got[:, : c.out_valid]
-        ref = ref.reshape(calls, -1)
-    return compare(
-        got,
-        ref,
-        tolerance or c.tolerance or Tolerance.default_for(ref.dtype),
-    )
 
 
 def cycles_per_call(

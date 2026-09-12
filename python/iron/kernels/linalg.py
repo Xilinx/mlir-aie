@@ -7,7 +7,7 @@
 
 import numpy as np
 from aie.dialects.aiex import v8bfp16ebs8
-from aie.iron.kernel import ExternalFunction
+from aie.iron.kernel import DesignShape, ExternalFunction
 from aie.utils.compile.jit.markers import In, InOut, Out, Param, Scalar
 from aie.utils.verify import Tolerance
 from ml_dtypes import bfloat16
@@ -327,6 +327,7 @@ def mm(
     else:
         extern.mac_dims = _MM_MAC_DIMS[arch][key]
     extern.dims = (dim_m, dim_k, dim_n)
+    extern.design_shape = DesignShape.MATMUL
     extern.stream_dims = mm_stream_dims(
         dim_m,
         dim_k,
@@ -431,6 +432,7 @@ def mv(
     # aie_kernels/aie2/mv.cc): 2-byte elements are packed two per word, rows
     # of each 2-column word slowly, m rows then the next 2-col word. A design
     # applies this as dims_from_stream on the hop into the core.
+    extern.design_shape = DesignShape.MATVEC
     extern.a_dims_from_stream = (
         [(dim_m, 2), (dim_k // 2, 2 * dim_m), (2, 1)] if vectorized else None
     )
@@ -563,6 +565,7 @@ def mm_bfp(
     extern.mac_dims = _BFP_MAC_DIMS
     dims = mm_stream_dims(dim_m, dim_k, dim_n, _BFP_MAC_DIMS)
     extern.dims = (dim_m, dim_k, dim_n)
+    extern.design_shape = DesignShape.MATMUL
     extern.stream_dims = (
         {"A": dims["A"], "B": None, "C": dims["C"]}
         if mixed

@@ -133,7 +133,7 @@ def measure(
 
         ref = fn.expected(inputs, scalars=case.scalars)
         out_n = kh.output_size(fn, calls=case.calls, shape=case.shape)
-        out_dt = kh.output_dtype(fn, ref.dtype)
+        out_dt = fn.output_dtype(ref.dtype)
         ins, out = kh.upload(inputs, out_n, out_dt, poison=True, fn=fn)
         if do_compile:
             # A subdirectory per case: measure_compile's cold rebuild bypasses
@@ -146,7 +146,7 @@ def measure(
                 design, workdir / case.name
             )
         design(*ins, out)
-        v = kh.judge(fn, out.numpy(), ref, calls=case.calls)
+        v = fn.judge(out.numpy(), ref, calls=case.calls)
         m.correct, m.verdict = bool(v), v.detail
         if not v:
             return m  # never time a wrong kernel

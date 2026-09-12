@@ -427,12 +427,12 @@ def test_bfp_matmul_host_layout_reference_and_judge():
     plain = a.astype(np.float64) @ b.astype(np.float64)
     assert np.abs(ref - plain).max() < 0.05 * np.abs(plain).max()
     # The device writes bfp16ebs8 C: bytes, tile-shuffled; judge undoes both.
-    assert kh.output_dtype(fn, ref.dtype) == np.uint8
+    assert fn.output_dtype(ref.dtype) == np.uint8
     assert kh.output_size(fn, shape=(M, K, N)) == M * N * 9 // 8
     device_c = bfp.shuffle(bfp.encode(ref), N, M, n, m).ravel()
-    assert kh.judge(fn, device_c, ref)
-    assert not kh.judge(fn, bfp.encode(ref).ravel(), ref)  # unshuffled: wrong
-    assert not kh.judge(fn, np.full(M * N * 9 // 8, 0x55, np.uint8), ref)
+    assert fn.judge(device_c, ref)
+    assert not fn.judge(bfp.encode(ref).ravel(), ref)  # unshuffled: wrong
+    assert not fn.judge(np.full(M * N * 9 // 8, 0x55, np.uint8), ref)
     # Mixed: A and C are bf16 and stay so; B is still encoded.
     mixed = kernels.mm_bfp(dim_m=64, dim_k=64, dim_n=64, mixed=True)
     a, b = kh.sample_inputs(mixed, shape=(M, K, N))
@@ -440,9 +440,9 @@ def test_bfp_matmul_host_layout_reference_and_judge():
     ha, hb = kh.host_layout(mixed, [a, b])
     assert ha.dtype == bfloat16 and ha.shape == (M, K) and hb.dtype == np.uint8
     ref = mixed.expected([a, b])
-    assert ref.dtype == bfloat16 and kh.output_dtype(mixed, ref.dtype) == bfloat16
+    assert ref.dtype == bfloat16 and mixed.output_dtype(ref.dtype) == bfloat16
     assert kh.output_size(mixed, shape=(M, K, N)) == M * N
-    assert kh.judge(mixed, ref.ravel(), ref)
+    assert mixed.judge(ref.ravel(), ref)
 
 
 def test_bottleneck_references_round_half_even_and_saturate():
@@ -703,7 +703,7 @@ def test_host_args_match_what_the_sampler_and_uploader_produce(case_id):
         scalars=opts.get("scalars", ()),
     )
     assert out.n_elements == kh.output_size(fn, calls=calls, shape=shape), case_id
-    assert np.dtype(out.dtype) == np.dtype(kh.output_dtype(fn, ref.dtype)), case_id
+    assert np.dtype(out.dtype) == np.dtype(fn.output_dtype(ref.dtype)), case_id
 
 
 def test_host_args_describe_the_layouts_a_caller_must_allocate():
@@ -916,8 +916,8 @@ def test_host_layout_transposes_b_for_col_major_and_judge_undoes_c():
     # judge reads C^T from the host buffer when the kernel emits c_col_maj.
     ccm = kernels.mm(c_col_maj=True, **fkw)
     ref = kernels.mm_ref(a, b)
-    assert kh.judge(ccm, np.ascontiguousarray(ref.T).ravel(), ref)
-    assert not kh.judge(ccm, ref.ravel(), ref)
+    assert ccm.judge(np.ascontiguousarray(ref.T).ravel(), ref)
+    assert not ccm.judge(ref.ravel(), ref)
 
 
 def test_stream_dims_follow_the_layout_flags():
