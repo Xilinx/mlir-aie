@@ -20,6 +20,26 @@ _HRX_UNSUPPORTED = {
 }
 
 
+def pytest_configure(config):
+    """Register the markers these tests use.
+
+    ``test/python/conftest.py`` registers them too, but the RUN lines invoke
+    pytest on a file in *this* directory, which makes this directory the
+    rootdir -- and pytest does not read a conftest.py above the rootdir.
+    Without this, every run of these tests warns about an unknown mark.
+    """
+    config.addinivalue_line(
+        "markers",
+        "extensive: the full sweep (every case x edge data x seed); deselect with "
+        '-m "not extensive"',
+    )
+    config.addinivalue_line(
+        "markers",
+        "supported_devices(*devices): the NPU generations a test's kernels exist "
+        'for ("npu1", "npu2"); skipped elsewhere',
+    )
+
+
 def _running_on_hrx() -> bool:
     """True when the process's active host runtime is the HRX backend.
 

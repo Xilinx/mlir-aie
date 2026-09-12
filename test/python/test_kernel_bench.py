@@ -12,7 +12,7 @@
 for them so the control flow can be pinned on a host:
 
 * preflight failure or the wrong power mode -> exit 2, nothing written;
-* a canary that is wrong or outside its cycle band -> exit 2;
+* a smoke test that is wrong or outside its cycle band -> exit 2;
 * one kernel producing wrong output -> exit 3, nothing written;
 * a valid run writes rows with the expected metric suffixes.
 
@@ -41,7 +41,7 @@ class Fake:
     def __init__(self):
         self.calls: list[str] = []
         self.wrong: set[str] = set()
-        self.canary_cycles = 20_000
+        self.smoke_cycles = 20_000
         self.preflight: Preflight | Exception = STRIX
 
     def preflight_fn(self) -> Preflight:
@@ -51,7 +51,7 @@ class Fake:
 
     def measure_fn(self, case: Case, **common) -> Measurement:
         self.calls.append(case.name)
-        cycles = self.canary_cycles if case.name == bench.CANARY.name else 12_345
+        cycles = self.smoke_cycles if case.name == bench.SMOKE_TEST.name else 12_345
         return Measurement(
             case=case.name,
             device=common["device"],
@@ -100,18 +100,18 @@ def test_wrong_power_mode_is_a_preflight_failure(fake, tmp_path):
     assert code == 0 and out.exists()
 
 
-def test_canary_out_of_band_writes_nothing(fake, tmp_path):
-    fake.canary_cycles = bench.CANARY_CYCLE_BAND[1] * 10
+def test_smoke_test_out_of_band_writes_nothing(fake, tmp_path):
+    fake.smoke_cycles = bench.SMOKE_CYCLE_BAND[1] * 10
     code, out, _ = _run(fake, tmp_path)
     assert code == 2 and not out.exists()
-    assert fake.calls == [bench.CANARY.name]
+    assert fake.calls == [bench.SMOKE_TEST.name]
 
 
-def test_canary_none_cycles_fails_when_cycles_are_requested(fake, tmp_path):
+def test_smoke_test_none_cycles_fails_when_cycles_are_requested(fake, tmp_path):
     # A failed/empty trace reports no cycles at all; without --no-cycles that
     # must not pass the band check vacuously (the previous lower bound of
     # 1000 was never exercised for exactly this reason).
-    fake.canary_cycles = None
+    fake.smoke_cycles = None
     out, meta = tmp_path / "b.json", tmp_path / "m.json"
     code = bench.main(
         ["--out", str(out), "--meta", str(meta), "--cases", str(CASES_FILE)],
@@ -119,11 +119,11 @@ def test_canary_none_cycles_fails_when_cycles_are_requested(fake, tmp_path):
         preflight_fn=fake.preflight_fn,
     )
     assert code == 2 and not out.exists()
-    assert fake.calls == [bench.CANARY.name]
+    assert fake.calls == [bench.SMOKE_TEST.name]
 
 
-def test_canary_none_cycles_pass_when_cycles_are_skipped(fake, tmp_path):
-    fake.canary_cycles = None
+def test_smoke_test_none_cycles_pass_when_cycles_are_skipped(fake, tmp_path):
+    fake.smoke_cycles = None
     code, out, _ = _run(fake, tmp_path)  # _run passes --no-cycles
     assert code == 0 and out.exists()
 
@@ -159,14 +159,14 @@ def test_only_filters_cases(fake, tmp_path):
     code, _, _ = _run(fake, tmp_path, "--only", "^mv/")
     assert code == 0
     assert fake.calls and all(
-        c.startswith(("mv/", bench.CANARY.name)) for c in fake.calls
+        c.startswith(("mv/", bench.SMOKE_TEST.name)) for c in fake.calls
     )
 
 
 def test_bare_kernel_names_run_at_their_default_shape(fake, tmp_path):
     code, out, _ = _run(fake, tmp_path, "add", "mul", "--calls", "4", cases=False)
     assert code == 0
-    assert fake.calls[0] == bench.CANARY.name
+    assert fake.calls[0] == bench.SMOKE_TEST.name
     # factory/<elems>x<calls>/<dtype>: the shape comes from the factory's default tile.
     assert [c.split("/")[0] for c in fake.calls[1:]] == ["add", "mul"]
     assert all(re.fullmatch(r"\w+/\d+x4/bfloat16", c) for c in fake.calls[1:])

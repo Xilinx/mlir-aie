@@ -19,11 +19,11 @@ only recorded for a kernel that just produced a correct result:
 | ``npu_us``, ``e2e_us`` | :func:`aie.utils.benchmark.run_iters`: kernel time reported by the runtime, and the Python call, median with min/max |
 | ``compile_s``, ``xclbin_bytes``, ``insts_bytes``, ``core_elf_bytes`` | a forced rebuild through ``CallableDesign.compile`` into a scratch directory |
 
-Order of a run: preflight (device, power mode) -> canary (a passthrough that
-must be bit-exact and inside a cycle band, else the machine is not trusted)
--> every case -> gate -> JSON rows for benchmark-action. Exit codes: 0 wrote
-results; 2 preflight or canary failed; 3 a kernel produced wrong output or
-too many failed to run. On 2 and 3 nothing is written.
+Order of a run: preflight (device, power mode) -> smoke test (a passthrough
+that must be bit-exact and inside a cycle band, else the machine is not
+trusted) -> every case -> gate -> JSON rows for benchmark-action. Exit codes:
+0 wrote results; 2 preflight or the smoke test failed; 3 a kernel produced
+wrong output or too many failed to run. On 2 and 3 nothing is written.
 """
 
 from __future__ import annotations
@@ -50,14 +50,14 @@ TRACE_SIZE = 16384
 # A trivially correct kernel that must be bit-exact and inside a wide cycle
 # band before anything else is measured; a machine that fails it is not
 # trusted and nothing is recorded.
-CANARY = Case("passthrough", dict(tile_size=2048), calls=16)
+SMOKE_TEST = Case("passthrough", dict(tile_size=2048), calls=16)
 # 270 cycles on Strix, identical across calls and across runs: 8 KB copied at
 # about 30 B/cycle. The lower bound catches a decode that reports nothing
 # rather than bounding the kernel, and the upper bound stays generous until
 # nightly data has shown the spread across machines. The previous lower bound
 # of 1000 was never exercised: a traced run could not resolve its physical
 # MLIR, so cycles came back None and the band check passed vacuously.
-CANARY_CYCLE_BAND = (100, 2_000_000)
+SMOKE_CYCLE_BAND = (100, 2_000_000)
 
 
 @dataclass
@@ -288,7 +288,7 @@ def main(
         "--calls", type=int, default=16, help="calls per run for bare kernel names"
     )
     p.add_argument("--out", required=True, help="benchmark-action JSON to write")
-    p.add_argument("--meta", help="JSON with preflight, canary and per-case detail")
+    p.add_argument("--meta", help="JSON with preflight, smoke-test and per-case detail")
     p.add_argument("--warmup", type=int, default=10)
     p.add_argument("--iters", type=int, default=50)
     p.add_argument(
@@ -337,27 +337,27 @@ def main(
 
         cases = [c for c in cases if re.search(a.only, c.name)]
 
-    can = measure_fn(CANARY, **common)
-    lo, hi = CANARY_CYCLE_BAND
+    smoke = measure_fn(SMOKE_TEST, **common)
+    lo, hi = SMOKE_CYCLE_BAND
     # None is only a pass when cycles were deliberately skipped (--no-cycles);
     # otherwise it means the traced run produced nothing to check, which is
     # the vacuous pass this band exists to catch.
-    in_band = (a.no_cycles and can.cycles_median is None) or (
-        can.cycles_median is not None and lo <= can.cycles_median <= hi
+    in_band = (a.no_cycles and smoke.cycles_median is None) or (
+        smoke.cycles_median is not None and lo <= smoke.cycles_median <= hi
     )
-    if not can.correct or can.error or not in_band:
-        meta["canary"] = _m2d(can)
+    if not smoke.correct or smoke.error or not in_band:
+        meta["smoke_test"] = _m2d(smoke)
         _write(a.meta, meta)
         print(
-            f"PREFLIGHT FAILED: canary {can.verdict} {can.error or ''} "
-            f"cycles={can.cycles_median} band={CANARY_CYCLE_BAND}",
+            f"PREFLIGHT FAILED: smoke test {smoke.verdict} {smoke.error or ''} "
+            f"cycles={smoke.cycles_median} band={SMOKE_CYCLE_BAND}",
             file=sys.stderr,
         )
         return 2
 
-    results = [can]
+    results = [smoke]
     for case in cases:
-        if case.name == CANARY.name:
+        if case.name == SMOKE_TEST.name:
             continue
         if not case.supported_on(pre.npu):
             continue  # the kernel's source exists only for the other generation
@@ -408,8 +408,8 @@ def _write(path, obj):
 
 
 __all__ = [
-    "CANARY",
-    "CANARY_CYCLE_BAND",
+    "SMOKE_TEST",
+    "SMOKE_CYCLE_BAND",
     "Measurement",
     "Preflight",
     "main",
