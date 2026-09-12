@@ -11,6 +11,9 @@
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Pass/Pass.h"
 
+#include <limits>
+#include <optional>
+
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
@@ -26,6 +29,58 @@ struct SegmentActors {
   SmallVector<Operation *> fillers;
   SmallVector<Operation *> drainers;
 };
+
+/// A DMA endpoint with an iteration count moves this many objects through its
+/// pool, then stops.
+struct TransferBudget {
+  ObjectFifoDmaEndpointOp endpoint;
+  int32_t iterations;
+  int64_t objects;
+};
+
+/// A loop the frontend means to run forever has a bound no design counts to:
+/// IRON writes sys.maxsize, hand-written designs 2^32 - 1. From the AIE's
+/// 24-bit BD-loop saturation value up, a trip count is read as "forever"; below
+/// it, as a real bound.
+static constexpr int64_t kRunsForever = (int64_t{1} << 24) - 2;
+
+static std::optional<int64_t> getStaticTripCount(scf::ForOp forOp) {
+  if (forOp.getSingleLowerBound() && forOp.getSingleUpperBound() &&
+      forOp.getSingleStep()) {
+    if (std::optional<llvm::APInt> tc = forOp.getStaticTripCount()) {
+      return tc->getSExtValue();
+    }
+  }
+  return std::nullopt;
+}
+
+/// How many times `op` runs when its core runs to completion, when static loop
+/// bounds alone decide that. Anything conditional between the op and the core,
+/// an `scf.if`, a loop with dynamic bounds or one meant to run forever, a block
+/// reached by branching, makes it unknown.
+static std::optional<int64_t> staticExecutions(Operation *op) {
+  int64_t count = 1;
+  for (Operation *cur = op; !isa<CoreOp>(cur); cur = cur->getParentOp()) {
+    if (cur->getBlock() != &cur->getParentRegion()->front()) {
+      return std::nullopt;
+    }
+    Operation *parent = cur->getParentOp();
+    if (isa<CoreOp>(parent)) {
+      break;
+    }
+    auto forOp = dyn_cast<scf::ForOp>(parent);
+    if (!forOp) {
+      return std::nullopt;
+    }
+    std::optional<int64_t> trip = getStaticTripCount(forOp);
+    if (!trip || *trip >= kRunsForever ||
+        (*trip != 0 && count > std::numeric_limits<int64_t>::max() / *trip)) {
+      return std::nullopt;
+    }
+    count *= *trip;
+  }
+  return count;
+}
 
 struct AIEObjectFifoVerifyPass
     : public xilinx::AIE::impl::AIEObjectFifoVerifyBase<
@@ -139,6 +194,65 @@ struct AIEObjectFifoVerifyPass
     return success();
   }
 
+  /// A DMA endpoint with an iteration count stops after `iterCount * depth`
+  /// objects, so a core that must release more through the same pool waits
+  /// forever for the rest. Only releases static loop bounds force are counted,
+  /// so what is reported is certain; a conditional release, or one in a loop
+  /// meant to run forever, is left out, since such a core stalling once the
+  /// data stops is how those designs end.
+  LogicalResult verifyTransferBudgets(DeviceOp device) {
+    DenseMap<Operation *, TransferBudget> budgets;
+    for (auto endpoint : device.getOps<ObjectFifoDmaEndpointOp>()) {
+      std::optional<int32_t> iterations = endpoint.getIterCount();
+      ObjectFifoPoolOp pool = endpoint.getPoolOp();
+      if (!iterations || !pool) {
+        continue;
+      }
+      budgets[pool] = {endpoint, *iterations,
+                       int64_t{*iterations} * pool.getDepth()};
+    }
+    if (budgets.empty()) {
+      return success();
+    }
+
+    DenseMap<StringRef, int64_t> released;
+    DenseMap<StringRef, ObjectFifoReleaseOp> blame;
+    device.walk([&](ObjectFifoReleaseOp release) {
+      std::optional<int64_t> runs = staticExecutions(release);
+      if (!runs) {
+        return;
+      }
+      StringRef key = release.getObjFifoName();
+      released[key] += *runs * release.relNumber();
+      blame.try_emplace(key, release);
+    });
+
+    for (auto endpoint : device.getOps<ObjectFifoCoreEndpointOp>()) {
+      // A segment-selecting endpoint sees a share of the pool, not the whole.
+      auto budget = budgets.find(endpoint.getPoolOp());
+      if (budget == budgets.end() || endpoint.getSegments()) {
+        continue;
+      }
+      StringRef name = endpoint.getSymName();
+      int64_t count = released.lookup(name);
+      if (count <= budget->second.objects) {
+        continue;
+      }
+      ObjectFifoDmaEndpointOp dma = budget->second.endpoint;
+      InFlightDiagnostic diag =
+          blame.lookup(name).emitOpError("releases ")
+          << count << " objects through @" << name
+          << " over the run, but the pool's DMA endpoint stops after "
+          << budget->second.objects << " (iterCount "
+          << budget->second.iterations << " x depth "
+          << endpoint.getPoolOp().getDepth()
+          << "), so the core would wait forever for the rest";
+      diag.attachNote(dma.getLoc()) << "the DMA endpoint is here";
+      return failure();
+    }
+    return success();
+  }
+
   void runOnOperation() override {
     DeviceOp device = getOperation();
 
@@ -174,7 +288,8 @@ struct AIEObjectFifoVerifyPass
       }
     }
 
-    if (failed(verifyFlows(device)) || failed(verifyOverRelease(device))) {
+    if (failed(verifyFlows(device)) || failed(verifyOverRelease(device)) ||
+        failed(verifyTransferBudgets(device))) {
       return signalPassFailure();
     }
   }
