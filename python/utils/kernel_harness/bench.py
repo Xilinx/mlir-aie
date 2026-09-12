@@ -126,12 +126,12 @@ def measure(
         design = kh.design(
             factory,
             **case.harness_opts(),
-            params=kh.param_values(fn, inputs),
+            params=fn.param_values(inputs),
             aiecc_flags=["--get-core-elfs"],
             **case.kwargs,
         )
 
-        ref = kh.expected(fn, inputs, scalars=case.scalars)
+        ref = fn.expected(inputs, scalars=case.scalars)
         out_n = kh.output_size(fn, calls=case.calls, shape=case.shape)
         out_dt = kh.output_dtype(fn, ref.dtype)
         ins, out = kh.upload(inputs, out_n, out_dt, poison=True, fn=fn)

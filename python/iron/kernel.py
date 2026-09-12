@@ -24,6 +24,18 @@ from .resolvable import Resolvable
 logger = logging.getLogger(__name__)
 
 
+def _as_dtype(dt):
+    """``np.dtype(dt)``, or ``dt`` itself for a block type numpy has no dtype for.
+
+    ``v8bfp16ebs8`` and friends are ``np.generic`` subclasses standing in for a
+    hardware block format, and numpy refuses to make a dtype of them.
+    """
+    try:
+        return np.dtype(dt)
+    except TypeError:
+        return dt
+
+
 def _is_contiguous_row_major(mr):
     """Return True iff ``mr`` is fully-static row-major contiguous at offset 0.
 
@@ -171,10 +183,10 @@ class BaseKernel(Resolvable):
         if type_args is not None and len(type_args) >= 2:
             dt = type_args[1]
             dt_args = getattr(dt, "__args__", None)
-            return np.dtype(dt_args[0]) if dt_args is not None else np.dtype(dt)
+            return _as_dtype(dt_args[0] if dt_args is not None else dt)
         dtype = getattr(arg, "dtype", None)
         if dtype is not None:
-            return np.dtype(dtype)
+            return _as_dtype(dtype)
         raise ValueError(
             f"Argument {arg_index} does not have a dtype or is not an array type."
         )
@@ -349,6 +361,76 @@ class ExternalFunction(Kernel):
     b_col_maj: bool
     c_col_maj: bool
     a_dims_from_stream: object
+
+    def _require_contract(self):
+        if self.contract is None:
+            raise ValueError(
+                f"kernel '{self.name}' declares no contract; add a KernelContract to "
+                "its factory (roles, reference, tolerance) so it can be described, "
+                "built and checked"
+            )
+        return self.contract
+
+    def param_values(self, inputs: list) -> list:
+        """Pick the ``Param`` arrays out of one logical input list.
+
+        ``inputs`` is one array per ``In``/``Param`` argument in argument
+        order. A design bakes ``Param`` arguments into core buffers rather
+        than streaming them, so it needs them separately.
+        """
+        from aie.utils.compile.jit.markers import In, Param
+
+        c = self._require_contract()
+        positions = [i for i, r in enumerate(c.roles) if r in (In, Param)]
+        return [np.asarray(a) for a, i in zip(inputs, positions) if c.roles[i] is Param]
+
+    def input_limit(self, dtype, *, reduction: int | None = None) -> int | None:
+        """Largest integer magnitude an input may take without overflowing.
+
+        From the contract's ``acc_dtype`` and ``reduction`` (``reduction``
+        overrides the per-call value, e.g. with the full ``K`` of a tiled
+        matmul): with two or more multiplied inputs every product of two
+        limits summed ``reduction`` times must fit the accumulator with a
+        factor-4 margin; with one input the sum of ``reduction`` limits must.
+        ``None`` for float inputs, or when the contract declares no
+        accumulator.
+
+        The output dtype does not bound this. What a kernel does when a
+        result leaves the output range is its reference's to model, and
+        clipping inputs to the output range would leave a requantising
+        kernel's data near zero.
+        """
+        from aie.utils.compile.jit.markers import In, Param
+
+        c = self._require_contract()
+        dt = np.dtype(dtype)
+        if not np.issubdtype(dt, np.integer):
+            return None
+        if c.acc_dtype is None or not np.issubdtype(np.dtype(c.acc_dtype), np.integer):
+            return None
+        n = reduction or c.reduction or 1
+        budget = np.iinfo(c.acc_dtype).max // 4
+        n_tensors = sum(1 for r in c.roles if r in (In, Param))
+        limit = int(np.sqrt(budget // n)) if n_tensors >= 2 else budget // n
+        return max(1, min(limit, int(np.iinfo(dt).max)))
+
+    def expected(self, inputs: list, *, scalars: tuple = ()) -> np.ndarray:
+        """Return the contract's reference result, cast to the output dtype."""
+        from aie.helpers.util import v8bfp16ebs8
+        from aie.utils.compile.jit.markers import Scalar
+
+        c = self._require_contract()
+        if c.reference is None:
+            raise ValueError(f"{self.name}: contract has no reference")
+        tensors, s = iter(inputs), iter(scalars)
+        args = [
+            next(s) if c.roles[i] is Scalar else next(tensors)
+            for i in c.reference_indices()
+        ]
+        out_dt = self.arg_dtype(c.out_index)
+        if out_dt is v8bfp16ebs8:
+            out_dt = np.float32  # judged after decoding the device's blocks
+        return np.asarray(c.reference(*args)).astype(out_dt)
 
     def siblings(self, **symbols: tuple) -> SimpleNamespace:
         """Bind other symbols exported by this kernel's own object file.

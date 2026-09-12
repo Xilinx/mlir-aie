@@ -218,20 +218,14 @@ def _fifo_plan(fn):
     for i in in_roles:
         by_type.setdefault(str(_arg_types(fn)[i]), []).append(i)
     groups = list(by_type.values())
-    if len(groups) > 2:
+    channels = _device().core_dma_channels_in
+    if len(groups) > channels:
         raise ValueError(
             f"{fn.name}: {len(in_roles)} 'in' tensors of {len(groups)} types need "
-            f"{len(groups)} fifos, but a core tile has 2 input channels: "
+            f"{len(groups)} fifos, but a core tile has {channels} input channels: "
             f"{sorted(by_type)}"
         )
     return groups, in_roles, param_roles
-
-
-def param_values(fn, inputs: list[np.ndarray]) -> list[np.ndarray]:
-    """Return the ``param`` arrays among logical ``inputs`` (one per ``in``/``param``)."""
-    c = _contract(fn)
-    in_pos, _ = _tensor_positions(c)
-    return [np.asarray(a) for a, i in zip(inputs, in_pos) if c.roles[i] == Param]
 
 
 def _encode_params(fn, params) -> tuple:
@@ -457,33 +451,9 @@ def _stream2(
     )
 
 
-@iron.jit
-def _stream3(
-    x0: In,
-    x1: In,
-    x2: In,
-    out: Out,
-    *,
-    factory: CompileTime[Callable],
-    factory_kwargs: CompileTime[dict],
-    calls: CompileTime[int],
-    scalars: CompileTime[tuple] = (),
-    params: CompileTime[tuple] = (),
-    trace_config: CompileTime[TraceConfig | None] = None,
-):
-    return _build_stream(
-        [x0, x1, x2],
-        out,
-        factory=factory,
-        factory_kwargs=factory_kwargs,
-        calls=calls,
-        scalars=scalars,
-        params=params,
-        trace_config=trace_config,
-    )
-
-
-_STREAM = {1: _stream1, 2: _stream2, 3: _stream3}
+# One generator per feasible fifo count; _fifo_plan caps this at the
+# tile's input DMA channel count.
+_STREAM = {1: _stream1, 2: _stream2}
 
 
 # --------------------------------------------------------------------------
@@ -737,7 +707,7 @@ def design(
     Streaming kernels run ``calls`` iterations over tiles; ``scalars`` supplies
     the values of the contract's ``scalar`` arguments in order, and ``params``
     the arrays of its ``param`` arguments, which are baked into core Buffers
-    (``param_values(fn, sample_inputs(fn, ...))`` picks them out). Matrix
+    (``fn.param_values(sample_inputs(fn, ...))`` picks them out). Matrix
     kernels take ``shape=(M, K, N)`` (``mm``) or ``shape=(M, K)`` (``mv``) for
     the host operands and ignore ``calls``. ``aiecc_flags`` are forwarded to
     the build (a benchmark passes ``--get-core-elfs`` to size the per-core
@@ -782,34 +752,6 @@ def design(
 _INT_RANGE = {np.int8: 60, np.int16: 8000, np.int32: 1 << 20, np.uint8: 255}
 
 
-def input_limit(fn, dtype, *, reduction: int | None = None) -> int | None:
-    """Largest integer magnitude an input may take without overflowing ``fn``.
-
-    From the contract's ``acc_dtype`` and ``reduction`` (``reduction``
-    overrides the per-call value, e.g. with the full ``K`` of a tiled
-    matmul): with two or more multiplied inputs every product of two limits
-    summed ``reduction`` times must fit the accumulator with a factor-4
-    margin; with one input the sum of ``reduction`` limits must. The output
-    dtype bounds the limit too only under ``overflow="undefined"``: a
-    saturating or wrapping kernel is judged that way (see
-    :func:`aie.utils.verify.compare`), and clipping its inputs to the output
-    range would leave a requantising kernel's data near zero. ``None`` for
-    float inputs, or when the contract declares no accumulator (the sampler
-    then uses a fixed table).
-    """
-    c = _contract(fn)
-    dt = np.dtype(dtype)
-    if not np.issubdtype(dt, np.integer):
-        return None
-    if c.acc_dtype is None or not np.issubdtype(np.dtype(c.acc_dtype), np.integer):
-        return None
-    n = reduction or c.reduction or 1
-    budget = np.iinfo(c.acc_dtype).max // 4
-    n_tensors = sum(1 for r in c.roles if r in (In, Param))
-    limit = int(np.sqrt(budget // n)) if n_tensors >= 2 else budget // n
-    return max(1, min(limit, int(np.iinfo(dt).max)))
-
-
 def sample_inputs(
     fn, *, calls: int = 1, shape: tuple | None = None, rng=None
 ) -> list[np.ndarray]:
@@ -833,7 +775,7 @@ def sample_inputs(
         M, K = shape[0], shape[1]
         b_shape = (K, shape[2]) if is_matmul(fn) else (K,)
         # The design accumulates over the full K, not one tile's k.
-        limit = input_limit(fn, dt_a, reduction=K) or 60
+        limit = fn.input_limit(dt_a, reduction=K) or 60
         return [
             _draw(rng, (M, K), dt_a, int_range=limit),
             _draw(rng, b_shape, dt_b, int_range=limit),
@@ -843,7 +785,7 @@ def sample_inputs(
         s, dt = _shape_dtype(_arg_types(fn)[i])
         n = int(np.prod(s))
         reps = (calls,) if c.roles[i] == In else ()
-        out.append(_draw(rng, reps + (n,), dt, int_range=input_limit(fn, dt)))
+        out.append(_draw(rng, reps + (n,), dt, int_range=fn.input_limit(dt)))
     return out
 
 
@@ -853,22 +795,6 @@ def _draw(rng, shape, dt, int_range: int | None = None):
         lo = 0 if np.dtype(dt).kind == "u" else -r
         return rng.integers(lo, r, size=shape).astype(dt)
     return rng.standard_normal(shape).astype(np.float32).astype(dt)
-
-
-def expected(fn, inputs: list[np.ndarray], *, scalars: tuple = ()) -> np.ndarray:
-    """Return the contract's reference result, cast to the kernel's output dtype."""
-    c = _contract(fn)
-    if c.reference is None:
-        raise ValueError(f"{fn.name}: contract has no reference")
-    tensors, s = iter(inputs), iter(scalars)
-    args = [
-        next(s) if c.roles[i] == Scalar else next(tensors)
-        for i in c.reference_indices()
-    ]
-    _, out_dt = _shape_dtype(_arg_types(fn)[c.out_index])
-    if _is_bfp(out_dt):
-        out_dt = np.float32  # judged after decoding the device's blocks
-    return np.asarray(c.reference(*args)).astype(out_dt)
 
 
 def host_layout(fn, inputs: list[np.ndarray]) -> list[np.ndarray]:
@@ -990,10 +916,10 @@ def check(
         calls=calls,
         scalars=scalars,
         shape=shape,
-        params=param_values(fn, inputs),
+        params=fn.param_values(inputs),
         **factory_kwargs,
     )
-    ref = expected(fn, inputs, scalars=scalars)
+    ref = fn.expected(inputs, scalars=scalars)
     got = run(
         d,
         inputs,

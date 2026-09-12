@@ -282,8 +282,8 @@ def test_harness_lowers_a_design_to_mlir(case_id):
     factory = _factory(case_id)
     fn = factory(**fkw)
     ins = kh.sample_inputs(fn, calls=opts.get("calls", 1), shape=opts.get("shape"))
-    d = kh.design(factory, params=kh.param_values(fn, ins), **opts, **fkw)
-    ref = kh.expected(fn, ins, scalars=opts.get("scalars", ()))
+    d = kh.design(factory, params=fn.param_values(ins), **opts, **fkw)
+    ref = fn.expected(ins, scalars=opts.get("scalars", ()))
     mlir = d.as_mlir()
     assert "func.call" in str(mlir) or "aie.core" in str(mlir)
     # The reference already has the output dtype the harness will compare
@@ -295,7 +295,7 @@ def test_harness_lowers_a_design_to_mlir(case_id):
 def test_reduction_reference_yields_one_value_per_call():
     fn = kernels.reduce_max(dtype=bfloat16)
     ins = kh.sample_inputs(fn, calls=4)
-    assert kh.expected(fn, ins).shape == (4, 1)
+    assert fn.expected(ins).shape == (4, 1)
     # The output tile is padded to 2 bf16 for DMA alignment; only 1 is valid.
     assert kh._elems(fn.arg_types()[fn.contract.out_index]) == 2
     assert fn.contract.out_valid == 1
@@ -328,7 +328,7 @@ def test_packed_inputs_and_baked_params_leave_the_host_side_small():
     ins = kh.sample_inputs(fn, calls=2)
     (lines,) = kh.host_layout(fn, ins)
     assert lines.shape == (2, 3, 1920)
-    assert kh.param_values(fn, ins)[0].size == 9
+    assert fn.param_values(ins)[0].size == 9
     # scale: one input fifo, the factor is a param.
     fn = kernels.scale(dtype=np.int32)
     ins = kh.sample_inputs(fn, calls=2)
@@ -422,7 +422,7 @@ def test_bfp_matmul_host_layout_reference_and_judge():
         bfp.encode(np.ascontiguousarray(b.T)),
     )
     # The reference multiplies what the kernel reads, and is close to a @ b.
-    ref = kh.expected(fn, [a, b])
+    ref = fn.expected([a, b])
     assert ref.dtype == np.float32 and ref.shape == (M, N)
     plain = a.astype(np.float64) @ b.astype(np.float64)
     assert np.abs(ref - plain).max() < 0.05 * np.abs(plain).max()
@@ -439,7 +439,7 @@ def test_bfp_matmul_host_layout_reference_and_judge():
     assert a.dtype == bfloat16 and b.dtype == np.float32
     ha, hb = kh.host_layout(mixed, [a, b])
     assert ha.dtype == bfloat16 and ha.shape == (M, K) and hb.dtype == np.uint8
-    ref = kh.expected(mixed, [a, b])
+    ref = mixed.expected([a, b])
     assert ref.dtype == bfloat16 and kh.output_dtype(mixed, ref.dtype) == bfloat16
     assert kh.output_size(mixed, shape=(M, K, N)) == M * N
     assert kh.judge(mixed, ref.ravel(), ref)
@@ -698,8 +698,7 @@ def test_host_args_match_what_the_sampler_and_uploader_produce(case_id):
         assert got.shape == spec.shape, f"{case_id}: {got.shape} != {spec.shape}"
         assert got.dtype == np.dtype(spec.dtype), case_id
     # Output: the element count and dtype upload allocates.
-    ref = kh.expected(
-        fn,
+    ref = fn.expected(
         kh.sample_inputs(fn, calls=calls, shape=shape),
         scalars=opts.get("scalars", ()),
     )
@@ -894,12 +893,12 @@ def test_input_limit_is_bounded_by_the_accumulator_only():
     # thing that bounds an input; what the kernel does when a result leaves
     # the output range is the reference's job to model.
     fn = kernels.conv2dk1()
-    assert kh.input_limit(fn, np.int8) == 127
+    assert fn.input_limit(np.int8) == 127
     # Two tensors multiplied into an int32 accumulator: each is bounded by
     # the square root of the accumulator's budget, not by the int16 output.
     fn = kernels.scale(dtype=np.int16)
     budget = np.iinfo(fn.contract.acc_dtype).max // 4
-    assert kh.input_limit(fn, np.int16) == int(np.sqrt(budget))
+    assert fn.input_limit(np.int16) == int(np.sqrt(budget))
 
 
 def test_host_layout_transposes_b_for_col_major_and_judge_undoes_c():
@@ -1090,7 +1089,7 @@ def test_input_limit_keeps_the_reference_inside_the_accumulator():
     )
     if fn.contract.acc_dtype is None:
         pytest.skip("mm declares no accumulator yet")
-    lim = kh.input_limit(fn, np.int16, reduction=256)
+    lim = fn.input_limit(np.int16, reduction=256)
     assert 256 * lim * lim <= np.iinfo(fn.contract.acc_dtype).max // 4
     a, b = kh.sample_inputs(fn, shape=(128, 256, 64))
     assert int(np.abs(a).max()) <= lim and int(np.abs(b).max()) <= lim
@@ -1098,8 +1097,8 @@ def test_input_limit_keeps_the_reference_inside_the_accumulator():
     acc = np.iinfo(fn.contract.acc_dtype)
     assert ref.min() >= acc.min and ref.max() <= acc.max
     # Float inputs and kernels without an accumulator have no limit.
-    assert kh.input_limit(fn, bfloat16) is None
-    assert kh.input_limit(kernels.passthrough(), np.int32) is None
+    assert fn.input_limit(bfloat16) is None
+    assert kernels.passthrough().input_limit(np.int32) is None
 
 
 def _combo_id(v) -> str:

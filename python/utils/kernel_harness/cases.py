@@ -257,7 +257,7 @@ def inputs_for(case: Case, data_case: str, rng) -> list[np.ndarray]:
                     a.dtype,
                     rng,
                     data_case,
-                    kh.input_limit(fn, a.dtype, reduction=k_total),
+                    fn.input_limit(a.dtype, reduction=k_total),
                 )
             )
             for a, i in zip(inputs, tensor_pos)

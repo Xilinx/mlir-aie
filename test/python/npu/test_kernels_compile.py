@@ -58,7 +58,7 @@ def test_design_compiles_through_cdo(case, tmp_path):
         design = kh.design(
             getattr(kernels, case.factory),
             **case.harness_opts(),
-            params=kh.param_values(fn, inputs),
+            params=fn.param_values(inputs),
             **case.kwargs,
         )
         try:

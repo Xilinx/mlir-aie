@@ -54,10 +54,10 @@ def _run(case, data_case: str, seed: int):
     design = kh.design(
         getattr(kernels, case.factory),
         **case.harness_opts(),
-        params=kh.param_values(fn, inputs),
+        params=fn.param_values(inputs),
         **case.kwargs,
     )
-    ref = kh.expected(fn, inputs, scalars=case.scalars)
+    ref = fn.expected(inputs, scalars=case.scalars)
     out_n = kh.output_size(fn, calls=case.calls, shape=case.shape)
     out_dt = kh.output_dtype(fn, ref.dtype)
     # The output is poisoned so a kernel that writes nothing cannot pass.
@@ -126,7 +126,7 @@ def test_bf16_exp_saturates_outside_lut_domain():
         poison=True,
         fn=fn,
     )
-    verdict = kh.judge(fn, got, kh.expected(fn, [tile_bf16.reshape(1, 1024)]), calls=1)
+    verdict = kh.judge(fn, got, fn.expected([tile_bf16.reshape(1, 1024)]), calls=1)
     assert verdict, verdict.detail
 
 
@@ -152,7 +152,7 @@ def test_softmax_wide_dynamic_range():
         poison=True,
         fn=fn,
     )
-    verdict = kh.judge(fn, got, kh.expected(fn, [tile_bf16.reshape(1, 1024)]), calls=1)
+    verdict = kh.judge(fn, got, fn.expected([tile_bf16.reshape(1, 1024)]), calls=1)
     assert verdict, verdict.detail
     # The peak must dominate: a wrapped index used to bury it at ~1e-14.
     assert got.astype(np.float32)[0] > 0.9
