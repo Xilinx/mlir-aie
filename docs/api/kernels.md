@@ -79,15 +79,13 @@ the math.
       members:
         - KernelContract
         - ROLES
-        - OVERFLOW
-        - ROUNDING
-        - ROUNDING_MODES
-        - NONFINITE
-        - SUBNORMALS
 
 `aie.utils.kernel_harness` turns any contract-bearing factory into a
-single-Worker design, runs it, and judges the result with
-`aie.utils.verify.compare`. See
+single-Worker design. What a kernel can answer about itself -- its
+reference result, its safe input range, which arguments are parameters,
+how to judge a device output -- lives on
+[`ExternalFunction`][iron.ExternalFunction] instead, so bringing up a
+kernel needs no test harness. See
 [Kernel Library](../programming_guide/kernels_library.md#adding-a-kernel) for
 the add-a-kernel procedure and the test tiers built on it.
 
@@ -99,12 +97,9 @@ the add-a-kernel procedure and the test tiers built on it.
         - host_args
         - HostArg
         - sample_inputs
-        - expected
-        - input_limit
+        - host_layout
+        - output_size
         - upload
-        - run
-        - check
-        - judge
         - cycles_per_call
 
 A `Case` names one kernel at one shape; the tests and the benchmark read
@@ -121,7 +116,7 @@ the same table (`test/python/npu/kernel_cases.py`).
 
 `python -m aie.utils.kernel_harness` is the benchmark driver: correctness
 first, then cycles, wall time and build size, gated by a device preflight
-and a canary.
+and a smoke test.
 
 ::: utils.kernel_harness.bench
     options:

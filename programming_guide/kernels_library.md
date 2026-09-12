@@ -61,12 +61,12 @@ The kernel `.o` lands in the per-design cache directory alongside the
 xclbin — see [`compilation_stages.md`](./compilation_stages.md)
 §Per-design cache directory contents.  No Makefile rule was harmed.
 
-## Sibling kernels share one `.o`: `kernels.mm(...).zero`
+## Sibling kernels share one `.o`: `kernels.mm(...).also.zero`
 
 Some factories expose an extra binding for a companion symbol that
 lives in the same `.cc`.  `kernels.mm(...)` is the canonical case: the
 matmul `.cc` exports both `matmul_*` and `zero_*` symbols, and the
-returned `ExternalFunction` carries a `.zero` attribute that binds the
+returned `ExternalFunction` carries an `.also.zero` attribute that binds the
 zero-fill kernel against *the same* compiled `.o`:
 
 ```python
@@ -75,13 +75,13 @@ matmul = kernels.mm(
     input_dtype=np.int16,
     output_dtype=np.int16,
 )
-zero_kernel = matmul.zero          # sibling binding, no extra compile
+zero_kernel = matmul.also.zero     # sibling binding, no extra compile
 ```
 
-Without the `.zero` attribute the design would have to call a separate
+Without the `.also.zero` attribute the design would have to call a separate
 `kernels.mm_zero(...)` factory that recompiled `mm.cc` a second time
 for no functional benefit.  The same pattern applies to any factory
-that documents a `.zero` (today: `mm` and `mv`).
+that documents an `.also.zero` (today: `mm` and `mv`).
 
 `kernels.mm(...)` also exposes `.mac_dims` — the `(r, s, t)` MMUL
 geometry the kernel was compiled with, which varies by arch and dtype.
@@ -117,7 +117,7 @@ on each submodule's `__doc__`:
 | [`kernels.reduce`](../python/iron/kernels/reduce.py)         | reductions: reduce_add, reduce_min, reduce_max, compute_max |
 | [`kernels.activation`](../python/iron/kernels/activation.py) | activations: softmax, tanh, sigmoid, gelu, silu, swiglu, leaky_relu, bf16_exp, exp2f_vec |
 | [`kernels.datamovement`](../python/iron/kernels/datamovement.py) | data movement and conversion: axpy, convert_copy, expand, transpose |
-| [`kernels.linalg`](../python/iron/kernels/linalg.py)         | linear algebra: mm (+ `.zero`, `.mac_dims`, `.stream_dims`), mv (int16 + `.zero`, bf16), cascade_mm (+ `.{get_only,put_only,put_get,zero}`, `.mac_dims`), mm_bfp (+ `.zero`), mm_bfp_shuffle, mha (+ the flash-attention siblings) |
+| [`kernels.linalg`](../python/iron/kernels/linalg.py)         | linear algebra: mm (+ `.also.zero`, `.mac_dims`, `.stream_dims`), mv (int16 + `.also.zero`, bf16), cascade_mm (+ `.also.{get_only,put_only,put_get,zero}`, `.mac_dims`), mm_bfp (+ `.also.zero`), mm_bfp_shuffle, mha (+ the flash-attention siblings) |
 | [`kernels.conv`](../python/iron/kernels/conv.py)             | convolutions: conv2dk1/3/14, conv2dk1_skip(_init), dwconv1d, bn_* bottleneck variants for MobileNet/ResNet |
 | [`kernels.transformer`](../python/iron/kernels/transformer.py) | transformer blocks: rms_norm, layer_norm (bf16, f32, affine + cast), rope, mm_activation_epilogue |
 | [`kernels.vision`](../python/iron/kernels/vision.py)         | vision: rgba2hue, rgba2gray, gray2rgba, threshold, bitwise_or/and, filter2d, add_weighted |
@@ -190,26 +190,22 @@ float32, `1e-2` for float16 and the canonical `0.128` for bf16.
 A contract also declares the dtype facts an `arg_types` list leaves out:
 
 - `acc_dtype` and `reduction`: what the kernel accumulates in and over how
-  many terms. `aie.utils.kernel_harness.input_limit` turns them into the
-  largest integer input that cannot overflow the accumulator, which is
-  where the harness and the case table draw their data.
-- `overflow`: whether an integer result outside the output range wraps,
-  saturates, or is undefined (a `to_vector()` in the core's default
-  mode). The judge clips or wraps the reference to match, and under
-  `undefined` refuses to grade an overflowing reference at all.
-- `rounding`: how a narrowing rounds (`floor`, `nearest`, `nearest_even`,
-  or `unspecified` for an `srs` in the core's default mode, which is why
-  some kernels allow one LSB).
-- `rounding_mode`: the core rounding-mode register the kernel needs
-  (`sets_own`, an `aie::rounding_mode` name such as `conv_even`, or
-  `unspecified`); see [Rounding mode](#rounding-mode) below.
-- `nonfinite` and `subnormals`: whether NaN / inf propagate and whether
-  subnormal inputs are preserved, flushed (the judge then compares them
-  as zero) or unspecified. The case table derives each kernel's
-  edge-data cases from these, so widening what a kernel is fed is a
-  contract change.
+  many terms. `fn.input_limit(dtype)` turns them into the largest integer
+  input that cannot overflow the accumulator, which is where the harness
+  and the case table draw their data.
+- `setup`: a kernel to run once on the core first, when this one needs it;
+  see [Rounding mode](#rounding-mode) below.
+- `stack_bytes`: the core stack a Worker calling this kernel needs, when
+  that is more than the target's default.
 - `unsupported`: why the generic harness cannot run this kernel, when it
   cannot; the reference still says what the kernel computes.
+
+What the kernel does on overflow, how a narrowing store rounds, and what
+it does with NaN or subnormal inputs are *not* declared. The numpy
+`reference` is the arithmetic model -- a saturating kernel's reference
+clips, a denormal-flushing one flushes -- and `tolerance` is the slack
+allowed against it. Declaring the same fact in two places let the two
+drift.
 - `.dtypes` on the factory: the dtype combinations it builds. The host
   contract test builds every entry.
 
@@ -236,7 +232,7 @@ Three things make this work for more than one kernel per design:
 
 - **`inout`.** A kernel that accumulates into its output declares that
   argument `inout` rather than `out`: `mm` computes `C += A * B`, reads C
-  back, ships a `.zero` sibling, and a design zeroes the buffer before
+  back, ships an `.also.zero` sibling, and a design zeroes the buffer before
   the first call. The reference still computes the whole product, so an
   `inout` output is excluded from `reference_indices` like an `out` one;
   `contract.accumulates` says which kind a kernel is. The int16 `mv` and
@@ -244,11 +240,11 @@ Three things make this work for more than one kernel per design:
 - **Whole-object symbol prefixing.** Each parameterisation of a kernel
   gets its own symbol prefix, and every symbol its object defines is
   prefixed, not just the declared one. A translation unit usually
-  exports more (`mm.cc` emits the `zero_*` that `.zero` binds; `mha.cc`
+  exports more (`mm.cc` emits the `zero_*` that `.also.zero` binds; `mha.cc`
   includes `mm.cc` and defines `matmul_*` names of its own), and leaving
   those bare made two parameterisations collide at link.
   `ExternalFunction.sibling(symbol, arg_types)` binds another symbol
-  from the same object with the prefix applied; that is how `.zero`, the
+  from the same object with the prefix applied; that is how `.also.zero`, the
   cascade trio and `mha`'s flash-attention siblings are built. Chess-built
   kernels are the exception: `llvm-objcopy` corrupts xchesscc objects, so
   they keep bare symbols and only one variant may appear in a design.
@@ -271,7 +267,7 @@ Where the kernel *sources* have diverged, no factory can stand in:
 
 Two factories are drop-ins even though the harness cannot run them.
 `kernels.mha()` compiles `aie_kernels/aie2p/mha.cc` once and binds its
-ten symbols: the returned kernel is the `QK^T` matmul, with `.zero`,
+ten symbols: the returned kernel is the `QK^T` matmul, with `.also.zero`,
 `.matmul_rowmaj`, `.matmul_scalar`, `.partial_softmax`, `.matmul_pv`,
 `.rescale_o` and `.init_scale_buffer` beside it (`passThroughLine` is
 only declared there; take it from `passthrough(dtype=np.int32)`, as
@@ -333,7 +329,7 @@ A new factory is complete when one line each in two places covers it:
 
 The host test [`test/python/test_kernel_contracts.py`](../test/python/test_kernel_contracts.py)
 then checks the roles against the real `arg_types()`, the reference's
-arity, that the harness design lowers to MLIR, and that `rounding_mode`
+arity, that the harness design lowers to MLIR, and that `setup`
 agrees with the source.
 
 ## Testing, benchmarking and static checks
@@ -360,29 +356,35 @@ python -m aie.utils.compile.remarks --target aie2p --out static.json
 
 ### Data policy
 
-Random data is drawn inside `kernel_harness.input_limit`, which the
-contract's `acc_dtype` and `reduction` fix (over the design's full `K`
-for a matmul), so an edge case exercises the datapath rather than an
-overflow the source leaves undefined. Edge-data cases follow the contract:
-integer kernels get the extremes; float kernels get subnormal and
-NaN/inf data only when `subnormals` / `nonfinite` say what the kernel
-does with them; matmul operands never carry NaN. A kernel that declares
-`overflow="saturate"` or `"wrap"` is judged that way and gets full-range
-data.
+Random data is bounded by `fn.input_limit(dtype)`, which the contract's
+`acc_dtype` and `reduction` fix (over the design's full `K` for a
+matmul), so an edge case exercises the datapath rather than overflowing
+the accumulator. The output range does not bound it: what a kernel does
+when a result leaves that range is its reference's to model, and clipping
+inputs to it would leave a requantising kernel's data near zero.
+
+Which edge cases a kernel is fed is a property of the case, not of the
+contract. Integer kernels get the extremes; matmul operands never carry
+NaN; a kernel whose reference handles NaN, inf and subnormals says so by
+listing them in its case's `data_cases`, and the test then proves it.
 
 ### Rounding mode
 
 The core narrows accumulators (an `srs` shift, a bf16 store) in whatever
 mode its rounding-mode register holds, and a fresh core boots in `floor`.
-The contract's `rounding_mode` says what the kernel needs: `sets_own`
-when the source calls `aie::set_rounding` itself (the conv kernels,
-`layer_norm`, `mha`, the aie2p `mm`), an `aie::rounding_mode` name when
-the kernel relies on the design to have set it (the bf16 kernels that
-store from an fp32 accumulator name `conv_even`, the mode numpy's
-reference rounds in), or `unspecified`. A design that uses such a kernel
-calls `kernels.set_rounding(mode)` once before it; the harness does the
-same, so the tests and benchmarks run each kernel in the mode its
+The contract's `setup` names a kernel to run once on the core before the
+first call. A kernel whose source calls `aie::set_rounding` itself (the
+conv kernels, `layer_norm`, `mha`, the aie2p `mm`) needs none, so its
+`setup` is `None`. A kernel that relies on the design to have set the
+mode names the setter: the bf16 kernels that store from an fp32
+accumulator use `setup=conv_even`, the mode numpy's reference rounds in.
+A design calls `fn.contract.setup()` once before the kernel; the harness
+does the same, so tests and benchmarks run each kernel in the mode its
 contract was written for.
+
+The two are alternatives, and a test enforces it against the sources: a
+kernel whose `.cc` calls `aie::set_rounding` must not also name a
+`setup`, and one that names a `setup` must actually narrow something.
 
 ### What the benchmark records
 
@@ -394,7 +396,7 @@ invalidates the run (exit 3, nothing written). Per case it records core
 `compile_s` with the `xclbin`, `insts` and core-ELF sizes of a forced
 rebuild. Preflight reads the device and its power mode through the host
 runtime (`HostRuntime.power_mode()`) and refuses to run outside
-`--pmode`; a bit-exact `passthrough` canary inside a cycle band guards
+`--pmode`; a bit-exact `passthrough` smoke test inside a cycle band guards
 the machine. Nightly data goes to `gh-pages:bench/<npu>/` and is graphed
 at `https://xilinx.github.io/mlir-aie/bench/npu2/` (and `npu1`); `cycles`
 and the sizes alert at 3 %, the wall times are advisory, and nothing
