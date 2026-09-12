@@ -53,7 +53,7 @@ def whole_array_mixed(
     n_aie_rows = 4
     n_aie_cores = n_aie_rows * n_aie_cols
     matmul_kernel = kernels.mm_bfp(dim_m=m, dim_k=k, dim_n=n, mixed=True)
-    zero_kernel = matmul_kernel.zero
+    zero_kernel = matmul_kernel.also.zero
     r, s, t = matmul_kernel.mac_dims  # the bfp16ebs8 mmul is 8x8x8
     assert m % r == 0, f"m ({m}) must be a multiple of {r}"
     assert k % s == 0, f"k ({k}) must be a multiple of {s}"

@@ -63,7 +63,7 @@ def single_core_matmul(
     c_ty = np.ndarray[(m, n // 8), np.dtype[v8bfp16ebs8]]
 
     matmul_kernel = kernels.mm_bfp(dim_m=m, dim_k=k, dim_n=n)
-    zero_kernel = matmul_kernel.zero
+    zero_kernel = matmul_kernel.also.zero
 
     inA = ObjectFifo(a_ty, name="inA")
     memA = inA.cons().forward(name="memA")

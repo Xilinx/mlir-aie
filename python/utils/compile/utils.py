@@ -630,7 +630,7 @@ def _prefix_symbols_in_object(object_path: str, prefix: str) -> list[str]:
 
     A kernel's translation unit usually exports more than the one symbol the
     ExternalFunction declares -- ``mm.cc`` emits ``matmul_*`` *and* the
-    ``zero_*`` that ``.zero`` binds, ``reduce_max.cc`` emits ``compute_max``,
+    ``zero_*`` that ``.also.zero`` binds, ``reduce_max.cc`` emits ``compute_max``,
     ``cascade_mm.cc`` a get/put trio. Renaming only the declared symbol
     leaves the siblings bare, so two parameterizations of one kernel in a
     single design collide on them at link. Prefixing everything the object

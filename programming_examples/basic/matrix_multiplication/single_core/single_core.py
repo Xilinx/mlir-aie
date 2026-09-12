@@ -86,7 +86,7 @@ def single_core(
         use_chess=use_chess,
         emulate_bf16_mmul_with_bfp16=emulate_bf16_mmul_with_bfp16,
     )
-    zero_kernel = matmul_kernel.zero
+    zero_kernel = matmul_kernel.also.zero
     r, s, t = matmul_kernel.mac_dims
     assert m % r == 0
     assert k % s == 0

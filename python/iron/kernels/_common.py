@@ -39,7 +39,7 @@ class KernelContract:
             ``In``, ``Out``, ``InOut``, ``Param``, ``Scalar`` or ``Count``,
             the same markers ``@iron.jit`` uses. ``Out`` is written by the
             kernel; ``InOut`` is accumulated into (``mm``'s ``C += A * B``),
-            which is why such a kernel ships a ``.zero`` sibling and a design
+            which is why such a kernel ships a ``.also.zero`` sibling and a design
             zeroes the buffer before the first call. Exactly one argument is
             ``Out`` or ``InOut``.
         reference: Host implementation, and the kernel's arithmetic model:
@@ -139,7 +139,7 @@ class KernelContract:
 
         An ``InOut`` output is excluded like an ``Out`` one: the reference
         computes the whole result, and a design that accumulates zeroes the
-        buffer first (see the ``.zero`` sibling).
+        buffer first (see the ``.also.zero`` sibling).
         """
         return [i for i, r in enumerate(self.roles) if r not in (Out, InOut, Count)]
 

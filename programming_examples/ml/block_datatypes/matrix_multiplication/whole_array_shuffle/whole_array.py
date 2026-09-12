@@ -66,7 +66,7 @@ def whole_array_shuffle(
     C_l1_ty = np.ndarray[(m, n // 8), np.dtype[v8bfp16ebs8]]
 
     matmul_kernel = kernels.mm_bfp(dim_m=m, dim_k=k, dim_n=n)
-    zero_kernel = matmul_kernel.zero
+    zero_kernel = matmul_kernel.also.zero
     # A tiles are shuffled on the core into a flat A-shaped Buffer that feeds
     # the matmul; the library kernels declare flat tiles, and the ObjectFifo
     # elements collapse onto them.

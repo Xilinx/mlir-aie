@@ -78,14 +78,8 @@ def _contract(fn):
 
 
 def _arg_types(fn) -> list:
-    """Return the argument types as declared (numpy shapes and dtypes).
-
-    ``ExternalFunction.arg_types()`` is rewritten with MLIR types by the first
-    design that resolves the (memoized) kernel; ``declared_arg_types()`` is
-    stable, and this falls back for kernels that predate it.
-    """
-    declared = getattr(fn, "declared_arg_types", None)
-    return declared() if declared is not None else fn.arg_types()
+    """Return the kernel's declared argument types (numpy shapes and dtypes)."""
+    return fn.arg_types()
 
 
 def _shape_dtype(arg_type):
@@ -513,7 +507,7 @@ def _matmul(
     from aie.helpers.taplib import TensorTiler2D
 
     mm = factory(**factory_kwargs)
-    zero = mm.zero
+    zero = mm.also.zero
     (a_shape, dt_a), (_, dt_b), (c_shape, dt_c) = (
         _shape_dtype(t) for t in _arg_types(mm)
     )
@@ -661,7 +655,7 @@ def _matvec(
     from aie.helpers.taplib import TensorTiler2D
 
     mv = factory(**factory_kwargs)
-    zero = mv.zero
+    zero = mv.also.zero
     (_, dt_in), _, (_, dt_out) = (_shape_dtype(t) for t in _arg_types(mv))
     m, k = factory_kwargs["dim_m"], factory_kwargs["dim_k"]
     M_div_m, K_div_k = M // m, K // k

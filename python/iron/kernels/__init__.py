@@ -13,7 +13,7 @@ Submodules:
 - `vision` — rgba2hue, threshold, bitwise_or, bitwise_and, gray2rgba, rgba2gray, filter2d, add_weighted
 - `activation` — softmax, gelu, silu, swiglu, bf16_exp, exp2f_vec, tanh, sigmoid, leaky_relu
 - `transformer` — rms_norm, layer_norm, layer_norm_f32, layer_norm_affine_cast, rope, mm_activation_epilogue
-- `linalg` — mm, mv, cascade_mm  (mm/mv expose ``.zero`` for the companion zero-fill kernel,
+- `linalg` — mm, mv, cascade_mm  (mm/mv expose ``.also.zero`` for the companion zero-fill kernel,
   ``.mac_dims`` and ``.stream_dims`` / ``.a_dims_from_stream`` for the DMA layout)
 
 Most factories attach a [`KernelContract`][iron.kernels.KernelContract] as

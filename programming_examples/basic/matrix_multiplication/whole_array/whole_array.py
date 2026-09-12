@@ -98,7 +98,7 @@ def _build_design(
         emulate_bf16_mmul_with_bfp16=emulate_bf16_mmul_with_bfp16,
         vectorized=not scalar,
     )
-    zero_kernel = matmul_kernel.zero
+    zero_kernel = matmul_kernel.also.zero
     r, s, t = matmul_kernel.mac_dims
     dims = matmul_kernel.stream_dims
 

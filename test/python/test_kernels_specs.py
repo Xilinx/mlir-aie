@@ -16,7 +16,7 @@ Also covers the public arg_shape() / arg_dtype() introspection methods
 that BaseKernel exposes for unwrapping parameterized np.ndarray arg types.
 
 Sibling files:
-  test_kernels_memoization.py  — memoization, .zero, auto-prefix-on-collision
+  test_kernels_memoization.py  — memoization, .also.zero, auto-prefix-on-collision
   test_kernels_chess.py        — use_chess + emulated bf16 plumbing
 
 The shared _isolate_extern_state fixture lives in conftest.py at this

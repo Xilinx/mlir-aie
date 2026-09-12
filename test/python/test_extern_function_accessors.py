@@ -126,7 +126,7 @@ def test_chess_path_needs_the_wrapper_on_path(monkeypatch):
 def test_prefixing_renames_every_defined_symbol_and_is_idempotent(tmp_path):
     """A prefix covers the object's siblings, not just the declared symbol.
 
-    ``mm.cc`` exports the ``zero_*`` that ``.zero`` binds beside ``matmul_*``;
+    ``mm.cc`` exports the ``zero_*`` that ``.also.zero`` binds beside ``matmul_*``;
     leaving those bare made two parameterizations of one kernel collide at
     link. Uses a stub object so the test needs no Peano.
     """
@@ -171,16 +171,17 @@ def test_prefixing_renames_every_defined_symbol_and_is_idempotent(tmp_path):
         assert fake_run.symbols == before
 
 
-def test_sibling_binds_another_symbol_from_the_same_object():
-    """``.zero`` and friends follow the parent's prefix (ExternalFunction.sibling)."""
+def test_siblings_bind_other_symbols_from_the_same_object():
+    """Siblings follow the parent's prefix, and several bind in one call."""
     tile = [np.ndarray[(16,), np.dtype[np.int32]]]
     prefixed = ExternalFunction(
         "matmul", source_string="void matmul(){}", arg_types=[], symbol_prefix="d00d"
     )
-    sib = prefixed.sibling("zero_i16", tile)
-    assert sib.name == "d00d_zero_i16"
-    assert sib.object_file_name == prefixed.object_file_name
-    assert sib.arg_types() == tile
+    also = prefixed.siblings(zero=("zero_i16", tile), wider=("zero_i32", tile))
+    assert also.zero.name == "d00d_zero_i16"
+    assert also.wider.name == "d00d_zero_i32"
+    assert also.zero.object_file_name == prefixed.object_file_name
+    assert also.zero.arg_types() == tile
     # An unprefixed kernel binds the bare name.
     plain = ExternalFunction("k", source_string="void k(){}", arg_types=[])
-    assert plain.sibling("zero_i16", tile).name == "zero_i16"
+    assert plain.siblings(zero=("zero_i16", tile)).zero.name == "zero_i16"

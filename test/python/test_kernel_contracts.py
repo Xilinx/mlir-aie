@@ -664,7 +664,7 @@ def test_bf16_matvec_matches_the_iron_gemv_signature():
     fn = kernels.mv(
         dim_m=32, dim_k=256, input_dtype=bfloat16, output_dtype=bfloat16, vec_size=64
     )
-    types = fn.declared_arg_types()
+    types = fn.arg_types()
     assert types[0] is np.int32 and types[1] is np.int32
     assert [kh._shape_dtype(t)[0] for t in types[2:]] == [(32 * 256,), (256,), (32,)]
     assert all(kh._shape_dtype(t)[1] is bfloat16 for t in types[2:])
@@ -675,7 +675,7 @@ def test_bf16_matvec_matches_the_iron_gemv_signature():
     assert kernels.mv_bf16_ref(2, 1, a, b).tolist() == [0.0, 28.0, 92.0]
     # The int16 kernel is a different source with a zero symbol and no scalars.
     i16 = kernels.mv(dim_m=32, dim_k=32)
-    assert i16.contract.roles == (In, In, InOut) and hasattr(i16, "zero")
+    assert i16.contract.roles == (In, In, InOut) and hasattr(i16.also, "zero")
     with pytest.raises(ValueError, match="multiple of vec_size"):
         kernels.mv(dim_k=100, input_dtype=bfloat16, output_dtype=bfloat16)
 
@@ -762,11 +762,11 @@ def test_mha_binds_its_translation_unit_as_one_object():
         "init_scale_buffer": "init_scale_buffer",
     }
     for attr, symbol in expected.items():
-        sib = getattr(fn, attr)
+        sib = getattr(fn.also, attr)
         assert sib.name == f"{p}_{symbol}", attr
         assert sib.object_file_name == fn.object_file_name, attr
     # mha.cc only declares passThroughLine; that copy is its own kernel.
-    assert not hasattr(fn, "passthrough")
+    assert not hasattr(fn.also, "passthrough")
     # Its own matmul symbols cannot collide with a real mm in one design.
     assert kernels.mm(dim_m=64, dim_k=64, dim_n=64).name != fn.name
     # A dataflow the harness cannot drive says so rather than failing oddly.
@@ -781,7 +781,7 @@ def test_accumulating_kernels_are_inout_and_ship_a_zero():
     """``inout`` marks a kernel that reads its output back, and needs zeroing.
 
     ``mm``'s ``C += A * B`` reads C, so a design must zero the buffer before
-    the first call -- which is what the ``.zero`` sibling is for. The
+    the first call -- which is what the ``.also.zero`` sibling is for. The
     reference still computes the whole product, so an ``inout`` output is
     excluded from ``reference_indices`` exactly like an ``out`` one.
     """
@@ -794,11 +794,11 @@ def test_accumulating_kernels_are_inout_and_ship_a_zero():
         c = fn.contract
         assert c.accumulates, f"{f.__name__} accumulates into C"
         assert c.roles[c.out_index] is InOut
-        assert hasattr(fn, "zero"), f"{f.__name__} needs a .zero to clear C"
+        assert hasattr(fn.also, "zero"), f"{f.__name__} needs a .also.zero to clear C"
         assert c.out_index not in c.reference_indices()
     # The autouse fixture selects aie2p, so the bfp matmul builds here too.
     bfp = kernels.mm_bfp()
-    assert bfp.contract.accumulates and bfp.zero is not None
+    assert bfp.contract.accumulates and bfp.also.zero is not None
     # The bf16 matvec stores rather than accumulating: plain "out".
     st = kernels.mv(dim_m=32, dim_k=256, input_dtype=bfloat16, output_dtype=bfloat16)
     assert not st.contract.accumulates
@@ -817,21 +817,21 @@ def test_sibling_symbols_follow_the_parameterisation_prefix():
     """A kernel's siblings bind names its own object actually defines.
 
     Each parameterisation gets a symbol prefix so two of them can share a
-    design; the whole object is prefixed, so ``.zero`` and the cascade
+    design; the whole object is prefixed, so ``.also.zero`` and the cascade
     get/put trio have to be prefixed to match.
     """
     fn = kernels.mm(dim_m=64, dim_k=64, dim_n=64)
     prefix = fn._symbol_prefix
     assert prefix and fn.name == f"{prefix}_matmul_i16_i16"
-    assert fn.zero.name == f"{prefix}_zero_i16"
-    assert fn.zero.object_file_name == fn.object_file_name
+    assert fn.also.zero.name == f"{prefix}_zero_i16"
+    assert fn.also.zero.object_file_name == fn.object_file_name
     # A different parameterisation gets a different prefix on every symbol.
     other = kernels.mm(dim_m=32, dim_k=32, dim_n=32)
     assert other._symbol_prefix != prefix
-    assert other.zero.name != fn.zero.name
+    assert other.also.zero.name != fn.also.zero.name
     casc = kernels.cascade_mm()
     cp = casc._symbol_prefix
-    for sib in (casc.put_only, casc.put_get, casc.zero):
+    for sib in (casc.also.put_only, casc.also.put_get, casc.also.zero):
         assert (
             sib.name.startswith(f"{cp}_")
             and sib.object_file_name == casc.object_file_name
@@ -1003,12 +1003,12 @@ def test_declared_arg_types_survive_a_design_build():
     # on that. The build repopulates the factory memo with the very instance it
     # resolved, so the next factory call in the same process hands back a
     # kernel whose arg_types() are MLIR types. The harness reads
-    # declared_arg_types(), which does not move.
-    declared = [str(t) for t in kernels.add().declared_arg_types()]
+    # arg_types(), which does not move.
+    declared = [str(t) for t in kernels.add().arg_types()]
     kh.design(kernels.add, calls=2).as_mlir()
     fn = kernels.add()  # memoized: the instance the design resolved
-    assert [str(t) for t in fn.declared_arg_types()] == declared
-    assert all(hasattr(t, "__args__") for t in fn.declared_arg_types()[:3])
+    assert [str(t) for t in fn.arg_types()] == declared
+    assert all(hasattr(t, "__args__") for t in fn.arg_types()[:3])
     assert kh.output_size(fn, calls=2) == 2 * 1024
     assert kh.sample_inputs(fn, calls=2)[0].shape == (2, 1024)
     kh.design(kernels.add, calls=4).as_mlir()  # a second design still builds
@@ -1124,11 +1124,11 @@ def test_declared_dtype_combinations_build(name, combo):
     """Every combination a factory lists as supported builds, and its arg types use it."""
     fn = getattr(kernels, name)(**combo)
     if name == "mm_bfp":  # block-floating-point operands are not numpy dtypes
-        assert fn.zero is not None
+        assert fn.also.zero is not None
         return
     tensor_dts = {
         np.dtype(kh._shape_dtype(t)[1])
-        for t in fn.declared_arg_types()
+        for t in fn.arg_types()
         if hasattr(t, "__args__")
     }
     for v in combo.values():

@@ -8,6 +8,7 @@
 import hashlib
 import logging
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import numpy as np
@@ -106,11 +107,10 @@ class BaseKernel(Resolvable):
         if not name:
             raise ValueError("Kernel name cannot be empty.")
         self._name = name
-        self._arg_types = arg_types if arg_types is not None else []
-        # The declaration as written (numpy shapes and dtypes). `_arg_types`
-        # is rewritten with MLIR types the first time a design resolves this
-        # kernel, so host-side tooling reads this snapshot instead.
-        self._declared_arg_types = list(self._arg_types)
+        # The declaration as written (numpy shapes and dtypes). Resolving the
+        # kernel builds MLIR types from it without disturbing it, so this stays
+        # readable before and after a build.
+        self._arg_types = list(arg_types) if arg_types is not None else []
         self._op: FuncOp | None = None
 
     @property
@@ -197,17 +197,13 @@ class BaseKernel(Resolvable):
             )
         return shape[0]
 
-    def declared_arg_types(self) -> list:
+    def arg_types(self) -> list:
         """Return the argument types as declared: ``np.ndarray[shape, dtype]`` / scalars.
 
-        Unlike :meth:`arg_types`, this does not change when a design resolves
-        the kernel and rewrites its types for MLIR, so a memoized kernel can be
-        described on the host before and after a build.
+        A copy, and stable: resolving the kernel builds MLIR types from these
+        without replacing them, so a memoized kernel describes itself the same
+        way before and after a build.
         """
-        return list(self._declared_arg_types)
-
-    def arg_types(self) -> list:
-        """Return a copy of the argument type list."""
         return self._arg_types.copy()
 
     def __call__(self, *args, **kwargs):
@@ -317,8 +313,6 @@ class Kernel(BaseKernel):
         ip: ir.InsertionPoint | None = None,
     ) -> None:
         if not self._op:
-            # external_func rewrites `_arg_types` in place with MLIR types; the
-            # numpy-style declaration survives in `_declared_arg_types`.
             self._op = external_func(
                 self._name,
                 inputs=self._arg_types,
@@ -344,9 +338,7 @@ class ExternalFunction(Kernel):
     _instances: set = set()  # Registry of all live ExternalFunction instances.
 
     # Optional metadata the kernel factories attach: the contract
-    # (aie.iron.kernels.KernelContract), the matmul layout facts and the
-    # sibling bindings of the linalg factories (kernels.mm / mv / cascade_mm
-    # / mm_bfp). Declared here so the dynamic assignment type-checks.
+    # (aie.iron.kernels.KernelContract) and the matmul layout facts.
     # Typed Any rather than KernelContract: pyright analyses the sources and
     # the staged package as two module trees, so naming the class here would
     # make the factories' own KernelContract a different type.
@@ -357,33 +349,41 @@ class ExternalFunction(Kernel):
     b_col_maj: bool
     c_col_maj: bool
     a_dims_from_stream: object
-    zero: "Kernel"
-    matmul_scalar: "Kernel"
-    matmul_rowmaj: "Kernel"
-    partial_softmax: "Kernel"
-    matmul_pv: "Kernel"
-    rescale_o: "Kernel"
-    init_scale_buffer: "Kernel"
-    get_only: "Kernel"
-    put_only: "Kernel"
-    put_get: "Kernel"
 
-    def sibling(self, symbol: str, arg_types: list) -> "Kernel":
-        """Bind another symbol from this kernel's own object file.
+    def siblings(self, **symbols: tuple) -> SimpleNamespace:
+        """Bind other symbols exported by this kernel's own object file.
 
         A translation unit often exports more than the symbol this
         ExternalFunction declares -- ``mm.cc`` emits the ``zero_*`` that
         accumulation needs beside ``matmul_*``, ``cascade_mm.cc`` a get/put
         trio -- and binding them here avoids compiling the source a second
-        time. ``symbol`` is the name as written in the source: when this
-        kernel carries a ``symbol_prefix``, the object's symbols have all
-        been prefixed to keep parameterizations apart (see
-        ``aie.utils.compile.utils._prefix_symbols_in_object``), so the
-        sibling is prefixed to match.
+        time::
+
+            fn.siblings(zero=("zero_i32", [c_ty]))
+            fn.also.zero  # a Kernel over the same object file
+
+        Each keyword names the attribute to bind under ``also`` and takes
+        ``(symbol, arg_types)``, where ``symbol`` is the name as written in
+        the source: when this kernel carries a ``symbol_prefix``, the
+        object's symbols have all been prefixed to keep parameterizations
+        apart (see ``aie.utils.compile.utils._prefix_symbols_in_object``),
+        so each sibling is prefixed to match.
+
+        Returns ``self.also``, which is always present, and empty for a
+        kernel whose object exports nothing else.
         """
         prefix = getattr(self, "_symbol_prefix", None)
-        name = f"{prefix}_{symbol}" if prefix else symbol
-        return Kernel(name, self.object_file_name, arg_types)
+        vars(self.also).update(
+            {
+                attr: Kernel(
+                    f"{prefix}_{symbol}" if prefix else symbol,
+                    self.object_file_name,
+                    arg_types,
+                )
+                for attr, (symbol, arg_types) in symbols.items()
+            }
+        )
+        return self.also
 
     def __init__(
         self,
@@ -535,6 +535,7 @@ class ExternalFunction(Kernel):
                 )
                 self._object_file_name = object_file_name
                 break
+        self.also = SimpleNamespace()  # siblings from this kernel's object
         ExternalFunction._instances.add(self)
 
     # Read-only views of the compile recipe. Tooling that inspects or
@@ -591,14 +592,23 @@ class ExternalFunction(Kernel):
                     f"Argument {index}: expected scalar, got {type(arg).__name__}"
                 )
             return
-        if hasattr(expected_ty, "__args__") and hasattr(arg, "shape"):
-            expected_shape = expected_ty.__args__[0]
-            expected_dtype = expected_ty.__args__[1].__args__[0]
-            if arg.shape != expected_shape or arg.dtype != expected_dtype:
-                raise ValueError(
-                    f"Argument {index}: expected {expected_shape}/{expected_dtype}, "
-                    f"got {arg.shape}/{arg.dtype}"
-                )
+        if not (hasattr(expected_ty, "__args__") and hasattr(arg, "shape")):
+            return
+        # Only host-side (numpy) arguments are compared. An MLIR value's
+        # element type is spelled differently (`i32` vs `np.int32`) and its
+        # shape may legitimately differ from the declaration until
+        # `_maybe_collapse_to_match` flattens it, so MLIR verification is what
+        # checks those.
+        arg_dtype = getattr(arg, "dtype", None)
+        if not isinstance(arg_dtype, (np.dtype, type)):
+            return
+        expected_shape = expected_ty.__args__[0]
+        expected_dtype = expected_ty.__args__[1].__args__[0]
+        if arg.shape != expected_shape or arg_dtype != expected_dtype:
+            raise ValueError(
+                f"Argument {index}: expected {expected_shape}/{expected_dtype}, "
+                f"got {arg.shape}/{arg_dtype}"
+            )
 
     def _content_digest(self) -> str:
         """Return a 64-bit hex SHA-256 digest of this instance's content.

@@ -60,7 +60,7 @@ def single_core_mixed(
     c_ty = np.ndarray[(m * n,), np.dtype[bfloat16]]
 
     matmul_kernel = kernels.mm_bfp(dim_m=m, dim_k=k, dim_n=n, mixed=True)
-    zero_kernel = matmul_kernel.zero
+    zero_kernel = matmul_kernel.also.zero
 
     inA = ObjectFifo(a_ty, name="inA")
     a_dims: StreamDims = matmul_kernel.stream_dims["A"]

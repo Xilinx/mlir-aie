@@ -74,10 +74,10 @@ def cascade(
     cascade_kernel = kernels.cascade_mm(
         dim_m=m, dim_k=k, dim_n=n, input_dtype=dtype_in, output_dtype=dtype_out
     )
-    matmul_get_only = cascade_kernel.get_only
-    matmul_put_only = cascade_kernel.put_only
-    matmul_put_get = cascade_kernel.put_get
-    zero_kernel = cascade_kernel.zero
+    matmul_get_only = cascade_kernel.also.get_only
+    matmul_put_only = cascade_kernel.also.put_only
+    matmul_put_get = cascade_kernel.also.put_get
+    zero_kernel = cascade_kernel.also.zero
 
     r, s, t = cascade_kernel.mac_dims
     dims = kernels.mm_stream_dims(m, k, n, (r, s, t))
