@@ -90,7 +90,7 @@ struct RoutedStream {
   /// stream.
   bool carries(std::optional<PacketInfoAttr> packet) const {
     return !packet || !packetID ||
-           ((packet->getPktId() ^ *packetID) & packetMask) == 0;
+           ((packet->assignedId() ^ *packetID) & packetMask) == 0;
   }
 };
 

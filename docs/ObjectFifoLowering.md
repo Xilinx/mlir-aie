@@ -174,15 +174,18 @@ aie.route from @d1 to [@d2, @d3]
 Several destinations are a broadcast: one source channel feeding a multicast
 route.
 
-A flow marked `packet` becomes an `aie.packet_flow` and shares the stream;
-circuit flows reserve theirs. Both kinds coexist in one device. `packet_id`
-pins the id; otherwise allocation picks the lowest id no other flow uses.
+A flow carrying a `packet` header becomes an `aie.packet_flow` and shares the
+stream; circuit flows reserve theirs. Both kinds coexist in one device. The
+header is the same `#aie.packet_info` the endpoints and buffer descriptors
+carry after allocation, only with its id still open: `pkt_id` pins the id,
+otherwise allocation picks the lowest id no other flow uses and fills it in.
 
 ```mlir
-aie.route from @d1 to [@d2] {packet, packet_id = 7 : i8}
+aie.route from @d1 to [@d2] {packet = #aie.packet_info<>}
+aie.route from @d1 to [@d2] {packet = #aie.packet_info<pkt_id = 7>}
 ```
 
-At the frontend this is chosen per fifo, with the same two attributes on
+At the frontend this is chosen per fifo, with `packet` and `packet_id` on
 `aie.objectfifo`, or `ObjectFifo(..., packet=True, packet_id=7)` in IRON.
 
 ## Examples

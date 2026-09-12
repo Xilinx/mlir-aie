@@ -1041,8 +1041,8 @@ struct AIEObjectFifoAllocatePass
     llvm::SmallDenseSet<int> taken;
     device.walk([&](PacketFlowOp flow) { taken.insert(flow.IDInt()); });
     for (auto flow : device.getOps<RouteOp>()) {
-      if (auto pinned = flow.getPacketId()) {
-        taken.insert(*pinned);
+      if (auto packet = flow.getPacket(); packet && packet->isAssigned()) {
+        taken.insert(packet->assignedId());
       }
     }
     return taken;
@@ -1051,11 +1051,9 @@ struct AIEObjectFifoAllocatePass
   /// A packet-switched flow shares the stream with others, so every buffer
   /// descriptor the source emits has to carry the packet header.
   LogicalResult lowerPacketFlow(RouteOp flow, RouteEndpoint source,
-                                int packetID) {
-
-    auto info =
-        PacketInfoAttr::get(builder.getContext(), /*pkt_type=*/0, packetID);
-    source.setRoutePacket(info);
+                                PacketInfoAttr header) {
+    int packetID = header.assignedId();
+    source.setRoutePacket(header);
 
     builder.setInsertionPoint(flow);
     auto packetFlow = PacketFlowOp::create(
@@ -1102,12 +1100,14 @@ struct AIEObjectFifoAllocatePass
 
       // The pass flag is a default for flows that express no preference, so a
       // device may mix circuit- and packet-switched connections.
-      if (flow.getPacket() || clPacketSwObjectFifos) {
+      std::optional<PacketInfoAttr> packet = flow.getPacket();
+      if (packet || clPacketSwObjectFifos) {
+        uint16_t packetType = packet ? packet->getPktType() : 0;
         int packetID;
-        if (auto pinned = flow.getPacketId()) {
-          packetID = *pinned;
+        if (packet && packet->isAssigned()) {
+          packetID = packet->assignedId();
           if (packetID > maxPacketID) {
-            return flow.emitOpError("packet_id ")
+            return flow.emitOpError("pkt_id ")
                    << packetID << " is out of range (max " << maxPacketID
                    << ")";
           }
@@ -1121,7 +1121,9 @@ struct AIEObjectFifoAllocatePass
           packetID = nextFree;
           taken.insert(packetID);
         }
-        if (failed(lowerPacketFlow(flow, source, packetID))) {
+        auto header =
+            PacketInfoAttr::get(builder.getContext(), packetType, packetID);
+        if (failed(lowerPacketFlow(flow, source, header))) {
           return failure();
         }
         continue;

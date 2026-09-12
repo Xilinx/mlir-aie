@@ -301,10 +301,18 @@ def bd_pad_layout(const_pad_before, const_pad_after):
 
 @register_attribute_builder("PacketInfoAttr")
 def packet_info_attr_builder(tups: Tuple[int] | List[int], context=None):
+    """Build ``#aie.packet_info`` from ``(pkt_type, pkt_id)``.
+
+    ``pkt_id`` may be ``None`` for a header allocation has yet to assign.
+    """
     assert (isinstance(tups, list) or isinstance(tups, Tuple)) and len(tups) == 2
-    return Attribute.parse(
-        f"#aie.packet_info<pkt_type = {tups[0]}, pkt_id = {tups[1]}>", context=context
-    )
+    pkt_type, pkt_id = tups
+    fields = []
+    if pkt_type:
+        fields.append(f"pkt_type = {pkt_type}")
+    if pkt_id is not None:
+        fields.append(f"pkt_id = {pkt_id}")
+    return Attribute.parse(f"#aie.packet_info<{', '.join(fields)}>", context=context)
 
 
 @register_attribute_builder("BDIterationAttr")

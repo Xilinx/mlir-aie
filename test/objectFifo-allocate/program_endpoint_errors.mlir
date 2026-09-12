@@ -35,7 +35,7 @@ module @packet_source_program {
     %b = aie.buffer(%mt) {sym_name = "b"} : memref<64xi32>
     aie.route_endpoint @spray(%mt) DMA
     aie.route_endpoint @catch(%core) DMA
-    aie.route from @spray to [@catch] {packet}
+    aie.route from @spray to [@catch] {packet = #aie.packet_info<>}
     aie.memtile_dma(%mt) {
       // expected-error @+1 {{names @spray, the source of a packet-switched route; a DMA program's BDs would not carry its header}}
       aie.dma_start(MM2S, @spray, ^bd0, ^end)

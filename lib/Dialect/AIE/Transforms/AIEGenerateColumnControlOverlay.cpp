@@ -497,7 +497,7 @@ struct AIEGenerateColumnControlOverlayPass
   // The packet ID of control packets to and from `tile`.
   static int getControllerID(TileOp tile, DenseMap<TileID, int> &tileIDMap) {
     if (auto id = tile->getAttrOfType<AIE::PacketInfoAttr>("controller_id"))
-      return id.getPktId();
+      return id.assignedId();
     return tileIDMap[{tile.colIndex(), tile.rowIndex()}];
   }
 
@@ -830,7 +830,7 @@ struct AIEGenerateColumnControlOverlayPass
       if (tOp->hasAttr("controller_id"))
         ctrlPktFlowID =
             (int)tOp->getAttrOfType<AIE::PacketInfoAttr>("controller_id")
-                .getPktId();
+                .assignedId();
       else
         ctrlPktFlowID = tileIDMap[{tOp.colIndex(), tOp.rowIndex()}];
       // Check shim channel availability

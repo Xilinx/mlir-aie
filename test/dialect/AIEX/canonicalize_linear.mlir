@@ -275,7 +275,7 @@ module {
 // CHECK:         aie.runtime_sequence @fold_packet
 // CHECK:           aiex.npu.dma_memcpy_nd
 // CHECK-SAME:        [0, 0, 0, 0][1, 1, 1, 1024][0, 0, 0, 1]
-// CHECK-SAME:        packet = <pkt_type = 0, pkt_id = 5>
+// CHECK-SAME:        packet = <pkt_id = 5>
 module {
   aie.device(npu1) {
     aie.runtime_sequence @fold_packet(%arg0 : memref<2x512xi32>) {

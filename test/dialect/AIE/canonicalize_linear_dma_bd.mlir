@@ -116,7 +116,7 @@ module {
 // CHECK:       aie.shim_dma
 // CHECK:         aie.dma_bd
 // CHECK-NOT:       dimensions
-// CHECK-SAME:      packet = #aie.packet_info<pkt_type = 0, pkt_id = 1>
+// CHECK-SAME:      packet = #aie.packet_info<pkt_id = 1>
 module {
   aie.device(npu1) {
     %tile_0_0 = aie.tile(0, 0)

@@ -224,7 +224,7 @@ std::map<TileDMAChannel, std::set<int>> collectSentPacketIDs(DeviceOp device) {
       continue;
     forEachInProgram<DMABDOp>(p, [&](DMABDOp bd) {
       if (std::optional<PacketInfoAttr> packet = bd.getPacket())
-        ids[p.dma].insert(packet->getPktId());
+        ids[p.dma].insert(packet->assignedId());
     });
   }
   for (auto alloc : device.getOps<ShimDMAAllocationOp>()) {
@@ -233,7 +233,7 @@ std::map<TileDMAChannel, std::set<int>> collectSentPacketIDs(DeviceOp device) {
     if (packet && tile)
       ids[{*tile, alloc.getChannelDir(),
            static_cast<int>(alloc.getChannelIndex())}]
-          .insert(packet->getPktId());
+          .insert(packet->assignedId());
   }
   device.walk([&](AIEX::NpuDmaMemcpyNdOp memcpy) {
     std::optional<PacketInfoAttr> packet = memcpy.getPacket();
@@ -241,7 +241,7 @@ std::map<TileDMAChannel, std::set<int>> collectSentPacketIDs(DeviceOp device) {
       return;
     if (std::optional<TileDMAChannel> key =
             channelOfSymbol(device, memcpy.getMetadata().getRootReference()))
-      ids[*key].insert(packet->getPktId());
+      ids[*key].insert(packet->assignedId());
   });
   return ids;
 }

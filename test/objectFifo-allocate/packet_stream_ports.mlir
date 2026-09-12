@@ -19,8 +19,8 @@ module @shared_packet_port {
     aie.route_endpoint @s1(%source) Core {channelIndex = 0 : i32}
     aie.route_endpoint @d0(%dest) Core {channelIndex = 0 : i32}
     aie.route_endpoint @d1(%dest) Core {channelIndex = 0 : i32}
-    aie.route from @s0 to [@d0] {packet}
-    aie.route from @s1 to [@d1] {packet}
+    aie.route from @s0 to [@d0] {packet = #aie.packet_info<>}
+    aie.route from @s1 to [@d1] {packet = #aie.packet_info<>}
   }
 }
 
@@ -38,7 +38,7 @@ module @existing_packet_port {
     }
     aie.route_endpoint @s(%source) Core {channelIndex = 0 : i32}
     aie.route_endpoint @d(%dest) Core {channelIndex = 0 : i32}
-    aie.route from @s to [@d] {packet}
+    aie.route from @s to [@d] {packet = #aie.packet_info<>}
   }
 }
 
@@ -55,7 +55,7 @@ module @packet_against_circuit {
     // expected-error @+1 {{Core output 0 is already in use on this tile}}
     aie.route_endpoint @circuit_source(%alias) Core {channelIndex = 0 : i32}
     aie.route_endpoint @circuit_dest(%dest) Core {channelIndex = 1 : i32}
-    aie.route from @packet_source to [@packet_dest] {packet}
+    aie.route from @packet_source to [@packet_dest] {packet = #aie.packet_info<>}
     aie.route from @circuit_source to [@circuit_dest]
   }
 }
@@ -91,6 +91,6 @@ module @packet_against_existing_circuit {
     // expected-error @+1 {{Core output 0 is already in use on this tile}}
     aie.route_endpoint @s(%alias) Core {channelIndex = 0 : i32}
     aie.route_endpoint @d(%dest) Core {channelIndex = 1 : i32}
-    aie.route from @s to [@d] {packet}
+    aie.route from @s to [@d] {packet = #aie.packet_info<>}
   }
 }

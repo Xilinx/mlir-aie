@@ -10,7 +10,7 @@
 // infer aie.tile ops based on control packet op's address
 
 // CHECK-LABEL: aie.device(npu1_1col) {
-// CHECK: aie.tile(0, 0) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 15>}
+// CHECK: aie.tile(0, 0) {controller_id = #aie.packet_info<pkt_id = 15>}
 
 aie.device(npu1_1col) {
   aie.runtime_sequence(%arg0: memref<2048xi32>) {
@@ -21,7 +21,7 @@ aie.device(npu1_1col) {
 // -----
 
 // CHECK-LABEL: aie.device(npu1_1col) {
-// CHECK: aie.tile(0, 2) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 27>}
+// CHECK: aie.tile(0, 2) {controller_id = #aie.packet_info<pkt_id = 27>}
 
 aie.device(npu1_1col) {
   aie.runtime_sequence(%arg0: memref<2048xi32>) {

@@ -677,7 +677,7 @@ LogicalResult xilinx::AIE::AIETranslateControlPacketsToUI32Vec(
     auto info = destTile->getAttrOfType<AIE::PacketInfoAttr>("controller_id");
     uint32_t hdr = 0;
     if (info)
-      hdr = (info.getPktType() & 0x7) << 12 | (info.getPktId() & 0xff);
+      hdr = (info.getPktType() & 0x7) << 12 | (info.assignedId() & 0xff);
     words[0] = hdr | (0x1 & parity(hdr)) << 31;
 
     // `beats` gets two bits, directly above the address, so an oversized

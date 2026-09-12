@@ -163,7 +163,7 @@ struct AIEObjectFifoLowerDMAsPass
     }
     if (auto packet = endpoint.getPacket()) {
       DMABDPACKETOp::create(builder, loc, packet->getPktType(),
-                            packet->getPktId());
+                            packet->assignedId());
     }
 
     if (descriptor.dimensions && drains && descriptor.padding) {

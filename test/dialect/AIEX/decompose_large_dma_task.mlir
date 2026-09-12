@@ -182,7 +182,7 @@ module {
 // OOO-FACTOR:         aie.dma_bd
 // OOO-FACTOR-SAME:        sizes = [1, 2, 1023, 2]
 // OOO-FACTOR-SAME:        out_of_order_id = 5
-// OOO-FACTOR-SAME:        packet = #aie.packet_info<pkt_type = 0, pkt_id = 1>
+// OOO-FACTOR-SAME:        packet = #aie.packet_info<pkt_id = 1>
 // OOO-FACTOR-NOT:     aie.next_bd
 module {
   aie.device(npu2_1col) {

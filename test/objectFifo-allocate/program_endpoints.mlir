@@ -205,7 +205,7 @@ module @pinned_task_demand {
 // CHECK-LABEL: @shim_and_packet
 // CHECK: aie.runtime_sequence
 // CHECK:   aiex.dma_configure_task(%{{.*}}, MM2S, 0) {
-// CHECK:   aiex.dma_configure_task(%{{.*}}, MM2S, 0, <pkt_type = 0, pkt_id = 0>) {
+// CHECK:   aiex.dma_configure_task(%{{.*}}, MM2S, 0, <pkt_id = 0>) {
 // CHECK-NOT: aie.shim_dma_allocation
 module @shim_and_packet {
   aie.device(npu2) {
@@ -219,7 +219,7 @@ module @shim_and_packet {
     aie.route from @host to [@landing]
     aie.route_endpoint @spray(%mt) DMA
     aie.route_endpoint @catch(%core) DMA
-    aie.route from @spray to [@catch] {packet}
+    aie.route from @spray to [@catch] {packet = #aie.packet_info<>}
     aie.mem(%core) {
       aie.dma_start(S2MM, @catch, ^bd0, ^end)
     ^bd0:

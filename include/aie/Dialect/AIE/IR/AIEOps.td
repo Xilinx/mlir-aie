@@ -2172,20 +2172,22 @@ def AIE_RouteOp : AIE_Op<"route", [HasParent<"DeviceOp">]> {
 
     `packet` routes the connection as an `aie.packet_flow` instead, sharing the
     stream with every other packet flow rather than reserving a circuit for it.
-    `packet_id` pins the header the source stamps; without it allocation picks
-    an id no other flow is using. Circuit- and packet-switched routes coexist in
-    one device.
+    It is the same `#aie.packet_info` the endpoints and buffer descriptors end
+    up carrying: with `pkt_id` set it pins the header the source stamps, without
+    it allocation picks an id no other flow is using. Circuit- and
+    packet-switched routes coexist in one device.
 
     Example:
     ```
       aie.route from @src to [@dst0, @dst1]
-      aie.route from @src to [@dst] {packet, packet_id = 3 : i8}
+      aie.route from @src to [@dst] {packet = #aie.packet_info<>}
+      aie.route from @src to [@dst] {packet = #aie.packet_info<pkt_id = 3>}
     ```
   }];
 
   let arguments = (ins FlatSymbolRefAttr:$source,
-      FlatSymbolRefArrayAttr:$destinations, UnitAttr:$packet,
-      OptionalAttr<ConfinedAttr<AIEI8Attr, [IntMinValue<0>]>>:$packet_id);
+      FlatSymbolRefArrayAttr:$destinations,
+      OptionalAttr<PacketInfoAttr>:$packet);
 
   let assemblyFormat = [{
     `from` $source `to` $destinations attr-dict
