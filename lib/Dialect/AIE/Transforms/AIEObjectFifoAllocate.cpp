@@ -803,7 +803,7 @@ struct AIEObjectFifoAllocatePass
     // The endpoint verifier lets one route at most name each endpoint.
     DenseSet<Operation *> packetEndpoints;
     for (auto flow : device.getOps<RouteOp>()) {
-      if (!flow.getPacket() && !clPacketSwObjectFifos)
+      if (!flow.getPacket())
         continue;
       packetEndpoints.insert(
           lookupEndpoint(flow.getSourceAttr()).getOperation());
@@ -1030,24 +1030,6 @@ struct AIEObjectFifoAllocatePass
     return failure();
   }
 
-  /// FIXME: assigning packet IDs does not belong in this pass. The shape it
-  /// wants is an `%id = aie.packet_id` value that `aie.packet_flow` takes as an
-  /// argument, concretized by a pass of its own; this set then becomes that
-  /// pass's analysis.
-  ///
-  /// Packet IDs already spoken for, by an existing packet flow or by a flow
-  /// that pinned one.
-  llvm::SmallDenseSet<int> takenPacketIDs() {
-    llvm::SmallDenseSet<int> taken;
-    device.walk([&](PacketFlowOp flow) { taken.insert(flow.IDInt()); });
-    for (auto flow : device.getOps<RouteOp>()) {
-      if (auto packet = flow.getPacket(); packet && packet->isAssigned()) {
-        taken.insert(packet->assignedId());
-      }
-    }
-    return taken;
-  }
-
   /// A packet-switched flow shares the stream with others, so every buffer
   /// descriptor the source emits has to carry the packet header.
   LogicalResult lowerPacketFlow(RouteOp flow, RouteEndpoint source,
@@ -1090,40 +1072,18 @@ struct AIEObjectFifoAllocatePass
   }
 
   LogicalResult lowerFlows() {
-    int maxPacketID =
-        static_cast<int>(device.getTargetModel().getMaxPacketId());
-    llvm::SmallDenseSet<int> taken = takenPacketIDs();
-    int nextFree = 0;
     for (auto flow : device.getOps<RouteOp>()) {
       auto source = lookupEndpoint(flow.getSourceAttr());
       loweredFlows.push_back(flow);
 
-      // The pass flag is a default for flows that express no preference, so a
-      // device may mix circuit- and packet-switched connections.
-      std::optional<PacketInfoAttr> packet = flow.getPacket();
-      if (packet || clPacketSwObjectFifos) {
-        uint16_t packetType = packet ? packet->getPktType() : 0;
-        int packetID;
-        if (packet && packet->isAssigned()) {
-          packetID = packet->assignedId();
-          if (packetID > maxPacketID) {
-            return flow.emitOpError("pkt_id ")
-                   << packetID << " is out of range (max " << maxPacketID
-                   << ")";
-          }
-        } else {
-          while (taken.contains(nextFree)) {
-            nextFree++;
-          }
-          if (nextFree > maxPacketID) {
-            return flow.emitOpError("max number of packet IDs reached");
-          }
-          packetID = nextFree;
-          taken.insert(packetID);
+      // Which switching a route gets was settled upstream of this pass: the
+      // header is on the route, and --aie-assign-packet-ids gave it its id.
+      if (std::optional<PacketInfoAttr> packet = flow.getPacket()) {
+        if (!packet->isAssigned()) {
+          return flow.emitOpError("has a packet header with no pkt_id; run "
+                                  "--aie-assign-packet-ids before this pass");
         }
-        auto header =
-            PacketInfoAttr::get(builder.getContext(), packetType, packetID);
-        if (failed(lowerPacketFlow(flow, source, header))) {
+        if (failed(lowerPacketFlow(flow, source, *packet))) {
           return failure();
         }
         continue;
@@ -1518,11 +1478,4 @@ struct AIEObjectFifoAllocatePass
 std::unique_ptr<OperationPass<DeviceOp>>
 xilinx::AIE::createAIEObjectFifoAllocatePass() {
   return std::make_unique<AIEObjectFifoAllocatePass>();
-}
-
-std::unique_ptr<OperationPass<DeviceOp>>
-xilinx::AIE::createAIEObjectFifoAllocatePass(bool packetSwitched) {
-  AIEObjectFifoAllocateOptions options;
-  options.clPacketSwObjectFifos = packetSwitched;
-  return std::make_unique<AIEObjectFifoAllocatePass>(options);
 }

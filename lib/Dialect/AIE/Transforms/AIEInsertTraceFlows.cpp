@@ -6,6 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Dialect/AIE/Transforms/AIEPacketIdSpace.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
@@ -261,18 +262,23 @@ struct AIEInsertTraceFlowsPass
         return ta.getRow() < tb.getRow();
       });
       // Hand out ids from clPacketIdStart upward, skipping any value a
-      // user pinned explicitly so auto and explicit traces never alias.
+      // user pinned explicitly so auto and explicit traces never alias, and
+      // any value the rest of the device already holds: a packet flow, or a
+      // route or objectfifo that pinned its header.
+      PacketIdSpace held(device);
       int next = clPacketIdStart;
       for (auto trace : autoIdTraces) {
-        while (next <= kMaxPacketId && explicitIdOwner.count(next))
+        while (next <= kMaxPacketId &&
+               (explicitIdOwner.count(next) || held.isTaken(next)))
           ++next;
         if (next > kMaxPacketId) {
           device.emitError()
               << "trace overlay needs " << autoIdTraces.size()
               << " auto-allocated packet IDs starting at " << clPacketIdStart
               << " (with " << explicitIdOwner.size()
-              << " id(s) reserved by explicit aie.trace.packet ops), but the "
-                 "hardware packet-id field is 5 bits (max "
+              << " id(s) reserved by explicit aie.trace.packet ops, and any "
+                 "held by packet flows or pinned routes elsewhere in the "
+                 "device), but the hardware packet-id field is 5 bits (max "
               << kMaxPacketId
               << "); reduce the number of traced tiles, free up an explicit "
                  "id, or raise -packet-id-start only if you can spare the "
