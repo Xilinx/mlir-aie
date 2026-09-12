@@ -40,3 +40,28 @@ def test_documented_members_exist(path):
             continue
         missing += [f"aie.{module}.{m}" for m in members if not hasattr(mod, m)]
     assert not missing, f"{path.name} documents symbols that do not exist: {missing}"
+
+
+def test_every_all_entry_resolves():
+    """A module's ``__all__`` must not name symbols it no longer exports.
+
+    ``from module import *`` raises on a missing name, but nothing else does,
+    so an entry left behind by a move survives until someone uses the star
+    import.
+    """
+    import importlib
+
+    modules = [
+        "aie.utils.kernel_harness",
+        "aie.iron",
+        "aie.iron.kernels",
+        "aie.iron.algorithms",
+        "aie.utils.compile.jit",
+    ]
+    missing = []
+    for name in modules:
+        mod = importlib.import_module(name)
+        missing += [
+            f"{name}.{n}" for n in getattr(mod, "__all__", []) if not hasattr(mod, n)
+        ]
+    assert not missing, f"__all__ names symbols that do not exist: {missing}"
