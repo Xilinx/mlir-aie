@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform="skip-verify=true" --aie-objectFifo-unroll %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="skip-verify=true" --aie-objectFifo-unroll --split-input-file %s | FileCheck %s
 
 // A compute tile broadcasting to two shim tiles. Each shim consumer is a
 // different tile and channel, so each needs its own aie.shim_dma_allocation
@@ -36,6 +36,43 @@ module @twoShimConsumers {
       memref.store %v, %e[%c0] : memref<16xi32>
       aie.objectfifo.release @of (Produce, 1)
       aie.end
+    }
+ }
+}
+
+// -----
+
+// A runtime sequence names the fifo, and the split points it at the fifo's
+// last shim end. That end must resolve to the record for its own tile; before
+// each shim end had its own record it was redirected to the first one, which
+// named a different tile.
+
+// CHECK-LABEL: @twoShimConsumersRuntime
+// CHECK-DAG:     aie.shim_dma_allocation @of_shim_alloc(%{{.*}}shim_noc_tile_0_0, S2MM, 0)
+// CHECK-DAG:     aie.shim_dma_allocation @of_shim_alloc_0(%{{.*}}shim_noc_tile_1_0, S2MM, 0)
+// CHECK-DAG:     aiex.npu.dma_memcpy_nd{{.*}}metadata = @of_shim_alloc_0
+// CHECK-DAG:     aiex.npu.dma_wait {symbol = @of_shim_alloc_0}
+
+module @twoShimConsumersRuntime {
+ aie.device(npu1) {
+    %shim0 = aie.tile(0, 0)
+    %shim1 = aie.tile(1, 0)
+    %tile02 = aie.tile(0, 2)
+
+    aie.objectfifo @of (%tile02, {%shim0, %shim1}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+
+    %core02 = aie.core(%tile02) {
+      %c0 = arith.constant 0 : index
+      %v = arith.constant 7 : i32
+      %e = aie.objectfifo.acquire @of (Produce, 1) : memref<16xi32>
+      memref.store %v, %e[%c0] : memref<16xi32>
+      aie.objectfifo.release @of (Produce, 1)
+      aie.end
+    }
+
+    aie.runtime_sequence(%out : memref<16xi32>) {
+      aiex.npu.dma_memcpy_nd (%out[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {id = 0 : i64, metadata = @of} : memref<16xi32>
+      aiex.npu.dma_wait {symbol = @of}
     }
  }
 }
