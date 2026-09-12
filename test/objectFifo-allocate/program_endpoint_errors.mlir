@@ -1,4 +1,4 @@
-// RUN: aie-opt --split-input-file --aie-objectfifo-allocate --verify-diagnostics %s -o /dev/null
+// RUN: aie-opt --split-input-file --aie-assign-packet-ids --aie-objectfifo-allocate --verify-diagnostics %s -o /dev/null
 
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception

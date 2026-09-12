@@ -5,12 +5,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectfifo-allocate %s | FileCheck %s
+// RUN: aie-opt --aie-assign-packet-ids --aie-objectfifo-allocate %s | FileCheck %s
 
 // A route asks for packet switching with the same `#aie.packet_info` its
-// endpoints and buffer descriptors carry afterwards; allocation only fills in
-// the id. A pinned id and a non-default type both survive, and an open id is
-// assigned around the pinned ones.
+// endpoints and buffer descriptors carry afterwards; id assignment fills in
+// the id and allocation stamps the header on. A pinned id and a non-default
+// type both survive, and an open id is assigned around the pinned ones.
 
 module @packet_header {
   aie.device(xcve2302) {

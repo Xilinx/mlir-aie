@@ -178,7 +178,8 @@ A flow carrying a `packet` header becomes an `aie.packet_flow` and shares the
 stream; circuit flows reserve theirs. Both kinds coexist in one device. The
 header is the same `#aie.packet_info` the endpoints and buffer descriptors
 carry after allocation, only with its id still open: `pkt_id` pins the id,
-otherwise allocation picks the lowest id no other flow uses and fills it in.
+otherwise `--aie-assign-packet-ids` picks the lowest id nothing on the device
+holds, another packet flow, a pinned route or a trace packet, and fills it in.
 
 ```mlir
 aie.route from @d1 to [@d2] {packet = #aie.packet_info<>}
@@ -258,13 +259,14 @@ endpoint fills the whole object and N endpoints each drain one segment.
 ## The pipeline
 
 `--aie-objectFifo-stateful-transform` runs these in order. Its options:
-`skip-verify=true` drops step 2, and `packet-sw-objFifos=true` makes every flow
-packet-switched.
+`skip-verify=true` drops step 2, and `packet-sw-objFifos=true` makes step 3
+give every flow a packet header, whether or not it asked for one.
 
 | Pass | Emits | Consumes |
 | --- | --- | --- |
 | `--aie-objectfifo-split` | pools, endpoints, flows | `aie.objectfifo`, `aie.objectfifo.link` |
 | `--aie-objectfifo-verify` | diagnostics only | — |
+| `--aie-assign-packet-ids` | `pkt_id` on every packet header | `aie.route` headers with no id |
 | `--aie-objectfifo-allocate` | `pool`s with buffer/lock attributes, `aie.buffer`, `aie.lock`, channel indices, `aie.flow` / `aie.packet_flow`, `aie.shim_dma_allocation` | `aie.route`, `pool`s without buffer/lock attributes |
 | `--aie-objectfifo-lower-dmas` | BD chains | `dma_endpoint`, `route_endpoint` |
 | `--aie-objectfifo-lower-cores` | `use_lock` and buffer selection | `core_endpoint`, `acquire`, `release` |
@@ -326,10 +328,26 @@ cannot acquire or release on it.
 Checks the completeness rules listed below. Designs that supply an endpoint by
 hand at BD level lower with `skip-verify=true`.
 
-### 3. `--aie-objectfifo-allocate`
+### 3. `--aie-assign-packet-ids`
+
+Fills in the `pkt_id` of every route whose packet header left it open, taking
+the lowest id nothing on the device holds: another `aie.packet_flow`, a route or
+objectfifo that pinned one, or a trace packet. Routes are taken in device order,
+so the assignment is a function of the design alone. This is the one place ids
+are handed out; `--aie-insert-trace-flows` reads the same held set when it
+numbers traces, so the two never alias.
+
+```mlir
+// before
+aie.route from @d1 to [@d2] {packet = #aie.packet_info<>}
+// after
+aie.route from @d1 to [@d2] {packet = #aie.packet_info<pkt_id = 3>}
+```
+
+### 4. `--aie-objectfifo-allocate`
 
 Gives pools their buffers and locks, and endpoints their channels, flows and
-shim allocations.
+shim allocations. A packet header reaching it has to carry its id.
 
 ```mlir
 %of1_buff_0 = aie.buffer(%tile_0_2) {sym_name = "of1_buff_0"} : memref<16xi32>
@@ -353,7 +371,7 @@ Attributes already present are kept, so writing `aie.buffer` ops and naming them
 in the pool, attaching locks to a segment, or setting `channelIndex` on an
 endpoint overrides that choice; this pass fills in the rest.
 
-### 4. `--aie-objectfifo-lower-dmas`
+### 5. `--aie-objectfifo-lower-dmas`
 
 Turns each `dma_endpoint` into the BD chain that walks its pool's buffers,
 buffer-major and segment-minor:
@@ -378,7 +396,7 @@ for each buffer b in pool.buffers:
   ...
 ```
 
-### 5. `--aie-objectfifo-lower-cores`
+### 6. `--aie-objectfifo-lower-cores`
 
 Turns `acquire` and `release` operations in AIE core code into `use_lock`
 and a rotating buffer selection.
@@ -394,7 +412,7 @@ case 1 { scf.yield %of1_buff_1 : memref<16xi32> }
 
 The `index_switch` folds to a concrete buffer once the loops unroll.
 
-### 6. `--aie-objectfifo-erase-pools`
+### 7. `--aie-objectfifo-erase-pools`
 
 Drops pool metadata once nothing refers to it. A pool still named by something
 else, such as a re-arm binding in a runtime sequence, stays.
@@ -439,6 +457,15 @@ Flows and core accesses:
   Only releases forced by static loop bounds count, and a loop meant to run
   forever (a trip count from the 24-bit BD-loop saturation value up) is left
   out, since its core stalling once the data stops is how such a design ends
+
+### By `--aie-assign-packet-ids`
+
+- a pinned `pkt_id` fits the target's header field, and the field has an id
+  left for every open header
+
+### By `--aie-objectfifo-allocate`
+
+- every packet header on a route carries its id
 
 ### By `--aie-objectfifo-lower-dmas`
 

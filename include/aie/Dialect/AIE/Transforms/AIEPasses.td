@@ -549,12 +549,38 @@ def AIEObjectFifoVerify : Pass<"aie-objectfifo-verify", "DeviceOp"> {
   let dependentDialects = ["xilinx::AIE::AIEDialect"];
 }
 
+def AIEAssignPacketIds : Pass<"aie-assign-packet-ids", "DeviceOp"> {
+  let summary = "Give every packet-switched route a packet id";
+  let description = [{
+    Fill in the `pkt_id` of every `aie.route` whose packet header leaves it
+    open, taking the lowest id nothing on the device holds yet: another
+    `aie.packet_flow`, a route or objectfifo that pinned one, or a trace
+    packet. A pinned id is kept, and checked against the target's header
+    field. Routes are taken in device order, so the assignment is a function
+    of the design alone.
+
+    `--aie-objectfifo-allocate` lowers the routes afterwards and expects every
+    packet header to be assigned by then.
+  }];
+
+  let constructor = "xilinx::AIE::createAIEAssignPacketIdsPass()";
+  let dependentDialects = ["xilinx::AIE::AIEDialect"];
+
+  let options =
+      [Option<"clPacketSwObjectFifos", "packet-sw-objFifos", "bool",
+              /*default=*/"false",
+              "Make every route packet-switched, whether or not it asked.">,
+  ];
+}
+
 def AIEObjectFifoAllocate : Pass<"aie-objectfifo-allocate", "DeviceOp"> {
   let summary = "Give pools and endpoints their buffers, locks and channels";
   let description = [{
     Allocate missing pool buffers, synchronization locks and endpoint channels;
     lower routes to circuit/packet flows and emit shim runtime allocations.
-    Existing buffers, locks and pinned channels stay fixed.
+    Existing buffers, locks and pinned channels stay fixed. Packet ids are not
+    filled in here: a packet header reaching this pass has to be assigned,
+    which `--aie-assign-packet-ids` does.
 
     A route endpoint that a DMA program or runtime task names is given its
     channel after the objectFIFOs' endpoints, by the BDs its chains need. Each
@@ -589,12 +615,6 @@ def AIEObjectFifoAllocate : Pass<"aie-objectfifo-allocate", "DeviceOp"> {
 
   let constructor = "xilinx::AIE::createAIEObjectFifoAllocatePass()";
   let dependentDialects = ["xilinx::AIE::AIEDialect"];
-
-  let options =
-      [Option<"clPacketSwObjectFifos", "packet-sw-objFifos", "bool",
-              /*default=*/"false",
-              "Flag to enable aie.packetflow lowering from objectfifos.">,
-  ];
 }
 
 def AIEObjectFifoLowerDMAs : Pass<"aie-objectfifo-lower-dmas", "DeviceOp"> {
