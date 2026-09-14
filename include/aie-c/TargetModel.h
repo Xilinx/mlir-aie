@@ -132,6 +132,9 @@ MLIR_CAPI_EXPORTED uint32_t
 aieTargetModelGetLocalMemorySize(AieTargetModel targetModel);
 
 MLIR_CAPI_EXPORTED uint32_t
+aieTargetModelGetDefaultCoreStackSize(AieTargetModel targetModel);
+
+MLIR_CAPI_EXPORTED uint32_t
 aieTargetModelGetNumLocks(AieTargetModel targetModel, int col, int row);
 
 MLIR_CAPI_EXPORTED uint32_t aieTargetModelGetNumBDs(AieTargetModel targetModel,

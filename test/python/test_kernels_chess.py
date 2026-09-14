@@ -10,7 +10,7 @@ for the aie.iron.kernels factory functions.
 
 Sibling files:
   test_kernels_specs.py        — spec-table-driven coverage of every factory
-  test_kernels_memoization.py  — memoization, .zero, auto-prefix-on-collision
+  test_kernels_memoization.py  — memoization, .also.zero, auto-prefix-on-collision
 
 The npu2_device fixture used by the bf16-emulated tests comes from
 conftest.py at this directory level.
@@ -166,15 +166,18 @@ def test_cascade_mm_exposes_all_modes_and_zero():
     sibling Kernels pointing at the same .o (one cascade_mm.cc compile, four
     bindings)."""
     ef = kernels.cascade_mm(dim_m=64, dim_k=64, dim_n=32)
-    assert ef.get_only is ef
-    assert isinstance(ef.put_only, Kernel)
-    assert isinstance(ef.put_get, Kernel)
-    assert isinstance(ef.zero, Kernel)
-    assert ef.put_only._name == "matmul_scalar_cascade_put_only_i16_i16"
-    assert ef.put_get._name == "matmul_scalar_cascade_put_get_i16_i16"
-    assert ef.zero._name == "zero_scalar_i16"
+    assert ef.also.get_only is ef
+    assert isinstance(ef.also.put_only, Kernel)
+    assert isinstance(ef.also.put_get, Kernel)
+    assert isinstance(ef.also.zero, Kernel)
+    # Every symbol in the object carries this parameterisation's prefix, so
+    # the sibling bindings do too (see ExternalFunction.sibling).
+    p = ef._symbol_prefix
+    assert ef.also.put_only._name == f"{p}_matmul_scalar_cascade_put_only_i16_i16"
+    assert ef.also.put_get._name == f"{p}_matmul_scalar_cascade_put_get_i16_i16"
+    assert ef.also.zero._name == f"{p}_zero_scalar_i16"
     # All four bindings reference the same .o.
-    for sibling in (ef.put_only, ef.put_get, ef.zero):
+    for sibling in (ef.also.put_only, ef.also.put_get, ef.also.zero):
         assert sibling.object_file_name == ef.object_file_name
 
 

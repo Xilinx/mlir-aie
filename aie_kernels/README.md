@@ -52,7 +52,6 @@ In some cases, the kernels are just generic C code, and will run on any family o
 | activation | [tanh.cc](./aie2/tanh.cc) | AIE API | Tanh activation (LUT) | `bfloat16` |
 | activation | [sigmoid.cc](./aie2/sigmoid.cc) | AIE API | Sigmoid activation (LUT) | `bfloat16` |
 | activation | [softmax.cc](./aie2/softmax.cc) | AIE API | Softmax | `bfloat16` |
-| activation | [bf16_softmax.cc](./aie2/bf16_softmax.cc) | AIE API | Softmax (bf16 variant) | `bfloat16` |
 | activation | [bf16_exp.cc](./aie2/bf16_exp.cc) | AIE API | Element-wise `e^x` | `bfloat16` |
 | |
 | ml | [conv2dk1_i8.cc](./aie2/conv2dk1_i8.cc) | AIE API | 1x1 Conv2D | `int8_t` |

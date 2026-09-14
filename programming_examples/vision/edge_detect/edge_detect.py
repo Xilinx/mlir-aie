@@ -16,6 +16,7 @@ import argparse
 import sys
 
 import aie.iron as iron
+import aie.iron.kernels as kernels
 import numpy as np
 from aie.iron import (
     Buffer,
@@ -26,7 +27,6 @@ from aie.iron import (
     Program,
     Runtime,
     Worker,
-    kernels,
 )
 from aie.iron.controlflow import range_
 from aie.utils.hostruntime.argparse import (
@@ -255,19 +255,6 @@ def _compile_kwargs(opts):
     return dict(width=opts.width, height=opts.height)
 
 
-def _rgba2gray_ref(rgba_uint8, height, width):
-    """Numpy port of ``rgba2gray_aie`` (SRS_SHIFT=15)."""
-    rgba = rgba_uint8.reshape(height, width, 4)
-    r = rgba[..., 0].astype(np.int32)
-    g = rgba[..., 1].astype(np.int32)
-    b = rgba[..., 2].astype(np.int32)
-    wt_r = int(round(0.299 * (1 << 15)))  # 9798
-    wt_g = int(round(0.587 * (1 << 15)))  # 19235
-    wt_b = int(round(0.114 * (1 << 15)))  # 3736
-    y = (wt_r * r + wt_g * g + wt_b * b + (1 << 14)) >> 15
-    return np.clip(y, 0, 255).astype(np.uint8)
-
-
 def _filter2d_cv_ref(gray_uint8, height, width):
     """Numpy equivalent of cv::filter2D with the unscaled Laplacian
     ``[[0,1,0],[1,-4,1],[0,1,0]]`` + BORDER_REPLICATE."""
@@ -283,24 +270,13 @@ def _filter2d_cv_ref(gray_uint8, height, width):
     return np.clip(out, 0, 255).astype(np.uint8)
 
 
-def _threshold_binary_ref(arr_uint8, thresh, max_val):
-    """cv::threshold with THRESH_BINARY: out = (in > thresh) ? max : 0."""
-    return np.where(arr_uint8 > thresh, np.uint8(max_val), np.uint8(0))
-
-
-def _gray2rgba_ref(gray_uint8):
-    """Replicate gray to R/G/B with alpha=255 (matches ``gray2rgba_aie``)."""
-    flat = gray_uint8.reshape(-1)
-    out = np.zeros((flat.size, 4), dtype=np.uint8)
-    out[:, 0] = flat
-    out[:, 1] = flat
-    out[:, 2] = flat
-    out[:, 3] = 255
-    return out.reshape(-1)
-
-
 def _add_weighted_cv_ref(a_uint8, b_uint8, alpha, beta, gamma):
     """Numpy equivalent of cv::addWeighted: ``saturate(alpha*a + beta*b + gamma)``.
+
+    Deliberately the OpenCV formula and not ``kernels.add_weighted_ref``: this
+    file mirrors test.cpp's OpenCV pipeline and judges the whole image by an
+    L1 epsilon, whereas the library reference follows the kernel's Q2.14
+    fixed point exactly.
     test.cpp passes alpha=beta=1.0, gamma=0.0; the AIE kernel computes
     ``(a+b)/2`` in fixed-point — the diffs land under ``_EPSILON``.
     """
@@ -310,10 +286,10 @@ def _add_weighted_cv_ref(a_uint8, b_uint8, alpha, beta, gamma):
 
 def _edge_detect_ref(rgba_uint8, height, width):
     """End-to-end reference mirroring test.cpp's edgeDetect() OpenCV pipeline."""
-    gray = _rgba2gray_ref(rgba_uint8, height, width)
+    gray = kernels.rgba2gray_ref(rgba_uint8.reshape(-1))
     edges = _filter2d_cv_ref(gray, height, width)
-    thresholded = _threshold_binary_ref(edges, 10, 255)
-    mask_rgba = _gray2rgba_ref(thresholded)
+    thresholded = kernels.threshold_ref(edges, 10, 255, 0)  # 0 is BINARY
+    mask_rgba = kernels.gray2rgba_ref(thresholded.reshape(-1))
     return _add_weighted_cv_ref(rgba_uint8, mask_rgba, 1, 1, 0)
 
 

@@ -20,8 +20,35 @@ _HRX_UNSUPPORTED = {
 }
 
 
+def pytest_configure(config):
+    """Register the markers these tests use.
+
+    ``test/python/conftest.py`` registers them too, but the RUN lines invoke
+    pytest on a file in *this* directory, which makes this directory the
+    rootdir -- and pytest does not read a conftest.py above the rootdir.
+    Without this, every run of these tests warns about an unknown mark.
+    """
+    config.addinivalue_line(
+        "markers",
+        "extensive: the full sweep (every case x edge data x seed); deselect with "
+        '-m "not extensive"',
+    )
+    config.addinivalue_line(
+        "markers",
+        "supported_devices(*devices): the NPU generations a test's kernels exist "
+        'for ("npu1", "npu2"); skipped elsewhere',
+    )
+    config.addinivalue_line(
+        "markers",
+        "benchmark: times a kernel and records benchmark-action rows; select "
+        "with -m benchmark",
+    )
+    config._bench_rows = []
+    config._bench_meta = {}
+
+
 def _running_on_hrx() -> bool:
-    """True when the process's active host runtime is the HRX backend.
+    """Return True when the process's active host runtime is the HRX backend.
 
     The runtime is selected at ``aie.utils`` import time from ``NPU_RUNTIME``;
     the HRX RUN line sets ``NPU_RUNTIME=hrx`` so the default tensor class is
@@ -32,8 +59,122 @@ def _running_on_hrx() -> bool:
     return getattr(aie_utils.DEFAULT_TENSOR_CLASS, "__name__", "") == "HRXTensor"
 
 
+def pytest_addoption(parser):
+    parser.addoption(
+        "--seeds",
+        type=int,
+        default=1,
+        help="random seeds per case in the extensive kernel sweep",
+    )
+    parser.addoption(
+        "--bench-out",
+        default=None,
+        help="write benchmark-action rows here, if the session passes",
+    )
+    parser.addoption(
+        "--bench-meta", default=None, help="write run provenance and any failures here"
+    )
+    parser.addoption("--warmup", type=int, default=10, help="untimed iterations")
+    parser.addoption("--iters", type=int, default=50, help="timed iterations")
+    parser.addoption(
+        "--pmode",
+        default="any",
+        help="required device power mode; 'any' to accept whatever is set",
+    )
+    parser.addoption(
+        "--no-cycles", action="store_true", help="skip the traced cycle-count run"
+    )
+    parser.addoption(
+        "--no-compile", action="store_true", help="skip the cold-rebuild measurement"
+    )
+
+
+@pytest.fixture
+def benchmark(request):
+    """Record the benchmark-action rows a timed test produces.
+
+    The row name is ``<case>/<metric>``, which is the series key
+    ``benchmark-action`` charts on gh-pages; ``test_benchmark_series_names.py``
+    pins the whole set, so a renamed case restarts a chart and has to say so.
+    """
+    config = request.config
+
+    def record(case: str, metric: str, unit: str, value, span: str | None = None):
+        row = {
+            "name": f"{case}/{metric}",
+            "unit": unit,
+            "value": value,
+            # Read now, not at fixture setup: preflight fills this in.
+            "extra": config._bench_meta.get("provenance", ""),
+        }
+        if span:
+            row["range"] = span
+        config._bench_rows.append(row)
+
+    return record
+
+
+def pytest_sessionfinish(session, exitstatus):
+    """Write the benchmark rows, but only from a session that passed.
+
+    Timings from a run where some kernel returned the wrong answer are not
+    worth charting, and a partial file would silently drop series. pytest's
+    own exit status is the gate, so there is no second tally to keep in step
+    with it. Meta is written either way -- when nothing was measured, that
+    file is the only record of why.
+    """
+    import json
+    from pathlib import Path
+
+    config = session.config
+    rows = getattr(config, "_bench_rows", [])
+    meta = getattr(config, "_bench_meta", {})
+
+    if meta_path := config.getoption("--bench-meta"):
+        meta["exitstatus"] = int(exitstatus)
+        meta["n_rows"] = len(rows)
+        Path(meta_path).write_text(json.dumps(meta, indent=1))
+
+    if out := config.getoption("--bench-out"):
+        if exitstatus == 0 and rows:
+            Path(out).write_text(json.dumps(rows, indent=1))
+
+
+def _device_generation() -> str | None:
+    """``"npu1"`` / ``"npu2"`` for the device the tests will run on, or None."""
+    from aie.utils import get_current_device
+    from aie.utils.compile.utils import resolve_target_arch
+
+    # ``resolve_target_arch(None)`` deliberately defaults to "aie2" for callers
+    # that don't care about device-specific codegen; here it would misclassify
+    # "no device" (e.g. a static-checks runner with no NPU attached) as npu1
+    # and skip every npu2-only case. Bail out before that default kicks in.
+    device = get_current_device()
+    if device is None:
+        return None
+    try:
+        arch = resolve_target_arch(device)
+    except Exception:  # noqa: BLE001 - unrecognized device: nothing to skip on
+        return None
+    return "npu2" if arch == "aie2p" else "npu1"
+
+
 def pytest_collection_modifyitems(config, items):
-    """Skip HRX-unsupported tests when running under the HRX backend."""
+    """Skip HRX-unsupported tests under HRX, and device-restricted tests elsewhere.
+
+    ``@pytest.mark.supported_devices("npu2")`` names the generations a
+    test's kernels exist for (IRON's marker of the same name); the test is
+    skipped on any other device.
+    """
+    generation = _device_generation()
+    for item in items:
+        marker = item.get_closest_marker("supported_devices")
+        if marker and generation and generation not in marker.args:
+            item.add_marker(
+                pytest.mark.skip(
+                    reason=f"kernel exists for {marker.args}, not {generation}"
+                )
+            )
     if not _running_on_hrx():
         return
     for item in items:

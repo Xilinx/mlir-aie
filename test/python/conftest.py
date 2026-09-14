@@ -11,7 +11,6 @@ own conftest.py).
 """
 
 import pytest
-
 from aie.iron.device import NPU2Col1
 from aie.iron.kernel import ExternalFunction
 from aie.iron.kernels import _common as _kernels_common
@@ -40,3 +39,16 @@ def npu2_device():
     set_current_device(NPU2Col1())
     yield
     set_current_device(None)
+
+
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers",
+        "extensive: the full sweep (every case x edge data x seed); deselect with "
+        '-m "not extensive"',
+    )
+    config.addinivalue_line(
+        "markers",
+        "supported_devices(*devices): the NPU generations a test's kernels exist "
+        'for ("npu1", "npu2"); skipped elsewhere (see test/python/npu/conftest.py)',
+    )

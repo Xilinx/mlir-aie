@@ -17,7 +17,7 @@
 
 #include <aie_api/aie.hpp>
 
-#include "zero.cc"
+#include "../generic/zero.cc"
 
 template <typename T_in, typename T_out, int rowA, int colA, int colB>
 void matmul_scalar_cascade_put_only(T_in *a, T_in *b, T_out *c) {

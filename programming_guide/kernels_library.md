@@ -61,12 +61,12 @@ The kernel `.o` lands in the per-design cache directory alongside the
 xclbin — see [`compilation_stages.md`](./compilation_stages.md)
 §Per-design cache directory contents.  No Makefile rule was harmed.
 
-## Sibling kernels share one `.o`: `kernels.mm(...).zero`
+## Sibling kernels share one `.o`: `kernels.mm(...).also.zero`
 
 Some factories expose an extra binding for a companion symbol that
 lives in the same `.cc`.  `kernels.mm(...)` is the canonical case: the
 matmul `.cc` exports both `matmul_*` and `zero_*` symbols, and the
-returned `ExternalFunction` carries a `.zero` attribute that binds the
+returned `ExternalFunction` carries an `.also.zero` attribute that binds the
 zero-fill kernel against *the same* compiled `.o`:
 
 ```python
@@ -75,13 +75,13 @@ matmul = kernels.mm(
     input_dtype=np.int16,
     output_dtype=np.int16,
 )
-zero_kernel = matmul.zero          # sibling binding, no extra compile
+zero_kernel = matmul.also.zero     # sibling binding, no extra compile
 ```
 
-Without the `.zero` attribute the design would have to call a separate
+Without the `.also.zero` attribute the design would have to call a separate
 `kernels.mm_zero(...)` factory that recompiled `mm.cc` a second time
 for no functional benefit.  The same pattern applies to any factory
-that documents a `.zero` (today: `mm` and `mv`).
+that documents an `.also.zero` (today: `mm` and `mv`).
 
 `kernels.mm(...)` also exposes `.mac_dims` — the `(r, s, t)` MMUL
 geometry the kernel was compiled with, which varies by arch and dtype.
@@ -113,11 +113,13 @@ on each submodule's `__doc__`:
 
 | Submodule | What's in it |
 |-----------|--------------|
-| [`kernels.eltwise`](../python/iron/kernels/eltwise.py)       | element-wise: passthrough, scale, add, mul, relu |
+| [`kernels.eltwise`](../python/iron/kernels/eltwise.py)       | element-wise: passthrough, scale, add, mul, mul_add, relu |
 | [`kernels.reduce`](../python/iron/kernels/reduce.py)         | reductions: reduce_add, reduce_min, reduce_max, compute_max |
-| [`kernels.activation`](../python/iron/kernels/activation.py) | activations: softmax, gelu, silu, swiglu, bf16_exp.  Companion numpy refs (`relu_ref`, `silu_ref`, `gelu_ref`, `bf16_exp_ref`, `softmax_ref`) live in the same module so host harnesses don't reimplement the math. |
-| [`kernels.linalg`](../python/iron/kernels/linalg.py)         | linear algebra: mm (+ `.zero`, `.mac_dims`), mv (+ `.zero`), cascade_mm (+ `.{get_only,put_only,put_get,zero}`, `.mac_dims`) |
-| [`kernels.conv`](../python/iron/kernels/conv.py)             | convolutions: conv2dk1/3/14, conv2dk1_skip(_init), bn_* bottleneck variants for MobileNet/ResNet |
+| [`kernels.activation`](../python/iron/kernels/activation.py) | activations: softmax, tanh, sigmoid, gelu, silu, swiglu, leaky_relu, bf16_exp, exp2f_vec |
+| [`kernels.datamovement`](../python/iron/kernels/datamovement.py) | data movement and conversion: axpy, convert_copy, expand, transpose |
+| [`kernels.linalg`](../python/iron/kernels/linalg.py)         | linear algebra: mm (+ `.also.zero`, `.mac_dims`, `.stream_dims`), mv (int16 + `.also.zero`, bf16), cascade_mm (+ `.also.{get_only,put_only,put_get,zero}`, `.mac_dims`), mm_bfp (+ `.also.zero`), mm_bfp_shuffle, mha (+ the flash-attention siblings) |
+| [`kernels.conv`](../python/iron/kernels/conv.py)             | convolutions: conv2dk1/3/14, conv2dk1_skip(_init), dwconv1d, bn_* bottleneck variants for MobileNet/ResNet |
+| [`kernels.transformer`](../python/iron/kernels/transformer.py) | transformer blocks: rms_norm, layer_norm (bf16, f32, affine + cast), rope, mm_activation_epilogue |
 | [`kernels.vision`](../python/iron/kernels/vision.py)         | vision: rgba2hue, rgba2gray, gray2rgba, threshold, bitwise_or/and, filter2d, add_weighted |
 
 The submodule files are the authoritative catalog — each function has
@@ -140,6 +142,117 @@ kernels.conv.<TAB>            # factory-level
 The factories themselves are short — typically a `_make_extern` call
 plus dtype validation.  Reading the source of a factory you're about
 to use is often faster than chasing through the docstring.
+
+Every module also exports a numpy reference per kernel (`add_ref`,
+`reduce_max_ref`, `mm_ref`, `softmax_ref`, ...), and most factories attach
+a `KernelContract` to the function they return:
+
+```python
+fn = kernels.reduce_max(dtype=np.int32, tile_size=1024)
+fn.contract.roles        # (In, Out, Count) -- the markers @iron.jit uses
+fn.contract.reference    # kernels.reduce_max_ref
+fn.contract.tolerance.kind  # 'exact'
+fn.contract.ops_per_call # 1024
+
+mm = kernels.mm(input_dtype=np.int16, output_dtype=np.int32)
+mm.contract.acc_dtype    # numpy.int64: accauto is acc64 for int16
+mm.contract.reduction    # 64: products summed per output per call (dim_k)
+kernels.mm.dtypes        # every (input_dtype, output_dtype) the factory supports
+```
+
+The contract is what lets `aie.iron.algorithms.kernel_design` build, run and check
+a kernel without a hand-written design:
+
+```python
+from aie.iron.algorithms import kernel_design as kd
+
+fn = kernels.reduce_max(dtype=np.int32)
+design = kd.design(kernels.reduce_max, calls=16, dtype=np.int32)
+inputs = kd.sample_inputs(fn, calls=16)
+ins, out = kd.upload(
+    inputs, kd.output_size(fn, calls=16), fn.output_dtype(np.int32), fn=fn, poison=True
+)
+design(*ins, out)
+verdict = fn.judge(out.numpy().copy(), fn.expected(inputs), calls=16)
+assert verdict, verdict.detail
+```
+
+Tolerances are kernel-owned. Integer kernels and lossless copies are
+bit-exact; LUT approximations declare the `rtol` their reference
+documents; a factory that declares nothing is judged with
+`Tolerance.default_for(out_dtype)`: exact for integers, `1e-4` for
+float32, `1e-2` for float16 and the canonical `0.128` for bf16.
+
+### What a signature cannot say
+
+A contract also declares the dtype facts an `arg_types` list leaves out:
+
+- `acc_dtype` and `reduction`: what the kernel accumulates in and over how
+  many terms. `fn.input_limit(dtype)` turns them into the largest integer
+  input that cannot overflow the accumulator, which is where the builder
+  and the case table draw their data.
+- `setup`: a kernel to run once on the core first, when this one needs it;
+  see [Rounding mode](#rounding-mode) below.
+- `stack_bytes`: the core stack a Worker calling this kernel needs, when
+  that is more than the target's default.
+- `unsupported`: why the generic builder cannot run this kernel, when it
+  cannot; the reference still says what the kernel computes.
+
+What the kernel does on overflow, how a narrowing store rounds, and what
+it does with NaN or subnormal inputs are *not* declared. The numpy
+`reference` is the arithmetic model -- a saturating kernel's reference
+clips, a denormal-flushing one flushes -- and `tolerance` is the slack
+allowed against it. Declaring the same fact in two places let the two
+drift.
+- `.dtypes` on the factory: the dtype combinations it builds. The host
+  contract test builds every entry.
+
+## Standing in for a hand-built kernel
+
+Code that builds a kernel by hand needs the exported **symbol**, the
+**source file** and the **compile flags** to line up. Every factory
+publishes all three (`fn.name`, `fn.source_file`, `fn.compile_flags`), so a
+factory call can replace a hand-written source-plus-symbol pair.
+`test_factories_reproduce_the_iron_operator_kernel_specs` in
+`test/python/test_kernel_contracts.py` pins that table, so renaming a symbol
+or dropping a flag fails a test here rather than silently breaking a build
+elsewhere.
+
+Three things make this work for more than one kernel per design:
+
+- **`inout`.** A kernel that accumulates into its output declares that
+  argument `inout` rather than `out`: `mm` computes `C += A * B`, reads C
+  back, ships an `.also.zero` sibling, and a design zeroes the buffer before
+  the first call. The reference still computes the whole product, so an
+  `inout` output is excluded from `reference_indices` like an `out` one;
+  `contract.accumulates` says which kind a kernel is. The int16 `mv` and
+  `cascade_mm` accumulate the same way; the bf16 `mv` stores.
+- **Whole-object symbol prefixing.** Each parameterisation of a kernel
+  gets its own symbol prefix, and every symbol its object defines is
+  prefixed, not just the declared one. A translation unit usually
+  exports more (`mm.cc` emits the `zero_*` that `.also.zero` binds; `mha.cc`
+  includes `mm.cc` and defines `matmul_*` names of its own), and leaving
+  those bare made two parameterisations collide at link.
+  `ExternalFunction.sibling(symbol, arg_types)` binds another symbol
+  from the same object with the prefix applied; that is how `.also.zero`, the
+  cascade trio and `mha`'s flash-attention siblings are built. Chess-built
+  kernels are the exception: `llvm-objcopy` corrupts xchesscc objects, so
+  they keep bare symbols and only one variant may appear in a design.
+- **`host_args`.** `kernel_design.host_args(fn, calls=, shape=)`
+  returns one `HostArg` (direction, shape, dtype) per host buffer the
+  design takes, in the layout the device expects: B transposed for a
+  `b_col_maj` matmul, C transposed for `c_col_maj`, encoded bytes for a
+  bfp16ebs8 operand, interleaved tiles where streamed tensors share one
+  fifo, a reduction's DMA padding. `param` arguments are absent, since
+  they are baked into the design. A caller that only needs to size
+  buffers reads this instead of running the sampler.
+
+Two factories are drop-ins even though the generic builder cannot run
+them: `kernels.mha()` compiles `aie_kernels/aie2p/mha.cc` once and binds its
+ten symbols, and the bf16 `mv` builds the shared `aie_kernels/generic/mv.cc`
+with its `(m, row_offset, A, b, c)` signature. What a caller needs from
+those is the object and the binding, and both provide that; see
+[Kernels the generic builder cannot run](#kernels-the-generic-builder-cannot-run).
 
 ## When you outgrow the library
 
@@ -167,6 +280,139 @@ the new kernel proves useful across designs, contributing it back as a
 new factory under the right submodule is straightforward — match the
 existing module's docstring + `ValueError` shape and the auto-listing
 above picks it up.
+
+### Adding a kernel
+
+A new factory is complete when one line each in two places covers it:
+
+1. **Contract.** Pass `contract=KernelContract(...)` to `_make_extern`
+   with the argument roles (`in`, `out` or `inout`, `param`, `count`,
+   `scalar`), a
+   numpy reference exported as `<name>_ref`, `ops_per_call` for the
+   benchmark's throughput series, and a `Tolerance` with its evidence in
+   `note` — or none, to get the dtype default. Reductions set `out_valid`
+   to the number of meaningful output elements. Say what the kernel
+   accumulates in (`acc_dtype`, `reduction`), what an integer overflow
+   does (`overflow`) and how a fixed-point shift rounds (`rounding`),
+   from the C++ rather than from a guess; a factory with more than one
+   dtype lists them in a `.dtypes` table.
+2. **Case.** Add one `Case(...)` to
+   [`test/python/npu/kernel_cases.py`](../test/python/npu/kernel_cases.py):
+   the shape to run and, with `smoke=True`, that it is the kernel's
+   representative shape for the per-PR device test. The same table drives
+   the nightly correctness sweep and the benchmark, so there is nothing
+   else to register.
+
+The host test [`test/python/test_kernel_contracts.py`](../test/python/test_kernel_contracts.py)
+then checks the roles against the real `arg_types()`, the reference's
+arity, that the generated design lowers to MLIR, and that `setup`
+agrees with the source.
+
+## Testing, benchmarking and static checks
+
+Every tier below reads the contract and the case table; none restates
+what a kernel computes.
+
+| Tier | What | Where | When |
+| --- | --- | --- | --- |
+| host | contract vs. factory; design lowers to MLIR | `test/python/test_kernel_contracts.py` | every PR (lit) |
+| host, compile | every distinct design through aiecc to CDO | `test/python/npu/test_kernels_compile.py` (`-m extensive`) | static workflow |
+| device, smoke | the `smoke` cases on random data | `test/python/npu/test_kernels_e2e.py` | every PR on the NPU runners |
+| device, full | every case, every edge-data case, `--seeds` seeds | the same file, `-m extensive` | nightly, before anything is timed |
+| host, static | Peano remarks per kernel build | `python -m aie.utils.compile.remarks` | nightly and kernel or toolchain PRs |
+
+```bash
+pytest test/python/test_kernel_contracts.py                        # host
+pytest test/python/npu/test_kernels_e2e.py -k eltwise              # NPU, smoke
+pytest test/python/npu/test_kernels_e2e.py -m extensive --seeds 3  # NPU, everything
+pytest test/python/npu/test_kernels_bench.py -m benchmark -k mul   # time one kernel
+pytest test/python/npu/test_kernels_bench.py -m benchmark --bench-out bench.json
+python -m aie.utils.compile.remarks --target aie2p --out static.json
+```
+
+### Data policy
+
+Random data is bounded by `fn.input_limit(dtype)`, which the contract's
+`acc_dtype` and `reduction` fix (over the design's full `K` for a
+matmul), so an edge case exercises the datapath rather than overflowing
+the accumulator. The output range does not bound it: what a kernel does
+when a result leaves that range is its reference's to model, and clipping
+inputs to it would leave a requantising kernel's data near zero.
+
+Which edge cases a kernel is fed is a property of the case, not of the
+contract. Integer kernels get the extremes; matmul operands never carry
+NaN; a kernel whose reference handles NaN, inf and subnormals says so by
+listing them in its case's `data_cases`, and the test then proves it.
+
+### Rounding mode
+
+The core narrows accumulators (an `srs` shift, a bf16 store) in whatever
+mode its rounding-mode register holds, and a fresh core boots in `floor`.
+The contract's `setup` names a kernel to run once on the core before the
+first call. A kernel whose source calls `aie::set_rounding` itself (the
+conv kernels, `layer_norm`, `mha`, the aie2p `mm`) needs none, so its
+`setup` is `None`. A kernel that relies on the design to have set the
+mode names the setter: the bf16 kernels that store from an fp32
+accumulator use `setup=conv_even`, the mode numpy's reference rounds in.
+A design calls `fn.contract.setup()` once before the kernel; the builder
+does the same, so tests and benchmarks run each kernel in the mode its
+contract was written for.
+
+The two are alternatives, and a test enforces it against the sources: a
+kernel whose `.cc` calls `aie::set_rounding` must not also name a
+`setup`, and one that names a `setup` must actually narrow something.
+
+### What the benchmark records
+
+`test/python/npu/test_kernels_bench.py` measures a kernel only after it has
+produced a correct result under its declared tolerance; a wrong result fails
+the test, and a failed session writes no `--bench-out` file at all. Per case it records core
+`cycles` (trace, median over the run's kernel calls) and
+`cycles_per_kop`, `npu_us` / `e2e_us` from `aie.utils.benchmark`, and
+`compile_s` with the `xclbin`, `insts` and core-ELF sizes of a forced
+rebuild. Preflight reads the device and its power mode through the host
+runtime (`HostRuntime.power_mode()`) and refuses to run outside
+`--pmode`; a bit-exact `passthrough` smoke test inside a cycle band guards
+the machine. Nightly data goes to `gh-pages:bench/<npu>/` and is graphed
+at `https://xilinx.github.io/mlir-aie/bench/npu2/` (and `npu1`); `cycles`
+and the sizes alert at 3 %, the wall times are advisory, and nothing
+gates a pull request. A Peano-bump PR is compared against the cached
+nightly baseline and gets one comment only if a hard-threshold series
+regressed.
+
+### Static checks
+
+`aie.utils.compile.remarks` compiles every factory build (defaults plus
+each `.dtypes` entry) exactly as the JIT does, with Peano's
+optimization-record flags, and turns the records into per-kernel series:
+each loop's II and whether it is a zero-overhead loop, program memory,
+missing-bank loads and dropped `#pragma`s. The record shapes and the
+regression rules are documented on the module
+([API](../api/kernels.md#static-checks)). A dropped pragma is a
+kernel-source bug and is annotated on the pull request's file and line;
+a kernel that fails to compile is an error annotation. With
+`MLIR_AIE_KERNEL_SOURCES` set to a checkout, the checkout's
+`aie_kernels/` is compiled against an installed wheel, which is how the
+workflow runs on a pull request.
+
+### Kernels the generic builder cannot run
+
+Five factories carry a contract whose `unsupported` field says why the
+single-Worker builder cannot drive them; their references still say what
+they compute, and `design()` refuses them with that reason:
+
+| Factory | Why |
+| --- | --- |
+| `cascade_mm` | partial sums travel over the cascade stream, which is not an argument |
+| `mm_bfp_shuffle` | a bfp16ebs8 tile through a plain fifo, which the builder samples only as a matmul operand |
+| bf16 `mv` | its signature leads with runtime `m` / `row_offset` scalars; the matvec design drives the int16 `(A, b, c)` form |
+| `mha` | a multi-core attention dataflow with a running softmax |
+| `bn_conv2dk1_relu_xy_pool_padded` | accumulates across calls through its output, one row per `y_index` |
+
+Five `bn_*` cascade halves have no contract at all: a PUT kernel has no
+output argument, so a contract would describe half a computation.
+`test_contract_coverage_is_explicit` pins that list, as it does
+`set_rounding`, which has no data arguments.
 
 ## Related reading
 

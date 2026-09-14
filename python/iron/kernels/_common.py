@@ -7,12 +7,173 @@
 
 import hashlib
 import logging
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable, Iterable
 
 import numpy as np
 from aie.iron.kernel import ExternalFunction
+from aie.utils.compile.jit import markers as _markers
+from aie.utils.compile.jit.markers import Count, InOut, Out
+from aie.utils.verify import Tolerance
 
 _log = logging.getLogger(__name__)
+
+ROLES = _markers.ROLES
+
+
+@dataclass(frozen=True)
+class KernelContract:
+    """What a kernel computes, declared next to the factory that builds it.
+
+    ``arg_types`` already fixes each argument's shape and dtype. The contract
+    adds what types cannot say: which argument is which, how to compute the
+    expected result on the host, and how close the device must come. With it
+    a generic builder (``aie.iron.algorithms.kernel_design``) can build a design, run
+    the kernel and judge the output for *any* factory, so correctness tests,
+    e2e tests and benchmarks share one definition instead of each restating
+    it.
+
+    Attributes:
+        roles: One of :data:`ROLES` per argument, in argument order --
+            ``In``, ``Out``, ``InOut``, ``Param``, ``Scalar`` or ``Count``,
+            the same markers ``@iron.jit`` uses. ``Out`` is written by the
+            kernel; ``InOut`` is accumulated into (``mm``'s ``C += A * B``),
+            which is why such a kernel ships a ``.also.zero`` sibling and a design
+            zeroes the buffer before the first call. Exactly one argument is
+            ``Out`` or ``InOut``.
+        reference: Host implementation, and the kernel's arithmetic model:
+            a saturating kernel's reference clips, a flushing one flushes.
+            Called with every non-``Out``, non-``InOut``, non-``Count``
+            argument in argument order: ``In``/``Param`` tiles as numpy arrays
+            of shape ``(calls, n)`` in the kernel's dtype, ``Scalar`` values
+            as Python numbers. Returns the expected
+            output for all calls; the harness casts it to the output dtype.
+            ``None`` when no host reference exists yet -- the kernel is then
+            built but not judged.
+        tolerance: How close the device result must be, or ``None`` for
+            :meth:`Tolerance.default_for` the output dtype. State the
+            evidence in ``Tolerance.note``.
+        ops_per_call: Arithmetic operations one kernel call performs, for
+            throughput normalisation. ``None`` means one per output element.
+        out_valid: Meaningful elements at the start of each output tile when
+            the tile is padded for DMA alignment (reductions write one value
+            into a 4-byte-aligned tile). ``None`` means the whole tile.
+        sample: ``sample(rng, calls) -> list[np.ndarray]`` producing one host
+            array per ``In``/``Param`` argument for ``calls`` kernel calls,
+            for kernels whose inputs have structure a dtype cannot express
+            (``expand``'s packed nibbles + scales). ``None`` lets the harness
+            draw plain random data of each argument's dtype.
+        acc_dtype: The type the kernel accumulates in (``np.int32`` for an
+            ``acc32`` mmul, ``np.float32`` for ``accfloat``), or ``None`` when
+            nothing is accumulated (copies, selections, bit operations). With
+            ``reduction`` it tells the harness how large an input may be
+            before the accumulator, or the output, would overflow.
+        reduction: Terms summed into one output element per call (``K`` for
+            a matmul tile, taps x channels for a convolution, the tile size
+            for a reduction). ``None`` means one.
+        setup: A kernel to call once on the core before the first call of
+            this one, or ``None``. The core narrows accumulators in whatever
+            mode its rounding register holds and boots in ``floor``; a kernel
+            that needs another mode names the setter here, e.g.
+            ``setup=conv_even``. A kernel whose source calls
+            ``aie::set_rounding`` itself needs nothing.
+        stack_bytes: Core stack a Worker calling this kernel needs, or
+            ``None`` for the target's default. aiecc measures each core's
+            stack and rejects a design whose stack is too small, so a kernel
+            that needs more than the default says so here rather than making
+            every design guess. Record where the number came from.
+        cascade_partner: The factory for the other half, when this kernel is
+            one half of a two-tile cascade pair. Half a pair computes half an
+            answer: the partial sum crosses the cascade stream, which is not
+            an argument, so a PUT half has no output role at all and neither
+            half is separately observable. ``reference`` is therefore the
+            *pair's* -- what the two compute together -- and ``unsupported``
+            follows from naming a partner rather than being restated.
+        unsupported: ``None`` when the generic builder can build, run and
+            judge the kernel in a single-Worker design; otherwise the reason
+            it cannot (a cascade protocol, an operand it cannot sample). The
+            reference and the dtype facts still say what the kernel computes.
+
+    What the kernel does when a result overflows, how it rounds a narrowing
+    store, and what it does with NaN or subnormal inputs are not declared
+    here: ``reference`` is the arithmetic model (a saturating kernel's
+    reference clips, a flushing kernel's reference flushes) and ``tolerance``
+    is the slack allowed against it. Declaring them twice let the two drift.
+    """
+
+    roles: tuple[type, ...]
+    reference: Callable[..., np.ndarray] | None = None
+    tolerance: Tolerance | None = None
+    ops_per_call: int | None = None
+    out_valid: int | None = None
+    sample: Callable[..., list] | None = None
+    acc_dtype: type | None = None
+    reduction: int | None = None
+    setup: Callable[[], object] | None = None
+    stack_bytes: int | None = None
+    cascade_partner: Callable[..., object] | None = None
+    unsupported: str | None = None
+
+    def __post_init__(self):
+        bad = [r for r in self.roles if r not in ROLES]
+        if bad:
+            names = ", ".join(r.__name__ for r in ROLES)
+            raise ValueError(f"unknown kernel argument role(s) {bad}; use {names}")
+        # A kernel with no data arguments at all (set_rounding sets core state)
+        # has nothing to be the output. A cascade half may also have none: its
+        # result leaves on the cascade stream, which is not an argument.
+        n_out = self.roles.count(Out) + self.roles.count(InOut)
+        allowed = (0, 1) if self.cascade_partner is not None else (1,)
+        if self.roles and n_out not in allowed:
+            raise ValueError(
+                "a kernel contract needs exactly one Out or InOut role"
+                + (", or none when it emits on a cascade" if allowed == (0, 1) else "")
+            )
+        if self.reduction is not None and self.reduction < 1:
+            raise ValueError(f"reduction must be >= 1, got {self.reduction}")
+        if self.stack_bytes is not None and self.stack_bytes < 1:
+            raise ValueError(f"stack_bytes must be >= 1, got {self.stack_bytes}")
+        if self.unsupported is not None and not self.unsupported:
+            raise ValueError("unsupported must be a reason, or None")
+        # Naming a partner already says the single-Worker builder cannot drive
+        # this kernel, so the reason is derived rather than restated.
+        if self.cascade_partner is not None and self.unsupported is None:
+            object.__setattr__(
+                self,
+                "unsupported",
+                f"one half of a cascade pair with {self.cascade_partner.__name__}; "
+                "the partial sum crosses the cascade stream, which is not an "
+                "argument, so the reference is what the pair computes",
+            )
+
+    @property
+    def out_index(self) -> int:
+        """Position of the output, whether the kernel writes it or accumulates into it."""
+        roles = list(self.roles)
+        if Out in roles:
+            return roles.index(Out)
+        if InOut in roles:
+            return roles.index(InOut)
+        raise ValueError(
+            f"this kernel has no output argument: it emits on the cascade to "
+            f"{self.cascade_partner.__name__ if self.cascade_partner else '?'}, "
+            "so there is nothing to size or judge on its own"
+        )
+
+    @property
+    def accumulates(self) -> bool:
+        """Whether the kernel reads its output back (``InOut``), as ``C += A * B`` does."""
+        return InOut in self.roles
+
+    def reference_indices(self) -> list[int]:
+        """Argument positions handed to ``reference``, in order.
+
+        An ``InOut`` output is excluded like an ``Out`` one: the reference
+        computes the whole result, and a design that accumulates zeroes the
+        buffer first (see the ``.also.zero`` sibling).
+        """
+        return [i for i, r in enumerate(self.roles) if r not in (Out, InOut, Count)]
 
 
 def _detect_arch() -> str:
@@ -54,7 +215,7 @@ def _kernel_source(arch: str, subdir: str, filename: str) -> Path:
     """
     from aie.utils import config
 
-    base = Path(config.cxx_header_path()) / "aie_kernels"
+    base = Path(config.aie_kernels_dir())
     candidate = base / subdir / filename
     if candidate.exists():
         return candidate
@@ -100,6 +261,23 @@ def _dtype_to_bit_width(dtype, *, factory_name: str) -> int:
     return bit_width
 
 
+def dtypes(table: Iterable[dict]):
+    """Declare the keyword combinations a factory builds, as ``factory.dtypes``.
+
+    The registry and the host contract test enumerate the table instead of
+    restating it.
+    """
+
+    def decorate(factory):
+        # A function attribute: pyright models functions as having a fixed
+        # attribute set, so the one assignment is annotated rather than each
+        # of the ~20 factories that carry a table.
+        factory.dtypes = tuple(table)  # pyright: ignore[reportFunctionMemberAccess]
+        return factory
+
+    return decorate
+
+
 def _conv_act_dtype_info(
     base_name: str, act_dtype, *, factory_name: str
 ) -> tuple[str, list[str]]:
@@ -127,6 +305,42 @@ def _require_fixed_tile_size(
         raise ValueError(
             f"{factory_name}() tile_size must be {expected} to match the "
             f"hard-coded C++ loop bound, got {tile_size}."
+        )
+
+
+def _require_min_trip_count(
+    factory_name: str,
+    elems: int,
+    per_iter: int,
+    min_iters: int,
+    *,
+    param: str = "tile_size",
+) -> None:
+    """Raise ValueError when a tile is too small for a kernel's vectorised loop.
+
+    Several kernels declare ``AIE_LOOP_MIN_ITERATION_COUNT(n)``. Peano
+    predefines ``__AIECC__``, so that expands to a real ``#pragma clang loop
+    min_iteration_count(n)``: a promise the compiler may schedule against,
+    not a check. Below it the pipelined loop runs past the tile. Two kernels
+    here (passthrough, reduce_add) hang the core outright at four iterations
+    rather than returning wrong data. ``reduce_max.cc`` states the same
+    precondition as an ``assert``, which the ``-DNDEBUG`` build drops, so the
+    check only has effect if it lives here.
+
+    ``per_iter`` elements are consumed per iteration; a tile that is not a
+    whole number of them also lets the tail load/store overrun.
+    """
+    if elems % per_iter:
+        raise ValueError(
+            f"{factory_name}() {param}={elems} is not a multiple of the "
+            f"kernel's {per_iter}-element vector step; the tail iteration "
+            f"would run past the tile."
+        )
+    if elems < min_iters * per_iter:
+        raise ValueError(
+            f"{factory_name}() {param}={elems} gives {elems // per_iter} "
+            f"loop iterations, but the kernel declares a minimum of "
+            f"{min_iters}; use {param} >= {min_iters * per_iter}."
         )
 
 
@@ -180,8 +394,13 @@ def _make_extern(
     compile_flags: list[str] | None = None,
     use_chess: bool = False,
     shared_object_file_name: str | None = None,
+    contract: KernelContract | None = None,
 ) -> ExternalFunction:
     """Construct (or reuse) an ExternalFunction with the standard include_dirs.
+
+    ``contract`` (a :class:`KernelContract`) is attached as ``extern.contract``
+    so harnesses and tests can build, run and judge the kernel generically;
+    factories without one leave it ``None``.
 
     Memoized on (func_name, source_path, arg_types, compile_flags,
     use_chess) so repeated calls with identical parameters return the
@@ -304,5 +523,6 @@ def _make_extern(
         symbol_prefix=symbol_prefix,
         use_chess=use_chess,
     )
+    extern.contract = contract
     _EXTERN_CACHE[cache_key] = extern
     return extern

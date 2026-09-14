@@ -7,7 +7,10 @@
 
 import hashlib
 import logging
+from enum import Enum
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
 
 import numpy as np
 
@@ -20,6 +23,32 @@ from .buffer import Buffer
 from .resolvable import Resolvable
 
 logger = logging.getLogger(__name__)
+
+
+class DesignShape(Enum):
+    """The dataflow a generic design has to build to run a kernel.
+
+    A kernel's arguments say what it consumes, not how a design feeds it.
+    ``STREAM`` tiles every input through an ObjectFifo, one element per call;
+    the matrix shapes walk operands in the micro-tile blocking the kernel was
+    compiled for, which is a property of the kernel, not of its signature.
+    """
+
+    STREAM = "stream"
+    MATMUL = "matmul"
+    MATVEC = "matvec"
+
+
+def _as_dtype(dt):
+    """``np.dtype(dt)``, or ``dt`` itself for a block type numpy has no dtype for.
+
+    ``v8bfp16ebs8`` and friends are ``np.generic`` subclasses standing in for a
+    hardware block format, and numpy refuses to make a dtype of them.
+    """
+    try:
+        return np.dtype(dt)
+    except TypeError:
+        return dt
 
 
 def _is_contiguous_row_major(mr):
@@ -105,8 +134,16 @@ class BaseKernel(Resolvable):
         if not name:
             raise ValueError("Kernel name cannot be empty.")
         self._name = name
-        self._arg_types = arg_types if arg_types is not None else []
+        # The declaration as written (numpy shapes and dtypes). Resolving the
+        # kernel builds MLIR types from it without disturbing it, so this stays
+        # readable before and after a build.
+        self._arg_types = list(arg_types) if arg_types is not None else []
         self._op: FuncOp | None = None
+
+    @property
+    def name(self) -> str:
+        """Symbol name of the function as it appears in the object file."""
+        return self._name
 
     def _resolve_arg(self, arg_index: int):
         """Validate ``arg_index`` and return the underlying type entry."""
@@ -161,10 +198,10 @@ class BaseKernel(Resolvable):
         if type_args is not None and len(type_args) >= 2:
             dt = type_args[1]
             dt_args = getattr(dt, "__args__", None)
-            return np.dtype(dt_args[0]) if dt_args is not None else np.dtype(dt)
+            return _as_dtype(dt_args[0] if dt_args is not None else dt)
         dtype = getattr(arg, "dtype", None)
         if dtype is not None:
-            return np.dtype(dtype)
+            return _as_dtype(dtype)
         raise ValueError(
             f"Argument {arg_index} does not have a dtype or is not an array type."
         )
@@ -188,7 +225,12 @@ class BaseKernel(Resolvable):
         return shape[0]
 
     def arg_types(self) -> list:
-        """Return a copy of the argument type list."""
+        """Return the argument types as declared: ``np.ndarray[shape, dtype]`` / scalars.
+
+        A copy, and stable: resolving the kernel builds MLIR types from these
+        without replacing them, so a memoized kernel describes itself the same
+        way before and after a build.
+        """
         return self._arg_types.copy()
 
     def __call__(self, *args, **kwargs):
@@ -322,14 +364,173 @@ class ExternalFunction(Kernel):
 
     _instances: set = set()  # Registry of all live ExternalFunction instances.
 
-    # Optional sibling bindings attached by the linalg kernel factories
-    # (kernels.mm / mv / cascade_mm). Declared here so the dynamic
-    # assignment of these contract attributes type-checks.
+    # Optional metadata the kernel factories attach: the contract
+    # (aie.iron.kernels.KernelContract) and the matmul layout facts.
+    # Typed Any rather than KernelContract: pyright analyses the sources and
+    # the staged package as two module trees, so naming the class here would
+    # make the factories' own KernelContract a different type.
+    contract: Any = None
     mac_dims: tuple
-    zero: "Kernel"
-    get_only: "Kernel"
-    put_only: "Kernel"
-    put_get: "Kernel"
+    dims: tuple
+    stream_dims: Any  # kernels.linalg.StreamDimsABC
+    b_col_maj: bool
+    c_col_maj: bool
+    a_dims_from_stream: object
+    #: How a generic design must feed this kernel.
+    design_shape: DesignShape = DesignShape.STREAM
+
+    def _require_contract(self):
+        if self.contract is None:
+            raise ValueError(
+                f"kernel '{self.name}' declares no contract; add a KernelContract to "
+                "its factory (roles, reference, tolerance) so it can be described, "
+                "built and checked"
+            )
+        return self.contract
+
+    def param_values(self, inputs: list) -> list:
+        """Pick the ``Param`` arrays out of one logical input list.
+
+        ``inputs`` is one array per ``In``/``Param`` argument in argument
+        order. A design bakes ``Param`` arguments into core buffers rather
+        than streaming them, so it needs them separately.
+        """
+        from aie.utils.compile.jit.markers import In, Param
+
+        c = self._require_contract()
+        positions = [i for i, r in enumerate(c.roles) if r in (In, Param)]
+        return [np.asarray(a) for a, i in zip(inputs, positions) if c.roles[i] is Param]
+
+    def input_limit(self, dtype, *, reduction: int | None = None) -> int | None:
+        """Largest integer magnitude an input may take without overflowing.
+
+        From the contract's ``acc_dtype`` and ``reduction`` (``reduction``
+        overrides the per-call value, e.g. with the full ``K`` of a tiled
+        matmul): with two or more multiplied inputs every product of two
+        limits summed ``reduction`` times must fit the accumulator with a
+        factor-4 margin; with one input the sum of ``reduction`` limits must.
+        ``None`` for float inputs, or when the contract declares no
+        accumulator.
+
+        The output dtype does not bound this. What a kernel does when a
+        result leaves the output range is its reference's to model, and
+        clipping inputs to the output range would leave a requantising
+        kernel's data near zero.
+        """
+        from aie.utils.compile.jit.markers import In, Param
+
+        c = self._require_contract()
+        dt = np.dtype(dtype)
+        if not np.issubdtype(dt, np.integer):
+            return None
+        if c.acc_dtype is None or not np.issubdtype(np.dtype(c.acc_dtype), np.integer):
+            return None
+        n = reduction or c.reduction or 1
+        budget = np.iinfo(c.acc_dtype).max // 4
+        n_tensors = sum(1 for r in c.roles if r in (In, Param))
+        limit = int(np.sqrt(budget // n)) if n_tensors >= 2 else budget // n
+        return max(1, min(limit, int(np.iinfo(dt).max)))
+
+    def expected(self, inputs: list, *, scalars: tuple = ()) -> np.ndarray:
+        """Return the contract's reference result, cast to the output dtype."""
+        from aie.helpers.util import v8bfp16ebs8
+        from aie.utils.compile.jit.markers import Scalar
+
+        c = self._require_contract()
+        if c.reference is None:
+            raise ValueError(f"{self.name}: contract has no reference")
+        tensors, s = iter(inputs), iter(scalars)
+        args = [
+            next(s) if c.roles[i] is Scalar else next(tensors)
+            for i in c.reference_indices()
+        ]
+        out_dt = self.arg_dtype(c.out_index)
+        if out_dt is v8bfp16ebs8:
+            out_dt = np.float32  # judged after decoding the device's blocks
+        return np.asarray(c.reference(*args)).astype(out_dt)
+
+    def _bfp_output(self) -> bool:
+        """Whether this kernel writes bfp16ebs8 blocks rather than plain values."""
+        from aie.helpers.util import v8bfp16ebs8
+
+        c = self._require_contract()
+        return self.arg_dtype(c.out_index) is v8bfp16ebs8
+
+    def output_dtype(self, ref_dtype):
+        """Host dtype of the device output buffer.
+
+        A bfp16ebs8 output arrives as packed bytes; everything else arrives in
+        the reference's own dtype.
+        """
+        import numpy as np
+
+        return np.uint8 if self._bfp_output() else ref_dtype
+
+    def judge(self, got, ref, *, calls: int = 1, tolerance=None):
+        """Compare a flat device output against a reference under the contract.
+
+        Streaming outputs are viewed as ``(calls, tile)`` and trimmed to the
+        contract's ``out_valid`` elements per call, so DMA padding is never
+        compared; matrix outputs are reshaped to the reference, a bfp16ebs8 C
+        unshuffled and decoded first.
+        """
+        from aie.utils import bfp
+        from aie.utils.verify import Tolerance, compare
+
+        c = self._require_contract()
+        got, ref = np.asarray(got), np.asarray(ref)
+        matmul = self.design_shape is DesignShape.MATMUL
+        if matmul and self._bfp_output():
+            M, N = ref.shape
+            m, _, n = self.dims
+            got = bfp.decode(bfp.shuffle(got, N, M, n, m, unshuffle=True))
+        elif matmul and self.c_col_maj:
+            got = got.reshape(ref.shape[1], ref.shape[0]).T  # host buffer holds C^T
+        elif matmul or self.design_shape is DesignShape.MATVEC:
+            got = got.reshape(ref.shape)
+        else:
+            got = got.reshape(calls, -1)
+            if c.out_valid is not None:
+                got = got[:, : c.out_valid]
+            ref = ref.reshape(calls, -1)
+        return compare(
+            got, ref, tolerance or c.tolerance or Tolerance.default_for(ref.dtype)
+        )
+
+    def siblings(self, **symbols: tuple) -> SimpleNamespace:
+        """Bind other symbols exported by this kernel's own object file.
+
+        A translation unit often exports more than the symbol this
+        ExternalFunction declares -- ``mm.cc`` emits the ``zero_*`` that
+        accumulation needs beside ``matmul_*``, ``cascade_mm.cc`` a get/put
+        trio -- and binding them here avoids compiling the source a second
+        time::
+
+            fn.siblings(zero=("zero_i32", [c_ty]))
+            fn.also.zero  # a Kernel over the same object file
+
+        Each keyword names the attribute to bind under ``also`` and takes
+        ``(symbol, arg_types)``, where ``symbol`` is the name as written in
+        the source: when this kernel carries a ``symbol_prefix``, the
+        object's symbols have all been prefixed to keep parameterizations
+        apart (see ``aie.utils.compile.utils._prefix_symbols_in_object``),
+        so each sibling is prefixed to match.
+
+        Returns ``self.also``, which is always present, and empty for a
+        kernel whose object exports nothing else.
+        """
+        prefix = getattr(self, "_symbol_prefix", None)
+        vars(self.also).update(
+            {
+                attr: Kernel(
+                    f"{prefix}_{symbol}" if prefix else symbol,
+                    self.object_file_name,
+                    arg_types,
+                )
+                for attr, (symbol, arg_types) in symbols.items()
+            }
+        )
+        return self.also
 
     def __init__(
         self,
@@ -481,7 +682,38 @@ class ExternalFunction(Kernel):
                 )
                 self._object_file_name = object_file_name
                 break
+        self.also = SimpleNamespace()  # siblings from this kernel's object
         ExternalFunction._instances.add(self)
+
+    # Read-only views of the compile recipe. Tooling that inspects or
+    # recompiles a kernel outside the JIT path (aie.utils.compile.remarks) reads
+    # these rather than the private fields; the JIT itself keeps using the
+    # private fields directly.
+
+    @property
+    def source_file(self) -> str | None:
+        """Path to the C/C++ source on disk, or None for inline source."""
+        return self._source_file
+
+    @property
+    def source_string(self) -> str | None:
+        """Inline C/C++ source text, or None when compiled from a file."""
+        return self._source_string
+
+    @property
+    def include_dirs(self) -> list[str]:
+        """Copy of the extra ``-I`` directories passed to the compiler."""
+        return list(self._include_dirs)
+
+    @property
+    def compile_flags(self) -> list[str]:
+        """Copy of the extra flags passed verbatim to the compiler."""
+        return list(self._compile_flags)
+
+    @property
+    def use_chess(self) -> bool:
+        """True when this kernel's object is built with xchesscc, not Peano."""
+        return self._use_chess
 
     def __call__(self, *args, **kwargs):
         """Call with argument count and type validation before emitting MLIR.
@@ -507,14 +739,23 @@ class ExternalFunction(Kernel):
                     f"Argument {index}: expected scalar, got {type(arg).__name__}"
                 )
             return
-        if hasattr(expected_ty, "__args__") and hasattr(arg, "shape"):
-            expected_shape = expected_ty.__args__[0]
-            expected_dtype = expected_ty.__args__[1].__args__[0]
-            if arg.shape != expected_shape or arg.dtype != expected_dtype:
-                raise ValueError(
-                    f"Argument {index}: expected {expected_shape}/{expected_dtype}, "
-                    f"got {arg.shape}/{arg.dtype}"
-                )
+        if not (hasattr(expected_ty, "__args__") and hasattr(arg, "shape")):
+            return
+        # Only host-side (numpy) arguments are compared. An MLIR value's
+        # element type is spelled differently (`i32` vs `np.int32`) and its
+        # shape may legitimately differ from the declaration until
+        # `_maybe_collapse_to_match` flattens it, so MLIR verification is what
+        # checks those.
+        arg_dtype = getattr(arg, "dtype", None)
+        if not isinstance(arg_dtype, (np.dtype, type)):
+            return
+        expected_shape = expected_ty.__args__[0]
+        expected_dtype = expected_ty.__args__[1].__args__[0]
+        if arg.shape != expected_shape or arg_dtype != expected_dtype:
+            raise ValueError(
+                f"Argument {index}: expected {expected_shape}/{expected_dtype}, "
+                f"got {arg.shape}/{arg_dtype}"
+            )
 
     def _content_digest(self) -> str:
         """Return a 64-bit hex SHA-256 digest of this instance's content.

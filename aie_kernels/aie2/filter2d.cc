@@ -20,56 +20,6 @@
 
 const int32_t SRS_SHIFT = 12;
 
-void filter2d_3lines_aie_scalar(uint8_t *lineIn0, uint8_t *lineIn1,
-                                uint8_t *lineIn2, uint8_t *output,
-                                const int32_t width, int16_t *kernel) {
-
-  int32_t acc;
-
-  // left of line, border extension by mirroring
-  acc = 0;
-  acc += ((int32_t)lineIn0[0]) * kernel[0 * 3 + 0];
-  acc += ((int32_t)lineIn1[0]) * kernel[1 * 3 + 0];
-  acc += ((int32_t)lineIn2[0]) * kernel[2 * 3 + 0];
-
-  for (int ki = 1; ki < 3; ki++) {
-    acc += ((int32_t)lineIn0[0 + ki - 1]) * kernel[0 * 3 + ki];
-    acc += ((int32_t)lineIn1[0 + ki - 1]) * kernel[1 * 3 + ki];
-    acc += ((int32_t)lineIn2[0 + ki - 1]) * kernel[2 * 3 + ki];
-  }
-  acc = ((acc + (1 << (SRS_SHIFT - 1))) >> SRS_SHIFT);
-  acc = (acc > UINT8_MAX) ? UINT8_MAX : (acc < 0) ? 0 : acc; // saturate
-  output[0] = (uint8_t)acc;
-
-  // middle of line, no border extension needed
-  for (int i = 1; i < width - 1; i++) {
-    acc = 0;
-    for (int ki = 0; ki < 3; ki++) {
-      acc += ((int32_t)lineIn0[i + ki - 1]) * kernel[0 * 3 + ki];
-      acc += ((int32_t)lineIn1[i + ki - 1]) * kernel[1 * 3 + ki];
-      acc += ((int32_t)lineIn2[i + ki - 1]) * kernel[2 * 3 + ki];
-    }
-    acc = ((acc + (1 << (SRS_SHIFT - 1))) >> SRS_SHIFT);
-    acc = (acc > UINT8_MAX) ? UINT8_MAX : (acc < 0) ? 0 : acc; // saturate
-    output[i] = (uint8_t)acc;
-  }
-
-  // right of line, border extension by mirroring
-  acc = 0;
-  for (int ki = 0; ki < 2; ki++) {
-    acc += ((int32_t)lineIn0[width + ki - 2]) * kernel[0 * 3 + ki];
-    acc += ((int32_t)lineIn1[width + ki - 2]) * kernel[1 * 3 + ki];
-    acc += ((int32_t)lineIn2[width + ki - 2]) * kernel[2 * 3 + ki];
-  }
-
-  acc += ((int32_t)lineIn0[width - 1]) * kernel[0 * 3 + 2];
-  acc += ((int32_t)lineIn1[width - 1]) * kernel[1 * 3 + 2];
-  acc += ((int32_t)lineIn2[width - 1]) * kernel[2 * 3 + 2];
-  acc = ((acc + (1 << (SRS_SHIFT - 1))) >> SRS_SHIFT);
-  acc = (acc > UINT8_MAX) ? UINT8_MAX : (acc < 0) ? 0 : acc; // saturate
-  output[width - 1] = (uint8_t)acc;
-}
-
 #define KERNEL_WIDTH 3
 
 constexpr unsigned VecFactor = 32;
@@ -85,6 +35,7 @@ using mul_ops =
 void filter2d_3lines_aie(uint8_t *lineIn0, uint8_t *lineIn1, uint8_t *lineIn2,
                          uint8_t *output, const int32_t width,
                          int16_t *kernel) {
+  event0();
 
   set_sat(); // Needed for int16 to saturate properly to uint8
 
@@ -141,24 +92,33 @@ void filter2d_3lines_aie(uint8_t *lineIn0, uint8_t *lineIn1, uint8_t *lineIn2,
     data_buf1.insert(0, aie::load_v<32>(lineIn0));
     lineIn0 += VecFactor;
     data_buf1.insert(1, aie::load_v<32>(lineIn0));
+    // The pixel carried to the next iteration is this vector's own last one,
+    // so it has to be taken before the shuffle. Reading it back out afterwards
+    // yields the already-shifted vector, whose last element is the
+    // second-to-last pixel, and every 32-pixel boundary from the third vector
+    // on then convolves against the wrong left neighbour. The store stays
+    // after the shuffle, which still needs the previous iteration's value.
+    auto carry1 = data_buf1.template extract<32>(0);
     data_buf1 = ::aie::shuffle_up_fill(data_buf1, prev_buf1, kernel_side);
-    prev_buf1.insert(1, data_buf1.template extract<32>(0));
+    prev_buf1.insert(1, carry1);
     acc = mul_ops::mul(kernel_vec, 0, data_buf1, 0);
 
     // second kernel row
     data_buf2.insert(0, aie::load_v<32>(lineIn1));
     lineIn1 += VecFactor;
     data_buf2.insert(1, aie::load_v<32>(lineIn1));
+    auto carry2 = data_buf2.template extract<32>(0);
     data_buf2 = ::aie::shuffle_up_fill(data_buf2, prev_buf2, kernel_side);
-    prev_buf2.insert(1, data_buf2.template extract<32>(0));
+    prev_buf2.insert(1, carry2);
     acc = mul_ops::mac(acc, kernel_vec, Points, data_buf2, 0);
 
     // third kernel row
     data_buf3.insert(0, aie::load_v<32>(lineIn2));
     lineIn2 += VecFactor;
     data_buf3.insert(1, aie::load_v<32>(lineIn2));
+    auto carry3 = data_buf3.template extract<32>(0);
     data_buf3 = ::aie::shuffle_up_fill(data_buf3, prev_buf3, kernel_side);
-    prev_buf3.insert(1, data_buf3.template extract<32>(0));
+    prev_buf3.insert(1, carry3);
     acc = mul_ops::mac(acc, kernel_vec, 2 * Points, data_buf3, 0);
 
     // Store result
@@ -189,31 +149,15 @@ void filter2d_3lines_aie(uint8_t *lineIn0, uint8_t *lineIn1, uint8_t *lineIn2,
   // Store result
   ::aie::store_v(output, acc.to_vector<uint8>(SRS_SHIFT - 8));
   output += VecFactor;
+
+  event1();
 }
 
 extern "C" {
-
-// #if BIT_WIDTH == 8
 
 void filter2dLine(uint8_t *lineIn0, uint8_t *lineIn1, uint8_t *lineIn2,
                   uint8_t *out, int32_t lineWidth, int16_t *filterKernel) {
   filter2d_3lines_aie(lineIn0, lineIn1, lineIn2, out, lineWidth, filterKernel);
 }
-
-/* #elif BIT_WIDTH == 16
-
-void filter2dLine(int16_t *in, int16_t *out, int32_t lineWidth, int16_t
-filter2dValue, int16_t maxValue) { filter2d_3lines_aie<int16_t, 32>(in, out,
-lineWidth, 1, filter2dValue, maxValue);
-}
-
-#else // 32
-
-void filter2dLine(int32_t *in, int32_t *out, int32_t lineWidth, int32_t
-filter2dValue, int32_t maxValue) { filter2d_3lines_aie<int32_t, 16>(in, out,
-lineWidth, 1, filter2dValue, maxValue);
-}
-
-#endif */
 
 } // extern "C"

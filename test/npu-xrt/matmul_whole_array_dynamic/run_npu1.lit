@@ -13,8 +13,9 @@
 // the instruction stream is built at runtime by the generated C++ TXN builder.
 //
 // %{ex} is the example script. Each config's emitted MLIR names the kernel by a
-// content hash; the sed after it normalizes that (quoted or bare symbol form) to
-// the stable mm.o built once below.
+// content hash, which the factory also applies to the zero_i16 sibling it binds
+// out of the same object; the sed after it normalizes both (quoted or bare
+// symbol form) to the stable mm.o built once below.
 // DEFINE: %{ex} = %S/whole_array_dynamic.py
 //
 // Build the aie2 (Phoenix) compute kernel object once from aie_kernels/aie2/mm.cc
@@ -32,7 +33,7 @@
 // RUN: mkdir -p %t.1.prj
 // RUN: %PYTHON %{ex} --dev npu -M 512 -K 512 -N 512 -m 64 -k 64 -n 32 \
 // RUN:   --dtype_in i16 --dtype_out i16 --n-aie-cols 1 -o %t.1.mlir
-// RUN: sed -E 's/matmul_i16_i16_[0-9a-f]+\.o/mm.o/g; s/@"[0-9a-f]+_matmul_i16_i16"/@matmul_i16_i16/g; s/@[0-9a-f]+_matmul_i16_i16/@matmul_i16_i16/g' %t.1.mlir > %t.1.norm.mlir
+// RUN: sed -E 's/matmul_i16_i16_[0-9a-f]+\.o/mm.o/g; s/@"[0-9a-f]+_(matmul_i16_i16|zero_i16)"/@\1/g; s/@[0-9a-f]+_(matmul_i16_i16|zero_i16)/@\1/g' %t.1.mlir > %t.1.norm.mlir
 // RUN: %aiecc --get-xclbin \
 // RUN:   --get-input-with-addresses --output-dir=%t.1.prj \
 // RUN:   --xclbin-name=%t.1.xclbin --tmpdir=%t.1.prj %t.1.norm.mlir
@@ -55,7 +56,7 @@
 // RUN: mkdir -p %t.2.prj
 // RUN: %PYTHON %{ex} --dev npu -M 512 -K 512 -N 512 -m 64 -k 64 -n 32 \
 // RUN:   --dtype_in i16 --dtype_out i16 --n-aie-cols 2 -o %t.2.mlir
-// RUN: sed -E 's/matmul_i16_i16_[0-9a-f]+\.o/mm.o/g; s/@"[0-9a-f]+_matmul_i16_i16"/@matmul_i16_i16/g; s/@[0-9a-f]+_matmul_i16_i16/@matmul_i16_i16/g' %t.2.mlir > %t.2.norm.mlir
+// RUN: sed -E 's/matmul_i16_i16_[0-9a-f]+\.o/mm.o/g; s/@"[0-9a-f]+_(matmul_i16_i16|zero_i16)"/@\1/g; s/@[0-9a-f]+_(matmul_i16_i16|zero_i16)/@\1/g' %t.2.mlir > %t.2.norm.mlir
 // RUN: %aiecc --get-xclbin \
 // RUN:   --get-input-with-addresses --output-dir=%t.2.prj \
 // RUN:   --xclbin-name=%t.2.xclbin --tmpdir=%t.2.prj %t.2.norm.mlir
@@ -78,7 +79,7 @@
 // RUN: mkdir -p %t.4.prj
 // RUN: %PYTHON %{ex} --dev npu -M 512 -K 512 -N 512 -m 64 -k 64 -n 32 \
 // RUN:   --dtype_in i16 --dtype_out i16 --n-aie-cols 4 -o %t.4.mlir
-// RUN: sed -E 's/matmul_i16_i16_[0-9a-f]+\.o/mm.o/g; s/@"[0-9a-f]+_matmul_i16_i16"/@matmul_i16_i16/g; s/@[0-9a-f]+_matmul_i16_i16/@matmul_i16_i16/g' %t.4.mlir > %t.4.norm.mlir
+// RUN: sed -E 's/matmul_i16_i16_[0-9a-f]+\.o/mm.o/g; s/@"[0-9a-f]+_(matmul_i16_i16|zero_i16)"/@\1/g; s/@[0-9a-f]+_(matmul_i16_i16|zero_i16)/@\1/g' %t.4.mlir > %t.4.norm.mlir
 // RUN: %aiecc --get-xclbin \
 // RUN:   --get-input-with-addresses --output-dir=%t.4.prj \
 // RUN:   --xclbin-name=%t.4.xclbin --tmpdir=%t.4.prj %t.4.norm.mlir

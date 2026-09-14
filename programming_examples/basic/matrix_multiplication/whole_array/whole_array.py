@@ -21,6 +21,7 @@ import argparse
 import sys
 
 import aie.iron as iron
+import aie.iron.kernels as kernels
 import numpy as np
 from aie.helpers.taplib import TensorAccessSequence, TensorTiler2D
 from aie.iron import (
@@ -33,7 +34,6 @@ from aie.iron import (
     StreamDims,
     TaskGroup,
     Worker,
-    kernels,
     str_to_dtype,
 )
 from aie.iron.controlflow import range_
@@ -98,14 +98,13 @@ def _build_design(
         emulate_bf16_mmul_with_bfp16=emulate_bf16_mmul_with_bfp16,
         vectorized=not scalar,
     )
-    zero_kernel = matmul_kernel.zero
+    zero_kernel = matmul_kernel.also.zero
     r, s, t = matmul_kernel.mac_dims
+    dims = matmul_kernel.stream_dims
 
-    if dev_str == "npu" and n_aie_cols > 4:
-        raise AssertionError("Invalid configuration: NPU (Phoenix/Hawk) has 4 columns")
-    if dev_str == "npu2" and n_aie_cols > 8:
-        raise AssertionError(
-            "Invalid configuration: NPU2 (Strix/Strix Halo/Krackan) has 8 columns"
+    if n_aie_cols > dev.cols:
+        raise ValueError(
+            f"n_aie_cols={n_aie_cols} but {dev_str} has {dev.cols} columns"
         )
 
     assert (
@@ -156,14 +155,7 @@ def _build_design(
         start_row = i * n_A_tiles_per_shim
         stop_row = start_row + n_A_tiles_per_shim
         of_offsets = [m * k * j for j in range(stop_row - start_row)]
-        a_dims: list[StreamDims] = [
-            [
-                (m // r, r * k),
-                (k // s, s),
-                (r, k),
-                (s, 1),
-            ]
-        ] * (stop_row - start_row)
+        a_dims: list[StreamDims] = [dims.A] * (stop_row - start_row)
         a_tmp_fifos = a_l3l2.cons().split(
             of_offsets,
             obj_types=[A_l1_ty] * (stop_row - start_row),
@@ -175,29 +167,19 @@ def _build_design(
     for col in range(n_aie_cols):
         b_l3l2 = ObjectFifo(B_l2_ty, name=f"B_L3L2_{col}", depth=fifo_depth)
         B_l3l2_fifos.append(b_l3l2)
-        b_dims: StreamDims = (
-            [(n // t, t * k), (k // s, s), (t, k), (s, 1)]
-            if b_col_maj
-            else [(k // s, s * n), (n // t, t), (s, n), (t, 1)]
-        )
         B_l2l1_fifos.append(
             b_l3l2.cons().forward(
                 obj_type=B_l1_ty,
                 name=f"B_L2L1_{col}",
-                dims_to_stream=b_dims,
+                dims_to_stream=dims.B,
             )
         )
 
-        c_dims: StreamDims = (
-            [(m // r, r * n), (r, t), (n // t, r * t), (t, 1)]
-            if not c_col_maj
-            else [(n // t, t * m), (t, r), (m // r, r * t), (r, 1)]
-        )
         c_l2l3 = ObjectFifo(
             C_l2_ty,
             name=f"C_L2L3_{col}",
             depth=fifo_depth,
-            dims_to_stream=c_dims,
+            dims_to_stream=dims.C,
         )
         C_l2l3_fifos.append(c_l2l3)
         of_offsets = [m * n * i for i in range(n_aie_rows)]
@@ -503,13 +485,6 @@ def _validate_shape_args(opts):
         )
 
 
-def _numpy_reference(A_np, B_np, b_col_maj, dtype_out):
-    B_logical = B_np.T if b_col_maj else B_np
-    if np.issubdtype(A_np.dtype, np.integer):
-        return (A_np.astype(np.int64) @ B_logical.astype(np.int64)).astype(dtype_out)
-    return (A_np.astype(np.float32) @ B_logical.astype(np.float32)).astype(dtype_out)
-
-
 def _compile_kwargs(opts):
     return dict(
         M=opts.M,
@@ -572,7 +547,8 @@ def _run_and_verify(opts):
         iters=opts.iters,
     )
 
-    expected_logical = _numpy_reference(A_np, B_np, opts.b_col_maj, dtype_out)
+    B_logical = B_np.T if opts.b_col_maj else B_np  # b_col_maj stores B transposed
+    expected_logical = kernels.mm_ref(A_np, B_logical).astype(dtype_out)
     if opts.c_col_maj:
         actual = C_t.numpy().reshape(opts.N, opts.M)
         expected = expected_logical.T
@@ -580,11 +556,23 @@ def _run_and_verify(opts):
         actual = C_t.numpy().reshape(opts.M, opts.N)
         expected = expected_logical
 
+    # The same kernel the design binds; kernels.mm is memoized, so this is
+    # the object the design built, asked for its tolerance.
+    kernel = kernels.mm(
+        dim_m=opts.m,
+        dim_k=opts.k,
+        dim_n=opts.n,
+        input_dtype=str_to_dtype(opts.dtype_in),
+        output_dtype=str_to_dtype(opts.dtype_out),
+        b_col_maj=bool(opts.b_col_maj),
+    )
+
     assert_close_with_benchmark(
         actual,
         expected,
         bench=bench,
         ops=2.0 * opts.M * opts.K * opts.N,
+        tolerance=kernel.contract.tolerance,
         fail_msg="output does not match A @ B",
         mismatch_indices=True,
     )

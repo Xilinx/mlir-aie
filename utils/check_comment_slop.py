@@ -112,13 +112,20 @@ STOPWORDS = {
     "your",
 }
 
-# In C and C++ a leading `#` opens a preprocessor directive, not a comment, and a
-# leading `*` is a block-comment continuation only when nothing follows it -- `*ptr`
-# is a dereference. Classifying either as a comment counts an ordinary include block
-# as prose, which is how an alphabetised #include added to three files gets reported
-# as a repeated explanation.
+# A leading `#` in C is a directive, not a comment, and a leading `*` continues
+# a block comment only when nothing follows it -- `*ptr` is a dereference.
+# Counting either as prose reports an alphabetised #include block as a repeated
+# explanation.
 COMMENT_RE_PY = re.compile(r"^\s*#")
 COMMENT_RE_CISH = re.compile(r"^\s*(//|/\*|\*/|\*(?=\s|$))")
+
+# The license header is policy, not an explanation anyone wrote twice, so
+# counting it would report any commit adding three files as repeating a concept.
+# Anchored so a comment that merely mentions "copyright" is not mistaken for it.
+LICENSE_RE = re.compile(r"^(copyright\b|spdx-license-identifier:)", re.IGNORECASE)
+# The blank separators, the mode line and the LLVM banner that wrap the two
+# lines above in this repo's header conventions.
+_HEADER_FILLER_RE = re.compile(r"^(\s*|\S*\s*-\*-.*-\*-\s*|={2,}.*={2,}/{0,2})$")
 SOURCE_SUFFIXES = (
     ".c",
     ".cc",
@@ -315,7 +322,16 @@ def collect(diff):
             current = None
             if text.strip():
                 code += 1
-    return blocks, code
+    # Drop a block only if every line in it is header boilerplate, so an
+    # explanation with no blank/code line separating it from the header
+    # keeps its own lines rather than being dropped along with it.
+    return [
+        b
+        for b in blocks
+        if not all(
+            LICENSE_RE.search(line) or _HEADER_FILLER_RE.match(line) for line in b.lines
+        )
+    ], code
 
 
 def find_duplicates(blocks):
