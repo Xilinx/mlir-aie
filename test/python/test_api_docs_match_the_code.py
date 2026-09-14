@@ -52,7 +52,6 @@ def test_every_all_entry_resolves():
     import importlib
 
     modules = [
-        "aie.utils.kernel_harness",
         "aie.iron",
         "aie.iron.kernels",
         "aie.iron.algorithms",

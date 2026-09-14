@@ -28,7 +28,7 @@ from aie.iron import In, InOut, Out, Scalar, kernels
 from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.iron.kernels import ROLES, KernelContract
 from aie.utils import bfp
-from aie.utils import kernel_harness as kh
+from aie.iron.algorithms import kernel_design as kd
 from aie.utils.hostruntime import set_current_device
 from aie.utils.verify import Tolerance, compare
 from ml_dtypes import bfloat16
@@ -282,58 +282,58 @@ def test_harness_lowers_a_design_to_mlir(case_id):
     fkw, opts = CASES[case_id]
     factory = _factory(case_id)
     fn = factory(**fkw)
-    ins = kh.sample_inputs(fn, calls=opts.get("calls", 1), shape=opts.get("shape"))
-    d = kh.design(factory, params=fn.param_values(ins), **opts, **fkw)
+    ins = kd.sample_inputs(fn, calls=opts.get("calls", 1), shape=opts.get("shape"))
+    d = kd.design(factory, params=fn.param_values(ins), **opts, **fkw)
     ref = fn.expected(ins, scalars=opts.get("scalars", ()))
     mlir = d.as_mlir()
     assert "func.call" in str(mlir) or "aie.core" in str(mlir)
     # The reference already has the output dtype the harness will compare
     # in: the kernel's, or float32 for a bfp16ebs8 output that judge decodes.
-    out_dt = kh._shape_dtype(fn.arg_types()[fn.contract.out_index])[1]
+    out_dt = kd.shape_dtype(fn.arg_types()[fn.contract.out_index])[1]
     assert ref.dtype == (np.float32 if bfp.is_bfp(out_dt) else out_dt)
 
 
 def test_reduction_reference_yields_one_value_per_call():
     fn = kernels.reduce_max(dtype=bfloat16)
-    ins = kh.sample_inputs(fn, calls=4)
+    ins = kd.sample_inputs(fn, calls=4)
     assert fn.expected(ins).shape == (4, 1)
     # The output tile is padded to 2 bf16 for DMA alignment; only 1 is valid.
-    assert kh._elems(fn.arg_types()[fn.contract.out_index]) == 2
+    assert kd.elems(fn.arg_types()[fn.contract.out_index]) == 2
     assert fn.contract.out_valid == 1
 
 
 def test_designs_for_different_kernels_do_not_share_a_cache_key():
     h = lambda d: d.compilable.recipe_hash  # noqa: E731
-    assert h(kh.design(kernels.add, calls=4)) != h(kh.design(kernels.mul, calls=4))
-    assert h(kh.design(kernels.reduce_max, calls=4)) != h(
-        kh.design(kernels.reduce_max, calls=4, dtype=bfloat16)
+    assert h(kd.design(kernels.add, calls=4)) != h(kd.design(kernels.mul, calls=4))
+    assert h(kd.design(kernels.reduce_max, calls=4)) != h(
+        kd.design(kernels.reduce_max, calls=4, dtype=bfloat16)
     )
-    assert h(kh.design(kernels.add, calls=4)) == h(kh.design(kernels.add, calls=4))
+    assert h(kd.design(kernels.add, calls=4)) == h(kd.design(kernels.add, calls=4))
     # A `param` is baked into the design, so its value is part of the key.
-    p3 = kh.design(kernels.scale, calls=4, dtype=np.int32, params=[np.array([3])])
-    p5 = kh.design(kernels.scale, calls=4, dtype=np.int32, params=[np.array([5])])
+    p3 = kd.design(kernels.scale, calls=4, dtype=np.int32, params=[np.array([3])])
+    p5 = kd.design(kernels.scale, calls=4, dtype=np.int32, params=[np.array([5])])
     assert h(p3) != h(p5)
     with pytest.raises(ValueError, match="need values at design time"):
-        kh.design(kernels.scale, calls=4, dtype=np.int32)
+        kd.design(kernels.scale, calls=4, dtype=np.int32)
 
 
 def test_packed_inputs_and_baked_params_leave_the_host_side_small():
     # swiglu: three same-typed inputs -> one fifo, interleaved per call.
     fn = kernels.swiglu()
-    ins = kh.sample_inputs(fn, calls=2)
-    (packed,) = kh.host_layout(fn, ins)
+    ins = kd.sample_inputs(fn, calls=2)
+    (packed,) = kd.host_layout(fn, ins)
     assert packed.shape == (2, 3, 1024)
     assert np.array_equal(packed[:, 1], ins[1])
     # filter2d: three lines packed, the kernel param dropped (it is a Buffer).
     fn = kernels.filter2d()
-    ins = kh.sample_inputs(fn, calls=2)
-    (lines,) = kh.host_layout(fn, ins)
+    ins = kd.sample_inputs(fn, calls=2)
+    (lines,) = kd.host_layout(fn, ins)
     assert lines.shape == (2, 3, 1920)
     assert fn.param_values(ins)[0].size == 9
     # scale: one input fifo, the factor is a param.
     fn = kernels.scale(dtype=np.int32)
-    ins = kh.sample_inputs(fn, calls=2)
-    assert len(kh.host_layout(fn, ins)) == 1
+    ins = kd.sample_inputs(fn, calls=2)
+    assert len(kd.host_layout(fn, ins)) == 1
 
 
 def test_contract_rejects_bad_roles():
@@ -348,7 +348,7 @@ def test_contract_rejects_bad_roles():
 def test_harness_refuses_a_kernel_without_a_contract():
     # A cascade put kernel: its output is the cascade stream, so no contract.
     with pytest.raises(ValueError, match="declares no contract"):
-        kh.design(kernels.bn_conv2dk1_partial_put_i8, calls=1)
+        kd.design(kernels.bn_conv2dk1_partial_put_i8, calls=1)
 
 
 def test_rgba2hue_reference_matches_the_kernel():
@@ -435,11 +435,11 @@ def test_bfp_matmul_host_layout_reference_and_judge():
     fn = kernels.mm_bfp(dim_m=64, dim_k=64, dim_n=64)
     c = fn.contract
     assert c.roles == (In, In, InOut) and fn.b_col_maj and not fn.c_col_maj
-    a, b = kh.sample_inputs(fn, shape=(M, K, N))
+    a, b = kd.sample_inputs(fn, shape=(M, K, N))
     assert a.dtype == np.float32 and a.shape == (M, K) and b.shape == (K, N)
     # The host tensors are encoded bytes: 9 bytes per 8 values along K,
     # B transposed, and each (tile, k) DMA tile shuffled into sub-tiles.
-    ha, hb = kh.host_layout(fn, [a, b])
+    ha, hb = kd.host_layout(fn, [a, b])
     assert ha.dtype == np.uint8 and ha.shape == (M, K * 9 // 8)
     assert hb.shape == (N, K * 9 // 8)
     m, k, n = fn.dims
@@ -455,20 +455,20 @@ def test_bfp_matmul_host_layout_reference_and_judge():
     assert np.abs(ref - plain).max() < 0.05 * np.abs(plain).max()
     # The device writes bfp16ebs8 C: bytes, tile-shuffled; judge undoes both.
     assert fn.output_dtype(ref.dtype) == np.uint8
-    assert kh.output_size(fn, shape=(M, K, N)) == M * N * 9 // 8
+    assert kd.output_size(fn, shape=(M, K, N)) == M * N * 9 // 8
     device_c = bfp.shuffle(bfp.encode(ref), N, M, n, m).ravel()
     assert fn.judge(device_c, ref)
     assert not fn.judge(bfp.encode(ref).ravel(), ref)  # unshuffled: wrong
     assert not fn.judge(np.full(M * N * 9 // 8, 0x55, np.uint8), ref)
     # Mixed: A and C are bf16 and stay so; B is still encoded.
     mixed = kernels.mm_bfp(dim_m=64, dim_k=64, dim_n=64, mixed=True)
-    a, b = kh.sample_inputs(mixed, shape=(M, K, N))
+    a, b = kd.sample_inputs(mixed, shape=(M, K, N))
     assert a.dtype == bfloat16 and b.dtype == np.float32
-    ha, hb = kh.host_layout(mixed, [a, b])
+    ha, hb = kd.host_layout(mixed, [a, b])
     assert ha.dtype == bfloat16 and ha.shape == (M, K) and hb.dtype == np.uint8
     ref = mixed.expected([a, b])
     assert ref.dtype == bfloat16 and mixed.output_dtype(ref.dtype) == bfloat16
-    assert kh.output_size(mixed, shape=(M, K, N)) == M * N
+    assert kd.output_size(mixed, shape=(M, K, N)) == M * N
     assert mixed.judge(ref.ravel(), ref)
 
 
@@ -693,8 +693,8 @@ def test_bf16_matvec_matches_the_iron_gemv_signature():
     )
     types = fn.arg_types()
     assert types[0] is np.int32 and types[1] is np.int32
-    assert [kh._shape_dtype(t)[0] for t in types[2:]] == [(32 * 256,), (256,), (32,)]
-    assert all(kh._shape_dtype(t)[1] is bfloat16 for t in types[2:])
+    assert [kd.shape_dtype(t)[0] for t in types[2:]] == [(32 * 256,), (256,), (32,)]
+    assert all(kd.shape_dtype(t)[1] is bfloat16 for t in types[2:])
     assert fn.contract.roles == (Scalar, Scalar, In, In, Out)
     # row_offset shifts the write into c, so one core fills several blocks.
     a = np.arange(4 * 8, dtype=np.float32).reshape(4, 8).astype(bfloat16)
@@ -715,21 +715,21 @@ def test_host_args_match_what_the_sampler_and_uploader_produce(case_id):
     if fn.contract.unsupported:
         pytest.skip(fn.contract.unsupported)
     calls, shape = opts.get("calls", 1), opts.get("shape")
-    args = kh.host_args(fn, calls=calls, shape=shape)
+    args = kd.host_args(fn, calls=calls, shape=shape)
     ins, out = args[:-1], args[-1]
     assert [a.direction for a in args] == [In] * len(ins) + [Out]
     # Inputs: the arrays host_layout hands the device.
-    staged = kh.host_layout(fn, kh.sample_inputs(fn, calls=calls, shape=shape))
+    staged = kd.host_layout(fn, kd.sample_inputs(fn, calls=calls, shape=shape))
     assert len(staged) == len(ins), case_id
     for got, spec in zip(staged, ins):
         assert got.shape == spec.shape, f"{case_id}: {got.shape} != {spec.shape}"
         assert got.dtype == np.dtype(spec.dtype), case_id
     # Output: the element count and dtype upload allocates.
     ref = fn.expected(
-        kh.sample_inputs(fn, calls=calls, shape=shape),
+        kd.sample_inputs(fn, calls=calls, shape=shape),
         scalars=opts.get("scalars", ()),
     )
-    assert out.n_elements == kh.output_size(fn, calls=calls, shape=shape), case_id
+    assert out.n_elements == kd.output_size(fn, calls=calls, shape=shape), case_id
     assert np.dtype(out.dtype) == np.dtype(fn.output_dtype(ref.dtype)), case_id
 
 
@@ -738,11 +738,11 @@ def test_host_args_describe_the_layouts_a_caller_must_allocate():
     fkw = dict(
         dim_m=64, dim_k=32, dim_n=64, input_dtype=bfloat16, output_dtype=np.float32
     )
-    plain = kh.host_args(kernels.mm(**fkw), shape=(128, 256, 64))
+    plain = kd.host_args(kernels.mm(**fkw), shape=(128, 256, 64))
     assert [a.shape for a in plain] == [(128, 256), (256, 64), (128, 64)]
-    bcm = kh.host_args(kernels.mm(**fkw, b_col_maj=True), shape=(128, 256, 64))
+    bcm = kd.host_args(kernels.mm(**fkw, b_col_maj=True), shape=(128, 256, 64))
     assert bcm[1].shape == (64, 256)
-    ccm = kh.host_args(
+    ccm = kd.host_args(
         kernels.mm(
             dim_m=64,
             dim_k=32,
@@ -755,17 +755,17 @@ def test_host_args_describe_the_layouts_a_caller_must_allocate():
     )
     assert ccm[2].shape == (64, 128)
     # A bfp16ebs8 operand is bytes: 9 per block of 8 along K.
-    bfp_args = kh.host_args(
+    bfp_args = kd.host_args(
         kernels.mm_bfp(dim_m=64, dim_k=64, dim_n=64), shape=(128, 128, 128)
     )
     assert all(np.dtype(a.dtype) == np.uint8 for a in bfp_args)
     assert bfp_args[0].shape == (128, 128 * 9 // 8)
     # Three streamed tensors share one packed fifo.
-    packed = kh.host_args(kernels.swiglu(), calls=4)
+    packed = kd.host_args(kernels.swiglu(), calls=4)
     assert len(packed) == 2 and packed[0].shape == (4, 3, 1024)
     # A reduction's output keeps the DMA padding the device writes.
-    red = kh.host_args(kernels.reduce_add(), calls=4)
-    assert red[-1].n_elements == kh.output_size(kernels.reduce_add(), calls=4)
+    red = kd.host_args(kernels.reduce_add(), calls=4)
+    assert red[-1].n_elements == kd.output_size(kernels.reduce_add(), calls=4)
 
 
 def test_mha_binds_its_translation_unit_as_one_object():
@@ -798,7 +798,7 @@ def test_mha_binds_its_translation_unit_as_one_object():
     # A dataflow the harness cannot drive says so rather than failing oddly.
     assert fn.contract.unsupported
     with pytest.raises(ValueError, match="cannot build"):
-        kh.design(kernels.mha, shape=(128, 128, 128))
+        kd.design(kernels.mha, shape=(128, 128, 128))
     with pytest.raises(ValueError, match="multiple of"):
         kernels.mha(dim_m=17)
 
@@ -870,7 +870,7 @@ def test_unsupported_contracts_are_refused_by_the_harness():
     fn = kernels.cascade_mm()
     assert fn.contract is not None and fn.contract.unsupported
     with pytest.raises(ValueError, match="cannot build"):
-        kh.design(kernels.cascade_mm, shape=(128, 128, 128))
+        kd.design(kernels.cascade_mm, shape=(128, 128, 128))
     assert kernels.mm_bfp_shuffle().contract.unsupported
 
 
@@ -935,9 +935,9 @@ def test_host_layout_transposes_b_for_col_major_and_judge_undoes_c():
     a = np.arange(128 * 64, dtype=np.float32).reshape(128, 64).astype(bfloat16)
     b = np.arange(64 * 32, dtype=np.float32).reshape(64, 32).astype(bfloat16)
     plain = kernels.mm(**fkw)
-    assert kh.host_layout(plain, [a, b])[1].shape == (64, 32)
+    assert kd.host_layout(plain, [a, b])[1].shape == (64, 32)
     bcm = kernels.mm(b_col_maj=True, **fkw)
-    bt = kh.host_layout(bcm, [a, b])[1]
+    bt = kd.host_layout(bcm, [a, b])[1]
     assert bt.shape == (32, 64) and bt.flags["C_CONTIGUOUS"]
     assert np.array_equal(bt, b.T)
     # judge reads C^T from the host buffer when the kernel emits c_col_maj.
@@ -1031,13 +1031,13 @@ def test_declared_arg_types_survive_a_design_build():
     # kernel whose arg_types() are MLIR types. The harness reads
     # arg_types(), which does not move.
     declared = [str(t) for t in kernels.add().arg_types()]
-    kh.design(kernels.add, calls=2).as_mlir()
+    kd.design(kernels.add, calls=2).as_mlir()
     fn = kernels.add()  # memoized: the instance the design resolved
     assert [str(t) for t in fn.arg_types()] == declared
     assert all(hasattr(t, "__args__") for t in fn.arg_types()[:3])
-    assert kh.output_size(fn, calls=2) == 2 * 1024
-    assert kh.sample_inputs(fn, calls=2)[0].shape == (2, 1024)
-    kh.design(kernels.add, calls=4).as_mlir()  # a second design still builds
+    assert kd.output_size(fn, calls=2) == 2 * 1024
+    assert kd.sample_inputs(fn, calls=2)[0].shape == (2, 1024)
+    kd.design(kernels.add, calls=4).as_mlir()  # a second design still builds
 
 
 def test_compute_max_reference_uses_element_zero_only():
@@ -1118,7 +1118,7 @@ def test_input_limit_keeps_the_reference_inside_the_accumulator():
         pytest.skip("mm declares no accumulator yet")
     lim = fn.input_limit(np.int16, reduction=256)
     assert 256 * lim * lim <= np.iinfo(fn.contract.acc_dtype).max // 4
-    a, b = kh.sample_inputs(fn, shape=(128, 256, 64))
+    a, b = kd.sample_inputs(fn, shape=(128, 256, 64))
     assert int(np.abs(a).max()) <= lim and int(np.abs(b).max()) <= lim
     ref = kernels.mm_ref(a, b)
     acc = np.iinfo(fn.contract.acc_dtype)
@@ -1153,9 +1153,7 @@ def test_declared_dtype_combinations_build(name, combo):
         assert fn.also.zero is not None
         return
     tensor_dts = {
-        np.dtype(kh._shape_dtype(t)[1])
-        for t in fn.arg_types()
-        if hasattr(t, "__args__")
+        np.dtype(kd.shape_dtype(t)[1]) for t in fn.arg_types() if hasattr(t, "__args__")
     }
     for v in combo.values():
         if isinstance(v, type):  # a dtype, not a shape or a flag
@@ -1227,7 +1225,7 @@ def test_setup_is_declared_exactly_where_the_source_does_not_set_the_mode(arch):
         elif c.setup is not None:
             # A setup only matters where an accumulator is narrowed: a bf16
             # or bfp16 output, or an explicit conversion in the source.
-            out_dt = kh._shape_dtype(kh._arg_types(ef)[c.out_index])[1]
+            out_dt = kd.shape_dtype(kd._arg_types(ef)[c.out_index])[1]
             narrows = (
                 bfp.is_bfp(out_dt)
                 or np.dtype(out_dt) == np.dtype(bfloat16)
@@ -1239,10 +1237,10 @@ def test_setup_is_declared_exactly_where_the_source_does_not_set_the_mode(arch):
 def test_a_design_runs_the_setup_a_contract_names():
     """A design for a kernel with a ``setup`` binds it; one without does not."""
     assert kernels.add().contract.setup is not None
-    mlir = str(kh.design(kernels.add, calls=2).as_mlir())
+    mlir = str(kd.design(kernels.add, calls=2).as_mlir())
     assert "set_rounding_conv_even" in mlir
     assert kernels.convert_copy().contract.setup is None
-    mlir = str(kh.design(kernels.convert_copy, calls=1).as_mlir())
+    mlir = str(kd.design(kernels.convert_copy, calls=1).as_mlir())
     assert "set_rounding" not in mlir
 
 

@@ -32,9 +32,9 @@ from pathlib import Path
 import numpy as np
 import pytest
 from aie.iron import kernels
-from aie.utils import kernel_harness as kh
+from aie.iron.algorithms import kernel_design as kd
 from aie.utils.benchmark import measure_compile, preflight, provenance, run_iters
-from aie.utils.kernel_harness.cases import Case, inputs_for
+from cases import Case, inputs_for
 from kernel_cases import CASES
 
 TRACE_SIZE = 16384
@@ -67,7 +67,7 @@ def _measure(case: Case, config, workdir: Path) -> dict:
     fn = case.fn()
     factory = getattr(kernels, case.factory)
     inputs = inputs_for(case, "random", np.random.default_rng(0))
-    design = kh.design(
+    design = kd.design(
         factory,
         **case.harness_opts(),
         params=fn.param_values(inputs),
@@ -76,9 +76,9 @@ def _measure(case: Case, config, workdir: Path) -> dict:
     )
 
     ref = fn.expected(inputs, scalars=case.scalars)
-    out_n = kh.output_size(fn, calls=case.calls, shape=case.shape)
+    out_n = kd.output_size(fn, calls=case.calls, shape=case.shape)
     out_dt = fn.output_dtype(ref.dtype)
-    ins, out = kh.upload(inputs, out_n, out_dt, poison=True, fn=fn)
+    ins, out = kd.upload(inputs, out_n, out_dt, poison=True, fn=fn)
 
     measured: dict = {}
     if not config.getoption("--no-compile"):
@@ -102,7 +102,7 @@ def _measure(case: Case, config, workdir: Path) -> dict:
     )
     if not config.getoption("--no-cycles"):
         # A separate traced run: tracing perturbs the timing above.
-        per_call = kh.cycles_per_call(
+        per_call = kd.cycles_per_call(
             design, inputs, out_n, out_dt, trace_size=TRACE_SIZE, workdir=workdir, fn=fn
         )
         if per_call:

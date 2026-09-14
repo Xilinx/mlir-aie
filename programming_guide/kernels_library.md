@@ -162,17 +162,17 @@ mm.contract.rounding     # 'unspecified'
 kernels.mm.dtypes        # every (input_dtype, output_dtype) the factory supports
 ```
 
-The contract is what lets `aie.utils.kernel_harness` build, run and check
+The contract is what lets `aie.iron.algorithms.kernel_design` build, run and check
 a kernel without a hand-written design:
 
 ```python
-from aie.utils import kernel_harness as kh
+from aie.iron.algorithms import kernel_design as kd
 
 fn = kernels.reduce_max(dtype=np.int32)
-design = kh.design(kernels.reduce_max, calls=16, dtype=np.int32)
-inputs = kh.sample_inputs(fn, calls=16)
-ins, out = kh.upload(
-    inputs, kh.output_size(fn, calls=16), fn.output_dtype(np.int32), fn=fn, poison=True
+design = kd.design(kernels.reduce_max, calls=16, dtype=np.int32)
+inputs = kd.sample_inputs(fn, calls=16)
+ins, out = kd.upload(
+    inputs, kd.output_size(fn, calls=16), fn.output_dtype(np.int32), fn=fn, poison=True
 )
 design(*ins, out)
 verdict = fn.judge(out.numpy().copy(), fn.expected(inputs), calls=16)
@@ -248,7 +248,7 @@ Three things make this work for more than one kernel per design:
   cascade trio and `mha`'s flash-attention siblings are built. Chess-built
   kernels are the exception: `llvm-objcopy` corrupts xchesscc objects, so
   they keep bare symbols and only one variant may appear in a design.
-- **`host_args`.** `aie.utils.kernel_harness.host_args(fn, calls=, shape=)`
+- **`host_args`.** `kernel_design.host_args(fn, calls=, shape=)`
   returns one `HostArg` (direction, shape, dtype) per host buffer the
   design takes, in the layout the device expects: B transposed for a
   `b_col_maj` matmul, C transposed for `c_col_maj`, encoded bytes for a

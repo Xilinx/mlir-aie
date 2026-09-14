@@ -83,13 +83,14 @@ def _arg_types(fn) -> list:
     return fn.arg_types()
 
 
-def _shape_dtype(arg_type):
+def shape_dtype(arg_type):
     """``(shape, dtype)`` of an ``np.ndarray[(n,), np.dtype[T]]`` argument type."""
     return arg_type.__args__[0], arg_type.__args__[1].__args__[0]
 
 
-def _elems(arg_type) -> int:
-    return int(np.prod(_shape_dtype(arg_type)[0]))
+def elems(arg_type) -> int:
+    """Return the number of elements an argument type holds."""
+    return int(np.prod(shape_dtype(arg_type)[0]))
 
 
 def _bfp_operands(fn) -> tuple[bool, bool, bool]:
@@ -98,7 +99,7 @@ def _bfp_operands(fn) -> tuple[bool, bool, bool]:
     False for an argument a kernel does not have, so this answers for any
     kernel rather than only for the three-operand ones.
     """
-    flags = [bfp.is_bfp(_shape_dtype(t)[1]) for t in _arg_types(fn)[:3]]
+    flags = [bfp.is_bfp(shape_dtype(t)[1]) for t in _arg_types(fn)[:3]]
     a, b, c = flags + [False] * (3 - len(flags))
     return a, b, c
 
@@ -223,7 +224,7 @@ def _encode_params(fn, params) -> tuple:
         )
     out = []
     for i, a in zip(param_roles, params):
-        shape, dt = _shape_dtype(_arg_types(fn)[i])
+        shape, dt = shape_dtype(_arg_types(fn)[i])
         a = np.asarray(a)
         if a.size != int(np.prod(shape)):
             raise ValueError(
@@ -281,7 +282,7 @@ def _build_stream(
         )
 
     def nbytes(i):
-        return _elems(arg_types[i]) * bfp.itemsize(_shape_dtype(arg_types[i])[1])
+        return elems(arg_types[i]) * bfp.itemsize(shape_dtype(arg_types[i])[1])
 
     # One "set" is every streamed tile plus the output; `param` arguments
     # live in one Buffer each, whatever the depth.
@@ -312,11 +313,11 @@ def _build_stream(
     # side). A reduction's ``out_valid`` marks its output tile as padded
     # rather than narrower-per-iteration, so there the count is the (larger)
     # input's element count instead.
-    in0_elems = _elems(arg_types[in_roles[0]])
+    in0_elems = elems(arg_types[in_roles[0]])
     count = (
         in0_elems
         if c.out_valid is not None
-        else min(in0_elems, _elems(arg_types[out_pos]))
+        else min(in0_elems, elems(arg_types[out_pos]))
     )
     setter = _rounding_setter(c)
 
@@ -366,7 +367,7 @@ def _build_stream(
     )
 
     def host_ty(i, reps):
-        shape, dt = _shape_dtype(arg_types[i])
+        shape, dt = shape_dtype(arg_types[i])
         return np.ndarray[(int(np.prod(shape)) * reps,), np.dtype[dt]]
 
     host_tys = [host_ty(g[0], calls * len(g)) for g in groups]
@@ -473,7 +474,7 @@ def _matmul(
     mm = factory(**factory_kwargs)
     zero = mm.also.zero
     (a_shape, dt_a), (_, dt_b), (c_shape, dt_c) = (
-        _shape_dtype(t) for t in _arg_types(mm)
+        shape_dtype(t) for t in _arg_types(mm)
     )
     m, k, n = factory_kwargs["dim_m"], factory_kwargs["dim_k"], factory_kwargs["dim_n"]
     # A bfp16ebs8 operand counts 8 values per element, so its shapes divide
@@ -619,7 +620,7 @@ def _matvec(
 
     mv = factory(**factory_kwargs)
     zero = mv.also.zero
-    (_, dt_in), _, (_, dt_out) = (_shape_dtype(t) for t in _arg_types(mv))
+    (_, dt_in), _, (_, dt_out) = (shape_dtype(t) for t in _arg_types(mv))
     m, k = factory_kwargs["dim_m"], factory_kwargs["dim_k"]
     M_div_m, K_div_k = M // m, K // k
 
@@ -754,7 +755,7 @@ def sample_inputs(
         # A bfp16ebs8 operand is sampled as the float32 the host encodes.
         dt_a, dt_b = (
             np.float32 if bfp.is_bfp(dt) else dt
-            for dt in (_shape_dtype(t)[1] for t in _arg_types(fn)[:2])
+            for dt in (shape_dtype(t)[1] for t in _arg_types(fn)[:2])
         )
         shape = _matrix_shape(fn, shape, 3 if is_matmul(fn) else 2)
         M, K = shape[0], shape[1]
@@ -767,7 +768,7 @@ def sample_inputs(
         ]
     out = []
     for i in _tensor_positions(c)[0]:
-        s, dt = _shape_dtype(_arg_types(fn)[i])
+        s, dt = shape_dtype(_arg_types(fn)[i])
         n = int(np.prod(s))
         reps = (calls,) if c.roles[i] == In else ()
         out.append(_draw(rng, reps + (n,), dt, int_range=fn.input_limit(dt)))
@@ -892,7 +893,7 @@ def output_size(fn, *, calls: int = 1, shape: tuple | None = None) -> int:
         return n * bfp.BLOCK_BYTES // bfp.BLOCK if _bfp_operands(fn)[2] else n
     if is_matvec(fn):
         return _matrix_shape(fn, shape, 2)[0]
-    return _elems(_arg_types(fn)[_contract(fn).out_index]) * calls
+    return elems(_arg_types(fn)[_contract(fn).out_index]) * calls
 
 
 @dataclass(frozen=True)
@@ -927,13 +928,13 @@ def host_args(fn, *, calls: int = 1, shape: tuple | None = None) -> list[HostArg
     """
     c = _contract(fn)
     types = _arg_types(fn)
-    out_dt = _shape_dtype(types[c.out_index])[1]
+    out_dt = shape_dtype(types[c.out_index])[1]
     args: list[HostArg] = []
     if is_matmul(fn) or is_matvec(fn):
         rank = 3 if is_matmul(fn) else 2
         dims = _matrix_shape(fn, shape, rank)
         M, K = dims[0], dims[1]
-        in_dts = [_shape_dtype(t)[1] for t in types[:2]]
+        in_dts = [shape_dtype(t)[1] for t in types[:2]]
         bfp_a, bfp_b, bfp_c = (
             _bfp_operands(fn) if is_matmul(fn) else (False, False, False)
         )
@@ -967,7 +968,7 @@ def host_args(fn, *, calls: int = 1, shape: tuple | None = None) -> list[HostArg
         return args
     groups, _, _ = _fifo_plan(fn)
     for g in groups:
-        n, dt = _elems(types[g[0]]), _shape_dtype(types[g[0]])[1]
+        n, dt = elems(types[g[0]]), shape_dtype(types[g[0]])[1]
         args.append(
             HostArg(In, (calls, n), dt)
             if len(g) == 1
@@ -1002,6 +1003,7 @@ def cycles_per_call(
 __all__ = [
     "cycles_per_call",
     "design",
+    "elems",
     "host_layout",
     "is_matmul",
     "is_matvec",
@@ -1009,5 +1011,6 @@ __all__ = [
     "HostArg",
     "output_size",
     "sample_inputs",
+    "shape_dtype",
     "upload",
 ]

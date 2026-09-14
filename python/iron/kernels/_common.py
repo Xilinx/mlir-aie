@@ -29,7 +29,7 @@ class KernelContract:
     ``arg_types`` already fixes each argument's shape and dtype. The contract
     adds what types cannot say: which argument is which, how to compute the
     expected result on the host, and how close the device must come. With it
-    a generic harness (``aie.utils.kernel_harness``) can build a design, run
+    a generic builder (``aie.iron.algorithms.kernel_design``) can build a design, run
     the kernel and judge the output for *any* factory, so correctness tests,
     e2e tests and benchmarks share one definition instead of each restating
     it.

@@ -367,7 +367,7 @@ def mm(
         c_col_maj=c_col_maj,
     )
     # Host-side layout the streams above assume: B given as (n, k) tiles of
-    # B^T, C emitted as (n, m) tiles of C^T. aie.utils.kernel_harness reads
+    # B^T, C emitted as (n, m) tiles of C^T. kernel_design reads
     # these to transpose the host operands.
     extern.b_col_maj = bool(b_col_maj)
     extern.c_col_maj = bool(c_col_maj)

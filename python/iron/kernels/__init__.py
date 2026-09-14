@@ -18,7 +18,7 @@ Submodules:
 
 Most factories attach a [`KernelContract`][iron.kernels.KernelContract] as
 ``.contract``: argument roles, a numpy reference and a tolerance. It is what
-``aie.utils.kernel_harness`` uses to build, run and check any kernel, and the
+``aie.iron.algorithms.kernel_design`` uses to build, run and check any kernel, and the
 ``*_ref`` functions exported here are those references.
 - `conv` — conv2dk1, conv2dk3, conv2dk1_skip, conv2dk1_i8, conv2dk14, conv2dk1_skip_init, bn_*
 """

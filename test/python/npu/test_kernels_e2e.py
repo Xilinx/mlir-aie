@@ -13,7 +13,7 @@
 
 ``test/python/test_kernel_contracts.py`` proves every contract matches its
 factory and lowers to MLIR on the host. This file is the tier that needs a
-device: each case runs through ``aie.utils.kernel_harness`` and is judged
+device: each case runs through ``aie.iron.algorithms.kernel_design`` and is judged
 under the tolerance its kernel declares. It catches what types cannot -- a
 wrong exported symbol, a wrong compile flag, a DMA-alignment bug, a
 reference that disagrees with the C++.
@@ -37,8 +37,8 @@ import pytest
 from aie.iron import In, ObjectFifo, Out, Program, Runtime, Worker, kernels
 from aie.iron.controlflow import range_
 from aie.iron.kernels._common import _detect_arch
-from aie.utils import kernel_harness as kh
-from aie.utils.kernel_harness.cases import inputs_for
+from aie.iron.algorithms import kernel_design as kd
+from cases import inputs_for
 from kernel_cases import CASES
 from ml_dtypes import bfloat16
 
@@ -54,7 +54,7 @@ def _run(design, fn, inputs, out_n, out_dt):
     The result is a copy: ``Tensor.numpy()`` views the XRT buffer's mapped
     host memory, and ``out`` is the last reference to that buffer.
     """
-    ins, out = kh.upload(inputs, out_n, out_dt, fn=fn, poison=True)
+    ins, out = kd.upload(inputs, out_n, out_dt, fn=fn, poison=True)
     design(*ins, out)
     return out.numpy().copy()
 
@@ -62,14 +62,14 @@ def _run(design, fn, inputs, out_n, out_dt):
 def _run_case(case, data_case: str, seed: int):
     fn = case.fn()
     inputs = inputs_for(case, data_case, np.random.default_rng(1000 + seed))
-    design = kh.design(
+    design = kd.design(
         getattr(kernels, case.factory),
         **case.harness_opts(),
         params=fn.param_values(inputs),
         **case.kwargs,
     )
     ref = fn.expected(inputs, scalars=case.scalars)
-    out_n = kh.output_size(fn, calls=case.calls, shape=case.shape)
+    out_n = kd.output_size(fn, calls=case.calls, shape=case.shape)
     out_dt = fn.output_dtype(ref.dtype)
     # The output is poisoned so a kernel that writes nothing cannot pass.
     got = _run(design, fn, inputs, out_n, out_dt)
@@ -128,7 +128,7 @@ def test_bf16_exp_saturates_outside_lut_domain():
     tile[: len(xs)] = xs
     tile_bf16 = tile.astype(bfloat16)
 
-    design = kh.design(kernels.bf16_exp, calls=1)
+    design = kd.design(kernels.bf16_exp, calls=1)
     got = _run(design, fn, [tile_bf16.reshape(1, 1024)], 1024, np.dtype(bfloat16))
     verdict = fn.judge(got, fn.expected([tile_bf16.reshape(1, 1024)]), calls=1)
     assert verdict, verdict.detail
@@ -147,7 +147,7 @@ def test_softmax_wide_dynamic_range():
     tile[0], tile[1] = 0.0, -5.0
     tile_bf16 = tile.astype(bfloat16)
 
-    design = kh.design(kernels.softmax, calls=1)
+    design = kd.design(kernels.softmax, calls=1)
     got = _run(design, fn, [tile_bf16.reshape(1, 1024)], 1024, np.dtype(bfloat16))
     verdict = fn.judge(got, fn.expected([tile_bf16.reshape(1, 1024)]), calls=1)
     assert verdict, verdict.detail
@@ -335,10 +335,10 @@ def test_setup_reaches_the_core():
     conv_even_result = _bf16_from_bits(bits + 1)  # ties away from the odd neighbour
 
     fn = kernels.mul(tile_size=n)
-    design = kh.design(kernels.mul, calls=1, tile_size=n)
-    ins, out = kh.upload(
+    design = kd.design(kernels.mul, calls=1, tile_size=n)
+    ins, out = kd.upload(
         [x.reshape(1, n), y.reshape(1, n)],
-        kh.output_size(fn, calls=1),
+        kd.output_size(fn, calls=1),
         bfloat16,
         fn=fn,
         poison=True,

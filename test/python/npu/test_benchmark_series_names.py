@@ -24,7 +24,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from aie.utils.kernel_harness.cases import device_for  # noqa: E402
+from cases import device_for  # noqa: E402
 from kernel_cases import CASES  # noqa: E402
 
 _SNAPSHOT = Path(__file__).parent / "benchmark_series.txt"

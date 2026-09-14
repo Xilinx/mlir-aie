@@ -35,7 +35,7 @@ on:
   #     - aie_kernels/**                      # what is compiled
   #     - aie_runtime_lib/**                  # lut_based_ops.cpp behind the aie2 LUT kernels
   #     - python/iron/kernels/**              # which source, which flags
-  #     - python/utils/kernel_harness/**      # the designs the compile sweep builds
+  #     - python/iron/algorithms/kernel_design.py  # the designs the sweep builds
   #     - python/utils/compile/remarks.py     # the checker
   #     - test/python/npu/kernel_cases.py     # the case table the compile sweep walks
   #     - test/python/test_remarks.py
@@ -91,7 +91,7 @@ jobs:
         # readable error instead of somewhere inside a compile sweep.
         run: |
           python - <<'EOF'
-          import aie, aie.iron, aie.utils.kernel_harness as kh
+          import aie, aie.iron, aie.iron.algorithms.kernel_design as kd
           from aie.iron import kernels
           root = aie.__path__[0]
           assert root.startswith("${{ github.workspace }}"), root

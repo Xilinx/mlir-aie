@@ -61,9 +61,9 @@ kernel sources these wrap, see [C++ AIE kernels](aie_kernels.md).
     options:
       show_root_heading: false
 
-## Contracts and the test harness
+## Contracts and the generic design builder
 
-Every factory that the generic harness can build carries a `KernelContract`
+Every factory the generic builder can build carries a `KernelContract`
 on the returned `ExternalFunction` (`fn.contract`): argument roles, a numpy
 reference, the tolerance the kernel is held to, its work per call, what it
 accumulates in and over how many terms, and its integer overflow and
@@ -80,7 +80,7 @@ the math.
         - KernelContract
         - ROLES
 
-`aie.utils.kernel_harness` turns any contract-bearing factory into a
+`aie.iron.algorithms.kernel_design` turns any contract-bearing factory into a
 single-Worker design. What a kernel can answer about itself -- its
 reference result, its safe input range, which arguments are parameters,
 how to judge a device output -- lives on
@@ -89,7 +89,7 @@ kernel needs no test harness. See
 [Kernel Library](../programming_guide/kernels_library.md#adding-a-kernel) for
 the add-a-kernel procedure and the test tiers built on it.
 
-::: utils.kernel_harness
+::: iron.algorithms.kernel_design
     options:
       show_root_heading: false
       members:
@@ -102,17 +102,6 @@ the add-a-kernel procedure and the test tiers built on it.
         - upload
         - cycles_per_call
 
-A `Case` names one kernel at one shape; the tests and the benchmark read
-the same table (`test/python/npu/kernel_cases.py`).
-
-::: utils.kernel_harness.cases
-    options:
-      show_root_heading: false
-      members:
-        - Case
-        - data_policy
-        - inputs_for
-        - load_cases
 
 `test/python/npu/test_kernels_bench.py` times the library: correctness
 first, then cycles, wall time and build size, gated by a device preflight

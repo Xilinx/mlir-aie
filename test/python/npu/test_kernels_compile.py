@@ -29,8 +29,8 @@ import os
 import numpy as np
 import pytest
 from aie.iron import kernels
-from aie.utils import kernel_harness as kh
-from aie.utils.kernel_harness.cases import device_for, inputs_for
+from aie.iron.algorithms import kernel_design as kd
+from cases import device_for, inputs_for
 from kernel_cases import CASES
 
 # Which generation to build for; the static workflow sets it from its matrix.
@@ -55,7 +55,7 @@ def test_design_compiles_through_cdo(case, tmp_path):
     with device_for((_DEVICE,)):
         fn = case.fn()
         inputs = inputs_for(case, "random", np.random.default_rng(0))
-        design = kh.design(
+        design = kd.design(
             getattr(kernels, case.factory),
             **case.harness_opts(),
             params=fn.param_values(inputs),

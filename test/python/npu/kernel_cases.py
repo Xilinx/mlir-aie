@@ -19,7 +19,7 @@ marks kernels whose source exists only for AIE2P.
 """
 
 import numpy as np
-from aie.utils.kernel_harness.cases import Case
+from cases import Case
 from ml_dtypes import bfloat16
 
 _bf16 = dict(dtype=bfloat16)

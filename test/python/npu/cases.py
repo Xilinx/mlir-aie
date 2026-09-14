@@ -23,9 +23,9 @@ from dataclasses import dataclass, field
 
 import numpy as np
 from aie.iron import In, Param, kernels
+from aie.iron.algorithms import kernel_design as kd
 from aie.iron.device import from_name
 from aie.utils import bfp, get_current_device
-from aie.utils import kernel_harness as kh
 from aie.utils.hostruntime import set_current_device
 
 
@@ -112,14 +112,14 @@ class Case:
         building the kernel is the expensive part.
         """
         fn = self.fn()
-        types = kh._arg_types(fn)
-        in_dt = bfp.dtype_name(kh._shape_dtype(types[fn.contract.roles.index(In)])[1])
-        out_dt = bfp.dtype_name(kh._shape_dtype(types[fn.contract.out_index])[1])
+        types = fn.arg_types()
+        in_dt = bfp.dtype_name(kd.shape_dtype(types[fn.contract.roles.index(In)])[1])
+        out_dt = bfp.dtype_name(kd.shape_dtype(types[fn.contract.out_index])[1])
         dtypes = in_dt if in_dt == out_dt else f"{in_dt}_{out_dt}"
         if self.shape:
             dims = "x".join(str(d) for d in self.shape)
         else:
-            dims = f"{kh._elems(types[fn.contract.roles.index(In)])}x{self.calls}"
+            dims = f"{kd.elems(types[fn.contract.roles.index(In)])}x{self.calls}"
         extra = [
             f"{k}={bfp.dtype_name(v) if isinstance(v, type) else v}"
             for k, v in sorted(self.kwargs.items())
@@ -150,7 +150,7 @@ class Case:
         fn = self.fn()
         per_call = fn.contract.ops_per_call
         if per_call is None:
-            per_call = kh._elems(kh._arg_types(fn)[fn.contract.out_index])
+            per_call = kd.elems(fn.arg_types()[fn.contract.out_index])
         return per_call * self.kernel_calls()
 
     def supported_on(self, device_name: str) -> bool:
@@ -182,11 +182,11 @@ def data_policy(fn) -> tuple[str, ...]:
     c = fn.contract
     if c.sample is not None:
         return ("random",)  # structured inputs have no edge variants
-    types = kh._arg_types(fn)
-    in_dt = kh._shape_dtype(types[c.roles.index(In)])[1]
+    types = fn.arg_types()
+    in_dt = kd.shape_dtype(types[c.roles.index(In)])[1]
     if bfp.is_bfp(in_dt):
         return tuple(d for d in MATRIX_DATA if d != "max")
-    if kh.is_matmul(fn) or kh.is_matvec(fn):
+    if kd.is_matmul(fn) or kd.is_matvec(fn):
         return MATRIX_DATA
     if np.issubdtype(np.dtype(in_dt), np.integer):
         return INT_DATA
@@ -197,7 +197,7 @@ def _edge(shape, dtype, rng, case: str, limit: int | None = None) -> np.ndarray:
     """Return one edge-case array.
 
     ``limit`` bounds the integer extremes ("max", "min") to what the kernel's
-    accumulator admits (``kernel_harness.input_limit``).
+    accumulator admits (``ExternalFunction.input_limit``).
     """
     dt = np.dtype(dtype)
     is_int = np.issubdtype(dt, np.integer)
@@ -236,7 +236,7 @@ def inputs_for(case: Case, data_case: str, rng) -> list[np.ndarray]:
     """Host inputs for ``case`` under one data case, in contract order."""
     fn = case.fn()
     c = fn.contract
-    inputs = kh.sample_inputs(fn, calls=case.calls, shape=case.shape, rng=rng)
+    inputs = kd.sample_inputs(fn, calls=case.calls, shape=case.shape, rng=rng)
     tensor_pos = [i for i, r in enumerate(c.roles) if r in (In, Param)]
     if data_case != "random":
         if c.sample is not None:
@@ -275,18 +275,6 @@ def inputs_for(case: Case, data_case: str, rng) -> list[np.ndarray]:
     return inputs
 
 
-def load_cases(path: str) -> list[Case]:
-    """Import ``CASES`` from a Python file, for the command-line drivers."""
-    import importlib.util
-
-    spec = importlib.util.spec_from_file_location("kernel_cases", path)
-    if spec is None or spec.loader is None:
-        raise ValueError(f"cannot import cases from {path}")
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return list(mod.CASES)
-
-
 __all__ = [
     "Case",
     "INT_DATA",
@@ -295,5 +283,4 @@ __all__ = [
     "data_policy",
     "device_for",
     "inputs_for",
-    "load_cases",
 ]
