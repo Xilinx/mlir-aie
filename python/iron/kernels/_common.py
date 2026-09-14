@@ -83,7 +83,14 @@ class KernelContract:
             stack and rejects a design whose stack is too small, so a kernel
             that needs more than the default says so here rather than making
             every design guess. Record where the number came from.
-        unsupported: ``None`` when the generic harness can build, run and
+        cascade_partner: The factory for the other half, when this kernel is
+            one half of a two-tile cascade pair. Half a pair computes half an
+            answer: the partial sum crosses the cascade stream, which is not
+            an argument, so a PUT half has no output role at all and neither
+            half is separately observable. ``reference`` is therefore the
+            *pair's* -- what the two compute together -- and ``unsupported``
+            follows from naming a partner rather than being restated.
+        unsupported: ``None`` when the generic builder can build, run and
             judge the kernel in a single-Worker design; otherwise the reason
             it cannot (a cascade protocol, an operand it cannot sample). The
             reference and the dtype facts still say what the kernel computes.
@@ -105,6 +112,7 @@ class KernelContract:
     reduction: int | None = None
     setup: Callable[[], object] | None = None
     stack_bytes: int | None = None
+    cascade_partner: Callable[..., object] | None = None
     unsupported: str | None = None
 
     def __post_init__(self):
@@ -113,21 +121,45 @@ class KernelContract:
             names = ", ".join(r.__name__ for r in ROLES)
             raise ValueError(f"unknown kernel argument role(s) {bad}; use {names}")
         # A kernel with no data arguments at all (set_rounding sets core state)
-        # has nothing to be the output.
-        if self.roles and self.roles.count(Out) + self.roles.count(InOut) != 1:
-            raise ValueError("a kernel contract needs exactly one Out or InOut role")
+        # has nothing to be the output. A cascade half may also have none: its
+        # result leaves on the cascade stream, which is not an argument.
+        n_out = self.roles.count(Out) + self.roles.count(InOut)
+        allowed = (0, 1) if self.cascade_partner is not None else (1,)
+        if self.roles and n_out not in allowed:
+            raise ValueError(
+                "a kernel contract needs exactly one Out or InOut role"
+                + (", or none when it emits on a cascade" if allowed == (0, 1) else "")
+            )
         if self.reduction is not None and self.reduction < 1:
             raise ValueError(f"reduction must be >= 1, got {self.reduction}")
         if self.stack_bytes is not None and self.stack_bytes < 1:
             raise ValueError(f"stack_bytes must be >= 1, got {self.stack_bytes}")
         if self.unsupported is not None and not self.unsupported:
             raise ValueError("unsupported must be a reason, or None")
+        # Naming a partner already says the single-Worker builder cannot drive
+        # this kernel, so the reason is derived rather than restated.
+        if self.cascade_partner is not None and self.unsupported is None:
+            object.__setattr__(
+                self,
+                "unsupported",
+                f"one half of a cascade pair with {self.cascade_partner.__name__}; "
+                "the partial sum crosses the cascade stream, which is not an "
+                "argument, so the reference is what the pair computes",
+            )
 
     @property
     def out_index(self) -> int:
         """Position of the output, whether the kernel writes it or accumulates into it."""
         roles = list(self.roles)
-        return roles.index(Out) if Out in roles else roles.index(InOut)
+        if Out in roles:
+            return roles.index(Out)
+        if InOut in roles:
+            return roles.index(InOut)
+        raise ValueError(
+            f"this kernel has no output argument: it emits on the cascade to "
+            f"{self.cascade_partner.__name__ if self.cascade_partner else '?'}, "
+            "so there is nothing to size or judge on its own"
+        )
 
     @property
     def accumulates(self) -> bool:
