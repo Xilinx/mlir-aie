@@ -16,7 +16,7 @@
 #include "../aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 
-#include "zero.cc"
+#include "../generic/zero.cc"
 
 template <typename T_in, typename T_out, int rowA, int colA, int colB,
           bool b_row_maj = true, bool c_row_maj = true>

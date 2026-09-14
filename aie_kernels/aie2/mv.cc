@@ -18,7 +18,7 @@
 #include "../aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 
-#include "zero.cc"
+#include "../generic/zero.cc"
 
 template <typename T_in, typename T_out, int M, int K>
 void matvec_scalar(T_in *a, T_in *b, T_out *c) {
