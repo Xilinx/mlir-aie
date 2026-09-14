@@ -41,9 +41,16 @@ class Stats:
             raise ValueError("Stats.from_samples needs at least one sample")
         s = sorted(samples_us)
         med = statistics.median(s)
+        # statistics has no MAD; it is the median of the absolute deviations.
         mad = statistics.median(abs(x - med) for x in s)
+        # Nearest-rank, rather than statistics.quantiles or np.percentile which
+        # both interpolate between samples. At these sample counts the three
+        # disagree enough to matter -- 102.6 / 105.1 / 101.8 on the same n=5
+        # data -- and an interpolated p95 reports a duration no run took.
+        # Changing this moves every published chart, so it is a definition
+        # rather than an oversight.
         p95 = s[min(len(s) - 1, math.ceil(0.95 * len(s)) - 1)]
-        mean = sum(s) / len(s)
+        mean = statistics.fmean(s)
         cov = (statistics.stdev(s) / mean) if len(s) > 1 and mean > 0 else 0.0
         return cls(
             avg_us=mean,
