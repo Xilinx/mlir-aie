@@ -5,6 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 
 #include "mlir/Pass/PassManager.h"
