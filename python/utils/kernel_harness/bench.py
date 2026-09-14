@@ -245,7 +245,7 @@ class Preflight:
     npu: str  # "npu1" / "npu2"
     arch: str  # "aie2" / "aie2p"
     device: str  # the device as the runtime describes it
-    pmode: str  # power mode, or "unknown"
+    pmode: str | None  # power mode, or None if it could not be read
 
 
 def preflight() -> Preflight:
@@ -306,7 +306,8 @@ def main(
         pre = preflight_fn()
         if a.pmode != "any" and pre.pmode != a.pmode:
             raise RuntimeError(
-                f"power mode is '{pre.pmode}', required '{a.pmode}' "
+                f"power mode is {pre.pmode or 'unreadable'}, required "
+                f"'{a.pmode}' "
                 "(set it with xrt-smi configure --pmode, or pass --pmode any)"
             )
     except Exception as ex:  # noqa: BLE001 - reported, nothing written

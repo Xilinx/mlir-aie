@@ -165,7 +165,7 @@ def print_benchmark(result: BenchmarkResult) -> None:
     )
 
 
-def provenance(**extra: str) -> str:
+def provenance(**extra: str | None) -> str:
     """Return a one-line description of what produced a measurement.
 
     The git commit (``GITHUB_SHA`` or ``git rev-parse HEAD``), the installed

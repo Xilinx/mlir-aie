@@ -118,27 +118,30 @@ class XRTHostRuntime(HostRuntime):
         if not self.npu_str:
             raise RuntimeError(f"Unknown device type: {self._device_type_str}")
 
-    def power_mode(self) -> str:
-        """Return the power mode ``xrt-smi`` reports for this device, or ``"unknown"``.
+    def power_mode(self) -> str | None:
+        """Return the power mode ``xrt-smi`` reports for this device, or ``None``.
 
-        Read from ``xrt-smi examine --report platform`` for the device's
-        BDF. Best effort: a missing ``xrt-smi`` or an unexpected report
-        yields ``"unknown"`` rather than an error, since the mode only
-        qualifies a measurement.
+        Scraped from ``xrt-smi examine --report platform`` for the device's
+        BDF because XRT exposes no API for it. Best effort: a missing
+        ``xrt-smi`` or an unexpected report gives ``None`` rather than an
+        error, since the mode only qualifies a measurement.
         """
+        xrt_smi = xrt_smi_path()
+        if xrt_smi is None:
+            return None
         try:
             bdf = self._device.get_info(pyxrt.xrt_info_device.bdf)
             out = subprocess.run(
-                [xrt_smi_path(), "examine", "-d", bdf, "--report", "platform"],
+                [xrt_smi, "examine", "-d", bdf, "--report", "platform"],
                 capture_output=True,
                 text=True,
                 timeout=10,
                 check=False,
             ).stdout
         except Exception:  # noqa: BLE001 - informational only
-            return "unknown"
+            return None
         m = re.search(r"(?i)\b(?:performance|power)\s*mode\s*:\s*(\S+)", out)
-        return m.group(1).lower() if m else "unknown"
+        return m.group(1).lower() if m else None
 
     @classmethod
     def read_insts(cls, insts_path: Path):

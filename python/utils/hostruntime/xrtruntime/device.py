@@ -22,11 +22,11 @@ for the life of the process cannot be outlived by the buffers derived from it.
 import gc
 import logging
 import os
-import shutil
 import subprocess
 import time
 
 import pyxrt  # pyright: ignore[reportMissingImports]
+from aie.utils.probe import xrt_smi_path as xrt_smi_path
 
 logger = logging.getLogger(__name__)
 
@@ -39,15 +39,6 @@ _DEVICES: dict[int, "pyxrt.device"] = {}
 # Retrying at all is what #2814 established, from a CI run where the device was
 # briefly unopenable and no state of this process explained it.
 _MAX_RETRIES = 5
-
-
-def xrt_smi_path() -> str:
-    """Return the ``xrt-smi`` executable: from PATH, else under ``$XILINX_XRT/bin``."""
-    xrt_bin = shutil.which("xrt-smi")
-    if xrt_bin is None:
-        xrt_base = os.environ.get("XILINX_XRT", "/opt/xilinx/xrt")
-        xrt_bin = os.path.join(xrt_base, "bin", "xrt-smi")
-    return xrt_bin
 
 
 def _log_device_state():
@@ -65,7 +56,7 @@ def _log_device_state():
             logger.debug("/dev/accel/accel0 does not exist")
 
         xrt_bin = xrt_smi_path()
-        if os.path.exists(xrt_bin):
+        if xrt_bin is not None:
             logger.debug("Running %s examine", xrt_bin)
             result = subprocess.run(
                 [xrt_bin, "examine"],
