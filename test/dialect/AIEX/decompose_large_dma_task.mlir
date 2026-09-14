@@ -199,3 +199,33 @@ module {
     }
   }
 }
+
+
+// -----
+
+// Test: PRESERVED -- a legal (in-range) iteration BD is left untouched. The pass
+// only rewrites oversized patterns, and it refuses to decompose iteration BDs.
+//
+// RUN: aie-opt --pass-pipeline='any(aie.device(aie-decompose-large-dma-bd))' \
+// RUN:   --split-input-file %s | FileCheck %s --check-prefix=ITER
+
+// ITER-LABEL: @iteration_preserved
+// ITER:         aie.dma_bd
+// ITER-SAME:      sizes = [4, 8, 1] strides = [512, 32, 1]
+// ITER-SAME:      iteration = #aie.bd_iteration<size = 4, stride = 16, current = 2>
+// ITER-NOT:     aie.next_bd
+module {
+  aie.device(npu2_1col) {
+    %t = aie.tile(0, 0)
+    aie.shim_dma_allocation @a (%t, MM2S, 0)
+    aie.runtime_sequence @iteration_preserved(%in: memref<8192xi32>) {
+      %tk = aiex.dma_configure_task_for @a {
+        aie.dma_bd(%in : memref<8192xi32> offset = 0 len = 32 sizes = [4, 8, 1] strides = [512, 32, 1])
+          {iteration = #aie.bd_iteration<size = 4, stride = 16, current = 2>}
+        aie.end
+      } {issue_token = true}
+      aiex.dma_start_task(%tk)
+      aiex.dma_await_task(%tk)
+    }
+  }
+}

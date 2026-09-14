@@ -299,11 +299,35 @@ def packet_info_attr_builder(tups: Tuple[int] | List[int], context=None):
     )
 
 
+@dataclass
+class BdIteration:
+    """Iteration state of a buffer descriptor for aie.dma_bd.
+
+    Lets one BD cover ``size`` sub-buffers over ``size`` executions instead of an
+    N-deep chain. Values are true/element: the base advances by ``stride``
+    elements each execution and wraps after ``size`` executions; ``current`` is
+    the starting step (default 0). The lowering applies the hardware ``-1`` bias
+    and element->word scaling. NOTE: the identically-named ``iteration_*`` family
+    on the runtime-sequence path uses RAW register values instead -- do not copy
+    numbers between them.
+    """
+
+    size: int
+    stride: int
+    current: int = 0
+
+
 @register_attribute_builder("BDIterationAttr")
-def bd_iteration_attr_builder(tup: Tuple[int] | List[int], context=None):
-    assert (isinstance(tup, list) or isinstance(tup, tuple)) and len(tup) == 3
+def bd_iteration_attr_builder(
+    value: BdIteration | Tuple[int] | List[int], context=None
+):
+    if isinstance(value, BdIteration):
+        size, stride, current = value.size, value.stride, value.current
+    else:
+        assert (isinstance(value, list) or isinstance(value, tuple)) and len(value) == 3
+        size, stride, current = value
     return Attribute.parse(
-        f"#aie.bd_iteration<size = {tup[0]}, stride = {tup[1]}, current = {tup[2]}>",
+        f"#aie.bd_iteration<size = {size}, stride = {stride}, current = {current}>",
         context=context,
     )
 
