@@ -302,6 +302,46 @@ def test_reduction_reference_yields_one_value_per_call():
     assert fn.contract.out_valid == 1
 
 
+def test_per_tile_matrix_references_agree_with_the_whole_problem_ones():
+    """One call of the per-tile form is the whole-problem form on one tile."""
+    rng = np.random.default_rng(0)
+    m, k, n = 4, 8, 6
+    a = rng.integers(-8, 8, (m, k)).astype(np.int16)
+    b = rng.integers(-8, 8, (k, n)).astype(np.int16)
+    tile = kernels.mm_tile_ref(a.ravel(), b.ravel(), dim_m=m, dim_k=k, dim_n=n)
+    assert np.array_equal(tile, kernels.mm_ref(a, b).reshape(1, m * n))
+
+    v = rng.integers(-8, 8, k).astype(np.int16)
+    assert np.array_equal(
+        kernels.mv_tile_ref(a.ravel(), v, dim_m=m, dim_k=k),
+        kernels.mv_ref(a, v).reshape(1, m),
+    )
+
+    # bfp quantises in blocks of 8 along K, so K must be a multiple of 8.
+    af = rng.standard_normal((m, k)).astype(np.float32)
+    bf = rng.standard_normal((k, n)).astype(np.float32)
+    for mixed, whole in ((False, kernels.mm_bfp_ref), (True, kernels.mm_bfp_mixed_ref)):
+        got = kernels.mm_bfp_tile_ref(
+            af.ravel(), bf.ravel(), dim_m=m, dim_k=k, dim_n=n, mixed=mixed
+        )
+        assert np.allclose(got, whole(af, bf).reshape(1, m * n))
+
+
+def test_per_tile_matrix_references_keep_calls_independent():
+    """Call i of a batch sees only tile i -- the reference never accumulates."""
+    rng = np.random.default_rng(1)
+    m, k, n = 4, 8, 6
+    a = rng.integers(-8, 8, (3, m, k)).astype(np.int16)
+    b = rng.integers(-8, 8, (3, k, n)).astype(np.int16)
+    batched = kernels.mm_tile_ref(
+        a.reshape(3, -1), b.reshape(3, -1), dim_m=m, dim_k=k, dim_n=n
+    )
+    assert batched.shape == (3, m * n)
+    for i in range(3):
+        one = kernels.mm_tile_ref(a[i].ravel(), b[i].ravel(), dim_m=m, dim_k=k, dim_n=n)
+        assert np.array_equal(batched[i], one[0])
+
+
 def test_designs_for_different_kernels_do_not_share_a_cache_key():
     h = lambda d: d.compilable.recipe_hash  # noqa: E731
     assert h(kd.design(kernels.add, calls=4)) != h(kd.design(kernels.mul, calls=4))

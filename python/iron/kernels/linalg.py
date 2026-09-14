@@ -170,6 +170,55 @@ def mm_bfp_mixed_ref(a, b):
     return np.asarray(a).astype(np.float64) @ bq.astype(np.float64)
 
 
+# The references above take a whole (M, K) x (K, N) problem, which is what a
+# matmul *design* computes and what programming_examples check against. A
+# contract's reference is handed one tile per kernel call instead, so the
+# per-call forms below sit beside them. Accumulating several products into one
+# C is the design's loop, not the kernel's, so these stay one product per call.
+
+
+def mm_tile_ref(a, b, *, dim_m: int, dim_k: int, dim_n: int):
+    """One [`mm`][iron.kernels.linalg.mm] call: a ``(dim_m, dim_k)`` tile times a ``(dim_k, dim_n)`` one.
+
+    Tiles arrive flattened as ``(calls, ...)``, one row per call, and one
+    ``(dim_m * dim_n,)`` row comes back per call.
+    """
+    a = np.asarray(a)
+    acc = np.int64 if np.issubdtype(a.dtype, np.integer) else np.float64
+    a = a.reshape(-1, dim_m, dim_k).astype(acc)
+    b = np.asarray(b).reshape(-1, dim_k, dim_n).astype(acc)
+    return (a @ b).reshape(len(a), dim_m * dim_n)
+
+
+def mv_tile_ref(a, b, *, dim_m: int, dim_k: int):
+    """One [`mv`][iron.kernels.linalg.mv] call: a ``(dim_m, dim_k)`` tile times a ``(dim_k,)`` vector."""
+    a = np.asarray(a).reshape(-1, dim_m, dim_k).astype(np.int64)
+    b = np.asarray(b).reshape(-1, dim_k).astype(np.int64)
+    return np.einsum("cmk,ck->cm", a, b)
+
+
+def mm_bfp_tile_ref(a, b, *, dim_m: int, dim_k: int, dim_n: int, mixed: bool = False):
+    """One [`mm_bfp`][iron.kernels.linalg.mm_bfp] call, on operands quantised as the host encodes them.
+
+    Blocks of 8 run along K for both operands, so B is quantised transposed.
+    With ``mixed`` the A tile stays bf16 and the core converts it itself, with
+    a rounding this does not model -- which is what the wider mixed tolerance
+    covers.
+    """
+    from aie.utils import bfp
+
+    a = np.asarray(a).reshape(-1, dim_m, dim_k)
+    b = np.asarray(b).reshape(-1, dim_k, dim_n)
+    aq = (
+        a.astype(np.float64)
+        if mixed
+        else bfp.quantize(a.astype(np.float32)).astype(np.float64)
+    )
+    bt = np.ascontiguousarray(b.astype(np.float32).swapaxes(-1, -2))
+    bq = bfp.quantize(bt).swapaxes(-1, -2).astype(np.float64)
+    return (aq @ bq).reshape(len(a), dim_m * dim_n)
+
+
 # programming_examples/ml/block_datatypes/matrix_multiplication/{bfp,mixed}_test.cpp:
 # the bf16 matmul tolerances, with 3x the absolute term for a bfp16 C (its
 # 8-bit mantissas share one exponent per 8 values) and 2x the relative term
