@@ -259,7 +259,7 @@ inline void txn_append_address_patch(std::vector<uint32_t> &txn, uint32_t addr,
 // when the target runtime needs it. Both the static binary emitter and the
 // generated C++ builder route through here, so the fold rule has one body.
 inline void txn_append_arg_patch(std::vector<uint32_t> &txn, uint32_t addr,
-                                 int32_t arg_idx, uint32_t arg_plus,
+                                 int32_t arg_idx, uint64_t arg_plus,
                                  bool fold_ddr_addr_offset) {
   if (fold_ddr_addr_offset &&
       static_cast<uint32_t>(arg_idx) >= kNumFirmwareTranslatedArgs)
