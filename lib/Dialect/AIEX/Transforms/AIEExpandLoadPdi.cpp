@@ -199,24 +199,13 @@ static LogicalResult transformLoadPdi(NpuLoadPdiOp loadPdiOp, ModuleOp moduleOp,
 // Differential reset
 //===----------------------------------------------------------------------===//
 //
-// A device's configuration writes only the registers that device needs. Between
-// two devices, a register the outgoing one wrote and the incoming one does not
-// keeps the outgoing value: the `@empty` firmware reset is what has been
-// clearing it. Resetting by resource kind (cores, objectFIFOs, ...) cannot
-// cover this in general, because the leftover set is a property of the two
-// configurations, not of a fixed list of resource kinds. Routing is the case
-// that shows it: two devices that connect different switchbox ports write
-// disjoint slave-config registers, so neither disables the other's.
-//
-// So take the difference directly. The pass generates both configurations, so
-// the set is available to it exactly:
-//
-//     stale = addresses written by the outgoing device
-//           - addresses written by the incoming device
-//
-// Each stale address is restored to the reset value the register database
-// documents for it. An address the database does not know is not guessed at:
-// that boundary keeps its firmware reset.
+// A device's configuration writes only the registers it needs. A register the
+// outgoing device wrote and the incoming one does not keeps the outgoing
+// value -- the `@empty` firmware reset was what cleared it. Resetting by
+// resource kind cannot cover this in general: two devices connecting
+// different switchbox ports write disjoint slave-config registers, so
+// neither disables the other's, and the leftover set is a property of the
+// pair, not a fixed kind list.
 
 namespace {
 
@@ -257,8 +246,7 @@ static void collectWrittenAddresses(Operation *op, ConfigSegment &out) {
       return;
     }
     auto words = b.getDataWords();
-    // Returns null on a data type or global it cannot read; the addresses this
-    // write touches are then unknown, so the boundary keeps the full reset.
+    // Null for a data type or global getDataWords() cannot read.
     if (!words) {
       out.opaque = true;
       return;
@@ -372,8 +360,6 @@ static void applyDifferentialReset(ModuleOp module) {
           segments.emplace_back(loadPdi, ConfigSegment{});
           return;
         }
-        // Not a pass-inserted preload: mark the segment opaque so neither
-        // side differences across it, and leave this real load alone.
         if (!segments.empty())
           segments.back().second.opaque = true;
         return;
