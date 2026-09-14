@@ -46,6 +46,11 @@ jobs:
     # Only in-repo branches on self-hosted hardware.
     if: github.event_name != 'pull_request' ||
         github.event.pull_request.head.repo.full_name == github.repository
+    # All three labels must be present on a runner for it to be picked, and
+    # any runner carrying them can be: this does not pin a machine, so nightly
+    # runs move between hosts of the same generation. `bench` selects the pool
+    # reserved for timing, and the concurrency group below is what stops two
+    # benchmark jobs sharing one NPU.
     runs-on: [self-hosted, bench, "${{ matrix.runner_type }}"]
     timeout-minutes: 120
     # Never let two benchmark jobs share an NPU; never cancel a nightly.

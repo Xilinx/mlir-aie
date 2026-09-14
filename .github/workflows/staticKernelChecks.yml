@@ -14,13 +14,11 @@ name: Static Kernel Checks (Peano remarks)
 # them is uncommenting the two blocks. Until then nothing records a baseline
 # on a schedule, so the first manual runs are what seed it.
 #
-# The job installs the published mlir_aie wheel rather than building the PR.
-# MLIR_AIE_KERNEL_SOURCES points the factories at the checkout's aie_kernels/
-# and aie_runtime_lib/, and the checkout's pure-Python kernel library, harness
-# and checker are copied over the wheel's so factory changes (sources, flags,
-# contracts) are the PR's. A PR that also changes the compiled bindings can
-# fail here until the next wheel; the job is advisory, so that costs nothing
-# but a red check.
+# The job builds the checkout, as benchmarkKernels.yml does. It used to
+# install the published wheel and copy the checkout's pure-Python packages
+# over it, which meant a PR touching the compiled bindings could not be
+# checked until the next nightly wheel, and the list of packages to copy had
+# to be maintained by hand against every refactor.
 
 permissions:
   contents: write
@@ -67,41 +65,26 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with: { python-version: '3.12' }
-      - name: Install Peano and mlir_aie wheels
+      - name: Install Peano and build dependencies
+        run: source ./utils/env_install.sh aie-venv --dev --extras
+
+      - name: Build from source
         run: |
-          python -m pip install -U pip
-          python -m pip install -r utils/peano-requirements.txt \
-            -f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly
-          # The rolling channel holds dev pre-releases (1.x.y.devN+g<sha>);
-          # without --pre pip settles on the last final release, whose
-          # aie.iron predates the harness (see utils/iron_setup.py --dev).
-          python -m pip install --upgrade --pre mlir_aie \
-            -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels-4
-          python -m pip show mlir_aie | sed -n 's/^Version: /mlir_aie /p'
-          python -m pip install pyyaml numpy ml_dtypes pytest
-      - name: Overlay this checkout's kernel library onto the wheel
-        # The wheel is the newest nightly, which can be ahead of this
-        # checkout; overlaying whole packages mixes the two (a newer taplib
-        # importing from an older aie.utils.__init__ is a circular import).
-        # Copy only the (sub)packages this suite owns wholesale, so a new
-        # file added inside one of them doesn't also need a line here; the
-        # checkout's kernels, contracts, harness and checker run on the
-        # wheel's bindings.
-        run: |
-          site=$(python -c "import aie, os; print(os.path.dirname(aie.__file__))")
-          cp python/iron/kernel.py "$site/iron/kernel.py"
-          rm -rf "$site/iron/kernels"
-          cp -r python/iron/kernels "$site/iron/kernels"
-          rm -f "$site/utils/kernel_harness.py"
-          rm -rf "$site/utils/kernel_harness"
-          cp -r python/utils/kernel_harness "$site/utils/kernel_harness"
-          cp python/utils/bfp.py python/utils/verify.py python/utils/benchmark.py \
-            python/utils/config.py "$site/utils/"
-          rm -rf "$site/utils/compile"
-          cp -r python/utils/compile "$site/utils/compile"
-          cp python/utils/hostruntime/hostruntime.py "$site/utils/hostruntime/"
-          cp python/utils/hostruntime/xrtruntime/hostruntime.py \
-            python/utils/hostruntime/xrtruntime/device.py "$site/utils/hostruntime/xrtruntime/"
+          source aie-venv/bin/activate
+          export EXTRA_CMAKE_ARGS="-DPython3_EXECUTABLE=$(which python) \
+            -DAIE_ENABLE_PYTHON_PASSES=OFF -DAIE_ENABLE_XRT_PYTHON_BINDINGS=OFF"
+          ./utils/build-mlir-aie-from-wheels.sh "" build mlir_aie
+          # Export the venv and the built tree once; the steps below are
+          # plain `python -m ...` and inherit both.
+          source utils/env_setup.sh mlir_aie
+          echo "$PWD/aie-venv/bin" >> "$GITHUB_PATH"
+          {
+            echo "PYTHONPATH=$PYTHONPATH"
+            echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH"
+            echo "MLIR_AIE_INSTALL_DIR=$MLIR_AIE_INSTALL_DIR"
+          } >> "$GITHUB_ENV"
+          echo "$PWD/mlir_aie/bin" >> "$GITHUB_PATH"
+
       - name: Run static analysis
         id: static
         run: |
@@ -202,7 +185,11 @@ jobs:
           summary-always: true
           fail-on-alert: false
           save-data-file: false
-      - name: Compare program memory (PR)
+      # Program memory is a step function -- a loop that stops fitting, an
+      # inlining decision that flips -- so it needs more slack than II, which
+      # moves by whole cycles. 3% catches a real regression without firing on
+      # a kernel that gained one instruction.
+      - name: Compare program memory against the baseline (PR only)
         if: github.event_name == 'pull_request' && hashFiles('static-pm.json') != '' && hashFiles('baseline/benchmark-data-pm.json') != ''
         uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba  # v1.22.1
         with:
