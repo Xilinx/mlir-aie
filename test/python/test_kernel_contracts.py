@@ -927,9 +927,9 @@ def test_stream_dims_follow_the_layout_flags():
         kernels.mm(b_col_maj=True, **fkw),
         kernels.mm(c_col_maj=True, **fkw),
     )
-    assert plain.stream_dims["A"] == bcm.stream_dims["A"] == ccm.stream_dims["A"]
-    assert plain.stream_dims["B"] != bcm.stream_dims["B"]
-    assert plain.stream_dims["C"] != ccm.stream_dims["C"]
+    assert plain.stream_dims.A == bcm.stream_dims.A == ccm.stream_dims.A
+    assert plain.stream_dims.B != bcm.stream_dims.B
+    assert plain.stream_dims.C != ccm.stream_dims.C
     assert (plain.b_col_maj, plain.c_col_maj) == (False, False)
     assert (bcm.b_col_maj, ccm.c_col_maj) == (True, True)
 
@@ -1316,9 +1316,9 @@ def test_mm_stream_dims_match_the_blocking_the_kernel_was_compiled_for(dims, mac
     """
     (m, k, n), (r, s, t) = dims, mac
     d = kernels.mm_stream_dims(m, k, n, mac)
-    assert d["A"] == [(m // r, r * k), (k // s, s), (r, k), (s, 1)]
-    assert d["B"] == [(k // s, s * n), (n // t, t), (s, n), (t, 1)]
-    assert d["C"] == [(m // r, r * n), (r, t), (n // t, r * t), (t, 1)]
+    assert d.A == [(m // r, r * k), (k // s, s), (r, k), (s, 1)]
+    assert d.B == [(k // s, s * n), (n // t, t), (s, n), (t, 1)]
+    assert d.C == [(m // r, r * n), (r, t), (n // t, r * t), (t, 1)]
     col = kernels.mm_stream_dims(m, k, n, mac, b_col_maj=True, c_col_maj=True)
-    assert col["B"] == [(n // t, t * k), (k // s, s), (t, k), (s, 1)]
-    assert col["C"] == [(n // t, t * m), (t, r), (m // r, r * t), (r, 1)]
+    assert col.B == [(n // t, t * k), (k // s, s), (t, k), (s, 1)]
+    assert col.C == [(n // t, t * m), (t, r), (m // r, r * t), (r, 1)]

@@ -107,13 +107,13 @@ def single_core(
     dims = matmul_kernel.stream_dims
 
     inA = ObjectFifo(a_ty, name="inA")
-    memA = inA.cons().forward(name="memA", dims_to_stream=dims["A"])
+    memA = inA.cons().forward(name="memA", dims_to_stream=dims.A)
 
     inB = ObjectFifo(b_ty, name="inB")
-    memB = inB.cons().forward(name="memB", dims_to_stream=dims["B"])
+    memB = inB.cons().forward(name="memB", dims_to_stream=dims.B)
 
     memC = ObjectFifo(c_ty, name="memC")
-    outC = memC.cons().forward(name="outC", dims_to_stream=dims["C"])
+    outC = memC.cons().forward(name="outC", dims_to_stream=dims.C)
 
     def core_fn(of_a, of_b, of_c, zero, matmul):
         for _ in range_(tiles) if tiles > 1 else range(1):

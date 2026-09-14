@@ -25,7 +25,6 @@ from aie.iron import (
     Out,
     Program,
     Runtime,
-    StreamDims,
     TaskGroup,
     Worker,
     str_to_dtype,
@@ -111,7 +110,8 @@ def cascade(
     for col in range(n_aie_cols):
         start_row = col * n_A_tiles_per_shim
         of_offsets = [m * k * j for j in range(n_A_tiles_per_shim)]
-        a_dims: StreamDims = dims["A"]
+        a_dims = dims.A
+        assert a_dims is not None  # cascade_mm transforms all three operands
         # Each row's L2→L1 fifo is broadcast to all n_aie_cols core_tiles in
         # that row.  split() returns one handle per output, but we want one
         # logical broadcast fifo per row.  Using forward() with a list of
@@ -140,7 +140,8 @@ def cascade(
     B_l2l1_fifos: list[list[ObjectFifo]] = [[] for _ in range(n_aie_rows)]
     for col in range(n_aie_cols):
         of_offsets = [k * n * row for row in range(n_aie_rows)]
-        b_dims: StreamDims = dims["B"]
+        b_dims = dims.B
+        assert b_dims is not None
         fifos = (
             B_l3l2_fifos[col]
             .cons()
@@ -166,7 +167,7 @@ def cascade(
             obj_type=C_l2_ty,
             name=f"C_L2L3_{col}",
             depth=fifo_depth,
-            dims_to_stream=dims["C"],
+            dims_to_stream=dims.C,
             tile=Tile(col, 1),
         )
         C_l1l2_fifos.append(c_l1l2)

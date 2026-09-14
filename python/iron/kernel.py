@@ -372,7 +372,7 @@ class ExternalFunction(Kernel):
     contract: Any = None
     mac_dims: tuple
     dims: tuple
-    stream_dims: dict
+    stream_dims: Any  # kernels.linalg.StreamDimsABC
     b_col_maj: bool
     c_col_maj: bool
     a_dims_from_stream: object

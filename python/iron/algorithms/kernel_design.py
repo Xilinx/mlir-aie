@@ -519,11 +519,11 @@ def _matmul(
     b_ty = np.ndarray[(k, n // vb), np.dtype[dt_b]]
     c_ty = np.ndarray[(m, n // vc), np.dtype[dt_c]]
     in_a = ObjectFifo(a_ty, name="inA", depth=depth)
-    mem_a = in_a.cons().forward(name="memA", dims_to_stream=dims["A"])
+    mem_a = in_a.cons().forward(name="memA", dims_to_stream=dims.A)
     in_b = ObjectFifo(b_ty, name="inB", depth=depth)
-    mem_b = in_b.cons().forward(name="memB", dims_to_stream=dims["B"])
+    mem_b = in_b.cons().forward(name="memB", dims_to_stream=dims.B)
     mem_c = ObjectFifo(c_ty, name="memC", depth=depth)
-    out_c = mem_c.cons().forward(name="outC", dims_to_stream=dims["C"])
+    out_c = mem_c.cons().forward(name="outC", dims_to_stream=dims.C)
 
     setter = _rounding_setter(_contract(mm))
 

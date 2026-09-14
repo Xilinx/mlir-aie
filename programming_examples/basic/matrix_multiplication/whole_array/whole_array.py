@@ -102,11 +102,9 @@ def _build_design(
     r, s, t = matmul_kernel.mac_dims
     dims = matmul_kernel.stream_dims
 
-    if dev_str == "npu" and n_aie_cols > 4:
-        raise AssertionError("Invalid configuration: NPU (Phoenix/Hawk) has 4 columns")
-    if dev_str == "npu2" and n_aie_cols > 8:
-        raise AssertionError(
-            "Invalid configuration: NPU2 (Strix/Strix Halo/Krackan) has 8 columns"
+    if n_aie_cols > dev.cols:
+        raise ValueError(
+            f"n_aie_cols={n_aie_cols} but {dev_str} has {dev.cols} columns"
         )
 
     assert (
@@ -157,7 +155,7 @@ def _build_design(
         start_row = i * n_A_tiles_per_shim
         stop_row = start_row + n_A_tiles_per_shim
         of_offsets = [m * k * j for j in range(stop_row - start_row)]
-        a_dims: list[StreamDims] = [dims["A"]] * (stop_row - start_row)
+        a_dims: list[StreamDims] = [dims.A] * (stop_row - start_row)
         a_tmp_fifos = a_l3l2.cons().split(
             of_offsets,
             obj_types=[A_l1_ty] * (stop_row - start_row),
@@ -173,7 +171,7 @@ def _build_design(
             b_l3l2.cons().forward(
                 obj_type=B_l1_ty,
                 name=f"B_L2L1_{col}",
-                dims_to_stream=dims["B"],
+                dims_to_stream=dims.B,
             )
         )
 
@@ -181,7 +179,7 @@ def _build_design(
             C_l2_ty,
             name=f"C_L2L3_{col}",
             depth=fifo_depth,
-            dims_to_stream=dims["C"],
+            dims_to_stream=dims.C,
         )
         C_l2l3_fifos.append(c_l2l3)
         of_offsets = [m * n * i for i in range(n_aie_rows)]

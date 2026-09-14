@@ -37,8 +37,6 @@ from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
 from ml_dtypes import bfloat16
 
-_TAIL_SLACK = kernels.DWCONV1D_TAIL  # the kernel's fixed aligned-load window
-
 
 @iron.jit
 def dwconv1d(
@@ -68,7 +66,7 @@ def dwconv1d(
 
     device = iron.get_current_device()
     channels_per_core = channels // n_cores
-    in_row = seq_len + _TAIL_SLACK
+    in_row = seq_len + kernels.DWCONV1D_TAIL
     # w_row is always kernel_size + 1, even when bias=False: kernel_size is
     # required odd (see the check above), so kernel_size alone gives an odd
     # bf16 row width, i.e. 2*kernel_size bytes, not a multiple of 4, which
@@ -153,7 +151,7 @@ def _pad_input(x_np, kernel_size):
     file docstring and dwconv1d.cc's header comment for why."""
     channels, seq_len = x_np.shape
     pad = (kernel_size - 1) // 2
-    out = np.zeros((channels, seq_len + _TAIL_SLACK), dtype=x_np.dtype)
+    out = np.zeros((channels, seq_len + kernels.DWCONV1D_TAIL), dtype=x_np.dtype)
     out[:, pad : pad + seq_len] = x_np
     return out
 

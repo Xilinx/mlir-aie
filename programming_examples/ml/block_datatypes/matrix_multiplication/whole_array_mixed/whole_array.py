@@ -23,7 +23,6 @@ from aie.iron import (
     Out,
     Program,
     Runtime,
-    StreamDims,
     TaskGroup,
     Worker,
 )
@@ -84,9 +83,7 @@ def whole_array_mixed(
         start_row = i * n_A_tiles_per_shim
         stop_row = start_row + n_A_tiles_per_shim
         of_offsets = [m * k * j for j in range(stop_row - start_row)]
-        dims_to_stream: list[StreamDims] = [matmul_kernel.stream_dims["A"]] * (
-            stop_row - start_row
-        )
+        dims_to_stream = [matmul_kernel.stream_dims.A] * (stop_row - start_row)
         a_tmp_fifos = a_l3l2.cons().split(
             of_offsets,
             obj_types=[A_l1_ty] * (stop_row - start_row),
@@ -102,7 +99,7 @@ def whole_array_mixed(
             b_l3l2.cons().forward(obj_type=B_l1_ty, name=f"B_L2L1_{col}")
         )
 
-        c_l2l3_dims: StreamDims = matmul_kernel.stream_dims["C"]
+        c_l2l3_dims = matmul_kernel.stream_dims.C
         c_l2l3 = ObjectFifo(
             C_l2_ty,
             name=f"C_L2L3_{col}",

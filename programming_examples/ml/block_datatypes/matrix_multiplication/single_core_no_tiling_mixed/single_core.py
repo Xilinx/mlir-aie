@@ -22,7 +22,6 @@ from aie.iron import (
     Out,
     Program,
     Runtime,
-    StreamDims,
     Worker,
 )
 from aie.utils.hostruntime.argparse import (
@@ -54,12 +53,12 @@ def single_core_no_tiling_mixed(
     zero_kernel = matmul_kernel.also.zero
 
     inA = ObjectFifo(a_ty, name="inA")
-    a_dims: StreamDims = matmul_kernel.stream_dims["A"]
+    a_dims = matmul_kernel.stream_dims.A
     memA = inA.cons().forward(name="memA", dims_to_stream=a_dims)
     inB = ObjectFifo(b_ty, name="inB")
     memB = inB.cons().forward(name="memB")
     memC = ObjectFifo(c_ty, name="memC")
-    c_dims: StreamDims = matmul_kernel.stream_dims["C"]
+    c_dims = matmul_kernel.stream_dims.C
     outC = memC.cons().forward(name="outC", dims_to_stream=c_dims)
 
     def core_fn(of_a, of_b, of_c, zero, matmul):

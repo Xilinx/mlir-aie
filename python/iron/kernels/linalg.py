@@ -5,8 +5,11 @@
 #
 """Linear algebra kernel factories: mm, mv, cascade_mm."""
 
+from typing import NamedTuple
+
 import numpy as np
 from aie.dialects.aiex import v8bfp16ebs8
+from aie.iron.dataflow import StreamDims
 from aie.iron.kernel import DesignShape, ExternalFunction
 from aie.utils.compile.jit.markers import In, InOut, Out, Param, Scalar
 from aie.utils.verify import Tolerance
@@ -190,6 +193,17 @@ def _linalg_tolerance(input_dtype) -> Tolerance:
     )
 
 
+class StreamDimsABC(NamedTuple):
+    """The three ``dims_to_stream`` a matmul design needs, one per operand.
+
+    ``None`` for an operand a build streams untransformed.
+    """
+
+    A: StreamDims | None
+    B: StreamDims | None
+    C: StreamDims | None
+
+
 def _blocked(rows: int, cols: int, tile_rows: int, tile_cols: int) -> list:
     """``dims_to_stream`` walking a ``(rows, cols)`` tensor in tile-sized blocks."""
     from aie.helpers.taplib import TensorTiler2D
@@ -208,7 +222,7 @@ def mm_stream_dims(
     *,
     b_col_maj: bool = False,
     c_col_maj: bool = False,
-) -> dict:
+) -> StreamDimsABC:
     """DMA ``dims_to_stream`` that feed ``mm.cc`` its (r, s, t) micro-tiles.
 
     ``mm.cc`` consumes A, B and produces C in the micro-tile blocking given by
@@ -238,7 +252,7 @@ def mm_stream_dims(
         c = [(n // t, t * m), (t, r), (m // r, r * t), (r, 1)]
     else:
         c = [(m // r, r * n), (r, t), (n // t, r * t), (t, 1)]
-    return {"A": a, "B": b, "C": c}
+    return StreamDimsABC(A=a, B=b, C=c)
 
 
 @dtypes(
@@ -516,8 +530,8 @@ def mm_bfp(
     ``v8bfp16ebs8`` blocks, all pre-shuffled into the mmul layout, so no
     DMA transform applies (``stream_dims`` is ``None`` for every operand).
     ``mixed=True`` (``mm_bfp_mixed.cc``): A is bf16 in the (r, s, t)
-    micro-tile layout, B is bfp16ebs8, C is bf16; ``stream_dims["A"]`` and
-    ``["C"]`` carry the transforms and ``["B"]`` is ``None``.
+    micro-tile layout, B is bfp16ebs8, C is bf16; ``stream_dims.A`` and
+    ``.C`` carry the transforms and ``.B`` is ``None``.
 
     ``.also.zero`` is the matching zeroing kernel, compiled from the same source
     with ``-DZERO_ONLY``. The host holds B transposed (``b_col_maj``), and
@@ -583,9 +597,9 @@ def mm_bfp(
     extern.dims = (dim_m, dim_k, dim_n)
     extern.design_shape = DesignShape.MATMUL
     extern.stream_dims = (
-        {"A": dims["A"], "B": None, "C": dims["C"]}
+        StreamDimsABC(A=dims.A, B=None, C=dims.C)
         if mixed
-        else {"A": None, "B": None, "C": None}
+        else StreamDimsABC(A=None, B=None, C=None)
     )
     # The kernel reads B transposed (8x8 sub-tiles of B^T), so the host B
     # buffer is B^T (N, K), as the block_datatypes examples tile it.
