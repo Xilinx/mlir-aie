@@ -26,6 +26,7 @@ from ...helpers.util import (
     np_ndarray_type_to_memref_type,
     pack_pad_value,
     single_elem_or_list_to_list,
+    transfer_element_weights,
 )
 from ..device import AnyMemTile, Tile
 from ..resolvable import NotResolvedError, Resolvable
@@ -38,6 +39,46 @@ from .endpoint import ObjectFifoEndpoint
 # types at runtime.
 StreamDims: TypeAlias = list[Sequence[int]]
 PadDims: TypeAlias = list[Sequence[int]]
+
+
+def _static_transfer_extent(tap, sizes, transfer_len) -> int | None:
+    """Total elements of the runtime buffer a fill/drain covers, or None if not static.
+
+    Mirrors what `shim_dma_single_bd_task` emits: the access pattern is left-padded to
+    the shim BD's four dimensions, the outermost becomes the queue-push repeat count,
+    and the BD's own `len` covers the remaining three - so the stream sees
+    `len * sizes[0]` elements, which for the default `len` is just `prod(sizes)`.
+
+    Returns None for a runtime-valued pattern (nothing constant to check) and for one
+    deeper than the BD's four dimensions, which `shim_dma_single_bd_task` rejects on
+    its own.
+    """
+
+    def _const(v) -> int | None:
+        return int(v) if isinstance(v, (int, np.integer)) else None
+
+    explicit_len: int | None = None
+    if tap is not None:
+        raw = list(tap.sizes)
+    else:
+        if sizes is None:
+            return _const(transfer_len)
+        raw = list(sizes)
+        if transfer_len is not None:
+            explicit_len = _const(transfer_len)
+            if explicit_len is None:
+                return None
+    if len(raw) > 4:
+        return None
+    dims: list[int] = []
+    for entry in raw:
+        value = _const(entry)
+        if value is None:
+            return None
+        dims.append(value)
+    dims = [1] * (4 - len(dims)) + dims
+    per_issue = explicit_len if explicit_len is not None else int(np.prod(dims[-3:]))
+    return per_issue * dims[0]
 
 
 def _same_shim_pin(a: "Tile | None", b: "Tile | None") -> bool:
@@ -90,6 +131,7 @@ class ObjectFifo(Resolvable):
         aie_stream: tuple[int, int] | None = None,
         packet: bool = False,
         packet_id: int | None = None,
+        stream_len_decoupled: bool = False,
     ):
         """Construct an ObjectFifo.
 
@@ -156,6 +198,10 @@ class ObjectFifo(Resolvable):
                 designs that route on the id (e.g. a MemTile dispatching to one of several
                 cores). Requires ``packet``; when absent, allocation picks an id no other
                 flow is using. Defaults to None.
+            stream_len_decoupled (bool, optional): Declare that the bytes crossing this
+                fifo's shim channel are not a count of its objects, so no transfer extent
+                can be checked against the object size. Set it for a channel whose DMA
+                (de)compresses. Defaults to False.
 
         Raises:
             ValueError: If ``depth`` is provided and is less than 1.
@@ -192,6 +238,7 @@ class ObjectFifo(Resolvable):
         self._aie_stream: tuple[int, int] | None = aie_stream
         self._packet: bool = packet
         self._packet_id: int | None = packet_id
+        self._stream_len_decoupled: bool = stream_len_decoupled
 
     @property
     def depth(self) -> int | None:
@@ -476,6 +523,7 @@ class ObjectFifo(Resolvable):
                 consumer_datatype=consumer_datatype,
                 packet=self._packet or None,
                 packet_id=self._packet_id,
+                stream_len_decoupled=self._stream_len_decoupled or None,
             )
             self._op = op
 
@@ -696,6 +744,66 @@ class ObjectFifoHandle(Resolvable):
             )
         self._endpoint = endpoint
 
+    def _check_covers_whole_objects(self, rt_data, tap, sizes, transfer_len):
+        """Reject a transfer that stops part-way through an objectFIFO object.
+
+        The shim BD is sized in the runtime buffer's element type, while the far end
+        of the stream receives whole objects: the receiving BD is sized by the fifo's
+        object type, so a transfer ending mid-object leaves that BD short, its lock
+        unreleased, and the consumer's acquire blocked. Nothing downstream compares
+        the two extents. `aie.shim_dma_allocation` carries the channel and no
+        type, so this is the one place both are in hand.
+
+        The element types themselves need not agree. A DMA does not interpret its
+        payload, and a host buffer that is a wider view over the bytes of a
+        differently-typed stream is an ordinary idiom (`ml/mobilenet` reuses one i32
+        allocation for i8 activations and ui16 FC data). Only the extents must line up.
+
+        Skipped when the extent is not known here: a scalar RuntimeData carries no BD
+        geometry, a runtime-valued access pattern has no constant to check, and a
+        fifo whose channel (de)compresses has no fixed relation between the two.
+        """
+        if self._object_fifo._stream_len_decoupled:
+            return
+        if rt_data.is_scalar:
+            return
+        extent = _static_transfer_extent(tap, sizes, transfer_len)
+        if extent is None:
+            return
+
+        fifo_obj_type = self._object_fifo.obj_type
+        if not self._is_prod and self._object_fifo._consumer_obj_type is not None:
+            fifo_obj_type = self._object_fifo._consumer_obj_type
+        # Compared as memref element types rather than numpy dtypes: that is the form
+        # the BD is emitted in, and np.dtype() raises on block-float element types.
+        buf_elem = np_ndarray_type_to_memref_type(rt_data.arr_type).element_type
+        fifo_elem = np_ndarray_type_to_memref_type(fifo_obj_type).element_type
+        weights = transfer_element_weights(buf_elem, fifo_elem)
+        if weights is None:
+            return
+        buf_weight, fifo_weight = weights
+        obj_elems = int(np.prod(np_ndarray_type_get_shape(fifo_obj_type)))
+        moved = extent * buf_weight
+        per_object = obj_elems * fifo_weight
+        if not per_object or moved % per_object == 0:
+            return
+
+        # Widths are in bits, so a mismatched pair is only comparable there; an
+        # identical pair weighs 1 and compares in its own elements.
+        common = (
+            f"{obj_elems} {fifo_elem}"
+            if buf_elem == fifo_elem
+            else f"{per_object} bits ({obj_elems} {fifo_elem})"
+        )
+        raise ValueError(
+            f"{'fill' if self._is_prod else 'drain'}() on ObjectFifo "
+            f"{self._object_fifo.name!r}: the transfer covers {extent} {buf_elem}, "
+            f"which is {moved / per_object:.4g} of the fifo's object of {common}. "
+            f"A shim transfer must cover a whole number of objects: the receiving "
+            f"buffer descriptor is sized by the object type, so a partial one never "
+            f"completes and the consumer's acquire never unblocks."
+        )
+
     def _emit_transfer(
         self,
         rt_data,
@@ -756,6 +864,8 @@ class ObjectFifoHandle(Resolvable):
             )
         if tap is None and not explicit:
             tap = rt_data.default_tap()
+
+        self._check_covers_whole_objects(rt_data, tap, sizes, transfer_len)
 
         if not managed and group is not None:
             raise ValueError(
@@ -987,6 +1097,7 @@ class ObjectFifoHandle(Resolvable):
         repeat_counts: list[int | None] | None = None,
         pad_dimensions: list[PadDims | None] | None = None,
         pad_value: list[int] | None = None,
+        stream_len_decoupled: bool = False,
     ) -> list[ObjectFifo]:
         """Split the data from an ObjectFifoConsumer handle by sending it to producers in N newly constructed ObjectFifos.
 
@@ -1004,6 +1115,7 @@ class ObjectFifoHandle(Resolvable):
             repeat_counts (list[int | None] | None, optional): Per-sub-fifo MemTile DMA repeat count (see ObjectFifo.repeat_count). Defaults to None.
             pad_dimensions (list[PadDims | None] | None, optional): Per-sub-fifo (before, after) pad counts (see ObjectFifo.pad_dimensions). Defaults to None.
             pad_value (list[int] | None, optional): Per-sub-fifo per-element pad fill value (see ObjectFifo.pad_value). Defaults to None.
+            stream_len_decoupled (bool, optional): Set stream_len_decoupled on each new ObjectFifo (see ObjectFifo.stream_len_decoupled). Defaults to False.
 
         Raises:
             ValueError: Arguments are validated.
@@ -1074,6 +1186,7 @@ class ObjectFifoHandle(Resolvable):
                     repeat_count=repeat_counts[i],
                     pad_dimensions=pad_dimensions[i],
                     pad_value=pad_value[i],
+                    stream_len_decoupled=stream_len_decoupled,
                 )
             )
 
@@ -1094,6 +1207,7 @@ class ObjectFifoHandle(Resolvable):
         repeat_count: int | None = None,
         pad_dimensions: PadDims | None = None,
         pad_value: int = 0,
+        stream_len_decoupled: bool = False,
     ) -> ObjectFifo:
         """Forward an ObjectFifoHandle of type consumer to a newly-constructed ObjectFifo.
 
@@ -1113,6 +1227,8 @@ class ObjectFifoHandle(Resolvable):
                 counts for the forwarded (memtile) ObjectFifo. Defaults to None.
             pad_value (int, optional): Per-element constant fill value for pad_dimensions (see
                 ObjectFifo.pad_value). Defaults to 0.
+            stream_len_decoupled (bool, optional): Set stream_len_decoupled on the new ObjectFifo
+                (see ObjectFifo.stream_len_decoupled). Defaults to False.
 
         Raises:
             ValueError: Arguments are Validated
@@ -1140,6 +1256,7 @@ class ObjectFifoHandle(Resolvable):
             repeat_counts=[repeat_count] if repeat_count is not None else None,
             pad_dimensions=[pad_dimensions] if pad_dimensions is not None else None,
             pad_value=[pad_value] if pad_value else None,
+            stream_len_decoupled=stream_len_decoupled,
         )
         return forward_fifo[0]
 
