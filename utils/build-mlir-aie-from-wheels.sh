@@ -143,6 +143,11 @@ fi
 if [ -x "$(command -v ccache)" ]; then
   CMAKE_CONFIGS+=(-DCMAKE_C_COMPILER_LAUNCHER=ccache)
   CMAKE_CONFIGS+=(-DCMAKE_CXX_COMPILER_LAUNCHER=ccache)
+  echo "ccache: using $(command -v ccache)"
+else
+  # Say so. A runner missing ccache recompiles every object on every build and
+  # nothing in the log distinguishes that from a cold cache.
+  echo "ccache: not found on PATH, building without a compiler cache"
 fi
 
 # Do not use LLVM_PARALLEL_{COMPILE,LINK}_JOBS: HandleLLVMOptions is included
