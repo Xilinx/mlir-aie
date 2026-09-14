@@ -64,3 +64,26 @@ def test_every_all_entry_resolves():
             f"{name}.{n}" for n in getattr(mod, "__all__", []) if not hasattr(mod, n)
         ]
     assert not missing, f"__all__ names symbols that do not exist: {missing}"
+
+
+_GUIDE = Path(__file__).parents[2] / "programming_guide" / "kernels_library.md"
+
+
+def test_guide_does_not_name_contract_fields_that_were_removed():
+    """Every ``contract.<field>`` the guide shows must still be a field.
+
+    The guide documented ``contract.overflow`` and ``contract.rounding`` for a
+    while after both were deleted, because prose describing an attribute is
+    not executed by anything. Reading the dataclass is enough to catch it.
+    """
+    import dataclasses
+
+    from aie.iron.kernels import KernelContract
+
+    real = {f.name for f in dataclasses.fields(KernelContract)}
+    real |= {n for n in dir(KernelContract) if not n.startswith("_")}
+    named = set(re.findall(r"contract\.([a-z_]+)", _GUIDE.read_text()))
+    assert not (named - real), (
+        f"{_GUIDE.name} names contract fields that no longer exist: "
+        f"{sorted(named - real)}"
+    )

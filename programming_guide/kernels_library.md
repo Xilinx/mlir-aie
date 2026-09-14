@@ -149,7 +149,7 @@ a `KernelContract` to the function they return:
 
 ```python
 fn = kernels.reduce_max(dtype=np.int32, tile_size=1024)
-fn.contract.roles        # ('in', 'out', 'count')
+fn.contract.roles        # (In, Out, Count) -- the markers @iron.jit uses
 fn.contract.reference    # kernels.reduce_max_ref
 fn.contract.tolerance.kind  # 'exact'
 fn.contract.ops_per_call # 1024
@@ -157,8 +157,6 @@ fn.contract.ops_per_call # 1024
 mm = kernels.mm(input_dtype=np.int16, output_dtype=np.int32)
 mm.contract.acc_dtype    # numpy.int64: accauto is acc64 for int16
 mm.contract.reduction    # 64: products summed per output per call (dim_k)
-mm.contract.overflow     # 'undefined': to_vector() in the core's default mode
-mm.contract.rounding     # 'unspecified'
 kernels.mm.dtypes        # every (input_dtype, output_dtype) the factory supports
 ```
 
@@ -191,13 +189,13 @@ A contract also declares the dtype facts an `arg_types` list leaves out:
 
 - `acc_dtype` and `reduction`: what the kernel accumulates in and over how
   many terms. `fn.input_limit(dtype)` turns them into the largest integer
-  input that cannot overflow the accumulator, which is where the harness
+  input that cannot overflow the accumulator, which is where the builder
   and the case table draw their data.
 - `setup`: a kernel to run once on the core first, when this one needs it;
   see [Rounding mode](#rounding-mode) below.
 - `stack_bytes`: the core stack a Worker calling this kernel needs, when
   that is more than the target's default.
-- `unsupported`: why the generic harness cannot run this kernel, when it
+- `unsupported`: why the generic builder cannot run this kernel, when it
   cannot; the reference still says what the kernel computes.
 
 What the kernel does on overflow, how a narrowing store rounds, and what
@@ -209,24 +207,16 @@ drift.
 - `.dtypes` on the factory: the dtype combinations it builds. The host
   contract test builds every entry.
 
-## Standing in for a hand-built kernel (amd/IRON)
+## Standing in for a hand-built kernel
 
-An operator that builds a kernel by hand needs the exported **symbol**,
-the **source file** and the **compile flags** to line up. Every factory
-publishes all three (`fn.name`, `fn.source_file`, `fn.compile_flags`), so
-a factory call replaces a hand-written source-plus-symbol pair wherever
-the two trees share the kernel.
+Code that builds a kernel by hand needs the exported **symbol**, the
+**source file** and the **compile flags** to line up. Every factory
+publishes all three (`fn.name`, `fn.source_file`, `fn.compile_flags`), so a
+factory call can replace a hand-written source-plus-symbol pair.
 `test_factories_reproduce_the_iron_operator_kernel_specs` in
-`test/python/test_kernel_contracts.py` pins that table for the kernels
-[amd/IRON](https://github.com/amd/iron)'s operators build: `saxpy`,
-`gelu_bf16`, `silu_bf16`, `sigmoid_bf16`, `tanh_bf16`, `softmax_bf16`,
-`eltwise_add_bf16_vector`, `eltwise_mul_bf16_vector`, `layer_norm`,
-`rope`, `passThroughLine`, `expand_uint4_to_bfloat16`, `transpose_4x4`,
-`matvec_vectorized_bf16_bf16` and the `matmul_*` family with its
-`-DDIM_*`, dtype-`ONLY`, `-DB_COL_MAJ` / `-DC_COL_MAJ` and
-`AIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16` flags. Renaming a symbol or
-dropping a flag fails that test rather than silently breaking a
-downstream build.
+`test/python/test_kernel_contracts.py` pins that table, so renaming a symbol
+or dropping a flag fails a test here rather than silently breaking a build
+elsewhere.
 
 Three things make this work for more than one kernel per design:
 
@@ -257,26 +247,12 @@ Three things make this work for more than one kernel per design:
   they are baked into the design. A caller that only needs to size
   buffers reads this instead of running the sampler.
 
-Where the kernel *sources* have diverged, no factory can stand in:
-
-| Kernel | Why a factory cannot substitute |
-| --- | --- |
-| `relu` | IRON's `relu.cc` exports `relu_bf16`; this tree's exports `bf16_relu`. |
-| `rms_norm` | IRON's exports `rms_norm_bf16_vector` and `weighted_rms_norm`; this tree's exports `rms_norm`. |
-| `mm` with `-DROUND_CONV_EVEN` | The flag exists only in IRON's `mm.cc`; passing it here would be a no-op, so the factory does not offer it. |
-
-Two factories are drop-ins even though the harness cannot run them.
-`kernels.mha()` compiles `aie_kernels/aie2p/mha.cc` once and binds its
-ten symbols: the returned kernel is the `QK^T` matmul, with `.also.zero`,
-`.matmul_rowmaj`, `.matmul_scalar`, `.partial_softmax`, `.matmul_pv`,
-`.rescale_o` and `.init_scale_buffer` beside it (`passThroughLine` is
-only declared there; take it from `passthrough(dtype=np.int32)`, as
-IRON's MHA operator does). The bf16 `mv` builds the shared
-`aie_kernels/generic/mv.cc` with its `(m, row_offset, A, b, c)`
-signature, `DIM_K` and `VEC_SIZE`. Both contracts declare `unsupported`
-(attention is a multi-core dataflow; the matvec design drives the int16
-signature); what an operator needs is the object and the binding, and
-both provide that.
+Two factories are drop-ins even though the generic builder cannot run
+them: `kernels.mha()` compiles `aie_kernels/aie2p/mha.cc` once and binds its
+ten symbols, and the bf16 `mv` builds the shared `aie_kernels/generic/mv.cc`
+with its `(m, row_offset, A, b, c)` signature. What a caller needs from
+those is the object and the binding, and both provide that; see
+[Kernels the generic builder cannot run](#kernels-the-generic-builder-cannot-run).
 
 ## When you outgrow the library
 
@@ -329,7 +305,7 @@ A new factory is complete when one line each in two places covers it:
 
 The host test [`test/python/test_kernel_contracts.py`](../test/python/test_kernel_contracts.py)
 then checks the roles against the real `arg_types()`, the reference's
-arity, that the harness design lowers to MLIR, and that `setup`
+arity, that the generated design lowers to MLIR, and that `setup`
 agrees with the source.
 
 ## Testing, benchmarking and static checks
@@ -378,7 +354,7 @@ conv kernels, `layer_norm`, `mha`, the aie2p `mm`) needs none, so its
 `setup` is `None`. A kernel that relies on the design to have set the
 mode names the setter: the bf16 kernels that store from an fp32
 accumulator use `setup=conv_even`, the mode numpy's reference rounds in.
-A design calls `fn.contract.setup()` once before the kernel; the harness
+A design calls `fn.contract.setup()` once before the kernel; the builder
 does the same, so tests and benchmarks run each kernel in the mode its
 contract was written for.
 
@@ -419,16 +395,16 @@ a kernel that fails to compile is an error annotation. With
 `aie_kernels/` is compiled against an installed wheel, which is how the
 workflow runs on a pull request.
 
-### Kernels the harness cannot run
+### Kernels the generic builder cannot run
 
 Five factories carry a contract whose `unsupported` field says why the
-single-Worker harness cannot drive them; their references still say what
+single-Worker builder cannot drive them; their references still say what
 they compute, and `design()` refuses them with that reason:
 
 | Factory | Why |
 | --- | --- |
 | `cascade_mm` | partial sums travel over the cascade stream, which is not an argument |
-| `mm_bfp_shuffle` | a bfp16ebs8 tile through a plain fifo, which the harness samples only as a matmul operand |
+| `mm_bfp_shuffle` | a bfp16ebs8 tile through a plain fifo, which the builder samples only as a matmul operand |
 | bf16 `mv` | its signature leads with runtime `m` / `row_offset` scalars; the matvec design drives the int16 `(A, b, c)` form |
 | `mha` | a multi-core attention dataflow with a running softmax |
 | `bn_conv2dk1_relu_xy_pool_padded` | accumulates across calls through its output, one row per `y_index` |

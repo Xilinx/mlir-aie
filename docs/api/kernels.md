@@ -63,15 +63,14 @@ kernel sources these wrap, see [C++ AIE kernels](aie_kernels.md).
 
 ## Contracts and the generic design builder
 
-Every factory the generic builder can build carries a `KernelContract`
-on the returned `ExternalFunction` (`fn.contract`): argument roles, a numpy
-reference, the tolerance the kernel is held to, its work per call, what it
-accumulates in and over how many terms, and its integer overflow and
-fixed-point rounding behaviour. Multi-dtype factories publish the
-combinations they support as `factory.dtypes`. The
-factories above also export their references as `*_ref` functions
-(`add_ref`, `reduce_max_ref`, `mm_ref`, ...), so host code never reimplements
-the math.
+Every factory the generic builder can build carries a `KernelContract` on the
+returned `ExternalFunction` (`fn.contract`). The field-by-field account is in
+[Kernel Library](../programming_guide/kernels_library.md#what-a-signature-cannot-say);
+the reference below is generated from the dataclass, so it cannot drift from
+it. Multi-dtype factories publish the combinations they support as
+`factory.dtypes`, and the factories above export their references as `*_ref`
+functions (`add_ref`, `reduce_max_ref`, `mm_ref`, ...), so host code never
+reimplements the math.
 
 ::: iron.kernels._common
     options:
