@@ -444,8 +444,7 @@ class HRXHostRuntime(HostRuntime):
         touched = []
         for kernel_handle, args in runs:
             assert isinstance(kernel_handle, HRXKernelHandle)
-            # A chain carries no per-run instruction stream, so a dispatch
-            # design would contribute a null executable here rather than fail.
+            # Always None here: see _require_dispatch_insts.
             self._require_dispatch_insts(kernel_handle, None)
             kept, bindings = self._prepare_bindings(args)
             items.append(
