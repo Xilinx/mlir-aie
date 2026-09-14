@@ -18,6 +18,7 @@ from ._aiex_ops_gen import (
 from ._aie_ops_gen import ObjectFifoCreateOp, EndOp, RuntimeSequenceOp
 from . import aie
 from .aie import (
+    BdIteration,
     DMAChannelDir,
     LockAction,
     Neighbors,
@@ -280,6 +281,7 @@ def shim_dma_bd(
     axcache: int | None = None,
     packet: tuple[int] | None = None,
     offset_parameter: str | None = None,
+    iteration: BdIteration | None = None,
 ):
     if tap and not (offset is None and sizes is None and strides is None):
         raise ValueError(
@@ -313,6 +315,7 @@ def shim_dma_bd(
         axcache=axcache,
         packet=packet,
         offset_parameter=offset_parameter,
+        iteration=iteration,
     )
 
 
@@ -329,6 +332,7 @@ def shim_dma_single_bd_task(
     axcache: int | None = None,
     packet: tuple[int] | None = None,
     offset_parameter: str | None = None,
+    iteration: BdIteration | None = None,
 ):
     """_summary_
     Enables data transfers between the AIE Engine array and external memory.
@@ -346,6 +350,7 @@ def shim_dma_single_bd_task(
         axcache (optional): The raw 4-bit AxCACHE value for the DMA's AXI-MM transfers. If
             omitted, the target model's default AxCACHE value is used.
         packet (optional): The packet header information represented as a (packet_type, packet_id) tuple.
+        iteration (optional): The BD iteration state as a BdIteration(size, stride, current).
 
     Example:
         out_task = shim_dma_single_bd_task(of_out, C, sizes=[1, 1, 1, N], issue_token=True)
@@ -366,45 +371,51 @@ def shim_dma_single_bd_task(
         # so here we make sure it is evaluated and properly is seen as an integer.
         offset = int(tap.offset)
 
-    # The shim DMA BD has 3 access dimensions plus a hardware repeat/iteration
-    # dimension. The repeat_count below hoists sizes[0] into that iteration
-    # dimension, but the transferred extent is prod(sizes[-3:]) (see shim_dma_bd),
-    # so sizes[0] is left out of it only when there are 4 dimensions. With fewer
-    # than 4 dims and sizes[0] > 1, sizes[0] is counted both as a real access dim
-    # (in transfer_len and in the BD dimensions) and as repeat_count, so the shim
-    # re-issues the whole transfer sizes[0] times, waits on the objectfifo for that
-    # many objects, and dma_await_task never returns. Normalize to the canonical
-    # 4-dim form (left-pad with unit dims) so sizes[0] is only ever the iteration
-    # dimension, and reject taps with more than 4 dims instead of silently emitting
-    # a wrong BD.
-    if sizes is not None:
-        if len(sizes) > 4:
-            raise ValueError(
-                f"shim DMA BD supports at most 4 dimensions, got {len(sizes)}"
-            )
-        while len(sizes) < 4:
-            sizes = [1] + list(sizes)
-            if strides is not None:
-                strides = [0] + list(strides)
-
-    # The outer (sizes[0]) dimension becomes the queue-push repeat_count. A
-    # constant folds to the repeat_count attribute (static path, unchanged); a
-    # runtime Value flows into the repeat_count_val operand so a dynamic tile
-    # count is supported.
+    # The iteration attribute (when set) claims the shim's single iteration/repeat
+    # slot, so the BD carries ONLY its access dimensions (<=3) and does NOT also
+    # hoist an outer dimension.
     repeat_count = 0
     repeat_count_val = None
-    if sizes:
-        s0 = sizes[0]
-        if isinstance(s0, (int, np.integer)):
-            if s0 > 1:
-                repeat_count = int(s0) - 1
-        else:
-            # Runtime: repeat = s0 - 1 as arith, in i32 (the queue field width).
-            # sizes may be i64 (DynamicIndexList); truncate before subtracting.
-            s0_i32 = s0
-            if s0.type != T.i32():
-                s0_i32 = arith.trunci(T.i32(), s0)
-            repeat_count_val = s0_i32 - _as_i32(1)
+    if iteration is not None:
+        if sizes is not None and len(sizes) > 3:
+            raise ValueError(
+                "shim_dma_single_bd_task: iteration= supports at most 3 access "
+                "dimensions (the iteration attribute claims the 4th/iteration "
+                f"slot); got {len(sizes)}."
+            )
+    else:
+        # sizes[0] is hoisted into the hardware repeat_count, while the transfer
+        # itself covers only the inner 3 dims. So an un-padded leading dim > 1 gets
+        # double-counted -- once in the transfer, once as the repeat -- and the shim
+        # re-runs the whole transfer sizes[0] times, hanging dma_await_task on
+        # objects that never arrive. Left-pad to 4 dims so sizes[0] is only ever the
+        # repeat slot, and reject > 4 dims rather than emit a wrong BD.
+        if sizes is not None:
+            if len(sizes) > 4:
+                raise ValueError(
+                    f"shim DMA BD supports at most 4 dimensions, got {len(sizes)}"
+                )
+            while len(sizes) < 4:
+                sizes = [1] + list(sizes)
+                if strides is not None:
+                    strides = [0] + list(strides)
+
+        # The outer (sizes[0]) dimension becomes the queue-push repeat_count. A
+        # constant folds to the repeat_count attribute (static path, unchanged); a
+        # runtime Value flows into the repeat_count_val operand so a dynamic tile
+        # count is supported.
+        if sizes:
+            s0 = sizes[0]
+            if isinstance(s0, (int, np.integer)):
+                if s0 > 1:
+                    repeat_count = int(s0) - 1
+            else:
+                # Runtime: repeat = s0 - 1 as arith, in i32 (the queue field width).
+                # sizes may be i64 (DynamicIndexList); truncate before subtracting.
+                s0_i32 = s0
+                if s0.type != T.i32():
+                    s0_i32 = arith.trunci(T.i32(), s0)
+                repeat_count_val = s0_i32 - _as_i32(1)
     task = dma_configure_task_for(
         alloc,
         repeat_count=repeat_count,
@@ -423,6 +434,7 @@ def shim_dma_single_bd_task(
                 axcache=axcache,
                 packet=packet,
                 offset_parameter=offset_parameter,
+                iteration=iteration,
             )
             EndOp()
     return task

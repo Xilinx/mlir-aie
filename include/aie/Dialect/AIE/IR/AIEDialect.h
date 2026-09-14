@@ -261,6 +261,12 @@ bool isContiguousBDTransfer(llvm::ArrayRef<BDDimLayoutAttr> dims);
 mlir::LogicalResult
 verifyDMABDOutOfOrderId(DMABDOp bd, bool packetEnabledByContext = false);
 
+// Validate the #aie.bd_iteration bounds on a single BD; no-op without the
+// attribute. Also called from AIEX, whose task BDs skip DMABDOp::verify.
+mlir::LogicalResult verifyBDIterationBounds(DMABDOp bd,
+                                            const AIETargetModel &targetModel,
+                                            AIETileType tileType);
+
 // Validate an out-of-order S2MM channel and its receive BDs.
 mlir::LogicalResult
 verifyOutOfOrderChannel(mlir::Operation *op, DMAChannelDir dir, bool outOfOrder,
