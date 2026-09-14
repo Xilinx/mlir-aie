@@ -6,7 +6,7 @@
 """Activation kernel factories + numpy reference implementations.
 
 Factories (each returns an [`ExternalFunction`][iron.ExternalFunction]):
-  softmax, gelu, silu, swiglu, bf16_exp, exp2f_vec.
+  softmax, gelu, silu, swiglu, bf16_exp, exp2f_vec, tanh, sigmoid, leaky_relu.
 
 Companion numpy reference implementations for host-side verification:
   [`relu_ref`][iron.kernels.activation.relu_ref], [`silu_ref`][iron.kernels.activation.silu_ref], [`gelu_ref`][iron.kernels.activation.gelu_ref],
@@ -191,6 +191,43 @@ def exp2f_vec(tile_size: int = 1024, min_x: float = -111.0) -> ExternalFunction:
     )
 
 
+def tanh(tile_size: int = 1024) -> ExternalFunction:
+    """Tanh activation kernel for bf16 tiles (must be 1024).
+
+    The kernel takes the element count at runtime, so the design must pass
+    ``tile_size`` as a trailing ``int`` argument (e.g. via
+    ``transform_parallel(pass_size_to_kernel=True)``).
+    """
+    _require_fixed_tile_size("tanh", tile_size, _LUT_FIXED_TILE)
+    tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
+    return _create_lut_kernel("tanh_bf16", "tanh.cc", [tile_ty, tile_ty, np.int32])
+
+
+def sigmoid(tile_size: int = 1024) -> ExternalFunction:
+    """Sigmoid activation kernel for bf16 tiles (must be 1024).
+
+    Runtime element count — pass ``tile_size`` as a trailing ``int`` argument.
+    """
+    _require_fixed_tile_size("sigmoid", tile_size, _LUT_FIXED_TILE)
+    tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
+    return _create_lut_kernel(
+        "sigmoid_bf16", "sigmoid.cc", [tile_ty, tile_ty, np.int32]
+    )
+
+
+def leaky_relu(tile_size: int = 1024) -> ExternalFunction:
+    """Leaky ReLU activation kernel for bf16 tiles (must be 1024).
+
+    Takes the element count and the ``alpha`` slope at runtime, so the design
+    must pass ``(tile_size, alpha)`` as trailing ``int``/``bfloat16`` arguments.
+    """
+    _require_fixed_tile_size("leaky_relu", tile_size, _LUT_FIXED_TILE)
+    tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
+    return _create_lut_kernel(
+        "leaky_relu_bf16", "leaky_relu.cc", [tile_ty, tile_ty, np.int32, bfloat16]
+    )
+
+
 # ---------------------------------------------------------------------------
 # Reference (numpy) implementations
 # ---------------------------------------------------------------------------
@@ -233,6 +270,34 @@ def gelu_ref(x):
     return (
         0.5 * xf * (1.0 + np.tanh(_math.sqrt(2.0 / _math.pi) * (xf + 0.044715 * xf**3)))
     ).astype(x.dtype)
+
+
+def tanh_ref(x):
+    """Numpy reference for [`tanh`][iron.kernels.activation.tanh] — element-wise ``tanh(x)``.
+
+    LUT/native-approximation territory; pair with ``rtol=0.128`` when verifying.
+    """
+    return np.tanh(x.astype(np.float32)).astype(x.dtype)
+
+
+def sigmoid_ref(x):
+    """Numpy reference for [`sigmoid`][iron.kernels.activation.sigmoid] — ``1 / (1 + exp(-x))``.
+
+    LUT-approximation territory; pair with ``rtol=0.128`` when verifying.
+    """
+    xf = x.astype(np.float32)
+    return (1.0 / (1.0 + np.exp(-xf))).astype(x.dtype)
+
+
+def leaky_relu_ref(x, alpha=0.01):
+    """Numpy reference for [`leaky_relu`][iron.kernels.activation.leaky_relu].
+
+    ``x if x > 0 else alpha * x``.  ``alpha`` must match the slope the design
+    passes to the kernel at runtime.  Exact up to bf16 rounding; pair with a
+    small ``rtol`` when verifying.
+    """
+    xf = x.astype(np.float32)
+    return np.where(xf > 0.0, xf, alpha * xf).astype(x.dtype)
 
 
 def bf16_exp_ref(x):

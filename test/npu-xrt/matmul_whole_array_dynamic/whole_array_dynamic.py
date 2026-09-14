@@ -314,7 +314,7 @@ from aie.iron import CompileTime, DispatchTime, In, Out  # noqa: E402
 
 # CompileTime M/K/N fold to constants, so the range_ loops unroll and the design
 # takes the static binary path -- one xclbin per shape.
-@iron.jit(aiecc_flags=["--alloc-scheme=basic-sequential"])
+@iron.jit()
 def whole_array_dynamic(
     A: In,
     B: In,

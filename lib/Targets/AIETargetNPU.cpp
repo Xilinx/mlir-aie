@@ -113,12 +113,16 @@ LogicalResult appendAddressPatch(std::vector<uint32_t> &instructions,
                           "register address (addr_val) to a static TXN binary; "
                           "the runtime-bd_id pool path targets the C++ TXN "
                           "target only");
-  std::optional<uint32_t> argPlus =
-      AIEX::getConstantIntOperand(op.getArgPlus());
+  std::optional<uint64_t> argPlus =
+      AIEX::getConstantInt64Operand(op.getArgPlus());
   if (!argPlus)
     return op.emitOpError("Cannot translate address_patch with non-constant "
                           "arg_plus to a static TXN binary");
-  aie_runtime::txn_append_arg_patch(instructions, op.getAddr(), op.getArgIdx(),
+  std::optional<uint32_t> argIdx = op.getArgIdx();
+  if (!argIdx)
+    return op.emitOpError("address_patch still names its host buffer by SSA "
+                          "value; run -aie-resolve-address-patch-buffers");
+  aie_runtime::txn_append_arg_patch(instructions, op.getAddr(), *argIdx,
                                     *argPlus, foldDDRAddrOffset);
   return success();
 }

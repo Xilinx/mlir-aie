@@ -198,6 +198,11 @@ def memref_type_to_np_dtype(memref_type):
     return _memref_type_to_np_dtype.get(memref_type)
 
 
+def ceildiv(a, b):
+    """Ceiling division: smallest integer >= a/b."""
+    return -(a // -b)
+
+
 def np_ndarray_type_get_shape(ndarray_type: type[np.ndarray]) -> tuple[int, ...]:
     shape = get_args(ndarray_type)[0]
     assert isinstance(shape, tuple), "np.ndarray shape must be a tuple of integers"

@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-assign-bd-ids --aie-assign-buffer-addresses %s | aie-translate --aie-generate-xaie | FileCheck %s
+// RUN: aie-opt --aie-assign-bd-ids --aie-prepare-buffers --aie-assign-buffer-addresses %s | aie-translate --aie-generate-xaie | FileCheck %s
 
 // The receive BDs do not chain (use_next_bd=0 == SetNextBd=0), and a
 // non-iterating BD gets no iteration; SetAddrLen is followed directly by

@@ -135,7 +135,11 @@ static inline void layer_norm_f32_impl(const TIn *restrict input,
 
 extern "C" {
 void layer_norm(bfloat16 *input, bfloat16 *output, int32_t cols) {
-  layer_norm<bfloat16, 16>(input, output, cols);
+  // N=32 bf16 = 512 bits = one AIE2P vector register.  conv_even rounding
+  // matches the reference math more closely than the default floor mode for
+  // the normalize pass.
+  ::aie::set_rounding(aie::rounding_mode::conv_even);
+  layer_norm<bfloat16, 32>(input, output, cols);
 }
 
 void layer_norm_f32(float *input, float *output, int32_t cols) {

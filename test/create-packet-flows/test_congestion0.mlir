@@ -14,13 +14,18 @@
 // CHECK1:    %[[VAL_2:.*]] = aie.tile(0, 3)
 // CHECK1:    %[[VAL_3:.*]] = aie.tile(0, 4)
 // CHECK1:    %[[VAL_4:.*]] = aie.tile(0, 5)
-// CHECK1:    aie.packet_flow(0) {
-// CHECK1:      aie.packet_source<%[[VAL_1:.*]], DMA : 0>
-// CHECK1:      aie.packet_dest<%[[VAL_0:.*]], DMA : 0>
-// CHECK1:    }
+// The flows below are the ones --aie-find-flows recovers from the routing, in
+// the order it walks the tiles and their packet rules; the flows this file
+// declares up front are replaced by them rather than kept alongside. Both
+// flows out of tile (0, 2) share a source port, so their relative order comes
+// from the routed switchbox rather than from this file.
 // CHECK1:    aie.packet_flow(4) {
 // CHECK1:      aie.packet_source<%[[VAL_1:.*]], DMA : 0>
 // CHECK1:      aie.packet_dest<%[[VAL_0:.*]], DMA : 4>
+// CHECK1:    }
+// CHECK1:    aie.packet_flow(0) {
+// CHECK1:      aie.packet_source<%[[VAL_1:.*]], DMA : 0>
+// CHECK1:      aie.packet_dest<%[[VAL_0:.*]], DMA : 0>
 // CHECK1:    }
 // CHECK1:    aie.packet_flow(1) {
 // CHECK1:      aie.packet_source<%[[VAL_2:.*]], DMA : 0>

@@ -74,9 +74,22 @@ static inline void mm_gelu_row(uint32_t n, const float *__restrict acc,
   event1();
 }
 
+// ReLU: out = max(x, 0), the epilogue a conv2d-as-GEMM patch-embed stem
+// applies after its bias-augmented matmul (e.g. the two 1x1 convs on either
+// side of a strided depthwise block). Purely f32; no SFU transcendental.
+static inline void mm_relu_row(uint32_t n, const float *__restrict acc,
+                               float *__restrict out) {
+  event0();
+  const aie::vector<float, 16> zero = aie::zeros<float, 16>();
+  for (uint32_t off = 0; off < n; off += 16) {
+    aie::store_v(out + off, aie::max(aie::load_v<16>(acc + off), zero));
+  }
+  event1();
+}
+
 extern "C" {
 
-// mode: 0 = identity, 1 = SiLU, 2 = GELU. `n` a multiple of 16.
+// mode: 0 = identity, 1 = SiLU, 2 = GELU, 3 = ReLU. `n` a multiple of 16.
 void mm_activation_epilogue_row(const float *__restrict c_in,
                                 float *__restrict c_out, int32_t n,
                                 int32_t mode) {
@@ -84,6 +97,8 @@ void mm_activation_epilogue_row(const float *__restrict c_in,
     mm_silu_hiprec_row((uint32_t)n, c_in, c_out);
   } else if (mode == 2) {
     mm_gelu_row((uint32_t)n, c_in, c_out);
+  } else if (mode == 3) {
+    mm_relu_row((uint32_t)n, c_in, c_out);
   } else {
     mm_identity_row((uint32_t)n, c_in, c_out);
   }

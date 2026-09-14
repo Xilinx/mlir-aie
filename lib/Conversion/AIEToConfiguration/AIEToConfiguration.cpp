@@ -69,7 +69,8 @@ struct TransactionBinaryOperation {
     uint32_t action;
     uint32_t addr;
     int32_t argIdx;
-    int32_t argPlus;
+    // Words 10-11 of the op; see txn_append_address_patch.
+    uint64_t argPlus;
   };
 
   std::optional<SyncPayload> sync;
@@ -278,7 +279,8 @@ parseTransactionBinary(const std::vector<uint8_t> &data,
         uint32_t action = read32(i + 20);
         uint32_t addr = read32(i + 24);
         int32_t argIdx = static_cast<int32_t>(read32(i + 32));
-        int32_t argPlus = static_cast<int32_t>(read32(i + 40));
+        uint64_t argPlus = static_cast<uint64_t>(read32(i + 40)) |
+                           (static_cast<uint64_t>(read32(i + 44)) << 32);
         TransactionBinaryOperation::AddressPatchPayload payload{
             action, addr, argIdx, argPlus};
         op.addressPatch = payload;
@@ -402,7 +404,8 @@ parseTransactionBinary(const std::vector<uint8_t> &data,
         uint32_t action = read32(i + 20);
         uint32_t addr = read32(i + 24);
         int32_t argIdx = static_cast<int32_t>(read32(i + 32));
-        int32_t argPlus = static_cast<int32_t>(read32(i + 40));
+        uint64_t argPlus = static_cast<uint64_t>(read32(i + 40)) |
+                           (static_cast<uint64_t>(read32(i + 44)) << 32);
         TransactionBinaryOperation::AddressPatchPayload payload{
             action, addr, argIdx, argPlus};
         op.addressPatch = payload;
@@ -528,9 +531,9 @@ emitTransactionOps(OpBuilder &builder, Location fallbackLoc,
       const TransactionBinaryOperation::AddressPatchPayload &patch =
           *op.addressPatch;
       AIEX::NpuAddressPatchOp::create(
-          builder, loc, builder.getUI32IntegerAttr(patch.addr),
-          /*addr_val=*/mlir::Value(), builder.getI32IntegerAttr(patch.argIdx),
-          AIEX::createConstantI32(builder, loc, patch.argPlus));
+          builder, loc, patch.addr,
+          /*addr_val=*/mlir::Value(), static_cast<int32_t>(patch.argIdx),
+          AIEX::createConstantArgPlus(builder, loc, patch.argPlus));
     } else if (op.cmd.Opcode == 0x6 /*  XAie_TxnOpcode::XAIE_IO_PREEMPT */) {
       auto ui8Ty =
           IntegerType::get(builder.getContext(), 8, IntegerType::Unsigned);
@@ -867,7 +870,8 @@ convertAIEToConfiguration(AIE::DeviceOp device, StringRef clElfDir,
       seq_name = "configure" + std::to_string(id++);
     StringAttr seq_sym_name = builder.getStringAttr(seq_name);
     auto seq =
-        AIE::RuntimeSequenceOp::create(builder, loc, seq_sym_name, BoolAttr{});
+        AIE::RuntimeSequenceOp::create(builder, loc, seq_sym_name, BoolAttr{},
+                                       AIE::TraceBufferAttr{}, ArrayAttr{});
     seq.getBody().push_back(new Block);
     builder.setInsertionPointToStart(&seq.getBody().front());
   } else {

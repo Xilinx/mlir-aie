@@ -11,6 +11,7 @@ from pathlib import Path
 from .utils import (
     compile_cxx_core_function,
     compile_external_kernel,
+    compile_external_kernels,
     compile_mlir_module,
     resolve_target_arch,
 )
@@ -24,6 +25,7 @@ __all__ = [
     "compile_cxx_core_function",
     "compile_mlir_module",
     "compile_external_kernel",
+    "compile_external_kernels",
     "resolve_target_arch",
     "NPU_CACHE_HOME",
 ]

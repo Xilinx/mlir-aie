@@ -26,6 +26,7 @@
 #include "llvm/Support/TypeSize.h"
 
 #include <cstdint>
+#include <limits>
 #include <numeric>
 
 using namespace mlir;
@@ -143,23 +144,17 @@ AIEX::verifyStridesWraps(mlir::Operation *forOp,
   auto elemWidth =
       dataLayout.getTypeSizeInBits(referencedBufType.getElementType());
 
-  uint32_t wrap_bits = 0;
-  uint32_t step_bits = 0;
-  uint32_t iter_bits = targetModel.getDmaBdIterBits(tileCol, tileRow);
-  if (targetModel.isShimNOCTile(tileCol, tileRow)) {
-    step_bits = 20; // XAIEMLGBL_NOC_MODULE_DMA_BD0_3_D0_STEPSIZE_WIDTH
-    wrap_bits = 10; // XAIEMLGBL_NOC_MODULE_DMA_BD0_3_D0_WRAP_WIDTH
-  } else if (targetModel.isMemTile(tileCol, tileRow)) {
-    step_bits = 17; // XAIEMLGBL_MEM_TILE_MODULE_DMA_BD0_2_D0_STEPSIZE_WIDTH
-    wrap_bits = 10; // XAIEMLGBL_MEM_TILE_MODULE_DMA_BD0_2_D0_WRAP_WIDTH
-  } else if (targetModel.isCoreTile(tileCol, tileRow)) {
-    step_bits = 13; // XAIEMLGBL_MEMORY_MODULE_DMA_BD0_2_D0_STEPSIZE_WIDTH
-    wrap_bits = 8;  // XAIEMLGBL_MEMORY_MODULE_DMA_BD0_3_D0_WRAP_WIDTH
-  } else {
+  // ShimPLTiles have no ShimDMA, so BD field widths are meaningless here.
+  if (!targetModel.isCoreTile(tileCol, tileRow) &&
+      !targetModel.isMemTile(tileCol, tileRow) &&
+      !targetModel.isShimNOCTile(tileCol, tileRow))
     return forOp->emitOpError(
         "Unsupported tile type at (" + std::to_string(tileCol) + ", " +
         std::to_string(tileRow) + ") Must be ShimNOC, Mem or Core.");
-  }
+
+  uint32_t wrap_bits = targetModel.getDmaBdWrapBits(tileCol, tileRow);
+  uint32_t step_bits = targetModel.getDmaBdStepBits(tileCol, tileRow);
+  uint32_t iter_bits = targetModel.getDmaBdIterBits(tileCol, tileRow);
 
   for (int i = 0; i < 4; i++) {
     if (inputSizes[i] <= 0) {
@@ -603,6 +598,12 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
   const auto &targetModel = AIE::getTargetModel(*this);
   auto addressGranularity = targetModel.getAddressGenGranularity();
 
+  if (getOffsetParameterAttr() || getOffsetStateTableIdxAttr()) {
+    uint64_t elemBitWidth = buffer.getElementTypeBitWidth();
+    if (elemBitWidth == 0 || (elemBitWidth % 8) != 0)
+      return emitOpError("offset_parameter requires a whole-byte element type");
+  }
+
   if (getElementTypeBitwidth() > addressGranularity) {
     return emitOpError("Maximum element bit width allowed is ")
            << addressGranularity << "bits. ";
@@ -853,10 +854,28 @@ std::optional<uint32_t> AIEX::getConstantIntOperand(mlir::Value v) {
   return static_cast<uint32_t>(cst.getZExtValue());
 }
 
+// Widthwise counterpart of getConstantIntOperand; see createConstantArgPlus.
+std::optional<uint64_t> AIEX::getConstantInt64Operand(mlir::Value v) {
+  mlir::APInt cst;
+  if (!mlir::matchPattern(v, mlir::m_ConstantInt(&cst)))
+    return std::nullopt;
+  return cst.getZExtValue();
+}
+
 mlir::Value AIEX::createConstantI32(mlir::OpBuilder &builder,
                                     mlir::Location loc, uint32_t value) {
   return arith::ConstantOp::create(
       builder, loc, builder.getI32IntegerAttr(static_cast<int32_t>(value)));
+}
+
+mlir::Value AIEX::createConstantArgPlus(mlir::OpBuilder &builder,
+                                        mlir::Location loc, uint64_t value) {
+  if (value <= std::numeric_limits<uint32_t>::max())
+    return createConstantI32(builder, loc, static_cast<uint32_t>(value));
+  return arith::ConstantOp::create(
+      builder, loc,
+      IntegerAttr::get(builder.getIntegerType(64),
+                       static_cast<int64_t>(value)));
 }
 
 //===----------------------------------------------------------------------===//
@@ -962,6 +981,10 @@ LogicalResult AIEX::NpuAddressPatchOp::verify() {
   // The static binary target checks for the operand and diagnoses it there.
   if (getAddrVal() && !getAddrVal().getType().isInteger(32))
     return emitOpError("addr_val must be an i32 value");
+  if (getArgIdx().has_value() == static_cast<bool>(getBuffer()))
+    return emitOpError("must name the host buffer either by the 'arg_idx' "
+                       "attribute or by the 'buffer' operand, not both and not "
+                       "neither");
   return success();
 }
 

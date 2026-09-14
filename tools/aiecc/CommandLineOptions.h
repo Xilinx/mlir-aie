@@ -155,6 +155,11 @@ inline cl::opt<bool> noMeasureStackSize(
     "no-measure-stack-size",
     cl::desc("Skip the measurement of each core's stack requirement and the "
              "check of stack_size against it"));
+inline cl::opt<bool> noMeasureDataSize(
+    "no-measure-data-size",
+    cl::desc("Skip the measurement of each core's static data (.data, .rodata "
+             "and .bss) in its linked ELF and the check of data_size against "
+             "it"));
 inline cl::opt<int> defaultStackSize(
     "default-stack-size",
     cl::desc("Stack size in bytes to assume for any core that leaves "
