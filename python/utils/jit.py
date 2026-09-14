@@ -96,7 +96,7 @@ def jit(
     if callable(mlir_generator):
         from aie.utils.compile.jit._introspect import split_params
 
-        compile_params, _, scalar_params = split_params(mlir_generator)
+        compile_params, _, _, scalar_params = split_params(mlir_generator)
 
         # Guard 1-A: reject any compile kwarg that doesn't match a CompileTime[T]
         # param. Failing fast at decoration time catches typos like @jit(NN=...)
@@ -112,13 +112,9 @@ def jit(
                     f"  Config keys: {sorted(_JIT_CONFIG_KEYS)}."
                 )
 
-        # Guard 1-C: reject unannotated non-tensor params with default values.
-        # The framework has no plumbing for runtime scalar args yet (RTPs are
-        # tracked as a follow-up — see project memory), so a default value
-        # gets baked into the compiled MLIR at decoration time and any per-
-        # call override is *silently* ignored.  That's the worst kind of bug:
-        # the kernel runs successfully but with the wrong value.  Force the
-        # author to be explicit instead.
+        # Guard 1-C: an unannotated scalar binds at generation time, so its
+        # default bakes into the MLIR and per-call overrides are *silently*
+        # ignored. DispatchTime[T] is exempt -- its stream is rebuilt per call.
         sig_for_defaults = _inspect.signature(mlir_generator)
         silent_default_scalars = [
             name
@@ -129,14 +125,17 @@ def jit(
             raise TypeError(
                 f"@iron.jit: parameter(s) {silent_default_scalars!r} of "
                 f"{mlir_generator.__name__!r} have default values but no "
-                f"In / Out / InOut / CompileTime[T] annotation.  The framework has "
-                f"no runtime-scalar plumbing yet, so the default would be "
+                f"In / Out / InOut / CompileTime[T] / DispatchTime[T] "
+                f"annotation.  An unannotated scalar is bound at generation "
+                f"time, so the default would be "
                 f"baked into the compiled kernel and per-call overrides "
                 f"silently ignored.\n"
                 f"  Fix options:\n"
                 f"    * Use CompileTime[T] = default to keep the default and "
                 f"recompile on per-call change.\n"
-                f"    * Annotate as In / Out / InOut if it's a tensor."
+                f"    * Annotate as In / Out / InOut if it's a tensor.\n"
+                f"    * Annotate as DispatchTime[T] if it's meant to vary per "
+                f"call without a recompile."
             )
 
         # Guard: CompileTime[T] params must be keyword-only (unless pre-bound or

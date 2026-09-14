@@ -33,6 +33,7 @@ add_mlir_dialect_library(AIEXTransforms
   AIETxnToControlPacket.cpp
   AIEExpandLoadPdi.cpp
   AIEInlineTraceConfig.cpp
+  AIEXNpuPipelines.cpp
   AIEFuseTraceBuffers.cpp
   AIEResolveAddressPatchBuffers.cpp
 

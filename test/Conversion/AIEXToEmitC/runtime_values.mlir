@@ -21,7 +21,7 @@
 // Runtime sync counts come from the parameter.
 // CHECK:   aie_runtime::txn_append_sync(txn, {{.*}}, [[P]], [[P]]);
 // Runtime address_patch arg_plus comes from the parameter.
-// CHECK:   aie_runtime::txn_append_address_patch(txn, {{.*}}, [[P]]);
+// CHECK:   aie_runtime::txn_append_arg_patch(txn, {{.*}}, [[P]], {{v[0-9]+}});
 module {
   aie.device(npu1_1col) {
     aie.runtime_sequence @seq(%arg0: memref<8xi32>, %param: i32) {

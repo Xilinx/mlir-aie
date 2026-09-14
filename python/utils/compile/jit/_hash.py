@@ -146,6 +146,10 @@ def _compute_recipe_hash(
         # compile_kwargs, and the default lives outside the code object.
         h.update(repr(getattr(generator, "__defaults__", None)).encode())
         h.update(repr(getattr(generator, "__kwdefaults__", None)).encode())
+        # Annotations also live outside the code object, and they decide how
+        # every parameter is treated: In vs Out vs InOut, and a DispatchTime[T]
+        # wrapped type. Markers repr stably (markers.py), so this is portable.
+        h.update(repr(getattr(generator, "__annotations__", None)).encode())
 
     def _kwarg_repr(v):
         if callable(v) and hasattr(v, "__code__"):
@@ -186,6 +190,7 @@ def _compute_artifact_hash(
     source_files: list[Path] | tuple[Path, ...],
     object_files: list[Path] | tuple[Path, ...],
     fold_ddr_addr_offset: bool,
+    has_dispatch_params: bool = False,
 ) -> str:
     """Hash of the "artifacts": source/object content + tool mtimes + device.
 
@@ -197,6 +202,12 @@ def _compute_artifact_hash(
     a folded ``insts.bin`` and HRX an unfolded one, so the two must never share a
     cache entry. It is resolved once by the caller and passed in explicitly (no
     silent default) so the cache key and the compilation can never disagree.
+
+    ``has_dispatch_params`` additionally hashes the dynamic-dispatch toolchain
+    (aie-opt/aie-translate/host C++ compiler) mtimes, so an upgrade to any of
+    them invalidates a design's ``dispatch.so`` the same way an upgraded Peano
+    invalidates a design's kernel objects. A no-op for the overwhelming
+    majority of (non-DispatchTime[T]) designs.
     """
     h = hashlib.sha256()
 
@@ -276,6 +287,29 @@ def _compute_artifact_hash(
             f"peano_mtime={peano_mtime}|aiecc_mtime={aiecc_mtime}".encode()
         )
 
+        if has_dispatch_params:
+            for tool_name, path_fn in (
+                ("aie_opt", "aie_opt_path"),
+                ("aie_translate", "aie_translate_path"),
+                ("host_cxx", "host_cxx_path"),
+            ):
+                try:
+                    from aie.utils import config as _config
+
+                    tool_mtime = str(Path(getattr(_config, path_fn)()).stat().st_mtime)
+                except (
+                    ImportError,
+                    AttributeError,
+                    FileNotFoundError,
+                    OSError,
+                    RuntimeError,
+                ) as exc:
+                    logger.warning(
+                        "_compute_artifact_hash: %s absent (%s)", tool_name, exc
+                    )
+                    tool_mtime = "absent"
+                h.update(f"{tool_name}_mtime={tool_mtime}".encode())
+
     return h.hexdigest()
 
 
@@ -288,6 +322,7 @@ def _compute_hash(
     compile_flags: list[str] | tuple[str, ...],
     full_elf: bool = False,
     fold_ddr_addr_offset: bool = True,
+    has_dispatch_params: bool = False,
     include_paths: list[Path] | tuple[Path, ...] = (),
 ) -> str:
     """Stable 24-hex SHA-256 cache key combining recipe + artifact hashes."""
@@ -295,6 +330,10 @@ def _compute_hash(
         generator, compile_kwargs, aiecc_flags, compile_flags, full_elf, include_paths
     )
     artifact = _compute_artifact_hash(
-        generator, source_files, object_files, fold_ddr_addr_offset
+        generator,
+        source_files,
+        object_files,
+        fold_ddr_addr_offset,
+        has_dispatch_params,
     )
     return hashlib.sha256(f"{recipe}|{artifact}".encode()).hexdigest()[:24]
