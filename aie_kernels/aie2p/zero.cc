@@ -5,9 +5,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef ZERO_CC
-#define ZERO_CC
+#ifndef AIE_KERNELS_AIE2P_ZERO_CC
+#define AIE_KERNELS_AIE2P_ZERO_CC
 
+#include <aie_api/aie.hpp>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>

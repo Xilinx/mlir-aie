@@ -7,25 +7,27 @@
 
 // REQUIRES: peano
 
-// A buffer's initializer belongs in exactly one core's object -- its owner's.
-// AIEBufferToStandard enforces that by dropping the initializer for cores that
-// do not own the buffer, keyed off the tile coordinates it is given. Unified
-// lowering gives it none, so every core's module starts with every initializer
-// and the globals are public, which puts them past symbol DCE. Unified has to
-// re-apply ownership when it carves the device up, or each core's data section
-// carries the whole device's constants.
+// No core's object carries a buffer's contents, not even the object of the
+// buffer's own tile. A buffer lives at an address the allocator chooses and the
+// linker supplies, and its `initial_value` is device state, written by whoever
+// configures the device. A definition in a core's object would place the bytes
+// wherever `*(.data*)` lands, which costs the core's data region a copy it
+// never reads.
+//
+// Unified lowering compiles every core from one llvm-linked module, so each
+// core's module starts with every buffer, and the globals are public, which
+// puts them past symbol DCE. A definition among them would put the whole
+// device's constants in every core's data section.
 
 // RUN: rm -rf %t.d && mkdir -p %t.d
 // RUN: aiecc --unified --tmpdir=%t.d --get-core-elfs --verbose %s 2>&1 | FileCheck %s
 
-// core (0,2) owns buf_a and defines it; buf_b belongs to (1,2) and must arrive
-// as a declaration, exactly as the per-core path emits it.
 // RUN: FileCheck --check-prefix=OWN0 %s < %t.d/peano-compat_main_core_0_2.ll
-// OWN0-DAG: @buf_a = global
+// OWN0-DAG: @buf_a = external global
 // OWN0-DAG: @buf_b = external global
 
 // RUN: FileCheck --check-prefix=OWN1 %s < %t.d/peano-compat_main_core_1_2.ll
-// OWN1-DAG: @buf_b = global
+// OWN1-DAG: @buf_b = external global
 // OWN1-DAG: @buf_a = external global
 
 // CHECK: wrote edge

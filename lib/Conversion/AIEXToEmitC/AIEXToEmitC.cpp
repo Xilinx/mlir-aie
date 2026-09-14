@@ -221,10 +221,13 @@ private:
           // the SSA addr_val (flows through arith-to-emitc) over the constant.
           Value addrV = ap.getAddrVal() ? ap.getAddrVal()
                                         : u32Literal(b, loc, ap.getAddr());
+          std::optional<uint32_t> argIdx = ap.getArgIdx();
+          if (!argIdx)
+            return fail(ap, "address_patch still names its host buffer by SSA "
+                            "value; run -aie-resolve-address-patch-buffers");
           Value idxV = emitc::ConstantOp::create(
               b, loc, emitc::OpaqueType::get(b.getContext(), "int32_t"),
-              emitc::OpaqueAttr::get(b.getContext(),
-                                     std::to_string(ap.getArgIdx())));
+              emitc::OpaqueAttr::get(b.getContext(), std::to_string(*argIdx)));
           // txn_append_arg_patch applies the DDR-aperture fold itself, so the
           // rule lives only in TxnEncoding.h. Both operands are literals here,
           // so -O2 folds the branch away.

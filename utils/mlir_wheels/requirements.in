@@ -1,14 +1,12 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-# GENERATED from pyproject.toml's [build-system].requires by
-# utils/regenerate_lockfiles.sh. Do not hand-edit: edit pyproject.toml
-# instead and rerun that script, which regenerates both this file and
-# requirements.lock.
+# utils/regenerate_lockfiles.sh generates this file from pyproject.toml's
+# [build-system].requires. Edit pyproject.toml, then rerun that script.
 setuptools>=84.0.0
 wheel
 ninja!=1.13.0
-cmake==4.4.2
+cmake==4.4.3
 pybind11[global]>=3.1.0
 numpy>=2.4.6,<2.5; python_version == '3.11'
 numpy>=2.5.2; python_version >= '3.12'

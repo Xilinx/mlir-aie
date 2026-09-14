@@ -8,8 +8,8 @@
 // external_func() rejects a negative stack_size_override before it reaches the
 // IR, and hand-written MLIR skips that check. A negative override subtracts
 // from a path total in maxPathFrom and undercounts, so aiecc rejects it too.
-// The check needs no kernel object, and @entry_a has no definition, so `--get`
-// stops the build at the check, ahead of the link.
+// aiecc verifies the declaration ahead of compilation, so the error reports
+// even though @entry_a has no definition for the linker to resolve.
 
 // REQUIRES: peano
 // RUN: not %aiecc --get=measured_stack_sizes.mlir --output-dir=%t.out %s 2>&1 | FileCheck %s

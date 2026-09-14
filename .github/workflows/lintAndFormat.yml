@@ -16,7 +16,7 @@ concurrency:
 
 on:
   pull_request:
-    types: [assigned, opened, synchronize, reopened]
+    types: [opened, synchronize, reopened]
   workflow_dispatch:
   merge_group:
   schedule:
@@ -41,7 +41,7 @@ jobs:
       pull-requests: write
 
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           fetch-depth: 2
           submodules: "true"
@@ -336,7 +336,7 @@ jobs:
 
     steps:
       - name: Get the project repository
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           fetch-depth: 2
           submodules: "true"
@@ -421,13 +421,53 @@ jobs:
           level: error
           fail_level: any
 
+  comment-slop:
+
+    name: Check for AI comment slop
+
+    runs-on: ubuntu-latest
+
+    # Scoped to actual PR commits only. merge_group's HEAD carries commits from
+    # every PR ahead of this one in the queue, so the diff would compare comments
+    # across several independently reviewed PRs; schedule/workflow_dispatch run
+    # against main with no PR base, which would just diff main against itself.
+    if: github.event_name == 'pull_request'
+
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: '3.12'
+
+      - name: Run the comment-slop unit tests
+        run: python utils/test_check_comment_slop.py -v
+
+      - name: Install pre-commit
+        run: python -m pip install --require-hashes -r python/requirements_dev.lock
+
+      - name: Check for AI comment slop in changed files
+        # Scoped to the PR's actual target branch (not always main), so a PR onto a
+        # release branch is diffed against that branch instead.
+        env:
+          BASE_BRANCH: ${{ github.base_ref }}
+        run: |
+          git fetch --no-tags origin "$BASE_BRANCH"
+          BASE=$(git merge-base "origin/$BASE_BRANCH" HEAD)
+          pre-commit run comment-slop --from-ref "$BASE" --to-ref HEAD --show-diff-on-failure
+
   license-compliance:
     name: License Compliance Check
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Setup Python env
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
@@ -453,7 +493,7 @@ jobs:
 
     steps:
       - name: Get the project repository
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       # docs/programming_guide and docs/aiecc are gitignored symlinks into the
       # repo tree (see generateDocs.yml), recreated here so the nav's

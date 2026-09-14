@@ -16,10 +16,12 @@ using namespace xilinx;
 
 void xilinx::AIEX::buildNpuDmaLoweringPipeline(OpPassManager &pm) {
   OpPassManager &dpm = pm.nest<AIE::DeviceOp>();
+  dpm.addPass(createAIEResolveAddressPatchBuffersPass());
   dpm.addPass(createAIEMaterializeBDChainsPass());
   dpm.addPass(createAIESubstituteShimDMAAllocationsPass());
   dpm.addPass(createAIEUnrollRuntimeSequenceLoopsPass());
   dpm.addPass(createCanonicalizerPass());
+  dpm.addPass(AIE::createAIENormalizeDmaBdDimsPass());
   // Decompose oversized non-contiguous ND transfers (wrap/stride exceeding the
   // hardware BD field limits) into legal sub-transfers before BD lowering.
   dpm.addPass(createAIEDecomposeLargeDmaBdPass());

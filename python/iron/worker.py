@@ -46,6 +46,7 @@ class Worker(ObjectFifoEndpoint):
         tile: Tile | None = AnyComputeTile,
         while_true: bool = True,
         stack_size: int | None = None,
+        data_size: int | None = None,
         allocation_scheme: str | None = None,
         trace: int | None = None,
         trace_events: list | None = None,
@@ -59,6 +60,11 @@ class Worker(ObjectFifoEndpoint):
             tile (Tile, optional): The compute tile for the Worker. Also accepts None (treated as AnyComputeTile). Defaults to AnyComputeTile.
             while_true (bool, optional): If true, will wrap the core_fn in a while(true) loop to ensure it runs until reconfiguration. Defaults to True.
             stack_size (int, optional): The stack_size in bytes for the worker. Defaults to AIETargetModel::getDefaultCoreStackSize() (currently 1024 bytes).
+            data_size (int, optional): Bytes of data memory to reserve for this
+                core's compiled sections (.data/.rodata/.bss), beyond the stack. The
+                buffer allocator packs the tile's buffers around the reservation. None
+                leaves the core whatever contiguous run the buffers leave.
+                Defaults to None.
             allocation_scheme (str, optional): The memory allocation scheme to use for the
                 Worker, either 'basic-sequential' or 'bank-aware'. If None, defaults to bank-aware.
                 Will override any allocation scheme set on the tile.
@@ -81,6 +87,26 @@ class Worker(ObjectFifoEndpoint):
             raise ValueError(
                 f"Worker requires a compute tile, but got tile_type={tile.tile_type}"
             )
+        if stack_size is not None:
+            if not isinstance(stack_size, int) or isinstance(stack_size, bool):
+                raise ValueError(
+                    f"Worker stack_size must be an int, but got "
+                    f"{type(stack_size).__name__}"
+                )
+            if stack_size < 1:
+                raise ValueError(
+                    f"Worker stack_size must be >= 1, but got {stack_size}"
+                )
+        if data_size is not None:
+            if not isinstance(data_size, int) or isinstance(data_size, bool):
+                raise ValueError(
+                    f"Worker data_size must be an int, but got "
+                    f"{type(data_size).__name__}"
+                )
+            if data_size < 0:
+                raise ValueError(
+                    f"Worker data_size must be >= 0, but got " f"{data_size}"
+                )
         # Store the user's Tile directly when it is already typed as CoreTile
         # and no allocation_scheme override is needed. This preserves Python
         # object identity so a Buffer and a Worker that share the same Tile
@@ -99,6 +125,7 @@ class Worker(ObjectFifoEndpoint):
             )
         self._while_true = while_true
         self.stack_size = stack_size
+        self.data_size = data_size
         self.allocation_scheme = allocation_scheme
         self._dynamic_objfifo_lowering = dynamic_objfifo_lowering
         self.trace = trace
@@ -255,6 +282,7 @@ class Worker(ObjectFifoEndpoint):
         @core(
             my_tile,
             stack_size=self.stack_size,
+            data_size=self.data_size,
             dynamic_objfifo_lowering=self._dynamic_objfifo_lowering,
         )
         def core_body():

@@ -214,8 +214,10 @@ inline void forEachMemAffinityNeighbor(const AIETargetModel &targetModel,
 class SequentialPlacer : public Placer {
 public:
   SequentialPlacer(std::optional<int> coresPerCol = std::nullopt,
-                   bool mergeLogicalTiles = true)
-      : coresPerCol(coresPerCol), mergeLogicalTiles(mergeLogicalTiles) {}
+                   bool mergeLogicalTiles = true,
+                   bool spreadUnanchoredTiles = false)
+      : coresPerCol(coresPerCol), mergeLogicalTiles(mergeLogicalTiles),
+        spreadUnanchoredTiles(spreadUnanchoredTiles) {}
 
   void initialize(const AIETargetModel &targetModel) override;
 
@@ -226,6 +228,9 @@ public:
 private:
   std::optional<int> coresPerCol;
   bool mergeLogicalTiles;
+  // When a non-core LTO has no CoreTile peers, rank candidates by DMA load
+  // instead of by distance to column 0. See placeNonCoreTileByCentroid.
+  bool spreadUnanchoredTiles;
   // Physical tiles already assigned to a non-core aie.logical_tile. Used
   // only when mergeLogicalTiles == false to forbid mapping a second
   // non-core aie.logical_tile onto a tile that already hosts one.
@@ -241,7 +246,9 @@ private:
 
   void limitCoresPerColumn(int maxCoresPerCol, int numColumns);
 
-  std::optional<TileID> findTileWithCapacity(int targetCol,
+  // targetCol == nullopt means no routing anchor is known, so candidates are
+  // ranked by DMA load rather than by distance to a column.
+  std::optional<TileID> findTileWithCapacity(std::optional<int> targetCol,
                                              llvm::ArrayRef<TileID> tiles,
                                              int requiredInputChannels,
                                              int requiredOutputChannels,
@@ -400,8 +407,9 @@ private:
 
   // Pick the column that minimizes total routing cost across the LTO's
   // flows. See AIEPlacer.cpp for the per-flow cost formulas and tiebreak.
-  int computeCentroidColumn(LogicalTileOp logicalTile,
-                            const FlowMembership &flowIndex);
+  // Returns nullopt when the LTO has no CoreTile peer to measure against.
+  std::optional<int> computeCentroidColumn(LogicalTileOp logicalTile,
+                                           const FlowMembership &flowIndex);
 
   mlir::LogicalResult placeNonCoreTileByCentroid(
       LogicalTileOp logicalTile, const FlowMembership &flowIndex,

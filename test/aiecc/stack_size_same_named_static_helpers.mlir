@@ -11,8 +11,9 @@
 // nothing, and entry_a calls it. The `helper` of b_kernel.cc calls itself, and
 // only unused_entry_b reaches it, which this core never calls.
 //
-// Under one shared call-graph node, the path of entry_a would pick up the
-// self-loop of b and the build would fail with "recursion detected".
+// The linker gives each `helper` its own address, and the analysis keys its
+// nodes by address. Under one shared node, the path of entry_a would pick up
+// the self-loop of b and the build would fail with "recursion detected".
 // stack_size = 8192 covers the requirement of entry_a, so the build succeeds.
 
 // REQUIRES: peano
