@@ -1293,6 +1293,57 @@ LogicalResult AIEX::DMAConfigureTaskOp::verify() {
   return result;
 }
 
+// A shim transfer feeds an objectFIFO whose far end receives whole objects:
+// a transfer ending mid-object leaves the receiving BD short, its lock
+// unreleased, and the consumer's acquire blocked. The runtime BD is sized
+// in the host buffer's element type; the fifo's object type reaches this
+// side only via the allocation's elem_type, where the two extents meet.
+//
+// Checked only when both are static: a runtime length/repeat, or a channel
+// with no elem_type (control overlay, join/split, a padding endpoint), has
+// nothing to compare. stream_len_decoupled exempts a channel whose DMA
+// (de)compresses -- wire and object bytes differ by a data-dependent ratio
+// no pass can see.
+static LogicalResult
+verifyTaskCoversWholeObjects(Operation *task, AIE::ShimDMAAllocationOp alloc,
+                             mlir::OpFoldResult repeat, Region &body) {
+  if (alloc.getStreamLenDecoupled())
+    return success();
+  std::optional<int64_t> objectBytes = alloc.getObjectSizeInBytes();
+  if (!objectBytes || *objectBytes <= 0)
+    return success();
+  std::optional<int64_t> repeatCount = getConstantIntValue(repeat);
+  if (!repeatCount)
+    return success();
+
+  int64_t moved = 0;
+  bool measurable = false;
+  body.walk([&](AIE::DMABDOp bd) {
+    std::optional<int32_t> len = bd.getConstantLen();
+    if (!len) {
+      measurable = false;
+      return WalkResult::interrupt();
+    }
+    measurable = true;
+    moved += static_cast<int64_t>(*len) * bd.getBufferElementTypeWidthInBytes();
+    return WalkResult::advance();
+  });
+  if (!measurable)
+    return success();
+
+  moved *= (*repeatCount + 1);
+  if (moved % *objectBytes == 0)
+    return success();
+  return task->emitOpError()
+         << "moves " << moved << " bytes through @" << alloc.getSymName()
+         << ", which is not a whole number of that objectFIFO's "
+         << *objectBytes
+         << "-byte objects. The receiving buffer descriptor is "
+            "sized by the object type, so a partial one never completes and "
+            "the "
+            "consumer's acquire never unblocks.";
+}
+
 LogicalResult AIEX::DMAConfigureTaskForOp::verify() {
   // Recover the shim tile through the referenced shim DMA allocation symbol so
   // the per-BD dimension limit can be enforced on the runtime-sequence path
@@ -1312,8 +1363,11 @@ LogicalResult AIEX::DMAConfigureTaskForOp::verify() {
   if (!tile)
     return success();
   const AIE::AIETargetModel &targetModel = AIE::getTargetModel(getOperation());
-  return verifyTaskBDDimensions(targetModel, tile.getCol(), tile.getRow(),
-                                getBody());
+  if (failed(verifyTaskBDDimensions(targetModel, tile.getCol(), tile.getRow(),
+                                    getBody())))
+    return failure();
+  return verifyTaskCoversWholeObjects(getOperation(), allocOp,
+                                      getRepeatCountValue(), getBody());
 }
 
 //===----------------------------------------------------------------------===//
