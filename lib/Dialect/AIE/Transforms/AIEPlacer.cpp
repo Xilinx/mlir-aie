@@ -354,6 +354,17 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
                        ? " (compute-peer DMA budget unsatisfiable)"
                        : "");
         }
+        // A cores-per-col budget leaves no trace in the message above: the
+        // tiles it removed are simply absent from `availability.compTiles`.
+        if (coresPerCol.has_value() && deviceCoresPerCol > 0) {
+          int columns = targetModel->columns();
+          diag.attachNote()
+              << "cores-per-col=" << *coresPerCol << " leaves "
+              << columns * *coresPerCol << " of this device's "
+              << columns * deviceCoresPerCol
+              << " compute tiles placeable; raise it, or reduce the design's "
+                 "core count";
+        }
         if (adjacencyWasCause)
           attachPeerNotes(diag, logicalTile, bufferAdjacency, bufferLabel);
         if (hasCascade)
@@ -1272,9 +1283,20 @@ LogicalResult SequentialPlacer::placeNonCoreTileByCentroid(
            << diagnosis.outMax << " output channels used";
       diag.attachNote() << "this is the device's total " << tileTypeName
                         << " DMA budget, not a placement choice -- no column "
-                           "has spare capacity to pin to; fan traffic "
-                           "through a MemTile, or reduce the number of "
-                           "DMA-attached ObjectFIFOs feeding this tile";
+                           "has spare capacity to pin to";
+      int shortIn = numInputChannels - (diagnosis.inMax - diagnosis.inUsed);
+      int shortOut = numOutputChannels - (diagnosis.outMax - diagnosis.outUsed);
+      auto &remedy = diag.attachNote();
+      if (shortIn > 0 && shortOut > 0)
+        remedy << "short " << shortIn << " input/" << shortOut
+               << " output channel(s); ";
+      else if (shortIn > 0)
+        remedy << "short " << shortIn << " input channel(s); ";
+      else if (shortOut > 0)
+        remedy << "short " << shortOut << " output channel(s); ";
+      remedy << "fan traffic through a MemTile via aie.objectfifo.link, or "
+                "reduce the number of DMA-attached ObjectFIFOs feeding this "
+                "tile";
     } else {
       diag << "no " << tileTypeName << " has sufficient DMA capacity for "
            << numInputChannels << " input/" << numOutputChannels
