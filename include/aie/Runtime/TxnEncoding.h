@@ -176,6 +176,31 @@ inline void txn_append_sync(std::vector<uint32_t> &txn, uint32_t col,
       ((nrow & 0xff) << 8) | ((ncol & 0xff) << 16) | ((chan & 0xff) << 24);
 }
 
+// Append a read_regs instruction reading ONE register at `addr`.
+//
+// On-wire layout is aie-rt's: XAie_CustomOpHdr (u8 Op, u8 Col, u8 Row, pad,
+// u32 Size) followed by the raw read_register_op_t payload (u32 count, 4 bytes
+// of padding, then one u64 address per register) -- see _XAie_AppendCustomOp
+// in aie-rt xaie_helper.c and read_register_op_t in xaiegbl.h. 24 bytes for a
+// single register. `count` is always 1: one aiex.npu.read_reg lowers to one
+// entry; batching several addresses into one entry (as XDP does) is not
+// implemented, and a 2-entry op and two 1-entry ops were measured to fill the
+// destination buffer identically.
+//
+// The 32-bit read values land at the start of the use_type::debug BO bound to
+// the dispatching hardware context, one word per read, in program order. With
+// no debug BO bound the dispatch still completes and the values are dropped.
+inline void txn_append_read_reg(std::vector<uint32_t> &txn, uint32_t addr) {
+  size_t pos = txn.size();
+  txn.resize(pos + 6, 0);
+  txn[pos + 0] = TXN_OPC_READ_REGS;
+  txn[pos + 1] = 6 * sizeof(uint32_t); // operation size
+  txn[pos + 2] = 1;                    // count (single-register form only)
+  txn[pos + 3] = 0;                    // padding before the u64 address array
+  txn[pos + 4] = addr;                 // address, low half
+  txn[pos + 5] = 0;                    // address, high half
+}
+
 // Append a variable-length blockwrite instruction.
 // `data` points to `count` uint32_t words of payload.
 //
