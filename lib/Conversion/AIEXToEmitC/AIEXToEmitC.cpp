@@ -569,7 +569,10 @@ private:
     }
 
     builder.setInsertionPointToEnd(moduleOp.getBody());
-    auto externC = builder.getStrArrayAttr({"extern \"C\""});
+    // AIE_DISPATCH_EXPORT comes from TxnEncoding.h, which the emitted file
+    // already includes; it expands to nothing outside Windows.
+    auto externC =
+        builder.getStrArrayAttr({"extern \"C\"", "AIE_DISPATCH_EXPORT"});
 
     // Pointers must be emitc.ptr: an opaque type may not have a pointer as its
     // outer type.

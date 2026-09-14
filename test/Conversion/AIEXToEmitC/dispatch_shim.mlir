@@ -16,10 +16,10 @@
 
 // CHECK: inline std::optional<std::vector<uint32_t>> generate_txn_main_seq(int32_t {{v[0-9]+}}, size_t {{v[0-9]+}})
 
-// CHECK: extern "C" const char* dispatch_abi() {
+// CHECK: extern "C" AIE_DISPATCH_EXPORT const char* dispatch_abi() {
 // CHECK-NEXT: return "int32_t,size_t";
 
-// CHECK: extern "C" int64_t dispatch_generate(int32_t [[A:v[0-9]+]], size_t [[B:v[0-9]+]], uint32_t** [[OUT:v[0-9]+]]) {
+// CHECK: extern "C" AIE_DISPATCH_EXPORT int64_t dispatch_generate(int32_t [[A:v[0-9]+]], size_t [[B:v[0-9]+]], uint32_t** [[OUT:v[0-9]+]]) {
 // CHECK-NEXT: static thread_local std::vector<uint32_t> __txn;
 // CHECK-NEXT: auto __result = generate_txn_main_seq([[A]], [[B]]);
 // The builder declines (std::nullopt) when a runtime scalar overflows a BD

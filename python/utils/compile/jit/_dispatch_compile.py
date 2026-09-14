@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import ctypes
 import subprocess
+import sys
 from pathlib import Path
 
 from aie.utils import config
@@ -34,6 +35,33 @@ from ._dispatch_bridge import (
 # Resolves to the same builder aiecc calls in-process for the static path, so a
 # dynamic design cannot lower differently. See AIEXNpuPipelines.cpp.
 _DYNAMIC_LOWERING_PASSES = ["--aie-npu-dma-lowering"]
+
+_WINDOWS = sys.platform == "win32"
+
+# Windows loads DLLs, and -fPIC is a hard driver error on the MSVC target
+# (position-independent code is the only mode there) rather than a no-op.
+SHARED_LIB_SUFFIX = ".dll" if _WINDOWS else ".so"
+SHARED_LIB_FLAGS = ["-shared"] if _WINDOWS else ["-shared", "-fPIC"]
+
+
+def host_shared_lib_cmd(src: Path, out: Path, *, opt: str, includes=()) -> list[str]:
+    """Build the host-compiler command that turns *src* into a shared library.
+
+    Shared with the dispatch-bridge tests so the flag set they exercise is the
+    one the product actually uses.
+    """
+    return [
+        config.host_cxx_path(),
+        *SHARED_LIB_FLAGS,
+        opt,
+        # Matches the project-wide CMAKE_CXX_STANDARD; the generated builder
+        # needs nothing newer than std::optional/std::vector.
+        "-std=c++17",
+        *(f"-I{inc}" for inc in includes),
+        str(src),
+        "-o",
+        str(out),
+    ]
 
 
 class DispatchCompileError(RuntimeError):
@@ -100,20 +128,10 @@ def _translate_to_cpp(
 
 
 def _compile_so(gen_cpp: Path, kernel_dir: Path) -> Path:
-    so_path = kernel_dir / "dispatch.so"
-    cmd = [
-        config.host_cxx_path(),
-        "-shared",
-        "-fPIC",
-        "-O2",
-        # Matches the project-wide CMAKE_CXX_STANDARD; the generated builder
-        # needs nothing newer than std::optional/std::vector.
-        "-std=c++17",
-        f"-I{config.runtime_header_path()}",
-        str(gen_cpp),
-        "-o",
-        str(so_path),
-    ]
+    so_path = kernel_dir / f"dispatch{SHARED_LIB_SUFFIX}"
+    cmd = host_shared_lib_cmd(
+        gen_cpp, so_path, opt="-O2", includes=[config.runtime_header_path()]
+    )
     _run(cmd, "host C++ compile")
     return so_path
 

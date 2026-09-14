@@ -349,7 +349,7 @@ def whole_array_dynamic(
 # rolled and the design takes the dispatch-bridge path. M/K/N here are the
 # compiled maxima sizing the host buffers; per-call values are M_rt/K_rt/N_rt,
 # and K_rt must equal the compiled K.
-@iron.jit(aiecc_flags=["--alloc-scheme=basic-sequential"])
+@iron.jit()
 def whole_array_dispatch(
     A: In,
     B: In,

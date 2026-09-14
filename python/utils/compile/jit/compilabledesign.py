@@ -53,7 +53,7 @@ from aie.utils.compile.cache.utils import file_lock
 from aie.utils.compile.utils import _cleanup_failed_compilation
 
 from . import _manifest
-from ._dispatch_compile import compile_dispatch_bridge
+from ._dispatch_compile import SHARED_LIB_SUFFIX, compile_dispatch_bridge
 from ._dma_size_parser import parse_dma_sizes
 from ._hash import (
     _compute_artifact_hash,
@@ -387,7 +387,9 @@ class CompilableDesign:
             lock_file_path = kernel_dir / ".lock"
             xclbin_path = kernel_dir / "final.xclbin"
             inst_path = None if has_dispatch else kernel_dir / "insts.bin"
-            dispatch_so_path = kernel_dir / "dispatch.so" if has_dispatch else None
+            dispatch_so_path = (
+                kernel_dir / f"dispatch{SHARED_LIB_SUFFIX}" if has_dispatch else None
+            )
 
         # The xclbin's companion artifact: insts.bin, or dispatch.so for a
         # dispatch design, which has no insts.bin at all -- every call
@@ -683,7 +685,7 @@ class CompilableDesign:
         """
         if self._kernel_dir is None or not self.dispatch_params:
             return None
-        so_path = self._kernel_dir / "dispatch.so"
+        so_path = self._kernel_dir / f"dispatch{SHARED_LIB_SUFFIX}"
         return so_path if so_path.exists() else None
 
     def get_pdi_paths(self) -> list[Path]:
