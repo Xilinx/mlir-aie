@@ -300,3 +300,53 @@ def test_mv_bf16_e2e():
         ),
     )
     assert verdict, verdict.detail
+
+
+def _bf16_from_bits(u):
+    return (np.asarray(u, np.uint32) << 16).view(np.float32).astype(bfloat16)
+
+
+def test_setup_reaches_the_core():
+    """A contract's ``setup`` must change the core, not just declare an intent.
+
+    A fresh core rounds ``floor``, so every contract judged against a numpy
+    reference names ``conv_even`` as its ``setup``. Nothing else in the suite
+    separates the two modes: ordinary data rounds the same way under both, so
+    a ``setup`` that never ran would still pass. These inputs are exact ties
+    -- their product falls precisely halfway between two bf16 values, with an
+    odd lower neighbour -- which is the one case where floor and conv_even
+    must disagree.
+    """
+    n = 1024
+    rng = np.random.default_rng(0)
+    xs, ys = [], []
+    while len(xs) < n:
+        a = _bf16_from_bits(rng.integers(0x3F00, 0x4000, 4096, dtype=np.uint32))
+        b = _bf16_from_bits(rng.integers(0x3F00, 0x4000, 4096, dtype=np.uint32))
+        p = (a.astype(np.float32) * b.astype(np.float32)).view(np.uint32)
+        tie = ((p & 0xFFFF) == 0x8000) & (((p >> 16) & 1) == 1)
+        xs.extend(a[tie].tolist())
+        ys.extend(b[tie].tolist())
+    x = np.asarray(xs[:n], bfloat16)
+    y = np.asarray(ys[:n], bfloat16)
+
+    bits = (x.astype(np.float32) * y.astype(np.float32)).view(np.uint32) >> 16
+    floor_result = _bf16_from_bits(bits)
+    conv_even_result = _bf16_from_bits(bits + 1)  # ties away from the odd neighbour
+
+    fn = kernels.mul(tile_size=n)
+    design = kh.design(kernels.mul, calls=1, tile_size=n)
+    ins, out = kh.upload(
+        [x.reshape(1, n), y.reshape(1, n)],
+        kh.output_size(fn, calls=1),
+        bfloat16,
+        fn=fn,
+        poison=True,
+    )
+    design(*ins, out)
+    got = out.numpy().copy().reshape(-1)[:n].astype(bfloat16)
+
+    assert np.array_equal(got, conv_even_result), (
+        f"{int((got == floor_result).sum())} of {n} ties rounded floor: the "
+        "contract's setup did not reach the core"
+    )
