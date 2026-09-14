@@ -85,6 +85,22 @@ jobs:
           } >> "$GITHUB_ENV"
           echo "$PWD/mlir_aie/bin" >> "$GITHUB_PATH"
 
+      - name: Check the built tree is the one under test
+        # Cheap and specific: import what the suite drives and print where it
+        # came from. A build that silently resolved to some other aie package,
+        # or a module this PR added that never got staged, fails here with a
+        # readable error instead of somewhere inside a compile sweep.
+        run: |
+          python - <<'EOF'
+          import aie, aie.iron, aie.utils.kernel_harness as kh
+          from aie.iron import kernels
+          root = aie.__path__[0]
+          assert root.startswith("${{ github.workspace }}"), root
+          print("aie package:", root)
+          print("design builder:", kh.design.__module__)
+          print("factories:", len(kernels.__all__))
+          EOF
+
       - name: Run static analysis
         id: static
         run: |
