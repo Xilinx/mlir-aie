@@ -320,6 +320,36 @@ static std::optional<uint32_t> resetValueFor(const AIE::AIETargetModel &tm,
   return found;
 }
 
+/// True if `addr` is in a core tile's Program_Memory (base 0x20000, see
+/// AIETargetLdScript.cpp): the database only resolves that one offset, and
+/// restoring the rest word-by-word would erase most of what this pass
+/// saves. Safe to leave stale -- gated by the core's enable/reset registers.
+static bool isProgramMemoryAddress(const AIE::AIETargetModel &tm,
+                                   uint32_t addr) {
+  uint32_t rowBits = tm.getColumnShift() - tm.getRowShift();
+  int col = (addr >> tm.getColumnShift()) & 0xFF;
+  int row = (addr >> tm.getRowShift()) & ((1u << rowBits) - 1);
+  if (col >= (int)tm.columns() || row >= (int)tm.rows() ||
+      !tm.isCoreTile(col, row))
+    return false;
+  constexpr uint32_t kProgramMemoryBase = 0x20000;
+  uint32_t offset = addr & ((1u << tm.getRowShift()) - 1);
+  return offset >= kProgramMemoryBase &&
+         offset < kProgramMemoryBase + tm.getProgramMemorySize();
+}
+
+/// True if `loadPdi` is a pass-inserted `@empty_N` firmware-reset preload.
+/// Any other load_pdi survived transformLoadPdi untouched (no device_ref, or
+/// expansion opted out) and is a real load: never erase or segment on it.
+static bool isEmptyResetPreload(NpuLoadPdiOp loadPdi) {
+  auto deviceRef = loadPdi.getDeviceRefAttr();
+  if (!deviceRef)
+    return false;
+  StringRef name = deviceRef.getValue();
+  unsigned parity;
+  return name.consume_front("empty_") && !name.getAsInteger(10, parity);
+}
+
 } // namespace
 
 /// Replace each firmware reset with writes that restore exactly the registers
@@ -338,7 +368,14 @@ static void applyDifferentialReset(ModuleOp module) {
     SmallVector<std::pair<NpuLoadPdiOp, ConfigSegment>> segments;
     seq.walk([&](Operation *op) {
       if (auto loadPdi = dyn_cast<NpuLoadPdiOp>(op)) {
-        segments.emplace_back(loadPdi, ConfigSegment{});
+        if (isEmptyResetPreload(loadPdi)) {
+          segments.emplace_back(loadPdi, ConfigSegment{});
+          return;
+        }
+        // Not a pass-inserted preload: mark the segment opaque so neither
+        // side differences across it, and leave this real load alone.
+        if (!segments.empty())
+          segments.back().second.opaque = true;
         return;
       }
       if (!segments.empty())
@@ -362,7 +399,8 @@ static void applyDifferentialReset(ModuleOp module) {
 
       SmallVector<uint32_t> stale;
       for (uint32_t addr : segments[i - 1].second.addresses)
-        if (!segments[i].second.addresses.contains(addr))
+        if (!segments[i].second.addresses.contains(addr) &&
+            !isProgramMemoryAddress(tm, addr))
           stale.push_back(addr);
       llvm::sort(stale);
 
@@ -389,13 +427,9 @@ static void applyDifferentialReset(ModuleOp module) {
       OpBuilder builder(preload);
       Location loc = preload.getLoc();
       for (auto [addr, value] : resets) {
-        auto addrOp = arith::ConstantOp::create(
-            builder, loc,
-            builder.getI32IntegerAttr(static_cast<int32_t>(addr)));
-        auto valueOp = arith::ConstantOp::create(
-            builder, loc,
-            builder.getI32IntegerAttr(static_cast<int32_t>(value)));
-        NpuWrite32Op::create(builder, loc, addrOp, valueOp,
+        Value addrVal = createConstantI32(builder, loc, addr);
+        Value valueVal = createConstantI32(builder, loc, value);
+        NpuWrite32Op::create(builder, loc, addrVal, valueVal,
                              /*buffer=*/nullptr, /*column=*/nullptr,
                              /*row=*/nullptr);
       }
