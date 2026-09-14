@@ -431,7 +431,14 @@ def _run_aiecc(mlir_file: str, args: list[str]):
         # on a non-zero exit.
         if result.returncode == 0:
             for line in result.stderr.splitlines():
-                if ": warning:" in line or ": error:" in line:
+                # Notes are the explanation, not decoration. A warning that
+                # queue-depth enforcement could not be applied says why in an
+                # attached note, so dropping notes leaves the generic overflow
+                # text with no hint that the target is the reason. A note with
+                # no location of its own prints without the "file:line:" prefix.
+                if any(
+                    tag in line for tag in (": warning:", ": error:", ": note:")
+                ) or line.startswith("note:"):
                     print(f"[aiecc] {line}", file=sys.stderr)
     if result.returncode != 0:
         error_msg = result.stderr if result.stderr else result.stdout

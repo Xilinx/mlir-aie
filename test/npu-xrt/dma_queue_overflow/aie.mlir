@@ -59,9 +59,10 @@ module {
       aie.end
     }
 
-    // buf_a: 2560 i32 (10 slices of 256 — even-numbered transfers)
-    // buf_b: 2560 i32 (10 slices of 256 — odd-numbered transfers)
-    // output: 5120 i32 (20 slices of 256)
+    // buf_a: 65536 i32, sent as the same 2048-element slice fourteen times --
+    // what is under test is the task queue, so the payload need not vary.
+    // output: 65536 i32, of which the receiving BD covers the first 28672 as
+    // fourteen consecutive 2048-element slices.
     aie.runtime_sequence(%buf_a: memref<65536xi32>, %output: memref<65536xi32>) {
       // Receive side: one looping BD covers all 14 transfers.
       %recv = aiex.dma_configure_task(%tile_0_0, S2MM, 0) {

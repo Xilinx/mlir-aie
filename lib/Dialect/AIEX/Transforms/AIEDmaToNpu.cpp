@@ -883,18 +883,14 @@ public:
 // Check the per-channel DMA task queue on the npu.dma_memcpy_nd path.
 //
 // The conversion below is pattern-driven, so it visits ops in worklist order
-// and cannot count a queue. This runs first, in program order. The queue rule
-// itself is shared with the dma_start_task path (see DmaQueueModel.h) so the
-// two cannot disagree about the same hardware.
+// and cannot count a queue. This runs first, in program order, sharing the
+// queue rule with the dma_start_task path (see DmaQueueModel.h).
 //
-// aie-unroll-runtime-sequence-loops has already run, but it only unrolls
-// constant-trip loops: a runtime-bound scf.for is left rolled on purpose. Its
-// body then runs an unknown number of times and the queue carries over the
-// back edge, so counting the body once would guard the wrong pushes -- the
-// last one syntactically, while the first one of the next iteration meets the
-// entries the previous one left. Those loops go through analyzeLoopQueue
-// instead; the rest is straight-line and one program-order pass over it is
-// exact.
+// aie-unroll-runtime-sequence-loops only unrolls constant-trip loops, so a
+// runtime-bound scf.for arrives still rolled and its queue carries over the
+// back edge. Counting such a body once would guard the last push syntactically
+// while the first push of the next iteration meets what the previous one left,
+// so those loops go through analyzeLoopQueue instead.
 static void checkQueueDepth(AIE::DeviceOp device, bool enforceQueueDepth) {
   const AIE::AIETargetModel &tm = device.getTargetModel();
   // Resolve the (tile, direction, channel) a metadata symbol names, the same

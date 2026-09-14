@@ -250,17 +250,11 @@ struct LoopQueueAnalysis {
   DmaQueueModel::State exitState;
 };
 
-/// Simulate a rolled loop body until its queue state repeats.
-///
-/// A rolled loop has no trip count to unroll against, but it does not need
-/// one. Occupancy cannot run away: a push that would overflow is guarded, and
-/// a guard caps the channel at depth-1 before that push, so every channel
-/// holds at most `depth` entries. The state is therefore a bounded bool vector
-/// per channel over a fixed key set, the body maps state to state
-/// deterministically, and the sequence must repeat within finitely many
-/// iterations -- which is the termination argument for the loop below.
-/// Whatever trip count the loop turns out to have at runtime, the state it
-/// reaches on that iteration is one of the ones visited here.
+/// Simulate a rolled loop body until its queue state repeats, which needs no
+/// trip count: whatever the loop turns out to run, the state it reaches is one
+/// of the ones visited here. This terminates because a guarded push caps a
+/// channel at `depth` entries, so the state is a bounded vector over a fixed
+/// key set and the body maps state to state deterministically.
 ///
 /// `entry` is the state the straight-line prefix leaves behind, which is what
 /// makes the first iteration exact rather than worst-case.

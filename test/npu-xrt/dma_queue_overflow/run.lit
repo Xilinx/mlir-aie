@@ -19,8 +19,12 @@
 // RUN: %run_on_npu1% ./test.exe -x aie.xclbin -k MLIR_AIE -i insts.bin
 // RUN: %run_on_npu2% ./test.exe -x aie.xclbin -k MLIR_AIE -i insts.bin
 
-// The poll waits for the depth bit of Task_Queue_Size to clear on shim
-// DMA_MM2S_Status_0 (0x1D228 = 119336), i.e. mask 0x400000 = 4194304.
+// Ten of the fourteen pushes can find the queue full, and each is guarded.
+// Pinning the count is the point: a single poll would satisfy a bare check
+// while leaving the nine later pushes free to be dropped. The poll waits for
+// the depth bit of Task_Queue_Size to clear on shim DMA_MM2S_Status_0
+// (0x1D228 = 119336), i.e. mask 0x400000 = 4194304.
 // POLL-DAG: arith.constant 119336 : i32
 // POLL-DAG: arith.constant 4194304 : i32
-// POLL: aiex.npu.maskpoll
+// POLL-COUNT-10: aiex.npu.maskpoll
+// POLL-NOT:      aiex.npu.maskpoll
