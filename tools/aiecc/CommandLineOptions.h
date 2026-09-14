@@ -122,6 +122,12 @@ inline cl::opt<bool> expandLoadPdis(
     "expand-load-pdis",
     cl::desc("Expand `load_pdi { device_ref }` into explicit write sequences "
              "(avoids per-switch full PDI reload)"));
+inline cl::opt<bool> registerReset(
+    "register-reset",
+    cl::desc("With --expand-load-pdis, restore exactly the registers the "
+             "outgoing device wrote instead of reloading an empty device "
+             "(implies a partial reset; incompatible with "
+             "--load-pdi-to-ctrl-pkt)"));
 inline cl::opt<bool> loadPdiToCtrlPkt(
     "load-pdi-to-ctrl-pkt",
     cl::desc("Rewrite `load_pdi { device_ref }` ops into DMA tasks that stream "
