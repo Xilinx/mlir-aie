@@ -27,6 +27,7 @@ import pytest
 from aie.iron import In, InOut, Out, Scalar, kernels
 from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.iron.kernels import ROLES, KernelContract
+from aie.utils import bfp
 from aie.utils import kernel_harness as kh
 from aie.utils.hostruntime import set_current_device
 from aie.utils.verify import Tolerance, compare
@@ -289,7 +290,7 @@ def test_harness_lowers_a_design_to_mlir(case_id):
     # The reference already has the output dtype the harness will compare
     # in: the kernel's, or float32 for a bfp16ebs8 output that judge decodes.
     out_dt = kh._shape_dtype(fn.arg_types()[fn.contract.out_index])[1]
-    assert ref.dtype == (np.float32 if kh._is_bfp(out_dt) else out_dt)
+    assert ref.dtype == (np.float32 if bfp.is_bfp(out_dt) else out_dt)
 
 
 def test_reduction_reference_yields_one_value_per_call():
@@ -1228,7 +1229,7 @@ def test_setup_is_declared_exactly_where_the_source_does_not_set_the_mode(arch):
             # or bfp16 output, or an explicit conversion in the source.
             out_dt = kh._shape_dtype(kh._arg_types(ef)[c.out_index])[1]
             narrows = (
-                kh._is_bfp(out_dt)
+                bfp.is_bfp(out_dt)
                 or np.dtype(out_dt) == np.dtype(bfloat16)
                 or _NARROWS.search(src)
             )

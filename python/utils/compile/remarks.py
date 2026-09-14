@@ -505,7 +505,7 @@ def kernel_builds():
     import inspect
 
     from aie.iron import kernels
-    from aie.utils.kernel_harness import dtype_name
+    from aie.utils.bfp import dtype_name
 
     for name in kernels.__all__:
         f = getattr(kernels, name)

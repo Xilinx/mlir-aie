@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 import numpy as np
 from aie.iron import In, Param, kernels
 from aie.iron.device import from_name
-from aie.utils import get_current_device
+from aie.utils import bfp, get_current_device
 from aie.utils import kernel_harness as kh
 from aie.utils.hostruntime import set_current_device
 
@@ -113,15 +113,15 @@ class Case:
         """
         fn = self.fn()
         types = kh._arg_types(fn)
-        in_dt = kh.dtype_name(kh._shape_dtype(types[fn.contract.roles.index(In)])[1])
-        out_dt = kh.dtype_name(kh._shape_dtype(types[fn.contract.out_index])[1])
+        in_dt = bfp.dtype_name(kh._shape_dtype(types[fn.contract.roles.index(In)])[1])
+        out_dt = bfp.dtype_name(kh._shape_dtype(types[fn.contract.out_index])[1])
         dtypes = in_dt if in_dt == out_dt else f"{in_dt}_{out_dt}"
         if self.shape:
             dims = "x".join(str(d) for d in self.shape)
         else:
             dims = f"{kh._elems(types[fn.contract.roles.index(In)])}x{self.calls}"
         extra = [
-            f"{k}={kh.dtype_name(v) if isinstance(v, type) else v}"
+            f"{k}={bfp.dtype_name(v) if isinstance(v, type) else v}"
             for k, v in sorted(self.kwargs.items())
             if k not in self._NAMED_KWARGS
         ]
@@ -184,7 +184,7 @@ def data_policy(fn) -> tuple[str, ...]:
         return ("random",)  # structured inputs have no edge variants
     types = kh._arg_types(fn)
     in_dt = kh._shape_dtype(types[c.roles.index(In)])[1]
-    if kh._is_bfp(in_dt):
+    if bfp.is_bfp(in_dt):
         return tuple(d for d in MATRIX_DATA if d != "max")
     if kh.is_matmul(fn) or kh.is_matvec(fn):
         return MATRIX_DATA

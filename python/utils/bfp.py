@@ -26,12 +26,44 @@ float input, and what a reference should multiply.
 from __future__ import annotations
 
 import numpy as np
+from aie.helpers.util import v8bfp16ebs8
 
 BLOCK = 8  # values per block
 BLOCK_BYTES = 9  # one shared exponent plus one mantissa per value
 _MANTISSA_SHIFT = 23 - 7 + 1  # keep 7 magnitude bits of a float32 mantissa
 
-__all__ = ["BLOCK", "BLOCK_BYTES", "encode", "decode", "quantize", "shuffle"]
+__all__ = [
+    "BLOCK",
+    "BLOCK_BYTES",
+    "encode",
+    "decode",
+    "quantize",
+    "shuffle",
+    "is_bfp",
+    "itemsize",
+    "values_per_elem",
+    "dtype_name",
+]
+
+
+def is_bfp(dt) -> bool:
+    """Whether an element type is the bfp16ebs8 block (8 values in 9 bytes)."""
+    return dt is v8bfp16ebs8
+
+
+def itemsize(dt) -> int:
+    """Bytes one element occupies, counting a block as its packed 9."""
+    return BLOCK_BYTES if is_bfp(dt) else np.dtype(dt).itemsize
+
+
+def values_per_elem(dt) -> int:
+    """Values one element carries: 8 for a block, 1 for an ordinary dtype."""
+    return BLOCK if is_bfp(dt) else 1
+
+
+def dtype_name(dt) -> str:
+    """``np.dtype(dt).name``, or ``"bfp16ebs8"`` for the block type numpy has no dtype for."""
+    return "bfp16ebs8" if is_bfp(dt) else np.dtype(dt).name
 
 
 def encode(x) -> np.ndarray:

@@ -41,7 +41,6 @@ from pathlib import Path
 from typing import Any, Callable
 
 import numpy as np
-from aie.helpers.util import v8bfp16ebs8
 from aie.iron.buffer import Buffer
 from aie.iron.controlflow import range_
 from aie.iron.dataflow import ObjectFifo
@@ -93,31 +92,13 @@ def _elems(arg_type) -> int:
     return int(np.prod(_shape_dtype(arg_type)[0]))
 
 
-def _is_bfp(dt) -> bool:
-    """Whether an argument element type is the bfp16ebs8 block (8 values in 9 bytes)."""
-    return dt is v8bfp16ebs8
-
-
-def _itemsize(dt) -> int:
-    return bfp.BLOCK_BYTES if _is_bfp(dt) else np.dtype(dt).itemsize
-
-
-def _values_per_elem(dt) -> int:
-    return bfp.BLOCK if _is_bfp(dt) else 1
-
-
-def dtype_name(dt) -> str:
-    """``np.dtype(dt).name``, or ``"bfp16ebs8"`` for the block type numpy has no dtype for."""
-    return "bfp16ebs8" if _is_bfp(dt) else np.dtype(dt).name
-
-
 def _bfp_operands(fn) -> tuple[bool, bool, bool]:
     """Return ``(A, B, C)`` flags: which of a matmul's operands are bfp16ebs8 blocks.
 
     False for an argument a kernel does not have, so this answers for any
     kernel rather than only for the three-operand ones.
     """
-    flags = [_is_bfp(_shape_dtype(t)[1]) for t in _arg_types(fn)[:3]]
+    flags = [bfp.is_bfp(_shape_dtype(t)[1]) for t in _arg_types(fn)[:3]]
     a, b, c = flags + [False] * (3 - len(flags))
     return a, b, c
 
@@ -300,7 +281,7 @@ def _build_stream(
         )
 
     def nbytes(i):
-        return _elems(arg_types[i]) * _itemsize(_shape_dtype(arg_types[i])[1])
+        return _elems(arg_types[i]) * bfp.itemsize(_shape_dtype(arg_types[i])[1])
 
     # One "set" is every streamed tile plus the output; `param` arguments
     # live in one Buffer each, whatever the depth.
@@ -498,7 +479,7 @@ def _matmul(
     # A bfp16ebs8 operand counts 8 values per element, so its shapes divide
     # the value counts by 8 along the contiguous axis, as the block_datatypes
     # examples declare them.
-    va, vb, vc = (_values_per_elem(dt) for dt in (dt_a, dt_b, dt_c))
+    va, vb, vc = (bfp.values_per_elem(dt) for dt in (dt_a, dt_b, dt_c))
     assert a_shape == (m * k // va,) and c_shape == (m * n // vc,)
     stack = _stack_bytes(mm)
     M_div_m, K_div_k, N_div_n = M // m, K // k, N // n
@@ -510,9 +491,9 @@ def _matmul(
     dims = mm.stream_dims
 
     tile_bytes = (
-        m * k // va * _itemsize(dt_a)
-        + k * n // vb * _itemsize(dt_b)
-        + m * n // vc * _itemsize(dt_c)
+        m * k // va * bfp.itemsize(dt_a)
+        + k * n // vb * bfp.itemsize(dt_b)
+        + m * n // vc * bfp.itemsize(dt_c)
     )
     depth = _fifo_depth(mm, tile_bytes, stack_bytes=stack)
     a_ty = np.ndarray[(m, k // va), np.dtype[dt_a]]
@@ -772,7 +753,7 @@ def sample_inputs(
     if is_matmul(fn) or is_matvec(fn):
         # A bfp16ebs8 operand is sampled as the float32 the host encodes.
         dt_a, dt_b = (
-            np.float32 if _is_bfp(dt) else dt
+            np.float32 if bfp.is_bfp(dt) else dt
             for dt in (_shape_dtype(t)[1] for t in _arg_types(fn)[:2])
         )
         shape = _matrix_shape(fn, shape, 3 if is_matmul(fn) else 2)
@@ -965,7 +946,7 @@ def host_args(fn, *, calls: int = 1, shape: tuple | None = None) -> list[HostArg
         def _enc(sh, dt, is_bfp):
             # An encoded operand is bytes: 9 per block of 8 along the last axis.
             if not is_bfp:
-                return HostArg(In, sh, np.float32 if _is_bfp(dt) else dt)
+                return HostArg(In, sh, np.float32 if bfp.is_bfp(dt) else dt)
             return HostArg(In, (sh[0], sh[1] * bfp.BLOCK_BYTES // bfp.BLOCK), np.uint8)
 
         args.append(_enc((M, K), in_dts[0], bfp_a))
@@ -1027,7 +1008,6 @@ __all__ = [
     "host_args",
     "HostArg",
     "output_size",
-    "dtype_name",
     "sample_inputs",
     "upload",
 ]

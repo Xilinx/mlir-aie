@@ -30,7 +30,7 @@ _KERNELS = Path(__file__).resolve().parents[2] / "aie_kernels"
 
 
 def _built_by_a_factory() -> set[Path]:
-    """Sources some factory compiles, over both architectures."""
+    """Return the sources some factory compiles, over both architectures."""
     built: set[Path] = set()
     for device in (NPU1Col1, NPU2Col1):
         iron.set_current_device(device())
@@ -68,9 +68,19 @@ def _included_by_another_kernel(source: Path) -> bool:
 @pytest.mark.skipif(not _KERNELS.is_dir(), reason="no aie_kernels/ checkout")
 def test_no_kernel_source_is_unreachable():
     built = _built_by_a_factory()
+    sources = sorted(_KERNELS.rglob("*.cc"))
+    # A factory resolves its source against MLIR_AIE_KERNEL_SOURCES, which may
+    # point at an installed copy rather than this checkout. Then no path here
+    # matches and every kernel looks orphaned, which is a misconfigured probe
+    # and not a tree full of dead code -- so say which it is.
+    assert built & {p.resolve() for p in sources}, (
+        f"no factory resolved to a source under {_KERNELS}, so this cannot tell "
+        "a reachable kernel from an orphaned one. Point MLIR_AIE_KERNEL_SOURCES "
+        "at this checkout and rerun."
+    )
     unreachable = sorted(
         p
-        for p in _KERNELS.rglob("*.cc")
+        for p in sources
         if p.resolve() not in built and not _included_by_another_kernel(p)
     )
     assert not unreachable, (

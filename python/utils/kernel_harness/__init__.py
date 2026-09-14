@@ -16,7 +16,6 @@ from aie.iron.algorithms.kernel_design import (
     HostArg,
     cycles_per_call,
     design,
-    dtype_name,
     host_args,
     host_layout,
     is_matmul,
@@ -32,9 +31,6 @@ from aie.iron.algorithms.kernel_design import (
     _elems as _elems,
 )
 from aie.iron.algorithms.kernel_design import (
-    _is_bfp as _is_bfp,
-)
-from aie.iron.algorithms.kernel_design import (
     _shape_dtype as _shape_dtype,
 )
 
@@ -42,7 +38,6 @@ __all__ = [
     "HostArg",
     "cycles_per_call",
     "design",
-    "dtype_name",
     "host_args",
     "host_layout",
     "is_matmul",
