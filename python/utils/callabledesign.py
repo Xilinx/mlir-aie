@@ -440,32 +440,38 @@ class CallableDesign:
         elf_path: Path | str | None = None,
         full_elf_path: Path | str | None = None,
         pdi_path: Path | str | None = None,
-    ) -> tuple[Path, Path | None]:
+        npu_cpp_path: Path | str | None = None,
+    ) -> tuple[Path | None, Path | None]:
         """Eagerly compile this design and return ``(xclbin_path, inst_path)``.
 
         With no arguments, pre-warms the on-disk cache so subsequent calls with
         matching ``compile_kwargs`` hit the cache instead of paying ``aiecc``
         time on first invocation.
 
-        With both ``xclbin_path`` and ``inst_path`` set, writes artifacts
+        With ``xclbin_path`` and/or ``inst_path`` set, writes artifacts
         directly to those paths and bypasses the cache — useful for build
         systems (e.g. Makefiles) that manage their own dependency tracking.
-        Mixed (only one of ``xclbin_path`` / ``inst_path`` given) raises
-        ``ValueError``.
+        Either may be given alone to build just that artifact (overlay-only or
+        insts-only); the slot of an artifact that was not requested is ``None``
+        in the returned tuple.
 
         ``elf_path`` is optional: when set, aiecc also wraps the NPU
         instructions into an ELF (via ``aiebu-asm``) at that path.  Needed by
         C++ testbenches that load instructions through ``xrt::elf`` +
-        ``xrt::module``; requires explicit ``xclbin_path`` + ``inst_path``.
+        ``xrt::module``; requires an explicit output path.
 
         ``full_elf_path`` (or ``full_elf=True`` on the design) selects full-ELF
         mode: a single self-contained ELF is written there instead of an
         xclbin + insts pair, and the return value is ``(elf_path, None)``.
 
+        ``npu_cpp_path`` requests the runtime sequence as a C++ TXN builder
+        rather than a flat instruction binary, so one artifact serves every
+        shape the host asks for.  It counts as an explicit output path.
+
         ``pdi_path`` is optional: when set, aiecc writes the Programmable
-        Device Image to that path.  Requires explicit ``xclbin_path`` +
-        ``inst_path``.  In cache mode, use :meth:`get_pdi_path` to locate the
-        ``main.pdi`` aiecc emits into the cache directory.
+        Device Image to that path.  Requires an explicit output path.  In cache
+        mode, use :meth:`get_pdi_path` to locate the ``main.pdi`` aiecc emits
+        into the cache directory.
         """
         return self.compilable.compile(
             xclbin_path=xclbin_path,
@@ -473,6 +479,7 @@ class CallableDesign:
             elf_path=elf_path,
             full_elf_path=full_elf_path,
             pdi_path=pdi_path,
+            npu_cpp_path=npu_cpp_path,
         )
 
     def get_pdi_path(self, device_name: str | None = None) -> Path | None:

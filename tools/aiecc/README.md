@@ -25,7 +25,7 @@ aiecc --get-host [options] <input.mlir> -o host.exe -- host.cpp [host-compiler f
 
 ## User guide
 
-### The two most common flows
+### The most common flows
 
 **1. Instruction-sequence + xclbin flow.** The host loads an `xclbin` (which
 contains the array configuration) and, at dispatch time, streams a
@@ -44,9 +44,26 @@ bundled into a single loadable ELF instead of an xclbin plus loose binaries:
 aiecc --get-full-elf design.mlir   # -> aie.elf
 ```
 
+**3. One overlay, many shapes.** When the on-chip dataflow is
+shape-agnostic and only the shim sequence varies, ask for the sequence as a C++
+TXN builder instead of a flat binary. A sequence written over runtime scalars
+keeps its `scf.for`/`scf.if` in this form, so the host calls the generated
+builder with the shape rather than the compiler baking one in:
+
+```bash
+aiecc --get-xclbin design.mlir                    # -> aie.xclbin, once
+aiecc --get-npu-cpp design.mlir                   # -> npu_seq_<device>_<seq>.cpp
+```
+
+Each `--get` builds only what it asks for, so the overlay is not rebuilt per
+sequence. The host `#include`s the `.cpp` and calls
+`generate_txn_<device>_<seq>(...)`, which returns the instruction stream for
+those arguments (or `std::nullopt` if the shape overflows the BD pool).
+
 You can override these output file names with `--npu-insts-name`, 
-`--xclbin-name`, and `--full-elf-name`. You can filter which devices and 
-runtime sequences are compiled with `--device-name` and `--sequence-name`. 
+`--xclbin-name`, `--npu-cpp-name`, and `--full-elf-name`. You can filter which 
+devices and runtime sequences are compiled with `--device-name` and 
+`--sequence-name`. 
 
 ### Limiting parallel compilation
 
