@@ -65,6 +65,7 @@ bool isContiguousTransfer(llvm::ArrayRef<int64_t> sizes,
 // otherwise returns nullopt. Used by ops whose operands carry
 // compile-time-known values in the static lowering path.
 std::optional<uint32_t> getConstantIntOperand(mlir::Value v);
+std::optional<uint64_t> getConstantInt64Operand(mlir::Value v);
 
 // Materializes a 32-bit integer constant. The inverse of getConstantIntOperand:
 // used when lowering passes feed a compile-time-known value into an npu op
@@ -72,6 +73,12 @@ std::optional<uint32_t> getConstantIntOperand(mlir::Value v);
 // as 0x80000000) is preserved.
 mlir::Value createConstantI32(mlir::OpBuilder &builder, mlir::Location loc,
                               uint32_t value);
+
+// Materializes an address_patch `arg_plus` offset as the narrowest constant
+// that holds it: i32 while the value fits, i64 beyond that. aie-rt carries the
+// field as u64, so truncating a wider offset mis-addresses the buffer.
+mlir::Value createConstantArgPlus(mlir::OpBuilder &builder, mlir::Location loc,
+                                  uint64_t value);
 
 } // namespace AIEX
 } // namespace xilinx
