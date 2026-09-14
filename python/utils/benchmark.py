@@ -195,3 +195,60 @@ def provenance(**extra: str | None) -> str:
     ]
     parts += [f"{k} {v}" for k, v in extra.items() if v]
     return " | ".join(parts)
+
+
+@dataclass(frozen=True)
+class Preflight:
+    """What the runtime says about the device a run is about to use."""
+
+    npu: str  # "npu1" / "npu2"
+    arch: str  # "aie2" / "aie2p"
+    device: str  # the device as the runtime describes it
+    pmode: str | None  # power mode, or None if it could not be read
+
+
+def preflight() -> Preflight:
+    """Describe the device through the host runtime (any backend)."""
+    import aie.utils as aie_utils
+    from aie.utils.compile.utils import resolve_target_arch
+
+    runtime = aie_utils.DefaultNPURuntime
+    if runtime is None:
+        raise RuntimeError("no NPU runtime is available (XRT, HRX or HSA)")
+    device = runtime.device()
+    arch = resolve_target_arch(device)
+    return Preflight(
+        npu="npu2" if arch == "aie2p" else "npu1",
+        arch=arch,
+        device=str(device),
+        pmode=runtime.power_mode(),
+    )
+
+
+def measure_compile(design, workdir) -> tuple[float, int, int, int]:
+    """Force a rebuild into ``workdir``, time it, and size the artifacts.
+
+    ``CallableDesign.compile`` with explicit ``xclbin_path`` and ``inst_path``
+    bypasses the on-disk cache by contract and keeps its intermediates in
+    ``<stem>.prj/`` next to the xclbin, so nothing about the cache layout has
+    to be guessed or deleted; the cached build the timed runs use is untouched.
+
+    Returns (seconds, xclbin_bytes, insts_bytes, sum_core_elf_bytes).
+    """
+    from pathlib import Path
+
+    build = Path(workdir) / "compile"
+    build.mkdir(parents=True, exist_ok=True)
+    t0 = time.perf_counter()
+    xclbin, insts = design.compile(
+        xclbin_path=build / "final.xclbin", inst_path=build / "insts.bin"
+    )
+    secs = time.perf_counter() - t0
+    # With --get-core-elfs aiecc writes one ELF per core, each in its own
+    # directory: "elfs_<core>/elfs_<core>.elf". A "elfs_*.elf" glob does not
+    # cross that directory and matched nothing, so this reported 0 bytes for
+    # every design.
+    prj = build / "final.prj"
+    elf = sum(p.stat().st_size for p in prj.glob("elfs_*/*.elf")) if prj.is_dir() else 0
+    insts_bytes = Path(insts).stat().st_size if insts else 0
+    return secs, Path(xclbin).stat().st_size, insts_bytes, elf

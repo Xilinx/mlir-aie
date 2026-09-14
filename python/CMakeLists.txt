@@ -44,8 +44,6 @@ declare_mlir_python_sources(AIEPythonSources.Utils
     utils/bfp.py
     utils/config.py
     utils/kernel_harness/__init__.py
-    utils/kernel_harness/__main__.py
-    utils/kernel_harness/bench.py
     utils/kernel_harness/cases.py
     utils/probe.py
     utils/tensor_factory.py

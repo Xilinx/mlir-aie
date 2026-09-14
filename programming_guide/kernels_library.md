@@ -349,8 +349,8 @@ what a kernel computes.
 pytest test/python/test_kernel_contracts.py                        # host
 pytest test/python/npu/test_kernels_e2e.py -k eltwise              # NPU, smoke
 pytest test/python/npu/test_kernels_e2e.py -m extensive --seeds 3  # NPU, everything
-python -m aie.utils.kernel_harness add mul --out bench.json        # time two kernels
-python -m aie.utils.kernel_harness --cases test/python/npu/kernel_cases.py --out bench.json
+pytest test/python/npu/test_kernels_bench.py -m benchmark -k mul   # time one kernel
+pytest test/python/npu/test_kernels_bench.py -m benchmark --bench-out bench.json
 python -m aie.utils.compile.remarks --target aie2p --out static.json
 ```
 
@@ -388,9 +388,9 @@ kernel whose `.cc` calls `aie::set_rounding` must not also name a
 
 ### What the benchmark records
 
-`python -m aie.utils.kernel_harness` measures a kernel only after it has
-produced a correct result under its declared tolerance; a wrong result
-invalidates the run (exit 3, nothing written). Per case it records core
+`test/python/npu/test_kernels_bench.py` measures a kernel only after it has
+produced a correct result under its declared tolerance; a wrong result fails
+the test, and a failed session writes no `--bench-out` file at all. Per case it records core
 `cycles` (trace, median over the run's kernel calls) and
 `cycles_per_kop`, `npu_us` / `e2e_us` from `aie.utils.benchmark`, and
 `compile_s` with the `xclbin`, `insts` and core-ELF sizes of a forced

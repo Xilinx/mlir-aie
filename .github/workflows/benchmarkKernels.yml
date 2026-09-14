@@ -122,11 +122,12 @@ jobs:
           source aie-venv/bin/activate
           export XRT_CONTEXT_CACHE_SIZE=2
           ONLY="${{ github.event.inputs.only }}"
-          python -m aie.utils.kernel_harness --cases test/python/npu/kernel_cases.py \
-            --out bench.json --meta meta.json --pmode "$BENCH_PMODE" \
+          python -m pytest test/python/npu/test_kernels_bench.py -m benchmark -v \
+            --bench-out bench.json --bench-meta meta.json --pmode "$BENCH_PMODE" \
             --warmup 10 --iters 50 \
-            ${ONLY:+--only "$ONLY"} 2>&1 | tee bench.log
-          # Exit codes 2/3 leave no bench.json -> downstream steps skip.
+            ${ONLY:+-k "$ONLY"} 2>&1 | tee bench.log
+          # A failing session leaves no bench.json -> downstream steps skip.
+          # meta.json is written either way, and records why.
 
       - name: Upload raw results
         if: always()

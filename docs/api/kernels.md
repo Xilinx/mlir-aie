@@ -114,19 +114,23 @@ the same table (`test/python/npu/kernel_cases.py`).
         - inputs_for
         - load_cases
 
-`python -m aie.utils.kernel_harness` is the benchmark driver: correctness
+`test/python/npu/test_kernels_bench.py` times the library: correctness
 first, then cycles, wall time and build size, gated by a device preflight
-and a smoke test.
+and a measurement-sanity test. It is an ordinary pytest module, so `-k`
+selects cases and the session's exit status decides whether any numbers are
+written. What it measures with lives here:
 
-::: utils.kernel_harness.bench
+::: utils.benchmark
     options:
       show_root_heading: false
       members:
-        - Measurement
+        - Stats
+        - BenchmarkResult
         - Preflight
-        - measure
-        - rows_for
-        - main
+        - run_iters
+        - preflight
+        - measure_compile
+        - provenance
 
 ## Static checks
 

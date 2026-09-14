@@ -12,7 +12,7 @@ says *which* shape to run and which edge data it must survive.
 
 The case tables themselves live with the tests
 (``test/python/npu/kernel_cases.py``): the device smoke test, the extensive
-sweep and ``python -m aie.utils.kernel_harness`` all read the same table.
+sweep and the benchmark module all read the same table.
 """
 
 from __future__ import annotations
