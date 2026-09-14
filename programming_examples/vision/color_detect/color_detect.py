@@ -241,30 +241,14 @@ def _design_for(opts):
     return iron.jit(aiecc_flags=flags)(generator)
 
 
-def _rgba2hue_ref(rgba_uint8):
-    """``kernels.rgba2hue_ref``: the scalar formula in aie_kernels/aie2/rgba2hue.cc."""
-    return kernels.rgba2hue_ref(rgba_uint8.reshape(-1))
-
-
-def _threshold_ref(arr_uint8, thresh, max_val, mode):
-    """``kernels.threshold_ref``: mode 0 is BINARY, 4 is TOZERO_INV (threshold.cc)."""
-    return kernels.threshold_ref(arr_uint8, thresh, max_val, mode)
-
-
-def _gray2rgba_ref(gray_uint8):
-    """Replicate gray to R, G, B with alpha = 255: ``kernels.gray2rgba_ref``."""
-    return kernels.gray2rgba_ref(gray_uint8.reshape(-1))
-
-
 def _color_detect_ref(rgba_uint8):
     """End-to-end pipeline reference matching the @iron.jit design."""
-    hue = _rgba2hue_ref(rgba_uint8)
-    t1a = _threshold_ref(hue, 40, 255, 4)
-    t1b = _threshold_ref(t1a, 30, 255, 0)
-    t2a = _threshold_ref(hue, 160, 255, 4)
-    t2b = _threshold_ref(t2a, 90, 255, 0)
+    # threshold mode 4 is TOZERO_INV, 0 is BINARY (aie_kernels/aie2/threshold.cc).
+    hue = kernels.rgba2hue_ref(rgba_uint8.reshape(-1))
+    t1b = kernels.threshold_ref(kernels.threshold_ref(hue, 40, 255, 4), 30, 255, 0)
+    t2b = kernels.threshold_ref(kernels.threshold_ref(hue, 160, 255, 4), 90, 255, 0)
     mask = kernels.bitwise_or_ref(t1b, t2b)
-    mask_rgba = _gray2rgba_ref(mask)
+    mask_rgba = kernels.gray2rgba_ref(mask.reshape(-1))
     return kernels.bitwise_and_ref(mask_rgba, rgba_uint8)
 
 

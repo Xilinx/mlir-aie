@@ -485,24 +485,6 @@ def _validate_shape_args(opts):
         )
 
 
-def _numpy_reference(A_np, B_np, b_col_maj, dtype_out):
-    """``kernels.mm_ref`` on the logical operands (B is stored transposed for b_col_maj)."""
-    B_logical = B_np.T if b_col_maj else B_np
-    return kernels.mm_ref(A_np, B_logical).astype(dtype_out)
-
-
-def _kernel(opts):
-    """The matmul kernel the design binds, built the same way, for its contract."""
-    return kernels.mm(
-        dim_m=opts.m,
-        dim_k=opts.k,
-        dim_n=opts.n,
-        input_dtype=str_to_dtype(opts.dtype_in),
-        output_dtype=str_to_dtype(opts.dtype_out),
-        b_col_maj=bool(opts.b_col_maj),
-    )
-
-
 def _compile_kwargs(opts):
     return dict(
         M=opts.M,
@@ -565,7 +547,8 @@ def _run_and_verify(opts):
         iters=opts.iters,
     )
 
-    expected_logical = _numpy_reference(A_np, B_np, opts.b_col_maj, dtype_out)
+    B_logical = B_np.T if opts.b_col_maj else B_np  # b_col_maj stores B transposed
+    expected_logical = kernels.mm_ref(A_np, B_logical).astype(dtype_out)
     if opts.c_col_maj:
         actual = C_t.numpy().reshape(opts.N, opts.M)
         expected = expected_logical.T
@@ -573,12 +556,23 @@ def _run_and_verify(opts):
         actual = C_t.numpy().reshape(opts.M, opts.N)
         expected = expected_logical
 
+    # The same kernel the design binds; kernels.mm is memoized, so this is
+    # the object the design built, asked for its tolerance.
+    kernel = kernels.mm(
+        dim_m=opts.m,
+        dim_k=opts.k,
+        dim_n=opts.n,
+        input_dtype=str_to_dtype(opts.dtype_in),
+        output_dtype=str_to_dtype(opts.dtype_out),
+        b_col_maj=bool(opts.b_col_maj),
+    )
+
     assert_close_with_benchmark(
         actual,
         expected,
         bench=bench,
         ops=2.0 * opts.M * opts.K * opts.N,
-        tolerance=_kernel(opts).contract.tolerance,
+        tolerance=kernel.contract.tolerance,
         fail_msg="output does not match A @ B",
         mismatch_indices=True,
     )

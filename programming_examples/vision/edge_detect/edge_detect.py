@@ -255,12 +255,6 @@ def _compile_kwargs(opts):
     return dict(width=opts.width, height=opts.height)
 
 
-def _rgba2gray_ref(rgba_uint8, height, width):
-    """``kernels.rgba2gray_ref`` (the kernel's Q0.15 luma), one image at a time."""
-    del height, width  # the reference is per pixel
-    return kernels.rgba2gray_ref(rgba_uint8.reshape(-1))
-
-
 def _filter2d_cv_ref(gray_uint8, height, width):
     """Numpy equivalent of cv::filter2D with the unscaled Laplacian
     ``[[0,1,0],[1,-4,1],[0,1,0]]`` + BORDER_REPLICATE."""
@@ -274,16 +268,6 @@ def _filter2d_cv_ref(gray_uint8, height, width):
         + padded[1:-1, 2:]
     )
     return np.clip(out, 0, 255).astype(np.uint8)
-
-
-def _threshold_binary_ref(arr_uint8, thresh, max_val):
-    """cv::threshold THRESH_BINARY: ``kernels.threshold_ref`` with type 0."""
-    return kernels.threshold_ref(arr_uint8, thresh, max_val, 0)
-
-
-def _gray2rgba_ref(gray_uint8):
-    """Replicate gray to R/G/B with alpha=255: ``kernels.gray2rgba_ref``."""
-    return kernels.gray2rgba_ref(gray_uint8.reshape(-1))
 
 
 def _add_weighted_cv_ref(a_uint8, b_uint8, alpha, beta, gamma):
@@ -302,10 +286,10 @@ def _add_weighted_cv_ref(a_uint8, b_uint8, alpha, beta, gamma):
 
 def _edge_detect_ref(rgba_uint8, height, width):
     """End-to-end reference mirroring test.cpp's edgeDetect() OpenCV pipeline."""
-    gray = _rgba2gray_ref(rgba_uint8, height, width)
+    gray = kernels.rgba2gray_ref(rgba_uint8.reshape(-1))
     edges = _filter2d_cv_ref(gray, height, width)
-    thresholded = _threshold_binary_ref(edges, 10, 255)
-    mask_rgba = _gray2rgba_ref(thresholded)
+    thresholded = kernels.threshold_ref(edges, 10, 255, 0)  # 0 is BINARY
+    mask_rgba = kernels.gray2rgba_ref(thresholded.reshape(-1))
     return _add_weighted_cv_ref(rgba_uint8, mask_rgba, 1, 1, 0)
 
 
