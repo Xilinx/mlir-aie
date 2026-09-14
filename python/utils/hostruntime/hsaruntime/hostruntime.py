@@ -336,8 +336,7 @@ class HSAHostRuntime(HostRuntime):
         tensors = []
         for kernel_handle, args in runs:
             assert isinstance(kernel_handle, HSAKernelHandle)
-            # A chain carries no per-run instruction stream, so a dispatch
-            # design would contribute a null one here rather than fail.
+            # Always None here: see _require_dispatch_insts.
             self._require_dispatch_insts(kernel_handle, None)
             kept = self._validate_args(args)
             tensors.extend(kept)

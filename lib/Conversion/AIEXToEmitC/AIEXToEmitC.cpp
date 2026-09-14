@@ -569,8 +569,12 @@ private:
     }
 
     builder.setInsertionPointToEnd(moduleOp.getBody());
-    // AIE_DISPATCH_EXPORT comes from TxnEncoding.h, which the emitted file
-    // already includes; it expands to nothing outside Windows.
+    // Python resolves these two by name out of the built shared library. ELF
+    // exports every extern symbol unless told otherwise, but MSVC-target
+    // linking exports nothing without an explicit marker, so on Windows the
+    // DLL would load and then fail to resolve dispatch_abi. The macro comes
+    // from TxnEncoding.h, which the emitted file already includes, and expands
+    // to nothing off Windows.
     auto externC =
         builder.getStrArrayAttr({"extern \"C\"", "AIE_DISPATCH_EXPORT"});
 
