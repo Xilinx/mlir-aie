@@ -46,6 +46,12 @@ POINTER_RE = re.compile(r"\bsee\s+\S", re.IGNORECASE)
 # explains the same mechanism.
 TEST_PATH_RE = re.compile(r"(^|/)tests?(/|_|\.)|(^|/)testing(/|_)|_tests?\.|(^|/)test_")
 
+# The license header is mandated boilerplate -- the License Compliance check
+# requires it -- and every file carries the same one. Without this, any change
+# adding three source files reports its own headers as one concept explained
+# three times, which no contributor can act on.
+LICENSE_RE = re.compile(r"SPDX-License-Identifier|Copyright \(C\)", re.IGNORECASE)
+
 STOPWORDS = {
     "about",
     "after",
@@ -334,6 +340,7 @@ def find_duplicates(blocks):
         if len(b.terms) >= SHARED_TERMS_THRESHOLD
         and not TEST_PATH_RE.search(b.path)
         and not POINTER_RE.search(b.text)
+        and not LICENSE_RE.search(b.text)
     ]
 
     groups = []  # [members, terms common to every member]

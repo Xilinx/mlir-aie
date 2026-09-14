@@ -270,9 +270,9 @@ class HSAHostRuntime(HostRuntime):
         signal = self._ctx.arm_signal(1)
         try:
             if dispatch_insts is not None:
-                # dispatch_insts is already a fresh contiguous copy owned by
-                # this call; memmove reads it directly rather than paying for
-                # an intermediate bytes object the size of the stream.
+                # Already a contiguous array owned by this call, so memmove
+                # reads it in place rather than materializing an equally large
+                # intermediate bytes object.
                 nbytes = dispatch_insts.nbytes
                 dispatch_ptr = self._ctx.alloc_dev(nbytes)
                 ctypes.memmove(dispatch_ptr, dispatch_insts.ctypes.data, nbytes)
@@ -409,9 +409,9 @@ class CachedHSAHostRuntime(HSAHostRuntime):
 
     def load(self, npu_kernel, **kwargs) -> HSAKernelHandle:
         insts_path, pdi_path, kernel_name = self._resolve_kernel(npu_kernel)
-        # A DispatchTime[T] design has no insts.bin to key on -- it keys on the
-        # PDI alone, so repeated calls reuse one PDI allocation while run()
-        # allocates the instruction stream fresh regardless of this cache.
+        # With no insts.bin, the key rests on the PDI alone, so repeated
+        # calls share one allocation. run() builds its own words per call
+        # whatever this cache does.
         key = (
             str(insts_path) if insts_path else None,
             insts_path.stat().st_mtime if insts_path else None,
