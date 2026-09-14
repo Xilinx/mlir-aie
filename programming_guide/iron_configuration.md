@@ -341,3 +341,36 @@ generator body.
 Prefer explicit `CompileTime[T]` parameters when you can; reserve
 `compile_context` for the cases where threading the value through every
 helper signature would obscure the design.
+
+## Kernel sources (`MLIR_AIE_KERNEL_SOURCES`)
+
+The kernel factories compile from the installed tree's `aie_kernels/` and
+`aie_runtime_lib/`. Point `MLIR_AIE_KERNEL_SOURCES` at a checkout to compile
+that checkout's kernel sources instead, against an otherwise-installed wheel:
+
+```bash
+MLIR_AIE_KERNEL_SOURCES=/path/to/mlir-aie python3 my_design.py
+```
+
+This is how the static kernel checks build a pull request's kernels without
+building the rest of the PR.
+
+## Kernel compile parallelism (`AIE_KERNEL_COMPILE_JOBS`)
+
+External kernels are compiled in parallel, one process per distinct kernel,
+defaulting to `os.cpu_count()`. Set `AIE_KERNEL_COMPILE_JOBS` to cap that — on
+a shared machine, or to serialise the build when a compiler error is easier to
+read one at a time. Values below 1 mean the default.
+
+## Peano location (`PEANO_INSTALL_DIR`)
+
+Where the Peano (`llvm-aie`) toolchain lives. Set at build time, and
+overridable here for a Peano built or installed somewhere else. When neither
+resolves to an existing directory, the install area's own copy is used.
+
+## Expected NPU for the test suite (`AIE_EXPECTED_NPU`)
+
+`npu1` or `npu2`. lit normally discovers the attached device; setting this
+asserts which one the suite is meant to run against, so a machine that comes
+up as the other generation fails loudly instead of silently skipping every
+device test.

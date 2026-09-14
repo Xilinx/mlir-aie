@@ -112,23 +112,19 @@ STOPWORDS = {
     "your",
 }
 
-# In C and C++ a leading `#` opens a preprocessor directive, not a comment, and a
-# leading `*` is a block-comment continuation only when nothing follows it -- `*ptr`
-# is a dereference. Classifying either as a comment counts an ordinary include block
-# as prose, which is how an alphabetised #include added to three files gets reported
-# as a repeated explanation.
+# A leading `#` in C is a directive, not a comment, and a leading `*` continues
+# a block comment only when nothing follows it -- `*ptr` is a dereference.
+# Counting either as prose reports an alphabetised #include block as a repeated
+# explanation.
 COMMENT_RE_PY = re.compile(r"^\s*#")
 COMMENT_RE_CISH = re.compile(r"^\s*(//|/\*|\*/|\*(?=\s|$))")
 
-# The license header every file carries by policy is not an explanation anyone
-# wrote twice, so it is not slop: counting it reports any commit that adds three
-# files as repeating one concept, and inflates the comment-density note besides.
-# Anchored to the start of a (stripped) line so an unrelated comment that merely
-# mentions "copyright" or "SPDX" in passing does not also count as the header.
+# The license header is policy, not an explanation anyone wrote twice, so
+# counting it would report any commit adding three files as repeating a concept.
+# Anchored so a comment that merely mentions "copyright" is not mistaken for it.
 LICENSE_RE = re.compile(r"^(copyright\b|spdx-license-identifier:)", re.IGNORECASE)
-# The blank separator line(s), the "name.py -*- Python -*-" mode line, and the
-# "//===- name.cc ... -*- C++ -*-===//" / "//===...===//" LLVM-style banner
-# lines this repo's header conventions wrap the two lines above in.
+# The blank separators, the mode line and the LLVM banner that wrap the two
+# lines above in this repo's header conventions.
 _HEADER_FILLER_RE = re.compile(r"^(\s*|\S*\s*-\*-.*-\*-\s*|={2,}.*={2,}/{0,2})$")
 SOURCE_SUFFIXES = (
     ".c",

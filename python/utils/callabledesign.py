@@ -311,12 +311,10 @@ class CallableDesign:
         else:
             trace_config = effective_compile_kwargs.get("trace_config", None)
 
-        # The TraceConfig object itself stays out of the key: it is a per-call
-        # object carrying mutable state, so keying on it would miss every call.
-        # Its size has to be in there, though. A traced build is a different
-        # program -- an extra buffer and instrumented cores -- and keying on
-        # neither let a traced run reuse the untraced kernel, which came back
-        # with an empty trace and no physical MLIR path to decode it against.
+        # The TraceConfig carries mutable per-call state, so keying on it would
+        # miss every call; its size must be in the key even so, because a traced
+        # build is a different program. Keying on neither let a traced run reuse
+        # the untraced kernel and come back with an empty trace.
         cache_compile_kwargs = {
             k: v for k, v in effective_compile_kwargs.items() if k != "trace_config"
         }

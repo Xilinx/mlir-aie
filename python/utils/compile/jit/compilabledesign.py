@@ -730,23 +730,12 @@ class CompilableDesign:
     def validate_tensor_args(self, tensor_args: list) -> None:
         """Validate that *tensor_args* cover the bits the compiled kernel expects.
 
-        Compares each tensor's footprint against the per-host-arg addressable
-        footprint extracted from the compiled ``aiex.runtime_sequence``.
-        ``parse_dma_sizes`` returns ``max(offset + len)`` so multi-column
-        fan-outs, repeated transfers (matmul B reloaded each tile_row), and
-        InOut buffers (for_each fill+drain on the same arg) all give the
-        host-tensor size directly.
+        Compared in bits, not elements: a host buffer and the design's memref
+        cover the same bits but need not divide them the same way, so a block
+        type compares equal rather than off by nine.
 
-        Both sides are measured in bits: a host buffer and the design's memref
-        cover the same bits but need not divide them into elements the same
-        way, so a block type (``v8bfp16ebs8``: one element per 72 bits, where
-        the host holds bytes) compares equal instead of off by nine.
-
-        Args with no associated DMA (entry == 0) are skipped — those are
-        runtime params not directly transferred by the design.
-
-        No-op when expected sizes are unavailable (e.g. offline compilation
-        or when ``input_with_addresses.mlir`` was not produced).
+        Skipped for an arg with no DMA of its own, and when the compiled
+        sizes are unavailable (offline compilation).
         """
         if not self._expected_tensor_sizes:
             return
