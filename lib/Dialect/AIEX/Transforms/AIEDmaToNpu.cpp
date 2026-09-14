@@ -11,9 +11,11 @@
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 #include "aie/Dialect/AIEX/Utils/BdLowering.h"
+#include "aie/Dialect/AIEX/Utils/DmaQueueModel.h"
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include <algorithm>
@@ -878,11 +880,79 @@ public:
   }
 };
 
+// Check the per-channel DMA task queue on the npu.dma_memcpy_nd path.
+//
+// The conversion below is pattern-driven, so it visits ops in worklist order
+// and cannot count a queue. This runs first, in program order, sharing the
+// queue rule with the dma_start_task path (see DmaQueueModel.h).
+//
+// aie-unroll-runtime-sequence-loops only unrolls constant-trip loops, so a
+// runtime-bound scf.for arrives still rolled and its queue carries over the
+// back edge. Counting such a body once would guard the last push syntactically
+// while the first push of the next iteration meets what the previous one left,
+// so those loops go through analyzeLoopQueue instead.
+static void checkQueueDepth(AIE::DeviceOp device, bool enforceQueueDepth) {
+  const AIE::AIETargetModel &tm = device.getTargetModel();
+  // Resolve the (tile, direction, channel) a metadata symbol names, the same
+  // lookup DmaToNpuPattern and DmaWaitToSyncPattern do.
+  auto resolve = [&](llvm::StringRef sym)
+      -> std::optional<std::tuple<AIE::TileOp, AIE::DMAChannelDir, uint32_t>> {
+    auto infoOp = AIE::ShimDMAAllocationOp::getForSymbol(device, sym);
+    if (!infoOp)
+      return std::nullopt;
+    AIE::TileOp tile = infoOp.getTileOp();
+    if (!tile)
+      return std::nullopt;
+    return std::make_tuple(tile, infoOp.getChannelDir(),
+                           static_cast<uint32_t>(infoOp.getChannelIndex()));
+  };
+
+  auto effectOf = [&](Operation *op) -> QueueEffect {
+    if (auto memcpy = dyn_cast<NpuDmaMemcpyNdOp>(op)) {
+      auto info = resolve(memcpy.getMetadata().getRootReference());
+      if (!info)
+        return {};
+      auto [tile, dir, chan] = *info;
+      // Not the attribute but the flag the lowering will apply:
+      // DmaToNpuPattern forces issue_token on every S2MM channel, so taking
+      // the op at face value leaves a wait nothing to pop through.
+      return QueueEffect::push({tile.getCol(), tile.getRow(),
+                                static_cast<int>(dir), static_cast<int>(chan)},
+                               memcpy.getIssueToken() ||
+                                   dir == AIE::DMAChannelDir::S2MM);
+    }
+    if (auto wait = dyn_cast<NpuDmaWaitOp>(op)) {
+      auto info = resolve(wait.getSymbol());
+      if (!info)
+        return {};
+      auto [tile, dir, chan] = *info;
+      return QueueEffect::await({tile.getCol(), tile.getRow(),
+                                 static_cast<int>(dir),
+                                 static_cast<int>(chan)});
+    }
+    if (auto sync = dyn_cast<NpuSyncOp>(op))
+      if (std::optional<DmaQueueModel::ChannelKey> key = syncChannelKey(sync))
+        return QueueEffect::await(*key);
+    return {};
+  };
+
+  device.walk([&](AIE::RuntimeSequenceOp seq) {
+    DmaQueueModel queue;
+    guardSequenceQueueDepth(seq.getBody(), queue, tm, enforceQueueDepth,
+                            effectOf);
+  });
+}
+
 struct AIEDmaToNpuPass : xilinx::AIEX::impl::AIEDmaToNpuBase<AIEDmaToNpuPass> {
+  using Base = xilinx::AIEX::impl::AIEDmaToNpuBase<AIEDmaToNpuPass>;
+  AIEDmaToNpuPass() = default;
+  AIEDmaToNpuPass(const AIEDmaToNpuOptions &options) : Base(options) {}
 
   void runOnOperation() override {
 
     AIE::DeviceOp device = getOperation();
+
+    checkQueueDepth(device, enforceQueueDepth);
 
     ConversionTarget target(getContext());
     target.addLegalDialect<AIEXDialect>();
@@ -943,4 +1013,9 @@ struct AIEDmaToNpuPass : xilinx::AIEX::impl::AIEDmaToNpuBase<AIEDmaToNpuPass> {
 
 std::unique_ptr<OperationPass<AIE::DeviceOp>> AIEX::createAIEDmaToNpuPass() {
   return std::make_unique<AIEDmaToNpuPass>();
+}
+
+std::unique_ptr<OperationPass<AIE::DeviceOp>>
+AIEX::createAIEDmaToNpuPass(const AIEDmaToNpuOptions &options) {
+  return std::make_unique<AIEDmaToNpuPass>(options);
 }

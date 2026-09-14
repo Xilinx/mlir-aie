@@ -188,6 +188,14 @@ def AIEDmaToNpu : Pass<"aie-dma-to-npu", "AIE::DeviceOp"> {
 
   }];
 
+  let options = [Option<
+      "enforceQueueDepth", "enforce-queue-depth", "bool",
+      /*default=*/"true",
+      "Insert an aiex.npu.maskpoll before any npu.dma_memcpy_nd that could "
+      "push onto a full DMA task queue. Mirrors the option of the same "
+      "name on aie-assign-runtime-sequence-bd-ids, which covers the "
+      "dma_start_task path.">];
+
   let constructor = "xilinx::AIEX::createAIEDmaToNpuPass()";
   let dependentDialects = [
     "mlir::arith::ArithDialect",
@@ -319,10 +327,32 @@ def AIEResolveAddressPatchBuffers
 def AIEAssignRuntimeSequenceBDIDs : Pass<"aie-assign-runtime-sequence-bd-ids", "AIE::DeviceOp"> {
   let summary = "Assign IDs to Buffer Descriptors Configured in the Runtime Sequence";
 
+  let options =
+      [Option<
+           "enforceQueueDepth", "enforce-queue-depth", "bool",
+           /*default=*/"true",
+           "Insert an aiex.npu.maskpoll before any dma_start_task that could "
+           "push onto a full DMA task queue, so the sequence waits for a free "
+           "slot instead of racing on drain timing. On by default: the stall "
+           "only happens where the DMA cannot drain ahead of the pushes, which "
+           "is exactly where the alternative is a dropped transfer. Targets "
+           "that report no pollable occupancy register fall back to warning.">,
+       Option<
+           "warnUnsafeBdReuse", "warn-unsafe-bd-reuse", "bool",
+           /*default=*/"false",
+           "Warn when a BD id released by aiex.dma_free_task without any "
+           "completion guarantee is later reused on the same tile. Off by "
+           "default: the common fill/drain idiom frees tasks on one channel "
+           "having awaited another, and that cross-channel reasoning runs "
+           "through the compute core, which the runtime sequence cannot see, "
+           "so this reports designs that are correct by an argument the "
+           "compiler does not have. Useful when chasing a suspected BD "
+           "aliasing hang.">];
+
   let constructor = "xilinx::AIEX::createAIEAssignRuntimeSequenceBDIDsPass()";
-  let dependentDialects = [
-    "xilinx::AIE::AIEDialect",
-    "xilinx::AIEX::AIEXDialect",
+  let dependentDialects = ["mlir::arith::ArithDialect",
+                           "xilinx::AIE::AIEDialect",
+                           "xilinx::AIEX::AIEXDialect",
   ];
 }
 
@@ -387,6 +417,15 @@ def AIELowerDynamicBDPool
     genuinely runtime-bound. v1 supports single-BD tasks; multi-BD chains under a
     runtime loop are diagnosed.
   }];
+
+  let options = [Option<
+      "enforceQueueDepth", "enforce-queue-depth", "bool",
+      /*default=*/"true",
+      "Insert an aiex.npu.maskpoll before any dma_start_task in a "
+      "runtime-bound loop that could push onto a full DMA task queue. "
+      "The same option as on aie-dma-to-npu and "
+      "aie-assign-runtime-sequence-bd-ids, covering the one path neither "
+      "of those reaches: a loop this pass deliberately keeps rolled.">];
 
   let constructor = "xilinx::AIEX::createAIELowerDynamicBDPoolPass()";
   let dependentDialects = [

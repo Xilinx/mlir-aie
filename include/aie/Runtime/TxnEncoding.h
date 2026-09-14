@@ -163,6 +163,23 @@ inline void txn_append_maskwrite32(std::vector<uint32_t> &txn, uint32_t addr,
   txn[pos + 6] = 7 * sizeof(uint32_t); // operation size
 }
 
+// Append a 7-word maskpoll instruction: block until (reg & mask) == val.
+// Same word layout as maskwrite32 -- aie-rt's XAie_MaskPoll32Hdr and
+// XAie_MaskWrite32Hdr agree field for field, and the poll timeout is not
+// serialized (the firmware forces its own default; see xaie_txn.c).
+inline void txn_append_maskpoll32(std::vector<uint32_t> &txn, uint32_t addr,
+                                  uint32_t val, uint32_t mask) {
+  size_t pos = txn.size();
+  txn.resize(pos + 7, 0);
+  txn[pos + 0] = TXN_OPC_MASKPOLL;
+  // txn[pos + 1] is reserved (0)
+  txn[pos + 2] = addr;
+  txn[pos + 3] = 0;
+  txn[pos + 4] = val;
+  txn[pos + 5] = mask;
+  txn[pos + 6] = 7 * sizeof(uint32_t); // operation size
+}
+
 // Append a 4-word sync (TCT) instruction.
 inline void txn_append_sync(std::vector<uint32_t> &txn, uint32_t col,
                             uint32_t row, uint32_t dir, uint32_t chan,
