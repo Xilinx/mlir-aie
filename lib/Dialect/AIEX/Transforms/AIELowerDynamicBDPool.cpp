@@ -434,72 +434,68 @@ struct AIELowerDynamicBDPoolPass
     return success();
   }
 
-  // Report loops whose body nets DMA pushes onto a channel it never drains.
+  // Report loops whose body fills a task queue it never drains enough.
   //
   // The straight-line queue check cannot run here: this path keeps its scf.for
-  // rolled, so there is no finite push sequence to count. The per-iteration
-  // delta is enough on its own, and needs no trip count -- if a body pushes
-  // more onto a channel than it retires, occupancy grows by that much every
-  // iteration and passes the queue depth after depth/delta of them, whatever
-  // the loop bound turns out to be.
+  // rolled, so there is no finite push sequence to count. analyzeLoopQueue
+  // supplies the missing piece by running the body against the shared queue
+  // model until the state repeats, which needs no trip count and gets the
+  // retirement rule right -- awaiting one token drains that token and every
+  // push queued ahead of it, so a body can net more pushes than awaits and
+  // still be perfectly bounded.
   void warnOnUnboundedLoopQueueGrowth(AIE::RuntimeSequenceOp seq) {
     const AIE::AIETargetModel &tm =
         seq->getParentOfType<AIE::DeviceOp>().getTargetModel();
 
+    auto effectOf = [](Operation *op) -> QueueEffect {
+      DMAConfigureTaskOp cfg;
+      bool isPush = false;
+      if (auto start = dyn_cast<DMAStartTaskOp>(op)) {
+        cfg = start.getTaskOp();
+        isPush = true;
+      } else if (auto await = dyn_cast<DMAAwaitTaskOp>(op)) {
+        cfg = await.getTaskOp();
+        // Only a token-issuing await retires anything.
+        if (cfg && !cfg.getIssueToken())
+          return {};
+      } else {
+        return {};
+      }
+      if (!cfg)
+        return {};
+      AIE::TileOp tile = cfg.tryGetTileOp();
+      if (!tile)
+        return {};
+      DmaQueueModel::ChannelKey key{tile.getCol(), tile.getRow(),
+                                    static_cast<int>(cfg.getDirection()),
+                                    static_cast<int>(cfg.getChannel())};
+      return isPush ? QueueEffect::push(key, cfg.getIssueToken())
+                    : QueueEffect::await(key);
+    };
+
     seq.walk([&](scf::ForOp forOp) {
-      std::map<DmaQueueModel::ChannelKey, int> delta;
-      std::map<DmaQueueModel::ChannelKey, DMAStartTaskOp> firstPush;
+      // Entry state is empty rather than the straight-line prefix's: this pass
+      // runs before the prefix has been lowered to something the model reads,
+      // and starting empty can only delay the reported iteration, never invent
+      // an overflow that does not happen.
+      LoopQueueAnalysis analysis =
+          analyzeLoopQueue(forOp, DmaQueueModel{}, tm, effectOf);
 
-      forOp.getBody()->walk([&](Operation *op) {
-        DMAConfigureTaskOp cfg;
-        bool isPush = false;
-        if (auto start = dyn_cast<DMAStartTaskOp>(op)) {
-          cfg = start.getTaskOp();
-          isPush = true;
-        } else if (auto await = dyn_cast<DMAAwaitTaskOp>(op)) {
-          cfg = await.getTaskOp();
-          // Only a token-issuing await retires anything.
-          if (cfg && !cfg.getIssueToken())
-            return;
-        } else {
-          return;
-        }
-        if (!cfg)
-          return;
-        AIE::TileOp tile = cfg.tryGetTileOp();
-        if (!tile)
-          return;
-        DmaQueueModel::ChannelKey key{tile.getCol(), tile.getRow(),
-                                      static_cast<int>(cfg.getDirection()),
-                                      static_cast<int>(cfg.getChannel())};
-        if (isPush) {
-          delta[key]++;
-          if (!firstPush.count(key))
-            firstPush[key] = cast<DMAStartTaskOp>(op);
-        } else {
-          delta[key]--;
-        }
-      });
-
-      for (auto &[key, d] : delta) {
-        if (d <= 0 || !firstPush.count(key))
-          continue;
+      for (auto &[key, firstOverflow] : analysis.firstOverflow) {
+        auto [push, iteration] = firstOverflow;
         uint32_t depth = tm.getDmaTaskQueueDepth(
             key[0], key[1], key[3], static_cast<AIE::DMAChannelDir>(key[2]));
-        if (depth == 0)
-          continue;
-        firstPush[key].emitWarning()
-            << "each iteration of this loop nets " << d
-            << " outstanding DMA task(s) on tile (" << key[0] << "," << key[1]
+        push->emitWarning()
+            << "this loop fills the " << depth
+            << "-deep DMA task queue on tile (" << key[0] << "," << key[1]
             << ") "
             << AIE::stringifyDMAChannelDir(
                    static_cast<AIE::DMAChannelDir>(key[2]))
-            << " channel " << key[3] << ", which is never retired inside the "
-            << "body, so occupancy grows without bound and passes the " << depth
-            << "-deep task queue after about " << (depth / d)
-            << " iterations. A push onto a full queue is dropped and its "
-               "transfer never runs. Await a token on this channel inside the "
-               "loop";
+            << " channel " << key[3] << ": on iteration " << iteration
+            << " this push lands on a full queue, because the body does not "
+               "await enough of what it starts. A push onto a full queue is "
+               "dropped and its transfer never runs. Await a token on this "
+               "channel inside the loop";
       }
     });
   }

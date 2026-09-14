@@ -19,6 +19,7 @@
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/IR/Builders.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
 
 #include <array>
@@ -90,8 +91,16 @@ public:
     return it == queued.end() ? 0 : it->second.size();
   }
 
+  /// The whole per-channel queue, which is what the rolled-loop fixed point
+  /// below iterates on. `reported` is deliberately not part of it: it is
+  /// diagnostic bookkeeping, not queue state, and folding it in would stop
+  /// two otherwise identical states from comparing equal.
+  using State = std::map<ChannelKey, llvm::SmallVector<bool, 8>>;
+  const State &state() const { return queued; }
+  void setState(State s) { queued = std::move(s); }
+
 private:
-  std::map<ChannelKey, llvm::SmallVector<bool, 8>> queued;
+  State queued;
   std::set<ChannelKey> reported;
 };
 
@@ -207,6 +216,86 @@ inline void guardQueueOverflow(DmaQueueModel &queue, mlir::Operation *push,
     diag.attachNote() << "the compiler would have waited for a free slot here, "
                          "but this target reports no pollable task-queue "
                          "occupancy register for this channel";
+}
+
+/// What one op in a loop body does to a channel queue. The two lowering paths
+/// spell pushes and awaits with different ops, so the fixed point below takes
+/// the classification from its caller and keeps the FIFO rule to itself.
+struct QueueEffect {
+  enum class Kind { Ignore, Push, Await };
+  Kind kind = Kind::Ignore;
+  DmaQueueModel::ChannelKey key{};
+  bool issuesToken = false;
+
+  static QueueEffect push(DmaQueueModel::ChannelKey key, bool issuesToken) {
+    return {Kind::Push, key, issuesToken};
+  }
+  static QueueEffect await(DmaQueueModel::ChannelKey key) {
+    return {Kind::Await, key, false};
+  }
+};
+
+/// What a rolled loop body does to the task queues it touches.
+struct LoopQueueAnalysis {
+  /// Every push that can land on a full queue on some iteration. These are
+  /// the ones to guard: a poll sits in the body, so it runs every iteration.
+  /// Ordered by discovery so that inserting guards, and reporting where one
+  /// cannot be inserted, does not depend on pointer values.
+  llvm::SetVector<mlir::Operation *> overflowing;
+  /// Per channel, the first push to overflow and the 1-based iteration it
+  /// happens on, for diagnostics.
+  std::map<DmaQueueModel::ChannelKey, std::pair<mlir::Operation *, unsigned>>
+      firstOverflow;
+  /// The queue state the loop settles into, for the walk to continue from.
+  DmaQueueModel::State exitState;
+};
+
+/// Simulate a rolled loop body until its queue state repeats.
+///
+/// A rolled loop has no trip count to unroll against, but it does not need
+/// one. Occupancy cannot run away: a push that would overflow is guarded, and
+/// a guard caps the channel at depth-1 before that push, so every channel
+/// holds at most `depth` entries. The state is therefore a bounded bool vector
+/// per channel over a fixed key set, the body maps state to state
+/// deterministically, and the sequence must repeat within finitely many
+/// iterations -- which is the termination argument for the loop below.
+/// Whatever trip count the loop turns out to have at runtime, the state it
+/// reaches on that iteration is one of the ones visited here.
+///
+/// `entry` is the state the straight-line prefix leaves behind, which is what
+/// makes the first iteration exact rather than worst-case.
+template <typename EffectFn>
+inline LoopQueueAnalysis
+analyzeLoopQueue(mlir::Operation *body, DmaQueueModel entry,
+                 const AIE::AIETargetModel &tm, EffectFn effectOf) {
+  LoopQueueAnalysis result;
+  llvm::SmallVector<DmaQueueModel::State, 8> seen;
+  DmaQueueModel queue = std::move(entry);
+
+  for (unsigned iter = 1; !llvm::is_contained(seen, queue.state()); ++iter) {
+    seen.push_back(queue.state());
+    body->walk([&](mlir::Operation *op) {
+      QueueEffect e = effectOf(op);
+      if (e.kind == QueueEffect::Kind::Ignore)
+        return;
+      if (e.kind == QueueEffect::Kind::Await) {
+        queue.awaitToken(e.key);
+        return;
+      }
+      uint32_t depth =
+          tm.getDmaTaskQueueDepth(e.key[0], e.key[1], e.key[3],
+                                  static_cast<AIE::DMAChannelDir>(e.key[2]));
+      if (queue.wouldOverflow(e.key, depth)) {
+        result.overflowing.insert(op);
+        result.firstOverflow.try_emplace(e.key, std::make_pair(op, iter));
+        // A guard goes here, so the rest of the body sees a queue with room.
+        queue.noteSpaceGuaranteed(e.key, depth);
+      }
+      queue.push(e.key, e.issuesToken);
+    });
+  }
+  result.exitState = queue.state();
+  return result;
 }
 
 } // namespace xilinx::AIEX

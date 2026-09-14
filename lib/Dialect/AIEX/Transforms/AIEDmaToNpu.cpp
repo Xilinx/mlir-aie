@@ -15,6 +15,7 @@
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include <algorithm>
@@ -882,10 +883,18 @@ public:
 // Check the per-channel DMA task queue on the npu.dma_memcpy_nd path.
 //
 // The conversion below is pattern-driven, so it visits ops in worklist order
-// and cannot count a queue. This runs first, in program order, which is exact:
-// aie-unroll-runtime-sequence-loops has already run, so the sequence is
-// straight-line. The queue rule itself is shared with the dma_start_task path
-// (see DmaQueueModel.h) so the two cannot disagree about the same hardware.
+// and cannot count a queue. This runs first, in program order. The queue rule
+// itself is shared with the dma_start_task path (see DmaQueueModel.h) so the
+// two cannot disagree about the same hardware.
+//
+// aie-unroll-runtime-sequence-loops has already run, but it only unrolls
+// constant-trip loops: a runtime-bound scf.for is left rolled on purpose. Its
+// body then runs an unknown number of times and the queue carries over the
+// back edge, so counting the body once would guard the wrong pushes -- the
+// last one syntactically, while the first one of the next iteration meets the
+// entries the previous one left. Those loops go through analyzeLoopQueue
+// instead; the rest is straight-line and one program-order pass over it is
+// exact.
 static void checkQueueDepth(AIE::DeviceOp device, bool enforceQueueDepth) {
   const AIE::AIETargetModel &tm = device.getTargetModel();
   // Resolve the (tile, direction, channel) a metadata symbol names, the same
@@ -902,38 +911,76 @@ static void checkQueueDepth(AIE::DeviceOp device, bool enforceQueueDepth) {
                            static_cast<uint32_t>(infoOp.getChannelIndex()));
   };
 
+  auto effectOf = [&](Operation *op) -> QueueEffect {
+    if (auto memcpy = dyn_cast<NpuDmaMemcpyNdOp>(op)) {
+      auto info = resolve(memcpy.getMetadata().getRootReference());
+      if (!info)
+        return {};
+      auto [tile, dir, chan] = *info;
+      // Not the attribute but the flag the lowering will apply:
+      // DmaToNpuPattern forces issue_token on every S2MM channel, so taking
+      // the op at face value leaves a wait nothing to pop through.
+      return QueueEffect::push({tile.getCol(), tile.getRow(),
+                                static_cast<int>(dir), static_cast<int>(chan)},
+                               memcpy.getIssueToken() ||
+                                   dir == AIE::DMAChannelDir::S2MM);
+    }
+    if (auto wait = dyn_cast<NpuDmaWaitOp>(op)) {
+      auto info = resolve(wait.getSymbol());
+      if (!info)
+        return {};
+      auto [tile, dir, chan] = *info;
+      return QueueEffect::await({tile.getCol(), tile.getRow(),
+                                 static_cast<int>(dir),
+                                 static_cast<int>(chan)});
+    }
+    if (auto sync = dyn_cast<NpuSyncOp>(op))
+      if (std::optional<DmaQueueModel::ChannelKey> key = syncChannelKey(sync))
+        return QueueEffect::await(*key);
+    return {};
+  };
+
+  auto depthOf = [&](const DmaQueueModel::ChannelKey &key) {
+    return tm.getDmaTaskQueueDepth(key[0], key[1], key[3],
+                                   static_cast<AIE::DMAChannelDir>(key[2]));
+  };
+
   device.walk([&](AIE::RuntimeSequenceOp seq) {
     DmaQueueModel queue;
-    seq.walk([&](Operation *op) {
-      if (auto memcpy = dyn_cast<NpuDmaMemcpyNdOp>(op)) {
-        auto info = resolve(memcpy.getMetadata().getRootReference());
-        if (!info)
-          return;
-        auto [tile, dir, chan] = *info;
-        DmaQueueModel::ChannelKey key{tile.getCol(), tile.getRow(),
-                                      static_cast<int>(dir),
-                                      static_cast<int>(chan)};
-        uint32_t depth =
-            tm.getDmaTaskQueueDepth(tile.getCol(), tile.getRow(), chan, dir);
-        if (queue.wouldOverflow(key, depth))
-          guardQueueOverflow(queue, memcpy, tm, key, depth, enforceQueueDepth);
-        // Not the attribute but the flag the lowering will apply:
-        // DmaToNpuPattern forces issue_token on every S2MM channel, so
-        // taking the op at face value leaves a wait nothing to pop through.
-        queue.push(key,
-                   memcpy.getIssueToken() || dir == AIE::DMAChannelDir::S2MM);
-      } else if (auto wait = dyn_cast<NpuDmaWaitOp>(op)) {
-        auto info = resolve(wait.getSymbol());
-        if (!info)
-          return;
-        auto [tile, dir, chan] = *info;
-        queue.awaitToken(DmaQueueModel::ChannelKey{tile.getCol(), tile.getRow(),
-                                                   static_cast<int>(dir),
-                                                   static_cast<int>(chan)});
-      } else if (auto sync = dyn_cast<NpuSyncOp>(op)) {
-        awaitSync(queue, sync);
+    // Top-level program order, so a rolled scf.for can be taken whole rather
+    // than descended into.
+    for (Operation &op : llvm::make_early_inc_range(seq.getBody().getOps())) {
+      if (auto forOp = dyn_cast<scf::ForOp>(&op)) {
+        LoopQueueAnalysis analysis =
+            analyzeLoopQueue(forOp, queue, tm, effectOf);
+        for (Operation *push : analysis.overflowing) {
+          DmaQueueModel::ChannelKey key = effectOf(push).key;
+          // The model updates guardQueueOverflow makes are discarded by the
+          // setState below: the queue state at this push is the loop's, not
+          // the entry state held here, and analyzeLoopQueue has already
+          // accounted for the space the poll guarantees. What does carry over
+          // is which channels have been reported, so a target that cannot
+          // poll warns once rather than once per push.
+          guardQueueOverflow(queue, push, tm, key, depthOf(key),
+                             enforceQueueDepth);
+        }
+        queue.setState(analysis.exitState);
+        continue;
       }
-    });
+      op.walk([&](Operation *inner) {
+        QueueEffect e = effectOf(inner);
+        if (e.kind == QueueEffect::Kind::Ignore)
+          return;
+        if (e.kind == QueueEffect::Kind::Await) {
+          queue.awaitToken(e.key);
+          return;
+        }
+        uint32_t depth = depthOf(e.key);
+        if (queue.wouldOverflow(e.key, depth))
+          guardQueueOverflow(queue, inner, tm, e.key, depth, enforceQueueDepth);
+        queue.push(e.key, e.issuesToken);
+      });
+    }
   });
 }
 
