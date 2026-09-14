@@ -11,6 +11,8 @@
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringExtras.h"
+#include "llvm/BinaryFormat/ELF.h"
 #include "llvm/Object/ELFObjectFile.h"
 #include "llvm/Object/ObjectFile.h"
 #include "llvm/Support/Endian.h"
@@ -72,6 +74,10 @@ struct Graph {
   llvm::StringRef nameOf(uint64_t addr) const {
     const SymbolRanges::Entry *e = funcs.owner(addr);
     return e ? e->name : llvm::StringRef("<unknown>");
+  }
+
+  std::string describe(uint64_t addr) const {
+    return nameOf(addr).str() + "@0x" + llvm::utohexstr(addr);
   }
 };
 
@@ -186,6 +192,55 @@ bool readFrameSizes(ObjectFile &obj, SectionRef sec, Graph &graph) {
   return true;
 }
 
+bool isZeroSizedFunctionSymbol(const SymbolRef &sym) {
+  auto type = sym.getType();
+  if (!type) {
+    llvm::consumeError(type.takeError());
+    return false;
+  }
+  return *type == SymbolRef::ST_Function && ELFSymbolRef(sym).getSize() == 0;
+}
+
+bool isAieDataWordRelocation(const ObjectFile &obj, const RelocationRef &rel) {
+  if (const auto *elf = llvm::dyn_cast<ELFObjectFileBase>(&obj);
+      !elf || elf->getEMachine() != detail::aieElfMachine) {
+    return false;
+  }
+  // llvm-aie assigns one dense relocation range to instruction fixups and one
+  // per-architecture FK_Data_4 number to a plain 32-bit address literal. That
+  // literal is not a call, even when it sits in `.text`.
+  switch (rel.getType()) {
+  case detail::aieData4RelocAie2:
+  case detail::aieData4RelocAie2p:
+  case detail::aieData4RelocAie1:
+  case detail::aieData4RelocAie2ps:
+    return true;
+  default:
+    return false;
+  }
+}
+
+bool isCallLikeRelocation(const ObjectFile &obj, const RelocationRef &rel) {
+  if (isAieDataWordRelocation(obj, rel)) {
+    return false;
+  }
+  llvm::SmallString<32> typeNameStorage;
+  rel.getTypeName(typeNameStorage);
+  llvm::StringRef typeName(typeNameStorage);
+  if (typeName.contains("CALL") || typeName.contains("JUMP") ||
+      typeName.contains("BRANCH") || typeName.contains("PLT32")) {
+    return true;
+  }
+  if (typeName == "R_X86_64_64" || typeName == "R_X86_64_32" ||
+      typeName == "R_X86_64_32S" || typeName.contains("ABS") ||
+      typeName.contains("ADDR")) {
+    return false;
+  }
+  // Keep unknown relocation kinds conservative: dropping them can disconnect
+  // the call graph and undercount the stack requirement.
+  return true;
+}
+
 // Records one call edge, or one half of the function-pointer heuristic, per
 // relocation. `patched` is the address the relocation writes, `target` the
 // address it writes there.
@@ -256,9 +311,9 @@ std::optional<int64_t> maxPathFrom(uint64_t sym, const Graph &graph,
   if (st == VisitState::InProgress) {
     std::string cycle;
     for (uint64_t s : pathStack) {
-      cycle += graph.nameOf(s).str() + " -> ";
+      cycle += graph.describe(s) + " -> ";
     }
-    cycle += graph.nameOf(sym).str();
+    cycle += graph.describe(sym);
     error = "recursion detected: " + cycle;
     failureKind = StackRequirementFailure::Cycle;
     return std::nullopt;
@@ -359,6 +414,14 @@ StackRequirementResult xilinx::aiecc::computeStackRequirement(
       symbol_iterator target = rel.getSymbol();
       if (target == obj.symbol_end()) {
         continue; // no symbol to attribute this relocation to
+      }
+      // A fully inlined entry point can survive the link as a zero-sized FUNC
+      // symbol at another function's address. Only call-like relocations should
+      // close a call edge through that alias; an address constant in .text
+      // would otherwise invent a callee that the code never executes.
+      if (patchedIsText && isZeroSizedFunctionSymbol(*target) &&
+          !isCallLikeRelocation(obj, rel)) {
+        continue;
       }
       auto targetAddr = target->getAddress();
       if (!targetAddr) {
