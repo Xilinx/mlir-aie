@@ -17,6 +17,7 @@
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/Builders.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
@@ -242,10 +243,6 @@ struct LoopQueueAnalysis {
   /// Ordered by discovery so that inserting guards, and reporting where one
   /// cannot be inserted, does not depend on pointer values.
   llvm::SetVector<mlir::Operation *> overflowing;
-  /// Per channel, the first push to overflow and the 1-based iteration it
-  /// happens on, for diagnostics.
-  std::map<DmaQueueModel::ChannelKey, std::pair<mlir::Operation *, unsigned>>
-      firstOverflow;
   /// The queue state the loop settles into, for the walk to continue from.
   DmaQueueModel::State exitState;
 };
@@ -266,7 +263,7 @@ analyzeLoopQueue(mlir::Operation *body, DmaQueueModel entry,
   llvm::SmallVector<DmaQueueModel::State, 8> seen;
   DmaQueueModel queue = std::move(entry);
 
-  for (unsigned iter = 1; !llvm::is_contained(seen, queue.state()); ++iter) {
+  while (!llvm::is_contained(seen, queue.state())) {
     seen.push_back(queue.state());
     body->walk([&](mlir::Operation *op) {
       QueueEffect e = effectOf(op);
@@ -281,7 +278,6 @@ analyzeLoopQueue(mlir::Operation *body, DmaQueueModel entry,
                                   static_cast<AIE::DMAChannelDir>(e.key[2]));
       if (queue.wouldOverflow(e.key, depth)) {
         result.overflowing.insert(op);
-        result.firstOverflow.try_emplace(e.key, std::make_pair(op, iter));
         // A guard goes here, so the rest of the body sees a queue with room.
         queue.noteSpaceGuaranteed(e.key, depth);
       }
@@ -290,6 +286,49 @@ analyzeLoopQueue(mlir::Operation *body, DmaQueueModel entry,
   }
   result.exitState = queue.state();
   return result;
+}
+
+/// Guard every push in a runtime sequence that can land on a full queue.
+///
+/// Loops are taken whole at the top level rather than descended into, which is
+/// what keeps a nested loop from being guarded once per enclosing level, and
+/// what lets the straight-line prefix hand its exact queue state to the loop
+/// that follows it.
+template <typename EffectFn>
+inline void guardSequenceQueueDepth(mlir::Region &body, DmaQueueModel &queue,
+                                    const AIE::AIETargetModel &tm, bool enforce,
+                                    EffectFn effectOf) {
+  auto depthOf = [&](const DmaQueueModel::ChannelKey &k) {
+    return tm.getDmaTaskQueueDepth(k[0], k[1], k[3],
+                                   static_cast<AIE::DMAChannelDir>(k[2]));
+  };
+
+  for (mlir::Operation &op : llvm::make_early_inc_range(body.getOps())) {
+    if (auto forOp = mlir::dyn_cast<mlir::scf::ForOp>(&op)) {
+      LoopQueueAnalysis analysis = analyzeLoopQueue(forOp, queue, tm, effectOf);
+      for (mlir::Operation *push : analysis.overflowing) {
+        DmaQueueModel::ChannelKey key = effectOf(push).key;
+        guardQueueOverflow(queue, push, tm, key, depthOf(key), enforce);
+      }
+      // Discards what guardQueueOverflow recorded, which described the entry
+      // state rather than the loop's; the fixed point is the real answer.
+      queue.setState(analysis.exitState);
+      continue;
+    }
+    op.walk([&](mlir::Operation *inner) {
+      QueueEffect e = effectOf(inner);
+      if (e.kind == QueueEffect::Kind::Ignore)
+        return;
+      if (e.kind == QueueEffect::Kind::Await) {
+        queue.awaitToken(e.key);
+        return;
+      }
+      uint32_t depth = depthOf(e.key);
+      if (queue.wouldOverflow(e.key, depth))
+        guardQueueOverflow(queue, inner, tm, e.key, depth, enforce);
+      queue.push(e.key, e.issuesToken);
+    });
+  }
 }
 
 } // namespace xilinx::AIEX

@@ -439,22 +439,14 @@ struct AIELowerDynamicBDPoolPass
     return success();
   }
 
-  // Guard pushes in a rolled loop that can land on a full task queue.
+  // Guard pushes that can land on a full task queue.
   //
-  // This is the only place that can: a sequence lowered here keeps its scf.for
-  // rolled, so aie-assign-runtime-sequence-bd-ids skips it entirely and
-  // aie-dma-to-npu only ever sees npu.dma_memcpy_nd, never these starts.
-  // Warning instead of polling would be declining a guard we are able to
-  // emit, and a dropped push is silent -- whether it bites depends on how fast
-  // the consumer drains, not on anything visible in the IR, so a design that
-  // passes today is not evidence the guard is unnecessary.
-  //
-  // analyzeLoopQueue supplies what a single pass cannot: it runs the body
-  // against the shared model until the state repeats, which needs no trip
-  // count and gets the retirement rule right -- awaiting one token drains that
-  // token and every push queued ahead of it, so a body can net more pushes
-  // than awaits and still be perfectly bounded.
-  void guardLoopQueueOverflow(AIE::RuntimeSequenceOp seq) {
+  // This is the only place that can. A sequence lowered here keeps its scf.for
+  // rolled, so aie-assign-runtime-sequence-bd-ids skips the whole sequence --
+  // not just its loops -- and aie-dma-to-npu only ever sees npu.dma_memcpy_nd,
+  // never these starts. That covers the straight-line parts too, which is why
+  // this walks the sequence rather than just its loops.
+  void guardQueueDepth(AIE::RuntimeSequenceOp seq) {
     const AIE::AIETargetModel &tm =
         seq->getParentOfType<AIE::DeviceOp>().getTargetModel();
 
@@ -485,25 +477,8 @@ struct AIELowerDynamicBDPoolPass
     };
 
     DmaQueueModel queue;
-    seq.walk([&](scf::ForOp forOp) {
-      // Entry state is empty rather than the straight-line prefix's: this pass
-      // runs before the prefix has been lowered to something the model reads,
-      // and starting empty can only under-guard, never invent an overflow that
-      // does not happen.
-      LoopQueueAnalysis analysis =
-          analyzeLoopQueue(forOp, DmaQueueModel{}, tm, effectOf);
-
-      for (Operation *push : analysis.overflowing) {
-        DmaQueueModel::ChannelKey key = effectOf(push).key;
-        uint32_t depth = tm.getDmaTaskQueueDepth(
-            key[0], key[1], key[3], static_cast<AIE::DMAChannelDir>(key[2]));
-        // `queue` carries only the reported-channel set across loops, so a
-        // target that cannot poll warns once per channel rather than per push;
-        // the occupancy it would report is the loop's, which analyzeLoopQueue
-        // already holds.
-        guardQueueOverflow(queue, push, tm, key, depth, enforceQueueDepth);
-      }
-    });
+    guardSequenceQueueDepth(seq.getBody(), queue, tm, enforceQueueDepth,
+                            effectOf);
   }
 
   void runOnOperation() override {
@@ -615,7 +590,7 @@ struct AIELowerDynamicBDPoolPass
         op->erase();
       // Only once this sequence has lowered cleanly: guarding or reporting a
       // queue on a design that is already being rejected just buries the error.
-      guardLoopQueueOverflow(seq);
+      guardQueueDepth(seq);
       return WalkResult::advance();
     });
     if (wr.wasInterrupted())

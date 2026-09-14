@@ -128,3 +128,61 @@ aie.device(npu1) {
     }
   }
 }
+
+// -----
+
+// Straight-line pushes in a sequence that also contains a rolled loop. One
+// dma_bd_pool_pop anywhere makes the static allocator skip the WHOLE sequence,
+// so these five are this pass's responsibility too -- checking only the loops
+// would leave them silently unguarded. The fifth fills the queue, and the
+// loop's push then inherits a full queue rather than an empty one, so it is
+// guarded even though the body balances itself.
+// CHECK-LABEL: @prefix_then_loop
+// CHECK-COUNT-2: aiex.npu.maskpoll
+// CHECK-NOT:     aiex.npu.maskpoll
+aie.device(npu1) {
+  %tile_0_0 = aie.tile(0, 0)
+  aie.runtime_sequence @prefix_then_loop(%arg0: memref<4096xi32>, %n: index) {
+    %p0 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) { aie.dma_bd(%arg0 : memref<4096xi32> offset = 0 len = 256) aie.end }
+    aiex.dma_start_task(%p0)
+    %p1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) { aie.dma_bd(%arg0 : memref<4096xi32> offset = 256 len = 256) aie.end }
+    aiex.dma_start_task(%p1)
+    %p2 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) { aie.dma_bd(%arg0 : memref<4096xi32> offset = 512 len = 256) aie.end }
+    aiex.dma_start_task(%p2)
+    %p3 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) { aie.dma_bd(%arg0 : memref<4096xi32> offset = 768 len = 256) aie.end }
+    aiex.dma_start_task(%p3)
+    %p4 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) { aie.dma_bd(%arg0 : memref<4096xi32> offset = 1024 len = 256) aie.end }
+    // expected-warning@+1 {{whose task queue is only 4 deep}}
+    aiex.dma_start_task(%p4)
+    %c0 = arith.constant 0 : index
+    %c1 = arith.constant 1 : index
+    scf.for %i = %c0 to %n step %c1 {
+      %t = aiex.dma_configure_task(%tile_0_0, MM2S, 0) { aie.dma_bd(%arg0 : memref<4096xi32> offset = 1280 len = 256) aie.end } {issue_token = true}
+      aiex.dma_start_task(%t)
+      aiex.dma_await_task(%t)
+    }
+  }
+}
+
+// -----
+
+// One push, two loop levels. Loops are taken whole at the top level, so the
+// inner body is settled once by the outer analysis rather than once per
+// enclosing level -- a second poll on the same push would be dead weight.
+// CHECK-LABEL: @nested
+// CHECK-COUNT-1: aiex.npu.maskpoll
+// CHECK-NOT:     aiex.npu.maskpoll
+aie.device(npu1) {
+  %tile_0_0 = aie.tile(0, 0)
+  aie.runtime_sequence @nested(%arg0: memref<4096xi32>, %n: index) {
+    %c0 = arith.constant 0 : index
+    %c1 = arith.constant 1 : index
+    scf.for %i = %c0 to %n step %c1 {
+      scf.for %j = %c0 to %n step %c1 {
+        %t = aiex.dma_configure_task(%tile_0_0, MM2S, 0) { aie.dma_bd(%arg0 : memref<4096xi32> offset = 0 len = 256) aie.end }
+        // expected-warning@+1 {{whose task queue is only 4 deep}}
+        aiex.dma_start_task(%t)
+      }
+    }
+  }
+}

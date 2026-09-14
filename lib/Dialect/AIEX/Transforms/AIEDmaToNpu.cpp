@@ -936,47 +936,10 @@ static void checkQueueDepth(AIE::DeviceOp device, bool enforceQueueDepth) {
     return {};
   };
 
-  auto depthOf = [&](const DmaQueueModel::ChannelKey &key) {
-    return tm.getDmaTaskQueueDepth(key[0], key[1], key[3],
-                                   static_cast<AIE::DMAChannelDir>(key[2]));
-  };
-
   device.walk([&](AIE::RuntimeSequenceOp seq) {
     DmaQueueModel queue;
-    // Top-level program order, so a rolled scf.for can be taken whole rather
-    // than descended into.
-    for (Operation &op : llvm::make_early_inc_range(seq.getBody().getOps())) {
-      if (auto forOp = dyn_cast<scf::ForOp>(&op)) {
-        LoopQueueAnalysis analysis =
-            analyzeLoopQueue(forOp, queue, tm, effectOf);
-        for (Operation *push : analysis.overflowing) {
-          DmaQueueModel::ChannelKey key = effectOf(push).key;
-          // The model updates guardQueueOverflow makes are discarded by the
-          // setState below: the queue state at this push is the loop's, not
-          // the entry state held here, and analyzeLoopQueue has already
-          // accounted for the space the poll guarantees. What does carry over
-          // is which channels have been reported, so a target that cannot
-          // poll warns once rather than once per push.
-          guardQueueOverflow(queue, push, tm, key, depthOf(key),
-                             enforceQueueDepth);
-        }
-        queue.setState(analysis.exitState);
-        continue;
-      }
-      op.walk([&](Operation *inner) {
-        QueueEffect e = effectOf(inner);
-        if (e.kind == QueueEffect::Kind::Ignore)
-          return;
-        if (e.kind == QueueEffect::Kind::Await) {
-          queue.awaitToken(e.key);
-          return;
-        }
-        uint32_t depth = depthOf(e.key);
-        if (queue.wouldOverflow(e.key, depth))
-          guardQueueOverflow(queue, inner, tm, e.key, depth, enforceQueueDepth);
-        queue.push(e.key, e.issuesToken);
-      });
-    }
+    guardSequenceQueueDepth(seq.getBody(), queue, tm, enforceQueueDepth,
+                            effectOf);
   });
 }
 
