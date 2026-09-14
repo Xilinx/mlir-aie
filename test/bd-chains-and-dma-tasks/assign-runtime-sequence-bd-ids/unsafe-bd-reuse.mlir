@@ -59,3 +59,29 @@ aie.device(npu2) {
     aiex.dma_start_task(%t2)
   }
 }
+
+// -----
+
+// Two sequences in one device. Each is a separate dispatch, and BD id
+// allocation restarts for each, so an id freed in flight in @first says
+// nothing about the same id in @second -- warning there would be a false
+// positive. It is also the free in @first that the note would point at, and
+// that op is erased once @first is done, so the stale entry dangles.
+aie.device(npu2) {
+  %tile_0_0 = aie.tile(0, 0)
+  aie.runtime_sequence @first(%arg0: memref<512xi32>) {
+    %t0 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
+      aie.dma_bd(%arg0 : memref<512xi32> offset = 0 len = 256)
+      aie.end
+    }
+    aiex.dma_start_task(%t0)
+    aiex.dma_free_task(%t0)
+  }
+  aie.runtime_sequence @second(%arg0: memref<512xi32>) {
+    %t0 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
+      aie.dma_bd(%arg0 : memref<512xi32> offset = 0 len = 256)
+      aie.end
+    }
+    aiex.dma_start_task(%t0)
+  }
+}

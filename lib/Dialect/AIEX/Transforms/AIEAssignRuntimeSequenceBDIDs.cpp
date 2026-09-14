@@ -387,6 +387,20 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     return recycle(cfg, op, isAwait);
   }
 
+  // All of this is scoped to one runtime sequence. `gens` restarts BD id
+  // allocation per sequence, so hazard state left over from an earlier one
+  // describes ids that no longer name the same tasks. freedInFlight is the
+  // one that bites rather than merely misleads: it holds aiex.dma_free_task
+  // pointers, and those ops are erased once the sequence that owns them is
+  // done, so carrying an entry forward leaves a dangling note location.
+  void resetPerSequenceState() {
+    gens.clear();
+    awaitedConfigures.clear();
+    startedOnChannel.clear();
+    knownComplete.clear();
+    freedInFlight.clear();
+  }
+
   void runOnOperation() override {
     AIE::DeviceOp device = getOperation();
 
@@ -402,8 +416,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
 
       if (failed(validate(seq)))
         return WalkResult::interrupt();
-      gens.clear();
-      awaitedConfigures.clear();
+      resetPerSequenceState();
 
       // Straight-line walk. Collect frees to erase after (recycling reads the
       // configure the free points at, so erase only once the walk is done).
