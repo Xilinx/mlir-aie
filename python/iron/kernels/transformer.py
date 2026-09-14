@@ -120,6 +120,13 @@ def layer_norm(cols: int = 4096) -> ExternalFunction:
 def layer_norm_f32(cols: int = 4096) -> ExternalFunction:
     """Row-wise LayerNorm on float32 in and out (gamma = 1, beta = 0, eps 1e-5).
 
+    A separate factory rather than a dtype of
+    [`layer_norm`][iron.kernels.transformer.layer_norm], though both come from
+    one templated core in ``layer_norm.cc``: this one is held to atol 1e-3
+    instead of the bf16 tolerance, which its reference meets only by computing
+    the variance two-pass in float64. Merging them would put that numerical
+    difference behind a dtype switch.
+
     Args:
         cols: Elements per row (multiple of 16).
     """
