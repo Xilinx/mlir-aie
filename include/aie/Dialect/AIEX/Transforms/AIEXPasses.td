@@ -418,6 +418,15 @@ def AIELowerDynamicBDPool
     runtime loop are diagnosed.
   }];
 
+  let options = [Option<
+      "enforceQueueDepth", "enforce-queue-depth", "bool",
+      /*default=*/"true",
+      "Insert an aiex.npu.maskpoll before any dma_start_task in a "
+      "runtime-bound loop that could push onto a full DMA task queue. "
+      "The same option as on aie-dma-to-npu and "
+      "aie-assign-runtime-sequence-bd-ids, covering the one path neither "
+      "of those reaches: a loop this pass deliberately keeps rolled.">];
+
   let constructor = "xilinx::AIEX::createAIELowerDynamicBDPoolPass()";
   let dependentDialects = [
     "mlir::arith::ArithDialect",

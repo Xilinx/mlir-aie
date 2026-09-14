@@ -44,6 +44,11 @@ namespace {
 
 struct AIELowerDynamicBDPoolPass
     : xilinx::AIEX::impl::AIELowerDynamicBDPoolBase<AIELowerDynamicBDPoolPass> {
+  using Base =
+      xilinx::AIEX::impl::AIELowerDynamicBDPoolBase<AIELowerDynamicBDPoolPass>;
+  AIELowerDynamicBDPoolPass() = default;
+  AIELowerDynamicBDPoolPass(const AIELowerDynamicBDPoolOptions &options)
+      : Base(options) {}
 
   // Maps a task value (the Index result of a configure, or any Index the carry
   // propagates it into) to the i32 pool id available at that same program
@@ -434,16 +439,22 @@ struct AIELowerDynamicBDPoolPass
     return success();
   }
 
-  // Report loops whose body fills a task queue it never drains enough.
+  // Guard pushes in a rolled loop that can land on a full task queue.
   //
-  // The straight-line queue check cannot run here: this path keeps its scf.for
-  // rolled, so there is no finite push sequence to count. analyzeLoopQueue
-  // supplies the missing piece by running the body against the shared queue
-  // model until the state repeats, which needs no trip count and gets the
-  // retirement rule right -- awaiting one token drains that token and every
-  // push queued ahead of it, so a body can net more pushes than awaits and
-  // still be perfectly bounded.
-  void warnOnUnboundedLoopQueueGrowth(AIE::RuntimeSequenceOp seq) {
+  // This is the only place that can: a sequence lowered here keeps its scf.for
+  // rolled, so aie-assign-runtime-sequence-bd-ids skips it entirely and
+  // aie-dma-to-npu only ever sees npu.dma_memcpy_nd, never these starts.
+  // Warning instead of polling would be declining a guard we are able to
+  // emit, and a dropped push is silent -- whether it bites depends on how fast
+  // the consumer drains, not on anything visible in the IR, so a design that
+  // passes today is not evidence the guard is unnecessary.
+  //
+  // analyzeLoopQueue supplies what a single pass cannot: it runs the body
+  // against the shared model until the state repeats, which needs no trip
+  // count and gets the retirement rule right -- awaiting one token drains that
+  // token and every push queued ahead of it, so a body can net more pushes
+  // than awaits and still be perfectly bounded.
+  void guardLoopQueueOverflow(AIE::RuntimeSequenceOp seq) {
     const AIE::AIETargetModel &tm =
         seq->getParentOfType<AIE::DeviceOp>().getTargetModel();
 
@@ -473,29 +484,24 @@ struct AIELowerDynamicBDPoolPass
                     : QueueEffect::await(key);
     };
 
+    DmaQueueModel queue;
     seq.walk([&](scf::ForOp forOp) {
       // Entry state is empty rather than the straight-line prefix's: this pass
       // runs before the prefix has been lowered to something the model reads,
-      // and starting empty can only delay the reported iteration, never invent
-      // an overflow that does not happen.
+      // and starting empty can only under-guard, never invent an overflow that
+      // does not happen.
       LoopQueueAnalysis analysis =
           analyzeLoopQueue(forOp, DmaQueueModel{}, tm, effectOf);
 
-      for (auto &[key, firstOverflow] : analysis.firstOverflow) {
-        auto [push, iteration] = firstOverflow;
+      for (Operation *push : analysis.overflowing) {
+        DmaQueueModel::ChannelKey key = effectOf(push).key;
         uint32_t depth = tm.getDmaTaskQueueDepth(
             key[0], key[1], key[3], static_cast<AIE::DMAChannelDir>(key[2]));
-        push->emitWarning()
-            << "this loop fills the " << depth
-            << "-deep DMA task queue on tile (" << key[0] << "," << key[1]
-            << ") "
-            << AIE::stringifyDMAChannelDir(
-                   static_cast<AIE::DMAChannelDir>(key[2]))
-            << " channel " << key[3] << ": on iteration " << iteration
-            << " this push lands on a full queue, because the body does not "
-               "await enough of what it starts. A push onto a full queue is "
-               "dropped and its transfer never runs. Await a token on this "
-               "channel inside the loop";
+        // `queue` carries only the reported-channel set across loops, so a
+        // target that cannot poll warns once per channel rather than per push;
+        // the occupancy it would report is the loop's, which analyzeLoopQueue
+        // already holds.
+        guardQueueOverflow(queue, push, tm, key, depth, enforceQueueDepth);
       }
     });
   }
@@ -607,9 +613,9 @@ struct AIELowerDynamicBDPoolPass
         return WalkResult::interrupt();
       for (Operation *op : toErase)
         op->erase();
-      // Only once this sequence has lowered cleanly: piling a queue warning
-      // onto a design that is already being rejected just buries the error.
-      warnOnUnboundedLoopQueueGrowth(seq);
+      // Only once this sequence has lowered cleanly: guarding or reporting a
+      // queue on a design that is already being rejected just buries the error.
+      guardLoopQueueOverflow(seq);
       return WalkResult::advance();
     });
     if (wr.wasInterrupted())
@@ -622,4 +628,10 @@ struct AIELowerDynamicBDPoolPass
 std::unique_ptr<OperationPass<AIE::DeviceOp>>
 AIEX::createAIELowerDynamicBDPoolPass() {
   return std::make_unique<AIELowerDynamicBDPoolPass>();
+}
+
+std::unique_ptr<OperationPass<AIE::DeviceOp>>
+AIEX::createAIELowerDynamicBDPoolPass(
+    const AIELowerDynamicBDPoolOptions &options) {
+  return std::make_unique<AIELowerDynamicBDPoolPass>(options);
 }

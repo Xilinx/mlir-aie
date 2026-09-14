@@ -55,6 +55,8 @@ createAIEUnrollRuntimeSequenceLoopsPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIELowerDynamicBDPoolPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
+createAIELowerDynamicBDPoolPass(const AIELowerDynamicBDPoolOptions &options);
+std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIEDMATasksToNPUPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIESubstituteShimDMAAllocationsPass();

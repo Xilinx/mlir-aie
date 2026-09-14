@@ -3,16 +3,24 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 
-// RUN: aie-opt --aie-lower-dynamic-bd-pool --verify-diagnostics \
-// RUN:         --split-input-file %s
+// RUN: aie-opt --aie-lower-dynamic-bd-pool --split-input-file %s \
+// RUN:   | FileCheck %s
+// RUN: aie-opt --aie-lower-dynamic-bd-pool='enforce-queue-depth=false' \
+// RUN:   --verify-diagnostics --split-input-file %s
 
-// The straight-line queue check cannot run on this path: the loop stays rolled,
-// so there is no finite push sequence to count. analyzeLoopQueue runs the body
-// against the shared queue model until the state repeats, which needs no trip
-// count and reports the iteration the queue actually fills on.
+// This pass is the only one that can guard these pushes: it deliberately keeps
+// the loop rolled, so aie-assign-runtime-sequence-bd-ids skips the sequence
+// and aie-dma-to-npu only ever sees npu.dma_memcpy_nd. analyzeLoopQueue runs
+// the body against the shared queue model until the state repeats, which needs
+// no trip count. With enforcement off the same analysis reports instead, which
+// is what the second RUN line checks.
 
 // Pushes once per iteration, never awaits. A 4-deep queue is full after four
-// iterations, so it is the fifth push that lands on a full queue.
+// iterations, so the fifth push would land on a full one. A single poll in the
+// body covers every iteration.
+// CHECK-LABEL: @grows
+// CHECK:         scf.for
+// CHECK:         aiex.npu.maskpoll
 aie.device(npu1) {
   %tile_0_0 = aie.tile(0, 0)
   aie.runtime_sequence @grows(%arg0: memref<1024xi32>, %n: index) {
@@ -23,7 +31,7 @@ aie.device(npu1) {
         aie.dma_bd(%arg0 : memref<1024xi32> offset = 0 len = 256)
         aie.end
       }
-      // expected-warning@+1 {{this loop fills the 4-deep DMA task queue on tile (0,0) MM2S channel 0: on iteration 5 this push lands on a full queue}}
+      // expected-warning@+1 {{whose task queue is only 4 deep}}
       aiex.dma_start_task(%t)
     }
   }
@@ -31,7 +39,9 @@ aie.device(npu1) {
 
 // -----
 
-// Pushes and retires once per iteration: steady state, no growth.
+// Pushes and retires once per iteration: steady state, nothing to guard.
+// CHECK-LABEL: @balanced
+// CHECK-NOT:   aiex.npu.maskpoll
 aie.device(npu1) {
   %tile_0_0 = aie.tile(0, 0)
   aie.runtime_sequence @balanced(%arg0: memref<1024xi32>, %n: index) {
@@ -53,7 +63,9 @@ aie.device(npu1) {
 // Two pushes and one await per iteration. Counting pushes against awaits makes
 // this look like it nets one task a cycle, but the await pops through: it
 // retires its own token and the non-token push queued ahead of it, so the body
-// drains everything it started and occupancy never grows. Must stay quiet.
+// drains everything it started. Nothing to guard.
+// CHECK-LABEL: @pops_through
+// CHECK-NOT:   aiex.npu.maskpoll
 aie.device(npu1) {
   %tile_0_0 = aie.tile(0, 0)
   aie.runtime_sequence @pops_through(%arg0: memref<1024xi32>, %n: index) {
@@ -77,9 +89,10 @@ aie.device(npu1) {
 
 // -----
 
-// A body that pushes more than the whole queue holds overflows inside its very
-// first iteration, so the reported iteration is 1 and not the zero a
-// depth-over-delta division would give.
+// A body that pushes more than the whole queue holds fills it inside its very
+// first iteration, so every push from the fifth on is guarded.
+// CHECK-LABEL: @floods
+// CHECK-COUNT-1: aiex.npu.maskpoll
 aie.device(npu1) {
   %tile_0_0 = aie.tile(0, 0)
   aie.runtime_sequence @floods(%arg0: memref<2048xi32>, %n: index) {
@@ -110,7 +123,7 @@ aie.device(npu1) {
         aie.dma_bd(%arg0 : memref<2048xi32> offset = 1024 len = 256)
         aie.end
       }
-      // expected-warning@+1 {{on iteration 1 this push lands on a full queue}}
+      // expected-warning@+1 {{whose task queue is only 4 deep}}
       aiex.dma_start_task(%t4)
     }
   }

@@ -1300,7 +1300,9 @@ getNpuDmaLoweringPipeline(mlir::MLIRContext *ctx) {
   // A runtime-bound scf.for that survived unroll takes the dynamic BD pool path
   // (rewritten to pool pop/push, ids drawn at runtime); the static allocator
   // below skips it. Straight-line sequences fall through unchanged.
-  dpm.addPass(X::createAIELowerDynamicBDPoolPass());
+  X::AIELowerDynamicBDPoolOptions poolOpts;
+  poolOpts.enforceQueueDepth = !cli::noEnforceDmaQueueDepth;
+  dpm.addPass(X::createAIELowerDynamicBDPoolPass(poolOpts));
   dpm.addPass(mlir::createCanonicalizerPass());
   X::AIEAssignRuntimeSequenceBDIDsOptions bdIdOpts;
   bdIdOpts.enforceQueueDepth = !cli::noEnforceDmaQueueDepth;
