@@ -336,9 +336,8 @@ class XRTHostRuntime(HostRuntime):
         insts_bytes = 0
         try:
             if dispatch_insts is not None:
-                # DispatchTime[T] design: fresh words every call, but into a
-                # reused buffer -- never kernel_handle.insts_bo, which belongs
-                # to the static stream.
+                # New words each time, but into one recycled buffer. Never
+                # kernel_handle.insts_bo, which holds the compiled-in words.
                 insts_bytes = dispatch_insts.nbytes
                 insts_bo = self._dispatch_insts_bo(
                     dispatch_insts, kernel_handle.kernel.group_id(1)
