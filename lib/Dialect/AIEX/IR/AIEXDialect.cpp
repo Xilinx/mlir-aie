@@ -1293,20 +1293,17 @@ LogicalResult AIEX::DMAConfigureTaskOp::verify() {
   return result;
 }
 
-// A shim transfer feeds an objectFIFO whose far end receives whole objects: the
-// receiving buffer descriptor is sized by the object type, so a transfer that
-// ends mid-object leaves it short, its lock unreleased, and the consumer's
-// acquire blocked. The runtime BD is sized in the host buffer's element type
-// and the fifo's object type reaches this side only through the allocation's
-// elem_type, so this is where the two extents meet.
+// A shim transfer feeds an objectFIFO whose far end receives whole objects:
+// a transfer ending mid-object leaves the receiving BD short, its lock
+// unreleased, and the consumer's acquire blocked. The runtime BD is sized
+// in the host buffer's element type; the fifo's object type reaches this
+// side only via the allocation's elem_type, where the two extents meet.
 //
-// Checked only when both are static: a runtime length or repeat count has no
-// constant to compare, and an allocation with no elem_type (a control overlay
-// channel, a join or split, an endpoint that pads into its object) records
-// nothing to compare against. A channel whose DMA (de)compresses says so with
-// stream_len_decoupled, and is exempt: its wire bytes and its object bytes
-// differ by a data-dependent ratio, and the enable is a BD register write no
-// pass can see.
+// Checked only when both are static: a runtime length/repeat, or a channel
+// with no elem_type (control overlay, join/split, a padding endpoint), has
+// nothing to compare. stream_len_decoupled exempts a channel whose DMA
+// (de)compresses -- wire and object bytes differ by a data-dependent ratio
+// no pass can see.
 static LogicalResult
 verifyTaskCoversWholeObjects(Operation *task, AIE::ShimDMAAllocationOp alloc,
                              mlir::OpFoldResult repeat, Region &body) {
