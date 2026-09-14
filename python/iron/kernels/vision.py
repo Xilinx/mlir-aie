@@ -59,19 +59,6 @@ def _bitwise_kernel(
     )
 
 
-# The vector path in rgba2hue.cc divides through a 16-bit reciprocal LUT and
-# rounds a Q7.9 accumulator; the scalar path (the reference) divides exactly.
-# Two LSB and a 2 % budget for the LUT's worst divisors; measured on device at
-# ~0.2% mismatch, well inside budget. See rgba2hue_ref for the wrap-around at
-# hue 0.
-_HUE_TOLERANCE = Tolerance.lsb(
-    2,
-    max_mismatch_frac=0.02,
-    note="reference is the exact-division scalar path; vector path uses a 16-bit "
-    "reciprocal LUT (measured on device: ~0.2% mismatch)",
-)
-
-
 def rgba2hue(line_width: int = 1920, use_chess: bool = False) -> ExternalFunction:
     """Convert a line of RGBA pixels to hue values (full-range, 0..255)."""
     return _color_convert_kernel(
@@ -85,7 +72,7 @@ def rgba2hue(line_width: int = 1920, use_chess: bool = False) -> ExternalFunctio
             reference=rgba2hue_ref,
             acc_dtype=np.int32,
             reduction=1,
-            tolerance=_HUE_TOLERANCE,
+            tolerance=Tolerance.exact(note="integer reciprocal, no rounding slack"),
         ),
     )
 
@@ -286,35 +273,36 @@ def rgba2gray_ref(rgba):
     return np.clip(acc >> 15, 0, 255).astype(np.uint8)
 
 
-def _c_div(num, den):
-    """C integer division (truncates toward zero) for int64 arrays; den > 0."""
-    return np.sign(num) * (np.abs(num) // den)
-
-
 def rgba2hue_ref(rgba):
     """Numpy reference for [`rgba2hue`][iron.kernels.vision.rgba2hue]: full-range hue.
 
-    The scalar path of ``rgba2hue.cc``: with ``d = max - min`` of R, G, B,
-    ``h = 85 (G - B) / d`` when R is the max, ``170 + 85 (B - R) / d`` when G
-    is, ``340 + 85 (R - G) / d`` otherwise (C integer division), then
-    ``(h + 1) >> 1`` and a cast to ``uint8`` that wraps: a negative hue
-    (R max, G < B) comes out as ``256 + h``, which is the right circular
-    value. Grey pixels (``d == 0``) are hue 0. Ties go to R, then G, as the
-    kernel's ``max == r`` / ``max == g`` tests do.
+    Both paths of ``rgba2hue.cc`` multiply by a Q7.9 reciprocal rather than
+    dividing, so with ``d = max - min`` of R, G, B and ``inv = 85 * 512 / d``
+    the hue is ``(offset * 512 + c * inv) >> 10`` for whichever channel holds
+    the max: ``c = G - B`` at offset 1, ``B - R`` at 171, ``R - G`` at 341.
+    Each offset carries the ``+ 1`` that rounds the final halving, so there is
+    one rounding step rather than two. The cast to ``uint8`` wraps, so a
+    negative hue (R max, G < B) comes out as ``256 + h`` -- the right circular
+    value. Grey pixels (``d == 0``) are hue 0, and a max held by both G and R
+    goes to G, as the kernel's select order does. ``inv`` truncates, which
+    leaves hue up to one LSB below the exact value.
     """
     rgba = np.asarray(rgba, dtype=np.uint8)
     px = rgba.reshape(*rgba.shape[:-1], -1, 4).astype(np.int64)
     r, g, b = px[..., 0], px[..., 1], px[..., 2]
     mx = np.maximum(np.maximum(r, g), b)
-    mn = np.minimum(np.minimum(r, g), b)
-    d = np.where(mx == mn, 1, mx - mn)  # avoid /0; masked to 0 below
-    h_r = _c_div(85 * (g - b), d)
-    h_g = 170 + _c_div(85 * (b - r), d)
-    h_b = 340 + _c_div(85 * (r - g), d)
-    h = np.where(mx == r, h_r, np.where(mx == g, h_g, h_b))
-    h = np.where((mx == 0) | (mx == mn), 0, h)
-    h = np.right_shift(h + 1, 1)  # arithmetic shift, as in C
-    return (h & 0xFF).astype(np.uint8)
+    d = mx - np.minimum(np.minimum(r, g), b)
+    inv = (85 * 512) // np.where(d == 0, 1, d)  # avoid /0; masked to 0 below
+    h = np.where(
+        mx == g,
+        (171 * 512 + (b - r) * inv) >> 10,
+        np.where(
+            mx == r,
+            (1 * 512 + (g - b) * inv) >> 10,
+            (341 * 512 + (r - g) * inv) >> 10,
+        ),
+    )
+    return (np.where(d == 0, 0, h) & 0xFF).astype(np.uint8)
 
 
 def threshold_ref(x, thresh, maxval, ttype):

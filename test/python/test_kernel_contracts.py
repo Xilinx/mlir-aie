@@ -350,20 +350,46 @@ def test_harness_refuses_a_kernel_without_a_contract():
         kh.design(kernels.bn_conv2dk1_partial_put_i8, calls=1)
 
 
-def test_rgba2hue_reference_matches_the_scalar_path():
+def test_rgba2hue_reference_matches_the_kernel():
     def px(r, g, b):
         return np.array([r, g, b, 0], np.uint8)
 
     ref = kernels.rgba2hue_ref
     assert ref(px(0, 0, 0)).tolist() == [0]  # grey: hue 0
     assert ref(px(255, 0, 0)).tolist() == [0]  # red
-    assert ref(px(0, 255, 0)).tolist() == [85]  # green: (170 + 1) >> 1
-    assert ref(px(0, 0, 255)).tolist() == [170]  # blue: (340 + 1) >> 1
+    assert ref(px(0, 255, 0)).tolist() == [85]  # green: 171 * 512 >> 10
+    assert ref(px(0, 0, 255)).tolist() == [170]  # blue: 341 * 512 >> 10
     # R max with G < B: negative hue wraps below 256, as the uint8 cast does.
     assert ref(px(255, 0, 255)).tolist() == [(256 - 42) & 0xFF]
-    # Two pixels in one line.
-    # yellow: R wins the tie, h = 85 * 255 / 255 = 85 -> (85 + 1) >> 1 = 43.
-    assert ref(np.concatenate([px(255, 255, 0), px(0, 255, 255)])).tolist() == [43, 128]
+    # Two pixels in one line. Yellow: G takes the tie with R, as the kernel's
+    # select order does, and both channels give 43 here. Cyan comes out 127
+    # rather than the exact 128 because the reciprocal truncates.
+    assert ref(np.concatenate([px(255, 255, 0), px(0, 255, 255)])).tolist() == [43, 127]
+
+
+def test_rgba2hue_reference_is_within_one_lsb_of_exact_hue():
+    """The reciprocal is truncated, so bound the error that can introduce.
+
+    ``rgba2hue_ref`` is bit-exact against both paths of the kernel by
+    construction; this pins the other half -- that the arithmetic the two of
+    them share stays within one LSB of the exact hue, over every RGB triple.
+    """
+    r, g, b = (
+        x.ravel().astype(np.int64)
+        for x in np.meshgrid(*[np.arange(256)] * 3, indexing="ij")
+    )
+    rgba = np.stack([r, g, b, np.zeros_like(r)], -1).astype(np.uint8).ravel()
+    mx = np.maximum(np.maximum(r, g), b)
+    d = mx - np.minimum(np.minimum(r, g), b)
+    ds = np.where(d == 0, 1, d)
+    num = np.where(
+        mx == g,
+        171 * ds + 85 * (b - r),
+        np.where(mx == r, ds + 85 * (g - b), 341 * ds + 85 * (r - g)),
+    )
+    exact = np.where(d == 0, 0, num // (2 * ds)) & 0xFF
+    err = ((kernels.rgba2hue_ref(rgba).astype(np.int64) - exact + 128) & 0xFF) - 128
+    assert np.abs(err).max() <= 1
 
 
 def test_conv_references_follow_the_kernel_layouts():
