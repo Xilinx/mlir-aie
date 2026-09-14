@@ -514,19 +514,39 @@ class HRXHostRuntime(HostRuntime):
 class CachedHRXRuntime(HRXHostRuntime):
     """HRX runtime that caches loaded executables (analogue of CachedXRTRuntime).
 
-    Unlike the uncached :class:`HRXHostRuntime`, this reuses an amdxdna
-    executable across :meth:`load` calls for the same artifacts, evicting the
-    least-recently-used entry once ``HRX_EXE_CACHE_SIZE`` (default 32) is
-    exceeded. It also registers an ``atexit`` cleanup (as ``CachedXRTRuntime``
-    does) so cached executables are released on interpreter shutdown.
+    Unlike the uncached ``HRXHostRuntime``, this reuses an amdxdna
+    executable across ``load()`` calls for the same artifacts, evicting the
+    least-recently-used entry once ``HRX_EXE_CACHE_SIZE`` is exceeded. It also
+    registers an ``atexit`` cleanup (as ``CachedXRTRuntime`` does) so cached
+    executables are released on interpreter shutdown.
     """
+
+    # Every cached executable holds a live amdxdna hardware context, so this
+    # cache is bounded by the driver's per-device hwctx_limit, not by memory --
+    # the same limit CachedXRTRuntime.NPU_CONTEXT_CACHE_SIZE mirrors. Going over
+    # it makes hrx_amdxdna_executable_create fail with EINVAL. As there, a box
+    # running several of these processes at once should set HRX_EXE_CACHE_SIZE
+    # to a per-process share instead.
+    EXE_CACHE_SIZE = {
+        "npu1": 6,
+        "npu2": 16,
+    }
+    _DEFAULT_EXE_CACHE_SIZE = 6
 
     def __init__(self):
         super().__init__()
         # Executable cache keyed by (xclbin_path, xclbin_mtime, insts_path,
         # insts_mtime, kernel_name).
         self._exe_cache = OrderedDict()
-        self._cache_size = int(os.environ.get("HRX_EXE_CACHE_SIZE", "32"))
+        env_cache_size = os.environ.get("HRX_EXE_CACHE_SIZE")
+        if env_cache_size is not None:
+            self._cache_size = int(env_cache_size)
+        else:
+            # An unrecognized device gen takes the smaller limit: overshooting
+            # fails the dispatch, undershooting only costs a rebuild.
+            self._cache_size = self.EXE_CACHE_SIZE.get(
+                self._device_gen, self._DEFAULT_EXE_CACHE_SIZE
+            )
         atexit.register(self.cleanup)
 
     def load(self, npu_kernel, **kwargs) -> HRXKernelHandle:

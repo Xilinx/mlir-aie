@@ -21,10 +21,22 @@ import pytest
 from aie.utils.compile.jit._dispatch_bridge import DispatchBridge
 from aie.utils.compile.jit._dispatch_compile import (
     _DYNAMIC_LOWERING_PASSES,
+    SHARED_LIB_SUFFIX,
     DispatchCompileError,
     _check_built_abi,
+    host_shared_lib_cmd,
 )
 from aie.utils.hostruntime.hostruntime import HostRuntimeError
+
+# Mirrors TxnEncoding.h, which the generated source gets the real macro from.
+# A Windows DLL exports nothing without it, so every fixture is prefixed with it.
+_EXPORT_MACRO = r"""
+#ifdef _WIN32
+#define AIE_DISPATCH_EXPORT __declspec(dllexport)
+#else
+#define AIE_DISPATCH_EXPORT
+#endif
+"""
 
 # One fixture .cpp exercising every path DispatchBridge needs to handle:
 #   normal value       -> exact-size result via the thread-local buffer
@@ -38,7 +50,7 @@ _FIXTURE_BODY = r"""
 
 thread_local static std::vector<uint32_t> g_result;
 
-extern "C" int64_t dispatch_generate(int32_t scale, size_t n_tiles,
+extern "C" AIE_DISPATCH_EXPORT int64_t dispatch_generate(int32_t scale, size_t n_tiles,
                                       uint32_t **out_ptr) {
   if (scale == 0) return -2;
   g_result.assign(n_tiles, 0);
@@ -48,35 +60,23 @@ extern "C" int64_t dispatch_generate(int32_t scale, size_t n_tiles,
 }
 """
 
-_FIXTURE_ABI = 'extern "C" const char *dispatch_abi() { return "int32_t,size_t"; }\n'
+_FIXTURE_ABI = (
+    'extern "C" AIE_DISPATCH_EXPORT const char *dispatch_abi() '
+    '{ return "int32_t,size_t"; }\n'
+)
 
 
 def _compile_fixture(tmp_dir, source, name):
-    """Compile *source* into ``<name>.so``; skip the module if no host compiler."""
-    from aie.utils import config
-
+    """Compile *source* into a shared library; skip the module if no host compiler."""
+    src_path = tmp_dir / f"{name}.cpp"
+    src_path.write_text(_EXPORT_MACRO + source)
+    so_path = tmp_dir / f"{name}{SHARED_LIB_SUFFIX}"
     try:
-        cxx = config.host_cxx_path()
+        cmd = host_shared_lib_cmd(src_path, so_path, opt="-O0")
     except RuntimeError:
         pytest.skip("no host C++ compiler available")
 
-    src_path = tmp_dir / f"{name}.cpp"
-    src_path.write_text(source)
-    so_path = tmp_dir / f"{name}.so"
-    result = subprocess.run(
-        [
-            cxx,
-            "-shared",
-            "-fPIC",
-            "-O0",
-            "-std=c++17",
-            str(src_path),
-            "-o",
-            str(so_path),
-        ],
-        capture_output=True,
-        text=True,
-    )
+    result = subprocess.run(cmd, capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
     return so_path
 
@@ -140,7 +140,10 @@ def test_param_count_mismatch_with_so_rejected(fixture_so):
 def bogus_ctype_so(tmp_path_factory):
     """Build a .so naming a C type no ctypes type corresponds to."""
     tmp_dir = tmp_path_factory.mktemp("dispatch_bridge_bogus")
-    src = 'extern "C" const char *dispatch_abi() { return "not_a_real_ctype"; }\n'
+    src = (
+        'extern "C" AIE_DISPATCH_EXPORT const char *dispatch_abi() '
+        '{ return "not_a_real_ctype"; }\n'
+    )
     return _compile_fixture(tmp_dir, src, "bogus")
 
 
@@ -192,7 +195,10 @@ def test_out_of_range_value_rejected(fixture_so, value):
 def transposed_so(tmp_path_factory):
     """Build a .so reporting (int64_t, int32_t); only dispatch_abi() is needed."""
     tmp_dir = tmp_path_factory.mktemp("dispatch_bridge_transposed")
-    src = 'extern "C" const char *dispatch_abi() { return "int64_t,int32_t"; }\n'
+    src = (
+        'extern "C" AIE_DISPATCH_EXPORT const char *dispatch_abi() '
+        '{ return "int64_t,int32_t"; }\n'
+    )
     return _compile_fixture(tmp_dir, src, "transposed")
 
 

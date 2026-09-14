@@ -20,6 +20,17 @@
 #include <cstdint>
 #include <vector>
 
+// Visibility for the generated dispatch bridge's entry points, which Python
+// resolves out of the built shared library by name via ctypes. ELF exports
+// every extern symbol unless told otherwise, but MSVC-target linking exports
+// nothing without an explicit marker, so a Windows DLL built from the
+// generated source would load and then fail to resolve dispatch_abi.
+#ifdef _WIN32
+#define AIE_DISPATCH_EXPORT __declspec(dllexport)
+#else
+#define AIE_DISPATCH_EXPORT
+#endif
+
 namespace aie_runtime {
 
 // Transaction opcodes for the firmware TXN format the compiler currently

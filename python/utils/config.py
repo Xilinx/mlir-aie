@@ -103,6 +103,11 @@ def host_cxx_path():
 
     Resolution order: the CXX environment variable, then ``c++``/``g++``/
     ``clang++`` on PATH.
+
+    ``clang++`` is last because lit prepends Peano's ``bin`` to PATH (see
+    test/lit.cfg.py), so on a platform with no ``c++``/``g++`` -- Windows --
+    a bare PATH search finds Peano's driver. It still targets the host by
+    default, so it works, but it is not what this function promises.
     """
     env_cxx = os.environ.get("CXX")
     if env_cxx:
