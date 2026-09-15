@@ -130,7 +130,8 @@ struct AIECreateCoresPass
           BufferOp buf = BufferOp::create(
               builder, callOp.getLoc(), t, tile, /*sym_name*/ nullptr,
               /*address*/ nullptr, /*initial_value*/ nullptr,
-              /*mem_bank*/ nullptr, /*aligned*/ nullptr);
+              /*mem_bank*/ nullptr, /*aligned*/ nullptr,
+              /*alloc_group*/ nullptr);
           buffers[callOperands[i]] = buf;
           operand.replaceAllUsesWith(buf.getResult());
         }
