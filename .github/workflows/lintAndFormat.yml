@@ -173,7 +173,7 @@ jobs:
           pyright
 
       - name: Lint Python (ruff)
-        run: ruff check
+        run: pre-commit run ruff-check --hook-stage pre-push --all-files --color never
 
       - name: Lint C/C++ (clang-tidy)
         run: |
@@ -344,7 +344,7 @@ jobs:
       - name: Install clang-format
         uses: aminya/setup-cpp@8170d66c458f4a045220b7b0966c10940bb2a15d  # v1.8.1
         with:
-          clangformat: 20.1.0
+          clangformat: 23.1.0
 
       - name: Setup Python env
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
@@ -447,6 +447,9 @@ jobs:
 
       - name: Run the comment-slop unit tests
         run: python utils/test_check_comment_slop.py -v
+
+      - name: Run the lint dependency sync unit tests
+        run: python utils/test_lint_dependency_sync.py -v
 
       - name: Install pre-commit
         run: python -m pip install --require-hashes -r python/requirements_dev.lock

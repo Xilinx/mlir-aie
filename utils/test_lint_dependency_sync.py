@@ -1,0 +1,52 @@
+#!/usr/bin/env python3
+
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+"""Regression tests for keeping CI lint tooling aligned with pre-commit."""
+
+import re
+import unittest
+from pathlib import Path
+
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+PRE_COMMIT_CONFIG = REPO_ROOT / ".pre-commit-config.yaml"
+LINT_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "lintAndFormat.yml"
+
+
+def require(pattern, text, msg):
+    match = re.search(pattern, text, re.MULTILINE)
+    if not match:
+        raise AssertionError(msg)
+    return match
+
+
+class LintDependencySyncTests(unittest.TestCase):
+    def setUp(self):
+        self.pre_commit = PRE_COMMIT_CONFIG.read_text()
+        self.workflow = LINT_WORKFLOW.read_text()
+
+    def test_ci_ruff_lint_runs_the_pre_commit_hook(self):
+        require(
+            r"^\s*- name: Lint Python \(ruff\)\n\s+run: pre-commit run ruff-check --hook-stage pre-push --all-files --color never$",
+            self.workflow,
+            "lintAndFormat.yml should lint Python via the pre-commit ruff hook",
+        )
+
+    def test_ci_clang_format_version_matches_pre_commit(self):
+        pre_commit_version = require(
+            r"repo: https://github\.com/pre-commit/mirrors-clang-format\n\s+rev: .*?# frozen: v([0-9][^\s]*)",
+            self.pre_commit,
+            ".pre-commit-config.yaml should pin clang-format with a frozen version comment",
+        ).group(1)
+        workflow_version = require(
+            r"^\s+clangformat: ([0-9][^\s]*)$",
+            self.workflow,
+            "lintAndFormat.yml should pin the CI clang-format version",
+        ).group(1)
+        self.assertEqual(workflow_version, pre_commit_version)
+
+
+if __name__ == "__main__":
+    unittest.main()
