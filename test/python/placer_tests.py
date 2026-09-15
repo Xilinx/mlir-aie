@@ -322,3 +322,26 @@ def compute_three_in_col_lim(module):
     )
     module = Program(NPU2(), rt, workers=workers).resolve_program()
     return module
+
+
+# CHECK-LABEL: TEST: worker_tile_control_packet
+# CHECK: aie.logical_tile<CoreTile>({{.*}}) {controller_id = #aie.packet_info<pkt_type = 2, pkt_id = 3>}
+@construct_and_print_module
+def worker_tile_control_packet(module):
+    n = 1024
+    n_ty = np.ndarray[(n,), np.dtype[np.int32]]
+
+    of_in = ObjectFifo(n_ty, name="in")
+
+    def core_fn(of):
+        pass
+
+    my_tile = Tile(packet_type=2, packet_id=3)
+    my_worker = Worker(core_fn, [of_in.cons()], tile=my_tile)
+
+    def sequence(A, in_):
+        in_.fill(A)
+
+    rt = Runtime(sequence, [n_ty, of_in.prod()])
+    module = Program(NPU2(), rt, workers=[my_worker]).resolve_program()
+    return module

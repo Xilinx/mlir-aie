@@ -56,6 +56,17 @@ StackRequirementResult
 computeStackRequirement(llvm::StringRef elfPath,
                         const llvm::StringMap<int64_t> &overrides);
 
+// Sums the allocated .data, .rodata and .bss of the linked core ELF at
+// `elfPath`. The link runs --gc-sections, so the ELF holds the sections the
+// core reaches. Returns nothing when the file does not parse as an object.
+std::optional<int64_t> measureDataSectionBytes(llvm::StringRef elfPath);
+
+// Bytes by which a section overran its MEMORY region, from the linker's
+// "overflowed by N bytes" report. A failed link writes no ELF, so this report
+// is the only account of what the core needed. Returns nothing when the log
+// carries no such report.
+std::optional<int64_t> parseLinkOverflowBytes(llvm::StringRef log);
+
 } // namespace xilinx::aiecc
 
 #endif // AIECC_STACKSIZEANALYSIS_H

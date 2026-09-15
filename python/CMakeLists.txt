@@ -26,6 +26,7 @@ declare_mlir_python_sources(AIEPythonSources.Util
   ADD_TO_PARENT AIEPythonSources
   SOURCES
     __init__.py
+    doctor.py
 )
 
 declare_mlir_python_sources(AIEPythonSources.Tools
@@ -41,6 +42,7 @@ declare_mlir_python_sources(AIEPythonSources.Utils
     utils/_log_setup.py
     utils/benchmark.py
     utils/config.py
+    utils/probe.py
     utils/tensor_factory.py
     utils/test.py
     utils/ml.py

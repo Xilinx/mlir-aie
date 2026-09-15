@@ -673,7 +673,13 @@ def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
       OptionalAttr<ConfinedAttr<I64Attr, [IntMinValue<0>,
                                           IntMaxValue<15>]>>:$axcache,
       // if set, the aiex.scratchpad_parameter value added to the BD's address
-      // as an offset
+      // as an offset. The value is an ELEMENT count, scaled by the buffer's
+      // element size at lowering. The firmware masks the address register
+      // with 0xFFFFFFFC, so on an element type narrower than 4 bytes a value
+      // that is not a multiple of 4 / gcd(4, element_bytes) elements is
+      // rounded DOWN to the 4-byte boundary below, silently. The static
+      // offset is rejected in the same situation; this one cannot be, so it
+      // only warns.
       OptionalAttr<FlatSymbolRefAttr>:$offset_parameter,
       // Set by --aie-lower-scratchpad-parameters from $offset_parameter: the
       // scratchpad state-table index whose value is used as the BD address
@@ -1039,7 +1045,7 @@ def AIE_NpuAddressPatchOp
     : AIEX_Op<"npu.address_patch", [AttrSizedOperandSegments]> {
   let summary = "address patch operator";
   let arguments = (ins UI32Attr:$addr, Optional<I32>:$addr_val,
-      OptionalAttr<I32Attr>:$arg_idx, I32:$arg_plus,
+      OptionalAttr<I32Attr>:$arg_idx, AnyTypeOf<[I32, I64]>:$arg_plus,
       Optional<AnyMemRef>:$buffer);
   let results = (outs );
   let assemblyFormat = [{
@@ -1062,9 +1068,10 @@ def AIE_NpuAddressPatchOp
     precedence. Only the EmitC (C++ TXN) target supports a runtime `addr_val`;
     the static binary target requires the constant `addr`.
 
-    `arg_plus` is an SSA value; use arith.constant for
+    `arg_plus` is an SSA value of type `i32` or `i64`; use arith.constant for
     a compile-time-known offset or pass a runtime sequence value for a
-    runtime-parameterized buffer offset.
+    runtime-parameterized buffer offset. It reaches the device as a 64-bit
+    field, so an offset past 4 GiB needs an `i64` constant.
 
     `arg_idx` or `buffer` specify which runtime sequence argument holds the 
     host buffer whose address you want to patch. You must set exactly one of

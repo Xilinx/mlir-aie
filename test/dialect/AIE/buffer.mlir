@@ -14,9 +14,17 @@ module {
     %t32 = aie.tile(3, 2)
     %t34 = aie.tile(3, 4)
 
-    // CHECK: memref.global "public" @buf44 : memref<3x2xi32> = dense<{{\[}}[0, 1], [2, 3], [4, 5]]>
-    // CHECK: memref.global "public" @buf42 : memref<2x3xi32> = dense<{{\[}}[0, 1, 2], [3, 4, 5]]>
-    // CHECK: memref.global "public" @buf33 : memref<2x2xi32> = dense<{{\[}}[0, 1], [2, 3]]>
+    // A buffer lowers to a declaration, never a definition: it lives at an
+    // address the allocator chose and the linker supplies, and its
+    // `initial_value` is written by whoever configures the device. Emitting
+    // the initializer here would put the bytes in the core's own data section
+    // instead, at an address nothing reads.
+    // CHECK: memref.global "public" @buf44 : memref<3x2xi32>
+    // CHECK-NOT: dense
+    // CHECK: memref.global "public" @buf42 : memref<2x3xi32>
+    // CHECK-NOT: dense
+    // CHECK: memref.global "public" @buf33 : memref<2x2xi32>
+    // CHECK-NOT: dense
     %buf33 = aie.buffer(%t23) { sym_name = "buf33" } : memref<2x2xi32> = dense<[[0, 1], [2, 3]]>
     %buf42 = aie.buffer(%t32) { sym_name = "buf42" } : memref<2x3xi32> = dense<[[0, 1, 2], [3, 4, 5]]>
     %buf44 = aie.buffer(%t34) { sym_name = "buf44" } : memref<3x2xi32> = dense<[[0, 1], [2, 3], [4, 5]]>

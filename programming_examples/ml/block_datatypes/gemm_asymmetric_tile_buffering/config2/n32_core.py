@@ -8,7 +8,7 @@
 
 All-bfp16 variant of the config1 design: A, B, and C are
 ``v8bfp16ebs8``; each AIE2P core's L1 A-tile is (m//DIV, k//8) with
-asymmetry ratio DIV=6. Strix-only; chess-built kernel.
+asymmetry ratio DIV=6. Strix-only; Peano-built kernel.
 """
 
 import argparse
@@ -42,7 +42,7 @@ _AIE_KERNELS_INC = Path(__file__).resolve().parents[5] / "aie_kernels"
 DIV = 6
 
 
-@iron.jit(aiecc_flags=["--dynamic-objFifos", "--alloc-scheme=basic-sequential"])
+@iron.jit(aiecc_flags=["--dynamic-objFifos"])
 def n32_core_gemm(
     A: In,
     B: In,
@@ -67,9 +67,6 @@ def n32_core_gemm(
     C_l1_ty = np.ndarray[(m, n // 8), np.dtype[v8bfp16ebs8]]
 
     kernel_flags = [
-        f"-DDIM_M={m}",
-        f"-DDIM_K={k}",
-        f"-DDIM_N={n}",
         f"-I{_AIE_KERNELS_INC}",
     ]
 
@@ -78,14 +75,22 @@ def n32_core_gemm(
         source_file=str(_KERNEL_SRC),
         arg_types=[C_l1_ty],
         compile_flags=kernel_flags + ["-DZERO_ONLY"],
-        use_chess=True,
     )
+    # The flat pipelined block loop in the matmul kernel has ResMII=68, which
+    # exceeds the post-RA pipeliner's default max II (60); raise the cap and
+    # the retry budget for this TU.
     matmul_kernel = ExternalFunction(
         "matmul_vectorized_bfp16",
         source_file=str(_KERNEL_SRC),
         arg_types=[A_l1_ty, B_l1_ty, C_l1_ty],
-        compile_flags=kernel_flags + ["-DMATMUL_ONLY"],
-        use_chess=True,
+        compile_flags=kernel_flags
+        + [
+            "-DMATMUL_ONLY",
+            "-mllvm",
+            "-aie-postpipeliner-maxii=120",
+            "-mllvm",
+            "-aie-postpipeliner-maxtry-ii=50",
+        ],
     )
 
     A_l3l2_fifos: list[ObjectFifo] = []
@@ -149,7 +154,7 @@ def n32_core_gemm(
                 zero_kernel,
                 matmul_kernel,
             ],
-            stack_size=0xD00,
+            stack_size=0x400,
         ),
     )
 

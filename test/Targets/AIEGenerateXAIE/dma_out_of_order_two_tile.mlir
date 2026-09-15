@@ -9,7 +9,7 @@
 // (both channel 0) are emitted into one libxaie function body. The per-channel
 // start-queue locals must be named uniquely per tile+channel.
 
-// RUN: aie-opt --aie-assign-bd-ids --aie-assign-buffer-addresses %s | aie-translate --aie-generate-xaie | FileCheck %s
+// RUN: aie-opt --aie-assign-bd-ids --aie-prepare-buffers --aie-assign-buffer-addresses %s | aie-translate --aie-generate-xaie | FileCheck %s
 
 // CHECK-DAG: XAie_DmaChannelDesc ooo_desc_0_2_0;
 // CHECK-DAG: XAie_DmaChannelDesc ooo_desc_1_2_0;

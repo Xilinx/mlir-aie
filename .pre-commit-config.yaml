@@ -275,3 +275,14 @@ repos:
         )$
       pass_filenames: true
       stages: [pre-push]
+
+    # Flags AI comment slop: the same concept re-explained at 3+ sites, oversized
+    # comment blocks, and high comment density. Reads the diff, not whole files, so
+    # it never complains about a comment the contributor did not write.
+    - id: comment-slop
+      name: Check for AI comment slop (repeated explanations, oversized blocks)
+      language: python
+      entry: python utils/check_comment_slop.py
+      pass_filenames: false
+      require_serial: true
+      types_or: [c, c++, python]
