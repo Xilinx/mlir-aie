@@ -1974,12 +1974,18 @@ LogicalResult verifyNoDuplicateFlows(DeviceOp device) {
 }
 
 // Rejects two aie.packet_flow ops that carry the same ID between the same set
-// of sources and destinations. Declaring the flow twice makes the routing
-// problem look more congested than it is and gives the two copies conflicting
-// keep_pkt_header/priority_route settings when their attributes disagree.
+// of sources and destinations under the same mask. Declaring the flow twice
+// makes the routing problem look more congested than it is and gives the two
+// copies conflicting keep_pkt_header/priority_route settings when their
+// attributes disagree.
+//
+// The mask belongs in the key because it is half of what a flow claims: an ID
+// under two masks names two sets of packets, so the two flows carry different
+// traffic. A flow without the attribute claims its ID alone, which is what the
+// widest mask says, so both spellings key alike.
 LogicalResult verifyNoDuplicatePacketFlows(DeviceOp device) {
   using PacketFlowKey =
-      std::tuple<int, std::vector<PortKey>, std::vector<PortKey>>;
+      std::tuple<int, int, std::vector<PortKey>, std::vector<PortKey>>;
   std::map<PacketFlowKey, PacketFlowOp> packetFlowSeen;
   WalkResult result = device.walk([&](PacketFlowOp packetFlow) {
     Region &body = packetFlow.getPorts();
@@ -2011,12 +2017,17 @@ LogicalResult verifyNoDuplicatePacketFlows(DeviceOp device) {
       return WalkResult::advance();
     llvm::sort(sources);
     llvm::sort(dests);
+    int idBits =
+        llvm::Log2_32_Ceil(device.getTargetModel().getMaxPacketId() + 1);
+    int mask = packetFlow.getMask().value_or((1 << idBits) - 1);
     auto [it, inserted] = packetFlowSeen.try_emplace(
-        {packetFlow.IDInt(), std::move(sources), std::move(dests)}, packetFlow);
+        {packetFlow.IDInt(), mask, std::move(sources), std::move(dests)},
+        packetFlow);
     if (!inserted) {
       InFlightDiagnostic diag =
           packetFlow.emitOpError()
           << "duplicates an earlier packet flow; ID " << packetFlow.IDInt()
+          << " under mask 0x" << llvm::utohexstr(mask)
           << " is already declared between the same sources and destinations";
       diag.attachNote(it->second.getLoc()) << "the other packet flow is here";
       return WalkResult::interrupt();
@@ -2545,6 +2556,16 @@ LogicalResult PacketFlowOp::verify() {
     return emitOpError("must have at least one aie.packet_source");
   if (numDests < 1)
     return emitOpError("must have at least one aie.packet_dest");
+
+  // A slave port accepts a packet when `incoming & mask == ID`, so a bit set
+  // in ID and clear in the mask rejects every packet.
+  if (std::optional<uint8_t> mask = getMask()) {
+    uint8_t id = getID();
+    if ((id & *mask) != id)
+      return emitOpError("has ID 0x")
+             << llvm::utohexstr(id) << " outside mask 0x"
+             << llvm::utohexstr(*mask) << ", which no packet can match";
+  }
 
   return success();
 }

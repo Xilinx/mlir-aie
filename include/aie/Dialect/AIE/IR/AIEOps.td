@@ -826,6 +826,17 @@ def AIE_PacketFlowOp: AIE_Op<"packet_flow", [SingleBlockImplicitTerminator<"EndO
     so that they always get allocated with the same master, slave
     ports, arbiters and master selects (msel).
 
+    The optional attribute mask, written after the ID in the parentheses,
+    states the packet-rule mask of the flow. A slave port accepts a packet
+    when `incoming & mask == ID`, so the flow claims every ID that agrees
+    with ID on the bits the mask selects. Routing derives a mask from the
+    IDs it knows when the attribute is absent. ID must have no bit outside
+    the mask, or no packet can match.
+
+    A design may compute a packet header at run time, so which IDs reach a
+    port is not decidable here. State the mask to claim a set of IDs that
+    routing cannot see.
+
     Example:
     ```
       %01 = aie.tile(0, 1)
@@ -833,18 +844,34 @@ def AIE_PacketFlowOp: AIE_Op<"packet_flow", [SingleBlockImplicitTerminator<"EndO
         aie.packet_source<%01, "Core" : 0>
         aie.packet_dest<%01, "Core" : 0>
       }
+      // Claims 0x10 through 0x13: the mask ignores the low two bits.
+      aie.packet_flow(0x10 mask 0x1c) {
+        aie.packet_source<%01, "Core" : 0>
+        aie.packet_dest<%01, "Core" : 0>
+      }
     ```
   }];
 
-  let arguments = (
-    ins AIEI8Attr:$ID,
-        OptionalAttr<BoolAttr>:$keep_pkt_header,
-        OptionalAttr<BoolAttr>:$priority_route
-  );
+  let arguments = (ins AIEI8Attr:$ID, OptionalAttr<AIEI8Attr>:$mask,
+      OptionalAttr<BoolAttr>:$keep_pkt_header,
+      OptionalAttr<BoolAttr>:$priority_route);
   let regions = (region AnyRegion:$ports);
 
-  let assemblyFormat = [{ `(` $ID `)` regions attr-dict }];
+  let assemblyFormat = [{ `(` $ID (`mask` $mask^)? `)` regions attr-dict }];
   let hasVerifier = 1;
+
+  let builders = [OpBuilder<(ins "uint8_t":$ID,
+                                "mlir::BoolAttr":$keep_pkt_header,
+                                "mlir::BoolAttr":$priority_route),
+                            [{
+      build($_builder, $_state, ID, nullptr, keep_pkt_header, priority_route);
+    }]>,
+                  OpBuilder<(ins "mlir::IntegerAttr":$ID,
+                                "mlir::BoolAttr":$keep_pkt_header,
+                                "mlir::BoolAttr":$priority_route),
+                            [{
+      build($_builder, $_state, ID, nullptr, keep_pkt_header, priority_route);
+    }]>];
 
   let extraClassDeclaration = [{
     int IDInt() { return getID(); }
