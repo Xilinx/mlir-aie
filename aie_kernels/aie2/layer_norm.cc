@@ -8,6 +8,7 @@
 #include <aie_api/aie.hpp>
 #include <stdint.h>
 #include <stdlib.h>
+#include <vec_math.h>
 
 template <typename T, int N>
 void layer_norm(const T *restrict input, T *restrict output, int32_t cols) {
@@ -38,7 +39,7 @@ void layer_norm(const T *restrict input, T *restrict output, int32_t cols) {
   float mean =
       ::aie::reduce_add(sum_acc.template to_vector<float>()) / float(cols);
   float variance = ::aie::reduce_add(sum_sq_acc) / float(cols) - mean * mean;
-  float inv_std = aie::invsqrt(variance + epsilon);
+  float inv_std = invsqrt(variance + epsilon);
 
   ::aie::vector<T, N> mean_v = ::aie::broadcast<T, N>((T)mean);
   ::aie::vector<T, N> inv_std_v = ::aie::broadcast<T, N>((T)inv_std);

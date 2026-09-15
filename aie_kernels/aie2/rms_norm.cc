@@ -9,6 +9,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <vec_math.h>
 
 template <typename T, int N>
 void rms_norm(const T *restrict input, T *restrict output, int32_t cols,
@@ -35,7 +36,7 @@ void rms_norm(const T *restrict input, T *restrict output, int32_t cols,
   }
 
   float rms = sum_sq / cols + epsilon;
-  float inv_rms = aie::invsqrt(rms);
+  float inv_rms = invsqrt(rms);
   // Peano has no f32 vector multiply for AIE2, so the f32 scale rides in a bf16
   // pair applied as two exact products accumulated in f32. A single bf16 scale
   // would shift every element of a norm the same way.
