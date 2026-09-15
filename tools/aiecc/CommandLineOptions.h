@@ -436,10 +436,11 @@ inline bool applyOutputSelectorFlags(std::vector<std::string> &args) {
 inline cl::opt<bool> showVersion("aie-version",
                                  cl::desc("Show version information and exit"));
 inline cl::opt<bool> dryRun("n", cl::desc("Dry run"));
-// Print the wall-clock time each edge took to execute at the end of the run.
-inline cl::opt<bool>
-    profile("profile",
-            cl::desc("Print a per-edge execution-time summary at the end"));
+// Print the wall-clock time and resident-memory cost of each edge at the end
+// of the run.
+inline cl::opt<bool> profile(
+    "profile",
+    cl::desc("Print a per-edge time and resident-memory summary at the end"));
 inline cl::opt<bool> progress(
     "progress",
     cl::desc("Show single-line execution progress: overwrite one status line "
