@@ -459,6 +459,25 @@ xilinx::aiecc::measureDataSectionBytes(llvm::StringRef elfPath) {
   return total;
 }
 
+bool xilinx::aiecc::linkedElfUsesLookupTableStorage(llvm::StringRef elfPath) {
+  auto binary = llvm::object::createBinary(elfPath);
+  if (!binary) {
+    llvm::consumeError(binary.takeError());
+    return false;
+  }
+  auto *obj = llvm::dyn_cast<ObjectFile>(binary->getBinary());
+  if (!obj) {
+    return false;
+  }
+  SymbolRanges data =
+      collectRanges(*obj, SymbolRef::ST_Data, /*addrByName=*/nullptr);
+  return llvm::any_of(data.entries, [](const SymbolRanges::Entry &entry) {
+    std::string lower = entry.name.lower();
+    return llvm::StringRef(lower).contains("lut") ||
+           llvm::StringRef(lower).contains("lookup_table");
+  });
+}
+
 std::optional<int64_t>
 xilinx::aiecc::parseLinkOverflowBytes(llvm::StringRef log) {
   size_t pos = log.find("overflowed by ");
