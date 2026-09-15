@@ -17,9 +17,8 @@
 extern "C" {
 
 void extern_kernel1() {
-  v32int32 v32 = undef_v32int32();
-  v32 = upd_elem(v32, 0, 14);
-  put_mcd(v32);
+  v16int32 lo = upd_elem(undef_v16int32(), 0, 14);
+  put_mcd(concat(lo, undef_v16int32()));
 }
 
 } // extern "C"
