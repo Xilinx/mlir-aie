@@ -206,9 +206,6 @@ public:
     return false;
   }
 
-  // Traverse forward from switchbox/shim-mux input ports, collecting the
-  // endpoints each stream reaches: flow-endpoint tiles, or -- under
-  // keepPartialFlows -- driven interconnect ports that have no onward wire.
   std::vector<PacketConnection> traverse(std::vector<PacketConnection> worklist,
                                          bool keepPartialFlows) const {
     std::vector<PacketConnection> connectedTiles;
@@ -271,9 +268,6 @@ public:
     return traverse({PacketConnection{*t, {0, 0}, {}}}, keepPartialFlows);
   }
 
-  // Get the endpoints reached by a stream that enters the fabric at the given
-  // input port of an interconnect (switchbox / shim-mux).  Used to lift flows
-  // whose source is not a core or DMA.
   std::vector<PacketConnection>
   getConnectedTilesFromInput(Operation *switchOp, Port inputPort,
                              bool keepPartialFlows) const {
@@ -599,11 +593,9 @@ struct AIEFindFlowsPass
     for (auto shimMuxOp : d.getOps<ShimMuxOp>())
       cleanupInterconnect(shimMuxOp.getConnections());
 
-    // An interconnect still holding configuration was not lifted: a control
-    // overlay, a connect this pass could not reach, or -- under
-    // keep-partial-flows=false -- a partial route left in place. Routing
-    // regenerates a wire only for the flows it routes, so a wire reaching such
-    // an interconnect has to stay, or that configuration ends up unreachable.
+    // Routing regenerates a wire only for the flows it routes, so a wire that
+    // reaches an interconnect still holding configuration has to stay, or that
+    // configuration ends up unreachable.
     llvm::DenseSet<Operation *> retained;
     auto retainNonEmpty = [&](Operation *op, Region &connections) {
       if (!isEmptyInterconnect(connections))

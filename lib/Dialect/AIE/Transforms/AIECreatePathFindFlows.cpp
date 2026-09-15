@@ -846,12 +846,11 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
   // master select.
   std::map<std::pair<TileID, int>, SmallVector<Port, 4>> masterAMSels;
 
-  // <arbiter, msel> slots (per tile) that packet-switch configuration already
-  // present in the input IR occupies: a control overlay this run must not
-  // disturb, or any packet routing a previous run lowered. The allocator below
-  // starts from an empty state, so without this it can hand out a slot another
-  // master on the same tile holds, giving two independent flows one amsel.
-  // Kept apart from masterAMSels so this run does not re-emit those ops.
+  // <arbiter, msel> slots (per tile) that packet-switch configuration in the
+  // input IR already occupies. The allocator below starts from an empty state,
+  // so without this it can hand out a slot another master on the same tile
+  // holds, giving two independent flows one amsel. Kept apart from
+  // masterAMSels so this run does not re-emit those ops.
   std::set<std::pair<TileID, int>> reservedAmsels;
 
   // Track which arbiter each port is assigned to (to prevent conflicts)
