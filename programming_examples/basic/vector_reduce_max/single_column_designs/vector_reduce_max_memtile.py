@@ -49,6 +49,9 @@ from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
 from ml_dtypes import bfloat16
 
+# Elements per memtile tile; the CLI validator and the design share it.
+N_MEM_ELEMS = 2048
+
 
 @iron.jit
 def vector_reduce_max(
@@ -64,7 +67,7 @@ def vector_reduce_max(
         raise ValueError("Output buffer must be size 4 (4 bytes = 1 integer).")
 
     n_cores = 4
-    n_mem_elems = 2048
+    n_mem_elems = N_MEM_ELEMS
     elems_per_core = n_mem_elems // n_cores
 
     dtype = str_to_dtype(dtype_str)
@@ -133,7 +136,13 @@ def vector_reduce_max(
         of_in, of_out, reduce_max_vector, compute_max, nextC_buffer, tmp_buffer
     ):
         elem_out = of_out.acquire(1)
-        for _ in range_(num_iter):
+        # The first tile writes the accumulator outright rather than folding into
+        # it: a core-resident buffer keeps its value from the previous run of the
+        # same design, so a seeded accumulator makes the result depend on run order.
+        elem_in = of_in.acquire(1)
+        reduce_max_vector(elem_in, nextC_buffer, elems_per_core)
+        of_in.release(1)
+        for _ in range_(num_iter - 1):
             elem_in = of_in.acquire(1)
             reduce_max_vector(elem_in, tmp_buffer, elems_per_core)
             compute_max(tmp_buffer, nextC_buffer, nextC_buffer)
@@ -153,7 +162,13 @@ def vector_reduce_max(
         tmp_buffer,
     ):
         elem_out = elemC_out.acquire(1)
-        for _ in range_(num_iter):
+        # The first tile writes the accumulator outright rather than folding into
+        # it: a core-resident buffer keeps its value from the previous run of the
+        # same design, so a seeded accumulator makes the result depend on run order.
+        elem_in = of_in.acquire(1)
+        reduce_max_vector(elem_in, nextC_buffer, elems_per_core)
+        of_in.release(1)
+        for _ in range_(num_iter - 1):
             elem_in = of_in.acquire(1)
             reduce_max_vector(elem_in, tmp_buffer, elems_per_core)
             compute_max(tmp_buffer, nextC_buffer, nextC_buffer)
@@ -260,8 +275,16 @@ def _run_and_verify(opts):
 
 
 def _validate(opts):
-    if opts.in1_size % 64 != 0 or opts.in1_size < 512:
-        sys.exit(f"in1_size ({opts.in1_size}) must be a multiple of 64 and >= 512")
+    if opts.in1_size % 64 != 0:
+        sys.exit(f"in1_size ({opts.in1_size}) must be a multiple of 64")
+    # The design reads one tile before its loop, so an input shorter than a
+    # tile leaves that read waiting on a fill that never comes.
+    elems = opts.in1_size // str_to_dtype(opts.dtype)(0).nbytes
+    if elems < N_MEM_ELEMS:
+        sys.exit(
+            f"in1_size ({opts.in1_size} bytes = {elems} {opts.dtype}) must hold at "
+            f"least one {N_MEM_ELEMS}-element tile"
+        )
 
 
 def main():

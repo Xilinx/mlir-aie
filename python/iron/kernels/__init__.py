@@ -8,7 +8,7 @@
 Submodules:
 - `eltwise` — passthrough, scale, add, mul, relu
 - `datamovement` — axpy, convert_copy, expand, transpose
-- `reduce` — reduce_add, reduce_min, reduce_max, compute_max
+- `reduce` — reduce_add, reduce_min, reduce_max, compute_max, argmax, argmax_combine
 - `vision` — rgba2hue, threshold, bitwise_or, bitwise_and, gray2rgba, rgba2gray, filter2d, add_weighted
 - `activation` — softmax, gelu, silu, swiglu, bf16_exp, exp2f_vec, tanh, sigmoid, leaky_relu
 - `datamovement` — axpy, convert_copy, expand, transpose
@@ -59,7 +59,15 @@ from .conv import (
 from .datamovement import axpy, convert_copy, expand, transpose
 from .eltwise import add, mul, passthrough, relu, scale
 from .linalg import cascade_mm, mm, mv
-from .reduce import compute_max, reduce_add, reduce_max, reduce_min
+from .reduce import (
+    argmax,
+    argmax_combine,
+    argmax_ref,
+    compute_max,
+    reduce_add,
+    reduce_max,
+    reduce_min,
+)
 from .vision import (
     add_weighted,
     bitwise_and,
@@ -80,6 +88,9 @@ __all__ = [
     "reduce_min",
     "reduce_max",
     "compute_max",
+    "argmax",
+    "argmax_combine",
+    "argmax_ref",
     "relu",
     "rgba2hue",
     "threshold",
