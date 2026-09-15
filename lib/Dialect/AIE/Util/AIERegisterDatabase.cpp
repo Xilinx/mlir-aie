@@ -294,8 +294,9 @@ std::optional<uint32_t> RegisterDatabase::lookupEvent(StringRef name,
   return std::nullopt;
 }
 
-uint32_t RegisterDatabase::encodeFieldValue(const BitFieldInfo &field,
-                                            uint32_t value) const {
+std::optional<uint32_t>
+RegisterDatabase::encodeFieldValue(const BitFieldInfo &field,
+                                   uint32_t value) const {
   // Validate value fits in field width
   uint32_t width = field.getWidth();
   if (width == 0)
@@ -304,13 +305,10 @@ uint32_t RegisterDatabase::encodeFieldValue(const BitFieldInfo &field,
   uint64_t maxValue = width >= 32 ? std::numeric_limits<uint32_t>::max()
                                   : ((1ULL << width) - 1ULL);
 
-  if (value > maxValue) {
-    llvm::errs() << "Warning: value " << value << " exceeds field width "
-                 << width << "\n";
-    value = static_cast<uint32_t>(value & maxValue); // Truncate
-  } else if (width < 32) {
+  if (value > maxValue)
+    return std::nullopt;
+  if (width < 32)
     value &= static_cast<uint32_t>(maxValue);
-  }
 
   // Shift to correct bit position
   uint64_t encoded = (static_cast<uint64_t>(value) << field.bit_start);
