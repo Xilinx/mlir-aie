@@ -60,4 +60,9 @@ void silu_bf16(bfloat16 *restrict input, bfloat16 *restrict output) {
   silu_tanh_approx_bf16(input, output, input_size);
 }
 
+void silu_bf16_size(bfloat16 *restrict input, bfloat16 *restrict output,
+                    int32_t input_size) {
+  silu_tanh_approx_bf16(input, output, input_size);
+}
+
 } // extern "C"
