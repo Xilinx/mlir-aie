@@ -1130,9 +1130,10 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   };
 
   // --load-pdi-to-ctrl-pkt expands first: its tail consumes the control-packet
-  // ops the expansion emits.
-  EdgeWithTypedOutput<ModRef> &ctrlPktExpanded =
-      expandPipeline(npuMaterialized);
+  // ops the expansion emits. Built only there, so "npu_expanded.mlir" names at
+  // most one edge.
+  EdgeWithTypedOutput<ModRef> *ctrlPktExpanded =
+      ctrlPkt ? &expandPipeline(npuMaterialized) : nullptr;
 
   // The default tail unrolls runtime-sequence loops and pools dynamic BDs; the
   // ctrl-packet sequence is straight-line and only needs the per-device tail,
@@ -1142,10 +1143,10 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   // only match writes carrying a buffer symbol, and npu_materialized already
   // carries those, so the expansion's writes need nothing from it.
   EdgeWithTypedOutput<ModRef> &npuDmaLowered =
-      ctrlPkt
+      ctrlPktExpanded
           ? ctrlPktExpanded
-                .map<ModRef>("ctrlpkt_to_dma.mlir",
-                             PassPipeline{getCtrlPktToDmaPipeline(&context)})
+                ->map<ModRef>("ctrlpkt_to_dma.mlir",
+                              PassPipeline{getCtrlPktToDmaPipeline(&context)})
                 .map<ModRef>(
                     "ctrlpkt_npu_lowered.mlir",
                     PassPipeline{getPerDeviceDmaLoweringPipeline(&context)})
@@ -1157,7 +1158,7 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
   // the expanded module before the DMA lowering rewrites it (see
   // `ctrlPktExpandedPerSeq`), so this edge is deliberately the pre-DMA one
   // there.
-  EdgeWithTypedOutput<ModRef> &npuExpanded = ctrlPkt ? ctrlPktExpanded
+  EdgeWithTypedOutput<ModRef> &npuExpanded = ctrlPktExpanded ? *ctrlPktExpanded
                                              : expandLoadPdis.getValue()
                                                  ? expandPipeline(npuDmaLowered)
                                                  : npuDmaLowered;
