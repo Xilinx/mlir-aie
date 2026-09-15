@@ -122,6 +122,26 @@ def silu(tile_size: int = 1024) -> ExternalFunction:
     return _bf16_lut_factory("silu", "silu_bf16", "silu.cc", tile_size, arg_arity=2)
 
 
+def silu_sized(tile_size: int = 1024) -> ExternalFunction:
+    """SiLU (Swish) for bf16 tiles, element count read at runtime.
+
+    Runtime-size sibling of [`silu`][iron.kernels.activation.silu]; design
+    passes ``(in, out, size)``.  Any ``tile_size`` is allowed.
+    """
+    tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
+    return _create_lut_kernel("silu_bf16_size", "silu.cc", [tile_ty, tile_ty, np.int32])
+
+
+def gelu_sized(tile_size: int = 1024) -> ExternalFunction:
+    """GELU (tanh approx) for bf16 tiles, element count read at runtime.
+
+    Runtime-size sibling of [`gelu`][iron.kernels.activation.gelu]; design
+    passes ``(in, out, size)``.  Any ``tile_size`` is allowed.
+    """
+    tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
+    return _create_lut_kernel("gelu_bf16_size", "gelu.cc", [tile_ty, tile_ty, np.int32])
+
+
 def swiglu(tile_size: int = 1024) -> ExternalFunction:
     """SwiGLU gated activation kernel for bf16 tiles (must be 1024)."""
     return _bf16_lut_factory(

@@ -46,6 +46,10 @@ POINTER_RE = re.compile(r"\bsee\s+\S", re.IGNORECASE)
 # explains the same mechanism.
 TEST_PATH_RE = re.compile(r"(^|/)tests?(/|_|\.)|(^|/)testing(/|_)|_tests?\.|(^|/)test_")
 
+# The SPDX/copyright license header is mandatory boilerplate (reuse-lint requires
+# it verbatim), so every new file repeats it -- that is compliance, not slop.
+LICENSE_RE = re.compile(r"SPDX-\w+|Copyright", re.IGNORECASE)
+
 STOPWORDS = {
     "about",
     "after",
@@ -334,6 +338,7 @@ def find_duplicates(blocks):
         if len(b.terms) >= SHARED_TERMS_THRESHOLD
         and not TEST_PATH_RE.search(b.path)
         and not POINTER_RE.search(b.text)
+        and not LICENSE_RE.search(b.text)
     ]
 
     groups = []  # [members, terms common to every member]
