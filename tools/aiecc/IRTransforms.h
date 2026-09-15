@@ -381,6 +381,65 @@ inline mlir::LogicalResult checkDataSizeRequirements(
   return result;
 }
 
+// Reports a symbol placed for one memory bank whose linked address is in
+// another. Nothing downstream re-checks the request, so an unsatisfied one
+// corrupts results with no diagnostic.
+//
+// Requests come from the *input* objects, not the linked ELF: the chess linker
+// merges `.bss.DM_bankB` into `.bss.DM_bankA`, so the linked section names
+// describe a grouping rather than a request. Only a request on a definition is
+// visible this way; a bank asserted by a cast inside a kernel body is not.
+inline mlir::LogicalResult checkBankPlacement(
+    mlir::ModuleOp module,
+    llvm::function_ref<std::string(xilinx::AIE::CoreOp)> elfForCore,
+    llvm::function_ref<std::string(llvm::StringRef)> resolvePath) {
+  mlir::LogicalResult result = mlir::success();
+  module.walk(
+      [&](xilinx::AIE::CoreOp coreOp) {
+        std::string elf = elfForCore(coreOp);
+        if (elf.empty()) {
+          return;
+        }
+        std::vector<std::string> objects;
+        if (auto filesAttr = coreOp.getLinkFiles()) {
+          for (auto f : filesAttr->getAsRange<mlir::StringAttr>()) {
+            objects.push_back(resolvePath(f.getValue()));
+          }
+        }
+
+        auto tile =
+            mlir::cast<xilinx::AIE::TileOp>(coreOp.getTile().getDefiningOp());
+        const auto &targetModel = xilinx::AIE::getTargetModel(coreOp);
+        int numBanks = targetModel.getNumBanks(tile.getCol(), tile.getRow());
+        if (numBanks <= 0) {
+          return;
+        }
+        int64_t bankSize = targetModel.getLocalMemorySize() / numBanks;
+        int64_t base = targetModel.getMemInternalBaseAddress(
+            {tile.getCol(), tile.getRow()});
+
+        auto assertions = xilinx::aiecc::readBankAssertionsFromObjects(objects);
+        for (const auto &v : xilinx::aiecc::checkBankPlacements(
+                 elf, assertions, base, bankSize, numBanks)) {
+          std::string wanted;
+          for (int b : v.assertion.banks) {
+            wanted += (wanted.empty() ? "" : " or ");
+            wanted += static_cast<char>('A' + b);
+          }
+          coreOp.emitError()
+              << "core (" << tile.getCol() << ", " << tile.getRow() << "): '"
+              << v.assertion.symbol << "' is placed for memory bank " << wanted
+              << " (" << v.assertion.origin << "), but the linker put it at 0x"
+              << llvm::utohexstr(v.address) << ", which is bank "
+              << static_cast<char>('A' + v.actualBank)
+              << ". A parallel access that relies on this table being in bank "
+              << wanted << " reads the wrong bank";
+          result = mlir::failure();
+        }
+      });
+  return result;
+}
+
 // Clone `src` and replace each matched CoreOp with a stub that carries
 // `elf_file = <path>` and an empty body (verifier requires empty body when
 // elf_file is set).

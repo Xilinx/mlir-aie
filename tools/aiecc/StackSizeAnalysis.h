@@ -20,6 +20,8 @@
 #ifndef AIECC_STACKSIZEANALYSIS_H
 #define AIECC_STACKSIZEANALYSIS_H
 
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
 
@@ -66,6 +68,36 @@ std::optional<int64_t> measureDataSectionBytes(llvm::StringRef elfPath);
 // is the only account of what the core needed. Returns nothing when the log
 // carries no such report.
 std::optional<int64_t> parseLinkOverflowBytes(llvm::StringRef log);
+
+// Which memory bank a symbol's storage was placed for. `aie::lut<4>` reads its
+// two tables at once and needs them in separate banks.
+struct BankAssertion {
+  std::string symbol;
+  // Quoted back in the diagnostic: a section name like ".bss.DM_bankB".
+  std::string origin;
+  // Banks the request permits, ascending; a paired resource permits two.
+  llvm::SmallVector<int, 2> banks;
+};
+
+// Bank requests carried by the objects a core links. Both toolchains put the
+// bank in the section name: chess from `chess_storage(DM_bankA)`, Peano from an
+// explicit `__attribute__((section))`.
+std::vector<BankAssertion>
+readBankAssertionsFromObjects(llvm::ArrayRef<std::string> objectPaths);
+
+// An assertion the linked ELF did not satisfy.
+struct BankViolation {
+  BankAssertion assertion;
+  int64_t address; // tile-relative
+  int actualBank;
+};
+
+// Reports the requests the linked ELF contradicts. A symbol the ELF does not
+// define is dropped: --gc-sections removes what the core never reaches.
+std::vector<BankViolation>
+checkBankPlacements(llvm::StringRef elfPath,
+                    llvm::ArrayRef<BankAssertion> assertions,
+                    int64_t tileBaseAddress, int64_t bankSize, int numBanks);
 
 } // namespace xilinx::aiecc
 

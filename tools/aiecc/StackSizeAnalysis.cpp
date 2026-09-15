@@ -11,14 +11,22 @@
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/GlobalVariable.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Module.h"
+#include "llvm/IRReader/IRReader.h"
 #include "llvm/Object/ELFObjectFile.h"
 #include "llvm/Object/ObjectFile.h"
 #include "llvm/Support/Endian.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/LEB128.h"
+#include "llvm/Support/SourceMgr.h"
 
 #include <algorithm>
 #include <limits>
+#include <tuple>
 
 using namespace xilinx::aiecc;
 using namespace llvm::object;
@@ -457,6 +465,149 @@ xilinx::aiecc::measureDataSectionBytes(llvm::StringRef elfPath) {
     total += sec.getSize();
   }
   return total;
+}
+
+namespace {
+
+// Bank letters run in their natural order, matching the `a, b, c, d` order of
+// Peano's `aie_dm_resource` and the `_ab` / `_cd` table pairs the AIE runtime
+// library ships. One definition, so the section-name and address-space readers
+// below cannot drift apart.
+constexpr int kMaxBankLetters = 4;
+
+std::optional<int> bankFromLetter(char c) {
+  if (c < 'A' || c >= 'A' + kMaxBankLetters) {
+    return std::nullopt;
+  }
+  return c - 'A';
+}
+
+// `DM_bank` in a section name, followed by the letters of the banks it asks
+// for: `.bss.DM_bankA.4`, or `.data.DM_bankAB`. Returns the banks, or nothing
+// when the name carries no such request.
+llvm::SmallVector<int, 2> banksFromSectionName(llvm::StringRef name) {
+  llvm::SmallVector<int, 2> banks;
+  size_t pos = name.find("DM_bank");
+  if (pos == llvm::StringRef::npos) {
+    return banks;
+  }
+  for (char c : name.drop_front(pos + strlen("DM_bank"))) {
+    auto bank = bankFromLetter(c);
+    if (!bank) {
+      break; // The letters end; what follows is the compiler's own suffix.
+    }
+    banks.push_back(*bank);
+  }
+  llvm::sort(banks);
+  banks.erase(llvm::unique(banks), banks.end());
+  return banks;
+}
+
+void sortAssertions(std::vector<BankAssertion> &assertions) {
+  llvm::sort(assertions, [](const BankAssertion &a, const BankAssertion &b) {
+    return std::tie(a.symbol, a.origin) < std::tie(b.symbol, b.origin);
+  });
+  assertions.erase(
+      std::unique(assertions.begin(), assertions.end(),
+                  [](const BankAssertion &a, const BankAssertion &b) {
+                    return a.symbol == b.symbol && a.origin == b.origin;
+                  }),
+      assertions.end());
+}
+
+} // namespace
+
+std::vector<BankAssertion> xilinx::aiecc::readBankAssertionsFromObjects(
+    llvm::ArrayRef<std::string> objectPaths) {
+  std::vector<BankAssertion> assertions;
+  for (llvm::StringRef path : objectPaths) {
+    auto binary = llvm::object::createBinary(path);
+    if (!binary) {
+      llvm::consumeError(binary.takeError());
+      continue;
+    }
+    auto *obj = llvm::dyn_cast<ObjectFile>(binary->getBinary());
+    if (!obj) {
+      continue;
+    }
+    for (const SymbolRef &sym : obj->symbols()) {
+      auto name = sym.getName();
+      auto section = sym.getSection();
+      if (!name || !section) {
+        llvm::consumeError(name.takeError());
+        llvm::consumeError(section.takeError());
+        continue;
+      }
+      if (*section == obj->section_end()) {
+        continue;
+      }
+      auto sectionName = (*section)->getName();
+      if (!sectionName) {
+        llvm::consumeError(sectionName.takeError());
+        continue;
+      }
+      auto banks = banksFromSectionName(*sectionName);
+      if (banks.empty() || name->empty()) {
+        continue;
+      }
+      assertions.push_back({name->str(), sectionName->str(), banks});
+    }
+  }
+  sortAssertions(assertions);
+  return assertions;
+}
+
+std::vector<BankViolation> xilinx::aiecc::checkBankPlacements(
+    llvm::StringRef elfPath, llvm::ArrayRef<BankAssertion> assertions,
+    int64_t tileBaseAddress, int64_t bankSize, int numBanks) {
+  std::vector<BankViolation> violations;
+  if (assertions.empty() || bankSize <= 0 || numBanks <= 0) {
+    return violations;
+  }
+  auto binary = llvm::object::createBinary(elfPath);
+  if (!binary) {
+    llvm::consumeError(binary.takeError());
+    return violations;
+  }
+  auto *obj = llvm::dyn_cast<ObjectFile>(binary->getBinary());
+  if (!obj) {
+    return violations;
+  }
+
+  llvm::StringMap<uint64_t> addrByName;
+  for (const SymbolRef &sym : obj->symbols()) {
+    auto name = sym.getName();
+    auto addr = sym.getAddress();
+    auto type = sym.getType();
+    if (!name || !addr || !type) {
+      llvm::consumeError(name.takeError());
+      llvm::consumeError(addr.takeError());
+      llvm::consumeError(type.takeError());
+      continue;
+    }
+    if (*type == SymbolRef::ST_Data) {
+      addrByName.try_emplace(*name, *addr);
+    }
+  }
+
+  for (const BankAssertion &assertion : assertions) {
+    auto it = addrByName.find(assertion.symbol);
+    if (it == addrByName.end()) {
+      // --gc-sections drops what the core never reaches, and a table that is
+      // not there cannot be read from the wrong bank.
+      continue;
+    }
+    int64_t offset = static_cast<int64_t>(it->second) - tileBaseAddress;
+    if (offset < 0 || offset >= bankSize * numBanks) {
+      continue; // Not in this tile's data memory; not ours to judge.
+    }
+    int actualBank = static_cast<int>(offset / bankSize);
+    if (llvm::is_contained(assertion.banks, actualBank)) {
+      continue;
+    }
+    violations.push_back({assertion, offset, actualBank});
+  }
+  return violations;
 }
 
 std::optional<int64_t>

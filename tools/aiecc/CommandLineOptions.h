@@ -160,6 +160,11 @@ inline cl::opt<bool> noMeasureDataSize(
     cl::desc("Skip the measurement of each core's static data (.data, .rodata "
              "and .bss) in its linked ELF and the check of data_size against "
              "it"));
+inline cl::opt<bool> noCheckBankPlacement(
+    "no-check-bank-placement",
+    cl::desc("Skip the check that a symbol a core places for a memory bank (a "
+             "chess_storage / __aie_dm_resource_* request) was linked into "
+             "that bank"));
 inline cl::opt<int> defaultStackSize(
     "default-stack-size",
     cl::desc("Stack size in bytes to assume for any core that leaves "
