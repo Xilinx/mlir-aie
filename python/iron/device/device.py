@@ -72,7 +72,7 @@ class Device(Resolvable):
         return self._tm.get_dma_bd_step_bits(col, row)
 
     def get_dma_bd_iter_bits(self, col, row) -> int:
-        """Iteration (repeat) field width, in bits."""
+        """Return the iteration (repeat) field width, in bits."""
         self._validate_coordinates(col, row)
         return self._tm.get_dma_bd_iter_bits(col, row)
 
@@ -82,8 +82,7 @@ class Device(Resolvable):
         return self._tm.get_address_gen_granularity()
 
     def get_num_bds(self, tile_type: AIETileType) -> int:
-        """Return the number of DMA buffer descriptors (BDs) a tile of
-        ``tile_type`` has on this device.
+        """Return how many DMA buffer descriptors (BDs) a tile of ``tile_type`` has.
 
         The BD budget is per tile TYPE, not per coordinate, and it is not
         uniform: on AIE2, a MemTile has 48 BDs while a CoreTile and a
