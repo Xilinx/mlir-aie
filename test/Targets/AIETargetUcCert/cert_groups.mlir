@@ -13,7 +13,7 @@
 // CHECK: START_JOB 1
 // CHECK: EOF
 
-aie.device(npu2) {
+aie.device(xcve3858) {
 
   aiex.cert.attach_to_group(0) {
     aiex.cert.job(0) {

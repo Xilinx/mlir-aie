@@ -139,7 +139,11 @@ public:
   virtual uint32_t getNumControllersPerColumn() const { return 0; }
 
   /// Total number of aie2ps/aie4 microcontrollers (uC) in the device.
-  uint32_t getNumControllers() const {
+  /// Defaults to one uC per column (see getNumControllersPerColumn());
+  /// architectures with a single device-level uC (e.g. AIE2/AIE2P NPUs)
+  /// override this directly instead, since their controller count doesn't
+  /// scale with column count.
+  virtual uint32_t getNumControllers() const {
     return static_cast<uint32_t>(columns()) * getNumControllersPerColumn();
   }
 
@@ -1037,6 +1041,9 @@ public:
 
   uint32_t getNumMemTileRows() const override { return 1; }
 
+  // AIE2 NPU1 has a single device-level uC, not one per column.
+  uint32_t getNumControllers() const override { return 1; }
+
   static bool classof(const AIETargetModel *model) {
     return model->getKind() >= TK_AIE2_NPU1_1Col &&
            model->getKind() < TK_AIE2_NPU1_Last;
@@ -1106,6 +1113,9 @@ public:
   bool isSupportedBlockFormat(std::string const &format) const override;
 
   bool isMemTilePadValueSupported() const override { return true; }
+
+  // AIE2P NPU2 has a single device-level uC, not one per column.
+  uint32_t getNumControllers() const override { return 1; }
 
   static bool classof(const AIETargetModel *model) {
     return model->getKind() >= TK_AIE2_NPU2 &&

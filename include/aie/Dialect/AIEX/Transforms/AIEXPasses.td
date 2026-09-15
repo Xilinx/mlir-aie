@@ -239,6 +239,24 @@ def AIECertPages : Pass<"cert-legalize-pages", "AIE::DeviceOp"> {
   ];
 }
 
+def AIECertVerify : Pass<"aie-cert-verify", "AIE::DeviceOp"> {
+  let summary = "Verify CERT ordering/placement legality invariants";
+  let description = [{
+    This pass checks the firmware-imposed legality invariants on cert
+    operations (see the CERT runtime-sequence report). It performs no IR
+    mutation; it only emits diagnostics for illegal cert programs.
+
+    The uC (microcontroller / CERT group) of a cert op is the `group_id` of
+    its nearest enclosing `cert.attach_to_group`, or 0 if the op is at device
+    level (not inside any `cert.attach_to_group`).
+  }];
+
+  let constructor = "xilinx::AIEX::createAIECertVerifyPass()";
+  let dependentDialects = ["xilinx::AIE::AIEDialect",
+                           "xilinx::AIEX::AIEXDialect",
+  ];
+}
+
 def AIEMaterializeBDChains : Pass<"aie-materialize-bd-chains", "AIE::DeviceOp"> {
   let summary = "Concretize aie.bd_chain ops at aiex.start_task use sites";
   let description = [{

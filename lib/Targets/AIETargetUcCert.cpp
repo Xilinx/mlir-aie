@@ -20,12 +20,20 @@
 #include "llvm/Support/Format.h"
 #include "llvm/Support/Path.h"
 
+#include <map>
 #include <vector>
 
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
 using namespace xilinx::AIEX;
+
+// Emission ordering invariant: CERT jobs, pages, and the ops within a job are
+// emitted in IR/textual order. `job_id` is a per-page-unique label and a
+// firmware job-table key, NOT an execution/emission order (see CertJobOp docs).
+// Within a page the firmware starts jobs in textual order; between pages on a
+// uC execution is strictly sequential. Do not sort jobs/pages by job_id here.
+// (attach_to_group groups are sorted by group_id, which is the uC index.)
 
 namespace {
 
@@ -153,10 +161,9 @@ LogicalResult emitJobs(llvm::SmallVector<CertJobOp> &jobs, std::string &text,
                        std::string &data) {
   LogicalResult result = success();
 
-  llvm::sort(jobs, [](CertJobOp a, CertJobOp b) {
-    return a.getJobId() < b.getJobId();
-  });
-
+  // Emit jobs in IR/textual order. job_id is a per-page-unique label, not an
+  // execution/emission order (the firmware treats it as a job-table key and
+  // schedules jobs on a page cooperatively, starting them in textual order).
   for (auto job : jobs) {
     if (failed(emitJob(job, text, data)))
       result = failure();
@@ -173,14 +180,10 @@ LogicalResult emitPage(CertPageOp pageOp, std::string &text,
   LogicalResult result = success();
   text += ".align 16\n";
 
-  // Process jobs within the page
-  auto jobs =
-      llvm::to_vector_of<CertJobOp>(pageOp.getBody().getOps<CertJobOp>());
-  llvm::sort(jobs, [](CertJobOp a, CertJobOp b) {
-    return a.getJobId() < b.getJobId();
-  });
-
-  for (auto job : jobs) {
+  // Process jobs within the page in IR/textual order. Textual order is the
+  // execution order the firmware relies on within a page (jobs are started in
+  // textual order); do not reorder by job_id.
+  for (auto job : pageOp.getBody().getOps<CertJobOp>()) {
     if (failed(emitJob(job, text, data)))
       result = failure();
   }
@@ -388,60 +391,73 @@ LogicalResult xilinx::AIE::AIETranslateToUcDma(ModuleOp module,
 
   LogicalResult result = success();
 
-  // Process sections after attach_to_group so they're in the column
+  // Emit each microcontroller's (uC / group) content as its own ordered stream,
+  // keyed by the *actual* group id. Group 0 (device-level content plus any
+  // attach_to_group(0)) shares block 0; every other uC id gets its own
+  // code/data/EOF block (ops sharing a non-zero id share a block).
+  std::map<uint32_t, size_t> groupIdToBlock;
+  groupIdToBlock[0] = 0; // device-level content lives in block 0
+  auto blockFor = [&](uint32_t gid) -> size_t {
+    auto it = groupIdToBlock.find(gid);
+    if (it != groupIdToBlock.end())
+      return it->second;
+    text.emplace_back("\n;\n; Code\n;\n\n");
+    data.emplace_back("\n;\n; Data\n;\n\n");
+    chains.emplace_back("\n;\n; Data (chains)\n;\n\n");
+    size_t block = text.size() - 1;
+    groupIdToBlock[gid] = block;
+    return block;
+  };
+
+  // Sections are hoisted ahead of the executable stream: they are labeled
+  // `.include` blocks, not pages, and the code below them may reference them
+  // (e.g. `LOAD_PDI 1, @config_device`), so their labels must already be
+  // defined. `emitAttachToGroupOp` hoists a group's sections the same way.
   for (auto section : deviceOp.getBody()->getOps<CertSectionOp>()) {
     if (failed(emitSection(section, text[0], outputPath)))
       result = failure();
   }
 
-  // Process pages at device level (if any)
-  for (auto page : deviceOp.getBody()->getOps<CertPageOp>()) {
-    if (failed(emitPage(page, text[0], data[0])))
-      result = failure();
-  }
-
-  // Process standalone jobs at device level (for backwards compatibility)
-  auto jobs =
-      llvm::to_vector_of<CertJobOp>(deviceOp.getBody()->getOps<CertJobOp>());
-  if (failed(emitJobs(jobs, text[0], data[0])))
-    result = failure();
-
-  auto groups = llvm::to_vector_of<CertAttachToGroupOp>(
-      deviceOp.getBody()->getOps<CertAttachToGroupOp>());
-  llvm::sort(groups, [](CertAttachToGroupOp a, CertAttachToGroupOp b) {
-    return a.getGroupId() < b.getGroupId();
-  });
-
-  for (auto o : deviceOp.getBody()->getOps<CertUcDmaChainOp>())
-    emitUcDmaChain(o, chains[0], data[0], emittedGlobals);
-
-  int group_id = 0;
-  for (auto &groupOp : groups) {
-    if (group_id) {
-      text.emplace_back("\n;\n; Code\n;\n\n");
-      data.emplace_back("\n;\n; Data\n;\n\n");
-      chains.emplace_back("\n;\n; Data (chains)\n;\n\n");
+  // Single pass over the device body so each uC stream preserves the textual
+  // (encounter) order of its *executable* ops. In particular a device-level
+  // (group-0) page and an attach_to_group(0) job interleave in source order.
+  // The previous two-phase approach emitted ALL device-level pages before ANY
+  // attach_to_group content, which inverted source order on uC 0 -- e.g. a
+  // release job authored before the runtime sequence was emitted on a later
+  // page than the sequence's WAIT_TCTS, creating a forward-page dependency.
+  for (Operation &op : *deviceOp.getBody()) {
+    if (auto page = dyn_cast<CertPageOp>(&op)) {
+      if (failed(emitPage(page, text[0], data[0])))
+        result = failure();
+    } else if (auto job = dyn_cast<CertJobOp>(&op)) {
+      if (failed(emitJob(job, text[0], data[0])))
+        result = failure();
+    } else if (auto grp = dyn_cast<CertAttachToGroupOp>(&op)) {
+      size_t block = blockFor(grp.getGroupId());
+      if (failed(
+              emitAttachToGroupOp(grp, text[block], data[block], outputPath)))
+        result = failure();
+    } else if (auto chain = dyn_cast<CertUcDmaChainOp>(&op)) {
+      emitUcDmaChain(chain, chains[0], data[0], emittedGlobals);
     }
-    if (failed(emitAttachToGroupOp(groupOp, text[group_id], data[group_id],
-                                   outputPath)))
-      result = failure();
-    group_id++;
   }
 
   if (failed(result))
     return result;
 
-  for (auto const &[t, c, d] : llvm::zip(text, chains, data)) {
-    if (!t.empty()) {
-      assembly += t;
+  // Emit blocks in group-id order (block 0 = uC 0 first). Each block is a
+  // self-contained stream: code + EOF, then its chains and data.
+  for (auto const &entry : groupIdToBlock) {
+    size_t block = entry.second;
+    if (!text[block].empty()) {
+      assembly += text[block];
       // Add final EOF after all code (sections emit their own EOF before .endl)
       assembly += "EOF\n";
     }
-    if (!c.empty()) {
-      assembly += c;
-    }
-    if (!d.empty())
-      assembly += "\n" + d;
+    if (!chains[block].empty())
+      assembly += chains[block];
+    if (!data[block].empty())
+      assembly += "\n" + data[block];
   }
   return success();
 }

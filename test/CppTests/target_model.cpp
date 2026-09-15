@@ -143,7 +143,7 @@ void test() {
     if (AIE::getTargetModel(dev).rows() != 6) {
       throw std::runtime_error("Failed npu1_ncol rows");
     }
-    checkControllerTopology(dev, 0, 0);
+    checkControllerTopology(dev, 0, 1);
   }
 
   // AIEDevice::npu2
@@ -173,7 +173,7 @@ void test() {
   if (AIE::getTargetModel(AIE::AIEDevice::npu2).rows() != 6) {
     throw std::runtime_error("Failed npu2 rows");
   }
-  checkControllerTopology(AIE::AIEDevice::npu2, 0, 0);
+  checkControllerTopology(AIE::AIEDevice::npu2, 0, 1);
 
   // AIEDevice::npu2_1col, npu2_2col, npu2_3col, npu2_4col, npu2_5col,
   // npu2_6col, npu2_7col
@@ -211,7 +211,7 @@ void test() {
     if (AIE::getTargetModel(dev).rows() != 6) {
       throw std::runtime_error("Failed npu2_ncol rows");
     }
-    checkControllerTopology(dev, 0, 0);
+    checkControllerTopology(dev, 0, 1);
   }
 
   // AIEDevice::xcve3858 (AIE2PS)
