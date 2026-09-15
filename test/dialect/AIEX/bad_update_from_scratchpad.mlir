@@ -36,3 +36,15 @@ aie.device(npu2) {
     aiex.npu.update_from_scratchpad {address = 0 : ui32, state_table_idx = 31 : ui8}
   }
 }
+
+// -----
+
+// The bound holds outside a runtime sequence: neither op requires one.
+aie.device(npu2) {
+  func.func @f() {
+    aiex.npu.create_scratchpad {size = 8 : ui32}
+    // expected-error@+1 {{state_table_idx 2 is out of bounds for scratchpad of size 8 bytes (2 entries) created by aiex.npu.create_scratchpad.}}
+    aiex.npu.update_from_scratchpad {address = 0 : ui32, state_table_idx = 2 : ui8}
+    return
+  }
+}
