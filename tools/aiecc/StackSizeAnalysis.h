@@ -61,6 +61,10 @@ computeStackRequirement(llvm::StringRef elfPath,
 // core reaches. Returns nothing when the file does not parse as an object.
 std::optional<int64_t> measureDataSectionBytes(llvm::StringRef elfPath);
 
+// Whether the linked core ELF defines static data whose symbol names identify
+// them as lookup tables. Used for target-specific validation of LUT placement.
+bool linkedElfUsesLookupTableStorage(llvm::StringRef elfPath);
+
 // Bytes by which a section overran its MEMORY region, from the linker's
 // "overflowed by N bytes" report. A failed link writes no ELF, so this report
 // is the only account of what the core needed. Returns nothing when the log

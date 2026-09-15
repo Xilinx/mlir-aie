@@ -365,10 +365,26 @@ inline mlir::LogicalResult checkDataSizeRequirements(
     coreOp.setMeasuredDataSizeAttr(
         mlir::Builder(module.getContext())
             .getI32IntegerAttr(static_cast<int32_t>(*measured)));
+    auto tile =
+        mlir::cast<xilinx::AIE::TileOp>(coreOp.getTile().getDefiningOp());
+    const auto &targetModel = xilinx::AIE::getTargetModel(coreOp);
+    int64_t numBanks = targetModel.getNumBanks(tile.getCol(), tile.getRow());
+    if (numBanks > 1 &&
+        xilinx::aiecc::linkedElfUsesLookupTableStorage(elf)) {
+      int64_t bankSize = targetModel.getLocalMemorySize() / numBanks;
+      int64_t stackSize = coreOp.getEffectiveStackSize();
+      if (stackSize >= bankSize) {
+        coreOp.emitError()
+            << "core (" << tile.getCol() << ", " << tile.getRow()
+            << ") links lookup-table globals, but stack_size = " << stackSize
+            << " bytes reaches bank 1. On this target the LUT storage starts at "
+               "the base of each bank, so stack_size must stay below one bank ("
+            << bankSize << " bytes)";
+        result = mlir::failure();
+      }
+    }
     auto declared = coreOp.getDataSize();
     if (declared && static_cast<int64_t>(*declared) < *measured) {
-      auto tile =
-          mlir::cast<xilinx::AIE::TileOp>(coreOp.getTile().getDefiningOp());
       coreOp.emitError()
           << "core (" << tile.getCol() << ", " << tile.getRow()
           << ") needs space for " << *measured
