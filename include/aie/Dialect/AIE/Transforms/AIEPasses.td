@@ -327,11 +327,8 @@ def AIEFindFlows : Pass<"aie-find-flows", "DeviceOp"> {
     routing.
 
     By default every configured connection is lifted, including partial flows
-    whose source or destination is a directional switchbox port rather than a
-    core or DMA (transit connections, PLIO/edge entries, and packet routes a
-    running design steers by packet id).  A physically routed design can
-    therefore drop its aie.switchbox configuration and recover it from the
-    lifted flows.  Set `keep-partial-flows=false` to restrict recovery to flows
+    whose source or destination is a switchbox port other than a core or DMA.
+    Set `keep-partial-flows=false` to restrict recovery to flows
     that begin at a core/DMA and end on a core/DMA.
   }];
 
@@ -341,8 +338,7 @@ def AIEFindFlows : Pass<"aie-find-flows", "DeviceOp"> {
   let options =
       [Option<"clKeepPartialFlows", "keep-partial-flows", "bool",
               /*default=*/"true",
-              "Also recover partial flows whose source or destination is a "
-              "directional/edge switchbox port rather than a core or DMA.">,
+              "Also recover flows that do not start or end at a core or DMA.">,
        Option<
            "clRemoveLifted", "remove-lifted", "bool", /*default=*/"true",
            "Remove the interconnect configuration (connects, packet rules, "

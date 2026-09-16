@@ -155,10 +155,8 @@ struct AIEGenerateColumnControlOverlayPass
         }
         continue;
       }
-      // A device that already carries a control overlay -- e.g. a physically
-      // routed design recompiled through aiecc -- must not receive a second
-      // one, or the regenerated control flows would double-drive its shim
-      // control ports during routing.
+      // A device that already carries a control overlay must not receive a
+      // second one.
       if (deviceHasControlOverlay(dev)) {
         if (clEmitStandaloneOverlay) {
           dev->setAttr("has_ctrl_pkt_overlay", builder.getBoolAttr(true));

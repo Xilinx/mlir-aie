@@ -48,24 +48,24 @@ module {
   %tile_0_4 = aie.tile(0, 4)
   %tile_0_5 = aie.tile(0, 5)
 
-  aie.packet_flow(0) { 
-    aie.packet_source<%tile_0_2, DMA : 0> 
+  aie.packet_flow(0) {
+    aie.packet_source<%tile_0_2, DMA : 0>
     aie.packet_dest<%tile_0_1, DMA : 0>
   }
-  aie.packet_flow(1) { 
-    aie.packet_source<%tile_0_3, DMA : 0> 
+  aie.packet_flow(1) {
+    aie.packet_source<%tile_0_3, DMA : 0>
     aie.packet_dest<%tile_0_1, DMA : 1>
   }
-  aie.packet_flow(2) { 
-    aie.packet_source<%tile_0_4, DMA : 0> 
+  aie.packet_flow(2) {
+    aie.packet_source<%tile_0_4, DMA : 0>
     aie.packet_dest<%tile_0_1, DMA : 2>
   }
-  aie.packet_flow(3) { 
-    aie.packet_source<%tile_0_5, DMA : 0> 
+  aie.packet_flow(3) {
+    aie.packet_source<%tile_0_5, DMA : 0>
     aie.packet_dest<%tile_0_1, DMA : 3>
   }
-  aie.packet_flow(4) { 
-    aie.packet_source<%tile_0_2, DMA : 0> 
+  aie.packet_flow(4) {
+    aie.packet_source<%tile_0_2, DMA : 0>
     aie.packet_dest<%tile_0_1, DMA : 4>
   }
  }

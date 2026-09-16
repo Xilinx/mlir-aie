@@ -109,4 +109,4 @@ module {
         aie.flow(%t71, Core : 1, %t84, Core : 1)
         aie.flow(%t84, DMA : 1, %t20, DMA : 1)
     }
-}   
+}

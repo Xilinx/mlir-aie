@@ -45,8 +45,7 @@ using PortMaskValue = struct PortMaskValue {
   Port port;
   MaskValue mv;
   // The interconnect ops that implement this hop (a circuit ConnectOp, or a
-  // packet PacketRuleOp + MasterSetOp + AMSelOp). Recorded so the flows that
-  // consume them can be lifted out of the physical IR.
+  // packet PacketRuleOp + MasterSetOp + AMSelOp). Erased after lifting.
   llvm::SmallVector<Operation *, 3> ops;
 };
 
@@ -169,9 +168,10 @@ private:
         // The switchbox drives nextPort but no wire continues from it (an array
         // edge or an off-fabric consumer). Under partial recovery this output
         // port is itself the flow's endpoint.
-        if (keepPartialFlows)
+        if (keepPartialFlows) {
           partialEndpoints.push_back(
               {{switchOp, nextPort}, newMaskValue, newUsedOps});
+        }
         continue;
       }
 
@@ -190,19 +190,25 @@ public:
   // inside the given interconnect op.
   bool drivesPort(Operation *op, Port port) const {
     Region *r = nullptr;
-    if (auto sb = dyn_cast<SwitchboxOp>(op))
+    if (auto sb = dyn_cast<SwitchboxOp>(op)) {
       r = &sb.getConnections();
-    else if (auto sm = dyn_cast<ShimMuxOp>(op))
+    } else if (auto sm = dyn_cast<ShimMuxOp>(op)) {
       r = &sm.getConnections();
-    if (!r)
+    }
+    if (!r) {
       return false;
+    }
     Block &b = r->front();
-    for (auto connectOp : b.getOps<ConnectOp>())
-      if (connectOp.destPort() == port)
+    for (auto connectOp : b.getOps<ConnectOp>()) {
+      if (connectOp.destPort() == port) {
         return true;
-    for (auto masterSetOp : b.getOps<MasterSetOp>())
-      if (masterSetOp.destPort() == port)
+      }
+    }
+    for (auto masterSetOp : b.getOps<MasterSetOp>()) {
+      if (masterSetOp.destPort() == port) {
         return true;
+      }
+    }
     return false;
   }
 
@@ -221,10 +227,11 @@ public:
         continue;
       }
       Region *connections = nullptr;
-      if (auto switchOp = dyn_cast_or_null<SwitchboxOp>(other))
+      if (auto switchOp = dyn_cast_or_null<SwitchboxOp>(other)) {
         connections = &switchOp.getConnections();
-      else if (auto switchOp = dyn_cast_or_null<ShimMuxOp>(other))
+      } else if (auto switchOp = dyn_cast_or_null<ShimMuxOp>(other)) {
         connections = &switchOp.getConnections();
+      }
       if (!connections) {
         LLVM_DEBUG(llvm::dbgs()
                    << "*** Connection Terminated at unknown operation: ");
@@ -263,8 +270,9 @@ public:
     // Traverse from the tile to its connected switchbox.
     auto t = getConnectionThroughWire(tileOp.getOperation(), port);
     // If there is no wire to traverse, then just return no connection
-    if (!t)
+    if (!t) {
       return {};
+    }
     return traverse({PacketConnection{*t, {0, 0}, {}}}, keepPartialFlows);
   }
 
@@ -317,19 +325,15 @@ static std::optional<FlowKey> tryGetFlowKey(Value srcTileValue, Port srcPort,
                  packetMask};
 }
 
-// The tile an endpoint of a lifted flow belongs to.
-//
-// aie.flow names tiles: --aie-create-pathfinder-flows casts both endpoints of
-// every flow to TileOp. A tile element such as an aie.shim_dma therefore has to
-// resolve to its owning tile, or the flow this pass emits crashes the router it
-// is meant to feed. TileElement covers every element that can end a flow, and
-// Interconnect extends it, so a switchbox or shim-mux port resolves the same
-// way.
+// aie.flow names tiles, so an endpoint that is an element of a tile, such as an
+// aie.shim_dma, has to resolve to the tile that owns it.
 static Value resolveEndpointTile(Operation *op) {
-  if (isa<TileOp>(op))
+  if (isa<TileOp>(op)) {
     return op->getResult(0);
-  if (auto element = dyn_cast<TileElement>(op))
+  }
+  if (auto element = dyn_cast<TileElement>(op)) {
     return element.getTile();
+  }
   return nullptr;
 }
 
@@ -343,8 +347,9 @@ static void emitFlows(OpBuilder &rewriter, Location loc, Value srcTile,
     Port destPort = c.portConnection.port;
     MaskValue maskValue = c.mv;
     Value destTile = resolveEndpointTile(destOp);
-    if (!destTile)
+    if (!destTile) {
       continue;
+    }
     // A control overlay stays materialized. Its switchbox configuration carries
     // the is_ctrl_pkt_overlay marker, and a lifted flow cannot rebuild it.
     bool keepMaterialized = false;
@@ -357,50 +362,52 @@ static void emitFlows(OpBuilder &rewriter, Location loc, Value srcTile,
         break;
       }
     }
-    if (keepMaterialized)
+    if (keepMaterialized) {
       continue;
-    // A packet endpoint becomes a logical packet flow, and the pass reclaims
-    // its physical configuration.
-    //
-    // The rules decide this, not the mask: a rule may carry mask 0, which
-    // accepts every id, and a circuit path accumulates the same mask 0.
+    }
+    // A packet endpoint becomes a logical packet flow, and the pass erases
+    // the lowered physical configuration.
     bool isPacket = llvm::any_of(c.usedOps, [](Operation *op) {
       return isa_and_nonnull<PacketRuleOp>(op);
     });
-    // The traversal reaches one endpoint more than once when a broadcast
-    // re-converges on it, and the three seeds can arrive at one route from
-    // different directions. Those repeats describe one flow, and
+    // The same endpoint is reached twice when a broadcast splits and rejoins,
+    // and the tile, switchbox and shim-mux seeds can each reach one route.
     // DeviceOp::verify rejects a flow declared twice.
     std::optional<FlowKey> key =
         tryGetFlowKey(srcTile, {srcBundle, srcChannel}, destTile, destPort,
                       isPacket ? maskValue.value : kCircuitFlow,
                       isPacket ? maskValue.mask : 0);
-    if (key && !seen.insert(*key).second)
+    if (key && !seen.insert(*key).second) {
       continue;
+    }
     if (isPacket) {
-      for (Operation *op : c.usedOps)
-        if (op)
+      for (Operation *op : c.usedOps) {
+        if (op) {
           consumed.insert(op);
+        }
+      }
       // The lowering stores keep_pkt_header on the master set that drives the
-      // destination. Carry it onto the recovered flow, or re-lowering strips
-      // the header and misroutes the packet downstream.
+      // destination. Carry it onto the recovered flow.
       BoolAttr keepPktHeader;
-      for (Operation *op : c.usedOps)
-        if (auto ms = dyn_cast_or_null<MasterSetOp>(op))
+      for (Operation *op : c.usedOps) {
+        if (auto ms = dyn_cast_or_null<MasterSetOp>(op)) {
           if (ms.getDestBundle() == destPort.bundle &&
-              ms.getDestChannel() == destPort.channel)
+              ms.getDestChannel() == destPort.channel) {
             keepPktHeader = ms.getKeepPktHeaderAttr();
+          }
+        }
+      }
       // The rules along the path accept every id that agrees with value on the
       // bits mask selects. Which of those a running design sends is not
       // decidable here, so state the pair and let routing rebuild the same
       // rules.
       //
-      // A full-width mask selects one id, which the id states on its own.
-      // Leaving the attribute off keeps such a flow mergeable with the others
-      // that share its route, the way routing found it.
+      // A full-width mask selects exactly one id; in flow IR we express this
+      // by leaving off the mask. The router may merge such flows.
       IntegerAttr mask;
-      if (maskValue.mask != idMask)
+      if (maskValue.mask != idMask) {
         mask = rewriter.getI8IntegerAttr(maskValue.mask);
+      }
       auto flowOp = PacketFlowOp::create(
           rewriter, loc, rewriter.getI8IntegerAttr(maskValue.value), mask,
           keepPktHeader, BoolAttr());
@@ -413,22 +420,21 @@ static void emitFlows(OpBuilder &rewriter, Location loc, Value srcTile,
       rewriter.restoreInsertionPoint(ip);
       continue;
     }
-    // A section that lifts no interconnect configuration carries no routing: it
-    // is the physical wire between two retained nodes. The wire is implicit and
-    // the switchboxes at both ends stay explicit, so a flow emitted for it
-    // would only fight their fixed connections on re-routing.
-    if (c.usedOps.empty())
+    // No switchbox configuration stands between the endpoints, so there is no
+    // flow to lift.
+    if (c.usedOps.empty()) {
       continue;
-    // A flow seeded from a fabric entry that terminates on a real endpoint of
-    // the same tile never leaves that tile. It is a dead or orphan interconnect
-    // connection, such as an undriven shim-mux write path, so the pass leaves
-    // it alone.
-    if (dropIntraTile && destTile == srcTile && isa<TileOp>(destOp))
+    }
+    // A fabric entry that ends on its own tile is an orphan connection, such as
+    // an undriven shim-mux write path.
+    if (dropIntraTile && destTile == srcTile && isa<TileOp>(destOp)) {
       continue;
-    // Every interconnect op on this endpoint's path is lifted into the flow.
-    for (Operation *op : c.usedOps)
-      if (op)
+    }
+    for (Operation *op : c.usedOps) {
+      if (op) {
         consumed.insert(op);
+      }
+    }
     FlowOp::create(rewriter, loc, srcTile, srcBundle, srcChannel, destTile,
                    destPort.bundle, destPort.channel);
   }
@@ -469,25 +475,30 @@ static void findFlowsFromInterconnect(Operation *switchOp,
                                       FlowKeySet &seen,
                                       llvm::DenseSet<Operation *> &consumed) {
   Region *connections = nullptr;
-  if (auto sb = dyn_cast<SwitchboxOp>(switchOp))
+  if (auto sb = dyn_cast<SwitchboxOp>(switchOp)) {
     connections = &sb.getConnections();
-  else if (auto sm = dyn_cast<ShimMuxOp>(switchOp))
+  } else if (auto sm = dyn_cast<ShimMuxOp>(switchOp)) {
     connections = &sm.getConnections();
-  if (!connections)
+  }
+  if (!connections) {
     return;
+  }
   rewriter.setInsertionPoint(switchOp->getBlock()->getTerminator());
 
   // Distinct source ports of this interconnect's connections and packet rules.
   llvm::SmallVector<Port, 8> sourcePorts;
   auto addPort = [&](Port p) {
-    if (!llvm::is_contained(sourcePorts, p))
+    if (!llvm::is_contained(sourcePorts, p)) {
       sourcePorts.push_back(p);
+    }
   };
   Block &b = connections->front();
-  for (auto connectOp : b.getOps<ConnectOp>())
+  for (auto connectOp : b.getOps<ConnectOp>()) {
     addPort(connectOp.sourcePort());
-  for (auto rulesOp : b.getOps<PacketRulesOp>())
+  }
+  for (auto rulesOp : b.getOps<PacketRulesOp>()) {
     addPort(rulesOp.sourcePort());
+  }
 
   for (Port p : sourcePorts) {
     Value srcTile;
@@ -500,8 +511,9 @@ static void findFlowsFromInterconnect(Operation *switchOp,
         // Driven by a tile.  Core/DMA sources are handled by findFlowsFrom;
         // recover the remaining tile-source bundles (e.g. PLIO) from here.
         if (upPort.bundle == WireBundle::Core ||
-            upPort.bundle == WireBundle::DMA)
+            upPort.bundle == WireBundle::DMA) {
           continue;
+        }
         srcTile = upOp->getResult(0);
         srcBundle = upPort.bundle;
         srcChannel = upPort.channel;
@@ -516,8 +528,9 @@ static void findFlowsFromInterconnect(Operation *switchOp,
       // No upstream wire: this input is a fabric entry (array edge).
       srcTile = resolveEndpointTile(switchOp);
     }
-    if (!srcTile)
+    if (!srcTile) {
       continue;
+    }
     std::vector<PacketConnection> tiles =
         analysis.getConnectedTilesFromInput(switchOp, p, keepPartialFlows);
     emitFlows(rewriter, switchOp->getLoc(), srcTile, srcBundle, srcChannel,
@@ -560,51 +573,64 @@ struct AIEFindFlowsPass
     // Lift flows whose source is not a core/DMA (transit fills, packet routing
     // steered at runtime, PLIO/edge entries) directly from the interconnect.
     if (clKeepPartialFlows) {
-      for (auto switchOp : d.getOps<SwitchboxOp>())
+      for (auto switchOp : d.getOps<SwitchboxOp>()) {
         findFlowsFromInterconnect(switchOp, analysis, builder,
                                   clKeepPartialFlows, idMask, seen, consumed);
-      for (auto shimMuxOp : d.getOps<ShimMuxOp>())
+      }
+      for (auto shimMuxOp : d.getOps<ShimMuxOp>()) {
         findFlowsFromInterconnect(shimMuxOp, analysis, builder,
                                   clKeepPartialFlows, idMask, seen, consumed);
+      }
     }
 
-    if (!clRemoveLifted)
+    if (!clRemoveLifted) {
       return;
+    }
 
     // Every recovered flow makes the interconnect ops it traversed redundant;
     // drop exactly those, leaving any configuration that could not be lifted
-    // (e.g. an unreachable connect) in place.  Leaf routing ops go first;
-    // amsels that lose all users and now-empty rule containers follow.
-    for (Operation *op : consumed)
-      if (isa<ConnectOp, PacketRuleOp, MasterSetOp>(op))
+    // (e.g. an unreachable connect) in place.
+    for (Operation *op : consumed) {
+      if (isa<ConnectOp, PacketRuleOp, MasterSetOp>(op)) {
         op->erase();
+      }
+    }
     auto cleanupInterconnect = [](Region &connections) {
       for (auto amselOp :
-           llvm::make_early_inc_range(connections.getOps<AMSelOp>()))
-        if (amselOp.use_empty())
+           llvm::make_early_inc_range(connections.getOps<AMSelOp>())) {
+        if (amselOp.use_empty()) {
           amselOp.erase();
+        }
+      }
       for (auto rulesOp :
-           llvm::make_early_inc_range(connections.getOps<PacketRulesOp>()))
-        if (rulesOp.getRules().front().getOps<PacketRuleOp>().empty())
+           llvm::make_early_inc_range(connections.getOps<PacketRulesOp>())) {
+        if (rulesOp.getRules().front().getOps<PacketRuleOp>().empty()) {
           rulesOp.erase();
+        }
+      }
     };
-    for (auto switchOp : d.getOps<SwitchboxOp>())
+    for (auto switchOp : d.getOps<SwitchboxOp>()) {
       cleanupInterconnect(switchOp.getConnections());
-    for (auto shimMuxOp : d.getOps<ShimMuxOp>())
+    }
+    for (auto shimMuxOp : d.getOps<ShimMuxOp>()) {
       cleanupInterconnect(shimMuxOp.getConnections());
+    }
 
     // Routing regenerates a wire only for the flows it routes, so a wire that
     // reaches an interconnect still holding configuration has to stay, or that
     // configuration ends up unreachable.
     llvm::DenseSet<Operation *> retained;
     auto retainNonEmpty = [&](Operation *op, Region &connections) {
-      if (!isEmptyInterconnect(connections))
+      if (!isEmptyInterconnect(connections)) {
         retained.insert(op);
+      }
     };
-    for (auto switchOp : d.getOps<SwitchboxOp>())
+    for (auto switchOp : d.getOps<SwitchboxOp>()) {
       retainNonEmpty(switchOp, switchOp.getConnections());
-    for (auto shimMuxOp : d.getOps<ShimMuxOp>())
+    }
+    for (auto shimMuxOp : d.getOps<ShimMuxOp>()) {
       retainNonEmpty(shimMuxOp, shimMuxOp.getConnections());
+    }
 
     llvm::DenseSet<Operation *> wiredToRetained;
     for (auto wireOp : llvm::make_early_inc_range(d.getOps<WireOp>())) {
@@ -623,12 +649,16 @@ struct AIEFindFlowsPass
     auto eraseIfUnused = [&](Operation *op, Region &connections) {
       return isEmptyInterconnect(connections) && !wiredToRetained.contains(op);
     };
-    for (auto switchOp : llvm::make_early_inc_range(d.getOps<SwitchboxOp>()))
-      if (eraseIfUnused(switchOp, switchOp.getConnections()))
+    for (auto switchOp : llvm::make_early_inc_range(d.getOps<SwitchboxOp>())) {
+      if (eraseIfUnused(switchOp, switchOp.getConnections())) {
         switchOp.erase();
-    for (auto shimMuxOp : llvm::make_early_inc_range(d.getOps<ShimMuxOp>()))
-      if (eraseIfUnused(shimMuxOp, shimMuxOp.getConnections()))
+      }
+    }
+    for (auto shimMuxOp : llvm::make_early_inc_range(d.getOps<ShimMuxOp>())) {
+      if (eraseIfUnused(shimMuxOp, shimMuxOp.getConnections())) {
         shimMuxOp.erase();
+      }
+    }
   }
 };
 

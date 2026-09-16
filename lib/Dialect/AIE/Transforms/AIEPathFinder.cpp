@@ -394,22 +394,25 @@ bool Pathfinder::addFixedConnection(SwitchboxOp switchboxOp) {
   llvm::SmallDenseSet<int, 8> claimedDsts;
   for (ConnectOp connectOp : switchboxOp.getOps<ConnectOp>()) {
     int srcIdx = -1, dstIdx = -1;
-    for (size_t i = 0; i < sb.srcPorts.size(); i++)
+    for (size_t i = 0; i < sb.srcPorts.size(); i++) {
       if (sb.srcPorts[i] == connectOp.sourcePort()) {
         srcIdx = static_cast<int>(i);
         break;
       }
-    for (size_t j = 0; j < sb.dstPorts.size(); j++)
+    }
+    for (size_t j = 0; j < sb.dstPorts.size(); j++) {
       if (sb.dstPorts[j] == connectOp.destPort()) {
         dstIdx = static_cast<int>(j);
         break;
       }
+    }
     // Reject an illegal pair (absent from the switchbox model) or a second
     // driver on the same output port; a repeated source port is a broadcast.
     if (srcIdx < 0 || dstIdx < 0 ||
         sb.connectivity[srcIdx][dstIdx] != Connectivity::AVAILABLE ||
-        !claimedDsts.insert(dstIdx).second)
+        !claimedDsts.insert(dstIdx).second) {
       return false;
+    }
     reserved.emplace_back(srcIdx, dstIdx);
   }
   // A pre-placed packet-switched output (an aie.masterset) also monopolizes its
@@ -422,15 +425,17 @@ bool Pathfinder::addFixedConnection(SwitchboxOp switchboxOp) {
   llvm::SmallVector<int, 8> reservedMasterDsts;
   for (MasterSetOp masterSetOp : switchboxOp.getOps<MasterSetOp>()) {
     int dstIdx = -1;
-    for (size_t j = 0; j < sb.dstPorts.size(); j++)
+    for (size_t j = 0; j < sb.dstPorts.size(); j++) {
       if (sb.dstPorts[j] == masterSetOp.destPort()) {
         dstIdx = static_cast<int>(j);
         break;
       }
+    }
     // Reject an output port absent from the switchbox model or already driven
     // by a circuit connect or another masterset.
-    if (dstIdx < 0 || !claimedDsts.insert(dstIdx).second)
+    if (dstIdx < 0 || !claimedDsts.insert(dstIdx).second) {
       return false;
+    }
     reservedMasterDsts.push_back(dstIdx);
   }
   // A circuit-switched ConnectOp monopolizes both its source port (the stream
@@ -439,16 +444,20 @@ bool Pathfinder::addFixedConnection(SwitchboxOp switchboxOp) {
   // Reserving the whole column also reserves the outgoing wire, since that wire
   // is reachable only by driving this output port.
   for (auto [srcIdx, dstIdx] : reserved) {
-    for (size_t j = 0; j < sb.dstPorts.size(); j++)
+    for (size_t j = 0; j < sb.dstPorts.size(); j++) {
       sb.connectivity[srcIdx][j] = Connectivity::INVALID;
-    for (size_t i = 0; i < sb.srcPorts.size(); i++)
+    }
+    for (size_t i = 0; i < sb.srcPorts.size(); i++) {
       sb.connectivity[i][dstIdx] = Connectivity::INVALID;
+    }
   }
   // A masterset fixes only its output port. Its inputs arrive through arbiters
   // that packet flows share, so the source rows stay free.
-  for (int dstIdx : reservedMasterDsts)
-    for (size_t i = 0; i < sb.srcPorts.size(); i++)
+  for (int dstIdx : reservedMasterDsts) {
+    for (size_t i = 0; i < sb.srcPorts.size(); i++) {
       sb.connectivity[i][dstIdx] = Connectivity::INVALID;
+    }
+  }
   return true;
 }
 

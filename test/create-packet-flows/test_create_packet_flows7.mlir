@@ -57,4 +57,3 @@ module @test_create_packet_flows7 {
     } {keep_pkt_header = true}
   }
 }
-

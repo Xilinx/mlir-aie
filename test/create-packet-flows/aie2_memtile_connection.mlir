@@ -25,9 +25,9 @@ module {
   %tile_0_0 = aie.tile(0, 0)
   %tile_0_1 = aie.tile(0, 1)
   %tile_0_2 = aie.tile(0, 2)
-  aie.flow(%tile_0_1, DMA : 0, %tile_0_0, DMA : 0) 
-  aie.packet_flow(0) { 
-    aie.packet_source<%tile_0_2, DMA : 0> 
+  aie.flow(%tile_0_1, DMA : 0, %tile_0_0, DMA : 0)
+  aie.packet_flow(0) {
+    aie.packet_source<%tile_0_2, DMA : 0>
     aie.packet_dest<%tile_0_0, DMA : 1>
   }
  }

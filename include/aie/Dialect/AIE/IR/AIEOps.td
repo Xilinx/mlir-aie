@@ -829,9 +829,10 @@ def AIE_PacketFlowOp: AIE_Op<"packet_flow", [SingleBlockImplicitTerminator<"EndO
     The optional attribute mask, written after the ID in the parentheses,
     states the packet-rule mask of the flow. A slave port accepts a packet
     when `incoming & mask == ID`, so the flow claims every ID that agrees
-    with ID on the bits the mask selects. Routing derives a mask from the
-    IDs it knows when the attribute is absent. ID must have no bit outside
-    the mask, or no packet can match.
+    with ID on the bits the mask selects. When the attribute is absent, the
+    router decides the mask that matches the given ID and rejects known IDs
+    from other routes. The ID must have no bit outside the mask, or no packet
+    can match.
 
     A design may compute a packet header at run time, so which IDs reach a
     port is not decidable here. State the mask to claim a set of IDs that

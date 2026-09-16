@@ -1978,11 +1978,6 @@ LogicalResult verifyNoDuplicateFlows(DeviceOp device) {
 // makes the routing problem look more congested than it is and gives the two
 // copies conflicting keep_pkt_header/priority_route settings when their
 // attributes disagree.
-//
-// The mask belongs in the key because it is half of what a flow claims: an ID
-// under two masks names two sets of packets, so the two flows carry different
-// traffic. A flow without the attribute claims its ID alone, which is what the
-// widest mask says, so both spellings key alike.
 LogicalResult verifyNoDuplicatePacketFlows(DeviceOp device) {
   using PacketFlowKey =
       std::tuple<int, int, std::vector<PortKey>, std::vector<PortKey>>;
@@ -2561,10 +2556,11 @@ LogicalResult PacketFlowOp::verify() {
   // in ID and clear in the mask rejects every packet.
   if (std::optional<uint8_t> mask = getMask()) {
     uint8_t id = getID();
-    if ((id & *mask) != id)
+    if ((id & *mask) != id) {
       return emitOpError("has ID 0x")
              << llvm::utohexstr(id) << " outside mask 0x"
              << llvm::utohexstr(*mask) << ", which no packet can match";
+    }
   }
 
   return success();
@@ -3210,8 +3206,8 @@ llvm::SmallVector<uint32_t> xilinx::AIE::getAssignedBdIds(DmaBody program) {
 
 LogicalResult DMABDOp::verify() {
   if (getOffsetParameterAttr() || getOffsetStateTableIdxAttr()) {
-    uint64_t elemBitWidth =
-        llvm::cast<BaseMemRefType>(getBuffer().getType()).getElementTypeBitWidth();
+    uint64_t elemBitWidth = llvm::cast<BaseMemRefType>(getBuffer().getType())
+                                .getElementTypeBitWidth();
     if (elemBitWidth == 0 || (elemBitWidth % 8) != 0)
       return emitOpError("offset_parameter requires a whole-byte element type");
   }
