@@ -16,10 +16,10 @@
 #include "xrt/xrt_kernel.h"
 
 // Must match the #aie.bd_iteration attribute in aie.mlir.
-constexpr int SIZE = 4;     // iteration_size (slots)
+constexpr int ITER_SIZE = 4;     // iteration_size (slots)
 constexpr int START = 2;    // iteration_current
 constexpr int CHUNK = 1024; // elements per execution
-constexpr int N = SIZE * CHUNK;
+constexpr int N = ITER_SIZE * CHUNK;
 
 int main(int argc, const char *argv[]) {
   cxxopts::Options options("bd_iteration_dma_task");
