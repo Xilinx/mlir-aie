@@ -23,6 +23,8 @@ reuses this file's tile side but names DDR in the design instead of taking it as
 an argument.
 """
 
+import math
+
 import aie.iron as iron
 import numpy as np
 from aie.dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
@@ -45,14 +47,19 @@ from aie.iron import (
     TileDma,
 )
 from aie.iron.device import Tile
-from harness import (
-    CHUNKS,
-    DEVMEM_SLICE,
-    DEVMEM_TY,
-    SLICE_TY,
-    TILE_ELEMS,
-    main,
-)
+from harness import main
+
+DEVMEM_SHAPE = (16, 16, 512)
+DEVMEM_SLICE = np.s_[0::2, 1::2, ...]
+# One innermost run per chunk, and small enough that the whole slice fits a
+# buffer descriptor's three dimensions as written -- see static_dma.py.
+TILE_ELEMS = 512
+
+# What the slice covers: every other index on the first axis, the odd ones on
+# the second, all 512 of the third. The BD chain below needs that at device
+# scope; the sequence body says the slice itself, where it reads best.
+SLICE_SHAPE = (8, 8, 512)
+CHUNKS = math.prod(SLICE_SHAPE) // TILE_ELEMS
 
 
 def tile_state(col):
@@ -131,7 +138,13 @@ def dma_slice_memcpy(a_in: In, c_out: Out, *, col: CompileTime[int] = 0):
         in_flow.fill(a, tap=a[DEVMEM_SLICE])
         out_flow.drain(c, tap=c[...], wait=True)
 
-    rt = Runtime(sequence, [DEVMEM_TY, SLICE_TY])
+    rt = Runtime(
+        sequence,
+        [
+            np.ndarray[DEVMEM_SHAPE, np.dtype[np.int8]],
+            np.ndarray[SLICE_SHAPE, np.dtype[np.int8]],
+        ],
+    )
     for lock in (buf_free, buf_full):
         rt.add_lock(lock)
     rt.add_tile_dma(tile_side(tile, tile_buffer, buf_free, buf_full))
@@ -142,4 +155,10 @@ def dma_slice_memcpy(a_in: In, c_out: Out, *, col: CompileTime[int] = 0):
 
 
 if __name__ == "__main__":
-    main("AIE DMA Slice Memcpy (explicit DMA)", dma_slice_memcpy)
+    main(
+        "AIE DMA Slice Memcpy (explicit DMA)",
+        dma_slice_memcpy,
+        shape=DEVMEM_SHAPE,
+        dtype=np.int8,
+        key=DEVMEM_SLICE,
+    )

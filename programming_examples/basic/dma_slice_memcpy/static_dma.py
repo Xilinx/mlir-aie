@@ -13,79 +13,107 @@ and is emitted empty. That is the shape a design takes when it reproduces a
 specific hardware configuration rather than being dispatched against host
 allocations.
 
-The tile side is imported from tile_dma.py unchanged, so the whole difference
-between the two files is where DDR's address comes from.
-
 Emit-only. With the addresses written into the design there is no host buffer to
 hand it -- and nothing checks that an allocation lives there -- so there is
 nothing to run or verify.
+
+See copy_buffer.py for the same design with the wiring derived rather than
+written out.
 """
 
-import argparse
 import math
 
+import numpy as np
 from aie.dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
     DMAChannelDir,
 )
 from aie.iron import (
+    Acquire,
     Bd,
-    BdIteration,
+    Buffer,
     DmaChannel,
     ExternalBuffer,
     Flow,
+    Lock,
     Program,
+    Release,
     Runtime,
     TileDma,
 )
-from aie.iron.device import NPU2Col1
-from harness import DEVMEM_TY, IN_TAP, SLICE_SHAPE, SLICE_TY, add_col_arg
-from tile_dma import tile_side, tile_state
-
-# Illustrative addresses: nothing checks that a host allocation lives there,
-# which is the cost of naming DDR in the design rather than taking it as an
-# argument.
-IN_ADDR = 0x8000_0000
-OUT_ADDR = 0x8010_0000
-
-# A static shim BD's wrap is capped at 1023, so the 4096-element contiguous run
-# is spelled as two dimensions of this size.
-INNER = 512
+from aie.iron.device import NPU2Col1, Tile
 
 
-def _inbound_bd(in_ddr):
-    """The inbound BD, with the slice spelled out for a static shim DMA.
+def dma_slice_memcpy_static():
+    tile = Tile(0, 5)
+    shim = Tile(0, 0)
 
-    tile_dma.py hands a whole tap to `fill` and lets
-    `aie-decompose-large-dma-bd` legalize it. A static `aie.shim_dma` gets no
-    such pass, so the geometry has to be hardware-legal as written, under two
-    constraints the runtime path hides:
-
-      * A wrap is capped at 1023, and counted in elements here rather than
-        32-bit words, so the 4096-element contiguous run cannot be a single
-        dimension. Spelling it as 8 x 512 costs one of the three available
-        dimensions.
-      * That leaves no dimension for the slice's outer axis, so it goes in the
-        BD's iteration state -- which advances once per BD execution, and
-        executions come from repeat_count. The two must agree, which is the same
-        rule tile_dma.py's loop/repeat_count pairing follows.
-    """
-    outer, middle, inner = IN_TAP.sizes
-    outer_stride, middle_stride, _ = IN_TAP.strides
-    return Bd(
-        buffer=in_ddr,
-        offset=IN_TAP.offset,
-        length=middle * inner,
-        sizes=[middle, inner // INNER, INNER],
-        strides=[middle_stride, INNER, 1],
-        iteration=BdIteration(size=outer, stride=outer_stride),
+    # Illustrative addresses: nothing checks that a host allocation lives there,
+    # which is the cost of naming DDR in the design rather than taking it as an
+    # argument.
+    devmem = ExternalBuffer(
+        np.ndarray[(16, 16, 512), np.dtype[np.int8]],
+        address=0x8000_0000,
+        name="device_memory_devmem",
+    )
+    result = ExternalBuffer(
+        np.ndarray[(8, 8, 512), np.dtype[np.int8]],
+        address=0x8010_0000,
+        name="device_memory_result",
     )
 
+    # buf_free starts at 1 (the buffer begins empty, so the inbound channel may
+    # write it); buf_full starts at 0 (there is nothing to send yet).
+    buf_free = Lock(tile, lock_id=1, init=1, name="buf_free")
+    buf_full = Lock(tile, lock_id=2, init=0, name="buf_full")
+    tile_buffer = Buffer(
+        tile=tile,
+        type=np.ndarray[(512,), np.dtype[np.int8]],
+        name="comp05_tile_buffer",
+    )
 
-def dma_slice_memcpy_static(col=0):
-    tile, shim, buf_free, buf_full, tile_buffer = tile_state(col)
+    slice_ = devmem[0::2, 1::2, ...]
+    staged = math.prod(tile_buffer.shape)
+    chunks = math.prod(slice_.tap.sizes) // staged
 
-    in_ddr = ExternalBuffer(DEVMEM_TY, address=IN_ADDR, name="device_memory_devmem")
-    out_ddr = ExternalBuffer(SLICE_TY, address=OUT_ADDR, name="device_memory_result")
+    # Both tile channels run the same BD once per chunk. S2MM takes the buffer
+    # when it is free and marks it full; MM2S takes it when full and marks it
+    # free, so the pair ping-pongs through one buffer for the whole slice.
+    #
+    # loop=False ends each BD chain after its one BD, which is what makes the
+    # chain a task that completes -- only then does repeat_count mean anything.
+    tile_dma = TileDma(
+        tile=tile,
+        channels=[
+            DmaChannel(
+                direction=DMAChannelDir.S2MM,
+                channel=0,
+                loop=False,
+                repeat_count=chunks - 1,
+                bds=[
+                    Bd(
+                        buffer=tile_buffer,
+                        length=staged,
+                        acquires=[Acquire(buf_free)],
+                        releases=[Release(buf_full)],
+                    )
+                ],
+            ),
+            DmaChannel(
+                direction=DMAChannelDir.MM2S,
+                channel=0,
+                loop=False,
+                repeat_count=chunks - 1,
+                bds=[
+                    Bd(
+                        buffer=tile_buffer,
+                        length=staged,
+                        acquires=[Acquire(buf_full)],
+                        releases=[Release(buf_free)],
+                    )
+                ],
+            ),
+        ],
+    )
 
     shim_dma = TileDma(
         tile=shim,
@@ -94,8 +122,17 @@ def dma_slice_memcpy_static(col=0):
                 direction=DMAChannelDir.MM2S,
                 channel=0,
                 loop=False,
-                repeat_count=IN_TAP.sizes[0] - 1,
-                bds=[_inbound_bd(in_ddr)],
+                bds=[
+                    # The slice fits a buffer descriptor's three dimensions as
+                    # written, so it goes over as one descriptor.
+                    Bd(
+                        buffer=devmem,
+                        offset=slice_.tap.offset,
+                        length=math.prod(slice_.tap.sizes),
+                        sizes=list(slice_.tap.sizes),
+                        strides=list(slice_.tap.strides),
+                    )
+                ],
             ),
             # The slice comes back contiguously, so one linear BD absorbs every
             # chunk the compute tile sends.
@@ -103,20 +140,19 @@ def dma_slice_memcpy_static(col=0):
                 direction=DMAChannelDir.S2MM,
                 channel=0,
                 loop=False,
-                bds=[Bd(buffer=out_ddr, length=math.prod(SLICE_SHAPE))],
+                bds=[Bd(buffer=result, length=math.prod(result.shape))],
             ),
         ],
     )
 
-    def sequence():
-        pass
-
-    rt = Runtime(sequence, [])
+    # Nothing is dispatched: the addresses are in the design, so the runtime
+    # sequence has nothing to do.
+    rt = Runtime(lambda: None, [])
     for lock in (buf_free, buf_full):
         rt.add_lock(lock)
-    for ddr in (in_ddr, out_ddr):
+    for ddr in (devmem, result):
         rt.add_external_buffer(ddr)
-    rt.add_tile_dma(tile_side(tile, tile_buffer, buf_free, buf_full))
+    rt.add_tile_dma(tile_dma)
     rt.add_tile_dma(shim_dma)
     rt.add_flow(Flow(shim, tile, src_channel=0, dst_channel=0))
     rt.add_flow(Flow(tile, shim, src_channel=0, dst_channel=0))
@@ -124,11 +160,5 @@ def dma_slice_memcpy_static(col=0):
     return Program(NPU2Col1(), rt).resolve_program()
 
 
-def main():
-    p = argparse.ArgumentParser(prog="AIE DMA Slice Memcpy (fixed-address DDR)")
-    add_col_arg(p)
-    print(dma_slice_memcpy_static(p.parse_args().col))
-
-
 if __name__ == "__main__":
-    main()
+    print(dma_slice_memcpy_static())

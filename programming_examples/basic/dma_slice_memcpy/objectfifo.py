@@ -35,7 +35,14 @@ from aie.dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports
 )
 from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime
 from aie.iron.device import AnyShimTile, Tile
-from harness import DEVMEM_SLICE, DEVMEM_TY, SLICE_TY, TILE_ELEMS, main
+from harness import main
+
+DEVMEM_SHAPE = (16, 16, 512)
+DEVMEM_SLICE = np.s_[0::2, 1::2, ...]
+TILE_ELEMS = 512
+
+# What the slice covers.
+SLICE_SHAPE = (8, 8, 512)
 
 
 @iron.jit
@@ -58,8 +65,8 @@ def dma_slice_memcpy(a_in: In, c_out: Out, *, col: CompileTime[int] = 0):
     rt = Runtime(
         sequence,
         [
-            DEVMEM_TY,
-            SLICE_TY,
+            np.ndarray[DEVMEM_SHAPE, np.dtype[np.int8]],
+            np.ndarray[SLICE_SHAPE, np.dtype[np.int8]],
             # The Runtime discovers fifos from fn_args, not from the fill/drain
             # verbs -- the body runs after fifo collection -- so the handles
             # have to be passed through.
@@ -72,4 +79,10 @@ def dma_slice_memcpy(a_in: In, c_out: Out, *, col: CompileTime[int] = 0):
 
 
 if __name__ == "__main__":
-    main("AIE DMA Slice Memcpy (ObjectFifo)", dma_slice_memcpy)
+    main(
+        "AIE DMA Slice Memcpy (ObjectFifo)",
+        dma_slice_memcpy,
+        shape=DEVMEM_SHAPE,
+        dtype=np.int8,
+        key=DEVMEM_SLICE,
+    )

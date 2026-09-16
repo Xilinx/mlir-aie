@@ -18,24 +18,27 @@ The same dataflow is written three ways:
 | [`tile_dma.py`](./tile_dma.py) | staging tile | `Buffer` + `Lock` + `TileDma` + `Flow`, written out by hand |
 | [`objectfifo.py`](./objectfifo.py) | staging tile | one `ObjectFifo.forward()` |
 | [`static_dma.py`](./static_dma.py) | where DDR's address comes from | `aie.external_buffer` at a fixed address + a static `aie.shim_dma` |
-| [`copy_buffer.py`](./copy_buffer.py) | nothing — covers both memory models | one `copy_buffer()` built from the same primitives |
+| [`copy_buffer.py`](./copy_buffer.py) | how much is spelled out | the same design as `static_dma.py`, said as one `copy_buffer()` call per transfer |
 
 The first two are a comparison of API level; the third reuses `tile_dma.py`'s
-tile side unchanged and varies only the DDR end. The fourth is a sketch of an
-abstraction over the other three, kept out of the IRON library on purpose.
+tile side unchanged and varies only the DDR end; the fourth is the third again
+with the wiring derived rather than written, kept out of the IRON library on
+purpose.
 Shared geometry and the run/verify path live in [`harness.py`](./harness.py), so
 every runnable design is checked against the same reference by the same code.
 
 The part of DDR that moves is written in numpy slice notation:
 
 ```python
-DEVMEM_SHAPE = (16, 16, 4096)
+DEVMEM_SHAPE = (16, 16, 512)
 DEVMEM_SLICE = np.s_[0::2, 1::2, ...]
 ```
 
 That is every other index on the first axis, the odd indices on the second, and
-all 4096 bytes of the third — 256 KiB gathered out of a 1 MiB buffer, in 64
-strides of 4 KiB.
+all 512 bytes of the third — 32 KiB gathered out of a 128 KiB buffer, in 64
+strides of 512 B. The innermost run is deliberately small enough that the whole
+slice fits a buffer descriptor's three dimensions as written; see `static_dma.py`
+below for what happens when it is not.
 
 ## Saying the slice instead of deriving it
 
@@ -110,7 +113,7 @@ governs how many times. The two must agree; `repeat_count` is 0-based, so
 %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb2, repeat_count = 63)
 ^bb1:
   aie.use_lock(%buf_free, AcquireGreaterEqual, %c1_i32)
-  aie.dma_bd(%comp05_tile_buffer : memref<4096xi8> len = 4096)
+  aie.dma_bd(%comp05_tile_buffer : memref<512xi8> len = 512)
   aie.use_lock(%buf_full, Release, %c1_i32_0)
   aie.next_bd ^bb4        // the aie.end block: chain ends here
 ```
@@ -146,68 +149,86 @@ from `tile_dma.py` unchanged, so the whole difference between the two files is
 where DDR's address comes from.
 
 ```mlir
-%device_memory_devmem = aie.external_buffer {address = 2147483648 : i64, ...} : memref<16x16x4096xi8>
+%device_memory_devmem = aie.external_buffer {address = 2147483648 : i64, ...} : memref<16x16x512xi8>
 %shim_dma_0_0 = aie.shim_dma(%logical_shim_noc) {
-  %0 = aie.dma_start(MM2S, 0, ^bb1, ^bb2, repeat_count = 7)
+  %0 = aie.dma_start(MM2S, 0, ^bb1, ^bb2)
 ^bb1:
-  aie.dma_bd(%device_memory_devmem : memref<16x16x4096xi8> offset = 4096 len = 32768
-             sizes = [8, 8, 512] strides = [8192, 512, 1])
-             {iteration = #aie.bd_iteration<size = 8, stride = 131072, current = 0>}
+  aie.dma_bd(%device_memory_devmem : memref<16x16x512xi8> offset = 512 len = 32768
+             sizes = [8, 8, 512] strides = [16384, 1024, 1])
 ```
+
+One descriptor, three dimensions, no iteration state and no repeat: the slice is
+said exactly as the slice describes it.
 
 This is emit-only. With the addresses written into the design there is no host
 buffer to hand it, and nothing checks that an allocation lives there.
 
-Note what the slice costs on this path. `tile_dma.py` hands a whole tap to `fill`
-and lets `aie-decompose-large-dma-bd` legalize it; a static `aie.shim_dma` gets
-no such pass, so the geometry has to be hardware-legal as written:
+That simplicity depends on the geometry, which is why the innermost run here is
+512 rather than something larger. `tile_dma.py` hands a whole tap to `fill` and
+lets `aie-decompose-large-dma-bd` legalize whatever it gets; a static
+`aie.shim_dma` gets no such pass — the pass declines anything inside an
+`aie.shim_dma` / `aie.mem` / `aie.memtile_dma` region — so the geometry has to be
+hardware-legal as written. A wrap is capped at 1023, counted in **elements**
+rather than 32-bit words, so a scattered run longer than that has to be factored
+into two dimensions, and the dimension that displaces has to move into the BD's
+iteration state, which then has to be matched by a repeat count. A contiguous
+transfer is exempt from the cap and needs none of this.
 
-- A wrap is capped at 1023, counted in **elements** here rather than 32-bit
-  words, so the 4096-element contiguous run cannot be one dimension. Spelling it
-  as `8 x 512` costs one of the three available dimensions.
-- That leaves no dimension for the slice's outer axis, so it goes in the BD's
-  iteration state — which advances once per BD execution, and executions come
-  from `repeat_count`. Same rule as above: the two must agree, hence
-  `repeat_count = 7` for 8 iterations.
+## `copy_buffer.py` — the design said as one call per transfer
 
-## `copy_buffer.py` — one function over both memory models
-
-The other files spell out a `Flow`, a `DmaChannel`, a `Bd` and a chunk count per
-transfer, twice over, differing only in where DDR's address comes from. This is a
-sketch of a `copy_buffer()` covering both, built from those same primitives:
+`static_dma.py` spells out a `Flow`, a `DmaChannel`, a `Bd`, a chunk count and a
+hardware-legal access pattern for each direction. All of that is derivable from
+the two ends and the locks between them, so `copy_buffer()` takes just those and
+wires the rest — leaving a design that reads as what it does:
 
 ```python
-dma = Dma()
-dma.copy_buffer(
+tile = Tile(col, 5, tile_type=AIETileType.CoreTile)
+shim = Tile(col, 0, tile_type=AIETileType.ShimNOCTile)
+
+devmem = ExternalBuffer(DEVMEM_TY, address=0x8000_0000, name="devmem")
+
+tile_produce_lock = Lock(tile, lock_id=1, init=1, name="tile_produce_lock")
+tile_consume_lock = Lock(tile, lock_id=2, init=0, name="tile_consume_lock")
+tile_buffer = Buffer(tile=tile, type=TILE_TY, name="tile_buffer")
+
+copy_buffer(
+    rt,
     src_buffer=devmem[0::2, 1::2, ...],
     src_channel=0,
     dst_buffer=tile_buffer,
     dst_channel=0,
-    dst_wait_for_lock=buf_free,
-    dst_release_lock=buf_full,
+    dst_wait_for_lock=tile_produce_lock,
+    dst_release_lock=tile_consume_lock,
     through_shim=shim,
 )
-dma.emit(rt)
 ```
 
-Two things let one function serve both. `Mem` makes slicing mean the same thing
-whatever the memory is — off-chip at a fixed address, off-chip supplied at
-dispatch, or a tile's own buffer — by pairing the buffer with the pattern a slice
-describes. And `copy_buffer` decides what to build from what it was handed: an
-`ExternalBuffer` is addressable now, so the shim's side is built immediately as a
-static `aie.shim_dma` channel; a buffer that arrives at dispatch is named by its
-type, so only the route and the tile's side can be built, and the returned `Flow`
-is what the runtime sequence fills or drains.
+It introduces no types of its own. Two small additions to IRON are what let it
+read this way:
 
-The same `_build` function is used for both, and the emitted tile program and
-shim BDs come out identical to the hand-written versions. The chunk count is
-derived from the slice rather than passed in, which is what removes the
-`repeat_count = CHUNKS - 1` from the call site.
+- `ExternalBuffer.__getitem__` — a slice of a buffer is still a buffer, so
+  `devmem[0::2, 1::2, ...]` comes back as an `ExternalBuffer` carrying the
+  access pattern, sharing the one declaration with the buffer it came from.
+  That is what makes `src_buffer=` a single argument rather than a buffer and a
+  pattern passed separately.
+- `TileDma.add_channel` — a tile has one DMA program, so the second call needs
+  somewhere to put its channel on a tile the first already reached. With it,
+  `copy_buffer` registers everything on the `Runtime` itself, and no bookkeeping
+  or emit step is left at the call site.
 
-`emit` exists because a tile has one DMA program: two `TileDma` objects on one
-tile would emit two `aie.mem` regions, so calls accumulate per tile and are
-flushed together.
+Everything else is derived: the route, a channel at each end, the tile's buffer
+descriptor and how many times it runs, and a hardware-legal access pattern for
+the shim's. The result is the same design `static_dma.py` builds by hand — the
+emitted MLIR matches descriptor for descriptor, bar the contiguous outbound BD,
+where `copy_buffer` carries the pattern over rather than reducing it to a bare
+length.
 
+The locks keep the names from the design this mirrors, with the polarity that
+actually runs: the channel writing *into* the tile waits on the produce lock
+(space available) and releases the consume lock.
+
+This is deliberately **not** part of the IRON library — a sketch of what such an
+API could look like, kept next to the primitives it is built from.
 This is deliberately **not** part of the IRON library — it is a sketch of what
 such an API could look like, kept next to the primitives it is built from.
 
@@ -216,9 +237,8 @@ such an API could look like, kept next to the primitives it is built from.
 ```bash
 python3 tile_dma.py --dev npu2 --col 0     # explicit Buffer/Lock/TileDma/Flow
 python3 objectfifo.py --dev npu2 --col 0   # same dataflow via ObjectFifo
-python3 copy_buffer.py --dev npu2 --col 0  # via the copy_buffer() sketch
 python3 static_dma.py                      # print MLIR for the fixed-address variant
-python3 copy_buffer.py --static            # the same, through copy_buffer()
+python3 copy_buffer.py                     # the same design, via copy_buffer()
 ```
 
 Use `--col` to select another legal NPU2 column. The `run_and_verify` path
