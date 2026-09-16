@@ -1,6 +1,6 @@
 //===- rmsnorm.cc -------------------------------------------*- C++ -*-===//
 //
-// Copyright (C) 2025 Advanced Micro Devices, Inc.
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
@@ -9,27 +9,22 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <vec_math.h>
 
 template <typename T, int N>
 void rms_norm(const T *restrict input, T *restrict output, int32_t cols,
               float epsilon = 1e-5f) {
   event0();
-  const float gamma = 1.0f;
-  ::aie::vector<T, N> gamma_v = ::aie::broadcast<T, N>(gamma);
   ::aie::vector<float, N> add_res = ::aie::zeros<float, N>();
-  ::aie::accum<acc32, N> acc = ::aie::zeros<acc32, N>();
 
-  // Process data in vector chunks
   int vector_chunks = cols / N;
   for (int i = 0; i < vector_chunks; i++) {
     ::aie::vector<T, N> reg_a = ::aie::load_v<N>(input + i * N);
     ::aie::vector<float, N> square_v = ::aie::mul_square(reg_a);
-    acc = ::aie::add(add_res, square_v);
-    add_res = acc.template to_vector<float>();
+    add_res = ::aie::add(add_res, square_v);
   }
   float sum_sq = ::aie::reduce_add(add_res);
 
-  // Handle remaining elements
   int remaining = cols % N;
   if (remaining > 0) {
     int start_idx = vector_chunks * N;
@@ -41,26 +36,25 @@ void rms_norm(const T *restrict input, T *restrict output, int32_t cols,
   }
 
   float rms = sum_sq / cols + epsilon;
-  float inv_rms = aie::invsqrt(rms);
-  ::aie::vector<T, N> inv_rms_v =
-      ::aie::broadcast<T, N>(static_cast<T>(inv_rms));
+  float inv_rms = invsqrt(rms);
+  // Peano has no f32 vector multiply for AIE2, so the f32 scale rides in a bf16
+  // pair applied as two exact products accumulated in f32. A single bf16 scale
+  // would shift every element of a norm the same way.
+  T inv_rms_hi = static_cast<T>(inv_rms);
+  T inv_rms_lo = static_cast<T>(inv_rms - static_cast<float>(inv_rms_hi));
 
-  // Process vector chunks
   for (int i = 0; i < vector_chunks; i++) {
     ::aie::vector<T, N> reg_a = ::aie::load_v<N>(input + i * N);
-    ::aie::vector<T, N> norm_v = ::aie::mul(reg_a, inv_rms_v);
-    ::aie::vector<T, N> out_v = ::aie::mul(norm_v, gamma_v);
-    ::aie::store_v(output + i * N, out_v);
+    ::aie::accum<accfloat, N> acc = ::aie::mul(reg_a, inv_rms_hi);
+    acc = ::aie::mac(acc, reg_a, inv_rms_lo);
+    ::aie::store_v(output + i * N, acc.template to_vector<T>());
   }
 
-  // Handle remaining elements
   if (remaining > 0) {
     int start_idx = vector_chunks * N;
     for (int i = 0; i < remaining; i++) {
       T val = input[start_idx + i];
-      T norm_val = static_cast<T>(static_cast<float>(val) * inv_rms);
-      T out_val = static_cast<T>(static_cast<float>(norm_val) * gamma);
-      output[start_idx + i] = out_val;
+      output[start_idx + i] = static_cast<T>(static_cast<float>(val) * inv_rms);
     }
   }
   event1();
@@ -68,13 +62,13 @@ void rms_norm(const T *restrict input, T *restrict output, int32_t cols,
 
 extern "C" {
 void rms_norm(bfloat16 *input, bfloat16 *output, int32_t cols) {
-  // N=32 bf16 = 512 bits = one AIE2P vector register; the tail loop handles a
-  // cols not divisible by 32.
+  ::aie::set_rounding(aie::rounding_mode::conv_even);
   rms_norm<bfloat16, 32>(input, output, cols);
 }
 
 void rms_norm_eps(bfloat16 *input, bfloat16 *output, int32_t cols,
                   float epsilon) {
+  ::aie::set_rounding(aie::rounding_mode::conv_even);
   rms_norm<bfloat16, 32>(input, output, cols, epsilon);
 }
 }
