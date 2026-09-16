@@ -394,6 +394,11 @@ class CompilableDesign:
                     kernel_dir,
                     target_arch,
                     include_dirs=self.include_paths,
+                    # aiecc's LUT bank check reads IR that only the kernel
+                    # compile can preserve, so asking for the check is what
+                    # turns it on. Deriving it here keeps the two from
+                    # disagreeing, and aiecc_flags is already in the cache key.
+                    embed_bitcode="--check-lut-banks" in self.aiecc_flags,
                 )
 
                 compile_mlir_module(
@@ -516,6 +521,11 @@ class CompilableDesign:
                     kernel_dir,
                     target_arch,
                     include_dirs=self.include_paths,
+                    # aiecc's LUT bank check reads IR that only the kernel
+                    # compile can preserve, so asking for the check is what
+                    # turns it on. Deriving it here keeps the two from
+                    # disagreeing, and aiecc_flags is already in the cache key.
+                    embed_bitcode="--check-lut-banks" in self.aiecc_flags,
                 )
 
                 compile_mlir_module(

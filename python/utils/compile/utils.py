@@ -124,6 +124,42 @@ def _end_of_parameter_list(line: str, open_paren: int) -> int:
     return -1
 
 
+def _attach_bitcode(compile_cmd: list[str], output_path: str, cwd) -> None:
+    """Put the kernel's LLVM IR in a `.llvmbc` section of its object.
+
+    aiecc's --check-lut-banks recovers which two tables an aie::lut reads from
+    the IR, which nothing else preserves: address spaces are gone by codegen and
+    the pairing never reaches the symbol table.
+
+    Emitted separately and attached rather than compiled with -fembed-bitcode,
+    which clang rejects alongside the -ffunction-sections/-fdata-sections the
+    object needs for stack-size attribution.
+    """
+    bitcode_path = f"{output_path}.bc"
+    drop = {"-c", "-ffunction-sections", "-fdata-sections", "-fstack-size-section"}
+    cmd = [a for a in compile_cmd if a not in drop]
+    cmd[cmd.index("-o")] = "-o"
+    cmd[cmd.index("-o") + 1] = bitcode_path
+    cmd += ["-emit-llvm", "-c"]
+
+    ret = subprocess.run(cmd, cwd=cwd, check=False, capture_output=True)
+    if ret.returncode != 0:
+        raise RuntimeError(
+            "Could not emit bitcode for --check-lut-banks:\n" + ret.stderr.decode()
+        )
+
+    ret = subprocess.run(
+        [config.objcopy_path(), f"--add-section=.llvmbc={bitcode_path}", output_path],
+        cwd=cwd,
+        check=False,
+        capture_output=True,
+    )
+    if ret.returncode != 0:
+        raise RuntimeError(
+            "Could not attach bitcode for --check-lut-banks:\n" + ret.stderr.decode()
+        )
+
+
 def _make_ir_inlinable(ir_path: str, symbol_name: str) -> None:
     """Rewrite an emitted LLVM IR kernel so aiecc inlines it into the core.
 
@@ -244,6 +280,7 @@ def compile_cxx_core_function(
     use_chess: bool = False,
     inline: bool = False,
     symbol_name: str | None = None,
+    embed_bitcode: bool = False,
 ):
     """Compile a C++ core function via either Peano or the Chess compiler.
 
@@ -374,6 +411,9 @@ def compile_cxx_core_function(
         if ret.stderr:
             raise RuntimeError(f"[{tool}] compilation failed:\n{ret.stderr.decode()}")
         raise RuntimeError(f"[{tool}] compilation failed")
+
+    if embed_bitcode and not inline and not use_chess:
+        _attach_bitcode(cmd, output_path, cwd)
 
     if inline:
         assert symbol_name is not None
@@ -643,7 +683,9 @@ def _compiled_into(func, kernel_dir) -> bool:
     return os.path.abspath(compiled_dir) == os.path.abspath(kernel_dir)
 
 
-def compile_external_kernels(funcs, kernel_dir, target_arch, include_dirs=None):
+def compile_external_kernels(
+    funcs, kernel_dir, target_arch, include_dirs=None, embed_bitcode=False
+):
     """Compile every ExternalFunction in ``funcs`` into ``kernel_dir``.
 
     Kernels are separate translation units with separate outputs, so they
@@ -673,7 +715,9 @@ def compile_external_kernels(funcs, kernel_dir, target_arch, include_dirs=None):
     # per-invocation state there, so the Chess path runs serially.
     if any(getattr(f, "_use_chess", False) for f in pending):
         for f in pending:
-            compile_external_kernel(f, kernel_dir, target_arch, include_dirs)
+            compile_external_kernel(
+                f, kernel_dir, target_arch, include_dirs, embed_bitcode
+            )
         return
 
     groups: dict[str, list] = {}
@@ -691,12 +735,16 @@ def compile_external_kernels(funcs, kernel_dir, target_arch, include_dirs=None):
     if jobs == 1:
         for group in groups.values():
             for f in group:
-                compile_external_kernel(f, kernel_dir, target_arch, include_dirs)
+                compile_external_kernel(
+                    f, kernel_dir, target_arch, include_dirs, embed_bitcode
+                )
         return
 
     def _run(group):
         for f in group:
-            compile_external_kernel(f, kernel_dir, target_arch, include_dirs)
+            compile_external_kernel(
+                f, kernel_dir, target_arch, include_dirs, embed_bitcode
+            )
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as pool:
         # list() re-raises the first failure, after the others have finished --
@@ -704,7 +752,9 @@ def compile_external_kernels(funcs, kernel_dir, target_arch, include_dirs=None):
         list(pool.map(_run, groups.values()))
 
 
-def compile_external_kernel(func, kernel_dir, target_arch, include_dirs=None):
+def compile_external_kernel(
+    func, kernel_dir, target_arch, include_dirs=None, embed_bitcode=False
+):
     """Compile an ExternalFunction to an object file in the kernel directory.
 
     The output file is named ``func.object_file_name`` and placed in ``kernel_dir``.
@@ -762,6 +812,7 @@ def compile_external_kernel(func, kernel_dir, target_arch, include_dirs=None):
             cwd=str(kernel_dir),
             inline=getattr(func, "_inline", False),
             use_chess=getattr(func, "_use_chess", False),
+            embed_bitcode=embed_bitcode,
         )
 
     elif func._source_file is not None:
@@ -800,6 +851,7 @@ def compile_external_kernel(func, kernel_dir, target_arch, include_dirs=None):
             cwd=kernel_dir,
             inline=getattr(func, "_inline", False),
             use_chess=getattr(func, "_use_chess", False),
+            embed_bitcode=embed_bitcode,
         )
     else:
         raise ValueError("Neither source_string nor source_file is provided")
