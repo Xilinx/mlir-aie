@@ -14,6 +14,7 @@ These programming examples provide a good starting point to illustrate how to bu
 * [Passthrough PyKernel](./passthrough_pykernel) - Memcpy where the AIE kernel is written as an inline Python function rather than a C++ external function.
 * [Transposes](./transposes) - Four interchangeable matrix-transpose strategies (DMA stride, packet-switched DMA stride, VSHUFFLE, hybrid) behind a single `--strategy` flag.
 * [Chaining Channels](./chaining_channels) - Demonstrates chaining multiple DMA buffer descriptors in sequence on a single channel.
+* [DMA Slice Memcpy](./dma_slice_memcpy) - Moves a strided slice of DDR, named in numpy slice notation, through a tile and back. The same dataflow written with explicit `TileDma`/`Lock`/`Flow`, with one `ObjectFifo.forward()`, and with DDR addressed by the design instead of the host.
 * [Vector Scalar Add](./vector_scalar_add) - Single tile increments every element of a vector by `1`. Includes a `test_runlist.cpp` variant that exercises the XRT run-list execution model (NPU2 only).
 * [Vector Scalar Mul](./vector_scalar_mul) - Single tile performs `vector * scalar` of size `4096` in `1024`-element chunks.
 * [Vector Vector Add](./vector_vector_add) - Single tile performs `vector + vector` of size `32`.
