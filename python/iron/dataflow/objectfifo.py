@@ -713,93 +713,39 @@ class ObjectFifoHandle(Resolvable):
         """Shared body for fill()/drain().
 
         Bind the shim endpoint, register the fifo with the active runtime
-        sequence, and emit the shim DMA transfer. Returns a
-        [`Task`][iron.runtime.dmataskhandle.Task] handle to the transfer
-        (carry it as a ``range_`` iter_arg; ``.free()``/``.await_()`` it).
-
-        The access pattern is given either as a static ``tap`` or as explicit
-        ``sizes``/``strides``/``offset``/``transfer_len`` whose entries may be
-        runtime SSA values (the dynamic path). The two forms are mutually
-        exclusive; when neither is given, a linear transfer of the whole buffer
-        is used.
-
-        When ``managed`` is True (default), the transfer is enrolled in a
-        TaskGroup (explicit ``group`` or the sequence's implicit one), which
-        awaits/frees it at group close. When False, the caller owns the
-        transfer's lifetime via the returned Task's ``.free()``/``.await_()`` --
-        used for hand-rolled software pipelines that carry the task across
-        ``scf.for`` iterations.
+        sequence, then emit the transfer on the shim allocation this fifo's name
+        declares. Returns a [`Task`][iron.runtime.dmataskhandle.Task] handle to
+        the transfer (carry it as a ``range_`` iter_arg;
+        ``.free()``/``.await_()`` it). See ``emit_shim_transfer`` for the
+        arguments.
 
         Lazy imports break the runtime<->dataflow import cycle.
         """
         from ..runtime._context import active_sequence
-        from ..runtime.data import RuntimeData
-        from ..runtime.dmatask import DMATask
-        from ..runtime.dmataskhandle import Task
+        from ..runtime.dmatask import emit_shim_transfer
         from ..runtime.endpoint import RuntimeEndpoint
-        from ..scratchpad_parameter import ScratchpadParameter
-
-        active = active_sequence()
-        rt = active._runtime
-
-        if not isinstance(rt_data, RuntimeData):
-            raise ValueError(f"Expected a RuntimeData source/dest, got {rt_data}")
-        if rt_data not in rt._rt_data:
-            raise ValueError(
-                f"{rt_data} is not a RuntimeData object declared by sequence()"
-            )
-
-        explicit = any(v is not None for v in (sizes, strides, offset, transfer_len))
-        if tap is not None and explicit:
-            raise ValueError(
-                "Pass either tap or sizes/strides/offset/transfer_len, not both."
-            )
-        if tap is None and not explicit:
-            tap = rt_data.default_tap()
-
-        if not managed and group is not None:
-            raise ValueError(
-                "An unmanaged transfer (managed=False) is not part of a TaskGroup; "
-                "do not also pass group=."
-            )
 
         # The endpoint is normally bound eagerly when this handle is registered in
         # Runtime fn_args (using its prod()/cons() tile); bind it here too so a
         # handle used only via fill/drain still gets a shim endpoint.
         if self._endpoint is None:
             self.endpoint = RuntimeEndpoint(self._shim_tile)
-        active.note_fifo(self)
+        active_sequence().note_fifo(self)
 
-        offset_param_name = None
-        if offset_parameter is not None:
-            if isinstance(offset_parameter, ScratchpadParameter):
-                offset_param_name = offset_parameter.name
-                if offset_parameter not in rt._scratchpad_parameters:
-                    rt._scratchpad_parameters.append(offset_parameter)
-            else:
-                offset_param_name = offset_parameter
-
-        task = DMATask(
-            self,
+        return emit_shim_transfer(
+            self.name,
             rt_data,
             tap=tap,
-            task_group=group,
             wait=wait,
-            offset_parameter=offset_param_name,
             packet=packet,
+            offset_parameter=offset_parameter,
+            group=group,
             sizes=sizes,
             strides=strides,
             offset=offset,
             transfer_len=transfer_len,
+            managed=managed,
         )
-        if managed:
-            active.emit_transfer(task, group)
-        else:
-            # Emit the BD only; the caller owns await/free via the Task.
-            task.resolve()
-        # Wrap the transfer's !index result: it is both the scf iter_arg payload
-        # and the operand dma_await_task/dma_free_task accept.
-        return Task(task.task.result)
 
     def fill(
         self,

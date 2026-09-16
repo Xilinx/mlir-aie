@@ -64,6 +64,17 @@ class RuntimeData:
         # TODO: what if not two dimensional?
         return TensorTiler2D.simple_tiler(self.shape)[0]
 
+    def __getitem__(self, key) -> TensorAccessPattern:
+        """Return the access pattern for a numpy-style slice of this buffer.
+
+        Lets a transfer say which part of the buffer moves in the notation the
+        data is already thought about -- ``flow.fill(a, tap=a[0::2, 1::2, ...])``
+        -- instead of hand-deriving the offset, sizes and strides that slice
+        implies. Nothing is allocated: the geometry is read off a zero-storage
+        numpy view (see ``TensorAccessPattern.from_slice``).
+        """
+        return TensorAccessPattern.from_slice(self.shape, key)
+
     @property
     def op(self) -> MemRefValue:
         if self._op is None:
