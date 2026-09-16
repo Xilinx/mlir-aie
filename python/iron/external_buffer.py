@@ -5,6 +5,7 @@
 #
 """Off-chip memory declared at device scope, at a fixed address."""
 
+import copy
 import itertools
 from typing import Sequence
 
@@ -12,6 +13,7 @@ import numpy as np
 
 from .. import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
 from ..dialects.aie import external_buffer
+from ..helpers.taplib import TensorAccessPattern
 from ..helpers.util import (
     NpuDType,
     np_ndarray_type_get_dtype,
@@ -80,6 +82,41 @@ class ExternalBuffer(Resolvable):
         # TileDma's BDs are placed against their buffer's tile, and this is how
         # such a buffer says it needs no placing.
         self._tile: Tile | None = None
+        # Set on a view returned by __getitem__: the buffer it is part of, which
+        # owns the declaration both share.
+        self._whole: "ExternalBuffer | None" = None
+        self._tap: TensorAccessPattern | None = None
+
+    def __getitem__(self, key) -> "ExternalBuffer":
+        """Return the part of this buffer a numpy-style slice names.
+
+        A slice of a buffer is still a buffer -- it can be copied from or to
+        wherever the whole one can -- so it comes back as an ExternalBuffer
+        carrying the access pattern the slice describes, sharing the one
+        declaration with the buffer it came from.
+
+        Nothing is allocated: the geometry is read off a zero-storage numpy view
+        (see ``TensorAccessPattern.from_slice``).
+        """
+        if self._whole is not None:
+            raise ValueError(
+                f"{self._name} is already a slice. A second [] would measure "
+                "against the whole buffer's shape rather than composing with "
+                "the first, so slice the whole buffer once instead."
+            )
+        # Everything but the access pattern is the buffer being sliced -- type,
+        # address, name, and the declaration itself (see op/resolve below).
+        view = copy.copy(self)
+        view._whole = self
+        view._tap = TensorAccessPattern.from_slice(self.shape, key)
+        return view
+
+    @property
+    def tap(self) -> TensorAccessPattern:
+        """The part of the buffer this refers to; all of it unless sliced."""
+        if self._tap is None:
+            self._tap = TensorAccessPattern.from_slice(self.shape, np.s_[...])
+        return self._tap
 
     @property
     def tile(self) -> Tile | None:
@@ -107,6 +144,8 @@ class ExternalBuffer(Resolvable):
 
     @property
     def op(self):
+        if self._whole is not None:
+            return self._whole.op
         if self._op is None:
             raise NotResolvedError()
         return self._op
@@ -116,6 +155,10 @@ class ExternalBuffer(Resolvable):
         loc: ir.Location | None = None,
         ip: ir.InsertionPoint | None = None,
     ) -> None:
+        # A view declares nothing of its own; the buffer it is part of does.
+        if self._whole is not None:
+            self._whole.resolve(loc, ip)
+            return
         if not self._op:
             self._op = external_buffer(
                 self._arr_type,
