@@ -43,25 +43,31 @@ class LintDependencySyncTests(unittest.TestCase):
             "dependabot.yml should track pre-commit updates for the repository root",
         )
 
-    def test_ci_derives_clang_format_version_from_pre_commit(self):
-        pre_commit_version = require(
-            r"repo: https://github\.com/pre-commit/mirrors-clang-format\n\s+rev: .*?# frozen: v([0-9][^\s]*)",
+    def test_clang_format_hook_covers_td_files(self):
+        hook_block = require(
+            r"repo: https://github\.com/pre-commit/mirrors-clang-format\n(?P<block>(?:\s+.*\n)+?)(?:\s*- repo:|\Z)",
             self.pre_commit,
-            ".pre-commit-config.yaml should pin clang-format with a frozen version comment",
-        ).group(1)
+            ".pre-commit-config.yaml should define the clang-format hook",
+            flags=re.MULTILINE | re.DOTALL,
+        ).group("block")
+        self.assertIn(r"files: \.(c|cc|cpp|cxx|h|hpp|td)$", hook_block)
 
-        require(
-            r"^\s*- name: Read clang-format version from pre-commit config\n\s+id: clang-format-version$",
-            self.workflow,
-            "lintAndFormat.yml should define a step that reads clang-format's version from pre-commit",
+    def test_ci_clang_format_runs_the_pre_commit_hook(self):
+        self.assertIn("pre-commit run clang-format", self.workflow)
+        self.assertIn("--from-ref origin/main", self.workflow)
+        self.assertIn("--to-ref HEAD", self.workflow)
+        self.assertNotIn("git clang-format origin/main", self.workflow)
+        self.assertNotIn("clangformat: ${{", self.workflow)
+
+    def test_pre_commit_pin_remains_the_clang_format_source_of_truth(self):
+        self.assertIsNotNone(
+            re.search(
+                r"repo: https://github\.com/pre-commit/mirrors-clang-format\n\s+rev: .*?# frozen: v([0-9][^\s]*)",
+                self.pre_commit,
+                re.MULTILINE,
+            ),
+            ".pre-commit-config.yaml should pin clang-format with a frozen version comment",
         )
-        self.assertIn('.pre-commit-config.yaml").read_text()', self.workflow)
-        self.assertIn('>> "$GITHUB_OUTPUT"', self.workflow)
-        self.assertIn(
-            "clangformat: ${{ steps.clang-format-version.outputs.version }}",
-            self.workflow,
-        )
-        self.assertIn(f"# frozen: v{pre_commit_version}", self.pre_commit)
 
 
 if __name__ == "__main__":
