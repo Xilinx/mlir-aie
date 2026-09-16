@@ -230,6 +230,7 @@ class Runtime(Resolvable):
         self._flows = []
         self._locks = []
         self._tile_dmas = []
+        self._external_buffers = []
         self._scratchpad_parameters: list[ScratchpadParameter] = []
         self._strict_task_groups = strict_task_groups
         self._task_group_index = itertools.count()
@@ -270,6 +271,14 @@ class Runtime(Resolvable):
         """Register an explicit [`TileDma`][iron.TileDma] program."""
         self._tile_dmas.append(tile_dma)
 
+    def add_external_buffer(self, external_buffer) -> None:
+        """Register an [`ExternalBuffer`][iron.ExternalBuffer] to declare at device scope.
+
+        For off-chip memory the design addresses itself, rather than receiving
+        as a sequence argument.
+        """
+        self._external_buffers.append(external_buffer)
+
     @property
     def flows(self):
         return list(self._flows)
@@ -281,6 +290,10 @@ class Runtime(Resolvable):
     @property
     def tile_dmas(self):
         return list(self._tile_dmas)
+
+    @property
+    def external_buffers(self):
+        return list(self._external_buffers)
 
     @property
     def fifos(self) -> list[ObjectFifoHandle]:
