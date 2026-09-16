@@ -514,7 +514,7 @@ static void findFlowsFromInterconnect(Operation *switchOp,
             upPort.bundle == WireBundle::DMA) {
           continue;
         }
-        srcTile = upOp->getResult(0);
+        srcTile = resolveEndpointTile(upOp);
         srcBundle = upPort.bundle;
         srcChannel = upPort.channel;
       } else if (analysis.drivesPort(upOp, upPort)) {
