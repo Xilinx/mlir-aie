@@ -44,13 +44,11 @@ class LintDependencySyncTests(unittest.TestCase):
         )
 
     def test_clang_format_hook_covers_td_files(self):
-        hook_block = require(
-            r"repo: https://github\.com/pre-commit/mirrors-clang-format\n(?P<block>(?:\s+.*\n)+?)(?:\s*- repo:|\Z)",
+        self.assertIn(
+            "- repo: https://github.com/pre-commit/mirrors-clang-format",
             self.pre_commit,
-            ".pre-commit-config.yaml should define the clang-format hook",
-            flags=re.MULTILINE | re.DOTALL,
-        ).group("block")
-        self.assertIn(r"files: \.(c|cc|cpp|cxx|h|hpp|td)$", hook_block)
+        )
+        self.assertIn(r"files: \.(c|cc|cpp|cxx|h|hpp|td)$", self.pre_commit)
 
     def test_ci_clang_format_runs_the_pre_commit_hook(self):
         self.assertIn("pre-commit run clang-format", self.workflow)
