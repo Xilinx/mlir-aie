@@ -18,11 +18,13 @@ The same dataflow is written three ways:
 | [`tile_dma.py`](./tile_dma.py) | staging tile | `Buffer` + `Lock` + `TileDma` + `Flow`, written out by hand |
 | [`objectfifo.py`](./objectfifo.py) | staging tile | one `ObjectFifo.forward()` |
 | [`static_dma.py`](./static_dma.py) | where DDR's address comes from | `aie.external_buffer` at a fixed address + a static `aie.shim_dma` |
+| [`copy_buffer.py`](./copy_buffer.py) | nothing — covers both memory models | one `copy_buffer()` built from the same primitives |
 
 The first two are a comparison of API level; the third reuses `tile_dma.py`'s
-tile side unchanged and varies only the DDR end. Shared geometry and the
-run/verify path live in [`harness.py`](./harness.py), so both runnable designs
-are checked against the same reference by the same code.
+tile side unchanged and varies only the DDR end. The fourth is a sketch of an
+abstraction over the other three, kept out of the IRON library on purpose.
+Shared geometry and the run/verify path live in [`harness.py`](./harness.py), so
+every runnable design is checked against the same reference by the same code.
 
 The part of DDR that moves is written in numpy slice notation:
 
@@ -168,12 +170,55 @@ no such pass, so the geometry has to be hardware-legal as written:
   from `repeat_count`. Same rule as above: the two must agree, hence
   `repeat_count = 7` for 8 iterations.
 
+## `copy_buffer.py` — one function over both memory models
+
+The other files spell out a `Flow`, a `DmaChannel`, a `Bd` and a chunk count per
+transfer, twice over, differing only in where DDR's address comes from. This is a
+sketch of a `copy_buffer()` covering both, built from those same primitives:
+
+```python
+dma = Dma()
+dma.copy_buffer(
+    src_buffer=devmem[0::2, 1::2, ...],
+    src_channel=0,
+    dst_buffer=tile_buffer,
+    dst_channel=0,
+    dst_wait_for_lock=buf_free,
+    dst_release_lock=buf_full,
+    through_shim=shim,
+)
+dma.emit(rt)
+```
+
+Two things let one function serve both. `Mem` makes slicing mean the same thing
+whatever the memory is — off-chip at a fixed address, off-chip supplied at
+dispatch, or a tile's own buffer — by pairing the buffer with the pattern a slice
+describes. And `copy_buffer` decides what to build from what it was handed: an
+`ExternalBuffer` is addressable now, so the shim's side is built immediately as a
+static `aie.shim_dma` channel; a buffer that arrives at dispatch is named by its
+type, so only the route and the tile's side can be built, and the returned `Flow`
+is what the runtime sequence fills or drains.
+
+The same `_build` function is used for both, and the emitted tile program and
+shim BDs come out identical to the hand-written versions. The chunk count is
+derived from the slice rather than passed in, which is what removes the
+`repeat_count = CHUNKS - 1` from the call site.
+
+`emit` exists because a tile has one DMA program: two `TileDma` objects on one
+tile would emit two `aie.mem` regions, so calls accumulate per tile and are
+flushed together.
+
+This is deliberately **not** part of the IRON library — it is a sketch of what
+such an API could look like, kept next to the primitives it is built from.
+
 ## Usage
 
 ```bash
 python3 tile_dma.py --dev npu2 --col 0     # explicit Buffer/Lock/TileDma/Flow
 python3 objectfifo.py --dev npu2 --col 0   # same dataflow via ObjectFifo
+python3 copy_buffer.py --dev npu2 --col 0  # via the copy_buffer() sketch
 python3 static_dma.py                      # print MLIR for the fixed-address variant
+python3 copy_buffer.py --static            # the same, through copy_buffer()
 ```
 
 Use `--col` to select another legal NPU2 column. The `run_and_verify` path
