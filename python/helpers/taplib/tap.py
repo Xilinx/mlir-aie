@@ -49,6 +49,58 @@ class TensorAccessPattern:
         self._sizes: Sequence[int] = cleaned_sizes
         self._strides: Sequence[int] = cleaned_strides
 
+    @classmethod
+    def from_slice(cls, tensor_dims: Sequence[int], key) -> "TensorAccessPattern":
+        """Build an access pattern from numpy basic-slice notation.
+
+        Lets a transfer be described the way the data is thought about --
+        ``tap = TensorAccessPattern.from_slice(t.shape, np.s_[0::2, 1::2, ...])``
+        -- instead of by hand-deriving the offset, wraps and steps that slice
+        implies.
+
+        numpy composes slices, ellipses and integer indices; the slice is
+        applied to a stand-in array and the resulting view's geometry is read
+        back out. The stand-in owns no storage: ``as_strided`` describes
+        ``tensor_dims`` over a zero-byte base, and slicing only ever touches a
+        view's metadata, never its elements. So nothing is allocated to answer
+        a question about sizes and strides.
+
+        No dtype is needed. An access pattern is element-granular, and a
+        one-byte stand-in makes numpy's byte offsets and strides read directly
+        as element counts, so the same slice yields the same pattern whatever
+        the tensor's real element type.
+
+        Args:
+            tensor_dims (Sequence[int]): Dimensions of the tensor being sliced.
+            key: Any numpy basic-indexing key, e.g. ``np.s_[0::2, 1::2, ...]``.
+
+        Returns:
+            TensorAccessPattern: The access pattern the slice describes.
+
+        Raises:
+            ValueError: If the slice implies a non-positive stride. Reverse and
+                zero strides are expressible in numpy but not in a buffer
+                descriptor, which only steps forward.
+        """
+        dims = tuple(tensor_dims)
+        c_strides = np.multiply.accumulate((1, *dims[:0:-1]))[::-1]
+        stand_in = np.lib.stride_tricks.as_strided(
+            np.empty(0, np.int8), shape=dims, strides=c_strides
+        )
+        view = stand_in[key]
+        if any(stride <= 0 for stride in view.strides):
+            raise ValueError(
+                f"slice {key!r} implies strides {view.strides}, but a buffer "
+                "descriptor only expresses positive (forward) steps."
+            )
+        origin = stand_in.__array_interface__["data"][0]
+        return cls(
+            tensor_dims=dims,
+            offset=view.__array_interface__["data"][0] - origin,
+            sizes=list(view.shape),
+            strides=list(view.strides),
+        )
+
     @property
     def tensor_dims(self) -> Sequence[int]:
         """A copy of the dimensions of the tensor.
