@@ -100,12 +100,12 @@ class Bd:
     releases + an `aie.next_bd`. The `next` field selects what the
     `next_bd` points at:
 
-    - `"self"` (default) — the BD loops to itself (the common "keep
-      streaming" pattern).
+    - `None` (default) — follow the channel: the next entry in `bds`, and from
+      the last entry either back to the head or out of the chain, per
+      [`DmaChannel.loop`][iron.DmaChannel].
+    - `"self"` — the BD loops to itself, whatever the rest of the chain does.
     - an `int` `i` — point at the i-th BD in this channel's `bds`
       list (zero-based). Useful for explicit cycles in a multi-BD chain.
-    - `None` — emit no `next_bd` (rarely useful; this leaves the
-      basic block without a terminator).
 
     `next` is ignored on an out-of-order channel because those BDs are chained
     only for configuration and the hardware selects by header id (see
@@ -117,7 +117,7 @@ class Bd:
     length: int | None = None  # default: full buffer
     acquires: list[Acquire] = field(default_factory=list)
     releases: list[Release] = field(default_factory=list)
-    next: int | str | None = "self"
+    next: int | str | None = None
     # When set, stamps a packet header on every transfer this BD emits:
     # (pkt_type, pkt_id).  Pairs with a PacketFlow that uses
     # the same pkt_id so the routing fabric dispatches correctly.
@@ -151,6 +151,11 @@ class DmaChannel:
         channel: hardware channel index.
         bds: ordered list of [`Bd`][iron.Bd] entries that form the chain
             (in-order) or n-way merge (out-of-order).
+        loop: whether the last BD chains back to the first, making the chain
+            endless. An endless chain is one task that never completes, so it
+            runs for as long as its locks let it and `repeat_count` has nothing
+            to count -- set `loop=False` to end the chain after its last BD,
+            which is what lets `repeat_count` re-run it a fixed number of times.
         repeat_count: extra repeats of the task (0 = run once), where the task
             is the BD chain (in-order) or a merge round (out-of-order).
         out_of_order: put the channel into out-of-order mode (S2MM only).
@@ -167,6 +172,7 @@ class DmaChannel:
     direction: DMAChannelDir
     channel: int
     bds: list[Bd]
+    loop: bool = True
     pad_value: int = 0
     repeat_count: int = 0
     out_of_order: bool = False
@@ -416,7 +422,17 @@ class TileDma(Resolvable):
                             nxt = (bd_pos + 1) % len(ch.bds)
                             next_bd(block[bd_block_idx[nxt]])
                         elif bd.next is None:
-                            pass  # caller's problem if the block has no terminator
+                            if bd_pos + 1 < len(ch.bds):
+                                next_bd(block[bd_block_idx[bd_pos + 1]])
+                            elif ch.loop:
+                                next_bd(block[bd_block_idx[0]])
+                            else:
+                                # The region's aie.end block. A next_bd landing
+                                # on it is how the dialect spells "chain ends
+                                # here" -- aie-assign-bd-ids reads that as no
+                                # next BD, so the task completes and
+                                # repeat_count can re-run it.
+                                next_bd(block[end_idx])
                         elif bd.next == "self":
                             next_bd(block[bd_block_idx[bd_pos]])
                         elif isinstance(bd.next, int):
