@@ -61,8 +61,8 @@ int main(int argc, const char *argv[]) {
 
   uint32_t *bufOut = bo_out.map<uint32_t *>();
   int errors = 0;
-  for (int k = 0; k < SIZE; k++) {
-    int slot = (START + k) % SIZE;
+  for (int k = 0; k < ITER_SIZE; k++) {
+    int slot = (START + k) % ITER_SIZE;
     for (int j = 0; j < CHUNK; j++) {
       uint32_t want = bufIn[k * CHUNK + j];
       uint32_t got = bufOut[slot * CHUNK + j];
