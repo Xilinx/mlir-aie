@@ -834,10 +834,6 @@ def AIE_PacketFlowOp: AIE_Op<"packet_flow", [SingleBlockImplicitTerminator<"EndO
     from other routes. The ID must have no bit outside the mask, or no packet
     can match.
 
-    A design may compute a packet header at run time, so which IDs reach a
-    port is not decidable here. State the mask to claim a set of IDs that
-    routing cannot see.
-
     Example:
     ```
       %01 = aie.tile(0, 1)

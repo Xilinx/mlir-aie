@@ -104,10 +104,7 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
       // This FlowOp is a broadcast sibling of a flow whose route was already
       // materialized (the analyzer merges all destinations sharing a source
       // into one net, so the first sibling emitted connections for every
-      // destination). Erase it and report success so the erase is committed;
-      // returning failure() here would roll the erase back and leave a stale
-      // aie.flow in the routed IR, breaking idempotency (re-running the pass
-      // would try to re-route an already-routed net and fail).
+      // destination). Erase it and report success so the erase is committed.
       LLVM_DEBUG(llvm::dbgs() << "Flow already processed!\n");
       rewriter.eraseOp(Op);
       return success();
