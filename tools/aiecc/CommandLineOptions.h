@@ -165,6 +165,11 @@ inline cl::opt<bool> noCheckBankPlacement(
     cl::desc("Skip the check that a symbol a core places for a memory bank (a "
              "chess_storage / __aie_dm_resource_* request) was linked into "
              "that bank"));
+inline cl::opt<bool> checkLutBanks(
+    "check-lut-banks",
+    cl::desc("Check that the two tables of each aie::lut<4> are in different "
+             "memory banks. Requires kernels built with -fembed-bitcode; off "
+             "by default because preserving that IR costs compile time"));
 inline cl::opt<int> defaultStackSize(
     "default-stack-size",
     cl::desc("Stack size in bytes to assume for any core that leaves "

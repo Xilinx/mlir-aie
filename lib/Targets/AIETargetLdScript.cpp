@@ -161,6 +161,13 @@ SECTIONS
   .stack_sizes : {
      *(.stack_sizes)
   }
+  /* Bitcode an object carries for aiecc's own analysis. It describes the core
+     rather than running on it, and --orphan-handling=error rejects any section
+     with no home, so name it here to drop it. */
+  /DISCARD/ : {
+     *(.llvmbc)
+     *(.llvmcmd)
+  }
 
 )THESCRIPT";
       auto doBuffer = [&](std::optional<TileID> tile, int offset,

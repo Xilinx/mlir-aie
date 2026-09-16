@@ -440,6 +440,99 @@ inline mlir::LogicalResult checkBankPlacement(
   return result;
 }
 
+// Reports an `aie::lut<4>` whose two tables share a memory bank. The gather
+// reads them at once, so one bank means one port and wrong data, with nothing
+// at run time to say so.
+//
+// The pairing comes from the IR `-fembed-bitcode` leaves in each object, so it
+// needs no annotation and no naming convention. An object built without that
+// flag carries no IR: that is an error rather than a skip, because the caller
+// asked for this check and a silent pass would read as "verified".
+inline mlir::LogicalResult checkLutBankSeparation(
+    mlir::ModuleOp module,
+    llvm::function_ref<std::string(xilinx::AIE::CoreOp)> elfForCore,
+    llvm::function_ref<std::string(llvm::StringRef)> resolvePath) {
+  mlir::LogicalResult result = mlir::success();
+  module.walk([&](xilinx::AIE::CoreOp coreOp) {
+    std::string elf = elfForCore(coreOp);
+    auto filesAttr = coreOp.getLinkFiles();
+    if (elf.empty() || !filesAttr) {
+      return;
+    }
+    auto tile =
+        mlir::cast<xilinx::AIE::TileOp>(coreOp.getTile().getDefiningOp());
+    const auto &targetModel = xilinx::AIE::getTargetModel(coreOp);
+    int numBanks = targetModel.getNumBanks(tile.getCol(), tile.getRow());
+    if (numBanks <= 0) {
+      return;
+    }
+    int64_t bankSize = targetModel.getLocalMemorySize() / numBanks;
+    llvm::StringMap<int64_t> addrs = xilinx::aiecc::readDataSymbolAddresses(
+        elf,
+        targetModel.getMemInternalBaseAddress({tile.getCol(), tile.getRow()}));
+
+    auto describe = [&](const xilinx::aiecc::LutOperand &op) {
+      switch (op.kind) {
+      case xilinx::aiecc::LutOperand::Kind::Symbol:
+        return "'" + op.symbol + "'";
+      case xilinx::aiecc::LutOperand::Kind::Param:
+        return "parameter " + std::to_string(op.paramIndex);
+      case xilinx::aiecc::LutOperand::Kind::Stack:
+        return std::string("a stack local");
+      }
+      return std::string("<unknown>");
+    };
+    // -1 when the table's bank cannot be decided here: a parameter is bound at
+    // the call site, and a stack local has no bank of its own to report.
+    auto bankOf = [&](const xilinx::aiecc::LutOperand &op) -> int {
+      if (op.kind != xilinx::aiecc::LutOperand::Kind::Symbol) {
+        return -1;
+      }
+      auto it = addrs.find(op.symbol);
+      return it == addrs.end() ? -1 : static_cast<int>(it->second / bankSize);
+    };
+
+    for (auto f : filesAttr->getAsRange<mlir::StringAttr>()) {
+      std::string object = resolvePath(f.getValue());
+      auto pairs = xilinx::aiecc::readLutPairsFromObject(object);
+      if (!pairs) {
+        coreOp.emitError()
+            << "core (" << tile.getCol() << ", " << tile.getRow() << "): '"
+            << f.getValue()
+            << "' carries no embedded LLVM IR, so its aie::lut tables cannot "
+               "be checked. Rebuild the kernel with -fembed-bitcode, or drop "
+               "--check-lut-banks";
+        result = mlir::failure();
+        continue;
+      }
+      for (const auto &pair : *pairs) {
+        using Kind = xilinx::aiecc::LutOperand::Kind;
+        bool onStack = pair.a.kind == Kind::Stack || pair.b.kind == Kind::Stack;
+        int bankA = bankOf(pair.a);
+        int bankB = bankOf(pair.b);
+        if (!onStack && (bankA < 0 || bankB < 0 || bankA != bankB)) {
+          continue;
+        }
+        auto diag = coreOp.emitError()
+                    << "core (" << tile.getCol() << ", " << tile.getRow()
+                    << "): the aie::lut tables in '" << pair.function << "' ("
+                    << describe(pair.a) << " and " << describe(pair.b) << ") ";
+        if (onStack) {
+          diag << "are on the stack, which is one contiguous run and so cannot "
+                  "give them separate memory banks. Make them static or pass "
+                  "them in as aie.buffers pinned to different banks";
+        } else {
+          diag << "are both in memory bank " << static_cast<char>('A' + bankA)
+               << ". The gather reads them at once, so they must be in "
+                  "different banks";
+        }
+        result = mlir::failure();
+      }
+    }
+  });
+  return result;
+}
+
 // Clone `src` and replace each matched CoreOp with a stub that carries
 // `elf_file = <path>` and an empty body (verifier requires empty body when
 // elf_file is set).

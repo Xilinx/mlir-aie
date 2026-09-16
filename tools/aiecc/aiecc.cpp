@@ -1099,6 +1099,22 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                                              });
                  });
   }
+  if (checkLutBanks.getValue()) {
+    measured =
+        &bundle(compiledElfs.out, measured->out)
+             .join<ModRef>(
+                 "checked_lut_banks.mlir",
+                 [elfLookup, inputFile, workDirStr](
+                     const Node<Directory> &elfs, const Node<ModRef> &physicalN,
+                     Item<ModRef> &out) -> mlir::LogicalResult {
+                   out.value = ModRef(physicalN.get().get().clone());
+                   return checkLutBankSeparation(
+                       out.value->get(), elfLookup(elfs),
+                       [&](llvm::StringRef p) {
+                         return resolveExternalPath(p, inputFile, workDirStr);
+                       });
+                 });
+  }
   EdgeWithTypedOutput<ModRef> &physicalForElfs = *measured;
 
   // --- Per-device configuration artifacts ---------------------------------

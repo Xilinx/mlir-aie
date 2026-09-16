@@ -13,6 +13,7 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/GlobalVariable.h"
+#include "llvm/IR/InstIterator.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
@@ -608,6 +609,181 @@ std::vector<BankViolation> xilinx::aiecc::checkBankPlacements(
     violations.push_back({assertion, offset, actualBank});
   }
   return violations;
+}
+
+namespace {
+
+// The gather that reads an `aie::lut<4>`. Its addresses arrive as one vector,
+// so finding it identifies the pair without knowing anything about the kernel.
+bool isLutGather(const llvm::CallBase *call) {
+  const llvm::Function *callee = call->getCalledFunction();
+  return callee && callee->getName().contains("load.4x16");
+}
+
+// Walks a broadcast vector of one pointer back to the object it addresses.
+// aie_api builds it as splat(zext(ptrtoint(base))), which reaches the IR as a
+// shufflevector over an insertelement, and as a constant expression when the
+// base is a global.
+const llvm::Value *resolveBroadcastBase(const llvm::Value *v) {
+  for (int hop = 0; hop < 16 && v; ++hop) {
+    if (const auto *shuf = llvm::dyn_cast<llvm::ShuffleVectorInst>(v)) {
+      v = shuf->getOperand(0);
+    } else if (const auto *ins = llvm::dyn_cast<llvm::InsertElementInst>(v)) {
+      v = ins->getOperand(1);
+    } else if (const auto *cast = llvm::dyn_cast<llvm::CastInst>(v)) {
+      v = cast->getOperand(0);
+    } else if (const auto *gep = llvm::dyn_cast<llvm::GetElementPtrInst>(v)) {
+      v = gep->getPointerOperand();
+    } else if (const auto *expr = llvm::dyn_cast<llvm::ConstantExpr>(v)) {
+      if (expr->getOpcode() != llvm::Instruction::ZExt &&
+          expr->getOpcode() != llvm::Instruction::PtrToInt &&
+          expr->getOpcode() != llvm::Instruction::GetElementPtr &&
+          expr->getOpcode() != llvm::Instruction::BitCast) {
+        return nullptr;
+      }
+      v = expr->getOperand(0);
+    } else {
+      return v;
+    }
+  }
+  return nullptr;
+}
+
+std::optional<LutOperand> asLutOperand(const llvm::Value *v) {
+  LutOperand op;
+  if (const auto *global = llvm::dyn_cast_or_null<llvm::GlobalVariable>(v)) {
+    op.kind = LutOperand::Kind::Symbol;
+    op.symbol = global->getName().str();
+    return op;
+  }
+  if (const auto *arg = llvm::dyn_cast_or_null<llvm::Argument>(v)) {
+    op.kind = LutOperand::Kind::Param;
+    op.paramIndex = static_cast<int>(arg->getArgNo());
+    return op;
+  }
+  if (llvm::isa_and_nonnull<llvm::AllocaInst>(v)) {
+    op.kind = LutOperand::Kind::Stack;
+    return op;
+  }
+  return std::nullopt;
+}
+
+bool sameOperand(const LutOperand &a, const LutOperand &b) {
+  return a.kind == b.kind && a.symbol == b.symbol &&
+         a.paramIndex == b.paramIndex;
+}
+
+} // namespace
+
+std::optional<std::vector<LutPair>>
+xilinx::aiecc::readLutPairsFromObject(llvm::StringRef objectPath) {
+  auto binary = llvm::object::createBinary(objectPath);
+  if (!binary) {
+    llvm::consumeError(binary.takeError());
+    return std::nullopt;
+  }
+  auto *obj = llvm::dyn_cast<ObjectFile>(binary->getBinary());
+  if (!obj) {
+    return std::nullopt;
+  }
+
+  llvm::StringRef bitcode;
+  for (const SectionRef &sec : obj->sections()) {
+    auto name = sec.getName();
+    if (!name) {
+      llvm::consumeError(name.takeError());
+      continue;
+    }
+    if (*name != ".llvmbc") {
+      continue;
+    }
+    auto contents = sec.getContents();
+    if (!contents) {
+      llvm::consumeError(contents.takeError());
+      continue;
+    }
+    bitcode = *contents;
+  }
+  if (bitcode.empty()) {
+    return std::nullopt;
+  }
+
+  llvm::LLVMContext context;
+  llvm::SMDiagnostic err;
+  llvm::MemoryBufferRef buffer(bitcode, objectPath);
+  std::unique_ptr<llvm::Module> module = llvm::parseIR(buffer, err, context);
+  if (!module) {
+    return std::nullopt;
+  }
+
+  std::vector<LutPair> pairs;
+  for (const llvm::Function &fn : *module) {
+    bool gathers = llvm::any_of(llvm::instructions(fn), [](auto &inst) {
+      const auto *call = llvm::dyn_cast<llvm::CallBase>(&inst);
+      return call && isLutGather(call);
+    });
+    if (!gathers) {
+      continue;
+    }
+    // Only a gathering function is inspected, so a vector-select of two
+    // distinct pointers here is the table pair rather than ordinary blending.
+    for (const llvm::Instruction &inst : llvm::instructions(fn)) {
+      const auto *call = llvm::dyn_cast<llvm::CallBase>(&inst);
+      if (!call || call->arg_size() < 2) {
+        continue;
+      }
+      const llvm::Function *callee = call->getCalledFunction();
+      if (!callee || !callee->getName().contains("vsel")) {
+        continue;
+      }
+      auto a = asLutOperand(resolveBroadcastBase(call->getArgOperand(0)));
+      auto b = asLutOperand(resolveBroadcastBase(call->getArgOperand(1)));
+      if (!a || !b) {
+        continue;
+      }
+      // Two stack locals are indistinguishable here -- neither has a name --
+      // so the identity test below would drop them as one table. Being on the
+      // stack is reportable either way, so decide that first.
+      bool onStack = a->kind == LutOperand::Kind::Stack ||
+                     b->kind == LutOperand::Kind::Stack;
+      if (!onStack && sameOperand(*a, *b)) {
+        continue; // one table feeding both halves needs no separation
+      }
+      pairs.push_back({fn.getName().str(), *a, *b});
+    }
+  }
+  return pairs;
+}
+
+llvm::StringMap<int64_t>
+xilinx::aiecc::readDataSymbolAddresses(llvm::StringRef elfPath,
+                                       int64_t tileBaseAddress) {
+  llvm::StringMap<int64_t> addrByName;
+  auto binary = llvm::object::createBinary(elfPath);
+  if (!binary) {
+    llvm::consumeError(binary.takeError());
+    return addrByName;
+  }
+  auto *obj = llvm::dyn_cast<ObjectFile>(binary->getBinary());
+  if (!obj) {
+    return addrByName;
+  }
+  for (const SymbolRef &sym : obj->symbols()) {
+    auto name = sym.getName();
+    auto addr = sym.getAddress();
+    auto type = sym.getType();
+    if (!name || !addr || !type) {
+      llvm::consumeError(name.takeError());
+      llvm::consumeError(addr.takeError());
+      llvm::consumeError(type.takeError());
+      continue;
+    }
+    if (*type == SymbolRef::ST_Data) {
+      addrByName.try_emplace(*name,
+                             static_cast<int64_t>(*addr) - tileBaseAddress);
+    }
+  }
+  return addrByName;
 }
 
 std::optional<int64_t>

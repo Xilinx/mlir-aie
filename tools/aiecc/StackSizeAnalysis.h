@@ -99,6 +99,36 @@ checkBankPlacements(llvm::StringRef elfPath,
                     llvm::ArrayRef<BankAssertion> assertions,
                     int64_t tileBaseAddress, int64_t bankSize, int numBanks);
 
+// One end of an `aie::lut<4>` table pair. A table on the stack is called out
+// separately: the stack is one contiguous run, so two locals cannot be given
+// separate banks at all.
+struct LutOperand {
+  enum class Kind { Symbol, Param, Stack };
+  Kind kind = Kind::Symbol;
+  std::string symbol;  // Kind::Symbol
+  int paramIndex = -1; // Kind::Param
+};
+
+struct LutPair {
+  std::string function;
+  LutOperand a, b;
+};
+
+// Recovers which two objects each `aie::lut<4>` gather reads from, out of the
+// LLVM IR that `-fembed-bitcode` leaves in the object's `.llvmbc` section. The
+// gather takes its addresses from a single vector-select of two broadcast
+// pointers, so the pair is whatever those two resolve to.
+//
+// Returns nothing when the object carries no IR, which the caller reports
+// rather than mistaking for "no pairs found". Peano only: chess emits IR from
+// an LLVM old enough that this parser rejects it.
+std::optional<std::vector<LutPair>>
+readLutPairsFromObject(llvm::StringRef objectPath);
+
+// Tile-relative addresses of the data symbols the linked core ELF defines.
+llvm::StringMap<int64_t> readDataSymbolAddresses(llvm::StringRef elfPath,
+                                                 int64_t tileBaseAddress);
+
 } // namespace xilinx::aiecc
 
 #endif // AIECC_STACKSIZEANALYSIS_H
