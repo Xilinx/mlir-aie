@@ -6,6 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIE/IR/AIECoreMemory.h"
+#include "aie/Dialect/AIE/IR/AIECoreSymbols.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Targets/AIETargetShared.h"
 #include "aie/Targets/AIETargets.h"
@@ -123,9 +124,21 @@ MEMORY
       output << "   program (RX) : ORIGIN = 0, LENGTH = 0x"
              << llvm::utohexstr(targetModel.getProgramMemorySize()) << "\n";
       output << "   data (!RX) : ORIGIN = 0x" << llvm::utohexstr(origin)
-             << ", LENGTH = 0x" << llvm::utohexstr(length);
-      output << R"THESCRIPT(
-}
+             << ", LENGTH = 0x" << llvm::utohexstr(length) << "\n";
+      // One region per bank, for statics a kernel pins with a bank attribute.
+      // A bank with nothing spare gets a zero-length region rather than being
+      // left out, so a section aimed at it overflows by name instead of
+      // becoming an orphan.
+      llvm::SmallVector<MemoryRun> bankRuns =
+          coreBankRegions(tile, buffers[tiles[srcCoord]], dataRun);
+      for (auto [bank, run] : llvm::enumerate(bankRuns)) {
+        output << "   " << bankRegionName(bank) << " (!RX) : ORIGIN = 0x"
+               << llvm::utohexstr(
+                      targetModel.getMemInternalBaseAddress(srcCoord) +
+                      run.start)
+               << ", LENGTH = 0x" << llvm::utohexstr(run.size) << "\n";
+      }
+      output << R"THESCRIPT(}
 ENTRY(__start)
 SECTIONS
 {
@@ -142,7 +155,17 @@ SECTIONS
      _dtors_end = .;
      *(.text*)
   } > program
-  .data : {
+)THESCRIPT";
+      // Ahead of .data and .bss: lld assigns an input section to the first
+      // description that matches it, and the wildcards below would otherwise
+      // take the bank-pinned ones.
+      for (auto [bank, run] : llvm::enumerate(bankRuns)) {
+        std::string sec = bankSectionName(bank);
+        output << "  " << sec << " : { *(" << sec << " " << sec << ".*)"
+               << " *(*.DM_bank" << bankLetter(bank) << "*) } > "
+               << bankRegionName(bank) << "\n";
+      }
+      output << R"THESCRIPT(  .data : {
      *(.data*)
      *(.rodata*)
   } > data

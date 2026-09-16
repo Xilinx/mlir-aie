@@ -1026,6 +1026,27 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                           << " : i32 }, or Worker(..., data_size=" << need
                           << ") in IRON.\n";
                     }
+                    // A bank region is whatever that bank has left once the
+                    // unpinned `data` region is placed, and `data` claims the
+                    // largest free run on the tile. Without a declared
+                    // data_size it can take the very bank a section was pinned
+                    // to, even when the tile is otherwise empty.
+                    if (size_t at = log.find("will not fit in region 'bank");
+                        at != llvm::StringRef::npos) {
+                      llvm::StringRef bank =
+                          log.substr(at + strlen("will not fit in region '"))
+                              .take_while([](char c) { return c != '\''; });
+                      llvm::errs()
+                          << "aiecc: core " << key << ": a static pinned to "
+                          << bank
+                          << " does not fit there. Unless the core declares "
+                             "data_size, the region for its unpinned static "
+                             "data takes the largest free run on the tile, "
+                             "which can be the bank you pinned to. Set "
+                             "data_size on the core to bound it: "
+                             "aie.core(%tile) { ... } { data_size = N : i32 }, "
+                             "or Worker(..., data_size=N) in IRON.\n";
+                    }
                     if (log.contains("will not fit in region 'program'")) {
                       llvm::errs()
                           << "aiecc: core " << key
