@@ -341,10 +341,29 @@ jobs:
           fetch-depth: 2
           submodules: "true"
 
+      - name: Read clang-format version from pre-commit config
+        id: clang-format-version
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import pathlib
+          import re
+          import sys
+
+          text = pathlib.Path(".pre-commit-config.yaml").read_text()
+          match = re.search(
+              r"- repo: https://github\.com/pre-commit/mirrors-clang-format\n"
+              r"\s+rev: .*?# frozen: v([0-9][^\s]*)",
+              text,
+          )
+          if not match:
+              sys.exit("clang-format pin not found in .pre-commit-config.yaml")
+          print(f"version={match.group(1)}")
+          PY
+
       - name: Install clang-format
         uses: aminya/setup-cpp@8170d66c458f4a045220b7b0966c10940bb2a15d  # v1.8.1
         with:
-          clangformat: 23.1.0
+          clangformat: ${{ steps.clang-format-version.outputs.version }}
 
       - name: Setup Python env
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
