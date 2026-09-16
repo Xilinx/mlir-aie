@@ -268,7 +268,18 @@ class Runtime(Resolvable):
         self._locks.append(lock)
 
     def add_tile_dma(self, tile_dma) -> None:
-        """Register an explicit [`TileDma`][iron.TileDma] program."""
+        """Register an explicit [`TileDma`][iron.TileDma] program.
+
+        A tile has one DMA program, so registering a second one for a tile
+        already registered merges its channels into the first. Keeping both
+        would emit two `aie.mem` regions for the one tile -- which is wrong, and
+        wrong quietly, since nothing downstream rejects it.
+        """
+        for registered in self._tile_dmas:
+            if registered.tile is tile_dma.tile:
+                for channel in tile_dma.channels:
+                    registered.add_channel(channel)
+                return
         self._tile_dmas.append(tile_dma)
 
     def add_external_buffer(self, external_buffer) -> None:

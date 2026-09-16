@@ -243,6 +243,19 @@ class TileDma(Resolvable):
     def tile(self):
         return self._tile
 
+    @property
+    def channels(self) -> list[DmaChannel]:
+        return list(self._channels)
+
+    def add_channel(self, channel: DmaChannel) -> None:
+        """Add a channel to this tile's DMA program.
+
+        A tile has one DMA program, so a helper that wires transfers one at a
+        time needs somewhere to put the second channel it wants on a tile it has
+        already reached.
+        """
+        self._channels.append(channel)
+
     def all_tiles(self):
         return [self._tile]
 
@@ -263,8 +276,14 @@ class TileDma(Resolvable):
         return seen_buffers, seen_locks
 
     def _region_decorator(self):
-        """Pick the right ``aie`` region-opening decorator for the tile type."""
-        tt = self._tile.tile_type
+        """Pick the right ``aie`` region-opening decorator for the tile type.
+
+        Read off the resolved tile rather than the Tile object, because a Tile
+        need not carry a type: the Device infers one from the coordinates when
+        it resolves. Taking the unset hint at face value here would quietly emit
+        an ``aie.mem`` for a shim tile.
+        """
+        tt = self._tile.tile_type or AIETileType(int(self._tile.op.tile_type))
         if tt == AIETileType.MemTile:
             return memtile_dma(self._tile.op)
         if tt in (AIETileType.ShimNOCTile, AIETileType.ShimPLTile):
