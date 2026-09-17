@@ -150,6 +150,27 @@ KERNEL_SPECS: list[KernelSpec] = [
             (dict(tile_size=512), "tile_size must be 1024"),
         ],
     ),
+    KernelSpec(
+        name="add_sized",
+        factory=kernels.add_sized,
+        kwargs=dict(tile_size=1024),
+        arg_count=4,  # a, b, c, size
+        expected_name="eltwise_add_bf16_vector_size",
+    ),
+    KernelSpec(
+        name="mul_sized",
+        factory=kernels.mul_sized,
+        kwargs=dict(tile_size=1024),
+        arg_count=4,  # a, b, c, size
+        expected_name="eltwise_mul_bf16_vector_size",
+    ),
+    KernelSpec(
+        name="relu_sized",
+        factory=kernels.relu_sized,
+        kwargs=dict(tile_size=1024),
+        arg_count=3,  # in, out, size
+        expected_name="relu_bf16_size",
+    ),
     # ----- reduce -----
     KernelSpec(
         name="reduce_add",
@@ -269,6 +290,24 @@ KERNEL_SPECS: list[KernelSpec] = [
         source_kind="string_or_file",
         source_substring="silu.cc",
         invalid_kwargs=[(dict(tile_size=512), "tile_size must be 1024")],
+    ),
+    KernelSpec(
+        name="silu_sized",
+        factory=kernels.silu_sized,
+        kwargs=dict(tile_size=1024),
+        arg_count=3,  # in, out, size
+        expected_name="silu_bf16_size",
+        source_kind="string_or_file",
+        source_substring="silu.cc",
+    ),
+    KernelSpec(
+        name="gelu_sized",
+        factory=kernels.gelu_sized,
+        kwargs=dict(tile_size=1024),
+        arg_count=3,  # in, out, size
+        expected_name="gelu_bf16_size",
+        source_kind="string_or_file",
+        source_substring="gelu.cc",
     ),
     KernelSpec(
         name="swiglu",
@@ -718,6 +757,36 @@ KERNEL_SPECS: list[KernelSpec] = [
         # IRON convert_copy.cc — see KERNEL_DEDUP_REPORT §4.1); aie2p-only source.
         requires_npu2=True,
         invalid_kwargs=[(dict(tile_size=1000), "multiple of 16")],
+    ),
+    KernelSpec(
+        name="rope",
+        factory=kernels.rope,
+        kwargs=dict(tile_size=1024),
+        arg_count=4,  # in, lut, out, dims
+        expected_name="rope",
+        name_variants=[(dict(two_halves=True), "rope_two_halves")],
+    ),
+    # ----- norm (kernels.norm) -----
+    KernelSpec(
+        name="rms_norm",
+        factory=kernels.rms_norm,
+        kwargs=dict(tile_size=1024),
+        arg_count=3,  # in, out, cols
+        expected_name="rms_norm",
+    ),
+    KernelSpec(
+        name="rms_norm_eps",
+        factory=kernels.rms_norm_eps,
+        kwargs=dict(tile_size=1024),
+        arg_count=4,  # in, out, cols, epsilon
+        expected_name="rms_norm_eps",
+    ),
+    KernelSpec(
+        name="layer_norm",
+        factory=kernels.layer_norm,
+        kwargs=dict(tile_size=1024),
+        arg_count=3,  # in, out, cols
+        expected_name="layer_norm",
     ),
 ]
 

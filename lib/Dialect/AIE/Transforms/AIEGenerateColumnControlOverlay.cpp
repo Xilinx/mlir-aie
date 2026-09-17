@@ -155,6 +155,14 @@ struct AIEGenerateColumnControlOverlayPass
         }
         continue;
       }
+      // A device that already carries a control overlay must not receive a
+      // second one.
+      if (deviceHasControlOverlay(dev)) {
+        if (clEmitStandaloneOverlay) {
+          dev->setAttr("has_ctrl_pkt_overlay", builder.getBoolAttr(true));
+        }
+        continue;
+      }
       participating.push_back(dev);
     }
 
@@ -432,6 +440,18 @@ struct AIEGenerateColumnControlOverlayPass
         flows.try_emplace(*key, flow);
     }
     return flows;
+  }
+
+  // Return true when `device` already contains a control-packet overlay,
+  // identified by the `is_ctrl_pkt_overlay` marker the overlay's routed
+  // switchbox configuration carries.
+  static bool deviceHasControlOverlay(DeviceOp device) {
+    return device
+        .walk([](Operation *op) {
+          return op->hasAttr("is_ctrl_pkt_overlay") ? WalkResult::interrupt()
+                                                    : WalkResult::advance();
+        })
+        .wasInterrupted();
   }
 
   AIE::PacketFlowOp createPacketFlowOp(OpBuilder &builder, Location loc,

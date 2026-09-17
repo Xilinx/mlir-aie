@@ -157,3 +157,45 @@ def relu(tile_size: int = 1024) -> ExternalFunction:
         _default_source_path("relu.cc"),
         [tile_ty, tile_ty],
     )
+
+
+def add_sized(tile_size: int = 1024) -> ExternalFunction:
+    """Element-wise bf16 addition, element count read at runtime.
+
+    Runtime-size sibling of [`add`][iron.kernels.eltwise.add]; design passes
+    ``(a, b, c, size)``.  Any ``tile_size`` is allowed.
+    """
+    tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
+    return _make_extern(
+        "eltwise_add_bf16_vector_size",
+        _default_source_path("add.cc"),
+        [tile_ty, tile_ty, tile_ty, np.int32],
+    )
+
+
+def mul_sized(tile_size: int = 1024) -> ExternalFunction:
+    """Element-wise bf16 multiplication, element count read at runtime.
+
+    Runtime-size sibling of [`mul`][iron.kernels.eltwise.mul]; design passes
+    ``(a, b, c, size)``.  Any ``tile_size`` is allowed.
+    """
+    tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
+    return _make_extern(
+        "eltwise_mul_bf16_vector_size",
+        _default_source_path("mul.cc"),
+        [tile_ty, tile_ty, tile_ty, np.int32],
+    )
+
+
+def relu_sized(tile_size: int = 1024) -> ExternalFunction:
+    """Element-wise bf16 ReLU, element count read at runtime.
+
+    Runtime-size sibling of [`relu`][iron.kernels.eltwise.relu]; design passes
+    ``(in, out, size)``.  Any ``tile_size`` is allowed.  Not LUT-based.
+    """
+    tile_ty = np.ndarray[(tile_size,), np.dtype[bfloat16]]
+    return _make_extern(
+        "relu_bf16_size",
+        _default_source_path("relu.cc"),
+        [tile_ty, tile_ty, np.int32],
+    )

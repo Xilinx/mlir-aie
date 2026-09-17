@@ -5,7 +5,7 @@
 #
 """Where each byte of an allocation currently lives, and at what granularity.
 
-Split out of :mod:`tensor_class` so the residency bookkeeping can be read,
+Split out of `tensor_class` so the residency bookkeeping can be read,
 and tested, without the tensor surface layered over it.
 """
 

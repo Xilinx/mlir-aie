@@ -8,7 +8,7 @@
 
 "Can I use the NPU?" is not one condition: platform, hardware, driver, XRT and
 the Python bindings fail independently and have different fixes. Each stage
-returns a :class:`Check` carrying the reason and a remedy, so a caller can say
+returns a `Check` carrying the reason and a remedy, so a caller can say
 *why* the NPU is unavailable rather than only which device it asked for.
 
 Cheap stages (platform, hardware, driver) are pure filesystem lookups and run

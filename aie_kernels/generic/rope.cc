@@ -72,6 +72,12 @@ void rope_kernel_two_halves(const T *restrict input, const T *restrict lut,
     ::aie::vector<T, N> y_second_half = ::aie::add(x2_cos, x1_sin);
     ::aie::store_v(output + v + dims_half, y_second_half);
   }
+  for (int v = (dims_half / N) * N, i = 2 * v; v < dims_half; v++, i += 2) {
+    const T c = lut[i], sn = lut[i + 1];
+    const T x1 = input[v], x2 = input[v + dims_half];
+    output[v] = x1 * c - x2 * sn;
+    output[v + dims_half] = x2 * c + x1 * sn;
+  }
   event1();
 }
 
