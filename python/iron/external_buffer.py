@@ -161,7 +161,7 @@ class ExternalBuffer(Resolvable):
             return
         if not self._op:
             self._op = external_buffer(
-                self._arr_type,
+                self._arr_type,  # pyright: ignore[reportCallIssue]
                 name=self._name,
                 address=self._address,
             )

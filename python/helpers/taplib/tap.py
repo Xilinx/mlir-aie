@@ -6,7 +6,7 @@ from __future__ import annotations
 import itertools
 import operator
 from copy import deepcopy
-from typing import Generator, Sequence
+from typing import Any, Generator, Sequence
 
 import numpy as np
 
@@ -51,7 +51,7 @@ class TensorAccessPattern:
         self._strides: Sequence[int] = cleaned_strides
 
     @classmethod
-    def from_slice(cls, tensor_dims: Sequence[int], key) -> "TensorAccessPattern":
+    def from_slice(cls, tensor_dims: Sequence[int], key: Any) -> "TensorAccessPattern":
         """Build an access pattern from numpy basic-slice notation.
 
         Lets a transfer be described the way the data is thought about --
@@ -72,7 +72,9 @@ class TensorAccessPattern:
 
         Args:
             tensor_dims (Sequence[int]): Dimensions of the tensor being sliced.
-            key: Any numpy basic-indexing key, e.g. ``np.s_[0::2, 1::2, ...]``.
+            key (Any): Any numpy basic-indexing key -- integers, slices,
+                ``Ellipsis`` and ``None``, alone or in a tuple. For example
+                ``np.s_[0::2, 1::2, ...]``.
 
         Returns:
             TensorAccessPattern: The access pattern the key describes.

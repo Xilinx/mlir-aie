@@ -46,6 +46,7 @@ from ...helpers.taplib import TensorAccessPattern
 from ...helpers.util import pack_pad_value
 from ..buffer import Buffer
 from ..device import Tile
+from ..external_buffer import ExternalBuffer
 from ..lock import Lock
 from ..resolvable import Resolvable
 
@@ -118,7 +119,7 @@ class Bd:
     `sizes` and `strides` separately.
     """
 
-    buffer: Buffer
+    buffer: Buffer | ExternalBuffer
     offset: int = 0
     length: int | None = None  # default: full buffer
     acquires: list[Acquire] = field(default_factory=list)
@@ -310,7 +311,7 @@ class TileDma(Resolvable):
 
         Program uses this to make sure they're all resolved before us.
         """
-        seen_buffers: list[Buffer] = []
+        seen_buffers: list[Buffer | ExternalBuffer] = []
         seen_locks: list[Lock] = []
         for ch in self._channels:
             for bd in ch.bds:

@@ -1030,16 +1030,17 @@ class ObjectFifoHandle(Resolvable):
             )
 
         # Create link and set it as endpoints
-        if channels is None:
-            channels = [None] * len(subfifos)
-        elif len(channels) != len(subfifos):
+        pinned: list[int | None] = (
+            [None] * len(subfifos) if channels is None else list(channels)
+        )
+        if len(pinned) != len(subfifos):
             raise ValueError(
-                f"split() got {len(channels)} channels for {len(subfifos)} "
+                f"split() got {len(pinned)} channels for {len(subfifos)} "
                 "outputs; give one per output or none at all."
             )
         # A subfifo's producer handle is built here, so a caller wanting its
         # channel pinned has nowhere else to say it -- prod() refuses to re-pin.
-        subfifo_prods = [s.prod(channel=c) for s, c in zip(subfifos, channels)]
+        subfifo_prods = [s.prod(channel=c) for s, c in zip(subfifos, pinned)]
         _ = ObjectFifoLink(self, subfifo_prods, tile, [], offsets)
         return subfifos
 
