@@ -64,9 +64,9 @@ jobs:
               --requirements python/requirements.txt \
               --install-non-eudsl
           python -m pip install --require-hashes -r python/requirements_dev.lock
-          # clang-tidy comes from this lockfile (see python/requirements_dev.txt),
-          # pinned to match clang-format's pin below -- not a system apt package,
-          # so its version doesn't silently drift across CI runs.
+          # clang-tidy comes from this lockfile (see python/requirements_dev.txt)
+          # rather than a system apt package, so its version doesn't silently
+          # drift across CI runs.
 
       - name: Get MLIR
         id: mlir-wheels
@@ -341,11 +341,6 @@ jobs:
           fetch-depth: 2
           submodules: "true"
 
-      - name: Install clang-format
-        uses: aminya/setup-cpp@8170d66c458f4a045220b7b0966c10940bb2a15d  # v1.8.1
-        with:
-          clangformat: 20.1.0
-
       - name: Setup Python env
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
@@ -376,12 +371,15 @@ jobs:
       - name: Lint workflow files (actionlint)
         run: pre-commit run actionlint --all-files --color never
 
-      - name: Run git-clang-format
-        id: git-clang-format
+      - name: Run clang-format
+        id: clang-format
         run: |
-          git fetch origin main
-          # git clang-format returns an error if changes made?
-          git clang-format origin/main || true
+          git fetch origin main:refs/remotes/origin/main
+          pre-commit run clang-format \
+            --hook-stage pre-push \
+            --from-ref origin/main \
+            --to-ref HEAD \
+            --color never || true
           git diff > clang-format.diff
           cat clang-format.diff
 
