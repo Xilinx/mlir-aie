@@ -141,14 +141,14 @@ def test_failed_update_is_rebuilt_on_retry(tmp_path, monkeypatch, tools, func, f
         elif failure == "stamp-write":
             patch.setattr(compile_utils.json, "dump", fail)
         else:
-            replace = compile_utils.os.replace
+            replace = compile_utils._replace_staged_source
 
             def fail_stamp_replace(src, dest):
                 if Path(dest) == stamp:
                     fail()
                 replace(src, dest)
 
-            patch.setattr(compile_utils.os, "replace", fail_stamp_replace)
+            patch.setattr(compile_utils, "_replace_staged_source", fail_stamp_replace)
         with pytest.raises(OSError, match="interrupted"):
             compile_utils.compile_external_kernel(func, tmp_path, "aie2")
 
