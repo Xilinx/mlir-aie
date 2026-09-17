@@ -22,7 +22,6 @@
 
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/BinaryFormat/ELF.h"
 
 #include <cstdint>
 #include <optional>
@@ -30,14 +29,6 @@
 #include <vector>
 
 namespace xilinx::aiecc {
-
-namespace detail {
-constexpr uint16_t aieElfMachine = llvm::ELF::EM_AIE;
-constexpr uint64_t aieData4RelocAie2 = llvm::ELF::R_AIE_50;
-constexpr uint64_t aieData4RelocAie2p = llvm::ELF::R_AIE_62;
-constexpr uint64_t aieData4RelocAie1 = llvm::ELF::R_AIE_72;
-constexpr uint64_t aieData4RelocAie2ps = llvm::ELF::R_AIE_135;
-} // namespace detail
 
 // Cycle: the requirement is unbounded, so the design must declare a
 // stack_size_override. Unmeasurable: the ELF is unreadable, or its

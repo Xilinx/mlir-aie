@@ -202,19 +202,23 @@ bool isZeroSizedFunctionSymbol(const SymbolRef &sym) {
 }
 
 bool isAieDataWordRelocation(const ObjectFile &obj, const RelocationRef &rel) {
-  if (const auto *elf = llvm::dyn_cast<ELFObjectFileBase>(&obj);
-      !elf || elf->getEMachine() != detail::aieElfMachine) {
+  constexpr unsigned aieElfFlagMask = 0x7;
+  constexpr unsigned aie2ElfFlag = 0x2;
+  constexpr unsigned aie2pElfFlag = 0x3;
+  constexpr uint64_t aie2DataWordRelocation = 50;
+  constexpr uint64_t aie2pDataWordRelocation = 62;
+
+  const auto *elf = llvm::dyn_cast<ELFObjectFileBase>(&obj);
+  if (!elf || elf->getEMachine() != llvm::ELF::EM_AIE) {
     return false;
   }
-  // llvm-aie assigns one dense relocation range to instruction fixups and one
-  // per-architecture FK_Data_4 number to a plain 32-bit address literal. That
-  // literal is not a call, even when it sits in `.text`.
-  switch (rel.getType()) {
-  case detail::aieData4RelocAie2:
-  case detail::aieData4RelocAie2p:
-  case detail::aieData4RelocAie1:
-  case detail::aieData4RelocAie2ps:
-    return true;
+  // Peano uses one relocation number per AIE variant for the plain 32-bit
+  // address literal (`FK_Data_4`). That literal is not a call, even in `.text`.
+  switch (elf->getPlatformFlags() & aieElfFlagMask) {
+  case aie2ElfFlag:
+    return rel.getType() == aie2DataWordRelocation;
+  case aie2pElfFlag:
+    return rel.getType() == aie2pDataWordRelocation;
   default:
     return false;
   }
