@@ -48,13 +48,23 @@ class LintDependencySyncTests(unittest.TestCase):
             self.pre_commit,
         )
         self.assertIn(r"files: \.(c|cc|cpp|cxx|h|hpp|td)$", self.pre_commit)
+        self.assertIn("types_or: [text]", self.pre_commit)
 
     def test_ci_clang_format_runs_the_pre_commit_hook(self):
         self.assertIn("pre-commit run clang-format", self.workflow)
-        self.assertIn("--from-ref origin/main", self.workflow)
+        self.assertIn(
+            "CLANG_FORMAT_BASE_REF: ${{ github.base_ref || "
+            "github.event.repository.default_branch || 'main' }}",
+            self.workflow,
+        )
+        self.assertIn('git fetch origin "${CLANG_FORMAT_BASE_REF}"', self.workflow)
+        self.assertIn(
+            '--from-ref "origin/${CLANG_FORMAT_BASE_REF}"',
+            self.workflow,
+        )
         self.assertIn("--to-ref HEAD", self.workflow)
         self.assertNotIn("git clang-format origin/main", self.workflow)
-        self.assertNotIn("clangformat: ${{", self.workflow)
+        self.assertNotIn("--from-ref origin/main", self.workflow)
 
     def test_pre_commit_pin_remains_the_clang_format_source_of_truth(self):
         self.assertIsNotNone(

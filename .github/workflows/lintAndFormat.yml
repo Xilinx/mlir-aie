@@ -372,13 +372,15 @@ jobs:
         run: pre-commit run actionlint --all-files --color never
 
       - name: Run clang-format via pre-commit
+        env:
+          CLANG_FORMAT_BASE_REF: ${{ github.base_ref || github.event.repository.default_branch || 'main' }}
         run: |
-          git fetch origin main
+          git fetch origin "${CLANG_FORMAT_BASE_REF}"
           # Run the same hook contributors run locally, but scope it to the PR's
           # changed files so reviewdog only suggests edits on this branch.
           pre-commit run clang-format \
             --hook-stage pre-push \
-            --from-ref origin/main \
+            --from-ref "origin/${CLANG_FORMAT_BASE_REF}" \
             --to-ref HEAD \
             --color never || true
           git diff > clang-format.diff
