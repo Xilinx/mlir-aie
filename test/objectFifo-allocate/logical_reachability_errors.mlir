@@ -52,7 +52,6 @@ module @distant_generated_buffer {
 
 // Local buffers cannot make unreachable, hand-placed locks accessible.
 module @distant_fixed_locks {
-  // expected-remark @+1 {{could not find a spill-aware allocation}}
   aie.device(npu2) {
     %home = aie.logical_tile<MemTile>(0, ?)
     %remote = aie.tile(2, 1)

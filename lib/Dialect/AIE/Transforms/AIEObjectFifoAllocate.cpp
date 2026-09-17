@@ -6,6 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Dialect/AIE/Transforms/AIEBufferAllocation.h"
 #include "aie/Dialect/AIE/Transforms/AIEDMAChannelAnalysis.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 
@@ -42,15 +43,17 @@ struct AIEObjectFifoAllocatePass
   SmallVector<Operation *> loweredFlows;
   /// Passes the longest-running drainer of each pool makes over it.
   DenseMap<Operation *, int> drainerIterations;
-  DenseMap<Value, int64_t> fixedMemory;
-  DenseMap<Value, int64_t> plannedMemory;
+  DenseMap<Value, SmallVector<int64_t>> plannedMemory;
   DenseMap<Operation *, SmallVector<Value>> bufferPlacements;
   DenseMap<Operation *, int> channelAssignments;
   DenseMap<Operation *, Value> localPools;
   DenseMap<Operation *, SmallVector<Value>> poolUsers;
+  DenseMap<Operation *, SmallVector<Operation *>> lockUsers;
+  DenseMap<Operation *, Value> lockPlacements;
   RouteEndpoint channelFailure;
   ObjectFifoPoolOp bufferFailure;
   Value lockFailure;
+  Operation *lockAccessFailure = nullptr;
 
   bool sameTile(Value a, Value b) {
     if (a == b)
@@ -62,19 +65,34 @@ struct AIEObjectFifoAllocatePass
     return ac && ar && bc && br && ac == bc && ar == br;
   }
 
-  int64_t memoryUsed(Value tile) {
-    int64_t bytes = 0;
-    for (auto [placed, size] : plannedMemory)
-      if (sameTile(tile, placed))
-        bytes += size;
-    return bytes;
+  int64_t memoryUsed(Value tile, int64_t extraSize = 0, int extraCount = 0) {
+    SmallVector<BufferAllocation> layout;
+    int64_t alignment =
+        device.getTargetModel().getMemTileLoadStoreBusWidth() / 8;
+    // Generated buffers are inserted immediately after their tile, before
+    // existing buffers. Preserve that order for equal-sized aligned/unaligned
+    // buffers, including coordinate-equivalent tile references.
+    for (Operation &op : *device.getBody()) {
+      if (auto placed = dyn_cast<TileLike>(op);
+          placed && sameTile(tile, placed->getResult(0))) {
+        Value value = placed->getResult(0);
+        for (int64_t size : plannedMemory[value])
+          layout.push_back({size, alignment, std::nullopt});
+        if (value == tile)
+          for (int i = 0; i < extraCount; ++i)
+            layout.push_back({extraSize, alignment, std::nullopt});
+      } else if (auto buffer = dyn_cast<BufferOp>(op);
+                 buffer && sameTile(tile, buffer.getTile())) {
+        layout.push_back({buffer.getAllocationSize(),
+                          buffer.getAligned() ? alignment : 1,
+                          buffer.getAddress()});
+      }
+    }
+    return assignSequentialBufferAddresses(layout);
   }
 
   LogicalResult collectFixedMemory() {
-    fixedMemory.clear();
-    for (auto buffer : device.getOps<BufferOp>())
-      fixedMemory[buffer.getTile()] += buffer.getAllocationSize();
-    plannedMemory = fixedMemory;
+    plannedMemory.clear();
     for (auto tile : device.getOps<TileLike>()) {
       if (!tile.isMemTile())
         continue;
@@ -124,15 +142,19 @@ struct AIEObjectFifoAllocatePass
     return false;
   }
 
-  bool canPlace(ObjectFifoPoolOp pool, Value tile, int64_t sizeBytes) {
-    if (pool.getTileLike().isMemTile() &&
-        memoryUsed(tile) + sizeBytes > device.getTargetModel().getMemTileSize())
+  bool canPlace(ObjectFifoPoolOp pool, Value tile, int64_t sizeBytes,
+                int count = 1) {
+    if (cast<TileLike>(tile.getDefiningOp()).isMemTile() &&
+        memoryUsed(tile, sizeBytes, count) >
+            device.getTargetModel().getMemTileSize())
       return false;
     return llvm::all_of(poolUsers[pool],
                         [&](Value user) { return canAccess(user, tile); });
   }
 
-  Value lockPlacement(ObjectFifoPoolOp pool) {
+  Value lockPlacement(ObjectFifoPoolOp pool, Operation *group) {
+    if (Value placed = lockPlacements.lookup(group))
+      return placed;
     Value local = localPools.lookup(pool);
     return local ? local : pool.getTile();
   }
@@ -141,20 +163,21 @@ struct AIEObjectFifoAllocatePass
   /// their memory. Existing buffers are fixed and counted by identity, not by
   /// how many pools or endpoints reference them.
   LogicalResult planBuffers(ArrayRef<ObjectFifoPoolOp> pools) {
-    plannedMemory = fixedMemory;
+    plannedMemory.clear();
     bufferPlacements.clear();
     bufferFailure = nullptr;
     for (auto pool : pools) {
       if (!localPools.contains(pool))
         continue;
       Value tile = localPools.lookup(pool);
-      int64_t bytes =
-          pool.getBuffers() ? 0 : pool.getObjectSizeInBytes() * pool.getDepth();
-      if (!canAccess(pool.getTile(), tile) || !canPlace(pool, tile, bytes)) {
+      int count = pool.getBuffers() ? 0 : pool.getDepth();
+      int64_t size = pool.getObjectSizeInBytes();
+      if (!canAccess(pool.getTile(), tile) ||
+          !canPlace(pool, tile, size, count)) {
         bufferFailure = pool;
         return failure();
       }
-      plannedMemory[tile] += bytes;
+      plannedMemory[tile].append(count, size);
     }
     for (auto pool : pools) {
       if (pool.getBuffers()) {
@@ -184,7 +207,7 @@ struct AIEObjectFifoAllocatePass
         }
         bufferPlacements[pool].push_back(tile);
         if (!localPools.contains(pool))
-          plannedMemory[tile] += pool.getObjectSizeInBytes();
+          plannedMemory[tile].push_back(pool.getObjectSizeInBytes());
       }
     }
     return success();
@@ -280,8 +303,8 @@ struct AIEObjectFifoAllocatePass
     pool.setBuffersAttr(builder.getArrayAttr(names));
   }
 
-  LockOp createLock(ObjectFifoPoolOp pool, StringRef name, int value) {
-    Value tile = lockPlacement(pool);
+  LockOp createLock(ObjectFifoPoolOp pool, Value tile, StringRef name,
+                    int value) {
     setInsertionPointOn(tile);
     auto lock = LockOp::create(builder, pool.getLoc(), tile, value);
     lastPlaced[tile] = lock;
@@ -312,32 +335,81 @@ struct AIEObjectFifoAllocatePass
 
   LogicalResult planLocks(ArrayRef<ObjectFifoPoolOp> pools) {
     lockFailure = {};
+    lockAccessFailure = nullptr;
+    lockPlacements.clear();
     DenseMap<std::pair<int, int>, int64_t> used;
     auto reserve = [&](Value tile, int64_t count) {
       auto like = cast<TileLike>(tile.getDefiningOp());
       auto col = like.tryGetCol(), row = like.tryGetRow();
-      if (!like.isMemTile() || !col || !row)
+      if (!col || !row)
         return success();
-      if ((used[{*col, *row}] += count) >
+      if (used[{*col, *row}] + count >
           device.getTargetModel().getNumLocks(*col, *row)) {
         lockFailure = tile;
         return failure();
       }
+      used[{*col, *row}] += count;
       return success();
     };
     for (auto lock : device.getOps<LockOp>())
       if (failed(reserve(lock.getTile(), 1)))
         return failure();
+    auto place = [&](ObjectFifoPoolOp pool, Operation *group, int count) {
+      SmallVector<Value> candidates{lockPlacement(pool, group)};
+      if (!localPools.contains(pool)) {
+        llvm::append_range(candidates, bufferPlacements[pool]);
+        for (Operation *user : lockUsers[group])
+          candidates.push_back(user->getOperand(0));
+        for (auto tile : device.getOps<TileLike>())
+          candidates.push_back(tile->getResult(0));
+      }
+      bool reachable = false;
+      for (Value tile : candidates) {
+        if (!tile || !llvm::all_of(lockUsers[group], [&](Operation *user) {
+              return canAccessLocks(user, tile);
+            }))
+          continue;
+        reachable = true;
+        if (succeeded(reserve(tile, count))) {
+          lockPlacements[group] = tile;
+          lockFailure = {};
+          return success();
+        }
+      }
+      if (!reachable && !lockUsers[group].empty()) {
+        lockFailure = {};
+        lockAccessFailure = lockUsers[group].front();
+      }
+      return failure();
+    };
     for (auto pool : pools) {
-      if (!pool.getTileLike().isMemTile() || !needsLocks(pool))
+      if (!needsLocks(pool))
         continue;
-      int64_t count =
-          2 * llvm::count_if(pool.getSegmentOps(), [](auto segment) {
-            return !(segment.getProduceLock() && segment.getConsumeLock());
-          });
-      if (failed(reserve(lockPlacement(pool), count)))
-        return failure();
+      if (device.getTargetModel().getTargetArch() == AIEArch::AIE1) {
+        if (!pool.getLocks() && failed(place(pool, pool, pool.getDepth())))
+          return failure();
+      } else {
+        for (auto segment : pool.getSegmentOps())
+          if (!(segment.getProduceLock() && segment.getConsumeLock()) &&
+              failed(place(pool, segment, 2)))
+            return failure();
+      }
     }
+    auto check = [&](auto endpoint) {
+      for (Value tile : endpointLockTiles(endpoint)) {
+        if (!canAccessLocks(endpoint, tile)) {
+          lockAccessFailure = endpoint;
+          return failure();
+        }
+      }
+      return success();
+    };
+    for (auto endpoint : device.getOps<ObjectFifoCoreEndpointOp>())
+      if (failed(check(endpoint)))
+        return failure();
+    for (auto endpoint : device.getOps<ObjectFifoDmaEndpointOp>())
+      if (failed(check(endpoint)))
+        return failure();
     return success();
   }
 
@@ -360,7 +432,7 @@ struct AIEObjectFifoAllocatePass
       SmallVector<Attribute> names;
       for (int i = 0; i < depth; i++) {
         std::string name = (base + "_lock_" + std::to_string(i)).str();
-        createLock(pool, name, filled ? 1 : 0);
+        createLock(pool, lockPlacement(pool, pool), name, filled ? 1 : 0);
         names.push_back(FlatSymbolRefAttr::get(builder.getContext(), name));
       }
       pool.setLocksAttr(builder.getArrayAttr(names));
@@ -375,8 +447,9 @@ struct AIEObjectFifoAllocatePass
           (base + "_prod_lock_" + std::to_string(index)).str();
       std::string consume =
           (base + "_cons_lock_" + std::to_string(index)).str();
-      createLock(pool, produce, (depth - filled) * repeat);
-      createLock(pool, consume, filled * repeat);
+      Value tile = lockPlacement(pool, segment);
+      createLock(pool, tile, produce, (depth - filled) * repeat);
+      createLock(pool, tile, consume, filled * repeat);
       segment.setProduceLockAttr(
           FlatSymbolRefAttr::get(builder.getContext(), produce));
       segment.setConsumeLockAttr(
@@ -384,26 +457,50 @@ struct AIEObjectFifoAllocatePass
     }
   }
 
-  /// MemTiles use counting locks. Predict the locks DMA lowering will use,
-  /// including hand-written locks and the pairs allocation will create.
-  SmallVector<Value> dmaLockTiles(ObjectFifoDmaEndpointOp endpoint) {
+  bool canAccessLocks(Operation *endpoint, Value tile) {
+    Value user = endpoint->getOperand(0);
+    // Compute-tile DMA engines, unlike cores, only use their own lock module.
+    if (isa<ObjectFifoDmaEndpointOp>(endpoint) &&
+        !cast<TileLike>(user.getDefiningOp()).isMemTile())
+      return sameTile(user, tile);
+    return canAccess(user, tile);
+  }
+
+  template <typename EndpointOp>
+  void collectLockUsers(EndpointOp endpoint) {
+    auto pool = endpoint.getPoolOp();
+    if (device.getTargetModel().getTargetArch() == AIEArch::AIE1) {
+      lockUsers[pool].push_back(endpoint);
+      return;
+    }
+    for (auto segment : endpoint.getSelectedSegments())
+      lockUsers[segment].push_back(endpoint);
+  }
+
+  /// Predict the locks core and DMA lowering will use, including hand-written
+  /// locks and those allocation will create. Only selected segments matter.
+  template <typename EndpointOp>
+  SmallVector<Value> endpointLockTiles(EndpointOp endpoint) {
     SmallVector<Value> tiles;
     auto pool = endpoint.getPoolOp();
     if (pool.getDepth() == 0)
       return tiles;
+    if (device.getTargetModel().getTargetArch() == AIEArch::AIE1) {
+      if (needsLocks(pool) && !pool.getLocks())
+        tiles.push_back(lockPlacement(pool, pool));
+      else
+        for (auto lock : pool.getLockOps())
+          tiles.push_back(lock.getTile());
+      return tiles;
+    }
     for (auto segment : endpoint.getSelectedSegments()) {
       if (needsLocks(pool) &&
           !(segment.getProduceLock() && segment.getConsumeLock())) {
-        tiles.push_back(lockPlacement(pool));
+        tiles.push_back(lockPlacement(pool, segment));
         continue;
       }
-      auto acquire = endpoint.drains() ? segment.getConsumeLockAttr()
-                                       : segment.getProduceLockAttr();
-      auto release = endpoint.drains() ? segment.getProduceLockAttr()
-                                       : segment.getConsumeLockAttr();
-      if (!acquire)
-        continue;
-      for (auto name : {acquire, release})
+      for (auto name :
+           {segment.getProduceLockAttr(), segment.getConsumeLockAttr()})
         if (name)
           if (auto lock =
                   SymbolTable::lookupNearestSymbolFrom<LockOp>(device, name))
@@ -425,7 +522,7 @@ struct AIEObjectFifoAllocatePass
       return tile && !sameTile(tile, endpoint.getTile());
     };
     return pool && (llvm::any_of(bufferPlacements[pool], remote) ||
-                    llvm::any_of(dmaLockTiles(dma), remote));
+                    llvm::any_of(endpointLockTiles(dma), remote));
   }
 
   TileLike tileOf(RouteEndpoint endpoint) {
@@ -440,17 +537,6 @@ struct AIEObjectFifoAllocatePass
     for (auto endpoint : device.getOps<RouteEndpoint>()) {
       DMAChannelDir dir = endpoint.getRouteDirection();
       std::optional<int> channel = endpoint.getRouteChannel();
-      if (auto dma = dyn_cast<ObjectFifoDmaEndpointOp>(endpoint.getOperation());
-          dma && dma.getTileLike().isMemTile() &&
-          !llvm::all_of(dmaLockTiles(dma), [&](Value tile) {
-            return canAccess(endpoint.getTile(), tile);
-          })) {
-        channelFailure = endpoint;
-        if (!diagnose)
-          return failure();
-        return endpoint->emitOpError("cannot access pool locks");
-      }
-
       // A core's stream port is named by the design, not drawn from the tile's
       // DMA channels.
       if (endpoint.getRouteBundle() == WireBundle::Core) {
@@ -903,6 +989,8 @@ struct AIEObjectFifoAllocatePass
     drainerIterations.clear();
     localPools.clear();
     poolUsers.clear();
+    lockUsers.clear();
+    lockPlacements.clear();
 
     if (failed(collectFixedMemory()))
       return signalPassFailure();
@@ -927,12 +1015,14 @@ struct AIEObjectFifoAllocatePass
 
     for (auto endpoint : device.getOps<ObjectFifoCoreEndpointOp>()) {
       poolUsers[endpoint.getPoolOp()].push_back(endpoint.getTile());
+      collectLockUsers(endpoint);
       if (!endpoint.drains()) {
         filledPools.insert(endpoint.getPoolOp());
       }
     }
     for (auto endpoint : device.getOps<ObjectFifoDmaEndpointOp>()) {
       poolUsers[endpoint.getPoolOp()].push_back(endpoint.getTile());
+      collectLockUsers(endpoint);
       if (!endpoint.drains()) {
         filledPools.insert(endpoint.getPoolOp());
         continue;
@@ -959,8 +1049,11 @@ struct AIEObjectFifoAllocatePass
             "could not place buffers in accessible memory with available "
             "capacity");
       } else if (failed(planLocks(pools))) {
-        lockFailure.getDefiningOp()->emitOpError(
-            "could not place locks within MemTile lock capacity");
+        if (lockAccessFailure)
+          lockAccessFailure->emitOpError("cannot access pool locks");
+        else
+          lockFailure.getDefiningOp()->emitOpError(
+              "could not place locks within tile lock capacity");
       } else {
         DMAChannelAnalysis channels(device);
         (void)assignChannels(channels);

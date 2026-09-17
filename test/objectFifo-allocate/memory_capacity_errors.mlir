@@ -43,6 +43,35 @@ module @sub_byte_overflow {
     aie.objectfifo.pool @p(%mem) {depth = 1 : i32} : memref<9xi1> {
       aie.objectfifo.segment @s {offset = 0 : i32, size = 9 : i32}
     }
+
     aie.objectfifo.dma_endpoint @reader(%mem) drains @p
+  }
+}
+
+// -----
+
+// Fixed buffers must fit with their alignment padding, even without pools.
+module @fixed_alignment_overflow {
+  aie.device(npu2_1col) {
+    // expected-error @+1 {{existing buffers require 524291 bytes, exceeding MemTile capacity of 524288 bytes}}
+    %mem = aie.tile(0, 1)
+    %a = aie.buffer(%mem) {sym_name = "a"} : memref<524285xi8>
+    %b = aie.buffer(%mem) {sym_name = "b"} : memref<3xi8>
+  }
+}
+
+// -----
+
+// Mandatory-local reservations must also align every object of the pool.
+module @local_pool_alignment_overflow {
+  // expected-remark @+1 {{could not find a spill-aware allocation}}
+  aie.device(npu2) {
+    %mem = aie.tile(0, 1)
+    %reserved = aie.buffer(%mem) {sym_name = "reserved"} : memref<524281xi8>
+    aie.objectfifo.pool @p(%mem) {depth = 2 : i32} : memref<3xi8> {
+      aie.objectfifo.segment @s {offset = 0 : i32, size = 3 : i32}
+    }
+    // expected-error @+1 {{pinned MM2S DMA channel 5 cannot access adjacent MemTile buffers or locks}}
+    aie.objectfifo.dma_endpoint @reader(%mem) drains @p {channelIndex = 5 : i32}
   }
 }

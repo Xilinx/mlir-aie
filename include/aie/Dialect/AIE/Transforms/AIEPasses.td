@@ -477,6 +477,15 @@ def AIEObjectFifoAllocate : Pass<"aie-objectfifo-allocate", "DeviceOp"> {
     Existing MemTile buffers must fit even if no new buffers are needed.
     Fixed buffers are counted once, including across coordinate-equivalent
     tile references. Pool sizes use the same DataLayout byte sizes as buffers.
+    Memory planning shares the basic sequential address allocator's layout,
+    including per-buffer alignment and pinned address ranges. Bank-specific
+    placement constraints remain the responsibility of address assignment.
+
+    Lock reachability includes both core and DMA endpoints. Generated counting
+    lock pairs are placed for the users of each selected segment; binary locks
+    are placed for the pool's users. Reachable nominal placements are preferred,
+    but generated locks may move to another accessible tile with spare locks.
+    Existing locks never move.
 
     MemTile buffers may spill to accessible neighboring memory. Allocation
     checks DMA channel eligibility against every buffer and lock an endpoint
