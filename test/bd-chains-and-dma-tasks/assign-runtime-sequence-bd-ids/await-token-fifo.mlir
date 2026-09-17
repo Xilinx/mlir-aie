@@ -184,3 +184,76 @@ aie.device(npu2) {
     }
   }
 }
+
+// -----
+
+// Both configures have been awaited and completed after consuming both tokens,
+// even though each await consumed the other configure's token.
+// CHECK-LABEL: @permuted_awaits
+// CHECK: aiex.dma_await_task
+// CHECK: aiex.dma_await_task
+// CHECK: aie.dma_bd({{.*}} {bd_id = 1 : i32}
+aie.device(npu2) {
+  %tile = aie.tile(0, 0)
+  aie.runtime_sequence @permuted_awaits(%buf: memref<256xi32>) {
+    %a = aiex.dma_configure_task(%tile, MM2S, 0) {
+      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256) {bd_id = 0 : i32}
+      aie.end
+    } {issue_token = true}
+    %b = aiex.dma_configure_task(%tile, MM2S, 0) {
+      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256) {bd_id = 1 : i32}
+      aie.end
+    } {issue_token = true}
+    aiex.dma_start_task(%a)
+    aiex.dma_start_task(%b)
+    aiex.dma_await_task(%b)
+    aiex.dma_await_task(%a)
+    %reuse = aiex.dma_configure_task(%tile, MM2S, 0) {
+      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256) {bd_id = 1 : i32}
+      aie.end
+    }
+  }
+}
+
+// -----
+
+// Explicitly freeing a pending configure cancels its deferred release. When
+// its token is later consumed, the recycled ID must retain its new owner.
+// CHECK-LABEL: @free_pending_await
+// CHECK: aiex.dma_await_task
+// CHECK: aie.dma_bd({{.*}} {bd_id = 1 : i32}
+// CHECK: aiex.dma_await_task
+// CHECK: aie.dma_bd({{.*}} {bd_id = 0 : i32}
+// CHECK: aie.dma_bd({{.*}} {bd_id = 2 : i32}
+aie.device(npu2) {
+  %tile = aie.tile(0, 0)
+  aie.runtime_sequence @free_pending_await(%buf: memref<256xi32>) {
+    %a = aiex.dma_configure_task(%tile, MM2S, 0) {
+      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256)
+      aie.end
+    } {issue_token = true}
+    %b = aiex.dma_configure_task(%tile, MM2S, 0) {
+      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256)
+      aie.end
+    } {issue_token = true}
+    aiex.dma_start_task(%a)
+    aiex.dma_start_task(%b)
+    aiex.dma_await_task(%b)
+    // expected-note@+1 {{released here}}
+    aiex.dma_free_task(%b)
+    %c = aiex.dma_configure_task(%tile, MM2S, 0) {
+      // expected-warning@+1 {{reuses buffer descriptor ID 1 on tile (0,0)}}
+      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256) {bd_id = 1 : i32}
+      aie.end
+    }
+    aiex.dma_await_task(%a)
+    %d = aiex.dma_configure_task(%tile, MM2S, 0) {
+      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256)
+      aie.end
+    }
+    %e = aiex.dma_configure_task(%tile, MM2S, 0) {
+      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256)
+      aie.end
+    }
+  }
+}

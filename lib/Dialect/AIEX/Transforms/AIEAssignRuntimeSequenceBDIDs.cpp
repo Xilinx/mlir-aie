@@ -332,6 +332,8 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   // idiom, not a double free -- so freeing an awaited task's already-returned
   // ids is tolerated.
   llvm::SmallPtrSet<Operation *, 8> awaitedConfigures;
+  // Awaited configures whose IDs remain live until their FIFO completion.
+  llvm::SmallPtrSet<Operation *, 8> pendingAwaitReleases;
 
   // Return the ids of the configure's chain to the pool. `isAwait` records the
   // configure so a later free of it is treated as a redundant release rather
@@ -339,6 +341,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   // a free of a task that was never started) and is an error.
   LogicalResult recycle(DMAConfigureTaskOp task_op, Operation *freeOp,
                         bool isAwait) {
+    pendingAwaitReleases.erase(task_op);
     // Those IDs may now belong to another configure. A redundant release must
     // not inspect or change the generator's current ownership.
     if (awaitedConfigures.contains(task_op))
@@ -390,20 +393,28 @@ struct AIEAssignRuntimeSequenceBDIDsPass
       }
       return err;
     }
-    // The named configure may still be in flight when an older task supplied
-    // the consumed token. Keep its descriptors live until completion is known.
-    if (isAwait && !knownComplete.contains(cfg))
-      return success();
-    // A configure reused by a later start must retain its descriptors across
-    // this await. Release them only after its final start has completed.
-    if (isAwait &&
-        llvm::any_of(cfg.getResult().getUsers(), [&](Operation *user) {
-          return isa<DMAStartTaskOp>(user) &&
-                 user->getBlock() == op->getBlock() &&
-                 op->isBeforeInBlock(user);
-        }))
-      return success();
-    return recycle(cfg, op, isAwait);
+    if (!isAwait)
+      return recycle(cfg, op, /*isAwait=*/false);
+    pendingAwaitReleases.insert(cfg);
+    SmallVector<Operation *, 8> pending(pendingAwaitReleases.begin(),
+                                        pendingAwaitReleases.end());
+    for (Operation *pendingOp : pending) {
+      auto pendingCfg = cast<DMAConfigureTaskOp>(pendingOp);
+      // An earlier await may have named this task while consuming an older
+      // token. Revisit its release when a later await proves it complete.
+      if (!knownComplete.contains(pendingCfg))
+        continue;
+      // Retain ownership across any remaining starts of the same configure.
+      if (llvm::any_of(pendingCfg.getResult().getUsers(), [&](Operation *user) {
+            return isa<DMAStartTaskOp>(user) &&
+                   user->getBlock() == op->getBlock() &&
+                   op->isBeforeInBlock(user);
+          }))
+        continue;
+      if (failed(recycle(pendingCfg, op, /*isAwait=*/true)))
+        return failure();
+    }
+    return success();
   }
 
   // All of this is scoped to one runtime sequence. `gens` restarts BD id
@@ -415,6 +426,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   void resetPerSequenceState() {
     gens.clear();
     awaitedConfigures.clear();
+    pendingAwaitReleases.clear();
     startedOnChannel.clear();
     knownComplete.clear();
     freedInFlight.clear();
