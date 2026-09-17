@@ -706,7 +706,7 @@ int64_t ObjectFifoPoolOp::getObjectSizeInBytes() {
   MemRefType elemType = getElemType();
   DataLayout layout = DataLayout::closest(*this);
   return elemType.getNumElements() *
-         layout.getTypeSizeInBits(elemType.getElementType()) / 8;
+         layout.getTypeSize(elemType.getElementType());
 }
 
 std::vector<ObjectFifoSegmentOp> ObjectFifoPoolOp::getSegmentOps() {

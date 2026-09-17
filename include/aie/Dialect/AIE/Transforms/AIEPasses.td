@@ -461,6 +461,10 @@ def AIEObjectFifoAllocate : Pass<"aie-objectfifo-allocate", "DeviceOp"> {
     hand-written locks and pinned channels all survive; each is filled in only
     where it is absent.
 
+    Existing MemTile buffers must fit even if no new buffers are needed.
+    Fixed buffers are counted once, including across coordinate-equivalent
+    tile references. Pool sizes use the same DataLayout byte sizes as buffers.
+
     MemTile buffers may spill to accessible neighboring memory. Allocation
     checks DMA channel eligibility against every buffer and lock an endpoint
     accesses.
@@ -477,6 +481,12 @@ def AIEObjectFifoAllocate : Pass<"aie-objectfifo-allocate", "DeviceOp"> {
     successful size-first plans are unchanged. At most 64 locality combinations
     are tried per distinct packing order. Tile placement and buffer packing
     remain greedy; failure is not a proof of infeasibility.
+
+    These are allocation-time checks, not a placement-time ban on spilling.
+    When allocation precedes tile placement, known coordinates and tile types
+    must permit at least one reachable physical pair for each memory access.
+    Unresolved affinities still depend on subsequent tile placement; passing
+    these pairwise checks does not establish a joint physical placement.
   }];
 
   let constructor = "xilinx::AIE::createAIEObjectFifoAllocatePass()";

@@ -42,6 +42,7 @@ struct AIEObjectFifoAllocatePass
   SmallVector<Operation *> loweredFlows;
   /// Passes the longest-running drainer of each pool makes over it.
   DenseMap<Operation *, int> drainerIterations;
+  DenseMap<Value, int64_t> fixedMemory;
   DenseMap<Value, int64_t> plannedMemory;
   DenseMap<Operation *, SmallVector<Value>> bufferPlacements;
   DenseMap<Operation *, int> channelAssignments;
@@ -69,6 +70,24 @@ struct AIEObjectFifoAllocatePass
     return bytes;
   }
 
+  LogicalResult collectFixedMemory() {
+    fixedMemory.clear();
+    for (auto buffer : device.getOps<BufferOp>())
+      fixedMemory[buffer.getTile()] += buffer.getAllocationSize();
+    plannedMemory = fixedMemory;
+    for (auto tile : device.getOps<TileLike>()) {
+      if (!tile.isMemTile())
+        continue;
+      int64_t bytes = memoryUsed(tile->getResult(0));
+      int64_t capacity = device.getTargetModel().getMemTileSize();
+      if (bytes > capacity)
+        return tile->emitOpError("existing buffers require ")
+               << bytes << " bytes, exceeding MemTile capacity of " << capacity
+               << " bytes";
+    }
+    return success();
+  }
+
   bool canAccess(Value user, Value memory) {
     if (user == memory)
       return true;
@@ -76,16 +95,33 @@ struct AIEObjectFifoAllocatePass
     auto memoryTile = dyn_cast<TileLike>(memory.getDefiningOp());
     if (!userTile || !memoryTile)
       return false;
-    auto uc = userTile.tryGetCol(), ur = userTile.tryGetRow();
-    auto mc = memoryTile.tryGetCol(), mr = memoryTile.tryGetRow();
-    // Allocation can precede placement for explicitly written pools. Unknown
-    // coordinates defer the affinity check rather than disprove it.
-    if (!uc || !ur || !mc || !mr)
-      return true;
-    auto shared =
-        device.getTargetModel().getSharedMemory({*uc, *ur}, {*mc, *mr});
-    return shared == AIETargetModel::SharedMemory::Second ||
-           shared == AIETargetModel::SharedMemory::Either;
+    const auto &target = device.getTargetModel();
+    auto positions = [&](TileLike tile) {
+      SmallVector<TileID> compatible;
+      auto col = tile.tryGetCol(), row = tile.tryGetRow();
+      for (int c = 0; c < target.columns(); ++c) {
+        if (col && c != *col)
+          continue;
+        for (int r = 0; r < target.rows(); ++r) {
+          if ((!row || r == *row) &&
+              target.getTileType(c, r) == tile.getTileType())
+            compatible.push_back({c, r});
+        }
+      }
+      return compatible;
+    };
+    // Before placement, defer only accesses that some compatible physical
+    // positions could satisfy. Known coordinates can already disprove affinity.
+    auto userPositions = positions(userTile);
+    auto memoryPositions = positions(memoryTile);
+    for (TileID u : userPositions)
+      for (TileID m : memoryPositions) {
+        auto shared = target.getSharedMemory(u, m);
+        if (shared == AIETargetModel::SharedMemory::Second ||
+            shared == AIETargetModel::SharedMemory::Either)
+          return true;
+      }
+    return false;
   }
 
   bool canPlace(ObjectFifoPoolOp pool, Value tile, int64_t sizeBytes) {
@@ -105,11 +141,9 @@ struct AIEObjectFifoAllocatePass
   /// their memory. Existing buffers are fixed and counted by identity, not by
   /// how many pools or endpoints reference them.
   LogicalResult planBuffers(ArrayRef<ObjectFifoPoolOp> pools) {
-    plannedMemory.clear();
+    plannedMemory = fixedMemory;
     bufferPlacements.clear();
     bufferFailure = nullptr;
-    for (auto buffer : device.getOps<BufferOp>())
-      plannedMemory[buffer.getTile()] += buffer.getAllocationSize();
     for (auto pool : pools) {
       if (!localPools.contains(pool))
         continue;
@@ -869,6 +903,9 @@ struct AIEObjectFifoAllocatePass
     drainerIterations.clear();
     localPools.clear();
     poolUsers.clear();
+
+    if (failed(collectFixedMemory()))
+      return signalPassFailure();
 
     // Preserve successful largest-first allocations, including their locality
     // repairs. Only try demand ordering when that search fails.
