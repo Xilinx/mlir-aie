@@ -842,7 +842,7 @@ def AIE_PacketFlowOp: AIE_Op<"packet_flow", [SingleBlockImplicitTerminator<"EndO
         aie.packet_dest<%01, "Core" : 0>
       }
       // Claims 0x10 through 0x13: the mask ignores the low two bits.
-      aie.packet_flow(0x10 mask 0x1c) {
+      aie.packet_flow(0x10, mask = 0x1c) {
         aie.packet_source<%01, "Core" : 0>
         aie.packet_dest<%01, "Core" : 0>
       }
@@ -854,7 +854,9 @@ def AIE_PacketFlowOp: AIE_Op<"packet_flow", [SingleBlockImplicitTerminator<"EndO
       OptionalAttr<BoolAttr>:$priority_route);
   let regions = (region AnyRegion:$ports);
 
-  let assemblyFormat = [{ `(` $ID (`mask` $mask^)? `)` regions attr-dict }];
+  let assemblyFormat = [{
+    `(` $ID (`,` `mask` `=` $mask^)? `)` regions attr-dict
+  }];
   let hasVerifier = 1;
 
   let builders = [OpBuilder<(ins "uint8_t":$ID,

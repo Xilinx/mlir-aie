@@ -17,7 +17,7 @@
 
 // The first flow states the rule it came from. The second matches one id, and
 // an id states that on its own, so it carries no mask.
-// LIFTED-DAG: aie.packet_flow(8 mask 28)
+// LIFTED-DAG: aie.packet_flow(8, mask = 28)
 // LIFTED-DAG: aie.packet_flow(0)
 
 // Routing the recovered design rebuilds the same two rules.
@@ -32,7 +32,7 @@ module {
     %t02 = aie.tile(0, 2)
     %t03 = aie.tile(0, 3)
 
-    aie.packet_flow(8 mask 28) {
+    aie.packet_flow(8, mask = 28) {
       aie.packet_source<%t02, DMA : 0>
       aie.packet_dest<%t00, DMA : 0>
     }

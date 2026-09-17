@@ -172,7 +172,7 @@ module @packet_flow_distinct_masks {
   aie.device(npu2) {
     %shim = aie.tile(2, 0)
     %core = aie.tile(2, 2)
-    aie.packet_flow(0 mask 28) {
+    aie.packet_flow(0, mask = 28) {
       aie.packet_source<%shim, DMA : 0>
       aie.packet_dest<%core, DMA : 0>
     }

@@ -15,7 +15,7 @@
 module {
   aie.device(npu1_1col) {
     %t02 = aie.tile(0, 2)
-    aie.packet_flow(3 mask 1) {
+    aie.packet_flow(3, mask = 1) {
       aie.packet_source<%t02, DMA : 0>
       aie.packet_dest<%t02, DMA : 0>
     }

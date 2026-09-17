@@ -30,7 +30,7 @@ module {
     %t03 = aie.tile(0, 3)
 
     // Claims every id that agrees with 0x8 on the bits 0x1c selects.
-    aie.packet_flow(8 mask 28) {
+    aie.packet_flow(8, mask = 28) {
       aie.packet_source<%t02, DMA : 0>
       aie.packet_dest<%t00, DMA : 0>
     }
