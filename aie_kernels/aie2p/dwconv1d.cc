@@ -5,8 +5,14 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Depthwise conv1d, 'same' padding, stride 1, bf16, one channel per call.
-// Cross-correlation, no kernel flip, matching torch.nn.Conv1d.
+// Depthwise conv1d over a channels-first layout, 'same' padding, stride 1,
+// bf16, one channel per call. Cross-correlation, no kernel flip, matching
+// torch.nn.Conv1d.
+//
+// Time is contiguous within a channel here, so this vectorizes along time with
+// sliding_mul and the K taps are scalars. See dwconv1d_channels_last.cc for the
+// transposed layout, which vectorizes across channels instead and takes
+// per-channel tap vectors; the two are complementary, not alternatives.
 //
 // The caller supplies the padded row [P zeros | T samples | P zeros | slack],
 // P = (K-1)/2, with a fixed 16 elements of slack whatever K is so the aligned
