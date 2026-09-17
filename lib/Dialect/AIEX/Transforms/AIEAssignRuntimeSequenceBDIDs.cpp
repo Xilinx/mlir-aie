@@ -269,19 +269,22 @@ struct AIEAssignRuntimeSequenceBDIDsPass
             static_cast<int>(cfg.getChannel())};
   }
 
-  // A channel runs its tasks in order, so awaiting one establishes that it and
-  // everything started ahead of it on that channel has finished. This is the
-  // reasoning DMATasks.md blesses for "free X after awaiting Y", made explicit.
+  // An await consumes the oldest outstanding token on the channel, regardless
+  // of the configure named by its SSA operand. Only that token-issuing task and
+  // the tasks queued ahead of it are known to have finished.
   void noteAwaited(DMAConfigureTaskOp cfg) {
-    auto &started = startedOnChannel[channelOf(cfg)];
-    auto *it = llvm::find(started, cfg);
-    if (it == started.end()) {
-      knownComplete.insert(cfg);
+    if (!cfg.getIssueToken())
       return;
-    }
-    for (auto *p = started.begin(); p <= it; ++p)
-      knownComplete.insert(*p);
+    auto &started = startedOnChannel[channelOf(cfg)];
+    auto *it = llvm::find_if(
+        started, [](DMAConfigureTaskOp task) { return task.getIssueToken(); });
+    if (it == started.end())
+      return;
+    SmallVector<DMAConfigureTaskOp, 8> retired(started.begin(), std::next(it));
     started.erase(started.begin(), std::next(it));
+    for (DMAConfigureTaskOp task : retired)
+      if (!llvm::is_contained(started, task))
+        knownComplete.insert(task);
   }
 
   // Record ids released without any completion guarantee. nextBdId scans upward
@@ -316,10 +319,10 @@ struct AIEAssignRuntimeSequenceBDIDsPass
         << "," << tile.getRow()
         << ") after it was released by an aiex.dma_free_task that had no "
            "completion guarantee, so the DMA it belonged to may still be "
-           "running and this reprograms it underneath. Await the earlier task, "
-           "or await a later one on the same tile, direction and channel -- a "
-           "channel completes its tasks in order, so that covers everything "
-           "queued before it";
+           "running and this reprograms it underneath. Consume the outstanding "
+           "tokens on the same tile, direction and channel through a task "
+           "queued at or after this transfer -- each await consumes the oldest "
+           "token, regardless of the task it names";
     diag.attachNote(freeOp->getLoc()) << "released here";
   }
 
@@ -336,8 +339,11 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   // a free of a task that was never started) and is an error.
   LogicalResult recycle(DMAConfigureTaskOp task_op, Operation *freeOp,
                         bool isAwait) {
+    // Those IDs may now belong to another configure. A redundant release must
+    // not inspect or change the generator's current ownership.
+    if (awaitedConfigures.contains(task_op))
+      return success();
     BdIdGenerator &gen = getGeneratorForTile(task_op.getTileOp());
-    bool redundantAfterAwait = awaitedConfigures.contains(task_op);
     WalkResult result = task_op.walk<WalkOrder::PreOrder>([&](AIE::DMABDOp bd) {
       if (!bd.getBdId().has_value()) {
         bd.emitOpError("Free called on BD chain with unassigned IDs.");
@@ -345,7 +351,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
       }
       if (gen.bdIdAlreadyAssigned(bd.getBdId().value())) {
         gen.freeBdId(bd.getBdId().value());
-      } else if (!redundantAfterAwait) {
+      } else {
         freeOp->emitOpError("frees buffer descriptor ID ")
             << bd.getBdId().value()
             << ", which is not currently in use; it was already completed by "
@@ -384,6 +390,19 @@ struct AIEAssignRuntimeSequenceBDIDsPass
       }
       return err;
     }
+    // The named configure may still be in flight when an older task supplied
+    // the consumed token. Keep its descriptors live until completion is known.
+    if (isAwait && !knownComplete.contains(cfg))
+      return success();
+    // A configure reused by a later start must retain its descriptors across
+    // this await. Release them only after its final start has completed.
+    if (isAwait &&
+        llvm::any_of(cfg.getResult().getUsers(), [&](Operation *user) {
+          return isa<DMAStartTaskOp>(user) &&
+                 user->getBlock() == op->getBlock() &&
+                 op->isBeforeInBlock(user);
+        }))
+      return success();
     return recycle(cfg, op, isAwait);
   }
 
@@ -429,8 +448,10 @@ struct AIEAssignRuntimeSequenceBDIDsPass
           if (failed(allocateConfigure(cfg)))
             return WalkResult::interrupt();
         } else if (auto start = dyn_cast<DMAStartTaskOp>(op)) {
-          if (DMAConfigureTaskOp cfg = start.getTaskOp())
+          if (DMAConfigureTaskOp cfg = start.getTaskOp()) {
+            knownComplete.erase(cfg);
             startedOnChannel[channelOf(cfg)].push_back(cfg);
+          }
         } else if (auto await = dyn_cast<DMAAwaitTaskOp>(op)) {
           if (DMAConfigureTaskOp cfg = await.getTaskOp())
             noteAwaited(cfg);

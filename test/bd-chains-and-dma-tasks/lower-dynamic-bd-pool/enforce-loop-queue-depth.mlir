@@ -8,12 +8,11 @@
 // RUN: aie-opt --aie-lower-dynamic-bd-pool='enforce-queue-depth=false' \
 // RUN:   --verify-diagnostics --split-input-file %s
 
-// This pass is the only one that can guard these pushes: it deliberately keeps
-// the loop rolled, so aie-assign-runtime-sequence-bd-ids skips the sequence
-// and aie-dma-to-npu only ever sees npu.dma_memcpy_nd. analyzeLoopQueue runs
-// the body against the shared queue model until the state repeats, which needs
-// no trip count. With enforcement off the same analysis reports instead, which
-// is what the second RUN line checks.
+// This pass guards task starts while their SSA handles are still available.
+// The shared queue analysis explores loop states until they repeat, which
+// needs no trip count. With enforcement off the same analysis reports instead,
+// which is what the second RUN line checks. aie-dma-to-npu also checks the
+// eventual pushes together with those originating from memcpy and rearm ops.
 
 // Pushes once per iteration, never awaits. A 4-deep queue is full after four
 // iterations, so the fifth push would land on a full one. A single poll in the

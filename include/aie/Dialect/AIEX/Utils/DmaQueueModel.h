@@ -18,21 +18,23 @@
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/IR/Builders.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <set>
 
 namespace xilinx::AIEX {
 
-/// Tracks, per DMA channel, the pushes not yet known to have completed. Valid
-/// only over straight-line IR walked in program order: both users run after the
-/// runtime sequence has been unrolled, so a single pass is exact.
+/// Tracks, per DMA channel, the pushes not yet known to have completed along
+/// one execution path. The sequence analysis below joins control-flow paths.
 class DmaQueueModel {
 public:
   /// {col, row, direction, channel}. Queues are per channel and per direction,
@@ -46,13 +48,14 @@ public:
     if (depth == 0)
       return false;
     auto it = queued.find(key);
-    return it != queued.end() && it->second.size() >= depth;
+    return it != queued.end() && it->second.pushes.size() >= depth;
   }
 
   /// Record a push. Every push occupies a slot, not just issue_token ones, and
   /// a repeat_count of N still occupies exactly one.
   void push(const ChannelKey &key, bool issuesToken) {
-    queued[key].push_back(issuesToken);
+    auto &q = queued[key];
+    q.pushes.push_back(issuesToken && !q.unknownTokens);
   }
 
   /// Retire what a task-completion-token await proves has drained. The sync
@@ -65,18 +68,27 @@ public:
     if (it == queued.end())
       return;
     auto &q = it->second;
-    auto *tok = llvm::find(q, true);
-    if (tok != q.end())
-      q.erase(q.begin(), std::next(tok));
+    if (q.unknownTokens)
+      return;
+    auto *tok = llvm::find(q.pushes, true);
+    if (tok != q.pushes.end())
+      q.pushes.erase(q.pushes.begin(), std::next(tok));
   }
 
   /// Record that a queue-space poll has guaranteed room on `key`. Keeps the
-  /// newest depth-1 entries rather than clearing, so their issue_token flags
-  /// survive for awaitToken().
+  /// newest depth-1 entries rather than clearing. Polling does not consume
+  /// completion tokens: if it drops a token-bearing entry, later syncs cannot
+  /// safely be credited to newer pushes.
   void noteSpaceGuaranteed(const ChannelKey &key, uint32_t depth) {
     auto &q = queued[key];
-    if (depth > 0 && q.size() > depth - 1)
-      q.erase(q.begin(), q.end() - (depth - 1));
+    if (depth > 0 && q.pushes.size() > depth - 1) {
+      auto end = q.pushes.end() - (depth - 1);
+      q.unknownTokens |=
+          llvm::is_contained(llvm::make_range(q.pushes.begin(), end), true);
+      q.pushes.erase(q.pushes.begin(), end);
+      if (q.unknownTokens)
+        llvm::fill(q.pushes, false);
+    }
   }
 
   /// True the first time a channel is reported. An over-subscribed channel
@@ -89,14 +101,21 @@ public:
   /// Outstanding pushes on `key`, for diagnostics.
   size_t outstanding(const ChannelKey &key) const {
     auto it = queued.find(key);
-    return it == queued.end() ? 0 : it->second.size();
+    return it == queued.end() ? 0 : it->second.pushes.size();
   }
 
   /// The whole per-channel queue, which is what the rolled-loop fixed point
   /// below iterates on. `reported` is deliberately not part of it: it is
   /// diagnostic bookkeeping, not queue state, and folding it in would stop
   /// two otherwise identical states from comparing equal.
-  using State = std::map<ChannelKey, llvm::SmallVector<bool, 8>>;
+  struct ChannelState {
+    llvm::SmallVector<bool, 8> pushes;
+    bool unknownTokens = false;
+    bool operator==(const ChannelState &other) const {
+      return pushes == other.pushes && unknownTokens == other.unknownTokens;
+    }
+  };
+  using State = std::map<ChannelKey, ChannelState>;
   const State &state() const { return queued; }
   void setState(State s) { queued = std::move(s); }
 
@@ -236,64 +255,14 @@ struct QueueEffect {
   }
 };
 
-/// What a rolled loop body does to the task queues it touches.
-struct LoopQueueAnalysis {
-  /// Every push that can land on a full queue on some iteration. These are
-  /// the ones to guard: a poll sits in the body, so it runs every iteration.
-  /// Ordered by discovery so that inserting guards, and reporting where one
-  /// cannot be inserted, does not depend on pointer values.
-  llvm::SetVector<mlir::Operation *> overflowing;
-  /// The queue state the loop settles into, for the walk to continue from.
-  DmaQueueModel::State exitState;
-};
-
-/// Simulate a rolled loop body until its queue state repeats, which needs no
-/// trip count: whatever the loop turns out to run, the state it reaches is one
-/// of the ones visited here. This terminates because a guarded push caps a
-/// channel at `depth` entries, so the state is a bounded vector over a fixed
-/// key set and the body maps state to state deterministically.
-///
-/// `entry` is the state the straight-line prefix leaves behind, which is what
-/// makes the first iteration exact rather than worst-case.
-template <typename EffectFn>
-inline LoopQueueAnalysis
-analyzeLoopQueue(mlir::Operation *body, DmaQueueModel entry,
-                 const AIE::AIETargetModel &tm, EffectFn effectOf) {
-  LoopQueueAnalysis result;
-  llvm::SmallVector<DmaQueueModel::State, 8> seen;
-  DmaQueueModel queue = std::move(entry);
-
-  while (!llvm::is_contained(seen, queue.state())) {
-    seen.push_back(queue.state());
-    body->walk([&](mlir::Operation *op) {
-      QueueEffect e = effectOf(op);
-      if (e.kind == QueueEffect::Kind::Ignore)
-        return;
-      if (e.kind == QueueEffect::Kind::Await) {
-        queue.awaitToken(e.key);
-        return;
-      }
-      uint32_t depth =
-          tm.getDmaTaskQueueDepth(e.key[0], e.key[1], e.key[3],
-                                  static_cast<AIE::DMAChannelDir>(e.key[2]));
-      if (queue.wouldOverflow(e.key, depth)) {
-        result.overflowing.insert(op);
-        // A guard goes here, so the rest of the body sees a queue with room.
-        queue.noteSpaceGuaranteed(e.key, depth);
-      }
-      queue.push(e.key, e.issuesToken);
-    });
-  }
-  result.exitState = queue.state();
-  return result;
-}
-
 /// Guard every push in a runtime sequence that can land on a full queue.
 ///
-/// Loops are taken whole at the top level rather than descended into, which is
-/// what keeps a nested loop from being guarded once per enclosing level, and
-/// what lets the straight-line prefix hand its exact queue state to the loop
-/// that follows it.
+/// Retain all reachable states at branches and loop exits, including zero
+/// iterations. Nested loops are analyzed recursively, not walked once. Queue
+/// states are finite because overflowing pushes are capped at the target depth;
+/// targets without a queued-task model must be ignored rather than accumulated.
+/// Analyze each independent channel separately to avoid a Cartesian product
+/// of states across channels.
 template <typename EffectFn>
 inline void guardSequenceQueueDepth(mlir::Region &body, DmaQueueModel &queue,
                                     const AIE::AIETargetModel &tm, bool enforce,
@@ -303,32 +272,163 @@ inline void guardSequenceQueueDepth(mlir::Region &body, DmaQueueModel &queue,
                                    static_cast<AIE::DMAChannelDir>(k[2]));
   };
 
-  for (mlir::Operation &op : llvm::make_early_inc_range(body.getOps())) {
-    if (auto forOp = mlir::dyn_cast<mlir::scf::ForOp>(&op)) {
-      LoopQueueAnalysis analysis = analyzeLoopQueue(forOp, queue, tm, effectOf);
-      for (mlir::Operation *push : analysis.overflowing) {
-        DmaQueueModel::ChannelKey key = effectOf(push).key;
-        guardQueueOverflow(queue, push, tm, key, depthOf(key), enforce);
+  using States = llvm::SmallVector<DmaQueueModel::State, 8>;
+  std::set<DmaQueueModel::ChannelKey> keys;
+  for (const auto &[key, channel] : queue.state())
+    if (depthOf(key) != 0)
+      keys.insert(key);
+  body.walk([&](mlir::Operation *op) {
+    QueueEffect e = effectOf(op);
+    if (e.kind != QueueEffect::Kind::Ignore && depthOf(e.key) != 0)
+      keys.insert(e.key);
+  });
+  DmaQueueModel::State entry = queue.state();
+  DmaQueueModel::State merged = entry;
+  for (const auto &key : keys) {
+    uint32_t depth = depthOf(key);
+    auto channelEffectOf = [&](mlir::Operation *op) {
+      QueueEffect e = effectOf(op);
+      return e.key == key ? e : QueueEffect{};
+    };
+    llvm::SetVector<mlir::Operation *> overflowing;
+    std::map<mlir::Operation *, DmaQueueModel::State> witnesses;
+    auto append = [](States &to, const States &from) {
+      for (const auto &state : from)
+        if (!llvm::is_contained(to, state))
+          to.push_back(state);
+    };
+
+    // Earlier passes may already have guarded a start. Credit only polls whose
+    // constant address and depth bit prove space on a channel tracked here.
+    auto pollsChannel = [&](NpuMaskPollOp poll) {
+      auto address = poll.getAbsoluteAddress();
+      auto mask = getConstantIntOperand(poll.getMask());
+      auto value = getConstantIntOperand(poll.getValue());
+      uint32_t fieldMask = tm.getDmaTaskQueueSizeMask();
+      if (!address || !mask || !value || !fieldMask ||
+          (depth & (depth - 1)) != 0)
+        return false;
+      uint32_t depthBit = depth << llvm::countr_zero(fieldMask);
+      auto status = tm.getDmaStatusAddress(
+          key[0], key[1], key[3], static_cast<AIE::DMAChannelDir>(key[2]));
+      return depthBit && status == address &&
+             (depthBit & fieldMask) == depthBit &&
+             (*mask & depthBit) == depthBit && (*value & depthBit) == 0;
+    };
+
+    // Unknown region semantics (including unstructured CFGs) must not credit
+    // conditional waits. Guard their pushes and conservatively forget tokens.
+    auto unknownRegion = [&](mlir::Region &region, States states) {
+      region.walk([&](mlir::Operation *op) {
+        QueueEffect e = channelEffectOf(op);
+        if (e.kind != QueueEffect::Kind::Push)
+          return;
+        for (auto &state : states) {
+          auto &channel = state[e.key];
+          channel.pushes.assign(depth, false);
+          channel.unknownTokens = true;
+          if (overflowing.insert(op))
+            witnesses[op] = state;
+        }
+      });
+      States unique;
+      append(unique, states);
+      return unique;
+    };
+
+    std::function<States(mlir::Region &, States)> analyze;
+    analyze = [&](mlir::Region &region, States states) -> States {
+      if (!region.hasOneBlock())
+        return unknownRegion(region, std::move(states));
+      for (mlir::Operation &op : region.front()) {
+        if (auto loop = mlir::dyn_cast<mlir::scf::ForOp>(&op)) {
+          auto lb = mlir::getConstantIntValue(loop.getLowerBound());
+          auto ub = mlir::getConstantIntValue(loop.getUpperBound());
+          if (lb && ub && *lb >= *ub &&
+              (!loop->hasAttr("unsignedCmp") || (*lb >= 0 && *ub >= 0)))
+            continue;
+          // Every loop header state is a possible exit for an unknown trip
+          // count. Include the entry: even an await-only loop might execute
+          // zero times.
+          States reachable = states;
+          for (size_t i = 0; i < reachable.size(); ++i) {
+            States next = analyze(loop.getRegion(), States{reachable[i]});
+            append(reachable, next);
+          }
+          states = std::move(reachable);
+          continue;
+        }
+        if (auto branch = mlir::dyn_cast<mlir::scf::IfOp>(&op)) {
+          States alternatives = analyze(branch.getThenRegion(), states);
+          append(alternatives, analyze(branch.getElseRegion(), states));
+          states = std::move(alternatives);
+          continue;
+        }
+        for (mlir::Region &nested : op.getRegions())
+          states = unknownRegion(nested, std::move(states));
+
+        if (auto poll = mlir::dyn_cast<NpuMaskPollOp>(&op))
+          if (pollsChannel(poll)) {
+            States polled;
+            for (const auto &state : states) {
+              DmaQueueModel path;
+              path.setState(state);
+              path.noteSpaceGuaranteed(key, depth);
+              append(polled, States{path.state()});
+            }
+            states = std::move(polled);
+          }
+
+        QueueEffect e = channelEffectOf(&op);
+        if (e.kind == QueueEffect::Kind::Ignore)
+          continue;
+        States next;
+        for (const auto &state : states) {
+          DmaQueueModel path;
+          path.setState(state);
+          if (e.kind == QueueEffect::Kind::Await) {
+            path.awaitToken(e.key);
+          } else {
+            if (path.wouldOverflow(e.key, depth)) {
+              if (overflowing.insert(&op))
+                witnesses[&op] = state;
+              path.noteSpaceGuaranteed(e.key, depth);
+            }
+            path.push(e.key, e.issuesToken);
+          }
+          append(next, States{path.state()});
+        }
+        states = std::move(next);
       }
-      // Discards what guardQueueOverflow recorded, which described the entry
-      // state rather than the loop's; the fixed point is the real answer.
-      queue.setState(analysis.exitState);
-      continue;
+      return states;
+    };
+
+    DmaQueueModel::State channelEntry;
+    if (auto it = entry.find(key); it != entry.end())
+      channelEntry.insert(*it);
+    States exits = analyze(body, States{channelEntry});
+    for (mlir::Operation *push : overflowing) {
+      queue.setState(witnesses[push]);
+      guardQueueOverflow(queue, push, tm, key, depth, enforce);
     }
-    op.walk([&](mlir::Operation *inner) {
-      QueueEffect e = effectOf(inner);
-      if (e.kind == QueueEffect::Kind::Ignore)
-        return;
-      if (e.kind == QueueEffect::Kind::Await) {
-        queue.awaitToken(e.key);
-        return;
+
+    // Preserve exact straight-line state for callers. If control-flow paths
+    // disagree, retain the largest occupancy without crediting ambiguous
+    // tokens.
+    DmaQueueModel::State channelExit = exits.front();
+    for (const auto &state : exits)
+      for (const auto &[key, channel] : state) {
+        auto &dest = channelExit[key];
+        if (!(dest == channel)) {
+          dest.pushes.assign(
+              std::max(dest.pushes.size(), channel.pushes.size()), false);
+          dest.unknownTokens = true;
+        }
       }
-      uint32_t depth = depthOf(e.key);
-      if (queue.wouldOverflow(e.key, depth))
-        guardQueueOverflow(queue, inner, tm, e.key, depth, enforce);
-      queue.push(e.key, e.issuesToken);
-    });
+    if (auto it = channelExit.find(key); it != channelExit.end())
+      merged[key] = it->second;
   }
+  queue.setState(std::move(merged));
 }
 
 } // namespace xilinx::AIEX

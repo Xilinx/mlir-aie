@@ -247,7 +247,7 @@ The queue does **not** backpressure. A push that arrives when the queue is full 
 
 Whether it happens depends on how fast the consumer drains, not on the program. Measured on a Strix NPU, 14 back-to-back pushes on one shim channel time out every run, while the same 14 pushes behind a faster consumer complete -- identical instructions, opposite outcomes. Eight pushes of 1KB are fine; eight of 8KB behind a slow consumer overflow.
 
-Two things follow. First, keep the number of started-but-not-awaited tasks on any one channel at or below the queue depth; a `dma_await_task` on a channel retires the task it names and everything queued ahead of it, because a channel runs its queue in order. Second, where you cannot bound it by construction, the compiler does it for you: by default it inserts a poll of the channel's live queue occupancy before any push that could find it full, so the sequence waits for a free slot instead of racing.
+Two things follow. First, keep the number of started-but-not-awaited tasks on any one channel at or below the queue depth; a `dma_await_task` on a channel consumes the oldest outstanding completion token and retires its task and everything queued ahead of it, not necessarily the task named by its operand. Second, where you cannot bound it by construction, the compiler does it for you: by default it inserts a poll of the channel's live queue occupancy before any push that could find it full, so the sequence waits for a free slot instead of racing.
 
 That wait costs nothing where the queue was going to drain anyway -- the occupancy check passes immediately -- and it only stalls where the alternative is a dropped transfer. To turn it off and get a warning instead:
 
@@ -255,7 +255,7 @@ That wait costs nothing where the queue was going to drain anyway -- the occupan
 aiecc --no-enforce-dma-queue-depth
 ```
 
-Both lowering paths take an `enforce-queue-depth` pass option directly, should you need it: `aie-assign-runtime-sequence-bd-ids` for `dma_start_task` and `aie-dma-to-npu` for `npu_dma_memcpy_nd`.
+The relevant passes take an `enforce-queue-depth` option directly, should you need it: `aie-assign-runtime-sequence-bd-ids` for static `dma_start_task` sequences, `aie-lower-dynamic-bd-pool` for dynamic-pool tasks (including runtime-bound loops), and `aie-dma-to-npu` for the final combined queue accounting of task pushes and `npu_dma_memcpy_nd`.
 
 Enforcement needs a pollable occupancy register, and not every target reports one. Where it cannot be applied the compiler warns and the build succeeds, with a note saying so.
 

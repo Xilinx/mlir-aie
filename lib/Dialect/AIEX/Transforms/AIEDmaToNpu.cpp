@@ -107,6 +107,28 @@ struct MaskWrite32SymToAddr : OpConversionPattern<NpuMaskWrite32Op> {
   }
 };
 
+struct MaskPollSymToAddr : OpConversionPattern<NpuMaskPollOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(NpuMaskPollOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    if (!op.getBuffer())
+      return failure();
+
+    std::optional<uint32_t> absoluteAddress = op.getAbsoluteAddress();
+    if (!absoluteAddress)
+      return failure();
+
+    Value addressVal =
+        createConstantI32(rewriter, op->getLoc(), *absoluteAddress);
+    rewriter.replaceOpWithNewOp<NpuMaskPollOp>(
+        op, addressVal, adaptor.getValue(), adaptor.getMask(), nullptr, nullptr,
+        nullptr);
+    return success();
+  }
+};
+
 struct RtpToWrite32Pattern : OpConversionPattern<NpuWriteRTPOp> {
   using OpConversionPattern::OpConversionPattern;
 
@@ -880,56 +902,18 @@ public:
   }
 };
 
-// Check the per-channel DMA task queue on the npu.dma_memcpy_nd path.
-//
-// The conversion below is pattern-driven, so it visits ops in worklist order
-// and cannot count a queue. This runs first, in program order, sharing the
-// queue rule with the dma_start_task path (see DmaQueueModel.h).
-//
-// aie-unroll-runtime-sequence-loops only unrolls constant-trip loops, so a
-// runtime-bound scf.for arrives still rolled and its queue carries over the
-// back edge. Counting such a body once would guard the last push syntactically
-// while the first push of the next iteration meets what the previous one left,
-// so those loops go through analyzeLoopQueue instead.
+// Count all task starts at their common representation, after memcpy lowering
+// but before pushes become register writes. This includes starts lowered by
+// dma-tasks-to-npu and compiler-generated channel rearm pushes.
 static void checkQueueDepth(AIE::DeviceOp device, bool enforceQueueDepth) {
   const AIE::AIETargetModel &tm = device.getTargetModel();
-  // Resolve the (tile, direction, channel) a metadata symbol names, the same
-  // lookup DmaToNpuPattern and DmaWaitToSyncPattern do.
-  auto resolve = [&](llvm::StringRef sym)
-      -> std::optional<std::tuple<AIE::TileOp, AIE::DMAChannelDir, uint32_t>> {
-    auto infoOp = AIE::ShimDMAAllocationOp::getForSymbol(device, sym);
-    if (!infoOp)
-      return std::nullopt;
-    AIE::TileOp tile = infoOp.getTileOp();
-    if (!tile)
-      return std::nullopt;
-    return std::make_tuple(tile, infoOp.getChannelDir(),
-                           static_cast<uint32_t>(infoOp.getChannelIndex()));
-  };
-
   auto effectOf = [&](Operation *op) -> QueueEffect {
-    if (auto memcpy = dyn_cast<NpuDmaMemcpyNdOp>(op)) {
-      auto info = resolve(memcpy.getMetadata().getRootReference());
-      if (!info)
-        return {};
-      auto [tile, dir, chan] = *info;
-      // Not the attribute but the flag the lowering will apply:
-      // DmaToNpuPattern forces issue_token on every S2MM channel, so taking
-      // the op at face value leaves a wait nothing to pop through.
-      return QueueEffect::push({tile.getCol(), tile.getRow(),
-                                static_cast<int>(dir), static_cast<int>(chan)},
-                               memcpy.getIssueToken() ||
-                                   dir == AIE::DMAChannelDir::S2MM);
-    }
-    if (auto wait = dyn_cast<NpuDmaWaitOp>(op)) {
-      auto info = resolve(wait.getSymbol());
-      if (!info)
-        return {};
-      auto [tile, dir, chan] = *info;
-      return QueueEffect::await({tile.getCol(), tile.getRow(),
-                                 static_cast<int>(dir),
-                                 static_cast<int>(chan)});
-    }
+    if (auto push = dyn_cast<NpuPushQueueOp>(op))
+      return QueueEffect::push({static_cast<int>(push.getColumn()),
+                                static_cast<int>(push.getRow()),
+                                static_cast<int>(push.getDirection()),
+                                static_cast<int>(push.getChannel())},
+                               push.getIssueToken());
     if (auto sync = dyn_cast<NpuSyncOp>(op))
       if (std::optional<DmaQueueModel::ChannelKey> key = syncChannelKey(sync))
         return QueueEffect::await(*key);
@@ -952,8 +936,6 @@ struct AIEDmaToNpuPass : xilinx::AIEX::impl::AIEDmaToNpuBase<AIEDmaToNpuPass> {
 
     AIE::DeviceOp device = getOperation();
 
-    checkQueueDepth(device, enforceQueueDepth);
-
     ConversionTarget target(getContext());
     target.addLegalDialect<AIEXDialect>();
     target.addLegalDialect<memref::MemRefDialect>();
@@ -964,7 +946,6 @@ struct AIEDmaToNpuPass : xilinx::AIEX::impl::AIEDmaToNpuBase<AIEDmaToNpuPass> {
 
     target.addIllegalOp<NpuDmaMemcpyNdOp>();
     target.addIllegalOp<NpuDmaWaitOp>();
-    target.addIllegalOp<NpuPushQueueOp>();
     target.addIllegalOp<NpuWriteRTPOp>();
     target.addIllegalOp<NpuWriteBdOp>();
     target.addDynamicallyLegalOp<NpuWrite32Op>(
@@ -973,6 +954,8 @@ struct AIEDmaToNpuPass : xilinx::AIEX::impl::AIEDmaToNpuBase<AIEDmaToNpuPass> {
         [&](NpuBlockWriteOp op) { return !op.getBuffer(); });
     target.addDynamicallyLegalOp<NpuMaskWrite32Op>(
         [&](NpuMaskWrite32Op op) { return !op.getBuffer(); });
+    target.addDynamicallyLegalOp<NpuMaskPollOp>(
+        [&](NpuMaskPollOp op) { return !op.getBuffer(); });
 
     // Seed, from the device's existing globals, a dedup cache (initial-value ->
     // global) and the next free "blockwrite_data_<n>" name index (one past the
@@ -998,13 +981,23 @@ struct AIEDmaToNpuPass : xilinx::AIEX::impl::AIEDmaToNpuBase<AIEDmaToNpuPass> {
     patterns.insert<DmaToNpuPattern>(&getContext());
     patterns.insert<DmaWaitToSyncPattern>(&getContext());
     patterns.insert<MaskWrite32SymToAddr>(&getContext());
-    patterns.insert<PushQueuetoWrite32Pattern>(&getContext());
+    patterns.insert<MaskPollSymToAddr>(&getContext());
     patterns.insert<RtpToWrite32Pattern>(&getContext());
     patterns.insert<Write32SymToAddr>(&getContext());
     patterns.insert<WriteBdToBlockWritePattern>(&getContext(), &dataMemrefCache,
                                                 &nextBlockwriteId);
 
-    if (failed(applyPartialConversion(device, target, std::move(patterns))))
+    if (failed(applyPartialConversion(device, target, std::move(patterns)))) {
+      signalPassFailure();
+      return;
+    }
+
+    checkQueueDepth(device, enforceQueueDepth);
+
+    target.addIllegalOp<NpuPushQueueOp>();
+    RewritePatternSet pushPatterns(&getContext());
+    pushPatterns.insert<PushQueuetoWrite32Pattern>(&getContext());
+    if (failed(applyPartialConversion(device, target, std::move(pushPatterns))))
       signalPassFailure();
   }
 };

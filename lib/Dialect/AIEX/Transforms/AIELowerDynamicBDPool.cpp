@@ -450,14 +450,14 @@ struct AIELowerDynamicBDPoolPass
     const AIE::AIETargetModel &tm =
         seq->getParentOfType<AIE::DeviceOp>().getTargetModel();
 
-    auto effectOf = [](Operation *op) -> QueueEffect {
+    auto effectOf = [&](Operation *op) -> QueueEffect {
       DMAConfigureTaskOp cfg;
       bool isPush = false;
       if (auto start = dyn_cast<DMAStartTaskOp>(op)) {
-        cfg = start.getTaskOp();
+        cfg = originConfigure.lookup(start.getTask());
         isPush = true;
       } else if (auto await = dyn_cast<DMAAwaitTaskOp>(op)) {
-        cfg = await.getTaskOp();
+        cfg = originConfigure.lookup(await.getTask());
         // Only a token-issuing await retires anything.
         if (cfg && !cfg.getIssueToken())
           return {};

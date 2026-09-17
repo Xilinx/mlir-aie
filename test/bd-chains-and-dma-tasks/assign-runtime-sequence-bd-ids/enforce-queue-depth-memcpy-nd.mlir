@@ -14,16 +14,15 @@
 // register and depth bit here: shim DMA_MM2S_Status_0 at 0x1D228 (119336),
 // mask 0x400000 (4194304) for a 4-deep queue.
 
-// Only the fifth transfer can overflow, and the poll guards it: four buffer
-// descriptors are written, then the poll, then the fifth. A poll emitted after
-// the descriptor it guards would be silently useless, so the order is part of
-// what is being asserted.
+// Only the fifth transfer can overflow. All push forms are checked together
+// after memcpy lowering, so the fifth descriptor is written before the poll,
+// but its START_QUEUE write must come after the poll.
 // CHECK-LABEL: @enforce
-// CHECK-COUNT-4: aiex.npu.blockwrite
+// CHECK-COUNT-5: aiex.npu.blockwrite
 // CHECK-DAG:     arith.constant 119336 : i32
 // CHECK-DAG:     arith.constant 4194304 : i32
 // CHECK:         aiex.npu.maskpoll
-// CHECK:         aiex.npu.blockwrite
+// CHECK:         aiex.npu.write32
 // CHECK-NOT:     aiex.npu.maskpoll
 
 // OFF-LABEL: @enforce

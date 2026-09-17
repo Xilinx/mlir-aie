@@ -434,11 +434,12 @@ def _run_aiecc(mlir_file: str, args: list[str]):
                 # Notes are the explanation, not decoration. A warning that
                 # queue-depth enforcement could not be applied says why in an
                 # attached note, so dropping notes leaves the generic overflow
-                # text with no hint that the target is the reason. A note with
-                # no location of its own prints without the "file:line:" prefix.
+                # text with no hint that the target is the reason. Diagnostics
+                # without a location print without the "file:line:" prefix.
                 if any(
-                    tag in line for tag in (": warning:", ": error:", ": note:")
-                ) or line.startswith("note:"):
+                    f": {severity}:" in line or line.startswith(f"{severity}:")
+                    for severity in ("warning", "error", "note")
+                ):
                     print(f"[aiecc] {line}", file=sys.stderr)
     if result.returncode != 0:
         error_msg = result.stderr if result.stderr else result.stdout

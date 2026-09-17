@@ -7,6 +7,8 @@
 // RUN:   | FileCheck %s
 // RUN: aie-opt --aie-assign-runtime-sequence-bd-ids='enforce-queue-depth=false' %s 2>/dev/null \
 // RUN:   | FileCheck %s --check-prefix=OFF
+// RUN: aie-opt --aie-assign-runtime-sequence-bd-ids --aie-dma-tasks-to-npu --aie-dma-to-npu %s \
+// RUN:   | FileCheck %s --check-prefix=PIPELINE
 
 // With enforcement on, a push that could land on a full task queue is preceded
 // by a poll of the channel's live occupancy, so room becomes a precondition
@@ -26,6 +28,13 @@
 // CHECK-DAG:   arith.constant 4194304 : i32
 // CHECK:       aiex.npu.maskpoll
 // CHECK-NOT:   aiex.npu.maskpoll
+// The unified push check must credit, not duplicate, the allocator's poll.
+// PIPELINE-LABEL: @enforce
+// PIPELINE-COUNT-4: aiex.npu.write32
+// PIPELINE: aiex.npu.maskpoll
+// PIPELINE-NOT: aiex.npu.maskpoll
+// PIPELINE: aiex.npu.write32
+// PIPELINE-NOT: aiex.npu.maskpoll
 
 // Turned off, codegen is untouched and the count falls back to a warning.
 // OFF-LABEL: @enforce
