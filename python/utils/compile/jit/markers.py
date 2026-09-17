@@ -36,7 +36,7 @@ Five annotation categories are defined here (all exported from ``aie.iron``):
     can forward it into ``Runtime(..., inputs=[...])`` and get back a runtime
     SSA block arg (the same scalar-type-in-``inputs`` duality ``Runtime``
     already implements).  Each call rebuilds the instruction stream for the
-    given value through the host dispatch bridge (a ``dispatch.so`` compiled
+    given value through the host dispatch bridge (a shared library compiled
     alongside the xclbin and called via ``ctypes``), so the per-call value
     reaches the NPU without recompiling the design.  Not supported together
     with ``full_elf=True``, which bakes one static instruction stream into the

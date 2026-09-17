@@ -18,6 +18,7 @@ import sys
 from pathlib import Path
 from types import CodeType
 
+import numpy as np
 import pytest
 
 import aie.utils.compile.jit.compilabledesign as compilabledesign_module
@@ -65,7 +66,7 @@ def _inout_gen():
 
 
 def _dispatch_gen():
-    def f(a: In, c: Out, scale: DispatchTime[int], *, N: CompileTime[int]):
+    def f(a: In, c: Out, scale: DispatchTime[np.int32], *, N: CompileTime[int]):
         pass
 
     return f
@@ -1508,3 +1509,35 @@ def test_get_dispatch_lib_path_none_for_non_dispatch_design():
     """get_dispatch_lib_path() returns None for a design with no DispatchTime[T] params."""
     d = CompilableDesign(_gemm_gen())
     assert d.get_dispatch_lib_path() is None
+
+
+@pytest.mark.parametrize("dtype", [int, bool, float, str, np.float32, np.bool_])
+def test_dispatch_time_rejects_unsupported_types_at_construction(dtype):
+    def gen(scale: DispatchTime[dtype]):
+        pass
+
+    with pytest.raises(TypeError, match="Unsupported DispatchTime.*NumPy integer"):
+        CompilableDesign(gen)
+
+
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        np.int8,
+        np.int16,
+        np.int32,
+        np.int64,
+        np.uint8,
+        np.uint16,
+        np.uint32,
+        np.uint64,
+        np.intc,
+        np.uintp,
+        np.longlong,
+    ],
+)
+def test_dispatch_time_accepts_runtime_integer_types(dtype):
+    def gen(scale: DispatchTime[dtype]):
+        pass
+
+    assert CompilableDesign(gen).dispatch_param_types == [dtype]

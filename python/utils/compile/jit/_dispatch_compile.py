@@ -12,25 +12,29 @@ emitter, which requires every patched value to be a compile-time constant.
 So instead: take the ``input_with_addresses.mlir`` aiecc already writes into
 every JIT kernel_dir, lower it, translate it to a C++ instruction-stream
 builder (``aie-translate --aie-npu-to-cpp``), and compile that to
-``kernel_dir/dispatch.so`` with a HOST compiler -- not Peano, which only
-targets ``aie2*-none-unknown-elf``. ``DispatchBridge`` loads the ``.so`` via
-``ctypes`` at dispatch time.
+an immutable ``kernel_dir/dispatch-<digest>.so`` (``.dll`` on Windows) with a
+HOST compiler -- not Peano, which only targets ``aie2*-none-unknown-elf``.
+``DispatchBridge`` loads the selected generation via ``ctypes`` at dispatch time.
 """
 
 from __future__ import annotations
 
-import ctypes
+import json
 import subprocess
 import sys
 from pathlib import Path
+from typing import get_args
 
+from aie.helpers.util import NpuDType, try_convert_np_type_to_mlir_type
+from aie.ir import (
+    Context,  # pyright: ignore[reportAttributeAccessIssue]
+    IndexType,  # pyright: ignore[reportAttributeAccessIssue]
+    IntegerType,  # pyright: ignore[reportAttributeAccessIssue]
+)
 from aie.utils import config
 
-from ._dispatch_bridge import (
-    C_TYPE_BY_NP_TYPE,
-    EMIT_DISPATCH_SHIM_FLAG,
-    read_dispatch_abi,
-)
+from . import _manifest
+from ._dispatch_bridge import EMIT_DISPATCH_SHIM_FLAG
 
 # Resolves to the same builder aiecc calls in-process for the static path, so a
 # dynamic design cannot lower differently. See AIEXNpuPipelines.cpp.
@@ -127,13 +131,28 @@ def _translate_to_cpp(
     return gen_cpp
 
 
-def _compile_so(gen_cpp: Path, kernel_dir: Path) -> Path:
-    so_path = kernel_dir / f"dispatch{SHARED_LIB_SUFFIX}"
+def _compile_so(gen_cpp: Path, so_path: Path) -> None:
     cmd = host_shared_lib_cmd(
         gen_cpp, so_path, opt="-O2", includes=[config.runtime_header_path()]
     )
     _run(cmd, "host C++ compile")
-    return so_path
+
+
+def dispatch_scalar_c_type(declared) -> str:
+    """Return the scalar's C ABI type using Runtime's NumPy-to-MLIR conversion."""
+    if declared in get_args(NpuDType):
+        with Context():
+            mlir_type = try_convert_np_type_to_mlir_type(declared)
+            if isinstance(mlir_type, IndexType):
+                return "size_t"
+            if isinstance(mlir_type, IntegerType):
+                integer_type = IntegerType(mlir_type)
+                prefix = "u" if integer_type.is_unsigned else ""
+                return f"{prefix}int{integer_type.width}_t"
+    raise TypeError(
+        f"Unsupported DispatchTime[{getattr(declared, '__name__', declared)}]: "
+        "use a NumPy integer scalar type supported by Runtime, such as np.int32."
+    )
 
 
 def _check_built_abi(
@@ -141,18 +160,32 @@ def _check_built_abi(
     dispatch_params: list[str],
     dispatch_param_types: list,
 ) -> None:
-    """Check the built ``.so``'s own ABI against what the design declares.
+    """Check the built library's own ABI against what the design declares.
 
     The generated parameter order is the hand-written ``Runtime(inputs=[...])``
     order; the declared order is the Python signature. Nothing ties the two
     together, so threading scalars in a different order than they are declared
     silently transposes values at every call. Comparing type sequences catches
     that whenever the types differ; two same-typed parameters stay
-    indistinguishable. A declared type absent from ``C_TYPE_BY_NP_TYPE`` is
-    left unchecked rather than guessed at.
+    indistinguishable.
     """
     try:
-        c_types = read_dispatch_abi(ctypes.CDLL(str(so_path)), so_path)
+        # Loading in the compiler pins DLLs on Windows and caches pathnames on
+        # POSIX. The probe owns the only staging-library handle and exits before
+        # publication (or removal on failure).
+        c_types = json.loads(
+            _run(
+                [
+                    sys.executable,
+                    "-c",
+                    "import ctypes, json, sys; "
+                    "from aie.utils.compile.jit._dispatch_bridge import read_dispatch_abi; "
+                    "print(json.dumps(read_dispatch_abi(ctypes.CDLL(sys.argv[1]), sys.argv[1])))",
+                    str(so_path.resolve()),
+                ],
+                "dispatch ABI probe",
+            )
+        )
     except (OSError, ValueError) as e:
         raise DispatchCompileError(f"dispatch bridge: {e}") from None
 
@@ -164,8 +197,8 @@ def _check_built_abi(
             f"value is threaded into Runtime(inputs=[...]) in declaration order."
         )
     for c_type, name, declared in zip(c_types, dispatch_params, dispatch_param_types):
-        expected = C_TYPE_BY_NP_TYPE.get(declared)
-        if expected is not None and expected != c_type:
+        expected = dispatch_scalar_c_type(declared)
+        if expected != c_type:
             raise DispatchCompileError(
                 f"DispatchTime[T] parameter {name!r} is declared as "
                 f"{getattr(declared, '__name__', declared)} (C {expected}) but "
@@ -182,14 +215,23 @@ def compile_dispatch_bridge(
     fold_ddr_addr_offset: bool,
     dispatch_param_types: list,
 ) -> Path:
-    """Build ``kernel_dir/dispatch.so`` for a design with DispatchTime[T] params.
+    """Build an immutable dispatch library for a design with DispatchTime[T] params.
 
     Must be called after the xclbin build, which writes
     ``input_with_addresses.mlir`` into ``kernel_dir``, and only on a cache
-    miss: this does no idempotency checking of its own.
+    miss, under the kernel-directory lock.
     """
     lowered_mlir = _lower_dynamic_runtime_sequence(kernel_dir)
     gen_cpp = _translate_to_cpp(lowered_mlir, kernel_dir, fold_ddr_addr_offset)
-    so_path = _compile_so(gen_cpp, kernel_dir)
-    _check_built_abi(so_path, dispatch_params, dispatch_param_types)
-    return so_path
+    staging = kernel_dir / f"dispatch.staging{SHARED_LIB_SUFFIX}"
+    try:
+        _compile_so(gen_cpp, staging)
+        _check_built_abi(staging, dispatch_params, dispatch_param_types)
+        published = (
+            kernel_dir / f"dispatch-{_manifest._digest(staging)}{SHARED_LIB_SUFFIX}"
+        )
+        if not published.exists():
+            staging.replace(published)
+        return published
+    finally:
+        staging.unlink(missing_ok=True)

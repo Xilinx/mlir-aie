@@ -5,19 +5,19 @@
 #
 """``DispatchBridge``: the Python/ctypes side of a compiled dispatch bridge.
 
-Loads the ``dispatch.so`` that ``compile_dispatch_bridge()``
-(_dispatch_compile.py) produces and calls its ``dispatch_generate`` entry point
+Loads the immutable ``dispatch-<digest>.so`` (``.dll`` on Windows) generation
+that ``compile_dispatch_bridge()`` produces and calls its ``dispatch_generate`` entry point
 once per NPU dispatch to synthesize a fresh instruction word stream from
 ``DispatchTime[T]`` scalar values.
 
 ``ConvertAIEXToEmitC`` emits a ``dispatch_abi()`` naming the C type of each
-scalar parameter, so the ``.so`` describes its own call signature and is the
-only artifact a cached kernel directory needs.
+scalar parameter, so the library describes its own call signature.
 """
 
 from __future__ import annotations
 
 import ctypes
+import operator
 from pathlib import Path
 from typing import Any
 
@@ -30,31 +30,25 @@ from aie.utils.hostruntime.hostruntime import HostRuntimeError
 DISPATCH_ABI_SYMBOL = "dispatch_abi"
 EMIT_DISPATCH_SHIM_FLAG = "--aie-npu-emit-dispatch-shim"
 
-# C type spelling (as aie-translate emits it) -> (ctypes type, the
-# ``DispatchTime[T]`` wrapped type that maps to it, or None if none does).
 # Covers everything AIEXToEmitC.cpp's cTypeName can emit.
-_SCALAR_C_TYPES: dict[str, tuple[type, type | None]] = {
-    "bool": (ctypes.c_bool, None),
-    "int8_t": (ctypes.c_int8, np.int8),
-    "uint8_t": (ctypes.c_uint8, np.uint8),
-    "int16_t": (ctypes.c_int16, np.int16),
-    "uint16_t": (ctypes.c_uint16, np.uint16),
-    "int32_t": (ctypes.c_int32, np.int32),
-    "uint32_t": (ctypes.c_uint32, np.uint32),
-    "int64_t": (ctypes.c_int64, np.int64),
-    "uint64_t": (ctypes.c_uint64, np.uint64),
-    "size_t": (ctypes.c_size_t, None),
-}
-
-C_TYPE_BY_NP_TYPE = {
-    np_type: c_name
-    for c_name, (_ctype, np_type) in _SCALAR_C_TYPES.items()
-    if np_type is not None
+_SCALAR_C_TYPES: dict[str, type] = {
+    "bool": ctypes.c_bool,
+    "int8_t": ctypes.c_int8,
+    "uint8_t": ctypes.c_uint8,
+    "int16_t": ctypes.c_int16,
+    "uint16_t": ctypes.c_uint16,
+    "int32_t": ctypes.c_int32,
+    "uint32_t": ctypes.c_uint32,
+    "int64_t": ctypes.c_int64,
+    "uint64_t": ctypes.c_uint64,
+    "size_t": ctypes.c_size_t,
 }
 
 
 def _value_range(ctype: type) -> tuple[int, int]:
     """Inclusive ``(low, high)`` a *ctype* can hold, derived from the type itself."""
+    if ctype is ctypes.c_bool:
+        return 0, 1
     bits = ctypes.sizeof(ctype) * 8
     if ctype(-1).value < 0:  # type: ignore[call-arg]
         return -(2 ** (bits - 1)), 2 ** (bits - 1) - 1
@@ -62,9 +56,9 @@ def _value_range(ctype: type) -> tuple[int, int]:
 
 
 def read_dispatch_abi(lib: ctypes.CDLL, so_path) -> list[str]:
-    """C type names an already-loaded dispatch ``.so`` reports for its params.
+    """C type names an already-loaded dispatch library reports for its params.
 
-    Raises ``ValueError`` if the ``.so`` exports no ``dispatch_abi()`` (built
+    Raises ``ValueError`` if the library exports no ``dispatch_abi()`` (built
     without ``EMIT_DISPATCH_SHIM_FLAG``) or reports something unparseable.
     """
     try:
@@ -76,7 +70,14 @@ def read_dispatch_abi(lib: ctypes.CDLL, so_path) -> list[str]:
             "directory and rebuild."
         ) from None
     abi_fn.restype = ctypes.c_char_p
-    text = abi_fn().decode()
+    abi_fn.argtypes = []
+    abi = abi_fn()
+    if abi is None:
+        raise ValueError(f"{so_path} reports a null dispatch ABI")
+    try:
+        text = abi.decode("ascii")
+    except UnicodeDecodeError:
+        raise ValueError(f"{so_path} reports a non-ASCII dispatch ABI") from None
     if not text.strip():
         return []
     c_types = [field.strip() for field in text.split(",")]
@@ -89,11 +90,11 @@ class DispatchBridge:
     """Loads a compiled dispatch bridge once; regenerates instruction words per call.
 
     Args:
-        so_path: Path to the compiled ``dispatch.so``.
+        so_path: Path to the immutable compiled dispatch generation.
         dispatch_params: Declared ``DispatchTime[T]`` parameter names, in the
             same order as the generated function's parameters (validated by
             ``compile_dispatch_bridge()`` at compile time). The C types come
-            from the ``.so``'s own ``dispatch_abi()``, so only names are needed.
+            from the library's own ``dispatch_abi()``, so only names are needed.
     """
 
     def __init__(self, so_path: Path, dispatch_params: list[str]):
@@ -120,14 +121,20 @@ class DispatchBridge:
         # would redo this work on every call.
         self._arg_spec = []
         for name, c_type_name in zip(dispatch_params, param_ctypes):
-            entry = _SCALAR_C_TYPES.get(c_type_name)
-            if entry is None:
+            ctype = _SCALAR_C_TYPES.get(c_type_name)
+            if ctype is None:
                 raise HostRuntimeError(
                     f"dispatch bridge: unrecognized generated C type "
                     f"{c_type_name!r}; known types are {sorted(_SCALAR_C_TYPES)}."
                 )
-            ctype = entry[0]
             self._arg_spec.append((name, ctype, *_value_range(ctype)))
+        try:
+            self._lib.dispatch_generate
+        except AttributeError:
+            raise HostRuntimeError(
+                f"dispatch bridge at {so_path} exports no dispatch_generate(); "
+                "clear the compiled kernel directory and rebuild."
+            ) from None
         self._lib.dispatch_generate.restype = ctypes.c_int64
         self._lib.dispatch_generate.argtypes = [
             *(ctype for _n, ctype, _lo, _hi in self._arg_spec),
@@ -144,16 +151,19 @@ class DispatchBridge:
         ordered = []
         for name, ctype, low, high in self._arg_spec:
             value = values[name]
-            # ctypes truncates silently: c_int32(2**31) is -2147483648 and
-            # c_int32(2**70) is 0, either of which would dispatch a
-            # plausible-looking stream built from a value nobody asked for.
-            if not low <= int(value) <= high:
+            try:
+                integer = operator.index(value)
+            except TypeError:
+                raise HostRuntimeError(
+                    f"DispatchTime[T] value {name}={value!r} must be an integer."
+                ) from None
+            if not low <= integer <= high:
                 raise HostRuntimeError(
                     f"DispatchTime[T] value {name}={value!r} does not fit its "
                     f"generated C parameter type (valid range {low}..{high}); "
                     "passing it would silently wrap to a different value."
                 )
-            ordered.append(ctype(int(value)))
+            ordered.append(ctype(integer))
         out_ptr = ctypes.POINTER(ctypes.c_uint32)()
         n = self._lib.dispatch_generate(*ordered, ctypes.byref(out_ptr))
         if n == -2:
@@ -168,7 +178,7 @@ class DispatchBridge:
         if n < 0:
             raise HostRuntimeError(
                 f"dispatch bridge returned unexpected status {n} for {values!r}; "
-                "the compiled dispatch.so does not match this design."
+                "the compiled dispatch library does not match this design."
             )
         if n == 0:
             return np.empty(0, dtype=np.uint32)

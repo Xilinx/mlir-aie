@@ -53,7 +53,10 @@ from aie.utils.compile.cache.utils import file_lock
 from aie.utils.compile.utils import _cleanup_failed_compilation
 
 from . import _manifest
-from ._dispatch_compile import SHARED_LIB_SUFFIX, compile_dispatch_bridge
+from ._dispatch_compile import (
+    compile_dispatch_bridge,
+    dispatch_scalar_c_type,
+)
 from ._dma_size_parser import parse_dma_sizes
 from ._hash import (
     _compute_artifact_hash,
@@ -192,6 +195,8 @@ class CompilableDesign:
                 )
                 for name in self.dispatch_params
             ]
+            for declared in self.dispatch_param_types:
+                dispatch_scalar_c_type(declared)
         else:
             self._hints = {}
             self._sig = None
@@ -387,23 +392,25 @@ class CompilableDesign:
             lock_file_path = kernel_dir / ".lock"
             xclbin_path = kernel_dir / "final.xclbin"
             inst_path = None if has_dispatch else kernel_dir / "insts.bin"
-            dispatch_so_path = (
-                kernel_dir / f"dispatch{SHARED_LIB_SUFFIX}" if has_dispatch else None
-            )
-
-        # The xclbin's companion artifact: insts.bin, or dispatch.so for a
-        # dispatch design, which has no insts.bin at all -- every call
-        # synthesizes fresh instructions instead. Exactly one is always set.
-        companion_path = dispatch_so_path or inst_path
-        assert companion_path is not None
+            dispatch_so_path = None
 
         with file_lock(lock_file_path, timeout_seconds=_COMPILE_LOCK_TIMEOUT_SECONDS):
             os.makedirs(kernel_dir, exist_ok=True)
 
+            companion_path = (
+                _manifest.resolve_dispatch_library(kernel_dir)
+                if has_dispatch
+                else inst_path
+            )
             xclbin_exists = xclbin_path.exists()
-            inst_exists = companion_path.exists()
+            inst_exists = companion_path is not None and companion_path.exists()
 
-            if not explicit_paths and self.use_cache and xclbin_exists and inst_exists:
+            if (
+                not explicit_paths
+                and self.use_cache
+                and xclbin_exists
+                and (inst_exists or has_dispatch)
+            ):
                 if not _manifest.is_valid(kernel_dir):
                     # A recorded input moved.  The directory holds nested caches
                     # of its own -- compile_external_kernel skips any .o that is
@@ -491,7 +498,10 @@ class CompilableDesign:
                         + ", ".join(str(p) for p in missing)
                     )
 
+                manifest_sources = list(self.source_files)
                 if has_dispatch:
+                    from aie.utils import config
+
                     dispatch_so_path = compile_dispatch_bridge(
                         kernel_dir,
                         self.dispatch_params,
@@ -503,14 +513,20 @@ class CompilableDesign:
                             "[dispatch bridge] Compilation appeared to succeed "
                             f"but {dispatch_so_path} was not created."
                         )
+                    manifest_sources.append(
+                        Path(config.runtime_header_path()) / "aie/Runtime/TxnEncoding.h"
+                    )
 
                 # Build succeeded: record what it consumed, so the next lookup
                 # can check the real inputs instead of guessing at them.
                 _manifest.record(
                     kernel_dir,
                     external_kernels,
-                    self.source_files,
+                    manifest_sources,
                     used_chess=use_chess,
+                    dispatch_library=(
+                        dispatch_so_path.name if dispatch_so_path is not None else None
+                    ),
                 )
             except Exception:
                 _cleanup_failed_compilation(kernel_dir)
@@ -678,15 +694,18 @@ class CompilableDesign:
         return self._xclbin_path, self._inst_path
 
     def get_dispatch_lib_path(self) -> Path | None:
-        """Return the compiled dispatch bridge ``.so`` for a DispatchTime[T] design.
+        """Return the immutable dispatch library generation for a DispatchTime[T] design.
 
         ``None`` if this design has no ``DispatchTime[T]`` parameters, or if
         it hasn't been compiled yet.
         """
         if self._kernel_dir is None or not self.dispatch_params:
             return None
-        so_path = self._kernel_dir / f"dispatch{SHARED_LIB_SUFFIX}"
-        return so_path if so_path.exists() else None
+        with file_lock(
+            self._kernel_dir / ".lock",
+            timeout_seconds=_COMPILE_LOCK_TIMEOUT_SECONDS,
+        ):
+            return _manifest.resolve_dispatch_library(self._kernel_dir)
 
     def get_pdi_paths(self) -> list[Path]:
         """Return every cache-directory PDI aiecc emitted, sorted by name.
@@ -768,7 +787,7 @@ class CompilableDesign:
         params = [
             (name, p)
             for name, p in sig.parameters.items()
-            if name not in self.compile_kwargs
+            if name not in self.compile_params
         ]
 
         # Walk the non-compile parameters in order, consuming positional args.
@@ -1107,10 +1126,9 @@ class CompilableDesign:
         # DispatchTime[T] params generate from the wrapped type T (e.g.
         # np.int32), not a value: the generator forwards it into Runtime(
         # inputs=[...]) for a runtime SSA block arg. Hence not in the cache key.
-        _dispatch_placeholders = {
-            name: _dispatch_param_type(hints.get(name, sig.parameters[name].annotation))
-            for name in self.dispatch_params
-        }
+        _dispatch_placeholders = dict(
+            zip(self.dispatch_params, self.dispatch_param_types)
+        )
         _gen_call_kwargs = {
             **_tensor_placeholders,
             **_dispatch_placeholders,

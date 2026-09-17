@@ -814,17 +814,24 @@ def compile_external_kernel(func, kernel_dir, target_arch, include_dirs=None):
     func._compiled_dir = os.path.abspath(kernel_dir)
 
 
+def _is_dispatch_library_name(name: str) -> bool:
+    return re.fullmatch(r"dispatch-[0-9a-f]{64}\.(?:so|dll)", name) is not None
+
+
 def _cleanup_failed_compilation(cache_dir):
     """Clean up cache directory after failed compilation.
 
     Preserves the lock file and, when present, the ``repeater`` reproducer dir
-    that aiecc's ``--enable-repeater-scripts`` writes.
+    that aiecc's ``--enable-repeater-scripts`` writes. Published dispatch
+    generations are retained cache artifacts, not temporary staging files:
+    a caller can still hold their path without having loaded it yet, so they
+    stay until cache eviction.
     """
     if not os.path.exists(cache_dir):
         return
 
     for item in os.listdir(cache_dir):
-        if item in (".lock", "repeater"):
+        if item in (".lock", "repeater") or _is_dispatch_library_name(item):
             continue
         item_path = os.path.join(cache_dir, item)
         if os.path.isfile(item_path):

@@ -140,7 +140,7 @@ class NPUKernel:
 
     @property
     def dispatch_lib_path(self):
-        """Get the path to the compiled dispatch bridge (``dispatch.so``).
+        """Get the path to the compiled dispatch bridge shared library.
 
         Returns:
             str | Path | None: ``None`` for a design with no DispatchTime[T]

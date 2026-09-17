@@ -24,6 +24,7 @@ from aie.utils.compile.jit._dispatch_compile import (
     SHARED_LIB_SUFFIX,
     DispatchCompileError,
     _check_built_abi,
+    dispatch_scalar_c_type,
     host_shared_lib_cmd,
 )
 from aie.utils.hostruntime.hostruntime import HostRuntimeError
@@ -216,9 +217,112 @@ def test_param_type_mismatch_rejected(transposed_so):
     # Correctly ordered: no complaint.
     _check_built_abi(transposed_so, ["rows", "cols"], [np.int64, np.int32])
 
-    # Unknown declared type is left unchecked rather than guessed at.
-    _check_built_abi(transposed_so, ["rows", "cols"], [None, None])
+    with pytest.raises(TypeError, match="Unsupported DispatchTime"):
+        _check_built_abi(transposed_so, ["rows", "cols"], [None, None])
 
     # Arity is checked even with no declared types to compare.
     with pytest.raises(DispatchCompileError, match="the design declares 1"):
-        _check_built_abi(transposed_so, ["rows"], None)
+        _check_built_abi(transposed_so, ["rows"], [np.int64])
+
+
+@pytest.mark.parametrize("value", [1.9, 1.0, "2", None, np.float32(2)])
+def test_non_integer_value_rejected(fixture_so, value):
+    with pytest.raises(HostRuntimeError, match="must be an integer"):
+        _bridge(fixture_so).generate({"scale": value, "n_tiles": 1})
+
+
+def test_integer_protocol_evaluated_once(fixture_so):
+    class Integer:
+        calls = 0
+
+        def __index__(self):
+            self.calls += 1
+            return self.calls
+
+    value = Integer()
+    assert list(
+        _bridge(fixture_so).generate({"scale": value, "n_tiles": np.int64(2)})
+    ) == [1, 2]
+    assert value.calls == 1
+
+
+@pytest.mark.parametrize(
+    "ctype,value,accepted",
+    [
+        ("bool", 0, True),
+        ("bool", 1, True),
+        ("bool", 2, False),
+        ("bool", -1, False),
+        ("bool", 255, False),
+        ("int8_t", -128, True),
+        ("int8_t", 127, True),
+        ("int8_t", -129, False),
+        ("int8_t", 128, False),
+        ("uint64_t", 2**64 - 1, True),
+        ("uint64_t", 2**64, False),
+    ],
+)
+def test_scalar_bounds(tmp_path, ctype, value, accepted):
+    source = f"""
+#include <cstdint>
+extern "C" AIE_DISPATCH_EXPORT const char *dispatch_abi() {{ return "{ctype}"; }}
+extern "C" AIE_DISPATCH_EXPORT int64_t dispatch_generate({ctype} value, uint32_t **out) {{
+  static uint32_t word;
+  word = static_cast<uint32_t>(value);
+  *out = &word;
+  return 1;
+}}
+"""
+    bridge = DispatchBridge(_compile_fixture(tmp_path, source, "bounds"), ["value"])
+    if accepted:
+        assert list(bridge.generate({"value": value})) == [value & 0xFFFFFFFF]
+    else:
+        with pytest.raises(HostRuntimeError, match="does not fit"):
+            bridge.generate({"value": value})
+
+
+@pytest.mark.parametrize(
+    "status,error", [(-1, "unexpected status"), (0, None), (1, "null pointer")]
+)
+def test_invalid_or_empty_result(tmp_path, status, error):
+    source = f"""
+#include <cstdint>
+extern "C" AIE_DISPATCH_EXPORT const char *dispatch_abi() {{ return ""; }}
+extern "C" AIE_DISPATCH_EXPORT int64_t dispatch_generate(uint32_t **out) {{
+  *out = nullptr;
+  return {status};
+}}
+"""
+    bridge = DispatchBridge(_compile_fixture(tmp_path, source, "result"), [])
+    if error:
+        with pytest.raises(HostRuntimeError, match=error):
+            bridge.generate({})
+    else:
+        result = bridge.generate({})
+        assert result.dtype == np.uint32
+        assert result.size == 0
+
+
+@pytest.mark.parametrize(
+    "abi,error",
+    [("nullptr", "null dispatch ABI"), ('"\\xff"', "non-ASCII dispatch ABI")],
+)
+def test_malformed_abi(tmp_path, abi, error):
+    source = (
+        f'extern "C" AIE_DISPATCH_EXPORT const char *dispatch_abi() {{ return {abi}; }}'
+    )
+    with pytest.raises(HostRuntimeError, match=error):
+        DispatchBridge(_compile_fixture(tmp_path, source, "abi"), [])
+
+
+def test_missing_generate_symbol(tmp_path):
+    source = 'extern "C" AIE_DISPATCH_EXPORT const char *dispatch_abi() { return ""; }'
+    with pytest.raises(HostRuntimeError, match="exports no dispatch_generate"):
+        DispatchBridge(_compile_fixture(tmp_path, source, "missing"), [])
+
+
+def test_numpy_index_aliases_follow_runtime_mapping():
+    assert dispatch_scalar_c_type(np.uintp) == "size_t"
+    assert dispatch_scalar_c_type(np.longlong) == (
+        "int64_t" if np.longlong is np.int64 else "size_t"
+    )
