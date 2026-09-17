@@ -5,8 +5,6 @@
 #
 """Row-wise bf16 RoPE (Rotary Position Embedding) — IRON API design.
 
-NPU2-only: ``rope.cc`` lives under ``aie_kernels/aie2p/`` only.
-
 Four cores process ``sequence_length // 4`` rows each.  Per row, on
 even/odd element pairs::
 
@@ -32,7 +30,7 @@ from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
 from ml_dtypes import bfloat16
 
-_KERNEL_SRC = Path(__file__).resolve().parents[3] / "aie_kernels/aie2p/rope.cc"
+_KERNEL_SRC = Path(__file__).resolve().parents[3] / "aie_kernels/generic/rope.cc"
 
 
 def _rope_extern(chunk_type):

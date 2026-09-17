@@ -81,6 +81,11 @@ void gelu_bf16(bfloat16 *restrict input, bfloat16 *restrict output) {
   gelu_tanh_approx_bf16(input, output, input_size);
 }
 
+void gelu_bf16_size(bfloat16 *restrict input, bfloat16 *restrict output,
+                    int32_t input_size) {
+  gelu_tanh_approx_bf16(input, output, input_size);
+}
+
 // In-place GELU over n bf16 elements (n a multiple of 32).  Intended as a fused
 // epilogue over a compute tile (e.g. a GEMV output tile), applied once per tile
 // in the producing core.

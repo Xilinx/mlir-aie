@@ -18,6 +18,7 @@ void softmax_simple_bf16(bfloat16 *restrict input_vector,
                          bfloat16 *restrict output_vector,
                          const int32_t vector_size) {
   event0();
+  ::aie::set_rounding(aie::rounding_mode::conv_even);
 
   // VJUNG: We do 3 passes on the vector:
   // 1. Find the max value scaled by log2e in the vector

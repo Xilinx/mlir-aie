@@ -158,12 +158,12 @@ _TRACE_UNSUPPORTED_MSG = (
 class HRXHostRuntime(HostRuntime):
     """Uncached HostRuntime that dispatches IRON designs through HRX.
 
-    Every :meth:`load` builds a fresh amdxdna executable and never reuses one
-    across calls -- the analogue of :class:`XRTHostRuntime`. On shared systems
+    Every `load` builds a fresh amdxdna executable and never reuses one
+    across calls -- the analogue of `XRTHostRuntime`. On shared systems
     where holding onto device executables is undesirable this is the runtime to
-    pick; :class:`CachedHRXRuntime` layers an LRU executable cache on top for
+    pick; `CachedHRXRuntime` layers an LRU executable cache on top for
     the common single-process case. Created executables are tracked so
-    :meth:`cleanup` can release them.
+    `cleanup` can release them.
     """
 
     _tensor_class = HRXTensor
@@ -248,7 +248,7 @@ class HRXHostRuntime(HostRuntime):
 
         Sync cost note (review r3623783388): this layer does not know an arg's
         direction (input / output / in-out), so it is deliberately conservative
-        both ways. It flushes *every* binding host->device here, and :meth:`run`
+        both ways. It flushes *every* binding host->device here, and `run`
         marks *every* binding device-resident afterwards so the next host read
         invalidates it. For a pure input, the post-run mark forces one extra
         device->host *invalidate* on next access. Both directions are cheap cache
@@ -286,7 +286,7 @@ class HRXHostRuntime(HostRuntime):
         the next host read invalidates and observes the results.
 
         Args:
-            kernel_handle (HRXKernelHandle): Handle from :meth:`load`.
+            kernel_handle (HRXKernelHandle): Handle from `load`.
             args: The kernel arguments (``HRXTensor`` instances; a trailing
                 callable, as ``@iron.jit`` appends, is ignored).
             trace_config (optional): Must be ``None`` -- HRX has no trace capture.
@@ -351,9 +351,9 @@ class HRXHostRuntime(HostRuntime):
 
         Args:
             runs: A sequence of ``(kernel_handle, args)`` entries, recorded in
-                order. Each ``kernel_handle`` is an :class:`HRXKernelHandle` and
+                order. Each ``kernel_handle`` is an `HRXKernelHandle` and
                 ``args`` are ``HRXTensor`` instances (a trailing callable is
-                ignored, as in :meth:`run`).
+                ignored, as in `run`).
             fail_on_error (bool, optional): Raise on a failed chain dispatch
                 instead of returning an unsuccessful result. Defaults to True.
 
@@ -431,7 +431,7 @@ class HRXHostRuntime(HostRuntime):
 
         Invoked by the shared ``aie.utils.cleanup_npu_runtime`` entry point.
         Each executable is released back to HRX; the process-wide device/stream
-        owned by :class:`HRXContext` is intentionally left intact (it is a
+        owned by `HRXContext` is intentionally left intact (it is a
         shared singleton that other runtimes/tensors may still use and is torn
         down by libhrx at process exit).
         """
@@ -445,8 +445,8 @@ class HRXHostRuntime(HostRuntime):
 class CachedHRXRuntime(HRXHostRuntime):
     """HRX runtime that caches loaded executables (analogue of CachedXRTRuntime).
 
-    Unlike the uncached :class:`HRXHostRuntime`, this reuses an amdxdna
-    executable across :meth:`load` calls for the same artifacts, evicting the
+    Unlike the uncached `HRXHostRuntime`, this reuses an amdxdna
+    executable across `load` calls for the same artifacts, evicting the
     least-recently-used entry once ``HRX_EXE_CACHE_SIZE`` (default 32) is
     exceeded. It also registers an ``atexit`` cleanup (as ``CachedXRTRuntime``
     does) so cached executables are released on interpreter shutdown.

@@ -95,6 +95,18 @@ class DuplicateTests(unittest.TestCase):
         )
         self.assertEqual(slop.find_duplicates(blocks), [])
 
+    def test_license_banners_are_not_duplicates(self):
+        # Every new file repeats the mandatory SPDX/copyright header verbatim.
+        # The SPDX token is assembled from fragments so reuse-lint does not read
+        # this test's own string as a (malformed) license identifier.
+        banner = (
+            "Copyright (C) 2026 Advanced Micro Devices, Inc. "
+            + "SPDX-License-"
+            + "Identifier: Apache-2.0 WITH LLVM-exception"
+        )
+        blocks = self._blocks(banner, banner, banner)
+        self.assertEqual(slop.find_duplicates(blocks), [])
+
     def test_test_files_may_restate_the_invariant(self):
         blocks = self._blocks(
             "enforce eager is stripped from args because load re-emits from policy",
