@@ -462,7 +462,8 @@ def AIEObjectFifoAllocate : Pass<"aie-objectfifo-allocate", "DeviceOp"> {
     If the usual largest-first placement exhausts neighbor-capable channels,
     retry with selected buffers and generated locks reserved on the accessing
     endpoint's tile, without disabling spilling for other pools. Existing
-    buffers and locks remain fixed. At most 64 locality combinations are tried.
+    buffers and locks remain fixed. Each trial checks memory and lock capacity
+    as well as channel eligibility. At most 64 locality combinations are tried.
     Tile placement and buffer packing remain greedy; failure is not a proof of
     infeasibility.
   }];
