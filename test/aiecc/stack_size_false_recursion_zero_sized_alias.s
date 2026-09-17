@@ -21,7 +21,7 @@ entry_real:
 
         .pushsection .stack_sizes,"",@progbits
         .long helper_cycle
-        .byte 0
+        .byte 16
         .long entry_real
-        .byte 0
+        .byte 32
         .popsection

@@ -12,7 +12,6 @@
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
-#include "llvm/BinaryFormat/ELF.h"
 #include "llvm/Object/ELFObjectFile.h"
 #include "llvm/Object/ObjectFile.h"
 #include "llvm/Support/Endian.h"
@@ -202,23 +201,33 @@ bool isZeroSizedFunctionSymbol(const SymbolRef &sym) {
 }
 
 bool isAieDataWordRelocation(const ObjectFile &obj, const RelocationRef &rel) {
+  // These ABI constants live in Peano's ELF.h, not the host LLVM headers.
+  constexpr unsigned aieElfMachine = 264;
   constexpr unsigned aieElfFlagMask = 0x7;
+  constexpr unsigned aie1ElfFlag = 0x1;
   constexpr unsigned aie2ElfFlag = 0x2;
   constexpr unsigned aie2pElfFlag = 0x3;
+  constexpr unsigned aie2psElfFlag = 0x4;
+  constexpr uint64_t aie1DataWordRelocation = 72;
   constexpr uint64_t aie2DataWordRelocation = 50;
   constexpr uint64_t aie2pDataWordRelocation = 62;
+  constexpr uint64_t aie2psDataWordRelocation = 135;
 
   const auto *elf = llvm::dyn_cast<ELFObjectFileBase>(&obj);
-  if (!elf || elf->getEMachine() != llvm::ELF::EM_AIE) {
+  if (!elf || elf->getEMachine() != aieElfMachine) {
     return false;
   }
   // Peano uses one relocation number per AIE variant for the plain 32-bit
   // address literal (`FK_Data_4`). That literal is not a call, even in `.text`.
   switch (elf->getPlatformFlags() & aieElfFlagMask) {
+  case aie1ElfFlag:
+    return rel.getType() == aie1DataWordRelocation;
   case aie2ElfFlag:
     return rel.getType() == aie2DataWordRelocation;
   case aie2pElfFlag:
     return rel.getType() == aie2pDataWordRelocation;
+  case aie2psElfFlag:
+    return rel.getType() == aie2psDataWordRelocation;
   default:
     return false;
   }

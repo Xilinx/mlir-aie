@@ -17,10 +17,10 @@
 // BUILD-NOT: cannot determine this core's stack requirement
 // BUILD-NOT: recursion detected
 
-// ELF-DAG: [[ADDR:[0-9A-Fa-f]+]]{{ +}}{{[1-9][0-9]*}}{{ +}}FUNC{{ +}}GLOBAL{{.*}}helper_cycle
-// ELF-DAG: [[ADDR]]{{ +}}0{{ +}}FUNC{{ +}}GLOBAL{{.*}}inlined_entry
 // ELF: R_AIE_62{{.*}}entry_real
 // ELF: R_AIE_62{{.*}}inlined_entry
+// ELF-DAG: [[ADDR:[0-9A-Fa-f]+]]{{ +}}{{[1-9][0-9]*}}{{ +}}FUNC{{ +}}GLOBAL{{.*}}helper_cycle
+// ELF-DAG: [[ADDR]]{{ +}}0{{ +}}FUNC{{ +}}GLOBAL{{.*}}inlined_entry
 
 module {
   aie.device(npu2) {
