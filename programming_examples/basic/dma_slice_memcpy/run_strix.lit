@@ -1,31 +1,10 @@
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
+// The two designs that take DDR at dispatch, run and verified on device.
+// The emit-only pair is checked in emit.lit, which needs no hardware.
+//
 // REQUIRES: ryzen_ai_npu2, peano
 //
 // RUN: %run_on_npu2% %python %S/tile_dma.py -d npu2
 // RUN: %run_on_npu2% %python %S/objectfifo.py -d npu2
-//
-// static_dma.py addresses DDR itself, so there is no host buffer to hand it and
-// nothing to verify; check that it still builds legal MLIR. The slice fits a
-// buffer descriptor's three dimensions as written, so it is one descriptor.
-// RUN: %python %S/static_dma.py | FileCheck %s
-//
-// CHECK: aie.external_buffer {address = 2147483648 : i64, sym_name = "device_memory_devmem"}
-// CHECK: aie.shim_dma
-// CHECK:   aie.dma_start(MM2S, 0
-// CHECK:   aie.dma_bd(%device_memory_devmem
-// CHECK-SAME: offset = 512 len = 32768 sizes = [8, 8, 512] strides = [16384, 1024, 1]
-// CHECK-NOT:  iteration
-// CHECK: aie.runtime_sequence()
-//
-// copy_buffer.py reaches the same design from one call per transfer, so it has
-// to arrive at the same descriptors.
-// RUN: %python %S/copy_buffer.py | FileCheck %s --check-prefix=COPY
-//
-// COPY: aie.external_buffer {address = 2147483648 : i64, sym_name = "devmem"}
-// COPY: aie.dma_bd(%devmem
-// COPY-SAME: offset = 512 len = 32768 sizes = [8, 8, 512] strides = [16384, 1024, 1]
-// COPY: aie.dma_bd(%result
-// COPY-SAME: len = 32768 sizes = [8, 8, 512] strides = [4096, 512, 1]
-// COPY: aie.runtime_sequence()

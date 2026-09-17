@@ -3,24 +3,21 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""The dma_slice_memcpy design, said as one copy_buffer() call per transfer.
+"""The static_dma.py design, said as one copy_buffer() call per transfer.
 
-static_dma.py spells out a Flow, a DmaChannel, a Bd and a chunk count for each
-direction. All of that is derivable from the two ends and the locks between
-them, so copy_buffer() below takes just those and wires the rest -- leaving a
-design that reads as what it does.
+static_dma.py spells out a Flow, two DmaChannels and a Bd for each direction.
+All of that follows from the two ends and the locks between them, so
+copy_buffer() takes those and wires the rest, leaving a design that reads as
+what it does.
 
-copy_buffer introduces no types of its own. It slices with
+copy_buffer introduces no types of its own: it slices with
 [`ExternalBuffer.__getitem__`][iron.ExternalBuffer], builds the same
 [`Flow`][iron.Flow] / [`DmaChannel`][iron.DmaChannel] / [`Bd`][iron.Bd] objects
-static_dma.py builds by hand, and registers them on the Runtime the same way --
-so there is no bookkeeping left at the call site and no emit step at the end.
+static_dma.py builds by hand, and registers them on the Runtime the same way.
 
 Deliberately NOT part of the IRON library: a sketch of what such an API could
 look like, kept next to the primitives it is built from.
 """
-
-import math
 
 import numpy as np
 from aie.dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
@@ -43,29 +40,29 @@ from aie.iron.device import NPU2Col1, Tile
 
 
 def copy_buffer(
-    rt,
+    rt: Runtime,
     *,
-    src_buffer,
-    src_channel,
-    dst_buffer,
-    dst_channel,
-    through_shim,
-    src_wait_for_lock=None,
-    src_release_lock=None,
-    dst_wait_for_lock=None,
-    dst_release_lock=None,
-):
+    src_buffer: Buffer | ExternalBuffer,
+    src_channel: int,
+    dst_buffer: Buffer | ExternalBuffer,
+    dst_channel: int,
+    through_shim: Tile,
+    src_wait_for_lock: Lock | None = None,
+    src_release_lock: Lock | None = None,
+    dst_wait_for_lock: Lock | None = None,
+    dst_release_lock: Lock | None = None,
+) -> None:
     """Copy between off-chip memory and a tile buffer, through the shim.
 
     One end is a tile [`Buffer`][iron.Buffer] and the other an
-    [`ExternalBuffer`][iron.ExternalBuffer], whole or sliced. The locks belong
-    to the tile end, which acquires ``wait_for_lock`` before each buffer and
-    releases ``release_lock`` after it, so a producer and a consumer on the same
-    buffer hand it back and forth.
+    [`ExternalBuffer`][iron.ExternalBuffer], whole or sliced -- which of the two
+    is which decides the direction. The locks belong to the tile end, which
+    acquires ``wait_for_lock`` before each buffer and releases ``release_lock``
+    after it, so a producer and a consumer on the same buffer hand it back and
+    forth.
 
-    Everything the copy needs is derived: the route, a channel at each end, the
-    tile's buffer descriptor and how many times it runs, and the shim's
-    descriptor over the slice. All of it is registered on ``rt``.
+    The route, a channel at each end and their buffer descriptors all follow,
+    and are registered on ``rt``.
     """
     into_tile = isinstance(dst_buffer, Buffer)
     if into_tile == isinstance(src_buffer, Buffer):
@@ -87,47 +84,39 @@ def copy_buffer(
         if lock is not None:
             rt.add_lock(lock)
 
-    # The tile stages the copy one buffer at a time, so it runs its BD once per
-    # chunk -- taken from the slice rather than passed in. The chain has to end
-    # for that count to mean anything (see tile_dma.py).
-    staged = math.prod(tile_buffer.shape)
-    tile_side = DmaChannel(
-        direction=DMAChannelDir.S2MM if into_tile else DMAChannelDir.MM2S,
-        channel=dst_channel if into_tile else src_channel,
-        loop=False,
-        repeat_count=math.prod(off_chip.tap.sizes) // staged - 1,
-        bds=[
-            Bd(
-                buffer=tile_buffer,
-                length=staged,
-                acquires=[Acquire(wait)] if wait else [],
-                releases=[Release(release)] if release else [],
-            )
-        ],
+    # The tile's chain loops, because its locks are what pace it; the shim's
+    # takes no locks, so it has to end or it would re-send forever.
+    rt.add_tile_dma(
+        TileDma(
+            tile=tile,
+            channels=[
+                DmaChannel(
+                    direction=DMAChannelDir.S2MM if into_tile else DMAChannelDir.MM2S,
+                    channel=dst_channel if into_tile else src_channel,
+                    bds=[
+                        Bd(
+                            buffer=tile_buffer,
+                            acquires=[Acquire(wait)] if wait else [],
+                            releases=[Release(release)] if release else [],
+                        )
+                    ],
+                )
+            ],
+        )
     )
-
-    # The shim moves the whole slice in one descriptor: the access pattern goes
-    # over as the slice describes it.
-    pattern = off_chip.tap
-    shim_side = DmaChannel(
-        direction=DMAChannelDir.MM2S if into_tile else DMAChannelDir.S2MM,
-        channel=src_channel if into_tile else dst_channel,
-        loop=False,
-        bds=[
-            Bd(
-                buffer=off_chip,
-                offset=pattern.offset,
-                length=math.prod(pattern.sizes),
-                sizes=list(pattern.sizes),
-                strides=list(pattern.strides),
-            )
-        ],
+    rt.add_tile_dma(
+        TileDma(
+            tile=through_shim,
+            channels=[
+                DmaChannel(
+                    direction=DMAChannelDir.MM2S if into_tile else DMAChannelDir.S2MM,
+                    channel=src_channel if into_tile else dst_channel,
+                    loop=False,
+                    bds=[Bd(buffer=off_chip, tap=off_chip.tap)],
+                )
+            ],
+        )
     )
-
-    # A tile has one DMA program, so a second copy touching a tile this one
-    # already reached merges into it.
-    rt.add_tile_dma(TileDma(tile=tile, channels=[tile_side]))
-    rt.add_tile_dma(TileDma(tile=through_shim, channels=[shim_side]))
 
 
 def dma_slice_memcpy():
@@ -145,13 +134,12 @@ def dma_slice_memcpy():
         name="result",
     )
 
-    tile_produce_lock = Lock(tile, lock_id=1, init=1, name="tile_produce_lock")
-    tile_consume_lock = Lock(tile, lock_id=2, init=0, name="tile_consume_lock")
-
-    tile_buffer = Buffer(
+    buf_free = Lock(tile, init=1, name="buf_free")
+    buf_full = Lock(tile, init=0, name="buf_full")
+    staging = Buffer(
         tile=tile,
         type=np.ndarray[(512,), np.dtype[np.int8]],
-        name="tile_buffer",
+        name="staging",
     )
 
     # Nothing is dispatched: the addresses are in the design, so the runtime
@@ -162,20 +150,20 @@ def dma_slice_memcpy():
         rt,
         src_buffer=devmem[0::2, 1::2, ...],
         src_channel=0,
-        dst_buffer=tile_buffer,
+        dst_buffer=staging,
         dst_channel=0,
-        dst_wait_for_lock=tile_produce_lock,
-        dst_release_lock=tile_consume_lock,
+        dst_wait_for_lock=buf_free,
+        dst_release_lock=buf_full,
         through_shim=shim,
     )
     copy_buffer(
         rt,
-        src_buffer=tile_buffer,
+        src_buffer=staging,
         src_channel=0,
         dst_buffer=result,
         dst_channel=0,
-        src_wait_for_lock=tile_consume_lock,
-        src_release_lock=tile_produce_lock,
+        src_wait_for_lock=buf_full,
+        src_release_lock=buf_free,
         through_shim=shim,
     )
 
