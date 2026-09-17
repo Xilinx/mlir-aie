@@ -231,7 +231,8 @@ MemoryRun coreDataRegion(TileOp tile, llvm::ArrayRef<BufferOp> buffers) {
   const auto &targetModel = getTargetModel(tile);
   CoreOp core = tile.getCoreOp();
   llvm::SmallVector<std::pair<int64_t, int64_t>> occupied;
-  occupied.emplace_back(0, core ? core.getEffectiveStackSize() : 0);
+  MemoryRun stackRun = core ? core.getStackRun() : MemoryRun{};
+  occupied.emplace_back(stackRun.start, stackRun.end());
   for (auto buf : buffers) {
     int64_t base = getBufferBaseAddress(buf);
     occupied.emplace_back(base, base + buf.getAllocationSize());
@@ -257,7 +258,8 @@ llvm::SmallVector<MemoryRun> coreBankRegions(TileOp tile,
 
   CoreOp core = tile.getCoreOp();
   llvm::SmallVector<std::pair<int64_t, int64_t>> occupied;
-  occupied.emplace_back(0, core ? core.getEffectiveStackSize() : 0);
+  MemoryRun stackRun = core ? core.getStackRun() : MemoryRun{};
+  occupied.emplace_back(stackRun.start, stackRun.end());
   for (auto buf : buffers) {
     int64_t base = getBufferBaseAddress(buf);
     occupied.emplace_back(base, base + buf.getAllocationSize());

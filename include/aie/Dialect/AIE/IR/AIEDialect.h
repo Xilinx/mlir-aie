@@ -10,6 +10,7 @@
 #define MLIR_AIE_DIALECT_H
 
 #include "AIEEnums.h"
+#include "aie/Dialect/AIE/IR/AIECoreMemory.h"
 
 #include "aie/Dialect/AIE/IR/AIETargetModel.h"
 

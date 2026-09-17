@@ -203,7 +203,7 @@ static bool checkAndPrintBufferOverlap(ArrayRef<BufferOp> sortedBuffers,
   return true;
 }
 
-static bool checkAndPrintOverlapStackframe(int64_t stacksize,
+static bool checkAndPrintOverlapStackframe(MemoryRun stackRun,
                                            ArrayRef<BufferOp> buffers) {
   for (auto buf : buffers) {
     // A zero-sized buffer covers no bytes, so it cannot overlap the stack.
@@ -213,11 +213,12 @@ static bool checkAndPrintOverlapStackframe(int64_t stacksize,
     auto bufAddrOpt = buf.getAddress();
     assert(bufAddrOpt.has_value() && "buffer must have address assigned");
     int64_t bufAddr = *bufAddrOpt;
-    if (bufAddr < stacksize) {
+    int64_t bufEnd = bufAddr + buf.getAllocationSize();
+    if (bufAddr < stackRun.end() && stackRun.start < bufEnd) {
       buf.emitOpError("") << bufferLabel(buf) << " at address 0x"
-                          << llvm::utohexstr(bufAddr)
-                          << " overlaps with stack (size: " << stacksize
-                          << " bytes)";
+                          << llvm::utohexstr(bufAddr) << " overlaps the stack ("
+                          << stackRun.size << " bytes at 0x"
+                          << llvm::utohexstr(stackRun.start) << ")";
       return false;
     }
   }
@@ -233,16 +234,15 @@ static void printMemoryMapEntry(Diagnostic &note, StringRef name,
     note << "\t";
   }
   int64_t end = size == 0 ? address : address + size - 1;
-  note << name << " \t"
-       << ": 0x" << llvm::utohexstr(address) << "-0x" << llvm::utohexstr(end)
-       << " \t(" << size << " bytes)" << suffix << "\n";
+  note << name << " \t" << ": 0x" << llvm::utohexstr(address) << "-0x"
+       << llvm::utohexstr(end) << " \t(" << size << " bytes)" << suffix << "\n";
 }
 
 //===----------------------------------------------------------------------===//
 // BasicAllocation : sequential alloc from largest to smallest
 //===----------------------------------------------------------------------===//
 static bool checkAndPrintOverflow(TileOp tile, int64_t address,
-                                  int64_t maxDataMemorySize, int64_t stacksize,
+                                  int64_t maxDataMemorySize, MemoryRun stackRun,
                                   ArrayRef<BufferOp> buffers) {
   if (address > maxDataMemorySize) {
     InFlightDiagnostic error =
@@ -251,8 +251,8 @@ static bool checkAndPrintOverflow(TileOp tile, int64_t address,
     auto printbuffer = [&](StringRef name, int64_t address, int64_t size) {
       printMemoryMapEntry(note, name, address, size, /*indent=*/1);
     };
-    if (stacksize > 0) {
-      printbuffer("(stack)", 0, stacksize);
+    if (stackRun.size > 0) {
+      printbuffer("(stack)", stackRun.start, stackRun.size);
     } else {
       note << "\t(no stack allocated)\n";
     }
@@ -316,13 +316,14 @@ static bool basicAllocation(TileOp tile) {
     return a.getAddress().value() < b.getAddress().value();
   });
 
-  // Stack lives at the bottom of the tile's data memory.
-  int64_t stacksize = 0;
-  int64_t address = 0;
+  // This scheme has no notion of banks, so it packs above wherever the stack
+  // sits. An explicit stack_address is honored; stack_bank is rejected before
+  // placement runs, since only the bank-aware scheme can resolve it.
+  MemoryRun stackRun;
   if (auto core = tile.getCoreOp()) {
-    stacksize = core.getEffectiveStackSize();
-    address += stacksize;
+    stackRun = core.getStackRun();
   }
+  int64_t address = stackRun.end();
 
   for (auto buffer : allocated_buffers) {
     auto bufferAddrOpt = buffer.getAddress();
@@ -376,10 +377,10 @@ static bool basicAllocation(TileOp tile) {
         std::max<int64_t>(highWater, *lastAddrOpt + last.getAllocationSize());
   }
 
-  if (!checkAndPrintOverlapStackframe(stacksize, allBuffers_on_tile) ||
+  if (!checkAndPrintOverlapStackframe(stackRun, allBuffers_on_tile) ||
       !checkAndPrintBufferOverlap(allBuffers_on_tile, tileAlignBitWidth,
                                   maxVecAlignBits) ||
-      !checkAndPrintOverflow(tile, highWater, maxDataMemorySize, stacksize,
+      !checkAndPrintOverflow(tile, highWater, maxDataMemorySize, stackRun,
                              allBuffers_on_tile)) {
     return false;
   }
@@ -612,7 +613,7 @@ struct BankAwareContext {
   uint32_t maxVecAlignBits;
   ArrayRef<MemoryRun> bankLimits;
   int64_t maxDataMemorySize;
-  int64_t stacksize;
+  MemoryRun stackRun;
   // Whether this tile has a core, and so compiled sections that need a
   // contiguous region. A memtile has none.
   bool hasCore;
@@ -702,22 +703,22 @@ static void printMemMap(TileOp tile, ArrayRef<BufferOp> allocatedBuffers,
                          StringRef suffix = "") {
     printMemoryMapEntry(note, name, address, size, /*indent=*/2, suffix);
   };
+  if (ctx.stackRun.size == 0) {
+    note << "\t(no stack allocated)\n";
+  }
+  if (auto measured = getMeasuredStackSize(tile)) {
+    note << "\t(aiecc measured this core's stack requirement as " << *measured
+         << " bytes)\n";
+  }
   for (int i = 0; i < ctx.numBanks; i++) {
-    if (i == 0) {
-      if (ctx.stacksize > 0) {
-        printbuffer("(stack)", 0, ctx.stacksize);
-      } else {
-        note << "\t(no stack allocated)\n";
-      }
-      if (auto measured = getMeasuredStackSize(tile)) {
-        note << "\t(aiecc measured this core's stack requirement as "
-             << *measured << " bytes)\n";
-      }
-    }
-    note << "\t"
-         << "bank : " << i << "\t"
-         << "0x" << llvm::utohexstr(ctx.bankLimits[i].start) << "-0x"
+    note << "\t" << "bank : " << i << "\t" << "0x"
+         << llvm::utohexstr(ctx.bankLimits[i].start) << "-0x"
          << llvm::utohexstr(ctx.bankLimits[i].end() - 1) << "\n";
+    // Under whichever bank holds it, rather than always under bank 0.
+    if (ctx.stackRun.size > 0 &&
+        ctx.bankLimits[i].contains(ctx.stackRun.start)) {
+      printbuffer("(stack)", ctx.stackRun.start, ctx.stackRun.size);
+    }
     // This runs on the failure path, where some buffers have no address yet.
     auto printPlaced = [&](ArrayRef<BufferOp> buffers) {
       for (auto buffer : buffers) {
@@ -990,17 +991,36 @@ static BankAwareResult simpleBankAwareAllocation(TileOp tile) {
   int numBanks = targetModel.getNumBanks(tile.getCol(), tile.getRow());
   int64_t bankSize = maxDataMemorySize / numBanks;
 
-  // Stack lives at the bottom of the tile's data memory.
-  int64_t stacksize = 0;
-  MemoryOccupancy occupancy(maxDataMemorySize);
-  if (auto core = tile.getCoreOp()) {
-    stacksize = core.getEffectiveStackSize();
-    occupancy.markOccupied(0, std::min<int64_t>(stacksize, maxDataMemorySize));
-  }
   fillBankLimits(numBanks, bankSize, bankLimits);
+
+  // A stack_bank-only core has no address yet. Its bank is a hard constraint,
+  // so reserve inside that bank before anything unconstrained is placed, and
+  // record the address the way a mem_bank-only buffer gets one.
+  MemoryRun stackRun;
+  MemoryOccupancy occupancy(maxDataMemorySize);
+  CoreOp coreOp = tile.getCoreOp();
+  if (coreOp) {
+    stackRun = coreOp.getStackRun();
+    if (!coreOp.getStackAddress() && coreOp.getStackBank()) {
+      int bank = *coreOp.getStackBank();
+      int64_t align = std::max<int64_t>(tileAlignBitWidth / 8, 1);
+      std::optional<int64_t> at = occupancy.findLeastFragmentingGap(
+          bankLimits[bank].start, bankLimits[bank].end(), stackRun.size, align);
+      if (!at) {
+        coreOp.emitOpError("requires a ")
+            << stackRun.size << "-byte stack in bank " << bank << ", but only "
+            << bankLimits[bank].size << " bytes exist there";
+        return BankAwareResult::ConstraintUnsatisfiable;
+      }
+      stackRun.start = *at;
+      coreOp.setStackAddress(*at);
+    }
+    occupancy.markOccupied(stackRun.start,
+                           std::min(stackRun.end(), maxDataMemorySize));
+  }
   BankAwareContext ctx{
       numBanks,          tileAlignBitWidth, maxVecAlignBits,       bankLimits,
-      maxDataMemorySize, stacksize,         (bool)tile.getCoreOp()};
+      maxDataMemorySize, stackRun,          (bool)tile.getCoreOp()};
 
   RequiredBanks requiredBanks;
   SmallVector<BufferOp> preAllocatedBuffers;
@@ -1076,7 +1096,7 @@ static BankAwareResult simpleBankAwareAllocation(TileOp tile) {
   sortBuffersByAddress(allBuffers_on_tile);
   // Every placement came from free space in the tile, so overflow cannot happen
   // here. The stack and overlap checks remain as a backstop.
-  if (!checkAndPrintOverlapStackframe(stacksize, allBuffers_on_tile) ||
+  if (!checkAndPrintOverlapStackframe(stackRun, allBuffers_on_tile) ||
       !checkAndPrintBufferOverlap(allBuffers_on_tile, tileAlignBitWidth,
                                   maxVecAlignBits)) {
     return BankAwareResult::OutOfMemory;

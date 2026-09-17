@@ -12,8 +12,8 @@
 // CHECK: warning: Not all requested buffers fit in the available memory.
 // CHECK: note: see current operation: %tile_3_3 = aie.tile(3, 3)
 // CHECK: note: Current configuration of buffers in bank(s) : MemoryMap:
-// CHECK:                 (stack)         : 0x0-0x3FF     (1024 bytes)
 // CHECK:         bank : 0        0x0-0x1FFF
+// CHECK:                 (stack)         : 0x0-0x3FF     (1024 bytes)
 // CHECK:         bank : 1        0x2000-0x3FFF
 // CHECK:         bank : 2        0x4000-0x5FFF
 // CHECK:         bank : 3        0x6000-0x7FFF

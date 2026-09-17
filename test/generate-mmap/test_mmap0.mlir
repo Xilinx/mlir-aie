@@ -159,4 +159,3 @@ module @test_mmap0 {
   }
  }
 }
-

@@ -65,12 +65,13 @@ LogicalResult AIETranslateToBCF(ModuleOp module, raw_ostream &output,
       output << "_reserved DMb 0x00000 " << utohexstr(dataMemoryStart)
              << " // Don't put data in code memory\n";
 
-      int stacksize = 0;
+      MemoryRun stackRun;
       if (auto core = tile.getCoreOp())
-        stacksize = core.getEffectiveStackSize();
+        stackRun = core.getStackRun();
       output << "_stack DM_stack "
-             << utohexstr(targetModel.getMemInternalBaseAddress(srcCoord))
-             << " " << utohexstr(stacksize) << " // stack for core\n";
+             << utohexstr(targetModel.getMemInternalBaseAddress(srcCoord) +
+                          stackRun.start)
+             << " " << utohexstr(stackRun.size) << " // stack for core\n";
 
       auto doBuffer = [&](std::optional<TileID> tile, int offset,
                           const std::string &dir) {

@@ -2595,14 +2595,47 @@ LogicalResult CoreOp::verify() {
       return emitOpError("data_size ")
              << *declared << " is smaller than the " << *measured
              << " bytes this core's linked sections occupy";
-  // Checked last so it does not pre-empt the diagnostics above on an op with
-  // more than one defect.
-  if (uint32_t stackSize = getEffectiveStackSize(),
-      localMem = getTargetModel(*this).getLocalMemorySize();
-      stackSize >= localMem)
+  // Where the stack sits. A pin the allocator could never honor is a user
+  // constraint, so it is rejected here rather than at placement.
+  const auto &targetModel = getTargetModel(*this);
+  MemoryRun stackRun = getStackRun();
+  if (auto bank = getStackBank()) {
+    auto tile = dyn_cast_if_present<TileOp>(getTile().getDefiningOp());
+    int64_t numBanks =
+        tile ? targetModel.getNumBanks(tile.getCol(), tile.getRow()) : 0;
+    int64_t bankSize =
+        numBanks > 0 ? targetModel.getLocalMemorySize() / numBanks : 0;
+    if (tile && *bank >= numBanks)
+      return emitOpError("stack_bank ")
+             << *bank << " does not exist; this tile has " << numBanks
+             << " banks";
+    // A stack spilling out of its bank defeats the point of pinning it, and
+    // only stack_address can express one larger than a bank.
+    if (bankSize > 0 && stackRun.size > bankSize)
+      return emitOpError("stack_bank pins a ")
+             << stackRun.size << "-byte stack to bank " << *bank
+             << ", which holds " << bankSize
+             << " bytes; use stack_address for a stack this large";
+    if (getStackAddress() && bankSize > 0 && stackRun.start / bankSize != *bank)
+      return emitOpError("stack_address 0x")
+             << llvm::utohexstr(stackRun.start) << " lies in bank "
+             << stackRun.start / bankSize << ", but stack_bank requests bank "
+             << *bank;
+  }
+  // Checked last so they do not pre-empt the diagnostics above on an op with
+  // more than one defect. Size and placement are separate faults: a stack can
+  // fit the tile yet be placed so it runs off the end.
+  int64_t localMem = targetModel.getLocalMemorySize();
+  if (stackRun.size >= localMem)
     return emitOpError("stack_size ")
-           << stackSize << " leaves no local memory for this tile's buffers ("
-           << localMem << " bytes total)";
+           << stackRun.size
+           << " leaves no local memory for this tile's buffers (" << localMem
+           << " bytes total)";
+  if (stackRun.end() > localMem)
+    return emitOpError("a ") << stackRun.size << "-byte stack at 0x"
+                             << llvm::utohexstr(stackRun.start)
+                             << " runs past this tile's local memory ("
+                             << localMem << " bytes total)";
   return success();
 }
 
@@ -2620,6 +2653,10 @@ TileOp CoreOp::getTileOp() {
 uint32_t CoreOp::getEffectiveStackSize() {
   return getStackSize().value_or(
       getTargetModel(*this).getDefaultCoreStackSize());
+}
+
+MemoryRun CoreOp::getStackRun() {
+  return {getStackAddress().value_or(0), getEffectiveStackSize()};
 }
 
 //===----------------------------------------------------------------------===//
@@ -3189,8 +3226,8 @@ llvm::SmallVector<uint32_t> xilinx::AIE::getAssignedBdIds(DmaBody program) {
 
 LogicalResult DMABDOp::verify() {
   if (getOffsetParameterAttr() || getOffsetStateTableIdxAttr()) {
-    uint64_t elemBitWidth =
-        llvm::cast<BaseMemRefType>(getBuffer().getType()).getElementTypeBitWidth();
+    uint64_t elemBitWidth = llvm::cast<BaseMemRefType>(getBuffer().getType())
+                                .getElementTypeBitWidth();
     if (elemBitWidth == 0 || (elemBitWidth % 8) != 0)
       return emitOpError("offset_parameter requires a whole-byte element type");
   }

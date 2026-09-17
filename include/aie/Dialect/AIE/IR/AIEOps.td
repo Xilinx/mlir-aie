@@ -376,6 +376,14 @@ def AIE_CoreOp
           // Absent means "use this target's default"; read
           // getEffectiveStackSize().
           OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<1>]>>:$stack_size,
+          // Where the stack starts, tile-relative. Absent means 0, the bottom
+          // of data memory. The stack grows up from here, so whatever follows
+          // it is what an overrun reaches first.
+          OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>>:$stack_address,
+          // Memory bank the stack must sit in. The bank-aware allocator picks
+          // an address inside it and writes `stack_address`, the way it does
+          // for a `mem_bank`-only aie.buffer.
+          OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>>:$stack_bank,
           // Written by aiecc from the compiled core object and the call graph.
           // Absent when aiecc cannot measure the core.
           OptionalAttr<
@@ -511,6 +519,11 @@ def AIE_CoreOp
     /// The stack reservation in bytes: the `stack_size` attribute when set,
     /// otherwise this target's default.
     uint32_t getEffectiveStackSize();
+    /// Where the stack sits in this tile's data memory. Absent `stack_address`
+    /// means offset 0, which is where every core put it before the attribute
+    /// existed. The allocator, both emitters and the data-region computation
+    /// read it here so they cannot disagree about it.
+    MemoryRun getStackRun();
     void getAsmResultNames(::mlir::OpAsmSetValueNameFn setNameFn) {
       TileElement::Trait<CoreOp>::getAsmResultNames(setNameFn);
     }

@@ -14,4 +14,6 @@
 
 float __aie_dm_resource_ab activation_lut[256];
 
-extern "C" void classify(uint8_t *out) { out[0] = (uint8_t)activation_lut[out[0]]; }
+extern "C" void classify(uint8_t *out) {
+  out[0] = (uint8_t)activation_lut[out[0]];
+}

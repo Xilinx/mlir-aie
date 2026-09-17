@@ -122,6 +122,7 @@ EdgeWithTypedOutput<Directory> &
 buildObjectSubgraph(EdgeWithTypedOutput<ModRef> &lowered,
                     EdgeWithTypedOutput<std::string> &arches,
                     EdgeWithTypedOutput<std::vector<std::string>> &irLinkFiles,
+                    EdgeWithTypedOutput<std::string> &stackSpaces,
                     const std::string &objName) {
   std::string installDir = getInstallDir();
   std::string aietoolsRoot = discoverAietoolsDir(aietoolsDir.getValue());
@@ -307,10 +308,11 @@ buildObjectSubgraph(EdgeWithTypedOutput<ModRef> &lowered,
       .value("--march=")
       .arg("--function-sections")
       .arg("-stack-size-section")
+      .value("-aie-stack-addrspace=")
       .arg("--filetype=obj")
       .output("-o");
   EdgeWithTypedOutput<Directory> &peanoObject =
-      bundle(opted.out, arches.out)
+      bundle(opted.out, arches.out, stackSpaces.out)
           .map<Directory>(objName, llcCmd)
           .threadSafe();
 
@@ -802,6 +804,26 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                      });
   preBakedElfs.producesFiles = false;
 
+  // Peano models a bank as an address space and schedules around conflicts
+  // between them, so a moved stack has to be declared or the backend reasons
+  // about stack accesses in the wrong bank. 5..8 are banks A..D; a core that
+  // leaves the stack where it has always been reports bank A, which is also
+  // llc's default.
+  auto &perCoreStackSpace = perCore.map<std::string>(
+      "perCoreStackSpace_{0}.txt", [](const OpInModule<CoreOp> &core) {
+        CoreOp op(core.op);
+        auto tile = mlir::cast<TileOp>(op.getTile().getDefiningOp());
+        const auto &tm = getTargetModel(op);
+        int numBanks = tm.getNumBanks(tile.getCol(), tile.getRow());
+        int bank = 0;
+        if (numBanks > 0) {
+          int64_t bankSize = tm.getLocalMemorySize() / numBanks;
+          if (bankSize > 0)
+            bank = static_cast<int>(op.getStackRun().start / bankSize);
+        }
+        return std::to_string(5 + bank);
+      });
+
   // Per-core arch string (feeds link --target= and llc --march=).
   auto &perCoreArches = perCore.map<std::string>(
       "perCoreArches_{0}.txt", [](const OpInModule<CoreOp> &core) {
@@ -854,12 +876,13 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
       [inputFile, workDirStr](const OpInModule<CoreOp> &core) {
         return collectCoreIRLinkFiles(CoreOp(core.op), inputFile, workDirStr);
       });
-  EdgeWithTypedOutput<Directory> &perCoreObjects = buildObjectSubgraph(
-      perCoreLowered, perCoreArches, perCoreIRLinkFiles, "objects_{0}.o");
+  EdgeWithTypedOutput<Directory> &perCoreObjects =
+      buildObjectSubgraph(perCoreLowered, perCoreArches, perCoreIRLinkFiles,
+                          perCoreStackSpace, "objects_{0}.o");
 
-  EdgeWithTypedOutput<Directory> &unifiedObjects =
-      buildObjectSubgraph(unifiedPerCoreLowered, perCoreArches,
-                          perCoreIRLinkFiles, "objects_{0}.o");
+  EdgeWithTypedOutput<Directory> &unifiedObjects = buildObjectSubgraph(
+      unifiedPerCoreLowered, perCoreArches, perCoreIRLinkFiles,
+      perCoreStackSpace, "objects_{0}.o");
 
   EdgeWithTypedOutput<Directory> &objects =
       doUnified ? unifiedObjects : perCoreObjects;

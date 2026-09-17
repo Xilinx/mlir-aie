@@ -212,15 +212,22 @@ SECTIONS
       };
 
       // Stack
-      output << ". = 0x"
-             << llvm::utohexstr(targetModel.getMemInternalBaseAddress(srcCoord))
-             << ";\n";
-      output << "_sp_start_value_DM_stack = .;\n";
-
       if (auto core = tile.getCoreOp()) {
-        output << ". += 0x" << llvm::utohexstr(core.getEffectiveStackSize())
+        MemoryRun stackRun = core.getStackRun();
+        output << ". = 0x"
+               << llvm::utohexstr(
+                      targetModel.getMemInternalBaseAddress(srcCoord) +
+                      stackRun.start)
+               << ";\n";
+        output << "_sp_start_value_DM_stack = .;\n";
+        output << ". += 0x" << llvm::utohexstr(stackRun.size)
                << "; /* stack */\n";
       } else {
+        output << ". = 0x"
+               << llvm::utohexstr(
+                      targetModel.getMemInternalBaseAddress(srcCoord))
+               << ";\n";
+        output << "_sp_start_value_DM_stack = .;\n";
         output << "/* no stack allocated */\n";
       }
 
