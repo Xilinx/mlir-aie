@@ -6,9 +6,12 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 // A cross-tile core->core lock-only shared-memory objectfifo has no
-// write-completion barrier (AIE2P locks are bare counters; a producer's stores
-// can be observed after its release but before they commit). Shared memory is
-// the fast DEFAULT; correctness is opt-in. --dma-fence-shared-mem carries
+// write-completion barrier: AIE2P locks are bare counters with no commit/
+// store-completion signal, so a producer's stores can be observed after its
+// lock release lands (a separate lock arbiter) but before they commit -- the
+// lock guard is latency-sensitive (only luckier with more pipeline slack, never
+// safe). The only architected barrier is DMA completion. Shared memory is the
+// fast DEFAULT; correctness is opt-in. --dma-fence-shared-mem carries
 // EVERY such fifo on DMA (acquire count is irrelevant -- single-acquire is only
 // luckier, not safe). --warn-unfenced-shared-overlay (set under the resident
 // ctrl-pkt overlay) warns on each such fifo left on the shared path. A self-loop
