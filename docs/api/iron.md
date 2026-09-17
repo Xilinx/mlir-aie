@@ -61,6 +61,11 @@ Workers are passed to `Program(workers=...)` rather than started from the body.
 
 ### Buffer
 
+Use a `Buffer` for local scratch storage shared by sequential kernel calls
+in one Worker, as in the [edge-detection example](../../programming_examples/vision/edge_detect/).
+Passing it in the Worker's `fn_args` associates it with that Worker's tile.
+Unlike an ObjectFifo, a Buffer does not provide producer/consumer synchronization.
+
 ::: iron.buffer
     options:
       show_root_heading: false
