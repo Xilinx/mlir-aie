@@ -61,6 +61,11 @@ def AIEPlaceTiles : Pass<"aie-place-tiles", "DeviceOp"> {
     column-major order and places fifo-connected Shim/Mem tiles
     near its core tiles. One or more aie.logical_tile operation is mapped
     to one aie.tile.
+
+    Placement checks DMA demand but does not establish memory or lock
+    feasibility. `aie-objectfifo-allocate` checks concrete pool resources and
+    spill-dependent channel eligibility after splitting; allocation failures
+    do not cause this placer to undo a merge or retry tile placement.
   }];
 
   let constructor = "xilinx::AIE::createAIEPlaceTilesPass()";

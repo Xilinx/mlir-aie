@@ -9,7 +9,9 @@
 // RUN: aie-opt --split-input-file --aie-place-tiles --aie-objectFifo-stateful-transform="skip-verify=true" --verify-diagnostics %s -o /dev/null
 
 // A one-column device has no neighbor to spill to. Diagnose actual allocation,
-// not a speculative memory estimate in placement.
+// not a speculative memory estimate in placement. Placement success alone is
+// not a memory-feasibility guarantee; allocation in the stateful transform
+// diagnoses the exhausted MemTile.
 module @exhausted {
   aie.device(npu1_1col) {
     %shim = aie.tile(0, 0)

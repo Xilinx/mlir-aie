@@ -12,34 +12,39 @@ using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
 
+Value DMAChannelAnalysis::getTileKey(Value tile) {
+  auto tileOp = cast<TileLike>(tile.getDefiningOp());
+  auto col = tileOp.tryGetCol();
+  auto row = tileOp.tryGetRow();
+  if (!col || !row)
+    return tile;
+  return tilesByCoordinate.try_emplace({*col, *row}, tile).first->second;
+}
+
 DMAChannelAnalysis::DMAChannelAnalysis(DeviceOp &device) {
   for (auto program : device.getOps<DmaBody>()) {
     for (Block &block : program.getDmaBody()) {
       for (auto start : block.getOps<DMAStartOp>()) {
-        usedChannels.insert({program.getTile(), start.getChannelDir(),
-                             start.getChannelIndex()});
+        usedChannels.insert({getTileKey(program.getTile()),
+                             start.getChannelDir(), start.getChannelIndex()});
       }
     }
   }
 
   for (auto flowOp : device.getOps<FlowOp>()) {
     if (flowOp.getSourceBundle() == WireBundle::Core) {
-      usedStreams.insert(
-          {flowOp.getSource(), DMAChannelDir::MM2S, flowOp.getSourceChannel()});
+      usedStreams.insert({getTileKey(flowOp.getSource()), DMAChannelDir::MM2S,
+                          flowOp.getSourceChannel()});
     }
     if (flowOp.getDestBundle() == WireBundle::Core) {
-      usedStreams.insert(
-          {flowOp.getDest(), DMAChannelDir::S2MM, flowOp.getDestChannel()});
+      usedStreams.insert({getTileKey(flowOp.getDest()), DMAChannelDir::S2MM,
+                          flowOp.getDestChannel()});
     }
   }
 
   // Shim allocations reserve channels outside the DMA bodies above.
   for (auto allocOp : device.getOps<ShimDMAAllocationOp>()) {
-    auto tile = allocOp.getTileOp();
-    if (!tile) {
-      continue;
-    }
-    usedChannels.insert({tile.getResult(), allocOp.getChannelDir(),
+    usedChannels.insert({getTileKey(allocOp.getTile()), allocOp.getChannelDir(),
                          (int)allocOp.getChannelIndex()});
   }
 }
@@ -50,18 +55,34 @@ int DMAChannelAnalysis::getDMAChannelLimit(
                           ? tile.getNumSourceConnections(WireBundle::DMA)
                           : tile.getNumDestConnections(WireBundle::DMA);
 
-  // Reaching a neighbor's memory restricts the range, and which neighbor a
-  // tile has is only known once it is placed.
+  if (!requiresAdjacentTileAccessChannels)
+    return maxChannelNum;
+
   std::optional<int> col = tile.tryGetCol();
   std::optional<int> row = tile.tryGetRow();
-  if (requiresAdjacentTileAccessChannels && col && row) {
-    const auto &targetModel = getTargetModel(tile);
-    maxChannelNum = std::min<int>(
+  const auto &targetModel = getTargetModel(tile);
+  if (col && row)
+    return std::min<int>(
         maxChannelNum,
         targetModel.getMaxChannelNumForAdjacentMemTile(*col, *row));
+
+  // Assignment before placement must be safe at every compatible position,
+  // not assume that unresolved coordinates remove neighbor restrictions.
+  bool foundPosition = false;
+  for (int c = 0; c < targetModel.columns(); ++c) {
+    if (col && c != *col)
+      continue;
+    for (int r = 0; r < targetModel.rows(); ++r) {
+      if ((row && r != *row) ||
+          targetModel.getTileType(c, r) != tile.getTileType())
+        continue;
+      foundPosition = true;
+      maxChannelNum = std::min<int>(
+          maxChannelNum, targetModel.getMaxChannelNumForAdjacentMemTile(c, r));
+    }
   }
 
-  return maxChannelNum;
+  return foundPosition ? maxChannelNum : 0;
 }
 
 int DMAChannelAnalysis::getDMAChannelIndex(
@@ -81,13 +102,16 @@ int DMAChannelAnalysis::reservePinnedChannel(TileLike tile, DMAChannelDir dir,
   if (channel < 0 || channel >= maxChannelNum) {
     return -1;
   }
-  return usedChannels.insert({tile->getResult(0), dir, channel}).second
+  return usedChannels.insert({getTileKey(tile->getResult(0)), dir, channel})
+                 .second
              ? channel
              : -1;
 }
 
 void DMAChannelAnalysis::checkAIEStreamIndex(TileLike tile, DMAChannel chan) {
-  if (usedStreams.insert({tile->getResult(0), chan.direction, chan.channel})
+  if (usedStreams
+          .insert(
+              {getTileKey(tile->getResult(0)), chan.direction, chan.channel})
           .second) {
     return;
   }

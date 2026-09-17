@@ -18,6 +18,11 @@ namespace xilinx::AIE {
 /// Which DMA channels of each tile are already spoken for, so that a channel is
 /// handed out at most once across everything that programs one.
 class DMAChannelAnalysis {
+  /// Fully resolved tile aliases name the same hardware resources. Unresolved
+  /// tiles retain their SSA identity until placement establishes co-location.
+  mlir::DenseMap<std::pair<int, int>, mlir::Value> tilesByCoordinate;
+  mlir::Value getTileKey(mlir::Value tile);
+
   /// A channel or stream port is either spoken for or free, so membership is
   /// the whole state.
   mlir::DenseSet<std::tuple<mlir::Value, DMAChannelDir, int>> usedChannels;
@@ -32,7 +37,7 @@ public:
 
   /// Next free channel of `tile` in `dir`, or -1 when the tile has none left.
   /// A channel reaching an adjacent MemTile's memory must come from the
-  /// target's restricted range, which only a placed tile can bound.
+  /// target's restricted range at every compatible physical position.
   int getDMAChannelIndex(TileLike tile, DMAChannelDir dir,
                          bool requiresAdjacentTileAccessChannels);
 

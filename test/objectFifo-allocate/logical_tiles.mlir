@@ -73,3 +73,74 @@ module @shared_logical {
 // PLACED: %[[PHOME:.*]] = aie.tile(0, 1)
 // PLACED: aie.buffer(%[[PHOME]]) {sym_name = "shared_buff_0"}
 // PLACED: aie.dma_start(MM2S, 0
+
+// -----
+
+// Unknown coordinates do not reduce the capacity of proven-local accesses or
+// alias two independent logical tiles just because their constraints match.
+module @local_unplaced {
+  aie.device(npu2) {
+    %a = aie.logical_tile<MemTile>(?, ?)
+    %b = aie.logical_tile<MemTile>(?, ?)
+    aie.objectfifo.pool @a(%a) {depth = 1 : i32} : memref<16xi32> {
+      aie.objectfifo.segment @s {offset = 0 : i32, size = 16 : i32}
+    }
+    aie.objectfifo.pool @b(%b) {depth = 1 : i32} : memref<16xi32> {
+      aie.objectfifo.segment @s {offset = 0 : i32, size = 16 : i32}
+    }
+    aie.objectfifo.dma_endpoint @a0(%a) drains @a
+    aie.objectfifo.dma_endpoint @a1(%a) drains @a
+    aie.objectfifo.dma_endpoint @a2(%a) drains @a
+    aie.objectfifo.dma_endpoint @a3(%a) drains @a
+    aie.objectfifo.dma_endpoint @a4(%a) drains @a
+    aie.objectfifo.dma_endpoint @a5(%a) drains @a
+    aie.objectfifo.dma_endpoint @b0(%b) drains @b
+    aie.objectfifo.dma_endpoint @b5(%b) fills @b {channelIndex = 5 : i32}
+  }
+}
+// CHECK-LABEL: module @local_unplaced
+// CHECK: @a0({{.*}}) drains @a {channelIndex = 0 : i32}
+// CHECK: @a1({{.*}}) drains @a {channelIndex = 1 : i32}
+// CHECK: @a2({{.*}}) drains @a {channelIndex = 2 : i32}
+// CHECK: @a3({{.*}}) drains @a {channelIndex = 3 : i32}
+// CHECK: @a4({{.*}}) drains @a {channelIndex = 4 : i32}
+// CHECK: @a5({{.*}}) drains @a {channelIndex = 5 : i32}
+// CHECK: @b0({{.*}}) drains @b {channelIndex = 0 : i32}
+// CHECK: @b5({{.*}}) fills @b {channelIndex = 5 : i32}
+// PLACED-LABEL: module @local_unplaced
+// PLACED-NOT: aie.logical_tile
+// PLACED: aie.dma_start(MM2S, 5
+
+// -----
+
+// Four remote transfers and two local transfers still fit before placement.
+// Fix the remote buffers so success cannot rely on relocating the pool.
+module @remote_unplaced {
+  aie.device(npu2) {
+    %home = aie.logical_tile<MemTile>(1, 1)
+    %reader = aie.logical_tile<MemTile>(0, ?)
+    %b = aie.buffer(%home) {sym_name = "b"} : memref<16xi32>
+    aie.objectfifo.pool @remote(%home) {depth = 1 : i32, buffers = [@b]} : memref<16xi32> {
+      aie.objectfifo.segment @s {offset = 0 : i32, size = 16 : i32}
+    }
+    aie.objectfifo.pool @local(%reader) {depth = 1 : i32} : memref<16xi32> {
+      aie.objectfifo.segment @s {offset = 0 : i32, size = 16 : i32}
+    }
+    aie.objectfifo.dma_endpoint @local0(%reader) drains @local
+    aie.objectfifo.dma_endpoint @local1(%reader) drains @local
+    aie.objectfifo.dma_endpoint @remote0(%reader) drains @remote
+    aie.objectfifo.dma_endpoint @remote1(%reader) drains @remote
+    aie.objectfifo.dma_endpoint @remote2(%reader) drains @remote
+    aie.objectfifo.dma_endpoint @remote3(%reader) drains @remote
+  }
+}
+// CHECK-LABEL: module @remote_unplaced
+// CHECK: @local0({{.*}}) drains @local {channelIndex = 4 : i32}
+// CHECK: @local1({{.*}}) drains @local {channelIndex = 5 : i32}
+// CHECK: @remote0({{.*}}) drains @remote {channelIndex = 0 : i32}
+// CHECK: @remote1({{.*}}) drains @remote {channelIndex = 1 : i32}
+// CHECK: @remote2({{.*}}) drains @remote {channelIndex = 2 : i32}
+// CHECK: @remote3({{.*}}) drains @remote {channelIndex = 3 : i32}
+// PLACED-LABEL: module @remote_unplaced
+// PLACED-NOT: aie.logical_tile
+// PLACED: aie.dma_start(MM2S, 5
