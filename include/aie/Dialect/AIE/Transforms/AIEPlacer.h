@@ -200,8 +200,8 @@ inline void forEachMemAffinityNeighbor(const AIETargetModel &targetModel,
 //   4. Place each remaining non-core (mem/shim) LTO near the column
 //      centroid of its placed-core peers. With mergeLogicalTiles == true
 //      (default) several non-core LTOs may share one physical tile when
-//      DMA and local MemTile memory capacity allow; with mergeLogicalTiles ==
-//      false each non-core LTO claims its own physical tile.
+//      DMA capacity allows; with mergeLogicalTiles == false each non-core
+//      LTO claims its own physical tile.
 //
 // Greedy: once a tile is chosen the decision is final, with no backtracking.
 // If a later LTO's constraints become unsatisfiable given prior placements,
@@ -235,12 +235,6 @@ private:
   // only when mergeLogicalTiles == false to forbid mapping a second
   // non-core aie.logical_tile onto a tile that already hosts one.
   llvm::DenseSet<TileID> assignedNonCoreTiles;
-  // Automatic MemTile placement keeps pools local: spilling restricts the DMA
-  // channel range and can consume memory needed by a different logical tile.
-  llvm::DenseMap<mlir::Operation *, int64_t> memTileMemoryRequirements;
-  llvm::DenseMap<TileID, int64_t> memTileMemoryUsed;
-  mlir::LogicalResult initializeMemTileMemory(DeviceOp device);
-  bool hasAvailableMemTileMemory(TileID tile, int64_t bytes) const;
   int deviceCoresPerCol = 0; // Actual cores per column in device
 
   // DMA channel direction selector.
@@ -258,8 +252,7 @@ private:
                                              llvm::ArrayRef<TileID> tiles,
                                              int requiredInputChannels,
                                              int requiredOutputChannels,
-                                             AIETileType requestedType,
-                                             int64_t requiredMemory = 0);
+                                             AIETileType requestedType);
 
   // Diagnosis for a failed findTileWithCapacity() call. `findTileWithCapacity`
   // scans every tile of `requestedType` on the device -- `targetCol` orders

@@ -13,6 +13,8 @@
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
 #include "mlir/Pass/Pass.h"
 
+#include <set>
+
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
@@ -40,16 +42,92 @@ struct AIEObjectFifoAllocatePass
   SmallVector<Operation *> loweredFlows;
   /// Passes the longest-running drainer of each pool makes over it.
   DenseMap<Operation *, int> drainerIterations;
+  DenseMap<Value, int64_t> plannedMemory;
+  DenseMap<Operation *, SmallVector<Value>> bufferPlacements;
+  DenseMap<Operation *, int> channelAssignments;
+  DenseMap<Operation *, Value> localPools;
+  DenseMap<Operation *, SmallVector<Value>> poolUsers;
+  RouteEndpoint channelFailure;
+  ObjectFifoPoolOp bufferFailure;
 
-  /// Bytes already committed to `tile` by every buffer placed so far.
-  int64_t usedMemory(Value tile) {
-    int64_t total = 0;
-    for (auto buffer : device.getOps<BufferOp>()) {
-      if (buffer.getTile() == tile) {
-        total += buffer.getAllocationSize();
+  bool canAccess(Value user, Value memory) {
+    if (user == memory)
+      return true;
+    auto userTile = dyn_cast<TileLike>(user.getDefiningOp());
+    auto memoryTile = dyn_cast<TileLike>(memory.getDefiningOp());
+    if (!userTile || !memoryTile)
+      return false;
+    auto uc = userTile.tryGetCol(), ur = userTile.tryGetRow();
+    auto mc = memoryTile.tryGetCol(), mr = memoryTile.tryGetRow();
+    // Allocation can precede placement for explicitly written pools. Unknown
+    // coordinates defer the affinity check rather than disprove it.
+    if (!uc || !ur || !mc || !mr)
+      return true;
+    auto shared =
+        device.getTargetModel().getSharedMemory({*uc, *ur}, {*mc, *mr});
+    return shared == AIETargetModel::SharedMemory::Second ||
+           shared == AIETargetModel::SharedMemory::Either;
+  }
+
+  bool canPlace(ObjectFifoPoolOp pool, Value tile, int64_t sizeBytes) {
+    if (pool.getTileLike().isMemTile() &&
+        plannedMemory.lookup(tile) + sizeBytes >
+            device.getTargetModel().getMemTileSize())
+      return false;
+    return llvm::all_of(poolUsers[pool],
+                        [&](Value user) { return canAccess(user, tile); });
+  }
+
+  /// Reserve mandatory-local objects before any other pool can spill into
+  /// their memory. Existing buffers are fixed and counted by identity, not by
+  /// how many pools or endpoints reference them.
+  LogicalResult planBuffers(ArrayRef<ObjectFifoPoolOp> pools) {
+    plannedMemory.clear();
+    bufferPlacements.clear();
+    bufferFailure = nullptr;
+    for (auto buffer : device.getOps<BufferOp>())
+      plannedMemory[buffer.getTile()] += buffer.getAllocationSize();
+    for (auto pool : pools) {
+      if (!localPools.contains(pool) || pool.getBuffers())
+        continue;
+      Value tile = localPools.lookup(pool);
+      int64_t bytes = pool.getObjectSizeInBytes() * pool.getDepth();
+      if (!canAccess(pool.getTile(), tile) || !canPlace(pool, tile, bytes)) {
+        bufferFailure = pool;
+        return failure();
+      }
+      plannedMemory[tile] += bytes;
+    }
+    for (auto pool : pools) {
+      if (pool.getBuffers()) {
+        for (auto buffer : pool.getBufferOps()) {
+          Value tile = buffer.getBufferTile();
+          if (tile && !llvm::all_of(poolUsers[pool], [&](Value user) {
+                return canAccess(user, tile);
+              })) {
+            bufferFailure = pool;
+            return failure();
+          }
+          bufferPlacements[pool].push_back(tile);
+        }
+        continue;
+      }
+      if (pool.getTileLike().isShimTile())
+        continue;
+      for (int i = 0; i < pool.getDepth(); ++i) {
+        Value tile = localPools.contains(pool)
+                         ? localPools.lookup(pool)
+                         : placementFor(pool, pool.getObjectSizeInBytes());
+        if (!tile) {
+          bufferFailure = pool;
+          return failure();
+        }
+        bufferPlacements[pool].push_back(tile);
+        if (!localPools.contains(pool))
+          plannedMemory[tile] += pool.getObjectSizeInBytes();
       }
     }
-    return total;
+    return success();
   }
 
   /// FIXME: choosing which tile a buffer lives on is the buffer allocator's
@@ -61,17 +139,19 @@ struct AIEObjectFifoAllocatePass
   /// by its DMAs, preferring the emptier one so adjacent MemTiles
   /// keep room for their own spills. Which tiles neighbor an unplaced one is
   /// not yet known, so its buffers stay at home.
-  Value placementFor(TileLike home, int64_t sizeBytes) {
+  Value placementFor(ObjectFifoPoolOp pool, int64_t sizeBytes) {
+    TileLike home = pool.getTileLike();
     auto &target = device.getTargetModel();
     Value homeTile = home->getResult(0);
-    if (!home.isMemTile() ||
-        usedMemory(homeTile) + sizeBytes <= target.getMemTileSize()) {
+    if (canPlace(pool, homeTile, sizeBytes)) {
       return homeTile;
     }
+    if (!home.isMemTile())
+      return {};
 
     auto homeOp = dyn_cast<TileOp>(home.getOperation());
     if (!homeOp) {
-      return homeTile;
+      return {};
     }
 
     SmallVector<TileOp> neighbors;
@@ -88,15 +168,15 @@ struct AIEObjectFifoAllocatePass
       }
     }
     llvm::stable_sort(neighbors, [&](TileOp a, TileOp b) {
-      return usedMemory(a.getResult()) < usedMemory(b.getResult());
+      return plannedMemory.lookup(a.getResult()) <
+             plannedMemory.lookup(b.getResult());
     });
     for (TileOp neighbor : neighbors) {
-      if (usedMemory(neighbor.getResult()) + sizeBytes <=
-          target.getMemTileSize()) {
+      if (canPlace(pool, neighbor.getResult(), sizeBytes)) {
         return neighbor.getResult();
       }
     }
-    return homeTile;
+    return {};
   }
 
   /// Buffers and locks sit directly below the tile whose memory holds them,
@@ -123,7 +203,6 @@ struct AIEObjectFifoAllocatePass
     }
 
     auto initValues = pool.getInitValues();
-    int64_t sizeBytes = pool.getObjectSizeInBytes();
     StringRef base = pool.getBaseName();
 
     SmallVector<Attribute> names;
@@ -131,7 +210,7 @@ struct AIEObjectFifoAllocatePass
       ElementsAttr init =
           initValues ? cast<ElementsAttr>((*initValues)[i]) : nullptr;
       std::string name = (base + "_buff_" + std::to_string(i)).str();
-      Value placement = placementFor(home, sizeBytes);
+      Value placement = bufferPlacements[pool][i];
       setInsertionPointOn(placement);
       lastPlaced[placement] = BufferOp::create(
           builder, pool.getLoc(), pool.getElemType(), placement,
@@ -212,13 +291,18 @@ struct AIEObjectFifoAllocatePass
   /// channels that see that neighbor's memory.
   bool reachesAdjacentTile(RouteEndpoint endpoint) {
     auto dma = dyn_cast<ObjectFifoDmaEndpointOp>(endpoint.getOperation());
-    if (!dma) {
+    if (!dma || !dma.getTileLike().isMemTile()) {
       return false;
     }
     ObjectFifoPoolOp pool = dma.getPoolOp();
-    return pool && llvm::any_of(pool.getBufferOps(), [&](BufferLike buffer) {
-             Value tile = buffer.getBufferTile();
-             return tile && tile != pool.getTile();
+    return pool && llvm::any_of(bufferPlacements[pool], [&](Value tile) {
+             if (!tile || tile == endpoint.getTile())
+               return false;
+             auto memory = cast<TileLike>(tile.getDefiningOp());
+             auto user = tileOf(endpoint);
+             auto mc = memory.tryGetCol(), mr = memory.tryGetRow();
+             auto uc = user.tryGetCol(), ur = user.tryGetRow();
+             return mc && mr && uc && ur && (*mc != *uc || *mr != *ur);
            });
   }
 
@@ -226,7 +310,10 @@ struct AIEObjectFifoAllocatePass
     return dyn_cast<TileLike>(endpoint.getTile().getDefiningOp());
   }
 
-  LogicalResult assignChannels(DMAChannelAnalysis &channels) {
+  LogicalResult assignChannels(DMAChannelAnalysis &channels,
+                               bool diagnose = true) {
+    channelAssignments.clear();
+    channelFailure = nullptr;
     SmallVector<RouteEndpoint> pending;
     for (auto endpoint : device.getOps<RouteEndpoint>()) {
       DMAChannelDir dir = endpoint.getRouteDirection();
@@ -236,6 +323,8 @@ struct AIEObjectFifoAllocatePass
       // DMA channels.
       if (endpoint.getRouteBundle() == WireBundle::Core) {
         if (!channel) {
+          if (!diagnose)
+            return failure();
           return endpoint->emitOpError("a stream port names its own channel");
         }
         channels.checkAIEStreamIndex(tileOf(endpoint), {dir, *channel});
@@ -243,8 +332,20 @@ struct AIEObjectFifoAllocatePass
       }
 
       if (channel) {
+        if (reachesAdjacentTile(endpoint) &&
+            *channel >= DMAChannelAnalysis::getDMAChannelLimit(tileOf(endpoint),
+                                                               dir, true)) {
+          channelFailure = endpoint;
+          if (!diagnose)
+            return failure();
+          return endpoint->emitOpError("pinned ")
+                 << stringifyDMAChannelDir(dir) << " DMA channel " << *channel
+                 << " cannot access adjacent MemTile buffers";
+        }
         if (channels.reservePinnedChannel(tileOf(endpoint), dir, *channel) <
             0) {
+          if (!diagnose)
+            return failure();
           return endpoint->emitOpError("pinned ")
                  << stringifyDMAChannelDir(dir) << " DMA channel " << *channel
                  << " is out of range or already in use on this tile";
@@ -265,6 +366,9 @@ struct AIEObjectFifoAllocatePass
       int channel = channels.getDMAChannelIndex(tileOf(endpoint), dir,
                                                 reachesAdjacentTile(endpoint));
       if (channel < 0) {
+        channelFailure = endpoint;
+        if (!diagnose)
+          return failure();
         TileLike tile = tileOf(endpoint);
         bool adjacent = reachesAdjacentTile(endpoint);
         int capacity =
@@ -297,9 +401,65 @@ struct AIEObjectFifoAllocatePass
         }
         return failure();
       }
-      endpoint.setRouteChannel(channel);
+      channelAssignments[endpoint.getOperation()] = channel;
     }
     return success();
+  }
+
+  /// Keep a successful largest-first allocation unchanged. On channel
+  /// exhaustion, try keeping an affected pool local, cheapest first. Each DMA
+  /// accesses every object in its pool, even when it selects only one segment.
+  /// Reserving that pool once can therefore free several restricted channels.
+  /// This is a bounded repair of the greedy buffer placement, not an exhaustive
+  /// solver for tile placement or memory packing.
+  LogicalResult planAllocation(ArrayRef<ObjectFifoPoolOp> pools,
+                               std::set<std::vector<unsigned>> &tried) {
+    std::vector<unsigned> key;
+    for (auto [index, pool] : llvm::enumerate(pools)) {
+      if (auto tile = localPools.lookup(pool)) {
+        auto placed = cast<TileOp>(tile.getDefiningOp());
+        key.push_back(index);
+        key.push_back(placed.getCol());
+        key.push_back(placed.getRow());
+      }
+    }
+    if (tried.size() >= 64 || !tried.insert(key).second ||
+        failed(planBuffers(pools)))
+      return failure();
+    DMAChannelAnalysis channels(device);
+    if (succeeded(assignChannels(channels, /*diagnose=*/false)))
+      return success();
+    if (!channelFailure ||
+        !isa<TileOp>(channelFailure.getTile().getDefiningOp()) ||
+        !tileOf(channelFailure).isMemTile())
+      return failure();
+
+    Value localTile = channelFailure.getTile();
+    SmallVector<ObjectFifoPoolOp> candidates;
+    for (auto dma : device.getOps<ObjectFifoDmaEndpointOp>()) {
+      auto endpoint = cast<RouteEndpoint>(dma.getOperation());
+      auto pool = dma.getPoolOp();
+      if (!pool || pool.getBuffers() || localPools.contains(pool) ||
+          endpoint.getTile() != channelFailure.getTile() ||
+          endpoint.getRouteDirection() != channelFailure.getRouteDirection() ||
+          (channelFailure.getRouteChannel() && endpoint != channelFailure) ||
+          (endpoint.getRouteChannel() && endpoint != channelFailure) ||
+          !reachesAdjacentTile(endpoint) ||
+          llvm::is_contained(candidates, pool))
+        continue;
+      candidates.push_back(pool);
+    }
+    llvm::stable_sort(candidates, [](ObjectFifoPoolOp a, ObjectFifoPoolOp b) {
+      return a.getObjectSizeInBytes() * a.getDepth() <
+             b.getObjectSizeInBytes() * b.getDepth();
+    });
+    for (auto pool : candidates) {
+      localPools[pool] = localTile;
+      if (succeeded(planAllocation(pools, tried)))
+        return success();
+      localPools.erase(pool);
+    }
+    return failure();
   }
 
   /// FIXME: assigning packet IDs does not belong in this pass. The shape it
@@ -532,6 +692,8 @@ struct AIEObjectFifoAllocatePass
     filledPools.clear();
     loweredFlows.clear();
     drainerIterations.clear();
+    localPools.clear();
+    poolUsers.clear();
 
     // MemTile pools are served largest-first so the big buffers claim home
     // placement before smaller ones consume the neighbors they would spill to.
@@ -552,11 +714,13 @@ struct AIEObjectFifoAllocatePass
     }
 
     for (auto endpoint : device.getOps<ObjectFifoCoreEndpointOp>()) {
+      poolUsers[endpoint.getPoolOp()].push_back(endpoint.getTile());
       if (!endpoint.drains()) {
         filledPools.insert(endpoint.getPoolOp());
       }
     }
     for (auto endpoint : device.getOps<ObjectFifoDmaEndpointOp>()) {
+      poolUsers[endpoint.getPoolOp()].push_back(endpoint.getTile());
       if (!endpoint.drains()) {
         filledPools.insert(endpoint.getPoolOp());
         continue;
@@ -565,15 +729,30 @@ struct AIEObjectFifoAllocatePass
       iterations = std::max(iterations, endpoint.getIterCount().value_or(1));
     }
 
+    std::set<std::vector<unsigned>> tried;
+    if (failed(planAllocation(pools, tried))) {
+      localPools.clear();
+      if (failed(planBuffers(pools))) {
+        bufferFailure.emitOpError(
+            "could not place buffers in accessible memory with available "
+            "capacity");
+      } else {
+        DMAChannelAnalysis channels(device);
+        (void)assignChannels(channels);
+        device.emitRemark(
+            "could not find a spill-aware allocation with bounded local-pool "
+            "retries; tile placement and buffer packing remain greedy");
+      }
+      return signalPassFailure();
+    }
     for (ObjectFifoPoolOp pool : pools) {
       allocateBuffers(pool);
       allocateLocks(pool);
     }
-
-    DMAChannelAnalysis channels(device);
-    if (failed(assignChannels(channels))) {
-      return signalPassFailure();
-    }
+    for (auto endpoint : device.getOps<RouteEndpoint>())
+      if (auto it = channelAssignments.find(endpoint.getOperation());
+          it != channelAssignments.end())
+        endpoint.setRouteChannel(it->second);
 
     if (failed(bindRearmTargets())) {
       return signalPassFailure();

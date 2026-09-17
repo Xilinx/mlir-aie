@@ -9,8 +9,8 @@
 // whose tiles are not placed yet lowers just as far. Placement may run after
 // the objectFifo pipeline.
 
-// RUN: aie-opt --aie-objectfifo-allocate %s | FileCheck %s
-// RUN: aie-opt --aie-objectFifo-stateful-transform="skip-verify=true" --aie-place-tiles %s | FileCheck %s --check-prefix=PLACED
+// RUN: aie-opt --split-input-file --aie-objectfifo-allocate %s | FileCheck %s
+// RUN: aie-opt --split-input-file --aie-objectFifo-stateful-transform="skip-verify=true" --aie-place-tiles %s | FileCheck %s --check-prefix=PLACED
 
 module {
   aie.device(xcve2302) {
@@ -49,3 +49,27 @@ module {
 // PLACED:      aie.flow(%[[PSHIM]], DMA : 0, %[[PMEM]], DMA : 0)
 // PLACED:      aie.memtile_dma(%[[PMEM]])
 // PLACED:      aie.dma_start(S2MM, 0
+
+// -----
+
+// Known coordinates on logical tiles have the same memory affinity as their
+// physical equivalents, even before placement replaces the tile operations.
+module @shared_logical {
+  aie.device(npu2) {
+    %home = aie.logical_tile<MemTile>(0, 1)
+    %reader = aie.logical_tile<MemTile>(1, 1)
+    aie.objectfifo.pool @shared(%home) {depth = 2 : i32} : memref<16xi32> {
+      aie.objectfifo.segment @s {offset = 0 : i32, size = 16 : i32}
+    }
+    aie.objectfifo.dma_endpoint @reader(%reader) drains @shared
+  }
+}
+// CHECK-LABEL: module @shared_logical
+// CHECK: %[[HOME:.*]] = aie.logical_tile<MemTile>(0, 1)
+// CHECK: aie.buffer(%[[HOME]]) {sym_name = "shared_buff_0"}
+// CHECK: aie.buffer(%[[HOME]]) {sym_name = "shared_buff_1"}
+// CHECK: @reader({{.*}}) drains @shared {channelIndex = 0 : i32}
+// PLACED-LABEL: module @shared_logical
+// PLACED: %[[PHOME:.*]] = aie.tile(0, 1)
+// PLACED: aie.buffer(%[[PHOME]]) {sym_name = "shared_buff_0"}
+// PLACED: aie.dma_start(MM2S, 0

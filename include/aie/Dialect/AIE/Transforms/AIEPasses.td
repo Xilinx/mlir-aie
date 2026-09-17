@@ -61,13 +61,6 @@ def AIEPlaceTiles : Pass<"aie-place-tiles", "DeviceOp"> {
     column-major order and places fifo-connected Shim/Mem tiles
     near its core tiles. One or more aie.logical_tile operation is mapped
     to one aie.tile.
-
-    When placing logical MemTiles, the sequential placer requires their
-    buffers to fit in local memory, including existing buffers and the shared
-    pools of linked ObjectFifos. Neighbor-memory spilling restricts DMA channel
-    availability and can invalidate another tile's placement. Designs that
-    intentionally rely on MemTile spilling can specify physical MemTiles;
-    ObjectFifo lowering continues to support spilling for those designs.
   }];
 
   let constructor = "xilinx::AIE::createAIEPlaceTilesPass()";
@@ -91,8 +84,7 @@ def AIEPlaceTiles : Pass<"aie-place-tiles", "DeviceOp"> {
               /*default=*/"true",
               "When true (default), allow multiple non-core (ShimNOCTile / "
               "MemTile) aie.logical_tile ops to share one physical aie.tile "
-              "if combined DMA channel and local MemTile memory demand fits. "
-              "When false, each non-core "
+              "if combined DMA channel demand fits. When false, each non-core "
               "aie.logical_tile is pinned to its own physical tile. CoreTile "
               "placement is unaffected.">,
        Option<
@@ -463,6 +455,13 @@ def AIEObjectFifoAllocate : Pass<"aie-objectfifo-allocate", "DeviceOp"> {
     Whatever is already written down is kept, so hand-placed buffers,
     hand-written locks and pinned channels all survive; each is filled in only
     where it is absent.
+
+    MemTile buffers may spill to accessible neighboring memory. Allocation
+    checks DMA channel eligibility against every buffer an endpoint accesses.
+    If the usual largest-first placement exhausts neighbor-capable channels,
+    retry with selected pools reserved locally, without disabling spilling for
+    other pools. At most 64 locality combinations are tried. Tile placement
+    and buffer packing remain greedy; failure is not a proof of infeasibility.
   }];
 
   let constructor = "xilinx::AIE::createAIEObjectFifoAllocatePass()";

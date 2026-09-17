@@ -6,33 +6,42 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: aie-opt --aie-place-tiles %s | FileCheck %s
+// RUN: aie-opt --aie-place-tiles --aie-objectfifo-split --aie-objectfifo-allocate %s | FileCheck %s --check-prefix=ALLOC
 // RUN: aie-opt --aie-place-tiles --aie-objectFifo-stateful-transform="skip-verify=true" %s -o /dev/null
 // RUN: sed -e 's/196608xi8/32768xi8/' -e 's/147456xi8/65536xi8/' %s > %t
-// RUN: aie-opt --aie-place-tiles %t | FileCheck %s --check-prefix=BOUNDARY
+// RUN: aie-opt --aie-place-tiles --aie-objectfifo-split --aie-objectfifo-allocate %t | FileCheck %s --check-prefix=BOUNDARY
 // RUN: aie-opt --aie-place-tiles --aie-objectFifo-stateful-transform="skip-verify=true" %t -o /dev/null
 
 // A reduction of #3720. Six input channels fit on one MemTile, but merging
 // these pools there makes both a forward and the four-way join spill. Their
 // five inputs cannot all use the four adjacent-memory channels.
-// Account for each link's shared pool once, including declared depth and
-// pre-existing buffers. The two 288-KiB forwards must stay off column 0
-// (192 KiB reserved + 64 KiB join) and cannot share another column.
+// Keep automatic merging and spilling. Allocation must reserve the small
+// four-way join locally rather than consume all local memory with forwards.
 // b0 uses nine-byte BFP elements and a per-endpoint depth: neither the shim's
 // depth of one nor the forward's repeat_count determines its MemTile storage.
 // This resource-only test omits core programs, hence skip-verify above.
 // At the boundary (32 KiB reserved + 288 + 128 + 64 KiB), all three pools
 // must still merge: all six input channels are usable with local buffers.
 
-// CHECK-DAG: %[[M0:.*]] = aie.tile(0, 1)
-// CHECK-DAG: %[[M1:.*]] = aie.tile(1, 1)
-// CHECK-DAG: %[[M2:.*]] = aie.tile(2, 1)
-// CHECK: aie.objectfifo @b0_in(%{{.*}}, {%[[M1]]}
-// CHECK: aie.objectfifo @b1_in(%{{.*}}, {%[[M2]]}
+// CHECK: %[[M0:.*]] = aie.tile(0, 1)
+// CHECK: aie.objectfifo @b0_in(%{{.*}}, {%[[M0]]}
+// CHECK: aie.objectfifo @b1_in(%{{.*}}, {%[[M0]]}
 // CHECK: aie.objectfifo @join0(%{{.*}}, {%[[M0]]}
+// ALLOC-DAG: %[[HOME:.*]] = aie.tile(0, 1)
+// ALLOC-DAG: %[[NEIGHBOR:.*]] = aie.tile(1, 1)
+// ALLOC-DAG: aie.buffer(%[[HOME]]) {sym_name = "join_out_buff_0"}
+// ALLOC-DAG: aie.buffer(%[[HOME]]) {sym_name = "join_out_buff_1"}
+// ALLOC-DAG: aie.buffer(%[[HOME]]) {sym_name = "b0_in_cons_buff_0"}
+// ALLOC-DAG: aie.buffer(%[[NEIGHBOR]]) {sym_name = "b0_in_cons_buff_1"}
+// ALLOC-DAG: aie.buffer(%[[NEIGHBOR]]) {sym_name = "b1_in_cons_buff_0"}
+// ALLOC-DAG: aie.buffer(%[[NEIGHBOR]]) {sym_name = "b1_in_cons_buff_1"}
 // BOUNDARY: %[[M:.*]] = aie.tile(0, 1)
-// BOUNDARY: aie.objectfifo @b0_in(%{{.*}}, {%[[M]]}
-// BOUNDARY: aie.objectfifo @b1_in(%{{.*}}, {%[[M]]}
-// BOUNDARY: aie.objectfifo @join0(%{{.*}}, {%[[M]]}
+// BOUNDARY-DAG: aie.buffer(%[[M]]) {sym_name = "b0_in_cons_buff_0"}
+// BOUNDARY-DAG: aie.buffer(%[[M]]) {sym_name = "b0_in_cons_buff_1"}
+// BOUNDARY-DAG: aie.buffer(%[[M]]) {sym_name = "b1_in_cons_buff_0"}
+// BOUNDARY-DAG: aie.buffer(%[[M]]) {sym_name = "b1_in_cons_buff_1"}
+// BOUNDARY-DAG: aie.buffer(%[[M]]) {sym_name = "join_out_buff_0"}
+// BOUNDARY-DAG: aie.buffer(%[[M]]) {sym_name = "join_out_buff_1"}
 module {
   aie.device(npu2) {
     %shim = aie.tile(0, 0)
