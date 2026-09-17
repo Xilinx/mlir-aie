@@ -53,7 +53,7 @@ The objects most designs are built from.
 
 The host-side orchestration entry point. Calls to producer-handle `fill` and
 consumer-handle `drain` are declared in the sequence body passed to `Runtime(seq, fn_args)`;
-Workers are passed to `Program(workers=...)` rather than started from the body.
+Workers are passed to `Program(workers=...)`.
 
 ::: iron.runtime.runtime
     options:
