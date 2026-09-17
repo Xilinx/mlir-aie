@@ -190,11 +190,12 @@ class Runtime(Resolvable):
           ``runtime_sequence`` block arg -- a tensor type becomes a
           ``RuntimeData`` (``fill``/``drain`` target), a scalar type becomes the
           bare SSA value (``scf`` survives to the dynamic EmitC path).
-        * a concrete **int value**: also declares a runtime input, but is folded
-          into an ``arith.constant`` instead of a block arg (constant-bound
+        * a concrete **int or NumPy integer value**: also declares a runtime input,
+          but is folded into a constant instead of a block arg (constant-bound
           ``range_``/``if_`` unrolls to the static binary path). One body thus
           serves both lowerings depending on whether the caller passes a type or
-          an int here.
+          an integer here. NumPy integers retain their scalar dtype; plain Python
+          integers use i32 for compatibility with the common ``np.int32`` path.
         * any other object (ObjectFifoHandle, Buffer, Kernel, ScratchpadParameter,
           WorkerRuntimeBarrier, ...): passed through to the body unchanged, as
           with ``Worker.fn_args``.
@@ -362,11 +363,32 @@ class Runtime(Resolvable):
                 self._fn_args, self._const_inputs, self._rt_data
             ):
                 if const_val is not None:
-                    # i32 to mirror the dynamic np.int32 scalar path, so the same
-                    # body's arithmetic (extsi to i64, etc.) lowers identically.
-                    body_args.append(
-                        constant(int(const_val), np_dtype_to_mlir_type(np.int32))
+                    dtype = (
+                        type(const_val)
+                        if isinstance(const_val, np.integer)
+                        else np.int32
                     )
+                    scalar_type = np_dtype_to_mlir_type(dtype)
+                    value = int(const_val)
+                    # IntegerAttr's C API accepts int64_t, including the bit
+                    # pattern of a uint64/index value above INT64_MAX.
+                    if value > np.iinfo(np.int64).max:
+                        value -= 1 << 64
+                    if (
+                        isinstance(scalar_type, ir.IntegerType)
+                        and scalar_type.is_unsigned
+                    ):
+                        # arith.constant requires signless integers. EmitC's
+                        # ConstantLike op preserves unsigned types and folds.
+                        from ...dialects.emitc import ConstantOp
+
+                        body_args.append(
+                            ConstantOp(
+                                scalar_type, ir.IntegerAttr.get(scalar_type, value)
+                            ).result
+                        )
+                    else:
+                        body_args.append(constant(value, scalar_type))
                 elif rt_data is not None:
                     body_args.append(rt_data.op if rt_data.is_scalar else rt_data)
                 else:

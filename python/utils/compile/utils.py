@@ -33,6 +33,24 @@ os.umask(_UMASK)
 _DEFAULT_FILE_MODE = 0o666 & ~_UMASK
 
 
+SHARED_LIB_SUFFIX = ".dll" if os.name == "nt" else ".so"
+SHARED_LIB_FLAGS = ["-shared"] if os.name == "nt" else ["-shared", "-fPIC"]
+
+
+def host_shared_lib_cmd(src: Path, out: Path, *, opt: str, includes=()) -> list[str]:
+    """Build a host shared library with the project's C++17 ABI."""
+    return [
+        config.host_cxx_path(),
+        *SHARED_LIB_FLAGS,
+        opt,
+        "-std=c++17",
+        *(f"-I{inc}" for inc in includes),
+        str(src),
+        "-o",
+        str(out),
+    ]
+
+
 def resolve_target_arch(device=None) -> str:
     """Return ``'aie2'`` or ``'aie2p'`` for the given device, or ``'aie2'`` if device is None."""
     if device is None:

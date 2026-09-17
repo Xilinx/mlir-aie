@@ -1,7 +1,6 @@
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-// REQUIRES: peano
 // RUN: mkdir -p %t.d
 // RUN: aie-translate %s --aie-npu-to-cpp > %t.d/fold.h
 // RUN: aie-translate %s --aie-npu-to-cpp --aie-npu-fold-ddr-addr-offset=false > %t.d/nofold.h
@@ -14,6 +13,7 @@
 
 // Byte comparisons include both offset words, across the firmware-translated
 // argument boundary, with the i32 sign bit set and with a genuine i64 offset.
+// address_patch_width_npu2.test reuses this input for the NPU2 header/ABI.
 module {
   aie.device(npu1_1col) {
     aie.runtime_sequence @static() {

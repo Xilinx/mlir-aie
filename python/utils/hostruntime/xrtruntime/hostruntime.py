@@ -7,7 +7,6 @@ import atexit
 import gc
 import logging
 import os
-import threading
 import time
 import weakref
 from collections import OrderedDict
@@ -59,6 +58,7 @@ class XRTKernelHandle(KernelHandle):
                 self-contained full ELF; selects the ``run.set_arg`` +
                 ``run.start`` execution path in ``run()``.  Defaults to False.
         """
+        super().__init__(needs_dispatch_insts=insts is None and not is_full_elf)
         self.kernel = kernel
         self.xclbin = xclbin
         self.context = context
@@ -66,11 +66,6 @@ class XRTKernelHandle(KernelHandle):
         self.insts_bo = insts_bo
         self.name = name
         self.is_full_elf = is_full_elf
-
-    @property
-    def needs_dispatch_insts(self) -> bool:
-        """No static insts and not a full ELF -- so a dispatch design."""
-        return self.insts is None and not self.is_full_elf
 
 
 class XRTKernelResult(KernelResult):
@@ -122,40 +117,6 @@ class XRTHostRuntime(HostRuntime):
                 break
         if not self.npu_str:
             raise RuntimeError(f"Unknown device type: {self._device_type_str}")
-
-        # Reused device buffer for DispatchTime[T] instruction streams; see
-        # _dispatch_insts_bo. Never allocated for a static design.
-        self._dispatch_storage: XrtTransport | None = None
-        self._dispatch_storage_group: int | None = None
-        self._dispatch_lock = threading.Lock()
-
-    def _dispatch_insts_bo(self, dispatch_insts, group_id: int):
-        """Return a device BO holding *dispatch_insts*, reusing one allocation.
-
-        A dispatch design synthesizes a fresh stream every call, but the buffer
-        carrying it can be reused: ``run()`` waits for completion before
-        returning, and ``run()`` holds ``_dispatch_lock`` across the write,
-        sync, submission and wait. Static instruction BOs are immutable and
-        do not need this lock.
-        Worth ~11us of a ~235us dispatch on Strix (measured end to end).
-
-        The buffer only grows, and the submit passes the true length
-        separately, so a shorter stream never exposes the previous tail -- and
-        for the same reason the whole allocation can be handed over as-is,
-        rather than deriving an exact-size sub-buffer per distinct length.
-        """
-        nbytes = dispatch_insts.nbytes
-        storage = self._dispatch_storage
-        if (
-            storage is None
-            or storage.nbytes < nbytes
-            or self._dispatch_storage_group != group_id
-        ):
-            storage = XrtTransport(self._device, nbytes, pyxrt.bo.cacheable, group_id)
-            self._dispatch_storage = storage
-            self._dispatch_storage_group = group_id
-        storage.host_bytes[:nbytes] = dispatch_insts.view(np.uint8).reshape(-1)
-        return storage.root_prefix_to_device(nbytes)
 
     @classmethod
     def read_insts(cls, insts_path: Path):
@@ -279,10 +240,8 @@ class XRTHostRuntime(HostRuntime):
             trace_config (optional): Configuration for tracing. Defaults to None.
             fail_on_error (bool, optional): Whether to raise an exception on kernel failure. Defaults to True.
             only_if_loaded (bool, optional): Accepted for API compatibility with the runtime base class.
-            dispatch_insts (np.ndarray | None, optional): Freshly-generated
-                instruction words for a DispatchTime[T] design. When set, a
-                reusable instruction BO is updated from these words every
-                call, instead of reading ``kernel_handle.insts``.
+            dispatch_insts (np.ndarray | None, optional): Per-call instruction
+                words, submitted in a fresh BO instead of static instructions.
             **kwargs: Additional arguments.
 
         Returns:
@@ -336,16 +295,21 @@ class XRTHostRuntime(HostRuntime):
 
         insts_bo = None
         insts_bytes = 0
-        if dispatch_insts is not None:
-            self._dispatch_lock.acquire()
         try:
             if dispatch_insts is not None:
-                # New words each time, but into one recycled buffer. Never
-                # kernel_handle.insts_bo, which holds the compiled-in words.
                 insts_bytes = dispatch_insts.nbytes
-                insts_bo = self._dispatch_insts_bo(
-                    dispatch_insts, kernel_handle.kernel.group_id(1)
+                # Keep the owning transport alive through submission and wait.
+                dispatch_storage = XrtTransport(
+                    self._device,
+                    insts_bytes,
+                    pyxrt.bo.cacheable,
+                    kernel_handle.kernel.group_id(1),
                 )
+                dispatch_storage.host_bytes[:] = dispatch_insts.view(np.uint8).reshape(
+                    -1
+                )
+                dispatch_storage.to_device(0, insts_bytes)
+                insts_bo = dispatch_storage.handle(0, insts_bytes)
             else:
                 is_module = hasattr(pyxrt, "module") and isinstance(
                     kernel_handle.insts, pyxrt.module
@@ -370,11 +334,8 @@ class XRTHostRuntime(HostRuntime):
             if fail_on_error and r != pyxrt.ert_cmd_state.ERT_CMD_STATE_COMPLETED:
                 raise HostRuntimeError(f"Kernel returned {str(r)}")
         finally:
-            if dispatch_insts is not None:
-                self._dispatch_lock.release()
-            # delete insts buffer if it was created locally. The dispatch BO is
-            # owned by _dispatch_insts_bo's reused allocation, not by this call.
-            if insts_bo and not kernel_handle.insts_bo and dispatch_insts is None:
+            # delete insts buffer if it was created locally
+            if insts_bo and not kernel_handle.insts_bo:
                 del insts_bo
 
         return XRTKernelResult(r, stop - start)
@@ -548,9 +509,6 @@ class CachedXRTRuntime(XRTHostRuntime):
 
     def cleanup(self):
         """Clean up cached XRT resources in dependency order."""
-        with self._dispatch_lock:
-            self._dispatch_storage = None
-            self._dispatch_storage_group = None
         while self._insts_cache:
             self._evict_insts()
         while self._context_cache:

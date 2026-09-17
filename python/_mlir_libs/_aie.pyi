@@ -16,6 +16,7 @@ __all__ = [
     "npu_instgen",
     "register_dialect",
     "translate_mlir_to_llvmir",
+    "translate_npu_to_cpp",
 ]
 
 def aie_llvm_link(modules: list[str]) -> str: ...
@@ -35,6 +36,11 @@ def generate_xaie(module: Operation) -> str: ...
 def npu_instgen(module: Operation) -> list: ...
 def register_dialect(registry: DialectRegistry) -> None: ...
 def translate_mlir_to_llvmir(module: Operation) -> str: ...
+def translate_npu_to_cpp(
+    module: Operation,
+    fold_ddr_addr_offset: bool = True,
+    emit_dispatch_shim: bool = False,
+) -> str: ...
 
 class ObjectFifoType:
     @staticmethod

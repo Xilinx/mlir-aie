@@ -70,14 +70,10 @@ class HSAKernelHandle(KernelHandle):
     """Handle for a loaded HSA kernel (PDI + insts in region memory)."""
 
     def __init__(self, pdi_ptr, insts_ptr, insts_size):
+        super().__init__(needs_dispatch_insts=insts_ptr is None)
         self.pdi_ptr = pdi_ptr
         self.insts_ptr = insts_ptr
         self.insts_size = insts_size
-
-    @property
-    def needs_dispatch_insts(self) -> bool:
-        """No device-side instruction buffer -- so a dispatch design."""
-        return self.insts_ptr is None
 
 
 class HSAKernelResult(KernelResult):
@@ -123,12 +119,7 @@ class HSAHostRuntime(HostRuntime):
         )
 
     def _resolve_kernel(self, npu_kernel):
-        """Resolve + validate an npu_kernel to (insts_path, pdi_path, name).
-
-        ``insts_path`` is ``None`` for a DispatchTime[T] design -- its
-        instruction stream is synthesized fresh per call (see ``run``'s
-        ``dispatch_insts`` handling) instead of read from a static insts.bin.
-        """
+        """Resolve + validate an npu_kernel to (insts_path, pdi_path, name)."""
         self.check_device_consistency()
         xclbin_path = Path(npu_kernel.xclbin_path).resolve()
         insts_path = self._resolve_insts_path(npu_kernel)
@@ -146,12 +137,7 @@ class HSAHostRuntime(HostRuntime):
         return ptr
 
     def _build_handle(self, insts_path, pdi_path) -> HSAKernelHandle:
-        """Copy insts (if any) + PDI into fresh device-heap allocations.
-
-        ``insts_path=None`` (a DispatchTime[T] design) allocates only the PDI
-        -- there is no static instruction stream to load; ``run()`` builds
-        (and frees) a fresh device buffer from ``dispatch_insts`` every call.
-        """
+        """Copy static instructions (if any) and PDI into device allocations."""
         pdi_bytes = pdi_path.read_bytes()
         if insts_path is None:
             pdi_ptr = self._copy_to_device(pdi_bytes)
@@ -256,12 +242,8 @@ class HSAHostRuntime(HostRuntime):
         _release_dispatch note below for the one path where cleanup is
         intentionally skipped rather than run unconditionally).
 
-        ``dispatch_insts`` (np.ndarray | None): freshly-generated instruction
-        words for a DispatchTime[T] design. Its exact size is only known per
-        call (see DispatchBridge), so -- unlike XRT's cacheable BO -- this
-        allocates a fresh device buffer, copies the words in, dispatches, and
-        frees it every call; ``kernel_handle.insts_ptr`` is ``None`` for a
-        dispatch design (see ``_build_handle``) and is never touched here.
+        ``dispatch_insts`` (np.ndarray | None): Per-call instruction words,
+        copied into a fresh device buffer retained until completion.
         """
         assert isinstance(kernel_handle, HSAKernelHandle)
         if trace_config is not None:
@@ -276,9 +258,6 @@ class HSAHostRuntime(HostRuntime):
         signal = self._ctx.arm_signal(1)
         try:
             if dispatch_insts is not None:
-                # Already a contiguous array owned by this call, so memmove
-                # reads it in place rather than materializing an equally large
-                # intermediate bytes object.
                 nbytes = dispatch_insts.nbytes
                 dispatch_ptr = self._ctx.alloc_dev(nbytes)
                 ctypes.memmove(dispatch_ptr, dispatch_insts.ctypes.data, nbytes)
@@ -345,7 +324,6 @@ class HSAHostRuntime(HostRuntime):
         tensors = []
         for kernel_handle, args in runs:
             assert isinstance(kernel_handle, HSAKernelHandle)
-            # Always None here: see _require_dispatch_insts.
             self._require_dispatch_insts(kernel_handle, None)
             kept = self._validate_args(args)
             tensors.extend(kept)

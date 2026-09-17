@@ -33,8 +33,8 @@ Five annotation categories are defined here (all exported from ``aie.iron``):
     does not affect the cache key — one compiled artifact is meant to serve
     many scalar values.  At generation time the generator receives the
     wrapped type ``T`` itself (e.g. ``np.int32``), not a concrete value, so it
-    can forward it into ``Runtime(..., inputs=[...])`` and get back a runtime
-    SSA block arg (the same scalar-type-in-``inputs`` duality ``Runtime``
+    can forward it into ``Runtime(seq, fn_args=[...])`` and get back a runtime
+    SSA block arg (the same scalar-type-in-``fn_args`` duality ``Runtime``
     already implements).  Each call rebuilds the instruction stream for the
     given value through the host dispatch bridge (a shared library compiled
     alongside the xclbin and called via ``ctypes``), so the per-call value
@@ -58,20 +58,19 @@ from typing import Annotated, TypeVar
 T = TypeVar("T")
 
 
-class _CompileTimeTag:
-    """Runtime tag embedded in ``Annotated[T, _CompileTimeTag()]``.
-
-    Lets ``_introspect.py`` recognize a ``CompileTime[T]`` annotation without
-    pyright treating the parameter's type as anything other than ``T``.
-    """
+class _ParameterTag:
+    """Annotation metadata with a stable representation for JIT cache keys."""
 
     __slots__ = ()
 
     def __repr__(self) -> str:
-        # The default repr embeds this instance's address, which differs every
-        # process. _hash.py folds annotations into the cache key by repr, so an
-        # address there would make a design miss its own cache on every run.
-        return "CompileTime"
+        return type(self).__name__.removeprefix("_").removesuffix("Tag")
+
+
+class _CompileTimeTag(_ParameterTag):
+    """Mark a parameter whose value is bound when generating the design."""
+
+    __slots__ = ()
 
 
 _COMPILE_TIME_TAG = _CompileTimeTag()
@@ -109,20 +108,10 @@ class InOut:
     """Runtime bidirectional tensor annotation (DMA in both directions each call)."""
 
 
-class _DispatchTimeTag:
-    """Runtime tag embedded in ``Annotated[T, _DispatchTimeTag()]``.
-
-    Lets ``_introspect.py`` recognize a ``DispatchTime[T]`` annotation without
-    pyright treating the parameter's type as anything other than ``T``.
-    """
+class _DispatchTimeTag(_ParameterTag):
+    """Mark a scalar whose value is supplied when dispatching the design."""
 
     __slots__ = ()
-
-    def __repr__(self) -> str:
-        # The default repr embeds this instance's address, which differs every
-        # process. _hash.py folds annotations into the cache key by repr, so an
-        # address there would make a design miss its own cache on every run.
-        return "DispatchTime"
 
 
 _DISPATCH_TIME_TAG = _DispatchTimeTag()
@@ -134,14 +123,19 @@ Use as a type annotation on generator function parameters that are runtime
 scalars: bound once per compiled artifact's *type* (not baked in by value),
 re-suppliable per call without a recompile.
 
-Unlike ``CompileTime[T]``, a ``DispatchTime[T]`` value is not part of the
-cache key. Unlike ``In``/``Out``/``InOut``, no DMA is involved -- the scalar
+Unlike ``CompileTime[T]``, a per-call ``DispatchTime[T]`` value is not part of
+the cache key. Explicit prebinding with ``iron.jit(generator, name=value)``
+or ``design.specialize(name=value)`` instead makes that parameter a typed
+compile-time constant for the specialization. Signature defaults alone do
+not specialize it, and calls cannot override an explicitly bound parameter.
+
+Unlike ``In``/``Out``/``InOut``, no DMA is involved -- the scalar
 reaches the device as a runtime sequence value (an ``npu.write32``/inline TXN
 argument or an ``rt.inline_ops`` symbolic bind), not a buffer transfer.
 
 ``T`` must be a NumPy integer scalar type supported by ``Runtime``, such as
 ``np.int32`` or ``np.int64``. Built-in ``int``/``bool`` and floating-point
-types are rejected. Scalars must appear in ``Runtime(inputs=[...])`` in
+types are rejected. Scalars must appear in ``Runtime(seq, fn_args=[...])`` in
 signature order, using Runtime's existing NumPy-to-MLIR type mapping.
 
 Example::

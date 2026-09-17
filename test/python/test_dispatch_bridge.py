@@ -20,13 +20,12 @@ import numpy as np
 import pytest
 from aie.utils.compile.jit._dispatch_bridge import DispatchBridge
 from aie.utils.compile.jit._dispatch_compile import (
-    _DYNAMIC_LOWERING_PASSES,
-    SHARED_LIB_SUFFIX,
     DispatchCompileError,
-    _check_built_abi,
+    _check_runtime_sequence_abi,
     dispatch_scalar_c_type,
-    host_shared_lib_cmd,
 )
+from aie.ir import Context, Module
+from aie.utils.compile.utils import SHARED_LIB_SUFFIX, host_shared_lib_cmd
 from aie.utils.hostruntime.hostruntime import HostRuntimeError
 
 # Mirrors TxnEncoding.h, which the generated source gets the real macro from.
@@ -162,18 +161,6 @@ def test_unloadable_so_rejected(tmp_path):
         DispatchBridge(bad, dispatch_params=["scale"])
 
 
-def test_dynamic_lowering_invokes_the_shared_pipeline():
-    """The dynamic path must run aiecc's pipeline, not a copy of its pass list.
-
-    aiecc's getNpuDmaLoweringPipeline and this flag both resolve to
-    buildNpuDmaLoweringPipeline (lib/Dialect/AIEX/Transforms/AIEXNpuPipelines.cpp),
-    which is what keeps the two paths lowering identically. Spelling out
-    individual passes here would break that: aie-opt accepts a short list
-    happily, so a skipped pass is wrong hardware behavior, not a compile error.
-    """
-    assert _DYNAMIC_LOWERING_PASSES == ["--aie-npu-dma-lowering"]
-
-
 @pytest.mark.parametrize(
     "value", [2**31, -(2**31) - 1, 2**70, -1], ids=["hi", "lo", "huge", "neg-unsigned"]
 )
@@ -192,37 +179,25 @@ def test_out_of_range_value_rejected(fixture_so, value):
         bridge.generate({param: value, **other})
 
 
-@pytest.fixture(scope="module")
-def transposed_so(tmp_path_factory):
-    """Build a .so reporting (int64_t, int32_t); only dispatch_abi() is needed."""
-    tmp_dir = tmp_path_factory.mktemp("dispatch_bridge_transposed")
-    src = (
-        'extern "C" AIE_DISPATCH_EXPORT const char *dispatch_abi() '
-        '{ return "int64_t,int32_t"; }\n'
-    )
-    return _compile_fixture(tmp_dir, src, "transposed")
-
-
-def test_param_type_mismatch_rejected(transposed_so):
+def test_param_type_mismatch_rejected():
     """A declared/generated type mismatch means the values are transposed.
 
-    The generated parameter order is the Runtime(inputs=[...]) order the
+    The generated parameter order is the Runtime(seq, fn_args=[...]) order the
     author wrote by hand; the declared order is the Python signature. Nothing
     ties them together, so this is the only signal available when a design
     threads its scalars in a different order than it declares them.
     """
-    with pytest.raises(DispatchCompileError, match="declared as int32"):
-        _check_built_abi(transposed_so, ["rows", "cols"], [np.int32, np.int64])
-
-    # Correctly ordered: no complaint.
-    _check_built_abi(transposed_so, ["rows", "cols"], [np.int64, np.int32])
-
-    with pytest.raises(TypeError, match="Unsupported DispatchTime"):
-        _check_built_abi(transposed_so, ["rows", "cols"], [None, None])
-
-    # Arity is checked even with no declared types to compare.
-    with pytest.raises(DispatchCompileError, match="the design declares 1"):
-        _check_built_abi(transposed_so, ["rows"], [np.int64])
+    with Context():
+        module = Module.parse("""module { aie.device(npu1_1col) {
+              aie.runtime_sequence @seq(%rows: i64, %a: memref<8xi32>, %cols: i32) {}
+            }}""")
+        with pytest.raises(DispatchCompileError, match="declared as int32"):
+            _check_runtime_sequence_abi(module, ["rows", "cols"], [np.int32, np.int64])
+        _check_runtime_sequence_abi(module, ["rows", "cols"], [np.int64, np.int32])
+        with pytest.raises(TypeError, match="Unsupported DispatchTime"):
+            _check_runtime_sequence_abi(module, ["rows", "cols"], [None, None])
+        with pytest.raises(DispatchCompileError, match="the design declares 1"):
+            _check_runtime_sequence_abi(module, ["rows"], [np.int64])
 
 
 @pytest.mark.parametrize("value", [1.9, 1.0, "2", None, np.float32(2)])

@@ -11,7 +11,6 @@ import inspect
 from typing import Annotated, get_args, get_origin
 
 import pytest
-
 from aie.utils.compile.jit._introspect import (
     _dispatch_param_type,
     _is_compile_param,
@@ -74,6 +73,17 @@ def test_bare_dispatch_has_annotated_origin():
 def test_dispatch_is_not_compile():
     assert DispatchTime is not CompileTime
     assert DispatchTime[int] != CompileTime[int]
+
+
+@pytest.mark.parametrize(
+    "annotation,name",
+    [(CompileTime[int], "CompileTime"), (DispatchTime[int], "DispatchTime")],
+)
+def test_parameter_tag_repr_is_stable(annotation, name):
+    tag = get_args(annotation)[1]
+    assert repr(tag) == name
+    assert repr(type(tag)()) == name
+    assert "0x" not in repr(annotation)
 
 
 # ---------------------------------------------------------------------------

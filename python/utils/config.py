@@ -6,6 +6,7 @@
 
 import os
 import shutil
+from pathlib import Path
 
 import aie.utils.configure as config  # pyright: ignore[reportMissingImports]
 
@@ -49,47 +50,31 @@ def root_path():
     return root_dir
 
 
-def _resolve_tool(tool: str, env_var: str) -> str:
-    """Locate *tool*: ``$env_var``, then the MLIR-AIE bin directory, then PATH.
+def aiecc_path():
+    """Return the aiecc executable used by JIT compilation.
 
-    The env var comes first for consumers (e.g. IRON) that need to point at a
-    specific build without relying on PATH search order.
+    Resolution order: AIECC_PATH, then the MLIR-AIE bin directory, then PATH.
     """
-    override = os.environ.get(env_var)
+    override = os.environ.get("AIECC_PATH")
     if override:
         if not os.path.isfile(override):
             raise RuntimeError(
-                f"{env_var} is set to {override}, but no such file exists."
+                f"AIECC_PATH is set to {override}, but no such file exists."
             )
         return override
 
-    bundled = os.path.join(root_path(), "bin", _executable_name(tool))
+    bundled = os.path.join(root_path(), "bin", _executable_name("aiecc"))
     if os.path.isfile(bundled):
         return bundled
 
-    found = shutil.which(_executable_name(tool))
+    found = shutil.which(_executable_name("aiecc"))
     if found:
         return found
 
     raise RuntimeError(
-        f"Could not find {tool}. Resolves in the order of the {env_var} "
-        f"environment variable, MLIR-AIE bin directory, then PATH."
+        "Could not find aiecc. Resolves in the order of the AIECC_PATH "
+        "environment variable, MLIR-AIE bin directory, then PATH."
     )
-
-
-def aiecc_path():
-    """Return the aiecc executable used by JIT compilation."""
-    return _resolve_tool("aiecc", "AIECC_PATH")
-
-
-def aie_opt_path():
-    """Return the aie-opt executable used to lower a dynamic runtime sequence."""
-    return _resolve_tool("aie-opt", "AIE_OPT_PATH")
-
-
-def aie_translate_path():
-    """Return the aie-translate executable used to emit a dynamic TXN builder."""
-    return _resolve_tool("aie-translate", "AIE_TRANSLATE_PATH")
 
 
 def host_cxx_path():
@@ -157,18 +142,24 @@ def cxx_header_path():
 def runtime_header_path():
     """Return the include directory holding ``aie/Runtime/TxnEncoding.h``.
 
-    The dispatch bridge compiles generated host C++ that includes that header.
-    Unlike the device-kernel headers ``cxx_header_path()`` serves, it is not
-    staged into a build area's ``include/`` -- only into an install area -- so
-    fall back to the source tree, the way ``configure.py`` resolves
-    ``peano_install_dir``.
+    Installed headers (including wheel headers) always take precedence. Only a
+    CMake build tree may fall back to its source headers; installed packages do
+    not retain or consult paths from the machine that built them.
     """
     sentinel = os.path.join("aie", "Runtime", "TxnEncoding.h")
-    candidates = [os.path.join(root_path(), "include")]
-    source_dir = getattr(config, "aie_source_dir", "")
-    if source_dir:
-        candidates.append(os.path.join(source_dir, "include"))
+    root = Path(root_path())
+    candidates = [root / "include"]
+    if (candidates[0] / sentinel).is_file():
+        return str(candidates[0])
+    cache = root / "CMakeCache.txt"
+    if cache.is_file():
+        for line in cache.read_text().splitlines():
+            if line.startswith("CMAKE_HOME_DIRECTORY:INTERNAL="):
+                candidates.append(Path(line.split("=", 1)[1]) / "include")
+                break
     for include_dir in candidates:
         if os.path.isfile(os.path.join(include_dir, sentinel)):
-            return include_dir
-    raise RuntimeError(f"Could not find {sentinel} in any of: {', '.join(candidates)}.")
+            return str(include_dir)
+    raise RuntimeError(
+        f"Could not find {sentinel} in any of: {', '.join(map(str, candidates))}."
+    )

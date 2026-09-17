@@ -113,6 +113,39 @@ The `CachedXRTRuntime` caches XRT contexts to improve performance. The size of t
 export XRT_CONTEXT_CACHE_SIZE=1
 ```
 
+## IRON HRX Runtime Cache Size
+
+`HRX_EXE_CACHE_SIZE` bounds the loaded-executable cache in `CachedHRXRuntime`.
+The default is 6 on NPU1 and 16 on NPU2. Each executable holds a hardware
+context, so concurrent processes should use a smaller per-process share:
+
+```bash
+export HRX_EXE_CACHE_SIZE=2
+```
+
+Setting it to `0` disables executable caching. Live kernel handles still retain
+their executables; cache eviction cannot release a context that a handle uses.
+`DispatchTime` designs cache their xclbin image, not a per-call executable.
+
+## Dispatch-time scalar compilation
+
+`DispatchTime[T]` designs compile a host instruction-builder library alongside
+the device program. Lowering and translation run in-process using the compiler's
+registered DMA pipeline and C++ transaction emitter, rather than duplicating
+them in Python. Only the host C++ compilation launches an external process.
+A host C++17 compiler is required for both source and wheel installations.
+`CXX` selects its executable; otherwise IRON searches for `c++`,
+`g++`, then `clang++`, excluding Peano's device-toolchain directory.
+
+```bash
+CXX=/usr/bin/clang++ python my_design.py
+```
+
+The runtime headers are included in the MLIR-AIE installation. They are resolved
+from the installed package first; an uninstalled build can fall back to its
+configured source-tree headers. No compiler process is launched per dispatch:
+the compiled builder is called in-process with that call's scalar values.
+
 ## Host-runtime backend selection (`NPU_RUNTIME`)
 
 IRON dispatches designs through a host runtime that consumes the `aiecc`

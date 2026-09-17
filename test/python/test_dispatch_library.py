@@ -2,24 +2,24 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # RUN: %pytest %s
-"""Host-only rebuild tests: real compiler, ABI probe, manifest and loader."""
+"""Compiler-only integration tests using real MLIR and the host C++ compiler."""
 
-import ctypes
-import json
-import os
 from pathlib import Path
-from types import SimpleNamespace
 
 import numpy as np
 import pytest
-from aie.utils.compile.jit import _dispatch_compile, _manifest
-from aie.utils.compile.jit import compilabledesign as design_module
+from aie.dialects.aie import translate_npu_to_binary
+from aie.ir import Context, Module
+from aie.passmanager import PassManager
+from aie.utils.compile.jit import _manifest
 from aie.utils.compile.jit._dispatch_bridge import DispatchBridge
-from aie.utils.compile.jit._dispatch_compile import DispatchCompileError
+from aie.utils.compile.jit._dispatch_compile import (
+    DispatchCompileError,
+    _check_runtime_sequence_abi,
+    compile_dispatch_bridge,
+)
 from aie.utils.compile.jit.compilabledesign import CompilableDesign
 from aie.utils.compile.jit.markers import CompileTime, DispatchTime, In
-from aie.utils.compile.utils import _cleanup_failed_compilation
-from test_dispatch_bridge import _EXPORT_MACRO, _FIXTURE_ABI, _FIXTURE_BODY
 
 
 @pytest.mark.parametrize("compile_kwargs", [{}, {"bound": 8}])
@@ -38,294 +38,166 @@ def test_defaulted_compile_param_does_not_consume_dispatch_argument(compile_kwar
     assert scalars == {"scale": 7}
 
 
-@pytest.fixture
-def dispatch_design(tmp_path, monkeypatch, npu2_device):
-    """Mock only NPU compilation/translation; build and load real host libraries."""
+def _source(offset=0):
+    return f"""module {{
+      aie.device(npu1_1col) {{
+        aie.runtime_sequence @seq(%a: memref<8xi32>, %param: i32, %n: index) {{
+          %c0 = arith.constant 0 : index
+          %c1 = arith.constant 1 : index
+          scf.for %i = %c0 to %n step %c1 {{
+            aiex.npu.address_patch(%param : i32) {{addr = {119300 + offset} : ui32, arg_idx = 0 : i32}}
+          }}
+        }}
+      }}
+    }}"""
 
-    def generator(scale: DispatchTime[np.int32], n_tiles: DispatchTime[np.uintp]):
-        pass
 
-    state = {"offset": 0, "abi": "int32_t,size_t", "fail": False, "builds": 0}
-    includes = tmp_path / "include"
-    header = includes / "aie/Runtime/TxnEncoding.h"
-    header.parent.mkdir(parents=True)
-    header.write_text("#define DISPATCH_FIXTURE_OFFSET 0\n")
-    monkeypatch.setattr(
-        _dispatch_compile.config, "runtime_header_path", lambda: str(includes)
+def _compile(kernel_dir, source=None, *, fold=True):
+    (kernel_dir / "input_with_addresses.mlir").write_text(
+        _source() if source is None else source
     )
-    design = CompilableDesign(generator, use_cache=False)
-    monkeypatch.setattr(design_module, "NPU_CACHE_HOME", tmp_path)
-    monkeypatch.setattr(design, "_compute_cache_hash", lambda: "design")
-    monkeypatch.setattr(design, "_generate_mlir", lambda *args: None)
-    monkeypatch.setattr(design, "_resolve_fold_ddr_addr_offset", lambda: False)
-    monkeypatch.setattr(design_module, "compile_external_kernels", lambda *a, **k: None)
-    monkeypatch.setattr(design_module, "parse_dma_sizes", lambda *args: [])
-
-    def compile_mlir(**kwargs):
-        state["builds"] += 1
-        Path(kwargs["xclbin_path"]).touch()
-        if state["fail"]:
-            raise RuntimeError("NPU build failed")
-
-    def translate(_lowered, kernel_dir, _fold):
-        source = kernel_dir / "dispatch_gen.cpp"
-        body = _FIXTURE_BODY.replace(
-            "static_cast<uint32_t>(scale) + i",
-            f"static_cast<uint32_t>(scale) + i + {state['offset']} + DISPATCH_FIXTURE_OFFSET",
-        )
-        source.write_text(
-            '#include "aie/Runtime/TxnEncoding.h"\n'
-            + _EXPORT_MACRO
-            + _FIXTURE_ABI.replace("int32_t,size_t", state["abi"])
-            + body
-        )
-        return source
-
-    monkeypatch.setattr(design_module, "compile_mlir_module", compile_mlir)
-    monkeypatch.setattr(
-        _dispatch_compile, "_lower_dynamic_runtime_sequence", lambda path: path
+    return compile_dispatch_bridge(
+        kernel_dir, ["param", "n"], fold, [np.int32, np.uintp]
     )
-    monkeypatch.setattr(_dispatch_compile, "_translate_to_cpp", translate)
-    return design, state
 
 
-def _load(design):
-    path = design.get_dispatch_lib_path()
-    assert path is not None
-    return path, DispatchBridge(path, ["scale", "n_tiles"])
+def _words(bridge, n=2):
+    return bridge.generate({"param": 16, "n": n})
 
 
-def _words(bridge):
-    return list(bridge.generate({"scale": 10, "n_tiles": 2}))
+def test_generated_bridge_matches_static_binary(tmp_path):
+    path = _compile(tmp_path)
+    bridge = DispatchBridge(path, ["param", "n"])
+    first = _words(bridge, 1)
+    larger = _words(bridge, 3)
+    assert larger.size > first.size > 0
+    for n, words in [(1, first), (3, larger)]:
+        static = (
+            _source()
+            .replace(
+                "%a: memref<8xi32>, %param: i32, %n: index",
+                "%a: memref<8xi32>",
+            )
+            .replace(
+                "%c0 =",
+                f"%param = arith.constant 16 : i32\n%n = arith.constant {n} : index\n%c0 =",
+            )
+        )
+        with Context():
+            module = Module.parse(static)
+            PassManager.parse("builtin.module(aie-npu-dma-lowering)").run(
+                module.operation
+            )
+            expected = translate_npu_to_binary(module.operation)
+        np.testing.assert_array_equal(words, np.asarray(expected, dtype=np.uint32))
 
 
-def test_rebuild_keeps_old_and_new_generations_executable(dispatch_design):
-    design, state = dispatch_design
-    design.compile()
-    old_path, old_bridge = _load(design)
-    state["offset"] = 100
-    design.compile()
-    new_path, new_bridge = _load(design)
+def test_rebuild_preserves_loaded_and_unloaded_generations(tmp_path):
+    old_path = _compile(tmp_path)
+    old_bridge = DispatchBridge(old_path, ["param", "n"])
+    old_words = _words(old_bridge)
+    new_path = _compile(tmp_path, _source(offset=4))
     assert old_path != new_path
     assert old_path.name == f"dispatch-{_manifest._digest(old_path)}{old_path.suffix}"
-    assert _words(old_bridge) == [10, 11]
-    assert _words(new_bridge) == [110, 111]
-    assert old_path.is_file()
-    assert not list(new_path.parent.glob("dispatch.staging.*"))
-    design.use_cache = True
-    design.compile()
-    assert state["builds"] == 2
-    assert design.get_dispatch_lib_path() == new_path
-
-
-def test_runtime_header_change_invalidates_dispatch_cache(dispatch_design):
-    design, state = dispatch_design
-    design.use_cache = True
-    design.compile()
-    old_path, old_bridge = _load(design)
-    header = (
-        Path(_dispatch_compile.config.runtime_header_path())
-        / "aie/Runtime/TxnEncoding.h"
+    new_bridge = DispatchBridge(new_path, ["param", "n"])
+    assert not np.array_equal(old_words, _words(new_bridge))
+    np.testing.assert_array_equal(old_words, _words(old_bridge))
+    np.testing.assert_array_equal(
+        old_words, _words(DispatchBridge(old_path, ["param", "n"]))
     )
-    payload = json.loads((old_path.parent / _manifest.MANIFEST_NAME).read_text())
-    assert str(header) in [entry["path"] for entry in payload["inputs"]]
-    design.compile()
-    assert state["builds"] == 1
-    header.write_text("#define DISPATCH_FIXTURE_OFFSET 100\n")
-    assert not _manifest.is_valid(old_path.parent)
-    design.compile()
-    new_path, new_bridge = _load(design)
-    assert state["builds"] == 2
-    assert new_path != old_path
-    assert _words(old_bridge) == [10, 11]
-    assert _words(new_bridge) == [110, 111]
+    assert not list(tmp_path.glob("dispatch.staging.*"))
 
 
-def test_identical_rebuild_does_not_replace_mapped_generation(
-    dispatch_design, monkeypatch
-):
-    design, _ = dispatch_design
-    design.compile()
-    path, bridge = _load(design)
-    replace = Path.replace
-
-    def guarded_replace(source, target):
-        assert target != path, "must not replace an already published DLL"
-        return replace(source, target)
-
-    monkeypatch.setattr(Path, "replace", guarded_replace)
-    design.compile()
-    assert design.get_dispatch_lib_path() == path
-    assert _words(bridge) == [10, 11]
+def test_identical_rebuild_does_not_replace_mapped_generation(tmp_path):
+    path = _compile(tmp_path)
+    bridge = DispatchBridge(path, ["param", "n"])
+    before = path.stat()
+    assert _compile(tmp_path) == path
+    after = path.stat()
+    assert (before.st_ino, before.st_mtime_ns) == (after.st_ino, after.st_mtime_ns)
+    assert _words(bridge).size > 0
 
 
-@pytest.mark.parametrize("failure", ["abi", "build"])
-def test_failed_rebuild_preserves_loaded_generation(dispatch_design, failure):
-    design, state = dispatch_design
-    design.compile()
-    path, bridge = _load(design)
-    if failure == "abi":
-        state["abi"] = "int64_t,int32_t"
-    else:
-        state["fail"] = True
-    with pytest.raises(RuntimeError):
-        design.compile()
-    assert path.is_file()
-    assert _words(bridge) == [10, 11]
-    assert design.get_dispatch_lib_path() is None
-    assert not list(path.parent.glob("dispatch.staging.*"))
-    state.update(abi="int32_t,size_t", fail=False, offset=20)
-    design.compile()
-    _, rebuilt = _load(design)
-    assert _words(rebuilt) == [30, 31]
+def test_abi_failure_preserves_loaded_generation(tmp_path):
+    path = _compile(tmp_path)
+    bridge = DispatchBridge(path, ["param", "n"])
+    expected = _words(bridge)
+    with pytest.raises(DispatchCompileError, match="declared as int32"):
+        _compile(
+            tmp_path,
+            _source()
+            .replace("%param: i32", "%param: i64")
+            .replace("%param : i32", "%param : i64"),
+        )
+    np.testing.assert_array_equal(expected, _words(bridge))
+    assert not list(tmp_path.glob("dispatch.staging.*"))
 
 
-def test_abi_probe_never_loads_library_in_compiler(dispatch_design, monkeypatch):
-    design, _ = dispatch_design
+def test_fold_ddr_addr_offset_reaches_translation(tmp_path):
+    folded = DispatchBridge(_compile(tmp_path, fold=True), ["param", "n"])
+    unfolded = DispatchBridge(_compile(tmp_path, fold=False), ["param", "n"])
+    assert not np.array_equal(_words(folded), _words(unfolded))
 
-    def forbidden(*args, **kwargs):
-        pytest.fail("compiler must not load the library")
 
-    monkeypatch.setattr(ctypes, "CDLL", forbidden)
-    design.compile()
-    assert design.get_dispatch_lib_path() is not None
+def test_registered_pipeline_lowers_dynamic_dma_tasks(tmp_path):
+    source = (
+        Path(__file__).parents[1] / "Targets/NPU/aie_npu_to_cpp_rolled_loop.mlir"
+    ).read_text()
+    (tmp_path / "input_with_addresses.mlir").write_text(source)
+    path = compile_dispatch_bridge(tmp_path, ["n"], True, [np.uintp])
+    lowered = (tmp_path / "dispatch_lowered.mlir").read_text()
+    assert "dma_configure_task" not in lowered
+    assert "aiex.npu.blockwrite32" in lowered
+    assert "scf.for" in lowered
+    bridge = DispatchBridge(path, ["n"])
+    assert bridge.generate({"n": 3}).size > bridge.generate({"n": 1}).size
+
+
+@pytest.mark.parametrize("count", [0, 2])
+def test_exactly_one_runtime_sequence_required(count):
+    sequences = "\n".join(
+        f"aie.runtime_sequence @seq{i}(%n: index) {{}}" for i in range(count)
+    )
+    with Context():
+        module = Module.parse(f"module {{ aie.device(npu1_1col) {{ {sequences} }} }}")
+        with pytest.raises(DispatchCompileError, match="exactly one runtime_sequence"):
+            _check_runtime_sequence_abi(module, ["n"], [np.uintp])
+
+
+@pytest.mark.parametrize("scalar_type", ["f32", "i7", "vector<4xi32>"])
+def test_unsupported_runtime_scalar_rejected(scalar_type):
+    with Context():
+        module = Module.parse(
+            f"module {{ aie.device(npu1_1col) {{ aie.runtime_sequence @seq(%p: {scalar_type}) {{}} }} }}"
+        )
+        with pytest.raises(DispatchCompileError, match="Unsupported dispatch scalar"):
+            _check_runtime_sequence_abi(module, ["p"], [np.int32])
 
 
 @pytest.mark.parametrize(
-    "manifest",
+    "arguments,names,types",
     [
-        None,
-        "{",
-        "[]",
-        "{}",
-        '{"version": 1, "dispatch_library": null}',
-        '{"version": 1, "dispatch_library": "dispatch.so"}',
-        json.dumps(
-            {"version": 1, "dispatch_library": "../dispatch-" + "a" * 64 + ".so"}
-        ),
-        json.dumps({"version": 1, "dispatch_library": "dispatch-" + "a" * 64 + ".so"}),
+        ("%a: memref<8xi32>", [], []),
+        ("%a: memref<*xi32>, %p: i32", ["p"], [np.int32]),
+        ("%p: i32, %a: memref<8xi32>, %n: index", ["p", "n"], [np.int32, np.uintp]),
+        ("%p: i32, %n: index", ["p", "n"], [np.int32, np.uintp]),
     ],
 )
-def test_invalid_manifest_rebuilds_dispatch_companion(dispatch_design, manifest):
-    design, state = dispatch_design
-    design.compile()
-    path, bridge = _load(design)
-    manifest_path = path.parent / _manifest.MANIFEST_NAME
-    if manifest is None:
-        manifest_path.unlink()
-    else:
-        manifest_path.write_text(manifest)
-    assert design.get_dispatch_lib_path() is None
-    design.use_cache = True
-    state["offset"] = 20
-    design.compile()
-    assert state["builds"] == 2
-    _, rebuilt = _load(design)
-    assert _words(bridge) == [10, 11]
-    assert _words(rebuilt) == [30, 31]
+def test_scalar_and_memref_argument_order(arguments, names, types):
+    with Context():
+        module = Module.parse(
+            f"module {{ aie.device(npu1_1col) {{ aie.runtime_sequence @seq({arguments}) {{}} }} }}"
+        )
+        _check_runtime_sequence_abi(module, names, types)
 
 
-def test_cleanup_preserves_mapped_and_not_yet_loaded_generations(
-    dispatch_design, monkeypatch
-):
-    design, state = dispatch_design
-    design.compile()
-    old_path = design.get_dispatch_lib_path()
-    state["offset"] = 20
-    design.compile()
-    path, bridge = _load(design)
-    remove = os.remove
+def test_translation_binding_defaults_and_failure():
+    from aie.dialects.aie import translate_npu_to_cpp
 
-    def guarded_remove(name):
-        assert Path(name) not in (path, old_path), "mapped DLL deletion attempted"
-        return remove(name)
-
-    monkeypatch.setattr(os, "remove", guarded_remove)
-    _cleanup_failed_compilation(path.parent)
-    assert old_path is not None
-    assert _words(DispatchBridge(old_path, ["scale", "n_tiles"])) == [10, 11]
-    assert _words(bridge) == [30, 31]
-    assert not (path.parent / _manifest.MANIFEST_NAME).exists()
-
-
-def test_cleanup_does_not_swallow_io_errors(tmp_path, monkeypatch):
-    (tmp_path / "partial.o").touch()
-
-    def fail_remove(name):
-        raise PermissionError("unrelated permissions failure")
-
-    monkeypatch.setattr(os, "remove", fail_remove)
-    with pytest.raises(PermissionError, match="unrelated permissions failure"):
-        _cleanup_failed_compilation(tmp_path)
-
-
-@pytest.mark.parametrize("incomplete", ["chess", "no_depfile", "depfile", "digest"])
-def test_incomplete_manifest_keeps_dispatch_output(tmp_path, monkeypatch, incomplete):
-    name = "dispatch-" + "a" * 64 + ".so"
-    (tmp_path / name).touch()
-    source = tmp_path / "source.cc"
-    source.touch()
-
-    def unreadable(*args):
-        raise OSError("unreadable")
-
-    if incomplete == "depfile":
-        (tmp_path / "source.d").touch()
-        monkeypatch.setattr(_manifest, "_parse_depfile", unreadable)
-    elif incomplete == "digest":
-        monkeypatch.setattr(_manifest, "_entry", unreadable)
-    _manifest.record(
-        tmp_path,
-        [SimpleNamespace(_source_file=source)] if incomplete == "no_depfile" else [],
-        [source],
-        used_chess=incomplete == "chess",
-        dispatch_library=name,
-    )
-    payload = json.loads((tmp_path / _manifest.MANIFEST_NAME).read_text())
-    assert payload["complete"] is False
-    assert _manifest.resolve_dispatch_library(tmp_path) == tmp_path / name
-    assert _manifest.is_valid(tmp_path)
-
-
-def test_malformed_abi_probe_failure_is_actionable(dispatch_design):
-    design, state = dispatch_design
-    state["abi"] = "int32_t,,int64_t"
-    with pytest.raises(DispatchCompileError, match="malformed dispatch ABI"):
-        design.compile()
-
-
-def test_partial_host_library_is_removed_after_compiler_failure(
-    dispatch_design, monkeypatch
-):
-    design, _ = dispatch_design
-
-    def failed_compile(source, output):
-        output.write_text("partial library")
-        raise DispatchCompileError("host compiler failed")
-
-    monkeypatch.setattr(_dispatch_compile, "_compile_so", failed_compile)
-    with pytest.raises(DispatchCompileError, match="host compiler failed"):
-        design.compile()
-    assert not list(design_module.NPU_CACHE_HOME.rglob("dispatch.staging.*"))
-
-
-def test_failed_manifest_publication_preserves_loaded_generation(
-    dispatch_design, monkeypatch
-):
-    design, state = dispatch_design
-    design.compile()
-    path, bridge = _load(design)
-    state["offset"] = 20
-    replace = os.replace
-
-    def failed_replace(source, target):
-        if Path(target).name == _manifest.MANIFEST_NAME:
-            raise OSError("manifest publication failed")
-        return replace(source, target)
-
-    monkeypatch.setattr(_manifest.os, "replace", failed_replace)
-    with pytest.raises(OSError, match="manifest publication failed"):
-        design.compile()
-    assert _words(bridge) == [10, 11]
-    assert path.is_file()
-    assert design.get_dispatch_lib_path() is None
+    with Context():
+        cpp = translate_npu_to_cpp(Module.parse(_source()).operation)
+        assert "dispatch_generate" not in cpp
+        with pytest.raises(RuntimeError, match="translate"):
+            translate_npu_to_cpp(
+                Module.parse("module {}").operation, emit_dispatch_shim=True
+            )

@@ -11,15 +11,15 @@ Tests that exercise compile() or actual NPU kernel execution live in
 test/python/npu/test_iron_jit_e2e.py (requires a host runtime backend).
 """
 
-import pytest
-
 from unittest.mock import MagicMock, patch
 
-from aie.utils.compile.jit.compilabledesign import CompilableDesign
-from aie.utils.compile.jit.markers import CompileTime, In, InOut, Out
-from aie.utils.callabledesign import CallableDesign
-from aie.utils.jit import _JIT_CONFIG_KEYS, jit
+import numpy as np
+import pytest
 from aie.iron.kernel import ExternalFunction, Kernel
+from aie.utils.callabledesign import CallableDesign
+from aie.utils.compile.jit.compilabledesign import CompilableDesign
+from aie.utils.compile.jit.markers import CompileTime, DispatchTime, In, InOut, Out
+from aie.utils.jit import _JIT_CONFIG_KEYS, jit
 
 # ---------------------------------------------------------------------------
 # CallableDesign construction
@@ -38,6 +38,24 @@ def test_repr_contains_callable_design():
 
     cd = CallableDesign(gen, compile_kwargs={"M": 1})
     assert "CallableDesign" in repr(cd)
+
+
+def test_jit_explicit_dispatch_specialization():
+    def gen(a: In, M: DispatchTime[np.int32] = 8):
+        pass
+
+    dynamic = jit(gen)
+    static = jit(gen, M=4)
+    assert dynamic.compilable.dispatch_params == ["M"]
+    assert static.compilable.dispatch_params == []
+    assert static.compilable.compile_kwargs == {"M": 4}
+    assert static.specialize(M=6).compilable.compile_kwargs == {"M": 6}
+    assert static.specialize(use_cache=False).compilable.bound_dispatch_params == ("M",)
+    assert dynamic._extract_compile_kwargs({"M": 7}) == ({}, {"M": 7}, {})
+    with pytest.raises(TypeError, match="specialized.*specialize"):
+        static._extract_compile_kwargs({"M": 7})
+    with pytest.raises(TypeError, match="specialized.*specialize"):
+        static.as_mlir(None, M=7)
 
 
 # ---------------------------------------------------------------------------

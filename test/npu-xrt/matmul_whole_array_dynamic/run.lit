@@ -1,0 +1,7 @@
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+# REQUIRES: peano, xrt_python_bindings || hrx_python_bindings
+# RUN: %run_on_npu1_xrt% %pytest %S/test_whole_array_dispatch.py
+# RUN: %run_on_npu2_xrt% %pytest %S/test_whole_array_dispatch.py
+# RUN: %run_on_npu2_hrx% %pytest %S/test_whole_array_dispatch.py

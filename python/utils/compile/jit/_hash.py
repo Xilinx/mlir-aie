@@ -185,6 +185,37 @@ def _compute_recipe_hash(
     return h.hexdigest()
 
 
+def _tool_identity(name: str, resolve: Callable[[], str | Path]) -> str:
+    """Identify a resolved compiler component without probing an executable."""
+    try:
+        path = Path(resolve()).resolve()
+        stat = path.stat()
+        return f"{path}:{stat.st_mtime_ns}:{stat.st_size}"
+    except (ImportError, AttributeError, OSError, RuntimeError) as exc:
+        logger.warning("_compute_artifact_hash: %s absent (%s)", name, exc)
+        return "absent"
+
+
+def _translation_bindings_path() -> Path:
+    import aie._mlir_libs as _mlir_libs
+
+    package_file = _mlir_libs.__file__
+    if package_file is None:
+        raise RuntimeError("Cannot locate the native bindings package")
+    # _aie and the pass manager link this common CAPI library, which contains
+    # the actual lowering/translation implementation in both builds and wheels.
+    libraries = sorted(
+        {
+            path.resolve()
+            for path in Path(package_file).parent.glob("*AIEAggregateCAPI*")
+            if path.suffix in (".so", ".dylib", ".dll")
+        }
+    )
+    if len(libraries) != 1:
+        raise RuntimeError("Cannot uniquely locate AIEAggregateCAPI")
+    return libraries[0]
+
+
 def _compute_artifact_hash(
     generator: Callable | Path,
     source_files: list[Path] | tuple[Path, ...],
@@ -204,7 +235,7 @@ def _compute_artifact_hash(
     silent default) so the cache key and the compilation can never disagree.
 
     ``has_dispatch_params`` additionally hashes the dynamic-dispatch toolchain
-    (aie-opt/aie-translate/host C++ compiler) mtimes, so an upgrade to any of
+    (in-process translation bindings/host C++ compiler), so an upgrade to any of
     them invalidates a design's ``dispatch.so`` the same way an upgraded Peano
     invalidates a design's kernel objects. A no-op for the overwhelming
     majority of (non-DispatchTime[T]) designs.
@@ -288,27 +319,15 @@ def _compute_artifact_hash(
         )
 
         if has_dispatch_params:
-            for tool_name, path_fn in (
-                ("aie_opt", "aie_opt_path"),
-                ("aie_translate", "aie_translate_path"),
-                ("host_cxx", "host_cxx_path"),
-            ):
-                try:
-                    from aie.utils import config as _config
+            from aie._mlir_libs import _aie
+            from aie.utils import config as _config
 
-                    tool_mtime = str(Path(getattr(_config, path_fn)()).stat().st_mtime)
-                except (
-                    ImportError,
-                    AttributeError,
-                    FileNotFoundError,
-                    OSError,
-                    RuntimeError,
-                ) as exc:
-                    logger.warning(
-                        "_compute_artifact_hash: %s absent (%s)", tool_name, exc
-                    )
-                    tool_mtime = "absent"
-                h.update(f"{tool_name}_mtime={tool_mtime}".encode())
+            for tool_name, resolve in (
+                ("host_cxx", _config.host_cxx_path),
+                ("aie_python", lambda: _aie.__file__),
+                ("aie_translation", _translation_bindings_path),
+            ):
+                h.update(f"{tool_name}={_tool_identity(tool_name, resolve)}".encode())
 
     return h.hexdigest()
 

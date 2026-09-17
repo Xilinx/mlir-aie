@@ -123,7 +123,7 @@ class NPUKernel:
         """Get the compiled design's true host-buffer count.
 
         Returns:
-            int | None: The number of ``aie.runtime_sequence`` operands the
+            int | None: The number of ``aie.runtime_sequence`` memref operands the
             design was compiled with (including any appended trace buffer), or
             ``None`` if it could not be determined.
         """
@@ -148,12 +148,23 @@ class NPUKernel:
         """
         return self._dispatch_lib_path
 
-    def _get_dispatch_bridge(self):
-        """Return this kernel's ``DispatchBridge``, constructing it once.
-
-        The call ABI comes from the ``.so``'s own ``dispatch_abi()`` export, so
-        nothing here parses generated C++ or a file beside it.
-        """
+    def _generate_dispatch_insts(self, dispatch_scalars: dict | None):
+        """Validate this call's scalars and generate its instruction stream."""
+        dispatch_scalars = dispatch_scalars or {}
+        if not self._dispatch_params:
+            if dispatch_scalars:
+                raise HostRuntimeError(
+                    f"got dispatch scalar(s) {list(dispatch_scalars)} but this "
+                    "compiled design declares no DispatchTime[T] parameters"
+                )
+            return None
+        missing = set(self._dispatch_params) - set(dispatch_scalars)
+        extra = set(dispatch_scalars) - set(self._dispatch_params)
+        if missing or extra:
+            raise HostRuntimeError(
+                f"dispatch scalar mismatch: missing={missing or None} "
+                f"extra={extra or None}; design expects exactly {self._dispatch_params}"
+            )
         if self._dispatch_bridge is None:
             if self._dispatch_lib_path is None:
                 raise HostRuntimeError(
@@ -165,7 +176,7 @@ class NPUKernel:
             self._dispatch_bridge = DispatchBridge(
                 Path(self._dispatch_lib_path), self._dispatch_params
             )
-        return self._dispatch_bridge
+        return self._dispatch_bridge.generate(dispatch_scalars)
 
     # Blocking call.
     def __call__(self, *args, **kwargs):

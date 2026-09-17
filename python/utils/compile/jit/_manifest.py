@@ -70,7 +70,7 @@ import logging
 import os
 from pathlib import Path
 
-from aie.utils.compile.utils import _is_dispatch_library_name
+from aie.utils.compile.utils import _is_dispatch_library_name, _staged
 
 logger = logging.getLogger(__name__)
 
@@ -237,9 +237,8 @@ def _write(
     payload = {"version": _VERSION, "complete": complete, "inputs": entries}
     if dispatch_library is not None:
         payload["dispatch_library"] = dispatch_library
-    tmp = Path(kernel_dir) / (MANIFEST_NAME + ".tmp")
-    tmp.write_text(json.dumps(payload))
-    os.replace(tmp, Path(kernel_dir) / MANIFEST_NAME)
+    with _staged(str(Path(kernel_dir) / MANIFEST_NAME)) as tmp:
+        Path(tmp).write_text(json.dumps(payload))
 
 
 def write_for_test(kernel_dir, inputs) -> None:

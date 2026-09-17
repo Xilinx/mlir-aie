@@ -90,7 +90,22 @@ constants. These are re-exported into `iron` from `aie.utils`.
 | `iron.get_compile_arg` | function | Dynamically inject a compile-time argument (advanced). |
 | `iron.In` / `iron.Out` / `iron.InOut` | markers | Type-annotation markers for design inputs/outputs. |
 | `iron.CompileTime` | marker | Type-annotation marker for a compile-time constant argument. |
-| `iron.DispatchTime` | marker | Type-annotation marker for a runtime scalar argument. Unlike `iron.CompileTime`, changing its value does not recompile — the instruction stream is rebuilt per call. Requires cache-managed output paths (`xclbin_path=inst_path=None`); explicit output paths and `full_elf=True` are not supported. |
+| `iron.DispatchTime` | marker | Type-annotation marker for a NumPy integer scalar argument. Changing its value between calls reuses the compiled design and rebuilds only the instruction stream. Explicit prebinding specializes it to a compile-time constant. |
+
+For a generator with `M: iron.DispatchTime[np.int32]`, `iron.jit(generator)`
+keeps `M` dynamic, including when the signature supplies a default.
+`iron.jit(generator, M=256)` or `design.specialize(M=256)` instead fixes `M`
+for that specialization and includes the constant in its cache key. A call
+cannot override a specialized parameter; create another specialization instead.
+This lets the same generator express static and dynamic runtime sequences.
+Tensor capacities and worker tiling remain compile-time configuration.
+
+Dynamic designs accept `compile(xclbin_path=...)` and an optional `pdi_path`.
+Their dispatch library resides in the adjacent `<xclbin stem>.prj` directory;
+use `CompilableDesign.get_dispatch_lib_path()` to locate it and retain it with
+the xclbin. There is no static instruction stream, so `inst_path`, `elf_path`,
+and `full_elf=True` are unsupported while any parameters remain dynamic.
+The default compilation mode manages these artifacts in the JIT cache.
 
 See the [Programming Guide](../programming_guide/README.md) for worked
 examples of `@iron.jit`.
