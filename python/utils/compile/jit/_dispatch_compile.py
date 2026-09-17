@@ -27,7 +27,9 @@ from aie.ir import (  # pyright: ignore[reportMissingImports]
     UnrankedMemRefType,  # pyright: ignore[reportAttributeAccessIssue]
     WalkResult,  # pyright: ignore[reportAttributeAccessIssue]
 )
-from aie.passmanager import PassManager  # pyright: ignore[reportAttributeAccessIssue]
+from aie.passmanager import (  # pyright: ignore[reportMissingImports]
+    PassManager,  # pyright: ignore[reportAttributeAccessIssue]
+)
 from aie.utils import config
 from aie.utils.compile.utils import SHARED_LIB_SUFFIX, host_shared_lib_cmd
 

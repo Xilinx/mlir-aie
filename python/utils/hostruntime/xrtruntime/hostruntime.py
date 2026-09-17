@@ -315,6 +315,7 @@ class XRTHostRuntime(HostRuntime):
                     kernel_handle.insts, pyxrt.module
                 )
                 if not is_module:
+                    assert kernel_handle.insts is not None
                     insts_bytes = kernel_handle.insts.nbytes
                     if kernel_handle.insts_bo:
                         insts_bo = kernel_handle.insts_bo
