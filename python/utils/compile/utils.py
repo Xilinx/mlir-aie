@@ -478,7 +478,7 @@ def compile_mlir_module(
             agreement and raises on a mixed peano/chess design.
         device: Optional IRON device (or ``AIEDevice`` enum) used to pick
             the target architecture (aie2 vs aie2p) for any
-            :class:`aie.iron.kernel.ExternalFunction` instances that have
+            `aie.iron.kernel.ExternalFunction` instances that have
             a ``source_file=`` and haven't been compiled yet.  When set
             and ``work_dir`` is provided, those externals are auto-built
             into ``work_dir`` before aiecc runs (matching the @iron.jit

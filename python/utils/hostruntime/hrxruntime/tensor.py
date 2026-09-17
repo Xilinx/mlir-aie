@@ -27,10 +27,10 @@ class HRXTensor(NpuTensor):
     """Tensor backed by an HRX persistent-mapped device buffer.
 
     Each tensor allocates its buffer through the process-wide
-    :class:`~.context.HRXContext`. Buffers are therefore isolated per process:
+    `.context.HRXContext`. Buffers are therefore isolated per process:
     separate processes (including different users) never share buffer handles,
     and the amdxdna driver isolates each process's device memory. See
-    :class:`~.context.HRXContext` for the full concurrency / multi-tenancy model
+    `.context.HRXContext` for the full concurrency / multi-tenancy model
     (process isolation, the finite system-wide hardware-context pool, and the
     single-threaded-dispatch expectation within a process).
     """

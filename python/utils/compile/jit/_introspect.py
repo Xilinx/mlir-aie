@@ -9,8 +9,8 @@ Classifies generator parameters into ``CompileTime[T]`` / tensor / scalar
 buckets. Carved out of ``compilabledesign.py`` to keep the main file focused on
 the
 ``CompilableDesign`` class itself.  The public surface is
-:func:`split_params`; the rest is implementation detail behind
-:func:`_introspect_generator`'s ``lru_cache``.
+`split_params`; the rest is implementation detail behind
+`_introspect_generator`'s ``lru_cache``.
 """
 
 from __future__ import annotations

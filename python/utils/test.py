@@ -5,8 +5,8 @@
 #
 """Host-harness helpers shared by the ``test.py``-style example drivers.
 
-CLI flag wiring lives in :mod:`aie.utils.hostruntime.argparse` —
-specifically :func:`add_runtime_args`.  This module only exposes the
+CLI flag wiring lives in `aie.utils.hostruntime.argparse` —
+specifically `add_runtime_args`.  This module only exposes the
 NPU-kernel construction helper.
 """
 
@@ -14,12 +14,12 @@ from aie.utils import NPUKernel, TraceConfig
 
 
 def create_npu_kernel(opts):
-    """Build an :class:`NPUKernel` (with optional trace config) from parsed CLI opts.
+    """Build an `NPUKernel` (with optional trace config) from parsed CLI opts.
 
     Reads ``opts.xclbin``, ``opts.instr``, ``opts.kernel``, and the
     optional trace fields (``trace_size``, ``trace_file``,
     ``reuse_output_buffer``, ``enable_ctrl_pkts``) — all produced by
-    :func:`aie.utils.hostruntime.argparse.add_runtime_args`.
+    `aie.utils.hostruntime.argparse.add_runtime_args`.
 
     Stashes the resulting kernel on ``opts.npu_kernel`` and returns
     ``opts`` for chaining.
