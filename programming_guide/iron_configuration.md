@@ -269,6 +269,25 @@ NPU_RUNTIME=hsa ROCM_PATH=/opt/rocm-7.0 IRON_HSA_DEVICE=npu2 \
   HSA_EXE_CACHE_SIZE=8 IRON_HSA_TIMEOUT=30 python my_script.py
 ```
 
+### HSA hardware tests
+
+On a provisioned HSA NPU host, set `AIE_HSA_NPU=npu1` or `npu2` when invoking
+lit. This opt-in enables the `hsa_npu` feature and HSA dispatch tests without
+requiring XRT discovery. It does not install ROCm or override HSA device
+detection. Finding a ROCm library alone does not enable hardware tests on
+GPU-only hosts.
+
+```bash
+AIE_HSA_NPU=npu2 llvm-lit -sv build/test/python/npu/test_dispatch_time_scalar.py \
+  build/test/python/npu/test_hsa_dispatch.py
+```
+
+The HSA RUN lines select `NPU_RUNTIME=hsa`; lit forwards `ROCM_PATH`,
+`IRON_HSA_DEVICE`, and `IRON_HSA_TIMEOUT` to the test processes. The ownership
+tests observe real allocation/free calls, including a rejected enqueue after
+instruction allocation, without replacing the runtime. They do not deliberately
+wedge the device to test failures after publication.
+
 ### Limitations
 
 - **Trace capture is not supported.** A design with a `trace_config` is rejected

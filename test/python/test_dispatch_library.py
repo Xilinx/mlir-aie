@@ -148,7 +148,7 @@ def test_registered_pipeline_lowers_dynamic_dma_tasks(tmp_path):
     path = compile_dispatch_bridge(tmp_path, ["n"], True, [np.uintp])
     lowered = (tmp_path / "dispatch_lowered.mlir").read_text()
     assert "dma_configure_task" not in lowered
-    assert "aiex.npu.blockwrite32" in lowered
+    assert "aiex.npu.blockwrite_values" in lowered
     assert "scf.for" in lowered
     bridge = DispatchBridge(path, ["n"])
     assert bridge.generate({"n": 3}).size > bridge.generate({"n": 1}).size

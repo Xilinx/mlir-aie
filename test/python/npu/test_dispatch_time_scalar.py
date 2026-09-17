@@ -6,10 +6,8 @@
 # RUN: %run_on_npu1_xrt% %pytest %s
 # RUN: %run_on_npu2_xrt% %pytest %s
 # RUN: %run_on_npu2_hrx% %pytest %s
-# REQUIRES: xrt_python_bindings || hrx_python_bindings
-
-# Direct HSA run on compatible hardware:
-# NPU_RUNTIME=hsa pytest test/python/npu/test_dispatch_time_scalar.py
+# RUN: %run_on_npu_hsa% %pytest %s
+# REQUIRES: xrt_python_bindings || hrx_python_bindings || hsa_npu
 
 # End-to-end DispatchTime[T]: one compiled design, called with different
 # runtime scalar values. The rolled tile loop produces different instruction
