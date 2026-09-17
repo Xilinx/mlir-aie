@@ -7,9 +7,8 @@
 from pathlib import Path
 from types import SimpleNamespace
 
-import pytest
-
 import aie.utils.compile.utils as compile_utils
+import pytest
 
 
 @pytest.fixture
@@ -62,6 +61,7 @@ def func():
         "missing",
         "unprefixed",
         "legacy",
+        "versionless",
         "prefixed",
         "corrupt",
         "invalid-encoding",
@@ -92,6 +92,12 @@ def test_untrusted_cache_is_recompiled(tmp_path, tools, func, cache_state, sourc
     elif cache_state == "stale":
         compile_utils._write_symbol_prefix_stamp(str(obj), "op0_")
         obj.write_text("op0_add_one\n")
+    elif cache_state == "versionless":
+        stamp.write_text(
+            '{"prefix": "op0_", "object_sha256": "'
+            + compile_utils._sha256_file(str(obj))
+            + '"}'
+        )
     elif cache_state == "wrong-prefix":
         compile_utils._write_symbol_prefix_stamp(str(obj), "other_")
         Path(compile_utils._symbol_prefix_stamp_path(str(obj), "other_")).replace(stamp)

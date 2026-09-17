@@ -32,6 +32,7 @@ logger = logging.getLogger(__name__)
 _UMASK = os.umask(0o022)
 os.umask(_UMASK)
 _DEFAULT_FILE_MODE = 0o666 & ~_UMASK
+_SYMBOL_PREFIX_STAMP_VERSION = 1
 
 
 def resolve_target_arch(device=None) -> str:
@@ -650,6 +651,7 @@ def _has_current_symbol_prefix_stamp(object_path: str, prefix: str) -> bool:
     except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         return False
     return state == {
+        "version": _SYMBOL_PREFIX_STAMP_VERSION,
         "prefix": prefix,
         "object_sha256": object_sha256,
     }
@@ -662,6 +664,7 @@ def _write_symbol_prefix_stamp(object_path: str, prefix: str) -> None:
         with open(tmp, "w") as f:
             json.dump(
                 {
+                    "version": _SYMBOL_PREFIX_STAMP_VERSION,
                     "prefix": prefix,
                     "object_sha256": _sha256_file(object_path),
                 },
