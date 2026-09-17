@@ -8,6 +8,10 @@
 // RUN: aie-opt --aie-unroll-runtime-sequence-loops --canonicalize \
 // RUN:         --aie-assign-runtime-sequence-bd-ids='enforce-queue-depth=false' \
 // RUN:         --verify-diagnostics --split-input-file %s
+// RUN: aie-opt --aie-unroll-runtime-sequence-loops --canonicalize \
+// RUN:         --aie-assign-runtime-sequence-bd-ids='enforce-queue-depth=false' \
+// RUN:         --aie-dma-tasks-to-npu --aie-dma-to-npu='enforce-queue-depth=false' \
+// RUN:         --verify-diagnostics --split-input-file %s
 
 // A DMA channel's task queue holds only getDmaTaskQueueDepth() entries (4 on
 // AIE2, matching aie-rt's XAIE_DMA_MAX_QUEUE_SIZE). Pushing onto a full queue

@@ -441,11 +441,9 @@ struct AIELowerDynamicBDPoolPass
 
   // Guard pushes that can land on a full task queue.
   //
-  // This is the only place that can. A sequence lowered here keeps its scf.for
-  // rolled, so aie-assign-runtime-sequence-bd-ids skips the whole sequence --
-  // not just its loops -- and aie-dma-to-npu only ever sees npu.dma_memcpy_nd,
-  // never these starts. That covers the straight-line parts too, which is why
-  // this walks the sequence rather than just its loops.
+  // A sequence lowered here keeps its scf.for rolled, so the static allocator
+  // skips it. Guard while task metadata is available; aie-dma-to-npu later
+  // checks the combined pushes from tasks, memcpy and channel rearm operations.
   void guardQueueDepth(AIE::RuntimeSequenceOp seq) {
     const AIE::AIETargetModel &tm =
         seq->getParentOfType<AIE::DeviceOp>().getTargetModel();

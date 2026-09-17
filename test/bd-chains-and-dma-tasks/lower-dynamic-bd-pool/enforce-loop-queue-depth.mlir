@@ -7,6 +7,9 @@
 // RUN:   | FileCheck %s
 // RUN: aie-opt --aie-lower-dynamic-bd-pool='enforce-queue-depth=false' \
 // RUN:   --verify-diagnostics --split-input-file %s
+// RUN: aie-opt --aie-lower-dynamic-bd-pool='enforce-queue-depth=false' \
+// RUN:   --aie-dma-tasks-to-npu --aie-dma-to-npu='enforce-queue-depth=false' \
+// RUN:   --verify-diagnostics --split-input-file %s
 
 // This pass guards task starts while their SSA handles are still available.
 // The shared queue analysis explores loop states until they repeat, which

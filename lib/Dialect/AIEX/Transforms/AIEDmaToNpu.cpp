@@ -924,6 +924,7 @@ static void checkQueueDepth(AIE::DeviceOp device, bool enforceQueueDepth) {
     DmaQueueModel queue;
     guardSequenceQueueDepth(seq.getBody(), queue, tm, enforceQueueDepth,
                             effectOf);
+    seq->removeAttr(queueDiagnosedAttr);
   });
 }
 

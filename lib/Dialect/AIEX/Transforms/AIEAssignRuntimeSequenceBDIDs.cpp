@@ -66,6 +66,31 @@ struct AIEAssignRuntimeSequenceBDIDsPass
 
   llvm::DenseMap<AIE::TileOp, BdIdGenerator> gens;
 
+  static std::optional<DmaQueueModel::ChannelKey>
+  otherTokenChannel(Operation *op) {
+    if (auto push = dyn_cast<NpuPushQueueOp>(op)) {
+      if (push.getIssueToken())
+        return DmaQueueModel::ChannelKey{static_cast<int>(push.getColumn()),
+                                         static_cast<int>(push.getRow()),
+                                         static_cast<int>(push.getDirection()),
+                                         static_cast<int>(push.getChannel())};
+    } else if (auto copy = dyn_cast<NpuDmaMemcpyNdOp>(op)) {
+      auto allocation = AIE::ShimDMAAllocationOp::getForSymbol(
+          op->getParentOfType<AIE::DeviceOp>(),
+          copy.getMetadata().getRootReference());
+      if (allocation &&
+          (copy.getIssueToken() ||
+           allocation.getChannelDir() == AIE::DMAChannelDir::S2MM)) {
+        if (AIE::TileOp tile = allocation.getTileOp())
+          return DmaQueueModel::ChannelKey{
+              tile.getCol(), tile.getRow(),
+              static_cast<int>(allocation.getChannelDir()),
+              static_cast<int>(allocation.getChannelIndex())};
+      }
+    }
+    return std::nullopt;
+  }
+
   // Mark every BD id a static DMA already took on `tile`, so this allocator
   // doesn't hand the same id to a runtime-sequence task.
   static void seedFromStaticBds(AIE::DeviceOp device, AIE::TileOp tile,
@@ -173,6 +198,9 @@ struct AIEAssignRuntimeSequenceBDIDsPass
         // token flags it can read off the IR; the queue only warns or polls,
         // so it can afford to credit a raw sync it cannot fully account for.
         awaitSync(queue, sync);
+      } else if (auto key = otherTokenChannel(op)) {
+        avail[*key]++;
+        queue.push(*key, true);
       }
       return WalkResult::advance();
     });
@@ -272,18 +300,18 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   // An await consumes the oldest outstanding token on the channel, regardless
   // of the configure named by its SSA operand. Only that token-issuing task and
   // the tasks queued ahead of it are known to have finished.
-  void noteAwaited(DMAConfigureTaskOp cfg) {
-    if (!cfg.getIssueToken())
-      return;
-    auto &started = startedOnChannel[channelOf(cfg)];
-    auto *it = llvm::find_if(
-        started, [](DMAConfigureTaskOp task) { return task.getIssueToken(); });
+  void noteAwaited(const DmaQueueModel::ChannelKey &key) {
+    auto &started = startedOnChannel[key];
+    // A null configure represents a token from a raw push or memcpy transfer.
+    auto *it = llvm::find_if(started, [](DMAConfigureTaskOp task) {
+      return !task || task.getIssueToken();
+    });
     if (it == started.end())
       return;
     SmallVector<DMAConfigureTaskOp, 8> retired(started.begin(), std::next(it));
     started.erase(started.begin(), std::next(it));
     for (DMAConfigureTaskOp task : retired)
-      if (!llvm::is_contained(started, task))
+      if (task && !llvm::is_contained(started, task))
         knownComplete.insert(task);
   }
 
@@ -396,6 +424,10 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     if (!isAwait)
       return recycle(cfg, op, /*isAwait=*/false);
     pendingAwaitReleases.insert(cfg);
+    return recycleCompletedTasks(op);
+  }
+
+  LogicalResult recycleCompletedTasks(Operation *op) {
     SmallVector<Operation *, 8> pending(pendingAwaitReleases.begin(),
                                         pendingAwaitReleases.end());
     for (Operation *pendingOp : pending) {
@@ -466,13 +498,21 @@ struct AIEAssignRuntimeSequenceBDIDsPass
           }
         } else if (auto await = dyn_cast<DMAAwaitTaskOp>(op)) {
           if (DMAConfigureTaskOp cfg = await.getTaskOp())
-            noteAwaited(cfg);
+            if (cfg.getIssueToken())
+              noteAwaited(channelOf(cfg));
           if (failed(recycleTask(await.getTask(), await, /*isAwait=*/true)))
+            return WalkResult::interrupt();
+        } else if (auto sync = dyn_cast<NpuSyncOp>(op)) {
+          if (auto key = syncChannelKey(sync))
+            noteAwaited(*key);
+          if (failed(recycleCompletedTasks(op)))
             return WalkResult::interrupt();
         } else if (auto freeOp = dyn_cast<DMAFreeTaskOp>(op)) {
           if (failed(recycleTask(freeOp.getTask(), freeOp, /*isAwait=*/false)))
             return WalkResult::interrupt();
           frees.push_back(freeOp);
+        } else if (auto key = otherTokenChannel(op)) {
+          startedOnChannel[*key].push_back(DMAConfigureTaskOp{});
         }
         return WalkResult::advance();
       });

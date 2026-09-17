@@ -210,6 +210,9 @@ insertQueueSpaceWait(mlir::Operation *before, const AIE::AIETargetModel &tm,
   return mlir::success();
 }
 
+inline constexpr llvm::StringLiteral queueDiagnosedAttr =
+    "aiex.dma_queue_overflow_diagnosed";
+
 /// Handle a push on `key` that would land on a full queue: poll where one can
 /// be emitted, warn where it cannot (see insertQueueSpaceWait above for when
 /// that is). Warning rather than failing keeps a default from rejecting
@@ -230,6 +233,21 @@ inline void guardQueueOverflow(DmaQueueModel &queue, mlir::Operation *push,
   }
   if (!queue.shouldReport(key))
     return;
+  // Keep diagnostics per sequence/channel across task and combined lowering.
+  // This marker suppresses only warnings, never queue accounting or guards.
+  if (auto seq = push->getParentOfType<AIE::RuntimeSequenceOp>()) {
+    auto channel = mlir::DenseI32ArrayAttr::get(push->getContext(), key);
+    llvm::SmallVector<mlir::Attribute> diagnosed;
+    if (auto previous =
+            seq->getAttrOfType<mlir::ArrayAttr>(queueDiagnosedAttr)) {
+      if (llvm::is_contained(previous, channel))
+        return;
+      llvm::append_range(diagnosed, previous);
+    }
+    diagnosed.push_back(channel);
+    seq->setAttr(queueDiagnosedAttr,
+                 mlir::ArrayAttr::get(push->getContext(), diagnosed));
+  }
   mlir::InFlightDiagnostic diag = emitQueueOverflowWarning(
       push, col, row, dir, chan, depth, queue.outstanding(key));
   if (enforce)

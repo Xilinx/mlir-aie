@@ -5,6 +5,8 @@
 
 // RUN: aie-opt --aie-assign-runtime-sequence-bd-ids --verify-diagnostics %s
 // RUN: aie-opt --aie-assign-runtime-sequence-bd-ids %s 2>/dev/null | FileCheck %s
+// RUN: aie-opt --aie-assign-runtime-sequence-bd-ids --aie-dma-tasks-to-npu \
+// RUN:   --aie-dma-to-npu --verify-diagnostics %s
 
 // Enforcement is on by default, but it needs a pollable occupancy register and
 // not every target reports one: the AIE2PS shim relocates its DMA registers and
