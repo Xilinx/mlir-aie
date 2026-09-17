@@ -250,7 +250,9 @@ def fake_hrx(monkeypatch):
     monkeypatch.setattr(
         hrt.HRXHostRuntime, "check_device_consistency", lambda self: None
     )
-    monkeypatch.setattr(hrt.atexit, "register", lambda callback: None)
+    monkeypatch.setattr(
+        hrt.atexit, "register", lambda callback, *args, **kwargs: None
+    )
     monkeypatch.setenv("HRX_EXE_CACHE_SIZE", "2")
     rt = hrt.CachedHRXRuntime()
     try:

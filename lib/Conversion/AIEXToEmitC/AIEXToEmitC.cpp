@@ -487,9 +487,11 @@ struct ConvertAIEXToEmitCPass
       auto gen = emitFunction(builder, moduleOp, seqOp, deviceOp);
       if (failed(gen))
         return signalPassFailure();
-      if (emitDispatchShim &&
-          failed(emitDispatchShimFuncs(builder, moduleOp, *gen)))
-        return signalPassFailure();
+      if (emitDispatchShim) {
+        emitc::FuncOp generated = gen.value();
+        if (failed(emitDispatchShimFuncs(builder, moduleOp, generated)))
+          return signalPassFailure();
+      }
     }
 
     // Replace the module body with just the generated emitc funcs + includes.
