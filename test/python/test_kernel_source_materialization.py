@@ -202,12 +202,14 @@ def test_windows_replace_race_reuses_identical_source(tmp_path, monkeypatch):
     src.write_text(SOURCE)
     dest = tmp_path / "kernel.cc"
     dest.write_text(SOURCE)
+    real_replace = os.replace
 
     def fake_replace(tmp, final):
         if final == str(dest):
             raise PermissionError("sharing violation")
-        os.replace(tmp, final)
+        real_replace(tmp, final)
 
+    monkeypatch.setattr(compile_utils.os, "name", "nt")
     monkeypatch.setattr(compile_utils.os, "replace", fake_replace)
 
     _copy_source(str(dest), str(src))
@@ -222,12 +224,14 @@ def test_windows_replace_race_still_raises_on_mismatch(tmp_path, monkeypatch):
     src.write_text(SOURCE)
     dest = tmp_path / "kernel.cc"
     dest.write_text("// different\n")
+    real_replace = os.replace
 
     def fake_replace(tmp, final):
         if final == str(dest):
             raise PermissionError("sharing violation")
-        os.replace(tmp, final)
+        real_replace(tmp, final)
 
+    monkeypatch.setattr(compile_utils.os, "name", "nt")
     monkeypatch.setattr(compile_utils.os, "replace", fake_replace)
 
     with pytest.raises(PermissionError):

@@ -614,7 +614,7 @@ def _staged(dest: str):
             # When both writers staged identical bytes, the open destination is
             # already the source the later compile needs, so discard the temp
             # and let that compile proceed instead of failing the whole batch.
-            if not os.name == "nt":
+            if os.name != "nt":
                 raise
             if not os.path.exists(dest) or not filecmp.cmp(tmp, dest, shallow=False):
                 raise
