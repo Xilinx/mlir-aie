@@ -104,7 +104,7 @@ class XRTTensor(NpuTensor):
             xrt_device (optional): Existing PyXRT device handle to use for BO allocation.
                 When omitted, the process's handle on device 0 is used. Opening
                 one per tensor instead closes and reopens the device as tensors
-                come and go; see :mod:`.device`.
+                come and go; see `.device`.
         """
         super().__init__(shape_or_data, dtype=dtype, device=device)
         self.xrt_device = xrt_device if xrt_device is not None else acquire_device()
@@ -156,7 +156,7 @@ class XRTTensor(NpuTensor):
     def data(self):
         """Get the underlying numpy array.
 
-        Writes through this array are not reconciled; use :meth:`mutate` for a
+        Writes through this array are not reconciled; use `mutate` for a
         write that is. Kept as the unmediated handle for callers that manage
         their own synchronization.
 

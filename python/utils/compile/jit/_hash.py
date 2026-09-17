@@ -7,9 +7,9 @@
 
 Two halves so callers can distinguish "recipe changed" from "rebuild needed":
 
-* :func:`_compute_recipe_hash`   — generator identity + compile_kwargs +
+* `_compute_recipe_hash`   — generator identity + compile_kwargs +
   aiecc/compile flags. Target-independent design identity.
-* :func:`_compute_artifact_hash` — source / object content + tool mtimes +
+* `_compute_artifact_hash` — source / object content + tool mtimes +
   target device.  Captures things that change the *output* of compilation
   without changing the *recipe*.
 
@@ -20,7 +20,7 @@ without changing a byte, and restoring one hides a change that did happen.  Tool
 identity stays on mtime, which is cheap and moves whenever the toolchain is
 rebuilt or reinstalled.
 
-:func:`_compute_hash` composes both into the 24-hex cache-key
+`_compute_hash` composes both into the 24-hex cache-key
 ``CompilableDesign`` uses to address ``$NPU_CACHE_HOME``.
 
 Carved out of ``compilabledesign.py`` to keep the main file focused on the

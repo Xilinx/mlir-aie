@@ -95,16 +95,16 @@ class DuplicateTests(unittest.TestCase):
         )
         self.assertEqual(slop.find_duplicates(blocks), [])
 
-    def test_license_headers_are_not_duplicates(self):
-        # Mandated boilerplate, identical in every file by construction, so three
-        # new files would otherwise always report their own headers as slop.
-        # The tag is assembled rather than written out: reuse lint scans this file
-        # too, and a literal one here reads as a second, malformed declaration.
-        header = (
+    def test_license_banners_are_not_duplicates(self):
+        # Every new file repeats the mandatory SPDX/copyright header verbatim.
+        # The SPDX token is assembled from fragments so reuse-lint does not read
+        # this test's own string as a (malformed) license identifier.
+        banner = (
             "Copyright (C) 2026 Advanced Micro Devices, Inc. "
-            "SPDX-License" + "-Identifier: Apache-2.0 WITH LLVM-exception"
+            + "SPDX-License-"
+            + "Identifier: Apache-2.0 WITH LLVM-exception"
         )
-        blocks = self._blocks(header, header, header)
+        blocks = self._blocks(banner, banner, banner)
         self.assertEqual(slop.find_duplicates(blocks), [])
 
     def test_test_files_may_restate_the_invariant(self):

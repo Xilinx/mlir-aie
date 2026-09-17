@@ -94,10 +94,10 @@ class HSAKernelResult(KernelResult):
 class HSAHostRuntime(HostRuntime):
     """Uncached HostRuntime that dispatches IRON designs through HSA/ROCR.
 
-    Every :meth:`load` copies the design's insts + PDI into fresh HSA region
+    Every `load` copies the design's insts + PDI into fresh HSA region
     allocations and never reuses them across calls -- the analogue of
-    :class:`XRTHostRuntime` / :class:`HRXHostRuntime`. Allocations are tracked
-    so :meth:`cleanup` frees them; :class:`CachedHSAHostRuntime` layers an LRU
+    `XRTHostRuntime` / `HRXHostRuntime`. Allocations are tracked
+    so `cleanup` frees them; `CachedHSAHostRuntime` layers an LRU
     cache on top for the common single-process case.
     """
 
@@ -395,7 +395,7 @@ class HSAHostRuntime(HostRuntime):
 class CachedHSAHostRuntime(HSAHostRuntime):
     """HSA runtime that caches loaded kernels (analogue of CachedXRTRuntime).
 
-    Reuses a handle's region allocations across :meth:`load` calls for the same
+    Reuses a handle's region allocations across `load` calls for the same
     artifacts, evicting the least-recently-used entry once ``HSA_EXE_CACHE_SIZE``
     (default 32) is exceeded. Registers an ``atexit`` cleanup so cached
     allocations are freed at interpreter shutdown.

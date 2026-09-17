@@ -6,7 +6,7 @@
 """The host tensor: a shaped, typed view over a coherence-managed allocation.
 
 The allocation itself, its residency bookkeeping, and the torch bridge live in
-:mod:`buffer`, :mod:`coherence` and :mod:`torch_interop`. Each is re-exported
+`buffer`, `coherence` and `torch_interop`. Each is re-exported
 here, so ``from .tensor_class import Storage`` and friends keep resolving.
 """
 
@@ -132,26 +132,26 @@ class NpuTensor(ABC):
     invariant is host/device coherence: the host and the device each hold a view
     of the same storage, and the two are reconciled only at the points this class
     defines. Everything else it offers (indexing, filling, the numpy and torch
-    bridges, :meth:`subview`) exists to keep that reconciliation correct while
+    bridges, `subview`) exists to keep that reconciliation correct while
     still letting callers treat the buffer as data.
 
     The invariant in full:
 
-    * Writes through the declared paths (:meth:`__setitem__`, :meth:`fill_`, and
+    * Writes through the declared paths (`__setitem__`, `fill_`, and
       the factories) are reconciled: the factories transfer as they construct,
-      and the in-place writes record the region so the next :meth:`to` sends it.
+      and the in-place writes record the region so the next `to` sends it.
       A write through the raw ``data`` array does neither, and is the one way to
       leave host and device disagreeing.
     * A method that spans regions in different states reconciles per region.
       Asking a whole tensor where it lives collapses a mixed extent to one
-      answer, which is the right answer for :meth:`to` and the wrong one to
+      answer, which is the right answer for `to` and the wrong one to
       transfer by.
-    * :meth:`to` moves residency and is a no-op when the buffer is already on the
+    * `to` moves residency and is a no-op when the buffer is already on the
       target device, so a caller that has written through a declared path never
       pays for a redundant transfer, and a caller that has bypassed one gets no
       transfer at all.
     * Reconciliation is not byte-granular. It acts on whole cache lines, which is
-      why :meth:`subview` requires its regions to be granule-aligned.
+      why `subview` requires its regions to be granule-aligned.
 
     Subclasses supply the storage and the two transfer primitives; the invariant
     itself lives here so every backend states it the same way.
@@ -172,10 +172,10 @@ class NpuTensor(ABC):
     # itself. Read by the JIT compile/cache path to pick the DDR-patch ABI.
     FOLDS_DDR_ADDR_OFFSET = True
 
-    # Alignment :meth:`subview` requires of a sub-region, in bytes. Left unset
+    # Alignment `subview` requires of a sub-region, in bytes. Left unset
     # so the module-level default is resolved per call rather than frozen into
     # the class at import; a backend whose host/device reconciliation has a
-    # different granularity sets its own. See :data:`COHERENCE_GRANULE`.
+    # different granularity sets its own. See `COHERENCE_GRANULE`.
     _coherence_granule: int | None = None
 
     # Set on views by the backend hook. Declared here rather than conjured onto
@@ -196,7 +196,7 @@ class NpuTensor(ABC):
 
     @classmethod
     def _resolve_coherence_granule(cls):
-        """Alignment :meth:`subview` enforces for this backend, in bytes."""
+        """Alignment `subview` enforces for this backend, in bytes."""
         return (
             COHERENCE_GRANULE
             if cls._coherence_granule is None
@@ -281,7 +281,7 @@ class NpuTensor(ABC):
     def base(self):
         """The buffer that owns this one's storage, or None if it owns it itself.
 
-        Mirrors :attr:`numpy.ndarray.base`, including collapsing a chain of
+        Mirrors `numpy.ndarray.base`, including collapsing a chain of
         views: the base of a view of a view is the buffer that actually owns the
         storage, not the intermediate view. The intermediate is still referenced
         internally, so the whole chain stays alive for as long as any view of it
@@ -302,11 +302,11 @@ class NpuTensor(ABC):
 
     @property
     def storage_offset(self):
-        """Where this buffer starts within :attr:`base`'s storage, in bytes.
+        """Where this buffer starts within `base`'s storage, in bytes.
 
         Zero for a buffer that owns its storage. Accumulated through nesting, so
         it is always measured from the owner rather than from the view this one
-        was carved out of. Compare :meth:`torch.Tensor.storage_offset`, which is
+        was carved out of. Compare `torch.Tensor.storage_offset`, which is
         in elements; this is in bytes because a view may reinterpret the dtype.
         """
         return self._offset_bytes
@@ -399,7 +399,7 @@ class NpuTensor(ABC):
 
         Note: this reconciles before the write so the untouched elements keep
         their current contents, and records the write rather than flushing it,
-        so a run of assignments costs one transfer at the next :meth:`to`.
+        so a run of assignments costs one transfer at the next `to`.
         """
         with self.mutate() as array:
             array[index] = value
@@ -501,13 +501,13 @@ class NpuTensor(ABC):
     def overwrite(self):
         """Borrow for a write that replaces every byte of this tensor.
 
-        The same as :meth:`mutate` without the reconcile on entry, which nothing
+        The same as `mutate` without the reconcile on entry, which nothing
         can observe if all of it is about to be replaced. Filling a buffer this
         way costs one transfer rather than two.
 
         The caller is promising to write the whole region. Bytes left unwritten
         keep whatever the host last had there and are sent to the device with
-        the rest, so use :meth:`mutate` for a partial update. This is the one
+        the rest, so use `mutate` for a partial update. This is the one
         promise here that cannot be checked; it is still narrower than reaching
         for ``data``, which makes the same promise and does not record the write.
         """
@@ -521,7 +521,7 @@ class NpuTensor(ABC):
         and synchronizes its own slice. It is a plain tensor of the same backend
         class, not a distinct type.
 
-        The region must be aligned to :data:`COHERENCE_GRANULE`, because host and
+        The region must be aligned to `COHERENCE_GRANULE`, because host and
         device are reconciled a cache line at a time, not a byte at a time. Two
         views sharing a line are not independent: synchronizing one acts on the
         other's bytes in that line, so a view whose host copy is stale can be
@@ -557,7 +557,7 @@ class NpuTensor(ABC):
         array's own dtype and torch reports ``storage_offset`` in elements.
         Bytes because that is the unit the thing being carved is measured in: a
         buffer has no dtype, the alignment rule below is in bytes, and
-        :attr:`storage_offset` reports bytes, so the argument going in and the
+        `storage_offset` reports bytes, so the argument going in and the
         value reported back are the same number. ``shape`` stays in elements of
         the view's dtype, since it describes the tensor rather than the region.
 
@@ -573,7 +573,7 @@ class NpuTensor(ABC):
 
         Raises:
             ValueError: If the region falls outside this tensor's buffer, or is
-                not aligned to :data:`COHERENCE_GRANULE`.
+                not aligned to `COHERENCE_GRANULE`.
         """
         if type(self)._subview is NpuTensor._subview:
             # Answer the capability question before complaining about a region
@@ -632,7 +632,7 @@ class NpuTensor(ABC):
         ...
 
     def _subview(self, offset_bytes, shape, dtype):
-        """Backend hook for :meth:`subview`.
+        """Backend hook for `subview`.
 
         Build and return a tensor of the same backend class that shares this
         tensor's underlying storage starting at ``offset_bytes`` with the given
@@ -1082,7 +1082,7 @@ class CPUOnlyTensor(NpuTensor):
     def data(self):
         """Get the underlying numpy array.
 
-        Writes through this array are not reconciled; use :meth:`mutate` for a
+        Writes through this array are not reconciled; use `mutate` for a
         write that is. Kept as the unmediated handle for callers that manage
         their own synchronization.
 
