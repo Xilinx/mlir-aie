@@ -24,8 +24,7 @@ def test_parallel_compilation_subprocess():
     with tempfile.TemporaryDirectory() as temp_cache_dir:
         kernel_path = os.path.join(temp_cache_dir, "kernel.cc")
         with open(kernel_path, "w") as f:
-            f.write(
-                """extern "C" {
+            f.write("""extern "C" {
 void copy_with_bias(int *input, int *output, int tile_size) {
   for (int i = 0; i < tile_size; ++i) {
     output[i] = input[i] + 7;
