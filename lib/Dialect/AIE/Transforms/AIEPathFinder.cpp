@@ -9,6 +9,8 @@
 #include "aie/Dialect/AIE/Transforms/AIEPathFinder.h"
 #include "d_ary_heap.h"
 
+#include "mlir/IR/BuiltinAttributes.h"
+
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_os_ostream.h"
@@ -21,7 +23,41 @@ using namespace xilinx::AIE;
 
 #define DEBUG_TYPE "aie-pathfinder"
 
-LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
+// Strong-attract heuristic: after a packet flow's destination routes, its edges
+// are discounted by this factor so the flow's next destination reuses the same
+// trunk when equal-cost. Not a tuned value.
+static constexpr double kTrunkReuseDiscount = 0.001;
+
+// Design-aware control freeze keeps control column-local. Control is packet-
+// switched and shares a channel with data 32-way, so it must never leave its
+// source column just to dodge data -- a cross-column (East/West) detour splits
+// the control multicast's coherent spine into extra output ports, fragmenting
+// its packet-rule cover. This penalty on every cross-column hop dominates any
+// in-column data-avoid penalty (DESIGN_AVOID_PENALTY x column height), so
+// control prefers sharing an in-column channel with data over an East/West
+// escape; it is finite, so a column with no in-column path (e.g. no shim) can
+// still fall back to a cross-column ingress. Seeded only in the design-aware
+// capture (alongside the design field), so blind/off routing is untouched.
+static constexpr double kControlCrossColumnPenalty = 1.0e6;
+
+std::array<std::pair<TileID, Port>, 4> AIE::getCardinalNeighbors(TileID coords,
+                                                                 int channel) {
+  return {{{{coords.col, coords.row - 1}, {WireBundle::North, channel}},
+           {{coords.col - 1, coords.row}, {WireBundle::East, channel}},
+           {{coords.col, coords.row + 1}, {WireBundle::South, channel}},
+           {{coords.col + 1, coords.row}, {WireBundle::West, channel}}}};
+}
+
+// Index of port `p` in `ports`, or -1 if absent.
+static int portIndex(const std::vector<Port> &ports, Port p) {
+  auto it = llvm::find(ports, p);
+  return it == ports.end() ? -1
+                           : static_cast<int>(std::distance(ports.begin(), it));
+}
+
+LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device,
+                                               bool skipControlFlows,
+                                               const DesignField *baseline) {
   LLVM_DEBUG(llvm::dbgs() << "\t---Begin DynamicTileAnalysis Constructor---\n");
   // find the maxCol and maxRow
   maxCol = device.getTargetModel().columns();
@@ -29,11 +65,40 @@ LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
 
   pathfinder->initialize(maxCol, maxRow, device.getTargetModel());
 
+  // Design-aware freeze: seed the persistent per-cell demand field before any
+  // flow is routed. initialize() has built the full graph and buildRoutingGraph
+  // (inside findPaths) only reads it, so the seed survives to updateDemand.
+  if (baseline) {
+    pathfinder->seedDesignDemand(*baseline);
+    // Design-aware capture routes control only; keep it column-local so a
+    // data-avoid detour never crosses columns and fragments control's cover.
+    pathfinder->seedColumnLocalControl(kControlCrossColumnPenalty);
+    // Route each control multicast farthest-first so it commits one coherent
+    // trunk per column instead of weaving onto free channels cell-by-cell.
+    pathfinder->setCoherentControlCapture(true);
+  }
+
+  // Consolidate a control multicast onto a shared trunk for any control-overlay
+  // (reconfiguration) compile: the design-aware capture (baseline) or a device
+  // carrying the generated control overlay (has_ctrl_pkt_overlay, set for
+  // freeze on OR off). A plain, non-reconfiguration design has neither, so its
+  // packet routing stays byte-identical to upstream.
+  bool devHasCtrlPktOverlay = false;
+  if (auto a = device->getAttrOfType<mlir::BoolAttr>("has_ctrl_pkt_overlay"))
+    devHasCtrlPktOverlay = a.getValue();
+  pathfinder->setControlOverlayRouting(baseline != nullptr ||
+                                       devHasCtrlPktOverlay);
+
   // For each flow (circuit + packet) in the device, add it to pathfinder. Each
   // source can map to multiple different destinations (fanout). Control packet
   // flows to be routed (as prioritized routings). Then followed by normal
   // packet flows.
   for (PacketFlowOp pktFlowOp : device.getOps<PacketFlowOp>()) {
+    bool priorityFlow = pktFlowOp.getPriorityRoute().value_or(false);
+    // Design-aware freeze demand capture routes config DATA only: skip the
+    // control (priority_route) packet flows entirely.
+    if (skipControlFlows && priorityFlow)
+      continue;
     Region &r = pktFlowOp.getPorts();
     Block &b = r.front();
     SmallVector<std::pair<TileID, Port>, 4> sources;
@@ -48,7 +113,6 @@ LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
     if (sources.empty())
       return pktFlowOp.emitOpError("packet_flow has no packet_source");
 
-    bool priorityFlow = pktFlowOp.getPriorityRoute().value_or(false);
     // Pass 2: add a flow from every source to every destination so
     // fan-in topologies are routed (not just the last source).
     for (Operation &Op : b.getOperations()) {
@@ -69,6 +133,16 @@ LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
         }
       }
     }
+
+    // Under freeze, AIEFreezeControlFabric annotated this control flow with its
+    // captured canonical route. Decode it from THIS device's own IR (never
+    // shared state, so parallel per-device findPaths stays correct) and pin the
+    // flow so findPaths replays it instead of re-routing, freezing control
+    // against data-driven drift. Absent the annotation (non-freeze) this is a
+    // no-op and the routing is byte-identical.
+    if (auto attr = pktFlowOp->getAttr(kPinnedRouteAttr))
+      for (auto &[pinSrc, pinnedRoute] : decodePinnedRoutes(attr))
+        pathfinder->pinRoute(pinSrc, pinnedRoute);
   }
 
   // Add circuit flows.
@@ -197,6 +271,7 @@ void Pathfinder::initialize(int maxCol, int maxRow,
   colors.clear();
   preds.clear();
   predEdge.clear();
+  pinnedRoutes.clear();
 
   std::map<WireBundle, int> maxChannels;
   auto intraconnect = [&](int col, int row) {
@@ -306,13 +381,16 @@ void Pathfinder::addFlow(TileID srcCoords, Port srcPort, TileID dstCoords,
                          Port dstPort, std::optional<int> packetId,
                          bool isPriorityFlow) {
   // check if a flow with this source already exists
-  for (auto &[_, prioritized, src, dsts, pid] : flows) {
+  for (auto &[_, prioritized, src, dsts, pid, dstPids] : flows) {
     if (src.coords == srcCoords && src.port == srcPort) {
       if (isPriorityFlow) {
         prioritized = true;
         dsts.emplace(dsts.begin(), dstCoords, dstPort);
-      } else
+        dstPids.emplace(dstPids.begin(), packetId);
+      } else {
         dsts.emplace_back(dstCoords, dstPort);
+        dstPids.emplace_back(packetId);
+      }
       return;
     }
   }
@@ -324,7 +402,7 @@ void Pathfinder::addFlow(TileID srcCoords, Port srcPort, TileID dstCoords,
   int packetGroupId = -1;
   if (packetId.has_value()) {
     bool found = false;
-    for (auto &[existingId, _, src, dsts, pid] : flows) {
+    for (auto &[existingId, _prio, src, dsts, pid, dstPids] : flows) {
       if (src.coords == srcCoords && src.port == srcPort) {
         packetGroupId = existingId;
         found = true;
@@ -344,9 +422,10 @@ void Pathfinder::addFlow(TileID srcCoords, Port srcPort, TileID dstCoords,
     }
   }
   // If no existing flow was found with this source, create a new flow.
-  flows.push_back(Flow{
-      packetGroupId, isPriorityFlow, PathEndPoint{srcCoords, srcPort},
-      std::vector<PathEndPoint>{PathEndPoint{dstCoords, dstPort}}, packetId});
+  flows.push_back(
+      Flow{packetGroupId, isPriorityFlow, PathEndPoint{srcCoords, srcPort},
+           std::vector<PathEndPoint>{PathEndPoint{dstCoords, dstPort}},
+           packetId, std::vector<std::optional<int>>{packetId}});
 }
 
 // Sort flows to (1) get deterministic routing, and (2) perform routings on
@@ -361,8 +440,22 @@ void Pathfinder::sortFlows() {
                            rhs.port.channel);
   };
 
-  for (auto &flow : flows)
-    std::sort(flow.dsts.begin(), flow.dsts.end(), endpointLess);
+  for (auto &flow : flows) {
+    // dstPacketIds is index-parallel to dsts; sort them together (zipped) so
+    // reordering dsts cannot desync which id belongs to which destination.
+    std::vector<std::pair<PathEndPoint, std::optional<int>>> zipped;
+    zipped.reserve(flow.dsts.size());
+    for (size_t i = 0; i < flow.dsts.size(); i++)
+      zipped.emplace_back(flow.dsts[i], flow.dstPacketIds[i]);
+    std::sort(zipped.begin(), zipped.end(),
+              [&](const auto &lhs, const auto &rhs) {
+                return endpointLess(lhs.first, rhs.first);
+              });
+    for (size_t i = 0; i < zipped.size(); i++) {
+      flow.dsts[i] = zipped[i].first;
+      flow.dstPacketIds[i] = zipped[i].second;
+    }
+  }
 
   auto flowRank = [](const Flow &flow) {
     if (flow.isPriorityFlow)
@@ -407,6 +500,184 @@ bool Pathfinder::addFixedConnection(SwitchboxOp switchboxOp) {
     }
   }
   return true;
+}
+
+// Register a pinned route for `src`; findPaths replays it verbatim.
+void Pathfinder::pinRoute(const PathEndPoint &src,
+                          const SwitchSettings &route) {
+  pinnedRoutes[src] = route;
+}
+
+// Seed the per-cell demand field from a design-demand map (design-aware
+// freeze). Iterate the (small) field, resolve each (srcCoords, dstCoords,
+// srcPort, dstPort) key to its switchbox-connect cell, and assign the weight
+// (assignment, not accumulation: a cell any config's data uses gets one fixed
+// penalty). initialize() has already built `graph`, so the cells exist.
+void Pathfinder::seedDesignDemand(const DesignField &field) {
+  for (const auto &[key, weight] : field) {
+    const auto &[srcCoords, dstCoords, srcPort, dstPort] = key;
+    auto it = graph.find(std::make_pair(srcCoords, dstCoords));
+    if (it == graph.end())
+      continue;
+    SwitchboxConnect &sb = it->second;
+    int i = portIndex(sb.srcPorts, srcPort);
+    int j = portIndex(sb.dstPorts, dstPort);
+    if (i < 0 || j < 0)
+      continue;
+    sb.designDemand[i][j] = weight;
+  }
+}
+
+// Add `penalty` to every cross-column (East/West) output cell so a design-aware
+// control capture keeps control column-local (see kControlCrossColumnPenalty).
+// Additive so it composes with the per-cell design field; finite so a column
+// with no in-column path can still fall back to a cross-column hop.
+void Pathfinder::seedColumnLocalControl(double penalty) {
+  for (auto &[key, sb] : graph)
+    for (size_t j = 0; j < sb.dstPorts.size(); j++)
+      if (sb.dstPorts[j].bundle == WireBundle::East ||
+          sb.dstPorts[j].bundle == WireBundle::West)
+        for (size_t i = 0; i < sb.srcPorts.size(); i++)
+          sb.designDemand[i][j] += penalty;
+}
+
+// See the header for the invariant. Two passes over `pinnedRoutes`: collect
+// control's own source rows per master port, then INVALIDATE every OTHER source
+// row on each control master column so no foreign (data) flow can egress a
+// control master. Runs once, before buildRoutingGraph bakes connectivity into
+// the dense graph. Empty pinnedRoutes -> no-op -> OFF byte-identical.
+bool Pathfinder::reservePinnedControlMasters() {
+  // PASS 1: allowedRows[{tile, masterPort}] = control's own source rows there.
+  // Accumulate across ALL pinned routes so multi-source control fan-in onto one
+  // master is preserved, not clobbered.
+  std::map<std::pair<TileID, Port>, std::set<Port>> allowedRows;
+  for (const auto &[src, route] : pinnedRoutes) {
+    for (const auto &[coords, setting] : route)
+      for (size_t k = 0; k < setting.srcs.size(); k++)
+        allowedRows[{coords, setting.dsts[k]}].insert(setting.srcs[k]);
+  }
+
+  // PASS 2: on each control master column, reserve against non-control rows.
+  for (const auto &[key, ctrlRows] : allowedRows) {
+    const TileID &coords = key.first;
+    const Port &master = key.second;
+    auto it = graph.find({coords, coords});
+    if (it == graph.end())
+      continue;
+    SwitchboxConnect &sb = it->second;
+    int col = -1;
+    for (size_t j = 0; j < sb.dstPorts.size(); j++)
+      if (sb.dstPorts[j] == master) {
+        col = static_cast<int>(j);
+        break;
+      }
+    // A control master that is not a routable intra-switchbox dst (e.g. a
+    // shim-mux-rewritten port) has no crossbar column for data to grab, so
+    // there is nothing to reserve.
+    if (col < 0)
+      continue;
+    for (size_t i = 0; i < sb.srcPorts.size(); i++) {
+      if (ctrlRows.count(sb.srcPorts[i])) {
+        // Control's own row -- preserved so a co-sourced data leg can ride
+        // control's shared slave. It must not already be monopolized by a pre-
+        // placed circuit ConnectOp (addFixedConnection sets connectivity but
+        // never usedCapacity), or the replay's accountEdge would double-use it.
+        if (sb.connectivity[i][col] == Connectivity::INVALID)
+          return false;
+      } else {
+        // Foreign (data) row -- may not egress this control master.
+        sb.connectivity[i][col] = Connectivity::INVALID;
+      }
+    }
+  }
+  return true;
+}
+
+// Encode a captured route as a flat i32 array attribute. Layout:
+//   [ srcCol, srcRow, srcBundle, srcChannel,
+//     numTiles,
+//     { tileCol, tileRow, numConns,
+//       { srcBundle, srcChannel, dstBundle, dstChannel } * numConns } *
+//       numTiles
+//   ]
+// WireBundles travel as their enum int (getWireBundleAsInt /
+// symbolizeWireBundle).
+mlir::Attribute AIE::encodePinnedRoute(mlir::MLIRContext *ctx, TileID srcCoords,
+                                       Port srcPort,
+                                       const SwitchSettings &settings) {
+  SmallVector<int32_t> v;
+  v.push_back(srcCoords.col);
+  v.push_back(srcCoords.row);
+  v.push_back(getWireBundleAsInt(srcPort.bundle));
+  v.push_back(srcPort.channel);
+  v.push_back(static_cast<int32_t>(settings.size()));
+  for (const auto &[coords, setting] : settings) {
+    assert(setting.srcs.size() == setting.dsts.size());
+    v.push_back(coords.col);
+    v.push_back(coords.row);
+    v.push_back(static_cast<int32_t>(setting.srcs.size()));
+    for (size_t k = 0; k < setting.srcs.size(); k++) {
+      v.push_back(getWireBundleAsInt(setting.srcs[k].bundle));
+      v.push_back(setting.srcs[k].channel);
+      v.push_back(getWireBundleAsInt(setting.dsts[k].bundle));
+      v.push_back(setting.dsts[k].channel);
+    }
+  }
+  return mlir::DenseI32ArrayAttr::get(ctx, v);
+}
+
+std::vector<std::pair<PathEndPoint, SwitchSettings>>
+AIE::decodePinnedRoutes(mlir::Attribute attr) {
+  std::vector<std::pair<PathEndPoint, SwitchSettings>> out;
+  auto arr = mlir::dyn_cast_or_null<mlir::ArrayAttr>(attr);
+  if (!arr)
+    return out;
+  for (mlir::Attribute e : arr) {
+    auto da = mlir::dyn_cast<mlir::DenseI32ArrayAttr>(e);
+    if (!da)
+      continue;
+    ArrayRef<int32_t> v = da.asArrayRef();
+    size_t p = 0;
+    bool bad = false;
+    // Bounds-checked read. encodePinnedRoute always emits a well-formed array,
+    // so a truncated/garbage attr is only reachable via hand-authored IR;
+    // degrade by dropping the entry rather than indexing past the array.
+    auto rd = [&]() -> int32_t {
+      if (p >= v.size()) {
+        bad = true;
+        return 0;
+      }
+      return v[p++];
+    };
+    auto rdBundle = [&]() -> WireBundle {
+      auto b = symbolizeWireBundle(rd());
+      if (!b) {
+        bad = true;
+        return WireBundle::Core;
+      }
+      return *b;
+    };
+    TileID srcCoords = {rd(), rd()};
+    Port srcPort = {rdBundle(), rd()};
+    int numTiles = rd();
+    SwitchSettings settings;
+    for (int t = 0; t < numTiles && !bad; t++) {
+      TileID coords = {rd(), rd()};
+      int numConns = rd();
+      SwitchSetting setting;
+      for (int c = 0; c < numConns && !bad; c++) {
+        Port s = {rdBundle(), rd()};
+        Port d = {rdBundle(), rd()};
+        setting.srcs.push_back(s);
+        setting.dsts.push_back(d);
+      }
+      settings[coords] = setting;
+    }
+    if (bad)
+      continue;
+    out.emplace_back(PathEndPoint{srcCoords, srcPort}, settings);
+  }
+  return out;
 }
 
 static constexpr double INF = std::numeric_limits<double>::max();
@@ -457,16 +728,8 @@ void Pathfinder::buildRoutingGraph() {
               sb.connectivity[i][j] == Connectivity::AVAILABLE)
             dests.emplace_back(src.coords, sb.dstPorts[j]);
     }
-    std::vector<std::pair<TileID, Port>> neighbors = {
-        {{src.coords.col, src.coords.row - 1},
-         {WireBundle::North, src.port.channel}},
-        {{src.coords.col - 1, src.coords.row},
-         {WireBundle::East, src.port.channel}},
-        {{src.coords.col, src.coords.row + 1},
-         {WireBundle::South, src.port.channel}},
-        {{src.coords.col + 1, src.coords.row},
-         {WireBundle::West, src.port.channel}}};
-    for (const auto &[neighborCoords, neighborPort] : neighbors) {
+    for (const auto &[neighborCoords, neighborPort] :
+         getCardinalNeighbors(src.coords, src.port.channel)) {
       auto nIt = graph.find(std::make_pair(src.coords, neighborCoords));
       if (nIt != graph.end() &&
           src.port.bundle == getConnectingBundle(neighborPort.bundle)) {
@@ -481,12 +744,9 @@ void Pathfinder::buildRoutingGraph() {
     edges.reserve(dests.size());
     for (auto &dest : dests) {
       auto &sb = graph[std::make_pair(src.coords, dest.coords)];
-      int i = static_cast<int>(std::distance(
-          sb.srcPorts.begin(), llvm::find(sb.srcPorts, src.port)));
-      int j = static_cast<int>(std::distance(
-          sb.dstPorts.begin(), llvm::find(sb.dstPorts, dest.port)));
-      assert(i < static_cast<int>(sb.srcPorts.size()));
-      assert(j < static_cast<int>(sb.dstPorts.size()));
+      int i = portIndex(sb.srcPorts, src.port);
+      int j = portIndex(sb.dstPorts, dest.port);
+      assert(i >= 0 && j >= 0);
       int destId = getOrAddNodeId(dest);
       edges.push_back(Edge{destId, &sb, i, j});
     }
@@ -566,6 +826,107 @@ void Pathfinder::dijkstraShortestPaths(int srcId) {
   }
 }
 
+// Apply one routed edge's per-iteration accounting to switchbox-connect `sb` at
+// cell (i, j): mark the priority flag, run the packet-id sharing bookkeeping,
+// bump usedCapacity, and re-weight demand. Factored out of the Dijkstra trace
+// so the pinned-route replay consumes capacity identically (order matters,
+// hence a single shared implementation).
+void Pathfinder::accountEdge(SwitchboxConnect &sb, int i, int j,
+                             bool isPriority, int packetGroupId,
+                             std::optional<int> packetId) {
+  sb.isPriority[i][j] = isPriority;
+  // Packet flows in the same group may share a channel, but only if their ids
+  // differ, so two same-id flows never merge onto a channel and then fan back
+  // out to separate destinations.
+  if (packetGroupId >= 0 && packetId.has_value() &&
+      (sb.packetGroupId[i][j] == -1 ||
+       sb.packetGroupId[i][j] == packetGroupId) &&
+      sb.packetIds[i][j].count(*packetId) == 0) {
+    for (size_t k = 0; k < sb.srcPorts.size(); k++) {
+      for (size_t l = 0; l < sb.dstPorts.size(); l++) {
+        if (k == static_cast<size_t>(i) || l == static_cast<size_t>(j)) {
+          sb.packetGroupId[k][l] = packetGroupId;
+          sb.packetIds[k][l].insert(*packetId);
+        }
+      }
+    }
+    sb.packetFlowCount[i][j]++;
+    // maximum packet stream sharing per channel
+    if (sb.packetFlowCount[i][j] >= MAX_PACKET_STREAM_CAPACITY) {
+      sb.packetFlowCount[i][j] = 0;
+      sb.usedCapacity[i][j]++;
+    }
+  } else {
+    sb.usedCapacity[i][j]++;
+  }
+  // if at capacity, bump demand to discourage using this Channel
+  // this means the order matters!
+  sb.bumpDemand(i, j);
+}
+
+// Replay a pinned flow's captured route. The captured SwitchSettings stores
+// only intra-tile srcs[k]->dsts[k] connections; reconstruct each implicit
+// inter-tile hop with the same neighbor logic buildRoutingGraph uses, running
+// accountEdge on every edge so data flows negotiate around control's TRUE
+// cross-tile footprint. Every port the route touches is stamped processed: a
+// data leg that shares this flow's source (addFlow merges co-sourced flows into
+// one) then back-traces only to where it rejoins control, so the two share that
+// slave. Control itself does not move -- findPaths installs the captured route
+// as its solution directly.
+void Pathfinder::replayPinnedRoute(bool isPriority, int packetGroupId,
+                                   std::optional<int> packetId,
+                                   const SwitchSettings &route,
+                                   std::vector<uint32_t> &processedStamp,
+                                   uint32_t curStamp) {
+  auto markNode = [&](TileID coords, Port port) {
+    auto it = nodeIds.find(PathEndPoint{coords, port});
+    if (it != nodeIds.end()) {
+      // The pathfinder graph splits each port node into In/Out states
+      // (stateId). Control fully owns every port its captured route touches, so
+      // stamp both sides processed: a pure-control flow then traces nothing
+      // (its dst is already covered on the Out side) and a co-sourced data
+      // leg's back-trace stops wherever it rejoins control.
+      processedStamp[stateId(it->second, In)] = curStamp;
+      processedStamp[stateId(it->second, Out)] = curStamp;
+    }
+  };
+  for (const auto &[coords, setting] : route) {
+    auto intraIt = graph.find(std::make_pair(coords, coords));
+    if (intraIt == graph.end())
+      continue;
+    SwitchboxConnect &intra = intraIt->second;
+    for (size_t k = 0; k < setting.srcs.size(); k++) {
+      Port sp = setting.srcs[k];
+      Port dp = setting.dsts[k];
+      markNode(coords, sp);
+      markNode(coords, dp);
+      // intra-tile crossbar edge (source port -> output port)
+      int i = portIndex(intra.srcPorts, sp);
+      int j = portIndex(intra.dstPorts, dp);
+      if (i >= 0 && j >= 0)
+        accountEdge(intra, i, j, isPriority, packetGroupId, packetId);
+      // inter-tile hop leaving this tile's output port `dp`. Only a directional
+      // (North/South/East/West) output has a neighbor; terminal ports (DMA,
+      // TileControl, ...) match none and are a natural no-op.
+      for (const auto &[neighborCoords, neighborPort] :
+           getCardinalNeighbors(coords, dp.channel)) {
+        if (dp.bundle != getConnectingBundle(neighborPort.bundle))
+          continue;
+        auto nIt = graph.find(std::make_pair(coords, neighborCoords));
+        if (nIt == graph.end())
+          continue;
+        SwitchboxConnect &sb = nIt->second;
+        markNode(neighborCoords, neighborPort);
+        int ii = portIndex(sb.srcPorts, dp);
+        int jj = portIndex(sb.dstPorts, neighborPort);
+        if (ii >= 0 && jj >= 0)
+          accountEdge(sb, ii, jj, isPriority, packetGroupId, packetId);
+        break;
+      }
+    }
+  }
+}
+
 // Perform congestion-aware routing for all flows which have been added.
 // Use Dijkstra's shortest path to find routes, and use "demand" as the
 // weights. If the routing finds too much congestion, update the demand
@@ -577,9 +938,15 @@ Pathfinder::findPaths(const int maxIterations) {
   LLVM_DEBUG(llvm::dbgs() << "\t---Begin Pathfinder::findPaths---\n");
   std::map<PathEndPoint, SwitchSettings> routingSolution;
   // Build the dense routing graph once; topology is invariant across
-  // iterations.
-  if (!graphBuilt)
+  // iterations. Under freeze, reserve control's master ports FIRST so the
+  // reserved connectivity is baked into the dense graph (a foreign data flow
+  // then has no edge into a control master); a collision with a pre-placed
+  // circuit connection fails closed.
+  if (!graphBuilt) {
+    if (!reservePinnedControlMasters())
+      return std::nullopt;
     buildRoutingGraph();
+  }
   // Stamp-based "processed" set (avoids O(n) clears per flow).
   std::vector<uint32_t> processedStamp(2 * nodes.size(), 0);
   uint32_t curStamp = 0;
@@ -646,21 +1013,96 @@ Pathfinder::findPaths(const int maxIterations) {
     // update used_capacity for the path between them
 
     for (const auto &[_, flows] : groupedFlows) {
-      for (const auto &[packetGroupId, isPriority, src, dsts, packetId] :
-           flows) {
-        // Use dijkstra to find path given current demand from the start
-        // switchbox; find the shortest paths to each other switchbox. Output is
-        // in the predecessor arrays, which must then be processed to get
-        // individual switchbox settings
+      for (const auto &[packetGroupId, isPriority, src, dsts, packetId,
+                        dstPacketIds] : flows) {
         int srcId = nodeIds.at(src);
-        dijkstraShortestPaths(srcId);
+        // A pinned flow (control under freeze) does not route its OWN
+        // destinations: seed the solution with the captured route, account its
+        // edges (INF demand on control's channels so data steers clear), and
+        // stamp its ports processed. addFlow merges a co-sourced data leg into
+        // this same flow; its destination is NOT in the captured route, so the
+        // trace below still Dijkstra-routes it around control, rejoining at the
+        // shared source slave. A pure control flow has all destinations covered
+        // and traces nothing -> its solution stays byte-identical to captured.
+        SwitchSettings switchSettings;
+        ++curStamp;
+        if (auto pinIt = pinnedRoutes.find(src); pinIt != pinnedRoutes.end()) {
+          switchSettings = pinIt->second;
+          replayPinnedRoute(isPriority, packetGroupId, packetId, pinIt->second,
+                            processedStamp, curStamp);
+        }
+        // Consolidation-aware routing for a merged multi-destination PACKET
+        // flow: a packet channel carries many distinct ids, so a co-sourced
+        // flow's destinations share one trunk (peeling one id per tile). Route
+        // each destination on its own Dijkstra pass and, after tracing a
+        // destination, discount the edges it used so the next destination of
+        // this flow reuses that trunk. Consolidation is best-effort: a
+        // destination that cannot ride the discounted trunk routes
+        // independently and is still correct -- the discount only steers among
+        // equal-viable channels, never changing correctness. The discount is
+        // intra-flow, restored after the flow so it never leaks into another
+        // flow's demand.
+        //
+        // Scoped to control-overlay (reconfiguration) routing: a merged control
+        // multicast needs a coherent trunk only when the compile carries the
+        // control overlay (controlOverlayRouting, set for freeze on OR off) or
+        // replays a pinned control route. A plain, non-reconfiguration compile
+        // keeps the upstream single-Dijkstra, all-dsts-against-one-tree path,
+        // so generic packet routing stays byte-identical to upstream. Circuit
+        // flows (no packet id) never consolidate.
+        const bool isPacketFlow = packetId.has_value();
+        const bool consolidate =
+            isPacketFlow && (controlOverlayRouting || !pinnedRoutes.empty());
+        // (SwitchboxConnect*, i, j, pre-discount demand) to restore at flow
+        // end.
+        std::vector<std::tuple<SwitchboxConnect *, int, int, double>>
+            trunkDiscounts;
+        // Non-consolidated flows (circuit flows, and packet flows outside the
+        // design-aware path) route all destinations against one tree. For a
+        // consolidated pinned flow the per-destination passes route only the
+        // uncovered co-sourced legs around control's just-accounted footprint.
+        if (!consolidate)
+          dijkstraShortestPaths(srcId);
 
         // trace the path of the flow backwards via predecessors
         // increment used_capacity for the associated channels
-        SwitchSettings switchSettings;
-        ++curStamp;
         processedStamp[stateId(srcId, In)] = curStamp;
-        for (auto endPoint : dsts) {
+        // Order in which this flow's destinations are traced. Default = IR
+        // order (byte-identical). Under the design-aware capture, trace a
+        // priority control multicast farthest-first: the longest path leaves
+        // the source on one channel and every nearer destination (a prefix of
+        // it) reuses that trunk via the discount, so the source emits a single
+        // coherent output channel instead of one fresh channel per destination.
+        std::vector<size_t> dstOrder(dsts.size());
+        for (size_t di = 0; di < dsts.size(); di++)
+          dstOrder[di] = di;
+        if (coherentControlCapture && isPacketFlow && isPriority) {
+          // Copy out of the structured bindings first (capturing them in a
+          // lambda is a C++20 extension). Sort by Manhattan distance from the
+          // source, farthest first.
+          const int srcCol = src.coords.col, srcRow = src.coords.row;
+          const std::vector<PathEndPoint> &dstList = dsts;
+          auto srcDist = [&dstList, srcCol, srcRow](size_t k) {
+            int dc = dstList[k].coords.col - srcCol;
+            int dr = dstList[k].coords.row - srcRow;
+            return (dc < 0 ? -dc : dc) + (dr < 0 ? -dr : dr);
+          };
+          llvm::stable_sort(dstOrder, [&](size_t a, size_t b) {
+            return srcDist(a) > srcDist(b);
+          });
+        }
+        for (size_t di : dstOrder) {
+          const PathEndPoint &endPoint = dsts[di];
+          // Id used for this destination's per-edge accounting. The
+          // consolidated (reconfiguration) path routes each co-sourced
+          // destination on its own Dijkstra pass, so it accounts under that
+          // destination's DISTINCT id. The non-consolidated path routes all
+          // destinations against one tree exactly like upstream, so it accounts
+          // under the flow's representative packetId -- keeping generic
+          // (non-reconfiguration) packet routing byte-identical to upstream
+          // even when one source drives distinct ids.
+          std::optional<int> accountId =
+              consolidate ? dstPacketIds[di] : packetId;
           if (endPoint == src) {
             // Route to self: the port is both ends, so there is no path to
             // trace. The source was stamped on the In side, so falling through
@@ -669,6 +1111,10 @@ Pathfinder::findPaths(const int maxIterations) {
             switchSettings[src.coords].dsts.push_back(src.port);
             continue;
           }
+          // Recompute the tree per destination so the trunk discount from
+          // earlier destinations of this flow is visible.
+          if (consolidate)
+            dijkstraShortestPaths(srcId);
           // A destination port is driven by its switchbox, so it is reached on
           // the Out side.
           int currId = stateId(nodeIds.at(endPoint), Out);
@@ -683,46 +1129,16 @@ Pathfinder::findPaths(const int maxIterations) {
             const Edge &e = predEdge[currId];
             int predId = preds[currId];
             const PathEndPoint &pred = nodes[stateNode(predId)];
-            SwitchboxConnect &sb = *e.sb;
-            int i = e.i;
-            int j = e.j;
-            sb.isPriority[i][j] = isPriority;
-            // Packet flows in the same group may share a channel, but only if
-            // their ids differ, so two same-id flows never merge onto a channel
-            // and then fan back out to separate destinations.
-            // packetGroupId only becomes >= 0 when packetId has a value (see
-            // Pathfinder::addFlow), so the dereferences below are safe; the
-            // checker just can't correlate the two across this while loop's
-            // back edge.
-            // NOLINTBEGIN(bugprone-unchecked-optional-access)
-            bool sameGroupUnseen = packetGroupId >= 0 && packetId.has_value() &&
-                                   (sb.packetGroupId[i][j] == -1 ||
-                                    sb.packetGroupId[i][j] == packetGroupId) &&
-                                   sb.packetIds[i][j].count(*packetId) == 0;
-            if (sameGroupUnseen) {
-              int packetIdValue = *packetId;
-              // NOLINTEND(bugprone-unchecked-optional-access)
-              for (size_t k = 0; k < sb.srcPorts.size(); k++) {
-                for (size_t l = 0; l < sb.dstPorts.size(); l++) {
-                  if (k == static_cast<size_t>(i) ||
-                      l == static_cast<size_t>(j)) {
-                    sb.packetGroupId[k][l] = packetGroupId;
-                    sb.packetIds[k][l].insert(packetIdValue);
-                  }
-                }
-              }
-              sb.packetFlowCount[i][j]++;
-              // maximum packet stream sharing per channel
-              if (sb.packetFlowCount[i][j] >= MAX_PACKET_STREAM_CAPACITY) {
-                sb.packetFlowCount[i][j] = 0;
-                sb.usedCapacity[i][j]++;
-              }
-            } else {
-              sb.usedCapacity[i][j]++;
+            accountEdge(*e.sb, e.i, e.j, isPriority, packetGroupId, accountId);
+            if (consolidate) {
+              // Discount this edge so the next same-flow destination reuses it.
+              // Only this flow's unique tails are touched (shared-trunk edges
+              // are stamped and skipped), so each edge is discounted at most
+              // once per flow.
+              double cur = e.sb->demand[e.i][e.j];
+              trunkDiscounts.emplace_back(e.sb, e.i, e.j, cur);
+              e.sb->demand[e.i][e.j] = cur * kTrunkReuseDiscount;
             }
-            // if at capacity, bump demand to discourage using this Channel
-            // this means the order matters!
-            sb.bumpDemand(i, j);
             if (pred.coords == curr.coords) {
               switchSettings[pred.coords].srcs.push_back(pred.port);
               switchSettings[curr.coords].dsts.push_back(curr.port);
@@ -730,6 +1146,13 @@ Pathfinder::findPaths(const int maxIterations) {
             processedStamp[currId] = curStamp;
             currId = predId;
           }
+        }
+        // Undo the intra-flow trunk discount so it does not bias any other
+        // flow's routing. Restore in reverse to recover the original demand.
+        for (auto it = trunkDiscounts.rbegin(); it != trunkDiscounts.rend();
+             ++it) {
+          auto &[sb, i, j, orig] = *it;
+          sb->demand[i][j] = orig;
         }
         // add this flow to the proposed solution
         routingSolution[src] = switchSettings;

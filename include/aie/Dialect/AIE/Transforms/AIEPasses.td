@@ -578,6 +578,44 @@ def AIEGenerateColumnControlOverlay
               "Emit a standalone @ctrl_pkt_overlay device (and tag source "
               "devices) for the load-pdi-to-ctrl-pkt reconfigure flow. When "
               "false, the pass applies the overlay in place only.">,
+       Option<
+           "clWholeArrayControlCoverage", "whole-array-control-coverage",
+           "bool", /*default=*/"true",
+           "Cover every physical column and row with control routes so a "
+           "config-data relay that spills into an otherwise-unused tile is "
+           "still reconfigurable (default, correct-by-construction). Ablation "
+           "study only: set false to cover just the occupied bounding box, "
+           "which reproduces the relay-spill no-route -- may fail to route.">,
+  ];
+}
+
+def AIEFreezeControlFabric
+    : Pass<"aie-freeze-control-fabric", "mlir::ModuleOp"> {
+  let summary = "Pin one canonical control routing across all config devices";
+  let description = [{
+    Module-level capture of one canonical control routing, pinned across all
+    reconfiguration config devices. Runs a read-only pathfinder analysis on the
+    data-free `@ctrl_pkt_overlay` device ONCE and annotates each config's control
+    packet_flow with its captured route (a `ctrl_pkt_pinned_route` attribute).
+    Control stays a co-routed packet_flow -- nothing is materialized or removed;
+    the per-device pathfinder decodes the annotation and pins the flow so it
+    cannot drift, while config data routes around the reserved control masters.
+
+    By default control freezes BLIND (routed with no knowledge of config data).
+    With `design-aware`, control instead routes AROUND the ports the configs'
+    data uses (eager avoidance), minimizing the overlay's imposition on
+    already-routable designs; the blind default stays byte-identical.
+  }];
+
+  let options = [
+    Option<"designAware", "design-aware", "bool", /*default=*/"false",
+           "Route control aware of config data demand (eager avoidance) "
+           "instead of blind">,
+  ];
+
+  let constructor = "xilinx::AIE::createAIEFreezeControlFabricPass()";
+  let dependentDialects = [
+    "xilinx::AIE::AIEDialect",
   ];
 }
 

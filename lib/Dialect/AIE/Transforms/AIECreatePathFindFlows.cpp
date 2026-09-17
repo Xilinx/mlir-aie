@@ -602,6 +602,50 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
     }
   }
 
+  // Freeze-gated fail-closed backstop for the control-master exclusion
+  // invariant (Layer 0). reservePinnedControlMasters (AIEPathFinder.cpp)
+  // prevents data from ROUTING onto a control master from a foreign slave, but
+  // this is a second net at the emit layer: a data connection reaching a
+  // control master is the wedge (applying the config in-band repoints the live
+  // control master) UNLESS it shares a control slave into that master -- the
+  // legitimate co-route merge, where data and control ride the same
+  // slave->master on the same amsel, so the masterset is byte-identical to
+  // resident. Gated on freeze (a flow carries the pinned-route annotation) so
+  // OOB / non-freeze builds -- which legitimately let data share
+  // is_ctrl_pkt_overlay masters -- are untouched.
+  bool freezeActive = false;
+  for (auto pf : device.getOps<PacketFlowOp>())
+    if (pf->hasAttr(kPinnedRouteAttr)) {
+      freezeActive = true;
+      break;
+    }
+  if (freezeActive) {
+    // control slave ports feeding each control master (the safe merge sources).
+    std::map<PhysPort, std::set<Port>> ctrlSlavesIntoMaster;
+    for (const auto &[slaveFlow, masters] : ctrlPacketFlows)
+      for (const PhysPort &m : masters)
+        ctrlSlavesIntoMaster[m].insert(slaveFlow.first.second);
+    for (const auto &[slaveFlow, masters] : packetFlows) {
+      Port dataSlave = slaveFlow.first.second;
+      for (const PhysPort &m : masters) {
+        if (!ctrlPktOverlayMasterPorts.contains(m))
+          continue;
+        auto it = ctrlSlavesIntoMaster.find(m);
+        if (it != ctrlSlavesIntoMaster.end() && it->second.count(dataSlave))
+          continue; // co-route merge: same slave into the master, same amsel
+        TileOp tileOp = analyzer.getTile(builder, m.first);
+        tileOp->emitOpError()
+            << "data packet flow from a non-control slave drives "
+               "control-overlay "
+               "master port "
+            << stringifyWireBundle(m.second.bundle) << ":" << m.second.channel
+            << "; applying this config in-band would repoint the live control "
+               "master (freeze master-exclusion violated)";
+        return failure();
+      }
+    }
+  }
+
   // amsel()
   // masterset()
   // packetrules()
@@ -635,6 +679,12 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
   auto getAmselFromArbiterIDAndMsel = [numArbiters](int arbiter, int msel) {
     return arbiter + msel * numArbiters;
   };
+
+  auto amselTaken =
+      [&](const std::map<std::pair<TileID, int>, SmallVector<Port, 4>>
+              &masterAMSels,
+          TileID tileId,
+          int amsel) { return masterAMSels.count({tileId, amsel}) != 0; };
   // Get a new unique amsel from masterAMSels on tile op. Prioritize on
   // incrementing arbiter id, before incrementing msel
   auto getNewUniqueAmsel =
@@ -644,14 +694,14 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
         if (isCtrlPkt) { // Higher AMsel first
           for (int i = numMselsPerArbiter - 1; i >= 0; i--)
             for (int a = numArbiters - 1; a >= 0; a--)
-              if (!masterAMSels.count(
-                      {tileOp.getTileID(), getAmselFromArbiterIDAndMsel(a, i)}))
+              if (!amselTaken(masterAMSels, tileOp.getTileID(),
+                              getAmselFromArbiterIDAndMsel(a, i)))
                 return getAmselFromArbiterIDAndMsel(a, i);
         } else { // Lower AMsel first
           for (int i = 0; i < numMselsPerArbiter; i++)
             for (int a = 0; a < numArbiters; a++)
-              if (!masterAMSels.count(
-                      {tileOp.getTileID(), getAmselFromArbiterIDAndMsel(a, i)}))
+              if (!amselTaken(masterAMSels, tileOp.getTileID(),
+                              getAmselFromArbiterIDAndMsel(a, i)))
                 return getAmselFromArbiterIDAndMsel(a, i);
         }
         tileOp->emitOpError(
@@ -664,8 +714,8 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
               &masterAMSels,
           TileOp tileOp, int arbiter) {
         for (int i = 0; i < numMselsPerArbiter; i++)
-          if (!masterAMSels.count({tileOp.getTileID(),
-                                   getAmselFromArbiterIDAndMsel(arbiter, i)}))
+          if (!amselTaken(masterAMSels, tileOp.getTileID(),
+                          getAmselFromArbiterIDAndMsel(arbiter, i)))
             return getAmselFromArbiterIDAndMsel(arbiter, i);
         tileOp->emitOpError("tile op arbiter ")
             << std::to_string(arbiter) << " has used up all its msels";
@@ -1077,103 +1127,116 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
       int channel = port.second.channel;
       auto slave = port.second;
 
-      SmallVector<int, 4> matchIds;
-      for (auto member : group)
-        matchIds.push_back(member.second);
-
       uint32_t maxPacketId = device.getTargetModel().getMaxPacketId();
-      for (int id : matchIds)
-        if (id > static_cast<int>(maxPacketId)) {
-          return mlir::emitError(tileLoc)
-                 << "packet id " << id << " exceeds the maximum of "
-                 << maxPacketId;
-        }
-
       int idBits = llvm::Log2_32_Ceil(maxPacketId + 1);
-      llvm::SmallSet<int, 8> avoidIds = idsOnPort[port];
-      for (int id : matchIds)
-        avoidIds.erase(id);
-      SmallVector<std::pair<int, int>> cover =
-          computeSubcubeCover(matchIds, avoidIds, idBits);
-
-      LLVM_DEBUG({
-        llvm::dbgs() << "packet cover " << stringifyWireBundle(bundle)
-                     << channel << ": matchIds {";
-        for (int id : matchIds)
-          llvm::dbgs() << ' ' << id;
-        llvm::dbgs() << " } avoidIds {";
-        for (int id : avoidIds)
-          llvm::dbgs() << ' ' << id;
-        llvm::dbgs() << " } ->";
-        for (auto [m, v] : cover)
-          llvm::dbgs() << " rule(" << m << ", " << v << ")";
-        llvm::dbgs() << '\n';
-      });
-
-      for (int id : matchIds)
-        assert(llvm::any_of(cover,
-                            [&](std::pair<int, int> c) {
-                              return (id & c.first) == c.second;
-                            }) &&
-               "subcube cover misses a match id");
-      for (int id : avoidIds)
-        assert(llvm::none_of(cover,
-                             [&](std::pair<int, int> c) {
-                               return (id & c.first) == c.second;
-                             }) &&
-               "subcube cover over-claims an avoid id");
-
       Value amsel = amselOps[slaveAMSels[group.front()]];
 
-      // Check if this group is a ctrl-pkt overlay flow
-      bool isCtrlPktGroup = ctrlPacketFlows.count(group.front()) > 0;
+      // A slave group can MIX a control-overlay flow and a design data flow
+      // when they share a slave port and destination amsel (the router merges
+      // them). SPLIT the cover BY CLASS so no single packet rule ever covers
+      // both a control and a data id: config-delivery reserves the resident
+      // overlay's low slots by COUNTING control-tagged rules, and a rule that
+      // straddled the boundary (tagged as data) would undercount that
+      // reservation and could clobber a live control slot on device (see
+      // AIERT::configureSwitches). Each class's cover avoids the OTHER class's
+      // ids -- both are on the port, kept in idsOnPort -- so control and data
+      // stay on disjoint, exact slots.
+      auto memberIsCtrl = [&](const std::pair<PhysPort, int> &m) {
+        return ctrlPacketFlows.count(m) > 0;
+      };
+      SmallVector<int, 4> ctrlIds, dataIds;
+      for (auto member : group)
+        (memberIsCtrl(member) ? ctrlIds : dataIds).push_back(member.second);
 
       PacketRulesOp packetrules;
       if (slaveRules.count(slave) == 0) {
         packetrules = PacketRulesOp::create(builder, tileLoc, bundle, channel);
         PacketRulesOp::ensureTerminator(packetrules.getRules(), builder,
                                         tileLoc);
-        if (isCtrlPktGroup)
-          packetrules->setAttr("is_ctrl_pkt_overlay", builder.getUnitAttr());
         slaveRules[slave] = packetrules;
       } else
         packetrules = slaveRules[slave];
-
       Block &rules = packetrules.getRules().front();
-
-      // A fan-out whose cover exceeds the slave port's packet-rule slots needs
-      // channel-level restructuring, not masking.
       uint32_t slotLimit = device.getTargetModel().getNumSlaveSlots();
-      uint32_t existingSlots = 0;
-      for (auto rule : rules.getOps<PacketRuleOp>()) {
-        (void)rule;
-        existingSlots++;
-      }
-      if (existingSlots + cover.size() > slotLimit) {
-        packetrules->emitOpError("slave port packet rules exceed the ")
-            << slotLimit << "-slot limit (" << existingSlots << " + "
-            << cover.size() << ").";
+
+      // Emit one packet-id class (control or data) onto the shared slave port.
+      // The cover avoids every OTHER id on the port -- including the sibling
+      // class -- so a rule never straddles the control/data boundary. `isCtrl`
+      // drives the per-rule is_ctrl_pkt_overlay tag config-delivery keys off.
+      auto emitClass = [&](const SmallVector<int, 4> &classIds,
+                           bool isCtrl) -> LogicalResult {
+        if (classIds.empty())
+          return success();
+        for (int id : classIds)
+          if (id > static_cast<int>(maxPacketId))
+            return mlir::emitError(tileLoc)
+                   << "packet id " << id << " exceeds the maximum of "
+                   << maxPacketId;
+
+        llvm::SmallSet<int, 8> avoidIds = idsOnPort[port];
+        for (int id : classIds)
+          avoidIds.erase(id);
+        SmallVector<std::pair<int, int>> cover =
+            computeSubcubeCover(classIds, avoidIds, idBits);
+
+        for (int id : classIds)
+          assert(llvm::any_of(cover,
+                              [&](std::pair<int, int> c) {
+                                return (id & c.first) == c.second;
+                              }) &&
+                 "subcube cover misses a match id");
+        for (int id : avoidIds)
+          assert(llvm::none_of(cover,
+                               [&](std::pair<int, int> c) {
+                                 return (id & c.first) == c.second;
+                               }) &&
+                 "subcube cover over-claims an avoid id");
+
+        // A fan-out whose cover exceeds the slave port's slots (across BOTH
+        // classes accumulated in this block) needs channel-level restructuring.
+        uint32_t existingSlots = 0;
+        for (auto rule : rules.getOps<PacketRuleOp>()) {
+          (void)rule;
+          existingSlots++;
+        }
+        if (existingSlots + cover.size() > slotLimit) {
+          packetrules->emitOpError("slave port packet rules exceed the ")
+              << slotLimit << "-slot limit (" << existingSlots << " + "
+              << cover.size() << ").";
+          return failure();
+        }
+
+        // Catch a false match against rules already on the port (the sibling
+        // class or another source); the cover avoids classIds by construction.
+        for (auto rule : rules.getOps<PacketRuleOp>()) {
+          auto verifyMask = rule.maskInt();
+          auto verifyValue = rule.valueInt();
+          for (int id : classIds)
+            if ((id & verifyMask) == verifyValue) {
+              rule->emitOpError("can lead to false packet id match for id ")
+                  << id << ", which is not supposed to pass through this port.";
+              rule->emitRemark(
+                  "Please consider changing all uses of packet id ")
+                  << id << " to avoid deadlock.";
+              return failure();
+            }
+        }
+
+        builder.setInsertionPoint(rules.getTerminator());
+        for (auto [mask, value] : cover) {
+          auto ruleOp =
+              PacketRuleOp::create(builder, tileLoc, mask, value, amsel);
+          if (isCtrl)
+            ruleOp->setAttr("is_ctrl_pkt_overlay", builder.getUnitAttr());
+        }
+        return success();
+      };
+
+      // Control first so it occupies the block's low slots, matching the layout
+      // the resident overlay (control-only) delivers; data rules follow.
+      if (failed(emitClass(ctrlIds, /*isCtrl=*/true)) ||
+          failed(emitClass(dataIds, /*isCtrl=*/false)))
         return failure();
-      }
-
-      // The cover avoids this port's avoidIds by construction; this catches a
-      // conflict only against rules from another source (e.g. hand-authored).
-      for (auto rule : rules.getOps<PacketRuleOp>()) {
-        auto verifyMask = rule.maskInt();
-        auto verifyValue = rule.valueInt();
-        for (int id : matchIds)
-          if ((id & verifyMask) == verifyValue) {
-            rule->emitOpError("can lead to false packet id match for id ")
-                << id << ", which is not supposed to pass through this port.";
-            rule->emitRemark("Please consider changing all uses of packet id ")
-                << id << " to avoid deadlock.";
-            return failure();
-          }
-      }
-
-      builder.setInsertionPoint(rules.getTerminator());
-      for (auto [mask, value] : cover)
-        PacketRuleOp::create(builder, tileLoc, mask, value, amsel);
     }
   }
 
@@ -1287,6 +1350,10 @@ void AIEPathfinderPass::runOnOperation() {
   // create analysis pass with routing graph for entire device
   LLVM_DEBUG(llvm::dbgs() << "---Begin AIEPathfinderPass---\n");
 
+  // runAnalysis always decodes a control packet_flow's ctrl_pkt_pinned_route
+  // annotation (set by the AIEFreezeControlFabric module pass, if it ran) and
+  // pins that flow so findPaths replays its captured route instead of
+  // re-routing it. Absent the annotation this is a no-op.
   DeviceOp d = getOperation();
   DynamicTileAnalysis &analyzer = getAnalysis<DynamicTileAnalysis>();
   if (failed(analyzer.runAnalysis(d))) {

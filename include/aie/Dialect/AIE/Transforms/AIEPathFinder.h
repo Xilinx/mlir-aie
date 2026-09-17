@@ -13,10 +13,13 @@
 #include "aie/Dialect/AIE/IR/AIETargetModel.h"
 
 #include <algorithm>
+#include <array>
 #include <iostream>
 #include <list>
 #include <optional>
 #include <set>
+#include <tuple>
+#include <utility>
 
 namespace xilinx::AIE {
 
@@ -42,6 +45,11 @@ using SwitchboxConnect = struct SwitchboxConnect {
   std::vector<std::vector<Connectivity>> connectivity;
   // weights of Dijkstra's shortest path
   std::vector<std::vector<double>> demand;
+  // persistent per-cell demand added on top of the congestion weight each
+  // updateDemand iteration. Seeded once before findPaths for a design-aware
+  // control freeze (steers control off cells config data uses); 0.0 for every
+  // other analysis, so demand stays byte-identical when it is not seeded.
+  std::vector<std::vector<double>> designDemand;
   // history of Channel being over capacity
   std::vector<std::vector<int>> overCapacity;
   // how many circuit streams are actually using this Channel
@@ -62,6 +70,8 @@ using SwitchboxConnect = struct SwitchboxConnect {
         srcPorts.size(),
         std::vector<Connectivity>(dstPorts.size(), Connectivity::INVALID));
     demand.resize(srcPorts.size(), std::vector<double>(dstPorts.size(), 0.0));
+    designDemand.resize(srcPorts.size(),
+                        std::vector<double>(dstPorts.size(), 0.0));
     overCapacity.resize(srcPorts.size(), std::vector<int>(dstPorts.size(), 0));
     usedCapacity.resize(srcPorts.size(), std::vector<int>(dstPorts.size(), 0));
     packetFlowCount.resize(srcPorts.size(),
@@ -80,7 +90,7 @@ using SwitchboxConnect = struct SwitchboxConnect {
         double history = DEMAND_BASE + OVER_CAPACITY_COEFF * overCapacity[i][j];
         double congestion =
             DEMAND_BASE + USED_CAPACITY_COEFF * usedCapacity[i][j];
-        demand[i][j] = history * congestion;
+        demand[i][j] = history * congestion + designDemand[i][j];
       }
     }
   }
@@ -131,10 +141,14 @@ using Flow = struct Flow {
   bool isPriorityFlow;
   PathEndPoint src;
   std::vector<PathEndPoint> dsts;
-  // packet id carried by this flow (nullopt for circuit flows); a channel may
-  // be shared only among distinct ids so same-id flows never merge then fan
-  // out.
+  // packet id carried by this flow (nullopt for circuit flows); representative
+  // (first) id, kept for group-id assignment and pinned-route replay.
   std::optional<int> packetId;
+  // per-destination packet id, index-parallel to dsts. A co-sourced multi-dest
+  // packet flow carries a DISTINCT id per destination; routing each dst under
+  // its own id lets accountEdge share one trunk across distinct ids and fan
+  // out.
+  std::vector<std::optional<int>> dstPacketIds;
 };
 
 // A SwitchSetting defines the required settings for a Switchbox for a flow
@@ -187,6 +201,13 @@ using SwitchSetting = struct SwitchSetting {
 
 using SwitchSettings = std::map<TileID, SwitchSetting>;
 
+// A design-demand field: per switchbox-connect cell
+// (srcCoords, dstCoords, srcPort, dstPort) -> extra demand. Seeded into the
+// pathfinder before a design-aware control freeze so control routes around the
+// ports config data uses. Keyed by ports (not matrix [i][j]) so it stays valid
+// regardless of per-instance port ordering.
+using DesignField = std::map<std::tuple<TileID, TileID, Port, Port>, double>;
+
 class Router {
 public:
   Router() = default;
@@ -200,6 +221,31 @@ public:
                        bool isPriorityFlow) = 0;
   virtual void sortFlows() = 0;
   virtual bool addFixedConnection(SwitchboxOp switchboxOp) = 0;
+  // Pin a flow (keyed by its source) to a captured route: findPaths replays it
+  // verbatim instead of running Dijkstra, so the flow cannot drift across
+  // congestion iterations or across sibling devices.
+  virtual void pinRoute(const PathEndPoint &src,
+                        const SwitchSettings &route) = 0;
+  // Seed a persistent per-cell demand field (design-aware freeze). Added on top
+  // of the congestion demand each iteration; an empty field leaves routing
+  // byte-identical. Default no-op so routers that never seed are unaffected.
+  virtual void seedDesignDemand(const DesignField &field) {}
+  // Penalize cross-column (East/West) hops so a design-aware control capture
+  // stays column-local. Default no-op so unaffected routers stay
+  // byte-identical.
+  virtual void seedColumnLocalControl(double penalty) {}
+  // Route a priority control multicast's destinations farthest-first so the
+  // longest path establishes the column trunk and nearer destinations reuse it
+  // (one coherent output channel per source), instead of each destination
+  // opening a fresh channel and fragmenting the shim packet-rule cover. Enabled
+  // only for the design-aware capture; default off so other routing (blind
+  // capture, per-device replay) stays byte-identical.
+  virtual void setCoherentControlCapture(bool on) {}
+  // Mark this a control-overlay (reconfiguration) routing run. Scopes the
+  // multi-destination packet trunk consolidation to control-overlay compiles
+  // (freeze on OR off) so a plain, non-reconfiguration design routes
+  // byte-identically to upstream. Default off.
+  virtual void setControlOverlayRouting(bool on) {}
   virtual std::optional<std::map<PathEndPoint, SwitchSettings>>
   findPaths(int maxIterations) = 0;
 };
@@ -213,6 +259,15 @@ public:
                std::optional<int> packetId, bool isPriorityFlow) override;
   void sortFlows() override;
   bool addFixedConnection(SwitchboxOp switchboxOp) override;
+  void pinRoute(const PathEndPoint &src, const SwitchSettings &route) override;
+  void seedDesignDemand(const DesignField &field) override;
+  void seedColumnLocalControl(double penalty) override;
+  void setCoherentControlCapture(bool on) override {
+    coherentControlCapture = on;
+  }
+  void setControlOverlayRouting(bool on) override {
+    controlOverlayRouting = on;
+  }
   std::optional<std::map<PathEndPoint, SwitchSettings>>
   findPaths(int maxIterations) override;
 
@@ -254,14 +309,57 @@ private:
   // reach each state). Reuses the scratch buffers below.
   void dijkstraShortestPaths(int srcId);
 
+  // Apply one routed edge's per-iteration accounting (priority flag, packet-id
+  // sharing bookkeeping, usedCapacity, bumpDemand) to switchbox-connect `sb` at
+  // matrix cell (i, j). Shared by the Dijkstra trace and the pinned-route
+  // replay so both consume a channel's capacity identically.
+  void accountEdge(SwitchboxConnect &sb, int i, int j, bool isPriority,
+                   int packetGroupId, std::optional<int> packetId);
+
+  // Replay a pinned flow's captured route: walk its intra-tile connections and
+  // the implicit inter-tile hops (reconstructed with buildRoutingGraph's
+  // neighbor logic), running accountEdge on each so data negotiates around
+  // control's true footprint, and stamp every port the route touches as
+  // processed so a co-sourced data leg's back-trace stops where it rejoins
+  // control (a shared slave). Control itself is fixed to the captured route.
+  void replayPinnedRoute(bool isPriority, int packetGroupId,
+                         std::optional<int> packetId,
+                         const SwitchSettings &route,
+                         std::vector<uint32_t> &processedStamp,
+                         uint32_t curStamp);
+
+  // Structurally reserve every control master port a pinned route drives so a
+  // non-co-sourced data flow cannot be routed onto it: on each control master
+  // column, mark connectivity INVALID for every source row that is NOT one of
+  // control's own. buildRoutingGraph then omits those edges, so a forced data-
+  // onto-control-master share becomes a clean "Unable to find a legal routing"
+  // instead of a silent in-band repoint wedge. A no-op when pinnedRoutes is
+  // empty (non-freeze), so OFF routing is unchanged. Returns false if control's
+  // frozen route collides with a pre-placed circuit connection (a control cell
+  // already INVALID), which must fail closed rather than double-use the cell.
+  bool reservePinnedControlMasters();
+
   // Flows to be routed
   std::vector<Flow> flows;
+
+  // Flows pinned to a captured route (keyed by source): replayed, not routed.
+  std::map<PathEndPoint, SwitchSettings> pinnedRoutes;
   // Represent all routable paths as a graph
   // The key is a pair of TileIDs representing the connectivity from srcTile to
   // dstTile If srcTile == dstTile, it represents connections inside the same
   // switchbox otherwise, it represents connections (South, North, West, East)
   // accross two switchboxes
   std::map<std::pair<TileID, TileID>, SwitchboxConnect> graph;
+
+  // Design-aware capture only: route each priority control multicast's
+  // destinations farthest-first so the trunk is established once and reused.
+  bool coherentControlCapture = false;
+
+  // Control-overlay (reconfiguration) routing run: gates the multi-destination
+  // packet trunk consolidation so a plain, non-reconfiguration design routes
+  // byte-identically to upstream. Set for control-overlay compiles (freeze on
+  // or off) and the design-aware capture.
+  bool controlOverlayRouting = false;
 
   // Dense routing graph (built once by buildRoutingGraph()).
   bool graphBuilt = false;
@@ -303,7 +401,12 @@ public:
   DynamicTileAnalysis(mlir::Operation *op)
       : pathfinder(std::make_shared<Pathfinder>()) {}
 
-  mlir::LogicalResult runAnalysis(DeviceOp &device);
+  // skipControlFlows drops priority_route control packet flows (route config
+  // DATA only, for design-aware freeze demand capture). baseline, when set,
+  // seeds the pathfinder's per-cell demand field before routing.
+  mlir::LogicalResult runAnalysis(DeviceOp &device,
+                                  bool skipControlFlows = false,
+                                  const DesignField *baseline = nullptr);
 
   int getMaxCol() const { return maxCol; }
   int getMaxRow() const { return maxRow; }
@@ -318,6 +421,30 @@ public:
 
 // Get enum int value from WireBundle.
 int getWireBundleAsInt(WireBundle bundle);
+
+// The four cardinal-neighbor (tile, input-port) pairs a stream on `channel` can
+// hop to when leaving a switchbox output -- North/East/South/West, in that
+// order, matching the inter-tile adjacency the pathfinder graph is built on.
+// The caller applies its own connectivity / getConnectingBundle check; this
+// only builds the list, so the demand-capture, replay, and graph-build sites
+// share one definition of the neighbor convention.
+std::array<std::pair<TileID, Port>, 4> getCardinalNeighbors(TileID coords,
+                                                            int channel);
+
+// Attribute key under which AIEFreezeControlFabric stashes a control flow's
+// captured canonical route (one entry per source), decoded in the per-device
+// pathfinder to pin the flow. The route rides the config's own IR, so parallel
+// per-device passes never share mutable state.
+constexpr llvm::StringLiteral kPinnedRouteAttr = "ctrl_pkt_pinned_route";
+
+// Encode one source's captured route (its routed SwitchSettings) as a flat
+// DenseI32ArrayAttr for annotation onto a control packet_flow op.
+mlir::Attribute encodePinnedRoute(mlir::MLIRContext *ctx, TileID srcCoords,
+                                  Port srcPort, const SwitchSettings &settings);
+
+// Decode a kPinnedRouteAttr ArrayAttr back into (source, captured route) pairs.
+std::vector<std::pair<PathEndPoint, SwitchSettings>>
+decodePinnedRoutes(mlir::Attribute attr);
 
 } // namespace xilinx::AIE
 
