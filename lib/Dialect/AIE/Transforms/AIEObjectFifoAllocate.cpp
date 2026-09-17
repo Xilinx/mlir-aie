@@ -482,7 +482,7 @@ struct AIEObjectFifoAllocatePass
           diag << " for adjacent MemTile access";
         }
         for (auto contributor : device.getOps<RouteEndpoint>()) {
-          if (contributor.getTile() != endpoint.getTile() ||
+          if (!sameTile(contributor.getTile(), endpoint.getTile()) ||
               contributor.getRouteBundle() != WireBundle::DMA ||
               contributor.getRouteDirection() != dir) {
             continue;
@@ -516,10 +516,12 @@ struct AIEObjectFifoAllocatePass
     std::vector<unsigned> key;
     for (auto [index, pool] : llvm::enumerate(pools)) {
       if (auto tile = localPools.lookup(pool)) {
-        auto placed = cast<TileOp>(tile.getDefiningOp());
+        auto placed = cast<TileLike>(tile.getDefiningOp());
+        auto col = placed.tryGetCol(), row = placed.tryGetRow();
+        assert(col && row && "locality repair requires resolved coordinates");
         key.push_back(index);
-        key.push_back(placed.getCol());
-        key.push_back(placed.getRow());
+        key.push_back(*col);
+        key.push_back(*row);
       }
     }
     if (tried.size() >= 64 || !tried.insert(key).second ||
@@ -528,9 +530,9 @@ struct AIEObjectFifoAllocatePass
     DMAChannelAnalysis channels(device);
     if (succeeded(assignChannels(channels, /*diagnose=*/false)))
       return success();
-    if (!channelFailure ||
-        !isa<TileOp>(channelFailure.getTile().getDefiningOp()) ||
-        !tileOf(channelFailure).isMemTile())
+    if (!channelFailure || !tileOf(channelFailure).isMemTile() ||
+        !tileOf(channelFailure).tryGetCol() ||
+        !tileOf(channelFailure).tryGetRow())
       return failure();
 
     Value localTile = channelFailure.getTile();
@@ -539,7 +541,7 @@ struct AIEObjectFifoAllocatePass
       auto endpoint = cast<RouteEndpoint>(dma.getOperation());
       auto pool = dma.getPoolOp();
       if (!pool || localPools.contains(pool) ||
-          endpoint.getTile() != channelFailure.getTile() ||
+          !sameTile(endpoint.getTile(), channelFailure.getTile()) ||
           endpoint.getRouteDirection() != channelFailure.getRouteDirection() ||
           (channelFailure.getRouteChannel() && endpoint != channelFailure) ||
           (endpoint.getRouteChannel() && endpoint != channelFailure) ||

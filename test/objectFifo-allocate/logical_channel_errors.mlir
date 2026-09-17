@@ -15,10 +15,15 @@ module @unknown_row {
     aie.objectfifo.pool @p(%home) {depth = 1 : i32, buffers = [@b]} : memref<16xi32> {
       aie.objectfifo.segment @s {offset = 0 : i32, size = 16 : i32}
     }
+    // expected-note @+1 {{DMA endpoint @r0 requires adjacent MemTile access}}
     aie.objectfifo.dma_endpoint @r0(%reader) drains @p
+    // expected-note @+1 {{DMA endpoint @r1 requires adjacent MemTile access}}
     aie.objectfifo.dma_endpoint @r1(%reader) drains @p
+    // expected-note @+1 {{DMA endpoint @r2 requires adjacent MemTile access}}
     aie.objectfifo.dma_endpoint @r2(%reader) drains @p
+    // expected-note @+1 {{DMA endpoint @r3 requires adjacent MemTile access}}
     aie.objectfifo.dma_endpoint @r3(%reader) drains @p
+    // expected-note @+1 {{DMA endpoint @r4 requires adjacent MemTile access}}
     aie.objectfifo.dma_endpoint @r4(%reader) drains @p
   }
 }
@@ -36,10 +41,15 @@ module @unknown_column {
     aie.objectfifo.pool @p(%home) {depth = 1 : i32, buffers = [@b]} : memref<16xi32> {
       aie.objectfifo.segment @s {offset = 0 : i32, size = 16 : i32}
     }
+    // expected-note @+1 {{DMA endpoint @w0 requires adjacent MemTile access}}
     aie.objectfifo.dma_endpoint @w0(%writer) fills @p
+    // expected-note @+1 {{DMA endpoint @w1 requires adjacent MemTile access}}
     aie.objectfifo.dma_endpoint @w1(%writer) fills @p
+    // expected-note @+1 {{DMA endpoint @w2 requires adjacent MemTile access}}
     aie.objectfifo.dma_endpoint @w2(%writer) fills @p
+    // expected-note @+1 {{DMA endpoint @w3 requires adjacent MemTile access}}
     aie.objectfifo.dma_endpoint @w3(%writer) fills @p
+    // expected-note @+1 {{DMA endpoint @w4 requires adjacent MemTile access}}
     aie.objectfifo.dma_endpoint @w4(%writer) fills @p
   }
 }

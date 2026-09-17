@@ -43,10 +43,10 @@ module @existing_dma {
     ^next:
       aie.dma_start(S2MM, 0, ^write, ^end)
     ^read:
-      aie.dma_bd(%b : memref<16xi32>, 0, 16)
+      aie.dma_bd(%b : memref<16xi32> offset = 0 len = 16)
       aie.next_bd ^read
     ^write:
-      aie.dma_bd(%b : memref<16xi32>, 0, 16)
+      aie.dma_bd(%b : memref<16xi32> offset = 0 len = 16)
       aie.next_bd ^write
     ^end:
       aie.end
