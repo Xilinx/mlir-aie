@@ -23,7 +23,8 @@
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "llvm/ADT/DenseSet.h"
 
-#include <limits>
+// Matches NpuPushQueueOp::verify's bound on the queue's repeat field.
+static constexpr int64_t kMaxQueueRepeat = 255;
 
 namespace xilinx::AIEX {
 #define GEN_PASS_DEF_AIEDECOMPOSELARGEDMABD
@@ -460,15 +461,24 @@ struct DecomposeLargeDmaBdTaskPattern : OpRewritePattern<AIE::DMABDOp> {
       std::optional<int64_t> growth = iterationGrowth(pattern, sub);
       if (!growth)
         return failure();
-      int64_t runs = (getTaskRepeatCount(taskOp) + 1) * *growth;
+      int64_t runs = 0;
       if (*growth > 1) {
         if (getTaskRepeatCountVal(taskOp))
           return op.emitOpError()
                  << "cannot decompose a buffer descriptor whose repeat count "
                     "is a runtime value: decomposition needs to scale it by "
                  << *growth;
-        if (runs > std::numeric_limits<int32_t>::max())
-          return failure();
+        // Widen before multiplying: the accessor returns int32_t, so the
+        // addition alone would overflow in int and wrap past any later check.
+        runs = (static_cast<int64_t>(getTaskRepeatCount(taskOp)) + 1) * *growth;
+        // NpuPushQueueOp::verify caps the queue's repeat field at 255, which is
+        // the bound that actually exists; saying so here names the scale factor
+        // that got us there, rather than failing later pointing at the push.
+        if (runs - 1 > kMaxQueueRepeat)
+          return op.emitOpError() << "decomposition scales the repeat count by "
+                                  << *growth << " to " << (runs - 1)
+                                  << ", beyond the [0:" << kMaxQueueRepeat
+                                  << "] a queue push can carry";
       }
 
       rewriter.modifyOpInPlace(op, [&]() {
