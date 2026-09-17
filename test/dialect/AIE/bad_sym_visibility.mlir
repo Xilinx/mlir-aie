@@ -5,11 +5,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-// Our symbol ops keep `sym_visibility` in a discardable attribute rather than a
-// tablegen-declared argument, so upstream's symbol verifier -- which only reads
-// the inherent attribute -- never sees it. Check that `AttrBasedSymbolVisibility`
-// verifies it instead, rather than silently reading a malformed value as public.
-
 // RUN: not aie-opt --split-input-file %s 2>&1 | FileCheck %s
 
 // CHECK: error{{.*}}'aie.device' op visibility expected to be one of ["public", "private", "nested"], but got "privte"

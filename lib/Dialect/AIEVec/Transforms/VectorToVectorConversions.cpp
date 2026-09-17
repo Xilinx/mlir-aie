@@ -827,18 +827,10 @@ static Value smartTruncF32ToBF16(PatternRewriter &rewriter, Location loc,
 
 /// Pattern to drop the `bf16 -> f32 -> bf16` round trips this pass introduces.
 ///
-/// `smartTruncF32ToBF16` only catches the operands that were already demoted
-/// when the consumer is rewritten. When the consumer is demoted first, it gets
-/// a plain truncf, and demoting the producer afterwards turns that truncf's
-/// operand into an extf.
-///
-/// Arith used to fold any such pair. It now folds only the ones APFloat reports
-/// as lossless, which excludes every IEEE format: widening a signaling NaN
-/// quiets it, so the original bit pattern cannot be recovered. That is the same
-/// trade `smartTruncF32ToBF16` already makes, and it is inherent to emulating
-/// f32 arithmetic in bf16 at all, so the fold stays -- but it is narrowed to
-/// the exact vector shape this pass emits, leaving round trips through any
-/// other pair of float types in the input untouched.
+/// Arith no longer folds these -- widening a signaling NaN quiets it, so the
+/// original bit pattern cannot be recovered. That is the same trade
+/// `smartTruncF32ToBF16` already makes, so keep the fold, but only for the
+/// shape this pass emits.
 struct FoldBF16RoundTripPattern : public OpRewritePattern<arith::TruncFOp> {
   using OpRewritePattern::OpRewritePattern;
 

@@ -48,27 +48,18 @@ template <typename ConcreteType>
 struct SkipAccessibilityCheckTrait
     : mlir::OpTrait::TraitBase<ConcreteType, SkipAccessibilityCheckTrait> {};
 
-// Implements the visibility accessors that `SymbolOpInterface` requires, by
-// reading and writing a plain `sym_visibility` attribute on the operation.
-//
-// MLIR used to provide exactly this as the interface's default implementation.
-// It now instead expects symbol ops to carry the `SymbolVisibility` op trait,
-// which forwards to a tablegen-declared `sym_visibility` argument. None of our
-// symbol ops declare one -- they are all public -- so pair this trait with
-// `Symbol` and upstream's `SymbolName`.
+// Supplies `Symbol`'s visibility accessors for ops that keep visibility in a
+// plain `sym_visibility` attribute rather than in a tablegen-declared argument
+// (which is what upstream's `SymbolVisibility` trait requires).
 template <typename ConcreteType>
 struct AttrBasedSymbolVisibility
     : mlir::OpTrait::TraitBase<ConcreteType, AttrBasedSymbolVisibility> {
-  // Mirrors `SymbolOpInterface::getDefaultVisibilityAttrName()`, which is not
-  // reachable from here without including the generated interface header.
   static constexpr llvm::StringRef getVisibilityAttrName() {
     return "sym_visibility";
   }
 
-  // `mlir::detail::verifySymbol` only checks the *inherent* visibility
-  // attribute, so it never sees ours. Repeat its check here so that a
-  // malformed visibility is still rejected rather than silently read as
-  // public by `getVisibility` below.
+  // `mlir::detail::verifySymbol` only checks the inherent attribute, so it
+  // never sees ours.
   static mlir::LogicalResult verifyTrait(mlir::Operation *op) {
     mlir::Attribute vis = op->getAttr(getVisibilityAttrName());
     if (!vis)
@@ -92,7 +83,6 @@ struct AttrBasedSymbolVisibility
     mlir::StringAttr vis =
         this->getOperation()->template getAttrOfType<mlir::StringAttr>(
             getVisibilityAttrName());
-    // A missing attribute spells public.
     if (!vis)
       return mlir::SymbolTable::Visibility::Public;
     return llvm::StringSwitch<mlir::SymbolTable::Visibility>(vis.getValue())
@@ -130,15 +120,10 @@ uint32_t getShimBurstLengthBytes(const AIE::AIETargetModel &tm,
 uint32_t getShimBurstLengthEncoding(const AIE::AIETargetModel &tm,
                                     uint32_t burstLength);
 
+// Looks up a name, falling back to a scan for the `sym_name` attribute.
 // `aie.buffer`, `aie.external_buffer`, `aie.lock` and `aie.dma` are referred to
-// by name, but they also define an SSA value, and MLIR forbids a `Symbol` op
-// from having results. `mlir::SymbolTable`'s lookups used to match any op
-// carrying a `sym_name` attribute, so they resolved those names anyway; they
-// now only consider ops that implement `SymbolOpInterface`. These helpers
-// restore the old behavior: they try a plain symbol lookup first and then fall
-// back to a scan for the `sym_name` attribute. Use them wherever a name may
-// denote one of those ops -- including when picking a name that must not
-// collide with an existing one.
+// by name but define an SSA value, so they cannot be `Symbol` ops and
+// `mlir::SymbolTable` does not find them.
 mlir::Operation *lookupNamedOpIn(mlir::Operation *symbolTableOp,
                                  mlir::StringAttr name);
 mlir::Operation *lookupNamedOpIn(mlir::Operation *symbolTableOp,

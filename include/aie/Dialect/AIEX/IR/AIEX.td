@@ -448,8 +448,6 @@ def AIE_TokenOp : AIEX_Op<"token", [AIESymbol]> {
       AIE.useToken @token0("Release", 5) // release token0 and set its value to 5
 
   }];
-  // `sym_name` is not spelled out in the assembly format; it round-trips
-  // through `attr-dict` exactly as it did when it was a discardable attribute.
   let arguments = (ins AIEI32Attr:$value, SymbolNameAttr:$sym_name);
   let assemblyFormat = [{ `(` $value `)` attr-dict }];
   let extraClassDeclaration = [{
