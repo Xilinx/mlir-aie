@@ -1100,7 +1100,7 @@ def test_rope_layout_contract_and_vector_constraints(
 ):
     width = 32 if two_halves else 16
     fn = kernels.rope(cols=tile_size, two_halves=two_halves)
-    assert fn._name == ("rope_two_halves" if two_halves else "rope")
+    assert fn._original_name == ("rope_two_halves" if two_halves else "rope")
     with pytest.raises(ValueError, match=f"multiple of {width}"):
         kernels.rope(cols=width - 2, two_halves=two_halves)
     x = np.arange(tile_size, dtype=np.float32).astype(bfloat16)
