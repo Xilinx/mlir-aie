@@ -348,6 +348,9 @@ jobs:
           cache: 'pip'
           cache-dependency-path: python/requirements_dev.lock
 
+      - name: Install clang-format
+        run: python -m pip install clang-format==20.1.0
+
       - name: Check Liquid Syntax
         run: python3 utils/check_liquid_syntax.py
 
