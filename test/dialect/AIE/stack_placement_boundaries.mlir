@@ -21,16 +21,16 @@ module {
     %t = aie.tile(0, 2)
     %c = aie.core(%t) { aie.end } { stack_size = 1024 : i32, stack_address = 31744 : i32 }
   }
+}
 
-  // -----
+// -----
 
-  // Preserve legacy placement for a large stack with no placement hints.
-  // CHECK: stack_size = 32768 : i32
-  module {
-    aie.device(npu2) {
-      %t = aie.tile(0, 2)
-      %c = aie.core(%t) { aie.end } { stack_size = 32768 : i32 }
-    }
+// Preserve legacy placement for a large stack with no placement hints.
+// CHECK: stack_size = 32768 : i32
+module {
+  aie.device(npu2) {
+    %t = aie.tile(0, 2)
+    %c = aie.core(%t) { aie.end } { stack_size = 32768 : i32 }
   }
 }
 

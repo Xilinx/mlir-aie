@@ -382,7 +382,8 @@ def AIE_CoreOp
           // An explicit run must fit one bank, because aiecc selects a single
           // bank address space for stack accesses. Omit both placement hints
           // to retain legacy placement of stacks larger than a bank.
-          OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>>:$stack_address,
+          OptionalAttr<
+              ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>>:$stack_address,
           // Memory bank the stack must sit in. The bank-aware allocator picks
           // an address inside it and writes `stack_address`, the way it does
           // for a `mem_bank`-only aie.buffer.

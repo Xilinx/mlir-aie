@@ -1225,8 +1225,9 @@ def test_mlir_path_compile_forwards_include_paths_with_no_kernels(
     calls = []
 
     def fake_compile_external_kernels(
-        funcs, kernel_dir, target_arch, include_dirs=None
+        funcs, kernel_dir, target_arch, include_dirs=None, embed_bitcode=False
     ):
+        assert not embed_bitcode
         calls.append((list(funcs), include_dirs))
 
     def fake_compile_mlir_module(**kwargs):

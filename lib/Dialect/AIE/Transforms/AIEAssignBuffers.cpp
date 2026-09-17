@@ -1009,14 +1009,15 @@ static BankAwareResult simpleBankAwareAllocation(TileOp tile) {
   CoreOp coreOp = tile.getCoreOp();
   if (coreOp) {
     stackRun = coreOp.getStackRun();
-    if (!coreOp.getStackAddress() && coreOp.getStackBank()) {
-      int bank = *coreOp.getStackBank();
+    auto stackBank = coreOp.getStackBank();
+    if (!coreOp.getStackAddress() && stackBank) {
+      int bank = *stackBank;
       int64_t align = targetModel.getCoreStackAlignment();
       // Address-pinned buffers cannot move, whereas a bank-only stack can.
       // Account for those pins before choosing the stack's address. The normal
       // buffer placement below still validates each pin and records occupancy.
       MemoryOccupancy stackOccupancy(maxDataMemorySize);
-      device.walk([&](BufferOp buffer) {
+      device.walk([&, maxDataMemorySize = maxDataMemorySize](BufferOp buffer) {
         if (buffer.getTileOp() != tile || !buffer.getAddress())
           return;
         int64_t start = *buffer.getAddress();

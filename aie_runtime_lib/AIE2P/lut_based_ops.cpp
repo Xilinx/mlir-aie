@@ -11,9 +11,7 @@
 #include "aie_api/aie.hpp"
 #include "aie_bank_placement.h"
 
-// Each table supplies two of the gather's four reads. Within a table that is
-// the 256-bit repetition below; across tables it is the bank, which
-// aie_bank_placement.h explains. Entries are in BF16.
+// BF16 entries repeat every 256 bits; see aie_bank_placement.h for bank rules.
 AIE_BANK_A alignas(aie::vector_decl_align) int16 exp_ilut_ab[512] = {
     16256, 16430, 16620, 16801, 16986, 17172, 17354, 17545, 17722, 17917, 18092,
     18282, 18463, 18648, 18835, 19016, 16256, 16430, 16620, 16801, 16986, 17172,

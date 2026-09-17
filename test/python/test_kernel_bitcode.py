@@ -77,6 +77,40 @@ class KernelBitcodeTest(unittest.TestCase):
         self.assertIn("-fdata-sections", cmd)
         self.assertNotIn("-emit-llvm", cmd)
 
+    def test_direct_module_compile_retains_bitcode_when_requested(self):
+        from aie.iron.kernel import ExternalFunction
+
+        func = SimpleNamespace(_source_file=str(self.source))
+        for options, enabled in (
+            (None, False),
+            ([], False),
+            (["--check-lut-banks"], True),
+            (["-check-lut-banks=true"], True),
+            (["--check-lut-banks=false"], False),
+            (["--check-lut-banks", "--check-lut-banks=0"], False),
+        ):
+            with self.subTest(options=options), patch.object(
+                ExternalFunction, "_instances", [func, SimpleNamespace()]
+            ), patch.object(
+                compile_utils.config, "peano_install_dir", return_value="peano"
+            ), patch.object(
+                compile_utils, "resolve_target_arch", return_value="aie2p"
+            ), patch.object(
+                compile_utils, "compile_external_kernels"
+            ) as compile_kernels, patch.object(
+                compile_utils, "_run_aiecc"
+            ) as run:
+                compile_utils.compile_mlir_module(
+                    "module {}",
+                    options=options,
+                    device="npu2",
+                    work_dir=self.work,
+                )
+                compile_kernels.assert_called_once_with(
+                    [func], str(self.work), "aie2p", embed_bitcode=enabled
+                )
+                run.assert_called_once()
+
     def test_bitcode_compile_preserves_defines_and_include_paths(self):
         with patch.object(
             compile_utils.subprocess,
@@ -141,13 +175,10 @@ class KernelBitcodeTest(unittest.TestCase):
                 bitcode = Path(f"{self.output}.bc")
                 bitcode.write_bytes(b"unattached IR")
                 results = [
-                    subprocess.CompletedProcess([], 0, b"", b"")
-                    for _ in range(failure)
+                    subprocess.CompletedProcess([], 0, b"", b"") for _ in range(failure)
                 ]
                 results.append(subprocess.CompletedProcess([], 1, b"", b"failed"))
-                with patch.object(
-                    compile_utils.subprocess, "run", side_effect=results
-                ):
+                with patch.object(compile_utils.subprocess, "run", side_effect=results):
                     with self.assertRaisesRegex(RuntimeError, diagnostic):
                         self.compile(embed_bitcode=True)
                 self.assertFalse(self.output.exists())
@@ -222,9 +253,7 @@ class KernelBitcodeTest(unittest.TestCase):
             object_file_name="kernel.o",
         )
         self.output.write_bytes(b"old object")
-        with patch.object(
-            compile_utils, "compile_cxx_core_function"
-        ) as compile_kernel:
+        with patch.object(compile_utils, "compile_cxx_core_function") as compile_kernel:
             compile_utils.compile_external_kernel(
                 func, self.work, "aie2p", embed_bitcode=True
             )
@@ -254,7 +283,9 @@ class KernelBitcodeTest(unittest.TestCase):
             compile_utils, "compile_cxx_core_function", side_effect=fake_compile
         ) as compile_kernel, patch.object(
             compile_utils, "_rename_symbol_in_object"
-        ) as rename, patch.dict(os.environ, AIE_KERNEL_COMPILE_JOBS="1"):
+        ) as rename, patch.dict(
+            os.environ, AIE_KERNEL_COMPILE_JOBS="1"
+        ):
             compile_utils.compile_external_kernels(
                 funcs, self.work, "aie2p", embed_bitcode=True
             )

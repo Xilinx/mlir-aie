@@ -446,10 +446,6 @@ inline mlir::LogicalResult checkBankPlacement(
   return result;
 }
 
-// Reports an `aie::lut<4>` whose two tables share a memory bank. The gather
-// reads them at once, so one bank means one port and wrong data, with nothing
-// at run time to say so.
-//
 // Inspect both the optimized core IR (including merge-mode kernels) and the
 // embedded IR in separately compiled objects. Missing IR or unresolved table
 // placement is an error, not a successful verification.

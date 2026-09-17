@@ -630,6 +630,7 @@ def compile_mlir_module(
             ],
             str(work_dir),
             target_arch,
+            embed_bitcode=_check_lut_banks_enabled(options or []),
         )
 
     # When work_dir is provided, invoke the aiecc binary as a subprocess so

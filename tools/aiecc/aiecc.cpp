@@ -1164,12 +1164,11 @@ buildMainGraph(mlir::MLIRContext &context, Graph &g,
                               const Node<ModRef> &physicalN,
                               Item<ModRef> &out) -> mlir::LogicalResult {
                    out.value = ModRef(physicalN.get().get().clone());
-                   return checkBankPlacement(out.value->get(), elfLookup(elfs),
-                                             elfLookup(coreObjects),
-                                             [&](llvm::StringRef p) {
-                                               return resolveExternalPath(
-                                                   p, inputFile, workDirStr);
-                                             });
+                   return checkBankPlacement(
+                       out.value->get(), elfLookup(elfs),
+                       elfLookup(coreObjects), [&](llvm::StringRef p) {
+                         return resolveExternalPath(p, inputFile, workDirStr);
+                       });
                  });
   }
   if (checkLutBanks.getValue()) {
