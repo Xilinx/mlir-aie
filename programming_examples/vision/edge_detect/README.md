@@ -9,7 +9,7 @@
 
 The Edge Detect pipeline detects edges in a sequence of images via five line-based kernels arranged in a pipeline: `rgba2gray`, `filter2D`, `threshold`, `gray2rgba`, `addWeighted`. All five kernels are pulled from `aie.iron.kernels.vision`; the design body wires them up with `ObjectFifo` and four `Worker` stages.
 
-The pipeline is mapped onto a single column of the NPU: one Shim tile (0, 0), one Mem tile (0, 1), and four compute tiles (0, 2)–(0, 5). `SequentialPlacer()` (the IRON default) assigns these for us. `rgba2gray`, `filter2D`, and `threshold` each get their own compute tile; `gray2rgba` + `addWeighted` share tile (0, 5).
+The pipeline is mapped onto a single column of the NPU: one Shim tile (0, 0), one Mem tile (0, 1), and four compute tiles (0, 2)–(0, 5). The `--aie-place-tiles` compiler pass assigns these using its default sequential placer; no Python placer object is needed. `rgba2gray`, `filter2D`, and `threshold` each get their own compute tile; `gray2rgba` + `addWeighted` share tile (0, 5).
 
 <p align="center">
   <img

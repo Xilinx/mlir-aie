@@ -8,13 +8,22 @@ You describe a design as Python objects — tiles, workers, data movement, and a
 host runtime — and IRON compiles it to an optimized `xclbin` + instruction
 stream via the MLIR-AIE toolchain.
 
-Every object on this page is **resolvable**: it lowers to one or more MLIR
-operations when the design is compiled. That is what makes it the high-level
-layer. For the direct MLIR op wrappers that IRON lowers *to*, see the
+Structural design objects are **resolvable**: they lower to MLIR operations
+when the design is compiled. This page also includes host-side utilities,
+type markers, and runtime task handles. For the direct MLIR op wrappers that IRON lowers *to*, see the
 [Dialect op wrappers](dialect_wrappers.md) page.
 
-All symbols documented here are importable directly from the `iron`
-namespace (e.g. `from iron import Worker, ObjectFifo, Runtime`).
+Import the public design abstractions from `aie.iron`
+(e.g. `from aie.iron import Worker, ObjectFifo, Runtime`), or use
+`import aie.iron as iron` for decorators and tensor factories. Supporting
+types are also documented below; not all are re-exported at package level.
+
+Prefer `ObjectFifo` for synchronized streaming, `Worker` for compute, and
+`Runtime(sequence, fn_args)` for host-side transfers. Pass runtime buffer
+types and the ObjectFifo handles used by the sequence through `fn_args`,
+and pass workers to `Program(workers=...)`. Use `Flow`, `TileDma`, and `Lock`
+when explicit routing or DMA control is the teaching goal; use raw dialect
+operations only where those abstractions do not expose the required operation.
 
 ---
 
@@ -42,8 +51,8 @@ The objects most designs are built from.
 
 ### Runtime
 
-The host-side orchestration entry point. Its `fill` / `drain` operations
-are declared in the sequence body passed to `Runtime(seq, fn_args)`;
+The host-side orchestration entry point. Calls to producer-handle `fill` and
+consumer-handle `drain` are declared in the sequence body passed to `Runtime(seq, fn_args)`;
 Workers are passed to `Program(workers=...)` rather than started from the body.
 
 ::: iron.runtime.runtime
@@ -129,7 +138,7 @@ into `iron` from `aie.utils`.
 
 ## Advanced primitives
 
-Still part of the high-level `aie.iron` API — every object here is resolvable —
+Still part of the `aie.iron` API —
 but reach for these only when the managed [`ObjectFifo`][iron.ObjectFifo]
 abstraction is not enough and you need explicit control over routing, DMA
 descriptors, and locks.
