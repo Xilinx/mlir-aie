@@ -5,12 +5,13 @@
 //
 //===----------------------------------------------------------------------===//
 
-// This kernel uses the higher-level AIE API to perform a transpsoe.
+// This kernel uses the higher-level AIE API to perform a transpose.
 // This higher-level API uses VSHUFFLE intrinsics internally.
-// See programming_examples/basic/shuffle_transpsoe for a transpose
+// See programming_examples/basic/transposes for a transpose
 // example at that level.
 
 #include <aie_api/aie.hpp>
+#include <algorithm>
 #include <cassert>
 #include <cstdint>
 
@@ -18,9 +19,9 @@
 #error Please specify matrix sizes m, n at kernel compile time using e.g., -DDIM_m=32 -DDIM_n=32.
 #endif
 
-#define min(a, b) ((a) < (b) ? (a) : (b))
 constexpr size_t OUTER_SIZE = DIM_m * DIM_n;
-constexpr size_t VECTOR_SIZE = min(min(DIM_m, DIM_n), 512 / sizeof(bfloat16));
+constexpr size_t VECTOR_SIZE =
+    std::min(std::min<size_t>(DIM_m, DIM_n), 512 / 8 / sizeof(bfloat16));
 
 static_assert(OUTER_SIZE % VECTOR_SIZE == 0);
 

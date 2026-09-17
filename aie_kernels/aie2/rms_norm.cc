@@ -62,13 +62,17 @@ void rms_norm(const T *restrict input, T *restrict output, int32_t cols,
 
 extern "C" {
 void rms_norm(bfloat16 *input, bfloat16 *output, int32_t cols) {
-  ::aie::set_rounding(aie::rounding_mode::conv_even);
+  ::aie::rounding_mode saved_rounding =
+      ::aie::swap_rounding(aie::rounding_mode::conv_even);
   rms_norm<bfloat16, 32>(input, output, cols);
+  ::aie::set_rounding(saved_rounding);
 }
 
 void rms_norm_eps(bfloat16 *input, bfloat16 *output, int32_t cols,
                   float epsilon) {
-  ::aie::set_rounding(aie::rounding_mode::conv_even);
+  ::aie::rounding_mode saved_rounding =
+      ::aie::swap_rounding(aie::rounding_mode::conv_even);
   rms_norm<bfloat16, 32>(input, output, cols, epsilon);
+  ::aie::set_rounding(saved_rounding);
 }
 }
