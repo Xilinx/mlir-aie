@@ -509,10 +509,10 @@ struct AIEObjectFifoAllocatePass
     // Within a home MemTile, pools with the greatest channel demand are served
     // first. Spilling one restricts all of its endpoints to the channels that
     // can reach an adjacent MemTile, so a high-fan-in pool must claim home
-    // placement before lower-demand pools. Across different home tiles, larger
-    // pools still go first so spill-prone allocations claim neighbor capacity
-    // before smaller unrelated pools. Prefer larger objects when channel demand
-    // is equal.
+    // placement before lower-demand pools. Across different homes, keep the
+    // global largest-first placement priority by k-way merging the per-home
+    // demand-ordered lists and choosing the largest currently eligible pool.
+    // Prefer larger objects when channel demand is equal.
     SmallVector<ObjectFifoPoolOp> pools(device.getOps<ObjectFifoPoolOp>());
     SmallVector<size_t> memTileSlots;
     SmallVector<Value> memTileHomes;
@@ -537,16 +537,8 @@ struct AIEObjectFifoAllocatePass
         memTilePools[home].push_back(pool);
       }
     }
-    llvm::stable_sort(memTileHomes, [&](Value a, Value b) {
-      auto maxSize = [&](Value home) {
-        int64_t size = 0;
-        for (ObjectFifoPoolOp pool : memTilePools[home])
-          size = std::max(size, pool.getObjectSizeInBytes());
-        return size;
-      };
-      return maxSize(a) > maxSize(b);
-    });
     SmallVector<ObjectFifoPoolOp> memTileOrder;
+    DenseMap<Value, size_t> nextPool;
     for (Value home : memTileHomes) {
       auto &tilePools = memTilePools[home];
       llvm::stable_sort(tilePools, [&](ObjectFifoPoolOp a, ObjectFifoPoolOp b) {
@@ -558,7 +550,26 @@ struct AIEObjectFifoAllocatePass
           return demand(a) > demand(b);
         return a.getObjectSizeInBytes() > b.getObjectSizeInBytes();
       });
-      llvm::append_range(memTileOrder, tilePools);
+    }
+    while (memTileOrder.size() < memTileSlots.size()) {
+      Value bestHome;
+      ObjectFifoPoolOp bestPool;
+      bool found = false;
+      for (Value home : memTileHomes) {
+        auto &tilePools = memTilePools[home];
+        size_t index = nextPool[home];
+        if (index >= tilePools.size())
+          continue;
+        ObjectFifoPoolOp pool = tilePools[index];
+        if (!found || pool.getObjectSizeInBytes() > bestPool.getObjectSizeInBytes()) {
+          bestHome = home;
+          bestPool = pool;
+          found = true;
+        }
+      }
+      assert(found && "expected pending MemTile pool");
+      memTileOrder.push_back(bestPool);
+      ++nextPool[bestHome];
     }
     for (auto [slot, pool] : llvm::zip(memTileSlots, memTileOrder)) {
       pools[slot] = pool;
