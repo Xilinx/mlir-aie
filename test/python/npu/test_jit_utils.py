@@ -268,6 +268,8 @@ def test_compile_external_kernel_skip_if_object_file_exists(npu_target_arch):
         compile_external_kernel(func, kernel_dir, target_arch=npu_target_arch)
         with open(obj, "rb") as f:
             assert f.read() == b"placeholder"
+        assert func._compiled
+        assert func._compiled_dir == os.path.abspath(kernel_dir)
 
 
 # ---------------------------------------------------------------------------
@@ -319,7 +321,7 @@ def test_compile_external_kernel_symbol_prefix_cache_hit_is_idempotent(
 ):
     """Re-running compile_external_kernel against an already-prefixed on-disk
     object (simulating a fresh process reusing a disk cache) must not
-    re-prefix the already-prefixed symbols."""
+    re-prefix the already-prefixed symbols once the prefix state is recorded."""
     func = ExternalFunction(
         "add_one",
         source_string='extern "C" void add_one(int* a, int* b, int n) {}',
@@ -332,11 +334,14 @@ def test_compile_external_kernel_symbol_prefix_cache_hit_is_idempotent(
 
         # Simulate a fresh process: _compiled reset, object file already on disk.
         func._compiled = False
+        func._compiled_dir = None
         compile_external_kernel(func, kernel_dir, target_arch=npu_target_arch)
 
         assert _defined_extern_symbols(obj) == symbols_after_first_compile
         assert "op0_add_one" in symbols_after_first_compile
         assert "op0_op0_add_one" not in _defined_extern_symbols(obj)
+        assert func._compiled
+        assert func._compiled_dir == os.path.abspath(kernel_dir)
 
 
 # ---------------------------------------------------------------------------

@@ -140,20 +140,17 @@ def test_prefix_symbols_in_object():
         assert renamed_symbols == {f"op0_{s}" for s in original_symbols}
 
 
-def test_prefix_symbols_in_object_is_idempotent():
-    """Calling prefix_symbols_in_object again with the same prefix must not
-    re-prefix an already-prefixed symbol.
-
-    This matters for compile_external_kernel's symbol_prefix handling, which
-    re-applies the prefix on every cache hit (a disk-cached object may have
-    already been prefixed by an earlier process run).
-    """
+def test_prefix_symbols_in_object_renames_symbols_even_if_already_prefixed():
+    """The rename is literal: every defined external symbol gets the prefix."""
     with tempfile.TemporaryDirectory() as tmpdir:
         source_path = os.path.join(tmpdir, "source.cpp")
         output_path = os.path.join(tmpdir, "output.o")
 
         with open(source_path, "w") as f:
-            f.write(SOURCE_STRING_MULTI)
+            f.write("""extern "C" {
+                void op0_helper() {}
+                void add_one() { op0_helper(); }
+            }""")
 
         compile_cxx_core_function(
             source_path=source_path,
@@ -162,13 +159,12 @@ def test_prefix_symbols_in_object_is_idempotent():
         )
 
         prefix_symbols_in_object(output_path, "op0_")
-        once = _defined_extern_symbols(output_path)
+        renamed = _defined_extern_symbols(output_path)
 
-        prefix_symbols_in_object(output_path, "op0_")
-        twice = _defined_extern_symbols(output_path)
-
-        assert twice == once
-        assert "op0_op0_add_one" not in twice
+        assert "add_one" not in renamed
+        assert "op0_helper" not in renamed
+        assert "op0_add_one" in renamed
+        assert "op0_op0_helper" in renamed
 
 
 def test_prefix_symbols_in_object_raises_on_nm_failure():

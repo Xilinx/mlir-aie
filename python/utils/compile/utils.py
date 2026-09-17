@@ -7,6 +7,8 @@
 
 import concurrent.futures
 import contextlib
+import hashlib
+import json
 import logging
 import os
 import re
@@ -586,10 +588,11 @@ def prefix_symbols_in_object(object_path: str, prefix: str) -> None:
     turning this into a silent no-op that only surfaces later as a
     confusing "undefined symbol: <prefix><sym>" at final link time.
 
-    Idempotent: a symbol that already starts with ``prefix`` is left alone,
-    so calling this again on an already-prefixed object (e.g. a disk-cached
-    kernel object reused across process runs) is a safe no-op rather than
-    re-prefixing an already-prefixed symbol.
+    This operation is intentionally literal: every defined external symbol is
+    renamed to ``{prefix}{symbol}``, even if the original spelling already
+    starts with ``prefix``. Callers that need one-time application across
+    cache hits must track that state explicitly rather than inferring it from
+    the symbol names themselves.
     """
     nm = config.nm_path()
     nm_result = subprocess.run(
@@ -605,8 +608,6 @@ def prefix_symbols_in_object(object_path: str, prefix: str) -> None:
         for line in nm_result.stdout.decode().splitlines()
         if len(line.split()) >= 3
     ]
-    if prefix:
-        symbols = [symbol for symbol in symbols if not symbol.startswith(prefix)]
 
     objcopy = config.objcopy_path()
     map_file = f"{object_path}.symbol_map"
@@ -624,6 +625,59 @@ def prefix_symbols_in_object(object_path: str, prefix: str) -> None:
             raise RuntimeError(f"Symbol prefixing failed: {result.stderr.decode()}")
     finally:
         os.remove(map_file)
+
+
+def _symbol_prefix_stamp_path(object_path: str, prefix: str) -> str:
+    """Return the sidecar path that records one successful symbol-prefix pass."""
+    prefix_digest = hashlib.sha256(prefix.encode()).hexdigest()[:16]
+    return f"{object_path}.prefix_state.{prefix_digest}.json"
+
+
+def _sha256_file(path: str) -> str:
+    """Return the SHA-256 digest of ``path``'s current contents."""
+    digest = hashlib.sha256()
+    with open(path, "rb") as f:
+        while chunk := f.read(1024 * 1024):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _has_current_symbol_prefix_stamp(object_path: str, prefix: str) -> bool:
+    """Report whether ``object_path`` already carries a current prefix stamp."""
+    stamp_path = _symbol_prefix_stamp_path(object_path, prefix)
+    try:
+        with open(stamp_path) as f:
+            state = json.load(f)
+        object_sha256 = _sha256_file(object_path)
+    except (FileNotFoundError, OSError, json.JSONDecodeError):
+        return False
+    return state == {
+        "prefix": prefix,
+        "object_sha256": object_sha256,
+    }
+
+
+def _write_symbol_prefix_stamp(object_path: str, prefix: str) -> None:
+    """Record that ``prefix`` has been applied to the current object bytes."""
+    stamp_path = _symbol_prefix_stamp_path(object_path, prefix)
+    with _staged(stamp_path) as tmp:
+        with open(tmp, "w") as f:
+            json.dump(
+                {
+                    "prefix": prefix,
+                    "object_sha256": _sha256_file(object_path),
+                },
+                f,
+            )
+        os.chmod(tmp, _DEFAULT_FILE_MODE)
+
+
+def _ensure_symbol_prefix(object_path: str, prefix: str) -> None:
+    """Apply ``prefix`` once per distinct on-disk object and record that fact."""
+    if _has_current_symbol_prefix_stamp(object_path, prefix):
+        return
+    prefix_symbols_in_object(object_path, prefix)
+    _write_symbol_prefix_stamp(object_path, prefix)
 
 
 @contextlib.contextmanager
@@ -786,11 +840,9 @@ def compile_external_kernel(func, kernel_dir, target_arch, include_dirs=None):
     output_file = os.path.join(kernel_dir, func.object_file_name)
     if os.path.exists(output_file):
         if getattr(func, "_symbol_prefix", None):
-            # Ensure the prefix is applied even on a cache hit; prefix_symbols_in_object
-            # is idempotent (an already-prefixed symbol is left alone), so this is
-            # safe whether or not a prior process run already renamed this on-disk
-            # object.
-            prefix_symbols_in_object(output_file, f"{func._symbol_prefix}_")
+            _ensure_symbol_prefix(output_file, f"{func._symbol_prefix}_")
+        func._compiled = True
+        func._compiled_dir = os.path.abspath(kernel_dir)
         return
 
     if func._source_string is not None:
@@ -858,7 +910,7 @@ def compile_external_kernel(func, kernel_dir, target_arch, include_dirs=None):
     # so multiple memoized instantiations of the same source can be linked
     # together without their helpers colliding too.
     if getattr(func, "_symbol_prefix", None):
-        prefix_symbols_in_object(output_file, f"{func._symbol_prefix}_")
+        _ensure_symbol_prefix(output_file, f"{func._symbol_prefix}_")
 
     func._compiled = True
     func._compiled_dir = os.path.abspath(kernel_dir)
