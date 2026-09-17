@@ -8,9 +8,6 @@ from pathlib import Path
 import subprocess
 import sys
 
-from aie_lit_utils.lit_config_helpers import LitConfigHelper
-
-
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _WRAPPER_PATH = _REPO_ROOT / "utils" / "run_with_test_cache.py"
 
@@ -24,7 +21,10 @@ def _load_wrapper_module():
     return module
 
 
-def test_lit_wrapper_targets_the_test_file_cache_namespace():
+def test_lit_wrapper_targets_the_test_file_cache_namespace(monkeypatch):
+    monkeypatch.syspath_prepend(str(_REPO_ROOT / "python"))
+    from aie_lit_utils.lit_config_helpers import LitConfigHelper
+
     command = LitConfigHelper._run_with_test_cache_wrap(str(_REPO_ROOT))
     assert "run_with_test_cache.py" in command
     assert '"%s"' in command

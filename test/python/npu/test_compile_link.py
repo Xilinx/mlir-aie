@@ -13,7 +13,10 @@ import tempfile
 import pytest
 
 import aie.utils.config as config
+from aie.iron import kernels
+from aie.iron.kernels import _common, linalg
 from aie.utils.compile import compile_cxx_core_function, prefix_symbols_in_object
+from aie.utils.compile.utils import compile_external_kernel
 
 SOURCE_STRING1 = """
 extern "C" {
@@ -165,6 +168,27 @@ def test_prefix_symbols_in_object_renames_symbols_even_if_already_prefixed():
         assert "op0_helper" not in renamed
         assert "op0_add_one" in renamed
         assert "op0_op0_helper" in renamed
+
+
+@pytest.mark.parametrize("arch", ["aie2", "aie2p"])
+@pytest.mark.parametrize("input_dtype,output_dtype", linalg._MM_COMBOS)
+def test_mm_object_exports_matmul_and_zero(
+    tmp_path, monkeypatch, arch, input_dtype, output_dtype
+):
+    monkeypatch.setattr(_common, "_detect_arch", lambda: arch)
+    monkeypatch.setattr(linalg, "_detect_arch", lambda: arch)
+    matmul = kernels.mm(input_dtype=input_dtype, output_dtype=output_dtype)
+    compile_external_kernel(matmul, tmp_path, arch)
+
+    symbols = _defined_extern_symbols(str(tmp_path / matmul.object_file_name))
+    suffix, _ = linalg._MM_COMBOS[(input_dtype, output_dtype)]
+    zero_suffix = linalg._ZERO_SUFFIX[output_dtype]
+    assert {
+        matmul._name,
+        matmul.zero._name,
+        matmul.object_file.resolve_symbol(f"matmul_scalar_{suffix}"),
+        matmul.object_file.resolve_symbol(f"zero_scalar_{zero_suffix}"),
+    } <= symbols
 
 
 def test_prefix_symbols_in_object_raises_on_nm_failure():

@@ -69,6 +69,48 @@ def test_kernels_mm_default_use_chess_is_false():
     assert ef._use_chess is False
 
 
+@pytest.mark.parametrize("arch", ["aie2", "aie2p"])
+@pytest.mark.parametrize("use_chess", [False, True])
+@pytest.mark.parametrize("vectorized", [False, True])
+@pytest.mark.parametrize(
+    "input_dtype,output_dtype,suffix,zero_suffix",
+    [
+        (np.int8, np.int8, "i8_i8", "i8"),
+        (np.int8, np.int16, "i8_i16", "i16"),
+        (np.int8, np.int32, "i8_i32", "i32"),
+        (np.int16, np.int16, "i16_i16", "i16"),
+        (np.int16, np.int32, "i16_i32", "i32"),
+        (bfloat16, bfloat16, "bf16_bf16", "bf16"),
+        (bfloat16, np.float32, "bf16_f32", "f32"),
+    ],
+)
+def test_kernels_mm_selects_combo_with_shared_zero(
+    monkeypatch,
+    arch,
+    use_chess,
+    vectorized,
+    input_dtype,
+    output_dtype,
+    suffix,
+    zero_suffix,
+):
+    monkeypatch.setattr(kernels.linalg, "_detect_arch", lambda: arch)
+    ef = kernels.mm(
+        input_dtype=input_dtype,
+        output_dtype=output_dtype,
+        vectorized=vectorized,
+        use_chess=use_chess,
+    )
+    assert [flag for flag in ef._compile_flags if flag.endswith("_ONLY")] == [
+        f"-D{suffix}_ONLY"
+    ]
+    matmul = "matmul" if vectorized else "matmul_scalar"
+    zero = "zero" if vectorized else "zero_scalar"
+    assert ef._name == ef.object_file.resolve_symbol(f"{matmul}_{suffix}")
+    assert ef.zero._name == ef.object_file.resolve_symbol(f"{zero}_{zero_suffix}")
+    assert ef.zero.object_file is ef.object_file
+
+
 def test_external_function_rejects_inline_with_chess():
     """Inline IR is a Peano-only path, so reject Chess before compilation."""
     with pytest.raises(ValueError, match="inline=True requires the Peano toolchain"):
