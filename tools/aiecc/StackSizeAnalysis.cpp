@@ -11,6 +11,7 @@
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/GlobalVariable.h"
@@ -84,6 +85,10 @@ struct Graph {
   llvm::StringRef nameOf(uint64_t addr) const {
     const SymbolRanges::Entry *e = funcs.owner(addr);
     return e ? e->name : llvm::StringRef("<unknown>");
+  }
+
+  std::string describe(uint64_t addr) const {
+    return nameOf(addr).str() + "@0x" + llvm::utohexstr(addr);
   }
 };
 
@@ -198,6 +203,69 @@ bool readFrameSizes(ObjectFile &obj, SectionRef sec, Graph &graph) {
   return true;
 }
 
+bool isZeroSizedFunctionSymbol(const SymbolRef &sym) {
+  auto type = sym.getType();
+  if (!type) {
+    llvm::consumeError(type.takeError());
+    return false;
+  }
+  return *type == SymbolRef::ST_Function && ELFSymbolRef(sym).getSize() == 0;
+}
+
+bool isAieDataWordRelocation(const ObjectFile &obj, const RelocationRef &rel) {
+  // These ABI constants live in Peano's ELF.h, not the host LLVM headers.
+  constexpr unsigned aieElfMachine = 264;
+  constexpr unsigned aieElfFlagMask = 0x7;
+  constexpr unsigned aie1ElfFlag = 0x1;
+  constexpr unsigned aie2ElfFlag = 0x2;
+  constexpr unsigned aie2pElfFlag = 0x3;
+  constexpr unsigned aie2psElfFlag = 0x4;
+  constexpr uint64_t aie1DataWordRelocation = 72;
+  constexpr uint64_t aie2DataWordRelocation = 50;
+  constexpr uint64_t aie2pDataWordRelocation = 62;
+  constexpr uint64_t aie2psDataWordRelocation = 135;
+
+  const auto *elf = llvm::dyn_cast<ELFObjectFileBase>(&obj);
+  if (!elf || elf->getEMachine() != aieElfMachine) {
+    return false;
+  }
+  // Peano uses one relocation number per AIE variant for the plain 32-bit
+  // address literal (`FK_Data_4`). That literal is not a call, even in `.text`.
+  switch (elf->getPlatformFlags() & aieElfFlagMask) {
+  case aie1ElfFlag:
+    return rel.getType() == aie1DataWordRelocation;
+  case aie2ElfFlag:
+    return rel.getType() == aie2DataWordRelocation;
+  case aie2pElfFlag:
+    return rel.getType() == aie2pDataWordRelocation;
+  case aie2psElfFlag:
+    return rel.getType() == aie2psDataWordRelocation;
+  default:
+    return false;
+  }
+}
+
+bool isCallLikeRelocation(const ObjectFile &obj, const RelocationRef &rel) {
+  if (isAieDataWordRelocation(obj, rel)) {
+    return false;
+  }
+  llvm::SmallString<32> typeNameStorage;
+  rel.getTypeName(typeNameStorage);
+  llvm::StringRef typeName(typeNameStorage);
+  if (typeName.contains("CALL") || typeName.contains("JUMP") ||
+      typeName.contains("BRANCH") || typeName.contains("PLT32")) {
+    return true;
+  }
+  if (typeName == "R_X86_64_64" || typeName == "R_X86_64_32" ||
+      typeName == "R_X86_64_32S" || typeName.contains("ABS") ||
+      typeName.contains("ADDR")) {
+    return false;
+  }
+  // Keep unknown relocation kinds conservative: dropping them can disconnect
+  // the call graph and undercount the stack requirement.
+  return true;
+}
+
 // Records one call edge, or one half of the function-pointer heuristic, per
 // relocation. `patched` is the address the relocation writes, `target` the
 // address it writes there.
@@ -268,9 +336,9 @@ std::optional<int64_t> maxPathFrom(uint64_t sym, const Graph &graph,
   if (st == VisitState::InProgress) {
     std::string cycle;
     for (uint64_t s : pathStack) {
-      cycle += graph.nameOf(s).str() + " -> ";
+      cycle += graph.describe(s) + " -> ";
     }
-    cycle += graph.nameOf(sym).str();
+    cycle += graph.describe(sym);
     error = "recursion detected: " + cycle;
     failureKind = StackRequirementFailure::Cycle;
     return std::nullopt;
@@ -371,6 +439,14 @@ StackRequirementResult xilinx::aiecc::computeStackRequirement(
       symbol_iterator target = rel.getSymbol();
       if (target == obj.symbol_end()) {
         continue; // no symbol to attribute this relocation to
+      }
+      // A fully inlined entry point can survive the link as a zero-sized FUNC
+      // symbol at another function's address. Only call-like relocations should
+      // close a call edge through that alias; an address constant in .text
+      // would otherwise invent a callee that the code never executes.
+      if (patchedIsText && isZeroSizedFunctionSymbol(*target) &&
+          !isCallLikeRelocation(obj, rel)) {
+        continue;
       }
       auto targetAddr = target->getAddress();
       if (!targetAddr) {
