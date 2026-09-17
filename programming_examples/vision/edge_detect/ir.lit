@@ -9,5 +9,5 @@
 // The two kernels in the final Worker share one local scratch buffer.
 // CHECK: %[[RGBA:[a-zA-Z0-9_]+]] = aie.buffer{{.*}}sym_name = "rgba_line"
 // CHECK-SAME: memref<256xui8>
-// CHECK: call @gray2rgbaLine({{.*}}, %[[RGBA]],
-// CHECK: call @addWeightedLine(%[[RGBA]],
+// CHECK: call @{{"?[0-9a-f]{8}_gray2rgbaLine"?}}({{.*}}, %[[RGBA]],
+// CHECK: call @{{"?[0-9a-f]{8}_addWeightedLine"?}}(%[[RGBA]],
