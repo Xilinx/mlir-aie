@@ -139,8 +139,15 @@ cache key. Unlike ``In``/``Out``/``InOut``, no DMA is involved -- the scalar
 reaches the device as a runtime sequence value (an ``npu.write32``/inline TXN
 argument or an ``rt.inline_ops`` symbolic bind), not a buffer transfer.
 
+``T`` must be a NumPy integer scalar type supported by ``Runtime``, such as
+``np.int32`` or ``np.int64``. Built-in ``int``/``bool`` and floating-point
+types are rejected. Scalars must appear in ``Runtime(inputs=[...])`` in
+signature order, using Runtime's existing NumPy-to-MLIR type mapping.
+
 Example::
 
-    def scaled_copy(a: In, b: Out, scale: DispatchTime[int]):
+    import numpy as np
+
+    def scaled_copy(a: In, b: Out, scale: DispatchTime[np.int32]):
         ...
 """

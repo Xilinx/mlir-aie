@@ -14,15 +14,19 @@
 
 // FOLD: inline std::optional<std::vector<uint32_t>> generate_txn_main_seq(int32_t [[P:v[0-9]+]]) {
 // FOLD:   [[F:v[0-9]+]] = true
-// FOLD:   aie_runtime::txn_append_arg_patch(txn, {{v[0-9]+}}, {{.*}}, [[P]], [[F]]);
+// FOLD:   [[OFFSET:v[0-9]+]] = (uint32_t) [[P]]
+// FOLD:   aie_runtime::txn_append_arg_patch(txn, {{v[0-9]+}}, {{.*}}, [[OFFSET]], [[F]]);
 // FOLD:   [[F2:v[0-9]+]] = true
-// FOLD:   aie_runtime::txn_append_arg_patch(txn, {{v[0-9]+}}, {{.*}}, [[P]], [[F2]]);
+// FOLD:   [[OFFSET2:v[0-9]+]] = (uint32_t) [[P]]
+// FOLD:   aie_runtime::txn_append_arg_patch(txn, {{v[0-9]+}}, {{.*}}, [[OFFSET2]], [[F2]]);
 
 // NOFOLD: inline std::optional<std::vector<uint32_t>> generate_txn_main_seq(int32_t [[P:v[0-9]+]]) {
 // NOFOLD:   [[F:v[0-9]+]] = false
-// NOFOLD:   aie_runtime::txn_append_arg_patch(txn, {{v[0-9]+}}, {{.*}}, [[P]], [[F]]);
+// NOFOLD:   [[OFFSET:v[0-9]+]] = (uint32_t) [[P]]
+// NOFOLD:   aie_runtime::txn_append_arg_patch(txn, {{v[0-9]+}}, {{.*}}, [[OFFSET]], [[F]]);
 // NOFOLD:   [[F2:v[0-9]+]] = false
-// NOFOLD:   aie_runtime::txn_append_arg_patch(txn, {{v[0-9]+}}, {{.*}}, [[P]], [[F2]]);
+// NOFOLD:   [[OFFSET2:v[0-9]+]] = (uint32_t) [[P]]
+// NOFOLD:   aie_runtime::txn_append_arg_patch(txn, {{v[0-9]+}}, {{.*}}, [[OFFSET2]], [[F2]]);
 
 // The generated header is built by field name, so reordering TxnDeviceInfo
 // cannot silently mis-encode it.

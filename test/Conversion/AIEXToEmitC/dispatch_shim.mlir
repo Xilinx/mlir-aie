@@ -41,6 +41,9 @@
 // SIGNED: return "uint32_t,bool,int8_t,size_t";
 
 module {
+  emitc.func @unrelated(%value: i32) -> i32 {
+    emitc.return %value : i32
+  }
   aie.device(npu1_1col) {
     aie.runtime_sequence @seq(%arg0: memref<8xi32>, %param: i32, %n: index) {
       aiex.npu.address_patch(%param : i32) {addr = 119300 : ui32, arg_idx = 2 : i32}

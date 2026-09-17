@@ -106,30 +106,20 @@ def test_dispatch_time_scalar_varies_without_recompile():
     dyn_copy(a1, b1, 3)
     assert np.array_equal(b1.numpy()[: 3 * TILE_SIZE], a1.numpy()[: 3 * TILE_SIZE])
 
-    # One cache entry per compiled artifact. _kernel_dir cannot vary with a
-    # dispatch value by construction, so asserting on it would pass even if
-    # every value rebuilt; the kernel cache is what actually shows reuse.
-    kernels_after_first_call = len(dyn_copy._kernel_cache)
+    assert len(dyn_copy._kernel_cache) == 1
+    kernel_after_first_call = next(iter(dyn_copy._kernel_cache.values()))
 
     a2 = iron.tensor(_random_tiles(seed=2), dtype=np.int32, device="npu")
     b2 = iron.zeros((MAX_TILES * TILE_SIZE,), dtype=np.int32, device="npu")
     dyn_copy(a2, b2, 6)
     assert np.array_equal(b2.numpy()[: 6 * TILE_SIZE], a2.numpy()[: 6 * TILE_SIZE])
 
-    # A second, different value must reuse the first call's kernel rather than
-    # add one -- the whole point of DispatchTime[T] is "one compile, many
-    # values", and passing values positionally must not defeat it.
-    assert len(dyn_copy._kernel_cache) == kernels_after_first_call
+    assert len(dyn_copy._kernel_cache) == 1
+    assert next(iter(dyn_copy._kernel_cache.values())) is kernel_after_first_call
 
 
 def test_dispatch_time_scalar_repeated_same_value():
-    """Repeat calls with the *same* n_tiles must keep working.
-
-    The call above varies n_tiles, which changes the kernel cache key and so
-    never exercises the in-memory kernel-cache hit. That hit revalidates the
-    cached kernel's artifacts, and a dispatch design has no ``insts_path`` to
-    revalidate, so this is the only coverage of that branch.
-    """
+    """Reusing a cached kernel must also leave tiles beyond n_tiles untouched."""
     a = iron.tensor(_random_tiles(seed=4), dtype=np.int32, device="npu")
     for _ in range(3):
         b = iron.zeros((MAX_TILES * TILE_SIZE,), dtype=np.int32, device="npu")

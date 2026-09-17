@@ -93,21 +93,10 @@ def aie_translate_path():
 
 
 def host_cxx_path():
-    """Return a HOST-target (x86_64) C++ compiler.
+    """Return a host C++ compiler: ``CXX``, then ``c++``/``g++``/``clang++``.
 
-    Used to compile the dynamic dispatch bridge shared library that Python
-    loads via ``ctypes``. This is deliberately NOT ``peano_cxx_path()`` --
-    Peano's clang++ only
-    targets ``aie2*-none-unknown-elf`` (AIE core object files for linking
-    into an xclbin); it cannot produce a host-loadable ``.so``.
-
-    Resolution order: the CXX environment variable, then ``c++``/``g++``/
-    ``clang++`` on PATH.
-
-    ``clang++`` is last because lit prepends Peano's ``bin`` to PATH (see
-    test/lit.cfg.py), so on a platform with no ``c++``/``g++`` -- Windows --
-    a bare PATH search finds Peano's driver. It still targets the host by
-    default, so it works, but it is not what this function promises.
+    Exclude Peano's bin directory from automatic discovery: lit prepends it
+    to PATH, but its bundled headers do not support host compilation.
     """
     env_cxx = os.environ.get("CXX")
     if env_cxx:
@@ -116,8 +105,14 @@ def host_cxx_path():
             raise RuntimeError(f"CXX is set to {env_cxx!r}, but it was not found.")
         return found
 
+    peano_bin = os.path.realpath(os.path.join(config.peano_install_dir, "bin"))
+    host_path = os.pathsep.join(
+        entry
+        for entry in os.get_exec_path()
+        if os.path.normcase(os.path.realpath(entry)) != os.path.normcase(peano_bin)
+    )
     for candidate in ("c++", "g++", "clang++"):
-        found = shutil.which(candidate)
+        found = shutil.which(candidate, path=host_path)
         if found:
             return found
 

@@ -235,8 +235,14 @@ private:
               b, loc, emitc::OpaqueType::get(b.getContext(), "bool"),
               emitc::OpaqueAttr::get(b.getContext(),
                                      foldDDRAddrOffset ? "true" : "false"));
+          Value argPlus = ap.getArgPlus();
+          // i32 offsets are unsigned bit patterns in the static emitter.
+          // Cast before widening so bit 31 is not sign-extended to 64 bits.
+          if (argPlus.getType().isInteger(32))
+            argPlus = emitc::CastOp::create(b, loc, getU32Type(b.getContext()),
+                                            argPlus);
           emitTxnCall(b, loc, "txn_append_arg_patch", txnVec,
-                      {addrV, idxV, ap.getArgPlus(), foldV});
+                      {addrV, idxV, argPlus, foldV});
           countOp(b, loc, count);
         })
         .Case<AIEX::NpuBlockWriteOp>([&](auto bw) {
@@ -478,7 +484,11 @@ struct ConvertAIEXToEmitCPass
         seqOp.emitOpError("must be nested inside an aie.device");
         return signalPassFailure();
       }
-      if (failed(emitFunction(builder, moduleOp, seqOp, deviceOp)))
+      auto gen = emitFunction(builder, moduleOp, seqOp, deviceOp);
+      if (failed(gen))
+        return signalPassFailure();
+      if (emitDispatchShim &&
+          failed(emitDispatchShimFuncs(builder, moduleOp, *gen)))
         return signalPassFailure();
     }
 
@@ -489,9 +499,6 @@ struct ConvertAIEXToEmitCPass
         toErase.push_back(&op);
     for (Operation *op : llvm::reverse(toErase))
       op->erase();
-
-    if (emitDispatchShim && failed(emitDispatchShimFuncs(builder, moduleOp)))
-      return signalPassFailure();
 
     // Lower the arith ops (constant scalar fields, runtime-value arithmetic
     // feeding npu ops) and any scf control flow (a rolled dynamic loop) left in
@@ -551,8 +558,8 @@ private:
   // Emit the ctypes-callable entry points: dispatch_abi() reporting the
   // parameter types, and dispatch_generate() handing back a pointer + word
   // count into thread-local storage, or -2 when the builder declined.
-  LogicalResult emitDispatchShimFuncs(OpBuilder &builder, ModuleOp moduleOp) {
-    auto gen = *moduleOp.getOps<emitc::FuncOp>().begin();
+  LogicalResult emitDispatchShimFuncs(OpBuilder &builder, ModuleOp moduleOp,
+                                      emitc::FuncOp gen) {
     MLIRContext *ctx = moduleOp.getContext();
     Location loc = gen.getLoc();
     TypeRange genParams = gen.getFunctionType().getInputs();
@@ -641,9 +648,9 @@ private:
     }
   }
 
-  LogicalResult emitFunction(OpBuilder &builder, ModuleOp moduleOp,
-                             AIE::RuntimeSequenceOp seqOp,
-                             AIE::DeviceOp deviceOp) {
+  FailureOr<emitc::FuncOp> emitFunction(OpBuilder &builder, ModuleOp moduleOp,
+                                        AIE::RuntimeSequenceOp seqOp,
+                                        AIE::DeviceOp deviceOp) {
     Location loc = seqOp.getLoc();
     Block &entry = seqOp.getBody().front();
 
@@ -786,7 +793,7 @@ private:
     // relies on the implicit std::vector -> std::optional conversion in C++.
     Value ret = emitc::LiteralOp::create(eb, loc, txnRetType, "std::move(txn)");
     emitc::ReturnOp::create(eb, loc, ret);
-    return success();
+    return funcOp;
   }
 };
 
