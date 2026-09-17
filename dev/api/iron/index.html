@@ -7014,12 +7014,20 @@
 You describe a design as Python objects — tiles, workers, data movement, and a
 host runtime — and IRON compiles it to an optimized <code>xclbin</code> + instruction
 stream via the MLIR-AIE toolchain.</p>
-<p>Every object on this page is <strong>resolvable</strong>: it lowers to one or more MLIR
-operations when the design is compiled. That is what makes it the high-level
-layer. For the direct MLIR op wrappers that IRON lowers <em>to</em>, see the
+<p>Structural design objects are <strong>resolvable</strong>: they lower to MLIR operations
+when the design is compiled. This page also includes host-side utilities,
+type markers, and runtime task handles. For the direct MLIR op wrappers that IRON lowers <em>to</em>, see the
 <a href="../dialect_wrappers/">Dialect op wrappers</a> page.</p>
-<p>All symbols documented here are importable directly from the <code>iron</code>
-namespace (e.g. <code>from iron import Worker, ObjectFifo, Runtime</code>).</p>
+<p>Import the public design abstractions from <code>aie.iron</code>
+(e.g. <code>from aie.iron import Worker, ObjectFifo, Runtime</code>), or use
+<code>import aie.iron as iron</code> for decorators and tensor factories. Supporting
+types are also documented below; not all are re-exported at package level.</p>
+<p>Prefer <code>ObjectFifo</code> for synchronized streaming, <code>Worker</code> for compute, and
+<code>Runtime(sequence, fn_args)</code> for host-side transfers. Pass runtime buffer
+types and the ObjectFifo handles used by the sequence through <code>fn_args</code>,
+and pass workers to <code>Program(workers=...)</code>. Use <code>Flow</code>, <code>TileDma</code>, and <code>Lock</code>
+when explicit routing or DMA control is the teaching goal; use raw dialect
+operations only where those abstractions do not expose the required operation.</p>
 <hr />
 <h2 id="core-design-abstractions">Core design abstractions<a class="headerlink" href="#core-design-abstractions" title="Permanent link">&para;</a></h2>
 <p>The objects most designs are built from.</p>
@@ -13500,9 +13508,9 @@ destination is required to split the source. Defaults to None (empty list).</p>
     </div>
 
 </div><h3 id="runtime">Runtime<a class="headerlink" href="#runtime" title="Permanent link">&para;</a></h3>
-<p>The host-side orchestration entry point. Its <code>fill</code> / <code>drain</code> operations
-are declared in the sequence body passed to <code>Runtime(seq, fn_args)</code>;
-Workers are passed to <code>Program(workers=...)</code> rather than started from the body.</p>
+<p>The host-side orchestration entry point. Calls to producer-handle <code>fill</code> and
+consumer-handle <code>drain</code> are declared in the sequence body passed to <code>Runtime(seq, fn_args)</code>;
+Workers are passed to <code>Program(workers=...)</code>.</p>
 
 
 <div class="doc doc-object doc-module">
@@ -14680,6 +14688,10 @@ before starting workers that read them.</p>
     </div>
 
 </div><h3 id="buffer">Buffer<a class="headerlink" href="#buffer" title="Permanent link">&para;</a></h3>
+<p>Use a <code>Buffer</code> for local scratch storage shared by sequential kernel calls
+in one Worker, as in the <a href="https://github.com/Xilinx/mlir-aie/tree/main/programming_examples/vision/edge_detect">edge-detection example</a>.
+Passing it in the Worker's <code>fn_args</code> associates it with that Worker's tile.
+Unlike an ObjectFifo, a Buffer does not provide producer/consumer synchronization.</p>
 
 
 <div class="doc doc-object doc-module">
@@ -17433,7 +17445,7 @@ into <code>iron</code> from <code>aie.utils</code>.</p>
 
 </div><hr />
 <h2 id="advanced-primitives">Advanced primitives<a class="headerlink" href="#advanced-primitives" title="Permanent link">&para;</a></h2>
-<p>Still part of the high-level <code>aie.iron</code> API — every object here is resolvable —
+<p>Still part of the <code>aie.iron</code> API —
 but reach for these only when the managed <a class="autorefs autorefs-internal" title="ObjectFifo" href="#iron.dataflow.objectfifo.ObjectFifo"><code>ObjectFifo</code></a>
 abstraction is not enough and you need explicit control over routing, DMA
 descriptors, and locks.</p>
