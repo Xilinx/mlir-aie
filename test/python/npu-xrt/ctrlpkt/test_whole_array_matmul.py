@@ -30,6 +30,7 @@ import importlib.util
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 import aie.iron as iron
 from aie.iron import str_to_dtype
@@ -60,7 +61,10 @@ def _load_whole_array():
     return mod
 
 
-def test_whole_array_matmul_ctrlpkt():
+def _fold_whole_array(name, extra_aiecc_args=None):
+    """Fold the real whole_array matmul at the pinned 2-column shape (i16->i32).
+    Two shim inputs per column make the co-tenancy fire. Returns
+    (elf, A_np, B_np, A, B, C)."""
     wa = _load_whole_array()
 
     # kernels.mm() reads its MMUL mac_dims from the current device (npu2 -> aie2p),
@@ -77,9 +81,10 @@ def test_whole_array_matmul_ctrlpkt():
     C = iron.zeros((_M, _N), dtype=str_to_dtype("i32"), device="npu")
 
     r = iron.Reconfiguration(
-        "whole_array_ctrlpkt",
+        name,
         method="ctrlpkt",
-        output_dir=str(Path(NPU_CACHE_HOME) / "whole_array_ctrlpkt"),
+        output_dir=str(Path(NPU_CACHE_HOME) / name),
+        extra_aiecc_args=extra_aiecc_args,
     )
     r.add(
         wa.whole_array,
@@ -96,7 +101,11 @@ def test_whole_array_matmul_ctrlpkt():
         dtype_in_str="i16",
         dtype_out_str="i32",
     )
-    elf = r.compile()
+    return r.compile(), A_np, B_np, A, B, C
+
+
+def test_whole_array_matmul_ctrlpkt():
+    elf, A_np, B_np, A, B, C = _fold_whole_array("whole_array_ctrlpkt")
 
     per_ep = {ep: () if ep == elf.init else (A, B, C) for ep in elf.entrypoints}
     dispatch_runlist(elf, per_ep)
@@ -104,3 +113,19 @@ def test_whole_array_matmul_ctrlpkt():
     expected = (A_np.astype(np.int64) @ B_np.astype(np.int64)).astype(np.int32)
     got = read_i32(C).reshape(_M, _N)
     np.testing.assert_array_equal(got, expected)
+
+
+def test_freeze_off_is_load_bearing():
+    """Negative arm: --ctrlpkt-pinned-overlay=off skips the control-fabric freeze,
+    so the same two-shim-input-per-column co-tenancy routes column data through the
+    live control masters -- control packets never arrive and the dispatch fails
+    (ERT_CMD_STATE_TIMEOUT). Proves the design-aware freeze (the default) is
+    required, not cosmetic. The freeze is control routing, so the wedge is
+    structural (not a timing race); the device recovers after the firmware
+    command timeout, which is what runlist.wait() raises here."""
+    elf, _, _, A, B, C = _fold_whole_array(
+        "whole_array_freezeoff", extra_aiecc_args=["--ctrlpkt-pinned-overlay=off"]
+    )
+    per_ep = {ep: () if ep == elf.init else (A, B, C) for ep in elf.entrypoints}
+    with pytest.raises(Exception):
+        dispatch_runlist(elf, per_ep)

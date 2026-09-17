@@ -30,7 +30,6 @@ aiecc's private scratch directory, not where the ``.o`` files live.
 
 from __future__ import annotations
 
-import os
 import re
 from pathlib import Path
 from typing import Any
@@ -63,6 +62,7 @@ class Reconfiguration:
         name: str,
         method: "str | None" = None,
         output_dir: "str | Path | None" = None,
+        extra_aiecc_args: "list[str] | None" = None,
     ):
         if "/" in name or "\\" in name:
             raise ValueError(
@@ -73,6 +73,10 @@ class Reconfiguration:
         self._name = name
         self._method = method
         self._out = Path(output_dir) if output_dir else Path.cwd()
+        # Extra aiecc flags appended to the fold build (e.g. an ablation flag
+        # such as --ctrlpkt-pinned-overlay=off). Empty by default, so the
+        # ordinary fold is byte-identical.
+        self._extra_aiecc_args = list(extra_aiecc_args or [])
         # Each entry: (sym_name, mlir_text, external_kernels, compilable).
         # `compilable` is kept so compile() can build this design's own
         # kernels (via CompilableDesign._build_kernels) without re-generating
@@ -227,11 +231,9 @@ class Reconfiguration:
         ]
         if self._method:
             args.append(f"--reconfig-method={self._method}")
-        # Opt-in passthrough of extra aiecc flags for the fold build (e.g.
-        # `--ctrlpkt-parallel-columns`). Empty by default, so the ordinary
-        # dispatch path is unchanged; a caller may set it to pass an extra
-        # aiecc flag through to the same fold build.
-        args += os.environ.get("IRON_RECONFIG_EXTRA_AIECC_ARGS", "").split()
+        # Extra aiecc flags for the fold build, from the constructor's
+        # extra_aiecc_args (empty by default, so the ordinary fold is unchanged).
+        args += self._extra_aiecc_args
         _run_aiecc(staged_names, args, cwd=str(self._out))
 
         elf_path = self._out / elf_name
